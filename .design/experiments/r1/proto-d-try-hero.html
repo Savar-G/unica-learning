@@ -1,0 +1,420 @@
+<!doctype html>
+<html lang="en" class="no-js">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Paper that learns</title>
+<script>document.documentElement.className = 'js';</script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;1,6..72,400&family=Geist:wght@400;500;600&family=Andika:wght@400;700&family=Kalam&family=Nanum+Pen+Script&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg: #F3EFE6;
+  --sheet: #FFFDF7;
+  --ink: #1C1B18;
+  --ink-2: #45413A;
+  --muted: #6A645A;
+  --rule: #DDD5C5;
+  --accent: #B3341C;
+  --graphite: #5A564F;
+  --serif: "Newsreader", Georgia, serif;
+  --sans: "Geist", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --print: "Andika", "Trebuchet MS", sans-serif;
+  --hand-red: "Kalam", "Comic Sans MS", cursive;
+  --hand-kid: "Nanum Pen Script", "Kalam", cursive;
+}
+* { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; }
+body {
+  margin: 0; background: var(--bg); color: var(--ink);
+  font: 400 17px/1.55 var(--sans);
+  -webkit-font-smoothing: antialiased;
+}
+.vh { position: absolute !important; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
+.wrap { max-width: 1280px; margin: 0 auto; padding: 0 20px; }
+:focus-visible { outline: 2px solid var(--ink); outline-offset: 3px; border-radius: 6px; }
+
+/* Header */
+.site { height: 64px; display: flex; align-items: center; }
+.wordmark {
+  font: 500 19px/1 var(--serif); font-variant-caps: all-small-caps;
+  letter-spacing: .07em; color: var(--ink); text-decoration: none;
+}
+
+/* Hero */
+.hero { display: grid; grid-template-columns: minmax(0, 1fr); gap: 36px; padding: 20px 0 56px; }
+h1 {
+  font: 400 clamp(50px, 6.6vw, 100px)/.96 var(--serif);
+  letter-spacing: -.025em; margin: 0 0 22px;
+  font-variation-settings: "opsz" 72;
+}
+h1 em { font-style: italic; }
+.sub { font-size: clamp(17px, 1.45vw, 21px); line-height: 1.5; color: var(--ink-2); max-width: 30em; margin: 0 0 14px; }
+.meta { font-size: 14px; color: var(--muted); margin: 0 0 28px; letter-spacing: .01em; }
+.actions { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 24px; }
+.btn {
+  appearance: none; border: 0; cursor: pointer;
+  background: var(--ink); color: var(--sheet);
+  font: 500 16px/1 var(--sans); padding: 18px 24px; border-radius: 10px;
+  transition: background .15s ease;
+}
+.btn:hover { background: #34312B; }
+.link { color: var(--ink); font-weight: 500; font-size: 16px; text-underline-offset: 4px; text-decoration-thickness: 1px; }
+.link:hover { text-decoration-thickness: 2px; }
+.fine { font-size: 13px; color: var(--muted); margin: 14px 0 0; }
+
+/* Try block */
+.try { outline: none; }
+.try-head { display: flex; align-items: baseline; justify-content: space-between; gap: 16px; margin-bottom: 14px; min-height: 28px; }
+.try-label { font: italic 400 21px/1.2 var(--serif); margin: 0; }
+.again {
+  appearance: none; background: none; border: 0; padding: 4px 0; cursor: pointer;
+  font: 500 14px/1 var(--sans); color: var(--ink-2);
+  text-decoration: underline; text-underline-offset: 4px; text-decoration-thickness: 1px;
+}
+.again:hover { color: var(--ink); text-decoration-thickness: 2px; }
+.sheets {
+  display: grid; gap: 8px 24px;
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-areas: "l1" "now" "l2" "slot";
+}
+.sheet-label { grid-area: l1; margin: 0; font: 500 12px/1.4 var(--sans); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+.next-label { grid-area: l2; margin-top: 18px; transition: color .3s ease; }
+.is-done .next-label { color: var(--accent); }
+.page-now { grid-area: now; }
+.slot { grid-area: slot; display: grid; }
+.slot > * { grid-area: 1 / 1; }
+
+.page {
+  position: relative; background: var(--sheet); color: var(--ink);
+  font-family: var(--print); padding: 18px 20px 20px; border-radius: 2px;
+  box-shadow: 0 1px 1px rgba(60,45,20,.06), 0 10px 28px -14px rgba(60,45,20,.28), 0 0 0 1px rgba(60,45,20,.05);
+}
+.page-head {
+  display: flex; justify-content: space-between; font-size: 12px; color: var(--muted);
+  padding-bottom: 9px; border-bottom: 1px solid var(--rule); margin-bottom: 16px; letter-spacing: .02em;
+}
+.q { margin: 0 0 6px; font-size: 15px; line-height: 1.35; }
+.qn { font-weight: 700; margin-right: 4px; }
+.eq-row { position: relative; display: flex; align-items: center; min-height: 92px; }
+.eq { margin: 0; display: flex; align-items: center; gap: .3em; font-size: 34px; line-height: 1; }
+.eq.sm { font-size: 22px; gap: .36em; margin-top: 8px; }
+.f { position: relative; display: inline-flex; flex-direction: column; align-items: center; line-height: 1; font-variant-numeric: lining-nums; }
+.f > span:first-of-type { border-bottom: .065em solid currentColor; padding: 0 .16em .07em; }
+.f > span:last-of-type { padding-top: .08em; }
+.op { color: var(--ink-2); }
+.qm { color: var(--ink-2); }
+.box { display: inline-block; width: .82em; height: .95em; border: 1.5px solid var(--ink); border-radius: 2px; margin-bottom: .06em; }
+
+.working { position: absolute; right: 0; top: 50%; transform: translateY(-50%); white-space: nowrap; margin: 0; font: 400 21px/1 var(--hand-kid); color: var(--graphite); display: flex; flex-direction: column; gap: 3px; text-align: right; }
+.opts { display: flex; gap: 6px; margin: 10px -6px 0; }
+.opt {
+  position: relative; flex: 1; appearance: none; cursor: pointer;
+  background: transparent; color: var(--ink); font: 400 30px/1 var(--print);
+  border: 0; border-radius: 10px; padding: 12px 0 11px;
+  display: flex; justify-content: center; align-items: center; gap: 18px;
+  transition: background .15s ease;
+}
+.opt:hover:not([aria-disabled="true"]) { background: #F3EDE1; }
+.ol { font: 700 14px/1 var(--print); color: var(--muted); align-self: center; }
+.opt[aria-disabled="true"] { cursor: default; }
+.mark { position: absolute; pointer-events: none; overflow: visible; fill: none; stroke: var(--accent); stroke-linecap: round; stroke-linejoin: round; opacity: 0; }
+.mark path { stroke-dasharray: 1; stroke-dashoffset: 1; }
+.mark-circle { left: 50%; top: 50%; width: 58px; height: 82px; transform: translate(-50%, -50%); stroke-width: 2.4; }
+.mark-circle path { vector-effect: non-scaling-stroke; }
+.mark-check { width: 32px; height: 32px; right: -30px; top: -12px; stroke-width: 3.2; }
+.note { margin: 14px 0 0; min-height: 0; font: 400 18px/1.3 var(--hand-red); color: var(--accent); transform: rotate(-1.5deg); transform-origin: left top; }
+.note span, .working span { display: block; }
+.no-js .opt { cursor: default; }
+
+/* Next page */
+.placeholder {
+  border: 1px solid var(--rule); border-radius: 2px; padding: 20px 22px;
+  display: flex; align-items: center;
+}
+.placeholder p { margin: 0; font: italic 400 18px/1.45 var(--serif); color: var(--ink-2); max-width: 19em; }
+.js .no-js-only, .no-js .js-only { display: none; }
+.built { margin: -6px 0 12px; font: 500 11px/1.3 var(--sans); letter-spacing: .07em; text-transform: uppercase; color: var(--accent); }
+.np + .np { margin-top: 16px; padding-top: 14px; border-top: 1px dashed var(--rule); }
+.bar { display: block; width: 100%; max-width: 240px; height: auto; margin-top: 8px; }
+.bar rect { fill: none; stroke: var(--ink); stroke-width: 1.2; }
+.bar .s1 { fill: #3B3832; }
+.bar .s2 { fill: #A9A396; }
+.bar .thin rect { stroke: var(--ink-2); stroke-width: 1; stroke-dasharray: 3 2; }
+.standin { margin: 14px 0 0; font: 400 12px/1.4 var(--sans); color: var(--muted); letter-spacing: .02em; }
+
+/* States. Timeline: working 0ms, red mark 450ms, note 900ms, next page 1650ms */
+@keyframes draw { to { stroke-dashoffset: 0; } }
+@keyframes write { from { clip-path: inset(0 100% 0 0); } to { clip-path: inset(0 0 0 0); } }
+@keyframes show { from { opacity: 0; } to { opacity: 1; } }
+@keyframes slide-in { from { opacity: 0; transform: translateX(-28px); } to { opacity: 1; transform: none; } }
+@keyframes fade-out { to { opacity: 0; visibility: hidden; } }
+.working span, .note span { clip-path: inset(0 100% 0 0); }
+.is-marked .working span { animation: write .45s steps(14, end) forwards; }
+.is-marked .working span + span { animation-delay: .22s; }
+.opt.is-picked .mark-circle, .opt.is-picked.is-right .mark-check { opacity: 1; }
+.opt.is-right .mark-circle { opacity: 0 !important; }
+.opt.is-picked .mark path { animation: draw .55s cubic-bezier(.55,.1,.35,1) .45s forwards; }
+.opt.is-picked.is-right .mark-check path { animation-duration: .38s; }
+.is-marked .note span { animation: write .6s steps(22, end) .9s forwards; }
+.is-marked .note span + span { animation-delay: 1.3s; }
+.is-marked .page-next.is-shown { animation: slide-in .5s cubic-bezier(.2,.7,.2,1) 1.65s both; }
+.is-marked .placeholder { animation: fade-out .25s ease 1.6s forwards; }
+.is-marked .next-label { transition-delay: 1.65s; }
+
+@media (prefers-reduced-motion: reduce) {
+  .is-marked .working span, .is-marked .note span { animation: none; clip-path: none; }
+  .opt.is-picked .mark path { animation: none; stroke-dashoffset: 0; }
+  .is-marked .page-next.is-shown { animation: none; }
+  .is-marked .placeholder { animation: none; visibility: hidden; }
+  .is-marked .next-label { transition: none; }
+}
+.still .is-marked .working span, .still .is-marked .note span { animation: none; clip-path: none; }
+.still .opt.is-picked .mark path { animation: none; stroke-dashoffset: 0; }
+.still .is-marked .page-next.is-shown { animation: none; }
+.still .is-marked .placeholder { animation: none; visibility: hidden; }
+.still .is-marked .next-label { transition: none; }
+
+/* Mobile order: headline, subhead, meta, try it, then the action */
+@media (max-width: 999px) {
+  .hero { gap: 0; }
+  .hero-copy { display: contents; }
+  .hero h1 { order: 1; } .sub { order: 2; } .meta { order: 3; margin-bottom: 30px; }
+  .try { order: 4; } .actions { order: 5; margin-top: 36px; } .fine { order: 6; }
+}
+
+@media (min-width: 620px) {
+  .sheets { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); grid-template-areas: "l1 l2" "now slot"; }
+  .next-label { margin-top: 0; }
+  .page { min-height: 368px; }
+  .placeholder { min-height: 368px; }
+  .note { min-height: 52px; }
+}
+
+@media (min-width: 1000px) {
+  .wrap { padding: 0 48px; }
+  .site { height: 76px; }
+  .hero {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1.22fr);
+    gap: 64px; align-items: center;
+    min-height: calc(100vh - 76px); padding: 0 0 96px;
+  }
+  .sub { max-width: 23em; }
+}
+</style>
+</head>
+<body>
+<header class="site wrap">
+  <a class="wordmark" href="#">Working name</a>
+</header>
+<main class="wrap">
+  <section class="hero" aria-labelledby="hero-title">
+    <div class="hero-copy">
+      <h1 id="hero-title">Paper that <em>learns.</em></h1>
+      <p class="sub">A math workbook made for your child and mailed home. Snap the finished pages, and the next book adapts to what they missed.</p>
+      <p class="meta">Grades 3-5 · Vancouver pilot · CAD 49 a month, delivery included</p>
+      <div class="actions">
+        <button class="btn" type="button" data-open-reserve>Reserve a pilot spot</button>
+        <a class="link" href="#try">See how it works</a>
+      </div>
+      <p class="fine">Refundable deposit. 10 families. Start date to be announced.</p>
+    </div>
+    <div class="try" id="try" aria-labelledby="try-label" tabindex="-1">
+      <div class="try-head">
+        <p class="try-label" id="try-label">Try it as your child would.</p>
+        <button class="again" type="button" hidden>Try again</button>
+      </div>
+      <div class="sheets">
+        <p class="sheet-label">This week's page</p>
+        <p class="sheet-label next-label">Your child's next page</p>
+
+        <article class="page page-now" aria-labelledby="q3">
+          <header class="page-head" aria-hidden="true"><span>Book 3 · Fractions</span><span>p. 12</span></header>
+          <p class="q" id="q3"><span class="qn">3.</span> Add. Choose the answer.<span class="vh"> 1/4 + 2/4 = ?</span></p>
+          <div class="eq-row">
+            <p class="eq" aria-hidden="true">
+              <span class="f"><span>1</span><span>4</span></span><span class="op">+</span><span class="f"><span>2</span><span>4</span></span><span class="op">=</span><span class="qm">?</span>
+            </p>
+            <p class="working" aria-hidden="true"><span></span><span></span></p>
+          </div>
+          <div class="opts" role="group" aria-labelledby="q3">
+            <button class="opt" type="button" data-value="3/4"><span class="ol" aria-hidden="true">a</span><span class="vh">3/4</span><span class="f" aria-hidden="true"><span>3</span><span>4</span><svg class="mark mark-check" viewBox="0 0 40 40" aria-hidden="true"><path pathLength="1" d="M5 22 C8 25 11 29 14 33 C20 22 27 13 37 4"/></svg><svg class="mark mark-circle" viewBox="0 0 120 80" preserveAspectRatio="none" aria-hidden="true"><path pathLength="1" d="M92 9 C66 1 22 5 9 28 C-1 48 28 76 66 74 C102 72 121 52 111 25 C104 10 86 5 68 7"/></svg></span></button>
+            <button class="opt" type="button" data-value="3/8"><span class="ol" aria-hidden="true">b</span><span class="vh">3/8</span><span class="f" aria-hidden="true"><span>3</span><span>8</span><svg class="mark mark-check" viewBox="0 0 40 40" aria-hidden="true"><path pathLength="1" d="M5 22 C8 25 11 29 14 33 C20 22 27 13 37 4"/></svg><svg class="mark mark-circle" viewBox="0 0 120 80" preserveAspectRatio="none" aria-hidden="true"><path pathLength="1" d="M92 9 C66 1 22 5 9 28 C-1 48 28 76 66 74 C102 72 121 52 111 25 C104 10 86 5 68 7"/></svg></span></button>
+            <button class="opt" type="button" data-value="2/8"><span class="ol" aria-hidden="true">c</span><span class="vh">2/8</span><span class="f" aria-hidden="true"><span>2</span><span>8</span><svg class="mark mark-check" viewBox="0 0 40 40" aria-hidden="true"><path pathLength="1" d="M5 22 C8 25 11 29 14 33 C20 22 27 13 37 4"/></svg><svg class="mark mark-circle" viewBox="0 0 120 80" preserveAspectRatio="none" aria-hidden="true"><path pathLength="1" d="M92 9 C66 1 22 5 9 28 C-1 48 28 76 66 74 C102 72 121 52 111 25 C104 10 86 5 68 7"/></svg></span></button>
+          </div>
+          <p class="note" aria-hidden="true"><span></span><span></span></p>
+        </article>
+
+        <div class="slot">
+          <div class="placeholder">
+            <p class="js-only">Pick an answer. We mark it the way we mark every photographed page, and the next page changes to match.</p>
+            <p class="no-js-only">A child who picks 3/8 has added the denominators. We circle it, and the next book opens with practice on adding same-size parts.</p>
+          </div>
+
+          <article class="page page-next" data-next="easier" hidden aria-label="Your child's next page: Book 4, page 1, adding same-size parts">
+            <header class="page-head"><span>Book 4 · Same-size parts</span><span>p. 1</span></header>
+            <p class="built">Built from Book 3, p. 12, question 3</p>
+            <div class="np">
+              <p class="q"><span class="qn">1.</span> Count the shaded parts.</p>
+              <svg class="bar" viewBox="0 0 240 26" aria-hidden="true"><rect class="s1" x="1" y="1" width="59.5" height="24"/><rect class="s2" x="60.5" y="1" width="59.5" height="24"/><rect class="s2" x="120" y="1" width="59.5" height="24"/><rect x="179.5" y="1" width="59.5" height="24"/></svg>
+              <p class="eq sm"><span class="f"><span>1</span><span>4</span></span><span class="op">+</span><span class="f"><span>2</span><span>4</span></span><span class="op">=</span><span class="f"><span><span class="box"></span></span><span>4</span></span></p>
+            </div>
+            <div class="np">
+              <p class="q"><span class="qn">2.</span> The parts stay the same size.</p>
+              <svg class="bar" viewBox="0 0 240 26" aria-hidden="true"><rect class="s1" x="1" y="1" width="47.6" height="24"/><rect class="s2" x="48.6" y="1" width="47.6" height="24"/><rect class="s2" x="96.2" y="1" width="47.6" height="24"/><rect class="s2" x="143.8" y="1" width="47.6" height="24"/><rect x="191.4" y="1" width="47.6" height="24"/></svg>
+              <p class="eq sm"><span class="f"><span>1</span><span>5</span></span><span class="op">+</span><span class="f"><span>3</span><span>5</span></span><span class="op">=</span><span class="f"><span><span class="box"></span></span><span>5</span></span></p>
+            </div>
+          </article>
+
+          <article class="page page-next" data-next="harder" hidden aria-label="Your child's next page: Book 4, page 1, adding different-size parts">
+            <header class="page-head"><span>Book 4 · Different-size parts</span><span>p. 1</span></header>
+            <p class="built">Built from Book 3, p. 12, question 3</p>
+            <div class="np">
+              <p class="q"><span class="qn">1.</span> Make the parts the same size, then add.</p>
+              <svg class="bar" viewBox="0 0 240 56" aria-hidden="true"><rect class="s1" x="1" y="1" width="79.3" height="24"/><rect class="s1" x="80.3" y="1" width="79.3" height="24"/><rect x="159.6" y="1" width="79.4" height="24"/><g class="thin"><rect x="1" y="31" width="39.7" height="24"/><rect x="40.7" y="31" width="39.7" height="24"/><rect x="80.4" y="31" width="39.7" height="24"/><rect x="120.1" y="31" width="39.7" height="24"/><rect x="159.8" y="31" width="39.6" height="24"/><rect x="199.4" y="31" width="39.6" height="24"/></g></svg>
+              <p class="eq sm"><span class="f"><span>2</span><span>3</span></span><span class="op">+</span><span class="f"><span>1</span><span>6</span></span><span class="op">=</span><span class="f"><span><span class="box"></span></span><span>6</span></span></p>
+            </div>
+            <div class="np">
+              <p class="q"><span class="qn">2.</span> Now without the bar.</p>
+              <p class="eq sm"><span class="f"><span>3</span><span>4</span></span><span class="op">+</span><span class="f"><span>1</span><span>8</span></span><span class="op">=</span><span class="f"><span><span class="box"></span></span><span>8</span></span></p>
+            </div>
+          </article>
+        </div>
+      </div>
+      <p class="standin">Stand-in for a photo of a real workbook</p>
+      <p class="vh" id="status" aria-live="polite"></p>
+    </div>
+  </section>
+</main>
+<dialog class="reserve" id="reserve" aria-labelledby="reserve-title">
+  <form class="reserve-form" novalidate>
+    <h2 id="reserve-title">Reserve a pilot spot</h2>
+    <label>Parent name<input name="name" autocomplete="name" required></label>
+    <label>Email<input name="email" type="email" autocomplete="email" required></label>
+    <fieldset><legend>Child's grade</legend>
+      <label class="r"><input type="radio" name="grade" value="3" required> 3</label>
+      <label class="r"><input type="radio" name="grade" value="4"> 4</label>
+      <label class="r"><input type="radio" name="grade" value="5"> 5</label>
+    </fieldset>
+    <label>Postal code<input name="postal" autocomplete="postal-code" required></label>
+    <p class="err" role="alert"></p>
+    <div class="row"><button class="btn" type="submit">Reserve a pilot spot</button><button class="again" type="button" data-close>Cancel</button></div>
+  </form>
+  <div class="reserve-done" hidden>
+    <h2>You're on the list.</h2>
+    <p>We'll email you before the pilot starts to take the refundable deposit.</p>
+    <button class="again" type="button" data-close>Close</button>
+  </div>
+</dialog>
+<style>
+.reserve { border: 0; border-radius: 12px; padding: 28px; width: min(440px, calc(100vw - 32px)); background: var(--sheet); color: var(--ink); box-shadow: 0 24px 60px -20px rgba(40,30,10,.4); }
+.reserve::backdrop { background: rgba(28,27,24,.35); }
+.reserve h2 { font: 400 30px/1.1 var(--serif); margin: 0 0 18px; }
+.reserve label { display: block; font-size: 14px; font-weight: 500; margin-bottom: 14px; }
+.reserve input:not([type=radio]) { display: block; width: 100%; margin-top: 6px; font: 400 16px/1.3 var(--sans); padding: 11px 12px; border: 1px solid #CFC6B5; border-radius: 8px; background: #fff; color: var(--ink); }
+.reserve fieldset { border: 0; padding: 0; margin: 0 0 14px; display: flex; gap: 18px; flex-wrap: wrap; }
+.reserve legend { font-size: 14px; font-weight: 500; margin-bottom: 6px; width: 100%; }
+.reserve label.r { display: inline-flex; gap: 6px; align-items: center; margin: 0; font-weight: 400; font-size: 16px; }
+.reserve .row { display: flex; align-items: center; gap: 20px; margin-top: 6px; }
+.reserve .err { color: var(--accent); font-size: 14px; margin: 0 0 10px; min-height: 1em; }
+.reserve-done p { color: var(--ink-2); margin: 0 0 18px; }
+</style>
+<script>
+(function () {
+  var root = document.querySelector('.try');
+  var page = root.querySelector('.page-now');
+  var opts = Array.prototype.slice.call(root.querySelectorAll('.opt'));
+  var working = root.querySelectorAll('.working span');
+  var note = root.querySelectorAll('.note span');
+  var again = root.querySelector('.again');
+  var status = document.getElementById('status');
+  var nexts = root.querySelectorAll('.page-next');
+
+  var OUTCOMES = {
+    '3/4': { right: true, working: ['1 + 2 = 3', 'fourths'], note: ['Got it.', 'The next book steps up.'], next: 'harder',
+      say: 'Marked correct. Got it. The next book steps up. Your child\'s next page: adding parts of different sizes.' },
+    '3/8': { right: false, working: ['1 + 2 = 3', '4 + 4 = 8'], note: ['Added the denominators.', 'This comes back next book.'], next: 'easier',
+      say: '3/8 is circled. Added the denominators. This comes back next book. Your child\'s next page: two problems on adding same-size parts.' },
+    '2/8': { right: false, working: ['1 × 2 = 2', '4 + 4 = 8'], note: ['Close, but the parts', 'are fourths.'], next: 'easier',
+      say: '2/8 is circled. Close, but the parts are fourths. Your child\'s next page: two problems on adding same-size parts.' }
+  };
+  var picked = null;
+
+  function choose(value, fromUrl) {
+    var o = OUTCOMES[value];
+    if (!o || picked) return;
+    picked = value;
+    opts.forEach(function (b) {
+      b.setAttribute('aria-disabled', 'true');
+      if (b.dataset.value === value) {
+        b.classList.add('is-picked');
+        b.setAttribute('aria-pressed', 'true');
+        if (o.right) b.classList.add('is-right');
+      }
+    });
+    working[0].textContent = o.working[0]; working[1].textContent = o.working[1];
+    note[0].textContent = o.note[0]; note[1].textContent = o.note[1];
+    nexts.forEach(function (n) {
+      var on = n.dataset.next === o.next;
+      n.hidden = !on; n.classList.toggle('is-shown', on);
+    });
+    root.classList.add('is-marked', 'is-done');
+    again.hidden = false;
+    status.textContent = o.say;
+    // Narrow screens: bring the next page into view once it starts to arrive (user taps only)
+    if (!fromUrl && window.matchMedia('(max-width: 619px)').matches) {
+      var reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches || document.documentElement.classList.contains('still');
+      setTimeout(function () {
+        var lbl = root.querySelector('.next-label').getBoundingClientRect();
+        var need = lbl.top - window.innerHeight * 0.58;
+        if (picked && need > 0) window.scrollBy({ top: Math.min(need, 360), behavior: reduce ? 'auto' : 'smooth' });
+      }, reduce ? 0 : 1500);
+    }
+  }
+
+  function reset() {
+    picked = null;
+    root.classList.remove('is-marked', 'is-done');
+    opts.forEach(function (b) {
+      b.classList.remove('is-picked', 'is-right');
+      b.removeAttribute('aria-disabled'); b.removeAttribute('aria-pressed');
+    });
+    [].forEach.call(working, function (s) { s.textContent = ''; });
+    [].forEach.call(note, function (s) { s.textContent = ''; });
+    nexts.forEach(function (n) { n.hidden = true; n.classList.remove('is-shown'); });
+    again.hidden = true;
+    status.textContent = 'Reset. Pick an answer.';
+    opts[0].focus();
+  }
+
+  opts.forEach(function (b) { b.addEventListener('click', function () { choose(b.dataset.value); }); });
+  again.addEventListener('click', reset);
+
+  // Reservation dialog
+  var dlg = document.getElementById('reserve');
+  var form = dlg.querySelector('form');
+  var done = dlg.querySelector('.reserve-done');
+  var err = dlg.querySelector('.err');
+  document.querySelectorAll('[data-open-reserve]').forEach(function (b) {
+    b.addEventListener('click', function () { form.hidden = false; done.hidden = true; err.textContent = ''; dlg.showModal(); });
+  });
+  dlg.querySelectorAll('[data-close]').forEach(function (b) { b.addEventListener('click', function () { dlg.close(); }); });
+  form.addEventListener('submit', function (e) {
+    e.preventDefault();
+    if (!form.checkValidity()) { err.textContent = 'Please fill in every field.'; return; }
+    form.hidden = true; done.hidden = false; done.querySelector('button').focus();
+  });
+
+  // Test flags: ?pick=3%2F8 selects a choice; &motion=off shows final states instantly
+  var params = new URLSearchParams(location.search);
+  if (params.get('motion') === 'off') document.documentElement.classList.add('still');
+  var flag = params.get('pick');
+  if (flag) {
+    var go = function () { choose(flag.trim(), true); };
+    (document.fonts && document.fonts.ready) ? document.fonts.ready.then(go) : go();
+  }
+})();
+</script>
+</body>
+</html>

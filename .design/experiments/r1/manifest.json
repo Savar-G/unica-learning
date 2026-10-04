@@ -1,0 +1,54 @@
+{
+  "round": 1,
+  "decision": "What leads the page: the object, the loop, the annotated page, a try-it demo, or the contrast?",
+  "primary_axis": "page structure / hero composition",
+  "invariants": [
+    "copy deck BRIEF.md word for word",
+    "comparison table v2",
+    "paper + ink + one red marking accent",
+    "1440 desktop + 375 mobile"
+  ],
+  "tool": "Brilliant project 'Learning Platform', canvases 'Landing R1/A-E'; live HTML prototypes for B and D",
+  "options": [
+    {
+      "id": "A",
+      "artifact": "Brilliant: Landing R1/A Object-led (desk 9718157f27a08aaa, mob d424e763f0aeb61e)",
+      "bet": "The workbook as a calm object",
+      "benefit": "Most premium, closest to Daylight",
+      "cost": "'learns' not visible in hero",
+      "risk": "Reads as stationery until a real photo exists"
+    },
+    {
+      "id": "B",
+      "artifact": "Brilliant: Landing R1/B Loop-led (desk ea47bd9ff7c37c05, mob e4552df0f86494b0, storyboard c86512a5a82cb720); r1/proto-b-loop-hero.html",
+      "bet": "The loop is the hero",
+      "benefit": "Shows the mechanism; clearest journey row",
+      "cost": "Dense hero",
+      "risk": "Too much to read in 5 s; small type on phones"
+    },
+    {
+      "id": "C",
+      "artifact": "Brilliant: Landing R1/C Annotated page (desk 27bdd5c14329d8ff, mob acbb3004f6e1a38d)",
+      "bet": "One annotated page = paper + intelligence",
+      "benefit": "Best 5-second read on desktop; buildable from one real photo",
+      "cost": "Invented example numbers to remove",
+      "risk": "Mobile hero is text-only above the fold"
+    },
+    {
+      "id": "D",
+      "artifact": "Brilliant: Landing R1/D Try the loop (desk eda9ed7b13797db6, mob 5f68c039aedc8788, storyboard 83b4c9c0c88ac6d1); r1/proto-d-try-hero.html",
+      "bet": "Parent tries the loop",
+      "benefit": "Most engaging live",
+      "cost": "Static default reads weaker",
+      "risk": "Demo adapts instantly, product adapts per book"
+    },
+    {
+      "id": "E",
+      "artifact": "Brilliant: Landing R1/E Manifesto (desk 5c2f0a8dacdf5c34, mob b1fe5c38a61be7ae)",
+      "bet": "The contrast leads",
+      "benefit": "Strongest category-change message",
+      "cost": "Tall hero; long mobile page",
+      "risk": "Can feel like an argument before a product"
+    }
+  ]
+}

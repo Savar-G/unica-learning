@@ -1,0 +1,104 @@
+# DESIGN.md - ai-workbooks-landing-page
+
+> Status: v2. Page story and look approved by Savar 2026-10-04 (no objection); hero copy decided (D-024); hero layout C chosen (D-029); option A parked as a draft (D-030). Built from Savar's FigJam board "Personalized Learning, Delivered" (2026-10-03).
+> Last updated: 2026-10-03
+
+## Job
+
+**User:** A Vancouver parent of a grade 3-5 child. They pay for, or have priced, tutoring or a math app, and they worry about screen time.
+
+**Situation:** They arrive from a Product BC Slack post, a Reddit thread or a direct link, usually on a phone, with under a minute of attention.
+
+**Job to be done:** In 15 seconds, know what this is (math and reading workbooks made for their child, mailed home, that adapt from a photo of the finished pages). Feel that it is a real, serious product. Reserve a subscription.
+
+**Success evidence:** Paid reservations from targeted traffic (pass bar in the research doc: 10+). Secondary: a 5-second test where a parent can say "workbooks made for my kid, mailed home, they adapt".
+
+## Scope
+
+**In:** One landing page (mobile first) that reads as a real product, with a working reserve flow (success and error states) and analytics events.
+
+**Out:** The product itself, parent dashboard, accounts, blog, multi-page site.
+
+## Source constraints
+
+- References: Savar's FigJam board (Primer, Ello, Squirrel AI, Outschool) with his notes; see `.design/references.json`.
+- Offer: math and reading, grades 3-5, Vancouver, delivery included. One subject CAD 49 a month; math + reading CAD 89 a month (D-026).
+- Real product posture: no "pilot", "beta" or "test" wording (D-012).
+- No proof we do not have: no ratings, review counts, family counts, press logos, outcome percentages or testimonials. Until real customer references exist, proof = sample pages, clear price, cancel anytime, the founders' story.
+- Comparative and performance claims: Competition Act s.74.01(1)(b) requires an adequate and proper test before a claim about a product's performance. The only research line is "Research links paper and handwriting to stronger learning", with Delgado et al. 2018 (Educational Research Review 25), Malpique et al. 2023 and van der Meer & van der Weel 2024 (Frontiers in Psychology) cited. Never a claim about our results.
+- Children's privacy: the page collects parent contact and payment only.
+
+## Positioning rules
+
+- Never name a competitor or a category of alternative (no Kumon, no "centre tutoring", no "AI apps"). Show the difference as what we do: paper, at home, made for one child, it adapts (D-015).
+- Lead with emotion and a bold claim, but name the product in the line under it. The section right after the hero answers "What is [Brand]?" in plain words.
+- End on a bold claim: "This is what learning should be like." It carries three beliefs: learning belongs on paper, not on another screen; "Research links paper and handwriting to stronger learning" (sources cited on the page); every child is different, so every workbook is too (D-016).
+- No learning styles anywhere (D-004).
+
+## Page story
+
+Every section sets up the next one. A single pencil line connects the sections and the loop steps.
+
+1. **Hero (D-029, option C).** Centred text over one large photo of a child working at home; a marked workbook page and a progress report ("Updated just now") float on the photo. On phones the report sits under the photo and the page is hidden. Small line: "The future of learning is on paper." Headline: "Personalized. Delivered. Mastered." Line under it: "Math and reading workbooks made for your child, mailed home, and adapted after every book." Real children with real workbooks. One primary action (reserve) and the line "Grades 3-5 · From CAD 49 a month · Delivery included".
+2. **What is [Brand]?** Math and reading workbooks made for your child, mailed home. Your child works on paper. You snap the finished pages, and the next workbook adapts. Grades 3-5.
+3. **How it works.** A loop where step 6 returns to step 2. Savar's wording:
+   1. **Assess:** The child completes an adaptive online assessment that identifies their level, strengths, gaps and misconceptions.
+   2. **Deliver:** We create and mail a physical workbook personalized to what that child needs to work on.
+   3. **Practice:** The child spends roughly 15-20 minutes per day working on paper.
+   4. **Scan:** A parent takes a photo of the completed work.
+   5. **Adapt:** The system analyzes the child's answers and updates their learning profile.
+   6. **Repeat:** The next workbook is automatically personalized based on what the child has mastered, struggled with or needs to review.
+4. **Why choose [Brand]?** 3-4 cards that state what we do. No names of alternatives.
+5. **What's included.** A card grid: the placement test, the personalized workbook by mail ("Your next book arrives before the current one runs out."), the parent progress report ("updated continuously"; it must update after every scan), delivery, cancel anytime.
+6. **The emotional section.** Real photos and handwritten workbook pages drift around one centred line about every child learning differently.
+7. **Who is behind it.** Short founders' story; it replaces the proof that we do not have.
+8. **Price and reserve.** Two plans: one subject CAD 49 a month, math + reading CAD 89 a month, delivery included, cancel anytime, and when the parent is charged (D8).
+9. **FAQ.** Screen time, missed weeks, photos that stop, privacy, cancelling.
+10. **Closing claim.** "This is what learning should be like." Then the final reserve button.
+
+## Visual language
+
+**Look (Primer):** White background. Thin black hairline rules frame every section, like a grid. Saturated primary colour tiles (yellow, blue, orange, green) are structure, not decoration. Many real photos of children.
+
+**Delight (Ello):** Micro animations on scroll: a tilted, white-bordered word chip that swaps (for example "fractions", "reading comprehension", "multiplication", "vocabulary"); photos and workbook pages that drift; cards that lift; sections that rise in. The hero line comes back at the end.
+
+**Connection (Squirrel AI, Outschool):** A pencil line runs through the page and draws itself on scroll. In the hero it joins photos of real children, with label chips for the loop steps.
+
+**Typography:** A serif display face for headlines (Title Case, like Primer) and a neutral grotesk for text. Free faces only; chosen in exploration.
+
+**Imagery:** Real children with real paper workbooks at home. Mockups: Unsplash or Pexels photos (`.design/assets/stock/CREDITS.md`), and AI-generated images only where stock cannot show the product. Launch photos: D4.
+
+**Motion rules:** Motion explains or delights; it never blocks reading. With reduced motion on, the page shows the end states.
+
+## Behavior and states
+
+- The primary action opens the reserve flow: child's grade, parent name, email, postal code (Vancouver check), then payment details.
+- States: idle, submitting, success (what happens next and when), payment declined, outside Vancouver (waitlist), sold out for this month (waitlist).
+- Every step fires an analytics event (view, CTA click, form start, reserve success).
+
+## Responsive and accessibility
+
+- Mobile first (375 px), then tablet and desktop (1440 px).
+- WCAG 2.2 AA contrast (yellow tiles carry dark text only), visible focus, full keyboard use, alt text that describes the real photo.
+
+## What this is not
+
+- Not mascots, illustrated hills or a cartoon world (Ello's motion yes, its characters no).
+- Not dark gradients, glowing app mockups, purple AI palette or sparkle icons.
+- Not the round 1 look: muted paper tones and a quiet editorial page.
+- Not invented proof of any kind.
+
+## Acceptance criteria
+
+- [ ] In a 15-second test, a parent can say what arrives, who it is for and that it adapts.
+- [ ] No competitor or category of alternative is named.
+- [ ] Every research claim has a citation; no claim about our own results.
+- [ ] The reserve flow works end to end with all listed states.
+- [ ] Rendered evidence at 375, 768 and 1440 px; keyboard pass; reduced-motion pass.
+
+## Open decisions
+
+- D4 Launch photos (own shoot with consent, or keep stock/AI).
+- D1 Brand name.
+- D8 Checkout disclosure wording.
+- D3 Deposit or full first month at reserve.

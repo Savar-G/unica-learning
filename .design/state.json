@@ -1,0 +1,67 @@
+{
+  "schema_version": 2,
+  "route": "full",
+  "job_kind": "new",
+  "surface": "marketing",
+  "constraint_mode": "greenfield",
+  "phase": "review",
+  "gates": {
+    "contract": "approved",
+    "direction": "approved",
+    "ship": "pending"
+  },
+  "artifacts": {
+    "design_contract": "DESIGN.md",
+    "references": ".design/references.json",
+    "decisions": ".design/decisions.md",
+    "selected_experiment": ".design/experiments/r2/c-home.html",
+    "latest_evidence": [
+      ".design/evidence/build/site-desk.png",
+      ".design/evidence/build/lh-mobile.json",
+      ".design/evidence/build/lh-desktop.json",
+      ".design/evidence/build/mobile-dialog-step1.jpg"
+    ],
+    "latest_review": null,
+    "drafts": [
+      ".design/experiments/drafts/a-lineup-2026-10-04/"
+    ]
+  },
+  "open_decisions": [
+    {
+      "id": "D4",
+      "question": "Launch photos: own shoot with consent, or keep stock/AI",
+      "owner": "user",
+      "status": "open"
+    },
+    {
+      "id": "D1",
+      "question": "Brand name (AI Workbooks is a working name)",
+      "owner": "user",
+      "status": "open"
+    },
+    {
+      "id": "D8",
+      "question": "Checkout disclosure wording for a product not yet shipping",
+      "owner": "user",
+      "status": "open"
+    },
+    {
+      "id": "D3",
+      "question": "Deposit or full first month at reserve",
+      "owner": "user",
+      "status": "open"
+    }
+  ],
+  "blockers": [
+    {
+      "id": "B1",
+      "reason": "Checkout not wired (D3/D8 parked by Savar)",
+      "needs": "Decide deposit vs save-card; then Stripe"
+    },
+    {
+      "id": "B2",
+      "reason": "No PostHog key yet",
+      "needs": "PostHog project key in Vercel env"
+    }
+  ]
+}

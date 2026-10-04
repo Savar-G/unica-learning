@@ -1,0 +1,11 @@
+{
+  "round": 2,
+  "decision": "Which hero should open the page? (Everything below the hero is the same in all three.)",
+  "primary_axis": "hero composition",
+  "invariants": ["same copy (D-024 hero, D-017 page story)", "same tokens: white, hairline grid, sun/sky/tang/leaf tiles, Zodiak + Switzer", "same sections below the hero", "same reserve flow", "placeholder brand Pagewise"],
+  "options": [
+    {"id": "A", "artifact": "a-lineup.html", "bet": "Primer-style: a row of real-looking kids holding their workbooks, then the claim in a ruled box with colour tiles", "benefit": "Strongest brand moment; looks like a confident company", "cost": "The product loop is not visible until you scroll", "risk": "The lineup is AI-generated; parents may sense it, and it shows kids, not the product"},
+    {"id": "B", "artifact": "b-path.html", "bet": "Outschool/Squirrel-style: the claim on the left, the six-step loop as connected photos and chips on the right", "benefit": "Explains how it works in the first screen (the 15-second test)", "cost": "Busier; six small images compete with the headline", "risk": "On phones the loop becomes a 2x3 grid and loses the path"},
+    {"id": "C", "artifact": "c-home.html", "bet": "Ello-style: centred claim over one big photo of a child at home, with a marked page and a live progress report floating on it", "benefit": "Warmest; shows the product result (marked page + report) in one look", "cost": "Relies on one photo carrying the brand", "risk": "Stock photo; the report card may read as an app, not paper"}
+  ]
+}

@@ -1,0 +1,236 @@
+{
+ "schema_version": 1,
+ "sources": [
+  {
+   "source": "https://primer.com",
+   "author": "user",
+   "board": "https://www.figma.com/board/fLyAJsC68ezugsmkH3oRGh/Personalized-Learning--Delivered",
+   "priority": "primary",
+   "annotation": "aesthetics wise and use of colours, this is my favourite landing page. its very modern, i love the white background, uses tons of real world pictures. Their copy is also very strong using wording like 'This is what school should look like.' I want to do something very similar where we can say 'This is what learning should be like.' the use of storytelling in this landing page is great. I want something similiar where every section is connected and at the end we leave with a bold claim saying instead of everything going online its important to keep learning physical like no tech so that kids use their tablets less, learning is also shown to be scientifically superior when u write on paper, and also learning is different for every kid we make it personalized based on their progress difficulities etc.",
+   "observe": "Sirca display serif (400, Title Case, headlines end with a period) + Soehne body; white #FFFFFF; black 1px hairline grid framing every section; primary colour tiles yellow rgb(254,217,51), blue rgb(55,126,240), orange rgb(254,109,46), green rgb(0,173,111); hero = lineup of cut-out real kids; numbered cards 01-04; closing line '100% Real Primer Students. 0% Models. This Is What School Should Look Like.'",
+   "take": [
+    "white background + hairline grid structure",
+    "primary colour tiles as structure, not decoration",
+    "real kids, many photos",
+    "serif display headlines in Title Case",
+    "connected storytelling sections",
+    "closing bold claim"
+   ],
+   "avoid": [
+    "'0% models' style claim (we have no students yet)",
+    "copying Primer's exact hex values or fonts (commercial)"
+   ],
+   "applies_to": [
+    "color",
+    "type",
+    "layout",
+    "imagery",
+    "content"
+   ]
+  },
+  {
+   "source": "https://www.ello.com",
+   "author": "user",
+   "board": "https://www.figma.com/board/fLyAJsC68ezugsmkH3oRGh/Personalized-Learning--Delivered",
+   "priority": "primary",
+   "annotation": "[hero] this is the best homepage i've seen in this space so far, its a delight and amazing experience of simply scrolling and using their landing page. I love the micro animations | [What's Included] what's included is a great section that we should also have to show the different aspects we offer like workbooks recieved by mall personalized every week based on the students progress, also other things like parent progress reports that update in realtime etc. | [Unlock / transformational] this is a strong use of hitting on the emotional side of the product the 'Unlock the full potential of every child and learning is transformational when the teaching responds'",
+   "observe": "Wallop rounded sans 600; deep teal ink; near-white blue-tinted background; tilted white-bordered word chips that swap with a spring (reading/math); looping product webm videos; 2 Rive mascot canvases; scattered real photos and handwritten notes drifting around a centred emotional line; hero line repeated as the closing CTA (bookend); 'What's Included' 6-card grid",
+   "take": [
+    "micro animations: swapping word chip, drifting photos, card lift",
+    "What's Included card grid",
+    "emotional section with real photos and handwritten pages",
+    "bookend the hero line at the end"
+   ],
+   "avoid": [
+    "mascots and illustrated hills (kid-brand look; conflicts with Primer)",
+    "review counts, '88%' outcome stats, press logos (we have none)"
+   ],
+   "applies_to": [
+    "motion",
+    "content",
+    "layout"
+   ]
+  },
+  {
+   "source": "https://squirrelai.com",
+   "author": "user",
+   "board": "https://www.figma.com/board/fLyAJsC68ezugsmkH3oRGh/Personalized-Learning--Delivered",
+   "priority": "primary",
+   "annotation": "[hero] i like how this hero section has an emotional appeal to it and leads with a bold claim 'The Future of Learning is Here'. Also this doesnt seem like ai slop they showcase a real student learning. However, this is a somewhat risky hero section, because anyone visiting should be able to quickly within 15 seconds understand what squirrel does, but the section after the hero is exactly that 'What is Squirrel AI' so i like that | [platform] we can do something similar where we go here -> what is our company / product, leading with the why us type of narrative -> and then we can go into our platform / our product and walk them through the user flow: Assess -> Deliver -> Practice -> Scan -> Adapt -> Repeat (6 steps as written)",
+   "take": [
+    "emotional hero + bold claim + real child",
+    "'What is [Brand]?' section directly after the hero",
+    "narrative order: what/why us -> product -> user flow",
+    "organic line motif threading sections"
+   ],
+   "avoid": [
+    "stats band, press logos, centre franchise content",
+    "FAQ that names competitors"
+   ],
+   "applies_to": [
+    "content",
+    "hierarchy",
+    "motion"
+   ]
+  },
+  {
+   "source": "https://outschool.com",
+   "author": "user",
+   "board": "https://www.figma.com/board/fLyAJsC68ezugsmkH3oRGh/Personalized-Learning--Delivered",
+   "priority": "supporting",
+   "annotation": "[hero] i like the hero section's use of real humans and how everything connects | [Why choose] we should do something like 'Why choose us?' we dont need to name our competitors / alternatives like the in person centres or online ai platforms, we simply need to show how we are a superior product doing something very unique and never been done before",
+   "observe": "hero = rounded photo pills of real kids joined by a dashed yellow line with yellow label chips; 'Why choose Outschool?' = 3 icon cards on a saturated purple band",
+   "take": [
+    "real-people photos joined by a connecting line with label chips",
+    "'Why choose us?' cards without naming alternatives"
+   ],
+   "avoid": [
+    "purple band + blob decorations",
+    "marketplace search UI"
+   ],
+   "applies_to": [
+    "imagery",
+    "content",
+    "layout"
+   ]
+  },
+  {
+   "source": "https://daylightcomputer.com",
+   "author": "agent",
+   "annotation": "Direction E. 'The computer, de-invented': a less-screen product framed as progress",
+   "take": [
+    "real product in natural light",
+    "very few words",
+    "reinvention framing"
+   ],
+   "avoid": [
+    "premium tone that outprices CAD 49"
+   ],
+   "applies_to": [
+    "hierarchy",
+    "imagery",
+    "content"
+   ],
+   "priority": "archived",
+   "note": "Superseded by Savar FigJam board 2026-10-03 (D-014)"
+  },
+  {
+   "source": "https://remarkable.com",
+   "author": "agent",
+   "annotation": "Direction E. Paper tablet: 'Made for thinking'; handwriting as visual motif",
+   "take": [
+    "handwriting motif",
+    "calm serif display"
+   ],
+   "avoid": [
+    "consumer-electronics shop chrome"
+   ],
+   "applies_to": [
+    "type",
+    "imagery"
+   ],
+   "priority": "archived",
+   "note": "Superseded by Savar FigJam board 2026-10-03 (D-014)"
+  },
+  {
+   "source": "https://www.thelightphone.com",
+   "author": "agent",
+   "annotation": "Direction E. Minimal, one quote, sky imagery",
+   "take": [
+    "restraint"
+   ],
+   "avoid": [
+    "vagueness about what the product is"
+   ],
+   "applies_to": [
+    "content"
+   ],
+   "priority": "archived",
+   "note": "Superseded by Savar FigJam board 2026-10-03 (D-014)"
+  },
+  {
+   "source": "https://www.granola.ai",
+   "author": "agent",
+   "annotation": "Direction F. Serif headline plus the real product shown working",
+   "take": [
+    "show the real mechanism",
+    "serif + neutral sans pairing"
+   ],
+   "avoid": [
+    "copying Granola's palette"
+   ],
+   "applies_to": [
+    "hierarchy",
+    "type",
+    "motion"
+   ],
+   "priority": "archived",
+   "note": "Superseded by Savar FigJam board 2026-10-03 (D-014)"
+  },
+  {
+   "source": "https://linear.app",
+   "author": "agent",
+   "annotation": "Direction F. Precision and a category claim ('A new species of product tool')",
+   "take": [
+    "precise motion that explains"
+   ],
+   "avoid": [
+    "dark templated look"
+   ],
+   "applies_to": [
+    "motion",
+    "content"
+   ],
+   "priority": "archived",
+   "note": "Superseded by Savar FigJam board 2026-10-03 (D-014)"
+  },
+  {
+   "source": "https://mercury.com",
+   "author": "agent",
+   "annotation": "Direction F. Calm precision for a trust-heavy purchase",
+   "take": [
+    "trust through restraint"
+   ],
+   "avoid": [
+    "fintech coldness"
+   ],
+   "applies_to": [
+    "color"
+   ],
+   "priority": "archived",
+   "note": "Superseded by Savar FigJam board 2026-10-03 (D-014)"
+  },
+  {
+   "source": "https://www.ello.com",
+   "author": "agent",
+   "annotation": "Round 1. Headline close to our pitch; real home photography",
+   "take": [
+    "parent-first tone"
+   ],
+   "avoid": [
+    "soft generic startup look"
+   ],
+   "applies_to": [
+    "content"
+   ],
+   "priority": "archived",
+   "note": "Superseded by Savar FigJam board 2026-10-03 (D-014)"
+  },
+  {
+   "source": "https://www.synthesis.com/tutor",
+   "author": "agent",
+   "annotation": "Round 1. Category claim + daily price anchor",
+   "take": [
+    "price anchor per day"
+   ],
+   "avoid": [
+    "dark gradient + glow"
+   ],
+   "applies_to": [
+    "content"
+   ],
+   "priority": "archived",
+   "note": "Superseded by Savar FigJam board 2026-10-03 (D-014)"
+  }
+ ]
+}

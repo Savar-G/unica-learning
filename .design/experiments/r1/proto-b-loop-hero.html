@@ -1,0 +1,436 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Paper that learns</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;1,6..72,400&family=Geist:wght@400;500;600&family=Patrick+Hand&family=Caveat:wght@500;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  --paper:#F3EFE5;      /* page background */
+  --sheet:#FCFAF5;      /* workbook paper */
+  --ink:#1C1A16;
+  --muted:#5C574D;
+  --rule:#DDD6C7;
+  --rule-soft:#E9E3D6;
+  --pencil:#3A3D44;
+  --red:#C2362B;        /* the one accent: marking + adaptation */
+  --serif:"Newsreader", Georgia, serif;
+  --sans:"Geist", ui-sans-serif, system-ui, sans-serif;
+  --kid:"Patrick Hand", "Comic Sans MS", cursive;
+  --pen:"Caveat", cursive;
+  --ease-out:cubic-bezier(.2,.7,.2,1);
+  --ease-move:cubic-bezier(.65,0,.35,1);
+}
+*{box-sizing:border-box}
+html,body{margin:0}
+body{background:var(--paper);color:var(--ink);font:400 17px/1.55 var(--sans);-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility}
+a{color:inherit}
+:focus-visible{outline:2px solid var(--ink);outline-offset:3px;border-radius:4px}
+.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+
+/* header */
+.site{max-width:1280px;margin:0 auto;padding:22px 24px;display:flex;align-items:center;justify-content:space-between}
+.mark{font:500 15px/1 var(--serif);font-variant-caps:all-small-caps;letter-spacing:.09em;text-decoration:none;font-size:19px}
+.site small{font:500 12px/1 var(--sans);letter-spacing:.04em;color:var(--muted)}
+
+/* hero */
+.hero{max-width:1280px;margin:0 auto;padding:8px 24px 56px;display:grid;gap:40px;overflow-x:clip}
+.copy{max-width:34rem}
+h1{font:400 clamp(54px,7.1vw,108px)/.95 var(--serif);letter-spacing:-.025em;margin:0 0 26px;font-optical-sizing:auto}
+h1 .learns{position:relative;display:inline-block}
+h1 .learns svg{position:absolute;left:-2%;right:0;bottom:-.1em;width:104%;height:.22em;overflow:visible}
+h1 .learns path{fill:none;stroke:var(--red);stroke-width:3.2;stroke-linecap:round}
+.sub{font-size:clamp(18px,1.45vw,21px);line-height:1.5;margin:0 0 18px;max-width:30rem;text-wrap:pretty}
+.meta{font:500 13.5px/1.4 var(--sans);letter-spacing:.02em;color:var(--muted);margin:0 0 30px}
+.actions{display:flex;flex-wrap:wrap;align-items:center;gap:14px 24px}
+.btn{appearance:none;border:0;cursor:pointer;background:var(--ink);color:var(--sheet);font:500 16px/1 var(--sans);padding:17px 24px;border-radius:999px;transition:transform .2s var(--ease-out),background .2s}
+.btn:hover{background:#000;transform:translateY(-1px)}
+.btn:active{transform:translateY(0)}
+.link{font:500 16px/1 var(--sans);text-decoration:none;border-bottom:1px solid var(--rule);padding-bottom:3px}
+.link:hover{border-color:var(--ink)}
+.fine{font-size:13.5px;color:var(--muted);margin:16px 0 0}
+
+/* inline reservation */
+.reserve{margin-top:22px;padding:20px;border:1px solid var(--rule);border-radius:14px;background:var(--sheet);display:grid;gap:12px;max-width:28rem}
+.reserve[hidden]{display:none}
+.reserve label{display:grid;gap:5px;font:500 13px/1 var(--sans);color:var(--muted)}
+.reserve input,.reserve select{font:400 16px/1.2 var(--sans);color:var(--ink);padding:11px 12px;border:1px solid var(--rule);border-radius:9px;background:#fff}
+.reserve .row{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.reserve .ok{margin:0;font-size:15.5px}
+
+/* visual column */
+.visual{min-width:0;scroll-margin-top:20px}
+.controls{display:flex;align-items:center;justify-content:space-between;gap:16px;margin-top:14px}
+.caption{font:400 12px/1.3 var(--sans);color:var(--muted);margin:0}
+.pause{appearance:none;display:inline-flex;align-items:center;gap:8px;border:1px solid var(--rule);background:transparent;color:var(--ink);border-radius:999px;padding:7px 12px 7px 10px;font:500 12.5px/1 var(--sans);cursor:pointer}
+.pause:hover{border-color:var(--muted)}
+.pause svg{width:12px;height:12px}
+
+/* ---- stage: everything inside is sized in cqw of the stage ---- */
+.stage{position:relative;container-type:inline-size;aspect-ratio:100/88;width:100%;outline-offset:6px;border-radius:6px}
+.stage *{will-change:auto}
+.anim{will-change:transform,opacity}
+.pagebox{position:absolute;width:52cqw;aspect-ratio:52/70;container-type:inline-size;transform-origin:0 0}
+.pa{left:24cqw;top:7cqw;transform:rotate(-1.2deg);z-index:1}
+.pb{left:46cqw;top:11cqw;transform:rotate(1.5deg);z-index:3;opacity:0}
+.sheet{position:absolute;inset:0;background:var(--sheet);border-radius:.6cqw;padding:7cqw 8cqw;overflow:hidden;
+  box-shadow:0 .3cqw .6cqw rgba(60,45,20,.06),0 2.4cqw 5cqw -1.6cqw rgba(60,45,20,.22),inset 0 0 0 1px rgba(60,45,20,.05)}
+.ph{display:flex;justify-content:space-between;font:600 3.1cqw/1 var(--sans);letter-spacing:.12em;text-transform:uppercase;color:var(--muted);padding-bottom:2.6cqw;border-bottom:1px solid var(--rule)}
+.pt{font:400 7.4cqw/1.05 var(--serif);letter-spacing:-.01em;margin:4.4cqw 0 1.2cqw}
+.pi{font:400 3.5cqw/1.3 var(--sans);color:var(--muted);margin:0 0 2cqw}
+.q{display:flex;align-items:center;height:17.5cqw;border-bottom:1px solid var(--rule-soft);position:relative}
+.q.tall{height:31cqw;align-items:flex-start;padding-top:2.6cqw}
+.qn{width:7cqw;font:500 3.4cqw/1 var(--sans);color:var(--muted)}
+.ex{display:flex;align-items:center;gap:2.4cqw;font:400 5.6cqw/1 var(--sans);font-variant-numeric:tabular-nums}
+.fr{display:inline-flex;flex-direction:column;align-items:center;line-height:1}
+.fr>span{padding:0 .5cqw}
+.fr>span+span{border-top:.45cqw solid currentColor;margin-top:.5cqw;padding-top:.6cqw}
+/* handwritten answer */
+.ans{position:absolute;left:45cqw;top:50%;transform:translateY(-50%);color:var(--pencil);font:400 8.2cqw/1 var(--kid)}
+.q.tall .ans{top:2.2cqw;transform:none}
+.ans .fr>span+span{border-top-width:.4cqw;transform:rotate(-3deg);margin-top:.3cqw}
+.wipe{display:block;overflow:hidden}
+.wipe>.wi{display:block}
+/* red marks */
+.mk{position:absolute;color:var(--red)}
+.mk svg{display:block;overflow:visible}
+.mk path,.mk ellipse{fill:none;stroke:currentColor;stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round}
+.chk{left:72cqw;top:50%;margin-top:-5.5cqw;width:10cqw}
+.chk svg{width:10cqw;height:9cqw}
+.circ{left:36cqw;top:-.6cqw;width:25cqw}
+.circ svg{width:25cqw;height:24.5cqw}
+.circ path{vector-effect:non-scaling-stroke}
+.note{left:24cqw;top:24.4cqw;font:600 6.2cqw/1 var(--pen);white-space:nowrap}
+/* page B */
+.focus{display:flex;align-items:center;gap:1.6cqw;font:600 3.1cqw/1.2 var(--sans);letter-spacing:.06em;text-transform:uppercase;color:var(--red);margin:0 0 3cqw}
+.focus i{width:1.8cqw;height:1.8cqw;border-radius:50%;background:var(--red);flex:none}
+.eg{border:1px solid var(--rule);border-radius:1.6cqw;padding:3.6cqw 4cqw;display:flex;align-items:center;gap:3cqw;margin-bottom:4cqw;position:relative}
+.eg .lbl{font:600 2.9cqw/1 var(--sans);letter-spacing:.1em;text-transform:uppercase;color:var(--muted)}
+.eg .ex{font-size:5cqw}
+.eg .keep{position:absolute;right:3cqw;top:50%;transform:translateY(-50%) rotate(-4deg);font:600 5.6cqw/1 var(--pen);color:var(--red)}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:0 4cqw}
+.grid .q{height:19cqw}
+.grid .ex{font-size:5.2cqw;gap:1.8cqw}
+.box{display:inline-block;width:6cqw;height:12cqw;border:.35cqw dashed #B9B09E;border-radius:1cqw}
+.step{margin-top:6cqw;display:flex;align-items:center;gap:3cqw}
+.step .tag{font:600 2.9cqw/1 var(--sans);letter-spacing:.1em;text-transform:uppercase;color:var(--ink);border:1px solid var(--ink);border-radius:99px;padding:1.3cqw 2.2cqw}
+.step .ex{font-size:5.2cqw;gap:1.8cqw}
+.cap-in{position:absolute;left:8cqw;right:8cqw;bottom:3.6cqw;font:400 2.7cqw/1.2 var(--sans);color:#8C8576}
+/* phone */
+.phone{position:absolute;left:63cqw;top:24cqw;width:29cqw;aspect-ratio:29/60;z-index:2;background:#1F1D1A;border-radius:5.2cqw;padding:1.4cqw;opacity:0;
+  box-shadow:0 3cqw 6cqw -2cqw rgba(40,30,15,.35),inset 0 0 0 .3cqw #3A3732}
+.screen{position:relative;height:100%;border-radius:3.9cqw;overflow:hidden;background:#D3CBBB;container-type:inline-size}
+.island{position:absolute;top:2.2cqw;left:50%;width:9cqw;height:2.6cqw;margin-left:-4.5cqw;border-radius:2cqw;background:#1F1D1A;z-index:3}
+.screen .pagebox{left:13cqw;top:13cqw;width:74cqw;transform:rotate(-1.2deg)}
+.screen .sheet{box-shadow:0 1cqw 3cqw rgba(40,30,15,.25)}
+.vf{position:absolute;left:7cqw;right:7cqw;top:8cqw;height:112cqw;z-index:2}
+.vf i{position:absolute;width:9cqw;height:9cqw;border:solid #fff;border-width:0}
+.vf i:nth-child(1){left:0;top:0;border-left-width:.9cqw;border-top-width:.9cqw;border-top-left-radius:2cqw}
+.vf i:nth-child(2){right:0;top:0;border-right-width:.9cqw;border-top-width:.9cqw;border-top-right-radius:2cqw}
+.vf i:nth-child(3){left:0;bottom:0;border-left-width:.9cqw;border-bottom-width:.9cqw;border-bottom-left-radius:2cqw}
+.vf i:nth-child(4){right:0;bottom:0;border-right-width:.9cqw;border-bottom-width:.9cqw;border-bottom-right-radius:2cqw}
+.shutter{position:absolute;left:50%;bottom:9cqw;width:18cqw;height:18cqw;margin-left:-9cqw;border-radius:50%;border:1.2cqw solid #fff;z-index:2}
+.shutter::after{content:"";position:absolute;inset:1.4cqw;border-radius:50%;background:#fff}
+.flash{position:absolute;inset:0;background:#fff;opacity:0;z-index:4}
+
+/* step labels under the stage */
+.steps{list-style:none;margin:18px 0 0;padding:0;display:grid;grid-template-columns:repeat(4,1fr);gap:10px}
+.steps li{display:grid;gap:9px}
+.steps span{font:500 13px/1 var(--sans);letter-spacing:.01em;opacity:.66}
+.steps b{display:block;height:2px;background:var(--rule);border-radius:2px;overflow:hidden}
+.steps i{display:block;height:100%;background:var(--ink);transform:scaleX(0);transform-origin:0 50%}
+.steps li:nth-child(3) i{background:var(--red)}
+.steps li:nth-child(4) i{background:var(--red)}
+
+/* reduced motion: four still frames */
+.frames{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:24px 16px;margin:0;padding:0;list-style:none}
+.frames[hidden]{display:none}
+.frames figure{margin:0}
+.frames figcaption{display:flex;gap:8px;align-items:baseline;margin-top:8px;font:500 13px/1.2 var(--sans)}
+.frames figcaption b{font-weight:500;color:var(--muted);font-variant-numeric:tabular-nums}
+.frames .stage{border-top:1px solid var(--rule);padding-top:4px}
+html.rm .stage#stage,html.rm .steps,html.rm .pause{display:none}
+html.rm .frames[hidden]{display:grid}
+
+@media (max-width:979px){
+  .site{padding:18px 24px 14px}
+  .hero{gap:22px}
+  h1{margin-bottom:18px}
+  .meta{margin-bottom:22px}
+  .actions{gap:12px 18px}
+  .btn{padding:16px 20px}
+  .fine{margin-top:12px}
+}
+@media (min-width:980px){
+  .site{padding:28px 48px}
+  .hero{grid-template-columns:minmax(0,5fr) minmax(0,6fr);align-items:center;gap:64px;padding:10px 48px 64px;min-height:calc(100vh - 84px)}
+  .copy{padding-bottom:40px}
+}
+</style>
+</head>
+<body>
+<header class="site">
+  <a class="mark" href="#top" aria-label="Working name, home">Working name</a>
+</header>
+
+<main id="top" class="hero">
+  <div class="copy">
+    <h1>Paper that <span class="learns">learns.<svg viewBox="0 0 200 12" preserveAspectRatio="none" aria-hidden="true"><path pathLength="1" d="M3 8.5 C 48 3.5, 112 2.8, 197 6.2"/></svg></span></h1>
+    <p class="sub">A math workbook made for your child and mailed home. Snap the finished pages, and the next book adapts to what they missed.</p>
+    <p class="meta">Grades 3-5 · Vancouver pilot · CAD 49 a month, delivery included</p>
+    <div class="actions">
+      <button class="btn" type="button" id="reserveBtn" aria-expanded="false" aria-controls="reserve">Reserve a pilot spot</button>
+      <a class="link" href="#loop">See how it works</a>
+    </div>
+    <p class="fine">Refundable deposit. 10 families. Start date to be announced.</p>
+    <form class="reserve" id="reserve" hidden novalidate>
+      <label>Parent name<input name="name" autocomplete="name" required></label>
+      <label>Email<input name="email" type="email" autocomplete="email" required></label>
+      <div class="row">
+        <label>Child's grade<select name="grade" required><option value="">Choose</option><option>3</option><option>4</option><option>5</option></select></label>
+        <label>Postal code<input name="postal" autocomplete="postal-code" required></label>
+      </div>
+      <button class="btn" type="submit">Reserve a pilot spot</button>
+    </form>
+  </div>
+
+  <section class="visual" id="loop" aria-label="How the book learns">
+    <div class="stage" id="stage" tabindex="0" role="img" aria-label="A grade 4 fractions page is finished in pencil. A phone photographs it. Red marks appear: three answers are checked, and the answer 1/4 + 2/4 = 3/8 is circled with the note: Added the denominators. Then the next book's first page appears, built around adding fractions with the same denominator, with four practice problems and one step-up problem.">
+      <div class="pagebox pa anim" data-k="pa">
+        <div class="sheet">
+          <div class="ph"><span>Book 3 · Page 12</span><span>Fractions</span></div>
+          <div class="pt">Adding fractions</div>
+          <p class="pi">Add. Show your working.</p>
+          <div class="q"><span class="qn">1.</span><span class="ex"><span class="fr"><span>1</span><span>5</span></span>+<span class="fr"><span>2</span><span>5</span></span>=</span>
+            <span class="ans"><span class="wipe anim" data-k="a1"><span class="wi anim"><span class="fr"><span>3</span><span>5</span></span></span></span></span>
+            <span class="mk chk"><span class="wipe anim" data-k="m1"><span class="wi anim"><svg viewBox="0 0 40 36"><path d="M4 19 L15 30 L37 4"/></svg></span></span></span></div>
+          <div class="q"><span class="qn">2.</span><span class="ex"><span class="fr"><span>2</span><span>6</span></span>+<span class="fr"><span>3</span><span>6</span></span>=</span>
+            <span class="ans"><span class="wipe anim" data-k="a2"><span class="wi anim"><span class="fr"><span>5</span><span>6</span></span></span></span></span>
+            <span class="mk chk"><span class="wipe anim" data-k="m2"><span class="wi anim"><svg viewBox="0 0 40 36"><path d="M5 20 L15 29 L36 5"/></svg></span></span></span></div>
+          <div class="q tall"><span class="qn">3.</span><span class="ex"><span class="fr"><span>1</span><span>4</span></span>+<span class="fr"><span>2</span><span>4</span></span>=</span>
+            <span class="ans"><span class="wipe anim" data-k="a3"><span class="wi anim"><span class="fr"><span>3</span><span>8</span></span></span></span></span>
+            <span class="mk circ"><span class="wipe anim" data-k="m3"><span class="wi anim"><svg viewBox="0 0 88 80" preserveAspectRatio="none"><path d="M52 6 C 24 2, 6 18, 7 40 C 8 64, 30 76, 50 74 C 72 72, 84 56, 82 36 C 80 16, 62 4, 40 7"/></svg></span></span></span>
+            <span class="mk note"><span class="wipe anim" data-k="m5"><span class="wi anim">Added the denominators</span></span></span></div>
+          <div class="q"><span class="qn">4.</span><span class="ex"><span class="fr"><span>3</span><span>8</span></span>+<span class="fr"><span>4</span><span>8</span></span>=</span>
+            <span class="ans"><span class="wipe anim" data-k="a4"><span class="wi anim"><span class="fr"><span>7</span><span>8</span></span></span></span></span>
+            <span class="mk chk"><span class="wipe anim" data-k="m4"><span class="wi anim"><svg viewBox="0 0 40 36"><path d="M4 18 L14 29 L37 6"/></svg></span></span></span></div>
+          <div class="cap-in">Stand-in for a photo of a real workbook</div>
+        </div>
+      </div>
+
+      <div class="phone anim" data-k="phone" aria-hidden="true">
+        <div class="screen">
+          <span class="island"></span>
+          <div class="vf"><i></i><i></i><i></i><i></i></div>
+          <span class="shutter anim" data-k="shutter"></span>
+          <span class="flash anim" data-k="flash"></span>
+        </div>
+      </div>
+
+      <div class="pagebox pb anim" data-k="pb">
+        <div class="sheet">
+          <div class="ph"><span>Book 4 · Page 1</span><span>Fractions</span></div>
+          <div class="pt">Same denominator</div>
+          <p class="focus anim" data-k="b0"><i></i>Built from Book 3, page 12</p>
+          <div class="eg anim" data-k="b1"><span class="lbl">Example</span><span class="ex"><span class="fr"><span>1</span><span>4</span></span>+<span class="fr"><span>2</span><span>4</span></span>=<span class="fr"><span>3</span><span>4</span></span></span><span class="keep">4 stays 4</span></div>
+          <div class="grid">
+            <div class="q anim" data-k="b2"><span class="qn">1.</span><span class="ex"><span class="fr"><span>1</span><span>4</span></span>+<span class="fr"><span>1</span><span>4</span></span>=<span class="box"></span></span></div>
+            <div class="q anim" data-k="b3"><span class="qn">2.</span><span class="ex"><span class="fr"><span>2</span><span>5</span></span>+<span class="fr"><span>2</span><span>5</span></span>=<span class="box"></span></span></div>
+            <div class="q anim" data-k="b4"><span class="qn">3.</span><span class="ex"><span class="fr"><span>3</span><span>8</span></span>+<span class="fr"><span>2</span><span>8</span></span>=<span class="box"></span></span></div>
+            <div class="q anim" data-k="b5"><span class="qn">4.</span><span class="ex"><span class="fr"><span>1</span><span>6</span></span>+<span class="fr"><span>4</span><span>6</span></span>=<span class="box"></span></span></div>
+          </div>
+          <div class="step anim" data-k="b6"><span class="tag">Step up</span><span class="ex"><span class="fr"><span>5</span><span>8</span></span>+<span class="fr"><span>6</span><span>8</span></span>=<span class="box"></span></span></div>
+          <div class="cap-in">Stand-in for a photo of a real workbook</div>
+        </div>
+      </div>
+    </div>
+
+    <ol class="steps" aria-hidden="true">
+      <li data-k="l0"><span class="anim" data-k="t0">Practice</span><b><i class="anim" data-k="f0"></i></b></li>
+      <li><span class="anim" data-k="t1">Scan</span><b><i class="anim" data-k="f1"></i></b></li>
+      <li><span class="anim" data-k="t2">Adapt</span><b><i class="anim" data-k="f2"></i></b></li>
+      <li><span class="anim" data-k="t3">Next book</span><b><i class="anim" data-k="f3"></i></b></li>
+    </ol>
+    <div class="frames" id="frames" hidden></div>
+    <div class="controls">
+      <p class="caption">Loops every 10 seconds. Hover to pause.</p>
+      <button class="pause" type="button" id="pauseBtn" aria-label="Pause animation"><svg viewBox="0 0 12 12" aria-hidden="true"><rect x="2" y="1.5" width="2.6" height="9" rx=".6" fill="currentColor"/><rect x="7.4" y="1.5" width="2.6" height="9" rx=".6" fill="currentColor"/></svg><span>Pause</span></button>
+    </div>
+  </section>
+</main>
+<script>
+(function () {
+  const D = 10000; // one loop
+  const q = new URLSearchParams(location.search);
+  const reduced = q.get('reduced') === '1' || matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const freezeAt = q.has('t') ? +q.get('t') : null; // debug: ?t=6500 holds one moment
+  const E = {
+    out: 'cubic-bezier(.2,.7,.2,1)', move: 'cubic-bezier(.65,0,.35,1)',
+    soft: 'cubic-bezier(.4,0,.2,1)', lin: 'linear', pen: 'cubic-bezier(.45,.05,.35,1)'
+  };
+
+  // frames: [timeMs, props, easingForNextSegment]. First frame must list every prop.
+  // A missing end frame loops back to the first frame's props.
+  function track(el, frames) {
+    if (!el) return null;
+    const f = frames.slice().sort((a, b) => a[0] - b[0]);
+    if (f[0][0] !== 0) f.unshift([0, f[0][1], E.lin]);
+    if (f[f.length - 1][0] !== D) f.push([D, f[0][1], E.lin]);
+    let carry = {};
+    const kf = f.map(([t, p, e]) => (carry = Object.assign({}, carry, p),
+      Object.assign({}, carry, { offset: t / D, easing: e || E.lin })));
+    return el.animate(kf, { duration: D, iterations: Infinity, fill: 'both' });
+  }
+
+  // Transform-only "pen" reveal: the clip box slides one way, the content the other.
+  function wipe(root, k, tIn, dur, tOut, outDur, axis) {
+    const outer = root.querySelector('[data-k="' + k + '"]');
+    if (!outer) return [];
+    const inner = outer.firstElementChild, T = axis === 'y' ? 'translateY' : 'translateX';
+    const hid = { transform: T + '(-101%)', opacity: 1 }, shown = { transform: T + '(0)', opacity: 1 };
+    return [
+      track(outer, [[0, hid], [tIn, hid, E.pen], [tIn + dur, shown], [tOut, shown, E.soft],
+        [tOut + outDur, { transform: T + '(0)', opacity: 0 }], [D, { transform: T + '(-101%)', opacity: 0 }]]),
+      track(inner, [[0, { transform: T + '(101%)' }], [tIn, { transform: T + '(101%)' }, E.pen],
+        [tIn + dur, { transform: T + '(0)' }], [tOut + outDur, { transform: T + '(0)' }],
+        [D, { transform: T + '(101%)' }]])
+    ];
+  }
+
+  function rise(root, k, t, dist) {
+    const el = root.querySelector('[data-k="' + k + '"]');
+    const a = { opacity: 0, transform: 'translateY(' + dist + ')' }, b = { opacity: 1, transform: 'translateY(0)' };
+    return track(el, [[0, a], [t, a, E.out], [t + 520, b], [9700, b, E.lin], [9750, a]]);
+  }
+
+  // Copy the finished page into the phone screen (the "photo"), without marks.
+  function prepare(st) {
+    const pa = st.querySelector('[data-k="pa"]'), c = pa.cloneNode(true);
+    c.querySelectorAll('.mk').forEach(n => n.remove());
+    c.querySelectorAll('[data-k]').forEach(n => n.removeAttribute('data-k'));
+    c.classList.remove('pa', 'anim'); c.removeAttribute('data-k');
+    st.querySelector('.screen').insertBefore(c, st.querySelector('.vf'));
+  }
+
+  function build(st, steps) {
+    const $ = k => st.querySelector('[data-k="' + k + '"]');
+    const A = [];
+    // 1 Practice: pencil answers, one by one
+    [350, 800, 1250, 1700].forEach((t, i) => A.push(...wipe(st, 'a' + (i + 1), t, 420, 9250, 400, 'y')));
+    // 2 Scan: phone arrives, shutter, flash, phone leaves
+    const pOff = { transform: 'translate(14cqw,24cqw) rotate(9deg)', opacity: 0 };
+    const pOn = { transform: 'translate(0,0) rotate(3deg)', opacity: 1 };
+    A.push(track($('phone'), [[0, pOff], [2250, pOff, E.out], [3050, pOn], [3950, pOn, E.move],
+      [4600, { transform: 'translate(22cqw,6cqw) rotate(8deg)', opacity: 0 }], [D, pOff]]));
+    A.push(track($('shutter'), [[0, { transform: 'scale(1)' }], [3200, { transform: 'scale(1)' }, E.soft],
+      [3290, { transform: 'scale(.84)' }, E.out], [3520, { transform: 'scale(1)' }]]));
+    A.push(track($('flash'), [[0, { opacity: 0 }], [3280, { opacity: 0 }, E.lin], [3330, { opacity: .9 }, E.out], [3820, { opacity: 0 }]]));
+    // 3 Adapt: red marks
+    A.push(...wipe(st, 'm1', 4650, 260, 9250, 350, 'x'));
+    A.push(...wipe(st, 'm2', 4980, 260, 9250, 350, 'x'));
+    A.push(...wipe(st, 'm3', 5320, 560, 9250, 350, 'x'));
+    A.push(...wipe(st, 'm5', 5900, 520, 9250, 350, 'x'));
+    A.push(...wipe(st, 'm4', 6320, 260, 9250, 350, 'x'));
+    // 4 Next book: page A steps back, page B assembles around the mistake
+    const aHome = { transform: 'translate(0,0) rotate(-1.2deg) scale(1)' };
+    const aBack = { transform: 'translate(-20cqw,-1cqw) rotate(-2.6deg) scale(.82)' };
+    A.push(track($('pa'), [[0, aHome], [6650, aHome, E.move], [7450, aBack], [9400, aBack, E.move], [D, aHome]]));
+    const bOff = { transform: 'translate(16cqw,3cqw) rotate(5deg)', opacity: 0 };
+    const bOn = { transform: 'translate(0,0) rotate(1.5deg)', opacity: 1 };
+    A.push(track($('pb'), [[0, bOff], [6850, bOff, E.out], [7650, bOn], [9150, bOn, E.soft],
+      [9550, { transform: "translate(9cqw,-1cqw) rotate(3.5deg)", opacity: 0 }], [D, bOff]]));
+    [['b0', 7500], ['b1', 7680], ['b2', 7950], ['b3', 8100], ['b4', 8250], ['b5', 8400], ['b6', 8700]]
+      .forEach(([k, t]) => A.push(rise(st, k, t, '2.4cqw')));
+    if (steps) A.push(...stepTracks(steps));
+    return A.filter(Boolean);
+  }
+  // Step labels: Practice, Scan, Adapt, Next book, synced to the same clock
+  function stepTracks(root) {
+    const P = [[0, 2200], [2200, 4400], [4400, 6600], [6600, 9600]], out = [];
+    P.forEach(([s, e], i) => {
+      const fill = root.querySelector('[data-k="f' + i + '"]'), lab = root.querySelector('[data-k="t' + i + '"]');
+      const z = { transform: 'scaleX(0)', opacity: 1 }, one = { transform: 'scaleX(1)', opacity: 1 };
+      const ff = [[0, z]];
+      if (s > 0) ff.push([s, z, E.lin]); else ff[0][2] = E.lin;
+      ff.push([e, one], [9600, one, E.soft], [9950, { transform: 'scaleX(1)', opacity: 0 }], [D, { transform: 'scaleX(0)', opacity: 0 }]);
+      out.push(track(fill, ff));
+      const lo = { opacity: .66 }, hi = { opacity: 1 };
+      out.push(track(lab, i === 0
+        ? [[0, hi], [2200, hi, E.soft], [2400, lo], [9700, lo, E.soft], [D, hi]]
+        : [[0, lo], [s, lo, E.soft], [s + 200, hi], [Math.min(e, 9600), hi, E.soft], [Math.min(e, 9600) + 200, lo]]));
+    });
+    return out;
+  }
+
+  const stage = document.getElementById('stage');
+  const visual = document.getElementById('loop');
+  const steps = visual.querySelector('.steps');
+  const btn = document.getElementById('pauseBtn');
+  const template = stage.cloneNode(true); // pristine copy for still frames
+
+  if (reduced) {
+    document.documentElement.classList.add('rm');
+    const frames = document.getElementById('frames');
+    frames.hidden = false;
+    visual.querySelector(".caption").textContent = "The four steps, shown as still frames.";
+    const moments = [[2150, 'Practice', 'The finished page, answered in pencil.'],
+      [3150, 'Scan', 'A phone photographs the page.'],
+      [6600, 'Adapt', 'Red marks: three checks, and 3/8 circled with the note "Added the denominators".'],
+      [9100, "Next book", 'The next book opens on adding fractions with the same denominator.']];
+    moments.forEach(([t, name, alt], i) => {
+      const fig = document.createElement('figure'), st = template.cloneNode(true);
+      st.removeAttribute('id'); st.removeAttribute('tabindex'); st.setAttribute('aria-label', alt);
+      prepare(st);
+      const cap = document.createElement('figcaption');
+      cap.innerHTML = '<b>' + (i + 1) + '</b>' + name;
+      fig.append(st, cap); frames.append(fig);
+      build(st, null).forEach(a => { a.pause(); a.currentTime = t; });
+    });
+  } else {
+    prepare(stage);
+    const anims = build(stage, steps);
+    let userPaused = false, hover = false, focus = false;
+    const sync = () => {
+      const stop = userPaused || hover || focus || freezeAt !== null;
+      anims.forEach(a => stop ? a.pause() : a.play());
+      btn.querySelector('span').textContent = userPaused ? 'Play' : 'Pause';
+      btn.setAttribute('aria-label', userPaused ? 'Play animation' : 'Pause animation');
+      btn.querySelector('svg').innerHTML = userPaused
+        ? '<path d="M3 1.6 L10.4 6 L3 10.4 Z" fill="currentColor"/>'
+        : '<rect x="2" y="1.5" width="2.6" height="9" rx=".6" fill="currentColor"/><rect x="7.4" y="1.5" width="2.6" height="9" rx=".6" fill="currentColor"/>';
+    };
+    if (freezeAt !== null) anims.forEach(a => { a.currentTime = freezeAt; });
+    [stage, steps].forEach(el => {
+      el.addEventListener('pointerenter', e => { if (e.pointerType === 'mouse') { hover = true; sync(); } });
+      el.addEventListener('pointerleave', () => { hover = false; sync(); });
+    });
+    stage.addEventListener('focus', () => { focus = true; sync(); });
+    stage.addEventListener('blur', () => { focus = false; sync(); });
+    btn.addEventListener('click', () => { userPaused = !userPaused; sync(); });
+    sync();
+    // the headline underline is drawn once, on load
+    const u = document.querySelector('h1 .learns svg');
+    u.style.transformOrigin = '0 50%';
+    u.animate([{ transform: 'scaleX(0)' }, { transform: 'scaleX(1)' }],
+      { duration: 700, delay: 500, easing: E.pen, fill: 'both' });
+  }
+
+  // inline reservation (no network)
+  const rb = document.getElementById('reserveBtn'), form = document.getElementById('reserve');
+  rb.addEventListener('click', () => {
+    form.hidden = !form.hidden; rb.setAttribute('aria-expanded', String(!form.hidden));
+    if (!form.hidden) form.querySelector('input').focus();
+  });
+  form.addEventListener('submit', e => {
+    e.preventDefault();
+    if (!form.checkValidity()) { form.reportValidity(); return; }
+    form.innerHTML = '<p class="ok" role="status" tabindex="-1">You\'re on the list. We\'ll email you before the pilot starts to take the refundable deposit.</p>';
+    form.querySelector('.ok').focus();
+  });
+})();
+</script>
+</body>
+</html>
