@@ -25,14 +25,14 @@
 - Offer: math and reading, ages 6-12, Vancouver, delivery included. One subject CAD 49 a month; math + reading CAD 89 a month (D-026).
 - Real product posture: no "pilot", "beta" or "test" wording (D-012).
 - No proof we do not have: no ratings, review counts, family counts, press logos, outcome percentages or testimonials. Until real customer references exist, proof = sample pages, clear price, cancel anytime, the founders' story.
-- Comparative and performance claims: Competition Act s.74.01(1)(b) requires an adequate and proper test before a claim about a product's performance. The only research line is "Research links paper and handwriting to stronger learning", with Delgado et al. 2018 (Educational Research Review 25), Malpique et al. 2023 and van der Meer & van der Weel 2024 (Frontiers in Psychology) cited. Never a claim about our results.
+- Comparative and performance claims: Competition Act s.74.01(1)(b) requires an adequate and proper test before a claim about a product's performance. The page makes no research claims; the paper belief is stated as "We believe paper and pencil build stronger learning." (D-039). Never a claim about our results.
 - Children's privacy: the page collects parent contact and payment only.
 
 ## Positioning rules
 
 - Never name a competitor or a category of alternative (no Kumon, no "centre tutoring", no "AI apps"). Show the difference as what we do: paper, at home, made for one child, it adapts (D-015).
 - Lead with emotion and a bold claim, but name the product in the line under it. The section right after the hero answers "What is [Brand]?" in plain words.
-- End on a bold claim: "This is what learning should be like." It carries three beliefs: learning belongs on paper, not on another screen; "Research links paper and handwriting to stronger learning" (sources cited on the page); every child is different, so every workbook is too (D-016).
+- End on a bold claim: "This is what learning should be like." It carries three beliefs: learning belongs on paper, not on another screen; "We believe paper and pencil build stronger learning"; every child is different, so every workbook is too (D-016).
 - No learning styles anywhere (D-004).
 
 ## Page story
