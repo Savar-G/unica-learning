@@ -1,7 +1,34 @@
+// Landing page sections, composed from the Pagewise design system (src/ds).
+// Site-only concerns stay here: next/image photos, scroll reveals (Rise/Knot), and the
+// [data-open] buttons that open the reserve dialog.
 import Image, { type StaticImageData } from "next/image";
 import { BRAND, HERO, PLANS, SOURCES } from "@/lib/site";
-import { cs, type Look } from "@/lib/look";
-import { Cover, Knot, PageFrac, PageNext, PageRead, Parcel, Report, Rise, Scan, type Vars } from "./drawn";
+import {
+  BeliefList,
+  CoverStack,
+  Eyebrow,
+  Faq as FaqList,
+  FeatureCard,
+  FeatureGrid,
+  FounderCard,
+  FounderGrid,
+  GradientPanel,
+  Hero as HeroBlock,
+  IncludedCard,
+  Mailer,
+  Nav as NavBar,
+  PhoneScan,
+  PlanCard,
+  PlanGrid,
+  Section,
+  SectionHeader,
+  StepCard,
+  StepGrid,
+  SwapWord,
+  WorkbookPage,
+  type IconName,
+} from "@/ds";
+import { Knot, Rise, type Vars } from "./drawn";
 
 import heroHome1 from "@/assets/img/hero-home-1.jpg";
 import heroHome2 from "@/assets/img/hero-home-2.jpg";
@@ -27,6 +54,7 @@ function Photo({ src, alt, sizes, className = "ph" }: { src: StaticImageData; al
   );
 }
 
+/** Opens the reserve dialog (see reserve.tsx, which listens for [data-open]). */
 function GetStarted({ src, plan, label = "Get started", ghost = false }: { src: string; plan?: string; label?: string; ghost?: boolean }) {
   return (
     <button className={`btn${ghost ? " ghost" : ""}`} data-open data-src={src} data-plan={plan}>
@@ -35,75 +63,43 @@ function GetStarted({ src, plan, label = "Get started", ghost = false }: { src: 
   );
 }
 
+const d = (s: number) => ({ "--d": `${s}s` }) as Vars;
+
 export function Nav() {
-  return (
-    <nav className="nav" aria-label="Main">
-      <div className="in">
-        <a className="logo" href="#top" aria-label={`${BRAND} home`}>
-          {BRAND}
-          <b />
-        </a>
-        <ul>
-          <li><a href="#how">How it works</a></li>
-          <li><a href="#inc">What&apos;s included</a></li>
-          <li><a href="#price">Pricing</a></li>
-          <li><a href="#faq">FAQ</a></li>
-        </ul>
-        <button className="btn sm" data-open data-src="nav">Get started</button>
-      </div>
-    </nav>
-  );
+  return <NavBar brand={BRAND} cta={<button className="btn sm" data-open data-src="nav">Get started</button>} />;
 }
 
 export function Hero() {
   return (
-    <header className="hero hero-c" id="top">
-      <div className="txt">
-        <Rise as="p" className="eyebrow">{HERO.eyebrow}</Rise>
-        <Rise as="h1" d={0.1}>
-          <span className="pre">Personalized. Delivered.</span> <span className="mark">Mastered.</span>
-        </Rise>
-        <Rise as="p" d={0.2} className="lead">{HERO.sub}</Rise>
-        <Rise d={0.3}>
-          <div className="ctas">
+    <HeroBlock
+        id="top"
+        eyebrow={HERO.eyebrow}
+        lead={HERO.sub}
+        animate
+        meta={["Grades 3-5", `From CAD ${PLANS.one.price} a month`, "Delivery included"]}
+        actions={
+          <>
             <GetStarted src="hero" />
             <a className="btn ghost" href="#how">See how it works</a>
-          </div>
-        </Rise>
-        <Rise d={0.4}>
-          <p className="meta">Grades 3-5 <i /> From CAD {PLANS.one.price} a month <i /> Delivery included</p>
-        </Rise>
-      </div>
-      <Rise d={0.3} className="stage">
-        <div className="ph big">
-          <Image src={heroHome1} alt="A boy writes in his workbook at a desk at home" sizes="(min-width: 1200px) 1120px, 100vw" placeholder="blur" loading="eager" fetchPriority="high" />
-        </div>
-        <div className="fl pg" data-speed="-.08"><PageFrac /></div>
-        <div className="fl rp" data-speed=".06"><Report /></div>
-      </Rise>
-    </header>
+          </>
+        }
+        media={<Image src={heroHome1} alt="A boy writes in his workbook at a desk at home" sizes="(min-width: 1200px) 1120px, 100vw" placeholder="blur" loading="eager" fetchPriority="high" />}
+      />
   );
 }
 
-export function What({ look = "primer" }: { look?: Look }) {
+export function What() {
   return (
-    <section className="sec" id="what" aria-labelledby="whatT">
+    <Section id="what" aria-labelledby="whatT">
       <Knot />
       <div className="what">
         <Rise>
-          <p className="eyebrow">What is {BRAND}?</p>
-          <h2 id="whatT" style={{ marginTop: 16 }}>{cs(look, "A Workbook That Knows Your Child.")}</h2>
+          <Eyebrow>What is {BRAND}?</Eyebrow>
+          <h2 id="whatT" style={{ marginTop: 16 }}>A workbook that knows your child.</h2>
         </Rise>
         <Rise d={0.1}>
           <p className="big">
-            A workbook for{" "}
-            <span className="swap" aria-hidden="true">
-              <span className="on">fractions</span>
-              <span>reading</span>
-              <span>long division</span>
-              <span>new words</span>
-            </span>
-            <span className="sr">fractions, reading, long division or new words,</span>
+            A workbook for <SwapWord words={["fractions", "reading", "long division", "new words"]} />
             <br />
             made for one child: yours. Mailed to your door, and rebuilt from every page they finish.
           </p>
@@ -111,135 +107,122 @@ export function What({ look = "primer" }: { look?: Look }) {
       </div>
       <div className="rows">
         <Rise className="row">
-          <h3>{cs(look, "Math And Reading, Grades 3-5.")}</h3>
+          <h3>Math and reading, grades 3-5.</h3>
           <p>Every book follows the BC curriculum. Choose one subject or both.</p>
           <Photo src={practice6} alt="A girl works through an arithmetic page" sizes="140px" />
         </Rise>
         <Rise className="row" d={0.08}>
-          <h3>{cs(look, "Starts At Their Level.")}</h3>
+          <h3>Starts at their level.</h3>
           <p>A short online assessment finds where your child is, so the first book fits from page one.</p>
           <Photo src={assess1} alt="A child takes a short assessment on a laptop with her mother" sizes="140px" />
         </Rise>
         <Rise className="row" d={0.16}>
-          <h3>{cs(look, "Mailed To Your Door.")}</h3>
+          <h3>Mailed to your door.</h3>
           <p>Your next book arrives before the current one runs out. Delivery is included.</p>
-          <div className="ph"><Parcel /></div>
+          <div className="ph"><Mailer animate /></div>
         </Rise>
       </div>
-    </section>
+    </Section>
   );
 }
 
+const STEP_SIZES = "(min-width: 1080px) 380px, (min-width: 700px) 45vw, 92vw";
+
 const STEPS = [
-  { n: "01", t: "Assess", c: "var(--sun)", d: "Your child completes an adaptive online assessment that identifies their level, strengths, gaps and misconceptions.",
-    v: <div className="vis"><Image src={assess1} alt="A parent sits beside her daughter as she takes the assessment on a laptop" sizes="(min-width: 1080px) 380px, (min-width: 700px) 45vw, 92vw" placeholder="blur" /></div> },
-  { n: "02", t: "Deliver", c: "var(--sky)", d: "We create and mail a physical workbook personalized to what your child needs to work on.", v: <div className="vis"><Parcel /></div> },
-  { n: "03", t: "Practice", c: "var(--tang)", d: "Your child spends roughly 15-20 minutes a day working on paper.",
-    v: <div className="vis"><Image src={practice6} alt="A girl works through an arithmetic page in pencil" sizes="(min-width: 1080px) 380px, (min-width: 700px) 45vw, 92vw" placeholder="blur" /></div> },
-  { n: "04", t: "Scan", c: "var(--leaf)", d: "You take a photo of the completed pages with your phone.", v: <div className="vis"><Scan /></div> },
-  { n: "05", t: "Adapt", c: "var(--sun)", d: "Our system checks your child's answers and updates their learning profile.", v: <div className="vis dk" data-io><PageFrac /></div> },
-  { n: "06", t: "Repeat", c: "var(--sky)", d: "The next workbook is built from what your child mastered, struggled with or needs to review. It arrives before the current one runs out.", v: <div className="vis dk"><PageNext /></div> },
+  { n: "01", t: "Assess", d: "Your child completes an adaptive online assessment that identifies their level, strengths, gaps and misconceptions.",
+    v: <Image src={assess1} alt="A parent sits beside her daughter as she takes the assessment on a laptop" sizes={STEP_SIZES} placeholder="blur" />, tone: "photo" as const },
+  { n: "02", t: "Deliver", d: "We create and mail a physical workbook personalized to what your child needs to work on.", v: <Mailer animate />, tone: "photo" as const },
+  { n: "03", t: "Practice", d: "Your child spends roughly 15-20 minutes a day working on paper.",
+    v: <Image src={practice6} alt="A girl works through an arithmetic page in pencil" sizes={STEP_SIZES} placeholder="blur" />, tone: "photo" as const },
+  { n: "04", t: "Scan", d: "You take a photo of the completed pages with your phone.", v: <PhoneScan animate />, tone: "photo" as const },
+  { n: "05", t: "Adapt", d: "Our system checks your child's answers and updates their learning profile.", v: <WorkbookPage />, tone: "paper" as const },
+  { n: "06", t: "Repeat", d: "The next workbook is built from what your child mastered, struggled with or needs to review. It arrives before the current one runs out.", v: <WorkbookPage variant="next-book" />, tone: "paper" as const },
 ];
 
-export function How({ look = "primer" }: { look?: Look }) {
+export function How() {
   return (
-    <section className="sec" id="how" aria-labelledby="howT">
+    <Section id="how" aria-labelledby="howT">
       <Knot />
-      <Rise className="sec-head">
-        <p className="eyebrow">How it works</p>
-        <h2 id="howT">{cs(look, "Six Steps. One Loop.")}</h2>
-        <p className="lead">Every book is built from the last one, so the work always matches what your child needs next.</p>
+      <Rise>
+        <SectionHeader eyebrow="How it works" title="Six steps. One loop." titleId="howT" lead="Every book is built from the last one, so the work always matches what your child needs next." />
       </Rise>
-      <ol className="steps">
+      <StepGrid>
         {STEPS.map((s, i) => (
-          <li key={s.n} className="step rise" style={{ "--d": `${i * 0.06}s` } as Vars}>
-            <div className="top"><span className="num">{s.n}</span><span className="sq" style={{ background: s.c }} /></div>
-            <h3>{s.t}.</h3>
-            <p>{s.d}</p>
-            {s.v}
-          </li>
+          <StepCard key={s.n} number={s.n} title={`${s.t}.`} visual={s.v} visualTone={s.tone} className="rise" style={d(i * 0.06)}>
+            {s.d}
+          </StepCard>
         ))}
-      </ol>
+      </StepGrid>
       <Rise as="p" className="loopnote">
         <svg viewBox="0 0 34 34" aria-hidden="true"><path d="M27 12a11 11 0 1 0 1.5 8" /><path d="M28 5v7h-7" /></svg>
         Step 6 leads back to step 2. Two kids in the same grade get two different books.
       </Rise>
-    </section>
+    </Section>
   );
 }
 
-export function Why({ look = "primer" }: { look?: Look }) {
-  const cards = [
-    ["Real Paper. Real Pencil.", "Your child learns away from screens. The only screen is your phone camera, for a few seconds."],
-    ["Made For One Child.", "Every page targets what your child is ready for next, not what the rest of the class is on."],
-    ["It Never Forgets.", "A skill your child missed comes back in new forms until they master it."],
-    ["You See Everything.", "A progress report, updated continuously: what they got right, what keeps coming back, and what's next."],
-  ];
+const WHY: [string, string][] = [
+  ["Real paper. Real pencil.", "Your child learns away from screens. The only screen is your phone camera, for a few seconds."],
+  ["Made for one child.", "Every page targets what your child is ready for next, not what the rest of the class is on."],
+  ["It never forgets.", "A skill your child missed comes back in new forms until they master it."],
+  ["You see everything.", "A progress report, updated continuously: what they got right, what keeps coming back, and what's next."],
+];
+
+export function Why() {
   return (
-    <section className="sec" id="why" aria-labelledby="whyT">
+    <Section id="why" aria-labelledby="whyT">
       <Knot />
-      <Rise className="sec-head">
-        <p className="eyebrow">Why choose {BRAND}?</p>
-        <h2 id="whyT">{cs(look, "Built Different, On Purpose.")}</h2>
+      <Rise>
+        <SectionHeader eyebrow={`Why choose ${BRAND}?`} title="Built different, on purpose." titleId="whyT" />
       </Rise>
-      <div className="why">
-        {cards.map(([h, p], i) => (
-          <Rise key={h} className={`c${i + 1}`} d={i * 0.08}>
-            <span className="n">0{i + 1}</span>
-            <h3>{cs(look, h)}</h3>
-            <p>{p}</p>
-          </Rise>
+      <FeatureGrid>
+        {WHY.map(([h, p], i) => (
+          <FeatureCard key={h} index={(i + 1) as 1 | 2 | 3 | 4} title={h} className="rise" style={d(i * 0.08)}>
+            {p}
+          </FeatureCard>
         ))}
-      </div>
-    </section>
+      </FeatureGrid>
+    </Section>
   );
 }
 
-const ICONS: Record<string, React.ReactNode> = {
-  test: <svg viewBox="0 0 24 24"><rect x="4" y="3" width="16" height="18" rx="2" /><path d="M8 8h8M8 12h5M8 16l2 2 4-4" /></svg>,
-  book: <svg viewBox="0 0 24 24"><path d="M4 5a2 2 0 0 1 2-2h13v16H6a2 2 0 0 0-2 2z" /><path d="M4 19V5M9 7h6" /></svg>,
-  box: <svg viewBox="0 0 24 24"><path d="M3 7l9-4 9 4v10l-9 4-9-4z" /><path d="M3 7l9 4 9-4M12 11v10" /></svg>,
-  cam: <svg viewBox="0 0 24 24"><rect x="3" y="6" width="18" height="14" rx="3" /><circle cx="12" cy="13" r="3.5" /><path d="M9 6l1.5-2h3L15 6" /></svg>,
-  chart: <svg viewBox="0 0 24 24"><path d="M4 20V4M4 20h16" /><path d="M8 16v-4M12 16V8M16 16v-6" /></svg>,
-  layers: <svg viewBox="0 0 24 24"><path d="M12 3l9 5-9 5-9-5z" /><path d="M3 13l9 5 9-5" /></svg>,
-};
+const INCLUDED: [IconName, string, string, number][][] = [
+  [
+    ["test", "Placement assessment", "A short online assessment finds your child's level, strengths and gaps.", 0],
+    ["book", "Personalized workbooks", "Math, reading or both, made for your child and no one else.", 0.08],
+    ["box", "Delivery included", "Your next book arrives before the current one runs out.", 0.16],
+  ],
+  [
+    ["cam", "Photo check-ins", "Snap the finished pages with your phone. That's it.", 0.04],
+    ["chart", "Progress reports", "Updated continuously: what they got right, what keeps coming back, what's next.", 0.12],
+    ["layers", "A learning profile", "Every book builds on every book before it. Nothing is forgotten.", 0.2],
+  ],
+];
 
-function Card({ icon, bg, title, text, d }: { icon: string; bg: string; title: string; text: string; d: number }) {
-  return (
-    <Rise className="card" d={d}>
-      <div className="ic" style={{ background: bg }} aria-hidden="true">{ICONS[icon]}</div>
-      <h3>{title}</h3>
-      <p>{text}</p>
-    </Rise>
+export function Included() {
+  const col = (items: [IconName, string, string, number][]) => (
+    <div className="col">
+      {items.map(([icon, title, text, delay]) => (
+        <IncludedCard key={title} icon={icon} title={title} className="rise" style={d(delay)}>
+          {text}
+        </IncludedCard>
+      ))}
+    </div>
   );
-}
-
-export function Included({ look = "primer" }: { look?: Look }) {
   return (
-    <section className="sec" id="inc" aria-labelledby="incT">
+    <Section id="inc" aria-labelledby="incT">
       <Knot />
-      <Rise className="sec-head">
-        <p className="eyebrow">What&apos;s included</p>
-        <h2 id="incT">{cs(look, "Everything Your Child Needs. Nothing They Don't.")}</h2>
+      <Rise>
+        <SectionHeader eyebrow="What's included" title="Everything your child needs. Nothing they don't." titleId="incT" />
       </Rise>
       <div className="inc">
-        <div className="col">
-          <Card icon="test" bg="#FFF3C4" title={cs(look, "Placement Assessment")} text="A short online assessment finds your child's level, strengths and gaps." d={0} />
-          <Card icon="book" bg="#D9E3FF" title={cs(look, "Personalized Workbooks")} text="Math, reading or both, made for your child and no one else." d={0.08} />
-          <Card icon="box" bg="#FFD9C9" title={cs(look, "Delivery Included")} text="Your next book arrives before the current one runs out." d={0.16} />
-        </div>
-        <Rise className="stack" aria-hidden="true">
-          <Cover name="Arjun" book="Book 2" subject="Reading" bg="var(--sky)" />
-          <Cover name="Leo" book="Book 5" subject="Math" bg="var(--leaf)" />
-          <Cover name="Maya" book="Book 4" subject="Fractions" />
+        {col(INCLUDED[0])}
+        <Rise>
+          <CoverStack />
         </Rise>
-        <div className="col">
-          <Card icon="cam" bg="#CDEFDF" title={cs(look, "Photo Check-Ins")} text="Snap the finished pages with your phone. That's it." d={0.04} />
-          <Card icon="chart" bg="#FFF3C4" title={cs(look, "Progress Reports")} text="Updated continuously: what they got right, what keeps coming back, what's next." d={0.12} />
-          <Card icon="layers" bg="#D9E3FF" title={cs(look, "A Learning Profile")} text="Every book builds on every book before it. Nothing is forgotten." d={0.2} />
-        </div>
+        {col(INCLUDED[1])}
       </div>
-    </section>
+    </Section>
   );
 }
 
@@ -250,85 +233,82 @@ const DRIFT: [StaticImageData, number, number, number, number, number, number, b
   [emo11, 22, 78, 13, 16, 0.12, -2, true], [emo10, 64, 79, 13, 16, -0.1, 4, true],
 ];
 
-export function Feel({ look = "primer" }: { look?: Look }) {
+export function Feel() {
   return (
-    <section className="sec feel" aria-labelledby="feelT">
+    <Section className="feel" aria-labelledby="feelT">
       <Knot />
       {DRIFT.map(([src, l, t, w, h, s, r, hide], i) => (
         <div key={i} className={`drift${hide ? " hide-sm" : ""}`} data-speed={s} style={{ left: `${l}%`, top: `${t}%`, width: `${w}%`, height: `${h}%`, "--r": `${r}deg` } as Vars}>
           <div className="ph"><Image src={src} alt="" sizes="(min-width: 760px) 18vw, 40vw" placeholder="blur" /></div>
         </div>
       ))}
-      <div className="drift scrap hide-sm" data-speed=".24" data-io style={{ left: "9%", top: "38%", width: "11%", "--r": "-7deg" } as Vars}><PageRead /></div>
-      <div className="drift scrap hide-sm" data-speed="-.2" data-io style={{ left: "81%", top: "35%", width: "11%", "--r": "6deg" } as Vars}><PageFrac /></div>
+      <div className="drift scrap hide-sm" data-speed=".24" data-io style={{ left: "9%", top: "38%", width: "11%", "--r": "-7deg" } as Vars}><WorkbookPage variant="reading" /></div>
+      <div className="drift scrap hide-sm" data-speed="-.2" data-io style={{ left: "81%", top: "35%", width: "11%", "--r": "6deg" } as Vars}><WorkbookPage /></div>
       <Rise className="msg">
-        <h2 id="feelT">{cs(look, "No Two Kids Learn The Same Way.")}</h2>
+        <h2 id="feelT">No two kids learn the same way.</h2>
         <p className="lead">So no two {BRAND} books are the same. Each one starts where your child is, and moves on when they&apos;re ready.</p>
       </Rise>
-    </section>
+    </Section>
   );
 }
 
-export function Team({ look = "primer" }: { look?: Look }) {
+export function Team() {
   return (
-    <section className="sec" id="team" aria-labelledby="teamT">
+    <Section id="team" aria-labelledby="teamT">
       <Knot />
       <div className="found">
         <Rise>
-          <p className="eyebrow">Who&apos;s behind it</p>
-          <h2 id="teamT" style={{ margin: "16px 0 20px" }}>{cs(look, "Made By Two Students Who Grew Up On Workbooks.")}</h2>
+          <Eyebrow>Who&apos;s behind it</Eyebrow>
+          <h2 id="teamT" style={{ margin: "16px 0 20px" }}>Made by two students who grew up on workbooks.</h2>
           <p className="lead">
             Savar and Cedric both did workbook programs as kids. We know what daily practice on paper builds, and we know what too much screen time feels like. {BRAND} is the program we wish we&apos;d had: real paper, with a book that keeps up with you.
           </p>
         </Rise>
-        <Rise className="duo" d={0.1}>
-          <div className="who"><div className="face" style={{ background: "var(--sun)" }}>S</div><div className="cap"><b>Savar Gupta</b>Co-founder</div></div>
-          <div className="who"><div className="face" style={{ background: "var(--sky)", color: "#fff" }}>C</div><div className="cap"><b>Cedric Tanafranca</b>Co-founder</div></div>
+        <Rise d={0.1}>
+          <FounderGrid>
+            <FounderCard name="Savar Gupta" initial="S" field="warm" />
+            <FounderCard name="Cedric Tanafranca" initial="C" field="cool" />
+          </FounderGrid>
         </Rise>
       </div>
-    </section>
+    </Section>
   );
 }
 
-export function Pricing({ look = "primer" }: { look?: Look }) {
+export function Pricing() {
   return (
-    <section className="sec" id="price" aria-labelledby="priceT">
+    <Section id="price" aria-labelledby="priceT">
       <Knot />
-      <Rise className="sec-head">
-        <p className="eyebrow">Pricing</p>
-        <h2 id="priceT">{cs(look, "Simple Pricing.")}</h2>
-        <p className="lead">Less than CAD 2 a day for a workbook made for your child.</p>
+      <Rise>
+        <SectionHeader eyebrow="Pricing" title="Simple pricing." titleId="priceT" lead="Less than CAD 2 a day for a workbook made for your child." />
       </Rise>
-      <div className="plans">
-        <Rise className="plan">
-          <div className="plan-head">
-            <h3>{cs(look, "One Subject")}</h3>
-            <p className="small">Math or reading</p>
-            <div className="price">CAD {PLANS.one.price}<small> / month</small></div>
-          </div>
-          <ul>
-            <li>Placement assessment</li><li>Personalized workbooks, mailed home</li><li>Your next book arrives before the current one runs out</li>
-            <li>Progress reports, updated continuously</li><li>Delivery included. Cancel anytime</li>
-          </ul>
-          <GetStarted src="price" plan="one" label="Choose one subject" ghost />
-        </Rise>
-        <Rise className="plan hl" d={0.08}>
-          <div className="plan-head">
-            <h3>Math + Reading</h3>
-            <p className="small">Both subjects, one plan</p>
-            <div className="price">CAD {PLANS.both.price}<small> / month</small></div>
-          </div>
-          <ul>
-            <li>Everything in One Subject</li><li>A math book and a reading book every cycle</li><li>One progress report for both</li><li>Delivery included. Cancel anytime</li>
-          </ul>
-          <GetStarted src="price" plan="both" label="Choose math + reading" />
-        </Rise>
-      </div>
-    </section>
+      <PlanGrid>
+        <PlanCard
+          className="rise"
+          name="One subject"
+          note={PLANS.one.note}
+          price={PLANS.one.price}
+          features={["Placement assessment", "Personalized workbooks, mailed home", "Your next book arrives before the current one runs out", "Progress reports, updated continuously", "Delivery included. Cancel anytime"]}
+          ctaLabel="Choose one subject"
+          cta={<GetStarted src="price" plan="one" label="Choose one subject" ghost />}
+        />
+        <PlanCard
+          className="rise"
+          style={d(0.08)}
+          featured
+          name="Math + Reading"
+          note={PLANS.both.note}
+          price={PLANS.both.price}
+          features={["Everything in One Subject", "A math book and a reading book every cycle", "One progress report for both", "Delivery included. Cancel anytime"]}
+          ctaLabel="Choose math + reading"
+          cta={<GetStarted src="price" plan="both" label="Choose math + reading" />}
+        />
+      </PlanGrid>
+    </Section>
   );
 }
 
-const FAQ: [string, string][] = [
+const FAQ = [
   ["Is there any screen time?", "Your child works on paper. The only screen is your phone camera, for the few seconds it takes to snap the finished pages."],
   ["Who is it for?", "Children in grades 3 to 5 (about ages 8 to 11), in math, reading or both."],
   ["Does it follow the BC curriculum?", "Yes. Every book follows the BC curriculum for your child's grade, and starts from where your child actually is."],
@@ -338,52 +318,48 @@ const FAQ: [string, string][] = [
   ["What happens to my child's work?", "We use it only to make your child's next book. We never sell or share it, and you can ask us to delete it at any time."],
   ["Can we cancel?", "Yes, anytime. You are charged only when a workbook ships."],
   ["Where do you deliver?", "Metro Vancouver for now. Enter your postal code when you sign up and we'll tell you right away."],
-];
+].map(([question, answer]) => ({ question, answer }));
 
-export function Faq({ look = "primer" }: { look?: Look }) {
+export function Faq() {
   return (
-    <section className="sec" id="faq" aria-labelledby="faqT">
+    <Section id="faq" aria-labelledby="faqT">
       <Knot />
-      <Rise className="sec-head">
-        <p className="eyebrow">FAQ</p>
-        <h2 id="faqT">{cs(look, "Questions, Answered.")}</h2>
+      <Rise>
+        <SectionHeader eyebrow="FAQ" title="Questions, answered." titleId="faqT" />
       </Rise>
-      <div className="faq">
-        {FAQ.map(([q, a]) => (
-          <details key={q}>
-            <summary>{q}<span className="pm" aria-hidden="true" /></summary>
-            <p>{a}</p>
-          </details>
-        ))}
-      </div>
-    </section>
+      <FaqList items={FAQ} />
+    </Section>
   );
 }
 
 const STRIP = [heroHome2, adapt4, emo9, emo10, reading1, emo6, adapt3, emo5];
 
-export function Closing({ look = "primer" }: { look?: Look }) {
+export function Closing() {
   return (
-    <section className="sec close" aria-labelledby="closeT">
+    <Section className="close" aria-labelledby="closeT">
       <Knot />
-      <div className="close-in">
-      <Rise as="ul" className="beliefs">
-        <li><i style={{ background: "var(--sun)" }} />Learning belongs on paper, not on another screen.</li>
-        <li><i style={{ background: "var(--sky)" }} /><span>Research links paper and handwriting to stronger learning.<sup><a href="#src">1-3</a></sup></span></li>
-        <li><i style={{ background: "var(--tang)" }} />Every child is different, so every workbook is too.</li>
-      </Rise>
-      <Rise as="h2" id="closeT">{cs(look, "This Is What Learning Should Be Like.")}</Rise>
-      <Rise className="ctas">
-        <GetStarted src="close" />
-        <a className="btn ghost" href="#price">See pricing</a>
-      </Rise>
-      </div>
+      <GradientPanel>
+        <Rise>
+          <BeliefList
+            items={[
+              { text: "Learning belongs on paper, not on another screen.", color: "sun" },
+              { text: <>Research links paper and handwriting to stronger learning.<sup><a href="#src">1-3</a></sup></>, color: "sky" },
+              { text: "Every child is different, so every workbook is too.", color: "tang" },
+            ]}
+          />
+        </Rise>
+        <Rise as="h2" id="closeT">This is what learning should be like.</Rise>
+        <Rise className="ctas">
+          <GetStarted src="close" />
+          <a className="btn ghost" href="#price">See pricing</a>
+        </Rise>
+      </GradientPanel>
       <div className="strip" aria-hidden="true">
         {STRIP.map((src, i) => (
           <div className="ph" key={i}><Image src={src} alt="" sizes="(min-width: 900px) 12vw, 45vw" placeholder="blur" /></div>
         ))}
       </div>
-    </section>
+    </Section>
   );
 }
 

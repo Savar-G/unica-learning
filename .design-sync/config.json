@@ -1,0 +1,110 @@
+{
+  "projectId": "47e65738-45ae-4bfa-adc3-c589eadb050a",
+  "shape": "package",
+  "pkg": "ai-workbooks-landing-page",
+  "globalName": "Pagewise",
+  "buildCmd": "npm run build:ds",
+  "cssEntry": "dist/ds/pagewise.css",
+  "extraFonts": [
+    "src/ds/fonts/fonts.css"
+  ],
+  "provider": {
+    "component": "PagewiseRoot"
+  },
+  "srcDir": "src/ds",
+  "docsMap": {
+    "PagewiseRoot": ".design-sync/groups/Foundations.md",
+    "Logo": ".design-sync/groups/Foundations.md",
+    "Section": ".design-sync/groups/Foundations.md",
+    "SectionHeader": ".design-sync/groups/Foundations.md",
+    "Eyebrow": ".design-sync/groups/Foundations.md",
+    "Highlight": ".design-sync/groups/Foundations.md",
+    "SwapWord": ".design-sync/groups/Foundations.md",
+    "Button": ".design-sync/groups/Actions.md",
+    "Chip": ".design-sync/groups/Actions.md",
+    "WorkbookPage": ".design-sync/groups/Product-visuals.md",
+    "WorkbookCover": ".design-sync/groups/Product-visuals.md",
+    "CoverStack": ".design-sync/groups/Product-visuals.md",
+    "Mailer": ".design-sync/groups/Product-visuals.md",
+    "PhoneScan": ".design-sync/groups/Product-visuals.md",
+    "ProgressReport": ".design-sync/groups/Product-visuals.md",
+    "Photo": ".design-sync/groups/Product-visuals.md",
+    "StepCard": ".design-sync/groups/Cards.md",
+    "StepGrid": ".design-sync/groups/Cards.md",
+    "FeatureCard": ".design-sync/groups/Cards.md",
+    "FeatureGrid": ".design-sync/groups/Cards.md",
+    "IncludedCard": ".design-sync/groups/Cards.md",
+    "PlanCard": ".design-sync/groups/Cards.md",
+    "PlanGrid": ".design-sync/groups/Cards.md",
+    "FounderCard": ".design-sync/groups/Cards.md",
+    "FounderGrid": ".design-sync/groups/Cards.md",
+    "BeliefList": ".design-sync/groups/Cards.md",
+    "Nav": ".design-sync/groups/Page-blocks.md",
+    "Hero": ".design-sync/groups/Page-blocks.md",
+    "Faq": ".design-sync/groups/Page-blocks.md",
+    "GradientPanel": ".design-sync/groups/Page-blocks.md"
+  },
+  "overrides": {
+    "Hero": {
+      "cardMode": "single",
+      "viewport": "1280x1360"
+    },
+    "Nav": {
+      "cardMode": "column"
+    },
+    "StepGrid": {
+      "cardMode": "single",
+      "viewport": "1200x1150"
+    },
+    "FeatureGrid": {
+      "cardMode": "single",
+      "viewport": "1200x560"
+    },
+    "PlanGrid": {
+      "cardMode": "column"
+    },
+    "GradientPanel": {
+      "cardMode": "column"
+    },
+    "Faq": {
+      "cardMode": "column"
+    },
+    "Section": {
+      "cardMode": "column"
+    },
+    "SectionHeader": {
+      "cardMode": "column"
+    },
+    "PagewiseRoot": {
+      "cardMode": "column"
+    },
+    "BeliefList": {
+      "cardMode": "column"
+    },
+    "StepCard": {
+      "cardMode": "column"
+    },
+    "FeatureCard": {
+      "cardMode": "column"
+    },
+    "IncludedCard": {
+      "cardMode": "column"
+    },
+    "PlanCard": {
+      "cardMode": "column"
+    },
+    "Mailer": {
+      "cardMode": "column"
+    },
+    "PhoneScan": {
+      "cardMode": "column"
+    },
+    "Photo": {
+      "cardMode": "column"
+    },
+    "ProgressReport": {
+      "cardMode": "column"
+    }
+  },
+  "readmeHeader": ".design-sync/conventions.md"
+}

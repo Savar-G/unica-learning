@@ -23,23 +23,6 @@ export function Motion() {
     requestAnimationFrame(() => hero?.classList.add("is-in"));
     cleanups.push(() => io.disconnect());
 
-    // swapping word chip
-    document.querySelectorAll<HTMLElement>(".swap").forEach((sw) => {
-      if (reduce) return;
-      const items = sw.children;
-      let i = 0;
-      let visible = false;
-      const vio = new IntersectionObserver((es) => { visible = es[0].isIntersecting; });
-      vio.observe(sw);
-      const t = window.setInterval(() => {
-        if (!visible || document.hidden) return;
-        items[i].classList.remove("on");
-        i = (i + 1) % items.length;
-        items[i].classList.add("on");
-      }, 2200);
-      cleanups.push(() => { window.clearInterval(t); vio.disconnect(); });
-    });
-
     // pencil thread
     const main = document.getElementById("main");
     let len = 0;

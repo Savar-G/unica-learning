@@ -1,0 +1,14 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": false,
+    "declaration": true,
+    "emitDeclarationOnly": true,
+    "outDir": "dist/ds",
+    "rootDir": "src/ds",
+    "incremental": false,
+    "plugins": []
+  },
+  "include": ["src/ds/**/*.ts", "src/ds/**/*.tsx"],
+  "exclude": []
+}

@@ -2,9 +2,11 @@
    thin grotesk headlines, mono labels, grainy gradient fields, soft grey cards, square-ish controls. */
 
 [data-look="warm"] {
-  --serif: var(--font-geist), ui-sans-serif, system-ui, sans-serif;
-  --sans: var(--font-geist), ui-sans-serif, system-ui, sans-serif;
-  --mono: var(--font-geist-mono), ui-monospace, monospace;
+  --serif: var(--font-geist, "Geist"), ui-sans-serif, system-ui, sans-serif;
+  --sans: var(--font-geist, "Geist"), ui-sans-serif, system-ui, sans-serif;
+  --mono: var(--font-geist-mono, "Geist Mono"), ui-monospace, monospace;
+  --kid: var(--font-kid, "Gochi Hand"), "Comic Sans MS", cursive;
+  --pen: var(--font-pen, "Caveat"), cursive;
   --ink: #0c0c0e; --ink-2: #44444c; --ink-3: #8a8a93;
   --line: #e4e4e7; --line-soft: #ececef;
   --card: #f4f4f5; --soft: #f8f8f9;
@@ -12,6 +14,7 @@
   --pad-x: max(var(--gut), calc((100% - 1280px) / 2));
   background: #fff;
   color: var(--ink);
+  font: 400 17px/1.55 var(--sans);
 }
 [data-look="warm"] {
   --accent: #ff6a3d; --accent-soft: #fff1ea;
@@ -22,7 +25,7 @@
 }
 
 /* grainy gradient field */
-[data-look="warm"] :is(.hero-c .stage, .feel, .why > div, .duo .who .face) {
+[data-look="warm"] :is(.hero-c .stage, .feel, .why > div, .who .face) {
   --field:
     radial-gradient(38% 55% at 18% 30%, var(--g1), transparent 70%),
     radial-gradient(42% 60% at 78% 24%, var(--g2), transparent 70%),
@@ -86,8 +89,8 @@
 @media (min-width: 980px) {
   [data-look="warm"] .hero-c .txt { grid-template-columns: minmax(0, 1fr) auto; column-gap: 40px; }
   [data-look="warm"] .hero-c .txt > * { grid-column: 1 / -1; }
-  [data-look="warm"] .hero-c .txt > :nth-child(3) { grid-column: 1; }
-  [data-look="warm"] .hero-c .txt > :nth-child(4) { grid-column: 2; grid-row: 3; align-self: end; }
+  [data-look="warm"] .hero-c.enter .txt > :nth-child(3) { grid-column: 1; }
+  [data-look="warm"] .hero-c.enter .txt > :nth-child(4) { grid-column: 2; grid-row: 3; align-self: end; }
 }
 [data-look="warm"] .hero-c .stage {
   max-width: none; padding: clamp(18px, 4.6vw, 68px); border-radius: 4px;
@@ -167,13 +170,13 @@
 [data-look="warm"] .drift .ph { border-radius: 4px; }
 
 /* ---------- team ---------- */
-[data-look="warm"] .duo .who { border: 0; border-radius: 4px; background: var(--card); }
-[data-look="warm"] .duo .who .cap { border-top: 0; }
-[data-look="warm"] .duo .who .face {
+[data-look="warm"] .who { border: 0; border-radius: 4px; background: var(--card); }
+[data-look="warm"] .who .cap { border-top: 0; }
+[data-look="warm"] .who .face {
   font: 300 72px/1 var(--sans); color: var(--ink) !important;
   background: var(--noise), var(--field), var(--card) !important; background-blend-mode: overlay, normal, normal, normal, normal, normal !important;
 }
-[data-look="warm"] .duo .who:nth-child(2) .face { --g1: var(--g3); --g2: var(--g4); --g3: var(--g2); }
+[data-look="warm"] .who:nth-child(2) .face { --g1: var(--g3); --g2: var(--g4); --g3: var(--g2); }
 
 /* ---------- pricing ---------- */
 [data-look="warm"] .plan { border: 1px solid var(--line); border-radius: 6px; }
@@ -234,3 +237,25 @@
 
 /* drawn product pieces keep their own ink on dark sections */
 [data-look="warm"] :is(.page, .cover, .report) { color: #18181b; }
+
+/* ---------- design-system component hooks ---------- */
+.meta > span{display:inline-flex;align-items:center;gap:14px}
+[data-look="warm"] .who.cool .face { --g1: var(--g3); --g2: var(--g4); --g3: var(--g2); }
+.panel.center{text-align:center}
+.panel .ctas{justify-content:center;margin-top:34px}
+[data-look="warm"] .panel h2{font-size:clamp(42px, 6vw, 88px);line-height:.98;max-width:12em;margin:0 auto}
+/* hero entrance: CSS only, so the largest paint never waits for JavaScript */
+.hero-c.enter .txt > *, .hero-c.enter .stage { animation: heroIn .8s var(--ease) both; }
+.hero-c.enter .txt > :nth-child(2) { animation-delay: .1s; }
+.hero-c.enter .txt > :nth-child(3) { animation-delay: .2s; }
+.hero-c.enter .txt > :nth-child(4) { animation-delay: .3s; }
+.hero-c.enter .txt > :nth-child(5) { animation-delay: .4s; }
+.hero-c.enter .stage { animation-name: heroImg; animation-delay: .3s; }
+@media (prefers-reduced-motion: reduce) { .hero-c .txt > *, .hero-c .stage { animation: none; } }
+/* chips: mono pill with a tone square (matches the swap-word pill) */
+[data-look="warm"] .chip::before { content: ""; width: 8px; height: 8px; background: var(--chip-c, var(--g1)); flex: none; }
+[data-look="warm"] .chip.sun { --chip-c: var(--g1); }
+[data-look="warm"] .chip.sky { --chip-c: var(--g3); }
+[data-look="warm"] .chip.tang { --chip-c: var(--g2); }
+[data-look="warm"] .chip.leaf { --chip-c: var(--g4); }
+[data-look="warm"] .cover.on-dark { color: #fff; }

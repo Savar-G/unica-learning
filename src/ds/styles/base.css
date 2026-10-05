@@ -5,10 +5,10 @@
   --line:#111; --line-soft:#e7e7e7;
   --sun:#FFD23F; --sky:#3366F0; --tang:#FF6430; --leaf:#16A06A; --red:#E0322B;
   --paper:#FFFDF7; --graphite:#2a2a2a;
-  --serif:var(--font-zodiak), Georgia, 'Times New Roman', serif;
-  --sans:var(--font-switzer), ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
-  --kid:var(--font-kid), 'Comic Sans MS', cursive;
-  --pen:var(--font-pen), cursive;
+  --serif:var(--font-zodiak, Georgia), Georgia, 'Times New Roman', serif;
+  --sans:var(--font-switzer, system-ui), ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --kid:var(--font-kid, "Gochi Hand"), 'Comic Sans MS', cursive;
+  --pen:var(--font-pen, "Caveat"), cursive;
   --max:1280px; --gut:clamp(16px, 4vw, 48px);
   --ease:cubic-bezier(.2,.8,.2,1); --spring:cubic-bezier(.34,1.56,.64,1);
 }
@@ -219,10 +219,10 @@ main > *{position:relative;z-index:1}
 .found{display:grid;gap:clamp(24px, 4vw, 56px)}
 @media (min-width:900px){.found{grid-template-columns:1fr 1fr;align-items:center}}
 .duo{display:flex;gap:14px}
-.duo .who{flex:1;border:1px solid var(--line);border-radius:18px;overflow:hidden}
-.duo .who .face{aspect-ratio:1;display:grid;place-items:center;font:400 64px/1 var(--serif)}
-.duo .who .cap{padding:12px 14px;border-top:1px solid var(--line);font-size:14px}
-.duo .who .cap b{display:block;font:500 16px/1.2 var(--sans)}
+.who{flex:1;border:1px solid var(--line);border-radius:18px;overflow:hidden}
+.who .face{aspect-ratio:1;display:grid;place-items:center;font:400 64px/1 var(--serif)}
+.who .cap{padding:12px 14px;border-top:1px solid var(--line);font-size:14px}
+.who .cap b{display:block;font:500 16px/1.2 var(--sans)}
 
 /* Pricing */
 .plans{display:grid;gap:18px}
@@ -393,3 +393,8 @@ main{position:relative;display:block}
 
 /* steps use the hidden attribute; keep it stronger than the display rules above */
 .rsv [hidden]{display:none !important}
+
+/* covers on blue/green stock use white type */
+.cover.on-dark{color:#fff}
+.cover.on-dark .bk{border-color:#fff}
+.cover.on-dark .brand b{background:#fff}

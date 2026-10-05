@@ -2,8 +2,8 @@ import type { Metadata, Viewport } from "next";
 import localFont from "next/font/local";
 import { Caveat, Geist, Geist_Mono, Gochi_Hand } from "next/font/google";
 import { BRAND, HERO } from "@/lib/site";
-import "./globals.css";
-import "./looks.css";
+import "@/ds/styles/base.css";
+import "@/ds/styles/warm.css";
 
 const zodiak = localFont({ src: "../fonts/Zodiak-Regular.woff2", weight: "400", variable: "--font-zodiak", display: "swap", preload: false });
 const switzer = localFont({

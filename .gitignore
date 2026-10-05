@@ -42,3 +42,11 @@ next-env.d.ts
 
 # design workspace
 .design/assets/stock/_excluded/
+
+# design system build + sync scratch
+/dist
+.ds-sync/
+ds-bundle/
+.design-sync/.cache/
+.design-sync/learnings/
+.design-sync/node_modules

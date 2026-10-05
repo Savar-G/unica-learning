@@ -10,15 +10,15 @@ export function Landing({ look = "primer" }: { look?: Look }) {
       <div className="frame">
         <main id="main">
           <Hero />
-          <What look={look} />
-          <How look={look} />
-          <Why look={look} />
-          <Included look={look} />
-          <Feel look={look} />
-          <Team look={look} />
-          <Pricing look={look} />
-          <Faq look={look} />
-          <Closing look={look} />
+          <What />
+          <How />
+          <Why />
+          <Included />
+          <Feel />
+          <Team />
+          <Pricing />
+          <Faq />
+          <Closing />
         </main>
         <Footer />
       </div>
