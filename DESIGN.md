@@ -5,7 +5,7 @@
 
 ## Job
 
-**User:** A Vancouver parent of a grade 3-5 child. They pay for, or have priced, tutoring or a math app, and they worry about screen time.
+**User:** A Vancouver parent of a age 6-12 child. They pay for, or have priced, tutoring or a math app, and they worry about screen time.
 
 **Situation:** They arrive from a Product BC Slack post, a Reddit thread or a direct link, usually on a phone, with under a minute of attention.
 
@@ -22,7 +22,7 @@
 ## Source constraints
 
 - References: Savar's FigJam board (Primer, Ello, Squirrel AI, Outschool) with his notes; see `.design/references.json`.
-- Offer: math and reading, grades 3-5, Vancouver, delivery included. One subject CAD 49 a month; math + reading CAD 89 a month (D-026).
+- Offer: math and reading, ages 6-12, Vancouver, delivery included. One subject CAD 49 a month; math + reading CAD 89 a month (D-026).
 - Real product posture: no "pilot", "beta" or "test" wording (D-012).
 - No proof we do not have: no ratings, review counts, family counts, press logos, outcome percentages or testimonials. Until real customer references exist, proof = sample pages, clear price, cancel anytime, the founders' story.
 - Comparative and performance claims: Competition Act s.74.01(1)(b) requires an adequate and proper test before a claim about a product's performance. The only research line is "Research links paper and handwriting to stronger learning", with Delgado et al. 2018 (Educational Research Review 25), Malpique et al. 2023 and van der Meer & van der Weel 2024 (Frontiers in Psychology) cited. Never a claim about our results.
@@ -39,8 +39,8 @@
 
 Every section sets up the next one. A single pencil line connects the sections and the loop steps.
 
-1. **Hero (D-029, option C).** Centred text over one large photo of a child working at home; a marked workbook page and a progress report ("Updated just now") float on the photo. On phones the report sits under the photo and the page is hidden. Small line: "The future of learning is on paper." Headline: "Personalized. Delivered. Mastered." Line under it: "Math and reading workbooks made for your child, mailed home, and adapted after every book." Real children with real workbooks. One primary action (reserve) and the line "Grades 3-5 · From CAD 49 a month · Delivery included".
-2. **What is [Brand]?** Math and reading workbooks made for your child, mailed home. Your child works on paper. You snap the finished pages, and the next workbook adapts. Grades 3-5.
+1. **Hero (D-029, option C).** Centred text over one large photo of a child working at home; a marked workbook page and a progress report ("Updated just now") float on the photo. On phones the report sits under the photo and the page is hidden. Small line: "The future of learning is on paper." Headline: "Personalized. Delivered. Mastered." Line under it: "Math and reading workbooks made for your child, mailed home, and adapted after every book." Real children with real workbooks. One primary action (reserve) and the line "Ages 6-12 · From CAD 49 a month · Delivery included".
+2. **What is [Brand]?** Math and reading workbooks made for your child, mailed home. Your child works on paper. You snap the finished pages, and the next workbook adapts. Ages 6-12.
 3. **How it works.** A loop where step 6 returns to step 2. Savar's wording:
    1. **Assess:** The child completes an adaptive online assessment that identifies their level, strengths, gaps and misconceptions.
    2. **Deliver:** We create and mail a physical workbook personalized to what that child needs to work on.
@@ -72,7 +72,7 @@ Every section sets up the next one. A single pencil line connects the sections a
 
 ## Behavior and states
 
-- The primary action opens the reserve flow: child's grade, parent name, email, postal code (Vancouver check), then payment details.
+- The primary action opens the reserve flow: child's age (6-12), parent name, email, postal code (Vancouver check), then payment details.
 - States: idle, submitting, success (what happens next and when), payment declined, outside Vancouver (waitlist), sold out for this month (waitlist).
 - Every step fires an analytics event (view, CTA click, form start, reserve success).
 

@@ -2,7 +2,7 @@
 // Site-only concerns stay here: next/image photos, scroll reveals (Rise/Knot), and the
 // [data-open] buttons that open the reserve dialog.
 import Image, { type StaticImageData } from "next/image";
-import { BRAND, HERO, PLANS, SOURCES } from "@/lib/site";
+import { BRAND, HERO, PLANS } from "@/lib/site";
 import {
   BeliefList,
   CoverStack,
@@ -76,7 +76,6 @@ export function Hero() {
         eyebrow={HERO.eyebrow}
         lead={HERO.sub}
         animate
-        meta={["Grades 3-5", `From CAD ${PLANS.one.price} a month`, "Delivery included"]}
         actions={
           <>
             <GetStarted src="hero" />
@@ -107,7 +106,7 @@ export function What() {
       </div>
       <div className="rows">
         <Rise className="row">
-          <h3>Math and reading, grades 3-5.</h3>
+          <h3>Math and reading, ages 6-12.</h3>
           <p>Every book follows the BC curriculum. Choose one subject or both.</p>
           <Photo src={practice6} alt="A girl works through an arithmetic page" sizes="140px" />
         </Rise>
@@ -155,7 +154,7 @@ export function How() {
       </StepGrid>
       <Rise as="p" className="loopnote">
         <svg viewBox="0 0 34 34" aria-hidden="true"><path d="M27 12a11 11 0 1 0 1.5 8" /><path d="M28 5v7h-7" /></svg>
-        Step 6 leads back to step 2. Two kids in the same grade get two different books.
+        Step 6 leads back to step 2. Two kids the same age get two different books.
       </Rise>
     </Section>
   );
@@ -310,7 +309,7 @@ export function Pricing() {
 
 const FAQ = [
   ["Is there any screen time?", "Your child works on paper. The only screen is your phone camera, for the few seconds it takes to snap the finished pages."],
-  ["Who is it for?", "Children in grades 3 to 5 (about ages 8 to 11), in math, reading or both."],
+  ["Who is it for?", "Children aged 6 to 12, in math, reading or both."],
   ["Does it follow the BC curriculum?", "Yes. Every book follows the BC curriculum for your child's grade, and starts from where your child actually is."],
   ["What if we miss a few days?", "The next book picks up where your child is. Nothing is lost."],
   ["What if we forget to send photos?", "We send a reminder. Until new pages arrive, the next book reviews what your child last worked on."],
@@ -343,7 +342,7 @@ export function Closing() {
           <BeliefList
             items={[
               { text: "Learning belongs on paper, not on another screen.", color: "sun" },
-              { text: <>Research links paper and handwriting to stronger learning.<sup><a href="#src">1-3</a></sup></>, color: "sky" },
+              { text: "Research links paper and handwriting to stronger learning.", color: "sky" },
               { text: "Every child is different, so every workbook is too.", color: "tang" },
             ]}
           />
@@ -368,12 +367,8 @@ export function Footer() {
     <footer className="foot">
       <div>
         <a className="logo" href="#top">{BRAND}<b /></a>
-        <p style={{ margin: "12px 0 0" }}>Personalized math and reading workbooks for grades 3-5, delivered in Metro Vancouver.</p>
+        <p style={{ margin: "12px 0 0" }}>Personalized math and reading workbooks for ages 6-12, delivered in Metro Vancouver.</p>
         <p className="small" style={{ marginTop: 10 }}>© 2026 {BRAND}</p>
-      </div>
-      <div id="src">
-        <p style={{ margin: "0 0 8px", fontWeight: 500, color: "var(--ink)" }}>Sources</p>
-        <ol>{SOURCES.map((s) => <li key={s}>{s}</li>)}</ol>
       </div>
     </footer>
   );

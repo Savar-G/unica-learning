@@ -28,7 +28,7 @@ const title = `${BRAND}: Personalized. Delivered. Mastered.`;
 export const metadata: Metadata = {
   metadataBase: new URL(process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000"),
   title,
-  description: `${HERO.sub} Grades 3-5 in Metro Vancouver.`,
+  description: `${HERO.sub} Ages 6-12 in Metro Vancouver.`,
   openGraph: { title, description: HERO.sub, type: "website", locale: "en_CA" },
   twitter: { card: "summary_large_image", title, description: HERO.sub },
   // Keep previews out of search until launch (set NEXT_PUBLIC_ALLOW_INDEX=true on the launch deploy).

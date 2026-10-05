@@ -364,7 +364,7 @@ export function Hero({
   highlight = "Mastered.",
   lead = "Math and reading workbooks made for your child, mailed home, and adapted after every book.",
   actions,
-  meta = ["Grades 3-5", "From CAD 49 a month", "Delivery included"],
+  meta = [],
   imageSrc,
   imageAlt = "",
   media,

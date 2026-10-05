@@ -268,7 +268,8 @@ export function PhoneScan({ done = true, animate = false }: PhoneScanProps) {
 
 export interface ProgressReportProps {
   child?: string;
-  grade?: number;
+  /** Child's age in years. */
+  age?: number;
   skill?: string;
   score?: number;
   total?: number;
@@ -283,7 +284,7 @@ export interface ProgressReportProps {
 /** The parent's progress report card: score bar, recurring mistake, next book. */
 export function ProgressReport({
   child = "Maya",
-  grade = 4,
+  age = 9,
   skill = "Adding fractions",
   score = 3,
   total = 4,
@@ -297,7 +298,7 @@ export function ProgressReport({
     <div className={animate ? "report" : "report is-in"} role="img" aria-label={`Progress report for ${child}: ${skill} ${score} of ${total}; keeps coming back: ${recurring}; next book: ${next}.`}>
       <div className="rh">
         <b>
-          {child} · Grade {grade}
+          {child} · Age {age}
         </b>
         <span>
           <i />

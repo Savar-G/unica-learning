@@ -1,6 +1,6 @@
 "use client";
 
-// Reserve flow: plan + grade -> details -> review -> result.
+// Reserve flow: plan + age -> details -> review -> result.
 // Any element with [data-open] opens it ([data-plan] preselects a plan, [data-src] names the CTA).
 // TODO(D3/D8): the review step will hand off to Stripe; until then it records the reservation in PostHog only.
 import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
@@ -18,7 +18,7 @@ export function Reserve() {
   const [step, setStep] = useState<Step>(1);
   const [plan, setPlan] = useState<PlanId>("one");
   const [subject, setSubject] = useState("Math");
-  const [grade, setGrade] = useState("4");
+  const [age, setAge] = useState("9");
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [postal, setPostal] = useState("");
@@ -56,7 +56,7 @@ export function Reserve() {
 
   const submitPlan = (e: FormEvent) => {
     e.preventDefault();
-    track("plan_selected", { plan, subject: subj, grade });
+    track("plan_selected", { plan, subject: subj, age });
     setStep(2);
   };
 
@@ -87,7 +87,7 @@ export function Reserve() {
   const confirm = (e: FormEvent) => {
     e.preventDefault();
     setBusy(true);
-    track("checkout_start", { plan, grade });
+    track("checkout_start", { plan, age });
     window.setTimeout(() => {
       setBusy(false);
       if (/declined/.test(window.location.search)) {
@@ -95,8 +95,8 @@ export function Reserve() {
         setStep("bad");
         return;
       }
-      identify(email.trim().toLowerCase(), { name: name.trim(), postal, plan, subject: subj, grade });
-      track("reserve_success", { plan, subject: subj, grade, price });
+      identify(email.trim().toLowerCase(), { name: name.trim(), postal, plan, subject: subj, age });
+      track("reserve_success", { plan, subject: subj, age, price });
       setStep("ok");
     }, 900);
   };
@@ -136,10 +136,10 @@ export function Reserve() {
           </label>
         </fieldset>
         <fieldset>
-          <legend>Your child&apos;s grade</legend>
-          <div className="seg" role="radiogroup" aria-label="Grade">
-            {["3", "4", "5"].map((g) => (
-              <label key={g}><input type="radio" name="grade" checked={grade === g} onChange={() => setGrade(g)} />Grade {g}</label>
+          <legend>Your child&apos;s age</legend>
+          <div className="seg ages" role="radiogroup" aria-label="Age">
+            {["6", "7", "8", "9", "10", "11", "12"].map((a) => (
+              <label key={a}><input type="radio" name="age" checked={age === a} onChange={() => setAge(a)} aria-label={`Age ${a}`} />{a}</label>
             ))}
           </div>
         </fieldset>
@@ -173,7 +173,7 @@ export function Reserve() {
         <h3>Review and confirm.</h3>
         <div className="sum">
           <div><span>Plan</span><b>{subj}</b></div>
-          <div><span>Grade</span><b>{grade}</b></div>
+          <div><span>Age</span><b>{age}</b></div>
           <div><span>Ship to</span><b>{postal}</b></div>
           <div><span>Price</span><b>CAD {price} / month</b></div>
         </div>

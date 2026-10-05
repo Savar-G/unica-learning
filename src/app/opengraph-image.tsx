@@ -29,7 +29,7 @@ export default async function Image() {
               <span style={{ background: "#FFD23F", padding: "0 8px", marginLeft: -8, alignSelf: "flex-start" }}>Mastered.</span>
             </div>
           </div>
-          <div style={{ fontSize: 24, color: "#4b4b4b" }}>Math and reading workbooks for grades 3-5 · Metro Vancouver</div>
+          <div style={{ fontSize: 24, color: "#4b4b4b" }}>Math and reading workbooks for ages 6-12 · Metro Vancouver</div>
         </div>
         <div style={{ display: "flex", flexWrap: "wrap", width: 240, height: 240, alignSelf: "center", borderTop: "2px solid #111", borderLeft: "2px solid #111" }}>
           {TILES.map((c, i) => (
