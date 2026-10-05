@@ -301,9 +301,11 @@ export function Pricing({ look = "primer" }: { look?: Look }) {
       </Rise>
       <div className="plans">
         <Rise className="plan">
-          <h3>{cs(look, "One Subject")}</h3>
-          <p className="small" style={{ margin: "-8px 0 0" }}>Math or reading</p>
-          <div className="price">CAD {PLANS.one.price}<small> / month</small></div>
+          <div className="plan-head">
+            <h3>{cs(look, "One Subject")}</h3>
+            <p className="small">Math or reading</p>
+            <div className="price">CAD {PLANS.one.price}<small> / month</small></div>
+          </div>
           <ul>
             <li>Placement assessment</li><li>Personalized workbooks, mailed home</li><li>Your next book arrives before the current one runs out</li>
             <li>Progress reports, updated continuously</li><li>Delivery included. Cancel anytime</li>
@@ -311,17 +313,17 @@ export function Pricing({ look = "primer" }: { look?: Look }) {
           <GetStarted src="price" plan="one" label="Choose one subject" ghost />
         </Rise>
         <Rise className="plan hl" d={0.08}>
-          <span className="chip tag" style={{ "--tilt": "3deg", background: "#fff" } as Vars}>{PLANS.both.note}</span>
-          <h3>Math + Reading</h3>
-          <p className="small" style={{ margin: "-8px 0 0" }}>Both subjects, one plan</p>
-          <div className="price">CAD {PLANS.both.price}<small> / month</small></div>
+          <div className="plan-head">
+            <h3>Math + Reading</h3>
+            <p className="small">Both subjects, one plan</p>
+            <div className="price">CAD {PLANS.both.price}<small> / month</small></div>
+          </div>
           <ul>
             <li>Everything in One Subject</li><li>A math book and a reading book every cycle</li><li>One progress report for both</li><li>Delivery included. Cancel anytime</li>
           </ul>
           <GetStarted src="price" plan="both" label="Choose math + reading" />
         </Rise>
       </div>
-      <p className="fine">Now delivering in Metro Vancouver. You&apos;re charged when your first workbook ships. Prices in Canadian dollars.</p>
     </section>
   );
 }

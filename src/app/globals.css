@@ -230,6 +230,8 @@ main > *{position:relative;z-index:1}
 .plan{border:1px solid var(--line);border-radius:22px;padding:28px 26px;display:flex;flex-direction:column;gap:16px;position:relative;background:#fff}
 .plan.hl{background:var(--sun)}
 .plan .tag{position:absolute;top:-16px;right:22px}
+.plan-head{display:grid;gap:8px}
+.plan-head .small{margin:0}
 .plan .price{font:400 64px/1 var(--serif);letter-spacing:-.03em}
 .plan .price small{font:500 16px/1 var(--sans);letter-spacing:0;color:var(--ink-2)}
 .plan ul{list-style:none;margin:0;padding:0;display:grid;gap:9px}

@@ -178,12 +178,20 @@
 /* ---------- pricing ---------- */
 [data-look="warm"] .plan { border: 1px solid var(--line); border-radius: 6px; }
 [data-look="warm"] .plan .price { font-weight: 300; letter-spacing: -0.04em; }
-[data-look="warm"] .plan.hl { background: var(--ink); color: #fff; border-color: var(--ink); }
-[data-look="warm"] .plan.hl .small, [data-look="warm"] .plan.hl .price small { color: #a1a1aa; }
-[data-look="warm"] .plan.hl li::before { filter: invert(1); }
-[data-look="warm"] .plan.hl .btn { background: #fff; color: var(--ink); border-color: #fff; }
-[data-look="warm"] .plan .tag { color: var(--ink); }
-[data-look="warm"] .fine { font: 400 13px/1.5 var(--mono); }
+/* Featured plan stays white; a grainy colour wash rises from the bottom (D-037). */
+[data-look="warm"] .plan.hl {
+  color: var(--ink);
+  background:
+    var(--noise),
+    radial-gradient(70% 70% at 12% 100%, var(--g1), transparent 72%),
+    radial-gradient(60% 65% at 92% 100%, var(--g3), transparent 72%),
+    radial-gradient(55% 60% at 52% 100%, var(--g2), transparent 75%),
+    #fff;
+  background-blend-mode: overlay, normal, normal, normal, normal;
+  background-size: 220px, 100% 70%, 100% 70%, 100% 70%, auto;
+  background-position: 0 0, 0 100%, 0 100%, 0 100%, 0 0;
+  background-repeat: repeat, no-repeat, no-repeat, no-repeat, no-repeat;
+}
 
 /* ---------- FAQ ---------- */
 [data-look="warm"] .faq { border-top: 1px solid var(--line); }
