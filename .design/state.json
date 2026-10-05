@@ -24,7 +24,14 @@
     "latest_review": null,
     "drafts": [
       ".design/experiments/drafts/a-lineup-2026-10-04/"
-    ]
+    ],
+    "deploy": {
+      "repo": "https://github.com/Savar-G/ai-workbooks-landing-page",
+      "vercel_project": "ai-workbooks-landing-page",
+      "preview": "https://ai-workbooks-landing-page-h0ny6ov85.vercel.app",
+      "protected": true,
+      "production": "Vercel Git integration deploys main"
+    }
   },
   "open_decisions": [
     {
