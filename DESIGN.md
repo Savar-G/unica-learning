@@ -58,15 +58,15 @@ Every section sets up the next one. A single pencil line connects the sections a
 
 ## Visual language
 
-**Look (Primer):** White background. Thin black hairline rules frame every section, like a grid. Saturated primary colour tiles (yellow, blue, orange, green) are structure, not decoration. Many real photos of children.
+**Look (warm, D-034):** Polar Signals' system in our own colours, so the page no longer reads like Primer. White and soft-grey full-bleed bands; no grid rails. Grainy gradient fields (sunflower, peach, sky, mint) behind the hero photo, the emotional section, the "Why choose" cards and the closing. Soft grey cards with a small coloured square on the corner. Square-ish controls (6 px corners). Many real photos of children.
 
-**Delight (Ello):** Micro animations on scroll: a tilted, white-bordered word chip that swaps (for example "fractions", "reading comprehension", "multiplication", "vocabulary"); photos and workbook pages that drift; cards that lift; sections that rise in. The hero line comes back at the end.
+**Typography:** Geist for headlines (light 300, sentence case, tight tracking) and text; Geist Mono for labels, with an orange square marker. In the hero, "Personalized. Delivered." is grey and "Mastered." is ink with the yellow highlighter.
 
-**Connection (Squirrel AI, Outschool):** A pencil line runs through the page and draws itself on scroll. In the hero it joins photos of real children, with label chips for the loop steps.
+**Delight (Ello):** Micro animations on scroll: a mono word chip that swaps (fractions, reading, long division, new words); photos and workbook pages that drift; cards that lift; sections that rise in; the hero colour field moves slowly.
 
-**Typography:** A serif display face for headlines (Title Case, like Primer) and a neutral grotesk for text. Free faces only; chosen in exploration.
+**Connection (Squirrel AI, Outschool):** An orange pencil line runs down the page margin and draws itself on scroll.
 
-**Imagery:** Real children with real paper workbooks at home. Mockups: Unsplash or Pexels photos (`.design/assets/stock/CREDITS.md`), and AI-generated images only where stock cannot show the product. Launch photos: D4.
+**Imagery:** Real children with real paper workbooks at home. Mockups: Unsplash photos (`.design/assets/stock/CREDITS.md`), and AI-generated images only where stock cannot show the product. Launch photos: D4.
 
 **Motion rules:** Motion explains or delights; it never blocks reading. With reduced motion on, the page shows the end states.
 
@@ -86,6 +86,8 @@ Every section sets up the next one. A single pencil line connects the sections a
 - Not mascots, illustrated hills or a cartoon world (Ello's motion yes, its characters no).
 - Not dark gradients, glowing app mockups, purple AI palette or sparkle icons.
 - Not the round 1 look: muted paper tones and a quiet editorial page.
+- Not Primer's system (serif Title Case, hairline grid, flat primary tiles): same industry, too close (D-034).
+- Not Polar Signals' own palette or ▲ marker (D-035).
 - Not invented proof of any kind.
 
 ## Acceptance criteria

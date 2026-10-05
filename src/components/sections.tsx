@@ -1,5 +1,6 @@
 import Image, { type StaticImageData } from "next/image";
 import { BRAND, HERO, PLANS, SOURCES } from "@/lib/site";
+import { cs, type Look } from "@/lib/look";
 import { Cover, Knot, PageFrac, PageNext, PageRead, Parcel, Report, Rise, Scan, type Vars } from "./drawn";
 
 import heroHome1 from "@/assets/img/hero-home-1.jpg";
@@ -60,7 +61,7 @@ export function Hero() {
       <div className="txt">
         <Rise as="p" className="eyebrow">{HERO.eyebrow}</Rise>
         <Rise as="h1" d={0.1}>
-          Personalized. Delivered. <span className="mark">Mastered.</span>
+          <span className="pre">Personalized. Delivered.</span> <span className="mark">Mastered.</span>
         </Rise>
         <Rise as="p" d={0.2} className="lead">{HERO.sub}</Rise>
         <Rise d={0.3}>
@@ -84,14 +85,14 @@ export function Hero() {
   );
 }
 
-export function What() {
+export function What({ look = "primer" }: { look?: Look }) {
   return (
     <section className="sec" id="what" aria-labelledby="whatT">
       <Knot />
       <div className="what">
         <Rise>
           <p className="eyebrow">What is {BRAND}?</p>
-          <h2 id="whatT" style={{ marginTop: 16 }}>A Workbook That Knows Your Child.</h2>
+          <h2 id="whatT" style={{ marginTop: 16 }}>{cs(look, "A Workbook That Knows Your Child.")}</h2>
         </Rise>
         <Rise d={0.1}>
           <p className="big">
@@ -110,17 +111,17 @@ export function What() {
       </div>
       <div className="rows">
         <Rise className="row">
-          <h3>Math And Reading, Grades 3-5.</h3>
+          <h3>{cs(look, "Math And Reading, Grades 3-5.")}</h3>
           <p>Every book follows the BC curriculum. Choose one subject or both.</p>
           <Photo src={practice6} alt="A girl works through an arithmetic page" sizes="140px" />
         </Rise>
         <Rise className="row" d={0.08}>
-          <h3>Starts At Their Level.</h3>
+          <h3>{cs(look, "Starts At Their Level.")}</h3>
           <p>A short online assessment finds where your child is, so the first book fits from page one.</p>
           <Photo src={assess1} alt="A child takes a short assessment on a laptop with her mother" sizes="140px" />
         </Rise>
         <Rise className="row" d={0.16}>
-          <h3>Mailed To Your Door.</h3>
+          <h3>{cs(look, "Mailed To Your Door.")}</h3>
           <p>Your next book arrives before the current one runs out. Delivery is included.</p>
           <div className="ph"><Parcel /></div>
         </Rise>
@@ -140,13 +141,13 @@ const STEPS = [
   { n: "06", t: "Repeat", c: "var(--sky)", d: "The next workbook is built from what your child mastered, struggled with or needs to review. It arrives before the current one runs out.", v: <div className="vis dk"><PageNext /></div> },
 ];
 
-export function How() {
+export function How({ look = "primer" }: { look?: Look }) {
   return (
     <section className="sec" id="how" aria-labelledby="howT">
       <Knot />
       <Rise className="sec-head">
         <p className="eyebrow">How it works</p>
-        <h2 id="howT">Six Steps. One Loop.</h2>
+        <h2 id="howT">{cs(look, "Six Steps. One Loop.")}</h2>
         <p className="lead">Every book is built from the last one, so the work always matches what your child needs next.</p>
       </Rise>
       <ol className="steps">
@@ -167,7 +168,7 @@ export function How() {
   );
 }
 
-export function Why() {
+export function Why({ look = "primer" }: { look?: Look }) {
   const cards = [
     ["Real Paper. Real Pencil.", "Your child learns away from screens. The only screen is your phone camera, for a few seconds."],
     ["Made For One Child.", "Every page targets what your child is ready for next, not what the rest of the class is on."],
@@ -179,13 +180,13 @@ export function Why() {
       <Knot />
       <Rise className="sec-head">
         <p className="eyebrow">Why choose {BRAND}?</p>
-        <h2 id="whyT">Built Different, On Purpose.</h2>
+        <h2 id="whyT">{cs(look, "Built Different, On Purpose.")}</h2>
       </Rise>
       <div className="why">
         {cards.map(([h, p], i) => (
           <Rise key={h} className={`c${i + 1}`} d={i * 0.08}>
             <span className="n">0{i + 1}</span>
-            <h3>{h}</h3>
+            <h3>{cs(look, h)}</h3>
             <p>{p}</p>
           </Rise>
         ))}
@@ -213,19 +214,19 @@ function Card({ icon, bg, title, text, d }: { icon: string; bg: string; title: s
   );
 }
 
-export function Included() {
+export function Included({ look = "primer" }: { look?: Look }) {
   return (
     <section className="sec" id="inc" aria-labelledby="incT">
       <Knot />
       <Rise className="sec-head">
         <p className="eyebrow">What&apos;s included</p>
-        <h2 id="incT">Everything Your Child Needs. Nothing They Don&apos;t.</h2>
+        <h2 id="incT">{cs(look, "Everything Your Child Needs. Nothing They Don't.")}</h2>
       </Rise>
       <div className="inc">
         <div className="col">
-          <Card icon="test" bg="#FFF3C4" title="Placement Assessment" text="A short online assessment finds your child's level, strengths and gaps." d={0} />
-          <Card icon="book" bg="#D9E3FF" title="Personalized Workbooks" text="Math, reading or both, made for your child and no one else." d={0.08} />
-          <Card icon="box" bg="#FFD9C9" title="Delivery Included" text="Your next book arrives before the current one runs out." d={0.16} />
+          <Card icon="test" bg="#FFF3C4" title={cs(look, "Placement Assessment")} text="A short online assessment finds your child's level, strengths and gaps." d={0} />
+          <Card icon="book" bg="#D9E3FF" title={cs(look, "Personalized Workbooks")} text="Math, reading or both, made for your child and no one else." d={0.08} />
+          <Card icon="box" bg="#FFD9C9" title={cs(look, "Delivery Included")} text="Your next book arrives before the current one runs out." d={0.16} />
         </div>
         <Rise className="stack" aria-hidden="true">
           <Cover name="Arjun" book="Book 2" subject="Reading" bg="var(--sky)" />
@@ -233,9 +234,9 @@ export function Included() {
           <Cover name="Maya" book="Book 4" subject="Fractions" />
         </Rise>
         <div className="col">
-          <Card icon="cam" bg="#CDEFDF" title="Photo Check-Ins" text="Snap the finished pages with your phone. That's it." d={0.04} />
-          <Card icon="chart" bg="#FFF3C4" title="Progress Reports" text="Updated continuously: what they got right, what keeps coming back, what's next." d={0.12} />
-          <Card icon="layers" bg="#D9E3FF" title="A Learning Profile" text="Every book builds on every book before it. Nothing is forgotten." d={0.2} />
+          <Card icon="cam" bg="#CDEFDF" title={cs(look, "Photo Check-Ins")} text="Snap the finished pages with your phone. That's it." d={0.04} />
+          <Card icon="chart" bg="#FFF3C4" title={cs(look, "Progress Reports")} text="Updated continuously: what they got right, what keeps coming back, what's next." d={0.12} />
+          <Card icon="layers" bg="#D9E3FF" title={cs(look, "A Learning Profile")} text="Every book builds on every book before it. Nothing is forgotten." d={0.2} />
         </div>
       </div>
     </section>
@@ -249,7 +250,7 @@ const DRIFT: [StaticImageData, number, number, number, number, number, number, b
   [emo11, 22, 78, 13, 16, 0.12, -2, true], [emo10, 64, 79, 13, 16, -0.1, 4, true],
 ];
 
-export function Feel() {
+export function Feel({ look = "primer" }: { look?: Look }) {
   return (
     <section className="sec feel" aria-labelledby="feelT">
       <Knot />
@@ -261,21 +262,21 @@ export function Feel() {
       <div className="drift scrap hide-sm" data-speed=".24" data-io style={{ left: "9%", top: "38%", width: "11%", "--r": "-7deg" } as Vars}><PageRead /></div>
       <div className="drift scrap hide-sm" data-speed="-.2" data-io style={{ left: "81%", top: "35%", width: "11%", "--r": "6deg" } as Vars}><PageFrac /></div>
       <Rise className="msg">
-        <h2 id="feelT">No Two Kids Learn The Same Way.</h2>
+        <h2 id="feelT">{cs(look, "No Two Kids Learn The Same Way.")}</h2>
         <p className="lead">So no two {BRAND} books are the same. Each one starts where your child is, and moves on when they&apos;re ready.</p>
       </Rise>
     </section>
   );
 }
 
-export function Team() {
+export function Team({ look = "primer" }: { look?: Look }) {
   return (
     <section className="sec" id="team" aria-labelledby="teamT">
       <Knot />
       <div className="found">
         <Rise>
           <p className="eyebrow">Who&apos;s behind it</p>
-          <h2 id="teamT" style={{ margin: "16px 0 20px" }}>Made By Two Students Who Grew Up On Workbooks.</h2>
+          <h2 id="teamT" style={{ margin: "16px 0 20px" }}>{cs(look, "Made By Two Students Who Grew Up On Workbooks.")}</h2>
           <p className="lead">
             Savar and Cedric both did workbook programs as kids. We know what daily practice on paper builds, and we know what too much screen time feels like. {BRAND} is the program we wish we&apos;d had: real paper, with a book that keeps up with you.
           </p>
@@ -289,18 +290,18 @@ export function Team() {
   );
 }
 
-export function Pricing() {
+export function Pricing({ look = "primer" }: { look?: Look }) {
   return (
     <section className="sec" id="price" aria-labelledby="priceT">
       <Knot />
       <Rise className="sec-head">
         <p className="eyebrow">Pricing</p>
-        <h2 id="priceT">Simple Pricing.</h2>
+        <h2 id="priceT">{cs(look, "Simple Pricing.")}</h2>
         <p className="lead">Less than CAD 2 a day for a workbook made for your child.</p>
       </Rise>
       <div className="plans">
         <Rise className="plan">
-          <h3>One Subject</h3>
+          <h3>{cs(look, "One Subject")}</h3>
           <p className="small" style={{ margin: "-8px 0 0" }}>Math or reading</p>
           <div className="price">CAD {PLANS.one.price}<small> / month</small></div>
           <ul>
@@ -337,13 +338,13 @@ const FAQ: [string, string][] = [
   ["Where do you deliver?", "Metro Vancouver for now. Enter your postal code when you sign up and we'll tell you right away."],
 ];
 
-export function Faq() {
+export function Faq({ look = "primer" }: { look?: Look }) {
   return (
     <section className="sec" id="faq" aria-labelledby="faqT">
       <Knot />
       <Rise className="sec-head">
         <p className="eyebrow">FAQ</p>
-        <h2 id="faqT">Questions, Answered.</h2>
+        <h2 id="faqT">{cs(look, "Questions, Answered.")}</h2>
       </Rise>
       <div className="faq">
         {FAQ.map(([q, a]) => (
@@ -359,7 +360,7 @@ export function Faq() {
 
 const STRIP = [heroHome2, adapt4, emo9, emo10, reading1, emo6, adapt3, emo5];
 
-export function Closing() {
+export function Closing({ look = "primer" }: { look?: Look }) {
   return (
     <section className="sec close" aria-labelledby="closeT">
       <Knot />
@@ -368,7 +369,7 @@ export function Closing() {
         <li><i style={{ background: "var(--sky)" }} /><span>Research links paper and handwriting to stronger learning.<sup><a href="#src">1-3</a></sup></span></li>
         <li><i style={{ background: "var(--tang)" }} />Every child is different, so every workbook is too.</li>
       </Rise>
-      <Rise as="h2" id="closeT">This Is What Learning Should Be Like.</Rise>
+      <Rise as="h2" id="closeT">{cs(look, "This Is What Learning Should Be Like.")}</Rise>
       <Rise className="ctas">
         <GetStarted src="close" />
         <a className="btn ghost" href="#price">See pricing</a>
