@@ -364,6 +364,7 @@ export function Closing({ look = "primer" }: { look?: Look }) {
   return (
     <section className="sec close" aria-labelledby="closeT">
       <Knot />
+      <div className="close-in">
       <Rise as="ul" className="beliefs">
         <li><i style={{ background: "var(--sun)" }} />Learning belongs on paper, not on another screen.</li>
         <li><i style={{ background: "var(--sky)" }} /><span>Research links paper and handwriting to stronger learning.<sup><a href="#src">1-3</a></sup></span></li>
@@ -374,6 +375,7 @@ export function Closing({ look = "primer" }: { look?: Look }) {
         <GetStarted src="close" />
         <a className="btn ghost" href="#price">See pricing</a>
       </Rise>
+      </div>
       <div className="strip" aria-hidden="true">
         {STRIP.map((src, i) => (
           <div className="ph" key={i}><Image src={src} alt="" sizes="(min-width: 900px) 12vw, 45vw" placeholder="blur" /></div>

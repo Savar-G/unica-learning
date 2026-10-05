@@ -45,7 +45,7 @@
 /* ---------- layout: no side rails, full-bleed bands ---------- */
 [data-look="warm"] .frame { max-width: none; border: 0; }
 [data-look="warm"] .sec { border-top: 0; padding-left: var(--pad-x); padding-right: var(--pad-x); }
-[data-look="warm"] :is(#how, #inc, #price) { background: var(--soft); }
+/* one background everywhere so the pencil line runs unbroken; colour lives in contained panels and cards */
 [data-look="warm"] .sec > .knot { left: calc(var(--pad-x) - 30px); background: #fff; border-color: var(--accent); }
 [data-look="warm"] .thread path { stroke: var(--accent); stroke-width: 1.5; opacity: 0.45; }
 [data-look="warm"] .thread .tip { fill: var(--accent); }
@@ -115,7 +115,7 @@
 
 /* ---------- How it works: cards with corner squares ---------- */
 [data-look="warm"] .steps { border: 0; gap: 14px; }
-[data-look="warm"] .step { border: 0; background: #fff; border-radius: 4px; position: relative; padding: 26px 24px 24px; }
+[data-look="warm"] .step { border: 0; background: var(--card); border-radius: 4px; position: relative; padding: 26px 24px 24px; }
 [data-look="warm"] .step .sq { display: none; }
 [data-look="warm"] .step::after { content: ""; position: absolute; top: 0; right: 0; width: 20px; height: 20px; background: var(--g1); }
 [data-look="warm"] .step:nth-child(2)::after { background: var(--g3); }
@@ -151,14 +151,15 @@
 [data-look="warm"] .why .n { font: 400 12.5px/1 var(--mono); color: var(--ink-3); }
 
 /* ---------- What's included ---------- */
-[data-look="warm"] .card { border: 0; border-radius: 4px; background: #fff; }
+[data-look="warm"] .card { border: 0; border-radius: 4px; background: var(--card); }
 [data-look="warm"] .card:hover { transform: translateY(-3px); box-shadow: 0 16px 30px -22px rgba(0, 0, 0, 0.35); }
-[data-look="warm"] .card .ic { background: var(--card) !important; border-radius: 4px; }
+[data-look="warm"] .card .ic { background: #fff !important; border-radius: 4px; }
 [data-look="warm"] .card h3 { font-size: 19px; }
 
 /* ---------- emotional section on a grain field ---------- */
-[data-look="warm"] .feel {
-  background: var(--noise), var(--field), #fff; background-blend-mode: overlay, normal, normal, normal, normal, normal;
+[data-look="warm"] .feel::before {
+  content: ""; position: absolute; z-index: 0; inset: clamp(20px, 3vw, 40px) var(--pad-x); border-radius: 4px;
+  background: var(--noise), var(--field), var(--card); background-blend-mode: overlay, normal, normal, normal, normal, normal;
   background-size: 220px, 120% 120%, 120% 120%, 120% 120%, 120% 120%, auto;
   animation: field 26s ease-in-out infinite alternate;
 }
@@ -192,10 +193,12 @@
 [data-look="warm"] .faq details[open] summary .pm { background: var(--accent-soft); border-color: var(--accent); }
 
 /* ---------- closing ---------- */
-[data-look="warm"] .close {
-  background: var(--noise), radial-gradient(70% 55% at 50% 100%, var(--g3), transparent 75%), radial-gradient(50% 40% at 15% 90%, var(--g1), transparent 75%), radial-gradient(50% 40% at 85% 90%, var(--g2), transparent 75%), #fff;
+[data-look="warm"] .close-in {
+  border-radius: 4px; padding: clamp(40px, 6vw, 88px) clamp(20px, 4vw, 64px); margin-bottom: clamp(40px, 5vw, 64px);
+  background: var(--noise), radial-gradient(70% 60% at 50% 100%, var(--g3), transparent 75%), radial-gradient(50% 45% at 12% 90%, var(--g1), transparent 75%), radial-gradient(50% 45% at 88% 90%, var(--g2), transparent 75%), var(--card);
   background-blend-mode: overlay, normal, normal, normal, normal; background-size: 220px, auto, auto, auto, auto;
 }
+[data-look="warm"] .close-in .ctas { margin-bottom: 0; }
 [data-look="warm"] .beliefs { border: 0; gap: 12px; }
 [data-look="warm"] .beliefs li { border: 0; border-radius: 4px; background: rgba(255, 255, 255, 0.8); }
 [data-look="warm"] .close h2 { font-size: clamp(42px, 6vw, 88px); }
@@ -203,7 +206,7 @@
 [data-look="warm"] .strip .ph { border-radius: 2px; }
 
 /* ---------- footer + dialog ---------- */
-[data-look="warm"] .foot { border-top: 1px solid var(--line); background: var(--soft); }
+[data-look="warm"] .foot { border-top: 1px solid var(--line); background: #fff; }
 [data-look="warm"] .foot ol { font-size: 13px; }
 [data-look="warm"] dialog.rsv { border-radius: 10px; border-color: var(--line); }
 [data-look="warm"] .rsv .hd { border-bottom-color: var(--line); }
@@ -218,7 +221,7 @@
 [data-look="warm"] .rsv .x { border-radius: 6px; border-color: var(--line); }
 
 @media (prefers-reduced-motion: reduce) {
-  [data-look="warm"] :is(.hero-c .stage, .feel) { animation: none; }
+  [data-look="warm"] :is(.hero-c .stage, .feel::before) { animation: none; }
 }
 
 /* drawn product pieces keep their own ink on dark sections */
