@@ -2,16 +2,17 @@
 
 // Reserve flow: plan + age -> details -> review -> result.
 // Any element with [data-open] opens it ([data-plan] preselects a plan, [data-src] names the CTA).
-// TODO(D3/D8): the review step will hand off to Stripe; until then it records the reservation in PostHog only.
+// Each reservation (and each outside-area waitlist entry) is saved through /api/signup to Supabase.
+// TODO(D3/D8): the review step will hand off to Stripe.
 import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
 import { DELIVERY_FSA, PLANS, type PlanId } from "@/lib/site";
+import { EMAIL, POSTAL, type SignupStatus } from "@/lib/signup";
 import { identify, track } from "@/lib/track";
 
-type Step = 1 | 2 | 3 | "ok" | "wait" | "bad";
+type Step = 1 | 2 | 3 | "ok" | "wait" | "bad" | "err";
 type Errors = Partial<Record<"name" | "email" | "postal", boolean>>;
 
-const POSTAL = /^[ABCEGHJ-NPRSTVXY]\d[A-Z] ?\d[A-Z]\d$/i;
-const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const UTM = ["utm_source", "utm_medium", "utm_campaign", "utm_content", "ref"];
 
 export function Reserve() {
   const dlg = useRef<HTMLDialogElement>(null);
@@ -24,9 +25,13 @@ export function Reserve() {
   const [postal, setPostal] = useState("");
   const [errors, setErrors] = useState<Errors>({});
   const [busy, setBusy] = useState(false);
+  const [src, setSrc] = useState("unknown");
+  const [website, setWebsite] = useState("");
+  const [pending, setPending] = useState<SignupStatus>("reserved");
 
   const open = useCallback((src: string, p?: string) => {
     if (p === "one" || p === "both") setPlan(p);
+    setSrc(src);
     setStep(1);
     dlg.current?.showModal();
     track("cta_click", { src, plan: p ?? null });
@@ -54,6 +59,48 @@ export function Reserve() {
   const price = PLANS[plan].price;
   const close = () => dlg.current?.close();
 
+  // Save the signup. Returns false when the server could not store it.
+  const save = async (status: SignupStatus) => {
+    const qs = new URLSearchParams(window.location.search);
+    const source: Record<string, string> = { cta: src };
+    if (document.referrer) source.referrer = document.referrer;
+    for (const k of UTM) {
+      const v = qs.get(k);
+      if (v) source[k] = v;
+    }
+    try {
+      const res = await fetch("/api/signup", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status, name: name.trim(), email: email.trim(), postal: postal.trim().toUpperCase(), plan, subject: subj, age: Number(age), source, website }),
+      });
+      if (!res.ok) track("signup_save_failed", { status, code: res.status });
+      return res.ok;
+    } catch {
+      track("signup_save_failed", { status, code: 0 });
+      return false;
+    }
+  };
+
+  const finish = async (status: SignupStatus) => {
+    setPending(status);
+    setBusy(true);
+    const ok = await save(status);
+    setBusy(false);
+    if (!ok) {
+      setStep("err");
+      return;
+    }
+    identify(email.trim().toLowerCase(), { name: name.trim(), postal: postal.trim().toUpperCase(), plan, subject: subj, age });
+    if (status === "waitlist") {
+      track("waitlist_join", { fsa: postal.trim().slice(0, 3).toUpperCase() });
+      setStep("wait");
+    } else {
+      track("reserve_success", { plan, subject: subj, age, price });
+      setStep("ok");
+    }
+  };
+
   const submitPlan = (e: FormEvent) => {
     e.preventDefault();
     track("plan_selected", { plan, subject: subj, age });
@@ -77,7 +124,7 @@ export function Reserve() {
     setPostal(pc);
     if (!DELIVERY_FSA.test(pc)) {
       track("outside_area", { fsa: pc.slice(0, 3) });
-      setStep("wait");
+      void finish("waitlist");
       return;
     }
     track("details_done");
@@ -86,19 +133,13 @@ export function Reserve() {
 
   const confirm = (e: FormEvent) => {
     e.preventDefault();
-    setBusy(true);
     track("checkout_start", { plan, age });
-    window.setTimeout(() => {
-      setBusy(false);
-      if (/declined/.test(window.location.search)) {
-        track("checkout_declined");
-        setStep("bad");
-        return;
-      }
-      identify(email.trim().toLowerCase(), { name: name.trim(), postal, plan, subject: subj, age });
-      track("reserve_success", { plan, subject: subj, age, price });
-      setStep("ok");
-    }, 900);
+    if (/declined/.test(window.location.search)) {
+      track("checkout_declined");
+      setStep("bad");
+      return;
+    }
+    void finish("reserved");
   };
 
   const dots = typeof step === "number" ? step : 3;
@@ -163,9 +204,12 @@ export function Reserve() {
           <input id="f-postal" autoComplete="postal-code" placeholder="V6B 1A1" value={postal} onChange={(e) => setPostal(e.target.value)} aria-invalid={!!errors.postal} aria-describedby="e-postal" />
           <span className="err" id="e-postal">Enter a Canadian postal code, like V6B 1A1.</span>
         </div>
+        <input className="hp" type="text" name="website" tabIndex={-1} autoComplete="off" aria-hidden="true" value={website} onChange={(e) => setWebsite(e.target.value)} />
         <div className="row2">
           <button className="btn ghost" type="button" onClick={() => setStep(1)}>Back</button>
-          <button className="btn" type="submit">Continue <span className="arr">→</span></button>
+          <button className="btn" type="submit" disabled={busy} aria-busy={busy}>
+            {busy ? <span className="spin" aria-label="Saving" /> : <>Continue <span className="arr">→</span></>}
+          </button>
         </div>
       </form>
 
@@ -197,9 +241,9 @@ export function Reserve() {
 
       <div data-step="wait" className="state" hidden={step !== "wait"} style={{ padding: "28px 22px 30px" }} aria-live="polite">
         <div className="big" style={{ background: "#D9E3FF" }}><svg viewBox="0 0 30 30" aria-hidden="true"><path d="M15 8v8l5 3" /></svg></div>
-        <h3>We&apos;re not in your area yet.</h3>
+        <h3>You&apos;re on the waitlist.</h3>
         <p className="lead" style={{ margin: 0, fontSize: 17 }}>We don&apos;t deliver to {postal} yet. We&apos;ll email {email.trim()} as soon as we do.</p>
-        <button className="btn" type="button" onClick={() => { track("waitlist_join", { fsa: postal.slice(0, 3) }); close(); }}>Join the waitlist</button>
+        <button className="btn" type="button" onClick={close}>Done</button>
       </div>
 
       <div data-step="bad" className="state" hidden={step !== "bad"} style={{ padding: "28px 22px 30px" }} aria-live="polite">
@@ -207,6 +251,15 @@ export function Reserve() {
         <h3>Your card was declined.</h3>
         <p className="lead" style={{ margin: 0, fontSize: 17 }}>Nothing was charged. Try another card.</p>
         <button className="btn" type="button" onClick={() => setStep(3)}>Try again</button>
+      </div>
+
+      <div data-step="err" className="state" hidden={step !== "err"} style={{ padding: "28px 22px 30px" }} aria-live="polite">
+        <div className="big" style={{ background: "#FFD9C9" }}><svg viewBox="0 0 30 30" aria-hidden="true"><path d="M15 8v9M15 21v1" /></svg></div>
+        <h3>We couldn&apos;t save your spot.</h3>
+        <p className="lead" style={{ margin: 0, fontSize: 17 }}>Check your connection and try again. Nothing was charged.</p>
+        <button className="btn" type="button" disabled={busy} aria-busy={busy} onClick={() => void finish(pending)}>
+          {busy ? <span className="spin" aria-label="Saving" /> : "Try again"}
+        </button>
       </div>
     </dialog>
   );
