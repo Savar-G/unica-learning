@@ -51,3 +51,6 @@ ds-bundle/
 .design-sync/learnings/
 .design-sync/node_modules
 !.env.example
+
+# agent worktrees
+.claude/worktrees/

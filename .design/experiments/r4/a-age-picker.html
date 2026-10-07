@@ -1,0 +1,43 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>A - Pick your child's age</title>
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@300;400;500&family=Geist+Mono&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="shared.css">
+<style>
+.top{display:flex;justify-content:space-between;align-items:flex-end;gap:24px;flex-wrap:wrap}
+.top .lead{margin-bottom:28px}
+.seg{display:inline-flex;border:1px solid var(--line);border-radius:6px;padding:4px;gap:4px;margin-bottom:28px;background:#fff}
+.seg button{appearance:none;border:0;background:none;border-radius:4px;padding:10px 16px;font:400 15px "Geist",sans-serif;cursor:pointer;color:var(--ink-2);display:grid;text-align:left;gap:2px}
+.seg button small{font:400 11.5px "Geist Mono",monospace;color:var(--ink-3)}
+.seg button[aria-selected=true]{background:var(--ink);color:#fff}.seg button[aria-selected=true] small{color:#bbb}
+.cols{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+.card{padding:28px 28px 30px}
+.card::after{content:"";position:absolute;top:0;right:0;width:20px;height:20px;background:var(--c)}
+.card h3{font-size:26px;font-weight:400;margin:0 0 4px}
+.card .mono{color:var(--ink-3)}
+ul{list-style:none;margin:22px 0 0;padding:0;display:grid;gap:0}
+li{display:flex;gap:12px;align-items:baseline;padding:12px 0;border-top:1px solid #e9e7e3;font-size:17px;opacity:0;transform:translateY(6px);animation:in .45s cubic-bezier(.2,.7,.2,1) forwards;animation-delay:calc(var(--i)*45ms)}
+li::before{content:"";width:7px;height:7px;background:var(--c);flex:none;transform:translateY(-2px)}
+@keyframes in{to{opacity:1;transform:none}}
+@media (max-width:760px){.cols{grid-template-columns:1fr}.seg{display:flex}.seg button{flex:1;padding:9px 10px}}
+</style></head><body>
+<div class="tag">A · Pick your child's age</div>
+<div id="head"></div>
+<div class="seg" role="tablist" aria-label="Your child's age" id="seg"></div>
+<div class="cols" id="cols"></div>
+<div id="prov"></div>
+<script src="content.js"></script>
+<script>
+head.innerHTML = HEAD; prov.innerHTML = PROV;
+let cur = "8-9";
+const list = (items) => `<ul>${items.map((t,i)=>`<li style="--i:${i}">${t}</li>`).join("")}</ul>`;
+function render(){
+  seg.innerHTML = BANDS.map(b=>`<button role="tab" aria-selected="${b.id===cur}" data-id="${b.id}">${b.age}<small>${b.grade}</small></button>`).join("");
+  const b = BANDS.find(x=>x.id===cur);
+  cols.innerHTML = `
+    <div class="card" style="--c:var(--g1)"><span class="mono">Math · ${b.grade}</span><h3>Math</h3>${list(b.math)}</div>
+    <div class="card" style="--c:var(--g3)"><span class="mono">Reading · ${b.grade}</span><h3>Reading</h3>${list(b.reading)}</div>`;
+}
+seg.addEventListener("click", e=>{const b=e.target.closest("button"); if(b){cur=b.dataset.id; render();}});
+render();
+</script>
+</body></html>

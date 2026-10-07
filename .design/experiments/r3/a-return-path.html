@@ -1,0 +1,47 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>A - Return path</title>
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@300;400;500&family=Geist+Mono&family=Caveat:wght@500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="shared.css">
+<style>
+.wrap{position:relative;padding:40px 44px 0 0}
+.grid{display:grid;gap:16px;grid-template-columns:repeat(3,1fr);position:relative;z-index:1}
+svg.loop{position:absolute;inset:0;width:100%;height:100%;overflow:visible;z-index:0;pointer-events:none}
+svg.loop path.track{fill:none;stroke:var(--accent);stroke-width:2;stroke-linecap:round;stroke-dasharray:var(--len);stroke-dashoffset:var(--len);transition:stroke-dashoffset 1.8s cubic-bezier(.6,0,.2,1)}
+.on svg.loop path.track{stroke-dashoffset:0}
+svg.loop .dot{fill:var(--accent);opacity:0;transition:opacity .4s 1.6s}.on svg.loop .dot{opacity:1}
+svg.loop .lbl{font:500 22px "Caveat",cursive;fill:var(--accent);opacity:0;transition:opacity .5s 1.4s}.on svg.loop .lbl{opacity:1}
+.card[data-n="02"].pulse{box-shadow:0 0 0 2px var(--accent)}
+@media (max-width:760px){.wrap{padding:0 0 0 30px}.grid{grid-template-columns:1fr}}
+</style></head><body>
+<div class="tag">A · Return path</div>
+<div class="eyebrow">How it works</div><h2>Six steps. One loop.</h2>
+<p class="lead">Every book is built from the last one, so the work always matches what your child needs next.</p>
+<div class="wrap" id="wrap"><svg class="loop" id="svg"></svg><div class="grid" id="grid"></div></div>
+<script src="steps.js"></script>
+<script>
+const grid=document.getElementById("grid"), svg=document.getElementById("svg"), wrap=document.getElementById("wrap");
+grid.innerHTML=STEPS.map(s=>card(s)).join("");
+let path,dot,len;
+function draw(){
+  const W=wrap.getBoundingClientRect(), r=el=>{const b=grid.querySelector(`[data-n="${el}"]`).getBoundingClientRect();return{l:b.left-W.left,r:b.right-W.left,t:b.top-W.top,b:b.bottom-W.top,cx:(b.left+b.right)/2-W.left,cy:(b.top+b.bottom)/2-W.top}};
+  const c2=r("02"), c6=r("06"), mobile=innerWidth<=760, R=18; let d, lx, ly;
+  if(!mobile){
+    const gx=c6.r+30, top=c2.t-22;
+    d=`M${c6.r},${c6.cy} H${gx-R} Q${gx},${c6.cy} ${gx},${c6.cy-R} V${top+R} Q${gx},${top} ${gx-R},${top} H${c2.cx+R} Q${c2.cx},${top} ${c2.cx},${top+R} V${c2.t-2}`;
+    lx=gx+8; ly=(c6.cy+top)/2;
+  } else {
+    const gx=c6.l-16;
+    d=`M${c6.l},${c6.cy} H${gx+R} Q${gx},${c6.cy} ${gx},${c6.cy-R} V${c2.cy+R} Q${gx},${c2.cy} ${gx+R},${c2.cy} H${c2.l-2}`;
+    lx=gx-4; ly=(c6.cy+c2.cy)/2;
+  }
+  svg.innerHTML=`<defs><marker id="ar" viewBox="0 0 10 10" refX="7" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#ff6a3d"/></marker></defs>
+   <path class="track" d="${d}" marker-end="url(#ar)"/><circle class="dot" r="6"/>
+   <text class="lbl" x="${lx}" y="${ly}" transform="rotate(${mobile?-90:90} ${lx} ${ly})" text-anchor="middle">next book</text>`;
+  path=svg.querySelector(".track"); dot=svg.querySelector(".dot"); len=path.getTotalLength(); path.style.setProperty("--len",len);
+}
+draw(); addEventListener("resize",draw);
+new IntersectionObserver(([e])=>{if(e.isIntersecting){wrap.classList.add("on")}},{threshold:.3}).observe(wrap);
+let t0=performance.now();
+function tick(t){ if(path&&wrap.classList.contains("on")&&!reduced){const p=((t-t0)/2600)%1, pt=path.getPointAtLength(p*len); dot.setAttribute("cx",pt.x); dot.setAttribute("cy",pt.y); grid.querySelector('[data-n="02"]').classList.toggle("pulse",p>.9)} requestAnimationFrame(tick)}
+if(reduced){wrap.classList.add("on")} requestAnimationFrame(tick);
+</script></body></html>

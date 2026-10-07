@@ -1,0 +1,5 @@
+{"round":3,"decision":"How should How it works show that step 6 leads back to step 2?","primary_axis":"loop representation","invariants":["same six steps and copy","same tokens","real photos where we have them, labelled placeholders elsewhere","no mock worksheets"],
+"options":[
+{"id":"A","artifact":"a-return-path.html","bet":"Keep the 3x2 grid; a pencil line draws from 6 back to 2 with a travelling dot","benefit":"Smallest change; reuses the pencil-line motif","cost":"Line routes around the grid","risk":"May still read as decoration"},
+{"id":"B","artifact":"b-once-every-book.html","bet":"Split into 'Once, to start' (Assess) and an 'Every book' panel (2-6) with a stepping highlight and a return arrow","benefit":"Structure says what repeats; strong on phones","cost":"Less playful","risk":"Five cards in a row get narrow on desktop"},
+{"id":"C","artifact":"c-ring.html","bet":"Steps 2-6 on a ring with an orbiting dot; Assess enters from outside; centre/side shows the active step","benefit":"The shape is the message","cost":"Only one step's text visible at a time; most custom code","risk":"Parents may not read every step"}]}
