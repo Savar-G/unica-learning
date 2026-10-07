@@ -393,6 +393,7 @@ main{position:relative;display:block}
 
 /* steps use the hidden attribute; keep it stronger than the display rules above */
 .rsv [hidden]{display:none !important}
+.rsv .hp{position:absolute;left:-9999px;width:1px;height:1px;opacity:0}
 
 /* covers on blue/green stock use white type */
 .cover.on-dark{color:#fff}
