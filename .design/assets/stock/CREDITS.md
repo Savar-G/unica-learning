@@ -62,3 +62,7 @@ All photos: Unsplash (https://unsplash.com/license), free to use. No Pexels used
 ## Excluded 2026-10-04
 Unsplash+ (paid licence, watermarked previews): emotion-14, emotion-2, emotion-3, emotion-8, hero-home-3, hero-home-4, hero-home-5, hero-lineup-1, hero-lineup-2, hero-lineup-3, hero-lineup-5, hero-lineup-6, loop-adapt-1, loop-adapt-2, loop-adapt-6, loop-assess-4, loop-deliver-1, loop-deliver-2, loop-deliver-4, loop-deliver-5, loop-practice-reading-3, loop-scan-1, loop-scan-3. Moved to `_excluded/`; do not use.
 Also avoid (third-party branding visible): loop-deliver-3, loop-deliver-6.
+| loop-deliver-7.jpg | https://www.pexels.com/photo/7363199/ | (see page) | Pexels License | Parcel and two mailers on a front step. Use the crop (loop-deliver-7-crop.jpg): the full photo shows a USPS label | 2000x1333 |
+| loop-scan-4.jpg | https://www.pexels.com/photo/6890204/ | cottonbro studio | Pexels License | Phone camera photographing a page | 2000x3000 |
+| loop-adapt-7.jpg | https://www.pexels.com/photo/8055086/ | Annushka Ahuja | Pexels License | A girl shows her homework to her parents in the living room | 2000x1333 |
+| loop-repeat-1.jpg | https://www.pexels.com/photo/8055147/ | Annushka Ahuja | Pexels License | A girl works in a spiral notebook at the dining table; father cooks behind | 2000x1333 |

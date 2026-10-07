@@ -5,7 +5,6 @@ import Image, { type StaticImageData } from "next/image";
 import { BRAND, HERO, PLANS } from "@/lib/site";
 import {
   BeliefList,
-  CoverStack,
   Eyebrow,
   Faq as FaqList,
   FeatureCard,
@@ -13,9 +12,7 @@ import {
   GradientPanel,
   Hero as HeroBlock,
   IncludedCard,
-  Mailer,
   Nav as NavBar,
-  PhoneScan,
   PlanCard,
   PlanGrid,
   Section,
@@ -23,7 +20,6 @@ import {
   StepCard,
   StepGrid,
   SwapWord,
-  WorkbookPage,
   type IconName,
 } from "@/ds";
 import { Knot, Rise, type Vars } from "./drawn";
@@ -32,6 +28,11 @@ import heroHome1 from "@/assets/img/hero-home-1.jpg";
 import heroHome2 from "@/assets/img/hero-home-2.jpg";
 import assessPaper from "@/assets/img/loop-assess-paper.jpg";
 import practice6 from "@/assets/img/loop-practice-6.jpg";
+import deliverPhoto from "@/assets/img/loop-deliver.jpg";
+import scanPhoto from "@/assets/img/loop-scan.jpg";
+import adaptPhoto from "@/assets/img/loop-adapt.jpg";
+import repeatPhoto from "@/assets/img/loop-repeat.jpg";
+import emo1 from "@/assets/img/emotion-1.jpg";
 import adapt3 from "@/assets/img/loop-adapt-3.jpg";
 import adapt4 from "@/assets/img/loop-adapt-4.jpg";
 import reading1 from "@/assets/img/loop-practice-reading-1.jpg";
@@ -73,6 +74,7 @@ export function Hero() {
         id="top"
         eyebrow={HERO.eyebrow}
         lead={HERO.sub}
+        page={null}
         animate
         actions={
           <>
@@ -116,7 +118,7 @@ export function What() {
         <Rise className="row" d={0.16}>
           <h3>Mailed to your door.</h3>
           <p>Your next book arrives before the current one runs out. Delivery is included.</p>
-          <div className="ph"><Mailer animate /></div>
+          <Photo src={deliverPhoto} alt="Two mailers waiting on a front step" sizes="140px" />
         </Rise>
       </div>
     </Section>
@@ -128,12 +130,12 @@ const STEP_SIZES = "(min-width: 1080px) 380px, (min-width: 700px) 45vw, 92vw";
 const STEPS = [
   { n: "01", t: "Assess", d: "We send a free placement assessment on paper. It finds your child's level, strengths, gaps and misconceptions.",
     v: <Image src={assessPaper} alt="A child works through a page of math problems in pencil" sizes={STEP_SIZES} placeholder="blur" />, tone: "photo" as const },
-  { n: "02", t: "Deliver", d: "We create and mail a physical workbook personalized to what your child needs to work on.", v: <Mailer animate />, tone: "photo" as const },
+  { n: "02", t: "Deliver", d: "We create and mail a physical workbook personalized to what your child needs to work on.", v: <Image src={deliverPhoto} alt="Two mailers waiting on a front step" sizes={STEP_SIZES} placeholder="blur" />, tone: "photo" as const },
   { n: "03", t: "Practice", d: "Your child spends roughly 15-20 minutes a day working on paper.",
     v: <Image src={practice6} alt="A girl works through an arithmetic page in pencil" sizes={STEP_SIZES} placeholder="blur" />, tone: "photo" as const },
-  { n: "04", t: "Scan", d: "You take a photo of the completed pages with your phone.", v: <PhoneScan animate />, tone: "photo" as const },
-  { n: "05", t: "Adapt", d: "Our system checks your child's answers and updates their learning profile.", v: <WorkbookPage />, tone: "paper" as const },
-  { n: "06", t: "Repeat", d: "The next workbook is built from what your child mastered, struggled with or needs to review. It arrives before the current one runs out.", v: <WorkbookPage variant="next-book" />, tone: "paper" as const },
+  { n: "04", t: "Scan", d: "You take a photo of the completed pages with your phone.", v: <Image src={scanPhoto} alt="A phone camera frames a page to photograph it" sizes={STEP_SIZES} placeholder="blur" />, tone: "photo" as const },
+  { n: "05", t: "Adapt", d: "Our system checks your child's answers and updates their learning profile.", v: <Image src={adaptPhoto} alt="A girl shows her finished work to her parents" sizes={STEP_SIZES} placeholder="blur" />, tone: "photo" as const },
+  { n: "06", t: "Repeat", d: "The next workbook is built from what your child mastered, struggled with or needs to review. It arrives before the current one runs out.", v: <Image src={repeatPhoto} alt="A girl starts on her next book at the dining table" sizes={STEP_SIZES} placeholder="blur" />, tone: "photo" as const },
 ];
 
 export function How() {
@@ -215,7 +217,7 @@ export function Included() {
       <div className="inc">
         {col(INCLUDED[0])}
         <Rise>
-          <CoverStack />
+          <div className="ph" style={{ aspectRatio: "3 / 4", borderRadius: 4 }}><Image src={emo1} alt="A boy works on a paper page at his desk" sizes="(min-width: 980px) 300px, 92vw" placeholder="blur" /></div>
         </Rise>
         {col(INCLUDED[1])}
       </div>
@@ -239,8 +241,6 @@ export function Feel() {
           <div className="ph"><Image src={src} alt="" sizes="(min-width: 760px) 18vw, 40vw" placeholder="blur" /></div>
         </div>
       ))}
-      <div className="drift scrap hide-sm" data-speed=".24" data-io style={{ left: "9%", top: "38%", width: "11%", "--r": "-7deg" } as Vars}><WorkbookPage variant="reading" /></div>
-      <div className="drift scrap hide-sm" data-speed="-.2" data-io style={{ left: "81%", top: "35%", width: "11%", "--r": "6deg" } as Vars}><WorkbookPage /></div>
       <Rise className="msg">
         <h2 id="feelT">No two kids learn the same way.</h2>
         <p className="lead">So no two {BRAND} books are the same. Each one starts where your child is, and moves on when they&apos;re ready.</p>
