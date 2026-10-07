@@ -251,9 +251,9 @@ export function Feel() {
 
 const PROMISE: [IconName, string, string][] = [
   ["shield", "30-day money-back guarantee", "If it is not working for your child in the first 30 days, we refund your payment in full."],
+  ["calendar", "Fits your family's schedule", "Kids are busy. Take a week or a month off, and pick up where your child left off."],
   ["test", "Free assessment, no card", "See where your child is before you pay anything."],
   ["undo", "Cancel anytime", "No contract. Stop whenever you want."],
-  ["lock", "Your child's work stays private", "We use it only to make your child's next book. We never sell or share it."],
 ];
 
 export function OurPromise() {
@@ -318,6 +318,7 @@ const FAQ = [
   ["Who is it for?", "Children aged 6 to 12, in math, reading or both."],
   ["How does the free assessment work?", "We send a short placement assessment on paper, matched to your child's age. Your child does it at home, and you send us a photo of the finished pages. It is free, and we use it to make your child's first book."],
   ["Does it follow the BC curriculum?", "Yes. Every book follows the BC curriculum for your child's grade, and starts from where your child actually is."],
+  ["Can we take a break?", "Yes. Pause for a week, a month or longer. You pay only when a book ships, and nothing is lost: the next book starts where your child left off."],
   ["What if we miss a few days?", "The next book picks up where your child is. Nothing is lost."],
   ["What if we forget to send photos?", "We send a reminder. Until new pages arrive, the next book reviews what your child last worked on."],
   ["How is the work checked?", "Every page you photograph is checked, working included. The results update your child's learning profile and your progress report."],
