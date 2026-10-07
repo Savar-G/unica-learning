@@ -315,7 +315,7 @@ export function Pricing() {
 
 const FAQ = [
   ["Is there any screen time?", "Your child works on paper. The only screen is your phone camera, for the few seconds it takes to snap the finished pages."],
-  ["Who is it for?", "Children aged 6 to 12, in math, reading or both."],
+  ["Who is it for?", "Children in grades 1 to 7 (ages 6 to 12), in math, reading or both."],
   ["How does the free assessment work?", "We send a short placement assessment on paper, matched to your child's age. Your child does it at home, and you send us a photo of the finished pages. It is free, and we use it to make your child's first book."],
   ["Does it follow the BC curriculum?", "Yes. Every book follows the BC curriculum for your child's grade, and starts from where your child actually is."],
   ["Can we take a break?", "Yes. Pause for a week, a month or longer. You pay only when a book ships, and nothing is lost: the next book starts where your child left off."],
