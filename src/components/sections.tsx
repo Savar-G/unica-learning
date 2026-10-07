@@ -10,8 +10,6 @@ import {
   Faq as FaqList,
   FeatureCard,
   FeatureGrid,
-  FounderCard,
-  FounderGrid,
   GradientPanel,
   Hero as HeroBlock,
   IncludedCard,
@@ -32,7 +30,7 @@ import { Knot, Rise, type Vars } from "./drawn";
 
 import heroHome1 from "@/assets/img/hero-home-1.jpg";
 import heroHome2 from "@/assets/img/hero-home-2.jpg";
-import assess1 from "@/assets/img/loop-assess-1.jpg";
+import assessPaper from "@/assets/img/loop-assess-paper.jpg";
 import practice6 from "@/assets/img/loop-practice-6.jpg";
 import adapt3 from "@/assets/img/loop-adapt-3.jpg";
 import adapt4 from "@/assets/img/loop-adapt-4.jpg";
@@ -55,7 +53,7 @@ function Photo({ src, alt, sizes, className = "ph" }: { src: StaticImageData; al
 }
 
 /** Opens the reserve dialog (see reserve.tsx, which listens for [data-open]). */
-function GetStarted({ src, plan, label = "Get started", ghost = false }: { src: string; plan?: string; label?: string; ghost?: boolean }) {
+function GetStarted({ src, plan, label = "Take free assessment", ghost = false }: { src: string; plan?: string; label?: string; ghost?: boolean }) {
   return (
     <button className={`btn${ghost ? " ghost" : ""}`} data-open data-src={src} data-plan={plan}>
       {label} {!ghost && <span className="arr">→</span>}
@@ -66,7 +64,7 @@ function GetStarted({ src, plan, label = "Get started", ghost = false }: { src: 
 const d = (s: number) => ({ "--d": `${s}s` }) as Vars;
 
 export function Nav() {
-  return <NavBar brand={BRAND} cta={<button className="btn sm" data-open data-src="nav">Get started</button>} />;
+  return <NavBar brand={BRAND} cta={<button className="btn sm" data-open data-src="nav">Free assessment</button>} />;
 }
 
 export function Hero() {
@@ -112,8 +110,8 @@ export function What() {
         </Rise>
         <Rise className="row" d={0.08}>
           <h3>Starts at their level.</h3>
-          <p>A short online assessment finds where your child is, so the first book fits from page one.</p>
-          <Photo src={assess1} alt="A child takes a short assessment on a laptop with her mother" sizes="140px" />
+          <p>A free placement assessment, on paper, finds where your child is, so the first book fits from page one.</p>
+          <Photo src={assessPaper} alt="A child works through a page of math problems in pencil" sizes="140px" />
         </Rise>
         <Rise className="row" d={0.16}>
           <h3>Mailed to your door.</h3>
@@ -128,8 +126,8 @@ export function What() {
 const STEP_SIZES = "(min-width: 1080px) 380px, (min-width: 700px) 45vw, 92vw";
 
 const STEPS = [
-  { n: "01", t: "Assess", d: "Your child completes an adaptive online assessment that identifies their level, strengths, gaps and misconceptions.",
-    v: <Image src={assess1} alt="A parent sits beside her daughter as she takes the assessment on a laptop" sizes={STEP_SIZES} placeholder="blur" />, tone: "photo" as const },
+  { n: "01", t: "Assess", d: "We send a free placement assessment on paper. It finds your child's level, strengths, gaps and misconceptions.",
+    v: <Image src={assessPaper} alt="A child works through a page of math problems in pencil" sizes={STEP_SIZES} placeholder="blur" />, tone: "photo" as const },
   { n: "02", t: "Deliver", d: "We create and mail a physical workbook personalized to what your child needs to work on.", v: <Mailer animate />, tone: "photo" as const },
   { n: "03", t: "Practice", d: "Your child spends roughly 15-20 minutes a day working on paper.",
     v: <Image src={practice6} alt="A girl works through an arithmetic page in pencil" sizes={STEP_SIZES} placeholder="blur" />, tone: "photo" as const },
@@ -187,7 +185,7 @@ export function Why() {
 
 const INCLUDED: [IconName, string, string, number][][] = [
   [
-    ["test", "Placement assessment", "A short online assessment finds your child's level, strengths and gaps.", 0],
+    ["test", "Free placement assessment", "A short assessment on paper finds your child's level, strengths and gaps.", 0],
     ["book", "Personalized workbooks", "Math, reading or both, made for your child and no one else.", 0.08],
     ["box", "Delivery included", "Your next book arrives before the current one runs out.", 0.16],
   ],
@@ -251,35 +249,12 @@ export function Feel() {
   );
 }
 
-export function Team() {
-  return (
-    <Section id="team" aria-labelledby="teamT">
-      <Knot />
-      <div className="found">
-        <Rise>
-          <Eyebrow>Who&apos;s behind it</Eyebrow>
-          <h2 id="teamT" style={{ margin: "16px 0 20px" }}>Made by two students who grew up on workbooks.</h2>
-          <p className="lead">
-            Savar and Cedric both did workbook programs as kids. We know what daily practice on paper builds, and we know what too much screen time feels like. {BRAND} is the program we wish we&apos;d had: real paper, with a book that keeps up with you.
-          </p>
-        </Rise>
-        <Rise d={0.1}>
-          <FounderGrid>
-            <FounderCard name="Savar Gupta" initial="S" field="warm" />
-            <FounderCard name="Cedric Tanafranca" initial="C" field="cool" />
-          </FounderGrid>
-        </Rise>
-      </div>
-    </Section>
-  );
-}
-
 export function Pricing() {
   return (
     <Section id="price" aria-labelledby="priceT">
       <Knot />
       <Rise>
-        <SectionHeader eyebrow="Pricing" title="Simple pricing." titleId="priceT" lead="Less than CAD 2 a day for a workbook made for your child." />
+        <SectionHeader eyebrow="Pricing" title="Simple pricing." titleId="priceT" lead="Less than CAD 2 a day for a workbook made for your child. Every plan has a 30-day money-back guarantee." />
       </Rise>
       <PlanGrid>
         <PlanCard
@@ -287,7 +262,7 @@ export function Pricing() {
           name="One subject"
           note={PLANS.one.note}
           price={PLANS.one.price}
-          features={["Placement assessment", "Personalized workbooks, mailed home", "Your next book arrives before the current one runs out", "Progress reports, updated continuously", "Delivery included. Cancel anytime"]}
+          features={["Free placement assessment", "Personalized workbooks, mailed home", "Your next book arrives before the current one runs out", "Progress reports, updated continuously", "Delivery included. Cancel anytime", "30-day money-back guarantee"]}
           ctaLabel="Choose one subject"
           cta={<GetStarted src="price" plan="one" label="Choose one subject" ghost />}
         />
@@ -298,7 +273,7 @@ export function Pricing() {
           name="Math + Reading"
           note={PLANS.both.note}
           price={PLANS.both.price}
-          features={["Everything in One Subject", "A math book and a reading book every cycle", "One progress report for both", "Delivery included. Cancel anytime"]}
+          features={["Everything in One Subject", "A math book and a reading book every cycle", "One progress report for both", "Delivery included. Cancel anytime", "30-day money-back guarantee"]}
           ctaLabel="Choose math + reading"
           cta={<GetStarted src="price" plan="both" label="Choose math + reading" />}
         />
@@ -310,11 +285,13 @@ export function Pricing() {
 const FAQ = [
   ["Is there any screen time?", "Your child works on paper. The only screen is your phone camera, for the few seconds it takes to snap the finished pages."],
   ["Who is it for?", "Children aged 6 to 12, in math, reading or both."],
+  ["How does the free assessment work?", "We send a short placement assessment on paper, matched to your child's age. Your child does it at home, and you send us a photo of the finished pages. It is free, and we use it to make your child's first book."],
   ["Does it follow the BC curriculum?", "Yes. Every book follows the BC curriculum for your child's grade, and starts from where your child actually is."],
   ["What if we miss a few days?", "The next book picks up where your child is. Nothing is lost."],
   ["What if we forget to send photos?", "We send a reminder. Until new pages arrive, the next book reviews what your child last worked on."],
   ["How is the work checked?", "Every page you photograph is checked, working included. The results update your child's learning profile and your progress report."],
   ["What happens to my child's work?", "We use it only to make your child's next book. We never sell or share it, and you can ask us to delete it at any time."],
+  ["What if it is not right for my child?", "Every plan has a 30-day money-back guarantee. If it is not working for your child in the first 30 days, tell us and we refund your payment in full."],
   ["Can we cancel?", "Yes, anytime. You are charged only when a workbook ships."],
   ["Where do you deliver?", "Metro Vancouver for now. Enter your postal code when you sign up and we'll tell you right away."],
 ].map(([question, answer]) => ({ question, answer }));
