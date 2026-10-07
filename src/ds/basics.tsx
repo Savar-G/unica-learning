@@ -107,13 +107,13 @@ export function Highlight({ children, animate = false }: HighlightProps) {
 }
 
 export interface SwapWordProps {
-  /** Words that rotate in a mono pill every 2.2 s (first word shows with reduced motion). */
+  /** Words that rotate in a mono pill every 1.6 s (first word shows with reduced motion). */
   words: string[];
   interval?: number;
 }
 
 /** Inline word pill that cycles through `words`. Screen readers get the full list. */
-export function SwapWord({ words, interval = 2200 }: SwapWordProps) {
+export function SwapWord({ words, interval = 1600 }: SwapWordProps) {
   const [i, setI] = useState(0);
   useEffect(() => {
     if (typeof window === "undefined" || window.matchMedia("(prefers-reduced-motion: reduce)").matches || words.length < 2) return;

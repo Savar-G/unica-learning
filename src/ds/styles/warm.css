@@ -73,9 +73,9 @@
   font: 400 0.62em/1 var(--mono); padding: 0.42em 0.8em 0.42em 1.7em; position: relative; transform: translateY(6px); vertical-align: 0.12em;
 }
 [data-look="warm"] .swap > span::before { content: ""; position: absolute; left: 0.75em; top: 50%; width: 0.5em; height: 0.5em; margin-top: -0.25em; background: var(--g1); }
-[data-look="warm"] .swap > span:nth-child(2)::before { background: var(--g3); }
-[data-look="warm"] .swap > span:nth-child(3)::before { background: var(--g2); }
-[data-look="warm"] .swap > span:nth-child(4)::before { background: var(--g4); }
+[data-look="warm"] .swap > span:nth-child(4n+2)::before { background: var(--g3); }
+[data-look="warm"] .swap > span:nth-child(4n+3)::before { background: var(--g2); }
+[data-look="warm"] .swap > span:nth-child(4n+4)::before { background: var(--g4); }
 [data-look="warm"] .swap > span.on { transform: none; }
 
 /* ---------- hero ---------- */
@@ -227,7 +227,7 @@
 [data-look="warm"] .opt .p { font: 300 22px/1 var(--sans); }
 [data-look="warm"] .seg { border-radius: 6px; border-color: var(--line); }
 [data-look="warm"] .seg label { border-left-color: var(--line); }
-[data-look="warm"] .fld input { border-radius: 6px; border-color: #d4d4d8; }
+[data-look="warm"] .fld input, [data-look="warm"] .fld select { border-radius: 6px; border-color: #d4d4d8; }
 [data-look="warm"] .sum { border-radius: 6px; border-color: var(--line); }
 [data-look="warm"] .rsv .x { border-radius: 6px; border-color: var(--line); }
 

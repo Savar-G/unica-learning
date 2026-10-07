@@ -101,7 +101,14 @@ export function What() {
         </Rise>
         <Rise d={0.1}>
           <p className="big">
-            A workbook for <SwapWord words={["fractions", "reading", "long division", "new words"]} />
+            A workbook for <SwapWord
+              words={[
+                "fractions", "phonics", "times tables", "sight words", "long division", "main idea",
+                "place value", "spelling", "word problems", "reading aloud", "decimals", "new words",
+                "telling time", "vowel sounds", "mental math", "inference", "money", "grammar",
+                "percents", "summarizing", "adding to 20", "story order", "ratios", "comprehension",
+              ]}
+            />
             <br />
             made for one child: yours. Mailed to your door, and rebuilt from every page they finish.
           </p>

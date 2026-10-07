@@ -1,6 +1,6 @@
 import { after } from "next/server";
 import { PLANS } from "@/lib/site";
-import { EMAIL, POSTAL, type SignupPayload } from "@/lib/signup";
+import { CURRICULA, EMAIL, POSTAL, type SignupPayload } from "@/lib/signup";
 import { supabase } from "@/lib/supabase";
 
 const SUBJECTS = new Set(["Math", "Reading", "Math + Reading"]);
@@ -26,6 +26,7 @@ export async function POST(request: Request) {
     plan,
     subject: clip(body.subject, 20),
     grade: Number(body.grade),
+    curriculum: typeof body.curriculum === "string" && Object.hasOwn(CURRICULA, body.curriculum) ? body.curriculum : null,
     price: plan ? PLANS[plan].price : 0,
     source: Object.fromEntries(
       Object.entries(body.source ?? {}).slice(0, 12).map(([k, v]) => [k.slice(0, 40), clip(v, 300)]),
@@ -38,7 +39,8 @@ export async function POST(request: Request) {
     !POSTAL.test(row.postal) ||
     !plan ||
     !SUBJECTS.has(row.subject) ||
-    !Number.isInteger(row.grade) || row.grade < 1 || row.grade > 7
+    !Number.isInteger(row.grade) || row.grade < 1 || row.grade > 7 ||
+    !row.curriculum
   ) {
     return Response.json({ ok: false, error: "invalid" }, { status: 400 });
   }
@@ -55,7 +57,7 @@ export async function POST(request: Request) {
 
 // Email Savar about each new signup. Resend's free plan only delivers to the account's own address,
 // which is all an alert needs.
-async function notify(row: { status: string; name: string; email: string; postal: string; subject: string; grade: number; price: number; source: Record<string, string> }) {
+async function notify(row: { status: string; name: string; email: string; postal: string; subject: string; grade: number; curriculum: string | null; price: number; source: Record<string, string> }) {
   const key = process.env.RESEND_API_KEY;
   const to = process.env.SIGNUP_NOTIFY_EMAIL;
   if (!key || !to) return;
@@ -65,6 +67,7 @@ async function notify(row: { status: string; name: string; email: string; postal
     `Plan: ${row.subject}, CAD ${row.price}/month`,
     `Child grade: ${row.grade}`,
     `Postal code: ${row.postal}`,
+    `Curriculum: ${row.curriculum}`,
     `Source: ${Object.entries(row.source).map(([k, v]) => `${k}=${v}`).join(", ") || "direct"}`,
   ];
   try {
