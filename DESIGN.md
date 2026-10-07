@@ -22,7 +22,7 @@
 ## Source constraints
 
 - References: Savar's FigJam board (Primer, Ello, Squirrel AI, Outschool) with his notes; see `.design/references.json`.
-- Offer: math and reading, ages 6-12, Vancouver, delivery included. One subject CAD 49 a month; math + reading CAD 89 a month (D-026).
+- Offer: math and reading, ages 6-12, Vancouver, delivery included. One subject CAD 59 a month; math + reading CAD 99 a month (D-046).
 - Real product posture: no "pilot", "beta" or "test" wording (D-012).
 - No proof we do not have: no ratings, review counts, family counts, press logos, outcome percentages or testimonials. Until real customer references exist, proof = sample pages, clear price, a free placement assessment, a 30-day money-back guarantee, cancel anytime. No founder names or student status anywhere on the site (D-040).
 - Comparative and performance claims: Competition Act s.74.01(1)(b) requires an adequate and proper test before a claim about a product's performance. The page makes no research claims; the paper belief is stated as "We believe paper and pencil build stronger learning." (D-039). Never a claim about our results.
@@ -39,7 +39,7 @@
 
 Every section sets up the next one. A single pencil line connects the sections and the loop steps.
 
-1. **Hero (D-029, option C).** Centred text over one large photo of a child working at home; a marked workbook page and a progress report ("Updated just now") float on the photo. On phones the report sits under the photo and the page is hidden. Small line: "The future of learning is on paper." Headline: "Personalized. Delivered. Mastered." Line under it: "Math and reading workbooks made for your child, mailed home, and adapted after every book." Real children with real workbooks. One primary action ("Take free assessment", D-041) and the line "Ages 6-12 · From CAD 49 a month · Delivery included".
+1. **Hero (D-029, option C).** Centred text over one large photo of a child working at home; a marked workbook page and a progress report ("Updated just now") float on the photo. On phones the report sits under the photo and the page is hidden. Small line: "The future of learning is on paper." Headline: "Personalized. Delivered. Mastered." Line under it: "Math and reading workbooks made for your child, mailed home, and adapted after every book." Real children with real workbooks. One primary action ("Take free assessment", D-041) and the line "Ages 6-12 · From CAD 59 a month · Delivery included".
 2. **What is [Brand]?** Math and reading workbooks made for your child, mailed home. Your child works on paper. You snap the finished pages, and the next workbook adapts. Ages 6-12.
 3. **How it works.** A loop where step 6 returns to step 2. Savar's wording:
    1. **Assess:** We send a free placement assessment on paper; it finds the child's level, strengths, gaps and misconceptions. The parent returns it by photo (D-042).
@@ -52,7 +52,7 @@ Every section sets up the next one. A single pencil line connects the sections a
 5. **What's included.** A card grid: the placement test, the personalized workbook by mail ("Your next book arrives before the current one runs out."), the parent progress report ("updated continuously"; it must update after every scan), delivery, cancel anytime.
 6. **The emotional section.** Real photos and handwritten workbook pages drift around one centred line about every child learning differently.
 7. **Our promise (D-044).** "Try it with nothing to lose." A nameless line (made in Vancouver by a small team who grew up on paper workbooks) beside four cards: 30-day money-back guarantee, free assessment with no card, fits your family's schedule (pause anytime, no penalty), cancel anytime. Privacy stays in the FAQ. It replaces the founders' section (D-040).
-8. **Price and reserve.** Both plan cards are white; Math + Reading stands out with a grainy colour wash rising from the bottom (D-037). No savings badge and no fine print under the cards; the charge timing is stated in checkout. Two plans: one subject CAD 49 a month, math + reading CAD 89 a month, delivery included, cancel anytime, a 30-day money-back guarantee (D-043). Booking the free assessment needs no card; the parent pays when the first workbook ships.
+8. **Price and reserve.** Both plan cards are white; Math + Reading stands out with a grainy colour wash rising from the bottom (D-037). No savings badge and no fine print under the cards; the charge timing is stated in checkout. Two plans: one subject CAD 59 a month, math + reading CAD 99 a month, delivery included, cancel anytime, a 30-day money-back guarantee (D-043). Booking the free assessment needs no card; the parent pays when the first workbook ships.
 9. **FAQ.** Screen time, the free assessment, missed weeks, photos that stop, privacy, the money-back guarantee, cancelling.
 10. **Closing claim.** "This is what learning should be like." Then the final "Take free assessment" button.
 

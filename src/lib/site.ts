@@ -2,8 +2,8 @@
 export const BRAND = "Pagewise";
 
 export const PLANS = {
-  one: { id: "one", name: "One subject", price: 49, note: "Math or reading" },
-  both: { id: "both", name: "Math + Reading", price: 89, note: "Both subjects, one plan" },
+  one: { id: "one", name: "One subject", price: 59, note: "Math or reading" },
+  both: { id: "both", name: "Math + Reading", price: 99, note: "Both subjects, one plan" },
 } as const;
 
 export type PlanId = keyof typeof PLANS;
