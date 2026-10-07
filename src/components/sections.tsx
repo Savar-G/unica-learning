@@ -101,7 +101,14 @@ export function What() {
         </Rise>
         <Rise d={0.1}>
           <p className="big">
-            A workbook for <SwapWord words={["fractions", "reading", "long division", "new words"]} />
+            A workbook for <SwapWord
+              words={[
+                "fractions", "phonics", "times tables", "sight words", "long division", "main idea",
+                "place value", "spelling", "word problems", "reading aloud", "decimals", "new words",
+                "telling time", "vowel sounds", "mental math", "inference", "money", "grammar",
+                "percents", "summarizing", "adding to 20", "story order", "ratios", "comprehension",
+              ]}
+            />
             <br />
             made for one child: yours. Mailed to your door, and rebuilt from every page they finish.
           </p>
@@ -110,7 +117,7 @@ export function What() {
       <div className="rows">
         <Rise className="row">
           <h3>Math and reading, ages 6-12.</h3>
-          <p>Every book follows the BC curriculum. Choose one subject or both.</p>
+          <p>Built on your province&apos;s curriculum: BC, AB, SK, MB or ON. Your child works at their own level, not just their grade. Choose one subject or both.</p>
           <Photo src={practice6} alt="A girl works through an arithmetic page" sizes="140px" />
         </Rise>
         <Rise className="row" d={0.08}>
@@ -324,7 +331,8 @@ const FAQ = [
   ["Is there any screen time?", "Your child works on paper. The only screen is your phone camera, for the few seconds it takes to snap the finished pages."],
   ["Who is it for?", "Children in grades 1 to 7 (ages 6 to 12), in math, reading or both."],
   ["How does the free assessment work?", "We send a short placement assessment on paper, matched to your child's age. Your child does it at home, and you send us a photo of the finished pages. It is free, and we use it to make your child's first book."],
-  ["Does it follow the BC curriculum?", "Yes. Every book follows the BC curriculum for your child's grade, and starts from where your child actually is."],
+  ["What do the books cover?", "Math: numbers, math facts, fractions and decimals, measurement and word problems. Reading: phonics, reading aloud, vocabulary, understanding what they read, and writing. The free assessment decides where your child starts, which can be behind, at or ahead of their grade."],
+  ["Does it follow our school curriculum?", "Yes. Every book is built on your province's curriculum: BC, Alberta, Saskatchewan, Manitoba or Ontario. Within it, each book follows your child's level, not just their grade."],
   ["Can we take a break?", "Yes. Pause for a week, a month or longer. You pay only when a book ships, and nothing is lost: the next book starts where your child left off."],
   ["What if we miss a few days?", "The next book picks up where your child is. Nothing is lost."],
   ["What if we forget to send photos?", "We send a reminder. Until new pages arrive, the next book reviews what your child last worked on."],

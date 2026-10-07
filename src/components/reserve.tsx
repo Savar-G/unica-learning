@@ -6,7 +6,7 @@
 // TODO(D3/D8): the review step will hand off to Stripe.
 import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
 import { DELIVERY_FSA, PLANS, type PlanId } from "@/lib/site";
-import { EMAIL, POSTAL, type SignupStatus } from "@/lib/signup";
+import { CURRICULA, EMAIL, POSTAL, curriculumFromPostal, type CurriculumId, type SignupStatus } from "@/lib/signup";
 import { identify, track } from "@/lib/track";
 
 type Step = 1 | 2 | 3 | "ok" | "wait" | "bad" | "err";
@@ -23,6 +23,9 @@ export function Reserve() {
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [postal, setPostal] = useState("");
+  const [curriculum, setCurriculum] = useState<CurriculumId>("BC");
+  // Until the parent picks a curriculum, follow the province in their postal code.
+  const [pickedCurriculum, setPickedCurriculum] = useState(false);
   const [errors, setErrors] = useState<Errors>({});
   const [busy, setBusy] = useState(false);
   const [src, setSrc] = useState("unknown");
@@ -72,7 +75,7 @@ export function Reserve() {
       const res = await fetch("/api/signup", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ status, name: name.trim(), email: email.trim(), postal: postal.trim().toUpperCase(), plan, subject: subj, grade: Number(grade), source, website }),
+        body: JSON.stringify({ status, name: name.trim(), email: email.trim(), postal: postal.trim().toUpperCase(), plan, subject: subj, grade: Number(grade), curriculum, source, website }),
       });
       if (!res.ok) track("signup_save_failed", { status, code: res.status });
       return res.ok;
@@ -91,12 +94,12 @@ export function Reserve() {
       setStep("err");
       return;
     }
-    identify(email.trim().toLowerCase(), { name: name.trim(), postal: postal.trim().toUpperCase(), plan, subject: subj, grade });
+    identify(email.trim().toLowerCase(), { name: name.trim(), postal: postal.trim().toUpperCase(), plan, subject: subj, grade, curriculum });
     if (status === "waitlist") {
-      track("waitlist_join", { fsa: postal.trim().slice(0, 3).toUpperCase() });
+      track("waitlist_join", { fsa: postal.trim().slice(0, 3).toUpperCase(), curriculum });
       setStep("wait");
     } else {
-      track("reserve_success", { plan, subject: subj, grade, price });
+      track("reserve_success", { plan, subject: subj, grade, curriculum, price });
       setStep("ok");
     }
   };
@@ -201,8 +204,37 @@ export function Reserve() {
         </div>
         <div className={`fld${errors.postal ? " bad" : ""}`}>
           <label htmlFor="f-postal">Postal code</label>
-          <input id="f-postal" autoComplete="postal-code" placeholder="V6B 1A1" value={postal} onChange={(e) => setPostal(e.target.value)} aria-invalid={!!errors.postal} aria-describedby="e-postal" />
+          <input
+            id="f-postal"
+            autoComplete="postal-code"
+            placeholder="V6B 1A1"
+            value={postal}
+            onChange={(e) => {
+              setPostal(e.target.value);
+              const guess = curriculumFromPostal(e.target.value);
+              if (guess && !pickedCurriculum) setCurriculum(guess);
+            }}
+            aria-invalid={!!errors.postal}
+            aria-describedby="e-postal"
+          />
           <span className="err" id="e-postal">Enter a Canadian postal code, like V6B 1A1.</span>
+        </div>
+        <div className="fld">
+          <label htmlFor="f-curriculum">School curriculum</label>
+          <select
+            id="f-curriculum"
+            value={curriculum}
+            onChange={(e) => {
+              setCurriculum(e.target.value as CurriculumId);
+              setPickedCurriculum(true);
+            }}
+            aria-describedby="h-curriculum"
+          >
+            {(Object.keys(CURRICULA) as CurriculumId[]).map((k) => (
+              <option key={k} value={k}>{CURRICULA[k]}</option>
+            ))}
+          </select>
+          <span className="hint" id="h-curriculum">We match every book to what your child learns at school.</span>
         </div>
         <input className="hp" type="text" name="website" tabIndex={-1} autoComplete="off" aria-hidden="true" value={website} onChange={(e) => setWebsite(e.target.value)} />
         <div className="row2">
@@ -219,6 +251,7 @@ export function Reserve() {
           <div><span>Plan</span><b>{subj}</b></div>
           <div><span>Grade</span><b>{grade}</b></div>
           <div><span>Ship to</span><b>{postal}</b></div>
+          <div><span>Curriculum</span><b>{CURRICULA[curriculum]}</b></div>
           <div><span>Assessment</span><b>Free</b></div>
           <div><span>Then</span><b>CAD {price} / month</b></div>
         </div>
