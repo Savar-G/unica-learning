@@ -51,7 +51,7 @@ Every section sets up the next one. A single pencil line connects the sections a
 4. **Why choose [Brand]?** 3-4 cards that state what we do. No names of alternatives.
 5. **What's included.** A card grid: the placement test, the personalized workbook by mail ("Your next book arrives before the current one runs out."), the parent progress report ("updated continuously"; it must update after every scan), delivery, cancel anytime.
 6. **The emotional section.** Real photos and handwritten workbook pages drift around one centred line about every child learning differently.
-7. **(Removed.)** The founders' section is gone (D-040).
+7. **Our promise (D-044).** "Try it with nothing to lose." A nameless line (made in Vancouver by a small team who grew up on paper workbooks) beside four cards: 30-day money-back guarantee, free assessment with no card, cancel anytime, your child's work stays private. It replaces the founders' section (D-040).
 8. **Price and reserve.** Both plan cards are white; Math + Reading stands out with a grainy colour wash rising from the bottom (D-037). No savings badge and no fine print under the cards; the charge timing is stated in checkout. Two plans: one subject CAD 49 a month, math + reading CAD 89 a month, delivery included, cancel anytime, a 30-day money-back guarantee (D-043). Booking the free assessment needs no card; the parent pays when the first workbook ships.
 9. **FAQ.** Screen time, the free assessment, missed weeks, photos that stop, privacy, the money-back guarantee, cancelling.
 10. **Closing claim.** "This is what learning should be like." Then the final "Take free assessment" button.

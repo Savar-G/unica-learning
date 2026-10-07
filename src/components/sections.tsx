@@ -249,6 +249,37 @@ export function Feel() {
   );
 }
 
+const PROMISE: [IconName, string, string][] = [
+  ["shield", "30-day money-back guarantee", "If it is not working for your child in the first 30 days, we refund your payment in full."],
+  ["test", "Free assessment, no card", "See where your child is before you pay anything."],
+  ["undo", "Cancel anytime", "No contract. Stop whenever you want."],
+  ["lock", "Your child's work stays private", "We use it only to make your child's next book. We never sell or share it."],
+];
+
+export function OurPromise() {
+  return (
+    <Section id="promise" aria-labelledby="promiseT">
+      <Knot />
+      <div className="found">
+        <Rise>
+          <Eyebrow>Our promise</Eyebrow>
+          <h2 id="promiseT" style={{ margin: "16px 0 20px" }}>Try it with nothing to lose.</h2>
+          <p className="lead">
+            {BRAND} is made in Vancouver by a small team who grew up on paper workbooks. Every family starts with a free assessment, and every plan comes with a 30-day money-back guarantee.
+          </p>
+        </Rise>
+        <div className="promise">
+          {PROMISE.map(([icon, title, text], i) => (
+            <IncludedCard key={title} icon={icon} title={title} className="rise" style={d(i * 0.06)}>
+              {text}
+            </IncludedCard>
+          ))}
+        </div>
+      </div>
+    </Section>
+  );
+}
+
 export function Pricing() {
   return (
     <Section id="price" aria-labelledby="priceT">
@@ -345,6 +376,7 @@ export function Footer() {
       <div>
         <a className="logo" href="#top">{BRAND}<b /></a>
         <p style={{ margin: "12px 0 0" }}>Personalized math and reading workbooks for ages 6-12, delivered in Metro Vancouver.</p>
+        <p className="small" style={{ marginTop: 10 }}>Made in Vancouver, BC · 30-day money-back guarantee · Cancel anytime</p>
         <p className="small" style={{ marginTop: 10 }}>© 2026 {BRAND}</p>
       </div>
     </footer>
