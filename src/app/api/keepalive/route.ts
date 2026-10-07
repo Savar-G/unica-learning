@@ -7,9 +7,7 @@ export async function GET(request: Request) {
   if (secret && request.headers.get("authorization") !== `Bearer ${secret}`) {
     return new Response("Unauthorized", { status: 401 });
   }
-  const db = supabase();
-  if (!db) return Response.json({ ok: false, error: "not_configured" }, { status: 503 });
-  const { error } = await db.from("signups").select("id", { head: true, count: "exact" });
+  const { error } = await supabase().rpc("ping");
   if (error) return Response.json({ ok: false, error: error.message }, { status: 502 });
   return Response.json({ ok: true });
 }

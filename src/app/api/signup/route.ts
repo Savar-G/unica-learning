@@ -43,13 +43,7 @@ export async function POST(request: Request) {
     return Response.json({ ok: false, error: "invalid" }, { status: 400 });
   }
 
-  const db = supabase();
-  if (!db) {
-    console.error("[signup] SUPABASE_URL / SUPABASE_SECRET_KEY not set");
-    return Response.json({ ok: false, error: "not_configured" }, { status: 503 });
-  }
-
-  const { error } = await db.from("signups").insert(row);
+  const { error } = await supabase().from("signups").insert(row);
   if (error) {
     console.error("[signup] insert failed", error.message);
     return Response.json({ ok: false, error: "store_failed" }, { status: 502 });

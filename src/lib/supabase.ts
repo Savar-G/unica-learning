@@ -1,13 +1,14 @@
 import "server-only";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 
+// Project "pagewise" (org pagewise). The publishable key is public by design: row-level security
+// lets it INSERT into public.signups and call public.ping(), nothing else. Reads happen in the dashboard.
+const URL = process.env.SUPABASE_URL ?? "https://cdjobwsyzndtltzfpyqa.supabase.co";
+const KEY = process.env.SUPABASE_PUBLISHABLE_KEY ?? "sb_publishable_QkL33gGZ-E1gOVdnLJsUEg_RgrRyqUs";
+
 let client: SupabaseClient | null = null;
 
-/** Server-only Supabase client (secret key bypasses RLS). Null when env is not set. */
-export function supabase(): SupabaseClient | null {
-  const url = process.env.SUPABASE_URL;
-  const key = process.env.SUPABASE_SECRET_KEY;
-  if (!url || !key) return null;
-  client ??= createClient(url, key, { auth: { persistSession: false, autoRefreshToken: false } });
+export function supabase(): SupabaseClient {
+  client ??= createClient(URL, KEY, { auth: { persistSession: false, autoRefreshToken: false } });
   return client;
 }
