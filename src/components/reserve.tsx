@@ -1,6 +1,6 @@
 "use client";
 
-// Reserve flow: plan + age -> details -> review -> result.
+// Reserve flow: plan + grade -> details -> review -> result.
 // Any element with [data-open] opens it ([data-plan] preselects a plan, [data-src] names the CTA).
 // Each reservation (and each outside-area waitlist entry) is saved through /api/signup to Supabase.
 // TODO(D3/D8): the review step will hand off to Stripe.
@@ -19,7 +19,7 @@ export function Reserve() {
   const [step, setStep] = useState<Step>(1);
   const [plan, setPlan] = useState<PlanId>("one");
   const [subject, setSubject] = useState("Math");
-  const [age, setAge] = useState("9");
+  const [grade, setGrade] = useState("4");
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [postal, setPostal] = useState("");
@@ -72,7 +72,7 @@ export function Reserve() {
       const res = await fetch("/api/signup", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ status, name: name.trim(), email: email.trim(), postal: postal.trim().toUpperCase(), plan, subject: subj, age: Number(age), source, website }),
+        body: JSON.stringify({ status, name: name.trim(), email: email.trim(), postal: postal.trim().toUpperCase(), plan, subject: subj, grade: Number(grade), source, website }),
       });
       if (!res.ok) track("signup_save_failed", { status, code: res.status });
       return res.ok;
@@ -91,19 +91,19 @@ export function Reserve() {
       setStep("err");
       return;
     }
-    identify(email.trim().toLowerCase(), { name: name.trim(), postal: postal.trim().toUpperCase(), plan, subject: subj, age });
+    identify(email.trim().toLowerCase(), { name: name.trim(), postal: postal.trim().toUpperCase(), plan, subject: subj, grade });
     if (status === "waitlist") {
       track("waitlist_join", { fsa: postal.trim().slice(0, 3).toUpperCase() });
       setStep("wait");
     } else {
-      track("reserve_success", { plan, subject: subj, age, price });
+      track("reserve_success", { plan, subject: subj, grade, price });
       setStep("ok");
     }
   };
 
   const submitPlan = (e: FormEvent) => {
     e.preventDefault();
-    track("plan_selected", { plan, subject: subj, age });
+    track("plan_selected", { plan, subject: subj, grade });
     setStep(2);
   };
 
@@ -133,7 +133,7 @@ export function Reserve() {
 
   const confirm = (e: FormEvent) => {
     e.preventDefault();
-    track("checkout_start", { plan, age });
+    track("checkout_start", { plan, grade });
     if (/declined/.test(window.location.search)) {
       track("checkout_declined");
       setStep("bad");
@@ -177,10 +177,10 @@ export function Reserve() {
           </label>
         </fieldset>
         <fieldset>
-          <legend>Your child&apos;s age</legend>
-          <div className="seg ages" role="radiogroup" aria-label="Age">
-            {["6", "7", "8", "9", "10", "11", "12"].map((a) => (
-              <label key={a}><input type="radio" name="age" checked={age === a} onChange={() => setAge(a)} aria-label={`Age ${a}`} />{a}</label>
+          <legend>Your child&apos;s grade</legend>
+          <div className="seg ages" role="radiogroup" aria-label="Grade">
+            {["1", "2", "3", "4", "5", "6", "7"].map((g) => (
+              <label key={g}><input type="radio" name="grade" checked={grade === g} onChange={() => setGrade(g)} aria-label={`Grade ${g}`} />{g}</label>
             ))}
           </div>
         </fieldset>
@@ -217,7 +217,7 @@ export function Reserve() {
         <h3>Review and book.</h3>
         <div className="sum">
           <div><span>Plan</span><b>{subj}</b></div>
-          <div><span>Age</span><b>{age}</b></div>
+          <div><span>Grade</span><b>{grade}</b></div>
           <div><span>Ship to</span><b>{postal}</b></div>
           <div><span>Assessment</span><b>Free</b></div>
           <div><span>Then</span><b>CAD {price} / month</b></div>

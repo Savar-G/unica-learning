@@ -11,7 +11,8 @@ export interface SignupPayload {
   postal: string;
   plan: "one" | "both";
   subject: string;
-  age: number;
+  /** School grade, 1-7 (BC ages 6-12). */
+  grade: number;
   /** CTA that opened the form, referrer and UTM tags, so we know which channel brought each parent. */
   source: Record<string, string>;
   /** Honeypot: hidden from people, filled in by bots. */

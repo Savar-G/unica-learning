@@ -25,7 +25,7 @@ export async function POST(request: Request) {
     postal: clip(body.postal, 7).toUpperCase(),
     plan,
     subject: clip(body.subject, 20),
-    age: Number(body.age),
+    grade: Number(body.grade),
     price: plan ? PLANS[plan].price : 0,
     source: Object.fromEntries(
       Object.entries(body.source ?? {}).slice(0, 12).map(([k, v]) => [k.slice(0, 40), clip(v, 300)]),
@@ -38,7 +38,7 @@ export async function POST(request: Request) {
     !POSTAL.test(row.postal) ||
     !plan ||
     !SUBJECTS.has(row.subject) ||
-    !Number.isInteger(row.age) || row.age < 6 || row.age > 12
+    !Number.isInteger(row.grade) || row.grade < 1 || row.grade > 7
   ) {
     return Response.json({ ok: false, error: "invalid" }, { status: 400 });
   }
@@ -55,7 +55,7 @@ export async function POST(request: Request) {
 
 // Email Savar about each new signup. Resend's free plan only delivers to the account's own address,
 // which is all an alert needs.
-async function notify(row: { status: string; name: string; email: string; postal: string; subject: string; age: number; price: number; source: Record<string, string> }) {
+async function notify(row: { status: string; name: string; email: string; postal: string; subject: string; grade: number; price: number; source: Record<string, string> }) {
   const key = process.env.RESEND_API_KEY;
   const to = process.env.SIGNUP_NOTIFY_EMAIL;
   if (!key || !to) return;
@@ -63,7 +63,7 @@ async function notify(row: { status: string; name: string; email: string; postal
   const lines = [
     `${label}: ${row.name} <${row.email}>`,
     `Plan: ${row.subject}, CAD ${row.price}/month`,
-    `Child age: ${row.age}`,
+    `Child grade: ${row.grade}`,
     `Postal code: ${row.postal}`,
     `Source: ${Object.entries(row.source).map(([k, v]) => `${k}=${v}`).join(", ") || "direct"}`,
   ];
@@ -75,7 +75,7 @@ async function notify(row: { status: string; name: string; email: string; postal
         from: "Pagewise signups <onboarding@resend.dev>",
         to: [to],
         reply_to: row.email,
-        subject: `New signup: ${row.name} (${row.subject}, age ${row.age})`,
+        subject: `New signup: ${row.name} (${row.subject}, grade ${row.grade})`,
         text: lines.join("\n"),
       }),
     });
