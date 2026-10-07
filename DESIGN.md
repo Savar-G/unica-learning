@@ -24,7 +24,7 @@
 - References: Savar's FigJam board (Primer, Ello, Squirrel AI, Outschool) with his notes; see `.design/references.json`.
 - Offer: math and reading, ages 6-12, Vancouver, delivery included. One subject CAD 49 a month; math + reading CAD 89 a month (D-026).
 - Real product posture: no "pilot", "beta" or "test" wording (D-012).
-- No proof we do not have: no ratings, review counts, family counts, press logos, outcome percentages or testimonials. Until real customer references exist, proof = sample pages, clear price, cancel anytime, the founders' story.
+- No proof we do not have: no ratings, review counts, family counts, press logos, outcome percentages or testimonials. Until real customer references exist, proof = sample pages, clear price, a free placement assessment, a 30-day money-back guarantee, cancel anytime. No founder names or student status anywhere on the site (D-040).
 - Comparative and performance claims: Competition Act s.74.01(1)(b) requires an adequate and proper test before a claim about a product's performance. The page makes no research claims; the paper belief is stated as "We believe paper and pencil build stronger learning." (D-039). Never a claim about our results.
 - Children's privacy: the page collects parent contact and payment only.
 
@@ -39,10 +39,10 @@
 
 Every section sets up the next one. A single pencil line connects the sections and the loop steps.
 
-1. **Hero (D-029, option C).** Centred text over one large photo of a child working at home; a marked workbook page and a progress report ("Updated just now") float on the photo. On phones the report sits under the photo and the page is hidden. Small line: "The future of learning is on paper." Headline: "Personalized. Delivered. Mastered." Line under it: "Math and reading workbooks made for your child, mailed home, and adapted after every book." Real children with real workbooks. One primary action (reserve) and the line "Ages 6-12 · From CAD 49 a month · Delivery included".
+1. **Hero (D-029, option C).** Centred text over one large photo of a child working at home; a marked workbook page and a progress report ("Updated just now") float on the photo. On phones the report sits under the photo and the page is hidden. Small line: "The future of learning is on paper." Headline: "Personalized. Delivered. Mastered." Line under it: "Math and reading workbooks made for your child, mailed home, and adapted after every book." Real children with real workbooks. One primary action ("Take free assessment", D-041) and the line "Ages 6-12 · From CAD 49 a month · Delivery included".
 2. **What is [Brand]?** Math and reading workbooks made for your child, mailed home. Your child works on paper. You snap the finished pages, and the next workbook adapts. Ages 6-12.
 3. **How it works.** A loop where step 6 returns to step 2. Savar's wording:
-   1. **Assess:** The child completes an adaptive online assessment that identifies their level, strengths, gaps and misconceptions.
+   1. **Assess:** We send a free placement assessment on paper; it finds the child's level, strengths, gaps and misconceptions. The parent returns it by photo (D-042).
    2. **Deliver:** We create and mail a physical workbook personalized to what that child needs to work on.
    3. **Practice:** The child spends roughly 15-20 minutes per day working on paper.
    4. **Scan:** A parent takes a photo of the completed work.
@@ -51,10 +51,10 @@ Every section sets up the next one. A single pencil line connects the sections a
 4. **Why choose [Brand]?** 3-4 cards that state what we do. No names of alternatives.
 5. **What's included.** A card grid: the placement test, the personalized workbook by mail ("Your next book arrives before the current one runs out."), the parent progress report ("updated continuously"; it must update after every scan), delivery, cancel anytime.
 6. **The emotional section.** Real photos and handwritten workbook pages drift around one centred line about every child learning differently.
-7. **Who is behind it.** Short founders' story; it replaces the proof that we do not have.
-8. **Price and reserve.** Both plan cards are white; Math + Reading stands out with a grainy colour wash rising from the bottom (D-037). No savings badge and no fine print under the cards; the charge timing is stated in checkout. Two plans: one subject CAD 49 a month, math + reading CAD 89 a month, delivery included, cancel anytime, and when the parent is charged (D8).
-9. **FAQ.** Screen time, missed weeks, photos that stop, privacy, cancelling.
-10. **Closing claim.** "This is what learning should be like." Then the final reserve button.
+7. **(Removed.)** The founders' section is gone (D-040).
+8. **Price and reserve.** Both plan cards are white; Math + Reading stands out with a grainy colour wash rising from the bottom (D-037). No savings badge and no fine print under the cards; the charge timing is stated in checkout. Two plans: one subject CAD 49 a month, math + reading CAD 89 a month, delivery included, cancel anytime, a 30-day money-back guarantee (D-043). Booking the free assessment needs no card; the parent pays when the first workbook ships.
+9. **FAQ.** Screen time, the free assessment, missed weeks, photos that stop, privacy, the money-back guarantee, cancelling.
+10. **Closing claim.** "This is what learning should be like." Then the final "Take free assessment" button.
 
 ## Visual language
 
@@ -102,5 +102,4 @@ Every section sets up the next one. A single pencil line connects the sections a
 
 - D4 Launch photos (own shoot with consent, or keep stock/AI).
 - D1 Brand name.
-- D8 Checkout disclosure wording.
-- D3 Deposit or full first month at reserve.
+- D8/D3 Checkout: settled in principle by D-043 (no card at booking; full month charged when the first workbook ships; 30-day money-back guarantee). Stripe wiring still open.

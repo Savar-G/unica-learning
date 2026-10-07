@@ -214,18 +214,19 @@ export function Reserve() {
       </form>
 
       <form data-step="3" hidden={step !== 3} onSubmit={confirm} noValidate>
-        <h3>Review and confirm.</h3>
+        <h3>Review and book.</h3>
         <div className="sum">
           <div><span>Plan</span><b>{subj}</b></div>
           <div><span>Age</span><b>{age}</b></div>
           <div><span>Ship to</span><b>{postal}</b></div>
-          <div><span>Price</span><b>CAD {price} / month</b></div>
+          <div><span>Assessment</span><b>Free</b></div>
+          <div><span>Then</span><b>CAD {price} / month</b></div>
         </div>
-        <p className="small" style={{ margin: 0 }}>Today: CAD 0. You&apos;re charged when your first workbook ships. Cancel anytime before then.</p>
+        <p className="small" style={{ margin: 0 }}>Today: CAD 0, and no card. You&apos;re charged when your first workbook ships, with a 30-day money-back guarantee. Cancel anytime.</p>
         <div className="row2">
           <button className="btn ghost" type="button" onClick={() => setStep(2)}>Back</button>
           <button className="btn" type="submit" disabled={busy} aria-busy={busy}>
-            {busy ? <span className="spin" aria-label="Processing" /> : "Continue to secure checkout"}
+            {busy ? <span className="spin" aria-label="Processing" /> : "Book free assessment"}
           </button>
         </div>
       </form>
@@ -234,7 +235,7 @@ export function Reserve() {
         <div className="big"><svg viewBox="0 0 30 30" aria-hidden="true"><path d="M7 15.5l5.5 5.5L23.5 9" /></svg></div>
         <h3>You&apos;re in.</h3>
         <p className="lead" style={{ margin: 0, fontSize: 17 }}>
-          Thanks, {firstName}. We&apos;ll email {email.trim()} a link to your child&apos;s placement assessment. Your first workbook ships after it, and you&apos;re charged only then.
+          Thanks, {firstName}. We&apos;ll email {email.trim()} to arrange your child&apos;s free placement assessment. Your first workbook ships after it, and you&apos;re charged only then.
         </p>
         <button className="btn" type="button" onClick={close}>Done</button>
       </div>
