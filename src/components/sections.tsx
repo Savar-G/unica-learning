@@ -23,6 +23,7 @@ import {
   type IconName,
 } from "@/ds";
 import { Knot, Rise, type Vars } from "./drawn";
+import { LoopPath } from "./loop-path";
 
 import heroHome1 from "@/assets/img/hero-home-1.jpg";
 import heroHome2 from "@/assets/img/hero-home-2.jpg";
@@ -75,6 +76,7 @@ export function Hero() {
         eyebrow={HERO.eyebrow}
         lead={HERO.sub}
         page={null}
+        report={null}
         animate
         actions={
           <>
@@ -145,16 +147,19 @@ export function How() {
       <Rise>
         <SectionHeader eyebrow="How it works" title="Six steps. One loop." titleId="howT" lead="Every book is built from the last one, so the work always matches what your child needs next." />
       </Rise>
-      <StepGrid>
-        {STEPS.map((s, i) => (
-          <StepCard key={s.n} number={s.n} title={`${s.t}.`} visual={s.v} visualTone={s.tone} className="rise" style={d(i * 0.06)}>
-            {s.d}
-          </StepCard>
-        ))}
-      </StepGrid>
+      <div className="loopwrap">
+        <LoopPath />
+        <StepGrid>
+          {STEPS.map((s, i) => (
+            <StepCard key={s.n} number={s.n} title={`${s.t}.`} visual={s.v} visualTone={s.tone} className="rise" style={d(i * 0.06)}>
+              {s.d}
+            </StepCard>
+          ))}
+        </StepGrid>
+      </div>
       <Rise as="p" className="loopnote">
-        <svg viewBox="0 0 34 34" aria-hidden="true"><path d="M27 12a11 11 0 1 0 1.5 8" /><path d="M28 5v7h-7" /></svg>
-        Step 6 leads back to step 2. Two kids the same age get two different books.
+        <span className="sr-only">After step 6, the next book starts again at step 2. </span>
+        Two kids the same age get two different books.
       </Rise>
     </Section>
   );

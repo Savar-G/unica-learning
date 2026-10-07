@@ -66,7 +66,7 @@ Every section sets up the next one. A single pencil line connects the sections a
 
 **Connection (Squirrel AI, Outschool):** An orange pencil line runs down the page margin and draws itself on scroll.
 
-**Imagery:** Real children with real paper workbooks at home. No drawn worksheets, covers, mailers or phone mockups until the real workbook exists (D-045). The hero progress report is still a drawn card (open question). Mockups: Unsplash photos (`.design/assets/stock/CREDITS.md`), and AI-generated images only where stock cannot show the product. Launch photos: D4.
+**Imagery:** Real children with real paper workbooks at home. No drawn worksheets, covers, mailers or phone mockups until the real workbook exists (D-045). The hero is one real photo with no floating cards (D-047). Mockups: Unsplash photos (`.design/assets/stock/CREDITS.md`), and AI-generated images only where stock cannot show the product. Launch photos: D4.
 
 **Motion rules:** Motion explains or delights; it never blocks reading. With reduced motion on, the page shows the end states.
 
