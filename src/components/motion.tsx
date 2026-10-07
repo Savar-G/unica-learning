@@ -65,11 +65,30 @@ export function Motion() {
       onScroll();
     };
 
+    // Path length at which the path reaches height y. The path only moves down, so a binary search works.
+    const lengthAtY = (y: number) => {
+      let lo = 0;
+      let hi = len;
+      for (let i = 0; i < 22; i++) {
+        const mid = (lo + hi) / 2;
+        if (path.getPointAtLength(mid).y < y) lo = mid;
+        else hi = mid;
+      }
+      return hi;
+    };
+
     const onScroll = () => {
       if (!main || !len) return;
       const mr = main.getBoundingClientRect();
-      const p = reduce ? 1 : Math.min(1, Math.max(0, (window.innerHeight * 0.62 - mr.top) / main.scrollHeight));
-      const drawn = len * p;
+      const vh = window.innerHeight;
+      // The tip follows a line 62% down the viewport. The last knots sit below that line even at the
+      // bottom of the page, so the leftover distance is added over the last part of the scroll.
+      const maxScroll = Math.max(1, document.documentElement.scrollHeight - vh);
+      const s = Math.min(1, Math.max(0, window.scrollY / maxScroll));
+      const lastY = path.getPointAtLength(len).y;
+      const atBottom = vh * 0.62 - (mr.top + window.scrollY) + maxScroll;
+      const y = vh * 0.62 - mr.top + Math.max(0, lastY - atBottom) * s ** 4;
+      const drawn = reduce || s >= 0.999 ? len : y <= 0 ? 0 : lengthAtY(y);
       path.style.strokeDashoffset = String(len - drawn);
       const pt = path.getPointAtLength(drawn);
       tip.setAttribute("cx", String(pt.x));
