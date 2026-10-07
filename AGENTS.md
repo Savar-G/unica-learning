@@ -30,7 +30,7 @@ Personalized, mailed math and reading workbooks for ages 6-12 (grades 1-7). Desi
 | Supabase | Postgres store for signups and waitlist entries | Project `pagewise` (`cdjobwsyzndtltzfpyqa`). Table `public.signups`; the site can only insert (RLS). The free plan pauses after 7 days without activity, so the keepalive cron calls `ping()`. Base schema: `supabase/schema.sql`; changes: `supabase/migrations/`. |
 | PostHog | Product analytics and the signup funnel | Loads after the page is idle (`src/instrumentation-client.ts`). Events go through the `/ingest` proxy (`next.config.ts`) so ad blockers do not drop them. Event names: `src/lib/track.ts`. A signup identifies the parent by email. PostHog MCP is available for queries. |
 | Resend | Emails Savar about each new signup | Sent from `/api/signup` after the response. The free plan sends only from `onboarding@resend.dev` to the account owner. Emails to parents need a verified domain that we own. |
-| GitHub | Repo `Savar-G/ai-workbooks-landing-page`, pull requests | Use the `Savar-G` account in `gh`. |
+| GitHub | Repo `Savar-G/pagewise-landing-page`, pull requests | Use the `Savar-G` account in `gh`. |
 
 ## Environment variables
 
