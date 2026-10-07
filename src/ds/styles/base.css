@@ -215,6 +215,10 @@ main > *{position:relative;z-index:1}
 .drift.scrap{z-index:2}
 @media (max-width:760px){.drift.hide-sm{display:none}}
 
+/* Promise */
+.promise{display:grid;gap:16px}
+@media (min-width:600px){.promise{grid-template-columns:1fr 1fr}}
+
 /* Founders */
 .found{display:grid;gap:clamp(24px, 4vw, 56px)}
 @media (min-width:900px){.found{grid-template-columns:1fr 1fr;align-items:center}}
