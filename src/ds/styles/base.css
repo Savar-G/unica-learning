@@ -403,3 +403,6 @@ main{position:relative;display:block}
 .cover.on-dark{color:#fff}
 .cover.on-dark .bk{border-color:#fff}
 .cover.on-dark .brand b{background:#fff}
+
+/* Guarantee line under the pricing title */
+.g-line{font-size:clamp(20px,2vw,26px);line-height:1.35;color:var(--ink);margin:-16px 0 40px}

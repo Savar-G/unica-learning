@@ -11,6 +11,7 @@ import {
   FeatureGrid,
   GradientPanel,
   Hero as HeroBlock,
+  Highlight,
   IncludedCard,
   Nav as NavBar,
   PlanCard,
@@ -290,7 +291,8 @@ export function Pricing() {
     <Section id="price" aria-labelledby="priceT">
       <Knot />
       <Rise>
-        <SectionHeader eyebrow="Pricing" title="Simple pricing." titleId="priceT" lead="Less than CAD 2 a day for a workbook made for your child. Every plan has a 30-day money-back guarantee." />
+        <SectionHeader eyebrow="Pricing" title="Simple pricing." titleId="priceT" />
+        <p className="g-line">Every plan has a <Highlight>30-day money-back guarantee.</Highlight></p>
       </Rise>
       <PlanGrid>
         <PlanCard
