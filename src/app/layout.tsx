@@ -24,13 +24,14 @@ const geist = Geist({ subsets: ["latin"], variable: "--font-geist", display: "sw
 const geistMono = Geist_Mono({ subsets: ["latin"], variable: "--font-geist-mono", display: "swap", preload: false });
 
 const title = `${BRAND}: Personalized. Delivered. Mastered.`;
+const description = `${HERO.sub} Ages 6-12. Delivery across Canada.`;
 
 export const metadata: Metadata = {
   metadataBase: new URL(process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000"),
   title,
-  description: `${HERO.sub} Ages 6-12 in Metro Vancouver.`,
-  openGraph: { title, description: HERO.sub, type: "website", locale: "en_CA" },
-  twitter: { card: "summary_large_image", title, description: HERO.sub },
+  description,
+  openGraph: { title, description, type: "website", locale: "en_CA" },
+  twitter: { card: "summary_large_image", title, description },
   // Keep previews out of search until launch (set NEXT_PUBLIC_ALLOW_INDEX=true on the launch deploy).
   robots: process.env.NEXT_PUBLIC_ALLOW_INDEX === "true" ? undefined : { index: false, follow: false },
 };

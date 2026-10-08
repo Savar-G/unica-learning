@@ -12,6 +12,3 @@ export const HERO = {
   eyebrow: "The future of learning is on paper.",
   sub: "Math and reading workbooks made for your child, mailed home, and adapted after every book.",
 };
-
-// Forward sortation areas that start with these characters are treated as Metro Vancouver.
-export const DELIVERY_FSA = /^V[3-7]/;
