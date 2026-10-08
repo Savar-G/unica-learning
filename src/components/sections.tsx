@@ -165,10 +165,7 @@ export function How() {
           ))}
         </StepGrid>
       </div>
-      <Rise as="p" className="loopnote">
-        <span className="sr-only">After step 6, the next book starts again at step 2. </span>
-        Two kids the same age get two different books.
-      </Rise>
+      <p className="sr-only">After step 6, the next book starts again at step 2.</p>
     </Section>
   );
 }
