@@ -30,6 +30,7 @@ Personalized, mailed math and reading workbooks for ages 6-12 (grades 1-7). Desi
 | Supabase | Postgres store for signups and waitlist entries | Project `pagewise` (`cdjobwsyzndtltzfpyqa`). Table `public.signups`; the site can only insert (RLS). The free plan pauses after 7 days without activity, so the keepalive cron calls `ping()`. Base schema: `supabase/schema.sql`; changes: `supabase/migrations/`. |
 | PostHog | Product analytics and the signup funnel | Loads after the page is idle (`src/instrumentation-client.ts`). Events go through the `/ingest` proxy (`next.config.ts`) so ad blockers do not drop them. Event names: `src/lib/track.ts`. A signup identifies the parent by email. PostHog MCP is available for queries. |
 | Resend | Emails Savar about each new signup | Sent from `/api/signup` after the response. The free plan sends only from `onboarding@resend.dev` to the account owner. Emails to parents need a verified domain that we own. |
+| Stripe | Refundable deposit for BC-curriculum signups | A Payment Link (`STRIPE_DEPOSIT_LINK`). `/api/signup` adds `prefilled_email` and `client_reference_id` (= `signups.ref`). The link's after-payment redirect must be `<site>/?deposit=paid`. The link's amount must equal `DEPOSIT` in `src/lib/site.ts`. Stripe is the record of who paid; Supabase does not know. |
 | GitHub | Repo `Savar-G/pagewise-landing-page`, pull requests | Use the `Savar-G` account in `gh`. |
 
 ## Environment variables
@@ -40,4 +41,5 @@ Personalized, mailed math and reading workbooks for ages 6-12 (grades 1-7). Desi
 | `NEXT_PUBLIC_POSTHOG_KEY`, `NEXT_PUBLIC_POSTHOG_UI_HOST`, `NEXT_PUBLIC_POSTHOG_INGEST` | PostHog client and proxy. Without the key, events log to the console in dev. |
 | `RESEND_API_KEY`, `SIGNUP_NOTIFY_EMAIL` | Signup alert emails |
 | `CRON_SECRET` | Protects `/api/keepalive` |
+| `STRIPE_DEPOSIT_LINK` | Stripe Payment Link for the BC deposit. Without it, BC parents see "we'll email you a payment link" and the signup alert says to send one. |
 | `NEXT_PUBLIC_SITE_URL`, `NEXT_PUBLIC_ALLOW_INDEX` | Share-card links; search indexing switch |

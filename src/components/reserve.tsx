@@ -1,18 +1,20 @@
 "use client";
 
-// Reserve flow: plan + grade -> details -> review -> result.
+// Reserve flow: plan + grade -> details -> (open curriculum) review -> Stripe deposit, or (other) waitlist.
 // Any element with [data-open] opens it ([data-plan] preselects a plan, [data-src] names the CTA).
-// Each reservation is saved through /api/signup to Supabase.
-// TODO(D3/D8): the review step will hand off to Stripe.
+// Every signup is saved through /api/signup to Supabase before the parent leaves for Stripe (D-053).
 import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
-import { PLANS, type PlanId } from "@/lib/site";
-import { CURRICULA, EMAIL, POSTAL, curriculumFromPostal, type CurriculumId } from "@/lib/signup";
+import { DEPOSIT, PLANS, type PlanId } from "@/lib/site";
+import { CURRICULA, EMAIL, OPEN_CURRICULA, POSTAL, curriculumFromPostal, statusFor, type CurriculumId, type SignupResult } from "@/lib/signup";
 import { identify, track } from "@/lib/track";
 
-type Step = 1 | 2 | 3 | "ok" | "bad" | "err";
+// ok = reserved but no payment link is set; paid = back from Stripe; wait = waitlist.
+type Step = 1 | 2 | 3 | "ok" | "paid" | "wait" | "err";
 type Errors = Partial<Record<"name" | "email" | "postal", boolean>>;
 
 const UTM = ["utm_source", "utm_medium", "utm_campaign", "utm_content", "ref"];
+// Name and email kept across the round trip to Stripe, for the "Deposit received" message.
+const PAID_KEY = "pw-deposit";
 
 export function Reserve() {
   const dlg = useRef<HTMLDialogElement>(null);
@@ -30,10 +32,13 @@ export function Reserve() {
   const [busy, setBusy] = useState(false);
   const [src, setSrc] = useState("unknown");
   const [website, setWebsite] = useState("");
+  // Stripe URL for the saved signup, reused if the parent comes back from Stripe and pays again.
+  const [payUrl, setPayUrl] = useState<string | null>(null);
 
   const open = useCallback((src: string, p?: string) => {
     if (p === "one" || p === "both") setPlan(p);
     setSrc(src);
+    setPayUrl(null);
     setStep(1);
     dlg.current?.showModal();
     track("cta_click", { src, plan: p ?? null });
@@ -51,6 +56,38 @@ export function Reserve() {
     return () => document.removeEventListener("click", onClick);
   }, [open]);
 
+  // Stripe sends parents who paid back to /?deposit=paid (the Payment Link's after-payment redirect).
+  useEffect(() => {
+    const qs = new URLSearchParams(window.location.search);
+    if (qs.get("deposit") !== "paid") return;
+    qs.delete("deposit");
+    qs.delete("session_id");
+    const rest = qs.toString();
+    history.replaceState(null, "", `${location.pathname}${rest ? `?${rest}` : ""}${location.hash}`);
+    let saved: { name?: string; email?: string } = {};
+    try {
+      saved = JSON.parse(sessionStorage.getItem(PAID_KEY) ?? "{}");
+      sessionStorage.removeItem(PAID_KEY);
+    } catch {}
+    // The URL exists only in the browser, so this cannot be initial state on a static page.
+    /* eslint-disable react-hooks/set-state-in-effect */
+    setName(saved.name ?? "");
+    setEmail(saved.email ?? "");
+    setStep("paid");
+    /* eslint-enable react-hooks/set-state-in-effect */
+    dlg.current?.showModal();
+    track("deposit_paid");
+  }, []);
+
+  // Back from Stripe without paying: the browser can restore this page with the spinner still on.
+  useEffect(() => {
+    const onShow = (e: PageTransitionEvent) => {
+      if (e.persisted) setBusy(false);
+    };
+    window.addEventListener("pageshow", onShow);
+    return () => window.removeEventListener("pageshow", onShow);
+  }, []);
+
   // Move focus to the first control of each step.
   useEffect(() => {
     const first = dlg.current?.querySelector<HTMLElement>(`[data-step="${step}"] input, [data-step="${step}"] button`);
@@ -59,11 +96,13 @@ export function Reserve() {
 
   const subj = plan === "both" ? "Math + Reading" : subject;
   const price = PLANS[plan].price;
+  const status = statusFor(curriculum);
+  // "the Alberta" / "your province's", for "books for ... curriculum".
+  const theirs = curriculum === "other" ? "your province's" : `the ${CURRICULA[curriculum]}`;
   const close = () => dlg.current?.close();
 
-  // Save the signup. Returns false when the server could not store it.
-  const save = async () => {
-    const status = "reserved";
+  // Save the signup. Returns null when the server could not store it.
+  const save = async (): Promise<SignupResult | null> => {
     const qs = new URLSearchParams(window.location.search);
     const source: Record<string, string> = { cta: src };
     if (document.referrer) source.referrer = document.referrer;
@@ -75,26 +114,55 @@ export function Reserve() {
       const res = await fetch("/api/signup", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ status, name: name.trim(), email: email.trim(), postal: postal.trim().toUpperCase(), plan, subject: subj, grade: Number(grade), curriculum, source, website }),
+        body: JSON.stringify({ name: name.trim(), email: email.trim(), postal: postal.trim().toUpperCase(), plan, subject: subj, grade: Number(grade), curriculum, source, website }),
       });
-      if (!res.ok) track("signup_save_failed", { status, code: res.status });
-      return res.ok;
+      if (!res.ok) {
+        track("signup_save_failed", { status, code: res.status });
+        return null;
+      }
+      return (await res.json()) as SignupResult;
     } catch {
       track("signup_save_failed", { status, code: 0 });
-      return false;
+      return null;
     }
   };
 
+  const toStripe = (url: string) => {
+    try {
+      sessionStorage.setItem(PAID_KEY, JSON.stringify({ name: name.trim(), email: email.trim() }));
+    } catch {}
+    track("deposit_redirect", { plan, deposit: DEPOSIT });
+    window.location.assign(url);
+  };
+
   const finish = async () => {
+    if (payUrl) {
+      setBusy(true);
+      toStripe(payUrl);
+      return;
+    }
     setBusy(true);
-    const ok = await save();
-    setBusy(false);
-    if (!ok) {
+    const res = await save();
+    if (!res?.ok) {
+      setBusy(false);
       setStep("err");
       return;
     }
     identify(email.trim().toLowerCase(), { name: name.trim(), postal: postal.trim().toUpperCase(), plan, subject: subj, grade, curriculum });
-    track("reserve_success", { plan, subject: subj, grade, curriculum, price });
+    if (res.status === "waitlist") {
+      setBusy(false);
+      track("waitlist_join", { curriculum, plan, grade });
+      setStep("wait");
+      return;
+    }
+    track("reserve_success", { plan, subject: subj, grade, curriculum, price, deposit: !!res.pay });
+    if (res.pay) {
+      // Keep the spinner on while the browser leaves for Stripe.
+      setPayUrl(res.pay);
+      toStripe(res.pay);
+      return;
+    }
+    setBusy(false);
     setStep("ok");
   };
 
@@ -119,18 +187,18 @@ export function Reserve() {
     }
     const pc = postal.trim().toUpperCase();
     setPostal(pc);
-    track("details_done");
+    track("details_done", { curriculum, status });
+    // Books for this curriculum are not ready: save the waitlist entry now, with no review step.
+    if (status === "waitlist") {
+      void finish();
+      return;
+    }
     setStep(3);
   };
 
   const confirm = (e: FormEvent) => {
     e.preventDefault();
     track("checkout_start", { plan, grade });
-    if (/declined/.test(window.location.search)) {
-      track("checkout_declined");
-      setStep("bad");
-      return;
-    }
     void finish();
   };
 
@@ -223,13 +291,17 @@ export function Reserve() {
               <option key={k} value={k}>{CURRICULA[k]}</option>
             ))}
           </select>
-          <span className="hint" id="h-curriculum">We match every book to what your child learns at school.</span>
+          <span className="hint" id="h-curriculum">
+            {status === "waitlist"
+              ? `We make books for the ${OPEN_CURRICULA.join(" and ")} curriculum first. Join the waitlist and we'll email you when books for ${theirs} curriculum are ready.`
+              : "We match every book to what your child learns at school."}
+          </span>
         </div>
         <input className="hp" type="text" name="website" tabIndex={-1} autoComplete="off" aria-hidden="true" value={website} onChange={(e) => setWebsite(e.target.value)} />
         <div className="row2">
           <button className="btn ghost" type="button" onClick={() => setStep(1)}>Back</button>
           <button className="btn" type="submit" disabled={busy} aria-busy={busy}>
-            {busy ? <span className="spin" aria-label="Saving" /> : <>Continue <span className="arr">→</span></>}
+            {busy ? <span className="spin" aria-label="Saving" /> : status === "waitlist" ? "Join waitlist" : <>Continue <span className="arr">→</span></>}
           </button>
         </div>
       </form>
@@ -242,13 +314,16 @@ export function Reserve() {
           <div><span>Ship to</span><b>{postal}</b></div>
           <div><span>Curriculum</span><b>{CURRICULA[curriculum]}</b></div>
           <div><span>Assessment</span><b>Free</b></div>
+          <div><span>Refundable deposit today</span><b>CAD {DEPOSIT}</b></div>
           <div><span>Then</span><b>CAD {price} / month</b></div>
         </div>
-        <p className="small" style={{ margin: 0 }}>Today: CAD 0, and no card. You&apos;re charged when your first workbook ships, with a 30-day money-back guarantee. Cancel anytime.</p>
+        <p className="small" style={{ margin: 0 }}>
+          The CAD {DEPOSIT} comes off your first month, which is charged when your first workbook ships. Cancel before then and we refund it in full. Every plan also has a 30-day money-back guarantee. You pay on Stripe&apos;s secure checkout.
+        </p>
         <div className="row2">
-          <button className="btn ghost" type="button" onClick={() => setStep(2)}>Back</button>
+          <button className="btn ghost" type="button" onClick={() => { setPayUrl(null); setStep(2); }}>Back</button>
           <button className="btn" type="submit" disabled={busy} aria-busy={busy}>
-            {busy ? <span className="spin" aria-label="Processing" /> : "Book free assessment"}
+            {busy ? <span className="spin" aria-label="Processing" /> : `Pay CAD ${DEPOSIT} deposit`}
           </button>
         </div>
       </form>
@@ -257,16 +332,27 @@ export function Reserve() {
         <div className="big"><svg viewBox="0 0 30 30" aria-hidden="true"><path d="M7 15.5l5.5 5.5L23.5 9" /></svg></div>
         <h3>You&apos;re in.</h3>
         <p className="lead" style={{ margin: 0, fontSize: 17 }}>
-          Thanks, {firstName}. We&apos;ll email {email.trim()} to arrange your child&apos;s free placement assessment. Your first workbook ships after it, and you&apos;re charged only then.
+          Thanks, {firstName}. We&apos;ll email {email.trim()} a link to pay your CAD {DEPOSIT} refundable deposit, then arrange your child&apos;s free placement assessment.
         </p>
         <button className="btn" type="button" onClick={close}>Done</button>
       </div>
 
-      <div data-step="bad" className="state" hidden={step !== "bad"} style={{ padding: "28px 22px 30px" }} aria-live="polite">
-        <div className="big" style={{ background: "#FFD9C9" }}><svg viewBox="0 0 30 30" aria-hidden="true"><path d="M10 10l10 10M20 10L10 20" /></svg></div>
-        <h3>Your card was declined.</h3>
-        <p className="lead" style={{ margin: 0, fontSize: 17 }}>Nothing was charged. Try another card.</p>
-        <button className="btn" type="button" onClick={() => setStep(3)}>Try again</button>
+      <div data-step="paid" className="state" hidden={step !== "paid"} style={{ padding: "28px 22px 30px" }} aria-live="polite">
+        <div className="big"><svg viewBox="0 0 30 30" aria-hidden="true"><path d="M7 15.5l5.5 5.5L23.5 9" /></svg></div>
+        <h3>Deposit received.</h3>
+        <p className="lead" style={{ margin: 0, fontSize: 17 }}>
+          Thanks{firstName && `, ${firstName}`}. We&apos;ll email {email.trim() || "you"} to arrange your child&apos;s free placement assessment. Your CAD {DEPOSIT} comes off your first month.
+        </p>
+        <button className="btn" type="button" onClick={close}>Done</button>
+      </div>
+
+      <div data-step="wait" className="state" hidden={step !== "wait"} style={{ padding: "28px 22px 30px" }} aria-live="polite">
+        <div className="big" style={{ background: "#D9E3FF" }}><svg viewBox="0 0 30 30" aria-hidden="true"><path d="M15 8v8l5 3" /></svg></div>
+        <h3>You&apos;re on the waitlist.</h3>
+        <p className="lead" style={{ margin: 0, fontSize: 17 }}>
+          Thanks, {firstName}. We&apos;ll email {email.trim()} when books for {theirs} curriculum are ready. Nothing was charged.
+        </p>
+        <button className="btn" type="button" onClick={close}>Done</button>
       </div>
 
       <div data-step="err" className="state" hidden={step !== "err"} style={{ padding: "28px 22px 30px" }} aria-live="polite">

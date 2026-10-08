@@ -8,6 +8,10 @@ export const PLANS = {
 
 export type PlanId = keyof typeof PLANS;
 
+// Refundable deposit in CAD that families on an open curriculum pay at signup (D-053). It comes off the
+// first month. The Stripe Payment Link in STRIPE_DEPOSIT_LINK must charge the same amount.
+export const DEPOSIT = 25;
+
 export const HERO = {
   eyebrow: "The future of learning is on paper.",
   sub: "Math and reading workbooks made for your child, mailed home, and adapted after every book.",

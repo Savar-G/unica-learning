@@ -22,7 +22,7 @@
 ## Source constraints
 
 - References: Savar's FigJam board (Primer, Ello, Squirrel AI, Outschool) with his notes; see `.design/references.json`.
-- Offer: math and reading, ages 6-12, delivery across Canada included (D-052). One subject CAD 59 a month; math + reading CAD 99 a month (D-046).
+- Offer: math and reading, ages 6-12, delivery across Canada included (D-052). One subject CAD 59 a month; math + reading CAD 99 a month (D-046). Books follow the BC curriculum first: BC families pay a refundable CAD 25 deposit at signup; every other curriculum joins the waitlist (D-053).
 - Real product posture: no "pilot", "beta" or "test" wording (D-012).
 - No proof we do not have: no ratings, review counts, family counts, press logos, outcome percentages or testimonials. Until real customer references exist, proof = sample pages, clear price, a free placement assessment, a 30-day money-back guarantee, cancel anytime. No founder names or student status anywhere on the site (D-040).
 - Comparative and performance claims: Competition Act s.74.01(1)(b) requires an adequate and proper test before a claim about a product's performance. The page makes no research claims; the paper belief is stated as "We believe paper and pencil build stronger learning." (D-039). Never a claim about our results.
@@ -51,8 +51,8 @@ Every section sets up the next one. A single pencil line connects the sections a
 4. **Why choose [Brand]?** 3-4 cards that state what we do. No names of alternatives.
 5. **What's included.** A card grid: the placement test, the personalized workbook by mail ("Your next book arrives before the current one runs out."), the parent progress report ("updated continuously"; it must update after every scan), delivery, cancel anytime.
 6. **The emotional section.** Real photos and handwritten workbook pages drift around one centred line about every child learning differently.
-7. **Our promise (D-044).** "Try it with nothing to lose." A nameless line (made in Vancouver by a small team who grew up on paper workbooks) beside four cards: 30-day money-back guarantee, free assessment with no card, fits your family's schedule (pause anytime, no penalty), cancel anytime. Privacy stays in the FAQ. It replaces the founders' section (D-040).
-8. **Price and reserve.** Both plan cards are white; Math + Reading stands out with a grainy colour wash rising from the bottom (D-037). No savings badge and no fine print under the cards; the charge timing is stated in checkout. Two plans: one subject CAD 59 a month, math + reading CAD 99 a month, delivery included, cancel anytime, a 30-day money-back guarantee (D-043). Booking the free assessment needs no card; the parent pays when the first workbook ships.
+7. **Our promise (D-044).** "Try it with nothing to lose." A nameless line (made in Vancouver by a small team who grew up on paper workbooks) beside four cards: 30-day money-back guarantee, free assessment and a refundable deposit, fits your family's schedule (pause anytime, no penalty), cancel anytime. Privacy stays in the FAQ. It replaces the founders' section (D-040).
+8. **Price and reserve.** Both plan cards are white; Math + Reading stands out with a grainy colour wash rising from the bottom (D-037). No savings badge and no fine print under the cards; the charge timing is stated in checkout. Two plans: one subject CAD 59 a month, math + reading CAD 99 a month, delivery included, cancel anytime, a 30-day money-back guarantee (D-043). A BC family pays a CAD 25 deposit at booking, on Stripe's hosted page. It comes off the first month and is refunded in full on cancellation before the first workbook ships. The first month is charged when the first workbook ships (D-053).
 9. **FAQ.** Screen time, the free assessment, missed weeks, photos that stop, privacy, the money-back guarantee, cancelling.
 10. **Closing claim.** "This is what learning should be like." Then the final "Take free assessment" button.
 
@@ -72,8 +72,8 @@ Every section sets up the next one. A single pencil line connects the sections a
 
 ## Behavior and states
 
-- The primary action opens the reserve flow: plan, child's grade (1-7), parent name, email, Canadian postal code, school curriculum, then review and free assessment booking. No card is required at booking.
-- States: idle, invalid input, submitting, success (what happens next and when), payment declined, save error with retry. A valid Canadian postal code proceeds to review without a delivery-area waitlist.
+- The primary action opens the reserve flow: plan, child's grade (1-7), parent name, email, Canadian postal code, school curriculum, then, for the BC curriculum, review and a CAD 25 refundable deposit on a Stripe Payment Link. Every other curriculum saves a waitlist entry right after the details step, with no card (D-053).
+- States: idle, invalid input, submitting, redirect to Stripe, deposit received (back from Stripe at `/?deposit=paid`), reserved with no payment link set (we email a link), waitlist (curriculum not ready), save error with retry. Stripe shows card declines on its own page.
 - Every step fires an analytics event (view, CTA click, form start, reserve success).
 
 ## Responsive and accessibility
@@ -102,4 +102,4 @@ Every section sets up the next one. A single pencil line connects the sections a
 
 - D4 Launch photos (own shoot with consent, or keep stock/AI).
 - D1 Brand name.
-- D8/D3 Checkout: settled in principle by D-043 (no card at booking; full month charged when the first workbook ships; 30-day money-back guarantee). Stripe wiring still open.
+- D8/D3 Checkout: BC deposit wired to a Stripe Payment Link (D-053). Open: deposit amount (CAD 25 is the default), and how the first month is charged when the first workbook ships (saved card + Stripe Billing, with the deposit as a customer credit).
