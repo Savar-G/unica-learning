@@ -1,3 +1,5 @@
+> Decision after this research (2026-10-08, D-053): no deposit. BC parents add a card with Stripe Checkout in setup mode (CAD 0 today); the first month is charged when the first workbook ships. The deposit sections below are kept as background.
+
 # Payments research for the BC deposit flow (2026-10-08)
 
 Read-only web research. Every bullet has a source URL. UNVERIFIED = could not confirm from a primary page.

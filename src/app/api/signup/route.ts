@@ -1,6 +1,7 @@
 import { after } from "next/server";
-import { DEPOSIT, PLANS } from "@/lib/site";
+import { PLANS } from "@/lib/site";
 import { CURRICULA, EMAIL, POSTAL, statusFor, type CurriculumId, type SignupPayload, type SignupResult } from "@/lib/signup";
+import { cardSetupUrl, stripe } from "@/lib/stripe";
 import { supabase } from "@/lib/supabase";
 
 const SUBJECTS = new Set(["Math", "Reading", "Math + Reading"]);
@@ -19,9 +20,9 @@ export async function POST(request: Request) {
 
   const plan = body.plan === "both" ? "both" : body.plan === "one" ? "one" : null;
   const curriculum = typeof body.curriculum === "string" && Object.hasOwn(CURRICULA, body.curriculum) ? (body.curriculum as CurriculumId) : null;
-  // The curriculum decides the path: open curricula pay the deposit, the rest join the waitlist.
+  // The curriculum decides the path: open curricula add a card on Stripe, the rest join the waitlist.
   const status = curriculum ? statusFor(curriculum) : "waitlist";
-  // Passed to Stripe as client_reference_id, so each deposit payment matches this row.
+  // Saved on the Stripe customer and passed as client_reference_id, so each card matches this row.
   const ref = status === "reserved" ? crypto.randomUUID() : null;
   const row = {
     status,
@@ -57,33 +58,28 @@ export async function POST(request: Request) {
     return Response.json({ ok: false, error: "store_failed" } satisfies SignupResult, { status: 502 });
   }
 
-  const pay = ref ? depositLink(row.email, ref) : null;
-  after(() => notify(row, !!pay));
-  return Response.json({ ok: true, status, ...(pay && { pay }) } satisfies SignupResult);
-}
-
-// STRIPE_DEPOSIT_LINK is a Stripe Payment Link (https://buy.stripe.com/...) that charges DEPOSIT.
-// Without it, reserved parents see "we'll email you a payment link" and Savar sends one by hand.
-function depositLink(email: string, ref: string): string | null {
-  const base = process.env.STRIPE_DEPOSIT_LINK;
-  if (!base) return null;
-  try {
-    const url = new URL(base);
-    if (url.protocol !== "https:") throw new Error("not https");
-    url.searchParams.set("prefilled_email", email);
-    url.searchParams.set("client_reference_id", ref);
-    return url.toString();
-  } catch {
-    console.error("[signup] STRIPE_DEPOSIT_LINK is not an https URL");
-    return null;
+  // The row is saved first, so a Stripe failure never loses the signup: the parent is told we will email a link.
+  let cardUrl: string | null = null;
+  let stripeState: "sent" | "off" | "failed" = "off";
+  const s = stripe();
+  if (ref && s) {
+    try {
+      cardUrl = await cardSetupUrl(s, { ...row, ref, plan, curriculum: row.curriculum, origin: new URL(request.url).origin });
+      stripeState = cardUrl ? "sent" : "failed";
+    } catch (e) {
+      console.error("[signup] stripe failed", e instanceof Error ? e.message : e);
+      stripeState = "failed";
+    }
   }
+  after(() => notify(row, stripeState));
+  return Response.json({ ok: true, status, ...(cardUrl && { cardUrl }) } satisfies SignupResult);
 }
 
 // Email Savar about each new signup. Resend's free plan only delivers to the account's own address,
 // which is all an alert needs.
 async function notify(
   row: { status: string; ref: string | null; name: string; email: string; postal: string; subject: string; grade: number; curriculum: CurriculumId | null; price: number; source: Record<string, string> },
-  sentToPay: boolean,
+  stripeState: "sent" | "off" | "failed",
 ) {
   const key = process.env.RESEND_API_KEY;
   const to = process.env.SIGNUP_NOTIFY_EMAIL;
@@ -92,16 +88,16 @@ async function notify(
   const label =
     row.status === "waitlist"
       ? `Waitlist (${curriculum} curriculum)`
-      : sentToPay
-        ? `Sent to pay the CAD ${DEPOSIT} deposit`
-        : `Reserved, no payment link set: email them one`;
+      : stripeState === "sent"
+        ? "Sent to Stripe to add a card (nothing charged)"
+        : `Reserved, but ${stripeState === "off" ? "STRIPE_SECRET_KEY is not set" : "Stripe failed"}: email them a link to add a card`;
   const lines = [
     `${label}: ${row.name} <${row.email}>`,
     `Plan: ${row.subject}, CAD ${row.price}/month`,
     `Child grade: ${row.grade}`,
     `Postal code: ${row.postal}`,
     `Curriculum: ${curriculum}`,
-    ...(row.ref ? [`Stripe client_reference_id: ${row.ref}`] : []),
+    ...(row.ref ? [`Stripe ref (customer metadata and client_reference_id): ${row.ref}`] : []),
     `Source: ${Object.entries(row.source).map(([k, v]) => `${k}=${v}`).join(", ") || "direct"}`,
   ];
   try {

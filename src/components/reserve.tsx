@@ -1,20 +1,21 @@
 "use client";
 
-// Reserve flow: plan + grade -> details -> (open curriculum) review -> Stripe deposit, or (other) waitlist.
+// Reserve flow: plan + grade -> details -> (open curriculum) review -> Stripe saves the card, or (other) waitlist.
+// Nothing is charged at signup; the first month is charged when the first workbook ships (D-053).
 // Any element with [data-open] opens it ([data-plan] preselects a plan, [data-src] names the CTA).
-// Every signup is saved through /api/signup to Supabase before the parent leaves for Stripe (D-053).
+// Every signup is saved through /api/signup to Supabase before the parent leaves for Stripe.
 import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
-import { DEPOSIT, PLANS, type PlanId } from "@/lib/site";
+import { PLANS, type PlanId } from "@/lib/site";
 import { CURRICULA, EMAIL, OPEN_CURRICULA, POSTAL, curriculumFromPostal, statusFor, type CurriculumId, type SignupResult } from "@/lib/signup";
 import { identify, track } from "@/lib/track";
 
-// ok = reserved but no payment link is set; paid = back from Stripe; wait = waitlist.
-type Step = 1 | 2 | 3 | "ok" | "paid" | "wait" | "err";
+// ok = reserved, Stripe not available; saved / nocard = back from Stripe; wait = waitlist.
+type Step = 1 | 2 | 3 | "ok" | "saved" | "nocard" | "wait" | "err";
 type Errors = Partial<Record<"name" | "email" | "postal", boolean>>;
 
 const UTM = ["utm_source", "utm_medium", "utm_campaign", "utm_content", "ref"];
-// Name and email kept across the round trip to Stripe, for the "Deposit received" message.
-const PAID_KEY = "pw-deposit";
+// Kept across the round trip to Stripe, for the message when the parent comes back.
+const CARD_KEY = "pw-card";
 
 export function Reserve() {
   const dlg = useRef<HTMLDialogElement>(null);
@@ -32,13 +33,13 @@ export function Reserve() {
   const [busy, setBusy] = useState(false);
   const [src, setSrc] = useState("unknown");
   const [website, setWebsite] = useState("");
-  // Stripe URL for the saved signup, reused if the parent comes back from Stripe and pays again.
-  const [payUrl, setPayUrl] = useState<string | null>(null);
+  // Stripe page for the saved signup, reused if the parent comes back from Stripe and tries again.
+  const [cardUrl, setCardUrl] = useState<string | null>(null);
 
   const open = useCallback((src: string, p?: string) => {
     if (p === "one" || p === "both") setPlan(p);
     setSrc(src);
-    setPayUrl(null);
+    setCardUrl(null);
     setStep(1);
     dlg.current?.showModal();
     track("cta_click", { src, plan: p ?? null });
@@ -56,30 +57,32 @@ export function Reserve() {
     return () => document.removeEventListener("click", onClick);
   }, [open]);
 
-  // Stripe sends parents who paid back to /?deposit=paid (the Payment Link's after-payment redirect).
+  // Stripe sends the parent back to /?card=saved or /?card=cancelled (success_url and cancel_url in lib/stripe.ts).
   useEffect(() => {
     const qs = new URLSearchParams(window.location.search);
-    if (qs.get("deposit") !== "paid") return;
-    qs.delete("deposit");
-    qs.delete("session_id");
+    const card = qs.get("card");
+    if (card !== "saved" && card !== "cancelled") return;
+    qs.delete("card");
     const rest = qs.toString();
     history.replaceState(null, "", `${location.pathname}${rest ? `?${rest}` : ""}${location.hash}`);
-    let saved: { name?: string; email?: string } = {};
+    let kept: { name?: string; email?: string; plan?: string; url?: string } = {};
     try {
-      saved = JSON.parse(sessionStorage.getItem(PAID_KEY) ?? "{}");
-      sessionStorage.removeItem(PAID_KEY);
+      kept = JSON.parse(sessionStorage.getItem(CARD_KEY) ?? "{}");
+      if (card === "saved") sessionStorage.removeItem(CARD_KEY);
     } catch {}
     // The URL exists only in the browser, so this cannot be initial state on a static page.
     /* eslint-disable react-hooks/set-state-in-effect */
-    setName(saved.name ?? "");
-    setEmail(saved.email ?? "");
-    setStep("paid");
+    setName(kept.name ?? "");
+    setEmail(kept.email ?? "");
+    if (kept.plan === "one" || kept.plan === "both") setPlan(kept.plan);
+    setCardUrl(card === "cancelled" ? (kept.url ?? null) : null);
+    setStep(card === "saved" ? "saved" : "nocard");
     /* eslint-enable react-hooks/set-state-in-effect */
     dlg.current?.showModal();
-    track("deposit_paid");
+    track(card === "saved" ? "card_saved" : "card_cancelled");
   }, []);
 
-  // Back from Stripe without paying: the browser can restore this page with the spinner still on.
+  // Back from Stripe with the browser's back button: the page can come back with the spinner still on.
   useEffect(() => {
     const onShow = (e: PageTransitionEvent) => {
       if (e.persisted) setBusy(false);
@@ -128,17 +131,17 @@ export function Reserve() {
   };
 
   const toStripe = (url: string) => {
+    setBusy(true);
     try {
-      sessionStorage.setItem(PAID_KEY, JSON.stringify({ name: name.trim(), email: email.trim() }));
+      sessionStorage.setItem(CARD_KEY, JSON.stringify({ name: name.trim(), email: email.trim(), plan, url }));
     } catch {}
-    track("deposit_redirect", { plan, deposit: DEPOSIT });
+    track("card_redirect", { plan, price });
     window.location.assign(url);
   };
 
   const finish = async () => {
-    if (payUrl) {
-      setBusy(true);
-      toStripe(payUrl);
+    if (cardUrl) {
+      toStripe(cardUrl);
       return;
     }
     setBusy(true);
@@ -155,11 +158,11 @@ export function Reserve() {
       setStep("wait");
       return;
     }
-    track("reserve_success", { plan, subject: subj, grade, curriculum, price, deposit: !!res.pay });
-    if (res.pay) {
+    track("reserve_success", { plan, subject: subj, grade, curriculum, price, card: !!res.cardUrl });
+    if (res.cardUrl) {
       // Keep the spinner on while the browser leaves for Stripe.
-      setPayUrl(res.pay);
-      toStripe(res.pay);
+      setCardUrl(res.cardUrl);
+      toStripe(res.cardUrl);
       return;
     }
     setBusy(false);
@@ -314,16 +317,16 @@ export function Reserve() {
           <div><span>Ship to</span><b>{postal}</b></div>
           <div><span>Curriculum</span><b>{CURRICULA[curriculum]}</b></div>
           <div><span>Assessment</span><b>Free</b></div>
-          <div><span>Refundable deposit today</span><b>CAD {DEPOSIT}</b></div>
+          <div><span>Today</span><b>CAD 0</b></div>
           <div><span>Then</span><b>CAD {price} / month</b></div>
         </div>
         <p className="small" style={{ margin: 0 }}>
-          The CAD {DEPOSIT} comes off your first month, which is charged when your first workbook ships. Cancel before then and we refund it in full. Every plan also has a 30-day money-back guarantee. You pay on Stripe&apos;s secure checkout.
+          Add your card on Stripe&apos;s secure page. We charge nothing today. When your first workbook ships, we charge CAD {price}, then every month until you cancel. Cancel before it ships and you pay nothing. Every plan has a 30-day money-back guarantee.
         </p>
         <div className="row2">
-          <button className="btn ghost" type="button" onClick={() => { setPayUrl(null); setStep(2); }}>Back</button>
+          <button className="btn ghost" type="button" onClick={() => { setCardUrl(null); setStep(2); }}>Back</button>
           <button className="btn" type="submit" disabled={busy} aria-busy={busy}>
-            {busy ? <span className="spin" aria-label="Processing" /> : `Pay CAD ${DEPOSIT} deposit`}
+            {busy ? <span className="spin" aria-label="Processing" /> : <>Add card <span className="arr">→</span></>}
           </button>
         </div>
       </form>
@@ -332,18 +335,38 @@ export function Reserve() {
         <div className="big"><svg viewBox="0 0 30 30" aria-hidden="true"><path d="M7 15.5l5.5 5.5L23.5 9" /></svg></div>
         <h3>You&apos;re in.</h3>
         <p className="lead" style={{ margin: 0, fontSize: 17 }}>
-          Thanks, {firstName}. We&apos;ll email {email.trim()} a link to pay your CAD {DEPOSIT} refundable deposit, then arrange your child&apos;s free placement assessment.
+          Thanks, {firstName}. We&apos;ll email {email.trim()} a link to add your card, then arrange your child&apos;s free placement assessment. Nothing is charged until your first workbook ships.
         </p>
         <button className="btn" type="button" onClick={close}>Done</button>
       </div>
 
-      <div data-step="paid" className="state" hidden={step !== "paid"} style={{ padding: "28px 22px 30px" }} aria-live="polite">
+      <div data-step="saved" className="state" hidden={step !== "saved"} style={{ padding: "28px 22px 30px" }} aria-live="polite">
         <div className="big"><svg viewBox="0 0 30 30" aria-hidden="true"><path d="M7 15.5l5.5 5.5L23.5 9" /></svg></div>
-        <h3>Deposit received.</h3>
+        <h3>You&apos;re in.</h3>
         <p className="lead" style={{ margin: 0, fontSize: 17 }}>
-          Thanks{firstName && `, ${firstName}`}. We&apos;ll email {email.trim() || "you"} to arrange your child&apos;s free placement assessment. Your CAD {DEPOSIT} comes off your first month.
+          Thanks{firstName && `, ${firstName}`}. Your card is saved, and nothing was charged. We&apos;ll email {email.trim() || "you"} to arrange your child&apos;s free placement assessment. We charge CAD {price} when your first workbook ships.
         </p>
         <button className="btn" type="button" onClick={close}>Done</button>
+      </div>
+
+      <div data-step="nocard" className="state" hidden={step !== "nocard"} style={{ padding: "28px 22px 30px" }} aria-live="polite">
+        <div className="big" style={{ background: "#D9E3FF" }}><svg viewBox="0 0 30 30" aria-hidden="true"><path d="M15 8v8l5 3" /></svg></div>
+        <h3>Your card isn&apos;t saved yet.</h3>
+        <p className="lead" style={{ margin: 0, fontSize: 17 }}>
+          {cardUrl
+            ? "We kept your details, and nothing was charged. Add your card to book your child's free assessment."
+            : `We kept your details, and nothing was charged. We'll email ${email.trim() || "you"} a link to add your card.`}
+        </p>
+        {cardUrl ? (
+          <div className="row2">
+            <button className="btn ghost" type="button" onClick={close}>Close</button>
+            <button className="btn" type="button" disabled={busy} aria-busy={busy} onClick={() => toStripe(cardUrl)}>
+              {busy ? <span className="spin" aria-label="Opening Stripe" /> : <>Add card <span className="arr">→</span></>}
+            </button>
+          </div>
+        ) : (
+          <button className="btn" type="button" onClick={close}>Done</button>
+        )}
       </div>
 
       <div data-step="wait" className="state" hidden={step !== "wait"} style={{ padding: "28px 22px 30px" }} aria-live="polite">

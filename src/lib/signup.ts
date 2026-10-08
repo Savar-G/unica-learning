@@ -2,7 +2,7 @@
 export const POSTAL = /^[ABCEGHJ-NPRSTVXY]\d[A-Z] ?\d[A-Z]\d$/i;
 export const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
-// reserved = on an open curriculum, sent to pay the deposit; waitlist = books for their curriculum are not ready.
+// reserved = on an open curriculum, sent to Stripe to add a card; waitlist = books for their curriculum are not ready.
 export type SignupStatus = "reserved" | "waitlist";
 
 // Provincial curricula we will build books for. "other" = another province, or the parent is not sure.
@@ -49,10 +49,10 @@ export interface SignupPayload {
   website?: string;
 }
 
-/** What /api/signup answers. `pay` is the Stripe deposit URL, only for reserved signups when the link is set. */
+/** What /api/signup answers. `cardUrl` is Stripe's page to add a card, only for reserved signups when Stripe works. */
 export interface SignupResult {
   ok: boolean;
   status?: SignupStatus;
-  pay?: string;
+  cardUrl?: string;
   error?: string;
 }

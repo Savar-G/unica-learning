@@ -2,7 +2,7 @@
 // Site-only concerns stay here: next/image photos, scroll reveals (Rise/Knot), and the
 // [data-open] buttons that open the reserve dialog.
 import Image, { type StaticImageData } from "next/image";
-import { BRAND, DEPOSIT, HERO, PLANS } from "@/lib/site";
+import { BRAND, HERO, PLANS } from "@/lib/site";
 import {
   BeliefList,
   Eyebrow,
@@ -262,7 +262,7 @@ export function Feel() {
 const PROMISE: [IconName, string, string][] = [
   ["shield", "30-day money-back guarantee", "If it is not working for your child in the first 30 days, we refund your payment in full."],
   ["calendar", "Fits your family's schedule", "Kids are busy. Take a week or a month off, and pick up where your child left off."],
-  ["test", "Free assessment, refundable deposit", `The assessment is free. Cancel before your first book ships and we refund your CAD ${DEPOSIT} deposit in full.`],
+  ["test", "Free assessment, nothing to pay today", "We charge nothing until your first workbook ships."],
   ["undo", "Cancel anytime", "No contract. Stop whenever you want."],
 ];
 
@@ -336,8 +336,8 @@ const FAQ = [
   ["How is the work checked?", "Every page you photograph is checked, working included. The results update your child's learning profile and your progress report."],
   ["What happens to my child's work?", "We use it only to make your child's next book. We never sell or share it, and you can ask us to delete it at any time."],
   ["What if it is not right for my child?", "Every plan has a 30-day money-back guarantee. If it is not working for your child in the first 30 days, tell us and we refund your payment in full."],
-  ["Is there a deposit?", `Yes. Families on the BC curriculum pay a CAD ${DEPOSIT} deposit when they sign up. It comes off your first month, and we refund it in full if you cancel before your first workbook ships. Families on the waitlist pay nothing.`],
-  ["Can we cancel?", "Yes, anytime. Before your first workbook ships, we refund your deposit in full. After that, you are charged only when a workbook ships."],
+  ["Why do you ask for my card?", "So your first workbook can ship as soon as it is ready. We charge nothing when you sign up. When your first workbook ships, we charge your first month, then every month until you cancel. Cancel before it ships and you pay nothing. Families on the waitlist do not add a card."],
+  ["Can we cancel?", "Yes, anytime. You are charged only when a workbook ships."],
   ["Where do you deliver?", "We deliver across Canada. Delivery is included in every plan."],
 ].map(([question, answer]) => ({ question, answer }));
 

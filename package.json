@@ -15,7 +15,8 @@
     "posthog-js": "^1.435.8",
     "react": "19.2.8",
     "react-dom": "19.2.8",
-    "server-only": "^0.0.1"
+    "server-only": "^0.0.1",
+    "stripe": "^23.0.0"
   },
   "devDependencies": {
     "@types/node": "^20",
