@@ -1,0 +1,61 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>C - Inside the book</title>
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@300;400;500&family=Geist+Mono&family=Caveat:wght@500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="shared.css">
+<style>
+.wrap{display:grid;grid-template-columns:1fr 1.05fr;gap:56px;align-items:center}
+.ctl{display:grid;gap:18px;margin-top:8px}
+.ctl .mono{color:var(--ink-3);display:block;margin-bottom:8px}
+.pills{display:flex;flex-wrap:wrap;gap:8px}
+.pills button{appearance:none;border:1px solid var(--line);background:#fff;border-radius:999px;padding:9px 15px;font:400 15px "Geist",sans-serif;cursor:pointer;display:inline-flex;gap:8px;align-items:center}
+.pills button[aria-pressed=true]{background:var(--ink);color:#fff;border-color:var(--ink)}
+.pills .sq{background:var(--c)}
+.note{color:var(--ink-2);font-size:15.5px;margin:6px 0 0;max-width:420px}
+/* the page */
+.stage{position:relative;padding:28px 10px 28px 28px;border-radius:6px;background:radial-gradient(60% 70% at 20% 20%,var(--g1),transparent 70%),radial-gradient(60% 70% at 85% 85%,var(--g3),transparent 70%),#fbf7ef}
+.page{background:#fffdf8;box-shadow:0 1px 2px rgba(0,0,0,.06),0 18px 40px -18px rgba(0,0,0,.25);border-radius:3px;padding:34px 36px 30px;transform:rotate(-1.2deg);transition:transform .5s}
+.page.flip{animation:flip .45s cubic-bezier(.2,.7,.2,1)}
+@keyframes flip{0%{opacity:0;transform:rotate(-1.2deg) translateY(10px)}100%{opacity:1;transform:rotate(-1.2deg)}}
+.ph{display:flex;justify-content:space-between;font:400 11.5px "Geist Mono",monospace;color:var(--ink-3);letter-spacing:.04em;text-transform:uppercase;aspect-ratio:auto;background:none;padding:0;place-items:initial}
+.page h4{font-weight:300;font-size:34px;letter-spacing:-.03em;margin:18px 0 4px}
+.page .for{font:500 22px "Caveat",cursive;color:var(--accent)}
+.toc{list-style:none;margin:22px 0 0;padding:0}
+.toc li{display:flex;align-items:baseline;gap:10px;padding:10px 0;border-bottom:1px dashed #e2ddd3;font-size:16px}
+.toc .u{font:400 11.5px "Geist Mono",monospace;color:var(--ink-3);width:22px;flex:none}
+.toc .dots{flex:1;border-bottom:1px dotted #cfc8bb;transform:translateY(-4px)}
+.toc .p{font:400 12px "Geist Mono",monospace;color:var(--ink-3)}
+.foot{margin-top:16px;font:500 20px "Caveat",cursive;color:var(--ink-2)}
+@media (max-width:860px){.wrap{grid-template-columns:1fr;gap:28px}.stage{padding:18px 8px 18px 14px}.page{padding:26px 22px}}
+</style></head><body>
+<div class="tag">C · Inside the book</div>
+<div class="wrap">
+  <div>
+    <div id="head"></div>
+    <div class="ctl">
+      <div><span class="mono">Your child's age</span><div class="pills" id="ages"></div></div>
+      <div><span class="mono">Subject</span><div class="pills" id="subs"></div></div>
+      <p class="note">This is the ground a book can cover. Your child's book takes the skills they are ready for next, in their order.</p>
+    </div>
+  </div>
+  <div class="stage"><div class="page" id="page"></div></div>
+</div>
+<div id="prov"></div>
+<script src="content.js"></script>
+<script>
+head.innerHTML = HEAD; prov.innerHTML = PROV;
+let age = "8-9", sub = "math";
+const SUBS = [{id:"math",t:"Math",c:"var(--g1)"},{id:"reading",t:"Reading",c:"var(--g3)"}];
+function render(anim){
+  ages.innerHTML = BANDS.map(b=>`<button aria-pressed="${b.id===age}" data-a="${b.id}">${b.age}</button>`).join("");
+  subs.innerHTML = SUBS.map(s=>`<button aria-pressed="${s.id===sub}" data-s="${s.id}" style="--c:${s.c}"><span class="sq"></span>${s.t}</button>`).join("");
+  const b = BANDS.find(x=>x.id===age), items = b[sub], S = SUBS.find(s=>s.id===sub);
+  page.innerHTML = `<div class="ph"><span>Pagewise · ${S.t}</span><span>${b.grade}</span></div>
+    <h4>Contents</h4><div class="for">Made for one child</div>
+    <ol class="toc">${items.map((t,i)=>`<li><span class="u">${String(i+1).padStart(2,"0")}</span><span>${t}</span><span class="dots"></span><span class="p">${3+i*4}</span></li>`).join("")}</ol>
+    <div class="foot">+ review pages for anything that keeps coming back</div>`;
+  if(anim){page.classList.remove("flip");void page.offsetWidth;page.classList.add("flip");}
+}
+document.addEventListener("click",e=>{const a=e.target.closest("[data-a]"),s=e.target.closest("[data-s]");if(a)age=a.dataset.a;if(s)sub=s.dataset.s;if(a||s)render(true);});
+render();
+</script>
+</body></html>

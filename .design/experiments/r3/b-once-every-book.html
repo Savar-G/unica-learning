@@ -1,0 +1,47 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>B - Once, then every book</title>
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@300;400;500&family=Geist+Mono&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="shared.css">
+<style>
+.how{display:grid;gap:16px;grid-template-columns:270px 1fr;align-items:start}
+.col-h{font:400 12.5px "Geist Mono",monospace;color:var(--ink-2);margin:0 0 12px;display:flex;align-items:center;gap:8px;height:22px}
+.col-h svg{width:18px;height:18px;stroke:var(--accent);fill:none;stroke-width:2;stroke-linecap:round}
+.how.on .col-h svg{animation:spin 6s linear infinite}@keyframes spin{to{transform:rotate(-360deg)}}
+.panel{background:#fff1ea;border-radius:6px;padding:16px 16px 56px;position:relative}
+.row{display:grid;grid-template-columns:repeat(5,1fr);gap:12px;position:relative;z-index:1}
+.row .card{background:#fff;padding:16px}.row .card p{font-size:15px}.row h3{font-size:19px}
+.row .card.act{box-shadow:0 0 0 2px var(--accent);transform:translateY(-4px)}
+.ret{position:absolute;left:10%;right:10%;bottom:22px;height:30px;border:2px solid var(--accent);border-top:0;border-radius:0 0 14px 14px;opacity:.35;transition:opacity .3s}
+.ret:before{content:"";position:absolute;left:-7px;top:-6px;border:6px solid transparent;border-bottom:9px solid var(--accent);border-top:0}
+.ret span{position:absolute;left:50%;bottom:-11px;transform:translateX(-50%);background:#fff1ea;padding:0 10px;font:400 12.5px "Geist Mono",monospace;color:var(--accent);white-space:nowrap}
+.ret i{position:absolute;width:12px;height:12px;border-radius:50%;background:var(--accent);margin:-6px 0 0 -6px;left:100%;top:0;opacity:0}
+.ret.back{opacity:1}.ret.back i{opacity:1;animation:back 1.3s cubic-bezier(.5,0,.3,1) forwards}
+@keyframes back{0%{left:100%;top:0}18%{left:100%;top:100%}82%{left:0;top:100%}100%{left:0;top:0}}
+@media (max-width:980px){.how{grid-template-columns:1fr}.row{grid-template-columns:1fr}.panel{padding:16px 16px 16px 56px}
+ .ret{left:22px;right:auto;width:26px;top:12%;bottom:12%;height:auto;border:2px solid var(--accent);border-right:0;border-radius:14px 0 0 14px}
+ .ret:before{left:auto;right:-8px;top:-7px;border:6px solid transparent;border-left:9px solid var(--accent);border-right:0}
+ .ret span{left:-12px;top:50%;bottom:auto;transform:translate(-50%,-50%) rotate(-90deg);background:#fff1ea}
+ .ret i{left:100%;top:100%}
+ @keyframes back{0%{left:100%;top:100%}18%{left:0;top:100%}82%{left:0;top:0}100%{left:100%;top:0}}}
+</style></head><body>
+<div class="tag">B · Once, then every book</div>
+<div class="eyebrow">How it works</div><h2>Start once. Then every book adapts.</h2>
+<p class="lead">One free assessment to start. After that, the same five steps repeat with every book, so the work always matches what your child needs next.</p>
+<div class="how" id="how">
+  <div><div class="col-h">Once, to start</div><div id="first"></div></div>
+  <div><div class="col-h"><svg viewBox="0 0 24 24"><path d="M20 12a8 8 0 1 1-2.3-5.6"/><path d="M20 4v5h-5"/></svg>Every book</div>
+    <div class="panel"><div class="row" id="row"></div><div class="ret" id="ret"><i></i><span>back to step 2 with the next book</span></div></div></div>
+</div>
+<script src="steps.js"></script>
+<script>
+document.getElementById("first").innerHTML=card(STEPS[0]);
+const row=document.getElementById("row"), ret=document.getElementById("ret"), how=document.getElementById("how");
+row.innerHTML=STEPS.slice(1).map(s=>card(s)).join("");
+const cards=[...row.children]; let i=-1, timer;
+function step(){
+  if(i===cards.length-1){ cards[i].classList.remove("act"); ret.classList.remove("back"); void ret.offsetWidth; ret.classList.add("back"); i=-2; timer=setTimeout(step,1400); return; }
+  if(i===-2){ ret.classList.remove("back"); i=-1; }
+  cards.forEach(c=>c.classList.remove("act")); i++; cards[i].classList.add("act"); timer=setTimeout(step,1300);
+}
+if(reduced){ret.style.opacity=1} else new IntersectionObserver(([e])=>{ if(e.isIntersecting&&!how.classList.contains("on")){how.classList.add("on"); step();}},{threshold:.3}).observe(how);
+</script></body></html>
