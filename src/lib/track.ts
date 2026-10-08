@@ -1,4 +1,4 @@
-// Funnel events: cta_click, form_start, plan_selected, details_done, checkout_start, reserve_success.
+// Funnel events: cta_click, form_start, plan_selected, details_done, waitlist_join, checkout_start, reserve_success, card_redirect, card_saved, card_cancelled.
 // posthog-js is imported on demand so it stays out of the first-load bundle.
 export function track(event: string, props: Record<string, unknown> = {}) {
   if (!process.env.NEXT_PUBLIC_POSTHOG_KEY) {
