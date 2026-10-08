@@ -337,7 +337,7 @@ const FAQ = [
   ["What happens to my child's work?", "We use it only to make your child's next book. We never sell or share it, and you can ask us to delete it at any time."],
   ["What if it is not right for my child?", "Every plan has a 30-day money-back guarantee. If it is not working for your child in the first 30 days, tell us and we refund your payment in full."],
   ["Can we cancel?", "Yes, anytime. You are charged only when a workbook ships."],
-  ["Where do you deliver?", "Metro Vancouver for now. Enter your postal code when you sign up and we'll tell you right away."],
+  ["Where do you deliver?", "We deliver across Canada. Delivery is included in every plan."],
 ].map(([question, answer]) => ({ question, answer }));
 
 export function Faq() {
@@ -388,7 +388,7 @@ export function Footer() {
     <footer className="foot">
       <div>
         <a className="logo" href="#top">{BRAND}<b /></a>
-        <p style={{ margin: "12px 0 0" }}>Personalized math and reading workbooks for ages 6-12, delivered in Metro Vancouver.</p>
+        <p style={{ margin: "12px 0 0" }}>Personalized math and reading workbooks for ages 6-12.</p>
         <p className="small" style={{ marginTop: 10 }}>Made in Vancouver, BC · 30-day money-back guarantee · Cancel anytime</p>
         <p className="small" style={{ marginTop: 10 }}>© 2026 {BRAND}</p>
       </div>

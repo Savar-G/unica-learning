@@ -1,11 +1,11 @@
 # DESIGN.md - ai-workbooks-landing-page
 
 > Status: v2. Page story and look approved by Savar 2026-10-04 (no objection); hero copy decided (D-024); hero layout C chosen (D-029); option A parked as a draft (D-030). Built from Savar's FigJam board "Personalized Learning, Delivered" (2026-10-03).
-> Last updated: 2026-10-03
+> Last updated: 2026-10-07
 
 ## Job
 
-**User:** A Vancouver parent of a age 6-12 child. They pay for, or have priced, tutoring or a math app, and they worry about screen time.
+**User:** A parent in Canada with a child aged 6-12. They pay for, or have priced, tutoring or a math app, and they worry about screen time.
 
 **Situation:** They arrive from a Product BC Slack post, a Reddit thread or a direct link, usually on a phone, with under a minute of attention.
 
@@ -22,7 +22,7 @@
 ## Source constraints
 
 - References: Savar's FigJam board (Primer, Ello, Squirrel AI, Outschool) with his notes; see `.design/references.json`.
-- Offer: math and reading, ages 6-12, Vancouver, delivery included. One subject CAD 59 a month; math + reading CAD 99 a month (D-046).
+- Offer: math and reading, ages 6-12, delivery across Canada included (D-052). One subject CAD 59 a month; math + reading CAD 99 a month (D-046).
 - Real product posture: no "pilot", "beta" or "test" wording (D-012).
 - No proof we do not have: no ratings, review counts, family counts, press logos, outcome percentages or testimonials. Until real customer references exist, proof = sample pages, clear price, a free placement assessment, a 30-day money-back guarantee, cancel anytime. No founder names or student status anywhere on the site (D-040).
 - Comparative and performance claims: Competition Act s.74.01(1)(b) requires an adequate and proper test before a claim about a product's performance. The page makes no research claims; the paper belief is stated as "We believe paper and pencil build stronger learning." (D-039). Never a claim about our results.
@@ -72,8 +72,8 @@ Every section sets up the next one. A single pencil line connects the sections a
 
 ## Behavior and states
 
-- The primary action opens the reserve flow: child's age (6-12), parent name, email, postal code (Vancouver check), then payment details.
-- States: idle, submitting, success (what happens next and when), payment declined, outside Vancouver (waitlist), sold out for this month (waitlist).
+- The primary action opens the reserve flow: plan, child's grade (1-7), parent name, email, Canadian postal code, school curriculum, then review and free assessment booking. No card is required at booking.
+- States: idle, invalid input, submitting, success (what happens next and when), payment declined, save error with retry. A valid Canadian postal code proceeds to review without a delivery-area waitlist.
 - Every step fires an analytics event (view, CTA click, form start, reserve success).
 
 ## Responsive and accessibility

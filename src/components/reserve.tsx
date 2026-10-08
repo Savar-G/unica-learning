@@ -2,14 +2,14 @@
 
 // Reserve flow: plan + grade -> details -> review -> result.
 // Any element with [data-open] opens it ([data-plan] preselects a plan, [data-src] names the CTA).
-// Each reservation (and each outside-area waitlist entry) is saved through /api/signup to Supabase.
+// Each reservation is saved through /api/signup to Supabase.
 // TODO(D3/D8): the review step will hand off to Stripe.
 import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
-import { DELIVERY_FSA, PLANS, type PlanId } from "@/lib/site";
-import { CURRICULA, EMAIL, POSTAL, curriculumFromPostal, type CurriculumId, type SignupStatus } from "@/lib/signup";
+import { PLANS, type PlanId } from "@/lib/site";
+import { CURRICULA, EMAIL, POSTAL, curriculumFromPostal, type CurriculumId } from "@/lib/signup";
 import { identify, track } from "@/lib/track";
 
-type Step = 1 | 2 | 3 | "ok" | "wait" | "bad" | "err";
+type Step = 1 | 2 | 3 | "ok" | "bad" | "err";
 type Errors = Partial<Record<"name" | "email" | "postal", boolean>>;
 
 const UTM = ["utm_source", "utm_medium", "utm_campaign", "utm_content", "ref"];
@@ -30,7 +30,6 @@ export function Reserve() {
   const [busy, setBusy] = useState(false);
   const [src, setSrc] = useState("unknown");
   const [website, setWebsite] = useState("");
-  const [pending, setPending] = useState<SignupStatus>("reserved");
 
   const open = useCallback((src: string, p?: string) => {
     if (p === "one" || p === "both") setPlan(p);
@@ -63,7 +62,8 @@ export function Reserve() {
   const close = () => dlg.current?.close();
 
   // Save the signup. Returns false when the server could not store it.
-  const save = async (status: SignupStatus) => {
+  const save = async () => {
+    const status = "reserved";
     const qs = new URLSearchParams(window.location.search);
     const source: Record<string, string> = { cta: src };
     if (document.referrer) source.referrer = document.referrer;
@@ -85,23 +85,17 @@ export function Reserve() {
     }
   };
 
-  const finish = async (status: SignupStatus) => {
-    setPending(status);
+  const finish = async () => {
     setBusy(true);
-    const ok = await save(status);
+    const ok = await save();
     setBusy(false);
     if (!ok) {
       setStep("err");
       return;
     }
     identify(email.trim().toLowerCase(), { name: name.trim(), postal: postal.trim().toUpperCase(), plan, subject: subj, grade, curriculum });
-    if (status === "waitlist") {
-      track("waitlist_join", { fsa: postal.trim().slice(0, 3).toUpperCase(), curriculum });
-      setStep("wait");
-    } else {
-      track("reserve_success", { plan, subject: subj, grade, curriculum, price });
-      setStep("ok");
-    }
+    track("reserve_success", { plan, subject: subj, grade, curriculum, price });
+    setStep("ok");
   };
 
   const submitPlan = (e: FormEvent) => {
@@ -125,11 +119,6 @@ export function Reserve() {
     }
     const pc = postal.trim().toUpperCase();
     setPostal(pc);
-    if (!DELIVERY_FSA.test(pc)) {
-      track("outside_area", { fsa: pc.slice(0, 3) });
-      void finish("waitlist");
-      return;
-    }
     track("details_done");
     setStep(3);
   };
@@ -142,7 +131,7 @@ export function Reserve() {
       setStep("bad");
       return;
     }
-    void finish("reserved");
+    void finish();
   };
 
   const dots = typeof step === "number" ? step : 3;
@@ -273,13 +262,6 @@ export function Reserve() {
         <button className="btn" type="button" onClick={close}>Done</button>
       </div>
 
-      <div data-step="wait" className="state" hidden={step !== "wait"} style={{ padding: "28px 22px 30px" }} aria-live="polite">
-        <div className="big" style={{ background: "#D9E3FF" }}><svg viewBox="0 0 30 30" aria-hidden="true"><path d="M15 8v8l5 3" /></svg></div>
-        <h3>You&apos;re on the waitlist.</h3>
-        <p className="lead" style={{ margin: 0, fontSize: 17 }}>We don&apos;t deliver to {postal} yet. We&apos;ll email {email.trim()} as soon as we do.</p>
-        <button className="btn" type="button" onClick={close}>Done</button>
-      </div>
-
       <div data-step="bad" className="state" hidden={step !== "bad"} style={{ padding: "28px 22px 30px" }} aria-live="polite">
         <div className="big" style={{ background: "#FFD9C9" }}><svg viewBox="0 0 30 30" aria-hidden="true"><path d="M10 10l10 10M20 10L10 20" /></svg></div>
         <h3>Your card was declined.</h3>
@@ -291,7 +273,7 @@ export function Reserve() {
         <div className="big" style={{ background: "#FFD9C9" }}><svg viewBox="0 0 30 30" aria-hidden="true"><path d="M15 8v9M15 21v1" /></svg></div>
         <h3>We couldn&apos;t save your spot.</h3>
         <p className="lead" style={{ margin: 0, fontSize: 17 }}>Check your connection and try again. Nothing was charged.</p>
-        <button className="btn" type="button" disabled={busy} aria-busy={busy} onClick={() => void finish(pending)}>
+        <button className="btn" type="button" disabled={busy} aria-busy={busy} onClick={() => void finish()}>
           {busy ? <span className="spin" aria-label="Saving" /> : "Try again"}
         </button>
       </div>
