@@ -48,6 +48,7 @@ Every section sets up the next one. A single pencil line connects the sections a
    4. **Scan:** A parent takes a photo of the completed work.
    5. **Adapt:** The system analyzes the child's answers and updates their learning profile.
    6. **Repeat:** The next workbook is automatically personalized based on what the child has mastered, struggled with or needs to review.
+   The loop is shown by an orange pencil line from step 6 back to step 2 with a travelling dot (D-047). When the dot arrives, step 2 lights up its own edge, number and background, then fades (D-052). Never draw an outline on top of a card.
 4. **Why choose [Brand]?** 3-4 cards that state what we do. No names of alternatives.
 5. **What's included.** A card grid: the placement test, the personalized workbook by mail ("Your next book arrives before the current one runs out."), the parent progress report ("updated continuously"; it must update after every scan), delivery, cancel anytime.
 6. **The emotional section.** Real photos and handwritten workbook pages drift around one centred line about every child learning differently.

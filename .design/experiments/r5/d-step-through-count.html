@@ -1,0 +1,45 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>r5 D - step through + book counter</title><link rel="stylesheet" href="shared.css">
+<style>
+  .step.on{box-shadow:inset 0 0 0 2px var(--accent)}
+  .step.on .num{color:var(--accent)}
+  svg.loop .track{opacity:.22;transition:opacity .4s}
+  svg.loop.back .track{opacity:1}
+  svg.loop .dot{transition:opacity .25s}
+  /* book counter on Deliver: rolls to the next number when the dot arrives */
+  .count{position:absolute;top:22px;right:36px;height:26px;overflow:hidden;border-radius:999px;background:#fff;border:1.5px solid var(--accent);
+    font:500 12.5px/26px "Geist Mono",monospace;color:var(--accent);padding:0 11px}
+  .count span{display:block;transition:transform .5s var(--ease)}
+  .count.roll span{transform:translateY(-26px)}
+</style></head><body>
+<script src="shared.js"></script>
+<script>document.write(header("D - B + book counter (recommended)"))</script>
+<div class="wrap" id="w"><ol class="steps" id="g"></ol></div>
+<p class="note">Two kids the same age get two different books.</p>
+<script>
+  g.innerHTML = STEPS.map((s, i) => stepHTML(s, i === 1 ? `<span class="count" id="ct"><span id="a">Book 1</span><span id="b">Book 2</span></span>` : "")).join("");
+  const line = returnLine(w);
+  const cards = [...g.children];
+  let shown = "";
+  loopClock(7600, (p, lap) => {
+    if (p === null) return;
+    const walk = p < 0.65;
+    const active = walk ? 1 + Math.floor((p / 0.65) * 5) : p < 0.88 ? -1 : 1;
+    cards.forEach((c, i) => c.classList.toggle("on", i === active));
+    const back = !walk && p < 0.88;
+    line.svg.classList.toggle("back", back);
+    line.at(back ? (p - 0.65) / 0.23 : 0);
+    line.dot.style.opacity = back ? 1 : 0;
+    // books 1..4, then start again; the number rolls when the dot reaches step 2
+    const book = (lap % 4) + 1, next = (book % 4) + 1;
+    const want = p >= 0.88 ? "r" + next : "s" + book;
+    if (want === shown) return;
+    if (p >= 0.88) { b.textContent = `Book ${next}`; ct.classList.add("roll"); }
+    else {
+      ct.querySelectorAll("span").forEach((s) => (s.style.transition = "none"));
+      a.textContent = `Book ${book}`; ct.classList.remove("roll");
+      requestAnimationFrame(() => ct.querySelectorAll("span").forEach((s) => (s.style.transition = "")));
+    }
+    shown = want;
+  });
+</script></body></html>

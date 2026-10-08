@@ -1,0 +1,25 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>r5 A - card reacts</title><link rel="stylesheet" href="shared.css">
+<style>
+  /* the card itself lights up: its own border, so it always fits */
+  .step.hit{box-shadow:inset 0 0 0 2px var(--accent);background:var(--accent-soft)}
+  .step.hit .num{color:var(--accent)}
+  svg.loop .dot{transition:opacity .25s}
+</style></head><body>
+<script src="shared.js"></script>
+<script>document.write(header("A - Card reacts"))</script>
+<div class="wrap" id="w"><ol class="steps" id="g"></ol></div>
+<p class="note">Two kids the same age get two different books.</p>
+<script>
+  g.innerHTML = STEPS.map((s) => stepHTML(s)).join("");
+  const line = returnLine(w);
+  const two = g.children[1];
+  // 0-0.45 dot travels 6 -> 2; on arrival step 2 lights up, then fades before the next run
+  loopClock(4200, (p) => {
+    if (p === null) return;
+    const travelling = p < 0.45;
+    line.at(travelling ? p / 0.45 : 1);
+    line.dot.style.opacity = travelling ? 1 : 0;
+    two.classList.toggle("hit", p >= 0.45 && p < 0.85);
+  });
+</script></body></html>

@@ -1,0 +1,35 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>r5 C - once / every book</title><link rel="stylesheet" href="shared.css">
+<style>
+  .grp-lbl{font:500 12.5px/1 "Geist Mono",monospace;letter-spacing:.06em;text-transform:uppercase;color:var(--ink-3);margin:0 0 12px;display:flex;gap:10px;align-items:center}
+  .grp-lbl b{font-weight:500;color:var(--accent)}
+  /* Assess: one wide card, once */
+  .once .step{display:grid;grid-template-columns:1fr 1.1fr;gap:12px 32px;align-items:start}
+  .once .step .vis{grid-column:2;grid-row:1/5;margin:0;height:200px}
+  .once .step p{max-width:440px}
+  /* Every book: steps 2-6 inside one accent frame */
+  .every{margin-top:36px;border:2px solid var(--accent);border-radius:8px;padding:18px 18px 18px;position:relative}
+  .every .grp-lbl{position:absolute;top:-9px;left:14px;background:#fff;padding:0 8px;margin:0;color:var(--accent)}
+  .every .steps{margin-top:8px}
+  .back{border-radius:4px;border:1.5px dashed var(--accent);background:var(--accent-soft);display:grid;place-content:center;justify-items:center;text-align:center;gap:6px;padding:24px;color:var(--accent)}
+  .back svg{width:92px;height:92px}
+  .back .pen{font:600 30px/1 "Caveat",cursive}
+  .back small{font:400 12.5px/1.3 "Geist Mono",monospace;color:var(--ink-2);max-width:200px}
+  @media (prefers-reduced-motion:no-preference){.back svg .spin{transform-origin:50px 50px;animation:spin 6s linear infinite}}
+  @keyframes spin{to{transform:rotate(360deg)}}
+</style></head><body>
+<script src="shared.js"></script>
+<script>document.write(header("C - Once / Every book (layout)"))</script>
+<div class="once"><p class="grp-lbl">Once, to start</p><ol class="steps" id="one" style="grid-template-columns:1fr"></ol></div>
+<div class="every"><p class="grp-lbl"><b>&#8635;</b> Every book</p><ol class="steps" id="g"></ol></div>
+<p class="note">Two kids the same age get two different books.</p>
+<script>
+  one.innerHTML = stepHTML(STEPS[0]);
+  g.innerHTML = STEPS.slice(1).map((s) => stepHTML(s)).join("") +
+    `<li class="back" aria-hidden="true">
+       <svg viewBox="0 0 100 100"><g class="spin" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round">
+         <path d="M80 50a30 30 0 1 1-9-21.4"/><path d="M72 16v14H58" stroke-linejoin="round"/></g></svg>
+       <span class="pen">back to 02</span>
+       <small>The next book starts here, built from this one.</small>
+     </li>`;
+</script></body></html>

@@ -1,0 +1,29 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>r5 B - highlight steps through</title><link rel="stylesheet" href="shared.css">
+<style>
+  .step.on{box-shadow:inset 0 0 0 2px var(--accent)}
+  .step.on .num{color:var(--accent)}
+  svg.loop .track{opacity:.22;transition:opacity .4s}
+  svg.loop.back .track{opacity:1}
+  svg.loop .dot{transition:opacity .25s}
+</style></head><body>
+<script src="shared.js"></script>
+<script>document.write(header("B - Highlight steps through 2-6, then back"))</script>
+<div class="wrap" id="w"><ol class="steps" id="g"></ol></div>
+<p class="note">Two kids the same age get two different books.</p>
+<script>
+  g.innerHTML = STEPS.map((s) => stepHTML(s)).join("");
+  const line = returnLine(w);
+  const cards = [...g.children];
+  // 0-0.65: highlight walks 2,3,4,5,6. 0.65-0.88: the line lights up and the dot runs 6 -> 2.
+  loopClock(7600, (p) => {
+    if (p === null) return;
+    const walk = p < 0.65;
+    const active = walk ? 1 + Math.floor((p / 0.65) * 5) : p < 0.88 ? -1 : 1;
+    cards.forEach((c, i) => c.classList.toggle("on", i === active));
+    const back = !walk && p < 0.88;
+    line.svg.classList.toggle("back", back);
+    line.at(back ? (p - 0.65) / 0.23 : 0);
+    line.dot.style.opacity = back ? 1 : 0;
+  });
+</script></body></html>
