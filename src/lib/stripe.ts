@@ -28,7 +28,7 @@ export interface CardSetup {
 
 /** What the parent agrees to on Stripe's page. Stripe requires the amount, timing and how to cancel. */
 export const cardTerms = (price: number) =>
-  `Nothing is charged today. When your first workbook ships, we charge CAD ${price}, then CAD ${price} every month until you cancel. Cancel before it ships and you pay nothing. Every plan has a 30-day money-back guarantee.`;
+  `Nothing is charged today. When your first workbook ships, we charge CAD ${price}, then CAD ${price} every month until you cancel. Cancel before it ships and you pay nothing. Your 30-day money-back guarantee starts on the day of your first payment.`;
 
 /**
  * Creates the Stripe customer and a hosted Checkout page in setup mode: it saves the card and charges nothing.
@@ -47,7 +47,7 @@ export async function cardSetupUrl(s: Stripe, p: CardSetup): Promise<string | nu
     metadata,
     setup_intent_data: { description, metadata },
     custom_text: { submit: { message: cardTerms(p.price) } },
-    success_url: `${p.origin}/?card=saved`,
+    success_url: `${p.origin}/thank-you?session_id={CHECKOUT_SESSION_ID}`,
     cancel_url: `${p.origin}/?card=cancelled`,
   });
   return session.url;

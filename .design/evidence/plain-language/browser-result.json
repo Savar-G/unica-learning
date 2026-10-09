@@ -1,0 +1,236 @@
+{
+  "date": "2026-10-08",
+  "host": "http://localhost:3017",
+  "checks": [
+    {
+      "name": "cookie wording",
+      "passed": true
+    },
+    {
+      "name": "cookie buttons fit at 320",
+      "passed": true
+    },
+    {
+      "name": "cookie panel visible",
+      "passed": true
+    },
+    {
+      "name": "rejected choice",
+      "passed": true
+    },
+    {
+      "name": "accepted choice",
+      "passed": true
+    },
+    {
+      "name": "settings focus recovery",
+      "passed": true
+    },
+    {
+      "name": "/ at 320",
+      "passed": true,
+      "viewport": 320,
+      "scroll": 320,
+      "h1": 1,
+      "description": "Math and reading workbooks made for your child, mailed home, and adapted after every book. Ages 6-12. Delivery across Canada.",
+      "contacts": [
+        "mailto:savar.gupta1922@gmail.com",
+        "mailto:savar.gupta1922@gmail.com",
+        "mailto:savar.gupta1922@gmail.com"
+      ]
+    },
+    {
+      "name": "/ guarantee at 320",
+      "passed": true
+    },
+    {
+      "name": "/privacy at 320",
+      "passed": true,
+      "viewport": 320,
+      "scroll": 320,
+      "h1": 1,
+      "description": "How Pagewise Learning uses your information and cookies, and how to contact us about your privacy.",
+      "contacts": [
+        "mailto:savar.gupta1922@gmail.com",
+        "mailto:savar.gupta1922@gmail.com"
+      ]
+    },
+    {
+      "name": "/privacy business and update date at 320",
+      "passed": true
+    },
+    {
+      "name": "provider disclosure at 320",
+      "passed": true
+    },
+    {
+      "name": "/terms at 320",
+      "passed": true,
+      "viewport": 320,
+      "scroll": 320,
+      "h1": 1,
+      "description": "Pagewise Learning prices, free assessments, payments, cancellations, and refunds.",
+      "contacts": [
+        "mailto:savar.gupta1922@gmail.com",
+        "mailto:savar.gupta1922@gmail.com",
+        "mailto:savar.gupta1922@gmail.com",
+        "mailto:savar.gupta1922@gmail.com"
+      ]
+    },
+    {
+      "name": "/terms business and update date at 320",
+      "passed": true
+    },
+    {
+      "name": "/terms guarantee at 320",
+      "passed": true
+    },
+    {
+      "name": "/ at 375",
+      "passed": true,
+      "viewport": 375,
+      "scroll": 375,
+      "h1": 1,
+      "description": "Math and reading workbooks made for your child, mailed home, and adapted after every book. Ages 6-12. Delivery across Canada.",
+      "contacts": [
+        "mailto:savar.gupta1922@gmail.com",
+        "mailto:savar.gupta1922@gmail.com",
+        "mailto:savar.gupta1922@gmail.com"
+      ]
+    },
+    {
+      "name": "/ guarantee at 375",
+      "passed": true
+    },
+    {
+      "name": "/privacy at 375",
+      "passed": true,
+      "viewport": 375,
+      "scroll": 375,
+      "h1": 1,
+      "description": "How Pagewise Learning uses your information and cookies, and how to contact us about your privacy.",
+      "contacts": [
+        "mailto:savar.gupta1922@gmail.com",
+        "mailto:savar.gupta1922@gmail.com"
+      ]
+    },
+    {
+      "name": "/privacy business and update date at 375",
+      "passed": true
+    },
+    {
+      "name": "provider disclosure at 375",
+      "passed": true
+    },
+    {
+      "name": "/terms at 375",
+      "passed": true,
+      "viewport": 375,
+      "scroll": 375,
+      "h1": 1,
+      "description": "Pagewise Learning prices, free assessments, payments, cancellations, and refunds.",
+      "contacts": [
+        "mailto:savar.gupta1922@gmail.com",
+        "mailto:savar.gupta1922@gmail.com",
+        "mailto:savar.gupta1922@gmail.com",
+        "mailto:savar.gupta1922@gmail.com"
+      ]
+    },
+    {
+      "name": "/terms business and update date at 375",
+      "passed": true
+    },
+    {
+      "name": "/terms guarantee at 375",
+      "passed": true
+    },
+    {
+      "name": "/ at 1440",
+      "passed": true,
+      "viewport": 1440,
+      "scroll": 1440,
+      "h1": 1,
+      "description": "Math and reading workbooks made for your child, mailed home, and adapted after every book. Ages 6-12. Delivery across Canada.",
+      "contacts": [
+        "mailto:savar.gupta1922@gmail.com",
+        "mailto:savar.gupta1922@gmail.com",
+        "mailto:savar.gupta1922@gmail.com"
+      ]
+    },
+    {
+      "name": "/ guarantee at 1440",
+      "passed": true
+    },
+    {
+      "name": "/privacy at 1440",
+      "passed": true,
+      "viewport": 1440,
+      "scroll": 1440,
+      "h1": 1,
+      "description": "How Pagewise Learning uses your information and cookies, and how to contact us about your privacy.",
+      "contacts": [
+        "mailto:savar.gupta1922@gmail.com",
+        "mailto:savar.gupta1922@gmail.com"
+      ]
+    },
+    {
+      "name": "/privacy business and update date at 1440",
+      "passed": true
+    },
+    {
+      "name": "provider disclosure at 1440",
+      "passed": true
+    },
+    {
+      "name": "/terms at 1440",
+      "passed": true,
+      "viewport": 1440,
+      "scroll": 1440,
+      "h1": 1,
+      "description": "Pagewise Learning prices, free assessments, payments, cancellations, and refunds.",
+      "contacts": [
+        "mailto:savar.gupta1922@gmail.com",
+        "mailto:savar.gupta1922@gmail.com",
+        "mailto:savar.gupta1922@gmail.com",
+        "mailto:savar.gupta1922@gmail.com"
+      ]
+    },
+    {
+      "name": "/terms business and update date at 1440",
+      "passed": true
+    },
+    {
+      "name": "/terms guarantee at 1440",
+      "passed": true
+    },
+    {
+      "name": "review payment wording",
+      "passed": true
+    },
+    {
+      "name": "error contact and correct cause",
+      "passed": true
+    },
+    {
+      "name": "receipt reserved",
+      "passed": true
+    },
+    {
+      "name": "receipt waitlist",
+      "passed": true
+    },
+    {
+      "name": "receipt null",
+      "passed": true
+    },
+    {
+      "name": "unconfirmed card support",
+      "passed": true
+    },
+    {
+      "name": "lost payment link support",
+      "passed": true
+    }
+  ],
+  "limits": "Signup failure intercepted. No real signup, email, card or payment. No live PostHog key."
+}

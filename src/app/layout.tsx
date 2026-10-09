@@ -1,9 +1,11 @@
-import type { Metadata, Viewport } from "next";
+import type { Viewport } from "next";
 import localFont from "next/font/local";
 import { Caveat, Geist, Geist_Mono, Gochi_Hand } from "next/font/google";
-import { BRAND, HERO } from "@/lib/site";
+import { rootMetadata } from "@/lib/metadata";
+import { CookieConsent } from "@/components/cookie-consent";
 import "@/ds/styles/base.css";
 import "@/ds/styles/warm.css";
+import "@/ds/styles/support.css";
 
 const zodiak = localFont({ src: "../fonts/Zodiak-Regular.woff2", weight: "400", variable: "--font-zodiak", display: "swap", preload: false });
 const switzer = localFont({
@@ -23,29 +25,18 @@ const pen = Caveat({ weight: "600", subsets: ["latin"], variable: "--font-pen", 
 const geist = Geist({ subsets: ["latin"], variable: "--font-geist", display: "swap" });
 const geistMono = Geist_Mono({ subsets: ["latin"], variable: "--font-geist-mono", display: "swap", preload: false });
 
-const title = `${BRAND}: Personalized. Delivered. Mastered.`;
-const description = `${HERO.sub} Ages 6-12. Delivery across Canada.`;
-
-export const metadata: Metadata = {
-  metadataBase: new URL(process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000"),
-  title,
-  description,
-  openGraph: { title, description, type: "website", locale: "en_CA" },
-  twitter: { card: "summary_large_image", title, description },
-  // Keep previews out of search until launch (set NEXT_PUBLIC_ALLOW_INDEX=true on the launch deploy).
-  robots: process.env.NEXT_PUBLIC_ALLOW_INDEX === "true" ? undefined : { index: false, follow: false },
-};
+export const metadata = rootMetadata;
 
 export const viewport: Viewport = { themeColor: "#ffffff" };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
-    <html lang="en-CA" className={`${zodiak.variable} ${switzer.variable} ${kid.variable} ${pen.variable} ${geist.variable} ${geistMono.variable}`}>
+    <html lang="en-CA" suppressHydrationWarning className={`${zodiak.variable} ${switzer.variable} ${kid.variable} ${pen.variable} ${geist.variable} ${geistMono.variable}`}>
       <head>
         {/* Reveal animations only hide content once JavaScript is running. */}
         <script dangerouslySetInnerHTML={{ __html: "document.documentElement.classList.add('js')" }} />
       </head>
-      <body>{children}</body>
+      <body><CookieConsent />{children}</body>
     </html>
   );
 }

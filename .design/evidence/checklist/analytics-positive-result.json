@@ -1,0 +1,12 @@
+{
+  "beforeConsent": 0,
+  "afterAccept": 1,
+  "afterRevoke": 1,
+  "requests": [
+    {
+      "url": "http://localhost:3017/ingest/e/",
+      "bytes": 902
+    }
+  ],
+  "originalVisibility": "visible"
+}

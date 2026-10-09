@@ -1,0 +1,23 @@
+[
+  {
+    "name": "prelaunch",
+    "indexable": false,
+    "sitemapEntries": 0,
+    "disallow": "/",
+    "ok": true
+  },
+  {
+    "name": "launch",
+    "indexable": true,
+    "sitemapEntries": 1,
+    "disallow": "/api/",
+    "ok": true
+  },
+  {
+    "name": "preview",
+    "indexable": false,
+    "sitemapEntries": 0,
+    "disallow": "/",
+    "ok": true
+  }
+]

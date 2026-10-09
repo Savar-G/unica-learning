@@ -1,7 +1,7 @@
 # DESIGN.md - ai-workbooks-landing-page
 
 > Status: v2. Page story and look approved by Savar 2026-10-04 (no objection); hero copy decided (D-024); hero layout C chosen (D-029); option A parked as a draft (D-030). Built from Savar's FigJam board "Personalized Learning, Delivered" (2026-10-03).
-> Last updated: 2026-10-07
+> Last updated: 2026-10-08
 
 ## Job
 
@@ -15,9 +15,9 @@
 
 ## Scope
 
-**In:** One landing page (mobile first) that reads as a real product, with a working reserve flow (success and error states) and analytics events.
+**In:** One landing page with a working reserve flow, a mobile assessment button, optional analytics, and supporting 404, thank-you, privacy, and terms pages (D-054).
 
-**Out:** The product itself, parent dashboard, accounts, blog, multi-page site.
+**Out:** The product itself, parent dashboard, accounts, and blog.
 
 ## Source constraints
 
@@ -26,7 +26,7 @@
 - Real product posture: no "pilot", "beta" or "test" wording (D-012).
 - No proof we do not have: no ratings, review counts, family counts, press logos, outcome percentages or testimonials. Until real customer references exist, proof = sample pages, clear price, a free placement assessment, a 30-day money-back guarantee, cancel anytime. No founder names or student status anywhere on the site (D-040).
 - Comparative and performance claims: Competition Act s.74.01(1)(b) requires an adequate and proper test before a claim about a product's performance. The page makes no research claims; the paper belief is stated as "We believe paper and pencil build stronger learning." (D-039). Never a claim about our results.
-- Children's privacy: the page collects parent contact and payment only.
+- Children's privacy: the booking form collects parent contact details, the selected offer, the child's grade, and the school curriculum. The form does not collect a child's name or completed workbook photos. Card details stay on Stripe.
 
 ## Positioning rules
 
@@ -73,8 +73,12 @@ Every section sets up the next one. A single pencil line connects the sections a
 ## Behavior and states
 
 - The primary action opens the reserve flow: plan, child's grade (1-7), parent name, email, Canadian postal code, school curriculum, then, for the BC curriculum, review and "Add card" on Stripe Checkout in setup mode (card saved, CAD 0 charged). Every other curriculum saves a waitlist entry right after the details step, with no card (D-053).
-- States: idle, invalid input, submitting, redirect to Stripe, card saved (back at `/?card=saved`), card not saved (back at `/?card=cancelled`, with "Add card" to return to the same Stripe page), reserved but Stripe unavailable (we email a link), waitlist (curriculum not ready), save error with retry. Stripe shows card errors on its own page.
-- Every step fires an analytics event (view, CTA click, form start, reserve success).
+- States: idle, invalid input, submitting, redirect to Stripe, card status checked on `/thank-you`, card not saved (back at `/?card=cancelled`, with "Add card" to return to the same Stripe page), reserved but Stripe unavailable, waitlist, and save error with retry. Stripe shows card errors on its own page. Completed requests use `/thank-you`.
+- Optional analytics records visits and form steps only after explicit acceptance. Rejecting analytics leaves booking available. Analytics does not receive the parent's name, email, postal code, or child's grade. Session recordings and automatic input capture stay off.
+- Customer text uses plain language. Public pages have no development notes or draft labels. Provider names appear only in the privacy disclosure, with a plain explanation.
+- Privacy and terms identify Pagewise Learning and give savar.gupta1922@gmail.com for support, privacy requests, cancellations and refunds (D-055). Both pages stay out of search results. Never invent a business address.
+- The 30-day money-back guarantee starts on the day of the first payment (D-055). State this in the promise, FAQ, booking review, terms and payment-page text.
+- The mobile assessment button uses the existing primary button below 700 px. Hide it while the booking dialog or cookie banner is open. Reserve space for it at the end of the page.
 
 ## Responsive and accessibility
 

@@ -1,0 +1,105 @@
+{
+  "deployment": "https://ai-workbooks-landing-p-git-4b890c-savargupta1922-1024s-projects.vercel.app",
+  "code_commit": "dbf18d2",
+  "access": "Vercel CLI automatic protection bypass",
+  "status_source": "HTTP status from Vercel CLI curl output; saved body lengths and content checked here",
+  "results": [
+    {
+      "path": "/",
+      "status": 200,
+      "bytes": 189933,
+      "title": [
+        "Pagewise: Personalized. Delivered. Mastered."
+      ],
+      "robots": [
+        "noindex, nofollow"
+      ],
+      "ok": true
+    },
+    {
+      "path": "/privacy",
+      "status": 200,
+      "bytes": 20126,
+      "title": [
+        "Privacy policy | Pagewise"
+      ],
+      "robots": [
+        "noindex, nofollow"
+      ],
+      "ok": true
+    },
+    {
+      "path": "/terms",
+      "status": 200,
+      "bytes": 18609,
+      "title": [
+        "Terms | Pagewise"
+      ],
+      "robots": [
+        "noindex, nofollow"
+      ],
+      "ok": true
+    },
+    {
+      "path": "/thank-you?session_id=invalid",
+      "status": 200,
+      "bytes": 17619,
+      "title": [
+        "Your next step | Pagewise"
+      ],
+      "robots": [
+        "noindex, nofollow"
+      ],
+      "ok": true
+    },
+    {
+      "path": "/missing-checklist",
+      "status": 404,
+      "bytes": 14470,
+      "title": [
+        "Page not found | Pagewise"
+      ],
+      "robots": [
+        "noindex",
+        "noindex, nofollow"
+      ],
+      "ok": true
+    },
+    {
+      "path": "/robots.txt",
+      "status": 200,
+      "bytes": 27,
+      "title": [],
+      "robots": [],
+      "ok": true
+    },
+    {
+      "path": "/sitemap.xml",
+      "status": 200,
+      "bytes": 110,
+      "title": [],
+      "robots": [],
+      "ok": true
+    },
+    {
+      "path": "/opengraph-image",
+      "status": 200,
+      "bytes": 53308,
+      "title": [],
+      "robots": [],
+      "ok": true
+    },
+    {
+      "path": "/favicon.ico",
+      "status": 200,
+      "bytes": 1653,
+      "title": [],
+      "robots": [],
+      "ok": true
+    }
+  ],
+  "limits": [
+    "No live signup, Stripe setup or PostHog ingestion check",
+    "Hosted browser interaction not checked"
+  ]
+}
