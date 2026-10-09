@@ -16,15 +16,9 @@
     "decisions": ".design/decisions.md",
     "selected_experiment": ".design/experiments/r2/c-home.html",
     "latest_evidence": [
-      ".design/evidence/plain-language/cookies-320.png",
-      ".design/evidence/plain-language/privacy-375.png",
-      ".design/evidence/plain-language/privacy-1440.png",
-      ".design/evidence/plain-language/terms-375.png",
-      ".design/evidence/plain-language/terms-1440.png",
-      ".design/evidence/plain-language/booking-review-375.png",
-      ".design/evidence/plain-language/unconfirmed-375.png",
-      ".design/evidence/plain-language/browser-result.json",
-      ".design/evidence/plain-language/hosted-result.json"
+      ".design/evidence/compare-panels/compare-1440.png",
+      ".design/evidence/compare-panels/compare-768.png",
+      ".design/evidence/compare-panels/compare-375.png"
     ],
     "latest_review": ".design/reviews/plain-language-2026-10-08-r2.md",
     "drafts": [
