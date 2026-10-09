@@ -1,0 +1,22 @@
+{
+  "round": 6,
+  "decision": "Should 'How we're different' stay a comparison table, or show the difference another way?",
+  "primary_axis": "comparison format",
+  "where": "Live prototype on the home page: /?variant=now|A|B|C|D|E (component src/components/compare-prototype.tsx, branch site/compare-prototype). Screenshots: <key>-1440.png and <key>-375.png.",
+  "invariants": [
+    "same facts as the live table (.design/research/competitors-2026-10.md); categories only, no competitor names",
+    "same headline and eyebrow, except C, which replaces the headline with the comparison sentence",
+    "warm look tokens (D-034) and the featured-plan grain wash (D-037)",
+    "same slot on the page: after Our promise, before Pricing"
+  ],
+  "assumption_to_check": "B and E turn the tutor's hourly rate into a month at one hour a week (4 x $40-$100 = $160-$400). The live table does not state this number.",
+  "references": ".design/research/compare-table-refs/ (Apollo, Dub, Ghost, PostHog, Zed)",
+  "options": [
+    { "id": "now", "artifact": "now-1440.png", "bet": "Baseline: the live 5-column prose table", "benefit": "Complete", "cost": "20 sentences, no verdict, price row buried", "risk": "Parents skim past it" },
+    { "id": "A", "artifact": "A-1440.png", "bet": "Make the headline into three panels: tutor, learning centre, us, one price each", "benefit": "Price leads; reads in 5 seconds; each panel says what you get", "cost": "Drops the row-by-row detail; apps become a footnote", "risk": "Looks like a second pricing section right before Pricing" },
+    { "id": "B", "artifact": "B-1440.png", "bet": "Show monthly cost as range bars on one scale", "benefit": "The shortest bar is the argument; no reading needed", "cost": "Only cost; apps show as cheaper than us", "risk": "Relies on the $160-$400 tutor month assumption; 'priced like neither' lands, 'personal' does not" },
+    { "id": "C", "artifact": "C-1440.png", "bet": "No table: one sentence with the three prices, small enough to sit under 'Why choose'", "benefit": "Shortest page; confident; no grid", "cost": "No detail on adapting, gaps or paper", "risk": "Too thin to answer 'why not a tutor?'" },
+    { "id": "D", "artifact": "D-1440.png", "bet": "Keep the table, but every cell is a verdict glyph and two or three words; our column outlined top to bottom", "benefit": "Scannable by glyph; keeps all four rows of detail", "cost": "Still a grid; still four columns", "risk": "Tutor shows many full checks, so the difference reads as cost only" },
+    { "id": "E", "artifact": "E-1440.png", "bet": "A month, as three receipts: tutor, us, learning centre", "benefit": "Parent language (what the money buys); our receipt lists five included items; tactile, fits the paper idea", "cost": "Longest variant on phones", "risk": "Relies on the $160-$400 tutor month assumption; receipt metaphor may read as a gimmick" }
+  ]
+}
