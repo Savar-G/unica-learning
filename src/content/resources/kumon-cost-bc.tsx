@@ -27,7 +27,7 @@ export const meta: ResourceMeta = {
     },
     {
       q: "Is Kumon cheaper than Mathnasium?",
-      a: "We cannot say. Mathnasium centres in BC do not print a price on their pages. The North Vancouver centre says it charges a flat monthly membership and a one-time enrolment fee, so ask that centre for its price and compare the monthly totals.",
+      a: "We cannot say. The Mathnasium North Vancouver centre page does not print a price. It says it charges a flat monthly membership and a one-time enrolment fee, so ask that centre for its price and compare the monthly totals.",
     },
     {
       q: "Is Kumon expensive compared with a tutor?",
@@ -55,6 +55,7 @@ export const meta: ResourceMeta = {
     { label: "Mathnasium North Vancouver, centre page and FAQ", url: "https://www.mathnasium.com/ca/math-centres/northvancouver", accessed: "2026-10-09" },
     { label: "Math Tutor Network Vancouver, Rates (tutoring company page)", url: "https://www.mathtutornetwork.com/rates.html", accessed: "2026-10-09" },
     { label: "Genie Teacher, How much does a tutor cost in Canada in 2026? (tutoring company blog)", url: "https://genieteacher.com/blogs/how-much-does-a-tutor-cost-canada", accessed: "2026-10-09" },
+    { label: "Mathnasium franchise site (describes Mathnasium as a math-only education franchise)", url: "https://franchise.mathnasium.com/", accessed: "2026-10-09" },
   ],
   related: ["is-kumon-worth-it", "kumon-vs-mathnasium", "kumon-alternatives", "tutor-cost-bc"],
 };
@@ -144,13 +145,15 @@ export default function Body() {
       <Section title="What the monthly fee covers">
         <p>
           Kumon describes its program like this: your child takes a placement test that sets a starting point, then
-          works through a sequence of worksheets at their own pace. Students go to the centre twice a week and do the
-          rest of the worksheets at home, about 30 minutes per subject a day. An instructor reviews the work and
-          updates the lesson plan.<Cite n={15} />
+          works through a sequence of worksheets at their own pace. Students typically visit the centre twice a week,
+          and most of the work is done at home. An instructor grades the work and uses it to plan the next
+          lessons.<Cite n={15} /> Kumon gives the daily time as 15 to 30 minutes of work a day on one page
+          <Cite n={15} /> and thirty minutes per subject a day on another.<Cite n={16} />
         </p>
         <p>
-          Kumon also says parents can follow progress through its Kumon Connect app and the myKumon portal, which
-          show worksheets, times and scores.<Cite n={17} /> Ask your centre which of these it uses.
+          Kumon also says parents can follow progress in the myKumon portal, and, for families who use digital
+          worksheets, in the Kumon Connect app, which shows finished worksheets with times and scores.
+          <Cite n={17} /> Ask your centre which of these it uses.
         </p>
       </Section>
 
@@ -205,8 +208,9 @@ export default function Body() {
           note="Tutor monthly figures are arithmetic: the hourly rate x 1 hour a week x 4 weeks. Math Tutor Network lists starting rates and adds $5 for lessons shorter than 1.5 hours. Tutor sources are tutoring company pages."
         />
         <p>
-          Mathnasium, another learning centre, teaches math only. Its BC centre pages do not print a price; the North
-          Vancouver centre says it charges a flat monthly membership and a one-time enrolment fee.<Cite n={18} /> Ask
+          Mathnasium, another learning centre, teaches math only.<Cite n={21} /> Its North Vancouver centre page does
+          not print a price; it says the centre charges a flat monthly membership and a one-time enrolment
+          fee.<Cite n={18} /> Ask
           the centre for its total so you can compare the same months.
         </p>
         <p>

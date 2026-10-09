@@ -15,7 +15,7 @@ export const meta: ResourceMeta = {
   faqs: [
     {
       q: "Is Kumon worth the money?",
-      a: "It depends on your child, your budget and your schedule. Kumon is daily worksheet practice, about 30 minutes per subject, with centre visits twice a week. In BC, centre pages listed $180 to $260 per subject per month in October 2026. If that routine and price fit your family, it may be worth a try. If not, compare other options first.",
+      a: "It depends on your child, your budget and your schedule. Kumon is daily worksheet practice, which Kumon says takes up to about 30 minutes per subject, and most students visit a centre twice a week. In BC, centre pages listed $180 to $260 per subject per month in October 2026. If that routine and price fit your family, it may be worth a try. If not, compare other options first.",
     },
     {
       q: "Is Kumon expensive?",
@@ -26,8 +26,8 @@ export const meta: ResourceMeta = {
       a: "Some children like a steady daily routine and short, clear worksheets. Others find daily practice hard to keep up. Watch how your child responds in the first weeks, and talk with the instructor about what you see.",
     },
     {
-      q: "Is Kumon bad for mental health?",
-      a: "There is no single answer; it depends on the child. Watch for signs such as tears or arguments at worksheet time, avoiding the work, or worry about speed. If you see them, talk with the instructor about the amount of work or the level, and talk with your child.",
+      q: "How do I know if daily practice is too much for my child?",
+      a: "This applies to any daily practice program, including Kumon and ours. Watch for signs such as tears or arguments at practice time, avoiding the work, or worry about speed. If you see them, talk with your child and with the instructor or provider about the amount of work or the level.",
     },
     {
       q: "Does Kumon qualify for a tax credit?",
@@ -43,6 +43,9 @@ export const meta: ResourceMeta = {
     { label: "Kumon Surrey - Fraser Heights, centre page (pricing and fees)", url: "https://www.kumon.com/surrey-fraser-heights/aboutcenter", accessed: "2026-10-09" },
     { label: "Kumon Canada Virtual, centre page (pricing and fees)", url: "https://www.kumon.com/canada-virtual/aboutcenter", accessed: "2026-10-09" },
     { label: "Canada Revenue Agency, Line 21400 child care expenses: expenses you can claim", url: "https://www.canada.ca/en/revenue-agency/services/tax/individuals/topics/about-your-tax-return/tax-return/completing-a-tax-return/deductions-credits-expenses/line-21400-child-care-expenses/expenses-claim.html", accessed: "2026-10-09" },
+    { label: "Kumon, Frequently asked questions", url: "https://www.kumon.com/frequently-asked-questions", accessed: "2026-10-09" },
+    { label: "Kumon, How Kumon works", url: "https://www.kumon.com/how-kumon-works", accessed: "2026-10-09" },
+    { label: "Canada Revenue Agency, Line 21400 child care expenses", url: "https://www.canada.ca/en/revenue-agency/services/tax/individuals/topics/about-your-tax-return/tax-return/completing-a-tax-return/deductions-credits-expenses/line-21400-child-care-expenses.html", accessed: "2026-10-09" },
   ],
   related: ["kumon-cost-bc", "kumon-alternatives", "kumon-vs-mathnasium", "tutor-cost-bc"],
 };
@@ -52,8 +55,8 @@ export default function Body() {
     <>
       <p>
         <strong>Is Kumon worth it?</strong> There is no single answer. Kumon is a daily worksheet program: your child
-        starts at a level set by a placement test, practises about 30 minutes per subject each day, and visits a
-        centre twice a week.<Cite n={1} /><Cite n={2} /> In BC, one subject cost $180 to $260 a month at centres that
+        starts at a level set by a placement test, practises every day, and typically visits a centre twice a
+        week.<Cite n={1} /> Kumon says daily work takes up to about 30 minutes per subject.<Cite n={2} /><Cite n={9} /> In BC, one subject cost $180 to $260 a month at centres that
         listed a price in October 2026.<Cite n={5} /><Cite n={6} /> Whether it is worth it depends on your child, your
         schedule and your budget. This guide sets out the facts and the questions to weigh.
       </p>
@@ -61,9 +64,9 @@ export default function Body() {
       <KeyFacts
         title="Kumon in brief"
         items={[
-          "Subjects: math and reading, charged per subject.",
+          <>Subjects: math and reading, charged per subject.<Cite n={9} /></>,
           "Start: a placement test sets the starting level.",
-          "Routine: about 30 minutes per subject a day; centre twice a week.",
+          "Routine: up to about 30 minutes per subject a day; most students visit a centre twice a week.",
           "BC price: $180-$260 per subject a month, plus fees (October 2026).",
           "Online: Kumon's Canada Virtual centre listed $150 per subject.",
         ]}
@@ -81,15 +84,17 @@ export default function Body() {
             and moves on at their own pace.<Cite n={1} />
           </li>
           <li>
-            <strong>Daily practice.</strong> Kumon says each subject takes about 30 minutes a day.<Cite n={2} />
+            <strong>Daily practice.</strong> Kumon says each subject takes about 30 minutes a day,<Cite n={2} /> and
+            that new students and early learners may need less time.<Cite n={9} />
           </li>
           <li>
-            <strong>Centre visits.</strong> Students go to the centre twice a week and do the other worksheets at
-            home.<Cite n={1} /> Kumon also runs virtual classes.<Cite n={3} />
+            <strong>Centre visits.</strong> Students typically visit the centre twice a week and do most of the work
+            at home.<Cite n={1} /> Kumon also runs virtual classes.<Cite n={3} />
           </li>
           <li>
-            <strong>Instructor review.</strong> An instructor reviews the work and updates the lesson plan.<Cite n={1} />{" "}
-            Parents can follow worksheets, times and scores through Kumon&apos;s app and parent portal.<Cite n={4} />
+            <strong>Instructor review.</strong> Every worksheet is graded, the child corrects mistakes, and the
+            instructor uses the work to plan lessons.<Cite n={1} /> Parents can follow progress in the myKumon portal,
+            and families who use digital worksheets can see times and scores in the Kumon Connect app.<Cite n={4} />
           </li>
         </ul>
       </Section>
@@ -117,38 +122,38 @@ export default function Body() {
         <h3>It may suit a child who</h3>
         <ul>
           <li>likes a clear routine and short tasks with a right answer;</li>
-          <li>needs steady practice to make basic skills fast and sure;</li>
+          <li>wants steady daily practice on core skills;</li>
           <li>lives near a centre, or does well with a virtual class.</li>
         </ul>
         <h3>Trade-offs a parent should weigh</h3>
         <ul>
           <li>
-            <strong>Time every day.</strong> About 30 minutes per subject a day is up to an hour for math and
-            reading.<Cite n={2} /> Ask yourself if that fits after school, sports and homework.
+            <strong>Time every day.</strong> Up to about 30 minutes per subject a day is up to an hour for math and
+            reading.<Cite n={2} /><Cite n={9} /> Ask yourself if that fits after school, sports and homework.
           </li>
           <li>
-            <strong>Centre visits.</strong> Two visits a week means travel time for a parent, unless you choose the
-            virtual option.<Cite n={1} /><Cite n={3} />
+            <strong>Centre visits.</strong> Two visits a week can mean travel time for a parent, unless you choose
+            the virtual option.<Cite n={1} /><Cite n={3} />
           </li>
           <li>
             <strong>Cost for two subjects.</strong> At BC centre prices, math and reading together are about $360-$520
             a month in tuition.<Cite n={5} /><Cite n={6} />
           </li>
           <li>
-            <strong>A repetition-based format.</strong> The program is built on worksheets in a set sequence. Some
-            children like that. Others want more variety or explanation.
+            <strong>Repetition by design.</strong> Kumon says it uses repetition on purpose, to build mastery, speed
+            and accuracy, and assigns it as needed.<Cite n={9} /> Its worksheets include examples that show how to
+            solve each type of problem.<Cite n={10} /> Some children like this format. Others prefer more variety.
           </li>
           <li>
-            <strong>Who supports the daily work.</strong> Most worksheets are done at home, so a parent often keeps the
-            routine going.<Cite n={1} />
+            <strong>Who supports the daily work.</strong> Most work is done at home,<Cite n={1} /> and Kumon says the
+            program requires a special commitment from parents.<Cite n={10} />
           </li>
         </ul>
-        <Callout label="About the mental health question" tone="peach">
+        <Callout label="Is daily practice too much for my child?" tone="peach">
           <p>
-            Parents search whether Kumon is bad for mental health. There is no single answer: it depends on the child.
-            Watch for tears or arguments at worksheet time, avoiding the work, or worry about speed. If you see them,
-            talk with the instructor about the amount of work or the level, and talk with your child. If the signs
-            continue, it is fine to pause and try a different approach.
+            This question applies to any daily practice program, including ours. It depends on the child. Watch for
+            tears or arguments at practice time, avoiding the work, or worry about speed. If you see them, talk with
+            your child and with the instructor about the amount of work or the level.
           </p>
         </Callout>
       </Section>
@@ -167,8 +172,8 @@ export default function Body() {
 
       <Section title="Does Kumon qualify for a tax credit?">
         <p>
-          The CRA child care expense deduction is for paying someone to look after an eligible child so you can work,
-          go to school or do research. CRA lists, among the expenses you cannot claim, education fees at an
+          The CRA child care expense deduction is for amounts paid to have someone look after an eligible child so you
+          could earn income, go to school, or carry on research under a grant.<Cite n={11} /> CRA lists, among the expenses you cannot claim, education fees at an
           educational institution (such as tuition for a regular program) and fees for leisure or recreational
           activities.<Cite n={8} /> CRA&apos;s page does not name tutoring or learning centres. Ask CRA or a tax
           professional about your situation.
