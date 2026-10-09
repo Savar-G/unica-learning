@@ -1,5 +1,5 @@
 {
-  "round": 6,
+  "round": 7,
   "decision": "Should 'How we're different' stay a comparison table, or show the difference another way?",
   "primary_axis": "comparison format",
   "where": "Live prototype on the home page: /?variant=now|A|B|C|D|E (component src/components/compare-prototype.tsx, branch site/compare-prototype). Screenshots: <key>-1440.png and <key>-375.png.",

@@ -1,4 +1,4 @@
-// "How we're different": the headline as three panels, placed before Pricing (D-066, variant A of round r6).
+// "How we're different": the headline as three panels, placed before Pricing (D-067, variant A of round r7).
 // Every competitor fact is backed by .design/research/competitors-2026-10.md; re-check it before editing.
 // Categories only, never a competitor name (D-064). Our panel carries the featured plan's grainy wash (D-037).
 import { Section, SectionHeader } from "@/ds";

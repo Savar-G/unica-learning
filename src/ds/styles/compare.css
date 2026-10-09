@@ -1,4 +1,4 @@
-/* "How we're different" as three panels (src/components/compare.tsx, D-066).
+/* "How we're different" as three panels (src/components/compare.tsx, D-067).
    Two soft grey panels with grey prices; our panel is white with the featured plan's grainy wash rising from the bottom (D-037).
    The four parts of each panel (label, trait, price, text) share rows through subgrid, so the prices line up.
    Under 900px the panels stack and ours comes first. */
