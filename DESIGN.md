@@ -43,14 +43,13 @@ Every section sets up the next one. A single pencil line connects the sections a
 
 1. **Hero (D-029, option C; copy D-057).** Text above one large real photo of a child working at home. No small line above the headline. Headline: "Personalized. Delivered. Mastered." Sub-headline: "Same grade. Different levels. Different pace." Lead: "Personalized math and reading workbooks, made for your child and matched to their level and gaps. Mailed home and adapted after every book." Buttons "Take free assessment" (D-041) and "See how it works". Fact line: "Math and reading · Ages 6-12 · From CAD 59/month · 30-day money-back guarantee".
 2. **What is [Brand]? (D-058).** Full-width heading: "Schools and tutoring programs put every child in the same box." with the yellow highlighter on "the same box." Left: "Same material, same pace, same teaching. Miss [word] and every lesson after it gets harder." (the word rotates through 16 math and reading topics). Right: "Your child needs learning built around them: their level, their pace. That's [Brand]." No grey text. Three rows: math and reading for ages 6-12 (covers the school curriculum at the child's pace and moves ahead when they are ready, so they see new topics before their class does), starts at their level, mailed to your door.
-3. **How it works (D-057).** A loop where step 6 returns to step 2:
+3. **How it works (D-057, D-063).** Six cards in a grid, with no connecting line or animation:
    1. **Assess:** We send a free placement assessment on paper. It finds your child's level and where the gaps are. The parent returns it by photo (D-042).
    2. **Deliver:** We mail a workbook matched to your child's level and gaps.
    3. **Practice:** Your child works on paper for about 15-20 minutes a day.
    4. **Scan:** Take a photo of the finished pages. We mark the work, show you the gaps, and give the solutions so your child can understand what went wrong.
    5. **Adapt:** Based on how they did, we choose and adjust their next workbook: more practice where they're struggling, and moving ahead where they're ready.
-   6. **Repeat:** Your next book arrives before the current one runs out, so there's never a gap. Then the loop starts again.
-   A short italic note under the steps: "Struggling with fractions? Your next book focuses on fractions."
+   6. **Repeat:** Your next book arrives before the current one runs out, so there's never a gap. Then the loop starts again. In italics: "Struggling with fractions? Your next book focuses on fractions."
 4. **Why choose [Brand]?** 3-4 cards that state what we do. No names of alternatives.
 5. **What you get each month (D-061, D-062).** Six cards, 3 + 3 around one photo: workbooks (1 per subject, about 20-25 pages), daily practice (15-20 minutes, 5 days a week), delivery before the current book ends, "Stuck? Scan it." (the parent scans the problem in our app and sees every step, explained, so they can walk the child through it), "Instant answer check" (scan a finished page, see what is right in seconds; each scan also helps plan the next book), progress reports and worked solutions in the app.
 6. **The emotional banner.** Real photos drift around one centred line: "A workbook made for one child: yours." "No two [Brand] books are the same. Each one starts where your child is, and moves on when they're ready."
