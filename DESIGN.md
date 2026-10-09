@@ -33,19 +33,19 @@
 ## Positioning rules
 
 - Name no competitor brand. Compare against categories only: learning centres, private tutors and online practice apps, in the "How we're different" section (learning centres and private tutors only, D-068), the FAQ "How is this different from a learning centre?" and the `/our-story` letter (D-059, D-064). Keep claims general and true for the category ("About $200+ per subject / month"); sources in `.design/research/competitors-2026-10.md`. Everywhere else, show the difference as what we do: paper, at home, made for one child, it adapts.
-- Say what we sell first, then the problem (D-069). The hero kicker names the product; the headline names the problem: the same box. Curriculum copy says the books cover the school curriculum and move ahead when the child is ready; province availability lives in the FAQ.
+- Say what we sell first, then the problem (D-070). The hero kicker names the product; the headline names the problem: the same box. Curriculum copy says the books cover the school curriculum and move ahead when the child is ready; province availability lives in the FAQ.
 - End on a bold claim: "This is what learning should be like." It carries three lines: "Every child learns differently. Learning should adapt."; "No child should fall behind because the class moved on."; "Personal, on paper, and affordable." (D-057, replaces the D-016 beliefs).
-- Learning styles may be named (D-069 removes the D-004 ban).
+- Learning styles may be named (D-070 removes the D-004 ban).
 
 ## Page story
 
 Every section sets up the next one. A single pencil line connects the sections and the loop steps.
 
-1. **Hero (D-029, option C; copy D-069).** Text above one large real photo of a child working at home. Kicker: "Personalized math and reading workbooks for ages 6-12, mailed home." Headline, all in ink: "Schools and tutoring programs put every child in the same box." ("the same box." with the yellow highlighter). Lead: "Same material, same pace. Miss [word] and every lesson after it gets harder. Unica builds each workbook around your child's level, pace and learning style, then mails it home." (the word rotates through 16 math and reading topics). Buttons "Take free assessment" (D-041, kept by Savar) and "See how it works". Fact line: "From CAD 59/month · 30-day money-back guarantee · Cancel anytime". No "What is [Brand]?" section; How it works comes next (D-069).
+1. **Hero (D-029, option C; copy D-070).** Text above one large real photo of a child working at home. Kicker: "Personalized math and reading workbooks for ages 6-12, mailed home." Headline, all in ink: "Schools and tutoring programs put every child in the same box." ("the same box." with the yellow highlighter). Lead: "Same material, same pace. Miss [word] and every lesson after it gets harder. Unica builds each workbook around your child's level, pace and learning style, then mails it home." (the word rotates through 16 math and reading topics). Buttons "Take free assessment" (D-041, kept by Savar) and "See how it works". Fact line: "From CAD 59/month · 30-day money-back guarantee · Cancel anytime". No "What is [Brand]?" section; How it works comes next (D-070).
 2. **How it works (D-057, D-063).** Six cards in a grid, with no connecting line or animation:
    1. **Assess:** We send a free placement assessment on paper. It finds your child's level and where the gaps are. The parent returns it by photo (D-042).
    2. **Deliver:** We mail a workbook matched to your child's level and gaps. It covers your school curriculum.
-   3. **Practice:** Your child works on paper for about 15-20 minutes a day.
+   3. **Practice:** Your child works on paper for about 15-20 minutes a day, 5 days a week.
    4. **Scan:** Take a photo of the finished pages. We mark the work, show you the gaps, and give the solutions so your child can understand what went wrong.
    5. **Adapt:** Based on how they did, we choose and adjust their next workbook: more practice where they're struggling, and moving ahead where they're ready, so they see new topics before their class does.
    6. **Repeat:** Your next book arrives before the current one runs out, so there's never a gap. Then the loop starts again. In italics: "Struggling with fractions? Your next book focuses on fractions."

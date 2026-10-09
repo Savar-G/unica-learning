@@ -107,7 +107,7 @@ const STEPS = [
   { n: "01", t: "Assess", d: "We send a free placement assessment on paper. It finds your child's level and where the gaps are.",
     v: <Image src={assessPaper} alt="A child works through a page of math problems in pencil" sizes={STEP_SIZES} placeholder="blur" />, tone: "photo" as const },
   { n: "02", t: "Deliver", d: "We mail a workbook matched to your child's level and gaps. It covers your school curriculum.", v: <Image src={deliverPhoto} alt="Two mailers waiting on a front step" sizes={STEP_SIZES} placeholder="blur" />, tone: "photo" as const },
-  { n: "03", t: "Practice", d: "Your child works on paper for about 15-20 minutes a day.",
+  { n: "03", t: "Practice", d: "Your child works on paper for about 15-20 minutes a day, 5 days a week.",
     v: <Image src={practice6} alt="A girl works through an arithmetic page in pencil" sizes={STEP_SIZES} placeholder="blur" />, tone: "photo" as const },
   { n: "04", t: "Scan", d: "Take a photo of the finished pages. We mark the work, show you the gaps, and give the solutions so your child can understand what went wrong.", v: <Image src={scanPhoto} alt="A phone camera frames a page to photograph it" sizes={STEP_SIZES} placeholder="blur" />, tone: "photo" as const },
   { n: "05", t: "Adapt", d: "Based on how they did, we choose and adjust their next workbook: more practice where they're struggling, and moving ahead where they're ready, so they see new topics before their class does. Every book is shaped by how your child is doing.", v: <Image src={adaptPhoto} alt="A girl shows her finished work to her parents" sizes={STEP_SIZES} placeholder="blur" />, tone: "photo" as const },
@@ -134,8 +134,8 @@ export function How() {
 
 const WHY: [string, string][] = [
   ["Real paper. Real pencil.", "Your child learns away from screens. The app is for you, not them."],
-  ["Made for one child.", "Every page targets what your child is ready for next, not what the rest of the class is on."],
-  ["It never forgets.", "A skill your child missed comes back in new forms until they master it."],
+  ["Made for your child.", "Every page targets what they're ready for next, not what the rest of the class is on."],
+  ["Master it, then move on.", "If your child is struggling with a concept, the next book stays on it and teaches it a different way. They move on when they've mastered it."],
   ["You see everything.", "A progress report, updated continuously: what they got right, what keeps coming back, and what's next."],
 ];
 
