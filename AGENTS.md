@@ -8,9 +8,9 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
 
 <!-- END:nextjs-agent-rules -->
 
-# Pagewise landing page - working conventions
+# Unica Learning landing page - working conventions
 
-Personalized, mailed math and reading workbooks for ages 6-12 (grades 1-7). Design truth: `DESIGN.md`. Decision history: `.design/decisions.md`.
+Personalized, mailed math and reading workbooks for ages 6-12 (grades 1-7). The brand is Unica Learning (D-056); the repo, domain and internal code names still say Pagewise. Design truth: `DESIGN.md`. Decision history: `.design/decisions.md`.
 
 ## Agent rules
 
@@ -19,7 +19,7 @@ Personalized, mailed math and reading workbooks for ages 6-12 (grades 1-7). Desi
 - Never switch branches in the main checkout. Other agents work in parallel worktrees (`git worktree list`).
 - All design work goes through `/design`. Mockup rounds live in `.design/experiments/r<n>/`, with a `manifest.json`.
 - Done gate (no test suite): `npx eslint src && npm run build`, then check the change in the browser with `npm run dev`. `npm run lint` also scans `.design-sync/previews/`, which has old errors.
-- Copy rules in `DESIGN.md` are binding: no proof we do not have, no competitor names, no performance claims.
+- Copy rules in `DESIGN.md` are binding: no proof we do not have, no performance claims, and no competitor brand names (compare with categories such as learning centres, D-064).
 - Use plain language in all customer text. Keep development notes and draft labels out of public pages. Give provider names only in the privacy disclosure, with a plain explanation.
 
 ## Tools and services
@@ -27,7 +27,7 @@ Personalized, mailed math and reading workbooks for ages 6-12 (grades 1-7). Desi
 | Tool | What we use it for | Notes |
 |---|---|---|
 | Next.js 16 + React 19 (TypeScript) | The site and its API routes (`src/app`) | Read `node_modules/next/dist/docs/` before you write Next.js code. Design-system components live in `src/ds` (`npm run build:ds` builds `dist/ds`). |
-| Vercel | Hosting, preview deploys, daily cron | Project `ai-workbooks-landing-page`, team `team_FGQkGyJkN7E0rgmxUsvC2ZDL`. Pushes to `main` deploy production. Domain: `unicalearning.com`, bought on Vercel (2026-10-08) with Vercel DNS; `www.unicalearning.com` redirects to it (308). `pagewiselearning.vercel.app` still serves the site. Cron `/api/keepalive` runs daily at 15:00 UTC (`vercel.json`). The claude.ai Vercel connector cannot see this project; use `npx vercel@latest` (CLI login `savargupta1922-1024`). |
+| Vercel | Hosting, preview deploys, daily cron | Project `ai-workbooks-landing-page`, team `team_FGQkGyJkN7E0rgmxUsvC2ZDL`. Pushes to `main` deploy production. Domain: `unicalearning.com`, bought on Vercel (2026-10-08) with Vercel DNS; `www.unicalearning.com` redirects to it (308). `pagewiselearning.vercel.app` and `ai-workbooks-landing-page.vercel.app` redirect to it (308, keeps the path). Cron `/api/keepalive` runs daily at 15:00 UTC (`vercel.json`). The claude.ai Vercel connector cannot see this project; use `npx vercel@latest` (CLI login `savargupta1922-1024`). |
 | Supabase | Postgres store for signups and waitlist entries | Project `pagewise` (`cdjobwsyzndtltzfpyqa`). Table `public.signups`; the site can only insert (RLS). The free plan pauses after 7 days without activity, so the keepalive cron calls `ping()`. Base schema: `supabase/schema.sql`; changes: `supabase/migrations/`. |
 | PostHog | Product analytics and the signup funnel | Loads after analytics consent (`src/instrumentation-client.ts`), after idle for returning visitors. Events use the `/ingest` proxy (`next.config.ts`). Event names: `src/lib/track.ts`. Keep parent contact details and child grade out of analytics. PostHog MCP is available for queries. |
 | Resend | Emails Savar about each new signup | Sent from `/api/signup` after the response. The free plan sends only from `onboarding@resend.dev` to the account owner. Emails to parents need a verified domain that we own. |
