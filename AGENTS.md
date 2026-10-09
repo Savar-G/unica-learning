@@ -8,9 +8,9 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
 
 <!-- END:nextjs-agent-rules -->
 
-# Pagewise landing page - working conventions
+# Unica Learning landing page - working conventions
 
-Personalized, mailed math and reading workbooks for ages 6-12 (grades 1-7). Design truth: `DESIGN.md`. Decision history: `.design/decisions.md`.
+Personalized, mailed math and reading workbooks for ages 6-12 (grades 1-7). The brand is Unica Learning (D-056); the repo, domain and internal code names still say Pagewise. Design truth: `DESIGN.md`. Decision history: `.design/decisions.md`.
 
 ## Agent rules
 
@@ -19,7 +19,7 @@ Personalized, mailed math and reading workbooks for ages 6-12 (grades 1-7). Desi
 - Never switch branches in the main checkout. Other agents work in parallel worktrees (`git worktree list`).
 - All design work goes through `/design`. Mockup rounds live in `.design/experiments/r<n>/`, with a `manifest.json`.
 - Done gate (no test suite): `npx eslint src && npm run build`, then check the change in the browser with `npm run dev`. `npm run lint` also scans `.design-sync/previews/`, which has old errors.
-- Copy rules in `DESIGN.md` are binding: no proof we do not have, no competitor names, no performance claims.
+- Copy rules in `DESIGN.md` are binding: no proof we do not have, no performance claims, and competitor names only where D-059 allows (with a dated source).
 - Use plain language in all customer text. Keep development notes and draft labels out of public pages. Give provider names only in the privacy disclosure, with a plain explanation.
 
 ## Tools and services
