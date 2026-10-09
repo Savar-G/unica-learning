@@ -261,12 +261,28 @@ export function Feel() {
   );
 }
 
-const PROMISE: [IconName, string, string][] = [
+// One list for the home page and /our-story, so the promise text cannot drift apart.
+export const PROMISE: [IconName, string, string][] = [
   ["shield", "30-day money-back guarantee", "If it is not working for your child within 30 days of your first payment, we refund your payment in full."],
   ["calendar", "Fits your family's schedule", "Kids are busy. Take a week or a month off, and pick up where your child left off."],
   ["test", "Free assessment, nothing to pay today", "We charge nothing until your first workbook ships."],
   ["undo", "Cancel anytime", "No contract. Stop whenever you want."],
 ];
+
+// The home page shows the first two; pricing already says "free assessment" and "cancel anytime".
+const HOME_PROMISE = PROMISE.slice(0, 2);
+
+export function PromiseCards({ items = PROMISE }: { items?: [IconName, string, string][] }) {
+  return (
+    <div className="promise">
+      {items.map(([icon, title, text], i) => (
+        <IncludedCard key={title} icon={icon} title={title} className="rise" style={d(i * 0.06)}>
+          {text}
+        </IncludedCard>
+      ))}
+    </div>
+  );
+}
 
 export function OurPromise() {
   return (
@@ -276,17 +292,12 @@ export function OurPromise() {
         <Rise>
           <Eyebrow>Our promise</Eyebrow>
           <h2 id="promiseT" style={{ margin: "16px 0 20px" }}>Try it with nothing to lose.</h2>
-          <p className="lead">
-            {BRAND} is made in Vancouver by a small team who grew up on paper workbooks. Every family starts with a free assessment, and every plan comes with a 30-day money-back guarantee.
+          <p className="lead">{BRAND} is made in Vancouver by two students who grew up on workbooks. We both did workbook programs for years and tutored other kids. We built the middle: personal, on paper, and affordable.</p>
+          <p style={{ margin: "18px 0 0" }}>
+            <Link href="/our-story" style={{ fontWeight: 500, textUnderlineOffset: 4 }}>Read why we built it →</Link>
           </p>
         </Rise>
-        <div className="promise">
-          {PROMISE.map(([icon, title, text], i) => (
-            <IncludedCard key={title} icon={icon} title={title} className="rise" style={d(i * 0.06)}>
-              {text}
-            </IncludedCard>
-          ))}
-        </div>
+        <PromiseCards items={HOME_PROMISE} />
       </div>
     </Section>
   );
@@ -397,6 +408,7 @@ export function Footer() {
         <p className="small" style={{ marginTop: 10 }}>Made in Vancouver, BC · 30-day money-back guarantee · Cancel anytime</p>
         <p className="small" style={{ marginTop: 10 }}>© 2026 {BRAND}</p>
         <nav className="footer-links small" aria-label="Site information">
+          <Link href="/our-story">Our story</Link>
           <Link href="/privacy">Privacy</Link>
           <Link href="/terms">Terms</Link>
           <a href={SUPPORT_HREF}>Contact us</a>
