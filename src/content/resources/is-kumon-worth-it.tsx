@@ -2,62 +2,198 @@
 // Writers: replace `meta` and `Body` only. Blocks: see src/components/article.tsx.
 import Link from "next/link";
 import type { ResourceMeta } from "@/lib/resources";
-import { AssessmentCta, Callout, Cite, DataTable, KeyFacts, Section } from "@/components/article";
+import { AssessmentCta, Callout, Cite, KeyFacts, Section } from "@/components/article";
 
 export const meta: ResourceMeta = {
   slug: "is-kumon-worth-it",
   title: "Is Kumon worth it? Cost, method and fit for BC families",
-  description: "Placeholder - writer fills this meta description (155 characters or fewer).",
+  description:
+    "Is Kumon worth it for your child? How the Kumon method works, what it costs in BC, the trade-offs to weigh, and questions to ask at the free assessment.",
   category: "Comparing options",
-  lead: "Placeholder - writer fills this one-sentence intro.",
+  lead: "A balanced look at how Kumon works, what it costs in BC, and the questions that help you decide if it fits your child.",
   updated: "2026-10-09",
   faqs: [
-    { q: "Placeholder question 1 - writer fills this?", a: "Placeholder answer - writer fills this." },
-    { q: "Placeholder question 2 - writer fills this?", a: "Placeholder answer - writer fills this." },
+    {
+      q: "Is Kumon worth the money?",
+      a: "It depends on your child, your budget and your schedule. Kumon is daily worksheet practice, about 30 minutes per subject, with centre visits twice a week. In BC, centre pages listed $180 to $260 per subject per month in October 2026. If that routine and price fit your family, it may be worth a try. If not, compare other options first.",
+    },
+    {
+      q: "Is Kumon expensive?",
+      a: "At BC centres that list a price, one subject was $180 to $260 a month in October 2026, plus an $80 enrolment fee and, at most centres, a $20 or $30 materials fee. Two subjects cost about twice as much. Kumon's online Canada Virtual centre listed $150 per subject.",
+    },
+    {
+      q: "Is Kumon good for kids?",
+      a: "Some children like a steady daily routine and short, clear worksheets. Others find daily practice hard to keep up. Watch how your child responds in the first weeks, and talk with the instructor about what you see.",
+    },
+    {
+      q: "Is Kumon bad for mental health?",
+      a: "There is no single answer; it depends on the child. Watch for signs such as tears or arguments at worksheet time, avoiding the work, or worry about speed. If you see them, talk with the instructor about the amount of work or the level, and talk with your child.",
+    },
+    {
+      q: "Does Kumon qualify for a tax credit?",
+      a: "CRA's child care expense deduction is for paying someone to look after a child so you can work or study. CRA lists education fees and leisure activity fees among the expenses you cannot claim. CRA's page does not name tutoring or learning centres, so ask CRA or a tax professional about your case.",
+    },
   ],
   sources: [
-    { label: "Placeholder source 1 - writer fills this", url: "https://example.com/source-1", accessed: "2026-10-09" },
-    { label: "Placeholder source 2 - writer fills this", url: "https://example.com/source-2", accessed: "2026-10-09" },
+    { label: "Kumon Canada, What is Kumon?", url: "https://www.kumon.com/resources/canadian_english/what-kumon/", accessed: "2026-10-09" },
+    { label: "Kumon Canada, Math program", url: "https://www.kumon.com/ca-en/math-program", accessed: "2026-10-09" },
+    { label: "Kumon, How do Kumon's in-person and virtual classes work?", url: "https://www.kumon.com/resources/how-do-kumons-in-person-and-virtual-classes-work/", accessed: "2026-10-09" },
+    { label: "Kumon Canada, Understanding student progress in Kumon", url: "https://www.kumon.com/resources/canadian_english/understanding-student-progress-in-kumon-what-to-look-for-and-where-to-find-it/", accessed: "2026-10-09" },
+    { label: "Kumon Vancouver - Marpole, centre page (pricing and fees)", url: "https://www.kumon.com/vancouver-marpole/aboutcenter", accessed: "2026-10-09" },
+    { label: "Kumon Surrey - Fraser Heights, centre page (pricing and fees)", url: "https://www.kumon.com/surrey-fraser-heights/aboutcenter", accessed: "2026-10-09" },
+    { label: "Kumon Canada Virtual, centre page (pricing and fees)", url: "https://www.kumon.com/canada-virtual/aboutcenter", accessed: "2026-10-09" },
+    { label: "Canada Revenue Agency, Line 21400 child care expenses: expenses you can claim", url: "https://www.canada.ca/en/revenue-agency/services/tax/individuals/topics/about-your-tax-return/tax-return/completing-a-tax-return/deductions-credits-expenses/line-21400-child-care-expenses/expenses-claim.html", accessed: "2026-10-09" },
   ],
-  related: ["kumon-alternatives", "kumon-vs-mathnasium", "tutor-cost-bc"],
+  related: ["kumon-cost-bc", "kumon-alternatives", "kumon-vs-mathnasium", "tutor-cost-bc"],
 };
 
 export default function Body() {
   return (
     <>
-      <KeyFacts items={["Placeholder fact 1 - writer fills this.", "Placeholder fact 2 - writer fills this.", "Placeholder fact 3 - writer fills this."]} />
+      <p>
+        <strong>Is Kumon worth it?</strong> There is no single answer. Kumon is a daily worksheet program: your child
+        starts at a level set by a placement test, practises about 30 minutes per subject each day, and visits a
+        centre twice a week.<Cite n={1} /><Cite n={2} /> In BC, one subject cost $180 to $260 a month at centres that
+        listed a price in October 2026.<Cite n={5} /><Cite n={6} /> Whether it is worth it depends on your child, your
+        schedule and your budget. This guide sets out the facts and the questions to weigh.
+      </p>
 
-      <Section title="Placeholder section heading">
-        <p>
-          Placeholder - writer fills this paragraph. It shows <strong>bold text</strong>, <Link href="/resources">an internal link</Link>, <a href="https://example.com">an external link</a> and a citation.<Cite n={1} />
-        </p>
+      <KeyFacts
+        title="Kumon in brief"
+        items={[
+          "Subjects: math and reading, charged per subject.",
+          "Start: a placement test sets the starting level.",
+          "Routine: about 30 minutes per subject a day; centre twice a week.",
+          "BC price: $180-$260 per subject a month, plus fees (October 2026).",
+          "Online: Kumon's Canada Virtual centre listed $150 per subject.",
+        ]}
+      />
+
+      <Section title="How the Kumon method works">
+        <p>This is how Kumon describes its own program:</p>
         <ul>
-          <li>Placeholder list item - writer fills this.</li>
-          <li>Placeholder list item - writer fills this.</li>
+          <li>
+            <strong>Placement test.</strong> Your child takes a placement test at the start. The instructor uses it to
+            choose a starting level.<Cite n={1} />
+          </li>
+          <li>
+            <strong>Worksheets in a set order.</strong> Your child works through a sequence of worksheets, in levels,
+            and moves on at their own pace.<Cite n={1} />
+          </li>
+          <li>
+            <strong>Daily practice.</strong> Kumon says each subject takes about 30 minutes a day.<Cite n={2} />
+          </li>
+          <li>
+            <strong>Centre visits.</strong> Students go to the centre twice a week and do the other worksheets at
+            home.<Cite n={1} /> Kumon also runs virtual classes.<Cite n={3} />
+          </li>
+          <li>
+            <strong>Instructor review.</strong> An instructor reviews the work and updates the lesson plan.<Cite n={1} />{" "}
+            Parents can follow worksheets, times and scores through Kumon&apos;s app and parent portal.<Cite n={4} />
+          </li>
         </ul>
-        <h3>Placeholder subheading</h3>
-        <ol>
-          <li>Placeholder step - writer fills this.</li>
-          <li>Placeholder step - writer fills this.<Cite n={2} /></li>
-        </ol>
       </Section>
 
-      <Section title="Placeholder table section">
-        <DataTable
-          caption="Placeholder table caption - writer fills this"
-          columns={["Column A", "Column B", "Column C"]}
-          rows={[
-            ["Row 1", "Placeholder", "Placeholder"],
-            ["Row 2", "Placeholder", "Placeholder"],
-          ]}
-          note="Placeholder table note - writer fills this."
-        />
-        <Callout label="Tip">
-          <p>Placeholder tip - writer fills this.</p>
+      <Section title="What Kumon costs in BC">
+        <p>Kumon prices for one child, as listed on BC centre pages in October 2026:</p>
+        <ul>
+          <li><strong>One subject at a BC centre:</strong> $180-$260 a month.<Cite n={5} /><Cite n={6} /></li>
+          <li><strong>Two subjects (math and reading):</strong> about $360-$520 a month (twice the per-subject range).</li>
+          <li><strong>Enrolment:</strong> $80 per student, once.<Cite n={5} /></li>
+          <li><strong>Materials:</strong> $20-$30 at most centres.<Cite n={5} /><Cite n={6} /></li>
+          <li><strong>Canada Virtual (online), one subject:</strong> $150 a month.<Cite n={7} /></li>
+        </ul>
+        <p>Prices vary by centre and can change, so ask your centre for its current fees.</p>
+        <p>
+          For every BC centre we checked, see{" "}
+          <Link href="/resources/kumon-cost-bc">how much Kumon costs per month in BC</Link>.
+        </p>
+      </Section>
+
+      <Section title="Is Kumon worth it for your child? Fit and trade-offs">
+        <p>
+          These are points to consider, not a verdict. The same feature can suit one child and not another.
+        </p>
+        <h3>It may suit a child who</h3>
+        <ul>
+          <li>likes a clear routine and short tasks with a right answer;</li>
+          <li>needs steady practice to make basic skills fast and sure;</li>
+          <li>lives near a centre, or does well with a virtual class.</li>
+        </ul>
+        <h3>Trade-offs a parent should weigh</h3>
+        <ul>
+          <li>
+            <strong>Time every day.</strong> About 30 minutes per subject a day is up to an hour for math and
+            reading.<Cite n={2} /> Ask yourself if that fits after school, sports and homework.
+          </li>
+          <li>
+            <strong>Centre visits.</strong> Two visits a week means travel time for a parent, unless you choose the
+            virtual option.<Cite n={1} /><Cite n={3} />
+          </li>
+          <li>
+            <strong>Cost for two subjects.</strong> At BC centre prices, math and reading together are about $360-$520
+            a month in tuition.<Cite n={5} /><Cite n={6} />
+          </li>
+          <li>
+            <strong>A repetition-based format.</strong> The program is built on worksheets in a set sequence. Some
+            children like that. Others want more variety or explanation.
+          </li>
+          <li>
+            <strong>Who supports the daily work.</strong> Most worksheets are done at home, so a parent often keeps the
+            routine going.<Cite n={1} />
+          </li>
+        </ul>
+        <Callout label="About the mental health question" tone="peach">
+          <p>
+            Parents search whether Kumon is bad for mental health. There is no single answer: it depends on the child.
+            Watch for tears or arguments at worksheet time, avoiding the work, or worry about speed. If you see them,
+            talk with the instructor about the amount of work or the level, and talk with your child. If the signs
+            continue, it is fine to pause and try a different approach.
+          </p>
         </Callout>
       </Section>
 
-      <AssessmentCta slug={meta.slug}>Placeholder call-to-action line - writer fills this.</AssessmentCta>
+      <Section title="Questions to ask at the free assessment">
+        <ol>
+          <li>Which level will my child start at, and why?</li>
+          <li>How many worksheets a day, and how long should they take?</li>
+          <li>What happens if my child finds the work too hard or too easy?</li>
+          <li>How will you tell me about progress, and how often?</li>
+          <li>What is the monthly price for one and two subjects, and what are the other fees?</li>
+          <li>How do we pause or stop, and how much notice do you need?</li>
+          <li>How does the work connect to what my child learns at school in BC?</li>
+        </ol>
+      </Section>
+
+      <Section title="Does Kumon qualify for a tax credit?">
+        <p>
+          The CRA child care expense deduction is for paying someone to look after an eligible child so you can work,
+          go to school or do research. CRA lists, among the expenses you cannot claim, education fees at an
+          educational institution (such as tuition for a regular program) and fees for leisure or recreational
+          activities.<Cite n={8} /> CRA&apos;s page does not name tutoring or learning centres. Ask CRA or a tax
+          professional about your situation.
+        </p>
+      </Section>
+
+      <Section title="Alternatives to Kumon">
+        <p>
+          Other options include a private tutor, another learning centre, or workbooks at home. Read{" "}
+          <Link href="/resources/kumon-alternatives">Kumon alternatives</Link> for an overview,{" "}
+          <Link href="/resources/kumon-vs-mathnasium">Kumon vs Mathnasium</Link> for two centres side by side, and{" "}
+          <Link href="/resources/tutor-cost-bc">tutor costs in BC</Link> for hourly rates.
+        </p>
+        <p>
+          Unica is one of these options: personalized math and reading workbooks for ages 6-12, mailed home. The books
+          follow the BC curriculum at your child&apos;s level, and your child works on paper for 15-20 minutes a day, 5
+          days a week. One subject is CAD 59 a month and math and reading is CAD 99 a month, delivery included, with a
+          30-day money-back guarantee.
+        </p>
+      </Section>
+
+      <AssessmentCta slug={meta.slug}>
+        Whatever you choose, start by knowing where your child is. Our free placement assessment on paper finds their
+        level and gaps.
+      </AssessmentCta>
     </>
   );
 }
