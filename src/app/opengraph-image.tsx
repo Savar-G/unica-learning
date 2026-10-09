@@ -31,7 +31,7 @@ export default async function Image() {
           </div>
           <div style={{ fontSize: 24, color: "#4b4b4b" }}>Math and reading workbooks for ages 6-12 · Across Canada</div>
         </div>
-        <div style={{ display: "flex", flexWrap: "wrap", width: 240, height: 240, alignSelf: "center", borderTop: "2px solid #111", borderLeft: "2px solid #111" }}>
+        <div style={{ display: "flex", flexWrap: "wrap", width: 248, height: 248, alignSelf: "center", borderTop: "2px solid #111", borderLeft: "2px solid #111" }}>
           {TILES.map((c, i) => (
             <div key={i} style={{ width: 80, height: 80, background: c, borderRight: "2px solid #111", borderBottom: "2px solid #111" }} />
           ))}

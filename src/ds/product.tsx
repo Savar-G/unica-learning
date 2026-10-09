@@ -165,7 +165,7 @@ export interface WorkbookCoverProps {
 }
 
 /** Front cover of a personalized workbook. */
-export function WorkbookCover({ name, book = "Book 1", subject = "Math", color = "sun", brand = "Pagewise" }: WorkbookCoverProps) {
+export function WorkbookCover({ name, book = "Book 1", subject = "Math", color = "sun", brand = "Unica Learning" }: WorkbookCoverProps) {
   const light = color === "sky" || color === "leaf";
   return (
     <div className={`cover${light ? " on-dark" : ""}`} style={{ "--bg-c": TONE_BG[color] } as Vars} aria-hidden="true">

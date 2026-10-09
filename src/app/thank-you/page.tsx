@@ -1,12 +1,13 @@
 import { pageMetadata } from "@/lib/metadata";
 import { BookingResult } from "@/components/booking-result";
 import { SupportPage } from "@/components/support-page";
+import { BRAND } from "@/lib/site";
 import { stripe } from "@/lib/stripe";
 
 export const metadata = pageMetadata({
   path: "/thank-you",
   title: "Your next step",
-  description: "What happens next after you request an assessment, join the waitlist, or add your card with Pagewise.",
+  description: `What happens next after you request an assessment, join the waitlist, or add your card with ${BRAND}.`,
   index: false,
 });
 

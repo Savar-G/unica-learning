@@ -105,7 +105,7 @@ async function notify(
       method: "POST",
       headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
       body: JSON.stringify({
-        from: "Pagewise signups <onboarding@resend.dev>",
+        from: "Unica Learning signups <onboarding@resend.dev>",
         to: [to],
         reply_to: row.email,
         subject: `${row.status === "waitlist" ? "Waitlist" : "New signup"}: ${row.name} (${row.subject}, grade ${row.grade})`,

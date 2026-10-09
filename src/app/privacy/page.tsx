@@ -5,7 +5,7 @@ import { BUSINESS_NAME, SUPPORT_EMAIL, SUPPORT_HREF } from "@/lib/contact";
 export const metadata = pageMetadata({
   path: "/privacy",
   title: "Privacy policy",
-  description: "How Pagewise Learning uses your information and cookies, and how to contact us about your privacy.",
+  description: `How ${BUSINESS_NAME} uses your information and cookies, and how to contact us about your privacy.`,
   index: false,
 });
 

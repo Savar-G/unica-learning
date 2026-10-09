@@ -1,7 +1,7 @@
 // "warm" is the live look (D-034). "primer" keeps the original Primer-style rules reachable for comparison.
 export type Look = "primer" | "warm";
 
-const KEEP = new Set(["BC", "Pagewise", "Savar", "Cedric", "I", "CAD"]);
+const KEEP = new Set(["BC", "Pagewise", "Unica", "Learning", "Savar", "Cedric", "I", "CAD"]);
 
 // Primer uses Title Case headings; the warm look uses sentence case.
 export function cs(look: Look, s: string): string {
