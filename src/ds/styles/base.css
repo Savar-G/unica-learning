@@ -174,7 +174,7 @@ main > *{position:relative;z-index:1}
 .step:hover .vis img{transform:scale(1.04)}
 .step .vis .page{position:absolute;width:62%;left:19%;top:12%;transform:rotate(-2deg)}
 .step .vis.dk{background:#EDEBE6}
-.loopnote{display:flex;align-items:center;gap:14px;margin-top:22px;color:var(--ink-2);font-size:15px}
+.loopnote{display:flex;align-items:center;gap:14px;margin-top:22px;color:var(--ink-2);font-size:15px;font-style:italic}
 .loopnote svg{width:34px;height:34px;flex:none}
 .loopnote svg path{fill:none;stroke:var(--ink);stroke-width:1.6;stroke-linecap:round}
 

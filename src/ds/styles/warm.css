@@ -130,7 +130,7 @@
 [data-look="warm"] .step .num { font: 400 12.5px/1 var(--mono); color: var(--ink-3); }
 [data-look="warm"] .step h3 { font-size: 24px; }
 [data-look="warm"] .step .vis { border-radius: 2px; }
-[data-look="warm"] .loopnote { font: 400 13.5px/1.4 var(--mono); }
+[data-look="warm"] .loopnote { font: italic 400 13.5px/1.4 var(--mono); }
 
 /* ---------- Why choose: grey cards with a grain field ---------- */
 [data-look="warm"] .why { border: 0; gap: 14px; }
