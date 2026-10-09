@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { AssessmentCta, ResourceCard, ResourcesShell } from "@/components/article";
 import { Eyebrow } from "@/ds";
 import { pageMetadata } from "@/lib/metadata";
@@ -27,9 +28,23 @@ export default function ResourcesHub() {
         {resourcesByCategory().filter((g) => g.items.length).map((g) => (
           <section key={g.category} className="res-group" aria-labelledby={`grp-${slugify(g.category)}`}>
             <h2 id={`grp-${slugify(g.category)}`}>{g.category}</h2>
-            <ul className="res-cards">
-              {g.items.map((m, i) => <ResourceCard key={m.slug} meta={m} index={i} />)}
-            </ul>
+            {g.category === "BC curriculum" ? (
+              // Seven grade guides as compact tiles, so phones do not get a long list of near-identical cards.
+              <ul className="res-grades">
+                {g.items.map((m) => (
+                  <li key={m.slug}>
+                    <Link href={resourcePath(m.slug)} aria-label={m.title}>
+                      <span className="res-grade-n">Grade {m.slug.match(/grade-(\d+)/)?.[1]}</span>
+                      <span className="res-grade-s">Math and reading</span>
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <ul className="res-cards">
+                {g.items.map((m, i) => <ResourceCard key={m.slug} meta={m} index={i} />)}
+              </ul>
+            )}
           </section>
         ))}
 

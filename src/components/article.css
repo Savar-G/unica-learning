@@ -114,6 +114,18 @@
 .res-card a:hover .arr { transform: translateX(3px); }
 
 /* ---------- hub ---------- */
+.res-grades { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; grid-template-columns: repeat(2, 1fr); }
+@media (min-width: 560px) { .res-grades { grid-template-columns: repeat(4, 1fr); } }
+@media (min-width: 1080px) { .res-grades { grid-template-columns: repeat(7, 1fr); } }
+.res-grades a { position: relative; display: flex; flex-direction: column; gap: 4px; min-height: 44px; padding: 16px 16px 14px; background: var(--card); border-radius: 4px; text-decoration: none; color: var(--ink); transition: transform 0.35s var(--spring); }
+.res-grades a::after { content: ""; position: absolute; top: 0; right: 0; width: 12px; height: 12px; background: var(--g1); border-top-right-radius: 4px; }
+.res-grades li:nth-child(4n+2) a::after { background: var(--g2, var(--g1)); }
+.res-grades li:nth-child(4n+3) a::after { background: var(--g3, var(--g1)); }
+.res-grades li:nth-child(4n+4) a::after { background: var(--g4, var(--g1)); }
+.res-grades a:hover { transform: translateY(-2px); }
+.res-grade-n { font: 500 20px/1.2 var(--sans); letter-spacing: -0.015em; }
+.res-grade-s { font-size: 14px; color: var(--ink-2); }
+@media (prefers-reduced-motion: reduce) { .res-grades a:hover { transform: none; } }
 .res-hub { padding-left: var(--pad-x); padding-right: var(--pad-x); }
 .res-hub .res-head { margin-top: clamp(28px, 5vw, 56px); max-width: 760px; }
 [data-look="warm"] .res-hub .res-head h1 { font-size: clamp(40px, 6vw, 72px); }
