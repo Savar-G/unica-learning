@@ -79,8 +79,10 @@ export function Hero() {
         id="top"
         eyebrow=""
         kicker={HERO.kicker}
+        title={HERO.title}
+        highlight={HERO.highlight}
         lead={HERO.lead}
-        meta={["Math and reading", "Ages 6-12", `From CAD ${PLANS.one.price}/month`, "30-day money-back guarantee"]}
+        meta={[`From CAD ${PLANS.one.price}/month`, "30-day money-back guarantee", "Cancel anytime"]}
         page={null}
         report={null}
         animate

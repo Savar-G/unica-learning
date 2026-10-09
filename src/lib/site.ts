@@ -9,6 +9,8 @@ export const PLANS = {
 export type PlanId = keyof typeof PLANS;
 
 export const HERO = {
-  kicker: "Same grade. Different levels. Different pace.",
-  lead: "Every child learns at a different level and a different pace. So every Unica workbook is made for one child: yours. Math and reading, mailed home, and each new book starts where your child needs it.",
+  kicker: "Math and reading workbooks, ages 6-12",
+  title: "Your child isn't",
+  highlight: "a grade level.",
+  lead: "Kids in the same grade are at different levels, move at different speeds, and learn in different ways. So every Unica workbook is made for one child: built around their level, pace, and learning style, then printed and mailed home.",
 };

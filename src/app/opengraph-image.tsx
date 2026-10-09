@@ -3,7 +3,7 @@ import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { BRAND } from "@/lib/site";
 
-export const alt = `${BRAND}: Personalized. Delivered. Mastered.`;
+export const alt = `${BRAND}: Your child isn't a grade level.`;
 export const size = { width: 1200, height: 630 };
 export const contentType = "image/png";
 
@@ -22,14 +22,13 @@ export default async function Image() {
             <div style={{ width: 13, height: 13, background: "#FF6430", marginLeft: 3 }} />
           </div>
           <div style={{ display: "flex", flexDirection: "column" }}>
-            <div style={{ fontSize: 22, letterSpacing: 3, textTransform: "uppercase", marginBottom: 22 }}>The future of learning is on paper.</div>
+            <div style={{ fontSize: 22, letterSpacing: 3, textTransform: "uppercase", marginBottom: 22 }}>Math and reading workbooks, ages 6-12</div>
             <div style={{ display: "flex", flexDirection: "column", fontFamily: "Zodiak", fontSize: 96, lineHeight: 1, letterSpacing: -2 }}>
-              <span>Personalized.</span>
-              <span>Delivered.</span>
-              <span style={{ background: "#FFD23F", padding: "0 8px", marginLeft: -8, alignSelf: "flex-start" }}>Mastered.</span>
+              <span>Your child isn&apos;t</span>
+              <span style={{ background: "#FFD23F", padding: "0 8px", marginLeft: -8, alignSelf: "flex-start" }}>a grade level.</span>
             </div>
           </div>
-          <div style={{ fontSize: 24, color: "#4b4b4b" }}>Math and reading workbooks for ages 6-12 · Across Canada</div>
+          <div style={{ fontSize: 24, color: "#4b4b4b" }}>Made for one child. Printed and mailed home across Canada.</div>
         </div>
         <div style={{ display: "flex", flexWrap: "wrap", width: 248, height: 248, alignSelf: "center", borderTop: "2px solid #111", borderLeft: "2px solid #111" }}>
           {TILES.map((c, i) => (
