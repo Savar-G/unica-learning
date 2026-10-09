@@ -307,7 +307,7 @@ export function Pricing() {
           name="One subject"
           note={PLANS.one.note}
           price={PLANS.one.price}
-          features={["Free placement assessment", "Personalized workbooks, mailed home", "Your next book arrives before the current one runs out", "Progress reports, updated continuously", "Delivery included. Cancel anytime", "30-day money-back guarantee"]}
+          features={["Free placement assessment", "Personalized workbooks matched to your child's level and gaps, mailed home", "Your next book arrives before the current one runs out", "Progress reports after every check-in", "Delivery included. Cancel anytime"]}
           ctaLabel="Choose one subject"
           cta={<GetStarted src="price" plan="one" label="Choose one subject" ghost />}
         />
@@ -318,7 +318,7 @@ export function Pricing() {
           name="Math + Reading"
           note={PLANS.both.note}
           price={PLANS.both.price}
-          features={["Everything in One Subject", "A math book and a reading book every cycle", "One progress report for both", "Delivery included. Cancel anytime", "30-day money-back guarantee"]}
+          features={["Everything in One Subject", "A math book and a reading book every cycle", "One progress report for both", "Delivery included. Cancel anytime"]}
           ctaLabel="Choose math + reading"
           cta={<GetStarted src="price" plan="both" label="Choose math + reading" />}
         />
@@ -328,6 +328,10 @@ export function Pricing() {
 }
 
 const FAQ = [
+  ["How is the work checked?", "You take a photo of the finished pages with your phone. We mark the work, show you what your child got right and where the gaps are, and give the solutions so they can understand any mistakes."],
+  ["What if it is not right for my child?", "Every plan has a 30-day money-back guarantee. If it is not working for your child within 30 days of your first payment, we refund your payment in full."],
+  ["How is this different from Kumon?", `Kumon moves every child through a set sequence of worksheets, and Metro Vancouver centres charge about $185-$260 per subject a month. ${BRAND} starts at your child's level, builds every book from how they did, and costs less: from CAD ${PLANS.one.price} a month.`],
+  ["What if my child is struggling a lot?", "The next book focuses on the gap with extra practice, and you'll see exactly where they're stuck so you can help right away."],
   ["Is there any screen time?", "Your child works on paper. The only screen is your phone camera, for the few seconds it takes to snap the finished pages."],
   ["Who is it for?", "Children in grades 1 to 7 (ages 6 to 12), in math, reading or both."],
   ["How does the free assessment work?", "We send a short placement assessment on paper, matched to your child's age. Your child does it at home, and you send us a photo of the finished pages. It is free, and we use it to make your child's first book."],
@@ -336,9 +340,7 @@ const FAQ = [
   ["Can we take a break?", "Yes. Pause for a week, a month or longer. Contact us to arrange a pause. The next book starts where your child left off."],
   ["What if we miss a few days?", "The next book picks up where your child is. Nothing is lost."],
   ["What if we forget to send photos?", "We send a reminder. Until new pages arrive, the next book reviews what your child last worked on."],
-  ["How is the work checked?", "Every page you photograph is checked, including how your child worked out the answer. We use the results to plan their next book and update your progress report."],
   ["What happens to my child's work?", "We use it to plan your child's next book and show their progress. We do not sell it, and you can ask us to delete it at any time."],
-  ["What if it is not right for my child?", "Every plan has a 30-day money-back guarantee. If it is not working for your child within 30 days of your first payment, tell us and we refund your payment in full."],
   ["Why do you ask for my card?", "So your first workbook can ship as soon as it is ready. We charge nothing when you sign up. When your first workbook ships, we charge your first month, then every month until you cancel. Cancel before it ships and you pay nothing. Families on the waitlist do not add a card."],
   ["Can we cancel?", "Yes, anytime. Contact us to cancel. If you cancel before your first workbook ships, you pay nothing."],
   ["Where do you deliver?", "We deliver across Canada. Delivery is included in every plan."],
@@ -366,9 +368,9 @@ export function Closing() {
         <Rise>
           <BeliefList
             items={[
-              { text: "Learning belongs on paper, not on another screen.", color: "sun" },
-              { text: "We believe paper and pencil build stronger learning.", color: "sky" },
-              { text: "Every child is different, so every workbook is too.", color: "tang" },
+              { text: "Every child learns differently. Learning should adapt.", color: "sun" },
+              { text: "No child should fall behind because the class moved on.", color: "sky" },
+              { text: "Personal, on paper, and affordable.", color: "tang" },
             ]}
           />
         </Rise>
