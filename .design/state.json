@@ -23,7 +23,8 @@
       ".design/evidence/plain-language/terms-1440.png",
       ".design/evidence/plain-language/booking-review-375.png",
       ".design/evidence/plain-language/unconfirmed-375.png",
-      ".design/evidence/plain-language/browser-result.json"
+      ".design/evidence/plain-language/browser-result.json",
+      ".design/evidence/plain-language/hosted-result.json"
     ],
     "latest_review": ".design/reviews/plain-language-2026-10-08-r2.md",
     "drafts": [
@@ -83,7 +84,7 @@
     "audit": ".design/research/site-checklist-2026-10-08.md",
     "policy_status": "public plain-language text, approved business name and contact, no draft labels",
     "merge_owner": "user",
-    "hosted_verification": "Preview HTTP verified at dbf18d2; live Stripe and PostHog unverified",
+    "hosted_verification": "Checklist HTTP verified at dbf18d2; current home and policy text HTTP verified at 0f455bf; live Stripe and PostHog unverified",
     "support_email": "savar.gupta1922@gmail.com",
     "legal_business_name": "Pagewise Learning",
     "guarantee_start": "day of the first payment"

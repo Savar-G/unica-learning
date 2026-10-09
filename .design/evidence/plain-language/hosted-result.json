@@ -1,0 +1,31 @@
+{
+  "code_commit": "0f455bf27ca6f825021e916ca2a37603bffb7432",
+  "preview": "https://ai-workbooks-landing-p-git-4b890c-savargupta1922-1024s-projects.vercel.app",
+  "checks": [
+    {
+      "route": "/",
+      "status": 200,
+      "bytes": 190605,
+      "expected_text": "within 30 days of your first payment",
+      "contact": "savar.gupta1922@gmail.com",
+      "draft_notice": false
+    },
+    {
+      "route": "/terms",
+      "status": 200,
+      "bytes": 19336,
+      "expected_text": "starting on the day of your first payment",
+      "contact": "savar.gupta1922@gmail.com",
+      "draft_notice": false
+    },
+    {
+      "route": "/privacy",
+      "status": 200,
+      "bytes": 23386,
+      "expected_text": "Cookies and your choice",
+      "contact": "savar.gupta1922@gmail.com",
+      "draft_notice": false
+    }
+  ],
+  "limits": "Authenticated HTTP checks only. No hosted browser or live payment and analytics checks."
+}

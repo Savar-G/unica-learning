@@ -21,6 +21,7 @@ Two fresh read-only Sonnet reviewers checked the source. They did not run the bu
 - `browser-result.json` contains 37 passing assertions. Home, privacy and terms were checked at 320, 375 and 1440 px. Checks require correct contact links, the business name, update dates, guarantee start, one heading, plain metadata and no horizontal overflow. The company disclosure opens at each width.
 - Cookie checks cover full button labels at 320 px, the final visible panel, accept/reject states and Escape focus recovery.
 - Form checks cover the review wording, an intercepted server failure and a lost payment link. Receipt checks cover reserved, waitlist, neutral and unconfirmed states.
+- `hosted-result.json` records HTTP 200 and response sizes for home, privacy and terms on the protected Vercel preview at code commit `0f455bf`. The served text has the approved contact, plain privacy wording, first-payment guarantee and no draft notices. The Vercel check for that code commit passed. This does not prove hosted browser interaction or live service calls.
 - The native T3 preview completed earlier page checks. It then reported that its automation host was unavailable and directed the agent to a shell browser. The final recorded checks use Playwright CLI.
 - Screens inspected: `cookies-320.png`, `booking-review-375.png`, `privacy-375.png`, and `terms-1440.png`. Text and links fit the existing layout. The initial cookie capture caught its entrance animation; the final capture waits for the animation and checks opacity and the white background.
 
