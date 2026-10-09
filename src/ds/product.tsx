@@ -1,4 +1,4 @@
-// Pagewise design system: drawn product pieces (workbook pages, covers, mailer, phone scan,
+// Unica Learning design system: drawn product pieces (workbook pages, covers, mailer, phone scan,
 // progress report). These stand in for product photography; they are real HTML, not images.
 // Red marks and handwriting draw in when an ancestor gets the `is-in` class (the site's scroll
 // observer adds it); outside the site they render in their finished state.

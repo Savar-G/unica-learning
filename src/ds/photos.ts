@@ -1,4 +1,4 @@
-// Real Pagewise photos (children learning at home, Unsplash licence), served from the live site.
+// Real Unica Learning photos (children learning at home, Unsplash licence), served from the live site.
 // Use these instead of stock or AI images. URLs are content-hashed and stable while the image files are unchanged.
 export const photos = {
   emotion10: "https://ai-workbooks-landing-page.vercel.app/_next/static/immutable/media/emotion-10.1cjz17300tops.jpg",

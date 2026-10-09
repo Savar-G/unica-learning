@@ -1,4 +1,4 @@
-// Landing page sections, composed from the Pagewise design system (src/ds).
+// Landing page sections, composed from the Unica Learning design system (src/ds).
 // Site-only concerns stay here: next/image photos, scroll reveals (Rise/Knot), and the
 // [data-open] buttons that open the reserve dialog.
 import Image, { type StaticImageData } from "next/image";

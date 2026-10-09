@@ -240,13 +240,13 @@ function whenIdle(run: () => void) {
 }
 
 // One instance per page, kept on globalThis in case the bundler loads this file twice.
-const holder = globalThis as typeof globalThis & { __pagewiseAnalytics?: ReturnType<typeof createAnalytics> | null };
+const holder = globalThis as typeof globalThis & { __unicaAnalytics?: ReturnType<typeof createAnalytics> | null };
 
 export function getAnalytics() {
   if (typeof window === "undefined") return null;
   const key = process.env.NEXT_PUBLIC_POSTHOG_KEY;
   if (!key) return null;
-  holder.__pagewiseAnalytics ??= createAnalytics({
+  holder.__unicaAnalytics ??= createAnalytics({
     key,
     load: () => import("posthog-js").then((m) => m.default as unknown as Client),
     getConsent,
@@ -254,5 +254,5 @@ export function getAnalytics() {
     clearStorage: clearPostHogStorage,
     whenIdle,
   });
-  return holder.__pagewiseAnalytics;
+  return holder.__unicaAnalytics;
 }

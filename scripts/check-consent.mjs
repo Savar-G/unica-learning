@@ -6,7 +6,7 @@ import { join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
-const outdir = await mkdtemp(join(tmpdir(), "pagewise-consent-test-"));
+const outdir = await mkdtemp(join(tmpdir(), "unica-consent-test-"));
 await build({
   entryPoints: { analytics: `${root}/src/lib/analytics.ts`, consent: `${root}/src/lib/consent.ts` },
   outdir, bundle: true, format: "esm", platform: "node", alias: { "@": `${root}/src` },

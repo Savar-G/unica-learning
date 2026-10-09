@@ -1,4 +1,4 @@
-// Builds the Pagewise design system (src/ds) into dist/ds for design tooling (Claude Design sync).
+// Builds the Unica Learning design system (src/ds) into dist/ds for design tooling (Claude Design sync).
 // JS: ESM bundle with React external. CSS: base + warm look concatenated. Types: tsc declarations.
 import { build } from "esbuild";
 import { execFileSync } from "node:child_process";
@@ -19,7 +19,7 @@ await build({
 });
 
 const css = ["src/ds/styles/base.css", "src/ds/styles/warm.css"].map((f) => `/* ${f} */\n${readFileSync(f, "utf8")}`).join("\n");
-writeFileSync("dist/ds/pagewise.css", css);
+writeFileSync("dist/ds/unica-learning.css", css);
 
 execFileSync("npx", ["tsc", "-p", "tsconfig.ds.json"], { stdio: "inherit" });
 console.log("built dist/ds");
