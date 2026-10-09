@@ -9,7 +9,7 @@ import "@/ds/styles/compare.css";
 const PANELS = [
   { who: "Private tutor", trait: "Personal.", price: "$40-$100", unit: "an hour", text: "Tailored by the tutor, who adjusts each session. You hear about the gaps when the tutor reports them." },
   { who: "Learning centre", trait: "Structured.", price: "$200+", unit: "per subject, a month", text: "A set program at the centre, often the same for every child. Your child moves at their own pace on a set path." },
-  { who: BRAND, trait: "Personal and structured.", price: `CAD ${PLANS.one.price}`, unit: "a month, delivery included", text: "Every book is matched to your child's level and gaps, and adapts to how they did. You get a gap report and solutions after every scan.", us: true },
+  { who: BRAND, trait: "Personal and structured.", price: `CAD ${PLANS.one.price}`, unit: "one subject, a month, delivery included", text: "Every book is matched to your child's level and gaps, and adapts to how they did. You get a gap report and solutions after every scan.", us: true },
 ];
 
 export function Compare() {
@@ -29,7 +29,6 @@ export function Compare() {
           </Rise>
         ))}
       </ul>
-      <Rise as="p" className="cmp-foot" d={0.24}>Online practice apps cost from free to about $20 a month, but the practice happens on a screen.</Rise>
     </Section>
   );
 }
