@@ -57,11 +57,13 @@
 [data-look="warm"] .nav { border-bottom: 1px solid var(--line); background: rgba(255, 255, 255, 0.86); }
 [data-look="warm"] .logo { font: 600 21px/1 var(--sans); letter-spacing: -0.03em; }
 [data-look="warm"] .logo b { background: var(--accent); width: 0.36em; height: 0.36em; }
-[data-look="warm"] .btn { border-radius: 6px; padding: 13px 20px; font: 500 15px/1 var(--sans); }
+/* warm charcoal fill, softer than --ink; deepens to --ink on hover */
+[data-look="warm"] { --btn: #2b2622; }
+[data-look="warm"] .btn { border-radius: 6px; padding: 13px 20px; font: 500 15px/1 var(--sans); background: var(--btn); border-color: var(--btn); }
 [data-look="warm"] .btn.sm { padding: 10px 16px; font-size: 14px; }
 [data-look="warm"] .btn.ghost { border-color: #d4d4d8; background: #fff; }
 [data-look="warm"] .btn.ghost:hover { border-color: var(--ink); background: #fff; color: var(--ink); }
-[data-look="warm"] .btn:hover { box-shadow: none; transform: translateY(-1px); }
+[data-look="warm"] .btn:hover { box-shadow: none; transform: translateY(-1px); background: var(--ink); border-color: var(--ink); }
 
 /* chips become flat mono pills */
 [data-look="warm"] .chip {
