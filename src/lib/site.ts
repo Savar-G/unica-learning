@@ -9,6 +9,8 @@ export const PLANS = {
 export type PlanId = keyof typeof PLANS;
 
 export const HERO = {
-  eyebrow: "The future of learning is on paper.",
+  subtitle: "Same grade. Different levels. Different pace.",
+  lead: "Personalized math and reading workbooks, made for your child and matched to their level and gaps. Mailed home and adapted after every book.",
+  // Kept for the page metadata description (src/lib/metadata.ts).
   sub: "Math and reading workbooks made for your child, mailed home, and adapted after every book.",
 };

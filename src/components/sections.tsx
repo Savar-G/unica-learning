@@ -77,8 +77,10 @@ export function Hero() {
   return (
     <HeroBlock
         id="top"
-        eyebrow={HERO.eyebrow}
-        lead={HERO.sub}
+        eyebrow=""
+        subtitle={HERO.subtitle}
+        lead={HERO.lead}
+        meta={["Math and reading", "Ages 6-12", `From CAD ${PLANS.one.price}/month`, "30-day money-back guarantee"]}
         page={null}
         report={null}
         animate
