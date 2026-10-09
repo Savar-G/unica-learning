@@ -9,7 +9,7 @@ export const PLANS = {
 export type PlanId = keyof typeof PLANS;
 
 export const HERO = {
-  kicker: "Personalized math and reading workbooks, mailed home. For ages 6-12.",
+  kicker: "Personalized math and reading workbooks for ages 6-12, mailed home.",
   title: "Schools and tutoring programs put every child in",
   highlight: "the same box.",
   // The lead is JSX in sections.tsx: it carries the rotating topic word.
