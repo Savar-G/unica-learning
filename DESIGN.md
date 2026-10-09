@@ -32,7 +32,7 @@
 ## Positioning rules
 
 - Name competitors only in three places: the "How we're different" table, the FAQ entry "How is this different from Kumon?" and the `/our-story` letter (D-059). Every competitor claim needs a dated public source in `.design/research/competitors-2026-10.md`; state facts, not judgments, and say that prices vary by centre. Everywhere else, show the difference as what we do: paper, at home, made for one child, it adapts.
-- Lead with emotion and a bold claim, but name the product in the line under it. The section right after the hero answers "What is [Brand]?" and opens with the problem in one line (D-058).
+- Lead with emotion and a bold claim, but name the product in the line under it. The section right after the hero answers "What is [Brand]?" by naming the problem first: the same box (D-058). Curriculum copy says the books cover the school curriculum at the child's pace and move ahead when ready; province availability lives in the FAQ.
 - End on a bold claim: "This is what learning should be like." It carries three lines: "Every child learns differently. Learning should adapt."; "No child should fall behind because the class moved on."; "Personal, on paper, and affordable." (D-057, replaces the D-016 beliefs).
 - No learning styles anywhere (D-004).
 
@@ -41,7 +41,7 @@
 Every section sets up the next one. A single pencil line connects the sections and the loop steps.
 
 1. **Hero (D-029, option C; copy D-057).** Text above one large real photo of a child working at home. No small line above the headline. Headline: "Personalized. Delivered. Mastered." Sub-headline: "Same grade. Different levels. Different pace." Lead: "Personalized math and reading workbooks, made for your child and matched to their level and gaps. Mailed home and adapted after every book." Buttons "Take free assessment" (D-041) and "See how it works". Fact line: "Math and reading · Ages 6-12 · From CAD 59/month · 30-day money-back guarantee".
-2. **What is [Brand]? (D-058).** Heading: "School moves at one pace. Your child doesn't." A grey line: "Miss one foundation, and everything built on it gets harder." Then: "A workbook for [word] made for one child: yours. Mailed to your door, and rebuilt from every page they finish." Three rows: math and reading for ages 6-12, starts at their level, mailed to your door.
+2. **What is [Brand]? (D-058).** Full-width heading: "Schools and tutoring programs put every child in the same box." with the yellow highlighter on "the same box." Left: "Same material, same pace, same teaching. Miss [word] and every lesson after it gets harder." (the word rotates through 16 math and reading topics). Right: "Your child needs learning built around them: their level, their pace. That's [Brand]." No grey text. Three rows: math and reading for ages 6-12 (covers the school curriculum at the child's pace and moves ahead when they are ready, so they see new topics before their class does), starts at their level, mailed to your door.
 3. **How it works (D-057).** A loop where step 6 returns to step 2:
    1. **Assess:** We send a free placement assessment on paper. It finds your child's level and where the gaps are. The parent returns it by photo (D-042).
    2. **Deliver:** We mail a workbook matched to your child's level and gaps.
