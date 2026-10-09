@@ -340,7 +340,7 @@ export function Pricing() {
 const FAQ = [
   ["How is the work checked?", "You take a photo of the finished pages with your phone. We mark the work, show you what your child got right and where the gaps are, and give the solutions so they can understand any mistakes."],
   ["What if it is not right for my child?", "Every plan has a 30-day money-back guarantee. If it is not working for your child within 30 days of your first payment, we refund your payment in full."],
-  ["How is this different from Kumon?", `Kumon moves every child through a set sequence of worksheets, and Metro Vancouver centres charge about $185-$260 per subject a month. ${BRAND} starts at your child's level, builds every book from how they did, and costs less: from CAD ${PLANS.one.price} a month.`],
+  ["How is this different from a learning centre?", `Learning centres usually follow a set program, often the same for every child, and cost about $200 or more per subject a month. ${BRAND} starts at your child's level, builds every book from how they did, and costs less: from CAD ${PLANS.one.price} a month.`],
   ["What if my child is struggling a lot?", "The next book focuses on the gap with extra practice, and you'll see exactly where they're stuck so you can help right away."],
   ["Is there any screen time?", "Your child works on paper. The app is for you: scan a page when they're stuck or to check answers, then help them yourself."],
   ["Who is it for?", "Children in grades 1 to 7 (ages 6 to 12), in math, reading or both."],

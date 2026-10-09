@@ -30,7 +30,7 @@ export function Story() {
           <Rise className="story-letter" d={0.06}>
             <p>
               {BRAND} is made in Vancouver by two students who grew up on workbooks. We both did workbook programs for years, and we&apos;ve tutored other kids.
-              Kumon worked, but it was expensive and one-size-fits-all. Tutoring was personal, but it cost $50-$100 an hour.
+              Learning centres worked, but they were expensive and one-size-fits-all. Tutoring was personal, but it cost $50-$100 an hour.
               We built the middle: personal, on paper, and affordable.
             </p>
           </Rise>

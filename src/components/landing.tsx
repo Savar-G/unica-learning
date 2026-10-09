@@ -1,3 +1,4 @@
+import { Compare } from "@/components/compare";
 import { Motion } from "@/components/motion";
 import { Reserve } from "@/components/reserve";
 import { Closing, Faq, Feel, Footer, Hero, How, Included, Nav, OurPromise, Pricing, What, Why } from "@/components/sections";
@@ -16,6 +17,7 @@ export function Landing({ look = "primer" }: { look?: Look }) {
           <Included />
           <Feel />
           <OurPromise />
+          <Compare />
           <Pricing />
           <Faq />
           <Closing />
