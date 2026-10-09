@@ -99,30 +99,32 @@ export function What() {
   return (
     <Section id="what" aria-labelledby="whatT">
       <Knot />
-      <div className="what">
+      <div className="what box">
         <Rise>
           <Eyebrow>What is {BRAND}?</Eyebrow>
-          <h2 id="whatT" style={{ marginTop: 16 }}>A workbook that knows your child.</h2>
+          <h2 id="whatT" style={{ marginTop: 16 }}>
+            Schools and tutoring programs put every child in <Highlight animate>the same box.</Highlight>
+          </h2>
         </Rise>
-        <Rise d={0.1}>
+        <Rise d={0.1} className="what-cols">
           <p className="big">
-            A workbook for <SwapWord
+            Same material, same pace, same teaching. <span className="nowrap">Miss <SwapWord
               words={[
-                "fractions", "phonics", "times tables", "sight words", "long division", "main idea",
-                "place value", "spelling", "word problems", "reading aloud", "decimals", "new words",
-                "telling time", "vowel sounds", "mental math", "inference", "money", "grammar",
-                "percents", "summarizing", "adding to 20", "story order", "ratios", "comprehension",
+                "fractions", "phonics", "times tables", "sight words", "long division", "place value",
+                "spelling", "word problems", "decimals", "telling time", "vowel sounds", "mental math",
+                "grammar", "percents", "ratios", "comprehension",
               ]}
-            />
+            /></span>
             <br />
-            made for one child: yours. Mailed to your door, and rebuilt from every page they finish.
+            and every lesson after it gets harder.
           </p>
+          <p className="big">Your child needs learning built around them: their level, their pace. That&apos;s {BRAND}.</p>
         </Rise>
       </div>
       <div className="rows">
         <Rise className="row">
           <h3>Math and reading, ages 6-12.</h3>
-          <p>Built on the BC curriculum, with AB, SK, MB and ON next. Your child works at their own level, not just their grade. Choose one subject or both.</p>
+          <p>Covers your school curriculum, at your child&apos;s pace. When they&apos;re ready, the books move ahead, so they see new topics before their class does. Choose one subject or both.</p>
           <Photo src={practice6} alt="A girl works through an arithmetic page" sizes="140px" />
         </Rise>
         <Rise className="row" d={0.08}>

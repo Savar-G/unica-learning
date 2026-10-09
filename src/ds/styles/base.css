@@ -146,6 +146,11 @@ main > *{position:relative;z-index:1}
 .what{display:grid;gap:clamp(28px, 4vw, 64px)}
 @media (min-width:980px){.what{grid-template-columns:5fr 7fr}}
 .what .big{font:400 clamp(26px, 2.6vw, 36px)/1.25 var(--serif);letter-spacing:-.015em;margin:0}
+.what.box{grid-template-columns:1fr;gap:clamp(24px, 3vw, 44px)}
+.what.box h2{font-size:clamp(36px, 5.2vw, 72px);line-height:1.04;max-width:21ch}
+.what-cols{display:grid;gap:clamp(18px, 2vw, 28px)}
+.what-cols .nowrap{white-space:nowrap}
+@media (min-width:980px){.what-cols{grid-template-columns:1fr 1fr;gap:clamp(32px, 4vw, 64px)}}
 .rows{margin-top:clamp(36px, 5vw, 64px);border-top:1px solid var(--line)}
 .row{display:grid;gap:10px 28px;padding:22px 0;border-bottom:1px solid var(--line);align-items:center}
 @media (min-width:760px){.row{grid-template-columns:4fr 5fr 140px}}
