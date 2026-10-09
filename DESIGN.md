@@ -22,7 +22,7 @@
 ## Source constraints
 
 - References: Savar's FigJam board (Primer, Ello, Squirrel AI, Outschool) with his notes; see `.design/references.json`.
-- Brand: Unica Learning, on every customer-facing page and as the legal name on privacy and terms (D-056). The domain stays `pagewiselearning.vercel.app` for now.
+- Brand: Unica Learning, on every customer-facing page and as the legal name on privacy and terms (D-056). The domain is `unicalearning.com` (bought on Vercel 2026-10-08; www redirects to it; PR #26).
 - Offer: math and reading, ages 6-12, delivery across Canada included (D-052). One subject CAD 59 a month; math + reading CAD 99 a month (D-046). Each month: 1 workbook per subject, about 20-25 pages; 15-20 minutes a day, 5 days a week; a photo check-in partway through each book, so the next book ships before the current one ends; a progress report and worked solutions after every check-in (D-061). Books follow the BC curriculum first: BC families add a card at signup and pay nothing until the first workbook ships; every other curriculum joins the waitlist (D-053).
 - Real product posture: no "pilot", "beta" or "test" wording (D-012).
 - No proof we do not have: no ratings, review counts, family counts, press logos, outcome percentages or testimonials. Until real customer references exist, proof = sample pages, clear price, a free placement assessment, a 30-day money-back guarantee, cancel anytime. No founder names or student status on the home page. The founder story, names and "two students" appear only on `/our-story` (D-060, narrows D-040).
