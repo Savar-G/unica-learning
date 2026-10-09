@@ -1,0 +1,19 @@
+<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><link rel="stylesheet" href="shared.css"><script src="content.js"></script>
+<style>
+.list{border-top:1px solid var(--ink)}
+.row{display:grid;grid-template-columns:200px 1fr 1fr;gap:32px;padding:26px 0;border-bottom:1px solid var(--line);align-items:start}
+.row .q{color:var(--ink);padding-top:6px}
+.row .us{font-size:clamp(20px,1.9vw,26px);font-weight:400;letter-spacing:-.02em;line-height:1.25}
+.row .us b{font-weight:400;background:linear-gradient(transparent 62%,var(--sun) 62%,var(--sun) 92%,transparent 92%)}
+.row .them{display:grid;gap:6px;padding-top:4px}
+.row .them div{display:grid;grid-template-columns:150px 1fr;gap:10px;font-size:14.5px;color:var(--ink-2);line-height:1.4}
+.row .them span{color:var(--ink-3)}
+.head{display:grid;grid-template-columns:200px 1fr 1fr;gap:32px;padding:0 0 12px}
+.head .us{font-weight:500;font-size:17px}.head .them{color:var(--ink-3)}
+@media (max-width:760px){.head{display:none}.row{grid-template-columns:1fr;gap:10px;padding:22px 0}.row .them div{grid-template-columns:130px 1fr}.row .them{padding-top:6px}}
+</style></head><body><span class="tag">A · Our answer first</span>
+<p class="eyebrow">How we're different</p><h2 id="t"></h2>
+<div class="head"><span></span><span class="us brand"></span><span class="them mono">Instead of</span></div>
+<div class="list" id="l"></div>
+<script>const c=CMP;t.textContent=c.title;document.querySelector('.head .us').textContent=c.us;
+l.innerHTML=c.rows.map(([q,th,u])=>`<div class="row"><div class="q mono">${q}</div><div class="us"><b>${u}</b></div><div class="them">${th.map((x,i)=>`<div><span class="mono">${c.cols[i]}</span>${x}</div>`).join("")}</div></div>`).join("");</script></body></html>
