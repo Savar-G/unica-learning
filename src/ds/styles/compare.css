@@ -32,10 +32,6 @@
   background-size: 220px, auto, auto, auto, auto;
 }
 
-.cmp-after { margin-top: clamp(24px, 3vw, 36px); display: grid; gap: 14px; max-width: 46em; }
-.cmp-sticks { margin: 0; font-size: clamp(18px, 1.6vw, 21px); line-height: 1.45; color: var(--ink-2); }
-.cmp-sticks strong { font-weight: 500; color: var(--ink); }
-.cmp-note { margin: 0; font: 400 12.5px/1.5 var(--mono); color: var(--ink-3); }
 
 @media (max-width: 699px) {
   .cmp-in { padding: 0; background: none; }
