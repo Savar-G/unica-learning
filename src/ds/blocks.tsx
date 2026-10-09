@@ -342,6 +342,8 @@ export interface HeroProps {
   title?: ReactNode;
   /** Ink part of the headline, drawn with the yellow highlighter. */
   highlight?: ReactNode;
+  /** Sub-headline directly under the headline (a paragraph, not a heading). Empty by default. */
+  subtitle?: ReactNode;
   lead?: ReactNode;
   /** Buttons row (usually a primary and a ghost Button). */
   actions?: ReactNode;
@@ -366,6 +368,7 @@ export function Hero({
   eyebrow = "The future of learning is on paper.",
   title = "Personalized. Delivered.",
   highlight = "Mastered.",
+  subtitle = "",
   lead = "Math and reading workbooks made for your child, mailed home, and adapted after every book.",
   actions,
   meta = [],
@@ -387,6 +390,7 @@ export function Hero({
         <h1>
           {title && <span className="pre">{title}</span>} {highlight && <span className={animate ? "mark" : "mark is-in"}>{highlight}</span>}
         </h1>
+        {subtitle && <p className="sub">{subtitle}</p>}
         {lead && <p className="lead">{lead}</p>}
         {actions && <div className="ctas">{actions}</div>}
         {meta.length > 0 && (
