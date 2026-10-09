@@ -5,6 +5,7 @@ import Image, { type StaticImageData } from "next/image";
 import Link from "next/link";
 import { CookieSettingsButton } from "@/components/cookie-consent";
 import { BRAND, HERO, PLANS } from "@/lib/site";
+import { SUPPORT_HREF } from "@/lib/contact";
 import {
   BeliefList,
   Eyebrow,
@@ -146,7 +147,7 @@ const STEPS = [
   { n: "03", t: "Practice", d: "Your child spends roughly 15-20 minutes a day working on paper.",
     v: <Image src={practice6} alt="A girl works through an arithmetic page in pencil" sizes={STEP_SIZES} placeholder="blur" />, tone: "photo" as const },
   { n: "04", t: "Scan", d: "You take a photo of the completed pages with your phone.", v: <Image src={scanPhoto} alt="A phone camera frames a page to photograph it" sizes={STEP_SIZES} placeholder="blur" />, tone: "photo" as const },
-  { n: "05", t: "Adapt", d: "Our system checks your child's answers and updates their learning profile.", v: <Image src={adaptPhoto} alt="A girl shows her finished work to her parents" sizes={STEP_SIZES} placeholder="blur" />, tone: "photo" as const },
+  { n: "05", t: "Adapt", d: "We check your child's answers to plan what they need to work on next.", v: <Image src={adaptPhoto} alt="A girl shows her finished work to her parents" sizes={STEP_SIZES} placeholder="blur" />, tone: "photo" as const },
   { n: "06", t: "Repeat", d: "The next workbook is built from what your child mastered, struggled with or needs to review. It arrives before the current one runs out.", v: <Image src={repeatPhoto} alt="A girl starts on her next book at the dining table" sizes={STEP_SIZES} placeholder="blur" />, tone: "photo" as const },
 ];
 
@@ -206,7 +207,7 @@ const INCLUDED: [IconName, string, string, number][][] = [
   [
     ["cam", "Photo check-ins", "Snap the finished pages with your phone. That's it.", 0.04],
     ["chart", "Progress reports", "Updated continuously: what they got right, what keeps coming back, what's next.", 0.12],
-    ["layers", "A learning profile", "Every book builds on every book before it. Nothing is forgotten.", 0.2],
+    ["layers", "A record of their progress", "Every book builds on every book before it. Nothing is forgotten.", 0.2],
   ],
 ];
 
@@ -262,7 +263,7 @@ export function Feel() {
 }
 
 const PROMISE: [IconName, string, string][] = [
-  ["shield", "30-day money-back guarantee", "If it is not working for your child in the first 30 days, we refund your payment in full."],
+  ["shield", "30-day money-back guarantee", "If it is not working for your child within 30 days of your first payment, we refund your payment in full."],
   ["calendar", "Fits your family's schedule", "Kids are busy. Take a week or a month off, and pick up where your child left off."],
   ["test", "Free assessment, nothing to pay today", "We charge nothing until your first workbook ships."],
   ["undo", "Cancel anytime", "No contract. Stop whenever you want."],
@@ -332,14 +333,14 @@ const FAQ = [
   ["How does the free assessment work?", "We send a short placement assessment on paper, matched to your child's age. Your child does it at home, and you send us a photo of the finished pages. It is free, and we use it to make your child's first book."],
   ["What do the books cover?", "Math: numbers, math facts, fractions and decimals, measurement and word problems. Reading: phonics, reading aloud, vocabulary, understanding what they read, and writing. The free assessment decides where your child starts, which can be behind, at or ahead of their grade."],
   ["Does it follow our school curriculum?", "Yes. Books follow the BC curriculum today, and Alberta, Saskatchewan, Manitoba and Ontario are next. Pick your curriculum when you sign up: if its books are not ready, you join the waitlist and we email you when they are. Within the curriculum, each book follows your child's level, not just their grade."],
-  ["Can we take a break?", "Yes. Pause for a week, a month or longer. You pay only when a book ships, and nothing is lost: the next book starts where your child left off."],
+  ["Can we take a break?", "Yes. Pause for a week, a month or longer. Contact us to arrange a pause. The next book starts where your child left off."],
   ["What if we miss a few days?", "The next book picks up where your child is. Nothing is lost."],
   ["What if we forget to send photos?", "We send a reminder. Until new pages arrive, the next book reviews what your child last worked on."],
-  ["How is the work checked?", "Every page you photograph is checked, working included. The results update your child's learning profile and your progress report."],
-  ["What happens to my child's work?", "We use it only to make your child's next book. We never sell or share it, and you can ask us to delete it at any time."],
-  ["What if it is not right for my child?", "Every plan has a 30-day money-back guarantee. If it is not working for your child in the first 30 days, tell us and we refund your payment in full."],
+  ["How is the work checked?", "Every page you photograph is checked, including how your child worked out the answer. We use the results to plan their next book and update your progress report."],
+  ["What happens to my child's work?", "We use it to plan your child's next book and show their progress. We do not sell it, and you can ask us to delete it at any time."],
+  ["What if it is not right for my child?", "Every plan has a 30-day money-back guarantee. If it is not working for your child within 30 days of your first payment, tell us and we refund your payment in full."],
   ["Why do you ask for my card?", "So your first workbook can ship as soon as it is ready. We charge nothing when you sign up. When your first workbook ships, we charge your first month, then every month until you cancel. Cancel before it ships and you pay nothing. Families on the waitlist do not add a card."],
-  ["Can we cancel?", "Yes, anytime. You are charged only when a workbook ships."],
+  ["Can we cancel?", "Yes, anytime. Contact us to cancel. If you cancel before your first workbook ships, you pay nothing."],
   ["Where do you deliver?", "We deliver across Canada. Delivery is included in every plan."],
 ].map(([question, answer]) => ({ question, answer }));
 
@@ -397,6 +398,7 @@ export function Footer() {
         <nav className="footer-links small" aria-label="Site information">
           <Link href="/privacy">Privacy</Link>
           <Link href="/terms">Terms</Link>
+          <a href={SUPPORT_HREF}>Contact us</a>
           <CookieSettingsButton />
         </nav>
       </div>

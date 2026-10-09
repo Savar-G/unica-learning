@@ -6,7 +6,7 @@ import { stripe } from "@/lib/stripe";
 export const metadata = pageMetadata({
   path: "/thank-you",
   title: "Your next step",
-  description: "Next steps after a Pagewise assessment request, waitlist entry, or card setup.",
+  description: "What happens next after you request an assessment, join the waitlist, or add your card with Pagewise.",
   index: false,
 });
 

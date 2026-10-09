@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useEffect, useRef, useSyncExternalStore } from "react";
 import { readReceipt } from "@/lib/receipt";
 import { track } from "@/lib/track";
+import { SUPPORT_EMAIL, SUPPORT_HREF } from "@/lib/contact";
 
 const subscribe = () => () => {};
 
@@ -25,20 +26,21 @@ export function BookingResult({ card, confirmationRef }: { card: "saved" | "unco
   }, [card, confirmationRef]);
   const receipt = useSyncExternalStore(subscribe, readReceipt, () => null);
   const title = card === "saved" ? "Your card is saved."
-    : card === "unconfirmed" ? "We could not confirm your card setup."
+    : card === "unconfirmed" ? "We could not check whether your card was added."
     : receipt === "waitlist" ? "You are on the waitlist."
-    : receipt === "reserved" ? "Your request is saved."
+    : receipt === "reserved" ? "We received your request."
     : "Thank you for your interest.";
 
   return <>
     <h1>{title}</h1>
     <p className="lead">
-      {card === "saved" ? "Nothing was charged at card setup. We will email you to arrange your child's free placement assessment. Your first month is charged when the first workbook ships."
-        : card === "unconfirmed" ? "Your card status is not confirmed on this page. If you completed card setup, the Pagewise team can check the result before you try again."
+      {card === "saved" ? "You have not been charged. We will email you to arrange your child's free assessment. We charge your first month when your first workbook ships."
+        : card === "unconfirmed" ? "If you finished adding your card, contact us before you try again. We can check for you."
         : receipt === "waitlist" ? "We will email you when books for your selected curriculum are ready. You did not add a card and nothing was charged."
-        : receipt === "reserved" ? "We will email you with the next step for card setup and your child's free assessment. Nothing was charged."
-        : "This page does not confirm a new booking. If you submitted a request, the Pagewise team will contact you by email."}
+        : receipt === "reserved" ? "We will email you about adding your card and arranging your child's free assessment. You have not been charged."
+        : "Thanks for visiting Pagewise. To request your child's free assessment, return to our home page."}
     </p>
+    {card === "unconfirmed" && <p>Email <a href={SUPPORT_HREF}>{SUPPORT_EMAIL}</a> for help.</p>}
     <Link className="btn" href="/">Back to home <span aria-hidden="true">→</span></Link>
   </>;
 }

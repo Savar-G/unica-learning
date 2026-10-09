@@ -7,7 +7,8 @@
 .support-page .lead { margin: 24px 0; }
 .support-page ul, .support-page ol { padding-left: 24px; }
 .support-page li + li { margin-top: 10px; }
-.support-note { background: var(--accent-soft); border: 1px solid var(--line); border-radius: 6px; padding: 18px; margin: 24px 0; }
+.support-page details { margin: 16px 0; }
+.support-page summary { cursor: pointer; text-decoration: underline; text-underline-offset: 3px; }
 .support-footer { display: flex; flex-wrap: wrap; justify-content: center; gap: 16px 24px; border-top: 1px solid var(--line-soft); padding: 28px var(--gut); font-size: 14px; }
 .support-footer button, .footer-links button { background: none; border: 0; padding: 0; color: inherit; text-decoration: underline; cursor: pointer; }
 .footer-links { display: flex; flex-wrap: wrap; gap: 12px 24px; margin: 24px 0 0; }

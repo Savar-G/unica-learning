@@ -75,7 +75,9 @@ Every section sets up the next one. A single pencil line connects the sections a
 - The primary action opens the reserve flow: plan, child's grade (1-7), parent name, email, Canadian postal code, school curriculum, then, for the BC curriculum, review and "Add card" on Stripe Checkout in setup mode (card saved, CAD 0 charged). Every other curriculum saves a waitlist entry right after the details step, with no card (D-053).
 - States: idle, invalid input, submitting, redirect to Stripe, card status checked on `/thank-you`, card not saved (back at `/?card=cancelled`, with "Add card" to return to the same Stripe page), reserved but Stripe unavailable, waitlist, and save error with retry. Stripe shows card errors on its own page. Completed requests use `/thank-you`.
 - Optional analytics records visits and form steps only after explicit acceptance. Rejecting analytics leaves booking available. Analytics does not receive the parent's name, email, postal code, or child's grade. Session recordings and automatic input capture stay off.
-- Privacy and terms are visible drafts until the business contact, retention policy, and cancellation and refund procedures are confirmed. Both drafts stay out of search results. Never invent a business address.
+- Customer text uses plain language. Public pages have no development notes or draft labels. Provider names appear only in the privacy disclosure, with a plain explanation.
+- Privacy and terms identify Pagewise Learning and give savar.gupta1922@gmail.com for support, privacy requests, cancellations and refunds (D-055). Both pages stay out of search results. Never invent a business address.
+- The 30-day money-back guarantee starts on the day of the first payment (D-055). State this in the promise, FAQ, booking review, terms and payment-page text.
 - The mobile assessment button uses the existing primary button below 700 px. Hide it while the booking dialog or cookie banner is open. Reserve space for it at the end of the page.
 
 ## Responsive and accessibility

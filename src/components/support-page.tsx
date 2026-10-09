@@ -2,6 +2,7 @@ import Link from "next/link";
 import type { ReactNode } from "react";
 import { BRAND } from "@/lib/site";
 import { CookieSettingsButton } from "@/components/cookie-consent";
+import { BUSINESS_NAME, SUPPORT_HREF } from "@/lib/contact";
 
 export function SupportPage({ label, title, children }: { label: string; title: string; children: ReactNode }) {
   return (
@@ -18,8 +19,9 @@ export function SupportPage({ label, title, children }: { label: string; title: 
       <footer className="support-footer" aria-label="Site information">
         <Link href="/privacy">Privacy</Link>
         <Link href="/terms">Terms</Link>
+        <a href={SUPPORT_HREF}>Contact us</a>
         <CookieSettingsButton />
-        <span>© 2026 {BRAND}</span>
+        <span>© 2026 {BUSINESS_NAME}</span>
       </footer>
     </div>
   );

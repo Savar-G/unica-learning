@@ -11,6 +11,7 @@ import { PLANS, type PlanId } from "@/lib/site";
 import { CURRICULA, EMAIL, OPEN_CURRICULA, POSTAL, curriculumFromPostal, statusFor, type CurriculumId, type SignupResult } from "@/lib/signup";
 import { track } from "@/lib/track";
 import { keepReceipt } from "@/lib/receipt";
+import { SUPPORT_EMAIL, SUPPORT_HREF } from "@/lib/contact";
 
 // Completed requests use /thank-you; cancelled card setup and save failures stay in the dialog.
 type Step = 1 | 2 | 3 | "nocard" | "err";
@@ -336,10 +337,10 @@ export function Reserve() {
           <div><span>Curriculum</span><b>{CURRICULA[curriculum]}</b></div>
           <div><span>Assessment</span><b>Free</b></div>
           <div><span>Today</span><b>CAD 0</b></div>
-          <div><span>Then</span><b>CAD {price} / month</b></div>
+          <div><span>When your first book ships</span><b>CAD {price} / month</b></div>
         </div>
         <p className="small" style={{ margin: 0 }}>
-          Add your card on Stripe&apos;s secure page. We charge nothing today. When your first workbook ships, we charge CAD {price}, then every month until you cancel. Cancel before it ships and you pay nothing. Every plan has a 30-day money-back guarantee.
+          Add your card on the secure payment page. We charge nothing today. When your first workbook ships, we charge CAD {price}, then every month until you cancel. Cancel before it ships and you pay nothing. Your 30-day money-back guarantee starts on the day of your first payment.
         </p>
         <div className="row2">
           <button className="btn ghost" type="button" disabled={busy} onClick={() => { setCardUrl(null); setStep(2); }}>Back</button>
@@ -355,13 +356,13 @@ export function Reserve() {
         <p className="lead" style={{ margin: 0, fontSize: 17 }}>
           {cardUrl
             ? "We kept your details, and nothing was charged. Add your card to book your child's free assessment."
-            : `We kept your details, and nothing was charged. We'll email ${email.trim() || "you"} a link to add your card.`}
+            : <>We kept your details, and nothing was charged. Email <a href={SUPPORT_HREF}>{SUPPORT_EMAIL}</a> to ask for a link to add your card.</>}
         </p>
         {cardUrl ? (
           <div className="row2">
             <button className="btn ghost" type="button" onClick={close}>Close</button>
             <button className="btn" type="button" disabled={busy} aria-busy={busy} onClick={() => toStripe(cardUrl)}>
-              {busy ? <span className="spin" aria-label="Opening Stripe" /> : <>Add card <span className="arr">→</span></>}
+              {busy ? <span className="spin" aria-label="Opening payment page" /> : <>Add card <span className="arr">→</span></>}
             </button>
           </div>
         ) : (
@@ -372,12 +373,12 @@ export function Reserve() {
       <div data-step="err" className="state" hidden={step !== "err"} style={{ padding: "28px 22px 30px" }} aria-live="polite">
         <div className="big" style={{ background: "#FFD9C9" }}><svg viewBox="0 0 30 30" aria-hidden="true"><path d="M15 8v9M15 21v1" /></svg></div>
         <h3>We couldn&apos;t save your spot.</h3>
-        <p className="lead" style={{ margin: 0, fontSize: 17 }}>Check your connection and try again. Nothing was charged.</p>
+        <p className="lead" style={{ margin: 0, fontSize: 17 }}>Try again in a moment. If this keeps happening, email <a href={SUPPORT_HREF}>{SUPPORT_EMAIL}</a>. Nothing was charged.</p>
         <button className="btn" type="button" disabled={busy} aria-busy={busy} onClick={() => void finish()}>
           {busy ? <span className="spin" aria-label="Saving" /> : "Try again"}
         </button>
       </div>
-      <p className="form-notice">We use your details to process your request and contact you. Read the <Link href="/privacy">privacy policy draft</Link> and <Link href="/terms">terms draft</Link>.</p>
+      <p className="form-notice">We use your details to arrange your assessment or add you to the waitlist, and to contact you. Read our <Link href="/privacy">privacy policy</Link> and <Link href="/terms">terms</Link>.</p>
       <p className="sr-only" role="status">{busy ? "Saving your request. Please wait." : ""}</p>
     </dialog>
   );

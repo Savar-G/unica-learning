@@ -20,6 +20,7 @@ Personalized, mailed math and reading workbooks for ages 6-12 (grades 1-7). Desi
 - All design work goes through `/design`. Mockup rounds live in `.design/experiments/r<n>/`, with a `manifest.json`.
 - Done gate (no test suite): `npx eslint src && npm run build`, then check the change in the browser with `npm run dev`. `npm run lint` also scans `.design-sync/previews/`, which has old errors.
 - Copy rules in `DESIGN.md` are binding: no proof we do not have, no competitor names, no performance claims.
+- Use plain language in all customer text. Keep development notes and draft labels out of public pages. Give provider names only in the privacy disclosure, with a plain explanation.
 
 ## Tools and services
 

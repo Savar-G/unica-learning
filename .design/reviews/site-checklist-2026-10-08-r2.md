@@ -1,5 +1,7 @@
 # Review - website checklist - 8 October 2026
 
+Historical review. The public draft notices and missing contact described below were corrected after the user's feedback. Current text and evidence: `.design/reviews/plain-language-2026-10-08-r2.md`.
+
 Independence: self-review for the rendered design. Two fresh reviewers separately checked the source. They did not run the browser or build checks.
 
 Technical gates: PASS locally. Production ship gate: needs decision.
