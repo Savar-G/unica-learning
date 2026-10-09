@@ -77,7 +77,7 @@ export function Hero() {
     <HeroBlock
         id="top"
         eyebrow=""
-        subtitle={HERO.subtitle}
+        kicker={HERO.kicker}
         lead={HERO.lead}
         meta={["Math and reading", "Ages 6-12", `From CAD ${PLANS.one.price}/month`, "30-day money-back guarantee"]}
         page={null}
