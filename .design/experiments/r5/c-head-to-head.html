@@ -1,0 +1,27 @@
+<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><link rel="stylesheet" href="shared.css"><script src="content.js"></script>
+<style>
+.seg{display:inline-flex;gap:4px;background:var(--card);padding:4px;border-radius:8px;margin:0 0 22px;flex-wrap:wrap}
+.seg button{all:unset;cursor:pointer;font:400 14px/1 "Geist",sans-serif;padding:10px 14px;border-radius:6px;color:var(--ink-2)}
+.seg button[aria-pressed=true]{background:#fff;color:var(--ink);box-shadow:0 1px 3px rgba(12,12,14,.12);font-weight:500}
+.lbl{color:var(--ink-3);margin-right:8px;align-self:center;padding-left:6px}
+.vs{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.col{border-radius:6px;padding:8px 26px 18px}
+.col.them{background:var(--card)}.col.us{box-shadow:0 0 0 1px var(--line)}
+.col h3{margin:0;padding:16px 0 14px;font:400 12.5px/1.3 "Geist Mono",monospace;color:var(--ink-3);letter-spacing:.02em;border-bottom:1px solid var(--line)}
+.col.us h3{font:500 18px/1.3 "Geist",sans-serif;color:var(--ink);letter-spacing:-.01em;border-bottom-color:var(--ink)}
+.item{padding:16px 0;border-bottom:1px solid var(--line);min-height:86px}.item:last-child{border:0}
+.item .mono{color:var(--ink-3);display:block;margin-bottom:4px;font-size:11.5px}
+.them .item p{margin:0;color:var(--ink-2);font-size:16px;line-height:1.4}
+.us .item p{margin:0;font-size:18px;line-height:1.35;letter-spacing:-.01em}
+@media (max-width:760px){.col{padding:4px 14px 10px}.us .item p{font-size:15.5px}.them .item p{font-size:14.5px}.item{min-height:104px}}
+</style></head><body><span class="tag">C · Head to head</span>
+<p class="eyebrow">How we're different</p><h2 id="t"></h2>
+<div class="seg" role="group" aria-label="Compare with"><span class="lbl mono">Compare with</span></div>
+<div class="vs"><div class="col them"><h3 id="hn"></h3><div id="tv"></div></div><div class="col us wash"><h3 class="brand" id="hu"></h3><div id="uv"></div></div></div>
+<script>const c=CMP;t.textContent=c.title;hu.textContent=c.us;
+const seg=document.querySelector('.seg');
+c.cols.forEach((n,j)=>{const b=document.createElement('button');b.textContent=n;b.onclick=()=>show(j);seg.appendChild(b)});
+uv.innerHTML=c.rows.map(r=>`<div class="item"><span class="mono">${r[0]}</span><p>${r[2]}</p></div>`).join("");
+function show(j){[...seg.querySelectorAll('button')].forEach((b,i)=>b.setAttribute('aria-pressed',i===j));hn.textContent=c.cols[j];
+tv.innerHTML=c.rows.map(r=>`<div class="item"><span class="mono">${r[0]}</span><p>${r[1][j]}</p></div>`).join("")}
+show(0);</script></body></html>

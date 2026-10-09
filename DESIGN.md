@@ -1,7 +1,7 @@
 # DESIGN.md - unica-learning-landing-page
 
-> Status: v2. Page story and look approved by Savar 2026-10-04 (no objection); hero copy decided (D-024); hero layout C chosen (D-029); option A parked as a draft (D-030). Built from Savar's FigJam board "Personalized Learning, Delivered" (2026-10-03).
-> Last updated: 2026-10-08
+> Status: v3. Page story and look approved by Savar 2026-10-04 (no objection); hero copy decided (D-024); hero layout C chosen (D-029); option A parked as a draft (D-030). Built from Savar's FigJam board "Personalized Learning, Delivered" (2026-10-03). v3 copy and sections come from Cedric's notes on the "Landing Page V3" section of the same board, with Savar's answers (2026-10-08, D-056 to D-061).
+> Last updated: 2026-10-08 (v3)
 
 ## Job
 
@@ -15,46 +15,51 @@
 
 ## Scope
 
-**In:** One landing page with a working reserve flow, a mobile assessment button, optional analytics, and supporting 404, thank-you, privacy, and terms pages (D-054).
+**In:** One landing page with a working reserve flow, a mobile assessment button, optional analytics, an "Our story" page (`/our-story`, D-060), and supporting 404, thank-you, privacy, and terms pages (D-054).
 
 **Out:** The product itself, parent dashboard, accounts, and blog.
 
 ## Source constraints
 
 - References: Savar's FigJam board (Primer, Ello, Squirrel AI, Outschool) with his notes; see `.design/references.json`.
-- Offer: math and reading, ages 6-12, delivery across Canada included (D-052). One subject CAD 59 a month; math + reading CAD 99 a month (D-046). Books follow the BC curriculum first: BC families add a card at signup and pay nothing until the first workbook ships; every other curriculum joins the waitlist (D-053).
+- Brand: Unica Learning, on every customer-facing page and as the legal name on privacy and terms (D-056). The domain is `unicalearning.com` (bought on Vercel 2026-10-08; www redirects to it; PR #26).
+- Offer: math and reading, ages 6-12, delivery across Canada included (D-052). One subject CAD 59 a month; math + reading CAD 99 a month (D-046). Each month: 1 workbook per subject, about 20-25 pages; 15-20 minutes a day, 5 days a week; a photo check-in partway through each book, so the next book ships before the current one ends; a progress report and worked solutions after every check-in (D-061). Books follow the BC curriculum first: BC families add a card at signup and pay nothing until the first workbook ships; every other curriculum joins the waitlist (D-053).
 - Real product posture: no "pilot", "beta" or "test" wording (D-012).
-- No proof we do not have: no ratings, review counts, family counts, press logos, outcome percentages or testimonials. Until real customer references exist, proof = sample pages, clear price, a free placement assessment, a 30-day money-back guarantee, cancel anytime. No founder names or student status anywhere on the site (D-040).
+- No proof we do not have: no ratings, review counts, family counts, press logos, outcome percentages or testimonials. Until real customer references exist, proof = sample pages, clear price, a free placement assessment, a 30-day money-back guarantee, cancel anytime. No founder names or student status on the home page. The founder story, names and "two students" appear only on `/our-story` (D-060, narrows D-040).
 - Comparative and performance claims: Competition Act s.74.01(1)(b) requires an adequate and proper test before a claim about a product's performance. The page makes no research claims; the paper belief is stated as "We believe paper and pencil build stronger learning." (D-039). Never a claim about our results.
 - Children's privacy: the booking form collects parent contact details, the selected offer, the child's grade, and the school curriculum. The form does not collect a child's name or completed workbook photos. Card details stay on Stripe.
+- Companion app (D-062): parents use a phone app to scan a problem their child is stuck on (step-by-step explanation for the parent), to check answers on a finished page, and for check-ins and progress reports. The child works on paper; the app is for the parent. Screen-time copy says this. The privacy page must say what the app does with photos of the child's work before launch.
 
 ## Positioning rules
 
-- Never name a competitor or a category of alternative (no Kumon, no "centre tutoring", no "AI apps"). Show the difference as what we do: paper, at home, made for one child, it adapts (D-015).
-- Lead with emotion and a bold claim, but name the product in the line under it. The section right after the hero answers "What is [Brand]?" in plain words.
-- End on a bold claim: "This is what learning should be like." It carries three beliefs: learning belongs on paper, not on another screen; "We believe paper and pencil build stronger learning"; every child is different, so every workbook is too (D-016).
+- Name no competitor brand. Compare against categories only: learning centres, private tutors and online practice apps, in the "How we're different" table, the FAQ "How is this different from a learning centre?" and the `/our-story` letter (D-059, D-064). Keep claims general and true for the category ("About $200+ per subject / month"); sources in `.design/research/competitors-2026-10.md`. Everywhere else, show the difference as what we do: paper, at home, made for one child, it adapts.
+- Lead with emotion and a bold claim, but name the product in the line under it. The section right after the hero answers "What is [Brand]?" by naming the problem first: the same box (D-058). Curriculum copy says the books cover the school curriculum at the child's pace and move ahead when ready; province availability lives in the FAQ.
+- End on a bold claim: "This is what learning should be like." It carries three lines: "Every child learns differently. Learning should adapt."; "No child should fall behind because the class moved on."; "Personal, on paper, and affordable." (D-057, replaces the D-016 beliefs).
 - No learning styles anywhere (D-004).
 
 ## Page story
 
 Every section sets up the next one. A single pencil line connects the sections and the loop steps.
 
-1. **Hero (D-029, option C).** Centred text over one large photo of a child working at home; a marked workbook page and a progress report ("Updated just now") float on the photo. On phones the report sits under the photo and the page is hidden. Small line: "The future of learning is on paper." Headline: "Personalized. Delivered. Mastered." Line under it: "Math and reading workbooks made for your child, mailed home, and adapted after every book." Real children with real workbooks. One primary action ("Take free assessment", D-041) and the line "Ages 6-12 · From CAD 59 a month · Delivery included".
-2. **What is [Brand]?** Math and reading workbooks made for your child, mailed home. Your child works on paper. You snap the finished pages, and the next workbook adapts. Ages 6-12.
-3. **How it works.** A loop where step 6 returns to step 2. Savar's wording:
-   1. **Assess:** We send a free placement assessment on paper; it finds the child's level, strengths, gaps and misconceptions. The parent returns it by photo (D-042).
-   2. **Deliver:** We create and mail a physical workbook personalized to what that child needs to work on.
-   3. **Practice:** The child spends roughly 15-20 minutes per day working on paper.
-   4. **Scan:** A parent takes a photo of the completed work.
-   5. **Adapt:** The system analyzes the child's answers and updates their learning profile.
-   6. **Repeat:** The next workbook is automatically personalized based on what the child has mastered, struggled with or needs to review.
+1. **Hero (D-029, option C; copy D-057).** Text above one large real photo of a child working at home. No small line above the headline. Headline: "Personalized. Delivered. Mastered." Sub-headline: "Same grade. Different levels. Different pace." Lead: "Personalized math and reading workbooks, made for your child and matched to their level and gaps. Mailed home and adapted after every book." Buttons "Take free assessment" (D-041) and "See how it works". Fact line: "Math and reading · Ages 6-12 · From CAD 59/month · 30-day money-back guarantee".
+2. **What is [Brand]? (D-058).** Full-width heading: "Schools and tutoring programs put every child in the same box." with the yellow highlighter on "the same box." Left: "Same material, same pace, same teaching. Miss [word] and every lesson after it gets harder." (the word rotates through 16 math and reading topics). Right: "Your child needs learning built around them: their level, their pace. That's [Brand]." No grey text. Three rows: math and reading for ages 6-12 (covers the school curriculum at the child's pace and moves ahead when they are ready, so they see new topics before their class does), starts at their level, mailed to your door.
+3. **How it works (D-057, D-063).** Six cards in a grid, with no connecting line or animation:
+   1. **Assess:** We send a free placement assessment on paper. It finds your child's level and where the gaps are. The parent returns it by photo (D-042).
+   2. **Deliver:** We mail a workbook matched to your child's level and gaps.
+   3. **Practice:** Your child works on paper for about 15-20 minutes a day.
+   4. **Scan:** Take a photo of the finished pages. We mark the work, show you the gaps, and give the solutions so your child can understand what went wrong.
+   5. **Adapt:** Based on how they did, we choose and adjust their next workbook: more practice where they're struggling, and moving ahead where they're ready.
+   6. **Repeat:** Your next book arrives before the current one runs out, so there's never a gap. Then the loop starts again. In italics: "Struggling with fractions? Your next book focuses on fractions."
 4. **Why choose [Brand]?** 3-4 cards that state what we do. No names of alternatives.
-5. **What's included.** A card grid: the placement test, the personalized workbook by mail ("Your next book arrives before the current one runs out."), the parent progress report ("updated continuously"; it must update after every scan), delivery, cancel anytime.
-6. **The emotional section.** Real photos and handwritten workbook pages drift around one centred line about every child learning differently.
-7. **Our promise (D-044).** "Try it with nothing to lose." A nameless line (made in Vancouver by a small team who grew up on paper workbooks) beside four cards: 30-day money-back guarantee, free assessment with nothing to pay today, fits your family's schedule (pause anytime, no penalty), cancel anytime. Privacy stays in the FAQ. It replaces the founders' section (D-040).
-8. **Price and reserve.** Both plan cards are white; Math + Reading stands out with a grainy colour wash rising from the bottom (D-037). No savings badge and no fine print under the cards; the charge timing is stated in checkout. Two plans: one subject CAD 59 a month, math + reading CAD 99 a month, delivery included, cancel anytime, a 30-day money-back guarantee (D-043). A BC family adds a card at booking on Stripe's hosted page and is charged nothing. The first month is charged when the first workbook ships, then monthly until they cancel (D-053).
-9. **FAQ.** Screen time, the free assessment, missed weeks, photos that stop, privacy, the money-back guarantee, cancelling.
-10. **Closing claim.** "This is what learning should be like." Then the final "Take free assessment" button.
+5. **What you get each month (D-061, D-062).** Six cards, 3 + 3 around one photo: workbooks (1 per subject, about 20-25 pages), daily practice (15-20 minutes, 5 days a week), delivery before the current book ends, "Stuck? Scan it." (the parent scans the problem in our app and sees every step, explained, so they can walk the child through it), "Instant answer check" (scan a finished page, see what is right in seconds; each scan also helps plan the next book), progress reports and worked solutions in the app.
+6. **The emotional banner.** Real photos drift around one centred line: "A workbook made for one child: yours." "No two [Brand] books are the same. Each one starts where your child is, and moves on when they're ready."
+7. **Our promise (D-044, D-060).** "Try it with nothing to lose." A nameless line (made in Vancouver by a small team who grew up on paper workbooks), a link "Read why we built it" to `/our-story`, and two cards: 30-day money-back guarantee and fits your family's schedule. The free assessment and cancel anytime are stated in pricing.
+8. **How we're different (D-059, D-064).** "Personal like a tutor. Structured like a learning centre. Priced like neither." A table: learning centres, private tutor, online practice apps and [Brand], by material, adapting, seeing where they're stuck, paper, and cost. Our column carries the colour wash. On phones each row becomes a card. No footnote and no line under the table.
+9. **Price and reserve.** Both plan cards are white; Math + Reading stands out with a grainy colour wash rising from the bottom (D-037). No savings badge and no fine print under the cards; the charge timing is stated in checkout. Two plans: one subject CAD 59 a month, math + reading CAD 99 a month, delivery included, cancel anytime, a 30-day money-back guarantee stated once above the cards (D-043, D-057). A BC family adds a card at booking on Stripe's hosted page and is charged nothing. The first month is charged when the first workbook ships, then monthly until they cancel (D-053).
+10. **FAQ (D-057).** First: how the work is checked, what if it is not right, how this differs from a learning centre, what if my child struggles a lot. Then: screen time, who it is for, the free assessment, what the books cover, curriculum, breaks, missed days, missed photos, the child's work, why we ask for a card, cancelling, delivery.
+11. **Closing claim.** The three lines above, "This is what learning should be like.", then "Take free assessment" and "See pricing".
+
+**Our story page (`/our-story`, D-060).** A letter: "Why we built [Brand]". Cedric's text (two students who grew up on workbooks; learning centres worked but were expensive and one-size-fits-all; tutoring was personal but cost $50-$100 an hour; we built the middle). Founder tiles for Savar Gupta and Cedric Tanafranca (initials until real photos arrive), "What we believe", all four promise cards, the sign-off "Savar and Cedric", and a "Take free assessment" button that opens the booking dialog. Linked from the promise section and the footer; listed in the sitemap.
 
 ## Visual language
 
@@ -76,7 +81,7 @@ Every section sets up the next one. A single pencil line connects the sections a
 - States: idle, invalid input, submitting, redirect to Stripe, card status checked on `/thank-you`, card not saved (back at `/?card=cancelled`, with "Add card" to return to the same Stripe page), reserved but Stripe unavailable, waitlist, and save error with retry. Stripe shows card errors on its own page. Completed requests use `/thank-you`.
 - Optional analytics records visits and form steps only after explicit acceptance. Rejecting analytics leaves booking available. Analytics does not receive the parent's name, email, postal code, or child's grade. Session recordings and automatic input capture stay off.
 - Customer text uses plain language. Public pages have no development notes or draft labels. Provider names appear only in the privacy disclosure, with a plain explanation.
-- Privacy and terms identify Pagewise Learning and give savar.gupta1922@gmail.com for support, privacy requests, cancellations and refunds (D-055). Both pages stay out of search results. Never invent a business address.
+- Privacy and terms identify Unica Learning (D-056) and give savar.gupta1922@gmail.com for support, privacy requests, cancellations and refunds (D-055). Both pages stay out of search results. Never invent a business address.
 - The 30-day money-back guarantee starts on the day of the first payment (D-055). State this in the promise, FAQ, booking review, terms and payment-page text.
 - The mobile assessment button uses the existing primary button below 700 px. Hide it while the booking dialog or cookie banner is open. Reserve space for it at the end of the page.
 
@@ -97,7 +102,7 @@ Every section sets up the next one. A single pencil line connects the sections a
 ## Acceptance criteria
 
 - [ ] In a 15-second test, a parent can say what arrives, who it is for and that it adapts.
-- [ ] No competitor or category of alternative is named.
+- [ ] No competitor brand is named; category comparisons stay general and true (D-064).
 - [ ] Every research claim has a citation; no claim about our own results.
 - [ ] The reserve flow works end to end with all listed states.
 - [ ] Rendered evidence at 375, 768 and 1440 px; keyboard pass; reduced-motion pass.
@@ -105,5 +110,4 @@ Every section sets up the next one. A single pencil line connects the sections a
 ## Open decisions
 
 - D4 Launch photos (own shoot with consent, or keep stock/AI).
-- D1 Brand name.
 - D8/D3 Checkout: BC card saved with Stripe Checkout in setup mode (D-053). Open: how the first month is charged when the first workbook ships (today by hand: a CAD 59 or 99 monthly subscription on the Stripe customer; later a script or webhook).
