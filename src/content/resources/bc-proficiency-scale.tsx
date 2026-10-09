@@ -1,14 +1,14 @@
-// Resource article: /resources/bc-curriculum-grade-3
+// Resource article: /resources/bc-proficiency-scale
 // Writers: replace `meta` and `Body` only. Blocks: see src/components/article.tsx.
 import Link from "next/link";
 import type { ResourceMeta } from "@/lib/resources";
 import { AssessmentCta, Callout, Cite, DataTable, KeyFacts, Section } from "@/components/article";
 
 export const meta: ResourceMeta = {
-  slug: "bc-curriculum-grade-3",
-  title: "BC Grade 3 curriculum: what your child learns in math and reading",
+  slug: "bc-proficiency-scale",
+  title: "BC proficiency scale: what Emerging, Developing, Proficient and Extending mean",
   description: "Placeholder - writer fills this meta description (155 characters or fewer).",
-  category: "BC curriculum",
+  category: "BC school guides",
   lead: "Placeholder - writer fills this one-sentence intro.",
   updated: "2026-10-09",
   faqs: [
@@ -19,7 +19,7 @@ export const meta: ResourceMeta = {
     { label: "Placeholder source 1 - writer fills this", url: "https://example.com/source-1", accessed: "2026-10-09" },
     { label: "Placeholder source 2 - writer fills this", url: "https://example.com/source-2", accessed: "2026-10-09" },
   ],
-  related: ["bc-curriculum-grade-2", "bc-curriculum-grade-4", "bc-report-card-proficiency-scale"],
+  related: ["bc-fsa-grade-4-and-7", "bc-grade-4-math-and-reading"],
 };
 
 export default function Body() {

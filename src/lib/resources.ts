@@ -5,16 +5,17 @@
 // list and RESOURCE_MODULES below (the file name must match meta.slug).
 import type { ComponentType } from "react";
 
-import * as grade1 from "@/content/resources/bc-curriculum-grade-1";
-import * as grade2 from "@/content/resources/bc-curriculum-grade-2";
-import * as grade3 from "@/content/resources/bc-curriculum-grade-3";
-import * as grade4 from "@/content/resources/bc-curriculum-grade-4";
-import * as grade5 from "@/content/resources/bc-curriculum-grade-5";
-import * as grade6 from "@/content/resources/bc-curriculum-grade-6";
-import * as grade7 from "@/content/resources/bc-curriculum-grade-7";
-import * as reportCard from "@/content/resources/bc-report-card-proficiency-scale";
+import * as grade1 from "@/content/resources/bc-grade-1-math-and-reading";
+import * as grade2 from "@/content/resources/bc-grade-2-math-and-reading";
+import * as grade3 from "@/content/resources/bc-grade-3-math-and-reading";
+import * as grade4 from "@/content/resources/bc-grade-4-math-and-reading";
+import * as grade5 from "@/content/resources/bc-grade-5-math-and-reading";
+import * as grade6 from "@/content/resources/bc-grade-6-math-and-reading";
+import * as grade7 from "@/content/resources/bc-grade-7-math-and-reading";
+import * as reportCard from "@/content/resources/bc-proficiency-scale";
 import * as fsa from "@/content/resources/bc-fsa-grade-4-and-7";
-import * as tutoringCost from "@/content/resources/tutoring-cost-bc";
+import * as tutoringCost from "@/content/resources/tutor-cost-bc";
+import * as kumonCost from "@/content/resources/kumon-cost-bc";
 import * as kumonWorth from "@/content/resources/is-kumon-worth-it";
 import * as kumonAlternatives from "@/content/resources/kumon-alternatives";
 import * as kumonVsMathnasium from "@/content/resources/kumon-vs-mathnasium";
@@ -53,7 +54,7 @@ type ResourceModule = { meta: ResourceMeta; default: ComponentType };
 const RESOURCE_MODULES: ResourceModule[] = [
   grade1, grade2, grade3, grade4, grade5, grade6, grade7,
   reportCard, fsa,
-  tutoringCost, kumonWorth, kumonAlternatives, kumonVsMathnasium,
+  tutoringCost, kumonCost, kumonWorth, kumonAlternatives, kumonVsMathnasium,
 ];
 
 export const RESOURCES: Resource[] = RESOURCE_MODULES.map((m) => ({ meta: m.meta, Body: m.default }));

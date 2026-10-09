@@ -1,12 +1,12 @@
-// Resource article: /resources/bc-curriculum-grade-2
+// Resource article: /resources/bc-grade-6-math-and-reading
 // Writers: replace `meta` and `Body` only. Blocks: see src/components/article.tsx.
 import Link from "next/link";
 import type { ResourceMeta } from "@/lib/resources";
 import { AssessmentCta, Callout, Cite, DataTable, KeyFacts, Section } from "@/components/article";
 
 export const meta: ResourceMeta = {
-  slug: "bc-curriculum-grade-2",
-  title: "BC Grade 2 curriculum: what your child learns in math and reading",
+  slug: "bc-grade-6-math-and-reading",
+  title: "Grade 6 math and reading in BC: what your child learns",
   description: "Placeholder - writer fills this meta description (155 characters or fewer).",
   category: "BC curriculum",
   lead: "Placeholder - writer fills this one-sentence intro.",
@@ -19,7 +19,7 @@ export const meta: ResourceMeta = {
     { label: "Placeholder source 1 - writer fills this", url: "https://example.com/source-1", accessed: "2026-10-09" },
     { label: "Placeholder source 2 - writer fills this", url: "https://example.com/source-2", accessed: "2026-10-09" },
   ],
-  related: ["bc-curriculum-grade-1", "bc-curriculum-grade-3", "bc-report-card-proficiency-scale"],
+  related: ["bc-grade-5-math-and-reading", "bc-grade-7-math-and-reading", "bc-proficiency-scale"],
 };
 
 export default function Body() {
