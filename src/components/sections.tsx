@@ -1,9 +1,11 @@
 // Landing page sections, composed from the Pagewise design system (src/ds).
 // Site-only concerns stay here: next/image photos, scroll reveals (Rise/Knot), and the
 // [data-open] buttons that open the reserve dialog.
+import type { ReactNode } from "react";
 import Image, { type StaticImageData } from "next/image";
 import Link from "next/link";
 import { CookieSettingsButton } from "@/components/cookie-consent";
+import { FaqMore } from "@/components/faq-more";
 import { BRAND, HERO, PLANS } from "@/lib/site";
 import { FAQ } from "@/lib/faq";
 import { SUPPORT_HREF } from "@/lib/contact";
@@ -171,8 +173,9 @@ const INCLUDED: [IconName, string, string, number][][] = [
 ];
 
 export function Included() {
-  const col = (items: [IconName, string, string, number][]) => (
+  const col = (items: [IconName, string, string, number][], first?: ReactNode) => (
     <div className="col">
+      {first}
       {items.map(([icon, title, text, delay]) => (
         <IncludedCard key={title} icon={icon} title={title} className="rise" style={d(delay)}>
           {text}
@@ -187,7 +190,8 @@ export function Included() {
         <SectionHeader eyebrow="What you get each month" title="Everything your child needs. Nothing they don't." titleId="incT" />
       </Rise>
       <div className="inc">
-        {col(INCLUDED[0])}
+        {/* Phones hide the Why section (D-072), so its screen-time point moves here. */}
+        {col(INCLUDED[0], <IncludedCard icon="pencil" title={WHY[0][0]} className="rise m-only">{WHY[0][1]}</IncludedCard>)}
         <Rise>
           <div className="ph" style={{ aspectRatio: "3 / 4", borderRadius: 4 }}><Image src={emo1} alt="A boy works on a paper page at his desk" sizes="(min-width: 980px) 300px, 92vw" placeholder="blur" /></div>
         </Rise>
@@ -305,6 +309,7 @@ export function Faq() {
         <SectionHeader eyebrow="FAQ" title="Questions, answered." titleId="faqT" />
       </Rise>
       <FaqList items={FAQ} />
+      <FaqMore />
     </Section>
   );
 }

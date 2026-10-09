@@ -1,0 +1,17 @@
+/* A - Tighten in place: same order and sections, less height per idea. */
+@media (max-width: 699px) {
+  /* How: numbered rows, no photos. */
+  #how .step { padding: 18px 18px 18px 56px; position: relative; min-height: 0; }
+  #how .step .vis { display: none; }
+  #how .step .top { position: absolute; left: 18px; top: 20px; }
+  #how .step h3 { margin: 0 0 4px; font-size: 19px; }
+  #how .step p { margin: 0; }
+  #how .steps { gap: 8px; }
+  /* Why: cards sized to their text. */
+  #why .why > div { min-height: 0; padding-bottom: 56px; }
+  /* Included: no photo, tighter cards. */
+  #inc .inc > .rise { display: none; }
+  #inc .card { padding: 16px 18px; }
+  /* FAQ: the six most asked questions; the rest stay one tap away on desktop. */
+  #faq details:nth-of-type(n+7) { display: none; }
+}

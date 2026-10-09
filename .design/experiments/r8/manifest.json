@@ -1,0 +1,12 @@
+{
+  "round": 8,
+  "decision": "How should the phone layout (below 700px) cut length so a parent can scan it, with desktop unchanged?",
+  "primary_axis": "page structure on phones: density vs disclosure vs order",
+  "invariants": ["same copy and sections in the code", "desktop and tablet (700px and up) unchanged", "same design-system tokens and components", "390x844 viewport", "shared: shorter hero photo, no drifting-photo banner, closing keeps claim and buttons only, FAQ shows 6 questions"],
+  "baseline": { "artifact": "baseline/full.jpg", "screens": 17.7, "price_screen": 12.9 },
+  "options": [
+    { "id": "A", "artifact": "a-tighten/full.jpg", "css": "a-tighten.css", "bet": "Tighten in place: same order and sections; How becomes numbered rows without photos; Why cards fit their text; Included drops its photo", "benefit": "Lowest risk; nothing moves, every point stays", "cost": "Still 11.8 screens; price on screen 8.5", "risk": "Feels like the same long page, only shorter", "screens": 11.8, "price_screen": 8.5 },
+    { "id": "B", "artifact": "b-swipe/full.jpg", "css": "b-swipe.css", "bet": "Swipe decks: How, Why, Included and Compare become one-row carousels with the next card peeking", "benefit": "Shortest page (8.8 screens); keeps the step photos", "cost": "Most cards are hidden behind a swipe; many visitors never swipe", "risk": "Value points and the competitor panels go unseen; price comparison reads as one panel", "screens": 8.8, "price_screen": 5.5 },
+    { "id": "C", "artifact": "c-decide/full.jpg", "css": "c-decide.css", "bet": "Decision first: cut what repeats (Why, promise cards), then How -> Included -> Compare -> Pricing", "benefit": "Every remaining point is visible without a swipe; price on screen 6", "cost": "Why section is not shown on phones; order differs from desktop", "risk": "Loses the 'Real paper. Real pencil.' and 'Master it, then move on.' lines on phones unless folded elsewhere", "screens": 9.9, "price_screen": 6.1 }
+  ]
+}

@@ -14,11 +14,13 @@
     "design_contract": "DESIGN.md",
     "references": ".design/references.json",
     "decisions": ".design/decisions.md",
-    "selected_experiment": ".design/experiments/r2/c-home.html",
+    "selected_experiment": ".design/experiments/r8/c-decide.css",
     "latest_evidence": [
       ".design/evidence/compare-panels/compare-1440.png",
       ".design/evidence/compare-panels/compare-768.png",
-      ".design/evidence/compare-panels/compare-375.png"
+      ".design/evidence/compare-panels/compare-375.png",
+      ".design/evidence/mobile-layout/phone-390/full.jpg",
+      ".design/evidence/mobile-layout/desktop-unchanged.txt"
     ],
     "latest_review": ".design/reviews/plain-language-2026-10-08-r2.md",
     "drafts": [
@@ -37,12 +39,6 @@
     {
       "id": "D4",
       "question": "Launch photos: own shoot with consent, or keep stock/AI",
-      "owner": "user",
-      "status": "open"
-    },
-    {
-      "id": "D1",
-      "question": "Brand name (AI Workbooks is a working name)",
       "owner": "user",
       "status": "open"
     },
