@@ -302,7 +302,7 @@ export interface NavProps {
 
 /** Sticky top bar: wordmark, section links (desktop) and a small primary button. */
 export function Nav({
-  brand = "Pagewise",
+  brand = "Unica Learning",
   links = [
     { label: "How it works", href: "#how" },
     { label: "What's included", href: "#inc" },

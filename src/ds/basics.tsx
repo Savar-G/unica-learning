@@ -35,7 +35,7 @@ export interface LogoProps {
 }
 
 /** Wordmark: the brand name followed by a small orange square. */
-export function Logo({ brand = "Pagewise", href = "#top" }: LogoProps) {
+export function Logo({ brand = "Unica Learning", href = "#top" }: LogoProps) {
   return (
     <a className="logo" href={href} aria-label={`${brand} home`}>
       {brand}

@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useEffect, useRef, useSyncExternalStore } from "react";
 import { readReceipt } from "@/lib/receipt";
 import { track } from "@/lib/track";
+import { BRAND } from "@/lib/site";
 import { SUPPORT_EMAIL, SUPPORT_HREF } from "@/lib/contact";
 
 const subscribe = () => () => {};
@@ -38,7 +39,7 @@ export function BookingResult({ card, confirmationRef }: { card: "saved" | "unco
         : card === "unconfirmed" ? "If you finished adding your card, contact us before you try again. We can check for you."
         : receipt === "waitlist" ? "We will email you when books for your selected curriculum are ready. You did not add a card and nothing was charged."
         : receipt === "reserved" ? "We will email you about adding your card and arranging your child's free assessment. You have not been charged."
-        : "Thanks for visiting Pagewise. To request your child's free assessment, return to our home page."}
+        : `Thanks for visiting ${BRAND}. To request your child's free assessment, return to our home page.`}
     </p>
     {card === "unconfirmed" && <p>Email <a href={SUPPORT_HREF}>{SUPPORT_EMAIL}</a> for help.</p>}
     <Link className="btn" href="/">Back to home <span aria-hidden="true">→</span></Link>

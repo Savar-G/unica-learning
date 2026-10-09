@@ -1,13 +1,14 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { BRAND } from "@/lib/site";
 import { SupportPage } from "@/components/support-page";
 
 export const metadata: Metadata = {
   title: "Page not found",
-  description: "This Pagewise page could not be found. Return home to see our math and reading workbooks.",
+  description: `This ${BRAND} page could not be found. Return home to see our math and reading workbooks.`,
   robots: { index: false, follow: false },
-  openGraph: { title: "Page not found | Pagewise", description: "This Pagewise page could not be found." },
-  twitter: { card: "summary_large_image", title: "Page not found | Pagewise", description: "This Pagewise page could not be found." },
+  openGraph: { title: `Page not found | ${BRAND}`, description: `This ${BRAND} page could not be found.` },
+  twitter: { card: "summary_large_image", title: `Page not found | ${BRAND}`, description: `This ${BRAND} page could not be found.` },
 };
 
 export default function NotFound() {

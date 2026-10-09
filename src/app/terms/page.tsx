@@ -6,7 +6,7 @@ import { BUSINESS_NAME, SUPPORT_EMAIL, SUPPORT_HREF } from "@/lib/contact";
 export const metadata = pageMetadata({
   path: "/terms",
   title: "Terms",
-  description: "Pagewise Learning prices, free assessments, payments, cancellations, and refunds.",
+  description: `${BUSINESS_NAME} prices, free assessments, payments, cancellations, and refunds.`,
   index: false,
 });
 
@@ -14,7 +14,7 @@ export default function Terms() {
   return <SupportPage label="Updated 8 October 2026" title="Terms">
     <p className="lead">These terms apply to the assessments and workbooks offered by {BUSINESS_NAME}. A parent or guardian must make the booking.</p>
     <h2>The offer</h2>
-    <p>Pagewise offers personalized paper math and reading workbooks for ages 6-12, grades 1-7. One subject is CAD {PLANS.one.price} per month. Math and reading together are CAD {PLANS.both.price} per month. Prices are in Canadian dollars. Delivery across Canada is included.</p>
+    <p>{BUSINESS_NAME} offers personalized paper math and reading workbooks for ages 6-12, grades 1-7. One subject is CAD {PLANS.one.price} per month. Math and reading together are CAD {PLANS.both.price} per month. Prices are in Canadian dollars. Delivery across Canada is included.</p>
     <h2>Assessment and availability</h2>
     <p>The placement assessment is free. You can book an assessment for books that follow the British Columbia school curriculum. For other curricula, you can join the waitlist. We will email you when those books are ready. Joining the waitlist does not require a card, and you will not be charged.</p>
     <h2>Adding your card and payments</h2>

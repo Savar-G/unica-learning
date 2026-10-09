@@ -1,5 +1,5 @@
-// Single source for brand and offer facts. The brand name is a placeholder (DESIGN.md D1).
-export const BRAND = "Pagewise";
+// Single source for brand and offer facts. The brand name is decided: "Unica Learning" (Savar, 2026-10-08).
+export const BRAND = "Unica Learning";
 
 export const PLANS = {
   one: { id: "one", name: "One subject", price: 59, note: "Math or reading" },
