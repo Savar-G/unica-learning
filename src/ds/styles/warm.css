@@ -261,19 +261,4 @@
 [data-look="warm"] .chip.leaf { --chip-c: var(--g4); }
 [data-look="warm"] .cover.on-dark { color: #fff; }
 
-/* How it works: the loop line from step 6 back to step 2 (loop-path.tsx) */
-.loopwrap { position: relative; padding-left: 30px; }
-@media (min-width: 700px) { .loopwrap { padding: 0 44px 0 0; } }
-@media (min-width: 1080px) { .loopwrap { padding-top: 34px; } }
-.loopwrap .steps { position: relative; z-index: 1; }
-.looppath { position: absolute; inset: 0; z-index: 2; width: 100%; height: 100%; overflow: visible; pointer-events: none; }
-.looppath .track { fill: none; stroke: var(--accent); stroke-width: 2; stroke-linecap: round; stroke-dasharray: var(--len); stroke-dashoffset: var(--len); transition: stroke-dashoffset 1.8s cubic-bezier(.6, 0, .2, 1); }
-.looppath marker path { fill: var(--accent); }
-.looppath .dot { fill: var(--accent); opacity: 0; transition: opacity .4s 1.6s; }
-.looppath .lbl { font: 600 21px var(--pen); fill: var(--accent); opacity: 0; transition: opacity .5s 1.4s; }
-.loop-on .looppath .track { stroke-dashoffset: 0; }
-.loop-on .looppath :is(.dot, .lbl) { opacity: 1; }
-.loop-still .looppath .dot { display: none; }
-.looppath .lap { fill: none; stroke: var(--accent); stroke-width: 2; stroke-linejoin: round; }
-.loop-still .looppath .lap { display: none; }
 .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
