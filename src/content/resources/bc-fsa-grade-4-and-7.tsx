@@ -5,7 +5,7 @@ import { AssessmentCta, Callout, Cite, DataTable, KeyFacts, Section } from "@/co
 
 export const meta: ResourceMeta = {
   slug: "bc-fsa-grade-4-and-7",
-  title: "BC FSA for Grade 4 and 7: sample tests, what it measures and how to prepare",
+  title: "BC FSA for Grade 4 and 7: sample tests, what it measures and what to expect",
   description: "BC FSA Grade 4 and 7: what the Foundation Skills Assessment covers, when it runs, how results are reported, and where the official sample tests are.",
   category: "BC school guides",
   lead: "The Foundation Skills Assessment (FSA) is a provincial check of literacy and numeracy that every BC student takes in Grade 4 and Grade 7.",

@@ -113,7 +113,7 @@ export default function Body() {
 
       <Section title="How to help at home">
         <ul>
-          <li>Keep it short. Ten minutes of fun beats thirty minutes of tears.</li>
+          <li>Keep it short, about ten minutes, and stop while it is still fun.</li>
           <li>Count real things: stairs, snacks, toys. Go forward and back.</li>
           <li>Play &quot;make 10&quot; with ten blocks or fingers. Hide some and ask how many are hidden.</li>
           <li>Read a book together every day. Let your child read the words they know.</li>

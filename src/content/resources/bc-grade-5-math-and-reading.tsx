@@ -121,7 +121,7 @@ export default function Body() {
 
       <Section title="How to help at home">
         <ul>
-          <li><strong>Practise facts in short bursts.</strong> Games and skip counting work better than long drills. The curriculum says memorizing facts is not the goal at this level.</li>
+          <li><strong>Practise facts in short bursts.</strong> Games and skip counting can make this more fun than long drills. The curriculum says memorizing facts is not the goal at this level.</li>
           <li><strong>Use real measuring.</strong> Measure a room, then work out its area and perimeter.</li>
           <li><strong>Handle money and decimals.</strong> Let your child compare prices at the store or plan a small budget.</li>
           <li><strong>Ask for a second way.</strong> After an answer, ask: can you solve it a different way?</li>

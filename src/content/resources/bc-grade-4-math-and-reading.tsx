@@ -140,7 +140,7 @@ export default function Body() {
           <li><strong>Read 15 minutes a day.</strong> Let your child pick the book, then talk about it.</li>
         </ul>
         <Callout label="Tip">
-          <p>Short and regular beats long and rare. Ten calm minutes most days works better than one long weekend session.</p>
+          <p>Keep it short and regular. Ten calm minutes on most days is easier to keep up than one long weekend session.</p>
         </Callout>
       </Section>
 

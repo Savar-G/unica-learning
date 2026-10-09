@@ -158,7 +158,7 @@ export default function Body() {
         </ol>
         <h3>What to do at home</h3>
         <ul>
-          <li>Pick one skill at a time. Short, steady practice works better than one long session.</li>
+          <li>Pick one skill at a time, and practise it for a few minutes on most days.</li>
           <li>Ask your child to explain their thinking out loud.</li>
           <li>Praise effort and progress. A level can change as the year goes on.</li>
         </ul>
