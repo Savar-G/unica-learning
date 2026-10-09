@@ -15,12 +15,22 @@ npm run build && npm run start
 
 | Variable | Purpose |
 |---|---|
-| `NEXT_PUBLIC_POSTHOG_KEY` | PostHog project key. Without it, events log to the console in dev only. |
+| `NEXT_PUBLIC_POSTHOG_KEY` | PostHog project key. Analytics loads only after the visitor accepts it. |
 | `NEXT_PUBLIC_POSTHOG_INGEST` | PostHog ingest host (default `https://us.i.posthog.com`; EU: `https://eu.i.posthog.com`). |
 | `NEXT_PUBLIC_SITE_URL` | Public URL, used for share-card links. |
+| `NEXT_PUBLIC_ALLOW_INDEX` | Set to `true` only when the site can appear in search. Vercel preview deployments remain noindex. |
 | `STRIPE_SECRET_KEY` | Stripe key (server only) for saving BC parents' cards. |
 
-Funnel events: `cta_click`, `form_start`, `plan_selected`, `details_done`, `waitlist_join`, `checkout_start`, `reserve_success`, `card_redirect`, `card_saved`, `card_cancelled` (plus `$pageview`).
+Funnel events: `cta_click`, `form_start`, `plan_selected`, `details_done`, `waitlist_join`, `checkout_start`, `reserve_success`, `card_redirect`, `card_saved`, `card_cancelled`, and `signup_save_failed` (plus `$pageview`). Events before analytics consent are discarded. The form does not identify a parent in analytics.
+
+## Supporting pages
+
+- `/privacy` and `/terms` are visible drafts with noindex. Confirm the business contact, retention periods, request procedures, and cancellation and refund terms before making them final.
+- `/thank-you` shows a reservation or waitlist receipt after a successful save. A direct visit does not confirm a booking. Stripe returns with a Checkout session ID; the server confirms a saved card only for a completed setup session with a successful SetupIntent and a matching Pagewise reference. This page never charges a card.
+- A missing route returns the custom 404 page. `robots.txt` and `sitemap.xml` follow the indexing switch. The sitemap includes the home page only while the policy pages are drafts.
+- Cookie settings in the footer allow a visitor to change the optional analytics choice. The mobile assessment button hides while the banner or booking dialog is open.
+
+The screenshot checklist and open items are recorded in `.design/research/site-checklist-2026-10-08.md`.
 
 ## Notes
 

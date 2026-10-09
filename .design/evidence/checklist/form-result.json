@@ -1,0 +1,76 @@
+[
+  {
+    "name": "invalid fields",
+    "ok": true,
+    "detail": 3
+  },
+  {
+    "name": "first invalid receives focus",
+    "ok": true,
+    "detail": "f-name"
+  },
+  {
+    "name": "BC outside Metro Vancouver reaches review",
+    "ok": true,
+    "detail": true
+  },
+  {
+    "name": "busy disables navigation and prevents duplicate save",
+    "ok": true,
+    "detail": {
+      "calls": 1
+    }
+  },
+  {
+    "name": "HTTP 502 shows retry and preserves details",
+    "ok": true,
+    "detail": {
+      "calls": 1
+    }
+  },
+  {
+    "name": "retry produces reservation thank-you",
+    "ok": true,
+    "detail": {
+      "calls": 2,
+      "url": "http://localhost:3017/thank-you"
+    }
+  },
+  {
+    "name": "Alberta skips card review and reaches waitlist thank-you",
+    "ok": true,
+    "detail": {
+      "calls": 3
+    }
+  },
+  {
+    "name": "direct thank-you does not invent a booking",
+    "ok": true,
+    "detail": true
+  },
+  {
+    "name": "expired receipt does not confirm a booking",
+    "ok": true,
+    "detail": true
+  },
+  {
+    "name": "invalid session does not confirm saved card",
+    "ok": true,
+    "detail": true
+  },
+  {
+    "name": "legacy success URL does not confirm saved card",
+    "ok": true,
+    "detail": true
+  },
+  {
+    "name": "cancelled card setup remains recoverable",
+    "ok": true,
+    "detail": true
+  },
+  {
+    "name": "no uncaught browser errors",
+    "ok": true,
+    "detail": []
+  }
+]

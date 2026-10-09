@@ -5,7 +5,7 @@ import { CONSENT_OPEN_EVENT, getConsent, isConsentPersisted, openConsentSettings
 import "./cookie-consent.css";
 
 // Mount once, globally. It shows on a first visit and whenever CookieSettingsButton is pressed.
-// While open it sets --consent-banner-h on <html> (its height in px), so a bottom bar can sit above it.
+// The site's mobile CTA hides while this banner is open.
 export function CookieConsent({ privacyHref = "/privacy" }: { privacyHref?: string }) {
   // null on the server and during hydration, so a returning visitor never sees a flash of the banner.
   const consent = useSyncExternalStore(subscribeConsent, getConsent, () => null);
@@ -43,24 +43,10 @@ export function CookieConsent({ privacyHref = "/privacy" }: { privacyHref?: stri
     };
   }, [reopened]);
 
-  useEffect(() => {
-    const el = root.current;
-    if (!open || !el) return;
-    const html = document.documentElement;
-    const publish = () => html.style.setProperty("--consent-banner-h", `${el.offsetHeight}px`);
-    publish();
-    const ro = new ResizeObserver(publish);
-    ro.observe(el);
-    return () => {
-      ro.disconnect();
-      html.style.removeProperty("--consent-banner-h");
-    };
-  }, [open]);
-
   if (!open) return null;
 
   return (
-    <section ref={root} className="ck" role="region" aria-labelledby="ck-t" aria-describedby="ck-d" tabIndex={-1}>
+    <section ref={root} className="ck" data-cookie-banner role="region" aria-labelledby="ck-t" aria-describedby="ck-d" tabIndex={-1}>
       <div className="ck-head">
         <p className="ck-eyebrow">Analytics</p>
         {reopened && (

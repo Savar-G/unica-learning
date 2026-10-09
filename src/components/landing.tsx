@@ -5,7 +5,7 @@ import type { Look } from "@/lib/look";
 
 export function Landing({ look = "primer" }: { look?: Look }) {
   return (
-    <div className="look-root" data-look={look}>
+    <div className="look-root landing-with-mobile-cta" data-look={look}>
       <Nav />
       <div className="frame">
         <main id="main">
@@ -22,6 +22,9 @@ export function Landing({ look = "primer" }: { look?: Look }) {
         </main>
         <Footer />
       </div>
+      <aside className="mobile-assessment" aria-label="Free assessment">
+        <button className="btn" type="button" data-open data-src="mobile-sticky">Take free assessment <span className="arr" aria-hidden="true">→</span></button>
+      </aside>
       <Reserve />
       <Motion />
     </div>

@@ -16,12 +16,20 @@
     "decisions": ".design/decisions.md",
     "selected_experiment": ".design/experiments/r2/c-home.html",
     "latest_evidence": [
-      ".design/evidence/build/site-desk.png",
-      ".design/evidence/build/lh-mobile.json",
-      ".design/evidence/build/lh-desktop.json",
-      ".design/evidence/build/mobile-dialog-step1.jpg"
+      ".design/evidence/checklist/home-1440.png",
+      ".design/evidence/checklist/home-375.png",
+      ".design/evidence/checklist/privacy-1440.png",
+      ".design/evidence/checklist/privacy-375.png",
+      ".design/evidence/checklist/no-such-page-checklist-375.png",
+      ".design/evidence/checklist/form-error-desktop.png",
+      ".design/evidence/checklist/consent-375.png",
+      ".design/evidence/checklist/responsive-result.json",
+      ".design/evidence/checklist/form-result.json",
+      ".design/evidence/checklist/consent-result.json",
+      ".design/evidence/checklist/analytics-positive-result.json",
+      ".design/evidence/checklist/production-routes.json"
     ],
-    "latest_review": null,
+    "latest_review": ".design/reviews/site-checklist-2026-10-08-r2.md",
     "drafts": [
       ".design/experiments/drafts/a-lineup-2026-10-04/"
     ],
@@ -48,13 +56,13 @@
     },
     {
       "id": "D8",
-      "question": "Checkout disclosure wording for a product not yet shipping",
+      "question": "Final support, delivery, cancellation and refund procedures",
       "owner": "user",
       "status": "open"
     },
     {
       "id": "D3",
-      "question": "Deposit or full first month at reserve",
+      "question": "How to charge the first month when the first workbook ships; setup mode is implemented (D-053)",
       "owner": "user",
       "status": "open"
     }
@@ -62,13 +70,27 @@
   "blockers": [
     {
       "id": "B1",
-      "reason": "Checkout not wired (D3/D8 parked by Savar)",
-      "needs": "Decide deposit vs save-card; then Stripe"
+      "reason": "Live Stripe confirmation lookup not verified",
+      "needs": "Verify the configured key can retrieve Checkout Sessions with an expanded SetupIntent"
     },
     {
       "id": "B2",
-      "reason": "No PostHog key yet",
-      "needs": "PostHog project key in Vercel env"
+      "reason": "Hosted consent-gated analytics not verified",
+      "needs": "Verify the live PostHog key and ingestion after consent"
+    },
+    {
+      "id": "B3",
+      "reason": "Policy pages are drafts and the public contact is missing",
+      "needs": "Owner business contact, retention periods and service procedures"
     }
-  ]
+  ],
+  "checklist": {
+    "date": "2026-10-08",
+    "route": "direct",
+    "constraint_mode": "existing-system",
+    "audit": ".design/research/site-checklist-2026-10-08.md",
+    "policy_status": "draft",
+    "merge_owner": "user",
+    "hosted_verification": "pending"
+  }
 }

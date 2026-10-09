@@ -1,0 +1,25 @@
+{
+  "result": [
+    {
+      "name": "no analytics before consent; mobile CTA avoids banner",
+      "ok": true
+    },
+    {
+      "name": "reject persists and keeps mobile CTA available",
+      "ok": true
+    },
+    {
+      "name": "accept initializes SDK; real second tab receives revocation; identity deleted",
+      "ok": true
+    },
+    {
+      "name": "quota failure cannot restore old accepted choice in this tab",
+      "ok": true
+    },
+    {
+      "name": "Escape from settings returns keyboard focus",
+      "ok": true
+    }
+  ],
+  "ingestRequests": 0
+}

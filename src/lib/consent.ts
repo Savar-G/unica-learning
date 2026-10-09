@@ -33,6 +33,8 @@ function parse(raw: string | null): ConsentChoice | null {
 
 export function getConsent(): ConsentState {
   if (typeof window === "undefined") return "unset";
+  // A failed write can leave an older choice on disk. The latest choice must still win in this tab.
+  if (!fallback.persisted && fallback.memory) return fallback.memory;
   try {
     const raw = window.localStorage.getItem(CONSENT_KEY);
     const stored = parse(raw);

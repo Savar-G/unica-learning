@@ -47,7 +47,7 @@ export async function cardSetupUrl(s: Stripe, p: CardSetup): Promise<string | nu
     metadata,
     setup_intent_data: { description, metadata },
     custom_text: { submit: { message: cardTerms(p.price) } },
-    success_url: `${p.origin}/?card=saved`,
+    success_url: `${p.origin}/thank-you?session_id={CHECKOUT_SESSION_ID}`,
     cancel_url: `${p.origin}/?card=cancelled`,
   });
   return session.url;

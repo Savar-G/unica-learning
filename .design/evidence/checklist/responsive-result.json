@@ -1,0 +1,145 @@
+[
+  {
+    "route": "/",
+    "width": 375,
+    "scrollWidth": 375,
+    "missingAlt": 0,
+    "emptyAltOutsideDecorative": 0,
+    "ctaVisible": true,
+    "sticky": "block"
+  },
+  {
+    "name": "mobile CTA and keyboard dialog",
+    "ok": true
+  },
+  {
+    "route": "/privacy",
+    "width": 375,
+    "status": 200,
+    "scrollWidth": 375,
+    "title": "Privacy policy | Pagewise",
+    "h1Count": 1,
+    "robots": "noindex, nofollow"
+  },
+  {
+    "route": "/terms",
+    "width": 375,
+    "status": 200,
+    "scrollWidth": 375,
+    "title": "Terms | Pagewise",
+    "h1Count": 1,
+    "robots": "noindex, nofollow"
+  },
+  {
+    "route": "/thank-you",
+    "width": 375,
+    "status": 200,
+    "scrollWidth": 375,
+    "title": "Your next step | Pagewise",
+    "h1Count": 1,
+    "robots": "noindex, nofollow"
+  },
+  {
+    "route": "/no-such-page-checklist",
+    "width": 375,
+    "status": 404,
+    "scrollWidth": 375,
+    "title": "Page not found | Pagewise",
+    "h1Count": 1,
+    "robots": "noindex"
+  },
+  {
+    "route": "/",
+    "width": 768,
+    "scrollWidth": 768,
+    "missingAlt": 0,
+    "emptyAltOutsideDecorative": 0,
+    "ctaVisible": true,
+    "sticky": "none"
+  },
+  {
+    "route": "/privacy",
+    "width": 768,
+    "status": 200,
+    "scrollWidth": 768,
+    "title": "Privacy policy | Pagewise",
+    "h1Count": 1,
+    "robots": "noindex, nofollow"
+  },
+  {
+    "route": "/terms",
+    "width": 768,
+    "status": 200,
+    "scrollWidth": 768,
+    "title": "Terms | Pagewise",
+    "h1Count": 1,
+    "robots": "noindex, nofollow"
+  },
+  {
+    "route": "/thank-you",
+    "width": 768,
+    "status": 200,
+    "scrollWidth": 768,
+    "title": "Your next step | Pagewise",
+    "h1Count": 1,
+    "robots": "noindex, nofollow"
+  },
+  {
+    "route": "/no-such-page-checklist",
+    "width": 768,
+    "status": 404,
+    "scrollWidth": 768,
+    "title": "Page not found | Pagewise",
+    "h1Count": 1,
+    "robots": "noindex"
+  },
+  {
+    "route": "/",
+    "width": 1440,
+    "scrollWidth": 1440,
+    "missingAlt": 0,
+    "emptyAltOutsideDecorative": 0,
+    "ctaVisible": true,
+    "sticky": "none"
+  },
+  {
+    "route": "/privacy",
+    "width": 1440,
+    "status": 200,
+    "scrollWidth": 1440,
+    "title": "Privacy policy | Pagewise",
+    "h1Count": 1,
+    "robots": "noindex, nofollow"
+  },
+  {
+    "route": "/terms",
+    "width": 1440,
+    "status": 200,
+    "scrollWidth": 1440,
+    "title": "Terms | Pagewise",
+    "h1Count": 1,
+    "robots": "noindex, nofollow"
+  },
+  {
+    "route": "/thank-you",
+    "width": 1440,
+    "status": 200,
+    "scrollWidth": 1440,
+    "title": "Your next step | Pagewise",
+    "h1Count": 1,
+    "robots": "noindex, nofollow"
+  },
+  {
+    "route": "/no-such-page-checklist",
+    "width": 1440,
+    "status": 404,
+    "scrollWidth": 1440,
+    "title": "Page not found | Pagewise",
+    "h1Count": 1,
+    "robots": "noindex"
+  },
+  {
+    "name": "reduced motion hero",
+    "animation": "none"
+  }
+]

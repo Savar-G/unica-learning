@@ -2,6 +2,8 @@
 // Site-only concerns stay here: next/image photos, scroll reveals (Rise/Knot), and the
 // [data-open] buttons that open the reserve dialog.
 import Image, { type StaticImageData } from "next/image";
+import Link from "next/link";
+import { CookieSettingsButton } from "@/components/cookie-consent";
 import { BRAND, HERO, PLANS } from "@/lib/site";
 import {
   BeliefList,
@@ -247,7 +249,7 @@ export function Feel() {
     <Section className="feel" aria-labelledby="feelT">
       <Knot />
       {DRIFT.map(([src, l, t, w, h, s, r, hide], i) => (
-        <div key={i} className={`drift${hide ? " hide-sm" : ""}`} data-speed={s} style={{ left: `${l}%`, top: `${t}%`, width: `${w}%`, height: `${h}%`, "--r": `${r}deg` } as Vars}>
+        <div key={i} className={`drift${hide ? " hide-sm" : ""}`} aria-hidden="true" data-speed={s} style={{ left: `${l}%`, top: `${t}%`, width: `${w}%`, height: `${h}%`, "--r": `${r}deg` } as Vars}>
           <div className="ph"><Image src={src} alt="" sizes="(min-width: 760px) 18vw, 40vw" placeholder="blur" /></div>
         </div>
       ))}
@@ -392,6 +394,11 @@ export function Footer() {
         <p style={{ margin: "12px 0 0" }}>Personalized math and reading workbooks for ages 6-12.</p>
         <p className="small" style={{ marginTop: 10 }}>Made in Vancouver, BC · 30-day money-back guarantee · Cancel anytime</p>
         <p className="small" style={{ marginTop: 10 }}>© 2026 {BRAND}</p>
+        <nav className="footer-links small" aria-label="Site information">
+          <Link href="/privacy">Privacy</Link>
+          <Link href="/terms">Terms</Link>
+          <CookieSettingsButton />
+        </nav>
       </div>
     </footer>
   );

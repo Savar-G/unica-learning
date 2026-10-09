@@ -5,12 +5,15 @@
 // Any element with [data-open] opens it ([data-plan] preselects a plan, [data-src] names the CTA).
 // Every signup is saved through /api/signup to Supabase before the parent leaves for Stripe.
 import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
+import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { PLANS, type PlanId } from "@/lib/site";
 import { CURRICULA, EMAIL, OPEN_CURRICULA, POSTAL, curriculumFromPostal, statusFor, type CurriculumId, type SignupResult } from "@/lib/signup";
-import { identify, track } from "@/lib/track";
+import { track } from "@/lib/track";
+import { keepReceipt } from "@/lib/receipt";
 
-// ok = reserved, Stripe not available; saved / nocard = back from Stripe; wait = waitlist.
-type Step = 1 | 2 | 3 | "ok" | "saved" | "nocard" | "wait" | "err";
+// Completed requests use /thank-you; cancelled card setup and save failures stay in the dialog.
+type Step = 1 | 2 | 3 | "nocard" | "err";
 type Errors = Partial<Record<"name" | "email" | "postal", boolean>>;
 
 const UTM = ["utm_source", "utm_medium", "utm_campaign", "utm_content", "ref"];
@@ -18,6 +21,7 @@ const UTM = ["utm_source", "utm_medium", "utm_campaign", "utm_content", "ref"];
 const CARD_KEY = "pw-card";
 
 export function Reserve() {
+  const router = useRouter();
   const dlg = useRef<HTMLDialogElement>(null);
   const [step, setStep] = useState<Step>(1);
   const [plan, setPlan] = useState<PlanId>("one");
@@ -31,6 +35,7 @@ export function Reserve() {
   const [pickedCurriculum, setPickedCurriculum] = useState(false);
   const [errors, setErrors] = useState<Errors>({});
   const [busy, setBusy] = useState(false);
+  const saving = useRef(false);
   const [src, setSrc] = useState("unknown");
   const [website, setWebsite] = useState("");
   // Stripe page for the saved signup, reused if the parent comes back from Stripe and tries again.
@@ -40,6 +45,7 @@ export function Reserve() {
     if (p === "one" || p === "both") setPlan(p);
     setSrc(src);
     setCardUrl(null);
+    setErrors({});
     setStep(1);
     dlg.current?.showModal();
     track("cta_click", { src, plan: p ?? null });
@@ -57,35 +63,38 @@ export function Reserve() {
     return () => document.removeEventListener("click", onClick);
   }, [open]);
 
-  // Stripe sends the parent back to /?card=saved or /?card=cancelled (success_url and cancel_url in lib/stripe.ts).
+  // New Stripe sessions return to /thank-you. Keep the cancellation path and handle old success URLs without claiming a saved card.
   useEffect(() => {
     const qs = new URLSearchParams(window.location.search);
     const card = qs.get("card");
-    if (card !== "saved" && card !== "cancelled") return;
+    if (card === "saved") {
+      router.replace("/thank-you?card=unconfirmed");
+      return;
+    }
+    if (card !== "cancelled") return;
     qs.delete("card");
     const rest = qs.toString();
     history.replaceState(null, "", `${location.pathname}${rest ? `?${rest}` : ""}${location.hash}`);
     let kept: { name?: string; email?: string; plan?: string; url?: string } = {};
     try {
       kept = JSON.parse(sessionStorage.getItem(CARD_KEY) ?? "{}");
-      if (card === "saved") sessionStorage.removeItem(CARD_KEY);
     } catch {}
     // The URL exists only in the browser, so this cannot be initial state on a static page.
     /* eslint-disable react-hooks/set-state-in-effect */
     setName(kept.name ?? "");
     setEmail(kept.email ?? "");
     if (kept.plan === "one" || kept.plan === "both") setPlan(kept.plan);
-    setCardUrl(card === "cancelled" ? (kept.url ?? null) : null);
-    setStep(card === "saved" ? "saved" : "nocard");
+    setCardUrl(kept.url ?? null);
+    setStep("nocard");
     /* eslint-enable react-hooks/set-state-in-effect */
     dlg.current?.showModal();
-    track(card === "saved" ? "card_saved" : "card_cancelled");
-  }, []);
+    track("card_cancelled");
+  }, [router]);
 
   // Back from Stripe with the browser's back button: the page can come back with the spinner still on.
   useEffect(() => {
     const onShow = (e: PageTransitionEvent) => {
-      if (e.persisted) setBusy(false);
+      if (e.persisted) { setBusy(false); saving.current = false; }
     };
     window.addEventListener("pageshow", onShow);
     return () => window.removeEventListener("pageshow", onShow);
@@ -140,6 +149,8 @@ export function Reserve() {
   };
 
   const finish = async () => {
+    if (saving.current) return;
+    saving.current = true;
     if (cardUrl) {
       toStripe(cardUrl);
       return;
@@ -147,15 +158,18 @@ export function Reserve() {
     setBusy(true);
     const res = await save();
     if (!res?.ok) {
+      saving.current = false;
       setBusy(false);
       setStep("err");
       return;
     }
-    identify(email.trim().toLowerCase(), { name: name.trim(), postal: postal.trim().toUpperCase(), plan, subject: subj, grade, curriculum });
     if (res.status === "waitlist") {
       setBusy(false);
+      saving.current = false;
       track("waitlist_join", { curriculum, plan, grade });
-      setStep("wait");
+      keepReceipt("waitlist");
+      close();
+      router.push("/thank-you");
       return;
     }
     track("reserve_success", { plan, subject: subj, grade, curriculum, price, card: !!res.cardUrl });
@@ -166,7 +180,10 @@ export function Reserve() {
       return;
     }
     setBusy(false);
-    setStep("ok");
+    saving.current = false;
+    keepReceipt("reserved");
+    close();
+    router.push("/thank-you");
   };
 
   const submitPlan = (e: FormEvent) => {
@@ -206,19 +223,19 @@ export function Reserve() {
   };
 
   const dots = typeof step === "number" ? step : 3;
-  const firstName = name.trim().split(" ")[0];
 
   return (
-    <dialog className="rsv" ref={dlg} aria-labelledby="rsvT" onClick={(e) => e.target === dlg.current && close()}>
+    <dialog className="rsv" ref={dlg} aria-labelledby="rsvT" onClick={(e) => e.target === dlg.current && !busy && close()} onCancel={(e) => { if (busy) e.preventDefault(); }}>
+      <h2 id="rsvT" className="sr-only">Assessment booking</h2>
       <div className="hd">
         <div className="dots" aria-hidden="true">
           {[1, 2, 3].map((n) => <i key={n} className={n <= dots ? "on" : undefined} />)}
         </div>
-        <button className="x" type="button" onClick={close} aria-label="Close">×</button>
+        <button className="x" type="button" onClick={close} disabled={busy} aria-label="Close">×</button>
       </div>
 
       <form data-step="1" hidden={step !== 1} onSubmit={submitPlan} noValidate>
-        <h3 id="rsvT">Choose your plan.</h3>
+        <h3>Choose your plan.</h3>
         <fieldset>
           <legend>Plan</legend>
           <label className="opt">
@@ -252,14 +269,15 @@ export function Reserve() {
 
       <form data-step="2" hidden={step !== 2} onSubmit={submitDetails} noValidate>
         <h3>Where should we send it?</h3>
+        {(errors.name || errors.email || errors.postal) && <p role="alert" className="small">Correct the marked fields to continue.</p>}
         <div className={`fld${errors.name ? " bad" : ""}`}>
           <label htmlFor="f-name">Your name</label>
-          <input id="f-name" autoComplete="name" value={name} onChange={(e) => setName(e.target.value)} aria-invalid={!!errors.name} aria-describedby="e-name" />
+          <input id="f-name" autoComplete="name" value={name} onChange={(e) => setName(e.target.value)} aria-invalid={!!errors.name} aria-describedby={errors.name ? "e-name" : undefined} />
           <span className="err" id="e-name">Enter your name.</span>
         </div>
         <div className={`fld${errors.email ? " bad" : ""}`}>
           <label htmlFor="f-email">Email</label>
-          <input id="f-email" type="email" autoComplete="email" value={email} onChange={(e) => setEmail(e.target.value)} aria-invalid={!!errors.email} aria-describedby="e-email" />
+          <input id="f-email" type="email" autoComplete="email" value={email} onChange={(e) => setEmail(e.target.value)} aria-invalid={!!errors.email} aria-describedby={errors.email ? "e-email" : undefined} />
           <span className="err" id="e-email">Enter a valid email.</span>
         </div>
         <div className={`fld${errors.postal ? " bad" : ""}`}>
@@ -275,7 +293,7 @@ export function Reserve() {
               if (guess && !pickedCurriculum) setCurriculum(guess);
             }}
             aria-invalid={!!errors.postal}
-            aria-describedby="e-postal"
+            aria-describedby={errors.postal ? "e-postal" : undefined}
           />
           <span className="err" id="e-postal">Enter a Canadian postal code, like V6B 1A1.</span>
         </div>
@@ -302,7 +320,7 @@ export function Reserve() {
         </div>
         <input className="hp" type="text" name="website" tabIndex={-1} autoComplete="off" aria-hidden="true" value={website} onChange={(e) => setWebsite(e.target.value)} />
         <div className="row2">
-          <button className="btn ghost" type="button" onClick={() => setStep(1)}>Back</button>
+          <button className="btn ghost" type="button" disabled={busy} onClick={() => setStep(1)}>Back</button>
           <button className="btn" type="submit" disabled={busy} aria-busy={busy}>
             {busy ? <span className="spin" aria-label="Saving" /> : status === "waitlist" ? "Join waitlist" : <>Continue <span className="arr">→</span></>}
           </button>
@@ -324,30 +342,12 @@ export function Reserve() {
           Add your card on Stripe&apos;s secure page. We charge nothing today. When your first workbook ships, we charge CAD {price}, then every month until you cancel. Cancel before it ships and you pay nothing. Every plan has a 30-day money-back guarantee.
         </p>
         <div className="row2">
-          <button className="btn ghost" type="button" onClick={() => { setCardUrl(null); setStep(2); }}>Back</button>
+          <button className="btn ghost" type="button" disabled={busy} onClick={() => { setCardUrl(null); setStep(2); }}>Back</button>
           <button className="btn" type="submit" disabled={busy} aria-busy={busy}>
             {busy ? <span className="spin" aria-label="Processing" /> : <>Add card <span className="arr">→</span></>}
           </button>
         </div>
       </form>
-
-      <div data-step="ok" className="state" hidden={step !== "ok"} style={{ padding: "28px 22px 30px" }} aria-live="polite">
-        <div className="big"><svg viewBox="0 0 30 30" aria-hidden="true"><path d="M7 15.5l5.5 5.5L23.5 9" /></svg></div>
-        <h3>You&apos;re in.</h3>
-        <p className="lead" style={{ margin: 0, fontSize: 17 }}>
-          Thanks, {firstName}. We&apos;ll email {email.trim()} a link to add your card, then arrange your child&apos;s free placement assessment. Nothing is charged until your first workbook ships.
-        </p>
-        <button className="btn" type="button" onClick={close}>Done</button>
-      </div>
-
-      <div data-step="saved" className="state" hidden={step !== "saved"} style={{ padding: "28px 22px 30px" }} aria-live="polite">
-        <div className="big"><svg viewBox="0 0 30 30" aria-hidden="true"><path d="M7 15.5l5.5 5.5L23.5 9" /></svg></div>
-        <h3>You&apos;re in.</h3>
-        <p className="lead" style={{ margin: 0, fontSize: 17 }}>
-          Thanks{firstName && `, ${firstName}`}. Your card is saved, and nothing was charged. We&apos;ll email {email.trim() || "you"} to arrange your child&apos;s free placement assessment. We charge CAD {price} when your first workbook ships.
-        </p>
-        <button className="btn" type="button" onClick={close}>Done</button>
-      </div>
 
       <div data-step="nocard" className="state" hidden={step !== "nocard"} style={{ padding: "28px 22px 30px" }} aria-live="polite">
         <div className="big" style={{ background: "#D9E3FF" }}><svg viewBox="0 0 30 30" aria-hidden="true"><path d="M15 8v8l5 3" /></svg></div>
@@ -369,15 +369,6 @@ export function Reserve() {
         )}
       </div>
 
-      <div data-step="wait" className="state" hidden={step !== "wait"} style={{ padding: "28px 22px 30px" }} aria-live="polite">
-        <div className="big" style={{ background: "#D9E3FF" }}><svg viewBox="0 0 30 30" aria-hidden="true"><path d="M15 8v8l5 3" /></svg></div>
-        <h3>You&apos;re on the waitlist.</h3>
-        <p className="lead" style={{ margin: 0, fontSize: 17 }}>
-          Thanks, {firstName}. We&apos;ll email {email.trim()} when books for {theirs} curriculum are ready. Nothing was charged.
-        </p>
-        <button className="btn" type="button" onClick={close}>Done</button>
-      </div>
-
       <div data-step="err" className="state" hidden={step !== "err"} style={{ padding: "28px 22px 30px" }} aria-live="polite">
         <div className="big" style={{ background: "#FFD9C9" }}><svg viewBox="0 0 30 30" aria-hidden="true"><path d="M15 8v9M15 21v1" /></svg></div>
         <h3>We couldn&apos;t save your spot.</h3>
@@ -386,6 +377,8 @@ export function Reserve() {
           {busy ? <span className="spin" aria-label="Saving" /> : "Try again"}
         </button>
       </div>
+      <p className="form-notice">We use your details to process your request and contact you. Read the <Link href="/privacy">privacy policy draft</Link> and <Link href="/terms">terms draft</Link>.</p>
+      <p className="sr-only" role="status">{busy ? "Saving your request. Please wait." : ""}</p>
     </dialog>
   );
 }
