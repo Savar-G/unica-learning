@@ -1,9 +1,11 @@
 // Landing page sections, composed from the Unica Learning design system (src/ds).
 // Site-only concerns stay here: next/image photos, scroll reveals (Rise/Knot), and the
 // [data-open] buttons that open the reserve dialog.
+import type { ReactNode } from "react";
 import Image, { type StaticImageData } from "next/image";
 import Link from "next/link";
 import { CookieSettingsButton } from "@/components/cookie-consent";
+import { FaqMore } from "@/components/faq-more";
 import { BRAND, HERO, PLANS } from "@/lib/site";
 import { FAQ } from "@/lib/faq";
 import { SUPPORT_HREF } from "@/lib/contact";
@@ -50,14 +52,6 @@ import emo9 from "@/assets/img/emotion-9.jpg";
 import emo10 from "@/assets/img/emotion-10.jpg";
 import emo11 from "@/assets/img/emotion-11.jpg";
 
-function Photo({ src, alt, sizes, className = "ph" }: { src: StaticImageData; alt: string; sizes: string; className?: string }) {
-  return (
-    <div className={className}>
-      <Image src={src} alt={alt} sizes={sizes} placeholder="blur" />
-    </div>
-  );
-}
-
 /** Opens the reserve dialog (see reserve.tsx, which listens for [data-open]). */
 function GetStarted({ src, plan, label = "Take free assessment", ghost = false }: { src: string; plan?: string; label?: string; ghost?: boolean }) {
   return (
@@ -73,15 +67,27 @@ export function Nav() {
   return <NavBar brand={BRAND} cta={<button className="btn sm" data-open data-src="nav">Free assessment</button>} />;
 }
 
+const TOPICS = [
+  "fractions", "phonics", "times tables", "sight words", "long division", "place value",
+  "spelling", "word problems", "decimals", "telling time", "vowel sounds", "mental math",
+  "grammar", "percents", "ratios", "comprehension",
+];
+
 export function Hero() {
   return (
     <HeroBlock
         id="top"
+        className="hero-ink"
         eyebrow=""
         kicker={HERO.kicker}
         title={HERO.title}
         highlight={HERO.highlight}
-        lead={HERO.lead}
+        lead={
+          <>
+            Same material, same pace. <span className="nowrap">Miss <SwapWord words={TOPICS} /></span> and every lesson after
+            it gets harder. Unica builds each workbook around your child&apos;s level, pace and learning style, then mails it home.
+          </>
+        }
         meta={[`From CAD ${PLANS.one.price}/month`, "30-day money-back guarantee", "Cancel anytime"]}
         page={null}
         report={null}
@@ -97,63 +103,16 @@ export function Hero() {
   );
 }
 
-export function What() {
-  return (
-    <Section id="what" aria-labelledby="whatT">
-      <Knot />
-      <div className="what box">
-        <Rise>
-          <Eyebrow>What is {BRAND}?</Eyebrow>
-          <h2 id="whatT" style={{ marginTop: 16 }}>
-            Schools and tutoring programs put every child in <Highlight animate>the same box.</Highlight>
-          </h2>
-        </Rise>
-        <Rise d={0.1} className="what-cols">
-          <p className="big">
-            Same material, same pace, same teaching. <span className="nowrap">Miss <SwapWord
-              words={[
-                "fractions", "phonics", "times tables", "sight words", "long division", "place value",
-                "spelling", "word problems", "decimals", "telling time", "vowel sounds", "mental math",
-                "grammar", "percents", "ratios", "comprehension",
-              ]}
-            /></span>
-            <br />
-            and every lesson after it gets harder.
-          </p>
-          <p className="big">Your child needs learning built around them: their level, their pace. That&apos;s {BRAND}.</p>
-        </Rise>
-      </div>
-      <div className="rows">
-        <Rise className="row">
-          <h3>Math and reading, ages 6-12.</h3>
-          <p>Covers your school curriculum, at your child&apos;s pace. When they&apos;re ready, the books move ahead, so they see new topics before their class does. Choose one subject or both.</p>
-          <Photo src={practice6} alt="A girl works through an arithmetic page" sizes="140px" />
-        </Rise>
-        <Rise className="row" d={0.08}>
-          <h3>Starts at their level.</h3>
-          <p>A free placement assessment, on paper, finds where your child is, so the first book fits from page one.</p>
-          <Photo src={assessPaper} alt="A child works through a page of math problems in pencil" sizes="140px" />
-        </Rise>
-        <Rise className="row" d={0.16}>
-          <h3>Mailed to your door.</h3>
-          <p>Your next book arrives before the current one runs out. Delivery is included.</p>
-          <Photo src={deliverPhoto} alt="Two mailers waiting on a front step" sizes="140px" />
-        </Rise>
-      </div>
-    </Section>
-  );
-}
-
 const STEP_SIZES = "(min-width: 1080px) 380px, (min-width: 700px) 45vw, 92vw";
 
 const STEPS = [
   { n: "01", t: "Assess", d: "We send a free placement assessment on paper. It finds your child's level and where the gaps are.",
     v: <Image src={assessPaper} alt="A child works through a page of math problems in pencil" sizes={STEP_SIZES} placeholder="blur" />, tone: "photo" as const },
-  { n: "02", t: "Deliver", d: "We mail a workbook matched to your child's level and gaps.", v: <Image src={deliverPhoto} alt="Two mailers waiting on a front step" sizes={STEP_SIZES} placeholder="blur" />, tone: "photo" as const },
+  { n: "02", t: "Deliver", d: "We mail a workbook matched to your child's level and gaps. It covers your school curriculum.", v: <Image src={deliverPhoto} alt="Two mailers waiting on a front step" sizes={STEP_SIZES} placeholder="blur" />, tone: "photo" as const },
   { n: "03", t: "Practice", d: "Your child works on paper for about 15-20 minutes a day, 5 days a week.",
     v: <Image src={practice6} alt="A girl works through an arithmetic page in pencil" sizes={STEP_SIZES} placeholder="blur" />, tone: "photo" as const },
   { n: "04", t: "Scan", d: "Take a photo of the finished pages. We mark the work, show you the gaps, and give the solutions so your child can understand what went wrong.", v: <Image src={scanPhoto} alt="A phone camera frames a page to photograph it" sizes={STEP_SIZES} placeholder="blur" />, tone: "photo" as const },
-  { n: "05", t: "Adapt", d: "Based on how they did, we choose and adjust their next workbook: more practice where they're struggling, and moving ahead where they're ready. Every book is shaped by how your child is doing.", v: <Image src={adaptPhoto} alt="A girl shows her finished work to her parents" sizes={STEP_SIZES} placeholder="blur" />, tone: "photo" as const },
+  { n: "05", t: "Adapt", d: "Based on how they did, we choose and adjust their next workbook: more practice where they're struggling, and moving ahead where they're ready, so they see new topics before their class does. Every book is shaped by how your child is doing.", v: <Image src={adaptPhoto} alt="A girl shows her finished work to her parents" sizes={STEP_SIZES} placeholder="blur" />, tone: "photo" as const },
   { n: "06", t: "Repeat", d: <>Your next book arrives before the current one runs out, so there&apos;s never a gap. Then the loop starts again. <em>Struggling with fractions? Your next book focuses on fractions.</em></>, v: <Image src={repeatPhoto} alt="A girl starts on her next book at the dining table" sizes={STEP_SIZES} placeholder="blur" />, tone: "photo" as const },
 ];
 
@@ -176,9 +135,9 @@ export function How() {
 }
 
 const WHY: [string, string][] = [
-  ["Real paper. Real pencil.", "Your child learns away from screens. The app is for you, not them."],
-  ["Made for one child.", "Every page targets what your child is ready for next, not what the rest of the class is on."],
-  ["It never forgets.", "A skill your child missed comes back in new forms until they master it."],
+  ["Real paper. Real pencil.", "Your child learns away from screens. Each book comes to your door, so you never print a page. The app is for you, not them."],
+  ["Made for your child.", "Every page targets what they're ready for next, not what the rest of the class is on."],
+  ["Master it, then move on.", "If your child is struggling with a concept, the next book stays on it and teaches it a different way. They move on when they've mastered it."],
   ["You see everything.", "A progress report, updated continuously: what they got right, what keeps coming back, and what's next."],
 ];
 
@@ -214,8 +173,9 @@ const INCLUDED: [IconName, string, string, number][][] = [
 ];
 
 export function Included() {
-  const col = (items: [IconName, string, string, number][]) => (
+  const col = (items: [IconName, string, string, number][], first?: ReactNode) => (
     <div className="col">
+      {first}
       {items.map(([icon, title, text, delay]) => (
         <IncludedCard key={title} icon={icon} title={title} className="rise" style={d(delay)}>
           {text}
@@ -230,7 +190,8 @@ export function Included() {
         <SectionHeader eyebrow="What you get each month" title="Everything your child needs. Nothing they don't." titleId="incT" />
       </Rise>
       <div className="inc">
-        {col(INCLUDED[0])}
+        {/* Phones hide the Why section (D-072), so its screen-time point moves here. */}
+        {col(INCLUDED[0], <IncludedCard icon="pencil" title={WHY[0][0]} className="rise m-only">{WHY[0][1]}</IncludedCard>)}
         <Rise>
           <div className="ph" style={{ aspectRatio: "3 / 4", borderRadius: 4 }}><Image src={emo1} alt="A boy works on a paper page at his desk" sizes="(min-width: 980px) 300px, 92vw" placeholder="blur" /></div>
         </Rise>
@@ -348,6 +309,7 @@ export function Faq() {
         <SectionHeader eyebrow="FAQ" title="Questions, answered." titleId="faqT" />
       </Rise>
       <FaqList items={FAQ} />
+      <FaqMore />
     </Section>
   );
 }

@@ -1,0 +1,5 @@
+  before tap {"btnBottom":374,"barTop":0}
+js=true w=375 {"visible":6,"total":17,"btn":44} {"focused":"Who is it for?","focusBottom":378,"barTop":0,"visible":17}
+js=true w=700 {"visible":17,"total":17,"btn":0} 
+js=false w=375 {"visible":17,"total":17,"btn":0} 
+js=false w=700 {"visible":17,"total":17,"btn":0} 

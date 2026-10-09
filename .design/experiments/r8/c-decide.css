@@ -1,0 +1,27 @@
+/* C - Decision first: cut the repeats, then reach price on the third or fourth screen. */
+@media (max-width: 699px) {
+  main#main { display: flex; flex-direction: column; }
+  main#main > #top { order: 1; }
+  main#main > #how { order: 2; }
+  main#main > #inc { order: 3; }
+  main#main > #compare { order: 4; }
+  main#main > #price { order: 5; }
+  main#main > #promise { order: 6; }
+  main#main > #faq { order: 7; }
+  main#main > .close { order: 8; }
+  main#main > #why { display: none; }   /* its four points already sit in How and Included */
+  main#main > svg { order: 0; }
+  /* How: numbered rows, no photos (same as A). */
+  #how .step { padding: 18px 18px 18px 56px; position: relative; min-height: 0; }
+  #how .step .vis { display: none; }
+  #how .step .top { position: absolute; left: 18px; top: 20px; }
+  #how .step h3 { margin: 0 0 4px; font-size: 19px; }
+  #how .step p { margin: 0; }
+  #how .steps { gap: 8px; }
+  /* Included: no photo, tighter cards. */
+  #inc .inc > .rise { display: none; }
+  #inc .card { padding: 16px 18px; }
+  /* Promise: the founders' line stays; the two cards repeat pricing. */
+  #promise .promise { display: none; }
+  #faq details:nth-of-type(n+7) { display: none; }
+}

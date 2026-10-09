@@ -88,6 +88,10 @@
 [data-look="warm"] .mark::before { background: var(--noise), var(--sun); background-blend-mode: overlay, normal; background-size: 220px, auto; height: 0.36em; bottom: 0.06em; }
 [data-look="warm"] .hero-c .kicker { margin: 0 0 -6px; max-width: 34em; font: 300 clamp(22px, 2.2vw, 30px)/1.25 var(--font-geist, var(--sans)); letter-spacing: -.01em; color: var(--ink-2); }
 [data-look="warm"] .hero-c .lead { margin: 0; max-width: 34em; }
+[data-look="warm"] .hero-c .lead .nowrap { white-space: nowrap; }
+/* Problem headline (D-070): longer than the old two-part hero line, so it runs wider and smaller, all in ink. */
+[data-look="warm"] .hero-c.hero-ink h1 { font-size: clamp(38px, 5.2vw, 72px); max-width: 21ch; }
+[data-look="warm"] .hero-c.hero-ink h1 .pre { color: var(--ink); }
 [data-look="warm"] .hero-c .meta { justify-content: flex-start; font: 400 13px/1.3 var(--mono); color: var(--ink-2); }
 @media (min-width: 980px) {
   [data-look="warm"] .hero-c .txt { grid-template-columns: minmax(0, 1fr) auto; column-gap: 40px; }
@@ -113,11 +117,6 @@
 }
 
 /* ---------- What is ---------- */
-[data-look="warm"] .what .big { font-weight: 300; letter-spacing: -0.025em; line-height: 1.3; }
-[data-look="warm"] .rows { border-top: 1px solid var(--line); }
-[data-look="warm"] .row { border-bottom: 1px solid var(--line); }
-[data-look="warm"] .row h3 { font-size: 21px; }
-[data-look="warm"] .row .ph { border-radius: 4px; }
 
 /* ---------- How it works: cards with corner squares ---------- */
 [data-look="warm"] .steps { border: 0; gap: 14px; }
@@ -264,3 +263,38 @@
 [data-look="warm"] .cover.on-dark { color: #fff; }
 
 .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+
+/* Phones (D-072): one idea per block, no repeats. Desktop and tablet (700px and up) are unchanged. */
+.faq-more { display: none; }
+@media (min-width: 700px) {
+  .m-only { display: none; }
+}
+@media (max-width: 699px) {
+  /* Hero photo: a short crop, so How it works starts sooner. */
+  [data-look="warm"] #top .stage .ph.big { aspect-ratio: 4 / 3; }
+  [data-look="warm"] #top .stage .ph.big img { height: 100%; object-fit: cover; }
+  /* Sections that repeat other sections on a phone. */
+  [data-look="warm"] #why,
+  [data-look="warm"] section.feel,
+  [data-look="warm"] #promise .promise,
+  [data-look="warm"] .close .beliefs,
+  [data-look="warm"] .close .strip { display: none; }
+  /* How it works: numbered rows, no photos. */
+  [data-look="warm"] #how .steps { gap: 8px; }
+  [data-look="warm"] #how .step { position: relative; min-height: 0; padding: 18px 18px 18px 56px; }
+  [data-look="warm"] #how .step .top { position: absolute; left: 18px; top: 20px; }
+  [data-look="warm"] #how .step .vis { display: none; }
+  [data-look="warm"] #how .step h3 { margin: 0 0 4px; font-size: 19px; }
+  [data-look="warm"] #how .step p { margin: 0; }
+  /* Included: no photo, tighter cards. */
+  [data-look="warm"] #inc .inc > .rise { display: none; }
+  [data-look="warm"] #inc .card { display: grid; grid-template-columns: 36px 1fr; column-gap: 12px; align-items: start; padding: 16px 18px; }
+  [data-look="warm"] #inc .card .ic { grid-row: span 2; margin: 0; }
+  [data-look="warm"] #inc .card h3 { margin: 4px 0 2px; }
+  [data-look="warm"] #inc .card p { grid-column: 2; margin: 0; }
+  /* FAQ: six questions, then "More questions" (only once JavaScript runs, see faq-more.tsx). */
+  [data-look="warm"] #faq.faq-cut:not(.faq-all) .faq details:nth-of-type(n+7) { display: none; }
+  [data-look="warm"] #faq.faq-cut .faq-more { display: inline-flex; min-height: 44px; margin-top: 20px; }
+  /* Keep focused items clear of the sticky assessment button. */
+  [data-look="warm"] #faq summary, [data-look="warm"] .faq-more { scroll-margin-bottom: 96px; }
+}

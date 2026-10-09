@@ -1,0 +1,28 @@
+<!doctype html><html><head><meta charset="utf-8"><style>
+body{margin:0;font-family:var(--font-sans)}
+.row{display:flex;gap:16px;overflow-x:auto;padding:4px 0 12px}
+.opt{margin:0;flex:0 0 320px;display:flex;flex-direction:column;gap:10px}
+figcaption b{font-size:15px} figcaption p{margin:4px 0;font-size:13px;color:var(--muted-foreground);line-height:1.4;min-height:54px}
+.tag{margin-left:8px;font-size:11px;padding:2px 6px;border-radius:999px;background:var(--accent-surface);color:var(--accent-surface-foreground)}
+.nums{display:flex;gap:14px;font-size:12px;font-family:var(--font-mono)} .nums em{font-style:normal;font-weight:700;font-size:15px}
+.trade{min-height:36px!important}
+.phone{border:1px solid var(--border);border-radius:calc(var(--radius) * 2);padding:8px;background:var(--card)}
+.rec .phone{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent)}
+.scroll{height:620px;overflow-y:auto;border-radius:var(--radius);background:#fff}
+.pg{position:relative} .pg img{display:block;width:320px}
+.price{position:absolute;left:0;right:0;border-top:2px dashed #e5484d} .price span{position:absolute;right:4px;top:-20px;font:600 11px var(--font-mono);background:#e5484d;color:#fff;padding:2px 6px;border-radius:4px}
+.note{font-size:12px;color:var(--muted-foreground);margin:4px 0 0}
+</style></head><body><div class="row"><figure class="opt">
+<figcaption><b>Now</b><p>Current phone page</p>
+<div class="nums"><span><em>17.7</em> screens</span><span>price on screen <em>12.9</em></span></div><p class="trade">Baseline for comparison.</p></figcaption>
+<div class="phone"><div class="scroll"><div class="pg"><img src="/Users/savargupta/Github/pagewise-landing-page/.claude/worktrees/mobile-layout/.design/experiments/r8/baseline/full.jpg" alt="Now full phone page"><i class="price" style="top:8904px"><span>Pricing</span></i></div></div></div></figure><figure class="opt">
+<figcaption><b>A · Tighten in place</b><p>Same order. Steps as rows without photos, Why cards fit their text, Included without its photo.</p>
+<div class="nums"><span><em>11.8</em> screens</span><span>price on screen <em>8.5</em></span></div><p class="trade">Lowest risk. Still long.</p></figcaption>
+<div class="phone"><div class="scroll"><div class="pg"><img src="/Users/savargupta/Github/pagewise-landing-page/.claude/worktrees/mobile-layout/.design/experiments/r8/a-tighten/full.jpg" alt="A · Tighten in place full phone page"><i class="price" style="top:5899px"><span>Pricing</span></i></div></div></div></figure><figure class="opt">
+<figcaption><b>B · Swipe decks</b><p>Same order. How, Why, Included and Compare become swipe rows with the next card peeking.</p>
+<div class="nums"><span><em>8.8</em> screens</span><span>price on screen <em>5.5</em></span></div><p class="trade">Shortest. Most cards sit behind a swipe.</p></figcaption>
+<div class="phone"><div class="scroll"><div class="pg"><img src="/Users/savargupta/Github/pagewise-landing-page/.claude/worktrees/mobile-layout/.design/experiments/r8/b-swipe/full.jpg" alt="B · Swipe decks full phone page"><i class="price" style="top:3801px"><span>Pricing</span></i></div></div></div></figure><figure class="opt rec">
+<figcaption><b>C · Decision first</b><span class="tag">Recommended</span><p>Cut what repeats (Why section, promise cards). Order: How → Included → Compare → Pricing.</p>
+<div class="nums"><span><em>9.9</em> screens</span><span>price on screen <em>6.1</em></span></div><p class="trade">Everything visible, no swiping. Phone order differs from desktop.</p></figcaption>
+<div class="phone"><div class="scroll"><div class="pg"><img src="/Users/savargupta/Github/pagewise-landing-page/.claude/worktrees/mobile-layout/.design/experiments/r8/c-decide/full.jpg" alt="C · Decision first full phone page"><i class="price" style="top:4252px"><span>Pricing</span></i></div></div></div></figure></div>
+<p class="note">Real page at 390×844, phone CSS only (below 700px). Same copy in every option. All three also shorten the hero photo, hide the drifting-photo banner, keep only the claim and buttons in the closing, and show 6 FAQ questions. Scroll inside each phone; the red line marks where Pricing starts.</p></body></html>

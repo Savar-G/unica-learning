@@ -89,12 +89,13 @@ const ICONS = {
   lock: <svg viewBox="0 0 24 24"><rect x="5" y="11" width="14" height="10" rx="2" /><path d="M8 11V8a4 4 0 0 1 8 0v3" /></svg>,
   calendar: <svg viewBox="0 0 24 24"><rect x="4" y="5" width="16" height="16" rx="2" /><path d="M4 10h16M9 3v4M15 3v4" /><path d="M10 14v4M14 14v4" /></svg>,
   undo: <svg viewBox="0 0 24 24"><path d="M9 14L4 9l5-5" /><path d="M4 9h10a6 6 0 0 1 0 12h-3" /></svg>,
+  pencil: <svg viewBox="0 0 24 24"><path d="M4 20l1-4L16 5l3 3L8 19z" /><path d="M14 7l3 3" /></svg>,
 } as const;
 
 export type IconName = keyof typeof ICONS;
 
 export interface IncludedCardProps {
-  /** test, book, box, cam, chart or layers. */
+  /** A key of ICONS: test, book, box, cam, chart, layers, shield, lock, calendar, undo or pencil. */
   icon: IconName;
   title: string;
   children?: ReactNode;

@@ -1,0 +1,16 @@
+width 700: A 414 elements, B 414 elements, 1 differ
+#291
+  A SECTION.sec 0,9951,700x1410 block rgb(12, 12, 14) 17px
+  B SECTION.sec.faq-cut 0,9951,700x1410 block rgb(12, 12, 14) 17px
+width 1024: A 414 elements, B 414 elements, 1 differ
+#291
+  A SECTION.sec 0,7849,1024x1482 block rgb(12, 12, 14) 17px
+  B SECTION.sec.faq-cut 0,7849,1024x1482 block rgb(12, 12, 14) 17px
+width 1440: A 414 elements, B 414 elements, 1 differ
+#291
+  A SECTION.sec 0,7820,1440x1571 block rgb(12, 12, 14) 17px
+  B SECTION.sec.faq-cut 0,7820,1440x1571 block rgb(12, 12, 14) 17px
+width 1920: A 414 elements, B 414 elements, 1 differ
+#291
+  A SECTION.sec 0,7825,1920x1571 block rgb(12, 12, 14) 17px
+  B SECTION.sec.faq-cut 0,7825,1920x1571 block rgb(12, 12, 14) 17px

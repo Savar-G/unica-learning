@@ -9,8 +9,8 @@ export const PLANS = {
 export type PlanId = keyof typeof PLANS;
 
 export const HERO = {
-  kicker: "Math and reading workbooks, ages 6-12",
-  title: "Your child isn't",
-  highlight: "a grade level.",
-  lead: "Kids in the same grade are at different levels, move at different speeds, and learn in different ways. So every Unica workbook is made for one child: built around their level, pace, and learning style, then printed and mailed home.",
+  kicker: "Personalized math and reading workbooks for ages 6-12, mailed home.",
+  title: "Schools and tutoring programs put every child in",
+  highlight: "the same box.",
+  // The lead is JSX in sections.tsx: it carries the rotating topic word.
 };
