@@ -102,9 +102,10 @@ export function What() {
       <div className="what">
         <Rise>
           <Eyebrow>What is {BRAND}?</Eyebrow>
-          <h2 id="whatT" style={{ marginTop: 16 }}>A workbook that knows your child.</h2>
+          <h2 id="whatT" style={{ marginTop: 16 }}>School moves at one pace. Your child doesn&apos;t.</h2>
         </Rise>
         <Rise d={0.1}>
+          <p className="big gap">Miss one foundation, and everything built on it gets harder.</p>
           <p className="big">
             A workbook for <SwapWord
               words={[
