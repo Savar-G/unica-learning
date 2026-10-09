@@ -1,4 +1,4 @@
-import { Hero, Button, photos } from "ai-workbooks-landing-page";
+import { Hero, Button, photos } from "unica-learning-landing-page";
 
 export const LandingHero = () => (
   <Hero

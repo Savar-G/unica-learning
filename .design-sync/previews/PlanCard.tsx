@@ -1,4 +1,4 @@
-import { PlanCard } from "ai-workbooks-landing-page";
+import { PlanCard } from "unica-learning-landing-page";
 
 export const Standard = () => (
   <div style={{ width: 460 }}>

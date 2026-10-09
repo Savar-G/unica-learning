@@ -1,4 +1,4 @@
-import { PhoneScan } from "ai-workbooks-landing-page";
+import { PhoneScan } from "unica-learning-landing-page";
 
 export const Scanned = () => (
   <div style={{ width: 360, height: 220, borderRadius: 4, overflow: "hidden" }}><PhoneScan /></div>

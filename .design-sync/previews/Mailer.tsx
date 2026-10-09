@@ -1,4 +1,4 @@
-import { Mailer } from "ai-workbooks-landing-page";
+import { Mailer } from "unica-learning-landing-page";
 
 export const ArrivingBook = () => (
   <div style={{ width: 360, height: 220, borderRadius: 4, overflow: "hidden" }}><Mailer /></div>

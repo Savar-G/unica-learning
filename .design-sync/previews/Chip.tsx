@@ -1,4 +1,4 @@
-import { Chip } from "ai-workbooks-landing-page";
+import { Chip } from "unica-learning-landing-page";
 
 export const Tones = () => (
   <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>

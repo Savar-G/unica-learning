@@ -1,4 +1,4 @@
-import { Section, SectionHeader } from "ai-workbooks-landing-page";
+import { Section, SectionHeader } from "unica-learning-landing-page";
 
 export const StandardSection = () => (
   <Section id="faq">

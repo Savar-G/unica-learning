@@ -1,4 +1,4 @@
-import { FeatureGrid, FeatureCard } from "ai-workbooks-landing-page";
+import { FeatureGrid, FeatureCard } from "unica-learning-landing-page";
 
 export const RealPaper = () => (
   <FeatureGrid>

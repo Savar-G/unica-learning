@@ -1,4 +1,4 @@
-import { FounderGrid, FounderCard } from "ai-workbooks-landing-page";
+import { FounderGrid, FounderCard } from "unica-learning-landing-page";
 
 export const TwoFounders = () => (
   <div style={{ maxWidth: 560 }}>

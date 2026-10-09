@@ -1,4 +1,4 @@
-import { BeliefList, GradientPanel } from "ai-workbooks-landing-page";
+import { BeliefList, GradientPanel } from "unica-learning-landing-page";
 
 export const ClosingBeliefs = () => (
   <GradientPanel>
