@@ -1,4 +1,4 @@
-import { Button } from "ai-workbooks-landing-page";
+import { Button } from "unica-learning-landing-page";
 
 export const Primary = () => <Button>Get started</Button>;
 export const Ghost = () => <Button variant="ghost">See how it works</Button>;

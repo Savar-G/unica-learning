@@ -1,3 +1,3 @@
-import { Nav } from "ai-workbooks-landing-page";
+import { Nav } from "unica-learning-landing-page";
 
 export const TopBar = () => <Nav />;

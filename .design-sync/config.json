@@ -1,7 +1,7 @@
 {
   "projectId": "47e65738-45ae-4bfa-adc3-c589eadb050a",
   "shape": "package",
-  "pkg": "ai-workbooks-landing-page",
+  "pkg": "unica-learning-landing-page",
   "globalName": "Pagewise",
   "buildCmd": "npm run build:ds",
   "cssEntry": "dist/ds/pagewise.css",

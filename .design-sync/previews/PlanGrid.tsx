@@ -1,4 +1,4 @@
-import { PlanGrid, PlanCard } from "ai-workbooks-landing-page";
+import { PlanGrid, PlanCard } from "unica-learning-landing-page";
 
 export const TwoPlans = () => (
   <PlanGrid>

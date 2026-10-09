@@ -1,4 +1,4 @@
-import { StepGrid, StepCard, Mailer, PhoneScan, WorkbookPage, photos } from "ai-workbooks-landing-page";
+import { StepGrid, StepCard, Mailer, PhoneScan, WorkbookPage, photos } from "unica-learning-landing-page";
 
 export const SixSteps = () => (
   <StepGrid>

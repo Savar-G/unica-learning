@@ -1,4 +1,4 @@
-import { Faq } from "ai-workbooks-landing-page";
+import { Faq } from "unica-learning-landing-page";
 
 const items = [
   { question: "Is there any screen time?", answer: "Your child works on paper. The only screen is your phone camera, for the few seconds it takes to snap the finished pages." },

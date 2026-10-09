@@ -1,4 +1,4 @@
-# DESIGN.md - ai-workbooks-landing-page
+# DESIGN.md - unica-learning-landing-page
 
 > Status: v3. Page story and look approved by Savar 2026-10-04 (no objection); hero copy decided (D-024); hero layout C chosen (D-029); option A parked as a draft (D-030). Built from Savar's FigJam board "Personalized Learning, Delivered" (2026-10-03). v3 copy and sections come from Cedric's notes on the "Landing Page V3" section of the same board, with Savar's answers (2026-10-08, D-056 to D-061).
 > Last updated: 2026-10-08 (v3)

@@ -1,4 +1,4 @@
-import { WorkbookPage } from "ai-workbooks-landing-page";
+import { WorkbookPage } from "unica-learning-landing-page";
 
 export const MarkedFractions = () => (
   <div style={{ width: 280 }}><WorkbookPage /></div>

@@ -1,4 +1,4 @@
-import { PagewiseRoot, SectionHeader, Button } from "ai-workbooks-landing-page";
+import { PagewiseRoot, SectionHeader, Button } from "unica-learning-landing-page";
 
 export const ThemedPage = () => (
   <PagewiseRoot style={{ padding: 32 }}>

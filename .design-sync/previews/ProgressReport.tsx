@@ -1,4 +1,4 @@
-import { ProgressReport } from "ai-workbooks-landing-page";
+import { ProgressReport } from "unica-learning-landing-page";
 
 export const Fractions = () => <div style={{ width: 330 }}><ProgressReport /></div>;
 export const Reading = () => (

@@ -1,4 +1,4 @@
-import { IncludedCard } from "ai-workbooks-landing-page";
+import { IncludedCard } from "unica-learning-landing-page";
 
 export const Assessment = () => (
   <div style={{ width: 420 }}><IncludedCard icon="test" title="Placement assessment">A short online assessment finds your child's level, strengths and gaps.</IncludedCard></div>

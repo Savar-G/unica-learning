@@ -1,4 +1,4 @@
-import { SwapWord } from "ai-workbooks-landing-page";
+import { SwapWord } from "unica-learning-landing-page";
 
 export const InSentence = () => (
   <p style={{ fontSize: 34, fontWeight: 300, letterSpacing: "-0.025em", lineHeight: 1.3, margin: 0, maxWidth: 560 }}>
