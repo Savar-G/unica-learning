@@ -293,6 +293,8 @@ export interface NavLink {
 
 export interface NavProps {
   brand?: string;
+  /** Where the wordmark links. "#top" on the home page; "/" on other pages. */
+  home?: string;
   links?: NavLink[];
   ctaLabel?: string;
   onCta?: () => void;
@@ -303,6 +305,7 @@ export interface NavProps {
 /** Sticky top bar: wordmark, section links (desktop) and a small primary button. */
 export function Nav({
   brand = "Unica Learning",
+  home = "#top",
   links = [
     { label: "How it works", href: "#how" },
     { label: "What's included", href: "#inc" },
@@ -316,7 +319,7 @@ export function Nav({
   return (
     <nav className="nav" aria-label="Main">
       <div className="in">
-        <Logo brand={brand} />
+        <Logo brand={brand} href={home} />
         <ul>
           {links.map((l) => (
             <li key={l.href}>
