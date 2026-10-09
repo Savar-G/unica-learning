@@ -1,4 +1,4 @@
-// Pagewise design system: cards, lists and page-level blocks.
+// Unica Learning design system: cards, lists and page-level blocks.
 import type * as React from "react";
 import type { CSSProperties, ReactNode } from "react";
 import { Button, Logo, type Tone, type Vars } from "./basics";
@@ -51,7 +51,7 @@ export interface FeatureGridProps {
   children?: ReactNode;
 }
 
-/** Four-up grid for FeatureCards ("Why choose Pagewise?"). */
+/** Four-up grid for FeatureCards ("Why choose Unica Learning?"). */
 export function FeatureGrid({ children }: FeatureGridProps) {
   return <div className="why">{children}</div>;
 }

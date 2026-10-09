@@ -1,19 +1,19 @@
-# Pagewise design system: how to build with it
+# Unica Learning design system: how to build with it
 
-Pagewise sells personalized paper math and reading workbooks for ages 6-12, mailed home. The look is "warm": white page, light Geist headlines, Geist Mono labels, grainy colour fields in sunflower, peach, sky and mint, soft grey cards, 6 px controls.
+Unica Learning sells personalized paper math and reading workbooks for ages 6-12, mailed home. The look is "warm": white page, light Geist headlines, Geist Mono labels, grainy colour fields in sunflower, peach, sky and mint, soft grey cards, 6 px controls.
 
 ## Setup
 
-Wrap every screen in `<PagewiseRoot>`. It sets `data-look="warm"` and every token below; without it, components render in browser defaults.
+Wrap every screen in `<UnicaRoot>`. It sets `data-look="warm"` and every token below; without it, components render in browser defaults.
 
 ```jsx
-const { PagewiseRoot, Nav, Hero, Button, photos } = window.Pagewise;
+const { UnicaRoot, Nav, Hero, Button, photos } = window.UnicaLearning;
 
-<PagewiseRoot>
+<UnicaRoot>
   <Nav />
   <Hero imageSrc={photos.heroHome1} imageAlt="A boy writes in his workbook at home"
     actions={<><Button>Get started</Button><Button variant="ghost" arrow={false} href="#how">See how it works</Button></>} />
-</PagewiseRoot>
+</UnicaRoot>
 ```
 
 ## Styling idiom

@@ -1,4 +1,4 @@
-# Design sync notes (Pagewise)
+# Design sync notes (Unica Learning)
 
 ## How this repo syncs
 - The design system lives in `src/ds/` (components) and `src/ds/styles/` (base.css + warm.css). The live site imports the same files, so the site and Claude Design never drift.
@@ -21,5 +21,5 @@
 ## Re-sync risks
 - `src/ds/photos.ts` points at content-hashed image URLs on the production site (`/_next/static/immutable/media/...`). They change if a photo file changes or the deploy is removed; re-run the URL harvest (curl the live HTML, grep `immutable/media`) and update the file.
 - Preview sizes (`cardMode`/viewport) were tuned for the 2026-10-05 layout; a big layout change may need new viewports.
-- The brand name "Pagewise" is a placeholder (DESIGN.md D1). Renaming touches `PagewiseRoot`, `Logo`/`WorkbookCover` defaults, `globalName`, and conventions.md.
+- The brand is "Unica Learning" (D-056). A future rename touches `UnicaRoot`, `Logo`/`WorkbookCover` defaults, `globalName`, and conventions.md.
 - `base.css` still carries the retired Primer look's rules (serif, hairline grid). They are inert under `data-look="warm"` but ship in `_ds_bundle.css`.

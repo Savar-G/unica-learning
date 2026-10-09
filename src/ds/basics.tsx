@@ -1,6 +1,6 @@
 "use client";
 
-// Pagewise design system: basic building blocks. Every component renders the classes
+// Unica Learning design system: basic building blocks. Every component renders the classes
 // the live site uses; styles live in ./styles/base.css + ./styles/warm.css.
 import type * as React from "react";
 import { useEffect, useState, type AnchorHTMLAttributes, type ButtonHTMLAttributes, type CSSProperties, type ReactNode } from "react";
@@ -8,19 +8,19 @@ import { useEffect, useState, type AnchorHTMLAttributes, type ButtonHTMLAttribut
 export type Tone = "sun" | "sky" | "tang" | "leaf";
 export type Vars = CSSProperties & Record<`--${string}`, string | number>;
 
-export interface PagewiseRootProps {
-  /** Page content. Every Pagewise component must render inside this root. */
+export interface UnicaRootProps {
+  /** Page content. Every Unica Learning component must render inside this root. */
   children?: ReactNode;
   className?: string;
   style?: React.CSSProperties;
 }
 
 /**
- * The Pagewise theme root (warm look). Sets the colour, type and grain tokens
+ * The Unica Learning theme root (warm look). Sets the colour, type and grain tokens
  * (`--ink`, `--sun`, `--g1`..`--g4`, `--noise`, `--sans`, `--mono`) that every component reads.
  * Without it, components fall back to unstyled defaults.
  */
-export function PagewiseRoot({ children, className = "", style }: PagewiseRootProps) {
+export function UnicaRoot({ children, className = "", style }: UnicaRootProps) {
   return (
     <div className={`look-root ${className}`.trim()} data-look="warm" style={style}>
       {children}
@@ -29,7 +29,7 @@ export function PagewiseRoot({ children, className = "", style }: PagewiseRootPr
 }
 
 export interface LogoProps {
-  /** Brand name; "Pagewise" is the current placeholder. */
+  /** Brand name shown in the wordmark. */
   brand?: string;
   href?: string;
 }

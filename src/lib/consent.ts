@@ -6,21 +6,21 @@
 // If the browser blocks storage, the choice lives in memory until the page reloads.
 //
 // Events (all on window):
-// - "pagewise:consent" fires in this tab after every change.
+// - "unica:consent" fires in this tab after every change.
 // - "storage" fires in the other tabs when the key changes (or when storage is cleared).
-// - "pagewise:consent-open" asks the banner to open (see openConsentSettings).
+// - "unica:consent-open" asks the banner to open (see openConsentSettings).
 
 export type ConsentChoice = "granted" | "denied";
 export type ConsentState = ConsentChoice | "unset";
 
-export const CONSENT_KEY = "pagewise.consent.v1";
-export const CONSENT_CHANGE_EVENT = "pagewise:consent";
-export const CONSENT_OPEN_EVENT = "pagewise:consent-open";
+export const CONSENT_KEY = "unica.consent.v1";
+export const CONSENT_CHANGE_EVENT = "unica:consent";
+export const CONSENT_OPEN_EVENT = "unica:consent-open";
 
 // Held on globalThis so a second copy of this module (bundler chunking) shares one fallback.
 type Fallback = { memory: ConsentChoice | null; persisted: boolean };
-const holder = globalThis as typeof globalThis & { __pagewiseConsent?: Fallback };
-const fallback = (holder.__pagewiseConsent ??= { memory: null, persisted: true });
+const holder = globalThis as typeof globalThis & { __unicaConsent?: Fallback };
+const fallback = (holder.__unicaConsent ??= { memory: null, persisted: true });
 
 function parse(raw: string | null): ConsentChoice | null {
   if (!raw) return null;

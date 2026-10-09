@@ -2,18 +2,18 @@
   "projectId": "47e65738-45ae-4bfa-adc3-c589eadb050a",
   "shape": "package",
   "pkg": "unica-learning-landing-page",
-  "globalName": "Pagewise",
+  "globalName": "UnicaLearning",
   "buildCmd": "npm run build:ds",
-  "cssEntry": "dist/ds/pagewise.css",
+  "cssEntry": "dist/ds/unica-learning.css",
   "extraFonts": [
     "src/ds/fonts/fonts.css"
   ],
   "provider": {
-    "component": "PagewiseRoot"
+    "component": "UnicaRoot"
   },
   "srcDir": "src/ds",
   "docsMap": {
-    "PagewiseRoot": ".design-sync/groups/Foundations.md",
+    "UnicaRoot": ".design-sync/groups/Foundations.md",
     "Logo": ".design-sync/groups/Foundations.md",
     "Section": ".design-sync/groups/Foundations.md",
     "SectionHeader": ".design-sync/groups/Foundations.md",
@@ -75,7 +75,7 @@
     "SectionHeader": {
       "cardMode": "column"
     },
-    "PagewiseRoot": {
+    "UnicaRoot": {
       "cardMode": "column"
     },
     "BeliefList": {

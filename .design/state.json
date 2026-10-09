@@ -27,12 +27,12 @@
       ".design/experiments/drafts/a-lineup-2026-10-04/"
     ],
     "deploy": {
-      "repo": "https://github.com/Savar-G/pagewise-landing-page",
-      "vercel_project": "ai-workbooks-landing-page",
+      "repo": "https://github.com/Savar-G/unica-learning-landing-page",
+      "vercel_project": "unica-learning-landing-page",
       "preview": "https://ai-workbooks-landing-p-git-4b890c-savargupta1922-1024s-projects.vercel.app",
       "protected": true,
       "production": "Vercel Git integration deploys main",
-      "pull_request": "https://github.com/Savar-G/pagewise-landing-page/pull/16"
+      "pull_request": "https://github.com/Savar-G/unica-learning-landing-page/pull/16"
     }
   },
   "open_decisions": [
@@ -76,7 +76,7 @@
     "merge_owner": "user",
     "hosted_verification": "Checklist HTTP verified at dbf18d2; current home and policy text HTTP verified at 0f455bf; live Stripe and PostHog unverified",
     "support_email": "savar.gupta1922@gmail.com",
-    "legal_business_name": "Pagewise Learning",
+    "legal_business_name": "Unica Learning",
     "guarantee_start": "day of the first payment"
   }
 }
