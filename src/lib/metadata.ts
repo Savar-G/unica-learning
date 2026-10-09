@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { BRAND, HERO } from "@/lib/site";
 
-const PRODUCTION_URL = "https://pagewiselearning.vercel.app";
+const PRODUCTION_URL = "https://unicalearning.com";
 
 // Public origin. Set NEXT_PUBLIC_SITE_URL on the launch deploy; local dev uses localhost.
 export const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? (process.env.NODE_ENV === "development" ? "http://localhost:3000" : PRODUCTION_URL);
