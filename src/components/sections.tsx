@@ -204,14 +204,13 @@ export function Why() {
 
 const INCLUDED: [IconName, string, string, number][][] = [
   [
-    ["test", "Free placement assessment", "A short assessment on paper finds your child's level, strengths and gaps.", 0],
-    ["book", "Personalized workbooks", "Math, reading or both, made for your child and no one else.", 0.08],
-    ["box", "Delivery included", "Your next book arrives before the current one runs out.", 0.16],
+    ["book", "Workbooks", "1 workbook per subject, about 20-25 pages.", 0],
+    ["calendar", "Daily practice", "15-20 minutes a day, 5 days a week.", 0.08],
+    ["box", "Delivery", "Delivered to your door before the current book ends.", 0.16],
   ],
   [
-    ["cam", "Photo check-ins", "Snap the finished pages with your phone. That's it.", 0.04],
-    ["chart", "Progress reports", "Updated continuously: what they got right, what keeps coming back, what's next.", 0.12],
-    ["layers", "A record of their progress", "Every book builds on every book before it. Nothing is forgotten.", 0.2],
+    ["cam", "Photo check-ins", "A quick photo check-in partway through each book (about 30 seconds).", 0.04],
+    ["chart", "Progress reports", "A progress report and worked solutions after every check-in.", 0.12],
   ],
 ];
 
@@ -229,7 +228,7 @@ export function Included() {
     <Section id="inc" aria-labelledby="incT">
       <Knot />
       <Rise>
-        <SectionHeader eyebrow="What's included" title="Everything your child needs. Nothing they don't." titleId="incT" />
+        <SectionHeader eyebrow="What you get each month" title="Everything your child needs. Nothing they don't." titleId="incT" />
       </Rise>
       <div className="inc">
         {col(INCLUDED[0])}
@@ -259,8 +258,8 @@ export function Feel() {
         </div>
       ))}
       <Rise className="msg">
-        <h2 id="feelT">No two kids learn the same way.</h2>
-        <p className="lead">So no two {BRAND} books are the same. Each one starts where your child is, and moves on when they&apos;re ready.</p>
+        <h2 id="feelT">A workbook made for one child: yours.</h2>
+        <p className="lead">No two {BRAND} books are the same. Each one starts where your child is, and moves on when they&apos;re ready.</p>
       </Rise>
     </Section>
   );
