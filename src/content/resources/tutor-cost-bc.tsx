@@ -8,7 +8,7 @@ export const meta: ResourceMeta = {
   slug: "tutor-cost-bc",
   title: "How much does a tutor cost in BC? Math and reading tutor rates",
   description:
-    "How much does a tutor cost in BC? Elementary math tutors in Vancouver start near $38-$40 an hour; many charge $60-$100. Rates, monthly totals, tips.",
+    "How much does a tutor cost in BC? K-7 math tutoring in Vancouver is listed from $38-$40 an hour; tutors commonly charge $60-$100. Rates and monthly totals.",
   category: "Comparing options",
   lead: "Hourly tutor rates for elementary math and reading in BC, what moves the price, and what a month of tutoring adds up to.",
   updated: "2026-10-09",
@@ -50,11 +50,12 @@ export default function Body() {
   return (
     <>
       <p>
-        <strong>How much does a tutor cost in BC?</strong> For elementary math in Vancouver, published rates start at
-        about <strong>$38-$40 an hour</strong>, and many tutors charge <strong>$60-$100 an hour</strong>. The price
-        depends on who teaches, whether the lessons are online or in person, and whether your child learns alone or in
-        a small group.<Cite n={5} /><Cite n={7} /> Below are the rates we could confirm, what changes them, and what a
-        month adds up to.
+        <strong>How much does a tutor cost in BC?</strong> One Vancouver tutoring company lists K-7 math from{" "}
+        <strong>$38-$40 an hour</strong>.<Cite n={5} /> Tutoring company blogs put math tutors in Vancouver at $30-$100
+        an hour, and say Vancouver tutors in all subjects commonly charge <strong>$60-$100 an hour</strong>.
+        <Cite n={6} /><Cite n={7} /> The price depends on who teaches, whether the lessons are online or in person, and
+        whether your child learns alone or in a small group. Below are the rates we could confirm, what changes them,
+        and what a month adds up to.
       </p>
 
       <KeyFacts
@@ -147,7 +148,7 @@ export default function Body() {
           the full table in <Link href="/resources/kumon-cost-bc">how much is Kumon per month in BC</Link>.
         </p>
         <p>
-          Mathnasium does not print a price on its BC centre pages. The North Vancouver centre says it charges a flat
+          The Mathnasium North Vancouver centre page does not print a price. It says the centre charges a flat
           monthly membership and a one-time enrolment fee, and that most students attend two to three times a
           week.<Cite n={4} /> Ask the centre for its total.
         </p>

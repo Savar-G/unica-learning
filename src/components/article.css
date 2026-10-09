@@ -63,10 +63,24 @@
 
 /* ---------- table ---------- */
 .res-table { margin: 1.6em 0; }
-.res-table-scroll { overflow-x: auto; border: 1px solid var(--line); border-radius: 6px; -webkit-overflow-scrolling: touch; }
-.res-table table { width: 100%; min-width: 520px; border-collapse: collapse; font-size: 15.5px; line-height: 1.45; }
+/* Edge shadows show that a wide table scrolls sideways: the white covers scroll with the content
+   (attachment: local) and hide each shadow once that end is reached. */
+.res-table-scroll {
+  overflow-x: auto; border: 1px solid var(--line); border-radius: 6px; -webkit-overflow-scrolling: touch;
+  background:
+    linear-gradient(to right, #fff 30%, rgb(255 255 255 / 0)) left center / 36px 100% no-repeat local,
+    linear-gradient(to left, #fff 30%, rgb(255 255 255 / 0)) right center / 36px 100% no-repeat local,
+    radial-gradient(farthest-side at 0 50%, rgb(12 12 14 / 0.18), transparent) left center / 14px 100% no-repeat scroll,
+    radial-gradient(farthest-side at 100% 50%, rgb(12 12 14 / 0.18), transparent) right center / 14px 100% no-repeat scroll;
+}
+/* Tables of up to 3 columns fit a phone. Wider ones keep a minimum width, scroll, and pin the row header. */
+.res-table table { width: 100%; border-collapse: separate; border-spacing: 0; font-size: 15.5px; line-height: 1.45; }
+.res-table table:has(thead th:nth-child(4)) { min-width: 600px; }
+.res-table table:has(thead th:nth-child(4)) :is(tbody th, thead th:first-child) { position: sticky; left: 0; z-index: 1; box-shadow: inset -1px 0 var(--line); }
+.res-table table:has(thead th:nth-child(4)) tbody th { background: #fff; }
 .res-table-title { margin: 0 0 10px !important; font: 400 12.5px/1.4 var(--mono); color: var(--ink); }
 .res-table th, .res-table td { padding: 11px 16px; text-align: left; vertical-align: top; }
+@media (max-width: 699px) { .res-table th, .res-table td { padding: 10px 11px; } .res-table table { font-size: 15px; } }
 .res-table tbody > tr > * { border-top: 1px solid var(--line); }
 .res-table thead th { background: var(--card); font-weight: 500; }
 .res-table tbody th { font-weight: 500; }
