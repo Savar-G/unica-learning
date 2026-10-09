@@ -14,7 +14,7 @@ export default function Privacy() {
     <p className="lead">{BUSINESS_NAME} is responsible for the information you share through this website. This policy explains what we collect, why we use it, and the choices you have.</p>
     <h2>What you share with us</h2>
     <p>When you request an assessment or join the waitlist, we ask for your name, email address, Canadian postal code, chosen plan and subject, your child&apos;s grade, and their school curriculum. The form does not ask for your child&apos;s name, date of birth, or photos of their work.</p>
-    <p>We also keep information about how you found us, such as a link or advertisement, and which button you used to open the form.</p>
+    <p>We also keep information about how you found us, such as a link or advertisement, and which button you used to open the form. After you book, we ask how you heard about us. Your answer is optional and is kept with your booking.</p>
     <h2>How we use your information</h2>
     <p>We use your details to manage your assessment request or waitlist entry and email you about the next step. We share the details needed by the companies that help us run the website, send emails, and handle payments.</p>
     <p>If you send us photos of completed pages, we use them to plan your child&apos;s next book and show their progress. You can ask us to delete them.</p>

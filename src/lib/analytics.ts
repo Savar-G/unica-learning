@@ -26,7 +26,7 @@ export interface Deps {
 }
 
 // Only anonymous offer and flow fields reach analytics. Name, email, postal code and child grade never do.
-const PROP_KEYS = new Set(["src", "plan", "subject", "curriculum", "price", "status", "code", "card"]);
+const PROP_KEYS = new Set(["src", "plan", "subject", "curriculum", "price", "status", "code", "card", "channel"]);
 
 export function sanitizeProps(props: Props = {}): Props {
   const out: Props = {};

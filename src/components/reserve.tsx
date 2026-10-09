@@ -11,6 +11,7 @@ import { PLANS, type PlanId } from "@/lib/site";
 import { CURRICULA, EMAIL, OPEN_CURRICULA, POSTAL, curriculumFromPostal, statusFor, type CurriculumId, type SignupResult } from "@/lib/signup";
 import { track } from "@/lib/track";
 import { keepReceipt } from "@/lib/receipt";
+import { keepHeardRef } from "@/lib/heard";
 import { SUPPORT_EMAIL, SUPPORT_HREF } from "@/lib/contact";
 
 // Completed requests use /thank-you; cancelled card setup and save failures stay in the dialog.
@@ -164,6 +165,8 @@ export function Reserve() {
       setStep("err");
       return;
     }
+    // /thank-you asks "how did you hear about us?" and sends the answer with this ref.
+    if (res.ref) keepHeardRef(res.ref);
     if (res.status === "waitlist") {
       setBusy(false);
       saving.current = false;

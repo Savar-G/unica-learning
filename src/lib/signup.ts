@@ -53,6 +53,8 @@ export interface SignupPayload {
 export interface SignupResult {
   ok: boolean;
   status?: SignupStatus;
+  /** The row's ref. /thank-you sends it with the "how did you hear about us?" answer. */
+  ref?: string;
   cardUrl?: string;
   error?: string;
 }

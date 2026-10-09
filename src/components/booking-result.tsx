@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useEffect, useRef, useSyncExternalStore } from "react";
 import { readReceipt } from "@/lib/receipt";
+import { Heard } from "@/components/heard";
 import { track } from "@/lib/track";
 import { BRAND } from "@/lib/site";
 import { SUPPORT_EMAIL, SUPPORT_HREF } from "@/lib/contact";
@@ -42,6 +43,7 @@ export function BookingResult({ card, confirmationRef }: { card: "saved" | "unco
         : `Thanks for visiting ${BRAND}. To request your child's free assessment, return to our home page.`}
     </p>
     {card === "unconfirmed" && <p>Email <a href={SUPPORT_HREF}>{SUPPORT_EMAIL}</a> for help.</p>}
+    {card !== "unconfirmed" && <Heard />}
     <Link className="btn" href="/">Back to home <span aria-hidden="true">→</span></Link>
   </>;
 }
