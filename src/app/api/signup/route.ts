@@ -22,8 +22,8 @@ export async function POST(request: Request) {
   const curriculum = typeof body.curriculum === "string" && Object.hasOwn(CURRICULA, body.curriculum) ? (body.curriculum as CurriculumId) : null;
   // The curriculum decides the path: open curricula add a card on Stripe, the rest join the waitlist.
   const status = curriculum ? statusFor(curriculum) : "waitlist";
-  // Saved on the Stripe customer and passed as client_reference_id, so each card matches this row.
-  const ref = status === "reserved" ? crypto.randomUUID() : null;
+  // Matches this row to its Stripe card (customer metadata, client_reference_id) and to the "how did you hear" answer.
+  const ref = crypto.randomUUID();
   const row = {
     status,
     ref,
@@ -62,7 +62,7 @@ export async function POST(request: Request) {
   let cardUrl: string | null = null;
   let stripeState: "sent" | "off" | "failed" = "off";
   const s = stripe();
-  if (ref && s) {
+  if (status === "reserved" && s) {
     try {
       cardUrl = await cardSetupUrl(s, { ...row, ref, plan, curriculum: row.curriculum, origin: new URL(request.url).origin });
       stripeState = cardUrl ? "sent" : "failed";
@@ -72,13 +72,13 @@ export async function POST(request: Request) {
     }
   }
   after(() => notify(row, stripeState));
-  return Response.json({ ok: true, status, ...(cardUrl && { cardUrl }) } satisfies SignupResult);
+  return Response.json({ ok: true, status, ref, ...(cardUrl && { cardUrl }) } satisfies SignupResult);
 }
 
 // Email Savar about each new signup. Resend's free plan only delivers to the account's own address,
 // which is all an alert needs.
 async function notify(
-  row: { status: string; ref: string | null; name: string; email: string; postal: string; subject: string; grade: number; curriculum: CurriculumId | null; price: number; source: Record<string, string> },
+  row: { status: string; ref: string; name: string; email: string; postal: string; subject: string; grade: number; curriculum: CurriculumId | null; price: number; source: Record<string, string> },
   stripeState: "sent" | "off" | "failed",
 ) {
   const key = process.env.RESEND_API_KEY;
@@ -97,7 +97,7 @@ async function notify(
     `Child grade: ${row.grade}`,
     `Postal code: ${row.postal}`,
     `Curriculum: ${curriculum}`,
-    ...(row.ref ? [`Stripe ref (customer metadata and client_reference_id): ${row.ref}`] : []),
+    `Ref (Stripe client_reference_id; signup_heard.ref): ${row.ref}`,
     `Source: ${Object.entries(row.source).map(([k, v]) => `${k}=${v}`).join(", ") || "direct"}`,
   ];
   try {
