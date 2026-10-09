@@ -178,7 +178,7 @@ export function How() {
 }
 
 const WHY: [string, string][] = [
-  ["Real paper. Real pencil.", "Your child learns away from screens. The only screen is your phone camera, for a few seconds."],
+  ["Real paper. Real pencil.", "Your child learns away from screens. The app is for you, not them."],
   ["Made for one child.", "Every page targets what your child is ready for next, not what the rest of the class is on."],
   ["It never forgets.", "A skill your child missed comes back in new forms until they master it."],
   ["You see everything.", "A progress report, updated continuously: what they got right, what keeps coming back, and what's next."],
@@ -209,8 +209,9 @@ const INCLUDED: [IconName, string, string, number][][] = [
     ["box", "Delivery", "Delivered to your door before the current book ends.", 0.16],
   ],
   [
-    ["cam", "Photo check-ins", "A quick photo check-in partway through each book (about 30 seconds).", 0.04],
-    ["chart", "Progress reports", "A progress report and worked solutions after every check-in.", 0.12],
+    ["cam", "Stuck? Scan it.", "When your child is stuck, scan the problem with our app. You see every step, explained, so you can walk them through it.", 0.04],
+    ["test", "Instant answer check", "Scan a finished page and see what's right in seconds. No answer key needed. Each scan also helps us plan the next book.", 0.12],
+    ["chart", "Progress reports", "A progress report and worked solutions in the app, updated after every scan.", 0.2],
   ],
 ];
 
@@ -335,7 +336,7 @@ const FAQ = [
   ["What if it is not right for my child?", "Every plan has a 30-day money-back guarantee. If it is not working for your child within 30 days of your first payment, we refund your payment in full."],
   ["How is this different from Kumon?", `Kumon moves every child through a set sequence of worksheets, and Metro Vancouver centres charge about $185-$260 per subject a month. ${BRAND} starts at your child's level, builds every book from how they did, and costs less: from CAD ${PLANS.one.price} a month.`],
   ["What if my child is struggling a lot?", "The next book focuses on the gap with extra practice, and you'll see exactly where they're stuck so you can help right away."],
-  ["Is there any screen time?", "Your child works on paper. The only screen is your phone camera, for the few seconds it takes to snap the finished pages."],
+  ["Is there any screen time?", "Your child works on paper. The app is for you: scan a page when they're stuck or to check answers, then help them yourself."],
   ["Who is it for?", "Children in grades 1 to 7 (ages 6 to 12), in math, reading or both."],
   ["How does the free assessment work?", "We send a short placement assessment on paper, matched to your child's age. Your child does it at home, and you send us a photo of the finished pages. It is free, and we use it to make your child's first book."],
   ["What do the books cover?", "Math: numbers, math facts, fractions and decimals, measurement and word problems. Reading: phonics, reading aloud, vocabulary, understanding what they read, and writing. The free assessment decides where your child starts, which can be behind, at or ahead of their grade."],
