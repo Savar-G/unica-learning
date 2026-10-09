@@ -263,3 +263,38 @@
 [data-look="warm"] .cover.on-dark { color: #fff; }
 
 .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+
+/* Phones (D-072): one idea per block, no repeats. Desktop and tablet (700px and up) are unchanged. */
+.faq-more { display: none; }
+@media (min-width: 700px) {
+  .m-only { display: none; }
+}
+@media (max-width: 699px) {
+  /* Hero photo: a short crop, so How it works starts sooner. */
+  [data-look="warm"] #top .stage .ph.big { aspect-ratio: 4 / 3; }
+  [data-look="warm"] #top .stage .ph.big img { height: 100%; object-fit: cover; }
+  /* Sections that repeat other sections on a phone. */
+  [data-look="warm"] #why,
+  [data-look="warm"] section.feel,
+  [data-look="warm"] #promise .promise,
+  [data-look="warm"] .close .beliefs,
+  [data-look="warm"] .close .strip { display: none; }
+  /* How it works: numbered rows, no photos. */
+  [data-look="warm"] #how .steps { gap: 8px; }
+  [data-look="warm"] #how .step { position: relative; min-height: 0; padding: 18px 18px 18px 56px; }
+  [data-look="warm"] #how .step .top { position: absolute; left: 18px; top: 20px; }
+  [data-look="warm"] #how .step .vis { display: none; }
+  [data-look="warm"] #how .step h3 { margin: 0 0 4px; font-size: 19px; }
+  [data-look="warm"] #how .step p { margin: 0; }
+  /* Included: no photo, tighter cards. */
+  [data-look="warm"] #inc .inc > .rise { display: none; }
+  [data-look="warm"] #inc .card { display: grid; grid-template-columns: 36px 1fr; column-gap: 12px; align-items: start; padding: 16px 18px; }
+  [data-look="warm"] #inc .card .ic { grid-row: span 2; margin: 0; }
+  [data-look="warm"] #inc .card h3 { margin: 4px 0 2px; }
+  [data-look="warm"] #inc .card p { grid-column: 2; margin: 0; }
+  /* FAQ: six questions, then "More questions" (only once JavaScript runs, see faq-more.tsx). */
+  [data-look="warm"] #faq.faq-cut:not(.faq-all) .faq details:nth-of-type(n+7) { display: none; }
+  [data-look="warm"] #faq.faq-cut .faq-more { display: inline-flex; min-height: 44px; margin-top: 20px; }
+  /* Keep focused items clear of the sticky assessment button. */
+  [data-look="warm"] #faq summary, [data-look="warm"] .faq-more { scroll-margin-bottom: 96px; }
+}

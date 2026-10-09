@@ -87,6 +87,7 @@ Every section sets up the next one. A single pencil line connects the sections a
 ## Responsive and accessibility
 
 - Mobile first (375 px), then tablet and desktop (1440 px).
+- Phones (below 700 px) get a shorter page (D-072); 700 px and up stay as the page story describes. On phones: the hero photo is a 4:3 crop; How it works shows numbered rows without photos; "Why choose [Brand]?", the drifting-photo banner, the two promise cards, the closing belief cards and the closing photo strip are hidden; Included drops its photo, puts each icon beside its title, and starts with a "Real paper. Real pencil." card (the Why card 1 text); the FAQ shows six questions and a "More questions" button (44 px) that shows the rest and moves focus to question 7; the cut starts only after JavaScript runs, so without it every question shows. Section order stays the same as desktop, so reading and focus order match. Measured at 390x844: 10.0 screens, pricing on screen 6.6 (was 17.7 and 12.9).
 - WCAG 2.2 AA contrast (yellow tiles carry dark text only), visible focus, full keyboard use, alt text that describes the real photo.
 
 ## What this is not

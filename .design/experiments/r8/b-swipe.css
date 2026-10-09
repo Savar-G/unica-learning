@@ -1,0 +1,14 @@
+/* B - Swipe decks: same order, long card stacks become one-row carousels. */
+@media (max-width: 699px) {
+  #how .steps, #why .why, #inc .inc .col, #compare .cmp {
+    display: grid; grid-auto-flow: column; grid-auto-columns: 84%; grid-template-columns: none;
+    overflow-x: auto; scroll-snap-type: x mandatory; gap: 12px; padding-bottom: 8px;
+    margin-right: calc(-1 * var(--pad-x, 16px)); padding-right: var(--pad-x, 16px);
+  }
+  #how .steps > *, #why .why > *, #inc .inc .col > *, #compare .cmp > * { scroll-snap-align: start; }
+  #how .step .vis img { max-height: 180px; object-fit: cover; }
+  #why .why > div { min-height: 260px; }
+  #inc .inc { display: grid; gap: 12px; }
+  #inc .inc > .rise { display: none; }
+  #faq details:nth-of-type(n+7) { display: none; }
+}

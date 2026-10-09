@@ -1,0 +1,10 @@
+/* Shared pieces used by more than one option (phones only). */
+@media (max-width: 699px) {
+  /* Hero photo: a short crop instead of a near-full screen. */
+  #top .stage .ph.big { aspect-ratio: 4 / 3; }
+  #top .stage .ph.big img { object-fit: cover; height: 100%; }
+  /* The drifting-photo banner repeats the hero's message. */
+  section.feel { display: none; }
+  /* Closing: keep the claim and buttons, drop the belief cards and photo strip. */
+  .close .beliefs, .close .strip { display: none; }
+}
