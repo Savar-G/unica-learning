@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { BRAND, HERO } from "@/lib/site";
+import { BRAND, PLANS } from "@/lib/site";
 
 const PRODUCTION_URL = "https://unicalearning.com";
 
@@ -9,13 +9,13 @@ export const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? (process.env.NODE_EN
 // Search indexing is off until NEXT_PUBLIC_ALLOW_INDEX=true, and always off on Vercel preview deploys.
 export const INDEXABLE = process.env.NEXT_PUBLIC_ALLOW_INDEX === "true" && process.env.VERCEL_ENV !== "preview";
 
-export const SITE_TITLE = `${BRAND}: Personalized. Delivered. Mastered.`;
-export const SITE_DESCRIPTION = `${HERO.sub} Ages 6-12. Delivery across Canada.`;
+export const SITE_TITLE = `${BRAND}: Personalized math and reading workbooks, mailed home`;
+export const SITE_DESCRIPTION = `Personalized math and reading workbooks for ages 6-12, mailed home across Canada and adapted after every book. Free placement assessment. From CAD ${PLANS.one.price}/month.`;
 
 type PageMeta = {
   /** Route path, for example "/privacy". Used for the canonical URL. */
   path: string;
-  /** Page title without the brand. The root layout template adds " | Pagewise". */
+  /** Page title without the brand. The root layout template adds " | <brand>". */
   title: string;
   description: string;
   /** Set false for pages that must stay out of search (for example /thank-you). */

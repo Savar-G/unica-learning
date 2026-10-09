@@ -11,6 +11,4 @@ export type PlanId = keyof typeof PLANS;
 export const HERO = {
   kicker: "Same grade. Different levels. Different pace.",
   lead: "Every child learns at a different level and a different pace. So every Unica workbook is made for one child: yours. Math and reading, mailed home, and each new book starts where your child needs it.",
-  // Kept for the page metadata description (src/lib/metadata.ts).
-  sub: "Math and reading workbooks made for your child, mailed home, and adapted after every book.",
 };
