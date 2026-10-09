@@ -1,0 +1,9 @@
+{
+  "round": 6,
+  "date": "2026-10-09",
+  "question": "Hero copy rewrite: level, pace and learning style, from scratch",
+  "research": ".design/research/hero-copy-research.md",
+  "files": ["hero-copy.html"],
+  "variants": ["1 three possessives", "2 reframe the grade", "3 pace as the hook", "4 made for one", "5 plain-fact premise", "6 say what it is", "7 teach to one", "8 two weeks two days", "9 thirty learners"],
+  "status": "decided: D-066 (#2 headline + #6 framing)"
+}
