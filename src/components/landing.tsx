@@ -1,4 +1,5 @@
 import { Motion } from "@/components/motion";
+import { Problem } from "@/components/problem";
 import { Reserve } from "@/components/reserve";
 import { Closing, Faq, Feel, Footer, Hero, How, Included, Nav, OurPromise, Pricing, What, Why } from "@/components/sections";
 import type { Look } from "@/lib/look";
@@ -10,6 +11,7 @@ export function Landing({ look = "primer" }: { look?: Look }) {
       <div className="frame">
         <main id="main">
           <Hero />
+          <Problem />
           <What />
           <How />
           <Why />
