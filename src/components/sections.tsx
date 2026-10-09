@@ -295,7 +295,7 @@ export function OurPromise() {
         <Rise>
           <Eyebrow>Our promise</Eyebrow>
           <h2 id="promiseT" style={{ margin: "16px 0 20px" }}>Try it with nothing to lose.</h2>
-          <p className="lead">{BRAND} is made in Vancouver by a small team who grew up on paper workbooks.</p>
+          <p className="lead">{BRAND} is made in Vancouver by two students who grew up on workbooks. We both did workbook programs for years and tutored other kids. We built the middle: personal, on paper, and affordable.</p>
           <p style={{ margin: "18px 0 0" }}>
             <Link href="/our-story" style={{ fontWeight: 500, textUnderlineOffset: 4 }}>Read why we built it →</Link>
           </p>
