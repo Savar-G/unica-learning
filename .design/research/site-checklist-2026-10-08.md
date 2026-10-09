@@ -36,6 +36,7 @@ This work uses the existing Pagewise design. It preserves Canada-wide delivery, 
 - `consent-result.json` records five passing browser checks, including a real second tab and failed storage writes.
 - `analytics-positive-result.json` records zero requests before consent, one after acceptance, and no added request after rejection. This checks the installed SDK with a fake key. It does not verify the live PostHog project.
 - `production-routes.json` records local production HTTP status, response size and metadata for 11 routes/assets. This is not hosted deployment evidence.
+- `hosted-preview-result.json` records nine successful HTTP checks on the protected Vercel preview at code commit `dbf18d2`. Pages, noindex, robots, sitemap, share image and favicon are served correctly. A missing route returns 404. An invalid Stripe ID stays unconfirmed. The public canonical origin also returned HTTP 200. Hosted browser interaction and live service calls remain unverified.
 - Two independent source review rounds found no remaining blockers. The final visual assessment is a self-review.
 
 Card confirmation needs a Stripe key that can retrieve Checkout Sessions with an expanded SetupIntent. This was not tested against live Stripe. Confirmation reveals no parent or payment details. This route has no application rate limit; a valid-format session ID can cause a Stripe lookup.

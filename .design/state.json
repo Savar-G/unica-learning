@@ -27,18 +27,21 @@
       ".design/evidence/checklist/form-result.json",
       ".design/evidence/checklist/consent-result.json",
       ".design/evidence/checklist/analytics-positive-result.json",
-      ".design/evidence/checklist/production-routes.json"
+      ".design/evidence/checklist/production-routes.json",
+      ".design/evidence/checklist/indexing-result.json",
+      ".design/evidence/checklist/hosted-preview-result.json"
     ],
     "latest_review": ".design/reviews/site-checklist-2026-10-08-r2.md",
     "drafts": [
       ".design/experiments/drafts/a-lineup-2026-10-04/"
     ],
     "deploy": {
-      "repo": "https://github.com/Savar-G/ai-workbooks-landing-page",
+      "repo": "https://github.com/Savar-G/pagewise-landing-page",
       "vercel_project": "ai-workbooks-landing-page",
-      "preview": "https://ai-workbooks-landing-page-h0ny6ov85.vercel.app",
+      "preview": "https://ai-workbooks-landing-p-git-4b890c-savargupta1922-1024s-projects.vercel.app",
       "protected": true,
-      "production": "Vercel Git integration deploys main"
+      "production": "Vercel Git integration deploys main",
+      "pull_request": "https://github.com/Savar-G/pagewise-landing-page/pull/16"
     }
   },
   "open_decisions": [
@@ -91,6 +94,6 @@
     "audit": ".design/research/site-checklist-2026-10-08.md",
     "policy_status": "draft",
     "merge_owner": "user",
-    "hosted_verification": "pending"
+    "hosted_verification": "Preview HTTP verified at dbf18d2; live Stripe and PostHog unverified"
   }
 }

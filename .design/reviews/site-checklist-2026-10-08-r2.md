@@ -23,6 +23,7 @@ Weighted score: 77.5/100. These are the main agent's scores, not the independent
 
 - Lint and production build pass. Lint reports one existing unused-import warning.
 - Required local routes render. A missing route returns 404, including in the production build.
+- The Vercel preview passed nine HTTP checks at code commit `dbf18d2`. Hosted pages, noindex, robots, sitemap and assets are verified. Hosted browser interaction, live Stripe and PostHog ingestion remain unverified.
 - The consent tests check rejection during import and reject/accept races. The SDK browser test includes a positive event after acceptance and no added event after rejection.
 - Form browser checks intercept responses. They verify frontend state, not the live database, notification email or Stripe handoff.
 - New text uses the existing dark ink on white or pale backgrounds. Controls retain visible focus and text error messages. A full assistive-technology and text-scaling audit was not performed.
