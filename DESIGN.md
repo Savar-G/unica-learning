@@ -32,7 +32,7 @@
 
 ## Positioning rules
 
-- Name competitors only in three places: the "How we're different" table, the FAQ entry "How is this different from Kumon?" and the `/our-story` letter (D-059). Every competitor claim needs a dated public source in `.design/research/competitors-2026-10.md`; state facts, not judgments, and say that prices vary by centre. Everywhere else, show the difference as what we do: paper, at home, made for one child, it adapts.
+- Name no competitor brand. Compare against categories only: learning centres, private tutors and online practice apps, in the "How we're different" table, the FAQ "How is this different from a learning centre?" and the `/our-story` letter (D-059, D-064). Keep claims general and true for the category ("About $200+ per subject / month"); sources in `.design/research/competitors-2026-10.md`. Everywhere else, show the difference as what we do: paper, at home, made for one child, it adapts.
 - Lead with emotion and a bold claim, but name the product in the line under it. The section right after the hero answers "What is [Brand]?" by naming the problem first: the same box (D-058). Curriculum copy says the books cover the school curriculum at the child's pace and move ahead when ready; province availability lives in the FAQ.
 - End on a bold claim: "This is what learning should be like." It carries three lines: "Every child learns differently. Learning should adapt."; "No child should fall behind because the class moved on."; "Personal, on paper, and affordable." (D-057, replaces the D-016 beliefs).
 - No learning styles anywhere (D-004).
@@ -54,12 +54,12 @@ Every section sets up the next one. A single pencil line connects the sections a
 5. **What you get each month (D-061, D-062).** Six cards, 3 + 3 around one photo: workbooks (1 per subject, about 20-25 pages), daily practice (15-20 minutes, 5 days a week), delivery before the current book ends, "Stuck? Scan it." (the parent scans the problem in our app and sees every step, explained, so they can walk the child through it), "Instant answer check" (scan a finished page, see what is right in seconds; each scan also helps plan the next book), progress reports and worked solutions in the app.
 6. **The emotional banner.** Real photos drift around one centred line: "A workbook made for one child: yours." "No two [Brand] books are the same. Each one starts where your child is, and moves on when they're ready."
 7. **Our promise (D-044, D-060).** "Try it with nothing to lose." A nameless line (made in Vancouver by a small team who grew up on paper workbooks), a link "Read why we built it" to `/our-story`, and two cards: 30-day money-back guarantee and fits your family's schedule. The free assessment and cancel anytime are stated in pricing.
-8. **How we're different (D-059).** "Personal like a tutor. Structured like Kumon. Priced like neither." A table: Kumon, private tutor, online practice apps and [Brand], by material, adapting, seeing where they're stuck, paper, and cost. Our column carries the colour wash. On phones each row becomes a card. Footnote with the source date; the line "It comes back until it sticks." under the table.
+8. **How we're different (D-059, D-064).** "Personal like a tutor. Structured like a learning centre. Priced like neither." A table: learning centres, private tutor, online practice apps and [Brand], by material, adapting, seeing where they're stuck, paper, and cost. Our column carries the colour wash. On phones each row becomes a card. No footnote and no line under the table.
 9. **Price and reserve.** Both plan cards are white; Math + Reading stands out with a grainy colour wash rising from the bottom (D-037). No savings badge and no fine print under the cards; the charge timing is stated in checkout. Two plans: one subject CAD 59 a month, math + reading CAD 99 a month, delivery included, cancel anytime, a 30-day money-back guarantee stated once above the cards (D-043, D-057). A BC family adds a card at booking on Stripe's hosted page and is charged nothing. The first month is charged when the first workbook ships, then monthly until they cancel (D-053).
-10. **FAQ (D-057).** First: how the work is checked, what if it is not right, how this differs from Kumon, what if my child struggles a lot. Then: screen time, who it is for, the free assessment, what the books cover, curriculum, breaks, missed days, missed photos, the child's work, why we ask for a card, cancelling, delivery.
+10. **FAQ (D-057).** First: how the work is checked, what if it is not right, how this differs from a learning centre, what if my child struggles a lot. Then: screen time, who it is for, the free assessment, what the books cover, curriculum, breaks, missed days, missed photos, the child's work, why we ask for a card, cancelling, delivery.
 11. **Closing claim.** The three lines above, "This is what learning should be like.", then "Take free assessment" and "See pricing".
 
-**Our story page (`/our-story`, D-060).** A letter: "Why we built [Brand]". Cedric's text (two students who grew up on workbooks; Kumon worked but was expensive and one-size-fits-all; tutoring was personal but cost $50-$100 an hour; we built the middle). Founder tiles for Savar Gupta and Cedric Tanafranca (initials until real photos arrive), "What we believe", all four promise cards, the sign-off "Savar and Cedric", and a "Take free assessment" button that opens the booking dialog. Linked from the promise section and the footer; listed in the sitemap.
+**Our story page (`/our-story`, D-060).** A letter: "Why we built [Brand]". Cedric's text (two students who grew up on workbooks; learning centres worked but were expensive and one-size-fits-all; tutoring was personal but cost $50-$100 an hour; we built the middle). Founder tiles for Savar Gupta and Cedric Tanafranca (initials until real photos arrive), "What we believe", all four promise cards, the sign-off "Savar and Cedric", and a "Take free assessment" button that opens the booking dialog. Linked from the promise section and the footer; listed in the sitemap.
 
 ## Visual language
 
@@ -102,7 +102,7 @@ Every section sets up the next one. A single pencil line connects the sections a
 ## Acceptance criteria
 
 - [ ] In a 15-second test, a parent can say what arrives, who it is for and that it adapts.
-- [ ] Competitors are named only where D-059 allows, and every competitor claim has a dated source.
+- [ ] No competitor brand is named; category comparisons stay general and true (D-064).
 - [ ] Every research claim has a citation; no claim about our own results.
 - [ ] The reserve flow works end to end with all listed states.
 - [ ] Rendered evidence at 375, 768 and 1440 px; keyboard pass; reduced-motion pass.

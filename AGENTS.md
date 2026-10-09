@@ -19,7 +19,7 @@ Personalized, mailed math and reading workbooks for ages 6-12 (grades 1-7). The 
 - Never switch branches in the main checkout. Other agents work in parallel worktrees (`git worktree list`).
 - All design work goes through `/design`. Mockup rounds live in `.design/experiments/r<n>/`, with a `manifest.json`.
 - Done gate (no test suite): `npx eslint src && npm run build`, then check the change in the browser with `npm run dev`. `npm run lint` also scans `.design-sync/previews/`, which has old errors.
-- Copy rules in `DESIGN.md` are binding: no proof we do not have, no performance claims, and competitor names only where D-059 allows (with a dated source).
+- Copy rules in `DESIGN.md` are binding: no proof we do not have, no performance claims, and no competitor brand names (compare with categories such as learning centres, D-064).
 - Use plain language in all customer text. Keep development notes and draft labels out of public pages. Give provider names only in the privacy disclosure, with a plain explanation.
 
 ## Tools and services
