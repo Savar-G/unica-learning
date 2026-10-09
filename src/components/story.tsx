@@ -1,24 +1,12 @@
 // /our-story: the "why we built this" letter. The founder story, names and "students"
 // appear only on this page, never on the home page. Uses the site nav, footer and reserve dialog.
 import { BRAND } from "@/lib/site";
-import { BeliefList, Eyebrow, FounderCard, FounderGrid, Nav as NavBar } from "@/ds";
+import { BeliefList, Eyebrow, Nav as NavBar } from "@/ds";
 import { Motion } from "@/components/motion";
 import { Reserve } from "@/components/reserve";
 import { Footer, PromiseCards } from "@/components/sections";
 import { Rise } from "./drawn";
 import "./story.css";
-
-type Founder = {
-  name: string;
-  role: string;
-  /** Portrait URL. Until Savar sends real photos, the tile shows the initial on a grain field. */
-  photo?: string;
-};
-
-const FOUNDERS: Founder[] = [
-  { name: "Savar Gupta", role: "Co-founder" },
-  { name: "Cedric Tanafranca", role: "Co-founder" },
-];
 
 // Home-page section links, made absolute so they work from this page.
 const LINKS = [
@@ -45,14 +33,6 @@ export function Story() {
               Kumon worked, but it was expensive and one-size-fits-all. Tutoring was personal, but it cost $50-$100 an hour.
               We built the middle: personal, on paper, and affordable.
             </p>
-          </Rise>
-
-          <Rise className="story-founders" d={0.12}>
-            <FounderGrid>
-              {FOUNDERS.map((f) => (
-                <FounderCard key={f.name} name={f.name} role={f.role} photo={f.photo} />
-              ))}
-            </FounderGrid>
           </Rise>
 
           <section className="story-part" aria-labelledby="believeT">
