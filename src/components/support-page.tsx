@@ -17,6 +17,7 @@ export function SupportPage({ label, title, children }: { label: string; title: 
         {children}
       </main>
       <footer className="support-footer" aria-label="Site information">
+        <Link href="/resources">Resources</Link>
         <Link href="/privacy">Privacy</Link>
         <Link href="/terms">Terms</Link>
         <a href={SUPPORT_HREF}>Contact us</a>
