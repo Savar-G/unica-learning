@@ -355,6 +355,7 @@ export function Footer() {
         <p className="small" style={{ marginTop: 10 }}>© 2026 {BRAND}</p>
         <nav className="footer-links small" aria-label="Site information">
           <Link href="/our-story">Our story</Link>
+          <Link href="/resources">Resources</Link>
           <Link href="/privacy">Privacy</Link>
           <Link href="/terms">Terms</Link>
           <a href={SUPPORT_HREF}>Contact us</a>

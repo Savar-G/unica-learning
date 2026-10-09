@@ -2,6 +2,7 @@
 // Facts come from the same constants as the page, so the files cannot drift from it.
 import { FAQ } from "@/lib/faq";
 import { SITE_URL } from "@/lib/metadata";
+import { resourcePath, RESOURCES } from "@/lib/resources";
 import { BRAND, PLANS } from "@/lib/site";
 import { SUPPORT_EMAIL } from "@/lib/contact";
 
@@ -33,6 +34,7 @@ More: ${url("/#price")}
 
 export function llmsTxt(): string {
   const faq = FAQ.map(({ question, answer }) => `### ${question}\n${answer}`).join("\n\n");
+  const guides = RESOURCES.map(({ meta }) => `- [${meta.title}](${url(resourcePath(meta.slug))})`).join("\n");
   return `# ${BRAND}
 
 > Personalized math and reading workbooks for children aged 6-12 (grades 1-7) in Canada. Each paper workbook is made for one child, mailed home, and adapted after every book. From CAD ${PLANS.one.price} a month, delivery included.
@@ -62,6 +64,10 @@ Parents in Canada with a child aged 6-12 who want math or reading practice on pa
 - [Pricing](${url("/pricing.md")}): plans and terms in plain text
 - [Privacy](${url("/privacy")})
 - [Terms](${url("/terms")})
+
+## Guides
+- [Guides for BC parents](${url("/resources")}): all guides by topic
+${guides}
 
 ## FAQ
 

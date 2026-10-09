@@ -15,9 +15,9 @@
 
 ## Scope
 
-**In:** One landing page with a working reserve flow, a mobile assessment button, optional analytics, an "Our story" page (`/our-story`, D-060), and supporting 404, thank-you, privacy, and terms pages (D-054).
+**In:** One landing page with a working reserve flow, a mobile assessment button, optional analytics, an "Our story" page (`/our-story`, D-060), a Resources section of SEO guides for BC parents (`/resources`, linked only from the footer, D-073), and supporting 404, thank-you, privacy, and terms pages (D-054).
 
-**Out:** The product itself, parent dashboard, accounts, and blog.
+**Out:** The product itself, parent dashboard, accounts, and a dated blog or news feed.
 
 ## Source constraints
 
@@ -32,7 +32,8 @@
 
 ## Positioning rules
 
-- Name no competitor brand. Compare against categories only: learning centres, private tutors and online practice apps, in the "How we're different" section (learning centres and private tutors only, D-068), the FAQ "How is this different from a learning centre?" and the `/our-story` letter (D-059, D-064). Keep claims general and true for the category ("About $200+ per subject / month"); sources in `.design/research/competitors-2026-10.md`. Everywhere else, show the difference as what we do: paper, at home, made for one child, it adapts.
+- Name no competitor brand outside `/resources` (D-074). Compare against categories only: learning centres, private tutors and online practice apps, in the "How we're different" section (learning centres and private tutors only, D-068), the FAQ "How is this different from a learning centre?" and the `/our-story` letter (D-059, D-064). Keep claims general and true for the category ("About $200+ per subject / month"); sources in `.design/research/competitors-2026-10.md`. Everywhere else, show the difference as what we do: paper, at home, made for one child, it adapts.
+- `/resources` guides may name competitors (D-074): facts from their own pages, cited and dated; prices "as listed in October 2026" and "varies by centre"; no disparagement, no claims about anyone's outcomes, no logos or testimonial quotes. The no-proof and no-performance-claim rules still apply.
 - Say what we sell first, then the problem (D-070). The hero kicker names the product; the headline names the problem: the same box. Curriculum copy says the books cover the school curriculum and move ahead when the child is ready; province availability lives in the FAQ.
 - End on a bold claim: "This is what learning should be like." It carries three lines: "Every child learns differently. Learning should adapt."; "No child should fall behind because the class moved on."; "Personal, on paper, and affordable." (D-057, replaces the D-016 beliefs).
 - Learning styles may be named (D-070 removes the D-004 ban).
@@ -57,6 +58,8 @@ Every section sets up the next one. A single pencil line connects the sections a
 8. **Price and reserve.** Both plan cards are white; Math + Reading stands out with a grainy colour wash rising from the bottom (D-037). No savings badge and no fine print under the cards; the charge timing is stated in checkout. Two plans: one subject CAD 59 a month, math + reading CAD 99 a month, delivery included, cancel anytime, a 30-day money-back guarantee stated once above the cards (D-043, D-057). A BC family adds a card at booking on Stripe's hosted page and is charged nothing. The first month is charged when the first workbook ships, then monthly until they cancel (D-053).
 9. **FAQ (D-057).** First: how the work is checked, what if it is not right, how this differs from a learning centre, what if my child struggles a lot. Then: screen time, who it is for, the free assessment, what the books cover, curriculum, breaks, missed days, missed photos, the child's work, why we ask for a card, cancelling, delivery.
 10. **Closing claim.** The three lines above, "This is what learning should be like.", then "Take free assessment" and "See pricing".
+
+**Resources (`/resources`, D-073).** A hub ("Guides for BC parents") and one article per guide at `/resources/<slug>`. Content lives in `src/content/resources/<slug>.tsx` (meta + body built from `src/components/article.tsx` blocks); the registry is `src/lib/resources.ts`. Linked only from the site footer, never from the home page body. Each article: breadcrumb, category eyebrow, H1, one-line lead, updated date, key facts, sections, one inline "Take free assessment" panel, FAQ (FAQPage data), closing panel, related guides, numbered sources. Hub on phones: the seven grade guides are compact tiles, two per row. Target phrases come from BC search data (`.design/research/seo-demand/`).
 
 **Our story page (`/our-story`, D-060).** A letter: "Why we built [Brand]". Cedric's text (two students who grew up on workbooks; learning centres worked but were expensive and one-size-fits-all; tutoring was personal but cost $50-$100 an hour; we built the middle). Founder tiles for Savar Gupta and Cedric Tanafranca (initials until real photos arrive), "What we believe", all four promise cards, the sign-off "Savar and Cedric", and a "Take free assessment" button that opens the booking dialog. Linked from the promise section and the footer; listed in the sitemap.
 
