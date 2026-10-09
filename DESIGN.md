@@ -46,7 +46,7 @@ Every section sets up the next one. A single pencil line connects the sections a
 3. **How it works (D-057, D-063).** Six cards in a grid, with no connecting line or animation:
    1. **Assess:** We send a free placement assessment on paper. It finds your child's level and where the gaps are. The parent returns it by photo (D-042).
    2. **Deliver:** We mail a workbook matched to your child's level and gaps.
-   3. **Practice:** Your child works on paper for about 15-20 minutes a day.
+   3. **Practice:** Your child works on paper for about 15-20 minutes a day, 5 days a week.
    4. **Scan:** Take a photo of the finished pages. We mark the work, show you the gaps, and give the solutions so your child can understand what went wrong.
    5. **Adapt:** Based on how they did, we choose and adjust their next workbook: more practice where they're struggling, and moving ahead where they're ready.
    6. **Repeat:** Your next book arrives before the current one runs out, so there's never a gap. Then the loop starts again. In italics: "Struggling with fractions? Your next book focuses on fractions."

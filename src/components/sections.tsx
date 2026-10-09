@@ -150,7 +150,7 @@ const STEPS = [
   { n: "01", t: "Assess", d: "We send a free placement assessment on paper. It finds your child's level and where the gaps are.",
     v: <Image src={assessPaper} alt="A child works through a page of math problems in pencil" sizes={STEP_SIZES} placeholder="blur" />, tone: "photo" as const },
   { n: "02", t: "Deliver", d: "We mail a workbook matched to your child's level and gaps.", v: <Image src={deliverPhoto} alt="Two mailers waiting on a front step" sizes={STEP_SIZES} placeholder="blur" />, tone: "photo" as const },
-  { n: "03", t: "Practice", d: "Your child works on paper for about 15-20 minutes a day.",
+  { n: "03", t: "Practice", d: "Your child works on paper for about 15-20 minutes a day, 5 days a week.",
     v: <Image src={practice6} alt="A girl works through an arithmetic page in pencil" sizes={STEP_SIZES} placeholder="blur" />, tone: "photo" as const },
   { n: "04", t: "Scan", d: "Take a photo of the finished pages. We mark the work, show you the gaps, and give the solutions so your child can understand what went wrong.", v: <Image src={scanPhoto} alt="A phone camera frames a page to photograph it" sizes={STEP_SIZES} placeholder="blur" />, tone: "photo" as const },
   { n: "05", t: "Adapt", d: "Based on how they did, we choose and adjust their next workbook: more practice where they're struggling, and moving ahead where they're ready. Every book is shaped by how your child is doing.", v: <Image src={adaptPhoto} alt="A girl shows her finished work to her parents" sizes={STEP_SIZES} placeholder="blur" />, tone: "photo" as const },
