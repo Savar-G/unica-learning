@@ -22,7 +22,7 @@ export interface CardSetup {
   price: number;
   curriculum: string;
   postal: string;
-  /** Site origin for the return URLs, e.g. https://pagewiselearning.vercel.app */
+  /** Site origin for the return URLs, e.g. https://unicalearning.com */
   origin: string;
 }
 
