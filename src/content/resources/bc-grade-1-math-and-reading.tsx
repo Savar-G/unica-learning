@@ -13,7 +13,7 @@ export const meta: ResourceMeta = {
   faqs: [
     {
       q: "What math does my child learn in Grade 1 in BC?",
-      a: "Grade 1 math in the BC curriculum covers numbers to 20, adding and subtracting to 20, repeating patterns, measuring with non-standard units, 2D shapes and 3D objects, simple graphs, how likely familiar events are, and Canadian coins.",
+      a: "Grade 1 math in the BC curriculum covers numbers to 20, adding and subtracting to 20, repeating patterns, measuring with non-standard units, 2D shapes and 3D objects, concrete graphs made with real objects, how likely familiar events are, and Canadian coins.",
     },
     {
       q: "Where can I find Grade 1 math worksheets for the BC curriculum?",
@@ -48,7 +48,7 @@ export default function Body() {
 
       <KeyFacts
         items={[
-          <>BC Grade 1 math is built around four big ideas: numbers, patterning, geometry and measurement, and data and probability.<Cite n={1} /></>,
+          <>BC Grade 1 math has five big ideas: number, computational fluency, patterning, geometry and measurement, and data and probability.<Cite n={1} /></>,
           <>Children work with numbers to 20 and with adding and subtracting to 20.<Cite n={1} /></>,
           <>Grade 1 reading covers letters and sounds, sight words, retelling a story, and writing simple sentences.<Cite n={2} /></>,
         ]}
@@ -56,7 +56,7 @@ export default function Body() {
 
       <Section title="What Grade 1 math covers in BC">
         <p>
-          The BC curriculum groups Grade 1 math content into number, patterns, geometry and measurement, data and probability, and financial literacy.<Cite n={1} /> Here is what each group means for your child.
+          The Grade 1 math content list covers number, patterns, geometry and measurement, data and probability, and financial literacy.<Cite n={1} /> Here is what each part means for your child.
         </p>
         <DataTable
           caption="Grade 1 math content in the BC curriculum"
@@ -67,8 +67,8 @@ export default function Body() {
             ["Equal and not equal", <>Explaining what equal and not equal mean, and writing them with = and ≠<Cite n={1} /></>],
             ["Patterns", <>Repeating patterns: finding the part that repeats, making patterns, predicting what comes next<Cite n={1} /></>],
             ["Measurement", <>Measuring length with non-standard units, such as cubes or paper clips<Cite n={1} /></>],
-            ["Shapes", <>Sorting 2D shapes and 3D objects, comparing them, and using words like above and beside<Cite n={1} /></>],
-            ["Data and chance", <>Making and reading simple graphs; saying if something is more likely or less likely<Cite n={1} /></>],
+            ["Shapes", <>Sorting 2D shapes and 3D objects, comparing them, and using position words such as up and down, in and out<Cite n={1} /></>],
+            ["Data and chance", <>Making and reading concrete graphs (graphs built from real objects); saying if something is more likely or less likely<Cite n={1} /></>],
             ["Money", <>Naming the value of a nickel, dime, quarter, loonie and toonie, and acting out buying and selling<Cite n={1} /></>],
           ]}
           note="Summarized from the Grade 1 Mathematics content list."

@@ -21,7 +21,7 @@ export const meta: ResourceMeta = {
     },
     {
       q: "What reading should my child be doing in Grade 2 in BC?",
-      a: "Grade 2 English Language Arts includes reading fluently at grade level, using phonics and sight words, retelling and finding the main idea, using text features such as headings, and writing sentences with correct punctuation. Many parents also search for reading practice for Grade 2, and daily reading together is the simplest start.",
+      a: "Grade 2 English Language Arts includes reading fluently at grade level, using phonics and sight words, retelling and finding the main idea, learning book words such as heading and table of contents, and writing sentences with correct punctuation. Many parents also search for reading practice for Grade 2, and daily reading together is the simplest start.",
     },
     {
       q: "Does my Grade 2 child need to know the times tables?",
@@ -44,7 +44,7 @@ export default function Body() {
   return (
     <>
       <p>
-        Grade 2 math in the BC curriculum takes children from small numbers to numbers up to 100. They learn place value, then use it to add and subtract. Grade 2 reading builds fluency and starts to use headings and other features of non-fiction books. This guide explains what your child works on, in plain words.
+        Grade 2 math in the BC curriculum takes children from small numbers to numbers up to 100. They learn place value, then use it to add and subtract. Grade 2 reading asks for fluent reading, and children learn book words such as heading and table of contents. This guide explains what your child works on, in plain words.
       </p>
 
       <KeyFacts
@@ -79,12 +79,12 @@ export default function Body() {
 
       <Section title="What Grade 2 reading and writing cover">
         <p>
-          Grade 2 English Language Arts uses the same reading strategies as Grade 1, with more fluency and longer texts.<Cite n={2} /> The content list includes:
+          The reading strategies in the Grade 2 English Language Arts content list are the same as in Grade 1. Children also learn to read fluently at grade level.<Cite n={2} /> The curriculum includes:
         </p>
         <ul>
           <li><strong>Reading strategies.</strong> Predicting, rereading, retelling, finding the main idea, using phonics, knowing sight words, and fixing mistakes.<Cite n={2} /></li>
           <li><strong>Story parts.</strong> Character, plot, setting and dialogue.<Cite n={2} /></li>
-          <li><strong>Text features.</strong> Headings, a table of contents and diagrams in non-fiction.<Cite n={2} /></li>
+          <li><strong>Text features and book words.</strong> How text and pictures are laid out, such as bold and underlined words, and words such as heading, table of contents and diagram.<Cite n={2} /></li>
           <li><strong>Word patterns.</strong> Word families and patterns in spelling.<Cite n={2} /></li>
           <li><strong>Writing.</strong> Neat printing, compound sentences, punctuation and capital letters, and thinking about who will read it.<Cite n={2} /></li>
           <li><strong>Speaking.</strong> Asking questions, sharing opinions and taking turns.<Cite n={2} /></li>
@@ -134,7 +134,7 @@ export default function Body() {
           If your child finds Grade 2 easy, try numbers past 100, word problems they make up, and chapter books. Multiplication starts in Grade 3 in BC, so you can preview it with skip-counting and equal groups.<Cite n={3} /> You can also read our <Link href="/resources/bc-grade-3-math-and-reading">Grade 3 guide</Link>.
         </p>
         <p>
-          Unica Learning mails personalized math and reading workbooks at your child’s level, 15 to 20 minutes a day.
+          Unica Learning mails personalized math and reading workbooks that follow the BC curriculum at your child’s level, for 15 to 20 minutes a day, 5 days a week.
         </p>
         <AssessmentCta slug={meta.slug}>A free placement assessment on paper shows your child’s level in math and reading.</AssessmentCta>
       </Section>

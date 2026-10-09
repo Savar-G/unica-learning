@@ -25,7 +25,7 @@ export const meta: ResourceMeta = {
     },
     {
       q: "How do I convert the BC proficiency scale to a percentage or letter grade?",
-      a: "The ministry documents we read give no official conversion for Kindergarten to Grade 9. Letter grades and percentages are used only in Grades 10 to 12. A chart online that turns the four levels into percentages is not an official one.",
+      a: "There is no official conversion. The ministry's reporting guidelines set percentage ranges only for the letter grades used in Grades 10 to 12. For Kindergarten to Grade 9, teachers place a child on the scale using their judgment of recent evidence of learning, not by averaging marks. A chart online that turns the four levels into percentages is not from the ministry.",
     },
     {
       q: "How many report cards does a BC student get each year?",
@@ -36,6 +36,8 @@ export const meta: ResourceMeta = {
     { label: "BC Ministry of Education and Child Care: K-12 Student Reporting, information for parents and caregivers (PDF)", url: "https://curriculum.gov.bc.ca/sites/curriculum.gov.bc.ca/files/pdf/reporting/K-12-student-reporting-one-pager-for-parents-and-caregivers.pdf", accessed: "2026-10-09" },
     { label: "BC Ministry of Education and Child Care: K-12 Student Reporting Policy, Educator Summary Guide (PDF)", url: "https://curriculum.gov.bc.ca/sites/curriculum.gov.bc.ca/files/pdf/reporting/k-12-reporting-educator-summary-guide.pdf", accessed: "2026-10-09" },
     { label: "BC Ministry of Education and Child Care: K-12 Student Reporting Policy presentation (PDF)", url: "https://www2.gov.bc.ca/assets/gov/education/administration/kindergarten-to-grade-12/k-12-student-reporting-policy-presentation.pdf", accessed: "2026-10-09" },
+    { label: "BC Ministry of Education and Child Care: K-12 Student Reporting Policy, Communicating Student Learning Guidelines (PDF, August 2023)", url: "https://www2.gov.bc.ca/assets/download/A5CA90B9C45D40B4999109A7400A1A39", accessed: "2026-10-09" },
+    { label: "BC Ministry of Education and Child Care: All about the Foundation Skills Assessment, information for parents and caregivers (PDF)", url: "https://curriculum.gov.bc.ca/sites/curriculum.gov.bc.ca/files/pdf/assessment/fsa/en-foundation-skills-assessment-for-parents-and-caregivers.pdf", accessed: "2026-10-09" },
   ],
   related: ["bc-fsa-grade-4-and-7", "bc-grade-4-math-and-reading"],
 };
@@ -48,7 +50,7 @@ export default function Body() {
           <>Kindergarten to Grade 9 report cards use four levels: Emerging, Developing, Proficient and Extending.<Cite n={1} /></>,
           <>Proficient is the goal for students. Extending is not the standard for everyone.<Cite n={3} /></>,
           <>Grades 10 to 12 still use letter grades and percentages.<Cite n={2} /></>,
-          <>The ministry documents we read give no official way to turn the four levels into a percentage.</>,
+          <>The ministry sets percentage ranges only for Grades 10 to 12 letter grades. There is no official percentage for a K-9 level.<Cite n={4} /></>,
         ]}
       />
 
@@ -58,6 +60,9 @@ export default function Body() {
         </p>
         <p>
           The scale has four levels: Emerging, Developing, Proficient and Extending. A level shows how well your child meets the learning standards of the BC curriculum in each area they study.<Cite n={2} /> It is part of the K-12 Student Reporting Policy. Under that policy, all districts use the scale for Kindergarten to Grade 9.<Cite n={2} />
+        </p>
+        <p>
+          The Grade 4 and 7 Foundation Skills Assessment (FSA) is marked with the same scale, but it joins Developing and Proficient into one level called On Track.<Cite n={5} />
         </p>
       </Section>
 
@@ -85,7 +90,7 @@ export default function Body() {
             [
               "Extending",
               "Your child shows the learning with more depth and complexity, and can apply it in new ways.",
-              "It is not a bonus or a reward. It does not need more work or work from a higher grade.",
+              "It is not a bonus or a reward. It does not necessarily need more work or work from a higher grade.",
             ],
           ]}
           note={<>Paraphrased from the ministry&apos;s parent information and policy presentation.<Cite n={1} /><Cite n={3} /></>}
@@ -94,7 +99,7 @@ export default function Body() {
           Two points are easy to miss. First, the ministry says a child who hands in all their work is not automatically Extending. Proficient is the standard.<Cite n={3} /> Second, a child who uses supports, such as an IEP, should not automatically be marked Emerging or Developing. The level should match the learning the child has shown.<Cite n={2} />
         </p>
         <p>
-          You may also see &ldquo;IE&rdquo; on a report. It means insufficient evidence of learning so far, and the ministry calls it temporary.<Cite n={3} />
+          You may also see &ldquo;IE&rdquo; on a report. It means insufficient evidence of learning so far, and the ministry calls it temporary.<Cite n={3} /> In a few cases a report can also show W (withdrawal) or SG (standing granted), in any grade.<Cite n={2} />
         </p>
       </Section>
 
@@ -130,10 +135,10 @@ export default function Body() {
 
       <Section title="Can I convert the proficiency scale to a percentage or letter grade?">
         <p>
-          Many parents search for a BC proficiency scale conversion chart. We looked in the ministry&apos;s policy materials and found no official conversion for Kindergarten to Grade 9. We also found no instruction to teachers to turn the levels into percentages.
+          Many parents search for a BC proficiency scale conversion chart. There is no official one. The ministry&apos;s reporting guidelines give a table of percentage ranges only for the letter grades used in Grades 10 to 12 (for example, B is 73 to 85 percent).<Cite n={4} /> For Kindergarten to Grade 9, the guidelines describe how a teacher places a child on the scale: they look at all the evidence of learning, give the most weight to recent work, and use professional judgment. They say averaging marks over a term does not give an accurate picture of learning.<Cite n={4} />
         </p>
         <p>
-          That fits how the scale is built. It describes how consistently a child shows the learning standards. It is not an average of test scores. The ministry also says Proficient does not mean perfect.<Cite n={3} /> A chart that says &ldquo;Proficient equals 73 to 85 percent&rdquo; was made by someone else, not by the ministry.
+          So the scale describes how consistently a child shows the learning standards. It is not an average of test scores. The ministry also says Proficient does not mean perfect.<Cite n={3} /> If you see a chart online that says &ldquo;Proficient equals 73 to 85 percent&rdquo;, it was not made by the ministry.
         </p>
         <p>
           If you need a letter grade for a form or for a family conversation, ask the teacher what your child can do and what comes next. That answer is more useful than a number.

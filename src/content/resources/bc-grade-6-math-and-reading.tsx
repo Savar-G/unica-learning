@@ -52,7 +52,7 @@ export default function Body() {
 
       <Section title="What Grade 6 math covers in BC">
         <p>
-          The BC curriculum lists five big ideas for each grade. Here is what each one means for Grade 6.<Cite n={1} />
+          Each grade in the BC math curriculum has five big ideas, one for each of the same five areas. Here is what each area means for Grade 6.<Cite n={1} />
         </p>
         <DataTable
           caption="Grade 6 math in the BC curriculum, in plain words"

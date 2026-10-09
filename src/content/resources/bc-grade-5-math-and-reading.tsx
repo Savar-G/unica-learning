@@ -39,7 +39,7 @@ export default function Body() {
   return (
     <>
       <p>
-        Grade 5 math in BC moves from whole numbers into bigger numbers, equivalent fractions and decimals to thousandths. Your child also meets area, variables and double bar graphs. This guide explains the BC curriculum for Grade 5 in plain words, so you know what to expect and how to help.
+        Grade 5 math in BC moves from whole numbers into bigger numbers, equivalent fractions and decimals to thousandths. Your child also measures the area of squares and rectangles, and meets variables and double bar graphs. This guide explains the BC curriculum for Grade 5 in plain words, so you know what to expect and how to help.
       </p>
 
       <KeyFacts
@@ -52,7 +52,7 @@ export default function Body() {
 
       <Section title="What Grade 5 math covers in BC">
         <p>
-          The BC curriculum lists five big ideas for each grade. Here is what each one means for Grade 5.<Cite n={1} />
+          Each grade in the BC math curriculum has five big ideas, one for each of the same five areas. Here is what each area means for Grade 5.<Cite n={1} />
         </p>
         <DataTable
           caption="Grade 5 math in the BC curriculum, in plain words"

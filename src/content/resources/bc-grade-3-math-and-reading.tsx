@@ -82,7 +82,7 @@ export default function Body() {
 
       <Section title="What Grade 3 reading and writing cover">
         <p>
-          Grade 3 English Language Arts asks for fluent reading, with phrasing and attention to punctuation.<Cite n={2} /> The content list includes:
+          Grade 3 English Language Arts asks for fluent reading, with phrasing and attention to punctuation.<Cite n={2} /> The content and competencies include:
         </p>
         <ul>
           <li><strong>Story elements.</strong> Character, plot, setting, conflict and theme.<Cite n={2} /></li>
@@ -90,7 +90,7 @@ export default function Body() {
           <li><strong>Language devices.</strong> Descriptive language, simile, alliteration, rhythm and rhyme.<Cite n={2} /></li>
           <li><strong>Reading strategies.</strong> Predicting, rereading, retelling, finding the main idea and details, and using phonics.<Cite n={2} /></li>
           <li><strong>Writing.</strong> Personal writing, letters, poems, multi-page stories and simple non-fiction.<Cite n={2} /></li>
-          <li><strong>Conventions.</strong> Compound sentences, punctuation, apostrophes in contractions, and word roots and endings.<Cite n={2} /></li>
+          <li><strong>Conventions and word study.</strong> Compound sentences, punctuation, apostrophes in contractions, word families, and word roots, prefixes and suffixes.<Cite n={2} /></li>
         </ul>
       </Section>
 

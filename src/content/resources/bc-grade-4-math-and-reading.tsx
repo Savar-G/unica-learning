@@ -21,7 +21,7 @@ export const meta: ResourceMeta = {
     },
     {
       q: "Is there a provincial test in Grade 4?",
-      a: "Yes. The Foundation Skills Assessment (FSA) runs in Grade 4 and Grade 7. In 2026-27 schools give it between September 28 and November 6, 2026. It looks at literacy and numeracy.",
+      a: "Yes. The Foundation Skills Assessment (FSA) runs in Grade 4 and Grade 7. In 2026-27 schools give it between September 28 and November 6, 2026. It looks at literacy and numeracy, and it does not affect report card marks.",
     },
     {
       q: "Where can I find Grade 4 math worksheets for BC?",
@@ -32,6 +32,7 @@ export const meta: ResourceMeta = {
     { label: "BC curriculum: Mathematics, Grade 4 (Big Ideas, Content, Curricular Competencies)", url: "https://curriculum.gov.bc.ca/curriculum/mathematics/4", accessed: "2026-10-09" },
     { label: "BC curriculum: English Language Arts, Grade 4 (Big Ideas, Content, Curricular Competencies)", url: "https://curriculum.gov.bc.ca/curriculum/english-language-arts/4", accessed: "2026-10-09" },
     { label: "Province of British Columbia: Foundation Skills Assessment (FSA)", url: "https://www2.gov.bc.ca/gov/content/education-training/k-12/administration/program-management/assessment/foundation-skills-assessment", accessed: "2026-10-09" },
+    { label: "BC Ministry of Education and Child Care: All about the Foundation Skills Assessment, information for parents and caregivers (PDF)", url: "https://curriculum.gov.bc.ca/sites/curriculum.gov.bc.ca/files/pdf/assessment/fsa/en-foundation-skills-assessment-for-parents-and-caregivers.pdf", accessed: "2026-10-09" },
   ],
   related: ["bc-grade-3-math-and-reading", "bc-grade-5-math-and-reading", "bc-fsa-grade-4-and-7"],
 };
@@ -40,7 +41,7 @@ export default function Body() {
   return (
     <>
       <p>
-        Grade 4 math in BC builds on number sense. Your child works with bigger numbers, fractions and decimals, and starts to multiply and divide with confidence. This guide explains the BC curriculum for Grade 4 in plain words, so you know what to expect and how to help.
+        Grade 4 math in BC builds on number sense. Your child works with numbers to 10 000, fractions and decimals, and multiplies and divides two- or three-digit numbers by one-digit numbers. This guide explains the BC curriculum for Grade 4 in plain words, so you know what to expect and how to help.
       </p>
 
       <KeyFacts
@@ -53,7 +54,7 @@ export default function Body() {
 
       <Section title="What Grade 4 math covers in BC">
         <p>
-          The BC curriculum lists the same five big ideas for each grade. Here is what each one means for Grade 4.<Cite n={1} />
+          Each grade in the BC math curriculum has five big ideas, one for each of the same five areas. Here is what each area means for Grade 4.<Cite n={1} />
         </p>
         <DataTable
           caption="Grade 4 math in the BC curriculum, in plain words"
@@ -93,7 +94,7 @@ export default function Body() {
           The Foundation Skills Assessment is a yearly provincial assessment of literacy and numeracy for all students in Grades 4 and 7. In 2026-27, schools give it from September 28 to November 6, 2026. Students answer online questions and questions in a paper booklet.<Cite n={3} />
         </p>
         <p>
-          Each student gets an individual report that shows performance on proficiency levels, with descriptive, strength-based language.<Cite n={3} /> Read our full guide to the <Link href="/resources/bc-fsa-grade-4-and-7">BC FSA for Grade 4 and 7</Link>.
+          Each student gets an individual report that shows performance on proficiency levels, with descriptive, strength-based language.<Cite n={3} /> The levels are Emerging, On Track and Extending. The ministry says the FSA does not affect student marks or report cards.<Cite n={4} /> Read our full guide to the <Link href="/resources/bc-fsa-grade-4-and-7">BC FSA for Grade 4 and 7</Link>.
         </p>
       </Section>
 

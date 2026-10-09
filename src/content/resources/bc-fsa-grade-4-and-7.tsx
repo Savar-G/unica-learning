@@ -25,11 +25,11 @@ export const meta: ResourceMeta = {
     },
     {
       q: "Does the FSA count toward report card marks?",
-      a: "The ministry does not report FSA results on student transcripts and says they are meant to be used in a formative way. The ministry pages we read do not say the FSA changes report card levels. Ask your child's teacher how the school uses the results.",
+      a: "No. The ministry's FSA brochure for parents says the FSA does not impact student marks or report cards. FSA results are also not reported on student transcripts.",
     },
     {
       q: "What do FSA results look like?",
-      a: "Results use three levels: Emerging, On Track and Extending. A student report uses descriptive, strength-based language. This is a different scale from the four-level proficiency scale on K-9 report cards.",
+      a: "Results use three levels: Emerging, On Track and Extending. Teachers mark the FSA with the same provincial proficiency scale used on K-9 report cards, but for the FSA the Developing and Proficient levels are joined into one level called On Track. A student report uses descriptive, strength-based language.",
     },
   ],
   sources: [
@@ -37,6 +37,7 @@ export const meta: ResourceMeta = {
     { label: "BC Ministry of Education and Child Care: Foundation Skills Assessment Samples", url: "https://www2.gov.bc.ca/gov/content/education-training/k-12/administration/program-management/assessment/foundation-skills-assessment/fsa-samples", accessed: "2026-10-09" },
     { label: "BC Ministry of Education and Child Care: Foundation Skills Assessment Specifications (PDF)", url: "https://www2.gov.bc.ca/assets/gov/education/administration/kindergarten-to-grade-12/assessment/fsa_description_and_specs.pdf", accessed: "2026-10-09" },
     { label: "BC Ministry of Education and Child Care: Foundation Skills Assessment Specifications page", url: "https://www2.gov.bc.ca/gov/content/education-training/k-12/administration/program-management/assessment/foundation-skills-assessment/specifications", accessed: "2026-10-09" },
+    { label: "BC Ministry of Education and Child Care: All about the Foundation Skills Assessment, information for parents and caregivers (PDF)", url: "https://curriculum.gov.bc.ca/sites/curriculum.gov.bc.ca/files/pdf/assessment/fsa/en-foundation-skills-assessment-for-parents-and-caregivers.pdf", accessed: "2026-10-09" },
   ],
   related: ["bc-grade-4-math-and-reading", "bc-grade-7-math-and-reading", "bc-proficiency-scale"],
 };
@@ -50,6 +51,7 @@ export default function Body() {
           <>It covers literacy and numeracy.<Cite n={1} /></>,
           <>2026-2027 window: September 28 to November 6, 2026.<Cite n={1} /></>,
           <>Results use three levels: Emerging, On Track, Extending. They are not on transcripts.<Cite n={3} /></>,
+          <>The FSA does not affect report card marks.<Cite n={5} /></>,
           <>The ministry posts official sample tests for both grades.<Cite n={2} /></>,
         ]}
       />
@@ -73,6 +75,9 @@ export default function Body() {
           <li><strong>A paper student booklet.</strong> Students write answers to three literacy questions and three numeracy questions.<Cite n={3} /></li>
           <li><strong>Online questions.</strong> The official sample has 30 literacy and 30 numeracy questions, plus two self-reflection questions.<Cite n={2} /></li>
         </ul>
+        <p>
+          The ministry&apos;s parent brochure says each part takes one hour or less, and the school can spread the parts over several days or weeks in the fall.<Cite n={5} />
+        </p>
         <p>
           The Grade 4 FSA reflects the learning expected at the end of Grade 3. The Grade 7 FSA reflects the end of Grade 6.<Cite n={4} />
         </p>
@@ -98,16 +103,16 @@ export default function Body() {
           The FSA uses three levels: Emerging, On Track and Extending. Each student gets an overall score that is placed in one of the three levels.<Cite n={3} /> The ministry describes the levels as broad, strength-based and descriptive.<Cite n={3} />
         </p>
         <p>
-          The student report is ready once the school finishes scoring. It shows performance on the proficiency levels in descriptive, strength-based language. Teachers can share it with students and parents.<Cite n={1} /> Schools and districts usually get these reports by November.<Cite n={3} />
+          The student report is ready once the school finishes scoring. It shows performance on the proficiency levels in descriptive, strength-based language. Teachers can share it with students and parents, along with your child&apos;s written response booklet.<Cite n={1} /> Schools and districts usually get these reports by November.<Cite n={3} />
         </p>
-        <Callout label="Two scales, not one">
+        <Callout label="Same scale, three levels">
           <p>
-            The FSA has three levels. The K-9 report card has four. They are different tools. Our guide to the <Link href="/resources/bc-proficiency-scale">BC proficiency scale</Link> explains the report card levels.
+            Teachers mark the FSA with the provincial proficiency scale, the same scale used on K-9 report cards. For the FSA, Developing and Proficient are joined into one level, On Track, so you can see if your child is on track in literacy and numeracy.<Cite n={5} /> Our guide to the <Link href="/resources/bc-proficiency-scale">BC proficiency scale</Link> explains the four report card levels.
           </p>
         </Callout>
         <h3>Does the FSA count toward report card marks?</h3>
         <p>
-          FSA results are not reported on student transcripts, and the ministry says they are meant to be used in a formative way, to guide learning.<Cite n={3} /> The ministry pages we read do not say the FSA sets or changes a report card level. If you want to know how your child&apos;s school uses the results, ask the teacher.
+          No. The ministry&apos;s parent brochure says the FSA does not impact student marks or report cards, and that it is not a high-stakes assessment.<Cite n={5} /> FSA results are also not reported on student transcripts.<Cite n={3} />
         </p>
       </Section>
 
@@ -129,7 +134,7 @@ export default function Body() {
 
       <Section title="How to prepare without stress">
         <p>
-          The ministry describes the collaboration activity as a relaxed start that reduces student worry.<Cite n={3} /> The pages we read do not ask families to prepare in a special way. Here are calm ways to help:
+          The ministry describes the collaboration activity as a relaxed start that reduces student worry.<Cite n={3} /> The ministry&apos;s parent brochure says your child does not need to prepare for the FSA, and that talking about it at home can help a nervous child feel more confident.<Cite n={5} /> Here are calm ways to help:
         </p>
         <ol>
           <li>Look at the official sample together once, so the format is not a surprise. Keep it short and friendly.</li>
