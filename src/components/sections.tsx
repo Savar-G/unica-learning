@@ -177,8 +177,8 @@ export function How() {
 
 const WHY: [string, string][] = [
   ["Real paper. Real pencil.", "Your child learns away from screens. The app is for you, not them."],
-  ["Made for one child.", "Every page targets what your child is ready for next, not what the rest of the class is on."],
-  ["It never forgets.", "A skill your child missed comes back in new forms until they master it."],
+  ["Made for your child.", "Every page targets what they're ready for next, not what the rest of the class is on."],
+  ["Master it, then move on.", "If your child is struggling with a concept, the next book stays on it and teaches it a different way. They move on when they've mastered it."],
   ["You see everything.", "A progress report, updated continuously: what they got right, what keeps coming back, and what's next."],
 ];
 
