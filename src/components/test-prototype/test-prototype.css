@@ -3,7 +3,8 @@
 
 .tp-root { min-height: 100dvh; background: #fff; }
 .tp-stage { min-height: 100dvh; }
-.tp-stage button { font-family: inherit; color: inherit; -webkit-tap-highlight-color: transparent; touch-action: manipulation; }
+.tp-stage button { font-family: inherit; -webkit-tap-highlight-color: transparent; touch-action: manipulation; }
+.tp-stage :where(button:not(.btn)) { color: inherit; }
 .tp-stage :focus-visible { outline: 3px solid var(--sky); outline-offset: 2px; }
 .sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 

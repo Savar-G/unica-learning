@@ -77,5 +77,11 @@
       "children: no child has used any option yet"
     ]
   },
-  "selected": null
+  "selected": "B",
+  "verdict": {
+    "date": "2026-10-10",
+    "choice": "B Split desk",
+    "by": "Savar",
+    "note": "Savar: the Next button was hard to see (dark text on the dark button). Fixed: a shared rule set every button's text to inherit; .btn keeps its white text now. Recorded as D-088 on main."
+  }
 }
