@@ -1,0 +1,18 @@
+/* "Your commitment as a parent" (src/components/parent.tsx, D-075).
+   Four soft grey cards in a 2 x 2 grid, each with a coloured corner square like the step cards.
+   The question is the large text; the answer is two or three sentences. Under 700px the cards stack. */
+.ask { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; margin: 0; padding: 0; list-style: none; }
+.ask > li { position: relative; display: grid; align-content: start; gap: 14px; padding: clamp(24px, 2.6vw, 36px); border-radius: 4px; background: var(--card); }
+.ask > li::after { content: ""; position: absolute; top: 0; right: 0; width: 20px; height: 20px; background: var(--g2); }
+.ask > li:nth-child(2)::after { background: var(--g3); }
+.ask > li:nth-child(3)::after { background: var(--g4); }
+.ask > li:nth-child(4)::after { background: var(--g1); }
+.ask .n { font: 400 12.5px/1 var(--mono); color: var(--ink-3); }
+.ask h3 { margin: 0; font-weight: 400; font-size: clamp(24px, 2.3vw, 32px); line-height: 1.15; letter-spacing: -0.02em; }
+.ask p { margin: 0; font-size: 16px; line-height: 1.55; color: var(--ink-2); }
+
+@media (max-width: 699px) {
+  .ask { grid-template-columns: 1fr; gap: 8px; }
+  .ask > li { gap: 8px; padding: 20px; }
+  .ask h3 { font-size: 21px; }
+}
