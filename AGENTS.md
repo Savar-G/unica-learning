@@ -44,3 +44,17 @@ Personalized, mailed math and reading workbooks for ages 6-12 (grades 1-7). The 
 | `CRON_SECRET` | Protects `/api/keepalive` |
 | `STRIPE_SECRET_KEY` | Server only. Creation needs write access to Customers and Checkout Sessions. Card confirmation also needs access to retrieve a Checkout Session with its expanded SetupIntent. Verify the restricted key on the preview. Without a key (or if creation fails), BC parents see "we'll email you a link to add your card" and the signup alert says so. |
 | `NEXT_PUBLIC_SITE_URL`, `NEXT_PUBLIC_ALLOW_INDEX` | Share-card links; search indexing switch |
+
+## Agent skills
+
+### Issue tracker
+
+Issues and specs live in GitHub Issues on `Savar-G/unica-learning-landing-page`, through the `gh` CLI. See `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+The five default roles, each label named as its role: `needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-human`, `wontfix`. See `docs/agents/triage-labels.md`.
+
+### Domain docs
+
+Single-context: `CONTEXT.md` and `docs/adr/` at the root (created when needed); the existing decision log `.design/decisions.md` counts as the ADR record. See `docs/agents/domain.md`.
