@@ -67,10 +67,11 @@ export function Nav() {
   return <NavBar brand={BRAND} cta={<button className="btn sm" data-open data-src="nav">Free assessment</button>} />;
 }
 
+// 8-9 characters only: the chip is as wide as its longest word, so a long topic
+// leaves a gap after every short one.
 const TOPICS = [
-  "fractions", "phonics", "times tables", "sight words", "long division", "place value",
-  "spelling", "word problems", "decimals", "telling time", "vowel sounds", "mental math",
-  "grammar", "percents", "ratios", "comprehension",
+  "fractions", "blending", "decimals", "spelling", "division", "main idea", "percents", "sentences",
+  "patterns", "inference", "geometry", "syllables", "integers", "addition", "graphing", "measuring",
 ];
 
 export function Hero() {
