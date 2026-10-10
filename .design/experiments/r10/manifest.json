@@ -1,0 +1,20 @@
+{
+  "round": 10,
+  "decision": "How should B (one block under the plan cards: us, private tutor, learning centre) look, so the comparison is read and not skipped?",
+  "feedback_from_r9": "Savar picked B, but the grey band 'looks like I barely even read it'. 'Private tutor' and 'Learning centre' must stand out, bigger and more defined than the traits 'Personal' and 'Structured'.",
+  "primary_axis": "contrast and hierarchy of the three panels",
+  "where": "/?variant=now|B|B1|B2|B3|B4|B5 on branch site/price-compare-prototype (src/components/price-compare-prototype.tsx). Screenshots: B2, B3, B5 at 1440 (B1 and B4 changed after their screenshots: our panel got its wash back).",
+  "invariants": [
+    "same order as B: Unica Learning, private tutor, learning centre",
+    "category name is the heading; the trait is a small label under it",
+    "all text in ink or ink-2; no grey prices",
+    "same facts and descriptions as the live Compare panels (D-064)"
+  ],
+  "options": [
+    { "id": "B1", "name": "Outlined cards", "bet": "White cards with a clear border; trait as a chip; our card has a black outline and black chip" },
+    { "id": "B2", "name": "Spec sheet", "bet": "No boxes: heavy black top rule, column rules, 36px names, green ticks for each trait" },
+    { "id": "B3", "name": "Colour-coded", "bet": "Each option owns a colour: blue tutor, green centre, gradient for us; light tints and a top bar" },
+    { "id": "B4", "name": "Icon headers", "bet": "A person, a building, a book above each name; makes the three options recognizable at a glance" },
+    { "id": "B5", "name": "Big names, dark us", "bet": "42px light names on white panels; our panel dark with a soft glow, so it is the clear winner" }
+  ]
+}

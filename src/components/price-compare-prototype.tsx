@@ -2,11 +2,12 @@
 
 // PROTOTYPE ONLY (branch site/price-compare-prototype): five ways to merge "How we're different" into Pricing.
 // Question: can one section carry the plans and the tutor / learning centre comparison, so price is shown once?
-// Switch with ?variant=now|A|B|C|D|E or the bottom bar (← →). "now" is the live page: Compare, then Pricing.
+// Round 10 (after Savar picked B): five takes on B. Round 9 A, C, D, E live in commit history.
+// Switch with ?variant=now|B|B1|B2|B3|B4|B5 or the bottom bar (← →). "now" is the live page: Compare, then Pricing.
 // Every variant uses the headline "Personal like a tutor. Structured like a learning centre. Priced like neither."
 // Facts are the live Compare panel facts (.design/research/competitors-2026-10.md); categories only (D-064).
-import { useEffect, useState } from "react";
-import { Eyebrow, Highlight, Section, SectionHeader } from "@/ds";
+import { useEffect, useState, type ReactNode } from "react";
+import { Highlight, Section, SectionHeader } from "@/ds";
 import { BRAND, PLANS } from "@/lib/site";
 import { Compare } from "./compare";
 import { Knot } from "./drawn";
@@ -37,25 +38,6 @@ function Shell({ children, className = "" }: { children: React.ReactNode; classN
   );
 }
 
-/* A: three ruled rows under the cards. Tutor, centre, us: same columns, so the eye reads down the price column. */
-function VariantA() {
-  return (
-    <Shell className="pc-a">
-      <p className="pc-label">How it compares</p>
-      <ul className="pc-a-rows">
-        {[TUTOR, CENTRE, US].map((r) => (
-          <li key={r.who} className={r === US ? "us" : undefined}>
-            <p className="pc-who">{r.who}</p>
-            <h3>{r.trait}</h3>
-            <p className="pc-a-price"><b>{r.price}</b> <span>{r.unit}</span></p>
-            <p className="pc-a-txt">{r.text}</p>
-          </li>
-        ))}
-      </ul>
-    </Shell>
-  );
-}
-
 /* B: one grey band under the cards. Our claim on the left in ink; the two alternatives in grey on the right. */
 function VariantB() {
   return (
@@ -79,109 +61,52 @@ function VariantB() {
   );
 }
 
-/* C: head to head. The parent picks what they would otherwise do; three rows, them against us. */
-function VariantC() {
-  const rows = {
-    tutor: [TUTOR.price + " " + TUTOR.unit, "Tailored by the tutor, who adjusts each session.", "You hear about the gaps when the tutor reports them."],
-    centre: [CENTRE.price + " " + CENTRE.unit, "A set program at the centre, often the same for every child.", "Your child moves at their own pace on a set path."],
-    us: [`CAD ${P} a month, one subject, delivery included`, "Every book is matched to your child's level and gaps, and adapts to how they did.", "You get a gap report and solutions after every scan."],
-  };
-  const labels = ["Cost", "How it is made", "Along the way"];
-  const [them, setThem] = useState<"tutor" | "centre">("tutor");
-  return (
-    <Shell className="pc-c">
-      <div className="pc-c-head">
-        <p className="pc-label">Instead of</p>
-        <div className="pc-c-seg" role="tablist" aria-label="Compare with">
-          {(["tutor", "centre"] as const).map((k) => (
-            <button key={k} type="button" role="tab" aria-selected={them === k} onClick={() => setThem(k)}>
-              {k === "tutor" ? "A private tutor" : "A learning centre"}
-            </button>
-          ))}
-        </div>
-      </div>
-      <div className="pc-c-table">
-        <div className="pc-c-col them">
-          <p className="pc-who">{them === "tutor" ? TUTOR.who : CENTRE.who}</p>
-          {rows[them].map((t, i) => (
-            <div key={i} className="pc-c-cell"><span>{labels[i]}</span><p>{t}</p></div>
-          ))}
-        </div>
-        <div className="pc-c-col us">
-          <p className="pc-who us">{BRAND}</p>
-          {rows.us.map((t, i) => (
-            <div key={i} className="pc-c-cell"><span>{labels[i]}</span><p>{t}</p></div>
-          ))}
-        </div>
-      </div>
-    </Shell>
-  );
-}
+/* ---------- Round 10: five takes on B. The category name ("Private tutor") is the heading; the trait is a small label. ---------- */
 
-/* D: the headline is the comparison. Each clause carries its price in the margin; the cards follow with nothing under them. */
-function VariantD() {
-  const lines = [
-    { line: "Personal like a tutor.", ...TUTOR },
-    { line: "Structured like a learning centre.", ...CENTRE },
-    { line: "Priced like neither.", ...US, unit: "one subject, a month" },
-  ];
+const ICON: Record<string, ReactNode> = {
+  [TUTOR.who]: <svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="3.5" /><path d="M5 20c.8-3.6 3.6-5.5 7-5.5s6.2 1.9 7 5.5" /></svg>,
+  [CENTRE.who]: <svg viewBox="0 0 24 24"><path d="M3 21h18M5 21V9l7-5 7 5v12" /><path d="M9 21v-5h6v5M9 11h.01M15 11h.01" /></svg>,
+  [BRAND]: <svg viewBox="0 0 24 24"><path d="M4 5a2 2 0 0 1 2-2h13v16H6a2 2 0 0 0-2 2z" /><path d="M4 19V5M9 7h6" /></svg>,
+};
+
+const PANELS = [
+  { name: BRAND, trait: "Personal and structured", price: US.price, unit: US.unit, text: US.text, us: true },
+  { name: TUTOR.who, trait: "Personal", price: TUTOR.price, unit: TUTOR.unit, text: TUTOR.text, us: false },
+  { name: CENTRE.who, trait: "Structured", price: CENTRE.price, unit: CENTRE.unit, text: CENTRE.text, us: false },
+];
+
+function Panels({ kind, icons = false, checks = false }: { kind: string; icons?: boolean; checks?: boolean }) {
   return (
-    <Section id="price" aria-labelledby="priceT" className="pc pc-d">
-      <Knot />
-      <div className="sec-head">
-      <Eyebrow>Pricing</Eyebrow>
-      <h2 id="priceT" className="pc-d-title">
-        {lines.map((l, i) => (
-          <span key={l.line} className={`pc-d-row${i === 2 ? " us" : ""}`}>
-            <span className="pc-d-line">{l.line}</span>
-            <span className="pc-d-note">
-              <b>{l.price}</b>
-              <em>{l.unit}</em>
-              <small>{l.text}</small>
-            </span>
-          </span>
+    <Shell className={`pb pb-${kind}`}>
+      <ul className="pb-grid">
+        {PANELS.map((p) => (
+          <li key={p.name} className={p.us ? "us" : undefined}>
+            {icons && <span className="pb-ic" aria-hidden="true">{ICON[p.name]}</span>}
+            <h3 className="pb-name">{p.name}</h3>
+            <p className="pb-trait">
+              {checks
+                ? p.trait.split(" and ").map((t) => <span key={t}>✓ {t[0].toUpperCase() + t.slice(1)}</span>)
+                : p.trait}
+            </p>
+            <p className="pb-price"><b>{p.price}</b> <span>{p.unit}</span></p>
+            <p className="pb-txt">{p.text}</p>
+          </li>
         ))}
-      </h2>
-      </div>
-      <Guarantee />
-      <PricingPlans />
-    </Section>
-  );
-}
-
-/* E: a small check matrix under the cards. Two traits and a price; only our row has both checks. */
-function VariantE() {
-  const rows = [
-    { ...TUTOR, personal: true, structured: false, note: "Tailored each session" },
-    { ...CENTRE, personal: false, structured: true, note: "A set program, often the same for every child" },
-    { ...US, personal: true, structured: true, note: "Every book matched to your child, on a set path" },
-  ];
-  const mark = (on: boolean) => <span className={`pc-e-mark${on ? " on" : ""}`} aria-label={on ? "Yes" : "No"}>{on ? "✓" : "-"}</span>;
-  return (
-    <Shell className="pc-e">
-      <table className="pc-e-table">
-        <thead>
-          <tr>
-            <th scope="col"><span className="pc-label">How it compares</span></th>
-            <th scope="col">Made for your child</th>
-            <th scope="col">A set path, book after book</th>
-            <th scope="col">Cost</th>
-          </tr>
-        </thead>
-        <tbody>
-          {rows.map((r) => (
-            <tr key={r.who} className={r.who === BRAND ? "us" : undefined}>
-              <th scope="row"><b>{r.who}</b><small>{r.note}</small></th>
-              <td>{mark(r.personal)}</td>
-              <td>{mark(r.structured)}</td>
-              <td><b>{r.price}</b> <small>{r.unit}</small></td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
+      </ul>
     </Shell>
   );
 }
+
+/* B1: three white cards with clear borders; trait as a chip. */
+const VariantB1 = () => <Panels kind="b1" />;
+/* B2: spec sheet. No boxes: a heavy top rule, column rules, ticks for each trait. */
+const VariantB2 = () => <Panels kind="b2" checks />;
+/* B3: colour-coded. Each option owns a colour bar and a light tint. */
+const VariantB3 = () => <Panels kind="b3" />;
+/* B4: icon headers. A person, a building, a book. */
+const VariantB4 = () => <Panels kind="b4" icons />;
+/* B5: big names on white; our panel dark. */
+const VariantB5 = () => <Panels kind="b5" />;
 
 function Now() {
   return (
@@ -194,11 +119,12 @@ function Now() {
 
 const VARIANTS = [
   { key: "now", name: "Live: two sections", C: Now },
-  { key: "A", name: "Ruled rows", C: VariantA },
-  { key: "B", name: "Grey band", C: VariantB },
-  { key: "C", name: "Head to head", C: VariantC },
-  { key: "D", name: "Annotated headline", C: VariantD },
-  { key: "E", name: "Check matrix", C: VariantE },
+  { key: "B", name: "Grey band (round 9)", C: VariantB },
+  { key: "B1", name: "Outlined cards", C: VariantB1 },
+  { key: "B2", name: "Spec sheet", C: VariantB2 },
+  { key: "B3", name: "Colour-coded", C: VariantB3 },
+  { key: "B4", name: "Icon headers", C: VariantB4 },
+  { key: "B5", name: "Big names, dark us", C: VariantB5 },
 ];
 
 function Switch() {
