@@ -27,7 +27,7 @@ export function ReportEmail({ c, stage, prov, helped, variant }: ReportProps & {
           <p className="m-level">{levelSentence(c)}</p>
           <p>{verdictSentence(c)}</p>
           {variant !== "A" && variant !== "D" && <Scale c={c} />}
-          {FSA[c.grade] && <p className="m-small">For context: in BC&apos;s 2025/26 FSA, {FSA[c.grade]}% of grade {c.grade} students with a result were On Track or Extending in numeracy. The FSA is a different test.</p>}
+          {prov === "BC" && FSA[c.grade] && <p className="m-small">For context: in BC&apos;s 2025/26 FSA, {FSA[c.grade]}% of grade {c.grade} students with a result were On Track or Extending in numeracy. The FSA is a different test.</p>}
           {stage === 2 && <p className="m-small">Among {n} grade {c.grade} children who took this test, {c.name} is in the {BANDS[c.band].toLowerCase()}. <Sample /></p>}
           {stage === 3 && <p className="m-small">{c.name} scored higher than {c.percentile}% of {n} grade {c.grade} children who took this test. <Sample /></p>}
         </div>

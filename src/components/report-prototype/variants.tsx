@@ -45,7 +45,7 @@ export function VariantA({ c, stage, prov, helped }: ReportProps) {
         <h1>{levelSentence(c)}</h1>
         <p className="a-sub">{verdictSentence(c)}</p>
         <Scale c={c} />
-        <FsaLine c={c} />
+        <FsaLine c={c} prov={prov} />
         <Comparison c={c} stage={stage} />
         {helped && <HelpWarning c={c} />}
       </section>
@@ -109,7 +109,7 @@ export function VariantB({ c, stage, prov, helped }: ReportProps) {
       </section>
       <div className="b-body">
         <div className="b-context">
-          <FsaLine c={c} />
+          <FsaLine c={c} prov={prov} />
           <Comparison c={c} stage={stage} />
           {helped && <HelpWarning c={c} />}
         </div>
@@ -181,7 +181,7 @@ export function VariantC({ c, stage, prov, helped }: ReportProps) {
         <section className="c-tile c-scale">
           <p className="rp-k">Against the grade scale</p>
           <Scale c={c} />
-          <FsaLine c={c} />
+          <FsaLine c={c} prov={prov} />
           <Comparison c={c} stage={stage} />
         </section>
         {c.strands.map((s) => (
@@ -235,7 +235,7 @@ export function VariantD({ c, stage, prov, helped }: ReportProps) {
         <h1>{levelSentence(c)}</h1>
         <p className="d-lead">{verdictSentence(c)} {c.verdict === "behind" ? `That is a starting point, not a grade. It shows where the books begin.` : c.verdict === "ahead" ? `${c.name} is ready for harder work.` : `${c.name} is right where ${c.they} should be.`}</p>
         <Scale c={c} />
-        <FsaLine c={c} />
+        <FsaLine c={c} prov={prov} />
         <Comparison c={c} stage={stage} />
         {helped && <HelpWarning c={c} />}
       </section>
@@ -305,7 +305,7 @@ export function VariantE({ c, stage, prov, helped }: ReportProps) {
           <Comparison c={c} stage={stage} compact />
         </div>
       </header>
-      <FsaLine c={c} />
+      <FsaLine c={c} prov={prov} />
       {helped && <HelpWarning c={c} />}
 
       <section className="e-rows">

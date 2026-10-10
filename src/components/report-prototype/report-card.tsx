@@ -122,7 +122,7 @@ export function VariantA2({ c, stage, prov, helped }: ReportProps) {
         <p className="a-sub">{verdictSentence(c)}</p>
         <Scale c={c} />
         <div className="ac-context">
-          <FsaLine c={c} />
+          <FsaLine c={c} prov={prov} />
           <Comparison c={c} stage={stage} />
         </div>
         {helped && <HelpWarning c={c} />}
@@ -158,9 +158,9 @@ export function VariantA3({ c, stage, prov, helped }: ReportProps) {
         <p className="a-sub">{verdictSentence(c)}</p>
         <Scale c={c} />
       </section>
-      {(stage > 1 || helped || c.grade === 4 || c.grade === 7) && (
+      {(stage > 1 || helped || (prov === "BC" && (c.grade === 4 || c.grade === 7))) && (
         <div className="ac-context ac-context-pad">
-          <FsaLine c={c} />
+          <FsaLine c={c} prov={prov} />
           <Comparison c={c} stage={stage} />
           {helped && <HelpWarning c={c} />}
         </div>
@@ -196,7 +196,7 @@ export function VariantA4({ c, stage, prov, helped }: ReportProps) {
         <p className="a-sub">{verdictSentence(c)}</p>
         <Scale c={c} />
         <div className="ac-context">
-          <FsaLine c={c} />
+          <FsaLine c={c} prov={prov} />
           <Comparison c={c} stage={stage} />
         </div>
         {helped && <HelpWarning c={c} />}
@@ -242,7 +242,7 @@ export function VariantA5({ c, stage, prov, helped }: ReportProps) {
           </div>
         </aside>
         <div className="ac-main">
-          <FsaLine c={c} />
+          <FsaLine c={c} prov={prov} />
           {helped && <HelpWarning c={c} />}
           <section className="ac-sec">
             <h2>By area</h2>

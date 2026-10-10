@@ -62,8 +62,9 @@ export function Scale({ c, labels = true }: { c: Child; labels?: boolean }) {
   );
 }
 
-export function FsaLine({ c }: { c: Child }) {
-  const v = FSA[c.grade];
+// BC families only (D-087): the FSA is a BC test, so it is no context for another province.
+export function FsaLine({ c, prov }: { c: Child; prov: Province }) {
+  const v = prov === "BC" ? FSA[c.grade] : undefined;
   if (!v) return null;
   return (
     <p className="rp-fsa">
