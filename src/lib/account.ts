@@ -1,10 +1,5 @@
 // Parent accounts for the online assessment (#62, D-082). Shared by the account forms (client) and /api/account (server).
-import { CURRICULA, EMAIL, POSTAL, type CurriculumId } from "@/lib/signup";
-
-// Public by design: the browser signs in with this key, and row-level security limits what each session reads.
-// Server writes use SUPABASE_SECRET_KEY (src/lib/supabase-auth.ts), never this key.
-export const SUPABASE_URL = "https://cdjobwsyzndtltzfpyqa.supabase.co";
-export const SUPABASE_PUBLISHABLE_KEY = "sb_publishable_QkL33gGZ-E1gOVdnLJsUEg_RgrRyqUs";
+import { CURRICULA, EMAIL, POSTAL, clip, cleanSource, type CurriculumId } from "@/lib/signup";
 
 export const PASSWORD_MIN = 8;
 /** Stops a script from adding children without end. No family needs more. */
@@ -31,13 +26,15 @@ export interface AccountSignupPayload {
   website?: string;
 }
 
-export type AccountError = "bad_json" | "invalid" | "account_exists" | "weak_password" | "too_many" | "signed_out" | "store_failed" | "off";
+export type AccountError = "bad_json" | "invalid" | "account_exists" | "weak_password" | "too_many" | "signed_out" | "busy" | "store_failed" | "off";
 
 /** What /api/account/* answers. */
 export interface AccountResult {
   ok: boolean;
   error?: AccountError;
 }
+
+export const fail = (error: AccountError, status: number) => Response.json({ ok: false, error } satisfies AccountResult, { status });
 
 export interface Child {
   id: string;
@@ -46,15 +43,13 @@ export interface Child {
   province: CurriculumId;
 }
 
-const clip = (v: unknown, n: number) => (typeof v === "string" ? v.trim().slice(0, n) : "");
-
 /** A valid child from untrusted input, or null. */
 export function cleanChild(raw: unknown): ChildInput | null {
   const c = (raw ?? {}) as Partial<Record<keyof ChildInput, unknown>>;
   const firstName = clip(c.firstName, 60);
   const grade = Number(c.grade);
   const province = typeof c.province === "string" && Object.hasOwn(CURRICULA, c.province) ? (c.province as CurriculumId) : null;
-  if (!firstName || !Number.isInteger(grade) || grade < 1 || grade > 7 || !province) return null;
+  if (!firstName || !(GRADES as readonly number[]).includes(grade) || !province) return null;
   return { firstName, grade, province };
 }
 
@@ -65,7 +60,7 @@ export function cleanParent(raw: Partial<AccountSignupPayload>) {
     email: clip(raw.email, 200).toLowerCase(),
     postal: clip(raw.postal, 7).toUpperCase(),
     password: typeof raw.password === "string" ? raw.password : "",
-    source: Object.fromEntries(Object.entries(raw.source ?? {}).slice(0, 12).map(([k, v]) => [k.slice(0, 40), clip(v, 300)])),
+    source: cleanSource(raw.source),
   };
   const valid = parent.name.length >= 2 && EMAIL.test(parent.email) && POSTAL.test(parent.postal)
     && parent.password.length >= PASSWORD_MIN && parent.password.length <= 72;

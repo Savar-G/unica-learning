@@ -32,6 +32,8 @@ function errorText(error: AccountError | undefined): ReactNode {
       return "Correct the marked fields to continue.";
     case "too_many":
       return "This account has the most children we allow. Email us to add more.";
+    case "busy":
+      return <>Many people are signing up right now. Try again in a few minutes, or email <a href={SUPPORT_HREF}>{SUPPORT_EMAIL}</a>.</>;
     case "signed_out":
       return <>Your session ended. <Link href="/sign-in">Sign in</Link> again.</>;
     default:
@@ -153,7 +155,7 @@ export function AccountSignup() {
       return;
     }
     track("account_created", { curriculum: child.province });
-    const { error } = await browserClient().auth.signInWithPassword({ email: email.trim(), password });
+    const { error } = await browserClient().auth.signInWithPassword({ email: email.trim().toLowerCase(), password });
     // The account exists even if this sign-in fails; the sign-in page lets the parent finish.
     router.replace(error ? "/sign-in?created=1" : "/account");
   };
@@ -208,7 +210,7 @@ export function SignIn({ created }: { created: boolean }) {
     if (busy) return;
     setBusy(true);
     setFailed(false);
-    const { error } = await browserClient().auth.signInWithPassword({ email: email.trim(), password });
+    const { error } = await browserClient().auth.signInWithPassword({ email: email.trim().toLowerCase(), password });
     if (error) {
       track("sign_in_failed", { code: error.code ?? "unknown" });
       setFailed(true);

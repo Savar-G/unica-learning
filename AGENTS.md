@@ -38,7 +38,7 @@ Personalized, mailed math and reading workbooks for ages 6-12 (grades 1-7). The 
 
 | Variable | Used by |
 |---|---|
-| `SUPABASE_URL`, `SUPABASE_PUBLISHABLE_KEY` | `src/lib/supabase.ts` (server only) |
+| `SUPABASE_URL`, `SUPABASE_PUBLISHABLE_KEY` | `src/lib/supabase.ts` (server only). Both default to `src/lib/supabase-public.ts`, which the account pages, the proxy and the browser use. Override those with `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`. |
 | `NEXT_PUBLIC_POSTHOG_KEY`, `NEXT_PUBLIC_POSTHOG_UI_HOST`, `NEXT_PUBLIC_POSTHOG_INGEST` | PostHog client and proxy. Without the key, events log to the console in dev. |
 | `RESEND_API_KEY`, `SIGNUP_NOTIFY_EMAIL` | Signup alert emails |
 | `CRON_SECRET` | Protects `/api/keepalive` |

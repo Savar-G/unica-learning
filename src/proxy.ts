@@ -1,6 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { createServerClient } from "@supabase/ssr";
-import { SUPABASE_PUBLISHABLE_KEY, SUPABASE_URL } from "@/lib/account";
+import { SUPABASE_PUBLISHABLE_KEY, SUPABASE_URL } from "@/lib/supabase-public";
 import { pilotOn } from "@/lib/pilot";
 
 // Refreshes an expired Supabase session before account pages render, because Server Components cannot set cookies.

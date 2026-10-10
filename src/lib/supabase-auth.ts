@@ -2,7 +2,7 @@ import "server-only";
 import { cookies } from "next/headers";
 import { createServerClient } from "@supabase/ssr";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
-import { SUPABASE_PUBLISHABLE_KEY, SUPABASE_URL } from "@/lib/account";
+import { SUPABASE_PUBLISHABLE_KEY, SUPABASE_URL } from "@/lib/supabase-public";
 
 /** The visitor's own session, from their cookies. Reads through it obey row-level security. */
 export async function sessionClient(): Promise<SupabaseClient> {
@@ -31,7 +31,10 @@ let admin: SupabaseClient | null = null;
 /** Server writes. The secret key skips row-level security, so it never leaves the server. Null when the key is not set. */
 export function adminClient(): SupabaseClient | null {
   const key = process.env.SUPABASE_SECRET_KEY;
-  if (!key) return null;
+  if (!key) {
+    console.error("[account] SUPABASE_SECRET_KEY is not set");
+    return null;
+  }
   admin ??= createClient(SUPABASE_URL, key, { auth: { persistSession: false, autoRefreshToken: false } });
   return admin;
 }
