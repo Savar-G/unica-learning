@@ -1,7 +1,7 @@
 # DESIGN.md - unica-learning-landing-page
 
 > Status: v3. Page story and look approved by Savar 2026-10-04 (no objection); hero copy decided (D-024); hero layout C chosen (D-029); option A parked as a draft (D-030). Built from Savar's FigJam board "Personalized Learning, Delivered" (2026-10-03). v3 copy and sections come from Cedric's notes on the "Landing Page V3" section of the same board, with Savar's answers (2026-10-08, D-056 to D-061).
-> Last updated: 2026-10-09 (v3; closing claim and footer share one colour field, D-080)
+> Last updated: 2026-10-10 (v3; assessment report design, D-087)
 
 ## Job
 
@@ -15,9 +15,9 @@
 
 ## Scope
 
-**In:** One landing page with a working reserve flow, a mobile assessment button, optional analytics, an "Our story" page (`/our-story`, D-060), a Resources section of SEO guides for BC parents (`/resources`, linked only from the footer, D-073), and supporting 404, thank-you, privacy, and terms pages (D-054).
+**In:** One landing page with a working reserve flow, a mobile assessment button, optional analytics, an "Our story" page (`/our-story`, D-060), a Resources section of SEO guides for BC parents (`/resources`, linked only from the footer, D-073), supporting 404, thank-you, privacy, and terms pages (D-054), and the parent's assessment report in the account and by email (D-084, D-087).
 
-**Out:** The product itself, parent dashboard, accounts, and a dated blog or news feed.
+**Out:** The product itself, a parent dashboard beyond the assessment report, and a dated blog or news feed.
 
 ## Source constraints
 
@@ -62,6 +62,15 @@ Every section sets up the next one. A single pencil line connects the sections a
 **Resources (`/resources`, D-073).** A hub ("Guides for BC parents") and one article per guide at `/resources/<slug>`. Content lives in `src/content/resources/<slug>.tsx` (meta + body built from `src/components/article.tsx` blocks); the registry is `src/lib/resources.ts`. Linked only from the site footer, never from the home page body. Each article: breadcrumb, category eyebrow, H1, one-line lead, updated date, key facts, sections, one inline "Take free assessment" panel, FAQ (FAQPage data), closing panel, related guides, numbered sources. Hub on phones: the seven grade guides are compact tiles, two per row. Target phrases come from BC search data (`.design/research/seo-demand/`).
 
 **Our story page (`/our-story`, D-060).** A letter: "Why we built [Brand]". Cedric's text (two students who grew up on workbooks; learning centres worked but were expensive and one-size-fits-all; tutoring was personal but cost $50-$100 an hour; we built the middle). Founder tiles for Savar Gupta and Cedric Tanafranca (initials until real photos arrive), "What we believe", all four promise cards, the sign-off "Savar and Cedric", and a "Take free assessment" button that opens the booking dialog. Linked from the promise section and the footer; listed in the sitemap.
+
+**Assessment report (account page and email, D-084, D-087).** A report card across the full page width, aligned with the site nav, with generous space between sections. Order:
+1. Header table: child, school grade, date, curriculum; wordmark and "Math placement report" on the left; a 2 px ink rule below.
+2. Overall: "[Name] is working at a grade [n] level." and one verdict sentence, in a rounded grainy colour band (sunflower, sky, mint) with the big K-8 ruler: the working level is a filled circle in the verdict colour (behind: tangerine, on grade: leaf, ahead: sky), the school grade a dashed ring, and the span between them tinted.
+3. Context below the band: the FSA line for grades 4 and 7 (labelled context, cited, "a different test"), the comparison for the data stage (none below 100 takers per grade; bands with n at 100-399; a percentile with n at 400+), and the help warning when it applies.
+4. Rows, each with its title and a one-line explanation on the left and the content on the right: By area (table: area and one-line note, a meter with three zones and a marker at the share right, the status chip, "x of y"; then the zone legend and the thresholds with "an early signal, not a final verdict"); Number facts (accuracy beside speed, never speed alone); [Name]'s work (three whiteboard images, each with the question, right or not, and a comment only when the review is sure); How we help (by verdict); Next step (BC: two plan buttons, nothing charged until the first workbook ships; other provinces: the waitlist).
+5. A mono line with the date, question count, minutes and the curriculum measured against.
+
+The email is one 600 px column: greeting, the level and verdict in the same colour band with the ruler, the FSA and comparison lines, the four areas with a meter, status and count, number facts, one piece of work, how we help, one button (plan or waitlist) and a link to the full report. Every number is measured or carries its source. On tablets the rows stack (title above content) and the work shows two across.
 
 ## Visual language
 
@@ -113,4 +122,5 @@ Every section sets up the next one. A single pencil line connects the sections a
 ## Open decisions
 
 - D4 Launch photos (own shoot with consent, or keep stock/AI).
+- Report: show the BC FSA context line to families outside BC, or only in BC?
 - D8/D3 Checkout: BC card saved with Stripe Checkout in setup mode (D-053). Open: how the first month is charged when the first workbook ships (today by hand: a CAD 139 or 229 monthly subscription on the Stripe customer; later a script or webhook).
