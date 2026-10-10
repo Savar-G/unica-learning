@@ -1,0 +1,74 @@
+{
+  "round": 12,
+  "ticket": "#61 (parent #54); D-084, D-086",
+  "branch": "site/report-prototype (prototype, do not merge)",
+  "decision": "How should the parent's assessment report be structured: what leads, and how are the level, the 4 strands, speed and accuracy, the child's work, how we help and the call to action grouped?",
+  "primary_axis": "information hierarchy / page structure",
+  "route": "/report-prototype?variant=A-E&child=behind|on|ahead&stage=1|2|3&prov=BC|ON&help=0|1&view=page|email (dev and preview deploys only; 404 in production)",
+  "invariants": [
+    "same sample data and copy in every variant (src/components/report-prototype/data.ts); every number is sample data except the two FSA figures from the spec",
+    "same shared parts: K-8 scale, FSA line (grades 4 and 7), comparison by stage, strand status chips with question counts, speed beside accuracy, work images with high-confidence comments only, how we help by verdict, card (BC) or waitlist (other provinces), help warning",
+    "warm look tokens: Geist, Geist Mono labels, soft grey cards, grainy colour fields, 6 px controls",
+    "laptop 1440 and tablet 768; phones are out of scope for the test, so the report is not tuned below 700 px"
+  ],
+  "states": {
+    "child": "behind = Maya, grade 4 working at grade 3; on = Leo, grade 4 at grade 4; ahead = Noor, grade 3 at grade 5 (no FSA line: shows the grades-4-and-7 rule)",
+    "stage": "1 = scale + FSA line (n < 100); 2 = bands among Unica children (n 214, sample); 3 = percentile (n 512, sample)",
+    "prov": "BC = plan buttons, card saved, charge when the first book ships; ON = waitlist",
+    "help": "help flag on shows the 'level may be too high' warning",
+    "view": "email = the report email, 600 px single column, carrying the variant's lead"
+  },
+  "options": [
+    {
+      "id": "A",
+      "name": "Report card",
+      "artifact": "A-*.png",
+      "bet": "A printable school-style document: header table, level sentence, scale, a strand table, facts, work, next steps",
+      "benefit": "Familiar to parents; reads as serious and honest; maps 1:1 to the email and a PDF",
+      "cost": "Least visual; the scale is the only picture",
+      "risk": "Feels like a school report card, which can sting for a child who is behind"
+    },
+    {
+      "id": "B",
+      "name": "The ruler",
+      "artifact": "B-*.png",
+      "bet": "One huge K-8 ruler in a colour field answers 'behind, on or ahead?' at a glance; each strand is a meter with three zones",
+      "benefit": "Visuals over words (Savar, D-084); the answer is clear in under 5 seconds",
+      "cost": "The hero takes a full screen before any detail",
+      "risk": "Meters imply more precision than 8-10 questions per strand can carry"
+    },
+    {
+      "id": "C",
+      "name": "Dashboard",
+      "artifact": "C-*.png",
+      "bet": "Every part is a tile, all visible at once, like an account page",
+      "benefit": "Fastest scan; fits the account area and later retakes side by side",
+      "cost": "No reading order; every tile has the same weight",
+      "risk": "Reads as an app dashboard, not a letter about a child; weak for the child reading along"
+    },
+    {
+      "id": "D",
+      "name": "Read it together",
+      "artifact": "D-*.png",
+      "bet": "One idea per screen in plain words, strands grouped by status ('sure of', 'getting there', 'work on next'), for a parent and child reading side by side",
+      "benefit": "Kindest for a child who is behind; best for story 22 (child sees the report with the parent)",
+      "cost": "Longest page (about 4 screens at 1440); the plan button is at the very end",
+      "risk": "A parent who wants the numbers must scroll for them"
+    },
+    {
+      "id": "E",
+      "name": "Show the work",
+      "artifact": "E-*.png",
+      "bet": "A short headline with the scale, then each strand beside the child's own work for that strand",
+      "benefit": "Trust: every status sits next to real evidence (stories 37 and 57)",
+      "cost": "Strands with no shown-work question look empty",
+      "risk": "Depends on good whiteboard images; weak or blank work makes the page look thin"
+    }
+  ],
+  "open_questions": [
+    "Show the BC FSA line to families outside BC? The spec ties it to grades 4 and 7 only; the prototype shows it for every province.",
+    "Which variant's lead should the email carry? The email view shows each lead; the real email is rebuilt in table markup for the chosen direction."
+  ],
+  "evidence": "Screens per variant: <id>-behind-bc-stage1-1440, <id>-on-ontario-stage2-768, <id>-ahead-stage3-help-1440, <id>-email-behind-bc. No horizontal overflow at 1440 or 768 in any of the 20 captures.",
+  "selection": null
+}
