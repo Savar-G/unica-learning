@@ -15,10 +15,10 @@ export const metadata = pageMetadata({
 export default async function SignInPage({ searchParams }: PageProps<"/sign-in">) {
   await requirePilot();
   if (await parentId(await sessionClient())) redirect("/account");
-  const { created } = await searchParams;
+  const { created, error } = await searchParams;
   return (
     <SupportPage label="Your account" title="Sign in.">
-      <SignIn created={created === "1"} />
+      <SignIn created={created === "1"} googleFailed={error === "google"} />
     </SupportPage>
   );
 }

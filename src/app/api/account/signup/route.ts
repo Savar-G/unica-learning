@@ -1,13 +1,12 @@
+import { userAgent } from "next/server";
 import { cleanChild, cleanParent, fail, type AccountResult, type AccountSignupPayload } from "@/lib/account";
+import { createParent, linkOrigin, sendSignInLink, signupCap } from "@/lib/account-server";
 import { pilotOn } from "@/lib/pilot";
 import { adminClient } from "@/lib/supabase-auth";
 
-// The admin API skips Supabase's own signup rate limit, so this route caps new accounts across the whole site.
-// Pilot traffic is a handful of families; a script hits the cap at once.
-const MAX_SIGNUPS_PER_10_MIN = 20;
-
 // Creates the parent's auth user, parent row and first child with the secret key, then the browser signs in with the
-// password. The user is created already confirmed: email confirmation is off for the pilot (#62); emails move to Resend in #63.
+// password. The user is created already confirmed: the pilot does not ask parents to confirm their email.
+// On a phone, the parent also gets the sign-in link for the laptop or tablet (#63, D-082).
 // Known pilot risk: "account_exists" tells a caller that an email has an account.
 export async function POST(request: Request) {
   if (!pilotOn()) return fail("off", 404);
@@ -27,17 +26,8 @@ export async function POST(request: Request) {
   const admin = adminClient();
   if (!admin) return fail("store_failed", 503);
 
-  const { count, error: countError } = await admin.from("parents")
-    .select("id", { count: "exact", head: true })
-    .gt("created_at", new Date(Date.now() - 10 * 60_000).toISOString());
-  if (countError) {
-    console.error("[account] count failed", countError.message);
-    return fail("store_failed", 502);
-  }
-  if ((count ?? 0) >= MAX_SIGNUPS_PER_10_MIN) {
-    console.error("[account] signup cap reached");
-    return fail("busy", 429);
-  }
+  const cap = await signupCap(admin);
+  if (cap) return cap === "busy" ? fail("busy", 429) : fail("store_failed", 502);
 
   const { data, error } = await admin.auth.admin.createUser({
     email: parent.email,
@@ -53,16 +43,15 @@ export async function POST(request: Request) {
   }
 
   const id = data.user.id;
-  const { error: parentError } = await admin.from("parents").insert({ id, name: parent.name, email: parent.email, postal: parent.postal, source: parent.source });
-  const { error: childError } = parentError
-    ? { error: parentError }
-    : await admin.from("children").insert({ parent_id: id, first_name: child.firstName, grade: child.grade, province: child.province });
-  if (childError) {
-    // Remove the half-made account, so the parent can try again with the same email. The parent row goes with it (cascade).
-    console.error("[account] store failed", childError.message);
+  const childId = await createParent(admin, id, parent, child);
+  if (!childId) {
+    // Remove the half-made account, so the parent can try again with the same email.
     const { error: deleteError } = await admin.auth.admin.deleteUser(id);
     if (deleteError) console.error("[account] ORPHAN auth user, delete it in the dashboard:", id, deleteError.message);
     return fail("store_failed", 502);
   }
-  return Response.json({ ok: true } satisfies AccountResult);
+
+  const phone = userAgent(request).device.type === "mobile";
+  const linkSent = phone && (await sendSignInLink(admin, id, childId, linkOrigin(request))) === "sent";
+  return Response.json({ ok: true, linkSent } satisfies AccountResult);
 }
