@@ -154,7 +154,7 @@ export default function Body() {
         </p>
         <p>
           Unica is a third format: personalized math and reading workbooks for ages 6-12, mailed home. One subject is
-          CAD 59 a month and math and reading is CAD 99 a month, delivery included. Your child works on paper for
+          CAD 139 a month and math and reading is CAD 230 a month, delivery included. Your child works on paper for
           15-20 minutes a day, 5 days a week, and you can cancel anytime.
         </p>
       </Section>
