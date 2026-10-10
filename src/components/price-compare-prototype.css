@@ -77,6 +77,15 @@
 .pb-b1 .pb-grid > li.us .pb-trait { background: var(--ink); color: #fff; }
 .pb-b1 .pb-grid > li:not(.us) .pb-price b { color: var(--ink-2); }
 
+/* Round 11: replacements for B1's dark outline on our card (the black chip stays) */
+.pb-b1a .pb-grid > li.us { box-shadow: 0 0 0 1px var(--line); }
+.pb-b1b .pb-grid > li.us { background: #fff; box-shadow: 0 0 0 1px #d4d4d8; overflow: hidden; padding-top: clamp(30px, 3vw, 40px); }
+.pb-b1b .pb-grid > li.us::before { content: ""; position: absolute; inset: 0 0 auto; height: 6px; background: linear-gradient(90deg, var(--g1), var(--g2), var(--g3)); }
+.pb-b1c .pb-grid > li.us { background: #fff; box-shadow: 0 0 0 1px var(--line), 0 24px 48px -20px rgba(12, 12, 14, 0.28); transform: translateY(-10px); }
+.pb-b1d .pb-grid > li.us { background: #fff6dc; box-shadow: 0 0 0 1px rgba(255, 201, 60, 0.7); }
+.pb-b1d .pb-grid > li.us .pb-txt { border-top-color: rgba(0, 0, 0, 0.1); }
+@media (max-width: 899px) { .pb-b1c .pb-grid > li.us { transform: none; } }
+
 /* B2: spec sheet. Heavy top rule, column rules, ticked traits */
 .pb-b2 .pb-grid { gap: 0; border-top: 2px solid var(--ink); border-bottom: 1px solid var(--line); }
 .pb-b2 .pb-grid > li { border-radius: 0; padding: 28px clamp(20px, 2.4vw, 32px) 32px; }

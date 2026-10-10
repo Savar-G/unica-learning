@@ -105,6 +105,11 @@ const VariantB2 = () => <Panels kind="b2" checks />;
 const VariantB3 = () => <Panels kind="b3" />;
 /* B4: icon headers. A person, a building, a book. */
 const VariantB4 = () => <Panels kind="b4" icons />;
+/* Round 11: B1 with four replacements for the dark outline on our card. */
+const VariantB1a = () => <Panels kind="b1 pb-b1a" />;
+const VariantB1b = () => <Panels kind="b1 pb-b1b" />;
+const VariantB1c = () => <Panels kind="b1 pb-b1c" />;
+const VariantB1d = () => <Panels kind="b1 pb-b1d" />;
 /* B5: big names on white; our panel dark. */
 const VariantB5 = () => <Panels kind="b5" />;
 
@@ -120,7 +125,11 @@ function Now() {
 const VARIANTS = [
   { key: "now", name: "Live: two sections", C: Now },
   { key: "B", name: "Grey band (round 9)", C: VariantB },
-  { key: "B1", name: "Outlined cards", C: VariantB1 },
+  { key: "B1", name: "Outlined cards (dark outline)", C: VariantB1 },
+  { key: "B1a", name: "B1, colour wash", C: VariantB1a },
+  { key: "B1b", name: "B1, colour bar on top", C: VariantB1b },
+  { key: "B1c", name: "B1, raised with a shadow", C: VariantB1c },
+  { key: "B1d", name: "B1, warm tint", C: VariantB1d },
   { key: "B2", name: "Spec sheet", C: VariantB2 },
   { key: "B3", name: "Colour-coded", C: VariantB3 },
   { key: "B4", name: "Icon headers", C: VariantB4 },
