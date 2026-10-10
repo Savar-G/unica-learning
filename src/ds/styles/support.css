@@ -31,3 +31,28 @@
 .heard-other { display: flex; flex-wrap: wrap; align-items: end; gap: 10px; margin-top: 14px; }
 .heard-other .fld { flex: 1 1 240px; }
 .heard-thanks { min-height: 1.4em; margin: 12px 0 16px !important; }
+/* Parent account pages (online assessment pilot, #62). */
+.acct-form { display: grid; gap: 18px; max-width: 520px; margin-top: 28px; }
+.acct-form fieldset { border: 0; margin: 0; padding: 0; display: grid; gap: 16px; }
+.acct-form fieldset + fieldset { margin-top: 12px; }
+.acct-form legend, .acct-form .lbl { font: 500 14px/1 var(--sans); }
+.acct-form legend { font: 400 12px/1 var(--mono); letter-spacing: 0.04em; text-transform: uppercase; margin-bottom: 16px; }
+.acct-form .btn { justify-content: center; }
+.acct-form .small { margin: 0; }
+.acct-form .hp { position: absolute; left: -9999px; width: 1px; height: 1px; opacity: 0; }
+.acct-form .pw { position: relative; display: grid; }
+.acct-form .pw input { padding-right: 72px; }
+.acct-form .pw button { position: absolute; right: 8px; top: 50%; transform: translateY(-50%); background: none; border: 0; padding: 8px; font: 500 14px/1 var(--sans); color: var(--ink); text-decoration: underline; cursor: pointer; }
+.acct-alert { margin: 0; padding: 12px 14px; border-radius: 6px; background: var(--card, #f6f4ef); }
+.acct-card { padding: 22px; border: 1px solid var(--line); border-radius: 10px; }
+.support-page .acct-card h2 { margin: 0 0 8px; font-size: 21px; }
+.acct-phone { margin: 24px 0; background: var(--card, #f6f4ef); border: 0; }
+.acct-phone p { margin: 0; }
+.support-page .acct-kids { list-style: none; padding: 0; margin: 24px 0; display: grid; gap: 12px; }
+.support-page .acct-kids li + li { margin-top: 0; }
+.acct-kid { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px 20px; padding: 18px 20px; border: 1px solid var(--line); border-radius: 10px; }
+.acct-kid > span:first-child { display: grid; gap: 4px; font-size: 19px; }
+.acct-start { display: grid; gap: 8px; justify-items: end; }
+.acct-start .small { max-width: 26em; text-align: right; }
+.acct-link { background: none; border: 0; padding: 0; color: inherit; font: inherit; text-decoration: underline; cursor: pointer; }
+.acct-out { margin-top: 32px; }

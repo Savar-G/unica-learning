@@ -1,11 +1,10 @@
 import { after } from "next/server";
 import { PLANS } from "@/lib/site";
-import { CURRICULA, EMAIL, POSTAL, statusFor, type CurriculumId, type SignupPayload, type SignupResult } from "@/lib/signup";
+import { CURRICULA, EMAIL, POSTAL, clip, cleanSource, statusFor, type CurriculumId, type SignupPayload, type SignupResult } from "@/lib/signup";
 import { cardSetupUrl, stripe } from "@/lib/stripe";
 import { supabase } from "@/lib/supabase";
 
 const SUBJECTS = new Set(["Math", "Reading", "Math + Reading"]);
-const clip = (v: unknown, n: number) => (typeof v === "string" ? v.trim().slice(0, n) : "");
 
 export async function POST(request: Request) {
   let body: Partial<SignupPayload>;
@@ -35,9 +34,7 @@ export async function POST(request: Request) {
     grade: Number(body.grade),
     curriculum,
     price: plan ? PLANS[plan].price : 0,
-    source: Object.fromEntries(
-      Object.entries(body.source ?? {}).slice(0, 12).map(([k, v]) => [k.slice(0, 40), clip(v, 300)]),
-    ),
+    source: cleanSource(body.source),
   };
 
   if (

@@ -2,6 +2,13 @@
 export const POSTAL = /^[ABCEGHJ-NPRSTVXY]\d[A-Z] ?\d[A-Z]\d$/i;
 export const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
+/** A trimmed string of at most n characters; anything else becomes "". */
+export const clip = (v: unknown, n: number) => (typeof v === "string" ? v.trim().slice(0, n) : "");
+
+/** CTA, referrer and UTM tags from the browser, capped in count and size. */
+export const cleanSource = (source: Record<string, string> | undefined) =>
+  Object.fromEntries(Object.entries(source ?? {}).slice(0, 12).map(([k, v]) => [k.slice(0, 40), clip(v, 300)]));
+
 // reserved = on an open curriculum, sent to Stripe to add a card; waitlist = books for their curriculum are not ready.
 export type SignupStatus = "reserved" | "waitlist";
 

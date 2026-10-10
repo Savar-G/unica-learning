@@ -10,6 +10,7 @@
     "build:ds": "node scripts/build-ds.mjs"
   },
   "dependencies": {
+    "@supabase/ssr": "^0.12.7",
     "@supabase/supabase-js": "^2.117.2",
     "next": "16.3.8",
     "posthog-js": "^1.435.8",
