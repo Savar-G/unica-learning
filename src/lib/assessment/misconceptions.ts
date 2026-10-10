@@ -1,0 +1,61 @@
+// Named misconceptions that wrong answers are coded to.
+// IDs N1-D6 come from the curriculum map, section 4, with its source status:
+// V = source confirmed, R = recalled and unchecked, none = common classroom error.
+// Only V entries may back a "research shows" line, and only after the citation is checked (DESIGN.md copy rules).
+// IDs in lower case are ours: common errors with no research source.
+
+export interface Misconception {
+  description: string;
+  evidence: "V" | "R" | "none";
+}
+
+export const MISCONCEPTIONS = {
+  N1: { description: "Writes a number as it sounds, so four hundred seven becomes 4007", evidence: "R" },
+  N2: { description: "Reads a digit's face value or the wrong place, not its place value", evidence: "R" },
+  N3: { description: "Bridges a hundred by appending, so after 699 comes 6100", evidence: "R" },
+  N5: { description: "Thinks every odd number is prime", evidence: "R" },
+  O1: { description: "Subtracts the smaller digit from the larger in each column", evidence: "V" },
+  O2: { description: "Subtracts the smaller digit from the larger when the top number has a zero", evidence: "V" },
+  O3: { description: "Forgets to carry when adding", evidence: "R" },
+  O5: { description: "Writes partial products side by side, so 23 x 4 becomes 812", evidence: "R" },
+  O6: { description: "Drops the zero in a quotient, so 612 / 6 becomes 12", evidence: "R" },
+  O7: { description: "Works left to right and ignores the order of operations", evidence: "R" },
+  O8: { description: "Lines up decimals by the right edge, not by the decimal point", evidence: "R" },
+  F1: { description: "Thinks a bigger denominator means a bigger fraction", evidence: "V" },
+  F4: { description: "Compares part to part instead of part to whole", evidence: "R" },
+  F6: { description: "Thinks a longer decimal is a larger decimal", evidence: "V" },
+  F7: { description: "Mixes fraction and decimal notation, so 1/4 becomes 0.14", evidence: "R" },
+  F8: { description: "Reads the digits of a mixed number side by side", evidence: "none" },
+  F9: { description: "Builds equivalent fractions by adding the same number to both parts", evidence: "R" },
+  F10: { description: "Treats a percent as a subtraction or a division by the percent", evidence: "R" },
+  A1: { description: "Reads the equal sign as 'write the answer here'", evidence: "V" },
+  A2: { description: "Continues a pattern by repeating the last number or step", evidence: "R" },
+  A4: { description: "Subtracts the smaller number from the larger when the start is unknown", evidence: "R" },
+  A5: { description: "Finds the step of a rule but not its starting value", evidence: "R" },
+  M1: { description: "Reads the end mark of a ruler and ignores where the object starts", evidence: "V" },
+  M2: { description: "Confuses perimeter and area, or adds only two sides", evidence: "R" },
+  M3: { description: "Forgets the one half in the area of a triangle", evidence: "R" },
+  M7: { description: "Reads the minute hand by ones, or reads the hour hand as the next hour", evidence: "V" },
+  M8: { description: "Carries time in base 10 instead of base 60", evidence: "none" },
+  M9: { description: "Adds the edges, or finds the surface area, instead of the volume", evidence: "R" },
+  D1: { description: "Ignores the key or the scale of a graph", evidence: "R" },
+  D4: { description: "Compares part to part in a probability", evidence: "none" },
+  D5: { description: "Takes a small-sample result as the true probability", evidence: "R" },
+  D6: { description: "Reads 'unlikely' as 'impossible'", evidence: "R" },
+  operation: { description: "Uses the wrong operation", evidence: "none" },
+  "partial-shift": { description: "Forgets to shift the second partial product one place", evidence: "none" },
+  "pattern-direction": { description: "Continues a decreasing pattern upward", evidence: "none" },
+  "decimal-point": { description: "Puts the decimal point in the wrong place", evidence: "none" },
+  "lcm-product": { description: "Multiplies the two numbers instead of finding the least common multiple", evidence: "none" },
+  "fraction-flip": { description: "Writes the whole on top of the fraction", evidence: "none" },
+  "fraction-other-part": { description: "Counts the parts that were not asked about", evidence: "none" },
+  "fraction-one-side": { description: "Changes only one part of a fraction", evidence: "none" },
+  "ratio-order": { description: "Writes the parts of a ratio in the wrong order", evidence: "none" },
+  "ratio-whole": { description: "Compares a part to the whole when the question asks part to part", evidence: "none" },
+  "area-add": { description: "Adds the sides instead of multiplying them for an area", evidence: "none" },
+  "graph-value": { description: "Reads one value from a graph instead of the change", evidence: "none" },
+  "probability-other": { description: "Gives the probability of the other outcome", evidence: "none" },
+  certain: { description: "Reads 'unlikely' as 'certain'", evidence: "none" },
+} satisfies Record<string, Misconception>;
+
+export type MisconceptionId = keyof typeof MISCONCEPTIONS;

@@ -18,7 +18,8 @@ Personalized, mailed math and reading workbooks for ages 6-12 (grades 1-7). The 
 - Open a pull request yourself when you finish building something. Do not ask first. Use a branch named `site/<topic>`, from a worktree based on `origin/main`. Merging to `main` deploys production, so leave the merge to Savar unless he asks.
 - Never switch branches in the main checkout. Other agents work in parallel worktrees (`git worktree list`).
 - All design work goes through `/design`. Mockup rounds live in `.design/experiments/r<n>/`, with a `manifest.json`.
-- Done gate (no test suite): `npx eslint src && npm run build`, then check the change in the browser with `npm run dev`. `npm run lint` also scans `.design-sync/previews/`, which has old errors.
+- Done gate: `npm test && npx eslint src && npm run build`, then check the change in the browser with `npm run dev`. `npm run lint` also scans `.design-sync/previews/`, which has old errors. Vitest does not typecheck; `npm run build` does.
+- Tests (Vitest, `src/**/*.test.ts`) use only a module's public interface. The assessment core (`src/lib/assessment`, imported as `@/lib/assessment`) is the one tested seam today: pure TypeScript with no network, database, clock or `Math.random`. Its tests are the pattern for later ones.
 - Copy rules in `DESIGN.md` are binding: no proof we do not have, no performance claims, and no competitor brand names outside `/resources` (compare with categories such as learning centres, D-064; `/resources` guides may name them with cited, dated facts, D-074).
 - Use plain language in all customer text. Keep development notes and draft labels out of public pages. Give provider names only in the privacy disclosure, with a plain explanation.
 
