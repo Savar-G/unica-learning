@@ -3,7 +3,7 @@
 .rw-tile { display: grid; place-items: center; flex: none; border-radius: 6px; }
 .rw-tile svg, .rw-pb-img svg, .rw-b-tile i svg, .rw-d-prizes svg { width: 55%; height: 55%; }
 .rw-tile svg *, .rw-pb-img svg *, .rw-b-tile svg *, .rw-d-prizes svg * { fill: none; stroke: var(--ink); stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
-.rw-more { display: inline-flex; gap: 6px; align-items: baseline; font-weight: 500; color: var(--ink); text-decoration: underline; text-decoration-color: var(--accent); text-decoration-thickness: 2px; text-underline-offset: 4px; white-space: nowrap; }
+.rw-more { display: inline-flex; gap: 6px; align-items: baseline; padding-bottom: 3px; font-weight: 500; color: var(--ink); text-decoration: none; background: linear-gradient(var(--accent), var(--accent)) left bottom / 100% 2px no-repeat; white-space: nowrap; }
 .rw-more:hover { color: var(--accent); }
 .rw-kicker { font: 400 12.5px/1.2 var(--mono); letter-spacing: 0.02em; color: var(--ink-2); display: flex; align-items: center; gap: 9px; margin: 0; }
 .rw-kicker::before { content: ""; width: 9px; height: 9px; background: var(--accent); }

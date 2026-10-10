@@ -110,5 +110,11 @@
         "risk": "Two links to the same page"
       }
     ]
+  },
+  "chosen": {
+    "date": "2026-10-09",
+    "grid": "C2 (Daily practice, rewarded)",
+    "page": "D (letter to parents, eyebrow 'Rewards for kids')",
+    "polish": "'See the rewards' link: one continuous underline under the text and the arrow"
   }
 }
