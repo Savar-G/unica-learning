@@ -29,6 +29,7 @@ import {
   SwapWord,
   type IconName,
 } from "@/ds";
+import { ComparePanels } from "./compare";
 import { Knot, Rise, type Vars } from "./drawn";
 
 import heroHome1 from "@/assets/img/hero-home-1.jpg";
@@ -273,7 +274,7 @@ export function Pricing() {
     <Section id="price" aria-labelledby="priceT">
       <Knot />
       <Rise>
-        <SectionHeader eyebrow="Pricing" title="Simple pricing." titleId="priceT" />
+        <SectionHeader eyebrow="Pricing" title="Personal like a tutor. Structured like a learning centre. Priced like neither." titleId="priceT" />
         <p className="g-line">Every plan has a <Highlight>30-day money-back guarantee.</Highlight></p>
       </Rise>
       <PlanGrid>
@@ -298,6 +299,7 @@ export function Pricing() {
           cta={<GetStarted src="price" plan="both" label="Choose math + reading" />}
         />
       </PlanGrid>
+      <ComparePanels />
     </Section>
   );
 }
