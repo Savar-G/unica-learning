@@ -317,7 +317,7 @@ export function Faq() {
   );
 }
 
-const STRIP = [heroHome2, adapt4, emo9, emo10, reading1, emo6, adapt3, emo5];
+export const STRIP = [heroHome2, adapt4, emo9, emo10, reading1, emo6, adapt3, emo5];
 
 export function Closing() {
   return (

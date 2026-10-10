@@ -1,3 +1,4 @@
+import { EndingPrototype, SHOW_PROTOTYPES } from "@/components/footer-prototype";
 import { Motion } from "@/components/motion";
 import { Parent } from "@/components/parent";
 import { Reserve } from "@/components/reserve";
@@ -19,9 +20,9 @@ export function Landing({ look = "primer" }: { look?: Look }) {
           <OurPromise />
           <Pricing />
           <Faq />
-          <Closing />
+          {SHOW_PROTOTYPES ? <EndingPrototype /> : <Closing />}
         </main>
-        <Footer />
+        {!SHOW_PROTOTYPES && <Footer />}
       </div>
       <aside className="mobile-assessment" aria-label="Free assessment">
         <button className="btn" type="button" data-open data-src="mobile-sticky">Take free assessment <span className="arr" aria-hidden="true">→</span></button>
