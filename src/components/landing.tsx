@@ -1,7 +1,7 @@
-import { Compare } from "@/components/compare";
+import { PriceComparePrototype } from "@/components/price-compare-prototype";
 import { Motion } from "@/components/motion";
 import { Reserve } from "@/components/reserve";
-import { Closing, Faq, Feel, Footer, Hero, How, Included, Nav, OurPromise, Pricing, Why } from "@/components/sections";
+import { Closing, Faq, Feel, Footer, Hero, How, Included, Nav, OurPromise, Why } from "@/components/sections";
 import type { Look } from "@/lib/look";
 
 export function Landing({ look = "primer" }: { look?: Look }) {
@@ -16,8 +16,7 @@ export function Landing({ look = "primer" }: { look?: Look }) {
           <Included />
           <Feel />
           <OurPromise />
-          <Compare />
-          <Pricing />
+          <PriceComparePrototype />
           <Faq />
           <Closing />
         </main>

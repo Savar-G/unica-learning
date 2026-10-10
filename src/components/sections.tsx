@@ -276,6 +276,14 @@ export function Pricing() {
         <SectionHeader eyebrow="Pricing" title="Simple pricing." titleId="priceT" />
         <p className="g-line">Every plan has a <Highlight>30-day money-back guarantee.</Highlight></p>
       </Rise>
+      <PricingPlans />
+    </Section>
+  );
+}
+
+/** The two plan cards. Exported for the price-compare prototype (branch site/price-compare-prototype). */
+export function PricingPlans() {
+  return (
       <PlanGrid>
         <PlanCard
           className="rise"
@@ -298,7 +306,6 @@ export function Pricing() {
           cta={<GetStarted src="price" plan="both" label="Choose math + reading" />}
         />
       </PlanGrid>
-    </Section>
   );
 }
 

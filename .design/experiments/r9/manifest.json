@@ -1,0 +1,20 @@
+{
+  "round": 9,
+  "decision": "Can Pricing and 'How we're different' become one section, so the page shows price once?",
+  "primary_axis": "where the tutor / learning centre comparison sits relative to the plan cards",
+  "where": "Live prototype on the home page: /?variant=now|A|B|C|D|E (component src/components/price-compare-prototype.tsx, branch site/price-compare-prototype). Screenshots: <key>-1440.png (B, C, E only; D was changed after its screenshot).",
+  "invariants": [
+    "headline 'Personal like a tutor. Structured like a learning centre. Priced like neither.' with eyebrow 'Pricing' and the guarantee line",
+    "the live plan cards, unchanged",
+    "the live Compare panel facts and descriptions (.design/research/competitors-2026-10.md); categories only, no competitor names (D-064)",
+    "section id 'price', so nav and /#price links keep working"
+  ],
+  "options": [
+    { "id": "now", "bet": "Baseline: Compare section, then Pricing", "benefit": "Already live", "cost": "Price shown twice in two sections", "risk": "Reads as two pricing sections" },
+    { "id": "A", "bet": "Ruled rows: tutor, centre, us, under the cards, same columns", "benefit": "Quiet; the price column reads top to bottom; keeps every description", "cost": "Repeats CAD 59 already in the card", "risk": "Rows can look like a footnote" },
+    { "id": "B", "bet": "Grey band: our claim on the left, tutor and centre in grey on the right", "benefit": "Closest to the live panels; one block, clear winner", "cost": "Heaviest block under the cards", "risk": "Still feels like a second pricing row" },
+    { "id": "C", "bet": "Head to head: parent picks 'a private tutor' or 'a learning centre'; them against us on cost, how it is made, along the way", "benefit": "Answers the one alternative the parent is weighing", "cost": "One comparison hidden behind a toggle", "risk": "Most parents do not click the toggle" },
+    { "id": "D", "bet": "Annotated headline: each clause of the headline carries its price and description; nothing under the cards", "benefit": "The headline is the comparison; shortest page", "cost": "Comparison sits above the cards, not under", "risk": "A large grey headline may read as disabled" },
+    { "id": "E", "bet": "Check matrix: made for your child / a set path / cost; only our row has both checks", "benefit": "Scans in two seconds", "cost": "Drops most of the descriptions", "risk": "A dash for tutors on 'set path' and centres on 'made for your child' is a stronger claim than the live copy; D-067 rejected a verdict grid once" }
+  ]
+}
