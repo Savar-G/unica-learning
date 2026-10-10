@@ -135,7 +135,7 @@ export function How() {
   );
 }
 
-const WHY: [string, string][] = [
+export const WHY: [string, string][] = [
   ["Real paper. Real pencil.", "Your child learns away from screens. Each book comes to your door, so you never print a page. The app is for you, not them."],
   ["Made for your child.", "Every page targets what they're ready for next, not what the rest of the class is on."],
   ["Master it, then move on.", "If your child is struggling with a concept, the next book stays on it and teaches it a different way. They move on when they've mastered it."],
@@ -160,7 +160,7 @@ export function Why() {
   );
 }
 
-const INCLUDED: [IconName, string, string, number][][] = [
+export const INCLUDED: [IconName, string, string, number][][] = [
   [
     ["book", "Workbooks", "1 workbook per subject, about 20-25 pages.", 0],
     ["calendar", "Daily practice", "15-20 minutes a day, 5 days a week.", 0.08],
