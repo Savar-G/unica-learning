@@ -205,7 +205,7 @@ function VariantD() {
   return (
     <div className="rw-page rw-pd">
       <Rise className="rw-pd-head">
-        <Eyebrow>Rewards, for parents</Eyebrow>
+        <Eyebrow>Rewards for kids</Eyebrow>
         <h1>Why we reward finished work</h1>
       </Rise>
       <Rise className="rw-pd-body" d={0.06}>
@@ -325,7 +325,7 @@ const VARIANTS = [
 ];
 
 function Switch() {
-  const [key, change] = useVariant(VARIANTS.map((v) => v.key), "A", ".rw");
+  const [key, change] = useVariant(VARIANTS.map((v) => v.key), "D", ".rw");
   const V = (VARIANTS.find((v) => v.key === key) ?? VARIANTS[0]).C;
   return (
     <>
@@ -336,5 +336,5 @@ function Switch() {
 }
 
 export function RewardsPrototype() {
-  return SHOW_PROTOTYPES ? <Switch /> : <VariantA />;
+  return SHOW_PROTOTYPES ? <Switch /> : <VariantD />;
 }
