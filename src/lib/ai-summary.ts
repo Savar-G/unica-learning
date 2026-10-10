@@ -1,6 +1,7 @@
 // Plain-text summaries for AI assistants and agents: /llms.txt (llmstxt.org) and /pricing.md.
 // Facts come from the same constants as the page, so the files cannot drift from it.
 import { FAQ } from "@/lib/faq";
+import { PARENT_QA } from "@/lib/parent";
 import { SITE_URL } from "@/lib/metadata";
 import { resourcePath, RESOURCES } from "@/lib/resources";
 import { BRAND, PLANS } from "@/lib/site";
@@ -48,6 +49,9 @@ ${BRAND} is made in Vancouver, BC. A free placement assessment on paper finds ea
 4. Scan: take a photo of the finished pages. We mark the work, show you the gaps, and give the solutions.
 5. Adapt: based on how they did, we choose and adjust the next workbook: more practice where they are struggling, and moving ahead where they are ready.
 6. Repeat: the next book arrives before the current one runs out.
+
+## Your commitment as a parent
+${PARENT_QA.map(([q, a]) => `- ${q} ${a}`).join("\n")}
 
 ## Who it is for
 Parents in Canada with a child aged 6-12 who want math or reading practice on paper, at the child's own level and pace, with little screen time for the child.

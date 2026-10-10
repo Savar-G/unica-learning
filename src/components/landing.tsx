@@ -1,5 +1,6 @@
 import { Compare } from "@/components/compare";
 import { Motion } from "@/components/motion";
+import { Parent } from "@/components/parent";
 import { Reserve } from "@/components/reserve";
 import { Closing, Faq, Feel, Footer, Hero, How, Included, Nav, OurPromise, Pricing, Why } from "@/components/sections";
 import type { Look } from "@/lib/look";
@@ -12,6 +13,7 @@ export function Landing({ look = "primer" }: { look?: Look }) {
         <main id="main">
           <Hero />
           <How />
+          <Parent />
           <Why />
           <Included />
           <Feel />
