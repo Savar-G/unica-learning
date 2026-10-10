@@ -321,3 +321,110 @@
   .c-grid > * { grid-column: span 12 !important; }
   .rp-tick { font-size: 12px; }
 }
+
+/* ======================= r13: report card iterations (A2-A5) ======================= */
+.ac { max-width: calc(1280px - 2 * var(--gut)); margin: 0 auto; padding-top: 56px; }
+.ac h2 { font-size: clamp(26px, 2.6vw, 34px); line-height: 1.1; }
+.ac h1 { font-size: clamp(36px, 4.6vw, 60px); line-height: 1.04; }
+.ac .a-sub { font-size: 20px; margin-top: 10px !important; }
+.ac-head { display: grid; grid-template-columns: 1fr 2fr; gap: 40px; align-items: end; padding-bottom: 28px; border-bottom: 2px solid var(--ink); }
+.ac-head dl { display: grid; grid-template-columns: repeat(4, 1fr); gap: 20px; margin: 0; }
+.ac-head dt { font: 400 11.5px/1.3 var(--mono); color: var(--ink-3); }
+.ac-head dd { margin: 4px 0 0; font-size: 19px; font-weight: 500; }
+.ac-overall { padding: 64px 0 56px; }
+.ac-overall .rp-scale { margin-top: 36px; }
+.ac .rp-scale-track { height: 72px; }
+.ac .rp-tick { font-size: 16px; }
+.ac .rp-pin.is-level { width: 46px; height: 46px; margin: -23px 0 0 -23px; }
+.ac .rp-pin.is-grade { width: 58px; height: 58px; margin: -29px 0 0 -29px; }
+.ac-context { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 24px; align-items: start; margin-top: 8px; }
+.ac-context > .rp-fsa, .ac-context > .rp-compare { margin-top: 16px !important; }
+.ac-context-pad { padding: 8px 0 40px; }
+.ac-row { display: grid; grid-template-columns: minmax(220px, 1fr) 3fr; gap: 64px; padding: 64px 0; border-top: 1px solid var(--line); }
+.ac-row-l { display: grid; gap: 12px; align-content: start; }
+.ac-row-l p { font-size: 15px; color: var(--ink-2); max-width: 30ch; }
+.ac-row-r { min-width: 0; }
+.ac-row-r .rp-help h3 { font-size: 26px; }
+.ac-row-r .rp-help p:last-child { font-size: 18px; line-height: 1.6; }
+.ac-table th, .ac-table td { padding: 22px 16px 22px 0; }
+.ac-table tbody th { font-size: 18px; }
+.ac-table tbody th span { font-size: 15px; margin-top: 6px; }
+.ac-table.has-meters .ac-meter { width: 28%; min-width: 180px; padding-top: 30px; }
+.ac-table + .b-legend { margin-top: 14px; }
+.ac .rp-facts > div { padding: 22px 24px; }
+.ac .rp-facts b { font-size: 52px; }
+.ac-work { display: grid; grid-template-columns: repeat(3, 1fr); gap: 28px; }
+.ac-work.is-two { grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 20px; }
+.ac .rp-board { min-height: 150px; font-size: 28px; }
+.ac .rp-cta { padding: 32px; }
+.ac-foot { padding: 28px 0 0; border-top: 1px solid var(--line); }
+
+/* A3: colour band with the big ruler */
+.ac-band {
+  --c: var(--v-on);
+  margin: 40px 0 0; padding: 56px max(32px, 4vw) 48px; border-radius: 16px;
+  background: var(--noise), radial-gradient(45% 80% at 12% 20%, var(--g1), transparent 70%), radial-gradient(45% 80% at 85% 15%, var(--g3), transparent 70%), radial-gradient(50% 80% at 55% 120%, var(--g4), transparent 70%), var(--base);
+  background-blend-mode: soft-light, normal, normal, normal, normal;
+}
+.ac-band.is-behind { --c: var(--v-behind); }
+.ac-band.is-ahead { --c: var(--v-ahead); }
+.ac-band .rp-scale { margin-top: 40px; }
+.ac-band .rp-scale-track { height: 104px; border: 0; border-radius: 12px; box-shadow: 0 20px 40px -24px rgba(0, 0, 0, 0.35); }
+.ac-band .rp-tick { font-size: 22px; }
+.ac-band .rp-pin.is-level { width: 70px; height: 70px; margin: -35px 0 0 -35px; }
+.ac-band .rp-pin.is-grade { width: 88px; height: 88px; margin: -44px 0 0 -44px; }
+.ac-band .rp-scale-key { color: var(--ink); font-size: 14px; }
+
+/* A4: panels */
+.ac-panels { display: grid; gap: 20px; }
+.ac-panel { padding: 48px 56px; border-radius: 16px; background: var(--card); }
+.ac-panel.is-white { background: #fff; border: 1px solid var(--line); }
+.ac-panel h2 { margin-bottom: 28px; }
+.ac-panels .ac-head { border-bottom: 1px solid var(--line); }
+.ac-panels .ac-overall { padding: 56px; }
+.ac-panel .a-table thead th, .ac-panel .a-table tbody th, .ac-panel .a-table td { border-color: #e6e3de; }
+.ac-panel .rp-facts > div { background: #fff; }
+.ac-pair { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+.ac-panel.is-field { padding: 0; background: none; }
+.ac-panel.is-field .rp-cta { height: 100%; padding: 48px; border-radius: 16px; }
+.ac-panels .ac-foot { border-top: 0; padding-top: 8px; }
+
+/* A5: sticky summary beside the detail */
+.ac-split-in { display: grid; grid-template-columns: minmax(360px, 5fr) 7fr; gap: 72px; padding-top: 48px; }
+.ac-side-in { position: sticky; top: 76px; display: grid; gap: 4px; }
+.ac-side h1 { font-size: clamp(28px, 2.6vw, 36px); line-height: 1.1; }
+.ac-side .a-sub { font-size: 17px; }
+.ac-side-level { font: 200 120px/0.9 var(--sans); letter-spacing: -0.06em; color: var(--v-on); margin: 4px 0 10px !important; }
+.ac-side .rp-scale-track { height: 56px; }
+.ac-side .rp-tick { font-size: 13px; }
+.ac-side .rp-pin.is-level { width: 34px; height: 34px; margin: -17px 0 0 -17px; }
+.ac-side .rp-pin.is-grade { width: 44px; height: 44px; margin: -22px 0 0 -22px; }
+.ac-side-cta { margin-top: 24px; }
+.ac-side-cta .rp-cta { padding: 24px; }
+.ac-side-cta .rp-cta-row .btn { flex: 1 1 auto; }
+.ac-main > .rp-fsa { margin-top: 0 !important; }
+.ac-sec { padding: 48px 0; border-bottom: 1px solid var(--line); }
+.ac-sec h2 { margin-bottom: 24px; }
+.ac-meters { display: grid; gap: 32px; }
+.ac-mrow .b-meter-h { font-size: 18px; }
+.ac-mrow .b-bar { height: 20px; }
+.ac-mrow .b-bar i { top: -6px; height: 32px; }
+.ac-split .ac-foot { border-top: 0; }
+
+@media (max-width: 1023px) {
+  .ac { padding-top: 32px; }
+  .ac-head { grid-template-columns: 1fr; gap: 20px; }
+  .ac-row { grid-template-columns: 1fr; gap: 20px; padding: 44px 0; }
+  .ac-row-l p { max-width: none; }
+  .ac-work { grid-template-columns: repeat(2, 1fr); }
+  .ac-table.has-meters .ac-meter { min-width: 120px; }
+  .ac-panel { padding: 32px; }
+  .ac-pair { grid-template-columns: 1fr; }
+  .ac-split-in { grid-template-columns: 1fr; gap: 0; }
+  .ac-side-in { position: static; }
+}
+@media (max-width: 699px) {
+  .ac-head dl { grid-template-columns: 1fr 1fr; }
+  .ac-work, .ac-work.is-two { grid-template-columns: 1fr; }
+}
+.ac-side-level.is-behind { color: var(--v-behind); } .ac-side-level.is-ahead { color: var(--v-ahead); }

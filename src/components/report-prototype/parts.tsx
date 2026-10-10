@@ -134,6 +134,29 @@ export function Dots({ correct, total }: { correct: number; total: number }) {
   );
 }
 
+/** Round r13: variant B's strand meter. Three zones (under 50, 50-79, 80+) and a marker at the share right. */
+export function Meter({ correct, total, label }: { correct: number; total: number; label: string }) {
+  return (
+    <div className="b-bar" role="img" aria-label={`${correct} of ${total} right, ${label}`}>
+      <span className="z1" />
+      <span className="z2" />
+      <span className="z3" />
+      <i style={{ left: `${pct(correct, total)}%` }} />
+    </div>
+  );
+}
+
+export function MeterLegend() {
+  return (
+    <p className="b-legend">
+      <i className="z1" />
+      Needs attention <i className="z2" />
+      Developing <i className="z3" />
+      Secure
+    </p>
+  );
+}
+
 /** Speed always next to accuracy, never alone. */
 export function Facts({ c, layout = "row" }: { c: Child; layout?: "row" | "stack" }) {
   const f = c.facts;

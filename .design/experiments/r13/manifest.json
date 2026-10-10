@@ -1,0 +1,55 @@
+{
+  "round": 13,
+  "ticket": "#61 (parent #54)",
+  "branch": "site/report-prototype (prototype, do not merge)",
+  "previous": "r12: Savar chose A (Report card) as the easiest to read and understand quickly. He found the narrow centred sheet odd and the page crammed, and he liked B's ruler and strand meters.",
+  "decision": "Which layout of the report card should we build: full-width rows, rows with the ruler and meters, panels, or a summary beside the detail?",
+  "primary_axis": "layout and spacing of the report card (order and content held from A)",
+  "route": "/report-prototype?variant=A2|A3|A4|A5 (A stays as the r12 reference; B-E stay for comparison)",
+  "invariants": [
+    "A's section order: header table, overall level and scale, comparison, by area, number facts, the child's work, how we help, next step",
+    "A's content and sample data; every number labelled sample except the FSA figures",
+    "full page width, aligned with the site nav; more space between and inside sections than r12",
+    "laptop 1440 and tablet 768"
+  ],
+  "options": [
+    {
+      "id": "A2",
+      "name": "Wide document",
+      "artifact": "A2-*.png",
+      "bet": "The report card across the full width; each section is a row with its title and a one-line explanation on the left",
+      "benefit": "Closest to A, with room to breathe; the left titles make the page easy to scan",
+      "cost": "Long page (about 3.3 screens at 1440)",
+      "risk": "The left column is mostly empty on short sections"
+    },
+    {
+      "id": "A3",
+      "name": "Report card + ruler",
+      "artifact": "A3-*.png",
+      "bet": "A2's rows, B's big ruler in a colour band for the overall level, and a meter in every area row",
+      "benefit": "Keeps A's easy table and adds B's visuals that Savar liked; the answer is clear at a glance",
+      "cost": "The colour band and meters add visual weight",
+      "risk": "Meters can look more precise than 8-10 questions per area"
+    },
+    {
+      "id": "A4",
+      "name": "Panels",
+      "artifact": "A4-*.png",
+      "bet": "The same order, each section in its own roomy soft-grey panel; how we help and the next step side by side",
+      "benefit": "Clear separation between sections; calm and roomy",
+      "cost": "Panels repeat the same shape down the page",
+      "risk": "Can feel like an app page more than a report"
+    },
+    {
+      "id": "A5",
+      "name": "Summary beside detail",
+      "artifact": "A5-*.png",
+      "bet": "The level, ruler, comparison and plan buttons stay in view on the left; areas as large meters, facts, work and how we help scroll on the right",
+      "benefit": "The answer and the next step are always visible; uses the laptop width",
+      "cost": "On tablets it stacks into one column, so the plan buttons come before the detail",
+      "risk": "Asks for a card before the parent has read the detail"
+    }
+  ],
+  "evidence": "Screens per option: <id>-behind-bc-stage1-1440, <id>-on-ontario-stage2-768, <id>-ahead-stage3-help-1440. No horizontal overflow in any of the 12 captures.",
+  "selection": null
+}

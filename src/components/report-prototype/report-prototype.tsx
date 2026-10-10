@@ -1,7 +1,7 @@
 "use client";
 
-// PROTOTYPE ONLY (branch site/report-prototype, round r12). Throwaway: the chosen direction is rebuilt in #80.
-// URL: /report-prototype?variant=A-E&child=behind|on|ahead&stage=1|2|3&prov=BC|ON&help=0|1&view=page|email
+// PROTOTYPE ONLY (branch site/report-prototype, round r12, r13). Throwaway: the chosen direction is rebuilt in #80.
+// URL: /report-prototype?variant=A|A2-A5|B-E&child=behind|on|ahead&stage=1|2|3&prov=BC|ON&help=0|1&view=page|email
 // The bottom bar switches every axis; the arrow keys step through variants. State lives in the URL only.
 import { useEffect, useState } from "react";
 import { track } from "@/lib/track";
@@ -20,7 +20,7 @@ interface State {
   view: "page" | "email";
 }
 
-const DEFAULT: State = { variant: "A", child: "behind", stage: 1, prov: "BC", help: false, view: "page" };
+const DEFAULT: State = { variant: "A2", child: "behind", stage: 1, prov: "BC", help: false, view: "page" };
 
 function fromUrl(): State {
   const q = new URLSearchParams(window.location.search);

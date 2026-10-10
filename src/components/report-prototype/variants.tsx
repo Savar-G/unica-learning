@@ -23,6 +23,7 @@ import {
   helpTitle,
   type ReportProps,
 } from "./parts";
+import { VariantA2, VariantA3, VariantA4, VariantA5 } from "./report-card";
 
 /* A. Report card: a printable school-style document, read top to bottom. */
 export function VariantA({ c, stage, prov, helped }: ReportProps) {
@@ -355,7 +356,11 @@ export function VariantE({ c, stage, prov, helped }: ReportProps) {
 }
 
 export const VARIANTS = [
-  { key: "A", name: "Report card", C: VariantA },
+  { key: "A", name: "Report card (r12)", C: VariantA },
+  { key: "A2", name: "Wide document", C: VariantA2 },
+  { key: "A3", name: "Report card + ruler", C: VariantA3 },
+  { key: "A4", name: "Panels", C: VariantA4 },
+  { key: "A5", name: "Summary beside detail", C: VariantA5 },
   { key: "B", name: "The ruler", C: VariantB },
   { key: "C", name: "Dashboard", C: VariantC },
   { key: "D", name: "Read it together", C: VariantD },
