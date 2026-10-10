@@ -15,7 +15,6 @@ import {
   Faq as FaqList,
   FeatureCard,
   FeatureGrid,
-  GradientPanel,
   Hero as HeroBlock,
   Highlight,
   IncludedCard,
@@ -33,7 +32,6 @@ import { ComparePanels } from "./compare";
 import { Knot, Rise, type Vars } from "./drawn";
 
 import heroHome1 from "@/assets/img/hero-home-1.jpg";
-import heroHome2 from "@/assets/img/hero-home-2.jpg";
 import assessPaper from "@/assets/img/loop-assess-paper.jpg";
 import practice6 from "@/assets/img/loop-practice-6.jpg";
 import deliverPhoto from "@/assets/img/loop-deliver.jpg";
@@ -41,13 +39,10 @@ import scanPhoto from "@/assets/img/loop-scan.jpg";
 import adaptPhoto from "@/assets/img/loop-adapt.jpg";
 import repeatPhoto from "@/assets/img/loop-repeat.jpg";
 import emo1 from "@/assets/img/emotion-1.jpg";
-import adapt3 from "@/assets/img/loop-adapt-3.jpg";
 import adapt4 from "@/assets/img/loop-adapt-4.jpg";
-import reading1 from "@/assets/img/loop-practice-reading-1.jpg";
 import reading2 from "@/assets/img/loop-practice-reading-2.jpg";
 import emo4 from "@/assets/img/emotion-4.jpg";
 import emo5 from "@/assets/img/emotion-5.jpg";
-import emo6 from "@/assets/img/emotion-6.jpg";
 import emo7 from "@/assets/img/emotion-7.jpg";
 import emo9 from "@/assets/img/emotion-9.jpg";
 import emo10 from "@/assets/img/emotion-10.jpg";
@@ -317,55 +312,73 @@ export function Faq() {
   );
 }
 
-const STRIP = [heroHome2, adapt4, emo9, emo10, reading1, emo6, adapt3, emo5];
+const CLOSING_BELIEFS = [
+  { text: "Every child learns differently. Learning should adapt.", color: "sun" },
+  { text: "No child should fall behind because the class moved on.", color: "sky" },
+  { text: "Personal, on paper, and affordable.", color: "tang" },
+] as const;
 
+/** The closing claim. Rendered inside <Footer>, in the same colour field as the footer card (D-080). */
 export function Closing() {
   return (
-    <Section className="close" aria-labelledby="closeT">
-      <Knot />
-      <GradientPanel>
-        <Rise>
-          <BeliefList
-            items={[
-              { text: "Every child learns differently. Learning should adapt.", color: "sun" },
-              { text: "No child should fall behind because the class moved on.", color: "sky" },
-              { text: "Personal, on paper, and affordable.", color: "tang" },
-            ]}
-          />
-        </Rise>
-        <Rise as="h2" id="closeT">This is what learning should be like.</Rise>
-        <Rise className="ctas">
-          <GetStarted src="close" />
-          <a className="btn ghost" href="#price">See pricing</a>
-        </Rise>
-      </GradientPanel>
-      <div className="strip" aria-hidden="true">
-        {STRIP.map((src, i) => (
-          <div className="ph" key={i}><Image src={src} alt="" sizes="(min-width: 900px) 12vw, 45vw" placeholder="blur" /></div>
-        ))}
-      </div>
-    </Section>
+    <section className="close" aria-labelledby="closeT">
+      <Rise>
+        <BeliefList items={[...CLOSING_BELIEFS]} />
+      </Rise>
+      <Rise as="h2" id="closeT">This is what learning should be like.</Rise>
+      <Rise className="ctas">
+        <GetStarted src="close" />
+        <a className="btn ghost" href="#price">See pricing</a>
+      </Rise>
+    </section>
   );
 }
 
-export function Footer() {
+/** Last pencil-thread knot. The thread lives in <main>, and the closing now sits after it, in the footer field. */
+export function ThreadEnd() {
   return (
-    <footer className="foot">
-      <div>
-        <a className="logo" href="#top">{BRAND}<b /></a>
-        <p style={{ margin: "12px 0 0" }}>Personalized math and reading workbooks for ages 6-12.</p>
-        <p className="small" style={{ marginTop: 10 }}>Made in Vancouver, BC · 30-day money-back guarantee · Cancel anytime</p>
-        <p className="small" style={{ marginTop: 10 }}>© 2026 {BRAND}</p>
-        <nav className="footer-links small" aria-label="Site information">
-          <Link href="/our-story">Our story</Link>
-          <Link href="/rewards">Rewards</Link>
-          <Link href="/resources">Resources</Link>
-          <Link href="/privacy">Privacy</Link>
-          <Link href="/terms">Terms</Link>
-          <a href={SUPPORT_HREF}>Contact us</a>
-          <CookieSettingsButton />
-        </nav>
+    <div className="thread-end">
+      <Knot />
+    </div>
+  );
+}
+
+const FOOTER_GROUPS: { title: string; links: { label: string; href: string }[] }[] = [
+  { title: "Learn", links: [{ label: "How it works", href: "/#how" }, { label: "What you get", href: "/#inc" }, { label: "Pricing", href: "/#price" }, { label: "FAQ", href: "/#faq" }] },
+  { title: "Company", links: [{ label: "Our story", href: "/our-story" }, { label: "Rewards", href: "/rewards" }, { label: "Resources", href: "/resources" }] },
+  { title: "Help", links: [{ label: "Contact us", href: SUPPORT_HREF }, { label: "Privacy", href: "/privacy" }, { label: "Terms", href: "/terms" }] },
+];
+
+/** Site footer (D-080): a white link card inside a grainy colour field. The home page passes <Closing /> as children. */
+export function Footer({ children }: { children?: ReactNode }) {
+  return (
+    <div className={`ending${children ? " has-close" : ""}`}>
+      <div className="ending-field">
+        {children}
+        <footer className="foot">
+          <div className="foot-brand">
+            <a className="logo" href="#top">{BRAND}<b /></a>
+            <p>Personalized math and reading workbooks for ages 6-12.</p>
+          </div>
+          {FOOTER_GROUPS.map((g) => (
+            <nav className="foot-col" key={g.title} aria-label={g.title}>
+              <h2>{g.title}</h2>
+              <ul>
+                {g.links.map((l) => (
+                  <li key={l.label}>{l.href.startsWith("/") && !l.href.startsWith("/#") ? <Link href={l.href}>{l.label}</Link> : <a href={l.href}>{l.label}</a>}</li>
+                ))}
+              </ul>
+            </nav>
+          ))}
+          <div className="foot-fine">
+            <span>© 2026 {BRAND}</span>
+            <span>Made in Vancouver, BC</span>
+            <span>30-day money-back guarantee</span>
+            <span>Cancel anytime</span>
+            <CookieSettingsButton />
+          </div>
+        </footer>
       </div>
-    </footer>
+    </div>
   );
 }
