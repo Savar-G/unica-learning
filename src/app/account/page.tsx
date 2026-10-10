@@ -5,6 +5,7 @@ import { SITE_URL, pageMetadata } from "@/lib/metadata";
 import { requirePilot } from "@/lib/pilot";
 import { CURRICULA } from "@/lib/signup";
 import type { Child } from "@/lib/account";
+import type { AssessmentStatus } from "@/lib/test-api";
 import { parentId, sessionClient } from "@/lib/supabase-auth";
 import { AddChild, PhoneSeen, SignOut, StartTest } from "@/components/account";
 import { SupportPage } from "@/components/support-page";
@@ -27,12 +28,13 @@ export default async function Account() {
     db.from("parents").select("name").maybeSingle<{ name: string }>(),
     db.from("children").select("id, first_name, grade, province").order("created_at").returns<Child[]>(),
     // Oldest first, so each child's latest test wins below.
-    db.from("assessments").select("child_id, status").order("created_at").returns<{ child_id: string; status: string }[]>(),
+    db.from("assessments").select("child_id, status").order("created_at").returns<{ child_id: string; status: AssessmentStatus }[]>(),
   ]);
   const latest = new Map((tests ?? []).map((t) => [t.child_id, t.status]));
+  // An expired test (#72) counts as no test: the child starts again.
   const testStatus = (id: string) => {
     const s = latest.get(id);
-    return s === "in_progress" || s === "completed" ? s : null;
+    return s === "expired" ? null : (s ?? null);
   };
   const phone = userAgent({ headers: await headers() }).device.type === "mobile";
 

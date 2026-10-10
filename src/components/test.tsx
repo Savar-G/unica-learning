@@ -104,7 +104,7 @@ export function TakeTest({ childId, name, total, ready, done }: { childId: strin
 function Problem({ error }: { error: TestError | null }) {
   if (!error) return null;
   const text =
-    error === "signed_out" ? <>The sign-in ended. Ask your grown-up to <Link href="/sign-in">sign in</Link> again. Your answers are saved.</>
+    error === "signed_out" ? <>The sign-in ended. Ask your grown-up to <Link href="/sign-in">sign in</Link> again. Your earlier answers are saved.</>
     : error === "not_ready" ? "The test for this grade is not ready yet."
     : <>Something went wrong. Check the internet connection and try again. If this keeps happening, email <a href={SUPPORT_HREF}>{SUPPORT_EMAIL}</a>.</>;
   return <p role="alert" className="test-alert">{text}</p>;

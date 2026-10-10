@@ -3,7 +3,7 @@ import { randomInt } from "node:crypto";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { restoreSession, type Session, type StoredTest, type Submission } from "@/lib/assessment";
 import { pilotOn } from "@/lib/pilot";
-import { testFail } from "@/lib/test-api";
+import { testFail, type AssessmentStatus } from "@/lib/test-api";
 import { adminClient, parentId, sessionClient } from "@/lib/supabase-auth";
 
 // The server side of the child's test (#64). The drawn test and the answers live in the database, read and written
@@ -14,7 +14,7 @@ export const newSeed = () => randomInt(0, 2 ** 31 - 1);
 
 export interface AssessmentRow {
   id: string;
-  status: "in_progress" | "completed" | "expired";
+  status: AssessmentStatus;
   test: StoredTest;
 }
 

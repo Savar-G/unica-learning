@@ -43,7 +43,11 @@ export async function POST(request: Request, ctx: RouteContext<"/api/account/ass
     time_ms: marked.timeMs,
   });
   if (error) {
-    if (error.code === "23505") return testFail("conflict", 409, { step: testStep(session) });
+    // Another request stored this question's answer first. Send the step after it, read fresh, so the screen moves on.
+    if (error.code === "23505") {
+      const fresh = await loadTest(admin, parent, row.id);
+      return "error" in fresh ? fresh.error : testFail("conflict", 409, { step: testStep(fresh.session) });
+    }
     console.error("[test] answer save failed", error.message);
     return testFail("store_failed", 502);
   }

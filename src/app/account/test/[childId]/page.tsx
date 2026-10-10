@@ -3,6 +3,7 @@ import { notFound, redirect } from "next/navigation";
 import { userAgent } from "next/server";
 import { bandFor, createSession, type Grade } from "@/lib/assessment";
 import type { Child } from "@/lib/account";
+import type { AssessmentStatus } from "@/lib/test-api";
 import { pageMetadata } from "@/lib/metadata";
 import { requirePilot } from "@/lib/pilot";
 import { parentId, sessionClient } from "@/lib/supabase-auth";
@@ -26,7 +27,7 @@ export default async function TestPage(props: PageProps<"/account/test/[childId]
   const { childId } = await props.params;
   const [{ data: child }, { data: last }] = await Promise.all([
     db.from("children").select("id, first_name, grade, province").eq("id", childId).maybeSingle<Child>(),
-    db.from("assessments").select("status").eq("child_id", childId).order("created_at", { ascending: false }).limit(1).maybeSingle<{ status: string }>(),
+    db.from("assessments").select("status").eq("child_id", childId).order("created_at", { ascending: false }).limit(1).maybeSingle<{ status: AssessmentStatus }>(),
   ]);
   if (!child) notFound();
 

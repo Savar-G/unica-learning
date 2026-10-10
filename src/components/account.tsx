@@ -6,6 +6,7 @@ import { useEffect, useRef, useState, type FormEvent, type ReactNode } from "rea
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { CURRICULA, EMAIL, POSTAL, curriculumFromPostal, type CurriculumId } from "@/lib/signup";
+import type { AssessmentStatus } from "@/lib/test-api";
 import { GRADES, PASSWORD_MIN, type AccountError, type AccountResult, type ChildInput } from "@/lib/account";
 import { browserClient } from "@/lib/supabase-browser";
 import { track } from "@/lib/track";
@@ -284,7 +285,7 @@ export function AddChild({ province }: { province: CurriculumId }) {
 }
 
 /** Opens the child's test (#64). An open test continues; a finished one waits for its report. */
-export function StartTest({ childId, name, status }: { childId: string; name: string; status: "in_progress" | "completed" | null }) {
+export function StartTest({ childId, name, status }: { childId: string; name: string; status: Exclude<AssessmentStatus, "expired"> | null }) {
   if (status === "completed") return <span className="small acct-done">Test done. The report comes by email.</span>;
   return (
     <span className="acct-start">

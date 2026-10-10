@@ -2,6 +2,9 @@
 // The browser gets only TestStep: never an answer or the misconception coding of the choices.
 import type { TestStep } from "@/lib/assessment";
 
+/** An assessment row's status. "expired" comes with stop and resume (#72). */
+export type AssessmentStatus = "in_progress" | "completed" | "expired";
+
 export type TestError =
   | "off"
   | "signed_out"
