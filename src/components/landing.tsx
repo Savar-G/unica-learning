@@ -1,4 +1,3 @@
-import { Compare } from "@/components/compare";
 import { Motion } from "@/components/motion";
 import { Parent } from "@/components/parent";
 import { Reserve } from "@/components/reserve";
@@ -18,7 +17,6 @@ export function Landing({ look = "primer" }: { look?: Look }) {
           <Included />
           <Feel />
           <OurPromise />
-          <Compare />
           <Pricing />
           <Faq />
           <Closing />
