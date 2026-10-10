@@ -63,3 +63,5 @@
 .acct-or::before, .acct-or::after { content: ""; flex: 1; border-top: 1px solid var(--line); }
 .support-page .acct-sent { margin-top: 12px; }
 .acct-saved { margin-top: 24px; }
+.acct-begin .acct-start { justify-items: start; }
+.acct-begin .acct-start .small { text-align: left; }

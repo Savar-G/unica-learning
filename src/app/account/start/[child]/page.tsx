@@ -40,7 +40,7 @@ export default async function StartScreen({ params }: PageProps<"/account/start/
       ) : (
         <>
           <p className="lead">{child.first_name} takes the test alone, on this device, in one sitting. Start when {child.first_name} is ready.</p>
-          <StartTest name={child.first_name} />
+          <div className="acct-begin"><StartTest name={child.first_name} /></div>
         </>
       )}
       <p className="small acct-out"><Link href="/account">Your account</Link></p>

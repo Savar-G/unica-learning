@@ -508,7 +508,12 @@ export function ResetRequest({ expired }: { expired: boolean }) {
   };
 
   if (state === "sent") {
-    return <p role="status" className="acct-alert acct-form">If an account uses <b>{email.trim()}</b>, we sent it a link to choose a new password. Check your email.</p>;
+    return (
+      <div className="acct-form">
+        <p role="status" className="acct-alert">If an account uses <b>{email.trim()}</b>, we sent it a link to choose a new password. Check your email.</p>
+        <p className="small"><Link href="/sign-in">Back to sign in</Link></p>
+      </div>
+    );
   }
   return (
     <form className="acct-form" onSubmit={submit} noValidate>
