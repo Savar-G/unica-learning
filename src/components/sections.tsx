@@ -116,7 +116,17 @@ const STEPS = [
   { n: "06", t: "Repeat", d: <>Your next book arrives before the current one runs out, so there&apos;s never a gap. Then the loop starts again. <em>Struggling with fractions? Your next book focuses on fractions.</em></>, v: <Image src={repeatPhoto} alt="A girl starts on her next book at the dining table" sizes={STEP_SIZES} placeholder="blur" />, tone: "photo" as const },
 ];
 
-export function How() {
+// PROTOTYPE ONLY (branch site/parent-prototype): variant E adds the parent's part to each step.
+const YOU = [
+  "Your child does it at home. You send us a photo of the pages.",
+  "Nothing. It comes to your door.",
+  "Sit with them for the first week. After that, stay nearby.",
+  "Scan the finished pages. If they get stuck, scan the problem to see every step.",
+  "Nothing. We plan the next book.",
+  "Keep the same time each day.",
+];
+
+export function How({ parent = false }: { parent?: boolean } = {}) {
   return (
     <Section id="how" aria-labelledby="howT">
       <Knot />
@@ -127,6 +137,7 @@ export function How() {
         {STEPS.map((s, i) => (
           <StepCard key={s.n} number={s.n} title={`${s.t}.`} visual={s.v} visualTone={s.tone} className="rise" style={d(i * 0.06)}>
             {s.d}
+            {parent && <span className="pp-you"><b>Your part</b> {YOU[i]}</span>}
           </StepCard>
         ))}
       </StepGrid>

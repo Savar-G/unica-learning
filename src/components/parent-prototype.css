@@ -1,0 +1,112 @@
+/* PROTOTYPE ONLY (branch site/parent-prototype): styles for the five parent-section variants and the switcher bar. */
+
+.pp .pp-who { font: 400 12.5px/1.2 var(--mono); letter-spacing: 0.02em; color: var(--ink-3); display: flex; align-items: center; gap: 9px; margin: 0 0 18px; }
+.pp .pp-who::before { content: ""; width: 9px; height: 9px; background: var(--accent); }
+.pp h3 { font-weight: 400; }
+
+/* shared grain wash, the same recipe as the featured plan card (D-037) */
+.pp-b .you, .pp-a .row.you span.on {
+  background:
+    var(--noise),
+    radial-gradient(70% 55% at 12% 100%, var(--g1), transparent 72%),
+    radial-gradient(60% 50% at 92% 100%, var(--g3), transparent 72%),
+    radial-gradient(55% 45% at 52% 100%, var(--g2), transparent 75%),
+    #fff;
+  background-blend-mode: overlay, normal, normal, normal, normal;
+  background-size: 220px, auto, auto, auto, auto;
+}
+
+/* ---------- A: your week ---------- */
+.pp-a-week { display: grid; gap: 6px; }
+.pp-a .row { display: grid; grid-template-columns: 120px repeat(7, minmax(0, 1fr)); gap: 6px; align-items: stretch; }
+.pp-a .row.head span { font: 400 12.5px/1 var(--mono); color: var(--ink-3); padding: 0 4px 6px; }
+.pp-a .row b { font-weight: 500; font-size: 15px; align-self: center; }
+.pp-a .row span[role="cell"] { min-height: 72px; border-radius: 4px; padding: 12px; font-size: 14px; line-height: 1.35; display: flex; align-items: flex-end; }
+.pp-a .row span.off { background: transparent; border: 1px dashed var(--line); color: var(--ink-3); }
+.pp-a .row.kid span.on { background: var(--card); color: var(--ink-2); }
+.pp-a .row.you span.on { box-shadow: 0 0 0 1px var(--line); color: var(--ink); font-weight: 500; }
+.pp-a .row.us span.on { background: var(--card); color: var(--ink-3); }
+.pp-a-kid, .pp-a-days { display: none; }
+.pp-a-kid { margin: 0 0 12px; font: 400 12.5px/1.4 var(--mono); color: var(--ink-3); }
+.pp-a-days { list-style: none; margin: 0; padding: 0; gap: 6px; }
+.pp-a-days li { display: grid; grid-template-columns: 64px 1fr; gap: 10px; align-items: baseline; padding: 12px 14px; border-radius: 4px; box-shadow: 0 0 0 1px var(--line); font-size: 15px; line-height: 1.4; }
+.pp-a-days li.wk { box-shadow: none; border: 1px dashed var(--line); color: var(--ink-3); }
+.pp-a-days .d { font: 400 12.5px/1.4 var(--mono); color: var(--ink-3); }
+.pp-a-days b { font-weight: 500; }
+.pp-a-days i { font-style: normal; color: var(--ink-3); }
+.pp-note { margin-top: 22px; max-width: 720px; font-size: 16px; line-height: 1.55; color: var(--ink-2); }
+.pp-note b { color: var(--ink); font-weight: 500; }
+
+/* ---------- B: you vs us ---------- */
+.pp-b-grid { display: grid; grid-template-columns: 1.35fr 1fr; gap: 14px; }
+.pp-b .you, .pp-b .us { border-radius: 4px; padding: clamp(24px, 2.6vw, 36px); }
+.pp-b .you { box-shadow: 0 0 0 1px var(--line); }
+.pp-b .us { background: var(--card); }
+.pp-b .us .pp-who::before { background: var(--ink-3); }
+.pp-b ol { list-style: none; margin: 0; padding: 0; counter-reset: s; display: grid; gap: 22px; }
+.pp-b ol li { counter-increment: s; display: grid; grid-template-columns: 34px 1fr; column-gap: 8px; }
+.pp-b ol li::before { content: "0" counter(s); grid-row: span 2; font: 400 12.5px/1.9 var(--mono); color: var(--ink-3); }
+.pp-b ol h3 { font-size: clamp(20px, 1.7vw, 24px); margin: 0 0 4px; }
+.pp-b ol p { margin: 0; color: var(--ink-2); font-size: 15.5px; line-height: 1.5; }
+.pp-b ul { list-style: none; margin: 0; padding: 0; display: grid; }
+.pp-b ul li { padding: 13px 0 13px 28px; border-top: 1px solid rgba(0, 0, 0, 0.08); font-size: 15.5px; color: var(--ink-2); position: relative; }
+.pp-b ul li::before { content: "✓"; position: absolute; left: 2px; color: var(--leaf); font-weight: 600; }
+
+/* ---------- C: first month ---------- */
+.pp-c-grid { display: grid; grid-template-columns: minmax(0, 0.85fr) minmax(0, 1fr); gap: clamp(28px, 4vw, 64px); align-items: start; }
+.pp-c-photo { position: sticky; top: 96px; aspect-ratio: 4 / 5; border-radius: 4px; }
+.pp-c-line { list-style: none; margin: 0; padding: 0; position: relative; }
+.pp-c-line::before { content: ""; position: absolute; left: 5px; top: 10px; bottom: 10px; width: 1px; background: var(--line); }
+.pp-c-line li { position: relative; padding: 0 0 34px 36px; }
+.pp-c-line li::before { content: ""; position: absolute; left: 0; top: 4px; width: 11px; height: 11px; background: var(--accent); }
+.pp-c-line li:nth-child(n+3)::before { background: #fff; box-shadow: inset 0 0 0 1px var(--ink-3); }
+.pp-c-line .when { font: 400 12.5px/1 var(--mono); color: var(--ink-3); }
+.pp-c-line h3 { font-size: clamp(22px, 1.9vw, 28px); margin: 10px 0 6px; }
+.pp-c-line p { margin: 0; color: var(--ink-2); font-size: 16px; line-height: 1.55; max-width: 520px; }
+
+/* ---------- D: parent questions ---------- */
+.pp-d-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
+.pp-d article { background: var(--card); border-radius: 4px; padding: clamp(24px, 2.6vw, 36px); display: grid; align-content: start; gap: 14px; position: relative; }
+.pp-d article::after { content: ""; position: absolute; top: 0; right: 0; width: 20px; height: 20px; background: var(--g2); }
+.pp-d article:nth-child(2)::after { background: var(--g3); }
+.pp-d article:nth-child(3)::after { background: var(--g4); }
+.pp-d article:nth-child(4)::after { background: var(--g1); }
+.pp-d .n { font: 400 12.5px/1 var(--mono); color: var(--ink-3); }
+.pp-d h3 { font-size: clamp(24px, 2.3vw, 32px); letter-spacing: -0.02em; line-height: 1.15; margin: 0; }
+.pp-d p { margin: 0; color: var(--ink-2); font-size: 16px; line-height: 1.55; }
+
+/* ---------- E: a "Your part" line on each How it works step ---------- */
+.pp-you { display: block; margin-top: 14px; padding-top: 12px; border-top: 1px solid rgba(0, 0, 0, 0.08); color: var(--ink); font-size: 15px; line-height: 1.45; }
+.pp-you b { display: flex; align-items: center; gap: 7px; margin-bottom: 4px; font: 400 12px/1 var(--mono); color: var(--ink-3); }
+.pp-you b::before { content: ""; width: 8px; height: 8px; background: var(--accent); }
+
+/* ---------- phones ---------- */
+@media (max-width: 979px) {
+  .pp-a-week { overflow-x: auto; padding-bottom: 6px; }
+  .pp-a .row { min-width: 760px; }
+}
+@media (max-width: 699px) {
+  /* A: drop the calendar; one row per day */
+  .pp-a-week { display: none; }
+  .pp-a-kid { display: block; }
+  .pp-a-days { display: grid; }
+  .pp-b-grid, .pp-c-grid, .pp-d-grid { grid-template-columns: 1fr; }
+  .pp-c-photo { position: static; aspect-ratio: 4 / 3; }
+  .pp-c-line li { padding-bottom: 24px; }
+  .pp-d article { padding: 20px; gap: 8px; }
+  .pp-d h3 { font-size: 21px; }
+}
+
+/* ---------- switcher bar ---------- */
+.proto-bar {
+  position: fixed; z-index: 1000; left: 50%; bottom: 18px; transform: translateX(-50%);
+  display: flex; align-items: center; gap: 4px; padding: 5px; border-radius: 999px;
+  background: #1a1a1d; color: #fff; box-shadow: 0 10px 30px -8px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(255, 255, 255, 0.08);
+  font: 500 13px/1 ui-sans-serif, system-ui, sans-serif; white-space: nowrap;
+}
+.proto-bar span { padding: 0 12px; }
+.proto-bar b { display: inline-block; min-width: 1.6em; padding: 4px 6px; margin-right: 6px; border-radius: 6px; background: #e8ff5a; color: #111; text-align: center; }
+.proto-bar i { font-style: normal; opacity: 0.5; margin-left: 8px; }
+.proto-bar button { width: 34px; height: 34px; border: 0; border-radius: 50%; background: rgba(255, 255, 255, 0.1); color: #fff; font-size: 16px; cursor: pointer; }
+.proto-bar button:hover { background: rgba(255, 255, 255, 0.22); }
+@media (max-width: 699px) { .proto-bar { bottom: 84px; } }
