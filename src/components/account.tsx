@@ -283,15 +283,14 @@ export function AddChild({ province }: { province: CurriculumId }) {
   );
 }
 
-/** Placeholder until the test ticket (#64) builds the test. */
-export function StartTest({ name }: { name: string }) {
-  const [clicked, setClicked] = useState(false);
+/** Opens the child's test (#64). An open test continues; a finished one waits for its report. */
+export function StartTest({ childId, name, status }: { childId: string; name: string; status: "in_progress" | "completed" | null }) {
+  if (status === "completed") return <span className="small acct-done">Test done. The report comes by email.</span>;
   return (
     <span className="acct-start">
-      <button className="btn" type="button" onClick={() => { setClicked(true); track("test_start_click"); }}>
-        Start test <span className="sr-only">for {name}</span> <span className="arr">→</span>
-      </button>
-      {clicked && <span className="small" role="status">The test is not open yet. We will tell you when it is ready.</span>}
+      <Link className="btn" href={`/account/test/${childId}`} onClick={() => track("test_start_click", { status: status ?? "new" })}>
+        {status === "in_progress" ? "Continue test" : "Start test"} <span className="sr-only">for {name}</span> <span className="arr">→</span>
+      </Link>
     </span>
   );
 }

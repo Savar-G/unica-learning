@@ -53,6 +53,6 @@
 .acct-kid { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px 20px; padding: 18px 20px; border: 1px solid var(--line); border-radius: 10px; }
 .acct-kid > span:first-child { display: grid; gap: 4px; font-size: 19px; }
 .acct-start { display: grid; gap: 8px; justify-items: end; }
-.acct-start .small { max-width: 26em; text-align: right; }
+.acct-start .small, .acct-done { max-width: 26em; text-align: right; }
 .acct-link { background: none; border: 0; padding: 0; color: inherit; font: inherit; text-decoration: underline; cursor: pointer; }
 .acct-out { margin-top: 32px; }

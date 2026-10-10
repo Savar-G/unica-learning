@@ -23,10 +23,17 @@ export default async function Account() {
   await requirePilot();
   const db = await sessionClient();
   if (!(await parentId(db))) redirect("/sign-in");
-  const [{ data: parent }, { data: kids }] = await Promise.all([
+  const [{ data: parent }, { data: kids }, { data: tests }] = await Promise.all([
     db.from("parents").select("name").maybeSingle<{ name: string }>(),
     db.from("children").select("id, first_name, grade, province").order("created_at").returns<Child[]>(),
+    // Oldest first, so each child's latest test wins below.
+    db.from("assessments").select("child_id, status").order("created_at").returns<{ child_id: string; status: string }[]>(),
   ]);
+  const latest = new Map((tests ?? []).map((t) => [t.child_id, t.status]));
+  const testStatus = (id: string) => {
+    const s = latest.get(id);
+    return s === "in_progress" || s === "completed" ? s : null;
+  };
   const phone = userAgent({ headers: await headers() }).device.type === "mobile";
 
   if (!parent) {
@@ -54,7 +61,7 @@ export default async function Account() {
         {children.map((c) => (
           <li key={c.id} className="acct-kid">
             <span><b>{c.first_name}</b><span className="small">Grade {c.grade} · {CURRICULA[c.province]}</span></span>
-            {!phone && <StartTest name={c.first_name} />}
+            {!phone && <StartTest childId={c.id} name={c.first_name} status={testStatus(c.id)} />}
           </li>
         ))}
       </ul>
