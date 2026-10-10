@@ -3,15 +3,106 @@
   "decision": "How should the home page answer Randy Epp's question, 'What is my experience as a parent giving this to my kid?': a new section after How it works, or a line inside it, and in what shape?",
   "source": "Randy Epp review 2026-10-09 (vault: 60 Logs/Meetings/AI Workbooks/Oct 9 - Randy _ Savar). His top fix: parent involvement, weekly time, tips to introduce the books.",
   "primary_axis": "structure of the parent answer: calendar vs split ledger vs timeline vs questions vs inline",
-  "invariants": ["real home page, section sits right after How it works", "same facts: 15-20 minutes a day, 5 days a week; the app is for the parent; scan when stuck; scan finished pages", "draft copy: no parent-minute number, no starter guide in the box (we have neither)", "design-system tokens and components", "1440x900 and 390x844"],
-  "baseline": { "artifact": ["now-1440.png", "now-390.png"], "phone_screens": 10.1, "phone_price_screen": 6.7 },
-  "options": [
-    { "id": "A", "name": "Your week", "artifact": ["A-1440.png", "A-390.png"], "bet": "A week as three swim lanes (your child, you, us); on phones one row per day", "benefit": "Shows the routine and the size of the parent's part at a glance; answers 'days per week'", "cost": "Calendar cells hold 2-3 words, so tips go in a note under it", "risk": "Reads as a schedule we enforce; the Us lane looks empty", "phone_section_screens": 1.0, "phone_price_screen": 8.1 },
-    { "id": "B", "name": "You vs us", "artifact": ["B-1440.png", "B-390.png"], "bet": "'You coach. We do the rest.' Four parent steps beside a longer list of what we do", "benefit": "Shortest clear answer; the length difference is the argument", "cost": "No sense of time (first week vs later)", "risk": "'We do the rest' can sound like a promise to do more than we do", "phone_section_screens": 1.3, "phone_price_screen": 8.0 },
-    { "id": "C", "name": "First month", "artifact": ["C-1440.png", "C-390.png"], "bet": "Timeline from Day 1 to the end of the first book, beside the family photo", "benefit": "Answers Randy's 'more than that, at least at first' directly; tips live in the steps", "cost": "Longest on phones (1.7 screens)", "risk": "Uses the step 5 photo a second time on desktop", "phone_section_screens": 1.66, "phone_price_screen": 8.4 },
-    { "id": "D", "name": "Parent questions", "artifact": ["D-1440.png", "D-390.png"], "bet": "Four questions a parent asks, in large type, answered in two sentences", "benefit": "Matches how parents think; covers 'do I need to teach it' and 'what if they don't want to'", "cost": "Overlaps the FAQ section", "risk": "Two FAQ-like blocks on one page", "phone_section_screens": 1.18, "phone_price_screen": 7.9 },
-    { "id": "E", "name": "Inside How it works", "artifact": ["E-1440.png", "E-390.png"], "bet": "No new section: each step card gets a 'Your part' line", "benefit": "Shortest page (+0.6 screens on phones); the parent's part sits next to each step", "cost": "No place for tips or the first-week point beyond one line", "risk": "Randy saw step 3 ('15-20 minutes a day') and still missed the parent's role; scattered lines may fail the same way", "phone_section_screens": 0, "phone_price_screen": 7.3 }
+  "invariants": [
+    "real home page, section sits right after How it works",
+    "same facts: 15-20 minutes a day, 5 days a week; the app is for the parent; scan when stuck; scan finished pages",
+    "draft copy: no parent-minute number, no starter guide in the box (we have neither)",
+    "design-system tokens and components",
+    "1440x900 and 390x844"
   ],
-  "prototype": { "branch": "site/parent-prototype", "files": ["src/components/parent-prototype.tsx", "src/components/parent-prototype.css", "src/components/prototype-switcher.tsx"], "switch": "?variant=now|A|B|C|D|E or the bottom bar (arrow keys)" },
-  "verdict": null
+  "baseline": {
+    "artifact": [
+      "now-1440.png",
+      "now-390.png"
+    ],
+    "phone_screens": 10.1,
+    "phone_price_screen": 6.7
+  },
+  "options": [
+    {
+      "id": "A",
+      "name": "Your week",
+      "artifact": [
+        "A-1440.png",
+        "A-390.png"
+      ],
+      "bet": "A week as three swim lanes (your child, you, us); on phones one row per day",
+      "benefit": "Shows the routine and the size of the parent's part at a glance; answers 'days per week'",
+      "cost": "Calendar cells hold 2-3 words, so tips go in a note under it",
+      "risk": "Reads as a schedule we enforce; the Us lane looks empty",
+      "phone_section_screens": 1.0,
+      "phone_price_screen": 8.1
+    },
+    {
+      "id": "B",
+      "name": "You vs us",
+      "artifact": [
+        "B-1440.png",
+        "B-390.png"
+      ],
+      "bet": "'You coach. We do the rest.' Four parent steps beside a longer list of what we do",
+      "benefit": "Shortest clear answer; the length difference is the argument",
+      "cost": "No sense of time (first week vs later)",
+      "risk": "'We do the rest' can sound like a promise to do more than we do",
+      "phone_section_screens": 1.3,
+      "phone_price_screen": 8.0
+    },
+    {
+      "id": "C",
+      "name": "First month",
+      "artifact": [
+        "C-1440.png",
+        "C-390.png"
+      ],
+      "bet": "Timeline from Day 1 to the end of the first book, beside the family photo",
+      "benefit": "Answers Randy's 'more than that, at least at first' directly; tips live in the steps",
+      "cost": "Longest on phones (1.7 screens)",
+      "risk": "Uses the step 5 photo a second time on desktop",
+      "phone_section_screens": 1.66,
+      "phone_price_screen": 8.4
+    },
+    {
+      "id": "D",
+      "name": "Parent questions",
+      "artifact": [
+        "D-1440.png",
+        "D-390.png"
+      ],
+      "bet": "Four questions a parent asks, in large type, answered in two sentences",
+      "benefit": "Matches how parents think; covers 'do I need to teach it' and 'what if they don't want to'",
+      "cost": "Overlaps the FAQ section",
+      "risk": "Two FAQ-like blocks on one page",
+      "phone_section_screens": 1.18,
+      "phone_price_screen": 7.9
+    },
+    {
+      "id": "E",
+      "name": "Inside How it works",
+      "artifact": [
+        "E-1440.png",
+        "E-390.png"
+      ],
+      "bet": "No new section: each step card gets a 'Your part' line",
+      "benefit": "Shortest page (+0.6 screens on phones); the parent's part sits next to each step",
+      "cost": "No place for tips or the first-week point beyond one line",
+      "risk": "Randy saw step 3 ('15-20 minutes a day') and still missed the parent's role; scattered lines may fail the same way",
+      "phone_section_screens": 0,
+      "phone_price_screen": 7.3
+    }
+  ],
+  "prototype": {
+    "branch": "site/parent-prototype",
+    "files": [
+      "src/components/parent-prototype.tsx",
+      "src/components/parent-prototype.css",
+      "src/components/prototype-switcher.tsx"
+    ],
+    "switch": "?variant=now|A|B|C|D|E or the bottom bar (arrow keys)"
+  },
+  "verdict": {
+    "date": "2026-10-09",
+    "winner": "D",
+    "by": "Savar",
+    "note": "Parent questions in large type, after How it works. Copy to be revised together before the real build."
+  }
 }
