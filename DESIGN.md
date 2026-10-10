@@ -1,7 +1,7 @@
 # DESIGN.md - unica-learning-landing-page
 
 > Status: v3. Page story and look approved by Savar 2026-10-04 (no objection); hero copy decided (D-024); hero layout C chosen (D-029); option A parked as a draft (D-030). Built from Savar's FigJam board "Personalized Learning, Delivered" (2026-10-03). v3 copy and sections come from Cedric's notes on the "Landing Page V3" section of the same board, with Savar's answers (2026-10-08, D-056 to D-061).
-> Last updated: 2026-10-10 (v3; assessment report design, D-087)
+> Last updated: 2026-10-10 (v3; assessment test screens, D-088)
 
 ## Job
 
@@ -15,7 +15,7 @@
 
 ## Scope
 
-**In:** One landing page with a working reserve flow, a mobile assessment button, optional analytics, an "Our story" page (`/our-story`, D-060), a Resources section of SEO guides for BC parents (`/resources`, linked only from the footer, D-073), supporting 404, thank-you, privacy, and terms pages (D-054), and the parent's assessment report in the account and by email (D-084, D-087).
+**In:** One landing page with a working reserve flow, a mobile assessment button, optional analytics, an "Our story" page (`/our-story`, D-060), a Resources section of SEO guides for BC parents (`/resources`, linked only from the footer, D-073), supporting 404, thank-you, privacy, and terms pages (D-054), the child's assessment test screens (D-083, D-088), and the parent's assessment report in the account and by email (D-084, D-087).
 
 **Out:** The product itself, a parent dashboard beyond the assessment report, and a dated blog or news feed.
 
@@ -62,6 +62,16 @@ Every section sets up the next one. A single pencil line connects the sections a
 **Resources (`/resources`, D-073).** A hub ("Guides for BC parents") and one article per guide at `/resources/<slug>`. Content lives in `src/content/resources/<slug>.tsx` (meta + body built from `src/components/article.tsx` blocks); the registry is `src/lib/resources.ts`. Linked only from the site footer, never from the home page body. Each article: breadcrumb, category eyebrow, H1, one-line lead, updated date, key facts, sections, one inline "Take free assessment" panel, FAQ (FAQPage data), closing panel, related guides, numbered sources. Hub on phones: the seven grade guides are compact tiles, two per row. Target phrases come from BC search data (`.design/research/seo-demand/`).
 
 **Our story page (`/our-story`, D-060).** A letter: "Why we built [Brand]". Cedric's text (two students who grew up on workbooks; learning centres worked but were expensive and one-size-fits-all; tutoring was personal but cost $50-$100 an hour; we built the middle). Founder tiles for Savar Gupta and Cedric Tanafranca (initials until real photos arrive), "What we believe", all four promise cards, the sign-off "Savar and Cedric", and a "Take free assessment" button that opens the booking dialog. Linked from the promise section and the footer; listed in the sitemap.
+
+**Assessment test (the child's screens, D-083, D-088).** Split desk: the question and the answer on the left, the whiteboard on the right, one question per screen. On a laptop or tablet the screen does not scroll (checked at 1440x900, 1024x768 and 768x1024). Every tap target is 44 px or more.
+1. Top bar: the wordmark on the left; progress in the middle as one segment per question (24, 36 or 42 by grade band; done in ink, the current one in tangerine), with a ring between the two halves for the break and quick facts; "n of N" on the right.
+2. Left pane (soft grey, about 40% of the width): a round blue "read it to me" button beside the question in large text. Below it is the answer: multiple choice as full-width rows with a radio dot (the whole row is the target), or a large answer box with an on-screen number pad (the keyboard also works). Next is at the bottom: white text on the dark button. It stays off until there is an answer, and on a show-your-work question until the board has work.
+3. Right pane (about 60%): the whiteboard, always open, full height, on dotted paper. Draw and Type, then pencil, eraser, undo and clear, sit in a side rail. Its label is "My work", with "Show your work for this one" on required questions and "Use it if it helps" on the others. If the child answers a required question without work, the board gets a tangerine outline and the left pane says "Now show your work on the board".
+4. Halfway break: the left pane says "Halfway there, [Name]." with "Keep going" and "I am back from my break"; the right pane is a grainy colour field with a slow breathing circle (still with reduced motion).
+5. Quick facts (60 seconds): a start screen first. Then the fact is large on the left, with a draining tangerine bar and the time, and a big number pad is on the right. Enter on an empty answer skips the fact. It ends with "Time is up!" and the count of facts done.
+6. End screen: a full grainy colour field: "You did it, [Name]!" and "Your report will be emailed to your grown-up shortly."
+
+On a tablet in portrait the panes stack: the question and the answer above, the whiteboard below (at least 360 px high), with multiple choice in two columns.
 
 **Assessment report (account page and email, D-084, D-087).** A report card across the full page width, aligned with the site nav, with generous space between sections. Order:
 1. Header table: child, school grade, date, curriculum; wordmark and "Math placement report" on the left; a 2 px ink rule below.
