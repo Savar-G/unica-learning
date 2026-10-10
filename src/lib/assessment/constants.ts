@@ -38,8 +38,6 @@ export const ROUTE_DOWN_BELOW_PERCENT = 40;
 
 /** Working level = the highest level with this percent correct. */
 export const WORKING_LEVEL_PERCENT = 70;
-/** A level counts toward the working level only with at least this many questions. */
-export const WORKING_LEVEL_MIN_QUESTIONS = 6;
 
 export const STRAND_SECURE_PERCENT = 80;
 export const STRAND_DEVELOPING_PERCENT = 50;

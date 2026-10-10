@@ -6,7 +6,6 @@ import {
   ROUTE_UP_PERCENT,
   STRAND_DEVELOPING_PERCENT,
   STRAND_SECURE_PERCENT,
-  WORKING_LEVEL_MIN_QUESTIONS,
   WORKING_LEVEL_PERCENT,
   atLeast,
   bandFor,
@@ -125,31 +124,35 @@ export function createSession(profile: ChildProfile, seed: number, options: Sess
   const stage1 = buildStage(bank, profile, band.strands, grade, band.stage1, seed, "s1", seen);
   const rest = band.length - band.stage1;
   // Each form only needs to differ from stage 1, not from the forms the child never sees.
-  const form = (route: Route, level: number) => buildStage(bank, profile, band.strands, level as Level, rest, seed, route, new Set(seen));
+  const stage2Form = (route: Route, level: number) => buildStage(bank, profile, band.strands, level as Level, rest, seed, route, new Set(seen));
   return {
     profile,
     seed,
     stage1,
-    stage2: { up: form("up", grade + 1), stay: form("stay", grade), down: form("down", grade - 1) },
+    stage2: { up: stage2Form("up", grade + 1), stay: stage2Form("stay", grade), down: stage2Form("down", grade - 1) },
     route: null,
     answers: [],
   };
 }
 
-const asked = (session: Session): Question[] => (session.route ? [...session.stage1, ...session.stage2[session.route]] : session.stage1);
+/** Stage 1, then the stage 2 form the child was routed to. */
+const questionsOnRoute = (session: Session): Question[] =>
+  session.route ? [...session.stage1, ...session.stage2[session.route]] : session.stage1;
 
 /** The next question to show, or null when the test is complete. */
 export function nextQuestion(session: Session): Question | null {
-  return asked(session)[session.answers.length] ?? null;
+  return questionsOnRoute(session)[session.answers.length] ?? null;
 }
 
 const MINUS = /[−–]/g;
+// Commas only as thousands separators: "1,200" is 1200, "1,2,0,0" is not a number.
+const NUMBER = /^[-+]?(\d{1,3}(,\d{3})+|\d+)?(\.\d+)?$/;
 function asNumber(text: string): number | null {
-  const clean = text.replace(MINUS, "-").replace(/[,\s]/g, "");
-  return /^[-+]?(\d+\.?\d*|\.\d+)$/.test(clean) ? Number(clean) : null;
+  const clean = text.replace(MINUS, "-").replace(/\s/g, "");
+  return /\d/.test(clean) && NUMBER.test(clean) ? Number(clean.replace(/,/g, "")) : null;
 }
 
-function same(q: Question, a: string, b: string): boolean {
+function isSameAnswer(q: Question, a: string, b: string): boolean {
   if (q.format === "number") {
     const [x, y] = [asNumber(a), asNumber(b)];
     return x !== null && y !== null && Math.abs(x - y) < 1e-9;
@@ -177,13 +180,13 @@ export function submitAnswer(session: Session, submission: Submission): Session 
   if (submission.questionId !== q.id) throw new Error(`Expected an answer to ${q.id}, got ${submission.questionId}`);
   if (!Number.isFinite(submission.timeMs) || submission.timeMs < 0) throw new Error("timeMs must be a time in milliseconds");
 
-  const correct = same(q, submission.response, q.answer);
+  const correct = isSameAnswer(q, submission.response, q.answer);
   const answer: Answer = {
     questionId: q.id,
     response: submission.response,
     timeMs: submission.timeMs,
     correct,
-    misconception: correct ? null : (q.wrong.find((w) => same(q, submission.response, w.value))?.misconception ?? null),
+    misconception: correct ? null : (q.wrong.find((w) => isSameAnswer(q, submission.response, w.value))?.misconception ?? null),
   };
   const answers = [...session.answers, answer];
   let route = session.route;
@@ -201,7 +204,7 @@ function statusFor(correct: number, total: number): StrandStatus {
 
 /** Scores a completed test. */
 export function finish(session: Session): Placement {
-  const questions = asked(session);
+  const questions = questionsOnRoute(session);
   if (!session.route || session.answers.length < questions.length) {
     throw new Error(`The test is not complete: ${session.answers.length} of ${questions.length} answered`);
   }
@@ -211,8 +214,7 @@ export function finish(session: Session): Placement {
   const levels: LevelResult[] = [...new Set(marked.map((m) => m.q.level))]
     .sort((a, b) => a - b)
     .map((level) => ({ level, ...tally(marked.filter((m) => m.q.level === level)) }));
-  const cleared = levels.filter((l) => l.total >= WORKING_LEVEL_MIN_QUESTIONS && atLeast(l.correct, l.total, WORKING_LEVEL_PERCENT));
-  const highestSeen = levels[levels.length - 1].level;
+  const cleared = levels.filter((l) => atLeast(l.correct, l.total, WORKING_LEVEL_PERCENT));
   // No level cleared: the child works below everything the test showed them.
   const workingLevel = cleared.length > 0 ? cleared[cleared.length - 1].level : (Math.max(0, levels[0].level - 1) as Level);
 
@@ -227,7 +229,8 @@ export function finish(session: Session): Placement {
     scoredAgainst: scoredAgainst(session.profile.province),
     workingLevel,
     confidence: cleared.length > 0 ? "normal" : "low",
-    atCeiling: cleared.length > 0 && workingLevel === highestSeen,
+    // Only a child routed up who clears the higher level may work above what the test could show.
+    atCeiling: session.route === "up" && workingLevel === session.profile.grade + 1,
     route: session.route,
     stage1: tally(marked.slice(0, session.stage1.length)),
     levels,

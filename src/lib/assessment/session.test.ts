@@ -27,6 +27,7 @@ describe("scripted children, grades 3-5", () => {
     const { placement } = takeTest({ grade: 4, province: "BC" }, 7, knowsUpTo(2));
     expect(placement.route).toBe("down");
     expect(placement.workingLevel).toBe(2);
+    expect(placement.confidence).toBe("low");
   });
 
   it("a grade 3 child working at grade 5 level is placed above grade, at the highest level the test reaches", () => {
@@ -35,6 +36,13 @@ describe("scripted children, grades 3-5", () => {
     expect(Math.max(...asked.map((q) => q.level))).toBe(4);
     expect(placement.workingLevel).toBe(4);
     expect(placement.atCeiling).toBe(true);
+  });
+
+  it("a child who stays on grade is never at the ceiling, even with stage 2 all right", () => {
+    const { placement } = takeTest({ grade: 4, province: "BC" }, 9, (_, i) => i < 10 || i >= 18);
+    expect(placement.route).toBe("stay");
+    expect(placement.workingLevel).toBe(4);
+    expect(placement.atCeiling).toBe(false);
   });
 
   it("stage 1 has 18 questions at the school grade", () => {
@@ -49,6 +57,28 @@ describe("scripted children, grades 3-5", () => {
     expect(total).toBe(asked.length);
     expect(placement.strands.map((s) => s.strand)).toEqual(["number", "fractions", "algebra", "shapes"]);
     expect(placement.strands.every((s) => s.correct === s.total && s.total >= 8)).toBe(true);
+  });
+});
+
+describe("strand status at its exact boundaries", () => {
+  // Grade 4, routed up: the number strand has 10 questions, so 80% and 50% are whole counts.
+  const numberStrand = (right: number) => {
+    let seen = 0;
+    const { placement } = takeTest({ grade: 4, province: "BC" }, 2, (q) => !["N", "O"].includes(q.strand) || seen++ < right);
+    return placement.strands.find((s) => s.strand === "number")!;
+  };
+
+  it("8 of 10 (80%) is secure", () => {
+    expect(numberStrand(8)).toEqual({ strand: "number", status: "secure", correct: 8, total: 10 });
+  });
+  it("7 of 10 (70%) is developing", () => {
+    expect(numberStrand(7).status).toBe("developing");
+  });
+  it("5 of 10 (50%) is developing", () => {
+    expect(numberStrand(5).status).toBe("developing");
+  });
+  it("4 of 10 (40%) needs attention", () => {
+    expect(numberStrand(4).status).toBe("needs-attention");
   });
 });
 
@@ -136,6 +166,14 @@ describe("marking", () => {
     const before = { ...session, stage1: [q, ...session.stage1.filter((x) => x !== q)] };
     const after = submitAnswer(before, { questionId: q.id, response: Number(q.answer).toLocaleString("en-CA"), timeMs: 1 });
     expect(after.answers[0].correct).toBe(true);
+  });
+
+  it("commas count only as thousands separators", () => {
+    const session = createSession({ grade: 5, province: "BC" }, 4);
+    const q = session.stage1.find((x) => x.format === "number" && Number(x.answer) >= 1000)!;
+    const first = { ...session, stage1: [q, ...session.stage1.filter((x) => x !== q)] };
+    const scattered = q.answer.split("").join(",");
+    expect(submitAnswer(first, { questionId: q.id, response: scattered, timeMs: 1 }).answers[0].correct).toBe(false);
   });
 
   it("refuses an answer to a question that is not the current one", () => {

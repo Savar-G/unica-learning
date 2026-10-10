@@ -1,6 +1,6 @@
 // Turns a placement into everything the report shows. The report page and the email both use this model.
 // Honesty rule (DESIGN.md, D-084): every number here is measured or carries its source.
-import { OPEN_CURRICULA } from "@/lib/signup";
+import { statusFor } from "@/lib/signup";
 import { COMPARISON_BANDS_FROM, COMPARISON_PERCENTILE_FROM, REPORTED_STRAND_NAMES } from "./constants";
 import type { Grade, Level, Placement, StrandResult } from "./types";
 
@@ -74,9 +74,9 @@ export function reportModel(placement: Placement, context: ReportContext): Repor
     strands: placement.strands.map((s) => ({ ...s, name: REPORTED_STRAND_NAMES[s.strand] })),
     comparison: comparisonFor(context.completedTestsInGrade),
     fsa: fsaLine(grade),
-    howWeHelp: workingLevel < grade ? "behind" : workingLevel > grade ? "ahead" : "on-grade",
+    howWeHelp: workingLevel === grade ? "on-grade" : workingLevel < grade ? "behind" : "ahead",
     // Card for the curricula we make books for today (D-053); every other province joins the waitlist.
-    callToAction: OPEN_CURRICULA.includes(placement.province) ? "card" : "waitlist",
+    callToAction: statusFor(placement.province) === "reserved" ? "card" : "waitlist",
     work: context.workReviews.map((r) => ({ questionId: r.questionId, comment: r.confidence === "high" ? r.comment : null })),
   };
 }
