@@ -160,10 +160,10 @@ export function Why() {
   );
 }
 
-const INCLUDED: [IconName, string, string, number][][] = [
+const INCLUDED: [IconName, string, ReactNode, number][][] = [
   [
     ["book", "Workbooks", "1 workbook per subject, about 20-25 pages.", 0],
-    ["calendar", "Daily practice", "15-20 minutes a day, 5 days a week.", 0.08],
+    ["calendar", "Daily practice, rewarded", <>15-20 minutes a day, 5 days a week. Your child earns rewards for every page they finish and every week they keep the habit. <Link href="/rewards" className="more-link">See the rewards <span aria-hidden="true">→</span></Link></>, 0.08],
     ["box", "Delivery", "Delivered to your door before the current book ends.", 0.16],
   ],
   [
@@ -174,7 +174,7 @@ const INCLUDED: [IconName, string, string, number][][] = [
 ];
 
 export function Included() {
-  const col = (items: [IconName, string, string, number][], first?: ReactNode) => (
+  const col = (items: [IconName, string, ReactNode, number][], first?: ReactNode) => (
     <div className="col">
       {first}
       {items.map(([icon, title, text, delay]) => (
@@ -356,6 +356,7 @@ export function Footer() {
         <p className="small" style={{ marginTop: 10 }}>© 2026 {BRAND}</p>
         <nav className="footer-links small" aria-label="Site information">
           <Link href="/our-story">Our story</Link>
+          <Link href="/rewards">Rewards</Link>
           <Link href="/resources">Resources</Link>
           <Link href="/privacy">Privacy</Link>
           <Link href="/terms">Terms</Link>
