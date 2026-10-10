@@ -118,10 +118,10 @@ await t("startup unset: idle check loads and stores nothing", async () => {
 });
 await t("accept, event while import in flight: one init, one capture, props sanitized", async () => {
   const r = rig(); r.a.begin(); r.set("granted");
-  r.a.track("reserve_success", { plan: "both", grade: 4, name: "Ana", email: "a@b.ca", postal: "V6B1A1", curriculum: "bc", price: 99, card: true, src: "a@b" });
+  r.a.track("reserve_success", { plan: "both", grade: 4, name: "Ana", email: "a@b.ca", postal: "V6B1A1", curriculum: "bc", price: 230, card: true, src: "a@b" });
   assert.equal(r.count("capture"), 0); r.loads[0].res(); await tick();
   assert.equal(r.count("init"), 1); assert.equal(r.count("capture"), 1);
-  assert.deepEqual(r.log.find((l) => l[0] === "capture")[2], { plan: "both", curriculum: "bc", price: 99, card: true });
+  assert.deepEqual(r.log.find((l) => l[0] === "capture")[2], { plan: "both", curriculum: "bc", price: 230, card: true });
 });
 await t("RACE accept then reject while import in flight: never init, never capture, storage cleared", async () => {
   const r = rig(); r.a.begin(); r.set("granted"); r.a.track("cta_click", { src: "hero" });

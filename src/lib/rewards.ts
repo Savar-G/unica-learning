@@ -1,4 +1,4 @@
-// Rewards program copy and numbers (D-076), used by /rewards (components/rewards.tsx).
+// Rewards program copy and numbers (D-078), used by /rewards (components/rewards.tsx).
 // Points come from checked page scans (finished work), never from scores. The parent approves every prize.
 // The numbers are first values, approved by Savar 2026-10-09; change them here only.
 

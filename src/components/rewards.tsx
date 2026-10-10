@@ -1,4 +1,4 @@
-// /rewards: the rewards program as a letter to parents (D-076, variant D of round r10).
+// /rewards: the rewards program as a letter to parents (D-078, variant D of round r10 on branch site/rewards-prototype).
 // Linked from the "Daily practice, rewarded" card on the home page and the footer. Uses the site nav, footer and reserve dialog.
 import { BRAND } from "@/lib/site";
 import { EARN, POINTS_PER_MONTH, PRIZES, REWARDS_FAQ, points } from "@/lib/rewards";
