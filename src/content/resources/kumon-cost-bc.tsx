@@ -203,7 +203,7 @@ export default function Body() {
             [<>Private math tutor, K-7, Vancouver<Cite n={19} /></>, "From $152-$160 for 1 hour a week (from $38-$40 an hour)"],
             [<>Tutors in Vancouver, all types<Cite n={20} /></>, "$240-$400 for 1 hour a week ($60-$100 an hour)"],
             ["Unica, one subject", "CAD 139, delivery included"],
-            ["Unica, math and reading", "CAD 230, delivery included"],
+            ["Unica, math and reading", "CAD 229, delivery included"],
           ]}
           note="Tutor monthly figures are arithmetic: the hourly rate x 1 hour a week x 4 weeks. Math Tutor Network lists starting rates and adds $5 for lessons shorter than 1.5 hours. Tutor sources are tutoring company pages."
         />
