@@ -18,7 +18,8 @@ Personalized, mailed math and reading workbooks for ages 6-12 (grades 1-7). The 
 - Open a pull request yourself when you finish building something. Do not ask first. Use a branch named `site/<topic>`, from a worktree based on `origin/main`. Merging to `main` deploys production, so leave the merge to Savar unless he asks.
 - Never switch branches in the main checkout. Other agents work in parallel worktrees (`git worktree list`).
 - All design work goes through `/design`. Mockup rounds live in `.design/experiments/r<n>/`, with a `manifest.json`.
-- Done gate (no test suite): `npx eslint src && npm run build`, then check the change in the browser with `npm run dev`. `npm run lint` also scans `.design-sync/previews/`, which has old errors.
+- Done gate: `npm test && npx eslint src && npm run build`, then check the change in the browser with `npm run dev`. `npm run lint` also scans `.design-sync/previews/`, which has old errors. Vitest does not typecheck; `npm run build` does.
+- Tests (Vitest, `src/**/*.test.ts`) use only a module's public interface. The assessment core (`src/lib/assessment`, imported as `@/lib/assessment`) is the one tested seam today: pure TypeScript with no network, database, clock or `Math.random`. Its tests are the pattern for later ones.
 - Copy rules in `DESIGN.md` are binding: no proof we do not have, no performance claims, and no competitor brand names outside `/resources` (compare with categories such as learning centres, D-064; `/resources` guides may name them with cited, dated facts, D-074).
 - Use plain language in all customer text. Keep development notes and draft labels out of public pages. Give provider names only in the privacy disclosure, with a plain explanation.
 
@@ -32,6 +33,7 @@ Personalized, mailed math and reading workbooks for ages 6-12 (grades 1-7). The 
 | PostHog | Product analytics and the signup funnel | Loads after analytics consent (`src/instrumentation-client.ts`), after idle for returning visitors. Events use the `/ingest` proxy (`next.config.ts`). Event names: `src/lib/track.ts`. Keep parent contact details and child grade out of analytics. PostHog MCP is available for queries. |
 | Resend | Emails Savar about each new signup | Sent from `/api/signup` after the response. The free plan sends only from `onboarding@resend.dev` to the account owner. Emails to parents need a verified domain that we own. |
 | Stripe | Saves the card of BC-curriculum signups; charges start when the first workbook ships | `/api/signup` creates a Customer (metadata: `ref` = `signups.ref`, plan, price) and a Checkout Session in setup mode (`src/lib/stripe.ts`); nothing is charged. Stripe returns the parent to `/thank-you?session_id={CHECKOUT_SESSION_ID}` or `/?card=cancelled`. The thank-you page retrieves the session with its SetupIntent before it confirms card setup. To charge: in the Dashboard, start a CAD 139 or 229 monthly subscription on that customer with the saved card. Stripe is the record of who saved a card; Supabase does not know. |
+| Vitest | Unit tests: `npm test` runs `src/**/*.test.ts` | Config `vitest.config.mts` (`@` maps to `src`). Vitest needs esbuild 0.27 or later, which is why the repo pins esbuild ^0.28. |
 | GitHub | Repo `Savar-G/unica-learning-landing-page` (renamed from `pagewise-landing-page` on 2026-10-08; GitHub redirects the old URL), pull requests | Use the `Savar-G` account in `gh`. |
 
 ## Environment variables
