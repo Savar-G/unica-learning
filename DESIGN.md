@@ -66,11 +66,11 @@ Every section sets up the next one. A single pencil line connects the sections a
 **Assessment report (account page and email, D-084, D-087).** A report card across the full page width, aligned with the site nav, with generous space between sections. Order:
 1. Header table: child, school grade, date, curriculum; wordmark and "Math placement report" on the left; a 2 px ink rule below.
 2. Overall: "[Name] is working at a grade [n] level." and one verdict sentence, in a rounded grainy colour band (sunflower, sky, mint) with the big K-8 ruler: the working level is a filled circle in the verdict colour (behind: tangerine, on grade: leaf, ahead: sky), the school grade a dashed ring, and the span between them tinted.
-3. Context below the band: the FSA line for grades 4 and 7 (labelled context, cited, "a different test"), the comparison for the data stage (none below 100 takers per grade; bands with n at 100-399; a percentile with n at 400+), and the help warning when it applies.
+3. Context below the band: the FSA line for BC families with a child in grade 4 or 7 (labelled context, cited, "a different test"; never shown for other provinces), the comparison for the data stage (none below 100 takers per grade; bands with n at 100-399; a percentile with n at 400+), and the help warning when it applies.
 4. Rows, each with its title and a one-line explanation on the left and the content on the right: By area (table: area and one-line note, a meter with three zones and a marker at the share right, the status chip, "x of y"; then the zone legend and the thresholds with "an early signal, not a final verdict"); Number facts (accuracy beside speed, never speed alone); [Name]'s work (three whiteboard images, each with the question, right or not, and a comment only when the review is sure); How we help (by verdict); Next step (BC: two plan buttons, nothing charged until the first workbook ships; other provinces: the waitlist).
 5. A mono line with the date, question count, minutes and the curriculum measured against.
 
-The email is one 600 px column: greeting, the level and verdict in the same colour band with the ruler, the FSA and comparison lines, the four areas with a meter, status and count, number facts, one piece of work, how we help, one button (plan or waitlist) and a link to the full report. Every number is measured or carries its source. On tablets the rows stack (title above content) and the work shows two across.
+The email is one 600 px column: greeting, the level and verdict in the same colour band with the ruler, the FSA line (BC only) and the comparison line, the four areas with a meter, status and count, number facts, one piece of work, how we help, one button (plan or waitlist) and a link to the full report. Every number is measured or carries its source. On tablets the rows stack (title above content) and the work shows two across.
 
 ## Visual language
 
@@ -122,5 +122,4 @@ The email is one 600 px column: greeting, the level and verdict in the same colo
 ## Open decisions
 
 - D4 Launch photos (own shoot with consent, or keep stock/AI).
-- Report: show the BC FSA context line to families outside BC, or only in BC?
 - D8/D3 Checkout: BC card saved with Stripe Checkout in setup mode (D-053). Open: how the first month is charged when the first workbook ships (today by hand: a CAD 139 or 229 monthly subscription on the Stripe customer; later a script or webhook).
