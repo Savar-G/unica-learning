@@ -1,8 +1,10 @@
 "use client";
 
-// PROTOTYPE ONLY (branch site/rewards-prototype): five ways to put rewards in the "What you get each month" grid.
-// Question: how does the grid tell parents about rewards and send them to /rewards, without a new section?
-// Switch with ?variant=now|A|B|C|D|E or the bottom bar (← →). "now" is the live grid.
+// PROTOTYPE ONLY (branch site/rewards-prototype): rewards in the "What you get each month" grid.
+// Question: how does the grid answer the parent's doubt "how do you get my child to actually do this?"
+// Round 1 kept C (linked sentence) and E (sticker on the photo). Round 2 moves the reward into the
+// "Daily practice" card, because rewards are how the daily habit sticks.
+// Switch with ?variant=now|C|E|C2|C3|E2|CE or the bottom bar (← →). "now" is the live grid.
 import type { ReactNode } from "react";
 import Image from "next/image";
 import Link from "next/link";
@@ -10,11 +12,11 @@ import { IncludedCard, Section, SectionHeader, type IconName } from "@/ds";
 import emo1 from "@/assets/img/emotion-1.jpg";
 import { Knot, Rise, type Vars } from "./drawn";
 import { INCLUDED, WHY } from "./sections";
-import { PRIZES, PRIZE_ICONS, PER_PAGE, TONE_BG, fmt } from "./rewards-data";
+import { PER_PAGE } from "./rewards-data";
 import { PrototypeSwitcher, SHOW_PROTOTYPES, useVariant } from "./prototype-switcher";
 import "./rewards-prototype.css";
 
-type Item = [IconName, string, ReactNode, number];
+type Item = [IconName, string, ReactNode, number, string?];
 const d = (s: number) => ({ "--d": `${s}s` }) as Vars;
 
 const More = ({ children = "See the rewards" }: { children?: ReactNode }) => (
@@ -25,8 +27,8 @@ function Col({ items, first }: { items: Item[]; first?: ReactNode }) {
   return (
     <div className="col">
       {first}
-      {items.map(([icon, title, text, delay]) => (
-        <IncludedCard key={title} icon={icon} title={title} className="rise" style={d(delay)}>{text}</IncludedCard>
+      {items.map(([icon, title, text, delay, cls]) => (
+        <IncludedCard key={title} icon={icon} title={title} className={`rise ${cls ?? ""}`.trim()} style={d(delay)}>{text}</IncludedCard>
       ))}
     </div>
   );
@@ -38,9 +40,9 @@ const PHOTO = (
   </div>
 );
 
-function Grid({ left = INCLUDED[0], right = INCLUDED[1], middle = <Rise>{PHOTO}</Rise>, after, className = "" }: { left?: Item[]; right?: Item[]; middle?: ReactNode; after?: ReactNode; className?: string }) {
+function Grid({ left = INCLUDED[0], right = INCLUDED[1], middle = <Rise>{PHOTO}</Rise> }: { left?: Item[]; right?: Item[]; middle?: ReactNode }) {
   return (
-    <Section id="inc" aria-labelledby="incT" className={className}>
+    <Section id="inc" aria-labelledby="incT">
       <Knot />
       <Rise>
         <SectionHeader eyebrow="What you get each month" title="Everything your child needs. Nothing they don't." titleId="incT" />
@@ -50,55 +52,24 @@ function Grid({ left = INCLUDED[0], right = INCLUDED[1], middle = <Rise>{PHOTO}<
         {middle}
         <Col items={right} />
       </div>
-      {after}
     </Section>
   );
 }
 
-const LINE = "Every finished page earns points. Your child trades them for toys, zoo trips, movie tickets, even an iPad.";
+/** Replace the "Daily practice" card in the left column. */
+const withDaily = (title: string, text: ReactNode, cls?: string): Item[] =>
+  INCLUDED[0].map((it) => (it[1] === "Daily practice" ? [it[0], title, text, it[3], cls] : it));
 
-/* A: a seventh card of the same kind, under the photo in the middle column. Quietest. */
-function VariantA() {
-  return (
-    <Grid
-      middle={
-        <div className="col rw-a-mid">
-          <Rise>{PHOTO}</Rise>
-          <IncludedCard icon="gift" title="Rewards" className="rise rw-a-card">
-            {LINE} <More />
-          </IncludedCard>
-        </div>
-      }
-    />
-  );
+function Sticker({ link = false }: { link?: boolean }) {
+  const body = <><b>+{PER_PAGE}</b>points<br />a page</>;
+  return link
+    ? <Link href="/rewards" className="rw-e-sticker" aria-label="See the rewards">{body}</Link>
+    : <span className="rw-e-sticker" aria-hidden="true">{body}</span>;
 }
 
-/* B: the photo becomes a tall prize tile on the warm gradient, with a short prize ladder. */
-function VariantB() {
-  const ladder = [PRIZES[0], PRIZES[4], PRIZES[7]];
-  return (
-    <Grid
-      middle={
-        <Rise className="rw-b-tile">
-          <p className="rw-kicker">Rewards</p>
-          <h3>Every page earns points.</h3>
-          <ul>
-            {ladder.map((p) => (
-              <li key={p.name}>
-                <i style={{ background: TONE_BG[p.tone] }}>{PRIZE_ICONS[p.icon]}</i>
-                <span>{p.name}</span>
-                <b>{fmt(p.pts)}</b>
-              </li>
-            ))}
-          </ul>
-          <Link href="/rewards" className="btn sm">See all rewards <span className="arr" aria-hidden="true">→</span></Link>
-        </Rise>
-      }
-    />
-  );
-}
+/* ---------------------------------------------------------------- round 1 */
 
-/* C: no new card. One sentence in "Instant answer check" carries a link: the smallest change. */
+/* C: one linked sentence in "Instant answer check". */
 function VariantC() {
   const right: Item[] = INCLUDED[1].map(([icon, title, text, delay]) =>
     title === "Instant answer check"
@@ -108,40 +79,70 @@ function VariantC() {
   return <Grid right={right} />;
 }
 
-/* D: a full-width strip under the grid: the earn rule, a row of prizes, one link. */
-function VariantD() {
+/* E: a reward sticker on the photo, with a caption link. */
+function VariantE() {
   return (
     <Grid
-      after={
-        <Rise className="rw-d-strip">
-          <p className="rw-d-pts"><b>+{PER_PAGE}</b><span>points for every finished page</span></p>
-          <ul className="rw-d-prizes" aria-label="Some of the rewards">
-            {PRIZES.filter((p) => ["toy", "card", "ticket", "paw", "tablet"].includes(p.icon)).map((p) => (
-              <li key={p.name} style={{ background: TONE_BG[p.tone] }} title={p.name}>
-                {PRIZE_ICONS[p.icon]}<span>{p.name}</span>
-              </li>
-            ))}
-          </ul>
-          <More>See all rewards</More>
+      middle={
+        <Rise className="rw-e-mid">
+          <div className="rw-e-photo">{PHOTO}<Sticker /></div>
+          <p className="rw-e-cap">Finished pages earn points toward toys, trips and more. <More>See the rewards</More></p>
         </Rise>
       }
     />
   );
 }
 
-/* E: the photo stays; a reward sticker is stuck on it, with a caption link under the photo. Playful. */
-function VariantE() {
+/* ---------------------------------------------------------------- round 2 */
+
+/* C2: the reward lives in "Daily practice". Same grey card, one more sentence and a link. Quietest. */
+function VariantC2() {
+  return (
+    <Grid
+      left={withDaily(
+        "Daily practice, rewarded",
+        <>15-20 minutes a day, 5 days a week. Your child earns rewards for every page they finish and every week they keep the habit. <More>See the rewards</More></>,
+      )}
+    />
+  );
+}
+
+/* C3: the card asks the parent's question out loud, on a soft orange card so it is found. */
+function VariantC3() {
+  return (
+    <Grid
+      left={withDaily(
+        "How do we keep them going?",
+        <>Rewards. 15-20 minutes a day, 5 days a week, and your child earns points for every finished page and every full week. They trade the points for rewards they pick, like toys, movie tickets or a zoo trip. <More>See the rewards</More></>,
+        "rw-hl",
+      )}
+    />
+  );
+}
+
+/* E2: E with the habit message in the caption. The grid cards stay as they are. */
+function VariantE2() {
   return (
     <Grid
       middle={
         <Rise className="rw-e-mid">
-          <div className="rw-e-photo">
-            {PHOTO}
-            <span className="rw-e-sticker" aria-hidden="true"><b>+{PER_PAGE}</b>points<br />a page</span>
-          </div>
-          <p className="rw-e-cap">Finished pages earn points toward toys, trips and more. <More>See the rewards</More></p>
+          <div className="rw-e-photo">{PHOTO}<Sticker link /></div>
+          <p className="rw-e-cap rw-e-cap-lg">Your child earns rewards as they finish their books and build a daily habit. <More>How rewards work</More></p>
         </Rise>
       }
+    />
+  );
+}
+
+/* CE: C2's card carries the message; the sticker on the photo is the visual hook and links too. */
+function VariantCE() {
+  return (
+    <Grid
+      left={withDaily(
+        "Daily practice, rewarded",
+        <>15-20 minutes a day, 5 days a week. Your child earns rewards for every page they finish and every week they keep the habit. <More>See the rewards</More></>,
+      )}
+      middle={<Rise className="rw-e-mid"><div className="rw-e-photo">{PHOTO}<Sticker link /></div></Rise>}
     />
   );
 }
@@ -150,16 +151,17 @@ const Now = () => <Grid />;
 
 const VARIANTS = [
   { key: "now", name: "Live grid", C: Now },
-  { key: "A", name: "Seventh card", C: VariantA },
-  { key: "B", name: "Prize tile", C: VariantB },
-  { key: "C", name: "Linked sentence", C: VariantC },
-  { key: "D", name: "Strip under the grid", C: VariantD },
-  { key: "E", name: "Sticker on the photo", C: VariantE },
+  { key: "C", name: "R1: Linked sentence", C: VariantC },
+  { key: "E", name: "R1: Sticker on the photo", C: VariantE },
+  { key: "C2", name: "Daily practice, rewarded", C: VariantC2 },
+  { key: "C3", name: "How do we keep them going?", C: VariantC3 },
+  { key: "E2", name: "Sticker + habit caption", C: VariantE2 },
+  { key: "CE", name: "Habit card + sticker", C: VariantCE },
 ];
 
 function Switch() {
-  const [key, change] = useVariant(VARIANTS.map((v) => v.key), "A", "#inc");
-  const V = (VARIANTS.find((v) => v.key === key) ?? VARIANTS[1]).C;
+  const [key, change] = useVariant(VARIANTS.map((v) => v.key), "C2", "#inc");
+  const V = (VARIANTS.find((v) => v.key === key) ?? VARIANTS[3]).C;
   return (
     <>
       <V />
@@ -169,5 +171,5 @@ function Switch() {
 }
 
 export function IncludedRewardsPrototype() {
-  return SHOW_PROTOTYPES ? <Switch /> : <VariantA />;
+  return SHOW_PROTOTYPES ? <Switch /> : <VariantC2 />;
 }

@@ -2,7 +2,7 @@
   "round": 10,
   "decision": "How do we tell parents about the kids' rewards program without a new home page section, and what should the /rewards page look like?",
   "primary_axis": "where rewards sit in the 'What you get each month' grid; how the /rewards page leads (explain, shop, path, letter, calculator)",
-  "where": "Live prototype. Grid: /?variant=now|A|B|C|D|E (src/components/rewards-card-prototype.tsx). Page: /rewards?variant=A|B|C|D|E (src/components/rewards-prototype.tsx). Branch site/rewards-prototype.",
+  "where": "Live prototype. Grid: /?variant=now|C|E|C2|C3|E2|CE (src/components/rewards-card-prototype.tsx). Page: /rewards?variant=A|B|C|D|E (src/components/rewards-prototype.tsx). Branch site/rewards-prototype.",
   "invariants": [
     "points come from checked page scans (finished work), never from scores or from a book arriving",
     "the parent approves every prize",
@@ -11,18 +11,104 @@
   ],
   "options": {
     "grid": [
-      { "id": "A", "bet": "Seventh card under the photo, same kind as the others, soft orange", "benefit": "Quietest; reads as part of the offer", "risk": "Easy to scroll past" },
-      { "id": "B", "bet": "Prize tile replaces the photo: gradient tile, 3-prize ladder, button", "benefit": "Most visible; shows the iPad on the home page", "risk": "Loses the only photo in the section" },
-      { "id": "C", "bet": "One linked sentence inside 'Instant answer check'", "benefit": "Zero new layout; the original 'clickable sentence' idea", "risk": "Most parents will not see it" },
-      { "id": "D", "bet": "Full-width strip under the grid: +10 a page, prize chips, link", "benefit": "Visible without touching the six cards", "risk": "Reads like a small new section" },
-      { "id": "E", "bet": "A '+10 points a page' sticker on the photo and a caption link", "benefit": "Playful, kid-like, very small", "risk": "Sticker can read as decoration" }
+      {
+        "id": "A",
+        "bet": "Seventh card under the photo, same kind as the others, soft orange",
+        "benefit": "Quietest; reads as part of the offer",
+        "risk": "Easy to scroll past"
+      },
+      {
+        "id": "B",
+        "bet": "Prize tile replaces the photo: gradient tile, 3-prize ladder, button",
+        "benefit": "Most visible; shows the iPad on the home page",
+        "risk": "Loses the only photo in the section"
+      },
+      {
+        "id": "C",
+        "bet": "One linked sentence inside 'Instant answer check'",
+        "benefit": "Zero new layout; the original 'clickable sentence' idea",
+        "risk": "Most parents will not see it"
+      },
+      {
+        "id": "D",
+        "bet": "Full-width strip under the grid: +10 a page, prize chips, link",
+        "benefit": "Visible without touching the six cards",
+        "risk": "Reads like a small new section"
+      },
+      {
+        "id": "E",
+        "bet": "A '+10 points a page' sticker on the photo and a caption link",
+        "benefit": "Playful, kid-like, very small",
+        "risk": "Sticker can read as decoration"
+      }
     ],
     "page": [
-      { "id": "A", "bet": "Explainer: earn, prizes table with time to reach, how a prize gets home, FAQ", "benefit": "Answers every parent question in order", "risk": "Least exciting" },
-      { "id": "B", "bet": "Prize shop: big prize tiles with a points filter; earning shrinks to chips", "benefit": "Most fun to browse; a child can look at it", "risk": "Feels like a store, not a learning product" },
-      { "id": "C", "bet": "Points path: monthly sum, then a timeline from day 1 to the iPad", "benefit": "Makes 'saving up' concrete and shows the first prize is close", "risk": "Shows the iPad is 2.5 years away" },
-      { "id": "D", "bet": "Letter to parents: why we reward finished work, a table, a plain prize list", "benefit": "Most trust; matches /our-story", "risk": "Text-heavy; no visual pull" },
-      { "id": "E", "bet": "Calculator: plan and days a week change the points and time to each prize", "benefit": "Interactive; parent sees their own case", "risk": "Exposes the economics; more to maintain" }
+      {
+        "id": "A",
+        "bet": "Explainer: earn, prizes table with time to reach, how a prize gets home, FAQ",
+        "benefit": "Answers every parent question in order",
+        "risk": "Least exciting"
+      },
+      {
+        "id": "B",
+        "bet": "Prize shop: big prize tiles with a points filter; earning shrinks to chips",
+        "benefit": "Most fun to browse; a child can look at it",
+        "risk": "Feels like a store, not a learning product"
+      },
+      {
+        "id": "C",
+        "bet": "Points path: monthly sum, then a timeline from day 1 to the iPad",
+        "benefit": "Makes 'saving up' concrete and shows the first prize is close",
+        "risk": "Shows the iPad is 2.5 years away"
+      },
+      {
+        "id": "D",
+        "bet": "Letter to parents: why we reward finished work, a table, a plain prize list",
+        "benefit": "Most trust; matches /our-story",
+        "risk": "Text-heavy; no visual pull"
+      },
+      {
+        "id": "E",
+        "bet": "Calculator: plan and days a week change the points and time to each prize",
+        "benefit": "Interactive; parent sees their own case",
+        "risk": "Exposes the economics; more to maintain"
+      }
+    ]
+  },
+  "round_2": {
+    "date": "2026-10-09",
+    "feedback": "Savar liked grid C and E. The message is: your child earns rewards as they finish their workbooks and build a daily habit. The grid must answer the parent's doubt: how do you get my child to actually do the work?",
+    "dropped": [
+      "A",
+      "B",
+      "D"
+    ],
+    "finding": "Phones hide the grid photo (warm.css, D-072), so E and E2 show nothing about rewards on a phone. Only a card-based version reaches phone visitors.",
+    "options": [
+      {
+        "id": "C2",
+        "bet": "'Daily practice' becomes 'Daily practice, rewarded': rewards for every finished page and every week of the habit, plus a link",
+        "benefit": "Reward sits next to the habit it builds; works on phones",
+        "risk": "Quiet grey card"
+      },
+      {
+        "id": "C3",
+        "bet": "The card asks the parent's question: 'How do we keep them going?' Answer: rewards. Soft orange card",
+        "benefit": "Names the doubt out loud; easiest to find",
+        "risk": "A question title breaks the pattern of the other cards"
+      },
+      {
+        "id": "E2",
+        "bet": "Sticker on the photo links to /rewards; caption carries the habit message",
+        "benefit": "Most playful; no card changes",
+        "risk": "Hidden on phones"
+      },
+      {
+        "id": "CE",
+        "bet": "C2's card plus the sticker on the photo, both link to /rewards",
+        "benefit": "Card carries the message everywhere; sticker adds a visual hook on desktop",
+        "risk": "Two links to the same page"
+      }
     ]
   }
 }

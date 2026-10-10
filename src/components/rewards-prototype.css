@@ -54,6 +54,11 @@
 }
 .rw-e-sticker b { display: block; font: 600 36px/0.9 var(--pen); }
 .rw-e-cap { margin: 14px 2px 0; font-size: 14.5px; line-height: 1.45; color: var(--ink-2); }
+.rw-e-cap-lg { font-size: 16px; color: var(--ink); }
+a.rw-e-sticker { text-decoration: none; transition: transform 0.35s var(--spring); }
+a.rw-e-sticker:hover { transform: rotate(4deg) scale(1.06); }
+.card.rw-hl { background: var(--accent-soft) !important; }
+.card .rw-more { margin-left: 2px; }
 @media (max-width: 979px) { .rw-e-sticker { right: 12px; } }
 
 /* ================================================================ /rewards */
