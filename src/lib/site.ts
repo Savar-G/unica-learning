@@ -2,8 +2,8 @@
 export const BRAND = "Unica Learning";
 
 export const PLANS = {
-  one: { id: "one", name: "One subject", price: 59, note: "Math or reading" },
-  both: { id: "both", name: "Math + Reading", price: 99, note: "Both subjects, one plan" },
+  one: { id: "one", name: "One subject", price: 139, note: "Math or reading" },
+  both: { id: "both", name: "Math + Reading", price: 230, note: "Both subjects, one plan" },
 } as const;
 
 export type PlanId = keyof typeof PLANS;
