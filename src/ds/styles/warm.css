@@ -160,6 +160,9 @@
 [data-look="warm"] .card:hover { transform: translateY(-3px); box-shadow: 0 16px 30px -22px rgba(0, 0, 0, 0.35); }
 [data-look="warm"] .card .ic { background: #fff !important; border-radius: 4px; }
 [data-look="warm"] .card h3 { font-size: 19px; }
+/* Inline "See the rewards →" link in a card: one accent underline under the text and the arrow. */
+[data-look="warm"] .more-link { display: inline-flex; gap: 6px; align-items: baseline; padding-bottom: 3px; font-weight: 500; color: var(--ink); text-decoration: none; background: linear-gradient(var(--accent), var(--accent)) left bottom / 100% 2px no-repeat; white-space: nowrap; }
+[data-look="warm"] .more-link:hover { color: var(--accent); }
 
 /* ---------- emotional section on a grain field ---------- */
 [data-look="warm"] .feel::before {
