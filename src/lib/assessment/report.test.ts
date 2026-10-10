@@ -20,7 +20,7 @@ describe("report model", () => {
     });
   });
 
-  describe("FSA context line", () => {
+  describe("FSA context line: BC families, grades 4 and 7 (D-087)", () => {
     it("shows for grade 4 with its source, and says the FSA is a different test", () => {
       const fsa = report(grade4()).fsa;
       expect(fsa).toMatchObject({ grade: 4, percent: 66.5, schoolYear: "2025/26" });
@@ -30,6 +30,12 @@ describe("report model", () => {
     });
     it("shows for grade 7", () => {
       expect(report({ ...grade4(), grade: 7 }).fsa).toMatchObject({ grade: 7, percent: 59.2 });
+    });
+    it("is absent outside BC, D-087 (another province is scored against BC but is not a BC family)", () => {
+      for (const province of ["AB", "SK", "MB", "ON", "other"] as const) {
+        expect(report(grade4(allRight, province)).fsa, province).toBeNull();
+        expect(report({ ...grade4(allRight, province), grade: 7 }).fsa, province).toBeNull();
+      }
     });
     it("is absent for every other grade", () => {
       for (const grade of [1, 2, 3, 5, 6] as const) expect(report({ ...grade4(), grade }).fsa).toBeNull();

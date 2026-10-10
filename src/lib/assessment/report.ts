@@ -2,7 +2,7 @@
 // Honesty rule (DESIGN.md, D-084): every number here is measured or carries its source.
 import { statusFor } from "@/lib/signup";
 import { COMPARISON_BANDS_FROM, COMPARISON_PERCENTILE_FROM, REPORTED_STRAND_NAMES } from "./constants";
-import type { Grade, Level, Placement, StrandResult } from "./types";
+import type { Grade, Level, Placement, Province, StrandResult } from "./types";
 
 /** One AI review of a child's shown work (#68). */
 export interface WorkReview {
@@ -49,8 +49,9 @@ const FSA_SOURCE = {
 };
 const FSA_PERCENT: Record<4 | 7, number> = { 4: 66.5, 7: 59.2 };
 
-function fsaLine(grade: Grade): FsaLine | null {
-  if (grade !== 4 && grade !== 7) return null;
+// BC families only, grades 4 and 7 (D-087). "Another province" is scored against BC but is not a BC family.
+function fsaLine(grade: Grade, province: Province): FsaLine | null {
+  if (province !== "BC" || (grade !== 4 && grade !== 7)) return null;
   const percent = FSA_PERCENT[grade];
   return {
     grade,
@@ -73,7 +74,7 @@ export function reportModel(placement: Placement, context: ReportContext): Repor
     level: { working: workingLevel, grade, atCeiling: placement.atCeiling, confidence: placement.confidence },
     strands: placement.strands.map((s) => ({ ...s, name: REPORTED_STRAND_NAMES[s.strand] })),
     comparison: comparisonFor(context.completedTestsInGrade),
-    fsa: fsaLine(grade),
+    fsa: fsaLine(grade, placement.province),
     howWeHelp: workingLevel === grade ? "on-grade" : workingLevel < grade ? "behind" : "ahead",
     // Card for the curricula we make books for today (D-053); every other province joins the waitlist.
     callToAction: statusFor(placement.province) === "reserved" ? "card" : "waitlist",
