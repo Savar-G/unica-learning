@@ -1,4 +1,5 @@
 // Funnel events: cta_click, form_start, plan_selected, details_done, waitlist_join, checkout_start, reserve_success, card_redirect, card_saved, card_cancelled, signup_save_failed, heard_from.
+// Test prototype events (branch site/assessment-test-prototype only): test_start, test_break, test_facts_done, test_finish, read_aloud.
 // Analytics run only after the visitor accepts (see consent.ts). Without consent an event is dropped, not queued.
 // Only src, plan, subject, curriculum, price, status, code, card and channel travel with an event (see analytics.ts).
 // posthog-js is imported on demand so it stays out of the first-load bundle.

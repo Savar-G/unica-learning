@@ -1,0 +1,81 @@
+{
+  "round": 14,
+  "ticket": "#60",
+  "decision": "How should the child's test screen be built: where do the question, the answer input, the whiteboard and the progress sit, and how does the child move through the test?",
+  "primary_axis": "screen model for taking the test (layout of question, answer, whiteboard and progress, plus the navigation model)",
+  "where": "Live prototype at /test-prototype?variant=A..E (src/app/test-prototype, src/components/test-prototype). Branch site/assessment-test-prototype; not for merge. The route 404s in production builds. Run: PORT=3060 npm run dev. The dark bar at the bottom switches variants (arrows or keyboard left/right) and jumps to Q1, Q4 (a show-your-work question), Q18, Break, Facts, Q19, Q36 and End.",
+  "invariants": [
+    "same fake grade 3 test for a child named Maya: 36 questions from 8 templates, 7 of them need shown work (D-083 count for grades 3-5)",
+    "same order: questions 1-18, halfway break (skippable), 60-second facts section (addition and subtraction to 20, what BC expects in grade 3), questions 19-36, end screen",
+    "same rules: an answer is needed, and on a show-your-work question the whiteboard must have work; the whiteboard draws with mouse, finger or stylus and has a Type tab",
+    "same 'read it to me' (browser speech; hidden when the browser has none), same on-screen number pad that also takes the keyboard",
+    "same end message: the report will be emailed to the grown-up shortly",
+    "same tokens: Geist, warm look colours, 6 px controls; every tap target 44 px or more",
+    "all five fit 1440x900, 1024x768 and 768x1024 with no page scroll (checked with a script on all 75 screens)",
+    "events through the track helper: test_start, test_break (shown, rested, skipped), test_facts_done, test_finish, read_aloud, each with src = proto-<variant>"
+  ],
+  "count_note": "Five options because Savar asked for 5 (D-086), above the usual 2-4.",
+  "options": [
+    {
+      "id": "A",
+      "name": "Workbook page",
+      "artifact": "a-live.html",
+      "bet": "Each question is one page of a paper workbook: question, answer boxes and a squared working space on the same page; progress is 'Page 5 of 36'; the facts section is a drill sheet",
+      "benefit": "Matches the brand (paper workbooks) and the books the child gets next; the working space is always in view, so showing work feels normal",
+      "cost": "Less room for big answer targets; the page is busy for a grade 1 child",
+      "risk": "'Page 5 of 36' may feel long; a paper look on a screen can feel fake"
+    },
+    {
+      "id": "B",
+      "name": "Split desk",
+      "artifact": "b-live.html",
+      "bet": "Question and answer on the left, a full-height whiteboard on the right on every question; progress is 36 segments with a dot for the halfway break",
+      "benefit": "The most room for shown work, so the best work images for the report and the AI review; good with a stylus",
+      "cost": "Half the screen is a whiteboard even on questions that do not need it",
+      "risk": "Children may scribble on the board all the time, and the empty board may distract"
+    },
+    {
+      "id": "C",
+      "name": "One big thing",
+      "artifact": "c-live.html",
+      "bet": "One huge question and four large coloured answer tiles, nothing else; the whiteboard is a full-screen sheet, and on a show-your-work question it opens as step 2 after the answer; 'read every question' option",
+      "benefit": "Lowest load for ages 6-8; the largest touch targets; the read-aloud is the first thing on the screen",
+      "cost": "Shown work is a separate step, so it takes longer on the 7 work questions",
+      "risk": "Children skip optional work because the board is hidden; the AI gets fewer work images"
+    },
+    {
+      "id": "D",
+      "name": "Trail",
+      "artifact": "d-live.html",
+      "bet": "Progress is the main picture: a trail with 36 stops, a halfway camp (break and facts) and a finish flag; the question is a card; the whiteboard is a drawer that opens by itself on show-your-work questions",
+      "benefit": "Most motivating over 30-45 minutes; the break and the facts section have a place in the story",
+      "cost": "The trail takes height; the number pad becomes one row of keys to fit",
+      "risk": "Reads as a game; 36 stops in view can make the test look long; less like the paper brand"
+    },
+    {
+      "id": "E",
+      "name": "School test",
+      "artifact": "e-live.html",
+      "bet": "The layout children know from school online tests (FSA, EQAO): a tool rail (read aloud, whiteboard, bigger text), a question map, Back and Next; the child can skip and come back within a part, and the end of a part lists what is not finished",
+      "benefit": "Lets the child go back and skip (the research found this helps younger children); familiar from grade 4 on; the bigger-text tool",
+      "cost": "Dense; the most chrome; the map of 18 squares is a lot for a grade 1 child",
+      "risk": "Feels like an exam, which raises stress; going back interacts with the two-stage routing (allowed only inside a part here)"
+    }
+  ],
+  "evidence": {
+    "screenshots": "shots/<option>-<screen>-<viewport>.png; screens q1, q4work, break, facts, end; viewports laptop 1440x900, tablet-land 1024x768, tablet-port 768x1024",
+    "checks": [
+      "click-through of each option: answer, draw, next, facts start and enter, end (in-browser script)",
+      "stylus and touch strokes reach the whiteboard; C's work step needs a stroke before 'Done, next question' turns on",
+      "no page scroll and no tap target under 44 px on all 75 screens",
+      "production build: /test-prototype returns 404; dev returns 200",
+      "npx eslint src (0 errors) and npm run build pass"
+    ],
+    "not_checked": [
+      "a real tablet or stylus (only emulated touch and pen events)",
+      "voice quality on Windows, Chromebook and iPad voices (the bar shows the voice the browser picked; on this Mac: Samantha, en-US)",
+      "children: no child has used any option yet"
+    ]
+  },
+  "selected": null
+}

@@ -1,0 +1,63 @@
+/* PROTOTYPE ONLY (ticket #60). Shared pieces: stage, prototype bar, whiteboard, number pad.
+   Each variant has its own file for layout; these only set the parts' defaults. */
+
+.tp-root { min-height: 100dvh; background: #fff; }
+.tp-stage { min-height: 100dvh; }
+.tp-stage button { font-family: inherit; color: inherit; -webkit-tap-highlight-color: transparent; touch-action: manipulation; }
+.tp-stage :focus-visible { outline: 3px solid var(--sky); outline-offset: 2px; }
+.sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+
+/* ---------- prototype bar (not part of any design) ---------- */
+.proto-bar {
+  position: fixed; z-index: 1000; left: 50%; bottom: 14px; transform: translateX(-50%);
+  display: flex; align-items: center; gap: 4px; padding: 5px; border-radius: 999px; max-width: calc(100vw - 16px);
+  background: #1a1a1d; color: #fff; box-shadow: 0 10px 30px -8px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(255, 255, 255, 0.08);
+  font: 500 12px/1 var(--mono); white-space: nowrap;
+}
+.proto-bar > span { padding: 0 8px; }
+.proto-bar b { display: inline-block; min-width: 1.6em; padding: 4px 6px; margin-right: 6px; border-radius: 6px; background: #e8ff5a; color: #111; text-align: center; }
+.proto-bar i { font-style: normal; opacity: 0.5; margin-left: 6px; }
+.proto-bar button { min-width: 30px; height: 30px; border: 0; border-radius: 999px; background: rgba(255, 255, 255, 0.1); color: #fff; font: inherit; font-size: 14px; cursor: pointer; }
+.proto-bar button:hover { background: rgba(255, 255, 255, 0.22); }
+.tp-bar-sep { width: 1px; height: 18px; padding: 0 !important; background: rgba(255, 255, 255, 0.18); }
+.tp-bar-jumps { display: flex; gap: 3px; padding: 0 !important; }
+.tp-bar-jumps button { padding: 0 9px; font-size: 11.5px; }
+.tp-bar-state { opacity: 0.7; overflow: hidden; text-overflow: ellipsis; max-width: 360px; }
+@media (max-width: 1180px) { .tp-bar-state { display: none; } .tp-bar-sep:nth-of-type(2) { display: none; } }
+@media (max-width: 860px) { .tp-bar-jumps button:nth-child(n + 6) { display: none; } }
+
+/* ---------- whiteboard ---------- */
+.wb { display: flex; flex-direction: column; min-height: 0; background: #fff; border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
+.wb-tools { display: flex; align-items: center; gap: 6px; padding: 8px; border-bottom: 1px solid var(--line); background: #fff; flex-wrap: wrap; }
+.wb-tools-bottom { flex-direction: column-reverse; }
+.wb-tools-bottom .wb-tools { border-bottom: 0; border-top: 1px solid var(--line); }
+.wb-seg { display: inline-flex; padding: 3px; border-radius: 8px; background: var(--card); margin-right: auto; }
+.wb-seg button { display: inline-flex; align-items: center; gap: 6px; min-height: 44px; padding: 0 14px; border: 0; border-radius: 6px; background: transparent; font: 500 15px/1 var(--sans); cursor: pointer; color: var(--ink-2); }
+.wb-seg button[aria-selected="true"] { background: #fff; color: var(--ink); box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08); }
+.wb-aa { font-weight: 600; font-size: 14px; }
+.wb-tool { display: grid; place-items: center; width: 44px; height: 44px; border: 1px solid var(--line); border-radius: 8px; background: #fff; cursor: pointer; }
+.wb-tool[aria-pressed="true"] { background: var(--ink); border-color: var(--ink); color: #fff; }
+.wb-tool:disabled { opacity: 0.35; cursor: default; }
+.wb-clear { width: auto; padding: 0 12px; font: 500 14px/1 var(--sans); }
+.wb-surface { position: relative; flex: 1; min-height: 160px; }
+.wb-surface canvas { position: absolute; inset: 0; touch-action: none; cursor: crosshair; display: block; }
+.wb-surface canvas.is-eraser { cursor: cell; }
+.wb-grid { background-color: #fff; background-image: linear-gradient(#eef0f4 1px, transparent 1px), linear-gradient(90deg, #eef0f4 1px, transparent 1px); background-size: 26px 26px; }
+.wb-lines { background-color: #fffdf7; background-image: linear-gradient(transparent 31px, #e6e9f2 31px, #e6e9f2 32px); background-size: 100% 32px; }
+.wb-dots { background-color: #fff; background-image: radial-gradient(#d6d8de 1.2px, transparent 1.4px); background-size: 22px 22px; }
+.wb-plain { background: #fff; }
+.wb-hint { position: absolute; inset: 0; display: grid; place-items: center; margin: 0; pointer-events: none; font: 400 26px/1.2 var(--pen); color: #b5b5bd; text-align: center; padding: 16px; }
+.wb[data-mode="type"] canvas { visibility: hidden; }
+.wb-text { position: absolute; inset: 0; width: 100%; height: 100%; padding: 16px 18px; border: 0; resize: none; background: transparent; font: 400 22px/32px var(--sans); color: var(--ink); outline: none; }
+.wb-lines .wb-text { padding-top: 4px; }
+
+/* ---------- number pad ---------- */
+.pad { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.pad button { min-height: 60px; border: 1px solid var(--line); border-radius: 10px; background: #fff; font: 500 26px/1 var(--sans); cursor: pointer; display: grid; place-items: center; transition: background 0.12s, transform 0.08s; }
+.pad button:active { transform: scale(0.96); background: var(--card); }
+.pad .pad-enter { background: var(--btn, #2b2622); border-color: var(--btn, #2b2622); color: #fff; font-size: 17px; }
+.pad .pad-enter:disabled { opacity: 0.35; }
+
+@media (prefers-reduced-motion: reduce) {
+  .tp-stage *, .tp-stage *::before, .tp-stage *::after { animation-duration: 0.001ms !important; animation-iteration-count: 1 !important; transition-duration: 0.001ms !important; }
+}
