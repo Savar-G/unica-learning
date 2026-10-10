@@ -258,7 +258,7 @@
 .rp-mail h3 { margin: 6px 0 0; font-size: 19px; }
 .m-logo { font: 600 18px/1 var(--sans); letter-spacing: -0.03em; padding-bottom: 14px; border-bottom: 1px solid var(--line); }
 .m-lead { padding: 20px; border-radius: 8px; background: var(--soft); display: grid; gap: 6px; }
-.v-B .m-lead { background: var(--noise), radial-gradient(60% 90% at 10% 20%, var(--g1), transparent 70%), radial-gradient(60% 90% at 90% 30%, var(--g3), transparent 70%), var(--base); background-blend-mode: soft-light, normal, normal, normal; }
+.v-B .m-lead, .v-A3 .m-lead { background: var(--noise), radial-gradient(60% 90% at 10% 20%, var(--g1), transparent 70%), radial-gradient(60% 90% at 90% 30%, var(--g3), transparent 70%), var(--base); background-blend-mode: soft-light, normal, normal, normal; }
 .v-A .m-lead { background: #fff; border: 1px solid var(--ink); border-radius: 2px; }
 .m-big { font: 200 84px/0.9 var(--sans); letter-spacing: -0.05em; }
 .m-level { font-size: 24px; font-weight: 300; letter-spacing: -0.02em; line-height: 1.15; }
@@ -428,3 +428,10 @@
   .ac-work, .ac-work.is-two { grid-template-columns: 1fr; }
 }
 .ac-side-level.is-behind { color: var(--v-behind); } .ac-side-level.is-ahead { color: var(--v-ahead); }
+
+/* r13: A3 email carries the ruler band and a meter per area (the real email draws the meter with table cells) */
+.v-A3 .m-lead { padding: 26px 24px; }
+.v-A3 .m-lead .rp-scale-track { height: 56px; border: 0; box-shadow: 0 12px 24px -16px rgba(0, 0, 0, 0.35); }
+.m-table .m-meter { width: 30%; padding-right: 16px; }
+.m-meter .b-bar { height: 10px; }
+.m-meter .b-bar i { top: -4px; height: 18px; }

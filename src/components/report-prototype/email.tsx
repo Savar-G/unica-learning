@@ -5,7 +5,7 @@
 // can be judged in the inbox too. The real email is built with table markup after a direction is chosen.
 import { BRAND, PLANS } from "@/lib/site";
 import { BANDS, FSA, STATUS_LABEL, TAKERS, levelSentence, verdictSentence } from "./data";
-import { PROVINCE_NAME, Sample, Scale, helpText, helpTitle, type ReportProps } from "./parts";
+import { Meter, PROVINCE_NAME, Sample, Scale, helpText, helpTitle, type ReportProps } from "./parts";
 
 export function ReportEmail({ c, stage, prov, helped, variant }: ReportProps & { variant: string }) {
   const work = c.work.find((w) => w.comment) ?? c.work[0];
@@ -38,13 +38,14 @@ export function ReportEmail({ c, stage, prov, helped, variant }: ReportProps & {
             {c.strands.map((s) => (
               <tr key={s.name}>
                 <td>{s.name}</td>
+                {variant === "A3" && <td className="m-meter"><Meter correct={s.correct} total={s.total} label={STATUS_LABEL[s.status]} /></td>}
                 <td className={`m-st is-${s.status}`}>{STATUS_LABEL[s.status]}</td>
                 <td className="n">{s.correct}/{s.total}</td>
               </tr>
             ))}
             <tr>
               <td>Number facts</td>
-              <td colSpan={2} className="n">{c.facts.correct}/{c.facts.tried} right · {c.facts.perMinute} a minute</td>
+              <td colSpan={variant === "A3" ? 3 : 2} className="n">{c.facts.correct}/{c.facts.tried} right · {c.facts.perMinute} a minute</td>
             </tr>
           </tbody>
         </table>

@@ -51,5 +51,11 @@
     }
   ],
   "evidence": "Screens per option: <id>-behind-bc-stage1-1440, <id>-on-ontario-stage2-768, <id>-ahead-stage3-help-1440. No horizontal overflow in any of the 12 captures.",
-  "selection": null
+  "selection": {
+    "id": "A3",
+    "by": "Savar",
+    "date": "2026-10-10",
+    "decision": "D-087",
+    "email": "A3-email-behind-bc.png, A3-email-on-ontario-stage2.png"
+  }
 }
