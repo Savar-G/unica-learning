@@ -1,6 +1,6 @@
 // Level 2 (BC grade 2) for the grades 1-2 bank: stage 1 for grade 2, and the "up" form for grade 1.
 // Standards: curriculum map, section 1 (2.1-2.12); example items: section 3, grade 2. Province tags: see ./index.ts.
-import { cap, count, draw, GAP, NAMES, ordinal, orList, predictShape, row, SHAPES, wrong, type TaggedTemplate } from "../kit";
+import { cap, count, draw, GAP, NAMES, ordinal, skipWord, orList, predictShape, row, SHAPES, wrong, type TaggedTemplate } from "../kit";
 
 /** The O1 bug: in each column, the smaller digit from the larger. */
 const smallerFromLarger = (a: number, b: number) => Math.abs(Math.floor(a / 10) - Math.floor(b / 10)) * 10 + Math.abs((a % 10) - (b % 10));
@@ -107,7 +107,7 @@ export const LEVEL_2: readonly TaggedTemplate[] = [
       return {
         values: { step, start },
         prompt: `Count back by ${step}s: ${seq.join(", ")}, ?`,
-        readAloud: `Count back by ${step}s: ${seq.join(", ")}. What number comes next?`,
+        readAloud: `Count back by ${skipWord(step)}: ${seq.join(", ")}. What number comes next?`,
         answer: String(answer),
         wrong: [wrong(seq[2] - 1, "skip-by-one"), wrong(seq[1], "pattern-direction")],
       };

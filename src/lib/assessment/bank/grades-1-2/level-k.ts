@@ -73,11 +73,11 @@ export const LEVEL_K: readonly TaggedTemplate[] = [
       const [nameA, nameB] = twoNames(rng);
       const item = rng.pick(ITEMS);
       const more = a > b ? nameA : nameB, less = a > b ? nameB : nameA;
-      const same = "They have the same";
+      const same = "They have the same number";
       return {
         values: { a, b },
         prompt: `${nameA} has ${a} ${item}: ${row(a)}. ${nameB} has ${b} ${item}: ${row(b)}. Who has more ${item}?`,
-        readAloud: `${nameA} has ${a} ${item}. ${nameB} has ${b} ${item}. Who has more ${item}: ${orList(rng, [nameA, nameB, "they have the same"])}?`,
+        readAloud: `${nameA} has ${a} ${item}. ${nameB} has ${b} ${item}. Who has more ${item}: ${orList(rng, [nameA, nameB, "they have the same number"])}?`,
         answer: more,
         wrong: [wrong(less, "more-less"), wrong(same, "same-size")],
       };
@@ -219,8 +219,8 @@ export const LEVEL_K: readonly TaggedTemplate[] = [
       const name = rng.pick(NAMES);
       return {
         values: { have, want },
-        prompt: `${name} has ${have} blocks and wants ${want} blocks. How many more blocks does ${name} need?`,
-        readAloud: `${name} has ${have} blocks and wants ${want} blocks. How many more blocks does ${name} need?`,
+        prompt: `${name} has ${have} blocks and wants to have ${want} blocks in all. How many more blocks does ${name} need?`,
+        readAloud: `${name} has ${have} blocks and wants to have ${want} blocks in all. How many more blocks does ${name} need?`,
         answer: String(want - have),
         wrong: [wrong(have + want, "operation"), wrong(want - have + 1, "count-start")],
       };
@@ -253,8 +253,8 @@ export const LEVEL_K: readonly TaggedTemplate[] = [
       const [red, blue] = rng.shuffle([2, 3, 4, 5]).slice(0, 2);
       return {
         values: { red, blue },
-        prompt: `One side of a balance has ${red} red cubes and ${blue} blue cubes. All the cubes are the same. How many cubes must go on the other side to make it balance?`,
-        readAloud: `One side of a balance has ${red} red cubes and ${blue} blue cubes. All the cubes are the same. How many cubes must go on the other side to make it balance?`,
+        prompt: `One side of a balance has ${red} red cubes and ${blue} blue cubes. The other side is empty. All the cubes weigh the same. How many cubes must go on the other side to make it balance?`,
+        readAloud: `One side of a balance has ${red} red cubes and ${blue} blue cubes. The other side is empty. All the cubes weigh the same. How many cubes must go on the other side to make it balance?`,
         answer: String(red + blue),
         wrong: [wrong(red, "one-part"), wrong(blue, "one-part")],
       };

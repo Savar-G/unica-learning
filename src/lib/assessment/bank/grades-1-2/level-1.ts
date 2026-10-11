@@ -1,6 +1,6 @@
 // Level 1 (BC grade 1) for the grades 1-2 bank: stage 1 for grade 1, and the "down" form for grade 2.
 // Standards: curriculum map, section 1 (1.1-1.11); example items: section 3, grade 1. Province tags: see ./index.ts.
-import { cap, draw, GAP, NAMES, orderClues, orList, predictShape, row, sayLetters, SHAPES, shapeQuestion, twoNames, wrong, type TaggedTemplate } from "../kit";
+import { cap, draw, GAP, NAMES, orderClues, orList, predictShape, row, sayLetters, skipWord, SHAPES, shapeQuestion, twoNames, wrong, type TaggedTemplate } from "../kit";
 import type { Filled } from "../../types";
 
 const THINGS = ["stickers", "marbles", "shells", "crayons", "beads"] as const;
@@ -35,7 +35,7 @@ export const LEVEL_1: readonly TaggedTemplate[] = [
       return {
         values: { step, start, gap },
         prompt: `Count by ${step}s: ${show("?")}`,
-        readAloud: `Count by ${step}s. ${show("what number")}. What is the missing number?`,
+        readAloud: `Count by ${skipWord(step)}. ${show("what number")}. What is the missing number?`,
         answer: String(seq[gap]),
         wrong: [wrong(seq[gap - 1] + 1, "skip-by-one")],
       };
@@ -278,7 +278,8 @@ export const LEVEL_1: readonly TaggedTemplate[] = [
     id: "1-missing-addend",
     strand: "A", grades: { BC: 1, AB: 3, SK: 3, MB: 3, ON: 1 }, format: "number", whiteboard: true, standard: "1.5",
     fill(rng) {
-      const sum = rng.int(5, 10), a = rng.int(1, sum - 2);
+      // a is 2 or more, so the counting-start answer (sum - a + 1) never equals the total.
+      const sum = rng.int(5, 10), a = rng.int(2, sum - 2);
       return {
         values: { a, sum },
         prompt: `${a} + ? = ${sum}`,

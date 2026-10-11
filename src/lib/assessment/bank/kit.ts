@@ -72,7 +72,8 @@ function shapePattern(rng: Rng, core: readonly number[], length: number, ask: nu
   const coreShapes = core.map((i) => SHAPES[i]);
   const picks = [...new Set([before, ...coreShapes, ...others])].filter((s) => s !== answer).slice(0, 2);
   const shown = items.map((s, i) => (i === ask ? "?" : s.glyph)).join(GAP);
-  const spoken = items.map((s, i) => (i === ask ? "what shape" : s.word)).join(", ");
+  // "Next" questions speak the shapes shown; "missing" questions say where the gap is.
+  const spoken = items.flatMap((s, i) => (i !== ask ? [s.word] : ask < length ? ["a missing shape"] : [])).join(", ");
   return {
     shown,
     spoken,
@@ -145,8 +146,11 @@ export function orderClues(rng: Rng, [big, mid, small]: readonly [string, string
     : `${cap(small)} is ${less} than ${mid}. ${cap(mid)} is ${less} than ${big}.`;
 }
 
-/** Pattern letters as a browser voice should say them: "A A B" is "ay, ay, bee" (a lone "A" is read as "uh"). */
-export const sayLetters = (code: string) => code.split(" ").map((l) => ({ A: "ay", B: "bee", C: "see" })[l] ?? l).join(", ");
+/** Pattern letters as a browser voice should say them: "A A B" is "letter A, letter A, letter B" (a lone "A" is read as "uh"). */
+export const sayLetters = (code: string) => code.split(" ").map((l) => `letter ${l}`).join(", ");
+
+/** "twos", "fives", "tens": a voice may read "2s" as "two s". */
+export const skipWord = (step: number) => ({ 2: "twos", 3: "threes", 4: "fours", 5: "fives", 10: "tens" })[step] ?? `${step}s`;
 
 /** 1st, 2nd, 3rd, 4th ... 11th, 12th, 13th ... 21st. */
 export const ordinal = (n: number) => {
