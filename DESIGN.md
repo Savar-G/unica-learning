@@ -82,6 +82,8 @@ On a tablet in portrait the panes stack: the question and the answer above, the 
 
 The email is one 600 px column: greeting, the level and verdict in the same colour band with the ruler, the FSA line (BC only) and the comparison line, the four areas with a meter, status and count, number facts, one piece of work, how we help, one button (plan or waitlist) and a link to the full report. Every number is measured or carries its source. On tablets the rows stack (title above content) and the work shows two across.
 
+**Reminder emails and unsubscribe (D-085, #73).** Three short emails in the look of the report email (one 600 px column, the wordmark, one dark button): "continue your test" (where the child stopped, and until when it can continue, in the family's time zone), "come back" (the test closed after 24 hours; the child starts again with new questions) and "start your test". Each ends with why the parent gets it, an unsubscribe link, the business name, the mailing address and the website (CASL). The unsubscribe page is a support page: the link turns reminders off in one click, with no sign-in, and says that the report email still comes.
+
 ## Visual language
 
 **Look (warm, D-034):** Polar Signals' system in our own colours, so the page no longer reads like Primer. One white background for the whole page (no alternating bands), so the pencil line runs unbroken (D-036); no grid rails. Cards (steps, what's included, team) are soft grey; colour fields sit in contained panels. Grainy gradient fields (sunflower, peach, sky, mint) behind the hero photo, the emotional section, the "Why choose" cards and the closing. Soft grey cards with a small coloured square on the corner. Square-ish controls (6 px corners). Many real photos of children.
