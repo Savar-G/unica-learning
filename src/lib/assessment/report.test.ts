@@ -175,7 +175,7 @@ describe("report model", () => {
     });
 
     it("tidies the comment and the error type: no em-dash, single spaces", () => {
-      const r = workReview("s1-3", false, result({ comment: " Added each column — but did not\n carry. ", errorType: " carrying  in addition " }));
+      const r = workReview("s1-3", false, result({ comment: " Added each column \u2014 but did not\n carry. ", errorType: " carrying  in addition " }));
       expect(r).toMatchObject({ comment: "Added each column - but did not carry.", errorType: "carrying in addition", confidence: "high" });
     });
   });
@@ -241,7 +241,7 @@ describe("report model", () => {
     });
 
     it("tidies the kept text: no em-dash (site copy rule), single spaces, trimmed", () => {
-      expect(withText("  {name} is working at a grade 4 level — the same as\n the school grade. ").summary).toBe(
+      expect(withText("  {name} is working at a grade 4 level \u2014 the same as\n the school grade. ").summary).toBe(
         "{name} is working at a grade 4 level - the same as the school grade.",
       );
     });

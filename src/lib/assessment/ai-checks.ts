@@ -19,7 +19,7 @@ export type ReportTextProblem = "length" | "format" | "voice" | "pronoun" | "num
 export type ReportTextCheck = { ok: true; text: string } | { ok: false; problem: ReportTextProblem; detail: string };
 
 /** Single spaces, trimmed, and hyphens for em and en dashes (site copy rule: no em-dash anywhere). */
-export const tidyText = (text: string) => text.replace(/[–—]/g, "-").replace(/\s+/g, " ").trim();
+export const tidyText = (text: string) => text.replace(/[\u2013\u2014]/g, "-").replace(/\s+/g, " ").trim();
 
 const FORMAT = /[*_#`<>[\]{}|\\]|https?:|www\./i;
 const VOICE = /\b(?:I|I'm|I've|I'd|me|my|myself|AI|Claude|Anthropic)\b/i;
