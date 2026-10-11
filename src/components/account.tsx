@@ -2,11 +2,11 @@
 
 // Parent account screens for the online assessment pilot (#62, D-082): signup, sign-in, the children list.
 // Server writes go through /api/account/*; the browser holds only the publishable key and the parent's own session.
-import { useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore, type FormEvent, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { CURRICULA, EMAIL, POSTAL, curriculumFromPostal, type CurriculumId } from "@/lib/signup";
-import type { AssessmentStatus } from "@/lib/test-api";
+import type { StartState } from "@/lib/assessment";
 import { GRADES, PASSWORD_MIN, type AccountError, type AccountResult, type ChildInput } from "@/lib/account";
 import { browserClient } from "@/lib/supabase-browser";
 import { track } from "@/lib/track";
@@ -293,14 +293,47 @@ export function AddChild({ province }: { province: CurriculumId }) {
   );
 }
 
-/** Opens the child's test (#64). An open test continues; a finished one waits for its report. */
-export function StartTest({ childId, name, status }: { childId: string; name: string; status: Exclude<AssessmentStatus, "expired"> | null }) {
-  if (status === "completed") return <span className="small acct-done">Test done. The report comes by email.</span>;
+const DAYS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+const MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+const noSubscribe = () => () => {};
+
+/**
+ * A moment in the reader's own time zone, for example "Monday, November 9 at 5:12 p.m.". The server does not know the
+ * parent's zone, so the first paint (and a page without JavaScript) shows UTC, labelled; the browser then shows local time.
+ */
+function When({ at }: { at: number }) {
+  const local = useSyncExternalStore(noSubscribe, () => true, () => false);
+  const d = new Date(at);
+  const [day, date, month, h, m] = local
+    ? [d.getDay(), d.getDate(), d.getMonth(), d.getHours(), d.getMinutes()]
+    : [d.getUTCDay(), d.getUTCDate(), d.getUTCMonth(), d.getUTCHours(), d.getUTCMinutes()];
+  const clock = `${h % 12 || 12}:${String(m).padStart(2, "0")} ${h < 12 ? "a.m." : "p.m."}${local ? "" : " UTC"}`;
+  return <time dateTime={d.toISOString()}>{DAYS[day]}, {MONTHS[month]} {date} at {clock}</time>;
+}
+
+/**
+ * Opens the child's test (#64), in the state the assessment core gives (#72): start, continue an open test until its
+ * deadline, start again after a test ran out of time, or wait 30 days after a completed test.
+ */
+export function StartTest({ childId, name, state }: { childId: string; name: string; state: StartState }) {
+  if (state.kind === "wait") {
+    return (
+      <span className="small acct-done">
+        Test done. The report comes by email. The next test opens on <When at={state.opensAt} />.
+      </span>
+    );
+  }
+  const [label, note, status] =
+    state.kind === "resume" ? ["Continue test", <>The answers are saved. {name} can continue until <When at={state.resumeUntil} />.</>, "in_progress"]
+    : state.kind === "expired" ? ["Start again", <>The last test was not finished within 24 hours, so it closed. The new test has new questions.</>, "expired"]
+    : state.retake ? ["Start test", <>The next test is open. It has new questions.</>, "retake"]
+    : ["Start test", null, "new"];
   return (
     <span className="acct-start">
-      <Link className="btn" href={`/account/test/${childId}`} onClick={() => track("test_start_click", { status: status ?? "new" })}>
-        {status === "in_progress" ? "Continue test" : "Start test"} <span className="sr-only">for {name}</span> <span className="arr">→</span>
+      <Link className="btn" href={`/account/test/${childId}`} onClick={() => track("test_start_click", { status })}>
+        {label} <span className="sr-only">for {name}</span> <span className="arr">→</span>
       </Link>
+      {note && <span className="small">{note}</span>}
     </span>
   );
 }

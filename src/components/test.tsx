@@ -28,23 +28,50 @@ async function call<T>(url: string, init?: RequestInit): Promise<T | { ok: false
 
 const post = (body: unknown): RequestInit => ({ method: "POST", body: JSON.stringify(body) });
 
-export function TakeTest({ childId, name, total, ready, done }: { childId: string; name: string; total: number; ready: boolean; done: boolean }) {
+/** #72: "resume" continues the open test where it stopped; "restart" draws a new one after a test ran out of time. */
+export type StartMode = "new" | "resume" | "restart";
+
+export function TakeTest({ childId, name, total, ready, done, mode: firstMode = "new" }: { childId: string; name: string; total: number; ready: boolean; done: boolean; mode?: StartMode }) {
   const [screen, setScreen] = useState<Screen>(done ? { name: "done" } : { name: "intro" });
   const [busy, setBusy] = useState(false);
   const [failure, setFailure] = useState<TestError | null>(null);
+  const [mode, setMode] = useState<StartMode>(firstMode);
   const testId = useRef<string | null>(null);
+
+  /** The open test ran out of time (#72): back to the start, where the next test has new questions. */
+  const expire = useCallback(() => {
+    setMode("restart");
+    setFailure("expired");
+    setScreen({ name: "intro" });
+    return false;
+  }, []);
+
+  // A stop (#72): the tab closes or the connection drops during a question. The answers so far are saved on the server.
+  const asking = screen.name === "question";
+  useEffect(() => {
+    if (!asking) return;
+    const closed = () => track("test_stop", { status: "closed" });
+    const offline = () => track("test_stop", { status: "offline" });
+    window.addEventListener("pagehide", closed, { once: true });
+    window.addEventListener("offline", offline, { once: true });
+    return () => {
+      window.removeEventListener("pagehide", closed);
+      window.removeEventListener("offline", offline);
+    };
+  }, [asking]);
 
   const finish = useCallback(async () => {
     const res = await call<FinishResult>(`/api/account/assessments/${testId.current}/finish`, post({}));
     if (!res.ok) {
       track("test_error", { code: res.error, status: "finish" });
+      if (res.error === "expired") return expire();
       setFailure(res.error);
       return false;
     }
     track("test_finish");
     setScreen({ name: "done" });
     return true;
-  }, []);
+  }, [expire]);
 
   /** Shows the step the server sent: the next question, or the end of the test. */
   const show = useCallback(async (step: TestStep) => {
@@ -57,17 +84,20 @@ export function TakeTest({ childId, name, total, ready, done }: { childId: strin
     if (busy) return;
     setBusy(true);
     setFailure(null);
-    const started = await call<StartResult>("/api/account/assessments", post({ childId }));
+    const started = await call<StartResult>("/api/account/assessments", post({ childId, restart: mode === "restart" }));
     if (!started.ok) {
       track("test_error", { code: started.error, status: "start" });
+      if (started.error === "expired") setMode("restart");
       setFailure(started.error);
       setBusy(false);
       return;
     }
     testId.current = started.id;
-    track("test_start", { status: started.resumed ? "resumed" : "new" });
+    if (started.resumed) track("test_resume");
+    else track("test_start", { status: mode === "restart" ? "restart" : "new" });
     const res = await call<StepResult>(`/api/account/assessments/${started.id}`);
     if (res.ok) await show(res.step);
+    else if (res.error === "expired") expire();
     else setFailure(res.error);
     setBusy(false);
   };
@@ -80,6 +110,7 @@ export function TakeTest({ childId, name, total, ready, done }: { childId: strin
     // Another tab or a retry answered first: carry on from where the server is.
     if (res.error === "conflict" && "step" in res && res.step) return show(res.step);
     track("test_error", { code: res.error, status: "answer" });
+    if (res.error === "expired") return expire();
     setFailure(res.error);
     return false;
   };
@@ -91,7 +122,7 @@ export function TakeTest({ childId, name, total, ready, done }: { childId: strin
         {screen.name === "question" && <span className="test-count">Question {screen.number} of {screen.total}</span>}
       </header>
       <main id="main" className="test-main">
-        {screen.name === "intro" && <Intro name={name} total={total} ready={ready} busy={busy} onStart={start} failure={failure} />}
+        {screen.name === "intro" && <Intro name={name} total={total} ready={ready} busy={busy} onStart={start} failure={failure} mode={mode} />}
         {screen.name === "question" && (
           <Question key={screen.question.id} question={screen.question} last={screen.number === screen.total} onAnswer={answer} failure={failure} />
         )}
@@ -106,11 +137,13 @@ function Problem({ error }: { error: TestError | null }) {
   const text =
     error === "signed_out" ? <>The sign-in ended. Ask your grown-up to <Link href="/sign-in">sign in</Link> again. Your earlier answers are saved.</>
     : error === "not_ready" ? "The test for this grade is not ready yet."
+    : error === "expired" ? "The last test was not finished within 24 hours, so it closed."
+    : error === "retake_closed" ? <>A new test opens 30 days after the last one. <Link href="/account">Your account</Link> shows the date.</>
     : <>Something went wrong. Check the internet connection and try again. If this keeps happening, email <a href={SUPPORT_HREF}>{SUPPORT_EMAIL}</a>.</>;
   return <p role="alert" className="test-alert">{text}</p>;
 }
 
-function Intro({ name, total, ready, busy, onStart, failure }: { name: string; total: number; ready: boolean; busy: boolean; onStart: () => void; failure: TestError | null }) {
+function Intro({ name, total, ready, busy, onStart, failure, mode }: { name: string; total: number; ready: boolean; busy: boolean; onStart: () => void; failure: TestError | null; mode: StartMode }) {
   if (!ready) {
     return (
       <section className="test-card">
@@ -123,15 +156,18 @@ function Intro({ name, total, ready, busy, onStart, failure }: { name: string; t
   return (
     <section className="test-card">
       <p className="eyebrow">Math test · {total} questions</p>
-      <h1>Hi {name}! Before you start:</h1>
+      <h1>{mode === "resume" ? `Welcome back, ${name}! Before you go on:` : `Hi ${name}! Before you start:`}</h1>
       <ul className="test-rules">
         <li><b>No calculator.</b> Work the answers out yourself.</li>
         <li><b>No help from a parent.</b> Do the test on your own. Grown-ups, please let your child work alone.</li>
         <li><b>Use the whiteboard for your working.</b> Do not use scrap paper.</li>
       </ul>
-      <p>Answer one question at a time. You cannot go back, so check each answer before you press Next. If you do not know an answer, make your best guess.</p>
+      {mode === "resume"
+        ? <p>Your answers are saved. You go on from the question where you stopped. You cannot go back, so check each answer before you press Next.</p>
+        : <p>Answer one question at a time. You cannot go back, so check each answer before you press Next. If you do not know an answer, make your best guess.</p>}
+      {mode === "restart" && <p>This is a new test, with new questions.</p>}
       <Problem error={failure} />
-      <Button onClick={onStart} disabled={busy} aria-busy={busy}>{busy ? "Starting…" : "Start the test"}</Button>
+      <Button onClick={onStart} disabled={busy} aria-busy={busy}>{busy ? "Starting…" : mode === "resume" ? "Continue the test" : "Start the test"}</Button>
     </section>
   );
 }

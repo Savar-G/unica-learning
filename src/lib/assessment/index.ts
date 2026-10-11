@@ -1,4 +1,5 @@
 // The assessment core: the one tested seam (spec #54). Import from "@/lib/assessment" only.
+export * from "./attempt";
 export * from "./constants";
 export { MISCONCEPTIONS, type Misconception, type MisconceptionId } from "./misconceptions";
 export { reportModel, type Comparison, type FsaLine, type ReportContext, type ReportModel, type WorkReview } from "./report";

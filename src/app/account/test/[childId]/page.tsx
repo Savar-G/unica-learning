@@ -3,7 +3,7 @@ import { notFound, redirect } from "next/navigation";
 import { userAgent } from "next/server";
 import { bandFor, createSession, type Grade } from "@/lib/assessment";
 import type { Child } from "@/lib/account";
-import type { AssessmentStatus } from "@/lib/test-api";
+import { NO_TEST, startStates } from "@/lib/assessment-store";
 import { pageMetadata } from "@/lib/metadata";
 import { requirePilot } from "@/lib/pilot";
 import { parentId, sessionClient } from "@/lib/supabase-auth";
@@ -25,11 +25,14 @@ export default async function TestPage(props: PageProps<"/account/test/[childId]
   if (userAgent({ headers: await headers() }).device.type === "mobile") redirect("/account");
 
   const { childId } = await props.params;
-  const [{ data: child }, { data: last }] = await Promise.all([
+  const [{ data: child }, states] = await Promise.all([
     db.from("children").select("id, first_name, grade, province").eq("id", childId).maybeSingle<Child>(),
-    db.from("assessments").select("status").eq("child_id", childId).order("created_at", { ascending: false }).limit(1).maybeSingle<{ status: AssessmentStatus }>(),
+    startStates(db, childId),
   ]);
   if (!child) notFound();
+  // #72: an open test continues where it stopped; after one ran out of time the next has new questions.
+  const state = states.get(child.id) ?? NO_TEST;
+  const mode = state.kind === "resume" ? "resume" : state.kind === "expired" ? "restart" : "new";
 
   const grade = child.grade as Grade;
   // The sample bank covers grades 3-5; the other bands open with their banks (#74, #76).
@@ -39,5 +42,5 @@ export default async function TestPage(props: PageProps<"/account/test/[childId]
   } catch {
     ready = false;
   }
-  return <TakeTest childId={child.id} name={child.first_name} total={bandFor(grade).length} ready={ready} done={last?.status === "completed"} />;
+  return <TakeTest childId={child.id} name={child.first_name} total={bandFor(grade).length} ready={ready} done={state.kind === "wait"} mode={mode} />;
 }

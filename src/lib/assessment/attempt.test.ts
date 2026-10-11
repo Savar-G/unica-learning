@@ -1,0 +1,123 @@
+import { describe, expect, it } from "vitest";
+import { attemptState, decideStart, recordActivity, startAttempt, startState, type Attempt } from "@/lib/assessment";
+
+// Stop, resume and retake (#72). The server passes every time; these tests use fixed instants.
+const HOUR = 60 * 60_000;
+const DAY = 24 * HOUR;
+const T0 = Date.UTC(2026, 9, 10, 18, 0); // 2026-10-10 18:00 UTC
+
+/** An attempt started at `at` and scored `after` later. */
+const completed = (id: string, at: number, after = HOUR): Attempt => ({ ...startAttempt(id, at), status: "completed", completedAt: at + after });
+
+describe("the start screen", () => {
+  it("offers a first test to a child with none", () => {
+    expect(startState([], T0)).toEqual({ kind: "start", retake: false });
+  });
+
+  it("does not offer a new test until 30 days after the last completed one, and gives the date it opens", () => {
+    const done = completed("a1", T0); // scored at 2026-10-10 19:00 UTC
+    const opens = Date.UTC(2026, 10, 9, 19, 0); // 30 days later: 2026-11-09 19:00 UTC
+    expect(startState([done], T0 + 10 * DAY)).toEqual({ kind: "wait", completedAt: T0 + HOUR, opensAt: opens });
+    expect(startState([done], opens - 1)).toEqual({ kind: "wait", completedAt: T0 + HOUR, opensAt: opens });
+    expect(startState([done], opens)).toEqual({ kind: "start", retake: true });
+  });
+
+  it("offers to continue an open test, and says until when", () => {
+    const open = recordActivity(startAttempt("a1", T0), T0 + 3 * HOUR, { answered: true });
+    expect(startState([open], T0 + 10 * HOUR)).toEqual({ kind: "resume", attemptId: "a1", resumeUntil: T0 + 27 * HOUR });
+  });
+
+  it("shows a test that ran out of time as expired, whether or not the server has marked it yet", () => {
+    const open = startAttempt("a1", T0);
+    expect(startState([open], T0 + 24 * HOUR + 1)).toEqual({ kind: "expired", attemptId: "a1" });
+    expect(startState([{ ...open, status: "expired" }], T0 + HOUR)).toEqual({ kind: "expired", attemptId: "a1" });
+  });
+
+  it("shows a retake that ran out of time as expired once the 30 days are over", () => {
+    const first = completed("a1", T0);
+    const retake = startAttempt("a2", T0 + 40 * DAY);
+    expect(startState([first, retake], T0 + 42 * DAY)).toEqual({ kind: "expired", attemptId: "a2" });
+  });
+
+  it("offers a new test after an expired one is followed by a completed one 30 days back", () => {
+    const lost = { ...startAttempt("a1", T0), status: "expired" as const };
+    const done = completed("a2", T0 + 2 * DAY);
+    expect(startState([lost, done], T0 + 33 * DAY)).toEqual({ kind: "start", retake: true });
+  });
+});
+
+describe("a request to start a test", () => {
+  it("creates the first test", () => {
+    expect(decideStart([], T0, { restart: false })).toEqual({ action: "create", expire: null });
+  });
+
+  it("returns the open test instead of a second one", () => {
+    const open = startAttempt("a1", T0);
+    expect(decideStart([open], T0 + HOUR, { restart: false })).toEqual({ action: "resume", attemptId: "a1" });
+    expect(decideStart([open], T0 + HOUR, { restart: true })).toEqual({ action: "resume", attemptId: "a1" });
+  });
+
+  it("refuses to continue a test that ran out of time, so the family sees it expired", () => {
+    const open = startAttempt("a1", T0);
+    expect(decideStart([open], T0 + 25 * HOUR, { restart: false })).toEqual({ action: "refuse", error: "expired" });
+  });
+
+  it("on start again, marks the stale test expired and creates a new one", () => {
+    const open = startAttempt("a1", T0);
+    expect(decideStart([open], T0 + 25 * HOUR, { restart: true })).toEqual({ action: "create", expire: "a1" });
+    expect(decideStart([{ ...open, status: "expired" }], T0 + 25 * HOUR, { restart: true })).toEqual({ action: "create", expire: null });
+  });
+
+  it("returns a test with every answer in, even after 24 hours, so it can be scored", () => {
+    const open = { ...startAttempt("a1", T0), answeredAll: true };
+    expect(decideStart([open], T0 + 3 * DAY, { restart: true })).toEqual({ action: "resume", attemptId: "a1" });
+  });
+
+  it("refuses a new test inside the 30 days, with the date it opens", () => {
+    const done = completed("a1", T0);
+    expect(decideStart([done], T0 + 5 * DAY, { restart: true })).toEqual({ action: "refuse", error: "retake_closed", opensAt: T0 + HOUR + 30 * DAY });
+    expect(decideStart([done], T0 + HOUR + 30 * DAY, { restart: false })).toEqual({ action: "create", expire: null });
+  });
+});
+
+describe("a stopped test", () => {
+  it("continues until 24 hours after the last answer, then expires", () => {
+    let attempt: Attempt = startAttempt("a1", T0);
+    attempt = recordActivity(attempt, T0 + 2 * HOUR, { answered: true });
+    expect(attemptState(attempt, T0 + 25 * HOUR)).toBe("open");
+    expect(attemptState(attempt, T0 + 26 * HOUR)).toBe("open");
+    expect(attemptState(attempt, T0 + 26 * HOUR + 1)).toBe("expired");
+  });
+
+  it("with no answer yet expires 24 hours after it started", () => {
+    const attempt = startAttempt("a1", T0);
+    expect(attemptState(attempt, T0 + 24 * HOUR)).toBe("open");
+    expect(attemptState(attempt, T0 + 24 * HOUR + 1)).toBe("expired");
+  });
+
+  it("opened again restarts the 24 hours but keeps the time of the last answer", () => {
+    const answered = recordActivity(startAttempt("a1", T0), T0 + HOUR, { answered: true });
+    const reopened = recordActivity(answered, T0 + 20 * HOUR, { answered: false });
+    expect(reopened.lastAnswerAt).toBe(T0 + HOUR);
+    expect(reopened.resumeUntil).toBe(T0 + 44 * HOUR);
+    expect(attemptState(reopened, T0 + 30 * HOUR)).toBe("open");
+  });
+
+  it("cannot take work once it expired or was scored", () => {
+    const attempt = startAttempt("a1", T0);
+    expect(() => recordActivity(attempt, T0 + 24 * HOUR + 1, { answered: true })).toThrow();
+    expect(() => recordActivity({ ...attempt, status: "expired" }, T0 + HOUR, { answered: true })).toThrow();
+    expect(() => recordActivity({ ...attempt, status: "completed", completedAt: T0 + HOUR }, T0 + HOUR, { answered: false })).toThrow();
+  });
+
+  it("with every answer in never expires: it only waits to be scored", () => {
+    const attempt = { ...startAttempt("a1", T0), answeredAll: true };
+    expect(attemptState(attempt, T0 + 30 * 24 * HOUR)).toBe("open");
+  });
+
+  it("keeps a stored status: expired stays expired, completed stays completed", () => {
+    const attempt = startAttempt("a1", T0);
+    expect(attemptState({ ...attempt, status: "expired" }, T0 + HOUR)).toBe("expired");
+    expect(attemptState({ ...attempt, status: "completed", completedAt: T0 + HOUR }, T0 + 99 * HOUR)).toBe("completed");
+  });
+});
