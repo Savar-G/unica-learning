@@ -249,7 +249,7 @@ export const LEVEL_3: readonly TaggedTemplate[] = [
   {
     // Increasing by 3 or 4 (map, grade 3: 4, 7, 10, 13).
     id: "3-increasing-pattern",
-    strand: "A", grades: { BC: 3, AB: 3, SK: 3, MB: 3, ON: 3 }, format: "number", whiteboard: false, standard: "3.6",
+    strand: "A", grades: { BC: 3, AB: 3, SK: 3, MB: 3, ON: 3 }, format: "number", whiteboard: true, standard: "3.6",
     fill(rng) {
       const step = rng.pick([3, 4]), start = rng.int(1, 12);
       const seq = [0, 1, 2, 3].map((i) => start + i * step);
@@ -283,7 +283,7 @@ export const LEVEL_3: readonly TaggedTemplate[] = [
   {
     // Start unknown (3.8; misconception A4: __ - 7 = 5).
     id: "3-start-unknown",
-    strand: "A", grades: { BC: 3, AB: 3, SK: 3, MB: 3, ON: 3 }, format: "number", whiteboard: true, standard: "3.8",
+    strand: "A", grades: { BC: 3, AB: 3, SK: 3, MB: 3, ON: 2 }, format: "number", whiteboard: true, standard: "3.8",
     fill(rng): Filled {
       const subtract = rng.int(0, 1) === 1;
       if (subtract) {
@@ -309,7 +309,7 @@ export const LEVEL_3: readonly TaggedTemplate[] = [
   {
     // Change unknown (3.8; map: 12 + n = 20).
     id: "3-change-unknown",
-    strand: "A", grades: { BC: 3, AB: 3, SK: 3, MB: 3, ON: 3 }, format: "number", whiteboard: true, standard: "3.8",
+    strand: "A", grades: { BC: 3, AB: 3, SK: 3, MB: 3, ON: 2 }, format: "number", whiteboard: true, standard: "3.8",
     fill(rng) {
       // A change of 4 to 9 that crosses a ten: small enough that counting on by ones (and counting the start) is a real
       // strategy, as in 26 + ? = 33.
@@ -327,7 +327,7 @@ export const LEVEL_3: readonly TaggedTemplate[] = [
   {
     // Equality with larger numbers (3.8 and 2.7; misconception A1).
     id: "3-balance-equation",
-    strand: "A", grades: { BC: 3, AB: 3, SK: 3, MB: 3, ON: 3 }, format: "number", whiteboard: true, standard: "3.8",
+    strand: "A", grades: { BC: 3, AB: 3, SK: 3, MB: 3, ON: 2 }, format: "number", whiteboard: true, standard: "3.8",
     fill(rng) {
       const [a, b, c] = draw(rng, (r) => [r.int(10, 30), r.int(3, 9), r.int(10, 30)], ([a, b, c]) => a + b - c >= 2 && a + b - c <= 15);
       return {

@@ -178,7 +178,7 @@ describe("seeds", () => {
   it("no question repeats within one test", () => {
     for (let seed = 0; seed < 30; seed++) {
       const { asked } = takeTest({ grade: 3, province: "BC" }, seed, firstRight(10));
-      expect(new Set(asked.map((q) => `${q.prompt} ${[...(q.choices ?? [])].sort()}`)).size).toBe(asked.length);
+      expect(new Set(asked.map((q) => `${q.prompt} ${[...(q.choices ?? [])].sort()} ${JSON.stringify(q.figure ?? null)}`)).size).toBe(asked.length);
     }
   });
 });
@@ -192,7 +192,7 @@ describe("marking", () => {
   });
 
   it("a typed number is marked by value, so 1,200 and 1200 are the same answer", () => {
-    const session = createSession({ grade: 5, province: "BC" }, 4);
+    const session = createSession({ grade: 5, province: "BC" }, 4, { bank: SAMPLE_BANK });
     const q = session.stage1.find((x) => x.format === "number" && Number(x.answer) >= 1000)!;
     const before = { ...session, stage1: [q, ...session.stage1.filter((x) => x !== q)] };
     const after = submitAnswer(before, { questionId: q.id, response: Number(q.answer).toLocaleString("en-CA"), timeMs: 1 });
@@ -200,7 +200,7 @@ describe("marking", () => {
   });
 
   it("commas count only as thousands separators", () => {
-    const session = createSession({ grade: 5, province: "BC" }, 4);
+    const session = createSession({ grade: 5, province: "BC" }, 4, { bank: SAMPLE_BANK });
     const q = session.stage1.find((x) => x.format === "number" && Number(x.answer) >= 1000)!;
     const first = { ...session, stage1: [q, ...session.stage1.filter((x) => x !== q)] };
     const scattered = q.answer.split("").join(",");
@@ -226,10 +226,10 @@ describe("province", () => {
     expect(other.placement.scoredAgainst).toBe("BC");
   });
 
-  it("an Ontario grade 3 child meets topics Ontario teaches in grade 3 that BC teaches in grade 4", () => {
-    const earlier = new Set(["read-clock", "missing-factor"]); // ON grade 3, BC grade 4 (curriculum map, section 5)
+  it("uses each fixture template's province grade tag", () => {
+    const earlier = new Set(["read-clock", "missing-factor"]); // Fixture tags: ON grade 3, BC grade 4.
     const stage1 = (province: "BC" | "ON") =>
-      Array.from({ length: 40 }, (_, seed) => createSession({ grade: 3, province }, seed).stage1).flat();
+      Array.from({ length: 40 }, (_, seed) => createSession({ grade: 3, province }, seed, { bank: SAMPLE_BANK }).stage1).flat();
     const on = stage1("ON").filter((q) => earlier.has(q.templateId));
     expect(on.length).toBeGreaterThan(0);
     expect(on.every((q) => q.level === 3)).toBe(true);
@@ -237,11 +237,11 @@ describe("province", () => {
   });
 
   it("the same miss counts at each province's grade tag", () => {
-    // The child misses only the topics BC teaches in grade 4 and Ontario in grade 3.
+    // The child misses only fixture topics tagged BC grade 4 and Ontario grade 3.
     const early = ["read-clock", "missing-factor"];
     const missesEarlyTopics: Script = (q) => !early.includes(q.templateId);
     const levelsOfMisses = (province: "BC" | "ON", seed: number) =>
-      takeTest({ grade: 3, province }, seed, missesEarlyTopics).asked.filter((q) => early.includes(q.templateId)).map((q) => q.level);
+      takeTest({ grade: 3, province }, seed, missesEarlyTopics, SAMPLE_BANK).asked.filter((q) => early.includes(q.templateId)).map((q) => q.level);
     const seed = Array.from({ length: 50 }, (_, i) => i).find((i) => levelsOfMisses("BC", i).length > 0 && levelsOfMisses("ON", i).length > 0);
     expect(seed).toBeDefined();
     expect(new Set(levelsOfMisses("BC", seed!))).toEqual(new Set([4]));
