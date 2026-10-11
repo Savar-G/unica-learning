@@ -213,10 +213,15 @@ export function restoreSession(stored: StoredTest, submissions: readonly Submiss
 
 /** What the browser gets next: the current question without its answer, or "complete". */
 export function testStep(session: Session): TestStep {
-  const total = bandFor(session.profile.grade).length;
+  const { length: total, stage1: breakAfter } = bandFor(session.profile.grade);
   const q = nextQuestion(session);
-  return q ? { status: "question", question: toPublicQuestion(q), number: session.answers.length + 1, total } : { status: "complete", total };
+  return q
+    ? { status: "question", question: toPublicQuestion(q), number: session.answers.length + 1, total, breakAfter }
+    : { status: "complete", total };
 }
+
+/** True on the first question after halfway: the browser shows the skippable break screen before it (D-083). */
+export const breakDue = (step: TestStep): boolean => step.status === "question" && step.number === step.breakAfter + 1;
 
 function statusFor(correct: number, total: number): StrandStatus {
   if (atLeast(correct, total, STRAND_SECURE_PERCENT)) return "secure";
