@@ -10,6 +10,7 @@ import type { AiOutcome } from "@/lib/work-review";
 import {
   NEXT_STEP_ANCHOR,
   STATUS_LABEL,
+  comparisonView,
   factsView,
   helpWarning,
   howWeHelp,
@@ -152,6 +153,7 @@ export function reportEmail({ view: v, parentName, url, unsubscribeUrl, offer = 
   // #68: the AI paragraph, when the report has one, follows the level as on the report page.
   const summary = summaryText(v);
   const fsa = v.model.fsa;
+  const comparison = comparisonView(v);
   const facts = factsView(v);
   const help = howWeHelp(v);
   const warning = helpWarning(v);
@@ -172,6 +174,7 @@ export function reportEmail({ view: v, parentName, url, unsubscribeUrl, offer = 
     intro,
     [levelSentence(v), verdictSentence(v), ...notes, ...(summary ? [summary] : [])].join("\n"),
     ...(fsa ? [`For context: ${fsa.text}\nSource: ${fsa.source.name}, ${fsa.source.url}`] : []),
+    ...(comparison ? [`${comparison.title}\n${comparison.text}\n${comparison.note}`] : []),
     ...(warning ? [`${warning.title}\n${warning.text}\n${warning.retake}`] : []),
     ["By area", ...areas, thresholdsLine(v)].join("\n"),
     ...(facts ? [[`Number facts: ${factsLine(facts)}`, ...(facts.accuracy && facts.note ? [facts.note] : []), `${facts.scope} ${facts.round}`].join("\n")] : []),
@@ -238,6 +241,13 @@ ${fsa ? `<tr><td style="padding:16px 20px 0">
 <p style="margin:0 0 4px;font-family:${MONO};font-size:11px;letter-spacing:0.05em;text-transform:uppercase;color:${INK}">For context</p>
 <p style="margin:0">${esc(fsa.text)}</p>
 <p style="margin:4px 0 0;font-size:12px"><a href="${esc(fsa.source.url)}" style="color:${INK_2}">Source: ${esc(fsa.source.name)}</a></p>
+</td></tr></table>
+</td></tr>` : ""}
+${comparison ? `<tr><td style="padding:16px 20px 0">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"><tr><td style="border-left:3px solid #5b8def;background:${CARD};padding:12px 16px;font-size:14px;line-height:1.5;color:${INK_2}">
+<p style="margin:0 0 4px;font-family:${MONO};font-size:11px;letter-spacing:0.05em;text-transform:uppercase;color:${INK}">${esc(comparison.title)}</p>
+<p style="margin:0">${esc(comparison.text)}</p>
+<p style="margin:4px 0 0;font-size:12px">${esc(comparison.note)}</p>
 </td></tr></table>
 </td></tr>` : ""}
 ${warning ? `<tr><td style="padding:16px 20px 0">
@@ -348,7 +358,6 @@ export function reportAlert({
   url,
   flags,
   help = null,
-  completedInGrade,
   parentEmail,
   ai,
 }: {
@@ -359,14 +368,16 @@ export function reportAlert({
   flags: readonly Flag[];
   /** The child's answer to "Did anyone help?" (assessments.help); null when the test did not ask it. */
   help?: HelpAnswer | null;
-  /** Completed tests in the child's grade, the count the comparison stage came from. */
-  completedInGrade: number;
+  /** Legacy callers only. Ignored: the count must come from the stored comparison, not a second query. */
+  completedInGrade?: number;
   parentEmail: { sent: true } | { sent: false; reason: string; uncertain?: boolean };
   /** What the AI step did (#68); absent when an earlier run built the report. */
   ai?: AiOutcome;
 }) {
   const m = v.model;
   const facts = factsView(v);
+  const comparison = comparisonView(v);
+  const measuredCount = m.comparison.stage === "scale" || comparison ? m.comparison.n : undefined;
   const subject = `Test finished: ${v.childName}, grade ${m.level.grade}, working at ${levelName(m.level.working)}`;
   const lines = [
     `Child: ${v.childName}`,
@@ -379,7 +390,8 @@ export function reportAlert({
     `Facts: ${facts ? factsLine(facts) : "none"}`,
     ...(ai ? [aiLine(ai)] : []),
     `Questions: ${questionsAndMinutes(v)}`,
-    `Comparison: ${COMPARISON_LABEL[m.comparison.stage]} (${completedInGrade} completed tests in grade ${m.level.grade})`,
+    `Comparison: ${COMPARISON_LABEL[m.comparison.stage]} (${measuredCount === undefined ? "no measured cohort stored" : `${measuredCount} eligible children in grade ${m.level.grade}`})`,
+    ...(comparison ? [`Comparison result: ${comparison.text}`] : []),
     `FSA line: ${m.fsa ? "shown" : "not shown"}`,
     `Next step: ${m.callToAction}`,
     `Parent: ${parent.name} <${parent.email}>`,

@@ -13,6 +13,7 @@ import {
   AREA_NOTE,
   NEXT_STEP_ANCHOR,
   STATUS_LABEL,
+  comparisonView,
   factsView,
   helpWarning,
   howWeHelp,
@@ -128,13 +129,12 @@ function ReportOverall({ view }: { view: ReportView }) {
 }
 
 // Below the band, side by side: the FSA line (BC, grades 4 and 7), the comparison for the data stage, and the help
-// warning (#71). The comparison among Unica children (bands with n from 100 tests per grade, a percentile with n from
-// 400, D-084) shows nothing yet: decision of 2026-10-11 on #65; #101 decides how a child is ranked and fills the slot
-// below. Below 100 tests per grade the ruler above is the whole comparison.
+// warning (#71). Below 100 eligible children the ruler above is the whole comparison (#101, D-084).
 function ReportContext({ view }: { view: ReportView }) {
   const { fsa } = view.model;
   const warning = helpWarning(view);
-  if (!fsa && !warning) return null;
+  const comparison = comparisonView(view);
+  if (!fsa && !warning && !comparison) return null;
   return (
     <div className="rpt-context">
       {fsa && (
@@ -144,7 +144,13 @@ function ReportContext({ view }: { view: ReportView }) {
           <p className="rpt-source">Source: <a href={fsa.source.url} target="_blank" rel="noopener noreferrer">{fsa.source.name}</a></p>
         </aside>
       )}
-      {/* #101: the comparison for the data stage (view.model.comparison) goes here, beside the FSA line. */}
+      {comparison && (
+        <aside className="rpt-fsa" aria-label={comparison.title}>
+          <p className="rpt-k">{comparison.title}</p>
+          <p>{comparison.text}</p>
+          <p className="rpt-source">{comparison.note}</p>
+        </aside>
+      )}
       {warning && (
         <aside className="rpt-help-warning" aria-labelledby="rpt-help-warning">
           <h2 id="rpt-help-warning">{warning.title}</h2>

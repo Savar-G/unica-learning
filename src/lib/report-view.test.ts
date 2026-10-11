@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { reportModel, type Grade, type Province, type ReportFacts } from "@/lib/assessment";
 import { allRight, knowsUpTo, takeTest, type Script } from "@/lib/assessment/scripted-child";
 import {
+  comparisonView,
   STATUS_LABEL,
   factsView,
   helpWarning,
@@ -37,6 +38,36 @@ function view(isRight: Script, { grade = 4, province = "BC", name = "Maya" }: { 
 const atLevel = (v: ReportView, working: ReportView["model"]["level"]["working"]): ReportView => ({
   ...v,
   model: { ...v.model, level: { ...v.model.level, working } },
+});
+
+describe("the measured comparison", () => {
+  const withComparison = (comparison: ReportView["model"]["comparison"]) => {
+    const v = view(knowsUpTo(4));
+    return { ...v, model: { ...v.model, comparison } };
+  };
+  it("shows all band words with the measured n and a test-taker scope", () => {
+    for (const [band, words] of [["lower", "lower quarter"], ["middle", "middle half"], ["upper", "upper quarter"]] as const) {
+      expect(comparisonView(withComparison({ stage: "bands", n: 100, band }))?.text).toBe(
+        `Maya's result is in the ${words} of 100 grade 4 children who took this test.`,
+      );
+    }
+  });
+  it("names the percentile and explains ties", () => {
+    expect(comparisonView(withComparison({ stage: "percentile", n: 400, percentile: 75 }))).toMatchObject({
+      text: "Maya's result is at the 75th percentile among 400 grade 4 children who took this test.",
+      note: expect.stringContaining("half of equal results"),
+    });
+    for (const [percentile, ordinal] of [[1, "1st"], [2, "2nd"], [3, "3rd"], [11, "11th"], [12, "12th"], [13, "13th"], [21, "21st"], [100, "100th"]] as const) {
+      expect(comparisonView(withComparison({ stage: "percentile", n: 400, percentile }))?.text).toContain(`${ordinal} percentile`);
+    }
+  });
+  it("keeps the scale only for small cohorts, legacy unranked models, and help warnings", () => {
+    for (const comparison of [{ stage: "scale", n: 99 }, { stage: "bands", n: 100 }, { stage: "percentile", n: 400 }] as const) {
+      expect(comparisonView(withComparison(comparison))).toBeNull();
+    }
+    const v = withComparison({ stage: "percentile", n: 400, percentile: 75 });
+    expect(comparisonView({ ...v, model: { ...v.model, helpWarning: true } })).toBeNull();
+  });
 });
 
 describe("the overall level", () => {

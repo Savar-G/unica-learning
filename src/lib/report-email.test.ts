@@ -23,6 +23,29 @@ function view(isRight: Script, { grade = 4, province = "BC", name = "Maya" }: { 
 describe("the report email to the parent", () => {
   const email = reportEmail({ unsubscribeUrl: UNSUB, view: view(knowsUpTo(3)), parentName: "Priya Shah", url: URL });
 
+  it("shows each measured comparison in plain text and HTML, with the same test-taker count", () => {
+    const v = view(knowsUpTo(4));
+    for (const [comparison, words] of [
+      [{ stage: "bands", n: 100, band: "lower" }, "lower quarter of 100 grade 4 children who took this test"],
+      [{ stage: "bands", n: 399, band: "middle" }, "middle half of 399 grade 4 children who took this test"],
+      [{ stage: "bands", n: 100, band: "upper" }, "upper quarter of 100 grade 4 children who took this test"],
+      [{ stage: "percentile", n: 400, percentile: 75 }, "75th percentile among 400 grade 4 children who took this test"],
+    ] as const) {
+      const rendered = reportEmail({ unsubscribeUrl: UNSUB, view: { ...v, model: { ...v.model, comparison } }, parentName: "Priya", url: URL });
+      expect(rendered.text).toContain(words);
+      expect(rendered.html).toContain(words);
+      expect(rendered.text).toContain("latest completed test when this report was made");
+    }
+  });
+  it("does not turn a legacy stage or a small cohort into a comparison", () => {
+    const v = view(knowsUpTo(4));
+    for (const comparison of [{ stage: "scale", n: 99 }, { stage: "bands", n: 100 }, { stage: "percentile", n: 400 }] as const) {
+      const rendered = reportEmail({ unsubscribeUrl: UNSUB, view: { ...v, model: { ...v.model, comparison } }, parentName: "Priya", url: URL });
+      expect(rendered.text).not.toContain("Among children who took this test");
+      expect(rendered.html).not.toContain("Among children who took this test");
+    }
+  });
+
   it("names the child in the subject and greets the parent by first name", () => {
     expect(email.subject).toBe("Maya's math report is ready");
     expect(email.text).toMatch(/^Hi Priya,/);
@@ -219,8 +242,11 @@ describe("the alert to Savar for each finished test", () => {
     const facts: ReportFacts = { scope: "Addition and subtraction facts to 20", seconds: 60, answered: 12, correct: 12, secondsPerFact: 4.6, accuracy: "secure", speed: "needs-practice" };
     expect(alert({ view: { ...v, model: { ...v.model, facts } } }).text).toContain("Facts: 12 of 12 right (Secure), typically 4.6 seconds a fact (Needs practice)");
   });
-  it("gives the comparison stage with the count it came from", () => {
-    expect(alert().text).toContain("Comparison: grade-level scale only (12 completed tests in grade 4)");
+  it("uses the stored filtered count rather than a separate raw count", () => {
+    const v = view(knowsUpTo(4));
+    expect(alert().text).toContain("Comparison: grade-level scale only (no measured cohort stored)");
+    expect(alert({ view: { ...v, model: { ...v.model, comparison: { stage: "bands", n: 100, band: "upper" } } }, completedInGrade: 999 }).text)
+      .toContain("Comparison: bands among Unica children (100 eligible children in grade 4)");
   });
   it("says the AI was off, so Savar reads the work in the admin area (#68)", () => {
     expect(alert({ ai: { on: false } }).text).toContain("AI review: off (no ANTHROPIC_API_KEY). The report has no AI comments and no AI text.");
