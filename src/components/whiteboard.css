@@ -15,11 +15,11 @@
 }
 .wb-surface canvas { position: absolute; inset: 0; display: block; touch-action: none; cursor: crosshair; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; }
 .wb-surface.is-eraser canvas { cursor: cell; }
-.wb-hint { position: absolute; inset: 0; display: grid; place-items: center; margin: 0; padding: 16px; pointer-events: none; font: 400 28px/1.2 var(--pen); color: #a9a9b2; text-align: center; }
+.wb-hint { position: absolute; inset: 0; display: grid; place-items: center; margin: 0; padding: 16px; pointer-events: none; font: 400 28px/1.2 var(--pen); color: var(--ink-3); text-align: center; }
 /* Typing: the drawing stays, faint, under the text. */
 .wb[data-mode="type"] canvas { opacity: 0.25; pointer-events: none; }
 .wb-text { position: absolute; inset: 0; width: 100%; height: 100%; padding: 16px 18px; border: 0; resize: none; background: transparent; font: 400 22px/32px var(--sans); color: var(--ink); outline: none; }
-.wb-text::placeholder { color: #a9a9b2; }
+.wb-text::placeholder { color: var(--ink-3); }
 
 .wb-rail { flex: none; display: flex; flex-direction: column; gap: 14px; padding: 10px 8px; border-left: 1px solid var(--line); background: #fff; }
 .wb-modes { display: flex; flex-direction: column; gap: 4px; padding: 3px; border-radius: 10px; background: var(--card); }
