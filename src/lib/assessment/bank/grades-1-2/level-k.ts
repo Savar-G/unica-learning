@@ -1,6 +1,6 @@
 // Level K (BC Kindergarten) for the grades 1-2 bank: the "down" form for a grade 1 child.
 // Standards: curriculum map, section 1 (K1-K11). Province tags: see ./index.ts.
-import { cap, draw, NAMES, orList, row, SHAPES, shapeQuestion, twoNames, wrong, type TaggedTemplate } from "../kit";
+import { cap, draw, NAMES, row, SHAPES, shapeQuestion, twoNames, wrong, type TaggedTemplate } from "../kit";
 
 const ITEMS = ["shells", "apples", "stickers", "blocks", "crayons"] as const;
 
@@ -77,7 +77,7 @@ export const LEVEL_K: readonly TaggedTemplate[] = [
       return {
         values: { a, b },
         prompt: `${nameA} has ${a} ${item}: ${row(a)}. ${nameB} has ${b} ${item}: ${row(b)}. Who has more ${item}?`,
-        readAloud: `${nameA} has ${a} ${item}. ${nameB} has ${b} ${item}. Who has more ${item}? Choose one. ${rng.shuffle([nameA, nameB, same]).join(". ")}.`,
+        readAloud: `${nameA} has ${a} ${item}. ${nameB} has ${b} ${item}. Who has more ${item}?`,
         answer: more,
         wrong: [wrong(less, "more-less"), wrong(same, "same-size")],
       };
@@ -272,7 +272,7 @@ export const LEVEL_K: readonly TaggedTemplate[] = [
       return {
         values: { left, right },
         prompt: `A balance has ${left} cubes on the ${a} side and ${right} cubes on the ${b} side. All the cubes are the same. Which side goes down?`,
-        readAloud: `A balance has ${left} cubes on the ${a} side and ${right} cubes on the ${b} side. All the cubes are the same. Which side goes down: ${orList(rng, [`the ${a} side`, `the ${b} side`])}, or neither side?`,
+        readAloud: `A balance has ${left} cubes on the ${a} side and ${right} cubes on the ${b} side. All the cubes are the same. Which side goes down?`,
         answer: down,
         wrong: [wrong(up, "balance-up"), wrong(even, "same-size")],
       };
@@ -292,7 +292,7 @@ export const LEVEL_K: readonly TaggedTemplate[] = [
       return {
         values: { a, b, longer: longer ? 1 : 0 },
         prompt: `Which line is ${word}?`,
-        readAloud: `Which line is ${word}? Or are they the same length?`,
+        readAloud: `Which line is ${word}?`,
         answer: line(win),
         wrong: [wrong(line(lose), "more-less"), wrong("They are the same length", "same-size")],
       };
@@ -316,7 +316,7 @@ export const LEVEL_K: readonly TaggedTemplate[] = [
       return {
         values: { pair: i, heavyFirst: first === heavy ? 1 : 0 },
         prompt: `Which is heavier: ${first} or ${second}?`,
-        readAloud: `Which is heavier: ${first} or ${second}? Or do they weigh the same?`,
+        readAloud: "Which is heavier?",
         answer: cap(heavy),
         wrong: [wrong(cap(light), "bigger-heavier"), wrong(same, "same-size")],
       };
@@ -334,7 +334,7 @@ export const LEVEL_K: readonly TaggedTemplate[] = [
       return {
         values: { down: objects.indexOf(down), up: objects.indexOf(up) },
         prompt: `${story} Which is heavier?`,
-        readAloud: `${story} Which is heavier: ${orList(rng, [`the ${down}`, `the ${up}`])}, or do they weigh the same?`,
+        readAloud: `${story} Which is heavier?`,
         answer: `The ${down}`,
         wrong: [wrong(`The ${up}`, "balance-up"), wrong("They weigh the same", "same-size")],
       };
@@ -378,7 +378,7 @@ export const LEVEL_K: readonly TaggedTemplate[] = [
       return {
         values: { roller: rollers.indexOf(answer) },
         prompt: ask,
-        readAloud: `${ask} ${orList(rng, [answer, ...others].map((s) => s.toLowerCase()))}?`,
+        readAloud: ask,
         answer,
         wrong: others.map((o) => wrong(o, "roll-slide")),
       };
@@ -394,7 +394,7 @@ export const LEVEL_K: readonly TaggedTemplate[] = [
       return {
         values: { a, b },
         prompt: `Children chose a favourite ${kind}. ${cap(x)}: ${row(a)}. ${cap(y)}: ${row(b)}. Which did more children choose?`,
-        readAloud: `Children chose a favourite ${kind}. Look at the dots for ${x} and the dots for ${y}. Which did more children choose: ${x}, ${y}, or the same number?`,
+        readAloud: `Children chose a favourite ${kind}. Look at the dots. Which did more children choose?`,
         answer: cap(a > b ? x : y),
         wrong: [wrong(cap(a > b ? y : x), "more-less"), wrong("The same number", "same-size")],
       };
@@ -428,7 +428,7 @@ export const LEVEL_K: readonly TaggedTemplate[] = [
         values: { likely: likely.indexOf(answer) },
         prompt: "Which of these is most likely to happen?",
         // Each choice is its own sentence, so the three do not run together when spoken.
-        readAloud: `Which of these is most likely to happen? Choose one. ${rng.shuffle([answer, ...others]).join(". ")}.`,
+        readAloud: "Which of these is most likely to happen?",
         answer,
         wrong: others.map((o) => wrong(o, "chance-reversed")),
       };

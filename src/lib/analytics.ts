@@ -23,6 +23,20 @@ export interface Deps {
   clearStorage: () => void;
   // Runs the first state check after the page is idle, so a returning visitor's load stays off the first paint.
   whenIdle: (run: () => void) => void;
+  // The current page's path. The admin area (#77) never loads PostHog and drops every event, also the page views
+  // PostHog sends by itself after a client-side move into it.
+  path?: () => string;
+}
+
+function adminPath(path: string): boolean {
+  try { path = decodeURIComponent(path); } catch { return true; }
+  return /^\/(?:api\/)?admin(\/|$)/.test(path);
+}
+
+function adminEvent(event: Scrubbable): boolean {
+  const url = event.properties?.$current_url;
+  if (typeof url !== "string") return false;
+  try { return adminPath(new URL(url).pathname); } catch { return false; }
 }
 
 // Only anonymous offer and flow fields reach analytics. Name, email, postal code and child grade never do.
@@ -62,6 +76,11 @@ function referrerOrigin(value: string): string {
 function scrubBag(bag: unknown): void {
   if (!bag || typeof bag !== "object") return;
   const o = bag as Props;
+  // PostHog updates previous-page state before before_send, even when that pageview is dropped.
+  // A later public pageview must contain neither the admin record path nor time spent on that page.
+  if (typeof o.$prev_pageview_pathname === "string" && adminPath(o.$prev_pageview_pathname)) {
+    for (const key of Object.keys(o)) if (key.startsWith("$prev_pageview_")) delete o[key];
+  }
   for (const key of Object.keys(o)) {
     const value = o[key];
     if (typeof value !== "string") continue;
@@ -97,7 +116,8 @@ export function createAnalytics(deps: Deps) {
   // Bumps on every consent change. A queued capture runs only in the epoch that queued it.
   let epoch = 0;
 
-  const allowed = () => deps.getConsent() === "granted";
+  const offPage = () => adminPath(deps.path?.() ?? "");
+  const allowed = () => deps.getConsent() === "granted" && !offPage();
 
   const config: Props = {
     api_host: "/ingest",
@@ -123,7 +143,7 @@ export function createAnalytics(deps: Deps) {
     // Host-only cookie, so revocation can always find and delete it.
     cross_subdomain_cookie: false,
     // Last gate: an event captured after a revoke, or one with a stray field, never leaves the page.
-    before_send: (event: Scrubbable | null) => (event && allowed() ? scrubEvent(event) : null),
+    before_send: (event: Scrubbable | null) => (event && allowed() && !adminEvent(event) ? scrubEvent(event) : null),
   };
 
   function start() {
@@ -170,8 +190,9 @@ export function createAnalytics(deps: Deps) {
       lastState = state;
       epoch += 1;
     }
-    if (state === "granted") start();
-    else if (state === "denied" || prev === "granted") revoke();
+    if (state === "granted") {
+      if (!offPage()) start();
+    } else if (state === "denied" || prev === "granted") revoke();
     // "unset" from the start: nothing is loaded, stored or sent.
   }
 
@@ -256,6 +277,7 @@ export function getAnalytics() {
     subscribe: subscribeConsent,
     clearStorage: clearPostHogStorage,
     whenIdle,
+    path: () => window.location.pathname,
   });
   return holder.__unicaAnalytics;
 }

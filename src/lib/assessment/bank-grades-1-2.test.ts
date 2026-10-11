@@ -250,10 +250,10 @@ describe("the grades 1-2 bank", () => {
     it("the same seed gives the same question, and different seeds give at least 4 different questions", () => {
       expect(fillTemplate(template, 5)).toEqual(fillTemplate(template, 5));
       // A retake or a sibling should rarely meet the very same question.
-      // Same key as the session uses: the prompt and the set of choices.
+      // Same key as the session uses: the prompt, the set of choices and the drawn figure (#79).
       const variants = new Set(SEEDS.map((seed) => {
         const q = fillTemplate(template, seed);
-        return `${q.prompt} ${[...(q.choices ?? [])].sort()}`;
+        return `${q.prompt} ${[...(q.choices ?? [])].sort()} ${q.figure ? JSON.stringify(q.figure) : ""}`;
       }));
       expect(variants.size).toBeGreaterThanOrEqual(4);
     });

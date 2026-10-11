@@ -1,9 +1,10 @@
 "use client";
 
-// The halfway break (#69, D-083, D-088): skippable. The message on the left; on the right a grainy colour field with a
-// slow breathing circle that stays still with reduced motion. A separate part so the split-desk rebuild (#79) can restyle it.
+// The halfway break (#69, D-083, D-088): skippable. The message in the left pane; in the right pane a grainy colour field
+// with a slow breathing circle that stays still with reduced motion.
 import { useEffect, useRef } from "react";
 import { Button } from "@/ds";
+import "./test-base.css";
 import "./test-parts.css";
 
 // The break shows at most once per test, also after a reload or a resume in a new tab. The flag lives in this browser
@@ -49,17 +50,17 @@ export function TestBreak({ name, answered, total, onDone }: TestBreakProps) {
     onDone(how);
   };
   return (
-    <section className="test-break" aria-labelledby="test-break-title">
-      <div className="test-break-msg">
-        <p className="test-break-kicker">{answered} of {total} done</p>
-        <h1 id="test-break-title" ref={heading} tabIndex={-1} className="test-break-title">Halfway there, {name}.</h1>
-        <p className="test-break-lead">Take a short break if you want one. Stretch, get some water, then come back.</p>
-        <div className="test-break-btns">
+    <section className="test-split test-break" aria-labelledby="test-break-title">
+      <div className="test-pane test-pane-l is-msg">
+        <p className="test-kicker">{answered} of {total} done</p>
+        <h1 id="test-break-title" ref={heading} tabIndex={-1} className="test-title">Halfway there, {name}.</h1>
+        <p className="test-lead">Take a short break if you want one. Stretch, get some water, then come back.</p>
+        <div className="test-btns">
           <Button onClick={() => end("skipped")}>Keep going</Button>
           <Button variant="ghost" onClick={() => end("rested")}>I am back from my break</Button>
         </div>
       </div>
-      <div className="test-break-field" aria-hidden>
+      <div className="test-pane test-pane-r test-field" aria-hidden>
         <div className="test-breath">
           <span className="test-breath-in">Breathe in</span>
           <span className="test-breath-out">Breathe out</span>

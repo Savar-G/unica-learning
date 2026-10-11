@@ -1,0 +1,86 @@
+/* The admin area (#77): plain, dense and readable. The warm look's tokens (src/ds/styles/warm.css); no motion.
+   Chips are tints of the look's colours: leaf ok, sunflower caution, tangerine a problem, sky in progress. */
+.adm-root {
+  --adm-ok: color-mix(in srgb, var(--leaf) 22%, #fff);
+  --adm-warn: color-mix(in srgb, var(--sun) 34%, #fff);
+  --adm-bad: color-mix(in srgb, var(--tang) 22%, #fff);
+  --adm-info: color-mix(in srgb, var(--sky) 18%, #fff);
+  min-height: 100dvh;
+  font-size: 15px;
+}
+
+/* the bar */
+.adm-bar { position: sticky; top: 0; z-index: 10; display: flex; flex-wrap: wrap; align-items: center; gap: 10px 28px; padding: 12px var(--gut); border-bottom: 1px solid var(--line); background: #fff; }
+.adm-brand { font: 600 18px/1 var(--sans); letter-spacing: -0.02em; text-decoration: none; color: var(--ink); }
+.adm-brand span { font: 400 12px/1 var(--mono); letter-spacing: 0.04em; text-transform: uppercase; color: var(--ink-2); margin-left: 4px; }
+.adm-bar ul { display: flex; flex-wrap: wrap; gap: 4px 4px; margin: 0; padding: 0; list-style: none; }
+.adm-bar ul a { display: block; padding: 8px 10px; border-radius: 6px; font: 500 14px/1 var(--sans); color: var(--ink-2); text-decoration: none; }
+.adm-bar ul a:hover { color: var(--ink); background: var(--soft); }
+.adm-bar ul a[aria-current="page"] { color: var(--ink); background: var(--card); }
+.adm-who { margin-left: auto; font: 400 12px/1 var(--mono); color: var(--ink-2); }
+
+.adm-main { max-width: var(--max); margin: 0 auto; padding: 28px var(--gut) 64px; }
+[data-look="warm"] .adm-main h1 { margin: 0 0 18px; font: 400 30px/1.15 var(--sans); letter-spacing: -0.02em; }
+[data-look="warm"] .adm-main h2 { margin: 36px 0 12px; font: 500 19px/1.2 var(--sans); letter-spacing: -0.01em; }
+.adm-main h3 { margin: 0 0 6px; font: 500 15px/1.3 var(--sans); }
+.adm-main p { margin: 0 0 10px; }
+.adm-lead { max-width: 60em; color: var(--ink-2); }
+.adm-crumb { margin: 0 0 6px; font: 400 13px/1.3 var(--mono); color: var(--ink-2); }
+.adm-note, .adm-empty { font-size: 14px; color: var(--ink-2); }
+.adm-empty { padding: 14px 16px; border-radius: 6px; background: var(--soft); }
+
+/* filters */
+.adm-filters { display: flex; flex-wrap: wrap; align-items: end; gap: 10px 16px; margin: 0 0 18px; padding: 12px 14px; border-radius: 8px; background: var(--soft); }
+.adm-filters label { display: grid; gap: 4px; font: 400 12px/1.2 var(--mono); color: var(--ink-2); }
+.adm-filters select { min-width: 120px; min-height: 36px; padding: 6px 8px; border: 1px solid #d4d4d8; border-radius: 6px; background: #fff; font: 400 14px/1.2 var(--sans); color: var(--ink); }
+.adm-filters .adm-check { display: flex; align-items: center; gap: 6px; min-height: 36px; font: 400 14px/1.2 var(--sans); color: var(--ink); }
+.adm-filters .adm-check input { width: 16px; height: 16px; accent-color: var(--ink); }
+[data-look="warm"] .adm-btn { padding: 10px 16px; font-size: 14px; }
+.adm-btn:hover { transform: none; box-shadow: none; }
+.adm-clear { align-self: center; font-size: 14px; }
+.adm-filters :focus-visible, .adm-scroll:focus-visible, .adm-bar a:focus-visible { outline: 2px solid var(--sky); outline-offset: 2px; }
+
+/* tables */
+.adm-scroll { overflow-x: auto; border: 1px solid var(--line); border-radius: 8px; }
+.adm-table { width: 100%; border-collapse: collapse; font-size: 14px; line-height: 1.35; }
+.adm-table th { position: sticky; top: 0; padding: 9px 10px; border-bottom: 1px solid var(--line); background: var(--soft); text-align: left; font: 400 11.5px/1.2 var(--mono); letter-spacing: 0.03em; text-transform: uppercase; color: var(--ink-2); white-space: nowrap; }
+.adm-table td { padding: 8px 10px; border-top: 1px solid var(--line-soft); vertical-align: top; }
+.adm-table tbody tr:first-child td { border-top: 0; }
+.adm-table tbody tr:hover td { background: var(--soft); }
+.adm-table a { color: var(--ink); }
+.adm-num { text-align: right; font-variant-numeric: tabular-nums; }
+.adm-nowrap { white-space: nowrap; }
+.adm-mono { font: 400 12.5px/1.35 var(--mono); }
+.adm-sub { display: block; font-size: 12.5px; color: var(--ink-2); }
+.adm-wide { min-width: 18em; }
+.adm-table tr.is-wrong td:first-child { box-shadow: inset 3px 0 0 var(--tang); }
+
+/* chips */
+.adm-chip { display: inline-block; padding: 3px 8px; border-radius: 999px; font: 500 12.5px/1.2 var(--sans); white-space: nowrap; background: var(--card); color: var(--ink); }
+.adm-chip.is-ok { background: var(--adm-ok); }
+.adm-chip.is-warn { background: var(--adm-warn); }
+.adm-chip.is-bad { background: var(--adm-bad); }
+.adm-chip.is-info { background: var(--adm-info); }
+.adm-chip.is-muted { background: var(--card); color: var(--ink-2); }
+
+/* a record's facts, as a grid of label and value */
+.adm-facts { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 14px 24px; margin: 0; padding: 16px 18px; border: 1px solid var(--line); border-radius: 8px; }
+.adm-facts dt { font: 400 11.5px/1.2 var(--mono); letter-spacing: 0.03em; text-transform: uppercase; color: var(--ink-2); }
+.adm-facts dd { margin: 4px 0 0; overflow-wrap: anywhere; }
+.adm-cols { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 0 28px; }
+.adm-list { margin: 0; padding-left: 20px; }
+.adm-list li + li { margin-top: 4px; }
+
+/* shown work with the AI review */
+.adm-work { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 16px; margin: 0; padding: 0; list-style: none; }
+.adm-work > li { display: grid; align-content: start; gap: 10px; padding: 14px; border: 1px solid var(--line); border-radius: 8px; }
+.adm-board { display: grid; place-items: center; min-height: 160px; border-radius: 6px; background: var(--soft); overflow: hidden; }
+.adm-board img { display: block; width: 100%; height: auto; max-height: 280px; object-fit: contain; background: #fff; }
+.adm-typed { margin: 0; padding: 8px 10px; border-radius: 6px; background: var(--soft); font: 400 13px/1.4 var(--mono); white-space: pre-wrap; overflow-wrap: anywhere; }
+.adm-review { display: grid; gap: 6px; padding-top: 10px; border-top: 1px solid var(--line-soft); font-size: 14px; }
+.adm-review p { margin: 0; }
+.adm-review .adm-sub { display: inline; }
+.adm-row { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; }
+
+/* the parent's report, opened by an admin */
+.adm-report-note { margin: 0 0 24px; padding: 12px 14px; border-left: 3px solid var(--sky); border-radius: 0 6px 6px 0; background: var(--soft); font-size: 14px; }

@@ -1,8 +1,8 @@
 "use client";
 
-// The timed facts section (#70), its own screen so the split-desk restyle (#79) can move it as one piece.
-// D-088: a start screen; then the fact large on the left with a draining bar and the time, a big number pad on the
-// right; it ends with "Time is up!" and the count of facts done. The server times the section: the browser gets the
+// The timed facts section (#70), in the split desk (D-088, #79): a start screen; then the fact large in the left pane
+// with a draining bar and the time, a big number pad in the right pane; it ends with "Time is up!" and the count of
+// facts done. The server times the section: the browser gets the
 // time left and the facts still to come, shows them without a wait, and sends each answer in order behind the child.
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { Button } from "@/ds";
@@ -10,6 +10,7 @@ import type { FactOp, FactsStep, PublicFact } from "@/lib/assessment";
 import { FACT_ANSWER_MAX, type FactsStepResult } from "@/lib/facts-api";
 import type { TestError } from "@/lib/test-api";
 import { track } from "@/lib/track";
+import "./test-base.css";
 import "./facts.css";
 
 /** How the section ended: the time ran out, or the child answered every fact. */
@@ -38,7 +39,8 @@ async function call(url: string, init?: RequestInit): Promise<FactsStepResult> {
 const post = (body: unknown): RequestInit => ({ method: "POST", body: JSON.stringify(body) });
 const wait = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
-export function FactsSection({ testId, onDone, onError }: { testId: string; onDone: () => void; onError: (e: TestError | null) => void }) {
+/** `problem`: the test's error line, shown in the left pane. */
+export function FactsSection({ testId, onDone, onError, problem }: { testId: string; onDone: () => void; onError: (e: TestError | null) => void; problem?: ReactNode }) {
   const [view, setView] = useState<View>({ name: "loading", failed: false });
   const base = `/api/account/assessments/${testId}/facts`;
   // Answers wait here and go to the server one at a time, in order, so the server's times follow the child's pace.
@@ -135,33 +137,35 @@ export function FactsSection({ testId, onDone, onError }: { testId: string; onDo
   }, [flush]);
 
   return (
-    <div className="facts" data-view={view.name}>
+    <div className="test-split facts" data-view={view.name}>
       {view.name === "loading" && (
-        <section className="facts-left facts-msg" aria-busy={!view.failed}>
+        <section className="test-pane test-pane-l is-msg" aria-busy={!view.failed}>
+          {problem}
           {view.failed && (
             <Button onClick={() => { setView({ name: "loading", failed: false }); setAttempt((n) => n + 1); }}>Try again</Button>
           )}
         </section>
       )}
-      {view.name === "ready" && <Ready seconds={view.seconds} onStart={start} />}
+      {view.name === "ready" && <Ready seconds={view.seconds} onStart={start} problem={problem} />}
       {view.name === "running" && (
-        <Running facts={view.facts} seconds={view.seconds} deadline={view.deadline} onAnswer={answer} onEnd={finishSection} />
+        <Running facts={view.facts} seconds={view.seconds} deadline={view.deadline} onAnswer={answer} onEnd={finishSection} problem={problem} />
       )}
       {(view.name === "saving" || view.name === "done") && (
-        <section className="facts-left facts-msg">
-          <p className="eyebrow">Quick facts</p>
+        <section className="test-pane test-pane-l is-msg">
+          <p className="test-kicker">Quick facts</p>
           <Heading>{view.reason === "time_up" ? "Time is up!" : "You did every fact!"}</Heading>
           {view.name === "done" ? (
-            <p className="facts-lead">
+            <p className="test-lead">
               {view.answered !== null && <>You did {view.answered} {view.answered === 1 ? "fact" : "facts"}. </>}Next, the second half of the test.
             </p>
           ) : (
-            <p className="facts-lead">Saving your answers…</p>
+            <p className="test-lead">Saving your answers…</p>
           )}
+          {problem}
           <Button onClick={onDone} disabled={view.name !== "done"} aria-busy={view.name === "saving"}>Keep going</Button>
         </section>
       )}
-      {view.name !== "running" && <div className="facts-right facts-field" aria-hidden />}
+      {view.name !== "running" && <div className="test-pane test-pane-r test-field" aria-hidden />}
     </div>
   );
 }
@@ -170,17 +174,18 @@ export function FactsSection({ testId, onDone, onError }: { testId: string; onDo
 function Heading({ children }: { children: ReactNode }) {
   const ref = useRef<HTMLHeadingElement>(null);
   useEffect(() => ref.current?.focus(), []);
-  return <h1 ref={ref} tabIndex={-1}>{children}</h1>;
+  return <h1 ref={ref} tabIndex={-1} className="test-title">{children}</h1>;
 }
 
-function Ready({ seconds, onStart }: { seconds: number; onStart: () => Promise<void> }) {
+function Ready({ seconds, onStart, problem }: { seconds: number; onStart: () => Promise<void>; problem: ReactNode }) {
   const [busy, setBusy] = useState(false);
   const length = seconds === 60 ? "one minute" : `${seconds} seconds`;
   return (
-    <section className="facts-left facts-msg">
-      <p className="eyebrow">Quick facts · {length}</p>
+    <section className="test-pane test-pane-l is-msg">
+      <p className="test-kicker">Quick facts · {length}</p>
       <Heading>How many can you do in {length}?</Heading>
-      <p className="facts-lead">Type the answer and press Enter. To skip a fact, press Enter with no answer. Just do your best.</p>
+      <p className="test-lead">Type the answer and press Enter. To skip a fact, press Enter with no answer. Just do your best.</p>
+      {problem}
       <Button onClick={async () => { setBusy(true); await onStart(); setBusy(false); }} disabled={busy} aria-busy={busy}>
         {busy ? "Starting…" : "Start"}
       </Button>
@@ -190,12 +195,13 @@ function Ready({ seconds, onStart }: { seconds: number; onStart: () => Promise<v
 
 const PAD = ["1", "2", "3", "4", "5", "6", "7", "8", "9"];
 
-function Running({ facts, seconds, deadline, onAnswer, onEnd }: {
+function Running({ facts, seconds, deadline, onAnswer, onEnd, problem }: {
   facts: PublicFact[];
   seconds: number;
   deadline: number;
   onAnswer: (factId: string, response: string) => void;
   onEnd: (reason: FactsEnd) => void;
+  problem: ReactNode;
 }) {
   const [index, setIndex] = useState(0);
   const [entry, setEntry] = useState("");
@@ -260,7 +266,7 @@ function Running({ facts, seconds, deadline, onAnswer, onEnd }: {
   const time = `${Math.floor(secs / 60)}:${String(secs % 60).padStart(2, "0")}`;
   return (
     <>
-      <section className="facts-left facts-run">
+      <section className="test-pane test-pane-l facts-run">
         <div className="facts-clock">
           <div className="facts-bar" aria-hidden><span style={{ width: `${(left / (seconds * 1000)) * 100}%` }} /></div>
           <p className="facts-time"><span className="sr-only">Time left: </span>{time}</p>
@@ -275,8 +281,9 @@ function Running({ facts, seconds, deadline, onAnswer, onEnd }: {
           </p>
         )}
         <p className="facts-hint">Press Enter with no answer to skip.</p>
+        {problem}
       </section>
-      <section className="facts-right facts-padside">
+      <section className="test-pane test-pane-r facts-padside">
         <div className="facts-pad" role="group" aria-label="Number pad">
           {PAD.map((k) => <button key={k} type="button" onClick={() => press(k)}>{k}</button>)}
           <button type="button" onClick={() => press("back")} aria-label="Delete">⌫</button>

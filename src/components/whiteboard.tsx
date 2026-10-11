@@ -18,6 +18,7 @@ import {
   type BoardState,
   type Stroke,
 } from "@/lib/whiteboard";
+import "./test-base.css";
 import "./whiteboard.css";
 
 const INK = "#1f1c19";
