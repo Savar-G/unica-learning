@@ -11,6 +11,10 @@
 // The report (#65): report_open (src = email when the parent came from the report email, else account).
 // Whiteboard (#67): test_work (an answer stored with work; status required or optional, channel draw, type or both),
 // test_work_nudge (a show-your-work question was answered with an empty board, once per question).
+// The report's next step (#66): card_start (the plan click toward the payment page: plan, price, src = email or
+// account, status = stripe, later (no Stripe key or Stripe failed), saved (a card was saved before) or error);
+// waitlist_join (src, curriculum, status = joined or already; the reserve form's waitlist_join has no src);
+// card_cancelled and card_saved with src = report.
 // Help flags (#71): test_help (status yes, a-little or no: the answer to "Did anyone help?", sent once the test is stored).
 // Analytics run only after the visitor accepts (see consent.ts). Without consent an event is dropped, not queued.
 // Only src, plan, subject, curriculum, price, status, code, card and channel travel with an event (see analytics.ts).

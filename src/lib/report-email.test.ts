@@ -64,6 +64,23 @@ describe("the report email to the parent", () => {
   it("has no number facts line when the child had no facts section", () => {
     for (const body of [email.text, email.html]) expect(body).not.toMatch(/Number facts/);
   });
+  it("a BC family's main button opens the plan choice on the report page, as a link (#66)", () => {
+    const step = "https://unicalearning.com/account/report/r-1?src=email&amp;step=plan#rpt-next";
+    expect(email.html).toMatch(new RegExp(`<a href="${step.replace(/[?.]/g, "\\$&")}"[^>]*>Choose a plan for Maya</a>`));
+    expect(email.text).toContain("Choose a plan for Maya: https://unicalearning.com/account/report/r-1?src=email&step=plan#rpt-next");
+    // Links only: email clients drop forms.
+    expect(email.html).not.toMatch(/<form|<button|<input/);
+  });
+  it("another province's main button opens the waitlist step (#66)", () => {
+    const on = reportEmail({ view: view(knowsUpTo(3), { province: "ON" }), parentName: "Priya", url: URL });
+    expect(on.html).toContain('<a href="https://unicalearning.com/account/report/r-1?src=email&amp;step=waitlist#rpt-next"');
+    expect(on.html).toMatch(/>Join the waitlist<\/a>/);
+    expect(on.text).toContain("Join the waitlist: https://unicalearning.com/account/report/r-1?src=email&step=waitlist#rpt-next");
+  });
+  it("still links the full report, beside the next step", () => {
+    expect(email.html).toMatch(/>See Maya&#39;s full report<\/a>/);
+    expect(email.text).toContain(`See Maya's full report: ${URL}`);
+  });
   it("carries the help warning and the retake date when help is likely (#71), and never the flags", () => {
     const v = view(knowsUpTo(3));
     const warned = reportEmail({ view: { ...v, model: { ...v.model, helpWarning: true } }, parentName: "Priya", url: URL });

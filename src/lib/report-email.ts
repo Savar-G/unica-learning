@@ -4,6 +4,7 @@
 import { PAUSE_WINDOW, TOO_FAST_MS, type Flag, type HelpAnswer } from "@/lib/assessment";
 import { BUSINESS_NAME } from "@/lib/contact";
 import {
+  NEXT_STEP_ANCHOR,
   STATUS_LABEL,
   factsView,
   helpWarning,
@@ -16,6 +17,7 @@ import {
   thresholdsLine,
   verdictSentence,
   type FactsView,
+  type NextStepKey,
   type ReportView,
 } from "@/lib/report-view";
 
@@ -64,6 +66,17 @@ const factsLine = (f: FactsView) => (f.accuracy && f.speed ? `${f.accuracy.value
 const factsChip = (label: string) =>
   `<span style="display:inline-block;padding:3px 8px;border-radius:999px;background:${label === "Needs practice" ? STATUS_TINT.developing : STATUS_TINT.secure};font-size:13px">${esc(label)}</span>`;
 
+/**
+ * The report link, opened at the next step (#66): the plan choice or the waitlist. Emails carry links only, so the
+ * click on the report page does the step. A signed-out parent signs in first and comes back to the same step.
+ */
+function withStep(reportUrl: string, step: NextStepKey): string {
+  const u = new URL(reportUrl);
+  u.searchParams.set("step", step);
+  u.hash = NEXT_STEP_ANCHOR;
+  return u.toString();
+}
+
 /** The report for the parent, with a link that opens it in their account. */
 export function reportEmail({ view: v, parentName, url }: { view: ReportView; parentName: string; url: string }) {
   const name = v.childName;
@@ -76,6 +89,7 @@ export function reportEmail({ view: v, parentName, url }: { view: ReportView; pa
   const help = howWeHelp(v);
   const warning = helpWarning(v);
   const step = nextStep(v);
+  const stepUrl = withStep(url, step.email.step);
   const areas = v.model.strands.map((s) => `${s.name}: ${STATUS_LABEL[s.status]}, ${s.correct} of ${s.total} right`);
   // #67: the drawings stay in private storage, so the email does not carry them; the report shows them after sign-in.
   const work = (v.model.work ?? []).length > 0 ? `${name}'s work from the whiteboard is in the full report.` : null;
@@ -91,7 +105,7 @@ export function reportEmail({ view: v, parentName, url }: { view: ReportView; pa
     ...(facts ? [[`Number facts: ${factsLine(facts)}`, ...(facts.accuracy && facts.note ? [facts.note] : []), `${facts.scope} ${facts.round}`].join("\n")] : []),
     ...(work ? [work] : []),
     `How we help: ${help.title}\n${help.text}`,
-    `${step.title}\n${step.text}`,
+    `${step.title}\n${step.text}\n${step.email.label}: ${stepUrl}`,
     `See ${name}'s full report: ${url}`,
     `${BUSINESS_NAME}\n${footer}`,
   ].join("\n\n");
@@ -154,8 +168,11 @@ ${p(esc(help.text))}
 <p style="margin:0 0 6px;font-weight:600">${esc(step.title)}</p>
 ${p(esc(step.text))}
 </td></tr>
-<tr><td align="center" style="padding:10px 24px 28px">
-<a href="${esc(url)}" style="display:inline-block;background:${BUTTON};color:#ffffff;text-decoration:none;padding:14px 22px;border-radius:6px;font-weight:600">See ${esc(name)}&#39;s full report</a>
+<tr><td align="center" style="padding:10px 24px 12px">
+<a href="${esc(stepUrl)}" style="display:inline-block;background:${BUTTON};color:#ffffff;text-decoration:none;padding:14px 22px;border-radius:6px;font-weight:600">${esc(step.email.label)}</a>
+</td></tr>
+<tr><td align="center" style="padding:6px 24px 28px">
+<a href="${esc(url)}" style="color:${INK};text-decoration:underline">See ${esc(name)}&#39;s full report</a>
 </td></tr>
 <tr><td style="padding:16px 24px 0;border-top:1px solid ${LINE};font-size:13px;color:${INK_2}">${esc(BUSINESS_NAME)} · ${esc(footer)}</td></tr>
 </table>

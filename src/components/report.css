@@ -93,6 +93,15 @@
 /* next step */
 .rpt-next { padding: clamp(22px, 3vw, 32px); border-radius: 10px; background: var(--card); }
 .rpt-next p { margin: 0 0 20px; max-width: 40em; }
+/* #66: the plan buttons, the note after a step, and the ring when the email link opened this step */
+.rpt-next.is-asked { box-shadow: 0 0 0 2px var(--ink); scroll-margin-top: 96px; }
+.rpt-plans { display: flex; flex-wrap: wrap; gap: 12px; margin: 0 0 14px; }
+.rpt-plans .btn { justify-content: center; min-width: 15em; min-height: 46px; }
+.rpt-plans .btn.ghost { background: #fff; }
+.rpt-plans .btn.ghost .spin { border-color: rgba(0, 0, 0, 0.18); border-top-color: var(--ink); }
+.rpt-next .rpt-next-note { padding: 10px 14px; border-radius: 8px; background: #fff; font-size: 15px; }
+.rpt-next .rpt-small { margin: 0; }
+[id="rpt-next"] { scroll-margin-top: 96px; }
 
 /* closing line */
 .rpt-meta { margin: 0; padding-top: 20px; border-top: 1px solid var(--line); font: 400 12.5px/1.5 var(--mono); color: var(--ink-2); }
