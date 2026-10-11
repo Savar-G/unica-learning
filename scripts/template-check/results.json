@@ -7689,8 +7689,8 @@
       }
     },
     "g35-4-make-change": {
-      "hash": "fab6ffd30e658bca",
-      "status": "pass",
+      "hash": "363cc98405cbb311",
+      "status": "review",
       "checkedAt": "2026-10-11",
       "model": "gpt-6.1-sol",
       "provider": "codex",
@@ -7705,34 +7705,36 @@
             "province": "AB",
             "ok": true,
             "suggestedGrade": null,
-            "confidence": "medium",
-            "reason": "The supplied notes confirm decimal subtraction in Grade 4. These questions apply that skill to money."
+            "confidence": "high",
+            "reason": "The supplied notes confirm decimal addition and subtraction in Grade 4."
           },
           {
             "province": "SK",
             "ok": true,
             "suggestedGrade": null,
             "confidence": "medium",
-            "reason": "Making change through subtraction to hundredths fits Grade 4."
+            "reason": "Grade 4 is plausible for change calculated to hundredths. The supplied notes do not establish a different grade."
           },
           {
             "province": "MB",
             "ok": true,
             "suggestedGrade": null,
             "confidence": "high",
-            "reason": "The supplied notes confirm subtraction to hundredths in Grade 4. These questions apply that skill to money."
+            "reason": "The supplied notes place decimal subtraction to hundredths in Grade 4."
           },
           {
             "province": "ON",
-            "ok": true,
-            "suggestedGrade": null,
+            "ok": false,
+            "suggestedGrade": "grade 5",
             "confidence": "medium",
-            "reason": "Making change with dollars and cents fits Grade 4 financial literacy. The money context can precede general hundredths arithmetic."
+            "reason": "The supplied notes place decimal hundredths in Grade 5. Grade 5 appears more suitable for these calculations with cents, but the exact money outcome is not supplied."
           }
         ],
         "wordingProblems": [],
-        "problems": [],
-        "verdict": "pass"
+        "problems": [
+          "The Ontario Grade 4 tag needs review because every example requires subtraction with hundredths."
+        ],
+        "verdict": "review"
       }
     },
     "g35-4-add-decimals": {
@@ -10645,8 +10647,8 @@
       }
     },
     "g35-5-change-large": {
-      "hash": "4efd1c290dc52f37",
-      "status": "review",
+      "hash": "ab99d7c766ad9f8f",
+      "status": "pass",
       "checkedAt": "2026-10-11",
       "model": "gpt-6.1-sol",
       "provider": "codex",
@@ -10659,38 +10661,36 @@
         "provinceTags": [
           {
             "province": "AB",
-            "ok": false,
-            "suggestedGrade": "grade 4",
+            "ok": true,
+            "suggestedGrade": null,
             "confidence": "medium",
-            "reason": "The supplied notes place decimal subtraction in Grade 4. These questions use that skill, but the precise money outcome and number range are not supplied."
+            "reason": "Grade 5 is plausible for these larger money amounts. The supplied notes confirm decimal subtraction in Grade 4 but do not establish the grade for this money range."
           },
           {
             "province": "SK",
             "ok": true,
-            "suggestedGrade": "grade 5",
+            "suggestedGrade": null,
             "confidence": "high",
-            "reason": "N5.7 includes decimal addition and subtraction to thousandths, which supports these hundredths calculations."
+            "reason": "N5.7 includes decimal addition and subtraction to thousandths. These calculations use hundredths."
           },
           {
             "province": "MB",
             "ok": true,
-            "suggestedGrade": "grade 4",
+            "suggestedGrade": null,
             "confidence": "high",
-            "reason": "The supplied notes place decimal addition and subtraction to hundredths in Grade 4."
+            "reason": "The supplied notes place decimal subtraction to hundredths in Grade 4. The larger whole-number parts do not require finer decimal places."
           },
           {
             "province": "ON",
             "ok": true,
-            "suggestedGrade": "grade 5",
+            "suggestedGrade": null,
             "confidence": "medium",
-            "reason": "Money calculations with decimal hundredths fit Grade 5."
+            "reason": "The supplied notes place decimal hundredths in Grade 5. These change calculations fit that difficulty."
           }
         ],
         "wordingProblems": [],
-        "problems": [
-          "Review the Alberta tag. Grade 4 decimal subtraction appears to support the questions."
-        ],
-        "verdict": "review"
+        "problems": [],
+        "verdict": "pass"
       }
     },
     "g35-5-equivalent-numerator": {
@@ -11323,8 +11323,8 @@
       }
     },
     "g35-5-add-thousandths": {
-      "hash": "80f346454bab12d8",
-      "status": "review",
+      "hash": "fb5c9325195cbbb3",
+      "status": "pass",
       "checkedAt": "2026-10-11",
       "model": "gpt-6.1-sol",
       "provider": "codex",
@@ -11338,42 +11338,40 @@
           {
             "province": "AB",
             "ok": true,
-            "suggestedGrade": "grade 5",
+            "suggestedGrade": null,
             "confidence": "low",
-            "reason": "Grade 4 includes decimal addition and subtraction. The supplied notes do not state its precision limit or confirm the Grade 5 thousandths outcome."
+            "reason": "Grade 5 is plausible for addition to thousandths. The supplied Alberta notes do not give the precise outcome."
           },
           {
             "province": "SK",
             "ok": true,
-            "suggestedGrade": "grade 5",
+            "suggestedGrade": null,
             "confidence": "high",
-            "reason": "N5.7 includes decimal addition and subtraction to thousandths."
+            "reason": "N5.7 explicitly includes decimal addition to thousandths."
           },
           {
             "province": "MB",
             "ok": true,
-            "suggestedGrade": "grade 5",
+            "suggestedGrade": null,
             "confidence": "medium",
-            "reason": "Grade 4 addition and subtraction stop at hundredths. Grade 5 includes thousandths, but its operations outcome is not supplied."
+            "reason": "Grade 5 is plausible for addition to thousandths after Grade 4 work with hundredths. The exact addition outcome is not supplied."
           },
           {
             "province": "ON",
             "ok": true,
-            "suggestedGrade": "grade 6",
+            "suggestedGrade": null,
             "confidence": "medium",
-            "reason": "Grade 6 B1.3 includes thousandths. The supplied notes do not state the decimal-addition outcome."
+            "reason": "The supplied notes place decimal thousandths in Grade 6. Addition at this precision is consistent with that grade."
           }
         ],
         "wordingProblems": [],
-        "problems": [
-          "The exact AB, MB and ON outcomes for addition to thousandths need source review."
-        ],
-        "verdict": "review"
+        "problems": [],
+        "verdict": "pass"
       }
     },
     "g35-5-subtract-thousandths": {
-      "hash": "f9784377eba75447",
-      "status": "review",
+      "hash": "9b609d389f36c112",
+      "status": "pass",
       "checkedAt": "2026-10-11",
       "model": "gpt-6.1-sol",
       "provider": "codex",
@@ -11389,35 +11387,33 @@
             "ok": true,
             "suggestedGrade": null,
             "confidence": "low",
-            "reason": "Grade 5 is plausible. The supplied notes confirm decimal subtraction in Grade 4 but do not give its precision limit. Confirm the thousandths outcome."
+            "reason": "Grade 5 is plausible for subtraction to thousandths. The supplied Alberta notes do not give the precise outcome."
           },
           {
             "province": "SK",
             "ok": true,
             "suggestedGrade": null,
             "confidence": "high",
-            "reason": "N5.7 includes decimal subtraction to thousandths."
+            "reason": "N5.7 explicitly includes decimal subtraction to thousandths."
           },
           {
             "province": "MB",
             "ok": true,
             "suggestedGrade": null,
             "confidence": "medium",
-            "reason": "Grade 4 covers subtraction to hundredths. Grade 5 is plausible for thousandths, but the supplied notes do not confirm that operation."
+            "reason": "Grade 5 is plausible for subtraction to thousandths after Grade 4 work with hundredths. The exact subtraction outcome is not supplied."
           },
           {
             "province": "ON",
             "ok": true,
             "suggestedGrade": null,
             "confidence": "medium",
-            "reason": "Grade 6 includes decimal thousandths. The supplied notes do not identify the subtraction outcome."
+            "reason": "The supplied notes place decimal thousandths in Grade 6. Subtraction at this precision is consistent with that grade."
           }
         ],
         "wordingProblems": [],
-        "problems": [
-          "Confirm the AB precision limit and the MB and ON subtraction outcomes."
-        ],
-        "verdict": "review"
+        "problems": [],
+        "verdict": "pass"
       }
     },
     "g35-5-variable-add": {
@@ -13321,8 +13317,8 @@
       }
     },
     "g35-6-decimal-divide": {
-      "hash": "e4d3f8d43c6dfbe1",
-      "status": "review",
+      "hash": "6f542e48de10c94b",
+      "status": "pass",
       "checkedAt": "2026-10-11",
       "model": "gpt-6.1-sol",
       "provider": "codex",
@@ -13336,42 +13332,40 @@
           {
             "province": "AB",
             "ok": true,
-            "suggestedGrade": "grade 6",
-            "confidence": "low",
-            "reason": "Grade 6 is plausible. The supplied notes do not confirm the decimal division outcome."
+            "suggestedGrade": null,
+            "confidence": "medium",
+            "reason": "Grade 6 is plausible for division of decimals by one-digit whole numbers. The precise Alberta outcome is not supplied."
           },
           {
             "province": "SK",
             "ok": true,
-            "suggestedGrade": "grade 6",
+            "suggestedGrade": null,
             "confidence": "medium",
-            "reason": "Decimal division by a whole number fits Grade 6. The supplied notes do not confirm the exact outcome."
+            "reason": "Division of decimals by one-digit whole numbers is consistent with Grade 6 difficulty. The exact outcome is not supplied."
           },
           {
             "province": "MB",
             "ok": true,
-            "suggestedGrade": "grade 6",
+            "suggestedGrade": null,
             "confidence": "medium",
-            "reason": "Decimal division by a whole number fits Grade 6. The supplied notes do not confirm the exact outcome."
+            "reason": "Division of decimals by one-digit whole numbers is consistent with Grade 6 difficulty. The exact outcome is not supplied."
           },
           {
             "province": "ON",
             "ok": true,
-            "suggestedGrade": "grade 6",
+            "suggestedGrade": null,
             "confidence": "medium",
-            "reason": "Decimal division by a whole number fits Grade 6. The supplied notes do not confirm the exact operation outcome."
+            "reason": "These divisions with decimal tenths are consistent with Grade 6 difficulty. The supplied notes do not establish a different grade."
           }
         ],
         "wordingProblems": [],
-        "problems": [
-          "The provincial decimal division outcomes need confirmation."
-        ],
-        "verdict": "review"
+        "problems": [],
+        "verdict": "pass"
       }
     },
     "g35-6-decimal-product-story": {
-      "hash": "11a2edd549a6bac9",
-      "status": "review",
+      "hash": "eaad610540e4e0bd",
+      "status": "pass",
       "checkedAt": "2026-10-11",
       "model": "gpt-6.1-sol",
       "provider": "codex",
@@ -13385,42 +13379,40 @@
           {
             "province": "AB",
             "ok": true,
-            "suggestedGrade": "grade 6",
+            "suggestedGrade": null,
             "confidence": "low",
-            "reason": "Grade 6 is plausible. The supplied notes do not confirm multiplication of decimal thousandths."
+            "reason": "Grade 6 is plausible for multiplying decimals by one-digit whole numbers. The supplied notes do not confirm the thousandths limit."
           },
           {
             "province": "SK",
             "ok": true,
-            "suggestedGrade": "grade 6",
+            "suggestedGrade": null,
             "confidence": "medium",
-            "reason": "Decimal multiplication fits Grade 6. The supplied notes confirm thousandths in Grade 5 but do not confirm multiplication there."
+            "reason": "Multiplication of decimals by one-digit whole numbers is consistent with Grade 6 difficulty. The exact precision limit is not supplied."
           },
           {
             "province": "MB",
             "ok": true,
-            "suggestedGrade": "grade 6",
+            "suggestedGrade": null,
             "confidence": "medium",
-            "reason": "Decimal multiplication fits Grade 6. The supplied notes do not confirm the exact operation outcome."
+            "reason": "Multiplication of decimals by one-digit whole numbers is consistent with Grade 6 difficulty. The exact precision limit is not supplied."
           },
           {
             "province": "ON",
             "ok": true,
-            "suggestedGrade": "grade 6",
-            "confidence": "medium",
-            "reason": "The supplied notes place decimal thousandths in Grade 6. The multiplication outcome is not confirmed."
+            "suggestedGrade": null,
+            "confidence": "low",
+            "reason": "The supplied notes place decimal thousandths in Grade 6 but do not state the multiplication precision limit. They do not establish a different grade."
           }
         ],
         "wordingProblems": [],
-        "problems": [
-          "The provincial decimal multiplication outcomes need confirmation."
-        ],
-        "verdict": "review"
+        "problems": [],
+        "verdict": "pass"
       }
     },
     "g35-6-decimal-unit-cost": {
-      "hash": "3377a2dc5cda1a80",
-      "status": "review",
+      "hash": "d611d3a0ced3c640",
+      "status": "pass",
       "checkedAt": "2026-10-11",
       "model": "gpt-6.1-sol",
       "provider": "codex",
@@ -13434,37 +13426,35 @@
           {
             "province": "AB",
             "ok": true,
-            "suggestedGrade": "grade 6",
-            "confidence": "low",
-            "reason": "Grade 6 is plausible. The supplied notes do not confirm decimal division in money problems."
+            "suggestedGrade": null,
+            "confidence": "medium",
+            "reason": "Grade 6 is plausible for dividing decimal money amounts by one-digit whole numbers. The precise outcome is not supplied."
           },
           {
             "province": "SK",
             "ok": true,
-            "suggestedGrade": "grade 6",
+            "suggestedGrade": null,
             "confidence": "medium",
-            "reason": "Decimal division by a whole number fits Grade 6. The exact outcome is not confirmed in the supplied notes."
+            "reason": "Division of decimal amounts by one-digit whole numbers is consistent with Grade 6 difficulty. The exact outcome is not supplied."
           },
           {
             "province": "MB",
             "ok": true,
-            "suggestedGrade": "grade 6",
+            "suggestedGrade": null,
             "confidence": "medium",
-            "reason": "Decimal division by a whole number fits Grade 6. The exact outcome is not confirmed in the supplied notes."
+            "reason": "Division of decimal amounts by one-digit whole numbers is consistent with Grade 6 difficulty. The exact outcome is not supplied."
           },
           {
             "province": "ON",
             "ok": true,
-            "suggestedGrade": "grade 6",
+            "suggestedGrade": null,
             "confidence": "medium",
-            "reason": "Decimal division in a unit cost problem fits Grade 6. The exact outcome is not confirmed in the supplied notes."
+            "reason": "These unit-cost calculations are consistent with Grade 6 decimal division. The supplied notes do not establish a different grade."
           }
         ],
         "wordingProblems": [],
-        "problems": [
-          "The provincial decimal division outcomes need confirmation."
-        ],
-        "verdict": "review"
+        "problems": [],
+        "verdict": "pass"
       }
     },
     "g35-6-mixed-to-mixed": {
