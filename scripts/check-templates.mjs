@@ -121,12 +121,28 @@ function describe(core, template, standards, samples, provider) {
   const want = Math.min(samples, pool.length);
   for (let k = 0; k < want; k++) picked.push(pool[Math.round((k * (pool.length - 1)) / Math.max(1, want - 1))]);
   // An unknown input can be small while its given output crosses a curriculum number limit.
-  // Preserve the original provider's sampling. Codex also sees any missed decimal magnitude boundary.
+  // Preserve the original provider's sampling. Codex also sees missed decimal magnitude and precision boundaries.
   if (provider === "codex" && template.format === "number" && picked.length > 2) {
     const largestGiven = (q) => Math.max(0, ...[...q.prompt.matchAll(/\d+(?:,\d{3})*(?:\.\d+)?/g)].map((m) => Number(m[0].replaceAll(",", ""))));
     const edge = pool.reduce((a, b) => largestGiven(a) >= largestGiven(b) ? a : b);
     const selectedMax = Math.max(...picked.map(largestGiven));
     if (Math.floor(Math.log10(largestGiven(edge))) > Math.floor(Math.log10(selectedMax))) picked[picked.length - 2] = edge;
+    // Answer magnitude alone can miss hundredths between tenths. Use actual generated examples.
+    const places = (q) => (String(q.answer).split(".")[1] ?? "").replace(/0+$/, "").length;
+    const precisionEdges = new Set([Math.min(...pool.map(places)), Math.max(...pool.map(places))]);
+    const keep = new Set([picked[0], picked.at(-1), picked.reduce((a, b) => largestGiven(a) >= largestGiven(b) ? a : b)]);
+    for (const precision of precisionEdges) {
+      const selected = picked.find((q) => places(q) === precision);
+      if (selected) keep.add(selected);
+    }
+    for (const precision of precisionEdges) {
+      if (picked.some((q) => places(q) === precision)) continue;
+      const index = picked.findIndex((q) => !keep.has(q));
+      if (index < 0) continue; // Small sample counts may have no unprotected interior slot.
+      const example = pool.find((q) => places(q) === precision);
+      picked[index] = example;
+      keep.add(example);
+    }
   }
   const tags = Object.fromEntries(["BC", "AB", "SK", "MB", "ON"].map((p) => [p, template.grades[p] === undefined ? "not tagged" : gradeName(template.grades[p])]));
   return {
