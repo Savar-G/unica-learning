@@ -67,7 +67,7 @@ export const LEVEL_3: readonly TaggedTemplate[] = [
       return {
         values: { x, y, z },
         prompt: `Which number is the greatest: ${list}?`,
-        readAloud: `Which number is the greatest: ${list}?`,
+        readAloud: "Which number is the greatest?",
         answer: String(answer),
         wrong: [wrong(sameHundreds, "digit-compare"), wrong(biggestOnes, "digit-compare")],
       };
@@ -274,7 +274,7 @@ export const LEVEL_3: readonly TaggedTemplate[] = [
         values: { start, step },
         prompt: `What is the rule for this pattern? ${seq.join(", ")}`,
         // One choice per sentence: the three rules sound alike, so each needs its own pause.
-        readAloud: `What is the rule for this pattern? ${seq.join(", ")}. Choose one. ${rng.shuffle([rule(start, step), rule(start, start), rule(step, start)]).join(". ")}.`,
+        readAloud: `What is the rule for this pattern? ${seq.join(", ")}.`,
         answer: rule(start, step),
         wrong: [wrong(rule(start, start), "rule-start"), wrong(rule(step, start), "rule-swap")],
       };
@@ -385,7 +385,7 @@ export const LEVEL_3: readonly TaggedTemplate[] = [
       return {
         values: { light: light ? 1 : 0 },
         prompt: `Which unit is best for measuring the mass of ${thing}?`,
-        readAloud: `Which unit is best for measuring the mass of ${thing}: ${orList(rng, [answer, other, odd].map((u) => u.toLowerCase()))}?`,
+        readAloud: `Which unit is best for measuring the mass of ${thing}?`,
         answer,
         wrong: [wrong(other, "unit-choice"), wrong(odd, "unit-kind")],
       };
@@ -492,7 +492,7 @@ export const LEVEL_3: readonly TaggedTemplate[] = [
       return {
         values: { many, few },
         prompt: `A bag has ${marbles}. You pick one without looking. Which colour are you more likely to pick?`,
-        readAloud: `A bag has ${marbles}. You pick one without looking. Which colour are you more likely to pick: ${orList(rng, [x, y, "both equally likely"])}?`,
+        readAloud: `A bag has ${marbles}. You pick one without looking. Which colour are you more likely to pick?`,
         answer: cap(x),
         wrong: [wrong(cap(y), "chance-reversed"), wrong("Both are equally likely", "D3")],
       };
@@ -507,8 +507,8 @@ export const LEVEL_3: readonly TaggedTemplate[] = [
       const [side, other] = heads ? ["heads", "tails"] : ["tails", "heads"];
       return {
         values: { n, heads: heads ? 1 : 0 },
-        prompt: `A coin landed on ${side} ${n} times in a row. On the next toss, is heads more likely, is tails more likely, or are they equally likely?`,
-        readAloud: `A coin landed on ${side} ${n} times in a row. On the next toss, is heads more likely, is tails more likely, or are they equally likely?`,
+        prompt: `A coin landed on ${side} ${n} times in a row. On the next toss, which is more likely?`,
+        readAloud: `A coin landed on ${side} ${n} times in a row. On the next toss, which is more likely?`,
         answer: "Heads and tails are equally likely",
         wrong: [wrong(cap(other), "D2"), wrong(cap(side), "streak")],
       };
