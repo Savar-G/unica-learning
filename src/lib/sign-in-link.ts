@@ -20,6 +20,11 @@ export function hashToken(token: unknown): string | null {
   return typeof token === "string" && TOKEN.test(token) ? createHash("sha256").update(token).digest("hex") : null;
 }
 
+/** How long an old link can ask for a new one. After that, an old email cannot ask for mail any more. */
+export const RESEND_WINDOW_MS = 7 * LINK_TTL_MS;
+
+export const canResend = (createdAt: string, now = Date.now()) => now - Date.parse(createdAt) < RESEND_WINDOW_MS;
+
 export type LinkState = "valid" | "used" | "expired" | "unknown";
 
 export function linkState(row: { expires_at: string; used_at: string | null } | null, now = Date.now()): LinkState {
@@ -28,10 +33,16 @@ export function linkState(row: { expires_at: string; used_at: string | null } | 
   return Date.parse(row.expires_at) > now ? "valid" : "expired";
 }
 
-/** A path on this site to send a signed-in visitor to, or the fallback. Stops a link from sending people to another site. */
-export function safeNext(next: string | null | undefined, fallback = "/account"): string {
-  if (!next || !next.startsWith("/") || next.startsWith("//") || next.startsWith("/\\")) return fallback;
-  return next;
+const HERE = "https://here.invalid";
+
+/**
+ * A path on this site to send a signed-in visitor to, or /account. Stops a link from sending people to another site.
+ * The URL parser decides, not a prefix check: it drops tabs and newlines, so "/\t/evil.example" means "//evil.example".
+ */
+export function safeNext(next: string | null | undefined): string {
+  if (!next?.startsWith("/")) return "/account";
+  const url = new URL(next, HERE);
+  return url.origin === HERE ? `${url.pathname}${url.search}${url.hash}` : "/account";
 }
 
 /** The child's start screen. */

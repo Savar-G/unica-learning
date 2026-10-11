@@ -1,11 +1,11 @@
 import { headers } from "next/headers";
-import { userAgent } from "next/server";
 import { redirect } from "next/navigation";
 import { pageMetadata } from "@/lib/metadata";
 import { requirePilot } from "@/lib/pilot";
 import { CURRICULA } from "@/lib/signup";
 import type { Child } from "@/lib/account";
 import { parentId, sessionClient } from "@/lib/supabase-auth";
+import { isPhone } from "@/lib/account-server";
 import { AddChild, SendLink, SignOut, StartTest, TrackOnce } from "@/components/account";
 import { SupportPage } from "@/components/support-page";
 
@@ -28,7 +28,7 @@ export default async function Account({ searchParams }: PageProps<"/account">) {
     db.from("children").select("id, first_name, grade, province").order("created_at").returns<Child[]>(),
   ]);
   if (!parent) redirect("/account/finish");
-  const phone = userAgent({ headers: await headers() }).device.type === "mobile";
+  const phone = isPhone(await headers());
   const { sent, password } = await searchParams;
 
   const children = kids ?? [];

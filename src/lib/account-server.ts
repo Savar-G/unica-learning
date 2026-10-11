@@ -1,4 +1,5 @@
 import "server-only";
+import { userAgent } from "next/server";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { ChildInput } from "@/lib/account";
 import { SITE_URL } from "@/lib/metadata";
@@ -50,6 +51,9 @@ export async function createParent(
   }
   return data.id;
 }
+
+/** True on a phone. The test needs a laptop or tablet (D-082). */
+export const isPhone = (headers: Headers) => userAgent({ headers }).device.type === "mobile";
 
 /**
  * The origin for links in emails. Production uses the public site URL, so a forged Host header cannot put another

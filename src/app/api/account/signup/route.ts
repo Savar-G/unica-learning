@@ -1,6 +1,5 @@
-import { userAgent } from "next/server";
 import { cleanChild, cleanParent, fail, type AccountResult, type AccountSignupPayload } from "@/lib/account";
-import { createParent, linkOrigin, sendSignInLink, signupCap } from "@/lib/account-server";
+import { createParent, isPhone, linkOrigin, sendSignInLink, signupCap } from "@/lib/account-server";
 import { pilotOn } from "@/lib/pilot";
 import { adminClient } from "@/lib/supabase-auth";
 
@@ -51,7 +50,6 @@ export async function POST(request: Request) {
     return fail("store_failed", 502);
   }
 
-  const phone = userAgent(request).device.type === "mobile";
-  const linkSent = phone && (await sendSignInLink(admin, id, childId, linkOrigin(request))) === "sent";
+  const linkSent = isPhone(request.headers) && (await sendSignInLink(admin, id, childId, linkOrigin(request))) === "sent";
   return Response.json({ ok: true, linkSent } satisfies AccountResult);
 }

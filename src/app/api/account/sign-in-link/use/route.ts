@@ -8,6 +8,9 @@ import { adminClient, sessionClient } from "@/lib/supabase-auth";
 // child's start screen.
 export async function POST(request: Request) {
   if (!pilotOn()) return new Response(null, { status: 404 });
+  // Only our own page may post here. Another site could otherwise sign a visitor in to the account of whoever owns the link.
+  const origin = request.headers.get("origin");
+  if (origin && origin !== new URL(request.url).origin) return new Response(null, { status: 403 });
   const token = (await request.formData().catch(() => null))?.get("t");
   const back = (error: boolean) =>
     NextResponse.redirect(new URL(`/sign-in/link?t=${encodeURIComponent(String(token ?? ""))}${error ? "&error=1" : ""}`, request.url), 303);
@@ -35,5 +38,6 @@ export async function POST(request: Request) {
     console.error("[account] link sign-in failed", link.parent_id, error.message);
     return back(true);
   }
-  return NextResponse.redirect(new URL(startPath(link.child_id), request.url), 303);
+  // ?via=link lets the start screen count sign-ins by link.
+  return NextResponse.redirect(new URL(`${startPath(link.child_id)}?via=link`, request.url), 303);
 }

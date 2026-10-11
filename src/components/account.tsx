@@ -432,6 +432,7 @@ function linkSendText(state: LinkSend): ReactNode {
   if (state === "sent") return "Sent. Open the email on the laptop or tablet.";
   if (state === "too_many") return "You asked for many links in the last hour. Use the newest email, or try again in an hour.";
   if (state === "signed_out") return errorText("signed_out");
+  if (state === "invalid") return <>We cannot send a new link from this one. <Link href="/sign-in">Sign in</Link> with your email and password, or with Google.</>;
   return <>We could not send the email. Try again in a moment. If this keeps happening, email <a href={SUPPORT_HREF}>{SUPPORT_EMAIL}</a>.</>;
 }
 

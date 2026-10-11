@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { describe, expect, it } from "vitest";
-import { LINK_TTL_MS, hashToken, linkEmail, linkState, newToken, safeNext, startPath } from "@/lib/sign-in-link";
+import { LINK_TTL_MS, canResend, hashToken, linkEmail, linkState, newToken, safeNext, startPath } from "@/lib/sign-in-link";
 
 describe("sign-in link tokens", () => {
   it("are URL-safe, 256-bit and different every time", () => {
@@ -39,6 +39,19 @@ describe("sign-in link state: once, and only for 24 hours", () => {
   it("is unknown when there is no such link", () => expect(linkState(null, now)).toBe("unknown"));
 });
 
+describe("canResend: an old link can ask for a new one for 7 days", () => {
+  const now = Date.parse("2026-10-11T12:00:00Z");
+  const day = 24 * 60 * 60 * 1000;
+  it("for 7 days after it was made", () => {
+    expect(canResend(new Date(now - day).toISOString(), now)).toBe(true);
+    expect(canResend(new Date(now - 7 * day + 1000).toISOString(), now)).toBe(true);
+  });
+  it("not after that, so an old email cannot ask for mail forever", () => {
+    expect(canResend(new Date(now - 7 * day).toISOString(), now)).toBe(false);
+    expect(canResend(new Date(now - 30 * day).toISOString(), now)).toBe(false);
+  });
+});
+
 describe("safeNext: where a sign-in may send the visitor", () => {
   it("keeps a path on this site", () => {
     expect(safeNext("/account/start/0b6c1f9e-2f1e-4b8a-9d55-6a1f0c2b7e10")).toBe("/account/start/0b6c1f9e-2f1e-4b8a-9d55-6a1f0c2b7e10");
@@ -49,7 +62,12 @@ describe("safeNext: where a sign-in may send the visitor", () => {
       expect(safeNext(bad), String(bad)).toBe("/account");
     }
   });
-  it("uses the given fallback", () => expect(safeNext(null, "/sign-in")).toBe("/sign-in"));
+  it("drops a path that the URL parser turns into another site (tab, newline, carriage return)", () => {
+    for (const bad of ["/\t/evil.example", "/\n/evil.example", "/\r/evil.example", "/\t\\evil.example"]) {
+      expect(safeNext(bad), JSON.stringify(bad)).toBe("/account");
+    }
+  });
+  it("keeps the query and hash of a path on this site", () => expect(safeNext("/account?x=1#top")).toBe("/account?x=1#top"));
 });
 
 describe("the start screen for a child", () => {
