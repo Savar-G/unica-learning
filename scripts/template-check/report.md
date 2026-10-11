@@ -1,1056 +1,863 @@
 # Template check report
 
-Made by `npm run check:templates` (scripts/check-templates.mjs). Bank: 3-5, 272 templates. Updated 2026-10-11 21:25 UTC.
+Made by `npm run check:templates` (scripts/check-templates.mjs). Bank: 6-7, 184 templates. Updated 2026-10-11 22:13 UTC.
 
-Pass: 73. Review: 199. Fail: 0. Error: 0. Not checked: 0. Changed since its check: 0.
+Pass: 20. Review: 163. Fail: 1. Error: 0. Not checked: 0. Changed since its check: 0.
 
 A template passes when the checker found its answers correct, its coded wrong answers wrong, and its BC grade right. Review means a wording problem or a province tag doubt that a person should decide.
 
-## Review (199)
+## Fail (1)
 
-### 2-coins-mixed
+### g67-5-fraction-to-decimal
 
-- The AB, SK and MB coin-counting grades need source confirmation.
+- Change the ON tag to grade 4. These examples do not require hundredths.
+- ON: suggests grade 4 (high confidence). Every answer is in tenths. Grade 4 B1.7-B1.9 covers decimal tenths and their fraction equivalents.
 - Checked 2026-10-11 with gpt-6.1-sol.
 
-### 2-balance-equation
+## Review (163)
 
-- The AB, SK and MB equation grades need source confirmation.
+### g67-5-groups-needed
+
+- Check the SK and MB tags for division with two-digit divisors.
+- SK: suggests grade 6 (medium confidence). These examples require two-digit divisors. Grade 5 division generally uses one-digit divisors. Confirm the Grade 6 outcome.
+- MB: suggests grade 6 (medium confidence). These examples require two-digit divisors. Grade 5 division generally uses one-digit divisors. Confirm the Grade 6 outcome.
 - Checked 2026-10-11 with gpt-6.1-sol.
 
-### 2-missing-left
+### g67-5-subtract-decimals
 
-- The AB, SK and MB equation grades need source confirmation.
+- Confirm Alberta's grade for subtraction to thousandths.
 - Checked 2026-10-11 with gpt-6.1-sol.
 
-### 2-missing-addend
+### g67-5-make-change
 
-- The AB, SK and MB equation grades need source confirmation.
+- Review the Alberta and Manitoba tags. The arithmetic is Grade 4 subtraction to hundredths, but the supplied notes do not confirm the money outcomes.
+- AB: suggests grade 4 (medium confidence). The calculations use subtraction to hundredths, which the supplied notes place in Grade 4. The specific money outcome remains unconfirmed.
+- MB: suggests grade 4 (medium confidence). The supplied notes place subtraction to hundredths in Grade 4. The specific money outcome remains unconfirmed.
 - Checked 2026-10-11 with gpt-6.1-sol.
 
-### 2-pattern-rows
+### g67-5-equivalent-fraction
 
-- Wording: All read-aloud texts omit the displayed counts for rows 2 and 3. Include these counts so the spoken text gives the same information.
+- The Alberta outcome and the possible earlier Ontario grade need confirmation.
+- ON: suggests grade 4 (medium confidence). Simple equivalent fractions appear to start in Grade 4. This outcome is not confirmed in the supplied notes. Check the earlier grade.
 - Checked 2026-10-11 with gpt-6.1-sol.
 
-### 2-ruler-length
+### g67-5-missing-numerator
 
-- The current Alberta grade for this measurement skill needs source confirmation.
+- The Alberta outcome and the possible earlier Ontario grade need confirmation.
+- ON: suggests grade 4 (medium confidence). Simple equivalent fractions appear to start in Grade 4. The supplied notes do not confirm whether this missing-number form belongs there.
 - Checked 2026-10-11 with gpt-6.1-sol.
 
-### 2-length-unit
+### g67-5-greatest-decimal
 
-- The current Alberta grade for selecting standard length units needs source confirmation.
+- The Alberta grade for decimal comparison needs confirmation.
 - Checked 2026-10-11 with gpt-6.1-sol.
 
-### 2-face-of-solid
+### g67-5-decimal-place
 
-- The Grade 1 face-identification tags for Alberta, Saskatchewan and Manitoba need source confirmation.
-- Wording: A party hat usually has an open bottom. The reference to its flat bottom can confuse a child. Use a solid cone or ask for the shape of the opening.
+- The Alberta grade for thousandths place value needs confirmation.
 - Checked 2026-10-11 with gpt-6.1-sol.
 
-### 2-roll-and-stack
+### g67-5-build-decimal
 
-- The supplied notes do not confirm the current Alberta grade for this skill.
+- The Alberta grade for thousandths place value needs confirmation.
 - Checked 2026-10-11 with gpt-6.1-sol.
 
-### 2-graph-in-all
+### g67-5-equation-multiply
 
-- The supplied notes do not confirm the current Alberta grade for this skill.
+- The supplied notes leave the exact AB, SK and MB grades uncertain.
 - Checked 2026-10-11 with gpt-6.1-sol.
 
-### 2-graph-fewer
+### g67-5-pattern-term
 
-- The supplied notes do not confirm the current Alberta grade for this skill.
+- The Alberta grade needs source review.
 - Checked 2026-10-11 with gpt-6.1-sol.
 
-### 2-spinner
+### g67-5-pattern-down
 
-- The supplied notes do not confirm the current Alberta grade for this probability skill.
+- The Alberta grade needs source review.
 - Checked 2026-10-11 with gpt-6.1-sol.
 
-### 2-certain-possible
+### g67-5-table-rule
 
-- The supplied notes do not confirm the current Alberta grade for this probability skill.
+- The supplied notes leave the exact province grades for identifying table rules uncertain.
 - Checked 2026-10-11 with gpt-6.1-sol.
 
-### 2-compare-lengths
+### g67-5-story-equation
 
-- The supplied notes do not confirm the current Alberta grade for this measurement skill.
+- The Alberta and Ontario grades need source review for representing stories with letter variables.
 - Checked 2026-10-11 with gpt-6.1-sol.
 
-### 2-sides-in-all
+### g67-5-balance
 
-- The supplied notes do not confirm the current Alberta grade for this geometry skill.
+- The Alberta grade needs source review.
 - Checked 2026-10-11 with gpt-6.1-sol.
 
-### 3-build-number
+### g67-5-area-side
 
-- The supplied notes do not confirm the current Alberta grade for this place-value skill.
+- The Alberta grade for finding a missing side needs source review.
+- Wording: Each rectangle has four sides. 'The other side' can mean the opposite side, which has the same length as the given side. Ask for the length of an adjacent side.
 - Checked 2026-10-11 with gpt-6.1-sol.
 
-### 3-ten-more-less
+### g67-5-same-area
 
-- The supplied notes do not confirm the current Alberta grade for this place-value skill.
+- The Alberta grade needs source review.
 - Checked 2026-10-11 with gpt-6.1-sol.
 
-### 3-greatest
+### g67-5-elapsed-time
 
-- The supplied notes do not confirm the current Alberta grade for this place-value skill.
+- The Alberta grade for this elapsed-time difficulty needs source review.
 - Checked 2026-10-11 with gpt-6.1-sol.
 
-### 3-share-equally
+### g67-5-solid-from-faces
 
-- Review the Ontario tag for simple equal sharing with totals up to 20.
-- ON: suggests grade 2 (medium confidence). Equal sharing of totals up to 20 may fit Grade 2. The supplied notes do not confirm the exact introductory outcome.
+- The Alberta and Ontario grades need source review.
 - Checked 2026-10-11 with gpt-6.1-sol.
 
-### 3-money-total
+### g67-5-solid-count
 
-- Review the Alberta, Saskatchewan and Manitoba money tags. The examples use only whole-dollar totals from 12 to 78.
-- SK: suggests grade 3 (medium confidence). Whole-dollar totals below 100 may fit Grade 3 money work. The supplied notes do not confirm the exact outcome.
-- MB: suggests grade 3 (medium confidence). Whole-dollar totals below 100 may fit Grade 3 money work. These examples require no decimal calculations.
+- The province grades need source review.
 - Checked 2026-10-11 with gpt-6.1-sol.
 
-### 3-pattern-rule
+### g67-5-name-transformation
 
+- The Alberta, Manitoba and Ontario grades need source review.
 - Checked 2026-10-11 with gpt-6.1-sol.
 
-### 3-start-unknown
+### g67-5-double-bar-graph
 
+- The Alberta grade needs source review.
+- The examples supply bar heights in text but show no graph. They test scale calculations, but they do not directly test reading a double bar graph.
 - Checked 2026-10-11 with gpt-6.1-sol.
 
-### 3-change-unknown
+### g67-5-pictograph
 
+- The skill fits the supplied BC Grade 4 content within the permitted one-grade range, but it does not test the stated double-bar-graph elaboration.
+- Province placement needs review, particularly for half pictures.
+- SK: suggests grade 4 (medium confidence). A many-to-one pictograph appears to fit Grade 4. The supplied Grade 5 outcome concerns double bar graphs. The half-picture requirement needs confirmation.
+- MB: suggests grade 4 (medium confidence). Many-to-one pictographs appear to fit Grade 4. The supplied notes do not confirm the half-picture requirement.
+- ON: suggests grade 3 (medium confidence). Many-to-one pictographs appear to begin in Grade 3. Confirm whether half pictures change this placement.
 - Checked 2026-10-11 with gpt-6.1-sol.
 
-### 3-balance-equation
+### g67-5-spinner-probability
 
+- The province grades need source review.
 - Checked 2026-10-11 with gpt-6.1-sol.
 
-### 3-growing-tables
+### g67-6-large-digits
 
+- The province grades for the billion-range examples need source review.
 - Checked 2026-10-11 with gpt-6.1-sol.
 
-### 3-mass-unit
+### g67-6-greatest-large
 
+- The Alberta number limit needs confirmation.
 - Checked 2026-10-11 with gpt-6.1-sol.
 
-### 3-length-convert
-
-- Checked 2026-10-11 with gpt-6.1-sol.
-
-### 3-solid-parts
-
-- Checked 2026-10-11 with gpt-6.1-sol.
-
-### 3-days-weeks
-
-- Check the Alberta and Ontario grades for calendar unit relationships.
-- AB: suggests grade 3 (medium confidence). The supplied notes place time in Grade 3. They do not confirm the grade for these unit relationships.
-- ON: suggests grade 2 (medium confidence). Relationships between days, weeks, months and years appear to fit Grade 2. The supplied notes do not confirm the exact outcome.
-- Checked 2026-10-11 with gpt-6.1-sol.
-
-### 3-coin-streak
-
-- Wording: State that the coin is fair in each prompt and read-aloud text. The marked answer assumes a fair coin with independent tosses.
-- Checked 2026-10-11 with gpt-6.1-sol.
-
-### g35-3-fraction-left
-
-- The province grades need confirmation from fraction outcomes. The supplied notes do not establish different grades.
-- Checked 2026-10-11 with gpt-6.1-sol.
-
-### g35-3-fraction-of-set
-
-- Confirm the Alberta grade against the current outcome for fractions of a set.
-- Checked 2026-10-11 with gpt-6.1-sol.
-
-### g35-3-equal-parts
-
-- The province grades need confirmation from fraction outcomes. The supplied notes do not establish different grades.
-- Checked 2026-10-11 with gpt-6.1-sol.
-
-### g35-3-fraction-number-line
-
-- The province grades need confirmation from fraction outcomes. The supplied notes do not establish different grades.
-- Checked 2026-10-11 with gpt-6.1-sol.
-
-### g35-3-fraction-of-amount
-
-- The province grades need confirmation from fraction outcomes. The supplied notes do not establish different grades.
-- Checked 2026-10-11 with gpt-6.1-sol.
-
-### g35-3-whole-as-fraction
-
-- The province grades need confirmation from fraction outcomes. The supplied notes do not establish different grades.
-- Checked 2026-10-11 with gpt-6.1-sol.
-
-### g35-3-fraction-rest
-
-- The province grades need confirmation from fraction outcomes. The supplied notes do not establish different grades.
-- Checked 2026-10-11 with gpt-6.1-sol.
-
-### g35-3-unit-fraction
-
-- The province grades need confirmation from fraction outcomes. The supplied notes do not establish different grades.
-- Checked 2026-10-11 with gpt-6.1-sol.
-
-### g35-3-bar-rows
-
-- The province grades need confirmation from fraction outcomes. The supplied notes do not establish different grades.
-- Checked 2026-10-11 with gpt-6.1-sol.
-
-### g35-3-make-a-whole
+### g67-6-decimal-digit-value
 
 - Checked 2026-10-11 with gpt-6.1-sol.
 
-### g35-3-missing-middle
+### g67-6-lcm
 
 - Checked 2026-10-11 with gpt-6.1-sol.
 
-### g35-3-doubling
+### g67-6-gcf
 
 - Checked 2026-10-11 with gpt-6.1-sol.
 
-### g35-3-start-unknown-story
+### g67-6-which-prime
 
 - Checked 2026-10-11 with gpt-6.1-sol.
 
-### g35-3-double-unknown
+### g67-6-which-composite
 
 - Checked 2026-10-11 with gpt-6.1-sol.
 
-### g35-3-subtract-unknown
+### g67-6-order-of-operations
 
 - Checked 2026-10-11 with gpt-6.1-sol.
 
-### g35-3-rule-in-words
+### g67-6-brackets
+
+- The Alberta grade for order of operations with brackets needs confirmation.
+- Checked 2026-10-11 with gpt-6.1-sol.
+
+### g67-6-decimal-times
 
 - Checked 2026-10-11 with gpt-6.1-sol.
 
-### g35-3-number-sentence
+### g67-6-decimal-divide
 
 - Checked 2026-10-11 with gpt-6.1-sol.
 
-### g35-3-capacity-unit
+### g67-6-times-four
 
+- The province grades need source confirmation. The supplied notes do not establish a different grade.
 - Checked 2026-10-11 with gpt-6.1-sol.
 
-### g35-3-solid-from-faces
+### g67-6-save-weeks
 
+- The Alberta grade for this saving and division skill needs confirmation.
 - Checked 2026-10-11 with gpt-6.1-sol.
 
-### g35-3-most-least-likely
+### g67-6-share-money
+
+- The province grades need source confirmation. The supplied notes do not establish a different grade.
+- Checked 2026-10-11 with gpt-6.1-sol.
+
+### g67-6-improper-to-mixed
+
+- The Alberta placement needs confirmation.
+- Ontario may teach this conversion in Grade 5.
+- ON: suggests grade 5 (medium confidence). Representation of improper fractions and mixed numbers appears to begin in Grade 5. These examples require only conversion. Confirm the exact outcome.
+- Checked 2026-10-11 with gpt-6.1-sol.
+
+### g67-6-mixed-to-improper
+
+- The Alberta placement needs confirmation.
+- Ontario may teach this conversion in Grade 5.
+- ON: suggests grade 5 (medium confidence). Representation of mixed numbers and improper fractions appears to begin in Grade 5. These examples require only conversion. Confirm the exact outcome.
+- Checked 2026-10-11 with gpt-6.1-sol.
+
+### g67-6-count-parts
+
+- The Alberta placement needs confirmation.
+- Ontario may teach this representation in Grade 5.
+- ON: suggests grade 5 (medium confidence). This is a representation of mixed numbers as improper fractions, which appears to begin in Grade 5. Confirm the exact outcome.
+- Checked 2026-10-11 with gpt-6.1-sol.
+
+### g67-6-greatest-fraction
+
+- The Alberta placement and denominator limits need confirmation.
+- Checked 2026-10-11 with gpt-6.1-sol.
+
+### g67-6-ratio-part-part
+
+- The province grades need source confirmation. The supplied notes do not establish a different grade.
+- Checked 2026-10-11 with gpt-6.1-sol.
+
+### g67-6-ratio-part-whole
+
+- The Alberta grade for part-to-whole ratios needs confirmation.
+- Checked 2026-10-11 with gpt-6.1-sol.
+
+### g67-6-equivalent-ratio
+
+- The province grades need source confirmation. The supplied notes do not establish a different grade.
+- Checked 2026-10-11 with gpt-6.1-sol.
+
+### g67-6-equivalent-ratio-choice
 
 - The current Alberta grade requires source review.
 - Checked 2026-10-11 with gpt-6.1-sol.
 
-### g35-3-likelihood-words
+### g67-6-ratio-to-fraction
+
+- The Alberta grade for this ratio-to-fraction skill needs confirmation.
+- Checked 2026-10-11 with gpt-6.1-sol.
+
+### g67-6-percent-of
+
+- Review the Ontario tag for the full range of percents.
+- The current Alberta grade requires source review.
+- ON: suggests grade 6 (medium confidence). The examples include 20%, 40%, 60% and 75%. This range appears to exceed the simpler Grade 5 percent work.
+- Checked 2026-10-11 with gpt-6.1-sol.
+
+### g67-6-percent-grid
 
 - The current Alberta grade requires source review.
 - Checked 2026-10-11 with gpt-6.1-sol.
 
-### g35-4-multiply
+### g67-6-percent-whole
 
-- The current Alberta multiplication outcome needs source review.
 - Checked 2026-10-11 with gpt-6.1-sol.
 
-### g35-4-divide
+### g67-6-discount
 
-- Check the Alberta division tag and the proposed Ontario Grade 4 tag against the primary outcomes.
-- ON: suggests grade 4 (medium confidence). Three-digit division by one digit appears to fit Grade 4. The supplied notes do not confirm the exact outcome.
+- The current Alberta grade requires source review.
 - Checked 2026-10-11 with gpt-6.1-sol.
 
-### g35-4-share
+### g67-6-percent-to-decimal
 
-- The current Alberta division outcome needs source review.
+- Review the Ontario tag for simple percent-to-decimal conversion.
+- The current Alberta grade requires source review.
+- ON: suggests grade 5 (medium confidence). Equivalent decimal and percent representations appear in Grade 5. These examples use only whole-number percents below 100.
 - Checked 2026-10-11 with gpt-6.1-sol.
 
-### g35-4-story-multiply
+### g67-6-table-value
 
-- The current Alberta multiplication outcome needs source review.
+- The current Alberta grade requires source review.
 - Checked 2026-10-11 with gpt-6.1-sol.
 
-### g35-4-multiple
+### g67-6-expression-words
 
-- Check the Alberta multiples tag and the proposed Ontario Grade 5 tag against the primary outcomes.
-- ON: suggests grade 5 (medium confidence). Identifying factors and multiples appears to fit Grade 5. The supplied notes do not confirm the exact outcome.
+- The Alberta tag may need to change to Grade 5.
+- AB: suggests grade 5 (medium confidence). The supplied notes place algebraic expressions in Grade 5. These simple expressions appear to fit that grade, but the exact outcome needs confirmation.
 - Checked 2026-10-11 with gpt-6.1-sol.
 
-### g35-4-between
+### g67-6-shrinking-rule
 
-- The current Alberta whole-number comparison outcome needs source review.
 - Checked 2026-10-11 with gpt-6.1-sol.
 
-### g35-4-tenths-order
+### g67-6-equation-times
 
-- The earliest grade for decimal comparison in SK and MB remains uncertain. Confirm these tags.
-- SK: suggests grade 5 (medium confidence). N5.6 explicitly includes decimal comparison. The supplied notes do not establish comparison in Grade 4.
-- MB: suggests grade 5 (medium confidence). 5.N.10 explicitly includes decimal comparison. The supplied notes do not establish comparison in Grade 4.
+- The AB, SK and MB grade tags need source review.
 - Checked 2026-10-11 with gpt-6.1-sol.
 
-### g35-4-benchmark
+### g67-6-equation-plus
 
-- The ON benchmark tag needs confirmation because the supplied notes do not identify its primary outcome.
+- The AB, SK and MB grade tags need source review.
 - Checked 2026-10-11 with gpt-6.1-sol.
 
-### g35-4-compare-decimals
+### g67-6-equation-words
 
-- AB: suggests grade 4 (medium confidence). The supplied notes place decimal addition and subtraction in Grade 4. Comparison to hundredths may also belong there. The exact comparison outcome needs confirmation.
+- The AB, SK and MB grade tags need source review.
 - Checked 2026-10-11 with gpt-6.1-sol.
 
-### g35-4-money-notation
+### g67-6-story-equation
 
-- Wording: Every spoken choice explains its value in dollars and cents. The correct spoken choice repeats the amount in the prompt. A child can select it without understanding the notation.
 - Checked 2026-10-11 with gpt-6.1-sol.
 
-### g35-4-decimal-digit
+### g67-6-balance-box
 
+- The AB, SK and MB tags need review because the examples require only simple missing-addend reasoning.
+- AB: suggests grade 3 (low confidence). These examples require only a missing addend with totals below 100. An earlier grade seems more suitable, but the current Alberta outcome is not supplied.
+- SK: suggests grade 3 (medium confidence). The task uses a concrete model for a missing addend. Grade 3 seems more suitable than Grade 6; the exact outcome needs confirmation.
+- MB: suggests grade 3 (medium confidence). The task uses a concrete model for a missing addend. Grade 3 seems more suitable than Grade 6; the exact outcome needs confirmation.
 - Checked 2026-10-11 with gpt-6.1-sol.
 
-### g35-4-decimal-number-line
+### g67-6-keep-balance
 
 - Checked 2026-10-11 with gpt-6.1-sol.
 
-### g35-4-hundredths-grid
+### g67-6-evaluate
 
+- The Alberta tag may need to change to Grade 5.
+- AB: suggests grade 5 (medium confidence). The supplied notes place algebraic expressions in Grade 5. These simple substitutions appear to fit that grade; the exact evaluation outcome needs confirmation.
 - Checked 2026-10-11 with gpt-6.1-sol.
 
-### g35-4-more-than-half
+### g67-6-point-on-rule
 
 - Checked 2026-10-11 with gpt-6.1-sol.
 
-### g35-4-tenths-as-hundredths
+### g67-6-figure-pattern
 
 - Checked 2026-10-11 with gpt-6.1-sol.
 
-### g35-4-table-pattern
+### g67-6-equation-check
 
+- The AB, SK and MB equation tags need source review.
 - Checked 2026-10-11 with gpt-6.1-sol.
 
-### g35-4-missing-factor
+### g67-6-triangle-area
 
-- ON: suggests grade 5 (medium confidence). Three examples use products above the Grade 4 C2.2 limit of 50. Grade 5 C2.3 covers equations to 100. A Grade 4 basic-fact outcome may also support these questions.
 - Checked 2026-10-11 with gpt-6.1-sol.
 
-### g35-4-missing-divisor
+### g67-6-parallelogram-area
 
-- ON: suggests grade 5 (medium confidence). Three examples use dividends above the Grade 4 C2.2 limit of 50. Grade 5 C2.3 covers equations to 100. A Grade 4 basic-fact outcome may also support these questions.
+- The province tags for parallelogram area need source review.
 - Checked 2026-10-11 with gpt-6.1-sol.
 
-### g35-4-subtract-unknown
+### g67-6-trapezoid-area
 
-- The Ontario Grade 4 equation limit does not support these quantities. Confirm the proposed Grade 6 placement.
-- ON: suggests grade 6 (medium confidence). Grade 4 C2.2 limits equations to whole numbers up to 50. Grade 5 C2.3 uses numbers up to 100. These examples use numbers up to 2750. Grade 6 is a possible placement, but the supplied outcome specifies equations with multiple terms.
 - Checked 2026-10-11 with gpt-6.1-sol.
 
-### g35-4-balance-multiply
+### g67-6-angle-type
 
-- Confirm the Grade 5 tags for AB, SK and MB. The supplied notes do not establish the first grade for this skill.
 - Checked 2026-10-11 with gpt-6.1-sol.
 
-### g35-4-figure-pattern
+### g67-6-triangle-angle
 
-- Confirm the Grade 5 tags for AB, SK and MB. The supplied notes do not establish the first grade for this skill.
 - Checked 2026-10-11 with gpt-6.1-sol.
 
-### g35-4-true-equation
+### g67-6-straight-line-angle
 
-- Confirm the Grade 5 tags for AB, SK and MB. The supplied notes do not establish the first grade for this skill.
 - Checked 2026-10-11 with gpt-6.1-sol.
 
-### g35-4-machine-input
+### g67-6-box-volume
 
-- ON: suggests grade 5 (medium confidence). Grade 5 C2.3 supports whole-number equations to 100. These are simple missing-factor equations, rather than Grade 6 equations with multiple terms. The output of 108 needs source review because it exceeds 100.
 - Checked 2026-10-11 with gpt-6.1-sol.
 
-### g35-4-perimeter-sides
+### g67-6-litres
 
-- The AB and ON grade tags need confirmation.
+- SK: suggests grade 5 (medium confidence). SS5.4 includes litres and millilitres. Grade 5 is the likely match, but the supplied notes do not state the conversion difficulty.
+- ON: suggests grade 5 (medium confidence). Grade 4 E2.1 includes litres and millilitres. Grade 5 includes decimal hundredths, which these conversions use. Grade 5 is the likely match for the full template.
 - Checked 2026-10-11 with gpt-6.1-sol.
 
-### g35-4-square-side
+### g67-6-cubic-units
 
-- The province grades for finding a side from perimeter need confirmation.
+- The province tags need source review, particularly for the cubic-metre conversion in example 8.
 - Checked 2026-10-11 with gpt-6.1-sol.
 
-### g35-4-read-clock
+### g67-6-triangle-sides
 
-- The province tags for five-minute clock reading need confirmation.
+- The Ontario grade needs source review.
+- ON: suggests grade 5 (medium confidence). Triangle classification appears to belong in Grade 5. The supplied notes do not confirm the exact outcome.
 - Checked 2026-10-11 with gpt-6.1-sol.
 
-### g35-4-quarter-to
+### g67-6-triangle-angles
 
-- The province tags for these time expressions need confirmation.
+- The Ontario grade needs source review.
+- ON: suggests grade 5 (medium confidence). Triangle classification appears to belong in Grade 5. The supplied notes confirm angle measurement in Grade 5, but not the exact classification outcome.
 - Checked 2026-10-11 with gpt-6.1-sol.
 
-### g35-4-24-hour
+### g67-6-plot-point
 
+- The AB, SK and MB coordinate tags need source review.
 - Checked 2026-10-11 with gpt-6.1-sol.
 
-### g35-4-regular-polygon
+### g67-6-translate-point
 
-- Confirm the Alberta grade against the current polygon-classification outcome.
+- The AB, SK and MB coordinate-translation tags need source review.
 - Checked 2026-10-11 with gpt-6.1-sol.
 
-### g35-4-sides-in-all
+### g67-6-line-graph
 
-- The province tags for this combined geometry and arithmetic skill need confirmation.
+- The province tags for line graphs need source review.
 - Checked 2026-10-11 with gpt-6.1-sol.
 
-### g35-4-symmetry
+### g67-6-spinner-event
 
-- The SK, MB and ON tags for counting lines of symmetry need confirmation.
+- The Ontario grade needs source review.
+- ON: suggests grade 5 (medium confidence). Expressing simple event probabilities as fractions appears to begin in Grade 5. The supplied notes do not confirm the exact outcome.
 - Checked 2026-10-11 with gpt-6.1-sol.
 
-### g35-4-pictograph
+### g67-6-theoretical
 
-- The province tags for pictographs with a many-to-one key need confirmation.
+- The province tags for theoretical probability need source review.
 - Checked 2026-10-11 with gpt-6.1-sol.
 
-### g35-4-pictograph-half
+### g67-6-l-shape-perimeter
 
-- The province tags for half symbols in pictographs need confirmation.
+- ON: suggests grade 3 (medium confidence). Adding given polygon side lengths appears to fit Grade 3 perimeter work. The supplied notes do not confirm the exact outcome. Check the source before changing the tag.
 - Checked 2026-10-11 with gpt-6.1-sol.
 
-### g35-4-bar-scale
+### g67-7-greatest-integer
 
+- The province tags for comparing integers need source review.
 - Checked 2026-10-11 with gpt-6.1-sol.
 
-### g35-4-spin-predict
+### g67-7-order-integers
 
+- The province tags for ordering integers need source review.
 - Checked 2026-10-11 with gpt-6.1-sol.
 
-### g35-5-large-digit
+### g67-7-multiply-integers
 
+- The province outcomes are unverified. Retain the tags pending a curriculum check.
 - Checked 2026-10-11 with gpt-6.1-sol.
 
-### g35-5-expanded-large
+### g67-7-divide-integers
 
+- The province outcomes are unverified. Retain the tags pending a curriculum check.
 - Checked 2026-10-11 with gpt-6.1-sol.
 
-### g35-5-ten-thousand-more
+### g67-7-decimal-multiply
 
+- Check the Alberta and Ontario tags against their primary outcomes.
+- AB: suggests grade 6 (low confidence). These simple decimal products may fit Grade 6 in the current curriculum. The supplied Alberta notes do not confirm this outcome.
+- ON: suggests grade 6 (medium confidence). Multiplying tenths by tenths appears to fit Grade 6 decimal operations. The exact outcome is not supplied, so this change needs confirmation.
 - Checked 2026-10-11 with gpt-6.1-sol.
 
-### g35-5-add-large
+### g67-7-decimal-divide
 
+- Check the Alberta and Ontario tags against their primary outcomes.
+- AB: suggests grade 6 (low confidence). Division by tenths with whole-number quotients may fit Grade 6 in the current curriculum. The supplied notes do not confirm this outcome.
+- ON: suggests grade 6 (medium confidence). Division by tenths with whole-number quotients appears to fit Grade 6 decimal operations. The exact outcome is not supplied, so this change needs confirmation.
 - Checked 2026-10-11 with gpt-6.1-sol.
 
-### g35-5-subtract-large
+### g67-7-bigger-or-smaller
 
+- Check the Alberta and Ontario tags against their primary outcomes.
+- AB: suggests grade 6 (low confidence). The effect of multiplying or dividing by a decimal below one may fit Grade 6. The supplied notes do not confirm this outcome.
+- ON: suggests grade 6 (medium confidence). These comparisons appear to fit Grade 6 decimal multiplication and division. The exact outcome is not supplied, so this change needs confirmation.
 - Checked 2026-10-11 with gpt-6.1-sol.
 
-### g35-5-multiply-two-digit
+### g67-7-decimal-order-of-operations
 
+- Check the Alberta and Ontario tags against their primary outcomes.
+- AB: suggests grade 6 (low confidence). These two-operation expressions may fit Grade 6. They require only decimal multiplication by a whole number. The exact current outcome is not supplied.
+- ON: suggests grade 6 (medium confidence). Order of operations with these simple decimal expressions appears to fit Grade 6. The exact outcome is not supplied, so this change needs confirmation.
 - Checked 2026-10-11 with gpt-6.1-sol.
 
-### g35-5-remainder
+### g67-7-times-five
 
+- Check the Alberta tag against the Grade 5 operations outcome. The other province outcomes are unverified.
+- AB: suggests grade 5 (medium confidence). The notes confirm million-range operations in Grade 5. These whole-number products suggest an earlier tag, but the exact mental calculation outcome is unverified.
 - Checked 2026-10-11 with gpt-6.1-sol.
 
-### g35-5-full-groups
+### g67-7-change-several
 
+- The province outcomes for decimal multiplication are unverified. Retain the tags pending a curriculum check.
 - Checked 2026-10-11 with gpt-6.1-sol.
 
-### g35-5-enough-buses
+### g67-7-fraction-to-decimal
 
-- Confirm the SK and MB tags for division by two-digit numbers.
-- SK: suggests grade 6 (medium confidence). The two-digit divisors suggest Grade 6. The exact outcome needs confirmation.
-- MB: suggests grade 6 (medium confidence). The two-digit divisors suggest Grade 6. The exact outcome needs confirmation.
 - Checked 2026-10-11 with gpt-6.1-sol.
 
-### g35-5-annexing-zeros
+### g67-7-fraction-to-percent
 
 - Checked 2026-10-11 with gpt-6.1-sol.
 
-### g35-5-distributive
+### g67-7-greatest-mixed-forms
 
-- Confirm whether SK, MB and ON should use Grade 4 for this difficulty.
-- SK: suggests grade 4 (medium confidence). Multiplication of two-digit numbers by one digit using separate parts suggests Grade 4. The exact outcome needs confirmation.
-- MB: suggests grade 4 (medium confidence). Multiplication of two-digit numbers by one digit using separate parts suggests Grade 4. The exact outcome needs confirmation.
-- ON: suggests grade 4 (medium confidence). These two-digit by one-digit products suggest Grade 4 multiplication strategies. The exact outcome needs confirmation.
+- The province outcomes for comparisons across all three forms are unverified.
 - Checked 2026-10-11 with gpt-6.1-sol.
 
-### g35-5-budget-left
+### g67-7-repeating-decimal
 
 - Checked 2026-10-11 with gpt-6.1-sol.
 
-### g35-5-change-large
+### g67-7-decimal-to-fraction
 
-- Review the Alberta tag. Grade 4 decimal subtraction appears to support the questions.
-- AB: suggests grade 4 (medium confidence). The supplied notes place decimal subtraction in Grade 4. These questions use that skill, but the precise money outcome and number range are not supplied.
+- The province outcomes for conversion to lowest terms are unverified.
 - Checked 2026-10-11 with gpt-6.1-sol.
 
-### g35-5-equivalent-numerator
+### g67-7-percent-to-fraction
 
 - Checked 2026-10-11 with gpt-6.1-sol.
 
-### g35-5-equivalent-denominator
+### g67-7-decimal-between
 
+- The province outcomes for intervals with fraction bounds are unverified.
 - Checked 2026-10-11 with gpt-6.1-sol.
 
-### g35-5-equivalent-scale-down
+### g67-7-order-forms
 
-- The AB, MB and ON grade tags need source confirmation.
 - Checked 2026-10-11 with gpt-6.1-sol.
 
-### g35-5-equivalent-number-line
+### g67-7-ratio-percent
 
-- The AB, MB and ON grade tags need source confirmation.
+- The province outcomes for percent calculations are unverified.
 - Checked 2026-10-11 with gpt-6.1-sol.
 
-### g35-5-fraction-to-hundredths
+### g67-7-sales-tax
 
-- Confirm the province outcomes for converting fractions with denominators 4 and 5 to decimals.
+- The province outcomes for sales-tax calculations are unverified.
 - Checked 2026-10-11 with gpt-6.1-sol.
 
-### g35-5-decimal-half
+### g67-7-tip
 
-- The AB benchmark-comparison tag needs source review.
+- The province outcomes for tip calculations are unverified.
 - Checked 2026-10-11 with gpt-6.1-sol.
 
-### g35-5-fraction-near-whole
+### g67-7-sale-price
 
-- The province grades for this fraction-benchmark skill need source review.
 - Checked 2026-10-11 with gpt-6.1-sol.
 
-### g35-5-equivalent-decimal
+### g67-7-write-decimal
 
-- The exact introduction of equivalent decimal forms in AB, SK and MB needs source review.
 - Checked 2026-10-11 with gpt-6.1-sol.
 
-### g35-5-thousandths-fraction
+### g67-7-evaluate-relation
 
-- The AB thousandths tag and the exact SK and MB conversion outcomes need source review.
+- The province outcomes for AB, SK and MB need confirmation.
 - Checked 2026-10-11 with gpt-6.1-sol.
 
-### g35-5-thousandths-digit
+### g67-7-rule-from-table
 
-- The AB thousandths place-value tag needs source review.
+- The exact province outcomes for these grade tags need confirmation.
 - Checked 2026-10-11 with gpt-6.1-sol.
 
-### g35-5-compare-thousandths
+### g67-7-two-step-plus
 
-- The AB comparison-to-thousandths tag needs source review.
 - Checked 2026-10-11 with gpt-6.1-sol.
 
-### g35-5-add-thousandths
+### g67-7-two-step-minus
 
-- The exact AB, MB and ON outcomes for addition to thousandths need source review.
 - Checked 2026-10-11 with gpt-6.1-sol.
 
-### g35-5-subtract-thousandths
+### g67-7-two-step-divide
 
-- Confirm the AB precision limit and the MB and ON subtraction outcomes.
 - Checked 2026-10-11 with gpt-6.1-sol.
 
-### g35-5-variable-add
+### g67-7-two-step-story
 
-- Confirm the AB, SK and MB equation outcomes.
+- The province grades need source confirmation.
 - Checked 2026-10-11 with gpt-6.1-sol.
 
-### g35-5-variable-subtract
+### g67-7-story-equation
 
-- Confirm the AB, SK and MB equation outcomes.
+- The exact province outcomes for these grade tags need confirmation.
 - Checked 2026-10-11 with gpt-6.1-sol.
 
-### g35-5-variable-take-away
+### g67-7-check-solution
 
-- Confirm the AB, SK and MB equation outcomes.
+- The province grades need source confirmation.
 - Checked 2026-10-11 with gpt-6.1-sol.
 
-### g35-5-variable-multiply
+### g67-7-table-far
 
-- Confirm the provincial outcomes for one-step multiplication equations at this number range.
+- The exact province outcomes for these grade tags need confirmation.
 - Checked 2026-10-11 with gpt-6.1-sol.
 
-### g35-5-variable-divide
+### g67-7-negative-input
 
-- Confirm the provincial outcomes for equations with an unknown divisor.
+- The exact province outcomes for these grade tags need confirmation.
 - Checked 2026-10-11 with gpt-6.1-sol.
 
-### g35-5-variable-dividend
+### g67-7-point-on-line
 
-- Confirm the provincial outcomes for one-step division equations at this number range.
+- The province grades need source confirmation.
 - Checked 2026-10-11 with gpt-6.1-sol.
 
-### g35-5-pattern-next
+### g67-7-draining-pool
 
-- The AB, SK and MB grade tags need source review. The supplied notes do not confirm these tags.
+- The exact province outcomes for these grade tags need confirmation.
 - Checked 2026-10-11 with gpt-6.1-sol.
 
-### g35-5-pattern-missing
+### g67-7-figure-expression
 
-- Confirm the AB, SK and MB grades for this pattern difficulty.
+- The exact province outcomes for these grade tags need confirmation.
 - Checked 2026-10-11 with gpt-6.1-sol.
 
-### g35-5-pattern-back
+### g67-7-balance-boxes
 
-- Confirm the AB, SK and MB grades for this pattern difficulty.
+- The province grades need source confirmation.
 - Checked 2026-10-11 with gpt-6.1-sol.
 
-### g35-5-pattern-step
+### g67-7-circumference
 
-- The AB, SK and MB grade tags need source review. The first Ontario grade for identifying the addition step is also uncertain from the supplied notes.
+- The province grades need source confirmation.
 - Checked 2026-10-11 with gpt-6.1-sol.
 
-### g35-5-evaluate-add
+### g67-7-circle-area
 
-- The examples evaluate expressions with a given variable value. They do not directly test solving or forming the equations named in the BC standard.
 - Checked 2026-10-11 with gpt-6.1-sol.
 
-### g35-5-evaluate-subtract
+### g67-7-diameter-from-circumference
 
-- The examples evaluate expressions with a given variable value. They do not directly test solving or forming the equations named in the BC standard.
 - Checked 2026-10-11 with gpt-6.1-sol.
 
-### g35-5-evaluate-take-away
+### g67-7-cylinder-base-area
 
-- The examples evaluate expressions with a given variable value. They do not directly test solving or forming the equations named in the BC standard.
+- The province outcomes for cylinder volume with a given base area need confirmation.
 - Checked 2026-10-11 with gpt-6.1-sol.
 
-### g35-5-evaluate-multiply
+### g67-7-cylinder-volume
 
-- The examples evaluate expressions with a given variable value. They do not directly test solving or forming the equations named in the BC standard.
 - Checked 2026-10-11 with gpt-6.1-sol.
 
-### g35-5-evaluate-divide
+### g67-7-quadrant
 
-- The examples evaluate expressions with a given variable value. They do not directly test solving or forming the equations named in the BC standard.
+- The province outcomes for four-quadrant coordinates need confirmation.
 - Checked 2026-10-11 with gpt-6.1-sol.
 
-### g35-5-evaluate-divisor
+### g67-7-reflect-point
 
-- The examples evaluate expressions with a given variable value. They do not directly test solving or forming the equations named in the BC standard.
 - Checked 2026-10-11 with gpt-6.1-sol.
 
-### g35-5-expression-rows
+### g67-7-translate-point
 
-- The examples evaluate supplied expressions with a given variable value. They do not directly test solving or forming the equations named in the BC standard.
+- The province outcomes for translations with negative coordinates need confirmation.
 - Checked 2026-10-11 with gpt-6.1-sol.
 
-### g35-5-expression-cards-total
+### g67-7-half-turn
 
-- The examples test expression evaluation. They do not test solving or forming the equations stated in the BC standard.
 - Checked 2026-10-11 with gpt-6.1-sol.
 
-### g35-5-expression-cards-left
+### g67-7-circle-graph-amount
 
-- The examples test expression evaluation. They do not test solving or forming the equations stated in the BC standard.
+- The provincial grade tags need outcome confirmation.
 - Checked 2026-10-11 with gpt-6.1-sol.
 
-### g35-5-expression-sharing
+### g67-7-circle-graph-degrees
 
-- The examples test expression evaluation. They do not test solving or forming the equations stated in the BC standard.
 - Checked 2026-10-11 with gpt-6.1-sol.
 
-### g35-5-variable-rule
+### g67-7-circle-graph-percent
 
+- The provincial grade tags need outcome confirmation.
 - Checked 2026-10-11 with gpt-6.1-sol.
 
-### g35-5-equation-story
+### g67-7-count-outcomes
 
+- The provincial grade tags need outcome confirmation.
 - Checked 2026-10-11 with gpt-6.1-sol.
 
-### g35-5-rectangle-area
+### g67-7-experimental
 
+- The provincial grade tags need outcome confirmation.
 - Checked 2026-10-11 with gpt-6.1-sol.
 
-### g35-5-square-area
+### g67-7-dice-sum
 
 - Checked 2026-10-11 with gpt-6.1-sol.
 
-### g35-5-area-width
+### g67-8-square
 
-- Check the Alberta grade for finding a missing dimension from rectangle area.
-- AB: suggests grade 4 (medium confidence). The supplied notes place rectangle area in Grade 4. They do not confirm whether finding a missing dimension belongs in that grade.
 - Checked 2026-10-11 with gpt-6.1-sol.
 
-### g35-5-same-area
+### g67-8-perfect-square
 
+- The provincial grade tags need outcome confirmation.
 - Checked 2026-10-11 with gpt-6.1-sol.
 
-### g35-5-same-perimeter
+### g67-8-square-root
 
 - Checked 2026-10-11 with gpt-6.1-sol.
 
-### g35-5-duration
+### g67-8-square-side
 
-- AB: suggests grade 3 (medium confidence). The supplied notes place time in Grade 3. They do not confirm the exact grade for elapsed time across an hour.
+- The provincial grade tags need outcome confirmation.
 - Checked 2026-10-11 with gpt-6.1-sol.
 
-### g35-5-end-time
+### g67-8-root-between
 
-- Check the Alberta grade for calculating an end time across an hour.
-- AB: suggests grade 3 (medium confidence). The supplied notes place time in Grade 3. They do not confirm the grade for calculating an end time across an hour.
 - Checked 2026-10-11 with gpt-6.1-sol.
 
-### g35-5-prism-faces
+### g67-8-square-tile
 
-- The solved face counts are 5, 6, 7, 8 and 10. The other counts correctly represent omitted bases, edges or vertices.
-- The province grades for general polygon-base prism face counts need confirmation.
+- The provincial grade tags need outcome confirmation.
 - Checked 2026-10-11 with gpt-6.1-sol.
 
-### g35-5-pyramid-faces
+### g67-8-add-fractions
 
-- The solved face counts are 4, 5, 6, 7 and 9. The final wrong answer in each example can result from confusing a pyramid with a prism.
-- The province grades for general polygon-base pyramid face counts need confirmation.
+- AB: suggests grade 7 (medium confidence). Addition of positive fractions with unlike denominators likely belongs in Grade 7. The supplied notes do not confirm the outcome.
+- SK: suggests grade 7 (medium confidence). Addition of positive fractions with unlike denominators likely belongs in Grade 7. The supplied notes do not confirm the outcome.
+- MB: suggests grade 7 (medium confidence). Addition of positive fractions with unlike denominators likely belongs in Grade 7. The supplied notes do not confirm the outcome.
+- ON: suggests grade 6 (medium confidence). Addition of fractions with these small denominators likely belongs in Grade 6. The supplied notes do not confirm the outcome.
 - Checked 2026-10-11 with gpt-6.1-sol.
 
-### g35-5-transformation
+### g67-8-subtract-fractions
 
-- The solved answers are Rotation, Reflection, Rotation, Rotation, Reflection, Translation, Translation and Reflection. Each is the only correct choice.
-- The AB, MB and ON grades for the complete set of transformations need confirmation.
+- AB: suggests grade 7 (medium confidence). Subtraction of positive fractions with unlike denominators likely belongs in Grade 7. The supplied notes do not confirm the outcome.
+- SK: suggests grade 7 (medium confidence). Subtraction of positive fractions with unlike denominators likely belongs in Grade 7. The supplied notes do not confirm the outcome.
+- MB: suggests grade 7 (medium confidence). Subtraction of positive fractions with unlike denominators likely belongs in Grade 7. The supplied notes do not confirm the outcome.
+- ON: suggests grade 6 (medium confidence). Subtraction of fractions with these small denominators likely belongs in Grade 6. The supplied notes do not confirm the outcome.
 - Checked 2026-10-11 with gpt-6.1-sol.
 
-### g35-5-mirror-distance
+### g67-8-multiply-fractions
 
-- The solved distances are 2, 3, 4, 5, 6, 7, 8 and 9 centimetres. All marked answers are correct.
-- The AB and MB reflection-distance grades need confirmation.
+- The provincial grade tags need outcome confirmation.
 - Checked 2026-10-11 with gpt-6.1-sol.
 
-### g35-5-double-bar-difference
+### g67-8-divide-fractions
 
-- The solved differences are 4, 10, 12, 14, 16, 18, 20 and 26 books. Counting labelled intervals as single books plausibly produces the scale-error answers.
-- The AB, MB and ON double-bar-graph grades need confirmation.
+- The provincial grade tags need outcome confirmation.
 - Checked 2026-10-11 with gpt-6.1-sol.
 
-### g35-5-pictograph-total
+### g67-8-small-percent
 
-- The solved totals are 24, 45, 55, 64, 75, 90, 140 and 210 tickets. Each second wrong answer applies the key to adults but not children.
-- The task uses a pictograph key rather than the double bar graphs named in the BC elaboration. BC Grade 4 many-to-one graphs remain within the permitted one-grade range.
-- The province grades for pictograph totals need confirmation.
+- ON: suggests grade 7 (medium confidence). Calculations with fractional percents likely belong in Grade 7. The supplied notes do not confirm the outcome.
 - Checked 2026-10-11 with gpt-6.1-sol.
 
-### g35-5-bag-probability
+### g67-8-large-percent
 
-- The solved probabilities are 8/17, 8/12, 2/9, 4/12, 2/11, 3/10, 6/10 and 7/12. Each is the only correct choice.
-- The province grades for fractional probability need confirmation.
+- ON: suggests grade 7 (medium confidence). Percents above 100% and percent increases likely belong in Grade 7. The supplied notes do not confirm the outcome.
 - Checked 2026-10-11 with gpt-6.1-sol.
 
-### g35-6-common-factor
+### g67-8-unit-rate
 
-- The solved greatest common factors are 3, 4, 5, 7, 8, 10, 11 and 12. Each multiple-error answer is the least common multiple.
-- The province grades for greatest common factors need confirmation.
+- The provincial grade tags need outcome confirmation.
 - Checked 2026-10-11 with gpt-6.1-sol.
 
-### g35-6-least-multiple
+### g67-8-three-part-ratio
 
-- The province grades require source review. The correct answers are 12, 18, 24, 30, 36, 42 and 60. All coded errors are plausible.
+- The province tags require source review. The supplied notes do not establish a different grade.
 - Checked 2026-10-11 with gpt-6.1-sol.
 
-### g35-6-prime
+### g67-8-negative-equation
 
-- The province grades require source review. The only prime choices are 11, 23, 37, 19, 23, 23, 17 and 19. Each wrong choice is an odd composite number.
 - Checked 2026-10-11 with gpt-6.1-sol.
 
-### g35-6-divisibility
+### g67-8-negative-coefficient
 
-- The province grades require source review. The only divisible choices are 234, 147, 228, 213, 108, 270, 78 and 93. All coded errors are plausible.
 - Checked 2026-10-11 with gpt-6.1-sol.
 
-### g35-6-meeting-cycles
+### g67-8-substitute-signed
 
-- The province grades require source review. The next common flash times are 12, 18, 24, 30, 36, 42 and 60 seconds. All coded errors are plausible.
+- The province tags require source review for negative-integer substitution.
 - Checked 2026-10-11 with gpt-6.1-sol.
 
-### g35-6-order-product
+### g67-8-combine-expression
 
-- The province grades require source review. The correct answers are 11, 23, 28, 33, 41, 49, 64 and 92. The wrong answers follow left-to-right calculation or replacement of multiplication with addition.
+- The Alberta Grade 8 tag appears later than necessary. Confirm Grade 5 against the exact outcome.
+- The Saskatchewan and Manitoba tags require source review.
+- AB: suggests grade 5 (medium confidence). The supplied notes place algebraic expressions in Grade 5. These examples use small whole numbers and require only substitution, although the exact outcome needs confirmation.
 - Checked 2026-10-11 with gpt-6.1-sol.
 
-### g35-6-order-brackets
+### g67-8-large-relation
 
-- The province grades require source review. The correct answers are 14, 32, 44, 55, 66, 80, 95 and 147. The wrong answers follow omission of brackets or replacement of multiplication with addition.
+- The province tags require source review for relations with negative integers.
 - Checked 2026-10-11 with gpt-6.1-sol.
 
-### g35-6-order-quotient
+### g67-8-integer-table
 
-- The province grades require source review. The correct answers are 7, 10, 12, 13, 15, 16, 18 and 21. The wrong answers follow left-to-right calculation, with decimal rounding where needed, or replacement of division with addition.
+- The province tags require source review for linear rules with negative inputs.
 - Checked 2026-10-11 with gpt-6.1-sol.
 
-### g35-6-order-two-products
+### g67-8-inverse-input
 
-- The province grades require source review. The correct answers are 18, 38, 48, 55, 63, 73, 86 and 143. The wrong answers follow left-to-right calculation or replacement of both multiplications with addition.
+- The province tags require source review for two-step equations with negative solutions.
 - Checked 2026-10-11 with gpt-6.1-sol.
 
-### g35-6-decimal-multiply
+### g67-8-expression-story
 
-- The province grades require source review. The correct answers are 4.2, 12.0, 18.4, 24.3, 31.5, 41.3, 53.4 and 80.1. Each coded wrong answer moves the decimal point one place.
+- The Grade 8 province tags require source review. The questions use simple whole-number operations and contain no Grade 8 algebra.
 - Checked 2026-10-11 with gpt-6.1-sol.
 
-### g35-6-decimal-divide
+### g67-8-prism-surface
 
-- The provincial decimal division outcomes need confirmation.
 - Checked 2026-10-11 with gpt-6.1-sol.
 
-### g35-6-decimal-product-story
+### g67-8-cube-surface
 
-- The provincial decimal multiplication outcomes need confirmation.
 - Checked 2026-10-11 with gpt-6.1-sol.
 
-### g35-6-decimal-unit-cost
+### g67-8-hypotenuse
 
-- The provincial decimal division outcomes need confirmation.
 - Checked 2026-10-11 with gpt-6.1-sol.
 
-### g35-6-mixed-to-mixed
+### g67-8-missing-leg
 
-- Check Grade 5 placement for SK, MB and ON. The AB introduction grade remains uncertain.
-- SK: suggests grade 5 (medium confidence). This basic conversion likely belongs in Grade 5. The supplied notes do not confirm the specific outcome.
-- MB: suggests grade 5 (medium confidence). This basic conversion likely belongs in Grade 5. The supplied notes do not confirm the specific outcome.
-- ON: suggests grade 5 (medium confidence). Basic improper fraction and mixed number equivalence likely belongs in Grade 5. The supplied notes do not confirm the specific outcome.
 - Checked 2026-10-11 with gpt-6.1-sol.
 
-### g35-6-mixed-to-improper
+### g67-8-mean
 
-- Check Grade 5 placement for SK, MB and ON. The AB introduction grade remains uncertain.
-- SK: suggests grade 5 (medium confidence). This basic conversion likely belongs in Grade 5. The supplied notes do not confirm the specific outcome.
-- MB: suggests grade 5 (medium confidence). This basic conversion likely belongs in Grade 5. The supplied notes do not confirm the specific outcome.
-- ON: suggests grade 5 (medium confidence). Basic mixed number and improper fraction equivalence likely belongs in Grade 5. The supplied notes do not confirm the specific outcome.
+- The province tags require source review for the mean.
 - Checked 2026-10-11 with gpt-6.1-sol.
 
-### g35-6-mixed-whole-count
+### g67-8-median
 
-- The AB, SK, MB and ON grade tags need source confirmation.
+- AB: suggests grade 7 (medium confidence). Median appears to belong in Grade 7. The supplied notes do not confirm this outcome.
+- SK: suggests grade 7 (medium confidence). Central tendency appears to belong in Grade 7. The supplied notes do not confirm this outcome.
+- MB: suggests grade 7 (medium confidence). Central tendency appears to belong in Grade 7. The supplied notes do not confirm this outcome.
+- ON: suggests grade 4 (medium confidence). Finding the median appears to belong in Grade 4. The supplied notes do not confirm the difficulty for an even number of values.
 - Checked 2026-10-11 with gpt-6.1-sol.
 
-### g35-6-mixed-remainder
+### g67-8-mode
 
-- Check Grade 5 placement for SK, MB and ON. The AB introduction grade remains uncertain.
-- SK: suggests grade 5 (medium confidence). This simple improper fraction and mixed number relationship likely belongs in Grade 5. The specific outcome is not confirmed.
-- MB: suggests grade 5 (medium confidence). This simple improper fraction and mixed number relationship likely belongs in Grade 5. The specific outcome is not confirmed.
-- ON: suggests grade 5 (medium confidence). This simple improper fraction and mixed number relationship likely belongs in Grade 5. The specific outcome is not confirmed.
+- The province tags require source review for the mode.
 - Checked 2026-10-11 with gpt-6.1-sol.
 
-### g35-6-ratio-part-to-part
+### g67-8-independent-probability
 
-- The provincial ratio outcomes need confirmation.
+- AB: suggests grade 7 (medium confidence). Probability with two independent events appears to belong in Grade 7. The supplied notes do not confirm this outcome.
+- SK: suggests grade 7 (medium confidence). Probability with two independent events appears to belong in Grade 7. The supplied notes do not confirm this outcome.
+- MB: suggests grade 7 (medium confidence). Probability with two independent events appears to belong in Grade 7. The supplied notes do not confirm this outcome.
+- ON: suggests grade 6 (medium confidence). Theoretical probability with two independent events appears to belong in Grade 6. The supplied notes do not confirm this outcome.
 - Checked 2026-10-11 with gpt-6.1-sol.
 
-### g35-6-ratio-part-to-whole
+## Pass (20)
 
-- The provincial ratio outcomes need confirmation.
-- Checked 2026-10-11 with gpt-6.1-sol.
-
-### g35-6-ratio-equivalent
-
-- The provincial equivalent ratio outcomes need confirmation.
-- Checked 2026-10-11 with gpt-6.1-sol.
-
-### g35-6-ratio-recipe
-
-- Checked 2026-10-11 with gpt-6.1-sol.
-
-### g35-6-percent-of-hundred
-
-- Checked 2026-10-11 with gpt-6.1-sol.
-
-### g35-6-percent-of-amount
-
-- Checked 2026-10-11 with gpt-6.1-sol.
-
-### g35-6-percent-discount
-
-- Checked 2026-10-11 with gpt-6.1-sol.
-
-### g35-6-percent-sale-price
-
-- Checked 2026-10-11 with gpt-6.1-sol.
-
-### g35-6-linear-output
-
-- The Alberta tag needs review against the Grade 5 algebraic-expression outcome.
-- AB: suggests grade 5 (medium confidence). The supplied snapshot places algebraic expressions in Grade 5. Evaluating these simple expressions appears to fit that grade, but the precise outcome is not supplied.
-- Checked 2026-10-11 with gpt-6.1-sol.
-
-### g35-6-linear-table
-
-- Checked 2026-10-11 with gpt-6.1-sol.
-
-### g35-6-linear-step
-
-- Checked 2026-10-11 with gpt-6.1-sol.
-
-### g35-6-linear-initial
-
-- The Alberta tag needs review against the Grade 5 algebraic-expression outcome.
-- AB: suggests grade 5 (medium confidence). The supplied snapshot places algebraic expressions in Grade 5. Substituting zero appears to fit that grade, but the precise outcome is not supplied.
-- Checked 2026-10-11 with gpt-6.1-sol.
-
-### g35-6-linear-tenth
-
-- Checked 2026-10-11 with gpt-6.1-sol.
-
-### g35-6-equation-add
-
-- The Alberta, Saskatchewan and Manitoba grades need confirmation.
-- Checked 2026-10-11 with gpt-6.1-sol.
-
-### g35-6-equation-subtract
-
-- The Alberta, Saskatchewan and Manitoba grades need confirmation.
-- Checked 2026-10-11 with gpt-6.1-sol.
-
-### g35-6-equation-multiply
-
-- The provincial grades need confirmation for this equation form and number range.
-- Checked 2026-10-11 with gpt-6.1-sol.
-
-### g35-6-equation-divide
-
-- The provincial grades need confirmation for this equation form and number range.
-- Checked 2026-10-11 with gpt-6.1-sol.
-
-### g35-6-equation-subtrahend
-
-- The Alberta, Saskatchewan and Manitoba grades need confirmation.
-- Checked 2026-10-11 with gpt-6.1-sol.
-
-### g35-6-equation-divisor
-
-- The provincial grades need confirmation for equations with an unknown divisor.
-- Checked 2026-10-11 with gpt-6.1-sol.
-
-### g35-6-table-rule
-
-- The Alberta grade and the exact Ontario pattern outcome need confirmation.
-- Checked 2026-10-11 with gpt-6.1-sol.
-
-### g35-6-triangle-area
-
-- The supplied notes do not confirm the provincial grades for triangle area.
-- Checked 2026-10-11 with gpt-6.1-sol.
-
-### g35-6-triangle-height
-
-- The supplied notes do not confirm the provincial grades for finding a missing triangle height.
-- Checked 2026-10-11 with gpt-6.1-sol.
-
-### g35-6-parallelogram-area
-
-- Checked 2026-10-11 with gpt-6.1-sol.
-
-### g35-6-trapezoid-area
-
-- Checked 2026-10-11 with gpt-6.1-sol.
-
-### g35-6-volume-cubes
-
-- Checked 2026-10-11 with gpt-6.1-sol.
-
-### g35-6-capacity
-
-- Checked 2026-10-11 with gpt-6.1-sol.
-
-### g35-6-angle-name
-
-- Checked 2026-10-11 with gpt-6.1-sol.
-
-### g35-6-straight-angle
-
-- Checked 2026-10-11 with gpt-6.1-sol.
-
-### g35-6-triangle-sides
-
-- Checked 2026-10-11 with gpt-6.1-sol.
-
-### g35-6-coordinate
-
-- Checked 2026-10-11 with gpt-6.1-sol.
-
-### g35-6-coordinate-slide
-
-- Checked 2026-10-11 with gpt-6.1-sol.
-
-### g35-6-experimental-estimate
-
-- Checked 2026-10-11 with gpt-6.1-sol.
-
-### g35-6-experimental-probability
-
-- The supplied notes do not establish the probability grade tags for AB, SK, MB or ON.
-- Checked 2026-10-11 with gpt-6.1-sol.
-
-### g35-6-theoretical-probability
-
-- The supplied notes do not establish the probability grade tags for AB, SK, MB or ON.
-- Checked 2026-10-11 with gpt-6.1-sol.
-
-## Pass (73)
-
-- `2-digit-value` (2026-10-11, gpt-6.1-sol)
-- `2-even-or-odd` (2026-10-11, gpt-6.1-sol)
-- `2-ten-more-less` (2026-10-11, gpt-6.1-sol)
-- `2-greatest` (2026-10-11, gpt-6.1-sol)
-- `2-tens-and-ones` (2026-10-11, gpt-6.1-sol)
-- `2-skip-count-back` (2026-10-11, gpt-6.1-sol)
-- `2-add-2-digit` (2026-10-11, gpt-6.1-sol)
-- `2-subtract-2-digit` (2026-10-11, gpt-6.1-sol)
-- `2-story-add-2-digit` (2026-10-11, gpt-6.1-sol)
-- `2-story-subtract-2-digit` (2026-10-11, gpt-6.1-sol)
-- `2-three-addends` (2026-10-11, gpt-6.1-sol)
-- `2-make-ten-strategy` (2026-10-11, gpt-6.1-sol)
-- `2-increasing-pattern` (2026-10-11, gpt-6.1-sol)
-- `2-pattern-core` (2026-10-11, gpt-6.1-sol)
-- `2-change-unknown` (2026-10-11, gpt-6.1-sol)
-- `2-number-pattern-predict` (2026-10-11, gpt-6.1-sol)
-- `2-shape-pattern-predict` (2026-10-11, gpt-6.1-sol)
-- `2-true-equation` (2026-10-11, gpt-6.1-sol)
-- `2-missing-in-pattern` (2026-10-11, gpt-6.1-sol)
-- `2-change-unknown-add` (2026-10-11, gpt-6.1-sol)
-- `2-square-or-rectangle` (2026-10-11, gpt-6.1-sol)
-- `2-turned-shape` (2026-10-11, gpt-6.1-sol)
-- `3-after-99` (2026-10-11, gpt-6.1-sol)
-- `3-digit-value` (2026-10-11, gpt-6.1-sol)
-- `3-add-3-digit` (2026-10-11, gpt-6.1-sol)
-- `3-subtract-across-zero` (2026-10-11, gpt-6.1-sol)
-- `3-story-subtract` (2026-10-11, gpt-6.1-sol)
-- `3-equal-groups` (2026-10-11, gpt-6.1-sol)
-- `3-decreasing-pattern` (2026-10-11, gpt-6.1-sol)
-- `3-increasing-pattern` (2026-10-11, gpt-6.1-sol)
-- `3-area-tiles` (2026-10-11, gpt-6.1-sol)
-- `3-time-units` (2026-10-11, gpt-6.1-sol)
-- `3-bar-graph-more` (2026-10-11, gpt-6.1-sol)
-- `3-bag-likely` (2026-10-11, gpt-6.1-sol)
-- `g35-3-skip-count` (2026-10-11, gpt-6.1-sol)
-- `g35-3-order-numbers` (2026-10-11, gpt-6.1-sol)
-- `g35-3-array` (2026-10-11, gpt-6.1-sol)
-- `g35-3-groups-of` (2026-10-11, gpt-6.1-sol)
-- `g35-3-story-add` (2026-10-11, gpt-6.1-sol)
-- `g35-3-fraction-eaten` (2026-10-11, gpt-6.1-sol)
-- `g35-3-fraction-words` (2026-10-11, gpt-6.1-sol)
-- `g35-3-mass-referent` (2026-10-11, gpt-6.1-sol)
-- `g35-3-tally` (2026-10-11, gpt-6.1-sol)
-- `g35-4-digit-value` (2026-10-11, gpt-6.1-sol)
-- `g35-4-order-numbers` (2026-10-11, gpt-6.1-sol)
-- `g35-4-expanded-form` (2026-10-11, gpt-6.1-sol)
-- `g35-4-hundred-more` (2026-10-11, gpt-6.1-sol)
-- `g35-4-subtract` (2026-10-11, gpt-6.1-sol)
-- `g35-4-add` (2026-10-11, gpt-6.1-sol)
-- `g35-4-make-change` (2026-10-11, gpt-6.1-sol)
-- `g35-4-add-decimals` (2026-10-11, gpt-6.1-sol)
-- `g35-4-subtract-decimals` (2026-10-11, gpt-6.1-sol)
-- `g35-4-tenths-region` (2026-10-11, gpt-6.1-sol)
-- `g35-4-tenths-left` (2026-10-11, gpt-6.1-sol)
-- `g35-4-tenths-value` (2026-10-11, gpt-6.1-sol)
-- `g35-4-tenths-fraction` (2026-10-11, gpt-6.1-sol)
-- `g35-4-compare-like` (2026-10-11, gpt-6.1-sol)
-- `g35-4-compare-unit` (2026-10-11, gpt-6.1-sol)
-- `g35-4-tenths-decimal` (2026-10-11, gpt-6.1-sol)
-- `g35-4-hundredths-decimal` (2026-10-11, gpt-6.1-sol)
-- `g35-4-decimal-to-fraction` (2026-10-11, gpt-6.1-sol)
-- `g35-4-decreasing-table` (2026-10-11, gpt-6.1-sol)
-- `g35-4-equation-for-story` (2026-10-11, gpt-6.1-sol)
-- `g35-4-table-rule` (2026-10-11, gpt-6.1-sol)
-- `g35-4-three-same` (2026-10-11, gpt-6.1-sol)
-- `g35-4-perimeter` (2026-10-11, gpt-6.1-sol)
-- `g35-5-order-large` (2026-10-11, gpt-6.1-sol)
-- `g35-5-equivalent-scale-up` (2026-10-11, gpt-6.1-sol)
-- `g35-5-equivalent-region` (2026-10-11, gpt-6.1-sol)
-- `g35-5-pattern-start` (2026-10-11, gpt-6.1-sol)
-- `g35-5-pattern-far` (2026-10-11, gpt-6.1-sol)
-- `g35-6-all-factors` (2026-10-11, gpt-6.1-sol)
-- `g35-6-linear-difference` (2026-10-11, gpt-6.1-sol)
+- `g67-5-write-digits` (2026-10-11, gpt-6.1-sol)
+- `g67-5-ten-thousand-more` (2026-10-11, gpt-6.1-sol)
+- `g67-5-digit-value` (2026-10-11, gpt-6.1-sol)
+- `g67-5-multiply-2x2` (2026-10-11, gpt-6.1-sol)
+- `g67-5-share-remainder` (2026-10-11, gpt-6.1-sol)
+- `g67-5-add-decimals` (2026-10-11, gpt-6.1-sol)
+- `g67-5-facts-tens` (2026-10-11, gpt-6.1-sol)
+- `g67-5-add-large` (2026-10-11, gpt-6.1-sol)
+- `g67-5-least-decimal` (2026-10-11, gpt-6.1-sol)
+- `g67-5-greatest-fraction` (2026-10-11, gpt-6.1-sol)
+- `g67-5-decimal-as-fraction` (2026-10-11, gpt-6.1-sol)
+- `g67-5-rule-output` (2026-10-11, gpt-6.1-sol)
+- `g67-5-equation-add` (2026-10-11, gpt-6.1-sol)
+- `g67-5-equation-subtract` (2026-10-11, gpt-6.1-sol)
+- `g67-5-rectangle-area` (2026-10-11, gpt-6.1-sol)
+- `g67-6-nth-term` (2026-10-11, gpt-6.1-sol)
+- `g67-7-add-integers` (2026-10-11, gpt-6.1-sol)
+- `g67-7-subtract-integers` (2026-10-11, gpt-6.1-sol)
+- `g67-7-temperature` (2026-10-11, gpt-6.1-sol)
+- `g67-7-integer-order-of-operations` (2026-10-11, gpt-6.1-sol)
