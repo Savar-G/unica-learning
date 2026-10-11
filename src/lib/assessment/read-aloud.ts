@@ -46,9 +46,54 @@ export function spokenChoices(question: Pick<PublicQuestion, "say">, shown: read
   return shown.map((c) => (isLineChoice(c) ? `the ${ORDINALS[lines++] ?? "next"} line` : sayChoice(c, question.say)));
 }
 
+/** Saved tests from before #79 can contain option lists. Remove only list clauses, keeping facts and patterns. */
+function questionWords(text: string, choices: readonly string[]): string {
+  const key = (s: string) => s.toLowerCase().replace(/^or\s+/, "").replace(/[.?!]$/, "").trim();
+  const words = new Set(choices.map(key));
+  // The old spoken lists sometimes shortened a row's label ("a jar", "the green one", "neither side").
+  const aliases = choices.flatMap((c) => {
+    const full = key(c);
+    const short = full.replace(/^(?:a|an|the) /, "").replace(/ \([^)]*\)$/, "");
+    return [full, short, short.replace(/ (snake|ribbon|rope|stick|box)$/, " one"),
+      short.replace(/^neither side, it balances$/, "neither side"),
+      short.replace(/^they are /, "are they ").replace(/^they weigh /, "do they weigh "),
+      short.replace(/^both are /, "both ")];
+  });
+  const option = `(?:a |an |the )?(?:${aliases.map((c) => escape(c).replace(/, /g, ",?\\s+")).join("|")})`;
+  const list = new RegExp(`^(?:or )?${option}(?:(?:,\\s*(?:or\\s+)?|\\s+or\\s+)${option})+[.?!]$`, "i");
+  let markedList = false;
+  return text.split(/(?<=[.?!])\s+/).flatMap((sentence) => {
+    if (key(sentence) === "choose one") { markedList = true; return []; }
+    // A bare numeric list may be the pattern being tested. Only an explicit option marker makes it a choice list.
+    const numericPattern = /^[\d.,\s]+[.?!]$/.test(sentence) && !markedList;
+    if (!numericPattern && (words.has(key(sentence)) || list.test(sentence))) return [];
+    // In old comparison questions the last alternative was phrased as another question.
+    if (/^Or (?:are they the same(?: length)?|do they weigh the same)\?$/i.test(sentence)) return [];
+    // These older templates put the alternatives inside the question, rather than after a colon.
+    if (/^Will .+ get more than \d+, fewer than \d+, or exactly \d+\?$/.test(sentence)) {
+      return [sentence.replace(/^Will (.+) get .+$/, "How many will $1 get?")];
+    }
+    if (/^Is it certain, possible but not certain, or impossible that .+\?$/.test(sentence)) {
+      return [sentence.replace(/^Is it certain, possible but not certain, or impossible that /, "How likely is it that ")];
+    }
+    if (/^Is picking .+ unlikely, impossible, or certain\?$/.test(sentence)) {
+      return [sentence.replace(/^Is picking (.+) unlikely, impossible, or certain\?$/, "How likely is picking $1?")];
+    }
+    if (/^On the next toss, is heads more likely, is tails more likely, or are they equally likely\?$/.test(sentence)) {
+      return ["On the next toss, which is more likely?"];
+    }
+    const colon = sentence.indexOf(": ");
+    if (/^(Which|Who|What|How)\b/i.test(sentence) && colon >= 0 && list.test(sentence.slice(colon + 2))) {
+      return [sentence.slice(0, colon) + "?"];
+    }
+    return [sentence];
+  }).join(" ");
+}
+
 /** The spoken text: the question's read-aloud text, then "Choose one." and the choices in the order `shown`. */
 export function readAloudText(question: Pick<PublicQuestion, "readAloud" | "say">, shown: readonly string[] = []): string {
   if (shown.length === 0) return question.readAloud;
-  const sentences = spokenChoices(question, shown).map((w) => (/[.?!]$/.test(w) ? w : `${w}.`));
-  return `${question.readAloud} Choose one. ${sentences.join(" ")}`;
+  const choices = spokenChoices(question, shown);
+  const sentences = choices.map((w) => (/[.?!]$/.test(w) ? w : `${w}.`));
+  return `${questionWords(question.readAloud, choices)} Choose one. ${sentences.join(" ")}`;
 }
