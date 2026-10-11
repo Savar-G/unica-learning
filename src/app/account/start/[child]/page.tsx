@@ -5,7 +5,7 @@ import { pageMetadata } from "@/lib/metadata";
 import { requirePilot } from "@/lib/pilot";
 import { CURRICULA } from "@/lib/signup";
 import type { Child } from "@/lib/account";
-import type { AssessmentStatus } from "@/lib/test-api";
+import { startStates, stateFor } from "@/lib/assessment-store";
 import { parentId, sessionClient } from "@/lib/supabase-auth";
 import { isPhone } from "@/lib/account-server";
 import { StartTest, TrackOnce } from "@/components/account";
@@ -24,15 +24,16 @@ export default async function StartScreen({ params, searchParams }: PageProps<"/
   await requirePilot();
   const { child: id } = await params;
   const db = await sessionClient();
-  if (!(await parentId(db))) redirect("/sign-in");
+  const parent = await parentId(db);
+  if (!parent) redirect("/sign-in");
   // Row-level security returns only this parent's children; an id that is not a uuid finds nothing.
-  const [{ data: child }, { data: last }] = await Promise.all([
+  const [{ data: child }, states] = await Promise.all([
     db.from("children").select("id, first_name, grade, province").eq("id", id).maybeSingle<Child>(),
-    db.from("assessments").select("status").eq("child_id", id).order("created_at", { ascending: false }).limit(1).maybeSingle<{ status: AssessmentStatus }>(),
+    startStates(parent, id),
   ]);
   if (!child) notFound();
-  // An expired test (#72) counts as no test: the child starts again.
-  const status = last && last.status !== "expired" ? last.status : null;
+  // Start, continue, start again after 24 hours, or wait 30 days after a completed test (#72).
+  const state = stateFor(states, child.id);
   const phone = isPhone(await headers());
   const { via } = await searchParams;
 
@@ -40,7 +41,8 @@ export default async function StartScreen({ params, searchParams }: PageProps<"/
     <SupportPage label="Free math assessment" title={`${child.first_name}'s math test.`}>
       {via === "link" && <TrackOnce event="sign_in" props={{ channel: "link" }} />}
       <p className="small">Grade {child.grade} · {CURRICULA[child.province]}</p>
-      {phone ? (
+      {/* Inside the 30 days after a test there is nothing to start, on any device (#72): the screen gives the date. */}
+      {phone && state.kind !== "wait" ? (
         <div className="acct-card acct-phone">
           <TrackOnce event="phone_screen" />
           <h2>Use a laptop or tablet for the test.</h2>
@@ -48,8 +50,8 @@ export default async function StartScreen({ params, searchParams }: PageProps<"/
         </div>
       ) : (
         <>
-          <p className="lead">{child.first_name} takes the test alone, on this device, in one sitting. Start when {child.first_name} is ready.</p>
-          <div className="acct-begin"><StartTest childId={child.id} name={child.first_name} status={status} /></div>
+          {state.kind !== "wait" && <p className="lead">{child.first_name} takes the test alone, on this device, in one sitting. Start when {child.first_name} is ready.</p>}
+          <div className="acct-begin"><StartTest childId={child.id} name={child.first_name} state={state} /></div>
         </>
       )}
       <p className="small acct-out"><Link href="/account">Your account</Link></p>

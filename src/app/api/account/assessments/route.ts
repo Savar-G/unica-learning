@@ -1,21 +1,25 @@
-import { createSession, storedTest, type Grade } from "@/lib/assessment";
 import type { Child } from "@/lib/account";
-import { isUuid, newSeed, testAccess } from "@/lib/assessment-store";
+import { isUuid, newSeed, startStore, testAccess } from "@/lib/assessment-store";
 import { testFail, type StartResult } from "@/lib/test-api";
+import { startTest } from "@/lib/test-start";
 
-// Starts a test for one of the parent's children, or returns the test already open for that child.
+// Starts a test for one of the parent's children, or continues the test open for that child (#64, #72).
 // The questions are drawn now, from a new seed, and stored with the assessment; the browser never sees them in full.
+// `restart`: the family pressed "Start again" after the test expired. Without it, an expired test is refused, not
+// replaced, so a family who pressed "Continue" learns that the time ran out. A new test opens 30 days after the last
+// completed one. The rules are the assessment core's (decideStart); src/lib/test-start.ts runs them.
 export async function POST(request: Request) {
   const access = await testAccess();
   if ("error" in access) return access.error;
   const { parent, admin } = access;
 
-  let childId: unknown;
+  let body: { childId?: unknown; restart?: unknown };
   try {
-    childId = ((await request.json()) as { childId?: unknown })?.childId;
+    body = (await request.json()) ?? {};
   } catch {
     return testFail("bad_json", 400);
   }
+  const { childId } = body;
   if (!isUuid(childId)) return testFail("invalid", 400);
 
   const { data: child, error } = await admin.from("children").select("id, first_name, grade, province")
@@ -26,31 +30,23 @@ export async function POST(request: Request) {
   }
   if (!child) return testFail("not_found", 404);
 
-  const open = async () => {
-    const { data } = await admin.from("assessments").select("id").eq("child_id", child.id).eq("status", "in_progress").maybeSingle<{ id: string }>();
-    return data?.id ?? null;
-  };
-  const existing = await open();
-  if (existing) return Response.json({ ok: true, id: existing, resumed: true } satisfies StartResult);
-
-  const seed = newSeed();
-  let session;
+  const now = Date.now();
+  let outcome;
   try {
-    session = createSession({ grade: child.grade as Grade, province: child.province }, seed);
+    outcome = await startTest(startStore(admin, parent, child), now, { restart: body.restart === true, newSeed });
   } catch (e) {
-    console.error("[test] cannot build a test", child.grade, e instanceof Error ? e.message : e);
-    return testFail("not_ready", 409);
-  }
-
-  const { data: row, error: insertError } = await admin.from("assessments")
-    .insert({ parent_id: parent, child_id: child.id, seed, grade: child.grade, province: child.province, test: storedTest(session) })
-    .select("id").single<{ id: string }>();
-  if (insertError) {
-    // A second click got here first: one open test per child (unique index), so use that one.
-    const raced = insertError.code === "23505" ? await open() : null;
-    if (raced) return Response.json({ ok: true, id: raced, resumed: true } satisfies StartResult);
-    console.error("[test] start failed", insertError.message);
+    console.error("[test] start failed", e instanceof Error ? e.message : e);
     return testFail("store_failed", 502);
   }
-  return Response.json({ ok: true, id: row.id, resumed: false } satisfies StartResult);
+  if (outcome.ok) return Response.json({ ok: true, id: outcome.id, resumed: outcome.resumed } satisfies StartResult);
+  switch (outcome.error) {
+    case "expired":
+      return testFail("expired", 410);
+    case "retake_closed":
+      return testFail("retake_closed", 409, { opensAt: new Date(outcome.opensAt).toISOString() });
+    case "not_ready":
+      return testFail("not_ready", 409);
+    case "busy":
+      return testFail("store_failed", 503);
+  }
 }

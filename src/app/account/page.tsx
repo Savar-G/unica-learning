@@ -4,7 +4,8 @@ import { pageMetadata } from "@/lib/metadata";
 import { requirePilot } from "@/lib/pilot";
 import { CURRICULA } from "@/lib/signup";
 import type { Child } from "@/lib/account";
-import type { AssessmentStatus } from "@/lib/test-api";
+import type { StartState } from "@/lib/assessment";
+import { startStates, stateFor } from "@/lib/assessment-store";
 import { parentId, sessionClient } from "@/lib/supabase-auth";
 import { isPhone } from "@/lib/account-server";
 import { reportPath } from "@/lib/report-view";
@@ -24,30 +25,23 @@ export const metadata = pageMetadata({
 export default async function Account({ searchParams }: PageProps<"/account">) {
   await requirePilot();
   const db = await sessionClient();
-  if (!(await parentId(db))) redirect("/sign-in");
-  const [{ data: parent }, { data: kids }, { data: tests }, { data: reports }] = await Promise.all([
+  const parentUser = await parentId(db);
+  if (!parentUser) redirect("/sign-in");
+  const [{ data: parent }, { data: kids }, states, { data: reports }] = await Promise.all([
     db.from("parents").select("name, email").maybeSingle<{ name: string; email: string }>(),
     db.from("children").select("id, first_name, grade, province").order("created_at").returns<Child[]>(),
-    // Oldest first, so each child's latest test wins below.
-    db.from("assessments").select("id, child_id, status").order("created_at").returns<{ id: string; child_id: string; status: AssessmentStatus }[]>(),
-    // Reports (#65), oldest first like the tests.
-    db.from("reports").select("id, child_id, assessment_id").order("created_at").returns<{ id: string; child_id: string; assessment_id: string }[]>(),
+    // Start, continue, start again after 24 hours, or wait 30 days after a completed test (#72).
+    startStates(parentUser),
+    // Reports (#65), oldest first, each with the time its test finished.
+    db.from("reports").select("id, child_id, assessment:assessments(completed_at)").order("created_at")
+      .returns<{ id: string; child_id: string; assessment: { completed_at: string } | null }[]>(),
   ]);
   if (!parent) redirect("/account/finish");
-  const latest = new Map((tests ?? []).map((t) => [t.child_id, t.status]));
-  // A finished latest test links to its own report (none yet while it is built); otherwise the child's last report shows.
-  const latestTest = new Map((tests ?? []).map((t) => [t.child_id, t]));
-  const reportOfTest = new Map((reports ?? []).map((r) => [r.assessment_id, reportPath(r.id)]));
-  const lastReport = new Map((reports ?? []).map((r) => [r.child_id, reportPath(r.id)]));
-  const reportFor = (id: string) => {
-    const test = latestTest.get(id);
-    return test?.status === "completed" ? reportOfTest.get(test.id) : lastReport.get(id);
-  };
-  // An expired test (#72) counts as no test: the child starts again.
-  const testStatus = (id: string) => {
-    const s = latest.get(id);
-    return s === "expired" ? null : (s ?? null);
-  };
+  // While a child waits for the next test, the link opens the report of the test just done (none while it is built).
+  // In every other state it opens the child's newest report.
+  const testReport = new Map((reports ?? []).map((r) => [`${r.child_id}@${Date.parse(r.assessment?.completed_at ?? "")}`, reportPath(r.id)]));
+  const newestReport = new Map((reports ?? []).map((r) => [r.child_id, reportPath(r.id)]));
+  const reportFor = (id: string, state: StartState) => (state.kind === "wait" ? testReport.get(`${id}@${state.completedAt}`) : newestReport.get(id));
   const phone = isPhone(await headers());
   const { sent, password } = await searchParams;
 
@@ -69,7 +63,10 @@ export default async function Account({ searchParams }: PageProps<"/account">) {
         {children.map((c, i) => (
           <li key={c.id} className="acct-kid">
             <span><b>{c.first_name}</b><span className="small">Grade {c.grade} · {CURRICULA[c.province]}</span></span>
-            {phone ? <SendLink childId={c.id} name={c.first_name} sent={sent === "1" && i === 0} /> : <StartTest childId={c.id} name={c.first_name} status={testStatus(c.id)} report={reportFor(c.id)} />}
+            {/* Inside the 30 days after a test there is nothing to open on the laptop: the phone shows the date too (#72). */}
+            {phone && stateFor(states, c.id).kind !== "wait"
+              ? <SendLink childId={c.id} name={c.first_name} sent={sent === "1" && i === 0} />
+              : <StartTest childId={c.id} name={c.first_name} state={stateFor(states, c.id)} report={reportFor(c.id, stateFor(states, c.id))} />}
           </li>
         ))}
       </ul>

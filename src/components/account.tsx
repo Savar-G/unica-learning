@@ -2,11 +2,11 @@
 
 // Parent account screens for the online assessment pilot (#62, D-082): signup, sign-in, the children list.
 // Server writes go through /api/account/*; the browser holds only the publishable key and the parent's own session.
-import { useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
+import { useEffect, useId, useRef, useState, useSyncExternalStore, type FormEvent, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { CURRICULA, EMAIL, POSTAL, curriculumFromPostal, type CurriculumId } from "@/lib/signup";
-import type { AssessmentStatus } from "@/lib/test-api";
+import type { StartState } from "@/lib/assessment";
 import { GRADES, PASSWORD_MIN, type AccountError, type AccountResult, type ChildInput } from "@/lib/account";
 import { browserClient } from "@/lib/supabase-browser";
 import { track } from "@/lib/track";
@@ -294,24 +294,70 @@ export function AddChild({ province }: { province: CurriculumId }) {
   );
 }
 
+const DAYS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+const MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+const noSubscribe = () => () => {};
+
 /**
- * Opens the child's test (#64). An open test continues; a finished one opens its report (#65), or waits for it.
- * `report` is the path of the child's latest report; it stays reachable while a later test is open (spec #54, story 32).
+ * A moment in the reader's own time zone, for example "5:12 p.m. on Monday, November 9". The server does not know the
+ * parent's zone, so the first paint (and a page without JavaScript) shows UTC, labelled; the browser then shows local time.
  */
-export function StartTest({ childId, name, status, report }: { childId: string; name: string; status: Exclude<AssessmentStatus, "expired"> | null; report?: string }) {
-  if (status === "completed" && report) {
+function When({ at }: { at: number }) {
+  const local = useSyncExternalStore(noSubscribe, () => true, () => false);
+  const d = new Date(at);
+  const [day, date, month, h, m] = local
+    ? [d.getDay(), d.getDate(), d.getMonth(), d.getHours(), d.getMinutes()]
+    : [d.getUTCDay(), d.getUTCDate(), d.getUTCMonth(), d.getUTCHours(), d.getUTCMinutes()];
+  const clock = `${h % 12 || 12}:${String(m).padStart(2, "0")} ${h < 12 ? "a.m." : "p.m."}${local ? "" : " UTC"}`;
+  return <time dateTime={d.toISOString()}>{clock} on {DAYS[day]}, {MONTHS[month]} {date}</time>;
+}
+
+/** The button and the line under it for each start state (#72). `status` goes with test_start_click. */
+function startView(state: Exclude<StartState, { kind: "wait" }>, name: string): { label: string; note: ReactNode; status: string } {
+  switch (state.kind) {
+    case "resume":
+      return { label: "Continue test", note: <>The answers are saved. {name} can continue until <When at={state.resumeUntil} />.</>, status: "in_progress" };
+    case "finish":
+      return { label: "Finish test", note: <>All of {name}&apos;s answers are in, but the test was not sent. Open it to finish. The report then comes by email.</>, status: "finish" };
+    case "expired":
+      return { label: "Start again", note: "The last test was not finished within 24 hours, so it closed. The new test has new questions.", status: "expired" };
+    case "start":
+      return state.retake
+        ? { label: "Start test", note: "The next test is open. It has new questions.", status: "retake" }
+        : { label: "Start test", note: null, status: "new" };
+  }
+}
+
+/**
+ * Opens the child's test (#64), in the state the assessment core gives (#72): start, continue an open test until its
+ * deadline, finish a test whose answers are all in, start again after a test ran out of time, or wait 30 days after
+ * a completed test. `report` is the path of the child's newest report (#65): while the child waits it is the button,
+ * and in every other state it stays reachable under the button (spec #54, story 32).
+ */
+export function StartTest({ childId, name, state, report }: { childId: string; name: string; state: StartState; report?: string }) {
+  const noteId = useId();
+  if (state.kind === "wait") {
+    if (!report) {
+      return (
+        <span className="small acct-done">
+          Test done. The report comes by email. The next test opens at <When at={state.opensAt} />.
+        </span>
+      );
+    }
     return (
       <span className="acct-start">
         <Link className="btn ghost" href={report}>See the report <span className="sr-only">for {name}</span> <span className="arr">→</span></Link>
+        <span className="small">The next test opens at <When at={state.opensAt} />.</span>
       </span>
     );
   }
-  if (status === "completed") return <span className="small acct-done">Test done. The report comes by email.</span>;
+  const { label, note, status } = startView(state, name);
   return (
     <span className="acct-start">
-      <Link className="btn" href={`/account/test/${childId}`} onClick={() => track("test_start_click", { status: status ?? "new" })}>
-        {status === "in_progress" ? "Continue test" : "Start test"} <span className="sr-only">for {name}</span> <span className="arr">→</span>
+      <Link className="btn" href={`/account/test/${childId}`} aria-describedby={note ? noteId : undefined} onClick={() => track("test_start_click", { status })}>
+        {label} <span className="sr-only">for {name}</span> <span className="arr">→</span>
       </Link>
+      {note && <span id={noteId} className="small">{note}</span>}
       {report && <Link className="small" href={report}>See the last report<span className="sr-only"> for {name}</span></Link>}
     </span>
   );
