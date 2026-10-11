@@ -4,6 +4,7 @@
 import {
   FACTS_QUICK_MS,
   FACTS_SECURE_PERCENT,
+  RETAKE_DAYS,
   STRAND_DEVELOPING_PERCENT,
   STRAND_SECURE_PERCENT,
   WORKING_LEVEL_PERCENT,
@@ -117,9 +118,30 @@ const TIME_ZONE: Record<Province, string> = {
   other: "America/Toronto",
 };
 
+/** A day in the family's time zone, for example "October 10, 2026". */
+const familyDate = (v: ReportView, at: number) => new Intl.DateTimeFormat("en-CA", { dateStyle: "long", timeZone: TIME_ZONE[v.province] }).format(new Date(at));
+
 /** The day the test finished, in the family's time zone, for example "October 10, 2026". */
-export const reportDate = (v: ReportView) =>
-  new Intl.DateTimeFormat("en-CA", { dateStyle: "long", timeZone: TIME_ZONE[v.province] }).format(new Date(v.completedAt));
+export const reportDate = (v: ReportView) => familyDate(v, Date.parse(v.completedAt));
+
+const DAY_MS = 24 * 60 * 60_000;
+
+/**
+ * #71: help was likely, so the level may be too high. The flags behind it never reach the parent. The retake follows
+ * the 30-day rule of #72 (RETAKE_DAYS after this test finished): the date is the first whole day the next test is
+ * open, in the family's time zone, so it is true all day. The account shows the exact time.
+ */
+export function helpWarning(v: ReportView): { title: string; text: string; retake: string } | null {
+  if (!v.model.helpWarning) return null;
+  const opensAt = Date.parse(v.completedAt) + RETAKE_DAYS * DAY_MS;
+  // The last moment of the 24 hours from opensAt falls on the day after it, unless it opens at midnight.
+  const firstWholeDay = familyDate(v, opensAt + DAY_MS - 1);
+  return {
+    title: "This level may be too high",
+    text: "We saw signs in this test that can make a level look higher than it is, such as help with some questions or answers given very quickly.",
+    retake: `For a level you can trust, ${v.childName} can take a new test alone, with new questions, from ${firstWholeDay}.`,
+  };
+}
 
 /** The short curriculum name: "BC", "Ontario". */
 const curriculumName = (p: Province) => (p === "BC" ? "BC" : CURRICULA[p]);
