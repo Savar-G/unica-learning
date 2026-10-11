@@ -29,5 +29,8 @@
 import type { TaggedTemplate } from "../kit";
 import { keepMathTogether } from "./helpers";
 import { LEVEL_5 } from "./level-5";
+import { LEVEL_6 } from "./level-6";
+import { LEVEL_7 } from "./level-7";
+import { LEVEL_8 } from "./level-8";
 
-export const GRADE_6_7_BANK: readonly TaggedTemplate[] = [...LEVEL_5].map(keepMathTogether);
+export const GRADE_6_7_BANK: readonly TaggedTemplate[] = [...LEVEL_5, ...LEVEL_6, ...LEVEL_7, ...LEVEL_8].map(keepMathTogether);

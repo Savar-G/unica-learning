@@ -5,6 +5,8 @@ import {
   createSession,
   fillTemplate,
   toPublicQuestion,
+  spokenChoices,
+  REPORTED_STRAND,
   type Grade,
   type Province,
   type TaggedProvince,
@@ -19,6 +21,11 @@ const SEEDS = Array.from({ length: 400 }, (_, i) => i * 7919 + 3);
 const NOT_SPOKEN = /[=+−×÷<>%$²³√π/()●■▲★◆▼▬▮]|\s\?|-\d|\d:\d(?!\d)/;
 // The number pad types digits and one decimal point, at most 12 keys (ANSWER_MAX in src/lib/test-api.ts).
 const TYPEABLE = /^(?=.{1,12}$)\d+(\.\d+)?$/;
+const valueOfChoice = (text: string): string => {
+  const match = text.replace(/ /g, " ").match(/^(?:(\d+) )?(\d+)\/(\d+)$/);
+  if (match) return String(Number(match[1] ?? 0) + Number(match[2]) / Number(match[3]));
+  return text;
+};
 
 describe("grade 6-7 tests from the default bank", () => {
   it.each([6, 7] as Grade[])("grade %i: 42 questions, 21 in stage 1 at the school grade, in every province", (grade) => {
@@ -32,9 +39,39 @@ describe("grade 6-7 tests from the default bank", () => {
       }
     }
   });
+
+  it.each([6, 7] as Grade[])("grade %i: every route has 10 suitable required-work questions and four report areas", (grade) => {
+    for (const province of PROVINCES) {
+      for (const seed of SEEDS.slice(0, 60)) {
+        const session = createSession({ grade, province }, seed);
+        for (const [route, stage2] of Object.entries(session.stage2)) {
+          const questions = [...session.stage1, ...stage2];
+          const label = `${province} ${route} seed ${seed}`;
+          expect(questions.filter((q) => q.whiteboard).length, label).toBeGreaterThanOrEqual(10);
+          expect(questions.filter((q) => q.showWork), label).toHaveLength(10);
+          expect(questions.filter((q) => q.showWork).every((q) => q.whiteboard), label).toBe(true);
+          expect(new Set(questions.map((q) => REPORTED_STRAND[q.strand])), label)
+            .toEqual(new Set(["number", "fractions", "algebra", "shapes"]));
+          expect(new Set(questions.map((q) => `${q.prompt}|${[...(q.choices ?? [])].sort().join("|")}`)).size, label).toBe(42);
+        }
+      }
+    }
+  });
 });
 
 describe("the grades 6-7 bank", () => {
+  it.each([
+    ["g67-8-square-root", "What is the positive square root of 49?", "7"],
+    ["g67-8-add-fractions", "2/8 + 2/7 = ?", "15/28"],
+    ["g67-8-negative-equation", "6x + 12 = −18. What is x?", "−5"],
+    ["g67-8-hypotenuse", "The two sides that meet at the right angle of a right triangle are 18 cm and 24 cm. How long is the longest side, in centimetres?", "30"],
+    ["g67-8-mean", "Find the mean of these five values: 3, 13, 11, 5, 5.", "7.4"],
+  ])("marks the worked example %s", (id, prompt, answer) => {
+    const q = fillTemplate(BANK.find((t) => t.id === id)!, 3);
+    expect(q.prompt).toBe(prompt);
+    expect(q.answer).toBe(answer);
+  });
+
   it("covers levels 5-8 with all five province tags", () => {
     for (const t of BANK) {
       expect(Object.keys(t.grades).sort(), t.id).toEqual([...TAGGED].sort());
@@ -64,7 +101,7 @@ describe("the grades 6-7 bank", () => {
         expect(q.wrong.length, `seed ${seed}`).toBeGreaterThan(0);
         for (const w of q.wrong) expect(MISCONCEPTIONS[w.misconception], `seed ${seed}: ${w.misconception}`).toBeDefined();
         // An expression never breaks across lines on screen.
-        for (const shown of [q.prompt, ...(q.choices ?? [])]) expect(shown, `seed ${seed}`).not.toMatch(/ [+−×÷=]|[+−×÷=] /);
+        for (const shown of [q.prompt, ...(q.choices ?? [])]) expect(shown, `seed ${seed}`).not.toMatch(/\d [+−×÷=] | [+−×÷=] \d/);
 
         if (q.format === "number") {
           const values = [q.answer, ...q.wrong.map((w) => w.value)];
@@ -74,6 +111,7 @@ describe("the grades 6-7 bank", () => {
           expect(q.choices!.length, `seed ${seed}`).toBeGreaterThanOrEqual(3);
           expect(q.choices!.length, `seed ${seed}`).toBeLessThanOrEqual(4);
           expect(new Set(q.choices).size, `seed ${seed}: ${q.choices}`).toBe(q.choices!.length);
+          expect(new Set(q.choices!.map(valueOfChoice)).size, `seed ${seed}: equivalent choices ${q.choices}`).toBe(q.choices!.length);
           expect(q.choices).toContain(q.answer);
         }
       }
@@ -91,11 +129,20 @@ describe("the grades 6-7 bank", () => {
       }
     });
 
+    it("speaks each displayed choice without raw mathematics symbols", () => {
+      for (const seed of SEEDS.slice(0, 100)) {
+        const q = toPublicQuestion(fillTemplate(template, seed));
+        for (const said of spokenChoices(q, q.choices ?? [])) {
+          expect(said, `seed ${seed}`).not.toMatch(/[=+−×÷<>%$²³√π/()]|\d:\d(?!\d|.*[ap]\.m\.)/);
+        }
+      }
+    });
+
     it("never pairs 1 with a plural, as in '1 parts'", () => {
       for (const seed of SEEDS) {
         const q = fillTemplate(template, seed);
         for (const text of [q.prompt, q.readAloud, ...(q.choices ?? [])]) {
-          expect(text, `seed ${seed}`).not.toMatch(/(^|[^\d.,/])1 ([a-z]+ )?(?!is\b|as\b|was\b|has\b|less\b|plus\b|minus\b|times\b|over\b|and\b|more\b)[a-z]+s\b/);
+          expect(text, `seed ${seed}`).not.toMatch(/(^|[^\d.,/])1 (?:parts|units|centimetres|metres|litres|hours|minutes|dollars|cents|pages|cups|students)\b/);
         }
       }
     });

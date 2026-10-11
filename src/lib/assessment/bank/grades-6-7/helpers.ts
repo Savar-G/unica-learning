@@ -79,6 +79,30 @@ export function words(n: number): string {
 /** Keeps a sum or an equation on one line: the spaces around + − × ÷ and = do not break. */
 const keepTogether = (text: string) => text.replace(/ ([+−×÷=<>]) /g, " $1 ");
 
+/** Choice speech for this bank, including ratios, signed coordinates and algebra. */
+function speakMath(text: string): string {
+  const clean = text.replace(/ /g, " ");
+  if (/^\d+:\d+$/.test(clean)) return clean.replace(":", " to ");
+  return clean
+    .replace(/\b(\d+) (\d+)\/(\d+)/g, "$1 and $2 over $3")
+    .replace(/(\d+)\/(\d+)/g, "$1 over $2")
+    .replace(/\b(\d+)([a-z])\b/g, "$1 times $2")
+    .replace(/ − /g, " minus ")
+    .replace(/−(?=\d)/g, "negative ")
+    .replace(/\+/g, " plus ")
+    .replace(/×/g, " times ")
+    .replace(/÷/g, " divided by ")
+    .replace(/=/g, " equals ")
+    .replace(/</g, " less than ")
+    .replace(/>/g, " greater than ")
+    .replace(/%/g, " percent")
+    .replace(/²/g, " squared")
+    .replace(/³/g, " cubed")
+    .replace(/\bcm\b/g, "centimetres")
+    .replace(/[()]/g, "")
+    .replace(/\s+/g, " ").trim();
+}
+
 /** The template, with every expression in its prompt and choices kept on one line. */
 export function keepMathTogether<T extends Template>(template: T): T {
   return {
@@ -90,6 +114,10 @@ export function keepMathTogether<T extends Template>(template: T): T {
         prompt: keepTogether(f.prompt),
         answer: keepTogether(f.answer),
         wrong: f.wrong.map((w) => ({ ...w, value: keepTogether(w.value) })),
+        ...(template.format === "choice" ? {
+          say: Object.fromEntries([f.answer, ...f.wrong.map((w) => w.value)]
+            .map((value) => [keepTogether(value), f.say?.[value] ?? speakMath(value)])),
+        } : {}),
       };
     },
   };

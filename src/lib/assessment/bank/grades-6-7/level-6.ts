@@ -430,7 +430,7 @@ export const LEVEL_6: readonly TaggedTemplate[] = [
     id: "g67-6-percent-of",
     strand: "F", grades: { BC: 6, AB: 6, SK: 6, MB: 6, ON: 5 }, format: "number", whiteboard: true, standard: "6.7",
     fill(rng) {
-      const [p, whole] = draw(rng, (g) => [g.pick([10, 20, 25, 30, 40, 50, 60, 75]), g.int(4, 40) * 10], ([p, w]) => (p * w) % 100 === 0 && w > p);
+      const [p, whole] = draw(rng, (g) => [g.pick([10, 20, 25, 30, 40, 50, 60, 75]), g.int(4, 40) * 10], ([p, w]) => (p * w) % 100 === 0 && w > p && w - p !== p * w / 100);
       const answer = (p * whole) / 100;
       const wrongs = [wrong(whole - p, "F10")];
       // 80 / 25 = 3.2: only when the division ends.
@@ -481,7 +481,7 @@ export const LEVEL_6: readonly TaggedTemplate[] = [
     id: "g67-6-discount",
     strand: "F", grades: { BC: 6, AB: 6, SK: 6, MB: 6, ON: 6 }, format: "number", whiteboard: true, standard: "6.7",
     fill(rng) {
-      const [p, price] = draw(rng, (g) => [g.pick([10, 20, 25, 50]), g.int(4, 40) * 5], ([p, c]) => (p * c) % 100 === 0 && c - p !== (c * (100 - p)) / 100);
+      const [p, price] = draw(rng, (g) => [g.pick([10, 20, 25, 50]), g.int(4, 40) * 5], ([p, c]) => p !== 50 && c > p && (p * c) % 100 === 0 && distinctNumbers([c * (100 - p) / 100, c * p / 100, c - p]));
       const item = rng.pick(["jacket", "pair of shoes", "backpack", "game"]);
       return {
         values: { p, price },
@@ -642,8 +642,8 @@ export const LEVEL_6: readonly TaggedTemplate[] = [
       const a = rng.int(3, 15), x = rng.int(4, 25);
       return {
         values: { a, x },
-        prompt: `A balance is level. One side has a box and ${a} marbles. The other side has ${a + x} marbles. How many marbles are in the box?`,
-        readAloud: `A balance is level. One side has a box and ${a} marbles. The other side has ${a + x} marbles. How many marbles are in the box?`,
+        prompt: `A balance is level. One side has a box and ${a} marbles. The other side has ${a + x} marbles. All marbles have the same mass. The empty box has no mass in this model. How many marbles are in the box?`,
+        readAloud: `A balance is level. One side has a box and ${a} marbles. The other side has ${a + x} marbles. All marbles have the same mass. The empty box has no mass in this model. How many marbles are in the box?`,
         answer: String(x),
         wrong: [wrong(2 * a + x, "inverse-op")],
       };
@@ -876,7 +876,7 @@ export const LEVEL_6: readonly TaggedTemplate[] = [
       if (metres) {
         const m = rng.int(1, 9);
         return {
-          values: { m, metres: 1 },
+          values: { m, ml: 0, metres: 1 },
           prompt: `How many cubic centimetres are in ${m} cubic ${m === 1 ? "metre" : "metres"}?`,
           readAloud: `How many cubic centimetres are in ${m} cubic ${m === 1 ? "metre" : "metres"}?`,
           answer: String(m * 1_000_000),
@@ -885,7 +885,7 @@ export const LEVEL_6: readonly TaggedTemplate[] = [
       }
       const ml = rng.int(3, 95) * 10;
       return {
-        values: { ml, metres: 0 },
+        values: { ml, m: 0, metres: 0 },
         prompt: `A box holds exactly ${ml} cubic centimetres of water. How many millilitres of water is that?`,
         readAloud: `A box holds exactly ${ml} cubic centimetres of water. How many millilitres of water is that?`,
         answer: String(ml),
@@ -911,8 +911,8 @@ export const LEVEL_6: readonly TaggedTemplate[] = [
       const others = ["isosceles", "scalene", "equilateral", "right"].filter((k) => k !== kind);
       return {
         values: { a: sides[0], b: sides[1], c: sides[2] },
-        prompt: `A triangle has sides of ${sides[0]} cm, ${sides[1]} cm and ${sides[2]} cm. What kind of triangle is it?`,
-        readAloud: `A triangle has sides of ${sides[0]} centimetres, ${sides[1]} centimetres and ${sides[2]} centimetres. What kind of triangle is it?`,
+        prompt: `A triangle has sides of ${sides[0]} cm, ${sides[1]} cm and ${sides[2]} cm. What is its most specific side classification?`,
+        readAloud: `A triangle has sides of ${sides[0]} centimetres, ${sides[1]} centimetres and ${sides[2]} centimetres. What is its most specific side classification?`,
         answer: kind,
         wrong: others.map((k) => wrong(k, "triangle-type")),
       };
@@ -933,7 +933,7 @@ export const LEVEL_6: readonly TaggedTemplate[] = [
       return {
         values: { a: angles[0], b: angles[1], c: angles[2] },
         prompt: `A triangle has angles of ${angles[0]}°, ${angles[1]}° and ${angles[2]}°. What kind of triangle is it?`,
-        readAloud: `A triangle has angles of ${angles[0]} degrees, ${angles[1]} degrees and ${angles[2]} degrees. What kind of triangle is it?`,
+        readAloud: `A triangle has angles of ${angles[0]} degrees, ${angles[1]} degrees and ${angles[2]} degrees. What is its most specific side classification?`,
         answer: kind,
         wrong: others.map((k) => wrong(k, "triangle-type")),
       };
@@ -948,8 +948,8 @@ export const LEVEL_6: readonly TaggedTemplate[] = [
       const point = (p: number, q: number) => `(${p}, ${q})`;
       return {
         values: { x, y },
-        prompt: `Start at the origin, (0, 0). Move ${x} units right and ${y} units up. Which point are you on?`,
-        readAloud: `Start at the origin, where both numbers are 0. Move ${x} units right and ${y} units up. Which point are you on?`,
+        prompt: `Start at the origin, (0, 0). Move ${x} ${x === 1 ? "unit" : "units"} right and ${y} ${y === 1 ? "unit" : "units"} up. Which point are you on?`,
+        readAloud: `Start at the origin, where both numbers are 0. Move ${x} ${x === 1 ? "unit" : "units"} right and ${y} ${y === 1 ? "unit" : "units"} up. Which point are you on?`,
         answer: point(x, y),
         wrong: [wrong(point(y, x), "coordinate-swap"), wrong(point(x, 0), "one-part"), wrong(point(0, y), "one-part")],
       };
@@ -1001,7 +1001,7 @@ export const LEVEL_6: readonly TaggedTemplate[] = [
           ["a number greater than 3", (k: number) => k > 3], ["a multiple of 3", (k: number) => k % 3 === 0],
         ] as const);
         return { n, event, f: Array.from({ length: n }, (_, i) => i + 1).filter(test).length };
-      }, (v) => 2 * v.f !== v.n && v.f >= 1 && distinct([frac(v.f, v.n), frac(v.n - v.f, v.n), frac(v.f, v.n - v.f), "1/2"]));
+      }, (v) => 2 * v.f !== v.n && v.f >= 1 && distinctNumbers([v.f / v.n, (v.n - v.f) / v.n, v.f / (v.n - v.f), 0.5]));
       return {
         values: { n, f },
         prompt: `A spinner has ${n} equal parts, numbered 1 to ${n}. What is the probability of spinning ${event}?`,
@@ -1019,7 +1019,7 @@ export const LEVEL_6: readonly TaggedTemplate[] = [
       const die = rng.int(0, 1) === 1;
       if (die) {
         const t = rng.pick([12, 18, 20, 24, 30, 36]), face = rng.int(1, 6);
-        const h = draw(rng, (g) => g.int(1, Math.floor(t / 2)), (h) => h * 6 !== t);
+        const h = draw(rng, (g) => g.int(1, Math.floor(t / 2)), (h) => h * 6 !== t && h * 5 !== t && 2 * h !== t);
         return {
           values: { t, h, face, die: 1 },
           prompt: `A fair die was rolled ${t} times. It landed on ${face} ${h === 1 ? "once" : `${h} times`}. What is the theoretical probability of rolling a ${face}?`,
@@ -1028,9 +1028,9 @@ export const LEVEL_6: readonly TaggedTemplate[] = [
           wrong: [wrong(frac(h, t), "D5"), wrong(frac(t - h, t), "D5"), wrong("1/5", "D4")],
         };
       }
-      const t = rng.pick([10, 12, 20]), h = draw(rng, (g) => g.int(2, t - 2), (h) => 2 * h !== t);
+      const t = rng.pick([10, 12, 20]), h = draw(rng, (g) => g.int(2, t - 2), (h) => distinctNumbers([0.5, h / t, (t - h) / t, h / (t - h)]));
       return {
-        values: { t, h, die: 0 },
+        values: { t, h, face: 0, die: 0 },
         prompt: `A fair coin was tossed ${t} times. It landed heads ${h} times. What is the theoretical probability of heads?`,
         readAloud: `A fair coin was tossed ${t} times. It landed heads ${h} times. What is the theoretical probability of heads?`,
         answer: "1/2",

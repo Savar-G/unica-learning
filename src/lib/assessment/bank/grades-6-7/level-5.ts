@@ -229,8 +229,7 @@ export const LEVEL_5: readonly TaggedTemplate[] = [
     id: "g67-5-equivalent-fraction",
     strand: "F", grades: { BC: 5, AB: 5, SK: 5, MB: 5, ON: 5 }, format: "choice", whiteboard: false, standard: "5.3",
     fill(rng) {
-      const [a, b] = draw(rng, (g) => [g.int(1, 8), g.int(3, 9)], ([a, b]) => a < b && gcd(a, b) === 1);
-      const k = rng.int(2, 4);
+      const [a, b, k] = draw(rng, (g) => [g.int(1, 8), g.int(3, 9), g.int(2, 4)], ([a, b, k]) => a < b && gcd(a, b) === 1 && distinctNumbers([a / b, (a + k) / (b + k), a * k / b, a / (b * k)]));
       return {
         values: { a, b, k },
         prompt: `Which fraction is equal to ${frac(a, b)}?`,
@@ -511,8 +510,8 @@ export const LEVEL_5: readonly TaggedTemplate[] = [
         readAloud: `${story} Let ${v} be the number of ${things} ${name} had at first. Which equation fits?`,
         answer: gain ? `${v} + ${a} = ${total}` : `${v} − ${a} = ${total}`,
         wrong: gain
-          ? [wrong(`${v} − ${a} = ${total}`, "operation"), wrong(`${v} = ${total} + ${a}`, "inverse-op"), wrong(`${a} × ${v} = ${total}`, "operation")]
-          : [wrong(`${v} + ${a} = ${total}`, "operation"), wrong(`${v} = ${total} − ${a}`, "inverse-op"), wrong(`${a} × ${v} = ${total}`, "operation")],
+          ? [wrong(`${v} − ${a} = ${total}`, "operation"), wrong(`${v} = ${total}`, "one-part"), wrong(`${a} × ${v} = ${total}`, "operation")]
+          : [wrong(`${v} + ${a} = ${total}`, "operation"), wrong(`${v} = ${total}`, "one-part"), wrong(`${a} × ${v} = ${total}`, "operation")],
       };
     },
   },

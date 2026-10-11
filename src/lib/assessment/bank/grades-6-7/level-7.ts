@@ -122,7 +122,7 @@ export const LEVEL_7: readonly TaggedTemplate[] = [
     id: "g67-7-temperature",
     strand: "O", grades: { BC: 7, AB: 7, SK: 7, MB: 7, ON: 7 }, format: "choice", whiteboard: true, standard: "7.2",
     fill(rng) {
-      const [t, change] = draw(rng, (g) => [-g.int(2, 15), g.int(3, 20)], ([t, c]) => t + c !== 0 && distinctNumbers([t + c, t - c, -t + c, Math.abs(t) + c]));
+      const [t, change] = draw(rng, (g) => [-g.int(2, 15), g.int(3, 20)], ([t, c]) => t + c !== 0 && Math.abs(t) !== c);
       const rises = rng.int(0, 1) === 1;
       const answer = rises ? t + change : t - change;
       return {
@@ -130,10 +130,7 @@ export const LEVEL_7: readonly TaggedTemplate[] = [
         prompt: `The temperature is ${num(t)}°C. It ${rises ? "rises" : "falls"} by ${change} degrees. What is the new temperature, in degrees Celsius?`,
         readAloud: `The temperature is ${sayNum(t)} degrees Celsius. It ${rises ? "rises" : "falls"} by ${change} degrees. What is the new temperature, in degrees Celsius?`,
         answer: num(answer),
-        wrong: (rises
-          ? [wrong(num(t - change), "O9"), wrong(num(-(Math.abs(t) + change)), "O9"), wrong(num(Math.abs(t) + change), "O9")]
-          : [wrong(num(t + change), "O9"), wrong(num(-t - change + 2 * -t * 0 + -t * 0 + (change - Math.abs(t)) * 0 + Math.abs(t) - change + -Math.abs(t) + 0 * 0 + change - change), "O9"), wrong(num(Math.abs(t) + change), "O9")]
-        ).filter((w, i, all) => w.value !== num(answer) && all.findIndex((x) => x.value === w.value) === i),
+        wrong: [wrong(num(rises ? t - change : t + change), "O9"), wrong(num(Math.abs(t) + change), "O9"), wrong(num(t), "one-part")],
       };
     },
   },
@@ -194,7 +191,7 @@ export const LEVEL_7: readonly TaggedTemplate[] = [
       return {
         values: { n, d100: Math.round(d * 100), divide: divide ? 1 : 0 },
         prompt: `Without working it out: is ${n} ${divide ? "÷" : "×"} ${fmt(d)} more than ${n}, less than ${n} or equal to ${n}?`,
-        readAloud: `Without working it out: is ${n} ${divide ? "divided by" : "times"} ${fmt(d)} more than ${n}, less than ${n}, or equal to ${n}?`,
+        readAloud: `Without working it out, how does ${n} ${divide ? "divided by" : "times"} ${fmt(d)} compare with ${n}?`,
         answer: more ? `More than ${n}` : `Less than ${n}`,
         wrong: [wrong(more ? `Less than ${n}` : `More than ${n}`, "O4"), wrong(`Equal to ${n}`, "same-size")],
       };
@@ -238,7 +235,7 @@ export const LEVEL_7: readonly TaggedTemplate[] = [
     id: "g67-7-change-several",
     strand: "O", grades: { BC: 7, AB: 7, SK: 7, MB: 7, ON: 7 }, format: "number", whiteboard: true, standard: "7.3",
     fill(rng) {
-      const [n, cents] = draw(rng, (g) => [g.int(2, 5), g.int(105, 495)], ([n, c]) => c % 5 === 0 && c % 100 !== 0 && n * c < 2000);
+      const [n, cents] = draw(rng, (g) => [g.int(2, 5), g.int(105, 495)], ([n, c]) => c % 5 === 0 && c % 100 !== 0 && n * c < 2000 && distinctNumbers([n * c, (n * c < 1000 ? 1000 : 2000) - n * c, (n * c < 1000 ? 1000 : 2000) - c]));
       const bill = n * cents < 1000 ? 10 : 20;
       const name = rng.pick(NAMES), item = rng.pick(["notebooks", "pens", "juice boxes", "markers"]);
       return {
@@ -317,8 +314,8 @@ export const LEVEL_7: readonly TaggedTemplate[] = [
     id: "g67-7-repeating-decimal",
     strand: "F", grades: { BC: 7, AB: 7, SK: 7, MB: 7, ON: 7 }, format: "choice", whiteboard: true, standard: "7.4",
     fill(rng) {
-      const repeating = [[1, 3], [2, 3], [1, 6], [5, 6], [1, 9], [2, 9], [4, 9], [1, 7], [2, 7], [1, 11], [5, 12], [7, 12]] as const;
-      const ending = [[1, 4], [3, 4], [1, 5], [2, 5], [3, 5], [1, 8], [3, 8], [5, 8], [7, 8], [1, 2], [3, 10], [7, 20], [9, 20], [3, 16]] as const;
+      const repeating: readonly (readonly [number, number])[] = [[1, 3], [2, 3], [1, 6], [5, 6], [1, 9], [2, 9], [4, 9], [1, 7], [2, 7], [1, 11], [5, 12], [7, 12]] as const;
+      const ending: readonly (readonly [number, number])[] = [[1, 4], [3, 4], [1, 5], [2, 5], [3, 5], [1, 8], [3, 8], [5, 8], [7, 8], [1, 2], [3, 10], [7, 20], [9, 20], [3, 16]] as const;
       const askRepeating = rng.int(0, 1) === 1;
       const [answerPool, otherPool] = askRepeating ? [repeating, ending] : [ending, repeating];
       const [n, d] = rng.pick(answerPool);
@@ -439,7 +436,7 @@ export const LEVEL_7: readonly TaggedTemplate[] = [
     id: "g67-7-sales-tax",
     strand: "F", grades: { BC: 7, AB: 7, SK: 7, MB: 7, ON: 7 }, format: "number", whiteboard: true, standard: "7.13",
     fill(rng) {
-      const [rate, price] = draw(rng, (g) => [g.pick([5, 7, 12, 13, 15]), g.int(2, 30) * 10], ([r, p]) => (r * p) % 10 === 0 || (r * p) % 1 === 0);
+      const [rate, price] = draw(rng, (g) => [g.pick([5, 7, 12, 13, 15]), g.int(2, 30) * 10], ([, p]) => p !== 100);
       const tax = (rate * price) / 100;
       const item = rng.pick(["A game", "A pair of skates", "A lamp", "A backpack"]);
       return {
@@ -472,7 +469,7 @@ export const LEVEL_7: readonly TaggedTemplate[] = [
     id: "g67-7-sale-price",
     strand: "F", grades: { BC: 7, AB: 7, SK: 7, MB: 7, ON: 7 }, format: "number", whiteboard: true, standard: "7.13",
     fill(rng) {
-      const [rate, price] = draw(rng, (g) => [g.pick([15, 30, 35, 40, 45, 60, 65]), g.int(4, 30) * 10], ([r, p]) => (r * p) % 100 === 0 && p - r !== (p * (100 - r)) / 100);
+      const [rate, price] = draw(rng, (g) => [g.pick([15, 30, 35, 40, 45, 60, 65]), g.int(4, 30) * 10], ([r, p]) => (r * p) % 100 === 0 && p > r && distinctNumbers([p - r, p * (100 - r) / 100, p * r / 100]));
       const item = rng.pick(["jacket", "bike helmet", "pair of boots", "tent"]);
       return {
         values: { rate, price },
@@ -660,13 +657,13 @@ export const LEVEL_7: readonly TaggedTemplate[] = [
     id: "g67-7-negative-input",
     strand: "A", grades: { BC: 7, AB: 8, SK: 8, MB: 8, ON: 8 }, format: "choice", whiteboard: true, standard: "7.5",
     fill(rng) {
-      const [a, b, x] = draw(rng, (g) => [g.int(2, 6), g.int(1, 9), -g.int(1, 6)], ([a, b, x]) => distinctNumbers([a * x + b, -a * x + b, -(a * -x + b), a * x - b]));
+      const [a, b, x] = draw(rng, (g) => [g.int(2, 6), g.int(1, 9), -g.int(1, 6)], ([a, b, x]) => distinctNumbers([a * x + b, -a * x + b, a * x - b, a + x + b]));
       return {
         values: { a, b, x },
         prompt: `y = ${a}x + ${b}. What is y when x = ${num(x)}?`,
         readAloud: `y equals ${a} times x, plus ${b}. What is y when x is ${sayNum(x)}?`,
         answer: num(a * x + b),
-        wrong: [wrong(num(-a * x + b), "sign-rule"), wrong(num(-(a * -x + b)), "O9"), wrong(num(a * x - b), "O9")],
+        wrong: [wrong(num(-a * x + b), "sign-rule"), wrong(num(a * x - b), "O9"), wrong(num(a + x + b), "A3")],
       };
     },
   },
@@ -726,8 +723,8 @@ export const LEVEL_7: readonly TaggedTemplate[] = [
       const total = k * x + a;
       return {
         values: { k, a, x },
-        prompt: `A balance is level. One side has ${k} boxes and ${a} marbles. The other side has ${total} marbles. Every box holds the same number of marbles. How many marbles are in one box?`,
-        readAloud: `A balance is level. One side has ${k} boxes and ${a} marbles. The other side has ${total} marbles. Every box holds the same number of marbles. How many marbles are in one box?`,
+        prompt: `A balance is level. One side has ${k} boxes and ${a} marbles. The other side has ${total} marbles. Every box holds the same number of marbles. All marbles have the same mass. The empty boxes have no mass in this model. How many marbles are in one box?`,
+        readAloud: `A balance is level. One side has ${k} boxes and ${a} marbles. The other side has ${total} marbles. Every box holds the same number of marbles. All marbles have the same mass. The empty boxes have no mass in this model. How many marbles are in one box?`,
         answer: String(x),
         wrong: [wrong(total - a, "A6"), wrong(total + a, "A6")],
       };
@@ -738,9 +735,9 @@ export const LEVEL_7: readonly TaggedTemplate[] = [
   {
     // Map, grade 7: a circle with radius 5 cm; circumference with 3.14 (misconception M10).
     id: "g67-7-circumference",
-    strand: "MG", grades: { BC: 7, AB: 7, SK: 7, MB: 7, ON: 8 }, format: "number", whiteboard: true, standard: "7.7",
+    strand: "MG", grades: { BC: 7, AB: 7, SK: 7, MB: 7, ON: 7 }, format: "number", whiteboard: true, standard: "7.7",
     fill(rng) {
-      const r = rng.int(2, 15), useRadius = rng.int(0, 1) === 1;
+      const r = rng.pick([3, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]), useRadius = rng.int(0, 1) === 1;
       const c = 2 * 3.14 * r;
       return {
         values: { r, useRadius: useRadius ? 1 : 0 },
@@ -756,9 +753,9 @@ export const LEVEL_7: readonly TaggedTemplate[] = [
   {
     // Map, grade 7: a circle with radius 3 cm; area with 3.14 (misconception M10).
     id: "g67-7-circle-area",
-    strand: "MG", grades: { BC: 7, AB: 7, SK: 7, MB: 7, ON: 8 }, format: "number", whiteboard: true, standard: "7.7",
+    strand: "MG", grades: { BC: 7, AB: 7, SK: 7, MB: 7, ON: 7 }, format: "number", whiteboard: true, standard: "7.7",
     fill(rng) {
-      const r = rng.int(2, 12);
+      const r = rng.int(3, 12);
       return {
         values: { r },
         prompt: `A circle has a radius of ${r} cm. Use 3.14 for π. What is its area, in square centimetres?`,
@@ -771,7 +768,7 @@ export const LEVEL_7: readonly TaggedTemplate[] = [
   {
     // From a circumference back to the diameter.
     id: "g67-7-diameter-from-circumference",
-    strand: "MG", grades: { BC: 7, AB: 7, SK: 7, MB: 7, ON: 8 }, format: "number", whiteboard: true, standard: "7.7",
+    strand: "MG", grades: { BC: 7, AB: 7, SK: 7, MB: 7, ON: 7 }, format: "number", whiteboard: true, standard: "7.7",
     fill(rng) {
       const d = rng.int(2, 30);
       return {
@@ -807,7 +804,7 @@ export const LEVEL_7: readonly TaggedTemplate[] = [
       return {
         values: { r, h },
         prompt: `A cylinder has a radius of ${r} cm and a height of ${h} cm. Use 3.14 for π. What is its volume, in cubic centimetres?`,
-        readAloud: `A cylinder has a radius of ${r} centimetres and a height of ${h} centimetres. Use 3.14 for pi. What is its volume, in cubic centimetres?`,
+        readAloud: `A cylinder has a radius of ${r} ${r === 1 ? "centimetre" : "centimetres"} and a height of ${h} centimetres. Use 3.14 for pi. What is its volume, in cubic centimetres?`,
         answer: typed(3.14 * r * r * h),
         wrong: [wrong(typed(2 * 3.14 * r * h), "M10"), wrong(typed(3.14 * 4 * r * r * h), "M10")],
       };
@@ -884,7 +881,7 @@ export const LEVEL_7: readonly TaggedTemplate[] = [
     id: "g67-7-circle-graph-amount",
     strand: "DP", grades: { BC: 7, AB: 7, SK: 7, MB: 7, ON: 7 }, format: "number", whiteboard: true, standard: "7.11",
     fill(rng) {
-      const [p, total] = draw(rng, (g) => [g.pick([10, 15, 20, 25, 30, 35, 40, 45]), g.int(4, 30) * 20], ([p, t]) => (p * t) % 100 === 0 && t % p !== 0 || ((p * t) % 100 === 0 && t / p !== (p * t) / 100));
+      const [p, total] = draw(rng, (g) => [g.pick([10, 15, 20, 25, 30, 35, 40, 45]), g.int(4, 30) * 20], ([p, t]) => (p * t) % 100 === 0 && t !== 100 && t / p !== (p * t) / 100 && t / p !== p);
       const [who, what] = rng.pick([["students", "walk to school"], ["people", "chose pizza"], ["visitors", "came by bus"]] as const);
       const wrongs = [wrong(p, "graph-value")];
       if (((total * 1000) / p) % 1 === 0) wrongs.push(wrong(typed(total / p), "F10"));
@@ -934,7 +931,7 @@ export const LEVEL_7: readonly TaggedTemplate[] = [
   {
     // 7.12: the outcomes of two independent events.
     id: "g67-7-count-outcomes",
-    strand: "DP", grades: { BC: 7, AB: 7, SK: 7, MB: 7, ON: 7 }, format: "number", whiteboard: true, standard: "7.12",
+    strand: "DP", grades: { BC: 8, AB: 7, SK: 7, MB: 7, ON: 7 }, format: "number", whiteboard: true, standard: "8.13",
     fill(rng) {
       const [first, a] = rng.pick([["a coin", 2], ["a die", 6], ["a spinner with 3 equal parts", 3], ["a spinner with 4 equal parts", 4], ["a spinner with 5 equal parts", 5]] as const);
       const [second, b] = rng.pick([["a coin", 2], ["a die", 6], ["a spinner with 3 equal parts", 3], ["a spinner with 4 equal parts", 4]] as const);
@@ -965,15 +962,15 @@ export const LEVEL_7: readonly TaggedTemplate[] = [
   {
     // Misconception D3: two dice; a sum of 7 is more likely than a sum of 12.
     id: "g67-7-dice-sum",
-    strand: "DP", grades: { BC: 7, AB: 7, SK: 7, MB: 7, ON: 7 }, format: "choice", whiteboard: true, standard: "7.12",
+    strand: "DP", grades: { BC: 8, AB: 7, SK: 7, MB: 7, ON: 7 }, format: "choice", whiteboard: true, standard: "8.13",
     fill(rng) {
       const ways = (s: number) => 6 - Math.abs(s - 7);
       const [a, b] = draw(rng, (g) => [g.int(2, 12), g.int(2, 12)], ([a, b]) => a < b && ways(a) !== ways(b));
       const more = ways(a) > ways(b) ? a : b, less = more === a ? b : a;
       return {
         values: { a, b },
-        prompt: `Two dice are rolled and the numbers are added. Which is more likely: a sum of ${a} or a sum of ${b}?`,
-        readAloud: `Two dice are rolled and the numbers are added. Which is more likely: a sum of ${a} or a sum of ${b}?`,
+        prompt: "Two fair dice are rolled and the numbers are added. Which sum is more likely?",
+        readAloud: "Two fair dice are rolled and the numbers are added. Which sum is more likely?",
         answer: `A sum of ${more}`,
         wrong: [wrong(`A sum of ${less}`, "chance-reversed"), wrong("They are equally likely", "D3")],
       };
