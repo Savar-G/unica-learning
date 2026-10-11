@@ -101,6 +101,9 @@
   .test-split:has(> .test-field) { --test-low: 140px; }
   .test-choices { grid-template-columns: 1fr 1fr; }
   .test-num { grid-template-columns: 1fr 1fr; max-width: none; align-items: start; }
+  /* Reserve the drawing area's 360 px plus the board heading and the pane's padding. */
+  .test-split.test-desk { --test-low: 432px; }
+  .test-desk .wb-surface { min-height: 360px; }
 }
 
 @media (prefers-reduced-motion: reduce) {
