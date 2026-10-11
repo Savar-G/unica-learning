@@ -1,11 +1,10 @@
 /* The whiteboard (#67, D-088): dotted paper at full height, tools in a side rail on the right. Every tap target is
-   44 px or more. #79 restyles the test screens around it. */
+   44 px or more. Loads after test-base.css, which holds the tokens. */
 .wb { flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 10px; }
 .wb-head { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; padding: 0 4px; }
 [data-look="warm"] .wb-head h2 { margin: 0; font: 500 17px/1.2 var(--sans); letter-spacing: -0.01em; }
 .wb-head p { margin: 0; font: 400 13px/1.2 var(--mono); color: var(--ink-2); }
-/* Dark tangerine: the brand tangerine is too light for text on white. */
-.wb-head p.is-required { color: #b8410f; }
+.wb-head p.is-required { color: var(--test-warn); }
 
 .wb-body { flex: 1; min-height: 0; display: flex; border: 1.5px solid var(--line); border-radius: 14px; background: #fff; overflow: hidden; transition: border-color 0.2s, box-shadow 0.2s; }
 .wb.is-nudge .wb-body { border-color: var(--accent); box-shadow: 0 0 0 4px var(--accent-soft); }
@@ -32,7 +31,6 @@
 .wb-tool[aria-pressed="true"] { background: var(--ink); border-color: var(--ink); color: #fff; }
 .wb-tool:disabled { opacity: 0.35; cursor: default; }
 .wb-clear { font: 500 13px/1 var(--sans); }
-.wb-modes button:focus-visible, .wb-tool:focus-visible { outline: 2px solid var(--sky); outline-offset: 2px; }
 
 @media (prefers-reduced-motion: reduce) {
   .wb-body { transition: none; }

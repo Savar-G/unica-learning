@@ -1,60 +1,23 @@
-/* The child's test (#64). Plain screens until the split-desk design (D-088) lands in #79. Every tap target is 44 px or more. */
-.test-root { min-height: 100dvh; display: flex; flex-direction: column; background: #fff; }
-.test-top { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 18px var(--gut); border-bottom: 1px solid var(--line-soft); }
-.test-main { flex: 1; display: grid; align-content: center; justify-items: center; padding: clamp(24px, 5vw, 56px) var(--gut); }
+/* The child's test screens (#64, #79, D-088): the start screen, the question desk and the end. The shared frame, panes
+   and controls are in test-base.css, which loads first. */
 
-.test-card { width: min(100%, 640px); display: grid; gap: 18px; justify-items: start; }
-.test-card h1 { margin: 0; font-size: clamp(32px, 4.5vw, 48px); line-height: 1.1; }
-.test-card p { margin: 0; }
-.test-rules { list-style: none; margin: 4px 0; padding: 0; display: grid; gap: 10px; width: 100%; }
-.test-rules li { padding: 14px 16px; border-radius: 6px; background: var(--card, #f6f4ef); font-size: 18px; }
-.test-alert { margin: 0; padding: 12px 14px; border-radius: 6px; background: var(--card, #f6f4ef); width: 100%; }
+/* ---------- start (also: resume, finish, start again, not ready) ---------- */
+.test-rules { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.test-rules li { padding: 12px 16px; border: 1px solid var(--line); border-radius: 10px; background: #fff; font-size: 17px; line-height: 1.45; }
+.test-intro-note { margin: 0; font-size: 17px; line-height: 1.5; color: var(--ink-2); }
 
-.test-q { width: min(100%, 640px); display: grid; gap: 24px; }
-.test-prompt { margin: 0; font-size: clamp(28px, 3.6vw, 40px); line-height: 1.2; outline: none; }
-.test-choices { display: grid; gap: 12px; }
-.test-choice { display: flex; align-items: center; gap: 16px; min-height: 64px; padding: 12px 20px; border: 1px solid var(--line); border-radius: 6px; background: #fff; color: var(--ink); font: 400 26px/1.2 var(--sans); text-align: left; cursor: pointer; }
-.test-choice:hover { border-color: var(--ink-2); }
-.test-choice[aria-checked="true"] { border: 2px solid var(--ink); padding: 11px 19px; }
-.test-choice:focus-visible, .test-pad button:focus-visible { outline: 2px solid var(--sky); outline-offset: 2px; }
-.test-dot { flex: none; width: 22px; height: 22px; border-radius: 50%; border: 2px solid var(--line); }
-.test-choice[aria-checked="true"] .test-dot { border: 7px solid var(--ink); }
+/* ---------- the question desk ---------- */
+/* The whiteboard pane: the board at full height (whiteboard.css). */
+.test-desk .test-pane-r { padding-top: 14px; }
 
-.test-num { display: grid; gap: 14px; justify-items: start; }
-.test-display { display: flex; align-items: center; min-width: min(100%, 300px); min-height: 64px; padding: 0 20px; border: 2px solid var(--ink); border-radius: 6px; font: 500 30px/1 var(--sans); }
-.test-display i { font: 400 18px/1 var(--sans); color: var(--ink-2); }
-.test-pad { display: grid; grid-template-columns: repeat(3, 80px); gap: 10px; }
-.test-pad button { height: 64px; border: 1px solid var(--line); border-radius: 6px; background: #fff; color: var(--ink); font: 500 26px/1 var(--sans); cursor: pointer; }
-.test-pad button:active { background: var(--card, #f6f4ef); }
+/* ---------- the end ---------- */
+.test-end { flex: 1; display: grid; place-items: center; margin: 18px; border-radius: 22px; text-align: center; }
+.test-end > div { position: relative; z-index: 1; display: grid; gap: 16px; justify-items: center; padding: 24px; }
+[data-look="warm"] .test-end .test-title { font-size: clamp(44px, 6vw, 76px); }
+.test-end .test-lead { max-width: 36ch; color: var(--ink); }
+.test-end-link { margin: 8px 0 0; font-size: 16px; }
+.test-end-link a { display: inline-flex; align-items: center; min-height: 44px; padding: 0 6px; color: var(--ink); }
 
-.test-next { display: flex; justify-content: flex-end; }
-.test-next .btn { min-height: 52px; padding-inline: 32px; }
-.test-next .btn:disabled, .test-card .btn:disabled { opacity: 0.45; cursor: not-allowed; transform: none; box-shadow: none; }
-
-/* The split desk (#67, D-088): question and answer on the left (about 40%), the whiteboard at full height on the right.
-   The screen does not scroll at 1440x900, 1024x768 or 768x1024; if the left pane runs long, it scrolls on its own. */
-.test-root.is-desk { height: 100dvh; min-height: 0; }
-.test-root.is-desk .test-top { padding-block: 12px; }
-.test-main:has(> .test-desk) { display: flex; min-height: 0; padding: 14px var(--gut) 16px; }
-.test-desk { flex: 1; width: min(100%, 1440px); margin-inline: auto; min-height: 0; display: grid; grid-template-columns: minmax(340px, 2fr) minmax(0, 3fr); border: 1px solid var(--line); border-radius: 14px; overflow: hidden; background: #fff; }
-.test-desk-q { display: flex; flex-direction: column; gap: 22px; min-height: 0; overflow: auto; padding: clamp(20px, 2.6vw, 36px); background: var(--soft); border-right: 1px solid var(--line); }
-.test-desk-board { display: flex; flex-direction: column; min-height: 0; padding: 14px clamp(12px, 1.6vw, 22px) clamp(12px, 1.6vw, 22px); }
-.test-desk .test-next { margin-top: auto; align-items: center; gap: 14px; }
-.test-why { margin: 0 auto 0 0; font: 500 15px/1.3 var(--sans); color: #b8410f; }
-.test-desk .test-pad { grid-template-columns: repeat(3, minmax(64px, 80px)); }
-.test-desk .test-choice { background: #fff; }
-
-/* Tablet in portrait and narrow windows: the panes stack, the board keeps at least 360 px. */
 @media (max-width: 900px), (orientation: portrait) {
-  .test-desk { grid-template-columns: 1fr; grid-template-rows: auto minmax(360px, 1fr); }
-  .test-desk-q { border-right: 0; border-bottom: 1px solid var(--line); gap: 16px; padding: 18px 20px; overflow: visible; }
-  .test-desk .test-choices { grid-template-columns: 1fr 1fr; }
-  .test-desk .test-num { grid-template-columns: auto auto; justify-content: start; align-items: start; gap: 16px; }
-  .test-desk .test-display { min-width: 220px; }
-  .test-desk .test-pad button { height: 56px; }
+  .test-end { margin: 16px 20px 20px; }
 }
-
-.test-end { width: min(100%, 1100px); min-height: min(70dvh, 640px); display: grid; align-content: center; gap: 18px; }
-[data-look="warm"] .test-end h2 { font-size: clamp(40px, 6vw, 72px); }
-.test-end p { margin: 0 auto; max-width: 30em; font-size: 20px; }
-.test-end .small { font-size: 15px; }

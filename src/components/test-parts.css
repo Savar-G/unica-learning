@@ -1,43 +1,28 @@
-/* Read-aloud button, progress bar and halfway break (#69), in the split-desk look (D-088). #79 restyles the test around them.
-   Every tap target is 44 px or more; with reduced motion nothing moves. */
+/* Read-aloud button, progress and halfway break (#69), in the split-desk look (D-088, #79). Loads after test-base.css,
+   which holds the tokens. Every tap target is 44 px or more; with reduced motion nothing moves. */
 
 /* ---------- read it to me ---------- */
-.test-qrow { display: flex; gap: 16px; align-items: flex-start; }
-.test-qrow .test-prompt { flex: 1; min-width: 0; }
-.test-read { flex: none; display: grid; place-items: center; width: 60px; height: 60px; border-radius: 50%; border: 0; background: var(--sky); color: #fff; cursor: pointer; box-shadow: 0 6px 16px -8px rgba(40, 80, 200, 0.7); transition: background 0.2s; }
-.test-read:hover { background: #4a7de6; }
-.test-read:focus-visible { outline: 2px solid var(--ink); outline-offset: 3px; }
+.test-read { flex: none; display: grid; place-items: center; width: 60px; height: 60px; border-radius: 50%; border: 0; background: var(--test-read); color: #fff; cursor: pointer; box-shadow: 0 6px 16px -8px rgba(40, 80, 200, 0.7); transition: background 0.2s; }
+.test-read:hover { background: var(--test-read-deep); }
 .test-read[data-speaking] { background: var(--ink); animation: test-read-pulse 1.4s ease-in-out infinite; }
-@keyframes test-read-pulse { 50% { box-shadow: 0 0 0 10px rgba(91, 141, 239, 0.2); } }
+@keyframes test-read-pulse { 50% { box-shadow: 0 0 0 10px var(--test-read-glow); } }
 
 /* ---------- progress ---------- */
-/* In the top bar: the segments in the middle, "n of N" on the right (DESIGN.md, assessment test item 1). */
-.test-progress { flex: 1; display: flex; align-items: center; gap: 24px; min-width: 0; }
-.test-progress-bar { flex: 0 1 760px; margin-inline: auto; display: flex; align-items: center; gap: 10px; min-width: 0; }
+/* In the top bar: the segments in the middle column, "n of N" in the right one (DESIGN.md, assessment test item 1). */
+.test-progress { display: contents; }
+.test-progress-bar { width: 100%; display: flex; align-items: center; gap: 10px; min-width: 0; }
 .test-progress-seg { flex: 1; display: flex; gap: 3px; min-width: 0; }
-.test-progress-seg span { flex: 1; min-width: 2px; height: 8px; border-radius: 2px; background: var(--line-soft, #ececef); transition: background 0.3s; }
+.test-progress-seg span { flex: 1; min-width: 2px; height: 8px; border-radius: 2px; background: var(--line-soft); transition: background 0.3s; }
 .test-progress-seg span.is-done { background: var(--ink); }
 .test-progress-seg span.is-now { background: var(--accent); }
-.test-progress-ring { flex: none; width: 14px; height: 14px; border-radius: 50%; border: 2px solid #d4d4d8; background: #fff; transition: background 0.3s, border-color 0.3s; }
-.test-progress-ring.is-now { border-color: var(--accent); background: var(--accent-soft, #fff1ea); }
-.test-progress-ring.is-done { border-color: var(--leaf); background: var(--g4, #a6e8cb); }
-.test-progress-count { flex: none; min-width: 5.5em; text-align: right; font: 500 14px/1 var(--mono); color: var(--ink-2); white-space: nowrap; }
+.test-progress-ring { flex: none; width: 14px; height: 14px; border-radius: 50%; border: 2px solid var(--test-rule); background: #fff; transition: background 0.3s, border-color 0.3s; }
+.test-progress-ring.is-now { border-color: var(--accent); background: var(--accent-soft); }
+.test-progress-ring.is-done { border-color: var(--leaf); background: var(--g4); }
+.test-progress-count { justify-self: end; font: 500 14px/1 var(--mono); color: var(--ink-2); white-space: nowrap; }
 
 /* ---------- halfway break ---------- */
-.test-break { width: min(100%, 1200px); min-height: min(72dvh, 640px); display: grid; grid-template-columns: minmax(340px, 5fr) minmax(0, 7fr); border: 1px solid var(--line); border-radius: 14px; overflow: hidden; background: #fff; }
-.test-break-msg { display: flex; flex-direction: column; justify-content: center; gap: 20px; padding: clamp(28px, 4vw, 48px); background: var(--soft); border-right: 1px solid var(--line); }
-.test-break-kicker { margin: 0; font: 500 14px/1.2 var(--mono); color: var(--ink-2); }
-.test-break-title { margin: 0; font: 300 clamp(40px, 4.4vw, 60px)/1.04 var(--sans); letter-spacing: -0.035em; outline: none; }
-.test-break-lead { margin: 0; max-width: 30ch; font: 400 20px/1.5 var(--sans); color: var(--ink-2); }
-.test-break-btns { display: flex; flex-direction: column; align-items: flex-start; gap: 10px; margin-top: 8px; }
-.test-break-btns .btn { min-height: 56px; padding: 0 24px; font-size: 17px; }
-.test-break-btns .btn:focus-visible { outline: 2px solid var(--sky); outline-offset: 2px; }
-.test-break-field {
-  position: relative; display: grid; place-items: center; margin: 18px; border-radius: 12px;
-  background: var(--noise), radial-gradient(45% 60% at 20% 30%, var(--g1), transparent 72%), radial-gradient(45% 60% at 80% 25%, var(--g2), transparent 72%), radial-gradient(50% 60% at 62% 88%, var(--g3), transparent 72%), radial-gradient(40% 50% at 12% 90%, var(--g4), transparent 72%), var(--base, #ffd9b8);
-  background-blend-mode: overlay, normal, normal, normal, normal, normal; background-size: 220px, auto, auto, auto, auto, auto;
-}
-.test-breath { display: grid; place-items: center; width: 240px; height: 240px; border-radius: 50%; background: rgba(255, 255, 255, 0.55); animation: test-breath 10s ease-in-out infinite; }
+.test-break .test-pane-r { display: grid; place-items: center; }
+.test-breath { position: relative; z-index: 1; display: grid; place-items: center; width: 240px; height: 240px; border-radius: 50%; background: rgba(255, 255, 255, 0.55); animation: test-breath 10s ease-in-out infinite; }
 .test-breath span { grid-area: 1 / 1; font: 400 22px/1.2 var(--sans); color: var(--ink); text-align: center; }
 .test-breath-in { animation: test-breath-in 10s linear infinite; }
 .test-breath-out { opacity: 0; animation: test-breath-out 10s linear infinite; }
@@ -46,15 +31,12 @@
 @keyframes test-breath-in { 0%, 45% { opacity: 1; } 50%, 95% { opacity: 0; } 100% { opacity: 1; } }
 @keyframes test-breath-out { 0%, 45% { opacity: 0; } 50%, 95% { opacity: 1; } 100% { opacity: 0; } }
 
-/* Tablet in portrait, and narrow windows: the panes stack. */
 @media (max-width: 900px), (orientation: portrait) {
-  .test-break { grid-template-columns: 1fr; grid-template-rows: auto minmax(300px, 1fr); }
-  .test-break-msg { border-right: 0; border-bottom: 1px solid var(--line); gap: 16px; }
   .test-breath { width: 200px; height: 200px; }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .test-read[data-speaking] { animation: none; box-shadow: 0 0 0 6px rgba(91, 141, 239, 0.25); }
+  .test-read[data-speaking] { animation: none; box-shadow: 0 0 0 6px var(--test-read-glow); }
   .test-progress-seg span, .test-progress-ring, .test-read { transition: none; }
   .test-breath, .test-breath span { animation: none; }
   .test-breath-in, .test-breath-out { display: none; }
