@@ -60,7 +60,18 @@ describe("grade 3-5 speech and figures through the public interface", () => {
       expect(t.whiteboard).toBe(true);
       const qs = SEEDS.map((seed) => fillTemplate(t, seed));
       expect([...new Set(qs.map((q) => q.values.step))].sort((a, b) => a - b)).toEqual(steps);
-      if (id === "2-missing-in-pattern") expect([...new Set(qs.map((q) => q.values.gap))].sort()).toEqual([1, 2, 3]);
+      if (id === "2-missing-in-pattern") {
+        expect([...new Set(qs.map((q) => q.values.gap))].sort()).toEqual([1, 2, 3]);
+        expect([...new Set(qs.map((q) => `${q.values.step}:${q.values.gap}`))].sort()).toEqual([
+          "10:1", "10:2", "10:3", "2:1", "2:2", "2:3", "5:1", "5:2", "5:3",
+        ]);
+      }
+    }
+  });
+  it("keeps the early fraction denominators within the Ontario primary-source range", () => {
+    for (const id of ["g35-3-fraction-words", "g35-3-fraction-of-set"]) {
+      const t = BANK.find((t) => t.id === id)!;
+      for (const seed of SEEDS) expect(fillTemplate(t, seed).values.d).toBeLessThanOrEqual(10);
     }
   });
   it("uses genuine three-digit unknown stories with a unique positive answer", () => {

@@ -17,8 +17,6 @@ const noCarry = (a: number, b: number, places: number) => {
   return fromDigits(x.map((d, i) => (d + y[i]) % 10));
 };
 
-const PLACE_NAMES: Record<number, string> = { 1000: "thousands", 100: "hundreds", 10: "tens", 1: "ones" };
-
 export const LEVEL_4: readonly TaggedTemplate[] = [
   // ---------- Number ----------
   {

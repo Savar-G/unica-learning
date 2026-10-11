@@ -17,7 +17,7 @@ const WHOLES = [
   { whole: "garden", part: "bed" },
 ] as const;
 
-/** The denominators a grade 3 child meets: halves to twelfths. */
+/** Denominators within the Ontario grade 3 fair-share range. */
 const DENS = [3, 4, 5, 6, 8, 10];
 
 export const LEVEL_3: readonly TaggedTemplate[] = [
@@ -199,7 +199,7 @@ export const LEVEL_3: readonly TaggedTemplate[] = [
       const [things, kind] = rng.pick([["marbles in a bag", "red"], ["children in a group", "wearing hats"], ["apples in a basket", "green"], ["fish in a tank", "striped"], ["cars in a lot", "blue"]] as const);
       const { v: [d, n], answer, wrong: w } = drawChoices(
         rng,
-        (r) => { const d = r.int(5, 12); return [d, r.int(2, d - 2)] as const; },
+        (r) => { const d = r.int(5, 10); return [d, r.int(2, d - 2)] as const; },
         ([d, n]) => ({
           answer: frac(n, d),
           candidates: [wrong(frac(n, d - n), "F4"), wrong(frac(d - n, d), "fraction-other-part"), wrong(frac(d, n), "fraction-flip")],
@@ -346,7 +346,7 @@ export const LEVEL_3: readonly TaggedTemplate[] = [
       const colour = rng.pick(["red", "blue", "green", "yellow"]);
       const { v: [d, n], answer, wrong: w } = drawChoices(
         rng,
-        (r) => { const d = r.pick([5, 6, 8, 10, 12]); return [d, r.int(2, d - 2)] as const; },
+        (r) => { const d = r.pick([5, 6, 8, 10]); return [d, r.int(2, d - 2)] as const; },
         ([d, n]) => ({
           answer: sayFrac(n, d),
           candidates: [wrong(sayFrac(n, d - n), "F4"), wrong(sayFrac(d - n, d), "fraction-other-part"), wrong(sayFrac(d, n), "fraction-flip")],
