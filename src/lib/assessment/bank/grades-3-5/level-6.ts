@@ -128,7 +128,7 @@ export const LEVEL_6: readonly TaggedTemplate[] = [
       step: [`A rule is ${k} × n + ${b}. How much does the result increase when n increases by 1?`, k, b],
       initial: [`A rule is ${k} × n + ${b}. What is its result when n is 0?`, b, 0],
       tenth: [`A pattern has ${k + b}, ${2 * k + b}, ${3 * k + b} as its first three terms. It adds the same amount each time. What is its tenth term?`, k * 10 + b, k * 10],
-      difference: [`A rule is ${k} × n + ${b}. How much greater is the result for n of ${n + 2} than for n of ${n}?`, 2 * k, 2],
+      difference: [`A rule is ${k} × n + ${b}. How much greater is the result when n is ${n + 2} than when n is ${n}?`, 2 * k, 2],
     } as const;
     const [prompt, right, mistake] = versions[task as keyof typeof versions];
     return { values: { k, b, n }, prompt, readAloud: prompt.replaceAll("×", "times").replaceAll("+", "plus").replaceAll(" n ", " the number "), answer: String(right),

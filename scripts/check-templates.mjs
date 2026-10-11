@@ -107,7 +107,7 @@ const STRAND_NAMES = {
 const gradeName = (level) => (level === 0 ? "K" : `grade ${level}`);
 
 /** What Claude sees for one template: its tags and distinct filled examples, spread over many seeds. */
-function describe(core, template, standards, samples) {
+function describe(core, template, standards, samples, provider) {
   const seen = new Map();
   for (let i = 0; i < 300; i++) {
     const q = core.fillTemplate(template, i * 7919 + 1);
@@ -120,6 +120,14 @@ function describe(core, template, standards, samples) {
   const picked = [];
   const want = Math.min(samples, pool.length);
   for (let k = 0; k < want; k++) picked.push(pool[Math.round((k * (pool.length - 1)) / Math.max(1, want - 1))]);
+  // An unknown input can be small while its given output crosses a curriculum number limit.
+  // Preserve the original provider's sampling. Codex also sees any missed decimal magnitude boundary.
+  if (provider === "codex" && template.format === "number" && picked.length > 2) {
+    const largestGiven = (q) => Math.max(0, ...[...q.prompt.matchAll(/\d+(?:,\d{3})*(?:\.\d+)?/g)].map((m) => Number(m[0].replaceAll(",", ""))));
+    const edge = pool.reduce((a, b) => largestGiven(a) >= largestGiven(b) ? a : b);
+    const selectedMax = Math.max(...picked.map(largestGiven));
+    if (Math.floor(Math.log10(largestGiven(edge))) > Math.floor(Math.log10(selectedMax))) picked[picked.length - 2] = edge;
+  }
   const tags = Object.fromEntries(["BC", "AB", "SK", "MB", "ON"].map((p) => [p, template.grades[p] === undefined ? "not tagged" : gradeName(template.grades[p])]));
   return {
     id: template.id,
@@ -397,7 +405,7 @@ const unknown = [...(opts.only ?? [])].filter((id) => !templates.some((t) => t.i
 if (unknown.length) throw new Error(`Not in bank ${opts.band}: ${unknown.join(", ")}`);
 // The report always covers the whole bank; --only and --limit only narrow what this run checks.
 const current = templates.map((template) => {
-  const payload = describe(core, template, standards, opts.samples);
+  const payload = describe(core, template, standards, opts.samples, opts.provider);
   return { template, payload, hash: hashOf({ payload, system: SYSTEM, ...(opts.context ? { context: opts.context } : {}) }) };
 });
 

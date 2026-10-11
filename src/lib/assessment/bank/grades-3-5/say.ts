@@ -58,7 +58,7 @@ export const time = (h: number, m: number, half?: "a.m." | "p.m.") => `${h}:${St
 /** A clock time as a voice should say it: "4 o'clock", "4 oh 5", "4 35". */
 export function sayTime(h: number, m: number, half?: "a.m." | "p.m."): string {
   const spoken = m === 0 ? `${h} o'clock` : m < 10 ? `${h} oh ${m}` : `${h} ${m}`;
-  return half ? `${spoken} ${half === "a.m." ? "in the morning" : "in the afternoon"}` : spoken;
+  return half ? `${spoken} ${half === "a.m." ? "a m" : "p m"}` : spoken;
 }
 
 /**
@@ -110,8 +110,9 @@ const keepTogether = (text: string) => text.replace(/ ([+−×÷=]) /g, " $1 "
 
 /** Explicit words for these templates' choices, including equations, times and fractions inside labels. */
 function speakChoice(text: string): string {
+  if (/^\d[\d,]*(?:, \d[\d,]*)+$/.test(text)) return text.split(", ").join(" then ");
   return text.replace(/ /g, " ")
-    .replace(/\$(\d[\d,]*)\.(\d{2})/g, (_, d, c) => sayMoney(Number(d.replace(/,/g, "")) * 100 + Number(c)))
+    .replace(/\$(\d[\d,]*)\.(\d{1,2})\b/g, (_, d, c) => sayMoney(Number(d.replace(/,/g, "")) * 100 + Number(c.padEnd(2, "0"))))
     .replace(/\$(\d[\d,]*)\b/g, (_, d) => sayMoney(Number(d.replace(/,/g, "")) * 100))
     .replace(/\b(\d+):(\d{2})(?: (a\.m\.|p\.m\.))?/g, (_, h, m, half) => sayTime(Number(h), Number(m), half))
     .replace(/\b(\d+) (\d+)\/(\d+)\b/g, (_, w, n, d) => sayMixed(Number(w), Number(n), Number(d)))
@@ -126,7 +127,7 @@ const choiceIdentity = (shown: string) => {
   const text = shown.replaceAll(",", "").replaceAll(" ", " ").trim();
   const f = text.match(/^(?:(\d+) )?(\d+)\/(\d+)$/);
   const number = f && Number(f[3]) > 0 ? Number(f[1] ?? 0) + Number(f[2]) / Number(f[3])
-    : /^\d+(?:\.\d+)?$/.test(text) ? Number(text) : NaN;
+    : /^\$?\d+(?:\.\d+)?$/.test(text) ? Number(text.replace(/^\$/, "")) : NaN;
   return Number.isFinite(number) ? `number:${number.toPrecision(12)}` : `text:${shown}`;
 };
 

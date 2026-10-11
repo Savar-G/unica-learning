@@ -84,6 +84,73 @@ describe("grade 3-5 speech and figures through the public interface", () => {
       expect(q.answer).toBe(String(whole));
     }
   });
+  it.each(["g35-5-pattern-next", "g35-5-pattern-step", "g35-5-pattern-start", "g35-5-pattern-far"])("%s preserves spoken question punctuation", (id) => {
+    for (const seed of SEEDS) {
+      const q = fillTemplate(BANK.find((t) => t.id === id)!, seed);
+      expect(q.readAloud).toBe(q.prompt);
+    }
+  });
+  it("speaks the complete dollar and cents value of each shuffled money choice", () => {
+    for (const seed of SEEDS) {
+      const money = fillTemplate(BANK.find((t) => t.id === "g35-4-money-notation")!, seed);
+      const expected = money.choices!.map((choice) => {
+        const cents = Math.round(Number(choice.slice(1)) * 100), dollars = Math.floor(cents / 100), rest = cents % 100;
+        return `${dollars} ${dollars === 1 ? "dollar" : "dollars"}${rest ? ` and ${rest} ${rest === 1 ? "cent" : "cents"}` : ""}`;
+      });
+      const spoken = spokenChoices(toPublicQuestion(money), money.choices!);
+      for (const [i, text] of spoken.entries()) expect(text).toContain(expected[i]);
+      for (const [i, choice] of money.choices!.entries()) {
+        const [dollars, cents] = choice.slice(1).split(".");
+        expect(spoken[i]).toContain(`dollar sign ${dollars}${cents ? ` point ${cents.split("").join(" ")}` : ""}`);
+      }
+      expect(new Set(spoken).size).toBe(spoken.length);
+      expect(new Set(money.choices!.map((c) => Number(c.slice(1)))).size).toBe(money.choices!.length);
+    }
+  });
+  it("speaks each ordered-list entry separately in actual shuffled choice order", () => {
+    for (const seed of SEEDS) {
+      const list = fillTemplate(BANK.find((t) => t.id === "g35-5-order-large")!, seed);
+      expect(spokenChoices(toPublicQuestion(list), list.choices!)).toEqual(list.choices!.map((c) => c.split(", ").join(" then ")));
+    }
+  });
+  it("speaks the displayed half-day for every clock choice and timed story", () => {
+    for (const seed of SEEDS) {
+      const clock = fillTemplate(BANK.find((t) => t.id === "g35-4-24-hour")!, seed);
+      const spoken = spokenChoices(toPublicQuestion(clock), clock.choices!);
+      for (const [i, choice] of clock.choices!.entries()) expect(spoken[i]).toMatch(choice.endsWith("a.m.") ? /a m$/ : /p m$/);
+      for (const id of ["g35-5-duration", "g35-5-end-time"]) {
+        const q = fillTemplate(BANK.find((t) => t.id === id)!, seed);
+        expect(q.prompt).toContain("p.m.");
+        expect(q.prompt).not.toContain("p.m..");
+        expect(q.readAloud).toContain("p m");
+        expect(q.readAloud).not.toContain("afternoon");
+      }
+    }
+  });
+  it("states both rule-input values explicitly in the prompt and speech", () => {
+    for (const seed of SEEDS) {
+      const rule = fillTemplate(BANK.find((t) => t.id === "g35-6-linear-difference")!, seed);
+      expect(rule.prompt).toContain(`when n is ${rule.values.n + 2} than when n is ${rule.values.n}`);
+      expect(rule.readAloud).toContain(`when the number is ${rule.values.n + 2} than when the number is ${rule.values.n}`);
+    }
+  });
+  it("uses the correct singular or plural shaded-part phrase in prompt and speech", () => {
+    for (const seed of SEEDS) {
+      for (const id of ["g35-4-tenths-region", "g35-5-equivalent-region"]) {
+        const q = fillTemplate(BANK.find((t) => t.id === id)!, seed);
+        const phrase = q.values.n === 1 ? "1 part is shaded" : `${q.values.n} parts are shaded`;
+        expect(q.prompt).toContain(phrase);
+        expect(q.readAloud).toContain(phrase);
+      }
+    }
+  });
+  it("places simple constant-step pattern tasks at the BC numerical-pattern grade", () => {
+    for (const id of ["g35-5-pattern-next", "g35-5-pattern-step"]) {
+      const t = BANK.find((t) => t.id === id)!;
+      expect(t.grades.BC).toBe(3);
+      expect(t.standard).toBe("3.6");
+    }
+  });
   it("uses later Ontario grades for unknown equations above the earlier numeric limits", () => {
     const repeated = BANK.find((t) => t.id === "g35-4-three-same")!;
     const machine = BANK.find((t) => t.id === "g35-4-machine-input")!;

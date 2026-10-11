@@ -353,7 +353,7 @@ export const LEVEL_4: readonly TaggedTemplate[] = [
           wrong: ns.slice(1).map((v, i) => wrong(dec(v, 1), i === 2 ? "more-less" : "decimal-order")) };
       }
       const right = task === "left" ? dec(10 - n, 1) : task === "fraction" ? frac(n, 10) : dec(n, 1);
-      const prompt = task === "region" ? `A strip has 10 equal parts. ${count(n, "part")} is shaded. Which decimal names the shaded part?`
+      const prompt = task === "region" ? `A strip has 10 equal parts. ${count(n, "part")} ${n === 1 ? "is" : "are"} shaded. Which decimal names the shaded part?`
         : task === "left" ? `${frac(n, 10)} of a strip is shaded. Which decimal names the part not shaded?`
         : task === "value" ? `What is the value of the ${n} in ${whole}.${n}?`
         : `Which fraction is equal to ${whole}.${n} − ${whole}?`;
@@ -508,12 +508,18 @@ export const LEVEL_4: readonly TaggedTemplate[] = [
     strand: "F", grades: { BC: 4, AB: 4, SK: 4, MB: 4, ON: 4 }, format: "choice", whiteboard: false, standard: "4.18",
     fill(rng) {
       const d = rng.int(1, 20), c = rng.int(1, 9);
+      const answer = money(d * 100 + c);
+      const choices = [answer, `$${d}.${c}0`, `$${d}${c}`, `$${d}.${c}`];
       return {
         values: { d, c },
         prompt: `How do you write ${count(d, "dollar")} and ${count(c, "cent")} with a dollar sign?`,
         readAloud: `How do you write ${count(d, "dollar")} and ${count(c, "cent")} with a dollar sign?`,
-        answer: money(d * 100 + c),
+        answer,
         wrong: [wrong(`$${d}.${c}0`, "zero-placeholder"), wrong(`$${d}${c}`, "decimal-point"), wrong(`$${d}.${c}`, "zero-placeholder")],
+        say: Object.fromEntries(choices.map((choice) => {
+          const [dollars, cents] = choice.slice(1).split(".");
+          return [choice, `dollar sign ${dollars}${cents ? ` point ${cents.split("").join(" ")}` : ""}, meaning ${sayMoney(Math.round(Number(choice.slice(1)) * 100))}`];
+        })),
       };
     },
   },

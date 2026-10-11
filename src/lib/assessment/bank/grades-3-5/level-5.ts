@@ -111,7 +111,7 @@ export const LEVEL_5: readonly TaggedTemplate[] = [
     }
     const down = task === "scale-down", shown = down ? frac(n * k, d * k) : frac(n, d), target = down ? d : d * k;
     const right = down ? frac(n, d) : frac(n * k, d * k);
-    const context = task === "region" ? `A whole is cut into ${d} equal parts. ${count(n, "part")} is shaded. Each part is then cut into ${k} equal pieces. What fraction is shaded now?`
+    const context = task === "region" ? `A whole is cut into ${d} equal parts. ${count(n, "part")} ${n === 1 ? "is" : "are"} shaded. Each part is then cut into ${k} equal pieces. What fraction is shaded now?`
       : task === "number-line" ? `A point is ${sayFrac(n, d)} of the way from 0 to 1. Which fraction with ${target} on the bottom names the same point?`
       : `Which fraction with ${target} on the bottom is equal to ${shown}?`;
     return { values: { n, d, k }, prompt: context,
@@ -175,7 +175,7 @@ export const LEVEL_5: readonly TaggedTemplate[] = [
     return { values: { x, k }, prompt: `Find ${name}. ${shown}`, readAloud: spoken, answer: String(right),
       wrong: typedWrong(right, [[mistake, op === "divide" ? "unknown-divisor" : op === "multiply" || op === "take-away" ? "operation" : "inverse-operation"], [k, "known-as-unknown"]]) };
   }, "number", { AB: 6, ON: ["add", "subtract", "take-away"].includes(op) ? 2 : 6 })),
-  ...["next", "missing", "back", "step", "start", "far"].map((task) => template(`pattern-${task}`, "A", "5.10", (rng) => {
+  ...["next", "missing", "back", "step", "start", "far"].map((task) => template(`pattern-${task}`, "A", ["next", "step"].includes(task) ? "3.6" : "5.10", (rng) => {
     const first = rng.int(11, 39), step = rng.int(3, 9), terms = Array.from({ length: 5 }, (_, i) => first + i * step);
     const prompts = {
       next: [`The pattern adds the same amount each time: ${terms.slice(0, 4).join(", ")}. What comes next?`, terms[4], terms[3] + 1],
@@ -186,9 +186,9 @@ export const LEVEL_5: readonly TaggedTemplate[] = [
       far: [`A pattern starts at ${first} and adds ${step} each time. What is its tenth term?`, first + 9 * step, first + 10 * step],
     } as const;
     const [prompt, right, mistake] = prompts[task as keyof typeof prompts];
-    return { values: { first, step }, prompt, readAloud: prompt.replace("?", "a missing number"), answer: String(right),
+    return { values: { first, step }, prompt, readAloud: prompt.replace(/\?,/g, "a missing number,"), answer: String(right),
       wrong: typedWrong(right, [[mistake, task === "next" ? "skip-by-one" : task === "missing" ? "A2" : task === "back" ? "pattern-earlier" : task === "step" ? "pattern-start-step" : "pattern-step-count"], [right + step, "pattern-step-count"]]) };
-  }, "number", { ON: 4 })),
+  }, "number", { BC: ["next", "step"].includes(task) ? 3 : 5, ON: 4 })),
   // Ontario 2020 C2.2 explicitly evaluates whole-number expressions in grade 5.
   ...["add", "subtract", "take-away", "multiply", "divide", "divisor"].map((op) => template(`evaluate-${op}`, "A", "5.11", (rng) => {
     const n = rng.int(12, 49), k = rng.int(3, 9);
@@ -269,14 +269,14 @@ export const LEVEL_5: readonly TaggedTemplate[] = [
   }, "number", { ON: 4 }),
   template("duration", "MG", "5.14", (rng) => {
     const hour = rng.int(1, 8), start = rng.int(35, 55), end = rng.int(5, 25), right = 60 - start + end;
-    return { values: { hour, start, end }, prompt: `A lesson starts at ${time(hour, start)} and ends at ${time(hour + 1, end)} that afternoon. How many minutes does it last?`,
-      readAloud: `A lesson starts at ${sayTime(hour, start)} and ends at ${sayTime(hour + 1, end)} that afternoon. How many minutes does it last?`, answer: String(right),
+    return { values: { hour, start, end }, prompt: `A lesson starts at ${time(hour, start, "p.m.")} and ends at ${time(hour + 1, end, "p.m.")} How many minutes does it last?`,
+      readAloud: `A lesson starts at ${sayTime(hour, start, "p.m.")} and ends at ${sayTime(hour + 1, end, "p.m.")}. How many minutes does it last?`, answer: String(right),
       wrong: typedWrong(right, [[100 - start + end, "M8"], [start - end, "operation"]]) };
   }, "number", { ON: 4 }),
   template("end-time", "MG", "5.14", (rng) => {
     const h = rng.int(1, 7), m = rng.int(35, 55), duration = rng.int(30, 45), end = m + duration - 60;
-    return { values: { h, m, duration }, prompt: `A trip starts at ${time(h, m)} in the afternoon and lasts ${duration} minutes. When does it end?`,
-      readAloud: `A trip starts at ${sayTime(h, m)} in the afternoon and lasts ${duration} minutes. When does it end?`, answer: time(h + 1, end),
+    return { values: { h, m, duration }, prompt: `A trip starts at ${time(h, m, "p.m.")} and lasts ${duration} minutes. When does it end?`,
+      readAloud: `A trip starts at ${sayTime(h, m, "p.m.")} and lasts ${duration} minutes. When does it end?`, answer: time(h + 1, end),
       wrong: [wrong(time(h, m + duration), "M8"), wrong(time(h, end), "clock-carry"), wrong(time(h + 1, duration), "ignores-given")] };
   }, "choice", { ON: 4 }),
   template("prism-faces", "MG", "5.15", (rng) => {
