@@ -1,3 +1,4 @@
+import assert from "node:assert/strict";
 import { describe, expect, it } from "vitest";
 import {
   BANKS, createSession, fillTemplate, nextQuestion, readAloudText, spokenChoices, submitAnswer, testStep,
@@ -13,13 +14,13 @@ const stringKey = (key: string) => !/^(0|[1-9]\d*)$/.test(key) || Number(key) >=
 function checkPublicSpeech(q: Question) {
   const before = JSON.stringify(q);
   const view = roundtrip(q);
-  expect(Object.keys(view.say ?? {}), q.id).toEqual(q.format === "choice" ? expectedKeys(q) : []);
-  expect(view.choices).toEqual(q.choices);
-  expect(spokenChoices(view, view.choices ?? [])).toEqual(spokenChoices(q, q.choices ?? []));
-  for (const choice of Object.keys(view.say ?? {})) expect(view.say?.[choice], choice).toBe(q.say?.[choice]);
-  expect(view).not.toHaveProperty("answer");
-  expect(view).not.toHaveProperty("wrong");
-  expect(JSON.stringify(q)).toBe(before);
+  assert.deepEqual(Object.keys(view.say ?? {}), q.format === "choice" ? expectedKeys(q) : [], q.id);
+  assert.deepEqual(view.choices, q.choices);
+  assert.deepEqual(spokenChoices(view, view.choices ?? []), spokenChoices(q, q.choices ?? []));
+  for (const choice of Object.keys(view.say ?? {})) assert.equal(view.say?.[choice], q.say?.[choice], choice);
+  assert(!Object.hasOwn(view, "answer"));
+  assert(!Object.hasOwn(view, "wrong"));
+  assert.equal(JSON.stringify(q), before);
   return view;
 }
 
