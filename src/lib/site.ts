@@ -1,9 +1,9 @@
 // Single source for brand and offer facts. The brand name is decided: "Unica Learning" (Savar, 2026-10-08).
 export const BRAND = "Unica Learning";
 
+// One plan for now: math only (Savar, 2026-10-11). Reading comes back later. Stored rows can still say "both".
 export const PLANS = {
-  one: { id: "one", name: "One subject", price: 139, note: "Math or reading" },
-  both: { id: "both", name: "Math + Reading", price: 229, note: "Both subjects, one plan" },
+  one: { id: "one", name: "Math", price: 99, note: "Grades 1-7, ages 6-12" },
 } as const;
 
 export type PlanId = keyof typeof PLANS;

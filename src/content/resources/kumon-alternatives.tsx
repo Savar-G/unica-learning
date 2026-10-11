@@ -180,7 +180,7 @@ export default function Body() {
           Unica is one example. A free placement assessment on paper finds your child&apos;s level. We mail personalized math and
           reading workbooks for ages 6 to 12 home; the books follow the BC curriculum at your child&apos;s level. The plan is 15-20
           minutes a day, 5 days a week. A parent app lets you scan a problem to see the steps and check answers.{" "}
-          <strong>Cost:</strong> CAD 139 a month for one subject or CAD 229 for math and reading, delivery included, with a 30-day
+          <strong>Cost:</strong> CAD 99 a month for math, delivery included, with a 30-day
           money-back guarantee and cancel anytime. See <Link href="/#price">pricing</Link>.
         </p>
       </Section>
@@ -214,7 +214,7 @@ export default function Body() {
             ["Khan Academy Kids", "App, ages 2-8", "Reading, math", "Free", <Cite key="src" n={17} />],
             ["Prodigy", "Game, online", "Math, English", "Free; memberships $9.95-$19.95 / month", <Cite key="src" n={18} />],
             ["Library programs", "Library, summer and some year-round", "Reading", "Free", <><Cite n={19} /><Cite n={20} /></>],
-            ["Unica workbooks", "Paper workbooks mailed home", "Math, reading", "CAD 139 / month (one subject), CAD 229 (both)", "unicalearning.com"],
+            ["Unica workbooks", "Paper workbooks mailed home", "Math", "CAD 99 / month", "unicalearning.com"],
           ]}
           note="Prices as listed on each provider's own pages in October 2026. They vary by location and change; confirm with the provider."
         />
