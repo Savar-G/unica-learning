@@ -38,7 +38,7 @@ export function llmsTxt(): string {
   const guides = RESOURCES.map(({ meta }) => `- [${meta.title}](${url(resourcePath(meta.slug))})`).join("\n");
   return `# ${BRAND}
 
-> Personalized math and reading workbooks for children aged 6-12 (grades 1-7) in Canada. Each paper workbook is made for one child, mailed home, and adapted after every book. From CAD ${PLANS.one.price} a month, delivery included.
+> A personalized math and reading learning program for children aged 6-12 (grades 1-7) in Canada. Each child gets paper workbooks made for them and adapted after every book. From CAD ${PLANS.one.price} a month, delivery included.
 
 ${BRAND} is made in Vancouver, BC. A free placement assessment on paper finds each child's level and gaps. The child works on paper for 15-20 minutes a day, 5 days a week; the parent uses a phone app to check answers, get step-by-step help when the child is stuck, and see progress. Books follow the BC curriculum today; Alberta, Saskatchewan, Manitoba and Ontario are next.
 
