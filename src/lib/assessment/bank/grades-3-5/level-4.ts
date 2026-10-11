@@ -840,7 +840,8 @@ export const LEVEL_4: readonly TaggedTemplate[] = [
     strand: "MG", grades: { BC: 4, AB: 3, SK: 3, MB: 3, ON: 3 }, format: "number", whiteboard: true, standard: "4.14",
     fill(rng) {
       const n = rng.int(4, 6);
-      const sides = Array.from({ length: n }, () => rng.int(2, 12));
+      const sides = draw(rng, (r) => Array.from({ length: n }, () => r.int(2, 12)),
+        (sides) => 2 * Math.max(...sides) < sides.reduce((sum, side) => sum + side, 0));
       const total = sides.reduce((s, x) => s + x, 0);
       return {
         values: { n, total },
@@ -1026,7 +1027,7 @@ export const LEVEL_4: readonly TaggedTemplate[] = [
     id: "g35-4-bar-scale",
     strand: "DP", grades: { BC: 4, AB: 4, SK: 4, MB: 4, ON: 4 }, format: "number", whiteboard: true, standard: "4.16",
     fill(rng) {
-      const k = rng.pick([2, 5, 10]), a = rng.int(5, 9), b = draw(rng, (r) => r.int(2, 7), (b) => b < a);
+      const k = 2, a = rng.int(7, 12), b = draw(rng, (r) => r.int(2, 7), (b) => b < a);
       const [x, y] = rng.shuffle(["apples", "pears", "grapes", "bananas"]);
       return {
         values: { k, a, b },

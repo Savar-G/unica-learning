@@ -23,35 +23,35 @@ export const LEVEL_5: readonly TaggedTemplate[] = [
     return { values: { n, d, place }, prompt: `In ${fmt(n)}, what is the value of the digit ${d}?`,
       readAloud: `In ${fmt(n)}, what is the value of the digit ${d}?`, answer: fmt(d * place),
       wrong: [wrong(fmt(d), "N2"), wrong(fmt(d * place / 10), "N2"), wrong(fmt(d * place * 10), "N2")] };
-  }, "choice"),
+  }, "choice", { ON: 6 }),
   template("expanded-large", "N", "5.1", (rng) => {
     const h = rng.int(1, 8), t = rng.int(11, 89), o = rng.int(101, 899), n = h * 100000 + t * 1000 + o;
     return { values: { h, t, o }, prompt: `Which number is ${fmt(h * 100000)} + ${fmt(t * 1000)} + ${o}?`,
       readAloud: `Which number is ${wordNumber(h, t, o)}?`, answer: fmt(n),
       wrong: [wrong(fmt(h * 10000 + t * 1000 + o), "N2"), wrong(fmt(h * 100000 + t * 100 + o), "N2"), wrong(fmt(n + 1000), "zero-placeholder")] };
-  }, "choice"),
+  }, "choice", { ON: 6 }),
   template("ten-thousand-more", "N", "5.1", (rng) => {
     const n = rng.int(100000, 879999);
     return { values: { n }, prompt: `What is 10,000 more than ${fmt(n)}?`, readAloud: `What is ten thousand more than ${fmt(n)}?`,
       answer: fmt(n + 10000), wrong: [wrong(fmt(n + 1000), "N2"), wrong(fmt(n + 100000), "N2"), wrong(fmt(n - 10000), "operation")] };
-  }, "choice"),
+  }, "choice", { ON: 6 }),
   template("order-large", "N", "5.1", (rng) => {
     const base = rng.int(10, 89) * 10000, a = base + rng.int(100, 999), b = base + rng.int(1000, 1999), c = base + rng.int(2000, 2999);
     return { values: { a, b, c }, prompt: `Which list goes from greatest to least?`, readAloud: `Which list goes from greatest to least?`,
       answer: [c, b, a].map(fmt).join(", "), wrong: [wrong([a, b, c].map(fmt).join(", "), "more-less"), wrong([b, c, a].map(fmt).join(", "), "digit-compare"), wrong([c, a, b].map(fmt).join(", "), "digit-compare")] };
-  }, "choice"),
+  }, "choice", { ON: 6 }),
   template("add-large", "O", "5.5", (rng) => {
     const [a, b] = draw(rng, (r) => [r.int(120000, 399999), r.int(110000, 299999)], ([a, b]) => a > b && a % 10 + b % 10 >= 10);
     const right = a + b, noCarry = [1, 10, 100, 1000, 10000, 100000].reduce((sum, p) => sum + ((Math.floor(a / p) % 10 + Math.floor(b / p) % 10) % 10) * p, 0);
     return { values: { a, b }, prompt: `${fmt(a)} + ${fmt(b)} = ?`, readAloud: `What is ${fmt(a)} plus ${fmt(b)}?`, answer: fmt(right),
       wrong: [wrong(fmt(a - b), "operation"), wrong(fmt(noCarry), "O3")] };
-  }, "choice"),
+  }, "choice", { ON: 6 }),
   template("subtract-large", "O", "5.5", (rng) => {
     const [a, b] = draw(rng, (r) => [r.int(500000, 899999), r.int(100000, 399999)], ([a, b]) => a % 10 < b % 10);
     const right = a - b;
     return { values: { a, b }, prompt: `${fmt(a)} − ${fmt(b)} = ?`, readAloud: `What is ${fmt(a)} minus ${fmt(b)}?`, answer: fmt(right),
       wrong: [wrong(fmt(a + b), "operation"), wrong(fmt(right + 10), "regroup-forget")] };
-  }, "choice"),
+  }, "choice", { ON: 6 }),
   template("multiply-two-digit", "O", "5.6", (rng) => {
     const a = rng.int(12, 49), b = rng.int(12, 19), right = a * b;
     return { values: { a, b }, prompt: `${a} × ${b} = ?`, readAloud: `What is ${a} times ${b}?`, answer: String(right),
@@ -271,9 +271,9 @@ export const LEVEL_5: readonly TaggedTemplate[] = [
       wrong: typedWrong(gap, [[2 * gap, "reflection-distance"], [0, "reflection-distance"]]) };
   }, "number", { ON: 4 }),
   template("double-bar-difference", "DP", "5.17", (rng) => {
-    const scale = rng.pick([2, 5, 10]), a = rng.int(6, 14), b = rng.int(1, 5);
-    return { values: { scale, a, b }, figure: { kind: "bars", bars: [{ label: "Monday", value: a * scale }, { label: "Tuesday", value: b * scale }] }, prompt: "The graph shows books read on two days. How many more books were read on Monday?",
-      readAloud: `The graph shows ${a * scale} books read on Monday and ${b * scale} on Tuesday. How many more books were read on Monday?`, answer: String((a - b) * scale),
+    const scale = 2, a = rng.int(7, 14), b = rng.int(1, 5), c = rng.int(2, 6), d = rng.int(3, 8);
+    return { values: { scale, a, b, c, d }, figure: { kind: "bars", bars: [{ label: "Mon Ana", value: a * scale }, { label: "Mon Ben", value: c * scale }, { label: "Tue Ana", value: b * scale }, { label: "Tue Ben", value: d * scale }] }, prompt: "The graph compares books Ana and Ben read on Monday and Tuesday. How many more books did Ana read on Monday than Tuesday?",
+      readAloud: `The graph shows Ana read ${a * scale} books on Monday and ${b * scale} on Tuesday. Ben read ${c * scale} on Monday and ${d * scale} on Tuesday. How many more books did Ana read on Monday than Tuesday?`, answer: String((a - b) * scale),
       wrong: typedWrong((a - b) * scale, [[a - b, "D1"], [(a + b) * scale, "operation"]]) };
   }),
   template("pictograph-total", "DP", "5.17", (rng) => {

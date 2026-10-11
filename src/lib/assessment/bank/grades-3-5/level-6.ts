@@ -160,19 +160,19 @@ export const LEVEL_6: readonly TaggedTemplate[] = [
     return { values: { base, height }, prompt: `A triangle has a base of ${base} cm and a perpendicular height of ${height} cm. What is its area in square centimetres?`,
       readAloud: `A triangle has a base of ${base} centimetres and a perpendicular height of ${height} centimetres. What is its area in square centimetres?`, answer: String(right),
       wrong: typedWrong(right, [[base * height, "M3"], [base + height, "area-add"]]) };
-  }),
+  }, "number", { ON: 5 }),
   template("triangle-height", "MG", "6.12", (rng) => {
     const base = rng.int(3, 10) * 2, height = rng.int(3, 9), area = base * height / 2;
     return { values: { base, height }, prompt: `A triangle has an area of ${area} square centimetres and a base of ${base} cm. What is its perpendicular height in centimetres?`,
       readAloud: `A triangle has an area of ${area} square centimetres and a base of ${base} centimetres. What is its perpendicular height in centimetres?`, answer: String(height),
       wrong: typedWrong(height, [[height / 2, "M3"], [area * base, "inverse-operation"]]) };
-  }),
+  }, "number", { ON: 5 }),
   template("parallelogram-area", "MG", "6.12", (rng) => {
     const base = rng.int(5, 15), height = rng.int(3, 8), slant = height + rng.int(1, 4);
     return { values: { base, height, slant }, prompt: `A parallelogram has a base of ${base} cm, a perpendicular height of ${height} cm, and a slanted side of ${slant} cm. What is its area in square centimetres?`,
       readAloud: `A parallelogram has a base of ${base} centimetres, a perpendicular height of ${height} centimetres, and a slanted side of ${slant} centimetres. What is its area in square centimetres?`, answer: String(base * height),
       wrong: typedWrong(base * height, [[base * slant, "slant-height"], [2 * (base + slant), "M2"]]) };
-  }),
+  }, "number", { ON: 5 }),
   template("trapezoid-area", "MG", "6.12", (rng) => {
     const a = rng.int(3, 9), b = a + 2 * rng.int(1, 4), h = rng.int(3, 9), right = (a + b) * h / 2;
     return { values: { a, b, h }, prompt: `A trapezoid has parallel sides of ${a} cm and ${b} cm. Its perpendicular height is ${h} cm. What is its area in square centimetres?`,
@@ -184,7 +184,7 @@ export const LEVEL_6: readonly TaggedTemplate[] = [
     return { values: { rows, each, layers }, prompt: `A solid has ${layers} layers of unit cubes. Each layer has ${rows} rows of ${each} cubes. What is its volume in cubic units?`,
       readAloud: `A solid has ${layers} layers of unit cubes. Each layer has ${rows} rows of ${each} cubes. What is its volume in cubic units?`, answer: String(right),
       wrong: typedWrong(right, [[rows + each + layers, "M9"], [rows * each, "one-part"]]) };
-  }),
+  }, "number", { SK: 5, MB: 5 }),
   template("capacity", "MG", "6.14", (rng) => {
     const litres = rng.int(2, 9), extra = rng.int(1, 8) * 100, right = litres * 1000 + extra;
     return { values: { litres, extra }, prompt: `A jug holds ${litres} L and ${extra} mL. How many millilitres is that?`,

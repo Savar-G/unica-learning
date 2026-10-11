@@ -45,12 +45,23 @@ const strandCounts = (qs: readonly Question[]) => {
 const asNumber = (s: string) => Number(s.replace(/,/g, ""));
 
 describe("grade 3-5 speech and figures through the public interface", () => {
+  it("describes feasible closed gardens for perimeter questions", () => {
+    const t = BANK.find((t) => t.id === "g35-4-perimeter-sides")!;
+    for (const seed of SEEDS) {
+      const q = fillTemplate(t, seed);
+      const sides = [...q.prompt.matchAll(/(\d+) m\b/g)].map((m) => Number(m[1]));
+      expect(sides.length).toBeGreaterThanOrEqual(4);
+      expect(2 * Math.max(...sides), q.prompt).toBeLessThan(sides.reduce((a, b) => a + b, 0));
+    }
+  });
   it.each(NEW)("$id speaks every displayed choice without math signs or clock notation", (t) => {
     for (const seed of SEEDS.slice(0, 40)) {
       const q = fillTemplate(t, seed);
       const publicQuestion = toPublicQuestion(q);
       const shown = q.choices ?? [];
       const spoken = spokenChoices(publicQuestion, shown);
+      // JavaScript enumerates integer keys numerically. All other keys must have lexical order, independent of correctness.
+      if (shown.length) expect(Object.keys(publicQuestion.say ?? {}), t.id).toEqual(Object.keys(Object.fromEntries([...shown].sort().map((c) => [c, c]))));
       expect(spoken).toHaveLength(shown.length);
       for (const text of spoken) expect(text, `${t.id}: ${text}`).not.toMatch(NOT_SPOKEN);
       if (shown.length) expect(readAloudText(publicQuestion, shown)).toContain(`Choose one. ${spoken.map((s) => /[.?!]$/.test(s) ? s : `${s}.`).join(" ")}`);

@@ -111,7 +111,7 @@ function describe(core, template, standards, samples) {
   const seen = new Map();
   for (let i = 0; i < 300; i++) {
     const q = core.fillTemplate(template, i * 7919 + 1);
-    const key = `${q.prompt}|${[...(q.choices ?? [])].sort().join("|")}`;
+    const key = `${q.prompt}|${[...(q.choices ?? [])].sort().join("|")}${q.figure ? `|${JSON.stringify(q.figure)}` : ""}`;
     if (!seen.has(key)) seen.set(key, q);
   }
   let pool = [...seen.values()];
