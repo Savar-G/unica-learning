@@ -16,6 +16,10 @@ export type TestError =
   /** The answer was for another question, or the test is already complete. The current step comes back with it. */
   | "conflict"
   | "incomplete"
+  /** The test ran out of time: 24 hours passed since the child last worked on it (#72). "Start again" draws a new one. */
+  | "expired"
+  /** A new test opens 30 days after the last completed one (#72). The start request sends `opensAt` with it. */
+  | "retake_closed"
   | "store_failed";
 
 export type StartResult = { ok: true; id: string; resumed: boolean } | { ok: false; error: TestError };

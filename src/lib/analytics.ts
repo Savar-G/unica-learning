@@ -9,7 +9,7 @@ type Props = Record<string, unknown>;
 // The slice of the posthog-js instance this file uses.
 export interface Client {
   init(key: string, config: Props): unknown;
-  capture(event: string, props?: Props): unknown;
+  capture(event: string, props?: Props, options?: Props): unknown;
   reset(resetDeviceId?: boolean): void;
   opt_in_capturing(options?: { captureEventName?: false }): void;
   opt_out_capturing(): void;
@@ -175,13 +175,16 @@ export function createAnalytics(deps: Deps) {
     // "unset" from the start: nothing is loaded, stored or sent.
   }
 
-  function track(event: string, props?: Props) {
+  // beacon: the page is going away (#72), so send now with sendBeacon, which the browser finishes after the page closes.
+  function track(event: string, props?: Props, options: { beacon?: boolean } = {}) {
     sync();
     if (!allowed()) return;
     const clean = sanitizeProps(props);
     const queuedIn = epoch;
     const send = () => {
-      if (client && epoch === queuedIn && allowed()) client.capture(event, clean);
+      if (!client || epoch !== queuedIn || !allowed()) return;
+      if (options.beacon) client.capture(event, clean, { transport: "sendBeacon", send_instantly: true });
+      else client.capture(event, clean);
     };
     if (client) send();
     else if (loading) loading.then(send);
