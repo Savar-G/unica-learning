@@ -33,3 +33,4 @@ export {
 } from "./session";
 export type * from "./types";
 export { hasWork, workProblem, type BoardWork, type WorkProblem } from "./work";
+export { readAloudText, sayChoice } from "./read-aloud";

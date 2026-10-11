@@ -41,6 +41,11 @@ export interface Filled {
   answer: string;
   /** For "choice" these are the other choices. For "number" they are typed answers we recognise. */
   wrong: CodedWrong[];
+  /**
+   * "choice" only: words for choices the voice would read wrong, by choice ("9:3" -> "9 to 3"). Fractions need none:
+   * they read as "a out of b" (readAloudText). The read-aloud text itself never lists the choices: they are shuffled.
+   */
+  say?: Record<string, string>;
 }
 
 /**
@@ -81,13 +86,15 @@ export interface Question {
   readAloud: string;
   /** Shuffled answer choices, only for "choice" questions. */
   choices?: string[];
+  /** Words for choices the voice would read wrong (Filled.say). Absent on tests stored before #79. */
+  say?: Record<string, string>;
   values: Record<string, number>;
   answer: string;
   wrong: CodedWrong[];
 }
 
 /** A question as the browser receives it: no answer, no coded wrong answers, no drawn numbers. */
-export type PublicQuestion = Pick<Question, "id" | "level" | "strand" | "format" | "whiteboard" | "prompt" | "readAloud" | "choices"> & {
+export type PublicQuestion = Pick<Question, "id" | "level" | "strand" | "format" | "whiteboard" | "prompt" | "readAloud" | "choices" | "say"> & {
   /** True when the child must show work on the whiteboard before Next (#67). */
   showWork: boolean;
 };

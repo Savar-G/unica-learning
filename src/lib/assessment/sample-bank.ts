@@ -19,6 +19,14 @@ const fmt = (n: number) => n.toLocaleString("en-CA");
 /** Fixed decimals without float noise: (725, 2) -> "7.25". */
 const dec = (units: number, places: number) => (units / 10 ** places).toFixed(places);
 
+/**
+ * Filled.say for choices the voice would read wrong (#79): every value mapped to its words. The read-aloud text never
+ * lists the choices; the screen reads them after it, in the order of its buttons.
+ */
+const sayEach = (values: string[], words: (v: string) => string) => Object.fromEntries(values.map((v) => [v, words(v)]));
+/** "7:55" -> "7 55", "8:05 p.m." -> "8 oh 5 p.m.", "8:00 p.m." -> "8 o'clock p.m.", like the templates' read-aloud times. */
+const sayTime = (t: string) => t.replace(/:00\b/, " o'clock").replace(/:0(\d)/, " oh $1").replace(":", " ");
+
 const ONES = ["zero", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine"];
 
 export const SAMPLE_BANK: readonly Template[] = [
@@ -334,7 +342,7 @@ export const SAMPLE_BANK: readonly Template[] = [
       return {
         values: { blue },
         prompt: `A bag has ${blue} blue marbles and 1 red marble. You pick one without looking. Picking the red marble is:`,
-        readAloud: `A bag has ${blue} blue marbles and 1 red marble. You pick one without looking. Is picking the red marble unlikely, impossible, or certain?`,
+        readAloud: `A bag has ${blue} blue marbles and 1 red marble. You pick one without looking. How likely is it that you pick the red marble?`,
         answer: "Unlikely",
         wrong: [
           { value: "Impossible", misconception: "D6" },
@@ -415,7 +423,7 @@ export const SAMPLE_BANK: readonly Template[] = [
       return {
         values: { small, big },
         prompt: `Which fraction is larger: 1/${small} or 1/${big}?`,
-        readAloud: `Which fraction is larger: 1 out of ${small}, or 1 out of ${big}?`,
+        readAloud: "Which fraction is larger?",
         answer: `1/${small}`,
         wrong: [{ value: `1/${big}`, misconception: "F1" }],
       };
@@ -503,6 +511,7 @@ export const SAMPLE_BANK: readonly Template[] = [
           { value: `${h}:${String(k).padStart(2, "0")}`, misconception: "M7" },
           { value: `${h + 1}:${mm}`, misconception: "M7" },
         ],
+        say: sayEach([`${h}:${mm}`, `${h}:${String(k).padStart(2, "0")}`, `${h + 1}:${mm}`], sayTime),
       };
     },
   },
@@ -599,7 +608,7 @@ export const SAMPLE_BANK: readonly Template[] = [
       return {
         values: { d, longer },
         prompt: `Which number is greater: 0.${d} or ${dec(longer, 2)}?`,
-        readAloud: `Which number is greater: 0.${d}, or ${dec(longer, 2)}?`,
+        readAloud: "Which number is greater?",
         answer: `0.${d}`,
         wrong: [{ value: dec(longer, 2), misconception: "F6" }],
       };
@@ -669,6 +678,7 @@ export const SAMPLE_BANK: readonly Template[] = [
           { value: `${h + 1}:${total} p.m.`, misconception: "M8" },
           { value: `${h + 1}:${String(total - 60).padStart(2, "0")} p.m.`, misconception: "O3" },
         ],
+        say: sayEach([`${h + 2}:${String(total - 60).padStart(2, "0")} p.m.`, `${h + 1}:${total} p.m.`, `${h + 1}:${String(total - 60).padStart(2, "0")} p.m.`], sayTime),
       };
     },
   },
@@ -810,6 +820,7 @@ export const SAMPLE_BANK: readonly Template[] = [
           { value: `${blue}:${red}`, misconception: "ratio-order" },
           { value: `${red}:${red + blue}`, misconception: "ratio-whole" },
         ],
+        say: sayEach([`${red}:${blue}`, `${blue}:${red}`, `${red}:${red + blue}`], (v) => v.replace(":", " to ")),
       };
     },
   },

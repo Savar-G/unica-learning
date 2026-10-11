@@ -58,6 +58,7 @@ export function fillTemplate(template: Template, seed: number, province: Provinc
     prompt: filled.prompt,
     readAloud: filled.readAloud,
     choices: template.format === "choice" ? rng.shuffle([filled.answer, ...filled.wrong.map((w) => w.value)]) : undefined,
+    ...(template.format === "choice" && filled.say ? { say: filled.say } : {}),
     values: filled.values,
     answer: filled.answer,
     wrong: filled.wrong,
@@ -66,8 +67,8 @@ export function fillTemplate(template: Template, seed: number, province: Provinc
 
 /** What the browser may see: no answer and no coded wrong answers. */
 export function toPublicQuestion(q: Question): PublicQuestion {
-  const { id, level, strand, format, whiteboard, prompt, readAloud, choices } = q;
-  return { id, level, strand, format, whiteboard, showWork: q.showWork === true, prompt, readAloud, choices };
+  const { id, level, strand, format, whiteboard, prompt, readAloud, choices, say } = q;
+  return { id, level, strand, format, whiteboard, showWork: q.showWork === true, prompt, readAloud, choices, ...(say ? { say } : {}) };
 }
 
 export interface SessionOptions {
