@@ -260,7 +260,7 @@ export async function listParents(a: AdminSession, offset = 0): Promise<Page<Par
   const ids = rows.map((p) => p.id);
   const [children, tests] = await Promise.all([
     byIds<ChildRow>(ids, "children", (chunk) => a.db.rpc("admin_children").select(CHILD_COLUMNS).in("parent_id", chunk).order("created_at")),
-    byIds<{ parent_id: string; status: AssessmentStatus }>(ids, "tests", (chunk) => a.db.rpc("admin_assessments").select("parent_id, status").in("parent_id", chunk)),
+    byIds<{ parent_id: string; status: AssessmentStatus }>(ids, "tests", (chunk) => a.db.rpc("admin_assessments").select("id, parent_id, status").in("parent_id", chunk)),
   ]);
   return {
     more,
@@ -331,7 +331,7 @@ export async function listChildren(a: AdminSession, f: Pick<AdminFilters, "grade
   const [parents, tests] = await Promise.all([
     parentsById(a, rows.map((c) => c.parent_id)),
     byIds<{ child_id: string; status: AssessmentStatus; created_at: string }>(rows.map((c) => c.id), "tests", (chunk) =>
-      a.db.rpc("admin_assessments").select("child_id, status, created_at").in("child_id", chunk)),
+      a.db.rpc("admin_assessments").select("id, child_id, status, created_at").in("child_id", chunk)),
   ]);
   const parent = index(parents);
   return {
