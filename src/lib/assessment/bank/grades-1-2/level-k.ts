@@ -137,7 +137,8 @@ export const LEVEL_K: readonly TaggedTemplate[] = [
     id: "k-in-all",
     strand: "N", grades: { BC: 0, AB: 1, SK: 1, MB: 1, ON: 1 }, format: "number", whiteboard: true, standard: "K3",
     fill(rng) {
-      const [a, b] = rng.shuffle([1, 2, 3, 4, 5]).slice(0, 2);
+      // Parts of 2 or more, so every noun stays plural.
+      const [a, b] = rng.shuffle([2, 3, 4, 5]).slice(0, 2);
       const name = rng.pick(NAMES);
       const [first, second, thing] = rng.pick([
         ["red", "blue", "fish"],
@@ -209,7 +210,7 @@ export const LEVEL_K: readonly TaggedTemplate[] = [
     id: "k-how-many-more",
     strand: "A", grades: { BC: 0, AB: 1, SK: 1, MB: 1, ON: 1 }, format: "number", whiteboard: true, standard: "K5",
     fill(rng) {
-      const have = rng.int(1, 7), want = rng.int(have + 2, 10);
+      const have = rng.int(2, 7), want = rng.int(have + 2, 10);
       const name = rng.pick(NAMES);
       return {
         values: { have, want },
@@ -224,7 +225,7 @@ export const LEVEL_K: readonly TaggedTemplate[] = [
     id: "k-take-away",
     strand: "A", grades: { BC: 0, AB: 1, SK: 1, MB: 1, ON: 1 }, format: "number", whiteboard: true, standard: "K5",
     fill(rng) {
-      const total = rng.int(4, 10), gone = rng.int(1, total - 2);
+      const total = rng.int(4, 10), gone = rng.int(2, total - 2);
       const [thing, verb] = rng.pick([
         ["birds", "fly away"],
         ["frogs", "hop away"],
@@ -244,7 +245,7 @@ export const LEVEL_K: readonly TaggedTemplate[] = [
     id: "k-balance-match",
     strand: "A", grades: { BC: 0, AB: 1, SK: 1, MB: 1, ON: 1 }, format: "number", whiteboard: true, standard: "K6",
     fill(rng) {
-      const [red, blue] = rng.shuffle([1, 2, 3, 4, 5]).slice(0, 2);
+      const [red, blue] = rng.shuffle([2, 3, 4, 5]).slice(0, 2);
       return {
         values: { red, blue },
         prompt: `One side of a balance has ${red} red cubes and ${blue} blue cubes. All the cubes are the same. How many cubes must go on the other side to make it balance?`,

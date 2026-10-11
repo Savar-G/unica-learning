@@ -18,10 +18,10 @@
 //
 // whiteboard: true marks a question a child can show by drawing: dots, tally marks, a number line, tens and ones.
 // Grades 1-2 draw only; they do not type their working (#67).
-import type { TaggedTemplate } from "../kit";
+import { keepSumsTogether, type TaggedTemplate } from "../kit";
 import { LEVEL_K } from "./level-k";
 import { LEVEL_1 } from "./level-1";
 import { LEVEL_2 } from "./level-2";
 import { LEVEL_3 } from "./level-3";
 
-export const GRADE_1_2_BANK: readonly TaggedTemplate[] = [...LEVEL_K, ...LEVEL_1, ...LEVEL_2, ...LEVEL_3];
+export const GRADE_1_2_BANK: readonly TaggedTemplate[] = [...LEVEL_K, ...LEVEL_1, ...LEVEL_2, ...LEVEL_3].map(keepSumsTogether);

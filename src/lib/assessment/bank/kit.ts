@@ -24,8 +24,11 @@ export const SHAPES = [
 ] as const;
 export type Shape = (typeof SHAPES)[number];
 
+/** The space between glyphs: it does not break, so a row of dots or a pattern stays on one line to count. */
+export const GAP = " ";
+
 /** n copies of a glyph: row(3) is "● ● ●". */
-export const row = (n: number, glyph = "●") => Array.from({ length: n }, () => glyph).join(" ");
+export const row = (n: number, glyph = "●") => Array.from({ length: n }, () => glyph).join(GAP);
 
 /** Short first names from many backgrounds, for word problems. A name never needs a pronoun. */
 export const NAMES = ["Mia", "Liam", "Ava", "Noah", "Zara", "Arjun", "Lucas", "Mei", "Omar", "Sofia", "Kai", "Leah", "Ravi", "Emma", "Jonah", "Priya", "Theo", "Amara", "Ben", "Nia"] as const;
@@ -60,7 +63,7 @@ export function shapePattern(rng: Rng, core: readonly number[], length: number, 
   const others = rng.shuffle(SHAPES.filter((s) => s !== answer));
   // Prefer the shape just before the gap (a common slip), then any other shape.
   const picks = [before, ...others.filter((s) => s !== before)].filter((s) => s !== answer).slice(0, 2);
-  const shown = items.map((s, i) => (i === ask ? "?" : s.glyph)).join(" ");
+  const shown = items.map((s, i) => (i === ask ? "?" : s.glyph)).join(GAP);
   const spoken = items.map((s, i) => (i === ask ? "what shape" : s.word)).join(", ");
   const label = (s: Shape) => `${s.glyph} ${s.word}`;
   return {
@@ -98,12 +101,34 @@ export function predictShape(rng: Rng, core: readonly number[], ask: number) {
   const shown = Array.from({ length: core.length * 2 }, (_, i) => at(i + 1));
   const label = (s: Shape) => `${s.glyph} ${s.word}`;
   return {
-    prompt: `The pattern keeps going: ${shown.map((s) => s.glyph).join(" ")} … What shape is number ${ask}?`,
+    prompt: `The pattern keeps going: ${shown.map((s) => s.glyph).join(GAP)} … What shape is number ${ask}?`,
     readAloud: `The pattern is ${shown.map((s) => s.word).join(", ")}, and it keeps going. What shape is number ${ask} in the pattern: ${orList([answer, ...picks].map((s) => `a ${s.word}`))}?`,
     answer: label(answer),
     wrong: picks.map((s) => wrong(label(s), neighbours.includes(s) ? "one-to-one" : "pattern-core")),
   };
 }
+
+/** Keeps a sum or an equation on one line: the spaces around + − × and = do not break. */
+export const keepTogether = (text: string) => text.replace(/ ([+−×=]) /g, " $1 ");
+
+/** The template, with every sum in its prompt and choices kept on one line (a split "2 +" / "9" confuses a young reader). */
+export function keepSumsTogether<T extends Template>(template: T): T {
+  return {
+    ...template,
+    fill(rng) {
+      const f = template.fill(rng);
+      return {
+        ...f,
+        prompt: keepTogether(f.prompt),
+        answer: keepTogether(f.answer),
+        wrong: f.wrong.map((w) => ({ ...w, value: keepTogether(w.value) })),
+      };
+    },
+  };
+}
+
+/** count(1, "ten") is "1 ten"; count(3, "ten") is "3 tens". */
+export const count = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
 
 /** "a small apple" -> "A small apple". */
 export const cap = (text: string) => text.charAt(0).toUpperCase() + text.slice(1);

@@ -153,7 +153,7 @@ function Intro({ name, total, ready, busy, onStart, failure }: { name: string; t
     return (
       <section className="test-card">
         <h1>The test for {name}&apos;s grade is not ready yet.</h1>
-        <p>The test is open for grades 3 to 5 now. We are writing the questions for the other grades.</p>
+        <p>The test is open for grades 1 to 5 now. We are writing the questions for the other grades.</p>
         <Link className="btn ghost" href="/account">Back to your account</Link>
       </section>
     );

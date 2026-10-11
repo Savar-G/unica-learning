@@ -166,6 +166,8 @@ describe("the grades 1-2 bank", () => {
         expect(q.readAloud.length, `seed ${seed}`).toBeGreaterThan(0);
         expect(q.wrong.length, `seed ${seed}`).toBeGreaterThan(0);
         for (const w of q.wrong) expect(MISCONCEPTIONS[w.misconception], `seed ${seed}: ${w.misconception}`).toBeDefined();
+        // A sum never breaks across lines on screen.
+        for (const shown of [q.prompt, ...(q.choices ?? [])]) expect(shown, `seed ${seed}`).not.toMatch(/ [+−×=]|[+−×=] /);
 
         if (q.format === "number") {
           expect(q.answer, `seed ${seed}`).toMatch(/^\d+$/);
@@ -185,6 +187,15 @@ describe("the grades 1-2 bank", () => {
     it("read-aloud text has words, not symbols", () => {
       for (const seed of SEEDS.slice(0, 100)) {
         expect(fillTemplate(template, seed).readAloud, `seed ${seed}`).not.toMatch(NOT_SPOKEN);
+      }
+    });
+
+    it("never pairs 1 with a plural, as in '1 red cubes'", () => {
+      for (const seed of SEEDS) {
+        const q = fillTemplate(template, seed);
+        for (const text of [q.prompt, q.readAloud, ...(q.choices ?? [])]) {
+          expect(text, `seed ${seed}`).not.toMatch(/(^|[^\d.])1 ([a-z]+ )?(?!is\b|was\b|has\b|less\b|plus\b|seats\b)[a-z]+s\b/);
+        }
       }
     });
 

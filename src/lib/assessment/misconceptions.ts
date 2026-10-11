@@ -71,7 +71,7 @@ export const MISCONCEPTIONS = {
   "looks-different": { description: "Calls two equal amounts different because they are written differently", evidence: "none" },
   "count-objects": { description: "Counts the objects instead of their parts, such as shapes instead of sides", evidence: "none" },
   "digit-reversal": { description: "Swaps the tens and ones digits, so 14 becomes 41", evidence: "none" },
-  "digit-compare": { description: "Compares the wrong digits, so 12 looks smaller than 9 or 29 looks bigger than 31", evidence: "none" },
+  "digit-compare": { description: "Compares digits in the wrong places: lines numbers up by their first digit, or lets a bigger ones digit win, so 12 looks smaller than 9 and 29 looks bigger than 31", evidence: "none" },
   "skip-by-one": { description: "Counts on by 1 instead of by the skip-counting step", evidence: "none" },
   "tens-as-ones": { description: "Adds or takes away 1 when the question asks for 10", evidence: "none" },
   "one-part": { description: "Counts only one part instead of the whole", evidence: "none" },

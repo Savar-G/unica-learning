@@ -1,7 +1,7 @@
 // Level 3 (BC grade 3) for the grades 1-2 bank: the "up" form for a grade 2 child. No fractions: grades 1-2 do
 // not test or report them. Standards: curriculum map, section 1 (3.1-3.14); example items: section 3, grade 3.
 // Province tags: see ./index.ts.
-import { cap, draw, NAMES, orList, wrong, type TaggedTemplate } from "../kit";
+import { cap, count, draw, NAMES, orList, wrong, type TaggedTemplate } from "../kit";
 import type { Filled } from "../../types";
 
 const digits = (n: number) => [Math.floor(n / 100), Math.floor(n / 10) % 10, n % 10];
@@ -22,8 +22,8 @@ export const LEVEL_3: readonly TaggedTemplate[] = [
     fill(rng) {
       const h = rng.int(1, 9), d = rng.int(1, 9), zeroTens = rng.int(0, 1) === 1;
       const [text, answer, short, spoken] = zeroTens
-        ? [`${h} hundreds, 0 tens and ${d} ones`, h * 100 + d, h * 10 + d, `${h}00${d}`]
-        : [`${h} hundreds, ${d} tens and 0 ones`, h * 100 + d * 10, h * 10 + d, `${h}00${d}0`];
+        ? [`${count(h, "hundred")}, 0 tens and ${count(d, "one")}`, h * 100 + d, h * 10 + d, `${h}00${d}`]
+        : [`${count(h, "hundred")}, ${count(d, "ten")} and 0 ones`, h * 100 + d * 10, h * 10 + d, `${h}00${d}0`];
       return {
         values: { h, d, zeroTens: zeroTens ? 1 : 0 },
         prompt: `What number is ${text}?`,

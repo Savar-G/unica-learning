@@ -1,6 +1,6 @@
 // Level 2 (BC grade 2) for the grades 1-2 bank: stage 1 for grade 2, and the "up" form for grade 1.
 // Standards: curriculum map, section 1 (2.1-2.12); example items: section 3, grade 2. Province tags: see ./index.ts.
-import { cap, draw, NAMES, orList, predictShape, row, SHAPES, wrong, type TaggedTemplate } from "../kit";
+import { cap, count, draw, GAP, NAMES, orList, predictShape, row, SHAPES, wrong, type TaggedTemplate } from "../kit";
 
 /** The O1 bug: in each column, the smaller digit from the larger. */
 const smallerFromLarger = (a: number, b: number) => Math.abs(Math.floor(a / 10) - Math.floor(b / 10)) * 10 + Math.abs((a % 10) - (b % 10));
@@ -81,7 +81,8 @@ export const LEVEL_2: readonly TaggedTemplate[] = [
     strand: "N", grades: { BC: 2, AB: 2, SK: 2, MB: 2, ON: 2 }, format: "number", whiteboard: true, standard: "2.1",
     fill(rng) {
       const tens = rng.int(1, 9), ones = draw(rng, (r) => r.int(1, 9), (o) => o !== tens);
-      const parts = rng.int(0, 1) === 1 ? `${tens} tens and ${ones} ones` : `${ones} ones and ${tens} tens`;
+      const [t, o] = [count(tens, "ten"), count(ones, "one")];
+      const parts = rng.int(0, 1) === 1 ? `${t} and ${o}` : `${o} and ${t}`;
       return {
         values: { tens, ones },
         prompt: `What number is ${parts}?`,
@@ -148,15 +149,15 @@ export const LEVEL_2: readonly TaggedTemplate[] = [
     strand: "O", grades: { BC: 2, AB: 2, SK: 2, MB: 2, ON: 2 }, format: "number", whiteboard: true, standard: "2.4",
     fill(rng) {
       const [a, b] = draw(rng, (r) => [r.int(15, 59), r.int(15, 39)], ([a, b]) => (a % 10) + (b % 10) >= 10 && a + b < 100 && a !== b);
-      const [things, first, second] = rng.pick([
-        ["cans", "on Monday", "on Tuesday"],
-        ["books", "in the morning", "in the afternoon"],
-        ["seeds", "in one pot", "in another pot"],
+      const [verb, things, first, second] = rng.pick([
+        ["collects", "cans", "on Monday", "on Tuesday"],
+        ["reads", "pages", "in the morning", "in the afternoon"],
+        ["plants", "seeds", "in one garden bed", "in another garden bed"],
       ] as const);
       return {
         values: { a, b },
-        prompt: `A class collects ${a} ${things} ${first} and ${b} ${things} ${second}. How many ${things} is that in all?`,
-        readAloud: `A class collects ${a} ${things} ${first} and ${b} ${things} ${second}. How many ${things} is that in all?`,
+        prompt: `A class ${verb} ${a} ${things} ${first} and ${b} ${things} ${second}. How many ${things} is that in all?`,
+        readAloud: `A class ${verb} ${a} ${things} ${first} and ${b} ${things} ${second}. How many ${things} is that in all?`,
         answer: String(a + b),
         wrong: [wrong(a + b - 10, "O3"), wrong(Math.abs(a - b), "operation")],
       };
@@ -297,7 +298,7 @@ export const LEVEL_2: readonly TaggedTemplate[] = [
       const c = rng.int(0, cores.length - 1);
       const core = cores[c];
       const shown = [...core, ...core, ...core];
-      const glyphs = (items: readonly (typeof x)[]) => items.map((s) => s.glyph).join(" ");
+      const glyphs = (items: readonly (typeof x)[]) => items.map((s) => s.glyph).join(GAP);
       // A core one item short, and one with an extra item, both look plausible to a child who has not found the repeat.
       const short = core.slice(0, -1), long = [...core, core[0]];
       return {

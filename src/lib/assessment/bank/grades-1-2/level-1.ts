@@ -1,6 +1,6 @@
 // Level 1 (BC grade 1) for the grades 1-2 bank: stage 1 for grade 1, and the "down" form for grade 2.
 // Standards: curriculum map, section 1 (1.1-1.11); example items: section 3, grade 1. Province tags: see ./index.ts.
-import { cap, draw, NAMES, orList, predictShape, row, SHAPES, shapeQuestion, twoNames, wrong, type TaggedTemplate } from "../kit";
+import { cap, draw, GAP, NAMES, orList, predictShape, row, SHAPES, shapeQuestion, twoNames, wrong, type TaggedTemplate } from "../kit";
 import type { Filled } from "../../types";
 
 const THINGS = ["stickers", "marbles", "shells", "crayons", "beads"] as const;
@@ -228,7 +228,7 @@ export const LEVEL_1: readonly TaggedTemplate[] = [
       const picks = others.slice(0, 2);
       return {
         values: { shown: keys.indexOf(answer) },
-        prompt: `Which letters show this pattern? ${items.map((s) => s.glyph).join(" ")}`,
+        prompt: `Which letters show this pattern? ${items.map((s) => s.glyph).join(GAP)}`,
         readAloud: `Look at the pattern: ${items.map((s) => s.word).join(", ")}. Which letters show this pattern: ${orList([answer, ...picks])}?`,
         answer,
         wrong: picks.map((k) => wrong(k, "pattern-core")),
@@ -326,7 +326,7 @@ export const LEVEL_1: readonly TaggedTemplate[] = [
       const [asked, ...others] = rng.shuffle(keys);
       const shapes = rng.shuffle([...SHAPES]);
       const show = (k: keyof typeof codes) =>
-        Array.from({ length: codes[k].length * 2 }, (_, i) => shapes[codes[k][i % codes[k].length]].glyph).join(" ");
+        Array.from({ length: codes[k].length * 2 }, (_, i) => shapes[codes[k][i % codes[k].length]].glyph).join(GAP);
       return {
         values: { asked: keys.indexOf(asked) },
         prompt: `Which pattern is an ${asked} pattern?`,
