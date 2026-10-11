@@ -65,3 +65,5 @@
 .acct-saved { margin-top: 24px; }
 .acct-begin .acct-start { justify-items: start; }
 .acct-begin .acct-start .small { text-align: left; }
+/* #72: on a phone the row wraps, so the wait note sits under the name, left-aligned like the link button. */
+@media (max-width: 699px) { .acct-kid .acct-done { text-align: left; } }
