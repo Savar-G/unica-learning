@@ -19,14 +19,17 @@ import type {
   LevelResult,
   Placement,
   Province,
+  PublicQuestion,
   Question,
   ReportedStrand,
   Route,
   Session,
   StrandResult,
+  StoredTest,
   StrandStatus,
   TaggedProvince,
   Template,
+  TestStep,
 } from "./types";
 
 /** "Another province" is scored against BC (D-083). */
@@ -60,7 +63,7 @@ export function fillTemplate(template: Template, seed: number, province: Provinc
 }
 
 /** What the browser may see: no answer and no coded wrong answers. */
-export function toPublicQuestion(q: Question) {
+export function toPublicQuestion(q: Question): PublicQuestion {
   const { id, level, strand, format, whiteboard, prompt, readAloud, choices } = q;
   return { id, level, strand, format, whiteboard, prompt, readAloud, choices };
 }
@@ -194,6 +197,25 @@ export function submitAnswer(session: Session, submission: Submission): Session 
     route = routeFor(answers.filter((a) => a.correct).length, answers.length);
   }
   return { ...session, answers, route };
+}
+
+/** The part of a session the server stores when the test starts. The answers are stored one row at a time. */
+export function storedTest(session: Session): StoredTest {
+  const { profile, seed, stage1, stage2 } = session;
+  return { profile, seed, stage1, stage2 };
+}
+
+/** Rebuilds a session from the stored test and the answers in the order given, marking each one again. */
+export function restoreSession(stored: StoredTest, submissions: readonly Submission[]): Session {
+  const start: Session = { ...stored, route: null, answers: [] };
+  return submissions.reduce((session, { questionId, response, timeMs }) => submitAnswer(session, { questionId, response, timeMs }), start);
+}
+
+/** What the browser gets next: the current question without its answer, or "complete". */
+export function testStep(session: Session): TestStep {
+  const total = bandFor(session.profile.grade).length;
+  const q = nextQuestion(session);
+  return q ? { status: "question", question: toPublicQuestion(q), number: session.answers.length + 1, total } : { status: "complete", total };
 }
 
 function statusFor(correct: number, total: number): StrandStatus {
