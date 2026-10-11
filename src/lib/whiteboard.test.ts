@@ -4,7 +4,7 @@ import {
   PALM_AFTER_PEN_MS,
   decodeDraft,
   encodeDraft,
-  exportSize,
+  exportFrame,
   hasDrawing,
   newPalmGuard,
   pointerDown,
@@ -72,16 +72,40 @@ describe("what counts as a drawing", () => {
   });
 });
 
-describe("the saved image", () => {
-  it("keeps the board's shape at the width asked for", () => {
-    expect(exportSize(0.75, [stroke([[0.2, 0.3]])], 1000)).toEqual({ width: 1000, height: 750 });
+describe("the part of the board the saved image shows", () => {
+  const BOARD_PX = 800;
+  const inside = (f: { x: number; y: number; w: number; h: number }, [x, y]: [number, number]) => x >= f.x && x <= f.x + f.w && y >= f.y && y <= f.y + f.h;
+
+  it("is the work with a small margin, not the empty board around it", () => {
+    const f = exportFrame([stroke([[0.2, 0.3], [0.4, 0.35]])], BOARD_PX);
+    expect(inside(f, [0.2, 0.3]) && inside(f, [0.4, 0.35])).toBe(true);
+    expect(f.x).toBeGreaterThan(0.1);
+    expect(f.w).toBeLessThan(0.4);
+    expect(f.h).toBeLessThan(0.3);
   });
 
   it("still holds work drawn below what the board shows after a resize", () => {
     // Drawn on a tall board, then the board got shorter: the stroke at 1.1 widths down is off screen but kept.
-    const { height } = exportSize(0.5, [stroke([[0.5, 0.2], [0.5, 1.1]])], 1000);
-    expect(height).toBeGreaterThanOrEqual(1100);
-    expect(height).toBeLessThanOrEqual(1200);
+    const f = exportFrame([stroke([[0.5, 0.2], [0.5, 1.1]])], BOARD_PX);
+    expect(inside(f, [0.5, 1.1])).toBe(true);
+  });
+
+  it("stays inside the board's width", () => {
+    const f = exportFrame([stroke([[0, 0], [1, 0.5]])], BOARD_PX);
+    expect(f.x).toBe(0);
+    expect(f.x + f.w).toBeCloseTo(1, 9);
+  });
+
+  it("a single dot still gives a readable image", () => {
+    const f = exportFrame([stroke([[0.5, 0.5]])], BOARD_PX);
+    expect(f.w).toBeGreaterThanOrEqual(0.2 - 1e-9);
+    expect(f.h).toBeGreaterThanOrEqual(0.2 - 1e-9);
+    expect(inside(f, [0.5, 0.5])).toBe(true);
+  });
+
+  it("eraser strokes do not make it bigger", () => {
+    const ink = stroke([[0.2, 0.2], [0.3, 0.3]]);
+    expect(exportFrame([ink, stroke([[0.9, 0.9], [0.95, 1.4]], true)], BOARD_PX)).toEqual(exportFrame([ink], BOARD_PX));
   });
 });
 

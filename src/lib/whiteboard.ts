@@ -81,20 +81,46 @@ export function pointerUp(guard: PalmGuard, p: PointerInfo): [PalmGuard, boolean
 
 // ---------- the saved image ----------
 
-/** Space kept below the lowest stroke, as a fraction of the width. */
-const BOTTOM_MARGIN = 0.02;
-/** The image is never taller than this many widths. */
-const MAX_TALL = 2;
+/** Space kept around the work, in board widths. */
+const MARGIN = 0.04;
+/** The smallest image side, in board widths, so a dot or a short line is still readable. */
+const MIN_SIDE = 0.2;
+/** The image never reaches further down than this many board widths. */
+const MAX_DOWN = 2;
+
+/** A part of the board, in board widths from its top-left corner. */
+export interface Frame {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
 
 /**
- * The PNG's size in pixels: `width` wide, with the board's shape (`aspect` = height / width), made taller when
- * strokes sit below what the board shows now (it got shorter after a resize), so no work is cut off.
+ * The part of the board the saved image shows: every pencil stroke with a small margin, inside the board's width.
+ * Work below what the board shows now (it got shorter after a resize) is kept. `boardWidth` is in CSS pixels, for the
+ * line widths. The image keeps the board's scale, so the work is never blown up.
  */
-export function exportSize(aspect: number, strokes: readonly Stroke[], width: number): { width: number; height: number } {
-  let bottom = 0;
-  for (const s of strokes) for (const [, y] of s.pts) bottom = Math.max(bottom, y);
-  const tall = Math.min(MAX_TALL, Math.max(aspect > 0 ? aspect : 0.75, strokes.length ? bottom + BOTTOM_MARGIN : 0));
-  return { width, height: Math.round(width * tall) };
+export function exportFrame(strokes: readonly Stroke[], boardWidth: number): Frame {
+  let [x0, y0, x1, y1] = [Infinity, Infinity, -Infinity, -Infinity];
+  for (const s of strokes) {
+    if (s.erase) continue;
+    const r = s.w / 2 / boardWidth;
+    for (const [x, y] of s.pts) [x0, y0, x1, y1] = [Math.min(x0, x - r), Math.min(y0, y - r), Math.max(x1, x + r), Math.max(y1, y + r)];
+  }
+  if (x0 > x1) return { x: 0, y: 0, w: 1, h: 0.75 };
+  // The margin, then at least MIN_SIDE; a window past an edge moves back inside rather than shrinking.
+  const grow = (lo: number, hi: number, max: number): [number, number] => {
+    [lo, hi] = [lo - MARGIN, hi + MARGIN];
+    const short = MIN_SIDE - (hi - lo);
+    if (short > 0) [lo, hi] = [lo - short / 2, hi + short / 2];
+    if (lo < 0) [lo, hi] = [0, Math.min(max, hi - lo)];
+    if (hi > max) [lo, hi] = [Math.max(0, lo - (hi - max)), max];
+    return [lo, hi];
+  };
+  const [x, xEnd] = grow(x0, x1, 1);
+  const [y, yEnd] = grow(y0, y1, MAX_DOWN);
+  return { x, y, w: xEnd - x, h: yEnd - y };
 }
 
 // ---------- the draft ----------

@@ -50,6 +50,7 @@
   .test-desk-q { border-right: 0; border-bottom: 1px solid var(--line); gap: 16px; padding: 18px 20px; overflow: visible; }
   .test-desk .test-choices { grid-template-columns: 1fr 1fr; }
   .test-desk .test-num { grid-template-columns: auto auto; justify-content: start; align-items: start; gap: 16px; }
+  .test-desk .test-display { min-width: 220px; }
   .test-desk .test-pad button { height: 56px; }
 }
 

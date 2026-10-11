@@ -10,7 +10,7 @@ import {
   DRAFT_ROOT,
   decodeDraft,
   encodeDraft,
-  exportSize,
+  exportFrame,
   hasDrawing,
   newPalmGuard,
   pointerDown,
@@ -77,16 +77,18 @@ const toBase64 = (blob: Blob) =>
   });
 
 /**
- * The drawing as a PNG in base64, dark ink on white, or null when nothing is drawn. Work below what the board shows
- * now is kept. Made smaller until it fits the server's limit.
+ * The drawing as a PNG in base64, dark ink on white, or null when nothing is drawn. It shows the work with a small
+ * margin (exportFrame), also work below what the board shows now. Made smaller until it fits the server's limit.
  */
 export async function boardImage(strokes: readonly Stroke[], size: BoardSize): Promise<string | null> {
   if (!hasDrawing(strokes)) return null;
   const boardWidth = size.width > 0 ? size.width : 800;
-  const aspect = size.width > 0 && size.height > 0 ? size.height / size.width : 0.75;
+  const frame = exportFrame(strokes, boardWidth);
   let blob: Blob | null = null;
-  for (const width of [1200, 900, 600]) {
-    const { height } = exportSize(aspect, strokes, width);
+  // Image pixels per board width: 1200 first, smaller only when the PNG is over the limit.
+  for (const perWidth of [1200, 900, 600]) {
+    const width = Math.max(1, Math.round(frame.w * perWidth));
+    const height = Math.max(1, Math.round(frame.h * perWidth));
     // The ink on its own layer first, so the eraser clears ink only and never makes holes in the white.
     const ink = document.createElement("canvas");
     ink.width = width;
@@ -97,7 +99,8 @@ export async function boardImage(strokes: readonly Stroke[], size: BoardSize): P
     out.height = height;
     const outCtx = out.getContext("2d");
     if (!inkCtx || !outCtx) return null;
-    for (const s of strokes) paint(inkCtx, s, width, width / boardWidth);
+    inkCtx.translate(-frame.x * perWidth, -frame.y * perWidth);
+    for (const s of strokes) paint(inkCtx, s, perWidth, perWidth / boardWidth);
     outCtx.fillStyle = "#fff";
     outCtx.fillRect(0, 0, width, height);
     outCtx.drawImage(ink, 0, 0);
