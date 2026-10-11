@@ -210,7 +210,10 @@ export function TakeTest({ childId, name, total, breakAfter, ready, done, mode: 
 function Problem({ error }: { error: TestError | null }) {
   // A pane that scrolls (a long question) could hide a new error line under Next: bring it into view.
   const line = useRef<HTMLParagraphElement>(null);
-  useEffect(() => line.current?.scrollIntoView?.({ block: "nearest" }), [error]);
+  useEffect(() => {
+    // A block body: scrollIntoView returns a Promise in newer browsers, and an effect may return only a clean-up.
+    line.current?.scrollIntoView?.({ block: "nearest" });
+  }, [error]);
   if (!error) return null;
   const text =
     error === "signed_out" ? <>The sign-in ended. Ask your grown-up to <Link href="/sign-in">sign in</Link> again. Your earlier answers are saved.</>
