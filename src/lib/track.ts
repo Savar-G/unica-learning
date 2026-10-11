@@ -9,6 +9,10 @@
 // test continued, or one with every answer in opened to finish). test_start is now only a new test (status new, or
 // restart after one expired). test_start_click status: new, retake, in_progress, finish, expired.
 // The report (#65): report_open (src = email when the parent came from the report email, else account).
+// The report's next step (#66): card_start (the plan click toward the payment page: plan, price, src = email or
+// account, status = stripe, later (no Stripe key or Stripe failed), saved (a card was saved before) or error);
+// waitlist_join (src, curriculum, status = joined or already; the reserve form's waitlist_join has no src);
+// card_cancelled and card_saved with src = report.
 // Help flags (#71): test_help (status yes, a-little or no: the answer to "Did anyone help?", sent once the test is stored).
 // Reminders (#73): reminder_open (status = continue, come_back or start: the parent opened the start screen from that
 // reminder email), unsubscribe (status done or failed: the unsubscribe page turned reminders off), unsubscribe_page
