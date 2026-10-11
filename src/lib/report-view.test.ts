@@ -178,11 +178,19 @@ describe("how we help, by verdict (D-084)", () => {
       text: "Maya's first book starts at grade 3 work, with extra practice in the areas marked Developing or Needs attention. After each photo check-in, we see what is secure and move the next book on: to grade 4 work, then past it when Maya is ready.",
     });
   });
-  it("on grade: get ahead", () => {
+  it("on grade, every area secure at grade level: get ahead, with no practice named", () => {
+    // Knows grade 4, misses the grade 5 questions of stage 2: those count for the level, not for the areas.
     expect(howWeHelp(view(knowsUpTo(4)))).toEqual({
       title: "Get ahead",
-      text: "Maya's books keep grade 4 work steady, with extra practice in the areas marked Developing or Needs attention, and bring in grade 5 topics when Maya is ready, so Maya sees them before the class does.",
+      text: "Maya's books keep grade 4 work steady, and bring in grade 5 topics when Maya is ready, so Maya sees them before the class does.",
     });
+  });
+  it("on grade with a weaker area: get ahead, with extra practice", () => {
+    // 10 of 18 right in stage 1 (stays on grade), then every stage 2 question right.
+    const text = howWeHelp(view((_, i) => i < 10 || i >= 18)).text;
+    expect(text).toBe(
+      "Maya's books keep grade 4 work steady, with extra practice in the areas marked Developing or Needs attention, and bring in grade 5 topics when Maya is ready, so Maya sees them before the class does.",
+    );
   });
   it("ahead: go further", () => {
     expect(howWeHelp(view(allRight))).toEqual({

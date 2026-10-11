@@ -104,8 +104,8 @@ function ReportOverall({ view }: { view: ReportView }) {
 }
 
 // The comparison among Unica children (bands with n from 100 tests per grade, a percentile with n from 400, D-084)
-// needs the child's place among them, which no ticket defines yet. Below 100 the scale above is the whole comparison.
-// The help warning (#71) comes here too.
+// shows nothing yet: decision of 2026-10-11 on #65, until a ticket decides how a child is ranked. The model keeps the
+// stage. Below 100 tests per grade the scale above is the whole comparison. The help warning (#71) comes here too.
 function ReportContext({ view }: { view: ReportView }) {
   const { fsa } = view.model;
   if (!fsa) return null;

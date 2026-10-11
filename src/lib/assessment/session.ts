@@ -246,8 +246,12 @@ export function finish(session: Session, facts: FactsSession | null = null): Pla
   // No level cleared: the child works below everything the test showed them.
   const workingLevel = cleared.length > 0 ? cleared[cleared.length - 1].level : (Math.max(0, levels[0].level - 1) as Level);
 
+  // An area's status counts only the questions at or below the school grade (D-084: never invent a weakness; decision
+  // of 2026-10-11 on #65). Harder questions from a stage 2 routed up still count toward the working level above, but a
+  // child who misses them is not weak in that area. An area with no such question gets no status and no count.
+  const atOrBelowGrade = marked.filter((m) => m.q.level <= session.profile.grade);
   const strands: StrandResult[] = bandFor(session.profile.grade)
-    .strands.map((strand) => ({ strand, ...tally(marked.filter((m) => REPORTED_STRAND[m.q.strand] === strand)) }))
+    .strands.map((strand) => ({ strand, ...tally(atOrBelowGrade.filter((m) => REPORTED_STRAND[m.q.strand] === strand)) }))
     .filter((s) => s.total > 0)
     .map((s) => ({ ...s, status: statusFor(s.correct, s.total) }));
 
