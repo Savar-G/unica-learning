@@ -115,6 +115,8 @@ language sql security definer set search_path = '' set timezone = 'UTC' as $$
     and not exists(select 1 from public.family_card_operations where parent_id = p)
     and (select max(activity.at) + interval '12 months' <= now() from (
       select greatest(started_at, completed_at, last_answer_at) as at from public.assessments where parent_id = p
+      union all select answer.created_at from public.answers answer
+        join public.assessments a on a.id = answer.assessment_id where a.parent_id = p
       union all select f.started_at from public.assessment_facts f
         join public.assessments a on a.id = f.assessment_id where a.parent_id = p
       union all select f.created_at from public.fact_answers f

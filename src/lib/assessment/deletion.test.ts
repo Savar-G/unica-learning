@@ -71,7 +71,7 @@ function system(count = 1007) {
   const store: FamilyDeletionStore = {
     async listImages(prefix, offset, limit) {
       const entries: ImageEntry[] = prefix === "family"
-        ? [{ name: "test", folder: true }]
+        ? ([...images].some((p) => p.startsWith("family/")) ? [{ name: "test", folder: true }] : [])
         : [...images].filter((p) => p.startsWith(`${prefix}/`)).sort().map((p) => ({ name: p.slice(prefix.length + 1), folder: false }));
       return entries.slice(offset, offset + limit);
     },
@@ -91,6 +91,48 @@ function system(count = 1007) {
 }
 
 describe("delete a frozen family", () => {
+  it("makes removal progress across slow deadline-limited retries for nested families with short pages", async () => {
+    const original = Array.from({ length: 1007 }, (_, i) => `family/${i < 501 ? "child-a/test/nested" : "child-b/test"}/q${String(i).padStart(4, "0")}.png`);
+    const images = new Set([...original, "foreign/test/keep.png"]);
+    const removed: string[] = [];
+    let elapsed = 0;
+    let authRemoved = false;
+    let complete = false;
+    let pageCap = 100;
+    const store: FamilyDeletionStore = {
+      async renew() { if (elapsed >= 10_000) throw new Error("deadline"); },
+      async listImages(prefix, offset, limit) {
+        elapsed += 1000;
+        if (elapsed >= 10_000) throw new Error("deadline");
+        const entries = new Map<string, ImageEntry>();
+        for (const path of images) {
+          if (!path.startsWith(`${prefix}/`)) continue;
+          const rest = path.slice(prefix.length + 1);
+          const name = rest.split("/")[0];
+          entries.set(name, { name, folder: rest.includes("/") });
+        }
+        return [...entries.values()].sort((a, b) => a.name.localeCompare(b.name)).slice(offset, offset + Math.min(limit, pageCap));
+      },
+      async removeImages(paths) { paths.forEach((p) => { expect(images.delete(p)).toBe(true); removed.push(p); }); },
+      async removeAuth() { expect([...images]).toEqual(["foreign/test/keep.png"]); authRemoved = true; },
+      async complete() { complete = true; },
+    };
+    let attempts = 0;
+    while (!complete && attempts++ < 20) {
+      elapsed = 0;
+      const before = removed.length;
+      try { await deleteFamily(store, "family"); }
+      catch (e) { expect((e as Error).message).toBe("deadline"); }
+      // The first bounded attempt must remove data, unlike whole-tree collection.
+      if (attempts === 1) expect(removed.length).toBeGreaterThan(before);
+      if (!complete) expect(authRemoved).toBe(false);
+      pageCap = 37; // A short service response must not be treated as the end of the folder.
+    }
+    expect(complete).toBe(true);
+    expect(authRemoved).toBe(true);
+    expect(removed.slice().sort()).toEqual(original.slice().sort());
+    expect(new Set(removed).size).toBe(1007);
+  });
   it("removes the lowercase Storage folder for an uppercase UUID before deleting Auth", async () => {
     const id = "abcdefab-0000-4000-8000-abcdefabcdef";
     const images = new Set([`${id}/work.png`]);

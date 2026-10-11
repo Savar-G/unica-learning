@@ -61,37 +61,41 @@ export interface FamilyDeletionStore {
   complete(): Promise<void>;
 }
 
-/** Collect each folder before removing anything: deleting during offset paging would skip objects. */
-async function familyImages(store: FamilyDeletionStore, prefix: string): Promise<string[]> {
-  const entries: ImageEntry[] = [];
-  for (let offset = 0; ; offset += 100) {
+/** Drain bounded pages from offset zero. Each removal persists progress and cannot shift an unread offset. */
+async function removeFamilyImages(store: FamilyDeletionStore, prefix: string): Promise<number> {
+  const read = async () => {
     await store.renew();
-    const page = await store.listImages(prefix, offset, 100);
-    entries.push(...page);
-    if (page.length < 100) break;
+    return store.listImages(prefix, 0, 100);
+  };
+  let page = await read();
+  let removed = 0;
+  while (page.length) {
+    for (const entry of page) {
+      if (!entry.name || entry.name.includes("/") || entry.name === "." || entry.name === "..") throw new Error("Invalid storage name");
+    }
+    const before = removed;
+    const files = page.filter((entry) => !entry.folder);
+    if (files.length) {
+      await store.renew();
+      await store.removeImages(files.map((entry) => `${prefix}/${entry.name}`));
+      removed += files.length;
+    }
+    for (const folder of page.filter((entry) => entry.folder)) removed += await removeFamilyImages(store, `${prefix}/${folder.name}`);
+    const next = await read();
+    if (next.some((entry) => !entry.folder && files.some((file) => file.name === entry.name))
+      || (removed === before && next.some((entry) => page.some((old) => old.name === entry.name)))) throw new Error("Storage not empty");
+    // A short page is not an end marker. Continue until the exact family folder is empty.
+    page = next;
   }
-  const paths: string[] = [];
-  for (const entry of entries) {
-    // Storage names cannot escape the exact family prefix, including during a corrupt response.
-    if (!entry.name || entry.name.includes("/") || entry.name === "." || entry.name === "..") throw new Error("Invalid storage name");
-    const path = `${prefix}/${entry.name}`;
-    if (entry.folder) paths.push(...await familyImages(store, path));
-    else paths.push(path);
-  }
-  return paths;
+  return removed;
 }
 
 /** Idempotent ordered deletion. A failed step leaves the durable request for a later retry. */
 export async function deleteFamily(store: FamilyDeletionStore, parentId: string): Promise<{ images: number }> {
   parentId = parentId.toLowerCase();
-  const paths = await familyImages(store, parentId);
-  for (let i = 0; i < paths.length; i += 100) {
-    await store.renew();
-    await store.removeImages(paths.slice(i, i + 100));
-  }
-  if ((await familyImages(store, parentId)).length !== 0) throw new Error("Storage not empty");
+  const images = await removeFamilyImages(store, parentId);
   await store.renew();
   await store.removeAuth();
   await store.complete();
-  return { images: paths.length };
+  return { images };
 }
