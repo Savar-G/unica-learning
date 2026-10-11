@@ -5,12 +5,13 @@ import { bandFor, type GradeBandId } from "../constants";
 import { SAMPLE_BANK } from "../sample-bank";
 import type { Grade, Template } from "../types";
 import { GRADE_1_2_BANK } from "./grades-1-2";
+import { GRADE_3_5_BANK } from "./grades-3-5";
 
 export { GRADE_1_2_BANK };
 
 export const BANKS: Record<GradeBandId, readonly Template[]> = {
   "1-2": GRADE_1_2_BANK,
-  "3-5": SAMPLE_BANK,
+  "3-5": GRADE_3_5_BANK,
   "6-7": SAMPLE_BANK,
 };
 
