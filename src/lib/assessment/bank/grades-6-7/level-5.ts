@@ -127,7 +127,7 @@ export const LEVEL_5: readonly TaggedTemplate[] = [
   {
     // Map, misconception O8: 2.5 + 1.25.
     id: "g67-5-add-decimals",
-    strand: "O", grades: { BC: 5, AB: 5, SK: 5, MB: 5, ON: 5 }, format: "number", whiteboard: true, standard: "5.7",
+    strand: "O", grades: { BC: 5, AB: 4, SK: 5, MB: 4, ON: 5 }, format: "number", whiteboard: true, standard: "5.7",
     fill(rng) {
       const [x, y, z, uv] = draw(
         rng,
@@ -200,7 +200,7 @@ export const LEVEL_5: readonly TaggedTemplate[] = [
         prompt: `${fmt(x)} × ${fmt(y)} = ?`,
         readAloud: `What is ${fmt(x)} times ${fmt(y)}?`,
         answer: String(answer),
-        wrong: [wrong(answer / 10, "zero-placeholder"), wrong(answer * 10, "zero-placeholder")],
+        wrong: [wrong(answer / 10, "annexing-zeros"), wrong(answer * 10, "annexing-zeros")],
       };
     },
   },
@@ -277,13 +277,12 @@ export const LEVEL_5: readonly TaggedTemplate[] = [
     strand: "F", grades: { BC: 5, AB: 5, SK: 5, MB: 5, ON: 6 }, format: "choice", whiteboard: false, standard: "5.4",
     fill(rng) {
       const t = rng.int(2, 8), u = rng.int(1, 9);
-      const [v] = rng.shuffle([1, 2, 3, 4, 5, 6, 7, 8, 9].filter((x) => x !== u));
       return {
-        values: { t, u, v },
+        values: { t, u },
         prompt: "Which decimal is the least?",
         readAloud: "Which decimal is the least?",
         answer: fmt((t * 100 + u) / 1000),
-        wrong: [wrong(fmt((t + 1) / 10), "F6"), wrong(fmt((t * 10 + u) / 100), "F6"), wrong(fmt((t * 10 + v) / 100), "F6")],
+        wrong: [wrong(fmt((t + 1) / 10), "F6"), wrong(fmt((t * 10 + u) / 100), "zero-placeholder")],
       };
     },
   },
@@ -309,7 +308,7 @@ export const LEVEL_5: readonly TaggedTemplate[] = [
   {
     // Benchmark fractions as decimals (misconception F7: 1/4 becomes 0.14).
     id: "g67-5-fraction-to-decimal",
-    strand: "F", grades: { BC: 5, AB: 5, SK: 5, MB: 5, ON: 5 }, format: "number", whiteboard: true, standard: "5.4",
+    strand: "F", grades: { BC: 5, AB: 5, SK: 4, MB: 4, ON: 5 }, format: "number", whiteboard: true, standard: "5.4",
     fill(rng) {
       const [n, d] = draw(rng, (g) => {
         const d = g.pick([2, 4, 5, 10]);
@@ -325,30 +324,27 @@ export const LEVEL_5: readonly TaggedTemplate[] = [
     },
   },
   {
-    // Compare fractions with related denominators: each wrong choice has a bigger numerator but a smaller value.
+    // Compare related denominators. Each wrong choice isolates a numerator or denominator error.
     id: "g67-5-greatest-fraction",
     strand: "F", grades: { BC: 5, AB: 5, SK: 5, MB: 5, ON: 5 }, format: "choice", whiteboard: true, standard: "5.4",
     fill(rng) {
-      const { b, n, picks } = draw(rng, (g) => {
-        const b = g.int(3, 5), n = g.int(1, b - 1);
-        const candidates = [2 * b, 4 * b].flatMap((d) => Array.from({ length: d }, (_, m) => [m, d] as const))
-          .filter(([m, d]) => m > n && m * b < n * d);
-        const byValue = new Map(candidates.map(([m, d]) => [(m / d).toFixed(6), [m, d] as const]));
-        return { b, n, picks: g.shuffle([...byValue.values()]).slice(0, 3) };
-      }, (v) => v.picks.length === 3 && gcd(v.n, v.b) === 1);
+      const { b, n } = draw(rng, (g) => {
+        const b = g.int(3, 9), n = g.int(2, b - 1);
+        return { b, n };
+      }, (v) => gcd(v.n, v.b) === 1);
       return {
         values: { b, n },
         prompt: "Which fraction is the greatest?",
         readAloud: "Which fraction is the greatest?",
         answer: frac(n, b),
-        wrong: picks.map(([m, d]) => wrong(frac(m, d), "numerator-only")),
+        wrong: [wrong(frac(n + 1, 2 * b), "numerator-only"), wrong(frac(n, 4 * b), "F1")],
       };
     },
   },
   {
     // Decimals as fractions (F7 reads the digits as the two parts: 0.35 becomes 3/5).
     id: "g67-5-decimal-as-fraction",
-    strand: "F", grades: { BC: 5, AB: 5, SK: 5, MB: 5, ON: 5 }, format: "choice", whiteboard: false, standard: "5.2",
+    strand: "F", grades: { BC: 5, AB: 5, SK: 4, MB: 4, ON: 5 }, format: "choice", whiteboard: false, standard: "5.2",
     fill(rng) {
       const [a, b] = draw(rng, (g) => [g.int(1, 9), g.int(1, 9)], ([a, b]) => a !== b && distinctNumbers([(10 * a + b) / 100, a / b]));
       const ab = 10 * a + b;
@@ -393,14 +389,14 @@ export const LEVEL_5: readonly TaggedTemplate[] = [
         prompt: `Rule: output = ${m} × input + ${c}. What is the output when the input is ${x}?`,
         readAloud: `The rule is: multiply the input by ${m}, then add ${c}. What is the output when the input is ${x}?`,
         answer: String(m * x + c),
-        wrong: [wrong(m * (x + c), "O7"), wrong(m + x + c, "operation")],
+        wrong: [wrong(m * (x + c), "add-before-multiply"), wrong(m + x + c, "operation")],
       };
     },
   },
   {
     // Map, grade 5: 4 + x = 15.
     id: "g67-5-equation-add",
-    strand: "A", grades: { BC: 5, AB: 5, SK: 5, MB: 5, ON: 5 }, format: "number", whiteboard: true, standard: "5.11",
+    strand: "A", grades: { BC: 5, AB: 5, SK: 5, MB: 5, ON: 2 }, format: "number", whiteboard: true, standard: "5.11",
     fill(rng) {
       const a = rng.int(3, 30), x = rng.int(3, 40), v = rng.pick(["x", "n", "y", "k"]);
       return {
@@ -414,7 +410,7 @@ export const LEVEL_5: readonly TaggedTemplate[] = [
   },
   {
     id: "g67-5-equation-subtract",
-    strand: "A", grades: { BC: 5, AB: 5, SK: 5, MB: 5, ON: 5 }, format: "number", whiteboard: true, standard: "5.11",
+    strand: "A", grades: { BC: 5, AB: 5, SK: 5, MB: 5, ON: 2 }, format: "number", whiteboard: true, standard: "5.11",
     fill(rng) {
       const [a, b] = draw(rng, (g) => [g.int(3, 30), g.int(3, 40)], ([a, b]) => a !== b);
       const v = rng.pick(["x", "n", "y", "k"]);
@@ -445,7 +441,7 @@ export const LEVEL_5: readonly TaggedTemplate[] = [
   {
     // A later term of an increasing pattern.
     id: "g67-5-pattern-term",
-    strand: "A", grades: { BC: 5, AB: 5, SK: 5, MB: 5, ON: 5 }, format: "number", whiteboard: true, standard: "5.10",
+    strand: "A", grades: { BC: 5, AB: 5, SK: 5, MB: 5, ON: 4 }, format: "number", whiteboard: true, standard: "5.10",
     fill(rng) {
       const [s, d, k] = draw(rng, (g) => [g.int(2, 20), g.int(3, 12), g.int(7, 10)], ([s, d, k]) => s !== d && distinctNumbers([s + (k - 1) * d, s + 4 * d, k * d]));
       const shown = [0, 1, 2, 3].map((i) => s + i * d).join(", ");
@@ -461,7 +457,7 @@ export const LEVEL_5: readonly TaggedTemplate[] = [
   {
     // A decreasing pattern.
     id: "g67-5-pattern-down",
-    strand: "A", grades: { BC: 5, AB: 5, SK: 5, MB: 5, ON: 5 }, format: "number", whiteboard: true, standard: "5.10",
+    strand: "A", grades: { BC: 5, AB: 5, SK: 5, MB: 5, ON: 4 }, format: "number", whiteboard: true, standard: "5.10",
     fill(rng) {
       const s = rng.int(75, 120), d = rng.int(3, 9), k = rng.int(5, 8);
       return {
@@ -469,7 +465,7 @@ export const LEVEL_5: readonly TaggedTemplate[] = [
         prompt: `A pattern starts at ${s} and goes down by ${d} each time. What is the ${ordinal(k)} number in the pattern?`,
         readAloud: `A pattern starts at ${s} and goes down by ${d} each time. What is the ${ordinal(k)} number in the pattern?`,
         answer: String(s - (k - 1) * d),
-        wrong: [wrong(s - k * d, "count-start"), wrong(s + (k - 1) * d, "pattern-direction")],
+        wrong: [wrong(s - k * d, "pattern-step-count"), wrong(s + (k - 1) * d, "pattern-direction")],
       };
     },
   },
@@ -510,15 +506,15 @@ export const LEVEL_5: readonly TaggedTemplate[] = [
         readAloud: `${story} Let ${v} be the number of ${things} ${name} had at first. Which equation fits?`,
         answer: gain ? `${v} + ${a} = ${total}` : `${v} − ${a} = ${total}`,
         wrong: gain
-          ? [wrong(`${v} − ${a} = ${total}`, "operation"), wrong(`${v} = ${total}`, "one-part"), wrong(`${a} × ${v} = ${total}`, "operation")]
-          : [wrong(`${v} + ${a} = ${total}`, "operation"), wrong(`${v} = ${total}`, "one-part"), wrong(`${a} × ${v} = ${total}`, "operation")],
+          ? [wrong(`${v} − ${a} = ${total}`, "operation"), wrong(`${v} = ${total}`, "start-as-total"), wrong(`${a} × ${v} = ${total}`, "operation")]
+          : [wrong(`${v} + ${a} = ${total}`, "operation"), wrong(`${v} = ${total}`, "start-as-total"), wrong(`${a} × ${v} = ${total}`, "operation")],
       };
     },
   },
   {
     // The equal sign as "the same as" (misconception A1).
     id: "g67-5-balance",
-    strand: "A", grades: { BC: 5, AB: 5, SK: 5, MB: 5, ON: 5 }, format: "number", whiteboard: true, standard: "5.11",
+    strand: "A", grades: { BC: 5, AB: 5, SK: 5, MB: 5, ON: 2 }, format: "number", whiteboard: true, standard: "5.11",
     fill(rng) {
       const [a, b, c] = draw(rng, (g) => [g.int(3, 15), g.int(3, 15), g.int(2, 14)], ([a, b, c]) => c < a + b && c !== a && c !== b);
       return {
@@ -535,7 +531,7 @@ export const LEVEL_5: readonly TaggedTemplate[] = [
   {
     // Map, grade 5: a rectangle 9 m by 4 m.
     id: "g67-5-rectangle-area",
-    strand: "MG", grades: { BC: 5, AB: 5, SK: 5, MB: 5, ON: 5 }, format: "number", whiteboard: true, standard: "5.12",
+    strand: "MG", grades: { BC: 5, AB: 4, SK: 5, MB: 4, ON: 4 }, format: "number", whiteboard: true, standard: "5.12",
     fill(rng) {
       const [l, w] = draw(rng, (g) => [g.int(4, 15), g.int(3, 12)], ([l, w]) => l !== w && distinctNumbers([l * w, 2 * (l + w), l + w]));
       const [unit, units] = rng.pick([["m", "square metres"], ["cm", "square centimetres"]] as const);
@@ -550,7 +546,7 @@ export const LEVEL_5: readonly TaggedTemplate[] = [
   },
   {
     id: "g67-5-area-side",
-    strand: "MG", grades: { BC: 5, AB: 5, SK: 5, MB: 5, ON: 5 }, format: "number", whiteboard: true, standard: "5.12",
+    strand: "MG", grades: { BC: 5, AB: 5, SK: 5, MB: 5, ON: 4 }, format: "number", whiteboard: true, standard: "5.12",
     fill(rng) {
       const [a, b] = draw(rng, (g) => [g.int(3, 12), g.int(3, 15)], ([a, b]) => a !== b);
       return {
@@ -565,7 +561,7 @@ export const LEVEL_5: readonly TaggedTemplate[] = [
   {
     // 5.13: area and perimeter are related but not dependent on each other.
     id: "g67-5-same-area",
-    strand: "MG", grades: { BC: 5, AB: 5, SK: 5, MB: 5, ON: 5 }, format: "choice", whiteboard: true, standard: "5.13",
+    strand: "MG", grades: { BC: 5, AB: 5, SK: 5, MB: 5, ON: 4 }, format: "choice", whiteboard: true, standard: "5.13",
     fill(rng) {
       const area = rng.pick([12, 18, 20, 24, 30, 36, 40]);
       const pairs = Array.from({ length: area }, (_, i) => i + 2).filter((a) => area % a === 0 && a < area / a).map((a) => [a, area / a] as const);
@@ -585,7 +581,7 @@ export const LEVEL_5: readonly TaggedTemplate[] = [
   {
     // Map, grade 5 and misconception M8: 2:50 p.m. plus 1 h 25 min.
     id: "g67-5-elapsed-time",
-    strand: "MG", grades: { BC: 5, AB: 5, SK: 5, MB: 5, ON: 5 }, format: "choice", whiteboard: true, standard: "5.14",
+    strand: "MG", grades: { BC: 5, AB: 5, SK: 5, MB: 5, ON: 4 }, format: "choice", whiteboard: true, standard: "5.14",
     fill(rng) {
       const [h, m, dh, dm] = draw(
         rng,
@@ -600,8 +596,8 @@ export const LEVEL_5: readonly TaggedTemplate[] = [
         readAloud: `${event} starts at ${at(h, m)} and lasts ${count(dh, "hour")} and ${count(dm, "minute")}. When does it end?`,
         answer: at(h + dh + 1, m + dm - 60),
         wrong: [
-          wrong(at(h + dh, m + dm), "M8"),
-          wrong(at(h + dh, m + dm - 60), "regroup-forget"),
+          wrong(at(h + dh, m + dm), "clock-no-regroup"),
+          wrong(at(h + dh, m + dm - 60), "clock-carry"),
           wrong(at(h + 1, m + dm - 60), "one-part"),
         ],
       };
@@ -630,8 +626,8 @@ export const LEVEL_5: readonly TaggedTemplate[] = [
       const picks = [...others.filter((n) => n.startsWith(base)), ...rng.shuffle(others.filter((n) => !n.startsWith(base)))].slice(0, 3);
       return {
         values: { i },
-        prompt: `Which solid has exactly ${faces}?`,
-        readAloud: `Which solid has exactly ${faces}?`,
+        prompt: `Which solid has exactly ${faces}, with no other faces?`,
+        readAloud: `Which solid has exactly ${faces}, with no other faces?`,
         answer: name,
         wrong: picks.map((n) => wrong(n, "shape-name")),
       };
@@ -710,7 +706,7 @@ export const LEVEL_5: readonly TaggedTemplate[] = [
         prompt: `In a pictograph, each picture stands for ${k} students. The row for ${sport} has ${n} and a half pictures. How many students chose ${sport}?`,
         readAloud: `In a pictograph, each picture stands for ${k} students. The row for ${sport} has ${n} and a half pictures. How many students chose ${sport}?`,
         answer: String(k * n + k / 2),
-        wrong: [wrong(k * n, "one-part"), wrong(n, "D1")],
+        wrong: [wrong(k * n, "one-part"), wrong(n + 0.5, "D1")],
       };
     },
   },

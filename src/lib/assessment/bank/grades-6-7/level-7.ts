@@ -325,7 +325,7 @@ export const LEVEL_7: readonly TaggedTemplate[] = [
         prompt: `Which fraction is equal to a decimal that ${askRepeating ? "repeats forever" : "ends (stops)"}?`,
         readAloud: `Which fraction is equal to a decimal that ${askRepeating ? "repeats forever" : "ends"}?`,
         answer: frac(n, d),
-        wrong: others.map(([a, b]) => wrong(frac(a, b), "repeating-terminating")),
+        wrong: others.map(([a, b]) => wrong(frac(a, b), "decimal-repeat")),
       };
     },
   },
@@ -663,7 +663,7 @@ export const LEVEL_7: readonly TaggedTemplate[] = [
         prompt: `y = ${a}x + ${b}. What is y when x = ${num(x)}?`,
         readAloud: `y equals ${a} times x, plus ${b}. What is y when x is ${sayNum(x)}?`,
         answer: num(a * x + b),
-        wrong: [wrong(num(-a * x + b), "sign-rule"), wrong(num(a * x - b), "O9"), wrong(num(a + x + b), "A3")],
+        wrong: [wrong(num(-a * x + b), "sign-rule"), wrong(num(a * x - b), "O9"), wrong(num(a + x + b), "product-as-sum")],
       };
     },
   },

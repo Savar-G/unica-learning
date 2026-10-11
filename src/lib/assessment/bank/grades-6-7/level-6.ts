@@ -43,7 +43,6 @@ export const LEVEL_6: readonly TaggedTemplate[] = [
         answer: fmt(a * M + p * 100_000 + q * 10_000),
         wrong: [
           wrong(fmt(a * M + q * 100_000 + p * 10_000), "digit-compare"),
-          wrong(fmt(a * M + p * 10_000 + q * 1000), "zero-placeholder"),
           wrong(fmt(p * 100_000 + q * 10_000 + a * 1000), "digit-compare"),
         ],
       };
@@ -167,7 +166,7 @@ export const LEVEL_6: readonly TaggedTemplate[] = [
       const [a, b, c] = draw(
         rng,
         (g) => [g.int(2, 12), g.int(2, 15), g.int(2, 12)],
-        ([a, b, c]) => (form !== 1 || ((a + b) % c === 0 && b % c === 0)) && (form !== 2 || a * 3 > b + c) && a !== b,
+        ([a, b, c]) => (form !== 1 || ((a + b) % c === 0 && b % c === 0)) && (form !== 2 || (b >= c && a * 3 > b + c)) && a !== b,
       );
       const big = 3 * a;
       const [shown, said, answer, noBrackets] = [
@@ -180,7 +179,7 @@ export const LEVEL_6: readonly TaggedTemplate[] = [
         prompt: `${shown} = ?`,
         readAloud: `What is ${said}?`,
         answer: String(answer),
-        wrong: [wrong(noBrackets, "O7")],
+        wrong: [wrong(noBrackets, "brackets-ignored")],
       };
     },
   },
@@ -301,7 +300,7 @@ export const LEVEL_6: readonly TaggedTemplate[] = [
         prompt: `Write ${mixed(w, r, d)} as an improper fraction.`,
         readAloud: `Write ${sayMixed(w, r, d)} as an improper fraction.`,
         answer: frac(w * d + r, d),
-        wrong: [wrong(frac(Number(`${w}${r}`), d), "F8"), wrong(frac(w + r, d), "F8"), wrong(frac(w * d, d), "one-part")],
+        wrong: [wrong(frac(Number(`${w}${r}`), d), "F8"), wrong(frac(w + r, d), "mixed-convert"), wrong(frac(w * d, d), "one-part")],
       };
     },
   },
@@ -318,29 +317,25 @@ export const LEVEL_6: readonly TaggedTemplate[] = [
         prompt: `How many ${PARTS[d]} are in ${mixed(w, r, d)}?`,
         readAloud: `How many ${PARTS[d]} are in ${sayMixed(w, r, d)}?`,
         answer: String(w * d + r),
-        wrong: [wrong(`${w}${r}`, "F8"), wrong(w + r, "F8")],
+        wrong: [wrong(`${w}${r}`, "F8"), wrong(w + r, "mixed-convert")],
       };
     },
   },
   {
-    // 6.5: compare fractions with unlike denominators (common denominators). Each wrong choice has a bigger numerator.
+    // 6.5: unlike denominators. Each wrong choice isolates a numerator or denominator error.
     id: "g67-6-greatest-fraction",
     strand: "F", grades: { BC: 6, AB: 6, SK: 6, MB: 6, ON: 6 }, format: "choice", whiteboard: true, standard: "6.5",
     fill(rng) {
-      const { n, b, picks } = draw(rng, (g) => {
-        const b = g.pick([3, 4, 5, 6]), n = g.int(1, b - 1);
-        const candidates = [5, 6, 7, 8, 9, 10, 12].filter((d) => d !== b && d % b !== 0)
-          .flatMap((d) => Array.from({ length: d }, (_, m) => [m, d] as const))
-          .filter(([m, d]) => m > n && m * b < n * d && gcd(m, d) === 1);
-        const byValue = new Map(candidates.map(([m, d]) => [(m / d).toFixed(6), [m, d] as const]));
-        return { n, b, picks: g.shuffle([...byValue.values()]).slice(0, 3) };
-      }, (v) => v.picks.length === 3 && gcd(v.n, v.b) === 1);
+      const { n, b } = draw(rng, (g) => {
+        const b = g.int(3, 11), n = g.int(2, b - 1);
+        return { n, b };
+      }, (v) => gcd(v.n, v.b) === 1 && gcd(v.n + 1, 2 * v.b + 1) === 1 && gcd(v.n, 2 * v.b + 3) === 1);
       return {
         values: { n, b },
         prompt: "Which fraction is the greatest?",
         readAloud: "Which fraction is the greatest?",
         answer: frac(n, b),
-        wrong: picks.map(([m, d]) => wrong(frac(m, d), "numerator-only")),
+        wrong: [wrong(frac(n + 1, 2 * b + 1), "numerator-only"), wrong(frac(n, 2 * b + 3), "F1")],
       };
     },
   },
@@ -374,7 +369,7 @@ export const LEVEL_6: readonly TaggedTemplate[] = [
         prompt: `${where} has ${a} ${x} and ${b} ${y}. What is the ratio of ${y} to ${all}?`,
         readAloud: `${where} has ${a} ${x} and ${b} ${y}. What is the ratio of ${y} to ${all}?`,
         answer: `${b}:${a + b}`,
-        wrong: [wrong(`${b}:${a}`, "ratio-whole"), wrong(`${a + b}:${b}`, "ratio-order"), wrong(`${a}:${a + b}`, "fraction-other-part")],
+        wrong: [wrong(`${b}:${a}`, "F4"), wrong(`${a + b}:${b}`, "ratio-order"), wrong(`${a}:${a + b}`, "fraction-other-part")],
       };
     },
   },
@@ -421,7 +416,7 @@ export const LEVEL_6: readonly TaggedTemplate[] = [
         prompt: `In a class, the ratio of girls to boys is ${g}:${b}. What fraction of the class are girls?`,
         readAloud: `In a class, the ratio of girls to boys is ${g} to ${b}. What fraction of the class are girls?`,
         answer: frac(g, g + b),
-        wrong: [wrong(frac(g, b), "ratio-whole"), wrong(frac(b, g + b), "fraction-other-part"), wrong(frac(g + b, g), "fraction-flip")],
+        wrong: [wrong(frac(g, b), "F4"), wrong(frac(b, g + b), "fraction-other-part"), wrong(frac(g + b, g), "fraction-flip")],
       };
     },
   },
@@ -472,7 +467,7 @@ export const LEVEL_6: readonly TaggedTemplate[] = [
         prompt: `${name} has read ${part} pages. That is ${p}% of the book. How many pages does the book have?`,
         readAloud: `${name} has read ${part} pages. That is ${p} percent of the book. How many pages does the book have?`,
         answer: String(whole),
-        wrong: [wrong(typed((part * p) / 100), "F10"), wrong(part + p, "operation")].filter((w) => Number(w.value) !== whole),
+        wrong: [wrong(typed((part * p) / 100), "percent-of-part"), wrong(part + p, "operation")].filter((w) => Number(w.value) !== whole),
       };
     },
   },
@@ -553,7 +548,7 @@ export const LEVEL_6: readonly TaggedTemplate[] = [
         prompt: `Which expression means "${k} more than ${times} a number n"?`,
         readAloud: `Which expression means ${k} more than ${times} a number n?`,
         answer: `${m}n + ${k}`,
-        wrong: [wrong(`${m}(n + ${k})`, "O7"), wrong(`${k}n + ${m}`, "rule-swap"), wrong(`n + ${m} + ${k}`, "A3")],
+        wrong: [wrong(`${m}(n + ${k})`, "group-translation"), wrong(`${k}n + ${m}`, "rule-swap"), wrong(`n + ${m} + ${k}`, "product-as-sum")],
       };
     },
   },
@@ -681,7 +676,7 @@ export const LEVEL_6: readonly TaggedTemplate[] = [
         prompt: `What is ${a}n + ${b} when n = ${n}?`,
         readAloud: `What is ${a} times n, plus ${b}, when n is ${n}?`,
         answer: String(a * n + b),
-        wrong: [wrong(Number(`${a}${n}`) + b, "A3"), wrong(a + n + b, "A3")],
+        wrong: [wrong(Number(`${a}${n}`) + b, "A3"), wrong(a + n + b, "product-as-sum")],
       };
     },
   },
@@ -698,7 +693,7 @@ export const LEVEL_6: readonly TaggedTemplate[] = [
         prompt: `The rule is y = ${a}x + ${b}. Which point is on its graph?`,
         readAloud: `The rule is y equals ${a} times x, plus ${b}. Which point is on its graph?`,
         answer: point(x, a * x + b),
-        wrong: [wrong(point(a * x + b, x), "coordinate-swap"), wrong(point(x, a * x), "A5"), wrong(point(x, x + a + b), "A3")],
+        wrong: [wrong(point(a * x + b, x), "coordinate-swap"), wrong(point(x, a * x), "A5"), wrong(point(x, x + a + b), "product-as-sum")],
       };
     },
   },
