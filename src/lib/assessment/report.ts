@@ -2,6 +2,7 @@
 // Honesty rule (DESIGN.md, D-084): every number here is measured or carries its source.
 import { statusFor } from "@/lib/signup";
 import { COMPARISON_BANDS_FROM, COMPARISON_PERCENTILE_FROM, REPORTED_STRAND_NAMES } from "./constants";
+import { factsReport, type ReportFacts } from "./facts";
 import type { Grade, Level, Placement, Province, StrandResult } from "./types";
 
 /** One AI review of a child's shown work (#68). */
@@ -39,6 +40,8 @@ export interface ReportModel {
   callToAction: "card" | "waitlist";
   /** Every reviewed piece of work shows its image; the comment only when the review is sure. */
   work: { questionId: string; comment: string | null }[];
+  /** Number facts (#70): accuracy beside speed, never speed alone. Null when the child had no facts section. */
+  facts: ReportFacts | null;
 }
 
 // BC FSA numeracy, 2025/26, all BC-resident students with a result (research: diagnostics-length-formats.md, section 5.2).
@@ -79,5 +82,7 @@ export function reportModel(placement: Placement, context: ReportContext): Repor
     // Card for the curricula we make books for today (D-053); every other province joins the waitlist.
     callToAction: statusFor(placement.province) === "reserved" ? "card" : "waitlist",
     work: context.workReviews.map((r) => ({ questionId: r.questionId, comment: r.confidence === "high" ? r.comment : null })),
+    // Older placements were stored before the facts section existed and have no facts field.
+    facts: placement.facts ? factsReport(placement.facts) : null,
   };
 }
