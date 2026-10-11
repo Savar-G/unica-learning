@@ -98,4 +98,18 @@ describe("the admin area sends nothing (#77)", () => {
     await settle();
     expect(calls).toEqual([["cta_click", {}]]);
   });
+
+  it("removes the previous admin page and its timing from a later public pageview", async () => {
+    const { analytics, beforeSend } = onPage("/");
+    analytics.begin();
+    await settle();
+    const event = { properties: {
+      $current_url: "https://unicalearning.com/",
+      $prev_pageview_pathname: "/admin/parents/11111111-1111-4111-8111-111111111111",
+      $prev_pageview_id: "admin-view-id",
+      $prev_pageview_duration: 42,
+      $prev_pageview_max_scroll_percentage: 0.8,
+    } };
+    expect(beforeSend(event)).toEqual({ properties: { $current_url: "https://unicalearning.com/" } });
+  });
 });

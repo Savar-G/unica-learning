@@ -76,6 +76,11 @@ function referrerOrigin(value: string): string {
 function scrubBag(bag: unknown): void {
   if (!bag || typeof bag !== "object") return;
   const o = bag as Props;
+  // PostHog updates previous-page state before before_send, even when that pageview is dropped.
+  // A later public pageview must contain neither the admin record path nor time spent on that page.
+  if (typeof o.$prev_pageview_pathname === "string" && adminPath(o.$prev_pageview_pathname)) {
+    for (const key of Object.keys(o)) if (key.startsWith("$prev_pageview_")) delete o[key];
+  }
   for (const key of Object.keys(o)) {
     const value = o[key];
     if (typeof value !== "string") continue;

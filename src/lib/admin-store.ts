@@ -64,11 +64,23 @@ function must<T>({ data, error }: Result, what: string): T {
 /** Ids per `in` filter, so a request URL stays short. */
 const CHUNK = 100;
 
+type RangeRead = { range: (from: number, to: number) => PromiseLike<Result>; order: (column: string) => RangeRead };
+
+/** PostgREST caps each response. Page related rows too, so family details and totals are complete. */
+async function allRows<T>(query: RangeRead, what: string): Promise<T[]> {
+  const out: T[] = [];
+  for (let from = 0; ; from += LIST_MAX) {
+    const rows = must<T[]>(await query.range(from, from + LIST_MAX - 1), what);
+    out.push(...rows);
+    if (rows.length < LIST_MAX) return out;
+  }
+}
+
 /** Rows of T for the ids, read CHUNK ids at a time. The rows' type comes from the caller: the query does not know it. */
-async function byIds<T>(ids: Iterable<string>, what: string, read: (chunk: string[]) => PromiseLike<Result>): Promise<T[]> {
+async function byIds<T>(ids: Iterable<string>, what: string, read: (chunk: string[]) => RangeRead): Promise<T[]> {
   const list = [...new Set(ids)];
   const out: T[] = [];
-  for (let i = 0; i < list.length; i += CHUNK) out.push(...must<T[]>(await read(list.slice(i, i + CHUNK)), what));
+  for (let i = 0; i < list.length; i += CHUNK) out.push(...await allRows<T>(read(list.slice(i, i + CHUNK)).order("id"), what));
   return out;
 }
 
@@ -296,14 +308,14 @@ export async function getParent(a: AdminSession, id: string): Promise<ParentDeta
   const parent = must<ParentRow | null>(await a.db.rpc("admin_parents").select(PARENT_COLUMNS).eq("id", id).maybeSingle(), "parent");
   if (!parent) return null;
   const [children, tests, cards, waitlist, emails] = await Promise.all([
-    a.db.rpc("admin_children").select(CHILD_COLUMNS).eq("parent_id", id).order("created_at").then((r) => must<ChildRow[]>(r, "children")),
-    a.db.rpc("admin_assessments").select(TEST_COLUMNS).eq("parent_id", id).order("created_at", { ascending: false })
-      .then((r) => withPeople(a, must<TestQueryRow[]>(r, "tests"))),
-    a.db.rpc("admin_card_setups").select("*").eq("parent_id", id).then((r) => must<CardSetupRow[]>(r, "card setups")),
-    a.db.rpc("admin_waitlist_joins").select("*").eq("parent_id", id).then((r) => must<WaitlistRow[]>(r, "waitlist")),
-    emailRows(a, (q) => q.eq("parent_id", id)),
+    allRows<ChildRow>(a.db.rpc("admin_children").select(CHILD_COLUMNS).eq("parent_id", id).order("id"), "children"),
+    allRows<TestQueryRow>(a.db.rpc("admin_assessments").select(TEST_COLUMNS).eq("parent_id", id).order("created_at", { ascending: false }).order("id"), "tests")
+      .then((rows) => withPeople(a, rows)),
+    allRows<CardSetupRow>(a.db.rpc("admin_card_setups").select("*").eq("parent_id", id).order("id"), "card setups"),
+    allRows<WaitlistRow>(a.db.rpc("admin_waitlist_joins").select("*").eq("parent_id", id).order("id"), "waitlist"),
+    familyEmails(a, id),
   ]);
-  return { parent, children, tests, cards, waitlist, emails: emails.rows };
+  return { parent, children, tests, cards, waitlist, emails };
 }
 
 export interface ChildListRow extends ChildRow {
@@ -411,6 +423,15 @@ export async function emailRows(a: AdminSession, narrow: (q: EmailQuery) => Emai
   const parent = index(parents);
   const child = index(children);
   return { more, rows: rows.map((r) => ({ ...r, parent: parent.get(r.parent_id) ?? null, child: r.child_id ? (child.get(r.child_id) ?? null) : null })) };
+}
+
+async function familyEmails(a: AdminSession, id: string): Promise<EmailRow[]> {
+  const rows: EmailRow[] = [];
+  for (let offset = 0; ; offset += LIST_MAX) {
+    const result = await emailRows(a, (q) => q.eq("parent_id", id), offset);
+    rows.push(...result.rows);
+    if (!result.more) return rows;
+  }
 }
 
 // The report
