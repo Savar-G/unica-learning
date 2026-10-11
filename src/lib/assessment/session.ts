@@ -10,6 +10,7 @@ import {
   atLeast,
   bandFor,
 } from "./constants";
+import { factsResult, type FactsSession } from "./facts";
 import { rngFor } from "./rng";
 import { SAMPLE_BANK } from "./sample-bank";
 import type {
@@ -229,8 +230,8 @@ function statusFor(correct: number, total: number): StrandStatus {
   return "needs-attention";
 }
 
-/** Scores a completed test. */
-export function finish(session: Session): Placement {
+/** Scores a completed test. The facts section (#70), when the child had one, goes beside it and never changes the working level. */
+export function finish(session: Session, facts: FactsSession | null = null): Placement {
   const questions = questionsOnRoute(session);
   if (!session.route || session.answers.length < questions.length) {
     throw new Error(`The test is not complete: ${session.answers.length} of ${questions.length} answered`);
@@ -262,7 +263,7 @@ export function finish(session: Session): Placement {
     stage1: tally(marked.slice(0, session.stage1.length)),
     levels,
     strands,
-    facts: null,
+    facts: facts ? factsResult(facts) : null,
     flags: [],
   };
 }

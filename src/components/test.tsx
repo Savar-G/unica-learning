@@ -11,6 +11,7 @@ import { breakDue, type PublicQuestion, type TestStep } from "@/lib/assessment";
 import { ANSWER_MAX, type FinishResult, type StartResult, type StepResult, type TestError } from "@/lib/test-api";
 import { track } from "@/lib/track";
 import { SUPPORT_EMAIL, SUPPORT_HREF } from "@/lib/contact";
+import { FactsSection } from "./facts";
 import { breakSeen, markBreakSeen, TestBreak } from "./test-break";
 import { TestProgress } from "./test-progress";
 import { ReadAloud } from "./test-read-aloud";
@@ -20,6 +21,8 @@ type Screen =
   | { name: "intro" }
   | { name: "question"; question: PublicQuestion; number: number; total: number; breakAfter: number }
   | { name: "break"; next: Extract<TestStep, { status: "question" }> }
+  /** The timed facts section (#70), after the halfway break; then the test carries on with `next`. */
+  | { name: "facts"; testId: string; next: Extract<TestStep, { status: "question" }> }
   | { name: "done" };
 
 async function call<T>(url: string, init?: RequestInit): Promise<T | { ok: false; error: TestError }> {
@@ -45,6 +48,8 @@ export function TakeTest({ childId, name, total, ready, done, mode: firstMode = 
   const [failure, setFailure] = useState<TestError | null>(null);
   const [mode, setMode] = useState<StartMode>(firstMode);
   const testId = useRef<string | null>(null);
+  // Set once the facts section is over (or was over before a resume), so it never shows twice.
+  const factsDone = useRef(false);
 
   /** The open test ran out of time (#72): back to the start, where the next test has new questions. */
   const expire = useCallback(() => {
@@ -54,8 +59,8 @@ export function TakeTest({ childId, name, total, ready, done, mode: firstMode = 
     return false;
   }, []);
 
-  // A stop (#72): the tab closes or the connection drops during a question or the break. The answers so far are saved on the server.
-  const asking = screen.name === "question" || screen.name === "break";
+  // A stop (#72): the tab closes or the connection drops during a question, the break or quick facts. The answers so far are saved on the server.
+  const asking = screen.name === "question" || screen.name === "break" || screen.name === "facts";
   useEffect(() => {
     if (!asking) return;
     // The page is going away: a beacon still goes out. Offline: PostHog queues the event and retries once back online.
@@ -91,6 +96,12 @@ export function TakeTest({ childId, name, total, ready, done, mode: firstMode = 
       markBreakSeen(id);
       track("test_break", { status: "shown" });
       setScreen({ name: "break", next: step });
+      return true;
+    }
+    // Then the timed facts section (#70, D-088): the break's onDone comes back here. On a resume the facts screen
+    // asks the server first and hands straight on to the question when the section is already done.
+    if (!factsDone.current && id && step.number > step.breakAfter) {
+      setScreen({ name: "facts", testId: id, next: step });
       return true;
     }
     setScreen({ name: "question", question: step.question, number: step.number, total: step.total, breakAfter: step.breakAfter });
@@ -138,6 +149,7 @@ export function TakeTest({ childId, name, total, ready, done, mode: firstMode = 
         <span className="logo">Unica Learning<b /></span>
         {screen.name === "question" && <TestProgress answered={screen.number - 1} total={screen.total} breakAfter={screen.breakAfter} at="question" />}
         {screen.name === "break" && <TestProgress answered={screen.next.breakAfter} total={screen.next.total} breakAfter={screen.next.breakAfter} at="halfway" />}
+        {screen.name === "facts" && <TestProgress answered={screen.next.number - 1} total={screen.next.total} breakAfter={screen.next.breakAfter} at="halfway" />}
       </header>
       <main id="main" className="test-main">
         {screen.name === "intro" && <Intro name={name} total={total} ready={ready} busy={busy} onStart={start} failure={failure} mode={mode} />}
@@ -149,6 +161,12 @@ export function TakeTest({ childId, name, total, ready, done, mode: firstMode = 
             track("test_break", { status: how });
             void show(screen.next);
           }} />
+        )}
+        {screen.name === "facts" && (
+          <>
+            <FactsSection testId={screen.testId} onError={setFailure} onDone={() => { factsDone.current = true; void show(screen.next); }} />
+            <Problem error={failure} />
+          </>
         )}
         {screen.name === "done" && <End name={name} />}
       </main>

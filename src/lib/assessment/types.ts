@@ -1,4 +1,5 @@
 import type { CurriculumId } from "@/lib/signup";
+import type { FactsResult } from "./facts";
 import type { MisconceptionId } from "./misconceptions";
 import type { Rng } from "./rng";
 
@@ -146,7 +147,8 @@ export interface Placement {
   stage1: { correct: number; total: number };
   levels: LevelResult[];
   strands: StrandResult[];
-  // Later tickets fill these: the timed facts section (#70) and help flags (#71).
-  facts: null;
+  /** The timed facts section (#70): speed beside accuracy. Null when the child had no facts section. Never changes the working level. */
+  facts: FactsResult | null;
+  // A later ticket fills this: help flags (#71).
   flags: never[];
 }

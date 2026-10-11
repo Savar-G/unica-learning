@@ -1,0 +1,47 @@
+/* The timed facts section (#70), in the split-desk layout of D-088: the fact on the left, a big number pad on the right.
+   #79 restyles every test screen; this one is self-contained so it can move as one piece. Tap targets are 44 px or more. */
+.facts { width: min(100%, 1180px); min-height: min(72dvh, 640px); display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); border: 1px solid var(--line-soft); border-radius: 10px; overflow: hidden; background: #fff; }
+.facts-left { background: var(--soft, #faf9f7); padding: clamp(28px, 4vw, 56px); display: grid; align-content: center; gap: 20px; justify-items: start; }
+.facts-right { display: grid; place-items: center; padding: clamp(24px, 3vw, 48px); }
+
+.facts-msg h1 { margin: 0; font-size: clamp(34px, 4.2vw, 52px); line-height: 1.06; outline: none; }
+.facts-lead { margin: 0; font-size: 19px; color: var(--ink-2); max-width: 26em; }
+.facts-msg .btn { min-height: 52px; padding-inline: 32px; }
+.facts-msg .btn:disabled { opacity: 0.45; cursor: not-allowed; transform: none; box-shadow: none; }
+
+/* A grainy colour field, like the break and end screens. */
+.facts-field {
+  background: var(--noise), radial-gradient(45% 55% at 25% 30%, var(--g1, #ffc93c), transparent 70%), radial-gradient(45% 55% at 78% 35%, var(--g2, #ff9466), transparent 70%), radial-gradient(50% 55% at 55% 85%, var(--g3, #8fb4ff), transparent 70%), var(--card);
+  background-blend-mode: overlay, normal, normal, normal, normal; background-size: 220px, auto, auto, auto, auto;
+}
+
+/* The friendly timer: a tangerine bar that drains, and the time in plain digits. */
+.facts-clock { width: 100%; display: grid; gap: 10px; }
+.facts-bar { height: 14px; border-radius: 999px; background: var(--line-soft); overflow: hidden; }
+.facts-bar span { display: block; height: 100%; border-radius: inherit; background: var(--tang, #ff6a3d); transition: width 0.25s linear; }
+.facts-time { margin: 0; font: 400 18px/1 var(--mono); color: var(--ink-2); }
+
+.facts-fact { margin: 0; display: flex; flex-wrap: nowrap; white-space: nowrap; align-items: center; gap: 0.3em; font: 300 clamp(44px, 4.4vw, 76px)/1 var(--sans); letter-spacing: -0.03em; outline: none; }
+.facts-fact output { min-width: 1.6em; padding: 0.06em 0.2em; border-bottom: 4px solid var(--ink); text-align: center; }
+.facts-fact output.is-empty { color: var(--ink-3); border-bottom-color: var(--line); }
+.facts-hint { margin: 0; font-size: 15px; color: var(--ink-2); }
+
+.facts-pad { width: min(100%, 420px); display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+.facts-pad button { min-height: 76px; border: 1px solid var(--line); border-radius: 8px; background: #fff; color: var(--ink); font: 500 32px/1 var(--sans); cursor: pointer; touch-action: manipulation; }
+.facts-pad button:active { background: var(--card, #f5f4f2); }
+.facts-pad button:focus-visible { outline: 2px solid var(--sky); outline-offset: 2px; }
+.facts-pad .facts-enter { background: var(--ink); border-color: var(--ink); color: #fff; font-size: 22px; }
+.facts-pad .facts-enter:active { background: var(--ink-2); }
+
+/* Tablet in portrait: the fact above, the pad below, both on one screen. */
+@media (max-width: 900px) {
+  .facts { grid-template-columns: 1fr; grid-template-rows: auto 1fr; min-height: 0; }
+  .facts-left { padding: 28px; }
+  .facts-right { padding: 24px; }
+  .facts-field { min-height: 220px; }
+  .facts-pad button { min-height: 72px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .facts-bar span { transition: none; }
+}
