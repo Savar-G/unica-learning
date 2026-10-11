@@ -10,11 +10,14 @@ import type { PublicQuestion, TestStep } from "@/lib/assessment";
 import { ANSWER_MAX, type FinishResult, type StartResult, type StepResult, type TestError } from "@/lib/test-api";
 import { track } from "@/lib/track";
 import { SUPPORT_EMAIL, SUPPORT_HREF } from "@/lib/contact";
+import { FactsSection } from "./facts";
 import "./test.css";
 
 type Screen =
   | { name: "intro" }
   | { name: "question"; question: PublicQuestion; number: number; total: number }
+  /** The timed facts section (#70), after the first half; then the test carries on with `next`. */
+  | { name: "facts"; testId: string; next: TestStep }
   | { name: "done" };
 
 async function call<T>(url: string, init?: RequestInit): Promise<T | { ok: false; error: TestError }> {
@@ -33,6 +36,8 @@ export function TakeTest({ childId, name, total, ready, done }: { childId: strin
   const [busy, setBusy] = useState(false);
   const [failure, setFailure] = useState<TestError | null>(null);
   const testId = useRef<string | null>(null);
+  // Set once the facts section is over (or was over before a resume), so it never shows twice.
+  const factsDone = useRef(false);
 
   const finish = useCallback(async () => {
     const res = await call<FinishResult>(`/api/account/assessments/${testId.current}/finish`, post({}));
@@ -49,6 +54,11 @@ export function TakeTest({ childId, name, total, ready, done }: { childId: strin
   /** Shows the step the server sent: the next question, or the end of the test. */
   const show = useCallback(async (step: TestStep) => {
     if (step.status === "complete") return finish();
+    // The facts section comes at the halfway point (D-088). On a resume it checks the server and skips itself if done.
+    if (!factsDone.current && testId.current && step.number > step.total / 2) {
+      setScreen({ name: "facts", testId: testId.current, next: step });
+      return true;
+    }
     setScreen({ name: "question", question: step.question, number: step.number, total: step.total });
     return true;
   }, [finish]);
@@ -89,11 +99,18 @@ export function TakeTest({ childId, name, total, ready, done }: { childId: strin
       <header className="test-top">
         <span className="logo">Unica Learning<b /></span>
         {screen.name === "question" && <span className="test-count">Question {screen.number} of {screen.total}</span>}
+        {screen.name === "facts" && <span className="test-count">Quick facts</span>}
       </header>
       <main id="main" className="test-main">
         {screen.name === "intro" && <Intro name={name} total={total} ready={ready} busy={busy} onStart={start} failure={failure} />}
         {screen.name === "question" && (
           <Question key={screen.question.id} question={screen.question} last={screen.number === screen.total} onAnswer={answer} failure={failure} />
+        )}
+        {screen.name === "facts" && (
+          <>
+            <FactsSection testId={screen.testId} onError={setFailure} onDone={() => { factsDone.current = true; void show(screen.next); }} />
+            <Problem error={failure} />
+          </>
         )}
         {screen.name === "done" && <End name={name} />}
       </main>
