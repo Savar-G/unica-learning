@@ -157,21 +157,18 @@ export async function sendReminder(r: DueReminder, token: string, state: LoadedS
   const parent = state.parents.find((p) => p.id === r.parentId);
   const child = state.children.find((c) => c.id === r.childId);
   const test = state.tests.find((t) => t.id === r.assessmentId);
-  if (!parent || !child || (r.kind !== "start" && !test)) return { sent: false, error: "parent, child or test not loaded" };
+  if (!parent || !child) return { sent: false, error: "parent or child not loaded" };
 
   const links = reminderLinks(origin, r, token);
-  // A test's own length; for "start", the length of a test at the child's grade today.
-  const common = {
-    parentName: parent.name,
-    childName: child.firstName,
-    url: links.url,
-    unsubscribeUrl: links.unsubscribeUrl,
-    postal: parent.postal,
-    total: test?.total ?? bandFor(child.grade).length,
-  };
-  const email = r.kind === "continue" && test
-    ? reminderEmail({ ...common, kind: "continue", answered: test.answered, resumeUntil: test.resumeUntil })
-    : reminderEmail({ ...common, kind: r.kind === "come_back" ? "come_back" : "start" });
+  const common = { parentName: parent.name, childName: child.firstName, url: links.url, unsubscribeUrl: links.unsubscribeUrl, postal: parent.postal };
+  let email: ReturnType<typeof reminderEmail>;
+  if (r.kind === "continue") {
+    if (!test) return { sent: false, error: "test not loaded" };
+    email = reminderEmail({ ...common, kind: "continue", total: test.total, answered: test.answered, resumeUntil: test.resumeUntil });
+  } else {
+    // A new test: its length at the child's grade today (a new test is drawn at the child's current grade).
+    email = reminderEmail({ ...common, kind: r.kind, total: bandFor(child.grade).length });
+  }
 
   const res = await fetch("https://api.resend.com/emails", {
     method: "POST",

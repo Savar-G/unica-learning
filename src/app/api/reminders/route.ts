@@ -2,7 +2,7 @@ import { timingSafeEqual } from "node:crypto";
 import { linkOrigin } from "@/lib/account-server";
 import { pilotOn } from "@/lib/pilot";
 import { reminderStore, sendReminder } from "@/lib/reminder-store";
-import { dueReminders, runReminders, type DueReminder } from "@/lib/reminders";
+import { REMINDER_KINDS, dueReminders, runReminders, type DueReminder } from "@/lib/reminders";
 import { newToken } from "@/lib/sign-in-link";
 import { adminClient } from "@/lib/supabase-auth";
 
@@ -23,11 +23,7 @@ function authorized(header: string | null, secret: string): boolean {
   return given.length === expected.length && timingSafeEqual(given, expected);
 }
 
-const byKind = (due: DueReminder[]) => ({
-  continue: due.filter((r) => r.kind === "continue").length,
-  come_back: due.filter((r) => r.kind === "come_back").length,
-  start: due.filter((r) => r.kind === "start").length,
-});
+const byKind = (due: DueReminder[]) => Object.fromEntries(REMINDER_KINDS.map((kind) => [kind, due.filter((r) => r.kind === kind).length]));
 
 export async function POST(request: Request) {
   if (!pilotOn()) return new Response("Not found", { status: 404 });

@@ -168,6 +168,13 @@ describe("over the life of a test, with the job every 15 minutes", () => {
     ]);
   });
 
+  it("sends nothing about a test the child finished, before or after it would have expired", () => {
+    // Stops at T0, comes back and finishes at T0 + 30 minutes; the 30-day retake wait follows.
+    const finished: ReminderTest = { ...stopped("a1", T0), status: "completed", completedAt: T0 + 30 * MIN };
+    const tests = (now: number) => [now < T0 + 30 * MIN ? stopped("a1", T0) : finished];
+    expect(runEvery15Minutes(state(), T0, T0 + 40 * DAY, tests)).toEqual([]);
+  });
+
   it("sends one start reminder for a child who never starts", () => {
     const s = state({ children: [{ id: "c1", parentId: "p1", createdAt: T0 }] });
     expect(runEvery15Minutes(s, T0, T0 + 10 * DAY, () => [])).toEqual([{ kind: "start", childId: "c1", at: T0 + DAY }]);

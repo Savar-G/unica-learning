@@ -14,7 +14,10 @@ export const LATE_LIMIT_MS = 7 * 24 * 60 * 60_000;
 /** Sends of one reminder before it is given up: Resend refused it this often. */
 export const MAX_SEND_ATTEMPTS = 3;
 
-export type ReminderKind = "continue" | "come_back" | "start";
+/** The three reminders. The start screen's `?reminder=` and the job's counts use this list too. */
+export const REMINDER_KINDS = ["continue", "come_back", "start"] as const;
+export type ReminderKind = (typeof REMINDER_KINDS)[number];
+export const isReminderKind = (v: unknown): v is ReminderKind => REMINDER_KINDS.includes(v as ReminderKind);
 /** The email log (public.email_log) keeps every reminder, and every unsubscribe. */
 export type LogKind = ReminderKind | "unsubscribe";
 /** A reminder's send state. "claimed": a run took it and is sending it, or stopped before it knew the outcome. */
@@ -67,10 +70,10 @@ export interface DueReminder {
   retry: { logId: string; attempts: number } | null;
 }
 
-type Candidate = Omit<DueReminder, "retry">;
+type RuleReminder = Omit<DueReminder, "retry">;
 
 /** The reminder this child could get at `now` by the rules alone, before the log is checked. */
-function candidate(child: ReminderChild, tests: readonly ReminderTest[], now: number): Candidate | null {
+function ruleReminder(child: ReminderChild, tests: readonly ReminderTest[], now: number): RuleReminder | null {
   if (tests.length === 0) {
     const dueAt = child.createdAt + START_AFTER_MS;
     return now >= dueAt && now - dueAt <= LATE_LIMIT_MS ? { kind: "start", parentId: child.parentId, childId: child.id, assessmentId: null, dueAt } : null;
@@ -165,8 +168,8 @@ export async function runReminders<S extends ReminderState>(
  * Domains that can never get email (RFC 2606 and RFC 6761): test accounts use them. Sending there only bounces, and
  * bounces hurt the sending domain.
  */
-const RESERVED = /@(?:(?:[^@]+\.)?example\.(?:com|net|org)|[^@]+\.(?:test|invalid|example|localhost)|localhost)$/i;
-export const canGetEmail = (email: string) => !RESERVED.test(email.trim());
+const TEST_DOMAINS = /@(?:(?:[^@]+\.)?example\.(?:com|net|org)|[^@]+\.(?:test|invalid|example|localhost)|localhost)$/i;
+const canGetEmail = (email: string) => !TEST_DOMAINS.test(email.trim());
 
 /**
  * The reminders to send at `now`, oldest first. Each goes once: one "continue" and one "come back" per test (so at
@@ -178,12 +181,12 @@ export function dueReminders(state: ReminderState, now: number): DueReminder[] {
   const due: DueReminder[] = [];
   for (const child of state.children) {
     if (!reachable.has(child.parentId)) continue;
-    const c = candidate(child, state.tests.filter((t) => t.childId === child.id), now);
-    if (!c) continue;
-    const logged = state.log.find((e) => e.kind === c.kind && (c.assessmentId ? e.assessmentId === c.assessmentId : e.childId === c.childId));
+    const next = ruleReminder(child, state.tests.filter((t) => t.childId === child.id), now);
+    if (!next) continue;
+    const logged = state.log.find((e) => e.kind === next.kind && (next.assessmentId ? e.assessmentId === next.assessmentId : e.childId === next.childId));
     // A send that failed is tried again, up to MAX_SEND_ATTEMPTS. One sent, or held by a run, is done.
-    if (!logged) due.push({ ...c, retry: null });
-    else if (logged.status === "failed" && logged.attempts < MAX_SEND_ATTEMPTS) due.push({ ...c, retry: { logId: logged.id, attempts: logged.attempts } });
+    if (!logged) due.push({ ...next, retry: null });
+    else if (logged.status === "failed" && logged.attempts < MAX_SEND_ATTEMPTS) due.push({ ...next, retry: { logId: logged.id, attempts: logged.attempts } });
   }
   return due.sort((a, b) => a.dueAt - b.dueAt);
 }

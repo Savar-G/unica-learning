@@ -8,6 +8,7 @@ import type { Child } from "@/lib/account";
 import { startStates, stateFor } from "@/lib/assessment-store";
 import { parentId, sessionClient } from "@/lib/supabase-auth";
 import { isPhone } from "@/lib/account-server";
+import { isReminderKind } from "@/lib/reminders";
 import { startPath } from "@/lib/sign-in-link";
 import { StartTest, TrackOnce } from "@/components/account";
 import { SupportPage } from "@/components/support-page";
@@ -26,7 +27,7 @@ export default async function StartScreen({ params, searchParams }: PageProps<"/
   const { child: id } = await params;
   const { via, reminder } = await searchParams;
   // A reminder email (#73) links here: "continue", "come_back" or "start".
-  const fromReminder = typeof reminder === "string" && ["continue", "come_back", "start"].includes(reminder) ? reminder : null;
+  const fromReminder = isReminderKind(reminder) ? reminder : null;
   const db = await sessionClient();
   const parent = await parentId(db);
   // Signed out (a reminder or another device): sign in, then come back to this child's start screen.
