@@ -9,6 +9,7 @@
 // test continued, or one with every answer in opened to finish). test_start is now only a new test (status new, or
 // restart after one expired). test_start_click status: new, retake, in_progress, finish, expired.
 // The report (#65): report_open (src = email when the parent came from the report email, else account).
+// Help flags (#71): test_help (status yes, a-little or no: the answer to "Did anyone help?", sent once the test is stored).
 // Analytics run only after the visitor accepts (see consent.ts). Without consent an event is dropped, not queued.
 // Only src, plan, subject, curriculum, price, status, code, card and channel travel with an event (see analytics.ts).
 // posthog-js is imported on demand so it stays out of the first-load bundle.

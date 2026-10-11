@@ -3,6 +3,7 @@
 import { statusFor } from "@/lib/signup";
 import { COMPARISON_BANDS_FROM, COMPARISON_PERCENTILE_FROM, REPORTED_STRAND_NAMES } from "./constants";
 import { factsReport, type ReportFacts } from "./facts";
+import { helpLikely } from "./flags";
 import type { Grade, Level, Placement, Province, StrandResult } from "./types";
 
 /** One AI review of a child's shown work (#68). */
@@ -42,6 +43,11 @@ export interface ReportModel {
   work: { questionId: string; comment: string | null }[];
   /** Number facts (#70): accuracy beside speed, never speed alone. Null when the child had no facts section. */
   facts: ReportFacts | null;
+  /**
+   * #71: help is likely, so the report says the level may be too high and suggests a retake. Only this yes or no
+   * reaches the parent; the flags behind it stay with Savar. Absent in reports stored before #71: read it as false.
+   */
+  helpWarning?: boolean;
 }
 
 // BC FSA numeracy, 2025/26, all BC-resident students with a result (research: diagnostics-length-formats.md, section 5.2).
@@ -84,5 +90,6 @@ export function reportModel(placement: Placement, context: ReportContext): Repor
     work: context.workReviews.map((r) => ({ questionId: r.questionId, comment: r.confidence === "high" ? r.comment : null })),
     // Older placements were stored before the facts section existed and have no facts field.
     facts: placement.facts ? factsReport(placement.facts) : null,
+    helpWarning: helpLikely(placement.flags),
   };
 }
