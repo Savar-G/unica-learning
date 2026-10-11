@@ -49,3 +49,4 @@ export {
 } from "./session";
 export type * from "./types";
 export { hasWork, workProblem, type BoardWork, type WorkProblem } from "./work";
+export { isLineChoice, namesChoice, readAloudText, sayChoice, spokenChoices } from "./read-aloud";

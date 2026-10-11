@@ -87,10 +87,9 @@ function shapePattern(rng: Rng, core: readonly number[], length: number, ask: nu
 export function shapeQuestion(rng: Rng, core: readonly number[], length: number, gap = length) {
   const p = shapePattern(rng, core, length, gap);
   const next = gap === length;
-  const options = orList(rng, p.choiceWords.map((w) => `a ${w}`));
   return {
     prompt: `${next ? "What comes next?" : "What shape is missing?"} ${p.shown}`,
-    readAloud: `Look at the pattern: ${p.spoken}. ${next ? "Which shape comes next" : "Which shape is missing"}: ${options}?`,
+    readAloud: `Look at the pattern: ${p.spoken}. ${next ? "Which shape comes next?" : "Which shape is missing?"}`,
     answer: p.answer,
     wrong: p.wrong,
   };
@@ -111,7 +110,7 @@ export function predictShape(rng: Rng, core: readonly number[], ask: number) {
   const shown = Array.from({ length: core.length * 2 }, (_, i) => at(i + 1));
   return {
     prompt: `The pattern keeps going: ${shown.map((s) => s.glyph).join(GAP)} … What is the ${ordinal(ask)} shape?`,
-    readAloud: `The pattern is ${shown.map((s) => s.word).join(", ")}, and it keeps going. What is the ${ordinal(ask)} shape in the pattern: ${orList(rng, [answer, ...picks].map((s) => `a ${s.word}`))}?`,
+    readAloud: `The pattern is ${shown.map((s) => s.word).join(", ")}, and it keeps going. What is the ${ordinal(ask)} shape in the pattern?`,
     answer: shapeLabel(answer),
     wrong: picks.map((s) => wrong(shapeLabel(s), neighbours.includes(s) ? "one-to-one" : coreShapes.includes(s) ? "pattern-core" : "pattern-new-shape")),
   };

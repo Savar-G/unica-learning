@@ -3,14 +3,17 @@
 // "Did anyone help?" (#71, D-083): the last question, after the last test question and before the end screen. The
 // answer goes to the server with the finish request and never changes a mark. With the answer times it can raise help
 // flags; when help is likely the report says the level may be too high. Kind words: any answer is fine.
-// A separate part so the split-desk rebuild (#79) can restyle it, like the break (test-break.tsx).
+// In the split desk (#79): the question in the left pane, a colour field on the right (no whiteboard here).
 import { useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
 import { Button } from "@/ds";
 import type { HelpAnswer } from "@/lib/assessment";
+import { Choices, type ChoiceOption } from "./test-choices";
 import { ReadAloud } from "./test-read-aloud";
+import "./test-base.css";
 import "./test-help.css";
 
-const CHOICES: { value: HelpAnswer; label: string }[] = [
+// The read-aloud text names the choices in the same order as the rows.
+const CHOICES: ChoiceOption<HelpAnswer>[] = [
   { value: "yes", label: "Yes" },
   { value: "a-little", label: "A little" },
   { value: "no", label: "No" },
@@ -40,25 +43,21 @@ export function TestHelp({ onAnswer, problem }: TestHelpProps) {
   };
 
   return (
-    <form className="test-q test-help" onSubmit={submit} aria-labelledby="test-help-title">
-      <p className="eyebrow">One last question</p>
-      <div className="test-qrow">
-        <ReadAloud text={READ_ALOUD} />
-        <h1 id="test-help-title" ref={heading} tabIndex={-1} className="test-prompt">Did anyone help you?</h1>
+    <form className="test-split test-help" onSubmit={submit} aria-labelledby="test-help-title">
+      <div className="test-pane test-pane-l">
+        <p className="test-kicker">One last question</p>
+        <div className="test-qrow">
+          <ReadAloud text={READ_ALOUD} />
+          <h1 id="test-help-title" ref={heading} tabIndex={-1} className="test-prompt">Did anyone help you?</h1>
+        </div>
+        <p className="test-help-lead">Any answer is fine. It helps us pick the right level for you.</p>
+        <Choices options={CHOICES} value={value} onChange={setValue} labelledBy="test-help-title" />
+        {problem}
+        <div className="test-next">
+          <Button type="submit" disabled={!value || sending} aria-busy={sending}>{sending ? "Sending…" : "Finish"}</Button>
+        </div>
       </div>
-      <p className="test-help-lead">Any answer is fine. It helps us pick the right level for you.</p>
-      <div className="test-choices" role="radiogroup" aria-labelledby="test-help-title">
-        {CHOICES.map((c) => (
-          <button key={c.value} type="button" role="radio" aria-checked={value === c.value} className="test-choice" onClick={() => setValue(c.value)}>
-            <span className="test-dot" aria-hidden />
-            {c.label}
-          </button>
-        ))}
-      </div>
-      {problem}
-      <div className="test-next">
-        <Button type="submit" disabled={!value || sending} aria-busy={sending}>{sending ? "Sending…" : "Finish"}</Button>
-      </div>
+      <div className="test-pane test-pane-r test-field" aria-hidden />
     </form>
   );
 }
