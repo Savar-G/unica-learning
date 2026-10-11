@@ -26,12 +26,21 @@ export interface AccountSignupPayload {
   website?: string;
 }
 
-export type AccountError = "bad_json" | "invalid" | "account_exists" | "weak_password" | "too_many" | "signed_out" | "busy" | "store_failed" | "off";
+/** A parent who signed in with Google finishes their account with these (/api/account/finish). */
+export interface FinishPayload {
+  name: string;
+  postal: string;
+  child: ChildInput;
+  source: Record<string, string>;
+}
 
-/** What /api/account/* answers. */
+export type AccountError = "bad_json" | "invalid" | "account_exists" | "weak_password" | "too_many" | "signed_out" | "busy" | "store_failed" | "send_failed" | "off";
+
+/** What /api/account/* answers. `linkSent`: signup on a phone emailed the sign-in link (#63). */
 export interface AccountResult {
   ok: boolean;
   error?: AccountError;
+  linkSent?: boolean;
 }
 
 export const fail = (error: AccountError, status: number) => Response.json({ ok: false, error } satisfies AccountResult, { status });
@@ -53,16 +62,17 @@ export function cleanChild(raw: unknown): ChildInput | null {
   return { firstName, grade, province };
 }
 
+/** Name, postal code and source, cleaned, or null when one is not valid. Google gives the email, so this is all a Google parent sends. */
+export function cleanDetails(raw: Partial<FinishPayload>) {
+  const details = { name: clip(raw.name, 120), postal: clip(raw.postal, 7).toUpperCase(), source: cleanSource(raw.source) };
+  return details.name.length >= 2 && POSTAL.test(details.postal) ? details : null;
+}
+
 /** The parent fields of a signup, cleaned, or null when one is not valid. */
 export function cleanParent(raw: Partial<AccountSignupPayload>) {
-  const parent = {
-    name: clip(raw.name, 120),
-    email: clip(raw.email, 200).toLowerCase(),
-    postal: clip(raw.postal, 7).toUpperCase(),
-    password: typeof raw.password === "string" ? raw.password : "",
-    source: cleanSource(raw.source),
-  };
-  const valid = parent.name.length >= 2 && EMAIL.test(parent.email) && POSTAL.test(parent.postal)
-    && parent.password.length >= PASSWORD_MIN && parent.password.length <= 72;
-  return valid ? parent : null;
+  const details = cleanDetails(raw);
+  const email = clip(raw.email, 200).toLowerCase();
+  const password = typeof raw.password === "string" ? raw.password : "";
+  const valid = details && EMAIL.test(email) && password.length >= PASSWORD_MIN && password.length <= 72;
+  return valid ? { ...details, email, password } : null;
 }

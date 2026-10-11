@@ -1,0 +1,58 @@
+import Link from "next/link";
+import { headers } from "next/headers";
+import { notFound, redirect } from "next/navigation";
+import { pageMetadata } from "@/lib/metadata";
+import { requirePilot } from "@/lib/pilot";
+import { CURRICULA } from "@/lib/signup";
+import type { Child } from "@/lib/account";
+import type { AssessmentStatus } from "@/lib/test-api";
+import { parentId, sessionClient } from "@/lib/supabase-auth";
+import { isPhone } from "@/lib/account-server";
+import { StartTest, TrackOnce } from "@/components/account";
+import { SupportPage } from "@/components/support-page";
+
+export const metadata = pageMetadata({
+  path: "/account/start",
+  title: "Start the test",
+  description: "Your child's free math assessment.",
+  index: false,
+});
+
+// One child's start screen: the phone-to-laptop sign-in link opens it (#63), so the parent can hand the device over.
+// Its button opens the test (#64) at /account/test/<child>.
+export default async function StartScreen({ params, searchParams }: PageProps<"/account/start/[child]">) {
+  await requirePilot();
+  const { child: id } = await params;
+  const db = await sessionClient();
+  if (!(await parentId(db))) redirect("/sign-in");
+  // Row-level security returns only this parent's children; an id that is not a uuid finds nothing.
+  const [{ data: child }, { data: last }] = await Promise.all([
+    db.from("children").select("id, first_name, grade, province").eq("id", id).maybeSingle<Child>(),
+    db.from("assessments").select("status").eq("child_id", id).order("created_at", { ascending: false }).limit(1).maybeSingle<{ status: AssessmentStatus }>(),
+  ]);
+  if (!child) notFound();
+  // An expired test (#72) counts as no test: the child starts again.
+  const status = last && last.status !== "expired" ? last.status : null;
+  const phone = isPhone(await headers());
+  const { via } = await searchParams;
+
+  return (
+    <SupportPage label="Free math assessment" title={`${child.first_name}'s math test.`}>
+      {via === "link" && <TrackOnce event="sign_in" props={{ channel: "link" }} />}
+      <p className="small">Grade {child.grade} · {CURRICULA[child.province]}</p>
+      {phone ? (
+        <div className="acct-card acct-phone">
+          <TrackOnce event="phone_screen" />
+          <h2>Use a laptop or tablet for the test.</h2>
+          <p>A phone screen is too small for the test. Go to your account to email yourself a sign-in link for the laptop or tablet.</p>
+        </div>
+      ) : (
+        <>
+          <p className="lead">{child.first_name} takes the test alone, on this device, in one sitting. Start when {child.first_name} is ready.</p>
+          <div className="acct-begin"><StartTest childId={child.id} name={child.first_name} status={status} /></div>
+        </>
+      )}
+      <p className="small acct-out"><Link href="/account">Your account</Link></p>
+    </SupportPage>
+  );
+}
