@@ -1,6 +1,6 @@
 // Level K (BC Kindergarten) for the grades 1-2 bank: the "down" form for a grade 1 child.
 // Standards: curriculum map, section 1 (K1-K11). Province tags: see ./index.ts.
-import { cap, NAMES, orList, row, SHAPES, shapeQuestion, twoNames, wrong, type TaggedTemplate } from "../kit";
+import { cap, draw, NAMES, orList, row, SHAPES, shapeQuestion, twoNames, wrong, type TaggedTemplate } from "../kit";
 
 const ITEMS = ["shells", "apples", "stickers", "blocks", "crayons"] as const;
 
@@ -105,8 +105,9 @@ export const LEVEL_K: readonly TaggedTemplate[] = [
       const total = rng.int(6, 10), part = rng.int(1, total - 2);
       return {
         values: { total, part },
-        prompt: `${total} is ${part} and how many more? ${row(total)}`,
-        readAloud: `${total} is ${part} and how many more?`,
+        // The dots show only the part the child has, so counting them never gives the whole.
+        prompt: `${part} and how many more make ${total}? ${row(part)}`,
+        readAloud: `${part} and how many more make ${total}?`,
         answer: String(total - part),
         wrong: [wrong(total + part, "operation"), wrong(total - part + 1, "count-start")],
       };
@@ -172,7 +173,8 @@ export const LEVEL_K: readonly TaggedTemplate[] = [
     strand: "A", grades: { BC: 0, AB: 0, SK: 0, MB: 0, ON: 0 }, format: "choice", whiteboard: true, standard: "K4",
     fill(rng) {
       const [x, y, z] = rng.shuffle([0, 1, 2, 3]);
-      const length = rng.int(4, 7);
+      // The core shows at least twice before the gap, so the repeat is there to see.
+      const length = rng.int(6, 8);
       const p = shapeQuestion(rng, [x, y, z], length);
       return { values: { x, y, z, length }, ...p };
     },
@@ -183,7 +185,8 @@ export const LEVEL_K: readonly TaggedTemplate[] = [
     fill(rng) {
       const [x, y] = rng.shuffle([0, 1, 2, 3]);
       const core = rng.pick([[x, x, y], [x, y, y]]);
-      const length = rng.int(5, 7);
+      // The core shows at least twice before the gap.
+      const length = rng.int(6, 8);
       const p = shapeQuestion(rng, core, length);
       return { values: { x, y, length, doubled: core[1] === x ? 1 : 2 }, ...p };
     },
@@ -192,16 +195,18 @@ export const LEVEL_K: readonly TaggedTemplate[] = [
     id: "k-number-pattern",
     strand: "A", grades: { BC: 0, AB: 0, SK: 0, MB: 0, ON: 0 }, format: "choice", whiteboard: false, standard: "K4",
     fill(rng) {
-      const [x, y] = rng.shuffle([1, 2, 3, 4, 5]);
+      // The two numbers are not neighbours, so "keeps growing" (the last number plus 1) is never the answer.
+      const [x, y] = draw(rng, (r) => r.shuffle([1, 2, 3, 4, 5, 6]).slice(0, 2), ([x, y]) => Math.abs(x - y) > 1);
       const length = rng.int(5, 6);
       const seq = Array.from({ length }, (_, i) => (i % 2 === 0 ? x : y));
       const next = length % 2 === 0 ? x : y;
+      const last = seq[length - 1];
       return {
         values: { x, y, length },
         prompt: `What comes next? ${seq.join(", ")}, ?`,
         readAloud: `What number comes next? ${seq.join(", ")}.`,
         answer: String(next),
-        wrong: [wrong(seq[length - 1], "A2"), wrong(Math.max(x, y) + 1, "pattern-growing")],
+        wrong: [wrong(last, "A2"), wrong(last + 1, "pattern-growing")],
       };
     },
   },
@@ -260,13 +265,14 @@ export const LEVEL_K: readonly TaggedTemplate[] = [
     strand: "A", grades: { BC: 0, AB: 1, SK: 1, MB: 1, ON: 1 }, format: "choice", whiteboard: false, standard: "K6",
     fill(rng) {
       const [left, right] = rng.shuffle([2, 3, 4, 5, 6, 7]).slice(0, 2);
-      const down = left > right ? "The left side" : "The right side";
-      const up = left > right ? "The right side" : "The left side";
+      // Sides named by colour, not left and right, which many young children still mix up.
+      const [a, b] = rng.shuffle(["red", "blue", "green", "yellow"]);
+      const down = `The ${left > right ? a : b} side`, up = `The ${left > right ? b : a} side`;
       const even = "Neither side, it balances";
       return {
         values: { left, right },
-        prompt: `A balance has ${left} cubes on the left side and ${right} cubes on the right side. All the cubes are the same. Which side goes down?`,
-        readAloud: `A balance has ${left} cubes on the left side and ${right} cubes on the right side. All the cubes are the same. Which side goes down: the left side, the right side, or neither side?`,
+        prompt: `A balance has ${left} cubes on the ${a} side and ${right} cubes on the ${b} side. All the cubes are the same. Which side goes down?`,
+        readAloud: `A balance has ${left} cubes on the ${a} side and ${right} cubes on the ${b} side. All the cubes are the same. Which side goes down: ${orList(rng, [`the ${a} side`, `the ${b} side`])}, or neither side?`,
         answer: down,
         wrong: [wrong(up, "balance-up"), wrong(even, "same-size")],
       };
@@ -297,7 +303,7 @@ export const LEVEL_K: readonly TaggedTemplate[] = [
     strand: "MG", grades: { BC: 0, AB: 0, SK: 0, MB: 0, ON: 0 }, format: "choice", whiteboard: false, standard: "K7",
     fill(rng) {
       const pairs = [
-        ["a big balloon", "a small apple"],
+        ["a big balloon full of air", "a small apple"],
         ["a big feather", "a small rock"],
         ["a big leaf", "a small potato"],
         ["a big sheet of paper", "a small stone"],
@@ -328,7 +334,7 @@ export const LEVEL_K: readonly TaggedTemplate[] = [
       return {
         values: { down: objects.indexOf(down), up: objects.indexOf(up) },
         prompt: `${story} Which is heavier?`,
-        readAloud: `${story} Which is heavier: ${orList(rng, [`the ${down}`, `the ${up}`, "they weigh the same"])}?`,
+        readAloud: `${story} Which is heavier: ${orList(rng, [`the ${down}`, `the ${up}`])}, or do they weigh the same?`,
         answer: `The ${down}`,
         wrong: [wrong(`The ${up}`, "balance-up"), wrong("They weigh the same", "same-size")],
       };
@@ -364,13 +370,13 @@ export const LEVEL_K: readonly TaggedTemplate[] = [
     id: "k-can-roll",
     strand: "MG", grades: { BC: 0, AB: 0, SK: 0, MB: 0, ON: 0 }, format: "choice", whiteboard: false, standard: "K8",
     fill(rng) {
+      // Always "can roll": young listeners often miss a "not".
       const rollers = ["A ball", "An orange", "A marble"], flats = ["A box", "A book", "A block"];
-      const canRoll = rng.int(0, 1) === 1;
-      const answer = rng.pick(canRoll ? rollers : flats);
-      const others = rng.shuffle(canRoll ? flats : rollers).slice(0, 2);
-      const ask = canRoll ? "Which one can roll?" : "Which one cannot roll?";
+      const answer = rng.pick(rollers);
+      const others = rng.shuffle(flats).slice(0, 2);
+      const ask = "Which one can roll?";
       return {
-        values: { canRoll: canRoll ? 1 : 0 },
+        values: { roller: rollers.indexOf(answer) },
         prompt: ask,
         readAloud: `${ask} ${orList(rng, [answer, ...others].map((s) => s.toLowerCase()))}?`,
         answer,
@@ -384,11 +390,11 @@ export const LEVEL_K: readonly TaggedTemplate[] = [
     strand: "DP", grades: { BC: 0, AB: 2, SK: 2, MB: 2, ON: 1 }, format: "choice", whiteboard: false, standard: "K9",
     fill(rng) {
       const [a, b] = rng.shuffle([2, 3, 4, 5, 6, 7, 8]).slice(0, 2);
-      const [x, y] = rng.pick([["apples", "bananas"], ["cats", "dogs"], ["red", "blue"]] as const);
+      const [kind, x, y] = rng.pick([["fruit", "apples", "bananas"], ["pet", "cats", "dogs"], ["colour", "red", "blue"]] as const);
       return {
         values: { a, b },
-        prompt: `Children chose a favourite. ${cap(x)}: ${row(a)}. ${cap(y)}: ${row(b)}. Which did more children choose?`,
-        readAloud: `Children chose a favourite. Look at the dots for ${x} and the dots for ${y}. Which did more children choose: ${x}, ${y}, or the same number?`,
+        prompt: `Children chose a favourite ${kind}. ${cap(x)}: ${row(a)}. ${cap(y)}: ${row(b)}. Which did more children choose?`,
+        readAloud: `Children chose a favourite ${kind}. Look at the dots for ${x} and the dots for ${y}. Which did more children choose: ${x}, ${y}, or the same number?`,
         answer: cap(a > b ? x : y),
         wrong: [wrong(cap(a > b ? y : x), "more-less"), wrong("The same number", "same-size")],
       };
@@ -399,11 +405,11 @@ export const LEVEL_K: readonly TaggedTemplate[] = [
     strand: "DP", grades: { BC: 0, AB: 2, SK: 2, MB: 2, ON: 1 }, format: "number", whiteboard: false, standard: "K9",
     fill(rng) {
       const [a, b] = rng.shuffle([2, 3, 4, 5, 6, 7, 8]).slice(0, 2);
-      const [x, y] = rng.pick([["apples", "bananas"], ["cats", "dogs"], ["red", "blue"]] as const);
+      const [kind, x, y] = rng.pick([["fruit", "apples", "bananas"], ["pet", "cats", "dogs"], ["colour", "red", "blue"]] as const);
       return {
         values: { a, b },
-        prompt: `Children chose a favourite. ${cap(x)}: ${row(a)}. ${cap(y)}: ${row(b)}. Each ● is 1 child. How many children chose ${x}?`,
-        readAloud: `Children chose a favourite. Each dot is one child. How many children chose ${x}? Count the dots beside ${x}.`,
+        prompt: `Children chose a favourite ${kind}. ${cap(x)}: ${row(a)}. ${cap(y)}: ${row(b)}. Each ● is 1 child. How many children chose ${x}?`,
+        readAloud: `Children chose a favourite ${kind}. Each dot is one child. How many children chose ${x}? Count the dots beside ${x}.`,
         answer: String(a),
         wrong: [wrong(b, "wrong-row")],
       };
@@ -421,7 +427,8 @@ export const LEVEL_K: readonly TaggedTemplate[] = [
       return {
         values: { likely: likely.indexOf(answer) },
         prompt: "Which of these is most likely to happen?",
-        readAloud: `Which of these is most likely to happen? ${orList(rng, [answer, ...others])}?`,
+        // Each choice is its own sentence, so the three do not run together when spoken.
+        readAloud: `Which of these is most likely to happen? Choose one. ${rng.shuffle([answer, ...others]).join(". ")}.`,
         answer,
         wrong: others.map((o) => wrong(o, "chance-reversed")),
       };

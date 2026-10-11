@@ -1,6 +1,6 @@
 // Level 1 (BC grade 1) for the grades 1-2 bank: stage 1 for grade 1, and the "down" form for grade 2.
 // Standards: curriculum map, section 1 (1.1-1.11); example items: section 3, grade 1. Province tags: see ./index.ts.
-import { cap, draw, GAP, NAMES, orderClues, orList, predictShape, row, SHAPES, shapeQuestion, twoNames, wrong, type TaggedTemplate } from "../kit";
+import { cap, draw, GAP, NAMES, orderClues, orList, predictShape, row, sayLetters, SHAPES, shapeQuestion, twoNames, wrong, type TaggedTemplate } from "../kit";
 import type { Filled } from "../../types";
 
 const THINGS = ["stickers", "marbles", "shells", "crayons", "beads"] as const;
@@ -232,7 +232,8 @@ export const LEVEL_1: readonly TaggedTemplate[] = [
       return {
         values: { shown: keys.indexOf(answer) },
         prompt: `Which letters show this pattern? ${items.map((s) => s.glyph).join(GAP)}`,
-        readAloud: `Look at the pattern: ${items.map((s) => s.word).join(", ")}. Which letters show this pattern: ${orList(rng, [answer, ...picks])}?`,
+        // Letters spoken by name, one choice per sentence, so a listener hears where each choice ends.
+        readAloud: `Look at the pattern: ${items.map((s) => s.word).join(", ")}. Which letters show this pattern? Choose one. ${rng.shuffle([answer, ...picks]).map(sayLetters).join(". ")}.`,
         answer,
         wrong: picks.map((k) => wrong(k, "pattern-core")),
       };
@@ -331,12 +332,13 @@ export const LEVEL_1: readonly TaggedTemplate[] = [
       const keys = Object.keys(codes) as (keyof typeof codes)[];
       const [asked, ...others] = rng.shuffle(keys);
       const shapes = rng.shuffle([...SHAPES]);
+      // Every pattern shows 6 shapes, so no choice stands out by length.
       const show = (k: keyof typeof codes) =>
-        Array.from({ length: codes[k].length * 2 }, (_, i) => shapes[codes[k][i % codes[k].length]].glyph).join(GAP);
+        Array.from({ length: 6 }, (_, i) => shapes[codes[k][i % codes[k].length]].glyph).join(GAP);
       return {
         values: { asked: keys.indexOf(asked) },
         prompt: `Which pattern is an ${asked} pattern?`,
-        readAloud: `Which pattern is an ${asked} pattern? Look at the three patterns.`,
+        readAloud: `Which pattern is an ${sayLetters(asked)} pattern? Look at the three patterns.`,
         answer: show(asked),
         wrong: others.slice(0, 2).map((k) => wrong(show(k), "pattern-core")),
       };
@@ -393,7 +395,7 @@ export const LEVEL_1: readonly TaggedTemplate[] = [
       return {
         values: { a, b, c, d, equal: equal ? 1 : 0 },
         prompt: `Is ${a} + ${b} the same amount as ${c} + ${d}?`,
-        readAloud: `Is ${a} plus ${b} the same amount as ${c} plus ${d}? Yes, they are the same. No, ${a} plus ${b} is more. Or no, ${c} plus ${d} is more.`,
+        readAloud: `Is ${a} plus ${b} the same amount as ${c} plus ${d}? Yes, they are the same amount. No, ${a} plus ${b} is more. Or no, ${c} plus ${d} is more.`,
         answer: equal ? yes : secondMore,
         wrong: equal
           ? [wrong(firstMore, "first-number"), wrong(secondMore, "looks-different")]
@@ -430,10 +432,10 @@ export const LEVEL_1: readonly TaggedTemplate[] = [
       const answer = bigger ? `Fewer than ${n}` : `More than ${n}`;
       return {
         values: { n, bigger: bigger ? 1 : 0 },
-        prompt: `${nameA} measures ${thing} and gets ${n} ${unit}. ${nameB} measures it with ${bigger ? "bigger" : "smaller"} ${unit}. What will ${nameB} get?`,
+        prompt: `${nameA} measures ${thing} and gets ${n} ${unit}. ${nameB} measures it with ${bigger ? "bigger" : "smaller"} ${unit}. Will ${nameB} get more than ${n}, fewer than ${n}, or exactly ${n}?`,
         readAloud: `${nameA} measures ${thing} and gets ${n} ${unit}. ${nameB} measures it with ${bigger ? "bigger" : "smaller"} ${unit}. Will ${nameB} get more than ${n}, fewer than ${n}, or exactly ${n}?`,
         answer,
-        wrong: [wrong(bigger ? `More than ${n}` : `Fewer than ${n}`, "unit-size"), wrong(`Exactly ${n}`, "unit-size")],
+        wrong: [wrong(bigger ? `More than ${n}` : `Fewer than ${n}`, "unit-size"), wrong(`Exactly ${n}`, "count-unchanged")],
       };
     },
   },
@@ -567,7 +569,8 @@ export const LEVEL_1: readonly TaggedTemplate[] = [
       return {
         values: { pair: i },
         prompt: "Which is more likely to happen?",
-        readAloud: `Which is more likely to happen? ${orList(rng, [likely, unlikely, "they are equally likely"])}?`,
+        // Each choice is its own sentence, so the three do not run together when spoken.
+        readAloud: `Which is more likely to happen? Choose one. ${rng.shuffle([likely, unlikely, "They are equally likely"]).join(". ")}.`,
         answer: likely,
         wrong: [wrong(unlikely, "chance-reversed"), wrong("They are equally likely", "D3")],
       };
@@ -598,8 +601,8 @@ export const LEVEL_1: readonly TaggedTemplate[] = [
       const unit = rng.pick(["paper clips", "cubes"]);
       return {
         values: { a, b },
-        prompt: `A book is ${a} ${unit} long. A pencil is ${b} ${unit} long. Put end to end, how many ${unit} long are they together?`,
-        readAloud: `A book is ${a} ${unit} long. A pencil is ${b} ${unit} long. Put end to end, how many ${unit} long are they together?`,
+        prompt: `A book is ${a} ${unit} long. A pencil is ${b} ${unit} long. If you put them end to end, how many ${unit} long are they together?`,
+        readAloud: `A book is ${a} ${unit} long. A pencil is ${b} ${unit} long. If you put them end to end, how many ${unit} long are they together?`,
         answer: String(a + b),
         wrong: [wrong(Math.abs(a - b), "operation"), wrong(Math.max(a, b), "one-part")],
       };

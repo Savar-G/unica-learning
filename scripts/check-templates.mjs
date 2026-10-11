@@ -77,13 +77,16 @@ async function loadCore() {
   }
 }
 
-/** BC standard headings from the curriculum map, section 1: { "1.3": "addition and subtraction to 20 (...)" }. */
+/**
+ * BC standards from the curriculum map, section 1, with their elaborations: the heading alone can mislead (3.9 names
+ * "linear, mass, and capacity" while its elaboration includes area in square units).
+ */
 function loadStandards() {
   const out = {};
   if (!existsSync(MAP)) return out;
   for (const line of readFileSync(MAP, "utf8").split("\n")) {
-    const m = line.match(/^- \*\*([K\d.]+)\*\* (.*?)(?:\. Elaboration:|$)/);
-    if (m) out[m[1]] = m[2].trim();
+    const m = line.match(/^- \*\*([K\d.]+)\*\* (.*?)(?:\. Elaboration: (.*))?$/);
+    if (m) out[m[1]] = m[3] ? `${m[2].trim()}. Elaboration: ${m[3].trim()}` : m[2].trim();
   }
   return out;
 }

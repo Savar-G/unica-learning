@@ -77,7 +77,7 @@ function shapePattern(rng: Rng, core: readonly number[], length: number, ask: nu
     shown,
     spoken,
     answer: shapeLabel(answer),
-    wrong: picks.map((s) => wrong(shapeLabel(s), s === before ? "A2" : "pattern-core")),
+    wrong: picks.map((s) => wrong(shapeLabel(s), s === before ? "A2" : coreShapes.includes(s) ? "pattern-core" : "pattern-new-shape")),
     choiceWords: [answer, ...picks].map((s) => s.word),
   };
 }
@@ -96,21 +96,23 @@ export function shapeQuestion(rng: Rng, core: readonly number[], length: number,
 }
 
 /**
- * "What shape is number `ask`?" for a repeating pattern shown twice and then "...". A child who loses count by one
+ * "What is the 11th shape?" for a repeating pattern shown twice and then "...". A child who loses count by one
  * lands on a neighbour (coded one-to-one); any other wrong shape shows the core was missed.
  */
 export function predictShape(rng: Rng, core: readonly number[], ask: number) {
   const at = (position: number) => SHAPES[core[(position - 1) % core.length]];
   const answer = at(ask);
   const neighbours = [at(ask - 1), at(ask + 1)].filter((s, i, all) => s !== answer && all.indexOf(s) === i);
+  // After the neighbours, prefer the pattern's own shapes; a shape not in the pattern is coded as such.
+  const coreShapes = core.map((i) => SHAPES[i]);
   const others = rng.shuffle(SHAPES.filter((s) => s !== answer && !neighbours.includes(s)));
-  const picks = [...neighbours, ...others].slice(0, 2);
+  const picks = [...new Set([...neighbours, ...coreShapes, ...others])].filter((s) => s !== answer).slice(0, 2);
   const shown = Array.from({ length: core.length * 2 }, (_, i) => at(i + 1));
   return {
-    prompt: `The pattern keeps going: ${shown.map((s) => s.glyph).join(GAP)} … What shape is number ${ask}?`,
-    readAloud: `The pattern is ${shown.map((s) => s.word).join(", ")}, and it keeps going. What shape is number ${ask} in the pattern: ${orList(rng, [answer, ...picks].map((s) => `a ${s.word}`))}?`,
+    prompt: `The pattern keeps going: ${shown.map((s) => s.glyph).join(GAP)} … What is the ${ordinal(ask)} shape?`,
+    readAloud: `The pattern is ${shown.map((s) => s.word).join(", ")}, and it keeps going. What is the ${ordinal(ask)} shape in the pattern: ${orList(rng, [answer, ...picks].map((s) => `a ${s.word}`))}?`,
     answer: shapeLabel(answer),
-    wrong: picks.map((s) => wrong(shapeLabel(s), neighbours.includes(s) ? "one-to-one" : "pattern-core")),
+    wrong: picks.map((s) => wrong(shapeLabel(s), neighbours.includes(s) ? "one-to-one" : coreShapes.includes(s) ? "pattern-core" : "pattern-new-shape")),
   };
 }
 
@@ -142,6 +144,15 @@ export function orderClues(rng: Rng, [big, mid, small]: readonly [string, string
     ? `${cap(big)} is ${more} than ${mid}. ${cap(mid)} is ${more} than ${small}.`
     : `${cap(small)} is ${less} than ${mid}. ${cap(mid)} is ${less} than ${big}.`;
 }
+
+/** Pattern letters as a browser voice should say them: "A A B" is "ay, ay, bee" (a lone "A" is read as "uh"). */
+export const sayLetters = (code: string) => code.split(" ").map((l) => ({ A: "ay", B: "bee", C: "see" })[l] ?? l).join(", ");
+
+/** 1st, 2nd, 3rd, 4th ... 11th, 12th, 13th ... 21st. */
+export const ordinal = (n: number) => {
+  const teen = n % 100 >= 11 && n % 100 <= 13;
+  return `${n}${teen ? "th" : (["th", "st", "nd", "rd"][n % 10] ?? "th")}`;
+};
 
 /** count(1, "ten") is "1 ten"; count(3, "ten") is "3 tens". */
 export const count = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;

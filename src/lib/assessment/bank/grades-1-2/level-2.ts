@@ -1,6 +1,6 @@
 // Level 2 (BC grade 2) for the grades 1-2 bank: stage 1 for grade 2, and the "up" form for grade 1.
 // Standards: curriculum map, section 1 (2.1-2.12); example items: section 3, grade 2. Province tags: see ./index.ts.
-import { cap, count, draw, GAP, NAMES, orList, predictShape, row, SHAPES, wrong, type TaggedTemplate } from "../kit";
+import { cap, count, draw, GAP, NAMES, ordinal, orList, predictShape, row, SHAPES, wrong, type TaggedTemplate } from "../kit";
 
 /** The O1 bug: in each column, the smaller digit from the larger. */
 const smallerFromLarger = (a: number, b: number) => Math.abs(Math.floor(a / 10) - Math.floor(b / 10)) * 10 + Math.abs((a % 10) - (b % 10));
@@ -61,11 +61,12 @@ export const LEVEL_2: readonly TaggedTemplate[] = [
     id: "2-greatest",
     strand: "N", grades: { BC: 2, AB: 2, SK: 2, MB: 2, ON: 2 }, format: "choice", whiteboard: false, standard: "2.1",
     fill(rng) {
-      // Like 31, 29 and 13: 29 has the bigger ones digit, and 13 swaps the digits of 31.
+      // Like 31, 29 and 13: 29 has the biggest ones digit of the three (so a child who compares ones digits picks it),
+      // and 13 swaps the digits of 31. The trap's ones digit must beat the swapped number's ones digit too.
       const [t, o, c] = draw(
         rng,
-        (r) => [r.int(2, 9), r.int(1, 8), r.int(2, 9)],
-        ([t, o, c]) => o < t && c > o && (t - 1) * 10 + c !== o * 10 + t,
+        (r) => [r.int(2, 8), r.int(1, 7), r.int(3, 9)],
+        ([t, o, c]) => o < t && c > t && (t - 1) * 10 + c !== o * 10 + t,
       );
       const answer = t * 10 + o, trap = (t - 1) * 10 + c, swapped = o * 10 + t;
       const list = orList(rng, [answer, trap, swapped].map(String));
@@ -359,8 +360,8 @@ export const LEVEL_2: readonly TaggedTemplate[] = [
       // The two other numbers of the core are the items just before and after: losing count by one lands there.
       return {
         values: { a: core[0], b: core[1], c: core[2], ask },
-        prompt: `The pattern keeps going: ${[...core, ...core].join(", ")}, … What number is number ${ask} in the pattern?`,
-        readAloud: `The pattern is ${[...core, ...core].join(", ")}, and it keeps going. What number is number ${ask} in the pattern?`,
+        prompt: `The pattern keeps going: ${[...core, ...core].join(", ")}, … What is the ${ordinal(ask)} number in the pattern?`,
+        readAloud: `The pattern is ${[...core, ...core].join(", ")}, and it keeps going. What is the ${ordinal(ask)} number in the pattern?`,
         answer: String(at(ask)),
         wrong: [wrong(at(ask - 1), "one-to-one"), wrong(at(ask + 1), "one-to-one")],
       };
@@ -386,14 +387,14 @@ export const LEVEL_2: readonly TaggedTemplate[] = [
       const sum = a + b, extra = rng.int(1, 3);
       const right = `${a} + ${b} = 10 + ${sum - 10}`;
       const running = `${a} + ${b} = ${sum} + ${extra}`; // reads "=" as "the answer comes next"
-      const offByOne = `${a} + ${b} = 10 + ${sum - 9}`; // makes a ten but does not take it from the other number
+      const unchanged = `${a} + ${b} = 10 + ${b}`; // makes a ten from a but does not take the amount from b
       const say = (e: string) => e.replace(/\+/g, "plus").replace("=", "is the same as");
       return {
         values: { a, b, extra },
         prompt: "Which is true?",
-        readAloud: `Which is true? ${orList(rng, [right, running, offByOne].map(say))}?`,
+        readAloud: `Which is true? ${orList(rng, [right, running, unchanged].map(say))}?`,
         answer: right,
-        wrong: [wrong(running, "A1"), wrong(offByOne, "compensation")],
+        wrong: [wrong(running, "A1"), wrong(unchanged, "compensation")],
       };
     },
   },
@@ -485,7 +486,7 @@ export const LEVEL_2: readonly TaggedTemplate[] = [
       return {
         values: { askSquare: askSquare ? 1 : 0, q },
         prompt: questions[q],
-        readAloud: `${questions[q]} ${orList(rng, ["a square", "a rectangle", oddWord])}?`,
+        readAloud: `${questions[q]} ${cap(orList(rng, ["a square", "a rectangle", oddWord]))}?`,
         answer: askSquare ? square : rectangle,
         wrong: [wrong(askSquare ? rectangle : square, "square-rectangle"), wrong(odd, "shape-name")],
       };
@@ -523,22 +524,23 @@ export const LEVEL_2: readonly TaggedTemplate[] = [
     id: "2-face-of-solid",
     strand: "MG", grades: { BC: 2, AB: 1, SK: 1, MB: 1, ON: 2 }, format: "choice", whiteboard: false, standard: "2.9",
     fill(rng) {
+      // [the face asked about, its shape, the shape seen from the side]. No item names its own answer.
       const options = [
-        ["the flat bottom of a can", "● circle"],
-        ["each face of a box shaped like a cube", "■ square"],
-        ["the flat bottom of a cone, like a party hat", "● circle"],
-        ["the bottom of a pyramid with a square base", "■ square"],
+        ["the flat bottom of a can", "● circle", "■ square"],
+        ["each face of a number cube", "■ square", ""],
+        ["the flat bottom of a cone, like a party hat", "● circle", "▲ triangle"],
+        ["the flat top of a drum", "● circle", "■ square"],
       ] as const;
       const i = rng.int(0, options.length - 1);
-      const [part, answer] = options[i];
-      const all = ["● circle", "■ square", "▲ triangle"];
-      const others = all.filter((s) => s !== answer);
+      const [part, answer, side] = options[i];
+      const others = ["● circle", "■ square", "▲ triangle"].filter((s) => s !== answer);
       return {
         values: { solid: i },
         prompt: `What shape is ${part}?`,
-        readAloud: `What shape is ${part}: a circle, a square, or a triangle?`,
+        readAloud: `What shape is ${part}: ${orList(rng, ["a circle", "a square", "a triangle"])}?`,
         answer,
-        wrong: others.map((s) => wrong(s, "shape-name")),
+        // Picking the shape seen from the side (a cone looks like a triangle) is its own error.
+        wrong: others.map((s) => wrong(s, s === side ? "side-view" : "shape-name")),
       };
     },
   },
@@ -584,7 +586,7 @@ export const LEVEL_2: readonly TaggedTemplate[] = [
         prompt: `Each ● is 1 child. ${x}: ${row(a)}. ${y}: ${row(b)}. ${z}: ${row(c)}. How many children are on the graph in all?`,
         readAloud: `Each dot is one child. How many children are on the graph in all?`,
         answer: String(total),
-        wrong: [wrong(largest, "one-part"), wrong(total - smallest, "one-part")],
+        wrong: [wrong(largest, "one-part"), wrong(total - smallest, "leaves-out-addend")],
       };
     },
   },
@@ -592,13 +594,15 @@ export const LEVEL_2: readonly TaggedTemplate[] = [
     id: "2-graph-fewer",
     strand: "DP", grades: { BC: 2, AB: 2, SK: 2, MB: 2, ON: 2 }, format: "number", whiteboard: true, standard: "2.10",
     fill(rng) {
-      // The difference never equals the smaller count, so the coded wrong answer stays wrong.
-      const [more, fewer] = draw(rng, (r) => [r.int(6, 12), r.int(2, 10)], ([m, f]) => f <= m - 2 && m !== 2 * f);
-      const [x, y] = rng.pick([["apples", "pears"], ["hockey", "soccer"], ["summer", "winter"]] as const);
+      // The difference never equals the smaller count, so the coded wrong answer stays wrong. At most 10 stars a row,
+      // so a row is easy to count.
+      const [more, fewer] = draw(rng, (r) => [r.int(6, 10), r.int(2, 8)], ([m, f]) => f <= m - 2 && m !== 2 * f);
+      const [kind, x, y] = rng.pick([["fruit", "apples", "pears"], ["sport", "hockey", "soccer"], ["season", "summer", "winter"]] as const);
       return {
         values: { more, fewer },
-        prompt: `Each ★ is 1 child. ${cap(x)}: ${row(more, "★")}. ${cap(y)}: ${row(fewer, "★")}. How many fewer children chose ${y} than ${x}?`,
-        readAloud: `Each star is one child. Look at the stars for ${x} and for ${y}. How many fewer children chose ${y} than ${x}?`,
+        prompt: `Children chose a favourite ${kind}. Each ★ is 1 child. ${cap(x)}: ${row(more, "★")}. ${cap(y)}: ${row(fewer, "★")}. How many fewer children chose ${y} than ${x}?`,
+        // The counts are not read out: counting the stars is part of the task.
+        readAloud: `Children chose a favourite ${kind}. Each star is one child. Look at the stars for ${x} and for ${y}. How many fewer children chose ${y} than ${x}?`,
         answer: String(more - fewer),
         wrong: [wrong(more + fewer, "operation"), wrong(fewer, "difference-whole")],
       };
@@ -612,11 +616,12 @@ export const LEVEL_2: readonly TaggedTemplate[] = [
       const [x, y] = rng.shuffle(["red", "blue", "green", "yellow"]);
       const many = rng.int(2, 5);
       // Either colour may be named first, so the likely one is not always first.
-      const parts = rng.shuffle([`${many} equal ${x} parts`, `1 equal ${y} part`]).join(" and ");
+      const parts = rng.shuffle([`${many} are ${x}`, `1 is ${y}`]).join(" and ");
+      const same = `${cap(x)} and ${y} are equally likely`;
       return {
         values: { many },
-        prompt: `A spinner has ${parts}. Which colour is it more likely to land on?`,
-        readAloud: `A spinner has ${parts}. Which colour is it more likely to land on: ${orList(rng, [x, y, "both equally likely"])}?`,
+        prompt: `A spinner has ${many + 1} equal parts: ${parts}. Which colour is it more likely to land on?`,
+        readAloud: `A spinner has ${many + 1} equal parts: ${parts}. Which colour is it more likely to land on? Choose one. ${rng.shuffle([cap(x), cap(y), same]).join(". ")}.`,
         answer: cap(x),
         wrong: [wrong(cap(y), "chance-reversed"), wrong(`${cap(x)} and ${y} are equally likely`, "D3")],
       };

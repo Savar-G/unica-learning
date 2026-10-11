@@ -208,10 +208,12 @@ export const LEVEL_3: readonly TaggedTemplate[] = [
         [fives, "$5 bill"],
         [toonies, "toonie ($2 coin)"],
       ] as const;
-      const written = parts.filter(([n]) => n > 0).map(([n, what]) => `${n} ${what}${n > 1 ? "s" : ""}`.replace("toonie ($2 coin)s", "toonies ($2 coins)"));
+      // Counts as words ("two $5 bills"), so "2 5 dollar bills" is never heard as "twenty-five dollar bills".
+      const WORDS = ["zero", "one", "two", "three", "four"];
+      const written = parts.filter(([n]) => n > 0).map(([n, what]) => `${WORDS[n]} ${what}${n > 1 ? "s" : ""}`.replace("toonie ($2 coin)s", "toonies ($2 coins)"));
       const spoken = parts.filter(([n]) => n > 0).map(([n, what]) => {
-        const word = what.replace(/^\$(\d+) bill$/, "$1 dollar bill").replace("toonie ($2 coin)", "toonie");
-        return `${n} ${word}${n > 1 ? "s" : ""}`;
+        const word = what.replace(/^\$(\d+) bill$/, "$1-dollar bill").replace("toonie ($2 coin)", "toonie");
+        return `${WORDS[n]} ${word}${n > 1 ? "s" : ""}`;
       });
       const name = rng.pick(NAMES);
       const total = 20 * twenties + 10 * tens + 5 * fives + 2 * toonies;
@@ -271,7 +273,8 @@ export const LEVEL_3: readonly TaggedTemplate[] = [
       return {
         values: { start, step },
         prompt: `What is the rule for this pattern? ${seq.join(", ")}`,
-        readAloud: `What is the rule for this pattern? ${seq.join(", ")}. ${orList(rng, [rule(start, step), rule(start, start), rule(step, start)])}?`,
+        // One choice per sentence: the three rules sound alike, so each needs its own pause.
+        readAloud: `What is the rule for this pattern? ${seq.join(", ")}. Choose one. ${rng.shuffle([rule(start, step), rule(start, start), rule(step, start)]).join(". ")}.`,
         answer: rule(start, step),
         wrong: [wrong(rule(start, start), "rule-start"), wrong(rule(step, start), "rule-start")],
       };
@@ -308,7 +311,10 @@ export const LEVEL_3: readonly TaggedTemplate[] = [
     id: "3-change-unknown",
     strand: "A", grades: { BC: 3, AB: 3, SK: 3, MB: 3, ON: 3 }, format: "number", whiteboard: true, standard: "3.8",
     fill(rng) {
-      const a = rng.int(10, 30), sum = rng.int(a + 4, 50);
+      // A change of 4 to 9 that crosses a ten: small enough that counting on by ones (and counting the start) is a real
+      // strategy, as in 26 + ? = 33.
+      const [a, change] = draw(rng, (r) => [r.int(12, 38), r.int(4, 9)], ([a, ch]) => (a % 10) + ch >= 10);
+      const sum = a + change;
       return {
         values: { a, sum },
         prompt: `${a} + ? = ${sum}`,
@@ -465,8 +471,9 @@ export const LEVEL_3: readonly TaggedTemplate[] = [
       const [x, y] = rng.pick([["soccer", "swimming"], ["reading", "drawing"], ["pizza", "tacos"]] as const);
       return {
         values: { a, b },
-        prompt: `A bar graph shows that ${a} children chose ${x} and ${b} children chose ${y}. How many more children chose ${x} than ${y}?`,
-        readAloud: `A bar graph shows that ${a} children chose ${x} and ${b} children chose ${y}. How many more children chose ${x} than ${y}?`,
+        // Read off a class bar graph, told in words: the screen draws no graph yet (see #79), so the text does not promise one.
+        prompt: `A class made a bar graph of favourites. The ${x} bar goes up to ${a}. The ${y} bar goes up to ${b}. How many more children chose ${x} than ${y}?`,
+        readAloud: `A class made a bar graph of favourites. The ${x} bar goes up to ${a}. The ${y} bar goes up to ${b}. How many more children chose ${x} than ${y}?`,
         answer: String(a - b),
         wrong: [wrong(a + b, "operation"), wrong(a, "difference-whole")],
       };
@@ -481,10 +488,11 @@ export const LEVEL_3: readonly TaggedTemplate[] = [
       const total = a + b + c;
       return {
         values: { a, b, c },
-        prompt: `A table shows the books each class read. Class A: ${a}. Class B: ${b}. Class C: ${c}. How many books did the three classes read in all?`,
-        readAloud: `A table shows the books each class read. Class A read ${a}. Class B read ${b}. Class C read ${c}. How many books did the three classes read in all?`,
+        // Rooms by number (a voice reads "Class A" as "class uh") and "finished" (a voice may read "read" as "reed").
+        prompt: `Room 1 finished ${a} books. Room 2 finished ${b} books. Room 3 finished ${c} books. How many books did the three rooms finish in all?`,
+        readAloud: `Room 1 finished ${a} books. Room 2 finished ${b} books. Room 3 finished ${c} books. How many books did the three rooms finish in all?`,
         answer: String(total),
-        wrong: [wrong(total - Math.min(a, b, c), "one-part"), wrong(Math.max(a, b, c), "one-part")],
+        wrong: [wrong(total - Math.min(a, b, c), "leaves-out-addend"), wrong(Math.max(a, b, c), "one-part")],
       };
     },
   },

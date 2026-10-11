@@ -534,6 +534,5022 @@
         "problems": [],
         "verdict": "pass"
       }
+    },
+    "k-count-shapes": {
+      "hash": "2385f426643f86c8",
+      "status": "pass",
+      "checkedAt": "2026-10-11",
+      "model": "claude-opus-5-5",
+      "findings": {
+        "id": "k-count-shapes",
+        "answerCorrect": true,
+        "wrongAnswersOk": true,
+        "bcGradeFits": true,
+        "provinceTags": [
+          {
+            "province": "AB",
+            "ok": true,
+            "suggestedGrade": "K",
+            "confidence": "high",
+            "reason": "AB Kindergarten covers counting quantities to 10."
+          },
+          {
+            "province": "SK",
+            "ok": true,
+            "suggestedGrade": "K",
+            "confidence": "high",
+            "reason": "SK Kindergarten covers subitizing and counting quantities to 10."
+          },
+          {
+            "province": "MB",
+            "ok": true,
+            "suggestedGrade": "K",
+            "confidence": "high",
+            "reason": "MB Kindergarten covers relating a numeral and a quantity to 10 by counting."
+          },
+          {
+            "province": "ON",
+            "ok": true,
+            "suggestedGrade": "K",
+            "confidence": "high",
+            "reason": "The Ontario Kindergarten Program covers counting objects to 10 with one-to-one correspondence."
+          }
+        ],
+        "wordingProblems": [],
+        "problems": [],
+        "verdict": "pass"
+      }
+    },
+    "k-number-after": {
+      "hash": "01cdfc5b0b45f9c7",
+      "status": "pass",
+      "checkedAt": "2026-10-11",
+      "model": "claude-opus-5-5",
+      "findings": {
+        "id": "k-number-after",
+        "answerCorrect": true,
+        "wrongAnswersOk": true,
+        "bcGradeFits": true,
+        "provinceTags": [
+          {
+            "province": "AB",
+            "ok": true,
+            "suggestedGrade": "K",
+            "confidence": "high",
+            "reason": "Number sequence to 10 forward and backward is a Kindergarten outcome."
+          },
+          {
+            "province": "SK",
+            "ok": true,
+            "suggestedGrade": "K",
+            "confidence": "high",
+            "reason": "Kindergarten number sequence outcome includes naming the number after a given number."
+          },
+          {
+            "province": "MB",
+            "ok": true,
+            "suggestedGrade": "K",
+            "confidence": "high",
+            "reason": "Kindergarten number sequence outcome includes naming the number after a given number from 1 to 9."
+          },
+          {
+            "province": "ON",
+            "ok": true,
+            "suggestedGrade": "K",
+            "confidence": "medium",
+            "reason": "The Kindergarten Program covers the counting sequence and number relationships to 10."
+          }
+        ],
+        "wordingProblems": [],
+        "problems": [],
+        "verdict": "pass"
+      }
+    },
+    "k-number-before": {
+      "hash": "1c0b8bfb8a4cb678",
+      "status": "pass",
+      "checkedAt": "2026-10-11",
+      "model": "claude-opus-5-5",
+      "findings": {
+        "id": "k-number-before",
+        "answerCorrect": true,
+        "wrongAnswersOk": true,
+        "bcGradeFits": true,
+        "provinceTags": [
+          {
+            "province": "AB",
+            "ok": true,
+            "suggestedGrade": "K",
+            "confidence": "high",
+            "reason": "Counting backward from 10 is a Kindergarten outcome."
+          },
+          {
+            "province": "SK",
+            "ok": true,
+            "suggestedGrade": "K",
+            "confidence": "high",
+            "reason": "Kindergarten number sequence outcome includes naming the number before a given number from 2 to 10."
+          },
+          {
+            "province": "MB",
+            "ok": true,
+            "suggestedGrade": "K",
+            "confidence": "high",
+            "reason": "Kindergarten number sequence outcome includes naming the number before a given number from 2 to 10."
+          },
+          {
+            "province": "ON",
+            "ok": true,
+            "suggestedGrade": "K",
+            "confidence": "medium",
+            "reason": "The Kindergarten Program covers the counting sequence and number relationships to 10."
+          }
+        ],
+        "wordingProblems": [],
+        "problems": [],
+        "verdict": "pass"
+      }
+    },
+    "k-missing-number": {
+      "hash": "232276b60751266c",
+      "status": "pass",
+      "checkedAt": "2026-10-11",
+      "model": "claude-opus-5-5",
+      "findings": {
+        "id": "k-missing-number",
+        "answerCorrect": true,
+        "wrongAnswersOk": true,
+        "bcGradeFits": true,
+        "provinceTags": [
+          {
+            "province": "AB",
+            "ok": true,
+            "suggestedGrade": "K",
+            "confidence": "medium",
+            "reason": "Uses the number sequence to 10, which is taught in Kindergarten."
+          },
+          {
+            "province": "SK",
+            "ok": true,
+            "suggestedGrade": "K",
+            "confidence": "medium",
+            "reason": "Uses the number sequence to 10, which is taught in Kindergarten."
+          },
+          {
+            "province": "MB",
+            "ok": true,
+            "suggestedGrade": "K",
+            "confidence": "medium",
+            "reason": "Uses the number sequence to 10, which is taught in Kindergarten."
+          },
+          {
+            "province": "ON",
+            "ok": true,
+            "suggestedGrade": "K",
+            "confidence": "medium",
+            "reason": "Uses the counting sequence to 10 from the Kindergarten Program."
+          }
+        ],
+        "wordingProblems": [],
+        "problems": [],
+        "verdict": "pass"
+      }
+    },
+    "k-who-has-more": {
+      "hash": "666ef0b7e7980df2",
+      "status": "review",
+      "checkedAt": "2026-10-11",
+      "model": "claude-opus-5-5",
+      "findings": {
+        "id": "k-who-has-more",
+        "answerCorrect": true,
+        "wrongAnswersOk": true,
+        "bcGradeFits": true,
+        "provinceTags": [
+          {
+            "province": "AB",
+            "ok": true,
+            "suggestedGrade": "K",
+            "confidence": "high",
+            "reason": "Comparing quantities to 10 is taught in Kindergarten."
+          },
+          {
+            "province": "SK",
+            "ok": true,
+            "suggestedGrade": "K",
+            "confidence": "high",
+            "reason": "Kindergarten outcome: compare quantities 1 to 10 using one-to-one correspondence."
+          },
+          {
+            "province": "MB",
+            "ok": true,
+            "suggestedGrade": "K",
+            "confidence": "high",
+            "reason": "Kindergarten outcome: compare quantities 1 to 10 using one-to-one correspondence."
+          },
+          {
+            "province": "ON",
+            "ok": true,
+            "suggestedGrade": "K",
+            "confidence": "medium",
+            "reason": "The Kindergarten Program covers comparing quantities to 10."
+          }
+        ],
+        "wordingProblems": [
+          "The read-aloud lists the choices in a different order from the screen. For example, it says 'Mia, they have the same or Leah' while the buttons show Leah / They have the same / Mia. A Kindergarten child who cannot read the names or 'They have the same' cannot use the spoken order to find the right button. Read the choices in the on-screen order."
+        ],
+        "problems": [
+          "The BC standard is tagged 'K2 ways to make 5', but this skill is comparing quantities, which belongs under K1 number concepts to 10. The amounts also go up to 9, so they are not limited to 5. Retag the standard."
+        ],
+        "verdict": "review"
+      }
+    },
+    "k-make-five": {
+      "hash": "09b683c66d88b342",
+      "status": "pass",
+      "checkedAt": "2026-10-11",
+      "model": "claude-opus-5-5",
+      "findings": {
+        "id": "k-make-five",
+        "answerCorrect": true,
+        "wrongAnswersOk": true,
+        "bcGradeFits": true,
+        "provinceTags": [
+          {
+            "province": "AB",
+            "ok": true,
+            "suggestedGrade": "K",
+            "confidence": "medium",
+            "reason": "Partitioning small quantities is taught in Kindergarten."
+          },
+          {
+            "province": "SK",
+            "ok": true,
+            "suggestedGrade": "K",
+            "confidence": "high",
+            "reason": "Kindergarten outcome: represent and describe numbers 2 to 10 in two parts."
+          },
+          {
+            "province": "MB",
+            "ok": true,
+            "suggestedGrade": "K",
+            "confidence": "high",
+            "reason": "Kindergarten outcome: represent and describe numbers 2 to 10 in two parts."
+          },
+          {
+            "province": "ON",
+            "ok": true,
+            "suggestedGrade": "K",
+            "confidence": "medium",
+            "reason": "The Kindergarten Program covers composing and decomposing quantities to 10."
+          }
+        ],
+        "wordingProblems": [],
+        "problems": [],
+        "verdict": "pass"
+      }
+    },
+    "k-split-number": {
+      "hash": "9c7736981bf70021",
+      "status": "review",
+      "checkedAt": "2026-10-11",
+      "model": "claude-opus-5-5",
+      "findings": {
+        "id": "k-split-number",
+        "answerCorrect": true,
+        "wrongAnswersOk": true,
+        "bcGradeFits": true,
+        "provinceTags": [
+          {
+            "province": "AB",
+            "ok": true,
+            "suggestedGrade": "K",
+            "confidence": "medium",
+            "reason": "Decomposing quantities to 10 is taught in Kindergarten."
+          },
+          {
+            "province": "SK",
+            "ok": true,
+            "suggestedGrade": "K",
+            "confidence": "high",
+            "reason": "Kindergarten outcome: numbers 2 to 10 in two parts."
+          },
+          {
+            "province": "MB",
+            "ok": true,
+            "suggestedGrade": "K",
+            "confidence": "high",
+            "reason": "Kindergarten outcome: numbers 2 to 10 in two parts."
+          },
+          {
+            "province": "ON",
+            "ok": true,
+            "suggestedGrade": "K",
+            "confidence": "medium",
+            "reason": "The Kindergarten Program covers decomposing quantities to 10."
+          }
+        ],
+        "wordingProblems": [
+          "The phrase '10 is 8 and how many more?' is unusual for a Kindergarten child. '8 and how many more make 10?' would match the k-make-five template and be clearer.",
+          "All the dots are identical and show only the whole, not the two parts. A child who counts the dots may type the whole (for example 10) instead of the missing part. Colour the known part differently, or show only the known part."
+        ],
+        "problems": [],
+        "verdict": "review"
+      }
+    },
+    "k-rest-are": {
+      "hash": "1198f30576a18dbf",
+      "status": "pass",
+      "checkedAt": "2026-10-11",
+      "model": "claude-opus-5-5",
+      "findings": {
+        "id": "k-rest-are",
+        "answerCorrect": true,
+        "wrongAnswersOk": true,
+        "bcGradeFits": true,
+        "provinceTags": [
+          {
+            "province": "AB",
+            "ok": true,
+            "suggestedGrade": "grade 1",
+            "confidence": "medium",
+            "reason": "Solving addition and subtraction problems in a story context is formalized in Grade 1."
+          },
+          {
+            "province": "SK",
+            "ok": true,
+            "suggestedGrade": "grade 1",
+            "confidence": "medium",
+            "reason": "Kindergarten covers numbers in two parts concretely. Solving story problems for an unknown part falls under the Grade 1 addition and subtraction outcome."
+          },
+          {
+            "province": "MB",
+            "ok": true,
+            "suggestedGrade": "grade 1",
+            "confidence": "medium",
+            "reason": "Same split as SK: Kindergarten works with parts concretely, and solving story problems is in Grade 1."
+          },
+          {
+            "province": "ON",
+            "ok": true,
+            "suggestedGrade": "grade 1",
+            "confidence": "medium",
+            "reason": "Kindergarten explores addition and subtraction informally. Formally solving addition and subtraction problems is a Grade 1 expectation."
+          }
+        ],
+        "wordingProblems": [],
+        "problems": [],
+        "verdict": "pass"
+      }
+    },
+    "k-in-all": {
+      "hash": "aa467104b99aaee7",
+      "status": "pass",
+      "checkedAt": "2026-10-11",
+      "model": "claude-opus-5-5",
+      "findings": {
+        "id": "k-in-all",
+        "answerCorrect": true,
+        "wrongAnswersOk": true,
+        "bcGradeFits": true,
+        "provinceTags": [
+          {
+            "province": "AB",
+            "ok": true,
+            "suggestedGrade": "grade 1",
+            "confidence": "medium",
+            "reason": "Solving addition story problems is formalized in Grade 1."
+          },
+          {
+            "province": "SK",
+            "ok": true,
+            "suggestedGrade": "grade 1",
+            "confidence": "medium",
+            "reason": "Addition story problems fall under the Grade 1 addition outcome."
+          },
+          {
+            "province": "MB",
+            "ok": true,
+            "suggestedGrade": "grade 1",
+            "confidence": "medium",
+            "reason": "Addition story problems fall under the Grade 1 addition outcome."
+          },
+          {
+            "province": "ON",
+            "ok": true,
+            "suggestedGrade": "grade 1",
+            "confidence": "medium",
+            "reason": "Kindergarten explores addition informally. Solving addition problems is a Grade 1 expectation."
+          }
+        ],
+        "wordingProblems": [],
+        "problems": [],
+        "verdict": "pass"
+      }
+    },
+    "k-pattern-ab": {
+      "hash": "4433995b90c4f743",
+      "status": "review",
+      "checkedAt": "2026-10-11",
+      "model": "claude-opus-5-5",
+      "findings": {
+        "id": "k-pattern-ab",
+        "answerCorrect": true,
+        "wrongAnswersOk": true,
+        "bcGradeFits": true,
+        "provinceTags": [
+          {
+            "province": "AB",
+            "ok": true,
+            "suggestedGrade": "K",
+            "confidence": "high",
+            "reason": "Repeating patterns are taught in Kindergarten."
+          },
+          {
+            "province": "SK",
+            "ok": true,
+            "suggestedGrade": "K",
+            "confidence": "high",
+            "reason": "Kindergarten outcome: repeating patterns with two or three elements."
+          },
+          {
+            "province": "MB",
+            "ok": true,
+            "suggestedGrade": "K",
+            "confidence": "high",
+            "reason": "Kindergarten outcome: repeating patterns with two or three elements."
+          },
+          {
+            "province": "ON",
+            "ok": true,
+            "suggestedGrade": "K",
+            "confidence": "medium",
+            "reason": "The Kindergarten Program covers recognizing and extending simple repeating patterns."
+          }
+        ],
+        "wordingProblems": [
+          "The read-aloud lists the choices in a different order from the screen. For example, it says 'a star, a square or a circle' while the buttons show circle / square / star. Read the choices in the on-screen order so a listening child can match them."
+        ],
+        "problems": [],
+        "verdict": "review"
+      }
+    },
+    "k-pattern-abc": {
+      "hash": "9a1b504052c22207",
+      "status": "review",
+      "checkedAt": "2026-10-11",
+      "model": "claude-opus-5-5",
+      "findings": {
+        "id": "k-pattern-abc",
+        "answerCorrect": true,
+        "wrongAnswersOk": true,
+        "bcGradeFits": true,
+        "provinceTags": [
+          {
+            "province": "AB",
+            "ok": true,
+            "confidence": "medium",
+            "reason": "Alberta Kindergarten includes repeating patterns of two or three elements."
+          },
+          {
+            "province": "SK",
+            "ok": true,
+            "confidence": "high",
+            "reason": "Saskatchewan Kindergarten patterns outcome covers repeating patterns of two or three elements."
+          },
+          {
+            "province": "MB",
+            "ok": true,
+            "confidence": "high",
+            "reason": "Manitoba Kindergarten outcome PR1 covers repeating patterns of two or three elements."
+          },
+          {
+            "province": "ON",
+            "ok": true,
+            "confidence": "high",
+            "reason": "The Ontario Kindergarten Program expects children to identify, extend and create repeating patterns."
+          }
+        ],
+        "wordingProblems": [
+          "Examples 2, 4, 7 and 8 (e.g. ★ ▲ ■ ★ ?) show the three-shape core only once, plus one shape. The repeating unit is not yet established, so a Kindergarten child cannot be expected to see a pattern. Show the core at least twice, as examples 1, 3, 5 and 6 do."
+        ],
+        "problems": [],
+        "verdict": "review"
+      }
+    },
+    "k-pattern-aab": {
+      "hash": "abd5a710651ca408",
+      "status": "review",
+      "checkedAt": "2026-10-11",
+      "model": "claude-opus-5-5",
+      "findings": {
+        "id": "k-pattern-aab",
+        "answerCorrect": true,
+        "wrongAnswersOk": true,
+        "bcGradeFits": true,
+        "provinceTags": [
+          {
+            "province": "AB",
+            "ok": true,
+            "confidence": "medium",
+            "reason": "Alberta Kindergarten includes repeating patterns of two or three elements."
+          },
+          {
+            "province": "SK",
+            "ok": true,
+            "confidence": "high",
+            "reason": "Saskatchewan Kindergarten patterns outcome covers repeating patterns of two or three elements."
+          },
+          {
+            "province": "MB",
+            "ok": true,
+            "confidence": "high",
+            "reason": "Manitoba Kindergarten outcome PR1 covers repeating patterns of two or three elements."
+          },
+          {
+            "province": "ON",
+            "ok": true,
+            "confidence": "high",
+            "reason": "The Ontario Kindergarten Program covers extending repeating patterns."
+          }
+        ],
+        "wordingProblems": [
+          "Examples 5, 7 and 8 (e.g. ▲ ★ ★ ▲ ★ ?) show the core only once plus part of a second repeat. Kindergarten items should show the core at least twice so the pattern is established."
+        ],
+        "problems": [],
+        "verdict": "review"
+      }
+    },
+    "k-number-pattern": {
+      "hash": "ecf4b7987e1af0f3",
+      "status": "fail",
+      "checkedAt": "2026-10-11",
+      "model": "claude-opus-5-5",
+      "findings": {
+        "id": "k-number-pattern",
+        "answerCorrect": true,
+        "wrongAnswersOk": false,
+        "bcGradeFits": true,
+        "provinceTags": [
+          {
+            "province": "AB",
+            "ok": true,
+            "confidence": "medium",
+            "reason": "Repeating patterns are taught in Alberta Kindergarten."
+          },
+          {
+            "province": "SK",
+            "ok": true,
+            "confidence": "high",
+            "reason": "Repeating patterns of two elements are a Kindergarten outcome in Saskatchewan."
+          },
+          {
+            "province": "MB",
+            "ok": true,
+            "confidence": "high",
+            "reason": "Manitoba Kindergarten PR1 covers repeating patterns."
+          },
+          {
+            "province": "ON",
+            "ok": true,
+            "confidence": "high",
+            "reason": "Repeating patterns are in the Ontario Kindergarten Program."
+          }
+        ],
+        "wordingProblems": [],
+        "problems": [
+          "The 'Treats a repeating pattern as one that keeps growing' distractor is always the largest number plus 1. That error does not produce it when the sequence ends on the smaller number. Example 2 (3,2,3,2,3,2): growing on from 2 gives 3, which is the correct answer, not 4. Example 3 (…,2): growing gives 3, not 5. Example 6 (…,1): growing gives 2, not 5. Example 8 (…,2): growing gives 3 or 5, not 6. Use last+1 as the distractor when it differs from the answer, or recode these four."
+        ],
+        "verdict": "fail"
+      }
+    },
+    "k-how-many-more": {
+      "hash": "2ff0c6e26f101dea",
+      "status": "pass",
+      "checkedAt": "2026-10-11",
+      "model": "claude-opus-5-5",
+      "findings": {
+        "id": "k-how-many-more",
+        "answerCorrect": true,
+        "wrongAnswersOk": true,
+        "bcGradeFits": true,
+        "provinceTags": [
+          {
+            "province": "AB",
+            "ok": true,
+            "confidence": "medium",
+            "reason": "Formal addition and subtraction problems to 20 start in Grade 1. Kindergarten work is informal."
+          },
+          {
+            "province": "SK",
+            "ok": true,
+            "confidence": "high",
+            "reason": "Addition and subtraction problem solving is a Grade 1 number outcome. Kindergarten stops at partitioning."
+          },
+          {
+            "province": "MB",
+            "ok": true,
+            "confidence": "high",
+            "reason": "Manitoba Grade 1 N9 covers addition and subtraction to 20, including missing-part problems."
+          },
+          {
+            "province": "ON",
+            "ok": true,
+            "confidence": "medium",
+            "reason": "Grade 1 B2 covers addition and subtraction problems. Kindergarten only explores joining and separating informally."
+          }
+        ],
+        "wordingProblems": [],
+        "problems": [],
+        "verdict": "pass"
+      }
+    },
+    "k-take-away": {
+      "hash": "44595175b0041969",
+      "status": "pass",
+      "checkedAt": "2026-10-11",
+      "model": "claude-opus-5-5",
+      "findings": {
+        "id": "k-take-away",
+        "answerCorrect": true,
+        "wrongAnswersOk": true,
+        "bcGradeFits": true,
+        "provinceTags": [
+          {
+            "province": "AB",
+            "ok": true,
+            "confidence": "medium",
+            "reason": "Subtraction story problems are formally a Grade 1 outcome."
+          },
+          {
+            "province": "SK",
+            "ok": true,
+            "confidence": "high",
+            "reason": "Subtraction to 20 in story problems is a Grade 1 outcome."
+          },
+          {
+            "province": "MB",
+            "ok": true,
+            "confidence": "high",
+            "reason": "Manitoba Grade 1 N9 covers this."
+          },
+          {
+            "province": "ON",
+            "ok": true,
+            "confidence": "medium",
+            "reason": "Grade 1 B2 covers this. Kindergarten exploration is informal only."
+          }
+        ],
+        "wordingProblems": [],
+        "problems": [],
+        "verdict": "pass"
+      }
+    },
+    "k-balance-match": {
+      "hash": "04ff9b9892b52f0b",
+      "status": "pass",
+      "checkedAt": "2026-10-11",
+      "model": "claude-opus-5-5",
+      "findings": {
+        "id": "k-balance-match",
+        "answerCorrect": true,
+        "wrongAnswersOk": true,
+        "bcGradeFits": true,
+        "provinceTags": [
+          {
+            "province": "AB",
+            "ok": true,
+            "confidence": "medium",
+            "reason": "Equality as a balance starts in Grade 1 algebra."
+          },
+          {
+            "province": "SK",
+            "ok": true,
+            "confidence": "high",
+            "reason": "Saskatchewan Grade 1 outcome: describe equality as a balance and inequality as an imbalance."
+          },
+          {
+            "province": "MB",
+            "ok": true,
+            "confidence": "high",
+            "reason": "Manitoba Grade 1 PR3 covers equality as a balance."
+          },
+          {
+            "province": "ON",
+            "ok": true,
+            "confidence": "medium",
+            "reason": "Grade 1 C2 covers equality and equivalent sets or expressions."
+          }
+        ],
+        "wordingProblems": [],
+        "problems": [],
+        "verdict": "pass"
+      }
+    },
+    "k-balance-tips": {
+      "hash": "a9193eb5cca11c58",
+      "status": "review",
+      "checkedAt": "2026-10-11",
+      "model": "claude-opus-5-5",
+      "findings": {
+        "id": "k-balance-tips",
+        "answerCorrect": true,
+        "wrongAnswersOk": true,
+        "bcGradeFits": true,
+        "provinceTags": [
+          {
+            "province": "AB",
+            "ok": true,
+            "confidence": "medium",
+            "reason": "Equality and inequality as balance and imbalance is Grade 1."
+          },
+          {
+            "province": "SK",
+            "ok": true,
+            "confidence": "high",
+            "reason": "Grade 1 outcome on equality as a balance and inequality as an imbalance."
+          },
+          {
+            "province": "MB",
+            "ok": true,
+            "confidence": "high",
+            "reason": "Manitoba Grade 1 PR3."
+          },
+          {
+            "province": "ON",
+            "ok": true,
+            "confidence": "medium",
+            "reason": "Grade 1 C2 covers equality."
+          }
+        ],
+        "wordingProblems": [
+          "There is no picture, so the answer depends on 'left' and 'right', which many Kindergarten children have not mastered. A left/right mix-up would be wrongly coded as 'thinks the side that goes up holds more'. Add a picture or name the sides by object or colour."
+        ],
+        "problems": [],
+        "verdict": "review"
+      }
+    },
+    "k-longer-line": {
+      "hash": "3423410d02d365c9",
+      "status": "review",
+      "checkedAt": "2026-10-11",
+      "model": "claude-opus-5-5",
+      "findings": {
+        "id": "k-longer-line",
+        "answerCorrect": true,
+        "wrongAnswersOk": true,
+        "bcGradeFits": true,
+        "provinceTags": [
+          {
+            "province": "AB",
+            "ok": true,
+            "confidence": "high",
+            "reason": "Kindergarten: compare two objects by direct comparison of a single attribute."
+          },
+          {
+            "province": "SK",
+            "ok": true,
+            "confidence": "high",
+            "reason": "Kindergarten outcome on direct comparison of length, mass and capacity."
+          },
+          {
+            "province": "MB",
+            "ok": true,
+            "confidence": "high",
+            "reason": "Manitoba Kindergarten SS1 covers direct comparison."
+          },
+          {
+            "province": "ON",
+            "ok": true,
+            "confidence": "high",
+            "reason": "The Ontario Kindergarten Program covers comparing objects by length."
+          }
+        ],
+        "wordingProblems": [
+          "The lines are text strings (▬) inside answer buttons. If the buttons centre their text, the lines do not share a starting point, which direct comparison needs. Some fonts also show gaps between the characters, so a child may count pieces instead of comparing length. Render left-aligned images instead."
+        ],
+        "problems": [],
+        "verdict": "review"
+      }
+    },
+    "k-heavier-object": {
+      "hash": "a29a5504c02fc0ee",
+      "status": "review",
+      "checkedAt": "2026-10-11",
+      "model": "claude-opus-5-5",
+      "findings": {
+        "id": "k-heavier-object",
+        "answerCorrect": true,
+        "wrongAnswersOk": true,
+        "bcGradeFits": true,
+        "provinceTags": [
+          {
+            "province": "AB",
+            "ok": true,
+            "confidence": "high",
+            "reason": "Kindergarten direct comparison includes mass."
+          },
+          {
+            "province": "SK",
+            "ok": true,
+            "confidence": "high",
+            "reason": "Kindergarten direct comparison includes mass."
+          },
+          {
+            "province": "MB",
+            "ok": true,
+            "confidence": "high",
+            "reason": "Manitoba Kindergarten SS1 includes mass."
+          },
+          {
+            "province": "ON",
+            "ok": true,
+            "confidence": "high",
+            "reason": "The Ontario Kindergarten Program covers comparing objects by mass."
+          }
+        ],
+        "wordingProblems": [
+          "'A big balloon' (examples 6 and 8) could make a child think of a water balloon, and a big water balloon is heavier than a small apple. Say 'a big balloon full of air'."
+        ],
+        "problems": [],
+        "verdict": "review"
+      }
+    },
+    "k-balance-heavier": {
+      "hash": "5e53cc455ac5215c",
+      "status": "review",
+      "checkedAt": "2026-10-11",
+      "model": "claude-opus-5-5",
+      "findings": {
+        "id": "k-balance-heavier",
+        "answerCorrect": true,
+        "wrongAnswersOk": true,
+        "bcGradeFits": true,
+        "provinceTags": [
+          {
+            "province": "AB",
+            "ok": true,
+            "confidence": "high",
+            "reason": "Kindergarten direct comparison of mass includes using a balance."
+          },
+          {
+            "province": "SK",
+            "ok": true,
+            "confidence": "high",
+            "reason": "Kindergarten direct comparison includes mass."
+          },
+          {
+            "province": "MB",
+            "ok": true,
+            "confidence": "high",
+            "reason": "Manitoba Kindergarten SS1 includes mass."
+          },
+          {
+            "province": "ON",
+            "ok": true,
+            "confidence": "high",
+            "reason": "The Ontario Kindergarten Program covers comparing mass."
+          }
+        ],
+        "wordingProblems": [
+          "The read-aloud puts 'they weigh the same' first or in the middle of the option list, for example 'Which is heavier: they weigh the same, the shoe or the apple?' (example 3) and 'the shoe, they weigh the same or the orange?' (example 2). This is ungrammatical and confusing when heard. Always end with 'or do they weigh the same?'"
+        ],
+        "problems": [],
+        "verdict": "review"
+      }
+    },
+    "k-can-roll": {
+      "hash": "913d4bc4dcddf555",
+      "status": "review",
+      "checkedAt": "2026-10-11",
+      "model": "claude-opus-5-5",
+      "findings": {
+        "id": "k-can-roll",
+        "answerCorrect": true,
+        "wrongAnswersOk": true,
+        "bcGradeFits": true,
+        "provinceTags": [
+          {
+            "province": "AB",
+            "ok": true,
+            "confidence": "medium",
+            "reason": "Sorting and describing 3D objects by a single attribute such as rolling is Kindergarten geometry."
+          },
+          {
+            "province": "SK",
+            "ok": true,
+            "confidence": "high",
+            "reason": "SS K.3: sort 3-D objects using a single attribute."
+          },
+          {
+            "province": "MB",
+            "ok": true,
+            "confidence": "high",
+            "reason": "SS K.3: sort 3-D objects using a single attribute."
+          },
+          {
+            "province": "ON",
+            "ok": true,
+            "confidence": "medium",
+            "reason": "The Kindergarten Program has children explore 3D figures and their attributes."
+          }
+        ],
+        "wordingProblems": [
+          "The read-aloud lists the choices in a different order from the buttons in several examples (e.g. ex 3 says 'an orange, a block or a box' but shows A block / An orange / A box; also ex 4, 5, 6, 7, 8). A pre-reader cannot match the spoken order to the text-only buttons.",
+          "The template mixes 'can roll' and 'cannot roll'. Kindergarten listeners often miss 'not'. Stress the word or keep one polarity."
+        ],
+        "problems": [],
+        "verdict": "review"
+      }
+    },
+    "k-graph-which-more": {
+      "hash": "b378af1417e44e7c",
+      "status": "review",
+      "checkedAt": "2026-10-11",
+      "model": "claude-opus-5-5",
+      "findings": {
+        "id": "k-graph-which-more",
+        "answerCorrect": true,
+        "wrongAnswersOk": true,
+        "bcGradeFits": true,
+        "provinceTags": [
+          {
+            "province": "AB",
+            "ok": true,
+            "confidence": "low",
+            "reason": "Concrete graphs and pictographs sit in early primary data. Grade 2 matches the WNCP-based program; it is unclear whether the 2022 program places this earlier."
+          },
+          {
+            "province": "SK",
+            "ok": true,
+            "confidence": "high",
+            "reason": "SK has no grade 1 statistics outcome. SP2.2 covers concrete graphs and pictographs."
+          },
+          {
+            "province": "MB",
+            "ok": true,
+            "confidence": "high",
+            "reason": "SP 2.2 covers concrete graphs and pictographs."
+          },
+          {
+            "province": "ON",
+            "ok": true,
+            "confidence": "high",
+            "reason": "Grade 1 Data D1.2 displays data in concrete graphs and pictographs and compares them."
+          }
+        ],
+        "wordingProblems": [
+          "The dot rows start right after labels of different widths ('Apples:' vs 'Bananas:', 'Red:' vs 'Blue:'), so the rows do not share a baseline. A child comparing row lengths can be misled when the counts are close (6 vs 5, 6 vs 7). Align the rows the way a graph would.",
+          "'Children chose a favourite' does not say a favourite what (pet, colour, fruit)."
+        ],
+        "problems": [],
+        "verdict": "review"
+      }
+    },
+    "k-graph-count": {
+      "hash": "00f34e9a2f0de663",
+      "status": "review",
+      "checkedAt": "2026-10-11",
+      "model": "claude-opus-5-5",
+      "findings": {
+        "id": "k-graph-count",
+        "answerCorrect": true,
+        "wrongAnswersOk": true,
+        "bcGradeFits": true,
+        "provinceTags": [
+          {
+            "province": "AB",
+            "ok": true,
+            "confidence": "low",
+            "reason": "Reading a pictograph fits early primary data. Grade 2 matches the WNCP-based program; it is unclear whether the 2022 program places this earlier."
+          },
+          {
+            "province": "SK",
+            "ok": true,
+            "confidence": "high",
+            "reason": "SP2.2 covers concrete graphs and pictographs."
+          },
+          {
+            "province": "MB",
+            "ok": true,
+            "confidence": "high",
+            "reason": "SP 2.2 covers concrete graphs and pictographs."
+          },
+          {
+            "province": "ON",
+            "ok": true,
+            "confidence": "high",
+            "reason": "Grade 1 Data covers pictographs and concrete graphs."
+          }
+        ],
+        "wordingProblems": [
+          "'Children chose a favourite' does not say a favourite what. 'Red/Blue' is especially unclear without 'colour'."
+        ],
+        "problems": [],
+        "verdict": "review"
+      }
+    },
+    "k-likely-event": {
+      "hash": "54b93914cfe449ba",
+      "status": "review",
+      "checkedAt": "2026-10-11",
+      "model": "claude-opus-5-5",
+      "findings": {
+        "id": "k-likely-event",
+        "answerCorrect": true,
+        "wrongAnswersOk": true,
+        "bcGradeFits": true,
+        "provinceTags": [
+          {
+            "province": "AB",
+            "ok": true,
+            "confidence": "low",
+            "reason": "The WNCP-based program describes likelihood (impossible, possible, certain) in grade 5. Placement in the 2022 program is uncertain."
+          },
+          {
+            "province": "SK",
+            "ok": true,
+            "confidence": "medium",
+            "reason": "Likelihood language (impossible, possible, certain) is a grade 5 SP outcome."
+          },
+          {
+            "province": "MB",
+            "ok": true,
+            "confidence": "high",
+            "reason": "SP 5.3 describes the likelihood of a single outcome as impossible, possible or certain."
+          },
+          {
+            "province": "ON",
+            "ok": true,
+            "confidence": "high",
+            "reason": "Grade 1 D2.1 uses impossible, possible and certain to describe everyday events."
+          }
+        ],
+        "wordingProblems": [
+          "The read-aloud lists the choices in a different order from the buttons in every example (e.g. ex 1 says dinosaur, cow, car; the buttons show car, cow, dinosaur). The choices are long sentences a Kindergarten child cannot read, so they cannot match what they hear to a button.",
+          "The browser voice reads the capitalised 'A dinosaur', 'You will' mid-sentence without a pause between items, so the three options can run together."
+        ],
+        "problems": [],
+        "verdict": "review"
+      }
+    },
+    "1-ten-and-more": {
+      "hash": "c85c6ba3fac257b7",
+      "status": "pass",
+      "checkedAt": "2026-10-11",
+      "model": "claude-opus-5-5",
+      "findings": {
+        "id": "1-ten-and-more",
+        "answerCorrect": true,
+        "wrongAnswersOk": true,
+        "bcGradeFits": true,
+        "provinceTags": [
+          {
+            "province": "AB",
+            "ok": true,
+            "confidence": "medium",
+            "reason": "Teen numbers as ten and some more are a grade 1 topic."
+          },
+          {
+            "province": "SK",
+            "ok": true,
+            "confidence": "high",
+            "reason": "N1.4 and the place-value work on numbers to 20 are grade 1."
+          },
+          {
+            "province": "MB",
+            "ok": true,
+            "confidence": "high",
+            "reason": "Grade 1 number to 20 includes teen numbers as 10 and some ones."
+          },
+          {
+            "province": "ON",
+            "ok": true,
+            "confidence": "high",
+            "reason": "Grade 1 composes and decomposes numbers to 50 using tens and ones."
+          }
+        ],
+        "wordingProblems": [],
+        "problems": [],
+        "verdict": "pass"
+      }
+    },
+    "1-smallest-biggest": {
+      "hash": "aafcdaaac8800d73",
+      "status": "pass",
+      "checkedAt": "2026-10-11",
+      "model": "claude-opus-5-5",
+      "findings": {
+        "id": "1-smallest-biggest",
+        "answerCorrect": true,
+        "wrongAnswersOk": true,
+        "bcGradeFits": true,
+        "provinceTags": [
+          {
+            "province": "AB",
+            "ok": true,
+            "confidence": "medium",
+            "reason": "Comparing and ordering numbers to 20 is grade 1."
+          },
+          {
+            "province": "SK",
+            "ok": true,
+            "confidence": "high",
+            "reason": "Grade 1 compares and orders quantities to 20."
+          },
+          {
+            "province": "MB",
+            "ok": true,
+            "confidence": "high",
+            "reason": "Grade 1 compares and orders numbers to 20."
+          },
+          {
+            "province": "ON",
+            "ok": true,
+            "confidence": "high",
+            "reason": "Grade 1 B1.2 compares and orders whole numbers to 50."
+          }
+        ],
+        "wordingProblems": [],
+        "problems": [],
+        "verdict": "pass"
+      }
+    },
+    "1-more-or-less": {
+      "hash": "1a7fde5ebbeb8eea",
+      "status": "pass",
+      "checkedAt": "2026-10-11",
+      "model": "claude-opus-5-5",
+      "findings": {
+        "id": "1-more-or-less",
+        "answerCorrect": true,
+        "wrongAnswersOk": true,
+        "bcGradeFits": true,
+        "provinceTags": [
+          {
+            "province": "AB",
+            "ok": true,
+            "confidence": "medium",
+            "reason": "One and two more or less within 20 is grade 1."
+          },
+          {
+            "province": "SK",
+            "ok": true,
+            "confidence": "high",
+            "reason": "Grade 1 number to 20, counting on and back."
+          },
+          {
+            "province": "MB",
+            "ok": true,
+            "confidence": "high",
+            "reason": "Grade 1 relates numbers to 20 as more or less."
+          },
+          {
+            "province": "ON",
+            "ok": true,
+            "confidence": "high",
+            "reason": "Grade 1 counts forward and backward and finds more and less within 50."
+          }
+        ],
+        "wordingProblems": [],
+        "problems": [],
+        "verdict": "pass"
+      }
+    },
+    "1-make-ten": {
+      "hash": "740d0a91de1e1538",
+      "status": "pass",
+      "checkedAt": "2026-10-11",
+      "model": "claude-opus-5-5",
+      "findings": {
+        "id": "1-make-ten",
+        "answerCorrect": true,
+        "wrongAnswersOk": true,
+        "bcGradeFits": true,
+        "provinceTags": [
+          {
+            "province": "AB",
+            "ok": true,
+            "confidence": "medium",
+            "reason": "Partitioning 10 is a grade 1 topic."
+          },
+          {
+            "province": "SK",
+            "ok": true,
+            "confidence": "high",
+            "reason": "N1.4 and N1.10 cover decomposing to 10 and making ten."
+          },
+          {
+            "province": "MB",
+            "ok": true,
+            "confidence": "high",
+            "reason": "Grade 1 represents and decomposes numbers to 10 in parts."
+          },
+          {
+            "province": "ON",
+            "ok": true,
+            "confidence": "high",
+            "reason": "Grade 1 recalls addition facts to 10, including combinations that make 10."
+          }
+        ],
+        "wordingProblems": [],
+        "problems": [],
+        "verdict": "pass"
+      }
+    },
+    "1-count-coins": {
+      "hash": "8ae538f2054b77ee",
+      "status": "pass",
+      "checkedAt": "2026-10-11",
+      "model": "claude-opus-5-5",
+      "findings": {
+        "id": "1-count-coins",
+        "answerCorrect": true,
+        "wrongAnswersOk": true,
+        "bcGradeFits": true,
+        "provinceTags": [
+          {
+            "province": "AB",
+            "ok": true,
+            "confidence": "low",
+            "reason": "The WNCP-based program has money only from grade 4. The 2022 program may introduce coins earlier; unverified."
+          },
+          {
+            "province": "SK",
+            "ok": true,
+            "confidence": "medium",
+            "reason": "The WNCP sequence has no primary coin outcome. Money first appears with decimals in grade 4."
+          },
+          {
+            "province": "MB",
+            "ok": true,
+            "confidence": "medium",
+            "reason": "The WNCP sequence has no primary coin outcome. Money appears in grade 4."
+          },
+          {
+            "province": "ON",
+            "ok": true,
+            "confidence": "medium",
+            "reason": "Grade 1 F1.1 identifies coins. Grade 2 F1.1 represents amounts to 100¢, which matches totals up to 90¢."
+          }
+        ],
+        "wordingProblems": [],
+        "problems": [
+          "The amounts range from 10¢ to 90¢. BC grade 1 works with numbers to 20, so the dime examples (30–90¢) are at grade 2 difficulty. This is within one grade, but the template mixes two difficulty levels.",
+          "The prompt states each coin's value, so the item tests skip counting by 5s and 10s rather than knowing coin values."
+        ],
+        "verdict": "pass"
+      }
+    },
+    "1-subtract-from-20": {
+      "hash": "8a841b31e463a3fc",
+      "status": "pass",
+      "checkedAt": "2026-10-11",
+      "model": "claude-opus-5-5",
+      "findings": {
+        "id": "1-subtract-from-20",
+        "answerCorrect": true,
+        "wrongAnswersOk": true,
+        "bcGradeFits": true,
+        "provinceTags": [
+          {
+            "province": "AB",
+            "ok": true,
+            "confidence": "medium",
+            "reason": "Addition and subtraction to 20 is grade 1."
+          },
+          {
+            "province": "SK",
+            "ok": true,
+            "confidence": "high",
+            "reason": "N1.9: addition and subtraction to 20."
+          },
+          {
+            "province": "MB",
+            "ok": true,
+            "confidence": "high",
+            "reason": "N1.9: addition and subtraction to 20."
+          },
+          {
+            "province": "ON",
+            "ok": true,
+            "confidence": "high",
+            "reason": "Grade 1 adds and subtracts numbers up to 20."
+          }
+        ],
+        "wordingProblems": [],
+        "problems": [],
+        "verdict": "pass"
+      }
+    },
+    "1-story-add": {
+      "hash": "aa491ebafc16f39a",
+      "status": "pass",
+      "checkedAt": "2026-10-11",
+      "model": "claude-opus-5-5",
+      "findings": {
+        "id": "1-story-add",
+        "answerCorrect": true,
+        "wrongAnswersOk": true,
+        "bcGradeFits": true,
+        "provinceTags": [
+          {
+            "province": "AB",
+            "ok": true,
+            "suggestedGrade": "grade 1",
+            "confidence": "high",
+            "reason": "Grade 1 adds and subtracts within 20 in problem contexts."
+          },
+          {
+            "province": "SK",
+            "ok": true,
+            "suggestedGrade": "grade 1",
+            "confidence": "high",
+            "reason": "Grade 1 outcome covers addition and subtraction to 20 with story problems."
+          },
+          {
+            "province": "MB",
+            "ok": true,
+            "suggestedGrade": "grade 1",
+            "confidence": "high",
+            "reason": "Grade 1 outcome covers addition with answers to 20 in story problems."
+          },
+          {
+            "province": "ON",
+            "ok": true,
+            "suggestedGrade": "grade 1",
+            "confidence": "high",
+            "reason": "Grade 1 covers adding-to and taking-from problems up to 20."
+          }
+        ],
+        "wordingProblems": [],
+        "problems": [],
+        "verdict": "pass"
+      }
+    },
+    "1-story-take": {
+      "hash": "a0a11d786b9c7d76",
+      "status": "pass",
+      "checkedAt": "2026-10-11",
+      "model": "claude-opus-5-5",
+      "findings": {
+        "id": "1-story-take",
+        "answerCorrect": true,
+        "wrongAnswersOk": true,
+        "bcGradeFits": true,
+        "provinceTags": [
+          {
+            "province": "AB",
+            "ok": true,
+            "suggestedGrade": "grade 1",
+            "confidence": "high",
+            "reason": "Grade 1 subtracts within 20 in problem contexts."
+          },
+          {
+            "province": "SK",
+            "ok": true,
+            "suggestedGrade": "grade 1",
+            "confidence": "high",
+            "reason": "Grade 1 outcome covers subtraction facts to 20 with story problems."
+          },
+          {
+            "province": "MB",
+            "ok": true,
+            "suggestedGrade": "grade 1",
+            "confidence": "high",
+            "reason": "Grade 1 outcome covers the matching subtraction facts to 20."
+          },
+          {
+            "province": "ON",
+            "ok": true,
+            "suggestedGrade": "grade 1",
+            "confidence": "high",
+            "reason": "Grade 1 covers taking-from problems up to 20."
+          }
+        ],
+        "wordingProblems": [],
+        "problems": [],
+        "verdict": "pass"
+      }
+    },
+    "1-story-compare": {
+      "hash": "c6a588e79b8c8da2",
+      "status": "pass",
+      "checkedAt": "2026-10-11",
+      "model": "claude-opus-5-5",
+      "findings": {
+        "id": "1-story-compare",
+        "answerCorrect": true,
+        "wrongAnswersOk": true,
+        "bcGradeFits": true,
+        "provinceTags": [
+          {
+            "province": "AB",
+            "ok": true,
+            "suggestedGrade": "grade 1",
+            "confidence": "medium",
+            "reason": "Comparison problems within 20 are part of grade 1 addition and subtraction."
+          },
+          {
+            "province": "SK",
+            "ok": true,
+            "suggestedGrade": "grade 1",
+            "confidence": "medium",
+            "reason": "Grade 1 addition and subtraction to 20 includes comparing situations."
+          },
+          {
+            "province": "MB",
+            "ok": true,
+            "suggestedGrade": "grade 1",
+            "confidence": "medium",
+            "reason": "Grade 1 addition and subtraction to 20 includes comparing situations."
+          },
+          {
+            "province": "ON",
+            "ok": true,
+            "suggestedGrade": "grade 1",
+            "confidence": "high",
+            "reason": "Grade 1 problems explicitly include comparing, up to 20."
+          }
+        ],
+        "wordingProblems": [],
+        "problems": [],
+        "verdict": "pass"
+      }
+    },
+    "1-pattern-four": {
+      "hash": "655e4c1704d499cd",
+      "status": "pass",
+      "checkedAt": "2026-10-11",
+      "model": "claude-opus-5-5",
+      "findings": {
+        "id": "1-pattern-four",
+        "answerCorrect": true,
+        "wrongAnswersOk": true,
+        "bcGradeFits": true,
+        "provinceTags": [
+          {
+            "province": "AB",
+            "ok": true,
+            "suggestedGrade": "grade 1",
+            "confidence": "medium",
+            "reason": "Grade 1 extends repeating patterns."
+          },
+          {
+            "province": "SK",
+            "ok": true,
+            "suggestedGrade": "grade 1",
+            "confidence": "high",
+            "reason": "Grade 1 covers repeating patterns with 2 to 4 elements."
+          },
+          {
+            "province": "MB",
+            "ok": true,
+            "suggestedGrade": "grade 1",
+            "confidence": "high",
+            "reason": "Grade 1 covers repeating patterns with 2 to 4 elements."
+          },
+          {
+            "province": "ON",
+            "ok": true,
+            "suggestedGrade": "grade 1",
+            "confidence": "high",
+            "reason": "Grade 1 identifies and extends repeating patterns."
+          }
+        ],
+        "wordingProblems": [],
+        "problems": [],
+        "verdict": "pass"
+      }
+    },
+    "1-pattern-missing": {
+      "hash": "808bf4bd20870c07",
+      "status": "pass",
+      "checkedAt": "2026-10-11",
+      "model": "claude-opus-5-5",
+      "findings": {
+        "id": "1-pattern-missing",
+        "answerCorrect": true,
+        "wrongAnswersOk": true,
+        "bcGradeFits": true,
+        "provinceTags": [
+          {
+            "province": "AB",
+            "ok": true,
+            "suggestedGrade": "grade 1",
+            "confidence": "medium",
+            "reason": "Grade 1 works with repeating patterns, including missing elements."
+          },
+          {
+            "province": "SK",
+            "ok": true,
+            "suggestedGrade": "grade 1",
+            "confidence": "high",
+            "reason": "Grade 1 repeating-pattern outcome includes finding errors and missing elements."
+          },
+          {
+            "province": "MB",
+            "ok": true,
+            "suggestedGrade": "grade 1",
+            "confidence": "high",
+            "reason": "Grade 1 repeating-pattern outcome includes finding missing elements."
+          },
+          {
+            "province": "ON",
+            "ok": true,
+            "suggestedGrade": "grade 1",
+            "confidence": "high",
+            "reason": "Grade 1 covers extending and creating repeating patterns, including missing elements."
+          }
+        ],
+        "wordingProblems": [],
+        "problems": [],
+        "verdict": "pass"
+      }
+    },
+    "1-pattern-letters": {
+      "hash": "2576cd8e04d7420a",
+      "status": "review",
+      "checkedAt": "2026-10-11",
+      "model": "claude-opus-5-5",
+      "findings": {
+        "id": "1-pattern-letters",
+        "answerCorrect": true,
+        "wrongAnswersOk": true,
+        "bcGradeFits": true,
+        "provinceTags": [
+          {
+            "province": "AB",
+            "ok": true,
+            "suggestedGrade": "grade 1",
+            "confidence": "medium",
+            "reason": "Grade 1 translates repeating patterns between representations."
+          },
+          {
+            "province": "SK",
+            "ok": true,
+            "suggestedGrade": "grade 1",
+            "confidence": "medium",
+            "reason": "Grade 1 translates repeating patterns between representations."
+          },
+          {
+            "province": "MB",
+            "ok": true,
+            "suggestedGrade": "grade 1",
+            "confidence": "medium",
+            "reason": "Grade 1 translates repeating patterns from one representation to another."
+          },
+          {
+            "province": "ON",
+            "ok": true,
+            "suggestedGrade": "grade 1",
+            "confidence": "medium",
+            "reason": "Grade 1 creates and translates repeating patterns using different representations."
+          }
+        ],
+        "wordingProblems": [
+          "Browser voices often read a lone capital 'A' as the article 'uh' rather than the letter name, so 'A A B' or 'A B C' may sound wrong. Spell the letters out (for example 'ay, ay, bee') or use separate SSML say-as letter tokens.",
+          "When the choices are read as a run ('A B, A B B or A B C'), a listener cannot easily hear where one choice ends and the next begins. Add clear pauses or say 'choice one: A, B'."
+        ],
+        "problems": [],
+        "verdict": "review"
+      }
+    },
+    "1-number-pattern": {
+      "hash": "56d63bce69242e77",
+      "status": "pass",
+      "checkedAt": "2026-10-11",
+      "model": "claude-opus-5-5",
+      "findings": {
+        "id": "1-number-pattern",
+        "answerCorrect": true,
+        "wrongAnswersOk": true,
+        "bcGradeFits": true,
+        "provinceTags": [
+          {
+            "province": "AB",
+            "ok": true,
+            "suggestedGrade": "grade 1",
+            "confidence": "medium",
+            "reason": "Grade 1 extends repeating patterns, including with numbers."
+          },
+          {
+            "province": "SK",
+            "ok": true,
+            "suggestedGrade": "grade 1",
+            "confidence": "high",
+            "reason": "Grade 1 covers repeating patterns with 2 to 4 elements in various representations."
+          },
+          {
+            "province": "MB",
+            "ok": true,
+            "suggestedGrade": "grade 1",
+            "confidence": "high",
+            "reason": "Grade 1 covers repeating patterns with 2 to 4 elements."
+          },
+          {
+            "province": "ON",
+            "ok": true,
+            "suggestedGrade": "grade 1",
+            "confidence": "high",
+            "reason": "Grade 1 repeating patterns include number representations."
+          }
+        ],
+        "wordingProblems": [],
+        "problems": [],
+        "verdict": "pass"
+      }
+    },
+    "1-build-to": {
+      "hash": "7a70e8f453929e0b",
+      "status": "pass",
+      "checkedAt": "2026-10-11",
+      "model": "claude-opus-5-5",
+      "findings": {
+        "id": "1-build-to",
+        "answerCorrect": true,
+        "wrongAnswersOk": true,
+        "bcGradeFits": true,
+        "provinceTags": [
+          {
+            "province": "AB",
+            "ok": true,
+            "suggestedGrade": "grade 1",
+            "confidence": "medium",
+            "reason": "Missing-change problems within 20 fit grade 1 addition and subtraction."
+          },
+          {
+            "province": "SK",
+            "ok": true,
+            "suggestedGrade": "grade 1",
+            "confidence": "medium",
+            "reason": "Grade 1 addition and subtraction to 20 includes finding how many more are needed."
+          },
+          {
+            "province": "MB",
+            "ok": true,
+            "suggestedGrade": "grade 1",
+            "confidence": "medium",
+            "reason": "Grade 1 addition and subtraction to 20 includes counting-on strategies."
+          },
+          {
+            "province": "ON",
+            "ok": true,
+            "suggestedGrade": "grade 1",
+            "confidence": "high",
+            "reason": "Grade 1 covers adding-to problems with an unknown change, up to 20."
+          }
+        ],
+        "wordingProblems": [],
+        "problems": [],
+        "verdict": "pass"
+      }
+    },
+    "1-missing-addend": {
+      "hash": "3c8da554798db5df",
+      "status": "review",
+      "checkedAt": "2026-10-11",
+      "model": "claude-opus-5-5",
+      "findings": {
+        "id": "1-missing-addend",
+        "answerCorrect": true,
+        "wrongAnswersOk": true,
+        "bcGradeFits": true,
+        "provinceTags": [
+          {
+            "province": "AB",
+            "ok": false,
+            "suggestedGrade": "grade 1",
+            "confidence": "medium",
+            "reason": "The 2022 AB curriculum treats equality and unknowns in addition and subtraction from grade 1. Grade 3 matches the old WNCP outcome for one-step equations, not the current curriculum."
+          },
+          {
+            "province": "SK",
+            "ok": false,
+            "suggestedGrade": "grade 1",
+            "confidence": "medium",
+            "reason": "The formal outcome for one-step equations with a symbol (P3.2) is grade 3. But finding a missing part within 10 is taught in grade 1 through decomposing numbers and addition and subtraction to 20. Grade 3 overstates the difficulty."
+          },
+          {
+            "province": "MB",
+            "ok": false,
+            "suggestedGrade": "grade 1",
+            "confidence": "medium",
+            "reason": "The formal outcome for one-step equations with a symbol is grade 3. But missing parts within 10 are handled in grade 1 through decomposing numbers to 20 and thinking addition for subtraction. The two-grade gap from BC and ON is suspect."
+          },
+          {
+            "province": "ON",
+            "ok": true,
+            "suggestedGrade": "grade 1",
+            "confidence": "high",
+            "reason": "Grade 1 C2.2: determine missing values in addition and subtraction equations up to 10."
+          }
+        ],
+        "wordingProblems": [],
+        "problems": [
+          "The AB, SK and MB tags of grade 3 conflict with the BC and ON tags of grade 1 for the same easy task (sums of 10 or less)."
+        ],
+        "verdict": "review"
+      }
+    },
+    "1-which-sum-more": {
+      "hash": "e724a66e2680fcaf",
+      "status": "pass",
+      "checkedAt": "2026-10-11",
+      "model": "claude-opus-5-5",
+      "findings": {
+        "id": "1-which-sum-more",
+        "answerCorrect": true,
+        "wrongAnswersOk": true,
+        "bcGradeFits": true,
+        "provinceTags": [
+          {
+            "province": "AB",
+            "ok": true,
+            "suggestedGrade": "grade 1",
+            "confidence": "medium",
+            "reason": "Grade 1 algebra covers equality and inequality of quantities."
+          },
+          {
+            "province": "SK",
+            "ok": true,
+            "suggestedGrade": "grade 1",
+            "confidence": "high",
+            "reason": "P1.3 describes equality as a balance and inequality as an imbalance."
+          },
+          {
+            "province": "MB",
+            "ok": true,
+            "suggestedGrade": "grade 1",
+            "confidence": "high",
+            "reason": "Grade 1 outcome describes equality as a balance and inequality as an imbalance."
+          },
+          {
+            "province": "ON",
+            "ok": true,
+            "suggestedGrade": "grade 1",
+            "confidence": "medium",
+            "reason": "Grade 1 compares quantities and works with equality in addition."
+          }
+        ],
+        "wordingProblems": [],
+        "problems": [],
+        "verdict": "pass"
+      }
+    },
+    "1-pattern-predict": {
+      "hash": "b5308b4b45d8def3",
+      "status": "review",
+      "checkedAt": "2026-10-11",
+      "model": "claude-opus-5-5",
+      "findings": {
+        "id": "1-pattern-predict",
+        "answerCorrect": true,
+        "wrongAnswersOk": true,
+        "bcGradeFits": true,
+        "provinceTags": [
+          {
+            "province": "AB",
+            "ok": true,
+            "suggestedGrade": "grade 1",
+            "confidence": "medium",
+            "reason": "Grade 1 teaches repeating patterns, including extending them."
+          },
+          {
+            "province": "SK",
+            "ok": true,
+            "suggestedGrade": "grade 1",
+            "confidence": "high",
+            "reason": "P1.1 covers repeating patterns of 2 to 4 elements, including extending them."
+          },
+          {
+            "province": "MB",
+            "ok": true,
+            "suggestedGrade": "grade 1",
+            "confidence": "high",
+            "reason": "1.PR.1 covers repeating patterns of 2 to 4 elements: describe, extend, compare."
+          },
+          {
+            "province": "ON",
+            "ok": true,
+            "suggestedGrade": "grade 1",
+            "confidence": "medium",
+            "reason": "Grade 1 C1 covers identifying, extending and creating repeating patterns."
+          }
+        ],
+        "wordingProblems": [
+          "'What shape is number 11?' gives no numbered positions. A grade 1 child may not know it means the 11th shape in the line. Saying 'the 11th shape' or showing position numbers would be clearer."
+        ],
+        "problems": [
+          "Examples 2 and 5 have the same prompt (▲ ▲ ●, number 9). The generator can repeat items."
+        ],
+        "verdict": "review"
+      }
+    },
+    "1-letters-to-shapes": {
+      "hash": "6eaea6a01e52ee39",
+      "status": "review",
+      "checkedAt": "2026-10-11",
+      "model": "claude-opus-5-5",
+      "findings": {
+        "id": "1-letters-to-shapes",
+        "answerCorrect": true,
+        "wrongAnswersOk": true,
+        "bcGradeFits": true,
+        "provinceTags": [
+          {
+            "province": "AB",
+            "ok": true,
+            "suggestedGrade": "grade 1",
+            "confidence": "low",
+            "reason": "Grade 1 repeating patterns include representing them in different ways."
+          },
+          {
+            "province": "SK",
+            "ok": true,
+            "suggestedGrade": "grade 1",
+            "confidence": "medium",
+            "reason": "P1.1 includes translating repeating patterns between representations."
+          },
+          {
+            "province": "MB",
+            "ok": true,
+            "suggestedGrade": "grade 1",
+            "confidence": "high",
+            "reason": "1.PR.2 covers translating repeating patterns from one representation to another."
+          },
+          {
+            "province": "ON",
+            "ok": true,
+            "suggestedGrade": "grade 1",
+            "confidence": "medium",
+            "reason": "Grade 1 C1.2 covers creating and translating patterns using various representations."
+          }
+        ],
+        "wordingProblems": [
+          "A browser voice may read the letter 'A' in 'an A A B pattern' as the article 'uh', so it sounds like 'an uh uh B pattern'. Write the letters so they are spoken as letter names, for example 'ay ay bee', or say them one at a time.",
+          "The read-aloud does not read the choices. A child who cannot name the shapes gets no audio help comparing them. This is acceptable for a visual task, but worth noting."
+        ],
+        "problems": [
+          "The AB pattern is always the shortest choice (4 shapes, while the others have 6). A child can pick it by length alone."
+        ],
+        "verdict": "review"
+      }
+    },
+    "1-change-story": {
+      "hash": "62dcd0d724a77830",
+      "status": "pass",
+      "checkedAt": "2026-10-11",
+      "model": "claude-opus-5-5",
+      "findings": {
+        "id": "1-change-story",
+        "answerCorrect": true,
+        "wrongAnswersOk": true,
+        "bcGradeFits": true,
+        "provinceTags": [
+          {
+            "province": "AB",
+            "ok": true,
+            "suggestedGrade": "grade 1",
+            "confidence": "medium",
+            "reason": "Grade 1 covers addition and subtraction within 20, including missing-change problems."
+          },
+          {
+            "province": "SK",
+            "ok": true,
+            "suggestedGrade": "grade 1",
+            "confidence": "high",
+            "reason": "N1.9/N1.10 cover addition and subtraction to 20, including problems with an unknown part."
+          },
+          {
+            "province": "MB",
+            "ok": true,
+            "suggestedGrade": "grade 1",
+            "confidence": "high",
+            "reason": "1.N.9 covers addition and subtraction to 20 in story problems."
+          },
+          {
+            "province": "ON",
+            "ok": true,
+            "suggestedGrade": "grade 1",
+            "confidence": "high",
+            "reason": "B2.4 covers addition and subtraction problems to 20, including unknown change."
+          }
+        ],
+        "wordingProblems": [],
+        "problems": [],
+        "verdict": "pass"
+      }
+    },
+    "1-balance-cubes": {
+      "hash": "f1500a8023762300",
+      "status": "pass",
+      "checkedAt": "2026-10-11",
+      "model": "claude-opus-5-5",
+      "findings": {
+        "id": "1-balance-cubes",
+        "answerCorrect": true,
+        "wrongAnswersOk": true,
+        "bcGradeFits": true,
+        "provinceTags": [
+          {
+            "province": "AB",
+            "ok": true,
+            "suggestedGrade": "grade 1",
+            "confidence": "medium",
+            "reason": "Grade 1 algebra covers equality as balance."
+          },
+          {
+            "province": "SK",
+            "ok": true,
+            "suggestedGrade": "grade 1",
+            "confidence": "high",
+            "reason": "P1.2 covers equality and inequality, concretely and pictorially."
+          },
+          {
+            "province": "MB",
+            "ok": true,
+            "suggestedGrade": "grade 1",
+            "confidence": "high",
+            "reason": "1.PR.3 covers equality as a balance, concretely and pictorially (0 to 20)."
+          },
+          {
+            "province": "ON",
+            "ok": true,
+            "suggestedGrade": "grade 1",
+            "confidence": "medium",
+            "reason": "Grade 1 C2 covers determining whether quantities are equal and making them equal."
+          }
+        ],
+        "wordingProblems": [],
+        "problems": [],
+        "verdict": "pass"
+      }
+    },
+    "1-equal-or-not": {
+      "hash": "097c69ee1091e220",
+      "status": "review",
+      "checkedAt": "2026-10-11",
+      "model": "claude-opus-5-5",
+      "findings": {
+        "id": "1-equal-or-not",
+        "answerCorrect": true,
+        "wrongAnswersOk": true,
+        "bcGradeFits": true,
+        "provinceTags": [
+          {
+            "province": "AB",
+            "ok": true,
+            "suggestedGrade": "grade 1",
+            "confidence": "medium",
+            "reason": "Grade 1 covers equality and inequality of expressions within 20."
+          },
+          {
+            "province": "SK",
+            "ok": true,
+            "suggestedGrade": "grade 1",
+            "confidence": "high",
+            "reason": "P1.2 covers equality and inequality."
+          },
+          {
+            "province": "MB",
+            "ok": true,
+            "suggestedGrade": "grade 1",
+            "confidence": "high",
+            "reason": "1.PR.3/1.PR.4 cover equality and recording equalities to 20."
+          },
+          {
+            "province": "ON",
+            "ok": true,
+            "suggestedGrade": "grade 1",
+            "confidence": "medium",
+            "reason": "Grade 1 C2 covers comparing expressions for equality."
+          }
+        ],
+        "wordingProblems": [
+          "The read-aloud says 'Yes, they are the same.' The choice reads 'Yes, they are the same amount.' The meaning is the same, so this is minor."
+        ],
+        "problems": [],
+        "verdict": "pass"
+      }
+    },
+    "1-cubes-longer": {
+      "hash": "29953661882314ae",
+      "status": "pass",
+      "checkedAt": "2026-10-11",
+      "model": "claude-opus-5-5",
+      "findings": {
+        "id": "1-cubes-longer",
+        "answerCorrect": true,
+        "wrongAnswersOk": true,
+        "bcGradeFits": true,
+        "provinceTags": [
+          {
+            "province": "AB",
+            "ok": true,
+            "suggestedGrade": "grade 2",
+            "confidence": "low",
+            "reason": "In the 2022 AB curriculum, measuring length with non-standard units appears to be grade 2. The subtraction itself is grade 1, so either grade is defensible."
+          },
+          {
+            "province": "SK",
+            "ok": true,
+            "suggestedGrade": "grade 2",
+            "confidence": "medium",
+            "reason": "SS2.2 covers measuring length with non-standard units. Grade 1 covers direct comparison only."
+          },
+          {
+            "province": "MB",
+            "ok": true,
+            "suggestedGrade": "grade 2",
+            "confidence": "medium",
+            "reason": "2.SS.3 covers comparing and ordering by length with non-standard units. Grade 1 covers direct comparison."
+          },
+          {
+            "province": "ON",
+            "ok": true,
+            "suggestedGrade": "grade 1",
+            "confidence": "medium",
+            "reason": "Grade 1 E2 covers measuring length with non-standard units."
+          }
+        ],
+        "wordingProblems": [],
+        "problems": [],
+        "verdict": "pass"
+      }
+    },
+    "1-unit-size": {
+      "hash": "d1616289f9ea0134",
+      "status": "review",
+      "checkedAt": "2026-10-11",
+      "model": "claude-opus-5-5",
+      "findings": {
+        "id": "1-unit-size",
+        "answerCorrect": true,
+        "wrongAnswersOk": true,
+        "bcGradeFits": true,
+        "provinceTags": [
+          {
+            "province": "AB",
+            "ok": true,
+            "suggestedGrade": "grade 2",
+            "confidence": "low",
+            "reason": "The relationship between unit size and the count of units seems to sit with non-standard measuring in grade 2."
+          },
+          {
+            "province": "SK",
+            "ok": true,
+            "suggestedGrade": "grade 2",
+            "confidence": "medium",
+            "reason": "SS2.2 includes explaining why one length gives different counts with different units."
+          },
+          {
+            "province": "MB",
+            "ok": true,
+            "suggestedGrade": "grade 2",
+            "confidence": "high",
+            "reason": "2.SS.2 covers relating the size of a unit to the number of units used to measure length."
+          },
+          {
+            "province": "ON",
+            "ok": false,
+            "suggestedGrade": "grade 1",
+            "confidence": "medium",
+            "reason": "In the 2020 ON curriculum, grade 1 E2 includes describing the inverse relationship between unit size and the number of units needed."
+          }
+        ],
+        "wordingProblems": [
+          "The prompt asks 'What will Liam get?' but gives no options in the text. Only the read-aloud names the three options. This is acceptable because the choices are shown, but the prompt could match the read-aloud."
+        ],
+        "problems": [
+          "Both wrong answers in every example use the same 'bigger unit' code. 'Exactly N' fits a separate idea better (thinks the count stays the same because the object did not change), if the catalogue has a separate entry for that."
+        ],
+        "verdict": "review"
+      }
+    },
+    "1-order-three": {
+      "hash": "f7ec6314a85b5c7a",
+      "status": "pass",
+      "checkedAt": "2026-10-11",
+      "model": "claude-opus-5-5",
+      "findings": {
+        "id": "1-order-three",
+        "answerCorrect": true,
+        "wrongAnswersOk": true,
+        "bcGradeFits": true,
+        "provinceTags": [
+          {
+            "province": "AB",
+            "ok": true,
+            "suggestedGrade": "grade 1",
+            "confidence": "medium",
+            "reason": "Grade 1 covers comparing and ordering lengths."
+          },
+          {
+            "province": "SK",
+            "ok": true,
+            "suggestedGrade": "grade 1",
+            "confidence": "high",
+            "reason": "SS1.1 covers measurement as comparing, including ordering objects."
+          },
+          {
+            "province": "MB",
+            "ok": true,
+            "suggestedGrade": "grade 1",
+            "confidence": "high",
+            "reason": "1.SS.1 covers comparing, including ordering objects and making statements of comparison."
+          },
+          {
+            "province": "ON",
+            "ok": true,
+            "suggestedGrade": "grade 1",
+            "confidence": "medium",
+            "reason": "Grade 1 E2 covers comparing and ordering objects by length."
+          }
+        ],
+        "wordingProblems": [],
+        "problems": [],
+        "verdict": "pass"
+      }
+    },
+    "1-shape-sides": {
+      "hash": "905edc8c47ac01ad",
+      "status": "pass",
+      "checkedAt": "2026-10-11",
+      "model": "claude-opus-5-5",
+      "findings": {
+        "id": "1-shape-sides",
+        "answerCorrect": true,
+        "wrongAnswersOk": true,
+        "bcGradeFits": true,
+        "provinceTags": [
+          {
+            "province": "AB",
+            "ok": true,
+            "suggestedGrade": "grade 1",
+            "confidence": "medium",
+            "reason": "Grade 1 geometry covers describing and sorting 2D shapes by attributes."
+          },
+          {
+            "province": "SK",
+            "ok": true,
+            "suggestedGrade": "grade 1",
+            "confidence": "low",
+            "reason": "SS1.2 covers sorting by one attribute. Describing sides is fuller in SS2.3, but this is within one grade."
+          },
+          {
+            "province": "MB",
+            "ok": true,
+            "suggestedGrade": "grade 1",
+            "confidence": "low",
+            "reason": "1.SS.2 covers sorting 2D shapes by one attribute. 2.SS.7 describes them more fully. This is within one grade."
+          },
+          {
+            "province": "ON",
+            "ok": true,
+            "suggestedGrade": "grade 1",
+            "confidence": "medium",
+            "reason": "Grade 1 E1.1 covers identifying and sorting 2D shapes by attributes such as sides and vertices."
+          }
+        ],
+        "wordingProblems": [],
+        "problems": [],
+        "verdict": "pass"
+      }
+    },
+    "1-sides-in-all": {
+      "hash": "55023f554fcf5e3e",
+      "status": "pass",
+      "checkedAt": "2026-10-11",
+      "model": "claude-opus-5-5",
+      "findings": {
+        "id": "1-sides-in-all",
+        "answerCorrect": true,
+        "wrongAnswersOk": true,
+        "bcGradeFits": true,
+        "provinceTags": [
+          {
+            "province": "AB",
+            "ok": true,
+            "suggestedGrade": "grade 1",
+            "confidence": "medium",
+            "reason": "Grade 1 covers shape attributes and repeated addition within 20."
+          },
+          {
+            "province": "SK",
+            "ok": true,
+            "suggestedGrade": "grade 1",
+            "confidence": "medium",
+            "reason": "Grade 1 covers shape attributes and addition to 20."
+          },
+          {
+            "province": "MB",
+            "ok": true,
+            "suggestedGrade": "grade 1",
+            "confidence": "medium",
+            "reason": "Grade 1 covers 2D shape attributes and addition to 20."
+          },
+          {
+            "province": "ON",
+            "ok": true,
+            "suggestedGrade": "grade 1",
+            "confidence": "medium",
+            "reason": "Grade 1 covers shape attributes (E1.1) and addition to 20."
+          }
+        ],
+        "wordingProblems": [],
+        "problems": [],
+        "verdict": "pass"
+      }
+    },
+    "1-graph-how-many-more": {
+      "hash": "f16342d5f6712511",
+      "status": "pass",
+      "checkedAt": "2026-10-11",
+      "model": "claude-opus-5-5",
+      "findings": {
+        "id": "1-graph-how-many-more",
+        "answerCorrect": true,
+        "wrongAnswersOk": true,
+        "bcGradeFits": true,
+        "provinceTags": [
+          {
+            "province": "AB",
+            "ok": true,
+            "suggestedGrade": "grade 2",
+            "confidence": "low",
+            "reason": "Not sure where the 2022 Alberta curriculum first places interpreting concrete graphs. Grade 2 is plausible."
+          },
+          {
+            "province": "SK",
+            "ok": true,
+            "suggestedGrade": "grade 2",
+            "confidence": "high",
+            "reason": "Constructing and interpreting concrete graphs and pictographs is a Grade 2 outcome. Grade 1 has no statistics outcome."
+          },
+          {
+            "province": "MB",
+            "ok": true,
+            "suggestedGrade": "grade 2",
+            "confidence": "high",
+            "reason": "In the WNCP-based framework, concrete graphs are Grade 2 (2.SP.2)."
+          },
+          {
+            "province": "ON",
+            "ok": true,
+            "suggestedGrade": "grade 1",
+            "confidence": "high",
+            "reason": "In the 2020 curriculum, Grade 1 D1 covers organizing data in concrete graphs and pictographs and analyzing it."
+          }
+        ],
+        "wordingProblems": [],
+        "problems": [],
+        "verdict": "pass"
+      }
+    },
+    "1-graph-in-all": {
+      "hash": "3bc47a55439c84d8",
+      "status": "pass",
+      "checkedAt": "2026-10-11",
+      "model": "claude-opus-5-5",
+      "findings": {
+        "id": "1-graph-in-all",
+        "answerCorrect": true,
+        "wrongAnswersOk": true,
+        "bcGradeFits": true,
+        "provinceTags": [
+          {
+            "province": "AB",
+            "ok": true,
+            "suggestedGrade": "grade 2",
+            "confidence": "low",
+            "reason": "Not sure of the grade placement in the 2022 Alberta curriculum. Grade 2 is plausible."
+          },
+          {
+            "province": "SK",
+            "ok": true,
+            "suggestedGrade": "grade 2",
+            "confidence": "high",
+            "reason": "Concrete graphs are a Grade 2 outcome."
+          },
+          {
+            "province": "MB",
+            "ok": true,
+            "suggestedGrade": "grade 2",
+            "confidence": "high",
+            "reason": "Concrete graphs are 2.SP.2."
+          },
+          {
+            "province": "ON",
+            "ok": true,
+            "suggestedGrade": "grade 1",
+            "confidence": "high",
+            "reason": "Concrete graphs are in Grade 1 D1."
+          }
+        ],
+        "wordingProblems": [],
+        "problems": [],
+        "verdict": "pass"
+      }
+    },
+    "1-more-likely": {
+      "hash": "457cf31bb3db57a8",
+      "status": "review",
+      "checkedAt": "2026-10-11",
+      "model": "claude-opus-5-5",
+      "findings": {
+        "id": "1-more-likely",
+        "answerCorrect": true,
+        "wrongAnswersOk": true,
+        "bcGradeFits": true,
+        "provinceTags": [
+          {
+            "province": "AB",
+            "ok": true,
+            "suggestedGrade": "grade 5",
+            "confidence": "low",
+            "reason": "Comparing likelihood was Grade 5 under WNCP. Unsure of placement in the 2022 Alberta curriculum."
+          },
+          {
+            "province": "SK",
+            "ok": true,
+            "suggestedGrade": "grade 5",
+            "confidence": "high",
+            "reason": "Comparing likelihood with 'more likely' and 'equally likely' is a Grade 5 outcome."
+          },
+          {
+            "province": "MB",
+            "ok": true,
+            "suggestedGrade": "grade 5",
+            "confidence": "high",
+            "reason": "Comparing likelihood is 5.SP.4."
+          },
+          {
+            "province": "ON",
+            "ok": true,
+            "suggestedGrade": "grade 1",
+            "confidence": "medium",
+            "reason": "Grade 1 D2.1 describes likelihood with 'impossible', 'possible' and 'certain'. The term 'equally likely' is introduced in Grade 2, but these items are mostly impossible-vs-certain, so Grade 1 works."
+          }
+        ],
+        "wordingProblems": [
+          "The read-aloud lists options in a different order from the on-screen choices. Example 2 says bird, penguin, equal, but the screen shows bird, equal, penguin. Example 4 reads 'equally likely' first, but the screen shows it last. A listening child may match the wrong button.",
+          "In examples 4 and 5 the read-aloud opens the list with 'they are equally likely, ...'. This sounds like one of the events, and the question becomes confusing: 'Which is more likely to happen? they are equally likely, It will rain lemonade...'.",
+          "The prompt shows only 'Which is more likely to happen?'. The events appear only as choices, so non-readers depend entirely on the read-aloud, which has the ordering problems above."
+        ],
+        "problems": [],
+        "verdict": "review"
+      }
+    },
+    "1-cover-card": {
+      "hash": "7cd52f106f52d253",
+      "status": "pass",
+      "checkedAt": "2026-10-11",
+      "model": "claude-opus-5-5",
+      "findings": {
+        "id": "1-cover-card",
+        "answerCorrect": true,
+        "wrongAnswersOk": true,
+        "bcGradeFits": true,
+        "provinceTags": [
+          {
+            "province": "AB",
+            "ok": true,
+            "suggestedGrade": "grade 2",
+            "confidence": "low",
+            "reason": "Not sure where the 2022 Alberta curriculum places comparing area with non-standard units."
+          },
+          {
+            "province": "SK",
+            "ok": true,
+            "suggestedGrade": "grade 2",
+            "confidence": "low",
+            "reason": "Grade 1 covers comparing by covering, and Grade 2 covers non-standard units. Either grade is within one."
+          },
+          {
+            "province": "MB",
+            "ok": true,
+            "suggestedGrade": "grade 2",
+            "confidence": "low",
+            "reason": "Same WNCP split as SK: 1.SS.1 covers comparing by covering, 2.SS.2 covers non-standard units."
+          },
+          {
+            "province": "ON",
+            "ok": true,
+            "suggestedGrade": "grade 2",
+            "confidence": "low",
+            "reason": "Not sure of the exact grade for comparing areas by unit count. Grade 1 or 2 is plausible."
+          }
+        ],
+        "wordingProblems": [],
+        "problems": [],
+        "verdict": "pass"
+      }
+    },
+    "1-length-together": {
+      "hash": "60d5d9b4a3a21a9c",
+      "status": "review",
+      "checkedAt": "2026-10-11",
+      "model": "claude-opus-5-5",
+      "findings": {
+        "id": "1-length-together",
+        "answerCorrect": true,
+        "wrongAnswersOk": true,
+        "bcGradeFits": true,
+        "provinceTags": [
+          {
+            "province": "AB",
+            "ok": true,
+            "suggestedGrade": "grade 2",
+            "confidence": "low",
+            "reason": "Unsure whether the 2022 Alberta curriculum places non-standard length units in Grade 1 or 2."
+          },
+          {
+            "province": "SK",
+            "ok": true,
+            "suggestedGrade": "grade 2",
+            "confidence": "high",
+            "reason": "Measuring length with non-standard units is a Grade 2 outcome."
+          },
+          {
+            "province": "MB",
+            "ok": true,
+            "suggestedGrade": "grade 2",
+            "confidence": "high",
+            "reason": "Non-standard units for length are 2.SS.2 and 2.SS.4."
+          },
+          {
+            "province": "ON",
+            "ok": true,
+            "suggestedGrade": "grade 1",
+            "confidence": "high",
+            "reason": "Grade 1 E2.3 uses non-standard units to measure length."
+          }
+        ],
+        "wordingProblems": [
+          "'Put end to end, how many paper clips long are they together?' is a dangling phrase. 'If you put them end to end, ...' is clearer for a Grade 1 reader."
+        ],
+        "problems": [],
+        "verdict": "review"
+      }
+    },
+    "1-tallest-child": {
+      "hash": "2ec9534cb117ea61",
+      "status": "pass",
+      "checkedAt": "2026-10-11",
+      "model": "claude-opus-5-5",
+      "findings": {
+        "id": "1-tallest-child",
+        "answerCorrect": true,
+        "wrongAnswersOk": true,
+        "bcGradeFits": true,
+        "provinceTags": [
+          {
+            "province": "AB",
+            "ok": true,
+            "suggestedGrade": "grade 1",
+            "confidence": "medium",
+            "reason": "Comparing and ordering by height is early-primary content."
+          },
+          {
+            "province": "SK",
+            "ok": true,
+            "suggestedGrade": "grade 1",
+            "confidence": "medium",
+            "reason": "Grade 1 measurement covers comparing and ordering objects."
+          },
+          {
+            "province": "MB",
+            "ok": true,
+            "suggestedGrade": "grade 1",
+            "confidence": "medium",
+            "reason": "1.SS.1 covers ordering objects and statements of comparison."
+          },
+          {
+            "province": "ON",
+            "ok": true,
+            "suggestedGrade": "grade 1",
+            "confidence": "medium",
+            "reason": "Grade 1 E2 covers comparing and ordering by length."
+          }
+        ],
+        "wordingProblems": [],
+        "problems": [
+          "This tests transitive comparison (ordering three people by height), which is closer to BC K/1 direct comparison than to the 1.7 standard of measuring with non-standard units. The grade still fits."
+        ],
+        "verdict": "pass"
+      }
+    },
+    "1-heaviest-box": {
+      "hash": "e690d0db693ff370",
+      "status": "pass",
+      "checkedAt": "2026-10-11",
+      "model": "claude-opus-5-5",
+      "findings": {
+        "id": "1-heaviest-box",
+        "answerCorrect": true,
+        "wrongAnswersOk": true,
+        "bcGradeFits": true,
+        "provinceTags": [
+          {
+            "province": "AB",
+            "ok": true,
+            "suggestedGrade": "grade 1",
+            "confidence": "medium",
+            "reason": "Comparing mass with a balance is early-primary content."
+          },
+          {
+            "province": "SK",
+            "ok": true,
+            "suggestedGrade": "grade 1",
+            "confidence": "medium",
+            "reason": "Grade 1 measurement covers comparing and ordering objects, including mass."
+          },
+          {
+            "province": "MB",
+            "ok": true,
+            "suggestedGrade": "grade 1",
+            "confidence": "medium",
+            "reason": "1.SS.1 covers comparing and ordering objects."
+          },
+          {
+            "province": "ON",
+            "ok": true,
+            "suggestedGrade": "grade 1",
+            "confidence": "medium",
+            "reason": "Grade 1 E2 covers comparing and ordering by mass."
+          }
+        ],
+        "wordingProblems": [],
+        "problems": [
+          "Like 1-tallest-child, this is transitive comparison rather than measuring with non-standard units (standard 1.7). The grade still fits."
+        ],
+        "verdict": "pass"
+      }
+    },
+    "2-digit-value": {
+      "hash": "b3e67ace288d4c2c",
+      "status": "pass",
+      "checkedAt": "2026-10-11",
+      "model": "claude-opus-5-5",
+      "findings": {
+        "id": "2-digit-value",
+        "answerCorrect": true,
+        "wrongAnswersOk": true,
+        "bcGradeFits": true,
+        "provinceTags": [
+          {
+            "province": "AB",
+            "ok": true,
+            "suggestedGrade": "grade 2",
+            "confidence": "low",
+            "reason": "The 2022 Alberta curriculum may introduce tens and ones in Grade 1. Grade 2 is within range either way."
+          },
+          {
+            "province": "SK",
+            "ok": true,
+            "suggestedGrade": "grade 2",
+            "confidence": "high",
+            "reason": "Place value for numbers to 100 is a Grade 2 outcome."
+          },
+          {
+            "province": "MB",
+            "ok": true,
+            "suggestedGrade": "grade 2",
+            "confidence": "high",
+            "reason": "Place value to 100 is 2.N.7."
+          },
+          {
+            "province": "ON",
+            "ok": true,
+            "suggestedGrade": "grade 2",
+            "confidence": "medium",
+            "reason": "Two-digit place value with tens and ones is Grade 1–2 content (B1)."
+          }
+        ],
+        "wordingProblems": [],
+        "problems": [],
+        "verdict": "pass"
+      }
+    },
+    "2-ten-more-less": {
+      "hash": "189408c0b500c6b1",
+      "status": "pass",
+      "checkedAt": "2026-10-11",
+      "model": "claude-opus-5-5",
+      "findings": {
+        "id": "2-ten-more-less",
+        "answerCorrect": true,
+        "wrongAnswersOk": true,
+        "bcGradeFits": true,
+        "provinceTags": [
+          {
+            "province": "AB",
+            "ok": true,
+            "suggestedGrade": "grade 2",
+            "confidence": "low",
+            "reason": "May be Grade 1 in the 2022 Alberta curriculum. Within range either way."
+          },
+          {
+            "province": "SK",
+            "ok": true,
+            "suggestedGrade": "grade 2",
+            "confidence": "medium",
+            "reason": "Number to 100 with place value is Grade 2."
+          },
+          {
+            "province": "MB",
+            "ok": true,
+            "suggestedGrade": "grade 2",
+            "confidence": "medium",
+            "reason": "Number to 100 with place value is Grade 2."
+          },
+          {
+            "province": "ON",
+            "ok": true,
+            "suggestedGrade": "grade 2",
+            "confidence": "medium",
+            "reason": "Two-digit number relationships are Grade 2 B1."
+          }
+        ],
+        "wordingProblems": [],
+        "problems": [],
+        "verdict": "pass"
+      }
+    },
+    "2-greatest": {
+      "hash": "2eeabcaa738b4d4b",
+      "status": "fail",
+      "checkedAt": "2026-10-11",
+      "model": "claude-opus-5-5",
+      "findings": {
+        "id": "2-greatest",
+        "answerCorrect": true,
+        "wrongAnswersOk": false,
+        "bcGradeFits": true,
+        "provinceTags": [
+          {
+            "province": "AB",
+            "ok": true,
+            "suggestedGrade": "grade 2",
+            "confidence": "medium",
+            "reason": "Comparing two-digit numbers is Grade 1–2 content."
+          },
+          {
+            "province": "SK",
+            "ok": true,
+            "suggestedGrade": "grade 2",
+            "confidence": "high",
+            "reason": "Comparing and ordering numbers to 100 is Grade 2."
+          },
+          {
+            "province": "MB",
+            "ok": true,
+            "suggestedGrade": "grade 2",
+            "confidence": "high",
+            "reason": "Comparing and ordering numbers to 100 is 2.N.4."
+          },
+          {
+            "province": "ON",
+            "ok": true,
+            "suggestedGrade": "grade 2",
+            "confidence": "medium",
+            "reason": "Comparing two-digit numbers is Grade 1–2 content (B1)."
+          }
+        ],
+        "wordingProblems": [],
+        "problems": [
+          "Example 1 (82, 28, 74): 74 is coded as 'compares digits in the wrong places'. Neither part of that misconception gives 74. Leading digit gives 82. Bigger ones digit gives 28, since 8 is the largest ones digit. Picking 74 fits a digit-sum error (7+4=11).",
+          "Example 4 (29, 88, 92): 88 is coded the same way. Bigger ones digit gives 29, since 9 is the largest ones digit, not 88. Picking 88 fits a digit-sum or 'biggest digits' error.",
+          "In both examples the coded misconception actually gives the answer coded as the tens-and-ones swap, so the two diagnoses cannot be told apart."
+        ],
+        "verdict": "fail"
+      }
+    },
+    "2-tens-and-ones": {
+      "hash": "ebed52c014e5ee3f",
+      "status": "pass",
+      "checkedAt": "2026-10-11",
+      "model": "claude-opus-5-5",
+      "findings": {
+        "id": "2-tens-and-ones",
+        "answerCorrect": true,
+        "wrongAnswersOk": true,
+        "bcGradeFits": true,
+        "provinceTags": [
+          {
+            "province": "AB",
+            "ok": true,
+            "confidence": "medium",
+            "reason": "Two-digit place value (tens and ones) is in AB Grade 2 at this range. AB's 2022 curriculum starts it in Grade 1, which is within one grade."
+          },
+          {
+            "province": "SK",
+            "ok": true,
+            "confidence": "high",
+            "reason": "Grade 2 outcome: illustrate the meaning of place value for numerals to 100."
+          },
+          {
+            "province": "MB",
+            "ok": true,
+            "confidence": "high",
+            "reason": "Grade 2 outcome: illustrate the meaning of place value for numerals to 100."
+          },
+          {
+            "province": "ON",
+            "ok": true,
+            "confidence": "high",
+            "reason": "Grade 2 Number: use place value for numbers up to 200. Grade 1 only goes to 50, and these numbers reach 98."
+          }
+        ],
+        "wordingProblems": [],
+        "problems": [],
+        "verdict": "pass"
+      }
+    },
+    "2-skip-count-back": {
+      "hash": "774ff62b7b234ad1",
+      "status": "fail",
+      "checkedAt": "2026-10-11",
+      "model": "claude-opus-5-5",
+      "findings": {
+        "id": "2-skip-count-back",
+        "answerCorrect": true,
+        "wrongAnswersOk": false,
+        "bcGradeFits": true,
+        "provinceTags": [
+          {
+            "province": "AB",
+            "ok": true,
+            "confidence": "low",
+            "reason": "Skip counting backward by 2s, 5s and 10s within 100 sits in Grade 1–2, so Grade 2 is within one grade."
+          },
+          {
+            "province": "SK",
+            "ok": true,
+            "confidence": "high",
+            "reason": "Grade 2 outcome: count by 2s, 5s and 10s forward and backward, including 10s from starting points 1 to 9."
+          },
+          {
+            "province": "MB",
+            "ok": true,
+            "confidence": "high",
+            "reason": "Grade 2 outcome: count by 2s, 5s and 10s forward and backward, including 10s from starting points 1 to 9."
+          },
+          {
+            "province": "ON",
+            "ok": true,
+            "confidence": "medium",
+            "reason": "Grade 1 counts by 2s, 5s and 10s only to 50. Numbers up to 95 fit Grade 2 (count to 200)."
+          }
+        ],
+        "wordingProblems": [],
+        "problems": [
+          "Every first coded wrong answer is the last term minus 1 (for example 16 → 15, 35 → 34, 85 → 84). The coded misconception is 'Counts on by 1', which means counting forward and would give 17, 36, 86 and so on. The named error does not produce the coded answer. Recode to a direction-neutral misconception such as 'counts by 1 instead of the skip-counting step', or a 'counts back by 1' entry."
+        ],
+        "verdict": "fail"
+      }
+    },
+    "2-add-2-digit": {
+      "hash": "fc2d3c8050411a3b",
+      "status": "pass",
+      "checkedAt": "2026-10-11",
+      "model": "claude-opus-5-5",
+      "findings": {
+        "id": "2-add-2-digit",
+        "answerCorrect": true,
+        "wrongAnswersOk": true,
+        "bcGradeFits": true,
+        "provinceTags": [
+          {
+            "province": "AB",
+            "ok": true,
+            "confidence": "medium",
+            "reason": "Adding within 100 with regrouping is in AB Grade 2."
+          },
+          {
+            "province": "SK",
+            "ok": true,
+            "confidence": "high",
+            "reason": "Grade 2 outcome: add and subtract 1- and 2-digit numerals to 100."
+          },
+          {
+            "province": "MB",
+            "ok": true,
+            "confidence": "high",
+            "reason": "Grade 2 outcome: add and subtract 1- and 2-digit numerals to 100."
+          },
+          {
+            "province": "ON",
+            "ok": true,
+            "confidence": "high",
+            "reason": "Grade 2 Number: solve addition and subtraction of whole numbers up to 100."
+          }
+        ],
+        "wordingProblems": [],
+        "problems": [],
+        "verdict": "pass"
+      }
+    },
+    "2-subtract-2-digit": {
+      "hash": "a7c79fea603f7add",
+      "status": "pass",
+      "checkedAt": "2026-10-11",
+      "model": "claude-opus-5-5",
+      "findings": {
+        "id": "2-subtract-2-digit",
+        "answerCorrect": true,
+        "wrongAnswersOk": true,
+        "bcGradeFits": true,
+        "provinceTags": [
+          {
+            "province": "AB",
+            "ok": true,
+            "confidence": "medium",
+            "reason": "Subtracting within 100 with regrouping is in AB Grade 2."
+          },
+          {
+            "province": "SK",
+            "ok": true,
+            "confidence": "high",
+            "reason": "Grade 2 outcome: add and subtract 2-digit numerals to 100."
+          },
+          {
+            "province": "MB",
+            "ok": true,
+            "confidence": "high",
+            "reason": "Grade 2 outcome: add and subtract 2-digit numerals to 100."
+          },
+          {
+            "province": "ON",
+            "ok": true,
+            "confidence": "high",
+            "reason": "Grade 2 Number: addition and subtraction up to 100."
+          }
+        ],
+        "wordingProblems": [],
+        "problems": [],
+        "verdict": "pass"
+      }
+    },
+    "2-story-add-2-digit": {
+      "hash": "481da10a2b4eec29",
+      "status": "pass",
+      "checkedAt": "2026-10-11",
+      "model": "claude-opus-5-5",
+      "findings": {
+        "id": "2-story-add-2-digit",
+        "answerCorrect": true,
+        "wrongAnswersOk": true,
+        "bcGradeFits": true,
+        "provinceTags": [
+          {
+            "province": "AB",
+            "ok": true,
+            "confidence": "medium",
+            "reason": "Addition word problems within 100 are in AB Grade 2."
+          },
+          {
+            "province": "SK",
+            "ok": true,
+            "confidence": "high",
+            "reason": "Grade 2 outcome: create and solve problems with 2-digit addition to 100."
+          },
+          {
+            "province": "MB",
+            "ok": true,
+            "confidence": "high",
+            "reason": "Grade 2 outcome: create and solve problems with 2-digit addition to 100."
+          },
+          {
+            "province": "ON",
+            "ok": true,
+            "confidence": "high",
+            "reason": "Grade 2 Number: solve situations involving addition up to 100."
+          }
+        ],
+        "wordingProblems": [],
+        "problems": [],
+        "verdict": "pass"
+      }
+    },
+    "2-story-subtract-2-digit": {
+      "hash": "ce0ab85dfc964113",
+      "status": "pass",
+      "checkedAt": "2026-10-11",
+      "model": "claude-opus-5-5",
+      "findings": {
+        "id": "2-story-subtract-2-digit",
+        "answerCorrect": true,
+        "wrongAnswersOk": true,
+        "bcGradeFits": true,
+        "provinceTags": [
+          {
+            "province": "AB",
+            "ok": true,
+            "confidence": "medium",
+            "reason": "Subtraction word problems within 100 are in AB Grade 2."
+          },
+          {
+            "province": "SK",
+            "ok": true,
+            "confidence": "high",
+            "reason": "Grade 2 outcome: create and solve problems with 2-digit subtraction to 100."
+          },
+          {
+            "province": "MB",
+            "ok": true,
+            "confidence": "high",
+            "reason": "Grade 2 outcome: create and solve problems with 2-digit subtraction to 100."
+          },
+          {
+            "province": "ON",
+            "ok": true,
+            "confidence": "high",
+            "reason": "Grade 2 Number: solve situations involving subtraction up to 100."
+          }
+        ],
+        "wordingProblems": [],
+        "problems": [],
+        "verdict": "pass"
+      }
+    },
+    "2-coins-mixed": {
+      "hash": "f4c066e22fb1713d",
+      "status": "review",
+      "checkedAt": "2026-10-11",
+      "model": "claude-opus-5-5",
+      "findings": {
+        "id": "2-coins-mixed",
+        "answerCorrect": true,
+        "wrongAnswersOk": true,
+        "bcGradeFits": true,
+        "provinceTags": [
+          {
+            "province": "AB",
+            "ok": false,
+            "suggestedGrade": "grade 2",
+            "confidence": "low",
+            "reason": "The Grade 4 tag follows the old WNCP placement of money with decimals. AB's 2022 K–6 curriculum may bring coin values to an earlier grade. Verify."
+          },
+          {
+            "province": "SK",
+            "ok": true,
+            "confidence": "medium",
+            "reason": "No coin-counting outcome in SK Grade 2. Money appears with decimals in Grade 4."
+          },
+          {
+            "province": "MB",
+            "ok": true,
+            "confidence": "medium",
+            "reason": "No coin-counting outcome in MB Grade 2. Money appears with decimals in Grade 4."
+          },
+          {
+            "province": "ON",
+            "ok": true,
+            "confidence": "high",
+            "reason": "Grade 2 Financial Literacy: represent amounts up to 100¢ with combinations of Canadian coins."
+          }
+        ],
+        "wordingProblems": [],
+        "problems": [],
+        "verdict": "review"
+      }
+    },
+    "2-balance-equation": {
+      "hash": "8d6f0b9d768d41f9",
+      "status": "pass",
+      "checkedAt": "2026-10-11",
+      "model": "claude-opus-5-5",
+      "findings": {
+        "id": "2-balance-equation",
+        "answerCorrect": true,
+        "wrongAnswersOk": true,
+        "bcGradeFits": true,
+        "provinceTags": [
+          {
+            "province": "AB",
+            "ok": true,
+            "confidence": "low",
+            "reason": "Equality with an unknown fits Grade 2–3, so the Grade 3 tag is within one grade."
+          },
+          {
+            "province": "SK",
+            "ok": true,
+            "confidence": "medium",
+            "reason": "Equality is Grade 2. Solving one-step equations with a symbol for the unknown is Grade 3, so Grade 3 is acceptable."
+          },
+          {
+            "province": "MB",
+            "ok": true,
+            "confidence": "medium",
+            "reason": "Equality is Grade 2. One-step equations with an unknown are Grade 3, so Grade 3 is acceptable."
+          },
+          {
+            "province": "ON",
+            "ok": true,
+            "confidence": "high",
+            "reason": "Grade 2 Algebra: decide what makes two addition expressions equivalent."
+          }
+        ],
+        "wordingProblems": [],
+        "problems": [],
+        "verdict": "pass"
+      }
+    },
+    "2-missing-left": {
+      "hash": "c50fb3f084d0ee7c",
+      "status": "pass",
+      "checkedAt": "2026-10-11",
+      "model": "claude-opus-5-5",
+      "findings": {
+        "id": "2-missing-left",
+        "answerCorrect": true,
+        "wrongAnswersOk": true,
+        "bcGradeFits": true,
+        "provinceTags": [
+          {
+            "province": "AB",
+            "ok": true,
+            "confidence": "low",
+            "reason": "Missing-number equations within 20 fit Grade 2–3, so the Grade 3 tag is within one grade."
+          },
+          {
+            "province": "SK",
+            "ok": true,
+            "confidence": "medium",
+            "reason": "Grade 3 outcome: solve one-step addition equations with a symbol for the unknown."
+          },
+          {
+            "province": "MB",
+            "ok": true,
+            "confidence": "medium",
+            "reason": "Grade 3 outcome: solve one-step addition equations with a symbol for the unknown."
+          },
+          {
+            "province": "ON",
+            "ok": true,
+            "confidence": "high",
+            "reason": "Grade 2 Algebra: find missing numbers in addition and subtraction equations within 50."
+          }
+        ],
+        "wordingProblems": [],
+        "problems": [],
+        "verdict": "pass"
+      }
+    },
+    "2-missing-addend": {
+      "hash": "c692bdc16a1ad19f",
+      "status": "pass",
+      "checkedAt": "2026-10-11",
+      "model": "claude-opus-5-5",
+      "findings": {
+        "id": "2-missing-addend",
+        "answerCorrect": true,
+        "wrongAnswersOk": true,
+        "bcGradeFits": true,
+        "provinceTags": [
+          {
+            "province": "AB",
+            "ok": true,
+            "confidence": "low",
+            "reason": "Missing addends within 20 fit Grade 2–3, so the Grade 3 tag is within one grade."
+          },
+          {
+            "province": "SK",
+            "ok": true,
+            "confidence": "medium",
+            "reason": "Grade 3 outcome: solve one-step equations with an unknown. Missing addends also appear in Grade 2 problem solving."
+          },
+          {
+            "province": "MB",
+            "ok": true,
+            "confidence": "medium",
+            "reason": "Grade 3 outcome: solve one-step equations with an unknown. Missing addends also appear in Grade 2 problem solving."
+          },
+          {
+            "province": "ON",
+            "ok": true,
+            "confidence": "high",
+            "reason": "Grade 2 Algebra: missing numbers in addition equations within 50. Grade 1 only goes to 10."
+          }
+        ],
+        "wordingProblems": [],
+        "problems": [],
+        "verdict": "pass"
+      }
+    },
+    "2-increasing-pattern": {
+      "hash": "fe8396e16d0bf393",
+      "status": "pass",
+      "checkedAt": "2026-10-11",
+      "model": "claude-opus-5-5",
+      "findings": {
+        "id": "2-increasing-pattern",
+        "answerCorrect": true,
+        "wrongAnswersOk": true,
+        "bcGradeFits": true,
+        "provinceTags": [
+          {
+            "province": "AB",
+            "ok": true,
+            "suggestedGrade": "grade 2",
+            "confidence": "medium",
+            "reason": "Increasing patterns and skip counting by 2s, 5s and 10s are taught in Grade 2."
+          },
+          {
+            "province": "SK",
+            "ok": true,
+            "suggestedGrade": "grade 2",
+            "confidence": "high",
+            "reason": "SK P2.1 includes increasing patterns."
+          },
+          {
+            "province": "MB",
+            "ok": true,
+            "suggestedGrade": "grade 2",
+            "confidence": "high",
+            "reason": "MB 2.PR.2 covers increasing patterns."
+          },
+          {
+            "province": "ON",
+            "ok": true,
+            "suggestedGrade": "grade 2",
+            "confidence": "medium",
+            "reason": "ON Grade 2 C1 covers growing patterns."
+          }
+        ],
+        "wordingProblems": [],
+        "problems": [],
+        "verdict": "pass"
+      }
+    },
+    "2-pattern-core": {
+      "hash": "48aad8378dc12e15",
+      "status": "pass",
+      "checkedAt": "2026-10-11",
+      "model": "claude-opus-5-5",
+      "findings": {
+        "id": "2-pattern-core",
+        "answerCorrect": true,
+        "wrongAnswersOk": true,
+        "bcGradeFits": true,
+        "provinceTags": [
+          {
+            "province": "AB",
+            "ok": true,
+            "suggestedGrade": "grade 2",
+            "confidence": "medium",
+            "reason": "Identifying the core of a repeating pattern with 3 to 4 elements fits Grade 2."
+          },
+          {
+            "province": "SK",
+            "ok": true,
+            "suggestedGrade": "grade 2",
+            "confidence": "high",
+            "reason": "SK P2.1 covers repeating patterns with 3 to 5 elements, including the core."
+          },
+          {
+            "province": "MB",
+            "ok": true,
+            "suggestedGrade": "grade 2",
+            "confidence": "high",
+            "reason": "MB 2.PR.1 covers repeating patterns with 3 to 5 elements."
+          },
+          {
+            "province": "ON",
+            "ok": true,
+            "suggestedGrade": "grade 2",
+            "confidence": "medium",
+            "reason": "Repeating patterns are taught in Grades 1 and 2. A 3 to 4 element core fits Grade 2."
+          }
+        ],
+        "wordingProblems": [],
+        "problems": [],
+        "verdict": "pass"
+      }
+    },
+    "2-change-unknown": {
+      "hash": "8b2f2c4f6e4b429f",
+      "status": "pass",
+      "checkedAt": "2026-10-11",
+      "model": "claude-opus-5-5",
+      "findings": {
+        "id": "2-change-unknown",
+        "answerCorrect": true,
+        "wrongAnswersOk": true,
+        "bcGradeFits": true,
+        "provinceTags": [
+          {
+            "province": "AB",
+            "ok": true,
+            "suggestedGrade": "grade 2",
+            "confidence": "medium",
+            "reason": "Subtraction problems to 20 with an unknown change fit Grades 1 to 2."
+          },
+          {
+            "province": "SK",
+            "ok": true,
+            "suggestedGrade": "grade 2",
+            "confidence": "medium",
+            "reason": "Addition and subtraction problems in context are taught in Grades 1 to 2."
+          },
+          {
+            "province": "MB",
+            "ok": true,
+            "suggestedGrade": "grade 2",
+            "confidence": "medium",
+            "reason": "Addition and subtraction problems in context are taught in Grades 1 to 2."
+          },
+          {
+            "province": "ON",
+            "ok": true,
+            "suggestedGrade": "grade 2",
+            "confidence": "medium",
+            "reason": "Problems with numbers to 20 are Grade 1 and extend into Grade 2."
+          }
+        ],
+        "wordingProblems": [],
+        "problems": [],
+        "verdict": "pass"
+      }
+    },
+    "2-pattern-rows": {
+      "hash": "9cbd66bcd85afdba",
+      "status": "pass",
+      "checkedAt": "2026-10-11",
+      "model": "claude-opus-5-5",
+      "findings": {
+        "id": "2-pattern-rows",
+        "answerCorrect": true,
+        "wrongAnswersOk": true,
+        "bcGradeFits": true,
+        "provinceTags": [
+          {
+            "province": "AB",
+            "ok": true,
+            "suggestedGrade": "grade 2",
+            "confidence": "medium",
+            "reason": "Extending increasing patterns is Grade 2."
+          },
+          {
+            "province": "SK",
+            "ok": true,
+            "suggestedGrade": "grade 2",
+            "confidence": "high",
+            "reason": "SK P2.1 covers increasing patterns."
+          },
+          {
+            "province": "MB",
+            "ok": true,
+            "suggestedGrade": "grade 2",
+            "confidence": "high",
+            "reason": "MB 2.PR.2 covers increasing patterns."
+          },
+          {
+            "province": "ON",
+            "ok": true,
+            "suggestedGrade": "grade 2",
+            "confidence": "medium",
+            "reason": "Growing patterns are taught in Grade 2."
+          }
+        ],
+        "wordingProblems": [],
+        "problems": [],
+        "verdict": "pass"
+      }
+    },
+    "2-number-pattern-predict": {
+      "hash": "827a50d4670f1682",
+      "status": "review",
+      "checkedAt": "2026-10-11",
+      "model": "claude-opus-5-5",
+      "findings": {
+        "id": "2-number-pattern-predict",
+        "answerCorrect": true,
+        "wrongAnswersOk": true,
+        "bcGradeFits": true,
+        "provinceTags": [
+          {
+            "province": "AB",
+            "ok": true,
+            "suggestedGrade": "grade 2",
+            "confidence": "medium",
+            "reason": "Predicting an element of a repeating pattern is Grade 2."
+          },
+          {
+            "province": "SK",
+            "ok": true,
+            "suggestedGrade": "grade 2",
+            "confidence": "high",
+            "reason": "SK P2.1 indicators include predicting an element of a repeating pattern."
+          },
+          {
+            "province": "MB",
+            "ok": true,
+            "suggestedGrade": "grade 2",
+            "confidence": "high",
+            "reason": "MB 2.PR.1 includes predicting an element."
+          },
+          {
+            "province": "ON",
+            "ok": true,
+            "suggestedGrade": "grade 2",
+            "confidence": "medium",
+            "reason": "Extending and predicting repeating patterns fits Grade 2."
+          }
+        ],
+        "wordingProblems": [
+          "'What number is number 10 in the pattern?' is confusing because the terms themselves are numbers. A child may look for the value 10 or misread the question. Use 'What is the 10th number in the pattern?' in both the prompt and the read-aloud."
+        ],
+        "problems": [],
+        "verdict": "review"
+      }
+    },
+    "2-shape-pattern-predict": {
+      "hash": "d43456d374b40bee",
+      "status": "fail",
+      "checkedAt": "2026-10-11",
+      "model": "claude-opus-5-5",
+      "findings": {
+        "id": "2-shape-pattern-predict",
+        "answerCorrect": true,
+        "wrongAnswersOk": false,
+        "bcGradeFits": true,
+        "provinceTags": [
+          {
+            "province": "AB",
+            "ok": true,
+            "suggestedGrade": "grade 2",
+            "confidence": "medium",
+            "reason": "Predicting an element of a repeating pattern is Grade 2."
+          },
+          {
+            "province": "SK",
+            "ok": true,
+            "suggestedGrade": "grade 2",
+            "confidence": "high",
+            "reason": "SK P2.1 covers predicting an element of a repeating pattern."
+          },
+          {
+            "province": "MB",
+            "ok": true,
+            "suggestedGrade": "grade 2",
+            "confidence": "high",
+            "reason": "MB 2.PR.1 covers predicting an element of a repeating pattern."
+          },
+          {
+            "province": "ON",
+            "ok": true,
+            "suggestedGrade": "grade 2",
+            "confidence": "medium",
+            "reason": "Repeating patterns are taught in Grade 2."
+          }
+        ],
+        "wordingProblems": [
+          "'What shape is number 12?' is clearer as 'What is the 12th shape?'",
+          "The read-aloud lists the options in a different order from the choices on screen. Example 1 reads 'square, star, circle' but the screen shows circle, star, square."
+        ],
+        "problems": [
+          "Three distractors are shapes that do not appear in the pattern: square in example 2, circle in example 5 and triangle in example 7. Each is coded 'Does not see the part of a pattern that repeats'. Misreading the core cannot produce a shape that is not in the pattern, so these are filler distractors with no plausible misconception."
+        ],
+        "verdict": "fail"
+      }
+    },
+    "2-true-equation": {
+      "hash": "3aad494384a9fa89",
+      "status": "fail",
+      "checkedAt": "2026-10-11",
+      "model": "claude-opus-5-5",
+      "findings": {
+        "id": "2-true-equation",
+        "answerCorrect": true,
+        "wrongAnswersOk": false,
+        "bcGradeFits": true,
+        "provinceTags": [
+          {
+            "province": "AB",
+            "ok": true,
+            "suggestedGrade": "grade 2",
+            "confidence": "medium",
+            "reason": "Equality is introduced in Grade 1 and extended symbolically in Grade 2."
+          },
+          {
+            "province": "SK",
+            "ok": true,
+            "suggestedGrade": "grade 2",
+            "confidence": "high",
+            "reason": "SK P2.2 covers equality and inequality, recorded symbolically."
+          },
+          {
+            "province": "MB",
+            "ok": true,
+            "suggestedGrade": "grade 2",
+            "confidence": "high",
+            "reason": "MB 2.PR.3 and 2.PR.4 cover equality and inequality."
+          },
+          {
+            "province": "ON",
+            "ok": true,
+            "suggestedGrade": "grade 2",
+            "confidence": "medium",
+            "reason": "ON Grade 2 C2 covers determining whether addition expressions are equivalent."
+          }
+        ],
+        "wordingProblems": [],
+        "problems": [
+          "The 'Makes a ten from one number but does not change the other number to match' code does not produce the distractor in examples 3, 4, 6 and 7. In example 3 (7+5), that error would give 10+5, but the distractor is 10+3. In example 4 (7+6), it would give 10+6, but the distractor is 10+4. In example 6 (6+7), it would give 10+7 or 10+6, but the distractor is 10+4. In example 7 (6+8), it would give 10+8 or 10+6, but the distractor is 10+5. These distractors come from writing the amount moved or from being off by one, not from the coded error. Examples 1, 2, 5 and 8 are coded correctly."
+        ],
+        "verdict": "fail"
+      }
+    },
+    "2-missing-in-pattern": {
+      "hash": "f4e4e565bf7670b1",
+      "status": "pass",
+      "checkedAt": "2026-10-11",
+      "model": "claude-opus-5-5",
+      "findings": {
+        "id": "2-missing-in-pattern",
+        "answerCorrect": true,
+        "wrongAnswersOk": true,
+        "bcGradeFits": true,
+        "provinceTags": [
+          {
+            "province": "AB",
+            "ok": true,
+            "suggestedGrade": "grade 2",
+            "confidence": "medium",
+            "reason": "Skip counting by 2s, 5s and 10s to 100, including 10s from non-multiples, is Grade 2."
+          },
+          {
+            "province": "SK",
+            "ok": true,
+            "suggestedGrade": "grade 2",
+            "confidence": "high",
+            "reason": "SK N2.1 covers skip counting by 2s, 5s and 10s, with 10s from starting points 1 to 9."
+          },
+          {
+            "province": "MB",
+            "ok": true,
+            "suggestedGrade": "grade 2",
+            "confidence": "high",
+            "reason": "MB 2.N.1 covers the same skip counting."
+          },
+          {
+            "province": "ON",
+            "ok": true,
+            "suggestedGrade": "grade 2",
+            "confidence": "medium",
+            "reason": "Skip counting and number patterns to 100 are Grade 2."
+          }
+        ],
+        "wordingProblems": [],
+        "problems": [],
+        "verdict": "pass"
+      }
+    },
+    "2-change-unknown-add": {
+      "hash": "2e35ba6dd176488b",
+      "status": "pass",
+      "checkedAt": "2026-10-11",
+      "model": "claude-opus-5-5",
+      "findings": {
+        "id": "2-change-unknown-add",
+        "answerCorrect": true,
+        "wrongAnswersOk": true,
+        "bcGradeFits": true,
+        "provinceTags": [
+          {
+            "province": "AB",
+            "ok": true,
+            "suggestedGrade": "grade 2",
+            "confidence": "medium",
+            "reason": "Addition and subtraction problems to 100 are Grade 2."
+          },
+          {
+            "province": "SK",
+            "ok": true,
+            "suggestedGrade": "grade 2",
+            "confidence": "medium",
+            "reason": "SK N2 covers addition and subtraction to 100 in context."
+          },
+          {
+            "province": "MB",
+            "ok": true,
+            "suggestedGrade": "grade 2",
+            "confidence": "medium",
+            "reason": "MB 2.N.9 covers addition and subtraction to 100."
+          },
+          {
+            "province": "ON",
+            "ok": true,
+            "suggestedGrade": "grade 2",
+            "confidence": "medium",
+            "reason": "ON Grade 2 B2 covers addition and subtraction problems to 100."
+          }
+        ],
+        "wordingProblems": [],
+        "problems": [],
+        "verdict": "pass"
+      }
+    },
+    "2-ruler-length": {
+      "hash": "74e0d0b33b65f074",
+      "status": "pass",
+      "checkedAt": "2026-10-11",
+      "model": "claude-opus-5-5",
+      "findings": {
+        "id": "2-ruler-length",
+        "answerCorrect": true,
+        "wrongAnswersOk": true,
+        "bcGradeFits": true,
+        "provinceTags": [
+          {
+            "province": "AB",
+            "ok": true,
+            "suggestedGrade": "grade 3",
+            "confidence": "low",
+            "reason": "The WNCP-based program puts cm measurement in Grade 3. The 2022 AB curriculum may introduce standard units earlier."
+          },
+          {
+            "province": "SK",
+            "ok": true,
+            "suggestedGrade": "grade 3",
+            "confidence": "high",
+            "reason": "SK SS3.3 covers linear measurement in cm and m. Grade 2 uses non-standard units."
+          },
+          {
+            "province": "MB",
+            "ok": true,
+            "suggestedGrade": "grade 3",
+            "confidence": "high",
+            "reason": "MB 3.SS covers measuring length in cm and m."
+          },
+          {
+            "province": "ON",
+            "ok": true,
+            "suggestedGrade": "grade 2",
+            "confidence": "medium",
+            "reason": "ON Grade 2 E2 covers measuring length in centimetres and metres."
+          }
+        ],
+        "wordingProblems": [],
+        "problems": [],
+        "verdict": "pass"
+      }
+    },
+    "2-length-unit": {
+      "hash": "7178bdbdbf477f33",
+      "status": "pass",
+      "checkedAt": "2026-10-11",
+      "model": "claude-opus-5-5",
+      "findings": {
+        "id": "2-length-unit",
+        "answerCorrect": true,
+        "wrongAnswersOk": true,
+        "bcGradeFits": true,
+        "provinceTags": [
+          {
+            "province": "AB",
+            "ok": true,
+            "suggestedGrade": "grade 3",
+            "confidence": "medium",
+            "reason": "Former WNCP-based AB program introduced cm and m in Grade 3 (3.SS.3/3.SS.4). Placement of standard length units in the 2022 K-6 curriculum not verified."
+          },
+          {
+            "province": "SK",
+            "ok": true,
+            "suggestedGrade": "grade 3",
+            "confidence": "high",
+            "reason": "SK Grade 3 measurement outcomes introduce centimetres and metres. Grade 2 uses non-standard units."
+          },
+          {
+            "province": "MB",
+            "ok": true,
+            "suggestedGrade": "grade 3",
+            "confidence": "high",
+            "reason": "MB 3.SS.3 and 3.SS.4 introduce centimetres and metres."
+          },
+          {
+            "province": "ON",
+            "ok": true,
+            "suggestedGrade": "grade 2",
+            "confidence": "medium",
+            "reason": "The 2020 ON Grade 2 measurement expectations introduce metres and centimetres."
+          }
+        ],
+        "wordingProblems": [],
+        "problems": [],
+        "verdict": "pass"
+      }
+    },
+    "2-face-of-solid": {
+      "hash": "d24ade336dddc5e1",
+      "status": "review",
+      "checkedAt": "2026-10-11",
+      "model": "claude-opus-5-5",
+      "findings": {
+        "id": "2-face-of-solid",
+        "answerCorrect": true,
+        "wrongAnswersOk": true,
+        "bcGradeFits": true,
+        "provinceTags": [
+          {
+            "province": "AB",
+            "ok": true,
+            "suggestedGrade": "grade 1",
+            "confidence": "medium",
+            "reason": "WNCP-based outcomes compare 2D shapes to faces of 3D objects in Grade 1 (1.SS.4) and again in Grade 2 (2.SS.9). Grade 1 is within one grade."
+          },
+          {
+            "province": "SK",
+            "ok": true,
+            "suggestedGrade": "grade 1",
+            "confidence": "medium",
+            "reason": "SK Grade 1 relates 2D shapes to 3D objects. Naming the faces of cones and pyramids is more typical of Grade 2."
+          },
+          {
+            "province": "MB",
+            "ok": true,
+            "suggestedGrade": "grade 1",
+            "confidence": "medium",
+            "reason": "MB 1.SS.4 compares 2D shapes to parts of 3D objects. 2.SS.9 identifies 2D shapes as parts of 3D objects."
+          },
+          {
+            "province": "ON",
+            "ok": true,
+            "suggestedGrade": "grade 2",
+            "confidence": "medium",
+            "reason": "The ON Grade 2 geometry expectations cover attributes of 2D shapes and 3D objects."
+          }
+        ],
+        "wordingProblems": [
+          "The pyramid example asks 'What shape is the bottom of a pyramid with a square base?'. The answer is in the question, so the item tests nothing. Reword it, for example 'What shape is the flat bottom of this pyramid?' with a picture, or use a triangular-based pyramid."
+        ],
+        "problems": [
+          "The pyramid item gives away its answer in the prompt.",
+          "Choosing 'triangle' for the cone or pyramid more likely comes from seeing the side view or side faces than from mixing up shape names. A more specific misconception code would be more useful."
+        ],
+        "verdict": "review"
+      }
+    },
+    "2-graph-in-all": {
+      "hash": "49afa86989b99ce2",
+      "status": "review",
+      "checkedAt": "2026-10-11",
+      "model": "claude-opus-5-5",
+      "findings": {
+        "id": "2-graph-in-all",
+        "answerCorrect": true,
+        "wrongAnswersOk": true,
+        "bcGradeFits": true,
+        "provinceTags": [
+          {
+            "province": "AB",
+            "ok": true,
+            "suggestedGrade": "grade 2",
+            "confidence": "medium",
+            "reason": "Concrete graphs and pictographs with one-to-one correspondence are Grade 2 in the WNCP-based outcomes."
+          },
+          {
+            "province": "SK",
+            "ok": true,
+            "suggestedGrade": "grade 2",
+            "confidence": "high",
+            "reason": "SK Grade 2 data outcome covers concrete graphs and pictographs."
+          },
+          {
+            "province": "MB",
+            "ok": true,
+            "suggestedGrade": "grade 2",
+            "confidence": "high",
+            "reason": "MB 2.SP.2 covers concrete graphs and pictographs."
+          },
+          {
+            "province": "ON",
+            "ok": true,
+            "suggestedGrade": "grade 2",
+            "confidence": "medium",
+            "reason": "ON Grade 2 data covers displaying and reading pictographs with one-to-one correspondence."
+          }
+        ],
+        "wordingProblems": [
+          "The read-aloud does not read the categories or dot counts, so it does not say the same as the prompt. A child relying on the voice gets no data.",
+          "The prompt says 'on the graph', but the data appears as inline text rows. If no real graph is drawn, the word 'graph' may confuse a young child."
+        ],
+        "problems": [],
+        "verdict": "review"
+      }
+    },
+    "2-graph-fewer": {
+      "hash": "f4e70315d7568547",
+      "status": "review",
+      "checkedAt": "2026-10-11",
+      "model": "claude-opus-5-5",
+      "findings": {
+        "id": "2-graph-fewer",
+        "answerCorrect": true,
+        "wrongAnswersOk": true,
+        "bcGradeFits": true,
+        "provinceTags": [
+          {
+            "province": "AB",
+            "ok": true,
+            "suggestedGrade": "grade 2",
+            "confidence": "medium",
+            "reason": "Interpreting pictographs is Grade 2 in the WNCP-based outcomes."
+          },
+          {
+            "province": "SK",
+            "ok": true,
+            "suggestedGrade": "grade 2",
+            "confidence": "high",
+            "reason": "SK Grade 2 covers concrete graphs and pictographs."
+          },
+          {
+            "province": "MB",
+            "ok": true,
+            "suggestedGrade": "grade 2",
+            "confidence": "high",
+            "reason": "MB 2.SP.2 covers interpreting concrete graphs and pictographs."
+          },
+          {
+            "province": "ON",
+            "ok": true,
+            "suggestedGrade": "grade 2",
+            "confidence": "medium",
+            "reason": "ON Grade 2 data includes comparing categories in displays."
+          }
+        ],
+        "wordingProblems": [
+          "The read-aloud does not give the star counts, so it does not match the prompt's data.",
+          "The prompt never says what the children chose, such as a favourite season or fruit. 'chose winter' has no context.",
+          "Rows of 10 to 12 stars in one line of text are hard for a Grade 2 child to count reliably. Group the stars or show them as a graph."
+        ],
+        "problems": [],
+        "verdict": "review"
+      }
+    },
+    "2-spinner": {
+      "hash": "4e202c316784f10b",
+      "status": "review",
+      "checkedAt": "2026-10-11",
+      "model": "claude-opus-5-5",
+      "findings": {
+        "id": "2-spinner",
+        "answerCorrect": true,
+        "wrongAnswersOk": true,
+        "bcGradeFits": true,
+        "provinceTags": [
+          {
+            "province": "AB",
+            "ok": true,
+            "suggestedGrade": "grade 5",
+            "confidence": "low",
+            "reason": "The WNCP-based program placed comparing likelihood in Grade 5. Placement in the 2022 curriculum not verified."
+          },
+          {
+            "province": "SK",
+            "ok": true,
+            "suggestedGrade": "grade 5",
+            "confidence": "medium",
+            "reason": "SK introduces probability and comparing likelihood of outcomes in Grade 5."
+          },
+          {
+            "province": "MB",
+            "ok": true,
+            "suggestedGrade": "grade 5",
+            "confidence": "high",
+            "reason": "MB 5.SP.3 and 5.SP.4 cover likelihood and comparing the likelihood of two outcomes."
+          },
+          {
+            "province": "ON",
+            "ok": true,
+            "suggestedGrade": "grade 2",
+            "confidence": "medium",
+            "reason": "The ON 2020 primary grades use likelihood language for events from Grade 1 to Grade 3. Grade 2 is reasonable."
+          }
+        ],
+        "wordingProblems": [
+          "'1 equal green part' is awkward: 'equal' has nothing to compare with in the singular. Say 'A spinner has 6 equal parts: 5 are blue and 1 is green.'",
+          "The read-aloud says 'both equally likely', but the choice reads 'Blue and green are equally likely'. Make them match."
+        ],
+        "problems": [],
+        "verdict": "review"
+      }
+    },
+    "2-compare-lengths": {
+      "hash": "c2f6a474849b66f3",
+      "status": "pass",
+      "checkedAt": "2026-10-11",
+      "model": "claude-opus-5-5",
+      "findings": {
+        "id": "2-compare-lengths",
+        "answerCorrect": true,
+        "wrongAnswersOk": true,
+        "bcGradeFits": true,
+        "provinceTags": [
+          {
+            "province": "AB",
+            "ok": true,
+            "suggestedGrade": "grade 3",
+            "confidence": "medium",
+            "reason": "Centimetres are Grade 3 in the WNCP-based outcomes. The 2022 curriculum placement is not verified."
+          },
+          {
+            "province": "SK",
+            "ok": true,
+            "suggestedGrade": "grade 3",
+            "confidence": "high",
+            "reason": "SK introduces centimetres in Grade 3."
+          },
+          {
+            "province": "MB",
+            "ok": true,
+            "suggestedGrade": "grade 3",
+            "confidence": "high",
+            "reason": "MB 3.SS.3 introduces centimetres."
+          },
+          {
+            "province": "ON",
+            "ok": true,
+            "suggestedGrade": "grade 2",
+            "confidence": "medium",
+            "reason": "ON Grade 2 introduces centimetres and subtraction within 100."
+          }
+        ],
+        "wordingProblems": [],
+        "problems": [],
+        "verdict": "pass"
+      }
+    },
+    "2-sides-in-all": {
+      "hash": "27174dbd94be340d",
+      "status": "pass",
+      "checkedAt": "2026-10-11",
+      "model": "claude-opus-5-5",
+      "findings": {
+        "id": "2-sides-in-all",
+        "answerCorrect": true,
+        "wrongAnswersOk": true,
+        "bcGradeFits": true,
+        "provinceTags": [
+          {
+            "province": "AB",
+            "ok": true,
+            "suggestedGrade": "grade 2",
+            "confidence": "medium",
+            "reason": "Describing 2D shapes by their sides is Grade 2 in the WNCP-based outcomes (2.SS.8)."
+          },
+          {
+            "province": "SK",
+            "ok": true,
+            "suggestedGrade": "grade 2",
+            "confidence": "medium",
+            "reason": "SK Grade 2 describes and compares 2D shapes, including triangles, squares and rectangles."
+          },
+          {
+            "province": "MB",
+            "ok": true,
+            "suggestedGrade": "grade 2",
+            "confidence": "high",
+            "reason": "MB 2.SS.8 covers triangles, squares and rectangles."
+          },
+          {
+            "province": "ON",
+            "ok": true,
+            "suggestedGrade": "grade 2",
+            "confidence": "medium",
+            "reason": "ON Grade 2 geometry covers attributes of 2D shapes, including number of sides."
+          }
+        ],
+        "wordingProblems": [],
+        "problems": [],
+        "verdict": "pass"
+      }
+    },
+    "3-build-number": {
+      "hash": "dc82850b0902d2f1",
+      "status": "pass",
+      "checkedAt": "2026-10-11",
+      "model": "claude-opus-5-5",
+      "findings": {
+        "id": "3-build-number",
+        "answerCorrect": true,
+        "wrongAnswersOk": true,
+        "bcGradeFits": true,
+        "provinceTags": [
+          {
+            "province": "AB",
+            "ok": true,
+            "suggestedGrade": "grade 3",
+            "confidence": "medium",
+            "reason": "Place value to 1000 is Grade 3."
+          },
+          {
+            "province": "SK",
+            "ok": true,
+            "suggestedGrade": "grade 3",
+            "confidence": "high",
+            "reason": "SK Grade 3 covers place value to 1000."
+          },
+          {
+            "province": "MB",
+            "ok": true,
+            "suggestedGrade": "grade 3",
+            "confidence": "high",
+            "reason": "MB 3.N.5 covers place value to 1000."
+          },
+          {
+            "province": "ON",
+            "ok": true,
+            "suggestedGrade": "grade 3",
+            "confidence": "high",
+            "reason": "ON Grade 3 covers whole numbers to 1000."
+          }
+        ],
+        "wordingProblems": [],
+        "problems": [],
+        "verdict": "pass"
+      }
+    },
+    "3-ten-more-less": {
+      "hash": "9b152777af16a74d",
+      "status": "pass",
+      "checkedAt": "2026-10-11",
+      "model": "claude-opus-5-5",
+      "findings": {
+        "id": "3-ten-more-less",
+        "answerCorrect": true,
+        "wrongAnswersOk": true,
+        "bcGradeFits": true,
+        "provinceTags": [
+          {
+            "province": "AB",
+            "ok": true,
+            "suggestedGrade": "grade 3",
+            "confidence": "medium",
+            "reason": "Counting by 10s and mental math to 1000 are Grade 3."
+          },
+          {
+            "province": "SK",
+            "ok": true,
+            "suggestedGrade": "grade 3",
+            "confidence": "high",
+            "reason": "SK Grade 3 covers number to 1000."
+          },
+          {
+            "province": "MB",
+            "ok": true,
+            "suggestedGrade": "grade 3",
+            "confidence": "high",
+            "reason": "MB 3.N.1 and 3.N.6 cover this."
+          },
+          {
+            "province": "ON",
+            "ok": true,
+            "suggestedGrade": "grade 3",
+            "confidence": "high",
+            "reason": "ON Grade 3 covers numbers to 1000."
+          }
+        ],
+        "wordingProblems": [],
+        "problems": [],
+        "verdict": "pass"
+      }
+    },
+    "3-after-99": {
+      "hash": "f75502fd68eecb93",
+      "status": "pass",
+      "checkedAt": "2026-10-11",
+      "model": "claude-opus-5-5",
+      "findings": {
+        "id": "3-after-99",
+        "answerCorrect": true,
+        "wrongAnswersOk": true,
+        "bcGradeFits": true,
+        "provinceTags": [
+          {
+            "province": "AB",
+            "ok": true,
+            "suggestedGrade": "grade 3",
+            "confidence": "medium",
+            "reason": "Counting across hundreds to 1000 is Grade 3."
+          },
+          {
+            "province": "SK",
+            "ok": true,
+            "suggestedGrade": "grade 3",
+            "confidence": "high",
+            "reason": "SK Grade 3 covers number to 1000."
+          },
+          {
+            "province": "MB",
+            "ok": true,
+            "suggestedGrade": "grade 3",
+            "confidence": "high",
+            "reason": "MB 3.N.1 covers counting to 1000."
+          },
+          {
+            "province": "ON",
+            "ok": true,
+            "suggestedGrade": "grade 3",
+            "confidence": "high",
+            "reason": "ON Grade 3 covers numbers to 1000."
+          }
+        ],
+        "wordingProblems": [],
+        "problems": [],
+        "verdict": "pass"
+      }
+    },
+    "3-digit-value": {
+      "hash": "4ea8ad2e824bcef5",
+      "status": "pass",
+      "checkedAt": "2026-10-11",
+      "model": "claude-opus-5-5",
+      "findings": {
+        "id": "3-digit-value",
+        "answerCorrect": true,
+        "wrongAnswersOk": true,
+        "bcGradeFits": true,
+        "provinceTags": [
+          {
+            "province": "AB",
+            "ok": true,
+            "confidence": "high",
+            "reason": "Place value of 3-digit numbers (to 1000) is a Grade 3 number outcome."
+          },
+          {
+            "province": "SK",
+            "ok": true,
+            "confidence": "high",
+            "reason": "Grade 3 place value outcome for numbers to 1000."
+          },
+          {
+            "province": "MB",
+            "ok": true,
+            "confidence": "high",
+            "reason": "Grade 3 place value for 3-digit numerals."
+          },
+          {
+            "province": "ON",
+            "ok": true,
+            "confidence": "high",
+            "reason": "Grade 3 extends whole numbers and place value to 1000; Grade 2 stops at 200."
+          }
+        ],
+        "wordingProblems": [],
+        "problems": [],
+        "verdict": "pass"
+      }
+    },
+    "3-add-3-digit": {
+      "hash": "db8206eb65b5a16e",
+      "status": "pass",
+      "checkedAt": "2026-10-11",
+      "model": "claude-opus-5-5",
+      "findings": {
+        "id": "3-add-3-digit",
+        "answerCorrect": true,
+        "wrongAnswersOk": true,
+        "bcGradeFits": true,
+        "provinceTags": [
+          {
+            "province": "AB",
+            "ok": true,
+            "confidence": "high",
+            "reason": "Adding 3-digit numbers with regrouping is Grade 3."
+          },
+          {
+            "province": "SK",
+            "ok": true,
+            "confidence": "high",
+            "reason": "Grade 3 addition and subtraction to 1000."
+          },
+          {
+            "province": "MB",
+            "ok": true,
+            "confidence": "high",
+            "reason": "Grade 3 addition of 2- and 3-digit numbers."
+          },
+          {
+            "province": "ON",
+            "ok": true,
+            "confidence": "high",
+            "reason": "Grade 3 adds and subtracts whole numbers up to 1000."
+          }
+        ],
+        "wordingProblems": [],
+        "problems": [],
+        "verdict": "pass"
+      }
+    },
+    "3-subtract-across-zero": {
+      "hash": "ee82faacfe439f11",
+      "status": "pass",
+      "checkedAt": "2026-10-11",
+      "model": "claude-opus-5-5",
+      "findings": {
+        "id": "3-subtract-across-zero",
+        "answerCorrect": true,
+        "wrongAnswersOk": true,
+        "bcGradeFits": true,
+        "provinceTags": [
+          {
+            "province": "AB",
+            "ok": true,
+            "confidence": "high",
+            "reason": "Subtracting 3-digit numbers with regrouping is Grade 3."
+          },
+          {
+            "province": "SK",
+            "ok": true,
+            "confidence": "high",
+            "reason": "Grade 3 addition and subtraction to 1000."
+          },
+          {
+            "province": "MB",
+            "ok": true,
+            "confidence": "high",
+            "reason": "Grade 3 subtraction of 3-digit numbers."
+          },
+          {
+            "province": "ON",
+            "ok": true,
+            "confidence": "high",
+            "reason": "Grade 3 adds and subtracts whole numbers up to 1000."
+          }
+        ],
+        "wordingProblems": [],
+        "problems": [],
+        "verdict": "pass"
+      }
+    },
+    "3-story-subtract": {
+      "hash": "6dbffefac6ce07bc",
+      "status": "pass",
+      "checkedAt": "2026-10-11",
+      "model": "claude-opus-5-5",
+      "findings": {
+        "id": "3-story-subtract",
+        "answerCorrect": true,
+        "wrongAnswersOk": true,
+        "bcGradeFits": true,
+        "provinceTags": [
+          {
+            "province": "AB",
+            "ok": true,
+            "confidence": "high",
+            "reason": "Grade 3 subtraction word problems with 3-digit numbers."
+          },
+          {
+            "province": "SK",
+            "ok": true,
+            "confidence": "high",
+            "reason": "Grade 3 addition and subtraction to 1000 in context."
+          },
+          {
+            "province": "MB",
+            "ok": true,
+            "confidence": "high",
+            "reason": "Grade 3 subtraction problems with 3-digit numbers."
+          },
+          {
+            "province": "ON",
+            "ok": true,
+            "confidence": "high",
+            "reason": "Grade 3 solves problems with addition and subtraction to 1000."
+          }
+        ],
+        "wordingProblems": [],
+        "problems": [],
+        "verdict": "pass"
+      }
+    },
+    "3-equal-groups": {
+      "hash": "72cf9517ba1bf88d",
+      "status": "pass",
+      "checkedAt": "2026-10-11",
+      "model": "claude-opus-5-5",
+      "findings": {
+        "id": "3-equal-groups",
+        "answerCorrect": true,
+        "wrongAnswersOk": true,
+        "bcGradeFits": true,
+        "provinceTags": [
+          {
+            "province": "AB",
+            "ok": true,
+            "confidence": "medium",
+            "reason": "Equal-groups multiplication up to 5x5 is a Grade 3 outcome."
+          },
+          {
+            "province": "SK",
+            "ok": true,
+            "confidence": "medium",
+            "reason": "Grade 3 multiplication to 5x5 using equal grouping."
+          },
+          {
+            "province": "MB",
+            "ok": true,
+            "confidence": "high",
+            "reason": "Grade 3 N11 multiplication to 5x5."
+          },
+          {
+            "province": "ON",
+            "ok": true,
+            "confidence": "high",
+            "reason": "Grade 2 represents multiplication as repeated equal groups."
+          }
+        ],
+        "wordingProblems": [],
+        "problems": [],
+        "verdict": "pass"
+      }
+    },
+    "3-share-equally": {
+      "hash": "8b4bac4152969d8a",
+      "status": "pass",
+      "checkedAt": "2026-10-11",
+      "model": "claude-opus-5-5",
+      "findings": {
+        "id": "3-share-equally",
+        "answerCorrect": true,
+        "wrongAnswersOk": true,
+        "bcGradeFits": true,
+        "provinceTags": [
+          {
+            "province": "AB",
+            "ok": true,
+            "confidence": "medium",
+            "reason": "Division as equal sharing, related to 5x5, is Grade 3."
+          },
+          {
+            "province": "SK",
+            "ok": true,
+            "confidence": "medium",
+            "reason": "Grade 3 division as equal sharing."
+          },
+          {
+            "province": "MB",
+            "ok": true,
+            "confidence": "high",
+            "reason": "Grade 3 N12 division as equal sharing and grouping."
+          },
+          {
+            "province": "ON",
+            "ok": true,
+            "confidence": "medium",
+            "reason": "Grade 2 introduces sharing up to 12. Dividends up to 20 fit Grade 3, within one grade."
+          }
+        ],
+        "wordingProblems": [],
+        "problems": [],
+        "verdict": "pass"
+      }
+    },
+    "3-money-total": {
+      "hash": "846963d51747c225",
+      "status": "review",
+      "checkedAt": "2026-10-11",
+      "model": "claude-opus-5-5",
+      "findings": {
+        "id": "3-money-total",
+        "answerCorrect": true,
+        "wrongAnswersOk": true,
+        "bcGradeFits": true,
+        "provinceTags": [
+          {
+            "province": "AB",
+            "ok": true,
+            "confidence": "low",
+            "reason": "Money traditionally appears with Grade 4 decimals. A whole-dollar total is easier, but the Grade 4 tag is defensible."
+          },
+          {
+            "province": "SK",
+            "ok": true,
+            "confidence": "low",
+            "reason": "Money appears with Grade 4 decimals; the tag is plausible."
+          },
+          {
+            "province": "MB",
+            "ok": true,
+            "confidence": "low",
+            "reason": "Money appears with Grade 4 decimals; the tag is plausible."
+          },
+          {
+            "province": "ON",
+            "ok": true,
+            "confidence": "high",
+            "reason": "Grade 3 financial literacy covers whole-dollar money amounts and transactions."
+          }
+        ],
+        "wordingProblems": [
+          "The read-aloud puts two numbers side by side ('2 5 dollar bills', '1 20 dollar bill', '2 10 dollar bills'). A browser voice says 'two five dollar bills', which a child can hear as 'twenty-five dollar bills'. Write the counts as words, e.g. 'two five-dollar bills'.",
+          "On screen, '2 $5 bills' and '2 $20 bills' put the count right next to the bill value. This is easy for a Grade 3 reader to misread; 'two $5 bills' is clearer."
+        ],
+        "problems": [],
+        "verdict": "review"
+      }
+    },
+    "3-decreasing-pattern": {
+      "hash": "fab2479191c7ef6b",
+      "status": "fail",
+      "checkedAt": "2026-10-11",
+      "model": "claude-opus-5-5",
+      "findings": {
+        "id": "3-decreasing-pattern",
+        "answerCorrect": true,
+        "wrongAnswersOk": false,
+        "bcGradeFits": true,
+        "provinceTags": [
+          {
+            "province": "AB",
+            "ok": true,
+            "confidence": "high",
+            "reason": "Decreasing patterns are a Grade 3 outcome; Grade 2 covers only increasing patterns."
+          },
+          {
+            "province": "SK",
+            "ok": true,
+            "confidence": "high",
+            "reason": "Grade 3 increasing and decreasing patterns."
+          },
+          {
+            "province": "MB",
+            "ok": true,
+            "confidence": "high",
+            "reason": "Grade 3 decreasing patterns."
+          },
+          {
+            "province": "ON",
+            "ok": true,
+            "confidence": "medium",
+            "reason": "Grade 3 identifies and extends shrinking patterns."
+          }
+        ],
+        "wordingProblems": [],
+        "problems": [
+          "In every example the second wrong answer is one less than the last term (9 after 10, 15 after 16, 24 after 25, and so on). That comes from counting back by 1. The coded misconception 'Counts on by 1 instead of by the skip-counting step' would give one more than the last term (11, 17, 26, ...), so it does not produce these answers. Recode to a 'counts back by 1 instead of by the step' misconception."
+        ],
+        "verdict": "fail"
+      }
+    },
+    "3-increasing-pattern": {
+      "hash": "c5daf10216867729",
+      "status": "review",
+      "checkedAt": "2026-10-11",
+      "model": "claude-opus-5-5",
+      "findings": {
+        "id": "3-increasing-pattern",
+        "answerCorrect": true,
+        "wrongAnswersOk": true,
+        "bcGradeFits": true,
+        "provinceTags": [
+          {
+            "province": "AB",
+            "ok": false,
+            "suggestedGrade": "grade 2",
+            "confidence": "medium",
+            "reason": "Increasing patterns with numbers under 100 are a Grade 2 outcome (PR2). Grade 3 extends them to 1000; these terms stay under 30."
+          },
+          {
+            "province": "SK",
+            "ok": false,
+            "suggestedGrade": "grade 2",
+            "confidence": "medium",
+            "reason": "Grade 2 covers increasing patterns. Small numbers with steps of 3 or 4 sit at Grade 2 level."
+          },
+          {
+            "province": "MB",
+            "ok": false,
+            "suggestedGrade": "grade 2",
+            "confidence": "medium",
+            "reason": "Grade 2 PR2 covers increasing patterns to 100."
+          },
+          {
+            "province": "ON",
+            "ok": true,
+            "confidence": "low",
+            "reason": "Growing patterns appear in Grade 2–3. Grade 3 is acceptable."
+          }
+        ],
+        "wordingProblems": [],
+        "problems": [
+          "BC Grade 2 already teaches 'repeating and increasing patterns'. These small-number examples are at Grade 2 level, but they are within one grade of the Grade 3 tag."
+        ],
+        "verdict": "review"
+      }
+    },
+    "3-pattern-rule": {
+      "hash": "eb9cd1d823629c13",
+      "status": "review",
+      "checkedAt": "2026-10-11",
+      "model": "claude-opus-5-5",
+      "findings": {
+        "id": "3-pattern-rule",
+        "answerCorrect": true,
+        "wrongAnswersOk": true,
+        "bcGradeFits": true,
+        "provinceTags": [
+          {
+            "province": "AB",
+            "ok": true,
+            "confidence": "medium",
+            "reason": "Grade 3 describes pattern rules for increasing patterns."
+          },
+          {
+            "province": "SK",
+            "ok": true,
+            "confidence": "medium",
+            "reason": "Grade 3 describes rules of increasing and decreasing patterns."
+          },
+          {
+            "province": "MB",
+            "ok": true,
+            "confidence": "medium",
+            "reason": "Grade 3 PR1 describes the pattern rule."
+          },
+          {
+            "province": "ON",
+            "ok": true,
+            "confidence": "medium",
+            "reason": "Grade 3 determines pattern rules for growing patterns."
+          }
+        ],
+        "wordingProblems": [
+          "The read-aloud lists the choices in a different order from the screen in 6 of 8 examples (all except the 2, 7, 12, 17 and 6, 10, 14, 18 examples). Read them in the displayed order.",
+          "All three choices sound almost the same when spoken ('Start at 3 and add 5' vs 'Start at 5 and add 3'). The voice reads them in one run with no labels or pauses, which is hard for a Grade 3 listener to hold. Add choice labels or pauses."
+        ],
+        "problems": [],
+        "verdict": "review"
+      }
+    },
+    "3-start-unknown": {
+      "hash": "f09b7c3a9ab3e30e",
+      "status": "pass",
+      "checkedAt": "2026-10-11",
+      "model": "claude-opus-5-5",
+      "findings": {
+        "id": "3-start-unknown",
+        "answerCorrect": true,
+        "wrongAnswersOk": true,
+        "bcGradeFits": true,
+        "provinceTags": [
+          {
+            "province": "AB",
+            "ok": true,
+            "confidence": "medium",
+            "reason": "One-step addition and subtraction equations with an unknown are a Grade 3 outcome."
+          },
+          {
+            "province": "SK",
+            "ok": true,
+            "confidence": "high",
+            "reason": "Grade 3 outcome: solve one-step addition and subtraction equations with a symbol for the unknown."
+          },
+          {
+            "province": "MB",
+            "ok": true,
+            "confidence": "high",
+            "reason": "Grade 3 patterns and relations: one-step addition and subtraction equations with an unknown."
+          },
+          {
+            "province": "ON",
+            "ok": true,
+            "confidence": "medium",
+            "reason": "Grade 3 algebra (2020): solve equations involving whole numbers up to 50."
+          }
+        ],
+        "wordingProblems": [],
+        "problems": [],
+        "verdict": "pass"
+      }
+    },
+    "3-change-unknown": {
+      "hash": "bf90ec958fef02b7",
+      "status": "fail",
+      "checkedAt": "2026-10-11",
+      "model": "claude-opus-5-5",
+      "findings": {
+        "id": "3-change-unknown",
+        "answerCorrect": true,
+        "wrongAnswersOk": false,
+        "bcGradeFits": true,
+        "provinceTags": [
+          {
+            "province": "AB",
+            "ok": true,
+            "confidence": "medium",
+            "reason": "One-step equations with an unknown are a Grade 3 outcome."
+          },
+          {
+            "province": "SK",
+            "ok": true,
+            "confidence": "high",
+            "reason": "Grade 3 one-step equation outcome."
+          },
+          {
+            "province": "MB",
+            "ok": true,
+            "confidence": "high",
+            "reason": "Grade 3 one-step equation outcome."
+          },
+          {
+            "province": "ON",
+            "ok": true,
+            "confidence": "medium",
+            "reason": "Grade 3 algebra: solve equations up to 50."
+          }
+        ],
+        "wordingProblems": [],
+        "problems": [
+          "The 'counts the starting number' distractor (change + 1) only makes sense when the change is small enough to count on by ones (25+?=29 gives 5; 23+?=31 gives 9).",
+          "For 10 + ? = 50, a child would count on by tens. Counting the start would give 5 or 50, not 41. Reaching 41 would need 40 one-steps, which no child would do.",
+          "For 14 + ? = 41 (28) and 21 + ? = 43 (23), counting on by ones 27 or 22 times is not a plausible strategy, so these distractors are weak. The generator should only use this distractor when the change is about 10 or less."
+        ],
+        "verdict": "fail"
+      }
+    },
+    "3-balance-equation": {
+      "hash": "a2cd4ff342ced005",
+      "status": "pass",
+      "checkedAt": "2026-10-11",
+      "model": "claude-opus-5-5",
+      "findings": {
+        "id": "3-balance-equation",
+        "answerCorrect": true,
+        "wrongAnswersOk": true,
+        "bcGradeFits": true,
+        "provinceTags": [
+          {
+            "province": "AB",
+            "ok": true,
+            "confidence": "medium",
+            "reason": "Equality and unknowns in equations are taught in Grade 3."
+          },
+          {
+            "province": "SK",
+            "ok": true,
+            "confidence": "medium",
+            "reason": "Equality is built in Grade 2. Equations with an unknown are Grade 3."
+          },
+          {
+            "province": "MB",
+            "ok": true,
+            "confidence": "medium",
+            "reason": "Equality is built in Grade 2. Equations with an unknown are Grade 3."
+          },
+          {
+            "province": "ON",
+            "ok": true,
+            "confidence": "medium",
+            "reason": "Equivalent expressions and solving equations up to 50 are in Grade 3 algebra."
+          }
+        ],
+        "wordingProblems": [],
+        "problems": [],
+        "verdict": "pass"
+      }
+    },
+    "3-area-tiles": {
+      "hash": "54f02a0c006c2c79",
+      "status": "fail",
+      "checkedAt": "2026-10-11",
+      "model": "claude-opus-5-5",
+      "findings": {
+        "id": "3-area-tiles",
+        "answerCorrect": true,
+        "wrongAnswersOk": true,
+        "bcGradeFits": false,
+        "provinceTags": [
+          {
+            "province": "AB",
+            "ok": true,
+            "confidence": "medium",
+            "reason": "Area of rectangles in square units is taught around Grade 4."
+          },
+          {
+            "province": "SK",
+            "ok": true,
+            "confidence": "high",
+            "reason": "Grade 4 outcome: area of regular and irregular 2-D shapes."
+          },
+          {
+            "province": "MB",
+            "ok": true,
+            "confidence": "high",
+            "reason": "Grade 4 outcome: area of 2-D shapes."
+          },
+          {
+            "province": "ON",
+            "ok": true,
+            "confidence": "medium",
+            "reason": "Grade 3 (2020) introduces measuring area with square units."
+          }
+        ],
+        "wordingProblems": [],
+        "problems": [
+          "The BC tag 3.9 covers linear, mass and capacity measurement only. It does not include area.",
+          "BC (2016) teaches area of squares and rectangles in Grade 5. Tile-counting with small arrays might be Grade 4, but Grade 3 is more than one grade away. The template should be retagged."
+        ],
+        "verdict": "fail"
+      }
+    },
+    "3-mass-unit": {
+      "hash": "128cd6bfe6210976",
+      "status": "review",
+      "checkedAt": "2026-10-11",
+      "model": "claude-opus-5-5",
+      "findings": {
+        "id": "3-mass-unit",
+        "answerCorrect": true,
+        "wrongAnswersOk": true,
+        "bcGradeFits": true,
+        "provinceTags": [
+          {
+            "province": "AB",
+            "ok": true,
+            "confidence": "medium",
+            "reason": "Measuring mass in grams and kilograms is Grade 3."
+          },
+          {
+            "province": "SK",
+            "ok": true,
+            "confidence": "high",
+            "reason": "Grade 3 outcome: measure mass in g and kg."
+          },
+          {
+            "province": "MB",
+            "ok": true,
+            "confidence": "high",
+            "reason": "Grade 3 outcome: measure mass in g and kg."
+          },
+          {
+            "province": "ON",
+            "ok": true,
+            "confidence": "medium",
+            "reason": "Grade 3 (2020): grams and kilograms, with benchmarks."
+          }
+        ],
+        "wordingProblems": [
+          "The read-aloud lists the choices in a different order from the screen. For the potatoes, it says 'metres, kilograms or grams' while the screen shows Grams, Metres, Kilograms. A child who listens and then clicks by position may be confused. Read the choices in the on-screen order, or leave them out of the read-aloud."
+        ],
+        "problems": [],
+        "verdict": "review"
+      }
+    },
+    "3-length-convert": {
+      "hash": "6baef0fc4de7deb5",
+      "status": "pass",
+      "checkedAt": "2026-10-11",
+      "model": "claude-opus-5-5",
+      "findings": {
+        "id": "3-length-convert",
+        "answerCorrect": true,
+        "wrongAnswersOk": true,
+        "bcGradeFits": true,
+        "provinceTags": [
+          {
+            "province": "AB",
+            "ok": true,
+            "confidence": "medium",
+            "reason": "Measuring length in cm and m is Grade 3."
+          },
+          {
+            "province": "SK",
+            "ok": true,
+            "confidence": "high",
+            "reason": "Grade 3 outcome: length in cm and m."
+          },
+          {
+            "province": "MB",
+            "ok": true,
+            "confidence": "high",
+            "reason": "Grade 3 outcome: length in cm and m."
+          },
+          {
+            "province": "ON",
+            "ok": true,
+            "confidence": "medium",
+            "reason": "Grade 3 (2020): relationship between centimetres and metres."
+          }
+        ],
+        "wordingProblems": [],
+        "problems": [],
+        "verdict": "pass"
+      }
+    },
+    "3-solid-parts": {
+      "hash": "15d9124fdd88f02f",
+      "status": "pass",
+      "checkedAt": "2026-10-11",
+      "model": "claude-opus-5-5",
+      "findings": {
+        "id": "3-solid-parts",
+        "answerCorrect": true,
+        "wrongAnswersOk": true,
+        "bcGradeFits": true,
+        "provinceTags": [
+          {
+            "province": "AB",
+            "ok": true,
+            "confidence": "medium",
+            "reason": "Describing 3-D objects by faces, edges and vertices is Grade 3."
+          },
+          {
+            "province": "SK",
+            "ok": true,
+            "confidence": "high",
+            "reason": "Grade 3 outcome: 3-D objects by faces, edges and vertices."
+          },
+          {
+            "province": "MB",
+            "ok": true,
+            "confidence": "high",
+            "reason": "Grade 3 outcome: faces, edges and vertices of 3-D objects."
+          },
+          {
+            "province": "ON",
+            "ok": true,
+            "confidence": "low",
+            "reason": "Properties of 3-D objects appear in the primary grades. The exact placement of counting faces, edges and vertices is uncertain."
+          }
+        ],
+        "wordingProblems": [],
+        "problems": [],
+        "verdict": "pass"
+      }
+    },
+    "3-time-units": {
+      "hash": "511b2dd6105da5c0",
+      "status": "pass",
+      "checkedAt": "2026-10-11",
+      "model": "claude-opus-5-5",
+      "findings": {
+        "id": "3-time-units",
+        "answerCorrect": true,
+        "wrongAnswersOk": true,
+        "bcGradeFits": true,
+        "provinceTags": [
+          {
+            "province": "AB",
+            "ok": true,
+            "confidence": "medium",
+            "reason": "Relating seconds to minutes and minutes to hours is Grade 3."
+          },
+          {
+            "province": "SK",
+            "ok": true,
+            "confidence": "high",
+            "reason": "Grade 3 outcome: relate seconds, minutes and hours."
+          },
+          {
+            "province": "MB",
+            "ok": true,
+            "confidence": "high",
+            "reason": "Grade 3 outcome: relate seconds, minutes and hours."
+          },
+          {
+            "province": "ON",
+            "ok": true,
+            "confidence": "low",
+            "reason": "Relationships between time units may sit in Grade 3 or Grade 4 in the 2020 curriculum."
+          }
+        ],
+        "wordingProblems": [],
+        "problems": [],
+        "verdict": "pass"
+      }
+    },
+    "3-days-weeks": {
+      "hash": "107005c526ef6936",
+      "status": "pass",
+      "checkedAt": "2026-10-11",
+      "model": "claude-opus-5-5",
+      "findings": {
+        "id": "3-days-weeks",
+        "answerCorrect": true,
+        "wrongAnswersOk": true,
+        "bcGradeFits": true,
+        "provinceTags": [
+          {
+            "province": "AB",
+            "ok": true,
+            "confidence": "medium",
+            "reason": "Days in a week and months in a year are taught in Grade 2."
+          },
+          {
+            "province": "SK",
+            "ok": true,
+            "confidence": "high",
+            "reason": "Grade 2 outcome: days in a week, months in a year."
+          },
+          {
+            "province": "MB",
+            "ok": true,
+            "confidence": "high",
+            "reason": "Grade 2 outcome: days in a week, months in a year."
+          },
+          {
+            "province": "ON",
+            "ok": true,
+            "confidence": "low",
+            "reason": "The calendar units are known earlier, but multiplying to convert fits Grade 3."
+          }
+        ],
+        "wordingProblems": [],
+        "problems": [],
+        "verdict": "pass"
+      }
+    },
+    "3-bar-graph-more": {
+      "hash": "d6bdc7e9098d7f91",
+      "status": "review",
+      "checkedAt": "2026-10-11",
+      "model": "claude-opus-5-5",
+      "findings": {
+        "id": "3-bar-graph-more",
+        "answerCorrect": true,
+        "wrongAnswersOk": true,
+        "bcGradeFits": true,
+        "provinceTags": [
+          {
+            "province": "AB",
+            "ok": true,
+            "confidence": "medium",
+            "reason": "Interpreting bar graphs is Grade 3."
+          },
+          {
+            "province": "SK",
+            "ok": true,
+            "confidence": "high",
+            "reason": "Grade 3 outcome: construct and interpret bar graphs."
+          },
+          {
+            "province": "MB",
+            "ok": true,
+            "confidence": "high",
+            "reason": "Grade 3 outcome: construct and interpret bar graphs."
+          },
+          {
+            "province": "ON",
+            "ok": true,
+            "confidence": "medium",
+            "reason": "Grade 3 data: interpret bar graphs."
+          }
+        ],
+        "wordingProblems": [
+          "The prompt says 'A bar graph shows…' but no graph is displayed. A child may look for a missing picture. The item also tests only comparison subtraction, not reading a graph. Either show the graph or reword it as data in a sentence."
+        ],
+        "problems": [],
+        "verdict": "review"
+      }
+    },
+    "3-table-total": {
+      "hash": "dcf28b8d77751a48",
+      "status": "fail",
+      "checkedAt": "2026-10-11",
+      "model": "claude-opus-5-5",
+      "findings": {
+        "id": "3-table-total",
+        "answerCorrect": true,
+        "wrongAnswersOk": false,
+        "bcGradeFits": true,
+        "provinceTags": [
+          {
+            "province": "AB",
+            "ok": true,
+            "suggestedGrade": "grade 3",
+            "confidence": "medium",
+            "reason": "Alberta Grade 3 statistics covers reading data from tables and graphs; three 2-digit addends fit Grade 3 number work."
+          },
+          {
+            "province": "SK",
+            "ok": true,
+            "suggestedGrade": "grade 3",
+            "confidence": "high",
+            "reason": "SP3.1 and SP3.2 cover first-hand data in charts and lists and bar graphs, including answering questions about the data."
+          },
+          {
+            "province": "MB",
+            "ok": true,
+            "suggestedGrade": "grade 3",
+            "confidence": "high",
+            "reason": "3.SP.1 and 3.SP.2 cover collecting, organizing and interpreting data in charts, tables and bar graphs."
+          },
+          {
+            "province": "ON",
+            "ok": true,
+            "suggestedGrade": "grade 3",
+            "confidence": "high",
+            "reason": "2020 Grade 3 D1 covers organizing data in tables and analysing it to answer questions."
+          }
+        ],
+        "wordingProblems": [
+          "Read-aloud 'Class A read 11': browser voices often say 'read' in the present tense (reed). Many also read 'A' as the article 'uh'. Use 'Class A: 11 books' or 'Class A read eleven books' with past-tense phrasing such as 'finished'.",
+          "The prompt says 'A table shows' but gives the data as inline text. Make sure a real table is rendered, or the sentence is misleading."
+        ],
+        "problems": [
+          "In every example the first coded wrong answer is the sum of only two of the three classes (27 = 15+12, 38 = 18+20, 44 = 16+28, 44 = 19+25, 45 = 22+23, 52 = 29+23, 50 = 28+22, 56 = 29+27). The coded misconception 'Counts only one part instead of the whole' would give a single class value, not a two-class sum. It needs a misconception such as 'Leaves out one of the addends when adding several numbers'.",
+          "The second wrong answer (the largest single class) is correctly matched to 'Counts only one part'."
+        ],
+        "verdict": "fail"
+      }
+    },
+    "3-bag-likely": {
+      "hash": "9f6835973a01bd03",
+      "status": "pass",
+      "checkedAt": "2026-10-11",
+      "model": "claude-opus-5-5",
+      "findings": {
+        "id": "3-bag-likely",
+        "answerCorrect": true,
+        "wrongAnswersOk": true,
+        "bcGradeFits": true,
+        "provinceTags": [
+          {
+            "province": "AB",
+            "ok": true,
+            "suggestedGrade": "grade 5",
+            "confidence": "low",
+            "reason": "Comparing the likelihood of outcomes was a Grade 5 outcome in the earlier Alberta program. Placement in the 2022 K-6 program is uncertain."
+          },
+          {
+            "province": "SK",
+            "ok": true,
+            "suggestedGrade": "grade 5",
+            "confidence": "high",
+            "reason": "SP5.2 covers describing, comparing and predicting the likelihood of outcomes in probability experiments."
+          },
+          {
+            "province": "MB",
+            "ok": true,
+            "suggestedGrade": "grade 5",
+            "confidence": "high",
+            "reason": "5.SP.3 and 5.SP.4 cover describing the likelihood of an outcome and comparing the likelihood of two outcomes."
+          },
+          {
+            "province": "ON",
+            "ok": true,
+            "suggestedGrade": "grade 3",
+            "confidence": "medium",
+            "reason": "2020 D2.1 in Grades 1-3 uses likely, unlikely and equally likely to describe events; Grade 3 matches."
+          }
+        ],
+        "wordingProblems": [],
+        "problems": [],
+        "verdict": "pass"
+      }
+    },
+    "3-coin-streak": {
+      "hash": "426e8c1480d74643",
+      "status": "pass",
+      "checkedAt": "2026-10-11",
+      "model": "claude-opus-5-5",
+      "findings": {
+        "id": "3-coin-streak",
+        "answerCorrect": true,
+        "wrongAnswersOk": true,
+        "bcGradeFits": true,
+        "provinceTags": [
+          {
+            "province": "AB",
+            "ok": true,
+            "suggestedGrade": "grade 5",
+            "confidence": "low",
+            "reason": "Likelihood with fair coins was Grade 5 in the earlier Alberta program. Placement in the 2022 program is uncertain."
+          },
+          {
+            "province": "SK",
+            "ok": true,
+            "suggestedGrade": "grade 5",
+            "confidence": "high",
+            "reason": "SP5.2 covers the likelihood of outcomes in probability experiments such as coin tosses."
+          },
+          {
+            "province": "MB",
+            "ok": true,
+            "suggestedGrade": "grade 5",
+            "confidence": "high",
+            "reason": "5.SP.4 covers comparing the likelihood of two outcomes, including equally likely outcomes."
+          },
+          {
+            "province": "ON",
+            "ok": true,
+            "suggestedGrade": "grade 3",
+            "confidence": "medium",
+            "reason": "2020 Grade 3 D2.1 includes the term 'equally likely' for complementary events such as heads and tails."
+          }
+        ],
+        "wordingProblems": [],
+        "problems": [
+          "In the tails-streak examples, 'Heads' is coded to 'after a run of heads, tails is more likely'. This is the mirror of the same gambler's fallacy, so it is acceptable, but a neutral catalogue entry ('thinks the other outcome is due after a streak') would fit better.",
+          "The idea that past tosses do not change the next toss is at the upper edge of Grade 3 likelihood, but it is still within BC 3.13 plus or minus one grade."
+        ],
+        "verdict": "pass"
+      }
     }
   }
 }
