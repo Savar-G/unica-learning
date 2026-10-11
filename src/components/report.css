@@ -37,6 +37,8 @@
 .rpt-key.is-work { background: var(--verdict); }
 .rpt-key.is-grade { border: 1.5px dashed var(--ink); }
 .rpt-note { margin: 16px 0 0; max-width: 46em; font-size: 15px; color: var(--ink-2); }
+/* #68: the paragraph the AI wrote from the report, when there is one */
+.rpt-summary { margin: 22px 0 0; max-width: 46em; font-size: 17px; line-height: 1.55; color: var(--ink); }
 
 /* context: the FSA line */
 .rpt-context { margin-top: calc(-1 * clamp(8px, 2vw, 20px)); padding: 16px 20px; border-left: 3px solid var(--sky); border-radius: 0 6px 6px 0; background: var(--soft); }

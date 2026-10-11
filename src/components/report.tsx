@@ -20,6 +20,7 @@ import {
   nextStep,
   reportDate,
   sharePercent,
+  summaryText,
   thresholdsLine,
   verdictSentence,
   workResult,
@@ -97,7 +98,9 @@ function LevelScale({ view }: { view: ReportView }) {
   );
 }
 
+// #68: the paragraph the AI wrote from the report follows the level, when there is one; else the plain sentences stand.
 function ReportOverall({ view }: { view: ReportView }) {
+  const summary = summaryText(view);
   return (
     <section className={`rpt-overall is-${view.model.howWeHelp}`} aria-labelledby="rpt-level">
       <p className="eyebrow">Overall</p>
@@ -105,6 +108,7 @@ function ReportOverall({ view }: { view: ReportView }) {
       <p className="rpt-verdict">{verdictSentence(view)}</p>
       <LevelScale view={view} />
       {levelNotes(view).map((note) => <p key={note} className="rpt-note">{note}</p>)}
+      {summary && <p className="rpt-summary">{summary}</p>}
     </section>
   );
 }
@@ -191,8 +195,8 @@ function ReportNumberFacts({ view }: { view: ReportView }) {
 }
 
 // The child's work (#67, D-087): up to three pieces from the whiteboard, each with its question and whether the answer
-// was right. The drawing loads from a short-lived signed URL; typed working shows as text. #68 adds the comments, shown
-// only when the review is sure. Nothing when the child showed no work.
+// was right. The drawing loads from a short-lived signed URL; typed working shows as text. The AI comment (#68) shows
+// only when the review is sure; otherwise the work shows alone. Nothing when the child showed no work.
 function ReportWork({ view }: { view: ReportView }) {
   const work = view.model.work ?? [];
   if (work.length === 0) return null;

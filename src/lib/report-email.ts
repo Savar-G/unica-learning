@@ -3,6 +3,7 @@
 // (src/lib/report-view.ts). Pure: the background job (src/lib/report-job.ts) sends them through Resend.
 import { PAUSE_WINDOW, TOO_FAST_MS, type Flag, type HelpAnswer } from "@/lib/assessment";
 import { BUSINESS_NAME } from "@/lib/contact";
+import type { AiOutcome } from "@/lib/work-review";
 import {
   NEXT_STEP_ANCHOR,
   STATUS_LABEL,
@@ -14,6 +15,7 @@ import {
   levelSentence,
   nextStep,
   questionsAndMinutes,
+  summaryText,
   thresholdsLine,
   verdictSentence,
   type FactsView,
@@ -84,6 +86,8 @@ export function reportEmail({ view: v, parentName, url }: { view: ReportView; pa
   const subject = `${name}'s math report is ready`;
   const intro = `${name} finished the math placement test: ${questionsAndMinutes(v)}.`;
   const notes = levelNotes(v);
+  // #68: the AI paragraph, when the report has one, follows the level as on the report page.
+  const summary = summaryText(v);
   const fsa = v.model.fsa;
   const facts = factsView(v);
   const help = howWeHelp(v);
@@ -98,7 +102,7 @@ export function reportEmail({ view: v, parentName, url }: { view: ReportView; pa
   const text = [
     `Hi ${first},`,
     intro,
-    [levelSentence(v), verdictSentence(v), ...notes].join("\n"),
+    [levelSentence(v), verdictSentence(v), ...notes, ...(summary ? [summary] : [])].join("\n"),
     ...(fsa ? [`For context: ${fsa.text}\nSource: ${fsa.source.name}, ${fsa.source.url}`] : []),
     ...(warning ? [`${warning.title}\n${warning.text}\n${warning.retake}`] : []),
     ["By area", ...areas, thresholdsLine(v)].join("\n"),
@@ -135,6 +139,7 @@ ${p(esc(levelSentence(v)), "font-size:26px;line-height:1.2;font-weight:300")}
 ${p(esc(verdictSentence(v)))}
 ${scaleHtml(v)}
 ${notes.map((n) => p(esc(n), `margin:12px 0 0;font-size:14px;color:${INK_2}`)).join("\n")}
+${summary ? p(esc(summary), "margin:14px 0 0;font-size:16px") : ""}
 ${fsa ? p(`For context: ${esc(fsa.text)}<br><a href="${esc(fsa.source.url)}" style="color:${INK_2}">Source: ${esc(fsa.source.name)}</a>`, `margin:14px 0 0;font-size:14px;color:${INK_2}`) : ""}
 </div>
 </td></tr>
@@ -202,6 +207,23 @@ function flagText(flag: Flag): string {
   }
 }
 
+const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : "s"}`;
+
+/** What the AI step did (#68), in one line for Savar. */
+function aiLine(ai: AiOutcome): string {
+  if (!ai.on) return "AI review: off (no ANTHROPIC_API_KEY). The report has no AI comments and no AI text.";
+  const parts = [`${plural(ai.pieces, "piece")} of work`, `${ai.reviewed} reviewed`, `${ai.sure} sure enough to show a comment`];
+  if (ai.failed > 0) parts.push(`${ai.failed} failed or timed out`);
+  if (ai.skipped > 0) parts.push(`${ai.skipped} over the limit not reviewed`);
+  const reviews = ai.error ? `the work could not be loaded (${ai.error}), so nothing was reviewed` : parts.join(", ");
+  const stored = ai.saved ? "" : " NOT STORED: the reviews are only in this report.";
+  const t = ai.text;
+  const text = t.kept
+    ? "kept."
+    : `${t.problem === "failed" ? `failed (${t.detail})` : `rejected (${t.problem}: ${t.detail})`}, so the report has only its plain sentences.`;
+  return `AI review (${ai.model}): ${reviews}.${stored} Report text: ${text}`;
+}
+
 /** The alert to Savar for each finished test (D-085): grade, working level, flags and the link, as plain text. */
 export function reportAlert({
   view: v,
@@ -211,6 +233,7 @@ export function reportAlert({
   help = null,
   completedInGrade,
   parentEmail,
+  ai,
 }: {
   view: ReportView;
   parent: ParentContact;
@@ -222,6 +245,8 @@ export function reportAlert({
   /** Completed tests in the child's grade, the count the comparison stage came from. */
   completedInGrade: number;
   parentEmail: { sent: true } | { sent: false; reason: string };
+  /** What the AI step did (#68); absent when an earlier run built the report. */
+  ai?: AiOutcome;
 }) {
   const m = v.model;
   const facts = factsView(v);
@@ -235,6 +260,7 @@ export function reportAlert({
     m.helpWarning ? "Help likely: yes. The report says the level may be too high and suggests a retake." : "Help likely: no",
     `Areas: ${m.strands.map((s) => `${s.name} ${STATUS_LABEL[s.status]} ${s.correct}/${s.total}`).join("; ")}`,
     `Facts: ${facts ? factsLine(facts) : "none"}`,
+    ...(ai ? [aiLine(ai)] : []),
     `Questions: ${questionsAndMinutes(v)}`,
     `Comparison: ${COMPARISON_LABEL[m.comparison.stage]} (${completedInGrade} completed tests in grade ${m.level.grade})`,
     `FSA line: ${m.fsa ? "shown" : "not shown"}`,

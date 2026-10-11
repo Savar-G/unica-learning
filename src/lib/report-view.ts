@@ -4,6 +4,7 @@
 import {
   FACTS_QUICK_MS,
   FACTS_SECURE_PERCENT,
+  REPORT_TEXT_NAME,
   RETAKE_DAYS,
   STRAND_DEVELOPING_PERCENT,
   STRAND_SECURE_PERCENT,
@@ -54,6 +55,12 @@ export function verdictSentence(v: ReportView): string {
   const grades = `${COUNT[gap] ?? gap} grade${gap === 1 ? "" : "s"}`;
   return `That is ${grades} ${working < grade ? "below" : "above"} ${v.childName}'s school grade (${levelName(grade)}).`;
 }
+
+/**
+ * #68: the paragraph the AI wrote from the report model, with the child's name in place of REPORT_TEXT_NAME. Null when
+ * the report has none (the AI is off or failed, or its text broke a rule): the plain sentences then stand alone.
+ */
+export const summaryText = (v: ReportView): string | null => (v.model.summary ? v.model.summary.replaceAll(REPORT_TEXT_NAME, v.childName) : null);
 
 /** Says when the level is a floor or an estimate, so the parent never reads more into it than the test measured. */
 export function levelNotes(v: ReportView): string[] {
