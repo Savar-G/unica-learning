@@ -1,6 +1,7 @@
 // Template checker (#74, D-084): fills every question template from many seeds and asks Claude, through Claude Code
 // headless (`claude -p`, on the Claude subscription; never an API key), whether each answer is correct and the grade
-// fits. A build-time tool: nothing in src imports it, and it never runs on the deployed site.
+// fits. Optional --provider codex uses Codex with ChatGPT subscription authentication.
+// A build-time tool: nothing in src imports it, and it never runs on the deployed site.
 //
 // Usage: npm run check:templates -- [options]
 //   --dry-run      print the prompts; call nothing, write nothing
@@ -9,8 +10,10 @@
 //   --limit n      check at most n templates in this run
 //   --samples n    filled examples per template (default 8, from 300 seeds)
 //   --batch n      templates per `claude -p` call (default 10)
-//   --model m      model alias for `claude --model` (default opus)
-//   --effort e     effort for `claude --effort` (default high)
+//   --provider p   claude (default) or codex (ChatGPT subscription, no Platform API key)
+//   --model m      provider model (default opus; codex: gpt-6.1-sol)
+//   --effort e     provider reasoning effort (default high; codex: medium)
+//   --context f    local curriculum source notes, included in the prompt and cache hash
 //   --fresh        check again templates that already have a result
 //
 // Resumable: each result is saved in scripts/template-check/results.json as soon as its batch returns, keyed by the
@@ -33,7 +36,7 @@ const MAP = join(root, ".design/research/online-assessment/bc-math-curriculum-ma
 
 // ---------- Options ----------
 function parseArgs(argv) {
-  const opts = { dryRun: false, band: "1-2", only: null, limit: Infinity, samples: 8, batch: 10, model: "opus", effort: "high", fresh: false };
+  const opts = { dryRun: false, band: "1-2", only: null, limit: Infinity, samples: 8, batch: 10, contextFile: null, context: "", provider: "claude", model: null, effort: null, fresh: false };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     const next = () => {
@@ -48,13 +51,19 @@ function parseArgs(argv) {
     else if (a === "--limit") opts.limit = positive(a, next());
     else if (a === "--samples") opts.samples = positive(a, next());
     else if (a === "--batch") opts.batch = positive(a, next());
+    else if (a === "--context") opts.contextFile = next();
+    else if (a === "--provider") opts.provider = next();
     else if (a === "--model") opts.model = next();
     else if (a === "--effort") opts.effort = next();
     else if (a === "--help" || a === "-h") {
-      console.log(readFileSync(fileURLToPath(import.meta.url), "utf8").split("\n").filter((l) => l.startsWith("//")).slice(0, 20).join("\n"));
+      console.log(readFileSync(fileURLToPath(import.meta.url), "utf8").split("\n").filter((l) => l.startsWith("//")).slice(0, 25).join("\n"));
       process.exit(0);
     } else throw new Error(`Unknown option ${a} (see --help)`);
   }
+  if (!["claude", "codex"].includes(opts.provider)) throw new Error("--provider must be claude or codex");
+  opts.model ??= opts.provider === "codex" ? "gpt-6.1-sol" : "opus";
+  opts.effort ??= opts.provider === "codex" ? "medium" : "high";
+  if (opts.contextFile) opts.context = readFileSync(opts.contextFile, "utf8");
   return opts;
 }
 function positive(name, v) {
@@ -226,6 +235,52 @@ function callClaude(prompt, opts) {
   }
 }
 
+/** Strict Responses schema. Keep the existing response/cache shape; optional fields become nullable. */
+function strictSchema(schema) {
+  if (schema.type === "object") return {
+    ...schema,
+    additionalProperties: false,
+    properties: Object.fromEntries(Object.entries(schema.properties).map(([key, value]) => [key,
+      schema.required.includes(key) ? strictSchema(value) : { anyOf: [strictSchema(value), { type: "null" }] },
+    ])),
+    required: Object.keys(schema.properties),
+  };
+  if (schema.type === "array") return { ...schema, items: strictSchema(schema.items) };
+  return schema;
+}
+
+/** Only the supplied, generated template payloads go to Codex. No site env file or child record is loaded. */
+function callCodex(prompt, opts) {
+  const cwd = mkdtempSync(join(tmpdir(), "unica-codex-check-"));
+  try {
+    const schemaFile = join(cwd, "schema.json");
+    const answerFile = join(cwd, "answer.json");
+    writeFileSync(schemaFile, JSON.stringify(strictSchema(SCHEMA)));
+    const env = { ...process.env };
+    // Auth still uses the installed ChatGPT login, even with --ignore-user-config. Do not permit API-key fallback.
+    for (const key of Object.keys(env)) {
+      if (/KEY|TOKEN|SECRET|PASSWORD/i.test(key)) delete env[key];
+    }
+    const args = ["exec", "--ignore-user-config", "--ephemeral", "--skip-git-repo-check", "--sandbox", "read-only",
+      "--model", opts.model, "-c", `model_reasoning_effort="${opts.effort}"`, "-c", "features.shell_tool=false",
+      "--output-schema", schemaFile, "--output-last-message", answerFile, "-"];
+    const input = `${SYSTEM}\n\nThis is a closed-book template check. Use only the supplied JSON. Do not use tools or read files.\n\n${prompt}`;
+    const run = spawnSync("codex", args, { cwd, input, env, encoding: "utf8", maxBuffer: 64 * 1024 * 1024, timeout: 15 * 60 * 1000 });
+    if (run.error) return { error: `codex did not run: ${run.error.message}` };
+    if (run.status !== 0) return { error: `codex exec failed (exit ${run.status}): ${(run.stderr ?? "").trim().slice(-500)}` };
+    if (!existsSync(answerFile) || !readFileSync(answerFile, "utf8").trim()) return { error: "codex exec returned no output" };
+    try {
+      const parsed = JSON.parse(readFileSync(answerFile, "utf8"));
+      if (!Array.isArray(parsed.templates)) throw new Error("no templates array");
+      return { templates: parsed.templates, model: opts.model };
+    } catch (error) {
+      return { error: `Could not read Codex answer as JSON: ${error.message}` };
+    }
+  } finally {
+    rmSync(cwd, { recursive: true, force: true });
+  }
+}
+
 /** pass, review or fail, from the checks themselves (Claude's own verdict can only make it stricter). */
 function statusOf(f) {
   const sureWrongTag = (f.provinceTags ?? []).some((t) => t.ok === false && t.confidence === "high");
@@ -259,7 +314,7 @@ function writeReport(results, current, opts) {
     "",
     `Pass: ${count("pass")}. Review: ${count("review")}. Fail: ${count("fail")}. Error: ${count("error")}. Not checked: ${count("not checked")}. Changed since its check: ${count("changed since its check")}.`,
     "",
-    "A template passes when Claude found its answers correct, its coded wrong answers wrong, and its BC grade right. Review means a wording problem or a province tag doubt that a person should decide.",
+    "A template passes when the checker found its answers correct, its coded wrong answers wrong, and its BC grade right. Review means a wording problem or a province tag doubt that a person should decide.",
     "",
   ];
   const detail = (x) => {
@@ -304,7 +359,7 @@ if (unknown.length) throw new Error(`Not in bank ${opts.band}: ${unknown.join(",
 // The report always covers the whole bank; --only and --limit only narrow what this run checks.
 const current = templates.map((template) => {
   const payload = describe(core, template, standards, opts.samples);
-  return { template, payload, hash: hashOf({ payload, system: SYSTEM }) };
+  return { template, payload, hash: hashOf({ payload, system: SYSTEM, ...(opts.context ? { context: opts.context } : {}) }) };
 });
 
 const results = loadResults();
@@ -318,11 +373,11 @@ const pending = current
 const batches = [];
 for (let i = 0; i < pending.length; i += opts.batch) batches.push(pending.slice(i, i + opts.batch));
 
-console.log(`${templates.length} templates in bank ${opts.band}; ${pending.length} to check in ${batches.length} ${batches.length === 1 ? "call" : "calls"} to claude -p.`);
-if (process.env.ANTHROPIC_API_KEY) console.log("ANTHROPIC_API_KEY is set in this shell; the checker removes it for claude -p, so the calls use your Claude subscription.");
+console.log(`${templates.length} templates in bank ${opts.band}; ${pending.length} to check in ${batches.length} ${batches.length === 1 ? "call" : "calls"} to ${opts.provider === "codex" ? "codex exec" : "claude -p"}.`);
+if (opts.provider === "claude" && process.env.ANTHROPIC_API_KEY) console.log("ANTHROPIC_API_KEY is set in this shell; the checker removes it for claude -p, so the calls use your Claude subscription.");
 
 if (opts.dryRun) {
-  console.log(`\n===== System prompt =====\n${SYSTEM}`);
+  console.log(`\n===== System prompt =====\n${SYSTEM}${opts.context ? `\n\nPrimary curriculum source notes:\n${opts.context}` : ""}`);
   batches.forEach((b, i) => console.log(`\n===== Call ${i + 1} of ${batches.length}: ${b.map((x) => x.template.id).join(", ")} =====\n${userPrompt(b.map((x) => x.payload))}`));
   process.exit(0);
 }
@@ -330,19 +385,20 @@ if (opts.dryRun) {
 for (const [i, batch] of batches.entries()) {
   const ids = batch.map((x) => x.template.id);
   console.log(`Call ${i + 1} of ${batches.length}: ${ids.join(", ")}`);
-  const answer = callClaude(userPrompt(batch.map((x) => x.payload)), opts);
+  const prompt = `${opts.context ? `Primary curriculum source notes (checked locally):\n${opts.context}\n\n` : ""}${userPrompt(batch.map((x) => x.payload))}`;
+  const answer = (opts.provider === "codex" ? callCodex : callClaude)(prompt, opts);
   const checkedAt = new Date().toISOString().slice(0, 10);
   for (const { template, hash } of batch) {
     const findings = answer.templates?.find((f) => f.id === template.id);
     results.templates[template.id] = answer.error || !findings
-      ? { hash, status: "error", checkedAt, model: opts.model, error: answer.error ?? "Claude's answer left this template out." }
+      ? { hash, status: "error", checkedAt, model: opts.model, error: answer.error ?? "The checker answer left this template out." }
       : { hash, status: statusOf(findings), checkedAt, model: answer.model, findings };
   }
   saveResults(results);
   writeReport(results, current, opts);
   if (answer.error) {
     console.error(`  ${answer.error}`);
-    if (/no output|did not run|usage_limit|rate/i.test(answer.error)) {
+    if (/no output|did not run|usage_limit|rate|codex exec failed/i.test(answer.error)) {
       console.error("Stopping. Run the same command again later: finished templates are kept.");
       break;
     }

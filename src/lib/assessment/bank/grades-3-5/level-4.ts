@@ -185,7 +185,7 @@ export const LEVEL_4: readonly TaggedTemplate[] = [
         prompt: `${n} ÷ ${d} = ?`,
         readAloud: `What is ${n} divided by ${d}?`,
         answer: String(q),
-        wrong: typedWrong(q, [[digitwise, "regroup-forget"], [n - d, "operation"]]),
+        wrong: typedWrong(q, [[digitwise, "division-digitwise"], [n - d, "operation"]]),
       };
     },
   },
@@ -203,7 +203,7 @@ export const LEVEL_4: readonly TaggedTemplate[] = [
         prompt: `${name} shares ${n} ${thing} equally among ${d} friends. How many ${thing} does each friend get?`,
         readAloud: `${name} shares ${n} ${thing} equally among ${d} friends. How many ${thing} does each friend get?`,
         answer: String(q),
-        wrong: typedWrong(q, [[digitwise, "regroup-forget"], [n - d, "operation"]]),
+        wrong: typedWrong(q, [[digitwise, "division-digitwise"], [n - d, "operation"]]),
       };
     },
   },
@@ -322,7 +322,7 @@ export const LEVEL_4: readonly TaggedTemplate[] = [
           const inRange = (n: number) => n >= th * 1000 + h * 100 && n < th * 1000 + (h + 1) * 100;
           const cands = [
             [th * 1000 + t * 100 + h * 10 + o, "digit-compare"],
-            [th * 1000 + h * 10 + t, "zero-placeholder"],
+            [th * 1000 + h * 10 + t, "N2"],
             [(th + 1) * 1000 + h * 100 + t * 10 + o, "digit-compare"],
           ] as const;
           return {
@@ -343,6 +343,31 @@ export const LEVEL_4: readonly TaggedTemplate[] = [
   },
 
   // ---------- Fractions and decimals ----------
+  ...["region", "left", "order", "value", "fraction"].map((task): TaggedTemplate => ({
+    id: `g35-4-tenths-${task}`, strand: "F", grades: { BC: 4, AB: 4, SK: 4, MB: 4, ON: 4 },
+    format: "choice", whiteboard: true, standard: "4.2",
+    fill(rng) {
+      const n = draw(rng, (r) => r.int(1, 9), (n) => n !== 5);
+      const whole = rng.int(2, 8);
+      if (task === "order") {
+        const ns = rng.shuffle([1, 2, 3, 4, 5, 6, 7, 8, 9]).slice(0, 4).sort((a, b) => a - b);
+        return { values: { n: ns[0] }, prompt: "Which decimal is least?", readAloud: "Which decimal is least?", answer: dec(ns[0], 1),
+          wrong: ns.slice(1).map((v, i) => wrong(dec(v, 1), i === 2 ? "more-less" : "decimal-order")) };
+      }
+      const right = task === "left" ? dec(10 - n, 1) : task === "fraction" ? frac(n, 10) : dec(n, 1);
+      const prompt = task === "region" ? `A strip has 10 equal parts. ${count(n, "part")} is shaded. Which decimal names the shaded part?`
+        : task === "left" ? `${frac(n, 10)} of a strip is shaded. Which decimal names the part not shaded?`
+        : task === "value" ? `What is the value of the ${n} in ${whole}.${n}?`
+        : `Which fraction is equal to ${whole}.${n} − ${whole}?`;
+      const spoken = task === "region" ? prompt : task === "left" ? `${sayFrac(n, 10)} of a strip is shaded. Which decimal names the part not shaded?`
+        : task === "value" ? `What is the value of the ${n} in ${whole} and ${sayFrac(n, 10)}?`
+        : `Which fraction is equal to ${whole} and ${sayFrac(n, 10)}, minus ${whole}?`;
+      const candidates = task === "fraction" ? [wrong(frac(n, 100), "decimal-point"), wrong(frac(whole, n), "F7"), wrong(frac(n * 10, 10), "decimal-point")]
+        : task === "left" ? [wrong(dec(n, 1), "fraction-other-part"), wrong(dec(10 - n, 2), "decimal-point"), wrong(String(10 - n), "decimal-point")]
+        : [wrong(dec(n, 2), "decimal-point"), wrong(String(n), "N2"), wrong(dec(10 - n, 1), "fraction-other-part")];
+      return { values: { n, whole }, prompt, readAloud: spoken, answer: right, wrong: candidates };
+    },
+  })),
   {
     // Fractions with the same denominator (4.3: "compare and order fractions with common denominators").
     id: "g35-4-compare-like",
@@ -358,7 +383,7 @@ export const LEVEL_4: readonly TaggedTemplate[] = [
         prompt: `Which fraction is the ${greatest ? "greatest" : "least"}?`,
         readAloud: `Which fraction is the ${greatest ? "greatest" : "least"}?`,
         answer: frac(pick, d),
-        wrong: others.map((n) => wrong(frac(n, d), "more-less")),
+        wrong: others.map((n) => wrong(frac(n, d), n === (greatest ? nums[0] : nums[3]) ? "more-less" : "fraction-order")),
       };
     },
   },
@@ -376,7 +401,7 @@ export const LEVEL_4: readonly TaggedTemplate[] = [
         prompt: `Some ${whole} are all the same size. Which piece is the ${biggest ? "biggest" : "smallest"}?`,
         readAloud: `Some ${whole} are all the same size. Which piece is the ${biggest ? "biggest" : "smallest"}?`,
         answer: `${frac(1, pick)} of a ${whole.slice(0, -1)}`,
-        wrong: ds.filter((d) => d !== pick).map((d) => wrong(`${frac(1, d)} of a ${whole.slice(0, -1)}`, "F1")),
+        wrong: ds.filter((d) => d !== pick).map((d) => wrong(`${frac(1, d)} of a ${whole.slice(0, -1)}`, d === (biggest ? ds[3] : ds[0]) ? "F1" : "fraction-order")),
       };
     },
   },

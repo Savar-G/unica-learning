@@ -32,9 +32,11 @@ import { GRADE_1_2_BANK } from "../grades-1-2";
 import type { TaggedTemplate } from "../kit";
 import { LEVEL_3 } from "./level-3";
 import { LEVEL_4 } from "./level-4";
+import { LEVEL_5 } from "./level-5";
+import { LEVEL_6 } from "./level-6";
 import { keepOnOneLine } from "./say";
 
 /** The grades 1-2 bank's level 2 and 3 templates (#74), reused as they are. */
 const FROM_GRADES_1_2 = GRADE_1_2_BANK.filter((t) => t.grades.BC >= 2);
 
-export const GRADE_3_5_BANK: readonly TaggedTemplate[] = [...FROM_GRADES_1_2, ...[...LEVEL_3, ...LEVEL_4].map(keepOnOneLine)];
+export const GRADE_3_5_BANK: readonly TaggedTemplate[] = [...FROM_GRADES_1_2, ...[...LEVEL_3, ...LEVEL_4, ...LEVEL_5, ...LEVEL_6].map(keepOnOneLine)];

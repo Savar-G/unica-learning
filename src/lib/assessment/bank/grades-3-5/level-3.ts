@@ -18,7 +18,7 @@ const WHOLES = [
 ] as const;
 
 /** The denominators a grade 3 child meets: halves to twelfths. */
-const DENS = [3, 4, 5, 6, 8, 10, 12];
+const DENS = [3, 4, 5, 6, 8, 10];
 
 export const LEVEL_3: readonly TaggedTemplate[] = [
   // ---------- Number ----------
@@ -289,7 +289,7 @@ export const LEVEL_3: readonly TaggedTemplate[] = [
         prompt: `A ${whole} is cut into ${d} equal ${part}s. A family eats all ${d} ${part}s. What fraction of the ${whole} did they eat?`,
         readAloud: `A ${whole} is cut into ${d} equal ${part}s. A family eats all ${d} ${part}s. What fraction of the ${whole} did they eat?`,
         answer: frac(d, d),
-        wrong: [wrong(frac(1, d), "one-part"), wrong(frac(d - 1, d), "one-to-one"), wrong(frac(d, 1), "fraction-flip")],
+        wrong: [wrong(frac(1, d), "one-part"), wrong(frac(d - 1, d), "one-to-one"), wrong(frac(d, 1), "denominator-meaning")],
       };
     },
   },
@@ -334,7 +334,7 @@ export const LEVEL_3: readonly TaggedTemplate[] = [
         prompt: `A ${whole} has ${d} equal ${part}. ${what}. What fraction of the ${whole} is that?`,
         readAloud: `A ${whole} has ${d} equal ${part}. ${what}. What fraction of the ${whole} is that?`,
         answer: frac(1, d),
-        wrong: [wrong(frac(1, d - 1), "F4"), wrong(frac(d - 1, d), "fraction-other-part"), wrong(frac(d, 1), "fraction-flip")],
+        wrong: [wrong(frac(1, d - 1), "F4"), wrong(frac(d - 1, d), "fraction-other-part"), wrong(frac(d, 1), "denominator-meaning")],
       };
     },
   },
@@ -498,7 +498,7 @@ export const LEVEL_3: readonly TaggedTemplate[] = [
     id: "g35-3-subtract-unknown",
     strand: "A", grades: { BC: 3, AB: 3, SK: 3, MB: 3, ON: 3 }, format: "number", whiteboard: true, standard: "3.8",
     fill(rng) {
-      const a = rng.int(25, 95), b = draw(rng, (r) => r.int(5, a - 5), (b) => 2 * b !== a);
+      const a = rng.int(125, 495), b = draw(rng, (r) => r.int(15, a - 15), (b) => 2 * b !== a);
       return {
         values: { a, b },
         prompt: `${a} − ? = ${b}`,
@@ -534,7 +534,7 @@ export const LEVEL_3: readonly TaggedTemplate[] = [
     // Choose the number sentence for a story (3.8: start unknown). Writing a story as an equation is WNCP grade 4
     // (unsure), so the others get 4.
     id: "g35-3-number-sentence",
-    strand: "A", grades: { BC: 3, AB: 4, SK: 4, MB: 4, ON: 4 }, format: "choice", whiteboard: false, standard: "3.8",
+    strand: "A", grades: { BC: 3, AB: 3, SK: 3, MB: 3, ON: 2 }, format: "choice", whiteboard: false, standard: "3.8",
     fill(rng) {
       const name = rng.pick(NAMES), thing = rng.pick(["stickers", "cards", "marbles", "beads"]);
       const gave = rng.int(0, 1) === 1;
@@ -545,7 +545,7 @@ export const LEVEL_3: readonly TaggedTemplate[] = [
           prompt: `${name} had some ${thing}. ${name} gave away ${x} and has ${y} left. Which number sentence shows this story?`,
           readAloud: `${name} had some ${thing}. ${name} gave away ${x} and has ${y} left. Which number sentence shows this story?`,
           answer: `? − ${x} = ${y}`,
-          wrong: [wrong(`${Math.max(x, y)} − ${Math.min(x, y)} = ?`, "A4"), wrong(`? + ${x} = ${y}`, "operation"), wrong(`? − ${y} = ${x}`, "story-roles")],
+          wrong: [wrong(`${Math.max(x, y)} − ${Math.min(x, y)} = ?`, "A4"), wrong(`? + ${x} = ${y}`, "operation"), wrong(`? − ${x + y} = ${y}`, "story-roles")],
         };
       }
       return {
@@ -553,7 +553,7 @@ export const LEVEL_3: readonly TaggedTemplate[] = [
         prompt: `${name} had some ${thing}. ${name} got ${x} more and now has ${x + y}. Which number sentence shows this story?`,
         readAloud: `${name} had some ${thing}. ${name} got ${x} more and now has ${x + y}. Which number sentence shows this story?`,
         answer: `? + ${x} = ${x + y}`,
-        wrong: [wrong(`${x + y} + ${x} = ?`, "operation"), wrong(`? − ${x} = ${x + y}`, "operation"), wrong(`? + ${x + y} = ${x}`, "story-roles")],
+        wrong: [wrong(`${x + y} + ${x} = ?`, "operation"), wrong(`? − ${x} = ${x + y}`, "operation"), wrong(`? + ${x + y} = ${x}`, "operation")],
       };
     },
   },
@@ -661,7 +661,7 @@ export const LEVEL_3: readonly TaggedTemplate[] = [
         prompt: `${desc} ${ask}`,
         readAloud: `${desc} ${ask}`,
         answer: most ? top : low,
-        wrong: [wrong(most ? low : top, "chance-reversed"), wrong(mid, "chance-reversed"), wrong("All the colours are equally likely", "D3")],
+        wrong: [wrong(most ? low : top, most ? "chance-reversed" : "likelihood-reversed"), wrong(mid, "likelihood-order"), wrong("All the colours are equally likely", "D3")],
       };
     },
   },
@@ -674,9 +674,9 @@ export const LEVEL_3: readonly TaggedTemplate[] = [
       const other = rng.pick(["purple", "orange", "white"]);
       const many = rng.int(6, 12), few = rng.int(1, 2);
       const ask = rng.pick(["likely", "unlikely", "impossible", "certain"] as const);
-      const event = { likely: `a ${a} cube`, unlikely: `a ${b} cube`, impossible: `a ${other} cube`, certain: `a ${a} cube or a ${b} cube` }[ask];
+      const event = { likely: `a ${a} cube`, unlikely: `a ${b} cube`, impossible: `${other === "orange" ? "an" : "a"} ${other} cube`, certain: `a ${a} cube or a ${b} cube` }[ask];
       const CODES = {
-        likely: { Certain: "sure-of-possible", Unlikely: "chance-reversed", Impossible: "rules-out-possible" },
+        likely: { Certain: "sure-of-possible", Unlikely: "likelihood-reversed", Impossible: "rules-out-possible" },
         unlikely: { Impossible: "D6", Likely: "chance-reversed", Certain: "certain" },
         impossible: { Unlikely: "impossible-possible", Likely: "impossible-possible", Certain: "opposite-extreme" },
         certain: { Likely: "certain-likely", Unlikely: "certain-likely", Impossible: "opposite-extreme" },
