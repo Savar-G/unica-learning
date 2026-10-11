@@ -205,7 +205,7 @@ export function AccountSignup() {
   );
 }
 
-export function SignIn({ created, googleFailed }: { created: boolean; googleFailed: boolean }) {
+export function SignIn({ created, googleFailed, next = "/account" }: { created: boolean; googleFailed: boolean; next?: string }) {
   const router = useRouter();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -225,12 +225,13 @@ export function SignIn({ created, googleFailed }: { created: boolean; googleFail
       return;
     }
     track("sign_in");
-    router.replace("/account");
+    router.replace(next);
   };
 
   return (
     <form className="acct-form" onSubmit={submit}>
-      <GoogleButton />
+      {/* The default return to /account keeps the plain callback URL that the Supabase redirect list already allows. */}
+      <GoogleButton next={next === "/account" ? undefined : next} />
       {created && !failed && <p role="status" className="acct-alert">Your account is ready. Sign in to continue.</p>}
       {googleFailed && !failed && <p role="alert" className="acct-alert">We could not sign you in with Google. Try again, or use your email and password.</p>}
       {failed && <p role="alert" className="acct-alert">The email or password is not correct. Try again.</p>}
@@ -330,14 +331,23 @@ function startView(state: Exclude<StartState, { kind: "wait" }>, name: string): 
 /**
  * Opens the child's test (#64), in the state the assessment core gives (#72): start, continue an open test until its
  * deadline, finish a test whose answers are all in, start again after a test ran out of time, or wait 30 days after
- * a completed test.
+ * a completed test. `report` is the path of the child's newest report (#65): while the child waits it is the button,
+ * and in every other state it stays reachable under the button (spec #54, story 32).
  */
-export function StartTest({ childId, name, state }: { childId: string; name: string; state: StartState }) {
+export function StartTest({ childId, name, state, report }: { childId: string; name: string; state: StartState; report?: string }) {
   const noteId = useId();
   if (state.kind === "wait") {
+    if (!report) {
+      return (
+        <span className="small acct-done">
+          Test done. The report comes by email. The next test opens at <When at={state.opensAt} />.
+        </span>
+      );
+    }
     return (
-      <span className="small acct-done">
-        Test done. The report comes by email. The next test opens at <When at={state.opensAt} />.
+      <span className="acct-start">
+        <Link className="btn ghost" href={report}>See the report <span className="sr-only">for {name}</span> <span className="arr">→</span></Link>
+        <span className="small">The next test opens at <When at={state.opensAt} />.</span>
       </span>
     );
   }
@@ -348,6 +358,7 @@ export function StartTest({ childId, name, state }: { childId: string; name: str
         {label} <span className="sr-only">for {name}</span> <span className="arr">→</span>
       </Link>
       {note && <span id={noteId} className="small">{note}</span>}
+      {report && <Link className="small" href={report}>See the last report<span className="sr-only"> for {name}</span></Link>}
     </span>
   );
 }
@@ -383,15 +394,19 @@ const GOOGLE_G = (
   </svg>
 );
 
-/** Google sign-in. Google returns the parent to /auth/callback; a new parent then finishes their account on /account/finish. */
-export function GoogleButton() {
+/**
+ * Google sign-in. Google returns the parent to /auth/callback, which then opens `next` (default /account); a new parent
+ * finishes their account on /account/finish.
+ */
+export function GoogleButton({ next }: { next?: string }) {
   const [busy, setBusy] = useState(false);
   const [failed, setFailed] = useState(false);
   const go = async () => {
     setBusy(true);
     setFailed(false);
     track("google_start");
-    const { error } = await browserClient().auth.signInWithOAuth({ provider: "google", options: { redirectTo: `${window.location.origin}/auth/callback` } });
+    const callback = `${window.location.origin}/auth/callback${next ? `?next=${encodeURIComponent(next)}` : ""}`;
+    const { error } = await browserClient().auth.signInWithOAuth({ provider: "google", options: { redirectTo: callback } });
     if (error) {
       track("google_failed", { code: error.code ?? "unknown" });
       setFailed(true);

@@ -4,15 +4,16 @@ import { BRAND } from "@/lib/site";
 import { CookieSettingsButton } from "@/components/cookie-consent";
 import { BUSINESS_NAME, SUPPORT_HREF } from "@/lib/contact";
 
-export function SupportPage({ label, title, children }: { label: string; title: string; children: ReactNode }) {
+/** `wide` uses the full nav width, for the assessment report (D-087); a page with no `label` shows no eyebrow. */
+export function SupportPage({ label, title, wide = false, children }: { label: string; title: string; wide?: boolean; children: ReactNode }) {
   return (
     <div className="look-root support-root" data-look="warm">
       <header className="nav"><div className="in">
         <Link className="logo" href="/" aria-label={`${BRAND} home`}>{BRAND}<b /></Link>
         <Link className="support-back" href="/">Back to home</Link>
       </div></header>
-      <main id="main" className="support-page">
-        <p className="eyebrow">{label}</p>
+      <main id="main" className={wide ? "support-page support-wide" : "support-page"}>
+        {label && <p className="eyebrow">{label}</p>}
         {title && <h1>{title}</h1>}
         {children}
       </main>
