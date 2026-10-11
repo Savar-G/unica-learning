@@ -58,7 +58,7 @@ export function fillTemplate(template: Template, seed: number, province: Provinc
     prompt: filled.prompt,
     readAloud: filled.readAloud,
     choices: template.format === "choice" ? rng.shuffle([filled.answer, ...filled.wrong.map((w) => w.value)]) : undefined,
-    ...(template.format === "choice" && filled.say ? { say: filled.say } : {}),
+    ...(filled.say ? { say: filled.say } : {}),
     values: filled.values,
     answer: filled.answer,
     wrong: filled.wrong,

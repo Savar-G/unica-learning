@@ -20,10 +20,13 @@ const fmt = (n: number) => n.toLocaleString("en-CA");
 const dec = (units: number, places: number) => (units / 10 ** places).toFixed(places);
 
 /**
- * Filled.say for choices the voice would read wrong (#79): every value mapped to its words. The read-aloud text never
+ * Adds Filled.say for choices the voice would read wrong (#79): every choice mapped to its words. The read-aloud text never
  * lists the choices; the screen reads them after it, in the order of its buttons.
  */
-const sayEach = (values: string[], words: (v: string) => string) => Object.fromEntries(values.map((v) => [v, words(v)]));
+function withSay(filled: Omit<Filled, "say">, words: (choice: string) => string): Filled {
+  const choices = [filled.answer, ...filled.wrong.map((w) => w.value)];
+  return { ...filled, say: Object.fromEntries(choices.map((c) => [c, words(c)])) };
+}
 /** "7:55" -> "7 55", "8:05 p.m." -> "8 oh 5 p.m.", "8:00 p.m." -> "8 o'clock p.m.", like the templates' read-aloud times. */
 const sayTime = (t: string) => t.replace(/:00\b/, " o'clock").replace(/:0(\d)/, " oh $1").replace(":", " ");
 
@@ -502,7 +505,7 @@ export const SAMPLE_BANK: readonly Template[] = [
     fill(rng) {
       const h = rng.int(1, 11), k = rng.int(2, 11);
       const mm = String(5 * k).padStart(2, "0");
-      return {
+      return withSay({
         values: { h, k },
         prompt: `On a clock, the hour hand is just past the ${h} and the minute hand points to the ${k}. What time is it?`,
         readAloud: `On a clock, the hour hand is just past the ${h} and the minute hand points to the ${k}. What time is it?`,
@@ -511,8 +514,7 @@ export const SAMPLE_BANK: readonly Template[] = [
           { value: `${h}:${String(k).padStart(2, "0")}`, misconception: "M7" },
           { value: `${h + 1}:${mm}`, misconception: "M7" },
         ],
-        say: sayEach([`${h}:${mm}`, `${h}:${String(k).padStart(2, "0")}`, `${h + 1}:${mm}`], sayTime),
-      };
+      }, sayTime);
     },
   },
   {
@@ -669,7 +671,7 @@ export const SAMPLE_BANK: readonly Template[] = [
       const h = rng.int(1, 9);
       const [m, add] = draw(rng, (r) => [r.int(7, 11) * 5, r.int(3, 8) * 5], ([m, add]) => m + add >= 60); // crosses the hour
       const total = m + add;
-      return {
+      return withSay({
         values: { h, m, add },
         prompt: `A movie starts at ${h}:${m} p.m. and lasts 1 hour ${add} minutes. When does it end?`,
         readAloud: `A movie starts at ${h} ${m} p.m. and lasts 1 hour and ${add} minutes. When does it end?`,
@@ -678,8 +680,7 @@ export const SAMPLE_BANK: readonly Template[] = [
           { value: `${h + 1}:${total} p.m.`, misconception: "M8" },
           { value: `${h + 1}:${String(total - 60).padStart(2, "0")} p.m.`, misconception: "O3" },
         ],
-        say: sayEach([`${h + 2}:${String(total - 60).padStart(2, "0")} p.m.`, `${h + 1}:${total} p.m.`, `${h + 1}:${String(total - 60).padStart(2, "0")} p.m.`], sayTime),
-      };
+      }, sayTime);
     },
   },
   {
@@ -811,7 +812,7 @@ export const SAMPLE_BANK: readonly Template[] = [
     strand: "F", grades: { BC: 6 }, format: "choice", whiteboard: false, standard: "6.6",
     fill(rng) {
       const [red, blue] = draw(rng, (r) => [r.int(2, 9), r.int(2, 9)], ([r, b]) => r !== b);
-      return {
+      return withSay({
         values: { red, blue },
         prompt: `A bag has ${red} red and ${blue} blue marbles. What is the ratio of red to blue?`,
         readAloud: `A bag has ${red} red marbles and ${blue} blue marbles. What is the ratio of red marbles to blue marbles?`,
@@ -820,8 +821,7 @@ export const SAMPLE_BANK: readonly Template[] = [
           { value: `${blue}:${red}`, misconception: "ratio-order" },
           { value: `${red}:${red + blue}`, misconception: "ratio-whole" },
         ],
-        say: sayEach([`${red}:${blue}`, `${blue}:${red}`, `${red}:${red + blue}`], (v) => v.replace(":", " to ")),
-      };
+      }, (ratio) => ratio.replace(":", " to "));
     },
   },
   {

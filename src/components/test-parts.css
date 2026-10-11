@@ -2,7 +2,7 @@
    which holds the tokens. Every tap target is 44 px or more; with reduced motion nothing moves. */
 
 /* ---------- read it to me ---------- */
-.test-read { flex: none; display: grid; place-items: center; width: 60px; height: 60px; border-radius: 50%; border: 0; background: var(--test-read); color: #fff; cursor: pointer; box-shadow: 0 6px 16px -8px rgba(40, 80, 200, 0.7); transition: background 0.2s; }
+.test-read { flex: none; display: grid; place-items: center; width: 60px; height: 60px; border-radius: 50%; border: 0; background: var(--test-read); color: #fff; cursor: pointer; box-shadow: var(--test-read-shadow); transition: background 0.2s; }
 .test-read:hover { background: var(--test-read-deep); }
 .test-read[data-speaking] { background: var(--ink); animation: test-read-pulse 1.4s ease-in-out infinite; }
 @keyframes test-read-pulse { 50% { box-shadow: 0 0 0 10px var(--test-read-glow); } }

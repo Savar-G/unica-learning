@@ -21,7 +21,7 @@ export interface ChoicesProps<T extends string> {
 export function Choices<T extends string>({ options, value, onChange, labelledBy }: ChoicesProps<T>) {
   const group = useRef<HTMLDivElement>(null);
   // The chosen row takes the Tab stop; before a choice, the first row does.
-  const stop = Math.max(0, options.findIndex((o) => o.value === value));
+  const tabStop = Math.max(0, options.findIndex((o) => o.value === value));
 
   const onKeyDown = (e: KeyboardEvent<HTMLDivElement>) => {
     const step = e.key === "ArrowDown" || e.key === "ArrowRight" ? 1 : e.key === "ArrowUp" || e.key === "ArrowLeft" ? -1 : 0;
@@ -37,7 +37,7 @@ export function Choices<T extends string>({ options, value, onChange, labelledBy
   return (
     <div ref={group} className="test-choices" role="radiogroup" aria-labelledby={labelledBy} onKeyDown={onKeyDown}>
       {options.map((o, i) => (
-        <button key={o.value} type="button" role="radio" aria-checked={value === o.value} tabIndex={i === stop ? 0 : -1} className="test-choice" onClick={() => onChange(o.value)}>
+        <button key={o.value} type="button" role="radio" aria-checked={value === o.value} tabIndex={i === tabStop ? 0 : -1} className="test-choice" onClick={() => onChange(o.value)}>
           <span className="test-dot" aria-hidden />
           {o.label}
         </button>

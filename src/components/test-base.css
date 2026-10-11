@@ -9,6 +9,7 @@
   --test-read: var(--sky);
   --test-read-deep: #4a7de6;
   --test-read-glow: rgba(91, 141, 239, 0.2);
+  --test-read-shadow: 0 6px 16px -8px rgba(40, 80, 200, 0.7);
   /* Quiet outlines: the ring before the break, a ghost button. */
   --test-rule: #d4d4d8;
   /* Dark tangerine for text: the brand tangerine is too light for text on white or grey. */
