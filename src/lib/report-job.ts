@@ -120,7 +120,8 @@ async function storeReport(admin: SupabaseClient, a: FinishedAssessment, complet
     parent_id: a.parent_id,
     child_id: a.child_id,
     model,
-    questions: model.strands.reduce((n, s) => n + s.total, 0),
+    // Every marked question, also those above the school grade that the areas leave out.
+    questions: a.placement.levels.reduce((n, l) => n + l.total, 0),
     minutes: Math.max(1, Math.round(ms / 60_000)),
   };
   // A second run that got here at the same time inserts nothing and reads the first run's report.
