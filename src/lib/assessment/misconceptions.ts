@@ -10,6 +10,16 @@ export interface Misconception {
 }
 
 export const MISCONCEPTIONS = {
+  "clock-carry": { description: "Subtracts 60 minutes but does not advance the hour", evidence: "none" },
+  "full-turn": { description: "Uses 360 degrees for a straight angle instead of 180 degrees", evidence: "none" },
+  "input-step-two": { description: "Uses an input increase of two when the question gives an increase of one", evidence: "none" },
+  "coefficient-ignore": { description: "Uses the input change without multiplying by the coefficient", evidence: "none" },
+  "frequency-copy": { description: "Copies the observed count instead of scaling it to the larger number of trials", evidence: "none" },
+  "coin-repeat-certain": { description: "Treats the next coin toss as certain to repeat the last result", evidence: "none" },
+  "coin-due-certain": { description: "Treats the next coin toss as certain to be the opposite of the last result", evidence: "none" },
+  "expression-copy": { description: "Copies the stated variable value instead of evaluating the expression", evidence: "none" },
+  "known-as-unknown": { description: "Copies a known number from an equation as the unknown", evidence: "none" },
+  "fraction-subtract": { description: "Builds equivalent fractions by subtracting the same number from both parts", evidence: "none" },
   "decimal-unit-part": { description: "Uses the decimal digit as the denominator of a unit fraction", evidence: "none" },
   "order-adjacent": { description: "Swaps two adjacent numbers in an otherwise ordered list", evidence: "none" },
   "remainder-zero": { description: "Treats division as exact and reports no remainder", evidence: "none" },

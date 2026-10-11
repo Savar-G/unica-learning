@@ -97,14 +97,14 @@ export const LEVEL_6: readonly TaggedTemplate[] = [
     if (task === "recipe") {
       return { values: { a, b, k }, prompt: `A drink uses ${a} cups of juice for every ${b} cups of water. How many cups of juice go with ${b * k} cups of water?`,
         readAloud: `A drink uses ${a} cups of juice for every ${b} cups of water. How many cups of juice go with ${b * k} cups of water?`, answer: String(a * k),
-        wrong: typedWrong(a * k, [[a, "fraction-one-side"], [a + k, "F9"]]) };
+        wrong: typedWrong(a * k, [[a, "fraction-one-side"], [a + b * (k - 1), "F9"]]) };
     }
     const ratio = (x: number, y: number) => `${x} to ${y}`;
     const right = task === "part-to-whole" ? ratio(a, a + b) : task === "equivalent" ? ratio(a * k, b * k) : ratio(a, b);
     const prompt = task === "equivalent" ? `Which ratio is equal to ${ratio(a, b)}?`
       : `A tray has ${a} red cubes and ${b} blue cubes. What is the ratio of red cubes to ${task === "part-to-whole" ? "all the cubes" : "blue cubes"}?`;
     const candidates = task === "equivalent" ? [wrong(ratio(a + k, b + k), "F9"), wrong(ratio(a, b * k), "fraction-one-side"), wrong(ratio(b * k, a * k), "ratio-order")]
-      : [wrong(ratio(b, a), "ratio-order"), wrong(ratio(a, task === "part-to-whole" ? b : a + b), task === "part-to-whole" ? "F4" : "ratio-whole"), wrong(ratio(a + b, a), "ratio-order")];
+      : [wrong(ratio(task === "part-to-whole" ? a + b : b, a), "ratio-order"), wrong(ratio(a, task === "part-to-whole" ? b : a + b), task === "part-to-whole" ? "F4" : "ratio-whole")];
     return { values: { a, b, k }, prompt, readAloud: prompt, answer: right, wrong: candidates };
   }, task === "recipe" ? "number" : "choice")),
   ...["of-hundred", "of-amount", "discount", "sale-price"].map((task) => template(`percent-${task}`, "F", "6.7", (rng) => {
@@ -132,8 +132,8 @@ export const LEVEL_6: readonly TaggedTemplate[] = [
     } as const;
     const [prompt, right, mistake] = versions[task as keyof typeof versions];
     return { values: { k, b, n }, prompt, readAloud: prompt.replaceAll("×", "times").replaceAll("+", "plus").replaceAll(" n ", " the number "), answer: String(right),
-      wrong: typedWrong(right, [[mistake, task === "step" ? "rule-swap" : task === "difference" ? "ignores-given" : "A5"], [right + k, task === "step" || task === "difference" ? "pattern-step-count" : "next-not-asked"]]) };
-  })),
+      wrong: typedWrong(right, [[mistake, task === "step" ? "rule-swap" : task === "difference" ? "coefficient-ignore" : "A5"], [right + k, task === "step" ? "input-step-two" : task === "difference" ? "pattern-step-count" : "next-not-asked"]]) };
+  }, "number", { ON: task === "tenth" ? 4 : 5 })),
   ...["add", "subtract", "multiply", "divide", "subtrahend", "divisor"].map((op) => template(`equation-${op}`, "A", "6.10", (rng) => {
     const x = rng.int(30, 89), k = rng.int(4, 9);
     const versions = {
@@ -146,14 +146,14 @@ export const LEVEL_6: readonly TaggedTemplate[] = [
     } as const;
     const [shown, spoken, mistake] = versions[op as keyof typeof versions], right = op === "divide" ? x * k : x;
     return { values: { x, k }, prompt: `Find x. ${shown}`, readAloud: `${spoken} What is the number?`, answer: String(right),
-      wrong: typedWrong(right, [[mistake, op === "divisor" ? "unknown-divisor" : op === "multiply" || op === "subtrahend" ? "operation" : "inverse-operation"], [k, "ignores-given"]]) };
-  })),
+      wrong: typedWrong(right, [[mistake, op === "divisor" ? "unknown-divisor" : op === "multiply" || op === "subtrahend" ? "operation" : "inverse-operation"], [k, "known-as-unknown"]]) };
+  }, "number", ["add", "subtract", "subtrahend"].includes(op) ? { ON: 2 } : {})),
   template("table-rule", "A", "6.9", (rng) => {
     const [k, b] = draw(rng, (r) => [r.int(3, 8), r.int(2, 9)], ([k, b]) => k !== b);
     return { values: { k, b }, prompt: `A table shows input 1 gives ${k + b}, input 2 gives ${2 * k + b}, and input 3 gives ${3 * k + b}. Which rule fits all three rows?`,
       readAloud: `A table shows input 1 gives ${k + b}, input 2 gives ${2 * k + b}, and input 3 gives ${3 * k + b}. Which rule fits all three rows?`,
       answer: `Multiply by ${k}, then add ${b}`, wrong: [wrong(`Multiply by ${k}`, "A5"), wrong(`Add ${k + b - 1}`, "rule-one-row"), wrong(`Multiply by ${b}, then add ${k}`, "rule-swap")] };
-  }, "choice"),
+  }, "choice", { ON: 5 }),
 
   template("triangle-area", "MG", "6.12", (rng) => {
     const base = rng.int(3, 12) * 2, height = rng.int(3, 12), right = base * height / 2;
@@ -165,7 +165,7 @@ export const LEVEL_6: readonly TaggedTemplate[] = [
     const base = rng.int(3, 10) * 2, height = rng.int(3, 9), area = base * height / 2;
     return { values: { base, height }, prompt: `A triangle has an area of ${area} square centimetres and a base of ${base} cm. What is its perpendicular height in centimetres?`,
       readAloud: `A triangle has an area of ${area} square centimetres and a base of ${base} centimetres. What is its perpendicular height in centimetres?`, answer: String(height),
-      wrong: typedWrong(height, [[height / 2, "M3"], [area * base, "inverse-operation"]]) };
+      wrong: typedWrong(height, [[height / 2, "M3"], [2 * area * base, "inverse-operation"]]) };
   }, "number", { ON: 5 }),
   template("parallelogram-area", "MG", "6.12", (rng) => {
     const base = rng.int(5, 15), height = rng.int(3, 8), slant = height + rng.int(1, 4);
@@ -201,7 +201,7 @@ export const LEVEL_6: readonly TaggedTemplate[] = [
     const part = rng.int(25, 155), right = 180 - part;
     return { values: { part }, prompt: `A straight angle is split into two angles. One is ${part} degrees. How many degrees is the other?`,
       readAloud: `A straight angle is split into two angles. One is ${part} degrees. How many degrees is the other?`, answer: String(right),
-      wrong: typedWrong(right, [[360 - part, "angle-names"], [180 + part, "operation"]]) };
+      wrong: typedWrong(right, [[360 - part, "full-turn"], [180 + part, "operation"]]) };
   }, "number", { ON: 5 }),
   template("triangle-sides", "MG", "6.15", (rng) => {
     const [a, b, c] = rng.pick([[4, 4, 4], [5, 5, 5], [6, 6, 6], [5, 5, 8], [6, 6, 10], [7, 7, 9], [4, 5, 6], [5, 6, 7], [6, 7, 8]] as const);
@@ -222,11 +222,11 @@ export const LEVEL_6: readonly TaggedTemplate[] = [
       readAloud: `A point starts ${x} units right and ${y} units up from the origin. It moves ${dx} units right and ${dy} units up. Where is it now?`, answer: `(${x + dx}, ${y + dy})`,
       wrong: [wrong(`(${x + dx}, ${y})`, "ignores-given"), wrong(`(${x}, ${y + dy})`, "ignores-given"), wrong(`(${x}, ${y})`, "ignores-given")] };
   }, "choice", { ON: 4 }),
-  template("line-change", "DP", "6.17", (rng) => {
-    const start = rng.int(10, 19), rise = rng.int(3, 9), end = start + rise;
-    return { values: { start, rise }, prompt: `A line graph shows a temperature of ${start} degrees at noon and ${end} degrees two hours later. By how many degrees did it rise?`,
-      readAloud: `A line graph shows a temperature of ${start} degrees at noon and ${end} degrees two hours later. By how many degrees did it rise?`, answer: String(rise),
-      wrong: typedWrong(rise, [[end, "graph-value"], [start + end, "operation"]]) };
+  template("experimental-estimate", "DP", "6.18", (rng) => {
+    const total = rng.pick([20, 30, 40, 50]), red = draw(rng, (r) => r.int(3, total - 3), (n) => 2 * n !== total), k = rng.int(2, 5);
+    const prompt = `A spinner landed on red ${red} times in ${total} spins. Use this result to estimate how many times it will land on red in ${total * k} spins.`;
+    return { values: { total, red, k }, prompt, readAloud: prompt, answer: String(red * k),
+      wrong: typedWrong(red * k, [[red, "frequency-copy"], [(total - red) * k, "probability-other"]]) };
   }),
   template("experimental-probability", "DP", "6.18", (rng) => {
     const total = rng.pick([20, 30, 40, 50]), red = draw(rng, (r) => r.int(3, total - 3), (n) => n * 2 !== total);
@@ -236,8 +236,8 @@ export const LEVEL_6: readonly TaggedTemplate[] = [
   }, "choice"),
   template("theoretical-probability", "DP", "6.18", (rng) => {
     const heads = rng.int(3, 9), total = rng.pick([20, 30, 40, 50]);
-    return { values: { heads, total }, prompt: `A fair coin landed heads ${heads} times in ${total} tosses. What is the theoretical probability of heads on the next toss?`,
-      readAloud: `A fair coin landed heads ${heads} times in ${total} tosses. What is the theoretical probability of heads on the next toss?`, answer: "1/2",
-      wrong: [wrong(frac(heads, total), "D5"), wrong(frac(total - heads, total), "D2"), wrong("0", "D2")] };
+    const prompt = `A fair coin landed heads ${heads} times in ${total} tosses. Its last toss was tails. What is the theoretical probability of heads on the next toss?`;
+    return { values: { heads, total }, prompt, readAloud: prompt, answer: "1/2",
+      wrong: [wrong(frac(heads, total), "D5"), wrong("0", "coin-repeat-certain"), wrong("1", "coin-due-certain")] };
   }, "choice"),
 ];

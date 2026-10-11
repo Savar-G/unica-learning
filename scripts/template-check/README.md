@@ -12,7 +12,7 @@ npm run check:templates -- --provider codex --band 1-2 --context scripts/templat
 
 Codex defaults to `gpt-6.1-sol` with `medium` effort. Change these with `--model` and `--effort`. The process requires a ChatGPT login before each batch. It removes secret-like environment variables. It runs in an empty temporary directory, with a read-only sandbox, no shell tool and strict JSON output. It removes the temporary directory after each call.
 
-Each batch samples eight distinct questions from 300 seeds. It sends the public template tags, generated answers, coded wrong choices, actual figure data, ordered choice speech and curriculum notes. No child data is sent. The model check is a sample review. The public assessment tests cover more seeds and adaptive routes.
+Each batch samples eight distinct questions from 300 seeds. It sends the public template tags, generated answers, coded wrong choices, actual figure data and axis labels, ordered choice speech and curriculum notes. No child data is sent. The model check is a sample review. The public assessment tests cover more seeds and adaptive routes.
 
 Results keep the version 1 contract in `results.json`. The template ID and payload hash remain the cache key. Source notes change the hash. Figure data is part of the sample identity. Codex also checks the model and effort before it reuses a record. Earlier Codex records without an effort field used medium effort. The original default-provider reuse behavior stays unchanged.
 

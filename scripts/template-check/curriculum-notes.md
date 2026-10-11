@@ -12,8 +12,9 @@ Sources: https://curriculum.gov.bc.ca/curriculum/mathematics/4/core, https://cur
 
 The official PDF is the source. Printed pages differ from PDF page numbers by one.
 
-- Grade 2 C2.2: unknown addition/subtraction equations to 100.
-- Grade 3 C2.3: unknown addition/subtraction relationships to 1000.
+- Grade 2 C2.2: find the addition or subtraction needed to make expressions equivalent. Grade 2 C2.3: use equivalent relationships with whole numbers up to 100. These support simple missing quantities within 100; C2.2 alone does not state a numeric limit. The primary PDF shows these expectations on printed pages 159-160 (PDF pages 160-161).
+- Grade 3 C2.3: use equivalent relationships with whole numbers up to 1000.
+- Grade 4 C2.2: solve equations with whole numbers up to 50. Grade 5 C2.2: evaluate whole-number algebraic expressions; C2.3: solve equations with whole numbers up to 100. Grade 6 C2.3: solve whole-number equations with multiple terms; this expectation does not state a limit of 1000. Grade 6 B1.1 supports numbers up to one million. Use the stated difficulty, not a recalled number limit, to judge a template.
 - Grade 4 B1.7-B1.9: decimal tenths and their fraction equivalents, not hundredths. Grade 5 B1.4: decimal hundredths. Grade 6 B1.3: decimal thousandths.
 - Grade 4 E2.1: capacity in litres and millilitres. It is incorrect to attribute this expectation to Grade 3.
 - Grade 4 C1: extend patterns and find missing terms.
@@ -21,6 +22,8 @@ The official PDF is the source. Printed pages differ from PDF page numbers by on
 - Grade 4 E2.3: elapsed time. E2.5-E2.7: rectangle area, missing dimensions and area/perimeter relationships.
 - Grade 5 E2.4: measure and construct angles through 180 degrees.
 - The exact introduction of generic polygon-base prism/pyramid face counts remains uncertain. Do not infer a specific grade from a general shape-classification expectation alone.
+
+The shared templates `3-start-unknown`, `3-change-unknown` and `3-balance-equation` have numeric limits below 100. Their largest given or solved quantities are 30, 47 and 39 respectively. The first permits a missing start in addition or subtraction; the second permits a missing addend; the third balances two addition expressions. Grade 2 C2.2-C2.3 support this mapping. Check the actual examples independently. A can or drum has a circular flat face; a square choice is a shape-name error, not a cylinder side-view error. No dimensions imply a square side view.
 
 Source: https://assets-us-01.kc-usercontent.com/fbd574c4-da36-0066-a0c5-849ffb2de96e/3ed76499-9df4-4524-8cc2-3c0010a51811/The%20Ontario%20Curriculum%20Grades%201%E2%80%938%20-%20Mathematics%2C%202020%20%28January%202021%29.pdf
 

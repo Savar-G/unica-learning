@@ -295,7 +295,7 @@ export const LEVEL_2: readonly TaggedTemplate[] = [
   },
   {
     id: "2-increasing-pattern",
-    strand: "A", grades: { BC: 2, AB: 2, SK: 2, MB: 2, ON: 2 }, format: "number", whiteboard: false, standard: "2.5",
+    strand: "A", grades: { BC: 2, AB: 2, SK: 2, MB: 2, ON: 2 }, format: "number", whiteboard: true, standard: "2.5",
     fill(rng) {
       const step = rng.pick([2, 5, 10]);
       // Start off the multiples, as in 3, 5, 7, 9 or 4, 14, 24, 34.
@@ -418,7 +418,7 @@ export const LEVEL_2: readonly TaggedTemplate[] = [
   {
     // A missing number inside an increasing pattern (2.5).
     id: "2-missing-in-pattern",
-    strand: "A", grades: { BC: 2, AB: 2, SK: 2, MB: 2, ON: 2 }, format: "number", whiteboard: false, standard: "2.5",
+    strand: "A", grades: { BC: 2, AB: 2, SK: 2, MB: 2, ON: 2 }, format: "number", whiteboard: true, standard: "2.5",
     fill(rng) {
       const step = rng.pick([2, 5, 10]);
       const start = step * rng.int(1, step === 10 ? 5 : 8) + (step === 10 ? rng.int(1, 9) : 0);
@@ -543,10 +543,10 @@ export const LEVEL_2: readonly TaggedTemplate[] = [
     fill(rng) {
       // [the face asked about, its shape, the shape seen from the side]. No item names its own answer.
       const options = [
-        ["the flat bottom of a can", "● circle", "■ square"],
+        ["the flat bottom of a can", "● circle", ""],
         ["each face of a number cube", "■ square", ""],
         ["the flat bottom of a cone, like a party hat", "● circle", "▲ triangle"],
-        ["the flat top of a drum", "● circle", "■ square"],
+        ["the flat top of a drum", "● circle", ""],
       ] as const;
       const i = rng.int(0, options.length - 1);
       const [part, answer, side] = options[i];

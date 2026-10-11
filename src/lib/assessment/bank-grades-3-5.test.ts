@@ -45,6 +45,105 @@ const strandCounts = (qs: readonly Question[]) => {
 const asNumber = (s: string) => Number(s.replace(/,/g, ""));
 
 describe("grade 3-5 speech and figures through the public interface", () => {
+  it("keeps the corrected Ontario grade 2 downward form suited to all five required drawings", () => {
+    const s = createSession({ grade: 2, province: "ON" }, 2027275);
+    const questions = [...s.stage1, ...s.stage2.down];
+    expect(s.stage1.filter((q) => q.whiteboard)).toHaveLength(4);
+    expect(s.stage2.down.filter((q) => q.whiteboard)).toHaveLength(1);
+    expect(questions.filter((q) => q.showWork)).toHaveLength(5);
+    expect(questions.filter((q) => q.showWork).every((q) => q.whiteboard)).toBe(true);
+    expect(s.stage1.find((q) => q.templateId === "2-missing-in-pattern")?.whiteboard).toBe(true);
+  });
+  it("covers all increasing-pattern steps and interior gaps as suitable written work", () => {
+    for (const [id, steps] of [["2-increasing-pattern", [2, 5, 10]], ["2-missing-in-pattern", [2, 5, 10]], ["3-increasing-pattern", [3, 4]]] as const) {
+      const t = GRADE_1_2_BANK.find((t) => t.id === id)!;
+      expect(t.whiteboard).toBe(true);
+      const qs = SEEDS.map((seed) => fillTemplate(t, seed));
+      expect([...new Set(qs.map((q) => q.values.step))].sort((a, b) => a - b)).toEqual(steps);
+      if (id === "2-missing-in-pattern") expect([...new Set(qs.map((q) => q.values.gap))].sort()).toEqual([1, 2, 3]);
+    }
+  });
+  it("uses genuine three-digit unknown stories with a unique positive answer", () => {
+    const t = BANK.find((t) => t.id === "g35-3-start-unknown-story")!;
+    expect(TAGGED.map((p) => t.grades[p])).toEqual([3, 3, 3, 3, 3]);
+    for (const seed of SEEDS) {
+      const q = fillTemplate(t, seed), { start, change, more } = q.values;
+      expect(Number(q.answer)).toBe(start);
+      expect(start).toBeGreaterThanOrEqual(125);
+      expect(start).toBeLessThanOrEqual(749);
+      expect(change).toBeGreaterThanOrEqual(25);
+      expect(change).toBeLessThanOrEqual(99);
+      const total = more ? start + change : start;
+      expect(total).toBeGreaterThan(100);
+      expect(total).toBeLessThan(1000);
+      expect(q.wrong.every((w) => Number(w.value) !== start)).toBe(true);
+    }
+  });
+  it.each(["3-start-unknown", "3-change-unknown", "3-balance-equation"])("%s uses Ontario grade 2 and equations within 100", (id) => {
+    const t = GRADE_1_2_BANK.find((t) => t.id === id)!;
+    expect(t.grades.ON).toBe(2);
+    const totals: number[] = [];
+    for (const seed of SEEDS) {
+      const q = fillTemplate(t, seed);
+      const numbers = [...q.prompt.matchAll(/\d+/g)].map((m) => Number(m[0]));
+      expect(Math.max(...numbers, Number(q.answer))).toBeLessThanOrEqual(100);
+      expect(q.answer).toMatch(/^\d+$/);
+      if (id === "3-balance-equation") {
+        const [a, b, c] = numbers;
+        expect(Number(q.answer) + c).toBe(a + b);
+        totals.push(a + b);
+      } else if (id === "3-change-unknown") {
+        expect(numbers[0] + Number(q.answer)).toBe(numbers[1]);
+        totals.push(numbers[1]);
+      } else {
+        const [b, result] = numbers;
+        expect(q.prompt.includes("−") ? Number(q.answer) - b : Number(q.answer) + b).toBe(result);
+        totals.push(q.prompt.includes("−") ? Number(q.answer) : result);
+      }
+    }
+    expect(Math.min(...totals)).toBeGreaterThan(0);
+    expect(Math.max(...totals)).toBeLessThanOrEqual(47);
+  });
+  it("codes both can and drum square distractors as shape-name", () => {
+    const t = GRADE_1_2_BANK.find((t) => t.id === "2-face-of-solid")!;
+    const seen = new Set<string>();
+    for (const seed of SEEDS) {
+      const q = fillTemplate(t, seed);
+      const part = q.prompt.includes("can") ? "can" : q.prompt.includes("drum") ? "drum" : undefined;
+      if (!part) continue;
+      seen.add(part);
+      expect(q.answer).toContain("circle");
+      expect(q.wrong.find((w) => w.value.includes("square"))?.misconception).toBe("shape-name");
+    }
+    expect([...seen].sort()).toEqual(["can", "drum"]);
+  });
+  it("codes equal additive changes in the ratio recipe", () => {
+    const t = BANK.find((t) => t.id === "g35-6-ratio-recipe")!;
+    for (const seed of SEEDS) {
+      const q = fillTemplate(t, seed), { a, b, k } = q.values;
+      const choice = q.wrong.find((w) => w.misconception === "F9");
+      expect(choice?.value, q.prompt).toBe(String(a + b * (k - 1)));
+    }
+  });
+  it("uses the requested whole when reversing a part-to-whole ratio", () => {
+    const t = BANK.find((t) => t.id === "g35-6-ratio-part-to-whole")!;
+    for (const seed of SEEDS) {
+      const q = fillTemplate(t, seed), { a, b } = q.values;
+      expect(q.wrong.find((w) => w.misconception === "ratio-order")?.value).toBe(`${a + b} to ${a}`);
+    }
+  });
+  it("keeps simple Ontario unknown equations at grade 2", () => {
+    for (const op of ["add", "subtract", "subtrahend"]) expect(BANK.find((t) => t.id === `g35-6-equation-${op}`)?.grades.ON).toBe(2);
+  });
+  it("has a probability estimate that scales observed outcomes", () => {
+    const t = BANK.find((t) => t.id === "g35-6-experimental-estimate");
+    expect(t).toBeDefined();
+    for (const seed of SEEDS) {
+      const q = fillTemplate(t!, seed), { red, k } = q.values;
+      expect(q.answer).toBe(String(red * k));
+      expect(q.readAloud).toContain("estimate");
+    }
+  });
   it("describes feasible closed gardens for perimeter questions", () => {
     const t = BANK.find((t) => t.id === "g35-4-perimeter-sides")!;
     for (const seed of SEEDS) {
@@ -68,7 +167,7 @@ describe("grade 3-5 speech and figures through the public interface", () => {
       expect(publicQuestion.figure).toEqual(q.figure);
     }
   });
-  it.each(NEW)("$id has only one mathematically right numeric or fraction choice", (t) => {
+  it.each(NEW)("$id has one right numeric or fraction choice and no equivalent duplicate choices", (t) => {
     const value = (s: string): number | undefined => {
       const c = s.replace(/,/g, "").trim();
       const f = c.match(/^(?:(\d+) )?(\d+)\/(\d+)$/);
@@ -79,6 +178,8 @@ describe("grade 3-5 speech and figures through the public interface", () => {
       const q = fillTemplate(t, seed), right = value(q.answer);
       if (!q.choices || right === undefined) continue;
       expect(q.choices.filter((c) => value(c) !== undefined && Math.abs(value(c)! - right) < 1e-9), `${t.id}: ${q.choices}`).toHaveLength(1);
+      const numeric = q.choices.map(value);
+      if (numeric.every((v) => v !== undefined)) expect(new Set(numeric.map((v) => v!.toPrecision(12))).size, `${t.id}: ${q.choices}`).toBe(q.choices.length);
     }
   });
   it.each(NEW)("$id has no other equation that is true for the same unknown", (t) => {
@@ -242,6 +343,17 @@ describe("scripted children, grades 3-5, on the real bank", () => {
 });
 
 describe("the grades 3-5 bank", () => {
+  it.each(["numerator", "denominator"])("equivalent-%s additive error changes both fraction parts by the same amount", (task) => {
+    const t = BANK.find((t) => t.id === `g35-5-equivalent-${task}`)!;
+    for (const seed of SEEDS) {
+      const q = fillTemplate(t, seed);
+      const { n, d, k } = q.values;
+      const coded = q.wrong.find((w) => w.misconception === "F9")!;
+      const expected = task === "numerator" ? n + d * (k - 1) : d + n * (k - 1);
+      expect(asNumber(coded.value), `${seed}: ${coded.value}`).toBe(expected);
+    }
+  });
+
   it("tags every template for all five provinces, at BC levels 2-6", () => {
     for (const t of BANK) {
       expect(Object.keys(t.grades).sort(), t.id).toEqual([...TAGGED].sort());

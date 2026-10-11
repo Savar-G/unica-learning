@@ -447,15 +447,15 @@ export const LEVEL_3: readonly TaggedTemplate[] = [
   {
     // A start-unknown story (3.8; misconception A4).
     id: "g35-3-start-unknown-story",
-    strand: "A", grades: { BC: 3, AB: 3, SK: 3, MB: 3, ON: 2 }, format: "number", whiteboard: true, standard: "3.8",
+    strand: "A", grades: { BC: 3, AB: 3, SK: 3, MB: 3, ON: 3 }, format: "number", whiteboard: true, standard: "3.8",
     fill(rng) {
       const more = rng.int(0, 1) === 1;
-      const start = rng.int(12, 60), change = draw(rng, (r) => r.int(5, 19), (c) => c * 2 !== start);
+      const start = rng.int(125, 650), change = rng.int(25, 99);
       const [things, place, there] = rng.pick([
-        ["birds", "on a fence", "on the fence"],
-        ["apples", "in a bowl", "in the bowl"],
-        ["children", "on a bus", "on the bus"],
-        ["boats", "at a dock", "at the dock"],
+        ["birds", "at a lake", "at the lake"],
+        ["apples", "in a store", "in the store"],
+        ["children", "in a school", "in the school"],
+        ["boats", "at a harbour", "at the harbour"],
       ] as const);
       if (more) {
         const now = start + change;
@@ -467,7 +467,7 @@ export const LEVEL_3: readonly TaggedTemplate[] = [
           wrong: typedWrong(start, [[now + change, "operation"]]),
         };
       }
-      const now = draw(rng, (r) => r.int(3, 40), (x) => x !== change);
+      const now = rng.int(125, 650);
       const first = now + change;
       return {
         values: { start: first, change, more: 0 },

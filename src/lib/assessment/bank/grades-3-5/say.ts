@@ -121,18 +121,34 @@ function speakChoice(text: string): string {
     .replace(/%/g, " percent").replace(/\bcm\b/g, "centimetres").replace(/\bmL\b/g, "millilitres");
 }
 
+/** Equivalent numeric spellings must not make two choices, such as 1/2 and 3/6. */
+const choiceIdentity = (shown: string) => {
+  const text = shown.replaceAll(",", "").replaceAll(" ", " ").trim();
+  const f = text.match(/^(?:(\d+) )?(\d+)\/(\d+)$/);
+  const number = f && Number(f[3]) > 0 ? Number(f[1] ?? 0) + Number(f[2]) / Number(f[3])
+    : /^\d+(?:\.\d+)?$/.test(text) ? Number(text) : NaN;
+  return Number.isFinite(number) ? `number:${number.toPrecision(12)}` : `text:${shown}`;
+};
+
 /** The template, with every operation sign in its prompt and choices kept on the same line as its numbers. */
 export function keepOnOneLine<T extends Template>(template: T): T {
   return {
     ...template,
     fill(rng) {
       const f = template.fill(rng);
-      const choices = [f.answer, ...f.wrong.map((w) => w.value)];
+      const seen = new Set([choiceIdentity(f.answer)]);
+      const wrong = template.format === "choice" ? f.wrong.filter((w) => {
+        const key = choiceIdentity(w.value);
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      }) : f.wrong;
+      const choices = [f.answer, ...wrong.map((w) => w.value)];
       return {
         ...f,
         prompt: keepTogether(f.prompt),
         answer: keepTogether(f.answer),
-        wrong: f.wrong.map((w) => ({ ...w, value: keepTogether(w.value) })),
+        wrong: wrong.map((w) => ({ ...w, value: keepTogether(w.value) })),
         ...(template.format === "choice" ? { say: Object.fromEntries(choices.map((c) => [keepTogether(c), f.say?.[c] ?? speakChoice(c)]).sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0)) } : {}),
       };
     },

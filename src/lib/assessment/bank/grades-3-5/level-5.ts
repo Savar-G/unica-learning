@@ -107,7 +107,7 @@ export const LEVEL_5: readonly TaggedTemplate[] = [
       return { values: { n, d, k }, prompt: `The fractions ${frac(n, d)} and ${num ? `?/${d * k}` : `${n * k}/?`} are equal. What is the missing number?`,
         readAloud: num ? `${sayFrac(n, d)} is the same as a fraction with ${d * k} on the bottom. What is its top number?`
           : `${sayFrac(n, d)} is the same as a fraction with ${n * k} on the top. What is its bottom number?`, answer: String(right),
-        wrong: typedWrong(right, [[num ? n : d, "fraction-one-side"], [(num ? n : d) + k, "F9"]]) };
+        wrong: typedWrong(right, [[num ? n : d, "fraction-one-side"], [num ? n + d * (k - 1) : d + n * (k - 1), "F9"]]) };
     }
     const down = task === "scale-down", shown = down ? frac(n * k, d * k) : frac(n, d), target = down ? d : d * k;
     const right = down ? frac(n, d) : frac(n * k, d * k);
@@ -116,7 +116,7 @@ export const LEVEL_5: readonly TaggedTemplate[] = [
       : `Which fraction with ${target} on the bottom is equal to ${shown}?`;
     return { values: { n, d, k }, prompt: context,
       readAloud: task === "region" || task === "number-line" ? context : `Which fraction with ${target} on the bottom is equal to ${down ? sayFrac(n * k, d * k) : sayFrac(n, d)}?`,
-      answer: right, wrong: [wrong(frac(down ? n * k : n, target), "fraction-one-side"), wrong(frac(n + k, d + k), "F9"), wrong(frac(target - (down ? n : n * k), target), "fraction-other-part")] };
+      answer: right, wrong: [wrong(frac(down ? n * k : n, target), "fraction-one-side"), down ? wrong(frac(n * k - k, d * k - k), "fraction-subtract") : wrong(frac(n + k, d + k), "F9"), wrong(frac(target - (down ? n : n * k), target), "fraction-other-part")] };
   }, ["numerator", "denominator"].includes(task) ? "number" : "choice")),
   template("fraction-to-hundredths", "F", "5.4", (rng) => {
     const [n, d] = rng.pick([[1, 4], [3, 4], [1, 5], [2, 5], [3, 5], [4, 5], [1, 10], [3, 10]] as const), cents = n * (100 / d);
@@ -126,12 +126,12 @@ export const LEVEL_5: readonly TaggedTemplate[] = [
   template("decimal-half", "F", "5.4", (rng) => {
     const high = rng.int(51, 89), lows = rng.shuffle([12, 21, 32, 43, 49]).slice(0, 3);
     return { values: { high }, prompt: "Which decimal is greater than one half?", readAloud: "Which decimal is greater than one half?",
-      answer: dec(high, 2), wrong: lows.map((n) => wrong(dec(n, 2), "benchmark-size")) };
+      answer: dec(high, 2), wrong: lows.map((n) => wrong(dec(n, 2), "F6")) };
   }, "choice"),
   template("fraction-near-whole", "F", "5.4", (rng) => {
     const d = rng.int(6, 15), low = rng.shuffle([1, 2, 3]).slice(0, 3);
     return { values: { d }, prompt: "Which fraction is closest to one whole?", readAloud: "Which fraction is closest to one whole?",
-      answer: frac(d - 1, d), wrong: low.map((n) => wrong(frac(n, d), "benchmark-size")) };
+      answer: frac(d - 1, d), wrong: low.map((n) => wrong(frac(n, d), n === 1 ? "more-less" : "fraction-order")) };
   }, "choice"),
   template("equivalent-decimal", "F", "5.4", (rng) => {
     const t = rng.int(1, 9);
@@ -151,7 +151,7 @@ export const LEVEL_5: readonly TaggedTemplate[] = [
   template("compare-thousandths", "F", "5.4", (rng) => {
     const t = rng.int(4, 8), a = rng.int(111, t * 100 - 1), b = rng.int(t * 100 + 1, 899);
     return { values: { t, a, b }, prompt: "Which decimal is greatest?", readAloud: "Which decimal is greatest?", answer: dec(b, 3),
-      wrong: [wrong(dec(t, 1), "F6"), wrong(dec(a, 3), "more-less"), wrong(dec(t, 2), "decimal-point")] };
+      wrong: [wrong(dec(t, 1), "decimal-order"), wrong(dec(a, 3), "decimal-order"), wrong(dec(t, 2), "more-less")] };
   }, "choice", thousandths),
   ...["add", "subtract"].map((op) => template(`${op}-thousandths`, "O", "5.7", (rng) => {
     const a = rng.int(3501, 8999), b = rng.int(101, 3499), right = op === "add" ? a + b : a - b;
@@ -173,8 +173,8 @@ export const LEVEL_5: readonly TaggedTemplate[] = [
     } as const;
     const [shown, spoken, mistake] = equations[op as keyof typeof equations], right = op === "dividend" ? x * k : x;
     return { values: { x, k }, prompt: `Find ${name}. ${shown}`, readAloud: spoken, answer: String(right),
-      wrong: typedWrong(right, [[mistake, op === "divide" ? "unknown-divisor" : op === "multiply" || op === "take-away" ? "operation" : "inverse-operation"], [k, "ignores-given"]]) };
-  })),
+      wrong: typedWrong(right, [[mistake, op === "divide" ? "unknown-divisor" : op === "multiply" || op === "take-away" ? "operation" : "inverse-operation"], [k, "known-as-unknown"]]) };
+  }, "number", { AB: 6, ON: ["add", "subtract", "take-away"].includes(op) ? 2 : 6 })),
   ...["next", "missing", "back", "step", "start", "far"].map((task) => template(`pattern-${task}`, "A", "5.10", (rng) => {
     const first = rng.int(11, 39), step = rng.int(3, 9), terms = Array.from({ length: 5 }, (_, i) => first + i * step);
     const prompts = {
@@ -188,6 +188,40 @@ export const LEVEL_5: readonly TaggedTemplate[] = [
     const [prompt, right, mistake] = prompts[task as keyof typeof prompts];
     return { values: { first, step }, prompt, readAloud: prompt.replace("?", "a missing number"), answer: String(right),
       wrong: typedWrong(right, [[mistake, task === "next" ? "skip-by-one" : task === "missing" ? "A2" : task === "back" ? "pattern-earlier" : task === "step" ? "pattern-start-step" : "pattern-step-count"], [right + step, "pattern-step-count"]]) };
+  }, "number", { ON: 4 })),
+  // Ontario 2020 C2.2 explicitly evaluates whole-number expressions in grade 5.
+  ...["add", "subtract", "take-away", "multiply", "divide", "divisor"].map((op) => template(`evaluate-${op}`, "A", "5.11", (rng) => {
+    const n = rng.int(12, 49), k = rng.int(3, 9);
+    const input = op === "divide" ? n * k : op === "divisor" ? k : n;
+    const constant = op === "take-away" ? n + k : op === "divisor" ? n * k : k;
+    const versions = {
+      add: [`n + ${constant}`, `n plus ${constant}`, input + constant, input - constant],
+      subtract: [`n − ${constant}`, `n minus ${constant}`, input - constant, input + constant],
+      "take-away": [`${constant} − n`, `${constant} minus n`, constant - input, constant + input],
+      multiply: [`${constant}n`, `${constant} times n`, constant * input, constant + input],
+      divide: [`n ÷ ${constant}`, `n divided by ${constant}`, input / constant, input * constant],
+      divisor: [`${constant} ÷ n`, `${constant} divided by n`, constant / input, constant * input],
+    } as const;
+    const [shown, spoken, right, mistake] = versions[op as keyof typeof versions];
+    return { values: { input, constant }, prompt: `Evaluate ${shown} when n is ${input}.`,
+      readAloud: `Evaluate ${spoken} when n is ${input}.`, answer: String(right),
+      wrong: typedWrong(right, [[mistake, "operation"], [input, "expression-copy"], ...(op === "multiply" ? [[Number(`${constant}${input}`), "A3"] as [number, "A3"]] : [])]) };
+  })),
+  ...["rows", "cards-total", "cards-left", "sharing"].map((task) => template(`expression-${task}`, "A", "5.11", (rng) => {
+    const n = rng.int(12, 39), k = rng.int(3, 9), input = task === "sharing" ? n * k : n;
+    const versions = {
+      rows: [`Each row has ${k} seats. The expression ${k}n gives the number of seats in n rows. Evaluate it when n is ${input}.`,
+        `Each row has ${k} seats. The expression ${k} times n gives the number of seats in n rows. Evaluate it when n is ${input}.`, k * input, k + input],
+      "cards-total": [`The expression n + ${k} gives the number of cards after ${k} more are added. Evaluate it when n is ${input}.`,
+        `The expression n plus ${k} gives the number of cards after ${k} more are added. Evaluate it when n is ${input}.`, input + k, input - k],
+      "cards-left": [`The expression n − ${k} gives the number of cards after ${k} are given away. Evaluate it when n is ${input}.`,
+        `The expression n minus ${k} gives the number of cards after ${k} are given away. Evaluate it when n is ${input}.`, input - k, input + k],
+      sharing: [`The expression n ÷ ${k} gives the number of beads in each of ${k} equal groups. Evaluate it when n is ${input}.`,
+        `The expression n divided by ${k} gives the number of beads in each of ${k} equal groups. Evaluate it when n is ${input}.`, input / k, input * k],
+    } as const;
+    const [prompt, readAloud, right, mistake] = versions[task as keyof typeof versions];
+    return { values: { input, k }, prompt, readAloud, answer: String(right),
+      wrong: typedWrong(right, [[mistake, "operation"], [input, "expression-copy"]]) };
   })),
   template("variable-rule", "A", "5.10", (rng) => {
     const k = rng.int(3, 8), n = rng.int(4, 12), right = k * n;
@@ -200,7 +234,7 @@ export const LEVEL_5: readonly TaggedTemplate[] = [
     return { values: { start, left }, prompt: `${name} has ${start} cards and gives away n cards. ${left} cards remain. Which equation fits?`,
       readAloud: `${name} has ${start} cards and gives away a number of cards. ${left} cards remain. Which equation fits?`,
       answer: `${start} − n = ${left}`, wrong: [wrong(`${start} + n = ${left}`, "operation"), wrong(`${start} − ${left} = ${left}`, "ignores-given"), wrong(`n − ${start} = ${left}`, "equation-roles")] };
-  }, "choice"),
+  }, "choice", { ON: 2 }),
 
   // A child can draw each measurement situation from the words. No glyph stands in for a figure.
   template("rectangle-area", "MG", "5.12", (rng) => {
@@ -208,13 +242,13 @@ export const LEVEL_5: readonly TaggedTemplate[] = [
     return { values: { a, b }, prompt: `A rectangle is ${a} cm long and ${b} cm wide. What is its area in square centimetres?`,
       readAloud: `A rectangle is ${a} centimetres long and ${b} centimetres wide. What is its area in square centimetres?`, answer: String(right),
       wrong: typedWrong(right, [[2 * (a + b), "M2"], [a + b, "M2"]]) };
-  }, "number", { ON: 4 }),
+  }, "number", { AB: 4, ON: 4 }),
   template("square-area", "MG", "5.12", (rng) => {
     const side = rng.int(5, 19), right = side * side;
     return { values: { side }, prompt: `A square has a side of ${side} cm. What is its area in square centimetres?`,
       readAloud: `A square has a side of ${side} centimetres. What is its area in square centimetres?`, answer: String(right),
       wrong: typedWrong(right, [[4 * side, "M2"], [2 * side, "M2"]]) };
-  }, "number", { ON: 4 }),
+  }, "number", { AB: 4, ON: 4 }),
   template("area-width", "MG", "5.12", (rng) => {
     const a = rng.int(4, 12), b = rng.int(3, 9), area = a * b;
     return { values: { a, b }, prompt: `A rectangle has an area of ${area} square centimetres. Its length is ${a} cm. What is its width in centimetres?`,
@@ -223,9 +257,9 @@ export const LEVEL_5: readonly TaggedTemplate[] = [
   }, "number", { ON: 4 }),
   template("same-area", "MG", "5.13", (rng) => {
     const k = rng.int(3, 9), a = 2 * k, b = 6;
-    return { values: { k }, prompt: `One rectangle is ${a} cm by ${b} cm. Another is ${3 * k} cm by 4 cm. What is the area of each, in square centimetres?`,
-      readAloud: `One rectangle is ${a} centimetres by ${b} centimetres. Another is ${3 * k} centimetres by 4 centimetres. What is the area of each, in square centimetres?`, answer: String(a * b),
-      wrong: typedWrong(a * b, [[2 * (a + b), "M2"], [2 * (3 * k + 4), "M2"]]) };
+    return { values: { k }, prompt: `One rectangle is ${a} cm by ${b} cm. Another has the same area and is ${3 * k} cm long. What is its perimeter, in centimetres?`,
+      readAloud: `One rectangle is ${a} centimetres by ${b} centimetres. Another has the same area and is ${3 * k} centimetres long. What is its perimeter, in centimetres?`, answer: String(2 * (3 * k + 4)),
+      wrong: typedWrong(2 * (3 * k + 4), [[2 * (a + b), "area-perimeter-link"], [a * b, "M2"]]) };
   }, "number", { ON: 4 }),
   template("same-perimeter", "MG", "5.13", (rng) => {
     const a = rng.int(6, 14), b = rng.int(3, 5), right = (a - 1) * (b + 1);
@@ -243,7 +277,7 @@ export const LEVEL_5: readonly TaggedTemplate[] = [
     const h = rng.int(1, 7), m = rng.int(35, 55), duration = rng.int(30, 45), end = m + duration - 60;
     return { values: { h, m, duration }, prompt: `A trip starts at ${time(h, m)} in the afternoon and lasts ${duration} minutes. When does it end?`,
       readAloud: `A trip starts at ${sayTime(h, m)} in the afternoon and lasts ${duration} minutes. When does it end?`, answer: time(h + 1, end),
-      wrong: [wrong(time(h, m + duration), "M8"), wrong(time(h, end), "M8"), wrong(time(h + 1, duration), "ignores-given")] };
+      wrong: [wrong(time(h, m + duration), "M8"), wrong(time(h, end), "clock-carry"), wrong(time(h + 1, duration), "ignores-given")] };
   }, "choice", { ON: 4 }),
   template("prism-faces", "MG", "5.15", (rng) => {
     const sides = rng.pick([3, 4, 5, 6, 8]);

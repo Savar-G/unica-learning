@@ -134,6 +134,12 @@ function describe(core, template, standards, samples) {
       prompt: q.prompt,
       readAloud: q.readAloud,
       ...(q.figure ? { figure: q.figure } : {}),
+      // Matches BarGraph in src/components/test-figures.tsx. The scale is drawn, not part of Figure storage.
+      ...(q.figure?.kind === "bars" ? { figureRendering: (() => {
+        const axisEnd = Math.ceil((Math.max(...q.figure.bars.map((b) => b.value)) + 1) / 2) * 2;
+        const labeledStep = axisEnd > 12 ? 2 : 1;
+        return { axisEnd, labeledStep, minorGridStep: 1, labels: Array.from({ length: axisEnd / labeledStep + 1 }, (_, i) => i * labeledStep), alternatingBarColors: true };
+      })() } : {}),
       ...(q.choices ? { spokenChoices: core.spokenChoices(q, q.choices) } : {}),
       ...(q.choices ? { choices: q.choices } : {}),
       markedRight: q.answer,
@@ -370,10 +376,12 @@ function writeReport(results, current, opts) {
   writeFileSync(REPORT, lines.join("\n"));
   writeFileSync(join(OUT_DIR, `report-${opts.band}.md`), lines.join("\n"));
   writeFileSync(join(OUT_DIR, `summary-${opts.band}.json`), `${JSON.stringify({
-    band: opts.band, total: rows.length, checked: count("pass") + count("review") + count("fail"),
+    band: opts.band, provider: opts.provider, model: opts.model, effort: opts.effort,
+    total: rows.length, checked: count("pass") + count("review") + count("fail"),
     pass: count("pass"), review: count("review"), fail: count("fail"), error: count("error"),
     unchecked: count("not checked") + count("changed since its check"),
-    rows: rows.map((x) => ({ id: x.id, hash: current.find((c) => c.template.id === x.id).hash, status: x.status, model: x.r?.model ?? null })),
+    rows: rows.map((x) => ({ id: x.id, hash: current.find((c) => c.template.id === x.id).hash, status: x.status,
+      model: x.r?.model ?? null, provider: x.r?.provider ?? null, effort: x.r?.effort ?? null })),
   }, null, 2)}\n`);
   return { pass: count("pass"), review: count("review"), fail: count("fail"), error: count("error"), unchecked: count("not checked") + count("changed since its check") };
 }
