@@ -49,7 +49,7 @@
 .test-kicker { margin: 0; font: 500 14px/1.2 var(--mono); color: var(--ink-2); }
 [data-look="warm"] .test-title { margin: 0; font: 300 clamp(36px, 4.2vw, 60px)/1.04 var(--sans); letter-spacing: -0.035em; outline: none; text-wrap: balance; }
 .test-lead { margin: 0; max-width: 32ch; font: 400 20px/1.5 var(--sans); color: var(--ink-2); }
-.test-alert { margin: 0; padding: 12px 14px; border: 1px solid var(--line); border-left: 4px solid var(--accent); border-radius: 8px; background: #fff; color: var(--ink); font-size: 16px; }
+.test-alert { margin: 0; padding: 12px 16px; border: 1px solid var(--accent); border-radius: 10px; background: var(--accent-soft); color: var(--ink); font-size: 16px; line-height: 1.45; }
 .test-alert a { color: inherit; }
 
 /* ---------- buttons ---------- */
