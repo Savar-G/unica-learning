@@ -1,7 +1,7 @@
 import "server-only";
 import { randomUUID } from "node:crypto";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { deleteFamily, type FamilyDeletionResult, type FamilyDeletionStore, type RetentionCardState } from "@/lib/assessment";
+import { checkFamilyPayments, deleteFamily, type FamilyDeletionResult, type FamilyDeletionStore, type FamilyPaymentStore, type PaymentOperation, type PaymentProgress, type RetentionCardState } from "@/lib/assessment";
 import { stripe } from "@/lib/stripe";
 import { WORK_BUCKET } from "@/lib/work-store";
 
@@ -32,24 +32,14 @@ export async function advanceDeletionCursor(db: SupabaseClient, parent: string):
   await rpc(db, "advance_family_deletion_cursor", { p: parent });
 }
 
-function paymentOptions(deadline: number) {
+function timeRemaining(deadline: number) {
   const timeout = deadline - Date.now();
   if (timeout <= 0) throw new Error("Deletion time limit");
-  return { timeout, maxNetworkRetries: 0 };
+  return timeout;
 }
 
-/** Set a fresh remaining timeout for every page; automatic pagination would reuse the initial timeout. */
-async function* paymentPages<T extends { id: string }>(load: (after: string | undefined) => Promise<{ data: T[]; has_more: boolean }>, deadline: number) {
-  let after: string | undefined;
-  for (;;) {
-    paymentOptions(deadline);
-    const page = await load(after);
-    for (const item of page.data) { paymentOptions(deadline); yield item; }
-    if (!page.has_more) return;
-    const next = page.data.at(-1)?.id;
-    if (!next || next === after) throw new Error("Payment pagination did not advance");
-    after = next;
-  }
+function paymentOptions(deadline: number) {
+  return { timeout: timeRemaining(deadline), maxNetworkRetries: 0 };
 }
 
 /** Stable keyset RPC paging, including jobs whose Auth deletion succeeded before the worker stopped. */
@@ -66,68 +56,120 @@ export async function deletionCandidates(db: SupabaseClient): Promise<string[]> 
   }
 }
 
-/** Run only after the family is frozen and all app card operations have finished. Expire every open Checkout
- * before deciding: a succeeded setup, a saved method, a subscription, or uncertainty keeps the family. */
-async function cardState(db: SupabaseClient, parent: string, deadline: number): Promise<RetentionCardState> {
+/** Run after freezing and settling app card operations. Remote journal and canceled-intent traversal are durable.
+ * Fresh current-state reads remain mandatory; unknown results keep the checking job and its fence. */
+async function cardState(db: SupabaseClient, parent: string, token: string, deadline: number, retention: boolean): Promise<RetentionCardState> {
   const customers: string[] = [];
-  for (let from = 0; ; from += 100) {
+  let saved = false;
+  for (let from = 0; retention; from += 100) {
+    paymentOptions(deadline);
     const { data, error } = await db.from("card_setups").select("id, stripe_customer_id, card_saved_at")
       .eq("parent_id", parent).order("id").range(from, from + 99);
     if (error) return "unknown";
-    if (data.some((r) => r.card_saved_at)) return "saved";
+    saved ||= data.some((r) => r.card_saved_at);
     customers.push(...data.flatMap((r) => r.stripe_customer_id ? [r.stripe_customer_id as string] : []));
     if (data.length < 100) break;
   }
-  if (!customers.length) return "clear";
   const s = stripe();
-  if (!s) return "unknown";
-  try {
-    for (const customer of customers) {
-      for await (const session of paymentPages((after) => s.checkout.sessions.list({ customer, limit: 100, starting_after: after }, paymentOptions(deadline)), deadline)) {
-        if (session.status === "open") {
-          try { await s.checkout.sessions.expire(session.id, {}, paymentOptions(deadline)); }
-          catch {
-            const current = await s.checkout.sessions.retrieve(session.id, {}, paymentOptions(deadline));
-            if (current.status !== "expired") return "saved";
-          }
-        }
-        if (session.status === "complete") return "saved";
-      }
-      for await (const intent of paymentPages((after) => s.setupIntents.list({ customer, limit: 100, starting_after: after }, paymentOptions(deadline)), deadline)) {
-        if (intent.status === "succeeded") return "saved";
-        if (intent.status === "processing") return "unknown";
-      }
-      for await (const method of paymentPages((after) => s.paymentMethods.list({ customer, limit: 100, starting_after: after }, paymentOptions(deadline)), deadline)) {
-        if (method.id) return "saved";
-      }
-      for await (const subscription of paymentPages((after) => s.subscriptions.list({ customer, status: "all", limit: 100, starting_after: after }, paymentOptions(deadline)), deadline)) {
-        if (subscription.id) return "saved";
-      }
+  const args = { p: parent, token };
+  const guarded = <T>(name: string, values: Record<string, unknown>) => { paymentOptions(deadline); return rpc<T>(db, name, { ...args, ...values }); };
+  const pending = async () => {
+    const operations: PaymentOperation[] = [];
+    let after: string | null = null;
+    for (;;) {
+      const page: { kind: "session" | "intent"; object_id: string; customer_id: string }[] = await guarded("pending_family_payment_operations", { after_id: after, page_size: 100 });
+      if (!page.length) return operations;
+      operations.push(...page.map(r => ({ kind: r.kind, id: r.object_id, customer: r.customer_id })));
+      const next: string = `${page.at(-1)!.kind}:${page.at(-1)!.object_id}`;
+      if (next === after) throw new Error("Payment operation pagination did not advance");
+      after = next;
     }
-    return "clear";
-  } catch { return "unknown"; }
+  };
+  const finish = async (operation: PaymentOperation, status: string): Promise<RetentionCardState> => {
+    const clear = status === (operation.kind === "session" ? "expired" : "canceled");
+    const knownSaved = status === (operation.kind === "session" ? "complete" : "succeeded");
+    if (!clear && !knownSaved) return "unknown";
+    await guarded("finish_family_payment_operation", { resource_kind: operation.kind, resource_id: operation.id, resource_state: status });
+    return knownSaved ? "saved" : "clear";
+  };
+  const reconcile = async (operation: PaymentOperation) => {
+    if (!s) return "unknown" as const;
+    const remote = operation.kind === "session"
+      ? await s.checkout.sessions.retrieve(operation.id, {}, paymentOptions(deadline))
+      : await s.setupIntents.retrieve(operation.id, {}, paymentOptions(deadline));
+    if (remote.customer !== operation.customer) throw new Error("Payment operation scope changed");
+    return finish(operation, remote.status ?? "unknown");
+  };
+  const mutate = async (operation: PaymentOperation) => {
+    if (!s) return "unknown" as const;
+    const fresh = await guarded<boolean>("begin_family_payment_operation", { resource_kind: operation.kind, resource_id: operation.id, customer: operation.customer });
+    if (!fresh) return reconcile(operation); // Never repeat an uncertain remote mutation.
+    try {
+      const remote = operation.kind === "session"
+        ? await s.checkout.sessions.expire(operation.id, {}, paymentOptions(deadline))
+        : await s.setupIntents.cancel(operation.id, {}, paymentOptions(deadline));
+      if (remote.customer !== operation.customer) throw new Error("Payment operation scope changed");
+      return await finish(operation, remote.status ?? "unknown");
+    } catch { return reconcile(operation); }
+  };
+  const store: FamilyPaymentStore = {
+    pending, reconcile,
+    async openSessions(customer) {
+      if (!s) throw new Error("Payment provider unavailable");
+      const page = await s.checkout.sessions.list({ customer, status: "open", limit: 100 }, paymentOptions(deadline));
+      if (page.data.some(r => r.customer !== customer || r.status !== "open")) throw new Error("Payment session scope changed");
+      return page.data.map(r => r.id);
+    },
+    expire: (customer, id) => mutate({ kind: "session", customer, id }),
+    cancel: (customer, id) => mutate({ kind: "intent", customer, id }),
+    async current(customer) {
+      if (!s) throw new Error("Payment provider unavailable");
+      const loads = [
+        () => s.checkout.sessions.list({ customer, status: "complete", limit: 1 }, paymentOptions(deadline)),
+        () => s.paymentMethods.list({ customer, limit: 1 }, paymentOptions(deadline)),
+        () => s.subscriptions.list({ customer, status: "all", limit: 1 }, paymentOptions(deadline)),
+      ];
+      const results = await Promise.allSettled(loads.map(async load => load()));
+      if (results.some(r => r.status === "rejected")) return "unknown";
+      return results.some(r => r.status === "fulfilled" && r.value.data.length) ? "saved" : "clear";
+    },
+    progress: customer => guarded<PaymentProgress | null>("read_family_payment_progress", { customer }),
+    async intents(customer, after) {
+      if (!s) throw new Error("Payment provider unavailable");
+      const page = await s.setupIntents.list({ customer, limit: 100, starting_after: after ?? undefined }, paymentOptions(deadline));
+      if (page.data.some(r => r.customer !== customer)) throw new Error("Payment intent scope changed");
+      return { data: page.data.map(r => ({ id: r.id, status: r.status })), more: page.has_more };
+    },
+    saveProgress: (customer, progress) => guarded("save_family_payment_progress", { customer, head_id: progress.head, after_id: progress.after, finished: progress.done }),
+  };
+  return checkFamilyPayments(store, customers, saved);
 }
 
-function deletionStore(db: SupabaseClient, parent: string, token: string): FamilyDeletionStore {
+function deletionStore(db: SupabaseClient, parent: string, token: string, deadline: number): FamilyDeletionStore {
   const args = { p: parent, token };
   return {
     async renew() {
+      timeRemaining(deadline);
       if (!await rpc<boolean>(db, "renew_family_deletion", args)) throw new Error("Deletion lease lost");
     },
     async listImages(prefix, offset, limit) {
+      timeRemaining(deadline);
       const { data, error } = await db.storage.from(WORK_BUCKET).list(prefix, { limit, offset, sortBy: { column: "name", order: "asc" } });
       if (error || !data) throw new Error("Storage listing failed");
       return data.map((r) => ({ name: r.name, folder: r.id === null }));
     },
     async removeImages(paths) {
+      timeRemaining(deadline);
       const { error } = await db.storage.from(WORK_BUCKET).remove(paths);
       if (error) throw new Error("Storage removal failed");
     },
     async removeAuth() {
+      timeRemaining(deadline);
       const { error } = await db.auth.admin.deleteUser(parent);
       if (error && error.code !== "user_not_found") throw new Error("Auth removal failed");
     },
     async complete() {
+      timeRemaining(deadline);
       if (!await rpc<boolean>(db, "complete_family_deletion", args)) throw new Error("Deletion verification failed");
     },
   };
@@ -142,11 +184,15 @@ export async function runFamilyDeletion(db: SupabaseClient, parent: string, cont
   if (claim.state !== "ready") return { state: claim.state };
   try {
     if (claim.phase === "checking") {
-      const keep = claim.reason === "retention" && await cardState(db, parent, deadline) !== "clear";
+      const state = await cardState(db, parent, token, deadline, claim.reason === "retention");
+      if (state === "unknown") throw new Error("Payment check incomplete");
+      const keep = claim.reason === "retention" && state === "saved";
+      timeRemaining(deadline);
       if (!await rpc<boolean>(db, "decide_family_deletion", { ...args, keep_family: keep })) throw new Error("Deletion decision lost");
       if (keep) return { state: "excluded" };
     }
-    return { state: "deleted", ...await deleteFamily(deletionStore(db, parent, token), parent) };
+    timeRemaining(deadline);
+    return { state: "deleted", ...await deleteFamily(deletionStore(db, parent, token, deadline), parent) };
   } finally {
     // No fence is removed on failure. Another run resumes after release (or lease expiry after a crash).
     await rpc(control, "release_family_deletion", args);

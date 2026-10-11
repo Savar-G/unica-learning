@@ -46,7 +46,7 @@ describe("scheduled family deletion", () => {
       async advance(id: string) { cursor = id; },
       async run(id: string, limit: number) {
         expect(cursor).toBe(id); // Progress survives a process stop inside the external call.
-        expect(limit).toBeLessThanOrEqual(10_000);
+        expect(limit).toBeLessThanOrEqual(45_000);
         attempts.push(id);
         if (id === "a-slow") { remaining = 0; throw new Error("slow failed service"); }
         remaining -= 1;
@@ -57,6 +57,44 @@ describe("scheduled family deletion", () => {
     remaining = 45_000;
     expect(await runRetentionBatch(["a-slow", "b-later", "c-later"], store, () => remaining)).toMatchObject({ eligible: 3, deleted: 2, images: 4, failed: 1 });
     expect(attempts).toEqual(["a-slow", "b-later", "c-later", "a-slow"]);
+  });
+  it("permits a complete fresh payment decision beyond ten seconds within the route budget", async () => {
+    let remaining = 45_000;
+    let deleted = false;
+    const result = await runRetentionBatch(["family"], {
+      async cursor() { return null; },
+      async advance() {},
+      async run(_id, limit) {
+        if (limit <= 12_000) { remaining -= limit; throw Error("payment deadline"); }
+        remaining -= 12_000;
+        deleted = true;
+        return { state: "deleted", images: 0 };
+      },
+    }, () => remaining);
+    expect(deleted).toBe(true);
+    expect(result).toMatchObject({ eligible: 1, deleted: 1, failed: 0 });
+    expect(remaining).toBe(33_000);
+  });
+  it("leaves a later family next in the queue instead of repeatedly giving it a partial budget", async () => {
+    let remaining = 45_000;
+    let cursor: string | null = null;
+    const attempts: string[] = [];
+    const store = {
+      async cursor() { return cursor; },
+      async advance(id: string) { cursor = id; },
+      async run(id: string, limit: number) {
+        attempts.push(id);
+        if (id === "a-slow" || limit <= 20_000) { remaining -= limit; throw Error("deadline"); }
+        remaining -= 20_000;
+        return { state: "deleted" as const, images: 0 };
+      },
+    };
+    expect(await runRetentionBatch(["a-slow", "b-later"], store, () => remaining)).toMatchObject({ failed: 1, deleted: 0 });
+    expect(cursor).toBe("a-slow");
+    remaining = 45_000;
+    expect(await runRetentionBatch(["a-slow", "b-later"], store, () => remaining)).toMatchObject({ failed: 0, deleted: 1 });
+    expect(attempts).toEqual(["a-slow", "b-later"]);
+    expect(cursor).toBe("b-later");
   });
 });
 

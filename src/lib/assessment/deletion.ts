@@ -22,10 +22,12 @@ export async function runRetentionBatch(ids: string[], store: RetentionBatchStor
   const counts = { eligible: ids.length, deleted: 0, busy: 0, excluded: 0, failed: 0, images: 0 };
   const cursor = await store.cursor();
   const order = cursor === null ? ids : [...ids.filter((id) => id > cursor), ...ids.filter((id) => id <= cursor)];
+  const budget = Math.min(30_000, remainingMs());
   for (const id of order) {
-    if (remainingMs() <= 0) break;
+    // Do not repeatedly advance past a family that receives only the tail of a route's budget.
+    if (budget <= 0 || remainingMs() < budget) break;
     await store.advance(id);
-    const limit = Math.min(10_000, remainingMs());
+    const limit = Math.min(budget, remainingMs());
     if (limit <= 0) break;
     try {
       const result = await store.run(id, limit);
