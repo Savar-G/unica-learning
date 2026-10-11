@@ -6,7 +6,7 @@
 // facts with "{name}" for the child. Never a name, an email, a postal code or an account id.
 import Anthropic from "@anthropic-ai/sdk";
 import { jsonSchemaOutputFormat } from "@anthropic-ai/sdk/helpers/json-schema";
-import { REPORT_TEXT_NAME, type ReportModel, type ReviewResult } from "@/lib/assessment";
+import { REPORT_TEXT_NAME, type ReportModel } from "@/lib/assessment";
 import type { ReviewInput, WorkReviewer } from "@/lib/work-review";
 
 /** One request to the API stops after this long. The SDK tries once more after a time-out or a 429 / 5xx answer. */
@@ -52,7 +52,7 @@ Rules:
 - 2 to 4 sentences, at most 80 words. Plain words. No lists, headings, links or markdown.
 - Write ${REPORT_TEXT_NAME} where the child's name goes. Never use he, she, him, her, his or hers: repeat ${REPORT_TEXT_NAME} or rephrase.
 - Write every number as digits, and use only numbers that are in the facts. Do not calculate new numbers: no percentages, differences or totals. Do not write numbers as words, and do not use the words "one" or "half".
-- Say what the result means: the working level against the school grade, the strongest area, and the areas to practise. Call an area a weakness only when its result is "Developing" or "Needs attention". Never invent a strength or a weakness.
+- The report already says the working level and how it compares with the school grade, just above your paragraph. Do not start by repeating it. Say what the result means: the strongest area, and the areas to practise. Call an area a weakness only when its result is "Developing" or "Needs attention". Never invent a strength or a weakness.
 - If level_is_estimate is true, say that the level is an estimate. If may_work_higher is true, say that the child may work above this level.
 - If help_warning is true, do not praise the level: say that the level may be too high.
 - Number facts speed is never a reason to call a child behind.

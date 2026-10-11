@@ -136,7 +136,8 @@ describe("the AI step of the report job (#68)", () => {
     expect(ai).toMatchObject({ sure: 0, reviewed: 2, text: { kept: false, problem: "number" } });
     const sure = await run(fakeReviewer({ mode: "sure" }), [piece("s1-3"), piece("s1-5")], memoryStore().store);
     expect(sure.model.work.every((w) => w.comment)).toBe(true);
-    expect(sure.model.summary).toMatch(/^\{name\} is working at a grade 4 level/);
+    expect(sure.model.summary).toMatch(/is the strongest area for \{name\}, with \d+ of \d+ right\./);
+    expect(sure.model.summary).toContain("On the whiteboard, {name}'s work on 47 + 38 shows where a step went wrong.");
   });
 
   it("a review that fails is left out; the others stay, and the report still builds", async () => {

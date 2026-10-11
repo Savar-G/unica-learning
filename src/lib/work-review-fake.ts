@@ -10,22 +10,22 @@ const name = REPORT_TEXT_NAME;
 function defaultReview(input: ReviewInput, score: number): ReviewResult {
   if (input.correct) return { errorType: "none", kind: "none", comment: "Wrote each step in order, and the steps lead to the answer.", score };
   if (input.misconception) {
-    const mistake = input.misconception.charAt(0).toLowerCase() + input.misconception.slice(1);
-    return { errorType: "known mistake", kind: "misunderstanding", comment: `The work matches a common mistake: ${mistake}.`, score };
+    // The description without its example ("..., so 23 x 4 becomes 812"), which has other numbers than the question.
+    const mistake = input.misconception.split(", so ")[0];
+    return { errorType: "known mistake", kind: "misunderstanding", comment: `The work matches a common mistake: ${mistake.charAt(0).toLowerCase()}${mistake.slice(1)}.`, score };
   }
   return { errorType: "method", kind: "slip", comment: "Started with the right method, then made a small mistake in a later step.", score };
 }
 
-/** A report text built from the model, with only its numbers. */
+/** A report text built from the model, with only its numbers. Like the real prompt, it does not repeat the level. */
 function defaultText(m: ReportModel): string {
-  const where = m.howWeHelp === "on-grade" ? "the same as the school grade" : m.howWeHelp === "behind" ? "below the school grade" : "above the school grade";
-  const level = m.level.working === 0 ? "kindergarten" : `grade ${m.level.working}`;
   const best = [...m.strands].sort((a, b) => b.correct / Math.max(1, b.total) - a.correct / Math.max(1, a.total))[0];
   const practice = m.strands.filter((s) => s.status !== "secure").map((s) => s.name);
+  const sure = (m.work ?? []).find((w) => w.comment && !w.correct);
   return [
-    `${name} is working at a ${level} level, ${where}.`,
-    best ? `${best.name} is the strongest area, with ${best.correct} of ${best.total} right.` : "",
-    practice.length > 0 ? `${practice.join(" and ")} ${practice.length === 1 ? "is the area" : "are the areas"} to practise next.` : `Every area is secure.`,
+    best ? `${best.name} is the strongest area for ${name}, with ${best.correct} of ${best.total} right.` : "",
+    practice.length > 0 ? `${practice.join(" and ")} ${practice.length === 1 ? "is the area" : "are the areas"} to practise next.` : "Every area is secure.",
+    sure ? `On the whiteboard, ${name}'s work on ${sure.prompt.replace(/\s*=\s*\?\s*$/, "")} shows where a step went wrong.` : "",
   ].filter(Boolean).join(" ");
 }
 
