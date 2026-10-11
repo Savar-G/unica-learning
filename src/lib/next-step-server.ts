@@ -2,7 +2,7 @@ import "server-only";
 import { after } from "next/server";
 import { randomUUID } from "node:crypto";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import type { Province } from "@/lib/assessment";
+import { withFamilyCardOperation, type Province } from "@/lib/assessment";
 import type { CardResult, NextStepError, ReportSrc, WaitlistResult } from "@/lib/next-step";
 import { REPORT_PLANS, reportPath, type PlanOption } from "@/lib/report-view";
 import { CURRICULA } from "@/lib/signup";
@@ -66,11 +66,20 @@ export async function startCard(parentId: string, reportId: string, plan: PlanId
   const db = adminClient();
   if (!db) return fail("store_failed", 503);
   const token = randomUUID();
-  let held: boolean;
-  try { held = await beginCardOperation(db, parentId, token); }
-  catch { return fail("store_failed", 503); }
-  try { return await startCardHeld(parentId, reportId, plan, src, origin); }
-  finally { if (held) await endCardOperation(db, token); }
+  let started = false;
+  try {
+    return await withFamilyCardOperation({
+      async begin() {
+        const held = await beginCardOperation(db, parentId, token);
+        started = true;
+        return held;
+      },
+      async end() { await endCardOperation(db, token); },
+    }, () => startCardHeld(parentId, reportId, plan, src, origin));
+  } catch {
+    // Keep an uncertain external result fenced until an operator reconciles it. Do not retry it here.
+    return started ? { ok: true, state: "later" } : fail("store_failed", 503);
+  }
 }
 
 async function startCardHeld(parentId: string, reportId: string, plan: PlanId, src: ReportSrc, origin: string): Promise<CardResult | Fail> {
@@ -148,7 +157,7 @@ async function startCardHeld(parentId: string, reportId: string, plan: PlanId, s
     const message = e instanceof Error ? e.message : String(e);
     console.error("[next-step] stripe failed", row.id, message);
     alert(`Stripe failed: ${message.slice(0, 200)}`);
-    return { ok: true, state: "later" };
+    throw e;
   }
 }
 

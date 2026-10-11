@@ -17,10 +17,28 @@ create table public.family_card_operations (
   started_at timestamptz not null default now()
 );
 create index family_card_operations_parent_idx on public.family_card_operations(parent_id);
+-- A saved position prevents a repeatedly slow first family from blocking the rest of the daily queue.
+create table public.family_deletion_schedule (
+  singleton boolean primary key default true check (singleton),
+  last_parent uuid
+);
+insert into public.family_deletion_schedule(singleton) values(true);
 alter table public.family_deletions enable row level security;
 alter table public.family_card_operations enable row level security;
-revoke all on public.family_deletions, public.family_card_operations from anon, authenticated;
-grant all on public.family_deletions, public.family_card_operations to service_role;
+alter table public.family_deletion_schedule enable row level security;
+revoke all on public.family_deletions, public.family_card_operations, public.family_deletion_schedule from anon, authenticated;
+grant all on public.family_deletions, public.family_card_operations, public.family_deletion_schedule to service_role;
+
+create function public.family_deletion_cursor() returns uuid
+language sql security definer set search_path = '' as $$
+  select last_parent from public.family_deletion_schedule where singleton;
+$$;
+create function public.advance_family_deletion_cursor(p uuid) returns void
+language sql security definer set search_path = '' as $$
+  update public.family_deletion_schedule set last_parent = p where singleton;
+$$;
+revoke all on function public.family_deletion_cursor(), public.advance_family_deletion_cursor(uuid) from public, anon, authenticated;
+grant execute on function public.family_deletion_cursor(), public.advance_family_deletion_cursor(uuid) to service_role;
 
 -- All family writes share this row lock. The deletion claim takes the exclusive lock, then commits a
 -- permanent fence. A write that won first completes before eligibility is rechecked; one that loses fails.
@@ -95,8 +113,13 @@ language sql security definer set search_path = '' set timezone = 'UTC' as $$
   select not exists(select 1 from public.admin_users where user_id = p)
     and not exists(select 1 from public.card_setups where parent_id = p and card_saved_at is not null)
     and not exists(select 1 from public.family_card_operations where parent_id = p)
-    and (select max(greatest(started_at, completed_at, last_answer_at)) + interval '12 months'
-      <= now() from public.assessments where parent_id = p);
+    and (select max(activity.at) + interval '12 months' <= now() from (
+      select greatest(started_at, completed_at, last_answer_at) as at from public.assessments where parent_id = p
+      union all select f.started_at from public.assessment_facts f
+        join public.assessments a on a.id = f.assessment_id where a.parent_id = p
+      union all select f.created_at from public.fact_answers f
+        join public.assessments a on a.id = f.assessment_id where a.parent_id = p
+    ) activity);
 $$;
 
 -- Session RPC for an explicit request. Membership is checked with this token at the instant of the write.
