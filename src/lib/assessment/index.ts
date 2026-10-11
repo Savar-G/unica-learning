@@ -5,6 +5,7 @@ export { MISCONCEPTIONS, type Misconception, type MisconceptionId } from "./misc
 export { reportModel, type Comparison, type FsaLine, type ReportContext, type ReportModel, type WorkReview } from "./report";
 export { SAMPLE_BANK } from "./sample-bank";
 export {
+  breakDue,
   createSession,
   fillTemplate,
   finish,
