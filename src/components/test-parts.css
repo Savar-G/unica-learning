@@ -32,7 +32,8 @@
 @keyframes test-breath-out { 0%, 45% { opacity: 0; } 50%, 95% { opacity: 1; } 100% { opacity: 0; } }
 
 @media (max-width: 900px), (orientation: portrait) {
-  .test-split.test-break { grid-template-rows: auto minmax(260px, 1fr); }
+  /* Room for the breathing circle. Three classes, so it wins over the colour-field rule in test-base.css by weight, not by order. */
+  .test-root .test-split.test-break { --test-low: 260px; }
   .test-breath { width: 200px; height: 200px; }
 }
 

@@ -64,10 +64,10 @@ export function TakeTest({ childId, name, total, breakAfter, ready, done, mode: 
   // Set once the facts section is over (or was over before a resume), so it never shows twice.
   const factsDone = useRef(false);
 
-  /** The open test ran out of time (#72): back to the start, where the next test has new questions. */
   // The voices for "read it to me" load while the child reads the start screen, so the button is there with question 1.
   useEffect(() => warmUpVoices(), []);
 
+  /** The open test ran out of time (#72): back to the start, where the next test has new questions. */
   const expire = useCallback(() => {
     setMode("restart");
     setFailure("expired");
@@ -207,6 +207,9 @@ export function TakeTest({ childId, name, total, breakAfter, ready, done, mode: 
 }
 
 function Problem({ error }: { error: TestError | null }) {
+  // A pane that scrolls (a long question) could hide a new error line under Next: bring it into view.
+  const line = useRef<HTMLParagraphElement>(null);
+  useEffect(() => line.current?.scrollIntoView?.({ block: "nearest" }), [error]);
   if (!error) return null;
   const text =
     error === "signed_out" ? <>The sign-in ended. Ask your grown-up to <Link href="/sign-in">sign in</Link> again. Your earlier answers are saved.</>
@@ -216,7 +219,7 @@ function Problem({ error }: { error: TestError | null }) {
     : error === "work_required" ? "Show your work on the whiteboard, then press Next."
     : error === "work_too_big" ? "Your work is too big to save. Clear some of it, then press Next again."
     : <>Something went wrong. Check the internet connection and try again. If this keeps happening, email <a href={SUPPORT_HREF}>{SUPPORT_EMAIL}</a>.</>;
-  return <p role="alert" className="test-alert">{text}</p>;
+  return <p ref={line} role="alert" className="test-alert">{text}</p>;
 }
 
 function Intro({ name, total, ready, busy, onStart, failure, mode }: { name: string; total: number; ready: boolean; busy: boolean; onStart: () => void; failure: TestError | null; mode: StartMode }) {

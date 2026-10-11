@@ -18,8 +18,18 @@ export function sayChoice(choice: string, say: Record<string, string> | undefine
 /** "a", "a, or b", "a, b, or c". */
 const list = (words: string[]) => (words.length < 3 ? words.join(", or ") : `${words.slice(0, -1).join(", ")}, or ${words.at(-1)}`);
 
-/** The spoken text: the question's read-aloud text, then "Is it ...?" with the choices in the order `shown`. */
+const escape = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+/** True when `text` says this choice as a whole word or number ("1 out of 3" is in "...: 1 out of 3, or ..."). */
+export function namesChoice(text: string, choice: string, say?: Record<string, string>): boolean {
+  return new RegExp(`(^|[^\\w.])${escape(sayChoice(choice, say))}(?![\\w]|\\.\\d)`, "i").test(text);
+}
+
+/**
+ * The spoken text: the question's read-aloud text, then "Is it ...?" with the choices in the order `shown`.
+ * A question stored before #79 can name every choice in its own text (in template order); it is read as it is, once.
+ */
 export function readAloudText(question: Pick<PublicQuestion, "readAloud" | "say">, shown: readonly string[] = []): string {
-  if (shown.length === 0) return question.readAloud;
+  if (shown.length === 0 || shown.every((c) => namesChoice(question.readAloud, c, question.say))) return question.readAloud;
   return `${question.readAloud} Is it ${list(shown.map((c) => sayChoice(c, question.say)))}?`;
 }
