@@ -1,5 +1,6 @@
 import { finish, testStep } from "@/lib/assessment";
 import { loadTest, testAccess } from "@/lib/assessment-store";
+import { loadFacts } from "@/lib/facts-store";
 import { testFail, type FinishResult } from "@/lib/test-api";
 
 // Scores a complete test with the assessment core and stores the placement with the assessment.
@@ -14,7 +15,10 @@ export async function POST(_request: Request, ctx: RouteContext<"/api/account/as
   if (row.status === "completed") return Response.json({ ok: true } satisfies FinishResult);
   if (row.status !== "in_progress" || testStep(session).status !== "complete") return testFail("incomplete", 409);
 
-  const placement = finish(session);
+  // The timed facts section (#70) goes into the placement beside the test; null when the child had none.
+  const facts = await loadFacts(admin, row.id);
+  if (facts && "error" in facts) return facts.error;
+  const placement = finish(session, facts?.session ?? null);
   const { error } = await admin.from("assessments")
     .update({ status: "completed", completed_at: new Date().toISOString(), route: placement.route, placement })
     .eq("id", row.id).eq("status", "in_progress");

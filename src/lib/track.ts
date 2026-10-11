@@ -3,6 +3,7 @@
 // Sign-in (#63): google_start, google_failed, sign_in_link_sent, sign_in_link_failed, sign_in_link_page, sign_in (channel "link", on the start screen), password_reset_request, password_changed, password_change_failed.
 // The test (#64): test_start (status new or resumed), test_finish, test_error (code, status = the step that failed).
 // Read-aloud, break, progress (#69): read_aloud (the child started the voice), test_break (status shown, rested or skipped).
+// Quick facts (#70): test_facts_done (status time_up or all_answered). No grade and no score.
 // Analytics run only after the visitor accepts (see consent.ts). Without consent an event is dropped, not queued.
 // Only src, plan, subject, curriculum, price, status, code, card and channel travel with an event (see analytics.ts).
 // posthog-js is imported on demand so it stays out of the first-load bundle.
