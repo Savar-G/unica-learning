@@ -5,6 +5,7 @@ import { reportAlert, reportEmail } from "@/lib/report-email";
 import type { ReportView } from "@/lib/report-view";
 
 const URL = "https://unicalearning.com/account/report/r-1?src=email";
+const UNSUB = "https://unicalearning.com/unsubscribe?t=tok_123";
 
 function view(isRight: Script, { grade = 4, province = "BC", name = "Maya" }: { grade?: Grade; province?: Province; name?: string } = {}): ReportView {
   const { placement } = takeTest({ grade, province }, 1, isRight);
@@ -20,7 +21,7 @@ function view(isRight: Script, { grade = 4, province = "BC", name = "Maya" }: { 
 }
 
 describe("the report email to the parent", () => {
-  const email = reportEmail({ view: view(knowsUpTo(3)), parentName: "Priya Shah", url: URL });
+  const email = reportEmail({ unsubscribeUrl: UNSUB, view: view(knowsUpTo(3)), parentName: "Priya Shah", url: URL });
 
   it("names the child in the subject and greets the parent by first name", () => {
     expect(email.subject).toBe("Maya's math report is ready");
@@ -47,13 +48,13 @@ describe("the report email to the parent", () => {
     expect(email.text).toContain("Foundation Skills Assessment open data");
   });
   it("has no FSA line for a grade 4 family in Ontario (D-087)", () => {
-    const on = reportEmail({ view: view(knowsUpTo(3), { province: "ON" }), parentName: "Priya", url: URL });
+    const on = reportEmail({ unsubscribeUrl: UNSUB, view: view(knowsUpTo(3), { province: "ON" }), parentName: "Priya", url: URL });
     for (const body of [on.text, on.html]) expect(body).not.toMatch(/Foundation Skills Assessment|FSA/);
   });
   it("carries number facts with speed beside accuracy, when the child had a facts section", () => {
     const v = view(knowsUpTo(3));
     const facts: ReportFacts = { scope: "Addition and subtraction facts to 20", seconds: 60, answered: 12, correct: 12, secondsPerFact: 4.6, accuracy: "secure", speed: "needs-practice" };
-    const withFacts = reportEmail({ view: { ...v, model: { ...v.model, facts } }, parentName: "Priya", url: URL });
+    const withFacts = reportEmail({ unsubscribeUrl: UNSUB, view: { ...v, model: { ...v.model, facts } }, parentName: "Priya", url: URL });
     expect(withFacts.text).toContain("Number facts: 12 of 12 right (Secure), typically 4.6 seconds a fact (Needs practice)");
     expect(withFacts.text).toContain("Speed comes with practice. It does not change Maya's working level.");
     expect(withFacts.html).toContain("12 of 12 right");
@@ -72,7 +73,7 @@ describe("the report email to the parent", () => {
     expect(email.html).not.toMatch(/<form|<button|<input/);
   });
   it("another province's main button opens the waitlist step (#66)", () => {
-    const on = reportEmail({ view: view(knowsUpTo(3), { province: "ON" }), parentName: "Priya", url: URL });
+    const on = reportEmail({ unsubscribeUrl: UNSUB, view: view(knowsUpTo(3), { province: "ON" }), parentName: "Priya", url: URL });
     expect(on.html).toContain('<a href="https://unicalearning.com/account/report/r-1?src=email&amp;step=waitlist#rpt-next"');
     expect(on.html).toMatch(/>Join the waitlist<\/a>/);
     expect(on.text).toContain("Join the waitlist: https://unicalearning.com/account/report/r-1?src=email&step=waitlist#rpt-next");
@@ -83,7 +84,7 @@ describe("the report email to the parent", () => {
   });
   it("carries the help warning and the retake date when help is likely (#71), and never the flags", () => {
     const v = view(knowsUpTo(3));
-    const warned = reportEmail({ view: { ...v, model: { ...v.model, helpWarning: true } }, parentName: "Priya", url: URL });
+    const warned = reportEmail({ unsubscribeUrl: UNSUB, view: { ...v, model: { ...v.model, helpWarning: true } }, parentName: "Priya", url: URL });
     for (const body of [warned.text, warned.html]) {
       expect(body).toContain("This level may be too high");
       expect(body).toContain("from November 10, 2026.");
@@ -93,8 +94,31 @@ describe("the report email to the parent", () => {
   it("has no help warning when help is not likely", () => {
     for (const body of [email.text, email.html]) expect(body).not.toMatch(/may be too high/);
   });
+  it("ends with the sender, the mailing address, the website and an unsubscribe link (CASL: it offers a plan)", () => {
+    expect(email.text).toContain("Unica Learning, 16557 87A Ave, Surrey, BC V4N 5B2");
+    expect(email.text).toContain("unicalearning.com");
+    expect(email.text).toContain(`Unsubscribe: ${UNSUB}`);
+    expect(email.html).toContain("Unica Learning, 16557 87A Ave, Surrey, BC V4N 5B2");
+    expect(email.html).toMatch(new RegExp(`<a href="${UNSUB.replace(/[?.]/g, "\\$&")}"[^>]*>Unsubscribe</a>`));
+    expect(email.html).toContain('href="https://unicalearning.com"');
+  });
+  it("says what unsubscribing stops, and that the report stays in the account", () => {
+    expect(email.text).toContain("Unsubscribe to stop reminders and emails about our plans. Maya's report stays in your account.");
+  });
+  it("a parent who unsubscribed gets only the report: no plan or waitlist button, the full report as the button", () => {
+    for (const province of ["BC", "ON"] as const) {
+      const quiet = reportEmail({ unsubscribeUrl: UNSUB, view: view(knowsUpTo(3), { province }), parentName: "Priya", url: URL, offer: false });
+      for (const body of [quiet.text, quiet.html]) {
+        expect(body).not.toMatch(/Choose a plan|Join the waitlist|step=|CAD \d+|Unsubscribe:|unsubscribe\?t=/);
+        expect(body).toContain("You unsubscribed from reminders and emails about our plans, so this email has only the report.");
+      }
+      expect(quiet.html).toMatch(new RegExp(`<a href="${URL.replace(/[?.]/g, "\\$&")}"[^>]*>See Maya&#39;s full report</a>`));
+      expect(quiet.text).toContain(`See Maya's full report: ${URL}`);
+      expect(quiet.text).toContain("Unica Learning, 16557 87A Ave, Surrey, BC V4N 5B2");
+    }
+  });
   it("escapes names in the HTML (parent email)", () => {
-    const html = reportEmail({ view: view(knowsUpTo(3), { name: "Jo & <i>" }), parentName: "<b>A</b>", url: "https://x.test/?a=1&b=2" }).html;
+    const html = reportEmail({ unsubscribeUrl: UNSUB, view: view(knowsUpTo(3), { name: "Jo & <i>" }), parentName: "<b>A</b>", url: "https://x.test/?a=1&b=2" }).html;
     expect(html).not.toMatch(/<b>A<\/b>|<i>/);
     expect(html).toContain("Jo &amp; &lt;i&gt;");
     expect(html).toContain('href="https://x.test/?a=1&amp;b=2"');
@@ -107,13 +131,13 @@ describe("the report email to the parent", () => {
     };
 
     it("follows the verdict, with the child's name, in the text and the HTML (escaped)", () => {
-      const email = reportEmail({ view: withSummary("{name} is working at a grade 3 level & {name}'s best area is Patterns and algebra."), parentName: "Priya", url: URL });
+      const email = reportEmail({ unsubscribeUrl: UNSUB, view: withSummary("{name} is working at a grade 3 level & {name}'s best area is Patterns and algebra."), parentName: "Priya", url: URL });
       expect(email.text).toContain("That is one grade below Maya's school grade (grade 4).\nMaya is working at a grade 3 level & Maya's best area is Patterns and algebra.");
       expect(email.html).toContain("Maya is working at a grade 3 level &amp; Maya&#39;s best area is Patterns and algebra.");
     });
 
     it("is absent without AI text", () => {
-      const email = reportEmail({ view: view(knowsUpTo(3)), parentName: "Priya", url: URL });
+      const email = reportEmail({ unsubscribeUrl: UNSUB, view: view(knowsUpTo(3)), parentName: "Priya", url: URL });
       expect(email.text).toContain("That is one grade below Maya's school grade (grade 4).\n\nFor context");
       expect(email.text).not.toContain("{name}");
     });
@@ -128,7 +152,7 @@ describe("the report email to the parent", () => {
     };
 
     it("says the work is in the full report, with a link, and carries no image or private link", () => {
-      const email = reportEmail({ view: withWork(), parentName: "Priya Shah", url: URL });
+      const email = reportEmail({ unsubscribeUrl: UNSUB, view: withWork(), parentName: "Priya Shah", url: URL });
       expect(email.text).toContain("Maya's work from the whiteboard is in the full report.");
       expect(email.html).toContain("Maya&#39;s work from the whiteboard is in the");
       for (const body of [email.text, email.html]) {
@@ -137,7 +161,7 @@ describe("the report email to the parent", () => {
     });
 
     it("says nothing about work when the child showed none", () => {
-      const email = reportEmail({ view: view(knowsUpTo(3)), parentName: "Priya Shah", url: URL });
+      const email = reportEmail({ unsubscribeUrl: UNSUB, view: view(knowsUpTo(3)), parentName: "Priya Shah", url: URL });
       expect(email.text).not.toMatch(/whiteboard/);
     });
   });

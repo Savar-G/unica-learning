@@ -3,7 +3,9 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { reportModel, type HelpAnswer, type Placement, type Province, type ReportModel } from "@/lib/assessment";
 import { SUPPORT_EMAIL } from "@/lib/contact";
 import { reportAlert, reportEmail, type ParentContact } from "@/lib/report-email";
+import { parentUnsubscribed } from "@/lib/reminder-store";
 import { reportPath, type ReportView } from "@/lib/report-view";
+import { newToken } from "@/lib/sign-in-link";
 import { adminClient } from "@/lib/supabase-auth";
 import { aiReport, aiReviewer, type AiOutcome, type WorkReviewer } from "@/lib/work-review";
 import { reviewPieces, reviewStore } from "@/lib/work-review-store";
@@ -80,7 +82,7 @@ export async function runReportJob(assessmentId: string, origin: string, { revie
     };
     const url = `${origin}${reportPath(report.id)}`;
 
-    const parentEmail = await emailParent(admin, report, view, parent, `${url}?src=email`);
+    const parentEmail = await emailParent(admin, report, view, { ...parent, id: assessment.parent_id }, `${url}?src=email`);
     // Another run is sending the parent email right now; it sends the alert too.
     if (parentEmail === "busy") return;
     // The link opens only in the parent's account until the admin area (#77).
@@ -165,9 +167,12 @@ async function mark(admin: SupabaseClient, id: string, fields: Record<string, st
  */
 const STALE_CLAIM_MS = 10 * 60_000;
 
-/** Sets the email's time in the row if it is empty, or if a stopped run left it. False when a live run holds it. */
-async function claim(admin: SupabaseClient, id: string, column: "emailed_at" | "alerted_at"): Promise<boolean> {
-  let query = admin.from("reports").update({ [column]: new Date().toISOString() }).eq("id", id);
+/**
+ * Sets the email's time in the row if it is empty, or if a stopped run left it, with `extra` in the same write. False
+ * when a live run holds it.
+ */
+async function claim(admin: SupabaseClient, id: string, column: "emailed_at" | "alerted_at", extra: Record<string, string> = {}): Promise<boolean> {
+  let query = admin.from("reports").update({ ...extra, [column]: new Date().toISOString() }).eq("id", id);
   query = column === "emailed_at"
     ? query.or(`emailed_at.is.null,and(email_id.is.null,emailed_at.lt."${new Date(Date.now() - STALE_CLAIM_MS).toISOString()}")`)
     : query.is(column, null);
@@ -176,16 +181,24 @@ async function claim(admin: SupabaseClient, id: string, column: "emailed_at" | "
   return (data?.length ?? 0) > 0;
 }
 
-async function emailParent(admin: SupabaseClient, report: StoredReport, view: ReportView, parent: ParentContact, url: string): Promise<Sent | "busy"> {
+async function emailParent(admin: SupabaseClient, report: StoredReport, view: ReportView, parent: ParentContact & { id: string }, url: string): Promise<Sent | "busy"> {
   if (report.email_id) return { sent: true };
   const from = process.env.EMAIL_FROM;
   if (!from) {
     await mark(admin, report.id, { email_error: "EMAIL_FROM is not set" });
     return { sent: false, reason: "EMAIL_FROM is not set" };
   }
-  if (!(await claim(admin, report.id, "emailed_at"))) return "busy";
-  const email = reportEmail({ view, parentName: parent.name, url });
-  const result = await send({ from, to: parent.email, replyTo: SUPPORT_EMAIL, ...email });
+  // CASL (#80): the email offers a plan, so it carries an unsubscribe link. The token is new for each send; only its
+  // hash is kept, in the claim's own write, so the link works as soon as the email can go. A parent who already
+  // unsubscribed gets the report alone, without the plan or waitlist button.
+  const offer = !(await parentUnsubscribed(admin, parent.id));
+  const { token, hash } = newToken();
+  if (!(await claim(admin, report.id, "emailed_at", { unsubscribe_hash: hash }))) return "busy";
+  const origin = new URL(url).origin;
+  const email = reportEmail({ view, parentName: parent.name, url, unsubscribeUrl: `${origin}/unsubscribe?t=${token}`, offer });
+  // RFC 8058 one-click: mail apps POST here from their own Unsubscribe button.
+  const headers = offer ? { "List-Unsubscribe": `<${origin}/api/unsubscribe?t=${token}>`, "List-Unsubscribe-Post": "List-Unsubscribe=One-Click" } : undefined;
+  const result = await send({ from, to: parent.email, replyTo: SUPPORT_EMAIL, headers, ...email });
   if ("error" in result) {
     console.error("[report] parent email failed", report.id, result.error);
     await mark(admin, report.id, { emailed_at: null, email_error: result.error.slice(0, 500) });
@@ -217,7 +230,7 @@ async function alertSavar(admin: SupabaseClient, report: StoredReport, alert: { 
  * Sends one email through Resend. Alerts use EMAIL_FROM when it is set; else Resend's test sender, which the free plan
  * delivers only to the account owner (as the signup alert does).
  */
-async function send(email: { to: string | undefined; subject: string; text: string; html?: string; from?: string; replyTo?: string }): Promise<{ id: string } | { error: string }> {
+async function send(email: { to: string | undefined; subject: string; text: string; html?: string; from?: string; replyTo?: string; headers?: Record<string, string> }): Promise<{ id: string } | { error: string }> {
   const key = process.env.RESEND_API_KEY;
   if (!key) return { error: "RESEND_API_KEY is not set" };
   if (!email.to) return { error: "no recipient" };
@@ -226,7 +239,7 @@ async function send(email: { to: string | undefined; subject: string; text: stri
     const res = await fetch("https://api.resend.com/emails", {
       method: "POST",
       headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
-      body: JSON.stringify({ from, to: [email.to], subject: email.subject, text: email.text, html: email.html, reply_to: email.replyTo }),
+      body: JSON.stringify({ from, to: [email.to], subject: email.subject, text: email.text, html: email.html, reply_to: email.replyTo, headers: email.headers }),
       signal: AbortSignal.timeout(15_000),
     });
     if (!res.ok) return { error: `Resend answered ${res.status}: ${(await res.text()).slice(0, 300)}` };

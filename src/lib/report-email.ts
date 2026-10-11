@@ -1,8 +1,11 @@
 // The report emails (#65): the report to the parent, and an alert to Savar for each finished test.
-// Plain until the report design (#80, D-087) restyles them. The parent email says what the report page says
+// The parent email has the look of the chosen report design (D-087, #80): one 600 px column, the level and the verdict
+// in the grainy colour band with the K-8 ruler, a meter per area. It says what the report page says
 // (src/lib/report-view.ts). Pure: the background job (src/lib/report-job.ts) sends them through Resend.
-import { PAUSE_WINDOW, TOO_FAST_MS, type Flag, type HelpAnswer } from "@/lib/assessment";
-import { BUSINESS_NAME } from "@/lib/contact";
+// Email-safe: tables and inline styles only, no web fonts, no forms; the band's one image is an absolute URL, with the
+// band's base colour behind it for mail apps that block images.
+import { PAUSE_WINDOW, STRAND_DEVELOPING_PERCENT, STRAND_SECURE_PERCENT, TOO_FAST_MS, type Flag, type HelpAnswer, type StrandStatus } from "@/lib/assessment";
+import { BUSINESS_NAME, MAILING_ADDRESS, WEBSITE } from "@/lib/contact";
 import type { AiOutcome } from "@/lib/work-review";
 import {
   NEXT_STEP_ANCHOR,
@@ -15,6 +18,7 @@ import {
   levelSentence,
   nextStep,
   questionsAndMinutes,
+  sharePercent,
   summaryText,
   thresholdsLine,
   verdictSentence,
@@ -36,37 +40,89 @@ const esc = (s: string) => s.replace(/[&<>"']/g, (c) => ENTITY[c]);
 const INK = "#0c0c0e";
 const INK_2 = "#44444c";
 const LINE = "#e4e4e7";
+const LINE_SOFT = "#ececef";
 const CARD = "#f5f4f2";
 const BUTTON = "#2b2622";
+const ACCENT = "#ff6a3d";
+/** The colour band's base (peach): what shows when a mail app blocks the band image. */
+const BAND_BASE = "#ffd9b8";
+/** The grainy colour band (sunflower, sky, mint on peach), served from public/email. */
+const BAND_IMAGE = "/email/report-band.jpg";
 /** Sunflower: the help warning (#71), a caution, never the tangerine of "behind". */
 const SUNFLOWER = "#ffc93c";
 /** The working level's marker: behind tangerine, on grade leaf, ahead sky (DESIGN.md, report). */
 const VERDICT_COLOUR = { behind: "#ff6a3d", "on-grade": "#2fb37a", ahead: "#5b8def" } as const;
-/** Status chips: leaf, sunflower and tangerine, each mixed 22% with white. */
-const STATUS_TINT = { secure: "#d1eee2", developing: "#fff3d4", "needs-attention": "#ffded4" } as const;
-const FONT = "-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif";
+/** The span between the working level and the school grade: the verdict colour, 16% on white. */
+const VERDICT_TINT = { behind: "#ffe7e0", "on-grade": "#def3ea", ahead: "#e5edfc" } as const;
+/** Status chips, as on the report page (src/components/report.css): a tint and a dark text of the same colour. */
+const STATUS_CHIP: Record<StrandStatus, { bg: string; fg: string }> = {
+  secure: { bg: "#e3f5ec", fg: "#146b45" },
+  developing: { bg: "#fff2c7", fg: "#6e5200" },
+  "needs-attention": { bg: "#ffe6db", fg: "#a8360f" },
+};
+/** The meter's three zones, as on the report page. */
+const ZONE = { attention: "#ffd9cb", developing: "#ffe9a6", secure: "#cdeedc" } as const;
+const FONT = "-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif";
+const MONO = "ui-monospace,SFMono-Regular,Menlo,Consolas,monospace";
 
 const firstName = (name: string) => name.trim().split(/\s+/)[0] || name;
 
-/** The K-8 scale as a table row: the working level filled in the verdict colour, the school grade in a dashed ring. */
-function scaleHtml(v: ReportView): string {
+const chip = ({ bg, fg }: { bg: string; fg: string }, label: string) =>
+  `<span style="display:inline-block;padding:3px 9px;border-radius:999px;background:${bg};color:${fg};font-family:${MONO};font-size:12px;line-height:1.3;white-space:nowrap">${esc(label)}</span>`;
+
+/** The K-8 ruler on white: the working level filled in the verdict colour, the school grade in a dashed ring, the span tinted. */
+function rulerHtml(v: ReportView): string {
   const { working, grade } = v.model.level;
+  const [lo, hi] = [Math.min(working, grade), Math.max(working, grade)];
+  const verdict = v.model.howWeHelp;
   const cells = [0, 1, 2, 3, 4, 5, 6, 7, 8].map((level) => {
     const label = level === 0 ? "K" : String(level);
-    const fill = level === working ? `background:${VERDICT_COLOUR[v.model.howWeHelp]};font-weight:600;` : "";
+    const inSpan = lo !== hi && level >= lo && level <= hi;
+    const cell = [
+      "padding:6px 0",
+      inSpan ? `background:${VERDICT_TINT[verdict]}` : "",
+      inSpan && level === lo ? "border-radius:6px 0 0 6px" : "",
+      inSpan && level === hi ? "border-radius:0 6px 6px 0" : "",
+      level > 0 && !inSpan && !(level === hi + 1 && lo !== hi) ? `border-left:1px solid ${LINE_SOFT}` : "",
+    ].filter(Boolean).join(";");
+    const fill = level === working ? `background:${VERDICT_COLOUR[verdict]};font-weight:600;color:${INK};` : `color:${level === grade ? INK : "#6b6b74"};`;
     const ring = level === grade ? `border:2px dashed ${INK};` : "border:2px solid transparent;";
-    return `<td align="center" style="padding:6px 0"><span style="display:inline-block;width:32px;height:32px;line-height:32px;border-radius:50%;${fill}${ring}color:${INK};font-size:14px">${label}</span></td>`;
+    return `<td align="center" width="11%" style="${cell}"><span style="display:inline-block;width:28px;height:28px;line-height:28px;border-radius:50%;${fill}${ring}font-size:15px">${label}</span></td>`;
   });
-  return `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#ffffff;border-radius:8px"><tr>${cells.join("")}</tr></table>
-<p style="margin:10px 0 0;font-size:13px;color:${INK_2}">Filled circle: working level (${esc(levelName(working))}). Dashed ring: school grade (${esc(levelName(grade))}).</p>`;
+  return `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#ffffff" style="background:#ffffff;border-radius:10px">
+<tr><td style="padding:8px 6px"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="table-layout:fixed"><tr>${cells.join("")}</tr></table></td></tr>
+</table>
+<p style="margin:10px 0 0;font-family:${MONO};font-size:12px;line-height:1.5;color:${INK}"><span style="color:${VERDICT_COLOUR[verdict]}">&#9679;</span>&nbsp;Working level: ${esc(levelName(working))} &nbsp;&nbsp; <span>&#9676;</span>&nbsp;School grade: ${esc(levelName(grade))}</p>`;
+}
+
+/**
+ * One area's meter, drawn with table cells: three zones (Needs attention, Developing, Secure, split at the thresholds)
+ * and an ink marker at the share right. Decorative: the count beside it carries the number.
+ */
+function meterHtml(share: number): string {
+  const at = Math.min(100, Math.max(0, share));
+  const zones: [number, number, string][] = [
+    [0, STRAND_DEVELOPING_PERCENT, ZONE.attention],
+    [STRAND_DEVELOPING_PERCENT, STRAND_SECURE_PERCENT, ZONE.developing],
+    [STRAND_SECURE_PERCENT, 100, ZONE.secure],
+  ];
+  const before = zones.map(([a, b, c]): [number, number, string] => [a, Math.min(b, at), c]).filter(([a, b]) => b > a);
+  const after = zones.map(([a, b, c]): [number, number, string] => [Math.max(a, at), b, c]).filter(([a, b]) => b > a);
+  const seg = ([a, b, c]: [number, number, string], first: boolean, last: boolean) =>
+    `<td width="${b - a}%" style="padding:5px 0"><div style="height:8px;line-height:8px;font-size:0;background:${c};border-radius:${first ? "4px" : "0"} ${last ? "4px 4px" : "0 0"} ${first ? "4px" : "0"}">&nbsp;</div></td>`;
+  const cells = [
+    ...before.map((z, i) => seg(z, i === 0, false)),
+    `<td width="3" style="width:3px;background:${INK};border-radius:2px;font-size:0;line-height:0">&nbsp;</td>`,
+    ...after.map((z, i) => seg(z, false, i === after.length - 1)),
+  ];
+  return `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="table-layout:fixed"><tr style="height:18px">${cells.join("")}</tr></table>`;
 }
 
 /** Accuracy beside speed in one line, or what happened when nothing was answered. */
 const factsLine = (f: FactsView) => (f.accuracy && f.speed ? `${f.accuracy.value} (${f.accuracy.label}), ${f.speed.value} (${f.speed.label})` : (f.note ?? ""));
 
 /** The facts chips: Secure and Quick in leaf, Needs practice in sunflower (never the tangerine of "Needs attention"). */
-const factsChip = (label: string) =>
-  `<span style="display:inline-block;padding:3px 8px;border-radius:999px;background:${label === "Needs practice" ? STATUS_TINT.developing : STATUS_TINT.secure};font-size:13px">${esc(label)}</span>`;
+const factsChip = (label: string) => chip(label === "Needs practice" ? STATUS_CHIP.developing : STATUS_CHIP.secure, label);
 
 /**
  * The report link, opened at the next step (#66): the plan choice or the waitlist. Emails carry links only, so the
@@ -79,8 +135,15 @@ function withStep(reportUrl: string, step: NextStepKey): string {
   return u.toString();
 }
 
-/** The report for the parent, with a link that opens it in their account. */
-export function reportEmail({ view: v, parentName, url }: { view: ReportView; parentName: string; url: string }) {
+const button = (href: string, label: string) =>
+  `<a href="${esc(href)}" style="display:inline-block;background:${BUTTON};color:#ffffff;text-decoration:none;padding:15px 24px;border-radius:6px;font-weight:600;font-size:16px;line-height:1.2">${esc(label)}</a>`;
+
+/**
+ * The report for the parent, with a link that opens it in their account. CASL: the email offers a plan, so it names the
+ * sender, gives the mailing address and the website, and has an unsubscribe link (#80). `offer` is false when the
+ * parent has unsubscribed: the email is then only the report they asked for, with no plan or waitlist button.
+ */
+export function reportEmail({ view: v, parentName, url, unsubscribeUrl, offer = true }: { view: ReportView; parentName: string; url: string; unsubscribeUrl: string; offer?: boolean }) {
   const name = v.childName;
   const first = firstName(parentName);
   const subject = `${name}'s math report is ready`;
@@ -92,12 +155,17 @@ export function reportEmail({ view: v, parentName, url }: { view: ReportView; pa
   const facts = factsView(v);
   const help = howWeHelp(v);
   const warning = helpWarning(v);
-  const step = nextStep(v);
-  const stepUrl = withStep(url, step.email.step);
+  const step = offer ? nextStep(v) : null;
+  const stepUrl = step ? withStep(url, step.email.step) : null;
   const areas = v.model.strands.map((s) => `${s.name}: ${STATUS_LABEL[s.status]}, ${s.correct} of ${s.total} right`);
   // #67: the drawings stay in private storage, so the email does not carry them; the report shows them after sign-in.
   const work = (v.model.work ?? []).length > 0 ? `${name}'s work from the whiteboard is in the full report.` : null;
-  const footer = `You get this email because you asked for ${name}'s free math placement report. Questions? Reply to this email.`;
+  const why = `You get this email because you asked for ${name}'s free math placement report.`;
+  const unsubscribe = offer
+    ? `Unsubscribe to stop reminders and emails about our plans. ${name}'s report stays in your account.`
+    : `You unsubscribed from reminders and emails about our plans, so this email has only the report.`;
+  const sender = `${BUSINESS_NAME}, ${MAILING_ADDRESS}`;
+  const origin = new URL(url).origin;
 
   const text = [
     `Hi ${first},`,
@@ -109,79 +177,128 @@ export function reportEmail({ view: v, parentName, url }: { view: ReportView; pa
     ...(facts ? [[`Number facts: ${factsLine(facts)}`, ...(facts.accuracy && facts.note ? [facts.note] : []), `${facts.scope} ${facts.round}`].join("\n")] : []),
     ...(work ? [work] : []),
     `How we help: ${help.title}\n${help.text}`,
-    `${step.title}\n${step.text}\n${step.email.label}: ${stepUrl}`,
+    ...(step && stepUrl ? [`${step.title}\n${step.text}\n${step.email.label}: ${stepUrl}`] : []),
     `See ${name}'s full report: ${url}`,
-    `${BUSINESS_NAME}\n${footer}`,
+    [why, unsubscribe, ...(offer ? [`Unsubscribe: ${unsubscribeUrl}`] : []), sender, `${WEBSITE} · Questions? Reply to this email.`].join("\n"),
   ].join("\n\n");
 
   const p = (body: string, style = "") => `<p style="margin:0 0 14px;${style}">${body}</p>`;
+  const small = `margin:0 0 6px;font-size:13px;line-height:1.5;color:${INK_2}`;
+  const heading = (body: string) => `<p style="margin:0 0 10px;font-size:18px;line-height:1.3;font-weight:600;color:${INK}">${body}</p>`;
   const areaRows = v.model.strands
     .map(
       (s) => `<tr>
-<td style="padding:10px 0;border-top:1px solid ${LINE}">${esc(s.name)}</td>
-<td style="padding:10px 8px;border-top:1px solid ${LINE};white-space:nowrap"><span style="display:inline-block;padding:3px 8px;border-radius:999px;background:${STATUS_TINT[s.status]};font-size:13px">${STATUS_LABEL[s.status]}</span></td>
-<td align="right" style="padding:10px 0;border-top:1px solid ${LINE};white-space:nowrap">${s.correct} of ${s.total}</td>
+<td style="padding:14px 0 2px;border-top:1px solid ${LINE};font-size:15px;line-height:1.35">${esc(s.name)}</td>
+<td align="right" style="padding:14px 0 2px;border-top:1px solid ${LINE};font-family:${MONO};font-size:13px;white-space:nowrap">${s.correct} of ${s.total}</td>
+</tr>
+<tr>
+<td style="padding:4px 16px 14px 0">${meterHtml(sharePercent(s))}</td>
+<td align="right" style="padding:4px 0 14px;white-space:nowrap">${chip(STATUS_CHIP[s.status], STATUS_LABEL[s.status])}</td>
 </tr>`,
     )
     .join("");
+  const legend = [
+    [ZONE.attention, "Needs attention"],
+    [ZONE.developing, "Developing"],
+    [ZONE.secure, "Secure"],
+  ].map(([c, l]) => `<span style="display:inline-block;width:14px;height:8px;border-radius:2px;background:${c}"></span>&nbsp;${l}`).join(" &nbsp;&nbsp; ");
 
-  const html = `<div style="background:#ffffff;padding:24px 0">
-<span style="display:none;max-height:0;overflow:hidden">${esc(levelSentence(v))}</span>
-<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:600px;margin:0 auto;font-family:${FONT};font-size:16px;line-height:1.5;color:${INK}">
-<tr><td style="padding:0 24px 14px;border-bottom:1px solid ${LINE};font-size:18px;font-weight:600">${esc(BUSINESS_NAME)}</td></tr>
-<tr><td style="padding:24px 24px 4px">
+  const html = `<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light">
+<meta name="supported-color-schemes" content="light">
+<title>${esc(subject)}</title>
+</head>
+<body style="margin:0;padding:0;background:#ffffff">
+<div style="background:#ffffff;padding:24px 0">
+<span style="display:none;max-height:0;overflow:hidden;mso-hide:all">${esc(levelSentence(v))} ${esc(verdictSentence(v))}</span>
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="max-width:600px;margin:0 auto;font-family:${FONT};font-size:16px;line-height:1.5;color:${INK}">
+<tr><td style="padding:0 20px 14px;border-bottom:1px solid ${LINE};font-size:19px;font-weight:600;letter-spacing:-0.02em">${esc(BUSINESS_NAME)}<span style="display:inline-block;width:7px;height:7px;margin-left:2px;background:${ACCENT}"></span></td></tr>
+<tr><td style="padding:24px 20px 6px">
 ${p(`Hi ${esc(first)},`)}
 ${p(esc(intro))}
 </td></tr>
-<tr><td style="padding:0 24px">
-<div style="background:${CARD};border-radius:10px;padding:22px">
-${p(esc(levelSentence(v)), "font-size:26px;line-height:1.2;font-weight:300")}
-${p(esc(verdictSentence(v)))}
-${scaleHtml(v)}
+<tr><td style="padding:0 20px">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="${BAND_BASE}" background="${esc(origin + BAND_IMAGE)}" style="background-color:${BAND_BASE};background-image:url('${esc(origin + BAND_IMAGE)}');background-size:cover;background-position:center;border-radius:14px">
+<tr><td style="padding:26px 20px 22px">
+<p style="margin:0 0 10px;font-family:${MONO};font-size:12px;line-height:1.2;color:${INK}"><span style="display:inline-block;width:8px;height:8px;margin-right:6px;background:${ACCENT}"></span>Overall</p>
+${p(esc(levelSentence(v)), "margin:0 0 8px;font-size:28px;line-height:1.15;font-weight:300;letter-spacing:-0.02em")}
+${p(esc(verdictSentence(v)), "margin:0 0 18px;font-size:17px")}
+${rulerHtml(v)}
 ${notes.map((n) => p(esc(n), `margin:12px 0 0;font-size:14px;color:${INK_2}`)).join("\n")}
-${summary ? p(esc(summary), "margin:14px 0 0;font-size:16px") : ""}
-${fsa ? p(`For context: ${esc(fsa.text)}<br><a href="${esc(fsa.source.url)}" style="color:${INK_2}">Source: ${esc(fsa.source.name)}</a>`, `margin:14px 0 0;font-size:14px;color:${INK_2}`) : ""}
-</div>
+${summary ? p(esc(summary), "margin:16px 0 0;font-size:16px") : ""}
 </td></tr>
-${warning ? `<tr><td style="padding:16px 24px 0">
-<div style="border-left:3px solid ${SUNFLOWER};background:${CARD};border-radius:0 6px 6px 0;padding:14px 18px">
+</table>
+</td></tr>
+${fsa ? `<tr><td style="padding:16px 20px 0">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"><tr><td style="border-left:3px solid #5b8def;background:${CARD};padding:12px 16px;font-size:14px;line-height:1.5;color:${INK_2}">
+<p style="margin:0 0 4px;font-family:${MONO};font-size:11px;letter-spacing:0.05em;text-transform:uppercase;color:${INK}">For context</p>
+<p style="margin:0">${esc(fsa.text)}</p>
+<p style="margin:4px 0 0;font-size:12px"><a href="${esc(fsa.source.url)}" style="color:${INK_2}">Source: ${esc(fsa.source.name)}</a></p>
+</td></tr></table>
+</td></tr>` : ""}
+${warning ? `<tr><td style="padding:16px 20px 0">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"><tr><td style="border-left:3px solid ${SUNFLOWER};background:${CARD};padding:14px 16px">
 <p style="margin:0 0 6px;font-weight:600">${esc(warning.title)}</p>
 ${p(esc(warning.text), "margin:0 0 6px;font-size:15px")}
 ${p(esc(warning.retake), "margin:0;font-size:15px")}
-</div>
+</td></tr></table>
 </td></tr>` : ""}
-<tr><td style="padding:24px 24px 0">
-<p style="margin:0 0 6px;font-weight:600">By area</p>
-<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="font-size:15px">${areaRows}</table>
-${p(esc(thresholdsLine(v)), `margin:10px 0 0;font-size:13px;color:${INK_2}`)}
+<tr><td style="padding:30px 20px 0">
+${heading("By area")}
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">${areaRows}</table>
+<p style="margin:2px 0 6px;font-family:${MONO};font-size:11px;line-height:1.6;color:${INK_2}">${legend}</p>
+${p(esc(thresholdsLine(v)), `margin:0;font-size:13px;color:${INK_2}`)}
 </td></tr>
-${facts ? `<tr><td style="padding:24px 24px 0">
-<p style="margin:0 0 6px;font-weight:600">Number facts</p>
+${facts ? `<tr><td style="padding:30px 20px 0">
+${heading("Number facts")}
 ${facts.accuracy && facts.speed
-    ? p(`${esc(facts.accuracy.value)} ${factsChip(facts.accuracy.label)} &nbsp;·&nbsp; ${esc(facts.speed.value)} ${factsChip(facts.speed.label)}`, "margin:0 0 8px;font-size:15px")
+    ? `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"><tr>
+<td width="50%" valign="top" style="padding:14px 16px;background:${CARD};border-radius:10px 0 0 10px;border-right:2px solid #ffffff">
+<p style="margin:0 0 4px;font-family:${MONO};font-size:12px;color:${INK_2}">Accuracy</p>
+<p style="margin:0 0 8px;font-size:18px;line-height:1.3">${esc(facts.accuracy.value)}</p>
+${factsChip(facts.accuracy.label)}
+</td>
+<td width="50%" valign="top" style="padding:14px 16px;background:${CARD};border-radius:0 10px 10px 0">
+<p style="margin:0 0 4px;font-family:${MONO};font-size:12px;color:${INK_2}">Speed</p>
+<p style="margin:0 0 8px;font-size:18px;line-height:1.3">${esc(facts.speed.value)}</p>
+${factsChip(facts.speed.label)}
+</td>
+</tr></table>`
     : ""}
-${facts.note ? p(esc(facts.note), "margin:0 0 8px;font-size:15px") : ""}
-${p(`${esc(facts.scope)} ${esc(facts.round)}`, `margin:0;font-size:13px;color:${INK_2}`)}
+${facts.note ? p(esc(facts.note), "margin:12px 0 0;font-size:15px") : ""}
+${p(`${esc(facts.scope)} ${esc(facts.round)}`, `margin:10px 0 0;font-size:13px;color:${INK_2}`)}
 </td></tr>` : ""}
-${work ? `<tr><td style="padding:24px 24px 0">
-<p style="margin:0 0 6px;font-weight:600">${esc(name)}&#39;s work</p>
+${work ? `<tr><td style="padding:30px 20px 0">
+${heading(`${esc(name)}&#39;s work`)}
 ${p(`${esc(name)}&#39;s work from the whiteboard is in the <a href="${esc(url)}" style="color:${INK}">full report</a>.`, "margin:0;font-size:15px")}
 </td></tr>` : ""}
-<tr><td style="padding:24px 24px 0">
-<p style="margin:0 0 6px;font-weight:600">How we help: ${esc(help.title)}</p>
-${p(esc(help.text))}
-<p style="margin:0 0 6px;font-weight:600">${esc(step.title)}</p>
-${p(esc(step.text))}
+<tr><td style="padding:30px 20px 0">
+${heading(`How we help: ${esc(help.title)}`)}
+${p(esc(help.text), "margin:0")}
 </td></tr>
-<tr><td align="center" style="padding:10px 24px 12px">
-<a href="${esc(stepUrl)}" style="display:inline-block;background:${BUTTON};color:#ffffff;text-decoration:none;padding:14px 22px;border-radius:6px;font-weight:600">${esc(step.email.label)}</a>
+${step && stepUrl ? `<tr><td style="padding:30px 20px 0">
+${heading(esc(step.title))}
+${p(esc(step.text), "margin:0 0 20px;font-size:15px")}
+${button(stepUrl, step.email.label)}
 </td></tr>
-<tr><td align="center" style="padding:6px 24px 28px">
+<tr><td style="padding:18px 20px 30px">
 <a href="${esc(url)}" style="color:${INK};text-decoration:underline">See ${esc(name)}&#39;s full report</a>
+</td></tr>` : `<tr><td style="padding:30px 20px 30px">
+${button(url, `See ${name}'s full report`)}
+</td></tr>`}
+<tr><td style="padding:18px 20px 0;border-top:1px solid ${LINE}">
+${p(`${esc(why)} ${esc(unsubscribe)}${offer ? ` <a href="${esc(unsubscribeUrl)}" style="color:${INK_2}">Unsubscribe</a>` : ""}`, small)}
+${p(esc(sender), small)}
+${p(`<a href="https://${WEBSITE}" style="color:${INK_2}">${WEBSITE}</a> · Questions? Reply to this email.`, small)}
 </td></tr>
-<tr><td style="padding:16px 24px 0;border-top:1px solid ${LINE};font-size:13px;color:${INK_2}">${esc(BUSINESS_NAME)} · ${esc(footer)}</td></tr>
 </table>
-</div>`;
+</div>
+</body>
+</html>`;
   return { subject, text, html };
 }
 
