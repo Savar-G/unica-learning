@@ -3,6 +3,7 @@ export * from "./attempt";
 export * from "./constants";
 export * from "./facts";
 export * from "./flags";
+export { comparisonFor, type ComparisonInput, type ComparisonTest } from "./comparison";
 export { MISCONCEPTIONS, type Misconception, type MisconceptionId } from "./misconceptions";
 export {
   reportModel,
