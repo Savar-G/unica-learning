@@ -42,11 +42,12 @@ export interface AdminFilters {
   province: Province | null;
   /** Only tests where help is likely (helpLikely of the stored flags). */
   help: boolean;
+  flagged: boolean;
   /** Only tests with at least one low-confidence AI review. */
   lowAi: boolean;
 }
 
-export const NO_FILTERS: AdminFilters = { status: null, grade: null, province: null, help: false, lowAi: false };
+export const NO_FILTERS: AdminFilters = { status: null, grade: null, province: null, help: false, flagged: false, lowAi: false };
 
 type Query = Record<string, string | string[] | undefined>;
 
@@ -63,6 +64,7 @@ export function parseFilters(query: Query): AdminFilters {
     grade: pick(query.grade, GRADES),
     province: pick(query.province, PROVINCES),
     help: query.flag === "help",
+    flagged: query.flag === "any",
     lowAi: query.ai === "low",
   };
 }
@@ -83,6 +85,7 @@ export function filterTests<T extends AdminTestRow>(tests: readonly T[], f: Admi
     && (!f.grade || t.grade === f.grade)
     && (!f.province || t.province === f.province)
     && (!f.help || (t.flags !== null && helpLikely(t.flags)))
+    && (!f.flagged || (t.flags !== null && t.flags.length > 0))
     && (!f.lowAi || lowAi.has(t.id)));
 }
 
@@ -259,7 +262,15 @@ export function filterQuery(f: AdminFilters): string {
   if (f.grade) q.set("grade", String(f.grade));
   if (f.province) q.set("province", f.province);
   if (f.help) q.set("flag", "help");
+  else if (f.flagged) q.set("flag", "any");
   if (f.lowAi) q.set("ai", "low");
   const s = q.toString();
   return s ? `?${s}` : "";
+}
+
+/** A list page number from a GET form. Invalid values always use the first page. */
+export function listOffset(query: Query, size: number): number {
+  const raw = typeof query.page === "string" ? query.page : "1";
+  const n = Number(raw);
+  return /^\d+$/.test(raw) && Number.isSafeInteger(n) && n > 0 && n <= 100_000 ? (n - 1) * size : 0;
 }

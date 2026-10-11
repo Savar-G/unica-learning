@@ -67,7 +67,7 @@ describe("the admin area sends nothing (#77)", () => {
   }
 
   it("does not load PostHog on an admin page, and drops its events", async () => {
-    for (const path of ["/admin", "/admin/assessments/1"]) {
+    for (const path of ["/admin", "/admin/assessments/1", "/%61dmin/parents", "/api/admin/families"]) {
       const { analytics, calls, loads } = onPage(path);
       analytics.begin();
       analytics.track("report_open", { src: "account" });
@@ -83,7 +83,8 @@ describe("the admin area sends nothing (#77)", () => {
     await settle();
     expect(calls).toEqual([["report_open", { src: "account" }]]);
     const pageview = { properties: { $current_url: "https://unicalearning.com/admin" } };
-    expect(beforeSend(pageview)).not.toBeNull();
+    expect(beforeSend(pageview)).toBeNull();
+    expect(beforeSend({ properties: { $current_url: "https://unicalearning.com/account" } })).not.toBeNull();
     page.path = "/admin";
     expect(beforeSend(pageview)).toBeNull();
     analytics.track("waitlist_join", { src: "account" });

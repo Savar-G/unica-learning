@@ -24,22 +24,21 @@ export interface AdminSession {
 }
 
 /**
- * The signed-in admin, or null: the pilot is off, there is no session, the token does not verify (getClaims checks
- * its signature), or the user has no admin_users row (is_admin, run by the database with the same token).
+ * The signed-in admin, or null: the pilot is off, there is no session, the token does not verify (getUser checks
+ * its identity with Auth), or the user has no admin_users row (is_admin, run by the database with the same token).
  * #78: a route calls this and answers 404 when it is null.
  */
 export async function adminSession(): Promise<AdminSession | null> {
   if (!pilotOn()) return null;
   const db = await sessionClient();
-  const { data } = await db.auth.getClaims();
-  const claims = data?.claims;
-  if (typeof claims?.sub !== "string") return null;
+  const { data, error: userError } = await db.auth.getUser();
+  if (userError || !data.user) return null;
   const { data: admin, error } = await db.rpc("is_admin");
   if (error) {
     console.error("[admin] is_admin failed", error.message);
     return null;
   }
-  return admin === true ? { db, userId: claims.sub, email: typeof claims.email === "string" ? claims.email : "" } : null;
+  return admin === true ? { db, userId: data.user.id, email: data.user.email ?? "" } : null;
 }
 
 /** For admin pages: the admin, or the site's 404 for everyone else (a parent, a visitor, a forged cookie). */
@@ -161,18 +160,33 @@ async function withPeople(a: AdminSession, tests: TestQueryRow[]): Promise<TestR
 
 /**
  * The newest tests that pass the filters. Grade, province and status filter in the database; help likely and low AI
- * confidence filter the newest LIST_MAX in code (the assessment core decides help likely).
+ * confidence filter each database page before pagination (the assessment core decides help likely).
  */
-export async function listTests(a: AdminSession, f: AdminFilters): Promise<Page<TestRow>> {
+export async function listTests(a: AdminSession, f: AdminFilters, offset = 0): Promise<Page<TestRow>> {
   let q = a.db.rpc("admin_assessments").select(TEST_COLUMNS);
   if (f.status) q = q.eq("status", f.status);
   if (f.grade) q = q.eq("grade", f.grade);
   if (f.province) q = q.eq("province", f.province);
-  const rows = must<TestQueryRow[]>(await q.order("created_at", { ascending: false }).limit(LIST_MAX + 1), "tests");
-  const { rows: newest, more } = page(rows);
-  const tests = await withPeople(a, newest);
-  const low = new Set(tests.filter((t) => t.reviews.low > 0).map((t) => t.id));
-  return { rows: filterTests(tests, f, low), more };
+  q = q.order("created_at", { ascending: false }).order("id", { ascending: false });
+  if (!f.help && !f.flagged && !f.lowAi) {
+    const { rows, more } = page(must<TestQueryRow[]>(await q.range(offset, offset + LIST_MAX), "tests"));
+    return { rows: await withPeople(a, rows), more };
+  }
+  const kept: TestQueryRow[] = [];
+  let skipped = 0;
+  for (let start = 0; ; start += LIST_MAX) {
+    const rows = must<TestQueryRow[]>(await q.range(start, start + LIST_MAX - 1), "tests");
+    const low = new Set(rows.filter((t) => t.work_reviews.some((r) => r.confidence === "low")).map((t) => t.id));
+    const matches = filterTests(rows.map((t) => ({ ...t, flags: t.placement?.flags ?? null })), f, low);
+    for (const row of matches) {
+      if (skipped++ < offset) continue;
+      kept.push(row);
+      if (kept.length > LIST_MAX) break;
+    }
+    if (kept.length > LIST_MAX || rows.length < LIST_MAX) break;
+  }
+  const { rows, more } = page(kept);
+  return { rows: await withPeople(a, rows), more };
 }
 
 // One test
@@ -229,8 +243,8 @@ export interface ParentListRow extends ParentRow {
   tests: { total: number; completed: number };
 }
 
-export async function listParents(a: AdminSession): Promise<Page<ParentListRow>> {
-  const { rows, more } = page(must<ParentRow[]>(await a.db.rpc("admin_parents").select(PARENT_COLUMNS).order("created_at", { ascending: false }).limit(LIST_MAX + 1), "parents"));
+export async function listParents(a: AdminSession, offset = 0): Promise<Page<ParentListRow>> {
+  const { rows, more } = page(must<ParentRow[]>(await a.db.rpc("admin_parents").select(PARENT_COLUMNS).order("created_at", { ascending: false }).order("id", { ascending: false }).range(offset, offset + LIST_MAX), "parents"));
   const ids = rows.map((p) => p.id);
   const [children, tests] = await Promise.all([
     byIds<ChildRow>(ids, "children", (chunk) => a.db.rpc("admin_children").select(CHILD_COLUMNS).in("parent_id", chunk).order("created_at")),
@@ -297,11 +311,11 @@ export interface ChildListRow extends ChildRow {
   tests: { total: number; completed: number; lastAt: string | null };
 }
 
-export async function listChildren(a: AdminSession, f: Pick<AdminFilters, "grade" | "province">): Promise<Page<ChildListRow>> {
+export async function listChildren(a: AdminSession, f: Pick<AdminFilters, "grade" | "province">, offset = 0): Promise<Page<ChildListRow>> {
   let q = a.db.rpc("admin_children").select(CHILD_COLUMNS);
   if (f.grade) q = q.eq("grade", f.grade);
   if (f.province) q = q.eq("province", f.province);
-  const { rows, more } = page(must<ChildRow[]>(await q.order("created_at", { ascending: false }).limit(LIST_MAX + 1), "children"));
+  const { rows, more } = page(must<ChildRow[]>(await q.order("created_at", { ascending: false }).order("id", { ascending: false }).range(offset, offset + LIST_MAX), "children"));
   const [parents, tests] = await Promise.all([
     parentsById(a, rows.map((c) => c.parent_id)),
     byIds<{ child_id: string; status: AssessmentStatus; created_at: string }>(rows.map((c) => c.id), "tests", (chunk) =>
@@ -318,6 +332,15 @@ export async function listChildren(a: AdminSession, f: Pick<AdminFilters, "grade
   };
 }
 
+/** One child and their family records. #78 can use the parent id for the future deletion action. */
+export async function getChild(a: AdminSession, id: string): Promise<{ child: ChildRow; family: ParentDetail } | null> {
+  if (!isUuid(id)) return null;
+  const child = must<ChildRow | null>(await a.db.rpc("admin_children").select(CHILD_COLUMNS).eq("id", id).maybeSingle(), "child");
+  if (!child) return null;
+  const family = await getParent(a, child.parent_id);
+  return family ? { child, family: { ...family, tests: family.tests.filter((t) => t.child_id === id) } } : null;
+}
+
 // AI reviews
 
 export interface ReviewListRow extends ReviewRecord {
@@ -327,10 +350,10 @@ export interface ReviewListRow extends ReviewRecord {
 }
 
 /** The newest AI reviews of shown work (#68); `lowOnly`: only those the report did not show a comment for. */
-export async function listReviews(a: AdminSession, { lowOnly }: { lowOnly: boolean }): Promise<Page<ReviewListRow>> {
+export async function listReviews(a: AdminSession, { lowOnly }: { lowOnly: boolean }, offset = 0): Promise<Page<ReviewListRow>> {
   let q = a.db.from("work_reviews").select(`created_at, assessment_id, ${REVIEW_COLUMNS}`);
   if (lowOnly) q = q.eq("confidence", "low");
-  const { rows, more } = page(must<(ReviewRecord & { created_at: string; assessment_id: string })[]>(await q.order("created_at", { ascending: false }).limit(LIST_MAX + 1), "reviews"));
+  const { rows, more } = page(must<(ReviewRecord & { created_at: string; assessment_id: string })[]>(await q.order("created_at", { ascending: false }).order("id", { ascending: false }).range(offset, offset + LIST_MAX), "reviews"));
   const tests = await byIds<{ id: string; grade: number; province: Province; child_id: string }>(rows.map((r) => r.assessment_id), "tests", (chunk) =>
     a.db.rpc("admin_assessments").select("id, grade, province, child_id").in("id", chunk));
   const child = index(await childrenById(a, tests.map((t) => t.child_id)));
@@ -346,10 +369,10 @@ export interface NextSteps {
 }
 
 /** Card setups and waitlist joins from the report (#66), newest first. Read only: Stripe is the record of saved cards. */
-export async function listNextSteps(a: AdminSession): Promise<NextSteps> {
+export async function listNextSteps(a: AdminSession, offset = 0): Promise<NextSteps> {
   const [cards, waitlist] = await Promise.all([
-    a.db.rpc("admin_card_setups").select("*").order("updated_at", { ascending: false }).limit(LIST_MAX + 1).then((r) => page(must<CardSetupRow[]>(r, "card setups"))),
-    a.db.rpc("admin_waitlist_joins").select("*").order("created_at", { ascending: false }).limit(LIST_MAX + 1).then((r) => page(must<WaitlistRow[]>(r, "waitlist"))),
+    a.db.rpc("admin_card_setups").select("*").order("updated_at", { ascending: false }).order("id", { ascending: false }).range(offset, offset + LIST_MAX).then((r) => page(must<CardSetupRow[]>(r, "card setups"))),
+    a.db.rpc("admin_waitlist_joins").select("*").order("created_at", { ascending: false }).order("id", { ascending: false }).range(offset, offset + LIST_MAX).then((r) => page(must<WaitlistRow[]>(r, "waitlist"))),
   ]);
   const all = [...cards.rows, ...waitlist.rows];
   const [children, parents] = await Promise.all([childrenById(a, all.map((r) => r.child_id)), parentsById(a, all.map((r) => r.parent_id))]);
@@ -378,8 +401,8 @@ const EMAIL_COLUMNS = "id, created_at, parent_id, child_id, assessment_id, kind,
 type EmailQuery = ReturnType<ReturnType<SupabaseClient["from"]>["select"]>;
 
 /** Reminder emails and unsubscribes (#73), newest first, with who they were for. */
-export async function emailRows(a: AdminSession, narrow: (q: EmailQuery) => EmailQuery = (q) => q): Promise<Page<EmailRow>> {
-  const query = narrow(a.db.from("email_log").select(EMAIL_COLUMNS)).order("created_at", { ascending: false }).limit(LIST_MAX + 1);
+export async function emailRows(a: AdminSession, narrow: (q: EmailQuery) => EmailQuery = (q) => q, offset = 0): Promise<Page<EmailRow>> {
+  const query = narrow(a.db.from("email_log").select(EMAIL_COLUMNS)).order("created_at", { ascending: false }).order("id", { ascending: false }).range(offset, offset + LIST_MAX);
   const { rows, more } = page(must<Omit<EmailRow, "parent" | "child">[]>(await query, "email log"));
   const [parents, children] = await Promise.all([
     parentsById(a, rows.map((r) => r.parent_id)),

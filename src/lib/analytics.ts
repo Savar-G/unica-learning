@@ -28,7 +28,16 @@ export interface Deps {
   path?: () => string;
 }
 
-const NO_ANALYTICS_PATH = /^\/admin(\/|$)/;
+function adminPath(path: string): boolean {
+  try { path = decodeURIComponent(path); } catch { return true; }
+  return /^\/(?:api\/)?admin(\/|$)/.test(path);
+}
+
+function adminEvent(event: Scrubbable): boolean {
+  const url = event.properties?.$current_url;
+  if (typeof url !== "string") return false;
+  try { return adminPath(new URL(url).pathname); } catch { return false; }
+}
 
 // Only anonymous offer and flow fields reach analytics. Name, email, postal code and child grade never do.
 const PROP_KEYS = new Set(["src", "plan", "subject", "curriculum", "price", "status", "code", "card", "channel"]);
@@ -102,7 +111,7 @@ export function createAnalytics(deps: Deps) {
   // Bumps on every consent change. A queued capture runs only in the epoch that queued it.
   let epoch = 0;
 
-  const offPage = () => NO_ANALYTICS_PATH.test(deps.path?.() ?? "");
+  const offPage = () => adminPath(deps.path?.() ?? "");
   const allowed = () => deps.getConsent() === "granted" && !offPage();
 
   const config: Props = {
@@ -129,7 +138,7 @@ export function createAnalytics(deps: Deps) {
     // Host-only cookie, so revocation can always find and delete it.
     cross_subdomain_cookie: false,
     // Last gate: an event captured after a revoke, or one with a stray field, never leaves the page.
-    before_send: (event: Scrubbable | null) => (event && allowed() ? scrubEvent(event) : null),
+    before_send: (event: Scrubbable | null) => (event && allowed() && !adminEvent(event) ? scrubEvent(event) : null),
   };
 
   function start() {

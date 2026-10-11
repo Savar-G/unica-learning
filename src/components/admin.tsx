@@ -13,6 +13,7 @@ import {
   adminReportPath,
   adminTestPath,
   helpAnswerText,
+  filterQuery,
   levelText,
   when,
   type AdminFilters,
@@ -77,7 +78,19 @@ export function Table({ label, head, children, empty }: { label: string; head: R
 }
 
 /** Says when a list stopped at its limit, so a short list is never read as the whole story. */
-export const More = ({ more, max }: { more: boolean; max: number }) => (more ? <p className="adm-note">Only the newest {max} are listed.</p> : null);
+export function More({ more, max, offset = 0, action, filters }: { more: boolean; max: number; offset?: number; action?: string; filters?: AdminFilters }) {
+  const page = Math.floor(offset / max) + 1;
+  const href = (n: number) => {
+    const q = new URLSearchParams(filters ? filterQuery(filters) : "");
+    q.set("page", String(n));
+    return `${action}?${q}`;
+  };
+  return <nav className="adm-row" aria-label="List pages">
+    <span className="adm-note">Page {page}. Up to {max} records per page.</span>
+    {action && page > 1 && <Link href={href(page - 1)}>Newer</Link>}
+    {action && more && <Link href={href(page + 1)}>Older</Link>}
+  </nav>;
+}
 
 type Field = "status" | "grade" | "province" | "help" | "lowAi";
 
@@ -110,7 +123,7 @@ export function FilterForm({ action, filters, fields }: { action: string; filter
           </select>
         </label>
       )}
-      {has("help") && <label className="adm-check"><input type="checkbox" name="flag" value="help" defaultChecked={filters.help} /> Help likely</label>}
+      {has("help") && <label>Flags<select name="flag" defaultValue={filters.help ? "help" : filters.flagged ? "any" : ""}><option value="">Any test</option><option value="any">Flagged</option><option value="help">Help likely</option></select></label>}
       {has("lowAi") && <label className="adm-check"><input type="checkbox" name="ai" value="low" defaultChecked={filters.lowAi} /> Low AI confidence</label>}
       <button type="submit" className="btn adm-btn">Apply</button>
       <Link href={action} className="adm-clear">Clear</Link>
@@ -131,7 +144,7 @@ export function TestsTable({ tests, family = false }: { tests: TestRow[]; family
         return (
           <tr key={t.id}>
             <td className="adm-nowrap"><Link href={adminTestPath(t.id)}>{when(t.started_at)}</Link></td>
-            <td>{t.child?.first_name ?? "?"}<span className="adm-sub">{gradeAndPlace(t.grade, t.province)}</span></td>
+            <td><Link href={`${ADMIN_PATH}/children/${t.child_id}`}>{t.child?.first_name ?? "Child"}</Link><span className="adm-sub">{gradeAndPlace(t.grade, t.province)}</span></td>
             {!family && <td>{t.parent ? <Link href={adminParentPath(t.parent.id)}>{t.parent.name}</Link> : "?"}<span className="adm-sub">{t.parent?.email}</span></td>}
             <td><StatusChip status={t.status} /></td>
             <td className="adm-num">{t.answered}</td>

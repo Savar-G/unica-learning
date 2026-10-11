@@ -23,6 +23,7 @@ describe("admin list filters (#77)", () => {
       grade: 3,
       province: "ON",
       help: true,
+      flagged: false,
       lowAi: true,
     });
   });
@@ -61,6 +62,10 @@ describe("which tests the filters keep (#77)", () => {
 
   it("keeps every test with no filter", () => {
     expect(ids(NO_FILTERS)).toEqual(["helped", "fast-right", "fast-wrong", "clean"]);
+  });
+
+  it("includes fast wrong answers in the flagged filter", () => {
+    expect(ids(parseFilters({ flag: "any" }))).toEqual(["helped", "fast-right", "fast-wrong"]);
   });
 
   it("flagged: keeps the tests where help is likely, by the assessment core's rule", () => {
