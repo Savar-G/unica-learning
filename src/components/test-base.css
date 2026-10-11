@@ -102,3 +102,11 @@
   .test-choice:active, .test-pad button:active { transform: none; }
   .test-root .btn { transition: none; transform: none; }
 }
+
+/* A short landscape screen (a 1024x768 tablet): a smaller pad, so an error line still leaves Next in view. */
+@media (orientation: landscape) and (max-height: 820px) {
+  .test-pane-l { gap: 18px; padding-block: 24px; }
+  .test-display { min-height: 64px; font-size: 38px; }
+  .test-pad button { min-height: 54px; }
+  .test-choice { min-height: 64px; }
+}
