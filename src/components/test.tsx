@@ -7,12 +7,13 @@
 import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
 import Link from "next/link";
 import { Button, GradientPanel } from "@/ds";
-import { breakDue, type PublicQuestion, type TestStep } from "@/lib/assessment";
+import { breakDue, type HelpAnswer, type PublicQuestion, type TestStep } from "@/lib/assessment";
 import { ANSWER_MAX, type FinishResult, type StartResult, type StepResult, type TestError } from "@/lib/test-api";
 import { track } from "@/lib/track";
 import { SUPPORT_EMAIL, SUPPORT_HREF } from "@/lib/contact";
 import { FactsSection } from "./facts";
 import { breakSeen, markBreakSeen, TestBreak } from "./test-break";
+import { TestHelp } from "./test-help";
 import { TestProgress } from "./test-progress";
 import { ReadAloud } from "./test-read-aloud";
 import "./test.css";
@@ -23,6 +24,8 @@ type Screen =
   | { name: "break"; next: Extract<TestStep, { status: "question" }> }
   /** The timed facts section (#70), after the halfway break; then the test carries on with `next`. */
   | { name: "facts"; testId: string; next: Extract<TestStep, { status: "question" }> }
+  /** "Did anyone help?" (#71): after the last question; its answer goes with the finish request. */
+  | { name: "help" }
   | { name: "done" };
 
 async function call<T>(url: string, init?: RequestInit): Promise<T | { ok: false; error: TestError }> {
@@ -60,7 +63,7 @@ export function TakeTest({ childId, name, total, ready, done, mode: firstMode = 
   }, []);
 
   // A stop (#72): the tab closes or the connection drops during a question, the break or quick facts. The answers so far are saved on the server.
-  const asking = screen.name === "question" || screen.name === "break" || screen.name === "facts";
+  const asking = screen.name === "question" || screen.name === "break" || screen.name === "facts" || screen.name === "help";
   useEffect(() => {
     if (!asking) return;
     // The page is going away: a beacon still goes out. Offline: PostHog queues the event and retries once back online.
@@ -74,8 +77,9 @@ export function TakeTest({ childId, name, total, ready, done, mode: firstMode = 
     };
   }, [asking]);
 
-  const finish = useCallback(async () => {
-    const res = await call<FinishResult>(`/api/account/assessments/${testId.current}/finish`, post({}));
+  const finish = useCallback(async (help: HelpAnswer) => {
+    setFailure(null);
+    const res = await call<FinishResult>(`/api/account/assessments/${testId.current}/finish`, post({ help }));
     if (!res.ok) {
       track("test_error", { code: res.error, status: "finish" });
       if (res.error === "expired") return expire();
@@ -89,7 +93,11 @@ export function TakeTest({ childId, name, total, ready, done, mode: firstMode = 
 
   /** Shows the step the server sent: the next question, or the end of the test. */
   const show = useCallback(async (step: TestStep) => {
-    if (step.status === "complete") return finish();
+    // Every answer is in: "Did anyone help?" (#71) comes last, and its Finish sends the test.
+    if (step.status === "complete") {
+      setScreen({ name: "help" });
+      return true;
+    }
     // The skippable halfway break (#69) comes once per test, before the first question of the second half.
     const id = testId.current ?? "";
     if (breakDue(step) && !breakSeen(id)) {
@@ -106,7 +114,7 @@ export function TakeTest({ childId, name, total, ready, done, mode: firstMode = 
     }
     setScreen({ name: "question", question: step.question, number: step.number, total: step.total, breakAfter: step.breakAfter });
     return true;
-  }, [finish]);
+  }, []);
 
   const start = async () => {
     if (busy) return;
@@ -168,6 +176,14 @@ export function TakeTest({ childId, name, total, ready, done, mode: firstMode = 
             <Problem error={failure} />
           </>
         )}
+        {screen.name === "help" && (
+          <TestHelp problem={<Problem error={failure} />} onAnswer={async (help) => {
+            const sent = await finish(help);
+            // Once per test, when it is stored. Only the answer category goes to analytics: no name and no grade.
+            if (sent) track("test_help", { status: help });
+            return sent;
+          }} />
+        )}
         {screen.name === "done" && <End name={name} />}
       </main>
     </div>
@@ -200,9 +216,9 @@ function Intro({ name, total, ready, busy, onStart, failure, mode }: { name: str
       <section className="test-card">
         <p className="eyebrow">Math test · {total} questions</p>
         <h1>All your answers are in, {name}!</h1>
-        <p>The test was not sent yet. Press Finish to send it.</p>
+        <p>The test was not sent yet. Answer one last question to send it.</p>
         <Problem error={failure} />
-        <Button onClick={onStart} disabled={busy} aria-busy={busy}>{busy ? "Sending…" : "Finish"}</Button>
+        <Button onClick={onStart} disabled={busy} aria-busy={busy}>{busy ? "Opening…" : "Continue"}</Button>
       </section>
     );
   }

@@ -12,6 +12,7 @@ import {
 } from "./constants";
 import { bankFor } from "./bank";
 import { factsResult, type FactsSession } from "./facts";
+import { flagsFor, type HelpAnswer } from "./flags";
 import { rngFor } from "./rng";
 import type {
   Answer,
@@ -230,8 +231,11 @@ function statusFor(correct: number, total: number): StrandStatus {
   return "needs-attention";
 }
 
-/** Scores a completed test. The facts section (#70), when the child had one, goes beside it and never changes the working level. */
-export function finish(session: Session, facts: FactsSession | null = null): Placement {
+/**
+ * Scores a completed test. The facts section (#70), when the child had one, goes beside it and never changes the working level.
+ * `help` is the child's answer to "Did anyone help?" (#71), or null when it was not asked. It only adds flags.
+ */
+export function finish(session: Session, facts: FactsSession | null = null, help: HelpAnswer | null = null): Placement {
   const questions = questionsOnRoute(session);
   if (!session.route || session.answers.length < questions.length) {
     throw new Error(`The test is not complete: ${session.answers.length} of ${questions.length} answered`);
@@ -268,6 +272,6 @@ export function finish(session: Session, facts: FactsSession | null = null): Pla
     levels,
     strands,
     facts: facts ? factsResult(facts) : null,
-    flags: [],
+    flags: flagsFor(session.answers, help),
   };
 }
