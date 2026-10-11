@@ -203,6 +203,17 @@ describe("the AI step of the report job (#68)", () => {
     expect(calls.saved.map((r) => [r.score, r.confidence])).toEqual([[1, "low"], [0, "low"]]);
   });
 
+  it("the work or the stored reviews cannot be loaded: the report still builds, with the report text only", async () => {
+    const reviewer = fakeReviewer({ review: () => sureResult, reportText: () => "{name} is working at a grade 4 level." });
+    const broken: ReviewStore = { ...memoryStore().store, stored: async () => { throw new Error("work_reviews: connection reset"); } };
+    const { model, ai } = await run(reviewer, [piece("s1-3")], broken);
+    expect(model.work.map((w) => w.comment)).toEqual([null]);
+    expect(model.summary).toBe("{name} is working at a grade 4 level.");
+    expect(ai).toMatchObject({ reviewed: 0, error: "work_reviews: connection reset" });
+    const noPieces = await aiReport({ reviewer, pieces: async () => { throw new Error("answers: timeout"); }, store: memoryStore().store, build: (workReviews, reportText) => reportModel(placement, { completedTestsInGrade: 0, workReviews, reportText }) });
+    expect(noPieces.ai).toMatchObject({ pieces: 0, reviewed: 0, error: "answers: timeout" });
+  });
+
   it("a drawing that cannot be read and no typed work: not reviewed", async () => {
     const reviewer = fakeReviewer({ review: () => sureResult });
     const store: ReviewStore = { ...memoryStore().store, image: async () => null };

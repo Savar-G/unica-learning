@@ -9,6 +9,7 @@ import {
   type Province,
   type ReportModel,
   type ReviewResult,
+  type ReviewedWork,
   type ShownWork,
   type WorkReview,
 } from "@/lib/assessment";
@@ -138,9 +139,11 @@ describe("report model", () => {
       score: 0.9,
       ...extra,
     });
+    const wrong: ReviewedWork = { questionId: "s1-3", correct: false, prompt: "47 + 38 = ?", answer: "715", rightAnswer: "85", text: null };
+    const right: ReviewedWork = { questionId: "s1-3", correct: true, prompt: "What is 3/4 of 12?", answer: "9", rightAnswer: "9", text: null };
 
     it("a clear review of a wrong answer is sure, and keeps its comment", () => {
-      expect(workReview("s1-3", false, result())).toEqual({
+      expect(workReview(wrong, result())).toEqual({
         questionId: "s1-3",
         errorType: "regrouping",
         kind: "misunderstanding",
@@ -150,9 +153,9 @@ describe("report model", () => {
     });
 
     it("is not sure below REVIEW_SURE_SCORE: the report shows the work without the comment", () => {
-      const low = workReview("s1-3", false, result({ score: REVIEW_SURE_SCORE - 0.01 }));
+      const low = workReview(wrong, result({ score: REVIEW_SURE_SCORE - 0.01 }));
       expect(low.confidence).toBe("low");
-      expect(workReview("s1-3", false, result({ score: REVIEW_SURE_SCORE })).confidence).toBe("high");
+      expect(workReview(wrong, result({ score: REVIEW_SURE_SCORE })).confidence).toBe("high");
       const shownWork: ShownWork[] = [{ questionId: "s1-3", prompt: "47 + 38 = ?", correct: false, required: true, image: "p/a/s1-3.png", text: null }];
       expect(reportModel(grade4(), { completedTestsInGrade: 0, workReviews: [low], shownWork }).work).toEqual([
         { questionId: "s1-3", prompt: "47 + 38 = ?", correct: false, image: "p/a/s1-3.png", text: null, comment: null },
@@ -160,22 +163,30 @@ describe("report model", () => {
     });
 
     it("a score that is not a number from 0 to 1 is not sure", () => {
-      for (const score of [Number.NaN, -0.5, 1.5]) expect(workReview("s1-3", false, result({ score })).confidence, String(score)).toBe("low");
+      for (const score of [Number.NaN, -0.5, 1.5]) expect(workReview(wrong, result({ score })).confidence, String(score)).toBe("low");
     });
 
     it("never contradicts the mark: a wrong answer reviewed as no error is not sure", () => {
-      expect(workReview("s1-3", false, result({ kind: "none", errorType: "none", comment: "A clear method." })).confidence).toBe("low");
-      expect(workReview("s1-3", true, result({ kind: "none", errorType: "none", comment: "Split 12 into 4 equal groups, then took 3 of them." })).confidence).toBe("high");
+      expect(workReview(wrong, result({ kind: "none", errorType: "none", comment: "A clear method." })).confidence).toBe("low");
+      expect(workReview(right, result({ kind: "none", errorType: "none", comment: "Split 12 into 4 equal groups, then took 3 of them." })).confidence).toBe("high");
     });
 
     it("a comment that breaks the text rules is not sure: he or she, the AI's voice, markup, empty or too long", () => {
       for (const comment of ["She did not carry the 1.", "I think the 1 was not carried.", "**Did not carry.**", " ", "Did not carry. ".repeat(20)]) {
-        expect(workReview("s1-3", false, result({ comment })).confidence, comment).toBe("low");
+        expect(workReview(wrong, result({ comment })).confidence, comment).toBe("low");
       }
     });
 
+    it("a comment with a number that is not in the question, the answers or the typed working is not sure", () => {
+      expect(workReview(wrong, result({ comment: "Wrote 97 in the tens column." })).confidence).toBe("low");
+      expect(workReview(wrong, result({ comment: "About 60% of the work is right." })).confidence).toBe("low");
+      // A digit of the answers, such as the 1 that was not carried in 715, counts.
+      expect(workReview(wrong, result({ comment: "Added 47 and 38 column by column, but did not carry the 1." })).confidence).toBe("high");
+      expect(workReview({ ...wrong, text: "40 + 30 = 70" }, result({ comment: "Added the tens first: 40 and 30 make 70." })).confidence).toBe("high");
+    });
+
     it("tidies the comment and the error type: no em-dash, single spaces", () => {
-      const r = workReview("s1-3", false, result({ comment: " Added each column \u2014 but did not\n carry. ", errorType: " carrying  in addition " }));
+      const r = workReview(wrong, result({ comment: " Added each column \u2014 but did not\n carry. ", errorType: " carrying  in addition " }));
       expect(r).toMatchObject({ comment: "Added each column - but did not carry.", errorType: "carrying in addition", confidence: "high" });
     });
   });
@@ -211,6 +222,27 @@ describe("report model", () => {
       const text = "On 47 + 38, {name} added each column but did not carry.";
       expect(reportModel(grade4(knowsUpTo(4)), { completedTestsInGrade: 0, workReviews: [], shownWork, reportText: text }).summary).toBe(text);
       expect(withText(text)).not.toHaveProperty("summary");
+    });
+
+    it("counts only the facts the report shows: numbers in ids, file paths and typed working do not count", () => {
+      const shownWork: ShownWork[] = [{
+        questionId: "s1-3",
+        prompt: "47 + 38 = ?",
+        correct: false,
+        required: true,
+        image: "4f1c2e9a-0b3d-4c71-97aa-1234567890ab/9e8d7c6b-5a49-4382-a1b0-c9d8e7f60514/s1-3-71ab97.png",
+        text: "97 then 71",
+      }];
+      const model = (reportText: string) => reportModel(grade4(knowsUpTo(4)), { completedTestsInGrade: 0, workReviews: [], shownWork, reportText });
+      expect(model("{name} got 97 questions right and is 71 days ahead.")).not.toHaveProperty("summary");
+      expect(model("On 47 + 38, {name} did not carry.").summary).toBe("On 47 + 38, {name} did not carry.");
+    });
+
+    it("reads a number written as two words as one number", () => {
+      const shownWork: ShownWork[] = [{ questionId: "s1-3", prompt: "20 + 5 = ?", correct: true, required: true, image: "p/a/s1-3.png", text: null }];
+      const model = (reportText: string) => reportModel(grade4(knowsUpTo(4)), { completedTestsInGrade: 0, workReviews: [], shownWork, reportText });
+      expect(model("On 20 + 5, {name} wrote twenty-five.")).not.toHaveProperty("summary");
+      expect(model("On 20 + 5, {name} wrote twenty five.")).not.toHaveProperty("summary");
     });
 
     it("says why text was rejected, for Savar's alert", () => {

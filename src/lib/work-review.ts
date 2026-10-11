@@ -108,6 +108,8 @@ export type AiOutcome =
       skipped: number;
       /** False when the new reviews could not be stored. */
       saved: boolean;
+      /** Why the work or the stored reviews could not be loaded; then nothing was reviewed. */
+      error?: string;
       text: { kept: true } | { kept: false; problem: ReportTextProblem | "failed"; detail: string };
     };
 
@@ -148,7 +150,7 @@ async function reviewAll(pieces: ReviewPiece[], reviewer: WorkReviewer, store: R
     if (!png && !piece.text) throw new Error("the drawing could not be read");
     const { prompt, answer, rightAnswer, correct, level, misconception, text } = piece;
     const result = await reviewer.review({ prompt, answer, rightAnswer, correct, level, misconception, text, png }, controller.signal);
-    const review = workReview(piece.questionId, piece.correct, result);
+    const review = workReview(piece, result);
     // The table's limits: a score outside 0 to 1 or a very long comment is already "low" (workReview); store it in range.
     const score = Number.isFinite(result.score) ? Math.round(Math.min(1, Math.max(0, result.score)) * 1000) / 1000 : 0;
     return { ...review, comment: review.comment.slice(0, STORED_COMMENT_MAX), score, model: reviewer.model.slice(0, 80) };
@@ -212,8 +214,17 @@ export async function aiReport({
 }): Promise<{ model: ReportModel; ai: AiOutcome }> {
   if (!reviewer) return { model: build([], null), ai: { on: false } };
 
-  const pieces = await loadPieces();
-  const stored = await store.stored();
+  // The work or the earlier reviews cannot be read: no reviews this time, and the report still builds.
+  let pieces: ReviewPiece[] = [];
+  let stored: StoredReview[] = [];
+  let error: string | undefined;
+  try {
+    [pieces, stored] = await Promise.all([loadPieces(), store.stored()]);
+  } catch (e) {
+    error = message(e).slice(0, 200);
+    console.error("[ai] loading the work failed", error);
+    [pieces, stored] = [[], []];
+  }
   const have = new Set(stored.map((r) => r.questionId));
   // Show-your-work questions first (the report picks them first), then optional work; each in test order.
   const ordered = [...pieces.filter((p) => p.required), ...pieces.filter((p) => !p.required)];
@@ -245,6 +256,7 @@ export async function aiReport({
       failed: todo.length - fresh.length,
       skipped: Math.max(0, ordered.length - REVIEW_MAX),
       saved,
+      ...(error ? { error } : {}),
       text: check?.ok ? { kept: true } : check ? { kept: false, problem: check.problem, detail: check.detail } : { kept: false, problem: "failed", detail: "error" in written ? written.error : "" },
     },
   };

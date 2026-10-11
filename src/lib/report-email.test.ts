@@ -211,6 +211,10 @@ describe("the alert to Savar for each finished test", () => {
       "AI review (claude-sonnet-5-5): 7 pieces of work, 6 reviewed, 4 sure enough to show a comment, 2 over the limit not reviewed. NOT STORED: the reviews are only in this report. Report text: failed (time is up), so the report has only its plain sentences.",
     );
   });
+  it("says when the work could not be loaded for the AI (#68)", () => {
+    const ai = { on: true, model: "claude-sonnet-5-5", pieces: 0, reviewed: 0, sure: 0, failed: 0, skipped: 0, saved: true, error: "answers: timeout", text: { kept: true } } as const;
+    expect(alert({ ai }).text).toContain("AI review (claude-sonnet-5-5): the work could not be loaded (answers: timeout), so nothing was reviewed. Report text: kept.");
+  });
   it("has no AI line for a report an earlier run built", () => {
     expect(alert().text).not.toContain("AI review");
   });

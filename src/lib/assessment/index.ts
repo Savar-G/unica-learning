@@ -21,10 +21,12 @@ export {
   REVIEW_ERROR_TYPE_MAX,
   REVIEW_SURE_SCORE,
   checkReportText,
+  reportFacts,
   workReview,
   type ReportTextCheck,
   type ReportTextProblem,
   type ReviewResult,
+  type ReviewedWork,
 } from "./ai-checks";
 export { SAMPLE_BANK } from "./sample-bank";
 export {

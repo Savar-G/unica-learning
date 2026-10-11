@@ -215,12 +215,13 @@ function aiLine(ai: AiOutcome): string {
   const parts = [`${plural(ai.pieces, "piece")} of work`, `${ai.reviewed} reviewed`, `${ai.sure} sure enough to show a comment`];
   if (ai.failed > 0) parts.push(`${ai.failed} failed or timed out`);
   if (ai.skipped > 0) parts.push(`${ai.skipped} over the limit not reviewed`);
+  const reviews = ai.error ? `the work could not be loaded (${ai.error}), so nothing was reviewed` : parts.join(", ");
   const stored = ai.saved ? "" : " NOT STORED: the reviews are only in this report.";
   const t = ai.text;
   const text = t.kept
     ? "kept."
     : `${t.problem === "failed" ? `failed (${t.detail})` : `rejected (${t.problem}: ${t.detail})`}, so the report has only its plain sentences.`;
-  return `AI review (${ai.model}): ${parts.join(", ")}.${stored} Report text: ${text}`;
+  return `AI review (${ai.model}): ${reviews}.${stored} Report text: ${text}`;
 }
 
 /** The alert to Savar for each finished test (D-085): grade, working level, flags and the link, as plain text. */

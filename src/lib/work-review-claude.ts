@@ -2,11 +2,12 @@
 // only with an API key (never a Claude subscription): the client gets the key explicitly and no bearer token, so it can
 // never fall back to a local sign-in. No "server-only" import so that its tests can run with fetch mocked.
 // What it sends: for a review, the question, the question's level, the right answer, the child's answer, the mark, the
-// known mistake the answer matches, the typed working and the drawing (PNG); for the report text, the report model's
-// facts with "{name}" for the child. Never a name, an email, a postal code or an account id.
+// known mistake the answer matches, the typed working and the drawing (PNG); for the report text, the report's facts
+// (reportFacts in the assessment core: the levels, the areas, the number facts, the work questions and sure comments) with
+// "{name}" for the child. Never a name, an email, a postal code or an account id.
 import Anthropic from "@anthropic-ai/sdk";
 import { jsonSchemaOutputFormat } from "@anthropic-ai/sdk/helpers/json-schema";
-import { REPORT_TEXT_NAME, type ReportModel } from "@/lib/assessment";
+import { REPORT_TEXT_NAME, reportFacts } from "@/lib/assessment";
 import type { ReviewInput, WorkReviewer } from "@/lib/work-review";
 
 /** One request to the API stops after this long. The SDK tries once more after a time-out or a 429 / 5xx answer. */
@@ -56,32 +57,10 @@ Rules:
 - If level_is_estimate is true, say that the level is an estimate. If may_work_higher is true, say that the child may work above this level.
 - If help_warning is true, do not praise the level: say that the level may be too high.
 - Number facts speed is never a reason to call a child behind.
-- If work comments are given, you may say what one of them shows.
+- The work list is the child's work shown on the report. When a piece has a comment, you may say what it shows.
 - Do not compare the child with other children. Do not mention books, prices, the company, how the test works, AI or yourself. Do not write "I". Do not use dashes as punctuation.`;
 
 const LEVEL = (level: number) => (level === 0 ? "kindergarten" : `grade ${level}`);
-const STATUS = { secure: "Secure", developing: "Developing", "needs-attention": "Needs attention" } as const;
-const FACTS = { secure: "Secure", quick: "Quick", "needs-practice": "Needs practice" } as const;
-
-/** The report model's facts for the report text: only what the model holds, and "{name}" for the child. */
-export function reportFacts(m: ReportModel) {
-  const f = m.facts;
-  return {
-    child: REPORT_TEXT_NAME,
-    school_grade: LEVEL(m.level.grade),
-    working_level: LEVEL(m.level.working),
-    working_level_against_school_grade: m.howWeHelp === "on-grade" ? "the same" : m.howWeHelp === "behind" ? "below" : "above",
-    level_is_estimate: m.level.confidence === "low",
-    may_work_higher: m.level.atCeiling,
-    help_warning: m.helpWarning === true,
-    areas: m.strands.map((s) => ({ area: s.name, result: STATUS[s.status], right: s.correct, questions: s.total })),
-    number_facts:
-      f && f.answered > 0 && f.accuracy && f.speed
-        ? { right: f.correct, answered: f.answered, typical_seconds_per_fact: f.secondsPerFact, accuracy: FACTS[f.accuracy], speed: FACTS[f.speed] }
-        : null,
-    work_comments: (m.work ?? []).flatMap((w) => (w.comment ? [{ question: w.prompt, answer: w.correct ? "right" : "not right", comment: w.comment }] : [])),
-  };
-}
 
 /** The review request's content: the drawing first, then the facts, with the child's typed working in tags. */
 function reviewContent(input: ReviewInput): Anthropic.ContentBlockParam[] {
