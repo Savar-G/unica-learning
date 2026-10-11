@@ -18,7 +18,7 @@ export const LEVEL_8: readonly TaggedTemplate[] = [
     id: "g67-8-perfect-square", strand: "N", grades: GRADES, standard: "8.1", format: "choice", whiteboard: true,
     fill(rng) {
       const n = rng.int(4, 20);
-      return { values: { n }, prompt: "Which number is a perfect square?", readAloud: "Which number is a perfect square?", answer: String(n * n), wrong: [wrong(n * n - 1, "root-estimate"), wrong(n * n + 1, "root-estimate")] };
+      return { values: { n }, prompt: "Which number is a perfect square?", readAloud: "Which number is a perfect square?", answer: String(n * n), wrong: [wrong(n * n - 1, "square-neighbour"), wrong(n * n + 1, "square-neighbour")] };
     },
   },
   {
@@ -33,7 +33,7 @@ export const LEVEL_8: readonly TaggedTemplate[] = [
     fill(rng) {
       const n = rng.int(5, 20);
       const prompt = `A square has an area of ${n * n} square centimetres. How long is each side, in centimetres?`;
-      return { values: { n }, prompt, readAloud: prompt, answer: String(n), wrong: [wrong(typed(n * n / 4), "root-half"), wrong(typed(n * n / 2), "root-half")] };
+      return { values: { n }, prompt, readAloud: prompt, answer: String(n), wrong: [wrong(typed(n * n / 4), "M2"), wrong(typed(n * n / 2), "root-half")] };
     },
   },
   {
@@ -47,8 +47,8 @@ export const LEVEL_8: readonly TaggedTemplate[] = [
     id: "g67-8-square-tile", strand: "N", grades: GRADES, standard: "8.2", format: "number", whiteboard: true,
     fill(rng) {
       const n = rng.int(5, 15);
-      const prompt = `${n * n} square tiles form a square with no gaps. How many tiles are in each row?`;
-      return { values: { n }, prompt, readAloud: prompt, answer: String(n), wrong: [wrong(n * n / 2, "root-half"), wrong(n * n / 4, "root-half")] };
+      const prompt = `${n * n} square tiles of the same size form a square array in rows with no gaps. How many tiles are in each row?`;
+      return { values: { n }, prompt, readAloud: prompt, answer: String(n), wrong: [wrong(n * n / 2, "root-half")] };
     },
   },
   // Fractions, rates and percent.
@@ -70,14 +70,14 @@ export const LEVEL_8: readonly TaggedTemplate[] = [
     id: "g67-8-multiply-fractions", strand: "F", grades: GRADES, standard: "8.5", format: "choice", whiteboard: true,
     fill(rng) {
       const [a, b, c, d] = draw(rng, (g) => [g.int(1, 4), g.int(5, 9), g.int(1, 4), g.int(5, 9)], ([a, b, c, d]) => distinctNumbers([a * c / (b * d), (a + c) / (b + d), a * c / b]));
-      return { values: { a, b, c, d }, prompt: `${frac(a, b)} × ${frac(c, d)} = ?`, readAloud: `What is ${sayFrac(a, b)} times ${sayFrac(c, d)}?`, answer: fracText(a * c, b * d), wrong: [wrong(fracText(a + c, b + d), "operation"), wrong(fracText(a * c, b), "fraction-one-side")] };
+      return { values: { a, b, c, d }, prompt: `${frac(a, b)} × ${frac(c, d)} = ?`, readAloud: `What is ${sayFrac(a, b)} times ${sayFrac(c, d)}?`, answer: fracText(a * c, b * d), wrong: [wrong(fracText(a + c, b + d), "F2"), wrong(fracText(a * c, b), "fraction-one-side")] };
     },
   },
   {
     id: "g67-8-divide-fractions", strand: "F", grades: GRADES, standard: "8.5", format: "choice", whiteboard: true,
     fill(rng) {
       const [a, b, c, d] = draw(rng, (g) => [g.int(1, 4), g.int(5, 9), g.int(1, 4), g.int(5, 9)], ([a, b, c, d]) => distinctNumbers([a * d / (b * c), a * c / (b * d), b * c / (a * d)]));
-      return { values: { a, b, c, d }, prompt: `${frac(a, b)} ÷ ${frac(c, d)} = ?`, readAloud: `What is ${sayFrac(a, b)} divided by ${sayFrac(c, d)}?`, answer: fracText(a * d, b * c), wrong: [wrong(fracText(a * c, b * d), "operation"), wrong(fracText(b * c, a * d), "fraction-flip")] };
+      return { values: { a, b, c, d }, prompt: `${frac(a, b)} ÷ ${frac(c, d)} = ?`, readAloud: `What is ${sayFrac(a, b)} divided by ${sayFrac(c, d)}?`, answer: fracText(a * d, b * c), wrong: [wrong(fracText(a * c, b * d), "operation"), wrong(fracText(b * c, a * d), "division-reversed")] };
     },
   },
   {
@@ -99,7 +99,7 @@ export const LEVEL_8: readonly TaggedTemplate[] = [
     fill(rng) {
       const hours = rng.int(2, 8), speed = rng.int(3, 12) * 10, distance = speed * hours;
       const prompt = `A train travels ${distance} kilometres in ${hours} hours at a constant speed. How many kilometres does it travel in one hour?`;
-      return { values: { hours, speed }, prompt, readAloud: prompt, answer: String(speed), wrong: [wrong(distance * hours, "rate-inverse"), wrong(distance, "total-not-unit")] };
+      return { values: { hours, speed }, prompt, readAloud: prompt, answer: String(speed), wrong: [wrong(distance * hours, "operation"), wrong(distance, "total-for-unit")] };
     },
   },
   {

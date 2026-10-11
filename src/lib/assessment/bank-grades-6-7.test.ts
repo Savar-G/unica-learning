@@ -198,6 +198,132 @@ describe("the grades 6-7 bank", () => {
     }
   });
 
+  it("preserves the direction of model-equation and pattern errors", () => {
+    const template = (id: string) => BANK.find((t) => t.id === `g67-6-${id}`)!;
+    expect(template("balance-box").grades.ON).toBe(2);
+    expect(template("evaluate").grades.ON).toBe(5);
+    expect(template("figure-pattern").grades.ON).toBe(4);
+    for (const seed of SEEDS) {
+      const rule = fillTemplate(template("shrinking-rule"), seed);
+      expect(rule.wrong.find((w) => w.value.endsWith("− n"))?.misconception).toBe("pattern-unit-step");
+      const story = fillTemplate(template("story-equation"), seed);
+      expect(story.wrong.find((w) => w.value.includes("÷"))?.misconception).toBe("operation");
+      const balance = fillTemplate(template("keep-balance"), seed);
+      expect(balance.wrong[0].misconception).toBe("balance-opposite");
+      const pattern = fillTemplate(template("figure-pattern"), seed);
+      expect(pattern.wrong.find((w) => Number(w.value) === pattern.values.s + pattern.values.k * pattern.values.d)?.misconception)
+        .toBe("pattern-step-count");
+    }
+  });
+
+  it("keeps Ontario one-step checks within 100 and distinguishes area and cubic errors", () => {
+    const equation = BANK.find((t) => t.id === "g67-6-equation-check")!;
+    expect(equation.grades.ON).toBe(5);
+    for (const seed of SEEDS) {
+      const q = fillTemplate(equation, seed);
+      expect(q.values.a * q.values.x).toBeLessThanOrEqual(100);
+      const area = fillTemplate(BANK.find((t) => t.id === "g67-6-parallelogram-area")!, seed);
+      expect(area.wrong.find((w) => Number(w.value) === area.values.b * area.values.s)?.misconception).toBe("slant-height");
+      const cubic = fillTemplate(BANK.find((t) => t.id === "g67-6-cubic-units")!, seed);
+      if (cubic.values.metres) {
+        expect(cubic.wrong.find((w) => Number(w.value) === cubic.values.m * 100)?.misconception).toBe("M11");
+        expect(cubic.wrong.find((w) => Number(w.value) === cubic.values.m * 10_000)?.misconception).toBe("unit-convert");
+      }
+    }
+  });
+
+  it("checks coordinate movement, theoretical choices and the L-shape area error", () => {
+    for (const id of ["plot-point", "translate-point"]) {
+      expect(BANK.find((t) => t.id === `g67-6-${id}`)!.grades.ON).toBe(4);
+    }
+    expect(BANK.find((t) => t.id === "g67-6-l-shape-perimeter")!.grades.SK).toBe(3);
+    for (const seed of SEEDS) {
+      const move = fillTemplate(BANK.find((t) => t.id === "g67-6-translate-point")!, seed);
+      const { x, y, r, d } = move.values;
+      expect(move.wrong.find((w) => w.value === `(${x + d}, ${y - r})`)?.misconception).toBe("move-distance-swap");
+      const probability = fillTemplate(BANK.find((t) => t.id === "g67-6-theoretical")!, seed);
+      expect(probability.choices).toHaveLength(3);
+      expect(probability.wrong.filter((w) => w.misconception === "D5")).toHaveLength(1);
+      if (probability.values.die) expect(probability.prompt).toContain("a total of");
+      const shape = fillTemplate(BANK.find((t) => t.id === "g67-6-l-shape-perimeter")!, seed);
+      const { W, H, a, h } = shape.values;
+      const area = W * H - (W - a) * h;
+      if (area !== Number(shape.answer)) expect(shape.wrong.find((w) => w.misconception === "M2")?.value).toBe(String(area));
+    }
+  });
+
+  it("uses one reversed-magnitude choice and an equal-negative choice, and names absolute ordering", () => {
+    for (const seed of SEEDS) {
+      const greatest = fillTemplate(BANK.find((t) => t.id === "g67-7-greatest-integer")!, seed);
+      expect(greatest.wrong.filter((w) => w.misconception === "N6")).toHaveLength(1);
+      expect(greatest.wrong.find((w) => w.misconception === "negative-equal")?.value).toBe("These numbers are equal");
+      const ordered = fillTemplate(BANK.find((t) => t.id === "g67-7-order-integers")!, seed);
+      expect(ordered.wrong[1].misconception).toBe("absolute-order");
+    }
+  });
+
+  it("codes integer operations, money methods, bounds and linear rules by the actual error", () => {
+    const template = (id: string) => BANK.find((t) => t.id === `g67-7-${id}`)!;
+    expect(template("evaluate-relation").grades.ON).toBe(5);
+    for (const seed of SEEDS) {
+      expect(fillTemplate(template("multiply-integers"), seed).choices).toHaveLength(3);
+      expect(fillTemplate(template("divide-integers"), seed).wrong[2].misconception).toBe("operation");
+      expect(fillTemplate(template("times-five"), seed).wrong.every((w) => w.misconception === "method-step")).toBe(true);
+      expect(fillTemplate(template("change-several"), seed).wrong[0].misconception).toBe("cost-not-change");
+      expect(fillTemplate(template("greatest-mixed-forms"), seed).choices).toHaveLength(3);
+      const decimal = fillTemplate(template("decimal-to-fraction"), seed);
+      if (decimal.values.h === 5) expect(decimal.wrong[0].value).toBe("0/5");
+      expect(fillTemplate(template("decimal-between"), seed).wrong.slice(0, 2).every((w) => w.misconception === "bounds-error")).toBe(true);
+      const ratio = fillTemplate(template("ratio-percent"), seed);
+      expect(ratio.wrong.every((w) => w.misconception !== "ratio-whole")).toBe(true);
+      for (const id of ["sales-tax", "tip"]) expect(fillTemplate(template(id), seed).wrong[1].misconception).toBe("percent-as-amount");
+      const tip = fillTemplate(template("tip"), seed);
+      if (tip.values.rate === 18) { expect(tip.prompt).toContain("an 18%"); expect(tip.readAloud).toContain("an 18 percent"); }
+      expect(fillTemplate(template("evaluate-relation"), seed).wrong[0].misconception).toBe("sub-before-multiply");
+      expect(fillTemplate(template("rule-from-table"), seed).wrong[1].misconception).toBe("step-as-addend");
+      expect(fillTemplate(template("table-far"), seed).wrong[1].misconception).toBe("step-as-addend");
+      expect(fillTemplate(template("figure-expression"), seed).wrong[0].misconception).toBe("step-as-addend");
+      expect(fillTemplate(template("story-equation"), seed).wrong[1].misconception).toBe("group-translation");
+    }
+  });
+
+  it("distinguishes volume operations, quadrant signs, movement distances and percent counts", () => {
+    for (const seed of SEEDS) {
+      const question = (id: string) => fillTemplate(BANK.find((t) => t.id === `g67-7-${id}`)!, seed);
+      expect(question("cylinder-base-area").wrong[0].misconception).toBe("operation");
+      expect(question("quadrant").wrong.every((w) => w.misconception !== "transform-sign")).toBe(true);
+      expect(question("translate-point").wrong[2].misconception).toBe("move-distance-swap");
+      expect(question("circle-graph-amount").wrong[0].misconception).toBe("percent-as-count");
+      expect(question("circle-graph-percent").wrong[0].misconception).toBe("count-as-percent");
+    }
+  });
+
+  it("checks the direction of probability and percent errors and square-array assumptions", () => {
+    for (const seed of SEEDS) {
+      const question = (id: string) => fillTemplate(BANK.find((t) => t.id === id)!, seed);
+      expect(question("g67-7-circle-graph-percent").wrong.every((w) => w.misconception !== "F10")).toBe(true);
+      expect(question("g67-7-experimental").wrong.find((w) => w.value === "1/6")?.misconception).toBe("theory-as-data");
+      expect(question("g67-8-perfect-square").wrong.every((w) => w.misconception === "square-neighbour")).toBe(true);
+      expect(question("g67-8-square-side").wrong[0].misconception).toBe("M2");
+      const tiles = question("g67-8-square-tile");
+      expect(tiles.prompt).toContain("same size"); expect(tiles.readAloud).toContain("same size");
+      expect(tiles.wrong).toHaveLength(1);
+    }
+  });
+
+  it("codes fraction operations and a distance unit rate without price or whole-part errors", () => {
+    for (const seed of SEEDS) {
+      const question = (id: string) => fillTemplate(BANK.find((t) => t.id === `g67-8-${id}`)!, seed);
+      expect(question("multiply-fractions").wrong[0].misconception).toBe("F2");
+      const division = question("divide-fractions");
+      expect(division.wrong[1].misconception).toBe("division-reversed");
+      const rate = question("unit-rate");
+      expect(rate.wrong.map((w) => w.misconception)).toEqual(["operation", "total-for-unit"]);
+      expect(Number(rate.wrong[0].value)).toBe(rate.values.speed * rate.values.hours ** 2);
+      expect(Number(rate.wrong[1].value)).toBe(rate.values.speed * rate.values.hours);
+    }
+  });
+
   it("preserves multiplication and grouping when it speaks a bracketed choice", () => {
     const q = fillTemplate(BANK.find((t) => t.id === "g67-6-expression-words")!, 3);
     const bracketed = q.choices!.find((c) => c.startsWith("4("))!;

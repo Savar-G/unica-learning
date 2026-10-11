@@ -564,7 +564,7 @@ export const LEVEL_6: readonly TaggedTemplate[] = [
         prompt: `The pattern ${terms.join(", ")}, … goes down by the same amount each time. Which expression gives the number in position n?`,
         readAloud: `The pattern ${terms.join(", ")} keeps going down by the same amount each time. Which expression gives the number in position n?`,
         answer: `${start + d} − ${d}n`,
-        wrong: [wrong(`${start} − ${d}n`, "A5"), wrong(`${d}n + ${start}`, "pattern-direction"), wrong(`${start + d} − n`, "A5")],
+        wrong: [wrong(`${start} − ${d}n`, "A5"), wrong(`${d}n + ${start}`, "pattern-direction"), wrong(`${start + d} − n`, "pattern-unit-step")],
       };
     },
   },
@@ -625,14 +625,14 @@ export const LEVEL_6: readonly TaggedTemplate[] = [
         prompt: `Each ${box} has the same number of ${things}. ${a} ${box}s hold ${a * x} ${things}. Let ${v} be the number of ${things} in one ${box}. Which equation fits?`,
         readAloud: `Each ${box} has the same number of ${things}. ${a} ${box}s hold ${a * x} ${things}. Let ${v} be the number of ${things} in one ${box}. Which equation fits?`,
         answer: `${a}${v} = ${a * x}`,
-        wrong: [wrong(`${v} + ${a} = ${a * x}`, "operation"), wrong(`${v} − ${a} = ${a * x}`, "operation"), wrong(`${v} ÷ ${a} = ${a * x}`, "inverse-op")],
+        wrong: [wrong(`${v} + ${a} = ${a * x}`, "operation"), wrong(`${v} − ${a} = ${a * x}`, "operation"), wrong(`${v} ÷ ${a} = ${a * x}`, "operation")],
       };
     },
   },
   {
     // 6.10: preservation of equality on a balance, described in words.
     id: "g67-6-balance-box",
-    strand: "A", grades: { BC: 6, AB: 6, SK: 6, MB: 6, ON: 6 }, format: "number", whiteboard: true, standard: "6.10",
+    strand: "A", grades: { BC: 6, AB: 6, SK: 6, MB: 6, ON: 2 }, format: "number", whiteboard: true, standard: "6.10",
     fill(rng) {
       const a = rng.int(3, 15), x = rng.int(4, 25);
       return {
@@ -661,14 +661,14 @@ export const LEVEL_6: readonly TaggedTemplate[] = [
         prompt: `${shown}. You ${step}. What must you do to the right side to keep both sides equal?`,
         readAloud: `${said}. You ${step}. What must you do to the right side to keep both sides equal?`,
         answer: same,
-        wrong: [wrong(opposite, "inverse-op"), wrong("Leave it the same", "A1")],
+        wrong: [wrong(opposite, "balance-opposite"), wrong("Leave it the same", "A1")],
       };
     },
   },
   {
     // 6.9: expressions; the value for a given n.
     id: "g67-6-evaluate",
-    strand: "A", grades: { BC: 6, AB: 7, SK: 7, MB: 7, ON: 6 }, format: "number", whiteboard: true, standard: "6.9",
+    strand: "A", grades: { BC: 6, AB: 7, SK: 7, MB: 7, ON: 5 }, format: "number", whiteboard: true, standard: "6.9",
     fill(rng) {
       const [a, b, n] = draw(rng, (g) => [g.int(2, 9), g.int(1, 12), g.int(2, 9)], ([a, b, n]) => distinctNumbers([a * n + b, Number(`${a}${n}`) + b, a + n + b]));
       return {
@@ -700,7 +700,7 @@ export const LEVEL_6: readonly TaggedTemplate[] = [
   {
     // 6.9: visual patterning, described in words.
     id: "g67-6-figure-pattern",
-    strand: "A", grades: { BC: 6, AB: 6, SK: 6, MB: 6, ON: 6 }, format: "number", whiteboard: true, standard: "6.9",
+    strand: "A", grades: { BC: 6, AB: 6, SK: 6, MB: 6, ON: 4 }, format: "number", whiteboard: true, standard: "6.9",
     fill(rng) {
       const [s, d, k] = draw(rng, (g) => [g.int(3, 9), g.int(2, 6), g.int(6, 12)], ([s, d, k]) => s !== d && distinctNumbers([s + (k - 1) * d, k * d, s + k * d]));
       const things = rng.pick(["squares", "toothpicks", "dots", "tiles"]);
@@ -709,15 +709,15 @@ export const LEVEL_6: readonly TaggedTemplate[] = [
         prompt: `Figure 1 has ${s} ${things}, figure 2 has ${s + d} ${things} and figure 3 has ${s + 2 * d} ${things}. The pattern grows the same way. How many ${things} are in figure ${k}?`,
         readAloud: `Figure 1 has ${s} ${things}, figure 2 has ${s + d} ${things} and figure 3 has ${s + 2 * d} ${things}. The pattern grows the same way. How many ${things} are in figure ${k}?`,
         answer: String(s + (k - 1) * d),
-        wrong: [wrong(k * d, "A5"), wrong(s + k * d, "count-start")],
+        wrong: [wrong(k * d, "A5"), wrong(s + k * d, "pattern-step-count")],
       };
     },
   },
   {
     id: "g67-6-equation-check",
-    strand: "A", grades: { BC: 6, AB: 6, SK: 6, MB: 6, ON: 6 }, format: "choice", whiteboard: false, standard: "6.10",
+    strand: "A", grades: { BC: 6, AB: 6, SK: 6, MB: 6, ON: 5 }, format: "choice", whiteboard: false, standard: "6.10",
     fill(rng) {
-      const [a, x] = draw(rng, (g) => [g.int(3, 9), g.int(3, 12)], ([a, x]) => a !== x && distinctNumbers([x, a * x - a, a * x + a, a * a * x]));
+      const [a, x] = draw(rng, (g) => [g.int(3, 9), g.int(3, 12)], ([a, x]) => a !== x && a * x <= 100 && distinctNumbers([x, a * x - a, a * x + a, a * a * x]));
       return {
         values: { a, x },
         prompt: `Which value of x makes ${a}x = ${a * x} true?`,
@@ -758,7 +758,7 @@ export const LEVEL_6: readonly TaggedTemplate[] = [
         prompt: `A parallelogram has a base of ${b} cm and a height of ${h} cm. Its slanted sides are ${s} cm long. What is its area, in square centimetres?`,
         readAloud: `A parallelogram has a base of ${b} centimetres and a height of ${h} centimetres. Its slanted sides are ${s} centimetres long. What is its area, in square centimetres?`,
         answer: String(b * h),
-        wrong: [wrong(b * s, "M3"), wrong(2 * (b + s), "M2")],
+        wrong: [wrong(b * s, "slant-height"), wrong(2 * (b + s), "M2")],
       };
     },
   },
@@ -875,7 +875,7 @@ export const LEVEL_6: readonly TaggedTemplate[] = [
           prompt: `How many cubic centimetres are in ${m} cubic ${m === 1 ? "metre" : "metres"}?`,
           readAloud: `How many cubic centimetres are in ${m} cubic ${m === 1 ? "metre" : "metres"}?`,
           answer: String(m * 1_000_000),
-          wrong: [wrong(m * 100, "M11"), wrong(m * 10_000, "M11")],
+          wrong: [wrong(m * 100, "M11"), wrong(m * 10_000, "unit-convert")],
         };
       }
       const ml = rng.int(3, 95) * 10;
@@ -937,7 +937,7 @@ export const LEVEL_6: readonly TaggedTemplate[] = [
   {
     // Map, grade 6: plot the point (3, 2) on a first-quadrant grid.
     id: "g67-6-plot-point",
-    strand: "MG", grades: { BC: 6, AB: 6, SK: 6, MB: 6, ON: 6 }, format: "choice", whiteboard: false, standard: "6.16",
+    strand: "MG", grades: { BC: 6, AB: 6, SK: 6, MB: 6, ON: 4 }, format: "choice", whiteboard: false, standard: "6.16",
     fill(rng) {
       const [x, y] = draw(rng, (g) => [g.int(1, 9), g.int(1, 9)], ([x, y]) => x !== y);
       const point = (p: number, q: number) => `(${p}, ${q})`;
@@ -953,7 +953,7 @@ export const LEVEL_6: readonly TaggedTemplate[] = [
   {
     // 6.16: a translation of a point in the first quadrant.
     id: "g67-6-translate-point",
-    strand: "MG", grades: { BC: 6, AB: 6, SK: 6, MB: 6, ON: 6 }, format: "choice", whiteboard: true, standard: "6.16",
+    strand: "MG", grades: { BC: 6, AB: 6, SK: 6, MB: 6, ON: 4 }, format: "choice", whiteboard: true, standard: "6.16",
     fill(rng) {
       const [x, y, r, d] = draw(rng, (g) => [g.int(1, 8), g.int(5, 12), g.int(2, 7), g.int(2, 4)], ([x, y, r, d]) =>
         r !== d && y - r >= 1 && distinct([[x + r, y - d], [x + r, y + d], [x + d, y - r], [x + r, y]].map(String)));
@@ -963,7 +963,7 @@ export const LEVEL_6: readonly TaggedTemplate[] = [
         prompt: `The point (${x}, ${y}) moves ${r} units right and ${d} units down. Where does it end up?`,
         readAloud: `The point ${x}, ${y} moves ${r} units right and ${d} units down. Where does it end up?`,
         answer: point(x + r, y - d),
-        wrong: [wrong(point(x + r, y + d), "transform-sign"), wrong(point(x + d, y - r), "coordinate-swap"), wrong(point(x + r, y), "one-part")],
+        wrong: [wrong(point(x + r, y + d), "transform-sign"), wrong(point(x + d, y - r), "move-distance-swap"), wrong(point(x + r, y), "one-part")],
       };
     },
   },
@@ -1017,10 +1017,10 @@ export const LEVEL_6: readonly TaggedTemplate[] = [
         const h = draw(rng, (g) => g.int(1, Math.floor(t / 2)), (h) => h * 6 !== t && h * 5 !== t && 2 * h !== t);
         return {
           values: { t, h, face, die: 1 },
-          prompt: `A fair die was rolled ${t} times. It landed on ${face} ${h === 1 ? "once" : `${h} times`}. What is the theoretical probability of rolling a ${face}?`,
-          readAloud: `A fair die was rolled ${t} times. It landed on ${face} ${h === 1 ? "once" : `${h} times`}. What is the theoretical probability of rolling a ${face}?`,
+          prompt: `A fair die was rolled ${t} times. It landed on the number ${face} a total of ${h} ${h === 1 ? "time" : "times"}. What is the theoretical probability of rolling a ${face}?`,
+          readAloud: `A fair die was rolled ${t} times. It landed on the number ${face} a total of ${h} ${h === 1 ? "time" : "times"}. What is the theoretical probability of rolling a ${face}?`,
           answer: "1/6",
-          wrong: [wrong(frac(h, t), "D5"), wrong(frac(t - h, t), "D5"), wrong("1/5", "D4")],
+          wrong: [wrong(frac(h, t), "D5"), wrong("1/5", "D4")],
         };
       }
       const t = rng.pick([10, 12, 20]), h = draw(rng, (g) => g.int(2, t - 2), (h) => distinctNumbers([0.5, h / t, (t - h) / t, h / (t - h)]));
@@ -1029,24 +1029,24 @@ export const LEVEL_6: readonly TaggedTemplate[] = [
         prompt: `A fair coin was tossed ${t} times. It landed heads ${h} times. What is the theoretical probability of heads?`,
         readAloud: `A fair coin was tossed ${t} times. It landed heads ${h} times. What is the theoretical probability of heads?`,
         answer: "1/2",
-        wrong: [wrong(frac(h, t), "D5"), wrong(frac(t - h, t), "D5"), wrong(frac(h, t - h), "D4")],
+        wrong: [wrong(frac(h, t), "D5"), wrong(frac(h, t - h), "D4")],
       };
     },
   },
   {
     // 6.11: perimeter of a complex shape (an L shape), with every side given so no picture is needed.
     id: "g67-6-l-shape-perimeter",
-    strand: "MG", grades: { BC: 6, AB: 6, SK: 6, MB: 6, ON: 6 }, format: "number", whiteboard: true, standard: "6.11",
+    strand: "MG", grades: { BC: 6, AB: 6, SK: 3, MB: 6, ON: 6 }, format: "number", whiteboard: true, standard: "6.11",
     fill(rng) {
       const [W, H, a, h] = draw(rng, (g) => [g.int(8, 20), g.int(6, 15), g.int(2, 7), g.int(2, 6)], ([W, H, a, h]) => a < W - 1 && h < H - 1 && W !== H);
       const sides = [W, H, a, h, W - a, H - h];
-      const skipped = rng.int(2, 5);
+      const skipped = draw(rng, (g) => g.int(2, 5), (i) => 2 * (W + H) - sides[i] !== W * H - (W - a) * h);
       return {
         values: { W, H, a, h },
         prompt: `An L-shaped garden has 6 straight sides. Going around it, the sides measure ${sides.map((s) => `${s} m`).join(", ")}. What is its perimeter, in metres?`,
         readAloud: `An L-shaped garden has 6 straight sides. Going around it, the sides measure ${sides.join(", ")} metres. What is its perimeter, in metres?`,
         answer: String(2 * (W + H)),
-        wrong: [wrong(2 * (W + H) - sides[skipped], "leaves-out-addend"), wrong(W * H - a * h, "M2")].filter((w) => Number(w.value) !== 2 * (W + H)),
+        wrong: [wrong(2 * (W + H) - sides[skipped], "leaves-out-addend"), wrong(W * H - (W - a) * h, "M2")].filter((w) => Number(w.value) !== 2 * (W + H)),
       };
     },
   },

@@ -16,14 +16,14 @@ export const LEVEL_7: readonly TaggedTemplate[] = [
     id: "g67-7-greatest-integer",
     strand: "N", grades: { BC: 7, AB: 7, SK: 6, MB: 6, ON: 6 }, format: "choice", whiteboard: false, standard: "7.2",
     fill(rng) {
-      const values = rng.shuffle(Array.from({ length: 15 }, (_, i) => -(i + 1))).slice(0, 4);
+      const values = rng.shuffle(Array.from({ length: 15 }, (_, i) => -(i + 1))).slice(0, 2);
       const answer = Math.max(...values);
       return {
-        values: { a: values[0], b: values[1], c: values[2], d: values[3] },
-        prompt: "Which number is the greatest?",
-        readAloud: "Which number is the greatest?",
+        values: { a: values[0], b: values[1] },
+        prompt: `Compare ${num(values[0])} and ${num(values[1])}. Which number is the greatest?`,
+        readAloud: `Compare ${sayNum(values[0])} and ${sayNum(values[1])}. Which number is the greatest?`,
         answer: num(answer),
-        wrong: values.filter((v) => v !== answer).map((v) => wrong(num(v), "N6")),
+        wrong: [wrong(num(Math.min(...values)), "N6"), wrong("These numbers are equal", "negative-equal")],
       };
     },
   },
@@ -42,7 +42,7 @@ export const LEVEL_7: readonly TaggedTemplate[] = [
         answer: list([a, b, c, d]),
         wrong: [
           wrong(list([b, a, c, d]), "N6"),
-          wrong(list([c, b, d, a].sort((x, y) => Math.abs(x) - Math.abs(y))), "O9"),
+          wrong(list([c, b, d, a].sort((x, y) => Math.abs(x) - Math.abs(y))), "absolute-order"),
           wrong(list([d, c, b, a]), "more-less"),
         ],
       };
@@ -97,7 +97,7 @@ export const LEVEL_7: readonly TaggedTemplate[] = [
         prompt: `${bracket(a)} × ${bracket(b)} = ?`,
         readAloud: `What is ${sayNum(a)} times ${sayNum(b)}?`,
         answer: num(a * b),
-        wrong: [wrong(num(-a * b), "sign-rule"), wrong(num(a + b), "operation"), wrong(num(Math.abs(a) + Math.abs(b)), "operation")],
+        wrong: [wrong(num(-a * b), "sign-rule"), wrong(num(a + b), "operation")],
       };
     },
   },
@@ -113,7 +113,7 @@ export const LEVEL_7: readonly TaggedTemplate[] = [
         prompt: `${num(a)} ÷ ${bracket(b)} = ?`,
         readAloud: `What is ${sayNum(a)} divided by ${sayNum(b)}?`,
         answer: num(q),
-        wrong: [wrong(num(-q), "sign-rule"), wrong(num(a - b), "operation"), wrong(num(a * b), "inverse-op")],
+        wrong: [wrong(num(-q), "sign-rule"), wrong(num(a - b), "operation"), wrong(num(a * b), "operation")],
       };
     },
   },
@@ -226,7 +226,7 @@ export const LEVEL_7: readonly TaggedTemplate[] = [
         readAloud: `What is ${a} times ${m}?`,
         answer: String(answer),
         // Multiplies by 10 (or 100) but forgets to halve; or halves but forgets to multiply.
-        wrong: [wrong(answer * 2, "one-part"), wrong(a / 2, "one-part")],
+        wrong: [wrong(answer * 2, "method-step"), wrong(a / 2, "method-step")],
       };
     },
   },
@@ -243,7 +243,7 @@ export const LEVEL_7: readonly TaggedTemplate[] = [
         prompt: `${name} buys ${n} ${item} for ${money(cents / 100)} each and pays with a ${money(bill)} bill. How much change does ${name} get, in dollars?`,
         readAloud: `${name} buys ${n} ${item} for ${sayMoney(cents / 100)} each and pays with a ${bill} dollar bill. How much change does ${name} get, in dollars?`,
         answer: typed((bill * 100 - n * cents) / 100),
-        wrong: [wrong(typed((n * cents) / 100), "one-part"), wrong(typed((bill * 100 - cents) / 100), "one-part")],
+        wrong: [wrong(typed((n * cents) / 100), "cost-not-change"), wrong(typed((bill * 100 - cents) / 100), "one-part")],
       };
     },
   },
@@ -294,7 +294,6 @@ export const LEVEL_7: readonly TaggedTemplate[] = [
       const v = Math.round((n * 1000) / d); // thousandths
       // Three values just below the fraction, in other forms: a percent with more digits, a short decimal, a long decimal.
       const pct = Math.floor(v / 10) - (v % 10 === 0 ? 1 : 0);
-      const tenths = Math.floor((v - 1) / 100);
       const long = v - rng.int(1, 4);
       return {
         values: { n, d },
@@ -303,7 +302,6 @@ export const LEVEL_7: readonly TaggedTemplate[] = [
         answer: frac(n, d),
         wrong: [
           wrong(`${pct}%`, "form-compare"),
-          wrong(fmt(tenths / 10), "form-compare"),
           wrong(fmt(long / 1000), "form-compare"),
         ].filter((w, i, all) => all.findIndex((x) => x.value === w.value) === i),
       };
@@ -342,7 +340,7 @@ export const LEVEL_7: readonly TaggedTemplate[] = [
         readAloud: `Which fraction in lowest terms is equal to ${fmt(h / 100)}?`,
         answer: fracText(h, 100),
         wrong: [
-          wrong(a === 0 ? frac(1, b) : frac(a, b), "F7"),
+          wrong(frac(a, b), "F7"),
           wrong(frac(h, 10), "decimal-point"),
           wrong(frac(h, 1000), "decimal-point"),
         ].filter((w, i, all) => all.findIndex((x) => x.value === w.value) === i),
@@ -379,7 +377,7 @@ export const LEVEL_7: readonly TaggedTemplate[] = [
       const below = Math.round((lo - 0.05) * 100) / 100;
       const above = Math.round((hi + 0.05) * 100) / 100;
       const f7 = Number(`0.${a}${b}`);
-      const wrongs = [wrong(fmt(below), "form-compare"), wrong(fmt(above), "form-compare")];
+      const wrongs = [wrong(fmt(below), "bounds-error"), wrong(fmt(above), "bounds-error")];
       if (f7 < lo || f7 > hi) wrongs.push(wrong(fmt(f7), "F7"));
       return {
         values: { a, b, c, d },
@@ -421,7 +419,7 @@ export const LEVEL_7: readonly TaggedTemplate[] = [
     fill(rng) {
       const [g, b] = draw(rng, (r) => [r.int(4, 18), r.int(4, 18)], ([g, b]) => g !== b && (g * 100) % (g + b) === 0 && (b * 100) % (g + b) === 0);
       const wrongs = [wrong((b * 100) / (g + b), "fraction-other-part")];
-      if (((g * 1000) / b) % 1 === 0) wrongs.push(wrong(typed((g * 100) / b), "ratio-whole"));
+      if (((g * 1000) / b) % 1 === 0) wrongs.push(wrong(typed((g * 100) / b), "F4"));
       return {
         values: { g, b },
         prompt: `A class has ${g} girls and ${b} boys. What percent of the class are girls?`,
@@ -444,7 +442,7 @@ export const LEVEL_7: readonly TaggedTemplate[] = [
         prompt: `${item} costs ${money(price)}. The sales tax is ${rate}%. What is the total cost with tax, in dollars?`,
         readAloud: `${item} costs ${sayMoney(price)}. The sales tax is ${rate} percent. What is the total cost with tax, in dollars?`,
         answer: typed(price + tax),
-        wrong: [wrong(typed(tax), "amount-not-total"), wrong(price + rate, "F10")],
+        wrong: [wrong(typed(tax), "amount-not-total"), wrong(price + rate, "percent-as-amount")],
       };
     },
   },
@@ -457,10 +455,10 @@ export const LEVEL_7: readonly TaggedTemplate[] = [
       const tip = (rate * bill) / 100;
       return {
         values: { rate, bill },
-        prompt: `A meal costs ${money(bill)}. The family leaves a ${rate}% tip. How much do they pay in all, in dollars?`,
-        readAloud: `A meal costs ${sayMoney(bill)}. The family leaves a ${rate} percent tip. How much do they pay in all, in dollars?`,
+        prompt: `A meal costs ${money(bill)}. The family leaves ${rate === 18 ? "an" : "a"} ${rate}% tip. How much do they pay in all, in dollars?`,
+        readAloud: `A meal costs ${sayMoney(bill)}. The family leaves ${rate === 18 ? "an" : "a"} ${rate} percent tip. How much do they pay in all, in dollars?`,
         answer: typed(bill + tip),
-        wrong: [wrong(typed(tip), "amount-not-total"), wrong(bill + rate, "F10")],
+        wrong: [wrong(typed(tip), "amount-not-total"), wrong(bill + rate, "percent-as-amount")],
       };
     },
   },
@@ -503,7 +501,7 @@ export const LEVEL_7: readonly TaggedTemplate[] = [
   {
     // Map, grade 7: y = 3n + 2 when n = 5 (here with a minus: 4n - 3).
     id: "g67-7-evaluate-relation",
-    strand: "A", grades: { BC: 7, AB: 7, SK: 7, MB: 7, ON: 7 }, format: "number", whiteboard: true, standard: "7.5",
+    strand: "A", grades: { BC: 7, AB: 7, SK: 7, MB: 7, ON: 5 }, format: "number", whiteboard: true, standard: "7.5",
     fill(rng) {
       const [a, b, n] = draw(rng, (g) => [g.int(2, 9), g.int(1, 9), g.int(3, 15)], ([a, b, n]) => a * n > b && a * (n - b) > 0 && distinctNumbers([a * n - b, a * (n - b), a * n + b]));
       return {
@@ -511,7 +509,7 @@ export const LEVEL_7: readonly TaggedTemplate[] = [
         prompt: `y = ${a}n − ${b}. What is y when n = ${n}?`,
         readAloud: `y equals ${a} times n, minus ${b}. What is y when n is ${n}?`,
         answer: String(a * n - b),
-        wrong: [wrong(a * (n - b), "O7"), wrong(a * n + b, "operation")],
+        wrong: [wrong(a * (n - b), "sub-before-multiply"), wrong(a * n + b, "operation")],
       };
     },
   },
@@ -528,7 +526,7 @@ export const LEVEL_7: readonly TaggedTemplate[] = [
         prompt: `A table of values has the pairs (n, y): ${pairs}. Which rule fits?`,
         readAloud: `A table of values has these pairs: ${said}. Which rule fits?`,
         answer: `y = ${a}n + ${b}`,
-        wrong: [wrong(`y = ${a}n`, "A5"), wrong(`y = n + ${a}`, "A5"), wrong(`y = ${a * start + b}n`, "rule-start")],
+        wrong: [wrong(`y = ${a}n`, "A5"), wrong(`y = n + ${a}`, "step-as-addend"), wrong(`y = ${a * start + b}n`, "rule-start")],
       };
     },
   },
@@ -614,7 +612,7 @@ export const LEVEL_7: readonly TaggedTemplate[] = [
         prompt: `${name} pays ${money(fee)} to join a club and ${money(rate)} for each class. In all ${name} pays ${money(total)}. Let k be the number of classes. Which equation fits?`,
         readAloud: `${name} pays ${sayMoney(fee)} to join a club and ${sayMoney(rate)} for each class. In all ${name} pays ${sayMoney(total)}. Let k be the number of classes. Which equation fits?`,
         answer: `${rate}k + ${fee} = ${total}`,
-        wrong: [wrong(`${fee}k + ${rate} = ${total}`, "rule-swap"), wrong(`${rate}(k + ${fee}) = ${total}`, "O7"), wrong(`${rate}k = ${total} + ${fee}`, "inverse-op")],
+        wrong: [wrong(`${fee}k + ${rate} = ${total}`, "rule-swap"), wrong(`${rate}(k + ${fee}) = ${total}`, "group-translation"), wrong(`${rate}k = ${total} + ${fee}`, "inverse-op")],
       };
     },
   },
@@ -648,7 +646,7 @@ export const LEVEL_7: readonly TaggedTemplate[] = [
         prompt: `A table of values has the pairs (x, y): ${pairs}. The pattern continues. What is y when x = ${x}?`,
         readAloud: `A table of values has these pairs: ${said}. The pattern continues. What is y when x is ${x}?`,
         answer: String(a * x + b),
-        wrong: [wrong(a * x, "A5"), wrong(x + a, "A5")],
+        wrong: [wrong(a * x, "A5"), wrong(x + a, "step-as-addend")],
       };
     },
   },
@@ -710,7 +708,7 @@ export const LEVEL_7: readonly TaggedTemplate[] = [
         prompt: `Figure 1 has ${a + b} ${things}, figure 2 has ${2 * a + b} and figure 3 has ${3 * a + b}. Which expression gives the number of ${things} in figure n?`,
         readAloud: `Figure 1 has ${a + b} ${things}, figure 2 has ${2 * a + b} and figure 3 has ${3 * a + b}. Which expression gives the number of ${things} in figure n?`,
         answer: `${a}n + ${b}`,
-        wrong: [wrong(`n + ${a}`, "A5"), wrong(`${a}n`, "A5"), wrong(`${a + b}n`, "rule-start")],
+        wrong: [wrong(`n + ${a}`, "step-as-addend"), wrong(`${a}n`, "A5"), wrong(`${a + b}n`, "rule-start")],
       };
     },
   },
@@ -791,7 +789,7 @@ export const LEVEL_7: readonly TaggedTemplate[] = [
         prompt: `A cylinder has a base with an area of ${base} square cm. It is ${h} cm tall. What is its volume, in cubic centimetres?`,
         readAloud: `A cylinder has a base with an area of ${base} square centimetres. It is ${h} centimetres tall. What is its volume, in cubic centimetres?`,
         answer: String(base * h),
-        wrong: [wrong(base + h, "M9")],
+        wrong: [wrong(base + h, "operation")],
       };
     },
   },
@@ -824,7 +822,7 @@ export const LEVEL_7: readonly TaggedTemplate[] = [
         prompt: `On a coordinate grid, which part holds the point ${point(x, y)}?`,
         readAloud: `On a coordinate grid, which part holds the point ${sayPoint(x, y)}?`,
         answer,
-        wrong: all.filter((q) => q !== answer).map((q) => wrong(q, q === swapped ? "coordinate-swap" : "transform-sign")),
+        wrong: all.filter((q) => q !== answer).map((q) => wrong(q, q === swapped ? "coordinate-swap" : "quadrant-sign")),
       };
     },
   },
@@ -857,7 +855,7 @@ export const LEVEL_7: readonly TaggedTemplate[] = [
         prompt: `The point ${point(x, y)} moves ${r} units right and ${d} units down. Where does it end up?`,
         readAloud: `The point ${sayPoint(x, y)} moves ${r} units right and ${d} units down. Where does it end up?`,
         answer: point(x + r, y - d),
-        wrong: [wrong(point(x - r, y - d), "transform-sign"), wrong(point(x + r, y + d), "transform-sign"), wrong(point(x + d, y - r), "coordinate-swap")],
+        wrong: [wrong(point(x - r, y - d), "transform-sign"), wrong(point(x + r, y + d), "transform-sign"), wrong(point(x + d, y - r), "move-distance-swap")],
       };
     },
   },
@@ -883,7 +881,7 @@ export const LEVEL_7: readonly TaggedTemplate[] = [
     fill(rng) {
       const [p, total] = draw(rng, (g) => [g.pick([10, 15, 20, 25, 30, 35, 40, 45]), g.int(4, 30) * 20], ([p, t]) => (p * t) % 100 === 0 && t !== 100 && t / p !== (p * t) / 100 && t / p !== p);
       const [who, what] = rng.pick([["students", "walk to school"], ["people", "chose pizza"], ["visitors", "came by bus"]] as const);
-      const wrongs = [wrong(p, "graph-value")];
+      const wrongs = [wrong(p, "percent-as-count")];
       if (((total * 1000) / p) % 1 === 0) wrongs.push(wrong(typed(total / p), "F10"));
       return {
         values: { p, total },
@@ -917,8 +915,8 @@ export const LEVEL_7: readonly TaggedTemplate[] = [
       const [p, total] = draw(rng, (g) => [g.pick([10, 15, 20, 25, 30, 40, 45, 60]), g.int(2, 20) * 20], ([p, t]) => (p * t) % 100 === 0 && (p * t) / 100 !== p);
       const part = (p * total) / 100;
       const fruit = rng.pick(["apples", "bananas", "grapes", "oranges"]);
-      const wrongs = [wrong(part, "graph-value")];
-      if (((total * 1000) / part) % 1 === 0 && total / part !== p) wrongs.push(wrong(typed(total / part), "F10"));
+      const wrongs = [wrong(part, "count-as-percent")];
+      if (((total * 1000) / part) % 1 === 0 && total / part !== p) wrongs.push(wrong(typed(total / part), "percent-inverse"));
       return {
         values: { p, total },
         prompt: `${total} people named their favourite fruit, and ${part} of them chose ${fruit}. In a circle graph, what percent of the circle is ${fruit}?`,
@@ -955,7 +953,7 @@ export const LEVEL_7: readonly TaggedTemplate[] = [
         prompt: `Two dice were rolled together ${total} times. A sum of 7 came up ${hits} times. What is the experimental probability of rolling a sum of 7?`,
         readAloud: `Two dice were rolled together ${total} times. A sum of 7 came up ${hits} times. What is the experimental probability of rolling a sum of 7?`,
         answer: frac(hits, total),
-        wrong: [wrong("1/6", "D5"), wrong(frac(hits, total - hits), "D4"), wrong(frac(total - hits, total), "probability-other")],
+        wrong: [wrong("1/6", "theory-as-data"), wrong(frac(hits, total - hits), "D4"), wrong(frac(total - hits, total), "probability-other")],
       };
     },
   },
