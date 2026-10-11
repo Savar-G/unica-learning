@@ -1,4 +1,5 @@
 import type { CurriculumId } from "@/lib/signup";
+import type { FactsResult } from "./facts";
 import type { MisconceptionId } from "./misconceptions";
 import type { Rng } from "./rng";
 
@@ -78,9 +79,12 @@ export interface Question {
 /** A question as the browser receives it: no answer, no coded wrong answers, no drawn numbers. */
 export type PublicQuestion = Pick<Question, "id" | "level" | "strand" | "format" | "whiteboard" | "prompt" | "readAloud" | "choices">;
 
-/** The browser's next screen: a question, numbered from 1, or the end of the test. */
+/**
+ * The browser's next screen: a question, numbered from 1, or the end of the test.
+ * `breakAfter` is the number of questions before the halfway break (the end of stage 1), for the progress display.
+ */
 export type TestStep =
-  | { status: "question"; question: PublicQuestion; number: number; total: number }
+  | { status: "question"; question: PublicQuestion; number: number; total: number; breakAfter: number }
   | { status: "complete"; total: number };
 
 export interface ChildProfile {
@@ -143,7 +147,8 @@ export interface Placement {
   stage1: { correct: number; total: number };
   levels: LevelResult[];
   strands: StrandResult[];
-  // Later tickets fill these: the timed facts section (#70) and help flags (#71).
-  facts: null;
+  /** The timed facts section (#70): speed beside accuracy. Null when the child had no facts section. Never changes the working level. */
+  facts: FactsResult | null;
+  // A later ticket fills this: help flags (#71).
   flags: never[];
 }

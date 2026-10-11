@@ -1,7 +1,6 @@
 /* The child's test (#64). Plain screens until the split-desk design (D-088) lands in #79. Every tap target is 44 px or more. */
 .test-root { min-height: 100dvh; display: flex; flex-direction: column; background: #fff; }
 .test-top { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 18px var(--gut); border-bottom: 1px solid var(--line-soft); }
-.test-count { font: 400 14px/1 var(--mono); color: var(--ink-2); }
 .test-main { flex: 1; display: grid; align-content: center; justify-items: center; padding: clamp(24px, 5vw, 56px) var(--gut); }
 
 .test-card { width: min(100%, 640px); display: grid; gap: 18px; justify-items: start; }

@@ -11,6 +11,7 @@ import {
   bandFor,
 } from "./constants";
 import { bankFor } from "./bank";
+import { factsResult, type FactsSession } from "./facts";
 import { rngFor } from "./rng";
 import type {
   Answer,
@@ -213,10 +214,15 @@ export function restoreSession(stored: StoredTest, submissions: readonly Submiss
 
 /** What the browser gets next: the current question without its answer, or "complete". */
 export function testStep(session: Session): TestStep {
-  const total = bandFor(session.profile.grade).length;
+  const { length: total, stage1: breakAfter } = bandFor(session.profile.grade);
   const q = nextQuestion(session);
-  return q ? { status: "question", question: toPublicQuestion(q), number: session.answers.length + 1, total } : { status: "complete", total };
+  return q
+    ? { status: "question", question: toPublicQuestion(q), number: session.answers.length + 1, total, breakAfter }
+    : { status: "complete", total };
 }
+
+/** True on the first question after halfway: the browser shows the skippable break screen before it (D-083). */
+export const breakDue = (step: TestStep): boolean => step.status === "question" && step.number === step.breakAfter + 1;
 
 function statusFor(correct: number, total: number): StrandStatus {
   if (atLeast(correct, total, STRAND_SECURE_PERCENT)) return "secure";
@@ -224,8 +230,8 @@ function statusFor(correct: number, total: number): StrandStatus {
   return "needs-attention";
 }
 
-/** Scores a completed test. */
-export function finish(session: Session): Placement {
+/** Scores a completed test. The facts section (#70), when the child had one, goes beside it and never changes the working level. */
+export function finish(session: Session, facts: FactsSession | null = null): Placement {
   const questions = questionsOnRoute(session);
   if (!session.route || session.answers.length < questions.length) {
     throw new Error(`The test is not complete: ${session.answers.length} of ${questions.length} answered`);
@@ -257,7 +263,7 @@ export function finish(session: Session): Placement {
     stage1: tally(marked.slice(0, session.stage1.length)),
     levels,
     strands,
-    facts: null,
+    facts: facts ? factsResult(facts) : null,
     flags: [],
   };
 }

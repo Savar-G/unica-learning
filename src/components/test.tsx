@@ -1,20 +1,28 @@
 "use client";
 
 // The child's test (#64): instructions, one question at a time, the end screen. Plain screens until the chosen
-// design (D-088, split desk) lands in #79; read-aloud, break and progress come in #69, the whiteboard in #67.
+// design (D-088, split desk) lands in #79. Read-aloud, the halfway break and progress (#69) are their own parts
+// (test-read-aloud.tsx, test-break.tsx, test-progress.tsx); the whiteboard comes in #67.
 // The server marks every answer; the browser gets only the next question and never learns what was right.
 import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
 import Link from "next/link";
 import { Button, GradientPanel } from "@/ds";
-import type { PublicQuestion, TestStep } from "@/lib/assessment";
+import { breakDue, type PublicQuestion, type TestStep } from "@/lib/assessment";
 import { ANSWER_MAX, type FinishResult, type StartResult, type StepResult, type TestError } from "@/lib/test-api";
 import { track } from "@/lib/track";
 import { SUPPORT_EMAIL, SUPPORT_HREF } from "@/lib/contact";
+import { FactsSection } from "./facts";
+import { breakSeen, markBreakSeen, TestBreak } from "./test-break";
+import { TestProgress } from "./test-progress";
+import { ReadAloud } from "./test-read-aloud";
 import "./test.css";
 
 type Screen =
   | { name: "intro" }
-  | { name: "question"; question: PublicQuestion; number: number; total: number }
+  | { name: "question"; question: PublicQuestion; number: number; total: number; breakAfter: number }
+  | { name: "break"; next: Extract<TestStep, { status: "question" }> }
+  /** The timed facts section (#70), after the halfway break; then the test carries on with `next`. */
+  | { name: "facts"; testId: string; next: Extract<TestStep, { status: "question" }> }
   | { name: "done" };
 
 async function call<T>(url: string, init?: RequestInit): Promise<T | { ok: false; error: TestError }> {
@@ -33,6 +41,8 @@ export function TakeTest({ childId, name, total, ready, done }: { childId: strin
   const [busy, setBusy] = useState(false);
   const [failure, setFailure] = useState<TestError | null>(null);
   const testId = useRef<string | null>(null);
+  // Set once the facts section is over (or was over before a resume), so it never shows twice.
+  const factsDone = useRef(false);
 
   const finish = useCallback(async () => {
     const res = await call<FinishResult>(`/api/account/assessments/${testId.current}/finish`, post({}));
@@ -49,7 +59,21 @@ export function TakeTest({ childId, name, total, ready, done }: { childId: strin
   /** Shows the step the server sent: the next question, or the end of the test. */
   const show = useCallback(async (step: TestStep) => {
     if (step.status === "complete") return finish();
-    setScreen({ name: "question", question: step.question, number: step.number, total: step.total });
+    // The skippable halfway break (#69) comes once per test, before the first question of the second half.
+    const id = testId.current ?? "";
+    if (breakDue(step) && !breakSeen(id)) {
+      markBreakSeen(id);
+      track("test_break", { status: "shown" });
+      setScreen({ name: "break", next: step });
+      return true;
+    }
+    // Then the timed facts section (#70, D-088): the break's onDone comes back here. On a resume the facts screen
+    // asks the server first and hands straight on to the question when the section is already done.
+    if (!factsDone.current && id && step.number > step.breakAfter) {
+      setScreen({ name: "facts", testId: id, next: step });
+      return true;
+    }
+    setScreen({ name: "question", question: step.question, number: step.number, total: step.total, breakAfter: step.breakAfter });
     return true;
   }, [finish]);
 
@@ -88,12 +112,26 @@ export function TakeTest({ childId, name, total, ready, done }: { childId: strin
     <div className="look-root test-root" data-look="warm">
       <header className="test-top">
         <span className="logo">Unica Learning<b /></span>
-        {screen.name === "question" && <span className="test-count">Question {screen.number} of {screen.total}</span>}
+        {screen.name === "question" && <TestProgress answered={screen.number - 1} total={screen.total} breakAfter={screen.breakAfter} at="question" />}
+        {screen.name === "break" && <TestProgress answered={screen.next.breakAfter} total={screen.next.total} breakAfter={screen.next.breakAfter} at="halfway" />}
+        {screen.name === "facts" && <TestProgress answered={screen.next.number - 1} total={screen.next.total} breakAfter={screen.next.breakAfter} at="halfway" />}
       </header>
       <main id="main" className="test-main">
         {screen.name === "intro" && <Intro name={name} total={total} ready={ready} busy={busy} onStart={start} failure={failure} />}
         {screen.name === "question" && (
           <Question key={screen.question.id} question={screen.question} last={screen.number === screen.total} onAnswer={answer} failure={failure} />
+        )}
+        {screen.name === "break" && (
+          <TestBreak name={name} answered={screen.next.breakAfter} total={screen.next.total} onDone={(how) => {
+            track("test_break", { status: how });
+            void show(screen.next);
+          }} />
+        )}
+        {screen.name === "facts" && (
+          <>
+            <FactsSection testId={screen.testId} onError={setFailure} onDone={() => { factsDone.current = true; void show(screen.next); }} />
+            <Problem error={failure} />
+          </>
         )}
         {screen.name === "done" && <End name={name} />}
       </main>
@@ -191,7 +229,10 @@ function Question({ question, last, onAnswer, failure }: { question: PublicQuest
 
   return (
     <form className="test-q" onSubmit={submit}>
-      <h1 ref={heading} tabIndex={-1} className="test-prompt">{question.prompt}</h1>
+      <div className="test-qrow">
+        <ReadAloud key={question.id} text={question.readAloud} />
+        <h1 ref={heading} tabIndex={-1} className="test-prompt">{question.prompt}</h1>
+      </div>
       {question.format === "choice" ? (
         <div className="test-choices" role="radiogroup" aria-label="Choose one answer">
           {(question.choices ?? []).map((c) => (
