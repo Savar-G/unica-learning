@@ -278,7 +278,7 @@ describe("grade bands", () => {
   });
 
   it("a grade the bank cannot cover yet fails at once with a clear message", () => {
-    expect(() => createSession({ grade: 1, province: "BC" }, 1)).toThrow(/no level 1 questions/);
+    // Grades 1-2 have their bank (#74); grades 6-7 wait for theirs (#76).
     expect(() => createSession({ grade: 7, province: "BC" }, 1)).toThrow(/no level 7 questions/);
   });
 });
