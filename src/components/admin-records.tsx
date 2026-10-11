@@ -10,9 +10,9 @@ export function RecordFacts({ facts }: { facts: [string, ReactNode][] }) {
   return <dl className="adm-facts">{facts.map(([label, value]) => <div key={label}><dt>{label}</dt><dd>{value ?? "-"}</dd></div>)}</dl>;
 }
 
-export function ChildrenTable({ children }: { children: ChildRow[] }) {
+export function ChildrenTable({ rows }: { rows: ChildRow[] }) {
   return <Table label="Children" head={["Child", "Grade and curriculum", "Added (Pacific)"]} empty="No children.">
-    {children.map((c) => <tr key={c.id}><td><Link href={childPath(c.id)}>{c.first_name}</Link></td><td>{gradeAndPlace(c.grade, c.province)}</td><td>{when(c.created_at)}</td></tr>)}
+    {rows.map((c) => <tr key={c.id}><td><Link href={childPath(c.id)}>{c.first_name}</Link></td><td>{gradeAndPlace(c.grade, c.province)}</td><td>{when(c.created_at)}</td></tr>)}
   </Table>;
 }
 
@@ -36,7 +36,7 @@ export function WaitlistTable({ waitlist }: { waitlist: WaitlistRow[] }) {
 
 export function FamilyRecords({ family }: { family: ParentDetail }) {
   return <>
-    <h2>Children</h2><ChildrenTable children={family.children} />
+    <h2>Children</h2><ChildrenTable rows={family.children} />
     <h2>Tests</h2><TestsTable tests={family.tests} family />
     <h2>Card setups</h2><CardsTable cards={family.cards} />
     <h2>Waitlist</h2><WaitlistTable waitlist={family.waitlist} />
