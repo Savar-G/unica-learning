@@ -19,7 +19,7 @@ import { breakSeen, markBreakSeen, TestBreak } from "./test-break";
 import { Choices } from "./test-choices";
 import { TestHelp } from "./test-help";
 import { TestProgress } from "./test-progress";
-import { ReadAloud } from "./test-read-aloud";
+import { ReadAloud, warmUpVoices } from "./test-read-aloud";
 import { Whiteboard, boardImage, clearDrafts, loadDraft, saveDraft, type BoardSize } from "./whiteboard";
 import "./test.css";
 
@@ -65,6 +65,9 @@ export function TakeTest({ childId, name, total, breakAfter, ready, done, mode: 
   const factsDone = useRef(false);
 
   /** The open test ran out of time (#72): back to the start, where the next test has new questions. */
+  // The voices for "read it to me" load while the child reads the start screen, so the button is there with question 1.
+  useEffect(() => warmUpVoices(), []);
+
   const expire = useCallback(() => {
     setMode("restart");
     setFailure("expired");
