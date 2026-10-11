@@ -47,7 +47,7 @@ export function spokenChoices(question: Pick<PublicQuestion, "say">, shown: read
 }
 
 /** Saved tests from before #79 can contain option lists. Remove only list clauses, keeping facts and patterns. */
-function questionWords(text: string, choices: readonly string[]): string {
+function removeLegacyChoiceLists(text: string, choices: readonly string[]): string {
   const key = (s: string) => s.toLowerCase().replace(/^or\s+/, "").replace(/[.?!]$/, "").trim();
   const words = new Set(choices.map(key));
   // The old spoken lists sometimes shortened a row's label ("a jar", "the green one", "neither side").
@@ -95,5 +95,5 @@ export function readAloudText(question: Pick<PublicQuestion, "readAloud" | "say"
   if (shown.length === 0) return question.readAloud;
   const choices = spokenChoices(question, shown);
   const sentences = choices.map((w) => (/[.?!]$/.test(w) ? w : `${w}.`));
-  return `${questionWords(question.readAloud, choices)} Choose one. ${sentences.join(" ")}`;
+  return `${removeLegacyChoiceLists(question.readAloud, choices)} Choose one. ${sentences.join(" ")}`;
 }
