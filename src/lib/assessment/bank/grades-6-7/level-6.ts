@@ -1036,7 +1036,7 @@ export const LEVEL_6: readonly TaggedTemplate[] = [
   {
     // 6.11: perimeter of a complex shape (an L shape), with every side given so no picture is needed.
     id: "g67-6-l-shape-perimeter",
-    strand: "MG", grades: { BC: 6, AB: 6, SK: 3, MB: 6, ON: 6 }, format: "number", whiteboard: true, standard: "6.11",
+    strand: "MG", grades: { BC: 6, AB: 6, SK: 3, MB: 3, ON: 6 }, format: "number", whiteboard: true, standard: "6.11",
     fill(rng) {
       const [W, H, a, h] = draw(rng, (g) => [g.int(8, 20), g.int(6, 15), g.int(2, 7), g.int(2, 6)], ([W, H, a, h]) => a < W - 1 && h < H - 1 && W !== H);
       const sides = [W, H, a, h, W - a, H - h];

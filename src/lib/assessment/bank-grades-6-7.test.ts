@@ -237,6 +237,7 @@ describe("the grades 6-7 bank", () => {
       expect(BANK.find((t) => t.id === `g67-6-${id}`)!.grades.ON).toBe(4);
     }
     expect(BANK.find((t) => t.id === "g67-6-l-shape-perimeter")!.grades.SK).toBe(3);
+    expect(BANK.find((t) => t.id === "g67-6-l-shape-perimeter")!.grades.MB).toBe(3);
     for (const seed of SEEDS) {
       const move = fillTemplate(BANK.find((t) => t.id === "g67-6-translate-point")!, seed);
       const { x, y, r, d } = move.values;
