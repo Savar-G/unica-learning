@@ -545,7 +545,7 @@ export const LEVEL_3: readonly TaggedTemplate[] = [
           prompt: `${name} had some ${thing}. ${name} gave away ${x} and has ${y} left. Which number sentence shows this story?`,
           readAloud: `${name} had some ${thing}. ${name} gave away ${x} and has ${y} left. Which number sentence shows this story?`,
           answer: `? − ${x} = ${y}`,
-          wrong: [wrong(`${Math.max(x, y)} − ${Math.min(x, y)} = ?`, "A4"), wrong(`? + ${x} = ${y}`, "operation"), wrong(`? − ${x + y} = ${y}`, "story-roles")],
+          wrong: [wrong(`${Math.max(x, y)} − ${Math.min(x, y)} = ?`, "A4"), wrong(`? + ${x} = ${y}`, "operation"), wrong(`? − ${x + y} = ${y}`, "story-total")],
         };
       }
       return {

@@ -351,7 +351,7 @@ export const LEVEL_4: readonly TaggedTemplate[] = [
       const whole = rng.int(2, 8);
       if (task === "order") {
         const ns = rng.shuffle([1, 2, 3, 4, 5, 6, 7, 8, 9]).slice(0, 4).sort((a, b) => a - b);
-        return { values: { n: ns[0] }, prompt: "Which decimal is least?", readAloud: "Which decimal is least?", answer: dec(ns[0], 1),
+        return { values: { n: ns[0], whole }, prompt: "Which decimal is least?", readAloud: "Which decimal is least?", answer: dec(ns[0], 1),
           wrong: ns.slice(1).map((v, i) => wrong(dec(v, 1), i === 2 ? "more-less" : "decimal-order")) };
       }
       const right = task === "left" ? dec(10 - n, 1) : task === "fraction" ? frac(n, 10) : dec(n, 1);
@@ -493,7 +493,7 @@ export const LEVEL_4: readonly TaggedTemplate[] = [
           // Greatest: one tenths number beats three longer hundredths numbers.
           ? { answer: dec(t, 1), candidates: hs.map((h) => wrong(dec(h, 2), "F6")) }
           // Least: a short hundredths number like 0.05 is below tenths numbers.
-          : { answer: dec(small, 2), candidates: [wrong(dec(t, 1), "F6"), ...hs.map((h) => wrong(dec(h, 2), "more-less"))] },
+          : { answer: dec(small, 2), candidates: [wrong(dec(t, 1), "F6"), ...hs.map((h) => wrong(dec(h, 2), "decimal-order"))] },
       );
       return {
         values: { t: v.t, greatest: greatest ? 1 : 0 },
@@ -720,7 +720,7 @@ export const LEVEL_4: readonly TaggedTemplate[] = [
         prompt: `${a} × ${b} = ${c} × ?`,
         readAloud: `${a} times ${b} is the same as ${c} times what number?`,
         answer: String(answer),
-        wrong: typedWrong(answer, [[a * b, "A1"], [a * b + c, "A1"]]),
+        wrong: typedWrong(answer, [[a * b, "A1"], [a * b + c, "operation"]]),
       };
     },
   },
@@ -746,7 +746,7 @@ export const LEVEL_4: readonly TaggedTemplate[] = [
   {
     // A far figure in a growing pattern (4.9). Predicting a far term is WNCP grade 5 (unsure), so the others get 5.
     id: "g35-4-figure-pattern",
-    strand: "A", grades: { BC: 4, AB: 5, SK: 5, MB: 5, ON: 5 }, format: "number", whiteboard: true, standard: "4.9",
+    strand: "A", grades: { BC: 4, AB: 5, SK: 5, MB: 5, ON: 4 }, format: "number", whiteboard: true, standard: "4.9",
     fill(rng) {
       const k = rng.int(2, 5), s = draw(rng, (r) => r.int(2, 9), (s) => s !== k);
       const fig = (i: number) => s + (i - 1) * k;
@@ -820,7 +820,7 @@ export const LEVEL_4: readonly TaggedTemplate[] = [
   {
     // Perimeter of a rectangle (map, grade 4: 8 cm by 5 cm; misconception M2).
     id: "g35-4-perimeter",
-    strand: "MG", grades: { BC: 4, AB: 4, SK: 4, MB: 4, ON: 4 }, format: "number", whiteboard: true, standard: "4.14",
+    strand: "MG", grades: { BC: 4, AB: 3, SK: 3, MB: 3, ON: 3 }, format: "number", whiteboard: true, standard: "4.14",
     fill(rng) {
       const l = rng.int(4, 15), w = draw(rng, (r) => r.int(2, 9), (w) => w < l && w !== 2);
       const [unit, word] = rng.pick([["cm", "centimetres"], ["m", "metres"]] as const);
@@ -837,7 +837,7 @@ export const LEVEL_4: readonly TaggedTemplate[] = [
   {
     // Perimeter of an irregular shape (4.14: "regular and irregular shapes").
     id: "g35-4-perimeter-sides",
-    strand: "MG", grades: { BC: 4, AB: 4, SK: 4, MB: 4, ON: 4 }, format: "number", whiteboard: true, standard: "4.14",
+    strand: "MG", grades: { BC: 4, AB: 3, SK: 3, MB: 3, ON: 3 }, format: "number", whiteboard: true, standard: "4.14",
     fill(rng) {
       const n = rng.int(4, 6);
       const sides = Array.from({ length: n }, () => rng.int(2, 12));
@@ -892,10 +892,10 @@ export const LEVEL_4: readonly TaggedTemplate[] = [
       const h = rng.int(2, 11), kind = rng.pick(["quarter past", "half past", "quarter to"] as const);
       const prev = h - 1, next = h + 1;
       const [answer, others] = {
-        "quarter past": [time(h, 15), [[time(h, 45), "before-after"], [time(prev, 45), "before-after"], [time(h, 25), "M8"]]],
-        "half past": [time(h, 30), [[time(next, 30), "M7"], [time(h, 50), "M8"], [time(prev, 30), "M7"]]],
-        "quarter to": [time(prev, 45), [[time(h, 45), "M7"], [time(h, 15), "before-after"], [time(prev, 15), "before-after"]]],
-      }[kind] as [string, [string, "before-after" | "M7" | "M8"][]];
+        "quarter past": [time(h, 15), [[time(h, 45), "clock-fraction"], [time(prev, 45), "clock-fraction"], [time(h, 25), "clock-hundred"]]],
+        "half past": [time(h, 30), [[time(next, 30), "clock-hour"], [time(h, 50), "clock-hundred"], [time(prev, 30), "clock-hour"]]],
+        "quarter to": [time(prev, 45), [[time(h, 45), "clock-hour"], [time(h, 15), "clock-fraction"], [time(prev, 15), "clock-fraction"]]],
+      }[kind] as [string, [string, "clock-hour" | "clock-fraction" | "clock-hundred"][]];
       return {
         values: { h, kind: ["quarter past", "half past", "quarter to"].indexOf(kind) },
         prompt: `What time is ${kind} ${h}?`,
@@ -934,7 +934,7 @@ export const LEVEL_4: readonly TaggedTemplate[] = [
       const others = rng.shuffle([
         ["A rectangle that is not a square", "one-attribute"],
         ["A rhombus with no square corners", "one-attribute"],
-        ["A triangle with sides of 3 cm, 4 cm and 5 cm", "one-attribute"],
+        ["A triangle with sides of 3 cm, 4 cm and 5 cm", "shape-name"],
         ["A circle", "shape-name"],
       ] as const).slice(0, 3);
       return {
@@ -962,7 +962,7 @@ export const LEVEL_4: readonly TaggedTemplate[] = [
         prompt: `How many sides do ${a} ${n1}s and ${count(b, n2)} have in all?`,
         readAloud: `How many sides do ${a} ${n1}s and ${count(b, n2)} have in all?`,
         answer: String(answer),
-        wrong: typedWrong(answer, [[a + b, "count-objects"], [s1 + s2, "count-objects"], [a * swap(s1) + b * swap(s2), "shape-name"]]),
+        wrong: typedWrong(answer, [[a + b, "count-objects"], [s1 + s2, "ignores-given"], [a * swap(s1) + b * swap(s2), "shape-name"]]),
       };
     },
   },
@@ -991,7 +991,7 @@ export const LEVEL_4: readonly TaggedTemplate[] = [
   {
     // A pictograph key (map, grade 4: each symbol = 5 students; misconception D1).
     id: "g35-4-pictograph",
-    strand: "DP", grades: { BC: 4, AB: 4, SK: 4, MB: 4, ON: 4 }, format: "number", whiteboard: false, standard: "4.16",
+    strand: "DP", grades: { BC: 4, AB: 4, SK: 4, MB: 4, ON: 3 }, format: "number", whiteboard: false, standard: "4.16",
     fill(rng) {
       const k = rng.pick([2, 3, 4, 5, 10]), n = draw(rng, (r) => r.int(3, 9), (n) => n !== k);
       const sport = rng.pick(["soccer", "hockey", "swimming", "basketball", "skating"]);
@@ -1000,7 +1000,7 @@ export const LEVEL_4: readonly TaggedTemplate[] = [
         prompt: `In a pictograph, each picture stands for ${k} children. The row for ${sport} has ${n} pictures. How many children chose ${sport}?`,
         readAloud: `In a pictograph, each picture stands for ${k} children. The row for ${sport} has ${n} pictures. How many children chose ${sport}?`,
         answer: String(k * n),
-        wrong: typedWrong(k * n, [[n, "D1"], [k + n, "D1"]]),
+        wrong: typedWrong(k * n, [[n, "D1"], [k + n, "operation"]]),
       };
     },
   },
@@ -1017,7 +1017,7 @@ export const LEVEL_4: readonly TaggedTemplate[] = [
         prompt: `In a pictograph of books read, each picture stands for ${k} books. ${name}'s row has ${n} whole pictures and a half picture. How many books did ${name} read?`,
         readAloud: `In a pictograph of books read, each picture stands for ${k} books. ${name}'s row has ${n} whole pictures and a half picture. How many books did ${name} read?`,
         answer: String(answer),
-        wrong: typedWrong(answer, [[n, "D1"], [k * n, "one-part"], [k * (n + 1), "one-to-one"]]),
+        wrong: typedWrong(answer, [[n + 0.5, "D1"], [k * n, "one-part"], [k * (n + 1), "half-symbol"]]),
       };
     },
   },
@@ -1030,8 +1030,9 @@ export const LEVEL_4: readonly TaggedTemplate[] = [
       const [x, y] = rng.shuffle(["apples", "pears", "grapes", "bananas"]);
       return {
         values: { k, a, b },
-        prompt: `On a bar graph, each grid line stands for ${k} children. The bar for ${x} reaches the ${a}th line. The bar for ${y} reaches the ${b === 2 ? "2nd" : b === 3 ? "3rd" : `${b}th`} line. How many more children chose ${x} than ${y}?`,
-        readAloud: `On a bar graph, each grid line stands for ${k} children. The bar for ${x} reaches the ${a}th line. The bar for ${y} reaches the ${b === 2 ? "2nd" : b === 3 ? "3rd" : `${b}th`} line. How many more children chose ${x} than ${y}?`,
+        figure: { kind: "bars", bars: [{ label: x, value: a * k }, { label: y, value: b * k }] },
+        prompt: `The graph shows children who chose fruit. How many more chose ${x} than ${y}?`,
+        readAloud: `The graph shows ${a * k} children who chose ${x} and ${b * k} who chose ${y}. How many more chose ${x} than ${y}?`,
         answer: String(k * (a - b)),
         wrong: typedWrong(k * (a - b), [[a - b, "D1"], [k * a, "graph-value"]]),
       };
@@ -1041,7 +1042,7 @@ export const LEVEL_4: readonly TaggedTemplate[] = [
     // Predict the results of spins (4.17: "predict single outcomes"). WNCP's probability experiments are grade 6,
     // and AB and ON are unsure, so the others get 6.
     id: "g35-4-spin-predict",
-    strand: "DP", grades: { BC: 4, AB: 6, SK: 6, MB: 6, ON: 6 }, format: "choice", whiteboard: false, standard: "4.17",
+    strand: "DP", grades: { BC: 6, AB: 6, SK: 6, MB: 6, ON: 6 }, format: "choice", whiteboard: false, standard: "6.18",
     fill(rng) {
       const [parts, red] = rng.pick([[4, 3], [4, 1], [5, 4], [5, 1], [10, 7], [10, 3], [8, 6], [8, 2]] as const);
       const spins = parts * rng.int(4, 10);

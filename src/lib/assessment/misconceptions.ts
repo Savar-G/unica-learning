@@ -10,6 +10,12 @@ export interface Misconception {
 }
 
 export const MISCONCEPTIONS = {
+  "clock-hour": { description: "Uses the previous or next hour instead of the stated hour", evidence: "none" },
+  "clock-fraction": { description: "Mixes up quarter past, half past and quarter to", evidence: "none" },
+  "clock-hundred": { description: "Treats an hour as 100 minutes", evidence: "none" },
+  "half-symbol": { description: "Counts a half picture as a whole picture", evidence: "none" },
+  "missing-base": { description: "Counts the side faces but leaves out one or both bases", evidence: "none" },
+  "story-total": { description: "Uses the total as the amount taken away", evidence: "none" },
   N1: { description: "Writes a number as it sounds, so four hundred seven becomes 4007", evidence: "R" },
   N2: { description: "Reads a digit's face value or the wrong place, not its place value", evidence: "R" },
   N3: { description: "Bridges a hundred by appending, so after 699 comes 6100", evidence: "R" },

@@ -12,15 +12,15 @@
 //
 // Read-aloud: the test screen speaks the choices after the question (#79), so a template's read-aloud text never lists
 // its choices. It says symbols as words: fractions ("3 eighths"), times ("4 35"), money ("13 dollars and 5 cents").
-// No figures: a question that needs a picture describes it in words a child can follow without one.
+// Graph questions use the Figure interface from #79. Other questions describe the given shape or data in words.
+// Explicit choice speech uses the same shuffled rows as the renderer.
 //
 // Province grade tags (D-083). BC is the grade of the BC standard in `standard`. The others:
-// - SK and MB: the WNCP framework both build on (map, section 5), recalled where the map gives no outcome detail.
-// - AB: the new K-6 program (map, section 5) where the map gives it: telling time in grade 3, and fractions from
-//   grade 1. Elsewhere, the WNCP grade (the old AB program), recalled.
-// - ON: the Ontario 2020 curriculum where the map gives it (telling time in grade 3, whole-number percents in grade
-//   5); recalled elsewhere: decimal tenths in grade 4, hundredths in grade 5, thousandths in grade 6, and numbers to
-//   100 000 in grade 5.
+// - SK and MB: official outcome pages checked where available; unresolved outcomes use later tags.
+// - AB: the current K-6 snapshot checked for time, decimals, area and larger operations. Several precise outcomes
+//   remain unresolved. See scripts/template-check/curriculum-notes.md and the review report.
+// - ON: the official 2020 PDF checked for decimal ranges, equations, capacity, coordinates, area and elapsed time.
+//   Generic solid face-count outcomes remain unresolved.
 // - When a source is unsure, or the recalled grade is earlier than BC's and the map does not settle it, the later
 //   grade wins, so a child is never marked down for a topic their province may not have taught yet. A template that
 //   lands on a level outside 2-6 for a province is simply never asked there.

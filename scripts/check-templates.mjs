@@ -131,6 +131,8 @@ function describe(core, template, standards, samples) {
     examples: [...new Set(picked)].map((q) => ({
       prompt: q.prompt,
       readAloud: q.readAloud,
+      ...(q.figure ? { figure: q.figure } : {}),
+      ...(q.say ? { spokenChoices: core.spokenChoices(q, q.choices ?? []) } : {}),
       ...(q.choices ? { choices: q.choices } : {}),
       markedRight: q.answer,
       codedWrong: q.wrong.map((w) => ({ answer: w.value, misconception: core.MISCONCEPTIONS[w.misconception]?.description ?? w.misconception })),
@@ -290,6 +292,19 @@ function statusOf(f) {
   return "pass";
 }
 
+/** Reject incomplete or duplicate output instead of treating absent tag checks as a pass. */
+function findingError(findings, id) {
+  if (!Array.isArray(findings)) return "The checker did not return a templates array.";
+  const rows = findings.filter((f) => f.id === id);
+  if (rows.length !== 1) return `The checker returned ${rows.length} entries for ${id}; expected one.`;
+  const f = rows[0];
+  if (["answerCorrect", "wrongAnswersOk", "bcGradeFits"].some((key) => typeof f[key] !== "boolean")) return "A required correctness check is missing.";
+  if (!Array.isArray(f.provinceTags) || f.provinceTags.length !== 4 || ["AB", "SK", "MB", "ON"].some((p) => f.provinceTags.filter((t) => t.province === p).length !== 1)) return "The checker must return one tag check for each of AB, SK, MB and ON.";
+  if (f.provinceTags.some((t) => typeof t.ok !== "boolean" || !["high", "medium", "low"].includes(t.confidence) || typeof t.reason !== "string")) return "A province tag check is incomplete.";
+  if (!["pass", "review", "fail"].includes(f.verdict) || ["wordingProblems", "problems"].some((key) => !Array.isArray(f[key]) || f[key].some((s) => typeof s !== "string"))) return "The checker verdict or problem lists are incomplete.";
+  return null;
+}
+
 // ---------- Results and report ----------
 function loadResults() {
   if (!existsSync(RESULTS)) return { version: 1, templates: {} };
@@ -344,6 +359,13 @@ function writeReport(results, current, opts) {
   if (passed.length) lines.push(`## Pass (${passed.length})`, "", ...passed.map((x) => `- \`${x.id}\` (${x.r.checkedAt}, ${x.r.model})`), "");
   mkdirSync(OUT_DIR, { recursive: true });
   writeFileSync(REPORT, lines.join("\n"));
+  writeFileSync(join(OUT_DIR, `report-${opts.band}.md`), lines.join("\n"));
+  writeFileSync(join(OUT_DIR, `summary-${opts.band}.json`), `${JSON.stringify({
+    band: opts.band, total: rows.length, checked: count("pass") + count("review") + count("fail"),
+    pass: count("pass"), review: count("review"), fail: count("fail"), error: count("error"),
+    unchecked: count("not checked") + count("changed since its check"),
+    rows: rows.map((x) => ({ id: x.id, hash: current.find((c) => c.template.id === x.id).hash, status: x.status, model: x.r?.model ?? null })),
+  }, null, 2)}\n`);
   return { pass: count("pass"), review: count("review"), fail: count("fail"), error: count("error"), unchecked: count("not checked") + count("changed since its check") };
 }
 
@@ -367,7 +389,7 @@ const pending = current
   .filter(({ template, hash }) => {
     if (opts.only && !opts.only.has(template.id)) return false;
     const r = results.templates[template.id];
-    return opts.fresh || !r || r.hash !== hash || r.status === "error";
+    return opts.fresh || !r || r.hash !== hash || r.status === "error" || (opts.provider === "codex" && r.model !== opts.model);
   })
   .slice(0, opts.limit);
 const batches = [];
@@ -390,8 +412,9 @@ for (const [i, batch] of batches.entries()) {
   const checkedAt = new Date().toISOString().slice(0, 10);
   for (const { template, hash } of batch) {
     const findings = answer.templates?.find((f) => f.id === template.id);
-    results.templates[template.id] = answer.error || !findings
-      ? { hash, status: "error", checkedAt, model: opts.model, error: answer.error ?? "The checker answer left this template out." }
+    const error = answer.error ?? findingError(answer.templates, template.id);
+    results.templates[template.id] = error
+      ? { hash, status: "error", checkedAt, model: opts.model, error }
       : { hash, status: statusOf(findings), checkedAt, model: answer.model, findings };
   }
   saveResults(results);

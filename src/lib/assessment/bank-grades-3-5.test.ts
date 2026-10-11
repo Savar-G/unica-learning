@@ -9,6 +9,8 @@ import {
   createSession,
   fillTemplate,
   levelFor,
+  spokenChoices,
+  readAloudText,
   toPublicQuestion,
   type Grade,
   type Province,
@@ -41,6 +43,34 @@ const strandCounts = (qs: readonly Question[]) => {
   return out;
 };
 const asNumber = (s: string) => Number(s.replace(/,/g, ""));
+
+describe("grade 3-5 speech and figures through the public interface", () => {
+  it.each(NEW)("$id speaks every displayed choice without math signs or clock notation", (t) => {
+    for (const seed of SEEDS.slice(0, 40)) {
+      const q = fillTemplate(t, seed);
+      const publicQuestion = toPublicQuestion(q);
+      const shown = q.choices ?? [];
+      const spoken = spokenChoices(publicQuestion, shown);
+      expect(spoken).toHaveLength(shown.length);
+      for (const text of spoken) expect(text, `${t.id}: ${text}`).not.toMatch(NOT_SPOKEN);
+      if (shown.length) expect(readAloudText(publicQuestion, shown)).toContain(`Choose one. ${spoken.map((s) => /[.?!]$/.test(s) ? s : `${s}.`).join(" ")}`);
+      expect(publicQuestion.figure).toEqual(q.figure);
+    }
+  });
+  it.each(NEW)("$id has only one mathematically right numeric or fraction choice", (t) => {
+    const value = (s: string): number | undefined => {
+      const c = s.replace(/,/g, "").trim();
+      const f = c.match(/^(?:(\d+) )?(\d+)\/(\d+)$/);
+      if (f) return Number(f[1] ?? 0) + Number(f[2]) / Number(f[3]);
+      return /^\d+(?:\.\d+)?$/.test(c) ? Number(c) : undefined;
+    };
+    for (const seed of SEEDS) {
+      const q = fillTemplate(t, seed), right = value(q.answer);
+      if (!q.choices || right === undefined) continue;
+      expect(q.choices.filter((c) => value(c) !== undefined && Math.abs(value(c)! - right) < 1e-9), `${t.id}: ${q.choices}`).toHaveLength(1);
+    }
+  });
+});
 
 describe("grade 3-5 tests from the default bank", () => {
   it.each(GRADES)("grade %i: 36 questions, 18 in stage 1 at the school grade, routes down and up, in every province", (grade) => {
@@ -98,7 +128,7 @@ describe("a grade 3-5 test, every route, every province", () => {
       for (const province of PROVINCES) {
         for (const s of sessions(grade, province, 20)) {
           for (const route of ROUTES) {
-            const asked = [...s.stage1, ...s.stage2[route]].map((q) => `${q.prompt} ${[...(q.choices ?? [])].sort()}`);
+            const asked = [...s.stage1, ...s.stage2[route]].map((q) => `${q.prompt} ${[...(q.choices ?? [])].sort()} ${JSON.stringify(q.figure ?? null)}`);
             expect(new Set(asked).size, `grade ${grade} ${province} seed ${s.seed} ${route}`).toBe(36);
           }
         }
@@ -117,10 +147,10 @@ describe("a grade 3-5 test, every route, every province", () => {
             templates++;
             if (bTemplates.has(t)) sharedTemplates++;
           }
-          const bPrompts = new Set([...b.stage1, ...b.stage2.stay].map((q) => q.prompt));
+          const bPrompts = new Set([...b.stage1, ...b.stage2.stay].map((q) => `${q.prompt} ${JSON.stringify(q.figure ?? null)}`));
           for (const q of [...a.stage1, ...a.stage2.stay]) {
             questions++;
-            if (bPrompts.has(q.prompt)) sharedQuestions++;
+            if (bPrompts.has(`${q.prompt} ${JSON.stringify(q.figure ?? null)}`)) sharedQuestions++;
           }
         }
         expect(sharedTemplates / templates, `grade ${grade} ${province} templates`).toBeLessThan(0.4);
@@ -276,7 +306,7 @@ describe("the grades 3-5 bank", () => {
       expect(fillTemplate(template, 5)).toEqual(fillTemplate(template, 5));
       const variants = new Set(SEEDS.map((seed) => {
         const q = fillTemplate(template, seed);
-        return `${q.prompt} ${[...(q.choices ?? [])].sort()}`;
+        return `${q.prompt} ${[...(q.choices ?? [])].sort()} ${JSON.stringify(q.figure ?? null)}`;
       }));
       expect(variants.size).toBeGreaterThanOrEqual(5);
     });

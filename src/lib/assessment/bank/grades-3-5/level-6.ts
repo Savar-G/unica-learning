@@ -190,38 +190,38 @@ export const LEVEL_6: readonly TaggedTemplate[] = [
     return { values: { litres, extra }, prompt: `A jug holds ${litres} L and ${extra} mL. How many millilitres is that?`,
       readAloud: `A jug holds ${litres} litres and ${extra} millilitres. How many millilitres is that?`, answer: String(right),
       wrong: typedWrong(right, [[litres * 100 + extra, "unit-convert"], [litres + extra, "unit-convert"]]) };
-  }),
+  }, "number", { ON: 4 }),
   template("angle-name", "MG", "6.13", (rng) => {
     const [angle, answer] = rng.int(0, 1) === 0 ? [rng.int(20, 85), "Acute"] : [rng.int(95, 170), "Obtuse"];
     return { values: { angle: Number(angle) }, prompt: `An angle measures ${angle} degrees. What kind of angle is it?`,
       readAloud: `An angle measures ${angle} degrees. What kind of angle is it?`, answer: String(answer),
       wrong: ["Acute", "Obtuse", "Right", "Straight"].filter((x) => x !== answer).map((x) => wrong(x, "angle-names")) };
-  }, "choice"),
+  }, "choice", { ON: 5 }),
   template("straight-angle", "MG", "6.13", (rng) => {
     const part = rng.int(25, 155), right = 180 - part;
     return { values: { part }, prompt: `A straight angle is split into two angles. One is ${part} degrees. How many degrees is the other?`,
       readAloud: `A straight angle is split into two angles. One is ${part} degrees. How many degrees is the other?`, answer: String(right),
       wrong: typedWrong(right, [[360 - part, "angle-names"], [180 + part, "operation"]]) };
-  }),
+  }, "number", { ON: 5 }),
   template("triangle-sides", "MG", "6.15", (rng) => {
     const [a, b, c] = rng.pick([[4, 4, 4], [5, 5, 5], [6, 6, 6], [5, 5, 8], [6, 6, 10], [7, 7, 9], [4, 5, 6], [5, 6, 7], [6, 7, 8]] as const);
     const answer = a === c ? "Equilateral" : a === b ? "Isosceles, but not equilateral" : "Scalene";
     return { values: { a, b, c }, prompt: `A triangle has sides of ${a} cm, ${b} cm and ${c} cm. Which description fits?`,
       readAloud: `A triangle has sides of ${a} centimetres, ${b} centimetres and ${c} centimetres. Which description fits?`, answer,
       wrong: ["Equilateral", "Isosceles, but not equilateral", "Scalene"].filter((x) => x !== answer).map((x) => wrong(x, "shape-name")) };
-  }, "choice"),
+  }, "choice", { ON: 5 }),
   template("coordinate", "MG", "6.16", (rng) => {
     const [x, y] = draw(rng, (r) => [r.int(2, 9), r.int(2, 9)], ([x, y]) => x !== y);
     return { values: { x, y }, prompt: `A point is ${x} units right and ${y} units up from the origin. Which ordered pair names it?`,
       readAloud: `A point is ${x} units right and ${y} units up from the origin. Which ordered pair names it?`, answer: `(${x}, ${y})`,
       wrong: [wrong(`(${y}, ${x})`, "coordinates-swap"), wrong(`(${x - 1}, ${y - 1})`, "N4"), wrong(`(${x + 1}, ${y + 1})`, "N4")] };
-  }, "choice"),
+  }, "choice", { ON: 4 }),
   template("coordinate-slide", "MG", "6.16", (rng) => {
     const x = rng.int(2, 7), y = rng.int(2, 7), dx = rng.int(2, 5), dy = rng.int(2, 5);
     return { values: { x, y, dx, dy }, prompt: `A point starts at (${x}, ${y}). It moves ${dx} units right and ${dy} units up. Where is it now?`,
       readAloud: `A point starts ${x} units right and ${y} units up from the origin. It moves ${dx} units right and ${dy} units up. Where is it now?`, answer: `(${x + dx}, ${y + dy})`,
       wrong: [wrong(`(${x + dx}, ${y})`, "ignores-given"), wrong(`(${x}, ${y + dy})`, "ignores-given"), wrong(`(${x}, ${y})`, "ignores-given")] };
-  }, "choice"),
+  }, "choice", { ON: 4 }),
   template("line-change", "DP", "6.17", (rng) => {
     const start = rng.int(10, 19), rise = rng.int(3, 9), end = start + rise;
     return { values: { start, rise }, prompt: `A line graph shows a temperature of ${start} degrees at noon and ${end} degrees two hours later. By how many degrees did it rise?`,

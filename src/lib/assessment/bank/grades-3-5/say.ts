@@ -108,17 +108,32 @@ export function typedWrong(answer: number, candidates: readonly [number, Misconc
 /** Keeps a sum, a product or an equation on one line: the spaces around + − × ÷ and = do not break. */
 const keepTogether = (text: string) => text.replace(/ ([+−×÷=]) /g, " $1 ");
 
+/** Explicit words for these templates' choices, including equations, times and fractions inside labels. */
+function speakChoice(text: string): string {
+  return text.replace(/ /g, " ")
+    .replace(/\$(\d[\d,]*)\.(\d{2})/g, (_, d, c) => sayMoney(Number(d.replace(/,/g, "")) * 100 + Number(c)))
+    .replace(/\$(\d[\d,]*)\b/g, (_, d) => sayMoney(Number(d.replace(/,/g, "")) * 100))
+    .replace(/\b(\d+):(\d{2})(?: (a\.m\.|p\.m\.))?/g, (_, h, m, half) => sayTime(Number(h), Number(m), half))
+    .replace(/\b(\d+) (\d+)\/(\d+)\b/g, (_, w, n, d) => sayMixed(Number(w), Number(n), Number(d)))
+    .replace(/\b(\d+)\/(\d+)\b/g, (_, n, d) => sayFrac(Number(n), Number(d)))
+    .replace(/×/g, "times").replace(/÷/g, "divided by").replace(/\+/g, "plus")
+    .replace(/−/g, "minus").replace(/=/g, "is the same as").replace(/\?/g, "the missing number")
+    .replace(/%/g, " percent").replace(/\bcm\b/g, "centimetres").replace(/\bmL\b/g, "millilitres");
+}
+
 /** The template, with every operation sign in its prompt and choices kept on the same line as its numbers. */
 export function keepOnOneLine<T extends Template>(template: T): T {
   return {
     ...template,
     fill(rng) {
       const f = template.fill(rng);
+      const choices = [f.answer, ...f.wrong.map((w) => w.value)];
       return {
         ...f,
         prompt: keepTogether(f.prompt),
         answer: keepTogether(f.answer),
         wrong: f.wrong.map((w) => ({ ...w, value: keepTogether(w.value) })),
+        ...(template.format === "choice" ? { say: Object.fromEntries(choices.map((c) => [keepTogether(c), f.say?.[c] ?? speakChoice(c)])) } : {}),
       };
     },
   };

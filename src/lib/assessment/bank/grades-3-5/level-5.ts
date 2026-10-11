@@ -208,54 +208,54 @@ export const LEVEL_5: readonly TaggedTemplate[] = [
     return { values: { a, b }, prompt: `A rectangle is ${a} cm long and ${b} cm wide. What is its area in square centimetres?`,
       readAloud: `A rectangle is ${a} centimetres long and ${b} centimetres wide. What is its area in square centimetres?`, answer: String(right),
       wrong: typedWrong(right, [[2 * (a + b), "M2"], [a + b, "M2"]]) };
-  }),
+  }, "number", { ON: 4 }),
   template("square-area", "MG", "5.12", (rng) => {
     const side = rng.int(5, 19), right = side * side;
     return { values: { side }, prompt: `A square has a side of ${side} cm. What is its area in square centimetres?`,
       readAloud: `A square has a side of ${side} centimetres. What is its area in square centimetres?`, answer: String(right),
       wrong: typedWrong(right, [[4 * side, "M2"], [2 * side, "M2"]]) };
-  }),
+  }, "number", { ON: 4 }),
   template("area-width", "MG", "5.12", (rng) => {
     const a = rng.int(4, 12), b = rng.int(3, 9), area = a * b;
     return { values: { a, b }, prompt: `A rectangle has an area of ${area} square centimetres. Its length is ${a} cm. What is its width in centimetres?`,
       readAloud: `A rectangle has an area of ${area} square centimetres. Its length is ${a} centimetres. What is its width in centimetres?`, answer: String(b),
       wrong: typedWrong(b, [[area - a, "operation"], [area * a, "inverse-operation"]]) };
-  }),
+  }, "number", { ON: 4 }),
   template("same-area", "MG", "5.13", (rng) => {
     const k = rng.int(3, 9), a = 2 * k, b = 6;
     return { values: { k }, prompt: `One rectangle is ${a} cm by ${b} cm. Another is ${3 * k} cm by 4 cm. What is the area of each, in square centimetres?`,
       readAloud: `One rectangle is ${a} centimetres by ${b} centimetres. Another is ${3 * k} centimetres by 4 centimetres. What is the area of each, in square centimetres?`, answer: String(a * b),
       wrong: typedWrong(a * b, [[2 * (a + b), "M2"], [2 * (3 * k + 4), "M2"]]) };
-  }),
+  }, "number", { ON: 4 }),
   template("same-perimeter", "MG", "5.13", (rng) => {
     const a = rng.int(6, 14), b = rng.int(3, 5), right = (a - 1) * (b + 1);
     return { values: { a, b }, prompt: `A rectangle is ${a} cm by ${b} cm. A second rectangle has the same perimeter and is ${a - 1} cm long. What is the second rectangle's area in square centimetres?`,
       readAloud: `A rectangle is ${a} centimetres by ${b} centimetres. A second rectangle has the same perimeter and is ${a - 1} centimetres long. What is the second rectangle's area in square centimetres?`, answer: String(right),
       wrong: typedWrong(right, [[a * b, "area-perimeter-linked"], [2 * (a + b), "M2"]]) };
-  }),
+  }, "number", { ON: 4 }),
   template("duration", "MG", "5.14", (rng) => {
     const hour = rng.int(1, 8), start = rng.int(35, 55), end = rng.int(5, 25), right = 60 - start + end;
     return { values: { hour, start, end }, prompt: `A lesson starts at ${time(hour, start)} and ends at ${time(hour + 1, end)} that afternoon. How many minutes does it last?`,
       readAloud: `A lesson starts at ${sayTime(hour, start)} and ends at ${sayTime(hour + 1, end)} that afternoon. How many minutes does it last?`, answer: String(right),
       wrong: typedWrong(right, [[100 - start + end, "M8"], [start - end, "operation"]]) };
-  }),
+  }, "number", { ON: 4 }),
   template("end-time", "MG", "5.14", (rng) => {
     const h = rng.int(1, 7), m = rng.int(35, 55), duration = rng.int(30, 45), end = m + duration - 60;
     return { values: { h, m, duration }, prompt: `A trip starts at ${time(h, m)} in the afternoon and lasts ${duration} minutes. When does it end?`,
       readAloud: `A trip starts at ${sayTime(h, m)} in the afternoon and lasts ${duration} minutes. When does it end?`, answer: time(h + 1, end),
       wrong: [wrong(time(h, m + duration), "M8"), wrong(time(h, end), "M8"), wrong(time(h + 1, duration), "ignores-given")] };
-  }, "choice"),
+  }, "choice", { ON: 4 }),
   template("prism-faces", "MG", "5.15", (rng) => {
     const sides = rng.pick([3, 4, 5, 6, 8]);
     return { values: { sides }, prompt: `A prism has two bases. Each base is a polygon with ${sides} sides. How many faces does the prism have?`,
       readAloud: `A prism has two bases. Each base is a polygon with ${sides} sides. How many faces does the prism have?`, answer: String(sides + 2),
-      wrong: typedWrong(sides + 2, [[sides, "faces-corners"], [3 * sides, "faces-corners"], [2 * sides, "faces-corners"]]) };
+      wrong: typedWrong(sides + 2, [[sides, "missing-base"], [3 * sides, "faces-corners"], [2 * sides, "faces-corners"]]) };
   }, "number", { AB: 6, SK: 6, MB: 6 }),
   template("pyramid-faces", "MG", "5.15", (rng) => {
     const sides = rng.pick([3, 4, 5, 6, 8]);
     return { values: { sides }, prompt: `A pyramid has a base with ${sides} sides. How many faces does it have, including the base?`,
       readAloud: `A pyramid has a base with ${sides} sides. How many faces does it have, including the base?`, answer: String(sides + 1),
-      wrong: typedWrong(sides + 1, [[sides, "faces-corners"], [2 * sides, "faces-corners"], [sides + 2, "faces-corners"]]) };
+      wrong: typedWrong(sides + 1, [[sides, "missing-base"], [2 * sides, "faces-corners"], [sides + 2, "shape-name"]]) };
   }, "number", { AB: 6, SK: 6, MB: 6 }),
   template("transformation", "MG", "5.16", (rng) => {
     const [motion, answer] = rng.pick([["slides without turning", "Translation"], ["flips across a mirror line", "Reflection"], ["turns around a fixed point", "Rotation"]] as const);
@@ -269,11 +269,11 @@ export const LEVEL_5: readonly TaggedTemplate[] = [
     return { values: { gap }, prompt: `A point is ${gap} cm to the left of a mirror line. Its reflection is on the right. How far is the reflection from the mirror line, in centimetres?`,
       readAloud: `A point is ${gap} centimetres to the left of a mirror line. Its reflection is on the right. How far is the reflection from the mirror line, in centimetres?`, answer: String(gap),
       wrong: typedWrong(gap, [[2 * gap, "reflection-distance"], [0, "reflection-distance"]]) };
-  }),
+  }, "number", { ON: 4 }),
   template("double-bar-difference", "DP", "5.17", (rng) => {
     const scale = rng.pick([2, 5, 10]), a = rng.int(6, 14), b = rng.int(1, 5);
-    return { values: { scale, a, b }, prompt: `A double bar graph shows books read. Each interval means ${scale} books. Monday's bar reaches ${a} intervals. Tuesday's reaches ${b}. How many more books were read on Monday?`,
-      readAloud: `A double bar graph shows books read. Each interval means ${scale} books. Monday's bar reaches ${a} intervals. Tuesday's reaches ${b}. How many more books were read on Monday?`, answer: String((a - b) * scale),
+    return { values: { scale, a, b }, figure: { kind: "bars", bars: [{ label: "Monday", value: a * scale }, { label: "Tuesday", value: b * scale }] }, prompt: "The graph shows books read on two days. How many more books were read on Monday?",
+      readAloud: `The graph shows ${a * scale} books read on Monday and ${b * scale} on Tuesday. How many more books were read on Monday?`, answer: String((a - b) * scale),
       wrong: typedWrong((a - b) * scale, [[a - b, "D1"], [(a + b) * scale, "operation"]]) };
   }),
   template("pictograph-total", "DP", "5.17", (rng) => {
