@@ -227,9 +227,9 @@ export const LEVEL_4: readonly TaggedTemplate[] = [
   },
   {
     // Adding decimals to hundredths (map, grade 4: 3.45 + 2.8; misconception O8). ON adds hundredths in grade 5, and
-    // AB is unsure, so both get 5.
+    // Alberta also introduces these operations in grade 4.
     id: "g35-4-add-decimals",
-    strand: "O", grades: { BC: 4, AB: 5, SK: 4, MB: 4, ON: 5 }, format: "number", whiteboard: true, standard: "4.6",
+    strand: "O", grades: { BC: 4, AB: 4, SK: 4, MB: 4, ON: 5 }, format: "number", whiteboard: true, standard: "4.6",
     fill(rng) {
       const a = draw(rng, (r) => r.int(110, 899), (a) => a % 10 !== 0); // hundredths
       const b = draw(rng, (r) => r.int(11, 89), (b) => b % 10 !== 0); // tenths
@@ -246,7 +246,7 @@ export const LEVEL_4: readonly TaggedTemplate[] = [
   {
     // Subtracting decimals to hundredths, with a missing zero (4.6).
     id: "g35-4-subtract-decimals",
-    strand: "O", grades: { BC: 4, AB: 5, SK: 4, MB: 4, ON: 5 }, format: "number", whiteboard: true, standard: "4.6",
+    strand: "O", grades: { BC: 4, AB: 4, SK: 4, MB: 4, ON: 5 }, format: "number", whiteboard: true, standard: "4.6",
     fill(rng) {
       const a = draw(rng, (r) => r.int(31, 98), (a) => a % 10 <= 7); // tenths, like 5.2
       const b = draw(rng, (r) => r.int(101, a * 10 - 20), (b) => b % 10 !== 0 && Math.floor(b / 10) % 10 > a % 10);
@@ -424,10 +424,10 @@ export const LEVEL_4: readonly TaggedTemplate[] = [
       const best = [...near].sort((a, b) => Math.abs(x - a[0]) - Math.abs(x - b[0]))[0];
       return {
         values: { n, d },
-        prompt: `Is ${frac(n, d)} closest to 0, to 1/2 or to 1?`,
-        readAloud: `Is ${sayFrac(n, d)} closest to 0, to one half, or to 1?`,
+        prompt: `Which benchmark is closest to ${frac(n, d)}?`,
+        readAloud: `Which benchmark is closest to ${sayFrac(n, d)}?`,
         answer: best[1],
-        wrong: near.filter((b) => b !== best).map((b) => wrong(b[1], "benchmark-size")),
+        wrong: near.filter((b) => b !== best).map((b) => wrong(b[1], b[0] === 0 ? "benchmark-zero" : b[0] === 0.5 ? "benchmark-half" : "benchmark-one")),
       };
     },
   },
@@ -895,8 +895,8 @@ export const LEVEL_4: readonly TaggedTemplate[] = [
       const [answer, others] = {
         "quarter past": [time(h, 15), [[time(h, 45), "clock-fraction"], [time(prev, 45), "clock-fraction"], [time(h, 25), "clock-hundred"]]],
         "half past": [time(h, 30), [[time(next, 30), "clock-hour"], [time(h, 50), "clock-hundred"], [time(prev, 30), "clock-hour"]]],
-        "quarter to": [time(prev, 45), [[time(h, 45), "clock-hour"], [time(h, 15), "clock-fraction"], [time(prev, 15), "clock-fraction"]]],
-      }[kind] as [string, [string, "clock-hour" | "clock-fraction" | "clock-hundred"][]];
+        "quarter to": [time(prev, 45), [[time(h, 45), "clock-to"], [time(h, 15), "clock-fraction"], [time(prev, 15), "clock-fraction"]]],
+      }[kind] as [string, [string, "clock-hour" | "clock-to" | "clock-fraction" | "clock-hundred"][]];
       return {
         values: { h, kind: ["quarter past", "half past", "quarter to"].indexOf(kind) },
         prompt: `What time is ${kind} ${h}?`,
@@ -970,7 +970,7 @@ export const LEVEL_4: readonly TaggedTemplate[] = [
   {
     // Lines of symmetry (map, grade 4: a rectangle that is not a square has 2).
     id: "g35-4-symmetry",
-    strand: "MG", grades: { BC: 4, AB: 4, SK: 4, MB: 4, ON: 4 }, format: "number", whiteboard: true, standard: "4.15",
+    strand: "MG", grades: { BC: 4, AB: 5, SK: 4, MB: 4, ON: 4 }, format: "number", whiteboard: true, standard: "4.15",
     fill(rng) {
       const [shape, lines, miss] = rng.pick([
         ["a square", 4, 2],

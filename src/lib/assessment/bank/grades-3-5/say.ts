@@ -133,7 +133,7 @@ export function keepOnOneLine<T extends Template>(template: T): T {
         prompt: keepTogether(f.prompt),
         answer: keepTogether(f.answer),
         wrong: f.wrong.map((w) => ({ ...w, value: keepTogether(w.value) })),
-        ...(template.format === "choice" ? { say: Object.fromEntries(choices.sort().map((c) => [keepTogether(c), f.say?.[c] ?? speakChoice(c)])) } : {}),
+        ...(template.format === "choice" ? { say: Object.fromEntries(choices.map((c) => [keepTogether(c), f.say?.[c] ?? speakChoice(c)]).sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0)) } : {}),
       };
     },
   };

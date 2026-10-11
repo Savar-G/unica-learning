@@ -81,6 +81,35 @@ describe("grade 3-5 speech and figures through the public interface", () => {
       expect(q.choices.filter((c) => value(c) !== undefined && Math.abs(value(c)! - right) < 1e-9), `${t.id}: ${q.choices}`).toHaveLength(1);
     }
   });
+  it.each(NEW)("$id has no other equation that is true for the same unknown", (t) => {
+    const expression = (s: string): [number, number] | undefined => {
+      const text = s.replace(/[ ,]/g, " ").trim();
+      if (/^[?nx]$/.test(text)) return [1, 0];
+      if (/^\d+$/.test(text)) return [0, Number(text)];
+      const m = text.match(/^([?nx]|\d+)\s*([+−×÷])\s*([?nx]|\d+)$/);
+      if (!m) return;
+      const a = expression(m[1])!, b = expression(m[3])!;
+      if (m[2] === "+") return [a[0] + b[0], a[1] + b[1]];
+      if (m[2] === "−") return [a[0] - b[0], a[1] - b[1]];
+      if (m[2] === "×" && !(a[0] && b[0])) return [a[0] * b[1] + b[0] * a[1], a[1] * b[1]];
+      if (m[2] === "÷" && b[0] === 0 && b[1] !== 0) return [a[0] / b[1], a[1] / b[1]];
+    };
+    const equation = (s: string) => {
+      const halves = s.split("=");
+      if (halves.length !== 2) return;
+      const a = expression(halves[0]), b = expression(halves[1]);
+      return a && b ? [a[0] - b[0], a[1] - b[1]] : undefined;
+    };
+    for (const seed of SEEDS) {
+      const q = fillTemplate(t, seed), right = equation(q.answer);
+      if (!q.choices || !right) continue;
+      const x = right[0] ? -right[1] / right[0] : 0;
+      for (const c of q.choices.filter((c) => c !== q.answer)) {
+        const wrong = equation(c);
+        if (wrong) expect(Math.abs(wrong[0] * x + wrong[1]), `${t.id}: ${q.answer}; ${c}`).toBeGreaterThan(1e-8);
+      }
+    }
+  });
 });
 
 describe("grade 3-5 tests from the default bank", () => {

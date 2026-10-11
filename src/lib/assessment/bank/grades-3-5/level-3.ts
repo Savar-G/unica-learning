@@ -447,7 +447,7 @@ export const LEVEL_3: readonly TaggedTemplate[] = [
   {
     // A start-unknown story (3.8; misconception A4).
     id: "g35-3-start-unknown-story",
-    strand: "A", grades: { BC: 3, AB: 3, SK: 3, MB: 3, ON: 3 }, format: "number", whiteboard: true, standard: "3.8",
+    strand: "A", grades: { BC: 3, AB: 3, SK: 3, MB: 3, ON: 2 }, format: "number", whiteboard: true, standard: "3.8",
     fill(rng) {
       const more = rng.int(0, 1) === 1;
       const start = rng.int(12, 60), change = draw(rng, (r) => r.int(5, 19), (c) => c * 2 !== start);
@@ -553,7 +553,7 @@ export const LEVEL_3: readonly TaggedTemplate[] = [
         prompt: `${name} had some ${thing}. ${name} got ${x} more and now has ${x + y}. Which number sentence shows this story?`,
         readAloud: `${name} had some ${thing}. ${name} got ${x} more and now has ${x + y}. Which number sentence shows this story?`,
         answer: `? + ${x} = ${x + y}`,
-        wrong: [wrong(`${x + y} + ${x} = ?`, "operation"), wrong(`? − ${x} = ${x + y}`, "operation"), wrong(`? + ${x + y} = ${x}`, "operation")],
+        wrong: [wrong(`${x + y} + ${x} = ?`, "equation-roles"), wrong(`? − ${x} = ${x + y}`, "operation"), wrong(`? + ${x + y} = ${x}`, "equation-roles")],
       };
     },
   },

@@ -128,11 +128,13 @@ function describe(core, template, standards, samples) {
     whiteboard: template.whiteboard ? "the child may be asked to show work by drawing" : "no shown work",
     bcStandard: `${template.standard} ${standards[template.standard] ?? ""}`.trim(),
     gradeTags: tags,
+    ...(template.format === "choice" ? { speechPolicy: "The renderer speaks readAloud, then spokenChoices in the displayed order. The template readAloud must not list the choices." } : {}),
+    ...(picked.some((q) => q.wrong.some((w) => w.misconception === "digit-reversal")) ? { misconceptionPolicy: "The catalogue describes a plausible cause, not a unique algorithm applied to every choice. Digit reversal may occur when selecting a remembered target numeral after correctly comparing the numbers." } : {}),
     examples: [...new Set(picked)].map((q) => ({
       prompt: q.prompt,
       readAloud: q.readAloud,
       ...(q.figure ? { figure: q.figure } : {}),
-      ...(q.say ? { spokenChoices: core.spokenChoices(q, q.choices ?? []) } : {}),
+      ...(q.choices ? { spokenChoices: core.spokenChoices(q, q.choices) } : {}),
       ...(q.choices ? { choices: q.choices } : {}),
       markedRight: q.answer,
       codedWrong: q.wrong.map((w) => ({ answer: w.value, misconception: core.MISCONCEPTIONS[w.misconception]?.description ?? w.misconception })),
@@ -295,11 +297,11 @@ function statusOf(f) {
 /** Reject incomplete or duplicate output instead of treating absent tag checks as a pass. */
 function findingError(findings, id) {
   if (!Array.isArray(findings)) return "The checker did not return a templates array.";
-  const rows = findings.filter((f) => f.id === id);
+  const rows = findings.filter((f) => f && typeof f === "object" && f.id === id);
   if (rows.length !== 1) return `The checker returned ${rows.length} entries for ${id}; expected one.`;
   const f = rows[0];
   if (["answerCorrect", "wrongAnswersOk", "bcGradeFits"].some((key) => typeof f[key] !== "boolean")) return "A required correctness check is missing.";
-  if (!Array.isArray(f.provinceTags) || f.provinceTags.length !== 4 || ["AB", "SK", "MB", "ON"].some((p) => f.provinceTags.filter((t) => t.province === p).length !== 1)) return "The checker must return one tag check for each of AB, SK, MB and ON.";
+  if (!Array.isArray(f.provinceTags) || f.provinceTags.length !== 4 || f.provinceTags.some((t) => !t || typeof t !== "object") || ["AB", "SK", "MB", "ON"].some((p) => f.provinceTags.filter((t) => t.province === p).length !== 1)) return "The checker must return one tag check for each of AB, SK, MB and ON.";
   if (f.provinceTags.some((t) => typeof t.ok !== "boolean" || !["high", "medium", "low"].includes(t.confidence) || typeof t.reason !== "string")) return "A province tag check is incomplete.";
   if (!["pass", "review", "fail"].includes(f.verdict) || ["wordingProblems", "problems"].some((key) => !Array.isArray(f[key]) || f[key].some((s) => typeof s !== "string"))) return "The checker verdict or problem lists are incomplete.";
   return null;
@@ -315,10 +317,13 @@ function saveResults(results) {
   writeFileSync(RESULTS, `${JSON.stringify(results, null, 2)}\n`);
 }
 
+// Existing default-provider cache behavior is unchanged. Early Codex records used medium effort only.
+const isCurrent = (r, hash, opts) => r && r.hash === hash && (opts.provider !== "codex" || (r.model === opts.model && (r.effort ?? "medium") === opts.effort));
+
 function writeReport(results, current, opts) {
   const rows = current.map(({ template, hash }) => {
     const r = results.templates[template.id];
-    const status = !r ? "not checked" : r.hash !== hash ? "changed since its check" : r.status;
+    const status = !r ? "not checked" : !isCurrent(r, hash, opts) ? "changed since its check" : r.status;
     return { id: template.id, status, r };
   });
   const count = (s) => rows.filter((x) => x.status === s).length;
@@ -389,7 +394,7 @@ const pending = current
   .filter(({ template, hash }) => {
     if (opts.only && !opts.only.has(template.id)) return false;
     const r = results.templates[template.id];
-    return opts.fresh || !r || r.hash !== hash || r.status === "error" || (opts.provider === "codex" && r.model !== opts.model);
+    return opts.fresh || !isCurrent(r, hash, opts) || r.status === "error";
   })
   .slice(0, opts.limit);
 const batches = [];
@@ -411,11 +416,11 @@ for (const [i, batch] of batches.entries()) {
   const answer = (opts.provider === "codex" ? callCodex : callClaude)(prompt, opts);
   const checkedAt = new Date().toISOString().slice(0, 10);
   for (const { template, hash } of batch) {
-    const findings = answer.templates?.find((f) => f.id === template.id);
+    const findings = answer.templates?.find((f) => f && typeof f === "object" && f.id === template.id);
     const error = answer.error ?? findingError(answer.templates, template.id);
     results.templates[template.id] = error
-      ? { hash, status: "error", checkedAt, model: opts.model, error }
-      : { hash, status: statusOf(findings), checkedAt, model: answer.model, findings };
+      ? { hash, status: "error", checkedAt, model: opts.model, provider: opts.provider, effort: opts.effort, error }
+      : { hash, status: statusOf(findings), checkedAt, model: answer.model, provider: opts.provider, effort: opts.effort, findings };
   }
   saveResults(results);
   writeReport(results, current, opts);

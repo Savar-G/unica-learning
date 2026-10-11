@@ -28,7 +28,7 @@ export const LEVEL_5: readonly TaggedTemplate[] = [
     const h = rng.int(1, 8), t = rng.int(11, 89), o = rng.int(101, 899), n = h * 100000 + t * 1000 + o;
     return { values: { h, t, o }, prompt: `Which number is ${fmt(h * 100000)} + ${fmt(t * 1000)} + ${o}?`,
       readAloud: `Which number is ${wordNumber(h, t, o)}?`, answer: fmt(n),
-      wrong: [wrong(fmt(h * 10000 + t * 1000 + o), "N2"), wrong(fmt(h * 100000 + t * 100 + o), "N2"), wrong(fmt(n + 1000), "zero-placeholder")] };
+      wrong: [wrong(fmt(h * 10000 + t * 1000 + o), "N2"), wrong(fmt(h * 100000 + t * 100 + o), "N2")] };
   }, "choice", { ON: 6 }),
   template("ten-thousand-more", "N", "5.1", (rng) => {
     const n = rng.int(100000, 879999);
@@ -38,7 +38,7 @@ export const LEVEL_5: readonly TaggedTemplate[] = [
   template("order-large", "N", "5.1", (rng) => {
     const base = rng.int(10, 89) * 10000, a = base + rng.int(100, 999), b = base + rng.int(1000, 1999), c = base + rng.int(2000, 2999);
     return { values: { a, b, c }, prompt: `Which list goes from greatest to least?`, readAloud: `Which list goes from greatest to least?`,
-      answer: [c, b, a].map(fmt).join(", "), wrong: [wrong([a, b, c].map(fmt).join(", "), "more-less"), wrong([b, c, a].map(fmt).join(", "), "digit-compare"), wrong([c, a, b].map(fmt).join(", "), "digit-compare")] };
+      answer: [c, b, a].map(fmt).join(", "), wrong: [wrong([a, b, c].map(fmt).join(", "), "more-less"), wrong([b, c, a].map(fmt).join(", "), "order-adjacent"), wrong([c, a, b].map(fmt).join(", "), "order-adjacent")] };
   }, "choice", { ON: 6 }),
   template("add-large", "O", "5.5", (rng) => {
     const [a, b] = draw(rng, (r) => [r.int(120000, 399999), r.int(110000, 299999)], ([a, b]) => a > b && a % 10 + b % 10 >= 10);
@@ -61,7 +61,7 @@ export const LEVEL_5: readonly TaggedTemplate[] = [
     const size = rng.int(3, 9), groups = rng.int(12, 35), rem = rng.int(1, size - 1), total = size * groups + rem;
     return { values: { size, groups, rem }, prompt: `${total} pencils go into packs of ${size}. How many pencils are left after all full packs are made?`,
       readAloud: `${total} pencils go into packs of ${size}. How many pencils are left after all full packs are made?`, answer: String(rem),
-      wrong: typedWrong(rem, [[groups, "remainder-quotient"], [0, "remainder-ignore"]]) };
+      wrong: typedWrong(rem, [[groups, "remainder-quotient"], [0, "remainder-zero"]]) };
   }),
   template("full-groups", "O", "5.6", (rng) => {
     const size = rng.int(3, 9), groups = rng.int(12, 35), rem = rng.int(1, size - 1), total = size * groups + rem;
@@ -173,7 +173,7 @@ export const LEVEL_5: readonly TaggedTemplate[] = [
     } as const;
     const [shown, spoken, mistake] = equations[op as keyof typeof equations], right = op === "dividend" ? x * k : x;
     return { values: { x, k }, prompt: `Find ${name}. ${shown}`, readAloud: spoken, answer: String(right),
-      wrong: typedWrong(right, [[mistake, "inverse-operation"], [k, "ignores-given"]]) };
+      wrong: typedWrong(right, [[mistake, op === "divide" ? "unknown-divisor" : op === "multiply" || op === "take-away" ? "operation" : "inverse-operation"], [k, "ignores-given"]]) };
   })),
   ...["next", "missing", "back", "step", "start", "far"].map((task) => template(`pattern-${task}`, "A", "5.10", (rng) => {
     const first = rng.int(11, 39), step = rng.int(3, 9), terms = Array.from({ length: 5 }, (_, i) => first + i * step);
@@ -187,7 +187,7 @@ export const LEVEL_5: readonly TaggedTemplate[] = [
     } as const;
     const [prompt, right, mistake] = prompts[task as keyof typeof prompts];
     return { values: { first, step }, prompt, readAloud: prompt.replace("?", "a missing number"), answer: String(right),
-      wrong: typedWrong(right, [[mistake, task === "far" || task === "start" ? "one-to-one" : "pattern-first-step"], [right + step, "one-to-one"]]) };
+      wrong: typedWrong(right, [[mistake, task === "next" ? "skip-by-one" : task === "missing" ? "A2" : task === "back" ? "pattern-earlier" : task === "step" ? "pattern-start-step" : "pattern-step-count"], [right + step, "pattern-step-count"]]) };
   })),
   template("variable-rule", "A", "5.10", (rng) => {
     const k = rng.int(3, 8), n = rng.int(4, 12), right = k * n;
@@ -196,10 +196,10 @@ export const LEVEL_5: readonly TaggedTemplate[] = [
       wrong: typedWrong(right, [[Number(`${k}${n}`), "A3"], [k + n, "operation"]]) };
   }),
   template("equation-story", "A", "5.11", (rng) => {
-    const start = rng.int(20, 69), left = rng.int(5, start - 5), name = rng.pick(NAMES);
+    const start = rng.int(20, 69), left = draw(rng, (r) => r.int(5, start - 5), (left) => start !== 2 * left), name = rng.pick(NAMES);
     return { values: { start, left }, prompt: `${name} has ${start} cards and gives away n cards. ${left} cards remain. Which equation fits?`,
       readAloud: `${name} has ${start} cards and gives away a number of cards. ${left} cards remain. Which equation fits?`,
-      answer: `${start} − n = ${left}`, wrong: [wrong(`${start} + n = ${left}`, "operation"), wrong(`${start} − ${left} = ${left}`, "ignores-given"), wrong(`n − ${start} = ${left}`, "story-roles")] };
+      answer: `${start} − n = ${left}`, wrong: [wrong(`${start} + n = ${left}`, "operation"), wrong(`${start} − ${left} = ${left}`, "ignores-given"), wrong(`n − ${start} = ${left}`, "equation-roles")] };
   }, "choice"),
 
   // A child can draw each measurement situation from the words. No glyph stands in for a figure.

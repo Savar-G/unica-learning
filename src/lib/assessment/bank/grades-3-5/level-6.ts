@@ -54,7 +54,7 @@ export const LEVEL_6: readonly TaggedTemplate[] = [
     } as const;
     const [shown, spoken, right, mistake] = versions[task as keyof typeof versions];
     return { values: { a, b, c, d }, prompt: `${shown} = ?`, readAloud: `What is ${spoken}?`, answer: String(right),
-      wrong: typedWrong(right, [[mistake, task === "brackets" ? "brackets-ignored" : "O7"], [a + b + c + d, "operation"]]) };
+      wrong: typedWrong(right, [[mistake, task === "brackets" ? "brackets-ignored" : "O7"], [task === "quotient" ? a + b * c + c : task === "two-products" ? a + b + c + d : a + b + c, "operation"]]) };
   })),
   ...["multiply", "divide"].map((op) => template(`decimal-${op}`, "O", "6.8", (rng) => {
     const q = rng.int(12, 89), k = rng.int(3, 9), right = op === "multiply" ? q * k : q;
@@ -108,7 +108,7 @@ export const LEVEL_6: readonly TaggedTemplate[] = [
     return { values: { a, b, k }, prompt, readAloud: prompt, answer: right, wrong: candidates };
   }, task === "recipe" ? "number" : "choice")),
   ...["of-hundred", "of-amount", "discount", "sale-price"].map((task) => template(`percent-${task}`, "F", "6.7", (rng) => {
-    const p = rng.pick([10, 20, 25, 50, 75]), total = rng.int(2, 12) * 20, off = total * p / 100;
+    const p = rng.pick([10, 20, 25, 50, 75]), total = task === "of-hundred" ? 100 : rng.int(2, 12) * 20, off = total * p / 100;
     const right = task === "of-hundred" ? p : task === "sale-price" ? total - off : off;
     const prompt = task === "of-hundred" ? `A grid has 100 equal squares. ${p} are shaded. What percent is shaded? Enter the number only.`
       : task === "of-amount" ? `What is ${p}% of ${total}?`
@@ -132,7 +132,7 @@ export const LEVEL_6: readonly TaggedTemplate[] = [
     } as const;
     const [prompt, right, mistake] = versions[task as keyof typeof versions];
     return { values: { k, b, n }, prompt, readAloud: prompt.replaceAll("×", "times").replaceAll("+", "plus").replaceAll(" n ", " the number "), answer: String(right),
-      wrong: typedWrong(right, [[mistake, task === "step" ? "rule-swap" : task === "initial" ? "A5" : "rule-from-change"], [right + k, "next-not-asked"]]) };
+      wrong: typedWrong(right, [[mistake, task === "step" ? "rule-swap" : task === "difference" ? "ignores-given" : "A5"], [right + k, "next-not-asked"]]) };
   })),
   ...["add", "subtract", "multiply", "divide", "subtrahend", "divisor"].map((op) => template(`equation-${op}`, "A", "6.10", (rng) => {
     const x = rng.int(30, 89), k = rng.int(4, 9);
@@ -146,7 +146,7 @@ export const LEVEL_6: readonly TaggedTemplate[] = [
     } as const;
     const [shown, spoken, mistake] = versions[op as keyof typeof versions], right = op === "divide" ? x * k : x;
     return { values: { x, k }, prompt: `Find x. ${shown}`, readAloud: `${spoken} What is the number?`, answer: String(right),
-      wrong: typedWrong(right, [[mistake, "inverse-operation"], [k, "ignores-given"]]) };
+      wrong: typedWrong(right, [[mistake, op === "divisor" ? "unknown-divisor" : op === "multiply" || op === "subtrahend" ? "operation" : "inverse-operation"], [k, "ignores-given"]]) };
   })),
   template("table-rule", "A", "6.9", (rng) => {
     const [k, b] = draw(rng, (r) => [r.int(3, 8), r.int(2, 9)], ([k, b]) => k !== b);
@@ -190,7 +190,7 @@ export const LEVEL_6: readonly TaggedTemplate[] = [
     return { values: { litres, extra }, prompt: `A jug holds ${litres} L and ${extra} mL. How many millilitres is that?`,
       readAloud: `A jug holds ${litres} litres and ${extra} millilitres. How many millilitres is that?`, answer: String(right),
       wrong: typedWrong(right, [[litres * 100 + extra, "unit-convert"], [litres + extra, "unit-convert"]]) };
-  }, "number", { ON: 4 }),
+  }, "number", { SK: 5, MB: 5, ON: 4 }),
   template("angle-name", "MG", "6.13", (rng) => {
     const [angle, answer] = rng.int(0, 1) === 0 ? [rng.int(20, 85), "Acute"] : [rng.int(95, 170), "Obtuse"];
     return { values: { angle: Number(angle) }, prompt: `An angle measures ${angle} degrees. What kind of angle is it?`,

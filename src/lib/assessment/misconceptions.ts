@@ -10,6 +10,17 @@ export interface Misconception {
 }
 
 export const MISCONCEPTIONS = {
+  "order-adjacent": { description: "Swaps two adjacent numbers in an otherwise ordered list", evidence: "none" },
+  "remainder-zero": { description: "Treats division as exact and reports no remainder", evidence: "none" },
+  "benchmark-zero": { description: "Treats every proper fraction as close to zero", evidence: "none" },
+  "benchmark-half": { description: "Treats every proper fraction as close to one half", evidence: "none" },
+  "benchmark-one": { description: "Treats every proper fraction as close to one", evidence: "none" },
+  "equation-roles": { description: "Puts the start, change or result quantity in the wrong place in an equation", evidence: "none" },
+  "unknown-divisor": { description: "Treats an unknown divisor as an unknown dividend", evidence: "none" },
+  "pattern-step-count": { description: "Counts the wrong number of steps between terms in a pattern", evidence: "none" },
+  "pattern-earlier": { description: "Moves forward through a pattern when finding an earlier term", evidence: "none" },
+  "pattern-start-step": { description: "Confuses the starting number with the amount added at each step", evidence: "none" },
+  "clock-to": { description: "Keeps the named hour for quarter to instead of moving to the previous hour", evidence: "none" },
   "clock-hour": { description: "Uses the previous or next hour instead of the stated hour", evidence: "none" },
   "clock-fraction": { description: "Mixes up quarter past, half past and quarter to", evidence: "none" },
   "clock-hundred": { description: "Treats an hour as 100 minutes", evidence: "none" },
