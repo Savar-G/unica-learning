@@ -315,8 +315,8 @@ export const LEVEL_K: readonly TaggedTemplate[] = [
       const [first, second] = rng.shuffle([light, heavy]);
       return {
         values: { pair: i, heavyFirst: first === heavy ? 1 : 0 },
-        prompt: `Which is heavier: ${first} or ${second}?`,
-        readAloud: "Which is heavier?",
+        prompt: `${cap(first)} and ${second} are on a balance. The side with ${heavy} is lower. Which object is heavier?`,
+        readAloud: `${cap(first)} and ${second} are on a balance. The side with ${heavy} is lower. Which object is heavier?`,
         answer: cap(heavy),
         wrong: [wrong(cap(light), "bigger-heavier"), wrong(same, "same-size")],
       };
