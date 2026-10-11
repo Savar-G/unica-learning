@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { reportModel, type Placement, type Province, type WorkReview } from "@/lib/assessment";
+import { reportModel, type Placement, type Province, type ReportModel, type ShownWork, type WorkReview } from "@/lib/assessment";
 import { allRight, knowsUpTo, takeTest } from "./scripted-child";
 
 const grade4 = (isRight = allRight, province: Province = "BC") => takeTest({ grade: 4, province }, 1, isRight).placement;
@@ -65,7 +65,7 @@ describe("report model", () => {
     });
   });
 
-  describe("work comments", () => {
+  describe("the child's work (#67, D-087)", () => {
     const review = (questionId: string, confidence: WorkReview["confidence"]): WorkReview => ({
       questionId,
       errorType: "regrouping",
@@ -73,13 +73,48 @@ describe("report model", () => {
       comment: `Comment on ${questionId}`,
       confidence,
     });
+    const piece = (questionId: string, required: boolean, extra: Partial<ShownWork> = {}): ShownWork => ({
+      questionId,
+      prompt: `Prompt ${questionId}`,
+      correct: true,
+      required,
+      image: `parent/test/${questionId}.png`,
+      text: null,
+      ...extra,
+    });
+    const withWork = (shownWork: ShownWork[], workReviews: WorkReview[] = []) =>
+      reportModel(grade4(), { completedTestsInGrade: 0, workReviews, shownWork }).work;
+    const ids = (work: ReportModel["work"]) => work.map((w) => w.questionId);
 
-    it("a high-confidence comment shows", () => {
-      expect(report(grade4(), 0, [review("s1-3", "high")]).work).toEqual([{ questionId: "s1-3", comment: "Comment on s1-3" }]);
+    it("no shown work: nothing to show, even with reviews", () => {
+      expect(withWork([], [review("s1-3", "high")])).toEqual([]);
+      expect(report(grade4()).work).toEqual([]);
     });
 
-    it("a low-confidence comment is hidden, but the work still shows", () => {
-      expect(report(grade4(), 0, [review("s1-4", "low")]).work).toEqual([{ questionId: "s1-4", comment: null }]);
+    it("shows each piece with its question, right or not, its drawing and its typed working", () => {
+      const work = withWork([piece("s1-3", true, { correct: false, text: "47 + 25 = 62" })]);
+      expect(work).toEqual([{ questionId: "s1-3", prompt: "Prompt s1-3", correct: false, image: "parent/test/s1-3.png", text: "47 + 25 = 62", comment: null }]);
+    });
+
+    it("shows at most three, show-your-work questions first, in test order", () => {
+      const all = [piece("s1-1", false), piece("s1-2", true), piece("s1-5", true), piece("s1-9", false), piece("up-2", true), piece("up-7", true)];
+      expect(ids(withWork(all))).toEqual(["s1-2", "s1-5", "up-2"]);
+    });
+
+    it("fills up with optional work when fewer than three questions required it, in test order", () => {
+      expect(ids(withWork([piece("s1-1", false), piece("s1-2", true), piece("s1-4", false), piece("s1-6", false)]))).toEqual(["s1-1", "s1-2", "s1-4"]);
+    });
+
+    it("a sure comment shows, and its piece is picked before the others", () => {
+      const all = [piece("s1-2", true), piece("s1-5", true), piece("up-2", true), piece("up-7", true)];
+      const work = withWork(all, [review("up-7", "high")]);
+      expect(ids(work)).toEqual(["s1-2", "s1-5", "up-7"]);
+      expect(work.find((w) => w.questionId === "up-7")?.comment).toBe("Comment on up-7");
+    });
+
+    it("a comment the review is not sure about is hidden, but the work still shows", () => {
+      const work = withWork([piece("s1-4", true)], [review("s1-4", "low")]);
+      expect(work).toEqual([expect.objectContaining({ questionId: "s1-4", comment: null })]);
     });
   });
 

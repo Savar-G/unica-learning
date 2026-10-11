@@ -7,6 +7,7 @@ import { requirePilot } from "@/lib/pilot";
 import { reportReturnPath, type ReportView } from "@/lib/report-view";
 import type { PlanId } from "@/lib/site";
 import { parentId, sessionClient } from "@/lib/supabase-auth";
+import { signWork } from "@/lib/work-store";
 import { TrackOnce } from "@/components/account";
 import { ReportCard, type ReportNextContext } from "@/components/report";
 import type { NextStepStart } from "@/components/report-next";
@@ -50,6 +51,9 @@ export default async function ReportPage({ params, searchParams }: PageProps<"/a
     .eq("id", id).maybeSingle<ReportPageRow>();
   if (!row?.assessment || !row.child) notFound();
 
+  // #67: the work drawings are in a private bucket. Signed with the parent's own session, so storage checks that each
+  // file is in their folder; the URLs stop working after a few minutes.
+  const workPaths = (row.model.work ?? []).flatMap((w) => (w.image ? [w.image] : []));
   const view: ReportView = {
     id: row.id,
     childName: row.child.first_name,
@@ -58,6 +62,7 @@ export default async function ReportPage({ params, searchParams }: PageProps<"/a
     questions: row.questions,
     minutes: row.minutes,
     model: row.model,
+    workImages: await signWork(db, workPaths),
   };
   // Back from the payment page without a card: not a new report open.
   const cancelled = query.card === "cancelled";

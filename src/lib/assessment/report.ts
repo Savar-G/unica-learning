@@ -1,7 +1,7 @@
 // Turns a placement into everything the report shows. The report page and the email both use this model.
 // Honesty rule (DESIGN.md, D-084): every number here is measured or carries its source.
 import { statusFor } from "@/lib/signup";
-import { COMPARISON_BANDS_FROM, COMPARISON_PERCENTILE_FROM, REPORTED_STRAND_NAMES } from "./constants";
+import { COMPARISON_BANDS_FROM, COMPARISON_PERCENTILE_FROM, REPORT_WORK_MAX, REPORTED_STRAND_NAMES } from "./constants";
 import { factsReport, type ReportFacts } from "./facts";
 import { helpLikely } from "./flags";
 import type { Grade, Level, Placement, Province, StrandResult } from "./types";
@@ -15,11 +15,29 @@ export interface WorkReview {
   confidence: "high" | "low";
 }
 
+/** One answer with work on the whiteboard (#67), as the report job finds it in the stored answers. */
+export interface ShownWork {
+  questionId: string;
+  prompt: string;
+  correct: boolean;
+  /** True on a show-your-work question (Question.showWork). */
+  required: boolean;
+  /** The stored drawing (a PNG in private storage), or null when the child only typed. */
+  image: string | null;
+  /** The typed working, or null when the child only drew. */
+  text: string | null;
+}
+
 export interface ReportContext {
   /** Completed tests for the child's school grade, from the assessments table. */
   completedTestsInGrade: number;
   workReviews: WorkReview[];
+  /** Every answer with work on the whiteboard, in test order (#67). None when left out. */
+  shownWork?: ShownWork[];
 }
+
+/** One piece of the child's work on the report: the question, right or not, the work, and a comment only when sure. */
+export type ReportWork = Omit<ShownWork, "required"> & { comment: string | null };
 
 export type Comparison = { stage: "scale" } | { stage: "bands"; n: number } | { stage: "percentile"; n: number };
 
@@ -39,8 +57,11 @@ export interface ReportModel {
   fsa: FsaLine | null;
   howWeHelp: "behind" | "on-grade" | "ahead";
   callToAction: "card" | "waitlist";
-  /** Every reviewed piece of work shows its image; the comment only when the review is sure. */
-  work: { questionId: string; comment: string | null }[];
+  /**
+   * Up to REPORT_WORK_MAX pieces of shown work (#67, D-087), in test order: show-your-work questions first, and among
+   * them those with a sure comment; optional work fills up. Each shows its work; the comment only when the review is sure.
+   */
+  work: ReportWork[];
   /** Number facts (#70): accuracy beside speed, never speed alone. Null when the child had no facts section. */
   facts: ReportFacts | null;
   /**
@@ -71,6 +92,17 @@ function fsaLine(grade: Grade, province: Province): FsaLine | null {
   };
 }
 
+function workFor({ shownWork = [], workReviews }: ReportContext): ReportWork[] {
+  const sure = new Map(workReviews.filter((r) => r.confidence === "high").map((r) => [r.questionId, r.comment]));
+  const rank = (w: ShownWork) => (w.required ? 0 : 2) + (sure.has(w.questionId) ? 0 : 1);
+  return shownWork
+    .map((w, index) => ({ w, index }))
+    .sort((a, b) => rank(a.w) - rank(b.w) || a.index - b.index)
+    .slice(0, REPORT_WORK_MAX)
+    .sort((a, b) => a.index - b.index)
+    .map(({ w: { questionId, prompt, correct, image, text } }) => ({ questionId, prompt, correct, image, text, comment: sure.get(questionId) ?? null }));
+}
+
 function comparisonFor(n: number): Comparison {
   if (n >= COMPARISON_PERCENTILE_FROM) return { stage: "percentile", n };
   if (n >= COMPARISON_BANDS_FROM) return { stage: "bands", n };
@@ -87,7 +119,7 @@ export function reportModel(placement: Placement, context: ReportContext): Repor
     howWeHelp: workingLevel === grade ? "on-grade" : workingLevel < grade ? "behind" : "ahead",
     // Card for the curricula we make books for today (D-053); every other province joins the waitlist.
     callToAction: statusFor(placement.province) === "reserved" ? "card" : "waitlist",
-    work: context.workReviews.map((r) => ({ questionId: r.questionId, comment: r.confidence === "high" ? r.comment : null })),
+    work: workFor(context),
     // Older placements were stored before the facts section existed and have no facts field.
     facts: placement.facts ? factsReport(placement.facts) : null,
     helpWarning: helpLikely(placement.flags),

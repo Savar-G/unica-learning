@@ -2,25 +2,28 @@
 
 // The child's test (#64): instructions, one question at a time, the end screen. Plain screens until the chosen
 // design (D-088, split desk) lands in #79. Read-aloud, the halfway break and progress (#69) are their own parts
-// (test-read-aloud.tsx, test-break.tsx, test-progress.tsx); the whiteboard comes in #67.
+// (test-read-aloud.tsx, test-break.tsx, test-progress.tsx); the whiteboard (#67) is whiteboard.tsx, beside each question.
 // The server marks every answer; the browser gets only the next question and never learns what was right.
 import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
 import Link from "next/link";
 import { Button, GradientPanel } from "@/ds";
-import { breakDue, type HelpAnswer, type PublicQuestion, type TestStep } from "@/lib/assessment";
-import { ANSWER_MAX, type FinishResult, type StartResult, type StepResult, type TestError } from "@/lib/test-api";
+import { breakDue, hasWork, type HelpAnswer, type PublicQuestion, type TestStep } from "@/lib/assessment";
+import { ANSWER_MAX, type FinishResult, type StartResult, type StepResult, type TestError, type WorkPayload } from "@/lib/test-api";
 import { track } from "@/lib/track";
 import { SUPPORT_EMAIL, SUPPORT_HREF } from "@/lib/contact";
+import { draftKey, draftPrefix, emptyBoard, hasDrawing, type BoardState } from "@/lib/whiteboard";
 import { FactsSection } from "./facts";
 import { breakSeen, markBreakSeen, TestBreak } from "./test-break";
 import { TestHelp } from "./test-help";
 import { TestProgress } from "./test-progress";
 import { ReadAloud } from "./test-read-aloud";
+import { Whiteboard, boardImage, clearDrafts, loadDraft, saveDraft, type BoardSize } from "./whiteboard";
 import "./test.css";
 
 type Screen =
   | { name: "intro" }
-  | { name: "question"; question: PublicQuestion; number: number; total: number; breakAfter: number }
+  /** `testId` keys the saved whiteboard of the question (#67). */
+  | { name: "question"; question: PublicQuestion; number: number; total: number; breakAfter: number; testId: string }
   | { name: "break"; next: Extract<TestStep, { status: "question" }> }
   /** The timed facts section (#70), after the halfway break; then the test carries on with `next`. */
   | { name: "facts"; testId: string; next: Extract<TestStep, { status: "question" }> }
@@ -45,7 +48,8 @@ const post = (body: unknown): RequestInit => ({ method: "POST", body: JSON.strin
  */
 export type StartMode = "new" | "resume" | "finish" | "restart";
 
-export function TakeTest({ childId, name, total, ready, done, mode: firstMode = "new" }: { childId: string; name: string; total: number; ready: boolean; done: boolean; mode?: StartMode }) {
+/** `typing`: the whiteboard has a text box (grades 3-7); grades 1-2 draw only (#67). */
+export function TakeTest({ childId, name, total, ready, done, mode: firstMode = "new", typing = true }: { childId: string; name: string; total: number; ready: boolean; done: boolean; mode?: StartMode; typing?: boolean }) {
   const [screen, setScreen] = useState<Screen>(done ? { name: "done" } : { name: "intro" });
   const [busy, setBusy] = useState(false);
   const [failure, setFailure] = useState<TestError | null>(null);
@@ -87,6 +91,9 @@ export function TakeTest({ childId, name, total, ready, done, mode: firstMode = 
       return false;
     }
     track("test_finish");
+    // #67: no saved whiteboard of this test is needed any more.
+    const finished = testId.current;
+    if (finished) clearDrafts((key) => key.startsWith(draftPrefix(finished)));
     setScreen({ name: "done" });
     return true;
   }, [expire]);
@@ -112,7 +119,7 @@ export function TakeTest({ childId, name, total, ready, done, mode: firstMode = 
       setScreen({ name: "facts", testId: id, next: step });
       return true;
     }
-    setScreen({ name: "question", question: step.question, number: step.number, total: step.total, breakAfter: step.breakAfter });
+    setScreen({ name: "question", question: step.question, number: step.number, total: step.total, breakAfter: step.breakAfter, testId: id });
     return true;
   }, []);
 
@@ -129,6 +136,8 @@ export function TakeTest({ childId, name, total, ready, done, mode: firstMode = 
       return;
     }
     testId.current = started.id;
+    // #67: saved whiteboards of older tests (one that ran out of time) go; this test's stay for a resume.
+    clearDrafts((key) => !key.startsWith(draftPrefix(started.id)));
     if (started.resumed) track("test_resume");
     else track("test_start", { status: mode === "restart" ? "restart" : "new" });
     const res = await call<StepResult>(`/api/account/assessments/${started.id}`);
@@ -138,10 +147,10 @@ export function TakeTest({ childId, name, total, ready, done, mode: firstMode = 
     setBusy(false);
   };
 
-  /** Sends one answer. Resolves false when it failed and the child should try again. */
-  const answer = async (questionId: string, response: string, timeMs: number) => {
+  /** Sends one answer, with the whiteboard work (#67). Resolves false when it failed and the child should try again. */
+  const answer = async (questionId: string, response: string, timeMs: number, work?: WorkPayload) => {
     setFailure(null);
-    const res = await call<StepResult>(`/api/account/assessments/${testId.current}/answers`, post({ questionId, response, timeMs }));
+    const res = await call<StepResult>(`/api/account/assessments/${testId.current}/answers`, post({ questionId, response, timeMs, work }));
     if (res.ok) return show(res.step);
     // Another tab or a retry answered first: carry on from where the server is.
     if (res.error === "conflict" && "step" in res && res.step) return show(res.step);
@@ -152,7 +161,7 @@ export function TakeTest({ childId, name, total, ready, done, mode: firstMode = 
   };
 
   return (
-    <div className="look-root test-root" data-look="warm">
+    <div className={`look-root test-root${screen.name === "question" ? " is-desk" : ""}`} data-look="warm">
       <header className="test-top">
         <span className="logo">Unica Learning<b /></span>
         {screen.name === "question" && <TestProgress answered={screen.number - 1} total={screen.total} breakAfter={screen.breakAfter} at="question" />}
@@ -162,7 +171,7 @@ export function TakeTest({ childId, name, total, ready, done, mode: firstMode = 
       <main id="main" className="test-main">
         {screen.name === "intro" && <Intro name={name} total={total} ready={ready} busy={busy} onStart={start} failure={failure} mode={mode} />}
         {screen.name === "question" && (
-          <Question key={screen.question.id} question={screen.question} last={screen.number === screen.total} onAnswer={answer} failure={failure} />
+          <Question key={screen.question.id} testId={screen.testId} typing={typing} question={screen.question} last={screen.number === screen.total} onAnswer={answer} failure={failure} />
         )}
         {screen.name === "break" && (
           <TestBreak name={name} answered={screen.next.breakAfter} total={screen.next.total} onDone={(how) => {
@@ -197,6 +206,8 @@ function Problem({ error }: { error: TestError | null }) {
     : error === "not_ready" ? "The test for this grade is not ready yet."
     : error === "expired" ? "The last test was not finished within 24 hours, so it closed."
     : error === "retake_closed" ? <>A new test opens 30 days after the last one. <Link href="/account">Your account</Link> shows the date.</>
+    : error === "work_required" ? "Show your work on the whiteboard, then press Next."
+    : error === "work_too_big" ? "Your work is too big to save. Clear some of it, then press Next again."
     : <>Something went wrong. Check the internet connection and try again. If this keeps happening, email <a href={SUPPORT_HREF}>{SUPPORT_EMAIL}</a>.</>;
   return <p role="alert" className="test-alert">{text}</p>;
 }
@@ -229,7 +240,7 @@ function Intro({ name, total, ready, busy, onStart, failure, mode }: { name: str
       <ul className="test-rules">
         <li><b>No calculator.</b> Work the answers out yourself.</li>
         <li><b>No help from a parent.</b> Do the test on your own. Grown-ups, please let your child work alone.</li>
-        <li><b>Use the whiteboard for your working.</b> Do not use scrap paper.</li>
+        <li><b>Use the whiteboard for your working.</b> Do not use scrap paper. Some questions ask you to show your work there.</li>
       </ul>
       {mode === "resume"
         ? <p>Your answers are saved. You go on from the question where you stopped. You cannot go back, so check each answer before you press Next.</p>
@@ -243,7 +254,18 @@ function Intro({ name, total, ready, busy, onStart, failure, mode }: { name: str
 
 const PAD_KEYS = ["1", "2", "3", "4", "5", "6", "7", "8", "9", ".", "0"];
 
-function Question({ question, last, onAnswer, failure }: { question: PublicQuestion; last: boolean; onAnswer: (id: string, response: string, timeMs: number) => Promise<boolean>; failure: TestError | null }) {
+interface QuestionProps {
+  testId: string;
+  /** Grades 3-7 can type on the whiteboard; grades 1-2 draw only (#67). */
+  typing: boolean;
+  question: PublicQuestion;
+  last: boolean;
+  onAnswer: (id: string, response: string, timeMs: number, work?: WorkPayload) => Promise<boolean>;
+  failure: TestError | null;
+}
+
+// One question in the split desk (D-088): the question and the answer on the left, the whiteboard on the right.
+function Question({ testId, typing, question, last, onAnswer, failure }: QuestionProps) {
   const [value, setValue] = useState("");
   const [sending, setSending] = useState(false);
   // Time on the question runs from when it appears to when the child presses Next.
@@ -253,6 +275,36 @@ function Question({ question, last, onAnswer, failure }: { question: PublicQuest
     shownAt.current = performance.now();
     heading.current?.focus();
   }, []);
+
+  // #67: the whiteboard. A resume of this question on this device brings back the work from before the stop (#72).
+  const draft = draftKey(testId, question.id);
+  const [board, setBoard] = useState<BoardState>(() => (testId ? loadDraft(draft) : null) ?? emptyBoard());
+  const boardSize = useRef<BoardSize>({ width: 0, height: 0 });
+  const onBoardSize = useCallback((size: BoardSize) => {
+    boardSize.current = size;
+  }, []);
+  const stored = useRef(false);
+  useEffect(() => {
+    if (!testId) return;
+    const t = window.setTimeout(() => {
+      if (!stored.current) saveDraft(draft, board);
+    }, 250);
+    return () => window.clearTimeout(t);
+  }, [testId, draft, board]);
+
+  // The strokes that turned out to be an empty picture (the eraser took every line): no drawing until the child draws again.
+  const [erased, setErased] = useState<BoardState["strokes"] | null>(null);
+  const drawn = hasDrawing(board.strokes) && erased !== board.strokes;
+  const text = typing ? board.text : "";
+  // On a show-your-work question, Next stays off until there is an answer and the board has work (D-088).
+  const needsWork = question.showWork && !hasWork({ drawn, text });
+  const nudge = !!value && needsWork;
+  const nudged = useRef(false);
+  useEffect(() => {
+    if (!nudge || nudged.current) return;
+    nudged.current = true;
+    track("test_work_nudge");
+  }, [nudge]);
 
   const press = useCallback((key: string) => {
     setValue((v) => {
@@ -264,11 +316,34 @@ function Question({ question, last, onAnswer, failure }: { question: PublicQuest
 
   const submit = async (e?: FormEvent) => {
     e?.preventDefault();
-    if (!value || sending) return;
+    if (!value || sending || needsWork) return;
     setSending(true);
-    const ok = await onAnswer(question.id, value, performance.now() - shownAt.current);
-    // On success this question unmounts; on failure the child keeps the answer and can press Next again.
-    if (!ok) setSending(false);
+    const timeMs = performance.now() - shownAt.current;
+    let image: string | null = null;
+    let blank = false;
+    try {
+      image = await boardImage(board.strokes, boardSize.current);
+      blank = drawn && image === null;
+    } catch {
+      // The browser could not make the picture: the answer goes without it, and the server says if work is missing.
+    }
+    const typed = text.trim();
+    if (blank) setErased(board.strokes);
+    // Everything was erased on a show-your-work question: the board is empty, so the nudge comes back instead of Next.
+    if (question.showWork && blank && !typed) {
+      setSending(false);
+      return;
+    }
+    const work: WorkPayload | undefined = image || typed ? { ...(image ? { image } : {}), ...(typed ? { text: typed } : {}) } : undefined;
+    const ok = await onAnswer(question.id, value, timeMs, work);
+    // On success this question unmounts; on failure the child keeps the answer and the work, and can press Next again.
+    if (!ok) {
+      setSending(false);
+      return;
+    }
+    stored.current = true;
+    saveDraft(draft, emptyBoard());
+    if (work) track("test_work", { status: question.showWork ? "required" : "optional", channel: image && typed ? "both" : image ? "draw" : "type" });
   };
 
   const submitRef = useRef(submit);
@@ -282,6 +357,8 @@ function Question({ question, last, onAnswer, failure }: { question: PublicQuest
       if (e.metaKey || e.ctrlKey || e.altKey) return;
       // Enter on a focused pad key would press that key again; on the pad it means Next, as elsewhere.
       const target = e.target instanceof Element ? e.target : null;
+      // Typing on the whiteboard (#67): every key, Enter too, belongs to the text box.
+      if (target?.closest("textarea, input, [contenteditable]")) return;
       const onOtherButton = !!target?.closest("button, a") && !target?.closest(".test-pad");
       if (e.key === "Enter" && !onOtherButton) submitRef.current();
       else if (question.format !== "number") return;
@@ -295,34 +372,40 @@ function Question({ question, last, onAnswer, failure }: { question: PublicQuest
   }, [question.format, press]);
 
   return (
-    <form className="test-q" onSubmit={submit}>
-      <div className="test-qrow">
-        <ReadAloud key={question.id} text={question.readAloud} />
-        <h1 ref={heading} tabIndex={-1} className="test-prompt">{question.prompt}</h1>
-      </div>
-      {question.format === "choice" ? (
-        <div className="test-choices" role="radiogroup" aria-label="Choose one answer">
-          {(question.choices ?? []).map((c) => (
-            <button key={c} type="button" role="radio" aria-checked={value === c} className="test-choice" onClick={() => setValue(c)}>
-              <span className="test-dot" aria-hidden />
-              {c}
-            </button>
-          ))}
+    <form className="test-desk" onSubmit={submit}>
+      <div className="test-desk-q">
+        <div className="test-qrow">
+          <ReadAloud key={question.id} text={question.readAloud} />
+          <h1 ref={heading} tabIndex={-1} className="test-prompt">{question.prompt}</h1>
         </div>
-      ) : (
-        <div className="test-num">
-          <output className="test-display" aria-live="polite" aria-label="Your answer">{value || <i>Type your answer</i>}</output>
-          <div className="test-pad" role="group" aria-label="Number pad">
-            {PAD_KEYS.map((k) => (
-              <button key={k} type="button" onClick={() => press(k)} aria-label={k === "." ? "Decimal point" : undefined}>{k}</button>
+        {question.format === "choice" ? (
+          <div className="test-choices" role="radiogroup" aria-label="Choose one answer">
+            {(question.choices ?? []).map((c) => (
+              <button key={c} type="button" role="radio" aria-checked={value === c} className="test-choice" onClick={() => setValue(c)}>
+                <span className="test-dot" aria-hidden />
+                {c}
+              </button>
             ))}
-            <button type="button" onClick={() => press("back")} aria-label="Delete">⌫</button>
           </div>
+        ) : (
+          <div className="test-num">
+            <output className="test-display" aria-live="polite" aria-label="Your answer">{value || <i>Type your answer</i>}</output>
+            <div className="test-pad" role="group" aria-label="Number pad">
+              {PAD_KEYS.map((k) => (
+                <button key={k} type="button" onClick={() => press(k)} aria-label={k === "." ? "Decimal point" : undefined}>{k}</button>
+              ))}
+              <button type="button" onClick={() => press("back")} aria-label="Delete">⌫</button>
+            </div>
+          </div>
+        )}
+        <Problem error={failure} />
+        <div className="test-next">
+          <p className="test-why" aria-live="polite">{nudge ? "Now show your work on the board" : ""}</p>
+          <Button type="submit" disabled={!value || sending || needsWork} aria-busy={sending}>{last ? "Finish" : "Next"}</Button>
         </div>
-      )}
-      <Problem error={failure} />
-      <div className="test-next">
-        <Button type="submit" disabled={!value || sending} aria-busy={sending}>{last ? "Finish" : "Next"}</Button>
+      </div>
+      <div className="test-desk-board">
+        <Whiteboard board={board} onChange={setBoard} typing={typing} required={question.showWork} nudge={nudge} onSize={onBoardSize} />
       </div>
     </form>
   );

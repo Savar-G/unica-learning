@@ -5,11 +5,13 @@ import { SUPPORT_EMAIL } from "@/lib/contact";
 import { reportAlert, reportEmail, type ParentContact } from "@/lib/report-email";
 import { reportPath, type ReportView } from "@/lib/report-view";
 import { adminClient } from "@/lib/supabase-auth";
+import { loadShownWork } from "@/lib/work-store";
 
 // The report step after a test finishes (#65). The finish route runs it with after(), so it never blocks or fails the
 // finish response. In order:
 //   1. Load the finished assessment.
-//   2. Review the child's shown work. Seam: #68 passes the AI reviewer here; #67 adds the work images it reads.
+//   2. Review the child's shown work. Seam: #68 passes the AI reviewer here. The work itself (#67) comes from the
+//      answers and the private bucket (src/lib/work-store.ts, loadShownWork).
 //   3. Build the report model with the assessment core, and store it: one report per assessment.
 //   4. Email the report to the parent.
 //   5. Email Savar an alert.
@@ -113,7 +115,9 @@ async function storeReport(admin: SupabaseClient, a: FinishedAssessment, complet
   if (existing.error) throw new Error(`report load: ${existing.error.message}`);
   if (existing.data) return existing.data;
 
-  const model = reportModel(a.placement, { completedTestsInGrade: completedInGrade, workReviews: await reviewWork(a) });
+  // #67: the child's whiteboard work; the model picks what the report shows.
+  const [workReviews, shownWork] = await Promise.all([reviewWork(a), loadShownWork(admin, a.id)]);
+  const model = reportModel(a.placement, { completedTestsInGrade: completedInGrade, workReviews, shownWork });
   const { data: answers, error: answersError } = await admin.from("answers").select("time_ms").eq("assessment_id", a.id).returns<{ time_ms: number }[]>();
   if (answersError) throw new Error(`answers load: ${answersError.message}`);
   const ms = (answers ?? []).reduce((sum, row) => sum + row.time_ms, 0);

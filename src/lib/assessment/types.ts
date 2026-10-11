@@ -52,7 +52,10 @@ export interface Template {
   strand: Strand;
   grades: ProvinceGrades;
   format: AnswerFormat;
-  /** True when the question suits required shown work on the whiteboard. */
+  /**
+   * True when the question suits required shown work on the whiteboard. It means "may be required": the session picks
+   * the band's count (5 / 7 / 10) from the flagged questions of each route (#67), not all of them.
+   */
   whiteboard: boolean;
   /** BC learning standard, for example "4.5" (curriculum map, section 1). */
   standard: string;
@@ -68,6 +71,12 @@ export interface Question {
   strand: Strand;
   format: AnswerFormat;
   whiteboard: boolean;
+  /**
+   * True when the child must show work on the whiteboard before Next (#67). The session picks the band's count
+   * (GradeBand.whiteboardRequired) on every route, from the templates that suit it first. Absent on tests stored
+   * before #67: nothing is required there.
+   */
+  showWork?: boolean;
   prompt: string;
   readAloud: string;
   /** Shuffled answer choices, only for "choice" questions. */
@@ -78,7 +87,10 @@ export interface Question {
 }
 
 /** A question as the browser receives it: no answer, no coded wrong answers, no drawn numbers. */
-export type PublicQuestion = Pick<Question, "id" | "level" | "strand" | "format" | "whiteboard" | "prompt" | "readAloud" | "choices">;
+export type PublicQuestion = Pick<Question, "id" | "level" | "strand" | "format" | "whiteboard" | "prompt" | "readAloud" | "choices"> & {
+  /** True when the child must show work on the whiteboard before Next (#67). */
+  showWork: boolean;
+};
 
 /**
  * The browser's next screen: a question, numbered from 1, or the end of the test.
