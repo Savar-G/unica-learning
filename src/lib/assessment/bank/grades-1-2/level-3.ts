@@ -63,11 +63,11 @@ export const LEVEL_3: readonly TaggedTemplate[] = [
       const answer = 100 * z + 10 * y + x;
       const sameHundreds = 100 * z + 10 * x + y; // a bigger ones digit than the answer
       const biggestOnes = 100 * y + 10 * x + z; // the biggest ones digit of all
-      const items = [answer, sameHundreds, biggestOnes].map(String);
+      const list = orList(rng, [answer, sameHundreds, biggestOnes].map(String));
       return {
         values: { x, y, z },
-        prompt: `Which number is the greatest: ${orList(items)}?`,
-        readAloud: `Which number is the greatest: ${orList(items)}?`,
+        prompt: `Which number is the greatest: ${list}?`,
+        readAloud: `Which number is the greatest: ${list}?`,
         answer: String(answer),
         wrong: [wrong(sameHundreds, "digit-compare"), wrong(biggestOnes, "digit-compare")],
       };
@@ -271,7 +271,7 @@ export const LEVEL_3: readonly TaggedTemplate[] = [
       return {
         values: { start, step },
         prompt: `What is the rule for this pattern? ${seq.join(", ")}`,
-        readAloud: `What is the rule for this pattern? ${seq.join(", ")}. ${orList([rule(start, step), rule(start, start), rule(step, start)])}?`,
+        readAloud: `What is the rule for this pattern? ${seq.join(", ")}. ${orList(rng, [rule(start, step), rule(start, start), rule(step, start)])}?`,
         answer: rule(start, step),
         wrong: [wrong(rule(start, start), "rule-start"), wrong(rule(step, start), "rule-start")],
       };
@@ -338,15 +338,16 @@ export const LEVEL_3: readonly TaggedTemplate[] = [
     id: "3-growing-tables",
     strand: "A", grades: { BC: 3, AB: 3, SK: 3, MB: 3, ON: 3 }, format: "number", whiteboard: true, standard: "3.7",
     fill(rng) {
-      const ask = rng.int(5, 6);
-      // 1 table seats 4; each table added in the row seats 2 more.
-      const seats = (n: number) => 2 * n + 2;
+      const ask = rng.int(5, 7), side = rng.int(1, 2);
+      // Each table seats `side` children on each long side and 1 at each end of the row: 4, 6, 8 or 6, 10, 14.
+      const seats = (n: number) => 2 * side * n + 2;
+      const text = `1 table seats ${seats(1)} children. 2 tables pushed together in a row seat ${seats(2)}. 3 tables in a row seat ${seats(3)}. How many children can sit at ${ask} tables in a row?`;
       return {
-        values: { ask },
-        prompt: `1 table seats 4 children. 2 tables pushed together in a row seat 6. 3 tables in a row seat 8. How many children can sit at ${ask} tables in a row?`,
-        readAloud: `1 table seats 4 children. 2 tables pushed together in a row seat 6. 3 tables in a row seat 8. How many children can sit at ${ask} tables in a row?`,
+        values: { ask, side },
+        prompt: text,
+        readAloud: text,
         answer: String(seats(ask)),
-        wrong: [wrong(4 * ask, "pattern-multiply"), wrong(seats(4), "next-not-asked")],
+        wrong: [wrong(seats(1) * ask, "pattern-multiply"), wrong(seats(4), "next-not-asked")],
       };
     },
   },
@@ -378,7 +379,7 @@ export const LEVEL_3: readonly TaggedTemplate[] = [
       return {
         values: { light: light ? 1 : 0 },
         prompt: `Which unit is best for measuring the mass of ${thing}?`,
-        readAloud: `Which unit is best for measuring the mass of ${thing}: ${orList([answer, other, odd].map((u) => u.toLowerCase()))}?`,
+        readAloud: `Which unit is best for measuring the mass of ${thing}: ${orList(rng, [answer, other, odd].map((u) => u.toLowerCase()))}?`,
         answer,
         wrong: [wrong(other, "unit-choice"), wrong(odd, "unit-kind")],
       };
@@ -389,7 +390,7 @@ export const LEVEL_3: readonly TaggedTemplate[] = [
     id: "3-length-convert",
     strand: "MG", grades: { BC: 3, AB: 3, SK: 3, MB: 3, ON: 3 }, format: "number", whiteboard: false, standard: "3.9",
     fill(rng) {
-      const n = rng.int(1, 3);
+      const n = rng.int(1, 5);
       return {
         values: { n },
         prompt: `How many centimetres are in ${n} ${n === 1 ? "metre" : "metres"}?`,
@@ -494,10 +495,12 @@ export const LEVEL_3: readonly TaggedTemplate[] = [
     fill(rng) {
       const [x, y] = rng.shuffle(["blue", "red", "green", "yellow"]);
       const many = rng.int(3, 8), few = rng.int(1, many - 2);
+      // Either colour may be named first, so the likely one is not always first.
+      const marbles = rng.shuffle([`${many} ${x} marbles`, count(few, `${y} marble`)]).join(" and ");
       return {
         values: { many, few },
-        prompt: `A bag has ${many} ${x} marbles and ${few} ${y} ${few === 1 ? "marble" : "marbles"}. You pick one without looking. Which colour are you more likely to pick?`,
-        readAloud: `A bag has ${many} ${x} marbles and ${few} ${y} ${few === 1 ? "marble" : "marbles"}. You pick one without looking. Which colour are you more likely to pick: ${x}, ${y}, or are they equally likely?`,
+        prompt: `A bag has ${marbles}. You pick one without looking. Which colour are you more likely to pick?`,
+        readAloud: `A bag has ${marbles}. You pick one without looking. Which colour are you more likely to pick: ${orList(rng, [x, y, "both equally likely"])}?`,
         answer: cap(x),
         wrong: [wrong(cap(y), "chance-reversed"), wrong("Both are equally likely", "D3")],
       };
@@ -513,7 +516,7 @@ export const LEVEL_3: readonly TaggedTemplate[] = [
       return {
         values: { n, heads: heads ? 1 : 0 },
         prompt: `A fair coin landed on ${side} ${n} times in a row. What is more likely on the next toss?`,
-        readAloud: `A fair coin landed on ${side} ${n} times in a row. What is more likely on the next toss: ${side}, ${other}, or are they equally likely?`,
+        readAloud: `A fair coin landed on ${side} ${n} times in a row. What is more likely on the next toss: ${orList(rng, [side, other, "both equally likely"])}?`,
         answer: "Heads and tails are equally likely",
         wrong: [wrong(cap(other), "D2"), wrong(cap(side), "streak")],
       };

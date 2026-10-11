@@ -1,6 +1,6 @@
 // Level 1 (BC grade 1) for the grades 1-2 bank: stage 1 for grade 1, and the "down" form for grade 2.
 // Standards: curriculum map, section 1 (1.1-1.11); example items: section 3, grade 1. Province tags: see ./index.ts.
-import { cap, draw, GAP, NAMES, orList, predictShape, row, SHAPES, shapeQuestion, twoNames, wrong, type TaggedTemplate } from "../kit";
+import { cap, draw, GAP, NAMES, orderClues, orList, predictShape, row, SHAPES, shapeQuestion, twoNames, wrong, type TaggedTemplate } from "../kit";
 import type { Filled } from "../../types";
 
 const THINGS = ["stickers", "marbles", "shells", "crayons", "beads"] as const;
@@ -15,7 +15,7 @@ export const LEVEL_1: readonly TaggedTemplate[] = [
       return {
         values: { ones },
         prompt: `Which number is 10 and ${ones} more?`,
-        readAloud: `Which number is 10 and ${ones} more? 1${ones}, ${ones}1, or 10${ones}?`,
+        readAloud: `Which number is 10 and ${ones} more: ${orList(rng, [`1${ones}`, `${ones}1`, `10${ones}`])}?`,
         answer: `1${ones}`,
         wrong: [wrong(`${ones}1`, "digit-reversal"), wrong(`10${ones}`, "N1")],
       };
@@ -25,9 +25,10 @@ export const LEVEL_1: readonly TaggedTemplate[] = [
     id: "1-skip-count",
     strand: "N", grades: { BC: 1, AB: 1, SK: 1, MB: 1, ON: 1 }, format: "number", whiteboard: false, standard: "1.1",
     fill(rng) {
-      const step = rng.pick([2, 5, 10]);
-      // Start at a multiple of the step and stay at or under 50 (Ontario grade 1 counts to 50).
-      const start = step * rng.int(1, step === 10 ? 2 : 3);
+      // BC 1.1 skip-counts by 2s and 5s (10s come in 2.1). Start at a multiple of the step; by 2s stay within 20,
+      // by 5s go up to 30 (map, grade 1: 5, 10, __, 20).
+      const step = rng.pick([2, 5]);
+      const start = step * rng.int(1, step === 2 ? 7 : 3);
       const gap = rng.int(2, 3);
       const seq = [0, 1, 2, 3].map((i) => start + i * step);
       const show = (blank: string) => seq.map((v, i) => (i === gap ? blank : String(v))).join(", ");
@@ -47,20 +48,22 @@ export const LEVEL_1: readonly TaggedTemplate[] = [
       if (rng.int(0, 1) === 0) {
         // Smallest: a one-digit number beside two teens. A child who reads only the first digit thinks the teen is smaller.
         const single = rng.int(5, 9), teen = rng.int(10, 14), big = rng.int(15, 20);
+        const list = orList(rng, [single, teen, big].map(String));
         return {
           values: { single, teen, big, smallest: 1 },
-          prompt: `Which number is the smallest: ${single}, ${teen} or ${big}?`,
-          readAloud: `Which number is the smallest: ${single}, ${teen}, or ${big}?`,
+          prompt: `Which number is the smallest: ${list}?`,
+          readAloud: `Which number is the smallest: ${list}?`,
           answer: String(single),
           wrong: [wrong(teen, "digit-compare"), wrong(big, "more-less")],
         };
       }
       // Biggest: a big one-digit number tempts a child who compares first digits.
       const single = rng.int(7, 9), small = rng.int(2, 5), teen = rng.int(11, 16);
+      const list = orList(rng, [single, small, teen].map(String));
       return {
         values: { single, teen, small, smallest: 0 },
-        prompt: `Which number is the biggest: ${single}, ${small} or ${teen}?`,
-        readAloud: `Which number is the biggest: ${single}, ${small}, or ${teen}?`,
+        prompt: `Which number is the biggest: ${list}?`,
+        readAloud: `Which number is the biggest: ${list}?`,
         answer: String(teen),
         wrong: [wrong(single, "digit-compare"), wrong(small, "more-less")],
       };
@@ -229,7 +232,7 @@ export const LEVEL_1: readonly TaggedTemplate[] = [
       return {
         values: { shown: keys.indexOf(answer) },
         prompt: `Which letters show this pattern? ${items.map((s) => s.glyph).join(GAP)}`,
-        readAloud: `Look at the pattern: ${items.map((s) => s.word).join(", ")}. Which letters show this pattern: ${orList([answer, ...picks])}?`,
+        readAloud: `Look at the pattern: ${items.map((s) => s.word).join(", ")}. Which letters show this pattern: ${orList(rng, [answer, ...picks])}?`,
         answer,
         wrong: picks.map((k) => wrong(k, "pattern-core")),
       };
@@ -294,13 +297,16 @@ export const LEVEL_1: readonly TaggedTemplate[] = [
         (r) => [r.int(4, 9), r.int(1, 5), r.int(2, 8), r.int(3, 9)],
         ([a, b, c, d]) => a > c && a + b < c + d && c + d <= 20,
       );
-      const first = `${a} + ${b}`, second = `${c} + ${d}`;
+      // trap = a + b, the sum with the bigger first number; bigger = c + d. Either may be named first.
+      const trap = `${a} + ${b}`, bigger = `${c} + ${d}`;
+      const [x, y] = rng.shuffle([trap, bigger]);
+      const say = (e: string) => e.replace("+", "plus");
       return {
-        values: { a, b, c, d },
-        prompt: `Which is more: ${first} or ${second}?`,
-        readAloud: `Which is more: ${a} plus ${b}, or ${c} plus ${d}? Or are they the same?`,
-        answer: second,
-        wrong: [wrong(first, "first-number"), wrong("They are the same", "same-size")],
+        values: { a, b, c, d, trapFirst: x === trap ? 1 : 0 },
+        prompt: `Which is more: ${x} or ${y}?`,
+        readAloud: `Which is more: ${say(x)}, or ${say(y)}? Or are they the same?`,
+        answer: bigger,
+        wrong: [wrong(trap, "first-number"), wrong("They are the same", "same-size")],
       };
     },
   },
@@ -441,10 +447,11 @@ export const LEVEL_1: readonly TaggedTemplate[] = [
       const longest = rng.int(0, 1) === 1;
       const word = longest ? "longest" : "shortest";
       // x is longer than y, and y is longer than z.
+      const clues = orderClues(rng, [`the ${x} ${thing}`, `the ${y} ${thing}`, `the ${z} ${thing}`], "longer", "shorter");
       return {
         values: { longest: longest ? 1 : 0 },
-        prompt: `The ${x} ${thing} is longer than the ${y} ${thing}. The ${y} ${thing} is longer than the ${z} ${thing}. Which ${thing} is the ${word}?`,
-        readAloud: `The ${x} ${thing} is longer than the ${y} ${thing}. The ${y} ${thing} is longer than the ${z} ${thing}. Which ${thing} is the ${word}: ${orList([x, y, z].map((c) => `the ${c} one`))}?`,
+        prompt: `${clues} Which ${thing} is the ${word}?`,
+        readAloud: `${clues} Which ${thing} is the ${word}: ${orList(rng, [x, y, z].map((c) => `the ${c} one`))}?`,
         answer: cap(`the ${longest ? x : z} ${thing}`),
         wrong: [wrong(cap(`the ${longest ? z : x} ${thing}`), "more-less"), wrong(cap(`the ${y} ${thing}`), "order-pair")],
       };
@@ -464,7 +471,7 @@ export const LEVEL_1: readonly TaggedTemplate[] = [
       return {
         values: { ask },
         prompt: `Which shape has ${question}?`,
-        readAloud: `Which shape has ${question}: ${orList([answer, ...picks].map((s) => `a ${s.split(" ")[1]}`))}?`,
+        readAloud: `Which shape has ${question}: ${orList(rng, [answer, ...picks].map((s) => `a ${s.split(" ")[1]}`))}?`,
         answer,
         wrong: picks.map((s) => wrong(s, "shape-name")),
       };
@@ -530,12 +537,13 @@ export const LEVEL_1: readonly TaggedTemplate[] = [
       const coded = [
         [wrong("Sometimes", "impossible-possible"), wrong("Always", "chance-reversed")],
         [wrong("Sometimes", "certain-likely"), wrong("Never", "chance-reversed")],
-        [wrong("Never", "D6"), wrong("Always", "certain")],
+        [wrong("Never", "rules-out-possible"), wrong("Always", "sure-of-possible")],
       ][kind];
       return {
         values: { kind },
-        prompt: `A bag has ${bag}. You pick one block without looking. Will it be ${pick}?`,
-        readAloud: `A bag has ${bag}. You pick one block without looking. Will it be ${pick}: never, sometimes, or always?`,
+        // "Sometimes" fits many picks, not one, so the child picks again and again.
+        prompt: `A bag has ${bag}. You pick a block without looking, put it back, and do this many times. How often will you pick ${pick}?`,
+        readAloud: `A bag has ${bag}. You pick a block without looking, put it back, and do this many times. How often will you pick ${pick}: never, sometimes, or always?`,
         answer,
         wrong: coded,
       };
@@ -550,13 +558,16 @@ export const LEVEL_1: readonly TaggedTemplate[] = [
         ["You will read a book at school this week", "A horse will come to your class this week"],
         ["It will rain some time this year", "It will rain lemonade this year"],
         ["You will see a bird outside today", "You will see a penguin in your yard today"],
+        ["You will brush your teeth today", "You will brush a lion's teeth today"],
+        ["Your teacher will say your name this week", "Your teacher will fly to school this week"],
+        ["You will see a car on your street today", "You will see a camel on your street today"],
       ] as const;
       const i = rng.int(0, pairs.length - 1);
       const [likely, unlikely] = pairs[i];
       return {
         values: { pair: i },
         prompt: "Which is more likely to happen?",
-        readAloud: `Which is more likely to happen? ${orList([likely, unlikely, "they are equally likely"])}?`,
+        readAloud: `Which is more likely to happen? ${orList(rng, [likely, unlikely, "they are equally likely"])}?`,
         answer: likely,
         wrong: [wrong(unlikely, "chance-reversed"), wrong("They are equally likely", "D3")],
       };
@@ -602,10 +613,11 @@ export const LEVEL_1: readonly TaggedTemplate[] = [
       const [x, y, z] = rng.shuffle([...NAMES]).slice(0, 3);
       const tallest = rng.int(0, 1) === 1;
       const word = tallest ? "tallest" : "shortest";
+      const clues = orderClues(rng, [x, y, z], "taller", "shorter");
       return {
         values: { tallest: tallest ? 1 : 0 },
-        prompt: `${x} is taller than ${y}. ${y} is taller than ${z}. Who is the ${word}?`,
-        readAloud: `${x} is taller than ${y}. ${y} is taller than ${z}. Who is the ${word}: ${orList([x, y, z])}?`,
+        prompt: `${clues} Who is the ${word}?`,
+        readAloud: `${clues} Who is the ${word}: ${orList(rng, [x, y, z])}?`,
         answer: tallest ? x : z,
         wrong: [wrong(tallest ? z : x, "more-less"), wrong(y, "order-pair")],
       };
@@ -619,10 +631,11 @@ export const LEVEL_1: readonly TaggedTemplate[] = [
       const [x, y, z] = rng.shuffle(["red", "blue", "green", "yellow"]);
       const heaviest = rng.int(0, 1) === 1;
       const word = heaviest ? "heaviest" : "lightest";
+      const clues = orderClues(rng, [`the ${x} box`, `the ${y} box`, `the ${z} box`], "heavier", "lighter");
       return {
         values: { heaviest: heaviest ? 1 : 0 },
-        prompt: `On a balance, the ${x} box is heavier than the ${y} box. The ${y} box is heavier than the ${z} box. Which box is the ${word}?`,
-        readAloud: `On a balance, the ${x} box is heavier than the ${y} box. The ${y} box is heavier than the ${z} box. Which box is the ${word}: ${orList([x, y, z].map((c) => `the ${c} box`))}?`,
+        prompt: `On a balance: ${clues} Which box is the ${word}?`,
+        readAloud: `On a balance: ${clues} Which box is the ${word}: ${orList(rng, [x, y, z].map((c) => `the ${c} box`))}?`,
         answer: cap(`the ${heaviest ? x : z} box`),
         wrong: [wrong(cap(`the ${heaviest ? z : x} box`), "more-less"), wrong(cap(`the ${y} box`), "order-pair")],
       };

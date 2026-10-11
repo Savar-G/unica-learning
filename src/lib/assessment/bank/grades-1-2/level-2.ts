@@ -32,10 +32,11 @@ export const LEVEL_2: readonly TaggedTemplate[] = [
         rng.pick(tensEven ? [2, 4, 6, 8] : [1, 3, 5, 7, 9]) * 10 + rng.pick(onesEven ? [0, 2, 4, 6, 8] : [1, 3, 5, 7, 9]);
       const answer = make(!even, even);
       const [w1, w2] = draw(rng, () => [make(even, !even), make(even, !even)], ([x, y]) => x !== y);
+      const list = orList(rng, [answer, w1, w2].map(String));
       return {
         values: { answer, w1, w2, even: even ? 1 : 0 },
-        prompt: `Which number is ${even ? "even" : "odd"}: ${orList([String(answer), String(w1), String(w2)])}?`,
-        readAloud: `Which number is ${even ? "even" : "odd"}: ${orList([String(answer), String(w1), String(w2)])}?`,
+        prompt: `Which number is ${even ? "even" : "odd"}: ${list}?`,
+        readAloud: `Which number is ${even ? "even" : "odd"}: ${list}?`,
         answer: String(answer),
         wrong: [wrong(w1, "even-odd"), wrong(w2, "even-odd")],
       };
@@ -67,10 +68,11 @@ export const LEVEL_2: readonly TaggedTemplate[] = [
         ([t, o, c]) => o < t && c > o && (t - 1) * 10 + c !== o * 10 + t,
       );
       const answer = t * 10 + o, trap = (t - 1) * 10 + c, swapped = o * 10 + t;
+      const list = orList(rng, [answer, trap, swapped].map(String));
       return {
         values: { answer, trap, swapped },
-        prompt: `Which number is the greatest: ${orList([String(answer), String(trap), String(swapped)])}?`,
-        readAloud: `Which number is the greatest: ${orList([String(answer), String(trap), String(swapped)])}?`,
+        prompt: `Which number is the greatest: ${list}?`,
+        readAloud: `Which number is the greatest: ${list}?`,
         answer: String(answer),
         wrong: [wrong(trap, "digit-compare"), wrong(swapped, "digit-reversal")],
       };
@@ -214,13 +216,14 @@ export const LEVEL_2: readonly TaggedTemplate[] = [
     strand: "O", grades: { BC: 2, AB: 2, SK: 2, MB: 2, ON: 2 }, format: "choice", whiteboard: true, standard: "2.3",
     fill(rng) {
       const a = rng.pick([8, 9]), b = rng.int(4, 9);
+      // To make 10, move `moved` from b to a. The errors: move nothing from b, or add it to b instead of taking it away.
       const moved = 10 - a;
       return {
         values: { a, b },
         prompt: `Which is the same as ${a} + ${b}?`,
-        readAloud: `Which is the same as ${a} plus ${b}: ${orList([`10 plus ${b - moved}`, `10 plus ${b}`, `10 plus ${b + 1}`])}?`,
+        readAloud: `Which is the same as ${a} plus ${b}: ${orList(rng, [`10 plus ${b - moved}`, `10 plus ${b}`, `10 plus ${b + moved}`])}?`,
         answer: `10 + ${b - moved}`,
-        wrong: [wrong(`10 + ${b}`, "compensation"), wrong(`10 + ${b + 1}`, "compensation")],
+        wrong: [wrong(`10 + ${b}`, "compensation"), wrong(`10 + ${b + moved}`, "compensation-direction")],
       };
     },
   },
@@ -388,7 +391,7 @@ export const LEVEL_2: readonly TaggedTemplate[] = [
       return {
         values: { a, b, extra },
         prompt: "Which is true?",
-        readAloud: `Which is true? ${orList([right, running, offByOne].map(say))}?`,
+        readAloud: `Which is true? ${orList(rng, [right, running, offByOne].map(say))}?`,
         answer: right,
         wrong: [wrong(running, "A1"), wrong(offByOne, "compensation")],
       };
@@ -462,7 +465,7 @@ export const LEVEL_2: readonly TaggedTemplate[] = [
       return {
         values: { big: big ? 1 : 0 },
         prompt: `Which unit is best for measuring the length of ${thing}?`,
-        readAloud: `Which unit is best for measuring the length of ${thing}: ${orList([answer, other, odd].map((u) => u.toLowerCase()))}?`,
+        readAloud: `Which unit is best for measuring the length of ${thing}: ${orList(rng, [answer, other, odd].map((u) => u.toLowerCase()))}?`,
         answer,
         wrong: [wrong(other, "unit-choice"), wrong(odd, "unit-kind")],
       };
@@ -472,17 +475,19 @@ export const LEVEL_2: readonly TaggedTemplate[] = [
     id: "2-square-or-rectangle",
     strand: "MG", grades: { BC: 2, AB: 2, SK: 2, MB: 2, ON: 2 }, format: "choice", whiteboard: false, standard: "2.9",
     fill(rng) {
-      const square = "■ square", rectangle = "▬ rectangle", triangle = "▲ triangle";
+      const square = "■ square", rectangle = "▬ rectangle";
       const askSquare = rng.int(0, 1) === 1;
-      const question = askSquare
-        ? "Which shape has 4 sides that are all the same length and 4 square corners?"
-        : "Which shape has 4 square corners, 2 long sides and 2 short sides?";
+      const questions = askSquare
+        ? ["Which shape has 4 sides that are all the same length and 4 square corners?", "Which shape has 4 equal sides and 4 square corners?"]
+        : ["Which shape has 4 square corners, 2 long sides and 2 short sides?", "Which shape has 4 square corners but sides that are not all the same length?"];
+      const q = rng.int(0, 1);
+      const [odd, oddWord] = rng.pick([["▲ triangle", "a triangle"], ["● circle", "a circle"]] as const);
       return {
-        values: { askSquare: askSquare ? 1 : 0 },
-        prompt: question,
-        readAloud: `${question} A square, a rectangle, or a triangle?`,
+        values: { askSquare: askSquare ? 1 : 0, q },
+        prompt: questions[q],
+        readAloud: `${questions[q]} ${orList(rng, ["a square", "a rectangle", oddWord])}?`,
         answer: askSquare ? square : rectangle,
-        wrong: [wrong(askSquare ? rectangle : square, "square-rectangle"), wrong(triangle, "shape-name")],
+        wrong: [wrong(askSquare ? rectangle : square, "square-rectangle"), wrong(odd, "shape-name")],
       };
     },
   },
@@ -491,22 +496,26 @@ export const LEVEL_2: readonly TaggedTemplate[] = [
     id: "2-turned-shape",
     strand: "MG", grades: { BC: 2, AB: 2, SK: 2, MB: 2, ON: 2 }, format: "choice", whiteboard: false, standard: "2.9",
     fill(rng) {
-      const square = rng.int(0, 1) === 1;
-      return square
-        ? {
-            values: { square: 1 },
-            prompt: "A square is turned so it stands on one corner, like this: ◆. What shape is it now?",
-            readAloud: "A square is turned so it stands on one corner. What shape is it now: still a square, a diamond and not a square, or a triangle?",
-            answer: "Still a square",
-            wrong: [wrong("A diamond, not a square", "M4"), wrong("A triangle", "shape-name")],
-          }
-        : {
-            values: { square: 0 },
-            prompt: "A triangle is turned upside down, like this: ▼. What shape is it now?",
-            readAloud: "A triangle is turned upside down. What shape is it now: still a triangle, not a triangle because it is upside down, or a square?",
-            answer: "Still a triangle",
-            wrong: [wrong("Not a triangle, because it is upside down", "M4"), wrong("A square", "shape-name")],
-          };
+      // [shape, how it is turned, picture, the M4 answer, names that are wrong for it]. No picture for the square:
+      // some fonts draw ◆ as a tall rhombus. A square is also a rectangle, so "a rectangle" is never its wrong answer.
+      // Choices have no commas, so the read-aloud list stays clear.
+      const turns = [
+        ["square", "so it stands on one corner", "", "A diamond and not a square", ["triangle", "circle"]],
+        ["triangle", "upside down", " like this: ▼", "Not a triangle because it is upside down", ["square", "rectangle", "circle"]],
+        ["rectangle", "so it stands on a short side", " like this: ▮", "Not a rectangle because it stands up tall", ["square", "triangle", "circle"]],
+      ] as const;
+      const t = rng.int(0, turns.length - 1);
+      const [shape, how, picture, m4, others] = turns[t];
+      const other = rng.pick(others);
+      const still = `Still a ${shape}`, wrongName = `A ${other}`;
+      return {
+        values: { t },
+        prompt: `A ${shape} is turned ${how}${picture ? `,${picture}` : ""}. What shape is it now?`,
+        // Each choice is its own sentence, so a listener hears where one ends and the next begins.
+        readAloud: `A ${shape} is turned ${how}. What shape is it now? Choose one. ${rng.shuffle([still, m4, wrongName]).join(". ")}.`,
+        answer: still,
+        wrong: [wrong(m4, "M4"), wrong(wrongName, "shape-name")],
+      };
     },
   },
   {
@@ -538,20 +547,25 @@ export const LEVEL_2: readonly TaggedTemplate[] = [
     id: "2-roll-and-stack",
     strand: "MG", grades: { BC: 2, AB: 2, SK: 2, MB: 2, ON: 2 }, format: "choice", whiteboard: false, standard: "2.9",
     fill(rng) {
-      const can = "A can (a cylinder)", ball = "A ball (a sphere)", box = "A box (a cube)";
+      // Objects that clearly have the shape: no boxes (most are not cubes), no tall thin cylinders.
+      const cylinder = rng.pick(["A can", "A drum", "A jar"]);
+      const sphere = rng.pick(["A ball", "An orange", "A marble"]);
+      const cube = rng.pick(["A block", "A number cube", "An ice cube"]);
+      const [can, ball, box] = [`${cylinder} (a cylinder)`, `${sphere} (a sphere)`, `${cube} (a cube)`];
+      const said = orList(rng, [cylinder, sphere, cube].map((s) => s.toLowerCase()));
       const both = rng.int(0, 1) === 1;
       return both
         ? {
             values: { both: 1 },
             prompt: "Which one can roll and can also be stacked?",
-            readAloud: "Which one can roll and can also be stacked: a can, a ball, or a box?",
+            readAloud: `Which one can roll and can also be stacked: ${said}?`,
             answer: can,
             wrong: [wrong(ball, "one-attribute"), wrong(box, "one-attribute")],
           }
         : {
             values: { both: 0 },
             prompt: "Which one can be stacked but cannot roll?",
-            readAloud: "Which one can be stacked but cannot roll: a can, a ball, or a box?",
+            readAloud: `Which one can be stacked but cannot roll: ${said}?`,
             answer: box,
             wrong: [wrong(can, "one-attribute"), wrong(ball, "roll-slide")],
           };
@@ -597,10 +611,12 @@ export const LEVEL_2: readonly TaggedTemplate[] = [
     fill(rng) {
       const [x, y] = rng.shuffle(["red", "blue", "green", "yellow"]);
       const many = rng.int(2, 5);
+      // Either colour may be named first, so the likely one is not always first.
+      const parts = rng.shuffle([`${many} equal ${x} parts`, `1 equal ${y} part`]).join(" and ");
       return {
         values: { many },
-        prompt: `A spinner has ${many} equal ${x} parts and 1 equal ${y} part. Which colour is it more likely to land on?`,
-        readAloud: `A spinner has ${many} equal ${x} parts and 1 equal ${y} part. Which colour is it more likely to land on: ${x}, ${y}, or are they equally likely?`,
+        prompt: `A spinner has ${parts}. Which colour is it more likely to land on?`,
+        readAloud: `A spinner has ${parts}. Which colour is it more likely to land on: ${orList(rng, [x, y, "both equally likely"])}?`,
         answer: cap(x),
         wrong: [wrong(cap(y), "chance-reversed"), wrong(`${cap(x)} and ${y} are equally likely`, "D3")],
       };
@@ -619,11 +635,11 @@ export const LEVEL_2: readonly TaggedTemplate[] = [
       const coded = [
         [wrong("Possible, but not certain", "certain-likely"), wrong("Impossible", "chance-reversed")],
         [wrong("Possible, but not certain", "impossible-possible"), wrong("Certain", "chance-reversed")],
-        [wrong("Impossible", "D6"), wrong("Certain", "certain")],
+        [wrong("Impossible", "rules-out-possible"), wrong("Certain", "sure-of-possible")],
       ][kind];
       return {
         values: { kind },
-        prompt: `A bag has ${bag}. You pick one cube without looking. Is it certain, possible or impossible that it is ${pick}?`,
+        prompt: `A bag has ${bag}. You pick one cube without looking. Is it certain, possible but not certain, or impossible that it is ${pick}?`,
         readAloud: `A bag has ${bag}. You pick one cube without looking. Is it certain, possible but not certain, or impossible that it is ${pick}?`,
         answer,
         wrong: coded,

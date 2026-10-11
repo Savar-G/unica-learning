@@ -190,6 +190,41 @@ describe("the grades 1-2 bank", () => {
       }
     });
 
+    it("when the text names the choices, the answer is not always in the same place among them", () => {
+      if (template.format !== "choice") return;
+      // A choice as words: no glyphs, lower case, and spaces that do not break read as spaces.
+      const words = (s: string) => s.replace(/[●■▲★◆▼▬▮]/g, "").replace(/ /g, " ").trim().toLowerCase();
+      for (const field of ["prompt", "readAloud"] as const) {
+        const ranks = new Set<number>();
+        for (const seed of SEEDS.slice(0, 150)) {
+          const q = fillTemplate(template, seed);
+          const text = words(q[field]).replace(/ plus /g, " + ").replace(/ is the same as /g, " = ");
+          const named = [q.answer, ...q.wrong.map((w) => w.value)].map(words);
+          const positions = named.map((c) => text.indexOf(c));
+          // Glyph-only choices have no words to find.
+          if (named.some((c) => !c) || positions.some((p) => p < 0)) continue;
+          ranks.add([...positions].sort((a, b) => a - b).indexOf(positions[0]));
+        }
+        expect(ranks.size, `${field}: the answer is always choice ${[...ranks][0] + 1} of those named`).not.toBe(1);
+      }
+    });
+
+    it("when the prompt and the read-aloud both name the choices, they name them in the same order", () => {
+      if (template.format !== "choice") return;
+      const words = (s: string) => s.replace(/[●■▲★◆▼▬▮]/g, "").replace(/ /g, " ").trim().toLowerCase();
+      for (const seed of SEEDS.slice(0, 150)) {
+        const q = fillTemplate(template, seed);
+        const named = [q.answer, ...q.wrong.map((w) => w.value)].map(words);
+        if (named.some((c) => !c)) continue;
+        const order = (text: string) => {
+          const at = named.map((c) => words(text).indexOf(c));
+          return at.some((p) => p < 0) ? null : named.map((_, i) => i).sort((a, b) => at[a] - at[b]).join();
+        };
+        const [inPrompt, spoken] = [order(q.prompt), order(q.readAloud)];
+        if (inPrompt && spoken) expect(spoken, `seed ${seed}`).toBe(inPrompt);
+      }
+    });
+
     it("never pairs 1 with a plural, as in '1 red cubes'", () => {
       for (const seed of SEEDS) {
         const q = fillTemplate(template, seed);
@@ -199,13 +234,15 @@ describe("the grades 1-2 bank", () => {
       }
     });
 
-    it("the same seed gives the same question, and different seeds vary it", () => {
+    it("the same seed gives the same question, and different seeds give at least 4 different questions", () => {
       expect(fillTemplate(template, 5)).toEqual(fillTemplate(template, 5));
-      const variants = new Set(SEEDS.slice(0, 50).map((seed) => {
+      // A retake or a sibling should rarely meet the very same question.
+      // Same key as the session uses: the prompt and the set of choices.
+      const variants = new Set(SEEDS.map((seed) => {
         const q = fillTemplate(template, seed);
         return `${q.prompt} ${[...(q.choices ?? [])].sort()}`;
       }));
-      expect(variants.size).toBeGreaterThan(1);
+      expect(variants.size).toBeGreaterThanOrEqual(4);
     });
   });
 

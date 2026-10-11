@@ -77,7 +77,7 @@ export const LEVEL_K: readonly TaggedTemplate[] = [
       return {
         values: { a, b },
         prompt: `${nameA} has ${a} ${item}: ${row(a)}. ${nameB} has ${b} ${item}: ${row(b)}. Who has more ${item}?`,
-        readAloud: `${nameA} has ${a} ${item}. ${nameB} has ${b} ${item}. Who has more ${item}: ${orList([nameA, nameB, "they have the same"])}?`,
+        readAloud: `${nameA} has ${a} ${item}. ${nameB} has ${b} ${item}. Who has more ${item}: ${orList(rng, [nameA, nameB, "they have the same"])}?`,
         answer: more,
         wrong: [wrong(less, "more-less"), wrong(same, "same-size")],
       };
@@ -305,10 +305,12 @@ export const LEVEL_K: readonly TaggedTemplate[] = [
       const i = rng.int(0, pairs.length - 1);
       const [light, heavy] = pairs[i];
       const same = "They weigh the same";
+      // Either object may come first, so the heavy one is not always named second.
+      const [first, second] = rng.shuffle([light, heavy]);
       return {
-        values: { pair: i },
-        prompt: `Which is heavier: ${light} or ${heavy}?`,
-        readAloud: `Which is heavier: ${light} or ${heavy}? Or do they weigh the same?`,
+        values: { pair: i, heavyFirst: first === heavy ? 1 : 0 },
+        prompt: `Which is heavier: ${first} or ${second}?`,
+        readAloud: `Which is heavier: ${first} or ${second}? Or do they weigh the same?`,
         answer: cap(heavy),
         wrong: [wrong(cap(light), "bigger-heavier"), wrong(same, "same-size")],
       };
@@ -320,25 +322,35 @@ export const LEVEL_K: readonly TaggedTemplate[] = [
     fill(rng) {
       const objects = ["apple", "orange", "book", "shoe", "toy car", "banana"] as const;
       const [down, up] = rng.shuffle(objects);
+      // Either side may be described first, so the heavy object is not always named first.
+      const sides = rng.shuffle([`the side with the ${down} goes down`, `the side with the ${up} goes up`]);
+      const story = `On a balance, ${sides[0]} and ${sides[1]}.`;
       return {
         values: { down: objects.indexOf(down), up: objects.indexOf(up) },
-        prompt: `On a balance, the side with the ${down} goes down and the side with the ${up} goes up. Which is heavier?`,
-        readAloud: `On a balance, the side with the ${down} goes down and the side with the ${up} goes up. Which is heavier: the ${down}, the ${up}, or are they the same?`,
+        prompt: `${story} Which is heavier?`,
+        readAloud: `${story} Which is heavier: ${orList(rng, [`the ${down}`, `the ${up}`, "they weigh the same"])}?`,
         answer: `The ${down}`,
         wrong: [wrong(`The ${up}`, "balance-up"), wrong("They weigh the same", "same-size")],
       };
     },
   },
   {
-    // Naming flat shapes. WNCP starts 2D shapes in grade 1 (Kindergarten sorts 3D objects).
-    id: "k-name-shape",
+    // One attribute of a flat shape (K8: single attributes; math terminology is not expected, so no shape names).
+    // WNCP starts 2D shapes in grade 1 (Kindergarten sorts 3D objects).
+    id: "k-shape-attribute",
     strand: "MG", grades: { BC: 0, AB: 1, SK: 1, MB: 1, ON: 0 }, format: "choice", whiteboard: false, standard: "K8",
     fill(rng) {
-      // Glyphs only: the shape names on the buttons would give the answer away.
-      const shapes = SHAPES.slice(0, 3);
-      const k = rng.int(0, shapes.length);
-      const target = k === shapes.length ? shapes[0] : shapes[k];
-      const ask = k === shapes.length ? "Which shape is round?" : `Which one is a ${target.word}?`;
+      // Glyphs only, so the child looks at the shapes: circle, square, triangle.
+      const [circle, square, triangle] = SHAPES.slice(0, 3);
+      const shapes = [circle, square, triangle];
+      const questions = [
+        ["Which shape is round?", circle],
+        ["Which shape has no corners?", circle],
+        ["Which shape has 3 corners?", triangle],
+        ["Which shape has 4 corners?", square],
+      ] as const;
+      const k = rng.int(0, questions.length - 1);
+      const [ask, target] = questions[k];
       return {
         values: { k },
         prompt: ask,
@@ -360,7 +372,7 @@ export const LEVEL_K: readonly TaggedTemplate[] = [
       return {
         values: { canRoll: canRoll ? 1 : 0 },
         prompt: ask,
-        readAloud: `${ask} ${orList([answer, ...others].map((s) => s.toLowerCase()))}?`,
+        readAloud: `${ask} ${orList(rng, [answer, ...others].map((s) => s.toLowerCase()))}?`,
         answer,
         wrong: others.map((o) => wrong(o, "roll-slide")),
       };
@@ -409,7 +421,7 @@ export const LEVEL_K: readonly TaggedTemplate[] = [
       return {
         values: { likely: likely.indexOf(answer) },
         prompt: "Which of these is most likely to happen?",
-        readAloud: `Which of these is most likely to happen? ${orList([answer, ...others])}?`,
+        readAloud: `Which of these is most likely to happen? ${orList(rng, [answer, ...others])}?`,
         answer,
         wrong: others.map((o) => wrong(o, "chance-reversed")),
       };

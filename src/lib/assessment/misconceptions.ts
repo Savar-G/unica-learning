@@ -83,6 +83,7 @@ export const MISCONCEPTIONS = {
   "first-number": { description: "Compares only the first numbers of two sums", evidence: "none" },
   "even-odd": { description: "Decides even or odd from the tens digit, not the ones digit", evidence: "none" },
   compensation: { description: "Makes a ten from one number but does not change the other number to match", evidence: "none" },
+  "compensation-direction": { description: "Makes a ten, then adds to the other number instead of taking the same amount away", evidence: "none" },
   "regroup-forget": { description: "Regroups but forgets to take the ten or hundred away from the next place", evidence: "none" },
   "zero-placeholder": { description: "Leaves out a zero that holds a place, so 4 hundreds and 7 ones becomes 47", evidence: "none" },
   "coin-count": { description: "Counts the coins or bills instead of adding their values", evidence: "none" },
@@ -103,6 +104,8 @@ export const MISCONCEPTIONS = {
   "chance-reversed": { description: "Picks the less likely outcome as the more likely one", evidence: "none" },
   "impossible-possible": { description: "Thinks an impossible event could still happen", evidence: "none" },
   "certain-likely": { description: "Calls a certain event only likely", evidence: "none" },
+  "rules-out-possible": { description: "Thinks an event that can happen is impossible", evidence: "none" },
+  "sure-of-possible": { description: "Thinks an event that may not happen is certain", evidence: "none" },
   streak: { description: "Thinks a result that keeps happening is more likely to happen again", evidence: "none" },
 } satisfies Record<string, Misconception>;
 

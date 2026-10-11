@@ -42,10 +42,13 @@ export function twoNames(rng: Rng): [string, string] {
   return [a, b];
 }
 
-/** "a, b or c": the choices in words, for read-aloud. The order is alphabetical so it gives no hint. */
-export const orList = (items: readonly string[]) => {
-  const sorted = [...items].sort();
-  return sorted.length < 2 ? sorted.join("") : `${sorted.slice(0, -1).join(", ")} or ${sorted[sorted.length - 1]}`;
+/**
+ * "a, b or c": the choices in words, in an order drawn from the seed. A fixed order (alphabetical, or answer first)
+ * would put the answer in the same place every time, and a child who listens could learn that.
+ */
+export const orList = (rng: Rng, items: readonly string[]) => {
+  const mixed = rng.shuffle(items);
+  return mixed.length < 2 ? mixed.join("") : `${mixed.slice(0, -1).join(", ")} or ${mixed[mixed.length - 1]}`;
 };
 
 /** A coded wrong answer. */
@@ -83,7 +86,7 @@ function shapePattern(rng: Rng, core: readonly number[], length: number, ask: nu
 export function shapeQuestion(rng: Rng, core: readonly number[], length: number, gap = length) {
   const p = shapePattern(rng, core, length, gap);
   const next = gap === length;
-  const options = orList(p.choiceWords.map((w) => `a ${w}`));
+  const options = orList(rng, p.choiceWords.map((w) => `a ${w}`));
   return {
     prompt: `${next ? "What comes next?" : "What shape is missing?"} ${p.shown}`,
     readAloud: `Look at the pattern: ${p.spoken}. ${next ? "Which shape comes next" : "Which shape is missing"}: ${options}?`,
@@ -105,7 +108,7 @@ export function predictShape(rng: Rng, core: readonly number[], ask: number) {
   const shown = Array.from({ length: core.length * 2 }, (_, i) => at(i + 1));
   return {
     prompt: `The pattern keeps going: ${shown.map((s) => s.glyph).join(GAP)} … What shape is number ${ask}?`,
-    readAloud: `The pattern is ${shown.map((s) => s.word).join(", ")}, and it keeps going. What shape is number ${ask} in the pattern: ${orList([answer, ...picks].map((s) => `a ${s.word}`))}?`,
+    readAloud: `The pattern is ${shown.map((s) => s.word).join(", ")}, and it keeps going. What shape is number ${ask} in the pattern: ${orList(rng, [answer, ...picks].map((s) => `a ${s.word}`))}?`,
     answer: shapeLabel(answer),
     wrong: picks.map((s) => wrong(shapeLabel(s), neighbours.includes(s) ? "one-to-one" : "pattern-core")),
   };
@@ -128,6 +131,16 @@ export function keepSumsTogether<T extends Template>(template: T): T {
       };
     },
   };
+}
+
+/**
+ * Two clues that put three things in order, told from the big end ("is longer than") or the small end ("is shorter
+ * than") at random, so the longest is not always the one named first.
+ */
+export function orderClues(rng: Rng, [big, mid, small]: readonly [string, string, string], more: string, less: string) {
+  return rng.int(0, 1) === 1
+    ? `${cap(big)} is ${more} than ${mid}. ${cap(mid)} is ${more} than ${small}.`
+    : `${cap(small)} is ${less} than ${mid}. ${cap(mid)} is ${less} than ${big}.`;
 }
 
 /** count(1, "ten") is "1 ten"; count(3, "ten") is "3 tens". */

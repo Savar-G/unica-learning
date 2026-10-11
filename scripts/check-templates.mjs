@@ -352,4 +352,9 @@ for (const [i, batch] of batches.entries()) {
 const summary = writeReport(results, current, opts);
 console.log(`\nPass ${summary.pass}, review ${summary.review}, fail ${summary.fail}, error ${summary.error}, not checked ${summary.unchecked}.`);
 console.log(`Report: ${REPORT}`);
-process.exit(summary.fail + summary.error > 0 ? 1 : 0);
+// The bank is ready only when every template has a current pass or a review a person has read; a run that leaves
+// templates unchecked, failed or errored exits 1, so it can gate a merge.
+const ready = summary.fail + summary.error + summary.unchecked === 0;
+if (!ready) console.log(summary.unchecked ? "Not ready: run the checker again to check the rest." : "Not ready: fix the failed templates and run again.");
+else if (summary.review) console.log("Ready once a person has read the review items in the report.");
+process.exit(ready ? 0 : 1);

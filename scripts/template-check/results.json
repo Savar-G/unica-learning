@@ -1,0 +1,539 @@
+{
+  "version": 1,
+  "templates": {
+    "1-add-to-20": {
+      "hash": "46a023c49ba47383",
+      "status": "pass",
+      "checkedAt": "2026-10-11",
+      "model": "claude-opus-5-5",
+      "findings": {
+        "id": "1-add-to-20",
+        "answerCorrect": true,
+        "wrongAnswersOk": true,
+        "bcGradeFits": true,
+        "provinceTags": [
+          {
+            "province": "AB",
+            "ok": true,
+            "suggestedGrade": "grade 1",
+            "confidence": "high",
+            "reason": "Grade 1 adds within 20."
+          },
+          {
+            "province": "SK",
+            "ok": true,
+            "suggestedGrade": "grade 1",
+            "confidence": "high",
+            "reason": "N1.9: addition and subtraction to 20."
+          },
+          {
+            "province": "MB",
+            "ok": true,
+            "suggestedGrade": "grade 1",
+            "confidence": "high",
+            "reason": "WNCP grade 1: addition with answers to 20."
+          },
+          {
+            "province": "ON",
+            "ok": true,
+            "suggestedGrade": "grade 1",
+            "confidence": "high",
+            "reason": "B2: add and subtract to 20."
+          }
+        ],
+        "wordingProblems": [],
+        "problems": [],
+        "verdict": "pass"
+      }
+    },
+    "2-even-or-odd": {
+      "hash": "ad9270837c5614c5",
+      "status": "pass",
+      "checkedAt": "2026-10-11",
+      "model": "claude-opus-5-5",
+      "findings": {
+        "id": "2-even-or-odd",
+        "answerCorrect": true,
+        "wrongAnswersOk": true,
+        "bcGradeFits": true,
+        "provinceTags": [
+          {
+            "province": "AB",
+            "ok": true,
+            "suggestedGrade": "grade 2",
+            "confidence": "medium",
+            "reason": "Even and odd numbers within 100 are a Grade 2 number topic in Alberta (WNCP-based outcome and the 2022 K-6 curriculum)."
+          },
+          {
+            "province": "SK",
+            "ok": true,
+            "suggestedGrade": "grade 2",
+            "confidence": "high",
+            "reason": "SK Grade 2 number outcomes (WNCP-based) include deciding whether a number up to 100 is even or odd."
+          },
+          {
+            "province": "MB",
+            "ok": true,
+            "suggestedGrade": "grade 2",
+            "confidence": "high",
+            "reason": "MB Grade 2 includes 'Demonstrate if a number (up to 100) is even or odd' (WNCP outcome)."
+          },
+          {
+            "province": "ON",
+            "ok": true,
+            "suggestedGrade": "grade 2",
+            "confidence": "medium",
+            "reason": "ON 2020 Grade 2 Number asks students to describe what makes a number even or odd."
+          }
+        ],
+        "wordingProblems": [],
+        "problems": [],
+        "verdict": "pass"
+      }
+    },
+    "3-greatest": {
+      "hash": "d57d5ab0f087826b",
+      "status": "pass",
+      "checkedAt": "2026-10-11",
+      "model": "claude-opus-5-5",
+      "findings": {
+        "id": "3-greatest",
+        "answerCorrect": true,
+        "wrongAnswersOk": true,
+        "bcGradeFits": true,
+        "provinceTags": [
+          {
+            "province": "AB",
+            "ok": true,
+            "suggestedGrade": "grade 3",
+            "confidence": "high",
+            "reason": "Comparing and ordering numbers to 1000 is a Grade 3 outcome in Alberta."
+          },
+          {
+            "province": "SK",
+            "ok": true,
+            "suggestedGrade": "grade 3",
+            "confidence": "high",
+            "reason": "SK Grade 3 extends whole-number understanding, including comparing and ordering, to 1000."
+          },
+          {
+            "province": "MB",
+            "ok": true,
+            "suggestedGrade": "grade 3",
+            "confidence": "high",
+            "reason": "MB Grade 3 includes comparing and ordering numbers to 1000."
+          },
+          {
+            "province": "ON",
+            "ok": true,
+            "suggestedGrade": "grade 3",
+            "confidence": "high",
+            "reason": "ON 2020 Grade 3 B1.2: compare and order whole numbers up to and including 1000."
+          }
+        ],
+        "wordingProblems": [],
+        "problems": [],
+        "verdict": "pass"
+      }
+    },
+    "k-shape-attribute": {
+      "hash": "255dc1e84be11b8f",
+      "status": "pass",
+      "checkedAt": "2026-10-11",
+      "model": "claude-opus-5-5",
+      "findings": {
+        "id": "k-shape-attribute",
+        "answerCorrect": true,
+        "wrongAnswersOk": true,
+        "bcGradeFits": true,
+        "provinceTags": [
+          {
+            "province": "AB",
+            "ok": true,
+            "suggestedGrade": "grade 1",
+            "confidence": "medium",
+            "reason": "Sorting and describing 2D shapes by one attribute is grade 1 in the WNCP-based outcomes. Under the 2022 AB curriculum it may begin in K."
+          },
+          {
+            "province": "SK",
+            "ok": true,
+            "suggestedGrade": "grade 1",
+            "confidence": "high",
+            "reason": "SK K sorts only 3D objects (SS K.3). 2D shapes sorted by one attribute come in grade 1."
+          },
+          {
+            "province": "MB",
+            "ok": true,
+            "suggestedGrade": "grade 1",
+            "confidence": "high",
+            "reason": "WNCP grade 1: sort 3D objects and 2D shapes using one attribute."
+          },
+          {
+            "province": "ON",
+            "ok": true,
+            "suggestedGrade": "K",
+            "confidence": "medium",
+            "reason": "The ON Kindergarten program has children identify and describe 2D shapes in their own words."
+          }
+        ],
+        "wordingProblems": [],
+        "problems": [],
+        "verdict": "pass"
+      }
+    },
+    "1-skip-count": {
+      "hash": "34cb22ef434e1912",
+      "status": "pass",
+      "checkedAt": "2026-10-11",
+      "model": "claude-opus-5-5",
+      "findings": {
+        "id": "1-skip-count",
+        "answerCorrect": true,
+        "wrongAnswersOk": true,
+        "bcGradeFits": true,
+        "provinceTags": [
+          {
+            "province": "AB",
+            "ok": true,
+            "suggestedGrade": "grade 1",
+            "confidence": "high",
+            "reason": "Grade 1 skip counts by 2s, 5s and 10s."
+          },
+          {
+            "province": "SK",
+            "ok": true,
+            "suggestedGrade": "grade 1",
+            "confidence": "high",
+            "reason": "N1.1: count by 2s to 20 and by 5s and 10s to 100."
+          },
+          {
+            "province": "MB",
+            "ok": true,
+            "suggestedGrade": "grade 1",
+            "confidence": "high",
+            "reason": "WNCP grade 1 number sequence by 2s, 5s and 10s."
+          },
+          {
+            "province": "ON",
+            "ok": true,
+            "suggestedGrade": "grade 1",
+            "confidence": "high",
+            "reason": "Grade 1 counts to 50 by 1s, 2s, 5s and 10s."
+          }
+        ],
+        "wordingProblems": [],
+        "problems": [],
+        "verdict": "pass"
+      }
+    },
+    "1-never-sometimes-always": {
+      "hash": "d3a46fdf1dfc03c8",
+      "status": "pass",
+      "checkedAt": "2026-10-11",
+      "model": "claude-opus-5-5",
+      "findings": {
+        "id": "1-never-sometimes-always",
+        "answerCorrect": true,
+        "wrongAnswersOk": true,
+        "bcGradeFits": true,
+        "provinceTags": [
+          {
+            "province": "AB",
+            "ok": true,
+            "suggestedGrade": "grade 5",
+            "confidence": "medium",
+            "reason": "Alberta first describes likelihood with words like impossible, possible and certain in the upper elementary grades, around grade 5. I am less sure how the newer K-6 curriculum places it."
+          },
+          {
+            "province": "SK",
+            "ok": true,
+            "suggestedGrade": "grade 5",
+            "confidence": "high",
+            "reason": "The SK grade 5 statistics and probability outcome describes the likelihood of a single outcome as impossible, possible or certain. This is the first time SK teaches it."
+          },
+          {
+            "province": "MB",
+            "ok": true,
+            "suggestedGrade": "grade 5",
+            "confidence": "high",
+            "reason": "MB 5.SP.3 describes the likelihood of a single outcome using words such as impossible, possible and certain."
+          },
+          {
+            "province": "ON",
+            "ok": true,
+            "suggestedGrade": "grade 1",
+            "confidence": "high",
+            "reason": "ON 2020 grade 1 D2.1 uses impossible, possible and certain to describe the likelihood of events."
+          }
+        ],
+        "wordingProblems": [],
+        "problems": [],
+        "verdict": "pass"
+      }
+    },
+    "2-make-ten-strategy": {
+      "hash": "f10a7914e9ce1c9b",
+      "status": "review",
+      "checkedAt": "2026-10-11",
+      "model": "claude-opus-5-5",
+      "findings": {
+        "id": "2-make-ten-strategy",
+        "answerCorrect": true,
+        "wrongAnswersOk": true,
+        "bcGradeFits": true,
+        "provinceTags": [
+          {
+            "province": "AB",
+            "ok": true,
+            "confidence": "medium",
+            "reason": "Facts to 20 with strategies such as making 10 fit Grade 2. Some of this may start in Grade 1, which is within one grade."
+          },
+          {
+            "province": "SK",
+            "ok": true,
+            "confidence": "high",
+            "reason": "WNCP Grade 2: mental math strategies, including making 10, for basic facts to 18."
+          },
+          {
+            "province": "MB",
+            "ok": true,
+            "confidence": "high",
+            "reason": "Grade 2 N10 names making 10 as a strategy for basic facts."
+          },
+          {
+            "province": "ON",
+            "ok": true,
+            "confidence": "medium",
+            "reason": "Grade 2 asks students to recall facts to 20 using strategies. Making ten also appears in Grade 1."
+          }
+        ],
+        "wordingProblems": [
+          "In examples 2, 4, 5, 7 and 8 the read-aloud lists the choices in a different order than the choice buttons. For example, in example 2 the voice says '10 plus 7, 10 plus 5 or 10 plus 9' but the buttons show 10 + 9, 10 + 5, 10 + 7."
+        ],
+        "problems": [],
+        "verdict": "review"
+      }
+    },
+    "2-square-or-rectangle": {
+      "hash": "125de90bd5bcb1eb",
+      "status": "review",
+      "checkedAt": "2026-10-11",
+      "model": "claude-opus-5-5",
+      "findings": {
+        "id": "2-square-or-rectangle",
+        "answerCorrect": true,
+        "wrongAnswersOk": true,
+        "bcGradeFits": true,
+        "provinceTags": [
+          {
+            "province": "AB",
+            "ok": true,
+            "confidence": "medium",
+            "reason": "Describing and sorting 2D shapes by sides and corners is Grade 2 geometry."
+          },
+          {
+            "province": "SK",
+            "ok": true,
+            "confidence": "medium",
+            "reason": "WNCP Grade 2: describe, compare and construct triangles, squares, rectangles and circles."
+          },
+          {
+            "province": "MB",
+            "ok": true,
+            "confidence": "high",
+            "reason": "Grade 2 SS: describe, compare and construct 2D shapes, including squares and rectangles."
+          },
+          {
+            "province": "ON",
+            "ok": true,
+            "confidence": "medium",
+            "reason": "Grade 2 E1.1: sort and identify 2D shapes by side lengths and angles."
+          }
+        ],
+        "wordingProblems": [
+          "In most examples the read-aloud lists the shapes in a different order than the choice buttons. For example, in example 1 the voice says 'a square, a circle or a rectangle' but the buttons show rectangle, square, circle.",
+          "Small point: the read-aloud starts each choice list with a lowercase 'a' after a question mark ('...? a square, ...'). A browser voice reads this fine, but it is inconsistent as written text."
+        ],
+        "problems": [],
+        "verdict": "review"
+      }
+    },
+    "2-turned-shape": {
+      "hash": "5866728b98f3d841",
+      "status": "review",
+      "checkedAt": "2026-10-11",
+      "model": "claude-opus-5-5",
+      "findings": {
+        "id": "2-turned-shape",
+        "answerCorrect": true,
+        "wrongAnswersOk": true,
+        "bcGradeFits": true,
+        "provinceTags": [
+          {
+            "province": "AB",
+            "ok": true,
+            "confidence": "medium",
+            "reason": "Recognizing shapes in different orientations is taught in Grades 1 and 2."
+          },
+          {
+            "province": "SK",
+            "ok": true,
+            "confidence": "medium",
+            "reason": "WNCP Grades 1 and 2 include identifying 2D shapes in different orientations."
+          },
+          {
+            "province": "MB",
+            "ok": true,
+            "confidence": "medium",
+            "reason": "WNCP Grades 1 and 2 include identifying 2D shapes in different orientations."
+          },
+          {
+            "province": "ON",
+            "ok": true,
+            "confidence": "medium",
+            "reason": "Identifying shapes regardless of orientation is part of Grade 1 and Grade 2 geometry."
+          }
+        ],
+        "wordingProblems": [
+          "The read-aloud lists the choices in a different order than the buttons in every example. For example, in example 1 the voice reads 'Still a square' first, but that button is shown third.",
+          "The square examples (1 and 4) show no picture, while the rectangle and triangle examples show one (▮, ▼). Consider adding ◆ so the square examples match."
+        ],
+        "problems": [],
+        "verdict": "review"
+      }
+    },
+    "2-roll-and-stack": {
+      "hash": "2c3bd721df2cd4ac",
+      "status": "review",
+      "checkedAt": "2026-10-11",
+      "model": "claude-opus-5-5",
+      "findings": {
+        "id": "2-roll-and-stack",
+        "answerCorrect": true,
+        "wrongAnswersOk": true,
+        "bcGradeFits": true,
+        "provinceTags": [
+          {
+            "province": "AB",
+            "ok": true,
+            "confidence": "low",
+            "reason": "Sorting 3D objects is taught in Grades 1 and 2. Using two attributes at once fits Grade 2."
+          },
+          {
+            "province": "SK",
+            "ok": true,
+            "confidence": "medium",
+            "reason": "WNCP Grade 2: sort 2D shapes and 3D objects using two attributes."
+          },
+          {
+            "province": "MB",
+            "ok": true,
+            "confidence": "high",
+            "reason": "Grade 2 SS: sort 2D shapes and 3D objects using two attributes."
+          },
+          {
+            "province": "ON",
+            "ok": true,
+            "confidence": "medium",
+            "reason": "Rolling, stacking and sliding properties of 3D objects are taught in Grades 1 and 2, so Grade 2 is within one grade."
+          }
+        ],
+        "wordingProblems": [
+          "In most examples the read-aloud lists the objects in a different order than the choice buttons. For example, in example 1 the voice says 'an ice cube, a ball or a drum' but the buttons show ice cube, drum, ball."
+        ],
+        "problems": [],
+        "verdict": "review"
+      }
+    },
+    "2-certain-possible": {
+      "hash": "5fc0395180a54f91",
+      "status": "pass",
+      "checkedAt": "2026-10-11",
+      "model": "claude-opus-5-5",
+      "findings": {
+        "id": "2-certain-possible",
+        "answerCorrect": true,
+        "wrongAnswersOk": true,
+        "bcGradeFits": true,
+        "provinceTags": [
+          {
+            "province": "AB",
+            "ok": true,
+            "suggestedGrade": "grade 5",
+            "confidence": "medium",
+            "reason": "Alberta first describes likelihood with words like impossible, possible and certain in the upper elementary grades, around grade 5. I am less sure how the newer K-6 curriculum places it."
+          },
+          {
+            "province": "SK",
+            "ok": true,
+            "suggestedGrade": "grade 5",
+            "confidence": "high",
+            "reason": "The SK grade 5 probability outcome describes the likelihood of a single outcome as impossible, possible or certain."
+          },
+          {
+            "province": "MB",
+            "ok": true,
+            "suggestedGrade": "grade 5",
+            "confidence": "high",
+            "reason": "MB 5.SP.3 uses the words impossible, possible and certain."
+          },
+          {
+            "province": "ON",
+            "ok": true,
+            "suggestedGrade": "grade 1",
+            "confidence": "high",
+            "reason": "ON 2020 grade 1 D2.1 uses exactly the terms impossible, possible and certain."
+          }
+        ],
+        "wordingProblems": [],
+        "problems": [],
+        "verdict": "pass"
+      }
+    },
+    "3-growing-tables": {
+      "hash": "2dc222fca1fc929b",
+      "status": "pass",
+      "checkedAt": "2026-10-11",
+      "model": "claude-opus-5-5",
+      "findings": {
+        "id": "3-growing-tables",
+        "answerCorrect": true,
+        "wrongAnswersOk": true,
+        "bcGradeFits": true,
+        "provinceTags": [
+          {
+            "province": "AB",
+            "ok": true,
+            "suggestedGrade": "grade 3",
+            "confidence": "high",
+            "reason": "Grade 3 describes and extends increasing patterns."
+          },
+          {
+            "province": "SK",
+            "ok": true,
+            "suggestedGrade": "grade 3",
+            "confidence": "high",
+            "reason": "P3.1: increasing patterns."
+          },
+          {
+            "province": "MB",
+            "ok": true,
+            "suggestedGrade": "grade 3",
+            "confidence": "high",
+            "reason": "WNCP grade 3 PR1: increasing patterns."
+          },
+          {
+            "province": "ON",
+            "ok": true,
+            "suggestedGrade": "grade 3",
+            "confidence": "high",
+            "reason": "Grade 3 C1: growing patterns and pattern rules."
+          }
+        ],
+        "wordingProblems": [],
+        "problems": [],
+        "verdict": "pass"
+      }
+    }
+  }
+}
