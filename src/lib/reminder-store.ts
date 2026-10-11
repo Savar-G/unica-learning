@@ -205,22 +205,33 @@ export async function sendReminder(r: DueReminder, token: string, state: LoadedS
 
 export type UnsubscribeState = "subscribed" | "unsubscribed" | "unknown";
 
-/** The parent a reminder's unsubscribe token belongs to, or null. */
+/**
+ * The parent an unsubscribe token belongs to, or null: a reminder's token (email_log), or a report email's (reports,
+ * #80). Both stop the same thing: reminders and emails about our plans.
+ */
 async function tokenParent(admin: SupabaseClient, token: unknown): Promise<string | null> {
   const hash = hashToken(token);
   if (!hash) return null;
   const { data, error } = await admin.from("email_log").select("parent_id").eq("unsubscribe_hash", hash).maybeSingle<{ parent_id: string }>();
   if (error) throw new Error(`unsubscribe lookup: ${error.message}`);
-  return data?.parent_id ?? null;
+  if (data) return data.parent_id;
+  const report = await admin.from("reports").select("parent_id").eq("unsubscribe_hash", hash).maybeSingle<{ parent_id: string }>();
+  if (report.error) throw new Error(`unsubscribe lookup: ${report.error.message}`);
+  return report.data?.parent_id ?? null;
+}
+
+/** Whether this parent unsubscribed from reminders and emails about our plans. */
+export async function parentUnsubscribed(admin: SupabaseClient, parentId: string): Promise<boolean> {
+  const { count, error } = await admin.from("email_log").select("id", { count: "exact", head: true }).eq("parent_id", parentId).eq("kind", "unsubscribe");
+  if (error) throw new Error(`unsubscribe state: ${error.message}`);
+  return (count ?? 0) > 0;
 }
 
 /** Whether the parent behind this token still gets reminders. */
 export async function unsubscribeState(admin: SupabaseClient, token: unknown): Promise<UnsubscribeState> {
   const parent = await tokenParent(admin, token);
   if (!parent) return "unknown";
-  const { count, error } = await admin.from("email_log").select("id", { count: "exact", head: true }).eq("parent_id", parent).eq("kind", "unsubscribe");
-  if (error) throw new Error(`unsubscribe state: ${error.message}`);
-  return (count ?? 0) > 0 ? "unsubscribed" : "subscribed";
+  return (await parentUnsubscribed(admin, parent)) ? "unsubscribed" : "subscribed";
 }
 
 /** Stops every reminder to the parent behind this token. Doing it twice is fine. */
