@@ -52,7 +52,10 @@ export interface Template {
   strand: Strand;
   grades: ProvinceGrades;
   format: AnswerFormat;
-  /** True when the question suits required shown work on the whiteboard. */
+  /**
+   * True when the question suits required shown work on the whiteboard. It means "may be required": the session picks
+   * the band's count (5 / 7 / 10) from the flagged questions of each route (#67), not all of them.
+   */
   whiteboard: boolean;
   /** BC learning standard, for example "4.5" (curriculum map, section 1). */
   standard: string;

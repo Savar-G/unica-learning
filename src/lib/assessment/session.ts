@@ -119,11 +119,12 @@ function buildStage(
   return questions;
 }
 
-/** Questions whose template suits required shown work (Template.whiteboard). */
-const suited = (questions: readonly Question[]) => questions.filter((q) => q.whiteboard).length;
+/** How many questions have a template that suits required shown work (Template.whiteboard). */
+const countSuited = (questions: readonly Question[]) => questions.filter((q) => q.whiteboard).length;
 
-// Marks `count` questions of one stage as "show your work" (#67). Questions whose template suits it come first; if
-// the stage has too few, typed-number questions fill the rest, then any question, so every route keeps the band's count.
+// Marks `count` questions of one stage as "show your work" (#67). The template's flag means "may be required": the
+// seed picks `count` of the flagged questions. If the stage has too few, typed-number questions fill the rest, then
+// any question, so every route keeps the band's count.
 function markShownWork(questions: Question[], count: number, seed: number, label: string): Question[] {
   const rng = rngFor(seed, `work:${label}`);
   const order = [
@@ -140,12 +141,12 @@ function markShownWork(questions: Question[], count: number, seed: number, label
  * same count. Half in each stage, moved toward the stage with more suited questions when the other runs short.
  */
 function shownWorkInStage1(total: number, stage1: readonly Question[], forms: readonly (readonly Question[])[]): number {
-  const inStage1 = suited(stage1);
-  const inForms = Math.min(...forms.map(suited));
-  let k = Math.ceil(total / 2);
-  if (k > inStage1) k = Math.max(inStage1, total - inForms);
-  else if (total - k > inForms) k = Math.min(inStage1, total - inForms);
-  return Math.min(Math.max(k, 0), total, stage1.length);
+  const suitedInStage1 = countSuited(stage1);
+  const suitedInForms = Math.min(...forms.map(countSuited));
+  let count = Math.ceil(total / 2);
+  if (count > suitedInStage1) count = Math.max(suitedInStage1, total - suitedInForms);
+  else if (total - count > suitedInForms) count = Math.min(suitedInStage1, total - suitedInForms);
+  return Math.min(Math.max(count, 0), total, stage1.length);
 }
 
 /** Starts a test. Every stage 2 form is drawn now, so the session needs no bank after this. */
@@ -161,12 +162,13 @@ export function createSession(profile: ChildProfile, seed: number, options: Sess
   const stage2Form = (route: Route, level: number) => buildStage(bank, profile, band.strands, level as Level, rest, seed, route, new Set(seen));
   const stage2 = { up: stage2Form("up", grade + 1), stay: stage2Form("stay", grade), down: stage2Form("down", grade - 1) };
 
-  const k = shownWorkInStage1(band.whiteboardRequired, stage1, Object.values(stage2));
-  const mark = (route: Route) => markShownWork(stage2[route], band.whiteboardRequired - k, seed, route);
+  // #67: exactly band.whiteboardRequired show-your-work questions on every route.
+  const inStage1 = shownWorkInStage1(band.whiteboardRequired, stage1, Object.values(stage2));
+  const mark = (route: Route) => markShownWork(stage2[route], band.whiteboardRequired - inStage1, seed, route);
   return {
     profile,
     seed,
-    stage1: markShownWork(stage1, k, seed, "s1"),
+    stage1: markShownWork(stage1, inStage1, seed, "s1"),
     stage2: { up: mark("up"), stay: mark("stay"), down: mark("down") },
     route: null,
     answers: [],

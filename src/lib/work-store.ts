@@ -2,7 +2,7 @@ import "server-only";
 import { randomBytes } from "node:crypto";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { ShownWork, StoredTest } from "@/lib/assessment";
-import { workPath } from "@/lib/work";
+import { workPath } from "@/lib/work-payload";
 
 // The child's whiteboard drawings (#67) in Supabase Storage. The bucket is private (migration add_shown_work): the
 // server writes with the secret key; a signed-in parent can read only the files in their own folder, so the report page

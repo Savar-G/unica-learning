@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { WORK_IMAGE_MAX_BYTES, WORK_TEXT_MAX } from "@/lib/test-api";
-import { parseWork, workPath } from "@/lib/work";
+import { parseWork, workPath } from "@/lib/work-payload";
 
 // A real 1 x 1 PNG.
 const PNG_1PX = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==";

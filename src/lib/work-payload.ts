@@ -1,6 +1,8 @@
 // The whiteboard work that comes with an answer (#67), checked on the server before anything is stored.
-// Server only (Buffer). Pure: the answer route stores what this returns (src/lib/work-store.ts).
-import { WORK_IMAGE_MAX_BYTES, WORK_TEXT_MAX } from "@/lib/test-api";
+// For the server: it uses Node's Buffer. It has no "server-only" import so that its tests can run, as
+// src/lib/sign-in-link.ts. No network or database: the answer route stores what this returns (src/lib/work-store.ts).
+// The rule for which questions need work is in the assessment core (workProblem); this checks size and format.
+import { WORK_IMAGE_MAX_BYTES, WORK_TEXT_MAX, type WorkPayload } from "@/lib/test-api";
 
 /** The work as the answer route stores it: the drawing as PNG bytes (or none), and the typed working (or ""). */
 export type ParsedWork = { ok: true; png: Buffer | null; text: string } | { ok: false; error: "invalid" | "work_too_big"; message: string };
@@ -13,13 +15,13 @@ const BASE64_MAX = Math.ceil(WORK_IMAGE_MAX_BYTES / 3) * 4;
 const invalid = (message: string): ParsedWork => ({ ok: false, error: "invalid", message });
 
 /**
- * Checks the `work` field of an answer: `{ image?: base64 PNG, text?: string }`, or nothing for an empty board.
- * The drawing must be a PNG of at most WORK_IMAGE_MAX_BYTES; the typed working at most WORK_TEXT_MAX characters.
+ * Checks the `work` field of an answer (a WorkPayload), or nothing for an empty board. The drawing must be a PNG of
+ * at most WORK_IMAGE_MAX_BYTES; the typed working at most WORK_TEXT_MAX characters.
  */
 export function parseWork(raw: unknown): ParsedWork {
   if (raw === undefined || raw === null) return { ok: true, png: null, text: "" };
   if (typeof raw !== "object" || Array.isArray(raw)) return invalid("The work must be an object.");
-  const { image, text } = raw as { image?: unknown; text?: unknown };
+  const { image, text } = raw as { [K in keyof WorkPayload]?: unknown };
 
   let png: Buffer | null = null;
   if (image !== undefined && image !== null) {

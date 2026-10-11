@@ -67,6 +67,13 @@ function paint(ctx: CanvasRenderingContext2D, s: Stroke, width: number, scale = 
   ctx.restore();
 }
 
+/** True when any pixel of the layer has ink. */
+function hasInk(ctx: CanvasRenderingContext2D, width: number, height: number): boolean {
+  const alpha = ctx.getImageData(0, 0, width, height).data;
+  for (let i = 3; i < alpha.length; i += 4) if (alpha[i] > 0) return true;
+  return false;
+}
+
 const toBlob = (canvas: HTMLCanvasElement) => new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, "image/png"));
 const toBase64 = (blob: Blob) =>
   new Promise<string>((resolve, reject) => {
@@ -77,8 +84,9 @@ const toBase64 = (blob: Blob) =>
   });
 
 /**
- * The drawing as a PNG in base64, dark ink on white, or null when nothing is drawn. It shows the work with a small
- * margin (exportFrame), also work below what the board shows now. Made smaller until it fits the server's limit.
+ * The drawing as a PNG in base64, dark ink on white, or null when nothing is drawn, also when the eraser took away
+ * every line. It shows the work with a small margin (exportFrame), also work below what the board shows now. Made
+ * smaller until it fits the server's limit. Throws when the browser cannot make the picture.
  */
 export async function boardImage(strokes: readonly Stroke[], size: BoardSize): Promise<string | null> {
   if (!hasDrawing(strokes)) return null;
@@ -86,7 +94,7 @@ export async function boardImage(strokes: readonly Stroke[], size: BoardSize): P
   const frame = exportFrame(strokes, boardWidth);
   let blob: Blob | null = null;
   // Image pixels per board width: 1200 first, smaller only when the PNG is over the limit.
-  for (const perWidth of [1200, 900, 600]) {
+  for (const [attempt, perWidth] of [1200, 900, 600].entries()) {
     const width = Math.max(1, Math.round(frame.w * perWidth));
     const height = Math.max(1, Math.round(frame.h * perWidth));
     // The ink on its own layer first, so the eraser clears ink only and never makes holes in the white.
@@ -98,16 +106,19 @@ export async function boardImage(strokes: readonly Stroke[], size: BoardSize): P
     out.width = width;
     out.height = height;
     const outCtx = out.getContext("2d");
-    if (!inkCtx || !outCtx) return null;
+    if (!inkCtx || !outCtx) throw new Error("No 2D canvas");
     inkCtx.translate(-frame.x * perWidth, -frame.y * perWidth);
     for (const s of strokes) paint(inkCtx, s, perWidth, perWidth / boardWidth);
+    // Every line erased: an empty board, not a blank white picture.
+    if (attempt === 0 && !hasInk(inkCtx, width, height)) return null;
     outCtx.fillStyle = "#fff";
     outCtx.fillRect(0, 0, width, height);
     outCtx.drawImage(ink, 0, 0);
     blob = await toBlob(out);
     if (blob && blob.size <= WORK_IMAGE_MAX_BYTES) break;
   }
-  return blob ? toBase64(blob) : null;
+  if (!blob) throw new Error("The drawing could not be saved as a PNG");
+  return toBase64(blob);
 }
 
 // The draft (#72): the board of the question on screen stays in this browser until its answer is stored, so a stop and

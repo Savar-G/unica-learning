@@ -1,7 +1,7 @@
 import { nextQuestion, submitAnswer, testStep, workProblem } from "@/lib/assessment";
 import { loadTest, openAnswerWindow, testAccess } from "@/lib/assessment-store";
 import { ANSWER_BODY_MAX, ANSWER_MAX, QUESTION_TIME_CAP_MS, testFail, type StepResult } from "@/lib/test-api";
-import { parseWork } from "@/lib/work";
+import { parseWork } from "@/lib/work-payload";
 import { removeWork, uploadWork } from "@/lib/work-store";
 
 // Marks the answer to the current question with the assessment core, stores it, and returns the next step.
@@ -14,13 +14,14 @@ export async function POST(request: Request, ctx: RouteContext<"/api/account/ass
   if ("error" in access) return access.error;
   const { admin, parent } = access;
 
-  // A body bigger than any allowed drawing is refused before it is read.
-  if (Number(request.headers.get("content-length") ?? 0) > ANSWER_BODY_MAX) {
-    return testFail("work_too_big", 413, { message: "The answer is too big to save." });
-  }
+  // A body bigger than any allowed drawing is refused: at once when its length is given, else while it is read.
+  const tooBig = () => testFail("work_too_big", 413, { message: "The answer is too big to save." });
+  if (Number(request.headers.get("content-length") ?? 0) > ANSWER_BODY_MAX) return tooBig();
+  const raw = await readCapped(request, ANSWER_BODY_MAX);
+  if (raw === null) return tooBig();
   let body: { questionId?: unknown; response?: unknown; timeMs?: unknown; work?: unknown };
   try {
-    body = await request.json();
+    body = JSON.parse(raw);
   } catch {
     return testFail("bad_json", 400);
   }
@@ -99,4 +100,23 @@ export async function POST(request: Request, ctx: RouteContext<"/api/account/ass
     if (routeError) console.error("[test] route save failed", routeError.message);
   }
   return Response.json({ ok: true, step: testStep(next) } satisfies StepResult);
+}
+
+/** The request body as text, or null as soon as it passes `max` bytes (a body sent without a length is read in parts). */
+async function readCapped(request: Request, max: number): Promise<string | null> {
+  if (!request.body) return "";
+  const reader = request.body.getReader();
+  const parts: Uint8Array[] = [];
+  let size = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    size += value.byteLength;
+    if (size > max) {
+      await reader.cancel().catch(() => {});
+      return null;
+    }
+    parts.push(value);
+  }
+  return Buffer.concat(parts).toString("utf8");
 }

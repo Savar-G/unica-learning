@@ -35,6 +35,12 @@ export const ANSWER_MAX = 12;
 /** Time on one question is capped here, so a tab left open overnight does not skew the speed data. */
 export const QUESTION_TIME_CAP_MS = 60 * 60_000;
 
+/** The whiteboard work sent with an answer (#67): the drawing as a base64 PNG, and the typed working. Either may be left out. */
+export interface WorkPayload {
+  image?: string;
+  text?: string;
+}
+
 /** The largest whiteboard drawing the server stores, as PNG bytes (#67). The browser makes the image smaller to fit. */
 export const WORK_IMAGE_MAX_BYTES = 1_000_000;
 /** The most typed working the server stores for one question, in characters (#67). */

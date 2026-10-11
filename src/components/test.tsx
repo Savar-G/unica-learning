@@ -8,7 +8,7 @@ import { useCallback, useEffect, useRef, useState, type FormEvent } from "react"
 import Link from "next/link";
 import { Button, GradientPanel } from "@/ds";
 import { breakDue, hasWork, type HelpAnswer, type PublicQuestion, type TestStep } from "@/lib/assessment";
-import { ANSWER_MAX, type FinishResult, type StartResult, type StepResult, type TestError } from "@/lib/test-api";
+import { ANSWER_MAX, type FinishResult, type StartResult, type StepResult, type TestError, type WorkPayload } from "@/lib/test-api";
 import { track } from "@/lib/track";
 import { SUPPORT_EMAIL, SUPPORT_HREF } from "@/lib/contact";
 import { draftKey, draftPrefix, emptyBoard, hasDrawing, type BoardState } from "@/lib/whiteboard";
@@ -19,9 +19,6 @@ import { TestProgress } from "./test-progress";
 import { ReadAloud } from "./test-read-aloud";
 import { Whiteboard, boardImage, clearDrafts, loadDraft, saveDraft, type BoardSize } from "./whiteboard";
 import "./test.css";
-
-/** The whiteboard work sent with an answer (#67): the drawing as a base64 PNG, and the typed working. */
-type WorkPayload = { image?: string; text?: string };
 
 type Screen =
   | { name: "intro" }
@@ -210,7 +207,7 @@ function Problem({ error }: { error: TestError | null }) {
     : error === "expired" ? "The last test was not finished within 24 hours, so it closed."
     : error === "retake_closed" ? <>A new test opens 30 days after the last one. <Link href="/account">Your account</Link> shows the date.</>
     : error === "work_required" ? "Show your work on the whiteboard, then press Next."
-    : error === "work_too_big" ? "Your work is too big to save. Make it shorter, then press Next again."
+    : error === "work_too_big" ? "Your work is too big to save. Clear some of it, then press Next again."
     : <>Something went wrong. Check the internet connection and try again. If this keeps happening, email <a href={SUPPORT_HREF}>{SUPPORT_EMAIL}</a>.</>;
   return <p role="alert" className="test-alert">{text}</p>;
 }
@@ -295,7 +292,9 @@ function Question({ testId, typing, question, last, onAnswer, failure }: Questio
     return () => window.clearTimeout(t);
   }, [testId, draft, board]);
 
-  const drawn = hasDrawing(board.strokes);
+  // The strokes that turned out to be an empty picture (the eraser took every line): no drawing until the child draws again.
+  const [erased, setErased] = useState<BoardState["strokes"] | null>(null);
+  const drawn = hasDrawing(board.strokes) && erased !== board.strokes;
   const text = typing ? board.text : "";
   // On a show-your-work question, Next stays off until there is an answer and the board has work (D-088).
   const needsWork = question.showWork && !hasWork({ drawn, text });
@@ -321,12 +320,20 @@ function Question({ testId, typing, question, last, onAnswer, failure }: Questio
     setSending(true);
     const timeMs = performance.now() - shownAt.current;
     let image: string | null = null;
+    let blank = false;
     try {
       image = await boardImage(board.strokes, boardSize.current);
+      blank = drawn && image === null;
     } catch {
-      // The drawing could not be saved as an image: a show-your-work question still needs typed work or a retry.
+      // The browser could not make the picture: the answer goes without it, and the server says if work is missing.
     }
     const typed = text.trim();
+    if (blank) setErased(board.strokes);
+    // Everything was erased on a show-your-work question: the board is empty, so the nudge comes back instead of Next.
+    if (question.showWork && blank && !typed) {
+      setSending(false);
+      return;
+    }
     const work: WorkPayload | undefined = image || typed ? { ...(image ? { image } : {}), ...(typed ? { text: typed } : {}) } : undefined;
     const ok = await onAnswer(question.id, value, timeMs, work);
     // On success this question unmounts; on failure the child keeps the answer and the work, and can press Next again.
