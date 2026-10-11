@@ -51,7 +51,7 @@
 [data-look="warm"] .test-title { margin: 0; font: 300 clamp(36px, 4.2vw, 60px)/1.04 var(--sans); letter-spacing: -0.035em; outline: none; text-wrap: balance; }
 .test-lead { margin: 0; max-width: 32ch; font: 400 20px/1.5 var(--sans); color: var(--ink-2); }
 .test-alert { margin: 0; padding: 12px 16px; border: 1px solid var(--accent); border-radius: 10px; background: var(--accent-soft); color: var(--ink); font-size: 16px; line-height: 1.45; scroll-margin-bottom: 124px; }
-.test-alert a { color: inherit; }
+.test-alert a { display: inline-flex; align-items: center; min-height: 44px; color: inherit; }
 
 /* ---------- buttons ---------- */
 /* Next and every main button: white text on the dark button (D-088; the prototype showed dark text here). */
@@ -101,8 +101,8 @@
   .test-split:has(> .test-field) { --test-low: 140px; }
   .test-choices { grid-template-columns: 1fr 1fr; }
   .test-num { grid-template-columns: 1fr 1fr; max-width: none; align-items: start; }
-  /* Reserve the drawing area's 360 px plus the board heading and the pane's padding. */
-  .test-split.test-desk { --test-low: 432px; }
+  /* Reserve the drawing area's 360 px, the full Draw/Type tool rail, the heading and the pane's padding. */
+  .test-split.test-desk { --test-low: 464px; }
   .test-desk .wb-surface { min-height: 360px; }
 }
 
