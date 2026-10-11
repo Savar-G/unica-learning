@@ -100,6 +100,25 @@ describe("the report email to the parent", () => {
     expect(html).toContain('href="https://x.test/?a=1&amp;b=2"');
   });
 
+  describe("the AI paragraph (#68)", () => {
+    const withSummary = (summary: string): ReportView => {
+      const v = view(knowsUpTo(3));
+      return { ...v, model: { ...v.model, summary } };
+    };
+
+    it("follows the verdict, with the child's name, in the text and the HTML (escaped)", () => {
+      const email = reportEmail({ view: withSummary("{name} is working at a grade 3 level & {name}'s best area is Patterns and algebra."), parentName: "Priya", url: URL });
+      expect(email.text).toContain("That is one grade below Maya's school grade (grade 4).\nMaya is working at a grade 3 level & Maya's best area is Patterns and algebra.");
+      expect(email.html).toContain("Maya is working at a grade 3 level &amp; Maya&#39;s best area is Patterns and algebra.");
+    });
+
+    it("is absent without AI text", () => {
+      const email = reportEmail({ view: view(knowsUpTo(3)), parentName: "Priya", url: URL });
+      expect(email.text).toContain("That is one grade below Maya's school grade (grade 4).\n\nFor context");
+      expect(email.text).not.toContain("{name}");
+    });
+  });
+
   describe("the child's work (#67)", () => {
     const withWork = (): ReportView => {
       const v = view(knowsUpTo(3));
@@ -178,6 +197,22 @@ describe("the alert to Savar for each finished test", () => {
   });
   it("gives the comparison stage with the count it came from", () => {
     expect(alert().text).toContain("Comparison: grade-level scale only (12 completed tests in grade 4)");
+  });
+  it("says the AI was off, so Savar reads the work in the admin area (#68)", () => {
+    expect(alert({ ai: { on: false } }).text).toContain("AI review: off (no ANTHROPIC_API_KEY). The report has no AI comments and no AI text.");
+  });
+  it("says what the AI did: reviews, sure comments, failures, and the report text (#68)", () => {
+    const on = { on: true, model: "claude-sonnet-5-5", pieces: 7, reviewed: 6, sure: 4, failed: 1, skipped: 0, saved: true } as const;
+    expect(alert({ ai: { ...on, text: { kept: true } } }).text).toContain(
+      "AI review (claude-sonnet-5-5): 7 pieces of work, 6 reviewed, 4 sure enough to show a comment, 1 failed or timed out. Report text: kept.",
+    );
+    expect(alert({ ai: { ...on, text: { kept: false, problem: "number", detail: "97" } } }).text).toContain("Report text: rejected (number: 97), so the report has only its plain sentences.");
+    expect(alert({ ai: { ...on, failed: 0, skipped: 2, saved: false, text: { kept: false, problem: "failed", detail: "time is up" } } }).text).toContain(
+      "AI review (claude-sonnet-5-5): 7 pieces of work, 6 reviewed, 4 sure enough to show a comment, 2 over the limit not reviewed. NOT STORED: the reviews are only in this report. Report text: failed (time is up), so the report has only its plain sentences.",
+    );
+  });
+  it("has no AI line for a report an earlier run built", () => {
+    expect(alert().text).not.toContain("AI review");
   });
   it("says whether the parent got the report", () => {
     expect(alert().text).toContain("Parent email: sent to priya@example.com");

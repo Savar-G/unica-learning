@@ -1,5 +1,17 @@
 import { describe, expect, it } from "vitest";
-import { reportModel, type Placement, type Province, type ReportModel, type ShownWork, type WorkReview } from "@/lib/assessment";
+import {
+  REPORT_TEXT_MAX,
+  REVIEW_SURE_SCORE,
+  checkReportText,
+  reportModel,
+  workReview,
+  type Placement,
+  type Province,
+  type ReportModel,
+  type ReviewResult,
+  type ShownWork,
+  type WorkReview,
+} from "@/lib/assessment";
 import { allRight, knowsUpTo, takeTest } from "./scripted-child";
 
 const grade4 = (isRight = allRight, province: Province = "BC") => takeTest({ grade: 4, province }, 1, isRight).placement;
@@ -115,6 +127,123 @@ describe("report model", () => {
     it("a comment the review is not sure about is hidden, but the work still shows", () => {
       const work = withWork([piece("s1-4", true)], [review("s1-4", "low")]);
       expect(work).toEqual([expect.objectContaining({ questionId: "s1-4", comment: null })]);
+    });
+  });
+
+  describe("an AI review of shown work (#68): sure or not", () => {
+    const result = (extra: Partial<ReviewResult> = {}): ReviewResult => ({
+      errorType: "regrouping",
+      kind: "misunderstanding",
+      comment: "Added each column but did not carry the 1.",
+      score: 0.9,
+      ...extra,
+    });
+
+    it("a clear review of a wrong answer is sure, and keeps its comment", () => {
+      expect(workReview("s1-3", false, result())).toEqual({
+        questionId: "s1-3",
+        errorType: "regrouping",
+        kind: "misunderstanding",
+        comment: "Added each column but did not carry the 1.",
+        confidence: "high",
+      });
+    });
+
+    it("is not sure below REVIEW_SURE_SCORE: the report shows the work without the comment", () => {
+      const low = workReview("s1-3", false, result({ score: REVIEW_SURE_SCORE - 0.01 }));
+      expect(low.confidence).toBe("low");
+      expect(workReview("s1-3", false, result({ score: REVIEW_SURE_SCORE })).confidence).toBe("high");
+      const shownWork: ShownWork[] = [{ questionId: "s1-3", prompt: "47 + 38 = ?", correct: false, required: true, image: "p/a/s1-3.png", text: null }];
+      expect(reportModel(grade4(), { completedTestsInGrade: 0, workReviews: [low], shownWork }).work).toEqual([
+        { questionId: "s1-3", prompt: "47 + 38 = ?", correct: false, image: "p/a/s1-3.png", text: null, comment: null },
+      ]);
+    });
+
+    it("a score that is not a number from 0 to 1 is not sure", () => {
+      for (const score of [Number.NaN, -0.5, 1.5]) expect(workReview("s1-3", false, result({ score })).confidence, String(score)).toBe("low");
+    });
+
+    it("never contradicts the mark: a wrong answer reviewed as no error is not sure", () => {
+      expect(workReview("s1-3", false, result({ kind: "none", errorType: "none", comment: "A clear method." })).confidence).toBe("low");
+      expect(workReview("s1-3", true, result({ kind: "none", errorType: "none", comment: "Split 12 into 4 equal groups, then took 3 of them." })).confidence).toBe("high");
+    });
+
+    it("a comment that breaks the text rules is not sure: he or she, the AI's voice, markup, empty or too long", () => {
+      for (const comment of ["She did not carry the 1.", "I think the 1 was not carried.", "**Did not carry.**", " ", "Did not carry. ".repeat(20)]) {
+        expect(workReview("s1-3", false, result({ comment })).confidence, comment).toBe("low");
+      }
+    });
+
+    it("tidies the comment and the error type: no em-dash, single spaces", () => {
+      const r = workReview("s1-3", false, result({ comment: " Added each column — but did not\n carry. ", errorType: " carrying  in addition " }));
+      expect(r).toMatchObject({ comment: "Added each column - but did not carry.", errorType: "carrying in addition", confidence: "high" });
+    });
+  });
+
+  describe("the AI report text (#68)", () => {
+    const withText = (reportText: string | null, placement = grade4(knowsUpTo(4))) =>
+      reportModel(placement, { completedTestsInGrade: 0, workReviews: [], reportText });
+
+    it("no text: the report has no summary, only its plain sentences", () => {
+      expect(withText(null)).not.toHaveProperty("summary");
+      expect(report(grade4())).not.toHaveProperty("summary");
+    });
+
+    it("keeps text that uses only numbers in the model, with the name left as a placeholder", () => {
+      expect(withText("{name} is working at a grade 4 level, the same as the school grade.").summary).toBe(
+        "{name} is working at a grade 4 level, the same as the school grade.",
+      );
+    });
+
+    it("rejects text with a number that is not in the model, so only the plain sentences show", () => {
+      const model = withText("{name} got 97% of the grade 4 questions right.");
+      expect(model).not.toHaveProperty("summary");
+      expect(model).toEqual(withText(null));
+    });
+
+    it("checks number words too", () => {
+      expect(withText("{name} is working at a grade four level.").summary).toBe("{name} is working at a grade four level.");
+      expect(withText("{name} got ninety of the questions right.")).not.toHaveProperty("summary");
+    });
+
+    it("allows the numbers of the work shown in the report", () => {
+      const shownWork: ShownWork[] = [{ questionId: "s1-3", prompt: "47 + 38 = ?", correct: false, required: true, image: "p/a/s1-3.png", text: null }];
+      const text = "On 47 + 38, {name} added each column but did not carry.";
+      expect(reportModel(grade4(knowsUpTo(4)), { completedTestsInGrade: 0, workReviews: [], shownWork, reportText: text }).summary).toBe(text);
+      expect(withText(text)).not.toHaveProperty("summary");
+    });
+
+    it("says why text was rejected, for Savar's alert", () => {
+      expect(checkReportText(withText(null), "{name} got 97 of 100 right.")).toEqual({ ok: false, problem: "number", detail: "97, 100" });
+    });
+
+    it("rejects he or she: the report does not know the child's gender", () => {
+      for (const text of ["She is working at a grade 4 level.", "{name} is at grade 4, and his work is neat."]) {
+        expect(checkReportText(withText(null), text), text).toMatchObject({ ok: false, problem: "pronoun" });
+      }
+    });
+
+    it("rejects text that speaks as the AI or names it (D-085: AI is named only in the privacy page and terms)", () => {
+      for (const text of ["I think {name} is at grade 4.", "Our AI found that {name} is at grade 4.", "Claude says {name} is at grade 4."]) {
+        expect(checkReportText(withText(null), text), text).toMatchObject({ ok: false, problem: "voice" });
+      }
+    });
+
+    it("rejects markup, links and placeholders other than the name", () => {
+      for (const text of ["**{name}** is at grade 4.", "See https://example.com for grade 4.", "{child} is at grade 4.", "<b>{name}</b> is at grade 4."]) {
+        expect(checkReportText(withText(null), text), text).toMatchObject({ ok: false, problem: "format" });
+      }
+    });
+
+    it("rejects empty text and text longer than REPORT_TEXT_MAX", () => {
+      expect(checkReportText(withText(null), "  \n ")).toMatchObject({ ok: false, problem: "length" });
+      expect(checkReportText(withText(null), `{name} is at grade 4. ${"Well done. ".repeat(REPORT_TEXT_MAX / 10)}`)).toMatchObject({ ok: false, problem: "length" });
+    });
+
+    it("tidies the kept text: no em-dash (site copy rule), single spaces, trimmed", () => {
+      expect(withText("  {name} is working at a grade 4 level — the same as\n the school grade. ").summary).toBe(
+        "{name} is working at a grade 4 level - the same as the school grade.",
+      );
     });
   });
 

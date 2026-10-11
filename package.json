@@ -11,6 +11,7 @@
     "build:ds": "node scripts/build-ds.mjs"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.133.0",
     "@supabase/ssr": "^0.12.7",
     "@supabase/supabase-js": "^2.117.2",
     "next": "16.3.8",
