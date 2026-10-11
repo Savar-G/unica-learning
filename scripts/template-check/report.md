@@ -1,20 +1,12 @@
 # Template check report
 
-Made by `npm run check:templates` (scripts/check-templates.mjs). Bank: 6-7, 184 templates. Updated 2026-10-11 22:13 UTC.
+Made by `npm run check:templates` (scripts/check-templates.mjs). Bank: 6-7, 184 templates. Updated 2026-10-11 22:31 UTC.
 
-Pass: 20. Review: 163. Fail: 1. Error: 0. Not checked: 0. Changed since its check: 0.
+Pass: 20. Review: 164. Fail: 0. Error: 0. Not checked: 0. Changed since its check: 0.
 
 A template passes when the checker found its answers correct, its coded wrong answers wrong, and its BC grade right. Review means a wording problem or a province tag doubt that a person should decide.
 
-## Fail (1)
-
-### g67-5-fraction-to-decimal
-
-- Change the ON tag to grade 4. These examples do not require hundredths.
-- ON: suggests grade 4 (high confidence). Every answer is in tenths. Grade 4 B1.7-B1.9 covers decimal tenths and their fraction equivalents.
-- Checked 2026-10-11 with gpt-6.1-sol.
-
-## Review (163)
+## Review (164)
 
 ### g67-5-groups-needed
 
@@ -55,6 +47,10 @@ A template passes when the checker found its answers correct, its coded wrong an
 ### g67-5-decimal-place
 
 - The Alberta grade for thousandths place value needs confirmation.
+- Checked 2026-10-11 with gpt-6.1-sol.
+
+### g67-5-fraction-to-decimal
+
 - Checked 2026-10-11 with gpt-6.1-sol.
 
 ### g67-5-build-decimal
@@ -454,9 +450,6 @@ A template passes when the checker found its answers correct, its coded wrong an
 
 ### g67-7-decimal-multiply
 
-- Check the Alberta and Ontario tags against their primary outcomes.
-- AB: suggests grade 6 (low confidence). These simple decimal products may fit Grade 6 in the current curriculum. The supplied Alberta notes do not confirm this outcome.
-- ON: suggests grade 6 (medium confidence). Multiplying tenths by tenths appears to fit Grade 6 decimal operations. The exact outcome is not supplied, so this change needs confirmation.
 - Checked 2026-10-11 with gpt-6.1-sol.
 
 ### g67-7-decimal-divide
@@ -475,9 +468,6 @@ A template passes when the checker found its answers correct, its coded wrong an
 
 ### g67-7-decimal-order-of-operations
 
-- Check the Alberta and Ontario tags against their primary outcomes.
-- AB: suggests grade 6 (low confidence). These two-operation expressions may fit Grade 6. They require only decimal multiplication by a whole number. The exact current outcome is not supplied.
-- ON: suggests grade 6 (medium confidence). Order of operations with these simple decimal expressions appears to fit Grade 6. The exact outcome is not supplied, so this change needs confirmation.
 - Checked 2026-10-11 with gpt-6.1-sol.
 
 ### g67-7-times-five
@@ -488,7 +478,6 @@ A template passes when the checker found its answers correct, its coded wrong an
 
 ### g67-7-change-several
 
-- The province outcomes for decimal multiplication are unverified. Retain the tags pending a curriculum check.
 - Checked 2026-10-11 with gpt-6.1-sol.
 
 ### g67-7-fraction-to-decimal
@@ -538,7 +527,6 @@ A template passes when the checker found its answers correct, its coded wrong an
 
 ### g67-7-tip
 
-- The province outcomes for tip calculations are unverified.
 - Checked 2026-10-11 with gpt-6.1-sol.
 
 ### g67-7-sale-price
@@ -739,7 +727,6 @@ A template passes when the checker found its answers correct, its coded wrong an
 
 ### g67-8-small-percent
 
-- ON: suggests grade 7 (medium confidence). Calculations with fractional percents likely belong in Grade 7. The supplied notes do not confirm the outcome.
 - Checked 2026-10-11 with gpt-6.1-sol.
 
 ### g67-8-large-percent
@@ -815,7 +802,6 @@ A template passes when the checker found its answers correct, its coded wrong an
 
 ### g67-8-mean
 
-- The province tags require source review for the mean.
 - Checked 2026-10-11 with gpt-6.1-sol.
 
 ### g67-8-median

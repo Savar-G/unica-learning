@@ -16646,8 +16646,8 @@
       }
     },
     "g67-5-fraction-to-decimal": {
-      "hash": "72051ef9092a739c",
-      "status": "fail",
+      "hash": "cfe459228415f4be",
+      "status": "review",
       "checkedAt": "2026-10-11",
       "model": "gpt-6.1-sol",
       "provider": "codex",
@@ -16663,35 +16663,33 @@
             "ok": true,
             "suggestedGrade": null,
             "confidence": "low",
-            "reason": "Grade 5 is plausible. The supplied notes do not establish the first grade for these fraction-decimal relationships."
+            "reason": "The supplied notes do not confirm the grade for fraction-to-decimal conversion. Check the Grade 5 tag."
           },
           {
             "province": "SK",
             "ok": true,
             "suggestedGrade": null,
-            "confidence": "high",
-            "reason": "N4.7 relates decimal tenths and hundredths to fractions."
+            "confidence": "medium",
+            "reason": "N4.7 includes decimal tenths and hundredths and their relationships to fractions. These examples fit that content."
           },
           {
             "province": "MB",
             "ok": true,
             "suggestedGrade": null,
-            "confidence": "high",
-            "reason": "The supplied notes include fraction-decimal relationships in Grade 4."
+            "confidence": "medium",
+            "reason": "The supplied Grade 4 notes include fraction and decimal relationships. All answers use tenths or hundredths."
           },
           {
             "province": "ON",
-            "ok": false,
-            "suggestedGrade": "grade 4",
-            "confidence": "high",
-            "reason": "Every answer is in tenths. Grade 4 B1.7-B1.9 covers decimal tenths and their fraction equivalents."
+            "ok": true,
+            "suggestedGrade": null,
+            "confidence": "medium",
+            "reason": "Grade 5 includes decimal hundredths. The quarter example requires hundredths, so this tag is reasonable."
           }
         ],
         "wordingProblems": [],
-        "problems": [
-          "Change the ON tag to grade 4. These examples do not require hundredths."
-        ],
-        "verdict": "fail"
+        "problems": [],
+        "verdict": "review"
       }
     },
     "g67-5-greatest-fraction": {
@@ -18194,7 +18192,7 @@
       }
     },
     "g67-6-decimal-times": {
-      "hash": "2920cc3eaff1cec8",
+      "hash": "231666d136672a46",
       "status": "review",
       "checkedAt": "2026-10-11",
       "model": "gpt-6.1-sol",
@@ -18211,28 +18209,28 @@
             "ok": true,
             "suggestedGrade": null,
             "confidence": "low",
-            "reason": "The supplied notes confirm decimal addition and subtraction, but not the grade for multiplication to thousandths."
+            "reason": "The supplied notes do not confirm when multiplication of decimals to thousandths by whole numbers is taught."
           },
           {
             "province": "SK",
             "ok": true,
             "suggestedGrade": null,
             "confidence": "low",
-            "reason": "The supplied notes do not confirm the exact decimal-multiplication outcome or its precision limits."
+            "reason": "The supplied notes do not establish the Grade 6 decimal multiplication outcome or its decimal-place limit."
           },
           {
             "province": "MB",
             "ok": true,
             "suggestedGrade": null,
             "confidence": "low",
-            "reason": "The supplied notes do not confirm the exact decimal-multiplication outcome or its precision limits."
+            "reason": "The supplied notes do not establish the Grade 6 decimal multiplication outcome or its decimal-place limit."
           },
           {
             "province": "ON",
             "ok": true,
             "suggestedGrade": null,
             "confidence": "low",
-            "reason": "Grade 6 B1.3 supports thousandths, but the supplied notes do not confirm the multiplication outcome."
+            "reason": "The supplied notes confirm decimal thousandths in Grade 6, but do not confirm multiplication at that precision. Check this limit."
           }
         ],
         "wordingProblems": [],
@@ -20999,7 +20997,7 @@
       }
     },
     "g67-7-decimal-multiply": {
-      "hash": "b471540779db6dfa",
+      "hash": "2ed176a61e72a011",
       "status": "review",
       "checkedAt": "2026-10-11",
       "model": "gpt-6.1-sol",
@@ -21013,37 +21011,35 @@
         "provinceTags": [
           {
             "province": "AB",
-            "ok": false,
-            "suggestedGrade": "grade 6",
+            "ok": true,
+            "suggestedGrade": null,
             "confidence": "low",
-            "reason": "These simple decimal products may fit Grade 6 in the current curriculum. The supplied Alberta notes do not confirm this outcome."
+            "reason": "The supplied notes do not confirm the grade for multiplying two decimal numbers."
           },
           {
             "province": "SK",
             "ok": true,
-            "suggestedGrade": "grade 7",
-            "confidence": "medium",
-            "reason": "Multiplication by a decimal fits Grade 7. The supplied notes do not confirm the exact outcome."
+            "suggestedGrade": null,
+            "confidence": "low",
+            "reason": "The supplied notes do not confirm the grade for multiplying two decimal numbers."
           },
           {
             "province": "MB",
             "ok": true,
-            "suggestedGrade": "grade 7",
-            "confidence": "medium",
-            "reason": "Multiplication by a decimal fits Grade 7. The supplied notes do not confirm the exact outcome."
+            "suggestedGrade": null,
+            "confidence": "low",
+            "reason": "The supplied notes do not confirm the grade for multiplying two decimal numbers."
           },
           {
             "province": "ON",
-            "ok": false,
-            "suggestedGrade": "grade 6",
-            "confidence": "medium",
-            "reason": "Multiplying tenths by tenths appears to fit Grade 6 decimal operations. The exact outcome is not supplied, so this change needs confirmation."
+            "ok": true,
+            "suggestedGrade": null,
+            "confidence": "low",
+            "reason": "The supplied notes do not confirm the grade for multiplying two decimal numbers."
           }
         ],
         "wordingProblems": [],
-        "problems": [
-          "Check the Alberta and Ontario tags against their primary outcomes."
-        ],
+        "problems": [],
         "verdict": "review"
       }
     },
@@ -21146,7 +21142,7 @@
       }
     },
     "g67-7-decimal-order-of-operations": {
-      "hash": "3d64be14cdbba5f8",
+      "hash": "d916804bcd8afb5c",
       "status": "review",
       "checkedAt": "2026-10-11",
       "model": "gpt-6.1-sol",
@@ -21160,37 +21156,35 @@
         "provinceTags": [
           {
             "province": "AB",
-            "ok": false,
-            "suggestedGrade": "grade 6",
+            "ok": true,
+            "suggestedGrade": null,
             "confidence": "low",
-            "reason": "These two-operation expressions may fit Grade 6. They require only decimal multiplication by a whole number. The exact current outcome is not supplied."
+            "reason": "The supplied notes do not confirm when order of operations with decimals is taught."
           },
           {
             "province": "SK",
             "ok": true,
-            "suggestedGrade": "grade 7",
-            "confidence": "medium",
-            "reason": "Order of operations with decimals fits Grade 7. The supplied notes do not confirm the exact outcome."
+            "suggestedGrade": null,
+            "confidence": "low",
+            "reason": "The supplied notes do not confirm when order of operations with decimals is taught."
           },
           {
             "province": "MB",
             "ok": true,
-            "suggestedGrade": "grade 7",
-            "confidence": "medium",
-            "reason": "Order of operations with decimals fits Grade 7. The supplied notes do not confirm the exact outcome."
+            "suggestedGrade": null,
+            "confidence": "low",
+            "reason": "The supplied notes do not confirm when order of operations with decimals is taught."
           },
           {
             "province": "ON",
-            "ok": false,
-            "suggestedGrade": "grade 6",
-            "confidence": "medium",
-            "reason": "Order of operations with these simple decimal expressions appears to fit Grade 6. The exact outcome is not supplied, so this change needs confirmation."
+            "ok": true,
+            "suggestedGrade": null,
+            "confidence": "low",
+            "reason": "The supplied equation notes concern whole numbers. They do not establish the grade for these decimal expressions."
           }
         ],
         "wordingProblems": [],
-        "problems": [
-          "Check the Alberta and Ontario tags against their primary outcomes."
-        ],
+        "problems": [],
         "verdict": "review"
       }
     },
@@ -21244,7 +21238,7 @@
       }
     },
     "g67-7-change-several": {
-      "hash": "9ff49f4fa6157568",
+      "hash": "1dbbc94668b1cf80",
       "status": "review",
       "checkedAt": "2026-10-11",
       "model": "gpt-6.1-sol",
@@ -21261,34 +21255,32 @@
             "ok": true,
             "suggestedGrade": null,
             "confidence": "low",
-            "reason": "The notes confirm decimal addition and subtraction in Grade 4, but do not establish the grade for decimal multiplication."
+            "reason": "The notes confirm decimal addition and subtraction in Grade 4, but not the grade for the combined multiplication and change calculation."
           },
           {
             "province": "SK",
             "ok": true,
             "suggestedGrade": null,
             "confidence": "low",
-            "reason": "The notes confirm decimal addition and subtraction in Grade 5, but do not establish the grade for decimal multiplication."
+            "reason": "The notes confirm decimal addition and subtraction in Grade 5, but not the grade for this combined money problem."
           },
           {
             "province": "MB",
             "ok": true,
             "suggestedGrade": null,
             "confidence": "low",
-            "reason": "The notes confirm decimal addition and subtraction in Grade 4, but do not establish the grade for decimal multiplication."
+            "reason": "The notes confirm decimal addition and subtraction in Grade 4, but not the grade for this combined money problem."
           },
           {
             "province": "ON",
             "ok": true,
             "suggestedGrade": null,
             "confidence": "low",
-            "reason": "The supplied notes do not establish the grade for this decimal multiplication and change problem."
+            "reason": "The supplied notes do not establish the grade for multiplying a price by a quantity and then calculating change."
           }
         ],
         "wordingProblems": [],
-        "problems": [
-          "The province outcomes for decimal multiplication are unverified. Retain the tags pending a curriculum check."
-        ],
+        "problems": [],
         "verdict": "review"
       }
     },
@@ -21773,7 +21765,7 @@
       }
     },
     "g67-7-tip": {
-      "hash": "cd361b17fdcf916e",
+      "hash": "6882af46a84a285e",
       "status": "review",
       "checkedAt": "2026-10-11",
       "model": "gpt-6.1-sol",
@@ -21790,34 +21782,32 @@
             "ok": true,
             "suggestedGrade": null,
             "confidence": "low",
-            "reason": "The supplied notes do not verify the grade for tip calculations."
+            "reason": "The supplied notes do not confirm the grade for percentage tips and total payments."
           },
           {
             "province": "SK",
             "ok": true,
             "suggestedGrade": null,
             "confidence": "low",
-            "reason": "The supplied notes do not verify the grade for tip calculations."
+            "reason": "The supplied notes do not confirm the grade for percentage tips and total payments."
           },
           {
             "province": "MB",
             "ok": true,
             "suggestedGrade": null,
             "confidence": "low",
-            "reason": "The supplied notes do not verify the grade for tip calculations."
+            "reason": "The supplied notes do not confirm the grade for percentage tips and total payments."
           },
           {
             "province": "ON",
             "ok": true,
             "suggestedGrade": null,
             "confidence": "low",
-            "reason": "The supplied notes do not verify the grade for tip calculations."
+            "reason": "The supplied notes do not confirm the grade for percentage tips and total payments."
           }
         ],
         "wordingProblems": [],
-        "problems": [
-          "The province outcomes for tip calculations are unverified."
-        ],
+        "problems": [],
         "verdict": "review"
       }
     },
@@ -22645,7 +22635,7 @@
       }
     },
     "g67-7-circle-area": {
-      "hash": "85f87c30e3c9202f",
+      "hash": "9db1c48fabce786d",
       "status": "review",
       "checkedAt": "2026-10-11",
       "model": "gpt-6.1-sol",
@@ -22660,30 +22650,30 @@
           {
             "province": "AB",
             "ok": true,
-            "suggestedGrade": "grade 7",
+            "suggestedGrade": null,
             "confidence": "low",
-            "reason": "Retain Grade 7 for review. The supplied notes do not confirm the circle area outcome."
+            "reason": "The supplied notes do not confirm the grade for circle area."
           },
           {
             "province": "SK",
             "ok": true,
-            "suggestedGrade": "grade 7",
+            "suggestedGrade": null,
             "confidence": "low",
-            "reason": "Retain Grade 7 for review. The supplied notes do not confirm the circle area outcome."
+            "reason": "The supplied notes do not confirm the grade for circle area."
           },
           {
             "province": "MB",
             "ok": true,
-            "suggestedGrade": "grade 7",
+            "suggestedGrade": null,
             "confidence": "low",
-            "reason": "Retain Grade 7 for review. The supplied notes do not confirm the circle area outcome."
+            "reason": "The supplied notes do not confirm the grade for circle area."
           },
           {
             "province": "ON",
             "ok": true,
-            "suggestedGrade": "grade 7",
+            "suggestedGrade": null,
             "confidence": "low",
-            "reason": "Retain Grade 7 for review. The supplied notes do not confirm the circle area outcome."
+            "reason": "The supplied notes do not confirm the grade for circle area."
           }
         ],
         "wordingProblems": [],
@@ -23797,7 +23787,7 @@
       }
     },
     "g67-8-small-percent": {
-      "hash": "c7b3253123cdf343",
+      "hash": "56d9f9496404e7b5",
       "status": "review",
       "checkedAt": "2026-10-11",
       "model": "gpt-6.1-sol",
@@ -23813,29 +23803,29 @@
             "province": "AB",
             "ok": true,
             "suggestedGrade": null,
-            "confidence": "medium",
-            "reason": "Grade 8 is a likely match for percents below 1%. The supplied notes do not confirm the outcome."
+            "confidence": "low",
+            "reason": "The supplied notes do not confirm when percentages below one percent are taught."
           },
           {
             "province": "SK",
             "ok": true,
             "suggestedGrade": null,
-            "confidence": "medium",
-            "reason": "Grade 8 is a likely match for percents below 1%. The supplied notes do not confirm the outcome."
+            "confidence": "low",
+            "reason": "The supplied notes do not confirm when percentages below one percent are taught."
           },
           {
             "province": "MB",
             "ok": true,
             "suggestedGrade": null,
-            "confidence": "medium",
-            "reason": "Grade 8 is a likely match for percents below 1%. The supplied notes do not confirm the outcome."
+            "confidence": "low",
+            "reason": "The supplied notes do not confirm when percentages below one percent are taught."
           },
           {
             "province": "ON",
-            "ok": false,
-            "suggestedGrade": "grade 7",
-            "confidence": "medium",
-            "reason": "Calculations with fractional percents likely belong in Grade 7. The supplied notes do not confirm the outcome."
+            "ok": true,
+            "suggestedGrade": null,
+            "confidence": "low",
+            "reason": "The supplied notes do not confirm when percentages below one percent are taught."
           }
         ],
         "wordingProblems": [],
@@ -24566,7 +24556,7 @@
       }
     },
     "g67-8-mean": {
-      "hash": "da0a66fced613ad2",
+      "hash": "8da6b400c1378b30",
       "status": "review",
       "checkedAt": "2026-10-11",
       "model": "gpt-6.1-sol",
@@ -24583,34 +24573,32 @@
             "ok": true,
             "suggestedGrade": null,
             "confidence": "low",
-            "reason": "The supplied notes do not establish the grade for calculating the mean."
+            "reason": "The supplied notes do not establish the first grade for calculating a mean. The Grade 8 tag needs confirmation."
           },
           {
             "province": "SK",
             "ok": true,
             "suggestedGrade": null,
             "confidence": "low",
-            "reason": "The supplied notes do not establish the grade for calculating the mean."
+            "reason": "The supplied graph outcome does not establish the first grade for calculating a mean. The Grade 8 tag needs confirmation."
           },
           {
             "province": "MB",
             "ok": true,
             "suggestedGrade": null,
             "confidence": "low",
-            "reason": "The supplied notes do not establish the grade for calculating the mean."
+            "reason": "The supplied notes do not establish the first grade for calculating a mean. The Grade 8 tag needs confirmation."
           },
           {
             "province": "ON",
             "ok": true,
             "suggestedGrade": null,
             "confidence": "low",
-            "reason": "The supplied notes do not establish the grade for calculating the mean."
+            "reason": "The supplied notes do not establish the first grade for calculating a mean. The Grade 8 tag needs confirmation."
           }
         ],
         "wordingProblems": [],
-        "problems": [
-          "The province tags require source review for the mean."
-        ],
+        "problems": [],
         "verdict": "review"
       }
     },

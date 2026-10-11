@@ -6,8 +6,8 @@
   "total": 184,
   "checked": 184,
   "pass": 20,
-  "review": 163,
-  "fail": 1,
+  "review": 164,
+  "fail": 0,
   "error": 0,
   "unchecked": 0,
   "rows": [
@@ -141,8 +141,8 @@
     },
     {
       "id": "g67-5-fraction-to-decimal",
-      "hash": "72051ef9092a739c",
-      "status": "fail",
+      "hash": "cfe459228415f4be",
+      "status": "review",
       "model": "gpt-6.1-sol",
       "provider": "codex",
       "effort": "medium"
@@ -397,7 +397,7 @@
     },
     {
       "id": "g67-6-decimal-times",
-      "hash": "2920cc3eaff1cec8",
+      "hash": "231666d136672a46",
       "status": "review",
       "model": "gpt-6.1-sol",
       "provider": "codex",
@@ -861,7 +861,7 @@
     },
     {
       "id": "g67-7-decimal-multiply",
-      "hash": "b471540779db6dfa",
+      "hash": "2ed176a61e72a011",
       "status": "review",
       "model": "gpt-6.1-sol",
       "provider": "codex",
@@ -885,7 +885,7 @@
     },
     {
       "id": "g67-7-decimal-order-of-operations",
-      "hash": "3d64be14cdbba5f8",
+      "hash": "d916804bcd8afb5c",
       "status": "review",
       "model": "gpt-6.1-sol",
       "provider": "codex",
@@ -901,7 +901,7 @@
     },
     {
       "id": "g67-7-change-several",
-      "hash": "9ff49f4fa6157568",
+      "hash": "1dbbc94668b1cf80",
       "status": "review",
       "model": "gpt-6.1-sol",
       "provider": "codex",
@@ -989,7 +989,7 @@
     },
     {
       "id": "g67-7-tip",
-      "hash": "cd361b17fdcf916e",
+      "hash": "6882af46a84a285e",
       "status": "review",
       "model": "gpt-6.1-sol",
       "provider": "codex",
@@ -1133,7 +1133,7 @@
     },
     {
       "id": "g67-7-circle-area",
-      "hash": "85f87c30e3c9202f",
+      "hash": "9db1c48fabce786d",
       "status": "review",
       "model": "gpt-6.1-sol",
       "provider": "codex",
@@ -1325,7 +1325,7 @@
     },
     {
       "id": "g67-8-small-percent",
-      "hash": "c7b3253123cdf343",
+      "hash": "56d9f9496404e7b5",
       "status": "review",
       "model": "gpt-6.1-sol",
       "provider": "codex",
@@ -1453,7 +1453,7 @@
     },
     {
       "id": "g67-8-mean",
-      "hash": "da0a66fced613ad2",
+      "hash": "8da6b400c1378b30",
       "status": "review",
       "model": "gpt-6.1-sol",
       "provider": "codex",
