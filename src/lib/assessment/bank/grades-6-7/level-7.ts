@@ -689,8 +689,8 @@ export const LEVEL_7: readonly TaggedTemplate[] = [
       const [what, unit] = rng.pick([["A tank holds", "litres of water. It drains"], ["A phone battery has", "units of charge. It uses"]] as const);
       return {
         values: { start, rate, t },
-        prompt: `${what} ${start} ${unit} ${rate} each minute. How much is left after ${t} minutes?`,
-        readAloud: `${what} ${start} ${unit} ${rate} each minute. How much is left after ${t} minutes?`,
+        prompt: `${what} ${start} ${unit} ${rate} ${what === "A tank holds" ? "litres" : "units of charge"} each minute. How much is left after ${t} minutes?`,
+        readAloud: `${what} ${start} ${unit} ${rate} ${what === "A tank holds" ? "litres" : "units of charge"} each minute. How much is left after ${t} minutes?`,
         answer: String(start - rate * t),
         wrong: [wrong(start + rate * t, "pattern-direction"), wrong(start - rate * (t - 1), "count-start")],
       };
@@ -931,12 +931,12 @@ export const LEVEL_7: readonly TaggedTemplate[] = [
     id: "g67-7-count-outcomes",
     strand: "DP", grades: { BC: 8, AB: 7, SK: 7, MB: 7, ON: 7 }, format: "number", whiteboard: true, standard: "8.13",
     fill(rng) {
-      const [first, a] = rng.pick([["a coin", 2], ["a die", 6], ["a spinner with 3 equal parts", 3], ["a spinner with 4 equal parts", 4], ["a spinner with 5 equal parts", 5]] as const);
-      const [second, b] = rng.pick([["a coin", 2], ["a die", 6], ["a spinner with 3 equal parts", 3], ["a spinner with 4 equal parts", 4]] as const);
+      const [first, a] = rng.pick([["toss a coin", 2], ["roll a die", 6], ["spin a spinner with 3 equal parts numbered 1 to 3", 3], ["spin a spinner with 4 equal parts numbered 1 to 4", 4], ["spin a spinner with 5 equal parts numbered 1 to 5", 5]] as const);
+      const [second, b] = rng.pick([["toss a coin", 2], ["roll a die", 6], ["spin a spinner with 3 equal parts numbered 1 to 3", 3], ["spin a spinner with 4 equal parts numbered 1 to 4", 4]] as const);
       return {
         values: { a, b },
-        prompt: `You toss or spin ${first} and then ${second}. How many different outcomes are possible?`,
-        readAloud: `You toss or spin ${first} and then ${second}. How many different outcomes are possible?`,
+        prompt: `You ${first} and then ${second}. How many different outcomes are possible?`,
+        readAloud: `You ${first} and then ${second}. How many different outcomes are possible?`,
         answer: String(a * b),
         wrong: a * b === a + b ? [wrong(a, "one-part")] : [wrong(a + b, "outcomes-add")],
       };

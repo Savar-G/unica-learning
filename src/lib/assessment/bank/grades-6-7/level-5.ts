@@ -687,8 +687,8 @@ export const LEVEL_5: readonly TaggedTemplate[] = [
       const [what, low, high] = rng.pick([["books read", "Grade 4", "Grade 5"], ["cans collected", "Class A", "Class B"], ["laps swum", "Monday", "Tuesday"]] as const);
       return {
         values: { scale, a, b },
-        prompt: `In a double bar graph of ${what}, each grid line stands for ${scale}. The bar for ${low} reaches the ${ordinal(a)} grid line. The bar for ${high} reaches the ${ordinal(b)} grid line. How many more ${what.split(" ")[0]} for ${high} than for ${low}?`,
-        readAloud: `In a double bar graph of ${what}, each grid line stands for ${scale}. The bar for ${low} reaches the ${ordinal(a)} grid line. The bar for ${high} reaches the ${ordinal(b)} grid line. How many more ${what.split(" ")[0]} for ${high} than for ${low}?`,
+        prompt: `In a double bar graph of ${what}, the value increases by ${scale} between adjacent grid lines. The bar for ${low} reaches ${a} grid intervals above 0. The bar for ${high} reaches ${b} grid intervals above 0. How many more ${what.split(" ")[0]} for ${high} than for ${low}?`,
+        readAloud: `In a double bar graph of ${what}, the value increases by ${scale} between adjacent grid lines. The bar for ${low} reaches ${a} grid intervals above 0. The bar for ${high} reaches ${b} grid intervals above 0. How many more ${what.split(" ")[0]} for ${high} than for ${low}?`,
         answer: String((b - a) * scale),
         wrong: [wrong(b - a, "D1"), wrong(b * scale, "graph-value")],
       };

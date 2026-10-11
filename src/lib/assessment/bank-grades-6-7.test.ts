@@ -324,6 +324,49 @@ describe("the grades 6-7 bank", () => {
     }
   });
 
+  it("places the arithmetic story at BC level 6 and checks signed algebra error directions", () => {
+    const template = (id: string) => BANK.find((t) => t.id === `g67-8-${id}`)!;
+    expect(template("expression-story").grades.BC).toBe(6);
+    expect(template("expression-story").strand).toBe("O");
+    expect(template("combine-expression").grades.ON).toBe(5);
+    for (const seed of SEEDS) {
+      for (const id of ["substitute-signed", "large-relation"]) expect(fillTemplate(template(id), seed).wrong[1].misconception).toBe("operation");
+      expect(fillTemplate(template("combine-expression"), seed).wrong[1].misconception).toBe("variable-one");
+      expect(fillTemplate(template("integer-table"), seed).wrong[1].misconception).toBe("constant-sign");
+      expect(fillTemplate(template("inverse-input"), seed).wrong[0].misconception).toBe("sign-rule");
+      const story = fillTemplate(template("expression-story"), seed);
+      expect(Number(story.answer)).toBe(story.values.c * story.values.n - story.values.n / 2);
+    }
+  });
+
+  it("distinguishes a sum from a mean and the largest value from a mode", () => {
+    for (const seed of SEEDS) {
+      const mean = fillTemplate(BANK.find((t) => t.id === "g67-8-mean")!, seed);
+      expect(mean.wrong[1].misconception).toBe("sum-for-mean");
+      expect(Number(mean.wrong[1].value)).toBeCloseTo(Number(mean.answer) * 5);
+      const mode = fillTemplate(BANK.find((t) => t.id === "g67-8-mode")!, seed);
+      expect(mode.wrong[1].misconception).toBe("mode-largest");
+      expect(Number(mode.wrong[1].value)).toBe(mode.values.n + 8);
+    }
+  });
+
+  it("states graph scale intervals, Celsius, rate units and labelled event actions", () => {
+    for (const seed of SEEDS) {
+      const question = (id: string) => fillTemplate(BANK.find((t) => t.id === id)!, seed);
+      const graph = question("g67-5-double-bar-graph");
+      expect(graph.prompt).toContain("adjacent grid lines"); expect(graph.readAloud).toContain("adjacent grid lines");
+      const line = question("g67-6-line-graph");
+      if (line.prompt.includes("temperature")) expect(line.readAloud).toContain("degrees Celsius");
+      const rate = question("g67-7-draining-pool");
+      expect(rate.prompt).toMatch(/(?:litres|units of charge) each minute/); expect(rate.readAloud).toMatch(/(?:litres|units of charge) each minute/);
+      const count = question("g67-7-count-outcomes");
+      expect(count.prompt).not.toContain("toss or spin");
+      if (count.prompt.includes("spinner")) expect(count.prompt).toContain("numbered 1 to");
+      const rope = question("g67-8-three-part-ratio");
+      expect(rope.prompt.startsWith("A rope ")).toBe(true); expect(rope.readAloud.startsWith("A rope ")).toBe(true);
+    }
+  });
+
   it("preserves multiplication and grouping when it speaks a bracketed choice", () => {
     const q = fillTemplate(BANK.find((t) => t.id === "g67-6-expression-words")!, 3);
     const bracketed = q.choices!.find((c) => c.startsWith("4("))!;

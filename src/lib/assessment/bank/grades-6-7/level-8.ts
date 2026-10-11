@@ -106,7 +106,7 @@ export const LEVEL_8: readonly TaggedTemplate[] = [
     id: "g67-8-three-part-ratio", strand: "F", grades: GRADES, standard: "8.4", format: "number", whiteboard: true,
     fill(rng) {
       const a = rng.int(2, 4), b = rng.int(5, 7), c = rng.int(8, 10), k = rng.int(2, 8), total = (a + b + c) * k;
-      return { values: { a, b, c, k }, prompt: `A ${total} metre rope is cut into three pieces in the ratio ${a}:${b}:${c}. How long is the shortest piece, in metres?`, readAloud: `A ${total} metre rope is cut into three pieces in the ratio ${a} to ${b} to ${c}. How long is the shortest piece, in metres?`, answer: String(a * k), wrong: [wrong(c * k, "more-less"), wrong(total - a, "operation")] };
+      return { values: { a, b, c, k }, prompt: `A rope ${total} metres long is cut into three pieces in the ratio ${a}:${b}:${c}. How long is the shortest piece, in metres?`, readAloud: `A rope ${total} metres long is cut into three pieces in the ratio ${a} to ${b} to ${c}. How long is the shortest piece, in metres?`, answer: String(a * k), wrong: [wrong(c * k, "more-less"), wrong(total - a, "operation")] };
     },
   },
   // Patterns and algebra, with integer inputs and solutions.
@@ -128,39 +128,39 @@ export const LEVEL_8: readonly TaggedTemplate[] = [
     id: "g67-8-substitute-signed", strand: "A", grades: GRADES, standard: "8.7", format: "choice", whiteboard: true,
     fill(rng) {
       const [a, b, n] = draw(rng, (g) => [g.int(2, 7), g.int(2, 15), -g.int(2, 10)], ([a, b, n]) => distinctNumbers([a * n - b, -a * n - b, a * n + b]));
-      return { values: { a, b, n }, prompt: `What is ${a}n − ${b} when n = ${num(n)}?`, readAloud: `What is ${a} times n minus ${b} when n is ${sayNum(n)}?`, answer: num(a * n - b), wrong: [wrong(num(-a * n - b), "sign-rule"), wrong(num(a * n + b), "O9")] };
+      return { values: { a, b, n }, prompt: `What is ${a}n − ${b} when n = ${num(n)}?`, readAloud: `What is ${a} times n minus ${b} when n is ${sayNum(n)}?`, answer: num(a * n - b), wrong: [wrong(num(-a * n - b), "sign-rule"), wrong(num(a * n + b), "operation")] };
     },
   },
   {
-    id: "g67-8-combine-expression", strand: "A", grades: GRADES, standard: "8.7", format: "number", whiteboard: true,
+    id: "g67-8-combine-expression", strand: "A", grades: { ...GRADES, ON: 5 }, standard: "8.7", format: "number", whiteboard: true,
     fill(rng) {
       const a = rng.int(5, 9), b = rng.int(2, 4), n = rng.int(3, 10), c = rng.int(2, 12);
-      return { values: { a, b, n, c }, prompt: `What is ${a}n − ${b}n + ${c} when n = ${n}?`, readAloud: `What is ${a} times n minus ${b} times n plus ${c} when n is ${n}?`, answer: String((a - b) * n + c), wrong: [wrong((a + b) * n + c, "operation"), wrong(a - b + c, "one-part")] };
+      return { values: { a, b, n, c }, prompt: `What is ${a}n − ${b}n + ${c} when n = ${n}?`, readAloud: `What is ${a} times n minus ${b} times n plus ${c} when n is ${n}?`, answer: String((a - b) * n + c), wrong: [wrong((a + b) * n + c, "operation"), wrong(a - b + c, "variable-one")] };
     },
   },
   {
     id: "g67-8-large-relation", strand: "A", grades: GRADES, standard: "8.6", format: "choice", whiteboard: true,
     fill(rng) {
       const [a, b, x] = draw(rng, (g) => [g.int(3, 9), g.int(20, 80), -g.int(10, 30)], ([a, b, x]) => -a * x !== b);
-      return { values: { a, b, x }, prompt: `y = ${a}x − ${b}. What is y when x = ${num(x)}?`, readAloud: `y equals ${a} times x minus ${b}. What is y when x is ${sayNum(x)}?`, answer: num(a * x - b), wrong: [wrong(num(-a * x - b), "sign-rule"), wrong(num(a * x + b), "O9")] };
+      return { values: { a, b, x }, prompt: `y = ${a}x − ${b}. What is y when x = ${num(x)}?`, readAloud: `y equals ${a} times x minus ${b}. What is y when x is ${sayNum(x)}?`, answer: num(a * x - b), wrong: [wrong(num(-a * x - b), "sign-rule"), wrong(num(a * x + b), "operation")] };
     },
   },
   {
     id: "g67-8-integer-table", strand: "A", grades: GRADES, standard: "8.6", format: "choice", whiteboard: true,
     fill(rng) {
       const a = rng.int(2, 7), b = rng.int(2, 9);
-      return { values: { a, b }, prompt: `A table has (x, y) pairs (−2, ${num(-2 * a + b)}), (−1, ${num(-a + b)}) and (0, ${b}). Which rule fits all three pairs?`, readAloud: `In a table, when x is negative 2, y is ${sayNum(-2 * a + b)}. When x is negative 1, y is ${sayNum(-a + b)}. When x is 0, y is ${b}. Which rule fits all three pairs?`, answer: `y = ${a}x + ${b}`, wrong: [wrong(`y = ${a}x`, "A5"), wrong(`y = ${a}x − ${b}`, "rule-start")] };
+      return { values: { a, b }, prompt: `A table has (x, y) pairs (−2, ${num(-2 * a + b)}), (−1, ${num(-a + b)}) and (0, ${b}). Which rule fits all three pairs?`, readAloud: `In a table, when x is negative 2, y is ${sayNum(-2 * a + b)}. When x is negative 1, y is ${sayNum(-a + b)}. When x is 0, y is ${b}. Which rule fits all three pairs?`, answer: `y = ${a}x + ${b}`, wrong: [wrong(`y = ${a}x`, "A5"), wrong(`y = ${a}x − ${b}`, "constant-sign")] };
     },
   },
   {
     id: "g67-8-inverse-input", strand: "A", grades: GRADES, standard: "8.6", format: "choice", whiteboard: true,
     fill(rng) {
       const a = rng.int(2, 8), b = rng.int(2, 12), x = -rng.int(2, 12);
-      return { values: { a, b, x }, prompt: `y = ${a}x + ${b}. What is x when y = ${num(a * x + b)}?`, readAloud: `y equals ${a} times x plus ${b}. What is x when y is ${sayNum(a * x + b)}?`, answer: num(x), wrong: [wrong(num(-x), "O9"), wrong(num(a * x), "A6")] };
+      return { values: { a, b, x }, prompt: `y = ${a}x + ${b}. What is x when y = ${num(a * x + b)}?`, readAloud: `y equals ${a} times x plus ${b}. What is x when y is ${sayNum(a * x + b)}?`, answer: num(x), wrong: [wrong(num(-x), "sign-rule"), wrong(num(a * x), "A6")] };
     },
   },
   {
-    id: "g67-8-expression-story", strand: "A", grades: GRADES, standard: "8.7", format: "number", whiteboard: true,
+    id: "g67-8-expression-story", strand: "O", grades: { ...GRADES, BC: 6 }, standard: "6.3", format: "number", whiteboard: true,
     fill(rng) {
       const n = rng.int(4, 20) * 2, c = rng.int(2, 5);
       return { values: { n, c }, prompt: `A game gives ${c} points for each token, then takes away one point for every two tokens. With ${n} tokens, how many points remain?`, readAloud: `A game gives ${c} points for each token, then takes away one point for every two tokens. With ${n} tokens, how many points remain?`, answer: typed(c * n - n / 2), wrong: [wrong(c * n, "one-part"), wrong(c * n / 2, "operation")] };
@@ -204,7 +204,7 @@ export const LEVEL_8: readonly TaggedTemplate[] = [
     fill(rng) {
       const n = rng.int(4, 20), d = rng.int(2, 8), values = rng.shuffle([n - 2, n, n, n + d, n + d + 2]);
       const prompt = `Find the mean of these five values: ${values.join(", ")}.`;
-      return { values: { n, d }, prompt, readAloud: prompt, answer: typed(n + 2 * d / 5), wrong: [wrong(n, "average-kind"), wrong(5 * n + 2 * d, "one-part")] };
+      return { values: { n, d }, prompt, readAloud: prompt, answer: typed(n + 2 * d / 5), wrong: [wrong(n, "average-kind"), wrong(5 * n + 2 * d, "sum-for-mean")] };
     },
   },
   {
@@ -220,7 +220,7 @@ export const LEVEL_8: readonly TaggedTemplate[] = [
     fill(rng) {
       const n = rng.int(5, 30), values = rng.shuffle([n - 3, n - 2, n - 2, n, n, n, n + 8]);
       const prompt = `Find the mode of these seven values: ${values.join(", ")}.`;
-      return { values: { n }, prompt, readAloud: prompt, answer: String(n), wrong: [wrong(n - 2, "one-part"), wrong(n + 8, "average-kind")] };
+      return { values: { n }, prompt, readAloud: prompt, answer: String(n), wrong: [wrong(n - 2, "one-part"), wrong(n + 8, "mode-largest")] };
     },
   },
   {

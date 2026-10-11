@@ -972,7 +972,7 @@ export const LEVEL_6: readonly TaggedTemplate[] = [
     id: "g67-6-line-graph",
     strand: "DP", grades: { BC: 6, AB: 6, SK: 6, MB: 6, ON: 6 }, format: "number", whiteboard: true, standard: "6.17",
     fill(rng) {
-      const [what, unit, sayUnit] = rng.pick([["the temperature outside", "°C", "degrees"], ["the height of a plant", "cm", "centimetres"], ["the water in a tank", "L", "litres"]] as const);
+      const [what, unit, sayUnit] = rng.pick([["the temperature outside", "°C", "degrees Celsius"], ["the height of a plant", "cm", "centimetres"], ["the water in a tank", "L", "litres"]] as const);
       const [a, b] = draw(rng, (g) => [g.int(3, 40), g.int(3, 40)], ([a, b]) => b - a >= 3);
       const [t1, t2] = rng.pick([["9 a.m.", "noon"], ["noon", "3 p.m."], ["day 2", "day 6"], ["week 1", "week 4"]] as const);
       return {
