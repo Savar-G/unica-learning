@@ -79,9 +79,12 @@ export interface Question {
 /** A question as the browser receives it: no answer, no coded wrong answers, no drawn numbers. */
 export type PublicQuestion = Pick<Question, "id" | "level" | "strand" | "format" | "whiteboard" | "prompt" | "readAloud" | "choices">;
 
-/** The browser's next screen: a question, numbered from 1, or the end of the test. */
+/**
+ * The browser's next screen: a question, numbered from 1, or the end of the test.
+ * `breakAfter` is the number of questions before the halfway break (the end of stage 1), for the progress display.
+ */
 export type TestStep =
-  | { status: "question"; question: PublicQuestion; number: number; total: number }
+  | { status: "question"; question: PublicQuestion; number: number; total: number; breakAfter: number }
   | { status: "complete"; total: number };
 
 export interface ChildProfile {
