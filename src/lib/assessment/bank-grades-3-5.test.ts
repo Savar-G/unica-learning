@@ -122,6 +122,13 @@ describe("grade 3-5 speech and figures through the public interface", () => {
       expect(new Set(money.choices!.map((c) => Number(c.slice(1)))).size).toBe(money.choices!.length);
     }
   });
+  it("codes joined dollar and cent counts as a whole-dollar concatenation", () => {
+    const t = BANK.find((t) => t.id === "g35-4-money-notation")!;
+    for (const seed of SEEDS) {
+      const q = fillTemplate(t, seed);
+      expect(q.wrong.find((w) => w.value === `$${q.values.d}${q.values.c}`)?.misconception).toBe("money-join");
+    }
+  });
   it("speaks each ordered-list entry separately in actual shuffled choice order", () => {
     for (const seed of SEEDS) {
       const list = fillTemplate(BANK.find((t) => t.id === "g35-5-order-large")!, seed);

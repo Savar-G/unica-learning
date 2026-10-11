@@ -515,7 +515,7 @@ export const LEVEL_4: readonly TaggedTemplate[] = [
         prompt: `How do you write ${count(d, "dollar")} and ${count(c, "cent")} with a dollar sign?`,
         readAloud: `How do you write ${count(d, "dollar")} and ${count(c, "cent")} with a dollar sign?`,
         answer,
-        wrong: [wrong(`$${d}.${c}0`, "zero-placeholder"), wrong(`$${d}${c}`, "decimal-point"), wrong(`$${d}.${c}`, "zero-placeholder")],
+        wrong: [wrong(`$${d}.${c}0`, "zero-placeholder"), wrong(`$${d}${c}`, "money-join"), wrong(`$${d}.${c}`, "zero-placeholder")],
         say: Object.fromEntries(choices.map((choice) => {
           const [dollars, cents] = choice.slice(1).split(".");
           return [choice, `dollar sign ${dollars}${cents ? ` point ${cents.split("").join(" ")}` : ""}, meaning ${sayMoney(Math.round(Number(choice.slice(1)) * 100))}`];
