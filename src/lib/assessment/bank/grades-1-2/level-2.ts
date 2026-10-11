@@ -242,7 +242,7 @@ export const LEVEL_2: readonly TaggedTemplate[] = [
         prompt: `Which is the same as ${a} + ${b}?`,
         readAloud: `Which is the same as ${a} plus ${b}?`,
         answer: `10 + ${b - moved}`,
-        wrong: [wrong(`10 + ${b}`, "compensation"), wrong(`10 + ${b + moved}`, "compensation-direction")],
+        wrong: [wrong(`10 + ${b}`, "compensation"), wrong(`10 + ${b + moved}`, "compensation-dir")],
       };
     },
   },

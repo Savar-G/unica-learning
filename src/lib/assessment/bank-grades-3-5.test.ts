@@ -9,6 +9,10 @@ import {
   createSession,
   fillTemplate,
   levelFor,
+  nextQuestion,
+  restoreSession,
+  storedTest,
+  submitAnswer,
   spokenChoices,
   readAloudText,
   toPublicQuestion,
@@ -45,6 +49,42 @@ const strandCounts = (qs: readonly Question[]) => {
 const asNumber = (s: string) => Number(s.replace(/,/g, ""));
 
 describe("grade 3-5 speech and figures through the public interface", () => {
+  it("keeps misconception codes within the answer storage limit for new and reused templates", () => {
+    const templates = new Map(Object.values(BANKS).flat().map((t) => [t.id, t]));
+    for (const t of templates.values()) {
+      for (const seed of SEEDS) {
+        for (const w of fillTemplate(t, seed).wrong) {
+          expect(w.misconception.length, `${t.id}, seed ${seed}: ${w.misconception}`).toBeLessThanOrEqual(20);
+          expect(MISCONCEPTIONS[w.misconception]).toBeDefined();
+        }
+      }
+    }
+  });
+  it.each([false, true])("stores the compensation error and advances on the Ontario down route (legacy snapshot: %s)", (legacy) => {
+    let session = createSession({ grade: 3, province: "ON" }, 0);
+    while (nextQuestion(session)?.id !== "down-9") {
+      const q = nextQuestion(session)!;
+      expect(q).not.toBeNull();
+      session = submitAnswer(session, { questionId: q.id, response: "no idea", timeMs: 1000 });
+    }
+    if (legacy) {
+      const stored = structuredClone(storedTest(session));
+      const q = stored.stage2.down.find((q) => q.id === "down-9")!;
+      const wrong = q.wrong.find((w) => w.value.replace(/\s/g, " ") === "10 + 6")!;
+      wrong.misconception = "compensation-direction";
+      session = restoreSession(stored, session.answers.map((a) => ({
+        questionId: a.questionId, response: a.response, timeMs: a.timeMs,
+      })));
+    }
+    const q = nextQuestion(session)!;
+    expect(q.templateId).toBe("2-make-ten-strategy");
+    expect(q.prompt.replace(/\s/g, " ")).toBe("Which is the same as 8 + 4?");
+    const wrong = q.wrong.find((w) => w.value.replace(/\s/g, " ") === "10 + 6")!;
+    const after = submitAnswer(session, { questionId: q.id, response: wrong.value, timeMs: 1000 });
+    expect(after.answers.at(-1)).toMatchObject({ correct: false, misconception: "compensation-dir" });
+    expect(after.answers.at(-1)!.misconception!.length).toBeLessThanOrEqual(20);
+    expect(nextQuestion(after)?.id).toBe("down-10");
+  });
   it("keeps the corrected Ontario grade 2 downward form suited to all five required drawings", () => {
     const s = createSession({ grade: 2, province: "ON" }, 2027275);
     const questions = [...s.stage1, ...s.stage2.down];

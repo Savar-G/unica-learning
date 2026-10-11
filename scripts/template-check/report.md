@@ -1,6 +1,6 @@
 # Template check report
 
-Made by `npm run check:templates` (scripts/check-templates.mjs). Bank: 3-5, 272 templates. Updated 2026-10-11 21:07 UTC.
+Made by `npm run check:templates` (scripts/check-templates.mjs). Bank: 3-5, 272 templates. Updated 2026-10-11 21:25 UTC.
 
 Pass: 73. Review: 199. Fail: 0. Error: 0. Not checked: 0. Changed since its check: 0.
 

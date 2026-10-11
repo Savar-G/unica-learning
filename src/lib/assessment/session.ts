@@ -224,12 +224,14 @@ export function submitAnswer(session: Session, submission: Submission): Session 
   if (!Number.isFinite(submission.timeMs) || submission.timeMs < 0) throw new Error("timeMs must be a time in milliseconds");
 
   const correct = isSameAnswer(q, submission.response, q.answer);
+  const misconception = correct ? null : (q.wrong.find((w) => isSameAnswer(q, submission.response, w.value))?.misconception ?? null);
   const answer: Answer = {
     questionId: q.id,
     response: submission.response,
     timeMs: submission.timeMs,
     correct,
-    misconception: correct ? null : (q.wrong.find((w) => isSameAnswer(q, submission.response, w.value))?.misconception ?? null),
+    // Tests started before this ID was shortened must also satisfy the answer table's 20-character limit.
+    misconception: misconception === "compensation-direction" ? "compensation-dir" : misconception,
   };
   const answers = [...session.answers, answer];
   let route = session.route;

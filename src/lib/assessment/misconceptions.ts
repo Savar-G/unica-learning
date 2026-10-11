@@ -160,6 +160,8 @@ export const MISCONCEPTIONS = {
   "first-number": { description: "Compares only the first numbers of two sums", evidence: "none" },
   "even-odd": { description: "Decides even or odd from the tens digit, not the ones digit", evidence: "none" },
   compensation: { description: "Makes a ten from one number but does not change the other number to match", evidence: "none" },
+  "compensation-dir": { description: "Makes a ten, then adds to the other number instead of taking the same amount away", evidence: "none" },
+  // Keep the old ID readable in stored test snapshots. submitAnswer emits the shorter storage ID.
   "compensation-direction": { description: "Makes a ten, then adds to the other number instead of taking the same amount away", evidence: "none" },
   "regroup-forget": { description: "Regroups but forgets to take the ten or hundred away from the next place", evidence: "none" },
   "zero-placeholder": { description: "Leaves out a zero that holds a place, so 4 hundreds and 7 ones becomes 47", evidence: "none" },
