@@ -17,6 +17,8 @@
 
 /* A choice that is a line: drawn to its length; every line starts at the same place in its row. */
 .test-line { display: inline-block; height: 10px; width: calc(var(--units) * 18px); max-width: 100%; border-radius: 2px; background: var(--ink); }
+/* Compare lengths from a shared start, including when other portrait choices use two columns. */
+.test-root .test-choices:has(.test-line) { grid-template-columns: 1fr; }
 
 /* A bar graph to read. */
 .test-bars { margin: 4px 0 0; width: min(100%, 440px); }
