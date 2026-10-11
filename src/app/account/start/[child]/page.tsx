@@ -48,7 +48,8 @@ export default async function StartScreen({ params, searchParams }: PageProps<"/
         </div>
       ) : (
         <>
-          <p className="lead">{child.first_name} takes the test alone, on this device, in one sitting. Start when {child.first_name} is ready.</p>
+          {/* Inside the 30 days after a test there is nothing to start (#72). */}
+          {state.kind !== "wait" && <p className="lead">{child.first_name} takes the test alone, on this device, in one sitting. Start when {child.first_name} is ready.</p>}
           <div className="acct-begin"><StartTest childId={child.id} name={child.first_name} state={state} /></div>
         </>
       )}

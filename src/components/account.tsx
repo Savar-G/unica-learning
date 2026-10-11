@@ -298,7 +298,7 @@ const MONTHS = ["January", "February", "March", "April", "May", "June", "July", 
 const noSubscribe = () => () => {};
 
 /**
- * A moment in the reader's own time zone, for example "Monday, November 9 at 5:12 p.m.". The server does not know the
+ * A moment in the reader's own time zone, for example "5:12 p.m. on Monday, November 9". The server does not know the
  * parent's zone, so the first paint (and a page without JavaScript) shows UTC, labelled; the browser then shows local time.
  */
 function When({ at }: { at: number }) {
@@ -308,7 +308,7 @@ function When({ at }: { at: number }) {
     ? [d.getDay(), d.getDate(), d.getMonth(), d.getHours(), d.getMinutes()]
     : [d.getUTCDay(), d.getUTCDate(), d.getUTCMonth(), d.getUTCHours(), d.getUTCMinutes()];
   const clock = `${h % 12 || 12}:${String(m).padStart(2, "0")} ${h < 12 ? "a.m." : "p.m."}${local ? "" : " UTC"}`;
-  return <time dateTime={d.toISOString()}>{DAYS[day]}, {MONTHS[month]} {date} at {clock}</time>;
+  return <time dateTime={d.toISOString()}>{clock} on {DAYS[day]}, {MONTHS[month]} {date}</time>;
 }
 
 /**
@@ -319,7 +319,7 @@ export function StartTest({ childId, name, state }: { childId: string; name: str
   if (state.kind === "wait") {
     return (
       <span className="small acct-done">
-        Test done. The report comes by email. The next test opens on <When at={state.opensAt} />.
+        Test done. The report comes by email. The next test opens at <When at={state.opensAt} />.
       </span>
     );
   }

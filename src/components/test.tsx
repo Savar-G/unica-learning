@@ -165,8 +165,8 @@ function Intro({ name, total, ready, busy, onStart, failure, mode }: { name: str
       {mode === "resume"
         ? <p>Your answers are saved. You go on from the question where you stopped. You cannot go back, so check each answer before you press Next.</p>
         : <p>Answer one question at a time. You cannot go back, so check each answer before you press Next. If you do not know an answer, make your best guess.</p>}
-      {mode === "restart" && <p>This is a new test, with new questions.</p>}
       <Problem error={failure} />
+      {mode === "restart" && <p>This is a new test, with new questions.</p>}
       <Button onClick={onStart} disabled={busy} aria-busy={busy}>{busy ? "Starting…" : mode === "resume" ? "Continue the test" : "Start the test"}</Button>
     </section>
   );
