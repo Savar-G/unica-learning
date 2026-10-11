@@ -220,7 +220,15 @@ main > *{position:relative;z-index:1}
 
 /* Pricing */
 .plans{display:grid;gap:18px}
-@media (min-width:860px){.plans{grid-template-columns:1fr 1fr}.plans:has(>.plan:only-child){grid-template-columns:minmax(0,560px)}}
+@media (min-width:860px){.plans{grid-template-columns:1fr 1fr}.plans:has(>.plan:only-child){grid-template-columns:1fr}}
+/* One plan: full width, name + price + button on the left, features on the right (D-090) */
+@media (min-width:860px){
+  .plans>.plan:only-child{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.15fr);grid-template-rows:auto 1fr;column-gap:56px;row-gap:24px;padding:36px 40px}
+  .plans>.plan:only-child .plan-head{grid-column:1;grid-row:1}
+  .plans>.plan:only-child ul{grid-column:2;grid-row:1 / span 2;align-self:center;gap:14px}
+  .plans>.plan:only-child li{font-size:17px}
+  .plans>.plan:only-child .btn{grid-column:1;grid-row:2;align-self:end;margin-top:0}
+}
 .plan{border:1px solid var(--line);border-radius:22px;padding:28px 26px;display:flex;flex-direction:column;gap:16px;position:relative;background:#fff}
 .plan.hl{background:var(--sun)}
 .plan .tag{position:absolute;top:-16px;right:22px}
