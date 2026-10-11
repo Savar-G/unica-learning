@@ -13,6 +13,7 @@ import {
   reportDate,
   reportPath,
   reportReturnPath,
+  summaryText,
   thresholdsLine,
   verdictSentence,
   type ReportView,
@@ -66,6 +67,17 @@ describe("notes on how sure the level is", () => {
   });
   it("a child who cleared no level gets an estimate, and is told so", () => {
     expect(levelNotes(view(knowsUpTo(2)))).toEqual(["Maya got under 70% right at every level in this test, so grade 2 is an estimate."]);
+  });
+});
+
+describe("the AI paragraph (#68)", () => {
+  it("puts the child's name where the AI text has {name}", () => {
+    const v = view(knowsUpTo(4));
+    const withSummary = { ...v, model: { ...v.model, summary: "{name} is working at a grade 4 level. {name} is secure in every area." } };
+    expect(summaryText(withSummary)).toBe("Maya is working at a grade 4 level. Maya is secure in every area.");
+  });
+  it("is absent when the report has no AI text: the plain sentences stand alone", () => {
+    expect(summaryText(view(knowsUpTo(4)))).toBeNull();
   });
 });
 

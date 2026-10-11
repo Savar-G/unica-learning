@@ -4,14 +4,17 @@ import { statusFor } from "@/lib/signup";
 import { COMPARISON_BANDS_FROM, COMPARISON_PERCENTILE_FROM, REPORT_WORK_MAX, REPORTED_STRAND_NAMES } from "./constants";
 import { factsReport, type ReportFacts } from "./facts";
 import { helpLikely } from "./flags";
+import { checkReportText } from "./ai-checks";
 import type { Grade, Level, Placement, Province, StrandResult } from "./types";
 
-/** One AI review of a child's shown work (#68). */
+/** One AI review of a child's shown work (#68). Built by workReview, which decides the confidence. */
 export interface WorkReview {
   questionId: string;
   errorType: string;
-  kind: "slip" | "misunderstanding";
+  /** "none" when the work shows no error (a right answer). */
+  kind: "slip" | "misunderstanding" | "none";
   comment: string;
+  /** "high": the report may show the comment. "low": the report shows the work alone. */
   confidence: "high" | "low";
 }
 
@@ -34,6 +37,11 @@ export interface ReportContext {
   workReviews: WorkReview[];
   /** Every answer with work on the whiteboard, in test order (#67). None when left out. */
   shownWork?: ShownWork[];
+  /**
+   * #68: the report text the AI wrote from the model built without it (the same placement and context). Kept as the
+   * summary only when it passes checkReportText; otherwise the report keeps only its plain sentences.
+   */
+  reportText?: string | null;
 }
 
 /** One piece of the child's work on the report: the question, right or not, the work, and a comment only when sure. */
@@ -69,6 +77,12 @@ export interface ReportModel {
    * reaches the parent; the flags behind it stay with Savar. Absent in reports stored before #71: read it as false.
    */
   helpWarning?: boolean;
+  /**
+   * #68: a short paragraph the AI wrote from this model, shown under the verdict. "{name}" stands for the child's first
+   * name (REPORT_TEXT_NAME), so neither the stored model nor the AI holds the name. Absent when the AI is off or failed,
+   * or when its text broke a rule of checkReportText: then the report has only its plain sentences.
+   */
+  summary?: string;
 }
 
 // BC FSA numeracy, 2025/26, all BC-resident students with a result (research: diagnostics-length-formats.md, section 5.2).
@@ -111,7 +125,7 @@ function comparisonFor(n: number): Comparison {
 
 export function reportModel(placement: Placement, context: ReportContext): ReportModel {
   const { workingLevel, grade } = placement;
-  return {
+  const model: ReportModel = {
     level: { working: workingLevel, grade, atCeiling: placement.atCeiling, confidence: placement.confidence },
     strands: placement.strands.map((s) => ({ ...s, name: REPORTED_STRAND_NAMES[s.strand] })),
     comparison: comparisonFor(context.completedTestsInGrade),
@@ -124,4 +138,7 @@ export function reportModel(placement: Placement, context: ReportContext): Repor
     facts: placement.facts ? factsReport(placement.facts) : null,
     helpWarning: helpLikely(placement.flags),
   };
+  if (!context.reportText) return model;
+  const check = checkReportText(model, context.reportText);
+  return check.ok ? { ...model, summary: check.text } : model;
 }
