@@ -96,6 +96,8 @@
   .test-split { grid-template-columns: 1fr; grid-template-rows: auto minmax(360px, 1fr); }
   .test-pane-l { min-height: auto; overflow: visible; gap: 18px; padding: 20px; border-right: 0; border-bottom: 1px solid var(--line); }
   .test-pane-r.test-field { margin: 16px 20px 20px; }
+  /* A colour field below the words is only there for calm: it gives way to the words. The whiteboard keeps 360 px. */
+  .test-split:has(> .test-field) { grid-template-rows: auto minmax(140px, 1fr); }
   .test-choices { grid-template-columns: 1fr 1fr; }
   .test-num { grid-template-columns: 1fr 1fr; max-width: none; align-items: start; }
 }
