@@ -89,9 +89,12 @@
 
 /* ---------- tablet in portrait, and narrow windows: the panes stack ---------- */
 @media (max-width: 900px), (orientation: portrait) {
+  /* At least one screen high. If a long question and an error line make the panes taller than the screen, the page
+     scrolls; the panes never overlap. */
+  .test-root { height: auto; min-height: 100dvh; }
   .test-top { grid-template-columns: auto minmax(0, 1fr) auto; gap: 16px; padding: 0 20px; }
   .test-split { grid-template-columns: 1fr; grid-template-rows: auto minmax(360px, 1fr); }
-  .test-pane-l { overflow: visible; gap: 18px; padding: 20px; border-right: 0; border-bottom: 1px solid var(--line); }
+  .test-pane-l { min-height: auto; overflow: visible; gap: 18px; padding: 20px; border-right: 0; border-bottom: 1px solid var(--line); }
   .test-pane-r.test-field { margin: 16px 20px 20px; }
   .test-choices { grid-template-columns: 1fr 1fr; }
   .test-num { grid-template-columns: 1fr 1fr; max-width: none; align-items: start; }
