@@ -12,6 +12,7 @@ import {
   type Level,
   type Province,
   type ReportModel,
+  type ReportedStrand,
   type StrandStatus,
 } from "@/lib/assessment";
 import type { ReportSrc } from "@/lib/next-step";
@@ -75,6 +76,17 @@ export function levelNotes(v: ReportView): string[] {
   return notes;
 }
 
+/**
+ * What each area covers, under its name in the "By area" table (D-087). It says what the area is, never how the child
+ * did: the status and the count say that.
+ */
+export const AREA_NOTE: Record<ReportedStrand, string> = {
+  number: "Counting, place value, and adding, subtracting, multiplying and dividing.",
+  fractions: "Fractions and decimals, and in the later grades ratio and percent.",
+  algebra: "Patterns, rules and missing numbers.",
+  shapes: "Shapes, measuring, time, graphs and chance.",
+};
+
 export const STATUS_LABEL: Record<StrandStatus, string> = {
   secure: "Secure",
   developing: "Developing",
@@ -90,13 +102,21 @@ export const sharePercent = (s: { correct: number; total: number }) => (s.total 
 
 const FACTS_LABEL = { secure: "Secure", quick: "Quick", "needs-practice": "Needs practice" } as const;
 
+/** One facts measure: in words (value), as a label, and as a large number with a line under it (D-087, the report page). */
+export interface FactsMeasure {
+  value: string;
+  label: string;
+  big: string;
+  detail: string;
+}
+
 /** The number facts row (#70): accuracy beside speed, never speed alone. Slow speed needs practice; it is never "behind". */
 export interface FactsView {
   scope: string;
   round: string;
   /** Both null, or both set: speed never shows without accuracy. */
-  accuracy: { value: string; label: string } | null;
-  speed: { value: string; label: string } | null;
+  accuracy: FactsMeasure | null;
+  speed: FactsMeasure | null;
   note: string | null;
   thresholds: string;
 }
@@ -113,10 +133,16 @@ export function factsView(v: ReportView): FactsView | null {
   if (f.answered === 0 || !f.accuracy || !f.speed || f.secondsPerFact === null) {
     return { ...base, accuracy: null, speed: null, note: `${v.childName} answered no facts in the ${f.seconds} seconds.` };
   }
+  const right = `${f.correct} of ${f.answered} right`;
   return {
     ...base,
-    accuracy: { value: `${f.correct} of ${f.answered} right`, label: FACTS_LABEL[f.accuracy] },
-    speed: { value: `typically ${f.secondsPerFact} second${f.secondsPerFact === 1 ? "" : "s"} a fact`, label: FACTS_LABEL[f.speed] },
+    accuracy: { value: right, label: FACTS_LABEL[f.accuracy], big: `${Math.round((f.correct / f.answered) * 100)}%`, detail: right },
+    speed: {
+      value: `typically ${f.secondsPerFact} second${f.secondsPerFact === 1 ? "" : "s"} a fact`,
+      label: FACTS_LABEL[f.speed],
+      big: `${f.secondsPerFact} s`,
+      detail: "typical time for one fact",
+    },
     note: f.speed === "needs-practice" ? `Speed comes with practice. It does not change ${v.childName}'s working level.` : null,
   };
 }

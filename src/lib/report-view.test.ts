@@ -142,8 +142,8 @@ describe("number facts (#70): speed beside accuracy, never alone", () => {
     expect(f).toEqual({
       scope: "Addition and subtraction facts to 20, and multiplication facts for 2, 5 and 10.",
       round: "A 60-second round, only with facts for this grade.",
-      accuracy: { value: "12 of 12 right", label: "Secure" },
-      speed: { value: "typically 4.6 seconds a fact", label: "Needs practice" },
+      accuracy: { value: "12 of 12 right", label: "Secure", big: "100%", detail: "12 of 12 right" },
+      speed: { value: "typically 4.6 seconds a fact", label: "Needs practice", big: "4.6 s", detail: "typical time for one fact" },
       note: "Speed comes with practice. It does not change Maya's working level.",
       thresholds: "Secure: 90% or more right. Quick: 3 seconds or less a fact.",
     });
@@ -151,8 +151,12 @@ describe("number facts (#70): speed beside accuracy, never alone", () => {
   });
   it("quick and accurate: no practice note", () => {
     const f = factsView(withFacts({ ...SLOW, secondsPerFact: 1.8, speed: "quick" }));
-    expect(f?.speed).toEqual({ value: "typically 1.8 seconds a fact", label: "Quick" });
+    expect(f?.speed).toEqual({ value: "typically 1.8 seconds a fact", label: "Quick", big: "1.8 s", detail: "typical time for one fact" });
     expect(f?.note).toBeNull();
+  });
+  it("the big accuracy number is the share right, in whole percent", () => {
+    expect(factsView(withFacts({ ...SLOW, answered: 12, correct: 11 }))?.accuracy).toMatchObject({ big: "92%", detail: "11 of 12 right" });
+    expect(factsView(withFacts({ ...SLOW, answered: 9, correct: 7, accuracy: "needs-practice" }))?.accuracy).toMatchObject({ big: "78%", label: "Needs practice" });
   });
   it("nothing answered: no accuracy and no speed, and it says so", () => {
     const f = factsView(withFacts({ ...SLOW, answered: 0, correct: 0, secondsPerFact: null, accuracy: null, speed: null }));
