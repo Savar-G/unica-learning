@@ -36,7 +36,7 @@ export default async function TestPage(props: PageProps<"/account/test/[childId]
   const mode = state.kind === "resume" || state.kind === "finish" ? state.kind : state.kind === "expired" ? "restart" : "new";
 
   const grade = child.grade as Grade;
-  // The sample bank covers grades 3-5; the other bands open with their banks (#74, #76).
+  // Grades 1-5 have a bank (grades 3-5 still on the sample bank); grades 6-7 open with theirs (#76).
   let ready = true;
   try {
     createSession({ grade, province: child.province }, 0);
