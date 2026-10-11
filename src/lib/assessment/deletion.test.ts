@@ -37,6 +37,17 @@ describe("family card operation", () => {
 });
 
 describe("scheduled family deletion", () => {
+  it("uses an explicit foreground budget while retaining the HTTP default", async () => {
+    const attempts: number[] = [];
+    const store = { async cursor() { return null; }, async advance() {}, async run(_id: string, limit: number) {
+      attempts.push(limit);
+      if (limit < 80_000) throw Error("fresh 64-customer pass does not fit");
+      return { state: "deleted" as const, images: 0 };
+    } };
+    expect(await runRetentionBatch(["family"], store, () => 840_000)).toMatchObject({ failed: 1 });
+    expect(await runRetentionBatch(["family"], store, () => 840_000, 600_000)).toMatchObject({ deleted: 1 });
+    expect(attempts).toEqual([30_000, 600_000]);
+  });
   it("starts the first family when a reduced route budget decreases between clock reads", async () => {
     const times = [25_000, 24_999, 24_998, 0];
     const cursors: string[] = [], attempts: number[] = [];

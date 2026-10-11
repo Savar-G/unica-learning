@@ -18,11 +18,12 @@ export interface RetentionBatchStore {
   run(parent: string, limitMs: number): Promise<FamilyDeletionResult>;
 }
 
-export async function runRetentionBatch(ids: string[], store: RetentionBatchStore, remainingMs: () => number) {
+export async function runRetentionBatch(ids: string[], store: RetentionBatchStore, remainingMs: () => number, maximumFamilyMs = 30_000) {
+  if (!Number.isFinite(maximumFamilyMs) || maximumFamilyMs <= 0) throw new Error("Invalid deletion budget");
   const counts = { eligible: ids.length, deleted: 0, busy: 0, excluded: 0, failed: 0, images: 0 };
   const cursor = await store.cursor();
   const order = cursor === null ? ids : [...ids.filter((id) => id > cursor), ...ids.filter((id) => id <= cursor)];
-  const budget = Math.min(30_000, remainingMs());
+  const budget = Math.min(maximumFamilyMs, remainingMs());
   let attempted = false;
   for (const id of order) {
     // Do not repeatedly advance past a family that receives only the tail of a route's budget.

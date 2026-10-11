@@ -19,6 +19,7 @@
 
 # production
 /build
+/.retention/
 
 # misc
 .DS_Store
