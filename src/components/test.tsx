@@ -11,6 +11,7 @@ import { breakDue, type PublicQuestion, type TestStep } from "@/lib/assessment";
 import { ANSWER_MAX, type FinishResult, type StartResult, type StepResult, type TestError } from "@/lib/test-api";
 import { track } from "@/lib/track";
 import { SUPPORT_EMAIL, SUPPORT_HREF } from "@/lib/contact";
+import { FactsSection } from "./facts";
 import { breakSeen, markBreakSeen, TestBreak } from "./test-break";
 import { TestProgress } from "./test-progress";
 import { ReadAloud } from "./test-read-aloud";
@@ -20,6 +21,8 @@ type Screen =
   | { name: "intro" }
   | { name: "question"; question: PublicQuestion; number: number; total: number; breakAfter: number }
   | { name: "break"; next: Extract<TestStep, { status: "question" }> }
+  /** The timed facts section (#70), after the halfway break; then the test carries on with `next`. */
+  | { name: "facts"; testId: string; next: Extract<TestStep, { status: "question" }> }
   | { name: "done" };
 
 async function call<T>(url: string, init?: RequestInit): Promise<T | { ok: false; error: TestError }> {
@@ -38,6 +41,8 @@ export function TakeTest({ childId, name, total, ready, done }: { childId: strin
   const [busy, setBusy] = useState(false);
   const [failure, setFailure] = useState<TestError | null>(null);
   const testId = useRef<string | null>(null);
+  // Set once the facts section is over (or was over before a resume), so it never shows twice.
+  const factsDone = useRef(false);
 
   const finish = useCallback(async () => {
     const res = await call<FinishResult>(`/api/account/assessments/${testId.current}/finish`, post({}));
@@ -60,6 +65,12 @@ export function TakeTest({ childId, name, total, ready, done }: { childId: strin
       markBreakSeen(id);
       track("test_break", { status: "shown" });
       setScreen({ name: "break", next: step });
+      return true;
+    }
+    // Then the timed facts section (#70, D-088): the break's onDone comes back here. On a resume the facts screen
+    // asks the server first and hands straight on to the question when the section is already done.
+    if (!factsDone.current && id && step.number > step.breakAfter) {
+      setScreen({ name: "facts", testId: id, next: step });
       return true;
     }
     setScreen({ name: "question", question: step.question, number: step.number, total: step.total, breakAfter: step.breakAfter });
@@ -103,6 +114,7 @@ export function TakeTest({ childId, name, total, ready, done }: { childId: strin
         <span className="logo">Unica Learning<b /></span>
         {screen.name === "question" && <TestProgress answered={screen.number - 1} total={screen.total} breakAfter={screen.breakAfter} at="question" />}
         {screen.name === "break" && <TestProgress answered={screen.next.breakAfter} total={screen.next.total} breakAfter={screen.next.breakAfter} at="halfway" />}
+        {screen.name === "facts" && <TestProgress answered={screen.next.number - 1} total={screen.next.total} breakAfter={screen.next.breakAfter} at="halfway" />}
       </header>
       <main id="main" className="test-main">
         {screen.name === "intro" && <Intro name={name} total={total} ready={ready} busy={busy} onStart={start} failure={failure} />}
@@ -114,6 +126,12 @@ export function TakeTest({ childId, name, total, ready, done }: { childId: strin
             track("test_break", { status: how });
             void show(screen.next);
           }} />
+        )}
+        {screen.name === "facts" && (
+          <>
+            <FactsSection testId={screen.testId} onError={setFailure} onDone={() => { factsDone.current = true; void show(screen.next); }} />
+            <Problem error={failure} />
+          </>
         )}
         {screen.name === "done" && <End name={name} />}
       </main>
