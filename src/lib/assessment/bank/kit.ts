@@ -25,7 +25,10 @@ export const SHAPES = [
 export type Shape = (typeof SHAPES)[number];
 
 /** The space between glyphs: it does not break, so a row of dots or a pattern stays on one line to count. */
-export const GAP = " ";
+export const GAP = "\u00a0";
+
+/** A shape as a choice: the glyph for the eye, the word for a reader. */
+const shapeLabel = (s: Shape) => `${s.glyph} ${s.word}`;
 
 /** n copies of a glyph: row(3) is "● ● ●". */
 export const row = (n: number, glyph = "●") => Array.from({ length: n }, () => glyph).join(GAP);
@@ -54,23 +57,24 @@ export const wrong = (value: string | number, misconception: MisconceptionId): C
  * Choices: the answer, then other shapes. A wrong choice equal to the item just before the gap is
  * coded A2 (repeats the last item); any other wrong choice shows the child did not see the core.
  */
-export function shapePattern(rng: Rng, core: readonly number[], length: number, ask: number) {
+function shapePattern(rng: Rng, core: readonly number[], length: number, ask: number) {
   if (ask < 1 || ask > length) throw new Error("shapePattern asks for an item after the first, at most one past the end");
   // Items 0 to `length` - 1 are shown; asking for item `length` means "what comes next".
   const items = Array.from({ length: Math.max(length, ask + 1) }, (_, i) => SHAPES[core[i % core.length]]);
   const answer = items[ask];
   const before = items[ask - 1];
   const others = rng.shuffle(SHAPES.filter((s) => s !== answer));
-  // Prefer the shape just before the gap (a common slip), then any other shape.
-  const picks = [before, ...others.filter((s) => s !== before)].filter((s) => s !== answer).slice(0, 2);
+  // Prefer the shape just before the gap (a common slip), then the pattern's own shapes (a child who misses the core
+  // picks one of them), then any other shape.
+  const coreShapes = core.map((i) => SHAPES[i]);
+  const picks = [...new Set([before, ...coreShapes, ...others])].filter((s) => s !== answer).slice(0, 2);
   const shown = items.map((s, i) => (i === ask ? "?" : s.glyph)).join(GAP);
   const spoken = items.map((s, i) => (i === ask ? "what shape" : s.word)).join(", ");
-  const label = (s: Shape) => `${s.glyph} ${s.word}`;
   return {
     shown,
     spoken,
-    answer: label(answer),
-    wrong: picks.map((s) => wrong(label(s), s === before ? "A2" : "pattern-core")),
+    answer: shapeLabel(answer),
+    wrong: picks.map((s) => wrong(shapeLabel(s), s === before ? "A2" : "pattern-core")),
     choiceWords: [answer, ...picks].map((s) => s.word),
   };
 }
@@ -99,17 +103,16 @@ export function predictShape(rng: Rng, core: readonly number[], ask: number) {
   const others = rng.shuffle(SHAPES.filter((s) => s !== answer && !neighbours.includes(s)));
   const picks = [...neighbours, ...others].slice(0, 2);
   const shown = Array.from({ length: core.length * 2 }, (_, i) => at(i + 1));
-  const label = (s: Shape) => `${s.glyph} ${s.word}`;
   return {
     prompt: `The pattern keeps going: ${shown.map((s) => s.glyph).join(GAP)} … What shape is number ${ask}?`,
     readAloud: `The pattern is ${shown.map((s) => s.word).join(", ")}, and it keeps going. What shape is number ${ask} in the pattern: ${orList([answer, ...picks].map((s) => `a ${s.word}`))}?`,
-    answer: label(answer),
-    wrong: picks.map((s) => wrong(label(s), neighbours.includes(s) ? "one-to-one" : "pattern-core")),
+    answer: shapeLabel(answer),
+    wrong: picks.map((s) => wrong(shapeLabel(s), neighbours.includes(s) ? "one-to-one" : "pattern-core")),
   };
 }
 
 /** Keeps a sum or an equation on one line: the spaces around + − × and = do not break. */
-export const keepTogether = (text: string) => text.replace(/ ([+−×=]) /g, " $1 ");
+const keepTogether = (text: string) => text.replace(/ ([+−×=]) /g, "\u00a0$1\u00a0");
 
 /** The template, with every sum in its prompt and choices kept on one line (a split "2 +" / "9" confuses a young reader). */
 export function keepSumsTogether<T extends Template>(template: T): T {
