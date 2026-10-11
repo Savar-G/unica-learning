@@ -59,6 +59,7 @@ export function fillTemplate(template: Template, seed: number, province: Provinc
     readAloud: filled.readAloud,
     choices: template.format === "choice" ? rng.shuffle([filled.answer, ...filled.wrong.map((w) => w.value)]) : undefined,
     ...(filled.say ? { say: filled.say } : {}),
+    ...(filled.figure ? { figure: filled.figure } : {}),
     values: filled.values,
     answer: filled.answer,
     wrong: filled.wrong,
@@ -67,8 +68,8 @@ export function fillTemplate(template: Template, seed: number, province: Provinc
 
 /** What the browser may see: no answer and no coded wrong answers. */
 export function toPublicQuestion(q: Question): PublicQuestion {
-  const { id, level, strand, format, whiteboard, prompt, readAloud, choices, say } = q;
-  return { id, level, strand, format, whiteboard, showWork: q.showWork === true, prompt, readAloud, choices, ...(say ? { say } : {}) };
+  const { id, level, strand, format, whiteboard, prompt, readAloud, choices, say, figure } = q;
+  return { id, level, strand, format, whiteboard, showWork: q.showWork === true, prompt, readAloud, choices, ...(say ? { say } : {}), ...(figure ? { figure } : {}) };
 }
 
 export interface SessionOptions {
@@ -77,7 +78,8 @@ export interface SessionOptions {
 }
 
 /** Two questions with this key look the same to the child. */
-const sameQuestion = (q: Question) => `${q.prompt}|${[...(q.choices ?? [])].sort().join("|")}`;
+// A drawn figure (#79) is part of the question: two bar graphs with the same words are different questions.
+const sameQuestion = (q: Question) => `${q.prompt}|${[...(q.choices ?? [])].sort().join("|")}|${q.figure ? JSON.stringify(q.figure) : ""}`;
 
 // One stage: `count` questions at `level`, rotating through the band's strands.
 // A strand with no questions at this level (fractions below level 3) gives its turns to the others.

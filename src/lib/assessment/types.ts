@@ -46,7 +46,18 @@ export interface Filled {
    * they read as "a out of b" (readAloudText). The read-aloud text itself never lists the choices: they are shuffled.
    */
   say?: Record<string, string>;
+  /** A figure the screen draws beside the words (#79), for example a bar graph to read. */
+  figure?: Figure;
 }
+
+/** A bar graph: one bar per row, read against a scale from 0 (#79). */
+export interface BarFigure {
+  kind: "bars";
+  bars: { label: string; value: number }[];
+}
+
+/** Figures the test screen can draw. */
+export type Figure = BarFigure;
 
 /**
  * A question template. Its level on the K-8 scale is the grade where BC teaches it (grades.BC);
@@ -88,13 +99,15 @@ export interface Question {
   choices?: string[];
   /** Words for choices the voice would read wrong (Filled.say). Absent on tests stored before #79. */
   say?: Record<string, string>;
+  /** A figure the screen draws (Filled.figure). */
+  figure?: Figure;
   values: Record<string, number>;
   answer: string;
   wrong: CodedWrong[];
 }
 
 /** A question as the browser receives it: no answer, no coded wrong answers, no drawn numbers. */
-export type PublicQuestion = Pick<Question, "id" | "level" | "strand" | "format" | "whiteboard" | "prompt" | "readAloud" | "choices" | "say"> & {
+export type PublicQuestion = Pick<Question, "id" | "level" | "strand" | "format" | "whiteboard" | "prompt" | "readAloud" | "choices" | "say" | "figure"> & {
   /** True when the child must show work on the whiteboard before Next (#67). */
   showWork: boolean;
 };

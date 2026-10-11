@@ -40,11 +40,15 @@ export function namesChoice(text: string, choice: string, say?: Record<string, s
   return new RegExp(`(^|[^\\w.])${escape(sayChoice(choice, say))}(?![\\w]|\\.\\d)`, "i").test(text);
 }
 
+/** Each choice in the order `shown`, as the voice says it. The screen uses the same words to name its rows. */
+export function spokenChoices(question: Pick<PublicQuestion, "say">, shown: readonly string[]): string[] {
+  let lines = 0;
+  return shown.map((c) => (isLineChoice(c) ? `the ${ORDINALS[lines++] ?? "next"} line` : sayChoice(c, question.say)));
+}
+
 /** The spoken text: the question's read-aloud text, then "Choose one." and the choices in the order `shown`. */
 export function readAloudText(question: Pick<PublicQuestion, "readAloud" | "say">, shown: readonly string[] = []): string {
   if (shown.length === 0) return question.readAloud;
-  let lines = 0;
-  const words = shown.map((c) => (isLineChoice(c) ? `the ${ORDINALS[lines++] ?? "next"} line` : sayChoice(c, question.say)));
-  const sentences = words.map((w) => (/[.?!]$/.test(w) ? w : `${w}.`));
+  const sentences = spokenChoices(question, shown).map((w) => (/[.?!]$/.test(w) ? w : `${w}.`));
   return `${question.readAloud} Choose one. ${sentences.join(" ")}`;
 }

@@ -469,12 +469,13 @@ export const LEVEL_3: readonly TaggedTemplate[] = [
     fill(rng) {
       const a = rng.int(9, 20), b = rng.int(3, a - 3);
       const [kind, x, y] = rng.pick([["sport", "soccer", "swimming"], ["thing to do", "reading", "drawing"], ["food", "pizza", "tacos"]] as const);
-      // Read off a class bar graph, told in words: the screen draws no graph yet (see #79), so the text does not promise one.
-      const text = `A class made a bar graph of their favourite ${kind}. The bar for ${x} goes up to ${a}. The bar for ${y} goes up to ${b}. How many more children chose ${x} than ${y}?`;
+      // Read off a class bar graph that the screen draws (#79): the text does not say how far the bars go.
+      const ask = `How many more children chose ${x} than ${y}?`;
       return {
         values: { a, b },
-        prompt: text,
-        readAloud: text,
+        prompt: `A class made a bar graph of their favourite ${kind}. ${ask}`,
+        readAloud: `A class made a bar graph of their favourite ${kind}. Look at the graph. ${ask}`,
+        figure: { kind: "bars", bars: [{ label: cap(x), value: a }, { label: cap(y), value: b }] },
         answer: String(a - b),
         wrong: [wrong(a + b, "operation"), wrong(a, "difference-whole")],
       };
