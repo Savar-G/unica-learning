@@ -118,6 +118,11 @@ describe("the alert to Savar for each finished test", () => {
       'Flags: child answered "A little" to "Did anyone help?"; 3 answers under 3 seconds, 2 right (s1-3, s1-7, up-2); 4 min 10 s on s1-14, then 4 right in a row after 1 of 4 right before',
     );
   });
+  it("gives the child's answer to \"Did anyone help?\", so \"No\" reads apart from a test that never asked", () => {
+    expect(alert({ help: "no" }).text).toContain('Did anyone help?: "No"');
+    expect(alert({ help: "a-little" }).text).toContain('Did anyone help?: "A little"');
+    expect(alert({ help: null }).text).toContain("Did anyone help?: not asked");
+  });
   it("says whether help is likely, so Savar knows the parent saw the warning", () => {
     expect(alert().text).toContain("Help likely: no");
     const v = view(knowsUpTo(3));

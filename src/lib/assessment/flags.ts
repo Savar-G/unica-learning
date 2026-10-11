@@ -22,6 +22,7 @@ export const PAUSE_BEFORE_RIGHT_BELOW_PERCENT = 70;
 /** The child's own answer to the last question, "Did anyone help?". */
 export type HelpAnswer = "yes" | "a-little" | "no";
 export const HELP_ANSWERS: readonly HelpAnswer[] = ["yes", "a-little", "no"];
+export const isHelpAnswer = (value: unknown): value is HelpAnswer => HELP_ANSWERS.includes(value as HelpAnswer);
 
 export type Flag =
   /** The child answered "Yes" or "A little" to "Did anyone help?". */
@@ -48,14 +49,15 @@ export function flagsFor(answers: readonly Answer[], help: HelpAnswer | null): F
   return flags;
 }
 
-/**
- * Help is likely, so the report says the level may be too high (spec story 44): the child said "Yes" or "A little", or
- * a long pause came before perfect answers, or at least this many answers were both right and too fast. Too-fast wrong
- * answers do not count: a fast guess makes the level lower, not higher.
- */
+/** Right answers under TOO_FAST_MS that make help likely. */
 export const HELP_FAST_RIGHT_MIN = 3;
 
-/** True when the flags make help likely. Takes the stored flags, so it also reads placements stored before #71 (no flags). */
+/**
+ * True when help is likely, so the report says the level may be too high (spec story 44): the child said "Yes" or
+ * "A little", or a long pause came before perfect answers, or at least HELP_FAST_RIGHT_MIN answers were both right and
+ * too fast. Too-fast wrong answers do not count: a fast guess makes the level lower, not higher.
+ * Takes the stored flags, so it also reads placements stored before #71 (no flags).
+ */
 export function helpLikely(flags: readonly Flag[] | undefined): boolean {
   return (flags ?? []).some((f) => f.kind !== "too-fast" || f.right >= HELP_FAST_RIGHT_MIN);
 }

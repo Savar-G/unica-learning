@@ -1,5 +1,5 @@
 import { after } from "next/server";
-import { HELP_ANSWERS, finish, testStep, type HelpAnswer } from "@/lib/assessment";
+import { finish, isHelpAnswer, testStep, type HelpAnswer } from "@/lib/assessment";
 import { loadTest, testAccess } from "@/lib/assessment-store";
 import { linkOrigin } from "@/lib/account-server";
 import { loadFacts } from "@/lib/facts-store";
@@ -31,8 +31,8 @@ export async function POST(request: Request, ctx: RouteContext<"/api/account/ass
     const body: unknown = await request.json();
     const value = body && typeof body === "object" ? (body as { help?: unknown }).help : undefined;
     if (value !== undefined && value !== null) {
-      if (!HELP_ANSWERS.includes(value as HelpAnswer)) return testFail("invalid", 400);
-      help = value as HelpAnswer;
+      if (!isHelpAnswer(value)) return testFail("invalid", 400);
+      help = value;
     }
   } catch {
     // No body: finished without the help question.

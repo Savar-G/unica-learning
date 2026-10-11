@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { createSession, finish, helpLikely, nextQuestion, submitAnswer, type ChildProfile, type HelpAnswer, type Question } from "@/lib/assessment";
+import { createSession, finish, helpLikely, isHelpAnswer, nextQuestion, submitAnswer, type ChildProfile, type HelpAnswer, type Question } from "@/lib/assessment";
 
 /** One answer of a scripted child: right or wrong, and the seconds it took. */
 type Step = { right: boolean; seconds: number };
@@ -93,6 +93,10 @@ describe("help flags (#71)", () => {
     it("\"Yes\" and \"A little\" raise a flag with the answer", () => {
       expect(takeTest(clean, "yes").flags).toEqual([{ kind: "helped", answer: "yes" }]);
       expect(takeTest(clean, "a-little").flags).toEqual([{ kind: "helped", answer: "a-little" }]);
+    });
+    it("accepts only the three answers from a request", () => {
+      expect(["yes", "a-little", "no"].every(isHelpAnswer)).toBe(true);
+      expect([undefined, null, "", "Yes", "a little", "maybe", 1, {}].some(isHelpAnswer)).toBe(false);
     });
     it("\"No\", or no answer, raises none", () => {
       expect(takeTest(clean, "no").flags).toEqual([]);

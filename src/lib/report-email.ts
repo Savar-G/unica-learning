@@ -1,7 +1,7 @@
 // The report emails (#65): the report to the parent, and an alert to Savar for each finished test.
 // Plain until the report design (#80, D-087) restyles them. The parent email says what the report page says
 // (src/lib/report-view.ts). Pure: the background job (src/lib/report-job.ts) sends them through Resend.
-import { PAUSE_WINDOW, TOO_FAST_MS, type Flag } from "@/lib/assessment";
+import { PAUSE_WINDOW, TOO_FAST_MS, type Flag, type HelpAnswer } from "@/lib/assessment";
 import { BUSINESS_NAME } from "@/lib/contact";
 import {
   STATUS_LABEL,
@@ -158,7 +158,7 @@ ${p(esc(step.text))}
 
 const COMPARISON_LABEL = { scale: "grade-level scale only", bands: "bands among Unica children", percentile: "percentile among Unica children" } as const;
 
-const HELP_LABEL = { yes: "Yes", "a-little": "A little" } as const;
+const HELP_LABEL: Record<HelpAnswer, string> = { yes: "Yes", "a-little": "A little", no: "No" };
 
 /** "4 min 10 s". */
 const duration = (ms: number) => {
@@ -184,6 +184,7 @@ export function reportAlert({
   parent,
   url,
   flags,
+  help = null,
   completedInGrade,
   parentEmail,
 }: {
@@ -192,6 +193,8 @@ export function reportAlert({
   url: string;
   /** The placement's help flags (#71). Placements stored before #71 have none. */
   flags: readonly Flag[];
+  /** The child's answer to "Did anyone help?" (assessments.help); null when the test did not ask it. */
+  help?: HelpAnswer | null;
   /** Completed tests in the child's grade, the count the comparison stage came from. */
   completedInGrade: number;
   parentEmail: { sent: true } | { sent: false; reason: string };
@@ -203,6 +206,7 @@ export function reportAlert({
     `Child: ${v.childName}`,
     `School grade: ${m.level.grade} (${v.province})`,
     `Working level: ${levelName(m.level.working)} (${m.howWeHelp})${m.level.atCeiling ? ", at the top of what the test reached" : ""}${m.level.confidence === "low" ? ", low confidence: no level cleared" : ""}`,
+    `Did anyone help?: ${help ? `"${HELP_LABEL[help]}"` : "not asked"}`,
     `Flags: ${flags.length ? flags.map(flagText).join("; ") : "none"}`,
     m.helpWarning ? "Help likely: yes. The report says the level may be too high and suggests a retake." : "Help likely: no",
     `Areas: ${m.strands.map((s) => `${s.name} ${STATUS_LABEL[s.status]} ${s.correct}/${s.total}`).join("; ")}`,
