@@ -75,6 +75,20 @@ describe("shown work: which questions require it", () => {
     }
   });
 
+  it("a flag on a template means it may be required, not that it is: with every template flagged, still exactly 5", () => {
+    // The grades 1-2 bank (#74) flags about 13 questions per route; the test asks for work on only 5 of them.
+    const bank = [...SAMPLE_BANK, ...fixtures(1, ["N", "A", "MG"])].map((t) => ({ ...t, whiteboard: true }));
+    for (const seed of [1, 2, 3, 4]) {
+      for (const [script, route] of ROUTES) {
+        const { seen } = walk({ grade: 2, province: "BC" }, seed, script, bank);
+        expect(seen.filter((q) => q.whiteboard), `seed ${seed}, ${route}`).toHaveLength(24);
+        expect(seen.filter((q) => q.showWork), `seed ${seed}, ${route}`).toHaveLength(5);
+      }
+    }
+    const again = (seed: number) => walk({ grade: 2, province: "BC" }, seed, allRight, bank).seen.filter((q) => q.showWork).map((q) => q.prompt);
+    expect(again(5)).toEqual(again(5));
+  });
+
   it("grades 6-7: 10 questions", () => {
     const bank = [...SAMPLE_BANK, ...fixtures(7, ["N", "F", "A", "MG"], true)];
     for (const [script, route] of ROUTES) {
