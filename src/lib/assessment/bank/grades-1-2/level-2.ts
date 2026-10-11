@@ -1,0 +1,708 @@
+// Level 2 (BC grade 2) for the grades 1-2 bank: stage 1 for grade 2, and the "up" form for grade 1.
+// Standards: curriculum map, section 1 (2.1-2.12); example items: section 3, grade 2. Province tags: see ./index.ts.
+import { cap, count, draw, GAP, NAMES, ordinal, skipWord, orList, predictShape, row, SHAPES, wrong, type TaggedTemplate } from "../kit";
+
+/** The O1 bug: in each column, the smaller digit from the larger. */
+const smallerFromLarger = (a: number, b: number) => Math.abs(Math.floor(a / 10) - Math.floor(b / 10)) * 10 + Math.abs((a % 10) - (b % 10));
+
+export const LEVEL_2: readonly TaggedTemplate[] = [
+  // ---------- Number ----------
+  {
+    id: "2-digit-value",
+    strand: "N", grades: { BC: 2, AB: 2, SK: 2, MB: 2, ON: 2 }, format: "number", whiteboard: false, standard: "2.1",
+    fill(rng) {
+      const tens = rng.int(2, 9), ones = draw(rng, (r) => r.int(1, 9), (o) => o !== tens);
+      const n = tens * 10 + ones;
+      return {
+        values: { n },
+        prompt: `What is the value of the ${tens} in ${n}?`,
+        readAloud: `What is the value of the digit ${tens} in the number ${n}?`,
+        answer: String(tens * 10),
+        wrong: [wrong(tens, "N2")],
+      };
+    },
+  },
+  {
+    id: "2-even-or-odd",
+    strand: "N", grades: { BC: 2, AB: 2, SK: 2, MB: 2, ON: 2 }, format: "choice", whiteboard: false, standard: "2.1",
+    fill(rng) {
+      const even = rng.int(0, 1) === 1;
+      // The answer's tens digit has the other parity, and both wrong choices have a tens digit of the asked-for parity.
+      const make = (tensEven: boolean, onesEven: boolean) =>
+        rng.pick(tensEven ? [2, 4, 6, 8] : [1, 3, 5, 7, 9]) * 10 + rng.pick(onesEven ? [0, 2, 4, 6, 8] : [1, 3, 5, 7, 9]);
+      const answer = make(!even, even);
+      const [w1, w2] = draw(rng, () => [make(even, !even), make(even, !even)], ([x, y]) => x !== y);
+      const list = orList(rng, [answer, w1, w2].map(String));
+      return {
+        values: { answer, w1, w2, even: even ? 1 : 0 },
+        prompt: `Which number is ${even ? "even" : "odd"}: ${list}?`,
+        readAloud: `Which number is ${even ? "even" : "odd"}: ${list}?`,
+        answer: String(answer),
+        wrong: [wrong(w1, "even-odd"), wrong(w2, "even-odd")],
+      };
+    },
+  },
+  {
+    id: "2-ten-more-less",
+    strand: "N", grades: { BC: 2, AB: 2, SK: 2, MB: 2, ON: 2 }, format: "number", whiteboard: false, standard: "2.1",
+    fill(rng) {
+      const more = rng.int(0, 1) === 1;
+      const n = more ? rng.int(11, 89) : rng.int(21, 99);
+      return {
+        values: { n, more: more ? 1 : 0 },
+        prompt: `What number is 10 ${more ? "more" : "less"} than ${n}?`,
+        readAloud: `What number is 10 ${more ? "more" : "less"} than ${n}?`,
+        answer: String(more ? n + 10 : n - 10),
+        wrong: [wrong(more ? n + 1 : n - 1, "tens-as-ones")],
+      };
+    },
+  },
+  {
+    id: "2-greatest",
+    strand: "N", grades: { BC: 2, AB: 2, SK: 2, MB: 2, ON: 2 }, format: "choice", whiteboard: false, standard: "2.1",
+    fill(rng) {
+      // Like 31, 29 and 13: 29 has the biggest ones digit of the three (so a child who compares ones digits picks it),
+      // and 13 swaps the digits of 31. The trap's ones digit must beat the swapped number's ones digit too.
+      const [t, o, c] = draw(
+        rng,
+        (r) => [r.int(2, 8), r.int(1, 7), r.int(3, 9)],
+        ([t, o, c]) => o < t && c > t && (t - 1) * 10 + c !== o * 10 + t,
+      );
+      const answer = t * 10 + o, trap = (t - 1) * 10 + c, swapped = o * 10 + t;
+      const list = orList(rng, [answer, trap, swapped].map(String));
+      return {
+        values: { answer, trap, swapped },
+        prompt: `Which number is the greatest: ${list}?`,
+        readAloud: `Which number is the greatest: ${list}?`,
+        answer: String(answer),
+        wrong: [wrong(trap, "digit-compare"), wrong(swapped, "digit-reversal")],
+      };
+    },
+  },
+  {
+    id: "2-tens-and-ones",
+    strand: "N", grades: { BC: 2, AB: 2, SK: 2, MB: 2, ON: 2 }, format: "number", whiteboard: true, standard: "2.1",
+    fill(rng) {
+      const tens = rng.int(1, 9), ones = draw(rng, (r) => r.int(1, 9), (o) => o !== tens);
+      const [t, o] = [count(tens, "ten"), count(ones, "one")];
+      const parts = rng.int(0, 1) === 1 ? `${t} and ${o}` : `${o} and ${t}`;
+      return {
+        values: { tens, ones },
+        prompt: `What number is ${parts}?`,
+        readAloud: `What number is ${parts}?`,
+        answer: String(tens * 10 + ones),
+        wrong: [wrong(ones * 10 + tens, "digit-reversal"), wrong(tens + ones, "N2")],
+      };
+    },
+  },
+  {
+    id: "2-skip-count-back",
+    strand: "N", grades: { BC: 2, AB: 2, SK: 2, MB: 2, ON: 2 }, format: "number", whiteboard: false, standard: "2.1",
+    fill(rng) {
+      const step = rng.pick([2, 5, 10]);
+      // Backward, from a start that is not always a multiple of 10 (2.1: different starting points).
+      const start = step === 10 ? rng.int(51, 99) : step * rng.int(step === 2 ? 10 : 6, step === 2 ? 40 : 19);
+      const seq = [0, 1, 2].map((i) => start - i * step);
+      const answer = start - 3 * step;
+      return {
+        values: { step, start },
+        prompt: `Count back by ${step}s: ${seq.join(", ")}, ?`,
+        readAloud: `Count back by ${skipWord(step)}: ${seq.join(", ")}. What number comes next?`,
+        answer: String(answer),
+        wrong: [wrong(seq[2] - 1, "skip-by-one"), wrong(seq[1], "pattern-direction")],
+      };
+    },
+  },
+  {
+    id: "2-add-2-digit",
+    strand: "O", grades: { BC: 2, AB: 2, SK: 2, MB: 2, ON: 2 }, format: "number", whiteboard: true, standard: "2.4",
+    fill(rng) {
+      // The ones carry and the sum stays under 100, as in 48 + 37.
+      const [a, b] = draw(rng, (r) => [r.int(15, 69), r.int(15, 39)], ([a, b]) => (a % 10) + (b % 10) >= 10 && a + b < 100);
+      return {
+        values: { a, b },
+        prompt: `${a} + ${b} = ?`,
+        readAloud: `What is ${a} plus ${b}?`,
+        answer: String(a + b),
+        wrong: [wrong(a + b - 10, "O3"), wrong(Math.abs(a - b), "operation")],
+      };
+    },
+  },
+  {
+    id: "2-subtract-2-digit",
+    strand: "O", grades: { BC: 2, AB: 2, SK: 2, MB: 2, ON: 2 }, format: "number", whiteboard: true, standard: "2.4",
+    fill(rng) {
+      // The ones need regrouping, as in 83 - 46. A gap of 5 in the ones would make two wrong answers the same.
+      const [a, b] = draw(
+        rng,
+        (r) => [r.int(41, 98), r.int(12, 39)],
+        ([a, b]) => a % 10 < b % 10 && (b % 10) - (a % 10) !== 5 && a - b >= 10,
+      );
+      return {
+        values: { a, b },
+        prompt: `${a} − ${b} = ?`,
+        readAloud: `What is ${a} minus ${b}?`,
+        answer: String(a - b),
+        wrong: [wrong(smallerFromLarger(a, b), "O1"), wrong(a - b + 10, "regroup-forget")],
+      };
+    },
+  },
+  {
+    id: "2-story-add-2-digit",
+    strand: "O", grades: { BC: 2, AB: 2, SK: 2, MB: 2, ON: 2 }, format: "number", whiteboard: true, standard: "2.4",
+    fill(rng) {
+      const [a, b] = draw(rng, (r) => [r.int(15, 59), r.int(15, 39)], ([a, b]) => (a % 10) + (b % 10) >= 10 && a + b < 100 && a !== b);
+      const [verb, things, first, second] = rng.pick([
+        ["collects", "cans", "on Monday", "on Tuesday"],
+        ["reads", "pages", "in the morning", "in the afternoon"],
+        ["plants", "seeds", "in one garden bed", "in another garden bed"],
+      ] as const);
+      return {
+        values: { a, b },
+        prompt: `A class ${verb} ${a} ${things} ${first} and ${b} ${things} ${second}. How many ${things} is that in all?`,
+        readAloud: `A class ${verb} ${a} ${things} ${first} and ${b} ${things} ${second}. How many ${things} is that in all?`,
+        answer: String(a + b),
+        wrong: [wrong(a + b - 10, "O3"), wrong(Math.abs(a - b), "operation")],
+      };
+    },
+  },
+  {
+    id: "2-story-subtract-2-digit",
+    strand: "O", grades: { BC: 2, AB: 2, SK: 2, MB: 2, ON: 2 }, format: "number", whiteboard: true, standard: "2.4",
+    fill(rng) {
+      const [a, b] = draw(
+        rng,
+        (r) => [r.int(41, 95), r.int(12, 38)],
+        ([a, b]) => a % 10 < b % 10 && a - b >= 10,
+      );
+      const name = rng.pick(NAMES);
+      return {
+        values: { a, b },
+        prompt: `A book has ${a} pages. ${name} has read ${b} pages. How many pages are left to read?`,
+        readAloud: `A book has ${a} pages. ${name} has read ${b} pages. How many pages are left to read?`,
+        answer: String(a - b),
+        wrong: [wrong(smallerFromLarger(a, b), "O1"), wrong(a + b, "operation")],
+      };
+    },
+  },
+  {
+    // Adding three numbers to 100 (2.4). Was 3-table-total: with no table drawn, the item is addition, not reading a table.
+    id: "2-three-addends",
+    strand: "O", grades: { BC: 2, AB: 2, SK: 2, MB: 2, ON: 2 }, format: "number", whiteboard: true, standard: "2.4",
+    fill(rng) {
+      const [a, b, c] = draw(rng, (r) => [r.int(11, 29), r.int(11, 29), r.int(11, 29)], ([a, b, c]) => a !== b && b !== c && a !== c);
+      const total = a + b + c;
+      // Rooms by number (a voice reads "Class A" as "class uh") and "finished" (a voice may read "read" as "reed").
+      const text = `Room 1 finished ${a} books. Room 2 finished ${b} books. Room 3 finished ${c} books. How many books did the three rooms finish in all?`;
+      return {
+        values: { a, b, c },
+        prompt: text,
+        readAloud: text,
+        answer: String(total),
+        wrong: [wrong(total - Math.min(a, b, c), "leaves-out-addend"), wrong(Math.max(a, b, c), "one-part")],
+      };
+    },
+  },
+  {
+    // Money (2.12; map, grade 2, without pennies, which Canada no longer makes). WNCP has no coin outcomes before grade 4.
+    id: "2-coins-mixed",
+    strand: "O", grades: { BC: 2, AB: 4, SK: 4, MB: 4, ON: 2 }, format: "number", whiteboard: true, standard: "2.12",
+    fill(rng) {
+      const [q, d, n] = draw(
+        rng,
+        (r) => [r.int(0, 3), r.int(1, 4), r.int(0, 3)],
+        ([q, d, n]) => q + n > 0 && 25 * q + 10 * d + 5 * n < 100,
+      );
+      const parts = [
+        q ? `${q} ${q === 1 ? "quarter" : "quarters"}` : "",
+        `${d} ${d === 1 ? "dime" : "dimes"}`,
+        n ? `${n} ${n === 1 ? "nickel" : "nickels"}` : "",
+      ].filter(Boolean);
+      const list = parts.length === 2 ? parts.join(" and ") : `${parts[0]}, ${parts[1]} and ${parts[2]}`;
+      const name = rng.pick(NAMES);
+      return {
+        values: { q, d, n },
+        prompt: `${name} has ${list}. A quarter is 25 cents, a dime is 10 cents and a nickel is 5 cents. How many cents is that in all?`,
+        readAloud: `${name} has ${list}. A quarter is 25 cents, a dime is 10 cents, and a nickel is 5 cents. How many cents is that in all?`,
+        answer: String(25 * q + 10 * d + 5 * n),
+        wrong: [wrong(q + d + n, "coin-count")],
+      };
+    },
+  },
+  {
+    // Making ten (2.3: strategies for facts to 20).
+    id: "2-make-ten-strategy",
+    strand: "O", grades: { BC: 2, AB: 2, SK: 2, MB: 2, ON: 2 }, format: "choice", whiteboard: true, standard: "2.3",
+    fill(rng) {
+      const a = rng.pick([8, 9]), b = rng.int(4, 9);
+      // To make 10, move `moved` from b to a. The errors: move nothing from b, or add it to b instead of taking it away.
+      const moved = 10 - a;
+      return {
+        values: { a, b },
+        prompt: `Which is the same as ${a} + ${b}?`,
+        readAloud: `Which is the same as ${a} plus ${b}: ${orList(rng, [`10 plus ${b - moved}`, `10 plus ${b}`, `10 plus ${b + moved}`])}?`,
+        answer: `10 + ${b - moved}`,
+        wrong: [wrong(`10 + ${b}`, "compensation"), wrong(`10 + ${b + moved}`, "compensation-direction")],
+      };
+    },
+  },
+
+  // ---------- Patterns and algebra ----------
+  {
+    // Equality with symbols (2.7; map, grade 2: 8 + 5 = __ + 6). WNCP solves equations with a symbol for the unknown in grade 3.
+    id: "2-balance-equation",
+    strand: "A", grades: { BC: 2, AB: 3, SK: 3, MB: 3, ON: 2 }, format: "number", whiteboard: true, standard: "2.7",
+    fill(rng) {
+      const [a, b, c] = draw(rng, (r) => [r.int(4, 9), r.int(3, 9), r.int(2, 8)], ([a, b, c]) => a + b - c >= 1 && c !== a && c !== b);
+      return {
+        values: { a, b, c },
+        prompt: `${a} + ${b} = ? + ${c}`,
+        readAloud: `${a} plus ${b} is the same as what number plus ${c}?`,
+        answer: String(a + b - c),
+        wrong: [wrong(a + b, "A1"), wrong(a + b + c, "A1")],
+      };
+    },
+  },
+  {
+    // The unknown on the left of the equal sign (2.6; map, grade 2: 14 = __ + 9).
+    id: "2-missing-left",
+    strand: "A", grades: { BC: 2, AB: 3, SK: 3, MB: 3, ON: 2 }, format: "number", whiteboard: true, standard: "2.6",
+    fill(rng) {
+      const sum = rng.int(11, 18), b = rng.int(3, 9);
+      return {
+        values: { sum, b },
+        prompt: `${sum} = ? + ${b}`,
+        readAloud: `${sum} is the same as what number plus ${b}?`,
+        answer: String(sum - b),
+        wrong: [wrong(sum + b, "A1"), wrong(sum - b + 1, "count-start")],
+      };
+    },
+  },
+  {
+    id: "2-missing-addend",
+    strand: "A", grades: { BC: 2, AB: 3, SK: 3, MB: 3, ON: 2 }, format: "number", whiteboard: true, standard: "2.6",
+    fill(rng) {
+      // Bridging 10, as in 6 + ? = 14.
+      const [a, sum] = draw(rng, (r) => [r.int(3, 9), r.int(11, 18)], ([a, sum]) => sum - a >= 3 && sum - a <= 9);
+      return {
+        values: { a, sum },
+        prompt: `${a} + ? = ${sum}`,
+        readAloud: `${a} plus what number makes ${sum}?`,
+        answer: String(sum - a),
+        wrong: [wrong(sum + a, "operation"), wrong(sum - a + 1, "count-start")],
+      };
+    },
+  },
+  {
+    id: "2-increasing-pattern",
+    strand: "A", grades: { BC: 2, AB: 2, SK: 2, MB: 2, ON: 2 }, format: "number", whiteboard: false, standard: "2.5",
+    fill(rng) {
+      const step = rng.pick([2, 5, 10]);
+      // Start off the multiples, as in 3, 5, 7, 9 or 4, 14, 24, 34.
+      const start = draw(rng, (r) => r.int(1, step === 10 ? 9 : 20), (s) => s % step !== 0);
+      const seq = [0, 1, 2, 3].map((i) => start + i * step);
+      return {
+        values: { step, start },
+        prompt: `What comes next? ${seq.join(", ")}, ?`,
+        readAloud: `What number comes next? ${seq.join(", ")}.`,
+        answer: String(start + 4 * step),
+        wrong: [wrong(seq[3] + 1, "skip-by-one"), wrong(seq[3], "A2")],
+      };
+    },
+  },
+  {
+    // Finding the core of a repeating pattern (2.5 elaboration: identify the core).
+    id: "2-pattern-core",
+    strand: "A", grades: { BC: 2, AB: 2, SK: 2, MB: 2, ON: 2 }, format: "choice", whiteboard: false, standard: "2.5",
+    fill(rng) {
+      const [x, y, z] = rng.shuffle([...SHAPES]);
+      const cores = [[x, y, y], [x, x, y], [x, y, z], [x, y, y, z], [x, x, y, z]];
+      const c = rng.int(0, cores.length - 1);
+      const core = cores[c];
+      const shown = [...core, ...core, ...core];
+      const glyphs = (items: readonly (typeof x)[]) => items.map((s) => s.glyph).join(GAP);
+      // A core one item short, and one with an extra item, both look plausible to a child who has not found the repeat.
+      const short = core.slice(0, -1), long = [...core, core[0]];
+      return {
+        values: { core: c },
+        prompt: `What part of this pattern repeats? ${glyphs(shown)}`,
+        readAloud: `Look at the pattern: ${shown.map((s) => s.word).join(", ")}. What part of the pattern repeats?`,
+        answer: glyphs(core),
+        wrong: [wrong(glyphs(short), "pattern-core"), wrong(glyphs(long), "pattern-core")],
+      };
+    },
+  },
+  {
+    id: "2-change-unknown",
+    strand: "A", grades: { BC: 2, AB: 2, SK: 2, MB: 2, ON: 2 }, format: "number", whiteboard: true, standard: "2.6",
+    fill(rng) {
+      const total = rng.int(11, 18), left = rng.int(3, total - 3);
+      const [thing, place, verb] = rng.pick([
+        ["frogs", "on a log", "hopped away"],
+        ["birds", "in a tree", "flew away"],
+        ["ducks", "in a pond", "swam away"],
+      ] as const);
+      return {
+        values: { total, left },
+        prompt: `There were ${total} ${thing} ${place}. Some ${verb}. Now there are ${left}. How many ${thing} ${verb}?`,
+        readAloud: `There were ${total} ${thing} ${place}. Some ${verb}. Now there are ${left}. How many ${thing} ${verb}?`,
+        answer: String(total - left),
+        wrong: [wrong(total + left, "operation"), wrong(total - left + 1, "count-start")],
+      };
+    },
+  },
+  {
+    // An increasing pattern asked a few steps ahead (2.5).
+    id: "2-pattern-rows",
+    strand: "A", grades: { BC: 2, AB: 2, SK: 2, MB: 2, ON: 2 }, format: "number", whiteboard: true, standard: "2.5",
+    fill(rng) {
+      const first = rng.int(1, 3), step = rng.int(1, 3), ask = rng.int(5, 6);
+      const rows = [1, 2, 3].map((r) => `Row ${r}: ${row(first + (r - 1) * step)}`);
+      return {
+        values: { first, step, ask },
+        prompt: `Each row has ${step} more ${step === 1 ? "dot" : "dots"} than the row before. ${rows.join(". ")}. How many dots will row ${ask} have?`,
+        readAloud: `Row 1 has ${first} ${first === 1 ? "dot" : "dots"}. Each row has ${step} more ${step === 1 ? "dot" : "dots"} than the row before. How many dots will row ${ask} have?`,
+        answer: String(first + (ask - 1) * step),
+        wrong: [wrong(first + 3 * step, "next-not-asked")],
+      };
+    },
+  },
+  {
+    // Predicting a far item in a repeating pattern of numbers (2.5: complex repeating patterns).
+    id: "2-number-pattern-predict",
+    strand: "A", grades: { BC: 2, AB: 2, SK: 2, MB: 2, ON: 2 }, format: "choice", whiteboard: true, standard: "2.5",
+    fill(rng) {
+      const core = rng.shuffle([2, 3, 4, 5, 6, 7, 8, 9]).slice(0, 3);
+      const ask = rng.int(8, 15);
+      const at = (position: number) => core[(position - 1) % 3];
+      // The two other numbers of the core are the items just before and after: losing count by one lands there.
+      return {
+        values: { a: core[0], b: core[1], c: core[2], ask },
+        prompt: `The pattern keeps going: ${[...core, ...core].join(", ")}, … What is the ${ordinal(ask)} number in the pattern?`,
+        readAloud: `The pattern is ${[...core, ...core].join(", ")}, and it keeps going. What is the ${ordinal(ask)} number in the pattern?`,
+        answer: String(at(ask)),
+        wrong: [wrong(at(ask - 1), "one-to-one"), wrong(at(ask + 1), "one-to-one")],
+      };
+    },
+  },
+  {
+    id: "2-shape-pattern-predict",
+    strand: "A", grades: { BC: 2, AB: 2, SK: 2, MB: 2, ON: 2 }, format: "choice", whiteboard: true, standard: "2.5",
+    fill(rng) {
+      const [x, y, z] = rng.shuffle([0, 1, 2, 3]);
+      const cores = [[x, y, y], [x, y, z], [x, x, y, y], [x, y, y, z]];
+      const c = rng.int(0, cores.length - 1);
+      const ask = rng.int(10, 16);
+      return { values: { x, y, z, core: c, ask }, ...predictShape(rng, cores[c], ask) };
+    },
+  },
+  {
+    // The equal sign between two expressions (2.7; misconception A1).
+    id: "2-true-equation",
+    strand: "A", grades: { BC: 2, AB: 2, SK: 2, MB: 2, ON: 2 }, format: "choice", whiteboard: false, standard: "2.7",
+    fill(rng) {
+      const [a, b] = draw(rng, (r) => [r.int(6, 9), r.int(4, 9)], ([a, b]) => a + b >= 11 && a !== b);
+      const sum = a + b, extra = rng.int(1, 3);
+      const right = `${a} + ${b} = 10 + ${sum - 10}`;
+      const running = `${a} + ${b} = ${sum} + ${extra}`; // reads "=" as "the answer comes next"
+      const unchanged = `${a} + ${b} = 10 + ${b}`; // makes a ten from a but does not take the amount from b
+      const say = (e: string) => e.replace(/\+/g, "plus").replace("=", "is the same as");
+      return {
+        values: { a, b, extra },
+        prompt: "Which is true?",
+        readAloud: `Which is true? ${orList(rng, [right, running, unchanged].map(say))}?`,
+        answer: right,
+        wrong: [wrong(running, "A1"), wrong(unchanged, "compensation")],
+      };
+    },
+  },
+  {
+    // A missing number inside an increasing pattern (2.5).
+    id: "2-missing-in-pattern",
+    strand: "A", grades: { BC: 2, AB: 2, SK: 2, MB: 2, ON: 2 }, format: "number", whiteboard: false, standard: "2.5",
+    fill(rng) {
+      const step = rng.pick([2, 5, 10]);
+      const start = step * rng.int(1, step === 10 ? 5 : 8) + (step === 10 ? rng.int(1, 9) : 0);
+      const gap = rng.int(1, 3);
+      const seq = [0, 1, 2, 3, 4].map((i) => start + i * step);
+      const show = (blank: string) => seq.map((v, i) => (i === gap ? blank : String(v))).join(", ");
+      return {
+        values: { step, start, gap },
+        prompt: `What number is missing? ${show("?")}`,
+        readAloud: `What number is missing? ${show("what number")}.`,
+        answer: String(seq[gap]),
+        wrong: [wrong(seq[gap - 1] + 1, "skip-by-one"), wrong(seq[4] + step, "next-not-asked")],
+      };
+    },
+  },
+  {
+    // Change unknown, adding (2.6), crossing a ten.
+    id: "2-change-unknown-add",
+    strand: "A", grades: { BC: 2, AB: 2, SK: 2, MB: 2, ON: 2 }, format: "number", whiteboard: true, standard: "2.6",
+    fill(rng) {
+      const [start, more] = draw(rng, (r) => [r.int(11, 25), r.int(4, 9)], ([s, m]) => (s % 10) + m >= 10);
+      const [who, where, verb] = rng.pick([
+        ["children", "in the pool", "jumped in"],
+        ["people", "on a train", "got on"],
+        ["cars", "in a parking lot", "drove in"],
+      ] as const);
+      return {
+        values: { start, more },
+        prompt: `There were ${start} ${who} ${where}. Some more ${verb}. Now there are ${start + more}. How many ${verb}?`,
+        readAloud: `There were ${start} ${who} ${where}. Some more ${verb}. Now there are ${start + more}. How many ${verb}?`,
+        answer: String(more),
+        wrong: [wrong(start + start + more, "operation"), wrong(more + 1, "count-start")],
+      };
+    },
+  },
+
+  // ---------- Shapes, measurement and data ----------
+  {
+    // Centimetres on a ruler (2.8; map, grade 2). WNCP measures in cm and m in grade 3.
+    id: "2-ruler-length",
+    strand: "MG", grades: { BC: 2, AB: 3, SK: 3, MB: 3, ON: 2 }, format: "number", whiteboard: true, standard: "2.8",
+    fill(rng) {
+      const start = rng.int(2, 6), end = start + rng.int(4, 9);
+      const thing = rng.pick(["pencil", "crayon", "leaf", "key"]);
+      return {
+        values: { start, end },
+        prompt: `A ${thing} starts at the ${start} cm mark of a ruler and ends at the ${end} cm mark. How long is the ${thing}, in cm?`,
+        readAloud: `A ${thing} starts at the ${start} centimetre mark of a ruler and ends at the ${end} centimetre mark. How many centimetres long is the ${thing}?`,
+        answer: String(end - start),
+        wrong: [wrong(end, "M1"), wrong(end - start + 1, "N4")],
+      };
+    },
+  },
+  {
+    // Lengths in metres or centimetres (2.8). WNCP uses standard units in grade 3.
+    id: "2-length-unit",
+    strand: "MG", grades: { BC: 2, AB: 3, SK: 3, MB: 3, ON: 2 }, format: "choice", whiteboard: false, standard: "2.8",
+    fill(rng) {
+      const big = rng.int(0, 1) === 1;
+      const thing = big ? rng.pick(["a classroom", "a hallway", "a school bus"]) : rng.pick(["a pencil", "a spoon", "a crayon"]);
+      const [answer, other, odd] = big ? ["Metres", "Centimetres", "Grams"] : ["Centimetres", "Metres", "Litres"];
+      return {
+        values: { big: big ? 1 : 0 },
+        prompt: `Which unit is best for measuring the length of ${thing}?`,
+        readAloud: `Which unit is best for measuring the length of ${thing}: ${orList(rng, [answer, other, odd].map((u) => u.toLowerCase()))}?`,
+        answer,
+        wrong: [wrong(other, "unit-choice"), wrong(odd, "unit-kind")],
+      };
+    },
+  },
+  {
+    id: "2-square-or-rectangle",
+    strand: "MG", grades: { BC: 2, AB: 2, SK: 2, MB: 2, ON: 2 }, format: "choice", whiteboard: false, standard: "2.9",
+    fill(rng) {
+      const square = "■ square", rectangle = "▬ rectangle";
+      const askSquare = rng.int(0, 1) === 1;
+      const questions = askSquare
+        ? ["Which shape has 4 sides that are all the same length and 4 square corners?", "Which shape has 4 equal sides and 4 square corners?"]
+        : ["Which shape has 4 square corners, 2 long sides and 2 short sides?", "Which shape has 4 square corners but sides that are not all the same length?"];
+      const q = rng.int(0, 1);
+      const [odd, oddWord] = rng.pick([["▲ triangle", "a triangle"], ["● circle", "a circle"]] as const);
+      return {
+        values: { askSquare: askSquare ? 1 : 0, q },
+        prompt: questions[q],
+        readAloud: `${questions[q]} ${cap(orList(rng, ["a square", "a rectangle", oddWord]))}?`,
+        answer: askSquare ? square : rectangle,
+        wrong: [wrong(askSquare ? rectangle : square, "square-rectangle"), wrong(odd, "shape-name")],
+      };
+    },
+  },
+  {
+    // A shape keeps its name when it is turned (2.9; misconception M4).
+    id: "2-turned-shape",
+    strand: "MG", grades: { BC: 2, AB: 2, SK: 2, MB: 2, ON: 2 }, format: "choice", whiteboard: false, standard: "2.9",
+    fill(rng) {
+      // [shape, how it is turned, picture, the M4 answer, names that are wrong for it]. No picture for the square:
+      // some fonts draw ◆ as a tall rhombus. A square is also a rectangle, so "a rectangle" is never its wrong answer.
+      // Choices have no commas, so the read-aloud list stays clear.
+      const turns = [
+        ["square", "so it stands on one corner", "", "A diamond and not a square", ["triangle", "circle"]],
+        ["triangle", "upside down", " like this: ▼", "Not a triangle because it is upside down", ["square", "rectangle", "circle"]],
+        ["rectangle", "so it stands on a short side", " like this: ▮", "Not a rectangle because it stands up tall", ["square", "triangle", "circle"]],
+      ] as const;
+      const t = rng.int(0, turns.length - 1);
+      const [shape, how, picture, m4, others] = turns[t];
+      const other = rng.pick(others);
+      const still = `Still a ${shape}`, wrongName = `A ${other}`;
+      return {
+        values: { t },
+        prompt: `A ${shape} is turned ${how}${picture ? `,${picture}` : ""}. What shape is it now?`,
+        // Each choice is its own sentence, so a listener hears where one ends and the next begins.
+        readAloud: `A ${shape} is turned ${how}. What shape is it now? Choose one. ${rng.shuffle([still, m4, wrongName]).join(". ")}.`,
+        answer: still,
+        wrong: [wrong(m4, "M4"), wrong(wrongName, "shape-name")],
+      };
+    },
+  },
+  {
+    // Flat shapes as faces of solids (2.9). WNCP compares 2D shapes with parts of 3D objects in grade 1.
+    id: "2-face-of-solid",
+    strand: "MG", grades: { BC: 2, AB: 1, SK: 1, MB: 1, ON: 2 }, format: "choice", whiteboard: false, standard: "2.9",
+    fill(rng) {
+      // [the face asked about, its shape, the shape seen from the side]. No item names its own answer.
+      const options = [
+        ["the flat bottom of a can", "● circle", "■ square"],
+        ["each face of a number cube", "■ square", ""],
+        ["the flat bottom of a cone, like a party hat", "● circle", "▲ triangle"],
+        ["the flat top of a drum", "● circle", "■ square"],
+      ] as const;
+      const i = rng.int(0, options.length - 1);
+      const [part, answer, side] = options[i];
+      const others = ["● circle", "■ square", "▲ triangle"].filter((s) => s !== answer);
+      return {
+        values: { solid: i },
+        prompt: `What shape is ${part}?`,
+        readAloud: `What shape is ${part}: ${orList(rng, ["a circle", "a square", "a triangle"])}?`,
+        answer,
+        // Picking the shape seen from the side (a cone looks like a triangle) is its own error.
+        wrong: others.map((s) => wrong(s, s === side ? "side-view" : "shape-name")),
+      };
+    },
+  },
+  {
+    // Sorting solids by two attributes (2.9).
+    id: "2-roll-and-stack",
+    strand: "MG", grades: { BC: 2, AB: 2, SK: 2, MB: 2, ON: 2 }, format: "choice", whiteboard: false, standard: "2.9",
+    fill(rng) {
+      // Objects that clearly have the shape: no boxes (most are not cubes), no tall thin cylinders.
+      const cylinder = rng.pick(["A can", "A jar", "A paint can"]);
+      const sphere = rng.pick(["A ball", "An orange", "A marble"]);
+      const cube = rng.pick(["A block", "A sugar cube", "A building block"]);
+      const [can, ball, box] = [`${cylinder} (a cylinder)`, `${sphere} (a sphere)`, `${cube} (a cube)`];
+      const said = orList(rng, [cylinder, sphere, cube].map((s) => s.toLowerCase()));
+      // Only "can roll and can stack": "cannot roll" is unclear for a cube, since children roll dice in games.
+      return {
+        values: { cylinder: ["A can", "A jar", "A paint can"].indexOf(cylinder) },
+        prompt: "Which one can roll and can also be stacked into a tower?",
+        readAloud: `Which one can roll and can also be stacked into a tower: ${said}?`,
+        answer: can,
+        wrong: [wrong(ball, "one-attribute"), wrong(box, "one-attribute")],
+      };
+    },
+  },
+  {
+    // Picture graphs (2.10; map, grade 2: how many pets in all).
+    id: "2-graph-in-all",
+    strand: "DP", grades: { BC: 2, AB: 2, SK: 2, MB: 2, ON: 2 }, format: "number", whiteboard: false, standard: "2.10",
+    fill(rng) {
+      const [a, b, c] = draw(rng, (r) => r.shuffle([2, 3, 4, 5, 6, 7]).slice(0, 3), ([a, b, c]) => a + b + c <= 18);
+      const total = a + b + c, largest = Math.max(a, b, c), smallest = Math.min(a, b, c);
+      const [about, x, y, z] = rng.pick([
+        ["pet", "Dogs", "Cats", "Fish"],
+        ["colour", "Red", "Blue", "Green"],
+        ["sport", "Soccer", "Hockey", "Swimming"],
+      ] as const);
+      return {
+        values: { a, b, c },
+        prompt: `Children chose a favourite ${about}. Each ● is 1 child. ${x}: ${row(a)}. ${y}: ${row(b)}. ${z}: ${row(c)}. How many children are there in all?`,
+        // The counts are not read out: counting the dots is the task.
+        readAloud: `Children chose a favourite ${about}. Each dot is one child. Look at the dots for ${x.toLowerCase()}, ${y.toLowerCase()} and ${z.toLowerCase()}. How many children are there in all?`,
+        answer: String(total),
+        wrong: [wrong(largest, "one-part"), wrong(total - smallest, "leaves-out-addend")],
+      };
+    },
+  },
+  {
+    id: "2-graph-fewer",
+    strand: "DP", grades: { BC: 2, AB: 2, SK: 2, MB: 2, ON: 2 }, format: "number", whiteboard: true, standard: "2.10",
+    fill(rng) {
+      // The difference never equals the smaller count, so the coded wrong answer stays wrong. At most 10 stars a row,
+      // so a row is easy to count.
+      const [more, fewer] = draw(rng, (r) => [r.int(6, 10), r.int(2, 8)], ([m, f]) => f <= m - 2 && m !== 2 * f);
+      const [kind, x, y] = rng.pick([["fruit", "apples", "pears"], ["sport", "hockey", "soccer"], ["season", "summer", "winter"]] as const);
+      return {
+        values: { more, fewer },
+        prompt: `Children chose a favourite ${kind}. Each ★ is 1 child. ${cap(x)}: ${row(more, "★")}. ${cap(y)}: ${row(fewer, "★")}. How many fewer children chose ${y} than ${x}?`,
+        // The counts are not read out: counting the stars is part of the task.
+        readAloud: `Children chose a favourite ${kind}. Each star is one child. Look at the stars for ${x} and for ${y}. How many fewer children chose ${y} than ${x}?`,
+        answer: String(more - fewer),
+        wrong: [wrong(more + fewer, "operation"), wrong(fewer, "difference-whole")],
+      };
+    },
+  },
+  {
+    // Spinner (2.11; map, grade 2). WNCP starts likelihood in grade 5.
+    id: "2-spinner",
+    strand: "DP", grades: { BC: 2, AB: 5, SK: 5, MB: 5, ON: 2 }, format: "choice", whiteboard: false, standard: "2.11",
+    fill(rng) {
+      const [x, y] = rng.shuffle(["red", "blue", "green", "yellow"]);
+      const many = rng.int(2, 5);
+      // Either colour may be named first, so the likely one is not always first.
+      const parts = rng.shuffle([`${many} are ${x}`, `1 is ${y}`]).join(" and ");
+      const same = `${cap(x)} and ${y} are equally likely`;
+      return {
+        values: { many },
+        prompt: `A spinner has ${many + 1} equal parts: ${parts}. Which colour is it more likely to land on?`,
+        readAloud: `A spinner has ${many + 1} equal parts: ${parts}. Which colour is it more likely to land on? Choose one. ${rng.shuffle([cap(x), cap(y), same]).join(". ")}.`,
+        answer: cap(x),
+        wrong: [wrong(cap(y), "chance-reversed"), wrong(`${cap(x)} and ${y} are equally likely`, "D3")],
+      };
+    },
+  },
+  {
+    // Certain or uncertain (2.11). Ontario uses impossible, possible and certain in grade 1; WNCP starts in grade 5.
+    id: "2-certain-possible",
+    strand: "DP", grades: { BC: 2, AB: 5, SK: 5, MB: 5, ON: 1 }, format: "choice", whiteboard: false, standard: "2.11",
+    fill(rng) {
+      const [x, y] = rng.shuffle(["green", "red", "blue", "yellow"]);
+      const kind = rng.int(0, 2);
+      const bag = kind === 2 ? `${x} cubes and ${y} cubes` : `only ${x} cubes`;
+      const pick = kind === 0 ? x : y;
+      const answer = ["Certain", "Impossible", "Possible, but not certain"][kind];
+      const coded = [
+        [wrong("Possible, but not certain", "certain-likely"), wrong("Impossible", "opposite-extreme")],
+        [wrong("Possible, but not certain", "impossible-possible"), wrong("Certain", "opposite-extreme")],
+        [wrong("Impossible", "rules-out-possible"), wrong("Certain", "sure-of-possible")],
+      ][kind];
+      return {
+        values: { kind },
+        prompt: `A bag has ${bag}. You pick one cube without looking. Is it certain, possible but not certain, or impossible that it is ${pick}?`,
+        readAloud: `A bag has ${bag}. You pick one cube without looking. Is it certain, possible but not certain, or impossible that it is ${pick}?`,
+        answer,
+        wrong: coded,
+      };
+    },
+  },
+  {
+    // Comparing two lengths in centimetres (2.8 with 2.4). WNCP measures in cm in grade 3.
+    id: "2-compare-lengths",
+    strand: "MG", grades: { BC: 2, AB: 3, SK: 3, MB: 3, ON: 2 }, format: "number", whiteboard: true, standard: "2.8",
+    fill(rng) {
+      const [a, b] = draw(rng, (r) => [r.int(25, 60), r.int(12, 40)], ([a, b]) => a - b >= 10);
+      const [x, y] = rng.shuffle(["red", "blue", "green", "yellow"]);
+      return {
+        values: { a, b },
+        prompt: `A ${x} ribbon is ${a} cm long. A ${y} ribbon is ${b} cm long. How much longer is the ${x} ribbon, in cm?`,
+        readAloud: `A ${x} ribbon is ${a} centimetres long. A ${y} ribbon is ${b} centimetres long. How many centimetres longer is the ${x} ribbon?`,
+        answer: String(a - b),
+        wrong: [wrong(a + b, "operation"), wrong(a, "difference-whole")],
+      };
+    },
+  },
+  {
+    // Sides of several shapes (2.9: triangles, squares and rectangles).
+    id: "2-sides-in-all",
+    strand: "MG", grades: { BC: 2, AB: 2, SK: 2, MB: 2, ON: 2 }, format: "number", whiteboard: true, standard: "2.9",
+    fill(rng) {
+      const triangles = rng.int(1, 3), squares = rng.int(1, 2), rectangles = rng.int(0, 1);
+      const parts = [
+        `${triangles} ${triangles === 1 ? "triangle" : "triangles"}`,
+        `${squares} ${squares === 1 ? "square" : "squares"}`,
+        rectangles ? "1 rectangle" : "",
+      ].filter(Boolean);
+      const list = parts.length === 2 ? parts.join(" and ") : `${parts[0]}, ${parts[1]} and ${parts[2]}`;
+      const glyphs = [row(triangles, "▲"), row(squares, "■"), rectangles ? "▬" : ""].filter(Boolean).join(" ");
+      return {
+        values: { triangles, squares, rectangles },
+        prompt: `How many sides do ${list} have in all? ${glyphs}`,
+        readAloud: `How many sides do ${list} have in all?`,
+        answer: String(3 * triangles + 4 * squares + 4 * rectangles),
+        wrong: [wrong(triangles + squares + rectangles, "count-objects")],
+      };
+    },
+  },
+];
+

@@ -8,7 +8,8 @@
     "start": "next start",
     "lint": "eslint",
     "test": "vitest run",
-    "build:ds": "node scripts/build-ds.mjs"
+    "build:ds": "node scripts/build-ds.mjs",
+    "check:templates": "node scripts/check-templates.mjs"
   },
   "dependencies": {
     "@supabase/ssr": "^0.12.7",

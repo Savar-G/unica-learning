@@ -228,7 +228,7 @@ function Intro({ name, total, ready, busy, onStart, failure, mode }: { name: str
       <MessageScreen>
         <p className="test-kicker">Math test</p>
         <h1 className="test-title">The test for {name}&apos;s grade is not ready yet.</h1>
-        <p className="test-lead">The test is open for grades 3 to 5 now. We are writing the questions for the other grades.</p>
+        <p className="test-lead">The test is open for grades 1 to 5 now. We are writing the questions for the other grades.</p>
         <Link className="btn ghost" href="/account">Back to your account</Link>
       </MessageScreen>
     );

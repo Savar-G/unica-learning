@@ -15,6 +15,8 @@ export {
   type WorkReview,
 } from "./report";
 export { SAMPLE_BANK } from "./sample-bank";
+export { BANKS, GRADE_1_2_BANK, bankFor } from "./bank";
+export type { TaggedTemplate } from "./bank/kit";
 export {
   breakDue,
   createSession,
