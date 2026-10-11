@@ -9,10 +9,17 @@ import {
   levelNotes,
   levelSentence,
   nextStep,
+  questionsAndMinutes,
   thresholdsLine,
   verdictSentence,
   type ReportView,
 } from "@/lib/report-view";
+
+/** The parent the report goes to. */
+export interface ParentContact {
+  name: string;
+  email: string;
+}
 
 const ENTITY: Record<string, string> = { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" };
 const esc = (s: string) => s.replace(/[&<>"']/g, (c) => ENTITY[c]);
@@ -49,7 +56,7 @@ export function reportEmail({ view: v, parentName, url }: { view: ReportView; pa
   const name = v.childName;
   const first = firstName(parentName);
   const subject = `${name}'s math report is ready`;
-  const intro = `${name} finished the math placement test: ${v.questions} questions in ${v.minutes} minute${v.minutes === 1 ? "" : "s"}.`;
+  const intro = `${name} finished the math placement test: ${questionsAndMinutes(v)}.`;
   const notes = levelNotes(v);
   const fsa = v.model.fsa;
   const help = howWeHelp(v);
@@ -132,7 +139,7 @@ export function reportAlert({
   parentEmail,
 }: {
   view: ReportView;
-  parent: { name: string; email: string };
+  parent: ParentContact;
   url: string;
   flags: readonly unknown[];
   /** Completed tests in the child's grade, the count the comparison stage came from. */
@@ -147,7 +154,7 @@ export function reportAlert({
     `Working level: ${levelName(m.level.working)} (${m.howWeHelp})${m.level.atCeiling ? ", at the top of what the test reached" : ""}${m.level.confidence === "low" ? ", low confidence: no level cleared" : ""}`,
     `Flags: ${flags.length ? flags.map(flagText).join("; ") : "none"}`,
     `Areas: ${m.strands.map((s) => `${s.name} ${STATUS_LABEL[s.status]} ${s.correct}/${s.total}`).join("; ")}`,
-    `Questions: ${v.questions} in ${v.minutes} minutes`,
+    `Questions: ${questionsAndMinutes(v)}`,
     `Comparison: ${COMPARISON_LABEL[m.comparison.stage]} (${completedInGrade} completed tests in grade ${m.level.grade})`,
     `FSA line: ${m.fsa ? "shown" : "not shown"}`,
     `Next step: ${m.callToAction}`,

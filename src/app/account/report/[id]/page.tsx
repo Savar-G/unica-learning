@@ -17,7 +17,8 @@ export const metadata = pageMetadata({
   index: false,
 });
 
-interface ReportRow {
+/** The report as the parent's session reads it, with its test and child. */
+interface ReportPageRow {
   id: string;
   model: ReportModel;
   questions: number;
@@ -40,7 +41,7 @@ export default async function ReportPage({ params, searchParams }: PageProps<"/a
 
   const { data: row } = await db.from("reports")
     .select("id, model, questions, minutes, assessment:assessments(completed_at, province), child:children(first_name)")
-    .eq("id", id).maybeSingle<ReportRow>();
+    .eq("id", id).maybeSingle<ReportPageRow>();
   if (!row?.assessment || !row.child) notFound();
 
   const view: ReportView = {

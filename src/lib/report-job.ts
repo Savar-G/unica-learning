@@ -2,7 +2,7 @@ import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { reportModel, type Placement, type Province, type ReportModel, type WorkReview } from "@/lib/assessment";
 import { SUPPORT_EMAIL } from "@/lib/contact";
-import { reportAlert, reportEmail } from "@/lib/report-email";
+import { reportAlert, reportEmail, type ParentContact } from "@/lib/report-email";
 import { reportPath, type ReportView } from "@/lib/report-view";
 import { adminClient } from "@/lib/supabase-auth";
 
@@ -33,7 +33,7 @@ export type ReviewWork = (assessment: FinishedAssessment) => Promise<WorkReview[
 /** No reviews: the report shows no work comments. #68 replaces this with the AI reviewer, behind its switch. */
 export const noReviews: ReviewWork = async () => [];
 
-interface ReportRow {
+interface StoredReport {
   id: string;
   model: ReportModel;
   questions: number;
@@ -59,7 +59,7 @@ export async function runReportJob(assessmentId: string, origin: string, { revie
     const report = await storeReport(admin, assessment, completedInGrade, reviewWork);
 
     const [{ data: parent, error: parentError }, { data: child, error: childError }] = await Promise.all([
-      admin.from("parents").select("name, email").eq("id", assessment.parent_id).maybeSingle<{ name: string; email: string }>(),
+      admin.from("parents").select("name, email").eq("id", assessment.parent_id).maybeSingle<ParentContact>(),
       admin.from("children").select("first_name").eq("id", assessment.child_id).maybeSingle<{ first_name: string }>(),
     ]);
     if (parentError || childError || !parent || !child) throw new Error(`parent or child not found: ${parentError?.message ?? childError?.message ?? "no row"}`);
@@ -73,11 +73,12 @@ export async function runReportJob(assessmentId: string, origin: string, { revie
       minutes: report.minutes,
       model: report.model,
     };
-    const url = `${origin}${reportPath(report.id)}?src=email`;
+    const url = `${origin}${reportPath(report.id)}`;
 
-    const parentEmail = await emailParent(admin, report, view, parent, url);
+    const parentEmail = await emailParent(admin, report, view, parent, `${url}?src=email`);
     // Another run is sending the parent email right now; it sends the alert too.
     if (parentEmail === "busy") return;
+    // The link opens only in the parent's account until the admin area (#77).
     await alertSavar(admin, report, reportAlert({ view, parent, url, flags: assessment.placement.flags ?? [], completedInGrade, parentEmail }), parent.email);
   } catch (e) {
     console.error("[report] failed", assessmentId, message(e));
@@ -105,8 +106,8 @@ async function countCompleted(admin: SupabaseClient, grade: number): Promise<num
 }
 
 /** The stored report for the assessment, built now if there is none yet. */
-async function storeReport(admin: SupabaseClient, a: FinishedAssessment, completedInGrade: number, reviewWork: ReviewWork): Promise<ReportRow> {
-  const existing = await admin.from("reports").select(REPORT_COLUMNS).eq("assessment_id", a.id).maybeSingle<ReportRow>();
+async function storeReport(admin: SupabaseClient, a: FinishedAssessment, completedInGrade: number, reviewWork: ReviewWork): Promise<StoredReport> {
+  const existing = await admin.from("reports").select(REPORT_COLUMNS).eq("assessment_id", a.id).maybeSingle<StoredReport>();
   if (existing.error) throw new Error(`report load: ${existing.error.message}`);
   if (existing.data) return existing.data;
 
@@ -123,26 +124,42 @@ async function storeReport(admin: SupabaseClient, a: FinishedAssessment, complet
     minutes: Math.max(1, Math.round(ms / 60_000)),
   };
   // A second run that got here at the same time inserts nothing and reads the first run's report.
-  const { data, error } = await admin.from("reports").upsert(row, { onConflict: "assessment_id", ignoreDuplicates: true }).select(REPORT_COLUMNS).returns<ReportRow[]>();
+  const { data, error } = await admin.from("reports").upsert(row, { onConflict: "assessment_id", ignoreDuplicates: true }).select(REPORT_COLUMNS).returns<StoredReport[]>();
   if (error) throw new Error(`report insert: ${error.message}`);
   if (data?.[0]) return data[0];
-  const raced = await admin.from("reports").select(REPORT_COLUMNS).eq("assessment_id", a.id).single<ReportRow>();
+  const raced = await admin.from("reports").select(REPORT_COLUMNS).eq("assessment_id", a.id).single<StoredReport>();
   if (raced.error) throw new Error(`report reload: ${raced.error.message}`);
   return raced.data;
 }
 
-/** Sets the email's time in the row if it is empty. False when another run set it first. */
+/** Writes email state to the report row. A failed write is logged, never thrown: the email itself already happened or failed. */
+async function mark(admin: SupabaseClient, id: string, fields: Record<string, string | null>) {
+  const { error } = await admin.from("reports").update(fields).eq("id", id);
+  if (error) console.error("[report] row update failed", id, Object.keys(fields).join(","), error.message);
+}
+
+/**
+ * A parent-email claim with no email_id after this long belongs to a run that stopped (a function stops after at most
+ * 300 seconds on Vercel), so a later run may take it over. The cost: an email whose email_id write failed can go twice.
+ */
+const STALE_CLAIM_MS = 10 * 60_000;
+
+/** Sets the email's time in the row if it is empty, or if a stopped run left it. False when a live run holds it. */
 async function claim(admin: SupabaseClient, id: string, column: "emailed_at" | "alerted_at"): Promise<boolean> {
-  const { data, error } = await admin.from("reports").update({ [column]: new Date().toISOString() }).eq("id", id).is(column, null).select("id");
+  let query = admin.from("reports").update({ [column]: new Date().toISOString() }).eq("id", id);
+  query = column === "emailed_at"
+    ? query.or(`emailed_at.is.null,and(email_id.is.null,emailed_at.lt."${new Date(Date.now() - STALE_CLAIM_MS).toISOString()}")`)
+    : query.is(column, null);
+  const { data, error } = await query.select("id");
   if (error) throw new Error(`claim ${column}: ${error.message}`);
   return (data?.length ?? 0) > 0;
 }
 
-async function emailParent(admin: SupabaseClient, report: ReportRow, view: ReportView, parent: { name: string; email: string }, url: string): Promise<Sent | "busy"> {
-  if (report.emailed_at) return report.email_id ? { sent: true } : "busy";
+async function emailParent(admin: SupabaseClient, report: StoredReport, view: ReportView, parent: ParentContact, url: string): Promise<Sent | "busy"> {
+  if (report.email_id) return { sent: true };
   const from = process.env.EMAIL_FROM;
   if (!from) {
-    await admin.from("reports").update({ email_error: "EMAIL_FROM is not set" }).eq("id", report.id);
+    await mark(admin, report.id, { email_error: "EMAIL_FROM is not set" });
     return { sent: false, reason: "EMAIL_FROM is not set" };
   }
   if (!(await claim(admin, report.id, "emailed_at"))) return "busy";
@@ -150,28 +167,29 @@ async function emailParent(admin: SupabaseClient, report: ReportRow, view: Repor
   const result = await send({ from, to: parent.email, replyTo: SUPPORT_EMAIL, ...email });
   if ("error" in result) {
     console.error("[report] parent email failed", report.id, result.error);
-    await admin.from("reports").update({ emailed_at: null, email_error: result.error.slice(0, 500) }).eq("id", report.id);
+    await mark(admin, report.id, { emailed_at: null, email_error: result.error.slice(0, 500) });
     return { sent: false, reason: result.error };
   }
   console.info("[report] parent email sent", report.id);
   // A sent email always has an email_id, so a later run can tell it from a claim still in flight.
-  await admin.from("reports").update({ email_id: (result.id || "sent").slice(0, 100), email_error: null }).eq("id", report.id);
+  await mark(admin, report.id, { email_id: (result.id || "sent").slice(0, 100), email_error: null });
   return { sent: true };
 }
 
-async function alertSavar(admin: SupabaseClient, report: ReportRow, alert: { subject: string; text: string }, replyTo: string) {
+// A run that stops between the claim and the send loses this one alert; the parent email above is the one that matters.
+async function alertSavar(admin: SupabaseClient, report: StoredReport, alert: { subject: string; text: string }, replyTo: string) {
   const to = process.env.SIGNUP_NOTIFY_EMAIL;
   if (report.alerted_at || !to) return;
   if (!(await claim(admin, report.id, "alerted_at"))) return;
   const result = await send({ to, replyTo, ...alert });
   if ("error" in result) {
     console.error("[report] alert failed", report.id, result.error);
-    await admin.from("reports").update({ alerted_at: null, alert_error: result.error.slice(0, 500) }).eq("id", report.id);
+    await mark(admin, report.id, { alerted_at: null, alert_error: result.error.slice(0, 500) });
     return;
   }
   console.info("[report] alert sent", report.id);
   // A retry that worked clears the error of the run before.
-  await admin.from("reports").update({ alert_error: null }).eq("id", report.id);
+  await mark(admin, report.id, { alert_error: null });
 }
 
 /**

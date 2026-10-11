@@ -29,13 +29,20 @@ export default async function Account({ searchParams }: PageProps<"/account">) {
     db.from("parents").select("name, email").maybeSingle<{ name: string; email: string }>(),
     db.from("children").select("id, first_name, grade, province").order("created_at").returns<Child[]>(),
     // Oldest first, so each child's latest test wins below.
-    db.from("assessments").select("child_id, status").order("created_at").returns<{ child_id: string; status: AssessmentStatus }[]>(),
-    // Each child's latest report (#65), oldest first like the tests.
-    db.from("reports").select("id, child_id").order("created_at").returns<{ id: string; child_id: string }[]>(),
+    db.from("assessments").select("id, child_id, status").order("created_at").returns<{ id: string; child_id: string; status: AssessmentStatus }[]>(),
+    // Reports (#65), oldest first like the tests.
+    db.from("reports").select("id, child_id, assessment_id").order("created_at").returns<{ id: string; child_id: string; assessment_id: string }[]>(),
   ]);
   if (!parent) redirect("/account/finish");
   const latest = new Map((tests ?? []).map((t) => [t.child_id, t.status]));
-  const report = new Map((reports ?? []).map((r) => [r.child_id, reportPath(r.id)]));
+  // A finished latest test links to its own report (none yet while it is built); otherwise the child's last report shows.
+  const latestTest = new Map((tests ?? []).map((t) => [t.child_id, t]));
+  const reportOfTest = new Map((reports ?? []).map((r) => [r.assessment_id, reportPath(r.id)]));
+  const lastReport = new Map((reports ?? []).map((r) => [r.child_id, reportPath(r.id)]));
+  const reportFor = (id: string) => {
+    const test = latestTest.get(id);
+    return test?.status === "completed" ? reportOfTest.get(test.id) : lastReport.get(id);
+  };
   // An expired test (#72) counts as no test: the child starts again.
   const testStatus = (id: string) => {
     const s = latest.get(id);
@@ -62,7 +69,7 @@ export default async function Account({ searchParams }: PageProps<"/account">) {
         {children.map((c, i) => (
           <li key={c.id} className="acct-kid">
             <span><b>{c.first_name}</b><span className="small">Grade {c.grade} · {CURRICULA[c.province]}</span></span>
-            {phone ? <SendLink childId={c.id} name={c.first_name} sent={sent === "1" && i === 0} /> : <StartTest childId={c.id} name={c.first_name} status={testStatus(c.id)} report={report.get(c.id)} />}
+            {phone ? <SendLink childId={c.id} name={c.first_name} sent={sent === "1" && i === 0} /> : <StartTest childId={c.id} name={c.first_name} status={testStatus(c.id)} report={reportFor(c.id)} />}
           </li>
         ))}
       </ul>

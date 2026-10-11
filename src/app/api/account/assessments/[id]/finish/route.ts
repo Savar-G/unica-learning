@@ -17,9 +17,9 @@ export async function POST(request: Request, ctx: RouteContext<"/api/account/ass
   // The report (#65) is built, stored and emailed after the response, so it never blocks or fails the finish.
   // The job is safe to run twice, so a repeated finish also completes a report step that failed before.
   const origin = linkOrigin(request);
-  const report = () => after(() => runReportJob(row.id, origin));
+  const scheduleReport = () => after(() => runReportJob(row.id, origin));
   if (row.status === "completed") {
-    report();
+    scheduleReport();
     return Response.json({ ok: true } satisfies FinishResult);
   }
   if (row.status !== "in_progress" || testStep(session).status !== "complete") return testFail("incomplete", 409);
@@ -32,6 +32,6 @@ export async function POST(request: Request, ctx: RouteContext<"/api/account/ass
     console.error("[test] finish failed", error.message);
     return testFail("store_failed", 502);
   }
-  report();
+  scheduleReport();
   return Response.json({ ok: true } satisfies FinishResult);
 }

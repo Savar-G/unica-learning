@@ -296,7 +296,7 @@ export function AddChild({ province }: { province: CurriculumId }) {
 
 /**
  * Opens the child's test (#64). An open test continues; a finished one opens its report (#65), or waits for it.
- * `report` is the path of the child's latest report.
+ * `report` is the path of the child's latest report; it stays reachable while a later test is open (spec #54, story 32).
  */
 export function StartTest({ childId, name, status, report }: { childId: string; name: string; status: Exclude<AssessmentStatus, "expired"> | null; report?: string }) {
   if (status === "completed" && report) {
@@ -312,6 +312,7 @@ export function StartTest({ childId, name, status, report }: { childId: string; 
       <Link className="btn" href={`/account/test/${childId}`} onClick={() => track("test_start_click", { status: status ?? "new" })}>
         {status === "in_progress" ? "Continue test" : "Start test"} <span className="sr-only">for {name}</span> <span className="arr">→</span>
       </Link>
+      {report && <Link className="small" href={report}>See the last report<span className="sr-only"> for {name}</span></Link>}
     </span>
   );
 }

@@ -89,9 +89,12 @@ export const reportDate = (v: ReportView) =>
 /** The short curriculum name: "BC", "Ontario". */
 const curriculumName = (p: Province) => (p === "BC" ? "BC" : CURRICULA[p]);
 
+/** "36 questions in 34 minutes". */
+export const questionsAndMinutes = (v: ReportView) => `${v.questions} questions in ${v.minutes} minute${v.minutes === 1 ? "" : "s"}`;
+
 /** The closing line. Another province is scored against BC with no note (D-083). */
 export function metaLine(v: ReportView): string {
-  const parts = ["Math placement", reportDate(v), `${v.questions} questions in ${v.minutes} minute${v.minutes === 1 ? "" : "s"}`];
+  const parts = ["Math placement", reportDate(v), questionsAndMinutes(v)];
   if (v.province !== "other") parts.push(`measured against ${curriculumName(v.province)} grade expectations`);
   return parts.join(" · ");
 }
@@ -111,7 +114,7 @@ export function nextStep(v: ReportView): NextStep {
     return {
       kind: "card",
       title: `Start ${name}'s books`,
-      text: `Math is CAD ${PLANS.one.price} a month, or math + reading CAD ${PLANS.both.price} a month, with delivery included. We charge nothing until the first workbook ships. 30-day money-back guarantee. Cancel anytime.`,
+      text: `Math is CAD ${PLANS.one.price} a month, or math + reading CAD ${PLANS.both.price} a month, with delivery included. We charge nothing until the first workbook ships. 30-day money-back guarantee from the first payment. Cancel anytime.`,
       action: { label: "Choose a plan", href: "/#price" },
     };
   }

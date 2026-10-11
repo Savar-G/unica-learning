@@ -77,6 +77,9 @@ describe("the date and the closing line", () => {
   it("gives the date, the questions, the minutes and the curriculum the test measured against", () => {
     expect(metaLine(view(knowsUpTo(4), { province: "ON" }))).toBe("Math placement · October 10, 2026 · 36 questions in 34 minutes · measured against Ontario grade expectations");
   });
+  it("says 1 minute, not 1 minutes", () => {
+    expect(metaLine({ ...view(knowsUpTo(4)), minutes: 1 })).toContain("36 questions in 1 minute ·");
+  });
   it("adds no curriculum note for another province, which is scored against BC (D-083)", () => {
     expect(metaLine(view(knowsUpTo(4), { province: "other" }))).toBe("Math placement · October 10, 2026 · 36 questions in 34 minutes");
   });
@@ -89,6 +92,9 @@ describe("the next step", () => {
     expect(step.text).toContain("CAD 139");
     expect(step.text).toContain("CAD 229");
     expect(step.text).toContain("We charge nothing until the first workbook ships.");
+  });
+  it("says the money-back guarantee starts with the first payment (D-055)", () => {
+    expect(nextStep(view(knowsUpTo(4))).text).toContain("30-day money-back guarantee from the first payment.");
   });
   it("a family in another tagged province joins the waitlist for that curriculum", () => {
     expect(nextStep(view(knowsUpTo(4), { province: "ON" }))).toMatchObject({ kind: "waitlist", title: "Books for the Ontario curriculum are coming" });
