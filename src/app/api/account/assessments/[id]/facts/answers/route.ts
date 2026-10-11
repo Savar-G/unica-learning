@@ -1,7 +1,7 @@
 import { factsStep, submitFact } from "@/lib/assessment";
 import { testAccess } from "@/lib/assessment-store";
 import { isFactResponse, type FactsStepResult } from "@/lib/facts-api";
-import { factsOwner, loadFacts } from "@/lib/facts-store";
+import { factsOwner, loadFacts, stepNow } from "@/lib/facts-store";
 import { testFail } from "@/lib/test-api";
 
 // Marks one fact with the assessment core and stores it. The time is the server's: when the answer arrived, since the
@@ -48,7 +48,7 @@ export async function POST(request: Request, ctx: RouteContext<"/api/account/ass
   if (error) {
     if (error.code === "23505") {
       const fresh = await loadFacts(admin, owner.id);
-      if (fresh && !("error" in fresh)) return testFail("conflict", 409, { step: factsStep(fresh.session, Date.now() - fresh.startedAt) });
+      if (fresh && !("error" in fresh)) return testFail("conflict", 409, { step: stepNow(fresh) });
     }
     console.error("[facts] answer save failed", error.message);
     return testFail("store_failed", 502);

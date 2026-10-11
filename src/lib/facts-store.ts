@@ -1,6 +1,6 @@
 import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { restoreFacts, type FactsSession, type FactsTest, type FactSubmission, type StoredTest } from "@/lib/assessment";
+import { factsStep, restoreFacts, type FactsSession, type FactsStep, type FactsTest, type FactSubmission, type StoredTest } from "@/lib/assessment";
 import { isUuid } from "@/lib/assessment-store";
 import { testFail, type AssessmentStatus } from "@/lib/test-api";
 
@@ -29,6 +29,9 @@ export interface LoadedFacts {
   startedAt: number;
   session: FactsSession;
 }
+
+/** Where the section is now, by the server's clock. */
+export const stepNow = (loaded: LoadedFacts): FactsStep => factsStep(loaded.session, Date.now() - loaded.startedAt);
 
 /** The section rebuilt from the stored facts and answers; null when it has not started; or the error response to send. */
 export async function loadFacts(admin: SupabaseClient, assessmentId: string): Promise<LoadedFacts | null | { error: Response }> {

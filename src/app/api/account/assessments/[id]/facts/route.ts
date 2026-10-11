@@ -1,7 +1,7 @@
 import { FACTS_SECONDS, createFacts, factsStep, storedFacts } from "@/lib/assessment";
 import { testAccess } from "@/lib/assessment-store";
 import type { FactsStepResult } from "@/lib/facts-api";
-import { factsOwner, loadFacts } from "@/lib/facts-store";
+import { factsOwner, loadFacts, stepNow } from "@/lib/facts-store";
 import { testFail } from "@/lib/test-api";
 
 // The timed facts section (#70). GET: where the section is ("ready", "running" with the facts still to come, or "done").
@@ -15,7 +15,7 @@ export async function GET(_request: Request, ctx: RouteContext<"/api/account/ass
   if ("error" in owner) return owner.error;
   const loaded = await loadFacts(access.admin, owner.id);
   if (loaded && "error" in loaded) return loaded.error;
-  const step = loaded ? factsStep(loaded.session, Date.now() - loaded.startedAt) : { status: "ready" as const, seconds: FACTS_SECONDS };
+  const step = loaded ? stepNow(loaded) : { status: "ready" as const, seconds: FACTS_SECONDS };
   return Response.json({ ok: true, step } satisfies FactsStepResult, noStore);
 }
 
@@ -30,7 +30,7 @@ export async function POST(_request: Request, ctx: RouteContext<"/api/account/as
   // A second click, or a reload after Start: the section already runs, so carry on with it.
   const existing = await loadFacts(admin, owner.id);
   if (existing && "error" in existing) return existing.error;
-  if (existing) return Response.json({ ok: true, step: factsStep(existing.session, Date.now() - existing.startedAt) } satisfies FactsStepResult);
+  if (existing) return Response.json({ ok: true, step: stepNow(existing) } satisfies FactsStepResult);
 
   const session = createFacts(owner.test.profile, owner.test.seed);
   const startedAt = Date.now();
@@ -39,7 +39,7 @@ export async function POST(_request: Request, ctx: RouteContext<"/api/account/as
   if (error) {
     if (error.code === "23505") {
       const raced = await loadFacts(admin, owner.id);
-      if (raced && !("error" in raced)) return Response.json({ ok: true, step: factsStep(raced.session, Date.now() - raced.startedAt) } satisfies FactsStepResult);
+      if (raced && !("error" in raced)) return Response.json({ ok: true, step: stepNow(raced) } satisfies FactsStepResult);
     }
     console.error("[facts] start failed", error.message);
     return testFail("store_failed", 502);

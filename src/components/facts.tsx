@@ -12,13 +12,16 @@ import type { TestError } from "@/lib/test-api";
 import { track } from "@/lib/track";
 import "./facts.css";
 
+/** How the section ended: the time ran out, or the child answered every fact. */
+type FactsEnd = "time_up" | "all_answered";
+
 type View =
   | { name: "loading"; failed: boolean }
   | { name: "ready"; seconds: number }
   | { name: "running"; seconds: number; facts: PublicFact[]; deadline: number }
-  | { name: "saving"; reason: "time" | "all" }
+  | { name: "saving"; reason: FactsEnd }
   /** answered is null when the count could not be read; the child still carries on. */
-  | { name: "done"; reason: "time" | "all"; answered: number | null };
+  | { name: "done"; reason: FactsEnd; answered: number | null };
 
 const OP: Record<FactOp, string> = { "+": "+", "-": "−", "×": "×", "÷": "÷" };
 const SAY: Record<FactOp, string> = { "+": "plus", "-": "minus", "×": "times", "÷": "divided by" };
@@ -42,22 +45,27 @@ export function FactsSection({ testId, onDone, onError }: { testId: string; onDo
   const queue = useRef<{ factId: string; response: string }[]>([]);
   const sending = useRef<Promise<void> | null>(null);
   const tracked = useRef(false);
+  // The parent passes new callbacks on each render; keep the latest here so a re-render never reloads the section.
+  const props = useRef({ onDone, onError });
+  useEffect(() => {
+    props.current = { onDone, onError };
+  });
 
-  const finishSection = useCallback(async (reason: "time" | "all") => {
+  const finishSection = useCallback(async (reason: FactsEnd) => {
     setView({ name: "saving", reason });
     await sending.current;
     const res = await call(base);
     const answered = !res.ok ? null : res.step.status === "ready" ? 0 : res.step.answered;
     if (!tracked.current) {
       tracked.current = true;
-      track("test_facts_done", { status: reason === "time" ? "time_up" : "all_answered" });
+      track("test_facts_done", { status: reason });
     }
     setView({ name: "done", reason, answered });
   }, [base]);
 
   const flush = useCallback(() => {
     if (sending.current) return;
-    sending.current = (async () => {
+    const run = async () => {
       let failures = 0;
       while (queue.current.length > 0) {
         const head = queue.current[0];
@@ -73,25 +81,28 @@ export function FactsSection({ testId, onDone, onError }: { testId: string; onDo
           const next = res.step?.status === "running" ? res.step.facts[0]?.id : undefined;
           const at = next ? queue.current.findIndex((a) => a.factId === next) : -1;
           queue.current = at >= 0 ? queue.current.slice(at) : [];
-          continue;
+          // The same answer refused again and again: stop, like any other failure, instead of looping.
+          if (at !== 0) continue;
         }
         if (++failures > 3) {
-          onError(res.error);
+          props.current.onError(res.error);
           queue.current = [];
           break;
         }
         await wait(400 * failures);
       }
+    };
+    sending.current = run().finally(() => {
       sending.current = null;
-    })();
-  }, [base, onError]);
+    });
+  }, [base]);
 
   const showStep = useCallback((step: FactsStep) => {
     if (step.status === "ready") setView({ name: "ready", seconds: step.seconds });
     // Done before this screen opened (a resumed test): nothing to show, carry on with the test.
-    else if (step.status === "done") onDone();
+    else if (step.status === "done") props.current.onDone();
     else setView({ name: "running", seconds: step.seconds, facts: step.facts, deadline: performance.now() + step.remainingMs });
-  }, [onDone]);
+  }, []);
 
   const [attempt, setAttempt] = useState(0);
   useEffect(() => {
@@ -99,17 +110,17 @@ export function FactsSection({ testId, onDone, onError }: { testId: string; onDo
     call(base).then((res) => {
       if (!live) return;
       if (res.ok) {
-        onError(null);
+        props.current.onError(null);
         showStep(res.step);
       } else {
-        onError(res.error);
+        props.current.onError(res.error);
         setView({ name: "loading", failed: true });
       }
     });
     return () => {
       live = false;
     };
-  }, [base, showStep, onError, attempt]);
+  }, [base, showStep, attempt]);
 
   const start = async () => {
     onError(null);
@@ -139,7 +150,7 @@ export function FactsSection({ testId, onDone, onError }: { testId: string; onDo
       {(view.name === "saving" || view.name === "done") && (
         <section className="facts-left facts-msg">
           <p className="eyebrow">Quick facts</p>
-          <Heading>{view.reason === "time" ? "Time is up!" : "You did every fact!"}</Heading>
+          <Heading>{view.reason === "time_up" ? "Time is up!" : "You did every fact!"}</Heading>
           {view.name === "done" ? (
             <p className="facts-lead">
               {view.answered !== null && <>You did {view.answered} {view.answered === 1 ? "fact" : "facts"}. </>}Next, the second half of the test.
@@ -164,11 +175,11 @@ function Heading({ children }: { children: ReactNode }) {
 
 function Ready({ seconds, onStart }: { seconds: number; onStart: () => Promise<void> }) {
   const [busy, setBusy] = useState(false);
-  const minute = seconds === 60 ? "one minute" : `${seconds} seconds`;
+  const length = seconds === 60 ? "one minute" : `${seconds} seconds`;
   return (
     <section className="facts-left facts-msg">
-      <p className="eyebrow">Quick facts · {seconds === 60 ? "1 minute" : `${seconds} seconds`}</p>
-      <Heading>How many can you do in {minute}?</Heading>
+      <p className="eyebrow">Quick facts · {length}</p>
+      <Heading>How many can you do in {length}?</Heading>
       <p className="facts-lead">Type the answer and press Enter. To skip a fact, press Enter with no answer. Just do your best.</p>
       <Button onClick={async () => { setBusy(true); await onStart(); setBusy(false); }} disabled={busy} aria-busy={busy}>
         {busy ? "Starting…" : "Start"}
@@ -184,15 +195,18 @@ function Running({ facts, seconds, deadline, onAnswer, onEnd }: {
   seconds: number;
   deadline: number;
   onAnswer: (factId: string, response: string) => void;
-  onEnd: (reason: "time" | "all") => void;
+  onEnd: (reason: FactsEnd) => void;
 }) {
   const [index, setIndex] = useState(0);
   const [entry, setEntry] = useState("");
   const [left, setLeft] = useState(() => Math.max(0, deadline - performance.now()));
   const over = useRef(false);
   const fact = facts[index];
+  // Start unmounts the Start button: move focus to the fact, not the page body.
+  const factRef = useRef<HTMLParagraphElement>(null);
+  useEffect(() => factRef.current?.focus(), []);
 
-  const end = useCallback((reason: "time" | "all") => {
+  const end = useCallback((reason: FactsEnd) => {
     if (over.current) return;
     over.current = true;
     onEnd(reason);
@@ -203,7 +217,7 @@ function Running({ facts, seconds, deadline, onAnswer, onEnd }: {
     const tick = () => {
       const ms = Math.max(0, deadline - performance.now());
       setLeft(ms);
-      if (ms === 0) end("time");
+      if (ms === 0) end("time_up");
     };
     tick();
     const timer = setInterval(tick, 250);
@@ -219,7 +233,7 @@ function Running({ facts, seconds, deadline, onAnswer, onEnd }: {
     if (over.current || !fact) return;
     onAnswer(fact.id, entry);
     setEntry("");
-    if (index + 1 >= facts.length) end("all");
+    if (index + 1 >= facts.length) end("all_answered");
     else setIndex(index + 1);
   }, [fact, entry, index, facts.length, onAnswer, end]);
 
@@ -252,12 +266,12 @@ function Running({ facts, seconds, deadline, onAnswer, onEnd }: {
           <p className="facts-time"><span className="sr-only">Time left: </span>{time}</p>
         </div>
         {fact && (
-          <p className="facts-fact">
+          <p className="facts-fact" ref={factRef} tabIndex={-1}>
             <span aria-live="polite">
               <span className="sr-only">{fact.a} {SAY[fact.op]} {fact.b}</span>
               <span aria-hidden>{fact.a} {OP[fact.op]} {fact.b} =</span>
             </span>
-            <output className={entry ? "" : "is-empty"} aria-label="Your answer">{entry || "?"}</output>
+            <output className={entry ? "" : "is-empty"} aria-label="Your answer" aria-live="off">{entry || "?"}</output>
           </p>
         )}
         <p className="facts-hint">Press Enter with no answer to skip.</p>
