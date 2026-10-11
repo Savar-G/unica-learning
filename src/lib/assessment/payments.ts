@@ -54,22 +54,37 @@ async function checkIntents(store: FamilyPaymentStore, customer: string): Promis
     await store.saveProgress(customer, progress);
     if (!progress.done) page = await store.intents(customer, progress.after);
   }
-  // A new head invalidates this traversal. Never turn a partial or changed history into a clear result.
-  const latest = await store.intents(customer, null);
-  if ((latest.data[0]?.id ?? null) !== head || latest.data.some(i => i.status !== "canceled")) {
-    await store.saveProgress(customer, { head: latest.data[0]?.id ?? null, after: null, done: false });
-    return "unknown";
+  return "clear";
+}
+
+/** A cleanup checkpoint only skips immutable history. Every customer needs fresh open/head and payment reads. */
+async function verifyPrepared(store: FamilyPaymentStore, customer: string): Promise<RetentionCardState> {
+  const progress = await store.progress(customer);
+  if (!progress?.done) return "unknown";
+  const results = await Promise.allSettled([
+    (async () => store.openSessions(customer))(),
+    (async () => store.intents(customer, null))(),
+  ]);
+  const [sessions, intents] = results;
+  if (sessions.status !== "fulfilled" || intents.status !== "fulfilled") return "unknown";
+  const first = intents.value.data;
+  const head = first[0]?.id ?? null;
+  if (sessions.value.length || head !== progress.head || first.some(i => i.status !== "canceled")) {
+    await store.saveProgress(customer, { head, after: null, done: false });
+    return first.some(i => i.status === "succeeded") && first.every(i => ["canceled", "succeeded"].includes(i.status)) ? "saved" : "unknown";
   }
   return "clear";
 }
 
-/** Frozen families resume physical Checkout expiry and canceled-intent traversal across bounded attempts. */
+/** Resume cleanup across attempts, then make one complete fresh decision without persisting clear permission. */
 export async function checkFamilyPayments(store: FamilyPaymentStore, customerIds: readonly string[], knownSaved = false): Promise<RetentionCardState> {
   try {
     const pending = await checkTogether(await store.pending(), operation => store.reconcile(operation));
     if (pending !== "clear") return pending;
     if (knownSaved) return "saved";
-    return await checkTogether([...new Set(customerIds)], async customer => {
+    const customers = [...new Set(customerIds)];
+    const prepared = await checkTogether(customers, async customer => {
+      if ((await store.progress(customer))?.done) return "clear";
       const current = await store.current(customer);
       if (current !== "clear") return current;
       for (;;) {
@@ -78,8 +93,11 @@ export async function checkFamilyPayments(store: FamilyPaymentStore, customerIds
         const state = await checkTogether([...new Set(sessions)], id => store.expire(customer, id));
         if (state !== "clear") return state;
       }
-      const intents = await checkIntents(store, customer);
-      return intents === "clear" ? store.current(customer) : intents;
+      return checkIntents(store, customer);
     });
+    if (prepared !== "clear") return prepared;
+    const verified = await checkTogether(customers, customer => verifyPrepared(store, customer));
+    if (verified !== "clear") return verified;
+    return await checkTogether(customers, customer => store.current(customer));
   } catch { return "unknown"; }
 }

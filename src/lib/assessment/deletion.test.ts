@@ -37,6 +37,17 @@ describe("family card operation", () => {
 });
 
 describe("scheduled family deletion", () => {
+  it("starts the first family when a reduced route budget decreases between clock reads", async () => {
+    const times = [25_000, 24_999, 24_998, 0];
+    const cursors: string[] = [], attempts: number[] = [];
+    expect(await runRetentionBatch(["family"], {
+      async cursor() { return null; },
+      async advance(id) { cursors.push(id); },
+      async run(_id, limit) { attempts.push(limit); return { state: "deleted", images: 0 }; },
+    }, () => times.shift() ?? 0)).toMatchObject({ deleted: 1, failed: 0 });
+    expect(cursors).toEqual(["family"]);
+    expect(attempts).toEqual([24_998]);
+  });
   it("saves progress before a slow failure and starts the next run with later families", async () => {
     let cursor: string | null = null;
     let remaining = 45_000;

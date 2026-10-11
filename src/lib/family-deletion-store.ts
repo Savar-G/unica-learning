@@ -58,7 +58,7 @@ export async function deletionCandidates(db: SupabaseClient): Promise<string[]> 
 
 /** Run after freezing and settling app card operations. Remote journal and canceled-intent traversal are durable.
  * Fresh current-state reads remain mandatory; unknown results keep the checking job and its fence. */
-async function cardState(db: SupabaseClient, parent: string, token: string, deadline: number, retention: boolean): Promise<RetentionCardState> {
+async function cardState(db: SupabaseClient, parent: string, token: string, deadline: number, retention: boolean, control: SupabaseClient): Promise<RetentionCardState> {
   const customers: string[] = [];
   let saved = false;
   for (let from = 0; retention; from += 100) {
@@ -102,12 +102,26 @@ async function cardState(db: SupabaseClient, parent: string, token: string, dead
   };
   const mutate = async (operation: PaymentOperation) => {
     if (!s) return "unknown" as const;
-    const fresh = await guarded<boolean>("begin_family_payment_operation", { resource_kind: operation.kind, resource_id: operation.id, customer: operation.customer });
+    const resource = { resource_kind: operation.kind, resource_id: operation.id };
+    const abandon = () => rpc(control, "abandon_family_payment_operation", { ...args, ...resource });
+    let fresh: boolean;
+    try {
+      fresh = await guarded<boolean>("begin_family_payment_operation", { ...resource, customer: operation.customer });
+    } catch {
+      // No remote method was invoked. The control deadline and origin token allow only this record to be removed.
+      await abandon();
+      return "unknown";
+    }
     if (!fresh) return reconcile(operation); // Never repeat an uncertain remote mutation.
+    let options: ReturnType<typeof paymentOptions>;
+    try { options = paymentOptions(deadline); } catch {
+      await abandon();
+      return "unknown";
+    }
     try {
       const remote = operation.kind === "session"
-        ? await s.checkout.sessions.expire(operation.id, {}, paymentOptions(deadline))
-        : await s.setupIntents.cancel(operation.id, {}, paymentOptions(deadline));
+        ? await s.checkout.sessions.expire(operation.id, {}, options)
+        : await s.setupIntents.cancel(operation.id, {}, options);
       if (remote.customer !== operation.customer) throw new Error("Payment operation scope changed");
       return await finish(operation, remote.status ?? "unknown");
     } catch { return reconcile(operation); }
@@ -184,7 +198,7 @@ export async function runFamilyDeletion(db: SupabaseClient, parent: string, cont
   if (claim.state !== "ready") return { state: claim.state };
   try {
     if (claim.phase === "checking") {
-      const state = await cardState(db, parent, token, deadline, claim.reason === "retention");
+      const state = await cardState(db, parent, token, deadline, claim.reason === "retention", control);
       if (state === "unknown") throw new Error("Payment check incomplete");
       const keep = claim.reason === "retention" && state === "saved";
       timeRemaining(deadline);

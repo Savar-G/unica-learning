@@ -33,6 +33,24 @@ it("covers eight distinct customers and deduplicates before limiting concurrent 
   expect(f.checked.slice().sort()).toEqual([...ids, ...ids].sort());
 });
 
+it("resumes completed cleanup for 32 customers and requires a complete fresh decision on every retry", async () => {
+  const f = fixture();
+  const ids = Array.from({ length: 32 }, (_, i) => `customer${i}`);
+  let result: string = "unknown", attempts = 0;
+  while (result === "unknown" && attempts++ < 4) {
+    f.budget(220);
+    result = await checkFamilyPayments(f.store, ids);
+  }
+  expect(result).toBe("clear");
+  expect(attempts).toBeGreaterThan(1);
+  expect(f.checked.slice(-32).sort()).toEqual(ids.slice().sort());
+  f.budget(220);
+  f.store.current = async customer => customer === "customer31" ? "saved" : "clear";
+  expect(await checkFamilyPayments(f.store, ids)).toBe("saved");
+  f.store.current = async () => "unknown";
+  expect(await checkFamilyPayments(f.store, ids)).toBe("unknown");
+});
+
 it("preserves 1007 session and corresponding intent removals across short pages and repeated limits", async () => {
   const f = fixture();
   const sessionIds = Array.from({ length: 1007 }, (_, i) => `session${i}`);
@@ -84,6 +102,17 @@ it("rechecks current cards after retry and does not cache a customer clear resul
   expect(await checkFamilyPayments(f.store, ["customer"])).toBe("saved");
   f.store.current = async () => { throw Error("remote unavailable"); };
   expect(await checkFamilyPayments(f.store, ["customer"])).toBe("unknown");
+});
+
+it("invalidates completed cleanup when a new open session appears and never deletes from its checkpoint", async () => {
+  const f = fixture();
+  expect(await checkFamilyPayments(f.store, ["customer"])).toBe("clear");
+  f.sessions.set("customer", ["new-session"]);
+  expect(await checkFamilyPayments(f.store, ["customer"])).toBe("unknown");
+  expect(f.expired).toHaveLength(0);
+  expect(f.progress.get("customer")?.done).toBe(false);
+  expect(await checkFamilyPayments(f.store, ["customer"])).toBe("clear");
+  expect(f.expired).toEqual(["new-session"]);
 });
 
 it("checks new intent history after progress and preserves succeeded and processing protections", async () => {

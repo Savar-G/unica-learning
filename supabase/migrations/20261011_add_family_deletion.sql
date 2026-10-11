@@ -23,6 +23,7 @@ create table public.family_payment_operations (
   kind text not null check (kind in ('session','intent')),
   object_id text not null check (length(object_id) between 1 and 255),
   customer_id text not null check (length(customer_id) between 1 and 255),
+  origin_token uuid not null,
   outcome text check ((kind = 'session' and outcome in ('expired','complete')) or (kind = 'intent' and outcome in ('canceled','succeeded'))),
   started_at timestamptz not null default now(),
   primary key(parent_id,kind,object_id)
@@ -220,8 +221,18 @@ returns boolean language plpgsql security definer set search_path = '' as $$
 begin
   perform public.check_family_payment_lease(p,token);
   if exists(select 1 from public.family_payment_operations where parent_id = p and kind = resource_kind and object_id = resource_id) then return false; end if;
-  insert into public.family_payment_operations(parent_id,kind,object_id,customer_id) values(p,resource_kind,resource_id,customer);
+  insert into public.family_payment_operations(parent_id,kind,object_id,customer_id,origin_token) values(p,resource_kind,resource_id,customer,token);
   return true;
+end $$;
+-- Only the current owning worker can attest that it never invoked the remote mutation.
+-- A lost remote response is not a not-started outcome. A reclaimed lease cannot erase another origin.
+create function public.abandon_family_payment_operation(p uuid, token uuid, resource_kind text, resource_id text)
+returns boolean language plpgsql security definer set search_path = '' as $$
+begin
+  perform public.check_family_payment_lease(p,token);
+  delete from public.family_payment_operations where parent_id = p and kind = resource_kind and object_id = resource_id
+    and origin_token = token and outcome is null;
+  return found;
 end $$;
 create function public.finish_family_payment_operation(p uuid, token uuid, resource_kind text, resource_id text, resource_state text)
 returns void language plpgsql security definer set search_path = '' as $$
@@ -254,9 +265,11 @@ begin
 end $$;
 revoke all on function public.pending_family_payment_operations(uuid,uuid,text,integer),
   public.begin_family_payment_operation(uuid,uuid,text,text,text), public.finish_family_payment_operation(uuid,uuid,text,text,text),
+  public.abandon_family_payment_operation(uuid,uuid,text,text),
   public.read_family_payment_progress(uuid,uuid,text), public.save_family_payment_progress(uuid,uuid,text,text,text,boolean) from public, anon, authenticated;
 grant execute on function public.pending_family_payment_operations(uuid,uuid,text,integer),
   public.begin_family_payment_operation(uuid,uuid,text,text,text), public.finish_family_payment_operation(uuid,uuid,text,text,text),
+  public.abandon_family_payment_operation(uuid,uuid,text,text),
   public.read_family_payment_progress(uuid,uuid,text), public.save_family_payment_progress(uuid,uuid,text,text,text,boolean) to service_role;
 
 -- Payment reconciliation can cancel only a retention check, never a committed deletion or explicit request.
