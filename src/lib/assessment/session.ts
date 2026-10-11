@@ -10,8 +10,8 @@ import {
   atLeast,
   bandFor,
 } from "./constants";
+import { bankFor } from "./bank";
 import { rngFor } from "./rng";
-import { SAMPLE_BANK } from "./sample-bank";
 import type {
   Answer,
   ChildProfile,
@@ -69,7 +69,7 @@ export function toPublicQuestion(q: Question): PublicQuestion {
 }
 
 export interface SessionOptions {
-  /** The question bank. Defaults to the sample bank until the full banks land (#74-#76). */
+  /** The question bank. Defaults to the bank for the child's grade band (bank/index.ts). */
   bank?: readonly Template[];
 }
 
@@ -120,7 +120,7 @@ function buildStage(
 /** Starts a test. Every stage 2 form is drawn now, so the session needs no bank after this. */
 export function createSession(profile: ChildProfile, seed: number, options: SessionOptions = {}): Session {
   if (!Number.isInteger(seed)) throw new Error("The seed must be a whole number");
-  const bank = options.bank ?? SAMPLE_BANK;
+  const bank = options.bank ?? bankFor(profile.grade);
   const band = bandFor(profile.grade);
   const grade = profile.grade as Level;
   const seen = new Set<string>();
