@@ -60,7 +60,7 @@ export const MISCONCEPTIONS = {
   // Grades 1-2 bank, levels K-3 (#74). N4, M4, D2 and D3 are from the curriculum map, section 4.
   N4: { description: "Counts the tick marks on a ruler or number line, not the spaces between them", evidence: "V" },
   M4: { description: "Ties a shape's name to its usual picture, so a turned square is 'a diamond, not a square'", evidence: "V" },
-  D2: { description: "Thinks that after a run of heads, tails is more likely", evidence: "V" },
+  D2: { description: "Thinks the other result is due after a run of one result, so after many heads, tails is more likely", evidence: "V" },
   D3: { description: "Thinks every outcome is equally likely", evidence: "V" },
   "one-to-one": { description: "Loses one-to-one matching: counts an object twice or misses one", evidence: "none" },
   "count-start": { description: "Counts the starting number when counting on or back, so 8 and 3 more gives 10", evidence: "none" },
@@ -108,7 +108,9 @@ export const MISCONCEPTIONS = {
   "chance-reversed": { description: "Picks the less likely outcome as the more likely one", evidence: "none" },
   "impossible-possible": { description: "Thinks an impossible event could still happen", evidence: "none" },
   "certain-likely": { description: "Calls a certain event only likely", evidence: "none" },
+  "rule-swap": { description: "Swaps the start and the step of a pattern rule", evidence: "none" },
   "rules-out-possible": { description: "Thinks an event that can happen is impossible", evidence: "none" },
+  "opposite-extreme": { description: "Mixes up the two ends: certain and impossible, or always and never", evidence: "none" },
   "sure-of-possible": { description: "Thinks an event that may not happen is certain", evidence: "none" },
   streak: { description: "Thinks a result that keeps happening is more likely to happen again", evidence: "none" },
 } satisfies Record<string, Misconception>;

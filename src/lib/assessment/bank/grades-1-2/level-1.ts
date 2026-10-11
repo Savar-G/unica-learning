@@ -231,9 +231,9 @@ export const LEVEL_1: readonly TaggedTemplate[] = [
       const picks = others.slice(0, 2);
       return {
         values: { shown: keys.indexOf(answer) },
-        prompt: `Which letters show this pattern? ${items.map((s) => s.glyph).join(GAP)}`,
+        prompt: `Which letters show the part that repeats? ${items.map((s) => s.glyph).join(GAP)}`,
         // Letters spoken by name, one choice per sentence, so a listener hears where each choice ends.
-        readAloud: `Look at the pattern: ${items.map((s) => s.word).join(", ")}. Which letters show this pattern? Choose one. ${rng.shuffle([answer, ...picks]).map(sayLetters).join(". ")}.`,
+        readAloud: `Look at the pattern: ${items.map((s) => s.word).join(", ")}. Which letters show the part that repeats? Choose one. ${rng.shuffle([answer, ...picks]).map(sayLetters).join(". ")}.`,
         answer,
         wrong: picks.map((k) => wrong(k, "pattern-core")),
       };
@@ -339,7 +339,7 @@ export const LEVEL_1: readonly TaggedTemplate[] = [
       return {
         values: { asked: keys.indexOf(asked) },
         prompt: `Which pattern is an ${asked} pattern?`,
-        readAloud: `Which pattern is an ${sayLetters(asked)} pattern? Look at the three patterns.`,
+        readAloud: `Which pattern is a ${sayLetters(asked)} pattern? Look at the three patterns.`,
         answer: show(asked),
         wrong: others.slice(0, 2).map((k) => wrong(show(k), "pattern-core")),
       };
@@ -516,11 +516,16 @@ export const LEVEL_1: readonly TaggedTemplate[] = [
     strand: "DP", grades: { BC: 1, AB: 2, SK: 2, MB: 2, ON: 1 }, format: "number", whiteboard: false, standard: "1.9",
     fill(rng) {
       const [a, b] = rng.shuffle([2, 3, 4, 5, 6, 7, 8]).slice(0, 2);
-      const [x, y] = rng.pick([["walk", "bus"], ["red", "blue"], ["rain", "sun"]] as const);
+      const [about, x, y] = rng.pick([
+        ["Children told how they get to school.", "walk", "bus"],
+        ["Children chose a favourite colour.", "red", "blue"],
+        ["Children chose a favourite kind of weather.", "rain", "sun"],
+      ] as const);
       return {
         values: { a, b },
-        prompt: `Each ● is 1 child. ${cap(x)}: ${row(a)}. ${cap(y)}: ${row(b)}. How many children are on the graph in all?`,
-        readAloud: `Each dot is one child. How many children are on the graph in all?`,
+        prompt: `${about} Each ● is 1 child. ${cap(x)}: ${row(a)}. ${cap(y)}: ${row(b)}. How many children are there in all?`,
+        // The counts are not read out: counting the dots is the task.
+        readAloud: `${about} Each dot is one child. Look at the dots for ${x} and the dots for ${y}. How many children are there in all?`,
         answer: String(a + b),
         wrong: [wrong(Math.max(a, b), "one-part"), wrong(Math.abs(a - b), "operation")],
       };
@@ -538,15 +543,15 @@ export const LEVEL_1: readonly TaggedTemplate[] = [
       // kind 0: picking y from only-x is never; kind 1: picking x from only-x is always; kind 2: picking y from x and y is sometimes.
       const answer = ["Never", "Always", "Sometimes"][kind];
       const coded = [
-        [wrong("Sometimes", "impossible-possible"), wrong("Always", "chance-reversed")],
-        [wrong("Sometimes", "certain-likely"), wrong("Never", "chance-reversed")],
+        [wrong("Sometimes", "impossible-possible"), wrong("Always", "opposite-extreme")],
+        [wrong("Sometimes", "certain-likely"), wrong("Never", "opposite-extreme")],
         [wrong("Never", "rules-out-possible"), wrong("Always", "sure-of-possible")],
       ][kind];
       return {
         values: { kind },
         // "Sometimes" fits many picks, not one, so the child picks again and again.
-        prompt: `A bag has ${bag}. You pick a block without looking, put it back, and do this many times. How often will you pick ${pick}?`,
-        readAloud: `A bag has ${bag}. You pick a block without looking, put it back, and do this many times. How often will you pick ${pick}: never, sometimes, or always?`,
+        prompt: `A bag has ${bag}. You pick a block without looking, put it back, and do this again and again. How often will you pick ${pick}?`,
+        readAloud: `A bag has ${bag}. You pick a block without looking, put it back, and do this again and again. How often will you pick ${pick}: never, sometimes, or always?`,
         answer,
         wrong: coded,
       };
@@ -638,8 +643,8 @@ export const LEVEL_1: readonly TaggedTemplate[] = [
       const clues = orderClues(rng, [`the ${x} box`, `the ${y} box`, `the ${z} box`], "heavier", "lighter");
       return {
         values: { heaviest: heaviest ? 1 : 0 },
-        prompt: `On a balance: ${clues} Which box is the ${word}?`,
-        readAloud: `On a balance: ${clues} Which box is the ${word}: ${orList(rng, [x, y, z].map((c) => `the ${c} box`))}?`,
+        prompt: `Three boxes were weighed on a balance. ${clues} Which box is the ${word}?`,
+        readAloud: `Three boxes were weighed on a balance. ${clues} Which box is the ${word}: ${orList(rng, [x, y, z].map((c) => `the ${c} box`))}?`,
         answer: cap(`the ${heaviest ? x : z} box`),
         wrong: [wrong(cap(`the ${heaviest ? z : x} box`), "more-less"), wrong(cap(`the ${y} box`), "order-pair")],
       };

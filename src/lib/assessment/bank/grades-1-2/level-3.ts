@@ -276,7 +276,7 @@ export const LEVEL_3: readonly TaggedTemplate[] = [
         // One choice per sentence: the three rules sound alike, so each needs its own pause.
         readAloud: `What is the rule for this pattern? ${seq.join(", ")}. Choose one. ${rng.shuffle([rule(start, step), rule(start, start), rule(step, start)]).join(". ")}.`,
         answer: rule(start, step),
-        wrong: [wrong(rule(start, start), "rule-start"), wrong(rule(step, start), "rule-start")],
+        wrong: [wrong(rule(start, start), "rule-start"), wrong(rule(step, start), "rule-swap")],
       };
     },
   },
@@ -468,31 +468,15 @@ export const LEVEL_3: readonly TaggedTemplate[] = [
     strand: "DP", grades: { BC: 3, AB: 3, SK: 3, MB: 3, ON: 3 }, format: "number", whiteboard: true, standard: "3.12",
     fill(rng) {
       const a = rng.int(9, 20), b = rng.int(3, a - 3);
-      const [x, y] = rng.pick([["soccer", "swimming"], ["reading", "drawing"], ["pizza", "tacos"]] as const);
+      const [kind, x, y] = rng.pick([["sport", "soccer", "swimming"], ["thing to do", "reading", "drawing"], ["food", "pizza", "tacos"]] as const);
+      // Read off a class bar graph, told in words: the screen draws no graph yet (see #79), so the text does not promise one.
+      const text = `A class made a bar graph of their favourite ${kind}. The bar for ${x} goes up to ${a}. The bar for ${y} goes up to ${b}. How many more children chose ${x} than ${y}?`;
       return {
         values: { a, b },
-        // Read off a class bar graph, told in words: the screen draws no graph yet (see #79), so the text does not promise one.
-        prompt: `A class made a bar graph of favourites. The ${x} bar goes up to ${a}. The ${y} bar goes up to ${b}. How many more children chose ${x} than ${y}?`,
-        readAloud: `A class made a bar graph of favourites. The ${x} bar goes up to ${a}. The ${y} bar goes up to ${b}. How many more children chose ${x} than ${y}?`,
+        prompt: text,
+        readAloud: text,
         answer: String(a - b),
         wrong: [wrong(a + b, "operation"), wrong(a, "difference-whole")],
-      };
-    },
-  },
-  {
-    // Tables (3.12: charts and tables).
-    id: "3-table-total",
-    strand: "DP", grades: { BC: 3, AB: 3, SK: 3, MB: 3, ON: 3 }, format: "number", whiteboard: true, standard: "3.12",
-    fill(rng) {
-      const [a, b, c] = draw(rng, (r) => [r.int(11, 29), r.int(11, 29), r.int(11, 29)], ([a, b, c]) => a !== b && b !== c && a !== c);
-      const total = a + b + c;
-      return {
-        values: { a, b, c },
-        // Rooms by number (a voice reads "Class A" as "class uh") and "finished" (a voice may read "read" as "reed").
-        prompt: `Room 1 finished ${a} books. Room 2 finished ${b} books. Room 3 finished ${c} books. How many books did the three rooms finish in all?`,
-        readAloud: `Room 1 finished ${a} books. Room 2 finished ${b} books. Room 3 finished ${c} books. How many books did the three rooms finish in all?`,
-        answer: String(total),
-        wrong: [wrong(total - Math.min(a, b, c), "leaves-out-addend"), wrong(Math.max(a, b, c), "one-part")],
       };
     },
   },
@@ -523,8 +507,8 @@ export const LEVEL_3: readonly TaggedTemplate[] = [
       const [side, other] = heads ? ["heads", "tails"] : ["tails", "heads"];
       return {
         values: { n, heads: heads ? 1 : 0 },
-        prompt: `A fair coin landed on ${side} ${n} times in a row. What is more likely on the next toss?`,
-        readAloud: `A fair coin landed on ${side} ${n} times in a row. What is more likely on the next toss: ${orList(rng, [side, other, "both equally likely"])}?`,
+        prompt: `A coin landed on ${side} ${n} times in a row. On the next toss, is heads more likely, is tails more likely, or are they equally likely?`,
+        readAloud: `A coin landed on ${side} ${n} times in a row. On the next toss, is heads more likely, is tails more likely, or are they equally likely?`,
         answer: "Heads and tails are equally likely",
         wrong: [wrong(cap(other), "D2"), wrong(cap(side), "streak")],
       };

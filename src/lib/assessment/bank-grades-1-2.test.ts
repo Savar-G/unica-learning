@@ -53,6 +53,19 @@ describe("a grade 1-2 test, every route, every province", () => {
     }
   });
 
+  it.each([1, 2] as Grade[])("grade %i: each route requires exactly 5 shown-work questions, all drawn from drawing-suited templates", (grade) => {
+    for (const province of PROVINCES) {
+      for (const s of sessions(grade, province, 200)) {
+        for (const route of ["up", "stay", "down"] as const) {
+          const required = [...s.stage1, ...s.stage2[route]].filter((q) => q.showWork);
+          expect(required, `${province} seed ${s.seed} ${route}`).toHaveLength(band.whiteboardRequired);
+          // The bank supplies enough suited questions, so the core never has to fall back to an unsuited one.
+          expect(required.every((q) => q.whiteboard), `${province} seed ${s.seed} ${route}`).toBe(true);
+        }
+      }
+    }
+  });
+
   it("no question repeats within a test", () => {
     for (const grade of [1, 2] as Grade[]) {
       for (const s of sessions(grade, "BC", 60)) {

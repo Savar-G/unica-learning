@@ -77,7 +77,7 @@ export const LEVEL_K: readonly TaggedTemplate[] = [
       return {
         values: { a, b },
         prompt: `${nameA} has ${a} ${item}: ${row(a)}. ${nameB} has ${b} ${item}: ${row(b)}. Who has more ${item}?`,
-        readAloud: `${nameA} has ${a} ${item}. ${nameB} has ${b} ${item}. Who has more ${item}: ${orList(rng, [nameA, nameB, "they have the same number"])}?`,
+        readAloud: `${nameA} has ${a} ${item}. ${nameB} has ${b} ${item}. Who has more ${item}? Choose one. ${rng.shuffle([nameA, nameB, same]).join(". ")}.`,
         answer: more,
         wrong: [wrong(less, "more-less"), wrong(same, "same-size")],
       };

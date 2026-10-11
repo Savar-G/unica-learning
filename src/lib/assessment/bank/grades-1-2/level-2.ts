@@ -186,6 +186,24 @@ export const LEVEL_2: readonly TaggedTemplate[] = [
     },
   },
   {
+    // Adding three numbers to 100 (2.4). Was 3-table-total: with no table drawn, the item is addition, not reading a table.
+    id: "2-three-addends",
+    strand: "O", grades: { BC: 2, AB: 2, SK: 2, MB: 2, ON: 2 }, format: "number", whiteboard: true, standard: "2.4",
+    fill(rng) {
+      const [a, b, c] = draw(rng, (r) => [r.int(11, 29), r.int(11, 29), r.int(11, 29)], ([a, b, c]) => a !== b && b !== c && a !== c);
+      const total = a + b + c;
+      // Rooms by number (a voice reads "Class A" as "class uh") and "finished" (a voice may read "read" as "reed").
+      const text = `Room 1 finished ${a} books. Room 2 finished ${b} books. Room 3 finished ${c} books. How many books did the three rooms finish in all?`;
+      return {
+        values: { a, b, c },
+        prompt: text,
+        readAloud: text,
+        answer: String(total),
+        wrong: [wrong(total - Math.min(a, b, c), "leaves-out-addend"), wrong(Math.max(a, b, c), "one-part")],
+      };
+    },
+  },
+  {
     // Money (2.12; map, grade 2, without pennies, which Canada no longer makes). WNCP has no coin outcomes before grade 4.
     id: "2-coins-mixed",
     strand: "O", grades: { BC: 2, AB: 4, SK: 4, MB: 4, ON: 2 }, format: "number", whiteboard: true, standard: "2.12",
@@ -550,27 +568,19 @@ export const LEVEL_2: readonly TaggedTemplate[] = [
     strand: "MG", grades: { BC: 2, AB: 2, SK: 2, MB: 2, ON: 2 }, format: "choice", whiteboard: false, standard: "2.9",
     fill(rng) {
       // Objects that clearly have the shape: no boxes (most are not cubes), no tall thin cylinders.
-      const cylinder = rng.pick(["A can", "A drum", "A jar"]);
+      const cylinder = rng.pick(["A can", "A jar", "A paint can"]);
       const sphere = rng.pick(["A ball", "An orange", "A marble"]);
-      const cube = rng.pick(["A block", "A number cube", "An ice cube"]);
+      const cube = rng.pick(["A block", "A sugar cube", "A building block"]);
       const [can, ball, box] = [`${cylinder} (a cylinder)`, `${sphere} (a sphere)`, `${cube} (a cube)`];
       const said = orList(rng, [cylinder, sphere, cube].map((s) => s.toLowerCase()));
-      const both = rng.int(0, 1) === 1;
-      return both
-        ? {
-            values: { both: 1 },
-            prompt: "Which one can roll and can also be stacked?",
-            readAloud: `Which one can roll and can also be stacked: ${said}?`,
-            answer: can,
-            wrong: [wrong(ball, "one-attribute"), wrong(box, "one-attribute")],
-          }
-        : {
-            values: { both: 0 },
-            prompt: "Which one can be stacked but cannot roll?",
-            readAloud: `Which one can be stacked but cannot roll: ${said}?`,
-            answer: box,
-            wrong: [wrong(can, "one-attribute"), wrong(ball, "roll-slide")],
-          };
+      // Only "can roll and can stack": "cannot roll" is unclear for a cube, since children roll dice in games.
+      return {
+        values: { cylinder: ["A can", "A jar", "A paint can"].indexOf(cylinder) },
+        prompt: "Which one can roll and can also be stacked into a tower?",
+        readAloud: `Which one can roll and can also be stacked into a tower: ${said}?`,
+        answer: can,
+        wrong: [wrong(ball, "one-attribute"), wrong(box, "one-attribute")],
+      };
     },
   },
   {
@@ -580,11 +590,16 @@ export const LEVEL_2: readonly TaggedTemplate[] = [
     fill(rng) {
       const [a, b, c] = draw(rng, (r) => r.shuffle([2, 3, 4, 5, 6, 7]).slice(0, 3), ([a, b, c]) => a + b + c <= 18);
       const total = a + b + c, largest = Math.max(a, b, c), smallest = Math.min(a, b, c);
-      const [x, y, z] = rng.pick([["Dogs", "Cats", "Fish"], ["Red", "Blue", "Green"], ["Soccer", "Hockey", "Swimming"]] as const);
+      const [about, x, y, z] = rng.pick([
+        ["pet", "Dogs", "Cats", "Fish"],
+        ["colour", "Red", "Blue", "Green"],
+        ["sport", "Soccer", "Hockey", "Swimming"],
+      ] as const);
       return {
         values: { a, b, c },
-        prompt: `Each ● is 1 child. ${x}: ${row(a)}. ${y}: ${row(b)}. ${z}: ${row(c)}. How many children are on the graph in all?`,
-        readAloud: `Each dot is one child. How many children are on the graph in all?`,
+        prompt: `Children chose a favourite ${about}. Each ● is 1 child. ${x}: ${row(a)}. ${y}: ${row(b)}. ${z}: ${row(c)}. How many children are there in all?`,
+        // The counts are not read out: counting the dots is the task.
+        readAloud: `Children chose a favourite ${about}. Each dot is one child. Look at the dots for ${x.toLowerCase()}, ${y.toLowerCase()} and ${z.toLowerCase()}. How many children are there in all?`,
         answer: String(total),
         wrong: [wrong(largest, "one-part"), wrong(total - smallest, "leaves-out-addend")],
       };
@@ -638,8 +653,8 @@ export const LEVEL_2: readonly TaggedTemplate[] = [
       const pick = kind === 0 ? x : y;
       const answer = ["Certain", "Impossible", "Possible, but not certain"][kind];
       const coded = [
-        [wrong("Possible, but not certain", "certain-likely"), wrong("Impossible", "chance-reversed")],
-        [wrong("Possible, but not certain", "impossible-possible"), wrong("Certain", "chance-reversed")],
+        [wrong("Possible, but not certain", "certain-likely"), wrong("Impossible", "opposite-extreme")],
+        [wrong("Possible, but not certain", "impossible-possible"), wrong("Certain", "opposite-extreme")],
         [wrong("Impossible", "rules-out-possible"), wrong("Certain", "sure-of-possible")],
       ][kind];
       return {
