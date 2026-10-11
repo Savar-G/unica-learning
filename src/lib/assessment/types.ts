@@ -1,5 +1,6 @@
 import type { CurriculumId } from "@/lib/signup";
 import type { FactsResult } from "./facts";
+import type { Flag } from "./flags";
 import type { MisconceptionId } from "./misconceptions";
 import type { Rng } from "./rng";
 
@@ -158,6 +159,6 @@ export interface Placement {
   strands: StrandResult[];
   /** The timed facts section (#70): speed beside accuracy. Null when the child had no facts section. Never changes the working level. */
   facts: FactsResult | null;
-  // A later ticket fills this: help flags (#71).
-  flags: never[];
+  /** Help flags (#71): for Savar's alert and the admin area, never the parent's report. Empty in placements stored before #71. */
+  flags: Flag[];
 }

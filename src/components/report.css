@@ -45,6 +45,11 @@
 .support-page .rpt-context .rpt-k { margin-bottom: 6px; }
 .support-page .rpt-context .rpt-source { margin-top: 6px; font-size: 13px; color: var(--ink-2); }
 
+/* context: the help warning (#71). Sunflower, a caution: never the tangerine of "behind". */
+.rpt-context.rpt-help-warning { border-left-color: var(--sun); }
+[data-look="warm"] .rpt .rpt-help-warning h2 { margin: 0 0 6px; font: 600 18px/1.3 var(--sans); letter-spacing: -0.01em; }
+.rpt-help-warning p + p { margin-top: 6px; }
+
 /* rows: title and note on the left, content on the right */
 .rpt-row { display: grid; grid-template-columns: minmax(200px, 1fr) 2fr; gap: 16px clamp(24px, 4vw, 64px); padding-top: clamp(28px, 3.5vw, 40px); border-top: 1px solid var(--line); }
 [data-look="warm"] .rpt .rpt-row-h h2 { margin: 0 0 8px; font-size: clamp(26px, 2.6vw, 32px); line-height: 1.15; }

@@ -11,6 +11,7 @@
 // The report (#65): report_open (src = email when the parent came from the report email, else account).
 // Whiteboard (#67): test_work (an answer stored with work; status required or optional, channel draw, type or both),
 // test_work_nudge (a show-your-work question was answered with an empty board, once per question).
+// Help flags (#71): test_help (status yes, a-little or no: the answer to "Did anyone help?", sent once the test is stored).
 // Analytics run only after the visitor accepts (see consent.ts). Without consent an event is dropped, not queued.
 // Only src, plan, subject, curriculum, price, status, code, card and channel travel with an event (see analytics.ts).
 // posthog-js is imported on demand so it stays out of the first-load bundle.

@@ -118,6 +118,26 @@ describe("report model", () => {
     });
   });
 
+  describe("help warning (#71)", () => {
+    it("shows when help is likely", () => {
+      expect(report({ ...grade4(), flags: [{ kind: "helped", answer: "a-little" }] }).helpWarning).toBe(true);
+    });
+    it("is absent for a clean run, and for a few fast answers alone", () => {
+      expect(report(grade4()).helpWarning).toBe(false);
+      expect(report({ ...grade4(), flags: [{ kind: "too-fast", questionIds: ["s1-1", "s1-2"], right: 2 }] }).helpWarning).toBe(false);
+    });
+    it("is absent for a placement stored before #71, which has no flags", () => {
+      const { flags, ...old } = grade4();
+      void flags;
+      expect(report(old as Placement).helpWarning).toBe(false);
+    });
+    it("never carries the flags themselves: they are for Savar, not the parent", () => {
+      const model = report({ ...grade4(), flags: [{ kind: "too-fast", questionIds: ["s1-1", "s1-2", "s1-3"], right: 3 }] });
+      expect(model.helpWarning).toBe(true);
+      expect(JSON.stringify(model)).not.toMatch(/too-fast|s1-1/);
+    });
+  });
+
   it("leads with the working level against the school grade, and names each strand", () => {
     const model = report(grade4(knowsUpTo(4)));
     expect(model.level).toMatchObject({ working: 4, grade: 4, atCeiling: false, confidence: "normal" });
