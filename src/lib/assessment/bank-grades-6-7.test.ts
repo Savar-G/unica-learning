@@ -60,6 +60,13 @@ describe("grade 6-7 tests from the default bank", () => {
 });
 
 describe("the grades 6-7 bank", () => {
+  it("preserves multiplication and grouping when it speaks a bracketed choice", () => {
+    const q = fillTemplate(BANK.find((t) => t.id === "g67-6-expression-words")!, 3);
+    const bracketed = q.choices!.find((c) => c.startsWith("4("))!;
+    expect(bracketed).toBe("4(n + 8)");
+    expect(spokenChoices(q, [bracketed])).toEqual(["4 times open bracket n plus 8 close bracket"]);
+  });
+
   it.each([
     ["g67-8-square-root", "What is the positive square root of 49?", "7"],
     ["g67-8-add-fractions", "2/8 + 2/7 = ?", "15/28"],

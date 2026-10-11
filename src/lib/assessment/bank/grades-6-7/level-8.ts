@@ -15,10 +15,10 @@ export const LEVEL_8: readonly TaggedTemplate[] = [
     },
   },
   {
-    id: "g67-8-cube", strand: "N", grades: GRADES, standard: "8.1", format: "number", whiteboard: true,
+    id: "g67-8-perfect-square", strand: "N", grades: GRADES, standard: "8.1", format: "choice", whiteboard: true,
     fill(rng) {
-      const n = rng.pick([2, 4, 5, 6, 7, 8, 9, 10]);
-      return { values: { n }, prompt: `What is ${n}³?`, readAloud: `What is ${n} cubed?`, answer: String(n ** 3), wrong: [wrong(3 * n, "power-multiply"), wrong(n * n, "one-part")] };
+      const n = rng.int(4, 20);
+      return { values: { n }, prompt: "Which number is a perfect square?", readAloud: "Which number is a perfect square?", answer: String(n * n), wrong: [wrong(n * n - 1, "root-estimate"), wrong(n * n + 1, "root-estimate")] };
     },
   },
   {
@@ -29,10 +29,11 @@ export const LEVEL_8: readonly TaggedTemplate[] = [
     },
   },
   {
-    id: "g67-8-cube-root", strand: "N", grades: GRADES, standard: "8.2", format: "number", whiteboard: true,
+    id: "g67-8-square-side", strand: "N", grades: GRADES, standard: "8.2", format: "number", whiteboard: true,
     fill(rng) {
-      const n = rng.int(3, 10);
-      return { values: { n }, prompt: `What is the cube root of ${n ** 3}?`, readAloud: `What is the cube root of ${n ** 3}?`, answer: String(n), wrong: [wrong(typed(n ** 3 / 2), "root-half"), wrong(n * n, "root-half")] };
+      const n = rng.int(5, 20);
+      const prompt = `A square has an area of ${n * n} square centimetres. How long is each side, in centimetres?`;
+      return { values: { n }, prompt, readAloud: prompt, answer: String(n), wrong: [wrong(typed(n * n / 4), "root-half"), wrong(typed(n * n / 2), "root-half")] };
     },
   },
   {

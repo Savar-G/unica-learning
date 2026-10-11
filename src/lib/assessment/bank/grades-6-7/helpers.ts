@@ -83,10 +83,12 @@ const keepTogether = (text: string) => text.replace(/ ([+−×÷=<>]) /g, " $1�
 function speakMath(text: string): string {
   const clean = text.replace(/ /g, " ");
   if (/^\d+:\d+$/.test(clean)) return clean.replace(":", " to ");
+  if (/^\(−?\d+, −?\d+\)$/.test(clean)) return `point ${clean.slice(1, -1).replace(/−/g, "negative ")}`;
   return clean
     .replace(/\b(\d+) (\d+)\/(\d+)/g, "$1 and $2 over $3")
     .replace(/(\d+)\/(\d+)/g, "$1 over $2")
     .replace(/\b(\d+)([a-z])\b/g, "$1 times $2")
+    .replace(/(\d+)\(/g, "$1 times (")
     .replace(/ − /g, " minus ")
     .replace(/−(?=\d)/g, "negative ")
     .replace(/\+/g, " plus ")
@@ -99,7 +101,8 @@ function speakMath(text: string): string {
     .replace(/²/g, " squared")
     .replace(/³/g, " cubed")
     .replace(/\bcm\b/g, "centimetres")
-    .replace(/[()]/g, "")
+    .replace(/\(/g, " open bracket ")
+    .replace(/\)/g, " close bracket ")
     .replace(/\s+/g, " ").trim();
 }
 

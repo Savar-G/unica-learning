@@ -932,8 +932,8 @@ export const LEVEL_6: readonly TaggedTemplate[] = [
       const others = ["acute", "right", "obtuse", "equilateral"].filter((k) => k !== kind);
       return {
         values: { a: angles[0], b: angles[1], c: angles[2] },
-        prompt: `A triangle has angles of ${angles[0]}°, ${angles[1]}° and ${angles[2]}°. What kind of triangle is it?`,
-        readAloud: `A triangle has angles of ${angles[0]} degrees, ${angles[1]} degrees and ${angles[2]} degrees. What is its most specific side classification?`,
+        prompt: `A triangle has angles of ${angles[0]}°, ${angles[1]}° and ${angles[2]}°. What is its angle classification?`,
+        readAloud: `A triangle has angles of ${angles[0]} degrees, ${angles[1]} degrees and ${angles[2]} degrees. What is its angle classification?`,
         answer: kind,
         wrong: others.map((k) => wrong(k, "triangle-type")),
       };
