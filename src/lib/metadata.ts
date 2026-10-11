@@ -9,8 +9,8 @@ export const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? (process.env.NODE_EN
 // Search indexing is off until NEXT_PUBLIC_ALLOW_INDEX=true, and always off on Vercel preview deploys.
 export const INDEXABLE = process.env.NEXT_PUBLIC_ALLOW_INDEX === "true" && process.env.VERCEL_ENV !== "preview";
 
-export const SITE_TITLE = `${BRAND}: Personalized math and reading workbooks, mailed home`;
-export const SITE_DESCRIPTION = `Personalized math and reading workbooks for ages 6-12, mailed home across Canada and adapted after every book. Free placement assessment. From CAD ${PLANS.one.price}/month.`;
+export const SITE_TITLE = `${BRAND}: Personalized math and reading learning program`;
+export const SITE_DESCRIPTION = `A personalized math and reading learning program for ages 6-12 across Canada. Paper workbooks made for your child, adapted after every book. Free placement assessment. From CAD ${PLANS.one.price}/month.`;
 
 type PageMeta = {
   /** Route path, for example "/privacy". Used for the canonical URL. */
