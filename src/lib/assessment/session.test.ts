@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { SAMPLE_BANK, createSession, finish, nextQuestion, submitAnswer, type Session, type Template } from "@/lib/assessment";
+import { REPORTED_STRAND, SAMPLE_BANK, createSession, finish, nextQuestion, submitAnswer, type Session, type Template } from "@/lib/assessment";
 import { allRight, allWrong, firstRight, knowsUpTo, takeTest, type Script } from "./scripted-child";
 
 const prompts = (s: Session) => [...s.stage1, ...s.stage2.up, ...s.stage2.stay, ...s.stage2.down].map((q) => q.prompt);
@@ -51,20 +51,51 @@ describe("scripted children, grades 3-5", () => {
     expect(session.stage1.every((q) => q.level === 5)).toBe(true);
   });
 
-  it("each strand reports its correct count and question count", () => {
+  it("each strand reports its correct count and question count, at or below the school grade", () => {
     const { asked, placement } = takeTest({ grade: 4, province: "BC" }, 2, allRight);
     const total = placement.strands.reduce((sum, s) => sum + s.total, 0);
-    expect(total).toBe(asked.length);
+    expect(total).toBe(asked.filter((q) => q.level <= 4).length);
     expect(placement.strands.map((s) => s.strand)).toEqual(["number", "fractions", "algebra", "shapes"]);
-    expect(placement.strands.every((s) => s.correct === s.total && s.total >= 8)).toBe(true);
+    expect(placement.strands.every((s) => s.correct === s.total && s.total >= 4)).toBe(true);
+  });
+});
+
+// Decision 2026-10-11 (orchestrator, Q1 of #65; D-084 "never invent a weakness"): an area's status counts only the
+// questions at or below the school grade. Questions above it still count toward the working level.
+describe("area status: only questions at or below the school grade", () => {
+  it("an on-grade child who got every grade 5 question right is Secure in every area, though some grade 6 ones were wrong", () => {
+    const { asked, placement } = takeTest({ grade: 5, province: "BC" }, 4, (q, i) => q.level <= 5 || i % 2 === 0);
+    expect(placement.route).toBe("up");
+    expect(placement.workingLevel).toBe(5);
+    expect(asked.some((q) => q.level === 6)).toBe(true);
+    expect(placement.strands.map((s) => s.status)).toEqual(["secure", "secure", "secure", "secure"]);
+    expect(placement.strands.every((s) => s.correct === s.total)).toBe(true);
+    expect(placement.strands.reduce((sum, s) => sum + s.total, 0)).toBe(18);
+  });
+
+  it("a child working below grade keeps the areas that really need attention", () => {
+    // Grade 4, knows grade 3 except fractions: stage 1 all wrong routes down, stage 2 at grade 3 has fractions wrong.
+    const { placement } = takeTest({ grade: 4, province: "BC" }, 1, (q) => q.level <= 3 && q.strand !== "F");
+    expect(placement.workingLevel).toBe(3);
+    expect(placement.strands.find((s) => s.strand === "fractions")).toEqual({ strand: "fractions", status: "needs-attention", correct: 0, total: 10 });
+  });
+
+  it("an area with no question at or below the school grade gets no status and no count, not Needs attention", () => {
+    // A bank whose shapes questions all sit above grade 4: the child meets shapes only in stage 2, routed up.
+    const bank = SAMPLE_BANK.filter((t) => !(REPORTED_STRAND[t.strand] === "shapes" && t.grades.BC <= 4));
+    const { asked, placement } = takeTest({ grade: 4, province: "BC" }, 1, (q) => q.level <= 4, bank);
+    expect(asked.some((q) => REPORTED_STRAND[q.strand] === "shapes")).toBe(true);
+    expect(placement.strands.map((s) => s.strand)).toEqual(["number", "fractions", "algebra"]);
+    expect(placement.strands.every((s) => s.status === "secure")).toBe(true);
   });
 });
 
 describe("strand status at its exact boundaries", () => {
-  // Grade 4, routed up: the number strand has 10 questions, so 80% and 50% are whole counts.
+  // Grade 4, only number questions can be right, so stage 1 routes down: all 10 number questions are at or below
+  // the school grade, and 80% and 50% are whole counts.
   const numberStrand = (right: number) => {
     let seen = 0;
-    const { placement } = takeTest({ grade: 4, province: "BC" }, 2, (q) => !["N", "O"].includes(q.strand) || seen++ < right);
+    const { placement } = takeTest({ grade: 4, province: "BC" }, 2, (q) => ["N", "O"].includes(q.strand) && seen++ < right);
     return placement.strands.find((s) => s.strand === "number")!;
   };
 
