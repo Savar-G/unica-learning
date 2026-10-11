@@ -75,6 +75,14 @@ export interface Question {
   wrong: CodedWrong[];
 }
 
+/** A question as the browser receives it: no answer, no coded wrong answers, no drawn numbers. */
+export type PublicQuestion = Pick<Question, "id" | "level" | "strand" | "format" | "whiteboard" | "prompt" | "readAloud" | "choices">;
+
+/** The browser's next screen: a question, numbered from 1, or the end of the test. */
+export type TestStep =
+  | { status: "question"; question: PublicQuestion; number: number; total: number }
+  | { status: "complete"; total: number };
+
 export interface ChildProfile {
   grade: Grade;
   province: Province;
@@ -102,6 +110,9 @@ export interface Session {
   route: Route | null;
   answers: Answer[];
 }
+
+/** What the server stores when a test starts. Never sent to the browser: it holds the answers. */
+export type StoredTest = Pick<Session, "profile" | "seed" | "stage1" | "stage2">;
 
 export type StrandStatus = "secure" | "developing" | "needs-attention";
 

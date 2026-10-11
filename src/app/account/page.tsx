@@ -4,6 +4,7 @@ import { pageMetadata } from "@/lib/metadata";
 import { requirePilot } from "@/lib/pilot";
 import { CURRICULA } from "@/lib/signup";
 import type { Child } from "@/lib/account";
+import type { AssessmentStatus } from "@/lib/test-api";
 import { parentId, sessionClient } from "@/lib/supabase-auth";
 import { isPhone } from "@/lib/account-server";
 import { AddChild, SendLink, SignOut, StartTest, TrackOnce } from "@/components/account";
@@ -23,11 +24,19 @@ export default async function Account({ searchParams }: PageProps<"/account">) {
   await requirePilot();
   const db = await sessionClient();
   if (!(await parentId(db))) redirect("/sign-in");
-  const [{ data: parent }, { data: kids }] = await Promise.all([
+  const [{ data: parent }, { data: kids }, { data: tests }] = await Promise.all([
     db.from("parents").select("name, email").maybeSingle<{ name: string; email: string }>(),
     db.from("children").select("id, first_name, grade, province").order("created_at").returns<Child[]>(),
+    // Oldest first, so each child's latest test wins below.
+    db.from("assessments").select("child_id, status").order("created_at").returns<{ child_id: string; status: AssessmentStatus }[]>(),
   ]);
   if (!parent) redirect("/account/finish");
+  const latest = new Map((tests ?? []).map((t) => [t.child_id, t.status]));
+  // An expired test (#72) counts as no test: the child starts again.
+  const testStatus = (id: string) => {
+    const s = latest.get(id);
+    return s === "expired" ? null : (s ?? null);
+  };
   const phone = isPhone(await headers());
   const { sent, password } = await searchParams;
 
@@ -49,7 +58,7 @@ export default async function Account({ searchParams }: PageProps<"/account">) {
         {children.map((c, i) => (
           <li key={c.id} className="acct-kid">
             <span><b>{c.first_name}</b><span className="small">Grade {c.grade} · {CURRICULA[c.province]}</span></span>
-            {phone ? <SendLink childId={c.id} name={c.first_name} sent={sent === "1" && i === 0} /> : <StartTest name={c.first_name} />}
+            {phone ? <SendLink childId={c.id} name={c.first_name} sent={sent === "1" && i === 0} /> : <StartTest childId={c.id} name={c.first_name} status={testStatus(c.id)} />}
           </li>
         ))}
       </ul>
