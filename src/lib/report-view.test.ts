@@ -9,8 +9,10 @@ import {
   levelSentence,
   metaLine,
   nextStep,
+  nextStepPath,
   reportDate,
   reportPath,
+  reportReturnPath,
   thresholdsLine,
   verdictSentence,
   type ReportView,
@@ -168,6 +170,31 @@ describe("the next step", () => {
   });
   it("a family in another province, or not sure, joins the waitlist without a province name", () => {
     expect(nextStep(view(knowsUpTo(4), { province: "other" }))).toMatchObject({ kind: "waitlist", title: "Books for more provinces are coming" });
+  });
+  it("BC families choose math (CAD 139) or math + reading (CAD 229), the prices of the site's plans (#66)", () => {
+    expect(nextStep(view(knowsUpTo(4))).plans).toEqual([
+      { plan: "one", subject: "Math", price: 139, label: "Math, CAD 139 a month" },
+      { plan: "both", subject: "Math + Reading", price: 229, label: "Math + reading, CAD 229 a month" },
+    ]);
+  });
+  it("waitlist families get no plans to choose", () => {
+    expect(nextStep(view(knowsUpTo(4), { province: "ON" })).plans).toEqual([]);
+  });
+  it("the email's button opens the plan step for BC, and the waitlist step elsewhere", () => {
+    expect(nextStep(view(knowsUpTo(4))).email).toEqual({ label: "Choose a plan for Maya", step: "plan" });
+    expect(nextStep(view(knowsUpTo(4), { province: "ON" })).email).toEqual({ label: "Join the waitlist", step: "waitlist" });
+  });
+});
+
+describe("the link to the next step (#66)", () => {
+  it("opens the report at the next step, marked as coming from the email", () => {
+    expect(nextStepPath("abc", "plan")).toBe("/account/report/abc?src=email&step=plan#rpt-next");
+    expect(nextStepPath("abc", "waitlist")).toBe("/account/report/abc?src=email&step=waitlist#rpt-next");
+  });
+  it("is where a signed-out parent comes back to after sign-in, with the step and the place on the page", () => {
+    expect(reportReturnPath("abc", { src: "email", step: "plan" })).toBe("/account/report/abc?src=email&step=plan#rpt-next");
+    expect(reportReturnPath("abc", { src: "email", step: null })).toBe("/account/report/abc?src=email");
+    expect(reportReturnPath("abc", { src: "account", step: null })).toBe("/account/report/abc");
   });
 });
 

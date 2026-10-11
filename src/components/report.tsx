@@ -1,12 +1,14 @@
 // The parent's report (#65): plain sections in the order of the chosen design (D-087, "Report card + ruler"), so the
 // report design ticket (#80) can restyle them one at a time. A server component: it needs no JavaScript in the browser.
 // The words come from src/lib/report-view.ts, which the report email uses too.
-import Link from "next/link";
 import type { CSSProperties, ReactNode } from "react";
 import { STRAND_DEVELOPING_PERCENT, STRAND_SECURE_PERCENT } from "@/lib/assessment";
 import { CURRICULA } from "@/lib/signup";
 import { BRAND } from "@/lib/site";
+import type { ReportSrc } from "@/lib/next-step";
+import { ReportNextActions, type NextStepStart } from "@/components/report-next";
 import {
+  NEXT_STEP_ANCHOR,
   STATUS_LABEL,
   factsView,
   howWeHelp,
@@ -23,7 +25,9 @@ import {
 } from "@/lib/report-view";
 import "./report.css";
 
-export function ReportCard({ view }: { view: ReportView }) {
+const NO_NEXT: ReportNextContext = { src: "account", asked: false, start: { saved: null, joined: false, cancelled: false } };
+
+export function ReportCard({ view, next = NO_NEXT }: { view: ReportView; next?: ReportNextContext }) {
   return (
     <article className="rpt" aria-labelledby="rpt-title">
       <ReportHeader view={view} />
@@ -33,7 +37,7 @@ export function ReportCard({ view }: { view: ReportView }) {
       <ReportNumberFacts view={view} />
       <ReportWork view={view} />
       <ReportHelp view={view} />
-      <ReportNextStep view={view} />
+      <ReportNextStep view={view} next={next} />
       <p className="rpt-meta">{metaLine(view)}</p>
     </article>
   );
@@ -194,15 +198,20 @@ function ReportHelp({ view }: { view: ReportView }) {
   );
 }
 
-function ReportNextStep({ view }: { view: ReportView }) {
+/** The next step's state on the report page (#66): where the parent came from, and what they did before. */
+export interface ReportNextContext {
+  src: ReportSrc;
+  /** The parent came from the email's link to this step. */
+  asked: boolean;
+  start: NextStepStart;
+}
+
+// The plan choice (BC) or the one-click waitlist (#66). The buttons need the browser; the words come from nextStep.
+function ReportNextStep({ view, next }: { view: ReportView; next: ReportNextContext }) {
   const step = nextStep(view);
   return (
-    <Row id="rpt-next" title="Next step">
-      <div className={`rpt-next is-${step.kind}`}>
-        <h3>{step.title}</h3>
-        <p>{step.text}</p>
-        <Link className="btn" href={step.action.href}>{step.action.label} <span className="arr">→</span></Link>
-      </div>
+    <Row id={NEXT_STEP_ANCHOR} title="Next step">
+      <ReportNextActions reportId={view.id} step={step} childName={view.childName} province={view.province} {...next} />
     </Row>
   );
 }

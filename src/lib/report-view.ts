@@ -13,7 +13,7 @@ import {
   type StrandStatus,
 } from "@/lib/assessment";
 import { CURRICULA } from "@/lib/signup";
-import { PLANS } from "@/lib/site";
+import { PLANS, type PlanId } from "@/lib/site";
 
 /** One stored report, ready to show. */
 export interface ReportView {
@@ -134,12 +134,32 @@ export function metaLine(v: ReportView): string {
   return parts.join(" · ");
 }
 
+/** The step a report email link opens: the plan choice (BC) or the waitlist (every other province). */
+export type NextStepKey = "plan" | "waitlist";
+
+/** One plan a BC family can choose (#66). Prices come from the site's plans. */
+export interface PlanOption {
+  plan: PlanId;
+  /** The subject on the Stripe customer, as the reserve form sends it. */
+  subject: "Math" | "Math + Reading";
+  price: number;
+  label: string;
+}
+
+/** The plans offered from a math report: math alone (the one-subject plan), or math + reading. */
+export const REPORT_PLANS: readonly PlanOption[] = [
+  { plan: "one", subject: "Math", price: PLANS.one.price, label: `Math, CAD ${PLANS.one.price} a month` },
+  { plan: "both", subject: "Math + Reading", price: PLANS.both.price, label: `Math + reading, CAD ${PLANS.both.price} a month` },
+];
+
 export interface NextStep {
   kind: ReportModel["callToAction"];
   title: string;
   text: string;
-  /** Until #66 adds plan buttons and one-click waitlist here, the action opens the plans and the reserve form on the home page. */
-  action: { label: string; href: string };
+  /** The plans to choose on the report page: both for BC, none for the waitlist. */
+  plans: readonly PlanOption[];
+  /** The report email's button. Emails carry links only, so it opens the report at this step. */
+  email: { label: string; step: NextStepKey };
 }
 
 /** Card for BC families (charged when the first workbook ships, D-053); the waitlist for every other province (D-082). */
@@ -150,16 +170,36 @@ export function nextStep(v: ReportView): NextStep {
       kind: "card",
       title: `Start ${name}'s books`,
       text: `Math is CAD ${PLANS.one.price} a month, or math + reading CAD ${PLANS.both.price} a month, with delivery included. We charge nothing until the first workbook ships. 30-day money-back guarantee from the first payment. Cancel anytime.`,
-      action: { label: "Choose a plan", href: "/#price" },
+      plans: REPORT_PLANS,
+      email: { label: `Choose a plan for ${name}`, step: "plan" },
     };
   }
   return {
     kind: "waitlist",
     title: v.province === "other" ? "Books for more provinces are coming" : `Books for the ${CURRICULA[v.province]} curriculum are coming`,
     text: `Join the waitlist and we will email you when they are ready. ${name}'s report stays in your account.`,
-    action: { label: "Join the waitlist", href: "/#price" },
+    plans: [],
+    email: { label: "Join the waitlist", step: "waitlist" },
   };
 }
+
+/** The id of the next step on the report page, so a link can open the page there. */
+export const NEXT_STEP_ANCHOR = "rpt-next";
+
+/**
+ * The report page as a parent comes back to it: from the email (src), at a step. A signed-out parent signs in first
+ * and returns here, so the link still lands on the step.
+ */
+export function reportReturnPath(id: string, { src, step }: { src: "email" | "account"; step: NextStepKey | null }): string {
+  const query = new URLSearchParams();
+  if (src === "email") query.set("src", "email");
+  if (step) query.set("step", step);
+  const qs = query.toString();
+  return `${reportPath(id)}${qs ? `?${qs}` : ""}${step ? `#${NEXT_STEP_ANCHOR}` : ""}`;
+}
+
+/** The report email's link to the next step (#66). */
+export const nextStepPath = (id: string, step: NextStepKey) => reportReturnPath(id, { src: "email", step });
 
 const HELP_TITLE: Record<ReportModel["howWeHelp"], string> = {
   behind: "Catch up, then move ahead",
