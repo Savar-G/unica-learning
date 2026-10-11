@@ -12,15 +12,17 @@ export interface GradeBand {
   stage1: number;
   /** Questions that require shown work on the whiteboard (#67). */
   whiteboardRequired: number;
+  /** True when the whiteboard has a text box beside the drawing. Grades 1-2 draw only (#67). */
+  whiteboardTyping: boolean;
   /** Reported strands, in the order the test rotates through them. */
   strands: readonly ReportedStrand[];
 }
 
 export const GRADE_BANDS: Record<GradeBandId, GradeBand> = {
   // Grades 1-2 report 3 strands: BC teaches fractions from grade 3.
-  "1-2": { id: "1-2", grades: [1, 2], length: 24, stage1: 12, whiteboardRequired: 5, strands: ["number", "algebra", "shapes"] },
-  "3-5": { id: "3-5", grades: [3, 4, 5], length: 36, stage1: 18, whiteboardRequired: 7, strands: ["number", "fractions", "algebra", "shapes"] },
-  "6-7": { id: "6-7", grades: [6, 7], length: 42, stage1: 21, whiteboardRequired: 10, strands: ["number", "fractions", "algebra", "shapes"] },
+  "1-2": { id: "1-2", grades: [1, 2], length: 24, stage1: 12, whiteboardRequired: 5, whiteboardTyping: false, strands: ["number", "algebra", "shapes"] },
+  "3-5": { id: "3-5", grades: [3, 4, 5], length: 36, stage1: 18, whiteboardRequired: 7, whiteboardTyping: true, strands: ["number", "fractions", "algebra", "shapes"] },
+  "6-7": { id: "6-7", grades: [6, 7], length: 42, stage1: 21, whiteboardRequired: 10, whiteboardTyping: true, strands: ["number", "fractions", "algebra", "shapes"] },
 };
 
 export function bandFor(grade: Grade): GradeBand {
@@ -65,3 +67,6 @@ export const REPORTED_STRAND_NAMES: Record<ReportedStrand, string> = {
 export const COMPARISON_BANDS_FROM = 100;
 /** Completed tests in a grade before the report shows a numeric percentile, labelled with n. */
 export const COMPARISON_PERCENTILE_FROM = 400;
+
+/** Pieces of the child's shown work on the report (D-087: three whiteboard images). */
+export const REPORT_WORK_MAX = 3;

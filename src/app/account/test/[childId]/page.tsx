@@ -43,5 +43,6 @@ export default async function TestPage(props: PageProps<"/account/test/[childId]
   } catch {
     ready = false;
   }
-  return <TakeTest childId={child.id} name={child.first_name} total={bandFor(grade).length} ready={ready} done={state.kind === "wait"} mode={mode} />;
+  const band = bandFor(grade);
+  return <TakeTest childId={child.id} name={child.first_name} total={band.length} ready={ready} done={state.kind === "wait"} mode={mode} typing={band.whiteboardTyping} />;
 }
