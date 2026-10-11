@@ -27,7 +27,8 @@
 @media (max-width: 900px), (orientation: portrait) {
   .facts-run { gap: 20px; padding-block: 32px; }
   [data-look="warm"] .facts-fact { font-size: 72px; }
-  .facts-pad button { min-height: 76px; }
+  .facts-pad { width: min(100%, 520px); gap: 12px; }
+  .facts-pad button { min-height: 96px; font-size: 38px; }
 }
 
 @media (prefers-reduced-motion: reduce) {
