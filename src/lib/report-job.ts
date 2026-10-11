@@ -48,7 +48,7 @@ interface StoredReport {
 }
 const REPORT_COLUMNS = "id, model, questions, minutes, emailed_at, email_id, alerted_at";
 
-type Sent = { sent: true } | { sent: false; reason: string };
+type Sent = { sent: true } | { sent: false; reason: string; uncertain?: boolean };
 
 const message = (e: unknown) => (e instanceof Error ? e.message : String(e));
 
@@ -162,8 +162,9 @@ async function mark(admin: SupabaseClient, id: string, fields: Record<string, st
 }
 
 /**
- * A parent-email claim with no email_id after this long belongs to a run that stopped (a function stops after at most
- * 300 seconds on Vercel), so a later run may take it over. The cost: an email whose email_id write failed can go twice.
+ * Only legacy claims with no unsubscribe token can be recovered after this long. A claim with a token may have sent
+ * an email even if its response or email_id write was lost. Keep its hash so that the delivered link keeps working.
+ * A stopped run with a token needs manual follow-up; automatic retry must not replace that token.
  */
 const STALE_CLAIM_MS = 10 * 60_000;
 
@@ -174,7 +175,7 @@ const STALE_CLAIM_MS = 10 * 60_000;
 async function claim(admin: SupabaseClient, id: string, column: "emailed_at" | "alerted_at", extra: Record<string, string> = {}): Promise<boolean> {
   let query = admin.from("reports").update({ ...extra, [column]: new Date().toISOString() }).eq("id", id);
   query = column === "emailed_at"
-    ? query.or(`emailed_at.is.null,and(email_id.is.null,emailed_at.lt."${new Date(Date.now() - STALE_CLAIM_MS).toISOString()}")`)
+    ? query.or(`emailed_at.is.null,and(email_id.is.null,unsubscribe_hash.is.null,emailed_at.lt."${new Date(Date.now() - STALE_CLAIM_MS).toISOString()}")`)
     : query.is(column, null);
   const { data, error } = await query.select("id");
   if (error) throw new Error(`claim ${column}: ${error.message}`);
@@ -201,8 +202,9 @@ async function emailParent(admin: SupabaseClient, report: StoredReport, view: Re
   const result = await send({ from, to: parent.email, replyTo: SUPPORT_EMAIL, headers, ...email });
   if ("error" in result) {
     console.error("[report] parent email failed", report.id, result.error);
-    await mark(admin, report.id, { emailed_at: null, email_error: result.error.slice(0, 500) });
-    return { sent: false, reason: result.error };
+    // A lost response can follow a delivered email. Keep both the claim and its hash until the outcome is checked.
+    await mark(admin, report.id, { ...(result.uncertain ? {} : { emailed_at: null }), email_error: result.error.slice(0, 500) });
+    return { sent: false, reason: result.error, uncertain: result.uncertain };
   }
   console.info("[report] parent email sent", report.id);
   // A sent email always has an email_id, so a later run can tell it from a claim still in flight.
@@ -230,7 +232,7 @@ async function alertSavar(admin: SupabaseClient, report: StoredReport, alert: { 
  * Sends one email through Resend. Alerts use EMAIL_FROM when it is set; else Resend's test sender, which the free plan
  * delivers only to the account owner (as the signup alert does).
  */
-async function send(email: { to: string | undefined; subject: string; text: string; html?: string; from?: string; replyTo?: string; headers?: Record<string, string> }): Promise<{ id: string } | { error: string }> {
+async function send(email: { to: string | undefined; subject: string; text: string; html?: string; from?: string; replyTo?: string; headers?: Record<string, string> }): Promise<{ id: string } | { error: string; uncertain?: boolean }> {
   const key = process.env.RESEND_API_KEY;
   if (!key) return { error: "RESEND_API_KEY is not set" };
   if (!email.to) return { error: "no recipient" };
@@ -242,10 +244,10 @@ async function send(email: { to: string | undefined; subject: string; text: stri
       body: JSON.stringify({ from, to: [email.to], subject: email.subject, text: email.text, html: email.html, reply_to: email.replyTo, headers: email.headers }),
       signal: AbortSignal.timeout(15_000),
     });
-    if (!res.ok) return { error: `Resend answered ${res.status}: ${(await res.text()).slice(0, 300)}` };
+    if (!res.ok) return { error: `Resend answered ${res.status}: ${(await res.text()).slice(0, 300)}`, uncertain: res.status >= 500 || res.status === 408 };
     const json = (await res.json()) as { id?: unknown };
     return { id: typeof json.id === "string" ? json.id : "" };
   } catch (e) {
-    return { error: `Resend request failed: ${message(e)}` };
+    return { error: `Resend delivery is unknown: ${message(e)}. Check delivery before sending again.`, uncertain: true };
   }
 }

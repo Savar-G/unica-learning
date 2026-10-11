@@ -176,7 +176,7 @@ export function reportEmail({ view: v, parentName, url, unsubscribeUrl, offer = 
     ["By area", ...areas, thresholdsLine(v)].join("\n"),
     ...(facts ? [[`Number facts: ${factsLine(facts)}`, ...(facts.accuracy && facts.note ? [facts.note] : []), `${facts.scope} ${facts.round}`].join("\n")] : []),
     ...(work ? [work] : []),
-    `How we help: ${help.title}\n${help.text}`,
+    ...(offer ? [`How we help: ${help.title}\n${help.text}`] : []),
     ...(step && stepUrl ? [`${step.title}\n${step.text}\n${step.email.label}: ${stepUrl}`] : []),
     `See ${name}'s full report: ${url}`,
     [why, unsubscribe, ...(offer ? [`Unsubscribe: ${unsubscribeUrl}`] : []), sender, `${WEBSITE} · Questions? Reply to this email.`].join("\n"),
@@ -276,10 +276,10 @@ ${work ? `<tr><td style="padding:30px 20px 0">
 ${heading(`${esc(name)}&#39;s work`)}
 ${p(`${esc(name)}&#39;s work from the whiteboard is in the <a href="${esc(url)}" style="color:${INK}">full report</a>.`, "margin:0;font-size:15px")}
 </td></tr>` : ""}
-<tr><td style="padding:30px 20px 0">
+${offer ? `<tr><td style="padding:30px 20px 0">
 ${heading(`How we help: ${esc(help.title)}`)}
 ${p(esc(help.text), "margin:0")}
-</td></tr>
+</td></tr>` : ""}
 ${step && stepUrl ? `<tr><td style="padding:30px 20px 0">
 ${heading(esc(step.title))}
 ${p(esc(step.text), "margin:0 0 20px;font-size:15px")}
@@ -361,7 +361,7 @@ export function reportAlert({
   help?: HelpAnswer | null;
   /** Completed tests in the child's grade, the count the comparison stage came from. */
   completedInGrade: number;
-  parentEmail: { sent: true } | { sent: false; reason: string };
+  parentEmail: { sent: true } | { sent: false; reason: string; uncertain?: boolean };
   /** What the AI step did (#68); absent when an earlier run built the report. */
   ai?: AiOutcome;
 }) {
@@ -383,7 +383,9 @@ export function reportAlert({
     `FSA line: ${m.fsa ? "shown" : "not shown"}`,
     `Next step: ${m.callToAction}`,
     `Parent: ${parent.name} <${parent.email}>`,
-    parentEmail.sent ? `Parent email: sent to ${parent.email}` : `Parent email: NOT SENT (${parentEmail.reason}). Send the report link by hand.`,
+    parentEmail.sent ? `Parent email: sent to ${parent.email}` : parentEmail.uncertain
+      ? `Parent email: delivery UNKNOWN (${parentEmail.reason}). Check delivery before sending again.`
+      : `Parent email: NOT SENT (${parentEmail.reason}). Send the report link by hand.`,
     `Report: ${url}`,
     `Report id: ${v.id}`,
   ];

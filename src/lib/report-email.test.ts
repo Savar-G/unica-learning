@@ -109,7 +109,7 @@ describe("the report email to the parent", () => {
     for (const province of ["BC", "ON"] as const) {
       const quiet = reportEmail({ unsubscribeUrl: UNSUB, view: view(knowsUpTo(3), { province }), parentName: "Priya", url: URL, offer: false });
       for (const body of [quiet.text, quiet.html]) {
-        expect(body).not.toMatch(/Choose a plan|Join the waitlist|step=|CAD \d+|Unsubscribe:|unsubscribe\?t=/);
+        expect(body).not.toMatch(/Choose a plan|Join the waitlist|step=|CAD \d+|Unsubscribe:|unsubscribe\?t=|How we help|first book|books keep|The books/);
         expect(body).toContain("You unsubscribed from reminders and emails about our plans, so this email has only the report.");
       }
       expect(quiet.html).toMatch(new RegExp(`<a href="${URL.replace(/[?.]/g, "\\$&")}"[^>]*>See Maya&#39;s full report</a>`));
@@ -247,5 +247,10 @@ describe("the alert to Savar for each finished test", () => {
     expect(alert({ parentEmail: { sent: false, reason: "Resend answered 403" } }).text).toContain(
       "Parent email: NOT SENT (Resend answered 403). Send the report link by hand.",
     );
+  });
+  it("asks Savar to check an unknown delivery before sending again", () => {
+    const text = alert({ parentEmail: { sent: false, reason: "response lost", uncertain: true } }).text;
+    expect(text).toContain("Parent email: delivery UNKNOWN (response lost). Check delivery before sending again.");
+    expect(text).not.toContain("NOT SENT");
   });
 });
