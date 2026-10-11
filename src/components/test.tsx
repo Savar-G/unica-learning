@@ -1,22 +1,26 @@
 "use client";
 
-// The child's test (#64): instructions, one question at a time, the end screen. Plain screens until the chosen
-// design (D-088, split desk) lands in #79. Read-aloud, the halfway break and progress (#69) are their own parts
-// (test-read-aloud.tsx, test-break.tsx, test-progress.tsx); the whiteboard (#67) is whiteboard.tsx, beside each question.
+// The child's test (#64), in the split desk (D-088, #79): the start screen, one question at a time, the end screen.
+// Read-aloud, the halfway break and progress (#69) are their own parts (test-read-aloud.tsx, test-break.tsx,
+// test-progress.tsx); the whiteboard (#67) is whiteboard.tsx, beside each question; quick facts (#70) is facts.tsx.
 // The server marks every answer; the browser gets only the next question and never learns what was right.
-import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
+// Shared CSS first, so each screen's own CSS comes later and wins (test-base.css).
+import "./test-base.css";
+import { useCallback, useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
 import Link from "next/link";
-import { Button, GradientPanel } from "@/ds";
-import { breakDue, hasWork, type HelpAnswer, type PublicQuestion, type TestStep } from "@/lib/assessment";
+import { Button } from "@/ds";
+import { breakDue, hasWork, readAloudText, spokenChoices, type HelpAnswer, type PublicQuestion, type TestStep } from "@/lib/assessment";
 import { ANSWER_MAX, type FinishResult, type StartResult, type StepResult, type TestError, type WorkPayload } from "@/lib/test-api";
 import { track } from "@/lib/track";
 import { SUPPORT_EMAIL, SUPPORT_HREF } from "@/lib/contact";
 import { draftKey, draftPrefix, emptyBoard, hasDrawing, type BoardState } from "@/lib/whiteboard";
 import { FactsSection } from "./facts";
 import { breakSeen, markBreakSeen, TestBreak } from "./test-break";
+import { Choices } from "./test-choices";
+import { BarGraph, ChoiceFace, PromptText } from "./test-figures";
 import { TestHelp } from "./test-help";
 import { TestProgress } from "./test-progress";
-import { ReadAloud } from "./test-read-aloud";
+import { ReadAloud, warmUpVoices } from "./test-read-aloud";
 import { Whiteboard, boardImage, clearDrafts, loadDraft, saveDraft, type BoardSize } from "./whiteboard";
 import "./test.css";
 
@@ -48,8 +52,11 @@ const post = (body: unknown): RequestInit => ({ method: "POST", body: JSON.strin
  */
 export type StartMode = "new" | "resume" | "finish" | "restart";
 
-/** `typing`: the whiteboard has a text box (grades 3-7); grades 1-2 draw only (#67). */
-export function TakeTest({ childId, name, total, ready, done, mode: firstMode = "new", typing = true }: { childId: string; name: string; total: number; ready: boolean; done: boolean; mode?: StartMode; typing?: boolean }) {
+/**
+ * `typing`: the whiteboard has a text box (grades 3-7); grades 1-2 draw only (#67). `breakAfter`: questions before the
+ * halfway ring, for the progress on the help and end screens (the band's stage 1).
+ */
+export function TakeTest({ childId, name, total, breakAfter, ready, done, mode: firstMode = "new", typing = true }: { childId: string; name: string; total: number; breakAfter: number; ready: boolean; done: boolean; mode?: StartMode; typing?: boolean }) {
   const [screen, setScreen] = useState<Screen>(done ? { name: "done" } : { name: "intro" });
   const [busy, setBusy] = useState(false);
   const [failure, setFailure] = useState<TestError | null>(null);
@@ -57,6 +64,9 @@ export function TakeTest({ childId, name, total, ready, done, mode: firstMode = 
   const testId = useRef<string | null>(null);
   // Set once the facts section is over (or was over before a resume), so it never shows twice.
   const factsDone = useRef(false);
+
+  // The voices for "read it to me" load while the child reads the start screen, so the button is there with question 1.
+  useEffect(() => warmUpVoices(), []);
 
   /** The open test ran out of time (#72): back to the start, where the next test has new questions. */
   const expire = useCallback(() => {
@@ -161,12 +171,13 @@ export function TakeTest({ childId, name, total, ready, done, mode: firstMode = 
   };
 
   return (
-    <div className={`look-root test-root${screen.name === "question" ? " is-desk" : ""}`} data-look="warm">
+    <div className="look-root test-root" data-look="warm">
       <header className="test-top">
         <span className="logo">Unica Learning<b /></span>
         {screen.name === "question" && <TestProgress answered={screen.number - 1} total={screen.total} breakAfter={screen.breakAfter} at="question" />}
         {screen.name === "break" && <TestProgress answered={screen.next.breakAfter} total={screen.next.total} breakAfter={screen.next.breakAfter} at="halfway" />}
-        {screen.name === "facts" && <TestProgress answered={screen.next.number - 1} total={screen.next.total} breakAfter={screen.next.breakAfter} at="halfway" />}
+        {screen.name === "facts" && <TestProgress answered={screen.next.number - 1} total={screen.next.total} breakAfter={screen.next.breakAfter} at="facts" />}
+        {(screen.name === "help" || screen.name === "done") && <TestProgress answered={total} total={total} breakAfter={breakAfter} at={screen.name === "help" ? "help" : "end"} />}
       </header>
       <main id="main" className="test-main">
         {screen.name === "intro" && <Intro name={name} total={total} ready={ready} busy={busy} onStart={start} failure={failure} mode={mode} />}
@@ -180,10 +191,7 @@ export function TakeTest({ childId, name, total, ready, done, mode: firstMode = 
           }} />
         )}
         {screen.name === "facts" && (
-          <>
-            <FactsSection testId={screen.testId} onError={setFailure} onDone={() => { factsDone.current = true; void show(screen.next); }} />
-            <Problem error={failure} />
-          </>
+          <FactsSection testId={screen.testId} problem={<Problem error={failure} />} onError={setFailure} onDone={() => { factsDone.current = true; void show(screen.next); }} />
         )}
         {screen.name === "help" && (
           <TestHelp problem={<Problem error={failure} />} onAnswer={async (help) => {
@@ -193,13 +201,19 @@ export function TakeTest({ childId, name, total, ready, done, mode: firstMode = 
             return sent;
           }} />
         )}
-        {screen.name === "done" && <End name={name} />}
+        {screen.name === "done" && <End name={name} total={total} />}
       </main>
     </div>
   );
 }
 
 function Problem({ error }: { error: TestError | null }) {
+  // A pane that scrolls (a long question) could hide a new error line under Next: bring it into view.
+  const line = useRef<HTMLParagraphElement>(null);
+  useEffect(() => {
+    // A block body: scrollIntoView returns a Promise in newer browsers, and an effect may return only a clean-up.
+    line.current?.scrollIntoView?.({ block: "nearest" });
+  }, [error]);
   if (!error) return null;
   const text =
     error === "signed_out" ? <>The sign-in ended. Ask your grown-up to <Link href="/sign-in">sign in</Link> again. Your earlier answers are saved.</>
@@ -209,45 +223,56 @@ function Problem({ error }: { error: TestError | null }) {
     : error === "work_required" ? "Show your work on the whiteboard, then press Next."
     : error === "work_too_big" ? "Your work is too big to save. Clear some of it, then press Next again."
     : <>Something went wrong. Check the internet connection and try again. If this keeps happening, email <a href={SUPPORT_HREF}>{SUPPORT_EMAIL}</a>.</>;
-  return <p role="alert" className="test-alert">{text}</p>;
+  return <p ref={line} role="alert" className="test-alert">{text}</p>;
 }
 
 function Intro({ name, total, ready, busy, onStart, failure, mode }: { name: string; total: number; ready: boolean; busy: boolean; onStart: () => void; failure: TestError | null; mode: StartMode }) {
   if (!ready) {
     return (
-      <section className="test-card">
-        <h1>The test for {name}&apos;s grade is not ready yet.</h1>
-        <p>The test is open for grades 1 to 5 now. We are writing the questions for the other grades.</p>
+      <MessageScreen>
+        <p className="test-kicker">Math test</p>
+        <h1 className="test-title">The test for {name}&apos;s grade is not ready yet.</h1>
+        <p className="test-lead">The test is open for grades 1 to 5 now. We are writing the questions for the other grades.</p>
         <Link className="btn ghost" href="/account">Back to your account</Link>
-      </section>
+      </MessageScreen>
     );
   }
   if (mode === "finish") {
     return (
-      <section className="test-card">
-        <p className="eyebrow">Math test · {total} questions</p>
-        <h1>All your answers are in, {name}!</h1>
-        <p>The test was not sent yet. Answer one last question to send it.</p>
+      <MessageScreen>
+        <p className="test-kicker">Math test · {total} questions</p>
+        <h1 className="test-title">All your answers are in, {name}!</h1>
+        <p className="test-lead">The test was not sent yet. Answer one last question to send it.</p>
         <Problem error={failure} />
         <Button onClick={onStart} disabled={busy} aria-busy={busy}>{busy ? "Opening…" : "Continue"}</Button>
-      </section>
+      </MessageScreen>
     );
   }
   return (
-    <section className="test-card">
-      <p className="eyebrow">Math test · {total} questions</p>
-      <h1>{mode === "resume" ? `Welcome back, ${name}! Before you go on:` : `Hi ${name}! Before you start:`}</h1>
+    <MessageScreen className="test-intro">
+      <p className="test-kicker">Math test · {total} questions</p>
+      <h1 className="test-title">{mode === "resume" ? `Welcome back, ${name}! Before you go on:` : `Hi ${name}! Before you start:`}</h1>
       <ul className="test-rules">
         <li><b>No calculator.</b> Work the answers out yourself.</li>
         <li><b>No help from a parent.</b> Do the test on your own. Grown-ups, please let your child work alone.</li>
         <li><b>Use the whiteboard for your working.</b> Do not use scrap paper. Some questions ask you to show your work there.</li>
       </ul>
       {mode === "resume"
-        ? <p>Your answers are saved. You go on from the question where you stopped. You cannot go back, so check each answer before you press Next.</p>
-        : <p>Answer one question at a time. You cannot go back, so check each answer before you press Next. If you do not know an answer, make your best guess.</p>}
+        ? <p className="test-intro-note">Your answers are saved. You go on from the question where you stopped. You cannot go back, so check each answer before you press Next.</p>
+        : <p className="test-intro-note">Answer one question at a time. You cannot go back, so check each answer before you press Next. If you do not know an answer, make your best guess.</p>}
       <Problem error={failure} />
-      {mode === "restart" && <p>This is a new test, with new questions.</p>}
+      {mode === "restart" && <p className="test-intro-note">This is a new test, with new questions.</p>}
       <Button onClick={onStart} disabled={busy} aria-busy={busy}>{busy ? "Starting…" : mode === "resume" ? "Continue the test" : "Start the test"}</Button>
+    </MessageScreen>
+  );
+}
+
+/** A screen of words in the split desk: the message in the left pane, the colour field on the right (D-088). */
+function MessageScreen({ children, className = "" }: { children: ReactNode; className?: string }) {
+  return (
+    <section className={`test-split ${className}`.trim()}>
+      <div className="test-pane test-pane-l is-msg">{children}</div>
+      <div className="test-pane test-pane-r test-field" aria-hidden />
     </section>
   );
 }
@@ -371,22 +396,21 @@ function Question({ testId, typing, question, last, onAnswer, failure }: Questio
     return () => window.removeEventListener("keydown", onKey);
   }, [question.format, press]);
 
+  // "Read it to me" reads the choices in the order of the rows on screen (#79): the core shuffles them.
+  const shown = question.format === "choice" ? question.choices ?? [] : [];
+  const spoken = readAloudText(question, shown);
+  const names = spokenChoices(question, shown);
+
   return (
-    <form className="test-desk" onSubmit={submit}>
-      <div className="test-desk-q">
+    <form className="test-split test-desk" onSubmit={submit}>
+      <div className="test-pane test-pane-l">
         <div className="test-qrow">
-          <ReadAloud key={question.id} text={question.readAloud} />
-          <h1 ref={heading} tabIndex={-1} className="test-prompt">{question.prompt}</h1>
+          <ReadAloud key={question.id} text={spoken} />
+          <h1 id="test-q-title" ref={heading} tabIndex={-1} className="test-prompt"><PromptText text={question.prompt} /></h1>
         </div>
+        {question.figure?.kind === "bars" && <BarGraph figure={question.figure} />}
         {question.format === "choice" ? (
-          <div className="test-choices" role="radiogroup" aria-label="Choose one answer">
-            {(question.choices ?? []).map((c) => (
-              <button key={c} type="button" role="radio" aria-checked={value === c} className="test-choice" onClick={() => setValue(c)}>
-                <span className="test-dot" aria-hidden />
-                {c}
-              </button>
-            ))}
-          </div>
+          <Choices options={shown.map((c, i) => ({ value: c, label: <ChoiceFace text={c} />, name: names[i] }))} value={value || null} onChange={setValue} labelledBy="test-q-title" />
         ) : (
           <div className="test-num">
             <output className="test-display" aria-live="polite" aria-label="Your answer">{value || <i>Type your answer</i>}</output>
@@ -404,20 +428,25 @@ function Question({ testId, typing, question, last, onAnswer, failure }: Questio
           <Button type="submit" disabled={!value || sending || needsWork} aria-busy={sending}>{last ? "Finish" : "Next"}</Button>
         </div>
       </div>
-      <div className="test-desk-board">
+      <div className="test-pane test-pane-r">
         <Whiteboard board={board} onChange={setBoard} typing={typing} required={question.showWork} nudge={nudge} onSize={onBoardSize} />
       </div>
     </form>
   );
 }
 
-function End({ name }: { name: string }) {
+/** The end (D-088): a full colour field. */
+function End({ name, total }: { name: string; total: number }) {
+  const heading = useRef<HTMLHeadingElement>(null);
+  useEffect(() => heading.current?.focus(), []);
   return (
-    <GradientPanel className="test-end">
-      <p className="eyebrow">All done</p>
-      <h2>You did it, {name}!</h2>
-      <p>Thank you for working so hard. Your report will be emailed to your grown-up shortly.</p>
-      <p className="small"><Link href="/account">Back to the account</Link></p>
-    </GradientPanel>
+    <section className="test-end test-field" aria-labelledby="test-end-title">
+      <div>
+        <p className="test-kicker">All {total} done</p>
+        <h1 id="test-end-title" ref={heading} tabIndex={-1} className="test-title">You did it, {name}!</h1>
+        <p className="test-lead">Thank you for working so hard. Your report will be emailed to your grown-up shortly.</p>
+        <p className="test-end-link"><Link href="/account">Back to the account</Link></p>
+      </div>
+    </section>
   );
 }
