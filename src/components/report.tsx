@@ -8,6 +8,7 @@ import { CURRICULA } from "@/lib/signup";
 import { BRAND } from "@/lib/site";
 import {
   STATUS_LABEL,
+  factsView,
   howWeHelp,
   levelName,
   levelNotes,
@@ -29,7 +30,7 @@ export function ReportCard({ view }: { view: ReportView }) {
       <ReportOverall view={view} />
       <ReportContext view={view} />
       <ReportAreas view={view} />
-      {/* Number facts (#70) come here: accuracy beside speed, never speed alone. */}
+      <ReportNumberFacts view={view} />
       <ReportWork view={view} />
       <ReportHelp view={view} />
       <ReportNextStep view={view} />
@@ -138,6 +139,35 @@ function ReportAreas({ view }: { view: ReportView }) {
         </tbody>
       </table>
       <p className="rpt-small">{thresholdsLine(view)}</p>
+    </Row>
+  );
+}
+
+/** Needs practice in sunflower, like Developing; never the tangerine of Needs attention. */
+const factsChip = (label: string) => `rpt-chip ${label === "Needs practice" ? "is-developing" : "is-secure"}`;
+
+// Number facts (#70): accuracy beside speed, never speed alone. Nothing when the child had no facts section.
+function ReportNumberFacts({ view }: { view: ReportView }) {
+  const facts = factsView(view);
+  if (!facts) return null;
+  return (
+    <Row id="rpt-facts-title" title="Number facts" note={facts.round}>
+      {facts.accuracy && facts.speed && (
+        <div className="rpt-nf">
+          <div>
+            <p className="rpt-k">Accuracy</p>
+            <p className="rpt-nf-v">{facts.accuracy.value}</p>
+            <span className={factsChip(facts.accuracy.label)}>{facts.accuracy.label}</span>
+          </div>
+          <div>
+            <p className="rpt-k">Speed</p>
+            <p className="rpt-nf-v">{facts.speed.value}</p>
+            <span className={factsChip(facts.speed.label)}>{facts.speed.label}</span>
+          </div>
+        </div>
+      )}
+      {facts.note && <p>{facts.note}</p>}
+      <p className="rpt-small">{facts.scope} {facts.thresholds}</p>
     </Row>
   );
 }

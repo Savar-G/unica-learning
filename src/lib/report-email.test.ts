@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { reportModel, type Grade, type Province } from "@/lib/assessment";
+import { reportModel, type Grade, type Province, type ReportFacts } from "@/lib/assessment";
 import { knowsUpTo, takeTest, type Script } from "@/lib/assessment/scripted-child";
 import { reportAlert, reportEmail } from "@/lib/report-email";
 import type { ReportView } from "@/lib/report-view";
@@ -50,6 +50,20 @@ describe("the report email to the parent", () => {
     const on = reportEmail({ view: view(knowsUpTo(3), { province: "ON" }), parentName: "Priya", url: URL });
     for (const body of [on.text, on.html]) expect(body).not.toMatch(/Foundation Skills Assessment|FSA/);
   });
+  it("carries number facts with speed beside accuracy, when the child had a facts section", () => {
+    const v = view(knowsUpTo(3));
+    const facts: ReportFacts = { scope: "Addition and subtraction facts to 20", seconds: 60, answered: 12, correct: 12, secondsPerFact: 4.6, accuracy: "secure", speed: "needs-practice" };
+    const withFacts = reportEmail({ view: { ...v, model: { ...v.model, facts } }, parentName: "Priya", url: URL });
+    expect(withFacts.text).toContain("Number facts: 12 of 12 right (Secure), typically 4.6 seconds a fact (Needs practice)");
+    expect(withFacts.text).toContain("Speed comes with practice. It does not change Maya's working level.");
+    expect(withFacts.html).toContain("12 of 12 right");
+    expect(withFacts.html).toContain("typically 4.6 seconds a fact");
+    // Slow facts need practice; nothing in the parent's email calls the child behind.
+    expect(`${withFacts.text}${withFacts.html}`).not.toMatch(/behind/i);
+  });
+  it("has no number facts line when the child had no facts section", () => {
+    for (const body of [email.text, email.html]) expect(body).not.toMatch(/Number facts/);
+  });
   it("escapes names in the HTML (parent email)", () => {
     const html = reportEmail({ view: view(knowsUpTo(3), { name: "Jo & <i>" }), parentName: "<b>A</b>", url: "https://x.test/?a=1&b=2" }).html;
     expect(html).not.toMatch(/<b>A<\/b>|<i>/);
@@ -82,6 +96,12 @@ describe("the alert to Savar for each finished test", () => {
   });
   it("lists each flag when there are any", () => {
     expect(alert({ flags: ["rapid-guesses", { kind: "helped", answer: "yes" }] }).text).toContain('Flags: rapid-guesses; {"kind":"helped","answer":"yes"}');
+  });
+  it("gives the number facts, or none", () => {
+    expect(alert().text).toContain("Facts: none");
+    const v = view(knowsUpTo(3));
+    const facts: ReportFacts = { scope: "Addition and subtraction facts to 20", seconds: 60, answered: 12, correct: 12, secondsPerFact: 4.6, accuracy: "secure", speed: "needs-practice" };
+    expect(alert({ view: { ...v, model: { ...v.model, facts } } }).text).toContain("Facts: 12 of 12 right (Secure), typically 4.6 seconds a fact (Needs practice)");
   });
   it("gives the comparison stage with the count it came from", () => {
     expect(alert().text).toContain("Comparison: grade-level scale only (12 completed tests in grade 4)");

@@ -1,7 +1,20 @@
 import { describe, expect, it } from "vitest";
-import { reportModel, type Grade, type Province } from "@/lib/assessment";
+import { reportModel, type Grade, type Province, type ReportFacts } from "@/lib/assessment";
 import { allRight, knowsUpTo, takeTest, type Script } from "@/lib/assessment/scripted-child";
-import { STATUS_LABEL, howWeHelp, levelNotes, levelSentence, metaLine, nextStep, reportDate, reportPath, thresholdsLine, verdictSentence, type ReportView } from "@/lib/report-view";
+import {
+  STATUS_LABEL,
+  factsView,
+  howWeHelp,
+  levelNotes,
+  levelSentence,
+  metaLine,
+  nextStep,
+  reportDate,
+  reportPath,
+  thresholdsLine,
+  verdictSentence,
+  type ReportView,
+} from "@/lib/report-view";
 
 /** A finished report for a scripted child, as the page and the email get it. */
 function view(isRight: Script, { grade = 4, province = "BC", name = "Maya" }: { grade?: Grade; province?: Province; name?: string } = {}): ReportView {
@@ -51,6 +64,60 @@ describe("notes on how sure the level is", () => {
   });
   it("a child who cleared no level gets an estimate, and is told so", () => {
     expect(levelNotes(view(knowsUpTo(2)))).toEqual(["Maya got under 70% right at every level in this test, so grade 2 is an estimate."]);
+  });
+});
+
+describe("number facts (#70): speed beside accuracy, never alone", () => {
+  const SLOW: ReportFacts = {
+    scope: "Addition and subtraction facts to 20, and multiplication facts for 2, 5 and 10",
+    seconds: 60,
+    answered: 12,
+    correct: 12,
+    secondsPerFact: 4.6,
+    accuracy: "secure",
+    speed: "needs-practice",
+  };
+  const withFacts = (facts: ReportFacts | null): ReportView => {
+    const v = view(knowsUpTo(3));
+    return { ...v, model: { ...v.model, facts } };
+  };
+
+  it("shows nothing when the child had no facts section", () => {
+    expect(factsView(withFacts(null))).toBeNull();
+  });
+  it("shows nothing for a report stored before the facts section existed", () => {
+    const v = view(knowsUpTo(3));
+    const old: Partial<ReportView["model"]> = { ...v.model };
+    delete old.facts;
+    expect(factsView({ ...v, model: old as ReportView["model"] })).toBeNull();
+  });
+  it("accurate but slow: accuracy is Secure and speed needs practice, never behind", () => {
+    const f = factsView(withFacts(SLOW));
+    expect(f).toEqual({
+      scope: "Addition and subtraction facts to 20, and multiplication facts for 2, 5 and 10.",
+      round: "A 60-second round, only with facts for this grade.",
+      accuracy: { value: "12 of 12 right", label: "Secure" },
+      speed: { value: "typically 4.6 seconds a fact", label: "Needs practice" },
+      note: "Speed comes with practice. It does not change Maya's working level.",
+      thresholds: "Secure: 90% or more right. Quick: 3 seconds or less a fact.",
+    });
+    expect(JSON.stringify(f)).not.toMatch(/behind/i);
+  });
+  it("quick and accurate: no practice note", () => {
+    const f = factsView(withFacts({ ...SLOW, secondsPerFact: 1.8, speed: "quick" }));
+    expect(f?.speed).toEqual({ value: "typically 1.8 seconds a fact", label: "Quick" });
+    expect(f?.note).toBeNull();
+  });
+  it("nothing answered: no accuracy and no speed, and it says so", () => {
+    const f = factsView(withFacts({ ...SLOW, answered: 0, correct: 0, secondsPerFact: null, accuracy: null, speed: null }));
+    expect(f).toMatchObject({ accuracy: null, speed: null, note: "Maya answered no facts in the 60 seconds." });
+  });
+  it("never shows speed without accuracy", () => {
+    const cases: ReportFacts[] = [SLOW, { ...SLOW, speed: "quick" }, { ...SLOW, answered: 0, correct: 0, secondsPerFact: null, accuracy: null, speed: null }];
+    for (const facts of cases) {
+      const f = factsView(withFacts(facts));
+      expect(f?.speed === null, JSON.stringify(facts)).toBe(f?.accuracy === null);
+    }
   });
 });
 

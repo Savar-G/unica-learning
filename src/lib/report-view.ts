@@ -2,6 +2,8 @@
 // thing (spec #54: "the report page in the account and the email show the same report model").
 // Pure: no network, database or clock. Every number here comes from the report model or the stored report.
 import {
+  FACTS_QUICK_MS,
+  FACTS_SECURE_PERCENT,
   STRAND_DEVELOPING_PERCENT,
   STRAND_SECURE_PERCENT,
   WORKING_LEVEL_PERCENT,
@@ -71,6 +73,39 @@ export const thresholdsLine = (v: ReportView) =>
 
 /** Share right, in whole percent, for the meter. */
 export const sharePercent = (s: { correct: number; total: number }) => (s.total > 0 ? Math.round((s.correct / s.total) * 100) : 0);
+
+const FACTS_LABEL = { secure: "Secure", quick: "Quick", "needs-practice": "Needs practice" } as const;
+
+/** The number facts row (#70): accuracy beside speed, never speed alone. Slow speed needs practice; it is never "behind". */
+export interface FactsView {
+  scope: string;
+  round: string;
+  /** Both null, or both set: speed never shows without accuracy. */
+  accuracy: { value: string; label: string } | null;
+  speed: { value: string; label: string } | null;
+  note: string | null;
+  thresholds: string;
+}
+
+/** The facts row, or null when the child had no facts section (and for reports stored before #70, which have no facts). */
+export function factsView(v: ReportView): FactsView | null {
+  const f = v.model.facts ?? null;
+  if (!f) return null;
+  const base = {
+    scope: `${f.scope}.`,
+    round: `A ${f.seconds}-second round, only with facts for this grade.`,
+    thresholds: `Secure: ${FACTS_SECURE_PERCENT}% or more right. Quick: ${FACTS_QUICK_MS / 1000} seconds or less a fact.`,
+  };
+  if (f.answered === 0 || !f.accuracy || !f.speed || f.secondsPerFact === null) {
+    return { ...base, accuracy: null, speed: null, note: `${v.childName} answered no facts in the ${f.seconds} seconds.` };
+  }
+  return {
+    ...base,
+    accuracy: { value: `${f.correct} of ${f.answered} right`, label: FACTS_LABEL[f.accuracy] },
+    speed: { value: `typically ${f.secondsPerFact} second${f.secondsPerFact === 1 ? "" : "s"} a fact`, label: FACTS_LABEL[f.speed] },
+    note: f.speed === "needs-practice" ? `Speed comes with practice. It does not change ${v.childName}'s working level.` : null,
+  };
+}
 
 // The main time zone of each province. "other" is mostly Quebec and the Atlantic provinces.
 const TIME_ZONE: Record<Province, string> = {

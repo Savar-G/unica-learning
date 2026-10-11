@@ -67,6 +67,12 @@
 .rpt-chip.is-secure { background: var(--secc); }
 .support-page .rpt-small { margin: 14px 0 0; font-size: 13px; color: var(--ink-2); }
 
+/* number facts (#70): accuracy beside speed */
+.rpt-nf { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin-bottom: 16px; }
+.rpt-nf > div { padding: 18px 20px; border-radius: 10px; background: var(--card); }
+.support-page .rpt-nf .rpt-k { margin: 0 0 6px; color: var(--ink-2); }
+.support-page .rpt-nf-v { margin: 0 0 12px; font-size: 24px; font-weight: 300; letter-spacing: -0.02em; line-height: 1.2; }
+
 /* next step */
 .rpt-next { padding: clamp(22px, 3vw, 32px); border-radius: 10px; background: var(--card); }
 .rpt-next p { margin: 0 0 20px; max-width: 40em; }

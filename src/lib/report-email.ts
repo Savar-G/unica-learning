@@ -4,6 +4,7 @@
 import { BUSINESS_NAME } from "@/lib/contact";
 import {
   STATUS_LABEL,
+  factsView,
   howWeHelp,
   levelName,
   levelNotes,
@@ -12,6 +13,7 @@ import {
   questionsAndMinutes,
   thresholdsLine,
   verdictSentence,
+  type FactsView,
   type ReportView,
 } from "@/lib/report-view";
 
@@ -51,6 +53,13 @@ function scaleHtml(v: ReportView): string {
 <p style="margin:10px 0 0;font-size:13px;color:${INK_2}">Filled circle: working level (${esc(levelName(working))}). Dashed ring: school grade (${esc(levelName(grade))}).</p>`;
 }
 
+/** Accuracy beside speed in one line, or what happened when nothing was answered. */
+const factsLine = (f: FactsView) => (f.accuracy && f.speed ? `${f.accuracy.value} (${f.accuracy.label}), ${f.speed.value} (${f.speed.label})` : (f.note ?? ""));
+
+/** The facts chips: Secure and Quick in leaf, Needs practice in sunflower (never the tangerine of "Needs attention"). */
+const factsChip = (label: string) =>
+  `<span style="display:inline-block;padding:3px 8px;border-radius:999px;background:${label === "Needs practice" ? STATUS_TINT.developing : STATUS_TINT.secure};font-size:13px">${esc(label)}</span>`;
+
 /** The report for the parent, with a link that opens it in their account. */
 export function reportEmail({ view: v, parentName, url }: { view: ReportView; parentName: string; url: string }) {
   const name = v.childName;
@@ -59,6 +68,7 @@ export function reportEmail({ view: v, parentName, url }: { view: ReportView; pa
   const intro = `${name} finished the math placement test: ${questionsAndMinutes(v)}.`;
   const notes = levelNotes(v);
   const fsa = v.model.fsa;
+  const facts = factsView(v);
   const help = howWeHelp(v);
   const step = nextStep(v);
   const areas = v.model.strands.map((s) => `${s.name}: ${STATUS_LABEL[s.status]}, ${s.correct} of ${s.total} right`);
@@ -70,6 +80,7 @@ export function reportEmail({ view: v, parentName, url }: { view: ReportView; pa
     [levelSentence(v), verdictSentence(v), ...notes].join("\n"),
     ...(fsa ? [`For context: ${fsa.text}\nSource: ${fsa.source.name}, ${fsa.source.url}`] : []),
     ["By area", ...areas, thresholdsLine(v)].join("\n"),
+    ...(facts ? [[`Number facts: ${factsLine(facts)}`, ...(facts.accuracy && facts.note ? [facts.note] : []), `${facts.scope} ${facts.round}`].join("\n")] : []),
     `How we help: ${help.title}\n${help.text}`,
     `${step.title}\n${step.text}`,
     `See ${name}'s full report: ${url}`,
@@ -109,6 +120,14 @@ ${fsa ? p(`For context: ${esc(fsa.text)}<br><a href="${esc(fsa.source.url)}" sty
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="font-size:15px">${areaRows}</table>
 ${p(esc(thresholdsLine(v)), `margin:10px 0 0;font-size:13px;color:${INK_2}`)}
 </td></tr>
+${facts ? `<tr><td style="padding:24px 24px 0">
+<p style="margin:0 0 6px;font-weight:600">Number facts</p>
+${facts.accuracy && facts.speed
+    ? p(`${esc(facts.accuracy.value)} ${factsChip(facts.accuracy.label)} &nbsp;·&nbsp; ${esc(facts.speed.value)} ${factsChip(facts.speed.label)}`, "margin:0 0 8px;font-size:15px")
+    : ""}
+${facts.note ? p(esc(facts.note), "margin:0 0 8px;font-size:15px") : ""}
+${p(`${esc(facts.scope)} ${esc(facts.round)}`, `margin:0;font-size:13px;color:${INK_2}`)}
+</td></tr>` : ""}
 <tr><td style="padding:24px 24px 0">
 <p style="margin:0 0 6px;font-weight:600">How we help: ${esc(help.title)}</p>
 ${p(esc(help.text))}
@@ -147,6 +166,7 @@ export function reportAlert({
   parentEmail: { sent: true } | { sent: false; reason: string };
 }) {
   const m = v.model;
+  const facts = factsView(v);
   const subject = `Test finished: ${v.childName}, grade ${m.level.grade}, working at ${levelName(m.level.working)}`;
   const lines = [
     `Child: ${v.childName}`,
@@ -154,6 +174,7 @@ export function reportAlert({
     `Working level: ${levelName(m.level.working)} (${m.howWeHelp})${m.level.atCeiling ? ", at the top of what the test reached" : ""}${m.level.confidence === "low" ? ", low confidence: no level cleared" : ""}`,
     `Flags: ${flags.length ? flags.map(flagText).join("; ") : "none"}`,
     `Areas: ${m.strands.map((s) => `${s.name} ${STATUS_LABEL[s.status]} ${s.correct}/${s.total}`).join("; ")}`,
+    `Facts: ${facts ? factsLine(facts) : "none"}`,
     `Questions: ${questionsAndMinutes(v)}`,
     `Comparison: ${COMPARISON_LABEL[m.comparison.stage]} (${completedInGrade} completed tests in grade ${m.level.grade})`,
     `FSA line: ${m.fsa ? "shown" : "not shown"}`,
