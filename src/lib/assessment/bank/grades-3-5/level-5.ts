@@ -97,7 +97,7 @@ export const LEVEL_5: readonly TaggedTemplate[] = [
     return { values: { paid, cost }, prompt: `A purchase costs ${money(cost)}. You pay ${money(paid)}. How many dollars in change should you get?`,
       readAloud: `A purchase costs ${sayMoney(cost)}. You pay ${sayMoney(paid)}. How many dollars in change should you get?`, answer: moneyAnswer(right),
       wrong: typedWrong(right / 100, [[(paid + cost) / 100, "operation"], [cost / 100, "ignores-given"]]) };
-  }),
+  }, "number", { MB: 4 }),
 
   // Equivalent fractions do not require fraction arithmetic. BC does not introduce that until grade 8.
   ...["numerator", "denominator", "scale-up", "scale-down", "region", "number-line"].map((task) => template(`equivalent-${task}`, "F", "5.3", (rng) => {
@@ -116,12 +116,12 @@ export const LEVEL_5: readonly TaggedTemplate[] = [
       : `Which fraction with ${target} on the bottom is equal to ${shown}?`;
     return { values: { n, d, k }, prompt: context,
       readAloud: task === "region" || task === "number-line" ? context : `Which fraction with ${target} on the bottom is equal to ${down ? sayFrac(n * k, d * k) : sayFrac(n, d)}?`,
-      answer: right, wrong: [wrong(frac(down ? n * k : n, target), "fraction-one-side"), down ? wrong(frac(n * k - k, d * k - k), "fraction-subtract") : wrong(frac(n + k, d + k), "F9"), wrong(frac(target - (down ? n : n * k), target), "fraction-other-part")] };
+      answer: right, wrong: [wrong(frac(down ? n * k : n, target), "fraction-one-side"), down ? wrong(frac(n * k - k, d * k - k), "fraction-subtract") : wrong(frac(n + k, d + k), "F9"), wrong(frac(target - (down ? n : n * k), target), task === "region" ? "fraction-other-part" : "complement")] };
   }, ["numerator", "denominator"].includes(task) ? "number" : "choice")),
   template("fraction-to-hundredths", "F", "5.4", (rng) => {
     const [n, d] = rng.pick([[1, 4], [3, 4], [1, 5], [2, 5], [3, 5], [4, 5], [1, 10], [3, 10]] as const), cents = n * (100 / d);
     return { values: { n, d }, prompt: `Which decimal is equal to ${frac(n, d)}?`, readAloud: `Which decimal is equal to ${sayFrac(n, d)}?`,
-      answer: dec(cents, 2), wrong: [wrong(dec(cents, 3), "decimal-point"), wrong(`${n}.${d}`, "F7"), wrong(dec(100 - cents, 2), "fraction-other-part")] };
+      answer: dec(cents, 2), wrong: [wrong(dec(cents, 3), "decimal-point"), wrong(`${n}.${d}`, "F7"), wrong(dec(100 - cents, 2), "complement")] };
   }, "choice", { AB: 6, SK: 6, MB: 6 }),
   template("decimal-half", "F", "5.4", (rng) => {
     const high = rng.int(51, 89), lows = rng.shuffle([12, 21, 32, 43, 49]).slice(0, 3);

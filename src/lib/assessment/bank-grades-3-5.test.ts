@@ -74,6 +74,24 @@ describe("grade 3-5 speech and figures through the public interface", () => {
       for (const seed of SEEDS) expect(fillTemplate(t, seed).values.d).toBeLessThanOrEqual(10);
     }
   });
+  it("asks for the whole-number part of an improper fraction on the grade 6 route", () => {
+    const t = BANK.find((t) => t.id === "g35-6-mixed-whole-count")!;
+    for (const seed of SEEDS) {
+      const q = fillTemplate(t, seed), { d, whole, rem } = q.values;
+      expect(q.prompt).toContain(`${whole * d + rem}/${d}`);
+      expect(q.readAloud).toContain(String(whole * d + rem));
+      expect(q.readAloud).toMatch(/thirds|fourths|fifths|sixths|eighths/);
+      expect(q.answer).toBe(String(whole));
+    }
+  });
+  it("uses later Ontario grades for unknown equations above the earlier numeric limits", () => {
+    const repeated = BANK.find((t) => t.id === "g35-4-three-same")!;
+    const machine = BANK.find((t) => t.id === "g35-4-machine-input")!;
+    expect(repeated.grades.ON).toBe(5);
+    expect(machine.grades.ON).toBe(6);
+    expect(Math.max(...SEEDS.map((seed) => 3 * fillTemplate(repeated, seed).values.k))).toBe(90);
+    expect(Math.max(...SEEDS.map((seed) => { const { k, x } = fillTemplate(machine, seed).values; return k * x; }))).toBe(108);
+  });
   it("uses genuine three-digit unknown stories with a unique positive answer", () => {
     const t = BANK.find((t) => t.id === "g35-3-start-unknown-story")!;
     expect(TAGGED.map((p) => t.grades[p])).toEqual([3, 3, 3, 3, 3]);

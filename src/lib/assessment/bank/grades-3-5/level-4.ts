@@ -362,7 +362,7 @@ export const LEVEL_4: readonly TaggedTemplate[] = [
         : `Which fraction is equal to ${whole} and ${sayFrac(n, 10)}, minus ${whole}?`;
       const candidates = task === "fraction" ? [wrong(frac(n, 100), "decimal-point"), wrong(frac(10, n), "fraction-flip"), wrong(frac(n * 10, 10), "decimal-point")]
         : task === "left" ? [wrong(dec(n, 1), "fraction-other-part"), wrong(dec(10 - n, 2), "decimal-point"), wrong(String(10 - n), "decimal-point")]
-        : [wrong(dec(n, 2), "decimal-point"), wrong(String(n), "N2"), wrong(dec(10 - n, 1), "fraction-other-part")];
+        : [wrong(dec(n, 2), "decimal-point"), wrong(String(n), "N2"), wrong(dec(10 - n, 1), task === "value" ? "complement" : "fraction-other-part")];
       return { values: { n, whole }, prompt, readAloud: spoken, answer: right, wrong: candidates };
     },
   })),
@@ -762,7 +762,7 @@ export const LEVEL_4: readonly TaggedTemplate[] = [
   {
     // Three equal unknowns (4.11).
     id: "g35-4-three-same",
-    strand: "A", grades: { BC: 4, AB: 4, SK: 4, MB: 4, ON: 4 }, format: "number", whiteboard: true, standard: "4.11",
+    strand: "A", grades: { BC: 4, AB: 4, SK: 4, MB: 4, ON: 5 }, format: "number", whiteboard: true, standard: "4.11",
     fill(rng) {
       const k = rng.int(4, 30);
       return {
@@ -800,7 +800,7 @@ export const LEVEL_4: readonly TaggedTemplate[] = [
   {
     // Undo a rule (4.10: "algebraic relationships").
     id: "g35-4-machine-input",
-    strand: "A", grades: { BC: 4, AB: 4, SK: 4, MB: 4, ON: 4 }, format: "number", whiteboard: true, standard: "4.10",
+    strand: "A", grades: { BC: 4, AB: 4, SK: 4, MB: 4, ON: 6 }, format: "number", whiteboard: true, standard: "4.10",
     fill(rng) {
       const k = rng.int(3, 9), x = draw(rng, (r) => r.int(3, 12), (x) => x !== k);
       const out = k * x;
@@ -933,7 +933,7 @@ export const LEVEL_4: readonly TaggedTemplate[] = [
       const others = rng.shuffle([
         ["A rectangle that is not a square", "one-attribute"],
         ["A rhombus with no square corners", "one-attribute"],
-        ["A triangle with sides of 3 cm, 4 cm and 5 cm", "shape-name"],
+        ["A triangle with sides of 3 cm, 4 cm and 5 cm", "regular-all"],
         ["A circle", "shape-name"],
       ] as const).slice(0, 3);
       return {

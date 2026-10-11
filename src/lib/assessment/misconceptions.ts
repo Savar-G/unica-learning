@@ -88,6 +88,8 @@ export const MISCONCEPTIONS = {
   // Grades 3-5 bank, levels 2-6 (#75). F3, F5 and A3 are from the curriculum map, section 4.
   F3: { description: "Accepts parts that are not the same size as fractions", evidence: "V" },
   F5: { description: "Reads a fraction on a number line by counting the marks, not the equal spaces", evidence: "R" },
+  complement: { description: "Subtracts the requested value from one", evidence: "none" },
+  "regular-all": { description: "Treats any polygon as regular", evidence: "none" },
   A3: { description: "Puts a number beside a letter instead of multiplying, so 3n with n = 4 becomes 34", evidence: "R" },
   "denominator-meaning": { description: "Does not link the bottom number of a fraction to the number of equal parts", evidence: "none" },
   "pattern-first-step": { description: "Adds the first step of a growing pattern again instead of finding how it grows", evidence: "none" },

@@ -79,9 +79,9 @@ export const LEVEL_6: readonly TaggedTemplate[] = [
     const d = rng.pick([3, 4, 5, 6, 8]), whole = rng.int(2, 5), rem = rng.int(1, d - 1), n = whole * d + rem;
     if (task === "whole-count" || task === "remainder") {
       const right = task === "whole-count" ? whole : rem;
-      return { values: { d, whole, rem }, prompt: task === "whole-count" ? `Each whole strip needs ${d} pieces. There are ${n} pieces. How many whole strips can be made?`
+      return { values: { d, whole, rem }, prompt: task === "whole-count" ? `How many whole units are in ${frac(n, d)}?`
         : `${frac(n, d)} is ${whole} wholes and how many ${d === 3 ? "thirds" : d === 4 ? "fourths" : d === 5 ? "fifths" : d === 6 ? "sixths" : "eighths"}?`,
-        readAloud: task === "whole-count" ? `Each whole strip needs ${d} pieces. There are ${n} pieces. How many whole strips can be made?`
+        readAloud: task === "whole-count" ? `How many whole units are in ${sayFrac(n, d)}?`
           : `${sayFrac(n, d)} is ${whole} wholes and how many pieces of size ${sayFrac(1, d)}?`, answer: String(right),
         wrong: typedWrong(right, [[task === "whole-count" ? rem : whole, "remainder-quotient"], [n, "ignores-given"]]) };
     }
