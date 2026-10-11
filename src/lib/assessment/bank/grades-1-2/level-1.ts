@@ -15,7 +15,7 @@ export const LEVEL_1: readonly TaggedTemplate[] = [
       return {
         values: { ones },
         prompt: `Which number is 10 and ${ones} more?`,
-        readAloud: `Which number is 10 and ${ones} more: ${orList(rng, [`1${ones}`, `${ones}1`, `10${ones}`])}?`,
+        readAloud: `Which number is 10 and ${ones} more?`,
         answer: `1${ones}`,
         wrong: [wrong(`${ones}1`, "digit-reversal"), wrong(`10${ones}`, "N1")],
       };
@@ -52,7 +52,7 @@ export const LEVEL_1: readonly TaggedTemplate[] = [
         return {
           values: { single, teen, big, smallest: 1 },
           prompt: `Which number is the smallest: ${list}?`,
-          readAloud: `Which number is the smallest: ${list}?`,
+          readAloud: "Which number is the smallest?",
           answer: String(single),
           wrong: [wrong(teen, "digit-compare"), wrong(big, "more-less")],
         };
@@ -63,7 +63,7 @@ export const LEVEL_1: readonly TaggedTemplate[] = [
       return {
         values: { single, teen, small, smallest: 0 },
         prompt: `Which number is the biggest: ${list}?`,
-        readAloud: `Which number is the biggest: ${list}?`,
+        readAloud: "Which number is the biggest?",
         answer: String(teen),
         wrong: [wrong(single, "digit-compare"), wrong(small, "more-less")],
       };
@@ -233,7 +233,7 @@ export const LEVEL_1: readonly TaggedTemplate[] = [
         values: { shown: keys.indexOf(answer) },
         prompt: `Which letters show the part that repeats? ${items.map((s) => s.glyph).join(GAP)}`,
         // Letters spoken by name, one choice per sentence, so a listener hears where each choice ends.
-        readAloud: `Look at the pattern: ${items.map((s) => s.word).join(", ")}. Which letters show the part that repeats? Choose one. ${rng.shuffle([answer, ...picks]).map(sayLetters).join(". ")}.`,
+        readAloud: `Look at the pattern: ${items.map((s) => s.word).join(", ")}. Which letters show the part that repeats?`,
         answer,
         wrong: picks.map((k) => wrong(k, "pattern-core")),
       };
@@ -302,11 +302,10 @@ export const LEVEL_1: readonly TaggedTemplate[] = [
       // trap = a + b, the sum with the bigger first number; bigger = c + d. Either may be named first.
       const trap = `${a} + ${b}`, bigger = `${c} + ${d}`;
       const [x, y] = rng.shuffle([trap, bigger]);
-      const say = (e: string) => e.replace("+", "plus");
       return {
         values: { a, b, c, d, trapFirst: x === trap ? 1 : 0 },
         prompt: `Which is more: ${x} or ${y}?`,
-        readAloud: `Which is more: ${say(x)}, or ${say(y)}? Or are they the same?`,
+        readAloud: "Which is more?",
         answer: bigger,
         wrong: [wrong(trap, "first-number"), wrong("They are the same", "same-size")],
       };
@@ -396,7 +395,7 @@ export const LEVEL_1: readonly TaggedTemplate[] = [
       return {
         values: { a, b, c, d, equal: equal ? 1 : 0 },
         prompt: `Is ${a} + ${b} the same amount as ${c} + ${d}?`,
-        readAloud: `Is ${a} plus ${b} the same amount as ${c} plus ${d}? Yes, they are the same amount. No, ${a} plus ${b} is more. Or no, ${c} plus ${d} is more.`,
+        readAloud: `Is ${a} plus ${b} the same amount as ${c} plus ${d}?`,
         answer: equal ? yes : secondMore,
         wrong: equal
           ? [wrong(firstMore, "first-number"), wrong(secondMore, "looks-different")]
@@ -434,7 +433,7 @@ export const LEVEL_1: readonly TaggedTemplate[] = [
       return {
         values: { n, bigger: bigger ? 1 : 0 },
         prompt: `${nameA} measures ${thing} and gets ${n} ${unit}. ${nameB} measures it with ${bigger ? "bigger" : "smaller"} ${unit}. Will ${nameB} get more than ${n}, fewer than ${n}, or exactly ${n}?`,
-        readAloud: `${nameA} measures ${thing} and gets ${n} ${unit}. ${nameB} measures it with ${bigger ? "bigger" : "smaller"} ${unit}. Will ${nameB} get more than ${n}, fewer than ${n}, or exactly ${n}?`,
+        readAloud: `${nameA} measures ${thing} and gets ${n} ${unit}. ${nameB} measures it with ${bigger ? "bigger" : "smaller"} ${unit}. How many ${unit} will ${nameB} get?`,
         answer,
         wrong: [wrong(bigger ? `More than ${n}` : `Fewer than ${n}`, "unit-size"), wrong(`Exactly ${n}`, "count-unchanged")],
       };
@@ -454,7 +453,7 @@ export const LEVEL_1: readonly TaggedTemplate[] = [
       return {
         values: { longest: longest ? 1 : 0 },
         prompt: `${clues} Which ${thing} is the ${word}?`,
-        readAloud: `${clues} Which ${thing} is the ${word}: ${orList(rng, [x, y, z].map((c) => `the ${c} one`))}?`,
+        readAloud: `${clues} Which ${thing} is the ${word}?`,
         answer: cap(`the ${longest ? x : z} ${thing}`),
         wrong: [wrong(cap(`the ${longest ? z : x} ${thing}`), "more-less"), wrong(cap(`the ${y} ${thing}`), "order-pair")],
       };
@@ -474,7 +473,7 @@ export const LEVEL_1: readonly TaggedTemplate[] = [
       return {
         values: { ask },
         prompt: `Which shape has ${question}?`,
-        readAloud: `Which shape has ${question}: ${orList(rng, [answer, ...picks].map((s) => `a ${s.split(" ")[1]}`))}?`,
+        readAloud: `Which shape has ${question}?`,
         answer,
         wrong: picks.map((s) => wrong(s, "shape-name")),
       };
@@ -551,7 +550,7 @@ export const LEVEL_1: readonly TaggedTemplate[] = [
         values: { kind },
         // "Sometimes" fits many picks, not one, so the child picks again and again.
         prompt: `A bag has ${bag}. You pick a block without looking, put it back, and do this again and again. How often will you pick ${pick}?`,
-        readAloud: `A bag has ${bag}. You pick a block without looking, put it back, and do this again and again. How often will you pick ${pick}: never, sometimes, or always?`,
+        readAloud: `A bag has ${bag}. You pick a block without looking, put it back, and do this again and again. How often will you pick ${pick}?`,
         answer,
         wrong: coded,
       };
@@ -576,7 +575,7 @@ export const LEVEL_1: readonly TaggedTemplate[] = [
         values: { pair: i },
         prompt: "Which is more likely to happen?",
         // Each choice is its own sentence, so the three do not run together when spoken.
-        readAloud: `Which is more likely to happen? Choose one. ${rng.shuffle([likely, unlikely, "They are equally likely"]).join(". ")}.`,
+        readAloud: "Which is more likely to happen?",
         answer: likely,
         wrong: [wrong(unlikely, "chance-reversed"), wrong("They are equally likely", "D3")],
       };
@@ -592,7 +591,7 @@ export const LEVEL_1: readonly TaggedTemplate[] = [
       return {
         values: { a, b },
         prompt: `It takes ${a} sticky notes to cover a red card and ${b} sticky notes to cover a blue card. All the notes are the same size. Which card is bigger?`,
-        readAloud: `It takes ${a} sticky notes to cover a red card and ${b} sticky notes to cover a blue card. All the notes are the same size. Which card is bigger: the red card, the blue card, or are they the same size?`,
+        readAloud: `It takes ${a} sticky notes to cover a red card and ${b} sticky notes to cover a blue card. All the notes are the same size. Which card is bigger?`,
         answer: bigger,
         wrong: [wrong(smaller, "more-less"), wrong("They are the same size", "same-size")],
       };
@@ -626,7 +625,7 @@ export const LEVEL_1: readonly TaggedTemplate[] = [
       return {
         values: { tallest: tallest ? 1 : 0 },
         prompt: `${clues} Who is the ${word}?`,
-        readAloud: `${clues} Who is the ${word}: ${orList(rng, [x, y, z])}?`,
+        readAloud: `${clues} Who is the ${word}?`,
         answer: tallest ? x : z,
         wrong: [wrong(tallest ? z : x, "more-less"), wrong(y, "order-pair")],
       };
@@ -644,7 +643,7 @@ export const LEVEL_1: readonly TaggedTemplate[] = [
       return {
         values: { heaviest: heaviest ? 1 : 0 },
         prompt: `Three boxes were weighed on a balance. ${clues} Which box is the ${word}?`,
-        readAloud: `Three boxes were weighed on a balance. ${clues} Which box is the ${word}: ${orList(rng, [x, y, z].map((c) => `the ${c} box`))}?`,
+        readAloud: `Three boxes were weighed on a balance. ${clues} Which box is the ${word}?`,
         answer: cap(`the ${heaviest ? x : z} box`),
         wrong: [wrong(cap(`the ${heaviest ? z : x} box`), "more-less"), wrong(cap(`the ${y} box`), "order-pair")],
       };
