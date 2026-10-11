@@ -22,12 +22,6 @@ function memoryStore(initial: StoredAttempt[] = []) {
       const row = rows.find((r) => r.id === id && r.status === "in_progress" && r.resumeUntil < now);
       if (row) row.status = "expired";
     },
-    async hold(id, now, resumeUntil) {
-      await tick();
-      const row = rows.find((r) => r.id === id && r.status === "in_progress" && r.resumeUntil >= now);
-      if (row) row.resumeUntil = resumeUntil;
-      return !!row;
-    },
     async create(seed, attempt) {
       await tick();
       if (rows.some((r) => r.status === "in_progress")) return "taken";
@@ -53,12 +47,12 @@ describe("starting a child's test", () => {
     expect(rows).toMatchObject([{ id: "a1", status: "in_progress", seed: 42, startedAt: T0, resumeUntil: T0 + DAY }]);
   });
 
-  it("continues the open test at the same place and gives it 24 hours from now", async () => {
+  it("continues the open test, and opening it does not move its deadline", async () => {
     const { store, rows } = memoryStore([{ ...open("a1", T0), seed: 7 }]);
     const result = await startTest(store, T0 + 20 * HOUR, { restart: false, newSeed: seeds(42) });
     expect(result).toEqual({ ok: true, id: "a1", resumed: true });
     expect(rows).toHaveLength(1);
-    expect(rows[0].resumeUntil).toBe(T0 + 44 * HOUR);
+    expect(rows[0].resumeUntil).toBe(T0 + 24 * HOUR);
   });
 
   it("tells a family who pressed Continue after 24 hours that the test expired, and changes nothing", async () => {

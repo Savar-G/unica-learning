@@ -28,8 +28,11 @@ async function call<T>(url: string, init?: RequestInit): Promise<T | { ok: false
 
 const post = (body: unknown): RequestInit => ({ method: "POST", body: JSON.stringify(body) });
 
-/** #72: "resume" continues the open test where it stopped; "restart" draws a new one after a test ran out of time. */
-export type StartMode = "new" | "resume" | "restart";
+/**
+ * #72: "resume" continues the open test where it stopped; "finish" sends a test whose answers are all in but that was
+ * never scored; "restart" draws a new one after a test ran out of time.
+ */
+export type StartMode = "new" | "resume" | "finish" | "restart";
 
 export function TakeTest({ childId, name, total, ready, done, mode: firstMode = "new" }: { childId: string; name: string; total: number; ready: boolean; done: boolean; mode?: StartMode }) {
   const [screen, setScreen] = useState<Screen>(done ? { name: "done" } : { name: "intro" });
@@ -50,7 +53,8 @@ export function TakeTest({ childId, name, total, ready, done, mode: firstMode = 
   const asking = screen.name === "question";
   useEffect(() => {
     if (!asking) return;
-    const closed = () => track("test_stop", { status: "closed" });
+    // The page is going away: a beacon still goes out. Offline: PostHog queues the event and retries once back online.
+    const closed = () => track("test_stop", { status: "closed" }, { beacon: true });
     const offline = () => track("test_stop", { status: "offline" });
     window.addEventListener("pagehide", closed, { once: true });
     window.addEventListener("offline", offline, { once: true });
@@ -150,6 +154,17 @@ function Intro({ name, total, ready, busy, onStart, failure, mode }: { name: str
         <h1>The test for {name}&apos;s grade is not ready yet.</h1>
         <p>The test is open for grades 3 to 5 now. We are writing the questions for the other grades.</p>
         <Link className="btn ghost" href="/account">Back to your account</Link>
+      </section>
+    );
+  }
+  if (mode === "finish") {
+    return (
+      <section className="test-card">
+        <p className="eyebrow">Math test · {total} questions</p>
+        <h1>All your answers are in, {name}!</h1>
+        <p>The test was not sent yet. Press Finish to send it.</p>
+        <Problem error={failure} />
+        <Button onClick={onStart} disabled={busy} aria-busy={busy}>{busy ? "Sending…" : "Finish"}</Button>
       </section>
     );
   }

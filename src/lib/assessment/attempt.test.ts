@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { attemptState, decideStart, recordActivity, startAttempt, startState, type Attempt } from "@/lib/assessment";
+import { attemptState, decideStart, recordAnswer, startAttempt, startState, type Attempt } from "@/lib/assessment";
 
 // Stop, resume and retake (#72). The server passes every time; these tests use fixed instants.
 const HOUR = 60 * 60_000;
@@ -23,8 +23,14 @@ describe("the start screen", () => {
   });
 
   it("offers to continue an open test, and says until when", () => {
-    const open = recordActivity(startAttempt("a1", T0), T0 + 3 * HOUR, { answered: true });
+    const open = recordAnswer(startAttempt("a1", T0), T0 + 3 * HOUR);
     expect(startState([open], T0 + 10 * HOUR)).toEqual({ kind: "resume", attemptId: "a1", resumeUntil: T0 + 27 * HOUR });
+  });
+
+  it("offers to finish a test with every answer in, before or after its 24 hours, instead of a new test", () => {
+    const answeredAll = { ...recordAnswer(startAttempt("a1", T0), T0 + HOUR), answeredAll: true };
+    expect(startState([answeredAll], T0 + 2 * HOUR)).toEqual({ kind: "finish", attemptId: "a1" });
+    expect(startState([answeredAll], T0 + 3 * DAY)).toEqual({ kind: "finish", attemptId: "a1" });
   });
 
   it("shows a test that ran out of time as expired, whether or not the server has marked it yet", () => {
@@ -83,7 +89,7 @@ describe("a request to start a test", () => {
 describe("a stopped test", () => {
   it("continues until 24 hours after the last answer, then expires", () => {
     let attempt: Attempt = startAttempt("a1", T0);
-    attempt = recordActivity(attempt, T0 + 2 * HOUR, { answered: true });
+    attempt = recordAnswer(attempt, T0 + 2 * HOUR);
     expect(attemptState(attempt, T0 + 25 * HOUR)).toBe("open");
     expect(attemptState(attempt, T0 + 26 * HOUR)).toBe("open");
     expect(attemptState(attempt, T0 + 26 * HOUR + 1)).toBe("expired");
@@ -95,19 +101,20 @@ describe("a stopped test", () => {
     expect(attemptState(attempt, T0 + 24 * HOUR + 1)).toBe("expired");
   });
 
-  it("opened again restarts the 24 hours but keeps the time of the last answer", () => {
-    const answered = recordActivity(startAttempt("a1", T0), T0 + HOUR, { answered: true });
-    const reopened = recordActivity(answered, T0 + 20 * HOUR, { answered: false });
-    expect(reopened.lastAnswerAt).toBe(T0 + HOUR);
-    expect(reopened.resumeUntil).toBe(T0 + 44 * HOUR);
-    expect(attemptState(reopened, T0 + 30 * HOUR)).toBe("open");
+  it("records each answer's time, and only an answer moves the deadline", () => {
+    const answered = recordAnswer(startAttempt("a1", T0), T0 + HOUR);
+    expect(answered.lastAnswerAt).toBe(T0 + HOUR);
+    expect(answered.resumeUntil).toBe(T0 + 25 * HOUR);
+    // Opening the test again is not an answer: the start request hands it back unchanged.
+    expect(decideStart([answered], T0 + 20 * HOUR, { restart: false })).toEqual({ action: "resume", attemptId: "a1" });
+    expect(attemptState(answered, T0 + 25 * HOUR + 1)).toBe("expired");
   });
 
-  it("cannot take work once it expired or was scored", () => {
+  it("cannot take an answer once it expired or was scored", () => {
     const attempt = startAttempt("a1", T0);
-    expect(() => recordActivity(attempt, T0 + 24 * HOUR + 1, { answered: true })).toThrow();
-    expect(() => recordActivity({ ...attempt, status: "expired" }, T0 + HOUR, { answered: true })).toThrow();
-    expect(() => recordActivity({ ...attempt, status: "completed", completedAt: T0 + HOUR }, T0 + HOUR, { answered: false })).toThrow();
+    expect(() => recordAnswer(attempt, T0 + 24 * HOUR + 1)).toThrow();
+    expect(() => recordAnswer({ ...attempt, status: "expired" }, T0 + HOUR)).toThrow();
+    expect(() => recordAnswer({ ...attempt, status: "completed", completedAt: T0 + HOUR }, T0 + HOUR)).toThrow();
   });
 
   it("with every answer in never expires: it only waits to be scored", () => {

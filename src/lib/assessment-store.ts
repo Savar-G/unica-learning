@@ -4,7 +4,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import {
   attemptState,
   createSession,
-  recordActivity,
+  recordAnswer,
   restoreSession,
   startState,
   storedTest,
@@ -26,7 +26,7 @@ import { adminClient, parentId, sessionClient } from "@/lib/supabase-auth";
 // with the secret key; every request rebuilds the session from them and marks with the assessment core.
 // Stop, resume and retake (#72): every time comes from this server's clock (Date.now() in the routes) and is checked
 // with the core's rules. Writes that depend on the time are guarded in the update itself, so two requests at once
-// cannot both win: see expireTest and holdTest.
+// cannot both win: see expireTest and openAnswerWindow. Only a stored answer moves a test's deadline.
 
 /** A new seed for each test: siblings, and a retake, get different questions. Postgres integer, 0 to 2^31 - 1. */
 export const newSeed = () => randomInt(0, 2 ** 31 - 1);
@@ -47,7 +47,7 @@ export interface AssessmentRow extends AttemptRow {
   test: StoredTest;
 }
 
-const at = (iso: string) => Date.parse(iso);
+const toMs = (time: string) => Date.parse(time);
 const iso = (ms: number) => new Date(ms).toISOString();
 
 /** A stored row in the core's terms. `answeredAll` only when the answers were loaded. */
@@ -55,10 +55,10 @@ export function toAttempt(row: AttemptRow, answeredAll?: boolean): Attempt {
   return {
     id: row.id,
     status: row.status,
-    startedAt: at(row.started_at),
-    lastAnswerAt: row.last_answer_at ? at(row.last_answer_at) : null,
-    resumeUntil: at(row.resume_until),
-    completedAt: row.completed_at ? at(row.completed_at) : null,
+    startedAt: toMs(row.started_at),
+    lastAnswerAt: row.last_answer_at ? toMs(row.last_answer_at) : null,
+    resumeUntil: toMs(row.resume_until),
+    completedAt: row.completed_at ? toMs(row.completed_at) : null,
     ...(answeredAll === undefined ? {} : { answeredAll }),
   };
 }
@@ -70,23 +70,38 @@ export async function expireTest(admin: SupabaseClient, id: string, now: number)
   if (error) throw new Error(`expire failed: ${error.message}`);
 }
 
-// Guarded: changes the row only while the test is in progress and its window has not ended at `now`. Once this
-// succeeds, an expire request cannot match the row for another 24 hours.
-async function hold(admin: SupabaseClient, id: string, now: number, patch: { resume_until: string; last_answer_at?: string }): Promise<boolean> {
-  const { data, error } = await admin.from("assessments").update(patch)
-    .eq("id", id).eq("status", "in_progress").gte("resume_until", iso(now)).select("id");
-  if (error) throw new Error(`hold failed: ${error.message}`);
-  return (data ?? []).length === 1;
+/** The answer being stored: after the insert, call stored(), or failed() when the insert failed for any other reason than a duplicate. */
+export interface AnswerWindow {
+  /** Records the answer time (last_answer_at). It never moves back: two tabs can store answers in the same moment. */
+  stored(): Promise<void>;
+  /** Puts the deadline back where it was, unless something moved it since. */
+  failed(): Promise<void>;
 }
 
 /**
- * Records an answer at `now`: the test stays open for another 24 hours from it (the core's recordActivity).
- * False when the test is no longer open (it expired, or another request scored it), so the caller must not store the
- * answer. Call it before the answer is stored: an answer that arrives after the deadline loses to it.
+ * Before an answer is stored at `now`: moves the deadline to 24 hours from now (the core's recordAnswer), only while
+ * the test is in progress and its deadline has not passed. The guard is in the update itself, so an expire request
+ * and this cannot both win. Null when the test is no longer open: the caller must not store the answer.
  */
-export async function holdForAnswer(admin: SupabaseClient, attempt: Attempt, now: number): Promise<boolean> {
-  const next = recordActivity(attempt, now, { answered: true });
-  return hold(admin, attempt.id, now, { resume_until: iso(next.resumeUntil), last_answer_at: iso(now) });
+export async function openAnswerWindow(admin: SupabaseClient, attempt: Attempt, now: number): Promise<AnswerWindow | null> {
+  const until = iso(recordAnswer(attempt, now).resumeUntil);
+  const { data, error } = await admin.from("assessments").update({ resume_until: until })
+    .eq("id", attempt.id).eq("status", "in_progress").gte("resume_until", iso(now)).select("id");
+  if (error) throw new Error(`deadline update failed: ${error.message}`);
+  if ((data ?? []).length !== 1) return null;
+  return {
+    async stored() {
+      const at = iso(now);
+      const { error: e } = await admin.from("assessments").update({ last_answer_at: at })
+        .eq("id", attempt.id).or(`last_answer_at.is.null,last_answer_at.lt."${at}"`);
+      if (e) console.error("[test] answer time save failed", e.message);
+    },
+    async failed() {
+      const { error: e } = await admin.from("assessments").update({ resume_until: iso(attempt.resumeUntil) })
+        .eq("id", attempt.id).eq("resume_until", until);
+      if (e) console.error("[test] deadline undo failed", e.message);
+    },
+  };
 }
 
 /** The signed-in parent and an admin client, or the error response to send. */
@@ -156,30 +171,31 @@ async function readTest(admin: SupabaseClient, parent: string, id: string): Prom
 }
 
 /**
+ * The parent's tests, read with the secret key and the parent's id (from their verified session), so a parent never
+ * sees another family's tests. A test in progress comes with `answeredAll`, from its answers: one with every answer
+ * in waits to be scored, and never expires. Pass a child id to read one child.
+ */
+async function parentAttempts(admin: SupabaseClient, parent: string, childId?: string): Promise<(StoredAttempt & { childId: string })[]> {
+  let query = admin.from("assessments").select(`child_id, seed, ${ATTEMPT_COLUMNS}`).eq("parent_id", parent);
+  if (childId) query = query.eq("child_id", childId);
+  const { data, error } = await query.returns<(AttemptRow & { child_id: string; seed: number })[]>();
+  if (error) throw new Error(`attempts load failed: ${error.message}`);
+  return Promise.all((data ?? []).map(async (row) => {
+    if (row.status !== "in_progress") return { ...toAttempt(row), seed: row.seed, childId: row.child_id };
+    const read = await readTest(admin, parent, row.id);
+    if ("error" in read) throw new Error("open test read failed");
+    return { ...toAttempt(row, testStep(read.session).status === "complete"), seed: row.seed, childId: row.child_id };
+  }));
+}
+
+/**
  * The start request's view of one child's tests (src/lib/test-start.ts), read and written with the secret key.
  * The one-open-test-per-child index makes a second new test fail; that failure is "taken".
  */
-export function startStore(admin: SupabaseClient, parent: string, child: Child, now: number): StartStore {
+export function startStore(admin: SupabaseClient, parent: string, child: Child): StartStore {
   return {
-    async attempts() {
-      const { data, error } = await admin.from("assessments").select(`${ATTEMPT_COLUMNS}, seed`)
-        .eq("child_id", child.id).eq("parent_id", parent).returns<(AttemptRow & { seed: number })[]>();
-      if (error) throw new Error(`attempts load failed: ${error.message}`);
-      const attempts: StoredAttempt[] = [];
-      for (const row of data ?? []) {
-        const attempt: StoredAttempt = { ...toAttempt(row), seed: row.seed };
-        // Past its window, a test in progress may still have every answer in (its scoring call failed): look.
-        if (row.status === "in_progress" && now > attempt.resumeUntil) {
-          const read = await readTest(admin, parent, row.id);
-          if ("error" in read) throw new Error("open test read failed");
-          attempt.answeredAll = testStep(read.session).status === "complete";
-        }
-        attempts.push(attempt);
-      }
-      return attempts;
-    },
-    expire: (id, at) => expireTest(admin, id, at),
-    hold: (id, at, resumeUntil) => hold(admin, id, at, { resume_until: iso(resumeUntil) }),
+    attempts: () => parentAttempts(admin, parent, child.id),
+    expire: (id, now) => expireTest(admin, id, now),
     async create(seed, attempt) {
       let session: Session;
       try {
@@ -209,20 +225,26 @@ export function startStore(admin: SupabaseClient, parent: string, child: Child, 
 }
 
 /**
- * What each child's start screen offers, from the parent's own session (row-level security returns only their rows).
- * Pass a child id to read one child. A read error shows "Start test"; the start request checks the rules again.
+ * What each of the parent's children's start screen offers, by the same rules and reads as the start request, so the
+ * screen and the server agree. Pass a child id to read one child. A read error shows "Start test"; the start request
+ * checks the rules again.
  */
-export async function startStates(db: SupabaseClient, childId?: string): Promise<Map<string, StartState>> {
+export async function startStates(parent: string, childId?: string): Promise<Map<string, StartState>> {
   if (childId !== undefined && !isUuid(childId)) return new Map();
-  let query = db.from("assessments").select(`child_id, ${ATTEMPT_COLUMNS}`);
-  if (childId) query = query.eq("child_id", childId);
-  const { data, error } = await query.returns<(AttemptRow & { child_id: string })[]>();
-  if (error) console.error("[test] attempts read failed", error.message);
+  const admin = adminClient();
+  if (!admin) return new Map();
+  let attempts: Awaited<ReturnType<typeof parentAttempts>>;
+  try {
+    attempts = await parentAttempts(admin, parent, childId);
+  } catch (e) {
+    console.error("[test]", e instanceof Error ? e.message : e);
+    return new Map();
+  }
   const byChild = new Map<string, Attempt[]>();
-  for (const row of data ?? []) byChild.set(row.child_id, [...(byChild.get(row.child_id) ?? []), toAttempt(row)]);
+  for (const a of attempts) byChild.set(a.childId, [...(byChild.get(a.childId) ?? []), a]);
   const now = Date.now();
-  return new Map([...byChild].map(([id, attempts]) => [id, startState(attempts, now)]));
+  return new Map([...byChild].map(([id, list]) => [id, startState(list, now)]));
 }
 
-/** A child with no entry in startStates has no test yet. */
-export const NO_TEST: StartState = { kind: "start", retake: false };
+/** A child's start state; a child with no tests can start one. */
+export const stateFor = (states: Map<string, StartState>, childId: string): StartState => states.get(childId) ?? { kind: "start", retake: false };

@@ -2,7 +2,7 @@
 
 // Parent account screens for the online assessment pilot (#62, D-082): signup, sign-in, the children list.
 // Server writes go through /api/account/*; the browser holds only the publishable key and the parent's own session.
-import { useEffect, useRef, useState, useSyncExternalStore, type FormEvent, type ReactNode } from "react";
+import { useEffect, useId, useRef, useState, useSyncExternalStore, type FormEvent, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { CURRICULA, EMAIL, POSTAL, curriculumFromPostal, type CurriculumId } from "@/lib/signup";
@@ -311,11 +311,29 @@ function When({ at }: { at: number }) {
   return <time dateTime={d.toISOString()}>{clock} on {DAYS[day]}, {MONTHS[month]} {date}</time>;
 }
 
+/** The button and the line under it for each start state (#72). `status` goes with test_start_click. */
+function startView(state: Exclude<StartState, { kind: "wait" }>, name: string): { label: string; note: ReactNode; status: string } {
+  switch (state.kind) {
+    case "resume":
+      return { label: "Continue test", note: <>The answers are saved. {name} can continue until <When at={state.resumeUntil} />.</>, status: "in_progress" };
+    case "finish":
+      return { label: "Finish test", note: <>All of {name}&apos;s answers are in, but the test was not sent. Open it to finish. The report then comes by email.</>, status: "finish" };
+    case "expired":
+      return { label: "Start again", note: "The last test was not finished within 24 hours, so it closed. The new test has new questions.", status: "expired" };
+    case "start":
+      return state.retake
+        ? { label: "Start test", note: "The next test is open. It has new questions.", status: "retake" }
+        : { label: "Start test", note: null, status: "new" };
+  }
+}
+
 /**
  * Opens the child's test (#64), in the state the assessment core gives (#72): start, continue an open test until its
- * deadline, start again after a test ran out of time, or wait 30 days after a completed test.
+ * deadline, finish a test whose answers are all in, start again after a test ran out of time, or wait 30 days after
+ * a completed test.
  */
 export function StartTest({ childId, name, state }: { childId: string; name: string; state: StartState }) {
+  const noteId = useId();
   if (state.kind === "wait") {
     return (
       <span className="small acct-done">
@@ -323,17 +341,13 @@ export function StartTest({ childId, name, state }: { childId: string; name: str
       </span>
     );
   }
-  const [label, note, status] =
-    state.kind === "resume" ? ["Continue test", <>The answers are saved. {name} can continue until <When at={state.resumeUntil} />.</>, "in_progress"]
-    : state.kind === "expired" ? ["Start again", <>The last test was not finished within 24 hours, so it closed. The new test has new questions.</>, "expired"]
-    : state.retake ? ["Start test", <>The next test is open. It has new questions.</>, "retake"]
-    : ["Start test", null, "new"];
+  const { label, note, status } = startView(state, name);
   return (
     <span className="acct-start">
-      <Link className="btn" href={`/account/test/${childId}`} onClick={() => track("test_start_click", { status })}>
+      <Link className="btn" href={`/account/test/${childId}`} aria-describedby={note ? noteId : undefined} onClick={() => track("test_start_click", { status })}>
         {label} <span className="sr-only">for {name}</span> <span className="arr">→</span>
       </Link>
-      {note && <span className="small">{note}</span>}
+      {note && <span id={noteId} className="small">{note}</span>}
     </span>
   );
 }

@@ -1,7 +1,7 @@
 // Stop, resume and retake (#72, D-083): pure rules over a child's test attempts.
 // No clock: the server passes `now` and every stored time, as epoch milliseconds from its own clock.
 
-/** A stopped test can continue until this long after the child last worked on it. */
+/** A stopped test can continue until this long after its last stored answer (or its start, before any answer). */
 export const RESUME_HOURS = 24;
 /** A child can take a new test this long after their last completed one. */
 export const RETAKE_DAYS = 30;
@@ -19,7 +19,7 @@ export interface Attempt {
   startedAt: number;
   /** When the server stored the last answer; null before the first answer. */
   lastAnswerAt: number | null;
-  /** The last moment the test can continue. */
+  /** The last moment the test can continue: 24 hours after the last answer, or after the start. Opening it again does not move it. */
   resumeUntil: number;
   completedAt: number | null;
   /**
@@ -43,17 +43,13 @@ export function attemptState(attempt: Attempt, now: number): AttemptState {
 }
 
 /**
- * The attempt after the child works on it at `now` (answers, or opens it again): the resume window starts again.
- * Throws when the attempt is not open; check attemptState first.
+ * The attempt after an answer stored at `now`: the 24 hours start again from it. Only an answer moves the deadline.
+ * Throws when the attempt does not take answers; check attemptState first.
  */
-export function recordActivity(attempt: Attempt, now: number, { answered }: { answered: boolean }): Attempt {
+export function recordAnswer(attempt: Attempt, now: number): Attempt {
   const state = attemptState(attempt, now);
   if (state !== "open") throw new Error(`The test is ${state}`);
-  return {
-    ...attempt,
-    lastAnswerAt: answered ? now : attempt.lastAnswerAt,
-    resumeUntil: now + RESUME_HOURS * HOUR_MS,
-  };
+  return { ...attempt, lastAnswerAt: now, resumeUntil: now + RESUME_HOURS * HOUR_MS };
 }
 
 /** What a child's start screen offers. Times are epoch milliseconds. */
@@ -62,6 +58,8 @@ export type StartState =
   | { kind: "start"; retake: boolean }
   /** "Continue test": the open test, until `resumeUntil`. */
   | { kind: "resume"; attemptId: string; resumeUntil: number }
+  /** "Finish test": every answer is in, but the test was not scored (the scoring call failed). Opening it scores it. */
+  | { kind: "finish"; attemptId: string }
   /** "Start again": the last test ran out of time; a new one has new questions. */
   | { kind: "expired"; attemptId: string }
   /** No new test yet: it opens 30 days after the last completed one. */
@@ -73,6 +71,7 @@ export type StartState =
  */
 export function startState(attempts: readonly Attempt[], now: number): StartState {
   const open = attempts.find((a) => a.status === "in_progress" && attemptState(a, now) === "open");
+  if (open?.answeredAll) return { kind: "finish", attemptId: open.id };
   if (open) return { kind: "resume", attemptId: open.id, resumeUntil: open.resumeUntil };
 
   const done = attempts.filter((a) => a.status === "completed" && a.completedAt !== null).map((a) => a.completedAt!);
@@ -89,7 +88,7 @@ export function startState(attempts: readonly Attempt[], now: number): StartStat
 
 /** What the server does with a request to start (or continue) a child's test. */
 export type StartDecision =
-  /** Hand back the open test. The caller restarts its resume window (recordActivity). */
+  /** Hand back the open test as it is: to continue it, or to score it when every answer is in. Its deadline does not move. */
   | { action: "resume"; attemptId: string }
   /** Draw a new test with a new seed. First mark `expire` expired: it is open in storage but ran out of time. */
   | { action: "create"; expire: string | null }
@@ -103,10 +102,11 @@ export type StartDecision =
  */
 export function decideStart(attempts: readonly Attempt[], now: number, { restart }: { restart: boolean }): StartDecision {
   const state = startState(attempts, now);
-  // Not "resume", so a test still in progress in storage has run out of time. It holds the child's one open slot.
+  // Not "resume" or "finish", so a test still in progress in storage has run out of time. It holds the child's one open slot.
   const stale = attempts.find((a) => a.status === "in_progress")?.id ?? null;
   switch (state.kind) {
     case "resume":
+    case "finish":
       return { action: "resume", attemptId: state.attemptId };
     case "wait":
       return { action: "refuse", error: "retake_closed", opensAt: state.opensAt };

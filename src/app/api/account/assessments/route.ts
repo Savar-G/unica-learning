@@ -33,7 +33,7 @@ export async function POST(request: Request) {
   const now = Date.now();
   let outcome;
   try {
-    outcome = await startTest(startStore(admin, parent, child, now), now, { restart: body.restart === true, newSeed });
+    outcome = await startTest(startStore(admin, parent, child), now, { restart: body.restart === true, newSeed });
   } catch (e) {
     console.error("[test] start failed", e instanceof Error ? e.message : e);
     return testFail("store_failed", 502);
