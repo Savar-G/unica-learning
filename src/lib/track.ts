@@ -16,6 +16,9 @@
 // waitlist_join (src, curriculum, status = joined or already; the reserve form's waitlist_join has no src);
 // card_cancelled and card_saved with src = report.
 // Help flags (#71): test_help (status yes, a-little or no: the answer to "Did anyone help?", sent once the test is stored).
+// Reminders (#73): reminder_open (status = continue, come_back or start: the parent opened the start screen from that
+// reminder email), unsubscribe (status done or failed: the unsubscribe page turned reminders off), unsubscribe_page
+// (status unsubscribed = already off, unknown = a link that does not work, failed).
 // Analytics run only after the visitor accepts (see consent.ts). Without consent an event is dropped, not queued.
 // Only src, plan, subject, curriculum, price, status, code, card and channel travel with an event (see analytics.ts).
 // posthog-js is imported on demand so it stays out of the first-load bundle.
