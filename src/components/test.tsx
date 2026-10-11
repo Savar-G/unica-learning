@@ -11,7 +11,7 @@ import { breakDue, type PublicQuestion, type TestStep } from "@/lib/assessment";
 import { ANSWER_MAX, type FinishResult, type StartResult, type StepResult, type TestError } from "@/lib/test-api";
 import { track } from "@/lib/track";
 import { SUPPORT_EMAIL, SUPPORT_HREF } from "@/lib/contact";
-import { TestBreak } from "./test-break";
+import { breakSeen, markBreakSeen, TestBreak } from "./test-break";
 import { TestProgress } from "./test-progress";
 import { ReadAloud } from "./test-read-aloud";
 import "./test.css";
@@ -38,7 +38,6 @@ export function TakeTest({ childId, name, total, ready, done }: { childId: strin
   const [busy, setBusy] = useState(false);
   const [failure, setFailure] = useState<TestError | null>(null);
   const testId = useRef<string | null>(null);
-  const breakShown = useRef(false);
 
   const finish = useCallback(async () => {
     const res = await call<FinishResult>(`/api/account/assessments/${testId.current}/finish`, post({}));
@@ -55,9 +54,10 @@ export function TakeTest({ childId, name, total, ready, done }: { childId: strin
   /** Shows the step the server sent: the next question, or the end of the test. */
   const show = useCallback(async (step: TestStep) => {
     if (step.status === "complete") return finish();
-    // The skippable halfway break (#69) comes once, before the first question of the second half.
-    if (breakDue(step) && !breakShown.current) {
-      breakShown.current = true;
+    // The skippable halfway break (#69) comes once per test, before the first question of the second half.
+    const id = testId.current ?? "";
+    if (breakDue(step) && !breakSeen(id)) {
+      markBreakSeen(id);
       track("test_break", { status: "shown" });
       setScreen({ name: "break", next: step });
       return true;

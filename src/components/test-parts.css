@@ -11,8 +11,9 @@
 @keyframes test-read-pulse { 50% { box-shadow: 0 0 0 10px rgba(91, 141, 239, 0.2); } }
 
 /* ---------- progress ---------- */
-.test-progress { flex: 1; display: flex; align-items: center; justify-content: flex-end; gap: 16px; min-width: 0; max-width: 900px; }
-.test-progress-bar { flex: 1; display: flex; align-items: center; gap: 10px; min-width: 0; }
+/* In the top bar: the segments in the middle, "n of N" on the right (DESIGN.md, assessment test item 1). */
+.test-progress { flex: 1; display: flex; align-items: center; gap: 24px; min-width: 0; }
+.test-progress-bar { flex: 0 1 760px; margin-inline: auto; display: flex; align-items: center; gap: 10px; min-width: 0; }
 .test-progress-seg { flex: 1; display: flex; gap: 3px; min-width: 0; }
 .test-progress-seg span { flex: 1; min-width: 2px; height: 8px; border-radius: 2px; background: var(--line-soft, #ececef); transition: background 0.3s; }
 .test-progress-seg span.is-done { background: var(--ink); }

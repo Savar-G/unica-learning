@@ -1,7 +1,7 @@
 "use client";
 
 // "Read it to me" (#69): speaks the question's read-aloud text with the browser's built-in speech.
-// Renders nothing when the browser has no speech. A separate part so the split-desk rebuild (#79) can restyle it.
+// Renders nothing when the browser has no speech or no voices. A separate part so the split-desk rebuild (#79) can restyle it.
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { track } from "@/lib/track";
 import "./test-parts.css";
@@ -18,21 +18,30 @@ function pickVoice(voices: SpeechSynthesisVoice[]): SpeechSynthesisVoice | null 
   return en.find((v) => /^en[-_]CA/i.test(v.lang)) ?? en.find((v) => v.default) ?? en[0] ?? null;
 }
 
-const hasSpeech = () => typeof window !== "undefined" && "speechSynthesis" in window && "SpeechSynthesisUtterance" in window;
-const noSubscribe = () => () => {};
+const hasSpeechApi = () => typeof window !== "undefined" && "speechSynthesis" in window && "SpeechSynthesisUtterance" in window;
+
+// Chrome loads its voices after the page, then fires "voiceschanged". Some browsers (Chromium on Linux) have the
+// speech API but no voices at all. So the button shows only once there is at least one voice to speak with.
+const hasVoices = () => hasSpeechApi() && window.speechSynthesis.getVoices().length > 0;
+function onVoicesChanged(notify: () => void) {
+  if (!hasSpeechApi()) return () => {};
+  const synth = window.speechSynthesis;
+  synth.addEventListener?.("voiceschanged", notify);
+  // Asking for the voices starts the load in browsers that wait for the first request.
+  synth.getVoices();
+  return () => synth.removeEventListener?.("voiceschanged", notify);
+}
 
 /** Give it a `key` per question, so a new question starts silent. */
 export function ReadAloud({ text }: { text: string }) {
   // False on the server and in the first render, so the button never flashes on a browser without speech.
-  const supported = useSyncExternalStore(noSubscribe, hasSpeech, () => false);
+  const supported = useSyncExternalStore(onVoicesChanged, hasVoices, () => false);
   const [speaking, setSpeaking] = useState(false);
   const current = useRef<SpeechSynthesisUtterance | null>(null);
 
   useEffect(() => {
     if (!supported) return;
     const synth = window.speechSynthesis;
-    // Some browsers load their voices only after the first request for them.
-    synth.getVoices();
     // Leaving the question (the parent keys each question) or the test stops the voice.
     return () => {
       current.current = null;
@@ -51,6 +60,7 @@ export function ReadAloud({ text }: { text: string }) {
     // Chrome can drop a new utterance right after cancel() when nothing was playing.
     if (synth.speaking || synth.pending) synth.cancel();
     const u = new SpeechSynthesisUtterance(text);
+    // The button shows only after the voices load, so the full list is here on the first tap.
     const voice = pickVoice(synth.getVoices());
     if (voice) u.voice = voice;
     u.lang = voice?.lang ?? "en-CA";
