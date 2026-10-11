@@ -19,6 +19,17 @@ const fmt = (n: number) => n.toLocaleString("en-CA");
 /** Fixed decimals without float noise: (725, 2) -> "7.25". */
 const dec = (units: number, places: number) => (units / 10 ** places).toFixed(places);
 
+/**
+ * Adds Filled.say for choices the voice would read wrong (#79): every choice mapped to its words. The read-aloud text never
+ * lists the choices; the screen reads them after it, in the order of its buttons.
+ */
+function withSay(filled: Omit<Filled, "say">, words: (choice: string) => string): Filled {
+  const choices = [filled.answer, ...filled.wrong.map((w) => w.value)];
+  return { ...filled, say: Object.fromEntries(choices.map((c) => [c, words(c)])) };
+}
+/** "7:55" -> "7 55", "8:05 p.m." -> "8 oh 5 p.m.", "8:00 p.m." -> "8 o'clock p.m.", like the templates' read-aloud times. */
+const sayTime = (t: string) => t.replace(/:00\b/, " o'clock").replace(/:0(\d)/, " oh $1").replace(":", " ");
+
 const ONES = ["zero", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine"];
 
 export const SAMPLE_BANK: readonly Template[] = [
@@ -334,7 +345,7 @@ export const SAMPLE_BANK: readonly Template[] = [
       return {
         values: { blue },
         prompt: `A bag has ${blue} blue marbles and 1 red marble. You pick one without looking. Picking the red marble is:`,
-        readAloud: `A bag has ${blue} blue marbles and 1 red marble. You pick one without looking. Is picking the red marble unlikely, impossible, or certain?`,
+        readAloud: `A bag has ${blue} blue marbles and 1 red marble. You pick one without looking. How likely is it that you pick the red marble?`,
         answer: "Unlikely",
         wrong: [
           { value: "Impossible", misconception: "D6" },
@@ -415,7 +426,7 @@ export const SAMPLE_BANK: readonly Template[] = [
       return {
         values: { small, big },
         prompt: `Which fraction is larger: 1/${small} or 1/${big}?`,
-        readAloud: `Which fraction is larger: 1 out of ${small}, or 1 out of ${big}?`,
+        readAloud: "Which fraction is larger?",
         answer: `1/${small}`,
         wrong: [{ value: `1/${big}`, misconception: "F1" }],
       };
@@ -494,7 +505,7 @@ export const SAMPLE_BANK: readonly Template[] = [
     fill(rng) {
       const h = rng.int(1, 11), k = rng.int(2, 11);
       const mm = String(5 * k).padStart(2, "0");
-      return {
+      return withSay({
         values: { h, k },
         prompt: `On a clock, the hour hand is just past the ${h} and the minute hand points to the ${k}. What time is it?`,
         readAloud: `On a clock, the hour hand is just past the ${h} and the minute hand points to the ${k}. What time is it?`,
@@ -503,7 +514,7 @@ export const SAMPLE_BANK: readonly Template[] = [
           { value: `${h}:${String(k).padStart(2, "0")}`, misconception: "M7" },
           { value: `${h + 1}:${mm}`, misconception: "M7" },
         ],
-      };
+      }, sayTime);
     },
   },
   {
@@ -599,7 +610,7 @@ export const SAMPLE_BANK: readonly Template[] = [
       return {
         values: { d, longer },
         prompt: `Which number is greater: 0.${d} or ${dec(longer, 2)}?`,
-        readAloud: `Which number is greater: 0.${d}, or ${dec(longer, 2)}?`,
+        readAloud: "Which number is greater?",
         answer: `0.${d}`,
         wrong: [{ value: dec(longer, 2), misconception: "F6" }],
       };
@@ -660,7 +671,7 @@ export const SAMPLE_BANK: readonly Template[] = [
       const h = rng.int(1, 9);
       const [m, add] = draw(rng, (r) => [r.int(7, 11) * 5, r.int(3, 8) * 5], ([m, add]) => m + add >= 60); // crosses the hour
       const total = m + add;
-      return {
+      return withSay({
         values: { h, m, add },
         prompt: `A movie starts at ${h}:${m} p.m. and lasts 1 hour ${add} minutes. When does it end?`,
         readAloud: `A movie starts at ${h} ${m} p.m. and lasts 1 hour and ${add} minutes. When does it end?`,
@@ -669,7 +680,7 @@ export const SAMPLE_BANK: readonly Template[] = [
           { value: `${h + 1}:${total} p.m.`, misconception: "M8" },
           { value: `${h + 1}:${String(total - 60).padStart(2, "0")} p.m.`, misconception: "O3" },
         ],
-      };
+      }, sayTime);
     },
   },
   {
@@ -801,7 +812,7 @@ export const SAMPLE_BANK: readonly Template[] = [
     strand: "F", grades: { BC: 6 }, format: "choice", whiteboard: false, standard: "6.6",
     fill(rng) {
       const [red, blue] = draw(rng, (r) => [r.int(2, 9), r.int(2, 9)], ([r, b]) => r !== b);
-      return {
+      return withSay({
         values: { red, blue },
         prompt: `A bag has ${red} red and ${blue} blue marbles. What is the ratio of red to blue?`,
         readAloud: `A bag has ${red} red marbles and ${blue} blue marbles. What is the ratio of red marbles to blue marbles?`,
@@ -810,7 +821,7 @@ export const SAMPLE_BANK: readonly Template[] = [
           { value: `${blue}:${red}`, misconception: "ratio-order" },
           { value: `${red}:${red + blue}`, misconception: "ratio-whole" },
         ],
-      };
+      }, (ratio) => ratio.replace(":", " to "));
     },
   },
   {

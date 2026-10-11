@@ -1,9 +1,12 @@
 "use client";
 
-// "Read it to me" (#69): speaks the question's read-aloud text with the browser's built-in speech.
-// Renders nothing when the browser has no speech or no voices. A separate part so the split-desk rebuild (#79) can restyle it.
+// "Read it to me" (#69): speaks the text with the browser's built-in speech. For a question, the screen builds the text
+// with readAloudText, so the choices are read in the order of its buttons (#79).
+// Renders nothing when the browser has no speech or no voices. Chrome loads its voices a moment after the first request,
+// so the test page asks for them early (warmUpVoices).
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { track } from "@/lib/track";
+import "./test-base.css";
 import "./test-parts.css";
 
 // Clear, natural English voices first; the browser's own default is the fallback.
@@ -23,6 +26,14 @@ const hasSpeechApi = () => typeof window !== "undefined" && "speechSynthesis" in
 // Chrome loads its voices after the page, then fires "voiceschanged". Some browsers (Chromium on Linux) have the
 // speech API but no voices at all. So the button shows only once there is at least one voice to speak with.
 const hasVoices = () => hasSpeechApi() && window.speechSynthesis.getVoices().length > 0;
+
+/**
+ * Starts loading the browser's voices. Call it when the test page opens: Chrome loads them a moment after the first
+ * request, and without this the button appears a moment after the first question and pushes the question aside (#79).
+ */
+export function warmUpVoices(): void {
+  if (hasSpeechApi()) window.speechSynthesis.getVoices();
+}
 function onVoicesChanged(notify: () => void) {
   if (!hasSpeechApi()) return () => {};
   const synth = window.speechSynthesis;

@@ -1,3 +1,2 @@
-/* "Did anyone help?" (#71): the question screen's layout (test.css .test-q), with a kicker and one plain line. */
-.test-help .eyebrow { margin: 0 0 -12px; }
+/* "Did anyone help?" (#71): the question desk's left pane (test-base.css), with a kicker and one plain line. */
 .test-help-lead { margin: -8px 0 0; font-size: 18px; color: var(--ink-2); }
