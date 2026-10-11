@@ -7,6 +7,7 @@ import type { Child } from "@/lib/account";
 import type { AssessmentStatus } from "@/lib/test-api";
 import { parentId, sessionClient } from "@/lib/supabase-auth";
 import { isPhone } from "@/lib/account-server";
+import { reportPath } from "@/lib/report-view";
 import { AddChild, SendLink, SignOut, StartTest, TrackOnce } from "@/components/account";
 import { SupportPage } from "@/components/support-page";
 
@@ -24,14 +25,17 @@ export default async function Account({ searchParams }: PageProps<"/account">) {
   await requirePilot();
   const db = await sessionClient();
   if (!(await parentId(db))) redirect("/sign-in");
-  const [{ data: parent }, { data: kids }, { data: tests }] = await Promise.all([
+  const [{ data: parent }, { data: kids }, { data: tests }, { data: reports }] = await Promise.all([
     db.from("parents").select("name, email").maybeSingle<{ name: string; email: string }>(),
     db.from("children").select("id, first_name, grade, province").order("created_at").returns<Child[]>(),
     // Oldest first, so each child's latest test wins below.
     db.from("assessments").select("child_id, status").order("created_at").returns<{ child_id: string; status: AssessmentStatus }[]>(),
+    // Each child's latest report (#65), oldest first like the tests.
+    db.from("reports").select("id, child_id").order("created_at").returns<{ id: string; child_id: string }[]>(),
   ]);
   if (!parent) redirect("/account/finish");
   const latest = new Map((tests ?? []).map((t) => [t.child_id, t.status]));
+  const report = new Map((reports ?? []).map((r) => [r.child_id, reportPath(r.id)]));
   // An expired test (#72) counts as no test: the child starts again.
   const testStatus = (id: string) => {
     const s = latest.get(id);
@@ -58,7 +62,7 @@ export default async function Account({ searchParams }: PageProps<"/account">) {
         {children.map((c, i) => (
           <li key={c.id} className="acct-kid">
             <span><b>{c.first_name}</b><span className="small">Grade {c.grade} · {CURRICULA[c.province]}</span></span>
-            {phone ? <SendLink childId={c.id} name={c.first_name} sent={sent === "1" && i === 0} /> : <StartTest childId={c.id} name={c.first_name} status={testStatus(c.id)} />}
+            {phone ? <SendLink childId={c.id} name={c.first_name} sent={sent === "1" && i === 0} /> : <StartTest childId={c.id} name={c.first_name} status={testStatus(c.id)} report={report.get(c.id)} />}
           </li>
         ))}
       </ul>

@@ -1,0 +1,87 @@
+/* The parent's report (#65). Plain sections in the order of the chosen design (D-087); #80 applies that design.
+   Colours are the warm look tokens: the verdict colour marks the working level (behind tangerine, on grade leaf,
+   ahead sky), and the zones and chips are tints of tangerine, sunflower and leaf. */
+.support-page.support-wide { width: min(100%, var(--max)); }
+.rpt-back { margin: 0 0 28px; }
+.rpt {
+  --attn: color-mix(in srgb, var(--tang) 24%, #fff);
+  --devc: color-mix(in srgb, var(--sun) 34%, #fff);
+  --secc: color-mix(in srgb, var(--leaf) 24%, #fff);
+  display: grid; gap: clamp(32px, 4vw, 48px);
+}
+
+/* header table */
+.rpt-head { display: grid; grid-template-columns: minmax(200px, 1fr) 2fr; gap: 20px 24px; align-items: end; padding-bottom: 20px; border-bottom: 2px solid var(--ink); }
+.rpt-word { display: block; font: 600 19px/1.2 var(--sans); letter-spacing: -0.02em; }
+[data-look="warm"] .rpt-head h1 { margin: 6px 0 0; font: 400 12.5px/1.3 var(--mono); letter-spacing: 0.04em; text-transform: uppercase; color: var(--ink-2); }
+.rpt-facts { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 16px; margin: 0; }
+.rpt-facts dt { font: 400 12px/1.2 var(--mono); color: var(--ink-2); }
+.rpt-facts dd { margin: 6px 0 0; font-size: 18px; line-height: 1.3; }
+
+/* overall level and the K-8 scale */
+.rpt-overall { --verdict: var(--leaf); padding: clamp(24px, 4vw, 48px); border-radius: 10px; background: var(--card); }
+.rpt-overall.is-behind { --verdict: var(--tang); }
+.rpt-overall.is-ahead { --verdict: var(--sky); }
+[data-look="warm"] .rpt .rpt-overall h2 { margin: 16px 0 8px; font-size: clamp(34px, 4.6vw, 56px); line-height: 1.05; }
+.rpt-verdict { margin: 0 0 28px; font-size: 19px; color: var(--ink-2); }
+.rpt-ruler { display: grid; grid-template-columns: repeat(9, minmax(0, 1fr)); padding: 10px; border-radius: 8px; background: #fff; box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05); }
+.rpt-tick { display: grid; place-items: center; height: 60px; color: var(--ink-2); font: 400 18px/1 var(--sans); }
+.rpt-tick > span { display: grid; place-items: center; width: 46px; height: 46px; border-radius: 50%; border: 2px solid transparent; }
+.rpt-tick.is-span { background: color-mix(in srgb, var(--verdict) 16%, #fff); }
+.rpt-tick.is-lo { border-radius: 8px 0 0 8px; }
+.rpt-tick.is-hi { border-radius: 0 8px 8px 0; }
+.rpt-tick.is-work > span { background: var(--verdict); color: var(--ink); font-weight: 600; }
+.rpt-tick.is-grade > span { border: 2px dashed var(--ink); color: var(--ink); }
+.rpt-legend { display: flex; flex-wrap: wrap; gap: 8px 22px; margin: 14px 0 0; font: 400 13px/1.3 var(--mono); }
+.rpt-key { display: inline-block; width: 12px; height: 12px; margin-right: 8px; border-radius: 50%; vertical-align: -1px; }
+.rpt-key.is-work { background: var(--verdict); }
+.rpt-key.is-grade { border: 1.5px dashed var(--ink); }
+.rpt-note { margin: 16px 0 0; max-width: 46em; font-size: 15px; color: var(--ink-2); }
+
+/* context: the FSA line */
+.rpt-context { margin-top: calc(-1 * clamp(8px, 2vw, 20px)); padding: 16px 20px; border-left: 3px solid var(--sky); border-radius: 0 6px 6px 0; background: var(--soft); }
+.rpt-context p { margin: 0; max-width: 60em; }
+.rpt-k { font: 400 12px/1.2 var(--mono); letter-spacing: 0.04em; text-transform: uppercase; }
+.support-page .rpt-context .rpt-k { margin-bottom: 6px; }
+.support-page .rpt-context .rpt-source { margin-top: 6px; font-size: 13px; color: var(--ink-2); }
+
+/* rows: title and note on the left, content on the right */
+.rpt-row { display: grid; grid-template-columns: minmax(200px, 1fr) 2fr; gap: 16px clamp(24px, 4vw, 64px); padding-top: clamp(28px, 3.5vw, 40px); border-top: 1px solid var(--line); }
+[data-look="warm"] .rpt .rpt-row-h h2 { margin: 0 0 8px; font-size: clamp(26px, 2.6vw, 32px); line-height: 1.15; }
+.rpt-row-h p { margin: 0; max-width: 22em; font-size: 15px; color: var(--ink-2); }
+[data-look="warm"] .rpt .rpt-row-c h3 { margin: 0 0 8px; font-size: 22px; }
+.rpt-row-c > p { margin: 0; max-width: 40em; font-size: 18px; }
+
+/* by area */
+.rpt-areas { width: 100%; border-collapse: collapse; font-size: 16px; }
+.rpt-areas th, .rpt-areas td { padding: 14px 16px 14px 0; border-bottom: 1px solid var(--line); text-align: left; vertical-align: middle; }
+.rpt-areas thead th { padding-top: 0; font: 400 12px/1.2 var(--mono); color: var(--ink-2); }
+.rpt-areas tbody th { font-weight: 500; }
+.rpt-areas td.rpt-m { width: 34%; }
+.rpt-areas .rpt-count { padding-right: 0; white-space: nowrap; font: 400 14px/1 var(--mono); }
+.rpt-meter { position: relative; display: block; min-width: 110px; height: 10px; border-radius: 999px; background: linear-gradient(to right, var(--attn) 0 var(--dev), var(--devc) var(--dev) var(--sec), var(--secc) var(--sec) 100%); }
+.rpt-meter::after { content: ""; position: absolute; top: -5px; left: clamp(0px, calc(var(--at) - 1.5px), calc(100% - 3px)); width: 3px; height: 20px; border-radius: 2px; background: var(--ink); }
+.rpt-chip { display: inline-block; padding: 5px 10px; border-radius: 999px; font: 400 13px/1.2 var(--mono); white-space: nowrap; }
+.rpt-chip.is-needs-attention { background: var(--attn); }
+.rpt-chip.is-developing { background: var(--devc); }
+.rpt-chip.is-secure { background: var(--secc); }
+.support-page .rpt-small { margin: 14px 0 0; font-size: 13px; color: var(--ink-2); }
+
+/* next step */
+.rpt-next { padding: clamp(22px, 3vw, 32px); border-radius: 10px; background: var(--card); }
+.rpt-next p { margin: 0 0 20px; max-width: 40em; }
+
+/* closing line */
+.rpt-meta { margin: 0; padding-top: 20px; border-top: 1px solid var(--line); font: 400 12.5px/1.5 var(--mono); color: var(--ink-2); }
+
+/* tablets, landscape and portrait: rows stack, title above content (DESIGN.md, report) */
+@media (max-width: 1100px) {
+  .rpt-head, .rpt-row { grid-template-columns: 1fr; }
+  .rpt-row-h p { max-width: none; }
+}
+@media (max-width: 599px) {
+  .rpt-facts { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .rpt-tick { height: 44px; font-size: 15px; }
+  .rpt-tick > span { width: 32px; height: 32px; }
+  .rpt-areas .rpt-m { display: none; }
+}

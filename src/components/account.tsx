@@ -205,7 +205,7 @@ export function AccountSignup() {
   );
 }
 
-export function SignIn({ created, googleFailed }: { created: boolean; googleFailed: boolean }) {
+export function SignIn({ created, googleFailed, next = "/account" }: { created: boolean; googleFailed: boolean; next?: string }) {
   const router = useRouter();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -225,12 +225,13 @@ export function SignIn({ created, googleFailed }: { created: boolean; googleFail
       return;
     }
     track("sign_in");
-    router.replace("/account");
+    router.replace(next);
   };
 
   return (
     <form className="acct-form" onSubmit={submit}>
-      <GoogleButton />
+      {/* The default return to /account keeps the plain callback URL that the Supabase redirect list already allows. */}
+      <GoogleButton next={next === "/account" ? undefined : next} />
       {created && !failed && <p role="status" className="acct-alert">Your account is ready. Sign in to continue.</p>}
       {googleFailed && !failed && <p role="alert" className="acct-alert">We could not sign you in with Google. Try again, or use your email and password.</p>}
       {failed && <p role="alert" className="acct-alert">The email or password is not correct. Try again.</p>}
@@ -293,8 +294,18 @@ export function AddChild({ province }: { province: CurriculumId }) {
   );
 }
 
-/** Opens the child's test (#64). An open test continues; a finished one waits for its report. */
-export function StartTest({ childId, name, status }: { childId: string; name: string; status: Exclude<AssessmentStatus, "expired"> | null }) {
+/**
+ * Opens the child's test (#64). An open test continues; a finished one opens its report (#65), or waits for it.
+ * `report` is the path of the child's latest report.
+ */
+export function StartTest({ childId, name, status, report }: { childId: string; name: string; status: Exclude<AssessmentStatus, "expired"> | null; report?: string }) {
+  if (status === "completed" && report) {
+    return (
+      <span className="acct-start">
+        <Link className="btn ghost" href={report}>See the report <span className="sr-only">for {name}</span> <span className="arr">→</span></Link>
+      </span>
+    );
+  }
   if (status === "completed") return <span className="small acct-done">Test done. The report comes by email.</span>;
   return (
     <span className="acct-start">
@@ -336,15 +347,19 @@ const GOOGLE_G = (
   </svg>
 );
 
-/** Google sign-in. Google returns the parent to /auth/callback; a new parent then finishes their account on /account/finish. */
-export function GoogleButton() {
+/**
+ * Google sign-in. Google returns the parent to /auth/callback, which then opens `next` (default /account); a new parent
+ * finishes their account on /account/finish.
+ */
+export function GoogleButton({ next }: { next?: string }) {
   const [busy, setBusy] = useState(false);
   const [failed, setFailed] = useState(false);
   const go = async () => {
     setBusy(true);
     setFailed(false);
     track("google_start");
-    const { error } = await browserClient().auth.signInWithOAuth({ provider: "google", options: { redirectTo: `${window.location.origin}/auth/callback` } });
+    const callback = `${window.location.origin}/auth/callback${next ? `?next=${encodeURIComponent(next)}` : ""}`;
+    const { error } = await browserClient().auth.signInWithOAuth({ provider: "google", options: { redirectTo: callback } });
     if (error) {
       track("google_failed", { code: error.code ?? "unknown" });
       setFailed(true);
