@@ -2,12 +2,15 @@
 
 // Multiple choice in the test (D-088, #79): full-width rows with a radio dot; the whole row is the target. A radio group
 // for the keyboard too: Tab reaches the group once, the arrow keys move and choose, Space and Enter choose.
-import { useRef, type KeyboardEvent } from "react";
+import { useRef, type KeyboardEvent, type ReactNode } from "react";
 import "./test-base.css";
 
 export interface ChoiceOption<T extends string> {
   value: T;
-  label: string;
+  /** What the row shows: words, or a drawn figure (test-figures.tsx). */
+  label: ReactNode;
+  /** The row's name for screen readers: the words the voice says (a drawn line has no words of its own). */
+  name?: string;
 }
 
 export interface ChoicesProps<T extends string> {
@@ -37,7 +40,7 @@ export function Choices<T extends string>({ options, value, onChange, labelledBy
   return (
     <div ref={group} className="test-choices" role="radiogroup" aria-labelledby={labelledBy} onKeyDown={onKeyDown}>
       {options.map((o, i) => (
-        <button key={o.value} type="button" role="radio" aria-checked={value === o.value} tabIndex={i === tabStop ? 0 : -1} className="test-choice" onClick={() => onChange(o.value)}>
+        <button key={o.value} type="button" role="radio" aria-checked={value === o.value} tabIndex={i === tabStop ? 0 : -1} aria-label={o.name} className="test-choice" onClick={() => onChange(o.value)}>
           <span className="test-dot" aria-hidden />
           {o.label}
         </button>

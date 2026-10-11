@@ -9,7 +9,7 @@ import "./test-base.css";
 import { useCallback, useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
 import Link from "next/link";
 import { Button } from "@/ds";
-import { breakDue, hasWork, readAloudText, type HelpAnswer, type PublicQuestion, type TestStep } from "@/lib/assessment";
+import { breakDue, hasWork, readAloudText, spokenChoices, type HelpAnswer, type PublicQuestion, type TestStep } from "@/lib/assessment";
 import { ANSWER_MAX, type FinishResult, type StartResult, type StepResult, type TestError, type WorkPayload } from "@/lib/test-api";
 import { track } from "@/lib/track";
 import { SUPPORT_EMAIL, SUPPORT_HREF } from "@/lib/contact";
@@ -17,6 +17,7 @@ import { draftKey, draftPrefix, emptyBoard, hasDrawing, type BoardState } from "
 import { FactsSection } from "./facts";
 import { breakSeen, markBreakSeen, TestBreak } from "./test-break";
 import { Choices } from "./test-choices";
+import { BarGraph, ChoiceFace, PromptText } from "./test-figures";
 import { TestHelp } from "./test-help";
 import { TestProgress } from "./test-progress";
 import { ReadAloud, warmUpVoices } from "./test-read-aloud";
@@ -395,16 +396,18 @@ function Question({ testId, typing, question, last, onAnswer, failure }: Questio
   // "Read it to me" reads the choices in the order of the rows on screen (#79): the core shuffles them.
   const shown = question.format === "choice" ? question.choices ?? [] : [];
   const spoken = readAloudText(question, shown);
+  const names = spokenChoices(question, shown);
 
   return (
     <form className="test-split test-desk" onSubmit={submit}>
       <div className="test-pane test-pane-l">
         <div className="test-qrow">
           <ReadAloud key={question.id} text={spoken} />
-          <h1 id="test-q-title" ref={heading} tabIndex={-1} className="test-prompt">{question.prompt}</h1>
+          <h1 id="test-q-title" ref={heading} tabIndex={-1} className="test-prompt"><PromptText text={question.prompt} /></h1>
         </div>
+        {question.figure?.kind === "bars" && <BarGraph figure={question.figure} />}
         {question.format === "choice" ? (
-          <Choices options={shown.map((c) => ({ value: c, label: c }))} value={value || null} onChange={setValue} labelledBy="test-q-title" />
+          <Choices options={shown.map((c, i) => ({ value: c, label: <ChoiceFace text={c} />, name: names[i] }))} value={value || null} onChange={setValue} labelledBy="test-q-title" />
         ) : (
           <div className="test-num">
             <output className="test-display" aria-live="polite" aria-label="Your answer">{value || <i>Type your answer</i>}</output>
