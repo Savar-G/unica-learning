@@ -104,19 +104,41 @@ export async function reportCardCustomer(s: Stripe, p: ReportCardSetup): Promise
     await s.customers.update(p.customerId, { description, metadata });
     return p.customerId;
   }
-  // Only fields that never change for this ref: Stripe refuses a reused key with other parameters.
-  const created = await s.customers.create(
-    { email: p.email, name: p.name, metadata: { ref: p.ref, source: REPORT_SOURCE, parent_id: p.parentId, child_id: p.childId } },
-    { idempotencyKey: `report-card-customer-${p.ref}` },
-  );
-  await s.customers.update(created.id, { description, metadata });
+  // Only fields that never change for this ref (Stripe refuses a reused key with other parameters); the email, name
+  // and plan follow in the update.
+  const params = { metadata: { ref: p.ref, source: REPORT_SOURCE, parent_id: p.parentId, child_id: p.childId } };
+  const key = { idempotencyKey: `report-card-customer-${p.ref}` };
+  let created: Stripe.Customer;
+  try {
+    created = await s.customers.create(params, key);
+  } catch (e) {
+    // A second click while the first create is still running: Stripe answers 409; the retry gets the same customer.
+    if (!(e instanceof Stripe.errors.StripeError) || e.statusCode !== 409) throw e;
+    await new Promise((r) => setTimeout(r, 1500));
+    created = await s.customers.create(params, key);
+  }
+  await s.customers.update(created.id, { email: p.email, name: p.name, description, metadata });
   return created.id;
 }
 
-/** True when the customer already saved a card through a setup that succeeded, so a second one is not needed. */
-export async function hasSavedCard(s: Stripe, customer: string): Promise<boolean> {
+/** The plan of a card this customer already saved (from its SetupIntent), or null when no setup succeeded. */
+export async function savedCardPlan(s: Stripe, customer: string): Promise<{ metadata: Record<string, string> } | null> {
   const intents = await s.setupIntents.list({ customer, limit: 20 });
-  return intents.data.some((i) => i.status === "succeeded");
+  const saved = intents.data.find((i) => i.status === "succeeded");
+  return saved ? { metadata: saved.metadata ?? {} } : null;
+}
+
+/**
+ * After a card is saved: the customer's plan and description follow the setup that succeeded, so a later click on
+ * another plan in a second tab cannot leave the customer on a plan the parent did not save the card for.
+ */
+export async function keepSavedPlan(s: Stripe, customer: string, metadata: Record<string, string>) {
+  if (!metadata.plan || !metadata.price) return;
+  const keys = ["plan", "price", "subject", "grade", "report_id", "assessment_id"].filter((k) => metadata[k]);
+  await s.customers.update(customer, {
+    description: `${metadata.subject}, grade ${metadata.grade}, CAD ${metadata.price}/month from the first workbook`,
+    metadata: Object.fromEntries(keys.map((k) => [k, metadata[k]])),
+  });
 }
 
 /** The Checkout page for a report card setup. Returns to /thank-you, or to the report when the parent goes back. */

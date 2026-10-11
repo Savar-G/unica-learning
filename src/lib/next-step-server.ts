@@ -6,7 +6,7 @@ import type { CardResult, NextStepError, ReportSrc, WaitlistResult } from "@/lib
 import { REPORT_PLANS, reportPath, type PlanOption } from "@/lib/report-view";
 import { CURRICULA } from "@/lib/signup";
 import type { PlanId } from "@/lib/site";
-import { hasSavedCard, reportCardCustomer, reportCardSetupUrl, stripe, type ReportCardSetup } from "@/lib/stripe";
+import { keepSavedPlan, reportCardCustomer, reportCardSetupUrl, savedCardPlan, stripe, type ReportCardSetup } from "@/lib/stripe";
 import { adminClient } from "@/lib/supabase-auth";
 
 // The report's next step (#66), on the server. The routes pass the signed-in parent from the session cookie, never
@@ -78,9 +78,12 @@ export async function startCard(parentId: string, reportId: string, plan: PlanId
   // saved without a visit to /thank-you is found there, before this click changes the plan.
   if (existing.data?.card_saved_at) return { ok: true, state: "saved", plan: existing.data.plan };
   const s = stripe();
-  if (s && existing.data?.stripe_customer_id && (await savedBefore(s, existing.data.stripe_customer_id))) {
-    await markSaved(admin, existing.data.id);
-    return { ok: true, state: "saved", plan: existing.data.plan };
+  const saved = s && existing.data?.stripe_customer_id ? await savedBefore(s, existing.data.stripe_customer_id) : null;
+  if (s && existing.data?.stripe_customer_id && saved) {
+    // The plan of the setup that succeeded, not the plan of the last click.
+    const savedPlan = await markSaved(admin, existing.data.id, saved.metadata, existing.data.plan);
+    await keepSavedPlan(s, existing.data.stripe_customer_id, saved.metadata).catch((e) => console.error("[next-step] customer plan update failed", e instanceof Error ? e.message : e));
+    return { ok: true, state: "saved", plan: savedPlan };
   }
 
   const { data: row, error }= await admin.from("card_setups")
@@ -136,29 +139,47 @@ export async function startCard(parentId: string, reportId: string, plan: PlanId
 }
 
 /** Asks Stripe whether this customer saved a card before. If Stripe cannot say, the parent goes to Checkout. */
-async function savedBefore(s: NonNullable<ReturnType<typeof stripe>>, customer: string): Promise<boolean> {
+async function savedBefore(s: NonNullable<ReturnType<typeof stripe>>, customer: string) {
   try {
-    return await hasSavedCard(s, customer);
+    return await savedCardPlan(s, customer);
   } catch (e) {
     console.error("[next-step] saved card check failed", e instanceof Error ? e.message : e);
-    return false;
+    return null;
   }
 }
 
-async function markSaved(admin: SupabaseClient, id: string) {
-  const { error } = await admin.from("card_setups").update({ card_saved_at: new Date().toISOString() }).eq("id", id).is("card_saved_at", null);
+/** The plan and price in the metadata of a saved setup, or null when the metadata has no plan from the site. */
+function planOf(metadata: Record<string, string>): { plan: PlanId; price: number } | null {
+  const option = REPORT_PLANS.find((p) => p.plan === metadata.plan);
+  return option ? { plan: option.plan, price: Number(metadata.price) || option.price } : null;
+}
+
+/** Marks the row saved, on the plan the card was saved for. Returns that plan. */
+async function markSaved(admin: SupabaseClient, id: string, metadata: Record<string, string>, fallback: PlanId): Promise<PlanId> {
+  const saved = planOf(metadata);
+  const { error } = await admin.from("card_setups")
+    .update({ card_saved_at: new Date().toISOString(), ...(saved && { plan: saved.plan, price: saved.price }), updated_at: new Date().toISOString() })
+    .eq("id", id).is("card_saved_at", null);
   if (error) console.error("[next-step] card saved mark failed", id, error.message);
+  return saved?.plan ?? fallback;
 }
 
 /**
- * /thank-you confirmed a saved card with Stripe for a Checkout session from the report: marks the child's row, so the
- * report shows the saved card. The ref and the customer must both match the row.
+ * /thank-you confirmed a saved card with Stripe for a Checkout session from the report: marks the child's row on the
+ * plan of that session, so the report shows the saved card. The ref and the customer must both match the row. A click
+ * on another plan in a second tab cannot leave the row or the customer on a plan the card was not saved for.
  */
-export async function recordCardSaved(ref: string, customer: string | null) {
+export async function recordCardSaved(metadata: Record<string, string>, customer: string | null) {
   const admin = adminClient();
+  const ref = metadata.ref ?? "";
   if (!admin || !customer || !/^[0-9a-f-]{36}$/i.test(ref)) return;
-  const { error } = await admin.from("card_setups").update({ card_saved_at: new Date().toISOString() }).eq("id", ref).eq("stripe_customer_id", customer).is("card_saved_at", null);
+  const saved = planOf(metadata);
+  const { error } = await admin.from("card_setups")
+    .update({ card_saved_at: new Date().toISOString(), ...(saved && { plan: saved.plan, price: saved.price }), updated_at: new Date().toISOString() })
+    .eq("id", ref).eq("stripe_customer_id", customer);
   if (error) console.error("[next-step] card saved record failed", ref, error.message);
+  const s = stripe();
+  if (s) await keepSavedPlan(s, customer, metadata).catch((e) => console.error("[next-step] customer plan update failed", e instanceof Error ? e.message : e));
 }
 
 /** A parent outside BC joined the waitlist from the report. One row per child: a second click finds the first. */

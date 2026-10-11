@@ -4,12 +4,12 @@ import { allRight, knowsUpTo, takeTest, type Script } from "@/lib/assessment/scr
 import {
   STATUS_LABEL,
   factsView,
+  helpWarning,
   howWeHelp,
   levelNotes,
   levelSentence,
   metaLine,
   nextStep,
-  nextStepPath,
   reportDate,
   reportPath,
   reportReturnPath,
@@ -66,6 +66,38 @@ describe("notes on how sure the level is", () => {
   });
   it("a child who cleared no level gets an estimate, and is told so", () => {
     expect(levelNotes(view(knowsUpTo(2)))).toEqual(["Maya got under 70% right at every level in this test, so grade 2 is an estimate."]);
+  });
+});
+
+describe("the help warning (#71)", () => {
+  const helped = (v: ReportView, helpWarning = true): ReportView => ({ ...v, model: { ...v.model, helpWarning } });
+
+  it("says the level may be too high and suggests a retake on the day the 30-day wait has ended (#72)", () => {
+    // Finished 12:30 p.m. October 10 in BC; the next test opens 30 days later, at 11:30 a.m. November 9, so the first
+    // whole day it is open is November 10.
+    expect(helpWarning(helped(view(knowsUpTo(4))))).toEqual({
+      title: "This level may be too high",
+      text: "We saw signs in this test that can make a level look higher than it is, such as help with some questions or answers given very quickly.",
+      retake: "For a level you can trust, Maya can take a new test alone, with new questions, from November 10, 2026.",
+    });
+  });
+  it("dates the retake in the family's time zone", () => {
+    // Opens at 07:00 UTC November 10: 2 a.m. that day in Ontario (first whole day November 11), but 11 p.m.
+    // November 9 in BC (first whole day November 10).
+    const v = { ...helped(view(knowsUpTo(4), { province: "ON" })), completedAt: "2026-10-11T07:00:00Z" };
+    expect(helpWarning(v)?.retake).toContain("from November 11, 2026.");
+    expect(helpWarning({ ...v, province: "BC" })?.retake).toContain("from November 10, 2026.");
+  });
+  it("is absent when help is not likely, and in reports stored before #71", () => {
+    expect(helpWarning(helped(view(knowsUpTo(4)), false))).toBeNull();
+    const v = view(knowsUpTo(4));
+    const old: Partial<ReportView["model"]> = { ...v.model };
+    delete old.helpWarning;
+    expect(helpWarning({ ...v, model: old as ReportView["model"] })).toBeNull();
+  });
+  it("never blames the child or the parent", () => {
+    const w = helpWarning(helped(view(knowsUpTo(4))));
+    expect(JSON.stringify(w)).not.toMatch(/cheat|honest|lie|fault|blame/i);
   });
 });
 
@@ -187,10 +219,6 @@ describe("the next step", () => {
 });
 
 describe("the link to the next step (#66)", () => {
-  it("opens the report at the next step, marked as coming from the email", () => {
-    expect(nextStepPath("abc", "plan")).toBe("/account/report/abc?src=email&step=plan#rpt-next");
-    expect(nextStepPath("abc", "waitlist")).toBe("/account/report/abc?src=email&step=waitlist#rpt-next");
-  });
   it("is where a signed-out parent comes back to after sign-in, with the step and the place on the page", () => {
     expect(reportReturnPath("abc", { src: "email", step: "plan" })).toBe("/account/report/abc?src=email&step=plan#rpt-next");
     expect(reportReturnPath("abc", { src: "email", step: null })).toBe("/account/report/abc?src=email");

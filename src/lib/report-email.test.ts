@@ -81,6 +81,18 @@ describe("the report email to the parent", () => {
     expect(email.html).toMatch(/>See Maya&#39;s full report<\/a>/);
     expect(email.text).toContain(`See Maya's full report: ${URL}`);
   });
+  it("carries the help warning and the retake date when help is likely (#71), and never the flags", () => {
+    const v = view(knowsUpTo(3));
+    const warned = reportEmail({ view: { ...v, model: { ...v.model, helpWarning: true } }, parentName: "Priya", url: URL });
+    for (const body of [warned.text, warned.html]) {
+      expect(body).toContain("This level may be too high");
+      expect(body).toContain("from November 10, 2026.");
+      expect(body).not.toMatch(/too-fast|pause-then-perfect|helped/);
+    }
+  });
+  it("has no help warning when help is not likely", () => {
+    for (const body of [email.text, email.html]) expect(body).not.toMatch(/may be too high/);
+  });
   it("escapes names in the HTML (parent email)", () => {
     const html = reportEmail({ view: view(knowsUpTo(3), { name: "Jo & <i>" }), parentName: "<b>A</b>", url: "https://x.test/?a=1&b=2" }).html;
     expect(html).not.toMatch(/<b>A<\/b>|<i>/);
@@ -111,8 +123,29 @@ describe("the alert to Savar for each finished test", () => {
     expect(text).toContain("Flags: none");
     expect(text).toContain(`Report: ${URL}`);
   });
-  it("lists each flag when there are any", () => {
-    expect(alert({ flags: ["rapid-guesses", { kind: "helped", answer: "yes" }] }).text).toContain('Flags: rapid-guesses; {"kind":"helped","answer":"yes"}');
+  it("lists each flag in plain words (#71)", () => {
+    const { text } = alert({
+      flags: [
+        { kind: "helped", answer: "a-little" },
+        { kind: "too-fast", questionIds: ["s1-3", "s1-7", "up-2"], right: 2 },
+        { kind: "pause-then-perfect", questionId: "s1-14", pauseMs: 250_000, rightBefore: 1 },
+      ],
+    });
+    expect(text).toContain(
+      'Flags: child answered "A little" to "Did anyone help?"; 3 answers under 3 seconds, 2 right (s1-3, s1-7, up-2); 4 min 10 s on s1-14, then 4 right in a row after 1 of 4 right before',
+    );
+  });
+  it("gives the child's answer to \"Did anyone help?\", so \"No\" reads apart from a test that never asked", () => {
+    expect(alert({ help: "no" }).text).toContain('Did anyone help?: "No"');
+    expect(alert({ help: "a-little" }).text).toContain('Did anyone help?: "A little"');
+    expect(alert({ help: null }).text).toContain("Did anyone help?: not asked");
+  });
+  it("says whether help is likely, so Savar knows the parent saw the warning", () => {
+    expect(alert().text).toContain("Help likely: no");
+    const v = view(knowsUpTo(3));
+    expect(alert({ view: { ...v, model: { ...v.model, helpWarning: true } }, flags: [{ kind: "helped", answer: "yes" }] }).text).toContain(
+      "Help likely: yes. The report says the level may be too high and suggests a retake.",
+    );
   });
   it("gives the number facts, or none", () => {
     expect(alert().text).toContain("Facts: none");

@@ -30,7 +30,7 @@ export default async function ThankYou({ searchParams }: PageProps<"/thank-you">
         confirmationRef = session.metadata.ref;
         // Stripe's metadata, not the address, decides the path of a confirmed card.
         path = session.metadata.source === REPORT_SOURCE ? "report" : "signup";
-        if (path === "report") await recordCardSaved(session.metadata.ref, typeof session.customer === "string" ? session.customer : null);
+        if (path === "report") await recordCardSaved(session.metadata, typeof session.customer === "string" ? session.customer : null);
       }
     } catch {
       // A failed lookup must not claim that Stripe saved a card.

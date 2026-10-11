@@ -1,6 +1,6 @@
 import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { reportModel, type Placement, type Province, type ReportModel, type WorkReview } from "@/lib/assessment";
+import { reportModel, type HelpAnswer, type Placement, type Province, type ReportModel, type WorkReview } from "@/lib/assessment";
 import { SUPPORT_EMAIL } from "@/lib/contact";
 import { reportAlert, reportEmail, type ParentContact } from "@/lib/report-email";
 import { reportPath, type ReportView } from "@/lib/report-view";
@@ -25,6 +25,8 @@ export interface FinishedAssessment {
   province: Province;
   completed_at: string;
   placement: Placement;
+  /** The child's answer to "Did anyone help?" (#71); null when the test did not ask it. */
+  help: HelpAnswer | null;
 }
 
 /** Reviews of the child's shown work for the report model (spec #54, AI work reviewer). */
@@ -79,7 +81,7 @@ export async function runReportJob(assessmentId: string, origin: string, { revie
     // Another run is sending the parent email right now; it sends the alert too.
     if (parentEmail === "busy") return;
     // The link opens only in the parent's account until the admin area (#77).
-    await alertSavar(admin, report, reportAlert({ view, parent, url, flags: assessment.placement.flags ?? [], completedInGrade, parentEmail }), parent.email);
+    await alertSavar(admin, report, reportAlert({ view, parent, url, flags: assessment.placement.flags ?? [], help: assessment.help, completedInGrade, parentEmail }), parent.email);
   } catch (e) {
     console.error("[report] failed", assessmentId, message(e));
     await send({ to: process.env.SIGNUP_NOTIFY_EMAIL, subject: `Report FAILED for assessment ${assessmentId}`, text: `The report step failed: ${message(e)}\nAssessment id: ${assessmentId}` });
@@ -88,7 +90,7 @@ export async function runReportJob(assessmentId: string, origin: string, { revie
 
 async function loadFinished(admin: SupabaseClient, id: string): Promise<FinishedAssessment | null> {
   const { data, error } = await admin.from("assessments")
-    .select("id, parent_id, child_id, status, grade, province, completed_at, placement")
+    .select("id, parent_id, child_id, status, grade, province, completed_at, placement, help")
     .eq("id", id).maybeSingle<FinishedAssessment & { status: string }>();
   if (error) throw new Error(`assessment load: ${error.message}`);
   if (!data || data.status !== "completed" || !data.placement) {
