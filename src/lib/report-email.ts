@@ -87,12 +87,12 @@ function rulerHtml(v: ReportView): string {
     ].filter(Boolean).join(";");
     const fill = level === working ? `background:${VERDICT_COLOUR[verdict]};font-weight:600;color:${INK};` : `color:${level === grade ? INK : "#6b6b74"};`;
     const ring = level === grade ? `border:2px dashed ${INK};` : "border:2px solid transparent;";
-    return `<td align="center" width="11%" style="${cell}"><span style="display:inline-block;width:28px;height:28px;line-height:28px;border-radius:50%;${fill}${ring}font-size:15px">${label}</span></td>`;
+    return `<td align="center" width="11%" style="${cell}"><span style="display:inline-block;width:24px;height:24px;line-height:24px;border-radius:50%;${fill}${ring}font-size:14px">${label}</span></td>`;
   });
   return `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#ffffff" style="background:#ffffff;border-radius:10px">
 <tr><td style="padding:8px 6px"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="table-layout:fixed"><tr>${cells.join("")}</tr></table></td></tr>
 </table>
-<p style="margin:10px 0 0;font-family:${MONO};font-size:12px;line-height:1.5;color:${INK}"><span style="color:${VERDICT_COLOUR[verdict]}">&#9679;</span>&nbsp;Working level: ${esc(levelName(working))} &nbsp;&nbsp; <span>&#9676;</span>&nbsp;School grade: ${esc(levelName(grade))}</p>`;
+<p style="margin:10px 0 0;font-family:${MONO};font-size:12px;line-height:1.5;color:${INK}"><span style="white-space:nowrap"><span style="color:${VERDICT_COLOUR[verdict]}">&#9679;</span>&nbsp;Working level: ${esc(levelName(working))}</span> &nbsp;&nbsp; <span style="white-space:nowrap">&#9676;&nbsp;School grade: ${esc(levelName(grade))}</span></p>`;
 }
 
 /**

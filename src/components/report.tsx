@@ -1,5 +1,7 @@
-// The parent's report (#65): plain sections in the order of the chosen design (D-087, "Report card + ruler"), so the
-// report design ticket (#80) can restyle them one at a time. A server component: it needs no JavaScript in the browser.
+// The parent's report (#65), in the chosen design (D-087, option A3 "Report card + ruler", #80): a report card across
+// the nav width; the header table; the level and the verdict in a grainy colour band with the big K-8 ruler; the
+// context (FSA line, comparison, help warning); then rows with the title on the left and the content on the right.
+// A server component: only the next step needs JavaScript in the browser (report-next.tsx).
 // The words come from src/lib/report-view.ts, which the report email uses too.
 import type { CSSProperties, ReactNode } from "react";
 import { STRAND_DEVELOPING_PERCENT, STRAND_SECURE_PERCENT } from "@/lib/assessment";
@@ -8,6 +10,7 @@ import { BRAND } from "@/lib/site";
 import type { ReportSrc } from "@/lib/next-step";
 import { ReportNextActions, type NextStepStart } from "@/components/report-next";
 import {
+  AREA_NOTE,
   NEXT_STEP_ANCHOR,
   STATUS_LABEL,
   factsView,
@@ -24,6 +27,7 @@ import {
   thresholdsLine,
   verdictSentence,
   workResult,
+  type FactsMeasure,
   type ReportView,
 } from "@/lib/report-view";
 import "./report.css";
@@ -78,27 +82,37 @@ function ReportHeader({ view }: { view: ReportView }) {
 
 const LEVELS = [0, 1, 2, 3, 4, 5, 6, 7, 8] as const;
 
-/** The K-8 scale: the working level filled in the verdict colour, the school grade in a dashed ring, the gap tinted. */
+/**
+ * The big K-8 ruler: the working level a filled circle in the verdict colour, the school grade a dashed ring, and the
+ * span between them tinted. The circles sit behind the numbers, so each number stays readable.
+ */
 function LevelScale({ view }: { view: ReportView }) {
   const { working, grade } = view.model.level;
   const [lo, hi] = [Math.min(working, grade), Math.max(working, grade)];
+  const at = { "--work": working, "--grade": grade, "--lo": lo, "--hi": hi } as CSSProperties;
   return (
-    <>
+    <div className="rpt-scale">
       <div className="rpt-ruler" role="img" aria-label={`Scale from kindergarten to grade 8. Working level: ${levelName(working)}. School grade: ${levelName(grade)}.`}>
-        {LEVELS.map((l) => {
-          const cls = ["rpt-tick", lo !== hi && l >= lo && l <= hi && "is-span", l === lo && "is-lo", l === hi && "is-hi", l === working && "is-work", l === grade && "is-grade"];
-          return <span key={l} className={cls.filter(Boolean).join(" ")}><span>{l === 0 ? "K" : l}</span></span>;
-        })}
+        <div className="rpt-ruler-track" style={at}>
+          {lo !== hi && <span className="rpt-ruler-gap" />}
+          <span className="rpt-pin is-work" />
+          <span className="rpt-pin is-grade" />
+          {LEVELS.map((l) => {
+            const cls = ["rpt-tick", lo !== hi && l > lo && l <= hi && "is-inside", l === working && "is-work", l === grade && "is-grade"];
+            return <span key={l} className={cls.filter(Boolean).join(" ")}>{l === 0 ? "K" : l}</span>;
+          })}
+        </div>
       </div>
       <p className="rpt-legend">
-        <span><i className="rpt-key is-work" aria-hidden="true" />Working level: {levelName(working)}</span>
-        <span><i className="rpt-key is-grade" aria-hidden="true" />School grade: {levelName(grade)}</span>
+        <span className="is-work">Working level: {levelName(working)}</span>
+        <span className="is-grade">School grade: {levelName(grade)}</span>
       </p>
-    </>
+    </div>
   );
 }
 
-// #68: the paragraph the AI wrote from the report follows the level, when there is one; else the plain sentences stand.
+// The level and the verdict in the grainy colour band with the ruler (D-087). #68: the paragraph the AI wrote from the
+// report follows, when there is one; else the plain sentences stand.
 function ReportOverall({ view }: { view: ReportView }) {
   const summary = summaryText(view);
   return (
@@ -113,53 +127,65 @@ function ReportOverall({ view }: { view: ReportView }) {
   );
 }
 
-// The comparison among Unica children (bands with n from 100 tests per grade, a percentile with n from 400, D-084)
-// shows nothing yet: decision of 2026-10-11 on #65, until a ticket decides how a child is ranked. The model keeps the
-// stage. Below 100 tests per grade the scale above is the whole comparison. The help warning (#71) comes after it.
+// Below the band, side by side: the FSA line (BC, grades 4 and 7), the comparison for the data stage, and the help
+// warning (#71). The comparison among Unica children (bands with n from 100 tests per grade, a percentile with n from
+// 400, D-084) shows nothing yet: decision of 2026-10-11 on #65; #101 decides how a child is ranked and fills the slot
+// below. Below 100 tests per grade the ruler above is the whole comparison.
 function ReportContext({ view }: { view: ReportView }) {
   const { fsa } = view.model;
   const warning = helpWarning(view);
   if (!fsa && !warning) return null;
   return (
-    <>
+    <div className="rpt-context">
       {fsa && (
-        <aside className="rpt-context" aria-label="For context">
+        <aside className="rpt-fsa" aria-label="For context">
           <p className="rpt-k">For context</p>
           <p>{fsa.text}</p>
           <p className="rpt-source">Source: <a href={fsa.source.url} target="_blank" rel="noopener noreferrer">{fsa.source.name}</a></p>
         </aside>
       )}
+      {/* #101: the comparison for the data stage (view.model.comparison) goes here, beside the FSA line. */}
       {warning && (
-        <aside className="rpt-context rpt-help-warning" aria-labelledby="rpt-help-warning">
+        <aside className="rpt-help-warning" aria-labelledby="rpt-help-warning">
           <h2 id="rpt-help-warning">{warning.title}</h2>
           <p>{warning.text}</p>
           <p>{warning.retake}</p>
         </aside>
       )}
-    </>
+    </div>
   );
 }
 
-const ZONES = { "--dev": `${STRAND_DEVELOPING_PERCENT}%`, "--sec": `${STRAND_SECURE_PERCENT}%` };
+/** The meter's zones, in proportion to the thresholds: Needs attention, Developing, Secure. */
+const ZONES = {
+  gridTemplateColumns: `${STRAND_DEVELOPING_PERCENT}fr ${STRAND_SECURE_PERCENT - STRAND_DEVELOPING_PERCENT}fr ${100 - STRAND_SECURE_PERCENT}fr`,
+};
 
 function ReportAreas({ view }: { view: ReportView }) {
   return (
     <Row id="rpt-areas" title="By area" note="The marker shows the share right. The zones show where Developing and Secure start.">
       <table className="rpt-areas">
         <thead>
-          <tr><th scope="col">Area</th><th scope="col" className="rpt-m">Share right</th><th scope="col">Result</th><th scope="col">Questions right</th></tr>
+          <tr><th scope="col">Area</th><th scope="col" className="rpt-m">Share right</th><th scope="col">Result</th><th scope="col" className="rpt-count">Questions right</th></tr>
         </thead>
         <tbody>
           {view.model.strands.map((s) => (
             <tr key={s.strand}>
-              <th scope="row">{s.name}</th>
-              <td className="rpt-m"><span className="rpt-meter" style={{ ...ZONES, "--at": `${sharePercent(s)}%` } as CSSProperties} aria-hidden="true" /></td>
+              <th scope="row">{s.name}<span>{AREA_NOTE[s.strand]}</span></th>
+              <td className="rpt-m">
+                <span className="rpt-meter" style={{ ...ZONES, "--at": `${sharePercent(s)}%` } as CSSProperties} aria-hidden="true"><i /><i /><i /></span>
+              </td>
               <td><span className={`rpt-chip is-${s.status}`}>{STATUS_LABEL[s.status]}</span></td>
               <td className="rpt-count">{s.correct} of {s.total}</td>
             </tr>
           ))}
         </tbody>
       </table>
+      <p className="rpt-zones" aria-hidden="true">
+        <span className="is-needs-attention">{STATUS_LABEL["needs-attention"]}</span>
+        <span className="is-developing">{STATUS_LABEL.developing}</span>
+        <span className="is-secure">{STATUS_LABEL.secure}</span>
+      </p>
       <p className="rpt-small">{thresholdsLine(view)}</p>
     </Row>
   );
@@ -167,6 +193,17 @@ function ReportAreas({ view }: { view: ReportView }) {
 
 /** Needs practice in sunflower, like Developing; never the tangerine of Needs attention. */
 const factsChip = (label: string) => `rpt-chip ${label === "Needs practice" ? "is-developing" : "is-secure"}`;
+
+function FactsCard({ title, measure }: { title: string; measure: FactsMeasure }) {
+  return (
+    <div>
+      <p className="rpt-k">{title}</p>
+      <p className="rpt-nf-v">{measure.big}</p>
+      <p className="rpt-nf-d">{measure.detail}</p>
+      <span className={factsChip(measure.label)}>{measure.label}</span>
+    </div>
+  );
+}
 
 // Number facts (#70): accuracy beside speed, never speed alone. Nothing when the child had no facts section.
 function ReportNumberFacts({ view }: { view: ReportView }) {
@@ -176,19 +213,11 @@ function ReportNumberFacts({ view }: { view: ReportView }) {
     <Row id="rpt-facts-title" title="Number facts" note={facts.round}>
       {facts.accuracy && facts.speed && (
         <div className="rpt-nf">
-          <div>
-            <p className="rpt-k">Accuracy</p>
-            <p className="rpt-nf-v">{facts.accuracy.value}</p>
-            <span className={factsChip(facts.accuracy.label)}>{facts.accuracy.label}</span>
-          </div>
-          <div>
-            <p className="rpt-k">Speed</p>
-            <p className="rpt-nf-v">{facts.speed.value}</p>
-            <span className={factsChip(facts.speed.label)}>{facts.speed.label}</span>
-          </div>
+          <FactsCard title="Accuracy" measure={facts.accuracy} />
+          <FactsCard title="Speed" measure={facts.speed} />
         </div>
       )}
-      {facts.note && <p>{facts.note}</p>}
+      {facts.note && <p className="rpt-nf-note">{facts.note}</p>}
       <p className="rpt-small">{facts.scope} {facts.thresholds}</p>
     </Row>
   );
@@ -209,6 +238,7 @@ function ReportWork({ view }: { view: ReportView }) {
           return (
             <li key={w.questionId}>
               <figure>
+                <p className="rpt-work-q">{w.prompt}</p>
                 <div className="rpt-work-board">
                   {/* A private, short-lived URL: not for the image optimizer, which would cache it. */}
                   {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -217,8 +247,7 @@ function ReportWork({ view }: { view: ReportView }) {
                   {w.text && <p className="rpt-work-text"><span className="sr-only">Typed working: </span>{w.text}</p>}
                 </div>
                 <figcaption>
-                  <p className="rpt-work-q">{w.prompt}</p>
-                  <span className={`rpt-chip ${w.correct ? "is-secure" : "is-plain"}`}>{workResult(w.correct)}</span>
+                  <p className={`rpt-work-a ${w.correct ? "is-right" : "is-wrong"}`}>{workResult(w.correct)}</p>
                   {w.comment && <p className="rpt-work-comment">{w.comment}</p>}
                 </figcaption>
               </figure>
@@ -235,7 +264,7 @@ function ReportHelp({ view }: { view: ReportView }) {
   return (
     <Row id="rpt-help" title="How we help">
       <h3>{help.title}</h3>
-      <p>{help.text}</p>
+      <p className="rpt-help-text">{help.text}</p>
     </Row>
   );
 }
@@ -248,7 +277,8 @@ export interface ReportNextContext {
   start: NextStepStart;
 }
 
-// The plan choice (BC) or the one-click waitlist (#66). The buttons need the browser; the words come from nextStep.
+// The plan choice (BC) or the one-click waitlist (#66), on a colour field. The buttons need the browser; the words
+// come from nextStep.
 function ReportNextStep({ view, next }: { view: ReportView; next: ReportNextContext }) {
   const step = nextStep(view);
   return (
