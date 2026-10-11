@@ -11,6 +11,7 @@ import { adminClient } from "@/lib/supabase-auth";
 import { aiReport, aiReviewer, type AiOutcome, type WorkReviewer } from "@/lib/work-review";
 import { reviewPieces, reviewStore } from "@/lib/work-review-store";
 import { loadShownWork } from "@/lib/work-store";
+import { loadComparisonInput } from "@/lib/comparison-store";
 
 // The report step after a test finishes (#65). The finish route runs it with after(), so it never blocks or fails the
 // finish response. In order:
@@ -63,8 +64,7 @@ export async function runReportJob(assessmentId: string, origin: string, { revie
   try {
     const assessment = await loadFinished(admin, assessmentId);
     if (!assessment) return;
-    const completedInGrade = await countCompleted(admin, assessment.grade);
-    const { report, ai } = await storeReport(admin, assessment, completedInGrade, reviewer === undefined ? aiReviewer() : reviewer);
+    const { report, ai } = await storeReport(admin, assessment, reviewer === undefined ? aiReviewer() : reviewer);
 
     const [{ data: parent, error: parentError }, { data: child, error: childError }] = await Promise.all([
       admin.from("parents").select("name, email").eq("id", assessment.parent_id).maybeSingle<ParentContact>(),
@@ -86,7 +86,7 @@ export async function runReportJob(assessmentId: string, origin: string, { revie
     const parentEmail = await emailParent(admin, report, view, { ...parent, id: assessment.parent_id }, `${url}?src=email`);
     // Another run is sending the parent email right now; it sends the alert too.
     if (parentEmail === "busy") return;
-    await alertSavar(admin, report, reportAlert({ view, parent, url: `${origin}${adminTestPath(assessment.id)}`, flags: assessment.placement.flags ?? [], help: assessment.help, completedInGrade, parentEmail, ai }), parent.email);
+    await alertSavar(admin, report, reportAlert({ view, parent, url: `${origin}${adminTestPath(assessment.id)}`, flags: assessment.placement.flags ?? [], help: assessment.help, parentEmail, ai }), parent.email);
   } catch (e) {
     console.error("[report] failed", assessmentId, message(e));
     await send({ to: process.env.SIGNUP_NOTIFY_EMAIL, subject: `Report FAILED for assessment ${assessmentId}`, text: `The report step failed: ${message(e)}\nAssessment id: ${assessmentId}` });
@@ -105,13 +105,6 @@ async function loadFinished(admin: SupabaseClient, id: string): Promise<Finished
   return data;
 }
 
-/** Completed tests in this school grade: the comparison stage comes from this count (D-084). */
-async function countCompleted(admin: SupabaseClient, grade: number): Promise<number> {
-  const { count, error } = await admin.from("assessments").select("id", { count: "exact", head: true }).eq("status", "completed").eq("grade", grade);
-  if (error) throw new Error(`count: ${error.message}`);
-  return count ?? 0;
-}
-
 /**
  * The stored report for the assessment, built now if there is none yet. `ai` says what the AI step did; absent when an
  * earlier run built the report.
@@ -119,12 +112,13 @@ async function countCompleted(admin: SupabaseClient, grade: number): Promise<num
 async function storeReport(
   admin: SupabaseClient,
   a: FinishedAssessment,
-  completedInGrade: number,
   reviewer: WorkReviewer | null,
 ): Promise<{ report: StoredReport; ai?: AiOutcome }> {
   const existing = await admin.from("reports").select(REPORT_COLUMNS).eq("assessment_id", a.id).maybeSingle<StoredReport>();
   if (existing.error) throw new Error(`report load: ${existing.error.message}`);
   if (existing.data) return { report: existing.data };
+
+  const comparison = await loadComparisonInput(admin, a.id);
 
   // #67: the child's whiteboard work; the model picks what the report shows. #68: the AI reviews it first, when on.
   const shownWork = await loadShownWork(admin, a.id);
@@ -132,7 +126,7 @@ async function storeReport(
     reviewer,
     pieces: () => reviewPieces(admin, a.id, shownWork),
     store: reviewStore(admin, a),
-    build: (workReviews, reportText) => reportModel(a.placement, { completedTestsInGrade: completedInGrade, workReviews, shownWork, reportText }),
+    build: (workReviews, reportText) => reportModel(a.placement, { comparison, workReviews, shownWork, reportText }),
   });
   const { data: answers, error: answersError } = await admin.from("answers").select("time_ms").eq("assessment_id", a.id).returns<{ time_ms: number }[]>();
   if (answersError) throw new Error(`answers load: ${answersError.message}`);
