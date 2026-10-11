@@ -54,25 +54,39 @@ async function inChunks<T>(ids: readonly string[], read: (chunk: string[]) => Pr
   return out;
 }
 
+/** Supabase returns at most this many rows to one request. */
+const PAGE = 1000;
+
+/** Every row of a query, page by page, so a long list is never cut short without an error. */
+async function allRows<T>(page: (from: number, to: number) => PromiseLike<{ data: T[] | null; error: { message: string } | null }>): Promise<T[]> {
+  const out: T[] = [];
+  for (let from = 0; ; from += PAGE) {
+    const { data, error } = await page(from, from + PAGE - 1);
+    if (error) throw new Error(`reminder load: ${error.message}`);
+    out.push(...(data ?? []));
+    if ((data?.length ?? 0) < PAGE) return out;
+  }
+}
+
 type TestRow = AttemptRow & { child_id: string; grade: number };
 type LogRow = { id: string; kind: LogEntry["kind"]; parent_id: string; child_id: string | null; assessment_id: string | null; status: LogEntry["status"]; attempts: number };
 
 export function reminderStore(admin: SupabaseClient): ReminderStore<LoadedState> {
   return {
     async load(now) {
-      // Children who could be due: those with a test in progress or one that ran out of time lately, and those added
-      // inside the start window.
-      const [{ data: open, error: openError }, { data: fresh, error: freshError }] = await Promise.all([
-        admin.from("assessments").select("child_id")
-          .or(`status.eq.in_progress,and(status.eq.expired,resume_until.gte."${iso(now - LATE_LIMIT_MS - SLACK_MS)}")`)
-          .returns<{ child_id: string }[]>(),
-        admin.from("children").select("id")
+      // Children who could be due: those with an unfinished test whose deadline is ahead or ended inside the late limit
+      // ("continue" needs an open test, "come back" one at most LATE_LIMIT_MS past its deadline), and those added inside
+      // the start window. A test left in progress for good is not read again once it is past every rule.
+      const [open, fresh] = await Promise.all([
+        allRows((from, to) => admin.from("assessments").select("child_id")
+          .in("status", ["in_progress", "expired"]).gte("resume_until", iso(now - LATE_LIMIT_MS - SLACK_MS))
+          .order("id").range(from, to).returns<{ child_id: string }[]>()),
+        allRows((from, to) => admin.from("children").select("id")
           .lte("created_at", iso(now - START_AFTER_MS + SLACK_MS))
           .gte("created_at", iso(now - START_AFTER_MS - LATE_LIMIT_MS - SLACK_MS))
-          .returns<{ id: string }[]>(),
+          .order("id").range(from, to).returns<{ id: string }[]>()),
       ]);
-      if (openError || freshError) throw new Error(`reminder load: ${openError?.message ?? freshError?.message}`);
-      const childIds = [...new Set([...(open ?? []).map((r) => r.child_id), ...(fresh ?? []).map((r) => r.id)])];
+      const childIds = [...new Set([...open.map((r) => r.child_id), ...fresh.map((r) => r.id)])];
 
       // Every test of those children: the start screen's rules read all of them.
       const [childRows, testRows] = await Promise.all([
