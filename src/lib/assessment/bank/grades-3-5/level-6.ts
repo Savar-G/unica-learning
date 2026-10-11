@@ -132,7 +132,7 @@ export const LEVEL_6: readonly TaggedTemplate[] = [
     } as const;
     const [prompt, right, mistake] = versions[task as keyof typeof versions];
     return { values: { k, b, n }, prompt, readAloud: prompt.replaceAll("×", "times").replaceAll("+", "plus").replaceAll(" n ", " the number "), answer: String(right),
-      wrong: typedWrong(right, [[mistake, task === "step" ? "rule-swap" : task === "difference" ? "ignores-given" : "A5"], [right + k, "next-not-asked"]]) };
+      wrong: typedWrong(right, [[mistake, task === "step" ? "rule-swap" : task === "difference" ? "ignores-given" : "A5"], [right + k, task === "step" || task === "difference" ? "pattern-step-count" : "next-not-asked"]]) };
   })),
   ...["add", "subtract", "multiply", "divide", "subtrahend", "divisor"].map((op) => template(`equation-${op}`, "A", "6.10", (rng) => {
     const x = rng.int(30, 89), k = rng.int(4, 9);

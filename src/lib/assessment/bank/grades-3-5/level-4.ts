@@ -362,7 +362,7 @@ export const LEVEL_4: readonly TaggedTemplate[] = [
       const spoken = task === "region" ? prompt : task === "left" ? `${sayFrac(n, 10)} of a strip is shaded. Which decimal names the part not shaded?`
         : task === "value" ? `What is the value of the ${n} in ${whole} and ${sayFrac(n, 10)}?`
         : `Which fraction is equal to ${whole} and ${sayFrac(n, 10)}, minus ${whole}?`;
-      const candidates = task === "fraction" ? [wrong(frac(n, 100), "decimal-point"), wrong(frac(whole, n), "F7"), wrong(frac(n * 10, 10), "decimal-point")]
+      const candidates = task === "fraction" ? [wrong(frac(n, 100), "decimal-point"), wrong(frac(10, n), "fraction-flip"), wrong(frac(n * 10, 10), "decimal-point")]
         : task === "left" ? [wrong(dec(n, 1), "fraction-other-part"), wrong(dec(10 - n, 2), "decimal-point"), wrong(String(10 - n), "decimal-point")]
         : [wrong(dec(n, 2), "decimal-point"), wrong(String(n), "N2"), wrong(dec(10 - n, 1), "fraction-other-part")];
       return { values: { n, whole }, prompt, readAloud: spoken, answer: right, wrong: candidates };
@@ -472,7 +472,7 @@ export const LEVEL_4: readonly TaggedTemplate[] = [
         prompt: `Which fraction is the same as 0.${n}?`,
         readAloud: `Which fraction is the same as 0.${n}?`,
         answer: frac(n, 10),
-        wrong: [wrong(frac(n, 100), "decimal-point"), wrong(frac(1, n), "F7"), wrong(frac(n * 10, 10), "decimal-point")],
+        wrong: [wrong(frac(n, 100), "decimal-point"), wrong(frac(1, n), "decimal-unit-part"), wrong(frac(n * 10, 10), "decimal-point")],
       };
     },
   },

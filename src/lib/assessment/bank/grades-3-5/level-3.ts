@@ -369,7 +369,7 @@ export const LEVEL_3: readonly TaggedTemplate[] = [
       const name = rng.pick(NAMES);
       const { v: [rows, each, n], answer, wrong: w } = drawChoices(
         rng,
-        (r) => { const rows = r.int(2, 3), each = r.int(3, 5); return [rows, each, r.int(2, rows * each - 2)] as const; },
+        (r) => { const [rows, each] = r.pick([[2, 3], [2, 4], [2, 5], [3, 2]] as const); return [rows, each, r.int(2, rows * each - 2)] as const; },
         ([rows, each, n]) => ({
           answer: frac(n, rows * each),
           candidates: [

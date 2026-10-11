@@ -10,7 +10,7 @@ npm run check:templates -- --provider codex --band 3-5 --context scripts/templat
 npm run check:templates -- --provider codex --band 1-2 --context scripts/template-check/curriculum-notes.md
 ```
 
-Codex defaults to `gpt-6.1-sol` with `medium` effort. Change these with `--model` and `--effort`. The process removes secret-like environment variables. It runs in an empty temporary directory, with a read-only sandbox, no shell tool and strict JSON output. It removes the temporary directory after each call.
+Codex defaults to `gpt-6.1-sol` with `medium` effort. Change these with `--model` and `--effort`. The process requires a ChatGPT login before each batch. It removes secret-like environment variables. It runs in an empty temporary directory, with a read-only sandbox, no shell tool and strict JSON output. It removes the temporary directory after each call.
 
 Each batch samples eight distinct questions from 300 seeds. It sends the public template tags, generated answers, coded wrong choices, actual figure data, ordered choice speech and curriculum notes. No child data is sent. The model check is a sample review. The public assessment tests cover more seeds and adaptive routes.
 

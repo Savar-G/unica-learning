@@ -10,6 +10,7 @@ export interface Misconception {
 }
 
 export const MISCONCEPTIONS = {
+  "decimal-unit-part": { description: "Uses the decimal digit as the denominator of a unit fraction", evidence: "none" },
   "order-adjacent": { description: "Swaps two adjacent numbers in an otherwise ordered list", evidence: "none" },
   "remainder-zero": { description: "Treats division as exact and reports no remainder", evidence: "none" },
   "benchmark-zero": { description: "Treats every proper fraction as close to zero", evidence: "none" },
@@ -98,7 +99,7 @@ export const MISCONCEPTIONS = {
   "ignores-given": { description: "Leaves out one of the facts given in a word problem", evidence: "none" },
   "distribute-one": { description: "Splits a number to multiply, then multiplies only one of its parts", evidence: "none" },
   "benchmark-size": { description: "Judges the size of a fraction by its top or bottom number alone, not by comparing the two", evidence: "none" },
-  "area-perimeter-linked": { description: "Thinks shapes with the same area must have the same perimeter, or the reverse", evidence: "none" },
+  "area-perimeter-link": { description: "Thinks shapes with the same area must have the same perimeter, or the reverse", evidence: "none" },
   "transformation-name": { description: "Mixes up slides, flips and turns", evidence: "none" },
   "reflection-distance": { description: "Puts a reflection at the wrong distance from the mirror line, or on the same side", evidence: "none" },
   "mixed-denominator": { description: "Puts the wrong number in a mixed number: the quotient or the dividend as the denominator, or the quotient and remainder swapped", evidence: "none" },

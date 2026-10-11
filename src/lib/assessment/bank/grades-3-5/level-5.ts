@@ -231,7 +231,7 @@ export const LEVEL_5: readonly TaggedTemplate[] = [
     const a = rng.int(6, 14), b = rng.int(3, 5), right = (a - 1) * (b + 1);
     return { values: { a, b }, prompt: `A rectangle is ${a} cm by ${b} cm. A second rectangle has the same perimeter and is ${a - 1} cm long. What is the second rectangle's area in square centimetres?`,
       readAloud: `A rectangle is ${a} centimetres by ${b} centimetres. A second rectangle has the same perimeter and is ${a - 1} centimetres long. What is the second rectangle's area in square centimetres?`, answer: String(right),
-      wrong: typedWrong(right, [[a * b, "area-perimeter-linked"], [2 * (a + b), "M2"]]) };
+      wrong: typedWrong(right, [[a * b, "area-perimeter-link"], [2 * (a + b), "M2"]]) };
   }, "number", { ON: 4 }),
   template("duration", "MG", "5.14", (rng) => {
     const hour = rng.int(1, 8), start = rng.int(35, 55), end = rng.int(5, 25), right = 60 - start + end;

@@ -33,8 +33,8 @@ const NOT_SPOKEN = /[=+−×÷●■▲★◆▼▬▮$%/<>]|\s\?|\d:\d/;
 // Unit abbreviations a voice spells out letter by letter.
 const ABBREVIATION = /\b(cm|mm|km|kg|mL)\b|\d ?(m|g|L)\b/;
 // Choice templates where the choices are part of the question itself, so the read-aloud text names them: the
-// benchmarks a fraction is close to, and the colours a spinner or bag holds.
-const NAMES_CHOICES = new Set(["g35-3-most-least-likely", "g35-4-benchmark"]);
+// colours a spinner or bag holds.
+const NAMES_CHOICES = new Set(["g35-3-most-least-likely"]);
 
 /** How many questions of each reported strand a stage has. */
 const strandCounts = (qs: readonly Question[]) => {
@@ -295,7 +295,11 @@ describe("the grades 3-5 bank", () => {
         expect(text, `seed ${seed}`).not.toMatch(/undefined|NaN|Infinity|null|\[object/);
         expect(q.readAloud.length, `seed ${seed}`).toBeGreaterThan(0);
         expect(q.wrong.length, `seed ${seed}`).toBeGreaterThan(0);
-        for (const w of q.wrong) expect(MISCONCEPTIONS[w.misconception], `seed ${seed}: ${w.misconception}`).toBeDefined();
+        for (const w of q.wrong) {
+          expect(MISCONCEPTIONS[w.misconception], `seed ${seed}: ${w.misconception}`).toBeDefined();
+          // The answers table stores misconception codes with a 20-character limit.
+          expect(w.misconception.length, `seed ${seed}: ${w.misconception}`).toBeLessThanOrEqual(20);
+        }
         // A sum or an equation never breaks across lines on screen.
         for (const shown of [q.prompt, ...(q.choices ?? [])]) expect(shown, `seed ${seed}`).not.toMatch(/ [+−×÷=]|[+−×÷=] /);
 
@@ -328,7 +332,11 @@ describe("the grades 3-5 bank", () => {
       for (const seed of SEEDS.slice(0, 150)) {
         const q = fillTemplate(template, seed);
         const spoken = q.readAloud.toLowerCase();
-        const named = q.choices!.filter((c) => spoken.includes(c.replace(/\u00a0/g, " ").toLowerCase()));
+        const named = q.choices!.filter((c) => {
+          const label = c.replace(/\u00a0/g, " ").toLowerCase();
+          const escaped = label.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+          return new RegExp(`(?<![a-z0-9])${escaped}(?![a-z0-9])`).test(spoken);
+        });
         expect(named.length, `seed ${seed}: ${named}`).toBeLessThan(2);
       }
     });

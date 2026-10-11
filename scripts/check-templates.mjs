@@ -265,6 +265,10 @@ function callCodex(prompt, opts) {
     for (const key of Object.keys(env)) {
       if (/KEY|TOKEN|SECRET|PASSWORD/i.test(key)) delete env[key];
     }
+    const login = spawnSync("codex", ["login", "status"], { cwd, env, encoding: "utf8", timeout: 30_000 });
+    if (login.error || login.status !== 0 || !/Logged in using ChatGPT/i.test(`${login.stdout ?? ""} ${login.stderr ?? ""}`)) {
+      return { error: "codex did not run: the checker requires a ChatGPT subscription login. Run codex login." };
+    }
     const args = ["exec", "--ignore-user-config", "--ephemeral", "--skip-git-repo-check", "--sandbox", "read-only",
       "--model", opts.model, "-c", `model_reasoning_effort="${opts.effort}"`, "-c", "features.shell_tool=false",
       "--output-schema", schemaFile, "--output-last-message", answerFile, "-"];
@@ -318,7 +322,7 @@ function saveResults(results) {
 }
 
 // Existing default-provider cache behavior is unchanged. Early Codex records used medium effort only.
-const isCurrent = (r, hash, opts) => r && r.hash === hash && (opts.provider !== "codex" || (r.model === opts.model && (r.effort ?? "medium") === opts.effort));
+const isCurrent = (r, hash, opts) => r && r.hash === hash && (opts.provider !== "codex" || ((r.provider === undefined || r.provider === "codex") && r.model === opts.model && (r.effort ?? "medium") === opts.effort));
 
 function writeReport(results, current, opts) {
   const rows = current.map(({ template, hash }) => {
