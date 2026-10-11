@@ -1,10 +1,12 @@
 // The report emails (#65): the report to the parent, and an alert to Savar for each finished test.
 // Plain until the report design (#80, D-087) restyles them. The parent email says what the report page says
 // (src/lib/report-view.ts). Pure: the background job (src/lib/report-job.ts) sends them through Resend.
+import { PAUSE_WINDOW, TOO_FAST_MS, type Flag, type HelpAnswer } from "@/lib/assessment";
 import { BUSINESS_NAME } from "@/lib/contact";
 import {
   STATUS_LABEL,
   factsView,
+  helpWarning,
   howWeHelp,
   levelName,
   levelNotes,
@@ -32,6 +34,8 @@ const INK_2 = "#44444c";
 const LINE = "#e4e4e7";
 const CARD = "#f5f4f2";
 const BUTTON = "#2b2622";
+/** Sunflower: the help warning (#71), a caution, never the tangerine of "behind". */
+const SUNFLOWER = "#ffc93c";
 /** The working level's marker: behind tangerine, on grade leaf, ahead sky (DESIGN.md, report). */
 const VERDICT_COLOUR = { behind: "#ff6a3d", "on-grade": "#2fb37a", ahead: "#5b8def" } as const;
 /** Status chips: leaf, sunflower and tangerine, each mixed 22% with white. */
@@ -70,6 +74,7 @@ export function reportEmail({ view: v, parentName, url }: { view: ReportView; pa
   const fsa = v.model.fsa;
   const facts = factsView(v);
   const help = howWeHelp(v);
+  const warning = helpWarning(v);
   const step = nextStep(v);
   const areas = v.model.strands.map((s) => `${s.name}: ${STATUS_LABEL[s.status]}, ${s.correct} of ${s.total} right`);
   const footer = `You get this email because you asked for ${name}'s free math placement report. Questions? Reply to this email.`;
@@ -79,6 +84,7 @@ export function reportEmail({ view: v, parentName, url }: { view: ReportView; pa
     intro,
     [levelSentence(v), verdictSentence(v), ...notes].join("\n"),
     ...(fsa ? [`For context: ${fsa.text}\nSource: ${fsa.source.name}, ${fsa.source.url}`] : []),
+    ...(warning ? [`${warning.title}\n${warning.text}\n${warning.retake}`] : []),
     ["By area", ...areas, thresholdsLine(v)].join("\n"),
     ...(facts ? [[`Number facts: ${factsLine(facts)}`, ...(facts.accuracy && facts.note ? [facts.note] : []), `${facts.scope} ${facts.round}`].join("\n")] : []),
     `How we help: ${help.title}\n${help.text}`,
@@ -115,6 +121,13 @@ ${notes.map((n) => p(esc(n), `margin:12px 0 0;font-size:14px;color:${INK_2}`)).j
 ${fsa ? p(`For context: ${esc(fsa.text)}<br><a href="${esc(fsa.source.url)}" style="color:${INK_2}">Source: ${esc(fsa.source.name)}</a>`, `margin:14px 0 0;font-size:14px;color:${INK_2}`) : ""}
 </div>
 </td></tr>
+${warning ? `<tr><td style="padding:16px 24px 0">
+<div style="border-left:3px solid ${SUNFLOWER};background:${CARD};border-radius:0 6px 6px 0;padding:14px 18px">
+<p style="margin:0 0 6px;font-weight:600">${esc(warning.title)}</p>
+${p(esc(warning.text), "margin:0 0 6px;font-size:15px")}
+${p(esc(warning.retake), "margin:0;font-size:15px")}
+</div>
+</td></tr>` : ""}
 <tr><td style="padding:24px 24px 0">
 <p style="margin:0 0 6px;font-weight:600">By area</p>
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="font-size:15px">${areaRows}</table>
@@ -145,8 +158,25 @@ ${p(esc(step.text))}
 
 const COMPARISON_LABEL = { scale: "grade-level scale only", bands: "bands among Unica children", percentile: "percentile among Unica children" } as const;
 
-/** A flag as one line. Flags arrive with #71; until then the list is empty. */
-const flagText = (flag: unknown) => (typeof flag === "string" ? flag : JSON.stringify(flag));
+const HELP_LABEL: Record<HelpAnswer, string> = { yes: "Yes", "a-little": "A little", no: "No" };
+
+/** "4 min 10 s". */
+const duration = (ms: number) => {
+  const s = Math.round(ms / 1000);
+  return `${Math.floor(s / 60)} min ${s % 60} s`;
+};
+
+/** A help flag (#71) in plain words, for Savar only. */
+function flagText(flag: Flag): string {
+  switch (flag.kind) {
+    case "helped":
+      return `child answered "${HELP_LABEL[flag.answer]}" to "Did anyone help?"`;
+    case "too-fast":
+      return `${flag.questionIds.length} answer${flag.questionIds.length === 1 ? "" : "s"} under ${TOO_FAST_MS / 1000} seconds, ${flag.right} right (${flag.questionIds.join(", ")})`;
+    case "pause-then-perfect":
+      return `${duration(flag.pauseMs)} on ${flag.questionId}, then ${PAUSE_WINDOW} right in a row after ${flag.rightBefore} of ${PAUSE_WINDOW} right before`;
+  }
+}
 
 /** The alert to Savar for each finished test (D-085): grade, working level, flags and the link, as plain text. */
 export function reportAlert({
@@ -154,13 +184,17 @@ export function reportAlert({
   parent,
   url,
   flags,
+  help = null,
   completedInGrade,
   parentEmail,
 }: {
   view: ReportView;
   parent: ParentContact;
   url: string;
-  flags: readonly unknown[];
+  /** The placement's help flags (#71). Placements stored before #71 have none. */
+  flags: readonly Flag[];
+  /** The child's answer to "Did anyone help?" (assessments.help); null when the test did not ask it. */
+  help?: HelpAnswer | null;
   /** Completed tests in the child's grade, the count the comparison stage came from. */
   completedInGrade: number;
   parentEmail: { sent: true } | { sent: false; reason: string };
@@ -172,7 +206,9 @@ export function reportAlert({
     `Child: ${v.childName}`,
     `School grade: ${m.level.grade} (${v.province})`,
     `Working level: ${levelName(m.level.working)} (${m.howWeHelp})${m.level.atCeiling ? ", at the top of what the test reached" : ""}${m.level.confidence === "low" ? ", low confidence: no level cleared" : ""}`,
+    `Did anyone help?: ${help ? `"${HELP_LABEL[help]}"` : "not asked"}`,
     `Flags: ${flags.length ? flags.map(flagText).join("; ") : "none"}`,
+    m.helpWarning ? "Help likely: yes. The report says the level may be too high and suggests a retake." : "Help likely: no",
     `Areas: ${m.strands.map((s) => `${s.name} ${STATUS_LABEL[s.status]} ${s.correct}/${s.total}`).join("; ")}`,
     `Facts: ${facts ? factsLine(facts) : "none"}`,
     `Questions: ${questionsAndMinutes(v)}`,

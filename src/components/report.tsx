@@ -9,6 +9,7 @@ import { BRAND } from "@/lib/site";
 import {
   STATUS_LABEL,
   factsView,
+  helpWarning,
   howWeHelp,
   levelName,
   levelNotes,
@@ -105,16 +106,28 @@ function ReportOverall({ view }: { view: ReportView }) {
 
 // The comparison among Unica children (bands with n from 100 tests per grade, a percentile with n from 400, D-084)
 // shows nothing yet: decision of 2026-10-11 on #65, until a ticket decides how a child is ranked. The model keeps the
-// stage. Below 100 tests per grade the scale above is the whole comparison. The help warning (#71) comes here too.
+// stage. Below 100 tests per grade the scale above is the whole comparison. The help warning (#71) comes after it.
 function ReportContext({ view }: { view: ReportView }) {
   const { fsa } = view.model;
-  if (!fsa) return null;
+  const warning = helpWarning(view);
+  if (!fsa && !warning) return null;
   return (
-    <aside className="rpt-context" aria-label="For context">
-      <p className="rpt-k">For context</p>
-      <p>{fsa.text}</p>
-      <p className="rpt-source">Source: <a href={fsa.source.url} target="_blank" rel="noopener noreferrer">{fsa.source.name}</a></p>
-    </aside>
+    <>
+      {fsa && (
+        <aside className="rpt-context" aria-label="For context">
+          <p className="rpt-k">For context</p>
+          <p>{fsa.text}</p>
+          <p className="rpt-source">Source: <a href={fsa.source.url} target="_blank" rel="noopener noreferrer">{fsa.source.name}</a></p>
+        </aside>
+      )}
+      {warning && (
+        <aside className="rpt-context rpt-help-warning" aria-labelledby="rpt-help-warning">
+          <h2 id="rpt-help-warning">{warning.title}</h2>
+          <p>{warning.text}</p>
+          <p>{warning.retake}</p>
+        </aside>
+      )}
+    </>
   );
 }
 

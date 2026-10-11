@@ -2,6 +2,7 @@
 export * from "./attempt";
 export * from "./constants";
 export * from "./facts";
+export * from "./flags";
 export { MISCONCEPTIONS, type Misconception, type MisconceptionId } from "./misconceptions";
 export { reportModel, type Comparison, type FsaLine, type ReportContext, type ReportModel, type WorkReview } from "./report";
 export { SAMPLE_BANK } from "./sample-bank";
