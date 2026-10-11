@@ -24,12 +24,19 @@ describe("report model", () => {
     it("under 100 shows the grade-level scale only", () => {
       expect(report(grade4(), 99).comparison).toEqual({ stage: "scale" });
     });
-    it("100 to 399 shows bands, with n", () => {
-      expect(report(grade4(), 100).comparison).toEqual({ stage: "bands", n: 100 });
-      expect(report(grade4(), 399).comparison).toEqual({ stage: "bands", n: 399 });
+    it("does not infer a rank from a raw legacy count", () => {
+      for (const n of [100, 399, 400]) expect(report(grade4(), n).comparison).toEqual({ stage: "scale" });
     });
-    it("400 or more shows a percentile, with n", () => {
-      expect(report(grade4(), 400).comparison).toEqual({ stage: "percentile", n: 400 });
+    it("builds a measured comparison without retaining any cohort input", () => {
+      const placement = grade4();
+      const tests = Array.from({ length: 100 }, (_, i) => ({
+        id: `assessment-${i}`, childId: `child-${i}`, status: "completed", completedAt: "2026-10-11T12:00:00Z",
+        email: "private@family.ca", placement,
+      }));
+      const model = reportModel(placement, { workReviews: [], comparison: { assessmentId: "assessment-0", tests } });
+      expect(model.comparison).toEqual({ stage: "bands", n: 100, band: "middle" });
+      const stored = JSON.stringify(model);
+      for (const secret of ["assessment-0", "child-0", "private@family.ca", "completedAt", "stage1"]) expect(stored).not.toContain(secret);
     });
   });
 

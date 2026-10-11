@@ -1,7 +1,9 @@
 // Turns a placement into everything the report shows. The report page and the email both use this model.
 // Honesty rule (DESIGN.md, D-084): every number here is measured or carries its source.
 import { statusFor } from "@/lib/signup";
-import { COMPARISON_BANDS_FROM, COMPARISON_PERCENTILE_FROM, REPORT_WORK_MAX, REPORTED_STRAND_NAMES } from "./constants";
+import { REPORT_WORK_MAX, REPORTED_STRAND_NAMES } from "./constants";
+import { comparisonFor, type Comparison, type ComparisonInput } from "./comparison";
+export type { Comparison } from "./comparison";
 import { factsReport, type ReportFacts } from "./facts";
 import { helpLikely } from "./flags";
 import { checkReportText } from "./ai-checks";
@@ -32,8 +34,10 @@ export interface ShownWork {
 }
 
 export interface ReportContext {
-  /** Completed tests for the child's school grade, from the assessments table. */
-  completedTestsInGrade: number;
+  /** Legacy callers may supply a raw count. It cannot establish a measured comparison and is ignored. */
+  completedTestsInGrade?: number;
+  /** The server-only source rows. Only the comparison summary reaches the report model. */
+  comparison?: ComparisonInput;
   workReviews: WorkReview[];
   /** Every answer with work on the whiteboard, in test order (#67). None when left out. */
   shownWork?: ShownWork[];
@@ -46,8 +50,6 @@ export interface ReportContext {
 
 /** One piece of the child's work on the report: the question, right or not, the work, and a comment only when sure. */
 export type ReportWork = Omit<ShownWork, "required"> & { comment: string | null };
-
-export type Comparison = { stage: "scale" } | { stage: "bands"; n: number } | { stage: "percentile"; n: number };
 
 export interface FsaLine {
   grade: 4 | 7;
@@ -117,18 +119,12 @@ function workFor({ shownWork = [], workReviews }: ReportContext): ReportWork[] {
     .map(({ w: { questionId, prompt, correct, image, text } }) => ({ questionId, prompt, correct, image, text, comment: sure.get(questionId) ?? null }));
 }
 
-function comparisonFor(n: number): Comparison {
-  if (n >= COMPARISON_PERCENTILE_FROM) return { stage: "percentile", n };
-  if (n >= COMPARISON_BANDS_FROM) return { stage: "bands", n };
-  return { stage: "scale" };
-}
-
 export function reportModel(placement: Placement, context: ReportContext): ReportModel {
   const { workingLevel, grade } = placement;
   const model: ReportModel = {
     level: { working: workingLevel, grade, atCeiling: placement.atCeiling, confidence: placement.confidence },
     strands: placement.strands.map((s) => ({ ...s, name: REPORTED_STRAND_NAMES[s.strand] })),
-    comparison: comparisonFor(context.completedTestsInGrade),
+    comparison: context.comparison ? comparisonFor(context.comparison) : { stage: "scale" },
     fsa: fsaLine(grade, placement.province),
     howWeHelp: workingLevel === grade ? "on-grade" : workingLevel < grade ? "behind" : "ahead",
     // Card for the curricula we make books for today (D-053); every other province joins the waitlist.

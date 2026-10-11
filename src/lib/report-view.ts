@@ -63,6 +63,29 @@ export function verdictSentence(v: ReportView): string {
  */
 export const summaryText = (v: ReportView): string | null => (v.model.summary ? v.model.summary.replaceAll(REPORT_TEXT_NAME, v.childName) : null);
 
+const BAND_WORDS = { lower: "lower quarter", middle: "middle half", upper: "upper quarter" } as const;
+const ordinal = (n: number) => `${n}${n % 100 >= 11 && n % 100 <= 13 ? "th" : n % 10 === 1 ? "st" : n % 10 === 2 ? "nd" : n % 10 === 3 ? "rd" : "th"}`;
+
+/** Same comparison words in account, read-only admin and email. Legacy stage-only models show no invented rank. */
+export function comparisonView(v: ReportView): { title: string; text: string; note: string } | null {
+  const c = v.model.comparison;
+  if (v.model.helpWarning || c.stage === "scale") return null;
+  const title = "Among children who took this test";
+  const scope = `${c.n} grade ${v.model.level.grade} children who took this test`;
+  const source = "Each child counts once, using their latest completed test when this report was made. Tests with signs of help and test accounts are left out.";
+  if (c.stage === "bands" && c.band) return {
+    title,
+    text: `${v.childName}'s result is in the ${BAND_WORDS[c.band]} of ${scope}.`,
+    note: `${source} Equal results share the middle rank.`,
+  };
+  if (c.stage === "percentile" && c.percentile !== undefined) return {
+    title,
+    text: `${v.childName}'s result is at the ${ordinal(c.percentile)} percentile among ${scope}.`,
+    note: `${source} The percentile is the share of results below this one, with half of equal results included.`,
+  };
+  return null;
+}
+
 /** Says when the level is a floor or an estimate, so the parent never reads more into it than the test measured. */
 export function levelNotes(v: ReportView): string[] {
   const { working, atCeiling, confidence } = v.model.level;
