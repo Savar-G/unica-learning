@@ -8,6 +8,7 @@ import type { Child } from "@/lib/account";
 import { startStates, stateFor } from "@/lib/assessment-store";
 import { parentId, sessionClient } from "@/lib/supabase-auth";
 import { isPhone } from "@/lib/account-server";
+import { startPath } from "@/lib/sign-in-link";
 import { StartTest, TrackOnce } from "@/components/account";
 import { SupportPage } from "@/components/support-page";
 
@@ -23,9 +24,13 @@ export const metadata = pageMetadata({
 export default async function StartScreen({ params, searchParams }: PageProps<"/account/start/[child]">) {
   await requirePilot();
   const { child: id } = await params;
+  const { via, reminder } = await searchParams;
+  // A reminder email (#73) links here: "continue", "come_back" or "start".
+  const fromReminder = typeof reminder === "string" && ["continue", "come_back", "start"].includes(reminder) ? reminder : null;
   const db = await sessionClient();
   const parent = await parentId(db);
-  if (!parent) redirect("/sign-in");
+  // Signed out (a reminder or another device): sign in, then come back to this child's start screen.
+  if (!parent) redirect(`/sign-in?next=${encodeURIComponent(`${startPath(id)}${fromReminder ? `?reminder=${fromReminder}` : ""}`)}`);
   // Row-level security returns only this parent's children; an id that is not a uuid finds nothing.
   const [{ data: child }, states] = await Promise.all([
     db.from("children").select("id, first_name, grade, province").eq("id", id).maybeSingle<Child>(),
@@ -35,11 +40,11 @@ export default async function StartScreen({ params, searchParams }: PageProps<"/
   // Start, continue, start again after 24 hours, or wait 30 days after a completed test (#72).
   const state = stateFor(states, child.id);
   const phone = isPhone(await headers());
-  const { via } = await searchParams;
 
   return (
     <SupportPage label="Free math assessment" title={`${child.first_name}'s math test.`}>
       {via === "link" && <TrackOnce event="sign_in" props={{ channel: "link" }} />}
+      {fromReminder && <TrackOnce event="reminder_open" props={{ status: fromReminder }} />}
       <p className="small">Grade {child.grade} · {CURRICULA[child.province]}</p>
       {/* Inside the 30 days after a test there is nothing to start, on any device (#72): the screen gives the date. */}
       {phone && state.kind !== "wait" ? (
