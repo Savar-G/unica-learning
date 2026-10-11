@@ -54,6 +54,21 @@ describe("grade 3-5 speech and figures through the public interface", () => {
     expect(questions.filter((q) => q.showWork).every((q) => q.whiteboard)).toBe(true);
     expect(s.stage1.find((q) => q.templateId === "2-missing-in-pattern")?.whiteboard).toBe(true);
   });
+  it("bases every heavier-object answer on the stated lower balance side", () => {
+    const t = GRADE_1_2_BANK.find((t) => t.id === "k-heavier-object")!;
+    const variants = new Set<string>();
+    for (const seed of SEEDS) {
+      const q = fillTemplate(t, seed);
+      const heavy = q.answer[0].toLowerCase() + q.answer.slice(1);
+      expect(q.prompt).toContain(`The side with ${heavy} is lower.`);
+      expect(q.readAloud).toBe(q.prompt);
+      expect(q.prompt).toContain("are on a balance.");
+      expect(q.readAloud).not.toContain("They weigh the same");
+      expect(q.wrong.map((w) => w.misconception).sort()).toEqual(["bigger-heavier", "same-size"]);
+      variants.add(`${q.values.pair}:${q.values.heavyFirst}`);
+    }
+    expect([...variants].sort()).toEqual(["0:0", "0:1", "1:0", "1:1", "2:0", "2:1", "3:0", "3:1"]);
+  });
   it("covers all increasing-pattern steps and interior gaps as suitable written work", () => {
     for (const [id, steps] of [["2-increasing-pattern", [2, 5, 10]], ["2-missing-in-pattern", [2, 5, 10]], ["3-increasing-pattern", [3, 4]]] as const) {
       const t = GRADE_1_2_BANK.find((t) => t.id === id)!;
