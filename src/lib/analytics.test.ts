@@ -39,3 +39,62 @@ describe("events sent as the page goes away (#72)", () => {
     expect(calls).toEqual([["test_stop", { status: "offline" }]]);
   });
 });
+
+describe("the admin area sends nothing (#77)", () => {
+  // The visitor accepted analytics; `path` is the page they are on.
+  function onPage(start: string) {
+    const page = { path: start };
+    const calls: unknown[][] = [];
+    const loads: string[] = [];
+    let config: { before_send?: (event: unknown) => unknown } = {};
+    const client: Client = {
+      init: (_key, c) => { config = c as typeof config; },
+      capture: (...args: unknown[]) => calls.push(args),
+      reset: () => undefined,
+      opt_in_capturing: () => undefined,
+      opt_out_capturing: () => undefined,
+    };
+    const analytics = createAnalytics({
+      key: "test",
+      load: async () => { loads.push(page.path); return client; },
+      getConsent: () => "granted",
+      subscribe: () => () => undefined,
+      clearStorage: () => undefined,
+      whenIdle: (run) => run(),
+      path: () => page.path,
+    });
+    return { analytics, calls, loads, page, beforeSend: (event: unknown) => config.before_send?.(event) };
+  }
+
+  it("does not load PostHog on an admin page, and drops its events", async () => {
+    for (const path of ["/admin", "/admin/assessments/1"]) {
+      const { analytics, calls, loads } = onPage(path);
+      analytics.begin();
+      analytics.track("report_open", { src: "account" });
+      await settle();
+      expect(loads).toEqual([]);
+      expect(calls).toEqual([]);
+    }
+  });
+
+  it("drops what PostHog sends by itself after the visitor moves on to an admin page", async () => {
+    const { analytics, calls, page, beforeSend } = onPage("/account");
+    analytics.track("report_open", { src: "account" });
+    await settle();
+    expect(calls).toEqual([["report_open", { src: "account" }]]);
+    const pageview = { properties: { $current_url: "https://unicalearning.com/admin" } };
+    expect(beforeSend(pageview)).not.toBeNull();
+    page.path = "/admin";
+    expect(beforeSend(pageview)).toBeNull();
+    analytics.track("waitlist_join", { src: "account" });
+    await settle();
+    expect(calls).toHaveLength(1);
+  });
+
+  it("still tracks pages whose name only starts with the same letters", async () => {
+    const { analytics, calls } = onPage("/administer");
+    analytics.track("cta_click");
+    await settle();
+    expect(calls).toEqual([["cta_click", {}]]);
+  });
+});

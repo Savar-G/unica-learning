@@ -23,7 +23,12 @@ export interface Deps {
   clearStorage: () => void;
   // Runs the first state check after the page is idle, so a returning visitor's load stays off the first paint.
   whenIdle: (run: () => void) => void;
+  // The current page's path. The admin area (#77) never loads PostHog and drops every event, also the page views
+  // PostHog sends by itself after a client-side move into it.
+  path?: () => string;
 }
+
+const NO_ANALYTICS_PATH = /^\/admin(\/|$)/;
 
 // Only anonymous offer and flow fields reach analytics. Name, email, postal code and child grade never do.
 const PROP_KEYS = new Set(["src", "plan", "subject", "curriculum", "price", "status", "code", "card", "channel"]);
@@ -97,7 +102,8 @@ export function createAnalytics(deps: Deps) {
   // Bumps on every consent change. A queued capture runs only in the epoch that queued it.
   let epoch = 0;
 
-  const allowed = () => deps.getConsent() === "granted";
+  const offPage = () => NO_ANALYTICS_PATH.test(deps.path?.() ?? "");
+  const allowed = () => deps.getConsent() === "granted" && !offPage();
 
   const config: Props = {
     api_host: "/ingest",
@@ -170,8 +176,9 @@ export function createAnalytics(deps: Deps) {
       lastState = state;
       epoch += 1;
     }
-    if (state === "granted") start();
-    else if (state === "denied" || prev === "granted") revoke();
+    if (state === "granted") {
+      if (!offPage()) start();
+    } else if (state === "denied" || prev === "granted") revoke();
     // "unset" from the start: nothing is loaded, stored or sent.
   }
 
@@ -256,6 +263,7 @@ export function getAnalytics() {
     subscribe: subscribeConsent,
     clearStorage: clearPostHogStorage,
     whenIdle,
+    path: () => window.location.pathname,
   });
   return holder.__unicaAnalytics;
 }
