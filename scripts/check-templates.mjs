@@ -1,6 +1,7 @@
 // Template checker (#74, D-084): fills every question template from many seeds and asks Claude, through Claude Code
 // headless (`claude -p`, on the Claude subscription; never an API key), whether each answer is correct and the grade
-// fits. A build-time tool: nothing in src imports it, and it never runs on the deployed site.
+// fits. Optional --provider codex uses Codex with ChatGPT subscription authentication.
+// A build-time tool: nothing in src imports it, and it never runs on the deployed site.
 //
 // Usage: npm run check:templates -- [options]
 //   --dry-run      print the prompts; call nothing, write nothing
@@ -9,8 +10,10 @@
 //   --limit n      check at most n templates in this run
 //   --samples n    filled examples per template (default 8, from 300 seeds)
 //   --batch n      templates per `claude -p` call (default 10)
-//   --model m      model alias for `claude --model` (default opus)
-//   --effort e     effort for `claude --effort` (default high)
+//   --provider p   claude (default) or codex (ChatGPT subscription, no Platform API key)
+//   --model m      provider model (default opus; codex: gpt-6.1-sol)
+//   --effort e     provider reasoning effort (default high; codex: medium)
+//   --context f    local curriculum source notes, included in the prompt and cache hash
 //   --fresh        check again templates that already have a result
 //
 // Resumable: each result is saved in scripts/template-check/results.json as soon as its batch returns, keyed by the
@@ -33,7 +36,7 @@ const MAP = join(root, ".design/research/online-assessment/bc-math-curriculum-ma
 
 // ---------- Options ----------
 function parseArgs(argv) {
-  const opts = { dryRun: false, band: "1-2", only: null, limit: Infinity, samples: 8, batch: 10, model: "opus", effort: "high", fresh: false };
+  const opts = { dryRun: false, band: "1-2", only: null, limit: Infinity, samples: 8, batch: 10, contextFile: null, context: "", provider: "claude", model: null, effort: null, fresh: false };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     const next = () => {
@@ -48,13 +51,19 @@ function parseArgs(argv) {
     else if (a === "--limit") opts.limit = positive(a, next());
     else if (a === "--samples") opts.samples = positive(a, next());
     else if (a === "--batch") opts.batch = positive(a, next());
+    else if (a === "--context") opts.contextFile = next();
+    else if (a === "--provider") opts.provider = next();
     else if (a === "--model") opts.model = next();
     else if (a === "--effort") opts.effort = next();
     else if (a === "--help" || a === "-h") {
-      console.log(readFileSync(fileURLToPath(import.meta.url), "utf8").split("\n").filter((l) => l.startsWith("//")).slice(0, 20).join("\n"));
+      console.log(readFileSync(fileURLToPath(import.meta.url), "utf8").split("\n").filter((l) => l.startsWith("//")).slice(0, 25).join("\n"));
       process.exit(0);
     } else throw new Error(`Unknown option ${a} (see --help)`);
   }
+  if (!["claude", "codex"].includes(opts.provider)) throw new Error("--provider must be claude or codex");
+  opts.model ??= opts.provider === "codex" ? "gpt-6.1-sol" : "opus";
+  opts.effort ??= opts.provider === "codex" ? "medium" : "high";
+  if (opts.contextFile) opts.context = readFileSync(opts.contextFile, "utf8");
   return opts;
 }
 function positive(name, v) {
@@ -98,11 +107,11 @@ const STRAND_NAMES = {
 const gradeName = (level) => (level === 0 ? "K" : `grade ${level}`);
 
 /** What Claude sees for one template: its tags and distinct filled examples, spread over many seeds. */
-function describe(core, template, standards, samples) {
+function describe(core, template, standards, samples, provider) {
   const seen = new Map();
   for (let i = 0; i < 300; i++) {
     const q = core.fillTemplate(template, i * 7919 + 1);
-    const key = `${q.prompt}|${[...(q.choices ?? [])].sort().join("|")}`;
+    const key = `${q.prompt}|${[...(q.choices ?? [])].sort().join("|")}${q.figure ? `|${JSON.stringify(q.figure)}` : ""}`;
     if (!seen.has(key)) seen.set(key, q);
   }
   let pool = [...seen.values()];
@@ -111,6 +120,14 @@ function describe(core, template, standards, samples) {
   const picked = [];
   const want = Math.min(samples, pool.length);
   for (let k = 0; k < want; k++) picked.push(pool[Math.round((k * (pool.length - 1)) / Math.max(1, want - 1))]);
+  // An unknown input can be small while its given output crosses a curriculum number limit.
+  // Preserve the original provider's sampling. Codex also sees any missed decimal magnitude boundary.
+  if (provider === "codex" && template.format === "number" && picked.length > 2) {
+    const largestGiven = (q) => Math.max(0, ...[...q.prompt.matchAll(/\d+(?:,\d{3})*(?:\.\d+)?/g)].map((m) => Number(m[0].replaceAll(",", ""))));
+    const edge = pool.reduce((a, b) => largestGiven(a) >= largestGiven(b) ? a : b);
+    const selectedMax = Math.max(...picked.map(largestGiven));
+    if (Math.floor(Math.log10(largestGiven(edge))) > Math.floor(Math.log10(selectedMax))) picked[picked.length - 2] = edge;
+  }
   const tags = Object.fromEntries(["BC", "AB", "SK", "MB", "ON"].map((p) => [p, template.grades[p] === undefined ? "not tagged" : gradeName(template.grades[p])]));
   return {
     id: template.id,
@@ -119,9 +136,19 @@ function describe(core, template, standards, samples) {
     whiteboard: template.whiteboard ? "the child may be asked to show work by drawing" : "no shown work",
     bcStandard: `${template.standard} ${standards[template.standard] ?? ""}`.trim(),
     gradeTags: tags,
+    ...(template.format === "choice" ? { speechPolicy: "The renderer speaks readAloud, then spokenChoices in the displayed order. The template readAloud must not list the choices." } : {}),
+    ...(picked.some((q) => q.wrong.some((w) => w.misconception === "digit-reversal")) ? { misconceptionPolicy: "The catalogue describes a plausible cause, not a unique algorithm applied to every choice. Digit reversal may occur when selecting a remembered target numeral after correctly comparing the numbers." } : {}),
     examples: [...new Set(picked)].map((q) => ({
       prompt: q.prompt,
       readAloud: q.readAloud,
+      ...(q.figure ? { figure: q.figure } : {}),
+      // Matches BarGraph in src/components/test-figures.tsx. The scale is drawn, not part of Figure storage.
+      ...(q.figure?.kind === "bars" ? { figureRendering: (() => {
+        const axisEnd = Math.ceil((Math.max(...q.figure.bars.map((b) => b.value)) + 1) / 2) * 2;
+        const labeledStep = axisEnd > 12 ? 2 : 1;
+        return { axisEnd, labeledStep, minorGridStep: 1, labels: Array.from({ length: axisEnd / labeledStep + 1 }, (_, i) => i * labeledStep), alternatingBarColors: true };
+      })() } : {}),
+      ...(q.choices ? { spokenChoices: core.spokenChoices(q, q.choices) } : {}),
       ...(q.choices ? { choices: q.choices } : {}),
       markedRight: q.answer,
       codedWrong: q.wrong.map((w) => ({ answer: w.value, misconception: core.MISCONCEPTIONS[w.misconception]?.description ?? w.misconception })),
@@ -226,6 +253,56 @@ function callClaude(prompt, opts) {
   }
 }
 
+/** Strict Responses schema. Keep the existing response/cache shape; optional fields become nullable. */
+function strictSchema(schema) {
+  if (schema.type === "object") return {
+    ...schema,
+    additionalProperties: false,
+    properties: Object.fromEntries(Object.entries(schema.properties).map(([key, value]) => [key,
+      schema.required.includes(key) ? strictSchema(value) : { anyOf: [strictSchema(value), { type: "null" }] },
+    ])),
+    required: Object.keys(schema.properties),
+  };
+  if (schema.type === "array") return { ...schema, items: strictSchema(schema.items) };
+  return schema;
+}
+
+/** Only the supplied, generated template payloads go to Codex. No site env file or child record is loaded. */
+function callCodex(prompt, opts) {
+  const cwd = mkdtempSync(join(tmpdir(), "unica-codex-check-"));
+  try {
+    const schemaFile = join(cwd, "schema.json");
+    const answerFile = join(cwd, "answer.json");
+    writeFileSync(schemaFile, JSON.stringify(strictSchema(SCHEMA)));
+    const env = { ...process.env };
+    // Auth still uses the installed ChatGPT login, even with --ignore-user-config. Do not permit API-key fallback.
+    for (const key of Object.keys(env)) {
+      if (/KEY|TOKEN|SECRET|PASSWORD/i.test(key)) delete env[key];
+    }
+    const login = spawnSync("codex", ["login", "status"], { cwd, env, encoding: "utf8", timeout: 30_000 });
+    if (login.error || login.status !== 0 || !/Logged in using ChatGPT/i.test(`${login.stdout ?? ""} ${login.stderr ?? ""}`)) {
+      return { error: "codex did not run: the checker requires a ChatGPT subscription login. Run codex login." };
+    }
+    const args = ["exec", "--ignore-user-config", "--ephemeral", "--skip-git-repo-check", "--sandbox", "read-only",
+      "--model", opts.model, "-c", `model_reasoning_effort="${opts.effort}"`, "-c", "features.shell_tool=false",
+      "--output-schema", schemaFile, "--output-last-message", answerFile, "-"];
+    const input = `${SYSTEM}\n\nThis is a closed-book template check. Use only the supplied JSON. Do not use tools or read files.\n\n${prompt}`;
+    const run = spawnSync("codex", args, { cwd, input, env, encoding: "utf8", maxBuffer: 64 * 1024 * 1024, timeout: 15 * 60 * 1000 });
+    if (run.error) return { error: `codex did not run: ${run.error.message}` };
+    if (run.status !== 0) return { error: `codex exec failed (exit ${run.status}): ${(run.stderr ?? "").trim().slice(-500)}` };
+    if (!existsSync(answerFile) || !readFileSync(answerFile, "utf8").trim()) return { error: "codex exec returned no output" };
+    try {
+      const parsed = JSON.parse(readFileSync(answerFile, "utf8"));
+      if (!Array.isArray(parsed.templates)) throw new Error("no templates array");
+      return { templates: parsed.templates, model: opts.model };
+    } catch (error) {
+      return { error: `Could not read Codex answer as JSON: ${error.message}` };
+    }
+  } finally {
+    rmSync(cwd, { recursive: true, force: true });
+  }
+}
+
 /** pass, review or fail, from the checks themselves (Claude's own verdict can only make it stricter). */
 function statusOf(f) {
   const sureWrongTag = (f.provinceTags ?? []).some((t) => t.ok === false && t.confidence === "high");
@@ -233,6 +310,19 @@ function statusOf(f) {
   const doubts = (f.provinceTags ?? []).some((t) => t.ok === false) || (f.wordingProblems ?? []).length > 0;
   if (doubts || f.verdict === "review") return "review";
   return "pass";
+}
+
+/** Reject incomplete or duplicate output instead of treating absent tag checks as a pass. */
+function findingError(findings, id) {
+  if (!Array.isArray(findings)) return "The checker did not return a templates array.";
+  const rows = findings.filter((f) => f && typeof f === "object" && f.id === id);
+  if (rows.length !== 1) return `The checker returned ${rows.length} entries for ${id}; expected one.`;
+  const f = rows[0];
+  if (["answerCorrect", "wrongAnswersOk", "bcGradeFits"].some((key) => typeof f[key] !== "boolean")) return "A required correctness check is missing.";
+  if (!Array.isArray(f.provinceTags) || f.provinceTags.length !== 4 || f.provinceTags.some((t) => !t || typeof t !== "object") || ["AB", "SK", "MB", "ON"].some((p) => f.provinceTags.filter((t) => t.province === p).length !== 1)) return "The checker must return one tag check for each of AB, SK, MB and ON.";
+  if (f.provinceTags.some((t) => typeof t.ok !== "boolean" || !["high", "medium", "low"].includes(t.confidence) || typeof t.reason !== "string")) return "A province tag check is incomplete.";
+  if (!["pass", "review", "fail"].includes(f.verdict) || ["wordingProblems", "problems"].some((key) => !Array.isArray(f[key]) || f[key].some((s) => typeof s !== "string"))) return "The checker verdict or problem lists are incomplete.";
+  return null;
 }
 
 // ---------- Results and report ----------
@@ -245,10 +335,13 @@ function saveResults(results) {
   writeFileSync(RESULTS, `${JSON.stringify(results, null, 2)}\n`);
 }
 
+// Existing default-provider cache behavior is unchanged. Early Codex records used medium effort only.
+const isCurrent = (r, hash, opts) => r && r.hash === hash && (opts.provider !== "codex" || ((r.provider === undefined || r.provider === "codex") && r.model === opts.model && (r.effort ?? "medium") === opts.effort));
+
 function writeReport(results, current, opts) {
   const rows = current.map(({ template, hash }) => {
     const r = results.templates[template.id];
-    const status = !r ? "not checked" : r.hash !== hash ? "changed since its check" : r.status;
+    const status = !r ? "not checked" : !isCurrent(r, hash, opts) ? "changed since its check" : r.status;
     return { id: template.id, status, r };
   });
   const count = (s) => rows.filter((x) => x.status === s).length;
@@ -259,7 +352,7 @@ function writeReport(results, current, opts) {
     "",
     `Pass: ${count("pass")}. Review: ${count("review")}. Fail: ${count("fail")}. Error: ${count("error")}. Not checked: ${count("not checked")}. Changed since its check: ${count("changed since its check")}.`,
     "",
-    "A template passes when Claude found its answers correct, its coded wrong answers wrong, and its BC grade right. Review means a wording problem or a province tag doubt that a person should decide.",
+    "A template passes when the checker found its answers correct, its coded wrong answers wrong, and its BC grade right. Review means a wording problem or a province tag doubt that a person should decide.",
     "",
   ];
   const detail = (x) => {
@@ -289,6 +382,15 @@ function writeReport(results, current, opts) {
   if (passed.length) lines.push(`## Pass (${passed.length})`, "", ...passed.map((x) => `- \`${x.id}\` (${x.r.checkedAt}, ${x.r.model})`), "");
   mkdirSync(OUT_DIR, { recursive: true });
   writeFileSync(REPORT, lines.join("\n"));
+  writeFileSync(join(OUT_DIR, `report-${opts.band}.md`), lines.join("\n"));
+  writeFileSync(join(OUT_DIR, `summary-${opts.band}.json`), `${JSON.stringify({
+    band: opts.band, provider: opts.provider, model: opts.model, effort: opts.effort,
+    total: rows.length, checked: count("pass") + count("review") + count("fail"),
+    pass: count("pass"), review: count("review"), fail: count("fail"), error: count("error"),
+    unchecked: count("not checked") + count("changed since its check"),
+    rows: rows.map((x) => ({ id: x.id, hash: current.find((c) => c.template.id === x.id).hash, status: x.status,
+      model: x.r?.model ?? null, provider: x.r?.provider ?? null, effort: x.r?.effort ?? null })),
+  }, null, 2)}\n`);
   return { pass: count("pass"), review: count("review"), fail: count("fail"), error: count("error"), unchecked: count("not checked") + count("changed since its check") };
 }
 
@@ -303,8 +405,8 @@ const unknown = [...(opts.only ?? [])].filter((id) => !templates.some((t) => t.i
 if (unknown.length) throw new Error(`Not in bank ${opts.band}: ${unknown.join(", ")}`);
 // The report always covers the whole bank; --only and --limit only narrow what this run checks.
 const current = templates.map((template) => {
-  const payload = describe(core, template, standards, opts.samples);
-  return { template, payload, hash: hashOf({ payload, system: SYSTEM }) };
+  const payload = describe(core, template, standards, opts.samples, opts.provider);
+  return { template, payload, hash: hashOf({ payload, system: SYSTEM, ...(opts.context ? { context: opts.context } : {}) }) };
 });
 
 const results = loadResults();
@@ -312,17 +414,17 @@ const pending = current
   .filter(({ template, hash }) => {
     if (opts.only && !opts.only.has(template.id)) return false;
     const r = results.templates[template.id];
-    return opts.fresh || !r || r.hash !== hash || r.status === "error";
+    return opts.fresh || !isCurrent(r, hash, opts) || r.status === "error";
   })
   .slice(0, opts.limit);
 const batches = [];
 for (let i = 0; i < pending.length; i += opts.batch) batches.push(pending.slice(i, i + opts.batch));
 
-console.log(`${templates.length} templates in bank ${opts.band}; ${pending.length} to check in ${batches.length} ${batches.length === 1 ? "call" : "calls"} to claude -p.`);
-if (process.env.ANTHROPIC_API_KEY) console.log("ANTHROPIC_API_KEY is set in this shell; the checker removes it for claude -p, so the calls use your Claude subscription.");
+console.log(`${templates.length} templates in bank ${opts.band}; ${pending.length} to check in ${batches.length} ${batches.length === 1 ? "call" : "calls"} to ${opts.provider === "codex" ? "codex exec" : "claude -p"}.`);
+if (opts.provider === "claude" && process.env.ANTHROPIC_API_KEY) console.log("ANTHROPIC_API_KEY is set in this shell; the checker removes it for claude -p, so the calls use your Claude subscription.");
 
 if (opts.dryRun) {
-  console.log(`\n===== System prompt =====\n${SYSTEM}`);
+  console.log(`\n===== System prompt =====\n${SYSTEM}${opts.context ? `\n\nPrimary curriculum source notes:\n${opts.context}` : ""}`);
   batches.forEach((b, i) => console.log(`\n===== Call ${i + 1} of ${batches.length}: ${b.map((x) => x.template.id).join(", ")} =====\n${userPrompt(b.map((x) => x.payload))}`));
   process.exit(0);
 }
@@ -330,19 +432,21 @@ if (opts.dryRun) {
 for (const [i, batch] of batches.entries()) {
   const ids = batch.map((x) => x.template.id);
   console.log(`Call ${i + 1} of ${batches.length}: ${ids.join(", ")}`);
-  const answer = callClaude(userPrompt(batch.map((x) => x.payload)), opts);
+  const prompt = `${opts.context ? `Primary curriculum source notes (checked locally):\n${opts.context}\n\n` : ""}${userPrompt(batch.map((x) => x.payload))}`;
+  const answer = (opts.provider === "codex" ? callCodex : callClaude)(prompt, opts);
   const checkedAt = new Date().toISOString().slice(0, 10);
   for (const { template, hash } of batch) {
-    const findings = answer.templates?.find((f) => f.id === template.id);
-    results.templates[template.id] = answer.error || !findings
-      ? { hash, status: "error", checkedAt, model: opts.model, error: answer.error ?? "Claude's answer left this template out." }
-      : { hash, status: statusOf(findings), checkedAt, model: answer.model, findings };
+    const findings = answer.templates?.find((f) => f && typeof f === "object" && f.id === template.id);
+    const error = answer.error ?? findingError(answer.templates, template.id);
+    results.templates[template.id] = error
+      ? { hash, status: "error", checkedAt, model: opts.model, provider: opts.provider, effort: opts.effort, error }
+      : { hash, status: statusOf(findings), checkedAt, model: answer.model, provider: opts.provider, effort: opts.effort, findings };
   }
   saveResults(results);
   writeReport(results, current, opts);
   if (answer.error) {
     console.error(`  ${answer.error}`);
-    if (/no output|did not run|usage_limit|rate/i.test(answer.error)) {
+    if (/no output|did not run|usage_limit|rate|codex exec failed/i.test(answer.error)) {
       console.error("Stopping. Run the same command again later: finished templates are kept.");
       break;
     }
