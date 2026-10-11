@@ -19,6 +19,7 @@ import {
   sharePercent,
   thresholdsLine,
   verdictSentence,
+  workResult,
   type ReportView,
 } from "@/lib/report-view";
 import "./report.css";
@@ -172,13 +173,37 @@ function ReportNumberFacts({ view }: { view: ReportView }) {
   );
 }
 
-// #67 adds the work images and #68 the comments (shown only when the review is sure). Until then there is no work.
+// The child's work (#67, D-087): up to three pieces from the whiteboard, each with its question and whether the answer
+// was right. The drawing loads from a short-lived signed URL; typed working shows as text. #68 adds the comments, shown
+// only when the review is sure. Nothing when the child showed no work.
 function ReportWork({ view }: { view: ReportView }) {
-  if (view.model.work.length === 0) return null;
+  const work = view.model.work ?? [];
+  if (work.length === 0) return null;
+  const name = view.childName;
   return (
-    <Row id="rpt-work" title={`${view.childName}'s work`} note="Shown on the whiteboard during the test, exactly as written.">
+    <Row id="rpt-work" title={`${name}'s work`} note="Shown on the whiteboard during the test, exactly as written.">
       <ul className="rpt-work">
-        {view.model.work.map((w) => <li key={w.questionId}>{w.comment && <p>{w.comment}</p>}</li>)}
+        {work.map((w) => {
+          const url = w.image ? view.workImages?.[w.image] : undefined;
+          return (
+            <li key={w.questionId}>
+              <figure>
+                <div className="rpt-work-board">
+                  {/* A private, short-lived URL: not for the image optimizer, which would cache it. */}
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  {url && <img src={url} alt={`${name}'s drawing for: ${w.prompt}`} />}
+                  {w.image && !url && <p className="rpt-work-missing">The drawing did not load. Reload the page to see it.</p>}
+                  {w.text && <p className="rpt-work-text"><span className="sr-only">Typed working: </span>{w.text}</p>}
+                </div>
+                <figcaption>
+                  <p className="rpt-work-q">{w.prompt}</p>
+                  <span className={`rpt-chip ${w.correct ? "is-secure" : "is-plain"}`}>{workResult(w.correct)}</span>
+                  {w.comment && <p className="rpt-work-comment">{w.comment}</p>}
+                </figcaption>
+              </figure>
+            </li>
+          );
+        })}
       </ul>
     </Row>
   );

@@ -6,6 +6,7 @@ import { pageMetadata } from "@/lib/metadata";
 import { requirePilot } from "@/lib/pilot";
 import { reportPath, type ReportView } from "@/lib/report-view";
 import { parentId, sessionClient } from "@/lib/supabase-auth";
+import { signWork } from "@/lib/work-store";
 import { TrackOnce } from "@/components/account";
 import { ReportCard } from "@/components/report";
 import { SupportPage } from "@/components/support-page";
@@ -44,6 +45,9 @@ export default async function ReportPage({ params, searchParams }: PageProps<"/a
     .eq("id", id).maybeSingle<ReportPageRow>();
   if (!row?.assessment || !row.child) notFound();
 
+  // #67: the work drawings are in a private bucket. Signed with the parent's own session, so storage checks that each
+  // file is in their folder; the URLs stop working after a few minutes.
+  const workPaths = (row.model.work ?? []).flatMap((w) => (w.image ? [w.image] : []));
   const view: ReportView = {
     id: row.id,
     childName: row.child.first_name,
@@ -52,6 +56,7 @@ export default async function ReportPage({ params, searchParams }: PageProps<"/a
     questions: row.questions,
     minutes: row.minutes,
     model: row.model,
+    workImages: await signWork(db, workPaths),
   };
   return (
     <SupportPage label="" title="" wide>

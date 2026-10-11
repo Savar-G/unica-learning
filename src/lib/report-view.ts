@@ -27,7 +27,12 @@ export interface ReportView {
   /** Minutes on the questions, from the answer times. */
   minutes: number;
   model: ReportModel;
+  /** Short-lived signed URLs of the work drawings, by stored path (#67). Only the report page has them; the email does not. */
+  workImages?: Record<string, string>;
 }
+
+/** "Right answer" or "Not right", under each piece of the child's work (#67, D-087). */
+export const workResult = (correct: boolean) => (correct ? "Right answer" : "Not right");
 
 /** The report page in the parent's account. */
 export const reportPath = (id: string) => `/account/report/${id}`;

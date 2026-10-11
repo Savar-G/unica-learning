@@ -1,20 +1,31 @@
-import { nextQuestion, submitAnswer, testStep } from "@/lib/assessment";
+import { nextQuestion, submitAnswer, testStep, workProblem } from "@/lib/assessment";
 import { loadTest, openAnswerWindow, testAccess } from "@/lib/assessment-store";
-import { ANSWER_MAX, QUESTION_TIME_CAP_MS, testFail, type StepResult } from "@/lib/test-api";
+import { ANSWER_BODY_MAX, ANSWER_MAX, QUESTION_TIME_CAP_MS, testFail, type StepResult } from "@/lib/test-api";
+import { parseWork } from "@/lib/work";
+import { removeWork, uploadWork } from "@/lib/work-store";
 
 // Marks the answer to the current question with the assessment core, stores it, and returns the next step.
 // The browser learns nothing about whether the answer was right.
+// #67: the whiteboard work comes with the answer (`work`: a base64 PNG and the typed working). It is checked against
+// the size limits and the core's rule (a show-your-work question needs work; grades 1-2 draw only), and the drawing goes
+// to private storage before the answer row, which points to it.
 export async function POST(request: Request, ctx: RouteContext<"/api/account/assessments/[id]/answers">) {
   const access = await testAccess();
   if ("error" in access) return access.error;
   const { admin, parent } = access;
 
-  let body: { questionId?: unknown; response?: unknown; timeMs?: unknown };
+  // A body bigger than any allowed drawing is refused before it is read.
+  if (Number(request.headers.get("content-length") ?? 0) > ANSWER_BODY_MAX) {
+    return testFail("work_too_big", 413, { message: "The answer is too big to save." });
+  }
+  let body: { questionId?: unknown; response?: unknown; timeMs?: unknown; work?: unknown };
   try {
     body = await request.json();
   } catch {
     return testFail("bad_json", 400);
   }
+  const work = parseWork(body.work);
+  if (!work.ok) return testFail(work.error, work.error === "work_too_big" ? 413 : 400, { message: work.message });
 
   // One clock reading for the whole request: the expiry check and the guarded write use the same time (#72).
   const now = Date.now();
@@ -30,6 +41,9 @@ export async function POST(request: Request, ctx: RouteContext<"/api/account/ass
   const valid = q.format === "choice" ? (q.choices ?? []).includes(response) : response.length > 0 && response.length <= ANSWER_MAX;
   const timeMs = Number(body.timeMs);
   if (!valid || !Number.isFinite(timeMs) || timeMs < 0) return testFail("invalid", 400);
+  const problem = workProblem(session, { drawn: work.png !== null, text: work.text });
+  if (problem === "work_required") return testFail("work_required", 400, { message: "This question needs work on the whiteboard." });
+  if (problem === "typing_off") return testFail("invalid", 400, { message: "Grades 1 and 2 draw their work. Typed working is not taken." });
 
   const next = submitAnswer(session, { questionId: q.id, response, timeMs: Math.min(Math.round(timeMs), QUESTION_TIME_CAP_MS) });
   const marked = next.answers.at(-1)!;
@@ -46,6 +60,12 @@ export async function POST(request: Request, ctx: RouteContext<"/api/account/ass
     const fresh = await loadTest(admin, parent, row.id, now);
     return "error" in fresh ? fresh.error : testFail("conflict", 409, { step: testStep(fresh.session) });
   }
+  // The drawing first, under a new name, so the answer row can point to it. If the row is not stored, the file goes.
+  const workPath = work.png ? await uploadWork(admin, parent, row.id, q.id, work.png) : null;
+  if (work.png && !workPath) {
+    await answerWindow.failed();
+    return testFail("store_failed", 502);
+  }
   const { error } = await admin.from("answers").insert({
     assessment_id: row.id,
     position: session.answers.length,
@@ -56,7 +76,11 @@ export async function POST(request: Request, ctx: RouteContext<"/api/account/ass
     correct: marked.correct,
     misconception: marked.misconception,
     time_ms: marked.timeMs,
+    work_required: q.showWork === true,
+    work_path: workPath,
+    work_text: work.text || null,
   });
+  if (error && workPath) await removeWork(admin, workPath);
   if (error) {
     // Another request stored this question's answer first. Send the step after it, read fresh, so the screen moves on.
     if (error.code === "23505") {

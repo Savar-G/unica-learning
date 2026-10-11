@@ -67,6 +67,12 @@ export interface Question {
   strand: Strand;
   format: AnswerFormat;
   whiteboard: boolean;
+  /**
+   * True when the child must show work on the whiteboard before Next (#67). The session picks the band's count
+   * (GradeBand.whiteboardRequired) on every route, from the templates that suit it first. Absent on tests stored
+   * before #67: nothing is required there.
+   */
+  showWork?: boolean;
   prompt: string;
   readAloud: string;
   /** Shuffled answer choices, only for "choice" questions. */
@@ -77,7 +83,10 @@ export interface Question {
 }
 
 /** A question as the browser receives it: no answer, no coded wrong answers, no drawn numbers. */
-export type PublicQuestion = Pick<Question, "id" | "level" | "strand" | "format" | "whiteboard" | "prompt" | "readAloud" | "choices">;
+export type PublicQuestion = Pick<Question, "id" | "level" | "strand" | "format" | "whiteboard" | "prompt" | "readAloud" | "choices"> & {
+  /** True when the child must show work on the whiteboard before Next (#67). */
+  showWork: boolean;
+};
 
 /**
  * The browser's next screen: a question, numbered from 1, or the end of the test.

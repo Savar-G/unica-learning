@@ -73,6 +73,18 @@
 .support-page .rpt-nf .rpt-k { margin: 0 0 6px; color: var(--ink-2); }
 .support-page .rpt-nf-v { margin: 0 0 12px; font-size: 24px; font-weight: 300; letter-spacing: -0.02em; line-height: 1.2; }
 
+/* the child's work (#67): three across, two on tablets; the drawing on white, as the child saw the board */
+.rpt-work { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; }
+.rpt-work figure { margin: 0; display: grid; gap: 12px; }
+.rpt-work-board { display: grid; gap: 8px; align-content: start; min-height: 120px; padding: 8px; border: 1px solid var(--line); border-radius: 10px; background: #fff; }
+.rpt-work-board img { display: block; width: 100%; height: auto; max-height: 360px; object-fit: contain; border-radius: 6px; }
+.support-page .rpt-work-text { margin: 0; padding: 4px 6px; white-space: pre-wrap; overflow-wrap: anywhere; font: 400 16px/1.45 var(--sans); }
+.support-page .rpt-work-missing { margin: 0; padding: 4px 6px; font-size: 14px; color: var(--ink-2); }
+.rpt-work figcaption { display: grid; gap: 8px; justify-items: start; }
+.support-page .rpt-work-q { margin: 0; font-size: 15px; line-height: 1.4; }
+.support-page .rpt-work-comment { margin: 0; font-size: 15px; color: var(--ink-2); }
+.rpt-chip.is-plain { background: var(--card); }
+
 /* next step */
 .rpt-next { padding: clamp(22px, 3vw, 32px); border-radius: 10px; background: var(--card); }
 .rpt-next p { margin: 0 0 20px; max-width: 40em; }
@@ -84,10 +96,12 @@
 @media (max-width: 1100px) {
   .rpt-head, .rpt-row { grid-template-columns: 1fr; }
   .rpt-row-h p { max-width: none; }
+  .rpt-work { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 @media (max-width: 599px) {
   .rpt-facts { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .rpt-tick { height: 44px; font-size: 15px; }
   .rpt-tick > span { width: 32px; height: 32px; }
   .rpt-areas .rpt-m { display: none; }
+  .rpt-work { grid-template-columns: 1fr; }
 }

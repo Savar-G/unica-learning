@@ -31,6 +31,28 @@
 .test-next .btn { min-height: 52px; padding-inline: 32px; }
 .test-next .btn:disabled, .test-card .btn:disabled { opacity: 0.45; cursor: not-allowed; transform: none; box-shadow: none; }
 
+/* The split desk (#67, D-088): question and answer on the left (about 40%), the whiteboard at full height on the right.
+   The screen does not scroll at 1440x900, 1024x768 or 768x1024; if the left pane runs long, it scrolls on its own. */
+.test-root.is-desk { height: 100dvh; min-height: 0; }
+.test-root.is-desk .test-top { padding-block: 12px; }
+.test-main:has(> .test-desk) { display: flex; min-height: 0; padding: 14px var(--gut) 16px; }
+.test-desk { flex: 1; width: min(100%, 1440px); margin-inline: auto; min-height: 0; display: grid; grid-template-columns: minmax(340px, 2fr) minmax(0, 3fr); border: 1px solid var(--line); border-radius: 14px; overflow: hidden; background: #fff; }
+.test-desk-q { display: flex; flex-direction: column; gap: 22px; min-height: 0; overflow: auto; padding: clamp(20px, 2.6vw, 36px); background: var(--soft); border-right: 1px solid var(--line); }
+.test-desk-board { display: flex; flex-direction: column; min-height: 0; padding: 14px clamp(12px, 1.6vw, 22px) clamp(12px, 1.6vw, 22px); }
+.test-desk .test-next { margin-top: auto; align-items: center; gap: 14px; }
+.test-why { margin: 0 auto 0 0; font: 500 15px/1.3 var(--sans); color: #b8410f; }
+.test-desk .test-pad { grid-template-columns: repeat(3, minmax(64px, 80px)); }
+.test-desk .test-choice { background: #fff; }
+
+/* Tablet in portrait and narrow windows: the panes stack, the board keeps at least 360 px. */
+@media (max-width: 900px), (orientation: portrait) {
+  .test-desk { grid-template-columns: 1fr; grid-template-rows: auto minmax(360px, 1fr); }
+  .test-desk-q { border-right: 0; border-bottom: 1px solid var(--line); gap: 16px; padding: 18px 20px; overflow: visible; }
+  .test-desk .test-choices { grid-template-columns: 1fr 1fr; }
+  .test-desk .test-num { grid-template-columns: auto auto; justify-content: start; align-items: start; gap: 16px; }
+  .test-desk .test-pad button { height: 56px; }
+}
+
 .test-end { width: min(100%, 1100px); min-height: min(70dvh, 640px); display: grid; align-content: center; gap: 18px; }
 [data-look="warm"] .test-end h2 { font-size: clamp(40px, 6vw, 72px); }
 .test-end p { margin: 0 auto; max-width: 30em; font-size: 20px; }

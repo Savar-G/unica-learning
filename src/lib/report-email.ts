@@ -72,6 +72,8 @@ export function reportEmail({ view: v, parentName, url }: { view: ReportView; pa
   const help = howWeHelp(v);
   const step = nextStep(v);
   const areas = v.model.strands.map((s) => `${s.name}: ${STATUS_LABEL[s.status]}, ${s.correct} of ${s.total} right`);
+  // #67: the drawings stay in private storage, so the email does not carry them; the report shows them after sign-in.
+  const work = (v.model.work ?? []).length > 0 ? `${name}'s work from the whiteboard is in the full report.` : null;
   const footer = `You get this email because you asked for ${name}'s free math placement report. Questions? Reply to this email.`;
 
   const text = [
@@ -81,6 +83,7 @@ export function reportEmail({ view: v, parentName, url }: { view: ReportView; pa
     ...(fsa ? [`For context: ${fsa.text}\nSource: ${fsa.source.name}, ${fsa.source.url}`] : []),
     ["By area", ...areas, thresholdsLine(v)].join("\n"),
     ...(facts ? [[`Number facts: ${factsLine(facts)}`, ...(facts.accuracy && facts.note ? [facts.note] : []), `${facts.scope} ${facts.round}`].join("\n")] : []),
+    ...(work ? [work] : []),
     `How we help: ${help.title}\n${help.text}`,
     `${step.title}\n${step.text}`,
     `See ${name}'s full report: ${url}`,
@@ -127,6 +130,10 @@ ${facts.accuracy && facts.speed
     : ""}
 ${facts.note ? p(esc(facts.note), "margin:0 0 8px;font-size:15px") : ""}
 ${p(`${esc(facts.scope)} ${esc(facts.round)}`, `margin:0;font-size:13px;color:${INK_2}`)}
+</td></tr>` : ""}
+${work ? `<tr><td style="padding:24px 24px 0">
+<p style="margin:0 0 6px;font-weight:600">${esc(name)}&#39;s work</p>
+${p(`${esc(name)}&#39;s work from the whiteboard is in the <a href="${esc(url)}" style="color:${INK}">full report</a>.`, "margin:0;font-size:15px")}
 </td></tr>` : ""}
 <tr><td style="padding:24px 24px 0">
 <p style="margin:0 0 6px;font-weight:600">How we help: ${esc(help.title)}</p>

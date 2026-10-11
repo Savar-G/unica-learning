@@ -66,7 +66,7 @@ export function fillTemplate(template: Template, seed: number, province: Provinc
 /** What the browser may see: no answer and no coded wrong answers. */
 export function toPublicQuestion(q: Question): PublicQuestion {
   const { id, level, strand, format, whiteboard, prompt, readAloud, choices } = q;
-  return { id, level, strand, format, whiteboard, prompt, readAloud, choices };
+  return { id, level, strand, format, whiteboard, showWork: q.showWork === true, prompt, readAloud, choices };
 }
 
 export interface SessionOptions {
@@ -118,6 +118,35 @@ function buildStage(
   return questions;
 }
 
+/** Questions whose template suits required shown work (Template.whiteboard). */
+const suited = (questions: readonly Question[]) => questions.filter((q) => q.whiteboard).length;
+
+// Marks `count` questions of one stage as "show your work" (#67). Questions whose template suits it come first; if
+// the stage has too few, typed-number questions fill the rest, then any question, so every route keeps the band's count.
+function markShownWork(questions: Question[], count: number, seed: number, label: string): Question[] {
+  const rng = rngFor(seed, `work:${label}`);
+  const order = [
+    ...rng.shuffle(questions.filter((q) => q.whiteboard)),
+    ...rng.shuffle(questions.filter((q) => !q.whiteboard && q.format === "number")),
+    ...rng.shuffle(questions.filter((q) => !q.whiteboard && q.format !== "number")),
+  ];
+  const chosen = new Set(order.slice(0, count).map((q) => q.id));
+  return questions.map((q) => ({ ...q, showWork: chosen.has(q.id) }));
+}
+
+/**
+ * How many of the band's shown-work questions go in stage 1; each stage 2 form gets the rest, so every route has the
+ * same count. Half in each stage, moved toward the stage with more suited questions when the other runs short.
+ */
+function shownWorkInStage1(total: number, stage1: readonly Question[], forms: readonly (readonly Question[])[]): number {
+  const inStage1 = suited(stage1);
+  const inForms = Math.min(...forms.map(suited));
+  let k = Math.ceil(total / 2);
+  if (k > inStage1) k = Math.max(inStage1, total - inForms);
+  else if (total - k > inForms) k = Math.min(inStage1, total - inForms);
+  return Math.min(Math.max(k, 0), total, stage1.length);
+}
+
 /** Starts a test. Every stage 2 form is drawn now, so the session needs no bank after this. */
 export function createSession(profile: ChildProfile, seed: number, options: SessionOptions = {}): Session {
   if (!Number.isInteger(seed)) throw new Error("The seed must be a whole number");
@@ -129,11 +158,15 @@ export function createSession(profile: ChildProfile, seed: number, options: Sess
   const rest = band.length - band.stage1;
   // Each form only needs to differ from stage 1, not from the forms the child never sees.
   const stage2Form = (route: Route, level: number) => buildStage(bank, profile, band.strands, level as Level, rest, seed, route, new Set(seen));
+  const stage2 = { up: stage2Form("up", grade + 1), stay: stage2Form("stay", grade), down: stage2Form("down", grade - 1) };
+
+  const k = shownWorkInStage1(band.whiteboardRequired, stage1, Object.values(stage2));
+  const mark = (route: Route) => markShownWork(stage2[route], band.whiteboardRequired - k, seed, route);
   return {
     profile,
     seed,
-    stage1,
-    stage2: { up: stage2Form("up", grade + 1), stay: stage2Form("stay", grade), down: stage2Form("down", grade - 1) },
+    stage1: markShownWork(stage1, k, seed, "s1"),
+    stage2: { up: mark("up"), stay: mark("stay"), down: mark("down") },
     route: null,
     answers: [],
   };

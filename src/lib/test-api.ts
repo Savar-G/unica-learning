@@ -20,6 +20,10 @@ export type TestError =
   | "expired"
   /** A new test opens 30 days after the last completed one (#72). The start request sends `opensAt` with it. */
   | "retake_closed"
+  /** A show-your-work question was answered with an empty whiteboard (#67). */
+  | "work_required"
+  /** The drawing or the typed working is over its size limit (#67). A `message` says which. */
+  | "work_too_big"
   | "store_failed";
 
 export type StartResult = { ok: true; id: string; resumed: boolean } | { ok: false; error: TestError };
@@ -30,5 +34,12 @@ export type FinishResult = { ok: true } | { ok: false; error: TestError };
 export const ANSWER_MAX = 12;
 /** Time on one question is capped here, so a tab left open overnight does not skew the speed data. */
 export const QUESTION_TIME_CAP_MS = 60 * 60_000;
+
+/** The largest whiteboard drawing the server stores, as PNG bytes (#67). The browser makes the image smaller to fit. */
+export const WORK_IMAGE_MAX_BYTES = 1_000_000;
+/** The most typed working the server stores for one question, in characters (#67). */
+export const WORK_TEXT_MAX = 1000;
+/** An answer request bigger than this is refused before it is read: room for the largest drawing in base64, and the text. */
+export const ANSWER_BODY_MAX = 1_500_000;
 
 export const testFail = (error: TestError, status: number, extra: object = {}) => Response.json({ ok: false, error, ...extra }, { status });
