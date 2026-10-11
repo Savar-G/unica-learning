@@ -84,3 +84,13 @@
 
 /* the parent's report, opened by an admin */
 .adm-report-note { margin: 0 0 24px; padding: 12px 14px; border-left: 3px solid var(--sky); border-radius: 0 6px 6px 0; background: var(--soft); font-size: 14px; }
+
+/* The explicit family deletion request (#78). Reuses the admin's plain disclosure and button. */
+.adm-delete { max-width: 52em; padding: 16px 18px; border: 1px solid var(--line); border-radius: 8px; }
+.adm-delete summary { cursor: pointer; min-height: 32px; font-weight: 500; }
+.adm-delete[open] summary { margin-bottom: 12px; }
+.adm-delete form { display: grid; justify-items: start; gap: 10px; margin-top: 16px; }
+.adm-delete label { font-size: 14px; overflow-wrap: anywhere; }
+.adm-delete input { box-sizing: border-box; width: min(100%, 400px); min-height: 44px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 6px; background: #fff; color: var(--ink); }
+.adm-delete .adm-btn { min-height: 44px; }
+.adm-delete [role="alert"] { padding: 10px 12px; border-left: 3px solid var(--tang); background: var(--adm-bad); }
