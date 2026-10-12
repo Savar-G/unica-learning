@@ -82,10 +82,10 @@ export function Hero() {
           <>
             Same material, same pace. <span className="nowrap">Miss <SwapWord words={TOPICS} /></span> and every lesson after
             it gets harder. Unica gives your child more practice where they need help and new challenges when they’re ready.
-            We use their completed work to shape each new workbook, then mail it home.
+            We use their completed work to shape each new personalized workbook, then mail it home.
           </>
         }
-        meta={[`First month CAD ${cad(firstMonth(PLANS.one.price))}, then CAD ${PLANS.one.price}/month`, "30-day money-back guarantee", "Cancel anytime"]}
+        meta={["Free assessment and report", "30-day money-back guarantee", "Cancel anytime"]}
         page={null}
         report={null}
         animate
@@ -105,7 +105,7 @@ const STEP_SIZES = "(min-width: 1080px) 380px, (min-width: 700px) 45vw, 92vw";
 const STEPS = [
   { n: "01", t: "Assess", d: "Your child takes the free math assessment online, on a laptop or tablet. The report shows their math level and gaps. You choose a plan after the report.",
     v: <Image src={assessPhoto} alt="A girl and her mother sit at a laptop, with a workbook open on the table" sizes={STEP_SIZES} placeholder="blur" />, tone: "photo" as const },
-  { n: "02", t: "Deliver", d: "We mail a workbook matched to your child's level and gaps. It covers your school curriculum.", v: <Image src={deliverPhoto} alt="Two mailers waiting on a front step" sizes={STEP_SIZES} placeholder="blur" />, tone: "photo" as const },
+  { n: "02", t: "Deliver", d: "We mail a personalized workbook matched to your child's level and gaps. It covers your school curriculum.", v: <Image src={deliverPhoto} alt="Two mailers waiting on a front step" sizes={STEP_SIZES} placeholder="blur" />, tone: "photo" as const },
   { n: "03", t: "Practice", d: "Your child works on paper for about 15-20 minutes a day, 5 days a week.",
     v: <Image src={practice6} alt="A girl works through an arithmetic page in pencil" sizes={STEP_SIZES} placeholder="blur" />, tone: "photo" as const },
   { n: "04", t: "Scan", d: "Take a photo of the finished pages. We mark the work, show you the gaps, and give the solutions so your child can understand what went wrong.", v: <Image src={scanPhoto} alt="A phone camera frames a page to photograph it" sizes={STEP_SIZES} placeholder="blur" />, tone: "photo" as const },
@@ -156,16 +156,17 @@ export function Why() {
   );
 }
 
+// Program parts first, the workbook last (D-095). The left column reads first, then the photo, then the right column.
 const INCLUDED: [IconName, string, ReactNode, number][][] = [
   [
-    ["book", "Workbooks", "1 math workbook, about 20-25 pages.", 0],
+    ["layers", "A plan built from your child's assessment", "The free online assessment finds your child's level and gaps. The plan sets what each book covers.", 0],
     ["calendar", "Daily practice, rewarded", <>15-20 minutes a day, 5 days a week. Your child earns rewards for every page they finish and every week they keep the habit. <Link href="/rewards" className="more-link">See the rewards <span aria-hidden="true">→</span></Link></>, 0.08],
-    ["box", "Delivery", "Delivered to your door before the current book ends.", 0.16],
+    ["cam", "Stuck? Scan it.", "When your child is stuck, scan the problem with our app. You see every step, explained, so you can walk them through it.", 0.16],
   ],
   [
-    ["cam", "Stuck? Scan it.", "When your child is stuck, scan the problem with our app. You see every step, explained, so you can walk them through it.", 0.04],
-    ["test", "Instant answer check", "Scan a finished page and see what's right in seconds. No answer key needed. Each scan also helps us plan the next book.", 0.12],
-    ["chart", "Progress reports", "A progress report and worked solutions in the app, updated after every scan.", 0.2],
+    ["test", "Instant answer check", "Scan a finished page and see what's right in seconds. No answer key needed. Each scan also helps us plan the next book.", 0.04],
+    ["chart", "Progress reports", "A progress report and worked solutions in the app, updated after every scan.", 0.12],
+    ["book", "Personalized workbooks, mailed home", "1 math workbook, about 20-25 pages, delivered to your door before the current book ends.", 0.2],
   ],
 ];
 
@@ -215,7 +216,7 @@ export function Feel() {
         </div>
       ))}
       <Rise className="msg">
-        <h2 id="feelT">A workbook made for one child: yours.</h2>
+        <h2 id="feelT">A program made for one child: yours.</h2>
         <p className="lead">No two {BRAND} books are the same. Each one starts where your child is, and moves on when they&apos;re ready.</p>
       </Rise>
     </Section>
@@ -280,7 +281,7 @@ export function Pricing() {
           note={PLANS.one.note}
           price={PLANS.one.price}
           offer={{ price: cad(firstMonth(PLANS.one.price)), note: `first month, ${FIRST_MONTH_OFF}% off!`, then: `Then CAD ${PLANS.one.price} a month.` }}
-          features={["Free online math assessment and report, before you choose a plan", "Personalized math workbooks matched to your child's level and gaps, mailed home", "Your next book arrives before the current one runs out", "Progress reports after every check-in", "Delivery included. Cancel anytime"]}
+          features={["Free online math assessment and report, before you choose a plan", "A learning plan built from your child's level and gaps", "Progress reports after every check-in", "Personalized math workbooks matched to your child's level and gaps, mailed home", "Your next book arrives before the current one runs out", "Delivery included. Cancel anytime"]}
           ctaLabel={START_LABEL}
           cta={<GetStarted src="price" />}
         />

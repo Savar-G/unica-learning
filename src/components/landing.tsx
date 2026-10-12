@@ -13,12 +13,13 @@ export function Landing({ look = "primer" }: { look?: Look }) {
         <main id="main">
           <Hero />
           <How />
-          <Parent />
+          {/* PR 2 inserts the new Personalization section here, right after How (D-095, D-096). */}
           <Why />
           <Included />
           <Feel />
           <OurPromise />
           <Pricing />
+          <Parent />
           <Faq />
           <ThreadEnd />
         </main>
