@@ -35,7 +35,8 @@ import "./report.css";
 
 const NO_NEXT: ReportNextContext = { src: "account", asked: false, start: { saved: null, joined: false, cancelled: false } };
 
-export function ReportCard({ view, next = NO_NEXT, readOnly = false }: { view: ReportView; next?: ReportNextContext; readOnly?: boolean }) {
+/** `nextSlot` replaces the next-step row: the public sample report shows its own button there. */
+export function ReportCard({ view, next = NO_NEXT, readOnly = false, nextSlot }: { view: ReportView; next?: ReportNextContext; readOnly?: boolean; nextSlot?: ReactNode }) {
   return (
     <article className="rpt" aria-labelledby="rpt-title">
       <ReportHeader view={view} />
@@ -45,7 +46,7 @@ export function ReportCard({ view, next = NO_NEXT, readOnly = false }: { view: R
       <ReportNumberFacts view={view} />
       <ReportWork view={view} />
       <ReportHelp view={view} />
-      {readOnly ? <Row id={NEXT_STEP_ANCHOR} title="Next step"><p>{nextStep(view).title}</p></Row> : <ReportNextStep view={view} next={next} />}
+      {nextSlot ? <Row id={NEXT_STEP_ANCHOR} title="Next step">{nextSlot}</Row> : readOnly ? <Row id={NEXT_STEP_ANCHOR} title="Next step"><p>{nextStep(view).title}</p></Row> : <ReportNextStep view={view} next={next} />}
       <p className="rpt-meta">{metaLine(view)}</p>
     </article>
   );

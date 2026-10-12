@@ -1,0 +1,93 @@
+{
+  "round": 18,
+  "decision": "How should the new Personalization section (after How it works) show that two children in the same Grade 3 class get two different books, while it stays short on a phone?",
+  "primary_axis": "Layout of the two-child contrast",
+  "invariants": [
+    "Same copy: eyebrow Personalization, title 'Same class. Two different books.', the same lead, label and link",
+    "Same two sample children (Leah, Kai) and the same three lines each: Assessment, Learning style, Next book",
+    "Same two pages, built from the real question bank with fixed seeds (src/lib/sample-children.ts)",
+    "Warm look tokens, Section, SectionHeader, Knot, Rise",
+    "Placed right after How it works; viewports 1280 x 900 and 390 x 844; reduced motion"
+  ],
+  "run": "npm run dev, then /prototype/personalization?v=a|b|c|d and /sample-report",
+  "options": [
+    {
+      "id": "A",
+      "name": "Two columns",
+      "artifact": "/prototype/personalization?v=a",
+      "screenshots": [
+        "a-desktop.png",
+        "a-phone.png"
+      ],
+      "bet": "Two grey cards side by side, each with the child, the three lines and the full first page below",
+      "benefit": "Most direct and the most page detail on desktop",
+      "cost": "Longest: 1.92 screens on desktop, 1.85 on a phone (pages cropped to a peek)",
+      "risk": "Adds the most length to a page that is already long (D-072)"
+    },
+    {
+      "id": "B",
+      "name": "Switch",
+      "artifact": "/prototype/personalization?v=b",
+      "screenshots": [
+        "b-desktop.png",
+        "b-desktop-kai.png",
+        "b-phone.png",
+        "b-phone-kai.png"
+      ],
+      "bet": "One child at a time, with a Leah / Kai switch; lines on the left, the page on the right",
+      "benefit": "Shortest on a phone: 1.30 screens; 1.63 on desktop",
+      "cost": "Needs a tap to see the second child; uses JavaScript",
+      "risk": "The contrast is the message, and most visitors never tap, so they see one child and one book"
+    },
+    {
+      "id": "C",
+      "name": "Report table",
+      "artifact": "/prototype/personalization?v=c",
+      "screenshots": [
+        "c-desktop.png",
+        "c-phone.png"
+      ],
+      "bet": "A report-card table: rows Assessment, Learning style, Next book, First page; one column per child",
+      "benefit": "Compares line by line; both children on screen on a phone: 1.37 screens; matches the report look (D-087)",
+      "cost": "1.77 screens on desktop; on a phone the two pages are small cropped thumbnails",
+      "risk": "Reads as a data table, less warm; phone text columns are narrow"
+    },
+    {
+      "id": "D",
+      "name": "Fork",
+      "artifact": "/prototype/personalization?v=d",
+      "screenshots": [
+        "d-desktop.png",
+        "d-phone.png"
+      ],
+      "bet": "One shared start ('Grade 3, same school, same class, same free assessment.'), then the pencil line forks to two rows: the whole page as a thumbnail beside each child's lines",
+      "benefit": "Shortest on desktop: 1.25 screens; both children without a tap on a phone: 1.44 screens; the whole page shows, not a crop; the fork reuses the pencil line",
+      "cost": "Pages are small, so they read as pictures of a page, not as readable text",
+      "risk": "The thumbnails may be too small to show that the problems are real"
+    }
+  ],
+  "sample_report": {
+    "artifact": "/sample-report",
+    "screenshots": [
+      "sample-report-desktop.png",
+      "sample-report-phone.png"
+    ],
+    "what": "The real ReportCard (readOnly) for Leah, computed by the real session, facts section and report model: Grade 3, BC, every regrouping question wrong. Result: working level grade 3, Number and operations Developing (3 of 5), the other areas Secure, facts 22 of 24 at 2.4 s. A sample note with 'Take free assessment' sits above the report. 2.8 screens on desktop, 3.9 on a phone."
+  },
+  "measured": "Section height / viewport height, from the screenshot script; no horizontal overflow in any option",
+  "known_gaps": [
+    "Learning style: the intake questions after the assessment are planned but not built. Today nothing collects how a child likes to learn, so the 'Learning style' line describes a step we do not have yet.",
+    "The report shows areas, not skills: Leah's report says 'Number and operations: Developing', not 'regrouping'. The section's 'A gap in regrouping' is one level more detailed than the report it links to.",
+    "The read-only report ends with 'Next step: Start Leah's books' and no button; on a sample page this line reads oddly.",
+    "The report has no 'Leah's work' row: the sample has no drawings.",
+    "Sitemap and /llms.txt entries for /sample-report are left for the build stage."
+  ],
+  "recommendation": "D",
+  "selection": {
+    "chosen": "d",
+    "by": "Savar",
+    "date": "2026-10-12",
+    "decision": "D-096",
+    "edits": "Copy, tags and box text per D-096; Next book row removed; page zoom on tap; equal page heights; sample report at a Grade 2 working level with a Take free assessment button; sample-children line removed. Variants A-C and the prototype route are deleted in the build."
+  }
+}
