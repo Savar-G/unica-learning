@@ -49,6 +49,8 @@ function errorText(error: AccountError | undefined): ReactNode {
       return <>Your session ended. <Link href="/sign-in">Sign in</Link> again.</>;
     case "unavailable":
       return <>We cannot set up this account right now. Email <a href={SUPPORT_HREF}>{SUPPORT_EMAIL}</a> and we will help.</>;
+    case "unproved":
+      return <>For your safety, confirm your email before you finish. <Link href="/sign-in/reset">Get a link by email</Link>, open it, then finish your account.</>;
     default:
       return <>We could not save your details. Try again in a moment. If this keeps happening, email <a href={SUPPORT_HREF}>{SUPPORT_EMAIL}</a>.</>;
   }
@@ -118,7 +120,9 @@ function codeNoteText(note: Exclude<CodeNote, null>): ReactNode {
     case "sent_again":
       return "We sent a new code. Use the code in the newest email.";
     case "wait":
-      return "We sent a code a moment ago. Use that code, or wait a minute and send a new one.";
+      // Supabase gives the same answer for its one-email-a-minute rule and for the project's hourly email limit, so
+      // this text does not say that a code was sent.
+      return "We cannot send a new code right now. If an email from us already has a code, enter it here. If not, wait a few minutes, then send a new code.";
     case "bad":
       return "Enter the code from the email. It has only numbers.";
     case "expired":
@@ -136,7 +140,7 @@ function codeNoteText(note: Exclude<CodeNote, null>): ReactNode {
 async function sendCode(email: string): Promise<"sent" | "wait" | "failed"> {
   const { error } = await browserClient().auth.signInWithOtp({ email, options: { shouldCreateUser: true } });
   if (!error) return "sent";
-  // Supabase allows one email a minute for each address.
+  // 429: one email a minute for each address, or the project's hourly email limit (both over_email_send_rate_limit).
   if (error.status === 429) return "wait";
   console.error("[account] code send failed", error.code);
   return "failed";
@@ -170,6 +174,8 @@ export function AccountSignup() {
   const [code, setCode] = useState("");
   const [note, setNote] = useState<CodeNote>(null);
   const [resending, setResending] = useState(false);
+  // True once this visit has sent a code. Until then the code step does not say that a code was sent.
+  const [sentNow, setSentNow] = useState(false);
   // The email this tab has already proved. A retry after a failed finish then skips the code.
   const [proved, setProved] = useState<string | null>(null);
   const started = useRef(false);
@@ -253,6 +259,7 @@ export function AccountSignup() {
     }
     track("account_code_sent", { status: sent });
     setNote(sent === "wait" ? "wait" : null);
+    setSentNow(sent === "sent");
     setStep("code");
   };
 
@@ -292,6 +299,7 @@ export function AccountSignup() {
     setResending(false);
     track(sent === "failed" ? "account_code_failed" : "account_code_sent", sent === "failed" ? { code: "send" } : { status: sent === "sent" ? "again" : "wait" });
     setNote(sent === "sent" ? "sent_again" : sent === "wait" ? "wait" : "send_failed");
+    if (sent === "sent") setSentNow(true);
   };
 
   if (step === "code") {
@@ -299,7 +307,10 @@ export function AccountSignup() {
     return (
       <form className="acct-form" onSubmit={confirm} noValidate>
         <p role="status" className="acct-alert">
-          We sent a code to <b>{cleanEmail}</b>. Enter it here to confirm your email. If this email already has an account, the code signs you in.
+          {sentNow
+            ? <>We sent a code to <b>{cleanEmail}</b>. Enter it here to confirm your email.</>
+            : <>To confirm <b>{cleanEmail}</b>, enter the code from our email here.</>}{" "}
+          If this email already has an account, the code signs you in.
         </p>
         {failure && <p role="alert" className="acct-alert">{errorText(failure)}</p>}
         {proved !== cleanEmail && (
@@ -587,25 +598,37 @@ export function GoogleButton({ next }: { next?: string }) {
   );
 }
 
-/** A parent who signed in for the first time without the signup form (Google, or a password reset link) gives the rest of the details. */
-export function FinishAccount({ name: googleName, email }: { name: string; email: string }) {
+/**
+ * A parent who signed in for the first time without the signup form (Google, or a password reset link) gives the rest of
+ * the details. Finishing gives the account a new password that nobody knows (#82), so a parent without Google chooses
+ * the password here (`needsPassword`); a Google parent signs in with Google.
+ */
+export function FinishAccount({ name: googleName, email, needsPassword }: { name: string; email: string; needsPassword: boolean }) {
   const router = useRouter();
   const form = useRef<HTMLFormElement>(null);
   const [name, setName] = useState(googleName);
   const [postal, setPostal] = useState("");
+  const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   const [child, setChild] = useState<ChildInput>({ firstName: "", grade: 4, province: "BC" });
   const [pickedProvince, setPickedProvince] = useState(false);
   const [errors, setErrors] = useState<SignupErrors>({});
   const [failure, setFailure] = useState<AccountError | null>(null);
   const [busy, setBusy] = useState(false);
+  const channel = needsPassword ? "email" : "google";
 
   const submit = async (e: FormEvent) => {
     e.preventDefault();
     if (busy) return;
-    const next: SignupErrors = { name: name.trim().length < 2, postal: !POSTAL.test(postal.trim()), child: !child.firstName.trim() };
+    const next: SignupErrors = {
+      name: name.trim().length < 2,
+      postal: !POSTAL.test(postal.trim()),
+      password: needsPassword && !validPassword(password),
+      child: !child.firstName.trim(),
+    };
     setErrors(next);
     setFailure(null);
-    const firstBad = (["name", "postal", "child"] as const).find((k) => next[k]);
+    const firstBad = (["name", "postal", "password", "child"] as const).find((k) => next[k]);
     if (firstBad) {
       form.current?.querySelector<HTMLInputElement>(`#f-${firstBad === "child" ? "c-first" : firstBad}`)?.focus();
       return;
@@ -613,14 +636,19 @@ export function FinishAccount({ name: googleName, email }: { name: string; email
     setBusy(true);
     const res = await post("/api/account/finish", {
       name: name.trim(), postal: postal.trim().toUpperCase(), child: { ...child, firstName: child.firstName.trim() }, source: collectSource(),
+      ...(needsPassword ? { password } : {}),
     });
     if (!res.ok) {
-      track("account_signup_failed", { code: res.error ?? "unknown", channel: "google" });
+      track("account_signup_failed", { code: res.error ?? "unknown", channel });
       setFailure(res.error ?? "store_failed");
+      if (res.error === "weak_password") {
+        setErrors({ password: true });
+        form.current?.querySelector<HTMLInputElement>("#f-password")?.focus();
+      }
       setBusy(false);
       return;
     }
-    if (!res.existing) track("account_created", { curriculum: child.province, channel: "google" });
+    if (!res.existing) track("account_created", { curriculum: child.province, channel });
     router.replace(res.linkSent ? "/account?sent=1" : "/account");
     router.refresh();
   };
@@ -642,6 +670,14 @@ export function FinishAccount({ name: googleName, email }: { name: string; email
             if (guess && !pickedProvince) setChild((c) => ({ ...c, province: guess }));
           }} aria-invalid={!!errors.postal} aria-describedby={described("f-postal", errors.postal)} />
         </Field>
+        {needsPassword && (
+          <Field id="f-password" label="Choose a password" bad={errors.password} error={failure === "weak_password" ? "Choose a stronger password." : `Use ${PASSWORD_MIN} to ${PASSWORD_MAX} characters.`} hint={`At least ${PASSWORD_MIN} characters. You sign in with it next time.`}>
+            <span className="pw">
+              <input id="f-password" type={showPassword ? "text" : "password"} autoComplete="new-password" value={password} onChange={(e) => setPassword(e.target.value)} aria-invalid={!!errors.password} aria-describedby={described("f-password", errors.password, true)} />
+              <button type="button" onClick={() => setShowPassword((s) => !s)} aria-controls="f-password" aria-pressed={showPassword}>{showPassword ? "Hide" : "Show"}</button>
+            </span>
+          </Field>
+        )}
       </fieldset>
       <fieldset>
         <legend>Your child</legend>

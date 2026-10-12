@@ -21,10 +21,13 @@ export default async function Finish() {
   if (parent) redirect("/account");
   const meta = user.user_metadata as { full_name?: unknown; name?: unknown };
   const name = typeof meta.full_name === "string" ? meta.full_name : typeof meta.name === "string" ? meta.name : "";
+  // Finishing gives the account a password nobody knows (#82). A parent without Google chooses their password here.
+  const providers = (user.app_metadata as { providers?: unknown }).providers;
+  const google = Array.isArray(providers) && providers.includes("google");
   return (
     <SupportPage label="Free math assessment" title="Finish your account.">
       <p className="lead">Tell us a little more about you and your child. Then your child can start the test.</p>
-      <FinishAccount name={name.slice(0, 120)} email={user.email} />
+      <FinishAccount name={name.slice(0, 120)} email={user.email} needsPassword={!google} />
     </SupportPage>
   );
 }

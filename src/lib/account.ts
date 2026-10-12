@@ -25,8 +25,8 @@ export interface FinishPayload {
   /** Referrer and UTM tags, so we know which channel brought each parent. */
   source: Record<string, string>;
   /**
-   * Password signup only: the password from the signup form. It is set only after the parent proved the email, so a
-   * password chosen by someone else before that never stays on the account (#82). Google parents send none.
+   * The parent's own password: from the signup form, or from /account/finish for a parent without Google. The route first
+   * replaces any earlier password with one that nobody knows, then sets this one (#82). Google parents send none.
    */
   password?: string;
 }
@@ -36,7 +36,9 @@ export type AccountError =
   /** The session's email is not confirmed: no family rows for an address nobody proved (#82). */
   | "unconfirmed"
   /** The family is being deleted (#78), so the same sign-in cannot make it again. */
-  | "unavailable";
+  | "unavailable"
+  /** A password sign-in alone cannot make a family: the email must be proved first (email code, emailed link or Google, #82). */
+  | "unproved";
 
 /**
  * What /api/account/* answers. `linkSent`: finishing on a phone emailed the sign-in link (#63). `existing`: the parent

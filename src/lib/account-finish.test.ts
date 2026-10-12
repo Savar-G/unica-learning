@@ -7,9 +7,20 @@ vi.mock("server-only", () => ({}));
 
 type FakeUser = { id: string; email: string; email_confirmed_at: string | null } | null;
 let user: FakeUser;
+/** How the current session signed in (the JWT's amr claim): "otp" for the email code, "oauth" for Google. */
+let methods: string[];
 let db: SupabaseClient;
+
+const b64 = (o: unknown) => Buffer.from(JSON.stringify(o)).toString("base64url");
+const accessToken = () => `${b64({ alg: "ES256", typ: "JWT" })}.${b64({ sub: user?.id, amr: methods.map((method) => ({ method, timestamp: 1760000000 })) })}.c2ln`;
+
 vi.mock("@/lib/supabase-auth", () => ({
-  sessionClient: async () => ({ auth: { getUser: async () => ({ data: { user }, error: user ? null : new Error("Auth session missing") }) } }),
+  sessionClient: async () => ({
+    auth: {
+      getUser: async () => ({ data: { user }, error: user ? null : new Error("Auth session missing") }),
+      getSession: async () => ({ data: { session: user ? { access_token: accessToken() } : null }, error: null }),
+    },
+  }),
   adminClient: () => db,
 }));
 
@@ -17,18 +28,25 @@ const { POST } = await import("@/app/api/account/finish/route");
 
 const ID = "7d9f3c4e-1111-4a2b-9c3d-000000000001";
 const LAPTOP = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0 Safari/537.36";
+const PHONE = "Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Mobile/15E148 Safari/604.1";
+/** The fake Auth server rejects this one as weak, like Supabase's leaked-password check. */
+const WEAK = "password123";
 
 interface World {
   /** A parent row already exists for this user. */
   existing?: boolean;
+  /** The parent read fails. */
+  readDown?: boolean;
   /** What the database function answers. */
   admission?: { status: "created"; child: string } | { status: "exists" | "busy" | "unavailable" };
-  /** Auth's answer to the password change. */
-  password?: "ok" | "weak" | "down";
+  /** Every password change fails. */
+  passwordDown?: boolean;
+  /** Signing out the other sessions fails. */
+  signOutDown?: boolean;
 }
 
-/** Every request the route sends to Supabase, in order, with its body. */
-let calls: { method: string; path: string; body: unknown }[];
+/** Every request the route sends to Supabase, in order, with its body and Authorization header. */
+let calls: { method: string; path: string; query: string; body: unknown; auth: string | null }[];
 
 function supabase(world: World) {
   calls = [];
@@ -39,18 +57,24 @@ function supabase(world: World) {
         const url = new URL(String(input));
         const method = init?.method ?? "GET";
         const body = typeof init?.body === "string" && init.body ? JSON.parse(init.body) : null;
-        calls.push({ method, path: url.pathname, body });
+        const auth = new Headers(init?.headers).get("authorization");
+        calls.push({ method, path: url.pathname, query: url.search, body, auth });
         const json = (value: unknown, status = 200, headers: Record<string, string> = {}) =>
           new Response(JSON.stringify(value), { status, headers: { "content-type": "application/json", ...headers } });
         if (url.pathname.startsWith("/auth/v1/admin/users/")) {
-          if (world.password === "weak") return json({ code: "weak_password", message: "Password is known to be weak", weak_password: { reasons: ["pwned"] } }, 422);
-          if (world.password === "down") return json({ code: "unexpected_failure", message: "down" }, 500);
+          if (world.passwordDown) return json({ code: "unexpected_failure", message: "down" }, 500);
+          if ((body as { password?: string })?.password === WEAK) return json({ code: "weak_password", message: "Password is known to be weak", weak_password: { reasons: ["pwned"] } }, 422);
           return json({ id: ID, email: user?.email });
+        }
+        if (url.pathname === "/auth/v1/logout") {
+          if (world.signOutDown) return json({ code: "unexpected_failure", message: "down" }, 500);
+          return new Response(null, { status: 204 });
         }
         if (url.pathname === "/rest/v1/rpc/create_family") return json(world.admission ?? { status: "created", child: "child-1" });
         if (url.pathname === "/rest/v1/parents") {
           // The phone link step reads the new parent back by name; the existing-account check reads only the id.
           if (url.searchParams.get("select")?.includes("name")) return json([{ name: "Priya Shah", email: "priya@family.ca" }]);
+          if (world.readDown) return json({ code: "XX000", message: "down" }, 500);
           return json(world.existing ? [{ id: ID }] : []);
         }
         if (url.pathname === "/rest/v1/children") return json([{ first_name: "Asha" }]);
@@ -71,26 +95,84 @@ function finish(body: unknown, ua = LAPTOP) {
 }
 
 const paths = () => calls.map((c) => `${c.method} ${c.path}`);
+const passwordsSet = () => calls.filter((c) => c.path.startsWith("/auth/v1/admin/users/")).map((c) => (c.body as { password: string }).password);
+const RANDOM = `PUT /auth/v1/admin/users/${ID}`;
+const SIGN_OUT = "POST /auth/v1/logout";
+const FAMILY = "POST /rest/v1/rpc/create_family";
 
 beforeEach(() => {
   user = { id: ID, email: "Priya@Family.ca", email_confirmed_at: "2026-10-11T20:00:00Z" };
+  methods = ["otp"];
 });
 afterEach(() => vi.unstubAllEnvs());
 
-describe("finishing a password signup after the email code (#82)", () => {
-  it("sets the parent's own password before any family row is written, with the email from the session", async () => {
+describe("a password set before the email was proved never reaches a family account (#82)", () => {
+  it("is replaced by a random one, then every other session ends, then the parent's own password is set, before any family row", async () => {
     supabase({});
     const res = await finish({ ...details, email: "attacker@evil.test", password: "a-long-password" });
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({ ok: true, linkSent: false });
-    const order = paths().filter((p) => p.startsWith("PUT /auth/v1/admin/users/") || p === "POST /rest/v1/rpc/create_family");
-    expect(order).toEqual([`PUT /auth/v1/admin/users/${ID}`, "POST /rest/v1/rpc/create_family"]);
-    expect(calls.find((c) => c.path.startsWith("/auth/v1/admin/users/"))?.body).toEqual({ password: "a-long-password" });
+    expect(paths().filter((p) => p !== "GET /rest/v1/parents")).toEqual([RANDOM, SIGN_OUT, RANDOM, FAMILY]);
+    const [random, own] = passwordsSet();
+    expect(random).not.toBe("a-long-password");
+    expect(random.length).toBeGreaterThanOrEqual(32);
+    expect(own).toBe("a-long-password");
+    const signOut = calls.find((c) => c.path === "/auth/v1/logout");
+    expect(signOut?.query).toBe("?scope=others");
+    expect(signOut?.auth).toBe(`Bearer ${accessToken()}`);
     expect(calls.find((c) => c.path === "/rest/v1/rpc/create_family")?.body).toMatchObject({
       p_parent: ID, p_email: "priya@family.ca", p_name: "Priya Shah", p_postal: "V6B 1A1", p_child_name: "Asha", p_child_grade: 4, p_child_province: "BC",
     });
   });
 
+  it("is replaced even when the parent's own password is rejected, and no family is written", async () => {
+    supabase({});
+    const res = await finish({ ...details, password: WEAK });
+    expect(res.status).toBe(400);
+    expect(await res.json()).toEqual({ ok: false, error: "weak_password" });
+    expect(paths().filter((p) => p !== "GET /rest/v1/parents")).toEqual([RANDOM, SIGN_OUT, RANDOM]);
+    expect(passwordsSet()[0]).not.toBe(WEAK);
+  });
+
+  it("is replaced even when the request is not valid", async () => {
+    supabase({});
+    const res = await finish({ ...details, postal: "90210", password: "a-long-password" });
+    expect(res.status).toBe(400);
+    expect(paths().filter((p) => p !== "GET /rest/v1/parents")).toEqual([RANDOM, SIGN_OUT]);
+    supabase({});
+    const short = await finish({ ...details, password: "short" });
+    expect(short.status).toBe(400);
+    expect(paths().filter((p) => p !== "GET /rest/v1/parents")).toEqual([RANDOM, SIGN_OUT]);
+  });
+
+  it("is replaced when the family is finished on /account/finish, whose request has no password", async () => {
+    supabase({});
+    const res = await finish(details);
+    expect(await res.json()).toEqual({ ok: true, linkSent: false });
+    expect(paths().filter((p) => p !== "GET /rest/v1/parents")).toEqual([RANDOM, SIGN_OUT, FAMILY]);
+  });
+
+  it("cannot be used to make the family: a session that signed in with a password alone writes nothing", async () => {
+    supabase({});
+    methods = ["password"];
+    const res = await finish({ ...details, password: "a-long-password" });
+    expect(res.status).toBe(403);
+    expect(await res.json()).toEqual({ ok: false, error: "unproved" });
+    expect(paths()).toEqual(["GET /rest/v1/parents"]);
+  });
+
+  it("writes no family when the password or the other sessions cannot be changed", async () => {
+    supabase({ passwordDown: true });
+    expect((await finish({ ...details, password: "a-long-password" })).status).toBe(502);
+    expect(paths()).not.toContain(FAMILY);
+    expect(paths()).not.toContain(SIGN_OUT);
+    supabase({ signOutDown: true });
+    expect((await finish({ ...details, password: "a-long-password" })).status).toBe(502);
+    expect(paths().filter((p) => p !== "GET /rest/v1/parents")).toEqual([RANDOM, SIGN_OUT]);
+  });
+});
+
+describe("what the route never does", () => {
   it("writes nothing for an email nobody confirmed, or without a session", async () => {
     supabase({});
     user = { id: ID, email: "priya@family.ca", email_confirmed_at: null };
@@ -103,46 +185,37 @@ describe("finishing a password signup after the email code (#82)", () => {
     expect(calls).toEqual([]);
   });
 
-  it("leaves an existing account as it is: no new password and no second family", async () => {
-    supabase({ existing: true });
-    const res = await finish({ ...details, password: "someone-elses-password" });
-    expect(await res.json()).toEqual({ ok: true, existing: true });
+  it("leaves an existing account as it is: no new password, no sign-outs, no second family", async () => {
+    for (const how of [["otp"], ["password"]]) {
+      supabase({ existing: true });
+      methods = how;
+      const res = await finish({ ...details, password: "someone-elses-password" });
+      expect(await res.json()).toEqual({ ok: true, existing: true });
+      expect(paths()).toEqual(["GET /rest/v1/parents"]);
+    }
+  });
+
+  it("changes nothing when the parent read fails", async () => {
+    supabase({ readDown: true });
+    expect((await finish({ ...details, password: "a-long-password" })).status).toBe(502);
     expect(paths()).toEqual(["GET /rest/v1/parents"]);
-  });
-
-  it("writes no family when the password cannot be saved", async () => {
-    supabase({ password: "down" });
-    const down = await finish({ ...details, password: "a-long-password" });
-    expect(down.status).toBe(502);
-    supabase({ password: "weak" });
-    const weak = await finish({ ...details, password: "password123" });
-    expect(weak.status).toBe(400);
-    expect(await weak.json()).toEqual({ ok: false, error: "weak_password" });
-    expect(paths()).not.toContain("POST /rest/v1/rpc/create_family");
-  });
-
-  it("rejects a password under 8 characters before anything is written", async () => {
-    supabase({});
-    const res = await finish({ ...details, password: "short" });
-    expect(res.status).toBe(400);
-    expect(calls).toEqual([]);
   });
 });
 
 describe("finishing a Google signup (#63)", () => {
-  it("writes the family and never touches the password", async () => {
+  it("writes the family from a Google session", async () => {
     supabase({});
+    methods = ["oauth"];
     const res = await finish(details);
     expect(await res.json()).toEqual({ ok: true, linkSent: false });
-    expect(paths().some((p) => p.startsWith("PUT /auth/v1/admin/users/"))).toBe(false);
-    expect(paths()).toContain("POST /rest/v1/rpc/create_family");
+    expect(paths()).toContain(FAMILY);
   });
 });
 
 describe("what the database decides (#82, #78)", () => {
   it("answers busy at the site-wide cap and sends no link", async () => {
     supabase({ admission: { status: "busy" } });
-    const res = await finish(details, "Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Mobile/15E148 Safari/604.1");
+    const res = await finish(details, PHONE);
     expect(res.status).toBe(429);
     expect(await res.json()).toEqual({ ok: false, error: "busy" });
     expect(paths()).not.toContain("POST /rest/v1/sign_in_links");
@@ -171,7 +244,7 @@ describe("finishing on a phone (#63)", () => {
       return new Response(JSON.stringify({ id: "email-1" }), { status: 200 });
     });
     supabase({ admission: { status: "created", child: "child-42" } });
-    const res = await finish(details, "Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Mobile/15E148 Safari/604.1");
+    const res = await finish(details, PHONE);
     vi.unstubAllGlobals();
     const link = calls.find((c) => c.method === "POST" && c.path === "/rest/v1/sign_in_links");
     expect(link?.body).toMatchObject({ parent_id: ID, child_id: "child-42" });

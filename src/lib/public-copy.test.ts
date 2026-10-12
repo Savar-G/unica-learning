@@ -2,6 +2,10 @@ import { describe, expect, it } from "vitest";
 import { FAQ } from "@/lib/faq";
 import { llmsTxt, pricingMarkdown } from "@/lib/ai-summary";
 import { SITE_DESCRIPTION } from "@/lib/metadata";
+import { PARENT_QA } from "@/lib/parent";
+import { renderToStaticMarkup } from "react-dom/server";
+import Terms from "@/app/terms/page";
+import Privacy from "@/app/privacy/page";
 
 // Public launch (#82): the free assessment is online, math only, and comes before any plan or card. These are the
 // shared texts behind the FAQ section, the FAQPage data, /llms.txt, /pricing.md and the page metadata.
@@ -61,6 +65,24 @@ describe("the plain-text summaries for AI assistants", () => {
     expect(text).not.toMatch(/at signup/);
     expect(text).toMatch(/after the report/);
     expect(text).toMatch(/Every family in Canada can take the free online math assessment\./);
+  });
+});
+
+describe("a space follows every full stop and colon in public copy", () => {
+  // A word, then "." or ":", then a letter: "Canada.The", "for you:scan". Web and email addresses are removed first.
+  const glued = /[a-z][.:][A-Za-z]/;
+  const words = (text: string) => text.replace(/https?:\/\/\S+/g, " ").replace(/\S+@\S+/g, " ");
+
+  it("in the FAQ (also the FAQPage data), the parent section and the plain-text summaries", () => {
+    const texts = [...FAQ.flatMap((f) => [f.question, f.answer]), ...PARENT_QA.flat(), llmsTxt(), pricingMarkdown()];
+    for (const text of texts) expect(words(text)).not.toMatch(glued);
+  });
+
+  it("on the terms and privacy pages", () => {
+    for (const page of [Terms, Privacy]) {
+      const text = renderToStaticMarkup(page()).replace(/<[^>]+>/g, " ").replace(/&#x27;|&apos;/g, "'");
+      expect(words(text)).not.toMatch(glued);
+    }
   });
 });
 
