@@ -1,7 +1,7 @@
 // Help flags (#71, D-083): signs that someone may have helped the child. Pure, like the session: every time comes in
 // with the answers. The flags go to Savar's alert and the stored placement (the admin area, #77), never to the parent's
 // report. The report gets only one thing from them: helpLikely, which says the level may be too high.
-// Starting values; tune them after the pilot and never inline them.
+// Starting values; tune them from the first real results and never inline them.
 import { atLeast } from "./constants";
 import type { Answer } from "./types";
 

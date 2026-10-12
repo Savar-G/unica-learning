@@ -1,6 +1,5 @@
 import { redirect } from "next/navigation";
 import { pageMetadata } from "@/lib/metadata";
-import { requirePilot } from "@/lib/pilot";
 import { parentId, sessionClient } from "@/lib/supabase-auth";
 import { NewPassword } from "@/components/account";
 import { SupportPage } from "@/components/support-page";
@@ -14,7 +13,6 @@ export const metadata = pageMetadata({
 
 // The password reset link signs the parent in and opens this page (#63).
 export default async function ChoosePassword() {
-  await requirePilot();
   if (!(await parentId(await sessionClient()))) redirect("/sign-in/reset?expired=1");
   return (
     <SupportPage label="Your account" title="Choose a new password.">

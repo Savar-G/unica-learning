@@ -1,13 +1,13 @@
 "use client";
 
-// Parent account screens for the online assessment pilot (#62, D-082): signup, sign-in, the children list.
+// Parent account screens for the online assessment (#62, D-082): signup, sign-in, the children list.
 // Server writes go through /api/account/*; the browser holds only the publishable key and the parent's own session.
 import { useEffect, useId, useRef, useState, useSyncExternalStore, type FormEvent, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { CURRICULA, EMAIL, POSTAL, curriculumFromPostal, type CurriculumId } from "@/lib/signup";
 import type { StartState } from "@/lib/assessment";
-import { GRADES, PASSWORD_MIN, type AccountError, type AccountResult, type ChildInput } from "@/lib/account";
+import { GRADES, PASSWORD_MAX, PASSWORD_MIN, validPassword, type AccountError, type AccountResult, type ChildInput } from "@/lib/account";
 import { browserClient } from "@/lib/supabase-browser";
 import { track } from "@/lib/track";
 import { SUPPORT_EMAIL, SUPPORT_HREF } from "@/lib/contact";
@@ -37,8 +37,6 @@ async function post(url: string, body: unknown): Promise<AccountResult> {
 
 function errorText(error: AccountError | undefined): ReactNode {
   switch (error) {
-    case "account_exists":
-      return <>You already have an account with this email. <Link href="/sign-in">Sign in</Link>.</>;
     case "weak_password":
       return "Choose a stronger password. Use a longer one, and do not use a common password.";
     case "invalid":
@@ -49,6 +47,10 @@ function errorText(error: AccountError | undefined): ReactNode {
       return <>Many people are signing up right now. Try again in a few minutes, or email <a href={SUPPORT_HREF}>{SUPPORT_EMAIL}</a>.</>;
     case "signed_out":
       return <>Your session ended. <Link href="/sign-in">Sign in</Link> again.</>;
+    case "unavailable":
+      return <>We cannot set up this account right now. Email <a href={SUPPORT_HREF}>{SUPPORT_EMAIL}</a> and we will help.</>;
+    case "unproved":
+      return <>For your safety, confirm your email before you finish. <Link href="/sign-in/reset">Get a link by email</Link>, open it, then finish your account.</>;
     default:
       return <>We could not save your details. Try again in a moment. If this keeps happening, email <a href={SUPPORT_HREF}>{SUPPORT_EMAIL}</a>.</>;
   }
@@ -110,9 +112,51 @@ function Submit({ busy, children }: { busy: boolean; children: ReactNode }) {
 
 type SignupErrors = Partial<Record<"name" | "email" | "postal" | "password" | "child", boolean>>;
 
+/** What the email-code step shows under the button (#82). */
+type CodeNote = null | "sent_again" | "wait" | "bad" | "expired" | "too_many" | "check_failed" | "send_failed";
+
+function codeNoteText(note: Exclude<CodeNote, null>): ReactNode {
+  switch (note) {
+    case "sent_again":
+      return "We sent a new code. Use the code in the newest email.";
+    case "wait":
+      // Supabase gives the same answer for its one-email-a-minute rule and for the project's hourly email limit, so
+      // this text does not say that a code was sent.
+      return "We cannot send a new code right now. If an email from us already has a code, enter it here. If not, wait a few minutes, then send a new code.";
+    case "bad":
+      return "Enter the code from the email. It has only numbers.";
+    case "expired":
+      return "This code is not correct, or it has expired. Check that you used the newest email, or send a new code.";
+    case "too_many":
+      return "Too many tries. Wait a few minutes, then send a new code.";
+    case "check_failed":
+      return <>We could not check the code. Try again in a moment. If this keeps happening, email <a href={SUPPORT_HREF}>{SUPPORT_EMAIL}</a>.</>;
+    case "send_failed":
+      return <>We could not send the email. Check the email address and try again. If this keeps happening, email <a href={SUPPORT_HREF}>{SUPPORT_EMAIL}</a>.</>;
+  }
+}
+
+/** Sends the one-time email code. Supabase answers the same for a new and an existing email, so the screen does too. */
+async function sendCode(email: string): Promise<"sent" | "wait" | "failed"> {
+  const { error } = await browserClient().auth.signInWithOtp({ email, options: { shouldCreateUser: true } });
+  if (!error) return "sent";
+  // 429: one email a minute for each address, or the project's hourly email limit (both over_email_send_rate_limit).
+  if (error.status === 429) return "wait";
+  console.error("[account] code send failed", error.code);
+  return "failed";
+}
+
+/**
+ * Password signup (D-082, #82). The parent fills in the form, then proves the email with the one-time code that we
+ * email: no account, child or test exists for an address nobody proved. The code signs the parent in on this tab, then
+ * /api/account/finish sets the password from the form and writes the parent and the first child. The answer is the same
+ * whether or not the email already has an account: the owner of an existing account gets a code too, the code signs
+ * them in, and their account stays as it was.
+ */
 export function AccountSignup() {
   const router = useRouter();
   const form = useRef<HTMLFormElement>(null);
+  const codeInput = useRef<HTMLInputElement>(null);
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [postal, setPostal] = useState("");
@@ -125,12 +169,57 @@ export function AccountSignup() {
   const [errors, setErrors] = useState<SignupErrors>({});
   const [failure, setFailure] = useState<AccountError | null>(null);
   const [busy, setBusy] = useState(false);
+  // "form", then "code" once the email is on its way.
+  const [step, setStep] = useState<"form" | "code">("form");
+  const [code, setCode] = useState("");
+  const [note, setNote] = useState<CodeNote>(null);
+  const [resending, setResending] = useState(false);
+  // True once this visit has sent a code. Until then the code step does not say that a code was sent.
+  const [sentNow, setSentNow] = useState(false);
+  // The email this tab has already proved. A retry after a failed finish then skips the code.
+  const [proved, setProved] = useState<string | null>(null);
   const started = useRef(false);
+  const cleanEmail = email.trim().toLowerCase();
+
+  useEffect(() => {
+    if (step === "code") codeInput.current?.focus();
+    // Back on the form after a password Supabase would not take: that field is the one to change.
+    else if (proved) form.current?.querySelector<HTMLInputElement>("#a-password")?.focus();
+  }, [step, proved]);
 
   const onStart = () => {
     if (started.current) return;
     started.current = true;
     track("account_form_start");
+  };
+
+  /** Writes the family for the proved email: the password from the form, the parent and the first child. */
+  const finish = async () => {
+    setBusy(true);
+    const res = await post("/api/account/finish", {
+      name: name.trim(), postal: postal.trim().toUpperCase(), password, child: { ...child, firstName: child.firstName.trim() }, source: collectSource(),
+    });
+    if (!res.ok) {
+      track("account_signup_failed", { code: res.error ?? "unknown" });
+      setBusy(false);
+      // A password Supabase will not take: back to the form to choose another. The email stays proved.
+      if (res.error === "weak_password" || res.error === "invalid") {
+        setFailure(res.error);
+        setErrors(res.error === "weak_password" ? { password: true } : {});
+        setStep("form");
+        return;
+      }
+      setFailure(res.error ?? "store_failed");
+      return;
+    }
+    if (res.existing) {
+      track("sign_in", { channel: "code" });
+      router.replace("/account?existing=1");
+    } else {
+      track("account_created", { curriculum: child.province });
+      router.replace(res.linkSent ? "/account?sent=1" : "/account");
+    }
+    router.refresh();
   };
 
   const submit = async (e: FormEvent) => {
@@ -140,7 +229,7 @@ export function AccountSignup() {
       name: name.trim().length < 2,
       email: !EMAIL.test(email.trim()),
       postal: !POSTAL.test(postal.trim()),
-      password: password.length < PASSWORD_MIN,
+      password: !validPassword(password),
       child: !child.firstName.trim(),
     };
     setErrors(next);
@@ -150,34 +239,122 @@ export function AccountSignup() {
       form.current?.querySelector<HTMLInputElement>(`#a-${firstBad === "child" ? "c-first" : firstBad}`)?.focus();
       return;
     }
-    setBusy(true);
-    const res = await post("/api/account/signup", {
-      name: name.trim(), email: email.trim(), postal: postal.trim().toUpperCase(), password, child: { ...child, firstName: child.firstName.trim() }, source: collectSource(), website,
-    });
-    if (!res.ok) {
-      track("account_signup_failed", { code: res.error ?? "unknown" });
-      setFailure(res.error ?? "store_failed");
-      setBusy(false);
+    if (proved === cleanEmail) {
+      await finish();
       return;
     }
-    track("account_created", { curriculum: child.province });
-    const { error } = await browserClient().auth.signInWithPassword({ email: email.trim().toLowerCase(), password });
-    // The account exists even if this sign-in fails; the sign-in page lets the parent finish.
-    router.replace(error ? "/sign-in?created=1" : res.linkSent ? "/account?sent=1" : "/account");
+    setCode("");
+    // Bots fill every field; show them the next step and send nothing.
+    if (website) {
+      setStep("code");
+      return;
+    }
+    setBusy(true);
+    const sent = await sendCode(cleanEmail);
+    setBusy(false);
+    if (sent === "failed") {
+      track("account_code_failed", { code: "send" });
+      setFailure("send_failed");
+      return;
+    }
+    track("account_code_sent", { status: sent });
+    setNote(sent === "wait" ? "wait" : null);
+    setSentNow(sent === "sent");
+    setStep("code");
   };
+
+  const confirm = async (e: FormEvent) => {
+    e.preventDefault();
+    if (busy) return;
+    setFailure(null);
+    if (proved === cleanEmail) {
+      await finish();
+      return;
+    }
+    const token = code.replace(/\s/g, "");
+    if (!/^\d{6,10}$/.test(token)) {
+      setNote("bad");
+      codeInput.current?.focus();
+      return;
+    }
+    setBusy(true);
+    setNote(null);
+    const { error } = await browserClient().auth.verifyOtp({ email: cleanEmail, token, type: "email" });
+    if (error) {
+      setBusy(false);
+      const why: CodeNote = error.status === 429 ? "too_many" : error.code === "otp_expired" || error.status === 403 ? "expired" : "check_failed";
+      track("account_code_failed", { code: why });
+      setNote(why);
+      codeInput.current?.focus();
+      return;
+    }
+    setProved(cleanEmail);
+    await finish();
+  };
+
+  const resend = async () => {
+    if (resending || busy) return;
+    setResending(true);
+    const sent = website ? "sent" : await sendCode(cleanEmail);
+    setResending(false);
+    track(sent === "failed" ? "account_code_failed" : "account_code_sent", sent === "failed" ? { code: "send" } : { status: sent === "sent" ? "again" : "wait" });
+    setNote(sent === "sent" ? "sent_again" : sent === "wait" ? "wait" : "send_failed");
+    if (sent === "sent") setSentNow(true);
+  };
+
+  if (step === "code") {
+    const bad = note === "bad" || note === "expired";
+    return (
+      <form className="acct-form" onSubmit={confirm} noValidate>
+        <p role="status" className="acct-alert">
+          {sentNow
+            ? <>We sent a code to <b>{cleanEmail}</b>. Enter it here to confirm your email.</>
+            : <>To confirm <b>{cleanEmail}</b>, enter the code from our email here.</>}{" "}
+          If this email already has an account, the code signs you in.
+        </p>
+        {failure && <p role="alert" className="acct-alert">{errorText(failure)}</p>}
+        {proved !== cleanEmail && (
+          <Field id="a-code" label="Code from the email" bad={bad}>
+            <input
+              ref={codeInput}
+              id="a-code"
+              inputMode="numeric"
+              autoComplete="one-time-code"
+              maxLength={12}
+              value={code}
+              onChange={(e) => setCode(e.target.value)}
+              aria-invalid={bad}
+              aria-describedby={note ? "a-code-note" : undefined}
+            />
+          </Field>
+        )}
+        {note && <p id="a-code-note" role={note === "sent_again" ? "status" : "alert"} className="acct-alert">{codeNoteText(note)}</p>}
+        <Submit busy={busy}>{proved === cleanEmail ? "Try again" : "Confirm email"} <span className="arr">→</span></Submit>
+        {proved !== cleanEmail && (
+          <p className="small">
+            No email? Check your spam folder, or{" "}
+            <button className="acct-link" type="button" onClick={resend} disabled={resending} aria-busy={resending}>send a new code</button>.
+          </p>
+        )}
+        <p className="small">
+          <button className="acct-link" type="button" disabled={busy} onClick={() => { setStep("form"); setNote(null); setFailure(null); }}>Change your details</button>
+        </p>
+      </form>
+    );
+  }
 
   return (
     <form ref={form} className="acct-form" onSubmit={submit} onFocus={onStart} noValidate>
       <GoogleButton />
-      {failure && <p role="alert" className="acct-alert">{errorText(failure)}</p>}
+      {failure && <p role="alert" className="acct-alert">{failure === "send_failed" ? codeNoteText("send_failed") : errorText(failure)}</p>}
       {!failure && Object.values(errors).some(Boolean) && <p role="alert" className="acct-alert">{errorText("invalid")}</p>}
       <fieldset>
         <legend>About you</legend>
         <Field id="a-name" label="Your name" bad={errors.name} error="Enter your name.">
           <input id="a-name" autoComplete="name" value={name} onChange={(e) => setName(e.target.value)} aria-invalid={!!errors.name} aria-describedby={described("a-name", errors.name)} />
         </Field>
-        <Field id="a-email" label="Email" bad={errors.email} error="Enter a valid email.">
-          <input id="a-email" type="email" autoComplete="email" value={email} onChange={(e) => setEmail(e.target.value)} aria-invalid={!!errors.email} aria-describedby={described("a-email", errors.email)} />
+        <Field id="a-email" label="Email" bad={errors.email} error="Enter a valid email." hint="We email you a code to confirm it.">
+          <input id="a-email" type="email" autoComplete="email" value={email} onChange={(e) => setEmail(e.target.value)} aria-invalid={!!errors.email} aria-describedby={described("a-email", errors.email, true)} />
         </Field>
         <Field id="a-postal" label="Postal code" bad={errors.postal} error="Enter a Canadian postal code, like V6B 1A1.">
           <input id="a-postal" autoComplete="postal-code" placeholder="V6B 1A1" value={postal} onChange={(e) => {
@@ -186,7 +363,7 @@ export function AccountSignup() {
             if (guess && !pickedProvince) setChild((c) => ({ ...c, province: guess }));
           }} aria-invalid={!!errors.postal} aria-describedby={described("a-postal", errors.postal)} />
         </Field>
-        <Field id="a-password" label="Password" bad={errors.password} error={`Use at least ${PASSWORD_MIN} characters.`} hint={`At least ${PASSWORD_MIN} characters.`}>
+        <Field id="a-password" label="Password" bad={errors.password} error={failure === "weak_password" ? "Choose a stronger password." : `Use ${PASSWORD_MIN} to ${PASSWORD_MAX} characters.`} hint={`At least ${PASSWORD_MIN} characters.`}>
           <span className="pw">
             <input id="a-password" type={showPassword ? "text" : "password"} autoComplete="new-password" value={password} onChange={(e) => setPassword(e.target.value)} aria-invalid={!!errors.password} aria-describedby={described("a-password", errors.password, true)} />
             <button type="button" onClick={() => setShowPassword((s) => !s)} aria-controls="a-password" aria-pressed={showPassword}>{showPassword ? "Hide" : "Show"}</button>
@@ -205,7 +382,7 @@ export function AccountSignup() {
   );
 }
 
-export function SignIn({ created, googleFailed, next = "/account" }: { created: boolean; googleFailed: boolean; next?: string }) {
+export function SignIn({ googleFailed, next = "/account" }: { googleFailed: boolean; next?: string }) {
   const router = useRouter();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -232,7 +409,6 @@ export function SignIn({ created, googleFailed, next = "/account" }: { created: 
     <form className="acct-form" onSubmit={submit}>
       {/* The default return to /account keeps the plain callback URL that the Supabase redirect list already allows. */}
       <GoogleButton next={next === "/account" ? undefined : next} />
-      {created && !failed && <p role="status" className="acct-alert">Your account is ready. Sign in to continue.</p>}
       {googleFailed && !failed && <p role="alert" className="acct-alert">We could not sign you in with Google. Try again, or use your email and password.</p>}
       {failed && <p role="alert" className="acct-alert">The email or password is not correct. Try again.</p>}
       <Field id="s-email" label="Email">
@@ -422,25 +598,37 @@ export function GoogleButton({ next }: { next?: string }) {
   );
 }
 
-/** A parent who signed in with Google for the first time gives the rest of the signup details. */
-export function FinishAccount({ name: googleName, email }: { name: string; email: string }) {
+/**
+ * A parent who signed in for the first time without the signup form (Google, or a password reset link) gives the rest of
+ * the details. Finishing gives the account a new password that nobody knows (#82), so a parent without Google chooses
+ * the password here (`needsPassword`); a Google parent signs in with Google.
+ */
+export function FinishAccount({ name: googleName, email, needsPassword }: { name: string; email: string; needsPassword: boolean }) {
   const router = useRouter();
   const form = useRef<HTMLFormElement>(null);
   const [name, setName] = useState(googleName);
   const [postal, setPostal] = useState("");
+  const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   const [child, setChild] = useState<ChildInput>({ firstName: "", grade: 4, province: "BC" });
   const [pickedProvince, setPickedProvince] = useState(false);
   const [errors, setErrors] = useState<SignupErrors>({});
   const [failure, setFailure] = useState<AccountError | null>(null);
   const [busy, setBusy] = useState(false);
+  const channel = needsPassword ? "email" : "google";
 
   const submit = async (e: FormEvent) => {
     e.preventDefault();
     if (busy) return;
-    const next: SignupErrors = { name: name.trim().length < 2, postal: !POSTAL.test(postal.trim()), child: !child.firstName.trim() };
+    const next: SignupErrors = {
+      name: name.trim().length < 2,
+      postal: !POSTAL.test(postal.trim()),
+      password: needsPassword && !validPassword(password),
+      child: !child.firstName.trim(),
+    };
     setErrors(next);
     setFailure(null);
-    const firstBad = (["name", "postal", "child"] as const).find((k) => next[k]);
+    const firstBad = (["name", "postal", "password", "child"] as const).find((k) => next[k]);
     if (firstBad) {
       form.current?.querySelector<HTMLInputElement>(`#f-${firstBad === "child" ? "c-first" : firstBad}`)?.focus();
       return;
@@ -448,14 +636,19 @@ export function FinishAccount({ name: googleName, email }: { name: string; email
     setBusy(true);
     const res = await post("/api/account/finish", {
       name: name.trim(), postal: postal.trim().toUpperCase(), child: { ...child, firstName: child.firstName.trim() }, source: collectSource(),
+      ...(needsPassword ? { password } : {}),
     });
-    if (!res.ok && res.error !== "account_exists") {
-      track("account_signup_failed", { code: res.error ?? "unknown", channel: "google" });
+    if (!res.ok) {
+      track("account_signup_failed", { code: res.error ?? "unknown", channel });
       setFailure(res.error ?? "store_failed");
+      if (res.error === "weak_password") {
+        setErrors({ password: true });
+        form.current?.querySelector<HTMLInputElement>("#f-password")?.focus();
+      }
       setBusy(false);
       return;
     }
-    if (res.ok) track("account_created", { curriculum: child.province, channel: "google" });
+    if (!res.existing) track("account_created", { curriculum: child.province, channel });
     router.replace(res.linkSent ? "/account?sent=1" : "/account");
     router.refresh();
   };
@@ -466,7 +659,7 @@ export function FinishAccount({ name: googleName, email }: { name: string; email
       {!failure && Object.values(errors).some(Boolean) && <p role="alert" className="acct-alert">{errorText("invalid")}</p>}
       <fieldset>
         <legend>About you</legend>
-        <p className="small">Signed in with Google as <b>{email}</b>.</p>
+        <p className="small">Signed in as <b>{email}</b>.</p>
         <Field id="f-name" label="Your name" bad={errors.name} error="Enter your name.">
           <input id="f-name" autoComplete="name" value={name} onChange={(e) => setName(e.target.value)} aria-invalid={!!errors.name} aria-describedby={described("f-name", errors.name)} />
         </Field>
@@ -477,6 +670,14 @@ export function FinishAccount({ name: googleName, email }: { name: string; email
             if (guess && !pickedProvince) setChild((c) => ({ ...c, province: guess }));
           }} aria-invalid={!!errors.postal} aria-describedby={described("f-postal", errors.postal)} />
         </Field>
+        {needsPassword && (
+          <Field id="f-password" label="Choose a password" bad={errors.password} error={failure === "weak_password" ? "Choose a stronger password." : `Use ${PASSWORD_MIN} to ${PASSWORD_MAX} characters.`} hint={`At least ${PASSWORD_MIN} characters. You sign in with it next time.`}>
+            <span className="pw">
+              <input id="f-password" type={showPassword ? "text" : "password"} autoComplete="new-password" value={password} onChange={(e) => setPassword(e.target.value)} aria-invalid={!!errors.password} aria-describedby={described("f-password", errors.password, true)} />
+              <button type="button" onClick={() => setShowPassword((s) => !s)} aria-controls="f-password" aria-pressed={showPassword}>{showPassword ? "Hide" : "Show"}</button>
+            </span>
+          </Field>
+        )}
       </fieldset>
       <fieldset>
         <legend>Your child</legend>

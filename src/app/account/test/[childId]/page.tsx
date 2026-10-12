@@ -5,7 +5,6 @@ import { bandFor, createSession, type Grade } from "@/lib/assessment";
 import type { Child } from "@/lib/account";
 import { startStates, stateFor } from "@/lib/assessment-store";
 import { pageMetadata } from "@/lib/metadata";
-import { requirePilot } from "@/lib/pilot";
 import { parentId, sessionClient } from "@/lib/supabase-auth";
 import { TakeTest } from "@/components/test";
 
@@ -18,7 +17,6 @@ export const metadata = pageMetadata({
 
 // The child's test. The child is read with the parent's own session, so row-level security returns only their children.
 export default async function TestPage(props: PageProps<"/account/test/[childId]">) {
-  await requirePilot();
   const db = await sessionClient();
   const parent = await parentId(db);
   if (!parent) redirect("/sign-in");

@@ -106,7 +106,7 @@ export function checkReportText(model: ReportModel, text: string): ReportTextChe
   return { ok: true, text: tidy };
 }
 
-/** A review is sure, so its comment may show, from this score up (the reviewer's own confidence, 0 to 1). Tuned after the pilot. */
+/** A review is sure, so its comment may show, from this score up (the reviewer's own confidence, 0 to 1). Tuned from the first real results. */
 export const REVIEW_SURE_SCORE = 0.8;
 /** The longest work comment shown, in characters: one or two short sentences. */
 export const REVIEW_COMMENT_MAX = 240;

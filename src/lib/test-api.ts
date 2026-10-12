@@ -6,7 +6,6 @@ import type { TestStep } from "@/lib/assessment";
 export type AssessmentStatus = "in_progress" | "completed" | "expired";
 
 export type TestError =
-  | "off"
   | "signed_out"
   | "bad_json"
   | "invalid"

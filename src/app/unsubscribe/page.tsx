@@ -26,7 +26,7 @@ const FAILED = (
   </>
 );
 
-// The page a reminder's unsubscribe link opens (#73, CASL). Not behind the pilot setting: the link in a sent email must
+// The page a reminder's unsubscribe link opens (#73, CASL). The link in a sent email must
 // keep working for 60 days. No sign-in: the token in the link stands for the parent. Opening the page turns reminders
 // off (one click). #80: the report email links here too; its token stops the same emails. The report email for a
 // finished test still goes (without the plan offer), and the report stays in the account.

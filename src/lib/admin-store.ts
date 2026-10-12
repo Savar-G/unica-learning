@@ -1,10 +1,10 @@
 import "server-only";
+import { connection } from "next/server";
 import { notFound } from "next/navigation";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { FactsTest, HelpAnswer, Placement, Province, ReportModel, StoredTest } from "@/lib/assessment";
 import { isUuid } from "@/lib/assessment-store";
 import { filterTests, type AdminFilters, type AnswerRecord, type FactAnswerRecord, type ReviewRecord } from "@/lib/admin-view";
-import { pilotOn, requirePilot } from "@/lib/pilot";
 import type { ReportView } from "@/lib/report-view";
 import { sessionClient } from "@/lib/supabase-auth";
 import type { AssessmentStatus } from "@/lib/test-api";
@@ -24,12 +24,11 @@ export interface AdminSession {
 }
 
 /**
- * The signed-in admin, or null: the pilot is off, there is no session, the token does not verify (getUser checks
+ * The signed-in admin, or null: there is no session, the token does not verify (getUser checks
  * its identity with Auth), or the user has no admin_users row (is_admin, run by the database with the same token).
  * #78: a route calls this and answers 404 when it is null.
  */
 export async function adminSession(): Promise<AdminSession | null> {
-  if (!pilotOn()) return null;
   const db = await sessionClient();
   const { data, error: userError } = await db.auth.getUser();
   if (userError || !data.user) return null;
@@ -43,7 +42,8 @@ export async function adminSession(): Promise<AdminSession | null> {
 
 /** For admin pages: the admin, or the site's 404 for everyone else (a parent, a visitor, a forged cookie). */
 export async function requireAdmin(): Promise<AdminSession> {
-  await requirePilot();
+  // Admin pages read cookies, so they render per request.
+  await connection();
   const admin = await adminSession();
   if (!admin) notFound();
   return admin;

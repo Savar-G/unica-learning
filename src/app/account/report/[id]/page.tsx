@@ -3,7 +3,6 @@ import { notFound, redirect } from "next/navigation";
 import type { Province, ReportModel } from "@/lib/assessment";
 import { isUuid } from "@/lib/assessment-store";
 import { pageMetadata } from "@/lib/metadata";
-import { requirePilot } from "@/lib/pilot";
 import { reportReturnPath, type ReportView } from "@/lib/report-view";
 import type { PlanId } from "@/lib/site";
 import { parentId, sessionClient } from "@/lib/supabase-auth";
@@ -35,7 +34,6 @@ interface ReportPageRow {
 // another family's report id finds nothing. The report email links here; a signed-out parent signs in and comes back.
 // The child sees it with the parent, on the same account (D-082).
 export default async function ReportPage({ params, searchParams }: PageProps<"/account/report/[id]">) {
-  await requirePilot();
   const { id } = await params;
   if (!isUuid(id)) notFound();
   const query = await searchParams;

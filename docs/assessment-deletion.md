@@ -2,7 +2,7 @@
 
 Apply `supabase/migrations/20261011_add_family_deletion.sql`, then `supabase/migrations/20261011225238_add_family_deletion_worker_lease.sql`, before this code ships. Both migrations are additive. They create no deletion requests and delete no family. Live application is blocked: the Supabase connector returned `MCP error -32600: You do not have permission to perform this action` for apply, registry, and SQL probes on 11 October 2026. Do not treat isolated SQL validation as live application.
 
-The owner approved public assessment launch without a separate pilot. The Node worker has no pilot requirement. Existing app/admin and HTTP route gates remain until the #82 launch change removes them. Product AI remains off. Public launch authorization does not activate deletion before its migration, credential and hosted checks pass.
+The owner approved public assessment launch without a separate pilot. The Node worker has no pilot requirement. The #82 launch change removed the app feature setting from the app, admin and HTTP routes; their sign-in, admin membership and job secret checks remain. Product AI remains off. Public launch authorization does not activate deletion before its migration, credential and hosted checks pass.
 
 ## Process and concurrency
 

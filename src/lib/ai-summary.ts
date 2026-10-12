@@ -17,12 +17,12 @@ Prices are in Canadian dollars. Delivery across Canada is included. There is one
 ## ${PLANS.one.name} (${PLANS.one.note})
 - Price: CAD ${PLANS.one.price} per month
 - First month: ${FIRST_MONTH_OFF}% off, CAD ${cad(firstMonth(PLANS.one.price))}
-- Includes: free placement assessment; 1 personalized math workbook a month, about 20-25 pages; the parent app (step-by-step help when your child is stuck, instant answer check, progress reports and worked solutions); delivery
+- Includes: 1 personalized math workbook a month, about 20-25 pages; the parent app (step-by-step help when your child is stuck, instant answer check, progress reports and worked solutions); delivery
 
 ## Terms
-- The placement assessment is free.
-- BC families add a card at signup and pay nothing until the first workbook ships. Then the plan is charged monthly until you cancel.
-- Families on another provincial curriculum (Alberta, Saskatchewan, Manitoba, Ontario) join a waitlist, with no card.
+- The online math assessment is free and comes before any plan or card. Every family in Canada can take the free online math assessment. Start at ${url("/start")}
+- After the report, BC families can choose the plan and add a card. Nothing is charged until the first workbook ships. Then the plan is charged monthly until you cancel.
+- Families on another provincial curriculum (Alberta, Saskatchewan, Manitoba, Ontario) can join the workbook waitlist after the report, with no card.
 - 30-day money-back guarantee, starting on the day of the first payment.
 - Cancel anytime. Pause for a week, a month or longer.
 
@@ -37,10 +37,10 @@ export function llmsTxt(): string {
 
 > A personalized math learning program for children aged 6-12 (grades 1-7) in Canada. Each child gets paper workbooks made for them and adapted after every book. Math is CAD ${PLANS.one.price} a month, with ${FIRST_MONTH_OFF}% off the first month, delivery included.
 
-${BRAND} is made in Vancouver, BC. A free placement assessment on paper finds each child's level and gaps. The child works on paper for 15-20 minutes a day, 5 days a week; the parent uses a phone app to check answers, get step-by-step help when the child is stuck, and see progress. Books follow the BC curriculum today; Alberta, Saskatchewan, Manitoba and Ontario are next.
+${BRAND} is made in Vancouver, BC. A free online math assessment, taken on a laptop or tablet, finds each child's math level and gaps; the parent reads the report before choosing a plan. The child then works on paper workbooks for 15-20 minutes a day, 5 days a week; the parent uses a phone app to check answers, get step-by-step help when the child is stuck, and see progress. Every family in Canada can take the free math assessment. Books follow the BC curriculum today; Alberta, Saskatchewan, Manitoba and Ontario are next.
 
 ## How it works
-1. Assess: we send a free placement assessment on paper. It finds your child's level and where the gaps are.
+1. Assess: your child takes the free math assessment online, on a laptop or tablet. The report shows their math level and gaps. You choose a plan after the report.
 2. Deliver: we mail a workbook matched to your child's level and gaps.
 3. Practice: your child works on paper for about 15-20 minutes a day, 5 days a week.
 4. Scan: take a photo of the finished pages. We mark the work, show you the gaps, and give the solutions.
@@ -55,11 +55,12 @@ Parents in Canada with a child aged 6-12 who want math practice on paper, at the
 
 ## Pricing
 - ${PLANS.one.name} (${PLANS.one.note}): CAD ${PLANS.one.price} per month; first month ${FIRST_MONTH_OFF}% off (CAD ${cad(firstMonth(PLANS.one.price))})
-- Free placement assessment. Delivery across Canada included. 30-day money-back guarantee. Cancel anytime.
+- Free online math assessment before you choose a plan. Delivery across Canada included. 30-day money-back guarantee. Cancel anytime.
 - Details: ${url("/pricing.md")}
 
 ## Pages
 - [Home](${url("/")}): what ${BRAND} is, how it works, pricing and FAQ
+- [Free math assessment](${url("/start")}): create a parent account and start the free online math assessment
 - [Our story](${url("/our-story")}): why we built ${BRAND}
 - [Rewards](${url("/rewards")}): how children earn points for finished pages and full weeks of practice, and trade them for prizes their parent approves
 - [Pricing](${url("/pricing.md")}): plans and terms in plain text

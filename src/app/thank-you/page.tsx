@@ -8,13 +8,16 @@ import { REPORT_SOURCE, stripe } from "@/lib/stripe";
 export const metadata = pageMetadata({
   path: "/thank-you",
   title: "Your next step",
-  description: `What happens next after you request an assessment, join the waitlist, or add your card with ${BRAND}.`,
+  description: `What happens next after you add your card or join the waitlist with ${BRAND}.`,
   index: false,
 });
 
 export default async function ThankYou({ searchParams }: PageProps<"/thank-you">) {
   const { session_id, card: legacyCard, from } = await searchParams;
-  let card: "saved" | "unconfirmed" | null = session_id || legacyCard ? "unconfirmed" : null;
+  // Only Stripe's own record below can confirm a card. "cancelled" (an old booking back from Stripe without a card,
+  // #82) claims nothing, so the address may set it. Every other card return starts as "could not check".
+  let card: "saved" | "unconfirmed" | "cancelled" | null = !session_id && legacyCard === "cancelled" ? "cancelled"
+    : session_id || legacyCard ? "unconfirmed" : null;
   let confirmationRef: string | null = null;
   // The report's plan choice (#66) returns here with from=report; the reserve form does not.
   let path: "report" | "signup" = from === REPORT_SOURCE ? "report" : "signup";

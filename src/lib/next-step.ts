@@ -18,7 +18,7 @@ export interface WaitlistRequest {
   report: string;
 }
 
-export type NextStepError = "off" | "bad_json" | "signed_out" | "invalid" | "not_found" | "store_failed";
+export type NextStepError = "bad_json" | "signed_out" | "invalid" | "not_found" | "store_failed";
 
 /**
  * stripe: go to cardUrl, Stripe's page to save the card. later: no Stripe key, or Stripe failed, so Savar emails a
