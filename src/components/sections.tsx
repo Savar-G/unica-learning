@@ -30,6 +30,8 @@ import {
   type IconName,
 } from "@/ds";
 import { ComparePanels } from "./compare";
+import { ComparePrototype } from "./compare-prototype"; // PROTOTYPE r19
+import { SHOW_PROTOTYPES } from "./prototype-switcher"; // PROTOTYPE r19
 import { Knot, Rise, type Vars } from "./drawn";
 
 import heroHome1 from "@/assets/img/hero-home-1.jpg";
@@ -286,7 +288,7 @@ export function Pricing() {
           cta={<GetStarted src="price" />}
         />
       </PlanGrid>
-      <ComparePanels />
+      {SHOW_PROTOTYPES ? <ComparePrototype /> : <ComparePanels />}
     </Section>
   );
 }

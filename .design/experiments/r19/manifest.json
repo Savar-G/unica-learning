@@ -1,0 +1,15 @@
+{
+  "round": 19,
+  "decision": "The comparison under the plan card looks like pricing tiers. Which layout reads as a comparison and shows in five seconds how we differ from a private tutor and a learning centre?",
+  "primary_axis": "Comparison structure",
+  "invariants": ["Inside Pricing, under the plan card", "Same facts and prices as the live cards (competitors-2026-10.md)", "Categories only, no competitor names (D-064)", "Competitors grey, we carry the colour"],
+  "artifact": "src/components/compare-prototype.tsx on branch site/compare-prototype-2 (?variant=A..E)",
+  "options": [
+    { "id": "A", "bet": "Live cards (baseline, D-076)" },
+    { "id": "B", "bet": "Venn: tutor = personal, centre = structured, we are the coloured overlap with the lowest price" },
+    { "id": "C", "bet": "Check table: three trait rows with yes/partly marks, then a cost row; our column tinted" },
+    { "id": "D", "bet": "Like / unlike: one row per alternative, what we share with it and what is different" },
+    { "id": "E", "bet": "Equation: Personal + Structured = Unica Learning, CAD 99 a month in a dark block" }
+  ],
+  "verdict": null
+}
