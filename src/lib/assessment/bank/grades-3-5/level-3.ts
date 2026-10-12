@@ -192,9 +192,10 @@ export const LEVEL_3: readonly TaggedTemplate[] = [
     },
   },
   {
-    // Part of a set (3.2). WNCP names fractions of a set in grade 4, so SK, MB and AB get 4; ON is unsure, so 4.
+    // AB3: outcome CLrkTvQMl0Oj1FGsDZHeJQ, skill h7H96GzZikyeHHY9OLVcaQ names whole-quantity fractions through twelfths.
+    // SK, MB and ON retain grade 4. This naming outcome does not settle the grade suitability of every distractor.
     id: "g35-3-fraction-of-set",
-    strand: "F", grades: { BC: 3, AB: 4, SK: 4, MB: 4, ON: 4 }, format: "choice", whiteboard: false, standard: "3.2",
+    strand: "F", grades: { BC: 3, AB: 3, SK: 4, MB: 4, ON: 4 }, format: "choice", whiteboard: false, standard: "3.2",
     fill(rng) {
       const [things, kind] = rng.pick([["marbles in a bag", "red"], ["children in a group", "wearing hats"], ["apples in a basket", "green"], ["fish in a tank", "striped"], ["cars in a lot", "blue"]] as const);
       const { v: [d, n], answer, wrong: w } = drawChoices(

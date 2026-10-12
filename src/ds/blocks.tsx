@@ -139,21 +139,46 @@ export interface PlanCardProps {
   onSelect?: () => void;
   /** Replace the default button entirely (e.g. a button wired to a checkout dialog). */
   cta?: ReactNode;
+  /**
+   * A first-month offer, marked like a teacher's correction: the price crossed out in red pen with the offer price
+   * written beside it, and a line for the price after. E.g. { price: "69.30", note: "first month, 30% off!", then: "Then CAD 99 a month." }
+   */
+  offer?: { price: string; note: string; then: string };
   className?: string;
   style?: React.CSSProperties;
 }
 
 /** White pricing card: name, note, big light price, checklist, full-width button. */
-export function PlanCard({ name, note, price, currency = "CAD", period = "/ month", features, ctaLabel, featured = false, onSelect, cta, className = "", style }: PlanCardProps) {
+export function PlanCard({ name, note, price, currency = "CAD", period = "/ month", features, ctaLabel, featured = false, onSelect, cta, offer, className = "", style }: PlanCardProps) {
   return (
     <div className={`plan${featured ? " hl" : ""} ${className}`.trim()} style={style}>
       <div className="plan-head">
         <h3>{name}</h3>
         {note && <p className="small">{note}</p>}
-        <div className="price">
-          {currency} {price}
-          <small> {period}</small>
-        </div>
+        {offer ? (
+          <>
+            <div className="plan-offer">
+              <s className="price">
+                <span className="sr-only">Regular price </span>
+                {currency} {price}
+                <svg className="pen-strike" viewBox="0 0 200 40" preserveAspectRatio="none" aria-hidden="true">
+                  <path d="M4 30 C 50 22, 120 16, 196 8" />
+                </svg>
+              </s>
+              <p className="pen-price">
+                <span className="sr-only">{currency} </span>
+                <span>{offer.price}</span>
+                <small>{offer.note}</small>
+              </p>
+            </div>
+            <p className="plan-then">{offer.then}</p>
+          </>
+        ) : (
+          <div className="price">
+            {currency} {price}
+            <small> {period}</small>
+          </div>
+        )}
       </div>
       <ul>
         {features.map((f) => (

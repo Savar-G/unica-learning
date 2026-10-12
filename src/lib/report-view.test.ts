@@ -238,6 +238,7 @@ describe("the next step", () => {
     const step = nextStep(view(knowsUpTo(4)));
     expect(step).toMatchObject({ kind: "card", title: "Start Maya's books" });
     expect(step.text).toContain("Math is CAD 99 a month");
+    expect(step.text).toContain("30% off the first month (CAD 69.30)");
     expect(step.text).not.toContain("reading");
     expect(step.text).toContain("We charge nothing until the first workbook ships.");
   });

@@ -6,7 +6,7 @@ import Image, { type StaticImageData } from "next/image";
 import Link from "next/link";
 import { CookieSettingsButton } from "@/components/cookie-consent";
 import { FaqMore } from "@/components/faq-more";
-import { BRAND, HERO, PLANS } from "@/lib/site";
+import { BRAND, FIRST_MONTH_OFF, HERO, PLANS, cad, firstMonth } from "@/lib/site";
 import { FAQ } from "@/lib/faq";
 import { SUPPORT_HREF } from "@/lib/contact";
 import {
@@ -85,7 +85,7 @@ export function Hero() {
             it gets harder. Unica builds each workbook around your child&apos;s level, pace and learning style, then mails it home.
           </>
         }
-        meta={[`CAD ${PLANS.one.price}/month`, "30-day money-back guarantee", "Cancel anytime"]}
+        meta={[`First month CAD ${cad(firstMonth(PLANS.one.price))}, then CAD ${PLANS.one.price}/month`, "30-day money-back guarantee", "Cancel anytime"]}
         page={null}
         report={null}
         animate
@@ -279,6 +279,7 @@ export function Pricing() {
           name={PLANS.one.name}
           note={PLANS.one.note}
           price={PLANS.one.price}
+          offer={{ price: cad(firstMonth(PLANS.one.price)), note: `first month, ${FIRST_MONTH_OFF}% off!`, then: `Then CAD ${PLANS.one.price} a month.` }}
           features={["Free placement assessment", "Personalized math workbooks matched to your child's level and gaps, mailed home", "Your next book arrives before the current one runs out", "Progress reports after every check-in", "Delivery included. Cancel anytime"]}
           ctaLabel="Choose math"
           cta={<GetStarted src="price" plan="one" label="Choose math" />}

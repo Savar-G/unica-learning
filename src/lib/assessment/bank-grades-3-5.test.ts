@@ -48,6 +48,86 @@ const strandCounts = (qs: readonly Question[]) => {
 };
 const asNumber = (s: string) => Number(s.replace(/,/g, ""));
 
+describe("current provincial curriculum corrections through the public interface", () => {
+  it("preserves all 24 fraction-of-set pairs, distractor bounds and province levels", () => {
+    const template = BANK.find((t) => t.id === "g35-3-fraction-of-set")!;
+    const pairs = new Set<string>(), contexts = new Set<string>();
+    const wrongDenominators: number[] = [], partToPart: number[] = [], reciprocals: number[] = [];
+    for (let i = 0; i < 20000; i++) {
+      const q = fillTemplate(template, i * 7919 + 17, "AB"), { d, n } = q.values;
+      expect(q.level).toBe(3);
+      expect(d).toBeGreaterThanOrEqual(5);
+      expect(d).toBeLessThanOrEqual(10);
+      expect(n).toBeGreaterThanOrEqual(2);
+      expect(n).toBeLessThanOrEqual(d - 2);
+      expect(2 * n).not.toBe(d);
+      expect(q.answer).toBe(`${n}/${d}`);
+      expect(new Set(q.choices).size).toBe(4);
+      pairs.add(`${n}/${d}`);
+      contexts.add(q.prompt.match(/There are \d+ (.*?)\./)![1]);
+      for (const w of q.wrong) {
+        const [a, b] = w.value.split("/").map(Number);
+        wrongDenominators.push(b);
+        expect(a / b).not.toBe(n / d);
+        if (w.misconception === "F4") partToPart.push(a / b);
+        if (w.misconception === "fraction-flip") reciprocals.push(a / b);
+      }
+    }
+    expect(pairs.size).toBe(24);
+    expect(contexts.size).toBe(5);
+    expect([Math.min(...wrongDenominators), Math.max(...wrongDenominators)]).toEqual([2, 10]);
+    expect(Math.max(...partToPart)).toBe(4);
+    expect(Math.max(...reciprocals)).toBe(5);
+    expect(PROVINCES.map((p) => fillTemplate(template, 0, p).level)).toEqual([3, 3, 4, 4, 4, 3]);
+  });
+  it("preserves all 511 exact-division pairs and province levels", () => {
+    const template = BANK.find((t) => t.id === "g35-4-divide")!;
+    const pairs = new Set<string>(), dividends: number[] = [], divisors: number[] = [], quotients: number[] = [];
+    for (let i = 0; i < 20000; i++) {
+      const q = fillTemplate(template, i * 7919 + 17, "ON"), { n, d } = q.values;
+      const quotient = Number(q.answer);
+      expect(q.level).toBe(4);
+      expect(n % d).toBe(0);
+      expect(quotient * d).toBe(n);
+      expect(quotient % 10).not.toBe(0);
+      expect(q.wrong.every((w) => Number(w.value) !== quotient)).toBe(true);
+      pairs.add(`${n}/${d}`); dividends.push(n); divisors.push(d); quotients.push(quotient);
+    }
+    expect(pairs.size).toBe(511);
+    expect([Math.min(...dividends), Math.max(...dividends)]).toEqual([100, 891]);
+    expect([Math.min(...divisors), Math.max(...divisors)]).toEqual([3, 9]);
+    expect([Math.min(...quotients), Math.max(...quotients)]).toEqual([12, 99]);
+    expect(PROVINCES.map((p) => fillTemplate(template, 0, p).level)).toEqual([4, 4, 5, 5, 4, 4]);
+  });
+  it.each([
+    ["AB", 2, "279", "3", "93"],
+    ["ON", 0, "102", "3", "34"],
+  ] as const)("asks three-digit exact division in %s grade 4 and marks it before routing up", (province, seed, dividend, divisor, quotient) => {
+    let session = createSession({ grade: 4, province }, seed);
+    const question = session.stage1.find((q) => q.templateId === "g35-4-divide");
+    expect(question?.prompt.replace(/\s/g, " ")).toBe(`${dividend} ÷ ${divisor} = ?`);
+    expect(question?.level).toBe(4);
+    for (const q of session.stage1) {
+      session = submitAnswer(session, { questionId: q.id, response: q === question ? quotient : q.answer, timeMs: 10000 });
+    }
+    expect(session.answers.find((a) => a.questionId === question?.id)?.correct).toBe(true);
+    expect(session.route).toBe("up");
+    expect(nextQuestion(session)?.level).toBe(5);
+  });
+  it("asks a fraction of a set in Alberta grade 3 and marks the answer on the upward route", () => {
+    let session = createSession({ grade: 3, province: "AB" }, 0);
+    const question = session.stage1.find((q) => q.templateId === "g35-3-fraction-of-set");
+    expect(question?.prompt).toBe("There are 7 cars in a lot. 3 of them are blue. What fraction of the cars are blue?");
+    expect(question?.level).toBe(3);
+    for (const q of session.stage1) {
+      session = submitAnswer(session, { questionId: q.id, response: q === question ? "3/7" : q.answer, timeMs: 10000 });
+    }
+    expect(session.answers.find((a) => a.questionId === question?.id)?.correct).toBe(true);
+    expect(session.route).toBe("up");
+    expect(nextQuestion(session)?.level).toBe(4);
+  });
+});
+
 describe("grade 3-5 speech and figures through the public interface", () => {
   it("keeps misconception codes within the answer storage limit for new and reused templates", () => {
     const templates = new Map(Object.values(BANKS).flat().map((t) => [t.id, t]));
