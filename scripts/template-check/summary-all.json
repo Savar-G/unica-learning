@@ -2605,7 +2605,7 @@
     },
     {
       "id": "g35-6-rule-point",
-      "hash": "113a290ff25e51b3",
+      "hash": "4e5d60b6f7cfb229",
       "status": "review",
       "model": "gpt-6.1-sol",
       "provider": "codex",

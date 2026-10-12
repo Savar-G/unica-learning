@@ -1,6 +1,6 @@
 # Template check report
 
-Made by `npm run check:templates` (scripts/check-templates.mjs). Bank: all, 527 templates. Updated 2026-10-12 16:36 UTC.
+Made by `npm run check:templates` (scripts/check-templates.mjs). Bank: all, 527 templates. Updated 2026-10-12 16:56 UTC.
 
 Pass: 260. Review: 267. Fail: 0. Error: 0. Not checked: 0. Changed since its check: 0.
 
@@ -725,8 +725,8 @@ A template passes when the checker found its answers correct, its coded wrong an
 
 ### g35-6-rule-point
 
-- Confirm the province outcomes for matching ordered pairs to a supplied rule.
-- Wording: The spoken choices use raw coordinate notation. A browser voice may not clearly separate the two values. Use wording such as 'input 4, output 17'.
+- The AB tag needs review against the supplied Grade 5 substitution outcome. All eight marked answers are correct and unique. Every coded wrong answer matches a plausible stated error.
+- AB: suggests grade 5 (medium confidence). The supplied Grade 5 outcome supports substitution into an expression. This task requires substitution and selection of an input-output pair. It does not require plotting. The first grade for the combined task remains uncertain.
 - Checked 2026-10-12 with gpt-6.1-sol.
 
 ### g35-6-triangle-area

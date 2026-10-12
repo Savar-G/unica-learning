@@ -1,0 +1,10 @@
+grade 6 BC: templates 0.347 questions 0.051
+grade 6 AB: templates 0.577 questions 0.029
+grade 6 SK: templates 0.484 questions 0.044
+grade 6 MB: templates 0.518 questions 0.062
+grade 6 ON: templates 0.357 questions 0.061
+grade 7 BC: templates 0.377 questions 0.062
+grade 7 AB: templates 0.799 questions 0.132
+grade 7 SK: templates 0.448 questions 0.035
+grade 7 MB: templates 0.443 questions 0.028
+grade 7 ON: templates 0.560 questions 0.142

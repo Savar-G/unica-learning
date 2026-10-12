@@ -1,0 +1,2580 @@
+{
+ "source": "306ab61",
+ "run": "first complete whole-bank run",
+ "fails": {
+  "g35-4-missing-factor": {
+   "hash": "0024fa6ce8259c8a",
+   "findings": {
+    "id": "g35-4-missing-factor",
+    "answerCorrect": true,
+    "wrongAnswersOk": true,
+    "bcGradeFits": true,
+    "provinceTags": [
+     {
+      "province": "AB",
+      "ok": false,
+      "suggestedGrade": "grade 3",
+      "confidence": "high",
+      "reason": "MAT3-OI1-GQ3-LO1-KO2-SP includes missing quantities in products and quotients within 100. Every example fits this outcome."
+     },
+     {
+      "province": "SK",
+      "ok": true,
+      "suggestedGrade": null,
+      "confidence": "high",
+      "reason": "P4.2 supports one-step symbolic equations."
+     },
+     {
+      "province": "MB",
+      "ok": true,
+      "suggestedGrade": null,
+      "confidence": "high",
+      "reason": "4.PR.6 supports one-step equations with an unknown."
+     },
+     {
+      "province": "ON",
+      "ok": true,
+      "suggestedGrade": null,
+      "confidence": "high",
+      "reason": "Grade 4 B2.2 covers multiplication facts through 10 times 10 and related division facts. Every example fits this range."
+     }
+    ],
+    "wordingProblems": [],
+    "problems": [
+     "Change the Alberta tag from grade 4 to grade 3."
+    ],
+    "verdict": "fail"
+   }
+  },
+  "g35-4-missing-divisor": {
+   "hash": "3c46af837c97ca27",
+   "findings": {
+    "id": "g35-4-missing-divisor",
+    "answerCorrect": true,
+    "wrongAnswersOk": true,
+    "bcGradeFits": true,
+    "provinceTags": [
+     {
+      "province": "AB",
+      "ok": false,
+      "suggestedGrade": "grade 3",
+      "confidence": "high",
+      "reason": "MAT3-OI1-GQ3-LO1-KO2-SP includes missing quantities in quotients within 100. All examples meet this limit."
+     },
+     {
+      "province": "SK",
+      "ok": true,
+      "suggestedGrade": null,
+      "confidence": "high",
+      "reason": "P4.2 supports one-step symbolic equations."
+     },
+     {
+      "province": "MB",
+      "ok": true,
+      "suggestedGrade": null,
+      "confidence": "high",
+      "reason": "4.PR.6 supports one-step equations."
+     },
+     {
+      "province": "ON",
+      "ok": true,
+      "suggestedGrade": null,
+      "confidence": "high",
+      "reason": "B2.2 supports multiplication facts through 10 times 10 and related division facts."
+     }
+    ],
+    "wordingProblems": [],
+    "problems": [
+     "The AB tag should be grade 3."
+    ],
+    "verdict": "fail"
+   }
+  },
+  "g35-4-machine-input": {
+   "hash": "8a1b08a538befde7",
+   "findings": {
+    "id": "g35-4-machine-input",
+    "answerCorrect": true,
+    "wrongAnswersOk": true,
+    "bcGradeFits": true,
+    "provinceTags": [
+     {
+      "province": "AB",
+      "ok": true,
+      "suggestedGrade": null,
+      "confidence": "high",
+      "reason": "The supplied Grade 4 outcomes support one-operation equations and division, including 108 divided by 9."
+     },
+     {
+      "province": "SK",
+      "ok": true,
+      "suggestedGrade": null,
+      "confidence": "high",
+      "reason": "P4.2 supports one-step symbolic equations."
+     },
+     {
+      "province": "MB",
+      "ok": true,
+      "suggestedGrade": null,
+      "confidence": "high",
+      "reason": "4.PR.6 supports one-step equations."
+     },
+     {
+      "province": "ON",
+      "ok": false,
+      "suggestedGrade": "grade 4",
+      "confidence": "high",
+      "reason": "Grade 4 B2.6 supports dividing two- and three-digit numbers by one-digit numbers. Every example requires only that operation."
+     }
+    ],
+    "wordingProblems": [],
+    "problems": [
+     "The ON tag should be grade 4."
+    ],
+    "verdict": "fail"
+   }
+  },
+  "g35-5-variable-add": {
+   "hash": "fc0b80a1d4aba2ac",
+   "findings": {
+    "id": "g35-5-variable-add",
+    "answerCorrect": true,
+    "wrongAnswersOk": true,
+    "bcGradeFits": true,
+    "provinceTags": [
+     {
+      "province": "AB",
+      "ok": false,
+      "suggestedGrade": "grade 3",
+      "confidence": "high",
+      "reason": "MAT3-OI2-GQ1-LO1-KO2-SP includes an unknown on either side of an equation with one operation. These small addition equations fit that outcome."
+     },
+     {
+      "province": "SK",
+      "ok": true,
+      "suggestedGrade": null,
+      "confidence": "high",
+      "reason": "P5.2 supports single-variable equations. P4.2 also supports earlier work with symbolic equations."
+     },
+     {
+      "province": "MB",
+      "ok": true,
+      "suggestedGrade": null,
+      "confidence": "high",
+      "reason": "5.PR.2 supports single-variable equations. Earlier symbolic equation work does not establish the same letter-variable scope."
+     },
+     {
+      "province": "ON",
+      "ok": true,
+      "suggestedGrade": null,
+      "confidence": "high",
+      "reason": "Grade 2 C2.2-C2.3 support missing quantities in equivalent relationships within 100. All examples are within that range."
+     }
+    ],
+    "wordingProblems": [],
+    "problems": [
+     "Change the AB tag from Grade 6 to Grade 3."
+    ],
+    "verdict": "fail"
+   }
+  },
+  "g35-5-variable-subtract": {
+   "hash": "594966341ab728bc",
+   "findings": {
+    "id": "g35-5-variable-subtract",
+    "answerCorrect": true,
+    "wrongAnswersOk": true,
+    "bcGradeFits": true,
+    "provinceTags": [
+     {
+      "province": "AB",
+      "ok": false,
+      "suggestedGrade": "grade 3",
+      "confidence": "high",
+      "reason": "MAT3-OI2-GQ1-LO1-KO2-SP supports one-operation equations with an unknown. These small missing-start subtraction equations fit that outcome."
+     },
+     {
+      "province": "SK",
+      "ok": true,
+      "suggestedGrade": null,
+      "confidence": "high",
+      "reason": "P5.2 supports single-variable equations. Earlier symbolic equation outcomes also support related work."
+     },
+     {
+      "province": "MB",
+      "ok": true,
+      "suggestedGrade": null,
+      "confidence": "high",
+      "reason": "5.PR.2 supports single-variable equations."
+     },
+     {
+      "province": "ON",
+      "ok": true,
+      "suggestedGrade": null,
+      "confidence": "high",
+      "reason": "Grade 2 C2.2-C2.3 support missing quantities in addition and subtraction relationships within 100."
+     }
+    ],
+    "wordingProblems": [],
+    "problems": [
+     "Change the AB tag from Grade 6 to Grade 3."
+    ],
+    "verdict": "fail"
+   }
+  },
+  "g35-5-variable-take-away": {
+   "hash": "498a69dfe8df797c",
+   "findings": {
+    "id": "g35-5-variable-take-away",
+    "answerCorrect": true,
+    "wrongAnswersOk": true,
+    "bcGradeFits": true,
+    "provinceTags": [
+     {
+      "province": "AB",
+      "ok": false,
+      "suggestedGrade": "grade 3",
+      "confidence": "high",
+      "reason": "MAT3-OI2-GQ1-LO1-KO2-SP supports finding an unknown in a one-operation equation. These missing-subtrahend equations use small whole numbers."
+     },
+     {
+      "province": "SK",
+      "ok": true,
+      "suggestedGrade": null,
+      "confidence": "high",
+      "reason": "P5.2 supports single-variable equations."
+     },
+     {
+      "province": "MB",
+      "ok": true,
+      "suggestedGrade": null,
+      "confidence": "high",
+      "reason": "5.PR.2 supports single-variable equations."
+     },
+     {
+      "province": "ON",
+      "ok": true,
+      "suggestedGrade": null,
+      "confidence": "high",
+      "reason": "Grade 2 C2.2-C2.3 support missing quantities in equivalent subtraction relationships within 100."
+     }
+    ],
+    "wordingProblems": [],
+    "problems": [
+     "Change the AB tag from Grade 6 to Grade 3."
+    ],
+    "verdict": "fail"
+   }
+  },
+  "g35-5-variable-multiply": {
+   "hash": "57d49a17a7e96319",
+   "findings": {
+    "id": "g35-5-variable-multiply",
+    "answerCorrect": true,
+    "wrongAnswersOk": true,
+    "bcGradeFits": true,
+    "provinceTags": [
+     {
+      "province": "AB",
+      "ok": false,
+      "suggestedGrade": "grade 4",
+      "confidence": "high",
+      "reason": "MAT4-OI2-GQ1-LO1-KO2-SP includes one-operation equations. Grade 4 division by one-digit numbers supports finding these factors from products up to 441."
+     },
+     {
+      "province": "SK",
+      "ok": true,
+      "suggestedGrade": null,
+      "confidence": "high",
+      "reason": "P5.2 supports single-variable equations. The two-digit unknowns make these more demanding than basic missing multiplication facts."
+     },
+     {
+      "province": "MB",
+      "ok": true,
+      "suggestedGrade": null,
+      "confidence": "high",
+      "reason": "5.PR.2 supports single-variable equations at this arithmetic difficulty."
+     },
+     {
+      "province": "ON",
+      "ok": true,
+      "suggestedGrade": null,
+      "confidence": "medium",
+      "reason": "Several equations exceed the Grade 5 equation limit of 100. Grade 6 is reasonable, but the supplied Grade 6 note concerns equations with multiple terms."
+     }
+    ],
+    "wordingProblems": [],
+    "problems": [
+     "Change the AB tag from Grade 6 to Grade 4."
+    ],
+    "verdict": "fail"
+   }
+  },
+  "g35-5-variable-dividend": {
+   "hash": "656b0f7a4831ebb3",
+   "findings": {
+    "id": "g35-5-variable-dividend",
+    "answerCorrect": true,
+    "wrongAnswersOk": true,
+    "bcGradeFits": true,
+    "provinceTags": [
+     {
+      "province": "AB",
+      "ok": false,
+      "suggestedGrade": "grade 4",
+      "confidence": "high",
+      "reason": "MAT4-OI2-GQ1-LO1-KO2-SP includes one-operation equations. Grade 4 arithmetic supports the required products, which are no greater than 441."
+     },
+     {
+      "province": "SK",
+      "ok": true,
+      "suggestedGrade": null,
+      "confidence": "high",
+      "reason": "P5.2 supports single-variable equations with this multiplication and division difficulty."
+     },
+     {
+      "province": "MB",
+      "ok": true,
+      "suggestedGrade": null,
+      "confidence": "high",
+      "reason": "5.PR.2 supports single-variable equations with this arithmetic difficulty."
+     },
+     {
+      "province": "ON",
+      "ok": true,
+      "suggestedGrade": null,
+      "confidence": "medium",
+      "reason": "Several solved quantities exceed the Grade 5 equation limit of 100. Grade 6 is reasonable, but the supplied notes do not explicitly settle this equation form."
+     }
+    ],
+    "wordingProblems": [],
+    "problems": [
+     "Change the AB tag from Grade 6 to Grade 4."
+    ],
+    "verdict": "fail"
+   }
+  },
+  "g35-5-pattern-missing": {
+   "hash": "8e78878367058837",
+   "findings": {
+    "id": "g35-5-pattern-missing",
+    "answerCorrect": true,
+    "wrongAnswersOk": true,
+    "bcGradeFits": false,
+    "provinceTags": [
+     {
+      "province": "AB",
+      "ok": false,
+      "suggestedGrade": "grade 3",
+      "confidence": "low",
+      "reason": "These simple constant-addition patterns appear suitable before Grade 5. The supplied notes do not establish the AB introduction grade."
+     },
+     {
+      "province": "SK",
+      "ok": false,
+      "suggestedGrade": "grade 3",
+      "confidence": "low",
+      "reason": "Finding one missing term in these small increasing patterns appears to be an earlier skill. The exact SK outcome is not supplied."
+     },
+     {
+      "province": "MB",
+      "ok": false,
+      "suggestedGrade": "grade 3",
+      "confidence": "low",
+      "reason": "The examples appear suitable before Grade 5. The exact MB pattern outcome is not supplied."
+     },
+     {
+      "province": "ON",
+      "ok": true,
+      "suggestedGrade": null,
+      "confidence": "high",
+      "reason": "Grade 4 C1 explicitly includes finding missing terms in patterns."
+     }
+    ],
+    "wordingProblems": [],
+    "problems": [
+     "The examples test simple increasing numerical patterns, as described in the supplied BC Grade 3 standard. They do not require Grade 5 tables, symbols or variables. Grade 5 is more than one grade above this difficulty.",
+     "Review the AB, SK and MB tags for this simple pattern task."
+    ],
+    "verdict": "fail"
+   }
+  },
+  "g35-5-equation-story": {
+   "hash": "a29be3ba917a5538",
+   "findings": {
+    "id": "g35-5-equation-story",
+    "answerCorrect": true,
+    "wrongAnswersOk": true,
+    "bcGradeFits": true,
+    "provinceTags": [
+     {
+      "province": "AB",
+      "ok": false,
+      "suggestedGrade": "grade 3",
+      "confidence": "high",
+      "reason": "MAT3-OI2-GQ1-LO1-KO1-SP includes writing an equation between a number and an expression. These small subtraction stories fit that scope."
+     },
+     {
+      "province": "SK",
+      "ok": false,
+      "suggestedGrade": "grade 4",
+      "confidence": "medium",
+      "reason": "P4.2 supports one-step symbolic equations. The exact scope for selecting a story equation needs confirmation."
+     },
+     {
+      "province": "MB",
+      "ok": false,
+      "suggestedGrade": "grade 4",
+      "confidence": "medium",
+      "reason": "4.PR.6 supplies earlier symbolic-equation evidence. The exact scope for selecting a story equation needs confirmation."
+     },
+     {
+      "province": "ON",
+      "ok": true,
+      "suggestedGrade": null,
+      "confidence": "medium",
+      "reason": "Grade 2 C2.2-C2.3 support equivalent relationships within 100. Confirm that selecting an equation with a letter variable is included."
+     }
+    ],
+    "wordingProblems": [],
+    "problems": [
+     "The AB tag is later than the supplied Grade 3 outcome.",
+     "The SK, MB and ON task scopes need source review."
+    ],
+    "verdict": "fail"
+   }
+  },
+  "g35-5-duration": {
+   "hash": "60c684e09ff79d13",
+   "findings": {
+    "id": "g35-5-duration",
+    "answerCorrect": true,
+    "wrongAnswersOk": false,
+    "bcGradeFits": true,
+    "provinceTags": [
+     {
+      "province": "AB",
+      "ok": false,
+      "suggestedGrade": "grade 3",
+      "confidence": "medium",
+      "reason": "The notes place time in Grade 3. This suggests an earlier tag, but they do not specify elapsed time across an hour."
+     },
+     {
+      "province": "SK",
+      "ok": true,
+      "suggestedGrade": null,
+      "confidence": "low",
+      "reason": "The supplied notes do not establish the grade for elapsed time across an hour."
+     },
+     {
+      "province": "MB",
+      "ok": true,
+      "suggestedGrade": null,
+      "confidence": "low",
+      "reason": "The supplied notes do not establish the grade for elapsed time across an hour."
+     },
+     {
+      "province": "ON",
+      "ok": true,
+      "suggestedGrade": null,
+      "confidence": "high",
+      "reason": "Grade 4 E2.3 covers elapsed time."
+     }
+    ],
+    "wordingProblems": [],
+    "problems": [
+     "The wrong answers 49, 41, 36, 33, 29, 26, 22, and 11 subtract the end minute number from the start minute number. They omit the hour change. Subtraction is the required operation, so 'Uses the wrong operation' does not explain this error. Use a misconception about ignoring the hour or incorrect time subtraction."
+    ],
+    "verdict": "fail"
+   }
+  },
+  "g35-6-mixed-to-mixed": {
+   "hash": "7821149b374137a9",
+   "findings": {
+    "id": "g35-6-mixed-to-mixed",
+    "answerCorrect": true,
+    "wrongAnswersOk": true,
+    "bcGradeFits": true,
+    "provinceTags": [
+     {
+      "province": "AB",
+      "ok": false,
+      "suggestedGrade": "grade 5",
+      "confidence": "high",
+      "reason": "The supplied MAT5-OI1-GQ5-LO1-KO1-SP explicitly includes conversion between improper fractions and mixed numbers."
+     },
+     {
+      "province": "SK",
+      "ok": true,
+      "suggestedGrade": "grade 6",
+      "confidence": "high",
+      "reason": "The supplied N6.7 explicitly includes improper fractions and mixed numbers."
+     },
+     {
+      "province": "MB",
+      "ok": true,
+      "suggestedGrade": "grade 6",
+      "confidence": "high",
+      "reason": "The supplied 6.N.4 explicitly includes improper fractions and mixed numbers."
+     },
+     {
+      "province": "ON",
+      "ok": false,
+      "suggestedGrade": "grade 5",
+      "confidence": "high",
+      "reason": "The supplied B1.3 includes equivalent improper fractions and mixed numbers from halves through twelfths. All input denominators are within this range."
+     }
+    ],
+    "wordingProblems": [],
+    "problems": [
+     "Change the Alberta and Ontario tags to Grade 5."
+    ],
+    "verdict": "fail"
+   }
+  },
+  "g35-6-mixed-to-improper": {
+   "hash": "fef74d512a8a39ca",
+   "findings": {
+    "id": "g35-6-mixed-to-improper",
+    "answerCorrect": true,
+    "wrongAnswersOk": true,
+    "bcGradeFits": true,
+    "provinceTags": [
+     {
+      "province": "AB",
+      "ok": false,
+      "suggestedGrade": "grade 5",
+      "confidence": "high",
+      "reason": "The supplied MAT5-OI1-GQ5-LO1-KO1-SP explicitly includes conversion between mixed numbers and improper fractions."
+     },
+     {
+      "province": "SK",
+      "ok": true,
+      "suggestedGrade": "grade 6",
+      "confidence": "high",
+      "reason": "The supplied N6.7 explicitly includes improper fractions and mixed numbers."
+     },
+     {
+      "province": "MB",
+      "ok": true,
+      "suggestedGrade": "grade 6",
+      "confidence": "high",
+      "reason": "The supplied 6.N.4 explicitly includes improper fractions and mixed numbers."
+     },
+     {
+      "province": "ON",
+      "ok": false,
+      "suggestedGrade": "grade 5",
+      "confidence": "high",
+      "reason": "The supplied B1.3 includes equivalent improper fractions and mixed numbers from halves through twelfths. The examples use denominators within this range."
+     }
+    ],
+    "wordingProblems": [],
+    "problems": [
+     "Change the Alberta and Ontario tags to Grade 5."
+    ],
+    "verdict": "fail"
+   }
+  },
+  "g35-6-mixed-whole-count": {
+   "hash": "a3b47b288eca798a",
+   "findings": {
+    "id": "g35-6-mixed-whole-count",
+    "answerCorrect": true,
+    "wrongAnswersOk": true,
+    "bcGradeFits": true,
+    "provinceTags": [
+     {
+      "province": "AB",
+      "ok": false,
+      "suggestedGrade": "grade 5",
+      "confidence": "high",
+      "reason": "Finding the whole-number part is a step in the conversion covered by the supplied Grade 5 improper-fraction and mixed-number outcome."
+     },
+     {
+      "province": "SK",
+      "ok": true,
+      "suggestedGrade": "grade 6",
+      "confidence": "high",
+      "reason": "The supplied N6.7 supports finding the whole-number part of an improper fraction."
+     },
+     {
+      "province": "MB",
+      "ok": true,
+      "suggestedGrade": "grade 6",
+      "confidence": "high",
+      "reason": "The supplied 6.N.4 supports finding the whole-number part of an improper fraction."
+     },
+     {
+      "province": "ON",
+      "ok": false,
+      "suggestedGrade": "grade 5",
+      "confidence": "high",
+      "reason": "Finding the whole-number part is included in representing equivalent improper fractions and mixed numbers under the supplied Grade 5 B1.3."
+     }
+    ],
+    "wordingProblems": [],
+    "problems": [
+     "Change the Alberta and Ontario tags to Grade 5."
+    ],
+    "verdict": "fail"
+   }
+  },
+  "g35-6-mixed-remainder": {
+   "hash": "4e0a23b50a0bd5b3",
+   "findings": {
+    "id": "g35-6-mixed-remainder",
+    "answerCorrect": true,
+    "wrongAnswersOk": true,
+    "bcGradeFits": true,
+    "provinceTags": [
+     {
+      "province": "AB",
+      "ok": false,
+      "suggestedGrade": "grade 5",
+      "confidence": "high",
+      "reason": "Finding the remaining fractional pieces is a step in the conversion covered by the supplied Grade 5 improper-fraction and mixed-number outcome."
+     },
+     {
+      "province": "SK",
+      "ok": true,
+      "suggestedGrade": "grade 6",
+      "confidence": "high",
+      "reason": "The supplied N6.7 supports separating an improper fraction into wholes and remaining fractional pieces."
+     },
+     {
+      "province": "MB",
+      "ok": true,
+      "suggestedGrade": "grade 6",
+      "confidence": "high",
+      "reason": "The supplied 6.N.4 supports separating an improper fraction into wholes and remaining fractional pieces."
+     },
+     {
+      "province": "ON",
+      "ok": false,
+      "suggestedGrade": "grade 5",
+      "confidence": "high",
+      "reason": "The supplied Grade 5 B1.3 supports equivalent improper fractions and mixed numbers with all denominators used here."
+     }
+    ],
+    "wordingProblems": [],
+    "problems": [
+     "Change the Alberta and Ontario tags to Grade 5."
+    ],
+    "verdict": "fail"
+   }
+  },
+  "g35-6-linear-output": {
+   "hash": "19797398c82975eb",
+   "findings": {
+    "id": "g35-6-linear-output",
+    "answerCorrect": true,
+    "wrongAnswersOk": true,
+    "bcGradeFits": true,
+    "provinceTags": [
+     {
+      "province": "AB",
+      "ok": false,
+      "suggestedGrade": "grade 5",
+      "confidence": "high",
+      "reason": "The supplied MAT5-OI2-GQ1-LO1-KO2-SP explicitly includes substituting a given number into an algebraic expression."
+     },
+     {
+      "province": "SK",
+      "ok": true,
+      "suggestedGrade": null,
+      "confidence": "medium",
+      "reason": "P6.3 supports expression work, but the supplied notes retain uncertainty about the first grade for substitution."
+     },
+     {
+      "province": "MB",
+      "ok": true,
+      "suggestedGrade": null,
+      "confidence": "medium",
+      "reason": "Grade 6 is plausible, but the supplied notes state that MB6.PR.3 is not an explicit substitution outcome."
+     },
+     {
+      "province": "ON",
+      "ok": true,
+      "suggestedGrade": null,
+      "confidence": "high",
+      "reason": "The supplied ON5 C2.2 explicitly includes evaluating whole-number expressions."
+     }
+    ],
+    "wordingProblems": [],
+    "problems": [
+     "Change the Alberta tag to Grade 5.",
+     "Confirm the earliest substitution outcome for Saskatchewan and Manitoba."
+    ],
+    "verdict": "fail"
+   }
+  },
+  "g35-6-linear-initial": {
+   "hash": "bbe2b3cfbbafc855",
+   "findings": {
+    "id": "g35-6-linear-initial",
+    "answerCorrect": true,
+    "wrongAnswersOk": true,
+    "bcGradeFits": true,
+    "provinceTags": [
+     {
+      "province": "AB",
+      "ok": false,
+      "suggestedGrade": "grade 5",
+      "confidence": "high",
+      "reason": "The supplied MAT5-OI2-GQ1-LO1-KO2-SP explicitly includes substituting a given number into an algebraic expression. Zero is the given number here."
+     },
+     {
+      "province": "SK",
+      "ok": true,
+      "suggestedGrade": null,
+      "confidence": "medium",
+      "reason": "P6.3 supports expression work, but the supplied notes retain uncertainty about the first grade for substitution."
+     },
+     {
+      "province": "MB",
+      "ok": true,
+      "suggestedGrade": null,
+      "confidence": "medium",
+      "reason": "Grade 6 is plausible, but the supplied notes do not give an explicit substitution outcome."
+     },
+     {
+      "province": "ON",
+      "ok": true,
+      "suggestedGrade": null,
+      "confidence": "high",
+      "reason": "The supplied ON5 C2.2 explicitly includes evaluating whole-number expressions. These examples substitute zero."
+     }
+    ],
+    "wordingProblems": [],
+    "problems": [
+     "Change the Alberta tag to Grade 5.",
+     "Confirm the earliest substitution outcome for Saskatchewan and Manitoba."
+    ],
+    "verdict": "fail"
+   }
+  },
+  "g35-6-linear-difference": {
+   "hash": "dc829a22594776f6",
+   "findings": {
+    "id": "g35-6-linear-difference",
+    "answerCorrect": true,
+    "wrongAnswersOk": true,
+    "bcGradeFits": true,
+    "provinceTags": [
+     {
+      "province": "AB",
+      "ok": false,
+      "suggestedGrade": "grade 5",
+      "confidence": "high",
+      "reason": "MAT5-OI2-GQ1-LO1-KO2-SP explicitly includes substitution into an expression. Comparing the two results requires ordinary subtraction."
+     },
+     {
+      "province": "SK",
+      "ok": true,
+      "suggestedGrade": null,
+      "confidence": "medium",
+      "reason": "P6.3 concerns expressions, but the supplied notes retain uncertainty about substitution and earlier instruction."
+     },
+     {
+      "province": "MB",
+      "ok": true,
+      "suggestedGrade": null,
+      "confidence": "low",
+      "reason": "MB6.PR.3 is not an explicit substitution outcome. The supplied notes do not settle this task's first taught grade."
+     },
+     {
+      "province": "ON",
+      "ok": true,
+      "suggestedGrade": null,
+      "confidence": "high",
+      "reason": "Grade 5 C2.2 explicitly includes evaluating whole-number expressions. The results can then be subtracted."
+     }
+    ],
+    "wordingProblems": [],
+    "problems": [
+     "Change the AB tag to grade 5.",
+     "Confirm the substitution scope and first taught grade for SK and MB."
+    ],
+    "verdict": "fail"
+   }
+  },
+  "g35-6-equation-add": {
+   "hash": "c4bfab704e539246",
+   "findings": {
+    "id": "g35-6-equation-add",
+    "answerCorrect": true,
+    "wrongAnswersOk": true,
+    "bcGradeFits": true,
+    "provinceTags": [
+     {
+      "province": "AB",
+      "ok": false,
+      "suggestedGrade": "grade 3",
+      "confidence": "high",
+      "reason": "The supplied Grade 3 outcomes include one-operation unknowns on either side of an equation and addition within 1000."
+     },
+     {
+      "province": "SK",
+      "ok": false,
+      "suggestedGrade": "grade 4",
+      "confidence": "high",
+      "reason": "P4.2 supports one-step symbolic equations. These small addition equations do not require grade 6."
+     },
+     {
+      "province": "MB",
+      "ok": false,
+      "suggestedGrade": "grade 4",
+      "confidence": "high",
+      "reason": "4.PR.6 supplies the stated evidence for one-step symbolic equations."
+     },
+     {
+      "province": "ON",
+      "ok": true,
+      "suggestedGrade": null,
+      "confidence": "high",
+      "reason": "Grade 2 C2.2-C2.3 support missing quantities within 100. Every example stays within that range."
+     }
+    ],
+    "wordingProblems": [],
+    "problems": [
+     "The supplied outcomes support earlier AB, SK and MB tags."
+    ],
+    "verdict": "fail"
+   }
+  },
+  "g35-6-equation-subtract": {
+   "hash": "97a9d89e9bd83d3d",
+   "findings": {
+    "id": "g35-6-equation-subtract",
+    "answerCorrect": true,
+    "wrongAnswersOk": true,
+    "bcGradeFits": true,
+    "provinceTags": [
+     {
+      "province": "AB",
+      "ok": false,
+      "suggestedGrade": "grade 3",
+      "confidence": "high",
+      "reason": "The supplied Grade 3 outcomes include one-operation unknowns on either side of an equation and subtraction within 1000."
+     },
+     {
+      "province": "SK",
+      "ok": false,
+      "suggestedGrade": "grade 4",
+      "confidence": "high",
+      "reason": "P4.2 supports one-step symbolic equations, including this missing starting quantity."
+     },
+     {
+      "province": "MB",
+      "ok": false,
+      "suggestedGrade": "grade 4",
+      "confidence": "high",
+      "reason": "4.PR.6 supplies the stated evidence for one-step symbolic equations."
+     },
+     {
+      "province": "ON",
+      "ok": true,
+      "suggestedGrade": null,
+      "confidence": "high",
+      "reason": "Grade 2 C2.2-C2.3 support missing quantities within 100. Every example stays within that range."
+     }
+    ],
+    "wordingProblems": [],
+    "problems": [
+     "The supplied outcomes support earlier AB, SK and MB tags."
+    ],
+    "verdict": "fail"
+   }
+  },
+  "g35-6-equation-multiply": {
+   "hash": "01a00bddc71b80ac",
+   "findings": {
+    "id": "g35-6-equation-multiply",
+    "answerCorrect": true,
+    "wrongAnswersOk": true,
+    "bcGradeFits": true,
+    "provinceTags": [
+     {
+      "province": "AB",
+      "ok": false,
+      "suggestedGrade": "grade 4",
+      "confidence": "high",
+      "reason": "MAT4-OI2-GQ1-LO1-KO2-SP includes one-operation equations. Grade 4 division includes the three-digit numbers used here."
+     },
+     {
+      "province": "SK",
+      "ok": false,
+      "suggestedGrade": "grade 5",
+      "confidence": "medium",
+      "reason": "P5.2 supports single-variable equations. The exact earlier scope for multiplication equations needs confirmation."
+     },
+     {
+      "province": "MB",
+      "ok": false,
+      "suggestedGrade": "grade 5",
+      "confidence": "medium",
+      "reason": "5.PR.2 supplies earlier equation evidence. Its exact scope for these products needs confirmation."
+     },
+     {
+      "province": "ON",
+      "ok": true,
+      "suggestedGrade": null,
+      "confidence": "medium",
+      "reason": "The products exceed 100. The supplied notes do not settle whether Grade 5 C2.3 covers this full range, so the later tag remains acceptable."
+     }
+    ],
+    "wordingProblems": [],
+    "problems": [
+     "Change the AB tag to grade 4.",
+     "Confirm earlier equation coverage for SK, MB and ON."
+    ],
+    "verdict": "fail"
+   }
+  },
+  "g35-6-equation-divide": {
+   "hash": "8f567a064d5e9aa8",
+   "findings": {
+    "id": "g35-6-equation-divide",
+    "answerCorrect": true,
+    "wrongAnswersOk": true,
+    "bcGradeFits": true,
+    "provinceTags": [
+     {
+      "province": "AB",
+      "ok": false,
+      "suggestedGrade": "grade 4",
+      "confidence": "high",
+      "reason": "The supplied Grade 4 outcomes cover one-operation equations and arithmetic within 10000."
+     },
+     {
+      "province": "SK",
+      "ok": false,
+      "suggestedGrade": "grade 5",
+      "confidence": "medium",
+      "reason": "P5.2 supports single-variable equations. Confirm its scope for a missing dividend in this range."
+     },
+     {
+      "province": "MB",
+      "ok": false,
+      "suggestedGrade": "grade 5",
+      "confidence": "medium",
+      "reason": "5.PR.2 supplies earlier equation evidence. Confirm its scope for these missing dividends."
+     },
+     {
+      "province": "ON",
+      "ok": true,
+      "suggestedGrade": null,
+      "confidence": "medium",
+      "reason": "The solutions exceed 100. The supplied notes do not establish an earlier equation outcome for the full range."
+     }
+    ],
+    "wordingProblems": [],
+    "problems": [
+     "Change the AB tag to grade 4.",
+     "Confirm earlier equation coverage for SK, MB and ON."
+    ],
+    "verdict": "fail"
+   }
+  },
+  "g35-6-equation-subtrahend": {
+   "hash": "c9bc1b0f273ab91d",
+   "findings": {
+    "id": "g35-6-equation-subtrahend",
+    "answerCorrect": true,
+    "wrongAnswersOk": true,
+    "bcGradeFits": true,
+    "provinceTags": [
+     {
+      "province": "AB",
+      "ok": false,
+      "suggestedGrade": "grade 3",
+      "confidence": "high",
+      "reason": "The supplied Grade 3 outcomes cover unknowns on either side of a one-operation equation and subtraction within 1000."
+     },
+     {
+      "province": "SK",
+      "ok": false,
+      "suggestedGrade": "grade 4",
+      "confidence": "high",
+      "reason": "P4.2 supports one-step symbolic equations. These missing subtrahends stay below 100."
+     },
+     {
+      "province": "MB",
+      "ok": false,
+      "suggestedGrade": "grade 4",
+      "confidence": "high",
+      "reason": "4.PR.6 supplies the stated evidence for one-step symbolic equations."
+     },
+     {
+      "province": "ON",
+      "ok": true,
+      "suggestedGrade": null,
+      "confidence": "high",
+      "reason": "Grade 2 C2.2-C2.3 support missing quantities within 100. All given and solved quantities stay below 100."
+     }
+    ],
+    "wordingProblems": [],
+    "problems": [
+     "The supplied outcomes support earlier AB, SK and MB tags."
+    ],
+    "verdict": "fail"
+   }
+  },
+  "g35-6-equation-divisor": {
+   "hash": "7d9d65c479b78ae7",
+   "findings": {
+    "id": "g35-6-equation-divisor",
+    "answerCorrect": true,
+    "wrongAnswersOk": true,
+    "bcGradeFits": true,
+    "provinceTags": [
+     {
+      "province": "AB",
+      "ok": false,
+      "suggestedGrade": "grade 4",
+      "confidence": "high",
+      "reason": "Grade 4 covers one-operation equations. Dividing the given dividend by the given quotient uses supported three-digit division."
+     },
+     {
+      "province": "SK",
+      "ok": false,
+      "suggestedGrade": "grade 5",
+      "confidence": "medium",
+      "reason": "P5.2 supports single-variable equations. Confirm whether its stated scope includes an unknown divisor."
+     },
+     {
+      "province": "MB",
+      "ok": false,
+      "suggestedGrade": "grade 5",
+      "confidence": "medium",
+      "reason": "5.PR.2 supplies earlier equation evidence. Confirm its scope for an unknown divisor."
+     },
+     {
+      "province": "ON",
+      "ok": true,
+      "suggestedGrade": null,
+      "confidence": "medium",
+      "reason": "The supplied notes do not establish earlier coverage for unknown divisors with three-digit dividends."
+     }
+    ],
+    "wordingProblems": [],
+    "problems": [
+     "Change the AB tag to grade 4.",
+     "Confirm earlier unknown-divisor coverage for SK, MB and ON."
+    ],
+    "verdict": "fail"
+   }
+  },
+  "g35-6-line-change": {
+   "hash": "1dfa9377b76df5c3",
+   "findings": {
+    "id": "g35-6-line-change",
+    "answerCorrect": true,
+    "wrongAnswersOk": true,
+    "bcGradeFits": false,
+    "provinceTags": [
+     {
+      "province": "AB",
+      "ok": true,
+      "suggestedGrade": null,
+      "confidence": "low",
+      "reason": "The supplied notes do not establish a grade for this subtraction task or confirm the line-graph tag."
+     },
+     {
+      "province": "SK",
+      "ok": true,
+      "suggestedGrade": null,
+      "confidence": "low",
+      "reason": "The supplied notes do not establish a grade for this subtraction task or confirm the line-graph tag."
+     },
+     {
+      "province": "MB",
+      "ok": true,
+      "suggestedGrade": null,
+      "confidence": "low",
+      "reason": "The supplied notes do not establish a grade for this subtraction task or confirm the line-graph tag."
+     },
+     {
+      "province": "ON",
+      "ok": false,
+      "suggestedGrade": "grade 2",
+      "confidence": "medium",
+      "reason": "The actual task is a subtraction relationship within 100. The supplied grade 2 C2.2 note covers unknown addition and subtraction equations within 100."
+     }
+    ],
+    "wordingProblems": [],
+    "problems": [
+     "No example supplies a graph to interpret. Each prompt gives both values directly. The task tests simple subtraction, rather than the stated BC grade 6 line-graph standard. Its difficulty is below the permitted one-grade range."
+    ],
+    "verdict": "fail"
+   }
+  },
+  "g35-6-experimental-estimate": {
+   "hash": "5fbea1dfa0282f75",
+   "findings": {
+    "id": "g35-6-experimental-estimate",
+    "answerCorrect": true,
+    "wrongAnswersOk": false,
+    "bcGradeFits": true,
+    "provinceTags": [
+     {
+      "province": "AB",
+      "ok": true,
+      "suggestedGrade": null,
+      "confidence": "low",
+      "reason": "Grade 6 is plausible. The supplied notes do not confirm experimental prediction by scaling."
+     },
+     {
+      "province": "SK",
+      "ok": true,
+      "suggestedGrade": null,
+      "confidence": "low",
+      "reason": "The supplied notes do not establish the grade for experimental prediction by scaling."
+     },
+     {
+      "province": "MB",
+      "ok": true,
+      "suggestedGrade": null,
+      "confidence": "low",
+      "reason": "The supplied notes do not establish the grade for experimental prediction by scaling."
+     },
+     {
+      "province": "ON",
+      "ok": true,
+      "suggestedGrade": null,
+      "confidence": "low",
+      "reason": "Grade 6 is plausible. The supplied notes do not confirm this probability outcome."
+     }
+    ],
+    "wordingProblems": [],
+    "problems": [
+     "All eight marked answers are correct: 6, 20, 30, 45, 60, 80, 108 and 235.",
+     "The second wrong answer in each example is an estimated count for non-red results. The coded misconception says the child gives a probability. For example, that probability is 17/20, not 34. Change the description to selecting the other outcome when estimating its count."
+    ],
+    "verdict": "fail"
+   }
+  },
+  "g67-5-share-remainder": {
+   "hash": "1063ddd6d9392f44",
+   "findings": {
+    "id": "g67-5-share-remainder",
+    "answerCorrect": true,
+    "wrongAnswersOk": true,
+    "bcGradeFits": true,
+    "provinceTags": [
+     {
+      "province": "AB",
+      "ok": false,
+      "suggestedGrade": "grade 4",
+      "confidence": "medium",
+      "reason": "MAT4-OI1-GQ4-LO1-KO1-SP includes three-digit division by one-digit numbers with remainders. Confirm the equal-sharing interpretation before changing the tag."
+     },
+     {
+      "province": "SK",
+      "ok": true,
+      "suggestedGrade": null,
+      "confidence": "low",
+      "reason": "Grade 5 is plausible. The supplied notes do not confirm division with remainder interpretation."
+     },
+     {
+      "province": "MB",
+      "ok": true,
+      "suggestedGrade": null,
+      "confidence": "low",
+      "reason": "Grade 5 is plausible. The supplied notes do not confirm division with remainder interpretation."
+     },
+     {
+      "province": "ON",
+      "ok": false,
+      "suggestedGrade": "grade 4",
+      "confidence": "high",
+      "reason": "Grade 4 B2.6 includes two- and three-digit division by one-digit numbers and interpretation of remainders. These examples ask for the whole-number share."
+     }
+    ],
+    "wordingProblems": [],
+    "problems": [
+     "All eight marked shares are correct: 21, 47, 68, 84, 101, 105, 109 and 209. Every wrong answer matches its coded error.",
+     "The ON Grade 5 tag is later than the supplied Grade 4 outcome. The AB tag also needs reconsideration."
+    ],
+    "verdict": "fail"
+   }
+  },
+  "g67-5-greatest-fraction": {
+   "hash": "cd99ba2710442da6",
+   "findings": {
+    "id": "g67-5-greatest-fraction",
+    "answerCorrect": true,
+    "wrongAnswersOk": true,
+    "bcGradeFits": true,
+    "provinceTags": [
+     {
+      "province": "AB",
+      "ok": false,
+      "suggestedGrade": "grade 4",
+      "confidence": "high",
+      "reason": "MAT4-OI1-GQ5-LO1-KO1-SP explicitly includes comparing and ordering fractions."
+     },
+     {
+      "province": "SK",
+      "ok": true,
+      "suggestedGrade": null,
+      "confidence": "medium",
+      "reason": "The related denominators fit Grade 5 work with equivalent fractions and fraction comparison."
+     },
+     {
+      "province": "MB",
+      "ok": true,
+      "suggestedGrade": null,
+      "confidence": "medium",
+      "reason": "Comparison using equivalent fractions fits Grade 5 fraction work."
+     },
+     {
+      "province": "ON",
+      "ok": false,
+      "suggestedGrade": "grade 6",
+      "confidence": "medium",
+      "reason": "Grade 5 B1.4 specifies halves through twelfths. These choices include denominators from 14 to 36. Grade 6 B1.3 provides broader fraction comparison, but the earlier-grade boundary needs review."
+     }
+    ],
+    "wordingProblems": [],
+    "problems": [
+     "The AB tag is later than the explicit Grade 4 fraction comparison outcome.",
+     "Several ON choices exceed the denominator range stated in Grade 5 B1.4."
+    ],
+    "verdict": "fail"
+   }
+  },
+  "g67-5-equation-add": {
+   "hash": "3b82733b1e210815",
+   "findings": {
+    "id": "g67-5-equation-add",
+    "answerCorrect": true,
+    "wrongAnswersOk": true,
+    "bcGradeFits": true,
+    "provinceTags": [
+     {
+      "province": "AB",
+      "ok": false,
+      "suggestedGrade": "grade 3",
+      "confidence": "high",
+      "reason": "MAT3-OI2-GQ1-LO1-KO2-SP includes finding an unknown on either side of a one-operation equation. These quantities also fit Grade 3 arithmetic."
+     },
+     {
+      "province": "SK",
+      "ok": false,
+      "suggestedGrade": "grade 3",
+      "confidence": "high",
+      "reason": "P3.2 supports one-step addition and subtraction unknowns. All examples use small whole numbers."
+     },
+     {
+      "province": "MB",
+      "ok": false,
+      "suggestedGrade": "grade 3",
+      "confidence": "high",
+      "reason": "The supplied MB3.PR.3 evidence supports these one-step addition equations with small whole numbers."
+     },
+     {
+      "province": "ON",
+      "ok": true,
+      "suggestedGrade": null,
+      "confidence": "high",
+      "reason": "Grade 2 C2.2-C2.3 supports finding missing quantities in equivalent relationships within 100."
+     }
+    ],
+    "wordingProblems": [],
+    "problems": [
+     "The AB, SK and MB Grade 5 tags are later than the supplied Grade 3 outcomes for this difficulty."
+    ],
+    "verdict": "fail"
+   }
+  },
+  "g67-5-equation-subtract": {
+   "hash": "1325b0fd73d08b5d",
+   "findings": {
+    "id": "g67-5-equation-subtract",
+    "answerCorrect": true,
+    "wrongAnswersOk": true,
+    "bcGradeFits": true,
+    "provinceTags": [
+     {
+      "province": "AB",
+      "ok": false,
+      "suggestedGrade": "grade 3",
+      "confidence": "high",
+      "reason": "MAT3-OI2-GQ1-LO1-KO2-SP includes finding an unknown on either side of a one-operation equation. These quantities fit Grade 3 arithmetic."
+     },
+     {
+      "province": "SK",
+      "ok": false,
+      "suggestedGrade": "grade 3",
+      "confidence": "high",
+      "reason": "P3.2 supports one-step addition and subtraction unknowns, including these small missing-start quantities."
+     },
+     {
+      "province": "MB",
+      "ok": false,
+      "suggestedGrade": "grade 3",
+      "confidence": "high",
+      "reason": "The supplied MB3.PR.3 evidence supports these one-step subtraction equations with small whole numbers."
+     },
+     {
+      "province": "ON",
+      "ok": true,
+      "suggestedGrade": null,
+      "confidence": "high",
+      "reason": "Grade 2 C2.2-C2.3 supports missing quantities in equivalent relationships within 100."
+     }
+    ],
+    "wordingProblems": [],
+    "problems": [
+     "The AB, SK and MB Grade 5 tags are later than the supplied Grade 3 outcomes for this difficulty."
+    ],
+    "verdict": "fail"
+   }
+  },
+  "g67-5-equation-multiply": {
+   "hash": "f08314b0c2c9510a",
+   "findings": {
+    "id": "g67-5-equation-multiply",
+    "answerCorrect": true,
+    "wrongAnswersOk": true,
+    "bcGradeFits": true,
+    "provinceTags": [
+     {
+      "province": "AB",
+      "ok": false,
+      "suggestedGrade": "grade 4",
+      "confidence": "high",
+      "reason": "MAT4-OI2-GQ1-LO1-KO2-SP includes one-operation equations. Grade 4 multiplication includes factors to 12. The product 108 exceeds the supplied Grade 3 missing-product range."
+     },
+     {
+      "province": "SK",
+      "ok": true,
+      "suggestedGrade": null,
+      "confidence": "high",
+      "reason": "P5.2 supports single-variable equations at this difficulty."
+     },
+     {
+      "province": "MB",
+      "ok": true,
+      "suggestedGrade": null,
+      "confidence": "high",
+      "reason": "The supplied 5.PR.2 equation evidence supports these one-step multiplication equations."
+     },
+     {
+      "province": "ON",
+      "ok": true,
+      "suggestedGrade": null,
+      "confidence": "high",
+      "reason": "Grade 5 B2.2 extends multiplication and related division facts through 12 times 12. Two examples require a factor of 12."
+     }
+    ],
+    "wordingProblems": [],
+    "problems": [
+     "The AB Grade 5 tag is later than the supplied Grade 4 equation and multiplication outcomes."
+    ],
+    "verdict": "fail"
+   }
+  },
+  "g67-6-improper-to-mixed": {
+   "hash": "45b382eaf09944f8",
+   "findings": {
+    "id": "g67-6-improper-to-mixed",
+    "answerCorrect": true,
+    "wrongAnswersOk": true,
+    "bcGradeFits": true,
+    "provinceTags": [
+     {
+      "province": "AB",
+      "ok": false,
+      "suggestedGrade": "grade 5",
+      "confidence": "high",
+      "reason": "MAT5-OI1-GQ5-LO1-KO1-SP explicitly includes conversion between improper fractions and mixed numbers."
+     },
+     {
+      "province": "SK",
+      "ok": true,
+      "suggestedGrade": null,
+      "confidence": "high",
+      "reason": "N6.7 explicitly includes improper fractions and mixed numbers."
+     },
+     {
+      "province": "MB",
+      "ok": true,
+      "suggestedGrade": null,
+      "confidence": "high",
+      "reason": "6.N.4 explicitly includes improper fractions and mixed numbers."
+     },
+     {
+      "province": "ON",
+      "ok": false,
+      "suggestedGrade": "grade 5",
+      "confidence": "high",
+      "reason": "B1.3 includes equivalent improper fractions and mixed numbers from halves through twelfths. All given fractions have denominators within this range."
+     }
+    ],
+    "wordingProblems": [],
+    "problems": [
+     "Change the AB and ON tags to Grade 5."
+    ],
+    "verdict": "fail"
+   }
+  },
+  "g67-6-mixed-to-improper": {
+   "hash": "285a0b3b686a383e",
+   "findings": {
+    "id": "g67-6-mixed-to-improper",
+    "answerCorrect": true,
+    "wrongAnswersOk": true,
+    "bcGradeFits": true,
+    "provinceTags": [
+     {
+      "province": "AB",
+      "ok": false,
+      "suggestedGrade": "grade 5",
+      "confidence": "high",
+      "reason": "MAT5-OI1-GQ5-LO1-KO1-SP explicitly includes conversion between improper fractions and mixed numbers."
+     },
+     {
+      "province": "SK",
+      "ok": true,
+      "suggestedGrade": null,
+      "confidence": "high",
+      "reason": "N6.7 explicitly includes improper fractions and mixed numbers."
+     },
+     {
+      "province": "MB",
+      "ok": true,
+      "suggestedGrade": null,
+      "confidence": "high",
+      "reason": "6.N.4 explicitly includes improper fractions and mixed numbers."
+     },
+     {
+      "province": "ON",
+      "ok": false,
+      "suggestedGrade": "grade 5",
+      "confidence": "high",
+      "reason": "B1.3 includes equivalent improper fractions and mixed numbers from halves through twelfths. The examples use fifths, sevenths, eighths and ninths."
+     }
+    ],
+    "wordingProblems": [],
+    "problems": [
+     "Change the AB and ON tags to Grade 5."
+    ],
+    "verdict": "fail"
+   }
+  },
+  "g67-6-count-parts": {
+   "hash": "e68931cc3211b481",
+   "findings": {
+    "id": "g67-6-count-parts",
+    "answerCorrect": true,
+    "wrongAnswersOk": true,
+    "bcGradeFits": true,
+    "provinceTags": [
+     {
+      "province": "AB",
+      "ok": false,
+      "suggestedGrade": "grade 5",
+      "confidence": "high",
+      "reason": "Counting fractional parts in a mixed number uses the conversion explicitly included in MAT5-OI1-GQ5-LO1-KO1-SP."
+     },
+     {
+      "province": "SK",
+      "ok": true,
+      "suggestedGrade": null,
+      "confidence": "high",
+      "reason": "N6.7 includes the relationship between mixed numbers and improper fractions."
+     },
+     {
+      "province": "MB",
+      "ok": true,
+      "suggestedGrade": null,
+      "confidence": "high",
+      "reason": "6.N.4 includes the relationship between mixed numbers and improper fractions."
+     },
+     {
+      "province": "ON",
+      "ok": false,
+      "suggestedGrade": "grade 5",
+      "confidence": "high",
+      "reason": "B1.3 supports equivalent mixed numbers and improper fractions. Counting thirds, fourths, fifths and eighths uses this relationship."
+     }
+    ],
+    "wordingProblems": [],
+    "problems": [
+     "Change the AB and ON tags to Grade 5."
+    ],
+    "verdict": "fail"
+   }
+  },
+  "g67-6-greatest-fraction": {
+   "hash": "93d6a43211fa0e3e",
+   "findings": {
+    "id": "g67-6-greatest-fraction",
+    "answerCorrect": true,
+    "wrongAnswersOk": true,
+    "bcGradeFits": true,
+    "provinceTags": [
+     {
+      "province": "AB",
+      "ok": false,
+      "suggestedGrade": "grade 4",
+      "confidence": "high",
+      "reason": "MAT4-OI1-GQ5-LO1-KO1-SP explicitly includes comparison and ordering of fractions. These examples compare proper fractions."
+     },
+     {
+      "province": "SK",
+      "ok": true,
+      "suggestedGrade": null,
+      "confidence": "low",
+      "reason": "The supplied Grade 5 equivalent-fraction outcome does not establish the first grade for comparison across this denominator range. Retain Grade 6 pending source review."
+     },
+     {
+      "province": "MB",
+      "ok": true,
+      "suggestedGrade": null,
+      "confidence": "low",
+      "reason": "The supplied notes do not establish the first grade for comparison across this denominator range. Retain Grade 6 pending source review."
+     },
+     {
+      "province": "ON",
+      "ok": true,
+      "suggestedGrade": null,
+      "confidence": "high",
+      "reason": "Grade 5 B1.4 specifies halves through twelfths. These choices include denominators through 23. Grade 6 B1.3 supports broader fraction comparison."
+     }
+    ],
+    "wordingProblems": [],
+    "problems": [
+     "Change the AB tag to Grade 4. Confirm the earliest suitable grade in SK and MB for the full denominator range."
+    ],
+    "verdict": "fail"
+   }
+  },
+  "g67-6-ratio-part-part": {
+   "hash": "34f64a05da15f3f9",
+   "findings": {
+    "id": "g67-6-ratio-part-part",
+    "answerCorrect": true,
+    "wrongAnswersOk": false,
+    "bcGradeFits": true,
+    "provinceTags": [
+     {
+      "province": "AB",
+      "ok": true,
+      "suggestedGrade": null,
+      "confidence": "low",
+      "reason": "Grade 6 is plausible. The supplied notes do not confirm the current ratio outcome."
+     },
+     {
+      "province": "SK",
+      "ok": true,
+      "suggestedGrade": null,
+      "confidence": "medium",
+      "reason": "Introductory part-to-part ratios fit Grade 6."
+     },
+     {
+      "province": "MB",
+      "ok": true,
+      "suggestedGrade": null,
+      "confidence": "medium",
+      "reason": "Introductory part-to-part ratios fit Grade 6."
+     },
+     {
+      "province": "ON",
+      "ok": true,
+      "suggestedGrade": null,
+      "confidence": "medium",
+      "reason": "Introductory part-to-part ratios fit Grade 6."
+     }
+    ],
+    "wordingProblems": [],
+    "problems": [
+     "In every example, the other-part-to-whole answer requires two errors. Counting the part not asked about does not explain replacing the second requested part with the whole. For example, 9:16 requires both choosing dogs first and using all animals second.",
+     "The current Alberta grade needs confirmation."
+    ],
+    "verdict": "fail"
+   }
+  },
+  "g67-6-nth-term": {
+   "hash": "3cd11dba5596c14c",
+   "findings": {
+    "id": "g67-6-nth-term",
+    "answerCorrect": true,
+    "wrongAnswersOk": true,
+    "bcGradeFits": true,
+    "provinceTags": [
+     {
+      "province": "AB",
+      "ok": false,
+      "suggestedGrade": "grade 5",
+      "confidence": "high",
+      "reason": "MAT5-OI2-GQ1-LO1-KO2-SP explicitly includes substitution into a supplied expression."
+     },
+     {
+      "province": "SK",
+      "ok": true,
+      "suggestedGrade": null,
+      "confidence": "medium",
+      "reason": "P6.3 concerns expressions and generalizations. The supplied notes do not establish an earlier substitution outcome."
+     },
+     {
+      "province": "MB",
+      "ok": true,
+      "suggestedGrade": null,
+      "confidence": "medium",
+      "reason": "Grade 6 includes relationships with letter variables. The supplied notes leave the exact substitution scope uncertain."
+     },
+     {
+      "province": "ON",
+      "ok": false,
+      "suggestedGrade": "grade 5",
+      "confidence": "high",
+      "reason": "Grade 5 C2.2 explicitly includes evaluation of whole-number algebraic expressions."
+     }
+    ],
+    "wordingProblems": [],
+    "problems": [
+     "AB and ON teach evaluation of these supplied expressions in Grade 5."
+    ],
+    "verdict": "fail"
+   }
+  },
+  "g67-6-equation-times": {
+   "hash": "af638cfbf2ea9702",
+   "findings": {
+    "id": "g67-6-equation-times",
+    "answerCorrect": true,
+    "wrongAnswersOk": true,
+    "bcGradeFits": true,
+    "provinceTags": [
+     {
+      "province": "AB",
+      "ok": false,
+      "suggestedGrade": "grade 4",
+      "confidence": "high",
+      "reason": "Grade 4 includes solving equations with one operation and division at this number range."
+     },
+     {
+      "province": "SK",
+      "ok": false,
+      "suggestedGrade": "grade 5",
+      "confidence": "medium",
+      "reason": "P5.2 supports single-variable equations. Confirm its multiplication scope before selecting an earlier grade."
+     },
+     {
+      "province": "MB",
+      "ok": false,
+      "suggestedGrade": "grade 5",
+      "confidence": "medium",
+      "reason": "5.PR.2 supplies equation evidence. Confirm its multiplication scope and the earlier Grade 4 scope."
+     },
+     {
+      "province": "ON",
+      "ok": false,
+      "suggestedGrade": "grade 5",
+      "confidence": "medium",
+      "reason": "Grade 5 supports equations and extended multiplication facts. Confirm the scope for equations with given totals of 120 and 126."
+     }
+    ],
+    "wordingProblems": [],
+    "problems": [
+     "The AB Grade 6 tag is too late. Grade 4 explicitly supports these one-operation equations."
+    ],
+    "verdict": "fail"
+   }
+  },
+  "g67-6-equation-plus": {
+   "hash": "a22c839bec7297ef",
+   "findings": {
+    "id": "g67-6-equation-plus",
+    "answerCorrect": true,
+    "wrongAnswersOk": true,
+    "bcGradeFits": true,
+    "provinceTags": [
+     {
+      "province": "AB",
+      "ok": false,
+      "suggestedGrade": "grade 3",
+      "confidence": "high",
+      "reason": "Grade 3 includes determining an unknown on either side of a one-operation equation and addition/subtraction within 1000."
+     },
+     {
+      "province": "SK",
+      "ok": false,
+      "suggestedGrade": "grade 4",
+      "confidence": "high",
+      "reason": "P4.2 explicitly supports one-step symbolic equations."
+     },
+     {
+      "province": "MB",
+      "ok": false,
+      "suggestedGrade": "grade 4",
+      "confidence": "high",
+      "reason": "4.PR.6 supports one-step equations with an unknown symbol."
+     },
+     {
+      "province": "ON",
+      "ok": true,
+      "suggestedGrade": null,
+      "confidence": "medium",
+      "reason": "The examples include totals of 112 and 148, beyond the stated Grade 5 equation range of 100. Confirm the exact Grade 6 scope."
+     }
+    ],
+    "wordingProblems": [],
+    "problems": [
+     "AB, SK and MB support these one-step equations before Grade 6."
+    ],
+    "verdict": "fail"
+   }
+  },
+  "g67-6-equation-words": {
+   "hash": "3b36d3857f614f04",
+   "findings": {
+    "id": "g67-6-equation-words",
+    "answerCorrect": true,
+    "wrongAnswersOk": true,
+    "bcGradeFits": true,
+    "provinceTags": [
+     {
+      "province": "AB",
+      "ok": false,
+      "suggestedGrade": "grade 4",
+      "confidence": "high",
+      "reason": "Grade 4 division supports all these missing quantities, including totals above 100."
+     },
+     {
+      "province": "SK",
+      "ok": false,
+      "suggestedGrade": "grade 5",
+      "confidence": "medium",
+      "reason": "The Grade 5 single-variable equation outcome supports an earlier grade. Its exact word-problem scope needs confirmation."
+     },
+     {
+      "province": "MB",
+      "ok": false,
+      "suggestedGrade": "grade 5",
+      "confidence": "medium",
+      "reason": "The Grade 5 equation evidence supports an earlier grade. Its exact multiplication scope needs confirmation."
+     },
+     {
+      "province": "ON",
+      "ok": false,
+      "suggestedGrade": "grade 4",
+      "confidence": "high",
+      "reason": "Grade 4 B2.6 supports division of two- and three-digit numbers by one-digit numbers. The cases with a factor of 10 use basic place value."
+     }
+    ],
+    "wordingProblems": [],
+    "problems": [
+     "AB and ON support these missing-number division tasks in Grade 4."
+    ],
+    "verdict": "fail"
+   }
+  },
+  "g67-6-story-equation": {
+   "hash": "906bf58ea06da831",
+   "findings": {
+    "id": "g67-6-story-equation",
+    "answerCorrect": true,
+    "wrongAnswersOk": true,
+    "bcGradeFits": true,
+    "provinceTags": [
+     {
+      "province": "AB",
+      "ok": false,
+      "suggestedGrade": "grade 5",
+      "confidence": "high",
+      "reason": "MAT5-OI2-GQ1-LO1-KO3-SP explicitly includes writing equations with one or two operations."
+     },
+     {
+      "province": "SK",
+      "ok": false,
+      "suggestedGrade": "grade 5",
+      "confidence": "medium",
+      "reason": "P5.2 supports single-variable equations. Confirm that it includes choosing an equation for an equal-group story."
+     },
+     {
+      "province": "MB",
+      "ok": false,
+      "suggestedGrade": "grade 5",
+      "confidence": "medium",
+      "reason": "5.PR.2 supplies equation evidence. Confirm its scope for representing these stories."
+     },
+     {
+      "province": "ON",
+      "ok": true,
+      "suggestedGrade": null,
+      "confidence": "low",
+      "reason": "The supplied notes establish equation solving and division. They do not establish the earliest grade for this equation-representation task."
+     }
+    ],
+    "wordingProblems": [],
+    "problems": [
+     "The AB Grade 5 outcome explicitly supports writing these one-operation equations."
+    ],
+    "verdict": "fail"
+   }
+  },
+  "g67-6-balance-box": {
+   "hash": "53ac2d0183ac1ad2",
+   "findings": {
+    "id": "g67-6-balance-box",
+    "answerCorrect": true,
+    "wrongAnswersOk": true,
+    "bcGradeFits": true,
+    "provinceTags": [
+     {
+      "province": "AB",
+      "ok": false,
+      "suggestedGrade": "grade 3",
+      "confidence": "high",
+      "reason": "The Grade 3 one-operation unknown outcome supports these small missing-addend tasks."
+     },
+     {
+      "province": "SK",
+      "ok": false,
+      "suggestedGrade": "grade 3",
+      "confidence": "high",
+      "reason": "P3.2 supports one-step addition/subtraction unknowns."
+     },
+     {
+      "province": "MB",
+      "ok": false,
+      "suggestedGrade": "grade 3",
+      "confidence": "high",
+      "reason": "3.PR.3 supports these one-step addition/subtraction unknowns."
+     },
+     {
+      "province": "ON",
+      "ok": true,
+      "suggestedGrade": null,
+      "confidence": "high",
+      "reason": "Grade 2 C2.2-C2.3 support equivalent relationships and missing quantities within 100."
+     }
+    ],
+    "wordingProblems": [],
+    "problems": [
+     "AB, SK and MB support these small missing-addend tasks in Grade 3."
+    ],
+    "verdict": "fail"
+   }
+  },
+  "g67-6-evaluate": {
+   "hash": "88e1e31fb12427ab",
+   "findings": {
+    "id": "g67-6-evaluate",
+    "answerCorrect": true,
+    "wrongAnswersOk": true,
+    "bcGradeFits": true,
+    "provinceTags": [
+     {
+      "province": "AB",
+      "ok": false,
+      "suggestedGrade": "grade 5",
+      "confidence": "high",
+      "reason": "The supplied MAT5-OI2-GQ1-LO1-KO2-SP outcome explicitly includes substitution into an algebraic expression."
+     },
+     {
+      "province": "SK",
+      "ok": true,
+      "suggestedGrade": "grade 7",
+      "confidence": "medium",
+      "reason": "Grade 7 is plausible for explicit substitution. The supplied Grade 6 expression heading does not establish this task."
+     },
+     {
+      "province": "MB",
+      "ok": true,
+      "suggestedGrade": "grade 7",
+      "confidence": "medium",
+      "reason": "Grade 7 is plausible for explicit substitution. The supplied Grade 6 generalization outcome does not establish this task."
+     },
+     {
+      "province": "ON",
+      "ok": true,
+      "suggestedGrade": "grade 5",
+      "confidence": "high",
+      "reason": "The supplied Grade 5 C2.2 expectation explicitly includes evaluating whole-number expressions."
+     }
+    ],
+    "wordingProblems": [],
+    "problems": [
+     "The AB tag should be Grade 5."
+    ],
+    "verdict": "fail"
+   }
+  },
+  "g67-6-equation-check": {
+   "hash": "52a6c9ce5e92997e",
+   "findings": {
+    "id": "g67-6-equation-check",
+    "answerCorrect": true,
+    "wrongAnswersOk": true,
+    "bcGradeFits": true,
+    "provinceTags": [
+     {
+      "province": "AB",
+      "ok": false,
+      "suggestedGrade": "grade 4",
+      "confidence": "high",
+      "reason": "The supplied Grade 4 one-operation equation outcome and factors-to-12 skill support all these examples."
+     },
+     {
+      "province": "SK",
+      "ok": false,
+      "suggestedGrade": "grade 4",
+      "confidence": "high",
+      "reason": "The supplied P4.2 outcome supports one-step symbolic equations."
+     },
+     {
+      "province": "MB",
+      "ok": false,
+      "suggestedGrade": "grade 4",
+      "confidence": "high",
+      "reason": "The supplied 4.PR.6 outcome supports one-step equations."
+     },
+     {
+      "province": "ON",
+      "ok": true,
+      "suggestedGrade": "grade 5",
+      "confidence": "high",
+      "reason": "Grade 5 C2.3 supports equations within 100. Grade 5 B2.2 includes the 7 times 12 fact used here."
+     }
+    ],
+    "wordingProblems": [],
+    "problems": [
+     "The AB, SK and MB tags should be Grade 4."
+    ],
+    "verdict": "fail"
+   }
+  },
+  "g67-6-trapezoid-area": {
+   "hash": "54e4e4ff8bcda01e",
+   "findings": {
+    "id": "g67-6-trapezoid-area",
+    "answerCorrect": true,
+    "wrongAnswersOk": false,
+    "bcGradeFits": true,
+    "provinceTags": [
+     {
+      "province": "AB",
+      "ok": true,
+      "suggestedGrade": "grade 7",
+      "confidence": "low",
+      "reason": "Grade 7 is plausible. The supplied current AB notes do not confirm trapezoid area."
+     },
+     {
+      "province": "SK",
+      "ok": true,
+      "suggestedGrade": "grade 7",
+      "confidence": "medium",
+      "reason": "Grade 7 is plausible for trapezoid area. The exact shape coverage is not supplied."
+     },
+     {
+      "province": "MB",
+      "ok": true,
+      "suggestedGrade": "grade 7",
+      "confidence": "medium",
+      "reason": "Grade 7 is plausible for trapezoid area. The exact shape coverage is not supplied."
+     },
+     {
+      "province": "ON",
+      "ok": true,
+      "suggestedGrade": "grade 7",
+      "confidence": "medium",
+      "reason": "Grade 7 is consistent with trapezoid-area formulas, but the exact outcome is not supplied."
+     }
+    ],
+    "wordingProblems": [],
+    "problems": [
+     "Every doubled-area answer comes from omitting one half in the trapezoid formula. The assigned misconception specifically names triangle area and does not describe this error.",
+     "Use a misconception that covers omission of one half in the trapezoid formula.",
+     "Confirm the province outcomes for trapezoid area."
+    ],
+    "verdict": "fail"
+   }
+  },
+  "g67-6-line-graph": {
+   "hash": "5cd32b04b240ce30",
+   "findings": {
+    "id": "g67-6-line-graph",
+    "answerCorrect": true,
+    "wrongAnswersOk": true,
+    "bcGradeFits": false,
+    "provinceTags": [
+     {
+      "province": "AB",
+      "ok": false,
+      "suggestedGrade": "grade 3",
+      "confidence": "medium",
+      "reason": "The examples require subtraction of stated whole numbers, which the supplied Grade 3 arithmetic outcome supports. No graph-reading task is supplied."
+     },
+     {
+      "province": "SK",
+      "ok": false,
+      "suggestedGrade": "grade 3",
+      "confidence": "medium",
+      "reason": "The examples test a simple change found by subtraction. They do not require Grade 6 graph interpretation."
+     },
+     {
+      "province": "MB",
+      "ok": false,
+      "suggestedGrade": "grade 3",
+      "confidence": "medium",
+      "reason": "The examples test a simple change found by subtraction. They do not require Grade 6 graph interpretation."
+     },
+     {
+      "province": "ON",
+      "ok": false,
+      "suggestedGrade": "grade 3",
+      "confidence": "medium",
+      "reason": "The examples test a simple change found by subtraction. They do not require Grade 6 graph interpretation."
+     }
+    ],
+    "wordingProblems": [],
+    "problems": [
+     "No graph or table is supplied. Every example gives both values in the text. The child can answer by simple subtraction without reading a line graph, so the supplied task does not test the stated BC Grade 6 standard."
+    ],
+    "verdict": "fail"
+   }
+  },
+  "g67-6-l-shape-perimeter": {
+   "hash": "1ab393d391d32478",
+   "findings": {
+    "id": "g67-6-l-shape-perimeter",
+    "answerCorrect": true,
+    "wrongAnswersOk": true,
+    "bcGradeFits": true,
+    "provinceTags": [
+     {
+      "province": "AB",
+      "ok": false,
+      "suggestedGrade": "grade 3",
+      "confidence": "high",
+      "reason": "MAT3-OI5-GQ1-LO1-KO2-SP includes polygon perimeter. These questions give every side length and require only their sum."
+     },
+     {
+      "province": "SK",
+      "ok": true,
+      "suggestedGrade": null,
+      "confidence": "high",
+      "reason": "SS3.3 includes polygon perimeter. No side length must be found."
+     },
+     {
+      "province": "MB",
+      "ok": true,
+      "suggestedGrade": null,
+      "confidence": "high",
+      "reason": "The supplied notes place perimeter in Grade 3. These questions require adding given side lengths."
+     },
+     {
+      "province": "ON",
+      "ok": false,
+      "suggestedGrade": "grade 3",
+      "confidence": "medium",
+      "reason": "Adding all given polygon side lengths appears to be an earlier perimeter task. The supplied notes do not establish its exact Ontario outcome."
+     }
+    ],
+    "wordingProblems": [],
+    "problems": [
+     "The AB Grade 6 tag is too late for perimeter calculated by adding all given side lengths."
+    ],
+    "verdict": "fail"
+   }
+  },
+  "g67-7-fraction-to-decimal": {
+   "hash": "191421dab603050b",
+   "findings": {
+    "id": "g67-7-fraction-to-decimal",
+    "answerCorrect": true,
+    "wrongAnswersOk": true,
+    "bcGradeFits": true,
+    "provinceTags": [
+     {
+      "province": "AB",
+      "ok": false,
+      "suggestedGrade": "grade 6",
+      "confidence": "high",
+      "reason": "MAT6-OI1-GQ5-LO1-KO1-SP explicitly converts quotient fractions to decimals. These examples test that conversion."
+     },
+     {
+      "province": "SK",
+      "ok": true,
+      "suggestedGrade": null,
+      "confidence": "low",
+      "reason": "The supplied notes leave direct-conversion timing uncertain. The examples also include 1/16 and four decimal places."
+     },
+     {
+      "province": "MB",
+      "ok": true,
+      "suggestedGrade": null,
+      "confidence": "low",
+      "reason": "The supplied fraction-decimal relationship outcomes do not establish the grade for every denominator and decimal length here."
+     },
+     {
+      "province": "ON",
+      "ok": true,
+      "suggestedGrade": null,
+      "confidence": "low",
+      "reason": "The supplied hundredths and thousandths outcomes do not establish the first grade for the full task, including 1/16 = 0.0625."
+     }
+    ],
+    "wordingProblems": [],
+    "problems": [
+     "AB explicitly teaches fraction-to-decimal conversion in Grade 6."
+    ],
+    "verdict": "fail"
+   }
+  },
+  "g67-7-evaluate-relation": {
+   "hash": "be632baed295ad35",
+   "findings": {
+    "id": "g67-7-evaluate-relation",
+    "answerCorrect": true,
+    "wrongAnswersOk": true,
+    "bcGradeFits": true,
+    "provinceTags": [
+     {
+      "province": "AB",
+      "ok": false,
+      "suggestedGrade": "grade 5",
+      "confidence": "high",
+      "reason": "MAT5-OI2-GQ1-LO1-KO2-SP explicitly substitutes a given number into an algebraic expression. These examples require that skill, rather than deriving or graphing a relation."
+     },
+     {
+      "province": "SK",
+      "ok": true,
+      "suggestedGrade": null,
+      "confidence": "low",
+      "reason": "P6.3 concerns expressions and generalizations, but the supplied notes retain uncertainty about substitution. They do not establish a different grade."
+     },
+     {
+      "province": "MB",
+      "ok": true,
+      "suggestedGrade": null,
+      "confidence": "low",
+      "reason": "MB6.PR.3 is not an explicit substitution outcome. The supplied notes do not establish the first grade for this task."
+     },
+     {
+      "province": "ON",
+      "ok": true,
+      "suggestedGrade": null,
+      "confidence": "high",
+      "reason": "Grade 5 C2.2 explicitly evaluates whole-number algebraic expressions. The supplied grade 5 tag fits these examples."
+     }
+    ],
+    "wordingProblems": [],
+    "problems": [
+     "Change the Alberta tag from grade 7 to grade 5. The correct values are 5, 19, 28, 40, 54, 70, 90 and 132."
+    ],
+    "verdict": "fail"
+   }
+  },
+  "g67-7-two-step-plus": {
+   "hash": "d0205b5694dd9c9a",
+   "findings": {
+    "id": "g67-7-two-step-plus",
+    "answerCorrect": true,
+    "wrongAnswersOk": true,
+    "bcGradeFits": true,
+    "provinceTags": [
+     {
+      "province": "AB",
+      "ok": false,
+      "suggestedGrade": "grade 5",
+      "confidence": "high",
+      "reason": "The supplied MAT5-OI2-GQ1-LO1-KO3-SP outcome explicitly includes solving equations with one or two operations."
+     },
+     {
+      "province": "SK",
+      "ok": true,
+      "suggestedGrade": "grade 7",
+      "confidence": "medium",
+      "reason": "The supplied earlier-grade outcomes concern one-step equations. They do not establish an earlier grade for these two-step equations."
+     },
+     {
+      "province": "MB",
+      "ok": true,
+      "suggestedGrade": "grade 7",
+      "confidence": "medium",
+      "reason": "The supplied earlier-grade equation outcomes do not establish an earlier grade for this two-step task."
+     },
+     {
+      "province": "ON",
+      "ok": false,
+      "suggestedGrade": "grade 6",
+      "confidence": "medium",
+      "reason": "Grade 6 C2.3 includes whole-number equations with multiple terms. It appears to support these examples, but the supplied notes do not specify the coefficient forms."
+     }
+    ],
+    "wordingProblems": [],
+    "problems": [
+     "The AB tag is later than the explicit Grade 5 two-operation equation outcome.",
+     "The ON tag needs review against Grade 6 C2.3."
+    ],
+    "verdict": "fail"
+   }
+  },
+  "g67-7-two-step-minus": {
+   "hash": "b4d7b33eec5b6819",
+   "findings": {
+    "id": "g67-7-two-step-minus",
+    "answerCorrect": true,
+    "wrongAnswersOk": true,
+    "bcGradeFits": true,
+    "provinceTags": [
+     {
+      "province": "AB",
+      "ok": false,
+      "suggestedGrade": "grade 5",
+      "confidence": "high",
+      "reason": "The supplied MAT5-OI2-GQ1-LO1-KO3-SP outcome explicitly includes solving equations with one or two operations."
+     },
+     {
+      "province": "SK",
+      "ok": true,
+      "suggestedGrade": "grade 7",
+      "confidence": "medium",
+      "reason": "The supplied earlier-grade outcomes concern one-step equations. They do not establish an earlier grade for these two-step equations."
+     },
+     {
+      "province": "MB",
+      "ok": true,
+      "suggestedGrade": "grade 7",
+      "confidence": "medium",
+      "reason": "The supplied earlier-grade equation outcomes do not establish an earlier grade for this two-step task."
+     },
+     {
+      "province": "ON",
+      "ok": false,
+      "suggestedGrade": "grade 6",
+      "confidence": "medium",
+      "reason": "Grade 6 C2.3 includes whole-number equations with multiple terms. It appears to support these examples, but the supplied notes do not specify the coefficient forms."
+     }
+    ],
+    "wordingProblems": [],
+    "problems": [
+     "The AB tag is later than the explicit Grade 5 two-operation equation outcome.",
+     "The ON tag needs review against Grade 6 C2.3."
+    ],
+    "verdict": "fail"
+   }
+  },
+  "g67-7-two-step-divide": {
+   "hash": "20f7f44167658958",
+   "findings": {
+    "id": "g67-7-two-step-divide",
+    "answerCorrect": true,
+    "wrongAnswersOk": true,
+    "bcGradeFits": true,
+    "provinceTags": [
+     {
+      "province": "AB",
+      "ok": false,
+      "suggestedGrade": "grade 5",
+      "confidence": "high",
+      "reason": "The supplied MAT5-OI2-GQ1-LO1-KO3-SP outcome explicitly includes solving equations with one or two operations. These examples use division and addition."
+     },
+     {
+      "province": "SK",
+      "ok": true,
+      "suggestedGrade": "grade 7",
+      "confidence": "medium",
+      "reason": "The supplied earlier-grade outcomes do not establish an earlier grade for these two-operation equations."
+     },
+     {
+      "province": "MB",
+      "ok": true,
+      "suggestedGrade": "grade 7",
+      "confidence": "medium",
+      "reason": "The supplied earlier-grade equation outcomes do not establish an earlier grade for this two-operation task."
+     },
+     {
+      "province": "ON",
+      "ok": false,
+      "suggestedGrade": "grade 6",
+      "confidence": "medium",
+      "reason": "Grade 6 C2.3 includes whole-number equations with multiple terms. Review whether its scope includes these division forms."
+     }
+    ],
+    "wordingProblems": [],
+    "problems": [
+     "The AB tag is later than the explicit Grade 5 two-operation equation outcome.",
+     "The ON tag needs review against Grade 6 C2.3."
+    ],
+    "verdict": "fail"
+   }
+  },
+  "g67-7-two-step-story": {
+   "hash": "84dd2e058936cf34",
+   "findings": {
+    "id": "g67-7-two-step-story",
+    "answerCorrect": true,
+    "wrongAnswersOk": true,
+    "bcGradeFits": true,
+    "provinceTags": [
+     {
+      "province": "AB",
+      "ok": false,
+      "suggestedGrade": "grade 5",
+      "confidence": "high",
+      "reason": "MAT5-OI2-GQ1-LO1-KO3-SP includes writing and solving equations with one or two operations. Each story gives a fixed cost and a cost per hour or climb."
+     },
+     {
+      "province": "SK",
+      "ok": true,
+      "suggestedGrade": "grade 7",
+      "confidence": "medium",
+      "reason": "The supplied earlier-grade equation outcomes do not establish an earlier grade for these two-step stories."
+     },
+     {
+      "province": "MB",
+      "ok": true,
+      "suggestedGrade": "grade 7",
+      "confidence": "medium",
+      "reason": "The supplied earlier-grade equation outcomes do not establish an earlier grade for these two-step stories."
+     },
+     {
+      "province": "ON",
+      "ok": false,
+      "suggestedGrade": "grade 6",
+      "confidence": "medium",
+      "reason": "The stories can be represented by whole-number equations with multiple terms under Grade 6 C2.3. The exact equation forms need confirmation."
+     }
+    ],
+    "wordingProblems": [],
+    "problems": [
+     "The AB tag is later than the explicit Grade 5 two-operation equation outcome.",
+     "The ON tag needs review against Grade 6 C2.3."
+    ],
+    "verdict": "fail"
+   }
+  },
+  "g67-7-story-equation": {
+   "hash": "1d479ae8a66eac7c",
+   "findings": {
+    "id": "g67-7-story-equation",
+    "answerCorrect": true,
+    "wrongAnswersOk": true,
+    "bcGradeFits": true,
+    "provinceTags": [
+     {
+      "province": "AB",
+      "ok": false,
+      "suggestedGrade": "grade 5",
+      "confidence": "high",
+      "reason": "MAT5-OI2-GQ1-LO1-KO3-SP explicitly includes writing equations with one or two operations. Each correct choice represents the fixed fee and the fee per class."
+     },
+     {
+      "province": "SK",
+      "ok": true,
+      "suggestedGrade": "grade 7",
+      "confidence": "medium",
+      "reason": "The supplied earlier-grade equation outcomes do not establish an earlier grade for representing this two-operation cost relationship."
+     },
+     {
+      "province": "MB",
+      "ok": true,
+      "suggestedGrade": "grade 7",
+      "confidence": "medium",
+      "reason": "The supplied earlier-grade equation outcomes do not establish an earlier grade for representing this two-operation cost relationship."
+     },
+     {
+      "province": "ON",
+      "ok": true,
+      "suggestedGrade": "grade 7",
+      "confidence": "low",
+      "reason": "The supplied Grade 6 note concerns solving equations. It does not establish the first grade for selecting an equation from a story."
+     }
+    ],
+    "wordingProblems": [],
+    "problems": [
+     "The AB tag is later than the explicit Grade 5 equation-writing outcome.",
+     "The supplied ON notes do not resolve the first grade for this representation task."
+    ],
+    "verdict": "fail"
+   }
+  },
+  "g67-7-check-solution": {
+   "hash": "55ef33d5f04b297b",
+   "findings": {
+    "id": "g67-7-check-solution",
+    "answerCorrect": true,
+    "wrongAnswersOk": true,
+    "bcGradeFits": true,
+    "provinceTags": [
+     {
+      "province": "AB",
+      "ok": false,
+      "suggestedGrade": "grade 5",
+      "confidence": "high",
+      "reason": "MAT5-OI2-GQ1-LO1-KO3-SP includes solving two-operation equations. KO2-SP also includes substitution into an expression."
+     },
+     {
+      "province": "SK",
+      "ok": true,
+      "suggestedGrade": "grade 7",
+      "confidence": "medium",
+      "reason": "The supplied earlier-grade outcomes do not establish an earlier grade for checking these two-step equations."
+     },
+     {
+      "province": "MB",
+      "ok": true,
+      "suggestedGrade": "grade 7",
+      "confidence": "medium",
+      "reason": "The supplied earlier-grade outcomes do not establish an earlier grade for checking these two-step equations."
+     },
+     {
+      "province": "ON",
+      "ok": false,
+      "suggestedGrade": "grade 6",
+      "confidence": "medium",
+      "reason": "Grade 6 C2.3 includes whole-number equations with multiple terms. These examples appear to fit, but the exact coefficient forms need confirmation."
+     }
+    ],
+    "wordingProblems": [],
+    "problems": [
+     "The AB tag is later than the explicit Grade 5 two-operation equation outcome.",
+     "The ON tag needs review against Grade 6 C2.3."
+    ],
+    "verdict": "fail"
+   }
+  },
+  "g67-7-balance-boxes": {
+   "hash": "361bbad8ba14c435",
+   "findings": {
+    "id": "g67-7-balance-boxes",
+    "answerCorrect": true,
+    "wrongAnswersOk": true,
+    "bcGradeFits": true,
+    "provinceTags": [
+     {
+      "province": "AB",
+      "ok": false,
+      "suggestedGrade": "grade 5",
+      "confidence": "high",
+      "reason": "The supplied MAT5-OI2-GQ1-LO1-KO3-SP outcome includes solving equations with two operations. These small balance problems require two operations."
+     },
+     {
+      "province": "SK",
+      "ok": true,
+      "suggestedGrade": null,
+      "confidence": "low",
+      "reason": "The supplied Grade 5 single-variable equation outcome does not specify whether it includes these two-step balance problems."
+     },
+     {
+      "province": "MB",
+      "ok": true,
+      "suggestedGrade": null,
+      "confidence": "low",
+      "reason": "The supplied equation notes do not establish the first grade for these two-step balance problems."
+     },
+     {
+      "province": "ON",
+      "ok": false,
+      "suggestedGrade": "grade 6",
+      "confidence": "medium",
+      "reason": "The supplied Grade 6 C2.3 outcome supports whole-number equations with multiple terms. These small two-step problems appear to fit, but the notes do not confirm this balance representation."
+     }
+    ],
+    "wordingProblems": [],
+    "problems": [
+     "The AB grade 7 tag is later than the supplied Grade 5 two-operation equation outcome.",
+     "The ON grade tag needs review against Grade 6 C2.3."
+    ],
+    "verdict": "fail"
+   }
+  },
+  "g67-8-negative-coefficient": {
+   "hash": "cc145f6f8140a6a3",
+   "findings": {
+    "id": "g67-8-negative-coefficient",
+    "answerCorrect": true,
+    "wrongAnswersOk": false,
+    "bcGradeFits": true,
+    "provinceTags": [
+     {
+      "province": "AB",
+      "ok": true,
+      "suggestedGrade": null,
+      "confidence": "medium",
+      "reason": "Two-step equations with negative integer coefficients fit Grade 8."
+     },
+     {
+      "province": "SK",
+      "ok": true,
+      "suggestedGrade": null,
+      "confidence": "medium",
+      "reason": "Two-step equations with negative integer coefficients fit Grade 8."
+     },
+     {
+      "province": "MB",
+      "ok": true,
+      "suggestedGrade": null,
+      "confidence": "medium",
+      "reason": "Two-step equations with negative integer coefficients fit Grade 8."
+     },
+     {
+      "province": "ON",
+      "ok": true,
+      "suggestedGrade": null,
+      "confidence": "medium",
+      "reason": "Two-step equations with negative integer coefficients fit Grade 8."
+     }
+    ],
+    "wordingProblems": [],
+    "problems": [
+     "In every example, undoing only the subtraction gives a negative value: -9, -28, -10, -14, -56, -80, -96 and -84. The coded answers are positive. They require an additional sign error that the assigned misconception does not identify."
+    ],
+    "verdict": "fail"
+   }
+  },
+  "g67-8-combine-expression": {
+   "hash": "6eef4b1e84ad0fff",
+   "findings": {
+    "id": "g67-8-combine-expression",
+    "answerCorrect": true,
+    "wrongAnswersOk": true,
+    "bcGradeFits": true,
+    "provinceTags": [
+     {
+      "province": "AB",
+      "ok": false,
+      "suggestedGrade": "grade 5",
+      "confidence": "high",
+      "reason": "The supplied MAT5-OI2-GQ1-LO1-KO2-SP explicitly includes substitution into an algebraic expression. These examples use whole numbers."
+     },
+     {
+      "province": "SK",
+      "ok": false,
+      "suggestedGrade": "grade 6",
+      "confidence": "medium",
+      "reason": "P6.3 concerns expressions. Grade 6 is a possible earlier placement, but the supplied notes do not establish this exact substitution task."
+     },
+     {
+      "province": "MB",
+      "ok": true,
+      "suggestedGrade": null,
+      "confidence": "low",
+      "reason": "The supplied notes do not establish an earlier explicit substitution outcome. Retain Grade 8 pending source review."
+     },
+     {
+      "province": "ON",
+      "ok": true,
+      "suggestedGrade": null,
+      "confidence": "high",
+      "reason": "The supplied Grade 5 C2.2 explicitly includes evaluation of whole-number expressions."
+     }
+    ],
+    "wordingProblems": [],
+    "problems": [
+     "Change the Alberta tag to Grade 5.",
+     "The Saskatchewan and Manitoba introduction grades need source review."
+    ],
+    "verdict": "fail"
+   }
+  }
+ }
+}

@@ -24979,7 +24979,7 @@
       }
     },
     "g35-6-rule-point": {
-      "hash": "113a290ff25e51b3",
+      "hash": "4e5d60b6f7cfb229",
       "status": "review",
       "checkedAt": "2026-10-12",
       "model": "gpt-6.1-sol",
@@ -24993,38 +24993,36 @@
         "provinceTags": [
           {
             "province": "AB",
-            "ok": true,
-            "suggestedGrade": null,
-            "confidence": "low",
-            "reason": "Grade 6 is plausible. The supplied notes do not confirm the outcome for matching ordered pairs to a rule."
+            "ok": false,
+            "suggestedGrade": "grade 5",
+            "confidence": "medium",
+            "reason": "The supplied Grade 5 outcome supports substitution into an expression. This task requires substitution and selection of an input-output pair. It does not require plotting. The first grade for the combined task remains uncertain."
           },
           {
             "province": "SK",
             "ok": true,
             "suggestedGrade": null,
             "confidence": "medium",
-            "reason": "P6.3 concerns expressions and generalizations. The supplied notes do not explicitly establish ordered-pair matching."
+            "reason": "Grade 6 expressions and generalizations support this rule task. The supplied notes do not establish an earlier grade for selecting an input-output point."
           },
           {
             "province": "MB",
             "ok": true,
             "suggestedGrade": null,
             "confidence": "medium",
-            "reason": "6.PR.3 concerns number relationships with variables. The precise coverage of ordered pairs needs confirmation."
+            "reason": "Grade 6 number relationships support this placement. The supplied notes do not explicitly establish the first grade for substitution and input-output points."
           },
           {
             "province": "ON",
             "ok": true,
             "suggestedGrade": null,
             "confidence": "medium",
-            "reason": "Grade 5 expression evaluation and earlier coordinate work support this task. The exact combined outcome remains uncertain."
+            "reason": "Grade 5 C2.2 supports evaluation of whole-number expressions. The supplied notes place first-quadrant coordinates in Grade 4. These support the Grade 5 task."
           }
         ],
-        "wordingProblems": [
-          "The spoken choices use raw coordinate notation. A browser voice may not clearly separate the two values. Use wording such as 'input 4, output 17'."
-        ],
+        "wordingProblems": [],
         "problems": [
-          "Confirm the province outcomes for matching ordered pairs to a supplied rule."
+          "The AB tag needs review against the supplied Grade 5 substitution outcome. All eight marked answers are correct and unique. Every coded wrong answer matches a plausible stated error."
         ],
         "verdict": "review"
       }
