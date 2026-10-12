@@ -503,8 +503,8 @@ describe("primary-source corrections from the #76 checker run", () => {
     ["g67-5-equation-add", [5, 3, 3, 3, 2, 5]],
     ["g67-5-equation-subtract", [5, 3, 3, 3, 2, 5]],
     ["g67-6-balance-box", [6, 3, 3, 3, 2, 6]],
-    // Totals reach 175: ON6 C2.3 has no number limit (ON5 C2.3 stops at 100).
-    ["g67-6-equation-plus", [6, 3, 3, 3, 6, 6]],
+    // Totals reach 175: ON3 C2.3 uses equivalent relationships for whole numbers up to 1000.
+    ["g67-6-equation-plus", [6, 3, 3, 3, 3, 6]],
     // AB MAT4-OI2-GQ1-LO1-KO2-SP one-operation equations, products past 100.
     ["g67-5-equation-multiply", [5, 4, 5, 5, 5, 5]],
     ["g67-6-equation-times", [6, 4, 5, 5, 6, 6]],

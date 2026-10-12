@@ -613,8 +613,9 @@ export const LEVEL_6: readonly TaggedTemplate[] = [
   {
     // Map, grade 6: x + 5 = 11, with larger numbers.
     // AB MAT3-OI2-GQ1-LO1-KO2-SP, SK P3.2, MB 3.PR.3 (sums to 1000 in grade 3); ON6 C2.3 (totals pass the ON5 limit of 100).
+    // ON3 C2.3: equivalent relationships for whole numbers up to 1000 (totals reach 175).
     id: "g67-6-equation-plus",
-    strand: "A", grades: { BC: 6, AB: 3, SK: 3, MB: 3, ON: 6 }, format: "number", whiteboard: true, standard: "6.10",
+    strand: "A", grades: { BC: 6, AB: 3, SK: 3, MB: 3, ON: 3 }, format: "number", whiteboard: true, standard: "6.10",
     fill(rng) {
       const a = rng.int(12, 85), x = rng.int(12, 90), v = rng.pick(["x", "n", "y", "m"]);
       return {
