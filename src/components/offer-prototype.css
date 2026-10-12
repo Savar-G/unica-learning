@@ -1,0 +1,58 @@
+/* PROTOTYPE - throwaway. Styles for the 30% first-month offer variants (offer-prototype.tsx). */
+
+/* A: struck price */
+.op-chip{justify-self:start;display:inline-flex;align-items:center;gap:8px;font:600 13px/1 var(--sans);letter-spacing:.02em;padding:7px 10px;border-radius:999px;background:var(--ink);color:#fff;margin-bottom:6px}
+.op-chip::before{content:"";width:7px;height:7px;border-radius:50%;background:var(--sun)}
+.op-was{font:400 22px/1 var(--sans);color:var(--ink-2);text-decoration:line-through;text-decoration-thickness:2px;text-decoration-color:var(--tang);margin-top:6px}
+.op-then{margin:0;font-size:15px;color:var(--ink-2)}
+.op-then b{color:var(--ink);font-weight:600}
+
+/* B: bar above the nav */
+.op-bar{position:relative;z-index:60;display:flex;justify-content:center;align-items:center;gap:8px 18px;flex-wrap:wrap;padding:10px 20px;background:var(--ink);color:#fff;font:400 14px/1.35 var(--sans);text-align:center}
+.op-bar b{font-weight:600;color:var(--sun)}
+.op-bar-link{appearance:none;border:0;background:none;color:#fff;font:600 14px/1 var(--sans);text-decoration:underline;text-underline-offset:4px;cursor:pointer;padding:0}
+
+/* C: sticker on the hero photo */
+.hero-c .stage .ph.big{position:relative}
+.op-sticker{position:absolute;right:clamp(14px,4vw,48px);top:clamp(14px,4vw,40px);width:clamp(112px,16vw,168px);aspect-ratio:1;border-radius:50%;background:var(--sun);color:var(--ink);display:grid;place-content:center;text-align:center;gap:2px;font:500 clamp(12px,1.3vw,15px)/1.15 var(--sans);transform:rotate(-10deg);box-shadow:0 10px 30px rgba(12,12,14,.22);border:4px solid #fff}
+.op-sticker-big{font:600 clamp(26px,3.4vw,40px)/1 var(--serif);letter-spacing:-.03em}
+
+/* D: coupon stub beside the card */
+.op-ticket-row{display:grid;gap:0}
+.op-ticket{position:relative;display:grid;align-content:center;justify-items:start;gap:8px;padding:26px 28px;background:var(--sun);border:1px solid var(--line);border-radius:6px;color:var(--ink)}
+.op-ticket-k{font:600 12px/1 var(--mono, monospace);letter-spacing:.12em;text-transform:uppercase}
+.op-ticket-big{font:300 clamp(44px,5vw,64px)/1 var(--serif);letter-spacing:-.04em}
+.op-ticket-price{font:600 18px/1 var(--sans)}
+.op-ticket-small{font-size:14px;color:var(--ink-2);max-width:22ch}
+@media (max-width:859px){
+  .op-ticket{border-top:2px dashed var(--ink);border-radius:0 0 6px 6px;margin-top:-1px}
+  .op-ticket-row .plan{border-radius:6px 6px 0 0}
+}
+@media (min-width:860px){
+  .op-ticket-row{grid-template-columns:minmax(0,1fr) 250px}
+  .op-ticket{border-left:2px dashed var(--ink);border-radius:0 6px 6px 0;margin-left:-1px}
+  .op-ticket::before,.op-ticket::after{content:"";position:absolute;left:-13px;width:24px;height:24px;border-radius:50%;background:#fff;border:1px solid var(--line)}
+  .op-ticket::before{top:-13px}.op-ticket::after{bottom:-13px}
+  .op-ticket-row .plan{border-radius:6px 0 0 6px;display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.15fr);grid-template-rows:auto 1fr;column-gap:48px;row-gap:24px;padding:36px 40px}
+  .op-ticket-row .plan .plan-head{grid-column:1;grid-row:1}
+  .op-ticket-row .plan ul{grid-column:2;grid-row:1 / span 2;align-self:center;gap:14px}
+  .op-ticket-row .plan .btn{grid-column:1;grid-row:2;align-self:end;margin-top:0}
+}
+
+/* E: charge timeline */
+.op-steps{list-style:none;margin:14px 0 0;padding:0;display:grid;gap:0;border-left:2px solid var(--line)}
+.op-steps li{position:relative;display:grid;grid-template-columns:1fr auto;gap:2px 12px;padding:8px 0 8px 18px;font-size:15px}
+.op-steps li::before{content:"";position:absolute;left:-7px;top:13px;width:12px;height:12px;border-radius:50%;background:#fff;border:2px solid var(--ink-3)}
+.op-steps li.is-hot::before{background:var(--tang);border-color:var(--tang)}
+.op-steps b{font-weight:600;grid-column:2;grid-row:1}
+.op-step-k{grid-column:1;grid-row:1;font-weight:500}
+.op-step-t{grid-column:1 / -1;font-size:14px;color:var(--ink-2)}
+.op-steps li.is-hot .op-step-t{color:var(--ink);font-weight:500}
+
+/* floating switcher */
+.op-switch{position:fixed;left:50%;bottom:18px;transform:translateX(-50%);z-index:1000;display:flex;align-items:center;gap:6px;padding:6px;border-radius:999px;background:#111;color:#fff;font:500 14px/1 system-ui,sans-serif;box-shadow:0 8px 28px rgba(0,0,0,.35);outline:2px solid #ff2fb3;outline-offset:2px}
+.op-switch span{padding:0 10px;white-space:nowrap}
+.op-switch button{appearance:none;border:0;width:34px;height:34px;border-radius:50%;background:#333;color:#fff;font-size:16px;cursor:pointer}
+.op-switch button:hover{background:#555}
+@media (max-width:699px){.op-switch{bottom:92px}}
+@media (min-width:860px){.plans:has(>.op-ticket-row){grid-template-columns:1fr}}

@@ -1,0 +1,14 @@
+{
+  "round": 15,
+  "decision": "How should the home page show the offer '30% off your first month' (CAD 69.30, then CAD 99 a month)?",
+  "primary_axis": "where the offer lives and what carries it: price, page chrome, hero, coupon, or charge timing",
+  "invariants": ["real home page (/) with real copy and sections", "math plan only, CAD 99 a month", "full-width plan card (D-090)", "visual only: checkout and Stripe still charge CAD 99", "1280x800 and 390x844"],
+  "run": "npm run dev, then open /?variant=A..E (floating bar or left/right arrow keys)",
+  "options": [
+    { "id": "A", "name": "Price card: struck price", "artifacts": ["A-hero.png", "A-price.png", "A-price-phone.png"], "bet": "The card leads with the first-month price: chip, CAD 99 struck, CAD 69.30 big, 'Then CAD 99 a month'. Hero fact line says the same", "benefit": "Most direct; the discount is the number a parent sees", "cost": "The big number is not the price they pay every month", "risk": "Reads as a CAD 69.30 product; the jump to 99 can feel like a bait" },
+    { "id": "B", "name": "Announcement bar", "artifacts": ["B-hero.png", "B-price.png", "B-price-phone.png"], "bet": "A dark bar above the nav on every load; pricing card adds one line", "benefit": "Seen first, on every page view; card stays honest at CAD 99", "cost": "Adds chrome above the nav; banner blindness", "risk": "Looks like a generic promo site" },
+    { "id": "C", "name": "Hero sticker", "artifacts": ["C-hero.png", "C-price.png", "C-price-phone.png"], "bet": "A round yellow sticker on the hero photo; pricing card adds one line", "benefit": "Playful, fits a kids' product, visible above the fold", "cost": "Covers part of the photo", "risk": "Feels like a retail sale sticker; less trust" },
+    { "id": "D", "name": "Coupon stub", "artifacts": ["D-hero.png", "D-price.png", "D-price-phone.png"], "bet": "A tear-off coupon joined to the plan card with a dashed edge: '30% off, CAD 69.30, added at checkout, no code'", "benefit": "Clear that it is a one-time extra; card price stays CAD 99", "cost": "Only in the pricing section; the hero says nothing", "risk": "Coupon metaphor can look cheap if overused" },
+    { "id": "E", "name": "Charge timeline", "artifacts": ["E-hero.png", "E-price.png", "E-price-phone.png"], "bet": "The card shows when money moves: Today CAD 0, first book ships CAD 69.30, every month after CAD 99", "benefit": "Answers 'when do I pay what' in one look; matches the real charge timing (D-053)", "cost": "Quietest offer of the five", "risk": "Parents scanning for a deal can miss it" }
+  ]
+}

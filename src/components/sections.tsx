@@ -29,6 +29,7 @@ import {
   type IconName,
 } from "@/ds";
 import { ComparePanels } from "./compare";
+import { HeroSticker, OfferPlan, heroMeta, type OfferVariant } from "./offer-prototype";
 import { Knot, Rise, type Vars } from "./drawn";
 
 import heroHome1 from "@/assets/img/hero-home-1.jpg";
@@ -70,7 +71,7 @@ const TOPICS = [
   "patterns", "inference", "geometry", "syllables", "integers", "addition", "graphing", "measuring",
 ];
 
-export function Hero() {
+export function Hero({ offer }: { offer?: OfferVariant }) {
   return (
     <HeroBlock
         id="top"
@@ -85,7 +86,7 @@ export function Hero() {
             it gets harder. Unica builds each workbook around your child&apos;s level, pace and learning style, then mails it home.
           </>
         }
-        meta={[`CAD ${PLANS.one.price}/month`, "30-day money-back guarantee", "Cancel anytime"]}
+        meta={offer ? heroMeta(offer) : [`CAD ${PLANS.one.price}/month`, "30-day money-back guarantee", "Cancel anytime"]}
         page={null}
         report={null}
         animate
@@ -95,7 +96,10 @@ export function Hero() {
             <a className="btn ghost" href="#how">See how it works</a>
           </>
         }
-        media={<Image src={heroHome1} alt="A boy writes in his workbook at a desk at home" sizes="(min-width: 1200px) 1120px, 100vw" placeholder="blur" loading="eager" fetchPriority="high" />}
+        media={<>
+          <Image src={heroHome1} alt="A boy writes in his workbook at a desk at home" sizes="(min-width: 1200px) 1120px, 100vw" placeholder="blur" loading="eager" fetchPriority="high" />
+          {offer && <HeroSticker variant={offer} />}
+        </>}
       />
   );
 }
@@ -264,7 +268,7 @@ export function OurPromise() {
   );
 }
 
-export function Pricing() {
+export function Pricing({ offer }: { offer?: OfferVariant }) {
   return (
     <Section id="price" aria-labelledby="priceT">
       <Knot />
@@ -273,16 +277,18 @@ export function Pricing() {
         <p className="g-line">Try it with a <Highlight>30-day money-back guarantee.</Highlight></p>
       </Rise>
       <PlanGrid>
+        {offer ? <OfferPlan variant={offer} /> : (
         <PlanCard
-          className="rise"
-          featured
-          name={PLANS.one.name}
-          note={PLANS.one.note}
-          price={PLANS.one.price}
-          features={["Free placement assessment", "Personalized math workbooks matched to your child's level and gaps, mailed home", "Your next book arrives before the current one runs out", "Progress reports after every check-in", "Delivery included. Cancel anytime"]}
-          ctaLabel="Choose math"
-          cta={<GetStarted src="price" plan="one" label="Choose math" />}
-        />
+            className="rise"
+            featured
+            name={PLANS.one.name}
+            note={PLANS.one.note}
+            price={PLANS.one.price}
+            features={["Free placement assessment", "Personalized math workbooks matched to your child's level and gaps, mailed home", "Your next book arrives before the current one runs out", "Progress reports after every check-in", "Delivery included. Cancel anytime"]}
+            ctaLabel="Choose math"
+            cta={<GetStarted src="price" plan="one" label="Choose math" />}
+          />
+        )}
       </PlanGrid>
       <ComparePanels />
     </Section>
