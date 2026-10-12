@@ -266,3 +266,39 @@ describe("the grades 1-2 bank", () => {
     }
   });
 });
+
+// #75 acceptance: review-flag triage against primary curriculum sources (scripts/template-check/triage.md).
+describe("primary-source tag and wording corrections from the #75 checker run", () => {
+  const byId = (id: string) => GRADE_1_2_BANK.find((t) => t.id === id)!;
+  const levels = (id: string) => PROVINCES.map((p) => fillTemplate(byId(id), 0, p).level);
+
+  it.each([
+    // [id, BC, AB, SK, MB, ON, other]. AB current K-6 names likelihood first in grade 6 (MAT6-OI8-GQ1-LO1-KO2-SP).
+    ["k-likely-event", [0, 6, 5, 5, 1, 0]],
+    ["1-never-sometimes-always", [1, 6, 5, 5, 1, 1]],
+    ["1-more-likely", [1, 6, 5, 5, 1, 1]],
+    ["2-spinner", [2, 6, 5, 5, 3, 2]], // more likely and equally likely: ON3 D2.1
+    ["2-certain-possible", [2, 6, 5, 5, 1, 2]],
+    ["3-bag-likely", [3, 6, 5, 5, 3, 3]],
+    ["3-coin-streak", [3, 6, 5, 5, 3, 3]],
+    ["1-count-coins", [1, 2, 2, 2, 2, 1]], // AB grade 2 coins of one kind; SK N2.1, MB 2.N.1
+    ["2-coins-mixed", [2, 3, 2, 2, 2, 2]], // AB grade 3 nickels, dimes, quarters; SK N2.2, MB 2.N.9
+    ["3-money-total", [3, 3, 2, 2, 2, 3]], // AB grade 3 loonies, toonies, bills; ON2 F1.1
+    ["1-missing-addend", [1, 1, 3, 3, 1, 1]], // AB grade 1 missing quantity within 20
+    ["2-true-equation", [2, 3, 2, 2, 2, 2]], // AB MAT3-OI2-GQ1-LO1-KO1-SP
+    ["2-pattern-rows", [2, 2, 2, 2, 1, 2]], // ON1 C1.3
+    ["1-cover-card", [1, 1, 1, 1, 1, 1]], // grade 1 compares area by covering
+    ["1-length-together", [1, 2, 2, 2, 2, 1]], // ON2 E2.1 length in units
+  ] as const)("%s uses the grade where each province's curriculum teaches it", (id, expected) => {
+    expect(levels(id)).toEqual([...expected]);
+  });
+  it("says what makes the unlikely event unlikely, and that the coin is fair", () => {
+    for (const seed of SEEDS) {
+      const likely = fillTemplate(byId("1-more-likely"), seed);
+      for (const text of [likely.prompt, likely.readAloud, ...(likely.choices ?? [])]) expect(text).not.toMatch(/fly to school(?! by flapping)/);
+      const coin = fillTemplate(byId("3-coin-streak"), seed);
+      expect(coin.prompt).toMatch(/fair coin/);
+      expect(coin.readAloud).toMatch(/fair coin/);
+    }
+  });
+});

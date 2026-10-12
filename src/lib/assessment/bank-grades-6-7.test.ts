@@ -59,6 +59,34 @@ describe("grade 6-7 tests from the default bank", () => {
   });
 });
 
+describe("siblings and retakes in grades 6-7", () => {
+  // Stage 1 template share and stage 1 + stay question share between two seeds, 200 pairs. Measured after the #76
+  // primary-source retags (scripts/template-check/triage.md): the other provinces stay under 0.6 templates and 0.12
+  // questions. Alberta grade 7 is the exception: Alberta's current K-6 program teaches much of BC's grade 7 content
+  // earlier, so its level 7 pool is small (measured 0.80 templates, 0.13 questions). Owner decision 2026-10-11:
+  // accept that overlap and add no Alberta grade 7 templates. Ontario grade 7 is next for the same reason (Ontario
+  // teaches percent, coordinates and two-step equations in grade 6): measured 0.56 templates, 0.14 questions. Owner
+  // decision 2026-10-12 (#76): accept that overlap too.
+  const limit = (grade: Grade, province: TaggedProvince) =>
+    grade === 7 && province === "AB" ? { templates: 0.85, questions: 0.15 }
+      : grade === 7 && province === "ON" ? { templates: 0.6, questions: 0.15 }
+        : { templates: 0.6, questions: 0.12 };
+  it.each([6, 7] as Grade[])("grade %i: siblings share few templates and few questions, in every province", (grade) => {
+    for (const province of TAGGED) {
+      let sharedTemplates = 0, templates = 0, sharedQuestions = 0, questions = 0;
+      for (let i = 0; i < 200; i++) {
+        const [a, b] = [createSession({ grade, province }, 2 * i + 1), createSession({ grade, province }, 2 * i + 2)];
+        const bTemplates = new Set(b.stage1.map((q) => q.templateId));
+        for (const t of new Set(a.stage1.map((q) => q.templateId))) { templates++; if (bTemplates.has(t)) sharedTemplates++; }
+        const bPrompts = new Set([...b.stage1, ...b.stage2.stay].map((q) => q.prompt));
+        for (const q of [...a.stage1, ...a.stage2.stay]) { questions++; if (bPrompts.has(q.prompt)) sharedQuestions++; }
+      }
+      expect(sharedTemplates / templates, `grade ${grade} ${province} templates`).toBeLessThan(limit(grade, province).templates);
+      expect(sharedQuestions / questions, `grade ${grade} ${province} questions`).toBeLessThan(limit(grade, province).questions);
+    }
+  });
+});
+
 describe("the grades 6-7 bank", () => {
   it("keeps every generated misconception code within the answer storage limit", () => {
     for (const template of BANK) {
@@ -479,6 +507,226 @@ describe("the grades 6-7 bank", () => {
     for (const template of BANK) {
       const view = JSON.stringify(toPublicQuestion(fillTemplate(template, 3)));
       expect(view).not.toMatch(/"answer"|"wrong"|misconception/);
+    }
+  });
+});
+
+// #76 acceptance: corrections from the checker findings, each checked against the current official curriculum
+// (scripts/template-check/triage.md cites the outcome for every row).
+describe("primary-source corrections from the #76 checker run", () => {
+  const byId = (id: string) => BANK.find((t) => t.id === id)!;
+  const levels = (id: string) => PROVINCES.map((p) => fillTemplate(byId(id), 0, p).level);
+  const numbersIn = (id: string) => SEEDS.flatMap((seed) => {
+    const q = fillTemplate(byId(id), seed);
+    return [...`${q.prompt} ${q.answer}`.matchAll(/\d+/g)].map((m) => Number(m[0]));
+  });
+
+  it.each([
+    // [id, BC, AB, SK, MB, ON, other]; sources in the comments.
+    // AB MAT4-OI1-GQ4-LO1-KO1-SP and ON4 B2.6: three-digit by one-digit division with a remainder.
+    ["g67-5-share-remainder", [5, 4, 5, 5, 4, 5]],
+    // AB MAT4-OI1-GQ5-LO1-KO1-SP compares fractions; ON5 B1.4 stops at twelfths, the choices reach 36ths (ON6 B1.3).
+    ["g67-5-greatest-fraction", [5, 4, 5, 5, 6, 5]],
+    // One-step addition and subtraction with an unknown: AB MAT3-OI2-GQ1-LO1-KO2-SP, SK P3.2, MB 3.PR.3, ON2 C2.2-C2.3.
+    ["g67-5-equation-add", [5, 3, 3, 3, 2, 5]],
+    ["g67-5-equation-subtract", [5, 3, 3, 3, 2, 5]],
+    ["g67-6-balance-box", [6, 3, 3, 3, 2, 6]],
+    // Totals reach 175: ON3 C2.3 uses equivalent relationships for whole numbers up to 1000.
+    ["g67-6-equation-plus", [6, 3, 3, 3, 3, 6]],
+    // AB MAT4-OI2-GQ1-LO1-KO2-SP one-operation equations, products past 100.
+    ["g67-5-equation-multiply", [5, 4, 5, 5, 5, 5]],
+    ["g67-6-equation-times", [6, 4, 5, 5, 6, 6]],
+    // In words, with one-digit factors: AB4 and ON4 B2.6; SK N5 and MB 5.N division of three-digit numbers.
+    ["g67-6-equation-words", [6, 4, 5, 5, 4, 6]],
+    // AB MAT4-OI2-GQ1-LO1-KO2-SP, SK P4.2, MB 4.PR.6 (one-step equations), products within 100.
+    ["g67-6-equation-check", [6, 4, 4, 4, 5, 6]],
+    // AB MAT5-OI2-GQ1-LO1-KO3-SP, SK P5.2, MB 5.PR.2: write a one-step equation for a story.
+    ["g67-6-story-equation", [6, 5, 5, 5, 6, 6]],
+    // AB MAT5-OI2-GQ1-LO1-KO2-SP and ON5 C2.2 evaluate an expression for a given value.
+    ["g67-6-nth-term", [6, 5, 6, 6, 5, 6]],
+    ["g67-6-evaluate", [6, 5, 7, 7, 5, 6]],
+    // AB MAT5-OI1-GQ5-LO1-KO1-SP and ON5 B1.3 (halves through twelfths) convert improper fractions and mixed numbers.
+    ["g67-6-improper-to-mixed", [6, 5, 6, 6, 5, 6]],
+    ["g67-6-mixed-to-improper", [6, 5, 6, 6, 5, 6]],
+    ["g67-6-count-parts", [6, 5, 6, 6, 5, 6]],
+    // AB MAT4-OI1-GQ5-LO1-KO1-SP compares and orders fractions.
+    ["g67-6-greatest-fraction", [6, 4, 5, 5, 6, 6]],
+    // AB MAT3-OI5-GQ1-LO1-KO2-SP: perimeter of a polygon with every side given.
+    ["g67-6-l-shape-perimeter", [6, 3, 3, 3, 3, 6]],
+    // AB MAT6-OI1-GQ5-LO1-KO1-SP converts quotient fractions to decimals.
+    ["g67-7-fraction-to-decimal", [7, 6, 7, 7, 7, 7]],
+    // AB MAT5-OI2-GQ1-LO1-KO2-SP evaluates an expression by substitution.
+    ["g67-7-evaluate-relation", [7, 5, 7, 7, 5, 7]],
+    ["g67-8-combine-expression", [8, 5, 7, 7, 5, 8]],
+    // Two-operation equations: AB MAT5-OI2-GQ1-LO1-KO3-SP; ON6 C2.3 (equations with multiple terms, whole numbers).
+    ["g67-7-two-step-plus", [7, 5, 7, 7, 6, 7]],
+    ["g67-7-two-step-minus", [7, 5, 7, 7, 6, 7]],
+    ["g67-7-two-step-divide", [7, 5, 7, 7, 6, 7]],
+    ["g67-7-two-step-story", [7, 5, 7, 7, 6, 7]],
+    ["g67-7-check-solution", [7, 5, 7, 7, 6, 7]],
+    ["g67-7-balance-boxes", [7, 5, 7, 7, 6, 7]],
+    // AB MAT5-OI2-GQ1-LO1-KO3-SP writes equations with one or two operations.
+    ["g67-7-story-equation", [7, 5, 7, 7, 6, 7]],
+    // Review-flag triage (scripts/template-check/triage.md).
+    ["g67-5-groups-needed", [5, 6, 6, 5, 5, 5]], // two-digit divisors: AB MAT6-OI1-GQ4; SK N5.3 one-digit only
+    ["g67-5-make-change", [5, 4, 4, 4, 5, 5]], // AB MAT4-OI1-GQ2, SK N4.8, MB 4.N.11
+    ["g67-5-equivalent-fraction", [5, 4, 5, 5, 6, 5]], // AB MAT4-OI1-GQ5
+    ["g67-5-missing-numerator", [5, 4, 5, 5, 6, 5]],
+    ["g67-5-greatest-decimal", [5, 4, 5, 5, 5, 5]], // AB MAT4-OI1-GQ1
+    ["g67-5-decimal-as-fraction", [5, 4, 4, 4, 5, 5]], // AB grade 4, denominators 10 or 100
+    ["g67-5-elapsed-time", [5, 4, 5, 5, 4, 5]], // AB MAT4-OI7-GQ1
+    ["g67-5-solid-from-faces", [5, 4, 3, 3, 3, 5]], // AB MAT4-OI3, SK SS3.4, MB 3.SS.6, ON3 E1.1
+    ["g67-5-solid-count", [5, 5, 3, 3, 3, 5]],
+    ["g67-5-name-transformation", [5, 2, 5, 5, 5, 5]], // AB MAT2-OI3-GQ1-LO1-KO2
+    ["g67-5-double-bar-graph", [5, 4, 5, 5, 4, 5]], // AB MAT4-OI8; ON4 D1.6
+    ["g67-5-pictograph", [5, 4, 4, 4, 3, 5]], // AB MAT4-OI8, SK SP4.1, MB 4.SP.2, ON3 D1.3
+    ["g67-5-spinner-probability", [5, 6, 6, 6, 5, 5]], // ON5 D2.1
+    // Grade 6 triage rows (sources in triage.md and in the template comments).
+    ["g67-6-greatest-large", [6, 5, 6, 6, 7, 6]],
+    ["g67-6-decimal-digit-value", [6, 5, 5, 5, 6, 6]],
+    ["g67-6-gcf", [6, 4, 6, 6, 7, 6]],
+    ["g67-6-which-prime", [6, 4, 6, 6, 6, 6]],
+    ["g67-6-which-composite", [6, 4, 6, 6, 6, 6]],
+    ["g67-6-order-of-operations", [6, 4, 6, 6, 6, 6]],
+    ["g67-6-brackets", [6, 5, 6, 6, 6, 6]],
+    ["g67-6-times-four", [6, 4, 4, 4, 4, 6]],
+    ["g67-6-save-weeks", [6, 6, 6, 5, 5, 6]],
+    ["g67-6-ratio-part-whole", [6, 5, 6, 6, 5, 6]],
+    ["g67-6-equivalent-ratio", [6, 6, 6, 6, 5, 6]],
+    ["g67-6-equivalent-ratio-choice", [6, 6, 6, 6, 5, 6]],
+    ["g67-6-ratio-to-fraction", [6, 5, 6, 6, 5, 6]],
+    ["g67-6-percent-of", [6, 6, 6, 7, 6, 6]],
+    ["g67-6-percent-grid", [6, 4, 6, 6, 5, 6]],
+    ["g67-6-percent-whole", [6, 6, 6, 7, 6, 6]],
+    ["g67-6-discount", [6, 6, 6, 7, 6, 6]],
+    ["g67-6-percent-to-decimal", [6, 4, 6, 6, 5, 6]],
+    ["g67-6-table-value", [6, 6, 6, 6, 4, 6]],
+    ["g67-6-expression-words", [6, 5, 6, 6, 5, 6]],
+    ["g67-6-shrinking-rule", [6, 6, 6, 6, 6, 6]],
+    ["g67-6-keep-balance", [6, 4, 6, 6, 6, 6]],
+    ["g67-6-figure-pattern", [6, 5, 5, 5, 4, 6]],
+    ["g67-6-triangle-area", [6, 6, 7, 7, 5, 6]],
+    ["g67-6-parallelogram-area", [6, 6, 7, 7, 5, 6]],
+    ["g67-6-triangle-angle", [6, 6, 6, 6, 6, 6]],
+    ["g67-6-straight-line-angle", [6, 4, 6, 6, 6, 6]],
+    ["g67-6-box-volume", [6, 6, 6, 6, 7, 6]],
+    ["g67-6-litres", [6, 6, 5, 5, 6, 6]],
+    ["g67-6-triangle-sides", [6, 4, 6, 6, 5, 6]],
+    ["g67-6-triangle-angles", [6, 4, 6, 6, 5, 6]],
+    ["g67-6-plot-point", [6, 5, 6, 6, 4, 6]],
+    ["g67-6-spinner-event", [6, 6, 6, 6, 5, 6]],
+    ["g67-6-theoretical", [6, 6, 6, 6, 5, 6]],
+    // Grades 7-8 triage rows (sources in triage.md and in the template comments).
+    ["g67-6-trapezoid-area", [6, 7, 7, 7, 6, 6]],
+    ["g67-7-greatest-integer", [7, 6, 6, 6, 6, 7]],
+    ["g67-7-order-integers", [7, 6, 6, 6, 6, 7]],
+    ["g67-7-bigger-or-smaller", [7, 7, 7, 7, 6, 7]],
+    ["g67-7-decimal-order-of-operations", [7, 6, 7, 7, 6, 7]],
+    ["g67-7-times-five", [7, 5, 5, 5, 5, 7]],
+    ["g67-7-change-several", [7, 6, 6, 6, 5, 7]],
+    ["g67-7-fraction-to-percent", [7, 4, 7, 7, 5, 7]],
+    ["g67-7-repeating-decimal", [7, 7, 7, 7, 6, 7]],
+    ["g67-7-decimal-to-fraction", [7, 4, 7, 7, 7, 7]],
+    ["g67-7-percent-to-fraction", [7, 4, 7, 7, 7, 7]],
+    ["g67-7-decimal-between", [7, 6, 7, 7, 6, 7]], // ON6 B1.3 compares fractions and decimals
+    ["g67-7-ratio-percent", [7, 5, 7, 7, 6, 7]],
+    ["g67-7-sales-tax", [7, 6, 7, 7, 6, 7]],
+    ["g67-7-tip", [7, 6, 7, 7, 6, 7]],
+    ["g67-7-sale-price", [7, 6, 7, 7, 6, 7]],
+    ["g67-7-write-decimal", [7, 6, 7, 7, 7, 7]],
+    ["g67-7-rule-from-table", [7, 6, 7, 7, 6, 7]],
+    ["g67-7-figure-expression", [7, 6, 7, 7, 6, 7]],
+    ["g67-7-cylinder-base-area", [7, 8, 8, 8, 7, 7]],
+    ["g67-7-cylinder-volume", [7, 8, 8, 8, 7, 7]],
+    ["g67-7-quadrant", [7, 6, 7, 7, 6, 7]],
+    ["g67-7-reflect-point", [7, 6, 7, 7, 7, 7]],
+    ["g67-7-translate-point", [7, 6, 7, 7, 6, 7]],
+    ["g67-8-square", [8, 8, 8, 8, 7, 8]],
+    ["g67-8-square-side", [8, 8, 8, 8, 7, 8]],
+    ["g67-8-square-tile", [8, 8, 8, 8, 7, 8]],
+    ["g67-8-add-fractions", [8, 7, 7, 7, 6, 8]],
+    ["g67-8-subtract-fractions", [8, 7, 7, 7, 6, 8]],
+    ["g67-8-multiply-fractions", [8, 8, 8, 8, 7, 8]],
+    ["g67-8-unit-rate", [8, 8, 8, 8, 6, 8]],
+    ["g67-8-expression-story", [6, 4, 6, 6, 5, 6]],
+    ["g67-8-prism-surface", [8, 8, 8, 8, 6, 8]],
+    ["g67-8-cube-surface", [8, 8, 8, 8, 6, 8]],
+    ["g67-8-mean", [8, 7, 7, 7, 5, 8]],
+    ["g67-8-median", [8, 7, 7, 7, 4, 8]],
+    ["g67-8-mode", [8, 7, 7, 7, 3, 8]],
+    ["g67-8-independent-probability", [8, 7, 7, 7, 6, 8]],
+  ] as const)("%s uses the primary-source grade in each province", (id, expected) => {
+    expect(levels(id)).toEqual([...expected]);
+  });
+  it("keeps the one-step addition and subtraction equations within the grade 3 number range", () => {
+    for (const id of ["g67-5-equation-add", "g67-5-equation-subtract", "g67-6-balance-box"]) expect(Math.max(...numbersIn(id))).toBeLessThanOrEqual(100);
+    expect(Math.max(...numbersIn("g67-6-equation-plus"))).toBeLessThan(1000);
+    expect(Math.max(...numbersIn("g67-6-equation-check"))).toBeLessThanOrEqual(100);
+  });
+  it("divides by one-digit numbers only in the worded equation", () => {
+    expect(Math.max(...SEEDS.map((seed) => fillTemplate(byId("g67-6-equation-words"), seed).values.a))).toBeLessThanOrEqual(9);
+  });
+  it("codes only one-step slips in the negative-coefficient equation, each a whole number the pad can type", () => {
+    for (const seed of SEEDS) {
+      const q = fillTemplate(byId("g67-8-negative-coefficient"), seed), { a, b, x } = q.values;
+      // Dividing before undoing the subtraction gives x + b/a; using the wrong inverse gives x + 2b/a.
+      expect(q.wrong.map((w) => Number(w.value)).sort((p, r) => p - r)).toEqual([x + b / a, x + (2 * b) / a]);
+      expect(q.wrong.every((w) => w.misconception === "A6")).toBe(true);
+    }
+  });
+  it.each(["g67-7-integer-add-equation", "g67-7-integer-subtract-equation"])("%s: one-step equations with integers, grade 7 where integers enter equations", (id) => {
+    // AB 2016 grade 7 PR6, SK P7 (x + a = b, integers), MB 7.PR.6; ON8 C2.3 (equations with integers).
+    expect(levels(id)).toEqual([7, 7, 7, 7, 8, 7]);
+    const value = (t: string) => Number(t.replace("−", "-"));
+    for (const seed of SEEDS) {
+      const q = fillTemplate(byId(id), seed), { a, b } = q.values;
+      expect(value(q.answer)).toBe(id.includes("add") ? b - a : b + a);
+      expect(q.choices!.filter((c) => (id.includes("add") ? value(c) + a : value(c) - a) === b)).toEqual([q.answer]);
+      expect([a, b, value(q.answer)].some((n) => n < 0)).toBe(true);
+      // The right size with the opposite sign is its own error, not a double-negative slip.
+      expect(q.wrong.find((w) => value(w.value) === -value(q.answer))?.misconception).toBe("opposite-sign");
+      expect(byId(id).standard).toBe("7.2");
+    }
+  });
+  it("adds two mixed numbers with unlike denominators, grade 7 where it is named", () => {
+    // AB 2016 grade 7 Number SO 5, SK N7.5, MB 7.N.5 (fractions and mixed numbers); BC 8.5; ON7 adds fractions.
+    expect(levels("g67-8-add-mixed-numbers")).toEqual([8, 7, 7, 7, 7, 8]);
+    for (const seed of SEEDS) {
+      const q = fillTemplate(byId("g67-8-add-mixed-numbers"), seed);
+      const v = (t: string) => { const m = t.replace(/\u00a0/g, " ").match(/^(?:(\d+) )?(\d+)\/(\d+)$/); return m ? Number(m[1] ?? 0) + Number(m[2]) / Number(m[3]) : Number(t); };
+      const [w1, n1, d1, w2, n2, d2] = [...q.prompt.matchAll(/\d+/g)].map((m) => Number(m[0]));
+      expect(v(q.answer)).toBeCloseTo(w1 + n1 / d1 + w2 + n2 / d2, 9);
+      expect(q.choices!.filter((c) => Math.abs(v(c) - v(q.answer)) < 1e-9)).toEqual([q.answer]);
+    }
+  });
+  it("says the two angles share a corner and together fill the straight line", () => {
+    for (const seed of SEEDS) {
+      const q = fillTemplate(byId("g67-6-straight-line-angle"), seed);
+      for (const text of [q.prompt, q.readAloud]) expect(text).toMatch(/share a corner and together fill the straight line/);
+    }
+  });
+  it("codes the trapezoid area without the half as a missing division by two", () => {
+    for (const seed of SEEDS) {
+      const q = fillTemplate(byId("g67-6-trapezoid-area"), seed);
+      const doubled = q.wrong.find((w) => Number(w.value) === 2 * Number(q.answer));
+      expect(doubled?.misconception).toBe("half-area");
+    }
+  });
+  it("offers part-to-part ratio errors that need only one mistake each", () => {
+    for (const seed of SEEDS) {
+      const q = fillTemplate(byId("g67-6-ratio-part-part"), seed), { a, b } = q.values;
+      expect(q.wrong.map((w) => w.value).sort()).toEqual([`${a}:${a + b}`, `${b}:${a}`].sort());
+    }
+  });
+  it("asks for the largest change between readings in a row of a described line graph", () => {
+    for (const seed of SEEDS) {
+      const q = fillTemplate(byId("g67-6-line-graph"), seed);
+      const readings = [...q.prompt.matchAll(/(-?\d+) (?:°C|cm|L)/g)].map((m) => Number(m[1]));
+      expect(readings.length).toBeGreaterThanOrEqual(4);
+      const rises = readings.slice(1).map((v, i) => v - readings[i]);
+      const best = Math.max(...rises);
+      expect(rises.filter((r) => r === best)).toHaveLength(1);
+      expect(q.choices).toHaveLength(4);
     }
   });
 });

@@ -417,8 +417,9 @@ export const LEVEL_K: readonly TaggedTemplate[] = [
   },
   {
     // Likelihood words (K10). WNCP starts likelihood in grade 5; Ontario in grade 1.
+    // AB current K-6 first names likelihood in grade 6 (MAT6-OI8-GQ1-LO1-KO2-SP).
     id: "k-likely-event",
-    strand: "DP", grades: { BC: 0, AB: 5, SK: 5, MB: 5, ON: 1 }, format: "choice", whiteboard: false, standard: "K10",
+    strand: "DP", grades: { BC: 0, AB: 6, SK: 5, MB: 5, ON: 1 }, format: "choice", whiteboard: false, standard: "K10",
     fill(rng) {
       const likely = ["You will eat lunch today", "You will see the sky today", "You will hear a car today"];
       const unlikely = ["A cow will fly over your house today", "A dinosaur will visit your school today", "A fish will talk to you today"];

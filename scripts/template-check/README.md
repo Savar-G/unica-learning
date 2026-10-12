@@ -26,4 +26,6 @@ The report covers the full selected bank, including with `--only` or `--limit`. 
 
 Run only one checker at a time. The bands share template IDs and the results file. Repeat the same command after a stop. Completed batches remain in the cache. Use `--fresh` or `--only` when a failed finding needs a new model review without a payload change.
 
-For #76, select `--band 6-7`. No band 6-7 model review is claimed by this change.
+For #76, select `--band 6-7`. The #75/#76 acceptance ran `--band all` with `--context scripts/template-check/curriculum-notes.md`; `results.json`, `report*.md` and `summary*.json` hold that check (0 fails).
+
+`triage.md` records every review flag of the final check, one row per flag, matched on template id and payload hash, with its disposition and a verbatim primary-source quote. It also lists the defects that triage found and fixed, the first complete run's fails (`first-run-fails.json`) and their status now, and the sibling overlap (`sibling-overlap.txt`). `node scripts/template-check/triage.mjs` rebuilds it from `results.json`, `summary-all.json` and `triage-rows.json` (every triage row, each written against the payload hash the checker saw). `node scripts/template-check/triage.mjs --check` exits 1 when a review flag has no row for its current hash, or when a current-hash row is still a defect. After a new check, add rows for the new hashes to `triage-rows.json` and run it again.

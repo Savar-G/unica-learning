@@ -104,8 +104,9 @@ export const LEVEL_1: readonly TaggedTemplate[] = [
   },
   {
     // Money (1.11): counting coins of one kind. WNCP has no coin outcomes before grade 4; Ontario counts coins from grade 2.
+    // AB grade 2: coins of one denomination by skip counting; SK N2.1 and MB 2.N.1 skip count by 5s and 10s.
     id: "1-count-coins",
-    strand: "N", grades: { BC: 1, AB: 4, SK: 4, MB: 4, ON: 2 }, format: "number", whiteboard: true, standard: "1.11",
+    strand: "N", grades: { BC: 1, AB: 2, SK: 2, MB: 2, ON: 2 }, format: "number", whiteboard: true, standard: "1.11",
     fill(rng) {
       const [coin, cents, most] = rng.pick([["nickels", 5, 6], ["dimes", 10, 9]] as const);
       const n = rng.int(2, most);
@@ -275,8 +276,9 @@ export const LEVEL_1: readonly TaggedTemplate[] = [
   },
   {
     // A missing number in an equation (map, grade 1: 5 + __ = 8). WNCP solves equations with a symbol for the unknown in grade 3.
+    // AB grade 1: a missing quantity in a sum or difference within 20.
     id: "1-missing-addend",
-    strand: "A", grades: { BC: 1, AB: 3, SK: 3, MB: 3, ON: 1 }, format: "number", whiteboard: true, standard: "1.5",
+    strand: "A", grades: { BC: 1, AB: 1, SK: 3, MB: 3, ON: 1 }, format: "number", whiteboard: true, standard: "1.5",
     fill(rng) {
       // a is 2 or more, so the counting-start answer (sum - a + 1) never equals the total.
       const sum = rng.int(5, 10), a = rng.int(2, sum - 2);
@@ -532,8 +534,9 @@ export const LEVEL_1: readonly TaggedTemplate[] = [
   },
   {
     // Likelihood words (1.10: never, sometimes, always; map, grade 1). WNCP starts likelihood in grade 5.
+    // AB: likelihood first in grade 6 (MAT6-OI8-GQ1-LO1-KO2-SP).
     id: "1-never-sometimes-always",
-    strand: "DP", grades: { BC: 1, AB: 5, SK: 5, MB: 5, ON: 1 }, format: "choice", whiteboard: false, standard: "1.10",
+    strand: "DP", grades: { BC: 1, AB: 6, SK: 5, MB: 5, ON: 1 }, format: "choice", whiteboard: false, standard: "1.10",
     fill(rng) {
       const [x, y] = rng.shuffle(["red", "blue", "green", "yellow"]);
       const kind = rng.int(0, 2);
@@ -558,15 +561,16 @@ export const LEVEL_1: readonly TaggedTemplate[] = [
   },
   {
     // More likely, less likely (1.10). WNCP starts likelihood in grade 5.
+    // AB: likelihood first in grade 6 (MAT6-OI8-GQ1-LO1-KO2-SP).
     id: "1-more-likely",
-    strand: "DP", grades: { BC: 1, AB: 5, SK: 5, MB: 5, ON: 1 }, format: "choice", whiteboard: false, standard: "1.10",
+    strand: "DP", grades: { BC: 1, AB: 6, SK: 5, MB: 5, ON: 1 }, format: "choice", whiteboard: false, standard: "1.10",
     fill(rng) {
       const pairs = [
         ["You will read a book at school this week", "A horse will come to your class this week"],
         ["It will rain some time this year", "It will rain lemonade this year"],
         ["You will see a bird outside today", "You will see a penguin in your yard today"],
         ["You will brush your teeth today", "You will brush a lion's teeth today"],
-        ["Your teacher will say your name this week", "Your teacher will fly to school this week"],
+        ["Your teacher will say your name this week", "Your teacher will fly to school by flapping their arms this week"],
         ["You will see a car on your street today", "You will see a camel on your street today"],
       ] as const;
       const i = rng.int(0, pairs.length - 1);
@@ -583,8 +587,9 @@ export const LEVEL_1: readonly TaggedTemplate[] = [
   },
   {
     // Covering an area with units (1.7 elaboration: tile an area). WNCP and Ontario count units in grade 2.
+    // Grade 1 compares area by covering: AB MAT1-OI5-GQ1-LO1-KO2-SP, SK and MB grade 1, ON1 E2.2.
     id: "1-cover-card",
-    strand: "MG", grades: { BC: 1, AB: 2, SK: 2, MB: 2, ON: 2 }, format: "choice", whiteboard: false, standard: "1.7",
+    strand: "MG", grades: { BC: 1, AB: 1, SK: 1, MB: 1, ON: 1 }, format: "choice", whiteboard: false, standard: "1.7",
     fill(rng) {
       const [a, b] = draw(rng, (r) => [r.int(6, 14), r.int(6, 14)], ([a, b]) => Math.abs(a - b) >= 2);
       const bigger = a > b ? "The red card" : "The blue card", smaller = a > b ? "The blue card" : "The red card";
@@ -599,8 +604,9 @@ export const LEVEL_1: readonly TaggedTemplate[] = [
   },
   {
     // Adding lengths in units (1.7: multiple copies of a unit). WNCP measures with units in grade 2.
+    // ON: length in units starts in grade 2 (E2.1).
     id: "1-length-together",
-    strand: "MG", grades: { BC: 1, AB: 2, SK: 2, MB: 2, ON: 1 }, format: "number", whiteboard: true, standard: "1.7",
+    strand: "MG", grades: { BC: 1, AB: 2, SK: 2, MB: 2, ON: 2 }, format: "number", whiteboard: true, standard: "1.7",
     fill(rng) {
       const [a, b] = draw(rng, (r) => [r.int(3, 9), r.int(3, 9)], ([a, b]) => a !== b);
       const unit = rng.pick(["paper clips", "cubes"]);

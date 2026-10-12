@@ -84,8 +84,9 @@ export const LEVEL_5: readonly TaggedTemplate[] = [
   },
   {
     // Map, grade 5: division with a remainder; half the time the quotient has a zero, as in 612 / 6 (O6).
+    // AB MAT4-OI1-GQ4-LO1-KO1-SP and ON4 B2.6: three-digit by one-digit division, quotient with a remainder.
     id: "g67-5-share-remainder",
-    strand: "O", grades: { BC: 5, AB: 5, SK: 5, MB: 5, ON: 5 }, format: "number", whiteboard: true, standard: "5.6",
+    strand: "O", grades: { BC: 5, AB: 4, SK: 5, MB: 5, ON: 4 }, format: "number", whiteboard: true, standard: "5.6",
     fill(rng) {
       const zero = rng.int(0, 1) === 1;
       const [d, q, r] = draw(
@@ -110,8 +111,9 @@ export const LEVEL_5: readonly TaggedTemplate[] = [
   },
   {
     // A remainder that needs one more group: 150 students, buses of 32.
+    // Two-digit divisors: AB MAT6-OI1-GQ4-LO1-KO1-SP; SK N5.3 stops at one-digit divisors and no later SK outcome names them.
     id: "g67-5-groups-needed",
-    strand: "O", grades: { BC: 5, AB: 5, SK: 5, MB: 5, ON: 5 }, format: "number", whiteboard: true, standard: "5.6",
+    strand: "O", grades: { BC: 5, AB: 6, SK: 6, MB: 5, ON: 5 }, format: "number", whiteboard: true, standard: "5.6",
     fill(rng) {
       const [size, total] = draw(rng, (g) => [g.int(12, 45), g.int(60, 400)], ([s, t]) => t % s !== 0 && t / s >= 3 && t / s <= 9);
       const [group, people, verb] = rng.pick([["bus", "students", "holds"], ["van", "players", "holds"], ["table", "guests", "seats"]] as const);
@@ -170,8 +172,9 @@ export const LEVEL_5: readonly TaggedTemplate[] = [
   },
   {
     // Making change (5.19).
+    // Subtracting hundredths: AB MAT4-OI1-GQ2-LO1-KO1-SP, SK N4.8, MB 4.N.11.
     id: "g67-5-make-change",
-    strand: "O", grades: { BC: 5, AB: 5, SK: 5, MB: 5, ON: 5 }, format: "number", whiteboard: true, standard: "5.19",
+    strand: "O", grades: { BC: 5, AB: 4, SK: 4, MB: 4, ON: 5 }, format: "number", whiteboard: true, standard: "5.19",
     fill(rng) {
       const bill = rng.pick([10, 20, 50]);
       const cents = draw(rng, (g) => g.int(150, bill * 100 - 150), (c) => c % 100 !== 0 && c % 5 === 0);
@@ -226,8 +229,10 @@ export const LEVEL_5: readonly TaggedTemplate[] = [
   // ---------- Fractions and decimals ----------
   {
     // Map, grade 5: which fraction equals 2/3 (misconception F9 adds the same number to both parts).
+    // AB MAT4-OI1-GQ5-LO1-KO1-SP: fractions equivalent to a given fraction.
+    // ON5 B1.3 stops at twelfths; the choices reach 36ths.
     id: "g67-5-equivalent-fraction",
-    strand: "F", grades: { BC: 5, AB: 5, SK: 5, MB: 5, ON: 5 }, format: "choice", whiteboard: false, standard: "5.3",
+    strand: "F", grades: { BC: 5, AB: 4, SK: 5, MB: 5, ON: 6 }, format: "choice", whiteboard: false, standard: "5.3",
     fill(rng) {
       const [a, b, k] = draw(rng, (g) => [g.int(1, 8), g.int(3, 9), g.int(2, 4)], ([a, b, k]) => a < b && gcd(a, b) === 1 && distinctNumbers([a / b, (a + k) / (b + k), a * k / b, a / (b * k)]));
       return {
@@ -240,8 +245,10 @@ export const LEVEL_5: readonly TaggedTemplate[] = [
     },
   },
   {
+    // AB MAT4-OI1-GQ5-LO1-KO1-SP: fractions equivalent to a given fraction.
+    // ON5 B1.3 stops at twelfths; the denominators reach 54.
     id: "g67-5-missing-numerator",
-    strand: "F", grades: { BC: 5, AB: 5, SK: 5, MB: 5, ON: 5 }, format: "number", whiteboard: true, standard: "5.3",
+    strand: "F", grades: { BC: 5, AB: 4, SK: 5, MB: 5, ON: 6 }, format: "number", whiteboard: true, standard: "5.3",
     fill(rng) {
       const [a, b] = draw(rng, (g) => [g.int(1, 8), g.int(3, 9)], ([a, b]) => a < b && gcd(a, b) === 1);
       const k = rng.int(2, 6);
@@ -257,8 +264,9 @@ export const LEVEL_5: readonly TaggedTemplate[] = [
   },
   {
     // Map, misconception F6: 0.6 or 0.45 (longer is larger).
+    // AB MAT4-OI1-GQ1-LO1-KO1-SP: compare and order decimal numbers.
     id: "g67-5-greatest-decimal",
-    strand: "F", grades: { BC: 5, AB: 5, SK: 5, MB: 5, ON: 5 }, format: "choice", whiteboard: false, standard: "5.4",
+    strand: "F", grades: { BC: 5, AB: 4, SK: 5, MB: 5, ON: 5 }, format: "choice", whiteboard: false, standard: "5.4",
     fill(rng) {
       const t = rng.int(3, 8);
       const longer = rng.shuffle(Array.from({ length: t * 10 - 10 }, (_, i) => i + 10).filter((h) => h % 10 !== 0)).slice(0, 3);
@@ -325,8 +333,9 @@ export const LEVEL_5: readonly TaggedTemplate[] = [
   },
   {
     // Compare related denominators. Each wrong choice isolates a numerator or denominator error.
+    // AB MAT4-OI1-GQ5-LO1-KO1-SP compares fractions. ON5 B1.4 stops at twelfths; the choices reach 36ths (ON6 B1.3).
     id: "g67-5-greatest-fraction",
-    strand: "F", grades: { BC: 5, AB: 5, SK: 5, MB: 5, ON: 5 }, format: "choice", whiteboard: true, standard: "5.4",
+    strand: "F", grades: { BC: 5, AB: 4, SK: 5, MB: 5, ON: 6 }, format: "choice", whiteboard: true, standard: "5.4",
     fill(rng) {
       const { b, n } = draw(rng, (g) => {
         const b = g.int(3, 9), n = g.int(2, b - 1);
@@ -343,8 +352,9 @@ export const LEVEL_5: readonly TaggedTemplate[] = [
   },
   {
     // Decimals as fractions (F7 reads the digits as the two parts: 0.35 becomes 3/5).
+    // AB grade 4: fractions as decimals and back, denominators 10 or 100.
     id: "g67-5-decimal-as-fraction",
-    strand: "F", grades: { BC: 5, AB: 5, SK: 4, MB: 4, ON: 5 }, format: "choice", whiteboard: false, standard: "5.2",
+    strand: "F", grades: { BC: 5, AB: 4, SK: 4, MB: 4, ON: 5 }, format: "choice", whiteboard: false, standard: "5.2",
     fill(rng) {
       const [a, b] = draw(rng, (g) => [g.int(1, 9), g.int(1, 9)], ([a, b]) => a !== b && distinctNumbers([(10 * a + b) / 100, a / b]));
       const ab = 10 * a + b;
@@ -395,8 +405,9 @@ export const LEVEL_5: readonly TaggedTemplate[] = [
   },
   {
     // Map, grade 5: 4 + x = 15.
+    // One-step addition or subtraction within 100: AB MAT3-OI2-GQ1-LO1-KO2-SP, SK P3.2, MB 3.PR.3, ON2 C2.2-C2.3.
     id: "g67-5-equation-add",
-    strand: "A", grades: { BC: 5, AB: 5, SK: 5, MB: 5, ON: 2 }, format: "number", whiteboard: true, standard: "5.11",
+    strand: "A", grades: { BC: 5, AB: 3, SK: 3, MB: 3, ON: 2 }, format: "number", whiteboard: true, standard: "5.11",
     fill(rng) {
       const a = rng.int(3, 30), x = rng.int(3, 40), v = rng.pick(["x", "n", "y", "k"]);
       return {
@@ -410,7 +421,7 @@ export const LEVEL_5: readonly TaggedTemplate[] = [
   },
   {
     id: "g67-5-equation-subtract",
-    strand: "A", grades: { BC: 5, AB: 5, SK: 5, MB: 5, ON: 2 }, format: "number", whiteboard: true, standard: "5.11",
+    strand: "A", grades: { BC: 5, AB: 3, SK: 3, MB: 3, ON: 2 }, format: "number", whiteboard: true, standard: "5.11",
     fill(rng) {
       const [a, b] = draw(rng, (g) => [g.int(3, 30), g.int(3, 40)], ([a, b]) => a !== b);
       const v = rng.pick(["x", "n", "y", "k"]);
@@ -424,8 +435,9 @@ export const LEVEL_5: readonly TaggedTemplate[] = [
     },
   },
   {
+    // AB MAT4-OI2-GQ1-LO1-KO2-SP: one-operation equations; products reach 108, past the grade 3 limit of 100.
     id: "g67-5-equation-multiply",
-    strand: "A", grades: { BC: 5, AB: 5, SK: 5, MB: 5, ON: 5 }, format: "number", whiteboard: true, standard: "5.11",
+    strand: "A", grades: { BC: 5, AB: 4, SK: 5, MB: 5, ON: 5 }, format: "number", whiteboard: true, standard: "5.11",
     fill(rng) {
       const [a, x] = draw(rng, (g) => [g.int(3, 9), g.int(3, 12)], ([a, x]) => a !== x);
       const v = rng.pick(["x", "n", "y", "k"]);
@@ -580,8 +592,9 @@ export const LEVEL_5: readonly TaggedTemplate[] = [
   },
   {
     // Map, grade 5 and misconception M8: 2:50 p.m. plus 1 h 25 min.
+    // AB MAT4-OI7-GQ1-LO1-KO1-SP: duration with addition and subtraction strategies.
     id: "g67-5-elapsed-time",
-    strand: "MG", grades: { BC: 5, AB: 5, SK: 5, MB: 5, ON: 4 }, format: "choice", whiteboard: true, standard: "5.14",
+    strand: "MG", grades: { BC: 5, AB: 4, SK: 5, MB: 5, ON: 4 }, format: "choice", whiteboard: true, standard: "5.14",
     fill(rng) {
       const [h, m, dh, dm] = draw(
         rng,
@@ -605,8 +618,9 @@ export const LEVEL_5: readonly TaggedTemplate[] = [
   },
   {
     // Map, grade 5: which solid has 2 triangular faces and 3 rectangular faces.
+    // Faces of prisms and pyramids: AB MAT4-OI3-GQ1-LO1-KO1-SP, SK SS3.4, MB 3.SS.6, ON3 E1.1 (as g35-5-prism-faces).
     id: "g67-5-solid-from-faces",
-    strand: "MG", grades: { BC: 5, AB: 5, SK: 5, MB: 5, ON: 5 }, format: "choice", whiteboard: false, standard: "5.15",
+    strand: "MG", grades: { BC: 5, AB: 4, SK: 3, MB: 3, ON: 3 }, format: "choice", whiteboard: false, standard: "5.15",
     fill(rng) {
       const solids = [
         ["triangular prism", "2 triangle faces and 3 rectangle faces"],
@@ -634,8 +648,9 @@ export const LEVEL_5: readonly TaggedTemplate[] = [
     },
   },
   {
+    // Edges and vertices of solids: SK SS3.4, MB 3.SS.6, ON3 E1.1. AB names no edge or vertex count; the later tag stays.
     id: "g67-5-solid-count",
-    strand: "MG", grades: { BC: 5, AB: 5, SK: 5, MB: 5, ON: 5 }, format: "number", whiteboard: true, standard: "5.15",
+    strand: "MG", grades: { BC: 5, AB: 5, SK: 3, MB: 3, ON: 3 }, format: "number", whiteboard: true, standard: "5.15",
     fill(rng) {
       const solids = [
         ["a triangular prism", 5, 9, 6], ["a rectangular prism", 6, 12, 8], ["a pentagonal prism", 7, 15, 10],
@@ -657,8 +672,9 @@ export const LEVEL_5: readonly TaggedTemplate[] = [
   },
   {
     // 5.16: single transformations, described in words.
+    // AB MAT2-OI3-GQ1-LO1-KO2: slides, turns and flips.
     id: "g67-5-name-transformation",
-    strand: "MG", grades: { BC: 5, AB: 5, SK: 5, MB: 5, ON: 5 }, format: "choice", whiteboard: false, standard: "5.16",
+    strand: "MG", grades: { BC: 5, AB: 2, SK: 5, MB: 5, ON: 5 }, format: "choice", whiteboard: false, standard: "5.16",
     fill(rng) {
       const shape = rng.pick(["A triangle", "An arrow shape", "A flag shape", "A letter L shape", "A trapezoid"]);
       const kind = rng.int(0, 2);
@@ -679,8 +695,9 @@ export const LEVEL_5: readonly TaggedTemplate[] = [
   },
   {
     // Map, grade 5: a double bar graph where each grid line stands for 5 (many-to-one correspondence).
+    // Scaled graphs: AB MAT4-OI8-GQ1-LO1-KO2-SP; multiple-bar graphs ON4 D1.6.
     id: "g67-5-double-bar-graph",
-    strand: "DP", grades: { BC: 5, AB: 5, SK: 5, MB: 5, ON: 5 }, format: "number", whiteboard: true, standard: "5.17",
+    strand: "DP", grades: { BC: 5, AB: 4, SK: 5, MB: 5, ON: 4 }, format: "number", whiteboard: true, standard: "5.17",
     fill(rng) {
       const scale = rng.pick([2, 5, 10, 20]);
       const [a, b] = draw(rng, (g) => [g.int(2, 8), g.int(3, 9)], ([a, b]) => b > a);
@@ -696,8 +713,9 @@ export const LEVEL_5: readonly TaggedTemplate[] = [
   },
   {
     // A pictograph key with a half picture (many-to-one correspondence).
+    // Many-to-one pictographs: AB MAT4-OI8-GQ1-LO1-KO2, SK SP4.1, MB 4.SP.2, ON3 D1.3.
     id: "g67-5-pictograph",
-    strand: "DP", grades: { BC: 5, AB: 5, SK: 5, MB: 5, ON: 5 }, format: "number", whiteboard: true, standard: "5.17",
+    strand: "DP", grades: { BC: 5, AB: 4, SK: 4, MB: 4, ON: 3 }, format: "number", whiteboard: true, standard: "5.17",
     fill(rng) {
       const k = rng.pick([2, 4, 6, 8, 10]), n = rng.int(3, 8);
       const sport = rng.pick(["soccer", "hockey", "swimming", "basketball"]);
@@ -713,8 +731,9 @@ export const LEVEL_5: readonly TaggedTemplate[] = [
   {
     // Map, grade 5: probability of red on a spinner, as a fraction (D4 compares part to part).
     // WNCP gives probability as a fraction in grade 6 (it describes likelihood in words in grade 5).
+    // ON5 D2.1: probability as a fraction.
     id: "g67-5-spinner-probability",
-    strand: "DP", grades: { BC: 5, AB: 6, SK: 6, MB: 6, ON: 6 }, format: "choice", whiteboard: false, standard: "5.18",
+    strand: "DP", grades: { BC: 5, AB: 6, SK: 6, MB: 6, ON: 5 }, format: "choice", whiteboard: false, standard: "5.18",
     fill(rng) {
       const [n, r] = draw(rng, (g) => {
         const n = g.int(5, 10);

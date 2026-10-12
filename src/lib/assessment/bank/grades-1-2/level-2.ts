@@ -205,8 +205,9 @@ export const LEVEL_2: readonly TaggedTemplate[] = [
   },
   {
     // Money (2.12; map, grade 2, without pennies, which Canada no longer makes). WNCP has no coin outcomes before grade 4.
+    // AB grade 3: nickels, dimes and quarters as cents; SK N2.2 and MB 2.N.9 add to 100 (coin values are given).
     id: "2-coins-mixed",
-    strand: "O", grades: { BC: 2, AB: 4, SK: 4, MB: 4, ON: 2 }, format: "number", whiteboard: true, standard: "2.12",
+    strand: "O", grades: { BC: 2, AB: 3, SK: 2, MB: 2, ON: 2 }, format: "number", whiteboard: true, standard: "2.12",
     fill(rng) {
       const [q, d, n] = draw(
         rng,
@@ -353,8 +354,9 @@ export const LEVEL_2: readonly TaggedTemplate[] = [
   },
   {
     // An increasing pattern asked a few steps ahead (2.5).
+    // ON1 C1.3 extends patterns and predicts; the row counts stay under 50.
     id: "2-pattern-rows",
-    strand: "A", grades: { BC: 2, AB: 2, SK: 2, MB: 2, ON: 2 }, format: "number", whiteboard: true, standard: "2.5",
+    strand: "A", grades: { BC: 2, AB: 2, SK: 2, MB: 2, ON: 1 }, format: "number", whiteboard: true, standard: "2.5",
     fill(rng) {
       const first = rng.int(1, 3), step = rng.int(1, 3), ask = rng.int(5, 6);
       const rows = [1, 2, 3].map((r) => `Row ${r}: ${row(first + (r - 1) * step)}`);
@@ -398,8 +400,9 @@ export const LEVEL_2: readonly TaggedTemplate[] = [
   },
   {
     // The equal sign between two expressions (2.7; misconception A1).
+    // AB: equality between two expressions is first MAT3-OI2-GQ1-LO1-KO1-SP.
     id: "2-true-equation",
-    strand: "A", grades: { BC: 2, AB: 2, SK: 2, MB: 2, ON: 2 }, format: "choice", whiteboard: false, standard: "2.7",
+    strand: "A", grades: { BC: 2, AB: 3, SK: 2, MB: 2, ON: 2 }, format: "choice", whiteboard: false, standard: "2.7",
     fill(rng) {
       const [a, b] = draw(rng, (r) => [r.int(6, 9), r.int(4, 9)], ([a, b]) => a + b >= 11 && a !== b);
       const sum = a + b, extra = rng.int(1, 3);
@@ -623,8 +626,9 @@ export const LEVEL_2: readonly TaggedTemplate[] = [
   },
   {
     // Spinner (2.11; map, grade 2). WNCP starts likelihood in grade 5.
+    // AB: likelihood first in grade 6. ON grades 1-2 use impossible, possible and certain; more likely is ON3 D2.1.
     id: "2-spinner",
-    strand: "DP", grades: { BC: 2, AB: 5, SK: 5, MB: 5, ON: 2 }, format: "choice", whiteboard: false, standard: "2.11",
+    strand: "DP", grades: { BC: 2, AB: 6, SK: 5, MB: 5, ON: 3 }, format: "choice", whiteboard: false, standard: "2.11",
     fill(rng) {
       const [x, y] = rng.shuffle(["red", "blue", "green", "yellow"]);
       const many = rng.int(2, 5);
@@ -641,8 +645,9 @@ export const LEVEL_2: readonly TaggedTemplate[] = [
   },
   {
     // Certain or uncertain (2.11). Ontario uses impossible, possible and certain in grade 1; WNCP starts in grade 5.
+    // AB: likelihood first in grade 6 (MAT6-OI8-GQ1-LO1-KO2-SP).
     id: "2-certain-possible",
-    strand: "DP", grades: { BC: 2, AB: 5, SK: 5, MB: 5, ON: 1 }, format: "choice", whiteboard: false, standard: "2.11",
+    strand: "DP", grades: { BC: 2, AB: 6, SK: 5, MB: 5, ON: 1 }, format: "choice", whiteboard: false, standard: "2.11",
     fill(rng) {
       const [x, y] = rng.shuffle(["green", "red", "blue", "yellow"]);
       const kind = rng.int(0, 2);

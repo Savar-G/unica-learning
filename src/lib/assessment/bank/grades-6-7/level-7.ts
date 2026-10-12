@@ -13,8 +13,9 @@ export const LEVEL_7: readonly TaggedTemplate[] = [
   // ---------- Number and operations ----------
   {
     // Map, grade 7 and misconception N6: which is greater, -3 or -8.
+    // Triage: AB 6: AB current K-6, Grade 6, MAT6-OI1-GQ1-LO1-KO1-SP.
     id: "g67-7-greatest-integer",
-    strand: "N", grades: { BC: 7, AB: 7, SK: 6, MB: 6, ON: 6 }, format: "choice", whiteboard: false, standard: "7.2",
+    strand: "N", grades: { BC: 7, AB: 6, SK: 6, MB: 6, ON: 6 }, format: "choice", whiteboard: false, standard: "7.2",
     fill(rng) {
       const values = rng.shuffle(Array.from({ length: 15 }, (_, i) => -(i + 1))).slice(0, 2);
       const answer = Math.max(...values);
@@ -29,8 +30,9 @@ export const LEVEL_7: readonly TaggedTemplate[] = [
   },
   {
     // Order integers from least to greatest.
+    // Triage: AB 6: AB current K-6, Grade 6, MAT6-OI1-GQ1-LO1-KO1-SP.
     id: "g67-7-order-integers",
-    strand: "N", grades: { BC: 7, AB: 7, SK: 6, MB: 6, ON: 6 }, format: "choice", whiteboard: false, standard: "7.2",
+    strand: "N", grades: { BC: 7, AB: 6, SK: 6, MB: 6, ON: 6 }, format: "choice", whiteboard: false, standard: "7.2",
     fill(rng) {
       const [a, b] = draw(rng, (g) => [-g.int(2, 12), -g.int(2, 12)], ([a, b]) => a < b);
       const c = rng.int(0, 1) === 1 ? 0 : -1 * 0 + rng.int(1, 4), d = rng.int(5, 15);
@@ -183,8 +185,9 @@ export const LEVEL_7: readonly TaggedTemplate[] = [
   },
   {
     // Map, misconception O4: 12 / 0.5 is more than 12.
+    // Triage: ON 6: ON 2020 (Jan 2021), PDF 346 (printed 345), Grade 6 B2.8 key concepts (with B2.7 on PDF 344.
     id: "g67-7-bigger-or-smaller",
-    strand: "O", grades: { BC: 7, AB: 7, SK: 7, MB: 7, ON: 7 }, format: "choice", whiteboard: false, standard: "7.3",
+    strand: "O", grades: { BC: 7, AB: 7, SK: 7, MB: 7, ON: 6 }, format: "choice", whiteboard: false, standard: "7.3",
     fill(rng) {
       const n = rng.int(6, 60), d = rng.pick([0.2, 0.25, 0.4, 0.5, 0.75, 0.8]), divide = rng.int(0, 1) === 1;
       const more = divide;
@@ -199,8 +202,9 @@ export const LEVEL_7: readonly TaggedTemplate[] = [
   },
   {
     // 7.3: order of operations with decimals.
+    // Triage: AB 6: AB current K-6, Grade 6, MAT6-OI1-GQ4-LO1-KO1-SP; ON 6: ON 2020 (Jan 2021), PDF 336 (printed 335), Grade 6 B2.1 key concepts.
     id: "g67-7-decimal-order-of-operations",
-    strand: "O", grades: { BC: 7, AB: 7, SK: 7, MB: 7, ON: 7 }, format: "number", whiteboard: true, standard: "7.3",
+    strand: "O", grades: { BC: 7, AB: 6, SK: 7, MB: 7, ON: 6 }, format: "number", whiteboard: true, standard: "7.3",
     fill(rng) {
       const a10 = draw(rng, (g) => g.int(11, 99), (v) => v % 10 !== 0), b10 = draw(rng, (g) => g.int(11, 49), (v) => v % 10 !== 0), c = rng.int(2, 6);
       const answer = (a10 + b10 * c) / 10;
@@ -215,8 +219,10 @@ export const LEVEL_7: readonly TaggedTemplate[] = [
   },
   {
     // Map, 7.1: 214 x 5 is 2140 / 2 = 1070.
+    // Triage: AB 5: AB current K-6, Grade 5, MAT5-OI1-GQ4-LO1-KO1-SP; SK 5: SK gr5, N5.2; MB 5: MB gr5, 5.N.5.
+    // ON5 B2.6: the first ON multiplication with a two-digit multiplier.
     id: "g67-7-times-five",
-    strand: "O", grades: { BC: 7, AB: 7, SK: 7, MB: 7, ON: 7 }, format: "number", whiteboard: true, standard: "7.1",
+    strand: "O", grades: { BC: 7, AB: 5, SK: 5, MB: 5, ON: 5 }, format: "number", whiteboard: true, standard: "7.1",
     fill(rng) {
       const [a, m] = draw(rng, (g) => [g.int(102, 998), g.pick([5, 50])], ([a]) => a % 2 === 0 && a % 10 !== 0);
       const answer = a * m;
@@ -232,8 +238,9 @@ export const LEVEL_7: readonly TaggedTemplate[] = [
   },
   {
     // 7.3 in a money context: several items and change.
+    // Triage: AB 6: AB current K-6, Grade 6, MAT6-OI1-GQ4-LO1-KO1-SP; SK 6: SK gr6, N6.4; MB 6: MB gr6, 6.N.8; ON 5: ON 2020 (Jan 2021), PDF 322 (printed 321), Grade 5 F1.2 Money Concepts.
     id: "g67-7-change-several",
-    strand: "O", grades: { BC: 7, AB: 7, SK: 7, MB: 7, ON: 7 }, format: "number", whiteboard: true, standard: "7.3",
+    strand: "O", grades: { BC: 7, AB: 6, SK: 6, MB: 6, ON: 5 }, format: "number", whiteboard: true, standard: "7.3",
     fill(rng) {
       const [n, cents] = draw(rng, (g) => [g.int(2, 5), g.int(105, 495)], ([n, c]) => c % 5 === 0 && c % 100 !== 0 && n * c < 2000 && distinctNumbers([n * c, (n * c < 1000 ? 1000 : 2000) - n * c, (n * c < 1000 ? 1000 : 2000) - c]));
       const bill = n * cents < 1000 ? 10 : 20;
@@ -251,8 +258,9 @@ export const LEVEL_7: readonly TaggedTemplate[] = [
   // ---------- Fractions, decimals and percents ----------
   {
     // Map, grade 7: which decimal equals 3/8 (misconception F7).
+    // AB MAT6-OI1-GQ5-LO1-KO1-SP converts quotient fractions to decimals.
     id: "g67-7-fraction-to-decimal",
-    strand: "F", grades: { BC: 7, AB: 7, SK: 7, MB: 7, ON: 7 }, format: "choice", whiteboard: true, standard: "7.4",
+    strand: "F", grades: { BC: 7, AB: 6, SK: 7, MB: 7, ON: 7 }, format: "choice", whiteboard: true, standard: "7.4",
     fill(rng) {
       const [n, d] = draw(rng, (g) => {
         const d = g.pick([8, 16, 20, 25, 40]);
@@ -269,8 +277,9 @@ export const LEVEL_7: readonly TaggedTemplate[] = [
   },
   {
     // Map, grade 7: write 7/20 as a percent.
+    // Triage: AB 4: AB current K-6, Grade 4, outcome id TIwBFOnV5ESvaoxr_Yk4_g (Students interpret percentages; ON 5: ON 2020 (Jan 2021), PDF 279 (printed 278), Grade 5 B1.7 Fractions, Decimals, and Percents.
     id: "g67-7-fraction-to-percent",
-    strand: "F", grades: { BC: 7, AB: 7, SK: 7, MB: 7, ON: 7 }, format: "number", whiteboard: true, standard: "7.4",
+    strand: "F", grades: { BC: 7, AB: 4, SK: 7, MB: 7, ON: 5 }, format: "number", whiteboard: true, standard: "7.4",
     fill(rng) {
       const [n, d] = draw(rng, (g) => {
         const d = g.pick([4, 5, 20, 25, 50]);
@@ -309,8 +318,9 @@ export const LEVEL_7: readonly TaggedTemplate[] = [
   },
   {
     // Map, grade 7: 1/3 as a decimal repeats.
+    // Triage: ON 6: ON 2020 (Jan 2021), PDF 335 (printed 334), Grade 6 B1.6 key concepts.
     id: "g67-7-repeating-decimal",
-    strand: "F", grades: { BC: 7, AB: 7, SK: 7, MB: 7, ON: 7 }, format: "choice", whiteboard: true, standard: "7.4",
+    strand: "F", grades: { BC: 7, AB: 7, SK: 7, MB: 7, ON: 6 }, format: "choice", whiteboard: true, standard: "7.4",
     fill(rng) {
       const repeating: readonly (readonly [number, number])[] = [[1, 3], [2, 3], [1, 6], [5, 6], [1, 9], [2, 9], [4, 9], [1, 7], [2, 7], [1, 11], [5, 12], [7, 12]] as const;
       const ending: readonly (readonly [number, number])[] = [[1, 4], [3, 4], [1, 5], [2, 5], [3, 5], [1, 8], [3, 8], [5, 8], [7, 8], [1, 2], [3, 10], [7, 20], [9, 20], [3, 16]] as const;
@@ -329,8 +339,9 @@ export const LEVEL_7: readonly TaggedTemplate[] = [
   },
   {
     // Decimals as fractions in lowest terms.
+    // Triage: AB 4: AB current K-6, Grade 4, outcome id vP1YEDCH7UWsr_gi8eqZDw (Students apply equivalence to .
     id: "g67-7-decimal-to-fraction",
-    strand: "F", grades: { BC: 7, AB: 7, SK: 7, MB: 7, ON: 7 }, format: "choice", whiteboard: false, standard: "7.4",
+    strand: "F", grades: { BC: 7, AB: 4, SK: 7, MB: 7, ON: 7 }, format: "choice", whiteboard: false, standard: "7.4",
     fill(rng) {
       const h = rng.pick([5, 15, 25, 35, 45, 55, 65, 75, 85, 95, 12, 24, 36, 48, 64, 72, 84, 96]);
       const [a, b] = [Math.floor(h / 10), h % 10];
@@ -349,8 +360,9 @@ export const LEVEL_7: readonly TaggedTemplate[] = [
   },
   {
     // Percents as fractions in lowest terms.
+    // Triage: AB 4: AB current K-6, Grade 4, outcome id TIwBFOnV5ESvaoxr_Yk4_g (Students interpret percentages.
     id: "g67-7-percent-to-fraction",
-    strand: "F", grades: { BC: 7, AB: 7, SK: 7, MB: 7, ON: 7 }, format: "choice", whiteboard: true, standard: "7.4",
+    strand: "F", grades: { BC: 7, AB: 4, SK: 7, MB: 7, ON: 7 }, format: "choice", whiteboard: true, standard: "7.4",
     fill(rng) {
       const p = rng.pick([15, 35, 45, 55, 65, 85, 95, 12, 24, 36, 44, 48, 64, 76, 84, 88]);
       const [n, d] = [p / gcd(p, 100), 100 / gcd(p, 100)];
@@ -365,8 +377,9 @@ export const LEVEL_7: readonly TaggedTemplate[] = [
   },
   {
     // Place a fraction between two others, in decimal form.
+    // Triage: AB 6: AB current K-6, Grade 6, MAT6-OI1-GQ5-LO1-KO1-SP.
     id: "g67-7-decimal-between",
-    strand: "F", grades: { BC: 7, AB: 7, SK: 7, MB: 7, ON: 7 }, format: "choice", whiteboard: true, standard: "7.4",
+    strand: "F", grades: { BC: 7, AB: 6, SK: 7, MB: 7, ON: 6 }, format: "choice", whiteboard: true, standard: "7.4",
     fill(rng) {
       const [[a, b], [c, d]] = rng.pick([
         [[1, 4], [1, 3]], [[1, 5], [1, 4]], [[2, 5], [1, 2]], [[1, 2], [3, 5]], [[3, 5], [2, 3]], [[2, 3], [3, 4]], [[3, 4], [4, 5]], [[1, 8], [1, 5]],
@@ -414,8 +427,9 @@ export const LEVEL_7: readonly TaggedTemplate[] = [
   },
   {
     // Map, 7.4: ratios and percents. A class of girls and boys.
+    // Triage: AB 5: AB current K-6, Grade 5, outcome id YiUSHtoZp0SU1hZnpLYy4Q (Students employ ratios to repr; ON 6: ON 2020 (Jan 2021), PDF 349 (printed 348), Grade 6 B2.12 Multiplication and Division.
     id: "g67-7-ratio-percent",
-    strand: "F", grades: { BC: 7, AB: 7, SK: 7, MB: 7, ON: 7 }, format: "number", whiteboard: true, standard: "7.4",
+    strand: "F", grades: { BC: 7, AB: 5, SK: 7, MB: 7, ON: 6 }, format: "number", whiteboard: true, standard: "7.4",
     fill(rng) {
       const [g, b] = draw(rng, (r) => [r.int(4, 18), r.int(4, 18)], ([g, b]) => g !== b && (g * 100) % (g + b) === 0 && (b * 100) % (g + b) === 0);
       const wrongs = [wrong((b * 100) / (g + b), "fraction-other-part")];
@@ -431,8 +445,9 @@ export const LEVEL_7: readonly TaggedTemplate[] = [
   },
   {
     // Map, 7.13: sales tax.
+    // Triage: AB 6: AB current K-6, Grade 6, outcome id AfUp11FP-0SQt_p_k4AUcg (Students apply equivalence to ; ON 6: ON 2020 (Jan 2021), PDF 339 (printed 338), Grade 6 B2.3 Mental Math (key concepts).
     id: "g67-7-sales-tax",
-    strand: "F", grades: { BC: 7, AB: 7, SK: 7, MB: 7, ON: 7 }, format: "number", whiteboard: true, standard: "7.13",
+    strand: "F", grades: { BC: 7, AB: 6, SK: 7, MB: 7, ON: 6 }, format: "number", whiteboard: true, standard: "7.13",
     fill(rng) {
       const [rate, price] = draw(rng, (g) => [g.pick([5, 7, 12, 13, 15]), g.int(2, 30) * 10], ([, p]) => p !== 100);
       const tax = (rate * price) / 100;
@@ -448,8 +463,9 @@ export const LEVEL_7: readonly TaggedTemplate[] = [
   },
   {
     // 7.13: a tip.
+    // Triage: AB 6: AB current K-6, Grade 6, outcome id AfUp11FP-0SQt_p_k4AUcg (Students apply equivalence to ; ON 6: ON 2020 (Jan 2021), PDF 339 (printed 338), Grade 6 B2.3 Mental Math (key concepts).
     id: "g67-7-tip",
-    strand: "F", grades: { BC: 7, AB: 7, SK: 7, MB: 7, ON: 7 }, format: "number", whiteboard: true, standard: "7.13",
+    strand: "F", grades: { BC: 7, AB: 6, SK: 7, MB: 7, ON: 6 }, format: "number", whiteboard: true, standard: "7.13",
     fill(rng) {
       const rate = rng.pick([10, 15, 18, 20]), bill = rng.int(4, 18) * 5;
       const tip = (rate * bill) / 100;
@@ -464,8 +480,9 @@ export const LEVEL_7: readonly TaggedTemplate[] = [
   },
   {
     // 7.13: discount and sale price, with a percent that is not a benchmark.
+    // Triage: AB 6: AB current K-6, Grade 6, outcome id AfUp11FP-0SQt_p_k4AUcg (Students apply equivalence to ; ON 6: ON 2020 (Jan 2021), PDF 339 (printed 338), Grade 6 B2.3 Mental Math (key concepts).
     id: "g67-7-sale-price",
-    strand: "F", grades: { BC: 7, AB: 7, SK: 7, MB: 7, ON: 7 }, format: "number", whiteboard: true, standard: "7.13",
+    strand: "F", grades: { BC: 7, AB: 6, SK: 7, MB: 7, ON: 6 }, format: "number", whiteboard: true, standard: "7.13",
     fill(rng) {
       const [rate, price] = draw(rng, (g) => [g.pick([15, 30, 35, 40, 45, 60, 65]), g.int(4, 30) * 10], ([r, p]) => (r * p) % 100 === 0 && p > r && distinctNumbers([p - r, p * (100 - r) / 100, p * r / 100]));
       const item = rng.pick(["jacket", "bike helmet", "pair of boots", "tent"]);
@@ -480,8 +497,9 @@ export const LEVEL_7: readonly TaggedTemplate[] = [
   },
   {
     // Write a fraction as a decimal, typed (7.4: terminating decimals).
+    // Triage: AB 6: AB current K-6, Grade 6, MAT6-OI1-GQ5-LO1-KO1-SP.
     id: "g67-7-write-decimal",
-    strand: "F", grades: { BC: 7, AB: 7, SK: 7, MB: 7, ON: 7 }, format: "number", whiteboard: true, standard: "7.4",
+    strand: "F", grades: { BC: 7, AB: 6, SK: 7, MB: 7, ON: 7 }, format: "number", whiteboard: true, standard: "7.4",
     fill(rng) {
       const [n, d] = draw(rng, (g) => {
         const d = g.pick([8, 16, 20, 25, 40]);
@@ -500,8 +518,9 @@ export const LEVEL_7: readonly TaggedTemplate[] = [
   // ---------- Patterns and algebra ----------
   {
     // Map, grade 7: y = 3n + 2 when n = 5 (here with a minus: 4n - 3).
+    // AB MAT5-OI2-GQ1-LO1-KO2-SP evaluates an expression by substituting a given number.
     id: "g67-7-evaluate-relation",
-    strand: "A", grades: { BC: 7, AB: 7, SK: 7, MB: 7, ON: 5 }, format: "number", whiteboard: true, standard: "7.5",
+    strand: "A", grades: { BC: 7, AB: 5, SK: 7, MB: 7, ON: 5 }, format: "number", whiteboard: true, standard: "7.5",
     fill(rng) {
       const [a, b, n] = draw(rng, (g) => [g.int(2, 9), g.int(1, 9), g.int(3, 15)], ([a, b, n]) => a * n > b && a * (n - b) > 0 && distinctNumbers([a * n - b, a * (n - b), a * n + b]));
       return {
@@ -515,8 +534,9 @@ export const LEVEL_7: readonly TaggedTemplate[] = [
   },
   {
     // Map, grade 7 and misconception A5: which rule fits (1, 5), (2, 8), (3, 11). Here the table starts after 1.
+    // Triage: AB 6: AB current K-6, Grade 6, MAT6-OI6-GQ1-LO1-KO1-SP; ON 6: ON 2020 (Jan 2021), PDF 351 (printed 350), Grade 6 C1.2 Patterns.
     id: "g67-7-rule-from-table",
-    strand: "A", grades: { BC: 7, AB: 7, SK: 7, MB: 7, ON: 7 }, format: "choice", whiteboard: true, standard: "7.5",
+    strand: "A", grades: { BC: 7, AB: 6, SK: 7, MB: 7, ON: 6 }, format: "choice", whiteboard: true, standard: "7.5",
     fill(rng) {
       const [a, b, start] = draw(rng, (g) => [g.int(2, 6), g.int(1, 9), g.int(2, 4)], ([a, b, s]) => distinct([`${a}n + ${b}`, `${a}n`, `n + ${a}`, `${a * s + b}n`]));
       const pairs = [start, start + 1, start + 2].map((n) => `(${n}, ${a * n + b})`).join(", ");
@@ -531,9 +551,41 @@ export const LEVEL_7: readonly TaggedTemplate[] = [
     },
   },
   {
+    // One-step equations with integers (BC 7.2 operations with integers, applied to a 6.10 one-step equation). AB 2016 grade 7 PR6,
+    // SK P7 (x + a = b, where a and b are integers), MB 7.PR.6; ON8 C2.3 is the first equation outcome with integers.
+    id: "g67-7-integer-add-equation",
+    strand: "A", grades: { BC: 7, AB: 7, SK: 7, MB: 7, ON: 8 }, format: "choice", whiteboard: true, standard: "7.2",
+    fill(rng) {
+      const [a, b] = draw(rng, (g) => [g.int(2, 15), g.int(-12, 12)], ([a, b]) => b < a && b !== 0 && distinctNumbers([b - a, b + a, a - b]));
+      return {
+        values: { a, b },
+        prompt: `x + ${a} = ${num(b)}. What is x?`,
+        readAloud: `x plus ${a} equals ${sayNum(b)}. What is x?`,
+        answer: num(b - a),
+        wrong: [wrong(num(b + a), "inverse-op"), wrong(num(a - b), "opposite-sign")],
+      };
+    },
+  },
+  {
+    // The same outcomes: x − a = b with a negative b.
+    id: "g67-7-integer-subtract-equation",
+    strand: "A", grades: { BC: 7, AB: 7, SK: 7, MB: 7, ON: 8 }, format: "choice", whiteboard: true, standard: "7.2",
+    fill(rng) {
+      const [a, b] = draw(rng, (g) => [g.int(2, 15), -g.int(1, 15)], ([a, b]) => b + a !== 0 && distinctNumbers([b + a, b - a, -(b + a)]));
+      return {
+        values: { a, b },
+        prompt: `x − ${a} = ${num(b)}. What is x?`,
+        readAloud: `x minus ${a} equals ${sayNum(b)}. What is x?`,
+        answer: num(b + a),
+        wrong: [wrong(num(b - a), "inverse-op"), wrong(num(-(b + a)), "opposite-sign")],
+      };
+    },
+  },
+  {
     // Map, grade 7 and misconception A6: solve 3x + 4 = 16.
+    // Two-operation equations: AB MAT5-OI2-GQ1-LO1-KO3-SP; ON6 C2.3 (multiple terms, whole numbers; its support solves m/4 - 2 = 10).
     id: "g67-7-two-step-plus",
-    strand: "A", grades: { BC: 7, AB: 7, SK: 7, MB: 7, ON: 7 }, format: "number", whiteboard: true, standard: "7.6",
+    strand: "A", grades: { BC: 7, AB: 5, SK: 7, MB: 7, ON: 6 }, format: "number", whiteboard: true, standard: "7.6",
     fill(rng) {
       const [a, b, x] = draw(rng, (g) => [g.int(2, 9), g.int(2, 20), g.int(2, 12)], ([a, b, x]) => distinctNumbers([x, a * x, a * x + 2 * b]));
       const c = a * x + b;
@@ -548,7 +600,7 @@ export const LEVEL_7: readonly TaggedTemplate[] = [
   },
   {
     id: "g67-7-two-step-minus",
-    strand: "A", grades: { BC: 7, AB: 7, SK: 7, MB: 7, ON: 7 }, format: "number", whiteboard: true, standard: "7.6",
+    strand: "A", grades: { BC: 7, AB: 5, SK: 7, MB: 7, ON: 6 }, format: "number", whiteboard: true, standard: "7.6",
     fill(rng) {
       const [a, b, x] = draw(rng, (g) => [g.pick([2, 4, 5]), g.int(2, 15), g.int(2, 12)], ([a, b, x]) => a * x > b && distinctNumbers([x, a * x + b, (a * x - 2 * b) / a]) && a * x - 2 * b > 0);
       const c = a * x - b;
@@ -564,7 +616,7 @@ export const LEVEL_7: readonly TaggedTemplate[] = [
   {
     // 7.6: x / a + b = c.
     id: "g67-7-two-step-divide",
-    strand: "A", grades: { BC: 7, AB: 7, SK: 7, MB: 7, ON: 7 }, format: "number", whiteboard: true, standard: "7.6",
+    strand: "A", grades: { BC: 7, AB: 5, SK: 7, MB: 7, ON: 6 }, format: "number", whiteboard: true, standard: "7.6",
     fill(rng) {
       const [a, b, q] = draw(rng, (g) => [g.int(2, 6), g.int(2, 12), g.int(2, 9)], ([a, b, q]) => ((q + b - b) % 1 === 0) && distinctNumbers([a * q, q * 1 + 0 === q ? (q + b + b) * a : 0, ((q + b) - b) / a]) && ((q * 1) % a === 0 || true));
       const c = q + b;
@@ -583,7 +635,7 @@ export const LEVEL_7: readonly TaggedTemplate[] = [
   {
     // A two-step story: a fixed fee plus a rate.
     id: "g67-7-two-step-story",
-    strand: "A", grades: { BC: 7, AB: 7, SK: 7, MB: 7, ON: 7 }, format: "number", whiteboard: true, standard: "7.6",
+    strand: "A", grades: { BC: 7, AB: 5, SK: 7, MB: 7, ON: 6 }, format: "number", whiteboard: true, standard: "7.6",
     fill(rng) {
       const [fee, rate, n] = draw(rng, (g) => [g.int(2, 9), g.int(2, 6), g.int(3, 15)], ([f, r, n]) => f !== r && distinctNumbers([n, (f + r * n) / r, (f + r * n + f) / r]));
       const total = fee + rate * n;
@@ -601,8 +653,10 @@ export const LEVEL_7: readonly TaggedTemplate[] = [
   },
   {
     // A two-step story as an equation.
+    // AB MAT5-OI2-GQ1-LO1-KO3-SP writes equations with one or two operations for a situation.
+    // ON6 C2.3: equations with multiple terms in various contexts.
     id: "g67-7-story-equation",
-    strand: "A", grades: { BC: 7, AB: 7, SK: 7, MB: 7, ON: 7 }, format: "choice", whiteboard: false, standard: "7.6",
+    strand: "A", grades: { BC: 7, AB: 5, SK: 7, MB: 7, ON: 6 }, format: "choice", whiteboard: false, standard: "7.6",
     fill(rng) {
       const [fee, rate, n] = draw(rng, (g) => [g.int(2, 9), g.int(2, 6), g.int(3, 12)], ([f, r]) => f !== r);
       const total = fee + rate * n;
@@ -619,7 +673,7 @@ export const LEVEL_7: readonly TaggedTemplate[] = [
   {
     // Verify a solution (7.6: solve and verify).
     id: "g67-7-check-solution",
-    strand: "A", grades: { BC: 7, AB: 7, SK: 7, MB: 7, ON: 7 }, format: "choice", whiteboard: true, standard: "7.6",
+    strand: "A", grades: { BC: 7, AB: 5, SK: 7, MB: 7, ON: 6 }, format: "choice", whiteboard: true, standard: "7.6",
     fill(rng) {
       const [a, b, x] = draw(rng, (g) => [g.pick([2, 4, 5]), g.int(2, 15), g.int(2, 12)], ([a, b, x]) =>
         distinctNumbers([x, (a * x + b + b) / a, a * x, (a * x + b) / a]) && (a * x + 2 * b) % a === 0);
@@ -698,8 +752,9 @@ export const LEVEL_7: readonly TaggedTemplate[] = [
   },
   {
     // A pattern of figures as an expression (7.5).
+    // Triage: AB 6: AB current K-6, Grade 6, MAT6-OI6-GQ1-LO1-KO1-SP; ON 6: ON 2020 (Jan 2021), PDF 351 (printed 350), Grade 6 C1.2 Patterns.
     id: "g67-7-figure-expression",
-    strand: "A", grades: { BC: 7, AB: 7, SK: 7, MB: 7, ON: 7 }, format: "choice", whiteboard: false, standard: "7.5",
+    strand: "A", grades: { BC: 7, AB: 6, SK: 7, MB: 7, ON: 6 }, format: "choice", whiteboard: false, standard: "7.5",
     fill(rng) {
       const [a, b] = draw(rng, (g) => [g.int(2, 6), g.int(1, 9)], ([a, b]) => a !== b && a + b !== a * 2);
       const things = rng.pick(["tiles", "toothpicks", "dots", "squares"]);
@@ -715,7 +770,7 @@ export const LEVEL_7: readonly TaggedTemplate[] = [
   {
     // A balance with equal boxes (7.6: preserve equality).
     id: "g67-7-balance-boxes",
-    strand: "A", grades: { BC: 7, AB: 7, SK: 7, MB: 7, ON: 7 }, format: "number", whiteboard: true, standard: "7.6",
+    strand: "A", grades: { BC: 7, AB: 5, SK: 7, MB: 7, ON: 6 }, format: "number", whiteboard: true, standard: "7.6",
     fill(rng) {
       const [k, a, x] = draw(rng, (g) => [g.int(2, 5), g.int(2, 12), g.int(2, 9)], ([k, a, x]) => distinctNumbers([x, k * x, k * x + 2 * a]));
       const total = k * x + a;
@@ -780,8 +835,9 @@ export const LEVEL_7: readonly TaggedTemplate[] = [
   },
   {
     // Map, grade 7: a cylinder with base area 12 square cm and height 5 cm. WNCP finds cylinder volume in grade 8.
+    // Triage: ON 7: ON 2020 (Jan 2021), PDF 438 (printed 437), Grade 7 E2.7 Volume and Surface Area.
     id: "g67-7-cylinder-base-area",
-    strand: "MG", grades: { BC: 7, AB: 8, SK: 8, MB: 8, ON: 8 }, format: "number", whiteboard: true, standard: "7.8",
+    strand: "MG", grades: { BC: 7, AB: 8, SK: 8, MB: 8, ON: 7 }, format: "number", whiteboard: true, standard: "7.8",
     fill(rng) {
       const [base, h] = draw(rng, (g) => [g.int(6, 60), g.int(3, 15)], ([b, h]) => b !== h);
       return {
@@ -795,8 +851,9 @@ export const LEVEL_7: readonly TaggedTemplate[] = [
   },
   {
     // 7.8: a cylinder from its radius and height, with 3.14.
+    // Triage: ON 7: ON 2020 (Jan 2021), PDF 438 (printed 437), Grade 7 E2.7 Volume and Surface Area.
     id: "g67-7-cylinder-volume",
-    strand: "MG", grades: { BC: 7, AB: 8, SK: 8, MB: 8, ON: 8 }, format: "number", whiteboard: true, standard: "7.8",
+    strand: "MG", grades: { BC: 7, AB: 8, SK: 8, MB: 8, ON: 7 }, format: "number", whiteboard: true, standard: "7.8",
     fill(rng) {
       const [r, h] = draw(rng, (g) => [g.pick([1, 3, 4, 5, 10]), g.int(2, 12)], ([r, h]) => r !== h);
       return {
@@ -810,8 +867,9 @@ export const LEVEL_7: readonly TaggedTemplate[] = [
   },
   {
     // Map, grade 7: which quadrant holds (-3, 2).
+    // Triage: AB 6: AB current K-6, Grade 6, MAT6-OI4-GQ1-LO1-KO1-SP; ON 6: ON 2020 (Jan 2021), PDF 372 (printed 371), Grade 6 E1.3 Location and Movement.
     id: "g67-7-quadrant",
-    strand: "MG", grades: { BC: 7, AB: 7, SK: 7, MB: 7, ON: 7 }, format: "choice", whiteboard: false, standard: "7.9",
+    strand: "MG", grades: { BC: 7, AB: 6, SK: 7, MB: 7, ON: 6 }, format: "choice", whiteboard: false, standard: "7.9",
     fill(rng) {
       const [x, y] = draw(rng, (g) => [g.int(-9, 9), g.int(-9, 9)], ([x, y]) => x !== 0 && y !== 0 && Math.abs(x) !== Math.abs(y) && (x < 0 || y < 0));
       const name = (a: number, b: number) => `${b > 0 ? "Top" : "Bottom"} ${a > 0 ? "right" : "left"}`;
@@ -828,8 +886,9 @@ export const LEVEL_7: readonly TaggedTemplate[] = [
   },
   {
     // 7.10: a reflection in an axis.
+    // Triage: AB 6: AB current K-6, Grade 6, MAT6-OI4-GQ1-LO1-KO2-SP.
     id: "g67-7-reflect-point",
-    strand: "MG", grades: { BC: 7, AB: 7, SK: 7, MB: 7, ON: 7 }, format: "choice", whiteboard: true, standard: "7.10",
+    strand: "MG", grades: { BC: 7, AB: 6, SK: 7, MB: 7, ON: 7 }, format: "choice", whiteboard: true, standard: "7.10",
     fill(rng) {
       const [x, y] = draw(rng, (g) => [g.int(-9, 9), g.int(-9, 9)], ([x, y]) => x !== 0 && y !== 0 && Math.abs(x) !== Math.abs(y));
       const xAxis = rng.int(0, 1) === 1;
@@ -845,8 +904,9 @@ export const LEVEL_7: readonly TaggedTemplate[] = [
   },
   {
     // 7.10: a translation in four quadrants.
+    // Triage: AB 6: AB current K-6, Grade 6, MAT6-OI4-GQ1-LO1-KO2-SP; ON 6: ON 2020 (Jan 2021), PDF 372 (printed 371), Grade 6 E1.3 Location and Movement.
     id: "g67-7-translate-point",
-    strand: "MG", grades: { BC: 7, AB: 7, SK: 7, MB: 7, ON: 7 }, format: "choice", whiteboard: true, standard: "7.10",
+    strand: "MG", grades: { BC: 7, AB: 6, SK: 7, MB: 7, ON: 6 }, format: "choice", whiteboard: true, standard: "7.10",
     fill(rng) {
       const [x, y, r, d] = draw(rng, (g) => [g.int(-6, 6), g.int(-6, 6), g.int(2, 8), g.int(2, 8)], ([x, y, r, d]) =>
         r !== d && distinct([[x + r, y - d], [x - r, y - d], [x + r, y + d], [x + d, y - r]].map(String)));

@@ -240,8 +240,9 @@ export const LEVEL_3: readonly TaggedTemplate[] = [
   {
     // A fraction on a number line from 0 to 1 (3.2: "linear model"; misconception F5). WNCP and ON put fractions on a
     // number line later than grade 3 (unsure), so they get 4.
+    // AB grade 3 relates a fraction less than one to its position on the number line.
     id: "g35-3-fraction-number-line",
-    strand: "F", grades: { BC: 3, AB: 4, SK: 4, MB: 4, ON: 4 }, format: "choice", whiteboard: true, standard: "3.2",
+    strand: "F", grades: { BC: 3, AB: 3, SK: 4, MB: 4, ON: 4 }, format: "choice", whiteboard: true, standard: "3.2",
     fill(rng) {
       const { v: [d, n], answer, wrong: w } = drawChoices(
         rng,
@@ -262,8 +263,9 @@ export const LEVEL_3: readonly TaggedTemplate[] = [
   },
   {
     // A unit fraction of a set, by sharing (3.2: "parts of a set", "equal partitioning"). Set model: WNCP grade 4.
+    // AB grade 3: fractions of a whole quantity (skill h7H96GzZikyeHHY9OLVcaQ), with equal-group division.
     id: "g35-3-fraction-of-amount",
-    strand: "F", grades: { BC: 3, AB: 4, SK: 4, MB: 4, ON: 4 }, format: "number", whiteboard: true, standard: "3.2",
+    strand: "F", grades: { BC: 3, AB: 3, SK: 4, MB: 4, ON: 4 }, format: "number", whiteboard: true, standard: "3.2",
     fill(rng) {
       const d = rng.int(2, 5), share = rng.int(2, 6);
       const total = d * share;
@@ -430,8 +432,9 @@ export const LEVEL_3: readonly TaggedTemplate[] = [
   {
     // A doubling pattern (3.6: "generalize what makes the pattern change (doubling, adding 2)"). WNCP and ON grade 3
     // patterns may stay with adding, so the others get 4.
+    // ON3 C1.1 names repeated multiplication in patterns.
     id: "g35-3-doubling",
-    strand: "A", grades: { BC: 3, AB: 4, SK: 4, MB: 4, ON: 4 }, format: "number", whiteboard: false, standard: "3.6",
+    strand: "A", grades: { BC: 3, AB: 4, SK: 4, MB: 4, ON: 3 }, format: "number", whiteboard: false, standard: "3.6",
     fill(rng) {
       const s = rng.int(2, 12), terms = rng.int(4, 5);
       const seq = Array.from({ length: terms }, (_, i) => s * 2 ** i);
@@ -562,8 +565,9 @@ export const LEVEL_3: readonly TaggedTemplate[] = [
   // ---------- Shapes, measurement and data ----------
   {
     // Capacity units (3.9: mL, L). WNCP relates mL and L in grade 5, so SK, MB and AB get 5; ON is unsure, so 4.
+    // AB current K-6 has no litre or millilitre outcome, so AB children in this bank never meet it.
     id: "g35-3-capacity-unit",
-    strand: "MG", grades: { BC: 3, AB: 5, SK: 5, MB: 5, ON: 4 }, format: "choice", whiteboard: false, standard: "3.9",
+    strand: "MG", grades: { BC: 3, AB: 8, SK: 5, MB: 5, ON: 4 }, format: "choice", whiteboard: false, standard: "3.9",
     fill(rng) {
       const [thing, big] = rng.pick([
         ["how much water a bathtub holds", true],
@@ -585,8 +589,9 @@ export const LEVEL_3: readonly TaggedTemplate[] = [
   },
   {
     // Name a solid from its faces (3.11: "identify 3D objects by 2D faces, edges, vertices").
+    // AB MAT2-OI3-GQ1-LO1-KO1-SP relates the faces of 3-D shapes to 2-D shapes.
     id: "g35-3-solid-from-faces",
-    strand: "MG", grades: { BC: 3, AB: 3, SK: 3, MB: 3, ON: 3 }, format: "choice", whiteboard: false, standard: "3.11",
+    strand: "MG", grades: { BC: 3, AB: 2, SK: 3, MB: 3, ON: 3 }, format: "choice", whiteboard: false, standard: "3.11",
     fill(rng) {
       const SOLIDS = [
         { name: "Cylinder", clue: "2 flat faces that are circles, and 1 curved surface" },
@@ -607,8 +612,9 @@ export const LEVEL_3: readonly TaggedTemplate[] = [
   },
   {
     // Mass referents (3.9: "estimate with referents"; g, kg).
+    // Grams and kilograms: ON4 E2.1. AB current K-6 has no standard mass unit, so AB children in this bank never meet it.
     id: "g35-3-mass-referent",
-    strand: "MG", grades: { BC: 3, AB: 3, SK: 3, MB: 3, ON: 3 }, format: "choice", whiteboard: false, standard: "3.9",
+    strand: "MG", grades: { BC: 3, AB: 8, SK: 3, MB: 3, ON: 4 }, format: "choice", whiteboard: false, standard: "3.9",
     fill(rng) {
       const kilo = rng.int(0, 1) === 1;
       const LIGHT = ["A paper clip", "A raisin", "A small button"];
@@ -627,8 +633,9 @@ export const LEVEL_3: readonly TaggedTemplate[] = [
   },
   {
     // Read a tally (3.12: charts and tables). The tally is described in words: tally glyphs read badly.
+    // AB grade 2 records data with tally marks; ON1 D1.1 organizes data in tally tables.
     id: "g35-3-tally",
-    strand: "DP", grades: { BC: 3, AB: 3, SK: 3, MB: 3, ON: 3 }, format: "number", whiteboard: false, standard: "3.12",
+    strand: "DP", grades: { BC: 3, AB: 2, SK: 3, MB: 3, ON: 1 }, format: "number", whiteboard: false, standard: "3.12",
     fill(rng) {
       const bundles = rng.int(2, 6), extra = rng.int(1, 4);
       const pet = rng.pick(["dogs", "cats", "fish", "birds", "rabbits"]);
@@ -644,8 +651,9 @@ export const LEVEL_3: readonly TaggedTemplate[] = [
   },
   {
     // Most and least likely (3.13). WNCP compares likelihood in grade 5.
+    // AB: likelihood first in grade 6 (MAT6-OI8-GQ1-LO1-KO2-SP).
     id: "g35-3-most-least-likely",
-    strand: "DP", grades: { BC: 3, AB: 5, SK: 5, MB: 5, ON: 3 }, format: "choice", whiteboard: false, standard: "3.13",
+    strand: "DP", grades: { BC: 3, AB: 6, SK: 5, MB: 5, ON: 3 }, format: "choice", whiteboard: false, standard: "3.13",
     fill(rng) {
       const colours = rng.shuffle(["red", "blue", "green", "yellow"]).slice(0, 3);
       const counts = draw(rng, (r) => [r.int(1, 8), r.int(1, 8), r.int(1, 8)], (c) => new Set(c).size === 3);
@@ -668,8 +676,9 @@ export const LEVEL_3: readonly TaggedTemplate[] = [
   },
   {
     // Certain, likely, unlikely, impossible (3.13; misconception D6). WNCP describes likelihood in grade 5.
+    // AB: likelihood first in grade 6 (MAT6-OI8-GQ1-LO1-KO2-SP).
     id: "g35-3-likelihood-words",
-    strand: "DP", grades: { BC: 3, AB: 5, SK: 5, MB: 5, ON: 3 }, format: "choice", whiteboard: false, standard: "3.13",
+    strand: "DP", grades: { BC: 3, AB: 6, SK: 5, MB: 5, ON: 3 }, format: "choice", whiteboard: false, standard: "3.13",
     fill(rng) {
       const [a, b] = rng.shuffle(["red", "blue", "green", "yellow"]);
       const other = rng.pick(["purple", "orange", "white"]);

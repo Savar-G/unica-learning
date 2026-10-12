@@ -23,7 +23,11 @@
 //   Generic solid face-count outcomes remain unresolved.
 // - When a source is unsure, or the recalled grade is earlier than BC's and the map does not settle it, the later
 //   grade wins, so a child is never marked down for a topic their province may not have taught yet. A template that
-//   lands on a level outside 2-6 for a province is simply never asked there.
+//   lands on a level outside 2-6 for a province is simply never asked there (tag 8 where the current AB K-6 program
+//   has no outcome at all, such as litres and grams).
+// - #75 acceptance: every checker fail and review flag was checked against the current official outcomes (saved
+//   2026-10-11). A tag is the earliest grade whose outcome covers the whole task: skill, number range and notation.
+//   The comment beside each changed tag cites its outcome; scripts/template-check/triage.md lists every flag.
 //
 // whiteboard: true marks a question a child can show by drawing or writing: a column sum, a number line, a sketch of
 // equal parts, a table. The core requires 7 of them on every route (#67); the bank test checks that every route has

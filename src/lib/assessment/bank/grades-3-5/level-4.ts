@@ -208,8 +208,9 @@ export const LEVEL_4: readonly TaggedTemplate[] = [
   },
   {
     // Making change to 100 dollars (4.18: "count up, count back ... make change").
+    // ON4 F1.2 makes change from whole-dollar amounts; dollars and cents are ON5 F1.2.
     id: "g35-4-make-change",
-    strand: "O", grades: { BC: 4, AB: 4, SK: 4, MB: 4, ON: 4 }, format: "number", whiteboard: true, standard: "4.18",
+    strand: "O", grades: { BC: 4, AB: 4, SK: 4, MB: 4, ON: 5 }, format: "number", whiteboard: true, standard: "4.18",
     fill(rng) {
       const pay = rng.pick([1000, 2000, 5000]);
       const price = draw(rng, (r) => r.int(pay / 2, pay - 101), (p) => p % 100 !== 0 && p % 5 === 0);
@@ -278,9 +279,10 @@ export const LEVEL_4: readonly TaggedTemplate[] = [
     },
   },
   {
-    // Multiples (4.1). WNCP teaches multiples in grade 6, and AB and ON are unsure, so the others get 6.
+    // Multiples (4.1). AB MAT4-OI1-GQ3-LO1-KO1-SP: the first five multiples of a number within 100 (answers reach 99).
+    // WNCP teaches multiples in grade 6, and ON is unsure, so the others get 6.
     id: "g35-4-multiple",
-    strand: "N", grades: { BC: 4, AB: 6, SK: 6, MB: 6, ON: 6 }, format: "choice", whiteboard: false, standard: "4.1",
+    strand: "N", grades: { BC: 4, AB: 4, SK: 6, MB: 6, ON: 6 }, format: "choice", whiteboard: false, standard: "4.1",
     fill(rng) {
       const { v: [k, answer], answer: a, wrong: w } = drawChoices(
         rng,
@@ -343,7 +345,8 @@ export const LEVEL_4: readonly TaggedTemplate[] = [
 
   // ---------- Fractions and decimals ----------
   ...["region", "left", "order", "value", "fraction"].map((task): TaggedTemplate => ({
-    id: `g35-4-tenths-${task}`, strand: "F", grades: { BC: 4, AB: 4, SK: 4, MB: 4, ON: 4 },
+    // Ordering decimals is first named in SK N5.6 and MB 5.N.10; grade 4 describes and represents them.
+    id: `g35-4-tenths-${task}`, strand: "F", grades: { BC: 4, AB: 4, SK: task === "order" ? 5 : 4, MB: task === "order" ? 5 : 4, ON: 4 },
     format: "choice", whiteboard: true, standard: "4.2",
     fill(rng) {
       const n = draw(rng, (r) => r.int(1, 9), (n) => n !== 5);
@@ -359,8 +362,9 @@ export const LEVEL_4: readonly TaggedTemplate[] = [
         : task === "value" ? `What is the value of the ${n} in ${whole}.${n}?`
         : `Which fraction is equal to ${whole}.${n} − ${whole}?`;
       const spoken = task === "region" ? prompt : task === "left" ? `${sayFrac(n, 10)} of a strip is shaded. Which decimal names the part not shaded?`
-        : task === "value" ? `What is the value of the ${n} in ${whole} and ${sayFrac(n, 10)}?`
-        : `Which fraction is equal to ${whole} and ${sayFrac(n, 10)}, minus ${whole}?`;
+        // Say the decimal digit by digit ("4 point 3"): "4 and 3 tenths" would speak the answer.
+        : task === "value" ? `What is the value of the ${n} in ${whole} point ${n}?`
+        : `Which fraction is equal to ${whole} point ${n}, minus ${whole}?`;
       const candidates = task === "fraction" ? [wrong(frac(n, 100), "decimal-point"), wrong(frac(10, n), "fraction-flip"), wrong(frac(n * 10, 10), "decimal-point")]
         : task === "left" ? [wrong(dec(n, 1), "fraction-other-part"), wrong(dec(10 - n, 2), "decimal-point"), wrong(String(10 - n), "decimal-point")]
         : [wrong(dec(n, 2), "decimal-point"), wrong(String(n), "N2"), wrong(dec(10 - n, 1), task === "value" ? "complement" : "fraction-other-part")];
@@ -369,8 +373,9 @@ export const LEVEL_4: readonly TaggedTemplate[] = [
   })),
   {
     // Fractions with the same denominator (4.3: "compare and order fractions with common denominators").
+    // MB 3.N.13 compares fractions with like denominators. ON4 B1.4 stops at tenths; twelfths are ON5 B1.4.
     id: "g35-4-compare-like",
-    strand: "F", grades: { BC: 4, AB: 4, SK: 4, MB: 4, ON: 4 }, format: "choice", whiteboard: false, standard: "4.3",
+    strand: "F", grades: { BC: 4, AB: 4, SK: 4, MB: 3, ON: 5 }, format: "choice", whiteboard: false, standard: "4.3",
     fill(rng) {
       const d = rng.pick([5, 6, 8, 10, 12]);
       const nums = rng.shuffle(Array.from({ length: d - 1 }, (_, i) => i + 1)).slice(0, 4).sort((a, b) => a - b);
@@ -388,8 +393,9 @@ export const LEVEL_4: readonly TaggedTemplate[] = [
   },
   {
     // Unit fractions of the same whole (map, misconception F1: 1/4 or 1/8).
+    // ON4 B1.4 stops at tenths; the choices include twelfths (ON5 B1.4).
     id: "g35-4-compare-unit",
-    strand: "F", grades: { BC: 4, AB: 4, SK: 4, MB: 4, ON: 4 }, format: "choice", whiteboard: true, standard: "4.3",
+    strand: "F", grades: { BC: 4, AB: 4, SK: 4, MB: 4, ON: 5 }, format: "choice", whiteboard: true, standard: "4.3",
     fill(rng) {
       const ds = rng.shuffle([2, 3, 4, 5, 6, 8, 10, 12]).slice(0, 4).sort((a, b) => a - b);
       const biggest = rng.int(0, 1) === 1;
@@ -406,8 +412,9 @@ export const LEVEL_4: readonly TaggedTemplate[] = [
   },
   {
     // Benchmarks 0, one half and 1 (map, grade 4: is 7/8 closest to 0, 1/2 or 1?). The choices are the question.
+    // AB grade 3 compares fractions to the benchmarks 0, 1/2 and 1 (denominators to 12).
     id: "g35-4-benchmark",
-    strand: "F", grades: { BC: 4, AB: 4, SK: 4, MB: 4, ON: 5 }, format: "choice", whiteboard: true, standard: "4.3",
+    strand: "F", grades: { BC: 4, AB: 3, SK: 4, MB: 4, ON: 5 }, format: "choice", whiteboard: true, standard: "4.3",
     fill(rng) {
       const [n, d] = draw(
         rng,
@@ -477,8 +484,9 @@ export const LEVEL_4: readonly TaggedTemplate[] = [
   },
   {
     // Comparing tenths and hundredths (4.2; misconception F6). WNCP and ON compare decimals in grade 5 (unsure).
+    // AB MAT4-OI1-GQ1-LO1-KO1-SP compares and orders decimal numbers.
     id: "g35-4-compare-decimals",
-    strand: "F", grades: { BC: 4, AB: 5, SK: 5, MB: 5, ON: 5 }, format: "choice", whiteboard: false, standard: "4.2",
+    strand: "F", grades: { BC: 4, AB: 4, SK: 5, MB: 5, ON: 5 }, format: "choice", whiteboard: false, standard: "4.2",
     fill(rng) {
       const greatest = rng.int(0, 1) === 1;
       const { v, answer, wrong: w } = drawChoices(
@@ -505,8 +513,9 @@ export const LEVEL_4: readonly TaggedTemplate[] = [
   },
   {
     // Money in decimal notation (4.2, 4.18: "decimal notation in real-life problems").
+    // ON4 F1.2 uses whole dollars; the F1.2 note puts standard currency notation in grade 5.
     id: "g35-4-money-notation",
-    strand: "F", grades: { BC: 4, AB: 4, SK: 4, MB: 4, ON: 4 }, format: "choice", whiteboard: false, standard: "4.18",
+    strand: "F", grades: { BC: 4, AB: 4, SK: 4, MB: 4, ON: 5 }, format: "choice", whiteboard: false, standard: "4.18",
     fill(rng) {
       const d = rng.int(1, 20), c = rng.int(1, 9);
       const answer = money(d * 100 + c);
@@ -517,9 +526,10 @@ export const LEVEL_4: readonly TaggedTemplate[] = [
         readAloud: `How do you write ${count(d, "dollar")} and ${count(c, "cent")} with a dollar sign?`,
         answer,
         wrong: [wrong(`$${d}.${c}0`, "zero-placeholder"), wrong(`$${d}${c}`, "money-join"), wrong(`$${d}.${c}`, "zero-placeholder")],
+        // Symbol by symbol only: saying the amount in words would repeat the question and give the answer away.
         say: Object.fromEntries(choices.map((choice) => {
           const [dollars, cents] = choice.slice(1).split(".");
-          return [choice, `dollar sign ${dollars}${cents ? ` point ${cents.split("").join(" ")}` : ""}, meaning ${sayMoney(Math.round(Number(choice.slice(1)) * 100))}`];
+          return [choice, `dollar sign ${dollars}${cents ? ` point ${cents.split("").join(" ")}` : ""}`];
         })),
       };
     },
@@ -577,8 +587,9 @@ export const LEVEL_4: readonly TaggedTemplate[] = [
   },
   {
     // More than one half (4.3: "estimate with benchmarks"). ON is unsure, so 5.
+    // ON5 B1.4 compares halves to twelfths; a wrong choice reaches 13ths (ON6 B1.3).
     id: "g35-4-more-than-half",
-    strand: "F", grades: { BC: 4, AB: 4, SK: 4, MB: 4, ON: 5 }, format: "choice", whiteboard: true, standard: "4.3",
+    strand: "F", grades: { BC: 4, AB: 4, SK: 4, MB: 4, ON: 6 }, format: "choice", whiteboard: true, standard: "4.3",
     fill(rng) {
       // The answer has small numbers; the wrong choices have bigger numbers but are less than one half.
       const [an, ad] = rng.pick([[2, 3], [3, 4], [3, 5], [4, 5], [4, 6], [5, 8], [4, 7]] as const);
@@ -627,9 +638,9 @@ export const LEVEL_4: readonly TaggedTemplate[] = [
     },
   },
   {
-    // A missing factor (map, grade 4: ? x 6 = 42).
+    // A missing factor (map, grade 4: ? x 6 = 42). AB MAT3-OI1-GQ3-LO1-KO2-SP: a missing quantity in a product to 100.
     id: "g35-4-missing-factor",
-    strand: "A", grades: { BC: 4, AB: 4, SK: 4, MB: 4, ON: 4 }, format: "number", whiteboard: true, standard: "4.11",
+    strand: "A", grades: { BC: 4, AB: 3, SK: 4, MB: 4, ON: 4 }, format: "number", whiteboard: true, standard: "4.11",
     fill(rng) {
       const a = rng.int(3, 9), b = rng.int(3, 9), first = rng.int(0, 1) === 1;
       const p = a * b;
@@ -643,9 +654,9 @@ export const LEVEL_4: readonly TaggedTemplate[] = [
     },
   },
   {
-    // A missing divisor (4.11: all operations).
+    // A missing divisor (4.11: all operations). AB MAT3-OI1-GQ3-LO1-KO2-SP: a missing quantity in a quotient, dividends to 100.
     id: "g35-4-missing-divisor",
-    strand: "A", grades: { BC: 4, AB: 4, SK: 4, MB: 4, ON: 4 }, format: "number", whiteboard: true, standard: "4.11",
+    strand: "A", grades: { BC: 4, AB: 3, SK: 4, MB: 4, ON: 4 }, format: "number", whiteboard: true, standard: "4.11",
     fill(rng) {
       const a = rng.int(3, 9), q = draw(rng, (r) => r.int(3, 9), (q) => q !== a);
       const n = a * q;
@@ -675,8 +686,9 @@ export const LEVEL_4: readonly TaggedTemplate[] = [
   },
   {
     // A decreasing pattern in a table (4.9).
+    // MB 3.PR.2 extends decreasing number patterns from 1000 or less.
     id: "g35-4-decreasing-table",
-    strand: "A", grades: { BC: 4, AB: 4, SK: 4, MB: 4, ON: 4 }, format: "number", whiteboard: true, standard: "4.9",
+    strand: "A", grades: { BC: 4, AB: 4, SK: 4, MB: 3, ON: 4 }, format: "number", whiteboard: true, standard: "4.9",
     fill(rng) {
       const k = rng.pick([15, 20, 25, 30, 35, 40, 45]), start = rng.int(8, 12) * 50;
       const after = (n: number) => start - n * k;
@@ -731,8 +743,9 @@ export const LEVEL_4: readonly TaggedTemplate[] = [
   },
   {
     // Find the rule of a table (4.9: "describe with words and numbers").
+    // AB grade 4 names the initial term and constant change; a rule linking input to output is AB MAT5-OI6-GQ1-LO1-KO1-SP.
     id: "g35-4-table-rule",
-    strand: "A", grades: { BC: 4, AB: 4, SK: 4, MB: 4, ON: 4 }, format: "choice", whiteboard: false, standard: "4.9",
+    strand: "A", grades: { BC: 4, AB: 5, SK: 4, MB: 4, ON: 4 }, format: "choice", whiteboard: false, standard: "4.9",
     fill(rng) {
       const times = rng.int(0, 1) === 1;
       const k = rng.int(3, 9);
@@ -768,8 +781,9 @@ export const LEVEL_4: readonly TaggedTemplate[] = [
   },
   {
     // Three equal unknowns (4.11).
+    // AB grade 4 equations have one operation; repeated addition of a variable is AB MAT5-OI2-GQ1-LO1-KO2-SP.
     id: "g35-4-three-same",
-    strand: "A", grades: { BC: 4, AB: 4, SK: 4, MB: 4, ON: 5 }, format: "number", whiteboard: true, standard: "4.11",
+    strand: "A", grades: { BC: 4, AB: 5, SK: 4, MB: 4, ON: 5 }, format: "number", whiteboard: true, standard: "4.11",
     fill(rng) {
       const k = rng.int(4, 30);
       return {
@@ -783,8 +797,9 @@ export const LEVEL_4: readonly TaggedTemplate[] = [
   },
   {
     // Which equation is true (4.10; misconception A1). Equality on both sides: as g35-4-balance-multiply.
+    // AB MAT3-OI2-GQ1-LO1-KO1-SP: equality between two expressions of the same number.
     id: "g35-4-true-equation",
-    strand: "A", grades: { BC: 4, AB: 5, SK: 5, MB: 5, ON: 4 }, format: "choice", whiteboard: false, standard: "4.10",
+    strand: "A", grades: { BC: 4, AB: 3, SK: 5, MB: 5, ON: 4 }, format: "choice", whiteboard: false, standard: "4.10",
     fill(rng) {
       const [p, [a, b], [c, d]] = rng.pick([
         [12, [3, 4], [2, 6]], [18, [2, 9], [3, 6]], [20, [4, 5], [2, 10]], [24, [4, 6], [3, 8]], [30, [5, 6], [3, 10]],
@@ -805,9 +820,10 @@ export const LEVEL_4: readonly TaggedTemplate[] = [
     },
   },
   {
-    // Undo a rule (4.10: "algebraic relationships").
+    // Undo a rule (4.10: "algebraic relationships"). ON4 B2.1 (multiplication and division are inverse operations) and
+    // B2.6 (two- and three-digit numbers divided by one-digit numbers) cover the undo, outputs up to 108.
     id: "g35-4-machine-input",
-    strand: "A", grades: { BC: 4, AB: 4, SK: 4, MB: 4, ON: 6 }, format: "number", whiteboard: true, standard: "4.10",
+    strand: "A", grades: { BC: 4, AB: 4, SK: 4, MB: 4, ON: 4 }, format: "number", whiteboard: true, standard: "4.10",
     fill(rng) {
       const k = rng.int(3, 9), x = draw(rng, (r) => r.int(3, 12), (x) => x !== k);
       const out = k * x;
@@ -913,8 +929,9 @@ export const LEVEL_4: readonly TaggedTemplate[] = [
   },
   {
     // 24-hour time (4.12: "12- and 24-hour clocks"). ON is unsure, so 5.
+    // AB grade 3: a.m., p.m. and the 24-hour cycle; ON4 E2.3 relates 24-hour and 12-hour clocks.
     id: "g35-4-24-hour",
-    strand: "MG", grades: { BC: 4, AB: 4, SK: 4, MB: 4, ON: 5 }, format: "choice", whiteboard: false, standard: "4.12",
+    strand: "MG", grades: { BC: 4, AB: 3, SK: 4, MB: 4, ON: 4 }, format: "choice", whiteboard: false, standard: "4.12",
     fill(rng) {
       const H = rng.int(13, 21), m = rng.pick([0, 15, 30, 45]);
       return {
@@ -928,8 +945,9 @@ export const LEVEL_4: readonly TaggedTemplate[] = [
   },
   {
     // Regular polygons (4.13). WNCP compares regular and irregular polygons in grade 6, and AB and ON are unsure.
+    // AB grade 3 classifies polygons as regular or irregular; SK SS3.5 names regular and irregular shapes.
     id: "g35-4-regular-polygon",
-    strand: "MG", grades: { BC: 4, AB: 6, SK: 6, MB: 6, ON: 6 }, format: "choice", whiteboard: false, standard: "4.13",
+    strand: "MG", grades: { BC: 4, AB: 3, SK: 3, MB: 6, ON: 6 }, format: "choice", whiteboard: false, standard: "4.13",
     fill(rng) {
       const answer = rng.pick([
         "A triangle with 3 equal sides and 3 equal angles",
@@ -1012,8 +1030,9 @@ export const LEVEL_4: readonly TaggedTemplate[] = [
   },
   {
     // A half picture in a pictograph (4.16).
+    // ON3 D1.3: many-to-one pictographs.
     id: "g35-4-pictograph-half",
-    strand: "DP", grades: { BC: 4, AB: 4, SK: 4, MB: 4, ON: 4 }, format: "number", whiteboard: true, standard: "4.16",
+    strand: "DP", grades: { BC: 4, AB: 4, SK: 4, MB: 4, ON: 3 }, format: "number", whiteboard: true, standard: "4.16",
     fill(rng) {
       const k = rng.pick([2, 4, 6, 10]), n = rng.int(2, 7);
       const name = rng.pick(NAMES);
@@ -1029,8 +1048,9 @@ export const LEVEL_4: readonly TaggedTemplate[] = [
   },
   {
     // A bar graph with a scale (4.16: many-to-one).
+    // ON3 D1.3 and D1.5: bar graphs with scales.
     id: "g35-4-bar-scale",
-    strand: "DP", grades: { BC: 4, AB: 4, SK: 4, MB: 4, ON: 4 }, format: "number", whiteboard: true, standard: "4.16",
+    strand: "DP", grades: { BC: 4, AB: 4, SK: 4, MB: 4, ON: 3 }, format: "number", whiteboard: true, standard: "4.16",
     fill(rng) {
       const k = 2, a = rng.int(7, 12), b = draw(rng, (r) => r.int(2, 7), (b) => b < a);
       const [x, y] = rng.shuffle(["apples", "pears", "grapes", "bananas"]);
@@ -1038,7 +1058,8 @@ export const LEVEL_4: readonly TaggedTemplate[] = [
         values: { k, a, b },
         figure: { kind: "bars", bars: [{ label: x, value: a * k }, { label: y, value: b * k }] },
         prompt: `The graph shows children who chose fruit. How many more chose ${x} than ${y}?`,
-        readAloud: `The graph shows ${a * k} children who chose ${x} and ${b * k} who chose ${y}. How many more chose ${x} than ${y}?`,
+        // The voice does not read the bars: reading the scale is the skill (#79).
+        readAloud: `The graph shows children who chose fruit. Look at the graph. How many more chose ${x} than ${y}?`,
         answer: String(k * (a - b)),
         wrong: typedWrong(k * (a - b), [[a - b, "D1"], [k * a, "graph-value"]]),
       };
@@ -1047,8 +1068,9 @@ export const LEVEL_4: readonly TaggedTemplate[] = [
   {
     // Predict the results of spins (4.17: "predict single outcomes"). WNCP's probability experiments are grade 6,
     // and AB and ON are unsure, so the others get 6.
+    // ON5 D2.1 expresses probability as a fraction and uses it to predict.
     id: "g35-4-spin-predict",
-    strand: "DP", grades: { BC: 6, AB: 6, SK: 6, MB: 6, ON: 6 }, format: "choice", whiteboard: false, standard: "6.18",
+    strand: "DP", grades: { BC: 6, AB: 6, SK: 6, MB: 6, ON: 5 }, format: "choice", whiteboard: false, standard: "6.18",
     fill(rng) {
       const [parts, red] = rng.pick([[4, 3], [4, 1], [5, 4], [5, 1], [10, 7], [10, 3], [8, 6], [8, 2]] as const);
       const spins = parts * rng.int(4, 10);

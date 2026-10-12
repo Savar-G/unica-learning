@@ -11,18 +11,16 @@
 // so a template never lists them. Symbols are said as words: "negative 3", "3 over 4", "25 percent", "3 to 5",
 // "13 squared", "pi". No figures: a graph, a table or a shape is described in words that need no picture.
 //
-// Province grade tags (D-083). BC is the grade of the BC standard in `standard`. The others follow these rules:
-// - SK and MB: the WNCP framework both build on (map, section 5), where the WNCP grade of the outcome is known
-//   (recalled, as in the grades 1-2 bank). For example, WNCP compares integers in grade 6, adds them in grade 7 and
-//   multiplies them in grade 8; it finds the area of triangles, parallelograms and circles in grade 7, and the mean
-//   and median in grade 7.
-// - AB: the same as SK and MB for grades 7-8 content (AB grades 7-9 still use the WNCP-based program, map section 5).
-//   For grades 5-6 content the new AB K-6 program applies; the map settles only fractions: add and subtract with
-//   common denominators in grade 5, multiply a fraction by a whole number in grade 6.
-// - ON: the Ontario 2020 curriculum. The map settles whole-number percents (grade 5), adding and subtracting
-//   fractions (like denominators grade 5, unlike grade 6) and integers (grade 6). Other ON grades are recalled.
-// - When the map does not settle a grade and the recalled grade is unsure, the later grade wins, so a child is never
-//   marked down for a topic their province may not have taught yet. The pull request for #76 lists these tags.
+// Province grade tags (D-083). BC is the grade of the BC standard in `standard`. The other tags were checked in the
+// #75/#76 acceptance against the current official outcomes, saved 2026-10-11 (see README.md):
+// - AB: the current K-6 program for grades K-6 content, and the 2016 K-9 program of studies (still current for grades
+//   7-9) for grades 7-8 content.
+// - SK: the CurriculumOutcomeContent pages for grades 1-8. MB: the framework pages for grades 1-8.
+// - ON: the Ontario 2020 curriculum (January 2021 edition).
+// - A tag is the earliest grade whose outcome covers the whole task: skill, number range and notation. Where an earlier
+//   outcome covers only part of the task, or no outcome names it, the later grade stays, so a child is never marked
+//   down for a topic their province may not have taught yet. The comment beside a changed tag cites its outcome, and
+//   scripts/template-check/triage.md lists every checker flag with its disposition and source.
 //
 // whiteboard: true marks a question with working to show: a calculation, a diagram, a table. The session requires
 // 10 of them on every route (#67).

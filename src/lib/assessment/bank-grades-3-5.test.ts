@@ -99,28 +99,38 @@ describe("current provincial curriculum corrections through the public interface
     expect([Math.min(...quotients), Math.max(...quotients)]).toEqual([12, 99]);
     expect(PROVINCES.map((p) => fillTemplate(template, 0, p).level)).toEqual([4, 4, 5, 5, 4, 4]);
   });
-  it.each([
-    ["AB", 2, "279", "3", "93"],
-    ["ON", 0, "102", "3", "34"],
-  ] as const)("asks three-digit exact division in %s grade 4 and marks it before routing up", (province, seed, dividend, divisor, quotient) => {
-    let session = createSession({ grade: 4, province }, seed);
-    const question = session.stage1.find((q) => q.templateId === "g35-4-divide");
-    expect(question?.prompt.replace(/\s/g, " ")).toBe(`${dividend} ÷ ${divisor} = ?`);
-    expect(question?.level).toBe(4);
-    for (const q of session.stage1) {
-      session = submitAnswer(session, { questionId: q.id, response: q === question ? quotient : q.answer, timeMs: 10000 });
+  /** The first seed whose stage 1 asks this template, so the test does not depend on how the bank fills stage 1. */
+  const sessionWith = (grade: Grade, province: Province, templateId: string) => {
+    for (let seed = 0; seed < 500; seed++) {
+      const session = createSession({ grade, province }, seed);
+      const question = session.stage1.find((q) => q.templateId === templateId);
+      if (question) return { session, question };
     }
-    expect(session.answers.find((a) => a.questionId === question?.id)?.correct).toBe(true);
+    throw new Error(`no stage 1 in ${province} grade ${grade} asks ${templateId}`);
+  };
+  it.each(["AB", "ON"] as const)("asks three-digit exact division in %s grade 4 and marks it before routing up", (province) => {
+    const found = sessionWith(4, province, "g35-4-divide");
+    let session = found.session;
+    const { question } = found;
+    // The child's answer comes from the numbers on the screen, not from the stored answer.
+    const [dividend, divisor] = question.prompt.replace(/\s/g, " ").match(/^(\d+) ÷ (\d+) = \?$/)!.slice(1).map(Number);
+    expect(dividend).toBeGreaterThanOrEqual(100);
+    expect(question.level).toBe(4);
+    for (const q of session.stage1) {
+      session = submitAnswer(session, { questionId: q.id, response: q === question ? String(dividend / divisor) : q.answer, timeMs: 10000 });
+    }
+    expect(session.answers.find((a) => a.questionId === question.id)?.correct).toBe(true);
     expect(session.route).toBe("up");
     expect(nextQuestion(session)?.level).toBe(5);
   });
   it("asks a fraction of a set in Alberta grade 3 and marks the answer on the upward route", () => {
-    let session = createSession({ grade: 3, province: "AB" }, 0);
-    const question = session.stage1.find((q) => q.templateId === "g35-3-fraction-of-set");
-    expect(question?.prompt).toBe("There are 7 cars in a lot. 3 of them are blue. What fraction of the cars are blue?");
-    expect(question?.level).toBe(3);
+    const found = sessionWith(3, "AB", "g35-3-fraction-of-set");
+    let session = found.session;
+    const { question } = found;
+    const [total, part] = question.prompt.match(/^There are (\d+) .*?\. (\d+) of them/)!.slice(1);
+    expect(question.level).toBe(3);
     for (const q of session.stage1) {
-      session = submitAnswer(session, { questionId: q.id, response: q === question ? "3/7" : q.answer, timeMs: 10000 });
+      session = submitAnswer(session, { questionId: q.id, response: q === question ? `${part}/${total}` : q.answer, timeMs: 10000 });
     }
     expect(session.answers.find((a) => a.questionId === question?.id)?.correct).toBe(true);
     expect(session.route).toBe("up");
@@ -141,38 +151,45 @@ describe("grade 3-5 speech and figures through the public interface", () => {
     }
   });
   it.each([false, true])("stores the compensation error and advances on the Ontario down route (legacy snapshot: %s)", (legacy) => {
-    let session = createSession({ grade: 3, province: "ON" }, 0);
-    while (nextQuestion(session)?.id !== "down-9") {
+    // The first seed whose Ontario grade 3 down form asks the make-ten strategy, so the test does not depend on how
+    // the bank fills the form.
+    const seed = Array.from({ length: 500 }, (_, i) => i)
+      .find((s) => createSession({ grade: 3, province: "ON" }, s).stage2.down.some((q) => q.templateId === "2-make-ten-strategy"))!;
+    let session = createSession({ grade: 3, province: "ON" }, seed);
+    const target = session.stage2.down.find((q) => q.templateId === "2-make-ten-strategy")!;
+    const position = session.stage2.down.indexOf(target);
+    while (nextQuestion(session)?.id !== target.id) {
       const q = nextQuestion(session)!;
       expect(q).not.toBeNull();
       session = submitAnswer(session, { questionId: q.id, response: "no idea", timeMs: 1000 });
     }
+    const isCompensation = (w: { misconception: string }) => w.misconception === "compensation-dir";
     if (legacy) {
+      // A test stored before the code was shortened keeps the old 22-character code.
       const stored = structuredClone(storedTest(session));
-      const q = stored.stage2.down.find((q) => q.id === "down-9")!;
-      const wrong = q.wrong.find((w) => w.value.replace(/\s/g, " ") === "10 + 6")!;
-      wrong.misconception = "compensation-direction";
+      const q = stored.stage2.down.find((q) => q.id === target.id)!;
+      q.wrong.find(isCompensation)!.misconception = "compensation-direction";
       session = restoreSession(stored, session.answers.map((a) => ({
         questionId: a.questionId, response: a.response, timeMs: a.timeMs,
       })));
     }
     const q = nextQuestion(session)!;
     expect(q.templateId).toBe("2-make-ten-strategy");
-    expect(q.prompt.replace(/\s/g, " ")).toBe("Which is the same as 8 + 4?");
-    const wrong = q.wrong.find((w) => w.value.replace(/\s/g, " ") === "10 + 6")!;
+    expect(q.prompt.replace(/\s/g, " ")).toMatch(/^Which is the same as \d+ \+ \d+\?$/);
+    const wrong = target.wrong.find(isCompensation)!;
     const after = submitAnswer(session, { questionId: q.id, response: wrong.value, timeMs: 1000 });
     expect(after.answers.at(-1)).toMatchObject({ correct: false, misconception: "compensation-dir" });
     expect(after.answers.at(-1)!.misconception!.length).toBeLessThanOrEqual(20);
-    expect(nextQuestion(after)?.id).toBe("down-10");
+    expect(nextQuestion(after)?.id).toBe(position + 1 < session.stage2.down.length ? session.stage2.down[position + 1].id : undefined);
   });
-  it("keeps the corrected Ontario grade 2 downward form suited to all five required drawings", () => {
-    const s = createSession({ grade: 2, province: "ON" }, 2027275);
-    const questions = [...s.stage1, ...s.stage2.down];
-    expect(s.stage1.filter((q) => q.whiteboard)).toHaveLength(4);
-    expect(s.stage2.down.filter((q) => q.whiteboard)).toHaveLength(1);
-    expect(questions.filter((q) => q.showWork)).toHaveLength(5);
-    expect(questions.filter((q) => q.showWork).every((q) => q.whiteboard)).toBe(true);
-    expect(s.stage1.find((q) => q.templateId === "2-missing-in-pattern")?.whiteboard).toBe(true);
+  it("keeps the Ontario grade 2 downward forms suited to all five required drawings", () => {
+    expect(BANK.find((t) => t.id === "2-missing-in-pattern")?.whiteboard).toBe(true);
+    for (const seed of SEEDS.slice(0, 100)) {
+      const s = createSession({ grade: 2, province: "ON" }, seed);
+      const questions = [...s.stage1, ...s.stage2.down];
+      expect(questions.filter((q) => q.showWork), `seed ${seed}`).toHaveLength(5);
+      expect(questions.filter((q) => q.showWork).every((q) => q.whiteboard), `seed ${seed}`).toBe(true);
+    }
   });
   it("bases every heavier-object answer on the stated lower balance side", () => {
     const t = GRADE_1_2_BANK.find((t) => t.id === "k-heavier-object")!;
@@ -225,15 +242,12 @@ describe("grade 3-5 speech and figures through the public interface", () => {
       expect(q.readAloud).toBe(q.prompt);
     }
   });
-  it("speaks the complete dollar and cents value of each shuffled money choice", () => {
+  it("speaks each shuffled money choice symbol by symbol, never as the amount the question names", () => {
     for (const seed of SEEDS) {
       const money = fillTemplate(BANK.find((t) => t.id === "g35-4-money-notation")!, seed);
-      const expected = money.choices!.map((choice) => {
-        const cents = Math.round(Number(choice.slice(1)) * 100), dollars = Math.floor(cents / 100), rest = cents % 100;
-        return `${dollars} ${dollars === 1 ? "dollar" : "dollars"}${rest ? ` and ${rest} ${rest === 1 ? "cent" : "cents"}` : ""}`;
-      });
       const spoken = spokenChoices(toPublicQuestion(money), money.choices!);
-      for (const [i, text] of spoken.entries()) expect(text).toContain(expected[i]);
+      // The question says the amount in words; a choice that said it too would give the answer to a listener.
+      for (const text of spoken) expect(text).not.toMatch(/dollars? and \d+ cents?|meaning/);
       for (const [i, choice] of money.choices!.entries()) {
         const [dollars, cents] = choice.slice(1).split(".");
         expect(spoken[i]).toContain(`dollar sign ${dollars}${cents ? ` point ${cents.split("").join(" ")}` : ""}`);
@@ -293,11 +307,11 @@ describe("grade 3-5 speech and figures through the public interface", () => {
       expect(t.standard).toBe("3.6");
     }
   });
-  it("uses later Ontario grades for unknown equations above the earlier numeric limits", () => {
+  it("uses a later Ontario grade for a repeated-addend equation above 50, and grade 4 division to undo a machine", () => {
     const repeated = BANK.find((t) => t.id === "g35-4-three-same")!;
     const machine = BANK.find((t) => t.id === "g35-4-machine-input")!;
     expect(repeated.grades.ON).toBe(5);
-    expect(machine.grades.ON).toBe(6);
+    expect(machine.grades.ON).toBe(4);
     expect(Math.max(...SEEDS.map((seed) => 3 * fillTemplate(repeated, seed).values.k))).toBe(90);
     expect(Math.max(...SEEDS.map((seed) => { const { k, x } = fillTemplate(machine, seed).values; return k * x; }))).toBe(108);
   });
@@ -715,5 +729,254 @@ describe("the grades 3-5 bank", () => {
       const view = JSON.stringify(toPublicQuestion(fillTemplate(template, 3)));
       expect(view).not.toMatch(/"answer"|"wrong"|misconception/);
     }
+  });
+});
+
+// #75 acceptance: corrections from the checker findings, each checked against the current official curriculum
+// (scripts/template-check/triage.md cites the outcome for every row).
+describe("primary-source corrections from the #75 checker run", () => {
+  const byId = (id: string) => BANK.find((t) => t.id === id)!;
+  const levels = (id: string) => PROVINCES.map((p) => fillTemplate(byId(id), 0, p).level);
+  // Every number the child reads or must find: the prompt's numbers and the answer.
+  const numbersIn = (id: string) => SEEDS.flatMap((seed) => {
+    const q = fillTemplate(byId(id), seed);
+    return [...`${q.prompt} ${q.answer}`.matchAll(/\d+/g)].map((m) => Number(m[0]));
+  });
+
+  // Review-flag triage (scripts/template-check/triage.md): [id, BC, AB, SK, MB, ON, other].
+  it.each([
+    ["g35-4-make-change", [4, 4, 4, 4, 5, 4]], // ON4 F1.2 whole dollars only
+    ["g35-4-multiple", [4, 4, 6, 6, 6, 4]], // AB MAT4-OI1-GQ3-LO1-KO1-SP multiples within 100
+    ["g35-4-tenths-order", [4, 4, 5, 5, 4, 4]], // SK N5.6, MB 5.N.10 first compare and order decimals
+    ["g35-4-compare-like", [4, 4, 4, 3, 5, 4]], // MB 3.N.13; ON4 B1.4 stops at tenths
+    ["g35-4-compare-unit", [4, 4, 4, 4, 5, 4]],
+    ["g35-4-benchmark", [4, 3, 4, 4, 5, 4]], // AB grade 3 benchmarks 0, 1/2, 1
+    ["g35-4-compare-decimals", [4, 4, 5, 5, 5, 4]], // AB MAT4-OI1-GQ1-LO1-KO1-SP
+    ["g35-4-money-notation", [4, 4, 4, 4, 5, 4]], // ON5 F1.2 note: currency notation
+    ["g35-4-more-than-half", [4, 4, 4, 4, 6, 4]], // 13ths pass ON5 B1.4
+    ["g35-4-decreasing-table", [4, 4, 4, 3, 4, 4]], // MB 3.PR.2
+    ["g35-4-table-rule", [4, 5, 4, 4, 4, 4]], // AB MAT5-OI6-GQ1-LO1-KO1-SP
+    ["g35-5-remainder", [5, 4, 5, 5, 4, 5]], // AB MAT4-OI1-GQ4-LO1-KO1-SP
+    ["g35-5-full-groups", [5, 4, 5, 5, 4, 5]], // and ON4 B2.6
+    ["g35-5-distributive", [5, 4, 4, 5, 4, 5]], // AB4, SK N4.4, ON4 B2.5 with B2.1
+    ["g35-5-change-large", [5, 4, 5, 4, 5, 5]], // AB MAT4-OI1-GQ2-LO1 money within 10 000
+    ...["numerator", "denominator", "scale-up", "scale-down", "region", "number-line"].map((task) =>
+      [`g35-5-equivalent-${task}`, [5, 4, 5, 5, 6, 5]] as const), // AB MAT4-OI1-GQ5-LO1-KO1-SP; ON5 B1.3 stops at twelfths
+    ["g35-5-fraction-to-hundredths", [5, 6, 5, 5, 5, 5]], // SK N5.6 with N5.5, MB 5.N.9 with 5.N.7
+    ["g35-5-equivalent-decimal", [5, 4, 5, 5, 5, 5]], // AB grade 4 decimal equivalence key idea
+    ["g35-5-fraction-near-whole", [5, 3, 5, 5, 5, 5]], // AB grade 3: compare fractions to the benchmarks 0, 1/2 and 1
+    ["g35-6-complementary-angle", [6, 4, 6, 6, 6, 6]], // AB MAT4-OI3-GQ1-LO1-KO1-K; ON6 E2.3 complementary angles
+    ["g35-5-pattern-next", [3, 4, 2, 2, 2, 3]], // AB MAT4-OI6-GQ1-LO1-KO2-SP, SK P2.2, MB 2.PR.2
+    ["g35-5-pattern-missing", [3, 4, 2, 2, 2, 3]],
+    ["g35-5-pattern-step", [3, 3, 2, 2, 3, 3]], // AB MAT3-OI6-GQ1-LO1-KO2-SP, ON3 C1.1
+    ...["add", "subtract", "take-away", "multiply", "divide", "divisor"].map((op) =>
+      [`g35-5-evaluate-${op}`, [5, 5, 6, 7, 5, 5]] as const), // SK P6.3, MB 7.PR.5 first evaluate expressions
+    ...["rows", "cards-total", "cards-left", "sharing"].map((task) => [`g35-5-expression-${task}`, [5, 5, 6, 7, 5, 5]] as const),
+    ["g35-5-square-area", [5, 5, 5, 5, 5, 5]], // sides to 19: AB MAT5-OI1-GQ4 and ON5 B2.6 two-digit by two-digit
+    ["g35-5-end-time", [5, 4, 4, 4, 4, 5]], // AB MAT4-OI7-GQ1-LO1-KO1-SP, SK SS4.1, MB 4.SS.1
+    ["g35-5-prism-faces", [5, 4, 4, 3, 3, 5]], // AB MAT4-OI3-GQ1-LO1-KO1-SP, SK SS4.3, MB 3.SS.6, ON3 E1.1
+    ["g35-5-pyramid-faces", [5, 4, 3, 3, 3, 5]], // SK SS3.4, MB 3.SS.6, ON3 E1.1
+    ["g35-5-transformation", [5, 2, 5, 5, 5, 5]], // AB MAT2-OI3-GQ1-LO1-KO2
+    ["g35-5-double-bar-difference", [5, 5, 5, 5, 4, 5]], // ON4 D1.6 multiple-bar graphs
+    ["g35-5-pictograph-total", [5, 4, 4, 4, 3, 5]], // AB MAT4-OI8-GQ1-LO1-KO2-SP, SK SP4.1, MB 4.SP.2, ON3 D1.3
+    ["g35-6-common-factor", [6, 4, 6, 6, 7, 6]], // AB MAT4-OI1-GQ3-LO1-KO1-SP; ON7 B2.6
+    ["g35-6-least-multiple", [6, 8, 6, 6, 7, 6]], // no AB K-6 common-multiple outcome; ON7 B2.6
+    ["g35-6-meeting-cycles", [6, 8, 6, 6, 7, 6]],
+    ["g35-6-prime", [6, 4, 6, 6, 6, 6]],
+    ["g35-6-all-factors", [6, 4, 6, 6, 6, 6]],
+    ["g35-6-divisibility", [6, 5, 7, 7, 6, 6]], // AB MAT5-OI1-GQ3; SK N7.1, MB 7.N.1
+    ["g35-6-order-product", [6, 4, 6, 6, 6, 6]], // AB grade 4 order of operations
+    ["g35-6-order-quotient", [6, 4, 6, 6, 6, 6]],
+    ["g35-6-order-two-products", [6, 4, 6, 6, 6, 6]],
+    ["g35-6-order-brackets", [6, 5, 6, 6, 6, 6]], // AB MAT5-OI2-GQ1-LO1-KO1-SP
+    ["g35-6-decimal-product-story", [6, 6, 6, 6, 7, 6]], // ON7 B2.9
+    ["g35-6-ratio-part-to-part", [6, 5, 6, 6, 5, 6]], // AB grade 5 ratios; ON5 B2.9
+    ["g35-6-ratio-part-to-whole", [6, 5, 6, 6, 5, 6]],
+    ["g35-6-percent-of-amount", [6, 6, 6, 6, 6, 6]], // ON6 B2.3 percents of whole numbers
+    ["g35-6-percent-discount", [6, 6, 6, 6, 6, 6]],
+    ["g35-6-percent-sale-price", [6, 6, 6, 6, 6, 6]],
+    ["g35-6-linear-tenth", [6, 5, 5, 5, 4, 6]], // AB MAT5-OI6-GQ1-LO1-KO1-SP, MB 5.PR.1
+    ["g35-6-triangle-area", [6, 6, 7, 7, 5, 6]], // SK SS7.2, MB 7.SS.2
+    ["g35-6-triangle-height", [6, 6, 7, 7, 5, 6]],
+    ["g35-6-parallelogram-area", [6, 6, 7, 7, 5, 6]],
+    ["g35-6-trapezoid-area", [6, 7, 7, 7, 6, 6]], // ON6 E2.4
+    ["g35-6-volume-cubes", [6, 6, 5, 5, 7, 6]], // ON7 E2.7
+    ["g35-6-capacity", [6, 8, 5, 5, 4, 6]], // no AB K-6 litre outcome
+    ["g35-6-angle-name", [6, 4, 6, 6, 5, 6]], // AB MAT4-OI5-GQ2-LO1-KO1-SP
+    ["g35-6-straight-angle", [6, 4, 6, 6, 6, 6]], // AB grade 4 supplementary angles; ON6 E2.3
+    ["g35-6-triangle-sides", [6, 4, 6, 6, 5, 6]], // AB MAT4-OI3-GQ1-LO1-KO1-SP
+    ["g35-6-coordinate", [6, 5, 6, 6, 4, 6]], // AB MAT5-OI4-GQ1-LO1-KO1-SP
+    ["g35-6-experimental-probability", [6, 6, 6, 6, 5, 6]], // ON5 D2.1-D2.2
+    ["g35-6-theoretical-probability", [6, 6, 6, 6, 5, 6]],
+    ["g35-5-duration", [5, 4, 4, 4, 4, 5]],
+  ] as const)("%s uses the grade where each province's curriculum teaches it", (id, expected) => {
+    expect(levels(id)).toEqual([...expected]);
+  });
+  it.each(["g35-4-bar-scale", "g35-5-double-bar-difference"])("%s: the voice does not read the bar values, so reading the graph stays the skill (#79)", (id) => {
+    for (const seed of SEEDS) {
+      const q = fillTemplate(byId(id), seed);
+      for (const bar of q.figure!.bars) expect(q.readAloud).not.toMatch(new RegExp(`\\b${bar.value}\\b`));
+      expect(q.readAloud).toContain("Look at the graph.");
+    }
+  });
+  it("asks the area of a rectangle with two-digit sides at grade 5 everywhere, and codes the place-pair product", () => {
+    // Two-digit by two-digit products: AB MAT5-OI1-GQ4, SK and MB grade 5, ON5 B2.6; area in square units, BC 5.12.
+    expect(levels("g35-5-area-two-digit")).toEqual([5, 5, 5, 5, 5, 5]);
+    for (const seed of SEEDS) {
+      const q = fillTemplate(byId("g35-5-area-two-digit"), seed), { a, b } = q.values;
+      expect(Math.min(a, b)).toBeGreaterThanOrEqual(11);
+      expect(q.answer).toBe(String(a * b));
+      const pairs = Math.floor(a / 10) * Math.floor(b / 10) * 100 + (a % 10) * (b % 10);
+      if (pairs !== a * b) expect(q.wrong.find((w) => w.value === String(pairs))?.misconception).toBe("place-pairs");
+    }
+  });
+  it("asks for a thousandths decimal between two hundredths, with only the answer inside the interval", () => {
+    // AB MAT5-OI1-GQ1-LO1-KO1-SP (a decimal between two decimals), SK N5.6, MB 5.N.10; ON thousandths are grade 6.
+    expect(levels("g35-5-decimal-between")).toEqual([5, 5, 5, 5, 6, 5]);
+    for (const seed of SEEDS) {
+      const q = fillTemplate(byId("g35-5-decimal-between"), seed);
+      const [low, high] = q.prompt.match(/between (\d+\.\d+) and (\d+\.\d+)/)!.slice(1).map(Number);
+      expect(q.choices!.filter((c) => Number(c) > low && Number(c) < high)).toEqual([q.answer]);
+      expect(q.answer).toMatch(/^\d+\.\d{3}$/);
+      // Every wrong choice lies just past one end of the interval; each needs one mistake.
+      expect(q.wrong.map((w) => w.misconception)).toEqual(["bounds-error", "bounds-error"]);
+    }
+  });
+  it("asks which rectangle with one area has the greatest or least perimeter", () => {
+    // AB MAT5-OI5-GQ1-LO1-KO1-SP, SK SS5.1, MB 5.SS.1, BC 5.13; ON4 E2.7 relates area and perimeter.
+    expect(levels("g35-5-same-area-perimeter")).toEqual([5, 5, 5, 5, 4, 5]);
+    for (const seed of SEEDS) {
+      const q = fillTemplate(byId("g35-5-same-area-perimeter"), seed);
+      const perimeter = (c: string) => { const [a, b] = c.match(/(\d+) cm by (\d+) cm/)!.slice(1).map(Number); return 2 * (a + b); };
+      const values = q.choices!.map(perimeter), best = /greatest/.test(q.prompt) ? Math.max(...values) : Math.min(...values);
+      expect(values.filter((v) => v === best)).toHaveLength(1);
+      expect(perimeter(q.answer)).toBe(best);
+    }
+  });
+  it("divides a three-digit number by a two-digit number exactly, at the grade each province names two-digit divisors", () => {
+    // AB MAT6-OI1-GQ4-LO1-KO1-SP, MB 5.N.6, ON5 B2.7; BC 5 division to three digits. No SK grade 5-6 outcome names it.
+    expect(levels("g35-5-divide-two-digit")).toEqual([5, 6, 6, 5, 5, 5]);
+    for (const seed of SEEDS) {
+      const q = fillTemplate(byId("g35-5-divide-two-digit"), seed), { n, d } = q.values;
+      expect(d).toBeGreaterThanOrEqual(12);
+      expect(n).toBeLessThan(1000);
+      expect(Number(q.answer) * d).toBe(n);
+    }
+  });
+  it("solves an equation whose like terms combine first, at grade 6 in Alberta and Ontario", () => {
+    // AB MAT6-OI2-GQ1-LO1-KO3-SP (simplify, then solve); ON6 C2.3 note (add monomials before solving).
+    expect(levels("g35-6-like-terms-equation")).toEqual([6, 6, 8, 8, 6, 6]);
+    for (const seed of SEEDS) {
+      const q = fillTemplate(byId("g35-6-like-terms-equation"), seed), { a, b } = q.values;
+      const total = Number(q.prompt.match(/=\s(\d+)/)![1]);
+      expect((a + b) * Number(q.answer)).toBe(total);
+      // Multiplying the coefficients instead of adding them divides the total by a times b.
+      for (const w of q.wrong.filter((w) => Number(w.value) === total / (a * b))) expect(w.misconception).toBe("coefficient-product");
+    }
+  });
+  it("finds the other part of a right angle and codes the straight-angle total", () => {
+    for (const seed of SEEDS) {
+      const q = fillTemplate(byId("g35-6-complementary-angle"), seed), { x } = q.values;
+      expect(q.answer).toBe(String(90 - x));
+      expect(q.wrong.find((w) => w.value === String(180 - x))?.misconception).toBe("angle-sum");
+    }
+  });
+  it("speaks point choices with the comma, and rectangle choices with units in words", () => {
+    for (const seed of SEEDS) {
+      for (const id of ["g35-6-coordinate", "g35-6-coordinate-slide", "g35-6-rule-point"]) {
+        const q = fillTemplate(byId(id), seed);
+        for (const [i, said] of spokenChoices(toPublicQuestion(q), q.choices!).entries()) {
+          const [x, y] = q.choices![i].slice(1, -1).split(", ");
+          expect(said).toBe(`${x} comma ${y}`);
+        }
+      }
+      const r = fillTemplate(byId("g35-5-same-area-perimeter"), seed);
+      for (const said of spokenChoices(toPublicQuestion(r), r.choices!)) {
+        expect(said).toMatch(/^\d+ centimetres? by \d+ centimetres?$/);
+        expect(said).not.toMatch(/\b1 centimetres\b/);
+      }
+    }
+  });
+  it("keeps the closest-to-one-whole fractions within twelfths (ON5 B1.4)", () => {
+    expect(Math.max(...SEEDS.map((seed) => fillTemplate(byId("g35-5-fraction-near-whole"), seed).values.d))).toBeLessThanOrEqual(12);
+  });
+  it("speaks a tenths decimal digit by digit, so the question does not name the place", () => {
+    for (const task of ["value", "fraction"]) {
+      for (const seed of SEEDS) expect(fillTemplate(byId(`g35-4-tenths-${task}`), seed).readAloud).not.toMatch(/tenth/);
+    }
+  });
+
+  it.each(["g35-5-variable-add", "g35-5-variable-subtract", "g35-5-variable-take-away", "g35-6-equation-add", "g35-6-equation-subtract", "g35-6-equation-subtrahend"])(
+    "%s: a one-step addition or subtraction equation within 100 meets AB, SK and MB children at grade 3", (id) => {
+      // AB MAT3-OI2-GQ1-LO1-KO2-SP, SK3 one-step addition and subtraction equations, MB 3.PR.3; Ontario stays at grade 2.
+      expect(levels(id).slice(1, 5)).toEqual([3, 3, 3, 2]);
+      expect(Math.max(...numbersIn(id))).toBeLessThanOrEqual(100);
+    });
+  it.each(["g35-5-variable-multiply", "g35-5-variable-divide", "g35-5-variable-dividend", "g35-6-equation-multiply", "g35-6-equation-divide", "g35-6-equation-divisor"])(
+    "%s: a one-step multiplication or division equation past 100 meets Alberta children at grade 4", (id) => {
+      // AB MAT4-OI2-GQ1-LO1-KO2-SP (one-operation equations) with grade 4 three-digit by one-digit operations.
+      expect(levels(id)[1]).toBe(4);
+      expect(Math.max(...numbersIn(id))).toBeGreaterThan(100);
+      expect(Math.max(...numbersIn(id))).toBeLessThan(1000);
+    });
+  it.each(["g35-4-missing-factor", "g35-4-missing-divisor"])("%s: a missing factor or divisor within 100 meets Alberta children at grade 3", (id) => {
+    // AB MAT3-OI1-GQ3-LO1-KO2-SP: determine a missing quantity in a product or quotient, products and dividends to 100.
+    expect(levels(id)[1]).toBe(3);
+    expect(Math.max(...numbersIn(id))).toBeLessThanOrEqual(100);
+  });
+  it("asks the number-machine input in Ontario grade 4, where division undoes multiplication", () => {
+    // ON4 B2.1 (inverse operations) and B2.6 (divide two- and three-digit numbers by one-digit numbers).
+    expect(levels("g35-4-machine-input")[4]).toBe(4);
+  });
+  it("tags the equation for a subtraction story at the grades that write one-operation equations", () => {
+    // AB MAT3-OI2-GQ1-LO1-KO2-SP (solve problems using equations), SK4 and MB 4.PR.5 (express a problem as an equation).
+    expect(levels("g35-5-equation-story")).toEqual([5, 3, 4, 4, 2, 5]);
+  });
+  it.each(["g35-6-mixed-to-mixed", "g35-6-mixed-to-improper", "g35-6-mixed-whole-count", "g35-6-mixed-remainder"])(
+    "%s: improper fractions and mixed numbers to twelfths meet AB and ON children at grade 5", (id) => {
+      // AB MAT5-OI1-GQ5-LO1-KO1-SP; ON5 B1.3 (halves through twelfths). SK N6.7 and MB 6.N.4 stay at grade 6.
+      expect(levels(id)).toEqual([6, 5, 6, 6, 5, 6]);
+      expect(Math.max(...SEEDS.map((seed) => fillTemplate(byId(id), seed).values.d))).toBeLessThanOrEqual(12);
+    });
+  it.each(["g35-6-linear-output", "g35-6-linear-initial", "g35-6-linear-difference"])("%s: substituting into a rule meets Alberta children at grade 5", (id) => {
+    // AB MAT5-OI2-GQ1-LO1-KO2-SP: evaluate an algebraic expression by substituting a given number for the variable.
+    expect(levels(id)[1]).toBe(5);
+  });
+  it("asks which point fits a two-operation rule, at grade 6 in Alberta and grade 5 in Ontario", () => {
+    // AB MAT6-OI6-GQ1-LO1-KO1-SP (function values as points; AB5 rules are limited to one operation), ON5 C1.2.
+    const t = byId("g35-6-rule-point");
+    expect(levels("g35-6-rule-point")).toEqual([6, 6, 6, 6, 5, 6]);
+    for (const seed of SEEDS) {
+      const q = fillTemplate(t, seed), { k, b } = q.values;
+      const fits = (c: string) => { const [x, y] = c.slice(1, -1).split(", ").map(Number); return y === k * x + b; };
+      expect(q.choices?.filter(fits)).toEqual([q.answer]);
+      expect(q.wrong.map((w) => w.misconception).sort()).toEqual(["A5", "add-before-multiply", "coordinates-swap"]);
+    }
+  });
+  it("places the missing pattern term with the other simple constant-step pattern tasks, at BC grade 3", () => {
+    const t = byId("g35-5-pattern-missing");
+    expect(t.grades.BC).toBe(3);
+    expect(t.standard).toBe("3.6");
+  });
+  it("codes subtracting the end minutes from the start minutes as its own elapsed-time error", () => {
+    const t = byId("g35-5-duration");
+    // A coded value equal to the answer or to another coded value is left out, so look at the seeds that keep it.
+    const codes = SEEDS.flatMap((seed) => {
+      const q = fillTemplate(t, seed), { start, end } = q.values;
+      return q.wrong.filter((w) => w.value === String(start - end)).map((w) => w.misconception);
+    });
+    expect(codes.length).toBeGreaterThan(SEEDS.length / 2);
+    expect(new Set(codes)).toEqual(new Set(["minutes-reversed"]));
+    expect(MISCONCEPTIONS["minutes-reversed" as keyof typeof MISCONCEPTIONS]?.description).toMatch(/start/);
+  });
+  it("codes the estimate for the other colour as a count for the other outcome, not a probability", () => {
+    const t = byId("g35-6-experimental-estimate");
+    const codes = SEEDS.flatMap((seed) => {
+      const q = fillTemplate(t, seed), { total, red, k } = q.values;
+      return q.wrong.filter((w) => w.value === String((total - red) * k)).map((w) => w.misconception);
+    });
+    expect(codes.length).toBeGreaterThan(SEEDS.length / 2);
+    expect(new Set(codes)).toEqual(new Set(["count-other"]));
+    expect(MISCONCEPTIONS["count-other" as keyof typeof MISCONCEPTIONS]?.description).toMatch(/other outcome/);
   });
 });

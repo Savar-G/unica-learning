@@ -1,0 +1,4231 @@
+{
+  "band": "all",
+  "provider": "codex",
+  "model": "gpt-6.1-sol",
+  "effort": "medium",
+  "total": 527,
+  "checked": 527,
+  "pass": 260,
+  "review": 267,
+  "fail": 0,
+  "error": 0,
+  "unchecked": 0,
+  "rows": [
+    {
+      "id": "k-count-shapes",
+      "hash": "137f42391613a8a1",
+      "status": "pass",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "k-number-after",
+      "hash": "6877ae14faf791a9",
+      "status": "pass",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "k-number-before",
+      "hash": "2ec47667dff214ae",
+      "status": "pass",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "k-missing-number",
+      "hash": "64f1628378cd3e96",
+      "status": "pass",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "k-who-has-more",
+      "hash": "8b495cf1a1936ded",
+      "status": "pass",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "k-make-five",
+      "hash": "4f8a4576fe58f756",
+      "status": "pass",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "k-split-number",
+      "hash": "c28feff1c59fa90f",
+      "status": "pass",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "k-rest-are",
+      "hash": "b27166b4e9908796",
+      "status": "pass",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "k-in-all",
+      "hash": "51d2211f7d388e47",
+      "status": "pass",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "k-pattern-ab",
+      "hash": "4dcfc780d58f1801",
+      "status": "pass",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "k-pattern-abc",
+      "hash": "2a2b7e9f039ef9b5",
+      "status": "pass",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "k-pattern-aab",
+      "hash": "47735356317c9d15",
+      "status": "pass",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "k-number-pattern",
+      "hash": "25b92d7e2297090d",
+      "status": "pass",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "k-how-many-more",
+      "hash": "2073569504d8c851",
+      "status": "pass",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "k-take-away",
+      "hash": "bbd809654e1aacbf",
+      "status": "pass",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "k-balance-match",
+      "hash": "c1b5c362a88f08df",
+      "status": "pass",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "k-balance-tips",
+      "hash": "5f1745e398a3f61a",
+      "status": "pass",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "k-longer-line",
+      "hash": "40ec66c1349ce955",
+      "status": "pass",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "k-heavier-object",
+      "hash": "de27a85309a0cd73",
+      "status": "pass",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "k-balance-heavier",
+      "hash": "2b7721b3e902fb87",
+      "status": "pass",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "k-shape-attribute",
+      "hash": "0ddb97622916ac20",
+      "status": "pass",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "k-can-roll",
+      "hash": "ab6bd26c45d25bfa",
+      "status": "pass",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "k-graph-which-more",
+      "hash": "6d4e90c818bc399c",
+      "status": "pass",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "k-graph-count",
+      "hash": "1c5cef75dffb5e0a",
+      "status": "pass",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "k-likely-event",
+      "hash": "459952fd540e3ae8",
+      "status": "review",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "1-ten-and-more",
+      "hash": "4fb8e8c10d8e3d8b",
+      "status": "pass",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "1-skip-count",
+      "hash": "c512c038cbf7c8c3",
+      "status": "pass",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "1-smallest-biggest",
+      "hash": "ef4b17cfc9363b77",
+      "status": "pass",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "1-more-or-less",
+      "hash": "acd327a8c1a63210",
+      "status": "pass",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "1-make-ten",
+      "hash": "25088624936e84f4",
+      "status": "pass",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "1-count-coins",
+      "hash": "d7b8a924a98ebed7",
+      "status": "pass",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "1-add-to-20",
+      "hash": "ccf337a7ab1af57f",
+      "status": "pass",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "1-subtract-from-20",
+      "hash": "63c21ad50b6be3b3",
+      "status": "pass",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "1-story-add",
+      "hash": "2ffd5e81ab422602",
+      "status": "pass",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "1-story-take",
+      "hash": "920660f4b8ec9203",
+      "status": "pass",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "1-story-compare",
+      "hash": "ced4f366f9bdc1de",
+      "status": "pass",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "1-pattern-four",
+      "hash": "169dde691fa5db95",
+      "status": "pass",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "1-pattern-missing",
+      "hash": "e2048eeae85bd490",
+      "status": "pass",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "1-pattern-letters",
+      "hash": "38557b2d19977798",
+      "status": "pass",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "1-number-pattern",
+      "hash": "2acc8c27f5f914ce",
+      "status": "pass",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "1-build-to",
+      "hash": "c601133a7de36625",
+      "status": "pass",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "1-missing-addend",
+      "hash": "d9fd3ebe83929eb1",
+      "status": "review",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "1-which-sum-more",
+      "hash": "7d23dc547304eb2b",
+      "status": "pass",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "1-pattern-predict",
+      "hash": "9fa34217d24fc10a",
+      "status": "pass",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "1-letters-to-shapes",
+      "hash": "816f8cf910f9de34",
+      "status": "pass",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "1-change-story",
+      "hash": "27a256dfe59662e2",
+      "status": "pass",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "1-balance-cubes",
+      "hash": "45eb5767111395af",
+      "status": "pass",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "1-equal-or-not",
+      "hash": "2d13c06ff34e129b",
+      "status": "pass",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "1-cubes-longer",
+      "hash": "73b33d0cfed44d85",
+      "status": "pass",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "1-unit-size",
+      "hash": "98dc73da6a98925b",
+      "status": "pass",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "1-order-three",
+      "hash": "4dd9b43780986d5d",
+      "status": "pass",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "1-shape-sides",
+      "hash": "00f644aa8fe885e3",
+      "status": "pass",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "1-sides-in-all",
+      "hash": "a4600d65da9b3dd7",
+      "status": "pass",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "1-graph-how-many-more",
+      "hash": "fb3faee2bc2051dc",
+      "status": "pass",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "1-graph-in-all",
+      "hash": "d465dfbe218e5b48",
+      "status": "pass",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "1-never-sometimes-always",
+      "hash": "6b7011d1276cd370",
+      "status": "review",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "1-more-likely",
+      "hash": "7810534c8634689a",
+      "status": "review",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "1-cover-card",
+      "hash": "89a3835046047415",
+      "status": "review",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "1-length-together",
+      "hash": "c51064a68670f28b",
+      "status": "pass",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "1-tallest-child",
+      "hash": "cdb771efd191ca96",
+      "status": "pass",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "1-heaviest-box",
+      "hash": "8eb8df6df270cc01",
+      "status": "pass",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "2-digit-value",
+      "hash": "059c5fac51960f2b",
+      "status": "pass",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "2-even-or-odd",
+      "hash": "bbcec671c503dc34",
+      "status": "pass",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "2-ten-more-less",
+      "hash": "499cbc64a9106864",
+      "status": "pass",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "2-greatest",
+      "hash": "09b9d5bc67a6baeb",
+      "status": "pass",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "2-tens-and-ones",
+      "hash": "ad8832b6898fa8af",
+      "status": "pass",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "2-skip-count-back",
+      "hash": "e8ae60480480eaa8",
+      "status": "pass",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "2-add-2-digit",
+      "hash": "2045ec8ebc344361",
+      "status": "pass",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "2-subtract-2-digit",
+      "hash": "6e4d82cf6b27422e",
+      "status": "pass",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "2-story-add-2-digit",
+      "hash": "c85672a23e1236f1",
+      "status": "pass",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "2-story-subtract-2-digit",
+      "hash": "bf54286cbdd6804d",
+      "status": "pass",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "2-three-addends",
+      "hash": "88ee7c8ecf041af7",
+      "status": "pass",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "2-coins-mixed",
+      "hash": "602c76881dba27b5",
+      "status": "pass",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "2-make-ten-strategy",
+      "hash": "4f37424a07fab6ef",
+      "status": "pass",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "2-balance-equation",
+      "hash": "8049580794942451",
+      "status": "review",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "2-missing-left",
+      "hash": "2142c26db70171ba",
+      "status": "pass",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "2-missing-addend",
+      "hash": "37011d37a68a1b85",
+      "status": "pass",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "2-increasing-pattern",
+      "hash": "d4577efcf6ea01f6",
+      "status": "pass",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "2-pattern-core",
+      "hash": "2cb4e38948dd024f",
+      "status": "pass",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "2-change-unknown",
+      "hash": "8689090b492847df",
+      "status": "pass",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "2-pattern-rows",
+      "hash": "2b7833f0c42f6537",
+      "status": "review",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "2-number-pattern-predict",
+      "hash": "f889850ed4510a6b",
+      "status": "pass",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "2-shape-pattern-predict",
+      "hash": "7ba6ef813782bb1c",
+      "status": "pass",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "2-true-equation",
+      "hash": "190b5218f75b86e7",
+      "status": "pass",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "2-missing-in-pattern",
+      "hash": "df2b79e34256e4a3",
+      "status": "review",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "2-change-unknown-add",
+      "hash": "860b0d0ead23f3ad",
+      "status": "review",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "2-ruler-length",
+      "hash": "1cc4b49df4b21f1f",
+      "status": "review",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "2-length-unit",
+      "hash": "dcbae2e170ac0d5a",
+      "status": "review",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "2-square-or-rectangle",
+      "hash": "22433419782be0e8",
+      "status": "pass",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "2-turned-shape",
+      "hash": "61ead5643c80a234",
+      "status": "pass",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "2-face-of-solid",
+      "hash": "37ffcbef48478e76",
+      "status": "pass",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "2-roll-and-stack",
+      "hash": "fea00695f56507bc",
+      "status": "pass",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "2-graph-in-all",
+      "hash": "ac258726098fade7",
+      "status": "pass",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "2-graph-fewer",
+      "hash": "9757c893442bf390",
+      "status": "pass",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "2-spinner",
+      "hash": "8e125a49f5e8feb8",
+      "status": "review",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "2-certain-possible",
+      "hash": "52133877e88a3c62",
+      "status": "review",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "2-compare-lengths",
+      "hash": "c7b8b0f17f79a3d1",
+      "status": "pass",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "2-sides-in-all",
+      "hash": "3a2cf580eb0fb0b3",
+      "status": "pass",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "3-build-number",
+      "hash": "2d59208ca1ad4f84",
+      "status": "pass",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "3-ten-more-less",
+      "hash": "f76cee52d40f510b",
+      "status": "pass",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "3-greatest",
+      "hash": "38487c7b5bdcaa95",
+      "status": "pass",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "3-after-99",
+      "hash": "f4963a5d2486d10d",
+      "status": "pass",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "3-digit-value",
+      "hash": "87264f03e9501be8",
+      "status": "pass",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "3-add-3-digit",
+      "hash": "cdb41f537b946a0e",
+      "status": "pass",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "3-subtract-across-zero",
+      "hash": "f429996a68c8a845",
+      "status": "pass",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "3-story-subtract",
+      "hash": "b2b3efe922dc15d4",
+      "status": "pass",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "3-equal-groups",
+      "hash": "b1bd7edcd08caf7b",
+      "status": "pass",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "3-share-equally",
+      "hash": "5a9bb9cebf56096e",
+      "status": "review",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "3-money-total",
+      "hash": "8fab32ef34a060fd",
+      "status": "review",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "3-decreasing-pattern",
+      "hash": "cbab0111c551fb31",
+      "status": "pass",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "3-increasing-pattern",
+      "hash": "9ac562911fee2b3d",
+      "status": "pass",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "3-pattern-rule",
+      "hash": "922c17425b284cab",
+      "status": "pass",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "3-start-unknown",
+      "hash": "7ac2bc3267e0049e",
+      "status": "pass",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "3-change-unknown",
+      "hash": "2f35f90ccec4c622",
+      "status": "pass",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "3-balance-equation",
+      "hash": "cdbc7d2c8b2291da",
+      "status": "review",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "3-growing-tables",
+      "hash": "3ba1be7bda611f38",
+      "status": "pass",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "3-area-tiles",
+      "hash": "5557e1028a3f6602",
+      "status": "pass",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "3-mass-unit",
+      "hash": "91ea86d0f1aa2516",
+      "status": "pass",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "3-length-convert",
+      "hash": "1820f33bebda98dc",
+      "status": "pass",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "3-solid-parts",
+      "hash": "ad0a27174025d4b9",
+      "status": "pass",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "3-time-units",
+      "hash": "8b105f84f4820436",
+      "status": "pass",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "3-days-weeks",
+      "hash": "1160cc73861a31b4",
+      "status": "pass",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "3-bar-graph-more",
+      "hash": "3c4951172725e95e",
+      "status": "pass",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "3-bag-likely",
+      "hash": "632652b52450e471",
+      "status": "review",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "3-coin-streak",
+      "hash": "277655d769ec7243",
+      "status": "review",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g35-3-skip-count",
+      "hash": "c757be2f1ae270f2",
+      "status": "pass",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g35-3-order-numbers",
+      "hash": "a25721d3473a419a",
+      "status": "pass",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g35-3-array",
+      "hash": "51fa852c69cf043b",
+      "status": "pass",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g35-3-groups-of",
+      "hash": "c59bd71d1fd9d7c5",
+      "status": "pass",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g35-3-story-add",
+      "hash": "80a49356a45f90e6",
+      "status": "pass",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g35-3-fraction-eaten",
+      "hash": "08564a2a61b4ef17",
+      "status": "pass",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g35-3-fraction-left",
+      "hash": "ec4adcb3161dd6f5",
+      "status": "pass",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g35-3-fraction-of-set",
+      "hash": "918161bc9617e80c",
+      "status": "review",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g35-3-equal-parts",
+      "hash": "5adb147a3e375c1d",
+      "status": "pass",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g35-3-fraction-number-line",
+      "hash": "2d88ca42aaef6316",
+      "status": "review",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g35-3-fraction-of-amount",
+      "hash": "c4bb0ea3bdb0d098",
+      "status": "review",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g35-3-whole-as-fraction",
+      "hash": "52b1807d18a5e4ca",
+      "status": "pass",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g35-3-fraction-rest",
+      "hash": "d004ef8b339af266",
+      "status": "pass",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g35-3-unit-fraction",
+      "hash": "3df03a4f153d7a3b",
+      "status": "pass",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g35-3-fraction-words",
+      "hash": "d2f13b2687aa192f",
+      "status": "pass",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g35-3-bar-rows",
+      "hash": "6382741336c60ab2",
+      "status": "review",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g35-3-make-a-whole",
+      "hash": "0a9bc22b1fb7ba50",
+      "status": "pass",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g35-3-missing-middle",
+      "hash": "3df95a4eaeaf29ed",
+      "status": "pass",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g35-3-doubling",
+      "hash": "cc39ed446cc3ae95",
+      "status": "review",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g35-3-start-unknown-story",
+      "hash": "58d9e9903f32ecca",
+      "status": "pass",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g35-3-double-unknown",
+      "hash": "cf1131bacc55be14",
+      "status": "review",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g35-3-subtract-unknown",
+      "hash": "05004198f73edd3f",
+      "status": "pass",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g35-3-rule-in-words",
+      "hash": "f20070e6855c5a3b",
+      "status": "pass",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g35-3-number-sentence",
+      "hash": "4e95b5c7746daa80",
+      "status": "pass",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g35-3-capacity-unit",
+      "hash": "be336eca8eeb3128",
+      "status": "review",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g35-3-solid-from-faces",
+      "hash": "96d0f6317f28b26b",
+      "status": "review",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g35-3-mass-referent",
+      "hash": "45207a6ac331b83c",
+      "status": "review",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g35-3-tally",
+      "hash": "d6da412d32b14195",
+      "status": "pass",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g35-3-most-least-likely",
+      "hash": "edef12361a1a3fe5",
+      "status": "pass",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g35-3-likelihood-words",
+      "hash": "f3d0b2a070cbde73",
+      "status": "pass",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g35-4-digit-value",
+      "hash": "14a90db64b2ca224",
+      "status": "pass",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g35-4-order-numbers",
+      "hash": "fcfe713b856cb379",
+      "status": "pass",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g35-4-expanded-form",
+      "hash": "06db7b3f1c6b39fb",
+      "status": "pass",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g35-4-hundred-more",
+      "hash": "2c6a9a0d9f7ab376",
+      "status": "pass",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g35-4-subtract",
+      "hash": "be88d10cbf6e0247",
+      "status": "pass",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g35-4-add",
+      "hash": "aa2a3e81e111e916",
+      "status": "pass",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g35-4-multiply",
+      "hash": "21fd45d24aaccb08",
+      "status": "pass",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g35-4-divide",
+      "hash": "75d0d1d0fb45907b",
+      "status": "pass",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g35-4-share",
+      "hash": "aa73809d2fb2b84d",
+      "status": "pass",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g35-4-make-change",
+      "hash": "6574cbcf3b76ad4c",
+      "status": "pass",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g35-4-add-decimals",
+      "hash": "4734ca2c288d600b",
+      "status": "pass",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g35-4-subtract-decimals",
+      "hash": "00021fe8c11a8772",
+      "status": "pass",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g35-4-story-multiply",
+      "hash": "12dbe493e7509d4e",
+      "status": "pass",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g35-4-multiple",
+      "hash": "9781f37dd129bc5e",
+      "status": "pass",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g35-4-between",
+      "hash": "dff242ff42141529",
+      "status": "pass",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g35-4-tenths-region",
+      "hash": "7a3ee1d4b2e227ea",
+      "status": "pass",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g35-4-tenths-left",
+      "hash": "b288c4361b088b4e",
+      "status": "pass",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g35-4-tenths-order",
+      "hash": "3e649fe75e8c12b4",
+      "status": "pass",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g35-4-tenths-value",
+      "hash": "769bcb59d5e97154",
+      "status": "review",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g35-4-tenths-fraction",
+      "hash": "a6dcbefffcc4f384",
+      "status": "review",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g35-4-compare-like",
+      "hash": "f1a1248774581297",
+      "status": "pass",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g35-4-compare-unit",
+      "hash": "97071cecf0ce1faa",
+      "status": "review",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g35-4-benchmark",
+      "hash": "6c5cf3f504cb7e63",
+      "status": "review",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g35-4-tenths-decimal",
+      "hash": "8e77fc675cc45d66",
+      "status": "pass",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g35-4-hundredths-decimal",
+      "hash": "b53efe2b13213349",
+      "status": "review",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g35-4-decimal-to-fraction",
+      "hash": "d1b7b869d5e9699c",
+      "status": "pass",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g35-4-compare-decimals",
+      "hash": "6ad4fe4beeb4bcaa",
+      "status": "review",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g35-4-money-notation",
+      "hash": "0306d0507a49c263",
+      "status": "review",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g35-4-decimal-digit",
+      "hash": "26e0c0cf4ba60b78",
+      "status": "review",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g35-4-decimal-number-line",
+      "hash": "1c42418dba40e9c1",
+      "status": "pass",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g35-4-hundredths-grid",
+      "hash": "8e2e0fabeb94f142",
+      "status": "pass",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g35-4-more-than-half",
+      "hash": "71fc9df57719d3c4",
+      "status": "review",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g35-4-tenths-as-hundredths",
+      "hash": "22b36e5cb2713f21",
+      "status": "pass",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g35-4-table-pattern",
+      "hash": "87282f31f83448f5",
+      "status": "review",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g35-4-missing-factor",
+      "hash": "4cc33d268c700299",
+      "status": "pass",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g35-4-missing-divisor",
+      "hash": "b564c1976fc47e8d",
+      "status": "pass",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g35-4-subtract-unknown",
+      "hash": "b6b430b5a660f97f",
+      "status": "review",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g35-4-decreasing-table",
+      "hash": "6c969525ceb301f5",
+      "status": "review",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g35-4-equation-for-story",
+      "hash": "bf1e59ce00ac8075",
+      "status": "review",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g35-4-balance-multiply",
+      "hash": "026c4239cf7a684e",
+      "status": "review",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g35-4-table-rule",
+      "hash": "fd742b484d431715",
+      "status": "review",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g35-4-figure-pattern",
+      "hash": "9291f6b9b60ef525",
+      "status": "review",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g35-4-three-same",
+      "hash": "b948f3de99cde409",
+      "status": "review",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g35-4-true-equation",
+      "hash": "8156e5366e354eda",
+      "status": "review",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g35-4-machine-input",
+      "hash": "6bd6e72888931bf4",
+      "status": "pass",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g35-4-perimeter",
+      "hash": "358d122f92cc9fca",
+      "status": "pass",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g35-4-perimeter-sides",
+      "hash": "4a964779622b3e41",
+      "status": "pass",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g35-4-square-side",
+      "hash": "08f0348f0eb03920",
+      "status": "pass",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g35-4-read-clock",
+      "hash": "c8bb3d30ec4ccfca",
+      "status": "pass",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g35-4-quarter-to",
+      "hash": "ce01f206aed5de21",
+      "status": "pass",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g35-4-24-hour",
+      "hash": "d8ffd5eaa8d7bb74",
+      "status": "review",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g35-4-regular-polygon",
+      "hash": "662173a9997419e8",
+      "status": "review",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g35-4-sides-in-all",
+      "hash": "007c4f2d5e4b7edb",
+      "status": "pass",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g35-4-symmetry",
+      "hash": "e01afc4ff4215f7f",
+      "status": "pass",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g35-4-pictograph",
+      "hash": "29ac1716ea781df2",
+      "status": "pass",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g35-4-pictograph-half",
+      "hash": "1d8c1af4ad9db27b",
+      "status": "pass",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g35-4-bar-scale",
+      "hash": "1f63191d9555abef",
+      "status": "pass",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g35-4-spin-predict",
+      "hash": "6b7076d389b07b89",
+      "status": "review",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g35-5-large-digit",
+      "hash": "a9a83d294a7ea778",
+      "status": "review",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g35-5-expanded-large",
+      "hash": "74ca66f0a2dec8e1",
+      "status": "review",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g35-5-ten-thousand-more",
+      "hash": "0bf9d967514b7d75",
+      "status": "review",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g35-5-order-large",
+      "hash": "b4463703a40bc4ee",
+      "status": "review",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g35-5-add-large",
+      "hash": "8099285ec71f178d",
+      "status": "review",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g35-5-subtract-large",
+      "hash": "e6e617f8bb4a0de2",
+      "status": "review",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g35-5-multiply-two-digit",
+      "hash": "0639b9e651ec917d",
+      "status": "review",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g35-5-remainder",
+      "hash": "881ba2cb0a1ce597",
+      "status": "pass",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g35-5-full-groups",
+      "hash": "1565a9e60380b24c",
+      "status": "pass",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g35-5-enough-buses",
+      "hash": "de2eeba6238fa874",
+      "status": "pass",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g35-5-divide-two-digit",
+      "hash": "f4e088af8bdbed1c",
+      "status": "review",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g35-5-annexing-zeros",
+      "hash": "75d079d386e16c90",
+      "status": "pass",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g35-5-distributive",
+      "hash": "cd717233b7a937b8",
+      "status": "review",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g35-5-budget-left",
+      "hash": "0dfd395acd9c0613",
+      "status": "pass",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g35-5-change-large",
+      "hash": "aab4b3437aaf7810",
+      "status": "pass",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g35-5-equivalent-numerator",
+      "hash": "722b1199b752ee17",
+      "status": "review",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g35-5-equivalent-denominator",
+      "hash": "7daea315a06e0861",
+      "status": "review",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g35-5-equivalent-scale-up",
+      "hash": "b82ecfa2bbae1b47",
+      "status": "review",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g35-5-equivalent-scale-down",
+      "hash": "7908cbcd75735c27",
+      "status": "review",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g35-5-equivalent-region",
+      "hash": "43638b577be77a90",
+      "status": "review",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g35-5-equivalent-number-line",
+      "hash": "5662501711a8493a",
+      "status": "review",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g35-5-fraction-to-hundredths",
+      "hash": "e791ee295cd6399b",
+      "status": "review",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g35-5-decimal-half",
+      "hash": "ce61c3d8a41bb0ef",
+      "status": "review",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g35-5-fraction-near-whole",
+      "hash": "3b0bb583e7048ce9",
+      "status": "review",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g35-5-equivalent-decimal",
+      "hash": "c87e9742eb0da4d2",
+      "status": "review",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g35-5-thousandths-fraction",
+      "hash": "21f32ea0151fdecb",
+      "status": "review",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g35-5-thousandths-digit",
+      "hash": "b61e564cdc6c1c12",
+      "status": "review",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g35-5-compare-thousandths",
+      "hash": "1ef864fe3365ed72",
+      "status": "review",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g35-5-decimal-between",
+      "hash": "f5c6ab67189a19a9",
+      "status": "review",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g35-5-add-thousandths",
+      "hash": "4ab3670a96696d4c",
+      "status": "review",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g35-5-subtract-thousandths",
+      "hash": "6fe8a5dd7caa0f2e",
+      "status": "review",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g35-5-variable-add",
+      "hash": "0789838f60717dea",
+      "status": "pass",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g35-5-variable-subtract",
+      "hash": "8e51aabe0886746e",
+      "status": "pass",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g35-5-variable-take-away",
+      "hash": "cf9dbae0bb878b04",
+      "status": "pass",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g35-5-variable-multiply",
+      "hash": "4ff6c88fdf164366",
+      "status": "review",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g35-5-variable-divide",
+      "hash": "ed514538ffaad381",
+      "status": "review",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g35-5-variable-dividend",
+      "hash": "434ec289d04cc9f4",
+      "status": "review",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g35-5-pattern-next",
+      "hash": "1791593460ee52d2",
+      "status": "review",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g35-5-pattern-missing",
+      "hash": "085d91935ad56df4",
+      "status": "review",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g35-5-pattern-back",
+      "hash": "b5d873093f35971d",
+      "status": "review",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g35-5-pattern-step",
+      "hash": "1ebea9a366dc79eb",
+      "status": "pass",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g35-5-pattern-start",
+      "hash": "e5a62bb77c60af00",
+      "status": "review",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g35-5-pattern-far",
+      "hash": "06b459f50bc7b35d",
+      "status": "review",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g35-5-evaluate-add",
+      "hash": "c5aa211bbcc71d04",
+      "status": "review",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g35-5-evaluate-subtract",
+      "hash": "3b87a8ac7adc4bae",
+      "status": "review",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g35-5-evaluate-take-away",
+      "hash": "9689f646157aa88b",
+      "status": "review",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g35-5-evaluate-multiply",
+      "hash": "9fe426ad0e9d358a",
+      "status": "review",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g35-5-evaluate-divide",
+      "hash": "8b6b1747e8acf7a6",
+      "status": "review",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g35-5-evaluate-divisor",
+      "hash": "1ac30a90043d5162",
+      "status": "review",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g35-5-expression-rows",
+      "hash": "85ed6dd895c736ca",
+      "status": "review",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g35-5-expression-cards-total",
+      "hash": "44a695fb03bec7d1",
+      "status": "review",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g35-5-expression-cards-left",
+      "hash": "13f76c8555db998f",
+      "status": "review",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g35-5-expression-sharing",
+      "hash": "5d89cf72bb6397ae",
+      "status": "review",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g35-5-variable-rule",
+      "hash": "62ea79ea14838420",
+      "status": "review",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g35-5-equation-story",
+      "hash": "b2a59c385325d1e1",
+      "status": "review",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g35-5-rectangle-area",
+      "hash": "ed90f403d75850c5",
+      "status": "review",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g35-5-area-two-digit",
+      "hash": "e8cef11c72e2dee4",
+      "status": "pass",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g35-5-square-area",
+      "hash": "08e8e72426873ab4",
+      "status": "pass",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g35-5-area-width",
+      "hash": "c6d847014b727c1d",
+      "status": "review",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g35-5-same-area",
+      "hash": "2d3a6f9c85e2d9df",
+      "status": "review",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g35-5-same-perimeter",
+      "hash": "49a4e7640f29413c",
+      "status": "review",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g35-5-same-area-perimeter",
+      "hash": "a01d48d848d5d486",
+      "status": "review",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g35-5-duration",
+      "hash": "1a5c0be9f9559ceb",
+      "status": "review",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g35-5-end-time",
+      "hash": "45a512cbabec03b6",
+      "status": "review",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g35-5-prism-faces",
+      "hash": "f8701f0a98e4f426",
+      "status": "review",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g35-5-pyramid-faces",
+      "hash": "d1129ee667782a91",
+      "status": "review",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g35-5-transformation",
+      "hash": "c9feea01a3131cf9",
+      "status": "review",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g35-5-mirror-distance",
+      "hash": "063cbacd6a42bc32",
+      "status": "review",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g35-5-double-bar-difference",
+      "hash": "e96ab2616d7c845e",
+      "status": "review",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g35-5-pictograph-total",
+      "hash": "14fce67b14c9cdd5",
+      "status": "review",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g35-5-bag-probability",
+      "hash": "5e81c942828eeb40",
+      "status": "review",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g35-6-common-factor",
+      "hash": "031a1e79a8c8b12b",
+      "status": "review",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g35-6-least-multiple",
+      "hash": "6402177b70b4dc7f",
+      "status": "review",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g35-6-prime",
+      "hash": "a4dd0cbc581adafc",
+      "status": "review",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g35-6-divisibility",
+      "hash": "2730b7478128ee95",
+      "status": "review",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g35-6-all-factors",
+      "hash": "470cc06fcc039e9d",
+      "status": "review",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g35-6-meeting-cycles",
+      "hash": "fafdb0d343916538",
+      "status": "review",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g35-6-order-product",
+      "hash": "eed872be469f3eb3",
+      "status": "review",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g35-6-order-brackets",
+      "hash": "77c312064d82a796",
+      "status": "review",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g35-6-order-quotient",
+      "hash": "ffcaaf742d65d239",
+      "status": "review",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g35-6-order-two-products",
+      "hash": "b4b7e4d7726e91a5",
+      "status": "review",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g35-6-decimal-multiply",
+      "hash": "af335031d8a27a22",
+      "status": "review",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g35-6-decimal-divide",
+      "hash": "744b0bf0c53e9d76",
+      "status": "review",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g35-6-decimal-product-story",
+      "hash": "4d7f8c658f4209df",
+      "status": "review",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g35-6-decimal-unit-cost",
+      "hash": "f5379e980576bafb",
+      "status": "review",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g35-6-mixed-to-mixed",
+      "hash": "7672c7352e661c59",
+      "status": "pass",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g35-6-mixed-to-improper",
+      "hash": "45db4326ed7ea0a2",
+      "status": "pass",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g35-6-mixed-whole-count",
+      "hash": "156a4a2261cb9520",
+      "status": "pass",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g35-6-mixed-remainder",
+      "hash": "f05c9d28906eda04",
+      "status": "pass",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g35-6-ratio-part-to-part",
+      "hash": "049af675683fd5e0",
+      "status": "review",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g35-6-ratio-part-to-whole",
+      "hash": "2804a32bfcf3ccb5",
+      "status": "review",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g35-6-ratio-equivalent",
+      "hash": "18f56e8c0e3e9f80",
+      "status": "pass",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g35-6-ratio-recipe",
+      "hash": "bd4bb5e51e4997e9",
+      "status": "pass",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g35-6-percent-of-hundred",
+      "hash": "9534e84f50127d44",
+      "status": "pass",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g35-6-percent-of-amount",
+      "hash": "38f75804e6c4d1de",
+      "status": "review",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g35-6-percent-discount",
+      "hash": "7cafa2b38d5fd362",
+      "status": "review",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g35-6-percent-sale-price",
+      "hash": "43e0515d8cccc45f",
+      "status": "review",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g35-6-linear-output",
+      "hash": "dd469ce9cc4df035",
+      "status": "review",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g35-6-linear-table",
+      "hash": "5bd126aa179777bb",
+      "status": "review",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g35-6-linear-step",
+      "hash": "51a3eb6d2d93ca69",
+      "status": "review",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g35-6-linear-initial",
+      "hash": "d442c6b309addd57",
+      "status": "review",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g35-6-linear-tenth",
+      "hash": "54a5aa9aff743112",
+      "status": "review",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g35-6-linear-difference",
+      "hash": "83f46375b917fba8",
+      "status": "review",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g35-6-equation-add",
+      "hash": "b6b60dae09c5591c",
+      "status": "pass",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g35-6-equation-subtract",
+      "hash": "44e01377a1eb6eb7",
+      "status": "pass",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g35-6-equation-multiply",
+      "hash": "214623b0abc4cfb8",
+      "status": "pass",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g35-6-equation-divide",
+      "hash": "7a44be1aefa58ff5",
+      "status": "pass",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g35-6-equation-subtrahend",
+      "hash": "1e9cc00d50686634",
+      "status": "pass",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g35-6-equation-divisor",
+      "hash": "37c98e568e555844",
+      "status": "review",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g35-6-table-rule",
+      "hash": "8ec3ef7f6d97aee5",
+      "status": "review",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g35-6-like-terms-equation",
+      "hash": "62a7c481308db3e6",
+      "status": "review",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g35-6-rule-point",
+      "hash": "4e5d60b6f7cfb229",
+      "status": "review",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g35-6-triangle-area",
+      "hash": "ae090e60c3600bc8",
+      "status": "review",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g35-6-triangle-height",
+      "hash": "2c5bf8e489aaff1e",
+      "status": "review",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g35-6-parallelogram-area",
+      "hash": "5e7da547d10c7321",
+      "status": "review",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g35-6-trapezoid-area",
+      "hash": "a2b9ca72794f346c",
+      "status": "review",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g35-6-volume-cubes",
+      "hash": "7ae14af5d9260497",
+      "status": "review",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g35-6-capacity",
+      "hash": "16e4c7103feba8a8",
+      "status": "review",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g35-6-angle-name",
+      "hash": "15b3bd4baedbedab",
+      "status": "review",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g35-6-straight-angle",
+      "hash": "98f9c07cfe1689c7",
+      "status": "review",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g35-6-complementary-angle",
+      "hash": "f6f935e65256610a",
+      "status": "review",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g35-6-triangle-sides",
+      "hash": "6ef47b89309962e1",
+      "status": "review",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g35-6-coordinate",
+      "hash": "2b201d3de575153d",
+      "status": "review",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g35-6-coordinate-slide",
+      "hash": "7fd3525d7fecc085",
+      "status": "review",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g35-6-experimental-estimate",
+      "hash": "9fd3cddef44e770e",
+      "status": "review",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g35-6-experimental-probability",
+      "hash": "eb794c087b9b7b42",
+      "status": "review",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g35-6-theoretical-probability",
+      "hash": "a6aa8a6b1ae851a6",
+      "status": "review",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g67-5-write-digits",
+      "hash": "f3b50ccd934e58e5",
+      "status": "review",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g67-5-ten-thousand-more",
+      "hash": "f0d5ea544cce76d9",
+      "status": "review",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g67-5-digit-value",
+      "hash": "6a0673d8e7862d6e",
+      "status": "review",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g67-5-multiply-2x2",
+      "hash": "c6dbcf01002c9143",
+      "status": "review",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g67-5-share-remainder",
+      "hash": "8424ba74542d4702",
+      "status": "pass",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g67-5-groups-needed",
+      "hash": "71fd2ceb155ae344",
+      "status": "review",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g67-5-add-decimals",
+      "hash": "ec52d0721de1f144",
+      "status": "review",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g67-5-subtract-decimals",
+      "hash": "445af78deeffe7b6",
+      "status": "review",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g67-5-make-change",
+      "hash": "9bec29e5ecb5ffc9",
+      "status": "review",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g67-5-facts-tens",
+      "hash": "ca8aa5df5a55221a",
+      "status": "review",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g67-5-add-large",
+      "hash": "a7b7a2fd6394b5df",
+      "status": "review",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g67-5-equivalent-fraction",
+      "hash": "3c4db5cc579f3966",
+      "status": "review",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g67-5-missing-numerator",
+      "hash": "643894e1377068a6",
+      "status": "review",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g67-5-greatest-decimal",
+      "hash": "d58babba606acb19",
+      "status": "review",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g67-5-least-decimal",
+      "hash": "75a887a8eecea251",
+      "status": "review",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g67-5-decimal-place",
+      "hash": "8beee3293681c7b1",
+      "status": "review",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g67-5-fraction-to-decimal",
+      "hash": "9884b090d340b8e2",
+      "status": "review",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g67-5-greatest-fraction",
+      "hash": "22522ec6f2bcbf2c",
+      "status": "review",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g67-5-decimal-as-fraction",
+      "hash": "ddcd342b3f6fdbd5",
+      "status": "review",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g67-5-build-decimal",
+      "hash": "44f5ee79e3a94a3a",
+      "status": "review",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g67-5-rule-output",
+      "hash": "ef1ca03a427f38bb",
+      "status": "review",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g67-5-equation-add",
+      "hash": "9c582f30ecdfb5de",
+      "status": "pass",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g67-5-equation-subtract",
+      "hash": "1b11157548031587",
+      "status": "pass",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g67-5-equation-multiply",
+      "hash": "3282a233e0c9b5c1",
+      "status": "pass",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g67-5-pattern-term",
+      "hash": "1309e8095f7eb1fd",
+      "status": "pass",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g67-5-pattern-down",
+      "hash": "6c14dee8155f5b47",
+      "status": "pass",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g67-5-table-rule",
+      "hash": "27da2a1d9d819fdd",
+      "status": "pass",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g67-5-story-equation",
+      "hash": "200978eb0ac96ad2",
+      "status": "review",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g67-5-balance",
+      "hash": "4c78c9779d864608",
+      "status": "review",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g67-5-rectangle-area",
+      "hash": "66038ad27b53980e",
+      "status": "review",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g67-5-area-side",
+      "hash": "1ddd2557f4e33a1a",
+      "status": "review",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g67-5-same-area",
+      "hash": "6caeacf5ac5227be",
+      "status": "review",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g67-5-elapsed-time",
+      "hash": "01223fc116d3fae2",
+      "status": "review",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g67-5-solid-from-faces",
+      "hash": "18c4dd67079f9067",
+      "status": "review",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g67-5-solid-count",
+      "hash": "41cc08cb9b3d96de",
+      "status": "review",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g67-5-name-transformation",
+      "hash": "543fad0f2ab26768",
+      "status": "review",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g67-5-double-bar-graph",
+      "hash": "2674bc2a995d1d06",
+      "status": "review",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g67-5-pictograph",
+      "hash": "aca0b928bd6dd105",
+      "status": "review",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g67-5-spinner-probability",
+      "hash": "ea1285c1f254f260",
+      "status": "review",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g67-6-large-digits",
+      "hash": "1ab3d3276e4e8370",
+      "status": "review",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g67-6-greatest-large",
+      "hash": "97104b1ea986a0b7",
+      "status": "review",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g67-6-decimal-digit-value",
+      "hash": "7c9be8e7d6742318",
+      "status": "review",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g67-6-lcm",
+      "hash": "4f39ca9d38b5f345",
+      "status": "review",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g67-6-gcf",
+      "hash": "b40e5f58a5757418",
+      "status": "review",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g67-6-which-prime",
+      "hash": "94aa3174b48aa987",
+      "status": "review",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g67-6-which-composite",
+      "hash": "b07fbed1095a1c4c",
+      "status": "review",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g67-6-order-of-operations",
+      "hash": "e5d43f7f47ba5e59",
+      "status": "review",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g67-6-brackets",
+      "hash": "0439b338ef41dfa8",
+      "status": "review",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g67-6-decimal-times",
+      "hash": "aca68a57ec5c1f76",
+      "status": "pass",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g67-6-decimal-divide",
+      "hash": "1aa8efc0bf36cea2",
+      "status": "pass",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g67-6-times-four",
+      "hash": "63cbcdf277e6ed8d",
+      "status": "review",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g67-6-save-weeks",
+      "hash": "8a6b86d1177b4ef5",
+      "status": "review",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g67-6-share-money",
+      "hash": "4b0ea78ba8294fdd",
+      "status": "pass",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g67-6-improper-to-mixed",
+      "hash": "d8106a08e40048e5",
+      "status": "review",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g67-6-mixed-to-improper",
+      "hash": "7ae82179f878deb4",
+      "status": "pass",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g67-6-count-parts",
+      "hash": "1e39c92cee5649b4",
+      "status": "pass",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g67-6-greatest-fraction",
+      "hash": "0eda93f4ba39572e",
+      "status": "pass",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g67-6-ratio-part-part",
+      "hash": "35559fec1ecede3a",
+      "status": "pass",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g67-6-ratio-part-whole",
+      "hash": "30ac052ac014bc16",
+      "status": "review",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g67-6-equivalent-ratio",
+      "hash": "58dc5561d6dd7717",
+      "status": "review",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g67-6-equivalent-ratio-choice",
+      "hash": "219beddf7a9727bb",
+      "status": "review",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g67-6-ratio-to-fraction",
+      "hash": "2d41ad5584494516",
+      "status": "review",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g67-6-percent-of",
+      "hash": "fb49be479564c700",
+      "status": "review",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g67-6-percent-grid",
+      "hash": "35ee730eac6caeda",
+      "status": "review",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g67-6-percent-whole",
+      "hash": "ad365bcf75d85004",
+      "status": "review",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g67-6-discount",
+      "hash": "3162f1148948b0c2",
+      "status": "review",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g67-6-percent-to-decimal",
+      "hash": "33370268debb8314",
+      "status": "review",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g67-6-nth-term",
+      "hash": "a3a74eff409f6dde",
+      "status": "review",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g67-6-table-value",
+      "hash": "0f2a6d05bfa533f0",
+      "status": "review",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g67-6-expression-words",
+      "hash": "a7cda7d7cf2fcc65",
+      "status": "review",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g67-6-shrinking-rule",
+      "hash": "727e9f2057c6acee",
+      "status": "review",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g67-6-equation-times",
+      "hash": "e6f7001ef474f49f",
+      "status": "review",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g67-6-equation-plus",
+      "hash": "45e100f2130f4e64",
+      "status": "review",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g67-6-equation-words",
+      "hash": "ff0e23f3c3edf4b3",
+      "status": "pass",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g67-6-story-equation",
+      "hash": "53b5814e67536b00",
+      "status": "review",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g67-6-balance-box",
+      "hash": "707d359aa91b3223",
+      "status": "pass",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g67-6-keep-balance",
+      "hash": "1e70e3360439ad12",
+      "status": "review",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g67-6-evaluate",
+      "hash": "5d81afab9b393708",
+      "status": "review",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g67-6-point-on-rule",
+      "hash": "0e8781e9487ae7f8",
+      "status": "review",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g67-6-figure-pattern",
+      "hash": "561859d00b89ddb1",
+      "status": "pass",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g67-6-equation-check",
+      "hash": "1d986017405d4a01",
+      "status": "pass",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g67-6-triangle-area",
+      "hash": "104646c6f8a34fcb",
+      "status": "pass",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g67-6-parallelogram-area",
+      "hash": "bfe3ff22614452b0",
+      "status": "pass",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g67-6-trapezoid-area",
+      "hash": "dda2c1dea8df8ee8",
+      "status": "review",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g67-6-angle-type",
+      "hash": "d75942bf6e5e50d1",
+      "status": "review",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g67-6-triangle-angle",
+      "hash": "6841534fc468302a",
+      "status": "pass",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g67-6-straight-line-angle",
+      "hash": "dc73bc96e8feb9f0",
+      "status": "review",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g67-6-box-volume",
+      "hash": "c67ba21b210ff762",
+      "status": "review",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g67-6-litres",
+      "hash": "c47d0234452da997",
+      "status": "review",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g67-6-cubic-units",
+      "hash": "0c139f7ef77f0e67",
+      "status": "review",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g67-6-triangle-sides",
+      "hash": "2aabbf2673ce598a",
+      "status": "pass",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g67-6-triangle-angles",
+      "hash": "642a263caa1b24d7",
+      "status": "pass",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g67-6-plot-point",
+      "hash": "34cfa7504caf5e61",
+      "status": "pass",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g67-6-translate-point",
+      "hash": "0622d25e3efc4a1e",
+      "status": "review",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g67-6-line-graph",
+      "hash": "871efd04fcefdd27",
+      "status": "review",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g67-6-spinner-event",
+      "hash": "c33625c39273c6bb",
+      "status": "review",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g67-6-theoretical",
+      "hash": "d57780556ed62e2c",
+      "status": "review",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g67-6-l-shape-perimeter",
+      "hash": "df2c256030c83f5a",
+      "status": "pass",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g67-7-greatest-integer",
+      "hash": "c6b70a8fecd49beb",
+      "status": "review",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g67-7-order-integers",
+      "hash": "6bafbd12aecdec5e",
+      "status": "review",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g67-7-add-integers",
+      "hash": "3788bd4e90bbe69e",
+      "status": "pass",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g67-7-subtract-integers",
+      "hash": "d4ac1f2316669c99",
+      "status": "pass",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g67-7-multiply-integers",
+      "hash": "8d705e659ec73e1b",
+      "status": "pass",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g67-7-divide-integers",
+      "hash": "5cadce432d08d32d",
+      "status": "pass",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g67-7-temperature",
+      "hash": "15cdac184bb24953",
+      "status": "pass",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g67-7-integer-order-of-operations",
+      "hash": "e9afbc498ae4c0fc",
+      "status": "pass",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g67-7-decimal-multiply",
+      "hash": "5d3edf5d55072c6e",
+      "status": "review",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g67-7-decimal-divide",
+      "hash": "c7c646035da51f13",
+      "status": "review",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g67-7-bigger-or-smaller",
+      "hash": "d72658177936221b",
+      "status": "review",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g67-7-decimal-order-of-operations",
+      "hash": "1ecf395a27684ec3",
+      "status": "review",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g67-7-times-five",
+      "hash": "e55007ea8589e6de",
+      "status": "pass",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g67-7-change-several",
+      "hash": "bebeaa1c5c2a60a9",
+      "status": "review",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g67-7-fraction-to-decimal",
+      "hash": "837006c84b2b4c2d",
+      "status": "review",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g67-7-fraction-to-percent",
+      "hash": "7e24b67ed45b5d12",
+      "status": "review",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g67-7-greatest-mixed-forms",
+      "hash": "5e80f0d41afc7d59",
+      "status": "review",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g67-7-repeating-decimal",
+      "hash": "77ac5c96bc73b7ef",
+      "status": "review",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g67-7-decimal-to-fraction",
+      "hash": "8a77ab61e7dd2a5d",
+      "status": "review",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g67-7-percent-to-fraction",
+      "hash": "2248e32d788caafd",
+      "status": "review",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g67-7-decimal-between",
+      "hash": "817042f20bbfdaba",
+      "status": "pass",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g67-7-order-forms",
+      "hash": "7f48fd37c9f0ee35",
+      "status": "review",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g67-7-ratio-percent",
+      "hash": "0169dda0af5d5dad",
+      "status": "review",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g67-7-sales-tax",
+      "hash": "7a563dd182c5f034",
+      "status": "review",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g67-7-tip",
+      "hash": "440d126a896bb8e0",
+      "status": "review",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g67-7-sale-price",
+      "hash": "c4012e3a4b5ee255",
+      "status": "review",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g67-7-write-decimal",
+      "hash": "14047b95076b1abd",
+      "status": "review",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g67-7-evaluate-relation",
+      "hash": "6eea998cdedcc7f3",
+      "status": "review",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g67-7-rule-from-table",
+      "hash": "b14af47e497a72aa",
+      "status": "review",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g67-7-integer-add-equation",
+      "hash": "be85701cd370c9a6",
+      "status": "pass",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g67-7-integer-subtract-equation",
+      "hash": "8c77ea5c3f40b89d",
+      "status": "pass",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g67-7-two-step-plus",
+      "hash": "71b6f141e75fe6da",
+      "status": "review",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g67-7-two-step-minus",
+      "hash": "7bdaa877a97e911c",
+      "status": "pass",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g67-7-two-step-divide",
+      "hash": "2822ab1310be8ac5",
+      "status": "pass",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g67-7-two-step-story",
+      "hash": "657c60690129eaa6",
+      "status": "pass",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g67-7-story-equation",
+      "hash": "20b54ec4491bca48",
+      "status": "pass",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g67-7-check-solution",
+      "hash": "787da95bb6791964",
+      "status": "pass",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g67-7-table-far",
+      "hash": "7d1bb14b43dcd124",
+      "status": "pass",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g67-7-negative-input",
+      "hash": "e1bd920e1b1cb578",
+      "status": "review",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g67-7-point-on-line",
+      "hash": "6e9f75a18f1a30ba",
+      "status": "pass",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g67-7-draining-pool",
+      "hash": "d9f1c4a600faa313",
+      "status": "pass",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g67-7-figure-expression",
+      "hash": "8c409e214afb6b05",
+      "status": "review",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g67-7-balance-boxes",
+      "hash": "053f6b8ab892e177",
+      "status": "pass",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g67-7-circumference",
+      "hash": "3d712c487127a963",
+      "status": "review",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g67-7-circle-area",
+      "hash": "bc583b9849b7d511",
+      "status": "review",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g67-7-diameter-from-circumference",
+      "hash": "6de722c6a2172023",
+      "status": "review",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g67-7-cylinder-base-area",
+      "hash": "4f6c7d763ab3c2ba",
+      "status": "review",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g67-7-cylinder-volume",
+      "hash": "6e386daa37ddbcb4",
+      "status": "review",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g67-7-quadrant",
+      "hash": "8c18f568331e4f9b",
+      "status": "review",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g67-7-reflect-point",
+      "hash": "3dd20d740cf5b168",
+      "status": "review",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g67-7-translate-point",
+      "hash": "8c3488a64dd47be9",
+      "status": "review",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g67-7-half-turn",
+      "hash": "dda87fb64a3600dd",
+      "status": "review",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g67-7-circle-graph-amount",
+      "hash": "3f984c7eb94ac12c",
+      "status": "pass",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g67-7-circle-graph-degrees",
+      "hash": "791367d12fed8506",
+      "status": "pass",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g67-7-circle-graph-percent",
+      "hash": "5814386089a2e220",
+      "status": "pass",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g67-7-count-outcomes",
+      "hash": "f082d297a93a12f3",
+      "status": "pass",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g67-7-experimental",
+      "hash": "cfb69bbc61131f63",
+      "status": "pass",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g67-7-dice-sum",
+      "hash": "5b1407949d9127f8",
+      "status": "pass",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g67-8-square",
+      "hash": "c652675ecb88c47c",
+      "status": "pass",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g67-8-perfect-square",
+      "hash": "abb644f29834d694",
+      "status": "pass",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g67-8-square-root",
+      "hash": "bf0a15f2c6a4b3b8",
+      "status": "pass",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g67-8-square-side",
+      "hash": "f8dfd165512b36e2",
+      "status": "pass",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g67-8-root-between",
+      "hash": "53628d21f404f3c5",
+      "status": "review",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g67-8-square-tile",
+      "hash": "a81fd67d16ad495f",
+      "status": "pass",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g67-8-add-fractions",
+      "hash": "e67551da1de5f7e3",
+      "status": "pass",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g67-8-add-mixed-numbers",
+      "hash": "665dafd385259b80",
+      "status": "pass",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g67-8-subtract-fractions",
+      "hash": "4605bfedd236fc86",
+      "status": "pass",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g67-8-multiply-fractions",
+      "hash": "6afba39df9eb0cf2",
+      "status": "review",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g67-8-divide-fractions",
+      "hash": "ddd62c59a3509a9c",
+      "status": "review",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g67-8-small-percent",
+      "hash": "d541f238766fd609",
+      "status": "review",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g67-8-large-percent",
+      "hash": "fe849eb24d95f652",
+      "status": "review",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g67-8-unit-rate",
+      "hash": "171ce1ba6bece956",
+      "status": "pass",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g67-8-three-part-ratio",
+      "hash": "59fb76826a9125d9",
+      "status": "review",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g67-8-negative-equation",
+      "hash": "31de0356625d3eb1",
+      "status": "pass",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g67-8-negative-coefficient",
+      "hash": "4f820c616707cdc2",
+      "status": "pass",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g67-8-substitute-signed",
+      "hash": "576368596f16abb5",
+      "status": "pass",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g67-8-combine-expression",
+      "hash": "e7a06a2c04bb75b7",
+      "status": "review",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g67-8-large-relation",
+      "hash": "82e711f90b53d8ea",
+      "status": "pass",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g67-8-integer-table",
+      "hash": "d9b52c2d95de5abd",
+      "status": "pass",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g67-8-inverse-input",
+      "hash": "040708cbc93fbfd9",
+      "status": "pass",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g67-8-expression-story",
+      "hash": "0b990e3deb9f7e9b",
+      "status": "review",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g67-8-prism-surface",
+      "hash": "4a1b8962e67a51b5",
+      "status": "pass",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g67-8-cube-surface",
+      "hash": "42a3d3ea31dc3da8",
+      "status": "pass",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g67-8-hypotenuse",
+      "hash": "cd7904e7d9ae6bc7",
+      "status": "pass",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g67-8-missing-leg",
+      "hash": "5aba012e74e9816b",
+      "status": "pass",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g67-8-mean",
+      "hash": "0bc4e96c2ebe0bcf",
+      "status": "pass",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g67-8-median",
+      "hash": "459dcab574bd95e7",
+      "status": "pass",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g67-8-mode",
+      "hash": "e6361842cc7d5f48",
+      "status": "review",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    },
+    {
+      "id": "g67-8-independent-probability",
+      "hash": "0ae771f5f7db3ab9",
+      "status": "review",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
+    }
+  ]
+}
