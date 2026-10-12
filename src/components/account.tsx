@@ -352,7 +352,7 @@ export function AccountSignup() {
             if (guess && !pickedProvince) setChild((c) => ({ ...c, province: guess }));
           }} aria-invalid={!!errors.postal} aria-describedby={described("a-postal", errors.postal)} />
         </Field>
-        <Field id="a-password" label="Password" bad={errors.password} error={`Use ${PASSWORD_MIN} to ${PASSWORD_MAX} characters.`} hint={`At least ${PASSWORD_MIN} characters.`}>
+        <Field id="a-password" label="Password" bad={errors.password} error={failure === "weak_password" ? "Choose a stronger password." : `Use ${PASSWORD_MIN} to ${PASSWORD_MAX} characters.`} hint={`At least ${PASSWORD_MIN} characters.`}>
           <span className="pw">
             <input id="a-password" type={showPassword ? "text" : "password"} autoComplete="new-password" value={password} onChange={(e) => setPassword(e.target.value)} aria-invalid={!!errors.password} aria-describedby={described("a-password", errors.password, true)} />
             <button type="button" onClick={() => setShowPassword((s) => !s)} aria-controls="a-password" aria-pressed={showPassword}>{showPassword ? "Hide" : "Show"}</button>
@@ -587,7 +587,7 @@ export function GoogleButton({ next }: { next?: string }) {
   );
 }
 
-/** A parent who signed in with Google for the first time gives the rest of the signup details. */
+/** A parent who signed in for the first time without the signup form (Google, or a password reset link) gives the rest of the details. */
 export function FinishAccount({ name: googleName, email }: { name: string; email: string }) {
   const router = useRouter();
   const form = useRef<HTMLFormElement>(null);
@@ -631,7 +631,7 @@ export function FinishAccount({ name: googleName, email }: { name: string; email
       {!failure && Object.values(errors).some(Boolean) && <p role="alert" className="acct-alert">{errorText("invalid")}</p>}
       <fieldset>
         <legend>About you</legend>
-        <p className="small">Signed in with Google as <b>{email}</b>.</p>
+        <p className="small">Signed in as <b>{email}</b>.</p>
         <Field id="f-name" label="Your name" bad={errors.name} error="Enter your name.">
           <input id="f-name" autoComplete="name" value={name} onChange={(e) => setName(e.target.value)} aria-invalid={!!errors.name} aria-describedby={described("f-name", errors.name)} />
         </Field>

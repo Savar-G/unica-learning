@@ -1,0 +1,53 @@
+# Public signup: what the hosted project needs (#82)
+
+The signup at `/start` proves the parent's email with a one-time code before any account data is written (D-093). The code cannot set the Supabase settings below. Set them in the dashboard of project `cdjobwsyzndtltzfpyqa` before the launch deploy, and check them again after any Auth change.
+
+## Order
+
+1. Apply `supabase/migrations/20261012_add_family_admission.sql`. `/api/account/finish` calls `create_family`; without it, every new family fails with "We could not save your details".
+2. Set the Auth settings and email templates below.
+3. Deploy the code. Then remove `ASSESSMENT_PILOT` from the Vercel project; no code reads it.
+
+## Auth settings
+
+| Setting (Authentication) | Value | Why |
+|---|---|---|
+| Sign In / Providers, Email, Confirm email | On | Off, Supabase confirms any address at once. Anyone could then finish an account for an email they do not own. |
+| Sign In / Providers, Allow new users to sign up | On | The email code creates the user. |
+| Sign In / Providers, Email OTP length | 6 (default) | The page asks for "the code" and accepts 6 to 10 digits. |
+| Sign In / Providers, Email OTP expiration | 3600 seconds or less | The page states no time; "send a new code" covers an expired code. |
+| Rate limits, emails sent per hour | Enough for launch traffic | Each signup sends one code email, and resets and phone links send more. The value recorded in PR #89 was 30 an hour for the whole project. |
+| Rate limits, token verifications | Keep the default | It limits code guessing. |
+| Identity linking | Keep automatic linking | Google then joins an existing confirmed account with the same email, and Supabase removes unconfirmed identities. |
+
+Keep the settings from PR #89: custom SMTP through Resend on `unicalearning.com`, Site URL `https://unicalearning.com`, the redirect allow list (`/auth/callback` for Google, `/auth/confirm` for password reset), and the password reset template with the token hash.
+
+## Email templates
+
+The "Confirm signup" and "Magic link" templates must show the code (`{{ .Token }}`) and no confirmation link. A link confirms the address on another tab without the signup's password step. Supabase keeps the first password set for an unconfirmed address, so a link would leave a password that someone else chose. A new address gets "Confirm signup"; an address that already has an account gets "Magic link". Both answers look the same to the visitor.
+
+Confirm signup, subject: `Your Unica Learning code`
+
+```html
+<p>Here is your code to confirm your email for Unica Learning:</p>
+<p style="font-size:28px;letter-spacing:4px"><b>{{ .Token }}</b></p>
+<p>Enter it on the signup page. If you did not ask for this code, you can ignore this email.</p>
+```
+
+Magic link, subject: `Your Unica Learning sign-in code`
+
+```html
+<p>Here is your code to sign in to Unica Learning:</p>
+<p style="font-size:28px;letter-spacing:4px"><b>{{ .Token }}</b></p>
+<p>Enter it on the page where you asked for it. If you did not ask for this code, you can ignore this email.</p>
+```
+
+## Hosted checks after the deploy
+
+Use two QA inboxes that the team controls. Do not use a Stripe test card with the live key.
+
+1. Sign up with a new address. The email has a code and no link. A wrong code shows the error; the right code opens `/account` with the child.
+2. Start a signup, do not enter the code, and try to sign in with that password on `/sign-in`. It must fail.
+3. Sign up again with the address from step 1. The page shows the same message; the code opens `/account` with "This email already has an account"; the old password still works and the new one does not.
+4. On a phone, sign up. `/account` shows the phone screen, and the sign-in link email arrives.
+5. Google sign-in with a new Gmail address still reaches `/account/finish`, then `/account`.
