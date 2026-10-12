@@ -43,7 +43,7 @@ export function homeJsonLd() {
         provider: { "@id": ORG_ID },
         areaServed: { "@type": "Country", name: "Canada" },
         audience: { "@type": "PeopleAudience", suggestedMinAge: 6, suggestedMaxAge: 12 },
-        offers: [offer(PLANS.one), offer(PLANS.both)],
+        offers: [offer(PLANS.one)],
       },
       {
         "@type": "FAQPage",

@@ -20,7 +20,7 @@ export async function POST(request: Request) {
   } catch {
     return fail("bad_json", 400);
   }
-  if (typeof body.report !== "string" || !isUuid(body.report) || (body.plan !== "one" && body.plan !== "both")) return fail("invalid", 400);
+  if (typeof body.report !== "string" || !isUuid(body.report) || body.plan !== "one") return fail("invalid", 400);
 
   const result = await startCard(id, body.report, body.plan, body.src === "email" ? "email" : "account", new URL(request.url).origin);
   if (!result.ok) return fail(result.error, "status" in result ? result.status : 400);

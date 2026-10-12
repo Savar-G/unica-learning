@@ -2,12 +2,12 @@
 
 // Reserve flow: plan + grade -> details -> (open curriculum) review -> Stripe saves the card, or (other) waitlist.
 // Nothing is charged at signup; the first month is charged when the first workbook ships (D-053).
-// Any element with [data-open] opens it ([data-plan] preselects a plan, [data-src] names the CTA).
+// Any element with [data-open] opens it ([data-src] names the CTA). There is one plan: math (Savar, 2026-10-11).
 // Every signup is saved through /api/signup to Supabase before the parent leaves for Stripe.
 import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { PLANS, type PlanId } from "@/lib/site";
+import { PLANS } from "@/lib/site";
 import { CURRICULA, EMAIL, OPEN_CURRICULA, POSTAL, curriculumFromPostal, statusFor, type CurriculumId, type SignupResult } from "@/lib/signup";
 import { track } from "@/lib/track";
 import { keepReceipt } from "@/lib/receipt";
@@ -26,8 +26,6 @@ export function Reserve() {
   const router = useRouter();
   const dlg = useRef<HTMLDialogElement>(null);
   const [step, setStep] = useState<Step>(1);
-  const [plan, setPlan] = useState<PlanId>("one");
-  const [subject, setSubject] = useState("Math");
   const [grade, setGrade] = useState("4");
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
@@ -44,7 +42,6 @@ export function Reserve() {
   const [cardUrl, setCardUrl] = useState<string | null>(null);
 
   const open = useCallback((src: string, p?: string) => {
-    if (p === "one" || p === "both") setPlan(p);
     setSrc(src);
     setCardUrl(null);
     setErrors({});
@@ -77,7 +74,7 @@ export function Reserve() {
     qs.delete("card");
     const rest = qs.toString();
     history.replaceState(null, "", `${location.pathname}${rest ? `?${rest}` : ""}${location.hash}`);
-    let kept: { name?: string; email?: string; plan?: string; url?: string } = {};
+    let kept: { name?: string; email?: string; url?: string } = {};
     try {
       kept = JSON.parse(sessionStorage.getItem(CARD_KEY) ?? "{}");
     } catch {}
@@ -85,7 +82,6 @@ export function Reserve() {
     /* eslint-disable react-hooks/set-state-in-effect */
     setName(kept.name ?? "");
     setEmail(kept.email ?? "");
-    if (kept.plan === "one" || kept.plan === "both") setPlan(kept.plan);
     setCardUrl(kept.url ?? null);
     setStep("nocard");
     /* eslint-enable react-hooks/set-state-in-effect */
@@ -108,8 +104,9 @@ export function Reserve() {
     first?.focus();
   }, [step]);
 
-  const subj = plan === "both" ? "Math + Reading" : subject;
-  const price = PLANS[plan].price;
+  const plan = PLANS.one.id;
+  const subj = PLANS.one.name;
+  const price = PLANS.one.price;
   const status = statusFor(curriculum);
   // "the Alberta" / "your province's", for "books for ... curriculum".
   const theirs = curriculum === "other" ? "your province's" : `the ${CURRICULA[curriculum]}`;
@@ -144,7 +141,7 @@ export function Reserve() {
   const toStripe = (url: string) => {
     setBusy(true);
     try {
-      sessionStorage.setItem(CARD_KEY, JSON.stringify({ name: name.trim(), email: email.trim(), plan, url }));
+      sessionStorage.setItem(CARD_KEY, JSON.stringify({ name: name.trim(), email: email.trim(), url }));
     } catch {}
     track("card_redirect", { plan, price });
     window.location.assign(url);
@@ -239,27 +236,11 @@ export function Reserve() {
       </div>
 
       <form data-step="1" hidden={step !== 1} onSubmit={submitPlan} noValidate>
-        <h3>Choose your plan.</h3>
-        <fieldset>
-          <legend>Plan</legend>
-          <label className="opt">
-            <input type="radio" name="plan" checked={plan === "one"} onChange={() => setPlan("one")} />
-            <span className="t"><b>{PLANS.one.name}</b><span>{PLANS.one.note}</span></span>
-            <span className="p">CAD {PLANS.one.price}</span>
-          </label>
-          {plan === "one" && (
-            <div className="seg" role="radiogroup" aria-label="Subject">
-              {["Math", "Reading"].map((s) => (
-                <label key={s}><input type="radio" name="subject" checked={subject === s} onChange={() => setSubject(s)} />{s}</label>
-              ))}
-            </div>
-          )}
-          <label className="opt">
-            <input type="radio" name="plan" checked={plan === "both"} onChange={() => setPlan("both")} />
-            <span className="t"><b>{PLANS.both.name}</b><span>{PLANS.both.note}</span></span>
-            <span className="p">CAD {PLANS.both.price}</span>
-          </label>
-        </fieldset>
+        <h3>Choose your child&apos;s grade.</h3>
+        <div className="opt is-static">
+          <span className="t"><b>{PLANS.one.name} workbooks</b><span>A month, delivery included</span></span>
+          <span className="p">CAD {PLANS.one.price}</span>
+        </div>
         <fieldset>
           <legend>Your child&apos;s grade</legend>
           <div className="seg ages" role="radiogroup" aria-label="Grade">

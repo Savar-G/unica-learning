@@ -6,7 +6,7 @@ import { Rise } from "./drawn";
 import "@/ds/styles/compare.css";
 
 const PANELS = [
-  { name: BRAND, trait: "Personal and structured", price: `CAD ${PLANS.one.price}`, unit: "one subject, a month, delivery included", text: "Every book is matched to your child's level and gaps, and adapts to how they did. You get a gap report and solutions after every scan.", us: true },
+  { name: BRAND, trait: "Personal and structured", price: `CAD ${PLANS.one.price}`, unit: "math, a month, delivery included", text: "Every book is matched to your child's level and gaps, and adapts to how they did. You get a gap report and solutions after every scan.", us: true },
   { name: "Private tutor", trait: "Personal", price: "$40-$100", unit: "an hour", text: "Tailored by the tutor, who adjusts each session. You hear about the gaps when the tutor reports them." },
   { name: "Learning centre", trait: "Structured", price: "$200+", unit: "per subject, a month", text: "A set program at the centre, often the same for every child. Your child moves at their own pace on a set path." },
 ];

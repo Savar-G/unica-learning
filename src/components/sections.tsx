@@ -85,7 +85,7 @@ export function Hero() {
             it gets harder. Unica builds each workbook around your child&apos;s level, pace and learning style, then mails it home.
           </>
         }
-        meta={[`From CAD ${PLANS.one.price}/month`, "30-day money-back guarantee", "Cancel anytime"]}
+        meta={[`CAD ${PLANS.one.price}/month`, "30-day money-back guarantee", "Cancel anytime"]}
         page={null}
         report={null}
         animate
@@ -270,28 +270,18 @@ export function Pricing() {
       <Knot />
       <Rise>
         <SectionHeader eyebrow="Pricing" title="Personal like a tutor. Structured like a learning centre. Priced like neither." titleId="priceT" />
-        <p className="g-line">Every plan has a <Highlight>30-day money-back guarantee.</Highlight></p>
+        <p className="g-line">Try it with a <Highlight>30-day money-back guarantee.</Highlight></p>
       </Rise>
       <PlanGrid>
         <PlanCard
           className="rise"
-          name="One subject"
+          featured
+          name={PLANS.one.name}
           note={PLANS.one.note}
           price={PLANS.one.price}
-          features={["Free placement assessment", "Personalized workbooks matched to your child's level and gaps, mailed home", "Your next book arrives before the current one runs out", "Progress reports after every check-in", "Delivery included. Cancel anytime"]}
-          ctaLabel="Choose one subject"
-          cta={<GetStarted src="price" plan="one" label="Choose one subject" ghost />}
-        />
-        <PlanCard
-          className="rise"
-          style={d(0.08)}
-          featured
-          name="Math + Reading"
-          note={PLANS.both.note}
-          price={PLANS.both.price}
-          features={["Everything in One Subject", "A math book and a reading book every cycle", "One progress report for both", "Delivery included. Cancel anytime"]}
-          ctaLabel="Choose math + reading"
-          cta={<GetStarted src="price" plan="both" label="Choose math + reading" />}
+          features={["Free placement assessment", "Personalized math workbooks matched to your child's level and gaps, mailed home", "Your next book arrives before the current one runs out", "Progress reports after every check-in", "Delivery included. Cancel anytime"]}
+          ctaLabel="Choose math"
+          cta={<GetStarted src="price" plan="one" label="Choose math" />}
         />
       </PlanGrid>
       <ComparePanels />
