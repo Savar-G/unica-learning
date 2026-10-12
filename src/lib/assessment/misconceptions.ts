@@ -14,6 +14,7 @@ export const MISCONCEPTIONS = {
   "minutes-reversed": { description: "Subtracts the end minutes from the start minutes and ignores the change of hour", evidence: "none" },
   "count-other": { description: "Estimates the count for the other outcome instead of the outcome asked about", evidence: "none" },
   "coefficient-product": { description: "Multiplies the coefficients of like terms instead of adding them", evidence: "none" },
+  "opposite-sign": { description: "Gives the right size with the opposite sign", evidence: "none" },
   "change-order": { description: "Does not compare all the changes between neighbouring points and selects an intermediate change", evidence: "none" },
   "full-turn": { description: "Uses 360 degrees for a straight angle instead of 180 degrees", evidence: "none" },
   "input-step-two": { description: "Uses an input increase of two when the question gives an increase of one", evidence: "none" },

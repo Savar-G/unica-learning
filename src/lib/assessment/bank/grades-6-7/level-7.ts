@@ -378,7 +378,7 @@ export const LEVEL_7: readonly TaggedTemplate[] = [
     // Place a fraction between two others, in decimal form.
     // Triage: AB 6: AB current K-6, Grade 6, MAT6-OI1-GQ5-LO1-KO1-SP.
     id: "g67-7-decimal-between",
-    strand: "F", grades: { BC: 7, AB: 6, SK: 7, MB: 7, ON: 7 }, format: "choice", whiteboard: true, standard: "7.4",
+    strand: "F", grades: { BC: 7, AB: 6, SK: 7, MB: 7, ON: 6 }, format: "choice", whiteboard: true, standard: "7.4",
     fill(rng) {
       const [[a, b], [c, d]] = rng.pick([
         [[1, 4], [1, 3]], [[1, 5], [1, 4]], [[2, 5], [1, 2]], [[1, 2], [3, 5]], [[3, 5], [2, 3]], [[2, 3], [3, 4]], [[3, 4], [4, 5]], [[1, 8], [1, 5]],
@@ -550,10 +550,10 @@ export const LEVEL_7: readonly TaggedTemplate[] = [
     },
   },
   {
-    // One-step equations with integers (BC 7.2 integer operations with 6.10 one-step equations). AB 2016 grade 7 PR6,
+    // One-step equations with integers (BC 7.2 operations with integers, applied to a 6.10 one-step equation). AB 2016 grade 7 PR6,
     // SK P7 (x + a = b, where a and b are integers), MB 7.PR.6; ON8 C2.3 is the first equation outcome with integers.
     id: "g67-7-integer-add-equation",
-    strand: "A", grades: { BC: 7, AB: 7, SK: 7, MB: 7, ON: 8 }, format: "choice", whiteboard: true, standard: "7.6",
+    strand: "A", grades: { BC: 7, AB: 7, SK: 7, MB: 7, ON: 8 }, format: "choice", whiteboard: true, standard: "7.2",
     fill(rng) {
       const [a, b] = draw(rng, (g) => [g.int(2, 15), g.int(-12, 12)], ([a, b]) => b < a && b !== 0 && distinctNumbers([b - a, b + a, a - b]));
       return {
@@ -561,14 +561,14 @@ export const LEVEL_7: readonly TaggedTemplate[] = [
         prompt: `x + ${a} = ${num(b)}. What is x?`,
         readAloud: `x plus ${a} equals ${sayNum(b)}. What is x?`,
         answer: num(b - a),
-        wrong: [wrong(num(b + a), "inverse-op"), wrong(num(a - b), "O9")],
+        wrong: [wrong(num(b + a), "inverse-op"), wrong(num(a - b), "opposite-sign")],
       };
     },
   },
   {
     // The same outcomes: x − a = b with a negative b.
     id: "g67-7-integer-subtract-equation",
-    strand: "A", grades: { BC: 7, AB: 7, SK: 7, MB: 7, ON: 8 }, format: "choice", whiteboard: true, standard: "7.6",
+    strand: "A", grades: { BC: 7, AB: 7, SK: 7, MB: 7, ON: 8 }, format: "choice", whiteboard: true, standard: "7.2",
     fill(rng) {
       const [a, b] = draw(rng, (g) => [g.int(2, 15), -g.int(1, 15)], ([a, b]) => b + a !== 0 && distinctNumbers([b + a, b - a, -(b + a)]));
       return {
@@ -576,7 +576,7 @@ export const LEVEL_7: readonly TaggedTemplate[] = [
         prompt: `x − ${a} = ${num(b)}. What is x?`,
         readAloud: `x minus ${a} equals ${sayNum(b)}. What is x?`,
         answer: num(b + a),
-        wrong: [wrong(num(b - a), "inverse-op"), wrong(num(-(b + a)), "O9")],
+        wrong: [wrong(num(b - a), "inverse-op"), wrong(num(-(b + a)), "opposite-sign")],
       };
     },
   },
