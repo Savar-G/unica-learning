@@ -869,6 +869,8 @@ describe("primary-source corrections from the #75 checker run", () => {
       const q = fillTemplate(byId("g35-6-like-terms-equation"), seed), { a, b } = q.values;
       const total = Number(q.prompt.match(/=\s(\d+)/)![1]);
       expect((a + b) * Number(q.answer)).toBe(total);
+      // Multiplying the coefficients instead of adding them divides the total by a times b.
+      for (const w of q.wrong.filter((w) => Number(w.value) === total / (a * b))) expect(w.misconception).toBe("coefficient-product");
     }
   });
   it("finds the other part of a right angle and codes the straight-angle total", () => {

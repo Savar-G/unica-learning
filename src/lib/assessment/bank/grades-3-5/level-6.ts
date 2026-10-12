@@ -167,7 +167,7 @@ export const LEVEL_6: readonly TaggedTemplate[] = [
   template("like-terms-equation", "A", "6.10", (rng) => {
     const [a, b] = draw(rng, (r) => [r.int(2, 6), r.int(2, 6)], ([a, b]) => a !== b), x = rng.int(3, 12), total = (a + b) * x;
     return { values: { a, b, x }, prompt: `Find x. ${a}x + ${b}x = ${total}`, readAloud: `${a} times a number, plus ${b} times the same number, equals ${total}. What is the number?`,
-      answer: String(x), wrong: typedWrong(x, [[total - a - b, "operation"], [total / (a * b), "product-as-sum"]]) };
+      answer: String(x), wrong: typedWrong(x, [[total - a - b, "operation"], [total / (a * b), "coefficient-product"]]) };
   }, "number", { SK: 8, MB: 8 }),
   template("rule-point", "A", "6.9", (rng) => {
     const k = rng.int(2, 5), b = rng.int(1, 9), x = rng.int(2, 8), y = k * x + b;
