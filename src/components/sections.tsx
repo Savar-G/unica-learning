@@ -29,7 +29,7 @@ import {
   SwapWord,
   type IconName,
 } from "@/ds";
-import { ComparePanels } from "./compare";
+import { CompareTable } from "./compare";
 import { Knot, Rise, type Vars } from "./drawn";
 
 import heroHome1 from "@/assets/img/hero-home-1.jpg";
@@ -287,7 +287,7 @@ export function Pricing() {
           cta={<GetStarted src="price" />}
         />
       </PlanGrid>
-      <ComparePanels />
+      <CompareTable />
     </Section>
   );
 }
