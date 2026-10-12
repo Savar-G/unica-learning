@@ -1,0 +1,40 @@
+{
+  "round": 10,
+  "decision": "How should the personalization benefit stand out within the existing paragraph?",
+  "primary_axis": "Text emphasis",
+  "invariants": [
+    "Existing layout",
+    "Same text",
+    "Same type size and colours"
+  ],
+  "options": [
+    {
+      "id": "A",
+      "artifact": "emphasis.html",
+      "screenshot": "emphasis.png",
+      "bet": "Bold the benefit only"
+    },
+    {
+      "id": "B",
+      "artifact": "emphasis.html",
+      "screenshot": "emphasis.png",
+      "bet": "Bold the benefit on a new line"
+    },
+    {
+      "id": "C",
+      "artifact": "emphasis.html",
+      "screenshot": "emphasis.png",
+      "bet": "Bold the benefit and mechanism"
+    },
+    {
+      "id": "plain",
+      "artifact": "../../../src/components/sections.tsx",
+      "screenshot": "plain-desktop.png",
+      "bet": "Use the normal paragraph weight for the full solution"
+    }
+  ],
+  "recommendation": "A",
+  "selection": "plain",
+  "superseded_selection": "C",
+  "final_decision": "Use the normal paragraph weight. Publish the revised copy on the normal home page."
+}

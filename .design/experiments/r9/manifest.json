@@ -1,0 +1,18 @@
+{
+  "round": 9,
+  "decision": "Preserve the existing opening layout; revise supporting copy only",
+  "status": "copy-review",
+  "rejected": [
+    "A: one column",
+    "B: two columns",
+    "C: photo beside text"
+  ],
+  "reference": "User screenshot: CleanShot 2026-10-12 at 10.47.38 AM.png",
+  "options": [
+    {
+      "id": "revised",
+      "url": "http://localhost:3017/?variant=revised",
+      "artifact": "revised.png"
+    }
+  ]
+}
