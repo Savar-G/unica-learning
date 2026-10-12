@@ -170,9 +170,10 @@ export const LEVEL_4: readonly TaggedTemplate[] = [
     },
   },
   {
-    // Three-digit by one-digit division (map, grade 4: 156 / 4). WNCP and ON divide a 3-digit number in grade 5.
+    // AB4 MAT4-OI1-GQ4-LO1-KO1-SP and ON4 B2.6 cover three-digit division by one-digit numbers.
+    // BC keeps grade 4; SK and MB keep grade 5. This generator uses exact quotients only.
     id: "g35-4-divide",
-    strand: "O", grades: { BC: 4, AB: 5, SK: 5, MB: 5, ON: 5 }, format: "number", whiteboard: true, standard: "4.5",
+    strand: "O", grades: { BC: 4, AB: 4, SK: 5, MB: 5, ON: 4 }, format: "number", whiteboard: true, standard: "4.5",
     fill(rng) {
       const [d, q] = draw(rng, (r) => [r.int(3, 9), r.int(12, 99)], ([d, q]) => d * q >= 100 && d * q <= 999 && q % 10 !== 0);
       const n = d * q;
