@@ -1,13 +1,15 @@
 import "server-only";
 import { after } from "next/server";
+import { randomUUID } from "node:crypto";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import type { Province } from "@/lib/assessment";
+import { withFamilyCardOperation, type Province } from "@/lib/assessment";
 import type { CardResult, NextStepError, ReportSrc, WaitlistResult } from "@/lib/next-step";
 import { REPORT_PLANS, reportPath, type PlanOption } from "@/lib/report-view";
 import { CURRICULA } from "@/lib/signup";
 import { priceWithOffer, type PlanId } from "@/lib/site";
 import { keepSavedPlan, reportCardCustomer, reportCardSetupUrl, savedCardPlan, stripe, type ReportCardSetup } from "@/lib/stripe";
 import { adminClient } from "@/lib/supabase-auth";
+import { beginCardOperation, endCardOperation } from "@/lib/family-deletion-store";
 
 // The report's next step (#66), on the server. The routes pass the signed-in parent from the session cookie, never
 // from the request body, and every read here is filtered by that parent, so a parent can act only on their own report.
@@ -61,6 +63,26 @@ interface CardRow {
  * a Stripe key, or when Stripe fails, the choice stays recorded and Savar gets an alert to email a link by hand.
  */
 export async function startCard(parentId: string, reportId: string, plan: PlanId, src: ReportSrc, origin: string): Promise<CardResult | Fail> {
+  const db = adminClient();
+  if (!db) return fail("store_failed", 503);
+  const token = randomUUID();
+  let started = false;
+  try {
+    return await withFamilyCardOperation({
+      async begin() {
+        const held = await beginCardOperation(db, parentId, token);
+        started = true;
+        return held;
+      },
+      async end() { await endCardOperation(db, token); },
+    }, () => startCardHeld(parentId, reportId, plan, src, origin));
+  } catch {
+    // Keep an uncertain external result fenced until an operator reconciles it. Do not retry it here.
+    return started ? { ok: true, state: "later" } : fail("store_failed", 503);
+  }
+}
+
+async function startCardHeld(parentId: string, reportId: string, plan: PlanId, src: ReportSrc, origin: string): Promise<CardResult | Fail> {
   const admin = adminClient();
   if (!admin) return fail("store_failed", 503);
   const loaded = await load(admin, parentId, reportId, "card");
@@ -122,7 +144,8 @@ export async function startCard(parentId: string, reportId: string, plan: PlanId
     const customer = await reportCardCustomer(s, setup);
     if (!row.stripe_customer_id) {
       const { error: setError } = await admin.from("card_setups").update({ stripe_customer_id: customer }).eq("id", row.id).is("stripe_customer_id", null);
-      if (setError) console.error("[next-step] customer id save failed", row.id, setError.message);
+      // Never return an untracked Checkout. Retention must be able to find and close every open session.
+      if (setError) throw new Error("Customer id save failed");
     }
     const cardUrl = await reportCardSetupUrl(s, customer, setup);
     if (!cardUrl) {
@@ -134,7 +157,7 @@ export async function startCard(parentId: string, reportId: string, plan: PlanId
     const message = e instanceof Error ? e.message : String(e);
     console.error("[next-step] stripe failed", row.id, message);
     alert(`Stripe failed: ${message.slice(0, 200)}`);
-    return { ok: true, state: "later" };
+    throw e;
   }
 }
 
