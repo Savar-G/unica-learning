@@ -1,5 +1,5 @@
 import { after } from "next/server";
-import { PLANS } from "@/lib/site";
+import { PLANS, priceWithOffer } from "@/lib/site";
 import { CURRICULA, EMAIL, POSTAL, clip, cleanSource, statusFor, type CurriculumId, type SignupPayload, type SignupResult } from "@/lib/signup";
 import { cardSetupUrl, stripe } from "@/lib/stripe";
 import { supabase } from "@/lib/supabase";
@@ -91,7 +91,7 @@ async function notify(
         : `Reserved, but ${stripeState === "off" ? "STRIPE_SECRET_KEY is not set" : "Stripe failed"}: email them a link to add a card`;
   const lines = [
     `${label}: ${row.name} <${row.email}>`,
-    `Plan: ${row.subject}, CAD ${row.price}/month`,
+    `Plan: ${row.subject}, ${priceWithOffer(row.price)}`,
     `Child grade: ${row.grade}`,
     `Postal code: ${row.postal}`,
     `Curriculum: ${curriculum}`,

@@ -5,7 +5,7 @@ import type { Province } from "@/lib/assessment";
 import type { CardResult, NextStepError, ReportSrc, WaitlistResult } from "@/lib/next-step";
 import { REPORT_PLANS, reportPath, type PlanOption } from "@/lib/report-view";
 import { CURRICULA } from "@/lib/signup";
-import type { PlanId } from "@/lib/site";
+import { priceWithOffer, type PlanId } from "@/lib/site";
 import { keepSavedPlan, reportCardCustomer, reportCardSetupUrl, savedCardPlan, stripe, type ReportCardSetup } from "@/lib/stripe";
 import { adminClient } from "@/lib/supabase-auth";
 
@@ -218,7 +218,7 @@ function cardAlert(setup: ReportCardSetup, report: ReportRow, option: PlanOption
     text: [
       `Plan chosen from the report, but ${reason}: email them a link to add a card.`,
       `Parent: ${setup.name} <${setup.email}>`,
-      `Plan: ${option.subject}, CAD ${option.price}/month`,
+      `Plan: ${option.subject}, ${priceWithOffer(option.price)}`,
       `Child: ${report.child!.first_name}, school grade ${setup.grade}`,
       `Postal code: ${setup.postal}`,
       `Opened from: ${src === "email" ? "the report email" : "the account"}`,

@@ -4,7 +4,7 @@ import { FAQ } from "@/lib/faq";
 import { PARENT_QA } from "@/lib/parent";
 import { SITE_URL } from "@/lib/metadata";
 import { resourcePath, RESOURCES } from "@/lib/resources";
-import { BRAND, PLANS } from "@/lib/site";
+import { BRAND, FIRST_MONTH_OFF, PLANS, cad, firstMonth } from "@/lib/site";
 import { SUPPORT_EMAIL } from "@/lib/contact";
 
 const url = (path: string) => `${SITE_URL}${path}`;
@@ -16,6 +16,7 @@ Prices are in Canadian dollars. Delivery across Canada is included. There is one
 
 ## ${PLANS.one.name} (${PLANS.one.note})
 - Price: CAD ${PLANS.one.price} per month
+- First month: ${FIRST_MONTH_OFF}% off, CAD ${cad(firstMonth(PLANS.one.price))}
 - Includes: free placement assessment; 1 personalized math workbook a month, about 20-25 pages; the parent app (step-by-step help when your child is stuck, instant answer check, progress reports and worked solutions); delivery
 
 ## Terms
@@ -34,7 +35,7 @@ export function llmsTxt(): string {
   const guides = RESOURCES.map(({ meta }) => `- [${meta.title}](${url(resourcePath(meta.slug))})`).join("\n");
   return `# ${BRAND}
 
-> A personalized math and reading learning program for children aged 6-12 (grades 1-7) in Canada. Each child gets paper workbooks made for them and adapted after every book. Math is CAD ${PLANS.one.price} a month, delivery included.
+> A personalized math and reading learning program for children aged 6-12 (grades 1-7) in Canada. Each child gets paper workbooks made for them and adapted after every book. Math is CAD ${PLANS.one.price} a month, with ${FIRST_MONTH_OFF}% off the first month, delivery included.
 
 ${BRAND} is made in Vancouver, BC. A free placement assessment on paper finds each child's level and gaps. The child works on paper for 15-20 minutes a day, 5 days a week; the parent uses a phone app to check answers, get step-by-step help when the child is stuck, and see progress. Books follow the BC curriculum today; Alberta, Saskatchewan, Manitoba and Ontario are next.
 
@@ -53,7 +54,7 @@ ${PARENT_QA.map(([q, a]) => `- ${q} ${a}`).join("\n")}
 Parents in Canada with a child aged 6-12 who want math practice on paper, at the child's own level and pace, with little screen time for the child.
 
 ## Pricing
-- ${PLANS.one.name} (${PLANS.one.note}): CAD ${PLANS.one.price} per month
+- ${PLANS.one.name} (${PLANS.one.note}): CAD ${PLANS.one.price} per month; first month ${FIRST_MONTH_OFF}% off (CAD ${cad(firstMonth(PLANS.one.price))})
 - Free placement assessment. Delivery across Canada included. 30-day money-back guarantee. Cancel anytime.
 - Details: ${url("/pricing.md")}
 
