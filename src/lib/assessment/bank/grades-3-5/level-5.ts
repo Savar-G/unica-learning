@@ -174,8 +174,10 @@ export const LEVEL_5: readonly TaggedTemplate[] = [
     const [shown, spoken, mistake] = equations[op as keyof typeof equations], right = op === "dividend" ? x * k : x;
     return { values: { x, k }, prompt: `Find ${name}. ${shown}`, readAloud: spoken, answer: String(right),
       wrong: typedWrong(right, [[mistake, op === "divide" ? "unknown-divisor" : op === "multiply" || op === "take-away" ? "operation" : "inverse-operation"], [k, "known-as-unknown"]]) };
-  }, "number", { AB: 6, ON: ["add", "subtract", "take-away"].includes(op) ? 2 : 6 })),
-  ...["next", "missing", "back", "step", "start", "far"].map((task) => template(`pattern-${task}`, "A", ["next", "step"].includes(task) ? "3.6" : "5.10", (rng) => {
+  // One-step addition and subtraction with an unknown: AB MAT3-OI2-GQ1-LO1-KO2-SP, SK3 and MB 3.PR.3 (a symbol for the
+  // unknown), ON2 C2.2-C2.3. Multiplication and division past 100: AB MAT4-OI2-GQ1-LO1-KO2-SP; SK P5.2 and MB 5.PR.2.
+  }, "number", ["add", "subtract", "take-away"].includes(op) ? { AB: 3, SK: 3, MB: 3, ON: 2 } : { AB: 4, ON: 6 })),
+  ...["next", "missing", "back", "step", "start", "far"].map((task) => template(`pattern-${task}`, "A", ["next", "missing", "step"].includes(task) ? "3.6" : "5.10", (rng) => {
     const first = rng.int(11, 39), step = rng.int(3, 9), terms = Array.from({ length: 5 }, (_, i) => first + i * step);
     const prompts = {
       next: [`The pattern adds the same amount each time: ${terms.slice(0, 4).join(", ")}. What comes next?`, terms[4], terms[3] + 1],
@@ -188,7 +190,7 @@ export const LEVEL_5: readonly TaggedTemplate[] = [
     const [prompt, right, mistake] = prompts[task as keyof typeof prompts];
     return { values: { first, step }, prompt, readAloud: prompt.replace(/\?,/g, "a missing number,"), answer: String(right),
       wrong: typedWrong(right, [[mistake, task === "next" ? "skip-by-one" : task === "missing" ? "A2" : task === "back" ? "pattern-earlier" : task === "step" ? "pattern-start-step" : "pattern-step-count"], [right + step, "pattern-step-count"]]) };
-  }, "number", { BC: ["next", "step"].includes(task) ? 3 : 5, ON: 4 })),
+  }, "number", { BC: ["next", "missing", "step"].includes(task) ? 3 : 5, ON: 4 })),
   // Ontario 2020 C2.2 explicitly evaluates whole-number expressions in grade 5.
   ...["add", "subtract", "take-away", "multiply", "divide", "divisor"].map((op) => template(`evaluate-${op}`, "A", "5.11", (rng) => {
     const n = rng.int(12, 49), k = rng.int(3, 9);
@@ -234,7 +236,8 @@ export const LEVEL_5: readonly TaggedTemplate[] = [
     return { values: { start, left }, prompt: `${name} has ${start} cards and gives away n cards. ${left} cards remain. Which equation fits?`,
       readAloud: `${name} has ${start} cards and gives away a number of cards. ${left} cards remain. Which equation fits?`,
       answer: `${start} − n = ${left}`, wrong: [wrong(`${start} + n = ${left}`, "operation"), wrong(`${start} − ${left} = ${left}`, "ignores-given"), wrong(`n − ${start} = ${left}`, "equation-roles")] };
-  }, "choice", { ON: 2 }),
+  // AB MAT3-OI2-GQ1-LO1-KO2-SP solves problems with one-operation equations; SK4 and MB 4.PR.5 write a problem as an equation.
+  }, "choice", { AB: 3, SK: 4, MB: 4, ON: 2 }),
 
   // A child can draw each measurement situation from the words. No glyph stands in for a figure.
   template("rectangle-area", "MG", "5.12", (rng) => {
@@ -268,10 +271,11 @@ export const LEVEL_5: readonly TaggedTemplate[] = [
       wrong: typedWrong(right, [[a * b, "area-perimeter-link"], [2 * (a + b), "M2"]]) };
   }, "number", { ON: 4 }),
   template("duration", "MG", "5.14", (rng) => {
-    const hour = rng.int(1, 8), start = rng.int(35, 55), end = rng.int(5, 25), right = 60 - start + end;
+    // start − end = 30 equals the answer, and start − end = 50 equals the base-10 error: each coded value has one cause.
+    const hour = rng.int(1, 8), [start, end] = draw(rng, (r) => [r.int(35, 55), r.int(5, 25)], ([s, e]) => s - e !== 30 && s - e !== 50), right = 60 - start + end;
     return { values: { hour, start, end }, prompt: `A lesson starts at ${time(hour, start, "p.m.")} and ends at ${time(hour + 1, end, "p.m.")} How many minutes does it last?`,
       readAloud: `A lesson starts at ${sayTime(hour, start, "p.m.")} and ends at ${sayTime(hour + 1, end, "p.m.")}. How many minutes does it last?`, answer: String(right),
-      wrong: typedWrong(right, [[100 - start + end, "M8"], [start - end, "operation"]]) };
+      wrong: typedWrong(right, [[100 - start + end, "M8"], [start - end, "minutes-reversed"]]) };
   }, "number", { ON: 4 }),
   template("end-time", "MG", "5.14", (rng) => {
     const h = rng.int(1, 7), m = rng.int(35, 55), duration = rng.int(30, 45), end = m + duration - 60;

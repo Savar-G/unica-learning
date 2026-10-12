@@ -482,3 +482,82 @@ describe("the grades 6-7 bank", () => {
     }
   });
 });
+
+// #76 acceptance: corrections from the checker findings, each checked against the current official curriculum
+// (scripts/template-check/triage.md cites the outcome for every row).
+describe("primary-source corrections from the #76 checker run", () => {
+  const byId = (id: string) => BANK.find((t) => t.id === id)!;
+  const levels = (id: string) => PROVINCES.map((p) => fillTemplate(byId(id), 0, p).level);
+  const numbersIn = (id: string) => SEEDS.flatMap((seed) => {
+    const q = fillTemplate(byId(id), seed);
+    return [...`${q.prompt} ${q.answer}`.matchAll(/\d+/g)].map((m) => Number(m[0]));
+  });
+
+  it.each([
+    // [id, BC, AB, SK, MB, ON, other]; sources in the comments.
+    // AB MAT4-OI1-GQ4-LO1-KO1-SP and ON4 B2.6: three-digit by one-digit division with a remainder.
+    ["g67-5-share-remainder", [5, 4, 5, 5, 4, 5]],
+    // AB MAT4-OI1-GQ5-LO1-KO1-SP compares fractions; ON5 B1.4 stops at twelfths, the choices reach 36ths (ON6 B1.3).
+    ["g67-5-greatest-fraction", [5, 4, 5, 5, 6, 5]],
+    // One-step addition and subtraction with an unknown: AB MAT3-OI2-GQ1-LO1-KO2-SP, SK P3.2, MB 3.PR.3, ON2 C2.2-C2.3.
+    ["g67-5-equation-add", [5, 3, 3, 3, 2, 5]],
+    ["g67-5-equation-subtract", [5, 3, 3, 3, 2, 5]],
+    ["g67-6-balance-box", [6, 3, 3, 3, 2, 6]],
+    // Totals reach 175: ON6 C2.3 has no number limit (ON5 C2.3 stops at 100).
+    ["g67-6-equation-plus", [6, 3, 3, 3, 6, 6]],
+    // AB MAT4-OI2-GQ1-LO1-KO2-SP one-operation equations, products past 100.
+    ["g67-5-equation-multiply", [5, 4, 5, 5, 5, 5]],
+    ["g67-6-equation-times", [6, 4, 5, 5, 6, 6]],
+    // In words, with one-digit factors: AB4 and ON4 B2.6; SK N5 and MB 5.N division of three-digit numbers.
+    ["g67-6-equation-words", [6, 4, 5, 5, 4, 6]],
+    // AB MAT4-OI2-GQ1-LO1-KO2-SP, SK P4.2, MB 4.PR.6 (one-step equations), products within 100.
+    ["g67-6-equation-check", [6, 4, 4, 4, 5, 6]],
+    // AB MAT5-OI2-GQ1-LO1-KO3-SP, SK P5.2, MB 5.PR.2: write a one-step equation for a story.
+    ["g67-6-story-equation", [6, 5, 5, 5, 6, 6]],
+    // AB MAT5-OI2-GQ1-LO1-KO2-SP and ON5 C2.2 evaluate an expression for a given value.
+    ["g67-6-nth-term", [6, 5, 6, 6, 5, 6]],
+    ["g67-6-evaluate", [6, 5, 7, 7, 5, 6]],
+    // AB MAT5-OI1-GQ5-LO1-KO1-SP and ON5 B1.3 (halves through twelfths) convert improper fractions and mixed numbers.
+    ["g67-6-improper-to-mixed", [6, 5, 6, 6, 5, 6]],
+    ["g67-6-mixed-to-improper", [6, 5, 6, 6, 5, 6]],
+    ["g67-6-count-parts", [6, 5, 6, 6, 5, 6]],
+    // AB MAT4-OI1-GQ5-LO1-KO1-SP compares and orders fractions.
+    ["g67-6-greatest-fraction", [6, 4, 6, 6, 6, 6]],
+    // AB MAT3-OI5-GQ1-LO1-KO2-SP: perimeter of a polygon with every side given.
+    ["g67-6-l-shape-perimeter", [6, 3, 3, 3, 6, 6]],
+  ] as const)("%s uses the primary-source grade in each province", (id, expected) => {
+    expect(levels(id)).toEqual([...expected]);
+  });
+  it("keeps the one-step addition and subtraction equations within the grade 3 number range", () => {
+    for (const id of ["g67-5-equation-add", "g67-5-equation-subtract", "g67-6-balance-box"]) expect(Math.max(...numbersIn(id))).toBeLessThanOrEqual(100);
+    expect(Math.max(...numbersIn("g67-6-equation-plus"))).toBeLessThan(1000);
+    expect(Math.max(...numbersIn("g67-6-equation-check"))).toBeLessThanOrEqual(100);
+  });
+  it("divides by one-digit numbers only in the worded equation", () => {
+    expect(Math.max(...SEEDS.map((seed) => fillTemplate(byId("g67-6-equation-words"), seed).values.a))).toBeLessThanOrEqual(9);
+  });
+  it("codes the trapezoid area without the half as a missing division by two", () => {
+    for (const seed of SEEDS) {
+      const q = fillTemplate(byId("g67-6-trapezoid-area"), seed);
+      const doubled = q.wrong.find((w) => Number(w.value) === 2 * Number(q.answer));
+      expect(doubled?.misconception).toBe("half-area");
+    }
+  });
+  it("offers part-to-part ratio errors that need only one mistake each", () => {
+    for (const seed of SEEDS) {
+      const q = fillTemplate(byId("g67-6-ratio-part-part"), seed), { a, b } = q.values;
+      expect(q.wrong.map((w) => w.value).sort()).toEqual([`${a}:${a + b}`, `${b}:${a}`].sort());
+    }
+  });
+  it("asks for the largest change between readings in a row of a described line graph", () => {
+    for (const seed of SEEDS) {
+      const q = fillTemplate(byId("g67-6-line-graph"), seed);
+      const readings = [...q.prompt.matchAll(/(-?\d+) (?:°C|cm|L)/g)].map((m) => Number(m[1]));
+      expect(readings.length).toBeGreaterThanOrEqual(4);
+      const rises = readings.slice(1).map((v, i) => v - readings[i]);
+      const best = Math.max(...rises);
+      expect(rises.filter((r) => r === best)).toHaveLength(1);
+      expect(q.choices).toHaveLength(4);
+    }
+  });
+});

@@ -91,7 +91,8 @@ export const LEVEL_6: readonly TaggedTemplate[] = [
     const w = candidates.filter((x, i, all) => x.value !== answer && all.findIndex((y) => x.value === y.value) === i);
     return { values: { d, whole, rem }, prompt: toMixed ? `Which mixed number equals ${frac(n, d)}?` : `Which improper fraction equals ${mixed(whole, rem, d)}?`,
       readAloud: toMixed ? `Which mixed number equals ${sayFrac(n, d)}?` : `Which improper fraction equals ${sayMixed(whole, rem, d)}?`, answer, wrong: w };
-  }, ["whole-count", "remainder"].includes(task) ? "number" : "choice")),
+  // AB MAT5-OI1-GQ5-LO1-KO1-SP and ON5 B1.3 (halves through twelfths) convert improper fractions and mixed numbers.
+  }, ["whole-count", "remainder"].includes(task) ? "number" : "choice", { AB: 5, ON: 5 })),
   ...["part-to-part", "part-to-whole", "equivalent", "recipe"].map((task) => template(`ratio-${task}`, "F", "6.6", (rng) => {
     const [a, b] = draw(rng, (r) => [r.int(2, 7), r.int(3, 9)], ([a, b]) => a !== b), k = rng.int(2, 5);
     if (task === "recipe") {
@@ -133,7 +134,8 @@ export const LEVEL_6: readonly TaggedTemplate[] = [
     const [prompt, right, mistake] = versions[task as keyof typeof versions];
     return { values: { k, b, n }, prompt, readAloud: prompt.replaceAll("×", "times").replaceAll("+", "plus").replaceAll(" n ", " the number "), answer: String(right),
       wrong: typedWrong(right, [[mistake, task === "step" ? "rule-swap" : task === "difference" ? "coefficient-ignore" : "A5"], [right + k, task === "step" ? "input-step-two" : task === "difference" ? "pattern-step-count" : "next-not-asked"]]) };
-  }, "number", { ON: task === "tenth" ? 4 : 5 })),
+  // AB MAT5-OI2-GQ1-LO1-KO2-SP evaluates an expression by substituting a given number for the variable.
+  }, "number", { ON: task === "tenth" ? 4 : 5, ...(["output", "initial", "difference"].includes(task) ? { AB: 5 as const } : {}) })),
   ...["add", "subtract", "multiply", "divide", "subtrahend", "divisor"].map((op) => template(`equation-${op}`, "A", "6.10", (rng) => {
     const x = rng.int(30, 89), k = rng.int(4, 9);
     const versions = {
@@ -147,12 +149,23 @@ export const LEVEL_6: readonly TaggedTemplate[] = [
     const [shown, spoken, mistake] = versions[op as keyof typeof versions], right = op === "divide" ? x * k : x;
     return { values: { x, k }, prompt: `Find x. ${shown}`, readAloud: `${spoken} What is the number?`, answer: String(right),
       wrong: typedWrong(right, [[mistake, op === "divisor" ? "unknown-divisor" : op === "multiply" || op === "subtrahend" ? "operation" : "inverse-operation"], [k, "known-as-unknown"]]) };
-  }, "number", ["add", "subtract", "subtrahend"].includes(op) ? { ON: 2 } : {})),
+  // The same tags as the grade 5 one-step equations (level-5.ts): AB3/SK3/MB3/ON2 for addition and subtraction within
+  // 100; AB4 (MAT4-OI2-GQ1-LO1-KO2-SP), SK5 (P5.2) and MB5 (5.PR.2) for multiplication and division past 100.
+  }, "number", ["add", "subtract", "subtrahend"].includes(op) ? { AB: 3, SK: 3, MB: 3, ON: 2 } : { AB: 4, SK: 5, MB: 5 })),
   template("table-rule", "A", "6.9", (rng) => {
     const [k, b] = draw(rng, (r) => [r.int(3, 8), r.int(2, 9)], ([k, b]) => k !== b);
     return { values: { k, b }, prompt: `A table shows input 1 gives ${k + b}, input 2 gives ${2 * k + b}, and input 3 gives ${3 * k + b}. Which rule fits all three rows?`,
       readAloud: `A table shows input 1 gives ${k + b}, input 2 gives ${2 * k + b}, and input 3 gives ${3 * k + b}. Which rule fits all three rows?`,
       answer: `Multiply by ${k}, then add ${b}`, wrong: [wrong(`Multiply by ${k}`, "A5"), wrong(`Add ${k + b - 1}`, "rule-one-row"), wrong(`Multiply by ${b}, then add ${k}`, "rule-swap")] };
+  }, "choice", { ON: 5 }),
+  // A rule's values as a point (BC 6.9: functional relationships as discrete points in the first quadrant). AB
+  // MAT6-OI6-GQ1-LO1-KO1-SP plots function values as points; AB grade 5 rules are limited to one operation. SK P6.1,
+  // MB 6.PR.2, ON5 C1.2 (patterns as tables of values and graphs).
+  template("rule-point", "A", "6.9", (rng) => {
+    const k = rng.int(2, 5), b = rng.int(1, 9), x = rng.int(2, 8), y = k * x + b;
+    return { values: { k, b, x }, prompt: `A rule says: output = ${k} × input + ${b}. Which point (input, output) fits the rule?`,
+      readAloud: `A rule says: the output is ${k} times the input, plus ${b}. Which point, input first and output second, fits the rule?`, answer: `(${x}, ${y})`,
+      wrong: [wrong(`(${y}, ${x})`, "coordinates-swap"), wrong(`(${x}, ${k * x})`, "A5"), wrong(`(${x}, ${k * (x + b)})`, "add-before-multiply")] };
   }, "choice", { ON: 5 }),
 
   template("triangle-area", "MG", "6.12", (rng) => {
@@ -223,10 +236,11 @@ export const LEVEL_6: readonly TaggedTemplate[] = [
       wrong: [wrong(`(${x + dx}, ${y})`, "ignores-given"), wrong(`(${x}, ${y + dy})`, "ignores-given"), wrong(`(${x}, ${y})`, "ignores-given")] };
   }, "choice", { ON: 4 }),
   template("experimental-estimate", "DP", "6.18", (rng) => {
-    const total = rng.pick([20, 30, 40, 50]), red = draw(rng, (r) => r.int(3, total - 3), (n) => 2 * n !== total), k = rng.int(2, 5);
+    // The other colour's estimate must differ from the copied count, so each coded value has one cause.
+    const total = rng.pick([20, 30, 40, 50]), k = rng.int(2, 5), red = draw(rng, (r) => r.int(3, total - 3), (n) => 2 * n !== total && (total - n) * k !== n);
     const prompt = `A spinner landed on red ${red} times in ${total} spins. Use this result to estimate how many times it will land on red in ${total * k} spins.`;
     return { values: { total, red, k }, prompt, readAloud: prompt, answer: String(red * k),
-      wrong: typedWrong(red * k, [[red, "frequency-copy"], [(total - red) * k, "probability-other"]]) };
+      wrong: typedWrong(red * k, [[red, "frequency-copy"], [(total - red) * k, "count-other"]]) };
   }),
   template("experimental-probability", "DP", "6.18", (rng) => {
     const total = rng.pick([20, 30, 40, 50]), red = draw(rng, (r) => r.int(3, total - 3), (n) => n * 2 !== total);

@@ -627,9 +627,9 @@ export const LEVEL_4: readonly TaggedTemplate[] = [
     },
   },
   {
-    // A missing factor (map, grade 4: ? x 6 = 42).
+    // A missing factor (map, grade 4: ? x 6 = 42). AB MAT3-OI1-GQ3-LO1-KO2-SP: a missing quantity in a product to 100.
     id: "g35-4-missing-factor",
-    strand: "A", grades: { BC: 4, AB: 4, SK: 4, MB: 4, ON: 4 }, format: "number", whiteboard: true, standard: "4.11",
+    strand: "A", grades: { BC: 4, AB: 3, SK: 4, MB: 4, ON: 4 }, format: "number", whiteboard: true, standard: "4.11",
     fill(rng) {
       const a = rng.int(3, 9), b = rng.int(3, 9), first = rng.int(0, 1) === 1;
       const p = a * b;
@@ -643,9 +643,9 @@ export const LEVEL_4: readonly TaggedTemplate[] = [
     },
   },
   {
-    // A missing divisor (4.11: all operations).
+    // A missing divisor (4.11: all operations). AB MAT3-OI1-GQ3-LO1-KO2-SP: a missing quantity in a quotient, dividends to 100.
     id: "g35-4-missing-divisor",
-    strand: "A", grades: { BC: 4, AB: 4, SK: 4, MB: 4, ON: 4 }, format: "number", whiteboard: true, standard: "4.11",
+    strand: "A", grades: { BC: 4, AB: 3, SK: 4, MB: 4, ON: 4 }, format: "number", whiteboard: true, standard: "4.11",
     fill(rng) {
       const a = rng.int(3, 9), q = draw(rng, (r) => r.int(3, 9), (q) => q !== a);
       const n = a * q;
@@ -805,9 +805,10 @@ export const LEVEL_4: readonly TaggedTemplate[] = [
     },
   },
   {
-    // Undo a rule (4.10: "algebraic relationships").
+    // Undo a rule (4.10: "algebraic relationships"). ON4 B2.1 (multiplication and division are inverse operations) and
+    // B2.6 (two- and three-digit numbers divided by one-digit numbers) cover the undo, outputs up to 108.
     id: "g35-4-machine-input",
-    strand: "A", grades: { BC: 4, AB: 4, SK: 4, MB: 4, ON: 6 }, format: "number", whiteboard: true, standard: "4.10",
+    strand: "A", grades: { BC: 4, AB: 4, SK: 4, MB: 4, ON: 4 }, format: "number", whiteboard: true, standard: "4.10",
     fill(rng) {
       const k = rng.int(3, 9), x = draw(rng, (r) => r.int(3, 12), (x) => x !== k);
       const out = k * x;

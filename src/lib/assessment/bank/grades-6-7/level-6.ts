@@ -269,8 +269,9 @@ export const LEVEL_6: readonly TaggedTemplate[] = [
   // ---------- Fractions, ratio and percent ----------
   {
     // Map, grade 6: write 17/5 as a mixed number.
+    // AB MAT5-OI1-GQ5-LO1-KO1-SP and ON5 B1.3 (halves through twelfths): improper fractions and mixed numbers. SK N6.7, MB 6.N.4.
     id: "g67-6-improper-to-mixed",
-    strand: "F", grades: { BC: 6, AB: 6, SK: 6, MB: 6, ON: 6 }, format: "choice", whiteboard: true, standard: "6.5",
+    strand: "F", grades: { BC: 6, AB: 5, SK: 6, MB: 6, ON: 5 }, format: "choice", whiteboard: true, standard: "6.5",
     fill(rng) {
       const [d, w, r] = draw(rng, (g) => {
         const d = g.int(3, 9);
@@ -289,7 +290,7 @@ export const LEVEL_6: readonly TaggedTemplate[] = [
   {
     // Misconception F8: 2 1/3 becomes 21/3 or 3/3.
     id: "g67-6-mixed-to-improper",
-    strand: "F", grades: { BC: 6, AB: 6, SK: 6, MB: 6, ON: 6 }, format: "choice", whiteboard: true, standard: "6.5",
+    strand: "F", grades: { BC: 6, AB: 5, SK: 6, MB: 6, ON: 5 }, format: "choice", whiteboard: true, standard: "6.5",
     fill(rng) {
       const [d, w, r] = draw(rng, (g) => {
         const d = g.int(3, 9);
@@ -306,7 +307,7 @@ export const LEVEL_6: readonly TaggedTemplate[] = [
   },
   {
     id: "g67-6-count-parts",
-    strand: "F", grades: { BC: 6, AB: 6, SK: 6, MB: 6, ON: 6 }, format: "number", whiteboard: true, standard: "6.5",
+    strand: "F", grades: { BC: 6, AB: 5, SK: 6, MB: 6, ON: 5 }, format: "number", whiteboard: true, standard: "6.5",
     fill(rng) {
       const [d, w, r] = draw(rng, (g) => {
         const d = g.pick([3, 4, 5, 6, 8, 10]);
@@ -323,8 +324,9 @@ export const LEVEL_6: readonly TaggedTemplate[] = [
   },
   {
     // 6.5: unlike denominators. Each wrong choice isolates a numerator or denominator error.
+    // AB MAT4-OI1-GQ5-LO1-KO1-SP compares and orders fractions; ON6 B1.3 (ON5 B1.4 stops at twelfths).
     id: "g67-6-greatest-fraction",
-    strand: "F", grades: { BC: 6, AB: 6, SK: 6, MB: 6, ON: 6 }, format: "choice", whiteboard: true, standard: "6.5",
+    strand: "F", grades: { BC: 6, AB: 4, SK: 6, MB: 6, ON: 6 }, format: "choice", whiteboard: true, standard: "6.5",
     fill(rng) {
       const { n, b } = draw(rng, (g) => {
         const b = g.int(3, 11), n = g.int(2, b - 1);
@@ -351,7 +353,8 @@ export const LEVEL_6: readonly TaggedTemplate[] = [
         prompt: `${where} has ${a} ${x} and ${b} ${y}. What is the ratio of ${x} to ${y}?`,
         readAloud: `${where} has ${a} ${x} and ${b} ${y}. What is the ratio of ${x} to ${y}?`,
         answer: `${a}:${b}`,
-        wrong: [wrong(`${b}:${a}`, "ratio-order"), wrong(`${a}:${a + b}`, "ratio-whole"), wrong(`${b}:${a + b}`, "fraction-other-part")],
+        // Each wrong choice needs one mistake. The other part to the whole needs two, so it is not offered.
+        wrong: [wrong(`${b}:${a}`, "ratio-order"), wrong(`${a}:${a + b}`, "ratio-whole")],
       };
     },
   },
@@ -506,8 +509,9 @@ export const LEVEL_6: readonly TaggedTemplate[] = [
   // ---------- Patterns and algebra ----------
   {
     // Map, grade 6: 3, 5, 7, 9 follows 2n + 1; the 10th term.
+    // AB MAT5-OI2-GQ1-LO1-KO2-SP and ON5 C2.2: evaluate an expression for a given value.
     id: "g67-6-nth-term",
-    strand: "A", grades: { BC: 6, AB: 6, SK: 6, MB: 6, ON: 6 }, format: "number", whiteboard: true, standard: "6.9",
+    strand: "A", grades: { BC: 6, AB: 5, SK: 6, MB: 6, ON: 5 }, format: "number", whiteboard: true, standard: "6.9",
     fill(rng) {
       const [a, b, k] = draw(rng, (g) => [g.int(2, 6), g.int(1, 9), g.int(10, 25)], ([a, b, k]) => distinctNumbers([a * k + b, a * k, Number(`${a}${k}`) + b]));
       const shown = [1, 2, 3, 4].map((n) => a * n + b).join(", ");
@@ -570,8 +574,9 @@ export const LEVEL_6: readonly TaggedTemplate[] = [
   },
   {
     // Map, grade 6: 3x = 12.
+    // AB MAT4-OI2-GQ1-LO1-KO2-SP; SK P5.2 and MB 5.PR.2 (letter variable, whole-number coefficient); ON6 C2.3 (products past 100).
     id: "g67-6-equation-times",
-    strand: "A", grades: { BC: 6, AB: 6, SK: 6, MB: 6, ON: 6 }, format: "number", whiteboard: true, standard: "6.10",
+    strand: "A", grades: { BC: 6, AB: 4, SK: 5, MB: 5, ON: 6 }, format: "number", whiteboard: true, standard: "6.10",
     fill(rng) {
       const [a, x] = draw(rng, (g) => [g.int(3, 12), g.int(4, 15)], ([a, x]) => a !== x);
       const v = rng.pick(["x", "n", "y", "m"]);
@@ -586,8 +591,9 @@ export const LEVEL_6: readonly TaggedTemplate[] = [
   },
   {
     // Map, grade 6: x + 5 = 11, with larger numbers.
+    // AB MAT3-OI2-GQ1-LO1-KO2-SP, SK P3.2, MB 3.PR.3 (sums to 1000 in grade 3); ON6 C2.3 (totals pass the ON5 limit of 100).
     id: "g67-6-equation-plus",
-    strand: "A", grades: { BC: 6, AB: 6, SK: 6, MB: 6, ON: 6 }, format: "number", whiteboard: true, standard: "6.10",
+    strand: "A", grades: { BC: 6, AB: 3, SK: 3, MB: 3, ON: 6 }, format: "number", whiteboard: true, standard: "6.10",
     fill(rng) {
       const a = rng.int(12, 85), x = rng.int(12, 90), v = rng.pick(["x", "n", "y", "m"]);
       return {
@@ -600,10 +606,12 @@ export const LEVEL_6: readonly TaggedTemplate[] = [
     },
   },
   {
+    // AB MAT4-OI1-GQ4-LO1-KO1-SP and ON4 B2.6: three-digit by one-digit division; SK and MB divide three-digit numbers in grade 5.
     id: "g67-6-equation-words",
-    strand: "A", grades: { BC: 6, AB: 6, SK: 6, MB: 6, ON: 6 }, format: "number", whiteboard: true, standard: "6.10",
+    strand: "A", grades: { BC: 6, AB: 4, SK: 5, MB: 5, ON: 4 }, format: "number", whiteboard: true, standard: "6.10",
     fill(rng) {
-      const [a, x] = draw(rng, (g) => [g.int(3, 12), g.int(4, 15)], ([a, x]) => a !== x);
+      // One-digit factors, so the undo is a one-digit division (ON4 B2.6).
+      const [a, x] = draw(rng, (g) => [g.int(3, 9), g.int(4, 15)], ([a, x]) => a !== x);
       return {
         values: { a, x },
         prompt: `${a} times a number is ${a * x}. What is the number?`,
@@ -615,8 +623,9 @@ export const LEVEL_6: readonly TaggedTemplate[] = [
   },
   {
     // A story as a one-step equation.
+    // AB MAT5-OI2-GQ1-LO1-KO3-SP, SK P5.2, MB 5.PR.2: write a one-step equation for a situation.
     id: "g67-6-story-equation",
-    strand: "A", grades: { BC: 6, AB: 6, SK: 6, MB: 6, ON: 6 }, format: "choice", whiteboard: false, standard: "6.10",
+    strand: "A", grades: { BC: 6, AB: 5, SK: 5, MB: 5, ON: 6 }, format: "choice", whiteboard: false, standard: "6.10",
     fill(rng) {
       const [a, x] = draw(rng, (g) => [g.int(3, 9), g.int(4, 15)], ([a, x]) => a !== x);
       const [box, things, v] = rng.pick([["pack", "pencils", "p"], ["box", "crayons", "c"], ["bag", "apples", "a"], ["tray", "muffins", "m"]] as const);
@@ -631,8 +640,9 @@ export const LEVEL_6: readonly TaggedTemplate[] = [
   },
   {
     // 6.10: preservation of equality on a balance, described in words.
+    // AB MAT3-OI2-GQ1-LO1-KO2-SP (with a balance), SK P3.2, MB 3.PR.3, ON2 C2.2-C2.3.
     id: "g67-6-balance-box",
-    strand: "A", grades: { BC: 6, AB: 6, SK: 6, MB: 6, ON: 2 }, format: "number", whiteboard: true, standard: "6.10",
+    strand: "A", grades: { BC: 6, AB: 3, SK: 3, MB: 3, ON: 2 }, format: "number", whiteboard: true, standard: "6.10",
     fill(rng) {
       const a = rng.int(3, 15), x = rng.int(4, 25);
       return {
@@ -668,7 +678,7 @@ export const LEVEL_6: readonly TaggedTemplate[] = [
   {
     // 6.9: expressions; the value for a given n.
     id: "g67-6-evaluate",
-    strand: "A", grades: { BC: 6, AB: 7, SK: 7, MB: 7, ON: 5 }, format: "number", whiteboard: true, standard: "6.9",
+    strand: "A", grades: { BC: 6, AB: 5, SK: 7, MB: 7, ON: 5 }, format: "number", whiteboard: true, standard: "6.9",
     fill(rng) {
       const [a, b, n] = draw(rng, (g) => [g.int(2, 9), g.int(1, 12), g.int(2, 9)], ([a, b, n]) => distinctNumbers([a * n + b, Number(`${a}${n}`) + b, a + n + b]));
       return {
@@ -714,8 +724,9 @@ export const LEVEL_6: readonly TaggedTemplate[] = [
     },
   },
   {
+    // AB MAT4-OI2-GQ1-LO1-KO2-SP, SK P4.2, MB 4.PR.6: one-step equations; products within 100 (ON5 C2.3).
     id: "g67-6-equation-check",
-    strand: "A", grades: { BC: 6, AB: 6, SK: 6, MB: 6, ON: 5 }, format: "choice", whiteboard: false, standard: "6.10",
+    strand: "A", grades: { BC: 6, AB: 4, SK: 4, MB: 4, ON: 5 }, format: "choice", whiteboard: false, standard: "6.10",
     fill(rng) {
       const [a, x] = draw(rng, (g) => [g.int(3, 9), g.int(3, 12)], ([a, x]) => a !== x && a * x <= 100 && distinctNumbers([x, a * x - a, a * x + a, a * a * x]));
       return {
@@ -775,7 +786,7 @@ export const LEVEL_6: readonly TaggedTemplate[] = [
         prompt: `A trapezoid has parallel sides of ${a} cm and ${b} cm. Its height is ${h} cm. What is its area, in square centimetres?`,
         readAloud: `A trapezoid has parallel sides of ${a} centimetres and ${b} centimetres. Its height is ${h} centimetres. What is its area, in square centimetres?`,
         answer: String(((a + b) * h) / 2),
-        wrong: [wrong((a + b) * h, "M3"), wrong(a + b + h, "area-add")],
+        wrong: [wrong((a + b) * h, "half-area"), wrong(a + b + h, "area-add")],
       };
     },
   },
@@ -968,19 +979,35 @@ export const LEVEL_6: readonly TaggedTemplate[] = [
     },
   },
   {
-    // Map, grade 6: a line graph read in words (14 degrees at noon, 20 at 3 p.m.).
+    // Map, grade 6: a line graph read in words. Five points in time; the child compares the four changes between
+    // neighbouring points to find the steepest rise (6.17: interpreting a line graph, not one subtraction).
     id: "g67-6-line-graph",
-    strand: "DP", grades: { BC: 6, AB: 6, SK: 6, MB: 6, ON: 6 }, format: "number", whiteboard: true, standard: "6.17",
+    strand: "DP", grades: { BC: 6, AB: 6, SK: 6, MB: 6, ON: 6 }, format: "choice", whiteboard: true, standard: "6.17",
     fill(rng) {
-      const [what, unit, sayUnit] = rng.pick([["the temperature outside", "°C", "degrees Celsius"], ["the height of a plant", "cm", "centimetres"], ["the water in a tank", "L", "litres"]] as const);
-      const [a, b] = draw(rng, (g) => [g.int(3, 40), g.int(3, 40)], ([a, b]) => b - a >= 3);
-      const [t1, t2] = rng.pick([["9 a.m.", "noon"], ["noon", "3 p.m."], ["day 2", "day 6"], ["week 1", "week 4"]] as const);
+      const [what, unit, sayUnit, canFall] = rng.pick([["the temperature outside", "°C", "degrees Celsius", true], ["the height of a plant", "cm", "centimetres", false], ["the water in a tank", "L", "litres", true]] as const);
+      const [times, kind] = rng.pick([[["day 1", "day 2", "day 3", "day 4", "day 5"], "days"], [["week 1", "week 2", "week 3", "week 4", "week 5"], "weeks"],
+        [["8 a.m.", "9 a.m.", "10 a.m.", "11 a.m.", "noon"], "times"]] as const);
+      // Four different changes; at most one fall where the quantity can fall. The highest point and the smallest change
+      // must each name a different pair from the steepest rise, so every wrong choice has one cause.
+      const { start, changes } = draw(rng, (g) => ({ start: g.int(3, 20), changes: [0, 1, 2, 3].map(() => g.int(canFall ? -6 : 1, 12)) }), ({ start, changes }) => {
+        const values = changes.reduce((all, c) => [...all, all[all.length - 1] + c], [start]);
+        const best = changes.indexOf(Math.max(...changes)), least = changes.indexOf(Math.min(...changes));
+        const peak = values.slice(1).indexOf(Math.max(...values.slice(1)));
+        return new Set(changes).size === 4 && changes.every((c) => c !== 0) && changes.filter((c) => c < 0).length <= 1
+          && values.every((v) => v >= 2 && v <= 45) && new Set([best, least, peak]).size === 3;
+      });
+      const values = changes.reduce((all, c) => [...all, all[all.length - 1] + c], [start]);
+      const best = changes.indexOf(Math.max(...changes)), least = changes.indexOf(Math.min(...changes));
+      const peak = values.slice(1).indexOf(Math.max(...values.slice(1)));
+      const pair = (i: number) => `${times[i]} and ${times[i + 1]}`;
+      const other = [0, 1, 2, 3].find((i) => ![best, least, peak].includes(i))!;
+      const list = (u: string) => times.map((t, i) => `${t}, ${values[i]} ${u}`).join("; ");
       return {
-        values: { a, b },
-        prompt: `A line graph shows ${what}. At ${t1} the line is at ${a} ${unit}. At ${t2} it is at ${b} ${unit}. By how much did it go up?`,
-        readAloud: `A line graph shows ${what}. At ${t1} the line is at ${a} ${sayUnit}. At ${t2} it is at ${b} ${sayUnit}. By how much did it go up?`,
-        answer: String(b - a),
-        wrong: [wrong(b, "graph-value"), wrong(a + b, "operation")],
+        values: { start, c1: changes[0], c2: changes[1], c3: changes[2], c4: changes[3] },
+        prompt: `A line graph shows ${what}: ${list(unit)}. Between which two ${kind} in a row did it go up the most?`,
+        readAloud: `A line graph shows ${what}: ${list(sayUnit)}. Between which two ${kind} in a row did it go up the most?`,
+        answer: pair(best),
+        wrong: [wrong(pair(peak), "graph-value"), wrong(pair(least), "more-less"), wrong(pair(other), "change-order")],
       };
     },
   },
@@ -1035,8 +1062,9 @@ export const LEVEL_6: readonly TaggedTemplate[] = [
   },
   {
     // 6.11: perimeter of a complex shape (an L shape), with every side given so no picture is needed.
+    // AB MAT3-OI5-GQ1-LO1-KO2-SP: perimeter of a polygon.
     id: "g67-6-l-shape-perimeter",
-    strand: "MG", grades: { BC: 6, AB: 6, SK: 3, MB: 3, ON: 6 }, format: "number", whiteboard: true, standard: "6.11",
+    strand: "MG", grades: { BC: 6, AB: 3, SK: 3, MB: 3, ON: 6 }, format: "number", whiteboard: true, standard: "6.11",
     fill(rng) {
       const [W, H, a, h] = draw(rng, (g) => [g.int(8, 20), g.int(6, 15), g.int(2, 7), g.int(2, 6)], ([W, H, a, h]) => a < W - 1 && h < H - 1 && W !== H);
       const sides = [W, H, a, h, W - a, H - h];

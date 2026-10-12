@@ -293,11 +293,11 @@ describe("grade 3-5 speech and figures through the public interface", () => {
       expect(t.standard).toBe("3.6");
     }
   });
-  it("uses later Ontario grades for unknown equations above the earlier numeric limits", () => {
+  it("uses a later Ontario grade for a repeated-addend equation above 50, and grade 4 division to undo a machine", () => {
     const repeated = BANK.find((t) => t.id === "g35-4-three-same")!;
     const machine = BANK.find((t) => t.id === "g35-4-machine-input")!;
     expect(repeated.grades.ON).toBe(5);
-    expect(machine.grades.ON).toBe(6);
+    expect(machine.grades.ON).toBe(4);
     expect(Math.max(...SEEDS.map((seed) => 3 * fillTemplate(repeated, seed).values.k))).toBe(90);
     expect(Math.max(...SEEDS.map((seed) => { const { k, x } = fillTemplate(machine, seed).values; return k * x; }))).toBe(108);
   });
@@ -715,5 +715,91 @@ describe("the grades 3-5 bank", () => {
       const view = JSON.stringify(toPublicQuestion(fillTemplate(template, 3)));
       expect(view).not.toMatch(/"answer"|"wrong"|misconception/);
     }
+  });
+});
+
+// #75 acceptance: corrections from the checker findings, each checked against the current official curriculum
+// (scripts/template-check/triage.md cites the outcome for every row).
+describe("primary-source corrections from the #75 checker run", () => {
+  const byId = (id: string) => BANK.find((t) => t.id === id)!;
+  const levels = (id: string) => PROVINCES.map((p) => fillTemplate(byId(id), 0, p).level);
+  // Every number the child reads or must find: the prompt's numbers and the answer.
+  const numbersIn = (id: string) => SEEDS.flatMap((seed) => {
+    const q = fillTemplate(byId(id), seed);
+    return [...`${q.prompt} ${q.answer}`.matchAll(/\d+/g)].map((m) => Number(m[0]));
+  });
+
+  it.each(["g35-5-variable-add", "g35-5-variable-subtract", "g35-5-variable-take-away", "g35-6-equation-add", "g35-6-equation-subtract", "g35-6-equation-subtrahend"])(
+    "%s: a one-step addition or subtraction equation within 100 meets AB, SK and MB children at grade 3", (id) => {
+      // AB MAT3-OI2-GQ1-LO1-KO2-SP, SK3 one-step addition and subtraction equations, MB 3.PR.3; Ontario stays at grade 2.
+      expect(levels(id).slice(1, 5)).toEqual([3, 3, 3, 2]);
+      expect(Math.max(...numbersIn(id))).toBeLessThanOrEqual(100);
+    });
+  it.each(["g35-5-variable-multiply", "g35-5-variable-divide", "g35-5-variable-dividend", "g35-6-equation-multiply", "g35-6-equation-divide", "g35-6-equation-divisor"])(
+    "%s: a one-step multiplication or division equation past 100 meets Alberta children at grade 4", (id) => {
+      // AB MAT4-OI2-GQ1-LO1-KO2-SP (one-operation equations) with grade 4 three-digit by one-digit operations.
+      expect(levels(id)[1]).toBe(4);
+      expect(Math.max(...numbersIn(id))).toBeGreaterThan(100);
+      expect(Math.max(...numbersIn(id))).toBeLessThan(1000);
+    });
+  it.each(["g35-4-missing-factor", "g35-4-missing-divisor"])("%s: a missing factor or divisor within 100 meets Alberta children at grade 3", (id) => {
+    // AB MAT3-OI1-GQ3-LO1-KO2-SP: determine a missing quantity in a product or quotient, products and dividends to 100.
+    expect(levels(id)[1]).toBe(3);
+    expect(Math.max(...numbersIn(id))).toBeLessThanOrEqual(100);
+  });
+  it("asks the number-machine input in Ontario grade 4, where division undoes multiplication", () => {
+    // ON4 B2.1 (inverse operations) and B2.6 (divide two- and three-digit numbers by one-digit numbers).
+    expect(levels("g35-4-machine-input")[4]).toBe(4);
+  });
+  it("tags the equation for a subtraction story at the grades that write one-operation equations", () => {
+    // AB MAT3-OI2-GQ1-LO1-KO2-SP (solve problems using equations), SK4 and MB 4.PR.5 (express a problem as an equation).
+    expect(levels("g35-5-equation-story")).toEqual([5, 3, 4, 4, 2, 5]);
+  });
+  it.each(["g35-6-mixed-to-mixed", "g35-6-mixed-to-improper", "g35-6-mixed-whole-count", "g35-6-mixed-remainder"])(
+    "%s: improper fractions and mixed numbers to twelfths meet AB and ON children at grade 5", (id) => {
+      // AB MAT5-OI1-GQ5-LO1-KO1-SP; ON5 B1.3 (halves through twelfths). SK N6.7 and MB 6.N.4 stay at grade 6.
+      expect(levels(id)).toEqual([6, 5, 6, 6, 5, 6]);
+      expect(Math.max(...SEEDS.map((seed) => fillTemplate(byId(id), seed).values.d))).toBeLessThanOrEqual(12);
+    });
+  it.each(["g35-6-linear-output", "g35-6-linear-initial", "g35-6-linear-difference"])("%s: substituting into a rule meets Alberta children at grade 5", (id) => {
+    // AB MAT5-OI2-GQ1-LO1-KO2-SP: evaluate an algebraic expression by substituting a given number for the variable.
+    expect(levels(id)[1]).toBe(5);
+  });
+  it("asks which point fits a two-operation rule, at grade 6 in Alberta and grade 5 in Ontario", () => {
+    // AB MAT6-OI6-GQ1-LO1-KO1-SP (function values as points; AB5 rules are limited to one operation), ON5 C1.2.
+    const t = byId("g35-6-rule-point");
+    expect(levels("g35-6-rule-point")).toEqual([6, 6, 6, 6, 5, 6]);
+    for (const seed of SEEDS) {
+      const q = fillTemplate(t, seed), { k, b } = q.values;
+      const fits = (c: string) => { const [x, y] = c.slice(1, -1).split(", ").map(Number); return y === k * x + b; };
+      expect(q.choices?.filter(fits)).toEqual([q.answer]);
+      expect(q.wrong.map((w) => w.misconception).sort()).toEqual(["A5", "add-before-multiply", "coordinates-swap"]);
+    }
+  });
+  it("places the missing pattern term with the other simple constant-step pattern tasks, at BC grade 3", () => {
+    const t = byId("g35-5-pattern-missing");
+    expect(t.grades.BC).toBe(3);
+    expect(t.standard).toBe("3.6");
+  });
+  it("codes subtracting the end minutes from the start minutes as its own elapsed-time error", () => {
+    const t = byId("g35-5-duration");
+    // A coded value equal to the answer or to another coded value is left out, so look at the seeds that keep it.
+    const codes = SEEDS.flatMap((seed) => {
+      const q = fillTemplate(t, seed), { start, end } = q.values;
+      return q.wrong.filter((w) => w.value === String(start - end)).map((w) => w.misconception);
+    });
+    expect(codes.length).toBeGreaterThan(SEEDS.length / 2);
+    expect(new Set(codes)).toEqual(new Set(["minutes-reversed"]));
+    expect(MISCONCEPTIONS["minutes-reversed" as keyof typeof MISCONCEPTIONS]?.description).toMatch(/start/);
+  });
+  it("codes the estimate for the other colour as a count for the other outcome, not a probability", () => {
+    const t = byId("g35-6-experimental-estimate");
+    const codes = SEEDS.flatMap((seed) => {
+      const q = fillTemplate(t, seed), { total, red, k } = q.values;
+      return q.wrong.filter((w) => w.value === String((total - red) * k)).map((w) => w.misconception);
+    });
+    expect(codes.length).toBeGreaterThan(SEEDS.length / 2);
+    expect(new Set(codes)).toEqual(new Set(["count-other"]));
+    expect(MISCONCEPTIONS["count-other" as keyof typeof MISCONCEPTIONS]?.description).toMatch(/other outcome/);
   });
 });
