@@ -2,12 +2,11 @@
 
 // PROTOTYPE - throwaway. Floating bar that cycles ?variant= on the home page. Hidden in production builds.
 import { useCallback, useEffect } from "react";
-import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { usePathname, useSearchParams } from "next/navigation";
 import { OFFER_VARIANTS, type OfferVariant } from "./offer-prototype";
 
 
 export function PrototypeSwitcher({ current }: { current: OfferVariant }) {
-  const router = useRouter();
   const path = usePathname();
   const params = useSearchParams();
   const keys = Object.keys(OFFER_VARIANTS) as OfferVariant[];
@@ -15,8 +14,19 @@ export function PrototypeSwitcher({ current }: { current: OfferVariant }) {
     const next = keys[(keys.indexOf(current) + step + keys.length) % keys.length];
     const qs = new URLSearchParams(params.toString());
     qs.set("variant", next);
-    router.replace(`${path}?${qs.toString()}${window.location.hash}`, { scroll: false });
-  }, [current, keys, params, path, router]);
+    // Full reload, not router.replace: the page's scroll script (Motion/Knot) moves DOM nodes outside React,
+    // so an in-place swap throws "removeChild: not a child" and blanks the section. Keep the scroll position.
+    sessionStorage.setItem("op-scroll", String(window.scrollY));
+    // eslint-disable-next-line @next/next/no-location-assign-relative-destination -- a full reload is the point (see above)
+    window.location.assign(`${path}?${qs.toString()}`);
+  }, [current, keys, params, path]);
+
+  useEffect(() => {
+    const y = sessionStorage.getItem("op-scroll");
+    if (y === null) return;
+    sessionStorage.removeItem("op-scroll");
+    window.scrollTo({ top: Number(y), behavior: "instant" });
+  }, []);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {

@@ -75,7 +75,7 @@ export function HeroSticker({ variant }: { variant: OfferVariant }) {
 export function OfferPlan({ variant }: { variant: OfferVariant }) {
   if (variant === "A") {
     return (
-      <div className="plan hl rise op-card">
+      <div className="plan hl op-card">
         <div className="plan-head">
           <span className="op-chip">30% off your first month</span>
           <h3>{PLANS.one.name}</h3>
@@ -91,7 +91,7 @@ export function OfferPlan({ variant }: { variant: OfferVariant }) {
   }
   if (variant === "D") {
     return (
-      <div className="op-ticket-row rise">
+      <div className="op-ticket-row">
         <div className="plan hl op-card">
           <div className="plan-head">
             <h3>{PLANS.one.name}</h3>
@@ -112,7 +112,7 @@ export function OfferPlan({ variant }: { variant: OfferVariant }) {
   }
   if (variant === "E") {
     return (
-      <div className="plan hl rise op-card">
+      <div className="plan hl op-card">
         <div className="plan-head">
           <h3>{PLANS.one.name}</h3>
           <p className="small">{PLANS.one.note}</p>
@@ -130,7 +130,7 @@ export function OfferPlan({ variant }: { variant: OfferVariant }) {
   }
   // B and C: the plain card, with one line under the price.
   return (
-    <div className="plan hl rise op-card">
+    <div className="plan hl op-card">
       <div className="plan-head">
         <h3>{PLANS.one.name}</h3>
         <p className="small">{PLANS.one.note}</p>
