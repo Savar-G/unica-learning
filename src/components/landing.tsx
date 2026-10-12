@@ -13,7 +13,7 @@ export function Landing({ look = "primer" }: { look?: Look }) {
       <Nav />
       <div className="frame">
         <main id="main">
-          {process.env.NODE_ENV === "production" ? <Hero /> : <Suspense fallback={<Hero />}><HeroPrototype><Hero /></HeroPrototype></Suspense>}
+          {process.env.NODE_ENV === "production" ? <Hero /> : <Suspense fallback={<Hero />}><HeroPrototype revised={<Hero prototypeCopy />}><Hero /></HeroPrototype></Suspense>}
           <How />
           <Parent />
           <Why />

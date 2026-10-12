@@ -1,27 +1,22 @@
-# Opening section prototype
+# Opening section copy prototype
 
-Question: Which structure makes the problem, child benefit, and mechanism easiest to read?
+Savar rejected A, B, and C on 2026-10-12.
+Keep the existing layout shown in his reference screenshot.
+Keep the headline, rotating topic, buttons beside the paragraph, and price line.
+Revise only the supporting copy. The revised copy is pending review.
 
 Run: `npm run dev -- --port 3017`.
-Open: http://localhost:3017/?variant=A
-Use the floating arrows or keyboard arrows to select A, B, or C.
-The original opening appears without the variant parameter.
-Production builds use the original opening.
-The sample assessment button in the prototype does not submit data.
-The rest of the existing page retains its normal links.
-
-Open hero-prototype.html for a self-contained comparison with desktop and phone controls.
-A.png, B.png, and C.png show the comparison at desktop width.
-
-Recommendation: A for the clearest reading order.
-Selection: Pending user review.
-After selection, replace the prototype with the chosen production implementation and remove the switcher.
+Open: http://localhost:3017/?variant=revised
+All earlier variant URLs now show the same revision.
+Without a variant parameter, the original copy appears.
+Production builds keep the original copy.
 
 Validation:
-- Existing tests pass. They exercise existing product logic, not visual preference.
-- ESLint completes with one existing unused-import warning in src/ds/blocks.tsx.
-- Production build passes, including TypeScript and static generation.
-- All options fit 1440px and 390px widths without horizontal overflow.
-- Browser arrows cycle through the options and update the URL.
-- Standalone comparison renders each option without console errors.
-- Visual review was performed by the implementing agent.
+- Existing tests pass; they cover product logic, not the copy.
+- ESLint passes with one existing unused-import warning.
+- Production build passes, including TypeScript.
+- Desktop buttons remain beside the supporting paragraph.
+- The phone layout has no horizontal overflow.
+- revised.png shows the current copy in the existing layout.
+
+Remove the prototype after the copy is selected.

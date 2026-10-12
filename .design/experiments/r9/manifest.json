@@ -1,42 +1,18 @@
 {
   "round": 9,
-  "decision": "Which opening structure best explains personalization?",
-  "primary_axis": "Grouping and placement of problem, benefit, and photo",
-  "invariants": [
-    "Agreed problem and benefit copy",
-    "Current math offer and price",
-    "Site fonts, colours, photo, and surrounding page"
+  "decision": "Preserve the existing opening layout; revise supporting copy only",
+  "status": "copy-review",
+  "rejected": [
+    "A: one column",
+    "B: two columns",
+    "C: photo beside text"
   ],
+  "reference": "User screenshot: CleanShot 2026-10-12 at 10.47.38 AM.png",
   "options": [
     {
-      "id": "A",
-      "artifact": "hero-prototype.html",
-      "url": "http://localhost:3017/?variant=A",
-      "screenshot": "A.png",
-      "bet": "One column",
-      "benefit": "Clear reading order",
-      "cost": "Longer opening section",
-      "risk": "Longer opening section"
-    },
-    {
-      "id": "B",
-      "artifact": "hero-prototype.html",
-      "url": "http://localhost:3017/?variant=B",
-      "screenshot": "B.png",
-      "bet": "Two columns",
-      "benefit": "Problem and benefit visible together",
-      "cost": "Less direct reading order",
-      "risk": "Less direct reading order"
-    },
-    {
-      "id": "C",
-      "artifact": "hero-prototype.html",
-      "url": "http://localhost:3017/?variant=C",
-      "screenshot": "C.png",
-      "bet": "Photo beside text",
-      "benefit": "Photo appears earlier",
-      "cost": "Benefit comes after the photo on phones",
-      "risk": "Benefit comes after the photo on phones"
+      "id": "revised",
+      "url": "http://localhost:3017/?variant=revised",
+      "artifact": "revised.png"
     }
   ]
 }
