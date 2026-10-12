@@ -135,9 +135,9 @@ export default function Body() {
           If your child is ahead, try fractions in recipes, bigger numbers and longer books. See our <Link href="/resources/bc-grade-2-math-and-reading">Grade 2 guide</Link> to check the earlier skills, and our <Link href="/resources/bc-proficiency-scale">guide to the BC proficiency scale</Link> to read the report card.
         </p>
         <p>
-          Unica Learning mails personalized math and reading workbooks that follow the BC curriculum at your child’s level.
+          Unica Learning mails personalized math workbooks that follow the BC curriculum at your child’s level.
         </p>
-        <AssessmentCta slug={meta.slug}>A free placement assessment on paper shows your child’s level in math and reading.</AssessmentCta>
+        <AssessmentCta slug={meta.slug}>A free placement assessment on paper shows your child’s level in math.</AssessmentCta>
       </Section>
     </>
   );

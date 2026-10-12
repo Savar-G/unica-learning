@@ -133,9 +133,9 @@ export default function Body() {
           If your child is behind, find the one skill that is stuck, such as ways to make 10 or one letter sound. Practise only that for a few minutes a day. If your child is ahead, stay curious: try bigger numbers, harder books and word problems they make up. To read the report card, see our <Link href="/resources/bc-proficiency-scale">guide to the BC proficiency scale</Link>.
         </p>
         <p>
-          Unica Learning mails personalized math and reading workbooks that follow the BC curriculum at your child’s level, not only their grade.
+          Unica Learning mails personalized math workbooks that follow the BC curriculum at your child’s level, not only their grade.
         </p>
-        <AssessmentCta slug={meta.slug}>A free placement assessment on paper shows your child’s level in math and reading.</AssessmentCta>
+        <AssessmentCta slug={meta.slug}>A free placement assessment on paper shows your child’s level in math.</AssessmentCta>
       </Section>
     </>
   );

@@ -177,8 +177,8 @@ export default function Body() {
           it does not know your child&apos;s level. A personalized workbook service is the other version.
         </p>
         <p>
-          Unica is one example. A free placement assessment on paper finds your child&apos;s level. We mail personalized math and
-          reading workbooks for ages 6 to 12 home; the books follow the BC curriculum at your child&apos;s level. The plan is 15-20
+          Unica is one example. A free placement assessment on paper finds your child&apos;s level. We mail personalized math
+          workbooks for ages 6 to 12 home; the books follow the BC curriculum at your child&apos;s level. The plan is 15-20
           minutes a day, 5 days a week. A parent app lets you scan a problem to see the steps and check answers.{" "}
           <strong>Cost:</strong> CAD 99 a month for math, delivery included, with a 30-day
           money-back guarantee and cancel anytime. See <Link href="/#price">pricing</Link>.
@@ -195,7 +195,7 @@ export default function Body() {
           <li>Oxford Learning (reading and writing for grades 1 to 8),<Cite n={10} /> Sylvan (reading and writing),<Cite n={11} /> Eye Level (English).<Cite n={13} /></li>
           <li>IXL language arts,<Cite n={15} /> Khan Academy Kids for early readers,<Cite n={17} /> Prodigy English.<Cite n={18} /></li>
           <li>Library programs such as the BC Summer Reading Club and Reading Buddies.<Cite n={19} /><Cite n={20} /></li>
-          <li>Reading workbooks at home, including Unica&apos;s reading plan.</li>
+          <li>Reading workbooks at home. Unica is math only for now.</li>
         </ul>
       </Section>
 

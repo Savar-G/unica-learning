@@ -188,7 +188,7 @@ export default function Body() {
           <Link href="/resources/tutor-cost-bc">tutor costs in BC</Link> for hourly rates.
         </p>
         <p>
-          Unica is one of these options: personalized math and reading workbooks for ages 6-12, mailed home. The books
+          Unica is one of these options: personalized math workbooks for ages 6-12, mailed home. The books
           follow the BC curriculum at your child&apos;s level, and your child works on paper for 15-20 minutes a day, 5
           days a week. Math is CAD 99 a month, delivery included, with a
           30-day money-back guarantee.

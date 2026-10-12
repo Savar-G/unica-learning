@@ -127,7 +127,7 @@ export function PlanGrid({ children }: PlanGridProps) {
 
 export interface PlanCardProps {
   name: string;
-  /** One line under the name, e.g. "Math or reading". */
+  /** One line under the name, e.g. "Grades 1-7, ages 6-12". */
   note?: string;
   price: number;
   currency?: string;
@@ -373,7 +373,7 @@ export function Hero({
   title = "Personalized. Delivered.",
   highlight = "Mastered.",
   kicker = "",
-  lead = "Math and reading workbooks made for your child, mailed home, and adapted after every book.",
+  lead = "Math workbooks made for your child, mailed home, and adapted after every book.",
   actions,
   meta = [],
   imageSrc,

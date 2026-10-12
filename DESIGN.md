@@ -9,7 +9,7 @@
 
 **Situation:** They arrive from a Product BC Slack post, a Reddit thread or a direct link, usually on a phone, with under a minute of attention.
 
-**Job to be done:** In 15 seconds, know what this is (math and reading workbooks made for their child, mailed home, that adapt from a photo of the finished pages). Feel that it is a real, serious product. Reserve a subscription.
+**Job to be done:** In 15 seconds, know what this is (math workbooks made for their child, mailed home, that adapt from a photo of the finished pages). Feel that it is a real, serious product. Reserve a subscription.
 
 **Success evidence:** Paid reservations from targeted traffic (pass bar in the research doc: 10+). Secondary: a 5-second test where a parent can say "workbooks made for my kid, mailed home, they adapt".
 
@@ -23,7 +23,7 @@
 
 - References: Savar's FigJam board (Primer, Ello, Squirrel AI, Outschool) with his notes; see `.design/references.json`.
 - Brand: Unica Learning, on every customer-facing page and as the legal name on privacy and terms (D-056). The domain is `unicalearning.com` (bought on Vercel 2026-10-08; www redirects to it; PR #26).
-- Offer: math and reading, ages 6-12, delivery across Canada included (D-052). For now one plan: math, CAD 99 a month (D-090; was one subject CAD 139, math + reading CAD 229, D-046, D-077, D-079). Each month: 1 workbook per subject, about 20-25 pages; 15-20 minutes a day, 5 days a week; a photo check-in partway through each book, so the next book ships before the current one ends; a progress report and worked solutions after every check-in (D-061). Books follow the BC curriculum first: BC families add a card at signup and pay nothing until the first workbook ships; every other curriculum joins the waitlist (D-053).
+- Offer: math, ages 6-12, delivery across Canada included (D-052). Reading comes later. For now one plan: math, CAD 99 a month (D-090; was one subject CAD 139, math + reading CAD 229, D-046, D-077, D-079). Each month: 1 math workbook, about 20-25 pages; 15-20 minutes a day, 5 days a week; a photo check-in partway through each book, so the next book ships before the current one ends; a progress report and worked solutions after every check-in (D-061). Books follow the BC curriculum first: BC families add a card at signup and pay nothing until the first workbook ships; every other curriculum joins the waitlist (D-053).
 - Real product posture: no "pilot", "beta" or "test" wording (D-012).
 - No proof we do not have: no ratings, review counts, family counts, press logos, outcome percentages or testimonials. Until real customer references exist, proof = sample pages, clear price, a free placement assessment, a 30-day money-back guarantee, cancel anytime. No founder names or student status on the home page. The founder story, names and "two students" appear only on `/our-story` (D-060, narrows D-040).
 - Comparative and performance claims: Competition Act s.74.01(1)(b) requires an adequate and proper test before a claim about a product's performance. The page makes no research claims; the paper belief is stated as "We believe paper and pencil build stronger learning." (D-039). Never a claim about our results.
@@ -42,7 +42,7 @@
 
 Every section sets up the next one. A single pencil line connects the sections and the loop steps.
 
-1. **Hero (D-029, option C; copy D-070).** Text above one large real photo of a child working at home. Kicker (D-089): "A personalized math and reading learning program for ages 6-12." Headline, all in ink: "Schools and tutoring programs put every child in the same box." ("the same box." with the yellow highlighter). Lead: "Same material, same pace. Miss [word] and every lesson after it gets harder. Unica builds each workbook around your child's level, pace and learning style, then mails it home." (the word rotates through 16 math and reading topics). Buttons "Take free assessment" (D-041, kept by Savar) and "See how it works". Fact line: "CAD 99/month · 30-day money-back guarantee · Cancel anytime" (D-090). No "What is [Brand]?" section; How it works comes next (D-070).
+1. **Hero (D-029, option C; copy D-070).** Text above one large real photo of a child working at home. Kicker (D-091): "A personalized math learning program for ages 6-12." Headline, all in ink: "Schools and tutoring programs put every child in the same box." ("the same box." with the yellow highlighter). Lead: "Same material, same pace. Miss [word] and every lesson after it gets harder. Unica builds each workbook around your child's level, pace and learning style, then mails it home." (the word rotates through 16 math topics, D-091). Buttons "Take free assessment" (D-041, kept by Savar) and "See how it works". Fact line: "CAD 99/month · 30-day money-back guarantee · Cancel anytime" (D-090). No "What is [Brand]?" section; How it works comes next (D-070).
 2. **How it works (D-057, D-063).** Six cards in a grid, with no connecting line or animation:
    1. **Assess:** We send a free placement assessment on paper. It finds your child's level and where the gaps are. The parent returns it by photo (D-042).
    2. **Deliver:** We mail a workbook matched to your child's level and gaps. It covers your school curriculum.

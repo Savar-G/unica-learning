@@ -22,7 +22,7 @@ export default async function Image() {
             <div style={{ width: 13, height: 13, background: "#FF6430", marginLeft: 3 }} />
           </div>
           <div style={{ display: "flex", flexDirection: "column" }}>
-            <div style={{ fontSize: 22, letterSpacing: 3, textTransform: "uppercase", marginBottom: 22 }}>Math and reading learning program, ages 6-12</div>
+            <div style={{ fontSize: 22, letterSpacing: 3, textTransform: "uppercase", marginBottom: 22 }}>Math learning program, ages 6-12</div>
             <div style={{ display: "flex", flexDirection: "column", fontFamily: "Zodiak", fontSize: 64, lineHeight: 1.05, letterSpacing: -1.5 }}>
               <span>Schools and tutoring</span>
               <span>programs put every</span>
