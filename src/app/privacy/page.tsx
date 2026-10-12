@@ -10,34 +10,45 @@ export const metadata = pageMetadata({
 });
 
 export default function Privacy() {
-  return <SupportPage label="Updated 8 October 2026" title="Privacy policy">
+  return <SupportPage label="Updated 11 October 2026" title="Privacy policy">
     <p className="lead">{BUSINESS_NAME} is responsible for the information you share through this website. This policy explains what we collect, why we use it, and the choices you have.</p>
     <h2>What you share with us</h2>
-    <p>When you request an assessment or join the waitlist, we ask for your name, email address, Canadian postal code, chosen plan and subject, your child&apos;s grade, and their school curriculum. The form does not ask for your child&apos;s name, date of birth, or photos of their work.</p>
-    <p>We also keep information about how you found us, such as a link or advertisement, and which button you used to open the form. After you book, we ask how you heard about us. Your answer is optional and is kept with your booking.</p>
+    <p>Before the online assessment, families booked through a reservation form. For those bookings, we keep the name, email address, Canadian postal code, chosen plan and subject, the child&apos;s grade, and their school curriculum.</p>
+    <p>For an online assessment account, we ask for your name, email address, postal code, and each child&apos;s first name, grade, and school curriculum. To confirm your email address, we email you a one-time code. We keep the child&apos;s test answers, answer times, typed working, drawings, results, work reviews, and reports. We also keep account sign-in records, card setup or waitlist records, and records of assessment emails and unsubscribe requests. We do not ask for a child&apos;s date of birth.</p>
+    <p>We also keep information about how you found us, such as a link or advertisement, and the page you came from. After a booking through the old reservation form, we asked how you heard about us. That answer was optional and is kept with the booking.</p>
     <h2>How we use your information</h2>
-    <p>We use your details to manage your assessment request or waitlist entry and email you about the next step. We share the details needed by the companies that help us run the website, send emails, and handle payments.</p>
+    <p>We use your details to run your child&apos;s assessment, manage your plan or waitlist entry, and email you about the next step. We share the details needed by the companies that help us run the website, send emails, and handle payments.</p>
     <p>If you send us photos of completed pages, we use them to plan your child&apos;s next book and show their progress. You can ask us to delete them.</p>
+    <p>For online assessments, we mark the answers and use the results to show your child&apos;s working level and areas for practice. Drawings are stored privately. The parent and our authorized team can view them after sign-in. The emailed report links to the account; it does not include the drawings.</p>
+    <p>We send the report by email and keep it in your account. We may send assessment reminders when a test has not started or has stopped, with no more than two reminders per test. These emails include an unsubscribe link. You can stop reminders and emails about our plans without deleting your account.</p>
+    <h2>AI processing of your child&apos;s work</h2>
+    <p>When enabled, we use Anthropic&apos;s artificial intelligence (AI) service to review your child&apos;s typed working and drawings and to write report text from the measured results. This processing is currently off. Answer marking still uses our assessment rules.</p>
+    <p>An AI review request can include the question, its level, the expected answer, your child&apos;s answer, whether it was correct, possible error labels, typed working, and the drawing as an image. Report requests include the result facts needed for the report. We do not send account names, email addresses, postal codes, or account identifiers in these requests. Typed working or a drawing can still contain personal information if your child puts it there. Please keep names and contact details out of the work.</p>
+    <p>AI comments can be wrong. We leave a work comment out when the review is not sufficiently certain. Our team can review the work and its confidence result. Contact us if you want us to check a result.</p>
     <p>When you add your card, we send your name, email address, and postal code to our payment provider. We also send your plan, subject, price, your child&apos;s grade and school curriculum, and a reference for your booking. You enter your card details on its secure page. Our booking form does not collect your card number.</p>
     <h2>Cookies and your choice</h2>
-    <p>Cookies are small pieces of information saved on your device. If you accept optional cookies, we count page visits and steps in the booking form to understand how people use our website. These counts can include your chosen plan, subject and school curriculum. They do not include your name, email address, postal code, or your child&apos;s grade. We do not record your screen or the text you enter.</p>
-    <p>You can reject optional cookies and still book an assessment or join the waitlist. Use Cookie settings at the bottom of any page to change your choice.</p>
+    <p>Cookies are small pieces of information saved on your device. If you accept optional cookies, we count page visits and steps in the signup, the assessment, and the plan choice to understand how people use our website. These counts can include your chosen plan, subject and school curriculum. They do not include your name, email address, postal code, or your child&apos;s grade. We do not record your screen or the text you enter.</p>
+    <p>You can reject optional cookies and still take the free math assessment, choose a plan, or join the waitlist. Use Cookie settings at the bottom of any page to change your choice.</p>
     <p>Your device also saves your cookie choice and briefly keeps details needed when you return from adding your card. These help the website work and are separate from the optional cookies.</p>
     <h2>Companies that help us</h2>
     <p>Other companies help us keep form details, send emails, take payments, make the website available, and count visits. The company that makes the website available may use information about your device and connection to keep it working and protect it from misuse.</p>
     <details>
       <summary>See the companies we use</summary>
       <ul>
-        <li>Supabase keeps the details you send through the booking form.</li>
-        <li>Resend sends email notices to our team about new requests.</li>
+        <li>Supabase manages account sign-in and stores form details, assessment records, and private drawings.</li>
+        <li>Resend sends sign-in codes, account links, reports, reminders, and notices to our team.</li>
+        <li>Anthropic processes the assessment work and report facts described above when AI processing is enabled.</li>
         <li>Stripe handles adding your card and payments.</li>
         <li>Vercel makes the website available to you.</li>
-        <li>PostHog counts visits and booking steps only if you accept optional cookies.</li>
+        <li>PostHog counts visits and signup steps only if you accept optional cookies.</li>
       </ul>
     </details>
     <p>Some of these companies may handle information outside Canada. Information handled there may be subject to the laws of those countries.</p>
     <h2>How long we keep information</h2>
-    <p>We keep information for as long as we need it to manage your request or provide your service, and to meet any legal recordkeeping requirements. You can ask us to delete information we no longer need. Some records may need to be kept to meet legal requirements.</p>
+    <p>For online assessment families with no saved card, we delete the family account and its assessment data 12 calendar months after the latest test activity across all children in the family. Test activity includes starting, answering, or finishing a test. A daily deletion job checks this deadline. A new test or later test activity starts a new 12-month period.</p>
+    <p>If you have saved a card, we keep the account and child data while the account is active so we can provide your service. You can request deletion at any time. An account with no test has no test-based deletion deadline; contact us to delete it.</p>
+    <p>On a verified deletion request, we remove the parent account, all children, tests, answers, typed working, stored drawings, work reviews, reports, account links, card setup and waitlist records, and assessment email records. If a service failure interrupts deletion, we keep the request and retry the remaining steps.</p>
+    <p>The family account deletion does not cancel a workbook subscription or remove historical reservation and payment records. Contact us about cancellation and those records. We keep other service and payment records for as long as needed to provide the service and meet legal recordkeeping requirements. Copies already received in an email or saved on your device are outside our account storage.</p>
     <h2>Your questions and choices</h2>
     <p>To ask about your information, request a copy, correct it, ask for deletion, or ask us to stop using it, email <a href={SUPPORT_HREF}>{SUPPORT_EMAIL}</a>. We may need to confirm that the request is yours before we act on it. If stopping the use of your information affects a service you requested, we will explain this to you.</p>
   </SupportPage>;

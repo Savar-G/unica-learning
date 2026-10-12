@@ -1,4 +1,4 @@
-// Starting values from D-083 and D-084. Tune them after the pilot; never inline them.
+// Starting values from D-083 and D-084. Tune them from the first real results; never inline them.
 import type { Grade, ReportedStrand, Strand } from "./types";
 
 export type GradeBandId = "1-2" | "3-5" | "6-7";

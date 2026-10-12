@@ -31,7 +31,7 @@
 .heard-other { display: flex; flex-wrap: wrap; align-items: end; gap: 10px; margin-top: 14px; }
 .heard-other .fld { flex: 1 1 240px; }
 .heard-thanks { min-height: 1.4em; margin: 12px 0 16px !important; }
-/* Parent account pages (online assessment pilot, #62). */
+/* Parent account pages (online assessment, #62). */
 .acct-form { display: grid; gap: 18px; max-width: 520px; margin-top: 28px; }
 .acct-form fieldset { border: 0; margin: 0; padding: 0; display: grid; gap: 16px; }
 .acct-form fieldset + fieldset { margin-top: 12px; }

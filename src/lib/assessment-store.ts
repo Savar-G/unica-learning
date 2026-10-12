@@ -17,7 +17,6 @@ import {
   type Submission,
 } from "@/lib/assessment";
 import type { Child } from "@/lib/account";
-import { pilotOn } from "@/lib/pilot";
 import { testFail, type AssessmentStatus } from "@/lib/test-api";
 import type { StartStore, StoredAttempt } from "@/lib/test-start";
 import { adminClient, parentId, sessionClient } from "@/lib/supabase-auth";
@@ -106,7 +105,6 @@ export async function openAnswerWindow(admin: SupabaseClient, attempt: Attempt, 
 
 /** The signed-in parent and an admin client, or the error response to send. */
 export async function testAccess(): Promise<{ parent: string; admin: SupabaseClient } | { error: Response }> {
-  if (!pilotOn()) return { error: testFail("off", 404) };
   const parent = await parentId(await sessionClient());
   if (!parent) return { error: testFail("signed_out", 401) };
   const admin = adminClient();

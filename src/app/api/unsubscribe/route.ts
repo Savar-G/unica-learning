@@ -1,8 +1,8 @@
 import { unsubscribe } from "@/lib/reminder-store";
 import { adminClient } from "@/lib/supabase-auth";
 
-// Unsubscribe from reminder emails (#73, CASL). Not behind the pilot setting: CASL wants the link in a sent email to
-// keep working for 60 days, whatever happens to the pilot. A token that is not a reminder's does nothing.
+// Unsubscribe from reminder emails (#73, CASL). CASL wants the link in a sent email to
+// keep working for 60 days. A token that is not a reminder's does nothing.
 // POST /api/unsubscribe?t=<token>:
 //   - mail apps' own Unsubscribe button (RFC 8058 one-click, body "List-Unsubscribe=One-Click"): 200, nothing else;
 //   - the unsubscribe page, which posts on load (JSON answer), or its button when JavaScript is off (back to the page).

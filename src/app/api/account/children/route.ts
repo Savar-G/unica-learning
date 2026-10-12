@@ -1,10 +1,8 @@
 import { MAX_CHILDREN, cleanChild, fail, type AccountResult } from "@/lib/account";
-import { pilotOn } from "@/lib/pilot";
 import { adminClient, parentId, sessionClient } from "@/lib/supabase-auth";
 
 // Adds a child to the signed-in parent. The parent comes from the session cookie, never from the request body.
 export async function POST(request: Request) {
-  if (!pilotOn()) return fail("off", 404);
   const id = await parentId(await sessionClient());
   if (!id) return fail("signed_out", 401);
 

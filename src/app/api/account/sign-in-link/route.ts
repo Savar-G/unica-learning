@@ -1,6 +1,5 @@
 import { fail, type AccountResult } from "@/lib/account";
 import { linkOrigin, sendSignInLink } from "@/lib/account-server";
-import { pilotOn } from "@/lib/pilot";
 import { canResend, hashToken } from "@/lib/sign-in-link";
 import { adminClient, parentId, sessionClient } from "@/lib/supabase-auth";
 
@@ -9,7 +8,6 @@ import { adminClient, parentId, sessionClient } from "@/lib/supabase-auth";
 // - a used or expired link, signed out: { token } of that old link, for 7 days after it was made. The new link goes to
 //   the same parent and child, so the email only ever reaches the inbox that got the first one.
 export async function POST(request: Request) {
-  if (!pilotOn()) return fail("off", 404);
   let body: { childId?: unknown; token?: unknown };
   try {
     body = await request.json();

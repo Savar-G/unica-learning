@@ -48,7 +48,7 @@ export default function ResourcesHub() {
           </section>
         ))}
 
-        <AssessmentCta slug="hub">Want to know where your child is? A free placement assessment on paper finds their level and gaps.</AssessmentCta>
+        <AssessmentCta slug="hub">Want to know where your child is? The free online math assessment shows their math level and gaps.</AssessmentCta>
       </main>
     </ResourcesShell>
   );

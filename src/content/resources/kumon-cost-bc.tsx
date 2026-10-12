@@ -215,14 +215,14 @@ export default function Body() {
         <p>
           Unica is a different format: personalized math workbooks for ages 6-12, mailed home. The books
           follow the BC curriculum at your child&apos;s level, and your child works on paper for 15-20 minutes a day, 5
-          days a week. There is a free placement assessment on paper, a 30-day money-back guarantee, and you can
+          days a week. There is a free online math assessment, a 30-day money-back guarantee, and you can
           cancel anytime. For a wider look, read <Link href="/resources/tutor-cost-bc">how much a tutor costs in BC</Link>{" "}
           and <Link href="/resources/is-kumon-worth-it">is Kumon worth it?</Link>
         </p>
       </Section>
 
       <AssessmentCta slug={meta.slug}>
-        Comparing options? Start with a free placement assessment on paper. It shows your child&apos;s level and gaps,
+        Comparing options? Start with the free online math assessment. It shows your child&apos;s math level and gaps,
         whatever you choose next.
       </AssessmentCta>
     </>

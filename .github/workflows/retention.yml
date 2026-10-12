@@ -1,0 +1,48 @@
+name: Family retention
+
+on:
+  schedule:
+    - cron: '17 15 * * *'
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: Read eligibility counts or process the durable deletion queue
+        type: choice
+        options: [dry, delete]
+        default: dry
+        required: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: family-retention-production
+  cancel-in-progress: false
+
+jobs:
+  retention:
+    if: github.ref == 'refs/heads/main' && (github.event_name == 'workflow_dispatch' || vars.RETENTION_WORKER_ENABLED == 'on')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        timeout-minutes: 1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38
+        timeout-minutes: 1
+        with:
+          node-version: '22.23.1'
+          package-manager-cache: false
+      - run: npm ci
+        timeout-minutes: 1
+      - run: node scripts/build-retention-worker.mjs
+        timeout-minutes: 1
+      - name: Run foreground worker
+        run: exec node --conditions=react-server .retention/worker.mjs --mode "$RETENTION_MODE"
+        env:
+          RETENTION_MODE: ${{ inputs.mode || 'delete' }}
+          RETENTION_WORKER_ENABLED: ${{ vars.RETENTION_WORKER_ENABLED }}
+          SUPABASE_URL: ${{ vars.RETENTION_SUPABASE_URL }}
+          SUPABASE_SECRET_KEY: ${{ secrets.RETENTION_SUPABASE_SECRET_KEY }}
+          STRIPE_SECRET_KEY: ${{ secrets.RETENTION_STRIPE_SECRET_KEY }}

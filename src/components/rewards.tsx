@@ -1,11 +1,11 @@
 // /rewards: the rewards program as a letter to parents (D-078, variant D of round r10 on branch site/rewards-prototype).
-// Linked from the "Daily practice, rewarded" card on the home page and the footer. Uses the site nav, footer and reserve dialog.
+// Linked from the "Daily practice, rewarded" card on the home page and the footer. Uses the site nav and footer.
 import { BRAND } from "@/lib/site";
 import { EARN, POINTS_PER_MONTH, PRIZES, REWARDS_FAQ, points } from "@/lib/rewards";
 import { Eyebrow, Faq, Nav as NavBar } from "@/ds";
 import { Motion } from "@/components/motion";
-import { Reserve } from "@/components/reserve";
-import { Footer } from "@/components/sections";
+import { StartLink } from "@/components/start-link";
+import { Footer, START_LABEL } from "@/components/sections";
 import { Rise } from "./drawn";
 import "./rewards.css";
 
@@ -20,7 +20,7 @@ const LINKS = [
 export function Rewards() {
   return (
     <div className="look-root" data-look="warm" id="top">
-      <NavBar brand={BRAND} home="/" links={LINKS} cta={<button className="btn sm" data-open data-src="rewards-nav">Free assessment</button>} />
+      <NavBar brand={BRAND} home="/" links={LINKS} cta={<StartLink className="btn sm" src="rewards-nav">Free assessment</StartLink>} />
       <div className="frame">
         <main id="main" className="rewards">
           <Rise className="rewards-head">
@@ -75,14 +75,11 @@ export function Rewards() {
           </section>
 
           <Rise className="rewards-end">
-            <button className="btn" data-open data-src="rewards">
-              Take free assessment <span className="arr">→</span>
-            </button>
+            <StartLink src="rewards">{START_LABEL} <span className="arr">→</span></StartLink>
           </Rise>
         </main>
         <Footer />
       </div>
-      <Reserve />
       <Motion />
     </div>
   );

@@ -194,7 +194,7 @@ export default function Body() {
       </Section>
 
       <AssessmentCta slug={meta.slug}>
-        Not sure what your child needs yet? A free placement assessment on paper finds their level and gaps.
+        Not sure what your child needs yet? The free online math assessment shows their math level and gaps.
       </AssessmentCta>
     </>
   );

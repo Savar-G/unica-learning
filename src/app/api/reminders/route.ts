@@ -1,6 +1,5 @@
 import { timingSafeEqual } from "node:crypto";
 import { linkOrigin } from "@/lib/account-server";
-import { pilotOn } from "@/lib/pilot";
 import { reminderStore, sendReminder } from "@/lib/reminder-store";
 import { REMINDER_KINDS, dueReminders, runReminders, type DueReminder } from "@/lib/reminders";
 import { newToken } from "@/lib/sign-in-link";
@@ -9,7 +8,7 @@ import { adminClient } from "@/lib/supabase-auth";
 // The reminder job (#73, D-085). Supabase pg_cron calls it every 15 minutes through pg_net, with
 // "Authorization: Bearer <CRON_SECRET>" (the URL and the secret live in Supabase Vault; see
 // supabase/migrations/20261011_add_reminder_cron.sql). Vercel cron here runs only once a day, so it cannot.
-// Behind the pilot setting: off, it answers 404 and sends nothing. ?dry=1 counts what is due and sends nothing.
+// ?dry=1 counts what is due and sends nothing.
 // The answer holds counts only, never a parent's details.
 
 export const maxDuration = 60;
@@ -26,7 +25,6 @@ function authorized(header: string | null, secret: string): boolean {
 const byKind = (due: DueReminder[]) => Object.fromEntries(REMINDER_KINDS.map((kind) => [kind, due.filter((r) => r.kind === kind).length]));
 
 export async function POST(request: Request) {
-  if (!pilotOn()) return new Response("Not found", { status: 404 });
   // Never open: without a secret the job does not run at all.
   const secret = process.env.CRON_SECRET;
   if (!secret) {

@@ -1,6 +1,7 @@
 // The assessment core: the one tested seam (spec #54). Import from "@/lib/assessment" only.
 export * from "./attempt";
 export * from "./constants";
+export * from "./deletion";
 export * from "./facts";
 export * from "./flags";
 export { comparisonFor, type ComparisonInput, type ComparisonTest } from "./comparison";
@@ -51,3 +52,5 @@ export {
 export type * from "./types";
 export { hasWork, workProblem, type BoardWork, type WorkProblem } from "./work";
 export { isLineChoice, namesChoice, readAloudText, sayChoice, spokenChoices } from "./read-aloud";
+export * from "./payments";
+export * from "./retention-worker";

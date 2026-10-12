@@ -29,12 +29,21 @@ export async function parentId(client: SupabaseClient): Promise<string | null> {
 let admin: SupabaseClient | null = null;
 
 /** Server writes. The secret key skips row-level security, so it never leaves the server. Null when the key is not set. */
-export function adminClient(): SupabaseClient | null {
+export function adminClient(signal?: AbortSignal): SupabaseClient | null {
   const key = process.env.SUPABASE_SECRET_KEY;
   if (!key) {
     console.error("[account] SUPABASE_SECRET_KEY is not set");
     return null;
   }
+  if (signal) return createClient(SUPABASE_URL, key, {
+    auth: { persistSession: false, autoRefreshToken: false },
+    global: {
+      fetch: (input, init) => fetch(input, {
+        ...init,
+        signal: AbortSignal.any([signal, ...(init?.signal ? [init.signal] : []), ...(input instanceof Request ? [input.signal] : [])]),
+      }),
+    },
+  });
   admin ??= createClient(SUPABASE_URL, key, { auth: { persistSession: false, autoRefreshToken: false } });
   return admin;
 }

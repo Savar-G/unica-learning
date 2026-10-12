@@ -10,7 +10,7 @@ export const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? (process.env.NODE_EN
 export const INDEXABLE = process.env.NEXT_PUBLIC_ALLOW_INDEX === "true" && process.env.VERCEL_ENV !== "preview";
 
 export const SITE_TITLE = `${BRAND}: Personalized math learning program`;
-export const SITE_DESCRIPTION = `A personalized math learning program for ages 6-12 across Canada. Paper workbooks made for your child, adapted after every book. Free placement assessment. CAD ${PLANS.one.price}/month.`;
+export const SITE_DESCRIPTION = `A personalized math learning program for ages 6-12 across Canada. Paper workbooks made for your child, adapted after every book. Free online math assessment. CAD ${PLANS.one.price}/month.`;
 
 type PageMeta = {
   /** Route path, for example "/privacy". Used for the canonical URL. */

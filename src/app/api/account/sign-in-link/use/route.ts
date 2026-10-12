@@ -1,5 +1,4 @@
 import { NextResponse } from "next/server";
-import { pilotOn } from "@/lib/pilot";
 import { hashToken, startPath } from "@/lib/sign-in-link";
 import { adminClient, sessionClient } from "@/lib/supabase-auth";
 
@@ -7,7 +6,6 @@ import { adminClient, sessionClient } from "@/lib/supabase-auth";
 // links cannot use up a parent's link. This marks the link used, signs the parent in on this device and opens the
 // child's start screen.
 export async function POST(request: Request) {
-  if (!pilotOn()) return new Response(null, { status: 404 });
   // Only our own page may post here. Another site could otherwise sign a visitor in to the account of whoever owns the link.
   const origin = request.headers.get("origin");
   if (origin && origin !== new URL(request.url).origin) return new Response(null, { status: 403 });

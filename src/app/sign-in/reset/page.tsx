@@ -1,5 +1,4 @@
 import { pageMetadata } from "@/lib/metadata";
-import { requirePilot } from "@/lib/pilot";
 import { ResetRequest } from "@/components/account";
 import { SupportPage } from "@/components/support-page";
 
@@ -12,7 +11,6 @@ export const metadata = pageMetadata({
 
 // Password reset by email (#63). Supabase sends the email through Resend; its link opens /auth/confirm.
 export default async function ResetPassword({ searchParams }: PageProps<"/sign-in/reset">) {
-  await requirePilot();
   const { expired } = await searchParams;
   return (
     <SupportPage label="Your account" title="Reset your password.">

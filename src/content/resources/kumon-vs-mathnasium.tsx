@@ -164,7 +164,7 @@ export default function Body() {
         </p>
         <p>
           Workbooks at home are another route. Unica mails personalized math workbooks for ages 6 to 12 that follow
-          the BC curriculum at your child&apos;s level, with a free placement assessment on paper and about 15-20 minutes a day, 5
+          the BC curriculum at your child&apos;s level, with a free online math assessment first and about 15-20 minutes a day, 5
           days a week. Math costs CAD 99 a month, delivery included, with a 30-day
           money-back guarantee and cancel anytime. More options are in our{" "}
           <Link href="/resources/kumon-alternatives">guide to Kumon alternatives</Link>.
@@ -184,7 +184,7 @@ export default function Body() {
       </Section>
 
       <AssessmentCta slug={meta.slug}>
-        Before you pick a centre, see where your child is. A free placement assessment on paper finds their level and gaps.
+        Before you pick a centre, see where your child is. The free online math assessment shows their math level and gaps.
       </AssessmentCta>
     </>
   );
