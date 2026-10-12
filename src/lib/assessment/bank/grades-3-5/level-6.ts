@@ -10,6 +10,8 @@ const template = (id: string, strand: TaggedTemplate["strand"], standard: string
   grades: { BC: 6, AB: 6, SK: 6, MB: 6, ON: 6, ...tags }, fill,
 });
 const gcd = (a: number, b: number): number => b === 0 ? a : gcd(b, a % b);
+/** Ordered pairs as the voice should say them: "(5, 4)" is "5 comma 4", so the order of the two numbers is heard. */
+const sayPoints = (points: readonly (readonly [number, number])[]) => Object.fromEntries(points.map(([x, y]) => [`(${x}, ${y})`, `${x} comma ${y}`]));
 
 export const LEVEL_6: readonly TaggedTemplate[] = [
   template("common-factor", "N", "6.4", (rng) => {
@@ -135,7 +137,7 @@ export const LEVEL_6: readonly TaggedTemplate[] = [
     return { values: { k, b, n }, prompt, readAloud: prompt.replaceAll("×", "times").replaceAll("+", "plus").replaceAll(" n ", " the number "), answer: String(right),
       wrong: typedWrong(right, [[mistake, task === "step" ? "rule-swap" : task === "difference" ? "coefficient-ignore" : "A5"], [right + k, task === "step" ? "input-step-two" : task === "difference" ? "pattern-step-count" : "next-not-asked"]]) };
   // AB MAT5-OI2-GQ1-LO1-KO2-SP evaluates an expression by substituting a given number for the variable.
-  }, "number", { ON: task === "tenth" ? 4 : 5, ...(["output", "initial", "difference", "tenth"].includes(task) ? { AB: 5 as const } : {}), ...(task === "tenth" ? { MB: 5 as const } : {}) })), // tenth: AB MAT5-OI6-GQ1-LO1-KO1-SP, MB 5.PR.1
+  }, "number", { ON: task === "tenth" ? 4 : 5, ...(["output", "initial", "difference", "tenth"].includes(task) ? { AB: 5 as const } : {}), ...(task === "tenth" ? { SK: 5 as const, MB: 5 as const } : {}) })), // tenth: AB MAT5-OI6-GQ1-LO1-KO1-SP, MB 5.PR.1, SK P5.1
   ...["add", "subtract", "multiply", "divide", "subtrahend", "divisor"].map((op) => template(`equation-${op}`, "A", "6.10", (rng) => {
     const x = rng.int(30, 89), k = rng.int(4, 9);
     const versions = {
@@ -244,13 +246,15 @@ export const LEVEL_6: readonly TaggedTemplate[] = [
     const [x, y] = draw(rng, (r) => [r.int(2, 9), r.int(2, 9)], ([x, y]) => x !== y);
     return { values: { x, y }, prompt: `A point is ${x} units right and ${y} units up from the origin. Which ordered pair names it?`,
       readAloud: `A point is ${x} units right and ${y} units up from the origin. Which ordered pair names it?`, answer: `(${x}, ${y})`,
-      wrong: [wrong(`(${y}, ${x})`, "coordinates-swap"), wrong(`(${x - 1}, ${y - 1})`, "N4"), wrong(`(${x + 1}, ${y + 1})`, "N4")] };
+      wrong: [wrong(`(${y}, ${x})`, "coordinates-swap"), wrong(`(${x - 1}, ${y - 1})`, "N4"), wrong(`(${x + 1}, ${y + 1})`, "N4")],
+      say: sayPoints([[x, y], [y, x], [x - 1, y - 1], [x + 1, y + 1]]) };
   }, "choice", { AB: 5, ON: 4 }), // AB MAT5-OI4-GQ1-LO1-KO1-SP: points on a coordinate grid
   template("coordinate-slide", "MG", "6.16", (rng) => {
     const x = rng.int(2, 7), y = rng.int(2, 7), dx = rng.int(2, 5), dy = rng.int(2, 5);
     return { values: { x, y, dx, dy }, prompt: `A point starts at (${x}, ${y}). It moves ${dx} units right and ${dy} units up. Where is it now?`,
       readAloud: `A point starts ${x} units right and ${y} units up from the origin. It moves ${dx} units right and ${dy} units up. Where is it now?`, answer: `(${x + dx}, ${y + dy})`,
-      wrong: [wrong(`(${x + dx}, ${y})`, "ignores-given"), wrong(`(${x}, ${y + dy})`, "ignores-given"), wrong(`(${x}, ${y})`, "ignores-given")] };
+      wrong: [wrong(`(${x + dx}, ${y})`, "ignores-given"), wrong(`(${x}, ${y + dy})`, "ignores-given"), wrong(`(${x}, ${y})`, "ignores-given")],
+      say: sayPoints([[x + dx, y + dy], [x + dx, y], [x, y + dy], [x, y]]) };
   }, "choice", { ON: 4 }),
   template("experimental-estimate", "DP", "6.18", (rng) => {
     // The other colour's estimate must differ from the copied count, so each coded value has one cause.

@@ -334,8 +334,9 @@ export const LEVEL_6: readonly TaggedTemplate[] = [
   {
     // 6.5: unlike denominators. Each wrong choice isolates a numerator or denominator error.
     // AB MAT4-OI1-GQ5-LO1-KO1-SP compares and orders fractions; ON6 B1.3 (ON5 B1.4 stops at twelfths).
+    // SK N5.5 and MB 5.N.7 compare fractions with like and unlike denominators.
     id: "g67-6-greatest-fraction",
-    strand: "F", grades: { BC: 6, AB: 4, SK: 6, MB: 6, ON: 6 }, format: "choice", whiteboard: true, standard: "6.5",
+    strand: "F", grades: { BC: 6, AB: 4, SK: 5, MB: 5, ON: 6 }, format: "choice", whiteboard: true, standard: "6.5",
     fill(rng) {
       const { n, b } = draw(rng, (g) => {
         const b = g.int(3, 11), n = g.int(2, b - 1);
@@ -800,8 +801,9 @@ export const LEVEL_6: readonly TaggedTemplate[] = [
     },
   },
   {
+    // ON6 E2.4 names the area of trapezoids; no AB, SK or MB outcome does.
     id: "g67-6-trapezoid-area",
-    strand: "MG", grades: { BC: 6, AB: 7, SK: 7, MB: 7, ON: 7 }, format: "number", whiteboard: true, standard: "6.12",
+    strand: "MG", grades: { BC: 6, AB: 7, SK: 7, MB: 7, ON: 6 }, format: "number", whiteboard: true, standard: "6.12",
     fill(rng) {
       const [a, b, h] = draw(rng, (g) => {
         const a = g.int(3, 10);
@@ -1098,8 +1100,9 @@ export const LEVEL_6: readonly TaggedTemplate[] = [
   {
     // 6.11: perimeter of a complex shape (an L shape), with every side given so no picture is needed.
     // AB MAT3-OI5-GQ1-LO1-KO2-SP: perimeter of a polygon.
+    // ON3 E2.1: perimeters of polygons, every side given.
     id: "g67-6-l-shape-perimeter",
-    strand: "MG", grades: { BC: 6, AB: 3, SK: 3, MB: 3, ON: 6 }, format: "number", whiteboard: true, standard: "6.11",
+    strand: "MG", grades: { BC: 6, AB: 3, SK: 3, MB: 3, ON: 3 }, format: "number", whiteboard: true, standard: "6.11",
     fill(rng) {
       const [W, H, a, h] = draw(rng, (g) => [g.int(8, 20), g.int(6, 15), g.int(2, 7), g.int(2, 6)], ([W, H, a, h]) => a < W - 1 && h < H - 1 && W !== H);
       const sides = [W, H, a, h, W - a, H - h];

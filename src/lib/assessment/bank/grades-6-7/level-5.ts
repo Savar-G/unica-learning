@@ -230,8 +230,9 @@ export const LEVEL_5: readonly TaggedTemplate[] = [
   {
     // Map, grade 5: which fraction equals 2/3 (misconception F9 adds the same number to both parts).
     // AB MAT4-OI1-GQ5-LO1-KO1-SP: fractions equivalent to a given fraction.
+    // ON5 B1.3 stops at twelfths; the choices reach 36ths.
     id: "g67-5-equivalent-fraction",
-    strand: "F", grades: { BC: 5, AB: 4, SK: 5, MB: 5, ON: 5 }, format: "choice", whiteboard: false, standard: "5.3",
+    strand: "F", grades: { BC: 5, AB: 4, SK: 5, MB: 5, ON: 6 }, format: "choice", whiteboard: false, standard: "5.3",
     fill(rng) {
       const [a, b, k] = draw(rng, (g) => [g.int(1, 8), g.int(3, 9), g.int(2, 4)], ([a, b, k]) => a < b && gcd(a, b) === 1 && distinctNumbers([a / b, (a + k) / (b + k), a * k / b, a / (b * k)]));
       return {
@@ -245,8 +246,9 @@ export const LEVEL_5: readonly TaggedTemplate[] = [
   },
   {
     // AB MAT4-OI1-GQ5-LO1-KO1-SP: fractions equivalent to a given fraction.
+    // ON5 B1.3 stops at twelfths; the denominators reach 54.
     id: "g67-5-missing-numerator",
-    strand: "F", grades: { BC: 5, AB: 4, SK: 5, MB: 5, ON: 5 }, format: "number", whiteboard: true, standard: "5.3",
+    strand: "F", grades: { BC: 5, AB: 4, SK: 5, MB: 5, ON: 6 }, format: "number", whiteboard: true, standard: "5.3",
     fill(rng) {
       const [a, b] = draw(rng, (g) => [g.int(1, 8), g.int(3, 9)], ([a, b]) => a < b && gcd(a, b) === 1);
       const k = rng.int(2, 6);

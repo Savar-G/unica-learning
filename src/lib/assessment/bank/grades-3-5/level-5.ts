@@ -18,8 +18,9 @@ const thousandths = { ON: 6 as const };
 // from the initial term and constant change), SK P2.2 and MB 2.PR.2 (extend increasing patterns to 100). The step: AB
 // MAT3-OI6-GQ1-LO1-KO2-SP (the change from term to term), ON3 C1.1.
 const PATTERN_TAGS: Record<string, Partial<Record<TaggedProvince, Level>>> = {
-  next: { BC: 3, AB: 4, SK: 2, MB: 2, ON: 4 },
-  missing: { BC: 3, AB: 4, SK: 2, MB: 2, ON: 4 },
+  // ON2 C1.3 extends patterns and finds missing elements in patterns of shapes and numbers.
+  next: { BC: 3, AB: 4, SK: 2, MB: 2, ON: 2 },
+  missing: { BC: 3, AB: 4, SK: 2, MB: 2, ON: 2 },
   step: { BC: 3, AB: 3, SK: 2, MB: 2, ON: 3 },
 };
 // Evaluating an expression for a given value: SK P6.3 and MB 7.PR.5 are the first outcomes; AB MAT5-OI2-GQ1-LO1-KO2-SP.
@@ -72,8 +73,8 @@ export const LEVEL_5: readonly TaggedTemplate[] = [
     return { values: { size, groups, rem }, prompt: `${total} pencils go into packs of ${size}. How many pencils are left after all full packs are made?`,
       readAloud: `${total} pencils go into packs of ${size}. How many pencils are left after all full packs are made?`, answer: String(rem),
       wrong: typedWrong(rem, [[groups, "remainder-quotient"], [0, "remainder-zero"]]) };
-  // AB MAT4-OI1-GQ4-LO1-KO1-SP: three-digit by one-digit division, a quotient with a remainder.
-  }, "number", { AB: 4 }),
+  // AB MAT4-OI1-GQ4-LO1-KO1-SP: three-digit by one-digit division, a quotient with a remainder; ON4 B2.6 remainders.
+  }, "number", { AB: 4, ON: 4 }),
   template("full-groups", "O", "5.6", (rng) => {
     const size = rng.int(3, 9), groups = rng.int(12, 35), rem = rng.int(1, size - 1), total = size * groups + rem;
     return { values: { size, groups, rem }, prompt: `There are ${total} beads. A bracelet needs ${size} beads. How many complete bracelets can be made?`,
@@ -328,7 +329,9 @@ export const LEVEL_5: readonly TaggedTemplate[] = [
     const right = most ? picked[0] : picked[picked.length - 1], opposite = most ? picked[picked.length - 1] : picked[0];
     return { values: { area, most: most ? 1 : 0 }, prompt: `Each rectangle has an area of ${area} square centimetres. Which one has the ${most ? "greatest" : "least"} perimeter?`,
       readAloud: `Each rectangle has an area of ${area} square centimetres. Which one has the ${most ? "greatest" : "least"} perimeter?`, answer: name(right),
-      wrong: picked.filter((a) => a !== right).map((a) => wrong(name(a), a === opposite ? "more-less" : "area-perimeter-link")) };
+      wrong: picked.filter((a) => a !== right).map((a) => wrong(name(a), a === opposite ? "more-less" : "area-perimeter-link")),
+      // Units in words, singular for 1, so the voice does not read "cm" letter by letter.
+      say: Object.fromEntries(picked.map((a) => [name(a), `${a} ${a === 1 ? "centimetre" : "centimetres"} by ${area / a} centimetres`])) };
   }, "choice", { ON: 4 }),
   template("duration", "MG", "5.14", (rng) => {
     // start − end = 30 equals the answer, and start − end = 50 equals the base-10 error: each coded value has one cause.
@@ -336,7 +339,8 @@ export const LEVEL_5: readonly TaggedTemplate[] = [
     return { values: { hour, start, end }, prompt: `A lesson starts at ${time(hour, start, "p.m.")} and ends at ${time(hour + 1, end, "p.m.")} How many minutes does it last?`,
       readAloud: `A lesson starts at ${sayTime(hour, start, "p.m.")} and ends at ${sayTime(hour + 1, end, "p.m.")}. How many minutes does it last?`, answer: String(right),
       wrong: typedWrong(right, [[100 - start + end, "M8"], [start - end, "minutes-reversed"]]) };
-  }, "number", { ON: 4 }),
+  // Duration across the hour: AB MAT4-OI7-GQ1-LO1-KO1-SP, SK SS4.1 and MB 4.SS.1 (digital time), ON4 E2.3.
+  }, "number", { AB: 4, SK: 4, MB: 4, ON: 4 }),
   template("end-time", "MG", "5.14", (rng) => {
     const h = rng.int(1, 7), m = rng.int(35, 55), duration = rng.int(30, 45), end = m + duration - 60;
     return { values: { h, m, duration }, prompt: `A trip starts at ${time(h, m, "p.m.")} and lasts ${duration} minutes. When does it end?`,

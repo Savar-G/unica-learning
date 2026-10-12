@@ -756,7 +756,7 @@ describe("primary-source corrections from the #75 checker run", () => {
     ["g35-4-more-than-half", [4, 4, 4, 4, 6, 4]], // 13ths pass ON5 B1.4
     ["g35-4-decreasing-table", [4, 4, 4, 3, 4, 4]], // MB 3.PR.2
     ["g35-4-table-rule", [4, 5, 4, 4, 4, 4]], // AB MAT5-OI6-GQ1-LO1-KO1-SP
-    ["g35-5-remainder", [5, 4, 5, 5, 5, 5]], // AB MAT4-OI1-GQ4-LO1-KO1-SP
+    ["g35-5-remainder", [5, 4, 5, 5, 4, 5]], // AB MAT4-OI1-GQ4-LO1-KO1-SP
     ["g35-5-full-groups", [5, 4, 5, 5, 4, 5]], // and ON4 B2.6
     ["g35-5-distributive", [5, 4, 4, 5, 4, 5]], // AB4, SK N4.4, ON4 B2.5 with B2.1
     ["g35-5-change-large", [5, 4, 5, 4, 5, 5]], // AB MAT4-OI1-GQ2-LO1 money within 10 000
@@ -766,8 +766,8 @@ describe("primary-source corrections from the #75 checker run", () => {
     ["g35-5-equivalent-decimal", [5, 4, 5, 5, 5, 5]], // AB grade 4 decimal equivalence key idea
     ["g35-5-fraction-near-whole", [5, 3, 5, 5, 5, 5]], // AB grade 3: compare fractions to the benchmarks 0, 1/2 and 1
     ["g35-6-complementary-angle", [6, 4, 6, 6, 6, 6]], // AB MAT4-OI3-GQ1-LO1-KO1-K; ON6 E2.3 complementary angles
-    ["g35-5-pattern-next", [3, 4, 2, 2, 4, 3]], // AB MAT4-OI6-GQ1-LO1-KO2-SP, SK P2.2, MB 2.PR.2
-    ["g35-5-pattern-missing", [3, 4, 2, 2, 4, 3]],
+    ["g35-5-pattern-next", [3, 4, 2, 2, 2, 3]], // AB MAT4-OI6-GQ1-LO1-KO2-SP, SK P2.2, MB 2.PR.2
+    ["g35-5-pattern-missing", [3, 4, 2, 2, 2, 3]],
     ["g35-5-pattern-step", [3, 3, 2, 2, 3, 3]], // AB MAT3-OI6-GQ1-LO1-KO2-SP, ON3 C1.1
     ...["add", "subtract", "take-away", "multiply", "divide", "divisor"].map((op) =>
       [`g35-5-evaluate-${op}`, [5, 5, 6, 7, 5, 5]] as const), // SK P6.3, MB 7.PR.5 first evaluate expressions
@@ -795,7 +795,7 @@ describe("primary-source corrections from the #75 checker run", () => {
     ["g35-6-percent-of-amount", [6, 6, 6, 6, 6, 6]], // ON6 B2.3 percents of whole numbers
     ["g35-6-percent-discount", [6, 6, 6, 6, 6, 6]],
     ["g35-6-percent-sale-price", [6, 6, 6, 6, 6, 6]],
-    ["g35-6-linear-tenth", [6, 5, 6, 5, 4, 6]], // AB MAT5-OI6-GQ1-LO1-KO1-SP, MB 5.PR.1
+    ["g35-6-linear-tenth", [6, 5, 5, 5, 4, 6]], // AB MAT5-OI6-GQ1-LO1-KO1-SP, MB 5.PR.1
     ["g35-6-triangle-area", [6, 6, 7, 7, 5, 6]], // SK SS7.2, MB 7.SS.2
     ["g35-6-triangle-height", [6, 6, 7, 7, 5, 6]],
     ["g35-6-parallelogram-area", [6, 6, 7, 7, 5, 6]],
@@ -808,6 +808,7 @@ describe("primary-source corrections from the #75 checker run", () => {
     ["g35-6-coordinate", [6, 5, 6, 6, 4, 6]], // AB MAT5-OI4-GQ1-LO1-KO1-SP
     ["g35-6-experimental-probability", [6, 6, 6, 6, 5, 6]], // ON5 D2.1-D2.2
     ["g35-6-theoretical-probability", [6, 6, 6, 6, 5, 6]],
+    ["g35-5-duration", [5, 4, 4, 4, 4, 5]],
   ] as const)("%s uses the grade where each province's curriculum teaches it", (id, expected) => {
     expect(levels(id)).toEqual([...expected]);
   });
@@ -878,6 +879,22 @@ describe("primary-source corrections from the #75 checker run", () => {
       const q = fillTemplate(byId("g35-6-complementary-angle"), seed), { x } = q.values;
       expect(q.answer).toBe(String(90 - x));
       expect(q.wrong.find((w) => w.value === String(180 - x))?.misconception).toBe("angle-sum");
+    }
+  });
+  it("speaks point choices with the comma, and rectangle choices with units in words", () => {
+    for (const seed of SEEDS) {
+      for (const id of ["g35-6-coordinate", "g35-6-coordinate-slide"]) {
+        const q = fillTemplate(byId(id), seed);
+        for (const [i, said] of spokenChoices(toPublicQuestion(q), q.choices!).entries()) {
+          const [x, y] = q.choices![i].slice(1, -1).split(", ");
+          expect(said).toBe(`${x} comma ${y}`);
+        }
+      }
+      const r = fillTemplate(byId("g35-5-same-area-perimeter"), seed);
+      for (const said of spokenChoices(toPublicQuestion(r), r.choices!)) {
+        expect(said).toMatch(/^\d+ centimetres? by \d+ centimetres?$/);
+        expect(said).not.toMatch(/\b1 centimetres\b/);
+      }
     }
   });
   it("keeps the closest-to-one-whole fractions within twelfths (ON5 B1.4)", () => {

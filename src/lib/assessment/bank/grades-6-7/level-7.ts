@@ -220,8 +220,9 @@ export const LEVEL_7: readonly TaggedTemplate[] = [
   {
     // Map, 7.1: 214 x 5 is 2140 / 2 = 1070.
     // Triage: AB 5: AB current K-6, Grade 5, MAT5-OI1-GQ4-LO1-KO1-SP; SK 5: SK gr5, N5.2; MB 5: MB gr5, 5.N.5.
+    // ON5 B2.6: the first ON multiplication with a two-digit multiplier.
     id: "g67-7-times-five",
-    strand: "O", grades: { BC: 7, AB: 5, SK: 5, MB: 5, ON: 7 }, format: "number", whiteboard: true, standard: "7.1",
+    strand: "O", grades: { BC: 7, AB: 5, SK: 5, MB: 5, ON: 5 }, format: "number", whiteboard: true, standard: "7.1",
     fill(rng) {
       const [a, m] = draw(rng, (g) => [g.int(102, 998), g.pick([5, 50])], ([a]) => a % 2 === 0 && a % 10 !== 0);
       const answer = a * m;
@@ -653,8 +654,9 @@ export const LEVEL_7: readonly TaggedTemplate[] = [
   {
     // A two-step story as an equation.
     // AB MAT5-OI2-GQ1-LO1-KO3-SP writes equations with one or two operations for a situation.
+    // ON6 C2.3: equations with multiple terms in various contexts.
     id: "g67-7-story-equation",
-    strand: "A", grades: { BC: 7, AB: 5, SK: 7, MB: 7, ON: 7 }, format: "choice", whiteboard: false, standard: "7.6",
+    strand: "A", grades: { BC: 7, AB: 5, SK: 7, MB: 7, ON: 6 }, format: "choice", whiteboard: false, standard: "7.6",
     fill(rng) {
       const [fee, rate, n] = draw(rng, (g) => [g.int(2, 9), g.int(2, 6), g.int(3, 12)], ([f, r]) => f !== r);
       const total = fee + rate * n;
