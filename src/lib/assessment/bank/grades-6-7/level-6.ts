@@ -30,8 +30,9 @@ export const LEVEL_6: readonly TaggedTemplate[] = [
   },
   {
     // Compare large numbers: line them up by place value, not by their first digits.
+    // Triage: AB 5: AB current K-6, MAT5-OI1-GQ1-LO1-KO1-SP (Grade 5).
     id: "g67-6-greatest-large",
-    strand: "N", grades: { BC: 6, AB: 6, SK: 6, MB: 6, ON: 7 }, format: "choice", whiteboard: false, standard: "6.1",
+    strand: "N", grades: { BC: 6, AB: 5, SK: 6, MB: 6, ON: 7 }, format: "choice", whiteboard: false, standard: "6.1",
     fill(rng) {
       const a = rng.int(1, 9);
       const [p, q] = draw(rng, (g) => [g.int(2, 9), g.int(1, 8)], ([p, q]) => p > q && p !== a);
@@ -50,8 +51,9 @@ export const LEVEL_6: readonly TaggedTemplate[] = [
   },
   {
     // Place value to thousandths (6.1).
+    // Triage: AB 5: AB current K-6, MAT5-OI1-GQ1-LO1-KO1-SP (Grade 5); SK 5: SK gr5, N5.6; MB 5: MB gr5, 5.N.8.
     id: "g67-6-decimal-digit-value",
-    strand: "N", grades: { BC: 6, AB: 6, SK: 6, MB: 6, ON: 6 }, format: "number", whiteboard: false, standard: "6.1",
+    strand: "N", grades: { BC: 6, AB: 5, SK: 5, MB: 5, ON: 6 }, format: "number", whiteboard: false, standard: "6.1",
     fill(rng) {
       const ds = rng.shuffle([1, 2, 3, 4, 5, 6, 7, 8, 9]).slice(0, 4);
       const n = (ds[0] * 1000 + ds[1] * 100 + ds[2] * 10 + ds[3]) / 1000;
@@ -87,8 +89,9 @@ export const LEVEL_6: readonly TaggedTemplate[] = [
   },
   {
     // Map, grade 7 (carried from 6.4): the greatest common factor of 24 and 36.
+    // Triage: AB 4: AB current K-6, MAT4-OI1-GQ3-LO1-KO1-SP (Grade 4).
     id: "g67-6-gcf",
-    strand: "N", grades: { BC: 6, AB: 6, SK: 6, MB: 6, ON: 7 }, format: "number", whiteboard: true, standard: "6.4",
+    strand: "N", grades: { BC: 6, AB: 4, SK: 6, MB: 6, ON: 7 }, format: "number", whiteboard: true, standard: "6.4",
     fill(rng) {
       const [a, b] = draw(rng, (g) => [g.int(12, 60), g.int(12, 60)], ([a, b]) => a < b && gcd(a, b) >= 4 && gcd(a, b) < a && b % a !== 0);
       const g = gcd(a, b);
@@ -107,8 +110,9 @@ export const LEVEL_6: readonly TaggedTemplate[] = [
   },
   {
     // Map, grade 6 and misconception N5: which number is prime.
+    // Triage: AB 4: AB current K-6, MAT4-OI1-GQ3-LO1-KO1-SP (Grade 4).
     id: "g67-6-which-prime",
-    strand: "N", grades: { BC: 6, AB: 6, SK: 6, MB: 6, ON: 6 }, format: "choice", whiteboard: false, standard: "6.4",
+    strand: "N", grades: { BC: 6, AB: 4, SK: 6, MB: 6, ON: 6 }, format: "choice", whiteboard: false, standard: "6.4",
     fill(rng) {
       const p = rng.pick(PRIMES.filter((x) => x < 50));
       const others = rng.shuffle(ODD_COMPOSITES.filter((x) => x < 60)).slice(0, 3);
@@ -122,8 +126,9 @@ export const LEVEL_6: readonly TaggedTemplate[] = [
     },
   },
   {
+    // Triage: AB 4: AB current K-6, MAT4-OI1-GQ3-LO1-KO1-SP (Grade 4).
     id: "g67-6-which-composite",
-    strand: "N", grades: { BC: 6, AB: 6, SK: 6, MB: 6, ON: 6 }, format: "choice", whiteboard: false, standard: "6.4",
+    strand: "N", grades: { BC: 6, AB: 4, SK: 6, MB: 6, ON: 6 }, format: "choice", whiteboard: false, standard: "6.4",
     fill(rng) {
       const c = rng.pick(ODD_COMPOSITES.filter((x) => x > 20 && x % 5 !== 0));
       const others = rng.shuffle(PRIMES).slice(0, 3);
@@ -138,8 +143,9 @@ export const LEVEL_6: readonly TaggedTemplate[] = [
   },
   {
     // Map, grade 6 and misconception O7: 6 + 4 x 3.
+    // Triage: AB 4: AB current K-6, MAT4-OI2-GQ1-LO1-KO1-SP (Grade 4).
     id: "g67-6-order-of-operations",
-    strand: "O", grades: { BC: 6, AB: 6, SK: 6, MB: 6, ON: 6 }, format: "number", whiteboard: true, standard: "6.3",
+    strand: "O", grades: { BC: 6, AB: 4, SK: 6, MB: 6, ON: 6 }, format: "number", whiteboard: true, standard: "6.3",
     fill(rng) {
       const form = rng.int(0, 2);
       const [a, b, c, d] = draw(rng, (g) => [g.int(2, 30), g.int(2, 9), g.int(2, 9), g.int(2, 9)], ([a, b, c]) => form !== 1 || a > b * c + 1);
@@ -159,8 +165,9 @@ export const LEVEL_6: readonly TaggedTemplate[] = [
   },
   {
     // Order of operations with brackets (6.3: includes brackets, excludes exponents).
+    // Triage: AB 5: AB current K-6, MAT5-OI2-GQ1-LO1-KO1-SP (Grade 5).
     id: "g67-6-brackets",
-    strand: "O", grades: { BC: 6, AB: 6, SK: 6, MB: 6, ON: 6 }, format: "number", whiteboard: true, standard: "6.3",
+    strand: "O", grades: { BC: 6, AB: 5, SK: 6, MB: 6, ON: 6 }, format: "number", whiteboard: true, standard: "6.3",
     fill(rng) {
       const form = rng.int(0, 2);
       const [a, b, c] = draw(
@@ -220,8 +227,9 @@ export const LEVEL_6: readonly TaggedTemplate[] = [
   },
   {
     // Map, grade 6: double-double to multiply 23 x 4 (misconception O5 writes 8 and 12 side by side).
+    // Triage: AB 4: AB current K-6, MAT4-OI1-GQ4-LO1-KO1-SP (Grade 4); SK 4: SK gr4, N4.4; MB 4: MB gr4, 4.N.6; ON 4: ON gr4, B2.5 Multiplication and Division.
     id: "g67-6-times-four",
-    strand: "O", grades: { BC: 6, AB: 6, SK: 6, MB: 6, ON: 6 }, format: "number", whiteboard: true, standard: "6.2",
+    strand: "O", grades: { BC: 6, AB: 4, SK: 4, MB: 4, ON: 4 }, format: "number", whiteboard: true, standard: "6.2",
     fill(rng) {
       const a = draw(rng, (g) => g.int(13, 49), (a) => a % 10 >= 3);
       return {
@@ -235,8 +243,9 @@ export const LEVEL_6: readonly TaggedTemplate[] = [
   },
   {
     // Map, 6.19: weeks of allowance to buy a bicycle.
+    // Triage: MB 5: MB gr5, 5.N.6; ON 5: ON gr5, B2.7 Multiplication and Division.
     id: "g67-6-save-weeks",
-    strand: "O", grades: { BC: 6, AB: 6, SK: 6, MB: 6, ON: 6 }, format: "number", whiteboard: true, standard: "6.19",
+    strand: "O", grades: { BC: 6, AB: 6, SK: 6, MB: 5, ON: 5 }, format: "number", whiteboard: true, standard: "6.19",
     fill(rng) {
       const [weekly, cost] = draw(rng, (g) => [g.int(5, 25), g.int(12, 60) * 5], ([w, c]) => c % w !== 0 && c / w > 4 && c / w < 30);
       const name = rng.pick(NAMES), item = rng.pick(["a bike", "a tablet", "a skateboard", "a guitar"]);
@@ -359,8 +368,9 @@ export const LEVEL_6: readonly TaggedTemplate[] = [
     },
   },
   {
+    // Triage: AB 5: AB current K-6, Grade 5 outcome _tTreLA_0Ey9KlNK1XSxIA, SP YiUSHtoZp0SU1hZnpLYy4Q; ON 5: ON gr5, B2.9 Multiplication and Division (key concepts).
     id: "g67-6-ratio-part-whole",
-    strand: "F", grades: { BC: 6, AB: 6, SK: 6, MB: 6, ON: 6 }, format: "choice", whiteboard: false, standard: "6.6",
+    strand: "F", grades: { BC: 6, AB: 5, SK: 6, MB: 6, ON: 5 }, format: "choice", whiteboard: false, standard: "6.6",
     fill(rng) {
       const [a, b] = draw(rng, (g) => [g.int(2, 9), g.int(2, 9)], ([a, b]) => a !== b && gcd(a, b) === 1);
       const [where, x, y, all] = rng.pick([
@@ -378,8 +388,9 @@ export const LEVEL_6: readonly TaggedTemplate[] = [
   },
   {
     // Map, misconception F9: 2 cups of juice to 3 cups of water; for 6 cups of juice, water = 9, not 7.
+    // Triage: ON 5: ON gr5, B2.9 Multiplication and Division.
     id: "g67-6-equivalent-ratio",
-    strand: "F", grades: { BC: 6, AB: 6, SK: 6, MB: 6, ON: 6 }, format: "number", whiteboard: true, standard: "6.6",
+    strand: "F", grades: { BC: 6, AB: 6, SK: 6, MB: 6, ON: 5 }, format: "number", whiteboard: true, standard: "6.6",
     fill(rng) {
       const [a, b] = draw(rng, (g) => [g.int(2, 5), g.int(2, 7)], ([a, b]) => a !== b && gcd(a, b) === 1);
       const k = rng.int(2, 5);
@@ -394,8 +405,9 @@ export const LEVEL_6: readonly TaggedTemplate[] = [
     },
   },
   {
+    // Triage: ON 5: ON gr5, B2.9 Multiplication and Division (key concepts).
     id: "g67-6-equivalent-ratio-choice",
-    strand: "F", grades: { BC: 6, AB: 6, SK: 6, MB: 6, ON: 6 }, format: "choice", whiteboard: false, standard: "6.6",
+    strand: "F", grades: { BC: 6, AB: 6, SK: 6, MB: 6, ON: 5 }, format: "choice", whiteboard: false, standard: "6.6",
     fill(rng) {
       const [a, b] = draw(rng, (g) => [g.int(1, 9), g.int(2, 9)], ([a, b]) => a !== b && gcd(a, b) === 1);
       const k = rng.int(2, 4);
@@ -410,8 +422,9 @@ export const LEVEL_6: readonly TaggedTemplate[] = [
   },
   {
     // A ratio as a fraction of the whole (6.6, part-to-part and part-to-whole).
+    // Triage: AB 5: AB current K-6, Grade 5 outcome _tTreLA_0Ey9KlNK1XSxIA, SP YiUSHtoZp0SU1hZnpLYy4Q; ON 5: ON gr5, B2.9 Multiplication and Division (key concepts).
     id: "g67-6-ratio-to-fraction",
-    strand: "F", grades: { BC: 6, AB: 6, SK: 6, MB: 6, ON: 6 }, format: "choice", whiteboard: false, standard: "6.6",
+    strand: "F", grades: { BC: 6, AB: 5, SK: 6, MB: 6, ON: 5 }, format: "choice", whiteboard: false, standard: "6.6",
     fill(rng) {
       const [g, b] = draw(rng, (r) => [r.int(1, 9), r.int(1, 9)], ([g, b]) => g !== b && gcd(g, b) === 1);
       return {
@@ -425,8 +438,9 @@ export const LEVEL_6: readonly TaggedTemplate[] = [
   },
   {
     // Map, grade 6 and misconception F10: 25% of 80.
+    // Triage: MB 7: MB gr7, 7.N.3; ON 6: ON gr6, B2.3 Mental Math.
     id: "g67-6-percent-of",
-    strand: "F", grades: { BC: 6, AB: 6, SK: 6, MB: 6, ON: 5 }, format: "number", whiteboard: true, standard: "6.7",
+    strand: "F", grades: { BC: 6, AB: 6, SK: 6, MB: 7, ON: 6 }, format: "number", whiteboard: true, standard: "6.7",
     fill(rng) {
       const [p, whole] = draw(rng, (g) => [g.pick([10, 20, 25, 30, 40, 50, 60, 75]), g.int(4, 40) * 10], ([p, w]) => (p * w) % 100 === 0 && w > p && w - p !== p * w / 100);
       const answer = (p * whole) / 100;
@@ -444,8 +458,9 @@ export const LEVEL_6: readonly TaggedTemplate[] = [
   },
   {
     // 6.7: a 10 x 10 grid, described in words.
+    // Triage: AB 4: AB current K-6, Grade 4 outcome (Students interpret percentages), SP TIwBFOnV5ESvaoxr_Yk4_.
     id: "g67-6-percent-grid",
-    strand: "F", grades: { BC: 6, AB: 6, SK: 6, MB: 6, ON: 5 }, format: "number", whiteboard: false, standard: "6.7",
+    strand: "F", grades: { BC: 6, AB: 4, SK: 6, MB: 6, ON: 5 }, format: "number", whiteboard: false, standard: "6.7",
     fill(rng) {
       const k = draw(rng, (g) => g.int(2, 98), (k) => k !== 50 && k % 10 !== 0);
       return {
@@ -459,8 +474,9 @@ export const LEVEL_6: readonly TaggedTemplate[] = [
   },
   {
     // 6.7: find the missing whole.
+    // Triage: MB 7: MB gr7, 7.N.3.
     id: "g67-6-percent-whole",
-    strand: "F", grades: { BC: 6, AB: 6, SK: 6, MB: 6, ON: 6 }, format: "number", whiteboard: true, standard: "6.7",
+    strand: "F", grades: { BC: 6, AB: 6, SK: 6, MB: 7, ON: 6 }, format: "number", whiteboard: true, standard: "6.7",
     fill(rng) {
       const p = rng.pick([10, 20, 25, 50]), part = rng.int(2, 30);
       const whole = (part * 100) / p;
@@ -476,8 +492,9 @@ export const LEVEL_6: readonly TaggedTemplate[] = [
   },
   {
     // 6.7: percentage discounts.
+    // Triage: MB 7: MB gr7, 7.N.3.
     id: "g67-6-discount",
-    strand: "F", grades: { BC: 6, AB: 6, SK: 6, MB: 6, ON: 6 }, format: "number", whiteboard: true, standard: "6.7",
+    strand: "F", grades: { BC: 6, AB: 6, SK: 6, MB: 7, ON: 6 }, format: "number", whiteboard: true, standard: "6.7",
     fill(rng) {
       const [p, price] = draw(rng, (g) => [g.pick([10, 20, 25, 50]), g.int(4, 40) * 5], ([p, c]) => p !== 50 && c > p && (p * c) % 100 === 0 && distinctNumbers([c * (100 - p) / 100, c * p / 100, c - p]));
       const item = rng.pick(["jacket", "pair of shoes", "backpack", "game"]);
@@ -492,8 +509,9 @@ export const LEVEL_6: readonly TaggedTemplate[] = [
   },
   {
     // 6.7: 50% = 1/2 = 0.5.
+    // Triage: AB 4: AB current K-6, Grade 4 outcome (Students interpret percentages), K hhqmorO36kSqE2sYhgisLg; ON 5: ON gr5, B1.7 Fractions, Decimals, and Percents (key concepts).
     id: "g67-6-percent-to-decimal",
-    strand: "F", grades: { BC: 6, AB: 6, SK: 6, MB: 6, ON: 6 }, format: "number", whiteboard: false, standard: "6.7",
+    strand: "F", grades: { BC: 6, AB: 4, SK: 6, MB: 6, ON: 5 }, format: "number", whiteboard: false, standard: "6.7",
     fill(rng) {
       const p = draw(rng, (g) => g.int(1, 99), (p) => p % 10 !== 0);
       return {
@@ -526,8 +544,9 @@ export const LEVEL_6: readonly TaggedTemplate[] = [
   },
   {
     // 6.9: a table of values continued.
+    // Triage: ON 4: ON gr4, C1.3 Patterns.
     id: "g67-6-table-value",
-    strand: "A", grades: { BC: 6, AB: 6, SK: 6, MB: 6, ON: 6 }, format: "number", whiteboard: true, standard: "6.9",
+    strand: "A", grades: { BC: 6, AB: 6, SK: 6, MB: 6, ON: 4 }, format: "number", whiteboard: true, standard: "6.9",
     fill(rng) {
       const [a, b, x] = draw(rng, (g) => [g.int(2, 9), g.int(1, 9), g.int(8, 20)], ([a, b, x]) => distinctNumbers([a * x + b, a * x, 4 * a + b]));
       const pairs = [1, 2, 3].map((n) => `when x is ${n}, y is ${a * n + b}`).join("; ");
@@ -542,8 +561,9 @@ export const LEVEL_6: readonly TaggedTemplate[] = [
   },
   {
     // Map, 6.9: "1 more than twice a number" is 2n + 1.
+    // Triage: AB 5: AB current K-6, MAT5-OI2-GQ1-LO1-KO2-SP (Grade 5); ON 5: ON gr5, C2.1 Variables and Expressions.
     id: "g67-6-expression-words",
-    strand: "A", grades: { BC: 6, AB: 6, SK: 6, MB: 6, ON: 6 }, format: "choice", whiteboard: false, standard: "6.9",
+    strand: "A", grades: { BC: 6, AB: 5, SK: 6, MB: 6, ON: 5 }, format: "choice", whiteboard: false, standard: "6.9",
     fill(rng) {
       const [m, k] = draw(rng, (g) => [g.int(2, 9), g.int(1, 9)], ([m, k]) => m !== k);
       const times = m === 2 ? "twice" : `${m} times`;
@@ -558,8 +578,9 @@ export const LEVEL_6: readonly TaggedTemplate[] = [
   },
   {
     // 6.9: a decreasing pattern as an expression.
+    // Triage: AB 6: AB current K-6, MAT6-OI6-GQ1-LO1-KO1-SP (Grade 6); SK 6: SK gr6, P6.3; MB 6: MB gr6, 6.PR.3.
     id: "g67-6-shrinking-rule",
-    strand: "A", grades: { BC: 6, AB: 7, SK: 7, MB: 7, ON: 6 }, format: "choice", whiteboard: false, standard: "6.9",
+    strand: "A", grades: { BC: 6, AB: 6, SK: 6, MB: 6, ON: 6 }, format: "choice", whiteboard: false, standard: "6.9",
     fill(rng) {
       const d = rng.int(2, 9), start = rng.int(4, 8) * d + rng.int(1, d - 1 || 1);
       const terms = [0, 1, 2, 3].map((i) => start - i * d);
@@ -656,8 +677,9 @@ export const LEVEL_6: readonly TaggedTemplate[] = [
   },
   {
     // 6.10: keep both sides equal.
+    // Triage: AB 4: AB current K-6, MAT4-OI2-GQ1-LO1-KO2-K (Grade 4).
     id: "g67-6-keep-balance",
-    strand: "A", grades: { BC: 6, AB: 6, SK: 6, MB: 6, ON: 6 }, format: "choice", whiteboard: false, standard: "6.10",
+    strand: "A", grades: { BC: 6, AB: 4, SK: 6, MB: 6, ON: 6 }, format: "choice", whiteboard: false, standard: "6.10",
     fill(rng) {
       const a = rng.int(2, 12), x = rng.int(3, 15), kind = rng.int(0, 3);
       const [shown, said, step, same, opposite] = [
@@ -709,8 +731,9 @@ export const LEVEL_6: readonly TaggedTemplate[] = [
   },
   {
     // 6.9: visual patterning, described in words.
+    // Triage: AB 5: AB current K-6, MAT5-OI6-GQ1-LO1-KO1-SP (Grade 5); SK 5: SK gr5, P5.1; MB 5: MB gr5, 5.PR.1.
     id: "g67-6-figure-pattern",
-    strand: "A", grades: { BC: 6, AB: 6, SK: 6, MB: 6, ON: 4 }, format: "number", whiteboard: true, standard: "6.9",
+    strand: "A", grades: { BC: 6, AB: 5, SK: 5, MB: 5, ON: 4 }, format: "number", whiteboard: true, standard: "6.9",
     fill(rng) {
       const [s, d, k] = draw(rng, (g) => [g.int(3, 9), g.int(2, 6), g.int(6, 12)], ([s, d, k]) => s !== d && distinctNumbers([s + (k - 1) * d, k * d, s + k * d]));
       const things = rng.pick(["squares", "toothpicks", "dots", "tiles"]);
@@ -742,8 +765,9 @@ export const LEVEL_6: readonly TaggedTemplate[] = [
   // ---------- Shapes, measurement and data ----------
   {
     // Map, grade 6 and misconception M3: a triangle with base 10 cm and height 6 cm.
+    // Triage: AB 6: AB current K-6, MAT6-OI5-GQ1-LO1-KO1-SP (Grade 6); ON 5: ON gr5, E2.5 Area.
     id: "g67-6-triangle-area",
-    strand: "MG", grades: { BC: 6, AB: 7, SK: 7, MB: 7, ON: 6 }, format: "number", whiteboard: true, standard: "6.12",
+    strand: "MG", grades: { BC: 6, AB: 6, SK: 7, MB: 7, ON: 5 }, format: "number", whiteboard: true, standard: "6.12",
     fill(rng) {
       const [b, h] = draw(rng, (g) => [g.int(4, 20), g.int(3, 15)], ([b, h]) => (b * h) % 2 === 0 && b !== h && distinctNumbers([(b * h) / 2, b * h, b + h]));
       return {
@@ -757,8 +781,9 @@ export const LEVEL_6: readonly TaggedTemplate[] = [
   },
   {
     // Misconception M3: a parallelogram's area uses the height, not the slanted side.
+    // Triage: AB 6: AB current K-6, MAT6-OI5-GQ1-LO1-KO1-SP (Grade 6); ON 5: ON gr5, E2.5 Area.
     id: "g67-6-parallelogram-area",
-    strand: "MG", grades: { BC: 6, AB: 7, SK: 7, MB: 7, ON: 6 }, format: "number", whiteboard: true, standard: "6.12",
+    strand: "MG", grades: { BC: 6, AB: 6, SK: 7, MB: 7, ON: 5 }, format: "number", whiteboard: true, standard: "6.12",
     fill(rng) {
       const [b, h, s] = draw(rng, (g) => {
         const h = g.int(3, 10);
@@ -809,8 +834,9 @@ export const LEVEL_6: readonly TaggedTemplate[] = [
   },
   {
     // 6.13: angles of polygons; the angles of a triangle add to 180 degrees.
+    // Triage: ON 6: ON gr6, E2.3 Angles.
     id: "g67-6-triangle-angle",
-    strand: "MG", grades: { BC: 6, AB: 6, SK: 6, MB: 6, ON: 7 }, format: "number", whiteboard: true, standard: "6.13",
+    strand: "MG", grades: { BC: 6, AB: 6, SK: 6, MB: 6, ON: 6 }, format: "number", whiteboard: true, standard: "6.13",
     fill(rng) {
       const [a, b] = draw(rng, (g) => [g.int(4, 20) * 5, g.int(4, 20) * 5], ([a, b]) => a + b <= 160 && a !== b);
       return {
@@ -824,16 +850,17 @@ export const LEVEL_6: readonly TaggedTemplate[] = [
   },
   {
     // 6.13: angles on a straight line add to 180 degrees.
+    // Triage: AB 4: AB current K-6, MAT4-OI3-GQ1-LO1-KO1-K (Grade 4); ON 6: ON gr6, E2.3 Angles.
     id: "g67-6-straight-line-angle",
-    strand: "MG", grades: { BC: 6, AB: 6, SK: 6, MB: 6, ON: 7 }, format: "number", whiteboard: true, standard: "6.13",
+    strand: "MG", grades: { BC: 6, AB: 4, SK: 6, MB: 6, ON: 6 }, format: "number", whiteboard: true, standard: "6.13",
     fill(rng) {
       const a = draw(rng, (g) => g.int(20, 160), (a) => a !== 90);
       const wrongs = [wrong(360 - a, "angle-sum")];
       if (a < 90) wrongs.push(wrong(90 - a, "angle-sum"));
       return {
         values: { a },
-        prompt: `Two angles sit side by side on a straight line. One measures ${a}°. What does the other one measure, in degrees?`,
-        readAloud: `Two angles sit side by side on a straight line. One measures ${a} degrees. What does the other one measure, in degrees?`,
+        prompt: `Two angles share a corner and together fill the straight line. One measures ${a}°. What does the other one measure, in degrees?`,
+        readAloud: `Two angles share a corner and together fill the straight line. One measures ${a} degrees. What does the other one measure, in degrees?`,
         answer: String(180 - a),
         wrong: wrongs,
       };
@@ -841,8 +868,9 @@ export const LEVEL_6: readonly TaggedTemplate[] = [
   },
   {
     // Map, grade 6 and misconception M9: a box 4 cm by 3 cm by 2 cm.
+    // Triage: ON 7: ON gr7, E2.7 Volume and Surface Area.
     id: "g67-6-box-volume",
-    strand: "MG", grades: { BC: 6, AB: 6, SK: 6, MB: 6, ON: 6 }, format: "number", whiteboard: true, standard: "6.14",
+    strand: "MG", grades: { BC: 6, AB: 6, SK: 6, MB: 6, ON: 7 }, format: "number", whiteboard: true, standard: "6.14",
     fill(rng) {
       const [l, w, h] = draw(rng, (g) => [g.int(2, 12), g.int(2, 9), g.int(2, 8)], ([l, w, h]) => distinctNumbers([l * w * h, l + w + h, 2 * (l * w + l * h + w * h)]));
       return {
@@ -856,8 +884,9 @@ export const LEVEL_6: readonly TaggedTemplate[] = [
   },
   {
     // 6.14: capacity units (mL and L).
+    // Triage: SK 5: SK gr5, SS5.4; MB 5: MB gr5, 5.SS.4.
     id: "g67-6-litres",
-    strand: "MG", grades: { BC: 6, AB: 6, SK: 6, MB: 6, ON: 6 }, format: "number", whiteboard: true, standard: "6.14",
+    strand: "MG", grades: { BC: 6, AB: 6, SK: 5, MB: 5, ON: 6 }, format: "number", whiteboard: true, standard: "6.14",
     fill(rng) {
       const toMl = rng.int(0, 1) === 1;
       const quarters = draw(rng, (g) => g.int(2, 38), (q) => q % 4 !== 0);
@@ -901,8 +930,9 @@ export const LEVEL_6: readonly TaggedTemplate[] = [
   },
   {
     // 6.15: triangles by their sides.
+    // Triage: AB 4: AB current K-6, MAT4-OI3-GQ1-LO1-KO1-SP (Grade 4); ON 5: ON gr5, E1.1 Geometric Reasoning (key concepts).
     id: "g67-6-triangle-sides",
-    strand: "MG", grades: { BC: 6, AB: 6, SK: 6, MB: 6, ON: 6 }, format: "choice", whiteboard: false, standard: "6.15",
+    strand: "MG", grades: { BC: 6, AB: 4, SK: 6, MB: 6, ON: 5 }, format: "choice", whiteboard: false, standard: "6.15",
     fill(rng) {
       const kind = rng.pick(["isosceles", "scalene", "equilateral", "isosceles", "scalene"] as const);
       const sides = draw(rng, (g) => {
@@ -926,8 +956,9 @@ export const LEVEL_6: readonly TaggedTemplate[] = [
   },
   {
     // 6.15: triangles by their angles.
+    // Triage: AB 4: AB current K-6, MAT4-OI3-GQ1-LO1-KO1-SP (Grade 4); ON 5: ON gr5, E1.1 Geometric Reasoning (key concepts).
     id: "g67-6-triangle-angles",
-    strand: "MG", grades: { BC: 6, AB: 6, SK: 6, MB: 6, ON: 6 }, format: "choice", whiteboard: false, standard: "6.15",
+    strand: "MG", grades: { BC: 6, AB: 4, SK: 6, MB: 6, ON: 5 }, format: "choice", whiteboard: false, standard: "6.15",
     fill(rng) {
       const kind = rng.pick(["acute", "right", "obtuse"] as const);
       const angles = draw(rng, (g) => {
@@ -947,8 +978,9 @@ export const LEVEL_6: readonly TaggedTemplate[] = [
   },
   {
     // Map, grade 6: plot the point (3, 2) on a first-quadrant grid.
+    // Triage: AB 5: AB current K-6, MAT5-OI4-GQ1-LO1-KO1-SP (Grade 5).
     id: "g67-6-plot-point",
-    strand: "MG", grades: { BC: 6, AB: 6, SK: 6, MB: 6, ON: 4 }, format: "choice", whiteboard: false, standard: "6.16",
+    strand: "MG", grades: { BC: 6, AB: 5, SK: 6, MB: 6, ON: 4 }, format: "choice", whiteboard: false, standard: "6.16",
     fill(rng) {
       const [x, y] = draw(rng, (g) => [g.int(1, 9), g.int(1, 9)], ([x, y]) => x !== y);
       const point = (p: number, q: number) => `(${p}, ${q})`;
@@ -1013,8 +1045,9 @@ export const LEVEL_6: readonly TaggedTemplate[] = [
   },
   {
     // Map, grade 6: a spinner numbered 1 to 5; the probability of an odd number.
+    // Triage: ON 5: ON gr5, D2.1 Probability.
     id: "g67-6-spinner-event",
-    strand: "DP", grades: { BC: 6, AB: 6, SK: 6, MB: 6, ON: 6 }, format: "choice", whiteboard: false, standard: "6.18",
+    strand: "DP", grades: { BC: 6, AB: 6, SK: 6, MB: 6, ON: 5 }, format: "choice", whiteboard: false, standard: "6.18",
     fill(rng) {
       const { n, event, f } = draw(rng, (g) => {
         const n = g.int(5, 12);
@@ -1035,8 +1068,9 @@ export const LEVEL_6: readonly TaggedTemplate[] = [
   },
   {
     // Map, grade 6 and misconception D5: 7 heads in 10 tosses; the theoretical probability is still 1/2.
+    // Triage: ON 5: ON gr5, D2.2 Probability.
     id: "g67-6-theoretical",
-    strand: "DP", grades: { BC: 6, AB: 6, SK: 6, MB: 6, ON: 6 }, format: "choice", whiteboard: false, standard: "6.18",
+    strand: "DP", grades: { BC: 6, AB: 6, SK: 6, MB: 6, ON: 5 }, format: "choice", whiteboard: false, standard: "6.18",
     fill(rng) {
       const die = rng.int(0, 1) === 1;
       if (die) {

@@ -553,6 +553,41 @@ describe("primary-source corrections from the #76 checker run", () => {
     ["g67-5-double-bar-graph", [5, 4, 5, 5, 4, 5]], // AB MAT4-OI8; ON4 D1.6
     ["g67-5-pictograph", [5, 4, 4, 4, 3, 5]], // AB MAT4-OI8, SK SP4.1, MB 4.SP.2, ON3 D1.3
     ["g67-5-spinner-probability", [5, 6, 6, 6, 5, 5]], // ON5 D2.1
+    // Grade 6 triage rows (sources in triage.md and in the template comments).
+    ["g67-6-greatest-large", [6, 5, 6, 6, 7, 6]],
+    ["g67-6-decimal-digit-value", [6, 5, 5, 5, 6, 6]],
+    ["g67-6-gcf", [6, 4, 6, 6, 7, 6]],
+    ["g67-6-which-prime", [6, 4, 6, 6, 6, 6]],
+    ["g67-6-which-composite", [6, 4, 6, 6, 6, 6]],
+    ["g67-6-order-of-operations", [6, 4, 6, 6, 6, 6]],
+    ["g67-6-brackets", [6, 5, 6, 6, 6, 6]],
+    ["g67-6-times-four", [6, 4, 4, 4, 4, 6]],
+    ["g67-6-save-weeks", [6, 6, 6, 5, 5, 6]],
+    ["g67-6-ratio-part-whole", [6, 5, 6, 6, 5, 6]],
+    ["g67-6-equivalent-ratio", [6, 6, 6, 6, 5, 6]],
+    ["g67-6-equivalent-ratio-choice", [6, 6, 6, 6, 5, 6]],
+    ["g67-6-ratio-to-fraction", [6, 5, 6, 6, 5, 6]],
+    ["g67-6-percent-of", [6, 6, 6, 7, 6, 6]],
+    ["g67-6-percent-grid", [6, 4, 6, 6, 5, 6]],
+    ["g67-6-percent-whole", [6, 6, 6, 7, 6, 6]],
+    ["g67-6-discount", [6, 6, 6, 7, 6, 6]],
+    ["g67-6-percent-to-decimal", [6, 4, 6, 6, 5, 6]],
+    ["g67-6-table-value", [6, 6, 6, 6, 4, 6]],
+    ["g67-6-expression-words", [6, 5, 6, 6, 5, 6]],
+    ["g67-6-shrinking-rule", [6, 6, 6, 6, 6, 6]],
+    ["g67-6-keep-balance", [6, 4, 6, 6, 6, 6]],
+    ["g67-6-figure-pattern", [6, 5, 5, 5, 4, 6]],
+    ["g67-6-triangle-area", [6, 6, 7, 7, 5, 6]],
+    ["g67-6-parallelogram-area", [6, 6, 7, 7, 5, 6]],
+    ["g67-6-triangle-angle", [6, 6, 6, 6, 6, 6]],
+    ["g67-6-straight-line-angle", [6, 4, 6, 6, 6, 6]],
+    ["g67-6-box-volume", [6, 6, 6, 6, 7, 6]],
+    ["g67-6-litres", [6, 6, 5, 5, 6, 6]],
+    ["g67-6-triangle-sides", [6, 4, 6, 6, 5, 6]],
+    ["g67-6-triangle-angles", [6, 4, 6, 6, 5, 6]],
+    ["g67-6-plot-point", [6, 5, 6, 6, 4, 6]],
+    ["g67-6-spinner-event", [6, 6, 6, 6, 5, 6]],
+    ["g67-6-theoretical", [6, 6, 6, 6, 5, 6]],
     // Grades 7-8 triage rows (sources in triage.md and in the template comments).
     ["g67-7-greatest-integer", [7, 6, 6, 6, 6, 7]],
     ["g67-7-order-integers", [7, 6, 6, 6, 6, 7]],
@@ -608,6 +643,34 @@ describe("primary-source corrections from the #76 checker run", () => {
       // Dividing before undoing the subtraction gives x + b/a; using the wrong inverse gives x + 2b/a.
       expect(q.wrong.map((w) => Number(w.value)).sort((p, r) => p - r)).toEqual([x + b / a, x + (2 * b) / a]);
       expect(q.wrong.every((w) => w.misconception === "A6")).toBe(true);
+    }
+  });
+  it.each(["g67-7-integer-add-equation", "g67-7-integer-subtract-equation"])("%s: one-step equations with integers, grade 7 where integers enter equations", (id) => {
+    // AB 2016 grade 7 PR6, SK P7 (x + a = b, integers), MB 7.PR.6; ON8 C2.3 (equations with integers).
+    expect(levels(id)).toEqual([7, 7, 7, 7, 8, 7]);
+    const value = (t: string) => Number(t.replace("−", "-"));
+    for (const seed of SEEDS) {
+      const q = fillTemplate(byId(id), seed), { a, b } = q.values;
+      expect(value(q.answer)).toBe(id.includes("add") ? b - a : b + a);
+      expect(q.choices!.filter((c) => (id.includes("add") ? value(c) + a : value(c) - a) === b)).toEqual([q.answer]);
+      expect([a, b, value(q.answer)].some((n) => n < 0)).toBe(true);
+    }
+  });
+  it("adds two mixed numbers with unlike denominators, grade 7 where it is named", () => {
+    // AB 2016 grade 7 Number SO 5, SK N7.5, MB 7.N.5 (fractions and mixed numbers); BC 8.5; ON7 adds fractions.
+    expect(levels("g67-8-add-mixed-numbers")).toEqual([8, 7, 7, 7, 7, 8]);
+    for (const seed of SEEDS) {
+      const q = fillTemplate(byId("g67-8-add-mixed-numbers"), seed);
+      const v = (t: string) => { const m = t.replace(/\u00a0/g, " ").match(/^(?:(\d+) )?(\d+)\/(\d+)$/); return m ? Number(m[1] ?? 0) + Number(m[2]) / Number(m[3]) : Number(t); };
+      const [w1, n1, d1, w2, n2, d2] = [...q.prompt.matchAll(/\d+/g)].map((m) => Number(m[0]));
+      expect(v(q.answer)).toBeCloseTo(w1 + n1 / d1 + w2 + n2 / d2, 9);
+      expect(q.choices!.filter((c) => Math.abs(v(c) - v(q.answer)) < 1e-9)).toEqual([q.answer]);
+    }
+  });
+  it("says the two angles share a corner and together fill the straight line", () => {
+    for (const seed of SEEDS) {
+      const q = fillTemplate(byId("g67-6-straight-line-angle"), seed);
+      for (const text of [q.prompt, q.readAloud]) expect(text).toMatch(/share a corner and together fill the straight line/);
     }
   });
   it("codes the trapezoid area without the half as a missing division by two", () => {

@@ -1,7 +1,7 @@
 // Level 8 for the grade 7 up route. Standards: the BC curriculum map, section 1.
 // Conservative tags: use grade 8 for the other provinces where earlier coverage is uncertain.
 import { draw, wrong, type TaggedTemplate } from "../kit";
-import { distinctNumbers, frac, fracText, num, sayFrac, sayNum, typed } from "./helpers";
+import { distinctNumbers, frac, fracText, gcd, mixed, num, sayFrac, sayMixed, sayNum, simplest, typed } from "./helpers";
 
 const GRADES = { BC: 8, AB: 8, SK: 8, MB: 8, ON: 8 } as const;
 
@@ -61,6 +61,27 @@ export const LEVEL_8: readonly TaggedTemplate[] = [
     fill(rng) {
       const [a, b, c, d] = draw(rng, (g) => [g.int(1, 4), g.int(5, 9), g.int(1, 3), g.int(4, 8)], ([a, b, c, d]) => b !== d && distinctNumbers([(a * d + c * b) / (b * d), (a + c) / (b + d), (a + c) / b]));
       return { values: { a, b, c, d }, prompt: `${frac(a, b)} + ${frac(c, d)} = ?`, readAloud: `What is ${sayFrac(a, b)} plus ${sayFrac(c, d)}?`, answer: fracText(a * d + c * b, b * d), wrong: [wrong(fracText(a + c, b + d), "F2"), wrong(fracText(a + c, b), "fraction-one-side")] };
+    },
+  },
+  {
+    // Mixed numbers with unlike denominators (BC 8.5). AB 2016 grade 7 Number SO 5, SK N7.5 and MB 7.N.5 add positive
+    // fractions and mixed numbers; ON7 adds fractions by creating equivalent fractions.
+    id: "g67-8-add-mixed-numbers", strand: "F", grades: { BC: 8, AB: 7, SK: 7, MB: 7, ON: 7 }, standard: "8.5", format: "choice", whiteboard: true,
+    fill(rng) {
+      const [w1, n1, d1, w2, n2, d2] = draw(rng, (g) => {
+        const [d1, d2] = g.shuffle([2, 3, 4, 5, 6, 8]).slice(0, 2);
+        return [g.int(1, 4), g.int(1, d1 - 1), d1, g.int(1, 3), g.int(1, d2 - 1), d2];
+      }, ([w1, n1, d1, w2, n2, d2]) => gcd(n1, d1) === 1 && gcd(n2, d2) === 1 && (n1 * d2 + n2 * d1) % (d1 * d2) !== 0);
+      const big = d1 * d2, top = n1 * d2 + n2 * d1, whole = w1 + w2 + Math.floor(top / big), [rn, rd] = simplest(top % big, big);
+      const answer = mixed(whole, rn, rd);
+      const [fn, fd] = simplest(n1 + n2, d1 + d2);
+      const wrongs = [wrong(fn < fd ? mixed(w1 + w2, fn, fd) : fracText(n1 + n2 + (w1 + w2) * (d1 + d2), d1 + d2), "F2")];
+      if (n1 + n2 < d1) wrongs.push(wrong(mixed(w1 + w2, ...simplest(n1 + n2, d1)), "fraction-one-side"));
+      // Adds the whole numbers and keeps only the first fraction: one part of the sum is left out.
+      wrongs.push(wrong(mixed(w1 + w2, n1, d1), "leaves-out-addend"));
+      return { values: { w1, n1, d1, w2, n2, d2 }, prompt: `${mixed(w1, n1, d1)} + ${mixed(w2, n2, d2)} = ?`,
+        readAloud: `What is ${sayMixed(w1, n1, d1)} plus ${sayMixed(w2, n2, d2)}?`, answer,
+        wrong: wrongs.filter((x, i, all) => x.value !== answer && all.findIndex((y) => y.value === x.value) === i) };
     },
   },
   {
