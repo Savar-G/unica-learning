@@ -14,7 +14,7 @@ export default function Terms() {
   return <SupportPage label="Updated 11 October 2026" title="Terms">
     <p className="lead">These terms apply to the assessments and the learning program offered by {BUSINESS_NAME}. A parent or guardian must make the booking.</p>
     <h2>The offer</h2>
-    <p>{BUSINESS_NAME} offers a personalized math and reading learning program for ages 6-12, grades 1-7. The program includes paper workbooks made for your child. Math is CAD {PLANS.one.price} per month. Your first month is {FIRST_MONTH_OFF}% off: CAD {cad(firstMonth(PLANS.one.price))}. Prices are in Canadian dollars. Delivery across Canada is included.</p>
+    <p>{BUSINESS_NAME} offers a personalized math learning program for ages 6-12, grades 1-7. The program includes paper workbooks made for your child. Math is CAD {PLANS.one.price} per month. Your first month is {FIRST_MONTH_OFF}% off: CAD {cad(firstMonth(PLANS.one.price))}. Prices are in Canadian dollars. Delivery across Canada is included.</p>
     <h2>Assessment and availability</h2>
     <p>The placement assessment is free. You can book an assessment for books that follow the British Columbia school curriculum. For other curricula, you can join the waitlist. We will email you when those books are ready. Joining the waitlist does not require a card, and you will not be charged.</p>
     <h2>Adding your card and payments</h2>

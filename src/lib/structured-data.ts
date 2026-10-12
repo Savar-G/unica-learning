@@ -38,7 +38,7 @@ export function homeJsonLd() {
       {
         "@type": "Service",
         name: `${BRAND} personalized learning program`,
-        serviceType: "Personalized math and reading learning program",
+        serviceType: "Personalized math learning program",
         description: SITE_DESCRIPTION,
         provider: { "@id": ORG_ID },
         areaServed: { "@type": "Country", name: "Canada" },

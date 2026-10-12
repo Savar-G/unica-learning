@@ -40,7 +40,7 @@ import adaptPhoto from "@/assets/img/loop-adapt.jpg";
 import repeatPhoto from "@/assets/img/loop-repeat.jpg";
 import emo1 from "@/assets/img/emotion-1.jpg";
 import adapt4 from "@/assets/img/loop-adapt-4.jpg";
-import reading2 from "@/assets/img/loop-practice-reading-2.jpg";
+import heroHome2 from "@/assets/img/hero-home-2.jpg";
 import emo4 from "@/assets/img/emotion-4.jpg";
 import emo5 from "@/assets/img/emotion-5.jpg";
 import emo7 from "@/assets/img/emotion-7.jpg";
@@ -66,8 +66,8 @@ export function Nav() {
 // 8-9 characters only: the chip is as wide as its longest word, so a long topic
 // leaves a gap after every short one.
 const TOPICS = [
-  "fractions", "blending", "decimals", "spelling", "division", "main idea", "percents", "sentences",
-  "patterns", "inference", "geometry", "syllables", "integers", "addition", "graphing", "measuring",
+  "fractions", "rounding", "decimals", "perimeter", "division", "equations", "percents", "multiples",
+  "patterns", "symmetry", "geometry", "carrying", "integers", "addition", "graphing", "measuring",
 ];
 
 export function Hero() {
@@ -158,7 +158,7 @@ export function Why() {
 
 const INCLUDED: [IconName, string, ReactNode, number][][] = [
   [
-    ["book", "Workbooks", "1 workbook per subject, about 20-25 pages.", 0],
+    ["book", "Workbooks", "1 math workbook, about 20-25 pages.", 0],
     ["calendar", "Daily practice, rewarded", <>15-20 minutes a day, 5 days a week. Your child earns rewards for every page they finish and every week they keep the habit. <Link href="/rewards" className="more-link">See the rewards <span aria-hidden="true">→</span></Link></>, 0.08],
     ["box", "Delivery", "Delivered to your door before the current book ends.", 0.16],
   ],
@@ -200,7 +200,7 @@ export function Included() {
 
 const DRIFT: [StaticImageData, number, number, number, number, number, number, boolean][] = [
   [adapt4, 3, 7, 15, 21, 0.14, -4, false], [emo9, 23, 8, 12, 17, -0.1, 3, true],
-  [emo5, 79, 5, 17, 22, 0.18, 4, false], [reading2, 62, 7, 12, 16, -0.14, -3, true],
+  [emo5, 79, 5, 17, 22, 0.18, 4, false], [heroHome2, 62, 7, 12, 16, -0.14, -3, true],
   [emo4, 3, 70, 15, 19, -0.18, 3, false], [emo7, 80, 66, 17, 22, 0.1, -4, false],
   [emo11, 22, 78, 13, 16, 0.12, -2, true], [emo10, 64, 79, 13, 16, -0.1, 4, true],
 ];
@@ -349,7 +349,7 @@ export function Footer({ children }: { children?: ReactNode }) {
         <footer className="foot">
           <div className="foot-brand">
             <a className="logo" href="#top">{BRAND}<b /></a>
-            <p>A personalized math and reading learning program for ages 6-12.</p>
+            <p>A personalized math learning program for ages 6-12.</p>
           </div>
           {FOOTER_GROUPS.map((g) => (
             <nav className="foot-col" key={g.title} aria-label={g.title}>

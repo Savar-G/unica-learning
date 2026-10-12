@@ -49,7 +49,7 @@ export function Rewards() {
                 ))}
               </tbody>
             </table>
-            <p className="rewards-note">That is about {points(POINTS_PER_MONTH)} points a month for one subject, 5 days a week.</p>
+            <p className="rewards-note">That is about {points(POINTS_PER_MONTH)} points a month at 5 days a week.</p>
           </section>
 
           <section className="rewards-part" aria-labelledby="chargeT">
