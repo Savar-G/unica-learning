@@ -65,8 +65,8 @@ describe("siblings and retakes in grades 6-7", () => {
   // questions. Alberta grade 7 is the exception: Alberta's current K-6 program teaches much of BC's grade 7 content
   // earlier, so its level 7 pool is small (measured 0.80 templates, 0.13 questions). Owner decision 2026-10-11:
   // accept that overlap and add no Alberta grade 7 templates. Ontario grade 7 is next for the same reason (Ontario
-  // teaches percent, coordinates and two-step equations in grade 6): measured 0.56 templates, 0.14 questions; its
-  // limit is set just above the measurement and is reported for an owner decision.
+  // teaches percent, coordinates and two-step equations in grade 6): measured 0.56 templates, 0.14 questions. Owner
+  // decision 2026-10-12 (#76): accept that overlap too.
   const limit = (grade: Grade, province: TaggedProvince) =>
     grade === 7 && province === "AB" ? { templates: 0.85, questions: 0.15 }
       : grade === 7 && province === "ON" ? { templates: 0.6, questions: 0.15 }

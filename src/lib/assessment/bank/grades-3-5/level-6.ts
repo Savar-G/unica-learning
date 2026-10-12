@@ -160,9 +160,6 @@ export const LEVEL_6: readonly TaggedTemplate[] = [
       readAloud: `A table shows input 1 gives ${k + b}, input 2 gives ${2 * k + b}, and input 3 gives ${3 * k + b}. Which rule fits all three rows?`,
       answer: `Multiply by ${k}, then add ${b}`, wrong: [wrong(`Multiply by ${k}`, "A5"), wrong(`Add ${k + b - 1}`, "rule-one-row"), wrong(`Multiply by ${b}, then add ${k}`, "rule-swap")] };
   }, "choice", { ON: 5 }),
-  // A rule's values as a point (BC 6.9: functional relationships as discrete points in the first quadrant). AB
-  // MAT6-OI6-GQ1-LO1-KO1-SP plots function values as points; AB grade 5 rules are limited to one operation. SK P6.1,
-  // MB 6.PR.2, ON5 C1.2 (patterns as tables of values and graphs).
   // Combine like terms, then solve one step (BC 6.10, preservation of equality with algebra tiles). AB MAT6-OI2-GQ1-LO1-KO3-SP
   // simplifies both sides before solving; the ON6 C2.3 note adds monomials before solving. No SK or MB outcome to grade 8
   // names like terms, so SK and MB children in this bank never meet it.
@@ -171,11 +168,15 @@ export const LEVEL_6: readonly TaggedTemplate[] = [
     return { values: { a, b, x }, prompt: `Find x. ${a}x + ${b}x = ${total}`, readAloud: `${a} times a number, plus ${b} times the same number, equals ${total}. What is the number?`,
       answer: String(x), wrong: typedWrong(x, [[total - a - b, "operation"], [total / (a * b), "coefficient-product"]]) };
   }, "number", { SK: 8, MB: 8 }),
+  // A rule's values as a point (BC 6.9: functional relationships as discrete points in the first quadrant). AB
+  // MAT6-OI6-GQ1-LO1-KO1-SP plots function values as points; AB grade 5 rules are limited to one operation. SK P6.1,
+  // MB 6.PR.2, ON5 C1.2 (patterns as tables of values and graphs).
   template("rule-point", "A", "6.9", (rng) => {
     const k = rng.int(2, 5), b = rng.int(1, 9), x = rng.int(2, 8), y = k * x + b;
     return { values: { k, b, x }, prompt: `A rule says: output = ${k} × input + ${b}. Which point (input, output) fits the rule?`,
       readAloud: `A rule says: the output is ${k} times the input, plus ${b}. Which point, input first and output second, fits the rule?`, answer: `(${x}, ${y})`,
-      wrong: [wrong(`(${y}, ${x})`, "coordinates-swap"), wrong(`(${x}, ${k * x})`, "A5"), wrong(`(${x}, ${k * (x + b)})`, "add-before-multiply")] };
+      wrong: [wrong(`(${y}, ${x})`, "coordinates-swap"), wrong(`(${x}, ${k * x})`, "A5"), wrong(`(${x}, ${k * (x + b)})`, "add-before-multiply")],
+      say: sayPoints([[x, y], [y, x], [x, k * x], [x, k * (x + b)]]) };
   }, "choice", { ON: 5 }),
 
   template("triangle-area", "MG", "6.12", (rng) => {

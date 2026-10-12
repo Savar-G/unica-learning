@@ -883,7 +883,7 @@ describe("primary-source corrections from the #75 checker run", () => {
   });
   it("speaks point choices with the comma, and rectangle choices with units in words", () => {
     for (const seed of SEEDS) {
-      for (const id of ["g35-6-coordinate", "g35-6-coordinate-slide"]) {
+      for (const id of ["g35-6-coordinate", "g35-6-coordinate-slide", "g35-6-rule-point"]) {
         const q = fillTemplate(byId(id), seed);
         for (const [i, said] of spokenChoices(toPublicQuestion(q), q.choices!).entries()) {
           const [x, y] = q.choices![i].slice(1, -1).split(", ");
