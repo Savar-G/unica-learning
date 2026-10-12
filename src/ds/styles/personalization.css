@@ -1,0 +1,114 @@
+/* "Personalization" (src/components/personalization.tsx, round r18 prototype).
+   Two sample children, their three lines, and the first page of each next book, built from the question bank. */
+
+.pz { --pz-a: var(--g2); --pz-b: var(--g3); }
+.pz-dot { display: inline-block; width: 12px; height: 12px; background: var(--pz-a); flex: none; }
+.pz-dot-b { background: var(--pz-b); }
+.pz-who { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.pz-who h3 { margin: 0; font-weight: 400; font-size: clamp(24px, 2.3vw, 32px); line-height: 1.1; letter-spacing: -0.02em; }
+.pz-who .chip { margin-left: auto; }
+.pz-lines { margin: 18px 0 0; display: grid; gap: 12px; }
+.pz-lines > div { display: grid; grid-template-columns: 128px 1fr; gap: 12px; padding-top: 12px; border-top: 1px solid var(--line); }
+.pz-lines dt { font: 400 12.5px/1.5 var(--mono); color: var(--ink-3); padding-top: 2px; }
+.pz-lines dd { margin: 0; font-size: 16px; line-height: 1.5; color: var(--ink); }
+.pz-foot { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 10px 24px; margin-top: 24px; }
+.pz-foot p { margin: 0; font: 400 13px/1.5 var(--mono); color: var(--ink-2); max-width: 62ch; }
+
+/* ---------- the bank page ---------- */
+.bpage { position: relative; background: #fff; border-radius: 6px; padding: 6cqw 6cqw 4cqw; container-type: inline-size; color: #18181b;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.06), 0 18px 40px -18px rgba(0, 0, 0, 0.3), inset 0 0 0 1px rgba(0, 0, 0, 0.06); }
+.pz-peek, .pz-thumb { container-type: inline-size; }
+.bp-hd { display: flex; justify-content: space-between; font: 600 2.6cqw/1 var(--sans); letter-spacing: 0.1em; text-transform: uppercase; color: #666; padding-bottom: 2.6cqw; border-bottom: 1px solid #ddd; }
+.bp-tt { font: 400 6.4cqw/1.08 var(--sans); letter-spacing: -0.02em; margin: 4cqw 0 1.4cqw; }
+.bp-ins { font: 400 3.2cqw/1.4 var(--sans); color: #555; margin: 0 0 2.4cqw; }
+.bp-q { position: relative; display: grid; grid-template-columns: 6cqw 1fr auto; column-gap: 2cqw; align-items: start; padding: 3cqw 0; border-top: 1px solid #eee; }
+.bp-q p { grid-column: 2; margin: 0; font: 400 3.5cqw/1.4 var(--sans); }
+.bp-q > .bp-col, .bp-q > .bp-pic { grid-column: 2; margin-top: 2cqw; }
+.bp-n { font: 500 3.2cqw/1.4 var(--sans); color: #888; }
+.bp-tag { grid-column: 1 / -1; justify-self: start; font: 600 2.4cqw/1 var(--sans); letter-spacing: 0.1em; text-transform: uppercase; color: #fff; background: var(--ink); padding: 1cqw 1.6cqw; border-radius: 1cqw; margin-bottom: 1.6cqw; }
+.bp-up { background: var(--sky); grid-column: 2; }
+.bp-eg { background: #faf8f4; border: 1px solid #e8e2d6; border-radius: 2cqw; padding: 3cqw; margin-bottom: 1cqw; grid-template-columns: 0 1fr auto; column-gap: 0; }
+.bp-col { display: inline-grid; justify-items: end; font: 400 4.4cqw/1.25 var(--sans); font-variant-numeric: tabular-nums; justify-self: start; min-width: 16cqw; }
+.bp-col > span:nth-last-child(2) { border-bottom: 0.4cqw solid #18181b; width: 100%; text-align: right; }
+.bp-carry { font: 600 4cqw/1 var(--pen); color: var(--red, #d63a2f); height: 3.4cqw; }
+.bp-ans { font: 400 5cqw/1.2 var(--kid); color: #555; }
+.bp-blank .bp-box { display: block; width: 100%; height: 5.6cqw; }
+.bp-line { grid-column: 3; grid-row: 1 / span 4; align-self: end; width: 14cqw; border-bottom: 1px solid #bbb; height: 5cqw; }
+.bp-pic { display: block; max-width: 100%; height: auto; }
+.bp-pic circle { fill: #18181b; }
+.bp-pic .bp-plate { fill: none; stroke: #999; stroke-width: 1.5; }
+
+/* ---------- A: Two columns ---------- */
+.pz-cols { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
+.pz-card { position: relative; background: var(--card); border-radius: 4px; padding: clamp(24px, 2.6vw, 36px); }
+.pz-card .pz-peek { margin-top: 28px; }
+
+/* ---------- B: Switch ---------- */
+.pz-tabs { display: inline-flex; gap: 4px; padding: 4px; border: 1px solid var(--line); border-radius: 8px; margin-bottom: 18px; }
+.pz-tabs button { display: inline-flex; align-items: center; gap: 8px; min-height: 44px; padding: 0 18px; border: 0; border-radius: 6px; background: transparent; font: 500 15px/1 var(--sans); color: var(--ink-2); cursor: pointer; }
+.pz-tabs button.on { background: var(--card); color: var(--ink); }
+.pz-panel { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: clamp(24px, 4vw, 64px); align-items: start; background: var(--card); border-radius: 4px; padding: clamp(24px, 2.6vw, 36px); }
+.pz-panel .pz-peek { max-width: 460px; justify-self: end; width: 100%; }
+
+/* ---------- C: Report table ---------- */
+.pz-table { width: 100%; border-collapse: collapse; table-layout: fixed; }
+.pz-table thead td { width: 170px; }
+.pz-table th, .pz-table td { text-align: left; vertical-align: top; padding: 16px 20px 16px 0; border-top: 1px solid var(--line); }
+.pz-table thead th, .pz-table thead td { border-top: 2px solid var(--ink); padding-top: 18px; }
+.pz-table tbody th { font: 400 12.5px/1.6 var(--mono); color: var(--ink-3); }
+.pz-table tbody td { font-size: 16px; line-height: 1.5; }
+.pz-table .pz-who .chip { margin-left: 4px; }
+.pz-table .pz-pages td { padding-top: 22px; }
+.pz-table .pz-peek { max-width: 440px; }
+
+/* ---------- D: Fork ---------- */
+.pz-fork { display: grid; }
+.pz-start { justify-self: center; text-align: center; background: var(--card); border-radius: 4px; padding: 16px 24px; display: grid; gap: 6px; justify-items: center; }
+.pz-start p { margin: 0; font-size: 17px; }
+.pz-branch { width: 50%; height: 48px; justify-self: center; }
+.pz-branch path { fill: none; stroke: var(--accent); stroke-width: 1.5; opacity: 0.6; vector-effect: non-scaling-stroke; }
+.pz-forks { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
+.pz-row { display: grid; grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr); gap: 24px; align-items: start; background: var(--card); border-radius: 4px; padding: 24px; }
+.pz-row .pz-lines > div { grid-template-columns: 1fr; gap: 2px; }
+
+/* ---------- phones (D-072: short blocks, both children visible without a tap where possible) ---------- */
+@media (max-width: 699px) {
+  .pz-lines { margin-top: 12px; gap: 8px; }
+  .pz-lines > div { grid-template-columns: 104px 1fr; gap: 8px; padding-top: 8px; }
+  .pz-lines dd { font-size: 15px; }
+  .pz-who h3 { font-size: 21px; }
+  /* A page shows as a peek: the top of the page, fading out. */
+  .pz-peek { max-height: 230px; overflow: hidden; -webkit-mask-image: linear-gradient(#000 70%, transparent); mask-image: linear-gradient(#000 70%, transparent); }
+
+  .pz-cols { grid-template-columns: 1fr; gap: 8px; }
+  .pz-card { padding: 20px; }
+  .pz-card .pz-peek { margin-top: 16px; }
+
+  .pz-tabs { display: flex; margin-bottom: 10px; }
+  .pz-tabs button { flex: 1; justify-content: center; }
+  .pz-panel { grid-template-columns: 1fr; gap: 16px; padding: 20px; }
+
+  .pz-table, .pz-table tbody, .pz-table thead { display: block; }
+  .pz-table tr { display: grid; grid-template-columns: 1fr 1fr; column-gap: 12px; }
+  .pz-table thead td { display: none; }
+  .pz-table th, .pz-table td { padding: 10px 0; }
+  .pz-table tbody th { grid-column: 1 / -1; padding-bottom: 0; border-top: 1px solid var(--line); }
+  .pz-table tbody td { border-top: 0; font-size: 14.5px; }
+  .pz-table .pz-who { gap: 6px; }
+  .pz-table .pz-who .chip { margin-left: 0; font-size: 11.5px; padding: 5px 8px; }
+  .pz-table .pz-peek { max-height: 200px; }
+
+  .pz-branch { height: 28px; }
+  .pz-start { padding: 12px 16px; }
+  .pz-start p { font-size: 15px; }
+  .pz-forks { grid-template-columns: 1fr; gap: 8px; }
+  .pz-row { grid-template-columns: 112px 1fr; gap: 14px; padding: 16px; }
+  .pz-row .pz-who .chip { display: none; }
+  .pz-row .pz-lines > div { padding-top: 6px; }
+  .pz-row .pz-lines dd { font-size: 14.5px; }
+}
+
+/* ---------- /sample-report: the sample note above the real report ---------- */
+.sample-note { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 16px 32px; margin: 0 0 32px; padding: 20px 24px; border-radius: 4px; background: var(--card); border-left: 4px solid var(--g1); }
+.sample-note > div { display: grid; gap: 8px; max-width: 64ch; }
+.sample-note p { margin: 0; }
