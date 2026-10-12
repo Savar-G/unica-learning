@@ -1,4 +1,5 @@
 import { randomBytes } from "node:crypto";
+import { isAuthSessionMissingError, type AuthError } from "@supabase/supabase-js";
 import { cleanChild, cleanDetails, fail, validPassword, type AccountResult, type FinishPayload } from "@/lib/account";
 import { createFamily, isPhone, linkOrigin, sendSignInLink } from "@/lib/account-server";
 import { adminClient, sessionClient } from "@/lib/supabase-auth";
@@ -13,6 +14,11 @@ import { adminClient, sessionClient } from "@/lib/supabase-auth";
 // 2. Before any step that can fail, the password becomes one that nobody knows, and every other session ends. The
 //    password from the signup form (or from /account/finish) is set after that.
 // 3. An existing family changes nothing: no new child, no new password.
+//
+// Both password changes go through the parent's own session (PUT /auth/v1/user). Supabase Auth then ends every other
+// session of the user in the same transaction and keeps the parent's. An admin password change (updateUserById) ends
+// every session, the parent's too: the parent is signed out with a password nobody knows (2026-10-12, every first
+// signup failed). Checked on the hosted project; see docs/assessment-signup.md.
 
 /** Sign-in methods (the access token's amr claim) that prove the email: "otp" is the email code and every emailed link. */
 const PROVED = new Set(["otp", "magiclink", "recovery", "email/signup", "invite", "oauth"]);
@@ -29,6 +35,18 @@ function signInMethods(jwt: string): string[] {
 
 /** A password that nobody knows. The suffix covers every character class a project password rule can ask for. */
 const unknownPassword = () => `${randomBytes(32).toString("base64url")}aA1!`;
+
+/**
+ * The answer when Auth refuses a password change. A session that ended, or one that "Secure password change" calls too
+ * old (more than 24 hours, if that setting is ever turned on), needs a new sign-in. Only the parent's own password can
+ * be weak.
+ */
+function passwordFailed(step: "password reset" | "password save", error: AuthError) {
+  if (step === "password save" && error.code === "weak_password") return fail("weak_password", 400);
+  console.error(`[account] ${step} failed`, error.code, error.message);
+  if (isAuthSessionMissingError(error) || error.code === "reauthentication_needed") return fail("signed_out", 401);
+  return fail("store_failed", 502);
+}
 
 export async function POST(request: Request) {
   const session = await sessionClient();
@@ -49,16 +67,8 @@ export async function POST(request: Request) {
 
   if (!signInMethods(jwt).some((method) => PROVED.has(method))) return fail("unproved", 403);
 
-  const { error: resetError } = await admin.auth.admin.updateUserById(user.id, { password: unknownPassword() });
-  if (resetError) {
-    console.error("[account] password reset failed", resetError.code, resetError.message);
-    return fail("store_failed", 502);
-  }
-  const { error: signOutError } = await admin.auth.admin.signOut(jwt, "others");
-  if (signOutError) {
-    console.error("[account] sign-out of other sessions failed", signOutError.code, signOutError.message);
-    return fail("store_failed", 502);
-  }
+  const { error: resetError } = await session.auth.updateUser({ password: unknownPassword() });
+  if (resetError) return passwordFailed("password reset", resetError);
 
   let body: Partial<FinishPayload>;
   try {
@@ -71,12 +81,8 @@ export async function POST(request: Request) {
   if (!details || !child || (body.password !== undefined && !validPassword(body.password))) return fail("invalid", 400);
 
   if (body.password !== undefined) {
-    const { error } = await admin.auth.admin.updateUserById(user.id, { password: body.password });
-    if (error) {
-      if (error.code === "weak_password") return fail("weak_password", 400);
-      console.error("[account] password save failed", error.code, error.message);
-      return fail("store_failed", 502);
-    }
+    const { error } = await session.auth.updateUser({ password: body.password });
+    if (error) return passwordFailed("password save", error);
   }
 
   const family = await createFamily(admin, user.id, { ...details, email: user.email.toLowerCase() }, child);
