@@ -1,30 +1,45 @@
-/* "How we're different" panels under the plan cards (src/components/compare.tsx, D-076).
-   Three white cards with a clear border. The category name is the heading; the trait is a chip under it.
-   Our card has a gradient bar along its top edge (the D-037 colours) and a black chip, instead of a dark outline.
-   The four parts of each card (name, trait, price, text) share rows through subgrid, so the prices line up.
-   Under 900px the cards stack; ours stays first. */
+/* "How we compare" check table under the plan card (src/components/compare.tsx, D-097).
+   Columns: private tutor, learning centre, [Brand]; rows: three traits, then cost.
+   Each trait cell leads with a mark (full = yes, half = partly) so the table scans before it reads.
+   Our column has the accent-soft tint, a gradient bar along its top (the D-037 colours) and accent marks;
+   the other columns stay plain ink-2, so nothing reads as a plan tier.
+   Under 900px the row label moves above its three cells and the corner header cell is hidden. */
 
-.cmp { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; margin: clamp(40px, 5vw, 64px) 0 0; padding: 0; list-style: none; }
-.cmp > li {
-  display: grid; grid-row: span 4; grid-template-rows: subgrid; row-gap: 0;
-  position: relative; padding: clamp(24px, 2.6vw, 34px); border-radius: 6px; background: #fff; box-shadow: 0 0 0 1px #d4d4d8;
-}
-.cmp > li.us { overflow: hidden; padding-top: clamp(30px, 3vw, 40px); }
-.cmp > li.us::before { content: ""; position: absolute; inset: 0 0 auto; height: 6px; background: linear-gradient(90deg, var(--g1), var(--g2), var(--g3)); }
-.cmp h3 { margin: 0; font: 500 clamp(24px, 2.2vw, 30px)/1.1 var(--sans); letter-spacing: -0.025em; color: var(--ink); }
-.cmp .us h3 { display: flex; align-items: center; gap: 10px; }
-.cmp .us h3::before { content: ""; flex: none; width: 10px; height: 10px; background: var(--accent); }
-.cmp-trait { justify-self: start; margin: 10px 0 0; padding: 6px 10px; border-radius: 999px; background: var(--card); font: 400 13px/1.3 var(--mono); color: var(--ink); }
-.cmp .us .cmp-trait { background: var(--ink); color: #fff; }
-.cmp-price { align-self: end; margin: 0; padding-top: 34px; display: grid; gap: 6px; }
-.cmp-price b { font: 300 clamp(40px, 3.8vw, 54px)/1 var(--sans); letter-spacing: -0.04em; color: var(--ink-2); }
-.cmp .us .cmp-price b { color: var(--ink); }
-.cmp-price span { font: 400 12.5px/1.3 var(--mono); color: var(--ink-2); }
-.cmp-txt { margin: 18px 0 0; padding-top: 16px; border-top: 1px solid var(--line); font-size: 15px; line-height: 1.5; color: var(--ink); }
+.cmp { margin: clamp(48px, 6vw, 80px) 0 0; }
+.cmp-kicker { margin: 0 0 18px; font: 400 12.5px/1.3 var(--mono); letter-spacing: 0.04em; text-transform: uppercase; color: var(--ink-2); }
+
+.cmp-tbl { display: grid; grid-template-columns: minmax(150px, 0.8fr) repeat(3, minmax(0, 1fr)); }
+.cmp-row { display: contents; }
+.cmp-row > span { display: flex; gap: 12px; align-items: flex-start; padding: 18px 20px; border-top: 1px solid var(--line); font-size: 15px; line-height: 1.45; color: var(--ink-2); }
+.cmp-row > [role="rowheader"] { padding-left: 0; font-weight: 500; color: var(--ink); }
+.cmp-row > .us { background: var(--accent-soft); color: var(--ink); }
+
+.cmp-head > span { align-items: flex-end; padding-top: 0; padding-bottom: 14px; border-top: 0; font: 500 clamp(18px, 1.6vw, 22px)/1.15 var(--sans); letter-spacing: -0.02em; }
+.cmp-head > .us { position: relative; overflow: hidden; padding-top: 26px; border-radius: 6px 6px 0 0; }
+.cmp-head > .us::before { content: ""; position: absolute; inset: 0 0 auto; height: 6px; background: linear-gradient(90deg, var(--g1), var(--g2), var(--g3)); }
+
+.cmp-cost > span { flex-wrap: wrap; align-items: baseline; gap: 4px 8px; font: 400 12.5px/1.3 var(--mono); }
+.cmp-cost > [role="rowheader"] { font: 500 15px/1.45 var(--sans); }
+.cmp-cost b { font: 300 clamp(26px, 2.4vw, 32px)/1 var(--sans); letter-spacing: -0.03em; color: var(--ink-2); }
+.cmp-cost .us b { font-weight: 400; color: var(--ink); }
+.cmp-cost > .us { border-radius: 0 0 6px 6px; }
+
+.cmp-mk { flex: none; position: relative; width: 20px; height: 20px; margin-top: 1px; border-radius: 50%; box-shadow: inset 0 0 0 1.5px var(--ink-2); }
+.cmp-mk.yes { background: var(--ink); box-shadow: none; }
+.cmp-mk.yes::after { content: ""; position: absolute; left: 7px; top: 4px; width: 5px; height: 9px; border: solid #fff; border-width: 0 2px 2px 0; transform: rotate(45deg); }
+.cmp-mk.part { background: linear-gradient(90deg, var(--ink-2) 50%, transparent 50%); }
+.us .cmp-mk.yes { background: var(--accent); }
+
+.cmp-legend { display: flex; align-items: center; gap: 8px; margin: 16px 0 0; font: 400 12.5px/1 var(--mono); color: var(--ink-2); }
+.cmp-legend .cmp-mk { width: 14px; height: 14px; margin: 0 0 0 10px; }
+.cmp-legend .cmp-mk:first-child { margin-left: 0; }
+.cmp-legend .cmp-mk.yes::after { left: 5px; top: 2px; width: 3px; height: 7px; }
 
 @media (max-width: 899px) {
-  .cmp { grid-template-columns: minmax(0, 1fr); }
-  .cmp > li { grid-row: auto; display: block; }
-  .cmp-trait { display: inline-block; }
-  .cmp-price { padding-top: 24px; }
+  .cmp-tbl { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .cmp-row > span { flex-direction: column; gap: 8px; padding: 12px 10px; font-size: 13px; }
+  .cmp-row > [role="rowheader"] { grid-column: 1 / -1; padding: 22px 0 4px; border-top: 0; font-size: 15px; }
+  .cmp-head > [role="columnheader"]:first-child { display: none; }
+  .cmp-head > span { font-size: 15px; }
+  .cmp-cost b { font-size: 22px; }
 }
