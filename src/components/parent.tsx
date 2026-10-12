@@ -1,4 +1,4 @@
-// "Your commitment as a parent": four questions a parent asks, after How it works (D-075, variant D of round r9).
+// "Your commitment as a parent": four questions a parent asks, after Pricing (moved from after How it works in D-095; D-075, variant D of round r9).
 // Answers Randy Epp's review (2026-10-09): the page never said what the parent does.
 // No parent-minute number and no starter guide in the box: we have neither yet.
 import { Section, SectionHeader } from "@/ds";
