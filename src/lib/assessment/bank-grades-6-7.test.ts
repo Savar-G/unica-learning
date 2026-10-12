@@ -539,6 +539,20 @@ describe("primary-source corrections from the #76 checker run", () => {
     ["g67-7-balance-boxes", [7, 5, 7, 7, 6, 7]],
     // AB MAT5-OI2-GQ1-LO1-KO3-SP writes equations with one or two operations.
     ["g67-7-story-equation", [7, 5, 7, 7, 7, 7]],
+    // Review-flag triage (scripts/template-check/triage.md).
+    ["g67-5-groups-needed", [5, 6, 6, 5, 5, 5]], // two-digit divisors: AB MAT6-OI1-GQ4; SK N5.3 one-digit only
+    ["g67-5-make-change", [5, 4, 4, 4, 5, 5]], // AB MAT4-OI1-GQ2, SK N4.8, MB 4.N.11
+    ["g67-5-equivalent-fraction", [5, 4, 5, 5, 5, 5]], // AB MAT4-OI1-GQ5
+    ["g67-5-missing-numerator", [5, 4, 5, 5, 5, 5]],
+    ["g67-5-greatest-decimal", [5, 4, 5, 5, 5, 5]], // AB MAT4-OI1-GQ1
+    ["g67-5-decimal-as-fraction", [5, 4, 4, 4, 5, 5]], // AB grade 4, denominators 10 or 100
+    ["g67-5-elapsed-time", [5, 4, 5, 5, 4, 5]], // AB MAT4-OI7-GQ1
+    ["g67-5-solid-from-faces", [5, 4, 3, 3, 3, 5]], // AB MAT4-OI3, SK SS3.4, MB 3.SS.6, ON3 E1.1
+    ["g67-5-solid-count", [5, 5, 3, 3, 3, 5]],
+    ["g67-5-name-transformation", [5, 2, 5, 5, 5, 5]], // AB MAT2-OI3-GQ1-LO1-KO2
+    ["g67-5-double-bar-graph", [5, 4, 5, 5, 4, 5]], // AB MAT4-OI8; ON4 D1.6
+    ["g67-5-pictograph", [5, 4, 4, 4, 3, 5]], // AB MAT4-OI8, SK SP4.1, MB 4.SP.2, ON3 D1.3
+    ["g67-5-spinner-probability", [5, 6, 6, 6, 5, 5]], // ON5 D2.1
   ] as const)("%s uses the primary-source grade in each province", (id, expected) => {
     expect(levels(id)).toEqual([...expected]);
   });

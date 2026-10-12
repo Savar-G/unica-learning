@@ -88,14 +88,14 @@ export const LEVEL_5: readonly TaggedTemplate[] = [
       wrong: typedWrong(full + 1, [[full, "remainder-ignore"], [extra, "remainder-quotient"]]) };
   }),
   // A three-digit number divided exactly by a two-digit number (BC 5: division to three digits). AB MAT6-OI1-GQ4-LO1-KO1-SP,
-  // MB 5.N.6 (1- and 2-digit divisors), ON5 B2.7. SK grade 5 divides by one digit and grade 6 names no two-digit divisor.
+  // MB 5.N.6 (1- and 2-digit divisors), ON5 B2.7. SK N5.3 divides by one digit and no later SK outcome names a two-digit divisor (grade 6 used).
   template("divide-two-digit", "O", "5.6", (rng) => {
     const [d, q] = draw(rng, (r) => [r.int(12, 39), r.int(11, 40)], ([d, q]) => d * q < 1000 && d * q >= 200 && q % 10 !== 0), n = d * q;
     const [things, box] = rng.pick([["pencils", "boxes"], ["eggs", "trays"], ["stickers", "sheets"], ["chairs", "rows"]] as const);
     return { values: { n, d }, prompt: `${n} ${things} are put into ${box} of ${d}. How many ${box} are filled?`,
       readAloud: `${n} ${things} are put into ${box} of ${d}. How many ${box} are filled?`, answer: String(q),
       wrong: typedWrong(q, [[n - d, "operation"], [n * d, "operation"]]) };
-  }, "number", { AB: 6, SK: 7, ON: 5 }),
+  }, "number", { AB: 6, SK: 6, ON: 5 }),
   template("annexing-zeros", "O", "5.9", (rng) => {
     const a = rng.int(2, 8), b = rng.int(3, 9), right = a * b * 100;
     return { values: { a, b }, prompt: `${a * 10} × ${b * 10} = ?`, readAloud: `What is ${a * 10} times ${b * 10}?`, answer: String(right),
@@ -183,15 +183,13 @@ export const LEVEL_5: readonly TaggedTemplate[] = [
       wrong: [wrong(dec(t, 1), "decimal-order"), wrong(dec(a, 3), "decimal-order"), wrong(dec(t, 2), "more-less")] };
   }, "choice", thousandths),
   // A thousandths decimal between two hundredths: AB MAT5-OI1-GQ1-LO1-KO1-SP (a decimal between two decimals), SK N5.6,
-  // MB 5.N.10. Each wrong choice is outside the interval: the digit in the hundredths place, or past either end.
+  // MB 5.N.10. Each wrong choice is just past one end of the interval.
   template("decimal-between", "F", "5.2", (rng) => {
     const whole = rng.int(1, 9), low = rng.int(11, 88), d = rng.int(1, 9), at = (n: number) => dec(whole * 1000 + n, 3);
     const right = at(low * 10 + d), lowText = dec(whole * 100 + low, 2), highText = dec(whole * 100 + low + 1, 2);
-    const shifted = dec(whole * 100 + Math.floor(low / 10) * 10 + d, 2);
     return { values: { whole, low, d }, prompt: `Which decimal is between ${lowText} and ${highText}?`,
       readAloud: `Which decimal is between ${lowText} and ${highText}?`, answer: right,
-      wrong: [...(Number(shifted) < Number(lowText) || Number(shifted) > Number(highText) ? [wrong(shifted, "decimal-point")] : []),
-        wrong(at((low + 1) * 10 + d), "bounds-error"), wrong(at((low - 1) * 10 + d), "bounds-error")] };
+      wrong: [wrong(at((low + 1) * 10 + d), "bounds-error"), wrong(at((low - 1) * 10 + d), "bounds-error")] };
   }, "choice", thousandths),
   ...["add", "subtract"].map((op) => template(`${op}-thousandths`, "O", "5.7", (rng) => {
     const a = rng.int(3501, 8999), b = rng.int(101, 3499), right = op === "add" ? a + b : a - b;

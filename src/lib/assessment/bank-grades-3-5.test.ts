@@ -837,6 +837,8 @@ describe("primary-source corrections from the #75 checker run", () => {
       const [low, high] = q.prompt.match(/between (\d+\.\d+) and (\d+\.\d+)/)!.slice(1).map(Number);
       expect(q.choices!.filter((c) => Number(c) > low && Number(c) < high)).toEqual([q.answer]);
       expect(q.answer).toMatch(/^\d+\.\d{3}$/);
+      // Every wrong choice lies just past one end of the interval; each needs one mistake.
+      expect(q.wrong.map((w) => w.misconception)).toEqual(["bounds-error", "bounds-error"]);
     }
   });
   it("asks which rectangle with one area has the greatest or least perimeter", () => {
@@ -852,7 +854,7 @@ describe("primary-source corrections from the #75 checker run", () => {
   });
   it("divides a three-digit number by a two-digit number exactly, at the grade each province names two-digit divisors", () => {
     // AB MAT6-OI1-GQ4-LO1-KO1-SP, MB 5.N.6, ON5 B2.7; BC 5 division to three digits. No SK grade 5-6 outcome names it.
-    expect(levels("g35-5-divide-two-digit")).toEqual([5, 6, 7, 5, 5, 5]);
+    expect(levels("g35-5-divide-two-digit")).toEqual([5, 6, 6, 5, 5, 5]);
     for (const seed of SEEDS) {
       const q = fillTemplate(byId("g35-5-divide-two-digit"), seed), { n, d } = q.values;
       expect(d).toBeGreaterThanOrEqual(12);
