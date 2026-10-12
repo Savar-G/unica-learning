@@ -764,6 +764,8 @@ describe("primary-source corrections from the #75 checker run", () => {
       [`g35-5-equivalent-${task}`, [5, 4, 5, 5, 6, 5]] as const), // AB MAT4-OI1-GQ5-LO1-KO1-SP; ON5 B1.3 stops at twelfths
     ["g35-5-fraction-to-hundredths", [5, 6, 5, 5, 5, 5]], // SK N5.6 with N5.5, MB 5.N.9 with 5.N.7
     ["g35-5-equivalent-decimal", [5, 4, 5, 5, 5, 5]], // AB grade 4 decimal equivalence key idea
+    ["g35-5-fraction-near-whole", [5, 3, 5, 5, 5, 5]], // AB grade 3: compare fractions to the benchmarks 0, 1/2 and 1
+    ["g35-6-complementary-angle", [6, 4, 6, 6, 6, 6]], // AB MAT4-OI3-GQ1-LO1-KO1-K; ON6 E2.3 complementary angles
     ["g35-5-pattern-next", [3, 4, 2, 2, 4, 3]], // AB MAT4-OI6-GQ1-LO1-KO2-SP, SK P2.2, MB 2.PR.2
     ["g35-5-pattern-missing", [3, 4, 2, 2, 4, 3]],
     ["g35-5-pattern-step", [3, 3, 2, 2, 3, 3]], // AB MAT3-OI6-GQ1-LO1-KO2-SP, ON3 C1.1
@@ -777,6 +779,35 @@ describe("primary-source corrections from the #75 checker run", () => {
     ["g35-5-transformation", [5, 2, 5, 5, 5, 5]], // AB MAT2-OI3-GQ1-LO1-KO2
     ["g35-5-double-bar-difference", [5, 5, 5, 5, 4, 5]], // ON4 D1.6 multiple-bar graphs
     ["g35-5-pictograph-total", [5, 4, 4, 4, 3, 5]], // AB MAT4-OI8-GQ1-LO1-KO2-SP, SK SP4.1, MB 4.SP.2, ON3 D1.3
+    ["g35-6-common-factor", [6, 4, 6, 6, 7, 6]], // AB MAT4-OI1-GQ3-LO1-KO1-SP; ON7 B2.6
+    ["g35-6-least-multiple", [6, 8, 6, 6, 7, 6]], // no AB K-6 common-multiple outcome; ON7 B2.6
+    ["g35-6-meeting-cycles", [6, 8, 6, 6, 7, 6]],
+    ["g35-6-prime", [6, 4, 6, 6, 6, 6]],
+    ["g35-6-all-factors", [6, 4, 6, 6, 6, 6]],
+    ["g35-6-divisibility", [6, 5, 7, 7, 6, 6]], // AB MAT5-OI1-GQ3; SK N7.1, MB 7.N.1
+    ["g35-6-order-product", [6, 4, 6, 6, 6, 6]], // AB grade 4 order of operations
+    ["g35-6-order-quotient", [6, 4, 6, 6, 6, 6]],
+    ["g35-6-order-two-products", [6, 4, 6, 6, 6, 6]],
+    ["g35-6-order-brackets", [6, 5, 6, 6, 6, 6]], // AB MAT5-OI2-GQ1-LO1-KO1-SP
+    ["g35-6-decimal-product-story", [6, 6, 6, 6, 7, 6]], // ON7 B2.9
+    ["g35-6-ratio-part-to-part", [6, 5, 6, 6, 5, 6]], // AB grade 5 ratios; ON5 B2.9
+    ["g35-6-ratio-part-to-whole", [6, 5, 6, 6, 5, 6]],
+    ["g35-6-percent-of-amount", [6, 6, 6, 6, 6, 6]], // ON6 B2.3 percents of whole numbers
+    ["g35-6-percent-discount", [6, 6, 6, 6, 6, 6]],
+    ["g35-6-percent-sale-price", [6, 6, 6, 6, 6, 6]],
+    ["g35-6-linear-tenth", [6, 5, 6, 5, 4, 6]], // AB MAT5-OI6-GQ1-LO1-KO1-SP, MB 5.PR.1
+    ["g35-6-triangle-area", [6, 6, 7, 7, 5, 6]], // SK SS7.2, MB 7.SS.2
+    ["g35-6-triangle-height", [6, 6, 7, 7, 5, 6]],
+    ["g35-6-parallelogram-area", [6, 6, 7, 7, 5, 6]],
+    ["g35-6-trapezoid-area", [6, 7, 7, 7, 6, 6]], // ON6 E2.4
+    ["g35-6-volume-cubes", [6, 6, 5, 5, 7, 6]], // ON7 E2.7
+    ["g35-6-capacity", [6, 8, 5, 5, 4, 6]], // no AB K-6 litre outcome
+    ["g35-6-angle-name", [6, 4, 6, 6, 5, 6]], // AB MAT4-OI5-GQ2-LO1-KO1-SP
+    ["g35-6-straight-angle", [6, 4, 6, 6, 6, 6]], // AB grade 4 supplementary angles; ON6 E2.3
+    ["g35-6-triangle-sides", [6, 4, 6, 6, 5, 6]], // AB MAT4-OI3-GQ1-LO1-KO1-SP
+    ["g35-6-coordinate", [6, 5, 6, 6, 4, 6]], // AB MAT5-OI4-GQ1-LO1-KO1-SP
+    ["g35-6-experimental-probability", [6, 6, 6, 6, 5, 6]], // ON5 D2.1-D2.2
+    ["g35-6-theoretical-probability", [6, 6, 6, 6, 5, 6]],
   ] as const)("%s uses the grade where each province's curriculum teaches it", (id, expected) => {
     expect(levels(id)).toEqual([...expected]);
   });
@@ -817,6 +848,32 @@ describe("primary-source corrections from the #75 checker run", () => {
       const values = q.choices!.map(perimeter), best = /greatest/.test(q.prompt) ? Math.max(...values) : Math.min(...values);
       expect(values.filter((v) => v === best)).toHaveLength(1);
       expect(perimeter(q.answer)).toBe(best);
+    }
+  });
+  it("divides a three-digit number by a two-digit number exactly, at the grade each province names two-digit divisors", () => {
+    // AB MAT6-OI1-GQ4-LO1-KO1-SP, MB 5.N.6, ON5 B2.7; BC 5 division to three digits. No SK grade 5-6 outcome names it.
+    expect(levels("g35-5-divide-two-digit")).toEqual([5, 6, 7, 5, 5, 5]);
+    for (const seed of SEEDS) {
+      const q = fillTemplate(byId("g35-5-divide-two-digit"), seed), { n, d } = q.values;
+      expect(d).toBeGreaterThanOrEqual(12);
+      expect(n).toBeLessThan(1000);
+      expect(Number(q.answer) * d).toBe(n);
+    }
+  });
+  it("solves an equation whose like terms combine first, at grade 6 in Alberta and Ontario", () => {
+    // AB MAT6-OI2-GQ1-LO1-KO3-SP (simplify, then solve); ON6 C2.3 note (add monomials before solving).
+    expect(levels("g35-6-like-terms-equation")).toEqual([6, 6, 8, 8, 6, 6]);
+    for (const seed of SEEDS) {
+      const q = fillTemplate(byId("g35-6-like-terms-equation"), seed), { a, b } = q.values;
+      const total = Number(q.prompt.match(/=\s(\d+)/)![1]);
+      expect((a + b) * Number(q.answer)).toBe(total);
+    }
+  });
+  it("finds the other part of a right angle and codes the straight-angle total", () => {
+    for (const seed of SEEDS) {
+      const q = fillTemplate(byId("g35-6-complementary-angle"), seed), { x } = q.values;
+      expect(q.answer).toBe(String(90 - x));
+      expect(q.wrong.find((w) => w.value === String(180 - x))?.misconception).toBe("angle-sum");
     }
   });
   it("keeps the closest-to-one-whole fractions within twelfths (ON5 B1.4)", () => {

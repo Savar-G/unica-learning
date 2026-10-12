@@ -87,6 +87,15 @@ export const LEVEL_5: readonly TaggedTemplate[] = [
       readAloud: `${total} people need a ride. Each bus holds ${seats} people. What is the least number of buses needed?`, answer: String(full + 1),
       wrong: typedWrong(full + 1, [[full, "remainder-ignore"], [extra, "remainder-quotient"]]) };
   }),
+  // A three-digit number divided exactly by a two-digit number (BC 5: division to three digits). AB MAT6-OI1-GQ4-LO1-KO1-SP,
+  // MB 5.N.6 (1- and 2-digit divisors), ON5 B2.7. SK grade 5 divides by one digit and grade 6 names no two-digit divisor.
+  template("divide-two-digit", "O", "5.6", (rng) => {
+    const [d, q] = draw(rng, (r) => [r.int(12, 39), r.int(11, 40)], ([d, q]) => d * q < 1000 && d * q >= 200 && q % 10 !== 0), n = d * q;
+    const [things, box] = rng.pick([["pencils", "boxes"], ["eggs", "trays"], ["stickers", "sheets"], ["chairs", "rows"]] as const);
+    return { values: { n, d }, prompt: `${n} ${things} are put into ${box} of ${d}. How many ${box} are filled?`,
+      readAloud: `${n} ${things} are put into ${box} of ${d}. How many ${box} are filled?`, answer: String(q),
+      wrong: typedWrong(q, [[n - d, "operation"], [n * d, "operation"]]) };
+  }, "number", { AB: 6, SK: 7, ON: 5 }),
   template("annexing-zeros", "O", "5.9", (rng) => {
     const a = rng.int(2, 8), b = rng.int(3, 9), right = a * b * 100;
     return { values: { a, b }, prompt: `${a * 10} × ${b * 10} = ?`, readAloud: `What is ${a * 10} times ${b * 10}?`, answer: String(right),
@@ -150,7 +159,8 @@ export const LEVEL_5: readonly TaggedTemplate[] = [
     const d = rng.int(6, 12), low = rng.shuffle([1, 2, 3]).slice(0, 3);
     return { values: { d }, prompt: "Which fraction is closest to one whole?", readAloud: "Which fraction is closest to one whole?",
       answer: frac(d - 1, d), wrong: low.map((n) => wrong(frac(n, d), n === 1 ? "more-less" : "fraction-order")) };
-  }, "choice"),
+  // AB grade 3 compares fractions to the benchmarks 0, 1/2 and 1 (denominators to 12).
+  }, "choice", { AB: 3 }),
   template("equivalent-decimal", "F", "5.4", (rng) => {
     const t = rng.int(1, 9);
     return { values: { t }, prompt: `Which decimal is equal to 0.${t}0?`, readAloud: `Which decimal is equal to ${t * 10} hundredths?`,
