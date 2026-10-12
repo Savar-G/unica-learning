@@ -25,8 +25,16 @@
       "artifact": "emphasis.html",
       "screenshot": "emphasis.png",
       "bet": "Bold the benefit and mechanism"
+    },
+    {
+      "id": "plain",
+      "artifact": "../../../src/components/sections.tsx",
+      "screenshot": "plain-desktop.png",
+      "bet": "Use the normal paragraph weight for the full solution"
     }
   ],
   "recommendation": "A",
-  "selection": "C"
+  "selection": "plain",
+  "superseded_selection": "C",
+  "final_decision": "Use the normal paragraph weight. Publish the revised copy on the normal home page."
 }

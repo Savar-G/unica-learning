@@ -69,7 +69,7 @@ const TOPICS = [
   "patterns", "symmetry", "geometry", "carrying", "integers", "addition", "graphing", "measuring",
 ];
 
-export function Hero({ prototypeCopy = false }: { prototypeCopy?: boolean } = {}) {
+export function Hero() {
   return (
     <HeroBlock
         id="top"
@@ -81,7 +81,8 @@ export function Hero({ prototypeCopy = false }: { prototypeCopy?: boolean } = {}
         lead={
           <>
             Same material, same pace. <span className="nowrap">Miss <SwapWord words={TOPICS} /></span> and every lesson after
-            it gets harder. {prototypeCopy ? <><strong style={{ fontWeight: 600, color: "var(--ink)" }}>Unica gives your child more practice where they need help and new challenges when they’re ready. We use their completed work to shape each new workbook, then mail it home.</strong></> : <>Unica builds each workbook around your child&apos;s level, pace and learning style, then mails it home.</>}
+            it gets harder. Unica gives your child more practice where they need help and new challenges when they’re ready.
+            We use their completed work to shape each new workbook, then mail it home.
           </>
         }
         meta={[`First month CAD ${cad(firstMonth(PLANS.one.price))}, then CAD ${PLANS.one.price}/month`, "30-day money-back guarantee", "Cancel anytime"]}
