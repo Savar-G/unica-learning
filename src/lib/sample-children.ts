@@ -1,4 +1,4 @@
-// Two invented Grade 3 children for the home page "Personalization" section and the public /sample-report page.
+// Two invented Grade 3 children for the home page "Personalized for your child" section (D-096) and the public /sample-report page.
 // Every page question comes from the real question bank (src/lib/assessment): fillTemplate with a fixed seed, so the
 // numbers, words and answers are the bank's own. The pictures (arrays, groups) are drawn from the filled values.
 // The sample report runs a scripted child through the real session and report model, so every number on it is computed.
@@ -21,10 +21,9 @@ export type SampleChildId = "a" | "b";
 export interface SampleChild {
   id: SampleChildId;
   name: string;
-  /** The three lines a parent reads: assessment result, learning style, what the next book contains. */
+  /** The two lines a parent reads: assessment result and learning style. */
   result: string;
   style: string;
-  book: string;
   /** One short tag for compact layouts. */
   tag: string;
 }
@@ -37,7 +36,6 @@ export const SAMPLE_CHILDREN: Record<SampleChildId, SampleChild> = {
     name: "Leah",
     result: "Struggles with carrying and borrowing, so addition and subtraction are hard for her.",
     style: "Learns best through stories.",
-    book: "6 pages on regrouping, taught with story problems, at a slower pace.",
     tag: "More practice",
   },
   b: {
@@ -45,7 +43,6 @@ export const SAMPLE_CHILDREN: Record<SampleChildId, SampleChild> = {
     name: "Kai",
     result: "Has mastered addition and subtraction, and is ready to get ahead of Grade 3 with multiplication and division.",
     style: "Learns best visually, from pictures and diagrams.",
-    book: "Moves on to multiplication early, with pictures and arrays.",
     tag: "New challenges",
   },
 };

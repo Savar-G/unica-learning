@@ -1,35 +1,29 @@
-// "Personalization" (round r18, prototype): two sample children in the same Grade 3 class get two different books.
-// The section sits after How it works. The pages are built from the real question bank (src/lib/sample-children.ts):
-// the words, numbers and answers are the templates' own; the pictures are drawn from the filled values.
-// Variants: A Two columns, B Switch, C Report table, D Fork. Savar picks one (D-096); the others are deleted.
+// "Personalized for your child" (D-096, option D "Fork" of round r18): two sample Grade 3 children, Leah and Kai,
+// get two different learning programs. The section sits after How it works. The pages are built from the real
+// question bank (src/lib/sample-children.ts): the words, numbers and answers are the templates' own; the pictures are
+// drawn from the filled values. A tap on a page opens it full size (PageZoom).
 import Link from "next/link";
 import type { ReactNode } from "react";
 import { Section, SectionHeader } from "@/ds";
 import { SAMPLE_CHILDREN, kaiPage, leahPage, type PageItem, type SampleChild, type SampleChildId } from "@/lib/sample-children";
 import { Knot, Rise } from "./drawn";
 import { PageZoom } from "./page-zoom";
-import { ChildSwitch } from "./personalization-switch";
 import "@/ds/styles/personalization.css";
 
-export type PersonalizationVariant = "a" | "b" | "c" | "d";
-
 const TITLE = "Every child learns differently. Different pace, different style. So we build each child their own learning program.";
-const LINES: [keyof Pick<SampleChild, "result" | "style" | "book">, string][] = [
+const LINES: [keyof Pick<SampleChild, "result" | "style">, string][] = [
   ["result", "Assessment"],
   ["style", "Learning style"],
 ];
 
-export function Personalization({ variant }: { variant: PersonalizationVariant }) {
+export function Personalization() {
   return (
-    <Section id="personal" aria-labelledby="personalT" className={`pz pz-${variant}`}>
+    <Section id="personal" aria-labelledby="personalT" className="pz">
       <Knot />
       <Rise>
         <SectionHeader eyebrow="Personalized for your child" title={TITLE} titleId="personalT" />
       </Rise>
-      {variant === "a" && <TwoColumns />}
-      {variant === "b" && <ChildSwitch panels={{ a: <SwitchPanel id="a" />, b: <SwitchPanel id="b" /> }} names={{ a: SAMPLE_CHILDREN.a.name, b: SAMPLE_CHILDREN.b.name }} />}
-      {variant === "c" && <ReportTable />}
-      {variant === "d" && <Fork />}
+      <Fork />
       <Footnote />
     </Section>
   );
@@ -66,65 +60,7 @@ function Who({ child }: { child: SampleChild }) {
   );
 }
 
-// ---------- A: Two columns ----------
-function TwoColumns() {
-  return (
-    <div className="pz-cols">
-      {(["a", "b"] as const).map((id, i) => (
-        <Rise key={id} d={i * 0.08} className="pz-card">
-          <Who child={SAMPLE_CHILDREN[id]} />
-          <Lines child={SAMPLE_CHILDREN[id]} />
-          <div className="pz-peek"><BankPage id={id} /></div>
-        </Rise>
-      ))}
-    </div>
-  );
-}
-
-// ---------- B: Switch ----------
-function SwitchPanel({ id }: { id: SampleChildId }) {
-  return (
-    <div className="pz-panel">
-      <div>
-        <Who child={SAMPLE_CHILDREN[id]} />
-        <Lines child={SAMPLE_CHILDREN[id]} />
-      </div>
-      <div className="pz-peek"><BankPage id={id} /></div>
-    </div>
-  );
-}
-
-// ---------- C: Report table ----------
-function ReportTable() {
-  const kids = [SAMPLE_CHILDREN.a, SAMPLE_CHILDREN.b];
-  return (
-    <Rise className="pz-table-wrap">
-      <table className="pz-table">
-        <caption className="sr-only">Two sample children in the same Grade 3 class</caption>
-        <thead>
-          <tr>
-            <td />
-            {kids.map((k) => <th key={k.id} scope="col"><Who child={k} /></th>)}
-          </tr>
-        </thead>
-        <tbody>
-          {LINES.map(([key, label]) => (
-            <tr key={key}>
-              <th scope="row">{label}</th>
-              {kids.map((k) => <td key={k.id}>{k[key]}</td>)}
-            </tr>
-          ))}
-          <tr className="pz-pages">
-            <th scope="row">First page</th>
-            {kids.map((k) => <td key={k.id}><div className="pz-peek"><BankPage id={k.id} /></div></td>)}
-          </tr>
-        </tbody>
-      </table>
-    </Rise>
-  );
-}
-
-// ---------- D: Fork ----------
+// Fork: one shared start, then the pencil line splits to the two children, each with the first page of their next book.
 function Fork() {
   return (
     <div className="pz-fork">

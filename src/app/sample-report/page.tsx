@@ -1,6 +1,6 @@
-// A public sample of the parent's report (round r18): the real ReportCard, read-only, for an invented Grade 3 child.
+// A public sample of the parent's report (D-096): the real ReportCard, read-only, for an invented Grade 3 child
+// working at a Grade 2 level. Its next step is a "Take free assessment" button.
 // Every number is computed by the real session and report model (src/lib/sample-children.ts).
-// Build stage (after D-096): add it to sitemap.ts and /llms.txt.
 import { ReportCard } from "@/components/report";
 import { StartLink } from "@/components/start-link";
 import { START_LABEL } from "@/components/sections";
