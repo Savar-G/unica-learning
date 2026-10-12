@@ -1,14 +1,17 @@
 // PROTOTYPE - throwaway. Question: how should the home page show "30% off your first month"?
-// Five variants on the real home page (/), switched with ?variant=A..E and the floating bar.
+// Round 2 (r16): Savar liked A (price-led card) most, but nothing stood out. A stays as the reference;
+// F-J push the price-led idea in different directions. Round 1 (B-E) is in commit 33ce853.
+// Variants on the real home page (/), switched with ?variant= and the floating bar.
 // Visual only: checkout and Stripe still charge CAD 99. Lives on site/first-month-offer-prototype, never main.
 import { PLANS } from "@/lib/site";
 
 export const OFFER_VARIANTS = {
-  A: "Price card: struck price",
-  B: "Announcement bar",
-  C: "Hero sticker",
-  D: "Coupon stub",
-  E: "Charge timeline",
+  A: "Struck price (round 1)",
+  F: "Two prices side by side",
+  G: "Receipt",
+  H: "Red pen correction",
+  I: "Offer band on the card",
+  J: "Offer beside the hero button",
 } as const;
 export type OfferVariant = keyof typeof OFFER_VARIANTS;
 
@@ -16,6 +19,7 @@ export const isOfferVariant = (v: unknown): v is OfferVariant => typeof v === "s
 
 const FULL = PLANS.one.price;
 const FIRST = (Math.round(FULL * 70) / 100).toFixed(2); // 69.30
+const SAVE = (FULL - Number(FIRST)).toFixed(2); // 29.70
 
 const FEATURES = [
   "Free placement assessment",
@@ -25,10 +29,10 @@ const FEATURES = [
   "Delivery included. Cancel anytime",
 ];
 
-function Cta() {
+function Cta({ label = "Choose math" }: { label?: string }) {
   return (
     <button className="btn" data-open data-src="price" data-plan="one">
-      Choose math <span className="arr">→</span>
+      {label} <span className="arr">→</span>
     </button>
   );
 }
@@ -37,35 +41,33 @@ function Features() {
   return <ul>{FEATURES.map((f) => <li key={f}>{f}</li>)}</ul>;
 }
 
-/* ---------------------------------------------------------------- hero meta, per variant */
-
-export function heroMeta(v: OfferVariant): string[] {
-  if (v === "A") return [`First month CAD ${FIRST}, then CAD ${FULL}/month`, "30-day money-back guarantee", "Cancel anytime"];
-  if (v === "C") return [`CAD ${FULL}/month`, "30-day money-back guarantee", "Cancel anytime"];
-  if (v === "E") return [`30% off your first month`, `Then CAD ${FULL}/month`, "Cancel anytime"];
-  return [`CAD ${FULL}/month`, "30-day money-back guarantee", "Cancel anytime"];
-}
-
-/* ---------------------------------------------------------------- B: bar above the nav */
-
-export function OfferBar({ variant }: { variant: OfferVariant }) {
-  if (variant !== "B") return null;
+function Head() {
   return (
-    <div className="op-bar" role="note">
-      <span><b>30% off your first month.</b> Your first month of math is CAD {FIRST} instead of CAD {FULL}.</span>
-      <button type="button" className="op-bar-link" data-open data-src="offer-bar">Take free assessment <span aria-hidden="true">→</span></button>
-    </div>
+    <>
+      <h3>{PLANS.one.name}</h3>
+      <p className="small">{PLANS.one.note}</p>
+    </>
   );
 }
 
-/* ---------------------------------------------------------------- C: sticker on the hero photo */
+/* ---------------------------------------------------------------- hero, per variant */
 
-export function HeroSticker({ variant }: { variant: OfferVariant }) {
-  if (variant !== "C") return null;
+export function heroMeta(v: OfferVariant): string[] {
+  if (v === "J") return ["30-day money-back guarantee", "Delivery included", "Cancel anytime"];
+  return [`First month CAD ${FIRST}, then CAD ${FULL}/month`, "30-day money-back guarantee", "Cancel anytime"];
+}
+
+/** J: the offer sits under the hero buttons, as a price block. */
+export function HeroOffer({ variant }: { variant: OfferVariant }) {
+  if (variant !== "J") return null;
   return (
-    <div className="op-sticker" aria-label={`30% off your first month: CAD ${FIRST}`}>
-      <span className="op-sticker-big">30% off</span>
-      <span>your first month</span>
+    <div className="op-heroffer">
+      <span className="op-heroffer-tag">30% off your first month</span>
+      <span className="op-heroffer-row">
+        <span className="op-heroffer-price">CAD {FIRST}</span>
+        <span className="op-heroffer-was">CAD {FULL}</span>
+      </span>
+      <span className="op-heroffer-then">for your first month, then CAD {FULL} a month</span>
     </div>
   );
 }
@@ -73,15 +75,66 @@ export function HeroSticker({ variant }: { variant: OfferVariant }) {
 /* ---------------------------------------------------------------- pricing card, per variant */
 
 export function OfferPlan({ variant }: { variant: OfferVariant }) {
-  if (variant === "A") {
+  if (variant === "F") {
     return (
       <div className="plan hl op-card">
         <div className="plan-head">
-          <span className="op-chip">30% off your first month</span>
-          <h3>{PLANS.one.name}</h3>
-          <p className="small">{PLANS.one.note}</p>
-          <div className="op-was">CAD {FULL}</div>
-          <div className="price">CAD {FIRST}<small> first month</small></div>
+          <Head />
+          <div className="op-pair">
+            <div className="op-pair-now">
+              <span className="op-pair-k">First month · 30% off</span>
+              <span className="op-pair-v">CAD {FIRST}</span>
+            </div>
+            <span className="op-pair-arrow" aria-hidden="true">→</span>
+            <div>
+              <span className="op-pair-k">Every month after</span>
+              <span className="op-pair-v is-quiet">CAD {FULL}</span>
+            </div>
+          </div>
+        </div>
+        <Features />
+        <Cta />
+      </div>
+    );
+  }
+  if (variant === "G") {
+    return (
+      <div className="plan hl op-card">
+        <div className="plan-head">
+          <Head />
+          <div className="op-receipt" aria-label={`First month: CAD ${FIRST}`}>
+            <p className="op-receipt-h">Your first month</p>
+            <dl>
+              <div><dt>Math workbooks</dt><dd>CAD {FULL.toFixed(2)}</dd></div>
+              <div><dt>Delivery</dt><dd>CAD 0.00</dd></div>
+              <div className="is-off"><dt>30% off your first month</dt><dd>-CAD {SAVE}</dd></div>
+              <div className="is-total"><dt>You pay</dt><dd>CAD {FIRST}</dd></div>
+            </dl>
+            <p className="op-receipt-f">Then CAD {FULL} a month. Cancel anytime.</p>
+          </div>
+        </div>
+        <Features />
+        <Cta />
+      </div>
+    );
+  }
+  if (variant === "H") {
+    return (
+      <div className="plan hl op-card">
+        <div className="plan-head">
+          <Head />
+          <div className="op-pen">
+            <div className="price op-pen-old">
+              CAD {FULL}
+              <svg className="op-pen-strike" viewBox="0 0 200 40" preserveAspectRatio="none" aria-hidden="true">
+                <path d="M4 30 C 50 22, 120 16, 196 8" />
+              </svg>
+            </div>
+            <div className="op-pen-new" aria-label={`CAD ${FIRST} for your first month`}>
+              <span>{FIRST}</span>
+              <small>first month, 30% off!</small>
+            </div>
+          </div>
           <p className="op-then">Then CAD {FULL} a month.</p>
         </div>
         <Features />
@@ -89,66 +142,36 @@ export function OfferPlan({ variant }: { variant: OfferVariant }) {
       </div>
     );
   }
-  if (variant === "D") {
+  if (variant === "I") {
     return (
-      <div className="op-ticket-row">
+      <div className="op-band-card">
+        <div className="op-band">
+          <span className="op-band-big">30% off your first month</span>
+          <span className="op-band-small">CAD {FIRST} for month one. Then CAD {FULL} a month.</span>
+        </div>
         <div className="plan hl op-card">
           <div className="plan-head">
-            <h3>{PLANS.one.name}</h3>
-            <p className="small">{PLANS.one.note}</p>
+            <Head />
             <div className="price">CAD {FULL}<small> / month</small></div>
           </div>
           <Features />
-          <Cta />
-        </div>
-        <div className="op-ticket" aria-label="First month offer">
-          <span className="op-ticket-k">First month</span>
-          <span className="op-ticket-big">30% off</span>
-          <span className="op-ticket-price">CAD {FIRST}</span>
-          <span className="op-ticket-small">Added for you at checkout. No code needed.</span>
+          <Cta label="Claim 30% off" />
         </div>
       </div>
     );
   }
-  if (variant === "E") {
-    return (
-      <div className="plan hl op-card">
-        <div className="plan-head">
-          <h3>{PLANS.one.name}</h3>
-          <p className="small">{PLANS.one.note}</p>
-          <div className="price">CAD {FULL}<small> / month</small></div>
-          <ol className="op-steps">
-            <Step k="Today" v="CAD 0" t="Free assessment. Add your card." />
-            <Step k="First book ships" v={`CAD ${FIRST}`} t="30% off your first month" hot />
-            <Step k="Every month after" v={`CAD ${FULL}`} t="Cancel anytime" />
-          </ol>
-        </div>
-        <Features />
-        <Cta />
-      </div>
-    );
-  }
-  // B and C: the plain card, with one line under the price.
+  // A and J: struck price.
   return (
     <div className="plan hl op-card">
       <div className="plan-head">
-        <h3>{PLANS.one.name}</h3>
-        <p className="small">{PLANS.one.note}</p>
-        <div className="price">CAD {FULL}<small> / month</small></div>
-        <p className="op-then"><b>30% off your first month:</b> CAD {FIRST}.</p>
+        <span className="op-chip">30% off your first month</span>
+        <Head />
+        <div className="op-was">CAD {FULL}</div>
+        <div className="price">CAD {FIRST}<small> first month</small></div>
+        <p className="op-then">Then CAD {FULL} a month.</p>
       </div>
       <Features />
       <Cta />
     </div>
-  );
-}
-
-function Step({ k, v, t, hot = false }: { k: string; v: string; t: string; hot?: boolean }) {
-  return (
-    <li className={hot ? "is-hot" : undefined}>
-      <span className="op-step-k">{k}</span>
-      <b>{v}</b>
-      <span className="op-step-t">{t}</span>
-    </li>
   );
 }

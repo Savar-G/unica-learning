@@ -29,7 +29,7 @@ import {
   type IconName,
 } from "@/ds";
 import { ComparePanels } from "./compare";
-import { HeroSticker, OfferPlan, heroMeta, type OfferVariant } from "./offer-prototype";
+import { HeroOffer, OfferPlan, heroMeta, type OfferVariant } from "./offer-prototype";
 import { Knot, Rise, type Vars } from "./drawn";
 
 import heroHome1 from "@/assets/img/hero-home-1.jpg";
@@ -94,11 +94,11 @@ export function Hero({ offer }: { offer?: OfferVariant }) {
           <>
             <GetStarted src="hero" />
             <a className="btn ghost" href="#how">See how it works</a>
+            {offer && <HeroOffer variant={offer} />}
           </>
         }
         media={<>
           <Image src={heroHome1} alt="A boy writes in his workbook at a desk at home" sizes="(min-width: 1200px) 1120px, 100vw" placeholder="blur" loading="eager" fetchPriority="high" />
-          {offer && <HeroSticker variant={offer} />}
         </>}
       />
   );

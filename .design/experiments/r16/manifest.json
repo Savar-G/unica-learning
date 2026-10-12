@@ -1,0 +1,15 @@
+{
+  "round": 16,
+  "decision": "Round 2 of r15: Savar liked A (struck price on the card) most, but nothing stood out. Which price-led treatment of '30% off your first month' should ship?",
+  "primary_axis": "how the first-month price is framed on the card (and once in the hero)",
+  "invariants": ["real home page (/)", "math plan only, CAD 99 a month", "full-width plan card (D-090)", "hero fact line: 'First month CAD 69.30, then CAD 99/month' (except J)", "visual only: checkout and Stripe still charge CAD 99", "1280x800 and 390x844"],
+  "run": "npm run dev, then open /?variant=A|F|G|H|I|J (floating bar or left/right arrow keys)",
+  "options": [
+    { "id": "A", "name": "Struck price (round 1 reference)", "artifacts": ["A-price.png"], "bet": "Chip, CAD 99 struck, CAD 69.30 big", "benefit": "Savar's favourite in round 1", "cost": "Big number is not the monthly price", "risk": "Jump to 99 can feel like a trick" },
+    { "id": "F", "name": "Two prices side by side", "artifacts": ["F-price.png", "F-price-phone.png"], "bet": "First month CAD 69.30 -> every month after CAD 99, both prices on one line", "benefit": "Both numbers up front; no surprise later", "cost": "Two numbers to read", "risk": "Less punchy than a strike-through" },
+    { "id": "G", "name": "Receipt", "artifacts": ["G-price.png", "G-price-phone.png"], "bet": "A paper receipt: workbooks 99, delivery 0, 30% off -29.70, you pay 69.30", "benefit": "Shows the saving as a line item; paper fits the brand; delivery CAD 0 is visible", "cost": "Takes the most space", "risk": "Reads as checkout detail, not a headline" },
+    { "id": "H", "name": "Red pen correction", "artifacts": ["H-price.png", "H-price-phone.png"], "bet": "CAD 99 crossed out in red pen with 69.30 handwritten, like a teacher marking a page", "benefit": "Most memorable; ties the offer to marking work on paper", "cost": "Handwriting is harder to scan than type", "risk": "Can look informal or like a sale tag" },
+    { "id": "I", "name": "Offer band on the card", "artifacts": ["I-price.png", "I-price-phone.png"], "bet": "A colour band on top of the card carries the offer; the card stays CAD 99; button says 'Claim 30% off'", "benefit": "Loud but separate from the real price", "cost": "Band repeats the colour wash", "risk": "Looks like an ad strip" },
+    { "id": "J", "name": "Offer beside the hero button", "artifacts": ["J-hero.png", "J-hero-phone.png", "J-price.png", "J-price-phone.png"], "bet": "A price block under the hero buttons (CAD 69.30, CAD 99 struck); pricing card is A", "benefit": "The offer is above the fold, next to the action", "cost": "Adds weight to the hero", "risk": "Hero starts to feel like a sales page" }
+  ]
+}
