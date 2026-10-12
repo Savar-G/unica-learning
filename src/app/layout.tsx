@@ -1,6 +1,7 @@
 import type { Viewport } from "next";
 import localFont from "next/font/local";
 import { Caveat, Geist, Geist_Mono, Gochi_Hand } from "next/font/google";
+import { Analytics } from "@vercel/analytics/next";
 import { rootMetadata } from "@/lib/metadata";
 import { CookieConsent } from "@/components/cookie-consent";
 import "@/ds/styles/base.css";
@@ -36,7 +37,11 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
         {/* Reveal animations only hide content once JavaScript is running. */}
         <script dangerouslySetInnerHTML={{ __html: "document.documentElement.classList.add('js')" }} />
       </head>
-      <body><CookieConsent />{children}</body>
+      <body>
+        <CookieConsent />
+        {children}
+        <Analytics />
+      </body>
     </html>
   );
 }
