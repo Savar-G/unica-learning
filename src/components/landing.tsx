@@ -26,7 +26,7 @@ export function Landing({ look = "primer" }: { look?: Look }) {
           <Closing />
         </Footer>
       </div>
-      <aside className="mobile-assessment" aria-label="Free math assessment">
+      <aside className="mobile-assessment" aria-label="Free assessment">
         <StartLink src="mobile-sticky">{START_LABEL} <span className="arr" aria-hidden="true">→</span></StartLink>
       </aside>
       <CardReturn />

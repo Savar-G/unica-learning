@@ -191,7 +191,7 @@ export function Callout({ label = "Tip", tone = "sky", children }: { label?: str
   );
 }
 
-/** Inline call to action: one line of text and the "Take free math assessment" link to /start (#82). */
+/** Inline call to action: one line of text and the "Take free assessment" link to /start (#82). */
 export function AssessmentCta({ slug, children }: { slug: string; children?: ReactNode }) {
   return (
     <div className="res-cta">

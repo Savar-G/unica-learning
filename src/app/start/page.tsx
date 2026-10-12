@@ -11,7 +11,7 @@ export const metadata = pageMetadata({
   index: false,
 });
 
-// The signup for the free online math assessment (D-082): no plan question. Every "Take free math assessment" link on
+// The signup for the free online math assessment (D-082): no plan question. Every "Take free assessment" link on
 // the public site opens it (#82). The parent proves the email with a one-time code before any account data is written.
 export default async function Start() {
   if (await parentId(await sessionClient())) redirect("/account");

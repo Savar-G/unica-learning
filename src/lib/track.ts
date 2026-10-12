@@ -1,4 +1,4 @@
-// Funnel events: cta_click (src = the "Take free math assessment" link that opened /start, #82), card_saved, card_cancelled.
+// Funnel events: cta_click (src = the "Take free assessment" link that opened /start, #82), card_saved, card_cancelled.
 // The old booking dialog's events (form_start, plan_selected, details_done, checkout_start, reserve_success,
 // card_redirect, signup_save_failed) stopped with the public launch (#82). heard_from stays for old booking receipts.
 // Parent accounts (#62): account_form_start, account_created, account_signup_failed, sign_in, sign_in_failed, child_added, phone_screen, test_start_click.

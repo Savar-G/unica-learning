@@ -49,8 +49,8 @@ import emo9 from "@/assets/img/emotion-9.jpg";
 import emo10 from "@/assets/img/emotion-10.jpg";
 import emo11 from "@/assets/img/emotion-11.jpg";
 
-/** The main call to action: the free online math assessment, before any plan or card (#82). */
-export const START_LABEL = "Take free math assessment";
+/** The main call to action (D-041): the free online math assessment, before any plan or card (#82). */
+export const START_LABEL = "Take free assessment";
 
 function GetStarted({ src }: { src: string }) {
   return <StartLink src={src}>{START_LABEL} <span className="arr">→</span></StartLink>;

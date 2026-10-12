@@ -13,7 +13,7 @@ describe("a card that Stripe confirmed", () => {
     expect(c.lead).toMatch(/You have not been charged\./);
     expect(c.lead).toMatch(/free online math assessment/);
     expect(text(c)).not.toMatch(/arrange/);
-    expect(c.next).toEqual({ href: "/start", label: "Take free math assessment" });
+    expect(c.next).toEqual({ href: "/start", label: "Take free assessment" });
   });
 
   it("from the report: goes back to the account and asks for no new assessment", () => {
@@ -40,7 +40,7 @@ describe("an old booking's card page, cancelled", () => {
     expect(c.title).toBe("Your card was not added.");
     expect(c.lead).toMatch(/Nothing was charged\./);
     expect(text(c)).not.toMatch(/saved|plan/);
-    expect(c.next).toEqual({ href: "/start", label: "Take free math assessment" });
+    expect(c.next).toEqual({ href: "/start", label: "Take free assessment" });
   });
 });
 
@@ -49,7 +49,7 @@ describe("receipts from the old booking form", () => {
     const c = resultCopy({ card: null, fromReport: false, receipt: "waitlist" });
     expect(c.title).toBe("You are on the waitlist.");
     expect(c.lead).toMatch(/nothing was charged/);
-    expect(c.next).toEqual({ href: "/start", label: "Take free math assessment" });
+    expect(c.next).toEqual({ href: "/start", label: "Take free assessment" });
   });
 
   it("a received request no longer promises to arrange the assessment", () => {

@@ -1,6 +1,6 @@
 "use client";
 
-// Every "Take free math assessment" entry (#82): a normal link to /start, the signup for the free online math
+// Every "Take free assessment" entry (D-041, #82): a normal link to /start, the signup for the free online math
 // assessment. A link works without JavaScript, with the keyboard and in a new tab. /start sends a signed-in parent to
 // their account. `src` names the entry for cta_click, which reaches analytics only after the visitor accepts.
 import Link from "next/link";

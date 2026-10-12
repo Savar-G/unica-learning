@@ -44,4 +44,4 @@ export function resultCopy({ card, fromReport, receipt }: ResultState): ResultCo
   return { title, lead, support: card === "unconfirmed", next };
 }
 
-const START = { href: "/start", label: "Take free math assessment" };
+const START = { href: "/start", label: "Take free assessment" };
