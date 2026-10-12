@@ -1,15 +1,19 @@
 // PROTOTYPE - throwaway. Question: how should the home page show "30% off your first month"?
-// Round 2 (r16): Savar liked A (price-led card) most, but nothing stood out. A stays as the reference;
-// F-J push the price-led idea in different directions. Round 1 (B-E) is in commit 33ce853.
+// Round 3 (r17): Savar chose H (red pen correction) but wants it more on brand, e.g. bold black.
+// H stays as the reference; H1-H4 restyle it. Round 1 (B-E) is in commit 33ce853; round 2 (A, F-J) in 5385daf.
 // Variants on the real home page (/), switched with ?variant= and the floating bar.
 // Visual only: checkout and Stripe still charge CAD 99. Lives on site/first-month-offer-prototype, never main.
 import { PLANS } from "@/lib/site";
 
 export const OFFER_VARIANTS = {
+  H: "Red pen (round 2)",
+  H1: "Bold black",
+  H2: "Yellow highlighter",
+  H3: "Pencil-line strike",
+  H4: "Black ink handwriting",
   A: "Struck price (round 1)",
   F: "Two prices side by side",
   G: "Receipt",
-  H: "Red pen correction",
   I: "Offer band on the card",
   J: "Offer beside the hero button",
 } as const;
@@ -118,12 +122,12 @@ export function OfferPlan({ variant }: { variant: OfferVariant }) {
       </div>
     );
   }
-  if (variant === "H") {
+  if (variant === "H" || variant === "H4") {
     return (
       <div className="plan hl op-card">
         <div className="plan-head">
           <Head />
-          <div className="op-pen">
+          <div className={`op-pen${variant === "H4" ? " is-ink" : ""}`}>
             <div className="price op-pen-old">
               CAD {FULL}
               <svg className="op-pen-strike" viewBox="0 0 200 40" preserveAspectRatio="none" aria-hidden="true">
@@ -133,6 +137,33 @@ export function OfferPlan({ variant }: { variant: OfferVariant }) {
             <div className="op-pen-new" aria-label={`CAD ${FIRST} for your first month`}>
               <span>{FIRST}</span>
               <small>first month, 30% off!</small>
+            </div>
+          </div>
+          <p className="op-then">Then CAD {FULL} a month.</p>
+        </div>
+        <Features />
+        <Cta />
+      </div>
+    );
+  }
+  if (variant === "H1" || variant === "H2" || variant === "H3") {
+    const style = { H1: "is-bold", H2: "is-mark", H3: "is-pencil" }[variant];
+    return (
+      <div className="plan hl op-card">
+        <div className="plan-head">
+          <Head />
+          <div className={`op-ink ${style}`}>
+            <div className="op-ink-old">
+              CAD {FULL}
+              {variant === "H3" && (
+                <svg className="op-ink-pencil" viewBox="0 0 200 40" preserveAspectRatio="none" aria-hidden="true">
+                  <path d="M3 27 C 40 24, 70 21, 102 19 S 168 13, 197 9" />
+                </svg>
+              )}
+            </div>
+            <div className="op-ink-new">
+              <span className="op-ink-k">First month · 30% off</span>
+              <span className="op-ink-v">{variant === "H2" ? <span className="mark is-in">CAD {FIRST}</span> : <>CAD {FIRST}</>}</span>
             </div>
           </div>
           <p className="op-then">Then CAD {FULL} a month.</p>

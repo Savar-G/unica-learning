@@ -78,3 +78,23 @@
 @media (max-width:420px){.op-pair{flex-wrap:wrap}.op-pair-arrow{display:none}}
 .hero-c .ctas:has(.op-heroffer){max-width:420px}
 .op-heroffer{box-sizing:border-box;width:100%}
+
+/* round 3: H restyled on brand */
+.op-pen.is-ink .op-pen-strike path{stroke:var(--ink)}
+.op-pen.is-ink .op-pen-new{color:var(--ink)}
+.op-ink{display:flex;align-items:flex-end;gap:clamp(16px,2.4vw,32px);margin-top:8px;flex-wrap:wrap}
+.op-ink-old{position:relative;font:300 clamp(30px,3.4vw,42px)/1 var(--serif);letter-spacing:-.04em;color:var(--ink-3);padding-bottom:6px}
+.op-ink-new{display:grid;gap:10px}
+.op-ink-k{font:600 12px/1 var(--mono,monospace);letter-spacing:.08em;text-transform:uppercase;color:var(--ink)}
+.op-ink-v{font:600 clamp(48px,5.6vw,72px)/1 var(--serif);letter-spacing:-.045em;color:var(--ink);white-space:nowrap}
+/* H1: bold black, straight ink strike */
+.op-ink.is-bold .op-ink-old{text-decoration:line-through;text-decoration-color:var(--ink);text-decoration-thickness:3px}
+.op-ink.is-bold .op-ink-k{color:var(--tang)}
+/* H2: the hero's yellow highlighter behind the new price */
+.op-ink.is-mark .op-ink-old{text-decoration:line-through;text-decoration-color:var(--ink-2);text-decoration-thickness:2px}
+.op-ink.is-mark .op-ink-v .mark::before{height:.38em;bottom:.04em}
+/* H3: strike drawn like the page's orange pencil line */
+.op-ink-pencil{position:absolute;left:-6%;top:22%;width:112%;height:56%;overflow:visible}
+.op-ink-pencil path{fill:none;stroke:var(--tang);stroke-width:2.5;stroke-linecap:round;vector-effect:non-scaling-stroke}
+.op-ink.is-pencil .op-ink-k{color:var(--tang)}
+@media (max-width:420px){.op-ink{gap:6px 16px}}
