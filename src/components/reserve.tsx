@@ -7,7 +7,7 @@
 import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { PLANS } from "@/lib/site";
+import { FIRST_MONTH_OFF, PLANS, cad, firstMonth } from "@/lib/site";
 import { CURRICULA, EMAIL, OPEN_CURRICULA, POSTAL, curriculumFromPostal, statusFor, type CurriculumId, type SignupResult } from "@/lib/signup";
 import { track } from "@/lib/track";
 import { keepReceipt } from "@/lib/receipt";
@@ -107,6 +107,7 @@ export function Reserve() {
   const plan = PLANS.one.id;
   const subj = PLANS.one.name;
   const price = PLANS.one.price;
+  const first = cad(firstMonth(price));
   const status = statusFor(curriculum);
   // "the Alberta" / "your province's", for "books for ... curriculum".
   const theirs = curriculum === "other" ? "your province's" : `the ${CURRICULA[curriculum]}`;
@@ -238,7 +239,7 @@ export function Reserve() {
       <form data-step="1" hidden={step !== 1} onSubmit={submitPlan} noValidate>
         <h3>Choose your child&apos;s grade.</h3>
         <div className="opt is-static">
-          <span className="t"><b>{PLANS.one.name} workbooks</b><span>A month, delivery included</span></span>
+          <span className="t"><b>{PLANS.one.name} workbooks</b><span>A month, delivery included. First month CAD {first} ({FIRST_MONTH_OFF}% off)</span></span>
           <span className="p">CAD {PLANS.one.price}</span>
         </div>
         <fieldset>
@@ -321,10 +322,11 @@ export function Reserve() {
           <div><span>Curriculum</span><b>{CURRICULA[curriculum]}</b></div>
           <div><span>Assessment</span><b>Free</b></div>
           <div><span>Today</span><b>CAD 0</b></div>
-          <div><span>When your first book ships</span><b>CAD {price} / month</b></div>
+          <div><span>When your first book ships ({FIRST_MONTH_OFF}% off)</span><b>CAD {first}</b></div>
+          <div><span>Every month after</span><b>CAD {price} / month</b></div>
         </div>
         <p className="small" style={{ margin: 0 }}>
-          Add your card on the secure payment page. We charge nothing today. When your first workbook ships, we charge CAD {price}, then every month until you cancel. Cancel before it ships and you pay nothing. Your 30-day money-back guarantee starts on the day of your first payment.
+          Add your card on the secure payment page. We charge nothing today. When your first workbook ships, we charge CAD {first} for your first month ({FIRST_MONTH_OFF}% off), then CAD {price} every month until you cancel. Cancel before it ships and you pay nothing. Your 30-day money-back guarantee starts on the day of your first payment.
         </p>
         <div className="row2">
           <button className="btn ghost" type="button" disabled={busy} onClick={() => { setCardUrl(null); setStep(2); }}>Back</button>
