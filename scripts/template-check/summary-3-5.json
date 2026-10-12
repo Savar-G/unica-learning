@@ -5,8 +5,8 @@
   "effort": "medium",
   "total": 272,
   "checked": 272,
-  "pass": 73,
-  "review": 199,
+  "pass": 78,
+  "review": 194,
   "fail": 0,
   "error": 0,
   "unchecked": 0,
@@ -837,8 +837,8 @@
     },
     {
       "id": "g35-4-make-change",
-      "hash": "fab6ffd30e658bca",
-      "status": "pass",
+      "hash": "363cc98405cbb311",
+      "status": "review",
       "model": "gpt-6.1-sol",
       "provider": "codex",
       "effort": "medium"
@@ -1333,8 +1333,8 @@
     },
     {
       "id": "g35-5-change-large",
-      "hash": "4efd1c290dc52f37",
-      "status": "review",
+      "hash": "ab99d7c766ad9f8f",
+      "status": "pass",
       "model": "gpt-6.1-sol",
       "provider": "codex",
       "effort": "medium"
@@ -1445,16 +1445,16 @@
     },
     {
       "id": "g35-5-add-thousandths",
-      "hash": "80f346454bab12d8",
-      "status": "review",
+      "hash": "fb5c9325195cbbb3",
+      "status": "pass",
       "model": "gpt-6.1-sol",
       "provider": "codex",
       "effort": "medium"
     },
     {
       "id": "g35-5-subtract-thousandths",
-      "hash": "f9784377eba75447",
-      "status": "review",
+      "hash": "9b609d389f36c112",
+      "status": "pass",
       "model": "gpt-6.1-sol",
       "provider": "codex",
       "effort": "medium"
@@ -1853,24 +1853,24 @@
     },
     {
       "id": "g35-6-decimal-divide",
-      "hash": "e4d3f8d43c6dfbe1",
-      "status": "review",
+      "hash": "6f542e48de10c94b",
+      "status": "pass",
       "model": "gpt-6.1-sol",
       "provider": "codex",
       "effort": "medium"
     },
     {
       "id": "g35-6-decimal-product-story",
-      "hash": "11a2edd549a6bac9",
-      "status": "review",
+      "hash": "eaad610540e4e0bd",
+      "status": "pass",
       "model": "gpt-6.1-sol",
       "provider": "codex",
       "effort": "medium"
     },
     {
       "id": "g35-6-decimal-unit-cost",
-      "hash": "3377a2dc5cda1a80",
-      "status": "review",
+      "hash": "d611d3a0ced3c640",
+      "status": "pass",
       "model": "gpt-6.1-sol",
       "provider": "codex",
       "effort": "medium"
