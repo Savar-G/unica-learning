@@ -33,7 +33,6 @@ export const REWARDS_FAQ: { question: string; answer: string }[] = [
   { question: "What counts as a finished page?", answer: "A page with your child's work on it, scanned in the app. Every page is checked, so blank pages do not earn points." },
   { question: "Do points expire?", answer: "No. Points stay while your plan is active, and through a pause." },
   { question: "Can I say no to a prize?", answer: "Yes. You approve every prize before we order it. You can also save points together for a bigger goal." },
-  { question: "Do two subjects earn more?", answer: "Yes. Math + Reading earns points from both books, so prizes come about twice as fast." },
 ];
 
 export const points = (n: number) => n.toLocaleString("en-CA");

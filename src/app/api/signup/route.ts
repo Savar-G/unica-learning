@@ -1,10 +1,11 @@
 import { after } from "next/server";
-import { PLANS } from "@/lib/site";
+import { PLANS, priceWithOffer } from "@/lib/site";
 import { CURRICULA, EMAIL, POSTAL, clip, cleanSource, statusFor, type CurriculumId, type SignupPayload, type SignupResult } from "@/lib/signup";
 import { cardSetupUrl, stripe } from "@/lib/stripe";
 import { supabase } from "@/lib/supabase";
 
-const SUBJECTS = new Set(["Math", "Reading", "Math + Reading"]);
+// One plan for now: math (Savar, 2026-10-11).
+const SUBJECTS = new Set(["Math"]);
 
 export async function POST(request: Request) {
   let body: Partial<SignupPayload>;
@@ -17,7 +18,7 @@ export async function POST(request: Request) {
   // Bots fill every field; pretend it worked so they move on.
   if (body.website) return Response.json({ ok: true } satisfies SignupResult);
 
-  const plan = body.plan === "both" ? "both" : body.plan === "one" ? "one" : null;
+  const plan = body.plan === "one" ? "one" : null;
   const curriculum = typeof body.curriculum === "string" && Object.hasOwn(CURRICULA, body.curriculum) ? (body.curriculum as CurriculumId) : null;
   // The curriculum decides the path: open curricula add a card on Stripe, the rest join the waitlist.
   const status = curriculum ? statusFor(curriculum) : "waitlist";
@@ -90,7 +91,7 @@ async function notify(
         : `Reserved, but ${stripeState === "off" ? "STRIPE_SECRET_KEY is not set" : "Stripe failed"}: email them a link to add a card`;
   const lines = [
     `${label}: ${row.name} <${row.email}>`,
-    `Plan: ${row.subject}, CAD ${row.price}/month`,
+    `Plan: ${row.subject}, ${priceWithOffer(row.price)}`,
     `Child grade: ${row.grade}`,
     `Postal code: ${row.postal}`,
     `Curriculum: ${curriculum}`,

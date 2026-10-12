@@ -148,7 +148,7 @@ export function ReportNextActions({ reportId, step, childName, province, src, as
         {card === "error" && <p className="rpt-next-note" role="alert">We could not open the payment page. Nothing was charged. Try again in a moment. {help}</p>}
         <div className="rpt-plans">
           {step.plans.map((option, i) => (
-            <button key={option.plan} className={`btn${i === 0 ? " ghost" : ""}`} type="button" onClick={() => void choose(option)} disabled={busy !== null} aria-busy={busy === option.plan}>
+            <button key={option.plan} className={`btn${i < step.plans.length - 1 ? " ghost" : ""}`} type="button" onClick={() => void choose(option)} disabled={busy !== null} aria-busy={busy === option.plan}>
               {busy === option.plan ? spinner("Opening the payment page") : option.label}
             </button>
           ))}

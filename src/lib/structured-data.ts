@@ -37,13 +37,13 @@ export function homeJsonLd() {
       { "@type": "WebSite", "@id": `${SITE_URL}/#website`, url: SITE_URL, name: BRAND, inLanguage: "en-CA", publisher: { "@id": ORG_ID } },
       {
         "@type": "Service",
-        name: `${BRAND} personalized workbooks`,
-        serviceType: "Personalized math and reading workbooks",
+        name: `${BRAND} personalized learning program`,
+        serviceType: "Personalized math learning program",
         description: SITE_DESCRIPTION,
         provider: { "@id": ORG_ID },
         areaServed: { "@type": "Country", name: "Canada" },
         audience: { "@type": "PeopleAudience", suggestedMinAge: 6, suggestedMaxAge: 12 },
-        offers: [offer(PLANS.one), offer(PLANS.both)],
+        offers: [offer(PLANS.one)],
       },
       {
         "@type": "FAQPage",

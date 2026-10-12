@@ -17,7 +17,7 @@ import {
 } from "@/lib/assessment";
 import type { ReportSrc } from "@/lib/next-step";
 import { CURRICULA } from "@/lib/signup";
-import { PLANS, type PlanId } from "@/lib/site";
+import { FIRST_MONTH_OFF, PLANS, cad, firstMonth, type PlanId } from "@/lib/site";
 
 /** One stored report, ready to show. */
 export interface ReportView {
@@ -225,22 +225,21 @@ export type NextStepKey = "plan" | "waitlist";
 export interface PlanOption {
   plan: PlanId;
   /** The subject on the Stripe customer, as the reserve form sends it. */
-  subject: "Math" | "Math + Reading";
+  subject: "Math";
   price: number;
   label: string;
 }
 
-/** The plans offered from a math report: math alone (the one-subject plan), or math + reading. */
+/** The plans offered from a math report: math only, for now (Savar, 2026-10-11). */
 export const REPORT_PLANS: readonly PlanOption[] = [
   { plan: "one", subject: "Math", price: PLANS.one.price, label: `Math, CAD ${PLANS.one.price} a month` },
-  { plan: "both", subject: "Math + Reading", price: PLANS.both.price, label: `Math + reading, CAD ${PLANS.both.price} a month` },
 ];
 
 export interface NextStep {
   kind: ReportModel["callToAction"];
   title: string;
   text: string;
-  /** The plans to choose on the report page: both for BC, none for the waitlist. */
+  /** The plans to choose on the report page: math for BC, none for the waitlist. */
   plans: readonly PlanOption[];
   /** The report email's button. Emails carry links only, so it opens the report at this step. */
   email: { label: string; step: NextStepKey };
@@ -253,7 +252,7 @@ export function nextStep(v: ReportView): NextStep {
     return {
       kind: "card",
       title: `Start ${name}'s books`,
-      text: `Math is CAD ${PLANS.one.price} a month, or math + reading CAD ${PLANS.both.price} a month, with delivery included. We charge nothing until the first workbook ships. 30-day money-back guarantee from the first payment. Cancel anytime.`,
+      text: `Math is CAD ${PLANS.one.price} a month, with ${FIRST_MONTH_OFF}% off the first month (CAD ${cad(firstMonth(PLANS.one.price))}) and delivery included. We charge nothing until the first workbook ships. 30-day money-back guarantee from the first payment. Cancel anytime.`,
       plans: REPORT_PLANS,
       email: { label: `Choose a plan for ${name}`, step: "plan" },
     };

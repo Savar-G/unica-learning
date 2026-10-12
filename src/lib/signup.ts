@@ -45,7 +45,7 @@ export interface SignupPayload {
   name: string;
   email: string;
   postal: string;
-  plan: "one" | "both";
+  plan: "one";
   subject: string;
   /** School grade, 1-7 (BC ages 6-12). */
   grade: number;

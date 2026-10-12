@@ -6,7 +6,7 @@ import Image, { type StaticImageData } from "next/image";
 import Link from "next/link";
 import { CookieSettingsButton } from "@/components/cookie-consent";
 import { FaqMore } from "@/components/faq-more";
-import { BRAND, HERO, PLANS } from "@/lib/site";
+import { BRAND, FIRST_MONTH_OFF, HERO, PLANS, cad, firstMonth } from "@/lib/site";
 import { FAQ } from "@/lib/faq";
 import { SUPPORT_HREF } from "@/lib/contact";
 import {
@@ -40,7 +40,7 @@ import adaptPhoto from "@/assets/img/loop-adapt.jpg";
 import repeatPhoto from "@/assets/img/loop-repeat.jpg";
 import emo1 from "@/assets/img/emotion-1.jpg";
 import adapt4 from "@/assets/img/loop-adapt-4.jpg";
-import reading2 from "@/assets/img/loop-practice-reading-2.jpg";
+import heroHome2 from "@/assets/img/hero-home-2.jpg";
 import emo4 from "@/assets/img/emotion-4.jpg";
 import emo5 from "@/assets/img/emotion-5.jpg";
 import emo7 from "@/assets/img/emotion-7.jpg";
@@ -66,8 +66,8 @@ export function Nav() {
 // 8-9 characters only: the chip is as wide as its longest word, so a long topic
 // leaves a gap after every short one.
 const TOPICS = [
-  "fractions", "blending", "decimals", "spelling", "division", "main idea", "percents", "sentences",
-  "patterns", "inference", "geometry", "syllables", "integers", "addition", "graphing", "measuring",
+  "fractions", "rounding", "decimals", "perimeter", "division", "equations", "percents", "multiples",
+  "patterns", "symmetry", "geometry", "carrying", "integers", "addition", "graphing", "measuring",
 ];
 
 export function Hero() {
@@ -85,7 +85,7 @@ export function Hero() {
             it gets harder. Unica builds each workbook around your child&apos;s level, pace and learning style, then mails it home.
           </>
         }
-        meta={[`From CAD ${PLANS.one.price}/month`, "30-day money-back guarantee", "Cancel anytime"]}
+        meta={[`First month CAD ${cad(firstMonth(PLANS.one.price))}, then CAD ${PLANS.one.price}/month`, "30-day money-back guarantee", "Cancel anytime"]}
         page={null}
         report={null}
         animate
@@ -158,7 +158,7 @@ export function Why() {
 
 const INCLUDED: [IconName, string, ReactNode, number][][] = [
   [
-    ["book", "Workbooks", "1 workbook per subject, about 20-25 pages.", 0],
+    ["book", "Workbooks", "1 math workbook, about 20-25 pages.", 0],
     ["calendar", "Daily practice, rewarded", <>15-20 minutes a day, 5 days a week. Your child earns rewards for every page they finish and every week they keep the habit. <Link href="/rewards" className="more-link">See the rewards <span aria-hidden="true">→</span></Link></>, 0.08],
     ["box", "Delivery", "Delivered to your door before the current book ends.", 0.16],
   ],
@@ -200,7 +200,7 @@ export function Included() {
 
 const DRIFT: [StaticImageData, number, number, number, number, number, number, boolean][] = [
   [adapt4, 3, 7, 15, 21, 0.14, -4, false], [emo9, 23, 8, 12, 17, -0.1, 3, true],
-  [emo5, 79, 5, 17, 22, 0.18, 4, false], [reading2, 62, 7, 12, 16, -0.14, -3, true],
+  [emo5, 79, 5, 17, 22, 0.18, 4, false], [heroHome2, 62, 7, 12, 16, -0.14, -3, true],
   [emo4, 3, 70, 15, 19, -0.18, 3, false], [emo7, 80, 66, 17, 22, 0.1, -4, false],
   [emo11, 22, 78, 13, 16, 0.12, -2, true], [emo10, 64, 79, 13, 16, -0.1, 4, true],
 ];
@@ -270,28 +270,19 @@ export function Pricing() {
       <Knot />
       <Rise>
         <SectionHeader eyebrow="Pricing" title="Personal like a tutor. Structured like a learning centre. Priced like neither." titleId="priceT" />
-        <p className="g-line">Every plan has a <Highlight>30-day money-back guarantee.</Highlight></p>
+        <p className="g-line">Try it with a <Highlight>30-day money-back guarantee.</Highlight></p>
       </Rise>
       <PlanGrid>
         <PlanCard
           className="rise"
-          name="One subject"
+          featured
+          name={PLANS.one.name}
           note={PLANS.one.note}
           price={PLANS.one.price}
-          features={["Free placement assessment", "Personalized workbooks matched to your child's level and gaps, mailed home", "Your next book arrives before the current one runs out", "Progress reports after every check-in", "Delivery included. Cancel anytime"]}
-          ctaLabel="Choose one subject"
-          cta={<GetStarted src="price" plan="one" label="Choose one subject" ghost />}
-        />
-        <PlanCard
-          className="rise"
-          style={d(0.08)}
-          featured
-          name="Math + Reading"
-          note={PLANS.both.note}
-          price={PLANS.both.price}
-          features={["Everything in One Subject", "A math book and a reading book every cycle", "One progress report for both", "Delivery included. Cancel anytime"]}
-          ctaLabel="Choose math + reading"
-          cta={<GetStarted src="price" plan="both" label="Choose math + reading" />}
+          offer={{ price: cad(firstMonth(PLANS.one.price)), note: `first month, ${FIRST_MONTH_OFF}% off!`, then: `Then CAD ${PLANS.one.price} a month.` }}
+          features={["Free placement assessment", "Personalized math workbooks matched to your child's level and gaps, mailed home", "Your next book arrives before the current one runs out", "Progress reports after every check-in", "Delivery included. Cancel anytime"]}
+          ctaLabel="Choose math"
+          cta={<GetStarted src="price" plan="one" label="Choose math" />}
         />
       </PlanGrid>
       <ComparePanels />
@@ -358,7 +349,7 @@ export function Footer({ children }: { children?: ReactNode }) {
         <footer className="foot">
           <div className="foot-brand">
             <a className="logo" href="#top">{BRAND}<b /></a>
-            <p>Personalized math and reading workbooks for ages 6-12.</p>
+            <p>A personalized math learning program for ages 6-12.</p>
           </div>
           {FOOTER_GROUPS.map((g) => (
             <nav className="foot-col" key={g.title} aria-label={g.title}>

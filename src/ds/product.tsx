@@ -196,7 +196,7 @@ export interface CoverStackProps {
 /** Three fanned workbook covers that spread apart on hover. */
 export function CoverStack({
   covers = [
-    { name: "Arjun", book: "Book 2", subject: "Reading", color: "sky" },
+    { name: "Arjun", book: "Book 2", subject: "Geometry", color: "sky" },
     { name: "Leo", book: "Book 5", subject: "Math", color: "leaf" },
     { name: "Maya", book: "Book 4", subject: "Fractions", color: "sun" },
   ],

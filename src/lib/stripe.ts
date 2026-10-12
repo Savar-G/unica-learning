@@ -1,5 +1,6 @@
 import "server-only";
 import Stripe from "stripe";
+import { FIRST_MONTH_OFF, cad, firstMonth, priceWithOffer } from "@/lib/site";
 
 // Created on first use, so a build without STRIPE_SECRET_KEY still works. Without the key, BC parents
 // see "we'll email you a link to add your card" and Savar sends one by hand.
@@ -28,11 +29,12 @@ export interface CardSetup {
 
 /** What the parent agrees to on Stripe's page. Stripe requires the amount, timing and how to cancel. */
 export const cardTerms = (price: number) =>
-  `Nothing is charged today. When your first workbook ships, we charge CAD ${price}, then CAD ${price} every month until you cancel. Cancel before it ships and you pay nothing. Your 30-day money-back guarantee starts on the day of your first payment.`;
+  `Nothing is charged today. When your first workbook ships, we charge CAD ${cad(firstMonth(price))} for your first month (${FIRST_MONTH_OFF}% off), then CAD ${price} every month until you cancel. Cancel before it ships and you pay nothing. Your 30-day money-back guarantee starts on the day of your first payment.`;
 
 /**
  * Creates the Stripe customer and a hosted Checkout page in setup mode: it saves the card and charges nothing.
- * When the first workbook ships, start a CAD `price` monthly subscription on this customer (D-053).
+ * When the first workbook ships, start a CAD `price` monthly subscription on this customer, with 30% off the first
+ * month (metadata first_month_price; D-053, D-091).
  * Returns the Checkout page URL.
  */
 export async function cardSetupUrl(s: Stripe, p: CardSetup): Promise<string | null> {
@@ -47,9 +49,10 @@ export async function cardSetupUrl(s: Stripe, p: CardSetup): Promise<string | nu
 
 /** The metadata keys every card setup carries; the report path adds its own (D-053). */
 const cardMetadata = (p: CardSetup): Record<string, string> => ({
-  ref: p.ref, plan: p.plan, subject: p.subject, grade: String(p.grade), price: String(p.price), curriculum: p.curriculum, postal: p.postal,
+  ref: p.ref, plan: p.plan, subject: p.subject, grade: String(p.grade), price: String(p.price),
+  first_month_price: cad(firstMonth(p.price)), curriculum: p.curriculum, postal: p.postal,
 });
-const cardDescription = (p: CardSetup) => `${p.subject}, grade ${p.grade}, CAD ${p.price}/month from the first workbook`;
+const cardDescription = (p: CardSetup) => `${p.subject}, grade ${p.grade}, ${priceWithOffer(p.price)} from the first workbook`;
 
 /** A hosted Checkout page in setup mode for this customer. The parent sees cardTerms above the button. */
 async function checkoutUrl(s: Stripe, customer: string, p: CardSetup, metadata: Record<string, string>, description: string, urls: { success: string; cancel: string }) {
@@ -134,9 +137,10 @@ export async function savedCardPlan(s: Stripe, customer: string): Promise<{ meta
  */
 export async function keepSavedPlan(s: Stripe, customer: string, metadata: Record<string, string>) {
   if (!metadata.plan || !metadata.price) return;
-  const keys = ["plan", "price", "subject", "grade", "report_id", "assessment_id"].filter((k) => metadata[k]);
+  const keys = ["plan", "price", "first_month_price", "subject", "grade", "report_id", "assessment_id"].filter((k) => metadata[k]);
+  const price = metadata.first_month_price ? priceWithOffer(Number(metadata.price)) : `CAD ${metadata.price}/month`;
   await s.customers.update(customer, {
-    description: `${metadata.subject}, grade ${metadata.grade}, CAD ${metadata.price}/month from the first workbook`,
+    description: `${metadata.subject}, grade ${metadata.grade}, ${price} from the first workbook`,
     metadata: Object.fromEntries(keys.map((k) => [k, metadata[k]])),
   });
 }
