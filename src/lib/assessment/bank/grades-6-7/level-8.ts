@@ -8,7 +8,8 @@ const GRADES = { BC: 8, AB: 8, SK: 8, MB: 8, ON: 8 } as const;
 export const LEVEL_8: readonly TaggedTemplate[] = [
   // Number and operations. Fraction computation belongs to F, as in the report's fraction area.
   {
-    id: "g67-8-square", strand: "N", grades: GRADES, standard: "8.1", format: "number", whiteboard: true,
+    // Triage: ON 7: ON 2020 (Jan 2021), Grade 7 B2.7, PDF page 403.
+    id: "g67-8-square", strand: "N", grades: { BC: 8, AB: 8, SK: 8, MB: 8, ON: 7 }, standard: "8.1", format: "number", whiteboard: true,
     fill(rng) {
       const n = rng.int(4, 20);
       return { values: { n }, prompt: `What is ${n}²?`, readAloud: `What is ${n} squared?`, answer: String(n * n), wrong: [wrong(2 * n, "power-multiply")] };
@@ -29,7 +30,8 @@ export const LEVEL_8: readonly TaggedTemplate[] = [
     },
   },
   {
-    id: "g67-8-square-side", strand: "N", grades: GRADES, standard: "8.2", format: "number", whiteboard: true,
+    // Triage: ON 7: ON 2020 (Jan 2021), Grade 7 B1.2, PDF page 389.
+    id: "g67-8-square-side", strand: "N", grades: { BC: 8, AB: 8, SK: 8, MB: 8, ON: 7 }, standard: "8.2", format: "number", whiteboard: true,
     fill(rng) {
       const n = rng.int(5, 20);
       const prompt = `A square has an area of ${n * n} square centimetres. How long is each side, in centimetres?`;
@@ -44,7 +46,8 @@ export const LEVEL_8: readonly TaggedTemplate[] = [
     },
   },
   {
-    id: "g67-8-square-tile", strand: "N", grades: GRADES, standard: "8.2", format: "number", whiteboard: true,
+    // Triage: ON 7: ON 2020 (Jan 2021), Grade 7 B1.2, PDF page 389.
+    id: "g67-8-square-tile", strand: "N", grades: { BC: 8, AB: 8, SK: 8, MB: 8, ON: 7 }, standard: "8.2", format: "number", whiteboard: true,
     fill(rng) {
       const n = rng.int(5, 15);
       const prompt = `${n * n} square tiles of the same size form a square array in rows with no gaps. How many tiles are in each row?`;
@@ -53,21 +56,24 @@ export const LEVEL_8: readonly TaggedTemplate[] = [
   },
   // Fractions, rates and percent.
   {
-    id: "g67-8-add-fractions", strand: "F", grades: GRADES, standard: "8.5", format: "choice", whiteboard: true,
+    // Triage: AB 7: AB 2016 K-9 Program of Studies, Grade 7 Number SO 5; SK 7: SK grade 7, N7.5; MB 7: MB grade 7, 7.N.5; ON 6: ON 2020 (Jan 2021), Grade 6 B2.5, PDF page 340.
+    id: "g67-8-add-fractions", strand: "F", grades: { BC: 8, AB: 7, SK: 7, MB: 7, ON: 6 }, standard: "8.5", format: "choice", whiteboard: true,
     fill(rng) {
       const [a, b, c, d] = draw(rng, (g) => [g.int(1, 4), g.int(5, 9), g.int(1, 3), g.int(4, 8)], ([a, b, c, d]) => b !== d && distinctNumbers([(a * d + c * b) / (b * d), (a + c) / (b + d), (a + c) / b]));
       return { values: { a, b, c, d }, prompt: `${frac(a, b)} + ${frac(c, d)} = ?`, readAloud: `What is ${sayFrac(a, b)} plus ${sayFrac(c, d)}?`, answer: fracText(a * d + c * b, b * d), wrong: [wrong(fracText(a + c, b + d), "F2"), wrong(fracText(a + c, b), "fraction-one-side")] };
     },
   },
   {
-    id: "g67-8-subtract-fractions", strand: "F", grades: GRADES, standard: "8.5", format: "choice", whiteboard: true,
+    // Triage: AB 7: AB 2016 K-9 Program of Studies, Grade 7 Number SO 5; SK 7: SK grade 7, N7.5; MB 7: MB grade 7, 7.N.5; ON 6: ON 2020 (Jan 2021), Grade 6 B2.5, PDF page 340.
+    id: "g67-8-subtract-fractions", strand: "F", grades: { BC: 8, AB: 7, SK: 7, MB: 7, ON: 6 }, standard: "8.5", format: "choice", whiteboard: true,
     fill(rng) {
       const [a, b, c, d] = draw(rng, (g) => [g.int(2, 6), g.int(7, 10), g.int(1, 3), g.int(4, 6)], ([a, b, c, d]) => a / b > c / d && b !== d && a > c && distinctNumbers([(a * d - c * b) / (b * d), (a - c) / (b - d), (a - c) / b]));
       return { values: { a, b, c, d }, prompt: `${frac(a, b)} − ${frac(c, d)} = ?`, readAloud: `What is ${sayFrac(a, b)} minus ${sayFrac(c, d)}?`, answer: fracText(a * d - c * b, b * d), wrong: [wrong(fracText(a - c, b - d), "F2"), wrong(fracText(a - c, b), "fraction-one-side")] };
     },
   },
   {
-    id: "g67-8-multiply-fractions", strand: "F", grades: GRADES, standard: "8.5", format: "choice", whiteboard: true,
+    // Triage: ON 7: ON 2020 (Jan 2021), Grade 7 B2.8, PDF page 404.
+    id: "g67-8-multiply-fractions", strand: "F", grades: { BC: 8, AB: 8, SK: 8, MB: 8, ON: 7 }, standard: "8.5", format: "choice", whiteboard: true,
     fill(rng) {
       const [a, b, c, d] = draw(rng, (g) => [g.int(1, 4), g.int(5, 9), g.int(1, 4), g.int(5, 9)], ([a, b, c, d]) => distinctNumbers([a * c / (b * d), (a + c) / (b + d), a * c / b]));
       return { values: { a, b, c, d }, prompt: `${frac(a, b)} × ${frac(c, d)} = ?`, readAloud: `What is ${sayFrac(a, b)} times ${sayFrac(c, d)}?`, answer: fracText(a * c, b * d), wrong: [wrong(fracText(a + c, b + d), "F2"), wrong(fracText(a * c, b), "fraction-one-side")] };
@@ -95,7 +101,8 @@ export const LEVEL_8: readonly TaggedTemplate[] = [
     },
   },
   {
-    id: "g67-8-unit-rate", strand: "F", grades: GRADES, standard: "8.4", format: "number", whiteboard: true,
+    // Triage: ON 6: ON 2020 (Jan 2021), Grade 6 B2.12, PDF page 349.
+    id: "g67-8-unit-rate", strand: "F", grades: { BC: 8, AB: 8, SK: 8, MB: 8, ON: 6 }, standard: "8.4", format: "number", whiteboard: true,
     fill(rng) {
       const hours = rng.int(2, 8), speed = rng.int(3, 12) * 10, distance = speed * hours;
       const prompt = `A train travels ${distance} kilometres in ${hours} hours at a constant speed. How many kilometres does it travel in one hour?`;
@@ -164,7 +171,8 @@ export const LEVEL_8: readonly TaggedTemplate[] = [
     },
   },
   {
-    id: "g67-8-expression-story", strand: "O", grades: { ...GRADES, BC: 6 }, standard: "6.3", format: "number", whiteboard: true,
+    // Triage: AB 4: AB current K-6, MAT4-OI2-GQ1-LO1-KO1-SP; SK 6: SK grade 6, N6.3; MB 6: MB grade 6, 6.N.9; ON 5: ON 2020 (Jan 2021), Grade 5 B2.1, PDF page 281.
+    id: "g67-8-expression-story", strand: "O", grades: { BC: 6, AB: 4, SK: 6, MB: 6, ON: 5 }, standard: "6.3", format: "number", whiteboard: true,
     fill(rng) {
       const n = rng.int(4, 20) * 2, c = rng.int(2, 5);
       return { values: { n, c }, prompt: `A game gives ${c} points for each token, then takes away one point for every two tokens. With ${n} tokens, how many points remain?`, readAloud: `A game gives ${c} points for each token, then takes away one point for every two tokens. With ${n} tokens, how many points remain?`, answer: typed(c * n - n / 2), wrong: [wrong(c * n, "one-part"), wrong(c * n / 2, "operation")] };
@@ -172,7 +180,8 @@ export const LEVEL_8: readonly TaggedTemplate[] = [
   },
   // Shapes, measurement and data.
   {
-    id: "g67-8-prism-surface", strand: "MG", grades: GRADES, standard: "8.9", format: "number", whiteboard: true,
+    // Triage: ON 6: ON 2020 (Jan 2021), Grade 6 E2.6, PDF page 381.
+    id: "g67-8-prism-surface", strand: "MG", grades: { BC: 8, AB: 8, SK: 8, MB: 8, ON: 6 }, standard: "8.9", format: "number", whiteboard: true,
     fill(rng) {
       const [l, w, h] = draw(rng, (g) => [g.int(3, 12), g.int(3, 9), g.int(2, 8)], ([l, w, h]) => distinctNumbers([l * w * h, l * w + l * h + w * h, 2 * (l * w + l * h + w * h)]));
       const prompt = `A closed rectangular box is ${l} cm long, ${w} cm wide and ${h} cm high. What is its total surface area, in square centimetres?`;
@@ -180,7 +189,8 @@ export const LEVEL_8: readonly TaggedTemplate[] = [
     },
   },
   {
-    id: "g67-8-cube-surface", strand: "MG", grades: GRADES, standard: "8.9", format: "number", whiteboard: true,
+    // Triage: ON 6: ON 2020 (Jan 2021), Grade 6 E2.6, PDF page 381.
+    id: "g67-8-cube-surface", strand: "MG", grades: { BC: 8, AB: 8, SK: 8, MB: 8, ON: 6 }, standard: "8.9", format: "number", whiteboard: true,
     fill(rng) {
       const n = rng.pick([3, 4, 5, 7, 8, 9, 10, 11, 12]);
       const prompt = `A cube has edges of ${n} cm. What is its total surface area, in square centimetres?`;
@@ -204,7 +214,8 @@ export const LEVEL_8: readonly TaggedTemplate[] = [
     },
   },
   {
-    id: "g67-8-mean", strand: "DP", grades: GRADES, standard: "8.12", format: "number", whiteboard: true,
+    // Triage: AB 7: AB 2016 K-9 Program of Studies, Grade 7 Statistics and Probability SO 1; SK 7: SK grade 7, SP7.1; MB 7: MB grade 7, 7.SP.1; ON 5: ON 2020 (Jan 2021), Grade 5 D1.5, PDF page 307.
+    id: "g67-8-mean", strand: "DP", grades: { BC: 8, AB: 7, SK: 7, MB: 7, ON: 5 }, standard: "8.12", format: "number", whiteboard: true,
     fill(rng) {
       const n = rng.int(4, 20), d = rng.int(2, 8), values = rng.shuffle([n - 2, n, n, n + d, n + d + 2]);
       const prompt = `Find the mean of these five values: ${values.join(", ")}.`;
@@ -212,7 +223,8 @@ export const LEVEL_8: readonly TaggedTemplate[] = [
     },
   },
   {
-    id: "g67-8-median", strand: "DP", grades: GRADES, standard: "8.12", format: "number", whiteboard: true,
+    // Triage: AB 7: AB 2016 K-9 Program of Studies, Grade 7 Statistics and Probability SO 1; SK 7: SK grade 7, SP7.1; MB 7: MB grade 7, 7.SP.1; ON 4: ON 2020 (Jan 2021), Grade 4 D1.5, PDF page 255.
+    id: "g67-8-median", strand: "DP", grades: { BC: 8, AB: 7, SK: 7, MB: 7, ON: 4 }, standard: "8.12", format: "number", whiteboard: true,
     fill(rng) {
       const n = rng.int(5, 30), d = rng.int(2, 9), values = [n + d, n - 3, n, n + d + 2, n - 1, n + 2];
       const prompt = `Find the median of these six values: ${values.join(", ")}.`;
@@ -220,7 +232,8 @@ export const LEVEL_8: readonly TaggedTemplate[] = [
     },
   },
   {
-    id: "g67-8-mode", strand: "DP", grades: GRADES, standard: "8.12", format: "number", whiteboard: false,
+    // Triage: AB 7: AB 2016 K-9 Program of Studies, Grade 7 Statistics and Probability SO 1; SK 7: SK grade 7, SP7.1; MB 7: MB grade 7, 7.SP.1; ON 3: ON 2020 (Jan 2021), Grade 3 D1.4, PDF page 206.
+    id: "g67-8-mode", strand: "DP", grades: { BC: 8, AB: 7, SK: 7, MB: 7, ON: 3 }, standard: "8.12", format: "number", whiteboard: false,
     fill(rng) {
       const n = rng.int(5, 30), values = rng.shuffle([n - 3, n - 2, n - 2, n, n, n, n + 8]);
       const prompt = `Find the mode of these seven values: ${values.join(", ")}.`;
@@ -228,7 +241,8 @@ export const LEVEL_8: readonly TaggedTemplate[] = [
     },
   },
   {
-    id: "g67-8-independent-probability", strand: "DP", grades: GRADES, standard: "8.13", format: "choice", whiteboard: true,
+    // Triage: AB 7: AB 2016 K-9 Program of Studies, Grade 7 Statistics and Probability SO 6; SK 7: SK grade 7, SP7.3; MB 7: MB grade 7, 7.SP.6; ON 6: ON 2020 (Jan 2021), Grade 6 D2.2, PDF page 367.
+    id: "g67-8-independent-probability", strand: "DP", grades: { BC: 8, AB: 7, SK: 7, MB: 7, ON: 6 }, standard: "8.13", format: "choice", whiteboard: true,
     fill(rng) {
       const n = rng.int(3, 10), face = rng.int(1, n);
       const prompt = `A fair spinner has ${n} equal sections numbered 1 to ${n}. You spin it once and toss a fair coin once. What is the probability of spinning ${face} and getting heads?`;
