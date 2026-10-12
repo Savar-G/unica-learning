@@ -10460,8 +10460,8 @@
       }
     },
     "g35-5-remainder": {
-      "hash": "a34d48eeeb83afd7",
-      "status": "review",
+      "hash": "881ba2cb0a1ce597",
+      "status": "pass",
       "checkedAt": "2026-10-12",
       "model": "gpt-6.1-sol",
       "provider": "codex",
@@ -10477,35 +10477,33 @@
             "ok": true,
             "suggestedGrade": null,
             "confidence": "high",
-            "reason": "The supplied Grade 4 outcome explicitly includes three-digit division by one-digit numbers with remainders. These examples ask directly for the leftover objects."
+            "reason": "The supplied Grade 4 outcome includes three-digit division by one-digit numbers with remainders. These pencil problems fit that scope."
           },
           {
             "province": "SK",
             "ok": true,
             "suggestedGrade": null,
             "confidence": "medium",
-            "reason": "Grade 5 is suitable for division with remainders in these simple packing stories."
+            "reason": "Grade 5 is reasonable for division with remainders. The supplied notes do not confirm the exact outcome."
           },
           {
             "province": "MB",
             "ok": true,
             "suggestedGrade": null,
             "confidence": "medium",
-            "reason": "Grade 5 is suitable for division with remainders in these simple packing stories."
+            "reason": "Grade 5 is reasonable for division with remainders. The supplied notes do not confirm the exact outcome."
           },
           {
             "province": "ON",
-            "ok": false,
-            "suggestedGrade": "grade 4",
-            "confidence": "medium",
-            "reason": "B2.6 includes division and interpreting remainders in Grade 4. These direct leftover-pencil questions appear to fit, but the notes retain uncertainty about the story mapping."
+            "ok": true,
+            "suggestedGrade": null,
+            "confidence": "high",
+            "reason": "Grade 4 B2.6 includes two-digit and three-digit division by one-digit numbers and interpretation of remainders."
           }
         ],
         "wordingProblems": [],
-        "problems": [
-          "The ON tag may be one grade later than needed for these direct remainder questions."
-        ],
-        "verdict": "review"
+        "problems": [],
+        "verdict": "pass"
       }
     },
     "g35-5-full-groups": {
@@ -11818,7 +11816,7 @@
       }
     },
     "g35-5-pattern-next": {
-      "hash": "35339dce132f3a6a",
+      "hash": "1791593460ee52d2",
       "status": "review",
       "checkedAt": "2026-10-12",
       "model": "gpt-6.1-sol",
@@ -11832,43 +11830,42 @@
         "provinceTags": [
           {
             "province": "AB",
-            "ok": false,
-            "suggestedGrade": "grade 3",
-            "confidence": "medium",
-            "reason": "These simple increasing number patterns appear suitable for Grade 3. The supplied notes do not establish the exact current Alberta pattern outcome."
+            "ok": true,
+            "suggestedGrade": null,
+            "confidence": "low",
+            "reason": "The supplied current AB notes do not establish the first grade for constant-addition patterns. The Grade 4 tag needs confirmation."
           },
           {
             "province": "SK",
             "ok": true,
             "suggestedGrade": null,
-            "confidence": "medium",
-            "reason": "Extending increasing patterns within 100 fits Grade 2. The exact outcome is not supplied."
+            "confidence": "low",
+            "reason": "The supplied notes do not establish whether Grade 2 includes increasing numerical patterns with these steps. The tag needs confirmation."
           },
           {
             "province": "MB",
             "ok": true,
             "suggestedGrade": null,
             "confidence": "medium",
-            "reason": "Extending increasing patterns within 100 fits Grade 2. The exact outcome is not supplied."
+            "reason": "Increasing patterns with numbers below 100 are reasonable for Grade 2. The supplied notes do not confirm the exact outcome."
           },
           {
             "province": "ON",
             "ok": true,
             "suggestedGrade": null,
             "confidence": "medium",
-            "reason": "The supplied Grade 4 C1 note supports extending patterns. It does not establish the first grade for these simple examples."
+            "reason": "Simple addition patterns below 100 are reasonable for Grade 2. The supplied Grade 4 pattern note does not establish their first taught grade."
           }
         ],
         "wordingProblems": [],
         "problems": [
-          "Check the Alberta Grade 4 tag against Grade 3.",
-          "Check whether Ontario teaches these simple constant-step patterns before Grade 4."
+          "Confirm the AB and SK tags against outcomes for increasing numerical patterns."
         ],
         "verdict": "review"
       }
     },
     "g35-5-pattern-missing": {
-      "hash": "82ef02b1e1c417b9",
+      "hash": "085d91935ad56df4",
       "status": "review",
       "checkedAt": "2026-10-12",
       "model": "gpt-6.1-sol",
@@ -11882,37 +11879,36 @@
         "provinceTags": [
           {
             "province": "AB",
-            "ok": false,
-            "suggestedGrade": "grade 3",
-            "confidence": "medium",
-            "reason": "These simple increasing number patterns appear suitable for Grade 3. The supplied notes do not establish the exact current Alberta pattern outcome."
+            "ok": true,
+            "suggestedGrade": null,
+            "confidence": "low",
+            "reason": "The supplied current AB notes do not establish the first grade for missing terms in constant-addition patterns. The Grade 4 tag needs confirmation."
           },
           {
             "province": "SK",
             "ok": true,
             "suggestedGrade": null,
-            "confidence": "medium",
-            "reason": "Finding a missing term in increasing patterns within 100 fits Grade 2. The exact outcome is not supplied."
+            "confidence": "low",
+            "reason": "The supplied notes do not establish whether Grade 2 includes missing terms in increasing numerical patterns. The tag needs confirmation."
           },
           {
             "province": "MB",
             "ok": true,
             "suggestedGrade": null,
             "confidence": "medium",
-            "reason": "Finding a missing term in increasing patterns within 100 fits Grade 2. The exact outcome is not supplied."
+            "reason": "Missing terms in increasing patterns below 100 are reasonable for Grade 2. The supplied notes do not confirm the exact outcome."
           },
           {
             "province": "ON",
             "ok": true,
             "suggestedGrade": null,
             "confidence": "medium",
-            "reason": "The supplied Grade 4 C1 note supports finding missing terms. It does not establish the first grade for these simple examples."
+            "reason": "Simple addition patterns below 100 are reasonable for Grade 2. The supplied Grade 4 pattern note does not establish their first taught grade."
           }
         ],
         "wordingProblems": [],
         "problems": [
-          "Check the Alberta Grade 4 tag against Grade 3.",
-          "Check whether Ontario teaches these simple missing-term patterns before Grade 4."
+          "Confirm the AB and SK tags against outcomes for missing terms in increasing numerical patterns."
         ],
         "verdict": "review"
       }
@@ -12451,7 +12447,7 @@
       }
     },
     "g35-5-duration": {
-      "hash": "d953cf4ec5c7c52e",
+      "hash": "1a5c0be9f9559ceb",
       "status": "review",
       "checkedAt": "2026-10-12",
       "model": "gpt-6.1-sol",
@@ -12465,36 +12461,36 @@
         "provinceTags": [
           {
             "province": "AB",
-            "ok": false,
-            "suggestedGrade": "grade 3",
-            "confidence": "medium",
-            "reason": "The supplied notes place time in Grade 3. These short intervals may belong there, but the exact elapsed-time outcome is not supplied."
+            "ok": true,
+            "suggestedGrade": null,
+            "confidence": "low",
+            "reason": "The supplied notes confirm time in Grade 3, but do not specify elapsed-time calculations across an hour. Retain Grade 4 pending confirmation."
           },
           {
             "province": "SK",
-            "ok": false,
-            "suggestedGrade": "grade 4",
+            "ok": true,
+            "suggestedGrade": null,
             "confidence": "medium",
-            "reason": "Short elapsed-time calculations across one hour appear to fit Grade 4 clock work. The supplied notes do not confirm the exact outcome."
+            "reason": "Grade 4 is reasonable for elapsed-time calculations across an hour. The supplied notes do not confirm the exact outcome."
           },
           {
             "province": "MB",
-            "ok": false,
-            "suggestedGrade": "grade 4",
+            "ok": true,
+            "suggestedGrade": null,
             "confidence": "medium",
-            "reason": "Short elapsed-time calculations across one hour appear to fit Grade 4 clock work. The supplied notes do not confirm the exact outcome."
+            "reason": "Grade 4 is reasonable for elapsed-time calculations across an hour. The supplied notes do not confirm the exact outcome."
           },
           {
             "province": "ON",
             "ok": true,
             "suggestedGrade": null,
             "confidence": "high",
-            "reason": "The supplied Grade 4 E2.3 outcome explicitly includes elapsed time."
+            "reason": "Grade 4 E2.3 explicitly includes elapsed time."
           }
         ],
         "wordingProblems": [],
         "problems": [
-          "Check the AB, SK and MB tags against their exact elapsed-time outcomes. Grade 5 appears later than needed for this difficulty."
+          "Confirm whether the current AB Grade 3 time outcome includes these elapsed-time calculations."
         ],
         "verdict": "review"
       }
@@ -14345,7 +14341,7 @@
       }
     },
     "g35-6-linear-tenth": {
-      "hash": "896cad5469eab26e",
+      "hash": "54a5aa9aff743112",
       "status": "review",
       "checkedAt": "2026-10-12",
       "model": "gpt-6.1-sol",
@@ -14362,33 +14358,33 @@
             "ok": true,
             "suggestedGrade": null,
             "confidence": "low",
-            "reason": "The supplied Grade 5 algebra outcomes do not establish the earliest grade for extending this additive pattern."
+            "reason": "The supplied AB notes do not establish the first grade for finding a specified term in an additive pattern. The Grade 5 tag needs confirmation."
           },
           {
             "province": "SK",
             "ok": true,
             "suggestedGrade": null,
-            "confidence": "low",
-            "reason": "The supplied Grade 6 expression outcome does not establish the earliest grade for finding a tenth term by repeated addition."
+            "confidence": "medium",
+            "reason": "Grade 5 is reasonable for finding the tenth term from a starting value and a constant step. The supplied notes do not confirm the exact pattern outcome."
           },
           {
             "province": "MB",
             "ok": true,
             "suggestedGrade": null,
-            "confidence": "low",
-            "reason": "The supplied equation outcomes do not confirm the Grade 5 tag for this pattern task."
+            "confidence": "medium",
+            "reason": "Grade 5 is reasonable for finding the tenth term from a starting value and a constant step. The supplied notes do not confirm the exact pattern outcome."
           },
           {
             "province": "ON",
             "ok": true,
             "suggestedGrade": null,
             "confidence": "high",
-            "reason": "The supplied Grade 4 C1 note explicitly supports extending patterns and finding missing terms."
+            "reason": "Grade 4 C1 includes extending patterns and finding missing terms. These questions can be solved by extending the stated additive pattern."
           }
         ],
         "wordingProblems": [],
         "problems": [
-          "The AB, SK and MB grades need source review. This task requires pattern extension but does not require an algebraic expression."
+          "Confirm the current AB pattern outcome. The questions do not require an algebraic expression."
         ],
         "verdict": "review"
       }
@@ -15217,7 +15213,7 @@
       }
     },
     "g35-6-coordinate": {
-      "hash": "a31e7543ffd45d51",
+      "hash": "2b201d3de575153d",
       "status": "review",
       "checkedAt": "2026-10-12",
       "model": "gpt-6.1-sol",
@@ -15234,41 +15230,39 @@
             "ok": true,
             "suggestedGrade": null,
             "confidence": "low",
-            "reason": "The supplied notes do not confirm the current coordinate outcome. Retain Grade 5 for source review."
+            "reason": "The supplied AB notes do not confirm the grade for first-quadrant ordered pairs. The Grade 5 tag needs confirmation."
           },
           {
             "province": "SK",
             "ok": true,
             "suggestedGrade": null,
-            "confidence": "low",
-            "reason": "The supplied notes do not confirm the coordinate outcome. Retain Grade 6 for source review."
+            "confidence": "medium",
+            "reason": "Grade 6 is reasonable for first-quadrant ordered pairs. The supplied notes do not confirm the exact outcome."
           },
           {
             "province": "MB",
             "ok": true,
             "suggestedGrade": null,
-            "confidence": "low",
-            "reason": "The supplied notes do not confirm the coordinate outcome. Retain Grade 6 for source review."
+            "confidence": "medium",
+            "reason": "Grade 6 is reasonable for first-quadrant ordered pairs. The supplied notes do not confirm the exact outcome."
           },
           {
             "province": "ON",
             "ok": true,
             "suggestedGrade": null,
             "confidence": "high",
-            "reason": "The supplied notes identify first-quadrant coordinates in Grade 4 E1.2-E1.3."
+            "reason": "Grade 4 E1.2-E1.3 include first-quadrant coordinates."
           }
         ],
-        "wordingProblems": [
-          "The spoken choices contain raw ordered-pair notation. A browser voice can omit the comma. Use explicit speech such as '5 comma 4'."
-        ],
+        "wordingProblems": [],
         "problems": [
-          "The AB, SK and MB grades require source confirmation."
+          "Confirm the current AB outcome for ordered pairs."
         ],
         "verdict": "review"
       }
     },
     "g35-6-coordinate-slide": {
-      "hash": "ee752db6110594f9",
+      "hash": "7fd3525d7fecc085",
       "status": "review",
       "checkedAt": "2026-10-12",
       "model": "gpt-6.1-sol",
@@ -15285,33 +15279,33 @@
             "ok": true,
             "suggestedGrade": null,
             "confidence": "low",
-            "reason": "The supplied notes do not confirm the grade for translations expressed with ordered pairs."
+            "reason": "The supplied AB notes do not confirm the grade for translations using ordered pairs. The Grade 6 tag needs confirmation."
           },
           {
             "province": "SK",
             "ok": true,
             "suggestedGrade": null,
-            "confidence": "low",
-            "reason": "SS5.7 includes transformations, but the supplied note does not establish translations expressed with ordered pairs."
+            "confidence": "medium",
+            "reason": "The supplied Grade 5 transformation outcome does not establish coordinate-based translations. Grade 6 remains reasonable."
           },
           {
             "province": "MB",
             "ok": true,
             "suggestedGrade": null,
-            "confidence": "low",
-            "reason": "The supplied notes do not confirm the grade for translations expressed with ordered pairs."
+            "confidence": "medium",
+            "reason": "Grade 6 is reasonable for translations using ordered pairs. The supplied notes do not confirm the exact outcome."
           },
           {
             "province": "ON",
             "ok": true,
             "suggestedGrade": null,
             "confidence": "high",
-            "reason": "The supplied Grade 4 E1.2-E1.3 notes include first-quadrant coordinates and translations."
+            "reason": "Grade 4 E1.2-E1.3 include first-quadrant coordinates and translations."
           }
         ],
         "wordingProblems": [],
         "problems": [
-          "The AB, SK and MB grades need confirmation. The unchanged-point answers plausibly result from ignoring the movement sentence."
+          "Confirm the current AB outcome for translations using ordered pairs."
         ],
         "verdict": "review"
       }
@@ -16556,7 +16550,7 @@
       }
     },
     "g67-5-equivalent-fraction": {
-      "hash": "50b569d1dcf7c9af",
+      "hash": "3c4db5cc579f3966",
       "status": "review",
       "checkedAt": "2026-10-12",
       "model": "gpt-6.1-sol",
@@ -16572,40 +16566,40 @@
             "province": "AB",
             "ok": true,
             "suggestedGrade": null,
-            "confidence": "medium",
-            "reason": "The supplied Grade 4 notes confirm fraction comparison, but do not explicitly confirm equivalent-fraction generation. Retain Grade 4 for source review."
+            "confidence": "low",
+            "reason": "The supplied Grade 4 fraction notes do not explicitly establish equivalent-fraction construction with these denominators. The tag needs confirmation."
           },
           {
             "province": "SK",
             "ok": true,
             "suggestedGrade": null,
             "confidence": "high",
-            "reason": "The supplied notes identify equivalent fractions in Grade 5 N5.5."
+            "reason": "N5.5 explicitly includes equivalent fractions."
           },
           {
             "province": "MB",
             "ok": true,
             "suggestedGrade": null,
-            "confidence": "low",
-            "reason": "The supplied notes do not give the specific equivalent-fraction outcome for these examples. Retain Grade 5 for source review."
+            "confidence": "medium",
+            "reason": "Grade 5 is reasonable for equivalent fractions. The supplied notes do not provide the exact outcome or denominator limits."
           },
           {
             "province": "ON",
-            "ok": true,
-            "suggestedGrade": null,
+            "ok": false,
+            "suggestedGrade": "grade 5",
             "confidence": "medium",
-            "reason": "The supplied notes support equivalent-fraction work in Grade 5, but do not confirm the full scope of these proper fractions and larger denominators."
+            "reason": "The supplied Grade 5 B1.3 note already includes equivalent fraction representations. Grade 6 appears late for these simple scaling tasks, but the full denominator scope needs confirmation."
           }
         ],
         "wordingProblems": [],
         "problems": [
-          "The AB, MB and ON outcome scope requires confirmation. All marked equivalents are correct. Every coded error produces the stated wrong fraction."
+          "Review the ON tag against Grade 5 equivalent-fraction expectations. Confirm the AB scope."
         ],
         "verdict": "review"
       }
     },
     "g67-5-missing-numerator": {
-      "hash": "0e132ecb48e4a01a",
+      "hash": "643894e1377068a6",
       "status": "review",
       "checkedAt": "2026-10-12",
       "model": "gpt-6.1-sol",
@@ -16621,34 +16615,34 @@
             "province": "AB",
             "ok": true,
             "suggestedGrade": null,
-            "confidence": "medium",
-            "reason": "The supplied Grade 4 notes confirm fraction comparison, but do not explicitly confirm finding a missing numerator in equivalent fractions."
+            "confidence": "low",
+            "reason": "The supplied Grade 4 fraction notes do not explicitly establish missing numerators in equivalent fractions with these denominators. The tag needs confirmation."
           },
           {
             "province": "SK",
             "ok": true,
             "suggestedGrade": null,
             "confidence": "high",
-            "reason": "Grade 5 N5.5 includes equivalent fractions. These examples apply that relationship."
+            "reason": "N5.5 explicitly includes equivalent fractions. Each question uses a whole-number scale factor."
           },
           {
             "province": "MB",
             "ok": true,
             "suggestedGrade": null,
-            "confidence": "low",
-            "reason": "The supplied notes do not give the specific equivalent-fraction outcome. Retain Grade 5 for source review."
+            "confidence": "medium",
+            "reason": "Grade 5 is reasonable for missing numerators in equivalent fractions. The supplied notes do not provide the exact outcome or denominator limits."
           },
           {
             "province": "ON",
-            "ok": true,
-            "suggestedGrade": null,
+            "ok": false,
+            "suggestedGrade": "grade 5",
             "confidence": "medium",
-            "reason": "The supplied notes support equivalent-fraction work in Grade 5, but do not confirm the full scope of these missing-numerator examples."
+            "reason": "The supplied Grade 5 B1.3 note already includes equivalent fraction representations. Grade 6 appears late for these simple scaling tasks, but denominators through 54 need scope confirmation."
           }
         ],
         "wordingProblems": [],
         "problems": [
-          "The AB, MB and ON outcome scope requires confirmation. The missing numerators are 2, 4, 6, 9, 12, 16, 25 and 48. All coded wrong answers match their misconceptions."
+          "Review the ON tag against Grade 5 equivalent-fraction expectations. Confirm the AB scope."
         ],
         "verdict": "review"
       }
@@ -18709,8 +18703,8 @@
       }
     },
     "g67-6-greatest-fraction": {
-      "hash": "3130c5dedfec89f4",
-      "status": "review",
+      "hash": "0eda93f4ba39572e",
+      "status": "pass",
       "checkedAt": "2026-10-12",
       "model": "gpt-6.1-sol",
       "provider": "codex",
@@ -18725,36 +18719,34 @@
             "province": "AB",
             "ok": true,
             "suggestedGrade": null,
-            "confidence": "medium",
-            "reason": "The supplied Grade 4 outcome includes fraction comparison. The notes do not establish its scope for denominators up to 23."
+            "confidence": "high",
+            "reason": "MAT4-OI1-GQ5-LO1-KO1-SP includes comparing and ordering fractions."
           },
           {
             "province": "SK",
             "ok": true,
             "suggestedGrade": null,
-            "confidence": "medium",
-            "reason": "Grade 6 is plausible for comparison with different numerators and denominators. The supplied notes do not establish the earliest grade for these examples."
+            "confidence": "low",
+            "reason": "The supplied notes do not establish a different grade for these proper-fraction comparisons."
           },
           {
             "province": "MB",
             "ok": true,
             "suggestedGrade": null,
-            "confidence": "medium",
-            "reason": "Grade 6 is plausible for these comparisons. The supplied notes do not establish the earliest grade for this difficulty."
+            "confidence": "low",
+            "reason": "The supplied notes do not establish a different grade for these proper-fraction comparisons."
           },
           {
             "province": "ON",
             "ok": true,
             "suggestedGrade": null,
             "confidence": "high",
-            "reason": "Grade 6 B1.3 supports fraction comparison. These choices exceed the twelfths range stated for Grade 5."
+            "reason": "Grade 6 B1.3 includes fraction comparison. These choices include denominators beyond the Grade 5 halves-to-twelfths range."
           }
         ],
         "wordingProblems": [],
-        "problems": [
-          "The supplied notes do not fully establish the AB, SK and MB grade mappings for comparisons with denominators up to 23."
-        ],
-        "verdict": "review"
+        "problems": [],
+        "verdict": "pass"
       }
     },
     "g67-6-ratio-part-part": {
@@ -20010,7 +20002,7 @@
       }
     },
     "g67-6-trapezoid-area": {
-      "hash": "0c4bbbcdd96ef879",
+      "hash": "dda2c1dea8df8ee8",
       "status": "review",
       "checkedAt": "2026-10-12",
       "model": "gpt-6.1-sol",
@@ -20027,33 +20019,34 @@
             "ok": true,
             "suggestedGrade": null,
             "confidence": "low",
-            "reason": "The supplied notes do not identify the trapezoid-area outcome. The Grade 7 tag requires source review."
+            "reason": "The supplied notes do not confirm the exact trapezoid-area outcome or establish a different grade."
           },
           {
             "province": "SK",
             "ok": true,
             "suggestedGrade": null,
             "confidence": "low",
-            "reason": "The supplied notes do not identify the trapezoid-area outcome. The Grade 7 tag requires source review."
+            "reason": "The supplied notes do not confirm the exact trapezoid-area outcome or establish a different grade."
           },
           {
             "province": "MB",
             "ok": true,
             "suggestedGrade": null,
             "confidence": "low",
-            "reason": "The supplied notes do not identify the trapezoid-area outcome. The Grade 7 tag requires source review."
+            "reason": "The supplied notes do not confirm the exact trapezoid-area outcome or establish a different grade."
           },
           {
             "province": "ON",
             "ok": true,
             "suggestedGrade": null,
             "confidence": "low",
-            "reason": "The supplied notes do not identify the trapezoid-area outcome. The Grade 7 tag requires source review."
+            "reason": "The supplied notes do not confirm that Grade 6 includes trapezoid area. The exact outcome needs review."
           }
         ],
         "wordingProblems": [],
         "problems": [
-          "The supplied evidence does not confirm the province tags for trapezoid area."
+          "The supplied provincial notes do not resolve the trapezoid-area tags.",
+          "The independently calculated areas are 8, 24, 36, 45, 56, 70, 88 and 150. Each wrong answer follows the stated error."
         ],
         "verdict": "review"
       }
@@ -20683,8 +20676,8 @@
       }
     },
     "g67-6-l-shape-perimeter": {
-      "hash": "f1a55b11e98cdd0c",
-      "status": "review",
+      "hash": "df2c256030c83f5a",
+      "status": "pass",
       "checkedAt": "2026-10-12",
       "model": "gpt-6.1-sol",
       "provider": "codex",
@@ -20700,35 +20693,33 @@
             "ok": true,
             "suggestedGrade": null,
             "confidence": "high",
-            "reason": "The supplied Grade 3 outcome includes polygon perimeter. Every side length is given."
+            "reason": "MAT3-OI5-GQ1-LO1-KO2-SP includes polygon perimeter. All six side lengths are given."
           },
           {
             "province": "SK",
             "ok": true,
             "suggestedGrade": null,
             "confidence": "high",
-            "reason": "SS3.3 includes polygon perimeter. These questions require adding given side lengths."
+            "reason": "SS3.3 includes polygon perimeter. The task requires adding the given side lengths."
           },
           {
             "province": "MB",
             "ok": true,
             "suggestedGrade": null,
             "confidence": "high",
-            "reason": "The supplied notes place perimeter in Grade 3. Every side length is given."
+            "reason": "The supplied notes confirm perimeter in Grade 3. No missing side must be calculated."
           },
           {
             "province": "ON",
             "ok": true,
             "suggestedGrade": null,
             "confidence": "low",
-            "reason": "The supplied notes do not establish the first grade for the perimeter of an L-shaped polygon."
+            "reason": "The supplied notes do not establish a different grade for perimeter with all side lengths given."
           }
         ],
         "wordingProblems": [],
-        "problems": [
-          "The ON tag requires source review because all side lengths are given and no missing length must be found."
-        ],
-        "verdict": "review"
+        "problems": [],
+        "verdict": "pass"
       }
     },
     "g67-7-greatest-integer": {
@@ -21298,8 +21289,8 @@
       }
     },
     "g67-7-times-five": {
-      "hash": "a054d61d1b1f2f1a",
-      "status": "review",
+      "hash": "e55007ea8589e6de",
+      "status": "pass",
       "checkedAt": "2026-10-12",
       "model": "gpt-6.1-sol",
       "provider": "codex",
@@ -21315,35 +21306,33 @@
             "ok": true,
             "suggestedGrade": null,
             "confidence": "medium",
-            "reason": "The supplied notes place million-range operations in Grade 5. This supports the tag, but the precise multiplication outcome is not supplied."
+            "reason": "The supplied notes place million-range operations in Grade 5. These products are within that range."
           },
           {
             "province": "SK",
             "ok": true,
             "suggestedGrade": null,
             "confidence": "low",
-            "reason": "The supplied notes do not establish the grade for three-digit multiplication by 5 and 50. Retain Grade 5 pending source review."
+            "reason": "The supplied notes do not establish a different grade for multiplication by 5 or 50."
           },
           {
             "province": "MB",
             "ok": true,
             "suggestedGrade": null,
             "confidence": "low",
-            "reason": "The supplied notes do not establish the grade for three-digit multiplication by 5 and 50. Retain Grade 5 pending source review."
+            "reason": "The supplied notes do not establish a different grade for multiplication by 5 or 50."
           },
           {
             "province": "ON",
-            "ok": false,
-            "suggestedGrade": "grade 5",
-            "confidence": "medium",
-            "reason": "Grade 5 C2.2 explicitly includes evaluation of whole-number expressions. These single-product questions appear to fit that earlier grade. The precise multiplication range needs source review."
+            "ok": true,
+            "suggestedGrade": null,
+            "confidence": "low",
+            "reason": "The supplied notes do not establish a different grade for these three-digit multiplication tasks."
           }
         ],
         "wordingProblems": [],
-        "problems": [
-          "The Ontario Grade 7 tag appears later than the supplied Grade 5 expression-evaluation expectation."
-        ],
-        "verdict": "review"
+        "problems": [],
+        "verdict": "pass"
       }
     },
     "g67-7-change-several": {
@@ -22311,8 +22300,8 @@
       }
     },
     "g67-7-story-equation": {
-      "hash": "b432a81b4a8d0dd8",
-      "status": "review",
+      "hash": "20b54ec4491bca48",
+      "status": "pass",
       "checkedAt": "2026-10-12",
       "model": "gpt-6.1-sol",
       "provider": "codex",
@@ -22326,37 +22315,35 @@
           {
             "province": "AB",
             "ok": true,
-            "suggestedGrade": "grade 5",
+            "suggestedGrade": null,
             "confidence": "high",
-            "reason": "The supplied MAT5-OI2-GQ1-LO1-KO3-SP outcome explicitly supports writing equations with two operations."
+            "reason": "MAT5-OI2-GQ1-LO1-KO3-SP includes writing equations with one or two operations."
           },
           {
             "province": "SK",
             "ok": true,
-            "suggestedGrade": "grade 7",
-            "confidence": "medium",
-            "reason": "Grade 7 is consistent with representing these two-step relationships as equations. The supplied notes do not confirm the exact outcome."
+            "suggestedGrade": null,
+            "confidence": "low",
+            "reason": "The supplied earlier-grade equation outcomes do not establish this two-operation story representation in an earlier grade."
           },
           {
             "province": "MB",
             "ok": true,
-            "suggestedGrade": "grade 7",
-            "confidence": "medium",
-            "reason": "Grade 7 is consistent with representing these two-step relationships as equations. The supplied notes do not confirm the exact outcome."
+            "suggestedGrade": null,
+            "confidence": "low",
+            "reason": "The supplied earlier-grade equation outcomes do not establish this two-operation story representation in an earlier grade."
           },
           {
             "province": "ON",
-            "ok": false,
-            "suggestedGrade": "grade 6",
+            "ok": true,
+            "suggestedGrade": null,
             "confidence": "medium",
-            "reason": "These simple whole-number relationships appear suitable for Grade 6. The supplied C2.3 evidence confirms solving, but does not confirm the earliest grade for equation representation."
+            "reason": "Grade 6 C2.3 includes whole-number equations with multiple terms. This supports the stated difficulty."
           }
         ],
         "wordingProblems": [],
-        "problems": [
-          "Review the Ontario tag against the outcome for representing a verbal relationship as an equation."
-        ],
-        "verdict": "review"
+        "problems": [],
+        "verdict": "pass"
       }
     },
     "g67-7-check-solution": {
@@ -24228,7 +24215,7 @@
       }
     },
     "g67-8-combine-expression": {
-      "hash": "d8a7b2403df9f98d",
+      "hash": "e7a06a2c04bb75b7",
       "status": "review",
       "checkedAt": "2026-10-12",
       "model": "gpt-6.1-sol",
@@ -24243,35 +24230,35 @@
           {
             "province": "AB",
             "ok": true,
-            "suggestedGrade": "grade 5",
+            "suggestedGrade": null,
             "confidence": "high",
-            "reason": "The supplied MAT5-OI2-GQ1-LO1-KO2-SP outcome explicitly supports substituting a given number into an expression."
+            "reason": "MAT5-OI2-GQ1-LO1-KO2-SP explicitly includes substitution into an algebraic expression. Combining terms is optional here."
           },
           {
             "province": "SK",
             "ok": true,
-            "suggestedGrade": "grade 8",
+            "suggestedGrade": null,
             "confidence": "low",
-            "reason": "Grade 8 is plausible. The supplied notes leave the earliest grade for evaluating a supplied expression uncertain. P6.3 alone does not settle this question."
+            "reason": "Grade 7 is plausible. The supplied P6.3 heading does not resolve whether this substitution task belongs in an earlier grade."
           },
           {
             "province": "MB",
             "ok": true,
-            "suggestedGrade": "grade 8",
+            "suggestedGrade": null,
             "confidence": "low",
-            "reason": "Grade 8 is plausible. The supplied notes leave the earliest grade for substitution uncertain. MB6.PR.3 is not an explicit substitution outcome."
+            "reason": "Grade 7 is plausible. The supplied Grade 6 generalization outcome does not explicitly establish substitution."
           },
           {
             "province": "ON",
             "ok": true,
-            "suggestedGrade": "grade 5",
+            "suggestedGrade": null,
             "confidence": "high",
-            "reason": "The supplied Grade 5 C2.2 outcome explicitly supports evaluating whole-number algebraic expressions. Combining terms is not required to answer these questions."
+            "reason": "Grade 5 C2.2 explicitly includes evaluating whole-number expressions."
           }
         ],
         "wordingProblems": [],
         "problems": [
-          "Review the earliest grade for expression evaluation in Saskatchewan and Manitoba."
+          "The earliest grade for this substitution task remains uncertain in Saskatchewan and Manitoba."
         ],
         "verdict": "review"
       }
@@ -24943,7 +24930,7 @@
       }
     },
     "g35-5-same-area-perimeter": {
-      "hash": "fb40dfe183be9480",
+      "hash": "a01d48d848d5d486",
       "status": "review",
       "checkedAt": "2026-10-12",
       "model": "gpt-6.1-sol",
@@ -24960,35 +24947,33 @@
             "ok": true,
             "suggestedGrade": null,
             "confidence": "low",
-            "reason": "Grade 5 is plausible after Grade 4 rectangle area. The supplied notes do not confirm the outcome for comparing perimeters at a fixed area."
+            "reason": "The supplied notes establish rectangle area in Grade 4, but not the first grade for area and perimeter relationships. Retain Grade 5 pending confirmation."
           },
           {
             "province": "SK",
             "ok": true,
             "suggestedGrade": null,
             "confidence": "medium",
-            "reason": "Comparing rectangles with equal area and different perimeters fits Grade 5 measurement work."
+            "reason": "Grade 5 is reasonable for comparing rectangle perimeters at a fixed area. The supplied notes do not confirm this outcome."
           },
           {
             "province": "MB",
             "ok": true,
             "suggestedGrade": null,
             "confidence": "medium",
-            "reason": "Comparing rectangles with equal area and different perimeters fits Grade 5 measurement work."
+            "reason": "Grade 5 is reasonable for comparing rectangle perimeters at a fixed area. The supplied notes do not confirm this outcome."
           },
           {
             "province": "ON",
             "ok": true,
             "suggestedGrade": null,
             "confidence": "high",
-            "reason": "The supplied Grade 4 E2.5-E2.7 notes explicitly include area and perimeter relationships."
+            "reason": "Grade 4 E2.5-E2.7 include rectangle area and area and perimeter relationships."
           }
         ],
-        "wordingProblems": [
-          "Spoken choices say '1 centimetres'. Use '1 centimetre'."
-        ],
+        "wordingProblems": [],
         "problems": [
-          "Confirm the Alberta outcome for comparing perimeters of rectangles with equal area."
+          "Confirm the AB outcome for area and perimeter relationships."
         ],
         "verdict": "review"
       }

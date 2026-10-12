@@ -5,8 +5,8 @@
   "effort": "medium",
   "total": 527,
   "checked": 527,
-  "pass": 255,
-  "review": 272,
+  "pass": 260,
+  "review": 267,
   "fail": 0,
   "error": 0,
   "unchecked": 0,
@@ -1773,8 +1773,8 @@
     },
     {
       "id": "g35-5-remainder",
-      "hash": "a34d48eeeb83afd7",
-      "status": "review",
+      "hash": "881ba2cb0a1ce597",
+      "status": "pass",
       "model": "gpt-6.1-sol",
       "provider": "codex",
       "effort": "medium"
@@ -2013,7 +2013,7 @@
     },
     {
       "id": "g35-5-pattern-next",
-      "hash": "35339dce132f3a6a",
+      "hash": "1791593460ee52d2",
       "status": "review",
       "model": "gpt-6.1-sol",
       "provider": "codex",
@@ -2021,7 +2021,7 @@
     },
     {
       "id": "g35-5-pattern-missing",
-      "hash": "82ef02b1e1c417b9",
+      "hash": "085d91935ad56df4",
       "status": "review",
       "model": "gpt-6.1-sol",
       "provider": "codex",
@@ -2205,7 +2205,7 @@
     },
     {
       "id": "g35-5-same-area-perimeter",
-      "hash": "fb40dfe183be9480",
+      "hash": "a01d48d848d5d486",
       "status": "review",
       "model": "gpt-6.1-sol",
       "provider": "codex",
@@ -2213,7 +2213,7 @@
     },
     {
       "id": "g35-5-duration",
-      "hash": "d953cf4ec5c7c52e",
+      "hash": "1a5c0be9f9559ceb",
       "status": "review",
       "model": "gpt-6.1-sol",
       "provider": "codex",
@@ -2525,7 +2525,7 @@
     },
     {
       "id": "g35-6-linear-tenth",
-      "hash": "896cad5469eab26e",
+      "hash": "54a5aa9aff743112",
       "status": "review",
       "model": "gpt-6.1-sol",
       "provider": "codex",
@@ -2693,7 +2693,7 @@
     },
     {
       "id": "g35-6-coordinate",
-      "hash": "a31e7543ffd45d51",
+      "hash": "2b201d3de575153d",
       "status": "review",
       "model": "gpt-6.1-sol",
       "provider": "codex",
@@ -2701,7 +2701,7 @@
     },
     {
       "id": "g35-6-coordinate-slide",
-      "hash": "ee752db6110594f9",
+      "hash": "7fd3525d7fecc085",
       "status": "review",
       "model": "gpt-6.1-sol",
       "provider": "codex",
@@ -2821,7 +2821,7 @@
     },
     {
       "id": "g67-5-equivalent-fraction",
-      "hash": "50b569d1dcf7c9af",
+      "hash": "3c4db5cc579f3966",
       "status": "review",
       "model": "gpt-6.1-sol",
       "provider": "codex",
@@ -2829,7 +2829,7 @@
     },
     {
       "id": "g67-5-missing-numerator",
-      "hash": "0e132ecb48e4a01a",
+      "hash": "643894e1377068a6",
       "status": "review",
       "model": "gpt-6.1-sol",
       "provider": "codex",
@@ -3181,8 +3181,8 @@
     },
     {
       "id": "g67-6-greatest-fraction",
-      "hash": "3130c5dedfec89f4",
-      "status": "review",
+      "hash": "0eda93f4ba39572e",
+      "status": "pass",
       "model": "gpt-6.1-sol",
       "provider": "codex",
       "effort": "medium"
@@ -3397,7 +3397,7 @@
     },
     {
       "id": "g67-6-trapezoid-area",
-      "hash": "0c4bbbcdd96ef879",
+      "hash": "dda2c1dea8df8ee8",
       "status": "review",
       "model": "gpt-6.1-sol",
       "provider": "codex",
@@ -3509,8 +3509,8 @@
     },
     {
       "id": "g67-6-l-shape-perimeter",
-      "hash": "f1a55b11e98cdd0c",
-      "status": "review",
+      "hash": "df2c256030c83f5a",
+      "status": "pass",
       "model": "gpt-6.1-sol",
       "provider": "codex",
       "effort": "medium"
@@ -3613,8 +3613,8 @@
     },
     {
       "id": "g67-7-times-five",
-      "hash": "a054d61d1b1f2f1a",
-      "status": "review",
+      "hash": "e55007ea8589e6de",
+      "status": "pass",
       "model": "gpt-6.1-sol",
       "provider": "codex",
       "effort": "medium"
@@ -3797,8 +3797,8 @@
     },
     {
       "id": "g67-7-story-equation",
-      "hash": "b432a81b4a8d0dd8",
-      "status": "review",
+      "hash": "20b54ec4491bca48",
+      "status": "pass",
       "model": "gpt-6.1-sol",
       "provider": "codex",
       "effort": "medium"
@@ -4125,7 +4125,7 @@
     },
     {
       "id": "g67-8-combine-expression",
-      "hash": "d8a7b2403df9f98d",
+      "hash": "e7a06a2c04bb75b7",
       "status": "review",
       "model": "gpt-6.1-sol",
       "provider": "codex",

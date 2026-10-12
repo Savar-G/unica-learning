@@ -4,48 +4,48 @@
   "model": "gpt-6.1-sol",
   "effort": "medium",
   "total": 125,
-  "checked": 91,
-  "pass": 56,
-  "review": 35,
+  "checked": 125,
+  "pass": 107,
+  "review": 18,
   "fail": 0,
   "error": 0,
-  "unchecked": 34,
+  "unchecked": 0,
   "rows": [
     {
       "id": "k-count-shapes",
-      "hash": "5a8fe98a86e43503",
-      "status": "changed since its check",
-      "model": "claude-opus-5-5",
-      "provider": null,
-      "effort": null
+      "hash": "137f42391613a8a1",
+      "status": "pass",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
     },
     {
       "id": "k-number-after",
-      "hash": "d19708e1efee23ca",
-      "status": "changed since its check",
-      "model": "claude-opus-5-5",
-      "provider": null,
-      "effort": null
+      "hash": "6877ae14faf791a9",
+      "status": "pass",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
     },
     {
       "id": "k-number-before",
-      "hash": "3115d35235170e00",
-      "status": "changed since its check",
-      "model": "claude-opus-5-5",
-      "provider": null,
-      "effort": null
+      "hash": "2ec47667dff214ae",
+      "status": "pass",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
     },
     {
       "id": "k-missing-number",
-      "hash": "e18c2703e4c2bd92",
-      "status": "changed since its check",
-      "model": "claude-opus-5-5",
-      "provider": null,
-      "effort": null
+      "hash": "64f1628378cd3e96",
+      "status": "pass",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
     },
     {
       "id": "k-who-has-more",
-      "hash": "861770bfa05865fb",
+      "hash": "8b495cf1a1936ded",
       "status": "pass",
       "model": "gpt-6.1-sol",
       "provider": "codex",
@@ -53,39 +53,39 @@
     },
     {
       "id": "k-make-five",
-      "hash": "7750bdda4c78a453",
-      "status": "changed since its check",
-      "model": "claude-opus-5-5",
-      "provider": null,
-      "effort": null
+      "hash": "4f8a4576fe58f756",
+      "status": "pass",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
     },
     {
       "id": "k-split-number",
-      "hash": "511992a31df58b01",
-      "status": "changed since its check",
-      "model": "claude-opus-5-5",
-      "provider": null,
-      "effort": null
+      "hash": "c28feff1c59fa90f",
+      "status": "pass",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
     },
     {
       "id": "k-rest-are",
-      "hash": "b0bb21f5bce8fe3e",
-      "status": "changed since its check",
-      "model": "claude-opus-5-5",
-      "provider": null,
-      "effort": null
+      "hash": "b27166b4e9908796",
+      "status": "pass",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
     },
     {
       "id": "k-in-all",
-      "hash": "ed8747b7383decaf",
-      "status": "changed since its check",
-      "model": "claude-opus-5-5",
-      "provider": null,
-      "effort": null
+      "hash": "51d2211f7d388e47",
+      "status": "pass",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
     },
     {
       "id": "k-pattern-ab",
-      "hash": "1e1ac1e6d4f9a2df",
+      "hash": "4dcfc780d58f1801",
       "status": "pass",
       "model": "gpt-6.1-sol",
       "provider": "codex",
@@ -93,7 +93,7 @@
     },
     {
       "id": "k-pattern-abc",
-      "hash": "947ad070cd548e0e",
+      "hash": "2a2b7e9f039ef9b5",
       "status": "pass",
       "model": "gpt-6.1-sol",
       "provider": "codex",
@@ -101,7 +101,7 @@
     },
     {
       "id": "k-pattern-aab",
-      "hash": "57237b4d81370ba5",
+      "hash": "47735356317c9d15",
       "status": "pass",
       "model": "gpt-6.1-sol",
       "provider": "codex",
@@ -109,39 +109,39 @@
     },
     {
       "id": "k-number-pattern",
-      "hash": "022a96b8097f9624",
-      "status": "changed since its check",
-      "model": "claude-opus-5-5",
-      "provider": null,
-      "effort": null
+      "hash": "25b92d7e2297090d",
+      "status": "pass",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
     },
     {
       "id": "k-how-many-more",
-      "hash": "4fb69ee1354fdf90",
-      "status": "changed since its check",
-      "model": "claude-opus-5-5",
-      "provider": null,
-      "effort": null
+      "hash": "2073569504d8c851",
+      "status": "pass",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
     },
     {
       "id": "k-take-away",
-      "hash": "096336757a7207d1",
-      "status": "changed since its check",
-      "model": "claude-opus-5-5",
-      "provider": null,
-      "effort": null
+      "hash": "bbd809654e1aacbf",
+      "status": "pass",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
     },
     {
       "id": "k-balance-match",
-      "hash": "9a3ffddd684078b4",
-      "status": "changed since its check",
-      "model": "claude-opus-5-5",
-      "provider": null,
-      "effort": null
+      "hash": "c1b5c362a88f08df",
+      "status": "pass",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
     },
     {
       "id": "k-balance-tips",
-      "hash": "62f47aa9d90c0439",
+      "hash": "5f1745e398a3f61a",
       "status": "pass",
       "model": "gpt-6.1-sol",
       "provider": "codex",
@@ -149,7 +149,7 @@
     },
     {
       "id": "k-longer-line",
-      "hash": "7972eb8f86a97e01",
+      "hash": "40ec66c1349ce955",
       "status": "pass",
       "model": "gpt-6.1-sol",
       "provider": "codex",
@@ -157,7 +157,7 @@
     },
     {
       "id": "k-heavier-object",
-      "hash": "535663d19cf570b3",
+      "hash": "de27a85309a0cd73",
       "status": "pass",
       "model": "gpt-6.1-sol",
       "provider": "codex",
@@ -165,7 +165,7 @@
     },
     {
       "id": "k-balance-heavier",
-      "hash": "096fc2d2740fe6b1",
+      "hash": "2b7721b3e902fb87",
       "status": "pass",
       "model": "gpt-6.1-sol",
       "provider": "codex",
@@ -173,15 +173,15 @@
     },
     {
       "id": "k-shape-attribute",
-      "hash": "f7548f1fa8183e51",
-      "status": "changed since its check",
-      "model": "claude-opus-5-5",
-      "provider": null,
-      "effort": null
+      "hash": "0ddb97622916ac20",
+      "status": "pass",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
     },
     {
       "id": "k-can-roll",
-      "hash": "77e7b1f361f55dc4",
+      "hash": "ab6bd26c45d25bfa",
       "status": "pass",
       "model": "gpt-6.1-sol",
       "provider": "codex",
@@ -189,23 +189,23 @@
     },
     {
       "id": "k-graph-which-more",
-      "hash": "1bd9fea9607a19dd",
-      "status": "review",
+      "hash": "6d4e90c818bc399c",
+      "status": "pass",
       "model": "gpt-6.1-sol",
       "provider": "codex",
       "effort": "medium"
     },
     {
       "id": "k-graph-count",
-      "hash": "5a9875aa0a6e10a0",
-      "status": "changed since its check",
-      "model": "claude-opus-5-5",
-      "provider": null,
-      "effort": null
+      "hash": "1c5cef75dffb5e0a",
+      "status": "pass",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
     },
     {
       "id": "k-likely-event",
-      "hash": "e641c7d2bd96d941",
+      "hash": "459952fd540e3ae8",
       "status": "review",
       "model": "gpt-6.1-sol",
       "provider": "codex",
@@ -213,7 +213,7 @@
     },
     {
       "id": "1-ten-and-more",
-      "hash": "44d60db3eeac869a",
+      "hash": "4fb8e8c10d8e3d8b",
       "status": "pass",
       "model": "gpt-6.1-sol",
       "provider": "codex",
@@ -221,15 +221,15 @@
     },
     {
       "id": "1-skip-count",
-      "hash": "86a2550ef3ad552d",
-      "status": "changed since its check",
-      "model": "claude-opus-5-5",
-      "provider": null,
-      "effort": null
+      "hash": "c512c038cbf7c8c3",
+      "status": "pass",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
     },
     {
       "id": "1-smallest-biggest",
-      "hash": "3ea13b2c1e56e9a7",
+      "hash": "ef4b17cfc9363b77",
       "status": "pass",
       "model": "gpt-6.1-sol",
       "provider": "codex",
@@ -237,71 +237,71 @@
     },
     {
       "id": "1-more-or-less",
-      "hash": "b06144bdfe981944",
-      "status": "changed since its check",
-      "model": "claude-opus-5-5",
-      "provider": null,
-      "effort": null
+      "hash": "acd327a8c1a63210",
+      "status": "pass",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
     },
     {
       "id": "1-make-ten",
-      "hash": "7edf744bcbea406e",
-      "status": "changed since its check",
-      "model": "claude-opus-5-5",
-      "provider": null,
-      "effort": null
+      "hash": "25088624936e84f4",
+      "status": "pass",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
     },
     {
       "id": "1-count-coins",
-      "hash": "3090b466326528a9",
-      "status": "changed since its check",
-      "model": "claude-opus-5-5",
-      "provider": null,
-      "effort": null
+      "hash": "d7b8a924a98ebed7",
+      "status": "pass",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
     },
     {
       "id": "1-add-to-20",
-      "hash": "a48d148577de1fa2",
-      "status": "changed since its check",
-      "model": "claude-opus-5-5",
-      "provider": null,
-      "effort": null
+      "hash": "ccf337a7ab1af57f",
+      "status": "pass",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
     },
     {
       "id": "1-subtract-from-20",
-      "hash": "7248371220122061",
-      "status": "changed since its check",
-      "model": "claude-opus-5-5",
-      "provider": null,
-      "effort": null
+      "hash": "63c21ad50b6be3b3",
+      "status": "pass",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
     },
     {
       "id": "1-story-add",
-      "hash": "68398c2c2d8b9d06",
-      "status": "changed since its check",
-      "model": "claude-opus-5-5",
-      "provider": null,
-      "effort": null
+      "hash": "2ffd5e81ab422602",
+      "status": "pass",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
     },
     {
       "id": "1-story-take",
-      "hash": "7abe868294360fbd",
-      "status": "changed since its check",
-      "model": "claude-opus-5-5",
-      "provider": null,
-      "effort": null
+      "hash": "920660f4b8ec9203",
+      "status": "pass",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
     },
     {
       "id": "1-story-compare",
-      "hash": "609a593e565ee186",
-      "status": "changed since its check",
-      "model": "claude-opus-5-5",
-      "provider": null,
-      "effort": null
+      "hash": "ced4f366f9bdc1de",
+      "status": "pass",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
     },
     {
       "id": "1-pattern-four",
-      "hash": "dbeefd1d0d136e6d",
+      "hash": "169dde691fa5db95",
       "status": "pass",
       "model": "gpt-6.1-sol",
       "provider": "codex",
@@ -309,7 +309,7 @@
     },
     {
       "id": "1-pattern-missing",
-      "hash": "32d2f081435c046e",
+      "hash": "e2048eeae85bd490",
       "status": "pass",
       "model": "gpt-6.1-sol",
       "provider": "codex",
@@ -317,7 +317,7 @@
     },
     {
       "id": "1-pattern-letters",
-      "hash": "a0402783696380df",
+      "hash": "38557b2d19977798",
       "status": "pass",
       "model": "gpt-6.1-sol",
       "provider": "codex",
@@ -325,31 +325,31 @@
     },
     {
       "id": "1-number-pattern",
-      "hash": "760c6bc0a575a598",
-      "status": "changed since its check",
-      "model": "claude-opus-5-5",
-      "provider": null,
-      "effort": null
+      "hash": "2acc8c27f5f914ce",
+      "status": "pass",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
     },
     {
       "id": "1-build-to",
-      "hash": "c8f6d2e5ae2f9c57",
-      "status": "changed since its check",
-      "model": "claude-opus-5-5",
-      "provider": null,
-      "effort": null
+      "hash": "c601133a7de36625",
+      "status": "pass",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
     },
     {
       "id": "1-missing-addend",
-      "hash": "97d296d34ff421dd",
-      "status": "changed since its check",
-      "model": "claude-opus-5-5",
-      "provider": null,
-      "effort": null
+      "hash": "d9fd3ebe83929eb1",
+      "status": "review",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
     },
     {
       "id": "1-which-sum-more",
-      "hash": "181a51186c919ba3",
+      "hash": "7d23dc547304eb2b",
       "status": "pass",
       "model": "gpt-6.1-sol",
       "provider": "codex",
@@ -357,7 +357,7 @@
     },
     {
       "id": "1-pattern-predict",
-      "hash": "50b7ddf2151f4780",
+      "hash": "9fa34217d24fc10a",
       "status": "pass",
       "model": "gpt-6.1-sol",
       "provider": "codex",
@@ -365,31 +365,31 @@
     },
     {
       "id": "1-letters-to-shapes",
-      "hash": "397fc93c2eac90f1",
-      "status": "changed since its check",
-      "model": "claude-opus-5-5",
-      "provider": null,
-      "effort": null
+      "hash": "816f8cf910f9de34",
+      "status": "pass",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
     },
     {
       "id": "1-change-story",
-      "hash": "deda74d7ee0ba551",
-      "status": "changed since its check",
-      "model": "claude-opus-5-5",
-      "provider": null,
-      "effort": null
+      "hash": "27a256dfe59662e2",
+      "status": "pass",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
     },
     {
       "id": "1-balance-cubes",
-      "hash": "e55df294509fce9c",
-      "status": "changed since its check",
-      "model": "claude-opus-5-5",
-      "provider": null,
-      "effort": null
+      "hash": "45eb5767111395af",
+      "status": "pass",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
     },
     {
       "id": "1-equal-or-not",
-      "hash": "5f5ac92720d81e6a",
+      "hash": "2d13c06ff34e129b",
       "status": "pass",
       "model": "gpt-6.1-sol",
       "provider": "codex",
@@ -397,15 +397,15 @@
     },
     {
       "id": "1-cubes-longer",
-      "hash": "1c9eee247079bae5",
-      "status": "changed since its check",
-      "model": "claude-opus-5-5",
-      "provider": null,
-      "effort": null
+      "hash": "73b33d0cfed44d85",
+      "status": "pass",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
     },
     {
       "id": "1-unit-size",
-      "hash": "651c00e30344ec39",
+      "hash": "98dc73da6a98925b",
       "status": "pass",
       "model": "gpt-6.1-sol",
       "provider": "codex",
@@ -413,7 +413,7 @@
     },
     {
       "id": "1-order-three",
-      "hash": "0b20bbdee820e936",
+      "hash": "4dd9b43780986d5d",
       "status": "pass",
       "model": "gpt-6.1-sol",
       "provider": "codex",
@@ -421,7 +421,7 @@
     },
     {
       "id": "1-shape-sides",
-      "hash": "d6f1308213057f9c",
+      "hash": "00f644aa8fe885e3",
       "status": "pass",
       "model": "gpt-6.1-sol",
       "provider": "codex",
@@ -429,31 +429,31 @@
     },
     {
       "id": "1-sides-in-all",
-      "hash": "ce3770bc6afb4eb7",
-      "status": "changed since its check",
-      "model": "claude-opus-5-5",
-      "provider": null,
-      "effort": null
+      "hash": "a4600d65da9b3dd7",
+      "status": "pass",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
     },
     {
       "id": "1-graph-how-many-more",
-      "hash": "ea5a2566f7ff3480",
-      "status": "changed since its check",
-      "model": "claude-opus-5-5",
-      "provider": null,
-      "effort": null
+      "hash": "fb3faee2bc2051dc",
+      "status": "pass",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
     },
     {
       "id": "1-graph-in-all",
-      "hash": "48b652a7aa21ef1f",
-      "status": "changed since its check",
-      "model": "claude-opus-5-5",
-      "provider": null,
-      "effort": null
+      "hash": "d465dfbe218e5b48",
+      "status": "pass",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
     },
     {
       "id": "1-never-sometimes-always",
-      "hash": "adf938d9b921c51d",
+      "hash": "6b7011d1276cd370",
       "status": "review",
       "model": "gpt-6.1-sol",
       "provider": "codex",
@@ -461,7 +461,7 @@
     },
     {
       "id": "1-more-likely",
-      "hash": "652ec39f31203943",
+      "hash": "7810534c8634689a",
       "status": "review",
       "model": "gpt-6.1-sol",
       "provider": "codex",
@@ -469,7 +469,7 @@
     },
     {
       "id": "1-cover-card",
-      "hash": "be49c5dc09e14c5d",
+      "hash": "89a3835046047415",
       "status": "review",
       "model": "gpt-6.1-sol",
       "provider": "codex",
@@ -477,15 +477,15 @@
     },
     {
       "id": "1-length-together",
-      "hash": "9bcf1054843918c3",
-      "status": "changed since its check",
-      "model": "claude-opus-5-5",
-      "provider": null,
-      "effort": null
+      "hash": "c51064a68670f28b",
+      "status": "pass",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium"
     },
     {
       "id": "1-tallest-child",
-      "hash": "0c0291feee887f58",
+      "hash": "cdb771efd191ca96",
       "status": "pass",
       "model": "gpt-6.1-sol",
       "provider": "codex",
@@ -493,7 +493,7 @@
     },
     {
       "id": "1-heaviest-box",
-      "hash": "67b9028bdc215534",
+      "hash": "8eb8df6df270cc01",
       "status": "pass",
       "model": "gpt-6.1-sol",
       "provider": "codex",
@@ -501,7 +501,7 @@
     },
     {
       "id": "2-digit-value",
-      "hash": "c7373bbf8e40a928",
+      "hash": "059c5fac51960f2b",
       "status": "pass",
       "model": "gpt-6.1-sol",
       "provider": "codex",
@@ -509,7 +509,7 @@
     },
     {
       "id": "2-even-or-odd",
-      "hash": "5ed307581c692285",
+      "hash": "bbcec671c503dc34",
       "status": "pass",
       "model": "gpt-6.1-sol",
       "provider": "codex",
@@ -517,7 +517,7 @@
     },
     {
       "id": "2-ten-more-less",
-      "hash": "4511d6d8c35bfb91",
+      "hash": "499cbc64a9106864",
       "status": "pass",
       "model": "gpt-6.1-sol",
       "provider": "codex",
@@ -525,7 +525,7 @@
     },
     {
       "id": "2-greatest",
-      "hash": "a81970efdfdd29ef",
+      "hash": "09b9d5bc67a6baeb",
       "status": "pass",
       "model": "gpt-6.1-sol",
       "provider": "codex",
@@ -533,7 +533,7 @@
     },
     {
       "id": "2-tens-and-ones",
-      "hash": "73e8de1755777ceb",
+      "hash": "ad8832b6898fa8af",
       "status": "pass",
       "model": "gpt-6.1-sol",
       "provider": "codex",
@@ -541,7 +541,7 @@
     },
     {
       "id": "2-skip-count-back",
-      "hash": "761df61fbc67b01e",
+      "hash": "e8ae60480480eaa8",
       "status": "pass",
       "model": "gpt-6.1-sol",
       "provider": "codex",
@@ -549,7 +549,7 @@
     },
     {
       "id": "2-add-2-digit",
-      "hash": "3fdaecacbc9a1811",
+      "hash": "2045ec8ebc344361",
       "status": "pass",
       "model": "gpt-6.1-sol",
       "provider": "codex",
@@ -557,7 +557,7 @@
     },
     {
       "id": "2-subtract-2-digit",
-      "hash": "3e37ec2fe3d23fff",
+      "hash": "6e4d82cf6b27422e",
       "status": "pass",
       "model": "gpt-6.1-sol",
       "provider": "codex",
@@ -565,7 +565,7 @@
     },
     {
       "id": "2-story-add-2-digit",
-      "hash": "a83bd0e744a7f7e1",
+      "hash": "c85672a23e1236f1",
       "status": "pass",
       "model": "gpt-6.1-sol",
       "provider": "codex",
@@ -573,7 +573,7 @@
     },
     {
       "id": "2-story-subtract-2-digit",
-      "hash": "cc127683630386c7",
+      "hash": "bf54286cbdd6804d",
       "status": "pass",
       "model": "gpt-6.1-sol",
       "provider": "codex",
@@ -581,7 +581,7 @@
     },
     {
       "id": "2-three-addends",
-      "hash": "adb5390bf52fa24b",
+      "hash": "88ee7c8ecf041af7",
       "status": "pass",
       "model": "gpt-6.1-sol",
       "provider": "codex",
@@ -589,15 +589,15 @@
     },
     {
       "id": "2-coins-mixed",
-      "hash": "62b9b95ad0aa2fb0",
-      "status": "review",
+      "hash": "602c76881dba27b5",
+      "status": "pass",
       "model": "gpt-6.1-sol",
       "provider": "codex",
       "effort": "medium"
     },
     {
       "id": "2-make-ten-strategy",
-      "hash": "76132631071fe3eb",
+      "hash": "4f37424a07fab6ef",
       "status": "pass",
       "model": "gpt-6.1-sol",
       "provider": "codex",
@@ -605,7 +605,7 @@
     },
     {
       "id": "2-balance-equation",
-      "hash": "dfe6ed3a6a254d73",
+      "hash": "8049580794942451",
       "status": "review",
       "model": "gpt-6.1-sol",
       "provider": "codex",
@@ -613,23 +613,23 @@
     },
     {
       "id": "2-missing-left",
-      "hash": "24215a0508f03363",
-      "status": "review",
+      "hash": "2142c26db70171ba",
+      "status": "pass",
       "model": "gpt-6.1-sol",
       "provider": "codex",
       "effort": "medium"
     },
     {
       "id": "2-missing-addend",
-      "hash": "8bf3ada63a64cc26",
-      "status": "review",
+      "hash": "37011d37a68a1b85",
+      "status": "pass",
       "model": "gpt-6.1-sol",
       "provider": "codex",
       "effort": "medium"
     },
     {
       "id": "2-increasing-pattern",
-      "hash": "e5e430ae7a3529ab",
+      "hash": "d4577efcf6ea01f6",
       "status": "pass",
       "model": "gpt-6.1-sol",
       "provider": "codex",
@@ -637,7 +637,7 @@
     },
     {
       "id": "2-pattern-core",
-      "hash": "b248da00e23c5166",
+      "hash": "2cb4e38948dd024f",
       "status": "pass",
       "model": "gpt-6.1-sol",
       "provider": "codex",
@@ -645,7 +645,7 @@
     },
     {
       "id": "2-change-unknown",
-      "hash": "9e44198e75fd30a1",
+      "hash": "8689090b492847df",
       "status": "pass",
       "model": "gpt-6.1-sol",
       "provider": "codex",
@@ -653,7 +653,7 @@
     },
     {
       "id": "2-pattern-rows",
-      "hash": "aef0e08dd1805cfc",
+      "hash": "2b7833f0c42f6537",
       "status": "review",
       "model": "gpt-6.1-sol",
       "provider": "codex",
@@ -661,7 +661,7 @@
     },
     {
       "id": "2-number-pattern-predict",
-      "hash": "bbbe3362d54a9ae3",
+      "hash": "f889850ed4510a6b",
       "status": "pass",
       "model": "gpt-6.1-sol",
       "provider": "codex",
@@ -669,7 +669,7 @@
     },
     {
       "id": "2-shape-pattern-predict",
-      "hash": "42dd9e31e8f01adb",
+      "hash": "7ba6ef813782bb1c",
       "status": "pass",
       "model": "gpt-6.1-sol",
       "provider": "codex",
@@ -677,7 +677,7 @@
     },
     {
       "id": "2-true-equation",
-      "hash": "aa6d4835992215a5",
+      "hash": "190b5218f75b86e7",
       "status": "pass",
       "model": "gpt-6.1-sol",
       "provider": "codex",
@@ -685,23 +685,23 @@
     },
     {
       "id": "2-missing-in-pattern",
-      "hash": "5656a6435c4e2f7e",
-      "status": "pass",
+      "hash": "df2b79e34256e4a3",
+      "status": "review",
       "model": "gpt-6.1-sol",
       "provider": "codex",
       "effort": "medium"
     },
     {
       "id": "2-change-unknown-add",
-      "hash": "8451661110212ae5",
-      "status": "pass",
+      "hash": "860b0d0ead23f3ad",
+      "status": "review",
       "model": "gpt-6.1-sol",
       "provider": "codex",
       "effort": "medium"
     },
     {
       "id": "2-ruler-length",
-      "hash": "401509eb6c9de19d",
+      "hash": "1cc4b49df4b21f1f",
       "status": "review",
       "model": "gpt-6.1-sol",
       "provider": "codex",
@@ -709,7 +709,7 @@
     },
     {
       "id": "2-length-unit",
-      "hash": "9f410104d716d2d5",
+      "hash": "dcbae2e170ac0d5a",
       "status": "review",
       "model": "gpt-6.1-sol",
       "provider": "codex",
@@ -717,7 +717,7 @@
     },
     {
       "id": "2-square-or-rectangle",
-      "hash": "c7dc83673c0031c1",
+      "hash": "22433419782be0e8",
       "status": "pass",
       "model": "gpt-6.1-sol",
       "provider": "codex",
@@ -725,7 +725,7 @@
     },
     {
       "id": "2-turned-shape",
-      "hash": "17223956a49ed3f0",
+      "hash": "61ead5643c80a234",
       "status": "pass",
       "model": "gpt-6.1-sol",
       "provider": "codex",
@@ -733,39 +733,39 @@
     },
     {
       "id": "2-face-of-solid",
-      "hash": "eb544b486f909b82",
-      "status": "review",
+      "hash": "37ffcbef48478e76",
+      "status": "pass",
       "model": "gpt-6.1-sol",
       "provider": "codex",
       "effort": "medium"
     },
     {
       "id": "2-roll-and-stack",
-      "hash": "7f6dffcc266c7013",
-      "status": "review",
+      "hash": "fea00695f56507bc",
+      "status": "pass",
       "model": "gpt-6.1-sol",
       "provider": "codex",
       "effort": "medium"
     },
     {
       "id": "2-graph-in-all",
-      "hash": "00b24f200be39aa8",
-      "status": "review",
+      "hash": "ac258726098fade7",
+      "status": "pass",
       "model": "gpt-6.1-sol",
       "provider": "codex",
       "effort": "medium"
     },
     {
       "id": "2-graph-fewer",
-      "hash": "5e77f7071b2b8e33",
-      "status": "review",
+      "hash": "9757c893442bf390",
+      "status": "pass",
       "model": "gpt-6.1-sol",
       "provider": "codex",
       "effort": "medium"
     },
     {
       "id": "2-spinner",
-      "hash": "87a17335e15d822d",
+      "hash": "8e125a49f5e8feb8",
       "status": "review",
       "model": "gpt-6.1-sol",
       "provider": "codex",
@@ -773,7 +773,7 @@
     },
     {
       "id": "2-certain-possible",
-      "hash": "f8121a5b55096afd",
+      "hash": "52133877e88a3c62",
       "status": "review",
       "model": "gpt-6.1-sol",
       "provider": "codex",
@@ -781,47 +781,47 @@
     },
     {
       "id": "2-compare-lengths",
-      "hash": "bc6ffeb8524860bb",
-      "status": "review",
+      "hash": "c7b8b0f17f79a3d1",
+      "status": "pass",
       "model": "gpt-6.1-sol",
       "provider": "codex",
       "effort": "medium"
     },
     {
       "id": "2-sides-in-all",
-      "hash": "bdf5870c316658b3",
-      "status": "review",
+      "hash": "3a2cf580eb0fb0b3",
+      "status": "pass",
       "model": "gpt-6.1-sol",
       "provider": "codex",
       "effort": "medium"
     },
     {
       "id": "3-build-number",
-      "hash": "f57722e3cae7455e",
-      "status": "review",
+      "hash": "2d59208ca1ad4f84",
+      "status": "pass",
       "model": "gpt-6.1-sol",
       "provider": "codex",
       "effort": "medium"
     },
     {
       "id": "3-ten-more-less",
-      "hash": "df704ed68c635ddc",
-      "status": "review",
+      "hash": "f76cee52d40f510b",
+      "status": "pass",
       "model": "gpt-6.1-sol",
       "provider": "codex",
       "effort": "medium"
     },
     {
       "id": "3-greatest",
-      "hash": "81e8670113ae727a",
-      "status": "review",
+      "hash": "38487c7b5bdcaa95",
+      "status": "pass",
       "model": "gpt-6.1-sol",
       "provider": "codex",
       "effort": "medium"
     },
     {
       "id": "3-after-99",
-      "hash": "365762760e291504",
+      "hash": "f4963a5d2486d10d",
       "status": "pass",
       "model": "gpt-6.1-sol",
       "provider": "codex",
@@ -829,7 +829,7 @@
     },
     {
       "id": "3-digit-value",
-      "hash": "dde63156f072e4d1",
+      "hash": "87264f03e9501be8",
       "status": "pass",
       "model": "gpt-6.1-sol",
       "provider": "codex",
@@ -837,7 +837,7 @@
     },
     {
       "id": "3-add-3-digit",
-      "hash": "c70cbc01c52e6638",
+      "hash": "cdb41f537b946a0e",
       "status": "pass",
       "model": "gpt-6.1-sol",
       "provider": "codex",
@@ -845,7 +845,7 @@
     },
     {
       "id": "3-subtract-across-zero",
-      "hash": "e4637db016f5eb3d",
+      "hash": "f429996a68c8a845",
       "status": "pass",
       "model": "gpt-6.1-sol",
       "provider": "codex",
@@ -853,7 +853,7 @@
     },
     {
       "id": "3-story-subtract",
-      "hash": "ec2d35783f98a4bc",
+      "hash": "b2b3efe922dc15d4",
       "status": "pass",
       "model": "gpt-6.1-sol",
       "provider": "codex",
@@ -861,7 +861,7 @@
     },
     {
       "id": "3-equal-groups",
-      "hash": "2ca86f9d5b37aa03",
+      "hash": "b1bd7edcd08caf7b",
       "status": "pass",
       "model": "gpt-6.1-sol",
       "provider": "codex",
@@ -869,7 +869,7 @@
     },
     {
       "id": "3-share-equally",
-      "hash": "e786fe63f152d738",
+      "hash": "5a9bb9cebf56096e",
       "status": "review",
       "model": "gpt-6.1-sol",
       "provider": "codex",
@@ -877,7 +877,7 @@
     },
     {
       "id": "3-money-total",
-      "hash": "e642341673cbbd99",
+      "hash": "8fab32ef34a060fd",
       "status": "review",
       "model": "gpt-6.1-sol",
       "provider": "codex",
@@ -885,7 +885,7 @@
     },
     {
       "id": "3-decreasing-pattern",
-      "hash": "16abcdd58694c572",
+      "hash": "cbab0111c551fb31",
       "status": "pass",
       "model": "gpt-6.1-sol",
       "provider": "codex",
@@ -893,7 +893,7 @@
     },
     {
       "id": "3-increasing-pattern",
-      "hash": "3de7c761dc9f129e",
+      "hash": "9ac562911fee2b3d",
       "status": "pass",
       "model": "gpt-6.1-sol",
       "provider": "codex",
@@ -901,31 +901,31 @@
     },
     {
       "id": "3-pattern-rule",
-      "hash": "4e7f3d901b41cea9",
-      "status": "review",
+      "hash": "922c17425b284cab",
+      "status": "pass",
       "model": "gpt-6.1-sol",
       "provider": "codex",
       "effort": "medium"
     },
     {
       "id": "3-start-unknown",
-      "hash": "9ed3444107238942",
-      "status": "review",
+      "hash": "7ac2bc3267e0049e",
+      "status": "pass",
       "model": "gpt-6.1-sol",
       "provider": "codex",
       "effort": "medium"
     },
     {
       "id": "3-change-unknown",
-      "hash": "4fe765a54ab37158",
-      "status": "review",
+      "hash": "2f35f90ccec4c622",
+      "status": "pass",
       "model": "gpt-6.1-sol",
       "provider": "codex",
       "effort": "medium"
     },
     {
       "id": "3-balance-equation",
-      "hash": "c43fbf835aafea0b",
+      "hash": "cdbc7d2c8b2291da",
       "status": "review",
       "model": "gpt-6.1-sol",
       "provider": "codex",
@@ -933,15 +933,15 @@
     },
     {
       "id": "3-growing-tables",
-      "hash": "3371f74d0ff521d3",
-      "status": "review",
+      "hash": "3ba1be7bda611f38",
+      "status": "pass",
       "model": "gpt-6.1-sol",
       "provider": "codex",
       "effort": "medium"
     },
     {
       "id": "3-area-tiles",
-      "hash": "efe912d2a281274d",
+      "hash": "5557e1028a3f6602",
       "status": "pass",
       "model": "gpt-6.1-sol",
       "provider": "codex",
@@ -949,31 +949,31 @@
     },
     {
       "id": "3-mass-unit",
-      "hash": "cb25a87185966727",
-      "status": "review",
+      "hash": "91ea86d0f1aa2516",
+      "status": "pass",
       "model": "gpt-6.1-sol",
       "provider": "codex",
       "effort": "medium"
     },
     {
       "id": "3-length-convert",
-      "hash": "02dc854fd70372fc",
-      "status": "review",
+      "hash": "1820f33bebda98dc",
+      "status": "pass",
       "model": "gpt-6.1-sol",
       "provider": "codex",
       "effort": "medium"
     },
     {
       "id": "3-solid-parts",
-      "hash": "06123f9b3b88cb75",
-      "status": "review",
+      "hash": "ad0a27174025d4b9",
+      "status": "pass",
       "model": "gpt-6.1-sol",
       "provider": "codex",
       "effort": "medium"
     },
     {
       "id": "3-time-units",
-      "hash": "6188db37a69c2c7f",
+      "hash": "8b105f84f4820436",
       "status": "pass",
       "model": "gpt-6.1-sol",
       "provider": "codex",
@@ -981,15 +981,15 @@
     },
     {
       "id": "3-days-weeks",
-      "hash": "f51763aeb7b21aab",
-      "status": "review",
+      "hash": "1160cc73861a31b4",
+      "status": "pass",
       "model": "gpt-6.1-sol",
       "provider": "codex",
       "effort": "medium"
     },
     {
       "id": "3-bar-graph-more",
-      "hash": "55cd531eb7df8fe9",
+      "hash": "3c4951172725e95e",
       "status": "pass",
       "model": "gpt-6.1-sol",
       "provider": "codex",
@@ -997,15 +997,15 @@
     },
     {
       "id": "3-bag-likely",
-      "hash": "dd0abb4fc2cf1706",
-      "status": "pass",
+      "hash": "632652b52450e471",
+      "status": "review",
       "model": "gpt-6.1-sol",
       "provider": "codex",
       "effort": "medium"
     },
     {
       "id": "3-coin-streak",
-      "hash": "46ffb23ff10a3bfa",
+      "hash": "277655d769ec7243",
       "status": "review",
       "model": "gpt-6.1-sol",
       "provider": "codex",

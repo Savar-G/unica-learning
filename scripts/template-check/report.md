@@ -1,12 +1,12 @@
 # Template check report
 
-Made by `npm run check:templates` (scripts/check-templates.mjs). Bank: all, 527 templates. Updated 2026-10-12 03:21 UTC.
+Made by `npm run check:templates` (scripts/check-templates.mjs). Bank: all, 527 templates. Updated 2026-10-12 16:36 UTC.
 
-Pass: 255. Review: 272. Fail: 0. Error: 0. Not checked: 0. Changed since its check: 0.
+Pass: 260. Review: 267. Fail: 0. Error: 0. Not checked: 0. Changed since its check: 0.
 
 A template passes when the checker found its answers correct, its coded wrong answers wrong, and its BC grade right. Review means a wording problem or a province tag doubt that a person should decide.
 
-## Review (272)
+## Review (267)
 
 ### k-likely-event
 
@@ -304,12 +304,6 @@ A template passes when the checker found its answers correct, its coded wrong an
 - The provincial grades need source confirmation. The products are 144, 256, 345, 434, 516, 598, 680 and 912. Both coded error rules produce their stated wrong answers.
 - Checked 2026-10-12 with gpt-6.1-sol.
 
-### g35-5-remainder
-
-- The ON tag may be one grade later than needed for these direct remainder questions.
-- ON: suggests grade 4 (medium confidence). B2.6 includes division and interpreting remainders in Grade 4. These direct leftover-pencil questions appear to fit, but the notes retain uncertainty about the story mapping.
-- Checked 2026-10-12 with gpt-6.1-sol.
-
 ### g35-5-divide-two-digit
 
 - The provincial grades for division by two-digit numbers need confirmation.
@@ -426,16 +420,12 @@ A template passes when the checker found its answers correct, its coded wrong an
 
 ### g35-5-pattern-next
 
-- Check the Alberta Grade 4 tag against Grade 3.
-- Check whether Ontario teaches these simple constant-step patterns before Grade 4.
-- AB: suggests grade 3 (medium confidence). These simple increasing number patterns appear suitable for Grade 3. The supplied notes do not establish the exact current Alberta pattern outcome.
+- Confirm the AB and SK tags against outcomes for increasing numerical patterns.
 - Checked 2026-10-12 with gpt-6.1-sol.
 
 ### g35-5-pattern-missing
 
-- Check the Alberta Grade 4 tag against Grade 3.
-- Check whether Ontario teaches these simple missing-term patterns before Grade 4.
-- AB: suggests grade 3 (medium confidence). These simple increasing number patterns appear suitable for Grade 3. The supplied notes do not establish the exact current Alberta pattern outcome.
+- Confirm the AB and SK tags against outcomes for missing terms in increasing numerical patterns.
 - Checked 2026-10-12 with gpt-6.1-sol.
 
 ### g35-5-pattern-back
@@ -544,16 +534,12 @@ A template passes when the checker found its answers correct, its coded wrong an
 
 ### g35-5-same-area-perimeter
 
-- Confirm the Alberta outcome for comparing perimeters of rectangles with equal area.
-- Wording: Spoken choices say '1 centimetres'. Use '1 centimetre'.
+- Confirm the AB outcome for area and perimeter relationships.
 - Checked 2026-10-12 with gpt-6.1-sol.
 
 ### g35-5-duration
 
-- Check the AB, SK and MB tags against their exact elapsed-time outcomes. Grade 5 appears later than needed for this difficulty.
-- AB: suggests grade 3 (medium confidence). The supplied notes place time in Grade 3. These short intervals may belong there, but the exact elapsed-time outcome is not supplied.
-- SK: suggests grade 4 (medium confidence). Short elapsed-time calculations across one hour appear to fit Grade 4 clock work. The supplied notes do not confirm the exact outcome.
-- MB: suggests grade 4 (medium confidence). Short elapsed-time calculations across one hour appear to fit Grade 4 clock work. The supplied notes do not confirm the exact outcome.
+- Confirm whether the current AB Grade 3 time outcome includes these elapsed-time calculations.
 - Checked 2026-10-12 with gpt-6.1-sol.
 
 ### g35-5-end-time
@@ -714,7 +700,7 @@ A template passes when the checker found its answers correct, its coded wrong an
 
 ### g35-6-linear-tenth
 
-- The AB, SK and MB grades need source review. This task requires pattern extension but does not require an algebraic expression.
+- Confirm the current AB pattern outcome. The questions do not require an algebraic expression.
 - Checked 2026-10-12 with gpt-6.1-sol.
 
 ### g35-6-linear-difference
@@ -795,13 +781,12 @@ A template passes when the checker found its answers correct, its coded wrong an
 
 ### g35-6-coordinate
 
-- The AB, SK and MB grades require source confirmation.
-- Wording: The spoken choices contain raw ordered-pair notation. A browser voice can omit the comma. Use explicit speech such as '5 comma 4'.
+- Confirm the current AB outcome for ordered pairs.
 - Checked 2026-10-12 with gpt-6.1-sol.
 
 ### g35-6-coordinate-slide
 
-- The AB, SK and MB grades need confirmation. The unchanged-point answers plausibly result from ignoring the movement sentence.
+- Confirm the current AB outcome for translations using ordered pairs.
 - Checked 2026-10-12 with gpt-6.1-sol.
 
 ### g35-6-experimental-estimate
@@ -877,12 +862,14 @@ A template passes when the checker found its answers correct, its coded wrong an
 
 ### g67-5-equivalent-fraction
 
-- The AB, MB and ON outcome scope requires confirmation. All marked equivalents are correct. Every coded error produces the stated wrong fraction.
+- Review the ON tag against Grade 5 equivalent-fraction expectations. Confirm the AB scope.
+- ON: suggests grade 5 (medium confidence). The supplied Grade 5 B1.3 note already includes equivalent fraction representations. Grade 6 appears late for these simple scaling tasks, but the full denominator scope needs confirmation.
 - Checked 2026-10-12 with gpt-6.1-sol.
 
 ### g67-5-missing-numerator
 
-- The AB, MB and ON outcome scope requires confirmation. The missing numerators are 2, 4, 6, 9, 12, 16, 25 and 48. All coded wrong answers match their misconceptions.
+- Review the ON tag against Grade 5 equivalent-fraction expectations. Confirm the AB scope.
+- ON: suggests grade 5 (medium confidence). The supplied Grade 5 B1.3 note already includes equivalent fraction representations. Grade 6 appears late for these simple scaling tasks, but denominators through 54 need scope confirmation.
 - Checked 2026-10-12 with gpt-6.1-sol.
 
 ### g67-5-greatest-decimal
@@ -1030,11 +1017,6 @@ A template passes when the checker found its answers correct, its coded wrong an
 - The Ontario Grade 5 expectation covers fractions from halves through twelfths. Wrong choices with denominators up to 47 need a scope check.
 - Checked 2026-10-12 with gpt-6.1-sol.
 
-### g67-6-greatest-fraction
-
-- The supplied notes do not fully establish the AB, SK and MB grade mappings for comparisons with denominators up to 23.
-- Checked 2026-10-12 with gpt-6.1-sol.
-
 ### g67-6-ratio-part-whole
 
 - Checked 2026-10-12 with gpt-6.1-sol.
@@ -1129,7 +1111,8 @@ A template passes when the checker found its answers correct, its coded wrong an
 
 ### g67-6-trapezoid-area
 
-- The supplied evidence does not confirm the province tags for trapezoid area.
+- The supplied provincial notes do not resolve the trapezoid-area tags.
+- The independently calculated areas are 8, 24, 36, 45, 56, 70, 88 and 150. Each wrong answer follows the stated error.
 - Checked 2026-10-12 with gpt-6.1-sol.
 
 ### g67-6-angle-type
@@ -1175,11 +1158,6 @@ A template passes when the checker found its answers correct, its coded wrong an
 
 - Checked 2026-10-12 with gpt-6.1-sol.
 
-### g67-6-l-shape-perimeter
-
-- The ON tag requires source review because all side lengths are given and no missing length must be found.
-- Checked 2026-10-12 with gpt-6.1-sol.
-
 ### g67-7-greatest-integer
 
 - Checked 2026-10-12 with gpt-6.1-sol.
@@ -1204,12 +1182,6 @@ A template passes when the checker found its answers correct, its coded wrong an
 
 ### g67-7-decimal-order-of-operations
 
-- Checked 2026-10-12 with gpt-6.1-sol.
-
-### g67-7-times-five
-
-- The Ontario Grade 7 tag appears later than the supplied Grade 5 expression-evaluation expectation.
-- ON: suggests grade 5 (medium confidence). Grade 5 C2.2 explicitly includes evaluation of whole-number expressions. These single-product questions appear to fit that earlier grade. The precise multiplication range needs source review.
 - Checked 2026-10-12 with gpt-6.1-sol.
 
 ### g67-7-change-several
@@ -1292,12 +1264,6 @@ A template passes when the checker found its answers correct, its coded wrong an
 ### g67-7-two-step-plus
 
 - The first teaching grade for these two-step equations remains uncertain for SK and MB.
-- Checked 2026-10-12 with gpt-6.1-sol.
-
-### g67-7-story-equation
-
-- Review the Ontario tag against the outcome for representing a verbal relationship as an equation.
-- ON: suggests grade 6 (medium confidence). These simple whole-number relationships appear suitable for Grade 6. The supplied C2.3 evidence confirms solving, but does not confirm the earliest grade for equation representation.
 - Checked 2026-10-12 with gpt-6.1-sol.
 
 ### g67-7-negative-input
@@ -1393,7 +1359,7 @@ A template passes when the checker found its answers correct, its coded wrong an
 
 ### g67-8-combine-expression
 
-- Review the earliest grade for expression evaluation in Saskatchewan and Manitoba.
+- The earliest grade for this substitution task remains uncertain in Saskatchewan and Manitoba.
 - Checked 2026-10-12 with gpt-6.1-sol.
 
 ### g67-8-expression-story
@@ -1411,7 +1377,7 @@ A template passes when the checker found its answers correct, its coded wrong an
 - The current Alberta grade placement needs source review. Each correct probability is 1 divided by twice the number of spinner sections. Each addition error equals the spinner probability plus 1/2. Each other error ignores the coin.
 - Checked 2026-10-12 with gpt-6.1-sol.
 
-## Pass (255)
+## Pass (260)
 
 - `k-count-shapes` (2026-10-12, gpt-6.1-sol)
 - `k-number-after` (2026-10-12, gpt-6.1-sol)
@@ -1578,6 +1544,7 @@ A template passes when the checker found its answers correct, its coded wrong an
 - `g35-4-pictograph` (2026-10-12, gpt-6.1-sol)
 - `g35-4-pictograph-half` (2026-10-12, gpt-6.1-sol)
 - `g35-4-bar-scale` (2026-10-12, gpt-6.1-sol)
+- `g35-5-remainder` (2026-10-12, gpt-6.1-sol)
 - `g35-5-full-groups` (2026-10-12, gpt-6.1-sol)
 - `g35-5-enough-buses` (2026-10-12, gpt-6.1-sol)
 - `g35-5-annexing-zeros` (2026-10-12, gpt-6.1-sol)
@@ -1613,6 +1580,7 @@ A template passes when the checker found its answers correct, its coded wrong an
 - `g67-6-share-money` (2026-10-12, gpt-6.1-sol)
 - `g67-6-mixed-to-improper` (2026-10-12, gpt-6.1-sol)
 - `g67-6-count-parts` (2026-10-12, gpt-6.1-sol)
+- `g67-6-greatest-fraction` (2026-10-12, gpt-6.1-sol)
 - `g67-6-ratio-part-part` (2026-10-12, gpt-6.1-sol)
 - `g67-6-equation-words` (2026-10-12, gpt-6.1-sol)
 - `g67-6-balance-box` (2026-10-12, gpt-6.1-sol)
@@ -1624,18 +1592,21 @@ A template passes when the checker found its answers correct, its coded wrong an
 - `g67-6-triangle-sides` (2026-10-12, gpt-6.1-sol)
 - `g67-6-triangle-angles` (2026-10-12, gpt-6.1-sol)
 - `g67-6-plot-point` (2026-10-12, gpt-6.1-sol)
+- `g67-6-l-shape-perimeter` (2026-10-12, gpt-6.1-sol)
 - `g67-7-add-integers` (2026-10-12, gpt-6.1-sol)
 - `g67-7-subtract-integers` (2026-10-12, gpt-6.1-sol)
 - `g67-7-multiply-integers` (2026-10-12, gpt-6.1-sol)
 - `g67-7-divide-integers` (2026-10-12, gpt-6.1-sol)
 - `g67-7-temperature` (2026-10-12, gpt-6.1-sol)
 - `g67-7-integer-order-of-operations` (2026-10-12, gpt-6.1-sol)
+- `g67-7-times-five` (2026-10-12, gpt-6.1-sol)
 - `g67-7-decimal-between` (2026-10-12, gpt-6.1-sol)
 - `g67-7-integer-add-equation` (2026-10-12, gpt-6.1-sol)
 - `g67-7-integer-subtract-equation` (2026-10-12, gpt-6.1-sol)
 - `g67-7-two-step-minus` (2026-10-12, gpt-6.1-sol)
 - `g67-7-two-step-divide` (2026-10-12, gpt-6.1-sol)
 - `g67-7-two-step-story` (2026-10-12, gpt-6.1-sol)
+- `g67-7-story-equation` (2026-10-12, gpt-6.1-sol)
 - `g67-7-check-solution` (2026-10-12, gpt-6.1-sol)
 - `g67-7-table-far` (2026-10-12, gpt-6.1-sol)
 - `g67-7-point-on-line` (2026-10-12, gpt-6.1-sol)
