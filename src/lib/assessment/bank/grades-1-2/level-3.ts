@@ -194,8 +194,9 @@ export const LEVEL_3: readonly TaggedTemplate[] = [
   },
   {
     // Coins and bills to 100 dollars (3.14). WNCP has no money outcomes before grade 4.
+    // AB grade 3: loonies, toonies and bills; ON2 F1.1 names the same coins and bills; SK N2.2 and MB 2.N.9 add to 100.
     id: "3-money-total",
-    strand: "O", grades: { BC: 3, AB: 4, SK: 4, MB: 4, ON: 3 }, format: "number", whiteboard: true, standard: "3.14",
+    strand: "O", grades: { BC: 3, AB: 3, SK: 2, MB: 2, ON: 2 }, format: "number", whiteboard: true, standard: "3.14",
     fill(rng) {
       const [twenties, tens, fives, toonies] = draw(
         rng,
@@ -483,8 +484,9 @@ export const LEVEL_3: readonly TaggedTemplate[] = [
   },
   {
     // Likelihood with a bag (3.13; map, grade 3). WNCP starts likelihood in grade 5.
+    // AB: likelihood first in grade 6 (MAT6-OI8-GQ1-LO1-KO2-SP).
     id: "3-bag-likely",
-    strand: "DP", grades: { BC: 3, AB: 5, SK: 5, MB: 5, ON: 3 }, format: "choice", whiteboard: false, standard: "3.13",
+    strand: "DP", grades: { BC: 3, AB: 6, SK: 5, MB: 5, ON: 3 }, format: "choice", whiteboard: false, standard: "3.13",
     fill(rng) {
       const [x, y] = rng.shuffle(["blue", "red", "green", "yellow"]);
       const many = rng.int(3, 8), few = rng.int(1, many - 2);
@@ -501,15 +503,16 @@ export const LEVEL_3: readonly TaggedTemplate[] = [
   },
   {
     // A coin toss is 50-50 (3.13 elaboration; misconception D2). WNCP starts likelihood in grade 5.
+    // AB: likelihood first in grade 6 (MAT6-OI8-GQ1-LO1-KO2-SP).
     id: "3-coin-streak",
-    strand: "DP", grades: { BC: 3, AB: 5, SK: 5, MB: 5, ON: 3 }, format: "choice", whiteboard: false, standard: "3.13",
+    strand: "DP", grades: { BC: 3, AB: 6, SK: 5, MB: 5, ON: 3 }, format: "choice", whiteboard: false, standard: "3.13",
     fill(rng) {
       const n = rng.int(3, 5), heads = rng.int(0, 1) === 1;
       const [side, other] = heads ? ["heads", "tails"] : ["tails", "heads"];
       return {
         values: { n, heads: heads ? 1 : 0 },
-        prompt: `A coin landed on ${side} ${n} times in a row. On the next toss, which is more likely?`,
-        readAloud: `A coin landed on ${side} ${n} times in a row. On the next toss, which is more likely?`,
+        prompt: `A fair coin landed on ${side} ${n} times in a row. On the next toss, which is more likely?`,
+        readAloud: `A fair coin landed on ${side} ${n} times in a row. On the next toss, which is more likely?`,
         answer: "Heads and tails are equally likely",
         wrong: [wrong(cap(other), "D2"), wrong(cap(side), "streak")],
       };

@@ -14,6 +14,16 @@ const template = (id: string, strand: TaggedTemplate["strand"], standard: string
 });
 
 const thousandths = { ON: 6 as const };
+// Constant-step number patterns below 100. BC 3.6. Next or missing term: AB MAT4-OI6-GQ1-LO1-KO2-SP (first five terms
+// from the initial term and constant change), SK P2.2 and MB 2.PR.2 (extend increasing patterns to 100). The step: AB
+// MAT3-OI6-GQ1-LO1-KO2-SP (the change from term to term), ON3 C1.1.
+const PATTERN_TAGS: Record<string, Partial<Record<TaggedProvince, Level>>> = {
+  next: { BC: 3, AB: 4, SK: 2, MB: 2, ON: 4 },
+  missing: { BC: 3, AB: 4, SK: 2, MB: 2, ON: 4 },
+  step: { BC: 3, AB: 3, SK: 2, MB: 2, ON: 3 },
+};
+// Evaluating an expression for a given value: SK P6.3 and MB 7.PR.5 are the first outcomes; AB MAT5-OI2-GQ1-LO1-KO2-SP.
+const EVALUATE_TAGS = { SK: 6 as const, MB: 7 as const };
 const wordNumber = (h: number, t: number, o: number) => `${h} hundred thousand plus ${t} thousand plus ${o}`;
 
 export const LEVEL_5: readonly TaggedTemplate[] = [
@@ -62,13 +72,15 @@ export const LEVEL_5: readonly TaggedTemplate[] = [
     return { values: { size, groups, rem }, prompt: `${total} pencils go into packs of ${size}. How many pencils are left after all full packs are made?`,
       readAloud: `${total} pencils go into packs of ${size}. How many pencils are left after all full packs are made?`, answer: String(rem),
       wrong: typedWrong(rem, [[groups, "remainder-quotient"], [0, "remainder-zero"]]) };
-  }),
+  // AB MAT4-OI1-GQ4-LO1-KO1-SP: three-digit by one-digit division, a quotient with a remainder.
+  }, "number", { AB: 4 }),
   template("full-groups", "O", "5.6", (rng) => {
     const size = rng.int(3, 9), groups = rng.int(12, 35), rem = rng.int(1, size - 1), total = size * groups + rem;
     return { values: { size, groups, rem }, prompt: `There are ${total} beads. A bracelet needs ${size} beads. How many complete bracelets can be made?`,
       readAloud: `There are ${total} beads. A bracelet needs ${size} beads. How many complete bracelets can be made?`, answer: String(groups),
       wrong: typedWrong(groups, [[rem, "remainder-quotient"], [groups + 1, "remainder-context"]]) };
-  }),
+  // The same AB grade 4 outcome, and ON4 B2.6 (two- or three-digit numbers divided by one-digit numbers).
+  }, "number", { AB: 4, ON: 4 }),
   template("enough-buses", "O", "5.6", (rng) => {
     const seats = rng.pick([12, 15, 20, 25]), full = rng.int(3, 8), extra = rng.int(1, seats - 1), total = seats * full + extra;
     return { values: { seats, full, extra }, prompt: `${total} people need a ride. Each bus holds ${seats} people. What is the least number of buses needed?`,
@@ -85,7 +97,8 @@ export const LEVEL_5: readonly TaggedTemplate[] = [
     return { values: { tens, ones, factor }, prompt: `Use ${tens * 10} and ${ones} to find ${n} × ${factor}. What is the answer?`,
       readAloud: `Use ${tens * 10} and ${ones} to find ${n} times ${factor}. What is the answer?`, answer: String(n * factor),
       wrong: typedWrong(n * factor, [[tens * 10 * factor + ones, "distribute-one"], [tens * 10 + ones * factor, "distribute-one"]]) };
-  }),
+  // Two-digit by one-digit, split into tens and ones: AB4 (MAT4-OI1-GQ4-LO1-KO1-SP), SK N4.4, ON4 B2.5 with B2.1.
+  }, "number", { AB: 4, SK: 4, ON: 4 }),
   template("budget-left", "O", "5.19", (rng) => {
     const budget = rng.int(20, 70) * 1000, a = rng.int(20, 80) * 100, b = rng.int(21, 90) * 100, right = budget - a - b;
     return { values: { budget, a, b }, prompt: `A club has ${money(budget)}. It spends ${money(a)} on supplies and ${money(b)} on snacks. How many dollars are left?`,
@@ -97,7 +110,8 @@ export const LEVEL_5: readonly TaggedTemplate[] = [
     return { values: { paid, cost }, prompt: `A purchase costs ${money(cost)}. You pay ${money(paid)}. How many dollars in change should you get?`,
       readAloud: `A purchase costs ${sayMoney(cost)}. You pay ${sayMoney(paid)}. How many dollars in change should you get?`, answer: moneyAnswer(right),
       wrong: typedWrong(right / 100, [[(paid + cost) / 100, "operation"], [cost / 100, "ignores-given"]]) };
-  }, "number", { MB: 4 }),
+  // AB MAT4-OI1-GQ2-LO1: add and subtract within 10 000 with hundredths, including money problems.
+  }, "number", { AB: 4, MB: 4 }),
 
   // Equivalent fractions do not require fraction arithmetic. BC does not introduce that until grade 8.
   ...["numerator", "denominator", "scale-up", "scale-down", "region", "number-line"].map((task) => template(`equivalent-${task}`, "F", "5.3", (rng) => {
@@ -117,19 +131,23 @@ export const LEVEL_5: readonly TaggedTemplate[] = [
     return { values: { n, d, k }, prompt: context,
       readAloud: task === "region" || task === "number-line" ? context : `Which fraction with ${target} on the bottom is equal to ${down ? sayFrac(n * k, d * k) : sayFrac(n, d)}?`,
       answer: right, wrong: [wrong(frac(down ? n * k : n, target), "fraction-one-side"), down ? wrong(frac(n * k - k, d * k - k), "fraction-subtract") : wrong(frac(n + k, d + k), "F9"), wrong(frac(target - (down ? n : n * k), target), task === "region" ? "fraction-other-part" : "complement")] };
-  }, ["numerator", "denominator"].includes(task) ? "number" : "choice")),
+  // AB MAT4-OI1-GQ5-LO1-KO1-SP (equivalent fractions, simplify, number line). Denominators reach 50, past the halves to
+  // twelfths of ON5 B1.3, so Ontario meets these at grade 6 (B1.6).
+  }, ["numerator", "denominator"].includes(task) ? "number" : "choice", { AB: 4, ON: 6 })),
   template("fraction-to-hundredths", "F", "5.4", (rng) => {
     const [n, d] = rng.pick([[1, 4], [3, 4], [1, 5], [2, 5], [3, 5], [4, 5], [1, 10], [3, 10]] as const), cents = n * (100 / d);
     return { values: { n, d }, prompt: `Which decimal is equal to ${frac(n, d)}?`, readAloud: `Which decimal is equal to ${sayFrac(n, d)}?`,
       answer: dec(cents, 2), wrong: [wrong(dec(cents, 3), "decimal-point"), wrong(`${n}.${d}`, "F7"), wrong(dec(100 - cents, 2), "complement")] };
-  }, "choice", { AB: 6, SK: 6, MB: 6 }),
+  // SK N5.6 with N5.5 and MB 5.N.9 with 5.N.7 relate decimals to fractions through equivalent fractions.
+  }, "choice", { AB: 6 }),
   template("decimal-half", "F", "5.4", (rng) => {
     const high = rng.int(51, 89), lows = rng.shuffle([12, 21, 32, 43, 49]).slice(0, 3);
     return { values: { high }, prompt: "Which decimal is greater than one half?", readAloud: "Which decimal is greater than one half?",
       answer: dec(high, 2), wrong: lows.map((n) => wrong(dec(n, 2), "F6")) };
   }, "choice"),
   template("fraction-near-whole", "F", "5.4", (rng) => {
-    const d = rng.int(6, 15), low = rng.shuffle([1, 2, 3]).slice(0, 3);
+    // Halves to twelfths, the ON5 B1.4 comparison range.
+    const d = rng.int(6, 12), low = rng.shuffle([1, 2, 3]).slice(0, 3);
     return { values: { d }, prompt: "Which fraction is closest to one whole?", readAloud: "Which fraction is closest to one whole?",
       answer: frac(d - 1, d), wrong: low.map((n) => wrong(frac(n, d), n === 1 ? "more-less" : "fraction-order")) };
   }, "choice"),
@@ -137,7 +155,8 @@ export const LEVEL_5: readonly TaggedTemplate[] = [
     const t = rng.int(1, 9);
     return { values: { t }, prompt: `Which decimal is equal to 0.${t}0?`, readAloud: `Which decimal is equal to ${t * 10} hundredths?`,
       answer: `0.${t}`, wrong: [wrong(`0.0${t}`, "decimal-point"), wrong(`${t}.0`, "decimal-point"), wrong(`${t}0.0`, "decimal-point")] };
-  }, "choice"),
+  // AB grade 4: a decimal is named by the place value of its last non-zero digit.
+  }, "choice", { AB: 4 }),
   template("thousandths-fraction", "F", "5.2", (rng) => {
     const n = draw(rng, (r) => r.int(111, 899), (x) => x % 10 !== 0);
     return { values: { n }, prompt: `Which decimal is equal to ${frac(n, 1000)}?`, readAloud: `Which decimal is equal to ${sayFrac(n, 1000)}?`,
@@ -152,6 +171,17 @@ export const LEVEL_5: readonly TaggedTemplate[] = [
     const t = rng.int(4, 8), a = rng.int(111, t * 100 - 1), b = rng.int(t * 100 + 1, 899);
     return { values: { t, a, b }, prompt: "Which decimal is greatest?", readAloud: "Which decimal is greatest?", answer: dec(b, 3),
       wrong: [wrong(dec(t, 1), "decimal-order"), wrong(dec(a, 3), "decimal-order"), wrong(dec(t, 2), "more-less")] };
+  }, "choice", thousandths),
+  // A thousandths decimal between two hundredths: AB MAT5-OI1-GQ1-LO1-KO1-SP (a decimal between two decimals), SK N5.6,
+  // MB 5.N.10. Each wrong choice is outside the interval: the digit in the hundredths place, or past either end.
+  template("decimal-between", "F", "5.2", (rng) => {
+    const whole = rng.int(1, 9), low = rng.int(11, 88), d = rng.int(1, 9), at = (n: number) => dec(whole * 1000 + n, 3);
+    const right = at(low * 10 + d), lowText = dec(whole * 100 + low, 2), highText = dec(whole * 100 + low + 1, 2);
+    const shifted = dec(whole * 100 + Math.floor(low / 10) * 10 + d, 2);
+    return { values: { whole, low, d }, prompt: `Which decimal is between ${lowText} and ${highText}?`,
+      readAloud: `Which decimal is between ${lowText} and ${highText}?`, answer: right,
+      wrong: [...(Number(shifted) < Number(lowText) || Number(shifted) > Number(highText) ? [wrong(shifted, "decimal-point")] : []),
+        wrong(at((low + 1) * 10 + d), "bounds-error"), wrong(at((low - 1) * 10 + d), "bounds-error")] };
   }, "choice", thousandths),
   ...["add", "subtract"].map((op) => template(`${op}-thousandths`, "O", "5.7", (rng) => {
     const a = rng.int(3501, 8999), b = rng.int(101, 3499), right = op === "add" ? a + b : a - b;
@@ -190,7 +220,7 @@ export const LEVEL_5: readonly TaggedTemplate[] = [
     const [prompt, right, mistake] = prompts[task as keyof typeof prompts];
     return { values: { first, step }, prompt, readAloud: prompt.replace(/\?,/g, "a missing number,"), answer: String(right),
       wrong: typedWrong(right, [[mistake, task === "next" ? "skip-by-one" : task === "missing" ? "A2" : task === "back" ? "pattern-earlier" : task === "step" ? "pattern-start-step" : "pattern-step-count"], [right + step, "pattern-step-count"]]) };
-  }, "number", { BC: ["next", "missing", "step"].includes(task) ? 3 : 5, ON: 4 })),
+  }, "number", PATTERN_TAGS[task] ?? { ON: 4 })),
   // Ontario 2020 C2.2 explicitly evaluates whole-number expressions in grade 5.
   ...["add", "subtract", "take-away", "multiply", "divide", "divisor"].map((op) => template(`evaluate-${op}`, "A", "5.11", (rng) => {
     const n = rng.int(12, 49), k = rng.int(3, 9);
@@ -208,7 +238,7 @@ export const LEVEL_5: readonly TaggedTemplate[] = [
     return { values: { input, constant }, prompt: `Evaluate ${shown} when n is ${input}.`,
       readAloud: `Evaluate ${spoken} when n is ${input}.`, answer: String(right),
       wrong: typedWrong(right, [[mistake, "operation"], [input, "expression-copy"], ...(op === "multiply" ? [[Number(`${constant}${input}`), "A3"] as [number, "A3"]] : [])]) };
-  })),
+  }, "number", EVALUATE_TAGS)),
   ...["rows", "cards-total", "cards-left", "sharing"].map((task) => template(`expression-${task}`, "A", "5.11", (rng) => {
     const n = rng.int(12, 39), k = rng.int(3, 9), input = task === "sharing" ? n * k : n;
     const versions = {
@@ -224,7 +254,7 @@ export const LEVEL_5: readonly TaggedTemplate[] = [
     const [prompt, readAloud, right, mistake] = versions[task as keyof typeof versions];
     return { values: { input, k }, prompt, readAloud, answer: String(right),
       wrong: typedWrong(right, [[mistake, "operation"], [input, "expression-copy"]]) };
-  })),
+  }, "number", EVALUATE_TAGS)),
   template("variable-rule", "A", "5.10", (rng) => {
     const k = rng.int(3, 8), n = rng.int(4, 12), right = k * n;
     return { values: { k, n }, prompt: `The rule is ${k} × n. What is the result when n is ${n}?`,
@@ -246,12 +276,21 @@ export const LEVEL_5: readonly TaggedTemplate[] = [
       readAloud: `A rectangle is ${a} centimetres long and ${b} centimetres wide. What is its area in square centimetres?`, answer: String(right),
       wrong: typedWrong(right, [[2 * (a + b), "M2"], [a + b, "M2"]]) };
   }, "number", { AB: 4, ON: 4 }),
+  // Two-digit sides need a two-digit by two-digit product: AB MAT5-OI1-GQ4, SK and MB grade 5 multiplication, ON5 B2.6.
+  template("area-two-digit", "MG", "5.12", (rng) => {
+    const a = rng.int(11, 29), b = rng.int(11, 29), right = a * b;
+    const [place, unit, sayUnit] = rng.pick([["garden", "m", "metres"], ["poster", "cm", "centimetres"], ["rug", "dm", "decimetres"]] as const);
+    return { values: { a, b }, prompt: `A rectangular ${place} is ${a} ${unit} long and ${b} ${unit} wide. What is its area in square ${sayUnit}?`,
+      readAloud: `A rectangular ${place} is ${a} ${sayUnit} long and ${b} ${sayUnit} wide. What is its area in square ${sayUnit}?`, answer: String(right),
+      wrong: typedWrong(right, [[2 * (a + b), "M2"], [Math.floor(a / 10) * Math.floor(b / 10) * 100 + (a % 10) * (b % 10), "place-pairs"], [a + b, "area-add"]]) };
+  }),
   template("square-area", "MG", "5.12", (rng) => {
     const side = rng.int(5, 19), right = side * side;
     return { values: { side }, prompt: `A square has a side of ${side} cm. What is its area in square centimetres?`,
       readAloud: `A square has a side of ${side} centimetres. What is its area in square centimetres?`, answer: String(right),
       wrong: typedWrong(right, [[4 * side, "M2"], [2 * side, "M2"]]) };
-  }, "number", { AB: 4, ON: 4 }),
+  // Sides to 19 need two-digit by two-digit products: AB MAT5-OI1-GQ4 and ON5 B2.6.
+  }, "number"),
   template("area-width", "MG", "5.12", (rng) => {
     const a = rng.int(4, 12), b = rng.int(3, 9), area = a * b;
     return { values: { a, b }, prompt: `A rectangle has an area of ${area} square centimetres. Its length is ${a} cm. What is its width in centimetres?`,
@@ -270,6 +309,19 @@ export const LEVEL_5: readonly TaggedTemplate[] = [
       readAloud: `A rectangle is ${a} centimetres by ${b} centimetres. A second rectangle has the same perimeter and is ${a - 1} centimetres long. What is the second rectangle's area in square centimetres?`, answer: String(right),
       wrong: typedWrong(right, [[a * b, "area-perimeter-link"], [2 * (a + b), "M2"]]) };
   }, "number", { ON: 4 }),
+  // Rectangles with one area and different perimeters (BC 5.13; AB MAT5-OI5-GQ1-LO1-KO1-SP compares the perimeters of
+  // rectangles with the same area; SK SS5.1, MB 5.SS.1; ON4 E2.7).
+  template("same-area-perimeter", "MG", "5.13", (rng) => {
+    const area = rng.pick([24, 36, 40, 48, 60, 72]), most = rng.int(0, 1) === 1;
+    const sides = Array.from({ length: area }, (_, i) => i + 1).filter((a) => area % a === 0 && a * a <= area);
+    const picked = rng.shuffle(sides).slice(0, 4).sort((a, b) => a - b);
+    const name = (a: number) => `${a} cm by ${area / a} cm`;
+    // The perimeter is greatest for the longest, thinnest rectangle and least for the one closest to a square.
+    const right = most ? picked[0] : picked[picked.length - 1], opposite = most ? picked[picked.length - 1] : picked[0];
+    return { values: { area, most: most ? 1 : 0 }, prompt: `Each rectangle has an area of ${area} square centimetres. Which one has the ${most ? "greatest" : "least"} perimeter?`,
+      readAloud: `Each rectangle has an area of ${area} square centimetres. Which one has the ${most ? "greatest" : "least"} perimeter?`, answer: name(right),
+      wrong: picked.filter((a) => a !== right).map((a) => wrong(name(a), a === opposite ? "more-less" : "area-perimeter-link")) };
+  }, "choice", { ON: 4 }),
   template("duration", "MG", "5.14", (rng) => {
     // start − end = 30 equals the answer, and start − end = 50 equals the base-10 error: each coded value has one cause.
     const hour = rng.int(1, 8), [start, end] = draw(rng, (r) => [r.int(35, 55), r.int(5, 25)], ([s, e]) => s - e !== 30 && s - e !== 50), right = 60 - start + end;
@@ -282,26 +334,30 @@ export const LEVEL_5: readonly TaggedTemplate[] = [
     return { values: { h, m, duration }, prompt: `A trip starts at ${time(h, m, "p.m.")} and lasts ${duration} minutes. When does it end?`,
       readAloud: `A trip starts at ${sayTime(h, m, "p.m.")} and lasts ${duration} minutes. When does it end?`, answer: time(h + 1, end),
       wrong: [wrong(time(h, m + duration), "M8"), wrong(time(h, end), "clock-carry"), wrong(time(h + 1, duration), "ignores-given")] };
-  }, "choice", { ON: 4 }),
+  // AB MAT4-OI7-GQ1-LO1-KO1-SP (duration), SK SS4.1 and MB 4.SS.1 (digital time), ON4 E2.3.
+  }, "choice", { AB: 4, SK: 4, MB: 4, ON: 4 }),
   template("prism-faces", "MG", "5.15", (rng) => {
     const sides = rng.pick([3, 4, 5, 6, 8]);
     return { values: { sides }, prompt: `A prism has two bases. Each base is a polygon with ${sides} sides. How many faces does the prism have?`,
       readAloud: `A prism has two bases. Each base is a polygon with ${sides} sides. How many faces does the prism have?`, answer: String(sides + 2),
       wrong: typedWrong(sides + 2, [[sides, "missing-base"], [3 * sides, "faces-corners"], [2 * sides, "faces-corners"]]) };
-  }, "number", { AB: 6, SK: 6, MB: 6 }),
+  // Faces of prisms: AB MAT4-OI3-GQ1-LO1-KO1-SP, SK SS4.3, MB 3.SS.6, ON3 E1.1 (a prism has two polygon bases).
+  }, "number", { AB: 4, SK: 4, MB: 3, ON: 3 }),
   template("pyramid-faces", "MG", "5.15", (rng) => {
     const sides = rng.pick([3, 4, 5, 6, 8]);
     return { values: { sides }, prompt: `A pyramid has a base with ${sides} sides. How many faces does it have, including the base?`,
       readAloud: `A pyramid has a base with ${sides} sides. How many faces does it have, including the base?`, answer: String(sides + 1),
       wrong: typedWrong(sides + 1, [[sides, "missing-base"], [2 * sides, "faces-corners"], [sides + 2, "shape-name"]]) };
-  }, "number", { AB: 6, SK: 6, MB: 6 }),
+  // Faces of pyramids: SK SS3.4, MB 3.SS.6, ON3 E1.1. AB names no pyramid face count; its grade 4 face analysis is used.
+  }, "number", { AB: 4, SK: 3, MB: 3, ON: 3 }),
   template("transformation", "MG", "5.16", (rng) => {
     const [motion, answer] = rng.pick([["slides without turning", "Translation"], ["flips across a mirror line", "Reflection"], ["turns around a fixed point", "Rotation"]] as const);
     const name = rng.pick(NAMES), shape = rng.pick(["triangle", "square", "pentagon", "arrow", "rectangle"]);
     return { values: {}, prompt: `${name} moves a ${shape}. It ${motion}. What is this movement called?`,
       readAloud: `${name} moves a ${shape}. It ${motion}. What is this movement called?`, answer,
       wrong: ["Translation", "Reflection", "Rotation"].filter((x) => x !== answer).map((x) => wrong(x, "transformation-name")) };
-  }, "choice"),
+  // AB MAT2-OI3-GQ1-LO1-KO2: slides (translations), turns (rotations) and flips (reflections).
+  }, "choice", { AB: 2 }),
   template("mirror-distance", "MG", "5.16", (rng) => {
     const gap = rng.int(2, 9);
     return { values: { gap }, prompt: `A point is ${gap} cm to the left of a mirror line. Its reflection is on the right. How far is the reflection from the mirror line, in centimetres?`,
@@ -311,15 +367,18 @@ export const LEVEL_5: readonly TaggedTemplate[] = [
   template("double-bar-difference", "DP", "5.17", (rng) => {
     const scale = 2, a = rng.int(7, 14), b = rng.int(1, 5), c = rng.int(2, 6), d = rng.int(3, 8);
     return { values: { scale, a, b, c, d }, figure: { kind: "bars", bars: [{ label: "Mon Ana", value: a * scale }, { label: "Mon Ben", value: c * scale }, { label: "Tue Ana", value: b * scale }, { label: "Tue Ben", value: d * scale }] }, prompt: "The graph compares books Ana and Ben read on Monday and Tuesday. How many more books did Ana read on Monday than Tuesday?",
-      readAloud: `The graph shows Ana read ${a * scale} books on Monday and ${b * scale} on Tuesday. Ben read ${c * scale} on Monday and ${d * scale} on Tuesday. How many more books did Ana read on Monday than Tuesday?`, answer: String((a - b) * scale),
+      // The voice does not read the bars: reading the graph and its scale is the skill (#79).
+      readAloud: "The graph compares books Ana and Ben read on Monday and Tuesday. Look at the graph. How many more books did Ana read on Monday than Tuesday?", answer: String((a - b) * scale),
       wrong: typedWrong((a - b) * scale, [[a - b, "D1"], [(a + b) * scale, "operation"]]) };
-  }),
+  // ON4 D1.3 and D1.6: multiple-bar graphs.
+  }, "number", { ON: 4 }),
   template("pictograph-total", "DP", "5.17", (rng) => {
     const scale = rng.pick([4, 5, 10]), a = rng.int(3, 12), b = rng.int(2, 9);
     return { values: { scale, a, b }, prompt: `A graph uses one symbol for ${scale} tickets. There are ${a} symbols for adults and ${b} symbols for children. How many tickets is that in all?`,
       readAloud: `A graph uses one symbol for ${scale} tickets. There are ${a} symbols for adults and ${b} symbols for children. How many tickets is that in all?`, answer: String((a + b) * scale),
       wrong: typedWrong((a + b) * scale, [[a + b, "D1"], [a * scale + b, "D1"]]) };
-  }),
+  // Many-to-one pictographs: AB MAT4-OI8-GQ1-LO1-KO2-SP, SK SP4.1, MB 4.SP.2, ON3 D1.3.
+  }, "number", { AB: 4, SK: 4, MB: 4, ON: 3 }),
   template("bag-probability", "DP", "5.18", (rng) => {
     const [red, blue] = draw(rng, (r) => [r.int(2, 8), r.int(3, 9)], ([r, b]) => r !== b);
     return { values: { red, blue }, prompt: `A bag has ${red} red marbles and ${blue} blue marbles of the same size. One is drawn without looking. What is the probability it is red?`,
