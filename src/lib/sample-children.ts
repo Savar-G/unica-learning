@@ -35,22 +35,21 @@ export const SAMPLE_CHILDREN: Record<SampleChildId, SampleChild> = {
   a: {
     id: "a",
     name: "Leah",
-    result: "A gap in regrouping (carrying and borrowing).",
-    style: "Likes stories.",
+    result: "Struggles with carrying and borrowing, so addition and subtraction are hard for her.",
+    style: "Learns best through stories.",
     book: "6 pages on regrouping, taught with story problems, at a slower pace.",
-    tag: "Fills a gap",
+    tag: "More practice",
   },
   b: {
     id: "b",
     name: "Kai",
-    result: "Ahead in addition and subtraction.",
-    style: "Learns best from pictures.",
+    result: "Has mastered addition and subtraction, and is ready to get ahead of Grade 3 with multiplication and division.",
+    style: "Learns best visually, from pictures and diagrams.",
     book: "Moves on to multiplication early, with pictures and arrays.",
-    tag: "Moves ahead",
+    tag: "New challenges",
   },
 };
 
-export const SAMPLE_LABEL = "Leah and Kai are sample children. Every Unica book is built from your child's own results.";
 
 /** A question on a sample page: the bank's own prompt and answer, plus what to draw beside it. */
 export interface PageItem {
@@ -110,7 +109,7 @@ const isRegrouping = (q: Question) =>
   q.wrong.some((w) => REGROUPING.has(w.misconception)) || (q.strand === "O" && /[+−]|in all|left/.test(q.prompt));
 
 /**
- * Leah's sample report: a Grade 3 BC child who misses every regrouping question and answers the rest at her grade.
+ * Leah's sample report: a Grade 3 BC child working at a Grade 2 level. She misses every regrouping question and most Grade 3 questions.
  * Computed by the real session, the facts section and the report model; nothing on it is typed in by hand.
  */
 export function sampleReportView(): ReportView {
@@ -119,7 +118,8 @@ export function sampleReportView(): ReportView {
   let count = 0;
   let ms = 0;
   for (let q = nextQuestion(session); q; q = nextQuestion(session)) {
-    const right = !isRegrouping(q) && q.level <= SAMPLE_GRADE;
+    // Behind by one grade: right below Grade 3 except regrouping; at Grade 3 only every third non-regrouping question.
+    const right = !isRegrouping(q) && (q.level < SAMPLE_GRADE || (q.level === SAMPLE_GRADE && count % 3 === 0));
     const timeMs = 45_000 + (count % 5) * 9_000;
     session = submitAnswer(session, { questionId: q.id, response: right ? q.answer : "0", timeMs });
     count++;

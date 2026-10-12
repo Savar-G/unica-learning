@@ -5,19 +5,18 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
 import { Section, SectionHeader } from "@/ds";
-import { SAMPLE_CHILDREN, SAMPLE_LABEL, kaiPage, leahPage, type PageItem, type SampleChild, type SampleChildId } from "@/lib/sample-children";
+import { SAMPLE_CHILDREN, kaiPage, leahPage, type PageItem, type SampleChild, type SampleChildId } from "@/lib/sample-children";
 import { Knot, Rise } from "./drawn";
+import { PageZoom } from "./page-zoom";
 import { ChildSwitch } from "./personalization-switch";
 import "@/ds/styles/personalization.css";
 
 export type PersonalizationVariant = "a" | "b" | "c" | "d";
 
-const TITLE = "Same class. Two different books.";
-const LEAD = "Two children in the same Grade 3 class take the free assessment. Their results are different, so their books are different.";
+const TITLE = "Every child learns differently. Different pace, different style. So we build each child their own learning program.";
 const LINES: [keyof Pick<SampleChild, "result" | "style" | "book">, string][] = [
   ["result", "Assessment"],
   ["style", "Learning style"],
-  ["book", "Next book"],
 ];
 
 export function Personalization({ variant }: { variant: PersonalizationVariant }) {
@@ -25,7 +24,7 @@ export function Personalization({ variant }: { variant: PersonalizationVariant }
     <Section id="personal" aria-labelledby="personalT" className={`pz pz-${variant}`}>
       <Knot />
       <Rise>
-        <SectionHeader eyebrow="Personalization" title={TITLE} titleId="personalT" lead={LEAD} />
+        <SectionHeader eyebrow="Personalized for your child" title={TITLE} titleId="personalT" />
       </Rise>
       {variant === "a" && <TwoColumns />}
       {variant === "b" && <ChildSwitch panels={{ a: <SwitchPanel id="a" />, b: <SwitchPanel id="b" /> }} names={{ a: SAMPLE_CHILDREN.a.name, b: SAMPLE_CHILDREN.b.name }} />}
@@ -39,7 +38,6 @@ export function Personalization({ variant }: { variant: PersonalizationVariant }
 function Footnote() {
   return (
     <div className="pz-foot">
-      <p>{SAMPLE_LABEL}</p>
       <Link className="more-link" href="/sample-report">See a sample report <span aria-hidden="true">→</span></Link>
     </div>
   );
@@ -131,8 +129,8 @@ function Fork() {
   return (
     <div className="pz-fork">
       <Rise className="pz-start">
-        <span className="eyebrow">Same start</span>
-        <p>Grade 3, same school, same class, same free assessment.</p>
+        <span className="eyebrow">Meet Leah and Kai</span>
+        <p>Leah and Kai are both in Grade 3. They get the same lessons every day. But Leah is falling behind, and Kai is ready for more.</p>
       </Rise>
       <svg className="pz-branch" viewBox="0 0 400 60" preserveAspectRatio="none" aria-hidden="true">
         <path d="M200 0 C200 30 100 30 100 60 M200 0 C200 30 300 30 300 60" />
@@ -140,7 +138,7 @@ function Fork() {
       <div className="pz-forks">
         {(["a", "b"] as const).map((id, i) => (
           <Rise key={id} d={i * 0.08} className="pz-row">
-            <div className="pz-thumb"><BankPage id={id} /></div>
+            <div className="pz-thumb"><PageZoom id={id} name={SAMPLE_CHILDREN[id].name}><BankPage id={id} /></PageZoom></div>
             <div>
               <Who child={SAMPLE_CHILDREN[id]} />
               <Lines child={SAMPLE_CHILDREN[id]} />

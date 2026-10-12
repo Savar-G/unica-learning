@@ -30,7 +30,11 @@ export default function SampleReportPage() {
         </div>
         <StartLink src="sample-report">{START_LABEL} <span className="arr" aria-hidden="true">→</span></StartLink>
       </aside>
-      <ReportCard view={view} readOnly />
+      <ReportCard
+        view={view}
+        readOnly
+        nextSlot={<StartLink src="sample-report-end">{START_LABEL} <span className="arr" aria-hidden="true">→</span></StartLink>}
+      />
     </SupportPage>
   );
 }
