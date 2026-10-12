@@ -120,8 +120,11 @@ export const LEVEL_8: readonly TaggedTemplate[] = [
   {
     id: "g67-8-negative-coefficient", strand: "A", grades: GRADES, standard: "8.8", format: "number", whiteboard: true,
     fill(rng) {
-      const a = rng.int(2, 8), b = rng.int(2, 9), x = rng.int(3, 12);
-      return { values: { a, b, x }, prompt: `−${a}x − ${b} = ${num(-a * x - b)}. What is x?`, readAloud: `Negative ${a} times x minus ${b} equals ${sayNum(-a * x - b)}. What is x?`, answer: String(x), wrong: [wrong(a * x, "A6")] };
+      // b is a multiple of a, so each one-step slip is a whole number: dividing before undoing the subtraction gives
+      // x + b/a, and the wrong inverse (subtracting b again) gives x + 2b/a.
+      const a = rng.int(2, 8), b = a * rng.int(1, 3), x = rng.int(3, 12);
+      return { values: { a, b, x }, prompt: `−${a}x − ${b} = ${num(-a * x - b)}. What is x?`, readAloud: `Negative ${a} times x minus ${b} equals ${sayNum(-a * x - b)}. What is x?`, answer: String(x),
+        wrong: [wrong(x + b / a, "A6"), wrong(x + (2 * b) / a, "A6")] };
     },
   },
   {
@@ -132,7 +135,8 @@ export const LEVEL_8: readonly TaggedTemplate[] = [
     },
   },
   {
-    id: "g67-8-combine-expression", strand: "A", grades: { ...GRADES, ON: 5 }, standard: "8.7", format: "number", whiteboard: true,
+    // AB MAT5-OI2-GQ1-LO1-KO2-SP and ON5 C2.2 evaluate a whole-number expression by substitution.
+    id: "g67-8-combine-expression", strand: "A", grades: { ...GRADES, AB: 5, ON: 5 }, standard: "8.7", format: "number", whiteboard: true,
     fill(rng) {
       const a = rng.int(5, 9), b = rng.int(2, 4), n = rng.int(3, 10), c = rng.int(2, 12);
       return { values: { a, b, n, c }, prompt: `What is ${a}n − ${b}n + ${c} when n = ${n}?`, readAloud: `What is ${a} times n minus ${b} times n plus ${c} when n is ${n}?`, answer: String((a - b) * n + c), wrong: [wrong((a + b) * n + c, "operation"), wrong(a - b + c, "variable-one")] };

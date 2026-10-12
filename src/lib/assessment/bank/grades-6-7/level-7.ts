@@ -251,8 +251,9 @@ export const LEVEL_7: readonly TaggedTemplate[] = [
   // ---------- Fractions, decimals and percents ----------
   {
     // Map, grade 7: which decimal equals 3/8 (misconception F7).
+    // AB MAT6-OI1-GQ5-LO1-KO1-SP converts quotient fractions to decimals.
     id: "g67-7-fraction-to-decimal",
-    strand: "F", grades: { BC: 7, AB: 7, SK: 7, MB: 7, ON: 7 }, format: "choice", whiteboard: true, standard: "7.4",
+    strand: "F", grades: { BC: 7, AB: 6, SK: 7, MB: 7, ON: 7 }, format: "choice", whiteboard: true, standard: "7.4",
     fill(rng) {
       const [n, d] = draw(rng, (g) => {
         const d = g.pick([8, 16, 20, 25, 40]);
@@ -500,8 +501,9 @@ export const LEVEL_7: readonly TaggedTemplate[] = [
   // ---------- Patterns and algebra ----------
   {
     // Map, grade 7: y = 3n + 2 when n = 5 (here with a minus: 4n - 3).
+    // AB MAT5-OI2-GQ1-LO1-KO2-SP evaluates an expression by substituting a given number.
     id: "g67-7-evaluate-relation",
-    strand: "A", grades: { BC: 7, AB: 7, SK: 7, MB: 7, ON: 5 }, format: "number", whiteboard: true, standard: "7.5",
+    strand: "A", grades: { BC: 7, AB: 5, SK: 7, MB: 7, ON: 5 }, format: "number", whiteboard: true, standard: "7.5",
     fill(rng) {
       const [a, b, n] = draw(rng, (g) => [g.int(2, 9), g.int(1, 9), g.int(3, 15)], ([a, b, n]) => a * n > b && a * (n - b) > 0 && distinctNumbers([a * n - b, a * (n - b), a * n + b]));
       return {
@@ -532,8 +534,9 @@ export const LEVEL_7: readonly TaggedTemplate[] = [
   },
   {
     // Map, grade 7 and misconception A6: solve 3x + 4 = 16.
+    // Two-operation equations: AB MAT5-OI2-GQ1-LO1-KO3-SP; ON6 C2.3 (multiple terms, whole numbers; its support solves m/4 - 2 = 10).
     id: "g67-7-two-step-plus",
-    strand: "A", grades: { BC: 7, AB: 7, SK: 7, MB: 7, ON: 7 }, format: "number", whiteboard: true, standard: "7.6",
+    strand: "A", grades: { BC: 7, AB: 5, SK: 7, MB: 7, ON: 6 }, format: "number", whiteboard: true, standard: "7.6",
     fill(rng) {
       const [a, b, x] = draw(rng, (g) => [g.int(2, 9), g.int(2, 20), g.int(2, 12)], ([a, b, x]) => distinctNumbers([x, a * x, a * x + 2 * b]));
       const c = a * x + b;
@@ -548,7 +551,7 @@ export const LEVEL_7: readonly TaggedTemplate[] = [
   },
   {
     id: "g67-7-two-step-minus",
-    strand: "A", grades: { BC: 7, AB: 7, SK: 7, MB: 7, ON: 7 }, format: "number", whiteboard: true, standard: "7.6",
+    strand: "A", grades: { BC: 7, AB: 5, SK: 7, MB: 7, ON: 6 }, format: "number", whiteboard: true, standard: "7.6",
     fill(rng) {
       const [a, b, x] = draw(rng, (g) => [g.pick([2, 4, 5]), g.int(2, 15), g.int(2, 12)], ([a, b, x]) => a * x > b && distinctNumbers([x, a * x + b, (a * x - 2 * b) / a]) && a * x - 2 * b > 0);
       const c = a * x - b;
@@ -564,7 +567,7 @@ export const LEVEL_7: readonly TaggedTemplate[] = [
   {
     // 7.6: x / a + b = c.
     id: "g67-7-two-step-divide",
-    strand: "A", grades: { BC: 7, AB: 7, SK: 7, MB: 7, ON: 7 }, format: "number", whiteboard: true, standard: "7.6",
+    strand: "A", grades: { BC: 7, AB: 5, SK: 7, MB: 7, ON: 6 }, format: "number", whiteboard: true, standard: "7.6",
     fill(rng) {
       const [a, b, q] = draw(rng, (g) => [g.int(2, 6), g.int(2, 12), g.int(2, 9)], ([a, b, q]) => ((q + b - b) % 1 === 0) && distinctNumbers([a * q, q * 1 + 0 === q ? (q + b + b) * a : 0, ((q + b) - b) / a]) && ((q * 1) % a === 0 || true));
       const c = q + b;
@@ -583,7 +586,7 @@ export const LEVEL_7: readonly TaggedTemplate[] = [
   {
     // A two-step story: a fixed fee plus a rate.
     id: "g67-7-two-step-story",
-    strand: "A", grades: { BC: 7, AB: 7, SK: 7, MB: 7, ON: 7 }, format: "number", whiteboard: true, standard: "7.6",
+    strand: "A", grades: { BC: 7, AB: 5, SK: 7, MB: 7, ON: 6 }, format: "number", whiteboard: true, standard: "7.6",
     fill(rng) {
       const [fee, rate, n] = draw(rng, (g) => [g.int(2, 9), g.int(2, 6), g.int(3, 15)], ([f, r, n]) => f !== r && distinctNumbers([n, (f + r * n) / r, (f + r * n + f) / r]));
       const total = fee + rate * n;
@@ -601,8 +604,9 @@ export const LEVEL_7: readonly TaggedTemplate[] = [
   },
   {
     // A two-step story as an equation.
+    // AB MAT5-OI2-GQ1-LO1-KO3-SP writes equations with one or two operations for a situation.
     id: "g67-7-story-equation",
-    strand: "A", grades: { BC: 7, AB: 7, SK: 7, MB: 7, ON: 7 }, format: "choice", whiteboard: false, standard: "7.6",
+    strand: "A", grades: { BC: 7, AB: 5, SK: 7, MB: 7, ON: 7 }, format: "choice", whiteboard: false, standard: "7.6",
     fill(rng) {
       const [fee, rate, n] = draw(rng, (g) => [g.int(2, 9), g.int(2, 6), g.int(3, 12)], ([f, r]) => f !== r);
       const total = fee + rate * n;
@@ -619,7 +623,7 @@ export const LEVEL_7: readonly TaggedTemplate[] = [
   {
     // Verify a solution (7.6: solve and verify).
     id: "g67-7-check-solution",
-    strand: "A", grades: { BC: 7, AB: 7, SK: 7, MB: 7, ON: 7 }, format: "choice", whiteboard: true, standard: "7.6",
+    strand: "A", grades: { BC: 7, AB: 5, SK: 7, MB: 7, ON: 6 }, format: "choice", whiteboard: true, standard: "7.6",
     fill(rng) {
       const [a, b, x] = draw(rng, (g) => [g.pick([2, 4, 5]), g.int(2, 15), g.int(2, 12)], ([a, b, x]) =>
         distinctNumbers([x, (a * x + b + b) / a, a * x, (a * x + b) / a]) && (a * x + 2 * b) % a === 0);
@@ -715,7 +719,7 @@ export const LEVEL_7: readonly TaggedTemplate[] = [
   {
     // A balance with equal boxes (7.6: preserve equality).
     id: "g67-7-balance-boxes",
-    strand: "A", grades: { BC: 7, AB: 7, SK: 7, MB: 7, ON: 7 }, format: "number", whiteboard: true, standard: "7.6",
+    strand: "A", grades: { BC: 7, AB: 5, SK: 7, MB: 7, ON: 6 }, format: "number", whiteboard: true, standard: "7.6",
     fill(rng) {
       const [k, a, x] = draw(rng, (g) => [g.int(2, 5), g.int(2, 12), g.int(2, 9)], ([k, a, x]) => distinctNumbers([x, k * x, k * x + 2 * a]));
       const total = k * x + a;

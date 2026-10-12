@@ -525,6 +525,20 @@ describe("primary-source corrections from the #76 checker run", () => {
     ["g67-6-greatest-fraction", [6, 4, 6, 6, 6, 6]],
     // AB MAT3-OI5-GQ1-LO1-KO2-SP: perimeter of a polygon with every side given.
     ["g67-6-l-shape-perimeter", [6, 3, 3, 3, 6, 6]],
+    // AB MAT6-OI1-GQ5-LO1-KO1-SP converts quotient fractions to decimals.
+    ["g67-7-fraction-to-decimal", [7, 6, 7, 7, 7, 7]],
+    // AB MAT5-OI2-GQ1-LO1-KO2-SP evaluates an expression by substitution.
+    ["g67-7-evaluate-relation", [7, 5, 7, 7, 5, 7]],
+    ["g67-8-combine-expression", [8, 5, 8, 8, 5, 8]],
+    // Two-operation equations: AB MAT5-OI2-GQ1-LO1-KO3-SP; ON6 C2.3 (equations with multiple terms, whole numbers).
+    ["g67-7-two-step-plus", [7, 5, 7, 7, 6, 7]],
+    ["g67-7-two-step-minus", [7, 5, 7, 7, 6, 7]],
+    ["g67-7-two-step-divide", [7, 5, 7, 7, 6, 7]],
+    ["g67-7-two-step-story", [7, 5, 7, 7, 6, 7]],
+    ["g67-7-check-solution", [7, 5, 7, 7, 6, 7]],
+    ["g67-7-balance-boxes", [7, 5, 7, 7, 6, 7]],
+    // AB MAT5-OI2-GQ1-LO1-KO3-SP writes equations with one or two operations.
+    ["g67-7-story-equation", [7, 5, 7, 7, 7, 7]],
   ] as const)("%s uses the primary-source grade in each province", (id, expected) => {
     expect(levels(id)).toEqual([...expected]);
   });
@@ -535,6 +549,14 @@ describe("primary-source corrections from the #76 checker run", () => {
   });
   it("divides by one-digit numbers only in the worded equation", () => {
     expect(Math.max(...SEEDS.map((seed) => fillTemplate(byId("g67-6-equation-words"), seed).values.a))).toBeLessThanOrEqual(9);
+  });
+  it("codes only one-step slips in the negative-coefficient equation, each a whole number the pad can type", () => {
+    for (const seed of SEEDS) {
+      const q = fillTemplate(byId("g67-8-negative-coefficient"), seed), { a, b, x } = q.values;
+      // Dividing before undoing the subtraction gives x + b/a; using the wrong inverse gives x + 2b/a.
+      expect(q.wrong.map((w) => Number(w.value)).sort((p, r) => p - r)).toEqual([x + b / a, x + (2 * b) / a]);
+      expect(q.wrong.every((w) => w.misconception === "A6")).toBe(true);
+    }
   });
   it("codes the trapezoid area without the half as a missing division by two", () => {
     for (const seed of SEEDS) {
