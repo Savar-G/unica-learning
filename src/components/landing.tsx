@@ -1,3 +1,5 @@
+import { Suspense } from "react";
+import { HeroPrototype } from "@/components/hero-prototype";
 import { CardReturn } from "@/components/card-return";
 import { Motion } from "@/components/motion";
 import { Parent } from "@/components/parent";
@@ -11,7 +13,7 @@ export function Landing({ look = "primer" }: { look?: Look }) {
       <Nav />
       <div className="frame">
         <main id="main">
-          <Hero />
+          {process.env.NODE_ENV === "production" ? <Hero /> : <Suspense fallback={<Hero />}><HeroPrototype><Hero /></HeroPrototype></Suspense>}
           <How />
           <Parent />
           <Why />
