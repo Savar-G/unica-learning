@@ -1,12 +1,12 @@
 # Template check report
 
-Made by `npm run check:templates` (scripts/check-templates.mjs). Bank: 3-5, 272 templates. Updated 2026-10-11 21:25 UTC.
+Made by `npm run check:templates` (scripts/check-templates.mjs). Bank: 3-5, 272 templates. Updated 2026-10-11 22:49 UTC.
 
-Pass: 73. Review: 199. Fail: 0. Error: 0. Not checked: 0. Changed since its check: 0.
+Pass: 78. Review: 194. Fail: 0. Error: 0. Not checked: 0. Changed since its check: 0.
 
 A template passes when the checker found its answers correct, its coded wrong answers wrong, and its BC grade right. Review means a wording problem or a province tag doubt that a person should decide.
 
-## Review (199)
+## Review (194)
 
 ### 2-coins-mixed
 
@@ -267,6 +267,12 @@ A template passes when the checker found its answers correct, its coded wrong an
 - The current Alberta division outcome needs source review.
 - Checked 2026-10-11 with gpt-6.1-sol.
 
+### g35-4-make-change
+
+- The Ontario Grade 4 tag needs review because every example requires subtraction with hundredths.
+- ON: suggests grade 5 (medium confidence). The supplied notes place decimal hundredths in Grade 5. Grade 5 appears more suitable for these calculations with cents, but the exact money outcome is not supplied.
+- Checked 2026-10-11 with gpt-6.1-sol.
+
 ### g35-4-story-multiply
 
 - The current Alberta multiplication outcome needs source review.
@@ -477,12 +483,6 @@ A template passes when the checker found its answers correct, its coded wrong an
 
 - Checked 2026-10-11 with gpt-6.1-sol.
 
-### g35-5-change-large
-
-- Review the Alberta tag. Grade 4 decimal subtraction appears to support the questions.
-- AB: suggests grade 4 (medium confidence). The supplied notes place decimal subtraction in Grade 4. These questions use that skill, but the precise money outcome and number range are not supplied.
-- Checked 2026-10-11 with gpt-6.1-sol.
-
 ### g35-5-equivalent-numerator
 
 - Checked 2026-10-11 with gpt-6.1-sol.
@@ -534,16 +534,6 @@ A template passes when the checker found its answers correct, its coded wrong an
 ### g35-5-compare-thousandths
 
 - The AB comparison-to-thousandths tag needs source review.
-- Checked 2026-10-11 with gpt-6.1-sol.
-
-### g35-5-add-thousandths
-
-- The exact AB, MB and ON outcomes for addition to thousandths need source review.
-- Checked 2026-10-11 with gpt-6.1-sol.
-
-### g35-5-subtract-thousandths
-
-- Confirm the AB precision limit and the MB and ON subtraction outcomes.
 - Checked 2026-10-11 with gpt-6.1-sol.
 
 ### g35-5-variable-add
@@ -781,21 +771,6 @@ A template passes when the checker found its answers correct, its coded wrong an
 - The province grades require source review. The correct answers are 4.2, 12.0, 18.4, 24.3, 31.5, 41.3, 53.4 and 80.1. Each coded wrong answer moves the decimal point one place.
 - Checked 2026-10-11 with gpt-6.1-sol.
 
-### g35-6-decimal-divide
-
-- The provincial decimal division outcomes need confirmation.
-- Checked 2026-10-11 with gpt-6.1-sol.
-
-### g35-6-decimal-product-story
-
-- The provincial decimal multiplication outcomes need confirmation.
-- Checked 2026-10-11 with gpt-6.1-sol.
-
-### g35-6-decimal-unit-cost
-
-- The provincial decimal division outcomes need confirmation.
-- Checked 2026-10-11 with gpt-6.1-sol.
-
 ### g35-6-mixed-to-mixed
 
 - Check Grade 5 placement for SK, MB and ON. The AB introduction grade remains uncertain.
@@ -979,7 +954,7 @@ A template passes when the checker found its answers correct, its coded wrong an
 - The supplied notes do not establish the probability grade tags for AB, SK, MB or ON.
 - Checked 2026-10-11 with gpt-6.1-sol.
 
-## Pass (73)
+## Pass (78)
 
 - `2-digit-value` (2026-10-11, gpt-6.1-sol)
 - `2-even-or-odd` (2026-10-11, gpt-6.1-sol)
@@ -1030,7 +1005,6 @@ A template passes when the checker found its answers correct, its coded wrong an
 - `g35-4-hundred-more` (2026-10-11, gpt-6.1-sol)
 - `g35-4-subtract` (2026-10-11, gpt-6.1-sol)
 - `g35-4-add` (2026-10-11, gpt-6.1-sol)
-- `g35-4-make-change` (2026-10-11, gpt-6.1-sol)
 - `g35-4-add-decimals` (2026-10-11, gpt-6.1-sol)
 - `g35-4-subtract-decimals` (2026-10-11, gpt-6.1-sol)
 - `g35-4-tenths-region` (2026-10-11, gpt-6.1-sol)
@@ -1048,9 +1022,15 @@ A template passes when the checker found its answers correct, its coded wrong an
 - `g35-4-three-same` (2026-10-11, gpt-6.1-sol)
 - `g35-4-perimeter` (2026-10-11, gpt-6.1-sol)
 - `g35-5-order-large` (2026-10-11, gpt-6.1-sol)
+- `g35-5-change-large` (2026-10-11, gpt-6.1-sol)
 - `g35-5-equivalent-scale-up` (2026-10-11, gpt-6.1-sol)
 - `g35-5-equivalent-region` (2026-10-11, gpt-6.1-sol)
+- `g35-5-add-thousandths` (2026-10-11, gpt-6.1-sol)
+- `g35-5-subtract-thousandths` (2026-10-11, gpt-6.1-sol)
 - `g35-5-pattern-start` (2026-10-11, gpt-6.1-sol)
 - `g35-5-pattern-far` (2026-10-11, gpt-6.1-sol)
 - `g35-6-all-factors` (2026-10-11, gpt-6.1-sol)
+- `g35-6-decimal-divide` (2026-10-11, gpt-6.1-sol)
+- `g35-6-decimal-product-story` (2026-10-11, gpt-6.1-sol)
+- `g35-6-decimal-unit-cost` (2026-10-11, gpt-6.1-sol)
 - `g35-6-linear-difference` (2026-10-11, gpt-6.1-sol)

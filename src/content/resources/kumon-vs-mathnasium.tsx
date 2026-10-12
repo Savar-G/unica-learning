@@ -163,9 +163,9 @@ export default function Body() {
           math from $38-$40 an hour,<Cite n={8} /> and a Vancouver tutoring blog gives a range of about $30-$100.<Cite n={9} />
         </p>
         <p>
-          Workbooks at home are another route. Unica mails personalized math and reading workbooks for ages 6 to 12 that follow
+          Workbooks at home are another route. Unica mails personalized math workbooks for ages 6 to 12 that follow
           the BC curriculum at your child&apos;s level, with a free placement assessment on paper and about 15-20 minutes a day, 5
-          days a week. It costs CAD 139 a month for one subject or CAD 229 for math and reading, delivery included, with a 30-day
+          days a week. Math costs CAD 99 a month, delivery included, with a 30-day
           money-back guarantee and cancel anytime. More options are in our{" "}
           <Link href="/resources/kumon-alternatives">guide to Kumon alternatives</Link>.
         </p>

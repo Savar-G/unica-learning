@@ -69,7 +69,11 @@ export function fillTemplate(template: Template, seed: number, province: Provinc
 /** What the browser may see: no answer and no coded wrong answers. */
 export function toPublicQuestion(q: Question): PublicQuestion {
   const { id, level, strand, format, whiteboard, prompt, readAloud, choices, say, figure } = q;
-  return { id, level, strand, format, whiteboard, showWork: q.showWork === true, prompt, readAloud, choices, ...(say ? { say } : {}), ...(figure ? { figure } : {}) };
+  // Do not expose the server's correct-answer-first map order or speech for undisplayed choices.
+  const publicSay = say && format === "choice"
+    ? Object.fromEntries([...(choices ?? [])].sort().filter((choice) => Object.hasOwn(say, choice)).map((choice) => [choice, say[choice]]))
+    : undefined;
+  return { id, level, strand, format, whiteboard, showWork: q.showWork === true, prompt, readAloud, choices, ...(publicSay ? { say: publicSay } : {}), ...(figure ? { figure } : {}) };
 }
 
 export interface SessionOptions {
