@@ -1,6 +1,5 @@
 import { redirect } from "next/navigation";
 import { pageMetadata } from "@/lib/metadata";
-import { requirePilot } from "@/lib/pilot";
 import { parentId, sessionClient } from "@/lib/supabase-auth";
 import { AccountSignup } from "@/components/account";
 import { SupportPage } from "@/components/support-page";
@@ -12,9 +11,9 @@ export const metadata = pageMetadata({
   index: false,
 });
 
-// The new signup (D-082): no plan question. Pilot families reach it by direct link until the launch ticket (#82).
+// The signup for the free online math assessment (D-082): no plan question. Every "Take free math assessment" link on
+// the public site opens it (#82). The parent proves the email with a one-time code before any account data is written.
 export default async function Start() {
-  await requirePilot();
   if (await parentId(await sessionClient())) redirect("/account");
   return (
     <SupportPage label="Free math assessment" title="Create your account.">

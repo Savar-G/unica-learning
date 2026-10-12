@@ -1,11 +1,12 @@
 // Landing page sections, composed from the Unica Learning design system (src/ds).
 // Site-only concerns stay here: next/image photos, scroll reveals (Rise/Knot), and the
-// [data-open] buttons that open the reserve dialog.
+// links to /start, the signup for the free online math assessment (#82).
 import type { ReactNode } from "react";
 import Image, { type StaticImageData } from "next/image";
 import Link from "next/link";
 import { CookieSettingsButton } from "@/components/cookie-consent";
 import { FaqMore } from "@/components/faq-more";
+import { StartLink } from "@/components/start-link";
 import { BRAND, FIRST_MONTH_OFF, HERO, PLANS, cad, firstMonth } from "@/lib/site";
 import { FAQ } from "@/lib/faq";
 import { SUPPORT_HREF } from "@/lib/contact";
@@ -32,7 +33,7 @@ import { ComparePanels } from "./compare";
 import { Knot, Rise, type Vars } from "./drawn";
 
 import heroHome1 from "@/assets/img/hero-home-1.jpg";
-import assessPaper from "@/assets/img/loop-assess-paper.jpg";
+import assessPhoto from "@/assets/img/loop-assess-1.jpg";
 import practice6 from "@/assets/img/loop-practice-6.jpg";
 import deliverPhoto from "@/assets/img/loop-deliver.jpg";
 import scanPhoto from "@/assets/img/loop-scan.jpg";
@@ -48,19 +49,17 @@ import emo9 from "@/assets/img/emotion-9.jpg";
 import emo10 from "@/assets/img/emotion-10.jpg";
 import emo11 from "@/assets/img/emotion-11.jpg";
 
-/** Opens the reserve dialog (see reserve.tsx, which listens for [data-open]). */
-function GetStarted({ src, plan, label = "Take free assessment", ghost = false }: { src: string; plan?: string; label?: string; ghost?: boolean }) {
-  return (
-    <button className={`btn${ghost ? " ghost" : ""}`} data-open data-src={src} data-plan={plan}>
-      {label} {!ghost && <span className="arr">→</span>}
-    </button>
-  );
+/** The main call to action: the free online math assessment, before any plan or card (#82). */
+export const START_LABEL = "Take free math assessment";
+
+function GetStarted({ src }: { src: string }) {
+  return <StartLink src={src}>{START_LABEL} <span className="arr">→</span></StartLink>;
 }
 
 const d = (s: number) => ({ "--d": `${s}s` }) as Vars;
 
 export function Nav() {
-  return <NavBar brand={BRAND} cta={<button className="btn sm" data-open data-src="nav">Free assessment</button>} />;
+  return <NavBar brand={BRAND} cta={<StartLink className="btn sm" src="nav">Free assessment</StartLink>} />;
 }
 
 // 8-9 characters only: the chip is as wide as its longest word, so a long topic
@@ -103,8 +102,8 @@ export function Hero() {
 const STEP_SIZES = "(min-width: 1080px) 380px, (min-width: 700px) 45vw, 92vw";
 
 const STEPS = [
-  { n: "01", t: "Assess", d: "We send a free placement assessment on paper. It finds your child's level and where the gaps are.",
-    v: <Image src={assessPaper} alt="A child works through a page of math problems in pencil" sizes={STEP_SIZES} placeholder="blur" />, tone: "photo" as const },
+  { n: "01", t: "Assess", d: "Your child takes the free math assessment online, on a laptop or tablet. The report shows their math level and gaps. You choose a plan after the report.",
+    v: <Image src={assessPhoto} alt="A girl and her mother sit at a laptop, with a workbook open on the table" sizes={STEP_SIZES} placeholder="blur" />, tone: "photo" as const },
   { n: "02", t: "Deliver", d: "We mail a workbook matched to your child's level and gaps. It covers your school curriculum.", v: <Image src={deliverPhoto} alt="Two mailers waiting on a front step" sizes={STEP_SIZES} placeholder="blur" />, tone: "photo" as const },
   { n: "03", t: "Practice", d: "Your child works on paper for about 15-20 minutes a day, 5 days a week.",
     v: <Image src={practice6} alt="A girl works through an arithmetic page in pencil" sizes={STEP_SIZES} placeholder="blur" />, tone: "photo" as const },
@@ -132,7 +131,7 @@ export function How() {
 }
 
 const WHY: [string, string][] = [
-  ["Real paper. Real pencil.", "Your child learns away from screens. Each book comes to your door, so you never print a page. The app is for you, not them."],
+  ["Real paper. Real pencil.", "Daily practice happens away from screens. Each book comes to your door, so you never print a page. The app is for you, not them."],
   ["Made for your child.", "Every page targets what they're ready for next, not what the rest of the class is on."],
   ["Master it, then move on.", "If your child is struggling with a concept, the next book stays on it and teaches it a different way. They move on when they've mastered it."],
   ["You see everything.", "A progress report, updated continuously: what they got right, what keeps coming back, and what's next."],
@@ -226,7 +225,7 @@ export function Feel() {
 export const PROMISE: [IconName, string, string][] = [
   ["shield", "30-day money-back guarantee", "If it is not working for your child within 30 days of your first payment, we refund your payment in full."],
   ["calendar", "Fits your family's schedule", "Kids are busy. Take a week or a month off, and pick up where your child left off."],
-  ["test", "Free assessment, nothing to pay today", "We charge nothing until your first workbook ships."],
+  ["test", "Free assessment, nothing to pay today", "Your child takes the free online math assessment before you choose a plan. We charge nothing until your first workbook ships."],
   ["undo", "Cancel anytime", "No contract. Stop whenever you want."],
 ];
 
@@ -280,9 +279,9 @@ export function Pricing() {
           note={PLANS.one.note}
           price={PLANS.one.price}
           offer={{ price: cad(firstMonth(PLANS.one.price)), note: `first month, ${FIRST_MONTH_OFF}% off!`, then: `Then CAD ${PLANS.one.price} a month.` }}
-          features={["Free placement assessment", "Personalized math workbooks matched to your child's level and gaps, mailed home", "Your next book arrives before the current one runs out", "Progress reports after every check-in", "Delivery included. Cancel anytime"]}
-          ctaLabel="Choose math"
-          cta={<GetStarted src="price" plan="one" label="Choose math" />}
+          features={["Free online math assessment and report, before you choose a plan", "Personalized math workbooks matched to your child's level and gaps, mailed home", "Your next book arrives before the current one runs out", "Progress reports after every check-in", "Delivery included. Cancel anytime"]}
+          ctaLabel={START_LABEL}
+          cta={<GetStarted src="price" />}
         />
       </PlanGrid>
       <ComparePanels />

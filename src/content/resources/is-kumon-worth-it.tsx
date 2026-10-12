@@ -196,7 +196,7 @@ export default function Body() {
       </Section>
 
       <AssessmentCta slug={meta.slug}>
-        Whatever you choose, start by knowing where your child is. Our free placement assessment on paper finds their
+        Whatever you choose, start by knowing where your child is. Our free online math assessment shows their math
         level and gaps.
       </AssessmentCta>
     </>

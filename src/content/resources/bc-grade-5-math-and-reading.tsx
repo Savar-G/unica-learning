@@ -143,7 +143,7 @@ export default function Body() {
           Unica Learning makes personalized math workbooks for ages 6-12 and mails them home. The books follow the BC curriculum at your child’s level, not just their grade.
         </p>
         <AssessmentCta slug={meta.slug}>
-          A free placement assessment on paper finds your child’s level and gaps.
+          The free online math assessment shows your child’s math level and gaps, on a laptop or tablet.
         </AssessmentCta>
       </Section>
     </>

@@ -1,6 +1,5 @@
 import Link from "next/link";
 import { pageMetadata } from "@/lib/metadata";
-import { requirePilot } from "@/lib/pilot";
 import { canResend, hashToken, linkState, type LinkState } from "@/lib/sign-in-link";
 import { adminClient, parentId, sessionClient } from "@/lib/supabase-auth";
 import { ResendLink, TrackOnce } from "@/components/account";
@@ -18,7 +17,6 @@ type LinkRow = { parent_id: string; created_at: string; expires_at: string; used
 // The page the emailed link opens (#63). Opening it changes nothing; the button signs the parent in, so a mail
 // scanner that opens links cannot use up the link. A used or expired link offers a new one for the same parent.
 export default async function SignInLink({ searchParams }: PageProps<"/sign-in/link">) {
-  await requirePilot();
   const { t, error } = await searchParams;
   const token = typeof t === "string" ? t : "";
   const hash = hashToken(token);

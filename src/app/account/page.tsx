@@ -1,7 +1,6 @@
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { pageMetadata } from "@/lib/metadata";
-import { requirePilot } from "@/lib/pilot";
 import { CURRICULA } from "@/lib/signup";
 import type { Child } from "@/lib/account";
 import type { StartState } from "@/lib/assessment";
@@ -23,7 +22,6 @@ export const metadata = pageMetadata({
 // On a phone the test cannot start: the child takes it on a laptop or tablet, and the parent emails themselves a
 // one-time sign-in link for that device (D-082, #63). A parent new from Google has no row yet and finishes first.
 export default async function Account({ searchParams }: PageProps<"/account">) {
-  await requirePilot();
   const db = await sessionClient();
   const parentUser = await parentId(db);
   if (!parentUser) redirect("/sign-in");
@@ -43,12 +41,13 @@ export default async function Account({ searchParams }: PageProps<"/account">) {
   const newestReport = new Map((reports ?? []).map((r) => [r.child_id, reportPath(r.id)]));
   const reportFor = (id: string, state: StartState) => (state.kind === "wait" ? testReport.get(`${id}@${state.completedAt}`) : newestReport.get(id));
   const phone = isPhone(await headers());
-  const { sent, password } = await searchParams;
+  const { sent, password, existing } = await searchParams;
 
   const children = kids ?? [];
   return (
     <SupportPage label="Your account" title={`Hi, ${parent.name.split(" ")[0]}.`}>
       {password === "1" && <p role="status" className="acct-alert acct-saved">Your new password is saved.</p>}
+      {existing === "1" && <p role="status" className="acct-alert acct-saved">This email already has an account, so the code signed you in. Nothing in your account changed. To add a child, use Add another child.</p>}
       {phone ? (
         <div className="acct-card acct-phone">
           <TrackOnce event="phone_screen" />

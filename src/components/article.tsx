@@ -6,8 +6,8 @@ import type { ReactNode } from "react";
 import { BRAND } from "@/lib/site";
 import { Eyebrow, Faq, Nav as NavBar } from "@/ds";
 import { Motion } from "@/components/motion";
-import { Reserve } from "@/components/reserve";
-import { Footer } from "@/components/sections";
+import { StartLink } from "@/components/start-link";
+import { Footer, START_LABEL } from "@/components/sections";
 import type { ResourceMeta } from "@/lib/resources";
 import { formatResourceDate, resourcePath } from "@/lib/resource-format";
 import { jsonLdHtml, resourceJsonLd } from "@/lib/structured-data";
@@ -26,17 +26,16 @@ type Tone = "sun" | "peach" | "sky" | "mint";
 
 /* ------------------------------------------------------------- page shell */
 
-/** Site nav, frame, footer, booking dialog and motion. Used by /resources and every article. */
+/** Site nav, frame, footer and motion. Used by /resources and every article. */
 export function ResourcesShell({ jsonLd, navSrc, children }: { jsonLd: unknown; navSrc: string; children: ReactNode }) {
   return (
     <div className="look-root" data-look="warm" id="top">
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: jsonLdHtml(jsonLd) }} />
-      <NavBar brand={BRAND} home="/" links={LINKS} cta={<button className="btn sm" data-open data-src={navSrc}>Free assessment</button>} />
+      <NavBar brand={BRAND} home="/" links={LINKS} cta={<StartLink className="btn sm" src={navSrc}>Free assessment</StartLink>} />
       <div className="frame">
         {children}
         <Footer />
       </div>
-      <Reserve />
       <Motion />
     </div>
   );
@@ -77,10 +76,8 @@ export function ArticleLayout({ meta, related, children }: { meta: ResourceMeta;
 
         <Rise className="res-part res-close">
           <h2>See where your child is.</h2>
-          <p>A free placement assessment on paper finds your child&apos;s level and the gaps. Then each workbook is made for them and mailed home.</p>
-          <button className="btn" data-open data-src={`resource-${meta.slug}-close`}>
-            Take free assessment <span className="arr">→</span>
-          </button>
+          <p>Take the free online math assessment on a laptop or tablet. Read the report before you choose a plan. Then each workbook is made for your child and mailed home.</p>
+          <StartLink src={`resource-${meta.slug}-close`}>{START_LABEL} <span className="arr">→</span></StartLink>
         </Rise>
 
         {related.length ? (
@@ -194,14 +191,12 @@ export function Callout({ label = "Tip", tone = "sky", children }: { label?: str
   );
 }
 
-/** Inline call to action: one line of text and the "Take free assessment" button (opens booking). */
+/** Inline call to action: one line of text and the "Take free math assessment" link to /start (#82). */
 export function AssessmentCta({ slug, children }: { slug: string; children?: ReactNode }) {
   return (
     <div className="res-cta">
-      <p>{children ?? "Not sure where your child is? A free placement assessment on paper finds their level and gaps."}</p>
-      <button className="btn" data-open data-src={`resource-${slug}`}>
-        Take free assessment <span className="arr">→</span>
-      </button>
+      <p>{children ?? "Not sure where your child is? The free online math assessment shows their math level and gaps."}</p>
+      <StartLink src={`resource-${slug}`}>{START_LABEL} <span className="arr">→</span></StartLink>
     </div>
   );
 }

@@ -1,10 +1,10 @@
 // /our-story: the "why we built this" letter. The founder story, names and "students"
-// appear only on this page, never on the home page. Uses the site nav, footer and reserve dialog.
+// appear only on this page, never on the home page. Uses the site nav and footer.
 import { BRAND } from "@/lib/site";
 import { BeliefList, Eyebrow, Nav as NavBar } from "@/ds";
 import { Motion } from "@/components/motion";
-import { Reserve } from "@/components/reserve";
-import { Footer, PromiseCards } from "@/components/sections";
+import { StartLink } from "@/components/start-link";
+import { Footer, PromiseCards, START_LABEL } from "@/components/sections";
 import { Rise } from "./drawn";
 import "./story.css";
 
@@ -19,7 +19,7 @@ const LINKS = [
 export function Story() {
   return (
     <div className="look-root" data-look="warm" id="top">
-      <NavBar brand={BRAND} home="/" links={LINKS} cta={<button className="btn sm" data-open data-src="story-nav">Free assessment</button>} />
+      <NavBar brand={BRAND} home="/" links={LINKS} cta={<StartLink className="btn sm" src="story-nav">Free assessment</StartLink>} />
       <div className="frame">
         <main id="main" className="story">
           <Rise className="story-head">
@@ -55,14 +55,11 @@ export function Story() {
 
           <Rise className="story-end">
             <p className="story-sign">Savar and Cedric</p>
-            <button className="btn" data-open data-src="story">
-              Take free assessment <span className="arr">→</span>
-            </button>
+            <StartLink src="story">{START_LABEL} <span className="arr">→</span></StartLink>
           </Rise>
         </main>
         <Footer />
       </div>
-      <Reserve />
       <Motion />
     </div>
   );

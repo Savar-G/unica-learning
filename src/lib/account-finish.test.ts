@@ -1,0 +1,181 @@
+import { createClient, type SupabaseClient } from "@supabase/supabase-js";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+// POST /api/account/finish (#82): the one step that writes a family. Supabase is the system boundary: the session is a
+// fake signed-in user, and the secret-key client talks to a fake Supabase that records every request.
+vi.mock("server-only", () => ({}));
+
+type FakeUser = { id: string; email: string; email_confirmed_at: string | null } | null;
+let user: FakeUser;
+let db: SupabaseClient;
+vi.mock("@/lib/supabase-auth", () => ({
+  sessionClient: async () => ({ auth: { getUser: async () => ({ data: { user }, error: user ? null : new Error("Auth session missing") }) } }),
+  adminClient: () => db,
+}));
+
+const { POST } = await import("@/app/api/account/finish/route");
+
+const ID = "7d9f3c4e-1111-4a2b-9c3d-000000000001";
+const LAPTOP = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0 Safari/537.36";
+
+interface World {
+  /** A parent row already exists for this user. */
+  existing?: boolean;
+  /** What the database function answers. */
+  admission?: { status: "created"; child: string } | { status: "exists" | "busy" | "unavailable" };
+  /** Auth's answer to the password change. */
+  password?: "ok" | "weak" | "down";
+}
+
+/** Every request the route sends to Supabase, in order, with its body. */
+let calls: { method: string; path: string; body: unknown }[];
+
+function supabase(world: World) {
+  calls = [];
+  db = createClient("https://fixture.invalid", "sb_secret_synthetic", {
+    auth: { persistSession: false, autoRefreshToken: false },
+    global: {
+      fetch: async (input, init) => {
+        const url = new URL(String(input));
+        const method = init?.method ?? "GET";
+        const body = typeof init?.body === "string" && init.body ? JSON.parse(init.body) : null;
+        calls.push({ method, path: url.pathname, body });
+        const json = (value: unknown, status = 200, headers: Record<string, string> = {}) =>
+          new Response(JSON.stringify(value), { status, headers: { "content-type": "application/json", ...headers } });
+        if (url.pathname.startsWith("/auth/v1/admin/users/")) {
+          if (world.password === "weak") return json({ code: "weak_password", message: "Password is known to be weak", weak_password: { reasons: ["pwned"] } }, 422);
+          if (world.password === "down") return json({ code: "unexpected_failure", message: "down" }, 500);
+          return json({ id: ID, email: user?.email });
+        }
+        if (url.pathname === "/rest/v1/rpc/create_family") return json(world.admission ?? { status: "created", child: "child-1" });
+        if (url.pathname === "/rest/v1/parents") {
+          // The phone link step reads the new parent back by name; the existing-account check reads only the id.
+          if (url.searchParams.get("select")?.includes("name")) return json([{ name: "Priya Shah", email: "priya@family.ca" }]);
+          return json(world.existing ? [{ id: ID }] : []);
+        }
+        if (url.pathname === "/rest/v1/children") return json([{ first_name: "Asha" }]);
+        return json([], 200, { "content-range": "*/0" });
+      },
+    },
+  });
+}
+
+const details = { name: "Priya Shah", postal: "V6B 1A1", child: { firstName: "Asha", grade: 4, province: "BC" }, source: { utm_source: "flyer" } };
+
+function finish(body: unknown, ua = LAPTOP) {
+  return POST(new Request("https://unica.test/api/account/finish", {
+    method: "POST",
+    headers: { "content-type": "application/json", "user-agent": ua },
+    body: JSON.stringify(body),
+  }));
+}
+
+const paths = () => calls.map((c) => `${c.method} ${c.path}`);
+
+beforeEach(() => {
+  user = { id: ID, email: "Priya@Family.ca", email_confirmed_at: "2026-10-11T20:00:00Z" };
+});
+afterEach(() => vi.unstubAllEnvs());
+
+describe("finishing a password signup after the email code (#82)", () => {
+  it("sets the parent's own password before any family row is written, with the email from the session", async () => {
+    supabase({});
+    const res = await finish({ ...details, email: "attacker@evil.test", password: "a-long-password" });
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ ok: true, linkSent: false });
+    const order = paths().filter((p) => p.startsWith("PUT /auth/v1/admin/users/") || p === "POST /rest/v1/rpc/create_family");
+    expect(order).toEqual([`PUT /auth/v1/admin/users/${ID}`, "POST /rest/v1/rpc/create_family"]);
+    expect(calls.find((c) => c.path.startsWith("/auth/v1/admin/users/"))?.body).toEqual({ password: "a-long-password" });
+    expect(calls.find((c) => c.path === "/rest/v1/rpc/create_family")?.body).toMatchObject({
+      p_parent: ID, p_email: "priya@family.ca", p_name: "Priya Shah", p_postal: "V6B 1A1", p_child_name: "Asha", p_child_grade: 4, p_child_province: "BC",
+    });
+  });
+
+  it("writes nothing for an email nobody confirmed, or without a session", async () => {
+    supabase({});
+    user = { id: ID, email: "priya@family.ca", email_confirmed_at: null };
+    const unconfirmed = await finish({ ...details, password: "a-long-password" });
+    expect(unconfirmed.status).toBe(403);
+    expect(await unconfirmed.json()).toEqual({ ok: false, error: "unconfirmed" });
+    user = null;
+    const signedOut = await finish({ ...details, password: "a-long-password" });
+    expect(signedOut.status).toBe(401);
+    expect(calls).toEqual([]);
+  });
+
+  it("leaves an existing account as it is: no new password and no second family", async () => {
+    supabase({ existing: true });
+    const res = await finish({ ...details, password: "someone-elses-password" });
+    expect(await res.json()).toEqual({ ok: true, existing: true });
+    expect(paths()).toEqual(["GET /rest/v1/parents"]);
+  });
+
+  it("writes no family when the password cannot be saved", async () => {
+    supabase({ password: "down" });
+    const down = await finish({ ...details, password: "a-long-password" });
+    expect(down.status).toBe(502);
+    supabase({ password: "weak" });
+    const weak = await finish({ ...details, password: "password123" });
+    expect(weak.status).toBe(400);
+    expect(await weak.json()).toEqual({ ok: false, error: "weak_password" });
+    expect(paths()).not.toContain("POST /rest/v1/rpc/create_family");
+  });
+
+  it("rejects a password under 8 characters before anything is written", async () => {
+    supabase({});
+    const res = await finish({ ...details, password: "short" });
+    expect(res.status).toBe(400);
+    expect(calls).toEqual([]);
+  });
+});
+
+describe("finishing a Google signup (#63)", () => {
+  it("writes the family and never touches the password", async () => {
+    supabase({});
+    const res = await finish(details);
+    expect(await res.json()).toEqual({ ok: true, linkSent: false });
+    expect(paths().some((p) => p.startsWith("PUT /auth/v1/admin/users/"))).toBe(false);
+    expect(paths()).toContain("POST /rest/v1/rpc/create_family");
+  });
+});
+
+describe("what the database decides (#82, #78)", () => {
+  it("answers busy at the site-wide cap and sends no link", async () => {
+    supabase({ admission: { status: "busy" } });
+    const res = await finish(details, "Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Mobile/15E148 Safari/604.1");
+    expect(res.status).toBe(429);
+    expect(await res.json()).toEqual({ ok: false, error: "busy" });
+    expect(paths()).not.toContain("POST /rest/v1/sign_in_links");
+  });
+
+  it("does not make a family again while it is being deleted", async () => {
+    supabase({ admission: { status: "unavailable" } });
+    const res = await finish(details);
+    expect(res.status).toBe(409);
+    expect(await res.json()).toEqual({ ok: false, error: "unavailable" });
+  });
+
+  it("treats a parallel finish that won the race as the existing account", async () => {
+    supabase({ admission: { status: "exists" } });
+    expect(await (await finish(details)).json()).toEqual({ ok: true, existing: true });
+  });
+});
+
+describe("finishing on a phone (#63)", () => {
+  it("emails the sign-in link for the new child", async () => {
+    vi.stubEnv("RESEND_API_KEY", "re_synthetic");
+    vi.stubEnv("EMAIL_FROM", "Unica Learning <hello@unicalearning.com>");
+    const sent: string[] = [];
+    vi.stubGlobal("fetch", async (input: unknown) => {
+      sent.push(String(input));
+      return new Response(JSON.stringify({ id: "email-1" }), { status: 200 });
+    });
+    supabase({ admission: { status: "created", child: "child-42" } });
+    const res = await finish(details, "Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Mobile/15E148 Safari/604.1");
+    vi.unstubAllGlobals();
+    const link = calls.find((c) => c.method === "POST" && c.path === "/rest/v1/sign_in_links");
+    expect(link?.body).toMatchObject({ parent_id: ID, child_id: "child-42" });
+    expect(sent).toEqual(["https://api.resend.com/emails"]);
+    expect(await res.json()).toEqual({ ok: true, linkSent: true });
+  });
+});

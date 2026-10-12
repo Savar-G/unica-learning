@@ -1,6 +1,5 @@
 import { redirect } from "next/navigation";
 import { pageMetadata } from "@/lib/metadata";
-import { requirePilot } from "@/lib/pilot";
 import { sessionClient } from "@/lib/supabase-auth";
 import { FinishAccount } from "@/components/account";
 import { SupportPage } from "@/components/support-page";
@@ -15,7 +14,6 @@ export const metadata = pageMetadata({
 // A parent who signed in with Google for the first time has no parent row yet (#63). They give the details Google
 // does not: postal code and the child. A parent with a row goes to their account.
 export default async function Finish() {
-  await requirePilot();
   const db = await sessionClient();
   const { data: { user } } = await db.auth.getUser();
   if (!user?.email) redirect("/sign-in");

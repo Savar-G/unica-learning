@@ -177,7 +177,7 @@ export default function Body() {
           it does not know your child&apos;s level. A personalized workbook service is the other version.
         </p>
         <p>
-          Unica is one example. A free placement assessment on paper finds your child&apos;s level. We mail personalized math
+          Unica is one example. A free online math assessment finds your child&apos;s math level. We mail personalized math
           workbooks for ages 6 to 12 home; the books follow the BC curriculum at your child&apos;s level. The plan is 15-20
           minutes a day, 5 days a week. A parent app lets you scan a problem to see the steps and check answers.{" "}
           <strong>Cost:</strong> CAD 99 a month for math, delivery included, with a 30-day
@@ -227,7 +227,7 @@ export default function Body() {
       </Section>
 
       <AssessmentCta slug={meta.slug}>
-        Not sure which option fits? Start with a free placement assessment on paper. It shows your child&apos;s level and gaps,
+        Not sure which option fits? Start with the free online math assessment. It shows your child&apos;s math level and gaps,
         whatever you choose next.
       </AssessmentCta>
     </>

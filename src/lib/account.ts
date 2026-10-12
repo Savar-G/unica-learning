@@ -1,5 +1,5 @@
 // Parent accounts for the online assessment (#62, D-082). Shared by the account forms (client) and /api/account (server).
-import { CURRICULA, EMAIL, POSTAL, clip, cleanSource, type CurriculumId } from "@/lib/signup";
+import { CURRICULA, POSTAL, clip, cleanSource, type CurriculumId } from "@/lib/signup";
 
 export const PASSWORD_MIN = 8;
 /** Stops a script from adding children without end. No family needs more. */
@@ -14,33 +14,39 @@ export interface ChildInput {
   province: CurriculumId;
 }
 
-export interface AccountSignupPayload {
-  name: string;
-  email: string;
-  postal: string;
-  password: string;
-  child: ChildInput;
-  /** Referrer and UTM tags, so we know which channel brought each parent. */
-  source: Record<string, string>;
-  /** Honeypot: hidden from people, filled in by bots. */
-  website?: string;
-}
-
-/** A parent who signed in with Google finishes their account with these (/api/account/finish). */
+/**
+ * What /api/account/finish takes. The parent proved their email first: with the email code (password signup, #82) or
+ * with Google. The id and the email come from that session, never from this body.
+ */
 export interface FinishPayload {
   name: string;
   postal: string;
   child: ChildInput;
+  /** Referrer and UTM tags, so we know which channel brought each parent. */
   source: Record<string, string>;
+  /**
+   * Password signup only: the password from the signup form. It is set only after the parent proved the email, so a
+   * password chosen by someone else before that never stays on the account (#82). Google parents send none.
+   */
+  password?: string;
 }
 
-export type AccountError = "bad_json" | "invalid" | "account_exists" | "weak_password" | "too_many" | "signed_out" | "busy" | "store_failed" | "send_failed" | "off";
+export type AccountError =
+  | "bad_json" | "invalid" | "weak_password" | "too_many" | "signed_out" | "busy" | "store_failed" | "send_failed"
+  /** The session's email is not confirmed: no family rows for an address nobody proved (#82). */
+  | "unconfirmed"
+  /** The family is being deleted (#78), so the same sign-in cannot make it again. */
+  | "unavailable";
 
-/** What /api/account/* answers. `linkSent`: signup on a phone emailed the sign-in link (#63). */
+/**
+ * What /api/account/* answers. `linkSent`: finishing on a phone emailed the sign-in link (#63). `existing`: the parent
+ * already had an account, so nothing changed: no new child, and the password stays the same (#82).
+ */
 export interface AccountResult {
   ok: boolean;
   error?: AccountError;
   linkSent?: boolean;
+  existing?: boolean;
 }
 
 export const fail = (error: AccountError, status: number) => Response.json({ ok: false, error } satisfies AccountResult, { status });
@@ -68,11 +74,9 @@ export function cleanDetails(raw: Partial<FinishPayload>) {
   return details.name.length >= 2 && POSTAL.test(details.postal) ? details : null;
 }
 
-/** The parent fields of a signup, cleaned, or null when one is not valid. */
-export function cleanParent(raw: Partial<AccountSignupPayload>) {
-  const details = cleanDetails(raw);
-  const email = clip(raw.email, 200).toLowerCase();
-  const password = typeof raw.password === "string" ? raw.password : "";
-  const valid = details && EMAIL.test(email) && password.length >= PASSWORD_MIN && password.length <= 72;
-  return valid ? { ...details, email, password } : null;
-}
+/** Supabase Auth hashes at most 72 bytes of a password. */
+export const PASSWORD_MAX = 72;
+
+/** True for a password the signup form accepts: at least PASSWORD_MIN and at most PASSWORD_MAX characters. */
+export const validPassword = (raw: unknown): raw is string =>
+  typeof raw === "string" && raw.length >= PASSWORD_MIN && raw.length <= PASSWORD_MAX;

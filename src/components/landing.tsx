@@ -1,7 +1,8 @@
+import { CardReturn } from "@/components/card-return";
 import { Motion } from "@/components/motion";
 import { Parent } from "@/components/parent";
-import { Reserve } from "@/components/reserve";
-import { Closing, Faq, Feel, Footer, Hero, How, Included, Nav, OurPromise, Pricing, ThreadEnd, Why } from "@/components/sections";
+import { StartLink } from "@/components/start-link";
+import { Closing, Faq, Feel, Footer, Hero, How, Included, Nav, OurPromise, Pricing, START_LABEL, ThreadEnd, Why } from "@/components/sections";
 import type { Look } from "@/lib/look";
 
 export function Landing({ look = "primer" }: { look?: Look }) {
@@ -25,10 +26,10 @@ export function Landing({ look = "primer" }: { look?: Look }) {
           <Closing />
         </Footer>
       </div>
-      <aside className="mobile-assessment" aria-label="Free assessment">
-        <button className="btn" type="button" data-open data-src="mobile-sticky">Take free assessment <span className="arr" aria-hidden="true">→</span></button>
+      <aside className="mobile-assessment" aria-label="Free math assessment">
+        <StartLink src="mobile-sticky">{START_LABEL} <span className="arr" aria-hidden="true">→</span></StartLink>
       </aside>
-      <Reserve />
+      <CardReturn />
       <Motion />
     </div>
   );

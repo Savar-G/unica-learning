@@ -6,7 +6,7 @@ import { adminClient } from "@/lib/supabase-auth";
 export const maxDuration = 60;
 
 export async function POST(request: Request, ctx: RouteContext<"/api/admin/parents/[id]/delete">) {
-  // Checks Auth and live admin membership for every request; includes the pilot gate.
+  // Checks Auth and live admin membership for every request.
   const admin = await adminSession();
   if (!admin) return new Response("Not found", { status: 404 });
   if (request.headers.get("origin") !== new URL(request.url).origin) return new Response("Forbidden", { status: 403 });

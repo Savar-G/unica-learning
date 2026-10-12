@@ -137,7 +137,7 @@ export default function Body() {
         <p>
           Unica Learning mails personalized math workbooks that follow the BC curriculum at your child’s level.
         </p>
-        <AssessmentCta slug={meta.slug}>A free placement assessment on paper shows your child’s level in math.</AssessmentCta>
+        <AssessmentCta slug={meta.slug}>The free online math assessment shows your child’s math level and gaps, on a laptop or tablet.</AssessmentCta>
       </Section>
     </>
   );

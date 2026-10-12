@@ -13,11 +13,11 @@ export default function Privacy() {
   return <SupportPage label="Updated 11 October 2026" title="Privacy policy">
     <p className="lead">{BUSINESS_NAME} is responsible for the information you share through this website. This policy explains what we collect, why we use it, and the choices you have.</p>
     <h2>What you share with us</h2>
-    <p>When you book through the reservation form, we ask for your name, email address, Canadian postal code, chosen plan and subject, your child&apos;s grade, and their school curriculum.</p>
-    <p>For an online assessment account, we ask for your name, email address, postal code, and each child&apos;s first name, grade, and school curriculum. We keep the child&apos;s test answers, answer times, typed working, drawings, results, work reviews, and reports. We also keep account sign-in records, card setup or waitlist records, and records of assessment emails and unsubscribe requests. We do not ask for a child&apos;s date of birth.</p>
-    <p>We also keep information about how you found us, such as a link or advertisement, and which button you used to open the form. After you book, we ask how you heard about us. Your answer is optional and is kept with your booking.</p>
+    <p>Before the online assessment, families booked through a reservation form. For those bookings, we keep the name, email address, Canadian postal code, chosen plan and subject, the child&apos;s grade, and their school curriculum.</p>
+    <p>For an online assessment account, we ask for your name, email address, postal code, and each child&apos;s first name, grade, and school curriculum. To confirm your email address, we email you a one-time code. We keep the child&apos;s test answers, answer times, typed working, drawings, results, work reviews, and reports. We also keep account sign-in records, card setup or waitlist records, and records of assessment emails and unsubscribe requests. We do not ask for a child&apos;s date of birth.</p>
+    <p>We also keep information about how you found us, such as a link or advertisement, and the page you came from. After a booking through the old reservation form, we asked how you heard about us. That answer was optional and is kept with the booking.</p>
     <h2>How we use your information</h2>
-    <p>We use your details to manage your assessment request or waitlist entry and email you about the next step. We share the details needed by the companies that help us run the website, send emails, and handle payments.</p>
+    <p>We use your details to run your child&apos;s assessment, manage your plan or waitlist entry, and email you about the next step. We share the details needed by the companies that help us run the website, send emails, and handle payments.</p>
     <p>If you send us photos of completed pages, we use them to plan your child&apos;s next book and show their progress. You can ask us to delete them.</p>
     <p>For online assessments, we mark the answers and use the results to show your child&apos;s working level and areas for practice. Drawings are stored privately. The parent and our authorized team can view them after sign-in. The emailed report links to the account; it does not include the drawings.</p>
     <p>We send the report by email and keep it in your account. We may send assessment reminders when a test has not started or has stopped, with no more than two reminders per test. These emails include an unsubscribe link. You can stop reminders and emails about our plans without deleting your account.</p>
@@ -27,8 +27,8 @@ export default function Privacy() {
     <p>AI comments can be wrong. We leave a work comment out when the review is not sufficiently certain. Our team can review the work and its confidence result. Contact us if you want us to check a result.</p>
     <p>When you add your card, we send your name, email address, and postal code to our payment provider. We also send your plan, subject, price, your child&apos;s grade and school curriculum, and a reference for your booking. You enter your card details on its secure page. Our booking form does not collect your card number.</p>
     <h2>Cookies and your choice</h2>
-    <p>Cookies are small pieces of information saved on your device. If you accept optional cookies, we count page visits and steps in the booking form to understand how people use our website. These counts can include your chosen plan, subject and school curriculum. They do not include your name, email address, postal code, or your child&apos;s grade. We do not record your screen or the text you enter.</p>
-    <p>You can reject optional cookies and still book an assessment or join the waitlist. Use Cookie settings at the bottom of any page to change your choice.</p>
+    <p>Cookies are small pieces of information saved on your device. If you accept optional cookies, we count page visits and steps in the signup, the assessment, and the plan choice to understand how people use our website. These counts can include your chosen plan, subject and school curriculum. They do not include your name, email address, postal code, or your child&apos;s grade. We do not record your screen or the text you enter.</p>
+    <p>You can reject optional cookies and still take the free math assessment, choose a plan, or join the waitlist. Use Cookie settings at the bottom of any page to change your choice.</p>
     <p>Your device also saves your cookie choice and briefly keeps details needed when you return from adding your card. These help the website work and are separate from the optional cookies.</p>
     <h2>Companies that help us</h2>
     <p>Other companies help us keep form details, send emails, take payments, make the website available, and count visits. The company that makes the website available may use information about your device and connection to keep it working and protect it from misuse.</p>
@@ -36,11 +36,11 @@ export default function Privacy() {
       <summary>See the companies we use</summary>
       <ul>
         <li>Supabase manages account sign-in and stores form details, assessment records, and private drawings.</li>
-        <li>Resend sends account links, reports, reminders, and notices to our team.</li>
+        <li>Resend sends sign-in codes, account links, reports, reminders, and notices to our team.</li>
         <li>Anthropic processes the assessment work and report facts described above when AI processing is enabled.</li>
         <li>Stripe handles adding your card and payments.</li>
         <li>Vercel makes the website available to you.</li>
-        <li>PostHog counts visits and booking steps only if you accept optional cookies.</li>
+        <li>PostHog counts visits and signup steps only if you accept optional cookies.</li>
       </ul>
     </details>
     <p>Some of these companies may handle information outside Canada. Information handled there may be subject to the laws of those countries.</p>

@@ -156,7 +156,7 @@ export function storedFacts(session: FactsSession): FactsTest {
   return { grade: session.grade, facts: session.facts };
 }
 
-// Starting values, tuned after the pilot (spec #54). Speed never says "behind": slow facts need practice.
+// Starting values, tuned from the first real results (spec #54). Speed never says "behind": slow facts need practice.
 /** A median time per answered fact at or under this is "quick". */
 export const FACTS_QUICK_MS = 3000;
 /** Percent of answered facts right for accuracy to be "secure". */

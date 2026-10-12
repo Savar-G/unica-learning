@@ -8,48 +8,39 @@ import { LINK_TTL_MS, MAX_LINKS_PER_HOUR, linkEmail, newToken } from "@/lib/sign
 
 // Server steps shared by the account routes (#62, #63). Every call uses the admin client (secret key).
 
-// The admin API skips Supabase's own signup rate limit, so new parent rows are capped across the whole site.
-// Pilot traffic is a handful of families; a script hits the cap at once.
-const MAX_SIGNUPS_PER_10_MIN = 20;
+/**
+ * What create_family answers (migration add_family_admission, #82). "created" with the first child's id; "exists" when
+ * the parent row is already there; "busy" at the site-wide cap (20 new families in 10 minutes); "unavailable" while the
+ * family is being deleted (#78); "failed" when the call did not work.
+ */
+export type Admission = { status: "created"; child: string } | { status: "exists" | "busy" | "unavailable" | "failed" };
 
-/** "busy" when the site-wide signup cap is reached, "failed" when the count did not work, else null. */
-export async function signupCap(admin: SupabaseClient): Promise<"busy" | "failed" | null> {
-  const { count, error } = await admin.from("parents")
-    .select("id", { count: "exact", head: true })
-    .gt("created_at", new Date(Date.now() - 10 * 60_000).toISOString());
-  if (error) {
-    console.error("[account] count failed", error.message);
-    return "failed";
-  }
-  if ((count ?? 0) >= MAX_SIGNUPS_PER_10_MIN) {
-    console.error("[account] signup cap reached");
-    return "busy";
-  }
-  return null;
-}
-
-/** Writes the parent row and the first child for auth user `id`. Returns the child's id, or null after it removed the parent row again. */
-export async function createParent(
+/**
+ * Writes the parent row and the first child for auth user `id` in one database transaction. The cap check and both
+ * inserts run under one lock, so parallel requests cannot all pass the cap, and a failed insert leaves no half family.
+ */
+export async function createFamily(
   admin: SupabaseClient,
   id: string,
   parent: { name: string; email: string; postal: string; source: Record<string, string> },
   child: ChildInput,
-): Promise<string | null> {
-  const { error: parentError } = await admin.from("parents").insert({ id, name: parent.name, email: parent.email, postal: parent.postal, source: parent.source });
-  if (parentError) {
-    console.error("[account] parent insert failed", parentError.message);
-    return null;
+): Promise<Admission> {
+  const { data, error } = await admin.rpc("create_family", {
+    p_parent: id, p_name: parent.name, p_email: parent.email, p_postal: parent.postal, p_source: parent.source,
+    p_child_name: child.firstName, p_child_grade: child.grade, p_child_province: child.province,
+  });
+  if (error) {
+    console.error("[account] create_family failed", error.code, error.message);
+    return { status: "failed" };
   }
-  const { data, error } = await admin.from("children")
-    .insert({ parent_id: id, first_name: child.firstName, grade: child.grade, province: child.province })
-    .select("id").single<{ id: string }>();
-  if (error || !data) {
-    console.error("[account] child insert failed", error?.message);
-    const { error: deleteError } = await admin.from("parents").delete().eq("id", id);
-    if (deleteError) console.error("[account] ORPHAN parent row, delete it in the dashboard:", id, deleteError.message);
-    return null;
+  const result = (data ?? {}) as { status?: unknown; child?: unknown };
+  if (result.status === "created" && typeof result.child === "string") return { status: "created", child: result.child };
+  if (result.status === "exists" || result.status === "busy" || result.status === "unavailable") {
+    if (result.status === "busy") console.error("[account] family cap reached");
+    return { status: result.status };
   }
-  return data.id;
+  console.error("[account] create_family answered", JSON.stringify(result).slice(0, 200));
+  return { status: "failed" };
 }
 
 /** True on a phone. The test needs a laptop or tablet (D-082). */

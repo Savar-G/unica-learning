@@ -3,7 +3,7 @@ import { workerConfiguration, runRetentionWorker, withDeletionHeartbeat } from "
 
 // Format-only synthetic values. Only a transport preflight can establish real API authentication.
 const env = {
-  ASSESSMENT_PILOT: "on", RETENTION_WORKER_ENABLED: "on",
+  RETENTION_WORKER_ENABLED: "on",
   SUPABASE_URL: "https://cdjobwsyzndtltzfpyqa.supabase.co",
   SUPABASE_SECRET_KEY: `sb_secret_${"A".repeat(32)}`,
   STRIPE_SECRET_KEY: `rk_live_${"B".repeat(32)}`,
@@ -13,7 +13,8 @@ it("requires explicit activation and production credentials, and defaults manual
   expect(workerConfiguration([], env)).toMatchObject({ kind: "run", mode: "dry" });
   expect(workerConfiguration(["--help"], {})).toEqual({ kind: "help" });
   expect(workerConfiguration(["--mode", "delete"], { ...env, RETENTION_WORKER_ENABLED: "off" })).toEqual({ kind: "disabled" });
-  expect(workerConfiguration(["--mode", "delete"], { ...env, ASSESSMENT_PILOT: undefined })).toMatchObject({ kind: "run", mode: "delete" });
+  // The old app setting (removed in #82) has no effect on the worker.
+  expect(workerConfiguration(["--mode", "delete"], { ...env, ASSESSMENT_PILOT: "off" })).toMatchObject({ kind: "run", mode: "delete" });
   for (const value of [undefined, "[SENSITIVE]", "sk_test_test", "rk_live_placeholder", "pk_live_publishable", `sk_live_${"B".repeat(32)}`]) {
     expect(() => workerConfiguration(["--mode", "delete"], { ...env, STRIPE_SECRET_KEY: value })).toThrow("Worker credentials unavailable");
   }

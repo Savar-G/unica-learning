@@ -2,7 +2,6 @@ import Link from "next/link";
 import { headers } from "next/headers";
 import { notFound, redirect } from "next/navigation";
 import { pageMetadata } from "@/lib/metadata";
-import { requirePilot } from "@/lib/pilot";
 import { CURRICULA } from "@/lib/signup";
 import type { Child } from "@/lib/account";
 import { startStates, stateFor } from "@/lib/assessment-store";
@@ -23,7 +22,6 @@ export const metadata = pageMetadata({
 // One child's start screen: the phone-to-laptop sign-in link opens it (#63), so the parent can hand the device over.
 // Its button opens the test (#64) at /account/test/<child>.
 export default async function StartScreen({ params, searchParams }: PageProps<"/account/start/[child]">) {
-  await requirePilot();
   const { child: id } = await params;
   const { via, reminder } = await searchParams;
   // A reminder email (#73) links here: "continue", "come_back" or "start".

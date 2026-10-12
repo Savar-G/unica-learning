@@ -1,14 +1,12 @@
 import { timingSafeEqual } from "node:crypto";
 import { runRetentionBatch } from "@/lib/assessment";
 import { advanceDeletionCursor, deletionCandidates, deletionCursor, runFamilyDeletion } from "@/lib/family-deletion-store";
-import { pilotOn } from "@/lib/pilot";
 import { adminClient } from "@/lib/supabase-auth";
 
 export const maxDuration = 60;
 
 /** Daily Vercel cron. Dry mode reads the full paged set and returns counts only. No email or analytics. */
 export async function GET(request: Request) {
-  if (!pilotOn()) return new Response("Not found", { status: 404 });
   const secret = process.env.CRON_SECRET;
   if (!secret) return Response.json({ ok: false, error: "unavailable" }, { status: 503 });
   const given = Buffer.from(request.headers.get("authorization") ?? "");

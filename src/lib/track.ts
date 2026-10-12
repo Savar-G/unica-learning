@@ -1,5 +1,9 @@
-// Funnel events: cta_click, form_start, plan_selected, details_done, waitlist_join, checkout_start, reserve_success, card_redirect, card_saved, card_cancelled, signup_save_failed, heard_from.
-// Assessment pilot (#62): account_form_start, account_created, account_signup_failed, sign_in, sign_in_failed, child_added, phone_screen, test_start_click.
+// Funnel events: cta_click (src = the "Take free math assessment" link that opened /start, #82), card_saved, card_cancelled.
+// The old booking dialog's events (form_start, plan_selected, details_done, checkout_start, reserve_success,
+// card_redirect, signup_save_failed) stopped with the public launch (#82). heard_from stays for old booking receipts.
+// Parent accounts (#62): account_form_start, account_created, account_signup_failed, sign_in, sign_in_failed, child_added, phone_screen, test_start_click.
+// Email code (#82): account_code_sent (status sent, wait or again), account_code_failed (code send, expired, too_many or
+// check_failed), sign_in (channel "code": the email already had an account, and the code signed the parent in).
 // Sign-in (#63): google_start, google_failed, sign_in_link_sent, sign_in_link_failed, sign_in_link_page, sign_in (channel "link", on the start screen), password_reset_request, password_changed, password_change_failed.
 // The test (#64): test_start (status new or resumed), test_finish, test_error (code, status = the step that failed).
 // Read-aloud, break, progress (#69): read_aloud (the child started the voice), test_break (status shown, rested or skipped).
