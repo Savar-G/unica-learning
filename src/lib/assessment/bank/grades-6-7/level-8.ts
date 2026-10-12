@@ -71,7 +71,7 @@ export const LEVEL_8: readonly TaggedTemplate[] = [
       const [w1, n1, d1, w2, n2, d2] = draw(rng, (g) => {
         const [d1, d2] = g.shuffle([2, 3, 4, 5, 6, 8]).slice(0, 2);
         return [g.int(1, 4), g.int(1, d1 - 1), d1, g.int(1, 3), g.int(1, d2 - 1), d2];
-      }, ([w1, n1, d1, w2, n2, d2]) => gcd(n1, d1) === 1 && gcd(n2, d2) === 1 && (n1 * d2 + n2 * d1) % (d1 * d2) !== 0);
+      }, ([, n1, d1, , n2, d2]) => gcd(n1, d1) === 1 && gcd(n2, d2) === 1 && (n1 * d2 + n2 * d1) % (d1 * d2) !== 0);
       const big = d1 * d2, top = n1 * d2 + n2 * d1, whole = w1 + w2 + Math.floor(top / big), [rn, rd] = simplest(top % big, big);
       const answer = mixed(whole, rn, rd);
       const [fn, fd] = simplest(n1 + n2, d1 + d2);
