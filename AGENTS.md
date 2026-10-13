@@ -47,7 +47,7 @@ Personalized, mailed math and reading workbooks for ages 6-12 (grades 1-7). The 
 | `EMAIL_FROM` | Sender of emails to parents, `Unica Learning <hello@unicalearning.com>` (Production and Preview). Without it, sign-in link emails fail. |
 | `CRON_SECRET` | Protects `/api/keepalive` (Vercel cron sends it) and `/api/reminders` (pg_cron sends it from Vault). Production and Preview. `/api/reminders` does not run without it. |
 | `SUPABASE_SECRET_KEY` | Server writes for parent accounts (`src/lib/supabase-auth.ts`). Never sent to the browser. |
-| `STRIPE_SECRET_KEY` | Server only. Creation needs write access to Customers and Checkout Sessions. Card confirmation also needs access to retrieve a Checkout Session with its expanded SetupIntent. Verify the restricted key on the preview. Without a key (or if creation fails), BC parents see "we'll email you a link to add your card" and the signup alert says so. |
+| `STRIPE_SECRET_KEY` | Server only. Creation needs write access to Customers and Checkout Sessions. Card confirmation also needs access to retrieve a Checkout Session with its expanded SetupIntent. The admin dashboard (`/admin`, D-099) also needs read access to Subscriptions; without it the dashboard says it cannot tell who is paying. Verify the restricted key on the preview. Without a key (or if creation fails), BC parents see "we'll email you a link to add your card" and the signup alert says so. |
 | `NEXT_PUBLIC_SITE_URL`, `NEXT_PUBLIC_ALLOW_INDEX` | Share-card links; search indexing switch |
 | `ANTHROPIC_API_KEY` | Server only. Turns on the AI work review and AI report text (#68); unset means off. An Anthropic API key, never a Claude subscription. |
 | `AI_REVIEW_MODEL` | Claude model for #68; default `claude-sonnet-5-5`. |

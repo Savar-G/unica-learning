@@ -9,6 +9,8 @@ import type { ReportView } from "@/lib/report-view";
 import { sessionClient } from "@/lib/supabase-auth";
 import type { AssessmentStatus } from "@/lib/test-api";
 import { signWork } from "@/lib/work-store";
+import { stripe } from "@/lib/stripe";
+import type { DashboardRows, RawCard, RawChild, RawEmail, RawParent, RawReport, RawSubscription, RawTest, RawWaitlist } from "@/lib/admin-dashboard";
 
 // The admin area's data (#77). The gate and every read are here, so no admin page reads the database on its own.
 // Every read uses the admin's own session, never the secret key: the database decides what they see. The tables a
@@ -462,4 +464,52 @@ export async function getReportView(a: AdminSession, id: string): Promise<{ view
       workImages: await signWork(a.db, paths),
     },
   };
+}
+
+// The dashboard and activity log (D-099)
+
+/**
+ * Every row the dashboard needs, all of them: the model counts families, tests and emails over any range. Fine at
+ * today's size (hundreds of families); move the counts into SQL when a page load gets slow. Payment status comes from
+ * Stripe, read only: the subscriptions of the customers that saved a card.
+ */
+export async function dashboardRows(a: AdminSession): Promise<DashboardRows> {
+  const [parents, children, tests, reports, cards, waitlist, emails] = await Promise.all([
+    allRows<RawParent>(a.db.rpc("admin_parents").select(PARENT_COLUMNS).order("id"), "parents"),
+    allRows<RawChild>(a.db.rpc("admin_children").select(CHILD_COLUMNS).order("id"), "children"),
+    allRows<Omit<RawTest, "answered"> & { answers: { count: number }[] }>(a.db.rpc("admin_assessments").select("id, created_at, status, parent_id, child_id, grade, province, started_at, completed_at, last_answer_at, answers(count)").order("id"), "tests"),
+    allRows<RawReport>(a.db.rpc("admin_reports").select("id, created_at, assessment_id, parent_id, child_id, emailed_at, email_error, alerted_at, alert_error").order("id"), "reports"),
+    allRows<RawCard>(a.db.rpc("admin_card_setups").select("id, created_at, updated_at, parent_id, child_id, plan, price, stripe_customer_id, card_saved_at").order("id"), "card setups"),
+    allRows<RawWaitlist>(a.db.rpc("admin_waitlist_joins").select("id, created_at, parent_id, child_id, province").order("id"), "waitlist"),
+    allRows<RawEmail>(a.db.from("email_log").select("id, created_at, parent_id, child_id, assessment_id, kind, status, attempts, sent_at, error").order("id"), "email log"),
+  ]);
+  const { subscriptions, note } = await cardSubscriptions(cards);
+  return {
+    parents, children, reports, cards, waitlist, emails, subscriptions, stripeNote: note,
+    tests: tests.map(({ answers, ...t }) => ({ ...t, answered: answers[0]?.count ?? 0 })),
+  };
+}
+
+/** Up to this many of the account's newest subscriptions are read; far more than a launch needs. */
+const SUBSCRIPTIONS_MAX = 2000;
+
+/** The Stripe subscriptions of the customers that saved a card. Read only: Savar starts each subscription himself. */
+async function cardSubscriptions(cards: RawCard[]): Promise<{ subscriptions: RawSubscription[]; note: string | null }> {
+  const s = stripe();
+  if (!s) return { subscriptions: [], note: "No Stripe key here, so the page cannot tell who is paying." };
+  const customers = new Set(cards.flatMap((c) => (c.stripe_customer_id ? [c.stripe_customer_id] : [])));
+  if (customers.size === 0) return { subscriptions: [], note: null };
+  try {
+    const all = await s.subscriptions.list({ status: "all", limit: 100 }).autoPagingToArray({ limit: SUBSCRIPTIONS_MAX });
+    return {
+      note: null,
+      subscriptions: all.flatMap((sub) => {
+        const customer = typeof sub.customer === "string" ? sub.customer : sub.customer.id;
+        return customers.has(customer) ? [{ customer, status: sub.status, created: new Date(sub.created * 1000).toISOString(), amount: sub.items.data[0]?.price.unit_amount ?? null }] : [];
+      }),
+    };
+  } catch (e) {
+    console.error("[admin] stripe subscriptions failed", e instanceof Error ? e.message : e);
+    return { subscriptions: [], note: "Stripe did not answer, so the page cannot tell who is paying. The Stripe key needs read access to Subscriptions." };
+  }
 }
