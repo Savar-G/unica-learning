@@ -3,14 +3,17 @@ import { LIST_MAX, listTests, requireAdmin } from "@/lib/admin-store";
 import { ADMIN_PATH, listOffset, parseFilters } from "@/lib/admin-view";
 import { pageMetadata } from "@/lib/metadata";
 import { AdminFrame, FilterForm, More, TestsTable } from "@/components/admin";
+import { PrototypeDashboard, SHOW_PROTOTYPE } from "./_prototype/dashboard";
 
 export const metadata = pageMetadata({ path: ADMIN_PATH, title: "Admin: tests", description: "Admin area.", index: false });
 
 // The admin area's main list (#77): every test, newest first, with the filters of the ticket. Admins only: everyone
 // else gets the site's 404 (requireAdmin), and every read runs with the admin's own session.
 export default async function AdminTests({ searchParams }: PageProps<"/admin">) {
-  const admin = await requireAdmin();
   const query = await searchParams;
+  // PROTOTYPE ONLY: outside production, /admin shows the dashboard variants; ?variant=0 keeps the tests list.
+  if (SHOW_PROTOTYPE && query.variant !== "0") return <PrototypeDashboard query={query} />;
+  const admin = await requireAdmin();
   const filters = parseFilters(query);
   const offset = listOffset(query, LIST_MAX);
   const { rows, more } = await listTests(admin, filters, offset);
