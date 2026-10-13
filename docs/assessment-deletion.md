@@ -2,7 +2,7 @@
 
 Apply `supabase/migrations/20261011_add_family_deletion.sql`, then `supabase/migrations/20261011225238_add_family_deletion_worker_lease.sql`, before this code ships. Both migrations are additive. They create no deletion requests and delete no family. The owner applied both files in the SQL editor on 11 October 2026 (see PR #108). The SQL editor does not write the migration registry, so the repo files are the record. Hosted checks passed on 13 October 2026 (#117); see [Hosted verification](#hosted-verification-117).
 
-The owner approved public assessment launch without a separate pilot. The Node worker has no pilot requirement. The #82 launch change removed the app feature setting from the app, admin and HTTP routes; their sign-in, admin membership and job secret checks remain. Product AI remains off. Public launch authorization does not activate deletion before its migration, credential and hosted checks pass.
+The owner approved public assessment launch without a separate pilot. The Node worker has no pilot requirement. The #82 launch change removed the app feature setting from the app, admin and HTTP routes; their sign-in, admin membership and job secret checks remain. Product AI remains off. Public launch authorization does not activate deletion before its migration, credential and hosted checks pass. These checks passed on 13 October 2026, with the limits in [Hosted verification](#hosted-verification-117).
 
 ## Process and concurrency
 
@@ -85,7 +85,7 @@ The 64-customer one-second-response fixture fails seven times in the HTTP path. 
 2. Provision dedicated production secrets through the owner's private input. Confirm actual permissions, credential rotation, Actions access controls, remaining minutes and billing limits. Keep activation off. No local placeholder is a production key.
 3. Before this workflow is on the default branch, validate YAML, pinned actions, local build/help, and the actual entry through isolated transports. `workflow_dispatch` and schedules require the workflow on the default branch. Local syntax checks do not prove hosted Actions behavior. See [workflow events](https://docs.github.com/en/actions/reference/workflows-and-actions/events-that-trigger-workflows#schedule).
 4. After separately authorized hosted deployment, run manual dry mode first. Then use only an inspected exact named-QA set for recovery, renewal beyond five minutes, signals/hard loss, current payment reads, Storage-before-Auth and restricted-key tests. No customer fixture or live bulk request is permitted as a test.
-5. Enable the Node schedule only after those checks pass. Then remove only the Vercel retention schedule. Keep keepalive, admin requests and aggregate job monitoring. No additional application emails.
+5. Enable the Node schedule only after those checks pass. Then remove only the Vercel retention schedule. Keep keepalive, admin requests and aggregate job monitoring. No additional application emails. Status 13 October 2026: steps 4 and 5 are done with the limits in [Hosted verification](#hosted-verification-117).
 
 GitHub-hosted jobs permit six hours; this job uses twenty minutes. Private Free includes 2,000 minutes/month and Pro 3,000. Standard Linux overage is USD 0.006/minute. Thirty-one daily twenty-minute runs plan for 620 minutes, or USD 3.72 if all are chargeable. Other jobs and rounding add usage. Actual account quota is unverified. Schedules can be delayed or dropped. This source creates no subscription or billing configuration. See [limits](https://docs.github.com/en/actions/reference/limits), [rates](https://docs.github.com/en/billing/reference/actions-runner-pricing), and [billing](https://docs.github.com/en/billing/concepts/product-billing/github-actions).
 
@@ -96,11 +96,13 @@ Run on 13 October 2026 against production, with four new named QA families (`qa1
 | Check | Result |
 | --- | --- |
 | Actions runner, dry mode | Run 38333980108 on `main`: `{"ok":true,"dry":true,"eligible":0}`. |
-| Credentials | Dedicated Supabase secret key `retention_worker` and live restricted Stripe key `unica-retention-worker` (Checkout Sessions write, Setup Intents write, Payment Methods read, Subscriptions read). Probe: Checkout Sessions, SetupIntents and Subscriptions lists 200; Customers, Charges and Balance 403. |
+| Credentials | Dedicated Supabase secret key `retention_worker` and live restricted Stripe key `unica-retention-worker` (Checkout Sessions write, Setup Intents write, Payment Methods read, Subscriptions read; read on the Stripe review screen). Read probe: Checkout Sessions, SetupIntents and Subscriptions lists 200; Customers, Charges and Balance 403. No write call was made, so write access is configured but not exercised. |
 | Fence, write first | Two concurrent connections. The deletion request waited 6 s for the open child insert to commit, then returned `requested`. |
 | Fence, request first | The late child insert waited 7.6 s for the request to commit, then failed with `family_unavailable` (55000). |
 | Storage trigger | After the request, a new upload and an overwrite with the server secret key both failed with 55000. Existing images stayed. |
 | Delete mode and lease recovery | Run 38334927154: 2 deleted, 1 busy (QA family held by a fake live lease), 1 failed (see #138). Run 38335331038 after lease expiry: 2 deleted, 0 failed. It resumed the partial family and took over the expired lease. The old lease token then returned `false` from `renew_family_deletion_work`. |
 | Storage before Auth | The failed family kept its Auth user, rows and queue entry while 2 images remained. After the final run: QA Auth users 0, parents 0, children 0, images 0, queue 0, payment records 0. Non-QA counts were unchanged (1 parent, 8 images). |
 
-Not covered: renewal beyond five minutes, signals and hard runner loss, live Stripe cancellation and expiration, and Checkout-owned intents. These need a QA family with Stripe history, and the rules above do not allow a customer fixture. The isolated tests in this document cover them.
+Not covered: renewal beyond five minutes, signals and hard runner loss, live Stripe cancellation and expiration, and Checkout-owned intents. These need a QA family with Stripe history, and the rules above do not allow a customer fixture. Only the isolated tests in this document cover them. A family with Stripe history keeps its fence when a payment read is unknown, so these paths fail closed.
+
+Open defect: #138. A family with mixed-case sibling folders in Storage stops at every run. On 13 October 2026, no non-QA object had a mixed-case path.
