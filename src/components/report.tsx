@@ -9,6 +9,8 @@ import { CURRICULA } from "@/lib/signup";
 import { BRAND } from "@/lib/site";
 import type { ReportSrc } from "@/lib/next-step";
 import { ReportNextActions, type NextStepStart } from "@/components/report-next";
+import { LearningStep } from "@/components/learning";
+import type { LearningAnswers } from "@/lib/learning-style";
 import {
   AREA_NOTE,
   NEXT_STEP_ANCHOR,
@@ -282,15 +284,19 @@ export interface ReportNextContext {
   /** The parent came from the email's link to this step. */
   asked: boolean;
   start: NextStepStart;
+  /** How the child learns (#126), asked above the plan choice. Absent on read-only reports. */
+  learning?: { childId: string; start: LearningAnswers | null };
 }
 
-// The plan choice (BC) or the one-click waitlist (#66), on a colour field. The buttons need the browser; the words
-// come from nextStep.
+// The learning questions (#126), then the plan choice (BC) or the one-click waitlist (#66), on a colour field. The
+// buttons need the browser; the words come from nextStep.
 function ReportNextStep({ view, next }: { view: ReportView; next: ReportNextContext }) {
   const step = nextStep(view);
+  const { learning, ...actions } = next;
   return (
     <Row id={NEXT_STEP_ANCHOR} title="Next step">
-      <ReportNextActions reportId={view.id} step={step} childName={view.childName} province={view.province} {...next} />
+      {learning && <LearningStep childId={learning.childId} name={view.childName} start={learning.start} place="report" />}
+      <ReportNextActions reportId={view.id} step={step} childName={view.childName} province={view.province} {...actions} />
     </Row>
   );
 }

@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import type { Province, ReportModel } from "@/lib/assessment";
 import { isUuid } from "@/lib/assessment-store";
+import { fromRow, LEARNING_COLUMNS, type LearningRow } from "@/lib/learning-style";
 import { pageMetadata } from "@/lib/metadata";
 import { reportReturnPath, type ReportView } from "@/lib/report-view";
 import type { PlanId } from "@/lib/site";
@@ -27,7 +28,7 @@ interface ReportPageRow {
   questions: number;
   minutes: number;
   assessment: { completed_at: string; province: Province } | null;
-  child: { first_name: string } | null;
+  child: ({ first_name: string } & LearningRow) | null;
 }
 
 // One child's report (#65), read with the parent's own session: row-level security returns only their reports, so
@@ -45,7 +46,7 @@ export default async function ReportPage({ params, searchParams }: PageProps<"/a
   if (!(await parentId(db))) redirect(`/sign-in?next=${encodeURIComponent(reportReturnPath(id, { src, step }))}`);
 
   const { data: row } = await db.from("reports")
-    .select("id, child_id, model, questions, minutes, assessment:assessments(completed_at, province), child:children(first_name)")
+    .select(`id, child_id, model, questions, minutes, assessment:assessments(completed_at, province), child:children(first_name, ${LEARNING_COLUMNS})`)
     .eq("id", id).maybeSingle<ReportPageRow>();
   if (!row?.assessment || !row.child) notFound();
 
@@ -64,7 +65,13 @@ export default async function ReportPage({ params, searchParams }: PageProps<"/a
   };
   // Back from the payment page without a card: not a new report open.
   const cancelled = query.card === "cancelled";
-  const next: ReportNextContext = { src, asked: step !== null, start: { ...(await nextStepStart(db, row.child_id)), cancelled } };
+  const next: ReportNextContext = {
+    src,
+    asked: step !== null,
+    start: { ...(await nextStepStart(db, row.child_id)), cancelled },
+    // #126: how the child learns, asked above the plan choice; the parent can skip it.
+    learning: { childId: row.child_id, start: fromRow(row.child) },
+  };
   return (
     <SupportPage label="" title="" wide>
       {!cancelled && <TrackOnce event="report_open" props={{ src }} />}

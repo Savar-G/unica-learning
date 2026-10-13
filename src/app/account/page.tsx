@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { pageMetadata } from "@/lib/metadata";
@@ -8,6 +9,7 @@ import { startStates, stateFor } from "@/lib/assessment-store";
 import { parentId, sessionClient } from "@/lib/supabase-auth";
 import { isPhone } from "@/lib/account-server";
 import { reportPath } from "@/lib/report-view";
+import { fromRow, LEARNING_COLUMNS, learningPath, type LearningRow } from "@/lib/learning-style";
 import { AddChild, SendLink, SignOut, StartTest, TrackOnce } from "@/components/account";
 import { SupportPage } from "@/components/support-page";
 
@@ -27,7 +29,7 @@ export default async function Account({ searchParams }: PageProps<"/account">) {
   if (!parentUser) redirect("/sign-in");
   const [{ data: parent }, { data: kids }, states, { data: reports }] = await Promise.all([
     db.from("parents").select("name, email").maybeSingle<{ name: string; email: string }>(),
-    db.from("children").select("id, first_name, grade, province").order("created_at").returns<Child[]>(),
+    db.from("children").select(`id, first_name, grade, province, ${LEARNING_COLUMNS}`).order("created_at").returns<(Child & LearningRow)[]>(),
     // Start, continue, start again after 24 hours, or wait 30 days after a completed test (#72).
     startStates(parentUser),
     // Reports (#65), oldest first, each with the time its test finished.
@@ -61,7 +63,13 @@ export default async function Account({ searchParams }: PageProps<"/account">) {
       <ul className="acct-kids">
         {children.map((c, i) => (
           <li key={c.id} className="acct-kid">
-            <span><b>{c.first_name}</b><span className="small">Grade {c.grade} · {CURRICULA[c.province]}</span></span>
+            <span>
+              <b>{c.first_name}</b><span className="small">Grade {c.grade} · {CURRICULA[c.province]}</span>
+              {/* #126: after the first report, the parent can answer or change how the child learns. */}
+              {newestReport.has(c.id) && <Link className="small acct-learn" href={learningPath(c.id)}>
+                {fromRow(c) ? `How ${c.first_name} learns: change answers` : `Tell us how ${c.first_name} learns`}
+              </Link>}
+            </span>
             {/* Inside the 30 days after a test there is nothing to open on the laptop: the phone shows the date too (#72). */}
             {phone && stateFor(states, c.id).kind !== "wait"
               ? <SendLink childId={c.id} name={c.first_name} sent={sent === "1" && i === 0} />
