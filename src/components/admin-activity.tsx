@@ -2,9 +2,9 @@
 // the day-by-day activity log, the "Needs you" lists, a stage list with journey dots, or the email log; and a side
 // column with today against yesterday, a 14-day chart and the all-time totals.
 import Link from "next/link";
-import { Fragment } from "react";
+import { Fragment, type ReactNode } from "react";
 import { DailyBars, Steps } from "@/components/admin-charts";
-import { Notes, RangeTabs, StageChip, familyHref, href, type Ctx } from "@/components/admin-dashboard-parts";
+import { Notes, RangeTabs, StageChip, TestMark, familyHref, href, type Ctx } from "@/components/admin-dashboard-parts";
 import {
   ALL_STAGES,
   EMAIL_KINDS,
@@ -82,7 +82,7 @@ export function ActivityView({ d, ctx }: { d: Dashboard; ctx: Ctx }) {
       </nav>
 
       <div className="dash-mid">
-        <Notes ctx={ctx} stripeNote={d.stripeNote} />
+        <Notes ctx={ctx} d={d} />
         {view.kind === "activity" && <ActivityLog d={d} ctx={ctx} />}
         {view.kind === "needs" && <NeedsList d={d} ctx={ctx} />}
         {view.kind === "families" && <StageList d={d} ctx={ctx} stage={view.stage} />}
@@ -185,7 +185,7 @@ function FamilyRows({ d, ctx, families }: { d: Dashboard; ctx: Ctx; families: Fa
       {families.map((f) => (
         <li key={f.id}>
           <Link href={familyHref(ctx, f.id)}>
-            <span className="dash-row-main"><b>{f.name}</b><span className="dash-muted">{kidsText(f)}</span></span>
+            <span className="dash-row-main"><b>{f.name}<TestMark test={f.test} /></b><span className="dash-muted">{kidsText(f)}</span></span>
             <Steps reached={rank(f.stage)} waitlist={f.stage === "waitlist"} />
             <span><StageChip stage={f.stage} /><span className="dash-sub">{since(f.stageAt, d.now)} in this stage</span></span>
             <span className="dash-row-mail">
@@ -225,12 +225,14 @@ function NeedsList({ d, ctx }: { d: Dashboard; ctx: Ctx }) {
   );
 }
 
-function EmailLog({ d, ctx, filter }: { d: Dashboard; ctx: Ctx; filter: EmailKind | "failed" | null }) {
+/** Every logged email, newest first; also the Emails tab. `nav`: shown under the title. */
+export function EmailLog({ d, ctx, filter, nav }: { d: Dashboard; ctx: Ctx; filter: EmailKind | "failed" | null; nav?: ReactNode }) {
   const rows = d.emails.filter((e) => !filter || (filter === "failed" ? e.status === "failed" : e.kind === filter));
   const info = filter && filter !== "failed" ? EMAIL_KINDS.find((k) => k.kind === filter) : null;
   return (
     <>
       <div className="dash-top"><h1>{filter === "failed" ? "Failed emails" : info ? info.label : "All emails"} <span className="dash-muted">{rows.length}</span></h1></div>
+      {nav}
       {info && <p className="dash-lead">Subject: &ldquo;{info.subject}&rdquo;. Goes to: {info.to.toLowerCase()}. Sends when: {info.trigger.toLowerCase()}.</p>}
       <div className="dash-scroll dash-card">
         <table className="dash-table">
@@ -242,7 +244,7 @@ function EmailLog({ d, ctx, filter }: { d: Dashboard; ctx: Ctx; filter: EmailKin
                 <td>{EMAIL_LABEL[e.kind]}</td>
                 <td><Link href={familyHref(ctx, e.familyId)}>{e.familyName}</Link></td>
                 <td className="dash-muted">{e.kind === "unsubscribe" ? "-" : e.subject}</td>
-                <td>{e.status === "failed" ? <span className="dash-bad-text">Failed after {e.attempts} tries: {e.error ?? "unknown error"}</span> : e.status === "pending" ? "Waiting to send" : e.kind === "unsubscribe" ? "Reminders off" : "Sent"}</td>
+                <td>{e.status === "failed" ? <span className="dash-bad-text">Failed after {e.attempts} {e.attempts === 1 ? "try" : "tries"}: {e.error ?? "unknown error"}</span> : e.status === "pending" ? "Waiting to send" : e.kind === "unsubscribe" ? "Reminders off" : "Sent"}</td>
               </tr>
             ))}
           </tbody>

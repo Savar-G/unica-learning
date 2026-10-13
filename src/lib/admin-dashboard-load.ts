@@ -20,7 +20,9 @@ export async function loadDashboard(raw: Record<string, string | string[] | unde
   const query = Object.fromEntries(Object.entries(raw).flatMap(([k, v]) => (typeof v === "string" && v ? [[k, v]] : []))) as Record<string, string>;
   const demo = query.demo === "1" && process.env.NODE_ENV === "development";
   const now = new Date();
-  if (demo) return { who: "demo data", d: buildDashboard(demoRows(now), pickRange(query.range), now), query, demo };
+  // ?tests=1 counts the team and test families too
+  const options = { withTests: query.tests === "1" };
+  if (demo) return { who: "demo data", d: buildDashboard(demoRows(now), pickRange(query.range), now, options), query, demo };
   const admin = await requireAdmin();
-  return { who: admin.email, d: buildDashboard(await dashboardRows(admin), pickRange(query.range), now), query, demo };
+  return { who: admin.email, d: buildDashboard(await dashboardRows(admin), pickRange(query.range), now, options), query, demo };
 }

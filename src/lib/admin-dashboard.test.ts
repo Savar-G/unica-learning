@@ -7,7 +7,7 @@ const DAY = 86_400_000;
 const ago = (days: number, hours = 0) => new Date(NOW.getTime() - days * DAY - hours * 3_600_000).toISOString();
 
 function rows(over: Partial<DashboardRows> = {}): DashboardRows {
-  return { parents: [], children: [], tests: [], reports: [], cards: [], waitlist: [], emails: [], subscriptions: [], stripeNote: null, ...over };
+  return { parents: [], children: [], tests: [], reports: [], cards: [], waitlist: [], emails: [], subscriptions: [], testIds: [], stripeNote: null, ...over };
 }
 const parent = (id: string, created: string) => ({ id, created_at: created, name: `Parent ${id}`, email: `${id}@example.com`, postal: "V3S 1A1", source: null });
 const child = (id: string, parentId: string, province: "BC" | "ON" = "BC") => ({ id, created_at: ago(30), parent_id: parentId, first_name: `Kid ${id}`, grade: 3, province });
@@ -181,5 +181,30 @@ describe("dashboard numbers", () => {
     expect(events[0]).toMatchObject({ familyId: "a" });
     expect(events.filter((e) => e.familyId === "c").map((e) => e.kind).sort()).toEqual(["account", "card_saved", "card_start", "test_finish", "test_start"]);
     expect(events.map((e) => e.at)).toEqual([...events.map((e) => e.at)].sort().reverse());
+  });
+});
+
+describe("team and test families", () => {
+  const r = rows({
+    parents: [parent("a", ago(1)), parent("team", ago(1)), parent("t", ago(40))],
+    tests: [test("ta", "a", "ka", ago(1), ago(1)), test("tt", "team", "kt", ago(1), ago(1))],
+    testIds: ["team", "t"],
+  });
+
+  it("leaves them out of every number unless asked", () => {
+    const d = buildDashboard(r, "all", NOW);
+    expect(d.families.map((f) => f.id)).toEqual(["a"]);
+    expect(d.kpis.find((k) => k.key === "finished")?.value).toBe(1);
+    expect(d.activity.every((a) => a.familyId === "a")).toBe(true);
+    expect(d.tests).toEqual({ count: 2, shown: false });
+    expect(d.days).toHaveLength(14);
+  });
+
+  it("counts them when asked, and marks them", () => {
+    const d = buildDashboard(r, "all", NOW, { withTests: true });
+    expect(d.families).toHaveLength(3);
+    expect(d.kpis.find((k) => k.key === "finished")?.value).toBe(2);
+    expect(d.families.filter((f) => f.test).map((f) => f.id).sort()).toEqual(["t", "team"]);
+    expect(d.days[0]).toBe(dayKey(ago(40)));
   });
 });

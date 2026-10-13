@@ -25,6 +25,8 @@ export interface DashboardRows {
   waitlist: RawWaitlist[];
   emails: RawEmail[];
   subscriptions: RawSubscription[];
+  /** Parents left out of the numbers: admin accounts and families marked as a test (D-099). */
+  testIds: string[];
   /** Why payment status is unknown (no Stripe key, or Stripe failed); null when Stripe answered. */
   stripeNote: string | null;
 }
@@ -119,6 +121,8 @@ export interface Family {
   lastEmail: EmailEvent | null;
   unsubscribed: boolean;
   lastActivityAt: string;
+  /** An admin's own family or one marked as a test: left out of the numbers unless asked for. */
+  test: boolean;
 }
 
 const latest = (xs: (string | null | undefined)[]) => xs.reduce<string>((m, x) => (x && x > m ? x : m), "");
@@ -143,6 +147,7 @@ function subjectFor(kind: EmailKind, child: string | null, grade: number | null)
 const emailStatus = (sentAt: string | null, error: string | null): EmailEvent["status"] => (sentAt ? "sent" : error ? "failed" : "pending");
 
 export function buildFamilies(rows: DashboardRows): Family[] {
+  const testIds = new Set(rows.testIds);
   const childName = new Map(rows.children.map((c) => [c.id, c.first_name]));
   const testById = new Map(rows.tests.map((t) => [t.id, t]));
   const reportByTest = new Map(rows.reports.map((r) => [r.assessment_id, r.id]));
@@ -204,6 +209,7 @@ export function buildFamilies(rows: DashboardRows): Family[] {
       emails,
       lastEmail: emails.find((e) => e.kind !== "alert" && e.kind !== "unsubscribe") ?? null,
       unsubscribed: emails.some((e) => e.kind === "unsubscribe"),
+      test: testIds.has(p.id),
       lastActivityAt: latest([p.created_at, ...tests.flatMap((t) => [t.started_at, t.last_answer_at, t.completed_at]), ...cards.flatMap((c) => [c.updated_at, c.card_saved_at]), ...waits.map((w) => w.created_at), paying?.created]),
     };
   });
@@ -285,6 +291,8 @@ export interface Dashboard {
   emailSummary: (EmailKindInfo & { sent: number; failed: number; pending: number; sentInRange: number; last: string | null })[];
   needs: { title: string; detail: string; tone: "warn" | "bad" | "info"; families: Family[] }[];
   stripeNote: string | null;
+  /** Team and test families: how many there are, and whether they are in the numbers. */
+  tests: { count: number; shown: boolean };
 }
 
 type Pick = (f: Family) => (string | null | undefined)[];
@@ -298,10 +306,12 @@ const PICK: Record<Exclude<keyof DayCounts, "day">, Pick> = {
 const pickPaying: Pick = (f) => [f.reached.paying];
 const STUCK_DAYS = 2;
 
-export function buildDashboard(rows: DashboardRows, range: RangeKey, now: Date): Dashboard {
-  const families = buildFamilies(rows).sort((a, b) => b.lastActivityAt.localeCompare(a.lastActivityAt));
+/** `withTests`: count the team and test families too. */
+export function buildDashboard(rows: DashboardRows, range: RangeKey, now: Date, { withTests = false } = {}): Dashboard {
+  const everyone = buildFamilies(rows);
+  const families = everyone.filter((f) => withTests || !f.test).sort((a, b) => b.lastActivityAt.localeCompare(a.lastActivityAt));
   const emails = families.flatMap((f) => f.emails).sort(newestFirst);
-  const first = earliest(rows.parents.map((p) => p.created_at));
+  const first = earliest(families.map((f) => f.createdAt));
   const all = range === "all";
   const days = rangeDays(range, now, first);
   const sparkDays = range === "today" ? rangeDays("7d", now, first) : days;
@@ -364,7 +374,7 @@ export function buildDashboard(rows: DashboardRows, range: RangeKey, now: Date):
     { title: "Email failed", detail: "An email to the parent did not send", tone: "bad" as const, families: families.filter((f) => f.emails.some((e) => e.status === "failed" && e.kind !== "alert")) },
   ].filter((n) => n.families.length > 0);
 
-  return { now: now.toISOString(), range, days, families, activity: activities(families), emails, kpis, series, funnel, stageCounts, emailSummary, needs, stripeNote: rows.stripeNote };
+  return { now: now.toISOString(), range, days, families, activity: activities(families), emails, kpis, series, funnel, stageCounts, emailSummary, needs, stripeNote: rows.stripeNote, tests: { count: everyone.filter((f) => f.test).length, shown: withTests } };
 }
 
 // Words for the pages

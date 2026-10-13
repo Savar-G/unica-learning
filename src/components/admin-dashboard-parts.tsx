@@ -2,7 +2,7 @@
 // stage chip and the change against the period before. Server components only.
 import Link from "next/link";
 import type { ReactNode } from "react";
-import { RANGES, STAGE_SHORT, type RangeKey, type Stage } from "@/lib/admin-dashboard";
+import { RANGES, STAGE_SHORT, type Dashboard, type RangeKey, type Stage } from "@/lib/admin-dashboard";
 import "./admin-dashboard.css";
 
 /** The page's own path and query. `demo`: made-up families in local dev (admin-demo.ts). */
@@ -50,10 +50,22 @@ export const Card = ({ title, aside, children, className = "" }: { title?: React
   </section>
 );
 
-/** Shown above the numbers when they are made up, or when Stripe could not say who is paying. */
-export function Notes({ ctx, stripeNote }: { ctx: Ctx; stripeNote: string | null }) {
+/** Shown above the numbers: made-up data, Stripe could not say who is paying, and the team and test families. */
+export function Notes({ ctx, d }: { ctx: Ctx; d: Dashboard }) {
+  const n = d.tests.count;
+  const families = `${n} team or test ${n === 1 ? "family" : "families"}`;
   return <>
     {ctx.demo && <p className="dash-note">Demo data: made-up families, not your database. Local development only.</p>}
-    {stripeNote && <p className="dash-note">{stripeNote}</p>}
+    {d.stripeNote && <p className="dash-note">{d.stripeNote}</p>}
+    {n > 0 && (
+      <p className="dash-foot dash-tests">
+        {d.tests.shown
+          ? <>Counting {families} (marked <span className="dash-test">Test</span>). <Link href={href(ctx, { tests: null })}>Leave them out</Link></>
+          : <>{families} left out of these numbers: admin accounts and families marked as a test. <Link href={href(ctx, { tests: "1" })}>Count them</Link></>}
+      </p>
+    )}
   </>;
 }
+
+/** Beside a family's name when team and test families are counted. */
+export const TestMark = ({ test }: { test: boolean }) => (test ? <span className="dash-test">Test</span> : null);

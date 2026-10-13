@@ -2,7 +2,7 @@
 // "Needs you" list, the families table with a Stage column and stage filters, and the email report.
 import Link from "next/link";
 import { DailyBars, Funnel, Spark } from "@/components/admin-charts";
-import { Card, Delta, Notes, RangeTabs, StageChip, familyHref, href, type Ctx } from "@/components/admin-dashboard-parts";
+import { Card, Delta, Notes, RangeTabs, StageChip, TestMark, familyHref, href, type Ctx } from "@/components/admin-dashboard-parts";
 import { ALL_STAGES, EMAIL_LABEL, RANGES, STAGE_SHORT, ago, at, kidsText, since, type Dashboard } from "@/lib/admin-dashboard";
 import { ADMIN_PATH } from "@/lib/admin-view";
 
@@ -23,7 +23,7 @@ export function DashboardView({ d, ctx }: { d: Dashboard; ctx: Ctx }) {
         </div>
         <RangeTabs ctx={ctx} range={d.range} />
       </div>
-      <Notes ctx={ctx} stripeNote={d.stripeNote} />
+      <Notes ctx={ctx} d={d} />
 
       <div className="dash-kpis">
         {d.kpis.map((k) => (
@@ -83,7 +83,7 @@ export function DashboardView({ d, ctx }: { d: Dashboard; ctx: Ctx }) {
             <tbody>
               {rows.slice(0, ROWS_MAX).map((f) => (
                 <tr key={f.id}>
-                  <td><Link href={familyHref(ctx, f.id)}><b>{f.name}</b></Link><span className="dash-sub">{f.email}</span></td>
+                  <td><Link href={familyHref(ctx, f.id)}><b>{f.name}</b></Link><TestMark test={f.test} /><span className="dash-sub">{f.email}</span></td>
                   <td>{kidsText(f)}</td>
                   <td><StageChip stage={f.stage} />{f.expired && f.stage === "started" && <span className="dash-sub">test expired</span>}</td>
                   <td className="dash-nowrap">{since(f.stageAt, d.now)}</td>

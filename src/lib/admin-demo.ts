@@ -25,7 +25,7 @@ export function demoRows(now: Date): DashboardRows {
   const pick = <T,>(xs: T[]) => xs[Math.floor(r() * xs.length)];
   const iso = (ms: number) => new Date(Math.min(ms, now.getTime() - 60_000)).toISOString();
   const H = 3_600_000;
-  const out: DashboardRows = { parents: [], children: [], tests: [], reports: [], cards: [], waitlist: [], emails: [], subscriptions: [], stripeNote: null };
+  const out: DashboardRows = { parents: [], children: [], tests: [], reports: [], cards: [], waitlist: [], emails: [], subscriptions: [], testIds: [], stripeNote: null };
   let n = 0;
   const id = (p: string) => `${p}-${(++n).toString().padStart(4, "0")}`;
 
@@ -96,5 +96,7 @@ export function demoRows(now: Date): DashboardRows {
       if (payMs < now.getTime()) out.subscriptions.push({ customer: card.stripe_customer_id!, status: "active", created: iso(payMs), amount: card.price * 100 } satisfies RawSubscription);
     }
   }
+  // two made-up test families, so the "hidden" note and its toggle show
+  out.testIds = out.parents.slice(0, 2).map((p) => p.id);
   return out;
 }

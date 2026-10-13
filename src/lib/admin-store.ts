@@ -483,9 +483,9 @@ export async function dashboardRows(a: AdminSession): Promise<DashboardRows> {
     allRows<RawWaitlist>(a.db.rpc("admin_waitlist_joins").select("id, created_at, parent_id, child_id, province").order("id"), "waitlist"),
     allRows<RawEmail>(a.db.from("email_log").select("id, created_at, parent_id, child_id, assessment_id, kind, status, attempts, sent_at, error").order("id"), "email log"),
   ]);
-  const { subscriptions, note } = await cardSubscriptions(cards);
+  const [{ subscriptions, note }, testIds] = await Promise.all([cardSubscriptions(cards), testAccountIds(a)]);
   return {
-    parents, children, reports, cards, waitlist, emails, subscriptions, stripeNote: note,
+    parents, children, reports, cards, waitlist, emails, subscriptions, testIds, stripeNote: note,
     tests: tests.map(({ answers, ...t }) => ({ ...t, answered: answers[0]?.count ?? 0 })),
   };
 }
@@ -512,4 +512,36 @@ async function cardSubscriptions(cards: RawCard[]): Promise<{ subscriptions: Raw
     console.error("[admin] stripe subscriptions failed", e instanceof Error ? e.message : e);
     return { subscriptions: [], note: "Stripe did not answer, so the page cannot tell who is paying. The Stripe key needs read access to Subscriptions." };
   }
+}
+
+/** The admins' user ids. PostgREST returns a set of scalars as plain values; an object row is read too, to be safe. */
+async function teamIds(a: AdminSession): Promise<string[]> {
+  const rows = must<(string | Record<string, string>)[]>(await a.db.rpc("admin_team_ids"), "team ids");
+  return rows.map((r) => (typeof r === "string" ? r : Object.values(r)[0]));
+}
+
+/** Admin accounts and families marked as a test (migration add_test_accounts): left out of the dashboard's numbers. */
+export async function testAccountIds(a: AdminSession): Promise<string[]> {
+  const [team, marked] = await Promise.all([
+    teamIds(a),
+    allRows<{ parent_id: string }>(a.db.from("test_accounts").select("parent_id").order("parent_id"), "test accounts"),
+  ]);
+  return [...new Set([...team, ...marked.map((m) => m.parent_id)])];
+}
+
+/** Whether a family is marked as a test, and whether it is an admin's own (always left out; it cannot be unmarked). */
+export async function testAccountState(a: AdminSession, parentId: string): Promise<{ marked: boolean; admin: boolean }> {
+  const [team, marked] = await Promise.all([
+    teamIds(a),
+    a.db.from("test_accounts").select("parent_id").eq("parent_id", parentId).maybeSingle().then((r) => must<{ parent_id: string } | null>(r, "test account")),
+  ]);
+  return { marked: !!marked, admin: team.includes(parentId) };
+}
+
+/** Marks or unmarks a family as a test. Row-level security allows it for admins only. */
+export async function setTestAccount(a: AdminSession, parentId: string, test: boolean): Promise<void> {
+  const { error } = test
+    ? await a.db.from("test_accounts").upsert({ parent_id: parentId, marked_by: a.userId }, { onConflict: "parent_id", ignoreDuplicates: true })
+    : await a.db.from("test_accounts").delete().eq("parent_id", parentId);
+  if (error) throw new Error(`[admin] test account: ${error.message}`);
 }

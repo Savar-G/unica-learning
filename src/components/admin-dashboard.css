@@ -1,6 +1,7 @@
 /* The admin dashboard and activity log (D-099), on the warm look's tokens. Wide admin pages (AdminFrame wide) get the
    soft background; cards are white on it. */
-.adm-root.is-wide { background: var(--soft); --dash-r: 12px; --dash-ok: color-mix(in srgb, var(--leaf) 20%, #fff); --dash-warn: color-mix(in srgb, var(--tang) 16%, #fff); --dash-sun: color-mix(in srgb, var(--sun) 32%, #fff); --dash-info: color-mix(in srgb, var(--sky) 16%, #fff); }
+.adm-root { --dash-r: 12px; --dash-ok: color-mix(in srgb, var(--leaf) 20%, #fff); --dash-warn: color-mix(in srgb, var(--tang) 16%, #fff); --dash-sun: color-mix(in srgb, var(--sun) 32%, #fff); --dash-info: color-mix(in srgb, var(--sky) 16%, #fff); }
+.adm-root.is-wide { background: var(--soft); }
 .dash-page { max-width: 1320px; margin: 0 auto; padding: 24px clamp(14px, 3vw, 32px) 120px; }
 .adm-root.is-wide h1 { margin: 0; font: 500 28px/1.15 var(--sans); letter-spacing: -0.02em; }
 .adm-root.is-wide h2 { margin: 0; font: 500 16px/1.25 var(--sans); letter-spacing: -0.01em; }
@@ -191,3 +192,9 @@
 .dash-kid ul { margin: 4px 0 0; padding-left: 18px; }
 
 /* the prototype bar */
+
+/* team and test families */
+.dash-tests { margin-top: 10px; }
+.dash-test { display: inline-block; margin-left: 6px; padding: 1px 6px; border-radius: 4px; background: var(--card); font: 500 11px/1.4 var(--mono); letter-spacing: 0.03em; text-transform: uppercase; color: var(--ink-2); vertical-align: 1px; }
+.dash-note + .dash-top, .dash-tests + .dash-top { margin-top: 18px; }
+.dash-top + .dash-pills { margin-top: 14px; }

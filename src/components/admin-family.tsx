@@ -2,7 +2,7 @@
 import Link from "next/link";
 import { adminParentPath, adminReportPath, adminTestPath } from "@/lib/admin-view";
 import { EMAIL_LABEL, STAGES, STAGE_ACTION, STAGE_TEXT, ago, at, type Dashboard, type Stage } from "@/lib/admin-dashboard";
-import { StageChip, href, type Ctx } from "@/components/admin-dashboard-parts";
+import { StageChip, TestMark, href, type Ctx } from "@/components/admin-dashboard-parts";
 
 export function FamilyDrawer({ ctx, d, id }: { ctx: Ctx; d: Dashboard; id: string }) {
   const f = d.families.find((x) => x.id === id);
@@ -17,7 +17,7 @@ export function FamilyDrawer({ ctx, d, id }: { ctx: Ctx; d: Dashboard; id: strin
         <header>
           <div>
             <p className="dash-kicker">Family</p>
-            <h2>{f.name}</h2>
+            <h2>{f.name}<TestMark test={f.test} /></h2>
             <p className="dash-muted">{f.email} · {f.postal}{f.source ? ` · came from ${f.source}` : ""}</p>
           </div>
           <Link href={close} className="dash-x" aria-label="Close">×</Link>
@@ -60,7 +60,7 @@ export function FamilyDrawer({ ctx, d, id }: { ctx: Ctx; d: Dashboard; id: strin
               <li key={e.id}>
                 <span className={`dash-dot is-${e.status}`} />
                 <div><b>{EMAIL_LABEL[e.kind]}</b>{e.kind !== "unsubscribe" && <span className="dash-muted"> &ldquo;{e.subject}&rdquo;</span>}
-                  <span className="dash-sub">{e.status === "failed" ? `Failed after ${e.attempts} tries: ${e.error ?? "unknown error"}` : e.status === "pending" ? "Waiting to send" : e.kind === "alert" ? "Sent to you" : "Sent to the parent"} · {at(e.at)}</span></div>
+                  <span className="dash-sub">{e.status === "failed" ? `Failed after ${e.attempts} ${e.attempts === 1 ? "try" : "tries"}: ${e.error ?? "unknown error"}` : e.status === "pending" ? "Waiting to send" : e.kind === "alert" ? "Sent to you" : "Sent to the parent"} · {at(e.at)}</span></div>
               </li>
             ))}
           </ul>
