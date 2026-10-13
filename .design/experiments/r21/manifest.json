@@ -1,0 +1,21 @@
+{
+  "round": 21,
+  "branch": "site/parent-copy-prototype (prototype, do not merge)",
+  "previous": "r20: Savar liked C (struck-out jobs list) best, and asked for better ways to show the right-hand 'What stays with you' card.",
+  "decision": "How should the right-hand panel of C show the parent's small part?",
+  "primary_axis": "visual form of the right-hand panel (the struck-out list, title and lead stay the same)",
+  "route": "/?variant=C1|C2|C3|C4|C5",
+  "invariants": [
+    "same parent jobs: hand over the book, take a photo; first week: sit beside them",
+    "15-30 minutes of child work a day, 5 days a week (existing site claim); no number for parent minutes",
+    "the 'if they do not want to' line (rewards, pause) stays in every version"
+  ],
+  "options": [
+    { "id": "C1", "name": "Bullet list (r20)", "bet": "Reference" },
+    { "id": "C2", "name": "Two icon tiles", "artifact": "C2.png", "bet": "Two white tiles with a book and a camera icon and an arrow between them; title 'two things'", "benefit": "Reads in one glance; mirrors the two jobs", "cost": "Icons are generic", "risk": "Looks like a feature grid" },
+    { "id": "C3", "name": "One-day bar", "artifact": "C3.png", "bet": "One session as a bar: thin black slivers for the parent, a wide colour block for the child, a striped block for us", "benefit": "Shows how small the parent's share is without a minutes claim", "cost": "Needs the legend to read", "risk": "A chart may feel cold for parents" },
+    { "id": "C4", "name": "Sticky note", "artifact": "C4.png", "bet": "A yellow sticky note with a two-item checklist, in the page's hand-drawn feel", "benefit": "Warm and memorable; 'your list' contrasts with the struck-out list", "cost": "Less room for detail (the time line moves under the note)", "risk": "Skeuomorphic; may look playful next to the rest of the page" },
+    { "id": "C5", "name": "Your week", "artifact": "C5.png", "bet": "Mon-Fri tiles with the same two icons each day; the weekend is off", "benefit": "Shows the routine and the free weekend", "cost": "Repeats the same icons 10 times", "risk": "Implies a fixed Mon-Fri schedule" }
+  ],
+  "recommendation": "C4 for warmth, or C3 if the goal is to prove the parent's part is small."
+}

@@ -4,6 +4,7 @@
 // Every variant stays inside the one existing section. No new section.
 // 0 is the current section; A-D are new. Switch with ?variant= or the arrow keys.
 // Daily time uses 15-30 minutes (open PR #131).
+import type React from "react";
 import { Section, SectionHeader } from "@/ds";
 import { Parent } from "@/components/parent";
 import { ParentSwitch } from "@/components/parent-prototype-switch";
@@ -85,7 +86,106 @@ const NOT_YOURS: [string, string][] = [
   ["Remember how to teach it", "Scan a problem to see every step."],
 ];
 
-function VariantC() {
+const BOOK = <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5a2 2 0 0 1 2-2h13v16H6a2 2 0 0 0-2 2z" /><path d="M4 19V5M9 7h6" /></svg>;
+const CAM = <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="6" width="18" height="14" rx="3" /><circle cx="12" cy="13" r="3.5" /><path d="M9 6l1.5-2h3L15 6" /></svg>;
+const FOOT = "If they do not want to, keep it short. Every finished page earns points toward rewards they pick. Pause anytime.";
+
+// Round r21: five versions of the right-hand "what stays with you" panel. The struck-out list stays the same.
+
+// C1: the r20 card, for reference.
+function YoursList() {
+  return (
+    <Rise className="pp-yours">
+      <h3>What stays with you</h3>
+      <ul>
+        <li>Hand them the book at the same time each day. They work for 15-30 minutes.</li>
+        <li>Take a photo of the finished pages.</li>
+        <li>In the first week, sit beside them while they learn the routine.</li>
+      </ul>
+      <p>{FOOT}</p>
+    </Rise>
+  );
+}
+
+// C2: two big icon tiles, one per job, with an arrow between them.
+function YoursTiles() {
+  return (
+    <Rise className="pp-yours y-tiles">
+      <h3>What stays with you: two things.</h3>
+      <div className="tiles">
+        <div><span className="ic">{BOOK}</span><b>Hand over the book</b><small>Same time each day</small></div>
+        <span className="arr" aria-hidden="true">→</span>
+        <div><span className="ic">{CAM}</span><b>Take a photo</b><small>When the pages are done</small></div>
+      </div>
+      <p className="wk">First week only: sit beside them while they learn the routine.</p>
+      <p>{FOOT}</p>
+    </Rise>
+  );
+}
+
+// C3: one practice session as a bar. The parent's parts are thin slivers; the child's work and ours fill the rest.
+function YoursBar() {
+  return (
+    <Rise className="pp-yours y-bar">
+      <h3>One day, start to finish</h3>
+      <div className="bar" role="img" aria-label="You hand over the book, your child works for 15-30 minutes, you take a photo, then we mark the work and plan the next book.">
+        <span className="you" />
+        <span className="kid">Your child, 15-30 min</span>
+        <span className="you" />
+        <span className="us">Us</span>
+      </div>
+      <ol className="keys">
+        <li><i className="you" />You hand over the book.</li>
+        <li><i className="kid" />Your child works on their own pages.</li>
+        <li><i className="you" />You take a photo of the finished pages.</li>
+        <li><i className="us" />We mark the work and plan the next book.</li>
+      </ol>
+      <p>{FOOT} In the first week, sit beside them while they learn the routine.</p>
+    </Rise>
+  );
+}
+
+// C4: a sticky note with a two-line checklist, in the hand-drawn feel of the page.
+function YoursNote() {
+  return (
+    <Rise className="y-note-wrap">
+      <div className="y-note">
+        <h3>Your list</h3>
+        <ul>
+          <li><span className="box" aria-hidden="true" />Hand them the book</li>
+          <li><span className="box" aria-hidden="true" />Take a photo of the pages</li>
+        </ul>
+        <p className="wk">Week 1: sit beside them.</p>
+      </div>
+      <p>Your child works for 15-30 minutes a day. {FOOT}</p>
+    </Rise>
+  );
+}
+
+// C5: a week on one line. Five school days with the same two jobs; the weekend is off.
+const DAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+function YoursWeek() {
+  return (
+    <Rise className="pp-yours y-week">
+      <h3>Your week</h3>
+      <div className="days">
+        {DAYS.map((d, i) => (
+          <div key={d} className={i > 4 ? "off" : ""}>
+            <span className="d">{d}</span>
+            {i > 4 ? <span className="o">Off</span> : <><span className="ic">{BOOK}</span><span className="ic">{CAM}</span></>}
+          </div>
+        ))}
+      </div>
+      <ol className="keys">
+        <li><span className="ic">{BOOK}</span>Hand them the book. They work for 15-30 minutes.</li>
+        <li><span className="ic">{CAM}</span>Take a photo of the finished pages.</li>
+      </ol>
+      <p>In the first week, sit beside them while they learn the routine. {FOOT}</p>
+    </Rise>
+  );
+}
+
+function VariantC({ yours = <YoursList /> }: { yours?: React.ReactNode }) {
   return (
     <Section id="parent" aria-labelledby="parentT">
       <Knot />
@@ -101,15 +201,7 @@ function VariantC() {
             </Rise>
           ))}
         </ul>
-        <Rise className="pp-yours">
-          <h3>What stays with you</h3>
-          <ul>
-            <li>Hand them the book at the same time each day. They work for 15-30 minutes.</li>
-            <li>Take a photo of the finished pages.</li>
-            <li>In the first week, sit beside them while they learn the routine.</li>
-          </ul>
-          <p>If they do not want to, keep it short. Every finished page earns points toward rewards they pick. Pause anytime.</p>
-        </Rise>
+        {yours}
       </div>
     </Section>
   );
@@ -148,10 +240,14 @@ function VariantD() {
 }
 
 const VARIANTS = [
+  { key: "C1", name: "C card: bullet list (r20)" },
+  { key: "C2", name: "C card: two icon tiles" },
+  { key: "C3", name: "C card: one-day bar" },
+  { key: "C4", name: "C card: sticky note" },
+  { key: "C5", name: "C card: your week" },
   { key: "0", name: "Current" },
   { key: "A", name: "Same cards, new words" },
   { key: "B", name: "Your two jobs, said first" },
-  { key: "C", name: "Struck-out jobs list" },
   { key: "D", name: "Parent's question + rows" },
 ];
 
@@ -159,8 +255,18 @@ export function ParentPrototype() {
   return (
     <ParentSwitch
       variants={VARIANTS}
-      fallback="A"
-      nodes={{ "0": <Parent />, A: <VariantA />, B: <VariantB />, C: <VariantC />, D: <VariantD /> }}
+      fallback="C1"
+      nodes={{
+        C1: <VariantC />,
+        C2: <VariantC yours={<YoursTiles />} />,
+        C3: <VariantC yours={<YoursBar />} />,
+        C4: <VariantC yours={<YoursNote />} />,
+        C5: <VariantC yours={<YoursWeek />} />,
+        "0": <Parent />,
+        A: <VariantA />,
+        B: <VariantB />,
+        D: <VariantD />,
+      }}
     />
   );
 }
