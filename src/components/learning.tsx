@@ -27,7 +27,7 @@ type State = "ask" | "saved" | "skipped";
 
 const EMPTY: LearningAnswers = { styles: [], interests: [], note: "" };
 const toggle = <T,>(list: T[], item: T) => (list.includes(item) ? list.filter((x) => x !== item) : [...list, item]);
-const list = (items: string[]) => (items.length < 2 ? items.join("") : `${items.slice(0, -1).join(", ")} and ${items.at(-1)}`);
+const joinWithAnd = (items: string[]) => (items.length < 2 ? items.join("") : `${items.slice(0, -1).join(", ")} and ${items.at(-1)}`);
 
 /** `place`: on the report (with Skip) or on its own account page. */
 export function LearningStep({ childId, name, start, place }: { childId: string; name: string; start: LearningAnswers | null; place: "report" | "account" }) {
@@ -49,14 +49,14 @@ export function LearningStep({ childId, name, start, place }: { childId: string;
     setBusy(true);
     setFailed(false);
     const body: LearningRequest = { child: childId, ...form, note: form.note.trim() };
-    let status = 0;
+    let httpStatus = 0;
     let result: LearningResult | null = null;
     try {
       const res = await fetch(LEARNING_ROUTE, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
-      status = res.status;
+      httpStatus = res.status;
       result = (await res.json()) as LearningResult;
     } catch {}
-    if (status === 401) {
+    if (httpStatus === 401) {
       router.push(`/sign-in?next=${encodeURIComponent(`${location.pathname}${location.search}`)}`);
       return;
     }
@@ -84,14 +84,14 @@ export function LearningStep({ childId, name, start, place }: { childId: string;
     setState("ask");
   };
 
-  const status = <p className="sr-only" role="status">{announce}</p>;
+  const liveRegion = <p className="sr-only" role="status">{announce}</p>;
 
   if (state === "skipped") {
     return (
       <div className="lrn is-folded">
         <p>You skipped the questions about how {name} learns. {name}&apos;s book will use our usual mix. You can answer later from your account.</p>
         <button className="btn sm ghost" type="button" onClick={() => setState("ask")}>Answer now</button>
-        {status}
+        {liveRegion}
       </div>
     );
   }
@@ -102,11 +102,11 @@ export function LearningStep({ childId, name, start, place }: { childId: string;
         <h3>Thank you. {name}&apos;s next book will use your answers.</h3>
         <ul className="lrn-summary">
           {saved.styles.length > 0 && <li><b>Learns best from:</b> {saved.styles.map(styleLabel).join("; ")}</li>}
-          {saved.interests.length > 0 && <li><b>Interested in:</b> {list(saved.interests.map(interestLabel))}</li>}
+          {saved.interests.length > 0 && <li><b>Interested in:</b> {joinWithAnd(saved.interests.map(interestLabel))}</li>}
           {saved.note && <li><b>Your note:</b> {saved.note}</li>}
         </ul>
         <button className="btn sm ghost" type="button" onClick={edit}>Change answers</button>
-        {status}
+        {liveRegion}
       </div>
     );
   }
@@ -157,7 +157,7 @@ export function LearningStep({ childId, name, start, place }: { childId: string;
         {saved ? <button className="btn sm ghost" type="button" onClick={() => setState("saved")} disabled={busy}>Cancel</button>
           : place === "report" && <button className="btn sm ghost" type="button" onClick={skip} disabled={busy}>Skip for now</button>}
       </div>
-      {status}
+      {liveRegion}
     </form>
   );
 }

@@ -62,7 +62,7 @@ const STYLE_IDS: readonly string[] = LEARNING_STYLES.map((s) => s.id);
 const INTEREST_IDS: readonly string[] = INTERESTS.map((i) => i.id);
 
 /** A list of known ids with no repeats, or null. A missing list is no answer. */
-function ids<T extends string>(value: unknown, known: readonly string[], max: number): T[] | null {
+function knownIds<T extends string>(value: unknown, known: readonly string[], max: number): T[] | null {
   if (value === undefined || value === null) return [];
   if (!Array.isArray(value) || value.length > max) return null;
   if (!value.every((v) => typeof v === "string" && known.includes(v))) return null;
@@ -73,8 +73,8 @@ function ids<T extends string>(value: unknown, known: readonly string[], max: nu
 export function parseLearning(body: unknown): LearningAnswers | null {
   if (typeof body !== "object" || body === null || Array.isArray(body)) return null;
   const b = body as Record<string, unknown>;
-  const styles = ids<LearningStyle>(b.styles, STYLE_IDS, STYLE_MAX);
-  const interests = ids<Interest>(b.interests, INTEREST_IDS, INTEREST_IDS.length);
+  const styles = knownIds<LearningStyle>(b.styles, STYLE_IDS, STYLE_MAX);
+  const interests = knownIds<Interest>(b.interests, INTEREST_IDS, INTEREST_IDS.length);
   if (!styles || !interests) return null;
   if (b.note !== undefined && b.note !== null && typeof b.note !== "string") return null;
   const note = typeof b.note === "string" ? b.note.trim() : "";

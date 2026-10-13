@@ -21,7 +21,8 @@ export default async function ChildPage({ params }: PageProps<"/admin/children/[
       ["Learns best from", learning?.styles.length ? learning.styles.map(styleLabel).join("; ") : "No answer"],
       ["Interests", learning?.interests.length ? learning.interests.map(interestLabel).join(", ") : "No answer"],
       ["Parent's note", learning?.note || "-"],
-      ["Answered (Pacific)", c.learning_updated_at ? when(c.learning_updated_at) : "Not answered"],
+      // A cleared answer keeps its save time, so the date shows only with answers.
+      ["Answered (Pacific)", learning && c.learning_updated_at ? when(c.learning_updated_at) : "Not answered"],
       ["Book mix", `${mix.isDefault ? "Default mix: " : ""}${LEARNING_STYLES.map((s) => `${s.label} ${mix.shares[s.id]}%`).join(" · ")}`],
       ["Story problem settings", mix.settings.length ? mix.settings.map(interestLabel).join(", ") : "A mix of everyday settings"],
     ]} />
