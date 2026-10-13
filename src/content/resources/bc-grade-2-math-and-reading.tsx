@@ -134,7 +134,7 @@ export default function Body() {
           If your child finds Grade 2 easy, try numbers past 100, word problems they make up, and chapter books. Multiplication starts in Grade 3 in BC, so you can preview it with skip-counting and equal groups.<Cite n={3} /> You can also read our <Link href="/resources/bc-grade-3-math-and-reading">Grade 3 guide</Link>.
         </p>
         <p>
-          Unica Learning mails personalized math workbooks that follow the BC curriculum at your child’s level, for 15 to 20 minutes a day, 5 days a week.
+          Unica Learning mails personalized math workbooks that follow the BC curriculum at your child’s level, for 15 to 30 minutes a day, 5 days a week.
         </p>
         <AssessmentCta slug={meta.slug}>The free online math assessment shows your child’s math level and gaps, on a laptop or tablet.</AssessmentCta>
       </Section>

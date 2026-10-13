@@ -106,7 +106,7 @@ const STEPS = [
   { n: "01", t: "Assess", d: "Your child takes the free math assessment online, on a laptop or tablet. The report shows their math level and gaps. You choose a plan after the report.",
     v: <Image src={assessPhoto} alt="A girl and her mother sit at a laptop, with a workbook open on the table" sizes={STEP_SIZES} placeholder="blur" />, tone: "photo" as const },
   { n: "02", t: "Deliver", d: "We mail a personalized workbook matched to your child's level and gaps. It covers your school curriculum.", v: <Image src={deliverPhoto} alt="Two mailers waiting on a front step" sizes={STEP_SIZES} placeholder="blur" />, tone: "photo" as const },
-  { n: "03", t: "Practice", d: "Your child works on paper for about 15-20 minutes a day, 5 days a week.",
+  { n: "03", t: "Practice", d: "Your child works on paper for about 15-30 minutes a day, 5 days a week.",
     v: <Image src={practice6} alt="A girl works through an arithmetic page in pencil" sizes={STEP_SIZES} placeholder="blur" />, tone: "photo" as const },
   { n: "04", t: "Scan", d: "Take a photo of the finished pages. We mark the work, show you the gaps, and give the solutions so your child can understand what went wrong.", v: <Image src={scanPhoto} alt="A phone camera frames a page to photograph it" sizes={STEP_SIZES} placeholder="blur" />, tone: "photo" as const },
   { n: "05", t: "Adapt", d: "Based on how they did, we choose and adjust their next workbook: more practice where they're struggling, and moving ahead where they're ready, so they see new topics before their class does. Every book is shaped by how your child is doing.", v: <Image src={adaptPhoto} alt="A girl shows her finished work to her parents" sizes={STEP_SIZES} placeholder="blur" />, tone: "photo" as const },
@@ -161,7 +161,7 @@ export function Why() {
 const INCLUDED: [IconName, string, ReactNode, number][][] = [
   [
     ["layers", "A plan built from your child's assessment", "The free online assessment finds your child's level and gaps. The plan sets what each book covers.", 0],
-    ["calendar", "Daily practice, rewarded", <>15-20 minutes a day, 5 days a week. Your child earns rewards for every page they finish and every week they keep the habit. <Link href="/rewards" className="more-link">See the rewards <span aria-hidden="true">→</span></Link></>, 0.08],
+    ["calendar", "Daily practice, rewarded", <>15-30 minutes a day, 5 days a week. Your child earns rewards for every page they finish and every week they keep the habit. <Link href="/rewards" className="more-link">See the rewards <span aria-hidden="true">→</span></Link></>, 0.08],
     ["cam", "Stuck? Scan it.", "When your child is stuck, scan the problem with our app. You see every step, explained, so you can walk them through it.", 0.16],
   ],
   [
