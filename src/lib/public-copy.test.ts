@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { FAQ } from "@/lib/faq";
 import { llmsTxt, pricingMarkdown } from "@/lib/ai-summary";
 import { SITE_DESCRIPTION } from "@/lib/metadata";
-import { PARENT_QA } from "@/lib/parent";
+import { PARENT_LEAD, PARENT_NOT_YOURS, PARENT_NOTE, PARENT_TITLE, PARENT_YOURS } from "@/lib/parent";
 import { renderToStaticMarkup } from "react-dom/server";
 import Terms from "@/app/terms/page";
 import Privacy from "@/app/privacy/page";
@@ -74,7 +74,7 @@ describe("a space follows every full stop and colon in public copy", () => {
   const words = (text: string) => text.replace(/https?:\/\/\S+/g, " ").replace(/\S+@\S+/g, " ");
 
   it("in the FAQ (also the FAQPage data), the parent section and the plain-text summaries", () => {
-    const texts = [...FAQ.flatMap((f) => [f.question, f.answer]), ...PARENT_QA.flat(), llmsTxt(), pricingMarkdown()];
+    const texts = [...FAQ.flatMap((f) => [f.question, f.answer]), PARENT_TITLE, PARENT_LEAD, ...PARENT_NOT_YOURS.flat(), ...PARENT_YOURS, PARENT_NOTE, llmsTxt(), pricingMarkdown()];
     for (const text of texts) expect(words(text)).not.toMatch(glued);
   });
 

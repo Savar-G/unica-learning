@@ -1,8 +1,9 @@
-// "Your commitment as a parent": four questions a parent asks, after Pricing (moved from after How it works in D-095; D-075, variant D of round r9).
-// Answers Randy Epp's review (2026-10-09): the page never said what the parent does.
-// No parent-minute number and no starter guide in the box: we have neither yet.
+// "For parents": what we take off a busy parent's list (struck out), then what stays with them. After Pricing (D-095).
+// D-098 (round r20 C, card C1 of r21) replaces the four question cards of D-075, after Mom's review (2026-10-12):
+// busy parents pay a learning centre so they do not have to be involved.
+// No parent-minute number: we have no data yet.
 import { Section, SectionHeader } from "@/ds";
-import { PARENT_QA } from "@/lib/parent";
+import { PARENT_LEAD, PARENT_NOT_YOURS, PARENT_NOTE, PARENT_TITLE, PARENT_YOURS } from "@/lib/parent";
 import { Knot, Rise } from "./drawn";
 import "@/ds/styles/parent.css";
 
@@ -11,17 +12,27 @@ export function Parent() {
     <Section id="parent" aria-labelledby="parentT">
       <Knot />
       <Rise>
-        <SectionHeader eyebrow="For parents" title="Your commitment as a parent." titleId="parentT" />
+        <SectionHeader eyebrow="For parents" title={PARENT_TITLE} titleId="parentT" lead={PARENT_LEAD} />
       </Rise>
-      <ul className="ask">
-        {PARENT_QA.map(([q, a], i) => (
-          <Rise as="li" key={q} d={(i % 2) * 0.08}>
-            <span className="n">0{i + 1}</span>
-            <h3>{q}</h3>
-            <p>{a}</p>
-          </Rise>
-        ))}
-      </ul>
+      <div className="duty">
+        <ul className="duty-off" aria-label="What we do for you">
+          {PARENT_NOT_YOURS.map(([job, how], i) => (
+            <Rise as="li" key={job} d={i * 0.05}>
+              <s>{job}</s>
+              <span>{how}</span>
+            </Rise>
+          ))}
+        </ul>
+        <Rise className="duty-yours">
+          <h3>What stays with you</h3>
+          <ul>
+            {PARENT_YOURS.map((t) => (
+              <li key={t}>{t}</li>
+            ))}
+          </ul>
+          <p>{PARENT_NOTE}</p>
+        </Rise>
+      </div>
     </Section>
   );
 }
