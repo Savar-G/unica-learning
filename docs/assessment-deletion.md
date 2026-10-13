@@ -1,6 +1,6 @@
 # Family deletion (#78)
 
-Apply `supabase/migrations/20261011_add_family_deletion.sql`, then `supabase/migrations/20261011225238_add_family_deletion_worker_lease.sql`, before this code ships. Both migrations are additive. They create no deletion requests and delete no family. Live application is blocked: the Supabase connector returned `MCP error -32600: You do not have permission to perform this action` for apply, registry, and SQL probes on 11 October 2026. Do not treat isolated SQL validation as live application.
+Apply `supabase/migrations/20261011_add_family_deletion.sql`, then `supabase/migrations/20261011225238_add_family_deletion_worker_lease.sql`, before this code ships. Both migrations are additive. They create no deletion requests and delete no family. The owner applied both files in the SQL editor on 11 October 2026 (see PR #108). The SQL editor does not write the migration registry, so the repo files are the record. Hosted checks passed on 13 October 2026 (#117); see [Hosted verification](#hosted-verification-117).
 
 The owner approved public assessment launch without a separate pilot. The Node worker has no pilot requirement. The #82 launch change removed the app feature setting from the app, admin and HTTP routes; their sign-in, admin membership and job secret checks remain. Product AI remains off. Public launch authorization does not activate deletion before its migration, credential and hosted checks pass.
 
@@ -20,7 +20,7 @@ Before each expiration or cancellation, a lease-guarded SQL operation record is 
 
 A confirmed not-started operation is different from a lost remote result. If the journal request fails, or its response consumes the deadline before the Stripe method is invoked, the worker uses the separate control deadline to remove only its own pending record. The journal stores the originating lease token. `abandon_family_payment_operation` requires the same current, unexpired token, the same origin, and a null outcome. It cannot remove terminal records or a previous worker's uncertainty. The worker never invokes this recovery after calling a Stripe mutation. A failed recovery retains the record and the fence. A process crash with no reliable not-started result remains uncertain and requires reconciliation; age alone cannot release it.
 
-The last test deadline uses the latest start, completion, or last answer across all children. It includes each stored answer's server timestamp, the facts section's start, and each facts answer's server timestamp. A committed answer changes eligibility even if its separate last-answer update fails. It adds 12 calendar months in UTC. An account with no test has no test-based deadline. Saved-card families and admin identities are excluded. The daily Vercel cron uses `CRON_SECRET` and never sends emails or analytics. Dry mode is `/api/retention?dry=1` with the same authorization. It reports counts only.
+The last test deadline uses the latest start, completion, or last answer across all children. It includes each stored answer's server timestamp, the facts section's start, and each facts answer's server timestamp. A committed answer changes eligibility even if its separate last-answer update fails. It adds 12 calendar months in UTC. An account with no test has no test-based deadline. Saved-card families and admin identities are excluded. The daily GitHub Actions worker (below) runs retention; it never sends emails or analytics. The Vercel schedule for `/api/retention` was removed at handover (#117). The route remains for manual use with `CRON_SECRET`. Dry mode is `/api/retention?dry=1` with the same authorization. It reports counts only.
 
 Candidates use 100-row keyset pages. Images use 100-object pages in each folder. The worker removes each page, then reads offset zero again. Removed objects are durable progress. A stopped attempt resumes from the remaining objects without rebuilding the whole image tree. A short page is not an end marker. Every folder is read until empty. This avoids skipped objects when removal shifts the listing. Auth is deleted only after the entire family folder is empty. This also removes images with no answer reference and handles nested folders across children and tests.
 
@@ -56,7 +56,7 @@ The final decision has a finite execution limit. In the uniform-latency service 
 
 ## Foreground Node worker
 
-The source contains `.github/workflows/retention.yml`. It is not active or hosted-verified. Scheduled runs require `RETENTION_WORKER_ENABLED=on`. Manual mode defaults to `dry`. Delete mode requires that same activation flag and authenticated production credentials. The job accepts only `refs/heads/main`, uses one concurrency group with cancellation disabled, and grants the GitHub token only `contents: read`. Checkout and setup-node use pinned commit hashes. Secrets enter only the final Node step. Keep the existing Vercel retention and keepalive schedules until the replacement passes a separately authorized handover.
+The source contains `.github/workflows/retention.yml`. It is active and hosted-verified (#117): it runs daily at 15:17 UTC. Scheduled runs require `RETENTION_WORKER_ENABLED=on`. Manual mode defaults to `dry`. Delete mode requires that same activation flag and authenticated production credentials. The job accepts only `refs/heads/main`, uses one concurrency group with cancellation disabled, and grants the GitHub token only `contents: read`. Checkout and setup-node use pinned commit hashes. Secrets enter only the final Node step. The Vercel keepalive schedule stays. The Vercel retention schedule was removed at handover (#117).
 
 Build with `node scripts/build-retention-worker.mjs`. Run the foreground entry with `node --conditions=react-server .retention/worker.mjs --mode dry`. The default mode is dry. This mode reads every eligibility page and prints an aggregate count. It does not claim, read or advance the cursor, renew, call Stripe, mutate providers or delete. The client uses explicit SDK credentials and has no Next request context or environment-file loader. Do not copy local/test keys to GitHub.
 
@@ -73,7 +73,7 @@ Required GitHub inputs:
 | Variable `RETENTION_SUPABASE_URL` | `SUPABASE_URL` | Exact project URL `https://cdjobwsyzndtltzfpyqa.supabase.co` |
 | Secret `RETENTION_SUPABASE_SECRET_KEY` | `SUPABASE_SECRET_KEY` | Dedicated server secret: service RPCs/card reads, private Storage list/remove and Auth admin delete. This key bypasses RLS. |
 | Secret `RETENTION_STRIPE_SECRET_KEY` | `STRIPE_SECRET_KEY` | Dedicated restricted live key: Checkout Sessions and SetupIntents read/write; Payment Methods and Subscriptions read. No charges, refunds, subscription cancellation or Customer deletion. |
-| Variable `RETENTION_WORKER_ENABLED` | Same | Keep unset/off until hosted verification passes. |
+| Variable `RETENTION_WORKER_ENABLED` | Same | `on` since 13 October 2026 (#117). Set it to any other value to stop scheduled and delete runs. |
 
 Delete rejects missing, test, publishable, placeholder, unrestricted Stripe and wrong-project inputs. Format validation is insufficient by itself. Before any claim or cursor change, an authenticated read checks the Stripe key, and the paged candidate RPC validates Supabase access. Neither preflight proves every later write permission. Restricted-key expiration/cancellation, Checkout-owned refusal, Storage permissions and live SQL grants remain deployment checks. The worker prints only aggregate status and constant errors. No IDs, payment payloads, environment values or SDK error details enter logs.
 
@@ -88,3 +88,19 @@ The 64-customer one-second-response fixture fails seven times in the HTTP path. 
 5. Enable the Node schedule only after those checks pass. Then remove only the Vercel retention schedule. Keep keepalive, admin requests and aggregate job monitoring. No additional application emails.
 
 GitHub-hosted jobs permit six hours; this job uses twenty minutes. Private Free includes 2,000 minutes/month and Pro 3,000. Standard Linux overage is USD 0.006/minute. Thirty-one daily twenty-minute runs plan for 620 minutes, or USD 3.72 if all are chargeable. Other jobs and rounding add usage. Actual account quota is unverified. Schedules can be delayed or dropped. This source creates no subscription or billing configuration. See [limits](https://docs.github.com/en/actions/reference/limits), [rates](https://docs.github.com/en/billing/reference/actions-runner-pricing), and [billing](https://docs.github.com/en/billing/concepts/product-billing/github-actions).
+
+## Hosted verification (#117)
+
+Run on 13 October 2026 against production, with four new named QA families (`qa117-a` to `qa117-d@unicalearning.com`). The queue held only these four families, and the dry run found 0 eligible families before delete mode ran. No Stripe customer fixture was used.
+
+| Check | Result |
+| --- | --- |
+| Actions runner, dry mode | Run 38333980108 on `main`: `{"ok":true,"dry":true,"eligible":0}`. |
+| Credentials | Dedicated Supabase secret key `retention_worker` and live restricted Stripe key `unica-retention-worker` (Checkout Sessions write, Setup Intents write, Payment Methods read, Subscriptions read). Probe: Checkout Sessions, SetupIntents and Subscriptions lists 200; Customers, Charges and Balance 403. |
+| Fence, write first | Two concurrent connections. The deletion request waited 6 s for the open child insert to commit, then returned `requested`. |
+| Fence, request first | The late child insert waited 7.6 s for the request to commit, then failed with `family_unavailable` (55000). |
+| Storage trigger | After the request, a new upload and an overwrite with the server secret key both failed with 55000. Existing images stayed. |
+| Delete mode and lease recovery | Run 38334927154: 2 deleted, 1 busy (QA family held by a fake live lease), 1 failed (see #138). Run 38335331038 after lease expiry: 2 deleted, 0 failed. It resumed the partial family and took over the expired lease. The old lease token then returned `false` from `renew_family_deletion_work`. |
+| Storage before Auth | The failed family kept its Auth user, rows and queue entry while 2 images remained. After the final run: QA Auth users 0, parents 0, children 0, images 0, queue 0, payment records 0. Non-QA counts were unchanged (1 parent, 8 images). |
+
+Not covered: renewal beyond five minutes, signals and hard runner loss, live Stripe cancellation and expiration, and Checkout-owned intents. These need a QA family with Stripe history, and the rules above do not allow a customer fixture. The isolated tests in this document cover them.
