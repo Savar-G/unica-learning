@@ -50,18 +50,17 @@ export const Card = ({ title, aside, children, className = "" }: { title?: React
   </section>
 );
 
-/** Shown above the numbers: made-up data, Stripe could not say who is paying, and the team and test families. */
+/** Shown above the numbers: made-up data, the Stripe status, and the team and test families when they are counted. */
 export function Notes({ ctx, d }: { ctx: Ctx; d: Dashboard }) {
   const n = d.tests.count;
   const families = `${n} team or test ${n === 1 ? "family" : "families"}`;
   return <>
     {ctx.demo && <p className="dash-note">Demo data: made-up families, not your database. Local development only.</p>}
     {d.stripeNote ? <p className="dash-note">{d.stripeNote}</p> : d.stripeMode && <p className="dash-foot dash-tests">Payments: read from Stripe ({d.stripeMode} mode) just now.{d.cardsFoundInStripe > 0 ? ` ${d.cardsFoundInStripe} saved card${d.cardsFoundInStripe === 1 ? " was" : "s were"} found in Stripe that the site had not recorded; they are counted.` : ""}{d.stripeMode === "test" && !ctx.demo ? " Test mode shows test payments only, not real ones." : ""}</p>}
-    {n > 0 && (
+    {/* test families are always left out; a family page's link (?tests=1) is the only way in, and says so here */}
+    {d.tests.shown && n > 0 && (
       <p className="dash-foot dash-tests">
-        {d.tests.shown
-          ? <>Counting {families} (marked <span className="dash-test">Test</span>). <Link href={href(ctx, { tests: null })}>Leave them out</Link></>
-          : <>{families} left out of these numbers: admin accounts and families marked as a test. <Link href={href(ctx, { tests: "1" })}>Count them</Link></>}
+        Counting {families} (marked <span className="dash-test">Test</span>). <Link href={href(ctx, { tests: null })}>Leave them out</Link>
       </p>
     )}
   </>;
