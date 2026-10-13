@@ -1,7 +1,21 @@
-// Parent-commitment copy (D-075), shared by the home page section (components/parent.tsx) and /llms.txt.
-export const PARENT_QA: [string, string][] = [
-  ["How much of my time does it take?", "About 15-30 minutes a day, 5 days a week, while your child works. Sit with them for the first week. After that, stay nearby, and scan the pages when they finish."],
-  ["Do I need to know how to teach it?", "No. When your child is stuck, scan the problem with our app. You see every step, explained, so you can walk them through it."],
-  ["How do I get my child started?", "Begin with the free math assessment: your child takes it alone, on a laptop or tablet. For the books, pick the same time and spot each day, like right after a snack. Open the first book together, and do the first page side by side."],
-  ["What if they don't want to?", "Keep it short, and at the same time each day. The book starts at their level, so the first pages are ones they can do. Every finished page also earns points toward rewards they pick. If you need a break, pause. The next book starts where they left off."],
+// Parent-section copy (D-075, reworked in D-098), shared by the home page section (components/parent.tsx) and /llms.txt.
+export const PARENT_TITLE = "Less for you to do, not more.";
+export const PARENT_LEAD = "A busy week does not need another job. Here is what we take off your list.";
+
+// Jobs a parent does not have to do (shown struck out), each with how we handle it.
+export const PARENT_NOT_YOURS: [string, string][] = [
+  ["Drive to a centre and wait", "Books come to your door."],
+  ["Mark every page", "We mark it from your photo."],
+  ["Find the right level", "The free assessment places them."],
+  ["Plan what comes next", "The next book is built from their work."],
+  ["Remember how to teach it", "Scan a problem to see every step."],
 ];
+
+// What the parent still does.
+export const PARENT_YOURS: string[] = [
+  "Hand them the book at the same time each day. They work for 15-30 minutes.",
+  "Take a photo of the finished pages.",
+  "In the first week, sit beside them while they learn the routine.",
+];
+
+export const PARENT_NOTE = "If they do not want to, keep it short. Every finished page earns points toward rewards they pick. Pause anytime.";

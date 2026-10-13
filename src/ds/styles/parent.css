@@ -1,18 +1,24 @@
-/* "Your commitment as a parent" (src/components/parent.tsx, D-075).
-   Four soft grey cards in a 2 x 2 grid, each with a coloured corner square like the step cards.
-   The question is the large text; the answer is two or three sentences. Under 700px the cards stack. */
-.ask { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; margin: 0; padding: 0; list-style: none; }
-.ask > li { position: relative; display: grid; align-content: start; gap: 14px; padding: clamp(24px, 2.6vw, 36px); border-radius: 4px; background: var(--card); }
-.ask > li::after { content: ""; position: absolute; top: 0; right: 0; width: 20px; height: 20px; background: var(--g2); }
-.ask > li:nth-child(2)::after { background: var(--g3); }
-.ask > li:nth-child(3)::after { background: var(--g4); }
-.ask > li:nth-child(4)::after { background: var(--g1); }
-.ask .n { font: 400 12.5px/1 var(--mono); color: var(--ink-3); }
-.ask h3 { margin: 0; font-weight: 400; font-size: clamp(24px, 2.3vw, 32px); line-height: 1.15; letter-spacing: -0.02em; }
-.ask p { margin: 0; font-size: 16px; line-height: 1.55; color: var(--ink-2); }
+/* "For parents" (src/components/parent.tsx, D-098).
+   Left: the jobs we take off the parent's list, each struck through with an orange line, and how we handle it.
+   Right: a soft grey card with what stays with the parent, with a coloured corner square like the step cards.
+   Under 900px the card goes below the list; under 700px each list row stacks. */
+.duty { display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr); gap: clamp(20px, 4vw, 64px); align-items: start; }
+.duty-off { margin: 0; padding: 0; list-style: none; border-top: 1px solid var(--line); }
+.duty-off > li { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 0.9fr); gap: 20px; align-items: baseline; padding: 18px 2px; border-bottom: 1px solid var(--line); }
+.duty-off s { justify-self: start; font-size: clamp(22px, 2vw, 28px); line-height: 1.2; letter-spacing: -0.02em; color: var(--ink-2); text-decoration: none; background: linear-gradient(var(--tang), var(--tang)) no-repeat 0 58% / 100% 2px; }
+.duty-off span { font-size: 16px; line-height: 1.45; color: var(--ink); }
+.duty-yours { position: relative; padding: clamp(24px, 2.6vw, 36px); border-radius: 4px; background: var(--card); }
+.duty-yours::after { content: ""; position: absolute; top: 0; right: 0; width: 20px; height: 20px; background: var(--g3); }
+.duty-yours h3 { margin: 0 0 16px; font-weight: 400; font-size: clamp(24px, 2.3vw, 32px); line-height: 1.15; letter-spacing: -0.02em; }
+.duty-yours ul { display: grid; gap: 10px; margin: 0 0 18px; padding: 0 0 0 1.1em; font-size: 17px; line-height: 1.5; }
+.duty-yours p { margin: 0; font-size: 15px; line-height: 1.55; color: var(--ink-2); }
 
+@media (max-width: 899px) {
+  .duty { grid-template-columns: 1fr; }
+}
 @media (max-width: 699px) {
-  .ask { grid-template-columns: 1fr; gap: 8px; }
-  .ask > li { gap: 8px; padding: 20px; }
-  .ask h3 { font-size: 21px; }
+  .duty-off > li { grid-template-columns: 1fr; gap: 4px; padding: 14px 2px; }
+  .duty-off s { font-size: 21px; }
+  .duty-yours { padding: 20px; }
+  .duty-yours h3 { font-size: 21px; }
 }
