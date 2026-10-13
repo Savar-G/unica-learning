@@ -198,3 +198,7 @@
 .dash-test { display: inline-block; margin-left: 6px; padding: 1px 6px; border-radius: 4px; background: var(--card); font: 500 11px/1.4 var(--mono); letter-spacing: 0.03em; text-transform: uppercase; color: var(--ink-2); vertical-align: 1px; }
 .dash-note + .dash-top, .dash-tests + .dash-top { margin-top: 18px; }
 .dash-top + .dash-pills { margin-top: 14px; }
+.dash-stage.is-bad { background: var(--dash-warn); color: #9a3412; }
+.dash-how dl { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 14px 28px; margin: 0; }
+.dash-how dt { font: 500 14px/1.3 var(--sans); }
+.dash-how dd { margin: 3px 0 0; font-size: 13.5px; color: var(--ink-2); }

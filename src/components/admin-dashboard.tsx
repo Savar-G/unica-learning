@@ -29,8 +29,8 @@ export function DashboardView({ d, ctx }: { d: Dashboard; ctx: Ctx }) {
         {d.kpis.map((k) => (
           <div key={k.key} className="dash-kpi" title={k.hint}>
             <span className="dash-kpi-label">{k.label}</span>
-            <b className="dash-kpi-value">{k.value}{k.unit}</b>
-            <Delta value={k.value} prev={k.prev} unit={k.unit} />
+            <b className="dash-kpi-value">{k.format === "cad" ? `$${k.value.toLocaleString("en-CA", { maximumFractionDigits: 0 })}` : k.value}{k.format === "%" ? "%" : ""}</b>
+            {k.prev === null && k.spark.length === 0 ? <span className="dash-delta">right now{k.format === "cad" ? ", CAD" : ""}</span> : <Delta value={k.value} prev={k.prev} unit={k.format === "%" ? "%" : undefined} />}
             <Spark values={k.spark} tone={k.key === "paying" || k.key === "saved" ? "leaf" : "ink"} />
           </div>
         ))}
@@ -38,7 +38,7 @@ export function DashboardView({ d, ctx }: { d: Dashboard; ctx: Ctx }) {
 
       <div className="dash-two">
         <Card title="Funnel" aside={<span className="dash-muted">families who signed up {d.range === "all" ? "at any time" : period === "today" ? "today" : `in ${period}`}</span>}>
-          <Funnel steps={d.funnel.map((s) => ({ label: STAGE_SHORT[s.stage], value: s.inRange }))} />
+          <Funnel steps={d.funnel.map((s) => ({ label: s.stage === "paying" ? "Subscribed" : STAGE_SHORT[s.stage], value: s.inRange }))} />
           <p className="dash-foot">Each bar counts the families that got at least that far. The % is the share of the step above.</p>
         </Card>
         <Card title="Day by day">
@@ -131,6 +131,16 @@ export function DashboardView({ d, ctx }: { d: Dashboard; ctx: Ctx }) {
           ))}
         </ul>
         <p className="dash-foot">Not counted: sign-in codes, sign-in links and password emails. The site does not log them.</p>
+      </Card>
+
+      <Card title="How these numbers are counted" className="dash-how">
+        <dl>
+          {d.kpis.map((k) => <div key={k.key}><dt>{k.label}</dt><dd>{k.hint}</dd></div>)}
+          <div><dt>Days and comparisons</dt><dd>Pacific days. Each number is compared with the same number of days just before, cut at the same time of day, so &ldquo;today&rdquo; is compared with yesterday up to this time.</dd></div>
+          <div><dt>Stage</dt><dd>The furthest step each family reached, across all its children. Paying: a Stripe subscription that is active, trialing or past due. Cancelled: it had one, and none is paying now. A subscription whose first payment never went through is not counted.</dd></div>
+          <div><dt>Funnel</dt><dd>Families who signed up in the range, by the furthest step they reached since. The % is the share of the step above.</dd></div>
+          <div><dt>Left out</dt><dd>Admin accounts and families marked as a test. A deleted family leaves every number, past days included. Signups from before the free test launched (the old reservation form) are not in these numbers.</dd></div>
+        </dl>
       </Card>
     </div>
   );

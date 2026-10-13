@@ -33,7 +33,7 @@ export function RangeTabs({ ctx, range }: { ctx: Ctx; range: RangeKey }) {
   );
 }
 
-const STAGE_TONE: Record<Stage, string> = { account: "muted", started: "info", finished: "sun", card_started: "warn", card_saved: "ok", paying: "deep", waitlist: "muted" };
+const STAGE_TONE: Record<Stage, string> = { account: "muted", started: "info", finished: "sun", card_started: "warn", card_saved: "ok", paying: "deep", cancelled: "bad", waitlist: "muted" };
 export const StageChip = ({ stage }: { stage: Stage }) => <span className={`dash-stage is-${STAGE_TONE[stage]}`}>{STAGE_SHORT[stage]}</span>;
 
 export function Delta({ value, prev, unit }: { value: number; prev: number | null; unit?: string }) {
@@ -56,7 +56,7 @@ export function Notes({ ctx, d }: { ctx: Ctx; d: Dashboard }) {
   const families = `${n} team or test ${n === 1 ? "family" : "families"}`;
   return <>
     {ctx.demo && <p className="dash-note">Demo data: made-up families, not your database. Local development only.</p>}
-    {d.stripeNote && <p className="dash-note">{d.stripeNote}</p>}
+    {d.stripeNote ? <p className="dash-note">{d.stripeNote}</p> : d.stripeMode && <p className="dash-foot dash-tests">Payments: read from Stripe ({d.stripeMode} mode) just now.{d.cardsFoundInStripe > 0 ? ` ${d.cardsFoundInStripe} saved card${d.cardsFoundInStripe === 1 ? " was" : "s were"} found in Stripe that the site had not recorded; they are counted.` : ""}{d.stripeMode === "test" && !ctx.demo ? " Test mode shows test payments only, not real ones." : ""}</p>}
     {n > 0 && (
       <p className="dash-foot dash-tests">
         {d.tests.shown

@@ -1,7 +1,8 @@
 // One family's whole story in a side panel (?family=<id>) on the dashboard and activity pages (D-099).
 import Link from "next/link";
 import { adminParentPath, adminReportPath, adminTestPath } from "@/lib/admin-view";
-import { EMAIL_LABEL, STAGES, STAGE_ACTION, STAGE_TEXT, ago, at, type Dashboard, type Stage } from "@/lib/admin-dashboard";
+import { EMAIL_LABEL, STAGES, STAGE_ACTION, STAGE_TEXT, ago, at, paymentText, type Dashboard, type Stage } from "@/lib/admin-dashboard";
+import { stripeCustomerUrl as stripeUrl } from "@/lib/stripe";
 import { StageChip, TestMark, href, type Ctx } from "@/components/admin-dashboard-parts";
 
 export function FamilyDrawer({ ctx, d, id }: { ctx: Ctx; d: Dashboard; id: string }) {
@@ -9,7 +10,7 @@ export function FamilyDrawer({ ctx, d, id }: { ctx: Ctx; d: Dashboard; id: strin
   if (!f) return null;
   const close = href(ctx, { family: null });
   const full = ctx.demo ? null : adminParentPath(f.id);
-  const path: Stage[] = f.reached.waitlist && !f.reached.card_started ? ["account", "started", "finished", "waitlist"] : [...STAGES];
+  const path: Stage[] = f.reached.waitlist && !f.reached.card_started ? ["account", "started", "finished", "waitlist"] : [...STAGES, ...(f.reached.cancelled ? ["cancelled" as const] : [])];
   return (
     <>
       <Link href={close} className="dash-scrim" aria-label="Close family" />
@@ -49,10 +50,8 @@ export function FamilyDrawer({ ctx, d, id }: { ctx: Ctx; d: Dashboard; id: strin
           );
         })}
         <h3>Payment</h3>
-        {f.card ? (
-          <p>{f.card.plan}, CAD {f.card.price}/month. {f.card.savedAt ? `Card saved ${at(f.card.savedAt)}.` : `Opened the payment page ${at(f.card.updatedAt)}, no card saved.`}
-            {f.subscription ? ` Stripe subscription ${f.subscription.status} since ${at(f.subscription.since)}.` : f.card.savedAt ? " No subscription yet." : ""}</p>
-        ) : <p className="dash-muted">{f.reached.waitlist ? `On the waitlist since ${at(f.reached.waitlist)}.` : "Has not opened the payment page."}</p>}
+        <p>{paymentText(f)}</p>
+        {f.card?.customerId && stripeUrl(f.card.customerId) && <p><a href={stripeUrl(f.card.customerId)!} target="_blank" rel="noopener noreferrer">Open in Stripe</a></p>}
         <h3>Emails ({f.emails.length})</h3>
         {f.emails.length === 0 ? <p className="dash-muted">No emails yet.</p> : (
           <ul className="dash-mails">

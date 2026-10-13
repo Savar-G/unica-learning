@@ -28,10 +28,10 @@ import {
   type Stage,
 } from "@/lib/admin-dashboard";
 
-const ICON: Record<Activity["kind"], string> = { account: "+", test_start: "▶", test_finish: "✓", card_start: "$", card_saved: "▣", paying: "★", waitlist: "◷", email: "✉" };
+const ICON: Record<Activity["kind"], string> = { account: "+", test_start: "▶", test_finish: "✓", card_start: "$", card_saved: "▣", paying: "★", cancelled: "✕", waitlist: "◷", email: "✉" };
 const GROUPS = { all: "Everything", people: "Signups and tests", money: "Payments", email: "Emails" } as const;
 type Group = keyof typeof GROUPS;
-const MONEY: Activity["kind"][] = ["card_start", "card_saved", "paying", "waitlist"];
+const MONEY: Activity["kind"][] = ["card_start", "card_saved", "paying", "cancelled", "waitlist"];
 const PEOPLE: Activity["kind"][] = ["account", "test_start", "test_finish"];
 const inGroup = (a: Activity, g: Group) => g === "all" || (g === "email" ? a.kind === "email" : (g === "money" ? MONEY : PEOPLE).includes(a.kind));
 /** Events shown in the log: the report alert to Savar is left out, since the report email beside it says the same. */
@@ -178,7 +178,7 @@ function ActivityLog({ d, ctx }: { d: Dashboard; ctx: Ctx }) {
 }
 
 function FamilyRows({ d, ctx, families }: { d: Dashboard; ctx: Ctx; families: Family[] }) {
-  const rank = (s: Stage) => (s === "waitlist" ? 3 : STAGES.indexOf(s) + 1);
+  const rank = (s: Stage) => (s === "waitlist" ? 3 : s === "cancelled" ? 6 : STAGES.indexOf(s) + 1);
   if (families.length === 0) return <p className="dash-empty">No families here.</p>;
   return (
     <ul className="dash-rows">

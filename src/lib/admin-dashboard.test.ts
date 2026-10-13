@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { activities, buildDashboard, buildFamilies, dayKey, pickRange, rangeDays, shiftDay, type DashboardRows, type RawEmail } from "@/lib/admin-dashboard";
+import { activities, buildDashboard, buildFamilies, dayKey, monthlyAmount, pickRange, rangeDays, shiftDay, type DashboardRows, type RawEmail, type RawSubscription } from "@/lib/admin-dashboard";
 
 // 2026-10-12 19:00 Pacific (PDT, UTC-7)
 const NOW = new Date("2026-10-13T02:00:00Z");
@@ -7,7 +7,7 @@ const DAY = 86_400_000;
 const ago = (days: number, hours = 0) => new Date(NOW.getTime() - days * DAY - hours * 3_600_000).toISOString();
 
 function rows(over: Partial<DashboardRows> = {}): DashboardRows {
-  return { parents: [], children: [], tests: [], reports: [], cards: [], waitlist: [], emails: [], subscriptions: [], testIds: [], stripeNote: null, ...over };
+  return { parents: [], children: [], tests: [], reports: [], cards: [], waitlist: [], emails: [], subscriptions: [], testIds: [], stripeNote: null, stripeMode: null, ...over };
 }
 const parent = (id: string, created: string) => ({ id, created_at: created, name: `Parent ${id}`, email: `${id}@example.com`, postal: "V3S 1A1", source: null });
 const child = (id: string, parentId: string, province: "BC" | "ON" = "BC") => ({ id, created_at: ago(30), parent_id: parentId, first_name: `Kid ${id}`, grade: 3, province });
@@ -19,6 +19,10 @@ const card = (id: string, parentId: string, created: string, saved: string | nul
 });
 const email = (id: string, parentId: string, kind: RawEmail["kind"], at: string, status: RawEmail["status"] = "sent"): RawEmail => ({
   id, created_at: at, parent_id: parentId, child_id: "k1", assessment_id: null, kind, status, attempts: status === "failed" ? 3 : 1, sent_at: status === "sent" ? at : null, error: status === "failed" ? "429" : null,
+});
+
+const sub = (customer: string, status: string, created: string, over: Partial<RawSubscription> = {}): RawSubscription => ({
+  id: `sub_${customer}_${status}`, customer, status, created, endedAt: null, amount: 9900, quantity: 1, interval: "month", intervalCount: 1, currency: "cad", ...over,
 });
 
 describe("family stage", () => {
@@ -35,23 +39,23 @@ describe("family stage", () => {
         test("tf", "f", "kf", ago(9), ago(9)),
       ],
       cards: [card("d", "d", ago(8), null), card("e", "e", ago(8), ago(8)), card("f", "f", ago(8), ago(8))],
-      subscriptions: [{ customer: "cus_f", status: "active", created: ago(2), amount: 9900 }],
+      subscriptions: [sub("cus_f", "active", ago(2))],
     });
     expect(stageOf(r)).toEqual(["account", "started", "finished", "card_started", "card_saved", "paying"]);
   });
 
-  it("counts only a live Stripe subscription as paying", () => {
+  it("counts only a live Stripe subscription as paying; an ended one is cancelled", () => {
     const r = rows({
       parents: [parent("a", ago(10)), parent("b", ago(10))],
       cards: [card("a", "a", ago(8), ago(8)), card("b", "b", ago(8), ago(8))],
       subscriptions: [
-        { customer: "cus_a", status: "canceled", created: ago(3), amount: 9900 },
-        { customer: "cus_b", status: "canceled", created: ago(1), amount: 9900 },
-        { customer: "cus_b", status: "past_due", created: ago(5), amount: 9900 },
+        sub("cus_a", "canceled", ago(3)),
+        sub("cus_b", "canceled", ago(1)),
+        sub("cus_b", "past_due", ago(5)),
       ],
     });
     const [a, b] = buildFamilies(r);
-    expect(a.stage).toBe("card_saved");
+    expect(a.stage).toBe("cancelled");
     expect(b.stage).toBe("paying");
     expect(b.subscription?.status).toBe("past_due");
   });
@@ -206,5 +210,62 @@ describe("team and test families", () => {
     expect(d.kpis.find((k) => k.key === "finished")?.value).toBe(2);
     expect(d.families.filter((f) => f.test).map((f) => f.id).sort()).toEqual(["t", "team"]);
     expect(d.days[0]).toBe(dayKey(ago(40)));
+  });
+});
+
+describe("accuracy rules", () => {
+  it("shows a family whose subscription ended as cancelled, never as one to start", () => {
+    const r = rows({
+      parents: [parent("a", ago(20)), parent("b", ago(20))],
+      cards: [card("a", "a", ago(15), ago(15)), card("b", "b", ago(15), ago(15))],
+      subscriptions: [sub("cus_a", "canceled", ago(10), { endedAt: ago(3) }), sub("cus_b", "incomplete_expired", ago(10))],
+    });
+    const d = buildDashboard(r, "all", NOW);
+    const a = d.families.find((f) => f.id === "a")!;
+    const b = d.families.find((f) => f.id === "b")!;
+    expect(a.stage).toBe("cancelled");
+    expect(a.stageAt).toBe(ago(3));
+    expect(b.stage).toBe("card_saved");
+    expect(b.subscriptions).toHaveLength(0);
+    expect(d.needs.find((n) => n.title === "Start a subscription")?.families.map((f) => f.id)).toEqual(["b"]);
+    expect(d.funnel.find((s) => s.stage === "paying")?.ever).toBe(1);
+    expect(d.kpis.find((k) => k.key === "paying")?.value).toBe(0);
+  });
+
+  it("adds monthly revenue from paying subscriptions only, spread over their billing period", () => {
+    expect(monthlyAmount(sub("x", "active", ago(1), { amount: 9900, quantity: 2 }))).toBe(198);
+    expect(monthlyAmount(sub("x", "active", ago(1), { amount: 120000, interval: "year" }))).toBe(100);
+    expect(monthlyAmount(sub("x", "active", ago(1), { amount: 9900, interval: "month", intervalCount: 3 }))).toBe(33);
+    const r = rows({
+      parents: [parent("a", ago(20)), parent("b", ago(20)), parent("c", ago(20))],
+      cards: [card("a", "a", ago(15), ago(15)), card("b", "b", ago(15), ago(15)), card("c", "c", ago(15), ago(15))],
+      subscriptions: [sub("cus_a", "active", ago(10)), sub("cus_b", "past_due", ago(10), { amount: 17900 }), sub("cus_c", "canceled", ago(10), { endedAt: ago(2) })],
+    });
+    const d = buildDashboard(r, "30d", NOW);
+    const k = Object.fromEntries(d.kpis.map((x) => [x.key, x]));
+    expect([k.paying.value, k.mrr.value, k.subscribed.value]).toEqual([2, 278, 3]);
+    expect(d.needs.find((n) => n.title === "Payment failing")?.families.map((f) => f.id)).toEqual(["b"]);
+  });
+
+  it("counts each saved card, not each family", () => {
+    const r = rows({ parents: [parent("a", ago(5))], cards: [card("a1", "a", ago(4), ago(4)), card("a2", "a", ago(3), ago(2))] });
+    expect(buildDashboard(r, "7d", NOW).kpis.find((k) => k.key === "saved")?.value).toBe(2);
+  });
+
+  it("works out the finish rate from the tests started in the range, so it never passes 100%", () => {
+    // started 9 days ago and finished 5 days ago: not in a 7-day cohort
+    const r = rows({
+      parents: [parent("a", ago(10))],
+      tests: [test("old", "a", "k", ago(9), ago(5)), test("t1", "a", "k", ago(3), ago(3)), test("t2", "a", "k", ago(2), null)],
+    });
+    const k = Object.fromEntries(buildDashboard(r, "7d", NOW).kpis.map((x) => [x.key, x]));
+    expect([k.finished.value, k.started.value, k.completion.value]).toEqual([2, 2, 50]);
+  });
+
+  it("compares today with yesterday up to the same time of day", () => {
+    // NOW is 19:00 Pacific; yesterday at 17:00 counts, yesterday at 21:00 does not yet
+    const r = rows({ parents: [parent("a", ago(0, 1)), parent("b", ago(1, 2)), parent("c", ago(1, -2))] });
+    const k = buildDashboard(r, "today", NOW).kpis.find((x) => x.key === "accounts")!;
+    expect([k.value, k.prev]).toEqual([1, 1]);
   });
 });

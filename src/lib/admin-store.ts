@@ -10,7 +10,7 @@ import { sessionClient } from "@/lib/supabase-auth";
 import type { AssessmentStatus } from "@/lib/test-api";
 import { signWork } from "@/lib/work-store";
 import { stripe } from "@/lib/stripe";
-import type { DashboardRows, RawCard, RawChild, RawEmail, RawParent, RawReport, RawSubscription, RawTest, RawWaitlist } from "@/lib/admin-dashboard";
+import type { DashboardRows, RawCard, RawChild, RawEmail, RawParent, RawReport, RawTest, RawWaitlist } from "@/lib/admin-dashboard";
 
 // The admin area's data (#77). The gate and every read are here, so no admin page reads the database on its own.
 // Every read uses the admin's own session, never the secret key: the database decides what they see. The tables a
@@ -483,9 +483,9 @@ export async function dashboardRows(a: AdminSession): Promise<DashboardRows> {
     allRows<RawWaitlist>(a.db.rpc("admin_waitlist_joins").select("id, created_at, parent_id, child_id, province").order("id"), "waitlist"),
     allRows<RawEmail>(a.db.from("email_log").select("id, created_at, parent_id, child_id, assessment_id, kind, status, attempts, sent_at, error").order("id"), "email log"),
   ]);
-  const [{ subscriptions, note }, testIds] = await Promise.all([cardSubscriptions(cards), testAccountIds(a)]);
+  const [stripeRead, testIds] = await Promise.all([cardSubscriptions(cards), testAccountIds(a), confirmCardsInStripe(cards)]);
   return {
-    parents, children, reports, cards, waitlist, emails, subscriptions, testIds, stripeNote: note,
+    parents, children, reports, cards, waitlist, emails, testIds, ...stripeRead,
     tests: tests.map(({ answers, ...t }) => ({ ...t, answered: answers[0]?.count ?? 0 })),
   };
 }
@@ -493,25 +493,65 @@ export async function dashboardRows(a: AdminSession): Promise<DashboardRows> {
 /** Up to this many of the account's newest subscriptions are read; far more than a launch needs. */
 const SUBSCRIPTIONS_MAX = 2000;
 
-/** The Stripe subscriptions of the customers that saved a card. Read only: Savar starts each subscription himself. */
-async function cardSubscriptions(cards: RawCard[]): Promise<{ subscriptions: RawSubscription[]; note: string | null }> {
+const INTERVALS = ["day", "week", "month", "year"] as const;
+
+type StripeRead = Pick<DashboardRows, "subscriptions" | "stripeNote" | "stripeMode">;
+
+/**
+ * The Stripe subscriptions of the customers that saved a card. Read only: Savar starts each subscription himself.
+ * Stripe is always asked, even with no saved cards, so the dashboard shows whether the key can read subscriptions.
+ */
+async function cardSubscriptions(cards: RawCard[]): Promise<StripeRead> {
   const s = stripe();
-  if (!s) return { subscriptions: [], note: "No Stripe key here, so the page cannot tell who is paying." };
+  if (!s) return { subscriptions: [], stripeMode: null, stripeNote: "No Stripe key here, so the page cannot tell who is paying." };
+  const key = process.env.STRIPE_SECRET_KEY ?? "";
+  const stripeMode = key.startsWith("sk_live_") || key.startsWith("rk_live_") ? "live" : "test";
   const customers = new Set(cards.flatMap((c) => (c.stripe_customer_id ? [c.stripe_customer_id] : [])));
-  if (customers.size === 0) return { subscriptions: [], note: null };
   try {
     const all = await s.subscriptions.list({ status: "all", limit: 100 }).autoPagingToArray({ limit: SUBSCRIPTIONS_MAX });
     return {
-      note: null,
+      stripeMode,
+      stripeNote: all.length >= SUBSCRIPTIONS_MAX ? `Stripe has more than ${SUBSCRIPTIONS_MAX} subscriptions; only the newest ${SUBSCRIPTIONS_MAX} were read.` : null,
       subscriptions: all.flatMap((sub) => {
         const customer = typeof sub.customer === "string" ? sub.customer : sub.customer.id;
-        return customers.has(customer) ? [{ customer, status: sub.status, created: new Date(sub.created * 1000).toISOString(), amount: sub.items.data[0]?.price.unit_amount ?? null }] : [];
+        if (!customers.has(customer)) return [];
+        const item = sub.items.data[0];
+        const ended = sub.ended_at ?? sub.canceled_at;
+        return [{
+          id: sub.id, customer, status: sub.status,
+          created: new Date((sub.start_date ?? sub.created) * 1000).toISOString(),
+          endedAt: ended ? new Date(ended * 1000).toISOString() : null,
+          amount: item?.price.unit_amount ?? null, quantity: item?.quantity ?? 1,
+          interval: INTERVALS.find((i) => i === item?.price.recurring?.interval) ?? null, intervalCount: item?.price.recurring?.interval_count ?? 1,
+          currency: item?.price.currency ?? null,
+        }];
       }),
     };
   } catch (e) {
-    console.error("[admin] stripe subscriptions failed", e instanceof Error ? e.message : e);
-    return { subscriptions: [], note: "Stripe did not answer, so the page cannot tell who is paying. The Stripe key needs read access to Subscriptions." };
+    const message = e instanceof Error ? e.message : String(e);
+    console.error("[admin] stripe subscriptions failed", message);
+    return { subscriptions: [], stripeMode: null, stripeNote: `Stripe did not answer, so the page cannot tell who is paying. Stripe said: ${message.slice(0, 200)}` };
   }
+}
+
+/**
+ * The site records a saved card when the parent returns to the thank-you page. A parent who closes the tab first has
+ * a saved card in Stripe that the site never recorded. For each card setup with no saved time, ask Stripe for the
+ * customer's finished setup Checkout Session and take its time. Read only; nothing is written back.
+ */
+async function confirmCardsInStripe(cards: RawCard[]): Promise<void> {
+  const s = stripe();
+  const open = cards.filter((c) => c.stripe_customer_id && !c.card_saved_at);
+  if (!s || open.length === 0) return;
+  await Promise.all(open.map(async (c) => {
+    try {
+      const sessions = await s.checkout.sessions.list({ customer: c.stripe_customer_id!, limit: 10 });
+      const done = sessions.data.filter((x) => x.mode === "setup" && x.status === "complete").sort((x, y) => x.created - y.created)[0];
+      if (done) Object.assign(c, { card_saved_at: new Date(done.created * 1000).toISOString(), saved_in_stripe_only: true });
+    } catch (e) {
+      console.error("[admin] stripe checkout sessions failed", e instanceof Error ? e.message : e);
+    }
+  }));
 }
 
 /** The admins' user ids. PostgREST returns a set of scalars as plain values; an object row is read too, to be safe. */

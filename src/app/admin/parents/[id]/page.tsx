@@ -2,7 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { dashboardRows, getParent, requireAdmin, testAccountState } from "@/lib/admin-store";
 import { ADMIN_PATH, when } from "@/lib/admin-view";
-import { STAGE_ACTION, at, buildFamilies, since } from "@/lib/admin-dashboard";
+import { STAGE_ACTION, at, buildFamilies, paymentText, since } from "@/lib/admin-dashboard";
 import { AdminFrame } from "@/components/admin";
 import { StageChip } from "@/components/admin-dashboard-parts";
 import { FamilyRecords, RecordFacts } from "@/components/admin-records";
@@ -24,7 +24,7 @@ export default async function ParentPage({ params }: PageProps<"/admin/parents/[
       ["Email", <a key="email" href={`mailto:${p.email}`}>{p.email}</a>], ["Postal code", p.postal], ["Joined (Pacific)", when(p.created_at)],
       ["Stage", f ? <span key="stage"><StageChip stage={f.stage} /> <span className="adm-sub">{since(f.stageAt, now)}, since {at(f.stageAt)}</span></span> : "-"],
       ["Next", f ? STAGE_ACTION[f.stage] : "-"],
-      ["Payment", f?.subscription ? `Stripe subscription ${f.subscription.status} since ${at(f.subscription.since)}` : f?.card?.savedAt ? "Card saved, no subscription yet" : f?.card ? "Opened the payment page, no card" : "No card"],
+      ["Payment", f ? paymentText(f) : "-"],
       ["Last email", f?.lastEmail ? `${f.lastEmail.subject} (${f.lastEmail.status}, ${at(f.lastEmail.at)})` : "None"],
       ["Reminders", f?.unsubscribed ? "Off: the parent unsubscribed" : "On"],
       ["Source", Object.entries(p.source).map(([k, v]) => `${k}: ${v}`).join(", ") || "-"], ["Parent id", p.id],

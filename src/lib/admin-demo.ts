@@ -25,7 +25,7 @@ export function demoRows(now: Date): DashboardRows {
   const pick = <T,>(xs: T[]) => xs[Math.floor(r() * xs.length)];
   const iso = (ms: number) => new Date(Math.min(ms, now.getTime() - 60_000)).toISOString();
   const H = 3_600_000;
-  const out: DashboardRows = { parents: [], children: [], tests: [], reports: [], cards: [], waitlist: [], emails: [], subscriptions: [], testIds: [], stripeNote: null };
+  const out: DashboardRows = { parents: [], children: [], tests: [], reports: [], cards: [], waitlist: [], emails: [], subscriptions: [], testIds: [], stripeNote: null, stripeMode: "test" };
   let n = 0;
   const id = (p: string) => `${p}-${(++n).toString().padStart(4, "0")}`;
 
@@ -93,7 +93,12 @@ export function demoRows(now: Date): DashboardRows {
     out.cards.push(card);
     if (saved && r() < 0.5) {
       const payMs = savedMs + (2 + r() * 6) * 24 * H;
-      if (payMs < now.getTime()) out.subscriptions.push({ customer: card.stripe_customer_id!, status: "active", created: iso(payMs), amount: card.price * 100 } satisfies RawSubscription);
+      if (payMs < now.getTime()) out.subscriptions.push({
+        id: `sub_demo${i}`, customer: card.stripe_customer_id!, status: r() < 0.85 ? "active" : "canceled", created: iso(payMs),
+        endedAt: null, amount: card.price * 100, quantity: 1, interval: "month", intervalCount: 1, currency: "cad",
+      } satisfies RawSubscription);
+      const sub = out.subscriptions.at(-1)!;
+      if (sub.status === "canceled") sub.endedAt = iso(payMs + 5 * 24 * H);
     }
   }
   // two made-up test families, so the "hidden" note and its toggle show
