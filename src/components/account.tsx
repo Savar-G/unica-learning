@@ -7,7 +7,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { CURRICULA, EMAIL, POSTAL, curriculumFromPostal, type CurriculumId } from "@/lib/signup";
 import type { StartState } from "@/lib/assessment";
-import { GRADES, PASSWORD_MAX, PASSWORD_MIN, validPassword, type AccountError, type AccountResult, type ChildInput } from "@/lib/account";
+import { GRADES, PASSWORD_MAX, PASSWORD_MIN, signInFailure, validPassword, type AccountError, type SignInFailure, type AccountResult, type ChildInput } from "@/lib/account";
 import { browserClient } from "@/lib/supabase-browser";
 import { track } from "@/lib/track";
 import { SUPPORT_EMAIL, SUPPORT_HREF } from "@/lib/contact";
@@ -38,7 +38,7 @@ async function post(url: string, body: unknown): Promise<AccountResult> {
 function errorText(error: AccountError | undefined): ReactNode {
   switch (error) {
     case "weak_password":
-      return "Choose a stronger password. Use a longer one, and do not use a common password.";
+      return `Choose a different password. Use at least ${PASSWORD_MIN} characters.`;
     case "invalid":
       return "Correct the marked fields to continue.";
     case "too_many":
@@ -363,7 +363,7 @@ export function AccountSignup() {
             if (guess && !pickedProvince) setChild((c) => ({ ...c, province: guess }));
           }} aria-invalid={!!errors.postal} aria-describedby={described("a-postal", errors.postal)} />
         </Field>
-        <Field id="a-password" label="Password" bad={errors.password} error={failure === "weak_password" ? "Choose a stronger password." : `Use ${PASSWORD_MIN} to ${PASSWORD_MAX} characters.`} hint={`At least ${PASSWORD_MIN} characters.`}>
+        <Field id="a-password" label="Password" bad={errors.password} error={failure === "weak_password" ? "Choose a different password." : `Use ${PASSWORD_MIN} to ${PASSWORD_MAX} characters.`} hint={`At least ${PASSWORD_MIN} characters.`}>
           <span className="pw">
             <input id="a-password" type={showPassword ? "text" : "password"} autoComplete="new-password" value={password} onChange={(e) => setPassword(e.target.value)} aria-invalid={!!errors.password} aria-describedby={described("a-password", errors.password, true)} />
             <button type="button" onClick={() => setShowPassword((s) => !s)} aria-controls="a-password" aria-pressed={showPassword}>{showPassword ? "Hide" : "Show"}</button>
@@ -382,22 +382,37 @@ export function AccountSignup() {
   );
 }
 
+/**
+ * Supabase cannot tell an unknown email from a wrong password, so the "no_match" text names every common cause: an
+ * account made with Google has no password, a forgotten password, or no account yet.
+ */
+function signInFailureText(failure: SignInFailure): ReactNode {
+  switch (failure) {
+    case "too_many":
+      return "Too many tries. Wait a few minutes, then try again.";
+    case "unavailable":
+      return <>We could not sign you in right now. Try again in a moment. If this keeps happening, email <a href={SUPPORT_HREF}>{SUPPORT_EMAIL}</a>.</>;
+    case "no_match":
+      return <>This email and password do not match an account. If you made your account with Google, use Continue with Google. If you forgot your password, <Link href="/sign-in/reset">get a reset link by email</Link>. If you are new, <Link href="/start">create an account</Link>.</>;
+  }
+}
+
 export function SignIn({ googleFailed, next = "/account" }: { googleFailed: boolean; next?: string }) {
   const router = useRouter();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [failed, setFailed] = useState(false);
+  const [failed, setFailed] = useState<SignInFailure | null>(null);
   const [busy, setBusy] = useState(false);
 
   const submit = async (e: FormEvent) => {
     e.preventDefault();
     if (busy) return;
     setBusy(true);
-    setFailed(false);
+    setFailed(null);
     const { error } = await browserClient().auth.signInWithPassword({ email: email.trim().toLowerCase(), password });
     if (error) {
       track("sign_in_failed", { code: error.code ?? "unknown" });
-      setFailed(true);
+      setFailed(signInFailure(error));
       setBusy(false);
       return;
     }
@@ -410,7 +425,7 @@ export function SignIn({ googleFailed, next = "/account" }: { googleFailed: bool
       {/* The default return to /account keeps the plain callback URL that the Supabase redirect list already allows. */}
       <GoogleButton next={next === "/account" ? undefined : next} />
       {googleFailed && !failed && <p role="alert" className="acct-alert">We could not sign you in with Google. Try again, or use your email and password.</p>}
-      {failed && <p role="alert" className="acct-alert">The email or password is not correct. Try again.</p>}
+      {failed && <p role="alert" className="acct-alert">{signInFailureText(failed)}</p>}
       <Field id="s-email" label="Email">
         <input id="s-email" type="email" autoComplete="email" required value={email} onChange={(e) => setEmail(e.target.value)} />
       </Field>
@@ -671,7 +686,7 @@ export function FinishAccount({ name: googleName, email, needsPassword }: { name
           }} aria-invalid={!!errors.postal} aria-describedby={described("f-postal", errors.postal)} />
         </Field>
         {needsPassword && (
-          <Field id="f-password" label="Choose a password" bad={errors.password} error={failure === "weak_password" ? "Choose a stronger password." : `Use ${PASSWORD_MIN} to ${PASSWORD_MAX} characters.`} hint={`At least ${PASSWORD_MIN} characters. You sign in with it next time.`}>
+          <Field id="f-password" label="Choose a password" bad={errors.password} error={failure === "weak_password" ? "Choose a different password." : `Use ${PASSWORD_MIN} to ${PASSWORD_MAX} characters.`} hint={`At least ${PASSWORD_MIN} characters. You sign in with it next time.`}>
             <span className="pw">
               <input id="f-password" type={showPassword ? "text" : "password"} autoComplete="new-password" value={password} onChange={(e) => setPassword(e.target.value)} aria-invalid={!!errors.password} aria-describedby={described("f-password", errors.password, true)} />
               <button type="button" onClick={() => setShowPassword((s) => !s)} aria-controls="f-password" aria-pressed={showPassword}>{showPassword ? "Hide" : "Show"}</button>

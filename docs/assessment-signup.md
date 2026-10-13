@@ -15,6 +15,8 @@ The signup at `/start` proves the parent's email with a one-time code before any
 | Sign In / Providers, Email, Confirm email | On | Off, Supabase confirms any address at once. Anyone could then finish an account for an email they do not own. |
 | Sign In / Providers, Allow new users to sign up | On | The email code creates the user. |
 | Sign In / Providers, Email OTP length | 6 (default) | The page asks for "the code" and accepts 6 to 10 digits. |
+| Sign In / Providers, Email, Minimum password length | 8 | The same as `PASSWORD_MIN`, which the forms check. Set on 2026-10-13. |
+| Sign In / Providers, Email, Password requirements | No required characters | The forms ask only for a length. Before 2026-10-13 Supabase asked for lowercase, uppercase and a digit, and refused such passwords only after the parent had entered the code. Checked on 2026-10-13: `sunshine` is accepted and `sunshin` is refused. |
 | Sign In / Providers, Email OTP expiration | 3600 seconds or less | The page states no time; "send a new code" covers an expired code. |
 | Rate limits, emails sent per hour | Enough for launch traffic | Each signup sends one code email, and resets and phone links send more. The value recorded in PR #89 was 30 an hour for the whole project. |
 | Rate limits, token verifications | Keep the default | It limits code guessing. |
