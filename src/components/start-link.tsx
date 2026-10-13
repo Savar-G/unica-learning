@@ -22,7 +22,8 @@ function StartLinkLabel({ children }: { children: ReactNode }) {
 
 export function StartLink({ src, className = "btn", children }: { src: string; className?: string; children: ReactNode }) {
   return (
-    // Default prefetch prepares /start's loading screen. The page still checks the current session on each visit.
+    // Keep this page visible with inline feedback until /start is ready. Use default prefetch so the
+    // session-dependent destination is checked on navigation, not reused from a full-page prefetch.
     <Link className={className} href="/start" onClick={() => track("cta_click", { src })}>
       <StartLinkLabel>{children}</StartLinkLabel>
     </Link>
