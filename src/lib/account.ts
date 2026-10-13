@@ -82,3 +82,15 @@ export const PASSWORD_MAX = 72;
 /** True for a password the signup form accepts: at least PASSWORD_MIN and at most PASSWORD_MAX characters. */
 export const validPassword = (raw: unknown): raw is string =>
   typeof raw === "string" && raw.length >= PASSWORD_MIN && raw.length <= PASSWORD_MAX;
+
+/**
+ * Why a password sign-in failed, in the words the sign-in form can explain. Supabase gives the same answer for an
+ * unknown email and a wrong password, so "no_match" covers both.
+ */
+export type SignInFailure = "no_match" | "too_many" | "unavailable";
+
+export function signInFailure(error: { status?: number; code?: string }): SignInFailure {
+  if (error.status === 429 || error.code === "over_request_rate_limit") return "too_many";
+  if (error.code === "invalid_credentials" || error.status === 400) return "no_match";
+  return "unavailable";
+}
