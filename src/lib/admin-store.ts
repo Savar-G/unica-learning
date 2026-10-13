@@ -9,6 +9,8 @@ import type { ReportView } from "@/lib/report-view";
 import { sessionClient } from "@/lib/supabase-auth";
 import type { AssessmentStatus } from "@/lib/test-api";
 import { signWork } from "@/lib/work-store";
+import { stripe } from "@/lib/stripe";
+import type { DashboardRows, RawCard, RawChild, RawEmail, RawParent, RawReport, RawTest, RawWaitlist } from "@/lib/admin-dashboard";
 
 // The admin area's data (#77). The gate and every read are here, so no admin page reads the database on its own.
 // Every read uses the admin's own session, never the secret key: the database decides what they see. The tables a
@@ -462,4 +464,124 @@ export async function getReportView(a: AdminSession, id: string): Promise<{ view
       workImages: await signWork(a.db, paths),
     },
   };
+}
+
+// The dashboard and activity log (D-099)
+
+/**
+ * Every row the dashboard needs, all of them: the model counts families, tests and emails over any range. Fine at
+ * today's size (hundreds of families); move the counts into SQL when a page load gets slow. Payment status comes from
+ * Stripe, read only: the subscriptions of the customers that saved a card.
+ */
+export async function dashboardRows(a: AdminSession): Promise<DashboardRows> {
+  const [parents, children, tests, reports, cards, waitlist, emails] = await Promise.all([
+    allRows<RawParent>(a.db.rpc("admin_parents").select(PARENT_COLUMNS).order("id"), "parents"),
+    allRows<RawChild>(a.db.rpc("admin_children").select(CHILD_COLUMNS).order("id"), "children"),
+    allRows<Omit<RawTest, "answered"> & { answers: { count: number }[] }>(a.db.rpc("admin_assessments").select("id, created_at, status, parent_id, child_id, grade, province, started_at, completed_at, last_answer_at, answers(count)").order("id"), "tests"),
+    allRows<RawReport>(a.db.rpc("admin_reports").select("id, created_at, assessment_id, parent_id, child_id, emailed_at, email_error, alerted_at, alert_error").order("id"), "reports"),
+    allRows<RawCard>(a.db.rpc("admin_card_setups").select("id, created_at, updated_at, parent_id, child_id, plan, price, stripe_customer_id, card_saved_at").order("id"), "card setups"),
+    allRows<RawWaitlist>(a.db.rpc("admin_waitlist_joins").select("id, created_at, parent_id, child_id, province").order("id"), "waitlist"),
+    allRows<RawEmail>(a.db.from("email_log").select("id, created_at, parent_id, child_id, assessment_id, kind, status, attempts, sent_at, error").order("id"), "email log"),
+  ]);
+  const [stripeRead, testIds] = await Promise.all([cardSubscriptions(cards), testAccountIds(a), confirmCardsInStripe(cards)]);
+  return {
+    parents, children, reports, cards, waitlist, emails, testIds, ...stripeRead,
+    tests: tests.map(({ answers, ...t }) => ({ ...t, answered: answers[0]?.count ?? 0 })),
+  };
+}
+
+/** Up to this many of the account's newest subscriptions are read; far more than a launch needs. */
+const SUBSCRIPTIONS_MAX = 2000;
+
+const INTERVALS = ["day", "week", "month", "year"] as const;
+
+type StripeRead = Pick<DashboardRows, "subscriptions" | "stripeNote" | "stripeMode">;
+
+/**
+ * The Stripe subscriptions of the customers that saved a card. Read only: Savar starts each subscription himself.
+ * Stripe is always asked, even with no saved cards, so the dashboard shows whether the key can read subscriptions.
+ */
+async function cardSubscriptions(cards: RawCard[]): Promise<StripeRead> {
+  const s = stripe();
+  if (!s) return { subscriptions: [], stripeMode: null, stripeNote: "No Stripe key here, so the page cannot tell who is paying." };
+  const key = process.env.STRIPE_SECRET_KEY ?? "";
+  const stripeMode = key.startsWith("sk_live_") || key.startsWith("rk_live_") ? "live" : "test";
+  const customers = new Set(cards.flatMap((c) => (c.stripe_customer_id ? [c.stripe_customer_id] : [])));
+  try {
+    const all = await s.subscriptions.list({ status: "all", limit: 100 }).autoPagingToArray({ limit: SUBSCRIPTIONS_MAX });
+    return {
+      stripeMode,
+      stripeNote: all.length >= SUBSCRIPTIONS_MAX ? `Stripe has more than ${SUBSCRIPTIONS_MAX} subscriptions; only the newest ${SUBSCRIPTIONS_MAX} were read.` : null,
+      subscriptions: all.flatMap((sub) => {
+        const customer = typeof sub.customer === "string" ? sub.customer : sub.customer.id;
+        if (!customers.has(customer)) return [];
+        const item = sub.items.data[0];
+        const ended = sub.ended_at ?? sub.canceled_at;
+        return [{
+          id: sub.id, customer, status: sub.status,
+          created: new Date((sub.start_date ?? sub.created) * 1000).toISOString(),
+          endedAt: ended ? new Date(ended * 1000).toISOString() : null,
+          amount: item?.price.unit_amount ?? null, quantity: item?.quantity ?? 1,
+          interval: INTERVALS.find((i) => i === item?.price.recurring?.interval) ?? null, intervalCount: item?.price.recurring?.interval_count ?? 1,
+          currency: item?.price.currency ?? null,
+        }];
+      }),
+    };
+  } catch (e) {
+    const message = e instanceof Error ? e.message : String(e);
+    console.error("[admin] stripe subscriptions failed", message);
+    return { subscriptions: [], stripeMode: null, stripeNote: `Stripe did not answer, so the page cannot tell who is paying. Stripe said: ${message.slice(0, 200)}` };
+  }
+}
+
+/**
+ * The site records a saved card when the parent returns to the thank-you page. A parent who closes the tab first has
+ * a saved card in Stripe that the site never recorded. For each card setup with no saved time, ask Stripe for the
+ * customer's finished setup Checkout Session and take its time. Read only; nothing is written back.
+ */
+async function confirmCardsInStripe(cards: RawCard[]): Promise<void> {
+  const s = stripe();
+  const open = cards.filter((c) => c.stripe_customer_id && !c.card_saved_at);
+  if (!s || open.length === 0) return;
+  await Promise.all(open.map(async (c) => {
+    try {
+      const sessions = await s.checkout.sessions.list({ customer: c.stripe_customer_id!, limit: 10 });
+      const done = sessions.data.filter((x) => x.mode === "setup" && x.status === "complete").sort((x, y) => x.created - y.created)[0];
+      if (done) Object.assign(c, { card_saved_at: new Date(done.created * 1000).toISOString(), saved_in_stripe_only: true });
+    } catch (e) {
+      console.error("[admin] stripe checkout sessions failed", e instanceof Error ? e.message : e);
+    }
+  }));
+}
+
+/** The admins' user ids. PostgREST returns a set of scalars as plain values; an object row is read too, to be safe. */
+async function teamIds(a: AdminSession): Promise<string[]> {
+  const rows = must<(string | Record<string, string>)[]>(await a.db.rpc("admin_team_ids"), "team ids");
+  return rows.map((r) => (typeof r === "string" ? r : Object.values(r)[0]));
+}
+
+/** Admin accounts and families marked as a test (migration add_test_accounts): left out of the dashboard's numbers. */
+export async function testAccountIds(a: AdminSession): Promise<string[]> {
+  const [team, marked] = await Promise.all([
+    teamIds(a),
+    allRows<{ parent_id: string }>(a.db.from("test_accounts").select("parent_id").order("parent_id"), "test accounts"),
+  ]);
+  return [...new Set([...team, ...marked.map((m) => m.parent_id)])];
+}
+
+/** Whether a family is marked as a test, and whether it is an admin's own (always left out; it cannot be unmarked). */
+export async function testAccountState(a: AdminSession, parentId: string): Promise<{ marked: boolean; admin: boolean }> {
+  const [team, marked] = await Promise.all([
+    teamIds(a),
+    a.db.from("test_accounts").select("parent_id").eq("parent_id", parentId).maybeSingle().then((r) => must<{ parent_id: string } | null>(r, "test account")),
+  ]);
+  return { marked: !!marked, admin: team.includes(parentId) };
+}
+
+/** Marks or unmarks a family as a test. Row-level security allows it for admins only. */
+export async function setTestAccount(a: AdminSession, parentId: string, test: boolean): Promise<void> {
+  const { error } = test
+    ? await a.db.from("test_accounts").upsert({ parent_id: parentId, marked_by: a.userId }, { onConflict: "parent_id", ignoreDuplicates: true })
+    : await a.db.from("test_accounts").delete().eq("parent_id", parentId);
+  if (error) throw new Error(`[admin] test account: ${error.message}`);
 }

@@ -5,6 +5,7 @@ import type { ReactNode } from "react";
 import { helpLikely } from "@/lib/assessment";
 import {
   ADMIN_PATH,
+  ADMIN_TESTS_PATH,
   GRADES,
   PROVINCES,
   STATUSES,
@@ -25,7 +26,9 @@ import type { AssessmentStatus } from "@/lib/test-api";
 import "./admin.css";
 
 const NAV = [
-  { key: "tests", href: ADMIN_PATH, label: "Tests" },
+  { key: "dashboard", href: ADMIN_PATH, label: "Dashboard" },
+  { key: "activity", href: `${ADMIN_PATH}/activity`, label: "Activity" },
+  { key: "tests", href: ADMIN_TESTS_PATH, label: "Tests" },
   { key: "reviews", href: `${ADMIN_PATH}/reviews`, label: "AI reviews" },
   { key: "parents", href: `${ADMIN_PATH}/parents`, label: "Parents" },
   { key: "children", href: `${ADMIN_PATH}/children`, label: "Children" },
@@ -35,9 +38,13 @@ const NAV = [
 
 export type AdminSection = (typeof NAV)[number]["key"];
 
-export function AdminFrame({ email, section, title, children }: { email: string; section: AdminSection; title: ReactNode; children: ReactNode }) {
+/**
+ * The admin bar and the page. `title`: the page's h1 inside the standard width; null when the page lays out its own
+ * (the dashboard and the activity log, which also set `wide`).
+ */
+export function AdminFrame({ email, section, title, children, wide = false }: { email: string; section: AdminSection; title: ReactNode; children: ReactNode; wide?: boolean }) {
   return (
-    <div className="look-root adm-root" data-look="warm">
+    <div className={`look-root adm-root${wide ? " is-wide" : ""}`} data-look="warm">
       <header className="adm-bar">
         <Link className="adm-brand" href={ADMIN_PATH}>{BRAND} <span>admin</span></Link>
         <nav aria-label="Admin">
@@ -49,10 +56,12 @@ export function AdminFrame({ email, section, title, children }: { email: string;
         </nav>
         <span className="adm-who">{email}</span>
       </header>
-      <main id="main" className="adm-main">
-        <h1>{title}</h1>
-        {children}
-      </main>
+      {wide ? <main id="main">{children}</main> : (
+        <main id="main" className="adm-main">
+          <h1>{title}</h1>
+          {children}
+        </main>
+      )}
     </div>
   );
 }

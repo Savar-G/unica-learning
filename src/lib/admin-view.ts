@@ -21,6 +21,8 @@ import { CURRICULA } from "@/lib/signup";
 import type { AssessmentStatus } from "@/lib/test-api";
 
 export const ADMIN_PATH = "/admin";
+/** The tests list. /admin is the dashboard (D-099). */
+export const ADMIN_TESTS_PATH = `${ADMIN_PATH}/tests`;
 /** One test in the admin area. Savar's alert email for each finished test links here (#65). */
 export const adminTestPath = (id: string) => `${ADMIN_PATH}/assessments/${id}`;
 export const adminParentPath = (id: string) => `${ADMIN_PATH}/parents/${id}`;

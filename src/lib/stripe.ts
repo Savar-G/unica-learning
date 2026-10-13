@@ -152,3 +152,11 @@ export function reportCardSetupUrl(s: Stripe, customer: string, p: ReportCardSet
     cancel: `${p.origin}${p.cancelPath}`,
   });
 }
+
+/** A customer's page in the Stripe Dashboard, in the mode of the key the site uses (D-099); null without a key. */
+export function stripeCustomerUrl(customer: string): string | null {
+  const key = process.env.STRIPE_SECRET_KEY;
+  if (!key) return null;
+  const live = key.startsWith("sk_live_") || key.startsWith("rk_live_");
+  return `https://dashboard.stripe.com/${live ? "" : "test/"}customers/${encodeURIComponent(customer)}`;
+}
