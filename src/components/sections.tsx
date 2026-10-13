@@ -218,7 +218,7 @@ export function Feel() {
       ))}
       <Rise className="msg">
         <h2 id="feelT">A program made for one child: yours.</h2>
-        <p className="lead">No two {BRAND} books are the same. Each one starts where your child is, and moves on when they&apos;re ready.</p>
+        <p className="lead">No two {BRAND} programs are the same. Each one starts where your child is, and moves on when they&apos;re ready.</p>
       </Rise>
     </Section>
   );
