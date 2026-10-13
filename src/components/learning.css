@@ -1,0 +1,33 @@
+/* How a child likes to learn (#126): a quiet white card above the report's plan choice, and on its own account page.
+   Chips follow the "How did you hear about us?" picks: a checked chip turns ink. */
+.lrn { margin: 0 0 20px; padding: clamp(20px, 2.6vw, 28px); border: 1px solid #d4d4d8; border-radius: 12px; background: #fff; }
+.lrn.is-folded { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 20px; padding: 16px 20px; }
+.support-page .lrn h3 { margin: 0 0 6px; font-size: 20px; }
+.support-page .lrn p { margin: 0; font-size: 15px; line-height: 1.5; color: var(--ink-2); }
+.support-page .lrn.is-folded p { flex: 1 1 30ch; }
+.support-page .lrn .lrn-lead { max-width: 60ch; margin-bottom: 18px; }
+.lrn-q { margin: 0 0 18px; padding: 0; border: 0; min-width: 0; }
+.lrn-q legend, .lrn-q.fld label { margin-bottom: 10px; padding: 0; font: 600 15.5px/1.4 var(--sans); color: var(--ink); }
+.lrn-q legend span, .lrn-q.fld label span { font-weight: 400; color: var(--ink-2); }
+.lrn-picks { display: flex; flex-wrap: wrap; gap: 8px; }
+.lrn-pick { position: relative; border: 1px solid #d4d4d8; border-radius: 8px; background: #fff; padding: 11px 14px; cursor: pointer; font: 500 15px/1.2 var(--sans); }
+.lrn-pick.is-small { padding: 8px 12px; font-size: 14px; border-radius: 999px; }
+.lrn-pick input { position: absolute; opacity: 0; pointer-events: none; }
+.lrn-pick:hover { border-color: var(--ink); }
+.lrn-pick:has(input:checked) { border-color: var(--ink); background: var(--ink); color: #fff; }
+.lrn-pick:has(input:disabled) { opacity: 0.45; cursor: not-allowed; }
+.lrn-pick:has(input:disabled):hover { border-color: #d4d4d8; }
+.lrn-pick:has(input:focus-visible) { outline: 2px solid var(--sky); outline-offset: 2px; }
+.lrn-q.fld { gap: 0; }
+.lrn-q textarea { width: 100%; max-width: 60ch; font: 400 16px/1.4 var(--sans); padding: 12px 14px; border: 1px solid #d4d4d8; border-radius: 6px; background: #fff; color: var(--ink); resize: vertical; }
+.lrn-q textarea:focus { border-color: var(--ink); outline: none; box-shadow: 0 0 0 3px rgba(51, 102, 240, 0.25); }
+.lrn-actions { display: flex; flex-wrap: wrap; gap: 10px; }
+.lrn-actions .btn { min-height: 44px; justify-content: center; }
+.lrn-actions .btn.ghost .spin, .lrn-actions .btn .spin { width: 18px; height: 18px; }
+.support-page .lrn .lrn-note { margin-bottom: 12px; padding: 10px 14px; border-radius: 8px; background: #fbeae9; color: var(--ink); }
+.support-page .lrn .lrn-summary { margin: 10px 0 16px; padding: 0; list-style: none; display: grid; gap: 4px; font-size: 15px; line-height: 1.5; color: var(--ink-2); }
+.support-page .lrn .lrn-summary li { margin: 0; padding: 0; }
+.lrn-summary b { color: var(--ink); font-weight: 600; }
+@media (max-width: 599px) {
+  .lrn-actions .btn { flex: 1 1 100%; }
+}

@@ -4,6 +4,7 @@ import { notFound } from "next/navigation";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { FactsTest, HelpAnswer, Placement, Province, ReportModel, StoredTest } from "@/lib/assessment";
 import { isUuid } from "@/lib/assessment-store";
+import { LEARNING_COLUMNS, type LearningRow } from "@/lib/learning-style";
 import { filterTests, type AdminFilters, type AnswerRecord, type FactAnswerRecord, type ReviewRecord } from "@/lib/admin-view";
 import type { ReportView } from "@/lib/report-view";
 import { sessionClient } from "@/lib/supabase-auth";
@@ -346,10 +347,13 @@ export async function listChildren(a: AdminSession, f: Pick<AdminFilters, "grade
   };
 }
 
+/** One child with how they learn (#126), which the book plan reads. */
+export type ChildDetail = ChildRow & LearningRow & { learning_updated_at: string | null };
+
 /** One child and their family records. #78 can use the parent id for the future deletion action. */
-export async function getChild(a: AdminSession, id: string): Promise<{ child: ChildRow; family: ParentDetail } | null> {
+export async function getChild(a: AdminSession, id: string): Promise<{ child: ChildDetail; family: ParentDetail } | null> {
   if (!isUuid(id)) return null;
-  const child = must<ChildRow | null>(await a.db.rpc("admin_children").select(CHILD_COLUMNS).eq("id", id).maybeSingle(), "child");
+  const child = must<ChildDetail | null>(await a.db.rpc("admin_children").select(`${CHILD_COLUMNS}, ${LEARNING_COLUMNS}, learning_updated_at`).eq("id", id).maybeSingle(), "child");
   if (!child) return null;
   const family = await getParent(a, child.parent_id);
   return family ? { child, family: { ...family, tests: family.tests.filter((t) => t.child_id === id) } } : null;

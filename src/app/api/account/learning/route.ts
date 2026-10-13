@@ -1,0 +1,32 @@
+import { isUuid } from "@/lib/assessment-store";
+import { parseLearning, toRow, type LearningError, type LearningResult } from "@/lib/learning-style";
+import { parentId, sessionClient } from "@/lib/supabase-auth";
+
+const fail = (error: LearningError, status: number) => Response.json({ ok: false, error } satisfies LearningResult, { status });
+
+// The parent saves how their child likes to learn (#126), from the report or the account. Written with the parent's
+// own session: row-level security lets a parent update only these columns, and only on their own children, so another
+// family's child id updates nothing. Empty answers clear what was stored. JSON only: a form on another site cannot
+// send it with the parent's cookies.
+export async function POST(request: Request) {
+  if (!request.headers.get("content-type")?.startsWith("application/json")) return fail("bad_json", 415);
+  const db = await sessionClient();
+  if (!(await parentId(db))) return fail("signed_out", 401);
+
+  let body: unknown;
+  try {
+    body = await request.json();
+  } catch {
+    return fail("bad_json", 400);
+  }
+  const child = (body as { child?: unknown } | null)?.child;
+  const answers = parseLearning(body);
+  if (typeof child !== "string" || !isUuid(child) || !answers) return fail("invalid", 400);
+
+  const { data, error } = await db.from("children")
+    .update({ ...toRow(answers), learning_updated_at: new Date().toISOString() })
+    .eq("id", child).select("id");
+  if (error) return fail("store_failed", 500);
+  if (!data?.length) return fail("not_found", 404);
+  return Response.json({ ok: true } satisfies LearningResult);
+}
