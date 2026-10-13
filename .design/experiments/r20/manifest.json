@@ -1,0 +1,22 @@
+{
+  "round": 20,
+  "branch": "site/parent-copy-prototype (prototype, do not merge)",
+  "previous": "D-075 parent section (four question cards). Mom's review, 2026-10-12: no guided person may put off busy parents who pay a learning centre so they do not have to be involved. Savar: those parents care most about convenience.",
+  "decision": "How should the existing parent section answer a busy parent: what does the parent still do, and what do we take off their plate?",
+  "primary_axis": "message and structure inside the one existing section (no new section)",
+  "route": "/?variant=0|A|B|C|D (0 is the current section)",
+  "invariants": [
+    "one section, same place on the home page, eyebrow 'For parents'",
+    "only true claims: we mark from the photo (How it works step 04), the next book is planned from scans, books are mailed, scan for step-by-step help, rewards, pause",
+    "no number for parent minutes (we have no data); daily time 15-30 minutes per open PR #131",
+    "no competitor names; 'a centre' only"
+  ],
+  "options": [
+    { "id": "0", "name": "Current", "bet": "Reference: 'Your commitment as a parent.' and the D-075 cards" },
+    { "id": "A", "name": "Same cards, new words", "bet": "Keep the 2 x 2 cards; new title 'We do the marking and planning. You hand over the book.'; cards say what we do", "benefit": "Smallest change; keeps Randy's getting-started card", "cost": "Still four blocks of text to read", "risk": "The title is long on phones" },
+    { "id": "B", "name": "Your two jobs, said first", "artifact": "B-desktop.png", "bet": "Title 'Your part takes a few minutes a day.'; the two parent jobs in large type, then three short answers", "benefit": "The parent's load is clear in two seconds", "cost": "Drops the getting-started card (one line in the panel instead)", "risk": "'A few minutes' reads as a promise; the first week takes more" },
+    { "id": "C", "name": "Struck-out jobs list", "artifact": "C-phone.png", "bet": "Title 'Less for you to do, not more.'; five jobs we take off the list, struck out, and a card with what stays", "benefit": "Shows the convenience directly; easy to scan", "cost": "Longest on phones", "risk": "The struck-out row 'Drive to a centre' reads as a jab at learning centres" },
+    { "id": "D", "name": "Parent's question + rows", "artifact": "D-desktop.png", "bet": "The busy parent's own question as the title; five labelled rows (time, marking, teaching, travel, getting started)", "benefit": "Speaks to the objection in the parent's words; compact", "cost": "Drops the 'what if they don't want to' answer", "risk": "A quote as a title is a new pattern on the page" }
+  ],
+  "recommendation": "A or C. A is the safe change; C makes the convenience point most clearly."
+}

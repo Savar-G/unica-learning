@@ -1,0 +1,55 @@
+/* PROTOTYPE ONLY (branch site/parent-copy-prototype, round r20). Variant styles for the parent section. */
+
+/* B: the parent's two jobs, large */
+.pp-job { display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr); gap: clamp(24px, 4vw, 64px); align-items: end; margin: 0 0 clamp(28px, 3vw, 44px); padding: clamp(24px, 3vw, 44px); border-radius: 4px; background: var(--card); position: relative; }
+.pp-job::after { content: ""; position: absolute; top: 0; right: 0; width: 20px; height: 20px; background: var(--g2); }
+.pp-job ol { margin: 0; padding: 0; list-style: none; display: grid; gap: 10px; }
+.pp-job li { display: flex; align-items: baseline; gap: 16px; font-weight: 300; font-size: clamp(30px, 3.6vw, 52px); line-height: 1.08; letter-spacing: -0.03em; }
+.pp-job .n { flex: none; font: 400 12.5px/1 var(--mono); color: var(--ink-3); transform: translateY(-0.6em); }
+.pp-job p { margin: 0; font-size: 17px; line-height: 1.55; color: var(--ink-2); }
+.pp-three { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.pp-three > li::after { width: 12px; height: 12px; }
+.pp-three h3 { font-size: clamp(21px, 1.8vw, 25px); }
+
+/* C: struck-out jobs */
+.pp-list { display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr); gap: clamp(20px, 4vw, 64px); align-items: start; }
+.pp-off { margin: 0; padding: 0; list-style: none; border-top: 1px solid var(--line); }
+.pp-off > li { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 0.9fr); gap: 20px; align-items: baseline; padding: 18px 2px; border-bottom: 1px solid var(--line); }
+.pp-off s { justify-self: start; font-size: clamp(22px, 2vw, 28px); line-height: 1.2; letter-spacing: -0.02em; color: var(--ink-2); text-decoration: none; background: linear-gradient(var(--tang), var(--tang)) no-repeat 0 58% / 100% 2px; }
+.pp-off span { font-size: 16px; line-height: 1.45; color: var(--ink); }
+.pp-yours { padding: clamp(24px, 2.6vw, 36px); border-radius: 4px; background: var(--card); position: relative; }
+.pp-yours::after { content: ""; position: absolute; top: 0; right: 0; width: 20px; height: 20px; background: var(--g3); }
+.pp-yours h3 { margin: 0 0 16px; font-weight: 400; font-size: clamp(24px, 2.3vw, 32px); line-height: 1.15; letter-spacing: -0.02em; }
+.pp-yours ul { margin: 0 0 18px; padding: 0 0 0 1.1em; display: grid; gap: 10px; font-size: 17px; line-height: 1.5; }
+.pp-yours p { margin: 0; font-size: 15px; line-height: 1.55; color: var(--ink-2); }
+
+/* D: quote + rows */
+.pp-quote { display: grid; grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr); gap: clamp(24px, 5vw, 80px); align-items: start; }
+.pp-quote h2 { margin: 16px 0 20px; }
+.pp-rows { margin: 0; border-top: 1px solid var(--line); }
+.pp-rows > div { display: grid; grid-template-columns: 9em minmax(0, 1fr); gap: 20px; padding: 18px 2px; border-bottom: 1px solid var(--line); }
+.pp-rows dt { font: 400 12.5px/1.6 var(--mono); text-transform: uppercase; letter-spacing: 0.04em; color: var(--ink-3); padding-top: 3px; }
+.pp-rows dd { margin: 0; font-size: 17px; line-height: 1.5; }
+
+@media (max-width: 899px) {
+  .pp-job, .pp-list, .pp-quote { grid-template-columns: 1fr; }
+  .pp-three { grid-template-columns: 1fr; }
+}
+@media (max-width: 699px) {
+  .pp-job { padding: 20px; gap: 16px; }
+  .pp-off > li { grid-template-columns: 1fr; gap: 4px; padding: 14px 2px; }
+  .pp-rows > div { grid-template-columns: 1fr; gap: 4px; }
+}
+
+.proto-bar {
+  position: fixed; z-index: 1000; left: 50%; bottom: 18px; transform: translateX(-50%);
+  display: flex; align-items: center; gap: 4px; padding: 5px; border-radius: 999px;
+  background: #1a1a1d; color: #fff; box-shadow: 0 10px 30px -8px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(255, 255, 255, 0.08);
+  font: 500 13px/1 var(--mono); white-space: nowrap;
+}
+.proto-bar span { padding: 0 12px; }
+.proto-bar b { display: inline-block; min-width: 1.6em; padding: 4px 6px; margin-right: 6px; border-radius: 6px; background: #e8ff5a; color: #111; text-align: center; }
+.proto-bar i { font-style: normal; opacity: 0.5; margin-left: 8px; }
+.proto-bar button { width: 34px; height: 34px; border: 0; border-radius: 50%; background: rgba(255, 255, 255, 0.1); color: #fff; font-size: 16px; cursor: pointer; }
+.proto-bar button:hover { background: rgba(255, 255, 255, 0.22); }
+@media (max-width: 699px) { .proto-bar { bottom: 84px; } }

@@ -1,6 +1,7 @@
 import { CardReturn } from "@/components/card-return";
 import { Motion } from "@/components/motion";
 import { Parent } from "@/components/parent";
+import { ParentPrototype, SHOW_PROTOTYPES } from "@/components/parent-prototype";
 import { Personalization } from "@/components/personalization";
 import { StartLink } from "@/components/start-link";
 import { Closing, Faq, Feel, Footer, Hero, How, Included, Nav, OurPromise, Pricing, START_LABEL, ThreadEnd, Why } from "@/components/sections";
@@ -20,7 +21,7 @@ export function Landing({ look = "primer" }: { look?: Look }) {
           <Feel />
           <OurPromise />
           <Pricing />
-          <Parent />
+          {SHOW_PROTOTYPES ? <ParentPrototype /> : <Parent />}
           <Faq />
           <ThreadEnd />
         </main>
