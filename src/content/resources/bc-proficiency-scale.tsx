@@ -163,7 +163,7 @@ export default function Body() {
           <li>Praise effort and progress. A level can change as the year goes on.</li>
         </ul>
         <p>
-          If you want a structured plan at home, Unica Learning mails personalized math workbooks that follow the BC curriculum at your child&apos;s level. Your child works 15 to 20 minutes a day, 5 days a week. It is a way to practise. It does not replace talking to your child&apos;s teacher.
+          If you want a structured plan at home, Unica Learning mails personalized math workbooks that follow the BC curriculum at your child&apos;s level. Your child works 15 to 30 minutes a day, 5 days a week. It is a way to practise. It does not replace talking to your child&apos;s teacher.
         </p>
         <p>
           You can also read our guides to <Link href="/resources/bc-grade-4-math-and-reading">Grade 4 math and reading in BC</Link> and the <Link href="/resources/bc-fsa-grade-4-and-7">BC FSA for Grades 4 and 7</Link>.

@@ -37,12 +37,12 @@ export function llmsTxt(): string {
 
 > A personalized math learning program for children aged 6-12 (grades 1-7) in Canada. Each child gets paper workbooks made for them and adapted after every book. Math is CAD ${PLANS.one.price} a month, with ${FIRST_MONTH_OFF}% off the first month, delivery included.
 
-${BRAND} is made in Vancouver, BC. A free online math assessment, taken on a laptop or tablet, finds each child's math level and gaps; the parent reads the report before choosing a plan. The child then works on paper workbooks for 15-20 minutes a day, 5 days a week; the parent uses a phone app to check answers, get step-by-step help when the child is stuck, and see progress. Every family in Canada can take the free math assessment. Books follow the BC curriculum today; Alberta, Saskatchewan, Manitoba and Ontario are next.
+${BRAND} is made in Vancouver, BC. A free online math assessment, taken on a laptop or tablet, finds each child's math level and gaps; the parent reads the report before choosing a plan. The child then works on paper workbooks for 15-30 minutes a day, 5 days a week; the parent uses a phone app to check answers, get step-by-step help when the child is stuck, and see progress. Every family in Canada can take the free math assessment. Books follow the BC curriculum today; Alberta, Saskatchewan, Manitoba and Ontario are next.
 
 ## How it works
 1. Assess: your child takes the free math assessment online, on a laptop or tablet. The report shows their math level and gaps. You choose a plan after the report.
 2. Deliver: we mail a workbook matched to your child's level and gaps.
-3. Practice: your child works on paper for about 15-20 minutes a day, 5 days a week.
+3. Practice: your child works on paper for about 15-30 minutes a day, 5 days a week.
 4. Scan: take a photo of the finished pages. We mark the work, show you the gaps, and give the solutions.
 5. Adapt: based on how they did, we choose and adjust the next workbook: more practice where they are struggling, and moving ahead where they are ready.
 6. Repeat: the next book arrives before the current one runs out.

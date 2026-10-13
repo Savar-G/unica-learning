@@ -178,7 +178,7 @@ export default function Body() {
         </p>
         <p>
           Unica is one example. A free online math assessment finds your child&apos;s math level. We mail personalized math
-          workbooks for ages 6 to 12 home; the books follow the BC curriculum at your child&apos;s level. The plan is 15-20
+          workbooks for ages 6 to 12 home; the books follow the BC curriculum at your child&apos;s level. The plan is 15-30
           minutes a day, 5 days a week. A parent app lets you scan a problem to see the steps and check answers.{" "}
           <strong>Cost:</strong> CAD 99 a month for math, delivery included, with a 30-day
           money-back guarantee and cancel anytime. See <Link href="/#price">pricing</Link>.
