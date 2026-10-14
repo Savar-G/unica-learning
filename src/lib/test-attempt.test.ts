@@ -363,6 +363,16 @@ describe("when storing an answer fails", () => {
     expect(log.mock.calls).toEqual([["[test] answer save failed", "connection reset"]]);
   });
 
+  it("a test that cannot be read is store_failed and changes nothing, logged as before", async () => {
+    const log = logs();
+    const memory = family(stored(recordAnswer(open("a1", T0), T0 + HOUR), { answered: 2 }));
+    memory.fail.load = new StoreError("answers load failed", "timeout");
+    expect(await answerQuestion(memory.store, P1, "a1", sent(memory.tests[0]), T0 + 2 * HOUR)).toEqual({ ok: false, error: "store_failed" });
+    expect(memory.tests[0]).toMatchObject({ resumeUntil: T0 + 25 * HOUR, lastAnswerAt: T0 + HOUR });
+    expect(memory.tests[0].answers).toHaveLength(2);
+    expect(log.mock.calls).toEqual([["[test] answers load failed", "timeout"]]);
+  });
+
   it("a failed answer does not put back a deadline that another tab's stored answer moved since", async () => {
     logs();
     const memory = family(stored(open("a1", T0), { answered: 2 }));
