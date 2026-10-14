@@ -89,7 +89,9 @@ export async function parentStartStates(parent: string, childId?: string): Promi
 
 /**
  * The store's operations for the timed facts section (#70, #148): the tables assessment_facts (one row per test, the
- * primary key) and fact_answers (one row per fact, unique by position). Only the server reads and writes them.
+ * primary key) and fact_answers (one row per fact, unique by position). Only the server reads and writes them. These
+ * rows have no parent column: the module calls these operations only for a test that `load` found for the parent, so
+ * they filter by the test's id.
  */
 function factsStore(admin: SupabaseClient): FactsStore {
   return {
