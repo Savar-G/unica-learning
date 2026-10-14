@@ -1,4 +1,5 @@
-import { isUuid, testAccess } from "@/lib/assessment-store";
+import { isUuid } from "@/lib/assessment-store";
+import { adminClient, parentId, sessionClient } from "@/lib/supabase-auth";
 import { ANSWER_BODY_MAX, refusalResponse, testFail, type StepResult } from "@/lib/test-api";
 import { answerQuestion } from "@/lib/test-attempt";
 import { attemptStore } from "@/lib/test-attempt-server";
@@ -9,8 +10,10 @@ import { parseWork } from "@/lib/work-payload";
 // #147) runs the rules and stores the answer; this route reads the request (the size cap, the JSON and the work
 // payload) and only translates the result.
 export async function POST(request: Request, ctx: RouteContext<"/api/account/assessments/[id]/answers">) {
-  const access = await testAccess();
-  if ("error" in access) return access.error;
+  const parent = await parentId(await sessionClient());
+  if (!parent) return testFail("signed_out", 401);
+  const admin = adminClient();
+  if (!admin) return testFail("store_failed", 503);
 
   // A body bigger than any allowed drawing is refused: at once when its length is given, else while it is read.
   const tooBig = () => testFail("work_too_big", 413, { message: "The answer is too big to save." });
@@ -29,7 +32,7 @@ export async function POST(request: Request, ctx: RouteContext<"/api/account/ass
   const { id } = await ctx.params;
   if (!isUuid(id)) return testFail("not_found", 404);
   // One clock reading for the whole request: the expiry check and the guarded write use the same time (#72).
-  const result = await answerQuestion(attemptStore(access.admin), access.parent, id, {
+  const result = await answerQuestion(attemptStore(admin), parent, id, {
     questionId: typeof body.questionId === "string" ? body.questionId : "",
     response: typeof body.response === "string" ? body.response : "",
     timeMs: Number(body.timeMs),

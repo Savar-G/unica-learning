@@ -3,7 +3,7 @@ import { randomBytes } from "node:crypto";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Grade, StartState, StoredTest } from "@/lib/assessment";
 import type { Child } from "@/lib/account";
-import { ATTEMPT_COLUMNS, isUuid, toAttempt, type AttemptRow } from "@/lib/assessment-store";
+import { isUuid, toAttempt, type AttemptRow } from "@/lib/assessment-store";
 import { startStates, StoreError, type AttemptStore } from "@/lib/test-attempt";
 import { adminClient } from "@/lib/supabase-auth";
 import type { FactsTest } from "@/lib/assessment";
@@ -16,9 +16,13 @@ import { WORK_BUCKET } from "@/lib/work-store";
 // reaches another family's test. The guards are the database's: the unique index assessments_one_open_per_child (one
 // open test per child), and updates guarded in the update itself, so two requests at once cannot both win.
 // Answers (#147): one answer per place in a test (unique on assessment_id and position). The drawings go to the private
-// bucket (src/lib/work-store.ts), written with the secret key in the parent's folder.
+// bucket (src/lib/work-store.ts), written with the secret key in the parent's folder. Finish (#150): the update that
+// completes a test is guarded by its status, so two finishes at once store one placement.
 
 const iso = (ms: number) => new Date(ms).toISOString();
+
+/** The assessment columns the resume and retake rules read: an AttemptRow. */
+const ATTEMPT_COLUMNS = "id, status, started_at, last_answer_at, resume_until, completed_at";
 
 export function attemptStore(admin: SupabaseClient): AttemptStore {
   return {
@@ -117,6 +121,13 @@ export function attemptStore(admin: SupabaseClient): AttemptStore {
     async recordRoute(id, route) {
       const { error } = await admin.from("assessments").update({ route }).eq("id", id);
       if (error) throw new StoreError("route save failed", error.message);
+    },
+
+    async complete(id, { at, placement, help }) {
+      const { error } = await admin.from("assessments")
+        .update({ status: "completed", completed_at: iso(at), route: placement.route, placement, help })
+        .eq("id", id).eq("status", "in_progress");
+      if (error) throw new StoreError("finish failed", error.message);
     },
 
     async create(parent, child, { attempt, seed, test }) {
