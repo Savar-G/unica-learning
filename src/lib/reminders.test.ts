@@ -1,5 +1,9 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { recordAnswer, startAttempt } from "@/lib/assessment";
+import type { EmailMessage, MailTransport } from "@/lib/email-delivery";
+import { memoryLedger, memoryTransport } from "@/lib/email-delivery-memory";
+import { resendTransport } from "@/lib/email-resend";
+import { reminderMessage, type LoadedState } from "@/lib/reminder-store";
 import {
   dueReminders,
   runReminders,
@@ -10,8 +14,11 @@ import {
   type ReminderState,
   type ReminderStore,
   type ReminderTest,
-  type SendOutcome,
+  type RunResult,
 } from "@/lib/reminders";
+import { hashToken, newToken } from "@/lib/sign-in-link";
+
+vi.mock("server-only", () => ({}));
 
 // Who gets which reminder (#73, D-085), decided from the stored state and `now` only.
 const MIN = 60_000;
@@ -225,104 +232,193 @@ describe("a reminder that did not go", () => {
   });
 });
 
-// The job (runReminders) against an in-memory store that keeps the database's guard: one log row per reminder (a
-// unique index), so a claim that another run made first fails, and a retry takes a failed row only once.
+// The job (runReminders) sends through the parent email delivery module (#152). The in-memory transport stands in for
+// Resend, and the in-memory ledger for the email log: one claim per reminder (the unique index), and a released claim
+// that only one run can take again (the guarded retry). The store reads its log back from the ledger, as the real one
+// reads public.email_log.
 describe("the reminder job", () => {
-  type Row = LogEntry & { hash: string | null; emailId: string | null };
+  const ORIGIN = "https://unicalearning.com";
+  /** The log row a reminder names: kind K for test or child Y. */
+  const rowOf = (r: DueReminder) => `${r.kind}:${r.assessmentId ?? r.childId}`;
+  /** The email log keeps an unknown send as claimed, and a refused one as failed. */
+  const STATUS = { claimed: "claimed", unknown: "claimed", sent: "sent", refused: "failed" } as const;
 
-  function memoryStore(base: ReminderState) {
-    const rows: Row[] = [];
+  function memoryStore(base: LoadedState) {
+    const book = memoryLedger<DueReminder>({ keyOf: rowOf });
+    const named = new Map<string, DueReminder>();
     const tick = () => new Promise((r) => setTimeout(r, 0));
-    const store: ReminderStore<ReminderState> = {
+    /** The log rows, in the order they were first claimed. */
+    const rows = () =>
+      [...named.values()].map((r) => {
+        const e = book.entry(r)!;
+        return { row: e.key, status: STATUS[e.state], attempts: e.claims, hash: e.fields.unsubscribe_hash, emailId: e.emailId, error: e.error };
+      });
+    const store: ReminderStore<LoadedState> = {
       async load() {
         await tick();
-        return { ...base, log: rows.map((r) => ({ ...r })) };
+        const log: LogEntry[] = [...named.values()].map((r) => {
+          const e = book.entry(r)!;
+          return { id: e.key, kind: r.kind, parentId: r.parentId, childId: r.childId, assessmentId: r.assessmentId, status: STATUS[e.state], attempts: e.claims };
+        });
+        return { ...base, log };
       },
-      async claim(r, hash) {
-        await tick();
-        if (r.retry) {
-          const row = rows.find((x) => x.id === r.retry!.logId && x.status === "failed" && x.attempts === r.retry!.attempts);
-          if (!row) return null;
-          Object.assign(row, { status: "claimed", attempts: row.attempts + 1, hash });
-          return row.id;
-        }
-        if (rows.some((x) => x.kind === r.kind && (r.assessmentId ? x.assessmentId === r.assessmentId : x.childId === r.childId))) return null;
-        const row: Row = { id: `l${rows.length + 1}`, kind: r.kind, parentId: r.parentId, childId: r.childId, assessmentId: r.assessmentId, status: "claimed", attempts: 1, hash, emailId: null };
-        rows.push(row);
-        return row.id;
-      },
-      async sent(id, emailId) {
-        Object.assign(rows.find((x) => x.id === id)!, { status: "sent", emailId });
-      },
-      async failed(id) {
-        rows.find((x) => x.id === id)!.status = "failed";
+      ledger: {
+        ...book.ledger,
+        async claim(r, fields) {
+          const handle = await book.ledger.claim(r, fields);
+          // Busy or not, the row exists now.
+          named.set(rowOf(r), r);
+          return handle;
+        },
       },
     };
     return { store, rows };
   }
 
-  let n = 0;
-  const newToken = () => ({ token: `t${++n}`, hash: `hash-of-t${n}` });
-  /** Two reminders due at T0: "continue" for c1 and "start" for c2. */
-  const base = state({
-    children: [{ id: "c1", parentId: "p1", createdAt: T0 - 3 * DAY }, { id: "c2", parentId: "p1", createdAt: T0 - DAY }],
-    tests: [stopped("a1", T0 - 2 * HOUR)],
+  /** A transport that counts the sends that reach it. */
+  function counted(transport: MailTransport) {
+    const counter = { sends: 0, transport: { send: (m: EmailMessage) => (counter.sends++, transport.send(m)) } };
+    return counter;
+  }
+
+  const run = (store: ReminderStore<LoadedState>, now: number, transport: MailTransport, limit?: number) =>
+    runReminders(store, now, { newToken, message: (r, token, s) => reminderMessage(r, token, s, ORIGIN), transport, limit });
+  const counts = (over: Partial<RunResult>): RunResult => ({ due: 0, sent: 0, failed: 0, busy: 0, unknown: 0, ...over });
+
+  /** Which reminder an email is: "<child>:<kind>", from the start link in its text. */
+  const whichReminder = (m: EmailMessage) => {
+    const [, child, kind] = m.text.match(/\/account\/start\/(\w+)\?reminder=(\w+)/) ?? [];
+    return `${child}:${kind}`;
+  };
+
+  /** Two reminders due at T0: "continue" for Maya (c1) and "start" for Arjun (c2). */
+  const family: LoadedState = {
+    parents: [{ id: "p1", email: "priya@family.ca", name: "Priya Shah", postal: "V3S 1A1" }],
+    children: [
+      { id: "c1", parentId: "p1", createdAt: T0 - 3 * DAY, firstName: "Maya", grade: 3 },
+      { id: "c2", parentId: "p1", createdAt: T0 - DAY, firstName: "Arjun", grade: 5 },
+    ],
+    tests: [{ ...stopped("a1", T0 - 2 * HOUR), answered: 12, total: 36 }],
+    log: [],
+  };
+  /** Only Maya's "continue" is due at T0. */
+  const maya: LoadedState = { ...family, children: [family.children[0]] };
+
+  let error: ReturnType<typeof vi.spyOn>;
+  beforeEach(() => {
+    error = vi.spyOn(console, "error").mockImplementation(() => {});
+  });
+  afterEach(() => {
+    error.mockRestore();
+    vi.unstubAllEnvs();
   });
 
   it("sends each due reminder once when two runs overlap", async () => {
-    const { store, rows } = memoryStore(base);
-    const emails: string[] = [];
-    const send = async (r: DueReminder) => {
-      emails.push(`${r.kind}:${r.childId}`);
-      return { sent: true as const, id: `re_${emails.length}` };
-    };
-    const [one, two] = await Promise.all([runReminders(store, T0, { send, newToken }), runReminders(store, T0, { send, newToken })]);
-    expect(emails.sort()).toEqual(["continue:c1", "start:c2"]);
-    expect(one.sent + two.sent).toBe(2);
-    expect(one.busy + two.busy).toBe(2);
-    expect(rows.map((r) => r.status)).toEqual(["sent", "sent"]);
+    const { store, rows } = memoryStore(family);
+    const mail = memoryTransport();
+    const [one, two] = await Promise.all([run(store, T0, mail.transport), run(store, T0, mail.transport)]);
+    expect(mail.delivered.map(whichReminder).sort()).toEqual(["c1:continue", "c2:start"]);
+    for (const result of [one, two]) expect(result).toMatchObject({ due: 2, failed: 0, unknown: 0 });
+    expect({ sent: one.sent + two.sent, busy: one.busy + two.busy }).toEqual({ sent: 2, busy: 2 });
+    expect(rows().map((r) => r.status)).toEqual(["sent", "sent"]);
   });
 
-  it("sends nothing again on the next run", async () => {
-    const { store } = memoryStore(base);
-    const send = async () => ({ sent: true as const, id: "re_1" });
-    expect(await runReminders(store, T0, { send, newToken })).toMatchObject({ due: 2, sent: 2 });
-    expect(await runReminders(store, T0 + 15 * MIN, { send, newToken })).toMatchObject({ due: 0, sent: 0 });
+  it("sends nothing again on the next run; the log keeps each email id", async () => {
+    const { store, rows } = memoryStore(family);
+    const mail = memoryTransport();
+    expect(await run(store, T0, mail.transport)).toEqual(counts({ due: 2, sent: 2 }));
+    expect(await run(store, T0 + 15 * MIN, mail.transport)).toEqual(counts({}));
+    expect(mail.delivered).toHaveLength(2);
+    expect(rows()).toMatchObject([
+      { row: "continue:a1", status: "sent", attempts: 1, emailId: "email-1", error: null },
+      { row: "start:c2", status: "sent", attempts: 1, emailId: "email-2", error: null },
+    ]);
   });
 
-  it("puts the unsubscribe token in the email whose hash the log keeps", async () => {
-    const { store, rows } = memoryStore(base);
-    const tokens: string[] = [];
-    await runReminders(store, T0, { newToken, send: async (_r, token) => (tokens.push(token), { sent: true as const, id: "re" }) });
-    expect(rows.map((r) => r.hash)).toEqual(tokens.map((t) => `hash-of-${t}`));
+  it("puts the unsubscribe token in the email, in the link and the one-click headers, whose hash the log keeps", async () => {
+    const { store, rows } = memoryStore(family);
+    const mail = memoryTransport();
+    expect(await run(store, T0, mail.transport)).toEqual(counts({ due: 2, sent: 2 }));
+    const tokens = mail.delivered.map((m) => {
+      const [, inHeader] = m.headers?.["List-Unsubscribe"]?.match(/^<https:\/\/unicalearning\.com\/api\/unsubscribe\?t=([\w-]+)>$/) ?? [];
+      const [, inLink] = m.text.match(/https:\/\/unicalearning\.com\/unsubscribe\?t=([\w-]+)/) ?? [];
+      expect(m.headers?.["List-Unsubscribe-Post"]).toBe("List-Unsubscribe=One-Click");
+      expect(inLink).toBe(inHeader);
+      return inHeader;
+    });
+    expect(new Set(tokens).size).toBe(2);
+    expect(rows().map((r) => r.hash)).toEqual(tokens.map((t) => hashToken(t)));
+    expect(rows().every((r) => /^[0-9a-f]{64}$/.test(r.hash ?? ""))).toBe(true);
   });
 
   it("tries a refused send again on the next runs, and gives up after 3 tries", async () => {
-    const { store, rows } = memoryStore({ ...base, children: [base.children[0]] });
-    let tries = 0;
-    const send = async () => (tries++, { sent: false as const, error: "Resend answered 500" });
-    for (let i = 0; i < 5; i++) await runReminders(store, T0 + i * 15 * MIN, { send, newToken });
-    expect(tries).toBe(3);
-    expect(rows).toMatchObject([{ kind: "continue", status: "failed", attempts: 3 }]);
+    const { store, rows } = memoryStore(maya);
+    const mail = memoryTransport();
+    mail.answerNext("refuse", "refuse", "refuse", "refuse", "refuse");
+    const net = counted(mail.transport);
+    const results: RunResult[] = [];
+    for (let i = 0; i < 5; i++) results.push(await run(store, T0 + i * 15 * MIN, net.transport));
+    expect(results).toEqual([
+      counts({ due: 1, failed: 1 }),
+      counts({ due: 1, failed: 1 }),
+      counts({ due: 1, failed: 1 }),
+      counts({}),
+      counts({}),
+    ]);
+    expect(net.sends).toBe(3);
+    expect(mail.delivered).toEqual([]);
+    expect(rows()).toEqual([
+      { row: "continue:a1", status: "failed", attempts: 3, hash: expect.any(String), emailId: null, error: "Resend answered 422: refused in the test" },
+    ]);
   });
 
   it("does not send again when a send ended without an answer: the email may have gone", async () => {
-    const { store, rows } = memoryStore({ ...base, children: [base.children[0]] });
-    let tries = 0;
-    const send = async (): Promise<SendOutcome> => {
-      tries++;
-      throw new Error("timeout");
-    };
-    expect(await runReminders(store, T0, { send, newToken })).toMatchObject({ unknown: 1 });
-    await runReminders(store, T0 + 15 * MIN, { send, newToken });
-    expect(tries).toBe(1);
-    expect(rows).toMatchObject([{ status: "claimed" }]);
+    const { store, rows } = memoryStore(maya);
+    const mail = memoryTransport();
+    mail.answerNext("no_answer");
+    const net = counted(mail.transport);
+    expect(await run(store, T0, net.transport)).toEqual(counts({ due: 1, unknown: 1 }));
+    expect(await run(store, T0 + 15 * MIN, net.transport)).toEqual(counts({}));
+    expect(net.sends).toBe(1);
+    expect(rows()).toMatchObject([{ row: "continue:a1", status: "claimed", attempts: 1, error: expect.stringMatching(/^Resend delivery is unknown/) }]);
+    expect(String(error.mock.calls[0]?.[0])).toMatch(/^\[reminders\] /);
+  });
+
+  // Through the Resend adapter, with the network a stub: the adapter decides what each answer means.
+  describe("with Resend answering", () => {
+    function resend(status: number, body: string) {
+      vi.stubEnv("RESEND_API_KEY", "re_synthetic");
+      vi.stubEnv("EMAIL_FROM", "Unica Learning <hello@unicalearning.com>");
+      const requests: string[] = [];
+      const fetch = (async (url: RequestInfo | URL) => (requests.push(String(url)), new Response(body, { status }))) as typeof globalThis.fetch;
+      return { requests, transport: resendTransport({ fetch }) };
+    }
+
+    it.each([500, 503, 408])("counts a %i answer as unknown: the row stays claimed and the next run sends nothing", async (status) => {
+      const { store, rows } = memoryStore(maya);
+      const net = resend(status, "upstream error");
+      expect(await run(store, T0, net.transport)).toEqual(counts({ due: 1, unknown: 1 }));
+      expect(rows()).toMatchObject([{ row: "continue:a1", status: "claimed", attempts: 1, emailId: null, error: `Resend answered ${status}: upstream error` }]);
+      expect(await run(store, T0 + 15 * MIN, net.transport)).toEqual(counts({}));
+      expect(await run(store, T0 + 30 * MIN, net.transport)).toEqual(counts({}));
+      expect(net.requests).toEqual(["https://api.resend.com/emails"]);
+    });
+
+    it("counts a 4xx answer as failed: the next run tries again", async () => {
+      const { store, rows } = memoryStore(maya);
+      const net = resend(422, "invalid recipient");
+      expect(await run(store, T0, net.transport)).toEqual(counts({ due: 1, failed: 1 }));
+      expect(rows()).toMatchObject([{ status: "failed", attempts: 1, error: "Resend answered 422: invalid recipient" }]);
+      expect(await run(store, T0 + 15 * MIN, net.transport)).toEqual(counts({ due: 1, failed: 1 }));
+      expect(net.requests).toHaveLength(2);
+    });
   });
 
   it("sends at most `limit` in one run; the next run sends the rest", async () => {
-    const { store } = memoryStore(base);
-    const send = async () => ({ sent: true as const, id: "re" });
-    expect(await runReminders(store, T0, { send, newToken, limit: 1 })).toMatchObject({ due: 2, sent: 1 });
-    expect(await runReminders(store, T0 + 15 * MIN, { send, newToken, limit: 1 })).toMatchObject({ due: 1, sent: 1 });
+    const { store } = memoryStore(family);
+    const mail = memoryTransport();
+    expect(await run(store, T0, mail.transport, 1)).toEqual(counts({ due: 2, sent: 1 }));
+    expect(await run(store, T0 + 15 * MIN, mail.transport, 1)).toEqual(counts({ due: 1, sent: 1 }));
+    expect(mail.delivered.map(whichReminder)).toEqual(["c1:continue", "c2:start"]);
   });
 });
