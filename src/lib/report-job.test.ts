@@ -299,28 +299,45 @@ describe("the report emails", () => {
   });
 });
 
-/** The name of each area on the report, as a parent reads it. */
-const AREA: Record<string, string> = {
-  number: "Number and operations",
-  fractions: "Fractions and decimals",
-  algebra: "Patterns and algebra",
-  shapes: "Shapes, measurement and data",
-};
-
-/** The words of the report page, as the parent reads them: the HTML without its tags and entities. */
+/** The words of a page or an email, as the parent reads them: the HTML without its tags and entities. */
 const words = (html: string) =>
-  html.replace(/<!-- -->/g, "").replace(/<[^>]+>/g, " ").replace(/&#x27;|&#39;|&apos;/g, "'").replace(/&quot;/g, '"').replace(/&amp;/g, "&").replace(/\s+/g, " ");
+  html.replace(/<!-- -->/g, "").replace(/<[^>]+>/g, " ").replace(/&#x27;|&#39;|&apos;/g, "'").replace(/&quot;/g, '"').replace(/&amp;/g, "&").replace(/\s+/g, " ").trim();
+
+/** The area rows of the report email's text, in order: "<area>: <status>, <n> of <m> right". */
+function emailAreas(text: string): string[] {
+  const block = text.split("\n\n").find((b) => b.startsWith("By area\n")) ?? "";
+  return block.split("\n").filter((line) => /^.+: .+, \d+ of \d+ right$/.test(line));
+}
+
+/** The area rows of the report page, in order, each read from its own table row and written as the email writes it. */
+function pageAreas(html: string): string[] {
+  const table = html.match(/<table class="rpt-areas">([\s\S]*?)<\/table>/)?.[1] ?? "";
+  const rows = table.matchAll(/<tr><th scope="row">([\s\S]*?)<span>[\s\S]*?class="rpt-chip[^"]*">([\s\S]*?)<\/span>[\s\S]*?class="rpt-count">([\s\S]*?)<\/td><\/tr>/g);
+  return [...rows].map(([, name, status, count]) => `${words(name)}: ${words(status)}, ${words(count)} right`);
+}
+
+/** Each piece of text is in each place. */
+function expectEverywhere(places: Record<string, string>, pieces: string[]) {
+  for (const [where, text] of Object.entries(places)) {
+    for (const piece of pieces) expect(text, `${where}: ${piece}`).toContain(piece);
+  }
+}
 
 /**
- * The report page that Asha's parent opens, from the view of the parent's own reader (#161), as the page renders it.
- * The next step row shows only its title: its buttons and the learning questions (#126) need the browser's router, and
- * they are not part of the report text.
+ * The report page that Asha's parent opens, from the view of the parent's own reader (#161), as the page renders it:
+ * its HTML, and its words. The next step row shows only its title: its buttons and the learning questions (#126) need
+ * the browser's router, and they are not part of the report text.
  */
 async function reportPage(db: Database) {
   const loaded = await loadReportView(db.readers.parent("parent-1"), "report-1");
   if (!loaded) throw new Error("the parent's reader found no report");
-  return words(renderToStaticMarkup(createElement(ReportCard, { view: loaded.view, readOnly: true })));
+  const html = renderToStaticMarkup(createElement(ReportCard, { view: loaded.view, readOnly: true }));
+  return { html, text: words(html) };
 }
+
+/** The parent email the job sent, and the report page, as places that must hold the same text. */
+const places = (email: { text: string; html?: string }, page: { text: string }) =>
+  ({ "email text": words(email.text), "email HTML": words(email.html!), page: page.text });
 
 describe("the report email and the report page (#163)", () => {
   // The job builds the email from its own view (the secret key's reader); the page uses the parent's reader. For the
@@ -333,26 +350,27 @@ describe("the report email and the report page (#163)", () => {
     expect(email.to).toBe("priya@family.ca");
     const page = await reportPage(db);
 
-    const same = [
+    expectEverywhere(places(email, page), [
       "Asha",
       "36 questions in 12 minutes",
       "Asha is working at a grade 4 level.",
       "That matches Asha's school grade.",
       "Asha's result is at the 50th percentile among 400 grade 4 children who took this test.",
-      // Each area: its name, its count right, and its status. Asha got every grade 4 question right.
-      ...placement.strands.flatMap((s) => [AREA[s.strand], `${s.correct} of ${s.total}`]),
-      "Secure",
+    ]);
+    // Each area as one row: its name, its status and its count together, in order. Asha got every grade 4 question
+    // right. A row is matched whole, so a count or a status in the AI text or the legend cannot stand in for it.
+    const areas = [
+      "Number and operations: Secure, 5 of 5 right",
+      "Fractions and decimals: Secure, 5 of 5 right",
+      "Patterns and algebra: Secure, 4 of 4 right",
+      "Shapes, measurement and data: Secure, 4 of 4 right",
     ];
-    expect(placement.strands.length).toBe(4);
-    expect(placement.strands.every((s) => s.total > 0 && s.correct === s.total)).toBe(true);
-    for (const [where, text] of [["email text", words(email.text)], ["email HTML", words(email.html!)], ["page", page]] as const) {
-      for (const piece of same) expect(text, `${where}: ${piece}`).toContain(piece);
-    }
+    expect(emailAreas(email.text)).toEqual(areas);
+    expect(pageAreas(page.html)).toEqual(areas);
     // The AI text (the fake reviewer's), with the child's name in it, is the same in both.
     const summary = db.tables.reports![0].model.summary!.replaceAll(REPORT_TEXT_NAME, "Asha");
     expect(summary).toContain("Asha");
-    expect(page).toContain(words(summary));
-    expect(words(email.text)).toContain(words(summary));
+    expectEverywhere(places(email, page), [words(summary)]);
   });
 
   it("hold the same finish date: the retake date of a report that warns about help, in the family's time zone", async () => {
@@ -364,16 +382,13 @@ describe("the report email and the report page (#163)", () => {
     const [email] = mail.delivered;
     const page = await reportPage(db);
 
-    const same = [
+    expectEverywhere(places(email, page), [
       "This level may be too high",
       "For a level you can trust, Asha can take a new test alone, with new questions, from November 10, 2026.",
       "36 questions in 12 minutes",
-    ];
-    for (const [where, text] of [["email text", words(email.text)], ["email HTML", words(email.html!)], ["page", page]] as const) {
-      for (const piece of same) expect(text, `${where}: ${piece}`).toContain(piece);
-    }
+    ]);
     // The page also shows the finish date itself.
-    expect(page).toContain("October 10, 2026");
+    expect(page.text).toContain("October 10, 2026");
   });
 });
 
