@@ -1,23 +1,23 @@
 import "server-only";
-import type { SupabaseClient } from "@supabase/supabase-js";
-import { reportModel, type HelpAnswer, type Placement, type Province, type ReportModel } from "@/lib/assessment";
+import { reportModel } from "@/lib/assessment";
 import { SUPPORT_EMAIL } from "@/lib/contact";
 import { adminTestPath } from "@/lib/admin-view";
+import { loadComparisonInput } from "@/lib/comparison-store";
 import { sendEmail, sendEmailOnce, type MailTransport, type Sender } from "@/lib/email-delivery";
 import { reportAlert, reportEmail, type ParentContact } from "@/lib/report-email";
+import { reportJobStore, type ReportJobStore, type StoredReport } from "@/lib/report-job-store";
+import { loadReportInputs, type ComparisonRead, type ReportInputs, type ReportReader } from "@/lib/report-loading";
+import { secretKeyReportReader } from "@/lib/report-loading-server";
 import { reportRowLedger, type ReportLedger } from "@/lib/report-row-ledger";
-import { parentUnsubscribed } from "@/lib/reminder-store";
 import { reportPath, type ReportView } from "@/lib/report-view";
 import { newToken } from "@/lib/sign-in-link";
 import { adminClient } from "@/lib/supabase-auth";
 import { aiReport, aiReviewer, type AiOutcome, type WorkReviewer } from "@/lib/work-review";
-import { reviewPieces, reviewStore } from "@/lib/work-review-store";
-import { loadShownWork } from "@/lib/work-store";
-import { loadComparisonInput } from "@/lib/comparison-store";
 
 // The report step after a test finishes (#65). The finish route runs it with after(), so it never blocks or fails the
 // finish response. In order:
-//   1. Load the finished assessment.
+//   1. Load the finished assessment and everything the report needs, in one call to the report-loading module (#162):
+//      one read of the stored test and one of its answers.
 //   2. The AI step (#68, src/lib/work-review.ts), only when ANTHROPIC_API_KEY is set: review the child's shown work
 //      (#67: from the answers and the private bucket), store the reviews (work_reviews), and write the report text.
 //      It stops after at most REVIEW_STAGE_MS + TEXT_STAGE_MS (165 s; Vercel stops a function at 300 s). Off, failed or
@@ -28,27 +28,9 @@ import { loadComparisonInput } from "@/lib/comparison-store";
 // Safe to run twice: the report is stored once, and each email is sent at most once through the delivery module
 // (src/lib/email-delivery.ts, #151), which claims it on the report row (src/lib/report-row-ledger.ts) before it is
 // sent. If the parent email fails, the report is still stored and visible in the account, and the alert tells Savar.
-
-/** A completed assessment, as the job reads it with the secret key. */
-export interface FinishedAssessment {
-  id: string;
-  parent_id: string;
-  child_id: string;
-  grade: number;
-  province: Province;
-  completed_at: string;
-  placement: Placement;
-  /** The child's answer to "Did anyone help?" (#71); null when the test did not ask it. */
-  help: HelpAnswer | null;
-}
-
-interface StoredReport {
-  id: string;
-  model: ReportModel;
-  questions: number;
-  minutes: number;
-}
-const REPORT_COLUMNS = "id, model, questions, minutes";
+// Its database seams: the report-loading module's reader and the comparison read (the inputs), the job's own store
+// (src/lib/report-job-store.ts: the report insert, the stored AI reviews, the parent, the unsubscribe check), and the
+// report row ledger. By default each is Supabase with the secret key; tests give the in-memory adapters.
 
 /** What the alert says about the parent email: sent, refused (not sent), or unknown (uncertain). */
 type ParentEmail = Parameters<typeof reportAlert>[0]["parentEmail"];
@@ -58,43 +40,69 @@ const TO_SAVAR: Sender = { to: "savar", testSenderName: "Unica Learning reports"
 
 const message = (e: unknown) => (e instanceof Error ? e.message : String(e));
 
+/** The job's seams. Each one left out is the production adapter. */
+export interface ReportJobOptions {
+  /** The AI work reviewer; by default the switch (aiReviewer), which is null (off) without ANTHROPIC_API_KEY. */
+  reviewer?: WorkReviewer | null;
+  /** The delivery module's transport; by default Resend. */
+  transport?: MailTransport;
+  /** The report row ledger of the two emails. */
+  ledger?: ReportLedger;
+  /** The report-loading module's reader: the secret key's. */
+  reader?: ReportReader;
+  /** The comparison read (src/lib/comparison-store.ts). */
+  comparison?: ComparisonRead;
+  /** The job's own reads and writes. */
+  store?: ReportJobStore;
+}
+
+/** The given database seams; the missing ones are Supabase with the secret key. Null without the key. */
+function database({ ledger, reader, comparison, store }: ReportJobOptions) {
+  if (ledger && reader && comparison && store) return { ledger, reader, comparison, store };
+  const admin = adminClient();
+  if (!admin) return null;
+  return {
+    ledger: ledger ?? reportRowLedger(admin),
+    reader: reader ?? secretKeyReportReader(admin),
+    comparison: comparison ?? ((id: string) => loadComparisonInput(admin, id)),
+    store: store ?? reportJobStore(admin),
+  };
+}
+
 /**
  * Builds, stores and emails the report for one finished assessment. Never throws: failures are logged and alerted.
- * `reviewer`: the AI work reviewer; by default the switch (aiReviewer), which is null (off) without ANTHROPIC_API_KEY.
- * `transport` and `ledger`: the delivery module's seams; by default Resend and the report row. Tests give the
- * in-memory adapters (src/lib/email-delivery-memory.ts, src/lib/report-row-ledger-memory.ts).
+ * Tests give the in-memory adapters (src/lib/report-loading-memory.ts, src/lib/report-job-memory.ts,
+ * src/lib/email-delivery-memory.ts, src/lib/report-row-ledger-memory.ts) and the fake reviewer.
  */
-export async function runReportJob(
-  assessmentId: string,
-  origin: string,
-  { reviewer, transport, ledger }: { reviewer?: WorkReviewer | null; transport?: MailTransport; ledger?: ReportLedger } = {},
-): Promise<void> {
-  const admin = adminClient();
-  if (!admin) return;
-  const book = ledger ?? reportRowLedger(admin);
+export async function runReportJob(assessmentId: string, origin: string, options: ReportJobOptions = {}): Promise<void> {
+  const db = database(options);
+  if (!db) return;
+  const { ledger: book, store } = db;
+  const { reviewer, transport } = options;
   try {
-    const assessment = await loadFinished(admin, assessmentId);
-    if (!assessment) return;
-    const { report, ai } = await storeReport(admin, assessment, reviewer === undefined ? aiReviewer() : reviewer);
+    const inputs = await loadReportInputs(db.reader, assessmentId, db.comparison);
+    if (!inputs) {
+      console.error("[report] not a finished assessment", assessmentId);
+      return;
+    }
+    const { assessment } = inputs;
+    const { report, ai } = await storeReport(store, inputs, reviewer === undefined ? aiReviewer() : reviewer);
 
-    const [{ data: parent, error: parentError }, { data: child, error: childError }] = await Promise.all([
-      admin.from("parents").select("name, email").eq("id", assessment.parent_id).maybeSingle<ParentContact>(),
-      admin.from("children").select("first_name").eq("id", assessment.child_id).maybeSingle<{ first_name: string }>(),
-    ]);
-    if (parentError || childError || !parent || !child) throw new Error(`parent or child not found: ${parentError?.message ?? childError?.message ?? "no row"}`);
+    const [parent, childName] = await Promise.all([store.parent(assessment.parentId), store.childName(assessment.childId)]);
+    if (!parent || childName === null) throw new Error("parent or child not found: no row");
 
     const view: ReportView = {
       id: report.id,
-      childName: child.first_name,
+      childName,
       province: assessment.province,
-      completedAt: assessment.completed_at,
+      completedAt: assessment.completedAt,
       questions: report.questions,
       minutes: report.minutes,
       model: report.model,
     };
     const url = `${origin}${reportPath(report.id)}`;
 
-    const parentEmail = await emailParent(admin, book, transport, report.id, view, { ...parent, id: assessment.parent_id }, `${url}?src=email`);
+    const parentEmail = await emailParent(store, book, transport, report.id, view, { ...parent, id: assessment.parentId }, `${url}?src=email`);
     // Another run holds the claim of the parent email: it is sending now, or its send's outcome is unknown. That run
     // sends (or sent) the alert.
     if (parentEmail === "busy") return;
@@ -105,60 +113,29 @@ export async function runReportJob(
   }
 }
 
-async function loadFinished(admin: SupabaseClient, id: string): Promise<FinishedAssessment | null> {
-  const { data, error } = await admin.from("assessments")
-    .select("id, parent_id, child_id, status, grade, province, completed_at, placement, help")
-    .eq("id", id).maybeSingle<FinishedAssessment & { status: string }>();
-  if (error) throw new Error(`assessment load: ${error.message}`);
-  if (!data || data.status !== "completed" || !data.placement) {
-    console.error("[report] not a finished assessment", id);
-    return null;
-  }
-  return data;
-}
-
 /**
  * The stored report for the assessment, built now if there is none yet. `ai` says what the AI step did; absent when an
  * earlier run built the report.
  */
-async function storeReport(
-  admin: SupabaseClient,
-  a: FinishedAssessment,
-  reviewer: WorkReviewer | null,
-): Promise<{ report: StoredReport; ai?: AiOutcome }> {
-  const existing = await admin.from("reports").select(REPORT_COLUMNS).eq("assessment_id", a.id).maybeSingle<StoredReport>();
-  if (existing.error) throw new Error(`report load: ${existing.error.message}`);
-  if (existing.data) return { report: existing.data };
+async function storeReport(store: ReportJobStore, inputs: ReportInputs, reviewer: WorkReviewer | null): Promise<{ report: StoredReport; ai?: AiOutcome }> {
+  const { assessment: a, shownWork } = inputs;
+  const existing = await store.report(a.id);
+  if (existing) return { report: existing };
 
-  const comparison = await loadComparisonInput(admin, a.id);
-
+  const comparison = await inputs.comparison();
   // #67: the child's whiteboard work; the model picks what the report shows. #68: the AI reviews it first, when on.
-  const shownWork = await loadShownWork(admin, a.id);
   const { model, ai } = await aiReport({
     reviewer,
-    pieces: () => reviewPieces(admin, a.id, shownWork),
-    store: reviewStore(admin, a),
+    pieces: async () => inputs.reviewPieces(),
+    store: store.reviews(a),
     build: (workReviews, reportText) => reportModel(a.placement, { comparison, workReviews, shownWork, reportText }),
   });
-  const { data: answers, error: answersError } = await admin.from("answers").select("time_ms").eq("assessment_id", a.id).returns<{ time_ms: number }[]>();
-  if (answersError) throw new Error(`answers load: ${answersError.message}`);
-  const ms = (answers ?? []).reduce((sum, row) => sum + row.time_ms, 0);
-  const row = {
-    assessment_id: a.id,
-    parent_id: a.parent_id,
-    child_id: a.child_id,
-    model,
-    // Every marked question, also those above the school grade that the areas leave out.
-    questions: a.placement.levels.reduce((n, l) => n + l.total, 0),
-    minutes: Math.max(1, Math.round(ms / 60_000)),
-  };
-  // A second run that got here at the same time inserts nothing and reads the first run's report.
-  const { data, error } = await admin.from("reports").upsert(row, { onConflict: "assessment_id", ignoreDuplicates: true }).select(REPORT_COLUMNS).returns<StoredReport[]>();
-  if (error) throw new Error(`report insert: ${error.message}`);
-  if (data?.[0]) return { report: data[0], ai };
-  const raced = await admin.from("reports").select(REPORT_COLUMNS).eq("assessment_id", a.id).single<StoredReport>();
-  if (raced.error) throw new Error(`report reload: ${raced.error.message}`);
-  return { report: raced.data };
+  const report = await store.insertReport({ assessmentId: a.id, parentId: a.parentId, childId: a.childId, model, questions: inputs.questions, minutes: inputs.minutes });
+  if (report) return { report, ai };
+  // A second run that got here at the same time inserted nothing: it reads the first run's report.
+  const raced = await store.report(a.id);
+  if (!raced) throw new Error("report reload: no row");
+  return { report: raced };
 }
 
 /**
@@ -166,7 +143,7 @@ async function storeReport(
  * sending now, or the outcome of its send is unknown); nothing was sent.
  */
 async function emailParent(
-  admin: SupabaseClient,
+  store: ReportJobStore,
   ledger: ReportLedger,
   transport: MailTransport | undefined,
   reportId: string,
@@ -179,7 +156,7 @@ async function emailParent(
   // CASL (#80): the email offers a plan, so it carries an unsubscribe link. The token is new for each send; only its
   // hash is kept, in the claim's own write, so the link works as soon as the email can go. A parent who already
   // unsubscribed gets the report alone, without the plan or waitlist button and without the unsubscribe headers.
-  const offer = !(await parentUnsubscribed(admin, parent.id));
+  const offer = !(await store.unsubscribed(parent.id));
   const { token, hash } = newToken();
   const origin = new URL(url).origin;
   const email = reportEmail({ view, parentName: parent.name, url, unsubscribeUrl: `${origin}/unsubscribe?t=${token}`, offer });

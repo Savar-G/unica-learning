@@ -1,45 +1,16 @@
 import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import type { ShownWork, StoredTest } from "@/lib/assessment";
 
 // The child's whiteboard drawings (#67) in Supabase Storage. The bucket is private (migration add_shown_work): the
 // server writes with the secret key; a signed-in parent can read only the files in their own folder, so the report page
 // signs short-lived URLs with the parent's own session. There are no public URLs. The answer's drawing is stored and
-// removed by the test attempt module's store (src/lib/test-attempt-server.ts, #147).
+// removed by the test attempt module's store (src/lib/test-attempt-server.ts, #147). The report job finds the shown
+// work through the report-loading module (src/lib/report-loading.ts, #162), and the AI work review (#68) downloads each
+// drawing through the job's store (src/lib/work-review-store.ts).
 
 export const WORK_BUCKET = "shown-work";
 /** A signed image URL on the report page works this long. The page signs new ones each time it loads. */
 export const WORK_URL_SECONDS = 10 * 60;
-
-/**
- * Every answer of a test with work on the whiteboard, in test order, read with the secret key: the question, right or
- * not, whether it required work, the drawing's path and the typed working. The report job gives these to the report
- * model; the AI work review (#68) reads the same list and downloads each drawing with
- * `admin.storage.from(WORK_BUCKET).download(image)`.
- */
-export async function loadShownWork(admin: SupabaseClient, assessmentId: string): Promise<ShownWork[]> {
-  const [test, answers] = await Promise.all([
-    admin.from("assessments").select("test").eq("id", assessmentId).single<{ test: StoredTest }>(),
-    admin.from("answers")
-      .select("question_id, correct, work_required, work_path, work_text")
-      .eq("assessment_id", assessmentId)
-      .or("work_path.not.is.null,work_text.not.is.null")
-      .order("position")
-      .returns<{ question_id: string; correct: boolean; work_required: boolean; work_path: string | null; work_text: string | null }[]>(),
-  ]);
-  if (test.error) throw new Error(`work test load: ${test.error.message}`);
-  if (answers.error) throw new Error(`work answers load: ${answers.error.message}`);
-  const { stage1, stage2 } = test.data.test;
-  const prompts = new Map([...stage1, ...stage2.up, ...stage2.stay, ...stage2.down].map((q) => [q.id, q.prompt]));
-  return (answers.data ?? []).map((a) => ({
-    questionId: a.question_id,
-    prompt: prompts.get(a.question_id) ?? "",
-    correct: a.correct,
-    required: a.work_required,
-    image: a.work_path,
-    text: a.work_text,
-  }));
-}
 
 /**
  * Short-lived URLs for drawings, by path. Sign with the parent's own session client: storage then checks that each
