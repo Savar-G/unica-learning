@@ -26,6 +26,7 @@ import {
   type Submission,
   type TestStep,
 } from "@/lib/assessment";
+import { FACTS_SECONDS, createFacts, factsStep, restoreFacts, storedFacts, submitFact, type FactAnswer, type FactsSession, type FactsStep, type FactsTest, type FactSubmission } from "@/lib/assessment";
 
 /** One of the parent's children, as a new test needs them. */
 export interface AttemptChild {
@@ -54,8 +55,9 @@ export interface NewAttempt {
 /**
  * The store seam. Each operation keeps one database guard. Reads return only the given parent's rows. An attempt the
  * store returns has no `answeredAll`: the module works it out from the answers. A database error throws (a StoreError).
+ * The operations of the timed facts section are in FactsStore.
  */
-export interface AttemptStore {
+export interface AttemptStore extends FactsStore {
   /** One of the parent's children; null when the parent has no child with this id. */
   child(parent: string, childId: string): Promise<AttemptChild | null>;
   /** The parent's tests: of one child, or of every child. */
@@ -267,4 +269,171 @@ async function readTest(store: AttemptStore, parent: string, id: string): Promis
   }
   // A test with every answer in never expires: it only waits to be scored.
   return { ok: true, attempt: { ...loaded.attempt, answeredAll: testStep(session).status === "complete" }, session };
+}
+
+// The timed facts section (#70, #148), at the halfway break. The server's clock times it: the section starts at the
+// clock reading of the request that starts it, and each fact answer's time is its request's clock reading since then.
+// The browser clock never decides a result.
+
+/** A test's facts section as stored: when it started (epoch ms, the server's clock), the drawn facts, and the answers in order. */
+export interface LoadedFacts {
+  startedAt: number;
+  test: FactsTest;
+  answers: FactSubmission[];
+}
+
+/**
+ * The store seam's operations for the timed facts section. Each keeps one database guard. The module calls them only
+ * for a test that `load` returned for the parent, so they take the test's id alone.
+ */
+export interface FactsStore {
+  /** The test's facts section with its answers in order; null when it has not started. */
+  loadFacts(id: string): Promise<LoadedFacts | null>;
+  /** Stores the section when it starts. "taken": the test already has one (one facts section per test). */
+  insertFacts(id: string, section: { startedAt: number; test: FactsTest }): Promise<"stored" | "taken">;
+  /** Stores one marked fact answer. "taken": the section already has an answer at this position (one per position). */
+  insertFactAnswer(id: string, answer: NewFactAnswer): Promise<"stored" | "taken">;
+}
+
+/** A marked fact answer to store, at its place in the section (0-based). */
+export type NewFactAnswer = FactAnswer & { position: number };
+
+/** Why the module refused a step of the facts section: a subset of Refusal, where a conflict comes with the facts step. */
+export type FactsRefusal =
+  | { ok: false; error: "not_found" }
+  /** The test is not in progress, the section has not started, or the answer came late or for another fact. `step`: where the section is now. */
+  | { ok: false; error: "conflict"; step?: FactsStep }
+  | Extract<Refusal, { error: "store_failed" }>;
+
+export type FactsOutcome = { ok: true; step: FactsStep } | FactsRefusal;
+
+/** The section rebuilt with the assessment core, and when it started. */
+interface Section {
+  startedAt: number;
+  session: FactsSession;
+}
+
+/** Logs a failed facts store step the way the facts routes logged it before the module, and refuses. */
+function factsFailed(e: unknown): FactsRefusal {
+  if (e instanceof StoreError) console.error(`[facts] ${e.what}`, e.detail);
+  else console.error("[facts]", messageOf(e));
+  return { ok: false, error: "store_failed" };
+}
+
+/** The parent's test, for its facts section: the status, and the profile and seed that draw the facts. */
+async function parentTest(store: AttemptStore, parent: string, id: string): Promise<{ ok: true; attempt: Attempt; test: StoredTest } | FactsRefusal> {
+  let loaded: LoadedAttempt | null;
+  try {
+    loaded = await store.load(parent, id);
+  } catch (e) {
+    console.error("[facts] assessment load failed", e instanceof StoreError ? e.detail : messageOf(e));
+    return { ok: false, error: "store_failed" };
+  }
+  return loaded ? { ok: true, attempt: loaded.attempt, test: loaded.test } : { ok: false, error: "not_found" };
+}
+
+/** The test's facts section, rebuilt from the stored facts and answers; null when it has not started. */
+async function readSection(store: AttemptStore, id: string): Promise<{ ok: true; section: Section | null } | FactsRefusal> {
+  let loaded: LoadedFacts | null;
+  try {
+    loaded = await store.loadFacts(id);
+  } catch (e) {
+    return factsFailed(e);
+  }
+  if (!loaded) return { ok: true, section: null };
+  try {
+    return { ok: true, section: { startedAt: loaded.startedAt, session: restoreFacts(loaded.test, loaded.answers) } };
+  } catch (e) {
+    console.error("[facts] restore failed", id, messageOf(e));
+    return { ok: false, error: "store_failed", unreadable: true };
+  }
+}
+
+/** Where the section is at `now`, by the server's clock. */
+const stepAt = ({ startedAt, session }: Section, now: number): FactsStep => factsStep(session, now - startedAt);
+
+/**
+ * Where the facts section of the parent's test is at `now`: "ready" before it starts; otherwise the facts still to come
+ * and the time left, or "done". Writes nothing, and needs no open test.
+ */
+export async function readFacts(store: AttemptStore, parent: string, id: string, now: number): Promise<FactsOutcome> {
+  const owner = await parentTest(store, parent, id);
+  if (!owner.ok) return owner;
+  const read = await readSection(store, id);
+  if (!read.ok) return read;
+  return { ok: true, step: read.section ? stepAt(read.section, now) : { status: "ready", seconds: FACTS_SECONDS } };
+}
+
+/**
+ * Starts the facts section of the parent's test at `now`: draws the facts from the test's grade and seed, and stores
+ * them with the start time. When the section already runs (a second click, a reload, or a start that lost a race to
+ * another request), carries on with it and never resets its time: the store keeps one section per test.
+ */
+export async function startFacts(store: AttemptStore, parent: string, id: string, now: number): Promise<FactsOutcome> {
+  const owner = await parentTest(store, parent, id);
+  if (!owner.ok) return owner;
+  if (owner.attempt.status !== "in_progress") return { ok: false, error: "conflict" };
+  const existing = await readSection(store, id);
+  if (!existing.ok) return existing;
+  if (existing.section) return { ok: true, step: stepAt(existing.section, now) };
+
+  const session = createFacts(owner.test.profile, owner.test.seed);
+  let inserted: "stored" | "taken";
+  try {
+    inserted = await store.insertFacts(id, { startedAt: now, test: storedFacts(session) });
+  } catch (e) {
+    return factsFailed(e);
+  }
+  if (inserted === "stored") return { ok: true, step: factsStep(session, 0) };
+  // Another request started the section first: carry on with that one, timed from its start.
+  const raced = await readSection(store, id);
+  if (raced.ok && raced.section) return { ok: true, step: stepAt(raced.section, now) };
+  console.error("[facts] start failed", "the section another request started cannot be read");
+  return { ok: false, error: "store_failed" };
+}
+
+/**
+ * Marks one fact answer with the assessment core and stores it, then sends the facts still to come. Its time is `now`
+ * since the section started (its arrival), never earlier than the answer before it. Refuses with "conflict" when the
+ * test is not in progress or the section has not started. An answer after the time is up, or for a fact already
+ * answered, stores nothing: "conflict" with where the section is now. The store keeps one answer per fact, so when
+ * another request stored this fact's answer in the same moment, this one gets "conflict" with a fresh step.
+ */
+export async function answerFact(
+  store: AttemptStore,
+  parent: string,
+  id: string,
+  now: number,
+  { factId, response }: { factId: string; response: string },
+): Promise<FactsOutcome> {
+  const owner = await parentTest(store, parent, id);
+  if (!owner.ok) return owner;
+  if (owner.attempt.status !== "in_progress") return { ok: false, error: "conflict" };
+  const read = await readSection(store, id);
+  if (!read.ok) return read;
+  if (!read.section) return { ok: false, error: "conflict" };
+  const { session, startedAt } = read.section;
+  // Never earlier than the answer before it, in case two server instances' clocks differ by a few milliseconds.
+  const atMs = Math.max(now - startedAt, session.answers.at(-1)?.atMs ?? 0);
+  let next: FactsSession;
+  try {
+    next = submitFact(session, { factId, response, atMs });
+  } catch {
+    // The time is up, or the answer is for a fact already answered (or not yet asked): store nothing, and send where
+    // the section is now.
+    return { ok: false, error: "conflict", step: factsStep(session, atMs) };
+  }
+  const marked = next.answers.at(-1)!;
+  let inserted: "stored" | "taken";
+  try {
+    inserted = await store.insertFactAnswer(id, { ...marked, position: session.answers.length });
+  } catch (e) {
+    return factsFailed(e);
+  }
+  if (inserted === "stored") return { ok: true, step: factsStep(next, atMs) };
+  // Another request stored an answer to this fact in the same moment: send a fresh step.
+  const fresh = await readSection(store, id);
+  if (fresh.ok && fresh.section) return { ok: false, error: "conflict", step: stepAt(fresh.section, now) };
+  console.error("[facts] answer save failed", "the answer another request stored cannot be read");
+  return { ok: false, error: "store_failed" };
 }

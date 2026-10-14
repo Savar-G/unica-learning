@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createSession, nextQuestion, recordAnswer, restoreSession, startAttempt, storedTest, submitAnswer, type Attempt, type Grade, type Submission } from "@/lib/assessment";
 import { StoreError } from "@/lib/test-attempt";
 import { memoryAttemptStore, type MemoryTest } from "@/lib/test-attempt-memory";
+import { createFacts } from "@/lib/assessment";
 
 // The start route and the next-step route (#146) only translate: each result of the test attempt module maps to the
 // status code and JSON the browser got before the module. The module's store is the in-memory one; the session is a
@@ -21,6 +22,8 @@ vi.mock("@/lib/test-attempt-server", () => ({ attemptStore: () => memory.store }
 
 const { POST: startRoute } = await import("@/app/api/account/assessments/route");
 const { GET: stepRoute } = await import("@/app/api/account/assessments/[id]/route");
+const { GET: factsRoute, POST: factsStartRoute } = await import("@/app/api/account/assessments/[id]/facts/route");
+const { POST: factAnswerRoute } = await import("@/app/api/account/assessments/[id]/facts/answers/route");
 
 const HOUR = 60 * 60_000;
 const DAY = 24 * HOUR;
@@ -193,5 +196,240 @@ describe("GET /api/account/assessments/[id] (the next step)", () => {
     secretKey = false;
     vi.spyOn(console, "error").mockImplementation(() => {});
     expect(await sent(await step(TEST))).toEqual({ status: 503, body: { ok: false, error: "store_failed" } });
+  });
+});
+
+// The three routes of the timed facts section (#148) only translate too: each result of the module's facts section
+// maps to the status code and JSON the browser got before the module. The clock is the server's (Date.now()).
+const factsUrl = (id: string) => `https://unica.test/api/account/assessments/${id}/facts`;
+const ctxOf = (id: string) => ({ params: Promise.resolve({ id }) });
+const readFactsRoute = (id: string) => factsRoute(new Request(factsUrl(id)), ctxOf(id));
+const startFactsRoute = (id: string) =>
+  factsStartRoute(new Request(factsUrl(id), { method: "POST", headers: { "content-type": "application/json" }, body: "{}" }), ctxOf(id));
+const answerFactRoute = (id: string, body: unknown) =>
+  factAnswerRoute(new Request(`${factsUrl(id)}/answers`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: typeof body === "string" ? body : JSON.stringify(body),
+  }), ctxOf(id));
+
+/** The facts of Asha's test (seed 7). */
+const FACTS = createFacts(ASHA, 7).facts;
+/** The facts the browser gets from fact `from` on: never the answers. */
+const shown = (from: number) => FACTS.slice(from).map(({ id, a, op, b }) => ({ id, a, op, b }));
+/** The right answer to fact `n`. */
+const right = (n: number) => ({ factId: FACTS[n].id, response: String(FACTS[n].answer) });
+/** Asha's test at the halfway break: the 18 questions of stage 1 are answered. */
+const atBreak = (status: MemoryTest["status"] = "in_progress") => family({ ...stored(startAttempt(TEST, T0), { answered: 18 }), status });
+/** Asha's test at the break, with the facts section started by the server's clock at T0 + 1 hour. */
+const factsStarted = async () => {
+  atBreak();
+  vi.setSystemTime(T0 + HOUR);
+  await startFactsRoute(TEST);
+};
+/** A stored section the assessment core cannot rebuild: its first answer is for another fact. */
+const brokenFacts = () => memory.facts.push({
+  assessmentId: TEST,
+  startedAt: T0 + HOUR,
+  test: { grade: 4, facts: FACTS },
+  answers: [{ position: 0, factId: FACTS[5].id, response: "1", correct: false, atMs: 900 }],
+});
+
+describe("GET /api/account/assessments/[id]/facts (where the facts section is)", () => {
+  it("sends ready before the section starts, never cached", async () => {
+    atBreak();
+    const res = await readFactsRoute(TEST);
+    expect(res.headers.get("cache-control")).toBe("no-store");
+    expect(await sent(res)).toEqual({ status: 200, body: { ok: true, step: { status: "ready", seconds: 60 } } });
+  });
+
+  it("sends the facts still to come and the time left by the server's clock, never cached, then done", async () => {
+    await factsStarted();
+    vi.setSystemTime(T0 + HOUR + 2_000);
+    await answerFactRoute(TEST, right(0));
+    vi.setSystemTime(T0 + HOUR + 20_000);
+    const running = await readFactsRoute(TEST);
+    expect(running.headers.get("cache-control")).toBe("no-store");
+    expect(await sent(running)).toEqual({ status: 200, body: { ok: true, step: { status: "running", seconds: 60, remainingMs: 40_000, answered: 1, facts: shown(1) } } });
+    vi.setSystemTime(T0 + HOUR + 60_000);
+    const done = await readFactsRoute(TEST);
+    expect(done.headers.get("cache-control")).toBe("no-store");
+    expect(await sent(done)).toEqual({ status: 200, body: { ok: true, step: { status: "done", answered: 1 } } });
+  });
+
+  it("answers 404 not_found for another family's test, an unknown test, or an id that is not a uuid", async () => {
+    family(stored(startAttempt(TEST, T0), { parent: P2, answered: 18 }));
+    expect(await sent(await readFactsRoute(TEST))).toEqual({ status: 404, body: { ok: false, error: "not_found" } });
+    expect(await sent(await readFactsRoute("7e57a000-0000-4000-8000-0000000000ff"))).toEqual({ status: 404, body: { ok: false, error: "not_found" } });
+    expect(await sent(await readFactsRoute("a1"))).toEqual({ status: 404, body: { ok: false, error: "not_found" } });
+  });
+
+  it("answers 502 store_failed when the store fails, and 500 when the stored section cannot be rebuilt", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    atBreak();
+    memory.fail.load = new StoreError("load failed", "down");
+    const failed = await readFactsRoute(TEST);
+    expect(failed.headers.get("cache-control")).toBeNull();
+    expect(await sent(failed)).toEqual({ status: 502, body: { ok: false, error: "store_failed" } });
+    atBreak();
+    memory.fail.loadFacts = new StoreError("load failed", "down");
+    expect(await sent(await readFactsRoute(TEST))).toEqual({ status: 502, body: { ok: false, error: "store_failed" } });
+    atBreak();
+    brokenFacts();
+    expect(await sent(await readFactsRoute(TEST))).toEqual({ status: 500, body: { ok: false, error: "store_failed" } });
+  });
+
+  it("answers 401 signed_out without a session, and 503 store_failed without the secret key", async () => {
+    atBreak();
+    signedIn = null;
+    expect(await sent(await readFactsRoute(TEST))).toEqual({ status: 401, body: { ok: false, error: "signed_out" } });
+    signedIn = P1;
+    secretKey = false;
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    expect(await sent(await readFactsRoute(TEST))).toEqual({ status: 503, body: { ok: false, error: "store_failed" } });
+  });
+});
+
+describe("POST /api/account/assessments/[id]/facts (start the section)", () => {
+  it("starts the section by the server's clock, and sends every fact without its answer", async () => {
+    atBreak();
+    vi.setSystemTime(T0 + HOUR);
+    expect(await sent(await startFactsRoute(TEST)))
+      .toEqual({ status: 200, body: { ok: true, step: { status: "running", seconds: 60, remainingMs: 60_000, answered: 0, facts: shown(0) } } });
+    expect(memory.facts).toMatchObject([{ assessmentId: TEST, startedAt: T0 + HOUR, answers: [] }]);
+  });
+
+  it("starts once when pressed twice at once, and carries on with the running section on a second Start", async () => {
+    atBreak();
+    vi.setSystemTime(T0 + HOUR);
+    const both = await Promise.all([startFactsRoute(TEST), startFactsRoute(TEST)]);
+    const running = { status: 200, body: { ok: true, step: { status: "running", seconds: 60, remainingMs: 60_000, answered: 0, facts: shown(0) } } };
+    expect(await Promise.all(both.map(sent))).toEqual([running, running]);
+    expect(memory.facts).toHaveLength(1);
+    vi.setSystemTime(T0 + HOUR + 25_000);
+    expect(await sent(await startFactsRoute(TEST)))
+      .toEqual({ status: 200, body: { ok: true, step: { status: "running", seconds: 60, remainingMs: 35_000, answered: 0, facts: shown(0) } } });
+    expect(memory.facts).toMatchObject([{ startedAt: T0 + HOUR }]);
+  });
+
+  it("answers 409 conflict once the test is completed or expired", async () => {
+    atBreak("completed");
+    expect(await sent(await startFactsRoute(TEST))).toEqual({ status: 409, body: { ok: false, error: "conflict" } });
+    atBreak("expired");
+    expect(await sent(await startFactsRoute(TEST))).toEqual({ status: 409, body: { ok: false, error: "conflict" } });
+    expect(memory.facts).toEqual([]);
+  });
+
+  it("answers 404 not_found for another family's test, an unknown test, or an id that is not a uuid", async () => {
+    family(stored(startAttempt(TEST, T0), { parent: P2, answered: 18 }));
+    expect(await sent(await startFactsRoute(TEST))).toEqual({ status: 404, body: { ok: false, error: "not_found" } });
+    expect(await sent(await startFactsRoute("7e57a000-0000-4000-8000-0000000000ff"))).toEqual({ status: 404, body: { ok: false, error: "not_found" } });
+    expect(await sent(await startFactsRoute("a1"))).toEqual({ status: 404, body: { ok: false, error: "not_found" } });
+    expect(memory.facts).toEqual([]);
+  });
+
+  it("answers 502 store_failed when the store fails, and 500 when the stored section cannot be rebuilt", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    atBreak();
+    memory.fail.insertFacts = new StoreError("start failed", "down");
+    expect(await sent(await startFactsRoute(TEST))).toEqual({ status: 502, body: { ok: false, error: "store_failed" } });
+    atBreak();
+    memory.fail.load = new StoreError("load failed", "down");
+    expect(await sent(await startFactsRoute(TEST))).toEqual({ status: 502, body: { ok: false, error: "store_failed" } });
+    atBreak();
+    brokenFacts();
+    expect(await sent(await startFactsRoute(TEST))).toEqual({ status: 500, body: { ok: false, error: "store_failed" } });
+  });
+
+  it("answers 401 signed_out without a session, and 503 store_failed without the secret key", async () => {
+    atBreak();
+    signedIn = null;
+    expect(await sent(await startFactsRoute(TEST))).toEqual({ status: 401, body: { ok: false, error: "signed_out" } });
+    signedIn = P1;
+    secretKey = false;
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    expect(await sent(await startFactsRoute(TEST))).toEqual({ status: 503, body: { ok: false, error: "store_failed" } });
+    expect(memory.facts).toEqual([]);
+  });
+});
+
+describe("POST /api/account/assessments/[id]/facts/answers (answer one fact)", () => {
+  it("stores the answer at its arrival time by the server's clock, and sends the facts still to come", async () => {
+    await factsStarted();
+    vi.setSystemTime(T0 + HOUR + 2_500);
+    expect(await sent(await answerFactRoute(TEST, right(0))))
+      .toEqual({ status: 200, body: { ok: true, step: { status: "running", seconds: 60, remainingMs: 57_500, answered: 1, facts: shown(1) } } });
+    expect(memory.facts[0].answers).toEqual([{ position: 0, factId: FACTS[0].id, response: String(FACTS[0].answer), correct: true, atMs: 2_500 }]);
+  });
+
+  it("answers 409 conflict with where the section is now for a fact already answered, and stores it once", async () => {
+    await factsStarted();
+    vi.setSystemTime(T0 + HOUR + 2_000);
+    await answerFactRoute(TEST, right(0));
+    vi.setSystemTime(T0 + HOUR + 2_300);
+    expect(await sent(await answerFactRoute(TEST, right(0))))
+      .toEqual({ status: 409, body: { ok: false, error: "conflict", step: { status: "running", seconds: 60, remainingMs: 57_700, answered: 1, facts: shown(1) } } });
+    expect(memory.facts[0].answers).toHaveLength(1);
+  });
+
+  it("answers 409 conflict with a done step for an answer after the time is up, and stores nothing", async () => {
+    await factsStarted();
+    vi.setSystemTime(T0 + HOUR + 63_001);
+    expect(await sent(await answerFactRoute(TEST, right(0)))).toEqual({ status: 409, body: { ok: false, error: "conflict", step: { status: "done", answered: 0 } } });
+    expect(memory.facts[0].answers).toEqual([]);
+  });
+
+  it("answers 409 conflict before the section starts, and once the test is completed or expired", async () => {
+    atBreak();
+    expect(await sent(await answerFactRoute(TEST, right(0)))).toEqual({ status: 409, body: { ok: false, error: "conflict" } });
+    await factsStarted();
+    memory.tests[0].status = "completed";
+    expect(await sent(await answerFactRoute(TEST, right(0)))).toEqual({ status: 409, body: { ok: false, error: "conflict" } });
+    memory.tests[0].status = "expired";
+    expect(await sent(await answerFactRoute(TEST, right(0)))).toEqual({ status: 409, body: { ok: false, error: "conflict" } });
+    expect(memory.facts[0].answers).toEqual([]);
+  });
+
+  it("answers 400 for a body that is not JSON, or that is not a fact id with a response of up to three digits", async () => {
+    await factsStarted();
+    expect(await sent(await answerFactRoute(TEST, "{not json"))).toEqual({ status: 400, body: { ok: false, error: "bad_json" } });
+    for (const body of [{ factId: 0, response: "1" }, { factId: FACTS[0].id, response: "1234" }, { factId: FACTS[0].id, response: "a" }, { factId: FACTS[0].id }]) {
+      expect(await sent(await answerFactRoute(TEST, body))).toEqual({ status: 400, body: { ok: false, error: "invalid" } });
+    }
+    // The body is read before the test: an id that is not a uuid with a body that is not JSON is bad_json.
+    expect(await sent(await answerFactRoute("a1", "{not json"))).toEqual({ status: 400, body: { ok: false, error: "bad_json" } });
+    expect(memory.facts[0].answers).toEqual([]);
+  });
+
+  it("answers 404 not_found for another family's test, an unknown test, or an id that is not a uuid", async () => {
+    family(stored(startAttempt(TEST, T0), { parent: P2, answered: 18 }));
+    expect(await sent(await answerFactRoute(TEST, right(0)))).toEqual({ status: 404, body: { ok: false, error: "not_found" } });
+    expect(await sent(await answerFactRoute("7e57a000-0000-4000-8000-0000000000ff", right(0)))).toEqual({ status: 404, body: { ok: false, error: "not_found" } });
+    expect(await sent(await answerFactRoute("a1", right(0)))).toEqual({ status: 404, body: { ok: false, error: "not_found" } });
+  });
+
+  it("answers 502 store_failed when the store fails, and 500 when the stored section cannot be rebuilt", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    await factsStarted();
+    memory.fail.insertFactAnswer = new StoreError("answer save failed", "down");
+    expect(await sent(await answerFactRoute(TEST, right(0)))).toEqual({ status: 502, body: { ok: false, error: "store_failed" } });
+    expect(memory.facts[0].answers).toEqual([]);
+    atBreak();
+    memory.fail.load = new StoreError("load failed", "down");
+    expect(await sent(await answerFactRoute(TEST, right(0)))).toEqual({ status: 502, body: { ok: false, error: "store_failed" } });
+    atBreak();
+    brokenFacts();
+    expect(await sent(await answerFactRoute(TEST, right(0)))).toEqual({ status: 500, body: { ok: false, error: "store_failed" } });
+  });
+
+  it("answers 401 signed_out without a session, and 503 store_failed without the secret key", async () => {
+    await factsStarted();
+    signedIn = null;
+    expect(await sent(await answerFactRoute(TEST, "{not json"))).toEqual({ status: 401, body: { ok: false, error: "signed_out" } });
+    signedIn = P1;
+    secretKey = false;
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    expect(await sent(await answerFactRoute(TEST, right(0)))).toEqual({ status: 503, body: { ok: false, error: "store_failed" } });
+    expect(memory.facts[0].answers).toEqual([]);
   });
 });

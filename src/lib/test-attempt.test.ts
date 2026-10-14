@@ -16,6 +16,8 @@ import {
 import { allRight, type Script } from "@/lib/assessment/scripted-child";
 import { nextStep, startStates, startTest, stateFor, StoreError } from "@/lib/test-attempt";
 import { memoryAttemptStore, type MemoryTest } from "@/lib/test-attempt-memory";
+import { answerFact, readFacts, startFacts } from "@/lib/test-attempt";
+import { createFacts } from "@/lib/assessment";
 
 // The test attempt module (#146) against the in-memory store, which keeps the database's guards: one open test per
 // child (a unique index), updates that only change a test while it is still open (guarded updates), and reads that
@@ -331,5 +333,258 @@ describe("when the store fails", () => {
     expect(await start(store, T0, { restart: false, newSeed: seeds(8) })).toEqual({ ok: false, error: "store_failed" });
     expect(log.mock.calls).toEqual([["[test] load failed", "timeout"], ["[test] start failed", "open test read failed"]]);
     expect(rows).toHaveLength(1);
+  });
+});
+
+describe("the timed facts section", () => {
+  /** Asha's open test at the halfway break: the 18 questions of stage 1 are answered. */
+  const atBreak = () => memoryAttemptStore({ children: [asha], tests: [stored(open("a1", T0), { answered: 18 })] });
+
+  it("is ready before it starts, and reading it stores nothing", async () => {
+    const memory = atBreak();
+    expect(await readFacts(memory.store, P1, "a1", T0 + HOUR)).toEqual({ ok: true, step: { status: "ready", seconds: 60 } });
+    expect(memory.facts).toEqual([]);
+  });
+
+  it("starts at the clock reading of the start request, with facts drawn from the test's grade and seed", async () => {
+    const memory = atBreak();
+    const drawn = createFacts(ASHA, 7).facts;
+    const result = await startFacts(memory.store, P1, "a1", T0 + HOUR);
+    expect(result).toMatchObject({ ok: true, step: { status: "running", seconds: 60, remainingMs: 60_000, answered: 0 } });
+    const shown = result.ok && result.step.status === "running" ? result.step.facts : [];
+    expect(shown.map((f) => f.id)).toEqual(drawn.map((f) => f.id));
+    expect(shown[0]).not.toHaveProperty("answer");
+    expect(memory.facts).toEqual([{ assessmentId: "a1", startedAt: T0 + HOUR, test: { grade: 4, facts: drawn }, answers: [] }]);
+  });
+
+  it("then runs by the server's clock: 20 seconds after the start 40 are left, and after 60 it is done", async () => {
+    const memory = atBreak();
+    await startFacts(memory.store, P1, "a1", T0 + HOUR);
+    expect(await readFacts(memory.store, P1, "a1", T0 + HOUR + 20_000)).toMatchObject({ ok: true, step: { status: "running", remainingMs: 40_000, answered: 0 } });
+    expect(await readFacts(memory.store, P1, "a1", T0 + HOUR + 60_000)).toEqual({ ok: true, step: { status: "done", answered: 0 } });
+  });
+
+  it("starts once when Start is pressed twice at once: both requests get the section, timed from the first start", async () => {
+    const memory = atBreak();
+    const [first, second] = await Promise.all([
+      startFacts(memory.store, P1, "a1", T0 + HOUR),
+      startFacts(memory.store, P1, "a1", T0 + HOUR + 400),
+    ]);
+    expect(memory.facts).toHaveLength(1);
+    expect(memory.facts[0].startedAt).toBe(T0 + HOUR);
+    expect(first).toMatchObject({ ok: true, step: { status: "running", remainingMs: 60_000 } });
+    expect(second).toMatchObject({ ok: true, step: { status: "running", remainingMs: 59_600 } });
+  });
+
+  it("carries on with the running section on a second Start or a reload, and never resets its time", async () => {
+    const memory = atBreak();
+    await startFacts(memory.store, P1, "a1", T0 + HOUR);
+    expect(await startFacts(memory.store, P1, "a1", T0 + HOUR + 25_000)).toMatchObject({ ok: true, step: { status: "running", remainingMs: 35_000 } });
+    expect(await startFacts(memory.store, P1, "a1", T0 + HOUR + 70_000)).toEqual({ ok: true, step: { status: "done", answered: 0 } });
+    expect(memory.facts).toHaveLength(1);
+    expect(memory.facts[0].startedAt).toBe(T0 + HOUR);
+  });
+
+  it.each(["completed", "expired"] as const)("cannot start once the test is %s, and the refusal stores nothing", async (status) => {
+    const memory = memoryAttemptStore({ tests: [{ ...stored(open("a1", T0), { answered: 18 }), status }] });
+    expect(await startFacts(memory.store, P1, "a1", T0 + HOUR)).toEqual({ ok: false, error: "conflict" });
+    expect(memory.facts).toEqual([]);
+  });
+
+  it("stores each fact answer, marked, at its arrival time since the start, and sends the facts still to come", async () => {
+    const memory = atBreak();
+    const [f0, f1, f2] = createFacts(ASHA, 7).facts;
+    await startFacts(memory.store, P1, "a1", T0 + HOUR);
+    const first = await answerFact(memory.store, P1, "a1", T0 + HOUR + 2_500, { factId: f0.id, response: String(f0.answer) });
+    expect(first).toMatchObject({ ok: true, step: { status: "running", remainingMs: 57_500, answered: 1 } });
+    expect(first.ok && first.step.status === "running" && first.step.facts[0].id).toBe(f1.id);
+    // A skip is stored too, but does not count as answered.
+    expect(await answerFact(memory.store, P1, "a1", T0 + HOUR + 6_000, { factId: f1.id, response: "" }))
+      .toMatchObject({ ok: true, step: { status: "running", remainingMs: 54_000, answered: 1 } });
+    expect(memory.facts[0].answers).toEqual([
+      { position: 0, factId: f0.id, response: String(f0.answer), correct: true, atMs: 2_500 },
+      { position: 1, factId: f1.id, response: "", correct: false, atMs: 6_000 },
+    ]);
+    // A reload goes on from the third fact.
+    const reread = await readFacts(memory.store, P1, "a1", T0 + HOUR + 9_000);
+    expect(reread).toMatchObject({ ok: true, step: { status: "running", remainingMs: 51_000, answered: 1 } });
+    expect(reread.ok && reread.step.status === "running" && reread.step.facts[0].id).toBe(f2.id);
+  });
+
+  it("stores each fact answer once: a second answer to the same fact gets a conflict with where the section is now", async () => {
+    const memory = atBreak();
+    const [f0, f1] = createFacts(ASHA, 7).facts;
+    await startFacts(memory.store, P1, "a1", T0 + HOUR);
+    await answerFact(memory.store, P1, "a1", T0 + HOUR + 2_000, { factId: f0.id, response: "1" });
+    const again = await answerFact(memory.store, P1, "a1", T0 + HOUR + 2_300, { factId: f0.id, response: "1" });
+    expect(again).toMatchObject({ ok: false, error: "conflict", step: { status: "running", remainingMs: 57_700, answered: 1 } });
+    expect(!again.ok && again.error === "conflict" && again.step?.status === "running" && again.step.facts[0].id).toBe(f1.id);
+    expect(memory.facts[0].answers).toHaveLength(1);
+  });
+
+  it("a double submit stores one answer: the request that loses the race gets a conflict with a fresh step", async () => {
+    const memory = atBreak();
+    const [f0, f1] = createFacts(ASHA, 7).facts;
+    await startFacts(memory.store, P1, "a1", T0 + HOUR);
+    const send = () => answerFact(memory.store, P1, "a1", T0 + HOUR + 2_000, { factId: f0.id, response: String(f0.answer) });
+    const [won, lost] = await Promise.all([send(), send()]);
+    expect(memory.facts[0].answers).toHaveLength(1);
+    expect(won).toMatchObject({ ok: true, step: { status: "running", answered: 1 } });
+    // Both requests marked the same fact before either stored it; the store took one, and the other reads again.
+    expect(lost).toMatchObject({ ok: false, error: "conflict", step: { status: "running", remainingMs: 58_000, answered: 1 } });
+    expect(!lost.ok && lost.error === "conflict" && lost.step?.status === "running" && lost.step.facts[0].id).toBe(f1.id);
+  });
+
+  it("refuses a fact answer that arrives after the time is up: it stores nothing, and the step says done", async () => {
+    const memory = atBreak();
+    const [f0, f1] = createFacts(ASHA, 7).facts;
+    await startFacts(memory.store, P1, "a1", T0 + HOUR);
+    await answerFact(memory.store, P1, "a1", T0 + HOUR + 2_000, { factId: f0.id, response: String(f0.answer) });
+    expect(await answerFact(memory.store, P1, "a1", T0 + HOUR + 63_001, { factId: f1.id, response: String(f1.answer) }))
+      .toEqual({ ok: false, error: "conflict", step: { status: "done", answered: 1 } });
+    expect(memory.facts[0].answers).toHaveLength(1);
+  });
+
+  it("still takes an answer sent just before the end that arrives up to 3 seconds late, and the step says done", async () => {
+    const memory = atBreak();
+    const [f0] = createFacts(ASHA, 7).facts;
+    await startFacts(memory.store, P1, "a1", T0 + HOUR);
+    expect(await answerFact(memory.store, P1, "a1", T0 + HOUR + 63_000, { factId: f0.id, response: String(f0.answer) }))
+      .toEqual({ ok: true, step: { status: "done", answered: 1 } });
+    expect(memory.facts[0].answers).toMatchObject([{ position: 0, factId: f0.id, correct: true, atMs: 63_000 }]);
+  });
+
+  it("never times an answer earlier than the answer before it, when two servers' clocks differ a little", async () => {
+    const memory = atBreak();
+    const [f0, f1] = createFacts(ASHA, 7).facts;
+    await startFacts(memory.store, P1, "a1", T0 + HOUR);
+    await answerFact(memory.store, P1, "a1", T0 + HOUR + 5_000, { factId: f0.id, response: String(f0.answer) });
+    expect(await answerFact(memory.store, P1, "a1", T0 + HOUR + 4_990, { factId: f1.id, response: String(f1.answer) }))
+      .toMatchObject({ ok: true, step: { status: "running", remainingMs: 55_000, answered: 2 } });
+    expect(memory.facts[0].answers.map((a) => a.atMs)).toEqual([5_000, 5_000]);
+  });
+
+  it.each(["completed", "expired"] as const)("takes no fact answer once the test is %s, and the refusal stores nothing", async (status) => {
+    const memory = atBreak();
+    const [f0] = createFacts(ASHA, 7).facts;
+    await startFacts(memory.store, P1, "a1", T0 + HOUR);
+    memory.tests[0].status = status;
+    expect(await answerFact(memory.store, P1, "a1", T0 + HOUR + 2_000, { factId: f0.id, response: String(f0.answer) }))
+      .toEqual({ ok: false, error: "conflict" });
+    expect(memory.facts[0].answers).toEqual([]);
+  });
+
+  it("takes no fact answer before the section starts", async () => {
+    const memory = atBreak();
+    const [f0] = createFacts(ASHA, 7).facts;
+    expect(await answerFact(memory.store, P1, "a1", T0 + HOUR, { factId: f0.id, response: String(f0.answer) })).toEqual({ ok: false, error: "conflict" });
+    expect(memory.facts).toEqual([]);
+  });
+
+  it("is still read once the test is completed, so the finish screen can count the facts answered", async () => {
+    const memory = atBreak();
+    const [f0] = createFacts(ASHA, 7).facts;
+    await startFacts(memory.store, P1, "a1", T0 + HOUR);
+    await answerFact(memory.store, P1, "a1", T0 + HOUR + 2_000, { factId: f0.id, response: String(f0.answer) });
+    memory.tests[0].status = "completed";
+    expect(await readFacts(memory.store, P1, "a1", T0 + 2 * HOUR)).toEqual({ ok: true, step: { status: "done", answered: 1 } });
+  });
+
+  it("is not found for another family's test, and no request changes anything", async () => {
+    const memory = memoryAttemptStore({ tests: [stored(open("a1", T0), { parent: "parent-2", answered: 18 })] });
+    const [f0] = createFacts(ASHA, 7).facts;
+    expect(await readFacts(memory.store, P1, "a1", T0 + HOUR)).toEqual({ ok: false, error: "not_found" });
+    expect(await startFacts(memory.store, P1, "a1", T0 + HOUR)).toEqual({ ok: false, error: "not_found" });
+    expect(await answerFact(memory.store, P1, "a1", T0 + HOUR, { factId: f0.id, response: "1" })).toEqual({ ok: false, error: "not_found" });
+    expect(memory.facts).toEqual([]);
+    expect(await startFacts(memory.store, "parent-2", "a1", T0 + HOUR)).toMatchObject({ ok: true });
+    expect(await answerFact(memory.store, P1, "a1", T0 + HOUR + 1_000, { factId: f0.id, response: "1" })).toEqual({ ok: false, error: "not_found" });
+    expect(memory.facts[0].answers).toEqual([]);
+  });
+});
+
+describe("when the facts store fails", () => {
+  const atBreak = () => memoryAttemptStore({ tests: [stored(open("a1", T0), { answered: 18 })] });
+  const [f0] = createFacts(ASHA, 7).facts;
+  const answerF0 = (memory: ReturnType<typeof atBreak>, at: number) =>
+    answerFact(memory.store, P1, "a1", at, { factId: f0.id, response: String(f0.answer) });
+
+  it("a failed read of the test is store_failed, logged as before", async () => {
+    const log = logs();
+    const memory = atBreak();
+    memory.fail.load = new StoreError("load failed", "timeout");
+    expect(await readFacts(memory.store, P1, "a1", T0)).toEqual({ ok: false, error: "store_failed" });
+    expect(await startFacts(memory.store, P1, "a1", T0)).toEqual({ ok: false, error: "store_failed" });
+    expect(await answerF0(memory, T0)).toEqual({ ok: false, error: "store_failed" });
+    expect(log.mock.calls).toEqual(Array(3).fill(["[facts] assessment load failed", "timeout"]));
+    expect(memory.facts).toEqual([]);
+  });
+
+  it("a failed read of the section is store_failed, logged as before", async () => {
+    const log = logs();
+    const memory = atBreak();
+    await startFacts(memory.store, P1, "a1", T0);
+    memory.fail.loadFacts = new StoreError("answers load failed", "connection reset");
+    expect(await readFacts(memory.store, P1, "a1", T0 + 1_000)).toEqual({ ok: false, error: "store_failed" });
+    expect(await startFacts(memory.store, P1, "a1", T0 + 1_000)).toEqual({ ok: false, error: "store_failed" });
+    expect(await answerF0(memory, T0 + 1_000)).toEqual({ ok: false, error: "store_failed" });
+    expect(log.mock.calls).toEqual(Array(3).fill(["[facts] answers load failed", "connection reset"]));
+    expect(memory.facts[0].answers).toEqual([]);
+  });
+
+  it("a stored section the assessment core cannot rebuild is store_failed, as unreadable", async () => {
+    const log = logs();
+    const memory = atBreak();
+    await startFacts(memory.store, P1, "a1", T0);
+    memory.facts[0].answers.push({ position: 0, factId: "f5", response: "1", correct: false, atMs: 900 });
+    expect(await readFacts(memory.store, P1, "a1", T0 + 1_000)).toEqual({ ok: false, error: "store_failed", unreadable: true });
+    expect(log.mock.calls).toEqual([["[facts] restore failed", "a1", "Expected an answer to f0, got f5"]]);
+  });
+
+  it("a failed start is store_failed, logged as before, and the section has not started", async () => {
+    const log = logs();
+    const memory = atBreak();
+    memory.fail.insertFacts = new StoreError("start failed", "insert refused");
+    expect(await startFacts(memory.store, P1, "a1", T0)).toEqual({ ok: false, error: "store_failed" });
+    expect(log.mock.calls).toEqual([["[facts] start failed", "insert refused"]]);
+    expect(memory.facts).toEqual([]);
+  });
+
+  it("a failed answer is store_failed, logged as before, and nothing is stored", async () => {
+    const log = logs();
+    const memory = atBreak();
+    await startFacts(memory.store, P1, "a1", T0);
+    memory.fail.insertFactAnswer = new StoreError("answer save failed", "insert refused");
+    expect(await answerF0(memory, T0 + 1_000)).toEqual({ ok: false, error: "store_failed" });
+    expect(log.mock.calls).toEqual([["[facts] answer save failed", "insert refused"]]);
+    expect(memory.facts[0].answers).toEqual([]);
+  });
+
+  it("a start or an answer that lost a race, when the winner's section cannot be read, is store_failed", async () => {
+    const log = logs();
+    const memory = atBreak();
+    // The store fails every read of the section after an insert reports "taken".
+    const store: typeof memory.store = {
+      ...memory.store,
+      insertFacts: async (...args) => taken(await memory.store.insertFacts(...args)),
+      insertFactAnswer: async (...args) => taken(await memory.store.insertFactAnswer(...args)),
+    };
+    const taken = (result: "stored" | "taken") => {
+      if (result === "taken") memory.fail.loadFacts = new StoreError("load failed", "timeout");
+      return result;
+    };
+    const starts = await Promise.all([startFacts(store, P1, "a1", T0), startFacts(store, P1, "a1", T0)]);
+    expect(starts).toMatchObject([{ ok: true }, { ok: false, error: "store_failed" }]);
+    delete memory.fail.loadFacts;
+    const answers = await Promise.all([answerF0(memory, T0 + 1_000), answerFact(store, P1, "a1", T0 + 1_000, { factId: f0.id, response: "1" })]);
+    expect(answers).toMatchObject([{ ok: true }, { ok: false, error: "store_failed" }]);
+    expect(log.mock.calls).toEqual([
+      ["[facts] load failed", "timeout"],
+      ["[facts] start failed", "the section another request started cannot be read"],
+      ["[facts] load failed", "timeout"],
+      ["[facts] answer save failed", "the answer another request stored cannot be read"],
+    ]);
+    expect(memory.facts).toHaveLength(1);
+    expect(memory.facts[0].answers).toHaveLength(1);
   });
 });
