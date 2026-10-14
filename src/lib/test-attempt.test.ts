@@ -376,6 +376,17 @@ describe("the timed facts section", () => {
     expect(second).toMatchObject({ ok: true, step: { status: "running", remainingMs: 59_600 } });
   });
 
+  it("never sends more than the section's time to a start that lost the race but read the clock first", async () => {
+    const memory = atBreak();
+    const [won, lost] = await Promise.all([
+      startFacts(memory.store, P1, "a1", T0 + HOUR + 20),
+      startFacts(memory.store, P1, "a1", T0 + HOUR),
+    ]);
+    expect(memory.facts).toMatchObject([{ startedAt: T0 + HOUR + 20 }]);
+    expect(won).toMatchObject({ ok: true, step: { status: "running", remainingMs: 60_000 } });
+    expect(lost).toMatchObject({ ok: true, step: { status: "running", remainingMs: 60_000 } });
+  });
+
   it("carries on with the running section on a second Start or a reload, and never resets its time", async () => {
     const memory = atBreak();
     await startFacts(memory.store, P1, "a1", T0 + HOUR);

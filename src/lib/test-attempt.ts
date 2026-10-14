@@ -349,8 +349,11 @@ async function readSection(store: AttemptStore, id: string): Promise<{ ok: true;
   }
 }
 
-/** Where the section is at `now`, by the server's clock. */
-const stepAt = ({ startedAt, session }: Section, now: number): FactsStep => factsStep(session, now - startedAt);
+/**
+ * Where the section is at `now`, by the server's clock. Never before its start: a start request that lost the race to
+ * another one can have read the clock a few milliseconds before the winner's start time.
+ */
+const stepAt = ({ startedAt, session }: Section, now: number): FactsStep => factsStep(session, Math.max(0, now - startedAt));
 
 /**
  * Where the facts section of the parent's test is at `now`: "ready" before it starts; otherwise the facts still to come
