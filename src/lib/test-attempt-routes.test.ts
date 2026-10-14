@@ -21,6 +21,7 @@ vi.mock("@/lib/test-attempt-server", () => ({ attemptStore: () => memory.store }
 
 const { POST: startRoute } = await import("@/app/api/account/assessments/route");
 const { GET: stepRoute } = await import("@/app/api/account/assessments/[id]/route");
+const { POST: answerRoute } = await import("@/app/api/account/assessments/[id]/answers/route");
 
 const HOUR = 60 * 60_000;
 const DAY = 24 * HOUR;
@@ -138,6 +139,130 @@ describe("POST /api/account/assessments (start or continue)", () => {
     vi.spyOn(console, "error").mockImplementation(() => {});
     expect(await sent(await start({ childId: CHILD }))).toEqual({ status: 503, body: { ok: false, error: "store_failed" } });
     expect(memory.tests).toEqual([]);
+  });
+});
+
+describe("POST /api/account/assessments/[id]/answers (answer a question)", () => {
+  // Asha's test drawn from seed 7: questions 1 and 2 need shown work; question 3 (a choice question) does not.
+  const current = () => nextQuestion(restoreSession(memory.tests[0].test, memory.tests[0].answers))!;
+  /** A small PNG drawing in base64: the PNG signature and one byte. */
+  const DRAWING = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x01]).toString("base64");
+  const answer = (body: unknown, { id = TEST, headers = {} }: { id?: string; headers?: Record<string, string> } = {}) =>
+    answerRoute(new Request(`https://unica.test/api/account/assessments/${id}/answers`, {
+      method: "POST",
+      headers: { "content-type": "application/json", ...headers },
+      body: typeof body === "string" ? body : JSON.stringify(body),
+    }), { params: Promise.resolve({ id }) });
+  /** The right answer to the current question in 20 seconds, with `work` if given. */
+  const right = (work?: unknown) => ({ questionId: current().id, response: current().answer, timeMs: 20_000, ...(work === undefined ? {} : { work }) });
+
+  it("stores the answer with its drawing and sends the next question, without its answer", async () => {
+    family(stored(startAttempt(TEST, T0)));
+    vi.setSystemTime(T0 + HOUR);
+    const { status, body } = await sent(await answer(right({ image: DRAWING, text: "carry the 1" })));
+    expect(status).toBe(200);
+    expect(body).toMatchObject({ ok: true, step: { status: "question", number: 2, total: 36, breakAfter: 18, question: { id: memory.tests[0].test.stage1[1].id } } });
+    expect(body.step.question).not.toHaveProperty("answer");
+    expect(memory.tests[0]).toMatchObject({ resumeUntil: T0 + HOUR + DAY, lastAnswerAt: T0 + HOUR });
+    expect(memory.tests[0].answers).toMatchObject([{ workPath: [...memory.drawings.keys()][0], workText: "carry the 1", timeMs: 20_000 }]);
+  });
+
+  it("caps the time on one question at an hour", async () => {
+    family(stored(startAttempt(TEST, T0), { answered: 2 }));
+    expect((await answer({ ...right(), timeMs: 5 * HOUR + 0.4 })).status).toBe(200);
+    expect(memory.tests[0].answers[2].timeMs).toBe(HOUR);
+  });
+
+  it("answers 409 conflict with the current step for an answer to another question, or to a complete test", async () => {
+    family(stored(startAttempt(TEST, T0), { answered: 2 }));
+    const third = right();
+    await answer(third);
+    expect(await sent(await answer(third))).toMatchObject({ status: 409, body: { ok: false, error: "conflict", step: { status: "question", number: 4 } } });
+    expect(await sent(await answer({ ...right(), questionId: 42 }))).toMatchObject({ status: 409, body: { ok: false, error: "conflict", step: { number: 4 } } });
+    family(stored(startAttempt(TEST, T0), { answered: 36 }));
+    expect(await sent(await answer({ questionId: "s2-1", response: "1", timeMs: 1 }))).toEqual({ status: 409, body: { ok: false, error: "conflict", step: { status: "complete", total: 36 } } });
+  });
+
+  it("answers 410 expired after the deadline, and stores nothing", async () => {
+    family(stored(startAttempt(TEST, T0), { answered: 2 }));
+    vi.setSystemTime(T0 + 25 * HOUR);
+    expect(await sent(await answer(right()))).toEqual({ status: 410, body: { ok: false, error: "expired" } });
+    expect(memory.tests[0]).toMatchObject({ status: "expired", resumeUntil: T0 + DAY, lastAnswerAt: null });
+    expect(memory.tests[0].answers).toHaveLength(2);
+  });
+
+  it("answers 400 invalid for a response or a time that does not fit", async () => {
+    family(stored(startAttempt(TEST, T0), { answered: 2 }));
+    expect(await sent(await answer({ ...right(), response: "not a choice" }))).toEqual({ status: 400, body: { ok: false, error: "invalid" } });
+    expect(await sent(await answer({ ...right(), response: 7 }))).toEqual({ status: 400, body: { ok: false, error: "invalid" } });
+    expect(await sent(await answer({ ...right(), timeMs: "soon" }))).toEqual({ status: 400, body: { ok: false, error: "invalid" } });
+    expect(await sent(await answer({ ...right(), timeMs: -5 }))).toEqual({ status: 400, body: { ok: false, error: "invalid" } });
+    expect(memory.tests[0].answers).toHaveLength(2);
+  });
+
+  it("answers 400 with the message for a show-your-work question with an empty board, and for typed working in grade 2", async () => {
+    family(stored(startAttempt(TEST, T0)));
+    expect(await sent(await answer(right()))).toEqual({ status: 400, body: { ok: false, error: "work_required", message: "This question needs work on the whiteboard." } });
+    expect(await sent(await answer(right({ text: "   " })))).toEqual({ status: 400, body: { ok: false, error: "work_required", message: "This question needs work on the whiteboard." } });
+    const ben = { grade: 2, province: "BC" } as const;
+    memory = memoryAttemptStore({
+      children: [{ id: CHILD, parentId: P1, ...ben }],
+      tests: [{ ...startAttempt(TEST, T0), parentId: P1, childId: CHILD, seed: 7, test: storedTest(createSession(ben, 7)), answers: [] }],
+    });
+    expect(await sent(await answer(right({ image: DRAWING, text: "5" })))).toEqual({ status: 400, body: { ok: false, error: "invalid", message: "Grades 1 and 2 draw their work. Typed working is not taken." } });
+    expect(memory.tests[0].answers).toEqual([]);
+    expect(memory.drawings.size).toBe(0);
+  });
+
+  it("answers 413 work_too_big with the message for a drawing, typed working or a request over its limit", async () => {
+    family(stored(startAttempt(TEST, T0)));
+    const big = Buffer.concat([Buffer.from(DRAWING, "base64"), Buffer.alloc(1_000_000)]).toString("base64");
+    expect(await sent(await answer(right({ image: big })))).toEqual({ status: 413, body: { ok: false, error: "work_too_big", message: "The drawing is too big to save. The limit is 1 MB." } });
+    expect(await sent(await answer(right({ text: "x".repeat(1001) })))).toEqual({ status: 413, body: { ok: false, error: "work_too_big", message: "The typed working is too long to save. The limit is 1000 characters." } });
+    expect(await sent(await answer("{}", { headers: { "content-length": "1500001" } }))).toEqual({ status: 413, body: { ok: false, error: "work_too_big", message: "The answer is too big to save." } });
+    expect(await sent(await answer(JSON.stringify({ ...right(), pad: "x".repeat(1_500_000) })))).toEqual({ status: 413, body: { ok: false, error: "work_too_big", message: "The answer is too big to save." } });
+    expect(memory.tests[0].answers).toEqual([]);
+  });
+
+  it("answers 400 for a body that is not JSON, or work that is not a drawing", async () => {
+    family(stored(startAttempt(TEST, T0)));
+    expect(await sent(await answer("{not json"))).toEqual({ status: 400, body: { ok: false, error: "bad_json" } });
+    expect(await sent(await answer(right("a drawing")))).toEqual({ status: 400, body: { ok: false, error: "invalid", message: "The work must be an object." } });
+    expect(await sent(await answer(right({ image: "bm90IGEgcG5n" })))).toEqual({ status: 400, body: { ok: false, error: "invalid", message: "The drawing must be a PNG image." } });
+  });
+
+  it("answers 404 not_found for another family's test, an unknown test, or an id that is not a uuid", async () => {
+    family(stored(startAttempt(TEST, T0), { parent: P2, answered: 2 }));
+    expect(await sent(await answer(right()))).toEqual({ status: 404, body: { ok: false, error: "not_found" } });
+    expect(await sent(await answer(right(), { id: "7e57a000-0000-4000-8000-0000000000ff" }))).toEqual({ status: 404, body: { ok: false, error: "not_found" } });
+    expect(await sent(await answer(right(), { id: "a1" }))).toEqual({ status: 404, body: { ok: false, error: "not_found" } });
+    expect(memory.tests[0].answers).toHaveLength(2);
+  });
+
+  it("answers 502 store_failed when storing fails, and 500 when the stored test cannot be rebuilt", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    family(stored(startAttempt(TEST, T0)));
+    memory.fail.storeDrawing = new StoreError("upload failed", "down");
+    expect(await sent(await answer(right({ image: DRAWING })))).toEqual({ status: 502, body: { ok: false, error: "store_failed" } });
+    family(stored(startAttempt(TEST, T0)));
+    memory.fail.insertAnswer = new StoreError("answer save failed", "down");
+    expect(await sent(await answer(right({ image: DRAWING })))).toEqual({ status: 502, body: { ok: false, error: "store_failed" } });
+    expect(memory.drawings.size).toBe(0);
+    const broken = stored(startAttempt(TEST, T0), { answered: 2 });
+    broken.answers[0].questionId = "not-this-test";
+    family(broken);
+    expect(await sent(await answer({ questionId: "s1-2", response: "1", timeMs: 1 }))).toEqual({ status: 500, body: { ok: false, error: "store_failed" } });
+  });
+
+  it("answers 401 signed_out without a session, and 503 store_failed without the secret key", async () => {
+    family(stored(startAttempt(TEST, T0), { answered: 2 }));
+    signedIn = null;
+    expect(await sent(await answer(right()))).toEqual({ status: 401, body: { ok: false, error: "signed_out" } });
+    signedIn = P1;
+    secretKey = false;
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    expect(await sent(await answer(right()))).toEqual({ status: 503, body: { ok: false, error: "store_failed" } });
+    expect(memory.tests[0].answers).toHaveLength(2);
   });
 });
 

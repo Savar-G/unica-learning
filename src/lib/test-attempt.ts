@@ -1,7 +1,7 @@
 // One child's test attempt on the server (spec #144, #146): start or continue it ("Start test", "Continue test",
-// "Finish test", "Start again", #72), and read its next step. The rules come from the assessment core; this runs them
-// against the store and returns a domain result, never an HTTP response, so the routes only translate
-// (src/lib/test-api.ts). No Next.js imports.
+// "Finish test", "Start again", #72), read its next step, and answer a question with its whiteboard work (#147).
+// The rules come from the assessment core; this runs them against the store and returns a domain result, never an
+// HTTP response, so the routes only translate (src/lib/test-api.ts). No Next.js imports.
 // The store is one small interface with two adapters: Supabase (src/lib/test-attempt-server.ts), which keeps the guards
 // with a unique index and guarded updates, and in-memory (src/lib/test-attempt-memory.ts), which keeps the same guards
 // so the races can be tested without a database. Parent access stays in the routes: they pass the signed-in parent, and
@@ -12,20 +12,27 @@ import {
   attemptState,
   createSession,
   decideStart,
+  nextQuestion,
+  recordAnswer,
   restoreSession,
   startAttempt,
   startState,
   storedTest,
+  submitAnswer,
   testStep,
+  workProblem,
+  type Answer,
   type Attempt,
   type Grade,
   type Province,
+  type Route,
   type Session,
   type StartState,
   type StoredTest,
   type Submission,
   type TestStep,
 } from "@/lib/assessment";
+import { ANSWER_MAX, QUESTION_TIME_CAP_MS } from "@/lib/test-api";
 
 /** One of the parent's children, as a new test needs them. */
 export interface AttemptChild {
@@ -51,6 +58,20 @@ export interface NewAttempt {
   test: StoredTest;
 }
 
+/** One answer to store (a row of public.answers): the marked answer, its question, and the work that came with it. */
+export interface NewAnswer extends Answer {
+  /** Its place in the test, from 0. One answer per place: a second one is "taken". */
+  position: number;
+  templateId: string;
+  values: Record<string, number>;
+  /** The question required work on the whiteboard (#67). */
+  workRequired: boolean;
+  /** Where the drawing is stored, or null when the child did not draw. */
+  workPath: string | null;
+  /** The typed working, or null when the child typed none. */
+  workText: string | null;
+}
+
 /**
  * The store seam. Each operation keeps one database guard. Reads return only the given parent's rows. An attempt the
  * store returns has no `answeredAll`: the module works it out from the answers. A database error throws (a StoreError).
@@ -64,6 +85,24 @@ export interface AttemptStore {
   load(parent: string, id: string): Promise<LoadedAttempt | null>;
   /** Marks the test expired, only while it is in progress and its deadline ended before `now`. A late answer cannot undo it. */
   expire(id: string, now: number): Promise<void>;
+  /**
+   * Opens the answer window for an answer at `now`: moves the deadline to `until`, only while the test is in progress
+   * and its deadline has not passed. False when the test is no longer open: then nothing may be stored. An expire
+   * request at the same moment and this cannot both win.
+   */
+  openAnswerWindow(id: string, now: number, until: number): Promise<boolean>;
+  /** Records the time of a stored answer (the last answer time). It never moves back: two tabs can store answers at once. */
+  recordAnswerTime(id: string, at: number): Promise<void>;
+  /** Puts the deadline back to `previous` after an answer was not stored, only while it is still `until` (nothing moved it since). */
+  undoAnswerWindow(id: string, until: number, previous: number): Promise<void>;
+  /** Stores a whiteboard drawing (PNG bytes) for one question of the parent's test, under a new name. Returns its path. */
+  storeDrawing(parent: string, id: string, questionId: string, png: Uint8Array): Promise<string>;
+  /** Removes a drawing whose answer was not stored. */
+  removeDrawing(path: string): Promise<void>;
+  /** Stores one answer. "taken": the test already has an answer in this place (another tab answered first). */
+  insertAnswer(id: string, answer: NewAnswer): Promise<"stored" | "taken">;
+  /** Records the stage 2 route the child was given when stage 1 ended, for the admin view. */
+  recordRoute(id: string, route: Route): Promise<void>;
   /** Stores a new test for the parent's child. "taken": the child already has a test in progress (one open test per child). */
   create(parent: string, child: AttemptChild, test: NewAttempt): Promise<{ id: string } | "taken">;
 }
@@ -233,6 +272,124 @@ export type StepOutcome = { ok: true; step: TestStep } | Refusal;
 export async function nextStep(store: AttemptStore, parent: string, id: string, now: number): Promise<StepOutcome> {
   const open = await openTest(store, parent, id, now);
   return open.ok ? { ok: true, step: testStep(open.session) } : open;
+}
+
+/** The whiteboard work that comes with an answer (#67), as the route parsed it (src/lib/work-payload.ts). */
+export interface AnswerWork {
+  /** The drawing as PNG bytes, within the size limit; null for an empty board. */
+  png: Uint8Array | null;
+  /** The typed working, trimmed and within the size limit; "" when the child typed none. */
+  text: string;
+}
+
+/** A child's answer to the current question, as the route read it from the request. */
+export interface AnswerInput {
+  /** The question the child answered. Another question than the current one is a conflict. */
+  questionId: string;
+  /** The response as the child gave it: a choice, or a number up to ANSWER_MAX characters. */
+  response: string;
+  /** Time on the question in milliseconds, as the browser measured it. */
+  timeMs: number;
+  work: AnswerWork;
+}
+
+/**
+ * Marks the child's answer to the current question of the parent's test at `now` with the assessment core, stores
+ * it, and sends the next step. The browser learns nothing about whether the answer was right.
+ */
+export async function answerQuestion(store: AttemptStore, parent: string, id: string, input: AnswerInput, now: number): Promise<StepOutcome> {
+  const open = await openTest(store, parent, id, now);
+  if (!open.ok) return open;
+  const { attempt, session } = open;
+  const q = nextQuestion(session);
+  // The test is complete or no longer in progress, or a second tab (or a retried request) answered this question already.
+  if (attempt.status !== "in_progress" || !q || input.questionId !== q.id) return { ok: false, error: "conflict", step: testStep(session) };
+  const response = input.response.trim();
+  const valid = q.format === "choice" ? (q.choices ?? []).includes(response) : response.length > 0 && response.length <= ANSWER_MAX;
+  if (!valid || !Number.isFinite(input.timeMs) || input.timeMs < 0) return { ok: false, error: "invalid" };
+  // #67: a show-your-work question needs work on the whiteboard; grades 1 and 2 draw only.
+  const problem = workProblem(session, { drawn: input.work.png !== null, text: input.work.text });
+  if (problem) return { ok: false, error: problem };
+  const next = submitAnswer(session, { questionId: q.id, response, timeMs: Math.min(Math.round(input.timeMs), QUESTION_TIME_CAP_MS) });
+  const marked = next.answers.at(-1)!;
+  // #72: the deadline moves to 24 hours from this answer, only if the test is still open now. An answer that arrives
+  // after the deadline, or after "Start again" expired the test, stops here and stores nothing.
+  const until = recordAnswer(attempt, now).resumeUntil;
+  let opened: boolean;
+  try {
+    opened = await store.openAnswerWindow(id, now, until);
+  } catch (e) {
+    console.error("[test]", messageOf(e));
+    return { ok: false, error: "store_failed" };
+  }
+  if (!opened) return freshConflict(store, parent, id, now);
+  /** An answer that was not stored gives no extra time: the deadline goes back where it was, unless something moved it since. */
+  const failed = async (): Promise<Refusal> => {
+    await bestEffort("[test] deadline undo failed", () => store.undoAnswerWindow(id, until, attempt.resumeUntil));
+    return { ok: false, error: "store_failed" };
+  };
+
+  // The drawing first, under a new name, so the answer can point to it. If the answer is not stored, the drawing goes.
+  let workPath: string | null = null;
+  if (input.work.png) {
+    try {
+      workPath = await store.storeDrawing(parent, id, q.id, input.work.png);
+    } catch (e) {
+      logFailure("[work] upload failed", e);
+      return failed();
+    }
+  }
+  let inserted: "stored" | "taken";
+  try {
+    inserted = await store.insertAnswer(id, {
+      ...marked,
+      position: session.answers.length,
+      templateId: q.templateId,
+      values: q.values,
+      workRequired: q.showWork === true,
+      workPath,
+      workText: input.work.text || null,
+    });
+  } catch (e) {
+    await removeDrawing(store, workPath);
+    logFailure("[test] answer save failed", e);
+    return failed();
+  }
+  if (inserted === "taken") {
+    // Another request stored this question's answer first. Send the step after it, read fresh, so the screen moves on.
+    await removeDrawing(store, workPath);
+    return freshConflict(store, parent, id, now);
+  }
+  // The answer time is written only once the answer is stored: the reminder emails (#73) count from it.
+  await bestEffort("[test] answer time save failed", () => store.recordAnswerTime(id, now));
+  // Stage 1 just ended: record the route for the admin view.
+  const route = next.route;
+  if (!session.route && route) await bestEffort("[test] route save failed", () => store.recordRoute(id, route));
+  return { ok: true, step: testStep(next) };
+}
+
+/** Logs a failed store write the way the answer route logged it before the module (#147): the line, then the cause. */
+function logFailure(line: string, e: unknown): void {
+  console.error(line, e instanceof StoreError ? e.detail : messageOf(e));
+}
+
+/** Removes a drawing whose answer was not stored, so the bucket holds no drawing without its answer. A failure is logged. */
+const removeDrawing = (store: AttemptStore, path: string | null) =>
+  path ? bestEffort("[work] remove failed", () => store.removeDrawing(path)) : Promise.resolve();
+
+/** A store write the request does not wait on to succeed: a failure is logged with `line`, and the request goes on. */
+async function bestEffort(line: string, write: () => Promise<void>): Promise<void> {
+  try {
+    await write();
+  } catch (e) {
+    logFailure(line, e);
+  }
+}
+
+/** A conflict with the test's step, read fresh after another request changed it; or why it cannot be read. */
+async function freshConflict(store: AttemptStore, parent: string, id: string, now: number): Promise<Refusal> {
+  const fresh = await openTest(store, parent, id, now);
+  return fresh.ok ? { ok: false, error: "conflict", step: testStep(fresh.session) } : fresh;
 }
 
 /** The parent's test at `now`, or "expired" when it ran out of time: then it is marked expired if still in progress. */

@@ -1,15 +1,20 @@
 import "server-only";
+import { randomBytes } from "node:crypto";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Grade, StartState, StoredTest } from "@/lib/assessment";
 import type { Child } from "@/lib/account";
 import { ATTEMPT_COLUMNS, isUuid, toAttempt, type AttemptRow } from "@/lib/assessment-store";
 import { startStates, StoreError, type AttemptStore } from "@/lib/test-attempt";
 import { adminClient } from "@/lib/supabase-auth";
+import { workPath } from "@/lib/work-payload";
+import { WORK_BUCKET } from "@/lib/work-store";
 
 // The test attempt module's Supabase store (src/lib/test-attempt.ts, #146): the database, read and written with the
 // secret key. Every read is filtered by the parent the route passes (from their verified session), so a parent never
 // reaches another family's test. The guards are the database's: the unique index assessments_one_open_per_child (one
 // open test per child), and updates guarded in the update itself, so two requests at once cannot both win.
+// Answers (#147): one answer per place in a test (unique on assessment_id and position). The drawings go to the private
+// bucket (src/lib/work-store.ts), written with the secret key in the parent's folder.
 
 const iso = (ms: number) => new Date(ms).toISOString();
 
@@ -50,6 +55,65 @@ export function attemptStore(admin: SupabaseClient): AttemptStore {
       const { error } = await admin.from("assessments").update({ status: "expired" })
         .eq("id", id).eq("status", "in_progress").lt("resume_until", iso(now));
       if (error) throw new StoreError("expire failed", error.message);
+    },
+
+    async openAnswerWindow(id, now, until) {
+      const { data, error } = await admin.from("assessments").update({ resume_until: iso(until) })
+        .eq("id", id).eq("status", "in_progress").gte("resume_until", iso(now)).select("id");
+      if (error) throw new StoreError("deadline update failed", error.message);
+      return (data ?? []).length === 1;
+    },
+
+    async recordAnswerTime(id, at) {
+      const time = iso(at);
+      const { error } = await admin.from("assessments").update({ last_answer_at: time })
+        .eq("id", id).or(`last_answer_at.is.null,last_answer_at.lt."${time}"`);
+      if (error) throw new StoreError("answer time save failed", error.message);
+    },
+
+    async undoAnswerWindow(id, until, previous) {
+      const { error } = await admin.from("assessments").update({ resume_until: iso(previous) })
+        .eq("id", id).eq("resume_until", iso(until));
+      if (error) throw new StoreError("deadline undo failed", error.message);
+    },
+
+    async storeDrawing(parent, id, questionId, png) {
+      // A new name for each upload, so two tabs never write over each other's file.
+      const path = workPath(parent, id, questionId, randomBytes(6).toString("hex"));
+      const { error } = await admin.storage.from(WORK_BUCKET).upload(path, png, { contentType: "image/png", upsert: false, cacheControl: "3600" });
+      if (error) throw new StoreError("upload failed", error.message);
+      return path;
+    },
+
+    async removeDrawing(path) {
+      const { error } = await admin.storage.from(WORK_BUCKET).remove([path]);
+      if (error) throw new StoreError("remove failed", error.message);
+    },
+
+    async insertAnswer(id, answer) {
+      const { error } = await admin.from("answers").insert({
+        assessment_id: id,
+        position: answer.position,
+        question_id: answer.questionId,
+        template_id: answer.templateId,
+        values: answer.values,
+        response: answer.response,
+        correct: answer.correct,
+        misconception: answer.misconception,
+        time_ms: answer.timeMs,
+        work_required: answer.workRequired,
+        work_path: answer.workPath,
+        work_text: answer.workText,
+      });
+      // One answer per place (unique index on assessment_id and position): another request stored it first.
+      if (error?.code === "23505") return "taken";
+      if (error) throw new StoreError("answer save failed", error.message);
+      return "stored";
+    },
+
+    async recordRoute(id, route) {
+      const { error } = await admin.from("assessments").update({ route }).eq("id", id);
+      if (error) throw new StoreError("route save failed", error.message);
     },
 
     async create(parent, child, { attempt, seed, test }) {
