@@ -12,6 +12,9 @@ vi.mock("server-only", () => ({}));
 let signedIn: string | null;
 let secretKey: boolean;
 let memory: ReturnType<typeof memoryAttemptStore>;
+/** The work the finish route left for after the response (#150), and each report job it ran: the test id and the link origin. */
+let afterResponse: (() => unknown)[];
+let reportJobs: [string, string][];
 
 vi.mock("@/lib/supabase-auth", () => ({
   sessionClient: async () => ({}),
@@ -19,12 +22,15 @@ vi.mock("@/lib/supabase-auth", () => ({
   adminClient: () => (secretKey ? {} : null),
 }));
 vi.mock("@/lib/test-attempt-server", () => ({ attemptStore: () => memory.store }));
+vi.mock("next/server", async (original) => ({ ...(await original<typeof import("next/server")>()), after: (task: () => unknown) => void afterResponse.push(task) }));
+vi.mock("@/lib/report-job", () => ({ runReportJob: async (id: string, origin: string) => void reportJobs.push([id, origin]) }));
 
 const { POST: startRoute } = await import("@/app/api/account/assessments/route");
 const { GET: stepRoute } = await import("@/app/api/account/assessments/[id]/route");
 const { POST: answerRoute } = await import("@/app/api/account/assessments/[id]/answers/route");
 const { GET: factsRoute, POST: factsStartRoute } = await import("@/app/api/account/assessments/[id]/facts/route");
 const { POST: factAnswerRoute } = await import("@/app/api/account/assessments/[id]/facts/answers/route");
+const { POST: finishRoute } = await import("@/app/api/account/assessments/[id]/finish/route");
 
 const HOUR = 60 * 60_000;
 const DAY = 24 * HOUR;
@@ -67,6 +73,8 @@ const sent = async (res: Response) => ({ status: res.status, body: await res.jso
 beforeEach(() => {
   signedIn = P1;
   secretKey = true;
+  afterResponse = [];
+  reportJobs = [];
   family();
   vi.useFakeTimers({ toFake: ["Date"] });
   vi.setSystemTime(T0);
@@ -556,5 +564,146 @@ describe("POST /api/account/assessments/[id]/facts/answers (answer one fact)", (
     vi.spyOn(console, "error").mockImplementation(() => {});
     expect(await sent(await answerFactRoute(TEST, rightFact(0)))).toEqual({ status: 503, body: { ok: false, error: "store_failed" } });
     expect(memory.facts[0].answers).toEqual([]);
+  });
+});
+
+// The finish route (#150) only translates too: it reads the help answer from the request, and each result of the
+// module's finish maps to the status code and JSON the browser got before the module. Both ok results leave the report
+// job for after the response, so a second finish completes a report step that failed before.
+const finish = (body?: unknown, id = TEST) =>
+  finishRoute(new Request(`https://unica.test/api/account/assessments/${id}/finish`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    ...(body === undefined ? {} : { body: typeof body === "string" ? body : JSON.stringify(body) }),
+  }), ctxOf(id));
+/** Runs the work the route left for after the response, as Next.js does once the response is sent. */
+const afterTheResponse = async () => {
+  for (const task of afterResponse.splice(0)) await task();
+};
+/** Asha's test with every answer in, the last one an hour after the start. */
+const allIn = () => family(stored(recordAnswer(startAttempt(TEST, T0), T0 + HOUR), { answered: 36 }));
+
+describe("POST /api/account/assessments/[id]/finish (score the test)", () => {
+  it("scores the test with the help answer, stores it, and runs the report job after the response", async () => {
+    allIn();
+    vi.setSystemTime(T0 + 2 * HOUR);
+    expect(await sent(await finish({ help: "a-little" }))).toEqual({ status: 200, body: { ok: true } });
+    expect(memory.tests[0]).toMatchObject({
+      status: "completed",
+      completedAt: T0 + 2 * HOUR,
+      route: "up",
+      help: "a-little",
+      placement: { route: "up", flags: [{ kind: "helped", answer: "a-little" }] },
+    });
+    expect(reportJobs).toEqual([]);
+    await afterTheResponse();
+    expect(reportJobs).toEqual([[TEST, "https://unica.test"]]);
+  });
+
+  it("answers ok again for a test already scored, changes nothing, and runs the report job again", async () => {
+    allIn();
+    vi.setSystemTime(T0 + 2 * HOUR);
+    await finish({ help: "no" });
+    vi.setSystemTime(T0 + 3 * HOUR);
+    expect(await sent(await finish({ help: "yes" }))).toEqual({ status: 200, body: { ok: true } });
+    expect(memory.tests[0]).toMatchObject({ status: "completed", completedAt: T0 + 2 * HOUR, help: "no", placement: { flags: [] } });
+    await afterTheResponse();
+    expect(reportJobs).toEqual([[TEST, "https://unica.test"], [TEST, "https://unica.test"]]);
+  });
+
+  it("scores once when Finish is pressed twice at once: both are ok, and both run the report job", async () => {
+    allIn();
+    const both = await Promise.all([finish({ help: "no" }), finish({ help: "yes" })]);
+    expect(await Promise.all(both.map(sent))).toEqual([{ status: 200, body: { ok: true } }, { status: 200, body: { ok: true } }]);
+    expect(memory.tests).toHaveLength(1);
+    expect(memory.tests[0]).toMatchObject({ status: "completed", help: "no" });
+    await afterTheResponse();
+    expect(reportJobs).toEqual([[TEST, "https://unica.test"], [TEST, "https://unica.test"]]);
+  });
+
+  it("scores a test with every answer in long after its deadline", async () => {
+    allIn();
+    vi.setSystemTime(T0 + 3 * DAY);
+    expect(await sent(await finish({ help: "no" }))).toEqual({ status: 200, body: { ok: true } });
+    expect(memory.tests[0]).toMatchObject({ status: "completed", completedAt: T0 + 3 * DAY });
+  });
+
+  it("scores without a help answer when the request has none: an older screen did not ask", async () => {
+    for (const body of [undefined, "", "{}", { help: null }, "{not json", "null", '"yes"', [1]]) {
+      allIn();
+      expect(await sent(await finish(body))).toEqual({ status: 200, body: { ok: true } });
+      expect(memory.tests[0]).toMatchObject({ status: "completed", help: null, placement: { flags: [] } });
+    }
+  });
+
+  it("answers 400 invalid for a help answer that is not one of the answers, stores nothing, and runs no report job", async () => {
+    allIn();
+    for (const help of ["maybe", 1, true, { yes: true }]) {
+      expect(await sent(await finish({ help }))).toEqual({ status: 400, body: { ok: false, error: "invalid" } });
+    }
+    expect(memory.tests[0]).toMatchObject({ status: "in_progress", completedAt: null });
+    expect(afterResponse).toEqual([]);
+    // As before the module, a test already scored answers ok whatever the help answer says.
+    await finish({ help: "no" });
+    expect(await sent(await finish({ help: "maybe" }))).toEqual({ status: 200, body: { ok: true } });
+  });
+
+  it("answers 409 incomplete for a test without every answer, changes nothing, and runs no report job", async () => {
+    family(stored(recordAnswer(startAttempt(TEST, T0), T0 + HOUR), { answered: 35 }));
+    const before = structuredClone(memory.tests);
+    expect(await sent(await finish({ help: "no" }))).toEqual({ status: 409, body: { ok: false, error: "incomplete" } });
+    expect(await sent(await finish({ help: "maybe" }))).toEqual({ status: 409, body: { ok: false, error: "incomplete" } });
+    expect(memory.tests).toEqual(before);
+    expect(afterResponse).toEqual([]);
+  });
+
+  it("answers 410 expired for a test that ran out of time, scores nothing, and runs no report job", async () => {
+    family({ ...stored(startAttempt(TEST, T0), { answered: 36 }), status: "expired" });
+    expect(await sent(await finish({ help: "no" }))).toEqual({ status: 410, body: { ok: false, error: "expired" } });
+    family(stored(recordAnswer(startAttempt(TEST, T0), T0 + HOUR), { answered: 20 }));
+    vi.setSystemTime(T0 + 25 * HOUR + 1);
+    expect(await sent(await finish({ help: "no" }))).toEqual({ status: 410, body: { ok: false, error: "expired" } });
+    expect(memory.tests[0]).toMatchObject({ status: "expired", completedAt: null });
+    expect(afterResponse).toEqual([]);
+  });
+
+  it("answers 404 not_found for another family's test, an unknown test, or an id that is not a uuid", async () => {
+    family(stored(startAttempt(TEST, T0), { parent: P2, answered: 36 }));
+    expect(await sent(await finish({ help: "no" }))).toEqual({ status: 404, body: { ok: false, error: "not_found" } });
+    expect(await sent(await finish({ help: "no" }, "7e57a000-0000-4000-8000-0000000000ff"))).toEqual({ status: 404, body: { ok: false, error: "not_found" } });
+    expect(await sent(await finish({ help: "no" }, "a1"))).toEqual({ status: 404, body: { ok: false, error: "not_found" } });
+    expect(memory.tests[0]).toMatchObject({ status: "in_progress", completedAt: null });
+    expect(afterResponse).toEqual([]);
+  });
+
+  it("answers 502 store_failed when the store fails, and 500 when the stored test or facts section cannot be rebuilt", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    for (const operation of ["load", "loadFacts", "complete"] as const) {
+      allIn();
+      memory.fail[operation] = new StoreError(`${operation} failed`, "down");
+      expect(await sent(await finish({ help: "no" }))).toEqual({ status: 502, body: { ok: false, error: "store_failed" } });
+      expect(memory.tests[0].status).toBe("in_progress");
+    }
+    const broken = stored(startAttempt(TEST, T0), { answered: 36 });
+    broken.answers[0].questionId = "not-this-test";
+    family(broken);
+    expect(await sent(await finish({ help: "no" }))).toEqual({ status: 500, body: { ok: false, error: "store_failed" } });
+    allIn();
+    brokenFacts();
+    expect(await sent(await finish({ help: "no" }))).toEqual({ status: 500, body: { ok: false, error: "store_failed" } });
+    expect(memory.tests[0].status).toBe("in_progress");
+    expect(afterResponse).toEqual([]);
+  });
+
+  it("answers 401 signed_out without a session, and 503 store_failed without the secret key", async () => {
+    allIn();
+    signedIn = null;
+    expect(await sent(await finish({ help: "no" }))).toEqual({ status: 401, body: { ok: false, error: "signed_out" } });
+    signedIn = P1;
+    secretKey = false;
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    expect(await sent(await finish({ help: "no" }))).toEqual({ status: 503, body: { ok: false, error: "store_failed" } });
+    expect(memory.tests[0]).toMatchObject({ status: "in_progress", completedAt: null });
+    expect(afterResponse).toEqual([]);
   });
 });

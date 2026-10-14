@@ -3,8 +3,8 @@
 // still open (guarded updates), and reads that return only the given parent's rows. Every operation yields first, so
 // two calls started together interleave as two requests would; the check and the write after it happen together, as
 // in one database statement. Answers (#147): one answer per place in a test (the unique index on assessment_id and
-// position), and the drawings bucket as a map by path.
-import type { Attempt, Route, StoredTest, Submission } from "@/lib/assessment";
+// position), and the drawings bucket as a map by path. Finish (#150): a test is completed only while it is in progress.
+import type { Attempt, HelpAnswer, Placement, Route, StoredTest, Submission } from "@/lib/assessment";
 import type { FactsTest } from "@/lib/assessment";
 import { StoreError, type AttemptChild, type AttemptStore, type NewAnswer } from "@/lib/test-attempt";
 import type { FactsStore, NewFactAnswer } from "@/lib/test-attempt";
@@ -12,8 +12,20 @@ import { workPath } from "@/lib/work-payload";
 
 /** A row of public.answers. A test can give only what the module reads back (a Submission); the module stores all of it. */
 export type MemoryAnswer = Submission & Partial<NewAnswer>;
-/** A stored test: one row of public.assessments with its answers, in their places. `route`: none until stage 1 ends. */
-export type MemoryTest = Attempt & { parentId: string; childId: string; seed: number; test: StoredTest; answers: MemoryAnswer[]; route?: Route | null };
+/**
+ * A stored test: one row of public.assessments with its answers, in their places. `route`: none until stage 1 ends.
+ * `placement` and `help` (the answer to "Did anyone help?"): none until the test is finished.
+ */
+export type MemoryTest = Attempt & {
+  parentId: string;
+  childId: string;
+  seed: number;
+  test: StoredTest;
+  answers: MemoryAnswer[];
+  route?: Route | null;
+  placement?: Placement | null;
+  help?: HelpAnswer | null;
+};
 /** A row of public.children. */
 export type MemoryChild = AttemptChild & { parentId: string };
 /** A test's facts section: one row of public.assessment_facts with its rows of public.fact_answers (`position` is 0-based). */
@@ -139,6 +151,11 @@ export function memoryAttemptStore({ children: kids = [], tests: initial = [] }:
       await begin("recordRoute");
       const row = tests.find((t) => t.id === id);
       if (row) row.route = route;
+    },
+    async complete(id, { at, placement, help }) {
+      await begin("complete");
+      const row = tests.find((t) => t.id === id && t.status === "in_progress");
+      if (row) Object.assign(row, { status: "completed", completedAt: at, route: placement.route, placement, help });
     },
     async create(parent, child, { attempt, seed, test }) {
       await begin("create");

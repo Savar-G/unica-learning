@@ -1,5 +1,6 @@
 // One child's test attempt on the server (spec #144, #146): start or continue it ("Start test", "Continue test",
-// "Finish test", "Start again", #72), read its next step, and answer a question with its whiteboard work (#147).
+// "Finish test", "Start again", #72), read its next step, answer a question with its whiteboard work (#147), run the
+// timed facts section (#148), and finish it: score it once and store the placement (#150).
 // The rules come from the assessment core; this runs them against the store and returns a domain result, never an
 // HTTP response, so the routes only translate (src/lib/test-api.ts). No Next.js imports.
 // The store is one small interface with two adapters: Supabase (src/lib/test-attempt-server.ts), which keeps the guards
@@ -12,6 +13,7 @@ import {
   attemptState,
   createSession,
   decideStart,
+  finish,
   nextQuestion,
   recordAnswer,
   restoreSession,
@@ -24,6 +26,8 @@ import {
   type Answer,
   type Attempt,
   type Grade,
+  type HelpAnswer,
+  type Placement,
   type Province,
   type Route,
   type Session,
@@ -105,6 +109,11 @@ export interface AttemptStore extends FactsStore {
   insertAnswer(id: string, answer: NewAnswer): Promise<"stored" | "taken">;
   /** Records the stage 2 route the child was given when stage 1 ended, for the admin view. */
   recordRoute(id: string, route: Route): Promise<void>;
+  /**
+   * Completes the scored test at `at`: stores the completion time, the placement with its route, and the child's answer
+   * to "Did anyone help?". Only while the test is in progress: a second finish at the same moment changes nothing.
+   */
+  complete(id: string, finished: { at: number; placement: Placement; help: HelpAnswer | null }): Promise<void>;
   /** Stores a new test for the parent's child. "taken": the child already has a test in progress (one open test per child). */
   create(parent: string, child: AttemptChild, test: NewAttempt): Promise<{ id: string } | "taken">;
 }
@@ -148,7 +157,10 @@ export type Refusal =
   /** A new test opens 30 days after the last completed one (#72). */
   | { ok: false; error: "retake_closed"; opensAt: number }
   /** A store read or write failed. `unreadable`: the stored test cannot be rebuilt from its answers. */
-  | { ok: false; error: "store_failed"; unreadable?: true };
+  | StoreFailed;
+
+/** A store read or write failed. `unreadable`: the stored test (or its facts section) cannot be rebuilt from its answers. */
+type StoreFailed = { ok: false; error: "store_failed"; unreadable?: true };
 
 const messageOf = (e: unknown) => (e instanceof Error ? e.message : e);
 
@@ -460,7 +472,7 @@ export type FactsRefusal =
   | { ok: false; error: "not_found" }
   /** The test is not in progress, the section has not started, or the answer came late or for another fact. `step`: where the section is now. */
   | { ok: false; error: "conflict"; step?: FactsStep }
-  | Extract<Refusal, { error: "store_failed" }>;
+  | StoreFailed;
 
 export type FactsOutcome = { ok: true; step: FactsStep } | FactsRefusal;
 
@@ -471,7 +483,7 @@ interface Section {
 }
 
 /** Logs a failed facts store step the way the facts routes logged it before the module, and refuses. */
-function factsFailed(e: unknown): FactsRefusal {
+function factsFailed(e: unknown): StoreFailed {
   if (e instanceof StoreError) console.error(`[facts] ${e.what}`, e.detail);
   else console.error("[facts]", messageOf(e));
   return { ok: false, error: "store_failed" };
@@ -490,7 +502,7 @@ async function parentTest(store: AttemptStore, parent: string, id: string): Prom
 }
 
 /** The test's facts section, rebuilt from the stored facts and answers; null when it has not started. */
-async function readSection(store: AttemptStore, id: string): Promise<{ ok: true; section: Section | null } | FactsRefusal> {
+async function readSection(store: AttemptStore, id: string): Promise<{ ok: true; section: Section | null } | StoreFailed> {
   let loaded: LoadedFacts | null;
   try {
     loaded = await store.loadFacts(id);
@@ -596,4 +608,42 @@ export async function answerFact(
   if (fresh.ok && fresh.section) return { ok: false, error: "conflict", step: stepAt(fresh.section, now) };
   console.error("[facts] answer save failed", "the answer another request stored cannot be read");
   return { ok: false, error: "store_failed" };
+}
+
+// Finish (#150): the child answered every question, and the screen sends the test with the answer to "Did anyone
+// help?". The test is scored once: the store completes it only while it is in progress.
+
+/**
+ * The child's answer to "Did anyone help?" (#71), as the route read it from the request: null when the request has
+ * none (an older screen did not ask), and "invalid" when it holds something that is not a help answer.
+ */
+export type HelpInput = HelpAnswer | null | "invalid";
+
+/** "now": this request scored the test. "already": it was scored before. Either way the report job runs (again). */
+export type FinishOutcome = { ok: true; id: string; finished: "now" | "already" } | Refusal;
+
+/**
+ * Finishes the parent's test at `now`: scores it once with the assessment core, together with its timed facts section
+ * and the child's help answer, and stores it as completed. A test scored before is "already" finished, so a second
+ * finish answers ok again and its report job can complete a report step that failed before. `id` in the outcome is
+ * the test's id as the store holds it.
+ */
+export async function finishTest(store: AttemptStore, parent: string, id: string, help: HelpInput, now: number): Promise<FinishOutcome> {
+  const open = await openTest(store, parent, id, now);
+  if (!open.ok) return open;
+  const { attempt, session } = open;
+  if (attempt.status === "completed") return { ok: true, id: attempt.id, finished: "already" };
+  if (attempt.status !== "in_progress" || testStep(session).status !== "complete") return { ok: false, error: "incomplete" };
+  // As before the module, the help answer is checked only for a test that can be finished now.
+  if (help === "invalid") return { ok: false, error: "invalid" };
+  // The timed facts section (#70) goes into the placement beside the test; none when the child had none.
+  const facts = await readSection(store, id);
+  if (!facts.ok) return facts;
+  const placement = finish(session, facts.section?.session ?? null, help);
+  try {
+    await store.complete(id, { at: now, placement, help });
+  } catch (e) {
+    return storeFailed(e);
+  }
+  return { ok: true, id: attempt.id, finished: "now" };
 }

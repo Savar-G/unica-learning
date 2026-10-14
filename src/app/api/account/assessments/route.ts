@@ -1,4 +1,5 @@
-import { isUuid, newSeed, testAccess } from "@/lib/assessment-store";
+import { isUuid, newSeed } from "@/lib/assessment-store";
+import { adminClient, parentId, sessionClient } from "@/lib/supabase-auth";
 import { refusalResponse, testFail, type StartResult } from "@/lib/test-api";
 import { startTest } from "@/lib/test-attempt";
 import { attemptStore } from "@/lib/test-attempt-server";
@@ -9,8 +10,10 @@ import { attemptStore } from "@/lib/test-attempt-server";
 // replaced, so a family who pressed "Continue" learns that the time ran out. A new test opens 30 days after the last
 // completed one. The test attempt module (src/lib/test-attempt.ts, #146) runs the rules; this route only translates.
 export async function POST(request: Request) {
-  const access = await testAccess();
-  if ("error" in access) return access.error;
+  const parent = await parentId(await sessionClient());
+  if (!parent) return testFail("signed_out", 401);
+  const admin = adminClient();
+  if (!admin) return testFail("store_failed", 503);
 
   let body: { childId?: unknown; restart?: unknown };
   try {
@@ -21,7 +24,7 @@ export async function POST(request: Request) {
   const { childId } = body;
   if (!isUuid(childId)) return testFail("invalid", 400);
 
-  const outcome = await startTest(attemptStore(access.admin), access.parent, childId, Date.now(), { restart: body.restart === true, newSeed });
+  const outcome = await startTest(attemptStore(admin), parent, childId, Date.now(), { restart: body.restart === true, newSeed });
   if (!outcome.ok) return refusalResponse(outcome);
   return Response.json({ ok: true, id: outcome.id, resumed: outcome.resumed } satisfies StartResult);
 }

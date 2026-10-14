@@ -13,8 +13,8 @@ import {
   type StoredTest,
   type Submission,
 } from "@/lib/assessment";
-import { allRight, type Script } from "@/lib/assessment/scripted-child";
-import { answerQuestion, nextStep, startStates, startTest, stateFor, StoreError, type AnswerInput, type AttemptStore } from "@/lib/test-attempt";
+import { allRight, knowsUpTo, takeTest, type Script } from "@/lib/assessment/scripted-child";
+import { answerQuestion, finishTest, nextStep, startStates, startTest, stateFor, StoreError, type AnswerInput, type AttemptStore, type HelpInput } from "@/lib/test-attempt";
 import { memoryAttemptStore, type MemoryTest } from "@/lib/test-attempt-memory";
 import { answerFact, readFacts, startFacts } from "@/lib/test-attempt";
 import { createFacts } from "@/lib/assessment";
@@ -930,5 +930,174 @@ describe("when the facts store fails", () => {
     ]);
     expect(memory.facts).toHaveLength(1);
     expect(memory.facts[0].answers).toHaveLength(1);
+  });
+});
+
+// Finish (#150): the child's last answer is in, and the parent's screen sends the test with the answer to "Did anyone
+// help?". The module scores it once with the assessment core, together with the timed facts section, and stores it.
+/**
+ * A scripted child takes Asha's whole test through the module's answer step, one minute apart: each answer is right
+ * when the script says so, with a drawing on each question that needs shown work. With `facts`, at the halfway break
+ * the child does the first five facts of the timed section. Returns the time of the last answer.
+ */
+async function takeWholeTest(memory: ReturnType<typeof family>, script: Script, { facts = false } = {}): Promise<number> {
+  let at = T0;
+  for (let n = 0; ; n++) {
+    const row = memory.tests[0];
+    const q = nextQuestion(restoreSession(row.test, row.answers));
+    if (!q) return at;
+    if (facts && n === row.test.stage1.length) await quickFacts(memory, (at += 60_000));
+    const wrong = q.format === "choice" ? q.choices!.find((c) => c !== q.answer)! : "no idea";
+    const input = { questionId: q.id, response: script(q, n) ? q.answer : wrong, timeMs: 20_000, work: { png: q.showWork ? DRAWING : null, text: "" } };
+    const result = await answerQuestion(memory.store, P1, row.id, input, (at += 60_000));
+    if (!result.ok) throw new Error(`answer ${n + 1}: ${result.error}`);
+  }
+}
+
+/** The first five facts of the section from `start`: right, wrong, skipped, right and right, at 2, 4, 5, 7 and 10 seconds. */
+async function quickFacts(memory: ReturnType<typeof family>, start: number): Promise<void> {
+  const [f0, f1, f2, f3, f4] = createFacts(ASHA, 7).facts;
+  const id = memory.tests[0].id;
+  if (!(await startFacts(memory.store, P1, id, start)).ok) throw new Error("the facts section did not start");
+  const answers = [[f0, String(f0.answer), 2_000], [f1, String(f1.answer + 1), 4_000], [f2, "", 5_000], [f3, String(f3.answer), 7_000], [f4, String(f4.answer), 10_000]] as const;
+  for (const [fact, response, atMs] of answers) {
+    if (!(await answerFact(memory.store, P1, id, start + atMs, { factId: fact.id, response })).ok) throw new Error(`fact ${fact.id} was not stored`);
+  }
+}
+
+/** The facts part of the placement after quickFacts: four answered (three right), one skipped, 2 seconds each in the middle. */
+const QUICK_FACTS = { seconds: 60, answered: 4, correct: 3, skipped: 1, medianMs: 2_000 };
+
+describe("finishing a test", () => {
+  it.each<{ script: Script; route: string; facts: boolean; help: HelpInput; flags: unknown[] }>([
+    { script: allRight, route: "up", facts: false, help: null, flags: [] },
+    { script: knowsUpTo(3), route: "down", facts: false, help: "yes", flags: [{ kind: "helped", answer: "yes" }] },
+    { script: allRight, route: "up", facts: true, help: "no", flags: [] },
+    { script: knowsUpTo(3), route: "down", facts: true, help: "a-little", flags: [{ kind: "helped", answer: "a-little" }] },
+    { script: knowsUpTo(3), route: "down", facts: true, help: null, flags: [] },
+  ])("scores a full test once and stores it: route $route, facts section $facts, help answer $help", async ({ script, route, facts, help, flags }) => {
+    const memory = family(stored(open("a1", T0)));
+    const last = await takeWholeTest(memory, script, { facts });
+    const at = last + 5 * 60_000;
+    expect(await finishTest(memory.store, P1, "a1", help, at)).toEqual({ ok: true, id: "a1", finished: "now" });
+    // The same child, scored by the assessment core alone.
+    const { placement } = takeTest(ASHA, 7, script);
+    expect(placement.route).toBe(route);
+    expect(memory.tests[0]).toMatchObject({ status: "completed", completedAt: at, lastAnswerAt: last, resumeUntil: last + DAY, route, help });
+    expect(memory.tests[0].placement).toEqual({ ...placement, facts: facts ? expect.objectContaining(QUICK_FACTS) : null, flags });
+  });
+
+  it("scores once when Finish comes twice: the second is already finished, and changes nothing", async () => {
+    const memory = family(stored(open("a1", T0), { answered: 36 }));
+    expect(await finishTest(memory.store, P1, "a1", "no", T0 + HOUR)).toEqual({ ok: true, id: "a1", finished: "now" });
+    const scored = structuredClone(memory.tests[0]);
+    expect(await finishTest(memory.store, P1, "a1", "yes", T0 + 2 * HOUR)).toEqual({ ok: true, id: "a1", finished: "already" });
+    expect(memory.tests).toEqual([scored]);
+    expect(scored).toMatchObject({ status: "completed", completedAt: T0 + HOUR, help: "no", placement: { flags: [] } });
+  });
+
+  it("scores once when Finish is pressed twice at once: both are ok, and the first one's placement and help are stored", async () => {
+    const memory = family(stored(open("a1", T0), { answered: 36 }));
+    const both = await Promise.all([
+      finishTest(memory.store, P1, "a1", "no", T0 + HOUR),
+      finishTest(memory.store, P1, "a1", "yes", T0 + HOUR + 1),
+    ]);
+    expect(both.every((r) => r.ok)).toBe(true);
+    expect(memory.tests).toHaveLength(1);
+    expect(memory.tests[0]).toMatchObject({ status: "completed", completedAt: T0 + HOUR, help: "no", placement: { flags: [] } });
+  });
+
+  it("refuses a test without every answer as incomplete, and changes nothing", async () => {
+    const memory = family(stored(recordAnswer(open("a1", T0), T0 + HOUR), { answered: 35 }));
+    const before = structuredClone(memory.tests);
+    expect(await finishTest(memory.store, P1, "a1", "no", T0 + 2 * HOUR)).toEqual({ ok: false, error: "incomplete" });
+    // As before the module, the test is checked before the help answer.
+    expect(await finishTest(memory.store, P1, "a1", "invalid", T0 + 2 * HOUR)).toEqual({ ok: false, error: "incomplete" });
+    expect(memory.tests).toEqual(before);
+  });
+
+  it("refuses an expired test as expired, and scores nothing; a test that ran out of time is then marked expired", async () => {
+    const closed = family({ ...stored(recordAnswer(open("a1", T0), T0 + HOUR), { answered: 36 }), status: "expired" });
+    expect(await finishTest(closed.store, P1, "a1", "no", T0 + 2 * HOUR)).toEqual({ ok: false, error: "expired" });
+    expect(closed.tests[0]).toMatchObject({ status: "expired", completedAt: null });
+    expect(closed.tests[0].placement).toBeUndefined();
+    const late = family(stored(recordAnswer(open("a1", T0), T0 + HOUR), { answered: 20 }));
+    expect(await finishTest(late.store, P1, "a1", "no", T0 + 25 * HOUR + 1)).toEqual({ ok: false, error: "expired" });
+    expect(late.tests[0]).toMatchObject({ status: "expired", completedAt: null });
+    expect(late.tests[0].placement).toBeUndefined();
+  });
+
+  it("finishes a test with every answer in long after its deadline: it only waited to be scored", async () => {
+    const memory = family(stored(recordAnswer(open("a1", T0), T0 + HOUR), { answered: 36 }));
+    expect(await finishTest(memory.store, P1, "a1", null, T0 + 3 * DAY)).toEqual({ ok: true, id: "a1", finished: "now" });
+    expect(memory.tests[0]).toMatchObject({ status: "completed", completedAt: T0 + 3 * DAY, route: "up", help: null, placement: { route: "up" } });
+  });
+
+  it("refuses a help answer that is not one of the answers as invalid, and stores nothing; a finished test is still ok", async () => {
+    const memory = family(stored(open("a1", T0), { answered: 36 }));
+    const before = structuredClone(memory.tests);
+    expect(await finishTest(memory.store, P1, "a1", "invalid", T0 + HOUR)).toEqual({ ok: false, error: "invalid" });
+    expect(memory.tests).toEqual(before);
+    await finishTest(memory.store, P1, "a1", "no", T0 + HOUR);
+    expect(await finishTest(memory.store, P1, "a1", "invalid", T0 + 2 * HOUR)).toEqual({ ok: true, id: "a1", finished: "already" });
+    expect(memory.tests[0]).toMatchObject({ completedAt: T0 + HOUR, help: "no" });
+  });
+
+  it("is not found for another family's test, and changes nothing", async () => {
+    const memory = memoryAttemptStore({ tests: [stored(open("a1", T0), { parent: "parent-2", answered: 36 })] });
+    const before = structuredClone(memory.tests);
+    expect(await finishTest(memory.store, P1, "a1", "no", T0 + HOUR)).toEqual({ ok: false, error: "not_found" });
+    expect(await finishTest(memory.store, P1, "no-such-test", "no", T0 + HOUR)).toEqual({ ok: false, error: "not_found" });
+    expect(memory.tests).toEqual(before);
+  });
+});
+
+describe("when finishing fails in the store", () => {
+  /** Asha's test with every answer in, and her facts section started at T0 + 1 hour. */
+  const complete = async () => {
+    const memory = family(stored(open("a1", T0), { answered: 36 }));
+    await startFacts(memory.store, P1, "a1", T0 + HOUR);
+    return memory;
+  };
+
+  it("a failed write is store_failed, logged as before, and the test stays in progress to finish again", async () => {
+    const log = logs();
+    const memory = await complete();
+    memory.fail.complete = new StoreError("finish failed", "timeout");
+    expect(await finishTest(memory.store, P1, "a1", "no", T0 + 2 * HOUR)).toEqual({ ok: false, error: "store_failed" });
+    expect(log.mock.calls).toEqual([["[test] finish failed", "timeout"]]);
+    expect(memory.tests[0]).toMatchObject({ status: "in_progress", completedAt: null });
+    delete memory.fail.complete;
+    expect(await finishTest(memory.store, P1, "a1", "no", T0 + 3 * HOUR)).toEqual({ ok: true, id: "a1", finished: "now" });
+  });
+
+  it("a failed read of the test is store_failed, logged as before", async () => {
+    const log = logs();
+    const memory = await complete();
+    memory.fail.load = new StoreError("answers load failed", "timeout");
+    expect(await finishTest(memory.store, P1, "a1", "no", T0 + 2 * HOUR)).toEqual({ ok: false, error: "store_failed" });
+    expect(log.mock.calls).toEqual([["[test] answers load failed", "timeout"]]);
+    expect(memory.tests[0].status).toBe("in_progress");
+  });
+
+  it("a failed read of the facts section is store_failed, logged as before, and nothing is scored", async () => {
+    const log = logs();
+    const memory = await complete();
+    memory.fail.loadFacts = new StoreError("load failed", "timeout");
+    expect(await finishTest(memory.store, P1, "a1", "no", T0 + 2 * HOUR)).toEqual({ ok: false, error: "store_failed" });
+    expect(log.mock.calls).toEqual([["[facts] load failed", "timeout"]]);
+    expect(memory.tests[0]).toMatchObject({ status: "in_progress", completedAt: null });
+  });
+
+  it("a stored test or facts section the assessment core cannot rebuild is store_failed, as unreadable, and nothing is scored", async () => {
+    const log = logs();
+    const memory = await complete();
+    memory.facts[0].answers.push({ position: 0, factId: "f5", response: "1", correct: false, atMs: 900 });
+    expect(await finishTest(memory.store, P1, "a1", "no", T0 + 2 * HOUR)).toEqual({ ok: false, error: "store_failed", unreadable: true });
+    const broken = family(stored(open("a1", T0), { answered: 36 }));
+    broken.tests[0].answers[3].questionId = "not-this-test";
+    expect(await finishTest(broken.store, P1, "a1", "no", T0 + 2 * HOUR)).toEqual({ ok: false, error: "store_failed", unreadable: true });
+    expect(log.mock.calls).toEqual([["[facts] restore failed", "a1", "Expected an answer to f0, got f5"], ["[test] restore failed", "a1", "Expected an answer to s1-3, got not-this-test"]]);
+    expect([memory.tests[0].status, broken.tests[0].status]).toEqual(["in_progress", "in_progress"]);
   });
 });
