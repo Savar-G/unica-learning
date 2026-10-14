@@ -3,9 +3,11 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { bandFor, type Grade } from "@/lib/assessment";
 import { toAttempt, type AttemptRow } from "@/lib/assessment-store";
 import { SUPPORT_EMAIL } from "@/lib/contact";
+import type { EmailMessage, SendLedger } from "@/lib/email-delivery";
 import { reminderEmail } from "@/lib/reminder-email";
 import {
   LATE_LIMIT_MS,
+  MAX_SEND_ATTEMPTS,
   START_AFTER_MS,
   type DueReminder,
   type LogEntry,
@@ -14,13 +16,11 @@ import {
   type ReminderState,
   type ReminderStore,
   type ReminderTest,
-  type SendOutcome,
 } from "@/lib/reminders";
 import { hashToken, startPath } from "@/lib/sign-in-link";
 
 // The reminder job's store (#73): reads and writes with the secret key. The rules are in src/lib/reminders.ts; this
-// loads every child and test that could be due, and keeps the guards: the unique indexes on public.email_log make a
-// second claim of the same reminder fail, and a retry takes a failed row back only once (a guarded update).
+// loads every child and test that could be due, and keeps the claims in public.email_log (the email log ledger, #152).
 
 export interface LoadedParent extends ReminderParent {
   name: string;
@@ -111,17 +111,31 @@ export function reminderStore(admin: SupabaseClient): ReminderStore<LoadedState>
       };
     },
 
-    async claim(r, unsubscribeHash) {
+    ledger: emailLogLedger(admin),
+  };
+}
+
+/**
+ * The email log as the delivery module's send ledger (#152): one row per reminder, keyed by kind K for test or child
+ * Y. The guards: the unique indexes on public.email_log make a second claim of the same reminder fail, and a retry
+ * takes a failed row back only once (a guarded update), and only before MAX_SEND_ATTEMPTS tries. Refused marks the row
+ * failed, so a later run tries again; unknown keeps it claimed, so no run sends it again. The writes after a claim
+ * never throw: a write that fails leaves the row claimed, so the email is never sent twice.
+ */
+export function emailLogLedger(admin: SupabaseClient): SendLedger<DueReminder, string> {
+  return {
+    // The unsubscribe token hash goes in the claim's own write, so the link in an email that may have gone works.
+    async claim(r, { unsubscribe_hash }) {
       if (r.retry) {
         const { data, error } = await admin.from("email_log")
-          .update({ status: "claimed", attempts: r.retry.attempts + 1, unsubscribe_hash: unsubscribeHash, error: null })
-          .eq("id", r.retry.logId).eq("status", "failed").eq("attempts", r.retry.attempts)
+          .update({ status: "claimed", attempts: r.retry.attempts + 1, unsubscribe_hash, error: null })
+          .eq("id", r.retry.logId).eq("status", "failed").eq("attempts", r.retry.attempts).lt("attempts", MAX_SEND_ATTEMPTS)
           .select("id").returns<{ id: string }[]>();
         if (error) throw new Error(`claim retry: ${error.message}`);
         return data?.[0]?.id ?? null;
       }
       const { data, error } = await admin.from("email_log")
-        .insert({ parent_id: r.parentId, child_id: r.childId, assessment_id: r.assessmentId, kind: r.kind, status: "claimed", attempts: 1, unsubscribe_hash: unsubscribeHash })
+        .insert({ parent_id: r.parentId, child_id: r.childId, assessment_id: r.assessmentId, kind: r.kind, status: "claimed", attempts: 1, unsubscribe_hash })
         .select("id").single<{ id: string }>();
       // One row per reminder (unique index): another run claimed it first.
       if (error?.code === "23505") return null;
@@ -134,9 +148,15 @@ export function reminderStore(admin: SupabaseClient): ReminderStore<LoadedState>
       if (error) console.error("[reminders] sent mark failed; the row stays claimed", logId, error.message);
     },
 
-    async failed(logId, message) {
+    async refused(logId, message) {
       const { error } = await admin.from("email_log").update({ status: "failed", error: message.slice(0, 500) }).eq("id", logId);
       if (error) console.error("[reminders] failed mark failed; the row stays claimed", logId, error.message);
+    },
+
+    async unknown(logId, message) {
+      // The email may have gone: the row stays claimed. Only the error is stored, so Savar can check by hand.
+      const { error } = await admin.from("email_log").update({ error: message.slice(0, 500) }).eq("id", logId);
+      if (error) console.error("[reminders] unknown mark failed; the row stays claimed", logId, error.message);
     },
   };
 }
@@ -161,46 +181,35 @@ export const reminderLinks = (origin: string, r: DueReminder, token: string) => 
 });
 
 /**
- * Sends one reminder through Resend from EMAIL_FROM. A refusal is a known outcome (a later run tries again); a request
- * that ends without an answer throws, because the email may have gone.
+ * The reminder email for `r`, to the parent from EMAIL_FROM, with `token` in its unsubscribe link and in the RFC 8058
+ * one-click headers (CASL). Null when the state lacks the parent, the child, or the test.
  */
-export async function sendReminder(r: DueReminder, token: string, state: LoadedState, origin: string): Promise<SendOutcome> {
-  const key = process.env.RESEND_API_KEY;
-  const from = process.env.EMAIL_FROM;
-  if (!key || !from) return { sent: false, error: "RESEND_API_KEY or EMAIL_FROM is not set" };
+export function reminderMessage(r: DueReminder, token: string, state: LoadedState, origin: string): EmailMessage | null {
   const parent = state.parents.find((p) => p.id === r.parentId);
   const child = state.children.find((c) => c.id === r.childId);
   const test = state.tests.find((t) => t.id === r.assessmentId);
-  if (!parent || !child) return { sent: false, error: "parent or child not loaded" };
+  if (!parent || !child) return null;
 
   const links = reminderLinks(origin, r, token);
   const common = { parentName: parent.name, childName: child.firstName, url: links.url, unsubscribeUrl: links.unsubscribeUrl, postal: parent.postal };
   let email: ReturnType<typeof reminderEmail>;
   if (r.kind === "continue") {
-    if (!test) return { sent: false, error: "test not loaded" };
+    if (!test) return null;
     email = reminderEmail({ ...common, kind: "continue", total: test.total, answered: test.answered, resumeUntil: test.resumeUntil });
   } else {
     // A new test: its length at the child's grade today (a new test is drawn at the child's current grade).
     email = reminderEmail({ ...common, kind: r.kind, total: bandFor(child.grade).length });
   }
 
-  const res = await fetch("https://api.resend.com/emails", {
-    method: "POST",
-    headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
-    body: JSON.stringify({
-      from,
-      to: [parent.email],
-      reply_to: SUPPORT_EMAIL,
-      subject: email.subject,
-      text: email.text,
-      html: email.html,
-      headers: { "List-Unsubscribe": `<${links.oneClickUrl}>`, "List-Unsubscribe-Post": "List-Unsubscribe=One-Click" },
-    }),
-    signal: AbortSignal.timeout(15_000),
-  });
-  if (!res.ok) return { sent: false, error: `Resend answered ${res.status}: ${(await res.text().catch(() => "")).slice(0, 300)}` };
-  const json = (await res.json().catch(() => ({}))) as { id?: unknown };
-  return { sent: true, id: typeof json.id === "string" && json.id ? json.id : "sent" };
+  return {
+    sender: { to: "parent" },
+    to: parent.email,
+    replyTo: SUPPORT_EMAIL,
+    subject: email.subject,
+    text: email.text,
+    html: email.html,
+    headers: { "List-Unsubscribe": `<${links.oneClickUrl}>`, "List-Unsubscribe-Post": "List-Unsubscribe=One-Click" },
+  };
 }
 
 export type UnsubscribeState = "subscribed" | "unsubscribed" | "unknown";

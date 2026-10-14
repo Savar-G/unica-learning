@@ -1,6 +1,8 @@
-// Reminder emails (#73, D-085): who gets which reminder, and when. Pure: no clock and no database. The cron route
-// (src/app/api/reminders/route.ts) passes `now` and the stored state, as epoch milliseconds from its own clock.
+// Reminder emails (#73, D-085): who gets which reminder, and when. The rules are pure: no clock and no database. The
+// cron route (src/app/api/reminders/route.ts) passes `now` and the stored state, as epoch milliseconds from its own
+// clock. The job sends each reminder through the parent email delivery module (src/lib/email-delivery.ts, #152).
 import { startState, type Attempt } from "@/lib/assessment";
+import { sendEmailOnce, type EmailMessage, type MailTransport, type SendLedger } from "@/lib/email-delivery";
 
 /** "Continue your test" goes this long after the last answer (or the start, before any answer). */
 export const CONTINUE_AFTER_MS = 60 * 60_000;
@@ -20,7 +22,10 @@ export type ReminderKind = (typeof REMINDER_KINDS)[number];
 export const isReminderKind = (v: unknown): v is ReminderKind => REMINDER_KINDS.includes(v as ReminderKind);
 /** The email log (public.email_log) keeps every reminder, and every unsubscribe. */
 export type LogKind = ReminderKind | "unsubscribe";
-/** A reminder's send state. "claimed": a run took it and is sending it, or stopped before it knew the outcome. */
+/**
+ * A reminder's send state. "claimed": a run took it and is sending it, or the email may have gone (a 5xx or 408 answer,
+ * a timeout, no answer, or a run that stopped). "failed": Resend refused it; a later run tries again.
+ */
 export type LogStatus = "claimed" | "sent" | "failed";
 
 export interface LogEntry {
@@ -94,32 +99,31 @@ function ruleReminder(child: ReminderChild, tests: readonly ReminderTest[], now:
   return null;
 }
 
-/** The store the job runs against. The real one (src/lib/reminder-store.ts) keeps the guards with a unique index. */
+/**
+ * The store the job runs against. The real one (src/lib/reminder-store.ts) keeps its claims in the email log, whose
+ * unique indexes are the guard.
+ */
 export interface ReminderStore<S extends ReminderState> {
   /** The state the rules read at `now`: every child and test that could be due, and their log rows. */
   load(now: number): Promise<S>;
   /**
-   * Takes the reminder for this run before it is sent, with the hash of its unsubscribe token: inserts its log row, or
-   * takes a failed row back for a retry. Null when another run took it first.
+   * The send ledger, keyed by the reminder (kind K for test or child Y). A claim inserts its log row with the hash of
+   * the unsubscribe token, or takes a failed row back for a retry; null when another run took it first.
    */
-  claim(reminder: DueReminder, unsubscribeHash: string): Promise<string | null>;
-  /** The email went (Resend's id). Never throws: a failed write leaves the row claimed, so it is never sent again. */
-  sent(logId: string, emailId: string): Promise<void>;
-  /** Resend refused the email: a later run tries again. Never throws. */
-  failed(logId: string, error: string): Promise<void>;
+  ledger: SendLedger<DueReminder, string>;
 }
-
-/** A send with a known outcome. A send that throws has none (a timeout): the email may have gone. */
-export type SendOutcome = { sent: true; id: string } | { sent: false; error: string };
 
 export interface RunResult {
   due: number;
   sent: number;
-  /** Resend refused them; a later run tries again. */
+  /** Refused (Resend said no, a 4xx other than 408): a later run tries again, up to MAX_SEND_ATTEMPTS. */
   failed: number;
   /** Another run took them first. */
   busy: number;
-  /** The send ended without an answer. They stay claimed and are never sent again: one lost reminder, never two. */
+  /**
+   * The email may have gone: a 5xx or 408 answer, a timeout, or no answer. They stay claimed and are never sent again:
+   * one lost reminder, never two.
+   */
   unknown: number;
 }
 
@@ -127,38 +131,40 @@ export interface RunResult {
 export const RUN_LIMIT = 40;
 
 /**
- * One run of the job at `now`: decides, then claims each reminder before it sends it, so two runs at once never send
- * the same email. The unsubscribe token goes in the email; only its hash is stored.
+ * One run of the job at `now`: decides, then sends each reminder once through the delivery module, which claims it in
+ * the store's ledger before it sends, so two runs at once never send the same email. The unsubscribe token goes in the
+ * email; only its hash is stored, in the claim's own write.
  */
 export async function runReminders<S extends ReminderState>(
   store: ReminderStore<S>,
   now: number,
-  deps: { send(reminder: DueReminder, unsubscribeToken: string, state: S): Promise<SendOutcome>; newToken(): { token: string; hash: string }; limit?: number },
+  deps: {
+    /** The email for a reminder, with this unsubscribe token in its links and headers. Null when the state lacks its data. */
+    message(reminder: DueReminder, unsubscribeToken: string, state: S): EmailMessage | null;
+    newToken(): { token: string; hash: string };
+    /** Default: Resend. */
+    transport?: MailTransport;
+    limit?: number;
+  },
 ): Promise<RunResult> {
   const state = await store.load(now);
   const due = dueReminders(state, now);
   const result: RunResult = { due: due.length, sent: 0, failed: 0, busy: 0, unknown: 0 };
   for (const reminder of due.slice(0, deps.limit ?? RUN_LIMIT)) {
     const { token, hash } = deps.newToken();
-    const logId = await store.claim(reminder, hash);
-    if (!logId) {
-      result.busy++;
-      continue;
-    }
-    let outcome: SendOutcome;
-    try {
-      outcome = await deps.send(reminder, token, state);
-    } catch (e) {
-      console.error("[reminders] send ended without an answer", logId, e instanceof Error ? e.message : e);
-      result.unknown++;
-      continue;
-    }
-    if (outcome.sent) {
-      result.sent++;
-      await store.sent(logId, outcome.id);
-    } else {
+    const message = deps.message(reminder, token, state);
+    if (!message) {
+      console.error("[reminders] email not built: parent, child or test not loaded", reminder.kind, reminder.assessmentId ?? reminder.childId);
       result.failed++;
-      await store.failed(logId, outcome.error);
+      continue;
+    }
+    const outcome = await sendEmailOnce(store.ledger, reminder, message, { transport: deps.transport, claimFields: { unsubscribe_hash: hash } });
+    if (outcome.status === "sent") result.sent++;
+    else if (outcome.status === "refused") result.failed++;
+    else if (outcome.status === "busy") result.busy++;
+    else {
+      console.error("[reminders] delivery unknown; the row stays claimed", reminder.kind, reminder.assessmentId ?? reminder.childId, outcome.error);
+      result.unknown++;
     }
   }
   return result;
