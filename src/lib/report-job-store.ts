@@ -7,8 +7,9 @@ import type { ReviewStore } from "@/lib/work-review";
 import { reviewStore } from "@/lib/work-review-store";
 
 // The report job's own reads and writes (#162), outside the report-loading module: the report insert, the stored AI
-// reviews and the drawings, the parent's contact details, the child's name, and the unsubscribe check. The job reads
-// its inputs through the report-loading module (src/lib/report-loading.ts); these are the rest. With the secret key.
+// reviews and the drawings, the parent's contact details, and the unsubscribe check. The job reads its inputs and the
+// view of its emails (#163) through the report-loading module (src/lib/report-loading.ts); these are the rest. With
+// the secret key.
 // Tests use the in-memory copy in src/lib/report-job-memory.ts.
 
 /** A stored report, as the job reads it back. */
@@ -39,8 +40,6 @@ export interface ReportJobStore {
   reviews(assessment: { id: string; parentId: string }): ReviewStore;
   /** The parent's name and email; null when there is no parent row. */
   parent(parentId: string): Promise<ParentContact | null>;
-  /** The child's first name; null when there is no child row. */
-  childName(childId: string): Promise<string | null>;
   /** Whether the parent unsubscribed from reminders and emails about our plans (#80). */
   unsubscribed(parentId: string): Promise<boolean>;
 }
@@ -67,11 +66,6 @@ export function reportJobStore(admin: SupabaseClient): ReportJobStore {
       const { data, error } = await admin.from("parents").select("name, email").eq("id", parentId).maybeSingle<ParentContact>();
       if (error) throw new Error(`parent load: ${error.message}`);
       return data;
-    },
-    async childName(childId) {
-      const { data, error } = await admin.from("children").select("first_name").eq("id", childId).maybeSingle<{ first_name: string }>();
-      if (error) throw new Error(`child load: ${error.message}`);
-      return data?.first_name ?? null;
     },
     unsubscribed: (parentId) => parentUnsubscribed(admin, parentId),
   };

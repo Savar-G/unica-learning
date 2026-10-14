@@ -1,7 +1,7 @@
 // The report job's store (src/lib/report-job-store.ts) in memory, for tests (#162). It works on the report-loading
-// module's in-memory tables (src/lib/report-loading-memory.ts): a report the job stores is in their reports table, and
-// the child's name is in their children table, as in one database. The parents, the unsubscribes and the stored AI
-// reviews are its own. It keeps the database's rules: one report per test, and one stored review per question.
+// module's in-memory tables (src/lib/report-loading-memory.ts): a report the job stores is in their reports table, as
+// in one database, so the in-memory readers find it (#163). The parents, the unsubscribes and the stored AI reviews are
+// its own. It keeps the database's rules: one report per test, and one stored review per question.
 import type { ParentContact } from "@/lib/report-email";
 import type { ReportJobStore, StoredReport } from "@/lib/report-job-store";
 import type { MemoryReport, MemoryReportTables } from "@/lib/report-loading-memory";
@@ -56,9 +56,6 @@ export function memoryReportJobStore(tables: MemoryReportTables, { parents = [],
     async parent(parentId) {
       const row = parents.find((p) => p.id === parentId);
       return row ? { name: row.name, email: row.email } : null;
-    },
-    async childName(childId) {
-      return (tables.children ?? []).find((c) => c.id === childId)?.firstName ?? null;
     },
     async unsubscribed(parentId) {
       return unsubscribed.includes(parentId);
