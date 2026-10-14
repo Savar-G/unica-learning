@@ -1,5 +1,6 @@
 // The reminder emails (#73, D-085): "continue your test", "come back" and "start your test". Pure: the reminder job
-// (src/lib/reminder-store.ts) sends them through Resend. Same look as the report email (src/lib/report-email.ts).
+// (src/lib/reminders.ts) sends them through the parent email delivery module (#152). Same look as the report email
+// (src/lib/report-email.ts).
 // CASL: every reminder names the sender, gives the mailing address and the website, and has an unsubscribe link.
 import { BUSINESS_NAME, MAILING_ADDRESS, WEBSITE } from "@/lib/contact";
 import type { ReminderKind } from "@/lib/reminders";
