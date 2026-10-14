@@ -1,7 +1,8 @@
 // The report emails (#65): the report to the parent, and an alert to Savar for each finished test.
 // The parent email has the look of the chosen report design (D-087, #80): one 600 px column, the level and the verdict
 // in the grainy colour band with the K-8 ruler, a meter per area. It says what the report page says
-// (src/lib/report-view.ts). Pure: the background job (src/lib/report-job.ts) sends them through Resend.
+// (src/lib/report-view.ts). Pure: the background job (src/lib/report-job.ts) sends them through the email delivery
+// module (src/lib/email-delivery.ts).
 // Email-safe: tables and inline styles only, no web fonts, no forms; the band's one image is an absolute URL, with the
 // band's base colour behind it for mail apps that block images.
 import { PAUSE_WINDOW, STRAND_DEVELOPING_PERCENT, STRAND_SECURE_PERCENT, TOO_FAST_MS, type Flag, type HelpAnswer, type StrandStatus } from "@/lib/assessment";
