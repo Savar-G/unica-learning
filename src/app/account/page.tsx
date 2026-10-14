@@ -5,7 +5,8 @@ import { pageMetadata } from "@/lib/metadata";
 import { CURRICULA } from "@/lib/signup";
 import type { Child } from "@/lib/account";
 import type { StartState } from "@/lib/assessment";
-import { startStates, stateFor } from "@/lib/assessment-store";
+import { stateFor } from "@/lib/test-attempt";
+import { parentStartStates } from "@/lib/test-attempt-server";
 import { parentId, sessionClient } from "@/lib/supabase-auth";
 import { isPhone } from "@/lib/account-server";
 import { reportPath } from "@/lib/report-view";
@@ -31,7 +32,7 @@ export default async function Account({ searchParams }: PageProps<"/account">) {
     db.from("parents").select("name, email").maybeSingle<{ name: string; email: string }>(),
     db.from("children").select(`id, first_name, grade, province, ${LEARNING_COLUMNS}`).order("created_at").returns<(Child & LearningRow)[]>(),
     // Start, continue, start again after 24 hours, or wait 30 days after a completed test (#72).
-    startStates(parentUser),
+    parentStartStates(parentUser),
     // Reports (#65), oldest first, each with the time its test finished.
     db.from("reports").select("id, child_id, assessment:assessments(completed_at)").order("created_at")
       .returns<{ id: string; child_id: string; assessment: { completed_at: string } | null }[]>(),

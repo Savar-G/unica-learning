@@ -4,7 +4,8 @@ import { notFound, redirect } from "next/navigation";
 import { pageMetadata } from "@/lib/metadata";
 import { CURRICULA } from "@/lib/signup";
 import type { Child } from "@/lib/account";
-import { startStates, stateFor } from "@/lib/assessment-store";
+import { stateFor } from "@/lib/test-attempt";
+import { parentStartStates } from "@/lib/test-attempt-server";
 import { parentId, sessionClient } from "@/lib/supabase-auth";
 import { isPhone } from "@/lib/account-server";
 import { isReminderKind } from "@/lib/reminders";
@@ -33,7 +34,7 @@ export default async function StartScreen({ params, searchParams }: PageProps<"/
   // Row-level security returns only this parent's children; an id that is not a uuid finds nothing.
   const [{ data: child }, states] = await Promise.all([
     db.from("children").select("id, first_name, grade, province").eq("id", id).maybeSingle<Child>(),
-    startStates(parent, id),
+    parentStartStates(parent, id),
   ]);
   if (!child) notFound();
   // Start, continue, start again after 24 hours, or wait 30 days after a completed test (#72).

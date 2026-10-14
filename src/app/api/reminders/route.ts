@@ -1,6 +1,8 @@
 import { timingSafeEqual } from "node:crypto";
 import { linkOrigin } from "@/lib/account-server";
-import { reminderStore, sendReminder } from "@/lib/reminder-store";
+import { emailConfigProblem, type MailTransport } from "@/lib/email-delivery";
+import { resendTransport } from "@/lib/email-resend";
+import { reminderMessage, reminderStore } from "@/lib/reminder-store";
 import { REMINDER_KINDS, dueReminders, runReminders, type DueReminder } from "@/lib/reminders";
 import { newToken } from "@/lib/sign-in-link";
 import { adminClient } from "@/lib/supabase-auth";
@@ -15,6 +17,18 @@ export const maxDuration = 60;
 
 /** Resend's free plan takes 2 requests a second; one email every 600 ms stays under it. */
 const SEND_GAP_MS = 600;
+
+/** The transport, with a wait of `gapMs` before each send after the first. */
+function spaced(transport: MailTransport, gapMs: number): MailTransport {
+  let first = true;
+  return {
+    async send(message) {
+      if (!first) await new Promise((r) => setTimeout(r, gapMs));
+      first = false;
+      return transport.send(message);
+    },
+  };
+}
 
 function authorized(header: string | null, secret: string): boolean {
   const given = Buffer.from(header ?? "");
@@ -33,8 +47,10 @@ export async function POST(request: Request) {
   }
   if (!authorized(request.headers.get("authorization"), secret)) return new Response("Unauthorized", { status: 401 });
   const admin = adminClient();
-  if (!admin || !process.env.RESEND_API_KEY || !process.env.EMAIL_FROM) {
-    console.error("[reminders] SUPABASE_SECRET_KEY, RESEND_API_KEY or EMAIL_FROM is not set");
+  // Stop before anything is claimed: without the email configuration, a run would use up each due reminder's tries.
+  const problem = admin ? emailConfigProblem() : "SUPABASE_SECRET_KEY is not set";
+  if (!admin || problem) {
+    console.error("[reminders]", problem);
     return Response.json({ ok: false, error: "not_configured" }, { status: 503 });
   }
 
@@ -45,14 +61,10 @@ export async function POST(request: Request) {
     if (new URL(request.url).searchParams.get("dry") === "1") {
       return Response.json({ ok: true, dry: true, due: byKind(dueReminders(await store.load(now), now)) });
     }
-    let first = true;
     const result = await runReminders(store, now, {
       newToken,
-      async send(reminder, token, state) {
-        if (!first) await new Promise((r) => setTimeout(r, SEND_GAP_MS));
-        first = false;
-        return sendReminder(reminder, token, state, origin);
-      },
+      message: (reminder, token, state) => reminderMessage(reminder, token, state, origin),
+      transport: spaced(resendTransport(), SEND_GAP_MS),
     });
     if (result.due > 0) console.info("[reminders] run", JSON.stringify(result));
     return Response.json({ ok: true, ...result });
