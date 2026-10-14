@@ -1,11 +1,14 @@
 import { createHash } from "node:crypto";
+import { createElement } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { createSession, storedTest, type ComparisonTest } from "@/lib/assessment";
+import { ReportCard } from "@/components/report";
+import { createSession, REPORT_TEXT_NAME, storedTest, type ComparisonTest } from "@/lib/assessment";
 import { knowsUpTo, takeTest } from "@/lib/assessment/scripted-child";
 import { memoryTransport } from "@/lib/email-delivery-memory";
 import { runReportJob } from "@/lib/report-job";
 import { memoryReportJobStore } from "@/lib/report-job-memory";
-import type { ComparisonRead } from "@/lib/report-loading";
+import { loadReportView, type ComparisonRead } from "@/lib/report-loading";
 import { memoryReportReaders, type MemoryReportTables } from "@/lib/report-loading-memory";
 import { memoryReportLedger } from "@/lib/report-row-ledger-memory";
 import type { ReportLedger } from "@/lib/report-row-ledger";
@@ -41,20 +44,23 @@ const cohort: ComparisonTest[] = [
 
 /**
  * The database in memory, with Asha's finished test. `unsubscribed`: Priya has unsubscribed. `parent`: null when the
- * parent row is missing. `comparison` counts the comparison reads.
+ * parent row is missing. `child`: false when Asha's child row is missing. `helped`: Asha said someone helped, so the
+ * report warns that the level may be too high. `comparison` counts the comparison reads.
  */
-function database({ unsubscribed = false, parent = PRIYA as typeof PRIYA | null } = {}) {
+function database({ unsubscribed = false, parent = PRIYA as typeof PRIYA | null, child = true, helped = false } = {}) {
   const tables: MemoryReportTables = {
     reports: [],
     assessments: [{
       id: TEST, parentId: "parent-1", childId: "child-1", status: "completed", grade: 4, province: "BC", completedAt: "2026-10-10T12:00:00Z",
-      placement, help: "no", test: storedTest(createSession({ grade: 4, province: "BC" }, 101)),
+      placement: helped ? { ...placement, flags: [{ kind: "helped", answer: "yes" }] } : placement,
+      help: helped ? "yes" : "no",
+      test: storedTest(createSession({ grade: 4, province: "BC" }, 101)),
     }],
     answers: asked.map((q, n) => ({
       assessmentId: TEST, position: n, questionId: q.id, response: q.level <= 4 ? q.answer : "no idea", correct: q.level <= 4, misconception: null,
       timeMs: 20_000, workRequired: q.showWork === true, workPath: n === DRAWN ? DRAWING : null, workText: n === TYPED ? "6 x 4 = 24" : null,
     })),
-    children: [{ id: "child-1", parentId: "parent-1", firstName: "Asha" }],
+    children: child ? [{ id: "child-1", parentId: "parent-1", firstName: "Asha" }] : [],
     drawings: [DRAWING],
   };
   const readers = memoryReportReaders(tables);
@@ -119,8 +125,9 @@ describe("the stored report", () => {
     // The stored report holds only the measured summary: none of the cohort's rows.
     const snapshot = JSON.stringify(report);
     for (const secret of ["private-child-", "private-parent@", "stage1", "excludedEmails", "tests"]) expect(snapshot).not.toContain(secret);
-    // One read of the stored test and one of the answers, through the module.
-    expect(db.readers.reads).toEqual({ reports: 0, assessments: 1, answers: 1 });
+    // One read of the stored test and one of the answers, through the module; then one read of the stored report, for
+    // the view of the email and the alert (#163).
+    expect(db.readers.reads).toEqual({ reports: 1, assessments: 1, answers: 1 });
     expect(db.comparison.mock.calls).toEqual([[TEST]]);
 
     expect(mail.delivered.map((m) => m.to)).toEqual(["priya@family.ca", "savar@unicalearning.com"]);
@@ -134,8 +141,8 @@ describe("the stored report", () => {
     expect(db.comparison).toHaveBeenCalledTimes(1);
     expect(db.job.reviews()).toHaveLength(2);
     expect(mail.delivered).toHaveLength(2);
-    // The job reads its inputs once per run, and calls no network itself.
-    expect(db.readers.reads).toEqual({ reports: 0, assessments: 2, answers: 2 });
+    // The job reads its inputs and its view once per run, and calls no network itself.
+    expect(db.readers.reads).toEqual({ reports: 2, assessments: 2, answers: 2 });
     expect(network).toEqual([]);
   });
 
@@ -292,6 +299,99 @@ describe("the report emails", () => {
   });
 });
 
+/** The words of a page or an email, as the parent reads them: the HTML without its tags and entities. */
+const words = (html: string) =>
+  html.replace(/<!-- -->/g, "").replace(/<[^>]+>/g, " ").replace(/&#x27;|&#39;|&apos;/g, "'").replace(/&quot;/g, '"').replace(/&amp;/g, "&").replace(/\s+/g, " ").trim();
+
+/** The area rows of the report email's text, in order: "<area>: <status>, <n> of <m> right". */
+function emailAreas(text: string): string[] {
+  const block = text.split("\n\n").find((b) => b.startsWith("By area\n")) ?? "";
+  return block.split("\n").filter((line) => /^.+: .+, \d+ of \d+ right$/.test(line));
+}
+
+/** The area rows of the report page, in order, each read from its own table row and written as the email writes it. */
+function pageAreas(html: string): string[] {
+  const table = html.match(/<table class="rpt-areas">([\s\S]*?)<\/table>/)?.[1] ?? "";
+  const rows = table.matchAll(/<tr><th scope="row">([\s\S]*?)<span>[\s\S]*?class="rpt-chip[^"]*">([\s\S]*?)<\/span>[\s\S]*?class="rpt-count">([\s\S]*?)<\/td><\/tr>/g);
+  return [...rows].map(([, name, status, count]) => `${words(name)}: ${words(status)}, ${words(count)} right`);
+}
+
+/** Each piece of text is in each place. */
+function expectEverywhere(places: Record<string, string>, pieces: string[]) {
+  for (const [where, text] of Object.entries(places)) {
+    for (const piece of pieces) expect(text, `${where}: ${piece}`).toContain(piece);
+  }
+}
+
+/**
+ * The report page that Asha's parent opens, from the view of the parent's own reader (#161), as the page renders it:
+ * its HTML, and its words. The next step row shows only its title: its buttons and the learning questions (#126) need
+ * the browser's router, and they are not part of the report text.
+ */
+async function reportPage(db: Database) {
+  const loaded = await loadReportView(db.readers.parent("parent-1"), "report-1");
+  if (!loaded) throw new Error("the parent's reader found no report");
+  const html = renderToStaticMarkup(createElement(ReportCard, { view: loaded.view, readOnly: true }));
+  return { html, text: words(html) };
+}
+
+/** The parent email the job sent, and the report page, as places that must hold the same text. */
+const places = (email: { text: string; html?: string }, page: { text: string }) =>
+  ({ "email text": words(email.text), "email HTML": words(email.html!), page: page.text });
+
+describe("the report email and the report page (#163)", () => {
+  // The job builds the email from its own view (the secret key's reader); the page uses the parent's reader. For the
+  // same stored report, each must hold the same report text. The expected words are written out, from Asha's test.
+  it("hold the same report text: the child's name, the questions and minutes, the level, the areas and the comparison", async () => {
+    const db = database();
+    const mail = memoryTransport();
+    await run(db, mail, memoryReportLedger());
+    const [email] = mail.delivered;
+    expect(email.to).toBe("priya@family.ca");
+    const page = await reportPage(db);
+
+    expectEverywhere(places(email, page), [
+      "Asha",
+      "36 questions in 12 minutes",
+      "Asha is working at a grade 4 level.",
+      "That matches Asha's school grade.",
+      "Asha's result is at the 50th percentile among 400 grade 4 children who took this test.",
+    ]);
+    // Each area as one row: its name, its status and its count together, in order. Asha got every grade 4 question
+    // right. A row is matched whole, so a count or a status in the AI text or the legend cannot stand in for it.
+    const areas = [
+      "Number and operations: Secure, 5 of 5 right",
+      "Fractions and decimals: Secure, 5 of 5 right",
+      "Patterns and algebra: Secure, 4 of 4 right",
+      "Shapes, measurement and data: Secure, 4 of 4 right",
+    ];
+    expect(emailAreas(email.text)).toEqual(areas);
+    expect(pageAreas(page.html)).toEqual(areas);
+    // The AI text (the fake reviewer's), with the child's name in it, is the same in both.
+    const summary = db.tables.reports![0].model.summary!.replaceAll(REPORT_TEXT_NAME, "Asha");
+    expect(summary).toContain("Asha");
+    expectEverywhere(places(email, page), [words(summary)]);
+  });
+
+  it("hold the same finish date: the retake date of a report that warns about help, in the family's time zone", async () => {
+    // Asha said someone helped. The warning gives the first whole day of the retake, 30 days after the finish
+    // (2026-10-10 12:00 UTC), in Vancouver time.
+    const db = database({ helped: true });
+    const mail = memoryTransport();
+    await run(db, mail, memoryReportLedger());
+    const [email] = mail.delivered;
+    const page = await reportPage(db);
+
+    expectEverywhere(places(email, page), [
+      "This level may be too high",
+      "For a level you can trust, Asha can take a new test alone, with new questions, from November 10, 2026.",
+      "36 questions in 12 minutes",
+    ]);
+    // The page also shows the finish date itself.
+    expect(page.text).toContain("October 10, 2026");
+  });
+});
+
 describe("a report step that fails", () => {
   it("alerts Savar without a send key when the parent is missing, so each failed run alerts again; the job does not throw", async () => {
     const db = database({ parent: null });
@@ -302,12 +402,26 @@ describe("a report step that fails", () => {
     expect(mail.delivered).toHaveLength(2);
     for (const alert of mail.delivered) {
       expect(alert).toMatchObject({ sender: { to: "savar", testSenderName: "Unica Learning reports" }, to: "savar@unicalearning.com", subject: `Report FAILED for assessment ${TEST}` });
-      expect(alert.text).toContain("The report step failed: parent or child not found");
+      expect(alert.text).toContain("The report step failed: parent not found");
     }
     expect(book.entry(PARENT_EMAIL)).toBeUndefined();
     // The report itself is stored, and visible in the account.
     expect(db.tables.reports).toHaveLength(1);
     expect(network).toEqual([]);
+  });
+
+  it("alerts Savar as a failure when the child is missing: the report view is not found, and nothing goes to the parent", async () => {
+    const db = database({ child: false });
+    const mail = memoryTransport();
+    const book = memoryReportLedger();
+    await expect(run(db, mail, book)).resolves.toBeUndefined();
+    expect(mail.delivered.map((m) => [m.to, m.subject])).toEqual([["savar@unicalearning.com", `Report FAILED for assessment ${TEST}`]]);
+    expect(mail.delivered[0].text).toContain("The report step failed: report view not found");
+    expect(book.entry(PARENT_EMAIL)).toBeUndefined();
+    expect(book.entry(ALERT)).toBeUndefined();
+    // The report is stored; the job asked the module for its view once.
+    expect(db.tables.reports).toHaveLength(1);
+    expect(db.readers.reads.reports).toBe(1);
   });
 
   it("alerts Savar when the test cannot be read", async () => {
