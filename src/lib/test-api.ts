@@ -1,6 +1,7 @@
 // The child's test (#64). Shared by the test screens (client) and /api/account/assessments/* (server).
 // The browser gets only TestStep: never an answer or the misconception coding of the choices.
 import type { TestStep } from "@/lib/assessment";
+import type { Refusal } from "@/lib/test-attempt";
 
 /** An assessment row's status. "expired" comes with stop and resume (#72). */
 export type AssessmentStatus = "in_progress" | "completed" | "expired";
@@ -48,3 +49,33 @@ export const WORK_TEXT_MAX = 1000;
 export const ANSWER_BODY_MAX = 1_500_000;
 
 export const testFail = (error: TestError, status: number, extra: object = {}) => Response.json({ ok: false, error, ...extra }, { status });
+
+/** The response to a refusal of the test attempt module (#146): the status code and JSON each case had before it. */
+export function refusalResponse(refusal: Refusal): Response {
+  switch (refusal.error) {
+    case "not_found":
+      return testFail("not_found", 404);
+    case "expired":
+      return testFail("expired", 410);
+    case "conflict":
+      return testFail("conflict", 409, refusal.step ? { step: refusal.step } : {});
+    case "invalid":
+      return testFail("invalid", 400, refusal.message ? { message: refusal.message } : {});
+    case "work_required":
+      return testFail("work_required", 400, { message: "This question needs work on the whiteboard." });
+    case "typing_off":
+      return testFail("invalid", 400, { message: "Grades 1 and 2 draw their work. Typed working is not taken." });
+    case "work_too_big":
+      return testFail("work_too_big", 413, { message: refusal.message });
+    case "incomplete":
+      return testFail("incomplete", 409);
+    case "not_ready":
+      return testFail("not_ready", 409);
+    case "busy":
+      return testFail("store_failed", 503);
+    case "retake_closed":
+      return testFail("retake_closed", 409, { opensAt: new Date(refusal.opensAt).toISOString() });
+    case "store_failed":
+      return testFail("store_failed", refusal.unreadable ? 500 : 502);
+  }
+}

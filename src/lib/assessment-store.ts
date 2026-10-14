@@ -3,22 +3,15 @@ import { randomInt } from "node:crypto";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import {
   attemptState,
-  createSession,
   recordAnswer,
   restoreSession,
-  startState,
-  storedTest,
   testStep,
   type Attempt,
-  type Grade,
   type Session,
-  type StartState,
   type StoredTest,
   type Submission,
 } from "@/lib/assessment";
-import type { Child } from "@/lib/account";
 import { testFail, type AssessmentStatus } from "@/lib/test-api";
-import type { StartStore, StoredAttempt } from "@/lib/test-start";
 import { adminClient, parentId, sessionClient } from "@/lib/supabase-auth";
 
 // The server side of the child's test (#64). The drawn test and the answers live in the database, read and written
@@ -26,12 +19,14 @@ import { adminClient, parentId, sessionClient } from "@/lib/supabase-auth";
 // Stop, resume and retake (#72): every time comes from this server's clock (Date.now() in the routes) and is checked
 // with the core's rules. Writes that depend on the time are guarded in the update itself, so two requests at once
 // cannot both win: see expireTest and openAnswerWindow. Only a stored answer moves a test's deadline.
+// Start, the next step and the start screens go through the test attempt module (src/lib/test-attempt.ts, #146); the
+// answer and finish routes still use loadTest and openAnswerWindow here until they move to it too (#147, #150).
 
 /** A new seed for each test: siblings, and a retake, get different questions. Postgres integer, 0 to 2^31 - 1. */
 export const newSeed = () => randomInt(0, 2 ** 31 - 1);
 
 /** The assessment columns the resume and retake rules read. */
-const ATTEMPT_COLUMNS = "id, status, started_at, last_answer_at, resume_until, completed_at";
+export const ATTEMPT_COLUMNS = "id, status, started_at, last_answer_at, resume_until, completed_at";
 
 export interface AttemptRow {
   id: string;
@@ -167,82 +162,3 @@ async function readTest(admin: SupabaseClient, parent: string, id: string): Prom
     return { error: testFail("store_failed", 500) };
   }
 }
-
-/**
- * The parent's tests, read with the secret key and the parent's id (from their verified session), so a parent never
- * sees another family's tests. A test in progress comes with `answeredAll`, from its answers: one with every answer
- * in waits to be scored, and never expires. Pass a child id to read one child.
- */
-async function parentAttempts(admin: SupabaseClient, parent: string, childId?: string): Promise<(StoredAttempt & { childId: string })[]> {
-  let query = admin.from("assessments").select(`child_id, seed, ${ATTEMPT_COLUMNS}`).eq("parent_id", parent);
-  if (childId) query = query.eq("child_id", childId);
-  const { data, error } = await query.returns<(AttemptRow & { child_id: string; seed: number })[]>();
-  if (error) throw new Error(`attempts load failed: ${error.message}`);
-  return Promise.all((data ?? []).map(async (row) => {
-    if (row.status !== "in_progress") return { ...toAttempt(row), seed: row.seed, childId: row.child_id };
-    const read = await readTest(admin, parent, row.id);
-    if ("error" in read) throw new Error("open test read failed");
-    return { ...toAttempt(row, testStep(read.session).status === "complete"), seed: row.seed, childId: row.child_id };
-  }));
-}
-
-/**
- * The start request's view of one child's tests (src/lib/test-start.ts), read and written with the secret key.
- * The one-open-test-per-child index makes a second new test fail; that failure is "taken".
- */
-export function startStore(admin: SupabaseClient, parent: string, child: Child): StartStore {
-  return {
-    attempts: () => parentAttempts(admin, parent, child.id),
-    expire: (id, now) => expireTest(admin, id, now),
-    async create(seed, attempt) {
-      let session: Session;
-      try {
-        session = createSession({ grade: child.grade as Grade, province: child.province }, seed);
-      } catch (e) {
-        console.error("[test] cannot build a test", child.grade, e instanceof Error ? e.message : e);
-        return "not_ready";
-      }
-      const { data, error } = await admin.from("assessments")
-        .insert({
-          parent_id: parent,
-          child_id: child.id,
-          seed,
-          grade: child.grade,
-          province: child.province,
-          test: storedTest(session),
-          started_at: iso(attempt.startedAt),
-          resume_until: iso(attempt.resumeUntil),
-        })
-        .select("id").single<{ id: string }>();
-      // One open test per child (unique index): another request opened one first.
-      if (error?.code === "23505") return "taken";
-      if (error) throw new Error(`start failed: ${error.message}`);
-      return { id: data.id };
-    },
-  };
-}
-
-/**
- * What each of the parent's children's start screen offers, by the same rules and reads as the start request, so the
- * screen and the server agree. Pass a child id to read one child. A read error shows "Start test"; the start request
- * checks the rules again.
- */
-export async function startStates(parent: string, childId?: string): Promise<Map<string, StartState>> {
-  if (childId !== undefined && !isUuid(childId)) return new Map();
-  const admin = adminClient();
-  if (!admin) return new Map();
-  let attempts: Awaited<ReturnType<typeof parentAttempts>>;
-  try {
-    attempts = await parentAttempts(admin, parent, childId);
-  } catch (e) {
-    console.error("[test]", e instanceof Error ? e.message : e);
-    return new Map();
-  }
-  const byChild = new Map<string, Attempt[]>();
-  for (const a of attempts) byChild.set(a.childId, [...(byChild.get(a.childId) ?? []), a]);
-  const now = Date.now();
-  return new Map([...byChild].map(([id, list]) => [id, startState(list, now)]));
-}
-
-/** A child's start state; a child with no tests can start one. */
-export const stateFor = (states: Map<string, StartState>, childId: string): StartState => states.get(childId) ?? { kind: "start", retake: false };
