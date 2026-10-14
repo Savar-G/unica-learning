@@ -3,7 +3,8 @@ import { notFound, redirect } from "next/navigation";
 import { userAgent } from "next/server";
 import { bandFor, createSession, type Grade } from "@/lib/assessment";
 import type { Child } from "@/lib/account";
-import { startStates, stateFor } from "@/lib/assessment-store";
+import { stateFor } from "@/lib/test-attempt";
+import { parentStartStates } from "@/lib/test-attempt-server";
 import { pageMetadata } from "@/lib/metadata";
 import { parentId, sessionClient } from "@/lib/supabase-auth";
 import { TakeTest } from "@/components/test";
@@ -26,7 +27,7 @@ export default async function TestPage(props: PageProps<"/account/test/[childId]
   const { childId } = await props.params;
   const [{ data: child }, states] = await Promise.all([
     db.from("children").select("id, first_name, grade, province").eq("id", childId).maybeSingle<Child>(),
-    startStates(parent, childId),
+    parentStartStates(parent, childId),
   ]);
   if (!child) notFound();
   // #72: an open test continues where it stopped; after one ran out of time the next has new questions.
