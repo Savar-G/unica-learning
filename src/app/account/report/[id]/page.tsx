@@ -1,13 +1,13 @@
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
-import type { Province, ReportModel } from "@/lib/assessment";
 import { isUuid } from "@/lib/assessment-store";
-import { fromRow, LEARNING_COLUMNS, type LearningRow } from "@/lib/learning-style";
+import { fromRow, LEARNING_COLUMNS, type LearningAnswers, type LearningRow } from "@/lib/learning-style";
 import { pageMetadata } from "@/lib/metadata";
-import { reportReturnPath, type ReportView } from "@/lib/report-view";
+import { loadReportView } from "@/lib/report-loading";
+import { parentReportReader } from "@/lib/report-loading-server";
+import { reportReturnPath } from "@/lib/report-view";
 import type { PlanId } from "@/lib/site";
 import { parentId, sessionClient } from "@/lib/supabase-auth";
-import { signWork } from "@/lib/work-store";
 import { TrackOnce } from "@/components/account";
 import { ReportCard, type ReportNextContext } from "@/components/report";
 import type { NextStepStart } from "@/components/report-next";
@@ -20,20 +20,11 @@ export const metadata = pageMetadata({
   index: false,
 });
 
-/** The report as the parent's session reads it, with its test and child. */
-interface ReportPageRow {
-  id: string;
-  child_id: string;
-  model: ReportModel;
-  questions: number;
-  minutes: number;
-  assessment: { completed_at: string; province: Province } | null;
-  child: ({ first_name: string } & LearningRow) | null;
-}
-
-// One child's report (#65), read with the parent's own session: row-level security returns only their reports, so
-// another family's report id finds nothing. The report email links here; a signed-out parent signs in and comes back.
-// The child sees it with the parent, on the same account (D-082).
+// One child's report (#65), read with the parent's own session through the report-loading module (#161): row-level
+// security returns only their reports, so another family's report id finds nothing, and the work drawings (#67, in a
+// private bucket) are signed with the parent's session, so storage checks that each file is in their folder. The report
+// email links here; a signed-out parent signs in and comes back. The child sees it with the parent, on the same account
+// (D-082).
 export default async function ReportPage({ params, searchParams }: PageProps<"/account/report/[id]">) {
   const { id } = await params;
   if (!isUuid(id)) notFound();
@@ -45,32 +36,19 @@ export default async function ReportPage({ params, searchParams }: PageProps<"/a
   const db = await sessionClient();
   if (!(await parentId(db))) redirect(`/sign-in?next=${encodeURIComponent(reportReturnPath(id, { src, step }))}`);
 
-  const { data: row } = await db.from("reports")
-    .select(`id, child_id, model, questions, minutes, assessment:assessments(completed_at, province), child:children(first_name, ${LEARNING_COLUMNS})`)
-    .eq("id", id).maybeSingle<ReportPageRow>();
-  if (!row?.assessment || !row.child) notFound();
+  const report = await loadReportView(parentReportReader(db), id);
+  if (!report) notFound();
+  const { view, childId } = report;
 
-  // #67: the work drawings are in a private bucket. Signed with the parent's own session, so storage checks that each
-  // file is in their folder; the URLs stop working after a few minutes.
-  const workPaths = (row.model.work ?? []).flatMap((w) => (w.image ? [w.image] : []));
-  const view: ReportView = {
-    id: row.id,
-    childName: row.child.first_name,
-    province: row.assessment.province,
-    completedAt: row.assessment.completed_at,
-    questions: row.questions,
-    minutes: row.minutes,
-    model: row.model,
-    workImages: await signWork(db, workPaths),
-  };
+  const [start, learning] = await Promise.all([nextStepStart(db, childId), learningStart(db, childId)]);
   // Back from the payment page without a card: not a new report open.
   const cancelled = query.card === "cancelled";
   const next: ReportNextContext = {
     src,
     asked: step !== null,
-    start: { ...(await nextStepStart(db, row.child_id)), cancelled },
+    start: { ...start, cancelled },
     // #126: how the child learns, asked above the plan choice; the parent can skip it.
-    learning: { childId: row.child_id, start: fromRow(row.child) },
+    learning: { childId, start: learning },
   };
   return (
     <SupportPage label="" title="" wide>
@@ -79,6 +57,12 @@ export default async function ReportPage({ params, searchParams }: PageProps<"/a
       <ReportCard view={view} next={next} />
     </SupportPage>
   );
+}
+
+/** The parent's answers about how this child learns (#126), read with the parent's session; null when none. */
+async function learningStart(db: Awaited<ReturnType<typeof sessionClient>>, childId: string): Promise<LearningAnswers | null> {
+  const { data } = await db.from("children").select(LEARNING_COLUMNS).eq("id", childId).maybeSingle<LearningRow>();
+  return data ? fromRow(data) : null;
 }
 
 /** A card saved or a waitlist join for this child, read with the parent's session (#66). */

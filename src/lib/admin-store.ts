@@ -2,18 +2,18 @@ import "server-only";
 import { connection } from "next/server";
 import { notFound } from "next/navigation";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import type { FactsTest, HelpAnswer, Placement, Province, ReportModel, StoredTest } from "@/lib/assessment";
+import type { FactsTest, HelpAnswer, Placement, Province, StoredTest } from "@/lib/assessment";
 import { isUuid } from "@/lib/assessment-store";
 import { LEARNING_COLUMNS, type LearningRow } from "@/lib/learning-style";
 import { filterTests, type AdminFilters, type AnswerRecord, type FactAnswerRecord, type ReviewRecord } from "@/lib/admin-view";
-import type { ReportView } from "@/lib/report-view";
 import { sessionClient } from "@/lib/supabase-auth";
 import type { AssessmentStatus } from "@/lib/test-api";
 import { signWork } from "@/lib/work-store";
 import { stripe } from "@/lib/stripe";
 import type { DashboardRows, RawCard, RawChild, RawEmail, RawParent, RawReport, RawTest, RawWaitlist } from "@/lib/admin-dashboard";
 
-// The admin area's data (#77). The gate and every read are here, so no admin page reads the database on its own.
+// The admin area's data (#77). The gate and every read are here, so no admin page reads the database on its own; the
+// report view is read by the report-loading module with the admin's session (src/lib/report-loading-server.ts, #161).
 // Every read uses the admin's own session, never the secret key: the database decides what they see. The tables a
 // parent can read come through the admin_* functions (migration add_admin_area), which return every row to an admin
 // and nothing to anyone else; answers, work_reviews, email_log and the quick facts tables have an admin read policy;
@@ -438,36 +438,6 @@ async function familyEmails(a: AdminSession, id: string): Promise<EmailRow[]> {
     rows.push(...result.rows);
     if (!result.more) return rows;
   }
-}
-
-// The report
-
-/** A stored report as the parent's report page shows it, with the drawings signed for the admin; null if none. */
-export async function getReportView(a: AdminSession, id: string): Promise<{ view: ReportView; assessmentId: string } | null> {
-  if (!isUuid(id)) return null;
-  const report = must<{ id: string; assessment_id: string; child_id: string; model: ReportModel; questions: number; minutes: number } | null>(
-    await a.db.rpc("admin_reports").select("id, assessment_id, child_id, model, questions, minutes").eq("id", id).maybeSingle(), "report");
-  if (!report) return null;
-  const [test, [child]] = await Promise.all([
-    a.db.rpc("admin_assessments").select("completed_at, province").eq("id", report.assessment_id).maybeSingle()
-      .then((r) => must<{ completed_at: string; province: Province } | null>(r, "test")),
-    childrenById(a, [report.child_id]),
-  ]);
-  if (!test || !child) return null;
-  const paths = (report.model.work ?? []).flatMap((w) => (w.image ? [w.image] : []));
-  return {
-    assessmentId: report.assessment_id,
-    view: {
-      id: report.id,
-      childName: child.first_name,
-      province: test.province,
-      completedAt: test.completed_at,
-      questions: report.questions,
-      minutes: report.minutes,
-      model: report.model,
-      workImages: await signWork(a.db, paths),
-    },
-  };
 }
 
 // The dashboard and activity log (D-099)
