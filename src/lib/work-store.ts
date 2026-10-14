@@ -1,33 +1,15 @@
 import "server-only";
-import { randomBytes } from "node:crypto";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { ShownWork, StoredTest } from "@/lib/assessment";
-import { workPath } from "@/lib/work-payload";
 
 // The child's whiteboard drawings (#67) in Supabase Storage. The bucket is private (migration add_shown_work): the
 // server writes with the secret key; a signed-in parent can read only the files in their own folder, so the report page
-// signs short-lived URLs with the parent's own session. There are no public URLs.
+// signs short-lived URLs with the parent's own session. There are no public URLs. The answer's drawing is stored and
+// removed by the test attempt module's store (src/lib/test-attempt-server.ts, #147).
 
 export const WORK_BUCKET = "shown-work";
 /** A signed image URL on the report page works this long. The page signs new ones each time it loads. */
 export const WORK_URL_SECONDS = 10 * 60;
-
-/** Stores one drawing under a new name. Returns its path, or null when the upload failed (logged). */
-export async function uploadWork(admin: SupabaseClient, parentId: string, assessmentId: string, questionId: string, png: Buffer): Promise<string | null> {
-  const path = workPath(parentId, assessmentId, questionId, randomBytes(6).toString("hex"));
-  const { error } = await admin.storage.from(WORK_BUCKET).upload(path, png, { contentType: "image/png", upsert: false, cacheControl: "3600" });
-  if (error) {
-    console.error("[work] upload failed", error.message);
-    return null;
-  }
-  return path;
-}
-
-/** Removes a drawing whose answer was not stored. Best effort: a failure is logged. */
-export async function removeWork(admin: SupabaseClient, path: string): Promise<void> {
-  const { error } = await admin.storage.from(WORK_BUCKET).remove([path]);
-  if (error) console.error("[work] remove failed", error.message);
-}
 
 /**
  * Every answer of a test with work on the whiteboard, in test order, read with the secret key: the question, right or

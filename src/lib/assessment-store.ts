@@ -3,7 +3,6 @@ import { randomInt } from "node:crypto";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import {
   attemptState,
-  recordAnswer,
   restoreSession,
   testStep,
   type Attempt,
@@ -18,9 +17,9 @@ import { adminClient, parentId, sessionClient } from "@/lib/supabase-auth";
 // with the secret key; every request rebuilds the session from them and marks with the assessment core.
 // Stop, resume and retake (#72): every time comes from this server's clock (Date.now() in the routes) and is checked
 // with the core's rules. Writes that depend on the time are guarded in the update itself, so two requests at once
-// cannot both win: see expireTest and openAnswerWindow. Only a stored answer moves a test's deadline.
-// Start, the next step and the start screens go through the test attempt module (src/lib/test-attempt.ts, #146); the
-// answer and finish routes still use loadTest and openAnswerWindow here until they move to it too (#147, #150).
+// cannot both win: see expireTest. Only a stored answer moves a test's deadline.
+// Start, the next step, the answer and the start screens go through the test attempt module (src/lib/test-attempt.ts,
+// #146, #147); the finish route still uses loadTest here until it moves to it too (#150).
 
 /** A new seed for each test: siblings, and a retake, get different questions. Postgres integer, 0 to 2^31 - 1. */
 export const newSeed = () => randomInt(0, 2 ** 31 - 1);
@@ -62,40 +61,6 @@ export async function expireTest(admin: SupabaseClient, id: string, now: number)
   const { error } = await admin.from("assessments").update({ status: "expired" })
     .eq("id", id).eq("status", "in_progress").lt("resume_until", iso(now));
   if (error) throw new Error(`expire failed: ${error.message}`);
-}
-
-/** The answer being stored: after the insert, call stored(), or failed() when the insert failed for any other reason than a duplicate. */
-export interface AnswerWindow {
-  /** Records the answer time (last_answer_at). It never moves back: two tabs can store answers in the same moment. */
-  stored(): Promise<void>;
-  /** Puts the deadline back where it was, unless something moved it since. */
-  failed(): Promise<void>;
-}
-
-/**
- * Before an answer is stored at `now`: moves the deadline to 24 hours from now (the core's recordAnswer), only while
- * the test is in progress and its deadline has not passed. The guard is in the update itself, so an expire request
- * and this cannot both win. Null when the test is no longer open: the caller must not store the answer.
- */
-export async function openAnswerWindow(admin: SupabaseClient, attempt: Attempt, now: number): Promise<AnswerWindow | null> {
-  const until = iso(recordAnswer(attempt, now).resumeUntil);
-  const { data, error } = await admin.from("assessments").update({ resume_until: until })
-    .eq("id", attempt.id).eq("status", "in_progress").gte("resume_until", iso(now)).select("id");
-  if (error) throw new Error(`deadline update failed: ${error.message}`);
-  if ((data ?? []).length !== 1) return null;
-  return {
-    async stored() {
-      const at = iso(now);
-      const { error: e } = await admin.from("assessments").update({ last_answer_at: at })
-        .eq("id", attempt.id).or(`last_answer_at.is.null,last_answer_at.lt."${at}"`);
-      if (e) console.error("[test] answer time save failed", e.message);
-    },
-    async failed() {
-      const { error: e } = await admin.from("assessments").update({ resume_until: iso(attempt.resumeUntil) })
-        .eq("id", attempt.id).eq("resume_until", until);
-      if (e) console.error("[test] deadline undo failed", e.message);
-    },
-  };
 }
 
 /** The signed-in parent and an admin client, or the error response to send. */

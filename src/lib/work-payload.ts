@@ -1,10 +1,11 @@
 // The whiteboard work that comes with an answer (#67), checked on the server before anything is stored.
 // For the server: it uses Node's Buffer. It has no "server-only" import so that its tests can run, as
-// src/lib/sign-in-link.ts. No network or database: the answer route stores what this returns (src/lib/work-store.ts).
-// The rule for which questions need work is in the assessment core (workProblem); this checks size and format.
+// src/lib/sign-in-link.ts. No network or database: the answer route passes what this returns to the test attempt
+// module (src/lib/test-attempt.ts), which checks the core's rule for which questions need work (workProblem) and
+// stores it. This checks size and format.
 import { WORK_IMAGE_MAX_BYTES, WORK_TEXT_MAX, type WorkPayload } from "@/lib/test-api";
 
-/** The work as the answer route stores it: the drawing as PNG bytes (or none), and the typed working (or ""). */
+/** The work as the answer route passes it on: the drawing as PNG bytes (or none), and the typed working (or ""). */
 export type ParsedWork = { ok: true; png: Buffer | null; text: string } | { ok: false; error: "invalid" | "work_too_big"; message: string };
 
 const PNG_SIGNATURE = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
