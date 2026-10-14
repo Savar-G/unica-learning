@@ -394,4 +394,30 @@ describe("finishing on a phone (#63)", () => {
     expect(sent).toEqual(["https://api.resend.com/emails"]);
     expect(await res.json()).toEqual({ ok: true, linkSent: true });
   });
+
+  it("does not hang when Resend never answers: after 15 seconds the family is made and no link was sent (#149)", async () => {
+    vi.stubEnv("RESEND_API_KEY", "re_synthetic");
+    vi.stubEnv("EMAIL_FROM", "Unica Learning <hello@unicalearning.com>");
+    let asked = false;
+    vi.stubGlobal("fetch", (_input: unknown, init?: RequestInit) => {
+      asked = true;
+      return new Promise((_resolve, reject) => init?.signal?.addEventListener("abort", () => reject(init.signal?.reason)));
+    });
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      supabase({ admission: { status: "created", child: "child-42" } });
+      const pending = finish(details, PHONE);
+      for (let i = 0; i < 50 && !asked; i++) await vi.advanceTimersByTimeAsync(0);
+      expect(asked).toBe(true);
+      await vi.advanceTimersByTimeAsync(15_000);
+      const res = await pending;
+      expect(await res.json()).toEqual({ ok: true, linkSent: false });
+      expect(paths()).toContain(FAMILY);
+    } finally {
+      error.mockRestore();
+      vi.useRealTimers();
+      vi.unstubAllGlobals();
+    }
+  });
 });

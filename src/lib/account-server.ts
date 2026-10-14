@@ -4,6 +4,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import type { ChildInput } from "@/lib/account";
 import { SITE_URL } from "@/lib/metadata";
 import { SUPPORT_EMAIL } from "@/lib/contact";
+import { emailConfigProblem, sendEmail } from "@/lib/email-delivery";
 import { LINK_TTL_MS, MAX_LINKS_PER_HOUR, linkEmail, newToken } from "@/lib/sign-in-link";
 
 // Server steps shared by the account routes (#62, #63). Every call uses the admin client (secret key).
@@ -58,9 +59,8 @@ export type SendLinkResult = "sent" | "not_found" | "too_many" | "failed";
 
 /** Emails the parent a one-time sign-in link (24 hours) that opens this child's start screen. */
 export async function sendSignInLink(admin: SupabaseClient, parentId: string, childId: string, origin: string): Promise<SendLinkResult> {
-  const key = process.env.RESEND_API_KEY;
-  const from = process.env.EMAIL_FROM;
-  if (!key || !from) {
+  // Stop before a token row is written: without the configuration the email cannot go.
+  if (emailConfigProblem()) {
     console.error("[account] RESEND_API_KEY or EMAIL_FROM is not set");
     return "failed";
   }
@@ -88,18 +88,10 @@ export async function sendSignInLink(admin: SupabaseClient, parentId: string, ch
 
   const url = `${origin}/sign-in/link?t=${token}`;
   const email = linkEmail({ parentName: parent.name, childName: child.first_name, url });
-  try {
-    const res = await fetch("https://api.resend.com/emails", {
-      method: "POST",
-      headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
-      body: JSON.stringify({ from, to: [parent.email], reply_to: SUPPORT_EMAIL, ...email }),
-    });
-    if (!res.ok) {
-      console.error("[account] link email failed", res.status, await res.text());
-      return "failed";
-    }
-  } catch (e) {
-    console.error("[account] link email error", e);
+  // The link row is its own guard (the rate limit above), so the email needs no send key.
+  const outcome = await sendEmail({ sender: { to: "parent" }, to: parent.email, replyTo: SUPPORT_EMAIL, ...email });
+  if (outcome.status !== "sent") {
+    console.error("[account] link email failed", outcome.status, outcome.error);
     return "failed";
   }
   return "sent";

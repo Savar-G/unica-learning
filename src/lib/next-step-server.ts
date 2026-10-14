@@ -3,6 +3,7 @@ import { after } from "next/server";
 import { randomUUID } from "node:crypto";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { withFamilyCardOperation, type Province } from "@/lib/assessment";
+import { sendEmail } from "@/lib/email-delivery";
 import type { CardResult, NextStepError, ReportSrc, WaitlistResult } from "@/lib/next-step";
 import { REPORT_PLANS, reportPath, type PlanOption } from "@/lib/report-view";
 import { CURRICULA } from "@/lib/signup";
@@ -251,21 +252,14 @@ function cardAlert(setup: ReportCardSetup, report: ReportRow, option: PlanOption
   };
 }
 
-/** Emails Savar. Uses EMAIL_FROM when it is set, else Resend's test sender (delivered only to the account owner). */
+/**
+ * Emails Savar. Uses EMAIL_FROM when it is set, else Resend's test sender (delivered only to the account owner). Sent
+ * without a send key (spec #143): a second click on a plan can alert again, as before.
+ */
 async function alertSavar(email: { subject: string; text: string; replyTo: string }) {
-  const key = process.env.RESEND_API_KEY;
   const to = process.env.SIGNUP_NOTIFY_EMAIL;
-  if (!key || !to) return;
-  try {
-    const res = await fetch("https://api.resend.com/emails", {
-      method: "POST",
-      headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
-      body: JSON.stringify({ from: process.env.EMAIL_FROM || "Unica Learning signups <onboarding@resend.dev>", to: [to], reply_to: email.replyTo, subject: email.subject, text: email.text }),
-      signal: AbortSignal.timeout(15_000),
-    });
-    if (!res.ok) console.error("[next-step] alert failed", res.status, (await res.text()).slice(0, 300));
-    else console.info("[next-step] alert sent:", email.subject.split(":")[0]);
-  } catch (e) {
-    console.error("[next-step] alert error", e instanceof Error ? e.message : e);
-  }
+  if (!to) return;
+  const outcome = await sendEmail({ sender: { to: "savar", testSenderName: "Unica Learning signups" }, to, replyTo: email.replyTo, subject: email.subject, text: email.text });
+  if (outcome.status === "sent") console.info("[next-step] alert sent:", email.subject.split(":")[0]);
+  else console.error("[next-step] alert failed", outcome.status, outcome.error);
 }
