@@ -2,6 +2,7 @@
 // The browser gets only TestStep: never an answer or the misconception coding of the choices.
 import type { TestStep } from "@/lib/assessment";
 import type { Refusal } from "@/lib/test-attempt";
+import type { FactsRefusal } from "@/lib/test-attempt";
 
 /** An assessment row's status. "expired" comes with stop and resume (#72). */
 export type AssessmentStatus = "in_progress" | "completed" | "expired";
@@ -51,7 +52,7 @@ export const ANSWER_BODY_MAX = 1_500_000;
 export const testFail = (error: TestError, status: number, extra: object = {}) => Response.json({ ok: false, error, ...extra }, { status });
 
 /** The response to a refusal of the test attempt module (#146): the status code and JSON each case had before it. */
-export function refusalResponse(refusal: Refusal): Response {
+export function refusalResponse(refusal: Refusal | FactsRefusal): Response {
   switch (refusal.error) {
     case "not_found":
       return testFail("not_found", 404);

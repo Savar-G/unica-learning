@@ -6,6 +6,8 @@ import type { Child } from "@/lib/account";
 import { ATTEMPT_COLUMNS, isUuid, toAttempt, type AttemptRow } from "@/lib/assessment-store";
 import { startStates, StoreError, type AttemptStore } from "@/lib/test-attempt";
 import { adminClient } from "@/lib/supabase-auth";
+import type { FactsTest } from "@/lib/assessment";
+import type { FactsStore } from "@/lib/test-attempt";
 import { workPath } from "@/lib/work-payload";
 import { WORK_BUCKET } from "@/lib/work-store";
 
@@ -20,6 +22,7 @@ const iso = (ms: number) => new Date(ms).toISOString();
 
 export function attemptStore(admin: SupabaseClient): AttemptStore {
   return {
+    ...factsStore(admin),
     async child(parent, childId) {
       const { data, error } = await admin.from("children").select("id, grade, province")
         .eq("id", childId).eq("parent_id", parent).maybeSingle<Pick<Child, "id" | "grade" | "province">>();
@@ -146,4 +149,46 @@ export async function parentStartStates(parent: string, childId?: string): Promi
   const admin = adminClient();
   if (!admin) return new Map();
   return startStates(attemptStore(admin), parent, Date.now(), childId);
+}
+
+/**
+ * The store's operations for the timed facts section (#70, #148): the tables assessment_facts (one row per test, the
+ * primary key) and fact_answers (one row per fact, unique by position). Only the server reads and writes them. These
+ * rows have no parent column: the module calls these operations only for a test that `load` found for the parent, so
+ * they filter by the test's id.
+ */
+function factsStore(admin: SupabaseClient): FactsStore {
+  return {
+    async loadFacts(id) {
+      const { data: row, error } = await admin.from("assessment_facts").select("started_at, test").eq("assessment_id", id)
+        .maybeSingle<{ started_at: string; test: FactsTest }>();
+      if (error) throw new StoreError("load failed", error.message);
+      if (!row) return null;
+      const { data: answers, error: answersError } = await admin.from("fact_answers").select("fact_id, response, at_ms")
+        .eq("assessment_id", id).order("position").returns<{ fact_id: string; response: string; at_ms: number }[]>();
+      if (answersError) throw new StoreError("answers load failed", answersError.message);
+      return {
+        startedAt: Date.parse(row.started_at),
+        test: row.test,
+        answers: (answers ?? []).map((a) => ({ factId: a.fact_id, response: a.response, atMs: a.at_ms })),
+      };
+    },
+
+    async insertFacts(id, { startedAt, test }) {
+      const { error } = await admin.from("assessment_facts").insert({ assessment_id: id, started_at: iso(startedAt), test });
+      // One facts section per test (the primary key): another request started it first.
+      if (error?.code === "23505") return "taken";
+      if (error) throw new StoreError("start failed", error.message);
+      return "stored";
+    },
+
+    async insertFactAnswer(id, { position, factId, response, correct, atMs }) {
+      const { error } = await admin.from("fact_answers")
+        .insert({ assessment_id: id, position, fact_id: factId, response, correct, at_ms: Math.round(atMs) });
+      // One answer per position (unique): another request answered this fact first.
+      if (error?.code === "23505") return "taken";
+      if (error) throw new StoreError("answer save failed", error.message);
+      return "stored";
+    },
+  };
 }

@@ -5,7 +5,9 @@
 // in one database statement. Answers (#147): one answer per place in a test (the unique index on assessment_id and
 // position), and the drawings bucket as a map by path.
 import type { Attempt, Route, StoredTest, Submission } from "@/lib/assessment";
+import type { FactsTest } from "@/lib/assessment";
 import { StoreError, type AttemptChild, type AttemptStore, type NewAnswer } from "@/lib/test-attempt";
+import type { FactsStore, NewFactAnswer } from "@/lib/test-attempt";
 import { workPath } from "@/lib/work-payload";
 
 /** A row of public.answers. A test can give only what the module reads back (a Submission); the module stores all of it. */
@@ -14,6 +16,13 @@ export type MemoryAnswer = Submission & Partial<NewAnswer>;
 export type MemoryTest = Attempt & { parentId: string; childId: string; seed: number; test: StoredTest; answers: MemoryAnswer[]; route?: Route | null };
 /** A row of public.children. */
 export type MemoryChild = AttemptChild & { parentId: string };
+/** A test's facts section: one row of public.assessment_facts with its rows of public.fact_answers (`position` is 0-based). */
+export interface MemoryFacts {
+  assessmentId: string;
+  startedAt: number;
+  test: FactsTest;
+  answers: NewFactAnswer[];
+}
 
 const tick = () => new Promise((resolve) => setTimeout(resolve, 0));
 
@@ -38,7 +47,38 @@ export function memoryAttemptStore({ children: kids = [], tests: initial = [] }:
     if (fail[operation]) throw fail[operation];
   };
 
+  /**
+   * The facts sections (#148), returned too, so a test can check them. They keep the database's guards: one section per
+   * test (the primary key of public.assessment_facts), and one answer per position (unique in public.fact_answers).
+   */
+  const facts: MemoryFacts[] = [];
+  const factsOps: FactsStore = {
+    async loadFacts(id) {
+      await begin("loadFacts");
+      const row = facts.find((f) => f.assessmentId === id);
+      if (!row) return null;
+      const answers = [...row.answers].sort((x, y) => x.position - y.position).map(({ factId, response, atMs }) => ({ factId, response, atMs }));
+      return { startedAt: row.startedAt, test: row.test, answers };
+    },
+    async insertFacts(id, { startedAt, test }) {
+      await begin("insertFacts");
+      if (!tests.some((t) => t.id === id)) throw new Error("assessment_facts: no such test"); // the foreign key
+      if (facts.some((f) => f.assessmentId === id)) return "taken";
+      facts.push({ assessmentId: id, startedAt, test, answers: [] });
+      return "stored";
+    },
+    async insertFactAnswer(id, answer) {
+      await begin("insertFactAnswer");
+      const row = facts.find((f) => f.assessmentId === id);
+      if (!row) throw new Error("fact_answers: the test has no facts section"); // the foreign key
+      if (row.answers.some((a) => a.position === answer.position)) return "taken";
+      row.answers.push({ ...answer });
+      return "stored";
+    },
+  };
+
   const store: AttemptStore = {
+    ...factsOps,
     async child(parent, childId) {
       await begin("child");
       const row = children.find((c) => c.id === childId && c.parentId === parent);
@@ -108,5 +148,5 @@ export function memoryAttemptStore({ children: kids = [], tests: initial = [] }:
       return { id };
     },
   };
-  return { store, children, tests, drawings, fail };
+  return { store, children, tests, drawings, facts, fail };
 }

@@ -1,37 +1,16 @@
 import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { factsStep, restoreFacts, type FactsSession, type FactsStep, type FactsTest, type FactSubmission, type StoredTest } from "@/lib/assessment";
-import { isUuid } from "@/lib/assessment-store";
-import { testFail, type AssessmentStatus } from "@/lib/test-api";
+import { restoreFacts, type FactsSession, type FactsTest, type FactSubmission } from "@/lib/assessment";
+import { testFail } from "@/lib/test-api";
 
-// The server side of the timed facts section (#70). The server's clock times the section: started_at is stored when
-// the child presses Start, and each answer stores its arrival time since then. The core only takes those times as input.
-
-export interface FactsOwner {
-  id: string;
-  status: AssessmentStatus;
-  test: StoredTest;
-}
-
-/** The parent's assessment (only the parts the facts section needs), or the error response to send. */
-export async function factsOwner(admin: SupabaseClient, parent: string, id: string): Promise<FactsOwner | { error: Response }> {
-  if (!isUuid(id)) return { error: testFail("not_found", 404) };
-  const { data, error } = await admin.from("assessments").select("id, status, test").eq("id", id).eq("parent_id", parent).maybeSingle<FactsOwner>();
-  if (error) {
-    console.error("[facts] assessment load failed", error.message);
-    return { error: testFail("store_failed", 502) };
-  }
-  return data ?? { error: testFail("not_found", 404) };
-}
+// The finish route's read of the timed facts section (#70). The facts routes go through the test attempt module
+// (src/lib/test-attempt.ts, #148); the finish route moves to it too, and then this file goes (#150).
 
 export interface LoadedFacts {
   /** When the section started, in ms since the epoch, by the server's clock. */
   startedAt: number;
   session: FactsSession;
 }
-
-/** Where the section is now, by the server's clock. */
-export const stepNow = (loaded: LoadedFacts): FactsStep => factsStep(loaded.session, Date.now() - loaded.startedAt);
 
 /** The section rebuilt from the stored facts and answers; null when it has not started; or the error response to send. */
 export async function loadFacts(admin: SupabaseClient, assessmentId: string): Promise<LoadedFacts | null | { error: Response }> {
