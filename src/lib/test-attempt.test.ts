@@ -363,6 +363,19 @@ describe("when storing an answer fails", () => {
     expect(log.mock.calls).toEqual([["[test] answer save failed", "connection reset"]]);
   });
 
+  it("a failed answer does not put back a deadline that another tab's stored answer moved since", async () => {
+    logs();
+    const memory = family(stored(open("a1", T0), { answered: 2 }));
+    memory.fail.storeDrawing = new StoreError("upload failed", "bucket full");
+    const results = await Promise.all([
+      answerQuestion(memory.store, P1, "a1", sent(memory.tests[0], { png: DRAWING }), T0 + HOUR),
+      answerQuestion(memory.store, P1, "a1", sent(memory.tests[0]), T0 + 2 * HOUR),
+    ]);
+    expect(results).toMatchObject([{ ok: false, error: "store_failed" }, { ok: true, step: { number: 4 } }]);
+    expect(memory.tests[0]).toMatchObject({ resumeUntil: T0 + 26 * HOUR, lastAnswerAt: T0 + 2 * HOUR });
+    expect(memory.tests[0].answers).toHaveLength(3);
+  });
+
   it("a failed deadline move is store_failed and stores nothing, logged as before", async () => {
     const log = logs();
     const memory = family(stored(recordAnswer(open("a1", T0), T0 + HOUR)));
