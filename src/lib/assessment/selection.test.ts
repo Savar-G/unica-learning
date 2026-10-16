@@ -89,3 +89,30 @@ it("uses six grade 3 fraction questions on grade 3 down because BC has no lower 
   expect(new Set(fractions.map((q) => q.level))).toEqual(new Set([3]));
   expect([...session.stage1, ...session.stage2.down]).toHaveLength(36);
 });
+
+it("fills the strand minimum from a usable fallback when the lowest nonempty pool is too short", () => {
+  let kept = 0;
+  const bank = bankFor(4).filter((t) => !(REPORTED_STRAND[t.strand] === "algebra" && (t.grades.BC === 3 || (t.grades.BC === 2 && kept++ > 0))));
+  const session = createSession({ grade: 4, province: "BC" }, 188, { bank });
+  const questions = [...session.stage1, ...session.stage2.down];
+  const algebra = questions.filter((q) => REPORTED_STRAND[q.strand] === "algebra" && q.level <= 4);
+  expect(algebra).toHaveLength(6);
+  expect(session.stage2.down.filter((q) => REPORTED_STRAND[q.strand] === "algebra").map((q) => q.level)).toEqual([4, 4]);
+  expect(new Set(questions.map((q) => q.templateId)).size).toBe(36);
+  expect(questions).toHaveLength(36);
+});
+
+it("uses the lowest permitted fallback when more than one level has enough unused templates", () => {
+  const bank = bankFor(4).filter((t) => !(t.grades.BC === 3 && REPORTED_STRAND[t.strand] === "algebra"));
+  const session = createSession({ grade: 4, province: "BC" }, 188, { bank });
+  const added = session.stage2.down.filter((q) => REPORTED_STRAND[q.strand] === "algebra");
+  expect(added.map((q) => q.level)).toEqual([2, 2]);
+});
+
+it("fails clearly when permitted algebra pools have too few unused templates even with enough above grade", () => {
+  let kept = 0;
+  const bank = bankFor(4).filter((t) => REPORTED_STRAND[t.strand] !== "algebra" || t.grades.BC > 4 || (t.grades.BC === 4 && kept++ < 5));
+  expect(bank.filter((t) => REPORTED_STRAND[t.strand] === "algebra" && t.grades.BC <= 4)).toHaveLength(5);
+  expect(bank.filter((t) => REPORTED_STRAND[t.strand] === "algebra" && t.grades.BC === 5).length).toBeGreaterThanOrEqual(6);
+  expect(() => createSession({ grade: 4, province: "BC" }, 188, { bank })).toThrow(/too few unused templates.*algebra/);
+});

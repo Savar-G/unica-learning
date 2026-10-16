@@ -184,8 +184,18 @@ function withStrandMinimum(
   for (const strand of strands) {
     const missing = Math.max(0, STRAND_MINIMUM_QUESTIONS - counts.get(strand)!);
     if (!missing) continue;
-    const levels = bank.filter((t) => REPORTED_STRAND[t.strand] === strand && levelFor(t, profile.province) <= profile.grade).map((t) => levelFor(t, profile.province));
-    const level = (route === "up" ? profile.grade : Math.min(...levels)) as Level;
+    const used = new Set([...stage1, ...result].map((q) => q.templateId));
+    const pools = new Map<Level, Set<string>>();
+    for (const template of bank) {
+      const level = levelFor(template, profile.province);
+      if (REPORTED_STRAND[template.strand] !== strand || level > profile.grade || used.has(template.id)) continue;
+      const pool = pools.get(level) ?? new Set<string>();
+      pool.add(template.id);
+      pools.set(level, pool);
+    }
+    const level = route === "up" ? profile.grade as Level
+      : [...pools.keys()].sort((a, b) => a - b).find((level) => pools.get(level)!.size >= missing);
+    if (level === undefined) throw new Error(`The BC question bank has too few unused templates at or below grade ${profile.grade} for ${strand}`);
     const added = buildStage(bank, profile, [strand], level, missing, seed, `${route}-${strand}`, seen, [...stage1, ...result]);
     for (const q of added) {
       if (route === "up") result.push(q);
