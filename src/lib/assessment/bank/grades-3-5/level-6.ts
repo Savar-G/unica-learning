@@ -26,13 +26,22 @@ export const LEVEL_6: readonly TaggedTemplate[] = [
       wrong: typedWrong(right, [[a * b, "lcm-product"], [gcd(a, b), "factor-multiple"]]) };
   }, "number", { AB: 8, ON: 7 }), // No common-multiple outcome in AB current K-6, so AB children here never meet it; ON7 B2.6
   template("prime", "N", "6.4", (rng) => {
-    const prime = rng.pick([11, 13, 17, 19, 23, 29, 31, 37]), others = rng.shuffle([9, 15, 21, 25, 27, 33, 35, 39]).slice(0, 3);
-    return { values: { prime }, prompt: "Which number is prime?", readAloud: "Which number is prime?", answer: String(prime),
-      wrong: others.map((n) => wrong(n, "N5")) };
+    // Prime or composite (#187: the ask varies). Every choice is odd, so "odd means prime" never finds the answer.
+    const primes = [11, 13, 17, 19, 23, 29, 31, 37], composites = [9, 15, 21, 25, 27, 33, 35, 39];
+    if (rng.int(0, 1) === 1) {
+      const prime = rng.pick(primes), others = rng.shuffle(composites).slice(0, 3);
+      return { values: { prime, composite: 0 }, prompt: "Which number is prime?", readAloud: "Which number is prime?", answer: String(prime),
+        wrong: others.map((n) => wrong(n, "N5")) };
+    }
+    const composite = rng.pick(composites), others = rng.shuffle(primes).slice(0, 3);
+    return { values: { composite, prime: 0 }, prompt: "Which number is composite?", readAloud: "Which number is composite?", answer: String(composite),
+      wrong: others.map((n) => wrong(n, "prime-composite")) };
   }, "choice", { AB: 4 }), // AB MAT4-OI1-GQ3-LO1-KO1-SP: describe a number as prime or composite
   template("divisibility", "N", "6.4", (rng) => {
-    const k = rng.int(20, 90), right = k * 3;
-    return { values: { k }, prompt: "Which number is divisible by 3 with no remainder?", readAloud: "Which number is divisible by 3 with no remainder?", answer: String(right),
+    // The divisor changes with the seed (#187: no fixed prompt). Each wrong choice is 1 or 2 away, never a multiple.
+    const by = rng.pick([3, 4, 6, 9]), k = rng.int(20, 90), right = k * by;
+    const ask = `Which number is divisible by ${by} with no remainder?`;
+    return { values: { k, by }, prompt: ask, readAloud: ask, answer: String(right),
       wrong: [wrong(right + 1, "divisibility"), wrong(right + 2, "divisibility"), wrong(right - 1, "divisibility")] };
   }, "choice", { AB: 5, SK: 7, MB: 7 }), // AB MAT5-OI1-GQ3-LO1-KO1-SP divisibility tests; SK N7.1, MB 7.N.1
   template("all-factors", "N", "6.4", (rng) => {

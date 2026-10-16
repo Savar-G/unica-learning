@@ -267,6 +267,13 @@ export const MISCONCEPTIONS = {
   "factor-not-greatest": { description: "Gives a common factor that is not the greatest one", evidence: "none" },
   "root-estimate": { description: "Picks the wrong pair of whole numbers when estimating a square root", evidence: "none" },
   "volume-not-area": { description: "Finds the volume when the question asks for the surface area", evidence: "none" },
+  // Bank fixes (#187).
+  "regular-swap": { description: "Mixes up regular and irregular polygons", evidence: "none" },
+  "benchmark-near": { description: "Picks the benchmark next to the closest one: does not compare the two distances", evidence: "none" },
+  "benchmark-far": { description: "Picks a benchmark far from the number: does not judge closeness", evidence: "none" },
+  "referent-whole": { description: "Gives the amount of the full referent when the question asks about a part of it", evidence: "none" },
+  "referent-double": { description: "Doubles the referent amount when the question asks about a part of it", evidence: "none" },
+  "referent-quarter": { description: "Halves the referent amount twice when the question asks for half of it", evidence: "none" },
 } satisfies Record<string, Misconception>;
 
 export type MisconceptionId = keyof typeof MISCONCEPTIONS;

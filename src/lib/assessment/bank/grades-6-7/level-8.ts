@@ -18,8 +18,10 @@ export const LEVEL_8: readonly TaggedTemplate[] = [
   {
     id: "g67-8-perfect-square", strand: "N", grades: GRADES, standard: "8.1", format: "choice", whiteboard: true,
     fill(rng) {
-      const n = rng.int(4, 20);
-      return { values: { n }, prompt: "Which number is a perfect square?", readAloud: "Which number is a perfect square?", answer: String(n * n), wrong: [wrong(n * n - 1, "square-neighbour"), wrong(n * n + 1, "square-neighbour")] };
+      // By its name or by its definition (#187: the ask varies). Squares only: AB, SK and MB teach cubes after grade 8.
+      const n = rng.int(4, 20), byName = rng.int(0, 1) === 1;
+      const ask = byName ? "Which number is a perfect square?" : "Which number is a whole number times itself?";
+      return { values: { n, byName: byName ? 1 : 0 }, prompt: ask, readAloud: ask, answer: String(n * n), wrong: [wrong(n * n - 1, "square-neighbour"), wrong(n * n + 1, "square-neighbour")] };
     },
   },
   {

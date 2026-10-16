@@ -36,11 +36,13 @@ export const LEVEL_7: readonly TaggedTemplate[] = [
     fill(rng) {
       const [a, b] = draw(rng, (g) => [-g.int(2, 12), -g.int(2, 12)], ([a, b]) => a < b);
       const c = rng.int(0, 1) === 1 ? 0 : -1 * 0 + rng.int(1, 4), d = rng.int(5, 15);
-      const list = (xs: number[]) => xs.map(num).join(", ");
+      // Least to greatest, or greatest to least (#187: the ask varies). Every list is read in the asked direction.
+      const down = rng.int(0, 1) === 1, ask = down ? "greatest to least" : "least to greatest";
+      const list = (xs: number[]) => (down ? [...xs].reverse() : xs).map(num).join(", ");
       return {
-        values: { a, b, c, d },
-        prompt: "Which list is in order from least to greatest?",
-        readAloud: "Which list of numbers is in order from least to greatest?",
+        values: { a, b, c, d, down: down ? 1 : 0 },
+        prompt: `Which list is in order from ${ask}?`,
+        readAloud: `Which list of numbers is in order from ${ask}?`,
         answer: list([a, b, c, d]),
         wrong: [
           wrong(list([b, a, c, d]), "N6"),
@@ -304,9 +306,12 @@ export const LEVEL_7: readonly TaggedTemplate[] = [
       // Three values just below the fraction, in other forms: a percent with more digits, a short decimal, a long decimal.
       const pct = Math.floor(v / 10) - (v % 10 === 0 ? 1 : 0);
       const long = v - rng.int(1, 4);
+      // The prompt names the numbers in a drawn order (#187: no fixed prompt); the read-aloud leaves them to the screen,
+      // which speaks the choices (#79).
+      const named = rng.shuffle([frac(n, d), `${pct}%`, fmt(long / 1000)].filter((x, i, all) => all.indexOf(x) === i));
       return {
         values: { n, d },
-        prompt: "Which number is the greatest?",
+        prompt: `Which number is the greatest: ${named.slice(0, -1).join(", ")} or ${named[named.length - 1]}?`,
         readAloud: "Which number is the greatest?",
         answer: frac(n, d),
         wrong: [
@@ -411,15 +416,17 @@ export const LEVEL_7: readonly TaggedTemplate[] = [
       const f = n / d;
       const dec = Math.round((f - 0.03) * 100) / 100, pct = Math.round(f * 100) + rng.int(2, 4);
       const items = [[frac(n, d), f], [fmt(dec), dec], [`${pct}%`, pct / 100]] as const;
-      const order = (xs: readonly (readonly [string, number])[]) => xs.map(([s]) => s).join(", ");
+      // Least to greatest, or greatest to least (#187: the ask varies). Every list is read in the asked direction.
+      const down = rng.int(0, 1) === 1, ask = down ? "greatest to least" : "least to greatest";
+      const order = (xs: readonly (readonly [string, number])[]) => (down ? [...xs].reverse() : xs).map(([s]) => s).join(", ");
       const sorted = [...items].sort((x, y) => x[1] - y[1]);
       const byDigits = [...items].sort((x, y) => parseFloat(x[0].replace(/[^\d.]/g, "")) - parseFloat(y[0].replace(/[^\d.]/g, "")));
       const candidates = [order(byDigits), order([...sorted].reverse()), order([sorted[1], sorted[0], sorted[2]]), order([sorted[0], sorted[2], sorted[1]])];
       const wrongs = [...new Set(candidates)].filter((c) => c !== order(sorted)).slice(0, 3);
       return {
-        values: { n, d, dec100: Math.round(dec * 100), pct },
-        prompt: "Which list is in order from least to greatest?",
-        readAloud: "Which list of numbers is in order from least to greatest?",
+        values: { n, d, dec100: Math.round(dec * 100), pct, down: down ? 1 : 0 },
+        prompt: `Which list is in order from ${ask}?`,
+        readAloud: `Which list of numbers is in order from ${ask}?`,
         answer: order(sorted),
         wrong: wrongs.map((w, i) => wrong(w, i === 0 && w === order(byDigits) ? "form-compare" : w === order([...sorted].reverse()) ? "more-less" : "form-compare")),
       };
@@ -1025,12 +1032,15 @@ export const LEVEL_7: readonly TaggedTemplate[] = [
       const ways = (s: number) => 6 - Math.abs(s - 7);
       const [a, b] = draw(rng, (g) => [g.int(2, 12), g.int(2, 12)], ([a, b]) => a < b && ways(a) !== ways(b));
       const more = ways(a) > ways(b) ? a : b, less = more === a ? b : a;
+      // More likely, or less likely (#187: the ask varies).
+      const askMore = rng.int(0, 1) === 1;
+      const ask = `Two fair dice are rolled and the numbers are added. Which sum is ${askMore ? "more" : "less"} likely?`;
       return {
-        values: { a, b },
-        prompt: "Two fair dice are rolled and the numbers are added. Which sum is more likely?",
-        readAloud: "Two fair dice are rolled and the numbers are added. Which sum is more likely?",
-        answer: `A sum of ${more}`,
-        wrong: [wrong(`A sum of ${less}`, "chance-reversed"), wrong("They are equally likely", "D3")],
+        values: { a, b, more: askMore ? 1 : 0 },
+        prompt: ask,
+        readAloud: ask,
+        answer: `A sum of ${askMore ? more : less}`,
+        wrong: [wrong(`A sum of ${askMore ? less : more}`, askMore ? "chance-reversed" : "likelihood-reversed"), wrong("They are equally likely", "D3")],
       };
     },
   },
