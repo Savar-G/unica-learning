@@ -1,0 +1,105 @@
+// Round r23 prototype (#195): three ways to hold six questions on the "Tell us how {child} learns" card, inside the
+// real sample report, above a static copy of the plan buttons. Throwaway: deleted before the commit; the screenshots
+// and the manifest stay in .design/experiments/r23/.
+import { notFound } from "next/navigation";
+import { LearningStep } from "@/components/learning";
+import { ReportCard } from "@/components/report";
+import { SupportPage } from "@/components/support-page";
+import { INTERESTS, LEARNING_GOALS, LEARNING_STYLES, MATH_FEELINGS, WEEKLY_TIMES } from "@/lib/learning-style";
+import { nextStep } from "@/lib/report-view";
+import { sampleReportView } from "@/lib/sample-children";
+
+const chips = (name: string, options: readonly { id: string; label: string }[], small = false, type: "radio" | "checkbox" = "radio") => (
+  <div className="lrn-picks">
+    {options.map((o) => (
+      <label key={o.id} className={`lrn-pick${small ? " is-small" : ""}`}>
+        <input type={type} name={name} readOnly />
+        {o.label}
+      </label>
+    ))}
+  </div>
+);
+
+function Head({ name }: { name: string }) {
+  return <>
+    <h3>Tell us how {name} learns</h3>
+    <p className="lrn-lead">We use your answers to build {name}&apos;s next book. This step is optional, and you can change the answers later from your account.</p>
+  </>;
+}
+
+function Styles({ name }: { name: string }) {
+  return <>
+    <fieldset className="lrn-q"><legend>How does {name} like to learn something new? <span>Choose one or two.</span></legend>{chips("s", LEARNING_STYLES, false, "checkbox")}</fieldset>
+    <fieldset className="lrn-q"><legend>What is {name} interested in? <span>Optional. We set the story problems in these.</span></legend>{chips("i", INTERESTS, true, "checkbox")}</fieldset>
+    <div className="lrn-q fld"><label>What does {name} find hard in math? <span>Optional.</span></label><textarea rows={3} readOnly /></div>
+  </>;
+}
+
+function Actions() {
+  return <div className="lrn-actions"><button className="btn sm" type="button" disabled>Save answers</button><button className="btn sm ghost" type="button">Skip for now</button></div>;
+}
+
+/** A: one list, the new questions in reading order, the hint under the lead. */
+function FlatList({ name }: { name: string }) {
+  return (
+    <form className="lrn">
+      <Head name={name} />
+      <p className="lrn-together proto-a-hint">If {name} is nearby, answer these together.</p>
+      <fieldset className="lrn-q"><legend>How does {name} feel about math?</legend>{chips("f", MATH_FEELINGS)}</fieldset>
+      <Styles name={name} />
+      <fieldset className="lrn-q"><legend>What is your main goal?</legend>{chips("g", LEARNING_GOALS)}</fieldset>
+      <fieldset className="lrn-q"><legend>How much time each week? <span>For math practice at home.</span></legend>{chips("t", WEEKLY_TIMES)}</fieldset>
+      <Actions />
+    </form>
+  );
+}
+
+/** C: the three one-answer questions as compact rows (question left, small chips right), then the rest. */
+function CompactRows({ name }: { name: string }) {
+  const row = (q: string, n: string, options: readonly { id: string; label: string }[]) => (
+    <div className="proto-c-row" role="radiogroup" aria-label={q}><p className="proto-c-q">{q}</p>{chips(n, options, true)}</div>
+  );
+  return (
+    <form className="lrn">
+      <Head name={name} />
+      <p className="lrn-together proto-a-hint">If {name} is nearby, answer these together.</p>
+      <div className="proto-c-rows">
+        {row(`How does ${name} feel about math?`, "f", MATH_FEELINGS)}
+        {row("What is your main goal?", "g", LEARNING_GOALS)}
+        {row("How much time each week?", "t", WEEKLY_TIMES)}
+      </div>
+      <Styles name={name} />
+      <Actions />
+    </form>
+  );
+}
+
+const PROTO_CSS = `
+.support-page .lrn .proto-a-hint { margin: -10px 0 16px; }
+.proto-c-rows { margin: 0 0 20px; border-top: 1px solid #e4e4e7; }
+.proto-c-row { display: grid; grid-template-columns: minmax(0, 15rem) 1fr; align-items: center; gap: 8px 16px; padding: 10px 0; border-bottom: 1px solid #e4e4e7; }
+.support-page .lrn .proto-c-q { font: 600 15.5px/1.4 var(--sans); color: var(--ink); }
+@media (max-width: 599px) { .proto-c-row { grid-template-columns: 1fr; } }
+`;
+
+export default async function LearningCardPrototype({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
+  if (process.env.VERCEL_ENV === "production") notFound();
+  const { v, place } = await searchParams;
+  const view = sampleReportView();
+  const name = view.childName;
+  const step = nextStep(view);
+  const card = v === "a" ? <FlatList name={name} /> : v === "c" ? <CompactRows name={name} /> : <LearningStep childId="proto" name={name} start={null} place={place === "account" ? "account" : "report"} />;
+  return (
+    <SupportPage label="" title="" wide>
+      <style>{PROTO_CSS}</style>
+      <ReportCard view={view} readOnly nextSlot={<>
+        {card}
+        <div className="rpt-next is-card" id="proto-plans">
+          <h3>{step.title}</h3>
+          <p>{step.text}</p>
+          {step.kind === "card" && <div className="rpt-plans">{step.plans.map((o, i) => <button key={o.plan} className={`btn${i < step.plans.length - 1 ? " ghost" : ""}`} type="button">{o.label}</button>)}</div>}
+        </div>
+      </>} />
+    </SupportPage>
+  );
+}
