@@ -25,7 +25,7 @@ export const metadata = pageMetadata({
 export default async function StartScreen({ params, searchParams }: PageProps<"/account/start/[child]">) {
   const { child: id } = await params;
   const { via, reminder } = await searchParams;
-  // A reminder email (#73) links here: "continue", "come_back" or "start".
+  // A reminder email (#73) links here: "continue", "come_back", "start" or "start_followup".
   const fromReminder = isReminderKind(reminder) ? reminder : null;
   const db = await sessionClient();
   const parent = await parentId(db);

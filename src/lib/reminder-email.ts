@@ -1,5 +1,6 @@
-// The reminder emails (#73, D-085): "continue your test", "come back" and "start your test". Pure: the reminder job
-// (src/lib/reminders.ts) sends them through the parent email delivery module (#152). Same look as the report email
+// The reminder emails (#73, D-085, D-102): "continue your test", "come back", "start your test" and the last start
+// reminder. Pure: the reminder job (src/lib/reminders.ts) sends them through the parent email delivery module (#152).
+// Same look as the report email
 // (src/lib/report-email.ts).
 // CASL: every reminder names the sender, gives the mailing address and the website, and has an unsubscribe link.
 import { BUSINESS_NAME, MAILING_ADDRESS, WEBSITE } from "@/lib/contact";
@@ -101,6 +102,17 @@ function content(e: ReminderEmailInput): { subject: string; preview: string; par
         paragraphs: [
           `${name} has not started the free math placement test yet.`,
           `The test has ${e.total} questions. ${alone} When ${name} finishes, you get the report by email.`,
+        ],
+        button: `Start ${name}'s test`,
+      };
+    case "start_followup":
+      return {
+        subject: `Last reminder: ${name}'s free math test`,
+        preview: `It is free, and no card is needed. ${name} needs a laptop or tablet.`,
+        paragraphs: [
+          `${name} has not started the free math placement test yet. This is our last reminder about it.`,
+          `The test is free, and you do not give a card for it. ${name} needs a laptop or tablet, and answers ${e.total} questions alone, in one sitting.`,
+          `When ${name} finishes, you get the report by email.`,
         ],
         button: `Start ${name}'s test`,
       };

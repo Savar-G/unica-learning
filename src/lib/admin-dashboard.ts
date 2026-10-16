@@ -17,7 +17,7 @@ export interface RawCard {
   saved_in_stripe_only?: boolean;
 }
 export interface RawWaitlist { id: string; created_at: string; parent_id: string; child_id: string; province: Province }
-export interface RawEmail { id: string; created_at: string; parent_id: string; child_id: string | null; assessment_id: string | null; kind: "continue" | "come_back" | "start" | "unsubscribe"; status: "claimed" | "sent" | "failed" | null; attempts: number; sent_at: string | null; error: string | null }
+export interface RawEmail { id: string; created_at: string; parent_id: string; child_id: string | null; assessment_id: string | null; kind: "continue" | "come_back" | "start" | "start_followup" | "unsubscribe"; status: "claimed" | "sent" | "failed" | null; attempts: number; sent_at: string | null; error: string | null }
 /** A Stripe subscription of a saved card's customer. Times are ISO. `amount`: the price per unit, in cents. */
 export interface RawSubscription {
   id: string;
@@ -73,7 +73,7 @@ export const STAGE_SHORT: Record<Stage, string> = {
 };
 /** What happens next for a family in this stage, or what Savar can do. */
 export const STAGE_ACTION: Record<Stage, string> = {
-  account: "The start reminder goes out automatically.",
+  account: "Start reminders go out automatically, on day 1 and day 3.",
   started: "The continue reminder goes out automatically.",
   finished: "Report sent. Waiting for the parent to choose a plan.",
   card_started: "The parent left the payment page. Consider a personal email.",
@@ -96,11 +96,12 @@ export function monthlyAmount(s: RawSubscription): number {
 
 // Emails
 
-export type EmailKind = "start" | "continue" | "come_back" | "report" | "alert" | "unsubscribe";
+export type EmailKind = "start" | "start_followup" | "continue" | "come_back" | "report" | "alert" | "unsubscribe";
 export interface EmailKindInfo { kind: EmailKind; label: string; subject: string; to: string; trigger: string }
 /** Every email the site logs. The subjects follow reminder-email.ts and report-email.ts. */
 export const EMAIL_KINDS: readonly EmailKindInfo[] = [
   { kind: "start", label: "Start reminder", subject: "{child} has not started the free math test", to: "Parent", trigger: "Account made, no test started" },
+  { kind: "start_followup", label: "Last start reminder", subject: "Last reminder: {child}'s free math test", to: "Parent", trigger: "Day 3, still no test started" },
   { kind: "continue", label: "Continue reminder", subject: "{child} can finish the math test", to: "Parent", trigger: "Test started, not finished" },
   { kind: "come_back", label: "Come back reminder", subject: "{child} can start the math test again", to: "Parent", trigger: "Test expired before the end" },
   { kind: "report", label: "Report email", subject: "{child}'s math report is ready", to: "Parent", trigger: "Test finished, report built" },
