@@ -49,7 +49,7 @@ export function CompareTable() {
       <p className="cmp-kicker" id="cmpT">How we compare</p>
       <CompareGrid columns={["tutor", "centre", "us"]} rows={["personal", "plan", "gaps"]} labelledBy="cmpT" />
       <CompareLegend marks={["yes", "part"]} />
-      <p className="cmp-more"><Link href="/compare">Compare with school and online learning platforms too →</Link></p>
+      <p className="cmp-more"><Link href="/compare">See the full comparison →</Link></p>
     </Rise>
   );
 }
