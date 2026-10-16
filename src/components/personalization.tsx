@@ -10,7 +10,7 @@ import { Knot, Rise } from "./drawn";
 import { PageZoom } from "./page-zoom";
 import "@/ds/styles/personalization.css";
 
-const TITLE = "Every child learns differently. Different pace, different style. So we build each child their own learning program.";
+const TITLE = "Every child learns differently. So each one gets their own program.";
 const LINES: [keyof Pick<SampleChild, "result" | "style">, string][] = [
   ["result", "Assessment"],
   ["style", "Learning style"],
@@ -66,7 +66,7 @@ function Fork() {
     <div className="pz-fork">
       <Rise className="pz-start">
         <span className="eyebrow">Meet Leah and Kai</span>
-        <p>Leah and Kai are both in Grade 3. They get the same lessons every day. But Leah is falling behind, and Kai is ready for more.</p>
+        <p>Leah and Kai are both in Grade 3. Leah needs more practice, and Kai is ready for more.</p>
       </Rise>
       <svg className="pz-branch" viewBox="0 0 400 60" preserveAspectRatio="none" aria-hidden="true">
         <path d="M200 0 C200 30 100 30 100 60 M200 0 C200 30 300 30 300 60" />
