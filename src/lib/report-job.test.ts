@@ -48,12 +48,17 @@ const cohort: ComparisonTest[] = [
  * parent row is missing. `child`: false when Asha's child row is missing. `helped`: Asha said someone helped, so the
  * report warns that the level may be too high. `comparison` counts the comparison reads.
  */
-function database({ unsubscribed = false, parent = PRIYA as typeof PRIYA | null, child = true, helped = false } = {}) {
+function database({ unsubscribed = false, parent = PRIYA as typeof PRIYA | null, child = true, helped = false, rushed = false } = {}) {
   const tables: MemoryReportTables = {
     reports: [],
     assessments: [{
       id: TEST, parentId: "parent-1", childId: "child-1", status: "completed", grade: 4, province: "BC", completedAt: "2026-10-10T12:00:00Z",
-      placement: helped ? { ...placement, flags: [{ kind: "helped", answer: "yes" }] } : placement,
+      placement: {
+        ...placement,
+        ...(helped ? { flags: [{ kind: "helped" as const, answer: "yes" as const }] } : {}),
+        // #189: 12 of 36 answers very fast, 3 of them wrong ones in a run.
+        ...(rushed ? { pace: { veryFast: 12, answers: 36, leftOut: ["s1-0", "s1-1", "s1-2"], unreliable: true } } : {}),
+      },
       help: helped ? "yes" : "no",
       test: storedTest(createSession({ grade: 4, province: "BC" }, 101)),
     }],
@@ -319,14 +324,15 @@ const words = (html: string) =>
 /** The area rows of the report email's text, in order: "<area>: <status>, <n> of <m> right". */
 function emailAreas(text: string): string[] {
   const block = text.split("\n\n").find((b) => b.startsWith("By area\n")) ?? "";
-  return block.split("\n").filter((line) => /^.+: .+, \d+ of \d+ right$/.test(line));
+  return block.split("\n").filter((line) => /^.+: .+, \d+ of \d+ right( \(.+\))?$/.test(line));
 }
 
 /** The area rows of the report page, in order, each read from its own table row and written as the email writes it. */
 function pageAreas(html: string): string[] {
   const table = html.match(/<table class="rpt-areas">([\s\S]*?)<\/table>/)?.[1] ?? "";
-  const rows = table.matchAll(/<tr><th scope="row">([\s\S]*?)<span>[\s\S]*?class="rpt-chip[^"]*">([\s\S]*?)<\/span>[\s\S]*?class="rpt-count">([\s\S]*?)<\/td><\/tr>/g);
-  return [...rows].map(([, name, status, count]) => `${words(name)}: ${words(status)}, ${words(count)} right`);
+  // #189: the certainty label under the status chip, as the email writes it in brackets.
+  const rows = table.matchAll(/<tr><th scope="row">([\s\S]*?)<span>[\s\S]*?class="rpt-chip[^"]*">([\s\S]*?)<\/span>(?:<span class="rpt-sure[^"]*">([\s\S]*?)<\/span>)?[\s\S]*?class="rpt-count">([\s\S]*?)<\/td><\/tr>/g);
+  return [...rows].map(([, name, status, sure, count]) => `${words(name)}: ${words(status)}, ${words(count)} right${sure ? ` (${words(sure)})` : ""}`);
 }
 
 /** Each piece of text is in each place. */
@@ -373,10 +379,10 @@ describe("the report email and the report page (#163)", () => {
     // Each area as one row: its name, its status and its count together, in order. Asha got every grade 4 question
     // right. A row is matched whole, so a count or a status in the AI text or the legend cannot stand in for it.
     const areas = [
-      "Number and operations: Secure, 5 of 5 right",
-      "Fractions and decimals: Secure, 5 of 5 right",
-      "Patterns and algebra: Secure, 4 of 4 right",
-      "Shapes, measurement and data: Secure, 4 of 4 right",
+      "Number and operations: Secure, 5 of 5 right (Clear)",
+      "Fractions and decimals: Secure, 5 of 5 right (Clear)",
+      "Patterns and algebra: Secure, 4 of 4 right (Clear)",
+      "Shapes, measurement and data: Secure, 4 of 4 right (Clear)",
     ];
     expect(emailAreas(email.text)).toEqual(areas);
     expect(pageAreas(page.html)).toEqual(areas);
@@ -402,6 +408,32 @@ describe("the report email and the report page (#163)", () => {
     ]);
     // The page also shows the finish date itself.
     expect(page.text).toContain("October 10, 2026");
+  });
+});
+
+// #189 (spec #181): the reliability note, the new test at once and the left-out answers, in the email and on the page.
+describe("the reliability note on the report email and the report page", () => {
+  it("both say the result may not be reliable, give the count, offer a new test now and say what was left out", async () => {
+    const db = database({ rushed: true });
+    const mail = memoryTransport();
+    await run(db, mail, memoryReportLedger());
+    const [email] = mail.delivered;
+    const page = await reportPage(db);
+    expectEverywhere(places(email, page), [
+      "This result may not be reliable",
+      "Asha answered 12 of 36 questions in under 3 seconds.",
+      "Asha can take a new test now, with new questions. There is no 30-day wait.",
+      "3 wrong answers from a run of very fast answers were left out of the score.",
+    ]);
+  });
+
+  it("is on neither at a steady pace", async () => {
+    const db = database();
+    const mail = memoryTransport();
+    await run(db, mail, memoryReportLedger());
+    const [email] = mail.delivered;
+    const page = await reportPage(db);
+    for (const text of Object.values(places(email, page))) expect(text).not.toContain("may not be reliable");
   });
 });
 

@@ -401,11 +401,14 @@ export function reportAlert({
   const lines = [
     `Child: ${v.childName}`,
     `School grade: ${m.level.grade} (${v.province})`,
-    `Working level: ${levelName(m.level.working)} (${m.howWeHelp})${m.level.atCeiling ? ", at the top of what the test reached" : ""}${m.level.confidence === "low" ? ", low confidence: no level cleared" : ""}`,
+    `Working level: ${levelName(m.level.working)} (${m.howWeHelp})${m.level.atCeiling ? ", at the top of what the test reached" : ""}${m.level.confidence === "low" ? ", low confidence: no level cleared" : ""}${m.level.certainty ? `, ${m.level.certainty}` : ""}`,
     `Did anyone help?: ${help ? `"${HELP_LABEL[help]}"` : "not asked"}`,
     `Flags: ${flags.length ? flags.map(flagText).join("; ") : "none"}`,
     m.helpWarning ? "Help likely: yes. The report says the level may be too high and suggests a retake." : "Help likely: no",
-    `Areas: ${m.strands.map((s) => `${s.name} ${STATUS_LABEL[s.status]} ${s.correct}/${s.total}`).join("; ")}`,
+    `Areas: ${m.strands.map((s) => `${s.name} ${STATUS_LABEL[s.status]} ${s.correct}/${s.total}${s.certainty ? ` ${s.certainty}` : ""}`).join("; ")}`,
+    // #189: the reliability note and the rushed wrong answers left out of the score.
+    m.reliability ? `Reliability note: yes, ${m.reliability.veryFast} of ${m.reliability.answers} answers very fast. A new test is open at once.` : "Reliability note: no",
+    ...(m.leftOut ? [`Left out of the score: ${plural(m.leftOut, "rushed wrong answer")}`] : []),
     `Facts: ${facts ? factsLine(facts) : "none"}`,
     ...(ai ? [aiLine(ai)] : []),
     `Questions: ${questionsAndMinutes(v)}`,
