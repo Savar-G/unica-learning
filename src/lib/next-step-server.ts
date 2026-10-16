@@ -4,12 +4,14 @@ import { randomUUID } from "node:crypto";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { withFamilyCardOperation, type Province } from "@/lib/assessment";
 import { sendEmail } from "@/lib/email-delivery";
-import type { CardResult, NextStepError, ReportSrc, WaitlistResult } from "@/lib/next-step";
+import type { CardCheckResult, CardResult, NextStepError, ReportSrc, WaitlistResult } from "@/lib/next-step";
 import { REPORT_PLANS, reportPath, type PlanOption } from "@/lib/report-view";
 import { CURRICULA } from "@/lib/signup";
 import { priceWithOffer, type PlanId } from "@/lib/site";
-import { keepSavedPlan, reportCardCustomer, reportCardSetupUrl, savedCardPlan, stripe, type ReportCardSetup } from "@/lib/stripe";
+import { reportCardCustomer, reportCardSetupUrl, stripe, type ReportCardSetup } from "@/lib/stripe";
 import { adminClient } from "@/lib/supabase-auth";
+import { checkCard, chooseCardPlan, recordSavedCard, type CardEvidence } from "@/lib/saved-card";
+import { savedCards } from "@/lib/saved-card-server";
 import { beginCardOperation, endCardOperation } from "@/lib/family-deletion-store";
 
 // The report's next step (#66), on the server. The routes pass the signed-in parent from the session cookie, never
@@ -52,11 +54,17 @@ async function load(admin: SupabaseClient, parentId: string, reportId: string, c
   return { report, parent };
 }
 
-interface CardRow {
-  id: string;
-  plan: PlanId;
-  stripe_customer_id: string | null;
-  card_saved_at: string | null;
+/**
+ * The report opened without a stored saved card: asks the saved-card module, which asks Stripe and records a card it
+ * finds there. Only for a report of this parent with the card step. It opens no payment page, so it takes no family
+ * card operation; the record it may write is guarded by the row's ref and customer.
+ */
+export async function checkReportCard(parentId: string, reportId: string): Promise<CardCheckResult | Fail> {
+  const admin = adminClient();
+  if (!admin) return { state: "unknown" };
+  const loaded = await load(admin, parentId, reportId, "card");
+  if ("ok" in loaded) return loaded;
+  return checkCard({ parentId, childId: loaded.report.child_id }, savedCards(admin, stripe()));
 }
 
 /**
@@ -92,30 +100,18 @@ async function startCardHeld(parentId: string, reportId: string, plan: PlanId, s
   const option = REPORT_PLANS.find((p) => p.plan === plan);
   if (!option) return fail("invalid", 400);
 
-  const existing = await admin.from("card_setups").select("id, plan, stripe_customer_id, card_saved_at").eq("child_id", report.child_id).maybeSingle<CardRow>();
-  if (existing.error) {
-    console.error("[next-step] card row load failed", existing.error.message);
-    return fail("store_failed", 502);
-  }
-  // A saved card stays on the plan it was saved for; a second card is never asked for. Stripe is the record: a card
-  // saved without a visit to /thank-you is found there, before this click changes the plan.
-  if (existing.data?.card_saved_at) return { ok: true, state: "saved", plan: existing.data.plan };
+  // A saved card stays on the plan it was saved for, and a second card is never asked for. Stripe is the record: a
+  // card saved without a visit to /thank-you is found there, before this click changes the plan. When the site cannot
+  // tell, it opens no payment page.
   const s = stripe();
-  const saved = s && existing.data?.stripe_customer_id ? await savedBefore(s, existing.data.stripe_customer_id) : null;
-  if (s && existing.data?.stripe_customer_id && saved) {
-    // The plan of the setup that succeeded, not the plan of the last click.
-    const savedPlan = await markSaved(admin, existing.data.id, saved.metadata, existing.data.plan);
-    await keepSavedPlan(s, existing.data.stripe_customer_id, saved.metadata).catch((e) => console.error("[next-step] customer plan update failed", e instanceof Error ? e.message : e));
-    return { ok: true, state: "saved", plan: savedPlan };
-  }
-
-  const { data: row, error }= await admin.from("card_setups")
-    .upsert({ parent_id: parentId, child_id: report.child_id, report_id: report.id, plan, price: option.price, updated_at: new Date().toISOString() }, { onConflict: "child_id" })
-    .select("id, plan, stripe_customer_id, card_saved_at").single<CardRow>();
-  if (error || !row) {
-    console.error("[next-step] card row save failed", error?.message);
+  const chosen = await chooseCardPlan({ parentId, childId: report.child_id }, { reportId: report.id, plan, price: option.price }, savedCards(admin, s));
+  if (chosen.state === "saved") return { ok: true, state: "saved", plan: chosen.plan };
+  if (chosen.state === "unknown" || chosen.state === "absent") return { ok: true, state: "unknown" };
+  if (chosen.state === "failed") {
+    console.error("[next-step] card row save failed", report.child_id);
     return fail("store_failed", 502);
   }
+  const { row } = chosen;
 
   const setup: ReportCardSetup = {
     ref: row.id,
@@ -162,48 +158,16 @@ async function startCardHeld(parentId: string, reportId: string, plan: PlanId, s
   }
 }
 
-/** Asks Stripe whether this customer saved a card before. If Stripe cannot say, the parent goes to Checkout. */
-async function savedBefore(s: NonNullable<ReturnType<typeof stripe>>, customer: string) {
-  try {
-    return await savedCardPlan(s, customer);
-  } catch (e) {
-    console.error("[next-step] saved card check failed", e instanceof Error ? e.message : e);
-    return null;
-  }
-}
-
-/** The plan and price in the metadata of a saved setup, or null when the metadata has no plan from the site. */
-function planOf(metadata: Record<string, string>): { plan: PlanId; price: number } | null {
-  const option = REPORT_PLANS.find((p) => p.plan === metadata.plan);
-  return option ? { plan: option.plan, price: Number(metadata.price) || option.price } : null;
-}
-
-/** Marks the row saved, on the plan the card was saved for. Returns that plan. */
-async function markSaved(admin: SupabaseClient, id: string, metadata: Record<string, string>, fallback: PlanId): Promise<PlanId> {
-  const saved = planOf(metadata);
-  const { error } = await admin.from("card_setups")
-    .update({ card_saved_at: new Date().toISOString(), ...(saved && { plan: saved.plan, price: saved.price }), updated_at: new Date().toISOString() })
-    .eq("id", id).is("card_saved_at", null);
-  if (error) console.error("[next-step] card saved mark failed", id, error.message);
-  return saved?.plan ?? fallback;
-}
-
 /**
- * /thank-you confirmed a saved card with Stripe for a Checkout session from the report: marks the child's row on the
- * plan of that session, so the report shows the saved card. The ref and the customer must both match the row. A click
- * on another plan in a second tab cannot leave the row or the customer on a plan the card was not saved for.
+ * /thank-you confirmed a saved card with Stripe for a Checkout session from the report: marks the child's row saved,
+ * on the plan of that session, so the report shows the saved card. The ref and the customer must both match the row,
+ * and the first confirmation stays: a second tab cannot move a saved row to a plan the card was not saved for.
  */
-export async function recordCardSaved(metadata: Record<string, string>, customer: string | null) {
+export async function recordCardSaved(evidence: CardEvidence) {
   const admin = adminClient();
-  const ref = metadata.ref ?? "";
-  if (!admin || !customer || !/^[0-9a-f-]{36}$/i.test(ref)) return;
-  const saved = planOf(metadata);
-  const { error } = await admin.from("card_setups")
-    .update({ card_saved_at: new Date().toISOString(), ...(saved && { plan: saved.plan, price: saved.price }), updated_at: new Date().toISOString() })
-    .eq("id", ref).eq("stripe_customer_id", customer);
-  if (error) console.error("[next-step] card saved record failed", ref, error.message);
-  const s = stripe();
-  if (s) await keepSavedPlan(s, customer, metadata).catch((e) => console.error("[next-step] customer plan update failed", e instanceof Error ? e.message : e));
+  if (!admin || !/^[0-9a-f-]{36}$/i.test(evidence.ref)) return;
+  const recorded = await recordSavedCard(evidence, savedCards(admin, stripe()));
+  if (recorded.state !== "saved") console.error("[next-step] card saved record failed", evidence.ref);
 }
 
 /** A parent outside BC joined the waitlist from the report. One row per child: a second click finds the first. */

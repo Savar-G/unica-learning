@@ -124,13 +124,6 @@ export async function reportCardCustomer(s: Stripe, p: ReportCardSetup): Promise
   return created.id;
 }
 
-/** The plan of a card this customer already saved (from its SetupIntent), or null when no setup succeeded. */
-export async function savedCardPlan(s: Stripe, customer: string): Promise<{ metadata: Record<string, string> } | null> {
-  const intents = await s.setupIntents.list({ customer, limit: 20 });
-  const saved = intents.data.find((i) => i.status === "succeeded");
-  return saved ? { metadata: saved.metadata ?? {} } : null;
-}
-
 /**
  * After a card is saved: the customer's plan and description follow the setup that succeeded, so a later click on
  * another plan in a second tab cannot leave the customer on a plan the parent did not save the card for.
