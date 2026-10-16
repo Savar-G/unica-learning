@@ -59,3 +59,11 @@ function tooBig(what: "drawing" | "text"): ParsedWork {
  */
 export const workPath = (parentId: string, assessmentId: string, questionId: string, suffix: string) =>
   `${parentId}/${assessmentId}/${questionId}-${suffix}.png`;
+
+/**
+ * Where the whiteboard strokes of one answer are stored (#186): in the same private bucket and folder as the drawing,
+ * so a family deletion removes them too. Not a .png: the storage policy lets a parent read only the drawings, and an
+ * admin read everything (migration add_answer_strokes).
+ */
+export const strokesPath = (parentId: string, assessmentId: string, questionId: string, suffix: string) =>
+  `${parentId}/${assessmentId}/${questionId}-${suffix}.strokes.json`;

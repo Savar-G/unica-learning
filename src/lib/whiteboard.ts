@@ -13,13 +13,25 @@ export interface Stroke {
   pts: [number, number][];
 }
 
+/**
+ * One thing the child did on the board, in order (#186): a finished stroke with the time of each of its points (the
+ * clock of performance.now() and the pointer events), an undo, or a clear. `times` is null for a stroke the draft kept
+ * from before a resume: its times belong to an earlier visit.
+ */
+export type BoardEvent =
+  | { kind: "stroke"; stroke: Stroke; times: number[] | null }
+  | { kind: "undo"; at: number }
+  | { kind: "clear"; at: number };
+
 /** What is on the board for one question. */
 export interface BoardState {
   strokes: Stroke[];
   text: string;
+  /** Everything drawn, undone and cleared, in order, for the admin's stroke replay (#186). The draft does not keep it. */
+  log: BoardEvent[];
 }
 
-export const emptyBoard = (): BoardState => ({ strokes: [], text: "" });
+export const emptyBoard = (): BoardState => ({ strokes: [], text: "", log: [] });
 
 /** True when at least one pencil stroke is on the board. Eraser strokes alone are not a drawing. */
 export const hasDrawing = (strokes: readonly Stroke[]) => strokes.some((s) => !s.erase && s.pts.length > 0);
@@ -150,7 +162,10 @@ const isStroke = (s: unknown): s is Stroke => {
   return typeof erase === "boolean" && typeof w === "number" && w > 0 && w <= 100 && Array.isArray(pts) && pts.length > 0 && pts.every(isPoint);
 };
 
-/** The board saved under a draft key, or null when there is none or it is not a board. */
+/**
+ * The board saved under a draft key, or null when there is none or it is not a board. Its strokes start the log again
+ * (#186), with no times.
+ */
 export function decodeDraft(raw: string | null): BoardState | null {
   if (!raw) return null;
   let data: unknown;
@@ -162,5 +177,5 @@ export function decodeDraft(raw: string | null): BoardState | null {
   if (!data || typeof data !== "object" || Array.isArray(data)) return null;
   const { strokes, text } = data as { strokes?: unknown; text?: unknown };
   if (!Array.isArray(strokes) || !strokes.every(isStroke) || typeof text !== "string" || [...text].length > WORK_TEXT_MAX) return null;
-  return { strokes, text };
+  return { strokes, text, log: strokes.map((stroke) => ({ kind: "stroke", stroke, times: null })) };
 }

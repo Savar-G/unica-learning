@@ -75,6 +75,8 @@ export interface NewAnswer extends Answer {
   workPath: string | null;
   /** The typed working, or null when the child typed none. */
   workText: string | null;
+  /** Where the whiteboard strokes are stored (#186). Left out when the child drew no strokes, or they were not stored. */
+  strokesPath?: string;
 }
 
 /**
@@ -105,6 +107,10 @@ export interface AttemptStore extends FactsStore {
   storeDrawing(parent: string, id: string, questionId: string, png: Uint8Array): Promise<string>;
   /** Removes a drawing whose answer was not stored. */
   removeDrawing(path: string): Promise<void>;
+  /** Stores the whiteboard strokes (#186, checked JSON) for one question of the parent's test, under a new name. Returns its path. */
+  storeStrokes(parent: string, id: string, questionId: string, json: string): Promise<string>;
+  /** Removes strokes whose answer was not stored. */
+  removeStrokes(path: string): Promise<void>;
   /** Stores one answer. "taken": the test already has an answer in this place (another tab answered first). */
   insertAnswer(id: string, answer: NewAnswer): Promise<"stored" | "taken">;
   /** Records the stage 2 route the child was given when stage 1 ended, for the admin view. */
@@ -294,6 +300,8 @@ export interface AnswerWork {
   png: Uint8Array | null;
   /** The typed working, trimmed and within the size limit; "" when the child typed none. */
   text: string;
+  /** The whiteboard strokes (#186) as checked JSON within the size limit; null or left out when there are none. */
+  strokes?: string | null;
 }
 
 /** A child's answer to the current question, as the route read it from the request. */
@@ -343,6 +351,8 @@ export async function answerQuestion(store: AttemptStore, parent: string, id: st
     return { ok: false, error: "store_failed" };
   };
 
+  // #186: the strokes upload at the same time as the drawing. If the answer is not stored, they go too.
+  const strokesUpload = storeStrokes(store, parent, id, q.id, input.work.strokes);
   // The drawing first, under a new name, so the answer can point to it. If the answer is not stored, the drawing goes.
   let workPath: string | null = null;
   if (input.work.png) {
@@ -350,9 +360,11 @@ export async function answerQuestion(store: AttemptStore, parent: string, id: st
       workPath = await store.storeDrawing(parent, id, q.id, input.work.png);
     } catch (e) {
       logFailure("[work] upload failed", e);
+      await removeStrokes(store, await strokesUpload);
       return failed();
     }
   }
+  const strokesPath = await strokesUpload;
   let inserted: "stored" | "taken";
   try {
     inserted = await store.insertAnswer(id, {
@@ -363,15 +375,18 @@ export async function answerQuestion(store: AttemptStore, parent: string, id: st
       workRequired: q.showWork === true,
       workPath,
       workText: input.work.text || null,
+      strokesPath,
     });
   } catch (e) {
     await removeDrawing(store, workPath);
+    await removeStrokes(store, strokesPath);
     logFailure("[test] answer save failed", e);
     return failed();
   }
   if (inserted === "taken") {
     // Another request stored this question's answer first. Send the step after it, read fresh, so the screen moves on.
     await removeDrawing(store, workPath);
+    await removeStrokes(store, strokesPath);
     return freshConflict(store, parent, id, now);
   }
   // The answer time is written only once the answer is stored: the reminder emails (#73) count from it.
@@ -390,6 +405,24 @@ function logFailure(line: string, e: unknown): void {
 /** Removes a drawing whose answer was not stored, so the bucket holds no drawing without its answer. A failure is logged. */
 const removeDrawing = (store: AttemptStore, path: string | null) =>
   path ? bestEffort("[work] remove failed", () => store.removeDrawing(path)) : Promise.resolve();
+
+/**
+ * Stores the whiteboard strokes of an answer (#186), if any, and returns their path. Strokes are for admins only, so a
+ * failed upload never stops the child's answer: it is logged, and the answer is stored with the drawing alone.
+ */
+async function storeStrokes(store: AttemptStore, parent: string, id: string, questionId: string, json: string | null | undefined): Promise<string | undefined> {
+  if (!json) return undefined;
+  try {
+    return await store.storeStrokes(parent, id, questionId, json);
+  } catch (e) {
+    logFailure("[strokes] upload failed", e);
+    return undefined;
+  }
+}
+
+/** Removes strokes whose answer was not stored, so the bucket holds no strokes without their answer. A failure is logged. */
+const removeStrokes = (store: AttemptStore, path: string | undefined) =>
+  path ? bestEffort("[strokes] remove failed", () => store.removeStrokes(path)) : Promise.resolve();
 
 /** A store write the request does not wait on to succeed: a failure is logged with `line`, and the request goes on. */
 async function bestEffort(line: string, write: () => Promise<void>): Promise<void> {
