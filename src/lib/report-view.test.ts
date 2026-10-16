@@ -15,6 +15,9 @@ import {
   reportPath,
   reportReturnPath,
   summaryText,
+  certaintyText,
+  leftOutLine,
+  reliabilityNote,
   thresholdsLine,
   verdictSentence,
   type ReportView,
@@ -210,8 +213,16 @@ describe("the areas", () => {
   it("label each status in plain words", () => {
     expect(STATUS_LABEL).toEqual({ secure: "Secure", developing: "Developing", "needs-attention": "Needs attention" });
   });
+  // As stored before #189: no certainty key on any area.
+  const unlabelled = (v: ReportView): ReportView => ({ ...v, model: { ...v.model, strands: v.model.strands.map((s) => Object.fromEntries(Object.entries(s).filter(([k]) => k !== "certainty")) as typeof s) } });
   it("state the thresholds and that the count is an early signal, not a verdict (D-084)", () => {
-    expect(thresholdsLine(view(knowsUpTo(4)))).toBe("Secure: 80% or more right. Developing: 50-79%. Needs attention: under 50%. 36 questions is an early signal, not a final verdict.");
+    expect(thresholdsLine(unlabelled(view(knowsUpTo(4))))).toBe("Secure: 80% or more right. Developing: 50-79%. Needs attention: under 50%. 36 questions is an early signal, not a final verdict.");
+  });
+  it("explains the certainty labels instead of the early-signal line once the areas carry them (#189)", () => {
+    const v = view(knowsUpTo(4));
+    expect(v.model.strands.every((s) => s.certainty)).toBe(true);
+    expect(thresholdsLine(v)).not.toBe(thresholdsLine(unlabelled(v)));
+    expect(thresholdsLine(v)).not.toContain("early signal");
   });
 });
 
@@ -305,5 +316,63 @@ describe("how we help, by verdict (D-084)", () => {
     for (const v of [view(knowsUpTo(3)), view(knowsUpTo(4)), view(allRight)]) {
       expect(howWeHelp(secure(v)).text, v.model.howWeHelp).not.toMatch(/practice/);
     }
+  });
+});
+
+// #189 (spec #181): certainty labels, the reliability note and its retake time. These assert state and structure, not
+// copy (spec #181, Testing Decisions).
+describe("certainty labels", () => {
+  it("gives a label for each certainty, a different one for each, and none for a result stored before the labels", () => {
+    const v = view(allRight);
+    const [clear, early] = [certaintyText(v, "clear"), certaintyText(v, "early-sign")];
+    expect(clear).toBeTruthy();
+    expect(early).toBeTruthy();
+    expect(clear).not.toBe(early);
+    expect(certaintyText(v, undefined)).toBeNull();
+  });
+  it("promises no workbook to a family on the waitlist, who has none yet", () => {
+    const waitlist = certaintyText(view(allRight, { province: "ON" }), "early-sign");
+    expect(waitlist).toBeTruthy();
+    expect(waitlist).not.toBe(certaintyText(view(allRight), "early-sign"));
+    expect(waitlist).not.toMatch(/workbook/i);
+  });
+});
+
+describe("the reliability note", () => {
+  const rushed = (v: ReportView): ReportView => ({ ...v, model: { ...v.model, reliability: { veryFast: 12, answers: 36 } } });
+  // Opens 11:30 a.m. November 9 in BC, so the first whole day is November 10.
+  const opens = { kind: "opens", at: Date.parse("2026-11-09T19:30:00Z") } as const;
+
+  it("is absent at a steady pace", () => {
+    expect(reliabilityNote(view(allRight))).toBeNull();
+  });
+  it("gives the count of very fast answers", () => {
+    expect(reliabilityNote(rushed(view(allRight)))).toMatchObject({ veryFast: 12, answers: 36 });
+  });
+  // D-108: the new test at once comes at most once per 30 days, so the note follows the account's start rules.
+  it("says now when a new test is open, the first whole day when the 30-day wait applies, and no time when unknown", () => {
+    const v = rushed(view(allRight));
+    expect(reliabilityNote(v, { kind: "open" })?.when).toEqual({ kind: "now" });
+    expect(reliabilityNote(v, opens)?.when).toEqual({ kind: "from", date: "November 10, 2026" });
+    expect(reliabilityNote(v)?.when).toEqual({ kind: "unknown" });
+    const offers = [reliabilityNote(v, { kind: "open" })?.offer, reliabilityNote(v, opens)?.offer, reliabilityNote(v)?.offer];
+    expect(new Set(offers).size).toBe(3);
+    expect(offers[1]).toContain("November 10, 2026");
+  });
+  it("makes the help warning's retake line agree with the note: the same date, or none", () => {
+    const v = rushed(view(knowsUpTo(4)));
+    const helped = { ...v, model: { ...v.model, helpWarning: true } };
+    expect(helpWarning(helped, opens)?.retake).toContain("November 10, 2026");
+    for (const retake of [{ kind: "open" } as const, undefined]) expect(helpWarning(helped, retake)?.retake).not.toMatch(/\d{4}/);
+    expect(helpWarning(helped, { kind: "open" })?.retake).not.toBe(helpWarning(helped)?.retake);
+  });
+});
+
+describe("rushed wrong answers left out", () => {
+  it("gives a line with the count when answers were left out, and nothing when none were", () => {
+    const v = view(allRight);
+    expect(leftOutLine({ ...v, model: { ...v.model, leftOut: 3 } })).toMatch(/^3 /);
+    expect(leftOutLine({ ...v, model: { ...v.model, leftOut: 1 } })).toMatch(/^1 /);
+    expect(leftOutLine(v)).toBeNull();
   });
 });

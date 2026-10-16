@@ -55,7 +55,7 @@ describe("the report email to the parent", () => {
     expect(email.html).toContain(`href="${URL.replace("&", "&amp;")}"`);
   });
   it("leads with the working level and the verdict, as the report page does", () => {
-    expect(email.text).toContain("Maya is working at a grade 3 level.\nThat is one grade below Maya's school grade (grade 4).");
+    expect(email.text).toContain("Maya is working at a grade 3 level.\nThat is one grade below Maya's school grade (grade 4).\nHow sure: Clear");
     expect(email.html).toContain("Maya is working at a grade 3 level.");
     expect(email.html).toContain("That is one grade below Maya&#39;s school grade (grade 4).");
   });
@@ -155,13 +155,13 @@ describe("the report email to the parent", () => {
 
     it("follows the verdict, with the child's name, in the text and the HTML (escaped)", () => {
       const email = reportEmail({ unsubscribeUrl: UNSUB, view: withSummary("{name} is working at a grade 3 level & {name}'s best area is Patterns and algebra."), parentName: "Priya", url: URL });
-      expect(email.text).toContain("That is one grade below Maya's school grade (grade 4).\nMaya is working at a grade 3 level & Maya's best area is Patterns and algebra.");
+      expect(email.text).toContain("That is one grade below Maya's school grade (grade 4).\nHow sure: Clear\nMaya is working at a grade 3 level & Maya's best area is Patterns and algebra.");
       expect(email.html).toContain("Maya is working at a grade 3 level &amp; Maya&#39;s best area is Patterns and algebra.");
     });
 
     it("is absent without AI text", () => {
       const email = reportEmail({ unsubscribeUrl: UNSUB, view: view(knowsUpTo(3)), parentName: "Priya", url: URL });
-      expect(email.text).toContain("That is one grade below Maya's school grade (grade 4).\n\nFor context");
+      expect(email.text).toContain("That is one grade below Maya's school grade (grade 4).\nHow sure: Clear\n\nFor context");
       expect(email.text).not.toContain("{name}");
     });
   });
@@ -211,6 +211,15 @@ describe("the alert to Savar for each finished test", () => {
     expect(text).toContain("Working level: grade 3 (behind)");
     expect(text).toContain("Flags: none");
     expect(text).toContain(`Report: ${URL}`);
+  });
+  // #189, D-108: the alert does not read the start rules, so it promises no new test at once (a second unreliable test
+  // within 30 days waits). State, not copy: the count shows, and nothing says the test is open at once.
+  it("gives the reliability note's count, and names no retake time", () => {
+    const v = view(knowsUpTo(3));
+    const { text } = alert({ view: { ...v, model: { ...v.model, reliability: { veryFast: 12, answers: 36 } } } });
+    expect(text).toContain("12 of 36");
+    expect(text).not.toMatch(/(is|open) at once\./);
+    expect(alert().text).not.toContain("12 of 36");
   });
   it("lists each flag in plain words (#71)", () => {
     const { text } = alert({

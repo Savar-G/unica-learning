@@ -1,13 +1,13 @@
 import { describe, expect, it } from "vitest";
-import { REPORTED_STRAND, SAMPLE_BANK, createSession, finish, nextQuestion, submitAnswer, type Session, type Template } from "@/lib/assessment";
+import { BANKS, REPORTED_STRAND, SAMPLE_BANK, createSession, finish, nextQuestion, submitAnswer, type Session } from "@/lib/assessment";
 import { allRight, allWrong, firstRight, knowsUpTo, takeTest, type Script } from "./scripted-child";
 
 const prompts = (s: Session) => [...s.stage1, ...s.stage2.up, ...s.stage2.stay, ...s.stage2.down].map((q) => q.prompt);
 
 describe("scripted children, grades 3-5", () => {
-  it("all correct: 36 questions, routed up, working one level above school grade", () => {
+  it("all correct: 42 questions, routed up, working one level above school grade", () => {
     const { asked, placement } = takeTest({ grade: 4, province: "BC" }, 1, allRight);
-    expect(asked).toHaveLength(36);
+    expect(asked).toHaveLength(42);
     expect(placement.route).toBe("up");
     expect(placement.workingLevel).toBe(5);
     expect(placement.atCeiling).toBe(true);
@@ -56,7 +56,7 @@ describe("scripted children, grades 3-5", () => {
     const total = placement.strands.reduce((sum, s) => sum + s.total, 0);
     expect(total).toBe(asked.filter((q) => q.level <= 4).length);
     expect(placement.strands.map((s) => s.strand)).toEqual(["number", "fractions", "algebra", "shapes"]);
-    expect(placement.strands.every((s) => s.correct === s.total && s.total >= 4)).toBe(true);
+    expect(placement.strands.every((s) => s.correct === s.total && s.total >= 6)).toBe(true);
   });
 });
 
@@ -70,20 +70,27 @@ describe("area status: only questions at or below the school grade", () => {
     expect(asked.some((q) => q.level === 6)).toBe(true);
     expect(placement.strands.map((s) => s.status)).toEqual(["secure", "secure", "secure", "secure"]);
     expect(placement.strands.every((s) => s.correct === s.total)).toBe(true);
-    expect(placement.strands.reduce((sum, s) => sum + s.total, 0)).toBe(18);
+    expect(placement.strands.reduce((sum, s) => sum + s.total, 0)).toBe(24);
   });
 
   it("a child working below grade keeps the areas that really need attention", () => {
     // Grade 4, knows grade 3 except fractions: stage 1 all wrong routes down, stage 2 at grade 3 has fractions wrong.
     const { placement } = takeTest({ grade: 4, province: "BC" }, 1, (q) => q.level <= 3 && q.strand !== "F");
     expect(placement.workingLevel).toBe(3);
-    expect(placement.strands.find((s) => s.strand === "fractions")).toEqual({ strand: "fractions", status: "needs-attention", correct: 0, total: 10 });
+    expect(placement.strands.find((s) => s.strand === "fractions")).toEqual({ strand: "fractions", status: "needs-attention", correct: 0, total: 10, certainty: "clear" });
   });
 
   it("an area with no question at or below the school grade gets no status and no count, not Needs attention", () => {
     // A bank whose shapes questions all sit above grade 4: the child meets shapes only in stage 2, routed up.
-    const bank = SAMPLE_BANK.filter((t) => !(REPORTED_STRAND[t.strand] === "shapes" && t.grades.BC <= 4));
-    const { asked, placement } = takeTest({ grade: 4, province: "BC" }, 1, (q) => q.level <= 4, bank);
+    let session = createSession({ grade: 4, province: "BC" }, 1);
+    session = { ...session, stage1: session.stage1.filter((q) => REPORTED_STRAND[q.strand] !== "shapes"),
+      stage2: { ...session.stage2, up: session.stage2.up.filter((q) => q.level > 4 || REPORTED_STRAND[q.strand] !== "shapes") } };
+    const asked = [];
+    for (let q = nextQuestion(session); q; q = nextQuestion(session)) {
+      asked.push(q);
+      session = submitAnswer(session, { questionId: q.id, response: q.level <= 4 ? q.answer : "no idea", timeMs: 20000 });
+    }
+    const placement = finish(session);
     expect(asked.some((q) => REPORTED_STRAND[q.strand] === "shapes")).toBe(true);
     expect(placement.strands.map((s) => s.strand)).toEqual(["number", "fractions", "algebra"]);
     expect(placement.strands.every((s) => s.status === "secure")).toBe(true);
@@ -100,7 +107,7 @@ describe("strand status at its exact boundaries", () => {
   };
 
   it("8 of 10 (80%) is secure", () => {
-    expect(numberStrand(8)).toEqual({ strand: "number", status: "secure", correct: 8, total: 10 });
+    expect(numberStrand(8)).toEqual({ strand: "number", status: "secure", correct: 8, total: 10, certainty: "early-sign" });
   });
   it("7 of 10 (70%) is developing", () => {
     expect(numberStrand(7).status).toBe("developing");
@@ -141,7 +148,7 @@ describe("working level: the highest level with 70% or more correct", () => {
   it("13 of 18 (72%) at level 5 clears it", () => {
     const placement = withStage2Right(13);
     expect(placement.levels).toEqual([
-      { level: 4, correct: 18, total: 18 },
+      { level: 4, correct: 18, total: 24 },
       { level: 5, correct: 13, total: 18 },
     ]);
     expect(placement.workingLevel).toBe(5);
@@ -192,7 +199,7 @@ describe("marking", () => {
   });
 
   it("a typed number is marked by value, so 1,200 and 1200 are the same answer", () => {
-    const session = createSession({ grade: 5, province: "BC" }, 4, { bank: SAMPLE_BANK });
+    const session = createSession({ grade: 5, province: "BC" }, 4, { bank: [...SAMPLE_BANK, ...BANKS["3-5"]] });
     const q = session.stage1.find((x) => x.format === "number" && Number(x.answer) >= 1000)!;
     const before = { ...session, stage1: [q, ...session.stage1.filter((x) => x !== q)] };
     const after = submitAnswer(before, { questionId: q.id, response: Number(q.answer).toLocaleString("en-CA"), timeMs: 1 });
@@ -200,7 +207,7 @@ describe("marking", () => {
   });
 
   it("commas count only as thousands separators", () => {
-    const session = createSession({ grade: 5, province: "BC" }, 4, { bank: SAMPLE_BANK });
+    const session = createSession({ grade: 5, province: "BC" }, 4, { bank: [...SAMPLE_BANK, ...BANKS["3-5"]] });
     const q = session.stage1.find((x) => x.format === "number" && Number(x.answer) >= 1000)!;
     const first = { ...session, stage1: [q, ...session.stage1.filter((x) => x !== q)] };
     const scattered = q.answer.split("").join(",");
@@ -229,7 +236,7 @@ describe("province", () => {
   it("uses each fixture template's province grade tag", () => {
     const earlier = new Set(["read-clock", "missing-factor"]); // Fixture tags: ON grade 3, BC grade 4.
     const stage1 = (province: "BC" | "ON") =>
-      Array.from({ length: 40 }, (_, seed) => createSession({ grade: 3, province }, seed, { bank: SAMPLE_BANK }).stage1).flat();
+      Array.from({ length: 40 }, (_, seed) => createSession({ grade: 3, province }, seed, { bank: [...SAMPLE_BANK, ...BANKS["3-5"]] }).stage1).flat();
     const on = stage1("ON").filter((q) => earlier.has(q.templateId));
     expect(on.length).toBeGreaterThan(0);
     expect(on.every((q) => q.level === 3)).toBe(true);
@@ -241,7 +248,7 @@ describe("province", () => {
     const early = ["read-clock", "missing-factor"];
     const missesEarlyTopics: Script = (q) => !early.includes(q.templateId);
     const levelsOfMisses = (province: "BC" | "ON", seed: number) =>
-      takeTest({ grade: 3, province }, seed, missesEarlyTopics, SAMPLE_BANK).asked.filter((q) => early.includes(q.templateId)).map((q) => q.level);
+      takeTest({ grade: 3, province }, seed, missesEarlyTopics, [...SAMPLE_BANK, ...BANKS["3-5"]]).asked.filter((q) => early.includes(q.templateId)).map((q) => q.level);
     const seed = Array.from({ length: 50 }, (_, i) => i).find((i) => levelsOfMisses("BC", i).length > 0 && levelsOfMisses("ON", i).length > 0);
     expect(seed).toBeDefined();
     expect(new Set(levelsOfMisses("BC", seed!))).toEqual(new Set([4]));
@@ -250,23 +257,9 @@ describe("province", () => {
 });
 
 describe("grade bands", () => {
-  // Level 1 fixtures stand in for the grade 1-2 bank (#74), so a grade 2 test can be built.
-  const level1: Template[] = (["N", "A", "MG"] as const).map((strand) => ({
-    id: `fixture-${strand}`,
-    strand,
-    grades: { BC: 1 },
-    format: "number",
-    whiteboard: false,
-    standard: "1.3",
-    fill: (rng) => {
-      const a = rng.int(1, 9), b = rng.int(1, 9);
-      return { values: { a, b }, prompt: `${strand}: ${a} + ${b} = ?`, readAloud: `${a} plus ${b}`, answer: String(a + b), wrong: [{ value: String(a + b + 1), misconception: "O3" }] };
-    },
-  }));
-
-  it("grades 1-2: 24 questions, 12 in stage 1, and fractions are not tested or reported", () => {
-    const { asked, placement } = takeTest({ grade: 2, province: "BC" }, 1, allRight, [...SAMPLE_BANK, ...level1]);
-    expect(asked).toHaveLength(24);
+  it("grades 1-2: 30 up-route questions, 12 in stage 1, and fractions are not tested or reported", () => {
+    const { asked, placement } = takeTest({ grade: 2, province: "BC" }, 1, allRight);
+    expect(asked).toHaveLength(30);
     expect(placement.stage1.total).toBe(12);
     expect(asked.some((q) => q.strand === "F")).toBe(false);
     expect(placement.strands.map((s) => s.strand)).toEqual(["number", "algebra", "shapes"]);

@@ -29,14 +29,14 @@ const valueOfChoice = (text: string): string => {
 };
 
 describe("grade 6-7 tests from the default bank", () => {
-  it.each([6, 7] as Grade[])("grade %i: 42 questions, 21 in stage 1 at the school grade, in every province", (grade) => {
+  it.each([6, 7] as Grade[])("grade %i: routed lengths, 21 in stage 1 at the school grade, in every province", (grade) => {
     for (const province of PROVINCES) {
       const session = createSession({ grade, province }, 1);
       expect(session.stage1, province).toHaveLength(21);
       expect(session.stage1.every((q) => q.level === grade), province).toBe(true);
       for (const [route, level] of [["up", grade + 1], ["stay", grade], ["down", grade - 1]] as const) {
-        expect(session.stage2[route], `${province} ${route}`).toHaveLength(21);
-        expect(session.stage2[route].every((q) => q.level === level), `${province} ${route}`).toBe(true);
+        expect(session.stage2[route], `${province} ${route}`).toHaveLength(route === "up" && (province === "BC" || province === "other") ? 24 : 21);
+        expect(session.stage2[route].every((q, i) => q.level === (route === "up" && i >= 21 ? grade : level)), `${province} ${route}`).toBe(true);
       }
     }
   });
@@ -53,7 +53,7 @@ describe("grade 6-7 tests from the default bank", () => {
           expect(questions.filter((q) => q.showWork).every((q) => q.whiteboard), label).toBe(true);
           expect(new Set(questions.map((q) => REPORTED_STRAND[q.strand])), label)
             .toEqual(new Set(["number", "fractions", "algebra", "shapes"]));
-          expect(new Set(questions.map((q) => `${q.prompt}|${[...(q.choices ?? [])].sort().join("|")}`)).size, label).toBe(42);
+          expect(new Set(questions.map((q) => `${q.prompt}|${[...(q.choices ?? [])].sort().join("|")}`)).size, label).toBe(questions.length);
         }
       }
     }

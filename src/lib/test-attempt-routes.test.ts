@@ -172,7 +172,7 @@ describe("POST /api/account/assessments/[id]/answers (answer a question)", () =>
     vi.setSystemTime(T0 + HOUR);
     const { status, body } = await sent(await answer(right({ image: DRAWING, text: "carry the 1" })));
     expect(status).toBe(200);
-    expect(body).toMatchObject({ ok: true, step: { status: "question", number: 2, total: 36, breakAfter: 18, question: { id: memory.tests[0].test.stage1[1].id } } });
+    expect(body).toMatchObject({ ok: true, step: { status: "question", number: 2, total: 42, breakAfter: 18, question: { id: memory.tests[0].test.stage1[1].id } } });
     expect(body.step.question).not.toHaveProperty("answer");
     expect(memory.tests[0]).toMatchObject({ resumeUntil: T0 + HOUR + DAY, lastAnswerAt: T0 + HOUR });
     expect(memory.tests[0].answers).toMatchObject([{ workPath: [...memory.drawings.keys()][0], workText: "carry the 1", timeMs: 20_000 }]);
@@ -190,8 +190,8 @@ describe("POST /api/account/assessments/[id]/answers (answer a question)", () =>
     await answer(third);
     expect(await sent(await answer(third))).toMatchObject({ status: 409, body: { ok: false, error: "conflict", step: { status: "question", number: 4 } } });
     expect(await sent(await answer({ ...right(), questionId: 42 }))).toMatchObject({ status: 409, body: { ok: false, error: "conflict", step: { number: 4 } } });
-    family(stored(startAttempt(TEST, T0), { answered: 36 }));
-    expect(await sent(await answer({ questionId: "s2-1", response: "1", timeMs: 1 }))).toEqual({ status: 409, body: { ok: false, error: "conflict", step: { status: "complete", total: 36 } } });
+    family(stored(startAttempt(TEST, T0), { answered: 42 }));
+    expect(await sent(await answer({ questionId: "s2-1", response: "1", timeMs: 1 }))).toEqual({ status: 409, body: { ok: false, error: "conflict", step: { status: "complete", total: 42 } } });
   });
 
   it("answers 410 expired after the deadline, and stores nothing", async () => {
@@ -308,16 +308,16 @@ describe("GET /api/account/assessments/[id] (the next step)", () => {
     expect(res.headers.get("cache-control")).toBe("no-store");
     const { status, body } = await sent(res);
     expect(status).toBe(200);
-    expect(body).toMatchObject({ ok: true, step: { status: "question", number: 4, total: 36, breakAfter: 18, question: { id: memory.tests[0].test.stage1[3].id } } });
+    expect(body).toMatchObject({ ok: true, step: { status: "question", number: 4, total: 42, breakAfter: 18, question: { id: memory.tests[0].test.stage1[3].id } } });
     expect(body.step.question).not.toHaveProperty("answer");
   });
 
   it("sends complete when every answer is in, even past the deadline", async () => {
-    family(stored(recordAnswer(startAttempt(TEST, T0), T0 + HOUR), { answered: 36 }));
+    family(stored(recordAnswer(startAttempt(TEST, T0), T0 + HOUR), { answered: 42 }));
     vi.setSystemTime(T0 + 3 * DAY);
     const res = await step(TEST);
     expect(res.headers.get("cache-control")).toBe("no-store");
-    expect(await sent(res)).toEqual({ status: 200, body: { ok: true, step: { status: "complete", total: 36 } } });
+    expect(await sent(res)).toEqual({ status: 200, body: { ok: true, step: { status: "complete", total: 42 } } });
   });
 
   it("answers 410 expired when the test ran out of time, and the test is then expired", async () => {
@@ -605,7 +605,7 @@ const afterTheResponse = async () => {
   for (const task of afterResponse.splice(0)) await task();
 };
 /** Asha's test with every answer in, the last one an hour after the start. */
-const allIn = () => family(stored(recordAnswer(startAttempt(TEST, T0), T0 + HOUR), { answered: 36 }));
+const allIn = () => family(stored(recordAnswer(startAttempt(TEST, T0), T0 + HOUR), { answered: 42 }));
 
 describe("POST /api/account/assessments/[id]/finish (score the test)", () => {
   it("scores the test with the help answer, stores it, and runs the report job after the response", async () => {
@@ -682,7 +682,7 @@ describe("POST /api/account/assessments/[id]/finish (score the test)", () => {
   });
 
   it("answers 410 expired for a test that ran out of time, scores nothing, and runs no report job", async () => {
-    family({ ...stored(startAttempt(TEST, T0), { answered: 36 }), status: "expired" });
+    family({ ...stored(startAttempt(TEST, T0), { answered: 42 }), status: "expired" });
     expect(await sent(await finish({ help: "no" }))).toEqual({ status: 410, body: { ok: false, error: "expired" } });
     family(stored(recordAnswer(startAttempt(TEST, T0), T0 + HOUR), { answered: 20 }));
     vi.setSystemTime(T0 + 25 * HOUR + 1);
@@ -692,7 +692,7 @@ describe("POST /api/account/assessments/[id]/finish (score the test)", () => {
   });
 
   it("answers 404 not_found for another family's test, an unknown test, or an id that is not a uuid", async () => {
-    family(stored(startAttempt(TEST, T0), { parent: P2, answered: 36 }));
+    family(stored(startAttempt(TEST, T0), { parent: P2, answered: 42 }));
     expect(await sent(await finish({ help: "no" }))).toEqual({ status: 404, body: { ok: false, error: "not_found" } });
     expect(await sent(await finish({ help: "no" }, "7e57a000-0000-4000-8000-0000000000ff"))).toEqual({ status: 404, body: { ok: false, error: "not_found" } });
     expect(await sent(await finish({ help: "no" }, "a1"))).toEqual({ status: 404, body: { ok: false, error: "not_found" } });
@@ -708,7 +708,7 @@ describe("POST /api/account/assessments/[id]/finish (score the test)", () => {
       expect(await sent(await finish({ help: "no" }))).toEqual({ status: 502, body: { ok: false, error: "store_failed" } });
       expect(memory.tests[0].status).toBe("in_progress");
     }
-    const broken = stored(startAttempt(TEST, T0), { answered: 36 });
+    const broken = stored(startAttempt(TEST, T0), { answered: 42 });
     broken.answers[0].questionId = "not-this-test";
     family(broken);
     expect(await sent(await finish({ help: "no" }))).toEqual({ status: 500, body: { ok: false, error: "store_failed" } });

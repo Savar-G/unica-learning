@@ -29,7 +29,7 @@ import "./test.css";
 type Screen =
   | { name: "intro" }
   /** `testId` keys the saved whiteboard of the question (#67). */
-  | { name: "question"; question: PublicQuestion; number: number; total: number; breakAfter: number; testId: string }
+  | { name: "question"; question: PublicQuestion; number: number; total: number; breakAfter: number; testId: string; takeYourTime: boolean }
   | { name: "break"; next: Extract<TestStep, { status: "question" }> }
   /** The timed facts section (#70), after the halfway break; then the test carries on with `next`. */
   | { name: "facts"; testId: string; next: Extract<TestStep, { status: "question" }> }
@@ -58,8 +58,9 @@ export type StartMode = "new" | "resume" | "finish" | "restart";
  * `typing`: the whiteboard has a text box (grades 3-7); grades 1-2 draw only (#67). `breakAfter`: questions before the
  * halfway ring, for the progress on the help and end screens (the band's stage 1).
  */
-export function TakeTest({ childId, name, total, breakAfter, ready, done, mode: firstMode = "new", typing = true }: { childId: string; name: string; total: number; breakAfter: number; ready: boolean; done: boolean; mode?: StartMode; typing?: boolean }) {
+export function TakeTest({ childId, name, breakAfter, ready, done, mode: firstMode = "new", typing = true }: { childId: string; name: string; breakAfter: number; ready: boolean; done: boolean; mode?: StartMode; typing?: boolean }) {
   const [screen, setScreen] = useState<Screen>(done ? { name: "done" } : { name: "intro" });
+  const [progress, setProgress] = useState<{ total: number; breakAfter: number } | null>(null);
   const [busy, setBusy] = useState(false);
   const [failure, setFailure] = useState<TestError | null>(null);
   const [mode, setMode] = useState<StartMode>(firstMode);
@@ -112,6 +113,10 @@ export function TakeTest({ childId, name, total, breakAfter, ready, done, mode: 
 
   /** Shows the step the server sent: the next question, or the end of the test. */
   const show = useCallback(async (step: TestStep) => {
+    setProgress((previous) => ({
+      total: step.total,
+      breakAfter: step.status === "question" ? step.breakAfter : previous?.breakAfter ?? breakAfter,
+    }));
     // Every answer is in: "Did anyone help?" (#71) comes last, and its Finish sends the test.
     if (step.status === "complete") {
       setScreen({ name: "help" });
@@ -131,9 +136,10 @@ export function TakeTest({ childId, name, total, breakAfter, ready, done, mode: 
       setScreen({ name: "facts", testId: id, next: step });
       return true;
     }
-    setScreen({ name: "question", question: step.question, number: step.number, total: step.total, breakAfter: step.breakAfter, testId: id });
+    // #189: the last three answers were very fast, so the question says "Take your time" (absent from an older server: off).
+    setScreen({ name: "question", question: step.question, number: step.number, total: step.total, breakAfter: step.breakAfter, testId: id, takeYourTime: step.takeYourTime === true });
     return true;
-  }, []);
+  }, [breakAfter]);
 
   /**
    * After the quick facts, the first question after halfway (#184): the screen asks the server for the step again, so
@@ -193,12 +199,12 @@ export function TakeTest({ childId, name, total, breakAfter, ready, done, mode: 
         {screen.name === "question" && <TestProgress answered={screen.number - 1} total={screen.total} breakAfter={screen.breakAfter} at="question" />}
         {screen.name === "break" && <TestProgress answered={screen.next.breakAfter} total={screen.next.total} breakAfter={screen.next.breakAfter} at="halfway" />}
         {screen.name === "facts" && <TestProgress answered={screen.next.number - 1} total={screen.next.total} breakAfter={screen.next.breakAfter} at="facts" />}
-        {(screen.name === "help" || screen.name === "done") && <TestProgress answered={total} total={total} breakAfter={breakAfter} at={screen.name === "help" ? "help" : "end"} />}
+        {(screen.name === "help" || screen.name === "done") && progress && <TestProgress answered={progress.total} total={progress.total} breakAfter={progress.breakAfter} at={screen.name === "help" ? "help" : "end"} />}
       </header>
       <main id="main" className="test-main">
-        {screen.name === "intro" && <Intro name={name} total={total} ready={ready} busy={busy} onStart={start} failure={failure} mode={mode} />}
+        {screen.name === "intro" && <Intro name={name} ready={ready} busy={busy} onStart={start} failure={failure} mode={mode} />}
         {screen.name === "question" && (
-          <Question key={screen.question.id} testId={screen.testId} typing={typing} question={screen.question} last={screen.number === screen.total} onAnswer={answer} failure={failure} />
+          <Question key={screen.question.id} testId={screen.testId} typing={typing} question={screen.question} last={screen.number === screen.total} takeYourTime={screen.takeYourTime} onAnswer={answer} failure={failure} />
         )}
         {screen.name === "break" && (
           <TestBreak name={name} answered={screen.next.breakAfter} total={screen.next.total} onDone={(how) => {
@@ -217,7 +223,7 @@ export function TakeTest({ childId, name, total, breakAfter, ready, done, mode: 
             return sent;
           }} />
         )}
-        {screen.name === "done" && <End name={name} total={total} />}
+        {screen.name === "done" && <End name={name} total={progress?.total} />}
       </main>
     </div>
   );
@@ -242,7 +248,7 @@ function Problem({ error }: { error: TestError | null }) {
   return <p ref={line} role="alert" className="test-alert">{text}</p>;
 }
 
-function Intro({ name, total, ready, busy, onStart, failure, mode }: { name: string; total: number; ready: boolean; busy: boolean; onStart: () => void; failure: TestError | null; mode: StartMode }) {
+function Intro({ name, ready, busy, onStart, failure, mode }: { name: string; ready: boolean; busy: boolean; onStart: () => void; failure: TestError | null; mode: StartMode }) {
   if (!ready) {
     return (
       <MessageScreen>
@@ -256,7 +262,7 @@ function Intro({ name, total, ready, busy, onStart, failure, mode }: { name: str
   if (mode === "finish") {
     return (
       <MessageScreen>
-        <p className="test-kicker">Math test · {total} questions</p>
+        <p className="test-kicker">Math test</p>
         <h1 className="test-title">All your answers are in, {name}!</h1>
         <p className="test-lead">The test was not sent yet. Answer one last question to send it.</p>
         <Problem error={failure} />
@@ -266,7 +272,7 @@ function Intro({ name, total, ready, busy, onStart, failure, mode }: { name: str
   }
   return (
     <MessageScreen className="test-intro">
-      <p className="test-kicker">Math test · {total} questions</p>
+      <p className="test-kicker">Math test</p>
       <h1 className="test-title">{mode === "resume" ? `Welcome back, ${name}! Before you go on:` : `Hi ${name}! Before you start:`}</h1>
       <ul className="test-rules">
         <li><b>No calculator.</b> Work the answers out yourself.</li>
@@ -301,12 +307,14 @@ interface QuestionProps {
   typing: boolean;
   question: PublicQuestion;
   last: boolean;
+  /** #189: show "Take your time" above the question: the last three answers were very fast. */
+  takeYourTime: boolean;
   onAnswer: (id: string, response: string, timeMs: number, work?: WorkPayload, events?: AnswerEvents) => Promise<boolean>;
   failure: TestError | null;
 }
 
 // One question in the split desk (D-088): the question and the answer on the left, the whiteboard on the right.
-function Question({ testId, typing, question, last, onAnswer, failure }: QuestionProps) {
+function Question({ testId, typing, question, last, takeYourTime, onAnswer, failure }: QuestionProps) {
   const [value, setValue] = useState("");
   const [sending, setSending] = useState(false);
   // Time on the question runs from when it appears to when the child presses Next.
@@ -443,28 +451,31 @@ function Question({ testId, typing, question, last, onAnswer, failure }: Questio
   return (
     <form className="test-split test-desk" onSubmit={submit}>
       <div className="test-pane test-pane-l">
+        {takeYourTime && <TakeYourTime />}
         <div className="test-qrow">
           <ReadAloud key={question.id} text={spoken} onRead={onRead} />
           <h1 id="test-q-title" ref={heading} tabIndex={-1} className="test-prompt"><PromptText text={question.prompt} /></h1>
         </div>
         {question.figure?.kind === "bars" && <BarGraph figure={question.figure} />}
-        {question.format === "choice" ? (
-          <Choices options={shown.map((c, i) => ({ value: c, label: <ChoiceFace text={c} />, name: names[i] }))} value={value || null} onChange={setValue} labelledBy="test-q-title" />
-        ) : (
-          <div className="test-num">
-            <output className="test-display" aria-live="polite" aria-label="Your answer">{value || <i>Type your answer</i>}</output>
-            <div className="test-pad" role="group" aria-label="Number pad">
-              {PAD_KEYS.map((k) => (
-                <button key={k} type="button" onClick={() => press(k)} aria-label={k === "." ? "Decimal point" : undefined}>{k}</button>
-              ))}
-              <button type="button" onClick={() => press("back")} aria-label="Delete">⌫</button>
+        <div className="test-response">
+          {question.format === "choice" ? (
+            <Choices options={shown.map((c, i) => ({ value: c, label: <ChoiceFace text={c} />, name: names[i] }))} value={value || null} onChange={setValue} labelledBy="test-q-title" />
+          ) : (
+            <div className="test-num">
+              <output className="test-display" aria-live="polite" aria-label="Your answer">{value || <i>Type your answer</i>}</output>
+              <div className="test-pad" role="group" aria-label="Number pad">
+                {PAD_KEYS.map((k) => (
+                  <button key={k} type="button" onClick={() => press(k)} aria-label={k === "." ? "Decimal point" : undefined}>{k}</button>
+                ))}
+                <button type="button" onClick={() => press("back")} aria-label="Delete">⌫</button>
+              </div>
             </div>
+          )}
+          <Problem error={failure} />
+          <div className="test-next">
+            <p className="test-why" aria-live="polite">{nudge ? "Now show your work on the board" : ""}</p>
+            <Button type="submit" disabled={!value || sending || needsWork} aria-busy={sending}>{last ? "Finish" : "Next"}</Button>
           </div>
-        )}
-        <Problem error={failure} />
-        <div className="test-next">
-          <p className="test-why" aria-live="polite">{nudge ? "Now show your work on the board" : ""}</p>
-          <Button type="submit" disabled={!value || sending || needsWork} aria-busy={sending}>{last ? "Finish" : "Next"}</Button>
         </div>
       </div>
       <div className="test-pane test-pane-r">
@@ -474,14 +485,27 @@ function Question({ testId, typing, question, last, onAnswer, failure }: Questio
   );
 }
 
+/**
+ * #189: after three very fast answers in a row. A calm note above the question, never a block: the child reads it with
+ * the question and goes on. role="status", so a screen reader says it once.
+ */
+function TakeYourTime() {
+  useEffect(() => track("test_pace", { status: "shown" }), []);
+  return (
+    <p className="test-pace" role="status">
+      <b>Take your time.</b> Read each question and work it out before you press Next.
+    </p>
+  );
+}
+
 /** The end (D-088): a full colour field. */
-function End({ name, total }: { name: string; total: number }) {
+function End({ name, total }: { name: string; total?: number }) {
   const heading = useRef<HTMLHeadingElement>(null);
   useEffect(() => heading.current?.focus(), []);
   return (
     <section className="test-end test-field" aria-labelledby="test-end-title">
       <div>
-        <p className="test-kicker">All {total} done</p>
+        <p className="test-kicker">{total === undefined ? "All done" : `All ${total} done`}</p>
         <h1 id="test-end-title" ref={heading} tabIndex={-1} className="test-title">You did it, {name}!</h1>
         <p className="test-lead">Thank you for working so hard. Your report will be emailed to your grown-up shortly.</p>
         <p className="test-end-link"><Link href="/account">Back to the account</Link></p>

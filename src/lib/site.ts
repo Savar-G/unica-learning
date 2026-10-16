@@ -21,8 +21,8 @@ export const cad = (n: number) => (Number.isInteger(n) ? String(n) : n.toFixed(2
 export const priceWithOffer = (price: number) => `CAD ${price}/month, first month CAD ${cad(firstMonth(price))} (${FIRST_MONTH_OFF}% off)`;
 
 export const HERO = {
-  kicker: "A personalized math learning program for ages 6-12.",
-  title: "Schools and tutoring programs put every child in",
+  kicker: "A personalized math program for ages 6-12.",
+  title: "Schools and tutoring put every child in",
   highlight: "the same box.",
   // The lead is JSX in sections.tsx: it carries the rotating topic word.
 };

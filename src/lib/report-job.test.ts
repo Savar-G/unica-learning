@@ -9,6 +9,7 @@ import { memoryTransport } from "@/lib/email-delivery-memory";
 import { runReportJob } from "@/lib/report-job";
 import { memoryReportJobStore } from "@/lib/report-job-memory";
 import { loadReportView, type ComparisonRead } from "@/lib/report-loading";
+import { leftOutLine, reliabilityNote } from "@/lib/report-view";
 import { countRead, memoryReportReaders, type MemoryReportTables } from "@/lib/report-loading-memory";
 import { memoryReportLedger } from "@/lib/report-row-ledger-memory";
 import type { ReportLedger } from "@/lib/report-row-ledger";
@@ -28,7 +29,7 @@ const ORIGIN = "https://unica.test";
 const TEST = "test-1";
 
 // Asha, grade 4 in BC, child of Priya, works at grade 4: every grade 4 question right, every grade 5 question wrong,
-// 20 seconds each. 36 questions (18 above her school grade), 12 minutes. She showed work on her first two
+// 20 seconds each. 42 questions (18 above her school grade), 14 minutes. She showed work on her first two
 // show-your-work questions: one drawn, one typed.
 const { asked, placement } = takeTest({ grade: 4, province: "BC" }, 101, knowsUpTo(4));
 const [DRAWN, TYPED] = asked.flatMap((q, n) => (q.showWork ? [n] : []));
@@ -48,12 +49,17 @@ const cohort: ComparisonTest[] = [
  * parent row is missing. `child`: false when Asha's child row is missing. `helped`: Asha said someone helped, so the
  * report warns that the level may be too high. `comparison` counts the comparison reads.
  */
-function database({ unsubscribed = false, parent = PRIYA as typeof PRIYA | null, child = true, helped = false } = {}) {
+function database({ unsubscribed = false, parent = PRIYA as typeof PRIYA | null, child = true, helped = false, rushed = false } = {}) {
   const tables: MemoryReportTables = {
     reports: [],
     assessments: [{
       id: TEST, parentId: "parent-1", childId: "child-1", status: "completed", grade: 4, province: "BC", completedAt: "2026-10-10T12:00:00Z",
-      placement: helped ? { ...placement, flags: [{ kind: "helped", answer: "yes" }] } : placement,
+      placement: {
+        ...placement,
+        ...(helped ? { flags: [{ kind: "helped" as const, answer: "yes" as const }] } : {}),
+        // #189: 12 of 36 answers very fast, 3 of them wrong ones in a run.
+        ...(rushed ? { pace: { veryFast: 12, answers: 36, leftOut: ["s1-0", "s1-1", "s1-2"], unreliable: true } } : {}),
+      },
       help: helped ? "yes" : "no",
       test: storedTest(createSession({ grade: 4, province: "BC" }, 101)),
     }],
@@ -120,7 +126,7 @@ describe("the stored report", () => {
 
     expect(db.tables.reports).toHaveLength(1);
     const [report] = db.tables.reports!;
-    expect(report).toMatchObject({ id: "report-1", assessmentId: TEST, parentId: "parent-1", childId: "child-1", questions: 36, minutes: 12 });
+    expect(report).toMatchObject({ id: "report-1", assessmentId: TEST, parentId: "parent-1", childId: "child-1", questions: 42, minutes: 14 });
     expect(report.model.comparison).toEqual({ stage: "percentile", n: 400, percentile: 50 });
     // The fake reviewer's comment on each piece of work: both answers were right.
     expect(report.model.work?.map((w) => [w.questionId, w.image, w.text, w.comment])).toEqual([
@@ -144,7 +150,7 @@ describe("the stored report", () => {
 
     expect(mail.delivered.map((m) => m.to)).toEqual(["priya@family.ca", "savar@unicalearning.com"]);
     expect(mail.delivered[1].text).toContain("AI review (fake): 2 pieces of work, 2 reviewed, 2 sure enough to show a comment. Report text: kept.");
-    expect(mail.delivered[1].text).toContain("Questions: 36 questions in 12 minutes");
+    expect(mail.delivered[1].text).toContain("Questions: 42 questions in 14 minutes");
 
     // A second run finds the report: no new report, no comparison read, no review, no email.
     await run(db, mail, book);
@@ -319,14 +325,15 @@ const words = (html: string) =>
 /** The area rows of the report email's text, in order: "<area>: <status>, <n> of <m> right". */
 function emailAreas(text: string): string[] {
   const block = text.split("\n\n").find((b) => b.startsWith("By area\n")) ?? "";
-  return block.split("\n").filter((line) => /^.+: .+, \d+ of \d+ right$/.test(line));
+  return block.split("\n").filter((line) => /^.+: .+, \d+ of \d+ right( \(.+\))?$/.test(line));
 }
 
 /** The area rows of the report page, in order, each read from its own table row and written as the email writes it. */
 function pageAreas(html: string): string[] {
   const table = html.match(/<table class="rpt-areas">([\s\S]*?)<\/table>/)?.[1] ?? "";
-  const rows = table.matchAll(/<tr><th scope="row">([\s\S]*?)<span>[\s\S]*?class="rpt-chip[^"]*">([\s\S]*?)<\/span>[\s\S]*?class="rpt-count">([\s\S]*?)<\/td><\/tr>/g);
-  return [...rows].map(([, name, status, count]) => `${words(name)}: ${words(status)}, ${words(count)} right`);
+  // #189: the certainty label under the status chip, as the email writes it in brackets.
+  const rows = table.matchAll(/<tr><th scope="row">([\s\S]*?)<span>[\s\S]*?class="rpt-chip[^"]*">([\s\S]*?)<\/span>(?:<span class="rpt-sure[^"]*">([\s\S]*?)<\/span>)?[\s\S]*?class="rpt-count">([\s\S]*?)<\/td><\/tr>/g);
+  return [...rows].map(([, name, status, sure, count]) => `${words(name)}: ${words(status)}, ${words(count)} right${sure ? ` (${words(sure)})` : ""}`);
 }
 
 /** Each piece of text is in each place. */
@@ -365,7 +372,7 @@ describe("the report email and the report page (#163)", () => {
 
     expectEverywhere(places(email, page), [
       "Asha",
-      "36 questions in 12 minutes",
+      "42 questions in 14 minutes",
       "Asha is working at a grade 4 level.",
       "That matches Asha's school grade.",
       "Asha's result is at the 50th percentile among 400 grade 4 children who took this test.",
@@ -373,10 +380,10 @@ describe("the report email and the report page (#163)", () => {
     // Each area as one row: its name, its status and its count together, in order. Asha got every grade 4 question
     // right. A row is matched whole, so a count or a status in the AI text or the legend cannot stand in for it.
     const areas = [
-      "Number and operations: Secure, 5 of 5 right",
-      "Fractions and decimals: Secure, 5 of 5 right",
-      "Patterns and algebra: Secure, 4 of 4 right",
-      "Shapes, measurement and data: Secure, 4 of 4 right",
+      "Number and operations: Secure, 6 of 6 right (Clear)",
+      "Fractions and decimals: Secure, 6 of 6 right (Clear)",
+      "Patterns and algebra: Secure, 6 of 6 right (Clear)",
+      "Shapes, measurement and data: Secure, 6 of 6 right (Clear)",
     ];
     expect(emailAreas(email.text)).toEqual(areas);
     expect(pageAreas(page.html)).toEqual(areas);
@@ -398,10 +405,55 @@ describe("the report email and the report page (#163)", () => {
     expectEverywhere(places(email, page), [
       "This level may be too high",
       "For a level you can trust, Asha can take a new test alone, with new questions, from November 10, 2026.",
-      "36 questions in 12 minutes",
+      "42 questions in 14 minutes",
     ]);
     // The page also shows the finish date itself.
     expect(page.text).toContain("October 10, 2026");
+  });
+});
+
+// #189 (spec #181): the reliability note, the new test at once and the left-out answers, in the email and on the page.
+// State and structure, not copy (spec #181): the same note and left-out line in each place, the count, the button.
+describe("the reliability note on the report email and the report page", () => {
+  /** Asha's rushed report as the parent's reader loads it, with the email the job sent and the read-only page. */
+  const rushedReport = async () => {
+    const db = database({ rushed: true });
+    const mail = memoryTransport();
+    await run(db, mail, memoryReportLedger());
+    const loaded = (await loadReportView(db.readers.parent("parent-1"), "report-1"))!;
+    return { email: mail.delivered[0], page: await reportPage(db), view: loaded.view };
+  };
+
+  it("both carry the same note, with the count and no retake time, and the same left-out line", async () => {
+    const { email, page, view } = await rushedReport();
+    const note = reliabilityNote(view)!;
+    // The email and this copy of the page do not read the start rules (D-108).
+    expect(note).toMatchObject({ veryFast: 12, answers: 36, when: { kind: "unknown" } });
+    expect(view.model.leftOut).toBe(3);
+    expectEverywhere(places(email, page), [note.title, note.text, note.offer, leftOutLine(view)!].map(words));
+  });
+
+  it("on the parent's page, shows the button only while a new test is open, and otherwise the day it opens (D-108)", async () => {
+    const { view } = await rushedReport();
+    const page = (newTest: Parameters<typeof ReportCard>[0]["newTest"]) => renderToStaticMarkup(createElement(ReportCard, { view, readOnly: true, newTest }));
+    const open = page({ state: { kind: "open" }, href: "/account/start/child-1", label: "Start a new test" });
+    expect(open).toContain('href="/account/start/child-1"');
+    expect(words(open)).toContain(words(reliabilityNote(view, { kind: "open" })!.offer));
+    const at = Date.parse("2026-11-09T12:00:00Z");
+    const waiting = page({ state: { kind: "opens", at }, href: "/account/start/child-1", label: "" });
+    expect(waiting).not.toContain('href="/account/start/child-1"');
+    expect(reliabilityNote(view, { kind: "opens", at })!.when).toEqual({ kind: "from", date: "November 10, 2026" });
+    expect(words(waiting)).toContain("November 10, 2026");
+  });
+
+  it("is on neither at a steady pace", async () => {
+    const { view } = await rushedReport();
+    const title = words(reliabilityNote(view)!.title);
+    const db = database();
+    const mail = memoryTransport();
+    await run(db, mail, memoryReportLedger());
+    const page = await reportPage(db);
+    for (const text of Object.values(places(mail.delivered[0], page))) expect(text).not.toContain(title);
   });
 });
 

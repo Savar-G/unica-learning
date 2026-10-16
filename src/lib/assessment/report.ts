@@ -7,6 +7,7 @@ export type { Comparison } from "./comparison";
 import { factsReport, type ReportFacts } from "./facts";
 import { helpLikely } from "./flags";
 import { checkReportText } from "./ai-checks";
+import type { Certainty } from "./certainty";
 import type { Grade, Level, Placement, Province, StrandResult } from "./types";
 
 /** One AI review of a child's shown work (#68). Built by workReview, which decides the confidence. */
@@ -61,7 +62,9 @@ export interface FsaLine {
 }
 
 export interface ReportModel {
-  level: { working: Level; grade: Grade; atCeiling: boolean; confidence: Placement["confidence"] };
+  /** `certainty` (#189): how sure the working level is. Absent in reports from placements stored before #189. */
+  level: { working: Level; grade: Grade; atCeiling: boolean; confidence: Placement["confidence"]; certainty?: Certainty };
+  /** Each area; its `certainty` (#189) is absent in reports from placements stored before #189. */
   strands: (StrandResult & { name: string })[];
   comparison: Comparison;
   fsa: FsaLine | null;
@@ -79,6 +82,13 @@ export interface ReportModel {
    * reaches the parent; the flags behind it stay with Savar. Absent in reports stored before #71: read it as false.
    */
   helpWarning?: boolean;
+  /**
+   * #189: more than UNRELIABLE_FAST_PERCENT of the answers were very fast, so the result may not be reliable and the
+   * report offers a new test at once. Absent when the pace was fine, and in reports stored before #189.
+   */
+  reliability?: { veryFast: number; answers: number };
+  /** #189: very fast wrong answers in a run, left out of the score. Absent when there were none, and before #189. */
+  leftOut?: number;
   /**
    * #68: a short paragraph the AI wrote from this model, shown under the verdict. "{name}" stands for the child's first
    * name (REPORT_TEXT_NAME), so neither the stored model nor the AI holds the name. Absent when the AI is off or failed,
@@ -122,7 +132,13 @@ function workFor({ shownWork = [], workReviews }: ReportContext): ReportWork[] {
 export function reportModel(placement: Placement, context: ReportContext): ReportModel {
   const { workingLevel, grade } = placement;
   const model: ReportModel = {
-    level: { working: workingLevel, grade, atCeiling: placement.atCeiling, confidence: placement.confidence },
+    level: {
+      working: workingLevel,
+      grade,
+      atCeiling: placement.atCeiling,
+      confidence: placement.confidence,
+      ...(placement.levelCertainty ? { certainty: placement.levelCertainty } : {}),
+    },
     strands: placement.strands.map((s) => ({ ...s, name: REPORTED_STRAND_NAMES[s.strand] })),
     comparison: context.comparison ? comparisonFor(context.comparison) : { stage: "scale" },
     fsa: fsaLine(grade, placement.province),
@@ -133,6 +149,8 @@ export function reportModel(placement: Placement, context: ReportContext): Repor
     // Older placements were stored before the facts section existed and have no facts field.
     facts: placement.facts ? factsReport(placement.facts) : null,
     helpWarning: helpLikely(placement.flags),
+    ...(placement.pace?.unreliable ? { reliability: { veryFast: placement.pace.veryFast, answers: placement.pace.answers } } : {}),
+    ...(placement.pace?.leftOut.length ? { leftOut: placement.pace.leftOut.length } : {}),
   };
   if (!context.reportText) return model;
   const check = checkReportText(model, context.reportText);

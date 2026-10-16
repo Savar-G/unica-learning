@@ -101,7 +101,7 @@ export interface AnswerTimeline {
 export interface AttemptStore extends FactsStore, ShownStore {
   /** One of the parent's children; null when the parent has no child with this id. */
   child(parent: string, childId: string): Promise<AttemptChild | null>;
-  /** The parent's tests: of one child, or of every child. */
+  /** The parent's tests: of one child, or of every child. A completed test whose result may not be reliable has `unreliable` (#189). */
   attempts(parent: string, childId?: string): Promise<StoredAttempt[]>;
   /** One of the parent's tests with its questions and answers; null when the parent has no test with this id. */
   load(parent: string, id: string): Promise<LoadedAttempt | null>;
@@ -296,6 +296,27 @@ export async function startStates(store: AttemptStore, parent: string, now: numb
 
 /** A child's start state; a child with no tests can start one. */
 export const stateFor = (states: Map<string, StartState>, childId: string): StartState => states.get(childId) ?? { kind: "start", retake: false };
+
+/** #189: when the child's next test opens, for the report's reliability note: open now (`resume`: one is in progress), or at `at`. */
+export type RetakeState = { kind: "open"; resume: boolean } | { kind: "opens"; at: number };
+
+/**
+ * The child's next test at `now`, by the same rules and reads as the start screen (D-108: at once at most once per 30
+ * days after an unreliable result). Null when the tests cannot be read: unlike the start screen, the report then makes
+ * no promise, because "no 30-day wait" could be false. Writes nothing.
+ */
+export async function retakeState(store: AttemptStore, parent: string, childId: string, now: number): Promise<RetakeState | null> {
+  let attempts: StoredAttempt[];
+  try {
+    attempts = await withAnswers(store, parent, childId);
+  } catch (e) {
+    console.error("[test]", messageOf(e));
+    return null;
+  }
+  const state = startState(attempts, now);
+  if (state.kind === "wait") return { kind: "opens", at: state.opensAt };
+  return { kind: "open", resume: state.kind === "resume" || state.kind === "finish" };
+}
 
 export type StepOutcome = { ok: true; step: TestStep } | Refusal;
 
