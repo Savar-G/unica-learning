@@ -206,6 +206,18 @@ describe("a test's answers beside its questions (#77)", () => {
     expect(lines[1].work).toEqual({ required: false, image: null, text: null });
   });
 
+  it("marks the answers the stored placement left out of the score (#189), and none for a test stored before #189", () => {
+    const rushedAnswers = [
+      answer(0, "q1", { response: "45", correct: false, time_ms: 1_000 }),
+      answer(1, "q2", { response: "13", time_ms: 1_200 }),
+      answer(2, "u1", { response: "9", correct: false, time_ms: 900 }),
+    ];
+    expect(answerLines(test, rushedAnswers, [], ["q1", "u1"]).map((l) => l.leftOut)).toEqual([true, false, true]);
+    // Stored before #189: no pace, so its score counted every answer, and nothing is marked.
+    expect(answerLines(test, rushedAnswers, []).map((l) => l.leftOut)).toEqual([false, false, false]);
+    expect(lines.map((l) => l.leftOut)).toEqual([false, false, false]);
+  });
+
   it("still shows an answer whose question is missing from the stored test", () => {
     const [line] = answerLines(test, [answer(0, "gone", { response: "9" })], []);
     expect(line).toMatchObject({ number: 1, prompt: null, rightAnswer: null, response: "9" });

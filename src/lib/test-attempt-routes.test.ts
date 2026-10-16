@@ -230,9 +230,33 @@ describe("POST /api/account/assessments/[id]/answers (answer a question)", () =>
     const big = Buffer.concat([Buffer.from(DRAWING, "base64"), Buffer.alloc(1_000_000)]).toString("base64");
     expect(await sent(await answer(right({ image: big })))).toEqual({ status: 413, body: { ok: false, error: "work_too_big", message: "The drawing is too big to save. The limit is 1 MB." } });
     expect(await sent(await answer(right({ text: "x".repeat(1001) })))).toEqual({ status: 413, body: { ok: false, error: "work_too_big", message: "The typed working is too long to save. The limit is 1000 characters." } });
-    expect(await sent(await answer("{}", { headers: { "content-length": "1500001" } }))).toEqual({ status: 413, body: { ok: false, error: "work_too_big", message: "The answer is too big to save." } });
-    expect(await sent(await answer(JSON.stringify({ ...right(), pad: "x".repeat(1_500_000) })))).toEqual({ status: 413, body: { ok: false, error: "work_too_big", message: "The answer is too big to save." } });
+    expect(await sent(await answer("{}", { headers: { "content-length": "2000001" } }))).toEqual({ status: 413, body: { ok: false, error: "work_too_big", message: "The answer is too big to save." } });
+    expect(await sent(await answer(JSON.stringify({ ...right(), pad: "x".repeat(2_000_000) })))).toEqual({ status: 413, body: { ok: false, error: "work_too_big", message: "The answer is too big to save." } });
     expect(memory.tests[0].answers).toEqual([]);
+  });
+
+  it("stores the strokes with the answer (#186), also beside the largest drawing and typed working", async () => {
+    family(stored(startAttempt(TEST, T0)));
+    const largest = Buffer.concat([Buffer.from(DRAWING, "base64"), Buffer.alloc(1_000_000 - 9)]).toString("base64");
+    // The largest strokes: one stroke of [0, 0, 0] points, 500,000 bytes of JSON.
+    const strokes = { v: 1, width: 800, height: 600, events: [{ kind: "stroke", erase: false, w: 3, pts: Array.from({ length: 62_487 }, () => [0, 0, 0]) }] };
+    strokes.events[0].pts.push([0, 0, 10_000_000]);
+    expect(JSON.stringify(strokes).length).toBe(500_000);
+    expect((await answer(right({ image: largest, text: "🍎".repeat(1000), strokes }))).status).toBe(200);
+    const [path] = [...memory.strokes.keys()];
+    expect(memory.tests[0].answers).toMatchObject([{ workPath: [...memory.drawings.keys()][0], strokesPath: path }]);
+    expect(JSON.parse(memory.strokes.get(path)!)).toEqual(strokes);
+  });
+
+  it("strokes that cannot be used never stop the answer: it is stored without them, and the reason is logged", async () => {
+    family(stored(startAttempt(TEST, T0)));
+    const log = vi.spyOn(console, "error").mockImplementation(() => {});
+    expect((await answer(right({ image: DRAWING, strokes: { v: 1, width: 800 } }))).status).toBe(200);
+    expect(memory.tests[0].answers).toHaveLength(1);
+    expect(memory.tests[0].answers[0].strokesPath).toBeUndefined();
+    expect(memory.strokes.size).toBe(0);
+    expect(log.mock.calls).toEqual([["[strokes] left out", "invalid"]]);
+    log.mockRestore();
   });
 
   it("answers 400 for a body that is not JSON, or work that is not a drawing", async () => {

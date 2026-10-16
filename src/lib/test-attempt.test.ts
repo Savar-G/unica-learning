@@ -14,7 +14,7 @@ import {
   type Submission,
 } from "@/lib/assessment";
 import { allRight, knowsUpTo, takeTest, type Script } from "@/lib/assessment/scripted-child";
-import { answerQuestion, finishTest, nextStep, startStates, startTest, stateFor, StoreError, type AnswerInput, type AttemptStore, type HelpInput } from "@/lib/test-attempt";
+import { answerQuestion, finishTest, nextStep, retakeState, startStates, startTest, stateFor, StoreError, type AnswerInput, type AttemptStore, type HelpInput } from "@/lib/test-attempt";
 import { memoryAttemptStore, type MemoryTest } from "@/lib/test-attempt-memory";
 import { answerFact, readFacts, startFacts } from "@/lib/test-attempt";
 import { createFacts } from "@/lib/assessment";
@@ -260,6 +260,33 @@ describe("answering a question", () => {
   });
 });
 
+// #189 (spec #181): a very fast answer takes under 3 seconds. After 3 in a row, the next question says "Take your time".
+describe("Take your time", () => {
+  /** Answers the current question right in `timeMs`, with a drawing when the question needs shown work. */
+  const answerIn = async (memory: ReturnType<typeof family>, timeMs: number, at: number) => {
+    const row = memory.tests[0];
+    const input = { ...sent(row, { png: current(row).showWork ? DRAWING : null }), timeMs };
+    const result = await answerQuestion(memory.store, P1, "a1", input, at);
+    if (!result.ok || result.step.status !== "question") throw new Error("expected the next question");
+    return result.step;
+  };
+
+  it("appears after the third very fast answer in a row, stays while the run goes on, and goes after a slower answer", async () => {
+    const memory = family(stored(open("a1", T0)));
+    expect((await answerIn(memory, 1_000, T0 + 1)).takeYourTime).toBe(false);
+    expect((await answerIn(memory, 2_999, T0 + 2)).takeYourTime).toBe(false);
+    expect((await answerIn(memory, 500, T0 + 3)).takeYourTime).toBe(true);
+    expect((await answerIn(memory, 800, T0 + 4)).takeYourTime).toBe(true);
+    expect((await answerIn(memory, 3_000, T0 + 5)).takeYourTime).toBe(false);
+  });
+
+  it("is on the step a reload reads, so the message is still there after the page opens again", async () => {
+    const memory = family(stored(open("a1", T0)));
+    for (let i = 0; i < 3; i++) await answerIn(memory, 1_000, T0 + i);
+    expect(await nextStep(memory.store, P1, "a1", T0 + 10)).toMatchObject({ ok: true, step: { status: "question", number: 4, takeYourTime: true } });
+  });
+});
+
 describe("the work on the whiteboard (#67)", () => {
   it("stores the drawing, and the answer points to it", async () => {
     const memory = family(stored(open("a1", T0)));
@@ -297,6 +324,55 @@ describe("the work on the whiteboard (#67)", () => {
     expect(memory.drawings.size).toBe(0);
     expect(await answerQuestion(memory.store, P1, "a1", sent(memory.tests[0], { png: DRAWING }), T0 + HOUR)).toMatchObject({ ok: true, step: { number: 3 } });
     expect(memory.tests[0].answers[1]).toMatchObject({ workRequired: false, workPath: [...memory.drawings.keys()][0], workText: null });
+  });
+});
+
+describe("the whiteboard strokes (#186)", () => {
+  /** A stroke recording as the answer route passes it on: checked JSON text. */
+  const STROKES = '{"v":1,"width":800,"height":600,"events":[{"kind":"stroke","erase":false,"w":3.2,"pts":[[0.1,0.1,400],[0.2,0.15,480]]}]}';
+
+  it("stores the strokes with the answer, in the parent's folder but not as a drawing, and the answer points to them", async () => {
+    const memory = family(stored(open("a1", T0)));
+    const first = current(memory.tests[0]);
+    expect(await answerQuestion(memory.store, P1, "a1", sent(memory.tests[0], { png: DRAWING, strokes: STROKES }), T0 + HOUR)).toMatchObject({ ok: true, step: { number: 2 } });
+    const [path] = [...memory.strokes.keys()];
+    // The parent's folder: a family deletion removes it. Not a .png: parents read only the drawings (storage policy).
+    expect(path).toMatch(new RegExp(`^${P1}/a1/${first.id}-`));
+    expect(path).not.toMatch(/\.png$/);
+    expect(memory.strokes.get(path)).toBe(STROKES);
+    expect(memory.tests[0].answers).toMatchObject([{ questionId: first.id, workPath: [...memory.drawings.keys()][0], strokesPath: path }]);
+  });
+
+  it("an answer that is not stored leaves no strokes behind: a failed insert, a failed drawing upload, another tab first", async () => {
+    logs();
+    const insertFails = family(stored(recordAnswer(open("a1", T0), T0 + HOUR)));
+    insertFails.fail.insertAnswer = new StoreError("answer save failed", "connection reset");
+    expect(await answerQuestion(insertFails.store, P1, "a1", sent(insertFails.tests[0], { png: DRAWING, strokes: STROKES }), T0 + 2 * HOUR)).toEqual({ ok: false, error: "store_failed" });
+    expect([insertFails.strokes.size, insertFails.drawings.size, insertFails.tests[0].answers.length]).toEqual([0, 0, 0]);
+
+    const uploadFails = family(stored(recordAnswer(open("a1", T0), T0 + HOUR)));
+    uploadFails.fail.storeDrawing = new StoreError("upload failed", "bucket full");
+    expect(await answerQuestion(uploadFails.store, P1, "a1", sent(uploadFails.tests[0], { png: DRAWING, strokes: STROKES }), T0 + 2 * HOUR)).toEqual({ ok: false, error: "store_failed" });
+    expect([uploadFails.strokes.size, uploadFails.tests[0].answers.length]).toEqual([0, 0]);
+
+    const twoTabs = family(stored(open("a1", T0)));
+    const results = await Promise.all([
+      answerQuestion(twoTabs.store, P1, "a1", sent(twoTabs.tests[0], { png: DRAWING, strokes: STROKES }), T0 + HOUR),
+      answerQuestion(twoTabs.store, P1, "a1", sent(twoTabs.tests[0], { png: DRAWING, strokes: STROKES.replace("400", "401") }), T0 + HOUR),
+    ]);
+    expect(results).toMatchObject([{ ok: true }, { ok: false, error: "conflict" }]);
+    expect([...twoTabs.strokes]).toEqual([[twoTabs.tests[0].answers[0].strokesPath, STROKES]]);
+  });
+
+  it("a failed strokes upload never stops the answer: it is stored with the drawing alone, and the failure is logged", async () => {
+    const log = logs();
+    const memory = family(stored(open("a1", T0)));
+    memory.fail.storeStrokes = new StoreError("upload failed", "bucket full");
+    expect(await answerQuestion(memory.store, P1, "a1", sent(memory.tests[0], { png: DRAWING, strokes: STROKES }), T0 + HOUR)).toMatchObject({ ok: true, step: { number: 2 } });
+    expect(memory.tests[0].answers).toHaveLength(1);
+    expect(memory.tests[0].answers[0].workPath).toBe([...memory.drawings.keys()][0]);
+    expect(memory.tests[0].answers[0].strokesPath).toBeUndefined();
+    expect(log.mock.calls).toEqual([["[strokes] upload failed", "bucket full"]]);
   });
 });
 
@@ -947,7 +1023,7 @@ describe("when the facts store fails", () => {
  * when the script says so, with a drawing on each question that needs shown work. With `facts`, at the halfway break
  * the child does the first five facts of the timed section. Returns the time of the last answer.
  */
-async function takeWholeTest(memory: ReturnType<typeof family>, script: Script, { facts = false } = {}): Promise<number> {
+async function takeWholeTest(memory: ReturnType<typeof family>, script: Script, { facts = false, timeMs = () => 20_000 }: { facts?: boolean; timeMs?: (n: number) => number } = {}): Promise<number> {
   let at = T0;
   for (let n = 0; ; n++) {
     const row = memory.tests[0];
@@ -955,7 +1031,7 @@ async function takeWholeTest(memory: ReturnType<typeof family>, script: Script, 
     if (!q) return at;
     if (facts && n === row.test.stage1.length) await quickFacts(memory, (at += 60_000));
     const wrong = q.format === "choice" ? q.choices!.find((c) => c !== q.answer)! : "no idea";
-    const input = { questionId: q.id, response: script(q, n) ? q.answer : wrong, timeMs: 20_000, work: { png: q.showWork ? DRAWING : null, text: "" } };
+    const input = { questionId: q.id, response: script(q, n) ? q.answer : wrong, timeMs: timeMs(n), work: { png: q.showWork ? DRAWING : null, text: "" } };
     const result = await answerQuestion(memory.store, P1, row.id, input, (at += 60_000));
     if (!result.ok) throw new Error(`answer ${n + 1}: ${result.error}`);
   }
@@ -1056,6 +1132,49 @@ describe("finishing a test", () => {
     expect(await finishTest(memory.store, P1, "a1", "no", T0 + HOUR)).toEqual({ ok: false, error: "not_found" });
     expect(await finishTest(memory.store, P1, "no-such-test", "no", T0 + HOUR)).toEqual({ ok: false, error: "not_found" });
     expect(memory.tests).toEqual(before);
+  });
+});
+
+// #189 (spec #181): more than 30% very fast answers, and the report offers a new test at once, without the 30-day wait.
+describe("a new test after a rushed one", () => {
+  it("opens at once after a test with 14 of 42 answers very fast, and the start screen offers it", async () => {
+    const memory = family(stored(open("a1", T0)));
+    const last = await takeWholeTest(memory, allRight, { timeMs: (n) => (n % 3 === 0 ? 1_000 : 20_000) });
+    expect(await finishTest(memory.store, P1, "a1", "no", last + 60_000)).toMatchObject({ ok: true });
+    expect(memory.tests[0].placement?.pace).toMatchObject({ veryFast: 14, answers: 42, unreliable: true });
+    expect(stateFor(await startStates(memory.store, P1, last + 2 * 60_000), C1)).toEqual({ kind: "start", retake: true });
+    expect(await start(memory.store, last + 3 * 60_000, { restart: false, newSeed: seeds(8) })).toEqual({ ok: true, id: "a2", resumed: false });
+  });
+
+  it("still waits 30 days after a test with 12 of 42 answers very fast", async () => {
+    const memory = family(stored(open("a1", T0)));
+    const last = await takeWholeTest(memory, allRight, { timeMs: (n) => (n % 3 === 0 && n < 36 ? 1_000 : 20_000) });
+    expect(await finishTest(memory.store, P1, "a1", "no", last + 60_000)).toMatchObject({ ok: true });
+    expect(memory.tests[0].placement?.pace).toMatchObject({ veryFast: 12, answers: 42, unreliable: false });
+    expect(await start(memory.store, last + 3 * 60_000, { restart: false, newSeed: seeds(8) })).toMatchObject({ ok: false, error: "retake_closed" });
+  });
+});
+
+// #189, D-108: the report page's retake state. On a read failure it is unknown (null): the report then shows no button
+// and names no time, never "no 30-day wait".
+describe("the retake state the report page reads", () => {
+  const rushedDone = (id: string, at: number): MemoryTest => ({
+    ...stored(done(id, at), { seed: at === T0 ? 7 : 8 }),
+    placement: { ...takeTest(ASHA, 7, allRight).placement, pace: { veryFast: 12, answers: 36, leftOut: [], unreliable: true } },
+  });
+
+  it("is open after one unreliable test, and waits after a second one within 30 days", async () => {
+    expect(await retakeState(family(rushedDone("a1", T0)).store, P1, C1, T0 + 2 * HOUR)).toEqual({ kind: "open", resume: false });
+    const twice = family(rushedDone("a1", T0), rushedDone("a2", T0 + 2 * HOUR));
+    expect(await retakeState(twice.store, P1, C1, T0 + 4 * HOUR)).toEqual({ kind: "opens", at: T0 + 3 * HOUR + 30 * DAY });
+  });
+
+  it("is unknown when the tests cannot be read, though the start screen would offer Start test", async () => {
+    logs();
+    const twice = family(rushedDone("a1", T0), rushedDone("a2", T0 + 2 * HOUR));
+    twice.fail.attempts = new StoreError("attempts load failed", "timeout");
+    expect(stateFor(await startStates(twice.store, P1, T0 + 4 * HOUR, C1), C1).kind).toBe("start");
+    expect(await retakeState(twice.store, P1, C1, T0 + 4 * HOUR)).toBeNull();
   });
 });
 

@@ -29,6 +29,8 @@ export async function POST(request: Request, ctx: RouteContext<"/api/account/ass
   }
   const work = parseWork(body.work);
   if (!work.ok) return testFail(work.error, work.error === "work_too_big" ? 413 : 400, { message: work.message });
+  // #186: strokes that cannot be stored are left out, and the answer goes on with its drawing.
+  if (work.strokesDropped) console.error("[strokes] left out", work.strokesDropped);
 
   const { id } = await ctx.params;
   if (!isUuid(id)) return testFail("not_found", 404);
@@ -37,7 +39,7 @@ export async function POST(request: Request, ctx: RouteContext<"/api/account/ass
     questionId: typeof body.questionId === "string" ? body.questionId : "",
     response: typeof body.response === "string" ? body.response : "",
     timeMs: Number(body.timeMs),
-    work: { png: work.png, text: work.text },
+    work: { png: work.png, text: work.text, strokes: work.strokes },
     // #184: what the child did before Next, bounded. Events that cannot be used never stop the answer.
     events: parseAnswerEvents(body.events),
   }, Date.now());

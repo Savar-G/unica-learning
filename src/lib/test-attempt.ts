@@ -79,6 +79,8 @@ export interface NewAnswer extends Answer {
   workPath: string | null;
   /** The typed working, or null when the child typed none. */
   workText: string | null;
+  /** Where the whiteboard strokes are stored (#186). Left out when the child drew no strokes, or they were not stored. */
+  strokesPath?: string;
   /** When the server served the question and received the answer, and what the child did before Next (#184). */
   timeline: AnswerTimeline;
 }
@@ -102,7 +104,7 @@ export interface AnswerTimeline {
 export interface AttemptStore extends FactsStore, ShownStore, ContextStore {
   /** One of the parent's children; null when the parent has no child with this id. */
   child(parent: string, childId: string): Promise<AttemptChild | null>;
-  /** The parent's tests: of one child, or of every child. */
+  /** The parent's tests: of one child, or of every child. A completed test whose result may not be reliable has `unreliable` (#189). */
   attempts(parent: string, childId?: string): Promise<StoredAttempt[]>;
   /** One of the parent's tests with its questions and answers; null when the parent has no test with this id. */
   load(parent: string, id: string): Promise<LoadedAttempt | null>;
@@ -122,6 +124,10 @@ export interface AttemptStore extends FactsStore, ShownStore, ContextStore {
   storeDrawing(parent: string, id: string, questionId: string, png: Uint8Array): Promise<string>;
   /** Removes a drawing whose answer was not stored. */
   removeDrawing(path: string): Promise<void>;
+  /** Stores the whiteboard strokes (#186, checked JSON) for one question of the parent's test, under a new name. Returns its path. */
+  storeStrokes(parent: string, id: string, questionId: string, json: string): Promise<string>;
+  /** Removes strokes whose answer was not stored. */
+  removeStrokes(path: string): Promise<void>;
   /** Stores one answer. "taken": the test already has an answer in this place (another tab answered first). */
   insertAnswer(id: string, answer: NewAnswer): Promise<"stored" | "taken">;
   /** Records the stage 2 route the child was given when stage 1 ended, for the admin view. */
@@ -294,6 +300,27 @@ export async function startStates(store: AttemptStore, parent: string, now: numb
 /** A child's start state; a child with no tests can start one. */
 export const stateFor = (states: Map<string, StartState>, childId: string): StartState => states.get(childId) ?? { kind: "start", retake: false };
 
+/** #189: when the child's next test opens, for the report's reliability note: open now (`resume`: one is in progress), or at `at`. */
+export type RetakeState = { kind: "open"; resume: boolean } | { kind: "opens"; at: number };
+
+/**
+ * The child's next test at `now`, by the same rules and reads as the start screen (D-108: at once at most once per 30
+ * days after an unreliable result). Null when the tests cannot be read: unlike the start screen, the report then makes
+ * no promise, because "no 30-day wait" could be false. Writes nothing.
+ */
+export async function retakeState(store: AttemptStore, parent: string, childId: string, now: number): Promise<RetakeState | null> {
+  let attempts: StoredAttempt[];
+  try {
+    attempts = await withAnswers(store, parent, childId);
+  } catch (e) {
+    console.error("[test]", messageOf(e));
+    return null;
+  }
+  const state = startState(attempts, now);
+  if (state.kind === "wait") return { kind: "opens", at: state.opensAt };
+  return { kind: "open", resume: state.kind === "resume" || state.kind === "finish" };
+}
+
 export type StepOutcome = { ok: true; step: TestStep; break?: BreakResume } | Refusal;
 
 /**
@@ -313,6 +340,8 @@ export interface AnswerWork {
   png: Uint8Array | null;
   /** The typed working, trimmed and within the size limit; "" when the child typed none. */
   text: string;
+  /** The whiteboard strokes (#186) as checked JSON within the size limit; null or left out when there are none. */
+  strokes?: string | null;
 }
 
 /** A child's answer to the current question, as the route read it from the request. */
@@ -370,6 +399,8 @@ export async function answerQuestion(store: AttemptStore, parent: string, id: st
     return { ok: false, error: "store_failed" };
   };
 
+  // #186: the strokes upload at the same time as the drawing. If the answer is not stored, they go too.
+  const strokesUpload = storeStrokes(store, parent, id, q.id, input.work.strokes);
   // The drawing first, under a new name, so the answer can point to it. If the answer is not stored, the drawing goes.
   let workPath: string | null = null;
   if (input.work.png) {
@@ -377,9 +408,11 @@ export async function answerQuestion(store: AttemptStore, parent: string, id: st
       workPath = await store.storeDrawing(parent, id, q.id, input.work.png);
     } catch (e) {
       logFailure("[work] upload failed", e);
+      await removeStrokes(store, await strokesUpload);
       return failed();
     }
   }
+  const strokesPath = await strokesUpload;
   let inserted: "stored" | "taken";
   try {
     inserted = await store.insertAnswer(id, {
@@ -390,16 +423,19 @@ export async function answerQuestion(store: AttemptStore, parent: string, id: st
       workRequired: q.showWork === true,
       workPath,
       workText: input.work.text || null,
+      strokesPath,
       timeline: { shownAt: shown?.questionId === q.id ? shown.at : null, answeredAt: now, events: input.events ?? null },
     });
   } catch (e) {
     await removeDrawing(store, workPath);
+    await removeStrokes(store, strokesPath);
     logFailure("[test] answer save failed", e);
     return failed();
   }
   if (inserted === "taken") {
     // Another request stored this question's answer first. Send the step after it, read fresh, so the screen moves on.
     await removeDrawing(store, workPath);
+    await removeStrokes(store, strokesPath);
     return freshConflict(store, parent, id, now);
   }
   const route = next.route;
@@ -424,6 +460,24 @@ function logFailure(line: string, e: unknown): void {
 /** Removes a drawing whose answer was not stored, so the bucket holds no drawing without its answer. A failure is logged. */
 const removeDrawing = (store: AttemptStore, path: string | null) =>
   path ? bestEffort("[work] remove failed", () => store.removeDrawing(path)) : Promise.resolve();
+
+/**
+ * Stores the whiteboard strokes of an answer (#186), if any, and returns their path. Strokes are for admins only, so a
+ * failed upload never stops the child's answer: it is logged, and the answer is stored with the drawing alone.
+ */
+async function storeStrokes(store: AttemptStore, parent: string, id: string, questionId: string, json: string | null | undefined): Promise<string | undefined> {
+  if (!json) return undefined;
+  try {
+    return await store.storeStrokes(parent, id, questionId, json);
+  } catch (e) {
+    logFailure("[strokes] upload failed", e);
+    return undefined;
+  }
+}
+
+/** Removes strokes whose answer was not stored, so the bucket holds no strokes without their answer. A failure is logged. */
+const removeStrokes = (store: AttemptStore, path: string | undefined) =>
+  path ? bestEffort("[strokes] remove failed", () => store.removeStrokes(path)) : Promise.resolve();
 
 /** A store write the request does not wait on to succeed: a failure is logged with `line`, and the request goes on. */
 async function bestEffort(line: string, write: () => Promise<void>): Promise<void> {

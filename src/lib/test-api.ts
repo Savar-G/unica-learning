@@ -4,6 +4,7 @@ import type { TestStep } from "@/lib/assessment";
 import type { Refusal } from "@/lib/test-attempt";
 import type { FactsRefusal } from "@/lib/test-attempt";
 import type { BreakResume } from "@/lib/test-context";
+import type { StrokeRecording } from "@/lib/strokes";
 
 /** An assessment row's status. "expired" comes with stop and resume (#72). */
 export type AssessmentStatus = "in_progress" | "completed" | "expired";
@@ -37,18 +38,27 @@ export const ANSWER_MAX = 12;
 /** Time on one question is capped here, so a tab left open overnight does not skew the speed data. */
 export const QUESTION_TIME_CAP_MS = 60 * 60_000;
 
-/** The whiteboard work sent with an answer (#67): the drawing as a base64 PNG, and the typed working. Either may be left out. */
+/**
+ * The whiteboard work sent with an answer (#67): the drawing as a base64 PNG, the typed working, and the strokes for
+ * the admin replay (#186). Any may be left out.
+ */
 export interface WorkPayload {
   image?: string;
   text?: string;
+  strokes?: StrokeRecording;
 }
 
 /** The largest whiteboard drawing the server stores, as PNG bytes (#67). The browser makes the image smaller to fit. */
 export const WORK_IMAGE_MAX_BYTES = 1_000_000;
 /** The most typed working the server stores for one question, in characters (#67). */
 export const WORK_TEXT_MAX = 1000;
-/** An answer request bigger than this is refused before it is read: room for the largest drawing in base64, and the text. */
-export const ANSWER_BODY_MAX = 1_500_000;
+/** The largest stroke recording the server stores for one answer, as JSON bytes (#186). The browser thins the strokes to fit. */
+export const STROKES_MAX_BYTES = 500_000;
+/**
+ * An answer request bigger than this is refused before it is read: room for the largest drawing in base64 (1.33 MB),
+ * the largest strokes (0.5 MB), the text and the answer events.
+ */
+export const ANSWER_BODY_MAX = 2_000_000;
 
 export const testFail = (error: TestError, status: number, extra: object = {}) => Response.json({ ok: false, error, ...extra }, { status });
 

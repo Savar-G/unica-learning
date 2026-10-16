@@ -4,16 +4,16 @@ import {
   REPORTED_STRAND,
   ROUTE_DOWN_BELOW_PERCENT,
   ROUTE_UP_PERCENT,
-  STRAND_DEVELOPING_PERCENT,
   STRAND_MINIMUM_QUESTIONS,
-  STRAND_SECURE_PERCENT,
   WORKING_LEVEL_PERCENT,
   atLeast,
   bandFor,
 } from "./constants";
+import { levelCertainty, strandCertainty, strandStatus, workingLevelOf } from "./certainty";
 import { bankFor } from "./bank";
 import { factsResult, type FactsSession } from "./facts";
 import { flagsFor, type HelpAnswer } from "./flags";
+import { leftOutOfScore, paceOf, takeYourTime } from "./rushing";
 import { rngFor } from "./rng";
 import type {
   Answer,
@@ -29,7 +29,6 @@ import type {
   Session,
   StrandResult,
   StoredTest,
-  StrandStatus,
   TaggedProvince,
   Template,
   TestStep,
@@ -357,18 +356,12 @@ export function testStep(session: Session): TestStep {
     : Math.max(...Object.values(session.stage2).map((form) => form.length)));
   const q = nextQuestion(session);
   return q
-    ? { status: "question", question: toPublicQuestion(q), number: session.answers.length + 1, total, breakAfter }
+    ? { status: "question", question: toPublicQuestion(q), number: session.answers.length + 1, total, breakAfter, takeYourTime: takeYourTime(session.answers) }
     : { status: "complete", total };
 }
 
 /** True on the first question after halfway: the browser shows the skippable break screen before it (D-083). */
 export const breakDue = (step: TestStep): boolean => step.status === "question" && step.number === step.breakAfter + 1;
-
-function statusFor(correct: number, total: number): StrandStatus {
-  if (atLeast(correct, total, STRAND_SECURE_PERCENT)) return "secure";
-  if (atLeast(correct, total, STRAND_DEVELOPING_PERCENT)) return "developing";
-  return "needs-attention";
-}
 
 /**
  * Scores a completed test. The facts section (#70), when the child had one, goes beside it and never changes the working level.
@@ -381,29 +374,33 @@ export function finish(session: Session, facts: FactsSession | null = null, help
   }
   const marked = questions.map((q, i) => ({ q, correct: session.answers[i].correct }));
   const tally = (items: typeof marked) => ({ correct: items.filter((m) => m.correct).length, total: items.length });
+  // #189: a very fast wrong answer inside a run of very fast answers is a guess: it leaves the score, it is not wrong.
+  // Every level the test showed keeps its place, even with all its answers left out. Routing is unchanged: it was decided
+  // during the test.
+  const out = leftOutOfScore(session.answers);
+  const scored = marked.filter((_, i) => !out[i]);
 
   const levels: LevelResult[] = [...new Set(marked.map((m) => m.q.level))]
     .sort((a, b) => a - b)
-    .map((level) => ({ level, ...tally(marked.filter((m) => m.q.level === level)) }));
-  const cleared = levels.filter((l) => atLeast(l.correct, l.total, WORKING_LEVEL_PERCENT));
-  // No level cleared: the child works below everything the test showed them.
-  const workingLevel = cleared.length > 0 ? cleared[cleared.length - 1].level : (Math.max(0, levels[0].level - 1) as Level);
+    .map((level) => ({ level, ...tally(scored.filter((m) => m.q.level === level)) }));
+  const workingLevel = workingLevelOf(levels);
 
   // An area's status counts only the questions at or below the school grade (D-084: never invent a weakness; decision
   // of 2026-10-11 on #65). Harder questions from a stage 2 routed up still count toward the working level above, but a
   // child who misses them is not weak in that area. An area with no such question gets no status and no count.
-  const atOrBelowGrade = marked.filter((m) => m.q.level <= session.profile.grade);
+  const atOrBelowGrade = scored.filter((m) => m.q.level <= session.profile.grade);
   const strands: StrandResult[] = bandFor(session.profile.grade)
     .strands.map((strand) => ({ strand, ...tally(atOrBelowGrade.filter((m) => REPORTED_STRAND[m.q.strand] === strand)) }))
     .filter((s) => s.total > 0)
-    .map((s) => ({ ...s, status: statusFor(s.correct, s.total) }));
+    .map((s) => ({ ...s, status: strandStatus(s.correct, s.total), certainty: strandCertainty(s.correct, s.total) }));
 
   return {
     grade: session.profile.grade,
     province: session.profile.province,
     scoredAgainst: scoredAgainst(session.profile.province),
     workingLevel,
-    confidence: cleared.length > 0 ? "normal" : "low",
+    confidence: levels.some((l) => atLeast(l.correct, l.total, WORKING_LEVEL_PERCENT)) ? "normal" : "low",
+    levelCertainty: levelCertainty(levels),
     // Only a child routed up who clears the higher level may work above what the test could show.
     atCeiling: session.route === "up" && workingLevel === session.profile.grade + 1,
     route: session.route,
@@ -412,5 +409,6 @@ export function finish(session: Session, facts: FactsSession | null = null, help
     strands,
     facts: facts ? factsResult(facts) : null,
     flags: flagsFor(session.answers, help),
+    pace: paceOf(session.answers),
   };
 }

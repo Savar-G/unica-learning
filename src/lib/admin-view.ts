@@ -156,6 +156,8 @@ export interface AnswerLine {
   timeMs: number;
   /** Under TOO_FAST_MS: the help flags count these. */
   tooFast: boolean;
+  /** #189: a very fast wrong answer inside a run of very fast answers: left out of the score, not counted as wrong. */
+  leftOut: boolean;
   work: { required: boolean; image: string | null; text: string | null };
   review: (Omit<ReviewRecord, "score"> & { score: number }) | null;
   /** The question's template; from the answer row when the question is missing from the stored test. */
@@ -204,13 +206,19 @@ function misconceptionText(id: string | null): string | null {
   return known ? `${id}: ${known.description}` : id;
 }
 
-/** The answers in test order, each with its question from the stored test and its AI review. */
-export function answerLines(test: StoredTest, answers: readonly AnswerRecord[], reviews: readonly ReviewRecord[]): AnswerLine[] {
+/**
+ * The answers in test order, each with its question from the stored test and its AI review. `leftOut`: the questions
+ * the stored placement left out of the score (placement.pace.leftOut, #189); absent for a test stored before #189 or not
+ * finished, whose score counted every answer.
+ */
+export function answerLines(test: StoredTest, answers: readonly AnswerRecord[], reviews: readonly ReviewRecord[], leftOut: readonly string[] = []): AnswerLine[] {
   const stage = new Map<string, { q: Question; stage: 1 | 2 }>();
   for (const q of test.stage1) stage.set(q.id, { q, stage: 1 });
   for (const q of [...test.stage2.up, ...test.stage2.stay, ...test.stage2.down]) stage.set(q.id, { q, stage: 2 });
   const reviewed = new Map(reviews.map((r) => [r.question_id, { ...r, score: Number(r.score) }]));
-  return [...answers].sort((a, b) => a.position - b.position).map((a) => {
+  const ordered = [...answers].sort((a, b) => a.position - b.position);
+  const out = new Set(leftOut);
+  return ordered.map((a) => {
     const found = stage.get(a.question_id);
     return {
       number: a.position + 1,
@@ -225,6 +233,7 @@ export function answerLines(test: StoredTest, answers: readonly AnswerRecord[], 
       misconception: misconceptionText(a.misconception),
       timeMs: a.time_ms,
       tooFast: a.time_ms < TOO_FAST_MS,
+      leftOut: out.has(a.question_id),
       work: { required: a.work_required, image: a.work_path, text: a.work_text },
       review: reviewed.get(a.question_id) ?? null,
       templateId: found?.q.templateId ?? a.template_id ?? null,

@@ -100,5 +100,7 @@
 .adm-skill-map ul { margin: 0; padding-left: 1.1em; }
 .adm-skill-map li + li { margin-top: 4px; }
 .adm-skill-map tr:target td:not([rowspan]) { background: var(--adm-warn); }
-.adm-skill-map tr[id], .adm-skill-map h2 { scroll-margin-top: 80px; }
-@media (max-width: 700px) { .adm-skill-map tr[id], .adm-skill-map h2 { scroll-margin-top: 190px; } }
+.adm-skill-map [id], .adm-skill-map h2 { scroll-margin-top: 80px; }
+@media (max-width: 1279px) { .adm-skill-map [id], .adm-skill-map h2 { scroll-margin-top: 160px; } }
+@media (max-width: 700px) { .adm-skill-map [id], .adm-skill-map h2 { scroll-margin-top: 190px; } }
+@media (max-width: 360px) { .adm-skill-map [id], .adm-skill-map h2 { scroll-margin-top: 224px; } }

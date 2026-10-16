@@ -1,0 +1,41 @@
+{
+  "round": 189,
+  "ticket": "#189 (spec #181): honest results, certainty labels and the rushing rule",
+  "note": "Round named after the ticket so parallel tickets of spec #181 do not take the same r<n>. Savar was asleep: the implementer shipped option A of each look (most consistent with DESIGN.md and D-087/D-088) and lists the others so Savar can swap.",
+  "invariants": [
+    "Copy from the spec: 'Take your time'; 'Clear' / 'Early sign: workbook 1 checks this' (waitlist families: 'Early sign')",
+    "Real components: TakeTest (test.tsx) and ReportCard (report.tsx), driven by scripted children through the real session and report model",
+    "No database or network: the test API was answered in the browser driver; the report came from a temporary page that was not committed",
+    "Viewports 1280 x 800/900 and 390 x 844"
+  ],
+  "looks": [
+    {
+      "decision": "Where 'Take your time' shows on the test screen",
+      "shipped": "A",
+      "options": [
+        { "id": "A", "name": "Note above the question", "screenshots": ["test-take-your-time-a.png"], "bet": "A calm white note with the orange marker, read with the question", "benefit": "Never blocks; same pane and type as the question; role=status", "cost": "A child who is rushing may skip past it", "risk": "Low" },
+        { "id": "B", "name": "A screen before the question", "screenshots": ["test-take-your-time-b.png"], "bet": "The split-desk message screen (like the break) with 'Go to question 4'", "benefit": "Hardest to miss", "cost": "One more click; feels like a telling-off if the run goes on", "risk": "Adds a step that the child may click through just as fast" },
+        { "id": "C", "name": "A line beside Next", "screenshots": ["test-take-your-time-c.png"], "bet": "The warn-colour line where the show-your-work nudge sits", "benefit": "Smallest change", "cost": "Reads as an error; seen only after the child has chosen", "risk": "Missed, and confused with the work nudge" }
+      ]
+    },
+    {
+      "decision": "Where the certainty label sits in 'By area'",
+      "shipped": "A",
+      "options": [
+        { "id": "A", "name": "Under the status chip", "screenshots": ["report-areas-a.png"], "bet": "A small mono line under each chip: filled dot Clear, ring Early sign", "benefit": "Keeps the D-087 table columns; works on a phone", "cost": "Small text", "risk": "Low" },
+        { "id": "B", "name": "Its own 'How sure' column", "screenshots": ["report-areas-b.png"], "bet": "A fifth column", "benefit": "Scans down one column", "cost": "Squeezes the meter; on a phone the table has no room", "risk": "Breaks the D-087 phone layout" },
+        { "id": "C", "name": "Inside the chip", "screenshots": ["report-areas-c.png"], "bet": "'Developing · early sign', dashed outline for an early sign", "benefit": "Most compact", "cost": "Drops 'workbook 1 checks this'; the chip no longer names one status", "risk": "Loses the spec copy" }
+      ]
+    },
+    {
+      "decision": "Where the reliability note and the new-test offer sit",
+      "shipped": "A",
+      "options": [
+        { "id": "A", "name": "First context note", "screenshots": ["report-note-a.png", "report-note-wait.png", "report-rushed-full-a.png", "report-rushed-phone.png"], "bet": "The help-warning card style (#71), first in the row under the band, with 'Start a new test' while a new test is open now; when the 30-day wait applies (D-108) it names the day instead (report-note-wait.png)", "benefit": "Reuses an existing report pattern; read right after the level", "cost": "Sits beside the FSA line on desktop", "risk": "Low" },
+        { "id": "B", "name": "Banner above the band", "screenshots": ["report-note-b.png"], "bet": "The note before the level", "benefit": "Read first", "cost": "The report opens with a warning, before any result", "risk": "Feels like an error page" },
+        { "id": "C", "name": "Inside the band", "screenshots": ["report-note-c.png"], "bet": "Under the ruler, in the colour band", "benefit": "Tied to the level it qualifies", "cost": "Yellow card on a yellow field; crowds the band", "risk": "Low contrast against the sunflower field" }
+      ]
+    }
+  ],
+  "admin": ["admin-certainty.png"]
+}
