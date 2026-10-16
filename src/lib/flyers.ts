@@ -14,10 +14,10 @@ export const isFlyerCode = (s: string): s is FlyerCode => Object.hasOwn(FLYERS, 
 export const FLYER_SOURCE = "flyer";
 export const FLYER_CAMPAIGN = "door-to-door";
 
-/** The path a scan continues to: the free assessment signup, tagged with the flyer. */
+/** The path a scan continues to: the home page, tagged with the flyer (its buttons carry the tags on to the signup). */
 export function flyerDestination(code: FlyerCode): string {
   const tags = new URLSearchParams({ utm_source: FLYER_SOURCE, utm_medium: "print", utm_campaign: FLYER_CAMPAIGN, utm_content: code });
-  return `/start?${tags}`;
+  return `/?${tags}`;
 }
 
 /** The address printed (as a QR code) on a flyer. */
