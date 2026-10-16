@@ -278,8 +278,9 @@ export const LEVEL_5: readonly TaggedTemplate[] = [
           prompt: "Which decimal is the greatest?",
           readAloud: "Which decimal is the greatest?",
           answer: fmt(t / 10),
-          // A child who thinks a longer decimal is larger picks the largest hundredths; the others are intermediate picks.
-          wrong: longer.map((h) => wrong(fmt(h / 100), h === Math.max(...longer) ? "F6" : "decimal-order")),
+          // A child who thinks a longer decimal is larger picks the largest hundredths. The smallest one is the least of
+          // all (more and less mixed up); the one between is an intermediate pick.
+          wrong: longer.map((h) => wrong(fmt(h / 100), h === Math.max(...longer) ? "F6" : h === Math.min(...longer) ? "more-less" : "decimal-order")),
         };
       }
       const [least, ...rest] = [...longer].sort((x, y) => x - y);

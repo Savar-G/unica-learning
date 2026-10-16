@@ -95,7 +95,7 @@ export const LEVEL_6: readonly TaggedTemplate[] = [
     strand: "N", grades: { BC: 6, AB: 6, SK: 6, MB: 6, ON: 7 }, format: "number", whiteboard: true, standard: "6.4",
     fill(rng) {
       const [a, b] = draw(rng, (g) => [g.int(3, 15), g.int(3, 15)], ([a, b]) => a < b && gcd(a, b) > 1 && b % a !== 0);
-      const prompt = `Hot dogs come in packs of ${a} and buns come in packs of ${b}. What is the least number of hot dogs you can buy to have the same number of hot dogs and buns?`;
+      const prompt = `Hot dogs come in packs of ${a} and buns come in packs of ${b}. You buy at least one pack of each. What is the least number of hot dogs you can buy to have the same number of hot dogs and buns?`;
       return {
         values: { a, b, story: 1 },
         prompt,

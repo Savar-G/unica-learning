@@ -161,6 +161,10 @@ describe("the grades 6-7 bank", () => {
       const f6 = decimals.wrong.filter((w) => w.misconception === "F6").map((w) => Number(w.value));
       const hundredths = decimals.choices!.map(Number).filter((x) => Math.round(x * 100) % 10 !== 0);
       expect(f6, `seed ${seed}`).toEqual([decimals.values.greatest ? Math.max(...hundredths) : decimals.values.t / 10]);
+      if (decimals.values.greatest) {
+        // The least choice of all is "more and less mixed up", not an intermediate pick.
+        expect(decimals.wrong.find((w) => Number(w.value) === Math.min(...hundredths))?.misconception, `seed ${seed}`).toBe("more-less");
+      }
       // Lining numbers up by their first digit (digit-compare) picks the first in text order: the least when asked for
       // the least, the greatest when asked for the greatest (#187).
       const large = fillTemplate(BANK.find((t) => t.id === "g67-6-greatest-large")!, seed);
