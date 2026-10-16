@@ -5,7 +5,7 @@
 // of each table, one for each database request, in the readers' counter (`reads`), so a test sees the job's reads.
 import type { ParentContact } from "@/lib/report-email";
 import type { ReportJobStore, StoredReport } from "@/lib/report-job-store";
-import type { MemoryReport, MemoryReportTables } from "@/lib/report-loading-memory";
+import { countRead, type MemoryReport, type MemoryReportTables } from "@/lib/report-loading-memory";
 import type { StoredReview } from "@/lib/work-review";
 
 /** A row of public.parents. */
@@ -34,9 +34,7 @@ export function memoryReportJobStore(
 ) {
   const reviews: { assessmentId: string; parentId: string; review: StoredReview }[] = [];
   const downloads: string[] = [];
-  const count = (table: string) => {
-    reads[table] = (reads[table] ?? 0) + 1;
-  };
+  const count = (table: string) => countRead(reads, table);
 
   const store: ReportJobStore = {
     async report(assessmentId) {
