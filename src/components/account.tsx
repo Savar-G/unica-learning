@@ -11,19 +11,20 @@ import { GRADES, PASSWORD_MAX, PASSWORD_MIN, signInFailure, validPassword, type 
 import { browserClient } from "@/lib/supabase-browser";
 import { track } from "@/lib/track";
 import { SUPPORT_EMAIL, SUPPORT_HREF } from "@/lib/contact";
+import { SOURCE_STORAGE_KEY, sourceTags, visitSource } from "@/lib/visit-source";
 
-const UTM = ["utm_source", "utm_medium", "utm_campaign", "utm_content", "ref"];
+/** Keeps this page's UTM tags for the tab, so a parent who signs up with Google (and finishes on /account/finish) keeps them. */
+function rememberSource() {
+  const tags = sourceTags(window.location.search);
+  if (!Object.keys(tags).length) return;
+  try { sessionStorage.setItem(SOURCE_STORAGE_KEY, JSON.stringify(tags)); } catch { /* storage off: the tags stay on this page only */ }
+}
 
 /** Referrer and UTM tags of this visit, so we know which channel brought each parent. */
 function collectSource() {
-  const qs = new URLSearchParams(window.location.search);
-  const source: Record<string, string> = {};
-  if (document.referrer) source.referrer = document.referrer;
-  for (const k of UTM) {
-    const v = qs.get(k);
-    if (v) source[k] = v;
-  }
-  return source;
+  let stored: string | null = null;
+  try { stored = sessionStorage.getItem(SOURCE_STORAGE_KEY); } catch { /* storage off */ }
+  return visitSource({ search: window.location.search, referrer: document.referrer, stored });
 }
 
 async function post(url: string, body: unknown): Promise<AccountResult> {
@@ -182,6 +183,8 @@ export function AccountSignup() {
   const [proved, setProved] = useState<string | null>(null);
   const started = useRef(false);
   const cleanEmail = email.trim().toLowerCase();
+
+  useEffect(rememberSource, []);
 
   useEffect(() => {
     if (step === "code") codeInput.current?.focus();
