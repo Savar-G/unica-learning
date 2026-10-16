@@ -233,7 +233,7 @@ function ReportAreas({ view }: { view: ReportView }) {
 function Certainty({ view, certainty, lead }: { view: ReportView; certainty: CertaintyValue | undefined; lead?: string }) {
   const text = certaintyText(view, certainty);
   if (!text) return null;
-  return <span className={`rpt-sure is-${certainty}`}>{lead && <span className="rpt-sure-lead">{lead}</span>}{text}</span>;
+  return <span className={`rpt-sure is-${certainty}`}>{lead && <span className="rpt-sure-lead">{lead} </span>}{text}</span>;
 }
 
 const factsChip = (label: string) => `rpt-chip ${label === "Needs practice" ? "is-developing" : "is-secure"}`;
