@@ -29,7 +29,8 @@ export interface Attempt {
   answeredAll?: boolean;
   /**
    * #189: the completed test's result may not be reliable (more than UNRELIABLE_FAST_PERCENT very fast answers), so a
-   * new test opens at once, without the 30-day wait. Leave it out when unknown or not completed.
+   * new test opens at once, without the 30-day wait, at most once per 30 days (D-108, startState). Leave it out when
+   * unknown or not completed.
    */
   unreliable?: boolean;
 }
@@ -82,8 +83,10 @@ export function startState(attempts: readonly Attempt[], now: number): StartStat
   const done = attempts.filter((a) => a.status === "completed" && a.completedAt !== null);
   const last = done.reduce<Attempt | null>((latest, a) => (!latest || a.completedAt! > latest.completedAt! ? a : latest), null);
   const lastDone = last?.completedAt ?? null;
-  // #189: after a result that may not be reliable, the next test opens at once.
-  if (lastDone !== null && !last?.unreliable) {
+  // #189 (D-108): after a result that may not be reliable, the next test opens at once, at most once per 30 days: only
+  // when no other test was completed in the 30 days before the unreliable one. Otherwise the 30-day wait applies.
+  const retakeNow = last?.unreliable === true && !done.some((a) => a !== last && a.completedAt! > lastDone! - RETAKE_DAYS * DAY_MS);
+  if (lastDone !== null && !retakeNow) {
     const opensAt = lastDone + RETAKE_DAYS * DAY_MS;
     if (now < opensAt) return { kind: "wait", completedAt: lastDone, opensAt };
   }
