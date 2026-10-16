@@ -4,26 +4,30 @@
 // A server component: only the next step needs JavaScript in the browser (report-next.tsx).
 // The words come from src/lib/report-view.ts, which the report email uses too.
 import type { CSSProperties, ReactNode } from "react";
-import { STRAND_DEVELOPING_PERCENT, STRAND_SECURE_PERCENT } from "@/lib/assessment";
+import { STRAND_DEVELOPING_PERCENT, STRAND_SECURE_PERCENT, type Certainty as CertaintyValue } from "@/lib/assessment";
 import { CURRICULA } from "@/lib/signup";
 import { BRAND } from "@/lib/site";
 import type { ReportSrc } from "@/lib/next-step";
 import { ReportNextActions, type NextStepStart } from "@/components/report-next";
 import { LearningStep } from "@/components/learning";
 import type { LearningAnswers } from "@/lib/learning-style";
+import Link from "next/link";
 import {
   AREA_NOTE,
   NEXT_STEP_ANCHOR,
   STATUS_LABEL,
+  certaintyText,
   comparisonView,
   factsView,
   helpWarning,
   howWeHelp,
+  leftOutLine,
   levelName,
   levelNotes,
   levelSentence,
   metaLine,
   nextStep,
+  reliabilityNote,
   reportDate,
   sharePercent,
   summaryText,
@@ -37,13 +41,22 @@ import "./report.css";
 
 const NO_NEXT: ReportNextContext = { src: "account", asked: false, start: { saved: null, joined: false, cancelled: false } };
 
-/** `nextSlot` replaces the next-step row: the public sample report shows its own button there. */
-export function ReportCard({ view, next = NO_NEXT, readOnly = false, nextSlot }: { view: ReportView; next?: ReportNextContext; readOnly?: boolean; nextSlot?: ReactNode }) {
+/** #189: the button under the reliability note: a new test at once. Null when no new test is open now. */
+export interface NewTestOffer {
+  href: string;
+  label: string;
+}
+
+/**
+ * `nextSlot` replaces the next-step row: the public sample report shows its own button there. `newTest` (#189): the
+ * button under the reliability note; without it the note shows its words only (the admin's read-only report).
+ */
+export function ReportCard({ view, next = NO_NEXT, readOnly = false, nextSlot, newTest = null }: { view: ReportView; next?: ReportNextContext; readOnly?: boolean; nextSlot?: ReactNode; newTest?: NewTestOffer | null }) {
   return (
     <article className="rpt" aria-labelledby="rpt-title">
       <ReportHeader view={view} />
       <ReportOverall view={view} />
-      <ReportContext view={view} />
+      <ReportContext view={view} newTest={newTest} />
       <ReportAreas view={view} />
       <ReportNumberFacts view={view} />
       <ReportWork view={view} />
@@ -124,6 +137,7 @@ function ReportOverall({ view }: { view: ReportView }) {
       <p className="eyebrow">Overall</p>
       <h2 id="rpt-level">{levelSentence(view)}</h2>
       <p className="rpt-verdict">{verdictSentence(view)}</p>
+      <Certainty view={view} certainty={view.model.level.certainty} lead="How sure:" />
       <LevelScale view={view} />
       {levelNotes(view).map((note) => <p key={note} className="rpt-note">{note}</p>)}
       {summary && <p className="rpt-summary">{summary}</p>}
@@ -133,13 +147,23 @@ function ReportOverall({ view }: { view: ReportView }) {
 
 // Below the band, side by side: the FSA line (BC, grades 4 and 7), the comparison for the data stage, and the help
 // warning (#71). Below 100 eligible children the ruler above is the whole comparison (#101, D-084).
-function ReportContext({ view }: { view: ReportView }) {
+function ReportContext({ view, newTest }: { view: ReportView; newTest: NewTestOffer | null }) {
   const { fsa } = view.model;
   const warning = helpWarning(view);
   const comparison = comparisonView(view);
-  if (!fsa && !warning && !comparison) return null;
+  const reliability = reliabilityNote(view);
+  if (!fsa && !warning && !comparison && !reliability) return null;
   return (
     <div className="rpt-context">
+      {reliability && (
+        // #189: first, because it says how far to trust everything else on the report.
+        <aside className="rpt-help-warning rpt-reliability" aria-labelledby="rpt-reliability">
+          <h2 id="rpt-reliability">{reliability.title}</h2>
+          <p>{reliability.text}</p>
+          <p>{reliability.offer}</p>
+          {newTest && <p className="rpt-reliability-go"><Link className="btn" href={newTest.href}>{newTest.label}</Link></p>}
+        </aside>
+      )}
       {fsa && (
         <aside className="rpt-fsa" aria-label="For context">
           <p className="rpt-k">For context</p>
@@ -184,7 +208,10 @@ function ReportAreas({ view }: { view: ReportView }) {
               <td className="rpt-m">
                 <span className="rpt-meter" style={{ ...ZONES, "--at": `${sharePercent(s)}%` } as CSSProperties} aria-hidden="true"><i /><i /><i /></span>
               </td>
-              <td><span className={`rpt-chip is-${s.status}`}>{STATUS_LABEL[s.status]}</span></td>
+              <td>
+                <span className={`rpt-chip is-${s.status}`}>{STATUS_LABEL[s.status]}</span>
+                <Certainty view={view} certainty={s.certainty} />
+              </td>
               <td className="rpt-count">{s.correct} of {s.total}</td>
             </tr>
           ))}
@@ -196,11 +223,19 @@ function ReportAreas({ view }: { view: ReportView }) {
         <span className="is-secure">{STATUS_LABEL.secure}</span>
       </p>
       <p className="rpt-small">{thresholdsLine(view)}</p>
+      {leftOutLine(view) && <p className="rpt-small">{leftOutLine(view)}</p>}
     </Row>
   );
 }
 
 /** Needs practice in sunflower, like Developing; never the tangerine of Needs attention. */
+/** #189: how sure one result is, under its status: a filled dot for Clear, a ring for an early sign. Nothing before #189. */
+function Certainty({ view, certainty, lead }: { view: ReportView; certainty: CertaintyValue | undefined; lead?: string }) {
+  const text = certaintyText(view, certainty);
+  if (!text) return null;
+  return <span className={`rpt-sure is-${certainty}`}>{lead && <span className="rpt-sure-lead">{lead}</span>}{text}</span>;
+}
+
 const factsChip = (label: string) => `rpt-chip ${label === "Needs practice" ? "is-developing" : "is-secure"}`;
 
 function FactsCard({ title, measure }: { title: string; measure: FactsMeasure }) {

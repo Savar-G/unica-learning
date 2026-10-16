@@ -11,15 +11,18 @@ import type { AiOutcome } from "@/lib/work-review";
 import {
   NEXT_STEP_ANCHOR,
   STATUS_LABEL,
+  certaintyText,
   comparisonView,
   factsView,
   helpWarning,
   howWeHelp,
+  leftOutLine,
   levelName,
   levelNotes,
   levelSentence,
   nextStep,
   questionsAndMinutes,
+  reliabilityNote,
   sharePercent,
   summaryText,
   thresholdsLine,
@@ -158,9 +161,14 @@ export function reportEmail({ view: v, parentName, url, unsubscribeUrl, offer = 
   const facts = factsView(v);
   const help = howWeHelp(v);
   const warning = helpWarning(v);
+  // #189: how sure each result is, the reliability note (its new test opens from the report), and left-out answers.
+  const reliability = reliabilityNote(v);
+  const levelSure = certaintyText(v, v.model.level.certainty);
+  const leftOut = leftOutLine(v);
+  const sure = (s: ReportView["model"]["strands"][number]) => certaintyText(v, s.certainty);
   const step = offer ? nextStep(v) : null;
   const stepUrl = step ? withStep(url, step.email.step) : null;
-  const areas = v.model.strands.map((s) => `${s.name}: ${STATUS_LABEL[s.status]}, ${s.correct} of ${s.total} right`);
+  const areas = v.model.strands.map((s) => `${s.name}: ${STATUS_LABEL[s.status]}, ${s.correct} of ${s.total} right${sure(s) ? ` (${sure(s)})` : ""}`);
   // #67: the drawings stay in private storage, so the email does not carry them; the report shows them after sign-in.
   const work = (v.model.work ?? []).length > 0 ? `${name}'s work from the whiteboard is in the full report.` : null;
   const why = `You get this email because you asked for ${name}'s free math placement report.`;
@@ -173,11 +181,12 @@ export function reportEmail({ view: v, parentName, url, unsubscribeUrl, offer = 
   const text = [
     `Hi ${first},`,
     intro,
-    [levelSentence(v), verdictSentence(v), ...notes, ...(summary ? [summary] : [])].join("\n"),
+    [levelSentence(v), verdictSentence(v), ...(levelSure ? [`How sure: ${levelSure}`] : []), ...notes, ...(summary ? [summary] : [])].join("\n"),
+    ...(reliability ? [`${reliability.title}\n${reliability.text}\n${reliability.offer}`] : []),
     ...(fsa ? [`For context: ${fsa.text}\nSource: ${fsa.source.name}, ${fsa.source.url}`] : []),
     ...(comparison ? [`${comparison.title}\n${comparison.text}\n${comparison.note}`] : []),
     ...(warning ? [`${warning.title}\n${warning.text}\n${warning.retake}`] : []),
-    ["By area", ...areas, thresholdsLine(v)].join("\n"),
+    ["By area", ...areas, thresholdsLine(v), ...(leftOut ? [leftOut] : [])].join("\n"),
     ...(facts ? [[`Number facts: ${factsLine(facts)}`, ...(facts.accuracy && facts.note ? [facts.note] : []), `${facts.scope} ${facts.round}`].join("\n")] : []),
     ...(work ? [work] : []),
     ...(offer ? [`How we help: ${help.title}\n${help.text}`] : []),
@@ -197,7 +206,7 @@ export function reportEmail({ view: v, parentName, url, unsubscribeUrl, offer = 
 </tr>
 <tr>
 <td style="padding:4px 16px 14px 0">${meterHtml(sharePercent(s))}</td>
-<td align="right" style="padding:4px 0 14px;white-space:nowrap">${chip(STATUS_CHIP[s.status], STATUS_LABEL[s.status])}</td>
+<td align="right" style="padding:4px 0 14px;white-space:nowrap">${chip(STATUS_CHIP[s.status], STATUS_LABEL[s.status])}${sure(s) ? `<br><span style="font-family:${MONO};font-size:11px;line-height:1.6;color:${INK_2}">${esc(sure(s)!)}</span>` : ""}</td>
 </tr>`,
     )
     .join("");
@@ -230,7 +239,8 @@ ${p(esc(intro))}
 <tr><td style="padding:26px 20px 22px">
 <p style="margin:0 0 10px;font-family:${MONO};font-size:12px;line-height:1.2;color:${INK}"><span style="display:inline-block;width:8px;height:8px;margin-right:6px;background:${ACCENT}"></span>Overall</p>
 ${p(esc(levelSentence(v)), "margin:0 0 8px;font-size:28px;line-height:1.15;font-weight:300;letter-spacing:-0.02em")}
-${p(esc(verdictSentence(v)), "margin:0 0 18px;font-size:17px")}
+${p(esc(verdictSentence(v)), levelSure ? "margin:0 0 6px;font-size:17px" : "margin:0 0 18px;font-size:17px")}
+${levelSure ? p(esc(`How sure: ${levelSure}`), `margin:0 0 18px;font-family:${MONO};font-size:13px`) : ""}
 ${rulerHtml(v)}
 ${notes.map((n) => p(esc(n), `margin:12px 0 0;font-size:14px;color:${INK_2}`)).join("\n")}
 ${summary ? p(esc(summary), "margin:16px 0 0;font-size:16px") : ""}
@@ -251,6 +261,13 @@ ${comparison ? `<tr><td style="padding:16px 20px 0">
 <p style="margin:4px 0 0;font-size:12px">${esc(comparison.note)}</p>
 </td></tr></table>
 </td></tr>` : ""}
+${reliability ? `<tr><td style="padding:16px 20px 0">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"><tr><td style="border-left:3px solid ${SUNFLOWER};background:${CARD};padding:14px 16px">
+<p style="margin:0 0 6px;font-weight:600">${esc(reliability.title)}</p>
+${p(esc(reliability.text), "margin:0 0 6px;font-size:15px")}
+${p(esc(reliability.offer), "margin:0;font-size:15px")}
+</td></tr></table>
+</td></tr>` : ""}
 ${warning ? `<tr><td style="padding:16px 20px 0">
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"><tr><td style="border-left:3px solid ${SUNFLOWER};background:${CARD};padding:14px 16px">
 <p style="margin:0 0 6px;font-weight:600">${esc(warning.title)}</p>
@@ -263,6 +280,7 @@ ${heading("By area")}
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">${areaRows}</table>
 <p style="margin:2px 0 6px;font-family:${MONO};font-size:11px;line-height:1.6;color:${INK_2}">${legend}</p>
 ${p(esc(thresholdsLine(v)), `margin:0;font-size:13px;color:${INK_2}`)}
+${leftOut ? p(esc(leftOut), `margin:6px 0 0;font-size:13px;color:${INK_2}`) : ""}
 </td></tr>
 ${facts ? `<tr><td style="padding:30px 20px 0">
 ${heading("Number facts")}
