@@ -358,7 +358,14 @@ export function AccountSignup() {
   return (
     <form ref={form} className="acct-form" onSubmit={submit} onFocus={onStart} noValidate>
       <GoogleButton />
-      {failure && <p role="alert" className="acct-alert">{failure === "send_failed" ? codeNoteText("send_failed") : errorText(failure)}</p>}
+      {failure && (
+        <p role="alert" className="acct-alert">
+          {failure === "send_failed" ? codeNoteText("send_failed")
+            // The proof was cleared (#121): a new code signs the parent in again, and the entries are still here.
+            : failure === "signed_out" ? "Your session ended before we saved your account. Your details are still here. Select Create account, and we will email you a new code."
+            : errorText(failure)}
+        </p>
+      )}
       {!failure && Object.values(errors).some(Boolean) && <p role="alert" className="acct-alert">{errorText("invalid")}</p>}
       <fieldset>
         <legend>About you</legend>
