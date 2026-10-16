@@ -178,16 +178,29 @@ describe("the quick facts answers (#77)", () => {
     ],
   };
 
-  it("shows each fact in order, the answer, and the time it took after the one before", () => {
+  it("shows each fact in order, the answer, and the server's time after the one before (answers from before #185)", () => {
     const lines = factLines(facts, [
       { position: 1, fact_id: "f2", response: "", correct: false, at_ms: 6_100 },
       { position: 0, fact_id: "f1", response: "12", correct: true, at_ms: 2_400 },
       { position: 2, fact_id: "f3", response: "17", correct: false, at_ms: 9_000 },
     ]);
     expect(lines).toEqual([
-      { number: 1, fact: "7 + 5", rightAnswer: "12", response: "12", skipped: false, correct: true, atMs: 2_400, tookMs: 2_400 },
-      { number: 2, fact: "15 - 8", rightAnswer: "7", response: "", skipped: true, correct: false, atMs: 6_100, tookMs: 3_700 },
-      { number: 3, fact: "9 + 9", rightAnswer: "18", response: "17", skipped: false, correct: false, atMs: 9_000, tookMs: 2_900 },
+      { number: 1, fact: "7 + 5", rightAnswer: "12", response: "12", skipped: false, correct: true, atMs: 2_400, serverMs: 2_400, browserMs: null },
+      { number: 2, fact: "15 - 8", rightAnswer: "7", response: "", skipped: true, correct: false, atMs: 6_100, serverMs: 3_700, browserMs: null },
+      { number: 3, fact: "9 + 9", rightAnswer: "18", response: "17", skipped: false, correct: false, atMs: 9_000, serverMs: 2_900, browserMs: null },
+    ]);
+  });
+
+  it("shows the time for each fact as stored: the server's and the browser's (#185)", () => {
+    const lines = factLines(facts, [
+      { position: 0, fact_id: "f1", response: "12", correct: true, at_ms: 2_400, server_ms: 2_400, browser_ms: 1_950 },
+      { position: 1, fact_id: "f2", response: "7", correct: true, at_ms: 2_600, server_ms: 200, browser_ms: 2_100 },
+      { position: 2, fact_id: "f3", response: "18", correct: true, at_ms: 9_000, server_ms: 6_400, browser_ms: null },
+    ]);
+    expect(lines.map(({ number, atMs, serverMs, browserMs }) => ({ number, atMs, serverMs, browserMs }))).toEqual([
+      { number: 1, atMs: 2_400, serverMs: 2_400, browserMs: 1_950 },
+      { number: 2, atMs: 2_600, serverMs: 200, browserMs: 2_100 },
+      { number: 3, atMs: 9_000, serverMs: 6_400, browserMs: null },
     ]);
   });
 });

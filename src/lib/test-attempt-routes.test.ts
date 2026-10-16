@@ -365,7 +365,7 @@ const brokenFacts = () => memory.facts.push({
   assessmentId: TEST,
   startedAt: T0 + HOUR,
   test: { grade: 4, facts: FACTS },
-  answers: [{ position: 0, factId: FACTS[5].id, response: "1", correct: false, atMs: 900 }],
+  answers: [{ position: 0, factId: FACTS[5].id, response: "1", correct: false, atMs: 900, serverMs: 900, browserMs: null }],
 });
 
 describe("GET /api/account/assessments/[id]/facts (where the facts section is)", () => {
@@ -492,7 +492,7 @@ describe("POST /api/account/assessments/[id]/facts/answers (answer one fact)", (
     vi.setSystemTime(T0 + HOUR + 2_500);
     expect(await sent(await answerFactRoute(TEST, rightFact(0))))
       .toEqual({ status: 200, body: { ok: true, step: { status: "running", seconds: 60, remainingMs: 57_500, answered: 1, facts: shown(1) } } });
-    expect(memory.facts[0].answers).toEqual([{ position: 0, factId: FACTS[0].id, response: String(FACTS[0].answer), correct: true, atMs: 2_500 }]);
+    expect(memory.facts[0].answers).toEqual([{ position: 0, factId: FACTS[0].id, response: String(FACTS[0].answer), correct: true, atMs: 2_500, serverMs: 2_500, browserMs: null }]);
   });
 
   it("answers 409 conflict with where the section is now for a fact already answered, and stores it once", async () => {

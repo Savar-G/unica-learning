@@ -11,6 +11,7 @@ import Link from "next/link";
 import { Button } from "@/ds";
 import { breakDue, hasWork, readAloudText, spokenChoices, type HelpAnswer, type PublicQuestion, type TestStep } from "@/lib/assessment";
 import { ANSWER_MAX, type FinishResult, type StartResult, type StepResult, type TestError, type WorkPayload } from "@/lib/test-api";
+import { deviceOf, type BreakEvent, type ContextResult, type TestDevice } from "@/lib/test-context";
 import { track } from "@/lib/track";
 import { SUPPORT_EMAIL, SUPPORT_HREF } from "@/lib/contact";
 import { draftKey, draftPrefix, emptyBoard, hasDrawing, type BoardState } from "@/lib/whiteboard";
@@ -46,6 +47,23 @@ async function call<T>(url: string, init?: RequestInit): Promise<T | { ok: false
 
 const post = (body: unknown): RequestInit => ({ method: "POST", body: JSON.stringify(body) });
 
+/** #185: one record of the test context (the device, or a break event). The screen never waits for it. */
+const sendContext = (testId: string, body: { device: TestDevice } | { break: BreakEvent }) =>
+  call<ContextResult>(`/api/account/assessments/${testId}/context`, post(body));
+
+/** What this browser says about its device (#185), with the pointer types used on the page so far. */
+function browserDevice(pointers: readonly string[]): TestDevice {
+  const media = (q: string) => typeof window.matchMedia === "function" && window.matchMedia(q).matches;
+  return deviceOf({
+    userAgent: navigator.userAgent,
+    maxTouchPoints: navigator.maxTouchPoints ?? 0,
+    screenWidth: window.screen?.width ?? 0,
+    screenHeight: window.screen?.height ?? 0,
+    pointers,
+    mainPointer: media("(pointer: coarse)") ? "coarse" : media("(pointer: fine)") ? "fine" : null,
+  });
+}
+
 /**
  * #72: "resume" continues the open test where it stopped; "finish" sends a test whose answers are all in but that was
  * never scored; "restart" draws a new one after a test ran out of time.
@@ -64,9 +82,21 @@ export function TakeTest({ childId, name, total, breakAfter, ready, done, mode: 
   const testId = useRef<string | null>(null);
   // Set once the facts section is over (or was over before a resume), so it never shows twice.
   const factsDone = useRef(false);
+  // #185: the pointer types the child used on this page (a finger, a pen or a mouse), each once, the latest last.
+  const pointers = useRef<string[]>([]);
+  // #185: the request that saved "break shown". The break's end goes after it, so the server never gets the end first.
+  const breakShown = useRef<Promise<unknown> | null>(null);
 
   // The voices for "read it to me" load while the child reads the start screen, so the button is there with question 1.
   useEffect(() => warmUpVoices(), []);
+
+  useEffect(() => {
+    const seen = (e: PointerEvent) => {
+      if (e.pointerType) pointers.current = [...pointers.current.filter((p) => p !== e.pointerType), e.pointerType];
+    };
+    window.addEventListener("pointerdown", seen, { capture: true, passive: true });
+    return () => window.removeEventListener("pointerdown", seen, { capture: true });
+  }, []);
 
   /** The open test ran out of time (#72): back to the start, where the next test has new questions. */
   const expire = useCallback(() => {
@@ -120,6 +150,8 @@ export function TakeTest({ childId, name, total, breakAfter, ready, done, mode: 
     if (breakDue(step) && !breakSeen(id)) {
       markBreakSeen(id);
       track("test_break", { status: "shown" });
+      // #185: the server saves when the break was shown, by its own clock.
+      breakShown.current = sendContext(id, { break: "shown" });
       setScreen({ name: "break", next: step });
       return true;
     }
@@ -146,6 +178,8 @@ export function TakeTest({ childId, name, total, breakAfter, ready, done, mode: 
       return;
     }
     testId.current = started.id;
+    // #185: the device, once per test (the server keeps the first), with the pointer that pressed Start.
+    void sendContext(started.id, { device: browserDevice(pointers.current) });
     // #67: saved whiteboards of older tests (one that ran out of time) go; this test's stay for a resume.
     clearDrafts((key) => !key.startsWith(draftPrefix(started.id)));
     if (started.resumed) track("test_resume");
@@ -187,6 +221,9 @@ export function TakeTest({ childId, name, total, breakAfter, ready, done, mode: 
         {screen.name === "break" && (
           <TestBreak name={name} answered={screen.next.breakAfter} total={screen.next.total} onDone={(how) => {
             track("test_break", { status: how });
+            // #185: how the break ended, saved after its start.
+            const id = testId.current;
+            if (id) void (breakShown.current ?? Promise.resolve()).then(() => sendContext(id, { break: how }));
             void show(screen.next);
           }} />
         )}

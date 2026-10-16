@@ -8,6 +8,7 @@ import { startStates, StoreError, type AttemptStore } from "@/lib/test-attempt";
 import { adminClient } from "@/lib/supabase-auth";
 import type { FactsTest } from "@/lib/assessment";
 import type { FactsStore } from "@/lib/test-attempt";
+import type { ContextStore } from "@/lib/test-attempt";
 import { workPath } from "@/lib/work-payload";
 import { WORK_BUCKET } from "@/lib/work-store";
 
@@ -27,6 +28,7 @@ const ATTEMPT_COLUMNS = "id, status, started_at, last_answer_at, resume_until, c
 export function attemptStore(admin: SupabaseClient): AttemptStore {
   return {
     ...factsStore(admin),
+    ...contextStore(admin),
     async child(parent, childId) {
       const { data, error } = await admin.from("children").select("id, grade, province")
         .eq("id", childId).eq("parent_id", parent).maybeSingle<Pick<Child, "id" | "grade" | "province">>();
@@ -175,13 +177,13 @@ function factsStore(admin: SupabaseClient): FactsStore {
         .maybeSingle<{ started_at: string; test: FactsTest }>();
       if (error) throw new StoreError("load failed", error.message);
       if (!row) return null;
-      const { data: answers, error: answersError } = await admin.from("fact_answers").select("fact_id, response, at_ms")
-        .eq("assessment_id", id).order("position").returns<{ fact_id: string; response: string; at_ms: number }[]>();
+      const { data: answers, error: answersError } = await admin.from("fact_answers").select("fact_id, response, at_ms, browser_ms")
+        .eq("assessment_id", id).order("position").returns<{ fact_id: string; response: string; at_ms: number; browser_ms: number | null }[]>();
       if (answersError) throw new StoreError("answers load failed", answersError.message);
       return {
         startedAt: Date.parse(row.started_at),
         test: row.test,
-        answers: (answers ?? []).map((a) => ({ factId: a.fact_id, response: a.response, atMs: a.at_ms })),
+        answers: (answers ?? []).map((a) => ({ factId: a.fact_id, response: a.response, atMs: a.at_ms, browserMs: a.browser_ms })),
       };
     },
 
@@ -193,13 +195,42 @@ function factsStore(admin: SupabaseClient): FactsStore {
       return "stored";
     },
 
-    async insertFactAnswer(id, { position, factId, response, correct, atMs }) {
-      const { error } = await admin.from("fact_answers")
-        .insert({ assessment_id: id, position, fact_id: factId, response, correct, at_ms: Math.round(atMs) });
+    async insertFactAnswer(id, { position, factId, response, correct, atMs, serverMs, browserMs }) {
+      // #185: the time on the fact by the server and by the browser (null when the screen sent none).
+      const { error } = await admin.from("fact_answers").insert({
+        assessment_id: id, position, fact_id: factId, response, correct, at_ms: Math.round(atMs), server_ms: Math.round(serverMs), browser_ms: browserMs,
+      });
       // One answer per position (unique): another request answered this fact first.
       if (error?.code === "23505") return "taken";
       if (error) throw new StoreError("answer save failed", error.message);
       return "stored";
+    },
+  };
+}
+
+/**
+ * The store's operations for the test context (#185): columns of public.assessments. Each update is guarded in the
+ * update itself: only an open test, and only fields still empty, so two requests at once (or a resume on another
+ * device) cannot overwrite the first record. The module calls them only for a test that `load` found for the parent.
+ */
+function contextStore(admin: SupabaseClient): ContextStore {
+  return {
+    async recordDevice(id, device) {
+      const { error } = await admin.from("assessments").update({ device })
+        .eq("id", id).eq("status", "in_progress").is("device", null);
+      if (error) throw new StoreError("device save failed", error.message);
+    },
+
+    async startBreak(id, at) {
+      const { error } = await admin.from("assessments").update({ break_started_at: iso(at) })
+        .eq("id", id).eq("status", "in_progress").is("break_started_at", null);
+      if (error) throw new StoreError("break save failed", error.message);
+    },
+
+    async endBreak(id, at, skipped) {
+      const { error } = await admin.from("assessments").update({ break_ended_at: iso(at), break_skipped: skipped })
+        .eq("id", id).eq("status", "in_progress").not("break_started_at", "is", null).is("break_ended_at", null);
+      if (error) throw new StoreError("break save failed", error.message);
     },
   };
 }

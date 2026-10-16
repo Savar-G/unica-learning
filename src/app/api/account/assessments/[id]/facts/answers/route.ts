@@ -1,5 +1,5 @@
 import { isUuid } from "@/lib/assessment-store";
-import { isFactResponse, type FactsStepResult } from "@/lib/facts-api";
+import { isFactResponse, isFactTime, type FactsStepResult } from "@/lib/facts-api";
 import { adminClient, parentId, sessionClient } from "@/lib/supabase-auth";
 import { refusalResponse, testFail } from "@/lib/test-api";
 import { answerFact } from "@/lib/test-attempt";
@@ -14,17 +14,20 @@ export async function POST(request: Request, ctx: RouteContext<"/api/account/ass
   const admin = adminClient();
   if (!admin) return testFail("store_failed", 503);
 
-  let body: { factId?: unknown; response?: unknown };
+  let body: { factId?: unknown; response?: unknown; timeMs?: unknown };
   try {
     body = await request.json();
   } catch {
     return testFail("bad_json", 400);
   }
   if (typeof body.factId !== "string" || !isFactResponse(body.response)) return testFail("invalid", 400);
+  // #185: the browser's time on the fact, from when it appeared to Enter. Older screens send none.
+  const timeMs = body.timeMs ?? null;
+  if (!isFactTime(timeMs)) return testFail("invalid", 400);
 
   const { id } = await ctx.params;
   if (!isUuid(id)) return testFail("not_found", 404);
-  const result = await answerFact(attemptStore(admin), parent, id, Date.now(), { factId: body.factId, response: body.response });
+  const result = await answerFact(attemptStore(admin), parent, id, Date.now(), { factId: body.factId, response: body.response, browserMs: timeMs });
   if (!result.ok) return refusalResponse(result);
   return Response.json({ ok: true, step: result.step } satisfies FactsStepResult);
 }

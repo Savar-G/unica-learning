@@ -8,6 +8,8 @@ import type { Attempt, HelpAnswer, Placement, Route, StoredTest, Submission } fr
 import type { FactsTest } from "@/lib/assessment";
 import { StoreError, type AttemptChild, type AttemptStore, type NewAnswer } from "@/lib/test-attempt";
 import type { FactsStore, NewFactAnswer } from "@/lib/test-attempt";
+import type { ContextStore } from "@/lib/test-attempt";
+import type { TestDevice } from "@/lib/test-context";
 import { workPath } from "@/lib/work-payload";
 
 /** A row of public.answers. A test can give only what the module reads back (a Submission); the module stores all of it. */
@@ -25,7 +27,17 @@ export type MemoryTest = Attempt & {
   route?: Route | null;
   placement?: Placement | null;
   help?: HelpAnswer | null;
-};
+} & MemoryContext;
+/**
+ * The test context of a stored test (#185): its device, and its halfway break (when it was shown, when it ended, and
+ * whether the child skipped it). None until the screen sends them.
+ */
+export interface MemoryContext {
+  device?: TestDevice | null;
+  breakStartedAt?: number | null;
+  breakEndedAt?: number | null;
+  breakSkipped?: boolean | null;
+}
 /** A row of public.children. */
 export type MemoryChild = AttemptChild & { parentId: string };
 /** A test's facts section: one row of public.assessment_facts with its rows of public.fact_answers (`position` is 0-based). */
@@ -69,7 +81,7 @@ export function memoryAttemptStore({ children: kids = [], tests: initial = [] }:
       await begin("loadFacts");
       const row = facts.find((f) => f.assessmentId === id);
       if (!row) return null;
-      const answers = [...row.answers].sort((x, y) => x.position - y.position).map(({ factId, response, atMs }) => ({ factId, response, atMs }));
+      const answers = [...row.answers].sort((x, y) => x.position - y.position).map(({ factId, response, atMs, browserMs }) => ({ factId, response, atMs, browserMs }));
       return { startedAt: row.startedAt, test: row.test, answers };
     },
     async insertFacts(id, { startedAt, test }) {
@@ -89,8 +101,29 @@ export function memoryAttemptStore({ children: kids = [], tests: initial = [] }:
     },
   };
 
+  /** The test context (#185): each write changes only an open test, and only fields still empty (guarded updates). */
+  const openTest = (id: string) => tests.find((t) => t.id === id && t.status === "in_progress");
+  const contextOps: ContextStore = {
+    async recordDevice(id, device) {
+      await begin("recordDevice");
+      const row = openTest(id);
+      if (row && !row.device) row.device = { ...device };
+    },
+    async startBreak(id, at) {
+      await begin("startBreak");
+      const row = openTest(id);
+      if (row && row.breakStartedAt == null) row.breakStartedAt = at;
+    },
+    async endBreak(id, at, skipped) {
+      await begin("endBreak");
+      const row = openTest(id);
+      if (row && row.breakStartedAt != null && row.breakEndedAt == null) Object.assign(row, { breakEndedAt: at, breakSkipped: skipped });
+    },
+  };
+
   const store: AttemptStore = {
     ...factsOps,
+    ...contextOps,
     async child(parent, childId) {
       await begin("child");
       const row = children.find((c) => c.id === childId && c.parentId === parent);
