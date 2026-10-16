@@ -249,7 +249,7 @@ describe("the alert to Savar for each finished test", () => {
       .toContain("Comparison: bands among Unica children (100 eligible children in grade 4)");
   });
   it("says the AI was off, so Savar reads the work in the admin area (#68)", () => {
-    expect(alert({ ai: { on: false } }).text).toContain("AI review: off (no ANTHROPIC_API_KEY). The report has no AI comments and no AI text.");
+    expect(alert({ ai: { on: false } }).text).toContain("AI review: off (no OPENROUTER_API_KEY). The report has no AI comments and no AI text.");
   });
   it("says what the AI did: reviews, sure comments, failures, and the report text (#68)", () => {
     const on = { on: true, model: "claude-sonnet-5-5", pieces: 7, reviewed: 6, sure: 4, failed: 1, skipped: 0, saved: true } as const;

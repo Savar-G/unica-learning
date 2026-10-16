@@ -5,7 +5,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import type { FactsTest, HelpAnswer, Placement, Province, StoredTest } from "@/lib/assessment";
 import { isUuid } from "@/lib/assessment-store";
 import { LEARNING_COLUMNS, type LearningRow } from "@/lib/learning-style";
-import { filterTests, type AdminFilters, type AnswerRecord, type FactAnswerRecord, type ReviewRecord } from "@/lib/admin-view";
+import { filterTests, type AdminFilters, type AnswerRecord, type FactAnswerRecord, type ReviewRecord, type ShownRecord } from "@/lib/admin-view";
 import { sessionClient } from "@/lib/supabase-auth";
 import type { AssessmentStatus } from "@/lib/test-api";
 import { signWork } from "@/lib/work-store";
@@ -214,12 +214,16 @@ export interface TestDetail {
   reviews: ReviewRecord[];
   report: { id: string; created_at: string; questions: number; minutes: number; emailed_at: string | null; email_error: string | null; alerted_at: string | null; alert_error: string | null } | null;
   facts: { started_at: string; test: FactsTest; answers: FactAnswerRecord[] } | null;
+  /** When the server first served each question (#184). */
+  shows: ShownRecord[];
   emails: EmailRow[];
   /** Short-lived signed URLs of the drawings, by stored path. */
   images: Record<string, string>;
 }
 
 const ANSWER_COLUMNS = "position, question_id, response, correct, misconception, time_ms, work_required, work_path, work_text";
+/** The answer timeline's columns (#184, migration add_answer_timeline). */
+const TIMELINE_COLUMNS = "template_id, shown_at, answered_at, answer_changes, read_aloud_count, read_aloud_at_ms, away_count, away_ms";
 const REVIEW_COLUMNS = "question_id, error_type, kind, comment, score, confidence, model";
 
 /** Everything about one test, or null when there is no such test. */
@@ -229,9 +233,9 @@ export async function getTest(a: AdminSession, id: string): Promise<TestDetail |
     await a.db.rpc("admin_assessments").select(`${TEST_COLUMNS}, seed, resume_until, test`).eq("id", id).maybeSingle(), "test");
   if (!row) return null;
   const { test: stored, seed, resume_until, ...listRow } = row;
-  const [[test], answers, reviews, report, facts, factAnswers, emails] = await Promise.all([
+  const [[test], answers, reviews, report, facts, factAnswers, emails, shows] = await Promise.all([
     withPeople(a, [listRow]),
-    a.db.from("answers").select(ANSWER_COLUMNS).eq("assessment_id", id).order("position").then((r) => must<AnswerRecord[]>(r, "answers")),
+    a.db.from("answers").select(`${ANSWER_COLUMNS}, ${TIMELINE_COLUMNS}`).eq("assessment_id", id).order("position").then((r) => must<AnswerRecord[]>(r, "answers")),
     a.db.from("work_reviews").select(REVIEW_COLUMNS).eq("assessment_id", id).then((r) => must<ReviewRecord[]>(r, "reviews")),
     a.db.rpc("admin_reports").select("id, created_at, questions, minutes, emailed_at, email_error, alerted_at, alert_error").eq("assessment_id", id)
       .maybeSingle().then((r) => must<TestDetail["report"]>(r, "report")),
@@ -240,6 +244,8 @@ export async function getTest(a: AdminSession, id: string): Promise<TestDetail |
     a.db.from("fact_answers").select("position, fact_id, response, correct, at_ms").eq("assessment_id", id).order("position")
       .then((r) => must<FactAnswerRecord[]>(r, "fact answers")),
     emailRows(a, (q) => q.eq("assessment_id", id)),
+    a.db.from("question_shows").select("position, question_id, shown_at").eq("assessment_id", id).order("position")
+      .then((r) => must<ShownRecord[]>(r, "question shows")),
   ]);
   const paths = answers.flatMap((x) => (x.work_path ? [x.work_path] : []));
   return {
@@ -248,6 +254,7 @@ export async function getTest(a: AdminSession, id: string): Promise<TestDetail |
     reviews,
     report,
     facts: facts ? { ...facts, answers: factAnswers } : null,
+    shows,
     emails: emails.rows,
     images: await signWork(a.db, paths),
   };

@@ -3,26 +3,35 @@ import { reportModel, type ReviewResult, type ShownWork } from "@/lib/assessment
 import { knowsUpTo, takeTest } from "@/lib/assessment/scripted-child";
 import { REVIEW_MAX, aiReport, aiReviewer, type ReviewInput, type ReviewPiece, type ReviewStore, type StoredReview, type WorkReviewer } from "@/lib/work-review";
 import { fakeReviewer } from "@/lib/work-review-fake";
+import { aiClient } from "@/lib/ai-client";
+import { openRouterClient } from "@/lib/ai-openrouter";
+import { aiWorkReviewer } from "@/lib/work-review-ai";
 
 afterEach(() => vi.restoreAllMocks());
 
-describe("the AI switch (#68): on only with ANTHROPIC_API_KEY", () => {
+describe("the AI switch (#68, #183): on only with OPENROUTER_API_KEY", () => {
   it("is off without a key, so no AI call can happen", () => {
+    expect(aiClient({})).toBeNull();
     expect(aiReviewer({})).toBeNull();
-    expect(aiReviewer({ ANTHROPIC_API_KEY: "" })).toBeNull();
-    expect(aiReviewer({ ANTHROPIC_API_KEY: "   " })).toBeNull();
+    expect(aiReviewer({ OPENROUTER_API_KEY: "" })).toBeNull();
+    expect(aiReviewer({ OPENROUTER_API_KEY: "   " })).toBeNull();
   });
 
-  it("is on with a key, with the model from AI_REVIEW_MODEL or Claude Sonnet 5.5 by default", () => {
-    expect(aiReviewer({ ANTHROPIC_API_KEY: "sk-ant-test" })?.model).toBe("claude-sonnet-5-5");
-    expect(aiReviewer({ ANTHROPIC_API_KEY: "sk-ant-test", AI_REVIEW_MODEL: "claude-opus-5-5" })?.model).toBe("claude-opus-5-5");
+  it("the old Anthropic key no longer turns the AI on", () => {
+    expect(aiReviewer({ ANTHROPIC_API_KEY: "sk-ant-test", NODE_ENV: "production" })).toBeNull();
+  });
+
+  it("is on with a key, with the OpenRouter model id from AI_MODEL, or Claude Sonnet 5.5 on OpenRouter by default", () => {
+    expect(aiReviewer({ OPENROUTER_API_KEY: "sk-or-test" })?.model).toBe("anthropic/claude-sonnet-5.5");
+    expect(aiReviewer({ OPENROUTER_API_KEY: "sk-or-test", AI_MODEL: " google/gemini-4-argon " })?.model).toBe("google/gemini-4-argon");
+    expect(aiClient({ OPENROUTER_API_KEY: "sk-or-test", AI_MODEL: "openai/gpt-6.1-sol" })?.model).toBe("openai/gpt-6.1-sol");
   });
 
   it("gives the dev fake only outside production, for screenshots of a report with comments", () => {
     expect(aiReviewer({ AI_REVIEW_FAKE: "sure", NODE_ENV: "development" })?.model).toBe("fake");
     expect(aiReviewer({ AI_REVIEW_FAKE: "unsure", NODE_ENV: "development" })?.model).toBe("fake");
     expect(aiReviewer({ AI_REVIEW_FAKE: "sure", NODE_ENV: "production" })).toBeNull();
-    expect(aiReviewer({ AI_REVIEW_FAKE: "sure", NODE_ENV: "production", ANTHROPIC_API_KEY: "sk-ant-test" })?.model).toBe("claude-sonnet-5-5");
+    expect(aiReviewer({ AI_REVIEW_FAKE: "sure", NODE_ENV: "production", OPENROUTER_API_KEY: "sk-or-test" })?.model).toBe("anthropic/claude-sonnet-5.5");
     expect(aiReviewer({ AI_REVIEW_FAKE: "yes", NODE_ENV: "development" })).toBeNull();
   });
 });
@@ -221,4 +230,55 @@ describe("the AI step of the report job (#68)", () => {
     expect(model.work[0].comment).toBeNull();
     expect(ai).toMatchObject({ reviewed: 0, failed: 1 });
   });
+});
+
+describe("the AI step on OpenRouter (#183), fetch faked: a failed request leaves the AI part out, and the report still builds", () => {
+  const reviewJson = { error_type: "regrouping", kind: "misunderstanding", comment: "Added each column but did not carry the 1.", confidence: 0.9 };
+  const textJson = { text: "{name} is working at a grade 4 level." };
+  const ok = (content: string, extra: Record<string, unknown> = {}) =>
+    new Response(JSON.stringify({ id: "gen-test", choices: [{ finish_reason: "stop", native_finish_reason: "end_turn", message: { role: "assistant", content }, ...extra }] }), { status: 200 });
+
+  /** A fetch that answers each request by its output name (work_review or report_text). */
+  function openRouter(reply: (name: string, init: RequestInit) => Response | Promise<Response>) {
+    const calls: string[] = [];
+    const fetch = vi.fn(async (_url: string | URL | Request, init?: RequestInit) => {
+      const name = JSON.parse(String(init?.body)).response_format.json_schema.name as string;
+      calls.push(name);
+      return reply(name, init ?? {});
+    });
+    const reviewer = aiWorkReviewer(openRouterClient({ apiKey: "sk-or-test", model: "anthropic/claude-sonnet-5.5", fetch: fetch as unknown as typeof globalThis.fetch, maxRetries: 0, timeout: 30 }));
+    return { reviewer, calls };
+  }
+
+  it("a good answer gives the comment and the report text (the control for the cases below)", async () => {
+    const { reviewer, calls } = openRouter((name) => ok(JSON.stringify(name === "work_review" ? reviewJson : textJson)));
+    const { model, ai } = await run(reviewer, [piece("s1-3")], memoryStore().store);
+    expect(calls).toEqual(["work_review", "report_text"]);
+    expect(model.work[0].comment).toBe("Added each column but did not carry the 1.");
+    expect(model.summary).toBe("{name} is working at a grade 4 level.");
+    expect(ai).toMatchObject({ on: true, model: "anthropic/claude-sonnet-5.5", reviewed: 1, sure: 1, failed: 0, text: { kept: true } });
+  });
+
+  const failures: [string, (init: RequestInit) => Response | Promise<Response>][] = [
+    ["a time-out", (init) => new Promise<Response>((_, reject) => init.signal?.addEventListener("abort", () => reject(init.signal?.reason), { once: true }))],
+    ["bad JSON", () => ok('{"error_type": "regrouping", "kind": ')],
+    ["a refusal", () => ok(JSON.stringify(reviewJson), { finish_reason: "content_filter", native_finish_reason: "refusal" })],
+    ["an HTTP error", () => new Response(JSON.stringify({ error: { code: 502, message: "Provider returned error" } }), { status: 502 })],
+  ];
+  for (const [what, reply] of failures) {
+    it(`${what}: no comment and no report text, nothing stored, and the report still builds`, async () => {
+      const { reviewer, calls } = openRouter((_, init) => reply(init));
+      const { store, calls: stored } = memoryStore();
+      const { model, ai } = await run(reviewer, [piece("s1-3"), piece("s1-5", { prompt: "63 - 28 = ?" })], store, { reviewMs: 2000, textMs: 2000 });
+      expect(calls.filter((c) => c === "work_review")).toHaveLength(2);
+      expect(calls.filter((c) => c === "report_text")).toHaveLength(1);
+      expect(model.work.map((w) => [w.questionId, w.image, w.comment])).toEqual([
+        ["s1-3", "parent/test/s1-3.png", null],
+        ["s1-5", "parent/test/s1-5.png", null],
+      ]);
+      expect(model).not.toHaveProperty("summary");
+      expect(stored.saved).toEqual([]);
+      expect(ai).toMatchObject({ on: true, reviewed: 0, failed: 2, text: { kept: false, problem: "failed" } });
+    });
+  }
 });

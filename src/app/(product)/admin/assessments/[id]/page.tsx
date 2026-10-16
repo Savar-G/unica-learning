@@ -1,7 +1,8 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getTest, requireAdmin } from "@/lib/admin-store";
-import { adminParentPath, adminReportPath, answerLines, duration, factLines, flagText, helpAnswerText, levelText, when } from "@/lib/admin-view";
+import { adminParentPath, adminReportPath, answerLines, duration, factLines, flagText, helpAnswerText, levelText, shownWithoutAnswer, when } from "@/lib/admin-view";
+import { QuestionTimeline, ShownWithoutAnswer, awayCount, changeCount, readAloudCount } from "@/components/admin-timeline";
 import { AdminFrame, Chip, StatusChip, Table, gradeAndPlace } from "@/components/admin";
 import { EmailTable, RecordFacts, ReviewDetail, childPath } from "@/components/admin-records";
 
@@ -14,7 +15,7 @@ export default async function TestDetailPage({ params }: PageProps<"/admin/asses
   const numbers = new Map(lines.map((a) => [a.questionId, a.number]));
   const work = lines.filter((a) => a.work.required || a.work.image || a.work.text || a.review);
   const quick = facts ? factLines(facts.test, facts.answers) : [];
-  return <AdminFrame email={admin.email} section="tests" title={`${t.child?.first_name ?? "Child"}'s test`}>
+  return <AdminFrame email={admin.email} section="tests" wide title={`${t.child?.first_name ?? "Child"}'s test`}>
     <RecordFacts facts={[
       ["Parent", <Link key="parent" href={adminParentPath(t.parent_id)}>{t.parent?.name ?? "Family"}</Link>],
       ["Child", <Link key="child" href={childPath(t.child_id)}>{t.child?.first_name ?? "Child"}</Link>],
@@ -28,9 +29,13 @@ export default async function TestDetailPage({ params }: PageProps<"/admin/asses
     <h2>Report and delivery</h2>
     {report ? <><p><Link href={adminReportPath(report.id)}>Open the report</Link></p><RecordFacts facts={[["Created (Pacific)", when(report.created_at)], ["Questions", report.questions], ["Minutes", report.minutes], ["Parent email (Pacific)", when(report.emailed_at)], ["Parent email error", report.email_error], ["Alert (Pacific)", when(report.alerted_at)], ["Alert error", report.alert_error]]} /></> : <p className="adm-note">No report has been stored.</p>}
     <h2>Answers and times</h2>
-    <Table label="Answers" head={["#", "Stage", "Level / strand", "Question", "Right answer", "Child answer", "Result", "Time", "Mistake"]} empty="No answers yet.">
-      {lines.map((a) => <tr key={a.number} className={a.correct ? "" : "is-wrong"}><td>{a.number}</td><td>{a.stage ?? "-"}</td><td>{a.level === null ? "-" : `${levelText(a.level)} / ${a.strand}`}</td><td className="adm-wide">{a.prompt ?? a.questionId}</td><td>{a.rightAnswer ?? "-"}</td><td>{a.response || "Skipped"}</td><td>{a.correct ? "Right" : "Wrong"}</td><td className="adm-nowrap">{duration(a.timeMs)}{a.tooFast && <span className="adm-sub">Under 3 s</span>}</td><td>{a.misconception ?? "-"}</td></tr>)}
+    <p className="adm-note">Thinking time is measured in the browser. Time on the server runs from when the server sent the question to when the answer arrived (#184). Changes, read aloud and away: what the child did before Next. A dash: not recorded (a test from before #184).</p>
+    <Table label="Answers" head={["#", "Stage", "Level / strand", "Template / BC", "Question", "Right answer", "Child answer", "Result", "Thinking time", "Time on the server", "Changes", "Read aloud", "Away", "Mistake"]} empty="No answers yet.">
+      {lines.map((a) => <tr key={a.number} className={a.correct ? "" : "is-wrong"}><td><a href={`#question-${a.number}`}>{a.number}</a></td><td>{a.stage ?? "-"}</td><td>{a.level === null ? "-" : `${levelText(a.level)} / ${a.strand}`}</td><td><span className="adm-mono">{a.templateId ?? "-"}</span><span className="adm-sub">BC {a.standard ?? "-"}</span></td><td className="adm-wide">{a.prompt ?? a.questionId}</td><td>{a.rightAnswer ?? "-"}</td><td>{a.response || "Skipped"}</td><td>{a.correct ? "Right" : "Wrong"}</td><td className="adm-nowrap">{duration(a.timeMs)}{a.tooFast && <span className="adm-sub">Under 3 s</span>}</td><td className="adm-nowrap">{a.timeline.serverMs === null ? "-" : duration(a.timeline.serverMs)}</td><td className="adm-num">{changeCount(a)}</td><td className="adm-num">{readAloudCount(a)}</td><td className="adm-nowrap">{awayCount(a)}</td><td>{a.misconception ?? "-"}</td></tr>)}
     </Table>
+    <ShownWithoutAnswer lines={shownWithoutAnswer(t.stored, detail.shows, detail.answers)} />
+    <h2>Each question as the child saw it</h2>
+    <QuestionTimeline lines={lines} />
     <h2>Shown work and AI reviews</h2>
     {work.length === 0 ? <p className="adm-note">No shown work yet.</p> : <ul className="adm-work">{work.map((a) => <li key={a.questionId} id={`work-${a.questionId}`}>
       <h3>Question {a.number}</h3><p>{a.prompt ?? a.questionId}</p><p>Answer: {a.response || "Skipped"}. Right answer: {a.rightAnswer ?? "-"}.</p>

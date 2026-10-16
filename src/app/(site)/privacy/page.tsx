@@ -10,7 +10,7 @@ export const metadata = pageMetadata({
 });
 
 export default function Privacy() {
-  return <SupportPage label="Updated 11 October 2026" title="Privacy policy">
+  return <SupportPage label="Updated 16 October 2026" title="Privacy policy">
     <p className="lead">{BUSINESS_NAME} is responsible for the information you share through this website. This policy explains what we collect, why we use it, and the choices you have.</p>
     <h2>What you share with us</h2>
     <p>Before the online assessment, families booked through a reservation form. For those bookings, we keep the name, email address, Canadian postal code, chosen plan and subject, the child&apos;s grade, and their school curriculum.</p>
@@ -23,7 +23,7 @@ export default function Privacy() {
     <p>For online assessments, we mark the answers and use the results to show your child&apos;s working level and areas for practice. Drawings are stored privately. The parent and our authorized team can view them after sign-in. The emailed report links to the account; it does not include the drawings.</p>
     <p>We send the report by email and keep it in your account. We may send assessment reminders when a test has not started or has stopped, with no more than two reminders per test. These emails include an unsubscribe link. You can stop reminders and emails about our plans without deleting your account.</p>
     <h2>AI processing of your child&apos;s work</h2>
-    <p>When enabled, we use Anthropic&apos;s artificial intelligence (AI) service to review your child&apos;s typed working and drawings and to write report text from the measured results. This processing is currently off. Answer marking still uses our assessment rules.</p>
+    <p>When enabled, we use OpenRouter to review your child&apos;s typed working and drawings with an artificial intelligence (AI) model, and to write report text from the measured results. OpenRouter is a service that sends each request to the company that runs the AI model we choose. This processing is currently off. Answer marking still uses our assessment rules.</p>
     <p>An AI review request can include the question, its level, the expected answer, your child&apos;s answer, whether it was correct, possible error labels, typed working, and the drawing as an image. Report requests include the result facts needed for the report. We do not send account names, email addresses, postal codes, or account identifiers in these requests. Typed working or a drawing can still contain personal information if your child puts it there. Please keep names and contact details out of the work.</p>
     <p>AI comments can be wrong. We leave a work comment out when the review is not sufficiently certain. Our team can review the work and its confidence result. Contact us if you want us to check a result.</p>
     <p>When you add your card, we send your name, email address, and postal code to our payment provider. We also send your plan, subject, price, your child&apos;s grade and school curriculum, and a reference for your booking. You enter your card details on its secure page. Our booking form does not collect your card number.</p>
@@ -38,7 +38,7 @@ export default function Privacy() {
       <ul>
         <li>Supabase manages account sign-in and stores form details, assessment records, and private drawings.</li>
         <li>Resend sends sign-in codes, account links, reports, reminders, and notices to our team.</li>
-        <li>Anthropic processes the assessment work and report facts described above when AI processing is enabled.</li>
+        <li>OpenRouter processes the assessment work and report facts described above when AI processing is enabled. It sends each request to the company that runs the AI model we choose.</li>
         <li>Stripe handles adding your card and payments.</li>
         <li>Vercel makes the website available to you.</li>
         <li>PostHog counts visits and signup steps only if you accept optional cookies.</li>
