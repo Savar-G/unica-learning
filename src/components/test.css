@@ -9,6 +9,10 @@
 /* ---------- the question desk ---------- */
 /* The whiteboard pane: the board at full height (whiteboard.css). */
 .test-desk .test-pane-r { padding-top: 14px; }
+/* Keep each control's full height when the question pane needs to scroll. */
+.test-desk .test-pane-l > * { flex-shrink: 0; }
+.test-response { flex: 1 0 auto; display: flex; flex-direction: column; gap: inherit; }
+.test-response > * { flex-shrink: 0; }
 
 /* ---------- the end ---------- */
 .test-end { flex: 1; display: grid; place-items: center; margin: 18px; border-radius: 22px; text-align: center; }
@@ -19,5 +23,13 @@
 .test-end-link a { display: inline-flex; align-items: center; min-height: 44px; padding: 0 6px; color: var(--ink); }
 
 @media (max-width: 900px), (orientation: portrait) {
+  .test-desk .test-pane-l { gap: 16px; }
+  /* Next uses the space below the answer display, beside the full number pad. The pad never runs under Next. */
+  .test-response:has(.test-num) { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); grid-template-rows: auto 1fr auto; gap: 14px; }
+  .test-response .test-num { display: contents; }
+  .test-response .test-display { grid-column: 1; grid-row: 1; }
+  .test-response .test-pad { grid-column: 2; grid-row: 1 / 4; }
+  .test-response:has(.test-num) > .test-alert { grid-column: 1; grid-row: 2; }
+  .test-response:has(.test-num) > .test-next { grid-column: 1; grid-row: 3; flex-wrap: wrap; }
   .test-end { margin: 16px 20px 20px; }
 }

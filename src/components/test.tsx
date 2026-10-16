@@ -446,23 +446,25 @@ function Question({ testId, typing, question, last, takeYourTime, onAnswer, fail
           <h1 id="test-q-title" ref={heading} tabIndex={-1} className="test-prompt"><PromptText text={question.prompt} /></h1>
         </div>
         {question.figure?.kind === "bars" && <BarGraph figure={question.figure} />}
-        {question.format === "choice" ? (
-          <Choices options={shown.map((c, i) => ({ value: c, label: <ChoiceFace text={c} />, name: names[i] }))} value={value || null} onChange={setValue} labelledBy="test-q-title" />
-        ) : (
-          <div className="test-num">
-            <output className="test-display" aria-live="polite" aria-label="Your answer">{value || <i>Type your answer</i>}</output>
-            <div className="test-pad" role="group" aria-label="Number pad">
-              {PAD_KEYS.map((k) => (
-                <button key={k} type="button" onClick={() => press(k)} aria-label={k === "." ? "Decimal point" : undefined}>{k}</button>
-              ))}
-              <button type="button" onClick={() => press("back")} aria-label="Delete">⌫</button>
+        <div className="test-response">
+          {question.format === "choice" ? (
+            <Choices options={shown.map((c, i) => ({ value: c, label: <ChoiceFace text={c} />, name: names[i] }))} value={value || null} onChange={setValue} labelledBy="test-q-title" />
+          ) : (
+            <div className="test-num">
+              <output className="test-display" aria-live="polite" aria-label="Your answer">{value || <i>Type your answer</i>}</output>
+              <div className="test-pad" role="group" aria-label="Number pad">
+                {PAD_KEYS.map((k) => (
+                  <button key={k} type="button" onClick={() => press(k)} aria-label={k === "." ? "Decimal point" : undefined}>{k}</button>
+                ))}
+                <button type="button" onClick={() => press("back")} aria-label="Delete">⌫</button>
+              </div>
             </div>
+          )}
+          <Problem error={failure} />
+          <div className="test-next">
+            <p className="test-why" aria-live="polite">{nudge ? "Now show your work on the board" : ""}</p>
+            <Button type="submit" disabled={!value || sending || needsWork} aria-busy={sending}>{last ? "Finish" : "Next"}</Button>
           </div>
-        )}
-        <Problem error={failure} />
-        <div className="test-next">
-          <p className="test-why" aria-live="polite">{nudge ? "Now show your work on the board" : ""}</p>
-          <Button type="submit" disabled={!value || sending || needsWork} aria-busy={sending}>{last ? "Finish" : "Next"}</Button>
         </div>
       </div>
       <div className="test-pane test-pane-r">
