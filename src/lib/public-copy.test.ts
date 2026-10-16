@@ -4,8 +4,8 @@ import { llmsTxt, pricingMarkdown } from "@/lib/ai-summary";
 import { SITE_DESCRIPTION } from "@/lib/metadata";
 import { PARENT_LEAD, PARENT_NOT_YOURS, PARENT_NOTE, PARENT_TITLE, PARENT_YOURS } from "@/lib/parent";
 import { renderToStaticMarkup } from "react-dom/server";
-import Terms from "@/app/terms/page";
-import Privacy from "@/app/privacy/page";
+import Terms from "@/app/(site)/terms/page";
+import Privacy from "@/app/(site)/privacy/page";
 
 // Public launch (#82): the free assessment is online, math only, and comes before any plan or card. These are the
 // shared texts behind the FAQ section, the FAQPage data, /llms.txt, /pricing.md and the page metadata.

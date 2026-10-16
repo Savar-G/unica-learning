@@ -37,11 +37,17 @@ export interface MemoryReportTables {
   drawings?: string[];
 }
 
+/** Counts one read of the table in a read counter, which counts the reads of each table by table name. */
+export function countRead(reads: Record<string, number>, table: string) {
+  reads[table] = (reads[table] ?? 0) + 1;
+}
+
 /**
  * The readers over the tables: one parent's session, the admin's, or the secret key. `signed` lists every sign call of
  * a session, with the reader and the paths it was asked to sign, so a test can check what was signed. `reads` counts
- * the reads of each table, by any reader. A table left out is made empty on `tables`, so that other adapters over the
- * same tables (src/lib/report-job-memory.ts) see the same rows.
+ * the reads of each table, by table name, by any reader; the job's store (src/lib/report-job-memory.ts) and the
+ * report row ledger (src/lib/report-row-ledger-memory.ts) count their reads in it too (countRead). A table left out is made empty on `tables`, so that other adapters over the same tables
+ * (src/lib/report-job-memory.ts) see the same rows.
  */
 export function memoryReportReaders(tables: MemoryReportTables) {
   const reports = (tables.reports ??= []);
@@ -50,7 +56,7 @@ export function memoryReportReaders(tables: MemoryReportTables) {
   const children = (tables.children ??= []);
   const drawings = (tables.drawings ??= []);
   const signed: { reader: string; paths: string[] }[] = [];
-  const reads = { reports: 0, assessments: 0, answers: 0 };
+  const reads: Record<string, number> = { reports: 0, assessments: 0, answers: 0 };
 
   const reader = (who: string, sees: (parentId: string) => boolean, { tests = true, signs = true } = {}): ReportReader => ({
     async report(id) {
