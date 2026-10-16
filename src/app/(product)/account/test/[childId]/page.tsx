@@ -4,7 +4,7 @@ import { userAgent } from "next/server";
 import { bandFor, createSession, type Grade } from "@/lib/assessment";
 import type { Child } from "@/lib/account";
 import { stateFor } from "@/lib/test-attempt";
-import { parentStartStates } from "@/lib/test-attempt-server";
+import { parentRoundInProgress, parentStartStates } from "@/lib/test-attempt-server";
 import { pageMetadata } from "@/lib/metadata";
 import { parentId, sessionClient } from "@/lib/supabase-auth";
 import { TakeTest } from "@/components/test";
@@ -32,7 +32,9 @@ export default async function TestPage(props: PageProps<"/account/test/[childId]
   if (!child) notFound();
   // #72: an open test continues where it stopped; after one ran out of time the next has new questions.
   const state = stateFor(states, child.id);
-  const mode = state.kind === "resume" || state.kind === "finish" ? state.kind : state.kind === "expired" ? "restart" : "new";
+  // #190: every main answer is in, but the child left part way through the extra round: Keep going or Stop here.
+  const round = state.kind === "finish" ? await parentRoundInProgress(parent, state.attemptId) : null;
+  const mode = round ? "round" : state.kind === "resume" || state.kind === "finish" ? state.kind : state.kind === "expired" ? "restart" : "new";
 
   const grade = child.grade as Grade;
   // Grades 1-5 have a bank (grades 3-5 still on the sample bank); grades 6-7 open with theirs (#76).

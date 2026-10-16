@@ -6,6 +6,8 @@ import {
   MISCONCEPTIONS,
   SAMPLE_BANK,
   PAUSE_WINDOW,
+  REPORTED_STRAND,
+  REPORTED_STRAND_NAMES,
   TOO_FAST_MS,
   helpLikely,
   type FactsTest,
@@ -145,8 +147,11 @@ export interface AnswerLine {
   /** 1-based, in test order. */
   number: number;
   questionId: string;
-  /** Stage 1 (at the school grade) or stage 2 (after the route); null when the question is not in the stored test. */
-  stage: 1 | 2 | null;
+  /**
+   * Stage 1 (at the school grade), stage 2 (after the route), or "extra" for the optional extra round (#190); null when
+   * the question is not in the stored test.
+   */
+  stage: 1 | 2 | "extra" | null;
   prompt: string | null;
   level: Level | null;
   strand: Strand | null;
@@ -218,9 +223,10 @@ export const questionNumbers = (answers: readonly Pick<AnswerRecord, "position" 
  * finished, whose score counted every answer.
  */
 export function answerLines(test: StoredTest, answers: readonly AnswerRecord[], reviews: readonly ReviewRecord[], leftOut: readonly string[] = []): AnswerLine[] {
-  const stage = new Map<string, { q: Question; stage: 1 | 2 }>();
+  const stage = new Map<string, { q: Question; stage: 1 | 2 | "extra" }>();
   for (const q of test.stage1) stage.set(q.id, { q, stage: 1 });
   for (const q of [...test.stage2.up, ...test.stage2.stay, ...test.stage2.down]) stage.set(q.id, { q, stage: 2 });
+  for (const q of test.extra ?? []) stage.set(q.id, { q, stage: "extra" });
   const reviewed = new Map(reviews.map((r) => [r.question_id, { ...r, score: Number(r.score) }]));
   const ordered = [...answers].sort((a, b) => a.position - b.position);
   const out = new Set(leftOut);
@@ -262,7 +268,7 @@ export interface ShownLine {
 /** The questions the server served that have no answer yet, in test order. */
 export function shownWithoutAnswer(test: StoredTest, shows: readonly ShownRecord[], answers: readonly AnswerRecord[]): ShownLine[] {
   const answered = new Set(answers.map((a) => a.position));
-  const prompts = new Map([...test.stage1, ...test.stage2.up, ...test.stage2.stay, ...test.stage2.down].map((q) => [q.id, q.prompt]));
+  const prompts = new Map([...test.stage1, ...test.stage2.up, ...test.stage2.stay, ...test.stage2.down, ...(test.extra ?? [])].map((q) => [q.id, q.prompt]));
   return [...shows].sort((a, b) => a.position - b.position).filter((s) => !answered.has(s.position))
     .map((s) => ({ number: s.position + 1, questionId: s.question_id, prompt: prompts.get(s.question_id) ?? null, shownAt: s.shown_at }));
 }
@@ -363,6 +369,49 @@ export function contextFacts(c: TestContextRecord): [string, string][] {
     ["Input", d ? (d.input ? DEVICE_WORDS[d.input] : "Not known") : "-"],
     ["Screen (CSS pixels)", d ? `${d.screenWidth} × ${d.screenHeight}` : "-"],
     ["Browser", d ? DEVICE_WORDS[d.browser] : "-"],
+  ];
+}
+
+/** The extra round of one test (#190), as public.assessments stores it (migration add_extra_round). Null when not recorded. */
+export interface ExtraRoundColumns {
+  extra_offered_at: string | null;
+  extra_skipped_at: string | null;
+  extra_started_at: string | null;
+  extra_finished_at: string | null;
+}
+
+/**
+ * What happened to the extra round, in plain words. A round that started after the test was completed came from the
+ * report. A skip time after the start is a stop part way during the test.
+ */
+function extraRoundWords(r: ExtraRoundColumns, completedAt: string | null): string {
+  if (r.extra_started_at) {
+    if (r.extra_skipped_at && Date.parse(r.extra_skipped_at) >= Date.parse(r.extra_started_at)) {
+      return r.extra_finished_at ? "Taken during the test, stopped part way, finished from the report" : "Taken during the test, stopped part way";
+    }
+    const fromReport = completedAt !== null && Date.parse(r.extra_started_at) > Date.parse(completedAt);
+    const taken = fromReport ? "Taken from the report" : "Taken during the test";
+    return r.extra_finished_at ? taken : `${taken}, not finished`;
+  }
+  if (r.extra_skipped_at) return "Skipped";
+  return r.extra_offered_at ? "Offered, no choice yet" : "Not offered";
+}
+
+/**
+ * The "Extra round" rows of the admin page for one test (#190, spec #181 story 16): whether it was offered, skipped or
+ * taken, its questions and areas from the stored round, and its times (Pacific). A test from before #190 shows "Not
+ * offered" and dashes, always in the same rows.
+ */
+export function extraRoundFacts(r: ExtraRoundColumns, stored: StoredTest, completedAt: string | null): [string, string][] {
+  const extra = stored.extra ?? [];
+  const areas = [...new Set(extra.map((q) => REPORTED_STRAND_NAMES[REPORTED_STRAND[q.strand]]))];
+  return [
+    ["Extra round", extraRoundWords(r, completedAt)],
+    ["Extra questions", extra.length ? `${extra.length}: ${areas.join(", ")}` : "-"],
+    ["Offered (Pacific)", when(r.extra_offered_at)],
+    ["Skipped or stopped (Pacific)", when(r.extra_skipped_at)],
+    ["Started (Pacific)", when(r.extra_started_at)],
+    ["Finished (Pacific)", when(r.extra_finished_at)],
   ];
 }
 

@@ -133,8 +133,18 @@ export type TestStep =
       breakAfter: number;
       /** #189: the last RUSH_RUN answers were all very fast, so the screen says "Take your time". */
       takeYourTime: boolean;
+      /** #190: a question of the extra round: its place in the round, from 1, and the round's length. Absent on main questions. */
+      extra?: { number: number; total: number };
     }
-  | { status: "complete"; total: number };
+  | {
+      status: "complete";
+      total: number;
+      /**
+       * #190: the extra round the child can take or skip now, before "Did anyone help?". Only the test attempt module
+       * adds it (it knows whether the child skipped); absent when none is due.
+       */
+      extraRound?: ExtraRoundOffer;
+    };
 
 export interface ChildProfile {
   grade: Grade;
@@ -162,10 +172,24 @@ export interface Session {
   stage2: Record<Route, Question[]>;
   route: Route | null;
   answers: Answer[];
+  /**
+   * #190: the optional extra round, after the last main question: drawn when the child takes it (startExtraRound), and
+   * asked after the routed form. Absent when the child did not take one, and on tests stored before #190.
+   */
+  extra?: Question[];
 }
 
-/** What the server stores when a test starts. Never sent to the browser: it holds the answers. */
-export type StoredTest = Pick<Session, "profile" | "seed" | "stage1" | "stage2">;
+/**
+ * What the server stores when a test starts. Never sent to the browser: it holds the answers. `extra` (#190) is added
+ * when the child takes the extra round.
+ */
+export type StoredTest = Pick<Session, "profile" | "seed" | "stage1" | "stage2" | "extra">;
+
+/** #190: the extra round a child can take now: how many questions, and the early-sign areas they cover, in band order. */
+export interface ExtraRoundOffer {
+  questions: number;
+  strands: ReportedStrand[];
+}
 
 export type StrandStatus = "secure" | "developing" | "needs-attention";
 
@@ -206,4 +230,9 @@ export interface Placement {
   flags: Flag[];
   /** #189: very fast answers, the ones left out of the score, and whether the result may not be reliable. Absent before #189. */
   pace?: Pace;
+  /**
+   * #190: the extra round the child took, whose answers count in the levels and areas above: how many questions, and
+   * the early-sign areas they covered. Absent when the child took none.
+   */
+  extraRound?: ExtraRoundOffer;
 }

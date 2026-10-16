@@ -50,6 +50,12 @@ export function memoryReportJobStore(
       reports.push(row);
       return stored(row);
     },
+    async updateReport(id, { model, questions, minutes }) {
+      const row = (tables.reports ?? []).find((r) => r.id === id);
+      if (!row) throw new Error("report update: no row");
+      Object.assign(row, { model: structuredClone(model), questions, minutes });
+      return stored(row);
+    },
     reviews: (assessment) => ({
       async stored() {
         count("work_reviews");

@@ -9,7 +9,7 @@ import "./test-base.css";
 import { useCallback, useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
 import Link from "next/link";
 import { Button } from "@/ds";
-import { breakDue, hasWork, readAloudText, spokenChoices, type HelpAnswer, type PublicQuestion, type TestStep } from "@/lib/assessment";
+import { breakDue, hasWork, readAloudText, spokenChoices, type ExtraRoundOffer, type HelpAnswer, type PublicQuestion, type TestStep } from "@/lib/assessment";
 import { ANSWER_MAX, type FinishResult, type StartResult, type StepResult, type TestError, type WorkPayload } from "@/lib/test-api";
 import { answerRecorder, type AnswerEvents } from "@/lib/answer-events";
 import { deviceOf, type BreakEvent, type BreakResume, type ContextResult, type TestDevice } from "@/lib/test-context";
@@ -22,6 +22,7 @@ import { breakSeen, loadBreak, markBreakSeen, saveBreak, TestBreak } from "./tes
 import { Choices } from "./test-choices";
 import { BarGraph, ChoiceFace, PromptText } from "./test-figures";
 import { TestHelp } from "./test-help";
+import { ExtraEnd, ExtraIntro, ExtraOffer, ExtraReturn, type ExtraEntry } from "./test-extra";
 import { TestProgress } from "./test-progress";
 import { ReadAloud, warmUpVoices } from "./test-read-aloud";
 import { Whiteboard, boardImage, clearDrafts, loadDraft, saveDraft, type BoardSize } from "./whiteboard";
@@ -30,12 +31,16 @@ import "./test.css";
 type Screen =
   | { name: "intro" }
   /** `testId` keys the saved whiteboard of the question (#67). */
-  | { name: "question"; question: PublicQuestion; number: number; total: number; breakAfter: number; testId: string; takeYourTime: boolean }
+  | { name: "question"; question: PublicQuestion; number: number; total: number; breakAfter: number; testId: string; takeYourTime: boolean; extra?: { number: number; total: number } }
   | { name: "break"; next: Extract<TestStep, { status: "question" }> }
   /** The timed facts section (#70), after the halfway break; then the test carries on with `next`. */
   | { name: "facts"; testId: string; next: Extract<TestStep, { status: "question" }> }
   /** "Did anyone help?" (#71): after the last question; its answer goes with the finish request. */
   | { name: "help" }
+  /** #190: the extra round's offer, after the last main question and before "Did anyone help?". */
+  | { name: "offer"; offer: ExtraRoundOffer }
+  /** #190: the child stopped a round the report offered again: its answers so far are saved, and the report offers the rest. */
+  | { name: "stopped"; answered: number }
   | { name: "done" };
 
 async function call<T>(url: string, init?: RequestInit): Promise<T | { ok: false; error: TestError }> {
@@ -68,15 +73,17 @@ function browserDevice(pointers: readonly string[]): TestDevice {
 
 /**
  * #72: "resume" continues the open test where it stopped; "finish" sends a test whose answers are all in but that was
- * never scored; "restart" draws a new one after a test ran out of time.
+ * never scored; "restart" draws a new one after a test ran out of time. #190: "round" continues the extra round the
+ * child left part way, or stops it there.
  */
-export type StartMode = "new" | "resume" | "finish" | "restart";
+export type StartMode = "new" | "resume" | "finish" | "restart" | "round";
 
 /**
  * `typing`: the whiteboard has a text box (grades 3-7); grades 1-2 draw only (#67). `breakAfter`: questions before the
- * halfway ring, for the progress on the help and end screens (the band's stage 1).
+ * halfway ring, for the progress on the help and end screens (the band's stage 1). `extra` (#190): the screen runs only
+ * the extra round of a completed test, which the report offers again; it has its own start and end, and no help question.
  */
-export function TakeTest({ childId, name, breakAfter, ready, done, mode: firstMode = "new", typing = true }: { childId: string; name: string; breakAfter: number; ready: boolean; done: boolean; mode?: StartMode; typing?: boolean }) {
+export function TakeTest({ childId, name, breakAfter, ready, done, mode: firstMode = "new", typing = true, extra }: { childId: string; name: string; breakAfter: number; ready: boolean; done: boolean; mode?: StartMode; typing?: boolean; extra?: ExtraEntry }) {
   const [screen, setScreen] = useState<Screen>(done ? { name: "done" } : { name: "intro" });
   const [progress, setProgress] = useState<{ total: number; breakAfter: number } | null>(null);
   const [busy, setBusy] = useState(false);
@@ -111,7 +118,7 @@ export function TakeTest({ childId, name, breakAfter, ready, done, mode: firstMo
   }, []);
 
   // A stop (#72): the tab closes or the connection drops during a question, the break or quick facts. The answers so far are saved on the server.
-  const asking = screen.name === "question" || screen.name === "break" || screen.name === "facts" || screen.name === "help";
+  const asking = screen.name === "question" || screen.name === "break" || screen.name === "facts" || screen.name === "help" || screen.name === "offer";
   useEffect(() => {
     if (!asking) return;
     // The page is going away: a beacon still goes out. Offline: PostHog queues the event and retries once back online.
@@ -125,16 +132,18 @@ export function TakeTest({ childId, name, breakAfter, ready, done, mode: firstMo
     };
   }, [asking]);
 
-  const finish = useCallback(async (help: HelpAnswer) => {
+  /** Sends the test with the help answer; null for a round the report offered again (#190), which asks no help question. */
+  const finish = useCallback(async (help: HelpAnswer | null) => {
     setFailure(null);
-    const res = await call<FinishResult>(`/api/account/assessments/${testId.current}/finish`, post({ help }));
+    const res = await call<FinishResult>(`/api/account/assessments/${testId.current}/finish`, post(help === null ? {} : { help }));
     if (!res.ok) {
       track("test_error", { code: res.error, status: "finish" });
       if (res.error === "expired") return expire();
       setFailure(res.error);
       return false;
     }
-    track("test_finish");
+    if (help === null) track("test_extra", { status: "finished", src: "report" });
+    else track("test_finish");
     // #67: no saved whiteboard of this test is needed any more.
     const finished = testId.current;
     if (finished) clearDrafts((key) => key.startsWith(draftPrefix(finished)));
@@ -150,11 +159,24 @@ export function TakeTest({ childId, name, breakAfter, ready, done, mode: firstMo
     }));
     // Every answer is in: "Did anyone help?" (#71) comes last, and its Finish sends the test.
     if (step.status === "complete") {
+      // #190: first the extra round's offer, when an area is an early sign.
+      if (step.extraRound) {
+        track("test_extra", { status: "offered", src: "test" });
+        setScreen({ name: "offer", offer: step.extraRound });
+        return true;
+      }
+      // A round the report offered again has no help question: its last answer sends it.
+      if (extra) return finish(null);
       setScreen({ name: "help" });
       return true;
     }
-    // The skippable halfway break (#69) comes once per test, before the first question of the second half.
     const id = testId.current ?? "";
+    // #190: a question of the extra round. The round has no break and no quick facts.
+    if (step.extra) {
+      setScreen({ name: "question", question: step.question, number: step.number, total: step.total, breakAfter: step.breakAfter, testId: id, takeYourTime: step.takeYourTime === true, extra: step.extra });
+      return true;
+    }
+    // The skippable halfway break (#69) comes once per test, before the first question of the second half.
     const saved = loadBreak(id);
     if (resume?.ended || saved?.end) {
       markBreakSeen(id);
@@ -180,7 +202,7 @@ export function TakeTest({ childId, name, breakAfter, ready, done, mode: firstMo
     // #189: the last three answers were very fast, so the question says "Take your time" (absent from an older server: off).
     setScreen({ name: "question", question: step.question, number: step.number, total: step.total, breakAfter: step.breakAfter, testId: id, takeYourTime: step.takeYourTime === true });
     return true;
-  }, [breakAfter]);
+  }, [breakAfter, extra, finish]);
 
   /**
    * After the quick facts, the first question after halfway (#184): the screen asks the server for the step again, so
@@ -193,10 +215,48 @@ export function TakeTest({ childId, name, breakAfter, ready, done, mode: firstMo
     return show(held);
   }, [show, expire]);
 
-  const start = async () => {
+  /**
+   * #190: the child's choice at the offer, Start on a round the report offered again, or Stop here part way through a
+   * round taken during the test. Resolves false when it failed.
+   */
+  const chooseRound = async (choice: "take" | "skip" | "stop", src: "test" | "report") => {
+    setFailure(null);
+    const body = choice === "stop" ? { stop: true } : { take: choice === "take" };
+    const res = await call<StepResult>(`/api/account/assessments/${testId.current}/extra`, post(body));
+    if (res.ok) {
+      track("test_extra", { status: choice === "take" ? "taken" : choice === "skip" ? "skipped" : "stopped", src });
+      return show(res.step);
+    }
+    // Another tab chose first: carry on from where the server is.
+    if (res.error === "conflict" && "step" in res && res.step) return show(res.step);
+    track("test_error", { code: res.error, status: "extra" });
+    if (res.error === "expired") return expire();
+    setFailure(res.error);
+    return false;
+  };
+
+  /**
+   * #190: Stop here on a question of the extra round. During the test, the server records the stop and "Did anyone
+   * help?" comes next. A round the report offered again needs no request: its answers are saved as they come.
+   */
+  const stopRound = async (answered: number) => {
+    if (!extra) return chooseRound("stop", "test");
+    track("test_extra", { status: "stopped", src: "report" });
+    setScreen({ name: "stopped", answered });
+    return true;
+  };
+
+  /** Start or Continue on the start screen; `stop`: Stop here on the start screen of a round the child left part way (#190). */
+  const start = async (stop = false) => {
     if (busy) return;
     setBusy(true);
     setFailure(null);
+    if (extra) {
+      testId.current = extra.testId;
+      await chooseRound("take", "report");
+      setBusy(false);
+      return;
+    }
     const started = await call<StartResult>("/api/account/assessments", post({ childId, restart: mode === "restart" }));
     if (!started.ok) {
       track("test_error", { code: started.error, status: "start" });
@@ -212,6 +272,11 @@ export function TakeTest({ childId, name, breakAfter, ready, done, mode: firstMo
     clearDrafts((key) => !key.startsWith(draftPrefix(started.id)));
     if (started.resumed) track("test_resume");
     else track("test_start", { status: mode === "restart" ? "restart" : "new" });
+    if (stop) {
+      await chooseRound("stop", "test");
+      setBusy(false);
+      return;
+    }
     const res = await call<StepResult>(`/api/account/assessments/${started.id}`);
     if (res.ok) {
       // A captured end survived a reload while its request was pending. Resend the same value once on resume.
@@ -244,15 +309,25 @@ export function TakeTest({ childId, name, breakAfter, ready, done, mode: firstMo
     <div className="look-root test-root" data-look="warm">
       <header className="test-top">
         <span className="logo">Unica Learning<b /></span>
-        {screen.name === "question" && <TestProgress answered={screen.number - 1} total={screen.total} breakAfter={screen.breakAfter} at="question" />}
+        {screen.name === "question" && (screen.extra
+          // #190: the extra round's own progress, after the main test (the ring before it).
+          ? <TestProgress answered={screen.extra.number - 1} total={screen.extra.total} breakAfter={0} at="question" />
+          : <TestProgress answered={screen.number - 1} total={screen.total} breakAfter={screen.breakAfter} at="question" />)}
+        {screen.name === "offer" && progress && <TestProgress answered={progress.total} total={progress.total} breakAfter={progress.breakAfter} at="help" />}
         {screen.name === "break" && <TestProgress answered={screen.next.breakAfter} total={screen.next.total} breakAfter={screen.next.breakAfter} at="halfway" />}
         {screen.name === "facts" && <TestProgress answered={screen.next.number - 1} total={screen.next.total} breakAfter={screen.next.breakAfter} at="facts" />}
         {(screen.name === "help" || screen.name === "done") && progress && <TestProgress answered={progress.total} total={progress.total} breakAfter={progress.breakAfter} at={screen.name === "help" ? "help" : "end"} />}
       </header>
       <main id="main" className="test-main">
-        {screen.name === "intro" && <Intro name={name} ready={ready} busy={busy} onStart={start} failure={failure} mode={mode} />}
+        {screen.name === "intro" && (extra
+          ? <ExtraIntro name={name} entry={extra} busy={busy} onStart={() => start()} problem={<Problem error={failure} />} />
+          : mode === "round"
+            ? <ExtraReturn name={name} busy={busy} onGo={() => start()} onStop={() => start(true)} problem={<Problem error={failure} />} />
+            : <Intro name={name} ready={ready} busy={busy} onStart={() => start()} failure={failure} mode={mode} />)}
+        {screen.name === "offer" && <ExtraOffer name={name} offer={screen.offer} problem={<Problem error={failure} />} onChoose={(take) => chooseRound(take ? "take" : "skip", "test")} />}
         {screen.name === "question" && (
-          <Question key={screen.question.id} testId={screen.testId} typing={typing} question={screen.question} last={screen.number === screen.total} takeYourTime={screen.takeYourTime} onAnswer={answer} failure={failure} />
+          <Question key={screen.question.id} testId={screen.testId} typing={typing} question={screen.question} last={screen.number === screen.total} takeYourTime={screen.takeYourTime} onAnswer={answer} failure={failure}
+            onStop={screen.extra ? () => stopRound(screen.extra!.number - 1) : undefined} />
         )}
         {screen.name === "break" && (
           <TestBreak name={name} answered={screen.next.breakAfter} total={screen.next.total} onDone={(how) => {
@@ -280,7 +355,10 @@ export function TakeTest({ childId, name, breakAfter, ready, done, mode: firstMo
             return sent;
           }} />
         )}
-        {screen.name === "done" && <End name={name} total={progress?.total} />}
+        {screen.name === "done" && (extra
+          ? <ExtraEnd name={name} questions={extra.questions} reportHref={extra.reportHref} />
+          : <End name={name} total={progress?.total} />)}
+        {screen.name === "stopped" && extra && <ExtraEnd name={name} questions={extra.questions} reportHref={extra.reportHref} stoppedAfter={screen.answered} />}
       </main>
     </div>
   );
@@ -321,7 +399,7 @@ function Intro({ name, ready, busy, onStart, failure, mode }: { name: string; re
       <MessageScreen>
         <p className="test-kicker">Math test</p>
         <h1 className="test-title">All your answers are in, {name}!</h1>
-        <p className="test-lead">The test was not sent yet. Answer one last question to send it.</p>
+        <p className="test-lead">The test was not sent yet. Press Continue to finish it.</p>
         <Problem error={failure} />
         <Button onClick={onStart} disabled={busy} aria-busy={busy}>{busy ? "Opening…" : "Continue"}</Button>
       </MessageScreen>
@@ -368,12 +446,15 @@ interface QuestionProps {
   takeYourTime: boolean;
   onAnswer: (id: string, response: string, timeMs: number, work?: WorkPayload, events?: AnswerEvents) => Promise<boolean>;
   failure: TestError | null;
+  /** #190: Stop here, on a question of the extra round. Resolves false when it failed and the child can go on. */
+  onStop?: () => Promise<boolean>;
 }
 
 // One question in the split desk (D-088): the question and the answer on the left, the whiteboard on the right.
-function Question({ testId, typing, question, last, takeYourTime, onAnswer, failure }: QuestionProps) {
+function Question({ testId, typing, question, last, takeYourTime, onAnswer, failure, onStop }: QuestionProps) {
   const [value, setValue] = useState("");
   const [sending, setSending] = useState(false);
+  const [stopping, setStopping] = useState(false);
   // Time on the question runs from when it appears to when the child presses Next.
   const shownAt = useRef(0);
   const heading = useRef<HTMLHeadingElement>(null);
@@ -440,7 +521,7 @@ function Question({ testId, typing, question, last, takeYourTime, onAnswer, fail
 
   const submit = async (e?: FormEvent) => {
     e?.preventDefault();
-    if (!value || sending || needsWork) return;
+    if (!value || sending || stopping || needsWork) return;
     setSending(true);
     const timeMs = performance.now() - shownAt.current;
     let image: string | null = null;
@@ -473,6 +554,13 @@ function Question({ testId, typing, question, last, takeYourTime, onAnswer, fail
     stored.current = true;
     saveDraft(draft, emptyBoard());
     if (image || typed) track("test_work", { status: question.showWork ? "required" : "optional", channel: image && typed ? "both" : image ? "draw" : "type" });
+  };
+
+  // #190: Stop here. On success the next screen replaces this question; on failure the child can answer or stop again.
+  const stop = async () => {
+    if (!onStop || sending || stopping) return;
+    setStopping(true);
+    if (!(await onStop())) setStopping(false);
   };
 
   const submitRef = useRef(submit);
@@ -530,8 +618,10 @@ function Question({ testId, typing, question, last, takeYourTime, onAnswer, fail
           )}
           <Problem error={failure} />
           <div className="test-next">
+            {/* #190: at the far end from Next, so it is not pressed by mistake. */}
+            {onStop && <Button variant="ghost" onClick={stop} disabled={sending || stopping} aria-busy={stopping}>Stop here</Button>}
             <p className="test-why" aria-live="polite">{nudge ? "Now show your work on the board" : ""}</p>
-            <Button type="submit" disabled={!value || sending || needsWork} aria-busy={sending}>{last ? "Finish" : "Next"}</Button>
+            <Button type="submit" disabled={!value || sending || stopping || needsWork} aria-busy={sending}>{last ? "Finish" : "Next"}</Button>
           </div>
         </div>
       </div>
