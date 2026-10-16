@@ -311,7 +311,7 @@ describe("the reminder job", () => {
           // The in-memory ledger keeps no time: a row counts as written when its reminder was due.
           return { id: e.key, kind: r.kind, parentId: r.parentId, childId: r.childId, assessmentId: r.assessmentId, status: STATUS[e.state], attempts: e.claims, at: r.dueAt };
         });
-        return { ...base, log };
+        return { ...base, log: [...base.log, ...log] };
       },
       ledger: {
         ...book.ledger,
@@ -400,6 +400,41 @@ describe("the reminder job", () => {
     expect(new Set(tokens).size).toBe(2);
     expect(rows().map((r) => r.hash)).toEqual(tokens.map((t) => hashToken(t)));
     expect(rows().every((r) => /^[0-9a-f]{64}$/.test(r.hash ?? ""))).toBe(true);
+  });
+
+  // Arjun (c2) was added a day before T0: the first start reminder is due at T0, the last one 2 days later.
+  describe("the two start reminders and the unsubscribe link", () => {
+    const arjun = () => ({ ...family, children: [family.children[1]], tests: [], log: [] as LogEntry[] });
+    const tokenIn = (m: EmailMessage) => m.text.match(/\/unsubscribe\?t=([\w-]+)/)?.[1] ?? "";
+
+    it("sends the last one on day 3, with its own unsubscribe link, when the parent did nothing", async () => {
+      const { store, rows } = memoryStore(arjun());
+      const mail = memoryTransport();
+      expect(await run(store, T0, mail.transport)).toEqual(counts({ due: 1, sent: 1 }));
+      expect(await run(store, T0 + 2 * DAY - 15 * MIN, mail.transport)).toEqual(counts({}));
+      expect(await run(store, T0 + 2 * DAY, mail.transport)).toEqual(counts({ due: 1, sent: 1 }));
+      expect(mail.delivered.map(whichReminder)).toEqual(["c2:start", "c2:start_followup"]);
+      expect(mail.delivered[1].subject).toBe("Last reminder: Arjun's free math test");
+      // The day-3 email's link names its own log row, so unsubscribing from it works too.
+      expect(rows().map((r) => [r.row, r.hash])).toEqual([
+        ["start:c2", hashToken(tokenIn(mail.delivered[0]))],
+        ["start_followup:c2", hashToken(tokenIn(mail.delivered[1]))],
+      ]);
+    });
+
+    it("sends nothing on day 3 when the parent unsubscribed with the link in the first one", async () => {
+      const s = arjun();
+      const { store, rows } = memoryStore(s);
+      const mail = memoryTransport();
+      await run(store, T0, mail.transport);
+      // What the unsubscribe page does with the link (unsubscribe in reminder-store.ts): it finds the log row by the
+      // token's hash, and writes one unsubscribe row for that row's parent.
+      const row = rows().find((r) => r.hash === hashToken(tokenIn(mail.delivered[0])));
+      expect(row?.row).toBe("start:c2");
+      s.log.push({ id: "u1", kind: "unsubscribe", parentId: "p1", childId: null, assessmentId: null, status: null, attempts: 0, at: T0 + HOUR });
+      for (let now = T0 + 15 * MIN; now <= T0 + 20 * DAY; now += 15 * MIN) expect(await run(store, now, mail.transport)).toEqual(counts({}));
+      expect(mail.delivered.map(whichReminder)).toEqual(["c2:start"]);
+    });
   });
 
   it("tries a refused send again on the next runs, and gives up after 3 tries", async () => {

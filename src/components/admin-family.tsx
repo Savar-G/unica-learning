@@ -1,7 +1,7 @@
 // One family's whole story in a side panel (?family=<id>) on the dashboard and activity pages (D-099).
 import Link from "next/link";
 import { adminParentPath, adminReportPath, adminTestPath } from "@/lib/admin-view";
-import { EMAIL_LABEL, STAGES, STAGE_ACTION, STAGE_TEXT, ago, at, paymentText, type Dashboard, type Stage } from "@/lib/admin-dashboard";
+import { EMAIL_LABEL, STAGES, STAGE_ACTION, STAGE_TEXT, ago, at, nextReminderText, paymentText, type Dashboard, type Stage } from "@/lib/admin-dashboard";
 import { stripeCustomerUrl as stripeUrl } from "@/lib/stripe";
 import { StageChip, TestMark, href, type Ctx } from "@/components/admin-dashboard-parts";
 
@@ -27,6 +27,7 @@ export function FamilyDrawer({ ctx, d, id }: { ctx: Ctx; d: Dashboard; id: strin
           <StageChip stage={f.stage} /> <span>since {at(f.stageAt)} ({ago(f.stageAt, d.now)})</span>
           <p>{STAGE_ACTION[f.stage]}</p>
           {f.unsubscribed && <p className="dash-warn-text">Reminders are off: this parent unsubscribed.</p>}
+          {f.nextReminders.map((r) => <p key={r.childName + r.kind} className="dash-muted">Next email: {nextReminderText(r, d.now)}</p>)}
         </div>
         <h3>Journey</h3>
         <ol className="dash-journey">

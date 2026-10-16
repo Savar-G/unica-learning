@@ -2,7 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { dashboardRows, getParent, requireAdmin, testAccountState } from "@/lib/admin-store";
 import { ADMIN_PATH, when } from "@/lib/admin-view";
-import { STAGE_ACTION, at, buildFamilies, paymentText, since } from "@/lib/admin-dashboard";
+import { STAGE_ACTION, at, buildFamilies, nextReminderText, paymentText, since } from "@/lib/admin-dashboard";
 import { AdminFrame } from "@/components/admin";
 import { StageChip } from "@/components/admin-dashboard-parts";
 import { FamilyRecords, RecordFacts } from "@/components/admin-records";
@@ -27,6 +27,7 @@ export default async function ParentPage({ params }: PageProps<"/admin/parents/[
       ["Payment", f ? paymentText(f) : "-"],
       ["Last email", f?.lastEmail ? `${f.lastEmail.subject} (${f.lastEmail.status}, ${at(f.lastEmail.at)})` : "None"],
       ["Reminders", f?.unsubscribed ? "Off: the parent unsubscribed" : "On"],
+      ["Next email", f?.nextReminders.length ? f.nextReminders.map((r) => nextReminderText(r, now)).join("; ") : "None planned"],
       ["Source", Object.entries(p.source).map(([k, v]) => `${k}: ${v}`).join(", ") || "-"], ["Parent id", p.id],
     ]} />
     <p className="adm-row"><Link href={`${ADMIN_PATH}?family=${p.id}${test.marked || test.admin ? "&tests=1" : ""}`}>Open in the dashboard</Link><Link href={`${ADMIN_PATH}/activity?family=${p.id}${test.marked || test.admin ? "&tests=1" : ""}`}>Open in the activity log</Link></p>
