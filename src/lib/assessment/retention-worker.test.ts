@@ -121,18 +121,26 @@ describe("retention run", () => {
     cus_recent: { savedCard: true, subscriptions: [{ status: "canceled", endedAt: "2026-09-01T00:00:00Z" }] },
     cus_left_page: { savedCard: false, subscriptions: [] },
   };
-  /** One test as the database lists it for the copy (#201): 2 questions shown, one answered, a 3-fact section. */
-  const test = (id: string, copied = false) => ({
+  /**
+   * One test as the database lists it for the copy (#201): 2 questions shown, one answered, a 3-fact section. With
+   * `round`, the child also took the extra round (#190) and answered its first question.
+   */
+  const test = (id: string, copied = false, round = false) => ({
     id, copied, testFamily: false, grade: 4, province: "BC", status: "in_progress", route: null, help: null,
-    startedAt: "2025-09-02T18:30:00Z", completedAt: null, stored: {}, placement: null, device: null,
-    answers: [{ position: 0, questionId: "s1-0", templateId: "t", values: {}, response: "12", correct: true, misconception: null, timeMs: 9000 }],
+    startedAt: "2025-09-02T18:30:00Z", completedAt: null, placement: null, device: null,
+    stored: round ? { extra: [{ id: "x-0", templateId: "t" }] } : {},
+    extraOfferedAt: round ? "2025-09-02T18:50:00Z" : null, extraSkippedAt: null, extraStartedAt: round ? "2025-09-02T18:50:05Z" : null, extraFinishedAt: null,
+    answers: [
+      { position: 0, questionId: "s1-0", round: "main", templateId: "t", values: {}, response: "12", correct: true, misconception: null, timeMs: 9000 },
+      ...(round ? [{ position: 2, questionId: "x-0", round: "extra", templateId: "t", values: {}, response: "3", correct: false, misconception: null, timeMs: 7000 }] : []),
+    ],
     shows: [{ position: 0, questionId: "s1-0", shownAt: "2025-09-02T18:30:01Z" }, { position: 1, questionId: "s1-1", shownAt: "2025-09-02T18:30:10Z" }],
     facts: { startedAt: "2025-09-02T18:40:00Z", stored: { facts: [] }, answers: [0, 1, 2].map((position) => ({ position, factId: `f${position}`, response: "7", correct: true, atMs: 1000 * (position + 1) })) },
     profile: null, learning: { styles: ["stories"], interests: [], feeling: null, goal: null, weeklyTime: null, note: "Maya, V4N 5B2" },
   });
   const tests: Record<string, unknown[]> = {
     "a-request": [test("a-request-1"), test("a-request-2", true)],
-    "b-free-test": [test("b-free-test-1")],
+    "b-free-test": [test("b-free-test-1", false, true)],
     "c-former": [],
   };
   function store() {
@@ -151,7 +159,7 @@ describe("retention run", () => {
   }
   const decisions = { queued: 1, delete_free_test: 1, delete_former_customer: 1, keep_customer: 2, keep_former_customer: 1, keep_free_test: 0, keep_no_test: 1, unknown: 1 };
 
-  const copy = { families: 3, tests: 2, copied: 1, questions: 4, facts: 6, profiles: 0, questionnaires: 2, failed: 0, fields: copyFieldNames() };
+  const copy = { families: 3, tests: 2, copied: 1, questions: 5, extraRounds: 1, facts: 6, profiles: 0, questionnaires: 2, failed: 0, fields: copyFieldNames() };
 
   it("dry mode shows the decision for every family, reads Stripe only, and claims nothing", async () => {
     const s = store();
@@ -173,7 +181,7 @@ describe("retention run", () => {
     // Only the families a delete run would claim are read, and the log holds no id or value of theirs.
     expect(s.calls.filter((c) => c.startsWith("copy:"))).toEqual(["copy:a-request", "copy:b-free-test", "copy:c-former"]);
     const log = JSON.stringify(result);
-    for (const value of ["a-request", "b-free-test", "c-former", "Maya", "V4N", "2025-09", "s1-0", "stories"]) expect(log).not.toContain(value);
+    for (const value of ["a-request", "b-free-test", "c-former", "Maya", "V4N", "2025-09", "s1-0", "x-0", "stories"]) expect(log).not.toContain(value);
     // A copy it could not build makes the run not ok: the deletion would stop there. Only families it would delete,
     // so the copy is the only reason.
     s.store.candidates = async () => families.filter((f) => ["a-request", "b-free-test"].includes(f.id));
@@ -182,7 +190,7 @@ describe("retention run", () => {
     try {
       expect(await runRetentionWorker(workerConfiguration([], env), s.store, () => 840_000, NOW))
         .toMatchObject({ ok: false, dry: true, unknown: 0, copy: { families: 1, tests: 1, failed: 1 } });
-    } finally { tests["b-free-test"] = [test("b-free-test-1")]; }
+    } finally { tests["b-free-test"] = [test("b-free-test-1", false, true)]; }
     expect(s.runs).toEqual([]);
   });
 

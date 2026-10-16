@@ -58,7 +58,7 @@ export async function runRetentionWorker(config: WorkerConfiguration, store: Ret
   const candidates = await store.candidates();
   const decisions = { queued: 0, delete_free_test: 0, delete_former_customer: 0, keep_customer: 0, keep_former_customer: 0, keep_free_test: 0, keep_no_test: 0, unknown: 0 };
   const counts = { eligible: 0, deleted: 0, busy: 0, excluded: 0, failed: 0, images: 0, copies: 0 };
-  const copy = { families: 0, tests: 0, copied: 0, questions: 0, facts: 0, profiles: 0, questionnaires: 0, failed: 0 };
+  const copy = { families: 0, tests: 0, copied: 0, questions: 0, extraRounds: 0, facts: 0, profiles: 0, questionnaires: 0, failed: 0 };
   const dry = config.mode === "dry";
   const cursor = dry ? null : await store.cursor();
   const rotated = cursor === null ? candidates : [...candidates.filter((f) => f.id > cursor), ...candidates.filter((f) => f.id <= cursor)];
@@ -92,7 +92,7 @@ export async function runRetentionWorker(config: WorkerConfiguration, store: Ret
       try {
         const preview = copyPreview(await store.copySources(family.id));
         copy.families++;
-        for (const k of ["tests", "copied", "questions", "facts", "profiles", "questionnaires"] as const) copy[k] += preview[k];
+        for (const k of ["tests", "copied", "questions", "extraRounds", "facts", "profiles", "questionnaires"] as const) copy[k] += preview[k];
       } catch { copy.failed++; }
     } else {
       const limit = Math.min(budget, remainingMs());

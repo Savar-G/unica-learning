@@ -25,7 +25,7 @@ export function anonymousCopiesJson(rows: readonly AnonymousTestRow[], options: 
   return JSON.stringify(kept(rows, options).map((r) => ({ id: r.id, ...r.copy })));
 }
 
-/** The test's columns of the CSV: its scalar fields. The placement, facts, profile and questionnaire are in the JSON. */
+/** The test's columns of the CSV: its scalar fields. The placement, extra round, facts, profile and questionnaire are in the JSON. */
 const TEST_COLUMNS = ["copyVersion", "grade", "province", "testMonth", "testFamily", "status", "route", "help", "durationMs"] as const;
 
 const snake = (name: string) => name.replace(/[A-Z]/g, (c) => `_${c.toLowerCase()}`);

@@ -33,15 +33,15 @@ describe("the export of the copies without names", () => {
     const [header, ...lines] = anonymousCopiesCsv(rows, { includeTestFamilies: false }).trimEnd().split("\r\n");
     const columns = header.split(",");
     expect(columns.slice(0, 2)).toEqual(["copy_id", "copy_version"]);
-    expect(columns).toEqual(expect.arrayContaining(["grade", "province", "test_month", "test_family", "status", "route", "duration_ms", "template_id", "response", "correct", "misconception", "time_ms", "shown_at_ms"]));
+    expect(columns).toEqual(expect.arrayContaining(["grade", "province", "test_month", "test_family", "status", "route", "duration_ms", "round", "template_id", "response", "correct", "misconception", "time_ms", "shown_at_ms"]));
     expect(columns).toHaveLength(10 + COPY_FIELDS.question.length);
     expect(lines).toHaveLength(2);
-    expect(lines[0]).toContain("copy-a,1,4,BC,2026-05,false,completed,stay,no,1200000,0,s1-0,t-choice,");
+    expect(lines[0]).toContain("copy-a,1,4,BC,2026-05,false,completed,stay,no,1200000,0,s1-0,main,t-choice,");
     expect(lines[0]).toContain('"Which is ""biggest"", 7, 70 or 700?"');
     expect(lines[0]).toContain('"[""7"",""70"",""700""]"');
     expect(lines[0]).toContain(",70,false,place-value,8000,");
     // The question shown with no answer has empty cells for what the child did.
-    expect(lines[1]).toContain(",1,s1-1,");
+    expect(lines[1]).toContain(",1,s1-1,main,");
   });
 });
 

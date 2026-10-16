@@ -43,19 +43,19 @@ Limits:
 
 ## The copy without names (#201)
 
-Spec #181 and D-119 (updates D-085 and D-109). Apply `supabase/migrations/20261016_add_anonymous_copies.sql` before this code ships. It adds two tables (`anonymous_tests`, `anonymous_test_links`) and three service-only functions, and changes no existing table, function or trigger. The worker on main writes no copies and keeps working against it. Until the new worker is deployed, its deletions write no copy, as today.
+Spec #181 and D-119 (updates D-085 and D-109). Apply `supabase/migrations/20261016_test_copies_without_names.sql` before this code ships. It adds two tables (`anonymous_tests`, `anonymous_test_links`) and three service-only functions, and changes no existing table, function or trigger. The worker on main writes no copies and keeps working against it. Until the new worker is deployed, its deletions write no copy, as today.
 
 Every deletion runs `deleteFamily` after the payment check has moved the request to the `deleting` phase, which no payment answer can reopen. This covers a parent's request, free-test and former-customer retention, and the manual route. The steps:
 
 1. `family_copy_sources` reads every test of the frozen family. It selects no name, email, postal code, drawing or stroke path, typed working, note or AI text.
-2. The assessment core builds each copy with its allowlist (`anonymousTestCopy`, `COPY_FIELDS`).
-3. `save_family_test_copy` saves one copy and its link to the test in one transaction. It requires the current, unexpired deleting lease, a test of this family, the allowlisted top-level fields, and the database's own grade, province, month and test-family mark. A test that already has its copy returns false and writes nothing.
+2. The assessment core builds each copy with its allowlist (`anonymousTestCopy`, `COPY_FIELDS`). The extra round (#190, D-116) is in it: each round question shown is marked `round: "extra"` and copied like a main question, and `extraRound` holds the round's state (taken during the test or from the report, offered, skipped, started, stopped part way, finished, as milliseconds since the test started; how many questions it drew; whether the result counts them).
+3. `save_family_test_copy` saves one copy and its link to the test in one transaction. It requires the current, unexpired deleting lease, a test of this family, the allowlisted fields (at the top, in the round's record and in each question), and the database's own grade, province, month and test-family mark. A test that already has its copy returns false and writes nothing.
 4. `confirm_family_copies` must return true: every test of the family has its copy.
 5. Only after step 4 does the worker remove drawings, then delete Auth.
 
 Any failed, lost or missing step throws. The request and its fence stay for a later run (fail closed). A missing function (migration not applied, `PGRST202`) also stops the deletion. The fence keeps new tests out after the request. The link goes with the family through the Auth cascade, so a retry writes no second copy, and nothing links a copy to a family after the deletion. The copy has no timestamp. Its times are milliseconds since the test started, and its only date is the month.
 
-Dry mode reads `family_copy_sources` for each family it would claim and prints `copy`: `families`, `tests` (copies to write), `copied` (already written), `questions`, `facts`, `profiles`, `questionnaires`, `failed` and `fields` (the field names). It never prints ids or values. `failed` above 0 makes `ok` false. Delete mode prints `copies`, the copies written in that run.
+Dry mode reads `family_copy_sources` for each family it would claim and prints `copy`: `families`, `tests` (copies to write), `copied` (already written), `questions`, `extraRounds` (rounds taken), `facts`, `profiles`, `questionnaires`, `failed` and `fields` (the field names). It never prints ids or values. `failed` above 0 makes `ok` false. Delete mode prints `copies`, the copies written in that run.
 
 Admins export the copies at `/api/admin/anonymous-copies?format=csv` (one row per question shown) or `?format=json` (every copy, whole). Test families are left out unless `&test=1`.
 

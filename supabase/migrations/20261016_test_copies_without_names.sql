@@ -1,4 +1,7 @@
--- The copy without names (#201, spec #181, D-119). Apply before the code that needs it ships.
+-- The copy without names (#201, spec #181, D-119). Apply before the code that needs it ships, and after every migration
+-- it reads: the learner profiles, the test context, the answer timeline and strokes, the break length, the learning
+-- questions, the extra round (add_extra_round, #190) and the deletion queue with its lease. Its name sorts after all of
+-- them, so a replay in filename order works; family_copy_sources is checked against those columns when it is created.
 -- Before a family is deleted (a parent's request, or the retention rules: free-test and former-customer families), each
 -- of its tests is copied with a random id that does not link to the family. The worker builds the copy with the
 -- assessment core's allowlist (src/lib/assessment/anonymous-copy.ts) and saves it here under its deleting lease,
@@ -13,7 +16,8 @@
 -- One row per copied test. No timestamp of any kind, on purpose: an exact time could be matched to records of the family
 -- (for example the Auth log of its deletion). test_month is the month the test started, in UTC. test_family: a family
 -- an admin marked as a test (D-099); exports leave these out unless asked. copy: the copy JSON (AnonymousTestCopy),
--- whose top-level fields save_family_test_copy checks against the allowlist.
+-- whose fields save_family_test_copy checks against the allowlist (at the top, in the extra round's record and in each
+-- question).
 -- Server writes (through save_family_test_copy); admins read; parents and visitors get nothing.
 create table public.anonymous_tests (
   id uuid primary key default gen_random_uuid(),
@@ -44,7 +48,8 @@ create policy "Admins read anonymous tests" on public.anonymous_tests
 -- Every test of a family, with what the copy reads and nothing more: no name, email, postal code, drawing or stroke
 -- path, typed working or free text (the learning note, the profile's AI parts), and no family, child or test id but the
 -- test's own (the worker needs it to save the copy once; the copy leaves it out). `copied`: the test already has its
--- copy. Read only, so the dry run uses it too. Service only.
+-- copy. The extra round (#190): its four times (the copy keeps them as times since the start, never a date and time),
+-- its questions in `stored` (test->'extra') and each answer's round. Read only, so the dry run uses it too. Service only.
 create function public.family_copy_sources(p uuid) returns jsonb
 language sql stable security definer set search_path = '' set timezone = 'UTC' as $$
   select coalesce(jsonb_agg(jsonb_build_object(
@@ -55,9 +60,11 @@ language sql stable security definer set search_path = '' set timezone = 'UTC' a
     'startedAt', a.started_at, 'completedAt', a.completed_at,
     'breakStartedAt', a.break_started_at, 'breakEndedAt', a.break_ended_at, 'breakSkipped', a.break_skipped,
     'breakMs', a.break_ms, 'device', a.device,
+    'extraOfferedAt', a.extra_offered_at, 'extraSkippedAt', a.extra_skipped_at, 'extraStartedAt', a.extra_started_at,
+    'extraFinishedAt', a.extra_finished_at,
     'stored', a.test, 'placement', a.placement,
     'answers', (select coalesce(jsonb_agg(jsonb_build_object(
-        'position', x.position, 'questionId', x.question_id, 'templateId', x.template_id, 'values', x."values",
+        'position', x.position, 'questionId', x.question_id, 'round', x.round, 'templateId', x.template_id, 'values', x."values",
         'response', x.response, 'correct', x.correct, 'misconception', x.misconception, 'timeMs', x.time_ms,
         'workRequired', x.work_required, 'drawing', x.work_path is not null, 'typed', x.work_text is not null,
         'strokes', x.strokes_path is not null, 'shownAt', x.shown_at, 'answeredAt', coalesce(x.answered_at, x.created_at),
@@ -85,8 +92,9 @@ $$;
 
 -- Saves one test's copy and its link, under the family's deleting lease (the phase after the payment check, which no
 -- payment answer can reopen). False when the test already has its copy. The columns come from the database's own
--- values, and the copy must agree with them. The copy's top-level fields must be the core's allowlist (COPY_FIELDS.test
--- in src/lib/assessment/anonymous-copy.ts; a test keeps the two lists equal).
+-- values, and the copy must agree with them. The copy's fields must be the core's allowlist: at the top, in the extra
+-- round's record and in each question (COPY_FIELDS.test, .extraRound and .question in src/lib/assessment/anonymous-copy.ts;
+-- a test keeps the lists equal).
 create function public.save_family_test_copy(p uuid, token uuid, test_id uuid, test_copy jsonb) returns boolean
 language plpgsql security definer set search_path = '' set timezone = 'UTC' as $$
 declare q public.family_deletions; a public.assessments; marked boolean; extra text; made uuid;
@@ -98,8 +106,21 @@ begin
   select * into a from public.assessments where id = test_id and parent_id = p;
   if not found then raise exception 'copy_scope' using errcode = '55000'; end if;
   if exists(select 1 from public.anonymous_test_links where assessment_id = test_id) then return false; end if;
-  if jsonb_typeof(test_copy) is distinct from 'object' then raise exception 'copy_fields' using errcode = '22023'; end if;
-  select k into extra from jsonb_object_keys(test_copy) k where k <> all(array['copyVersion', 'grade', 'province', 'testMonth', 'testFamily', 'status', 'route', 'help', 'durationMs', 'break', 'device', 'placement', 'questions', 'facts', 'profile', 'questionnaire']) limit 1;
+  if jsonb_typeof(test_copy) is distinct from 'object' or jsonb_typeof(test_copy->'questions') is distinct from 'array'
+    or jsonb_typeof(test_copy->'extraRound') not in ('object', 'null') then
+    raise exception 'copy_fields' using errcode = '22023';
+  end if;
+  if exists(select 1 from jsonb_array_elements(test_copy->'questions') shown(v) where jsonb_typeof(shown.v) <> 'object') then
+    raise exception 'copy_fields' using errcode = '22023';
+  end if;
+  select k into extra from (
+    select k from jsonb_object_keys(test_copy) k where k <> all(array['copyVersion', 'grade', 'province', 'testMonth', 'testFamily', 'status', 'route', 'help', 'durationMs', 'break', 'device', 'placement', 'questions', 'extraRound', 'facts', 'profile', 'questionnaire'])
+    union all
+    select k from jsonb_object_keys(case when jsonb_typeof(test_copy->'extraRound') = 'object' then test_copy->'extraRound' else '{}'::jsonb end) k
+      where k <> all(array['takenFrom', 'offeredAtMs', 'skippedAtMs', 'startedAtMs', 'stoppedAtMs', 'finishedAtMs', 'questions', 'counted'])
+    union all
+    select k from jsonb_array_elements(test_copy->'questions') shown(v), jsonb_object_keys(shown.v) k where k <> all(array['position', 'questionId', 'round', 'templateId', 'standard', 'wording', 'level', 'strand', 'format', 'prompt', 'choices', 'figure', 'values', 'answer', 'showWork', 'shownAtMs', 'answeredAtMs', 'response', 'correct', 'misconception', 'timeMs', 'changes', 'readAloud', 'away', 'work'])
+  ) listed limit 1;
   if extra is not null then raise exception 'copy_fields' using errcode = '22023'; end if;
   marked := exists(select 1 from public.test_accounts where parent_id = p);
   if test_copy->'grade' is distinct from to_jsonb(a.grade) or test_copy->'province' is distinct from to_jsonb(a.province)

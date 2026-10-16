@@ -1,11 +1,12 @@
 // The copy without names (#201, spec #181, D-119): before a family is deleted, each of its tests is copied with a random
 // id that does not link to the family. The copy is an allowlist, built field by field here, so a column added to a
 // table later never reaches it on its own. It keeps the grade, province, test month, route, every question as shown,
-// each response with its mark and misconception, all timing and signals, the fact answers, the placement, the profile
-// facts and the questionnaire choices. It leaves out names, emails, postal codes, every family, child or test id,
-// drawings, strokes, typed working and all free text. Every time is milliseconds since the test started: an exact date
-// and time could be matched to other records of the family. Pure: the source is what the database function
-// family_copy_sources returns for one test (supabase/migrations/20261016_add_anonymous_copies.sql).
+// each response with its mark and misconception, all timing and signals, the extra round (#190: its questions marked as
+// round questions, and its state), the fact answers, the placement, the profile facts and the questionnaire choices. It
+// leaves out names, emails, postal codes, every family, child or test id, drawings, strokes, typed working and all free
+// text. Every time is milliseconds since the test started: an exact date and time could be matched to other records of
+// the family. Pure: the source is what the database function family_copy_sources returns for one test
+// (supabase/migrations/20261016_test_copies_without_names.sql).
 import { BANKS } from "./bank";
 import { INTERESTS, LEARNING_GOALS, LEARNING_STYLES, MATH_FEELINGS, WEEKLY_TIMES } from "@/lib/learning-style";
 import type { Placement, Province, Route } from "./types";
@@ -14,26 +15,28 @@ import type { Placement, Province, Route } from "./types";
 export const COPY_VERSION = 1;
 
 /**
- * The copy's fields, in order: the test, each question and each fact answer. The database refuses a copy with another
- * top-level field (save_family_test_copy), so a change here needs a migration too.
+ * The copy's fields, in order: the test, each question, the extra round's record and each fact answer. The database
+ * refuses a copy with another field at the top, in the round's record or in a question (save_family_test_copy), so a
+ * change here needs a migration too.
  */
 export const COPY_FIELDS = {
   test: [
     "copyVersion", "grade", "province", "testMonth", "testFamily", "status", "route", "help", "durationMs", "break",
-    "device", "placement", "questions", "facts", "profile", "questionnaire",
+    "device", "placement", "questions", "extraRound", "facts", "profile", "questionnaire",
   ],
   question: [
-    "position", "questionId", "templateId", "standard", "wording", "level", "strand", "format", "prompt", "choices",
-    "figure", "values", "answer", "showWork", "shownAtMs", "answeredAtMs", "response", "correct", "misconception",
-    "timeMs", "changes", "readAloud", "away", "work",
+    "position", "questionId", "round", "templateId", "standard", "wording", "level", "strand", "format", "prompt",
+    "choices", "figure", "values", "answer", "showWork", "shownAtMs", "answeredAtMs", "response", "correct",
+    "misconception", "timeMs", "changes", "readAloud", "away", "work",
   ],
+  extraRound: ["takenFrom", "offeredAtMs", "skippedAtMs", "startedAtMs", "stoppedAtMs", "finishedAtMs", "questions", "counted"],
   fact: ["position", "factId", "family", "a", "op", "b", "answer", "response", "correct", "atMs", "serverMs", "browserMs"],
 } as const;
 
 /** The placement's fields the copy keeps: all of today's, by name. A field added later is left out until listed here. */
 const PLACEMENT_FIELDS = [
   "grade", "province", "scoredAgainst", "workingLevel", "confidence", "levelCertainty", "atCeiling", "route", "stage1",
-  "levels", "strands", "facts", "flags", "pace",
+  "levels", "strands", "facts", "flags", "pace", "extraRound",
 ] as const;
 
 /** The profile's facts (#196): every field but `ai`. The copy keeps a profile only at the schema version it knows. */
@@ -49,6 +52,8 @@ const DEVICE_FIELDS = ["deviceClass", "input", "screenWidth", "screenHeight", "b
 export interface QuestionCopy {
   position: number;
   questionId: string;
+  /** #190: "extra" for a question of the optional extra round, asked after the main test; else "main". */
+  round: "main" | "extra";
   templateId: string;
   /** The template's BC standard and wording, from the bank when the copy was made. Null for a template no longer in it. */
   standard: string | null;
@@ -94,6 +99,25 @@ export interface FactCopy {
   browserMs: number | null;
 }
 
+/**
+ * #190, D-116: what happened to the optional extra round, as times since the test started (never a date and time). A
+ * stop part way during the test is stored as a skip after the start; here it is `stoppedAtMs`, and `skippedAtMs` is
+ * only a skip before the round started.
+ */
+export interface ExtraRoundCopy {
+  /** Where the child took the round: during the test, or later from the report. Null when the round was not taken. */
+  takenFrom: "test" | "report" | null;
+  offeredAtMs: number | null;
+  skippedAtMs: number | null;
+  startedAtMs: number | null;
+  stoppedAtMs: number | null;
+  finishedAtMs: number | null;
+  /** How many questions the round drew; 0 when it was not taken. The questions shown are in `questions`. */
+  questions: number;
+  /** True when the placement counts the round's answers: it was finished. A stopped round's answers do not count. */
+  counted: boolean;
+}
+
 /** One test, without names. Stored in public.anonymous_tests.copy. */
 export interface AnonymousTestCopy {
   copyVersion: typeof COPY_VERSION;
@@ -111,15 +135,18 @@ export interface AnonymousTestCopy {
   device: Partial<Record<(typeof DEVICE_FIELDS)[number], string | number | null>> | null;
   placement: Partial<Placement> | null;
   questions: QuestionCopy[];
+  /** #190: the extra round's state; null when it was never offered (also on tests from before the round). */
+  extraRound: ExtraRoundCopy | null;
   facts: { startedAtMs: number | null; answers: FactCopy[] } | null;
   profile: Record<string, unknown> | null;
   questionnaire: { styles: string[]; interests: string[]; feeling: string | null; goal: string | null; weeklyTime: string | null } | null;
 }
 
-/** The field names the copy holds, for the dry run: the test's, then each question's and each fact answer's. */
+/** The field names the copy holds, for the dry run: the test's, then each question's, the round's and each fact answer's. */
 export const copyFieldNames = (): string[] => [
   ...COPY_FIELDS.test,
   ...COPY_FIELDS.question.map((k) => `questions.${k}`),
+  ...COPY_FIELDS.extraRound.map((k) => `extraRound.${k}`),
   ...COPY_FIELDS.fact.map((k) => `facts.answers.${k}`),
 ];
 
@@ -138,6 +165,7 @@ const PROVINCES: readonly Province[] = ["BC", "AB", "SK", "MB", "ON", "other"];
 const STATUSES = ["in_progress", "completed", "expired"] as const;
 const ROUTES: readonly Route[] = ["up", "stay", "down"];
 const HELP = ["yes", "a-little", "no"] as const;
+const ROUNDS = ["main", "extra"] as const;
 
 /** Every bank template, by id: the copy records its standard and wording as they were. */
 const TEMPLATES = new Map(Object.values(BANKS).flat().map((t) => [t.id, t]));
@@ -192,7 +220,9 @@ function figureOf(v: unknown): QuestionCopy["figure"] {
 const valuesOf = (v: unknown): Record<string, number> =>
   Object.fromEntries(Object.entries(record(v) ?? {}).filter(([, n]) => num(n) !== null)) as Record<string, number>;
 
-function questionCopy(position: number, questionId: string, answer: Raw | null, shownAt: unknown, q: Raw | null, start: number): QuestionCopy {
+function questionCopy(
+  position: number, questionId: string, answer: Raw | null, shownAt: unknown, q: Raw | null, extra: ReadonlySet<string>, start: number,
+): QuestionCopy {
   const templateId = str(answer?.templateId) ?? str(q?.templateId) ?? "";
   const template = TEMPLATES.get(templateId);
   const format = oneOf(q?.format, ["choice", "number"] as const);
@@ -208,6 +238,8 @@ function questionCopy(position: number, questionId: string, answer: Raw | null, 
   return {
     position,
     questionId,
+    // The stored round says which questions are round questions; the answer's round only for one it does not list.
+    round: extra.has(questionId) ? "extra" : oneOf(answer?.round, ROUNDS) ?? "main",
     templateId,
     standard: template?.standard ?? null,
     wording: template?.wording ?? null,
@@ -233,10 +265,14 @@ function questionCopy(position: number, questionId: string, answer: Raw | null, 
   };
 }
 
+/** The ids of the extra round's questions (#190): the stored test keeps the round the child took in `extra`. */
+const roundIds = (stored: unknown): Set<string> =>
+  new Set(list(record(stored)?.extra).flatMap((q) => str(record(q)?.id) ?? []));
+
 /** Every question the server served, by place in the test: the answered ones, and those shown with no answer. */
 function questionsOf(s: Raw, start: number): QuestionCopy[] {
   if (!Array.isArray(s.answers) || !Array.isArray(s.shows)) unreadable();
-  const stored = storedQuestions(s.stored);
+  const stored = storedQuestions(s.stored), extra = roundIds(s.stored);
   const places = new Map<number, { questionId: string; answer: Raw | null; shownAt: unknown }>();
   for (const raw of s.shows as unknown[]) {
     const show = record(raw), position = num(show?.position), questionId = str(show?.questionId);
@@ -249,7 +285,30 @@ function questionsOf(s: Raw, start: number): QuestionCopy[] {
     places.set(position!, { questionId: questionId!, answer, shownAt: places.get(position!)?.shownAt ?? null });
   }
   return [...places.entries()].sort(([a], [b]) => a - b)
-    .map(([position, p]) => questionCopy(position, p.questionId, p.answer, p.shownAt, stored.get(p.questionId) ?? null, start));
+    .map(([position, p]) => questionCopy(position, p.questionId, p.answer, p.shownAt, stored.get(p.questionId) ?? null, extra, start));
+}
+
+/**
+ * #190, D-116: the extra round's state from its four stored times. A skip after the start is a stop part way during
+ * the test; a round that started after the test was completed was taken from the report. Null when nothing is recorded.
+ */
+function extraRoundOf(s: Raw, start: number, placement: Raw | null): ExtraRoundCopy | null {
+  const at = (v: unknown) => (typeof v === "string" ? Date.parse(v) : NaN);
+  const started = at(s.extraStartedAt), skipped = at(s.extraSkippedAt), completed = at(s.completedAt);
+  const offeredAtMs = since(start, s.extraOfferedAt), startedAtMs = since(start, s.extraStartedAt);
+  const skipMs = since(start, s.extraSkippedAt), finishedAtMs = since(start, s.extraFinishedAt);
+  if (offeredAtMs === null && startedAtMs === null && skipMs === null && finishedAtMs === null) return null;
+  const stopped = startedAtMs !== null && skipMs !== null && skipped >= started;
+  return {
+    takenFrom: startedAtMs === null ? null : Number.isFinite(completed) && started > completed ? "report" : "test",
+    offeredAtMs,
+    skippedAtMs: stopped ? null : skipMs,
+    startedAtMs,
+    stoppedAtMs: stopped ? skipMs : null,
+    finishedAtMs,
+    questions: startedAtMs === null ? 0 : roundIds(s.stored).size,
+    counted: record(placement?.extraRound) !== null,
+  };
 }
 
 function factsOf(v: unknown, start: number): AnonymousTestCopy["facts"] {
@@ -321,6 +380,7 @@ export function anonymousTestCopy(source: unknown): AnonymousTestCopy {
     || !Number.isFinite(start)) unreadable();
   const breakStarted = since(start, s.breakStartedAt), breakEnded = since(start, s.breakEndedAt);
   const questions = questionsOf(s, start);
+  const placement = picked(s.placement, PLACEMENT_FIELDS);
   return {
     copyVersion: COPY_VERSION,
     grade: grade!,
@@ -333,8 +393,9 @@ export function anonymousTestCopy(source: unknown): AnonymousTestCopy {
     durationMs: since(start, s.completedAt),
     break: breakStarted === null ? null : { startedAtMs: breakStarted, endedAtMs: breakEnded, skipped: bool(s.breakSkipped), ms: num(s.breakMs) },
     device: deviceOf(s.device),
-    placement: picked(s.placement, PLACEMENT_FIELDS) as Partial<Placement> | null,
+    placement: placement as Partial<Placement> | null,
     questions,
+    extraRound: extraRoundOf(s, start, placement),
     facts: factsOf(s.facts, start),
     profile: profileOf(s.profile, questions),
     questionnaire: questionnaireOf(s.learning),
@@ -343,12 +404,13 @@ export function anonymousTestCopy(source: unknown): AnonymousTestCopy {
 
 /** What a deletion would copy, in counts only: the dry run prints these, never a value. Throws as the copy does. */
 export function copyPreview(sources: readonly unknown[]) {
-  const preview = { tests: 0, copied: 0, questions: 0, facts: 0, profiles: 0, questionnaires: 0 };
+  const preview = { tests: 0, copied: 0, questions: 0, extraRounds: 0, facts: 0, profiles: 0, questionnaires: 0 };
   for (const source of sources) {
     const copy = anonymousTestCopy(source);
     if (record(source)?.copied === true) { preview.copied++; continue; }
     preview.tests++;
     preview.questions += copy.questions.length;
+    if (copy.extraRound?.takenFrom) preview.extraRounds++;
     preview.facts += copy.facts?.answers.length ?? 0;
     if (copy.profile) preview.profiles++;
     if (copy.questionnaire) preview.questionnaires++;
