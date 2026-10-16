@@ -5,6 +5,7 @@ import {
   ROUTE_DOWN_BELOW_PERCENT,
   ROUTE_UP_PERCENT,
   STRAND_DEVELOPING_PERCENT,
+  STRAND_MINIMUM_QUESTIONS,
   STRAND_SECURE_PERCENT,
   WORKING_LEVEL_PERCENT,
   atLeast,
@@ -96,7 +97,11 @@ function buildStage(
   seed: number,
   label: string,
   seen: Set<string>,
+  previous: readonly Question[] = [],
 ): Question[] {
+  if (scoredAgainst(profile.province) === "BC") {
+    return buildBcStage(bank, profile, strands, level, count, seed, label, seen, previous);
+  }
   const rng = rngFor(seed, `stage:${label}`);
   const pools = strands
     .map((strand) => ({
@@ -124,6 +129,77 @@ function buildStage(
     questions.push(q);
   }
   return questions;
+}
+
+// A route keeps one template history and one standard tally across both stages. Exhausted
+// standards leave the rotation; another available standard must take its turn before a repeat.
+function buildBcStage(
+  bank: readonly Template[], profile: ChildProfile, strands: readonly ReportedStrand[],
+  level: Level, count: number, seed: number, label: string, seen: Set<string>, previous: readonly Question[],
+): Question[] {
+  const rng = rngFor(seed, `stage:${label}`);
+  const used = new Set(previous.map((q) => q.templateId));
+  const byId = new Map(bank.map((t) => [t.id, t]));
+  const standardUses = new Map<string, number>();
+  const key = (t: Template) => `${REPORTED_STRAND[t.strand]}:${t.standard}`;
+  for (const q of previous) {
+    const t = byId.get(q.templateId);
+    if (t) standardUses.set(key(t), (standardUses.get(key(t)) ?? 0) + 1);
+  }
+  const pools = strands.map((strand) => ({
+    strand,
+    templates: rng.shuffle(bank.filter((t) => REPORTED_STRAND[t.strand] === strand && levelFor(t, profile.province) === level)),
+  })).filter((p) => p.templates.length > 0);
+  if (!pools.length) throw new Error(`The question bank has no level ${level} questions for grade ${profile.grade} (${strands.join(", ")})`);
+  const questions: Question[] = [];
+  for (let i = 0; i < count; i++) {
+    const pool = pools[i % pools.length];
+    const available = pool.templates.filter((t) => !used.has(t.id));
+    const least = Math.min(...available.map((t) => standardUses.get(key(t)) ?? 0));
+    const template = available.find((t) => (standardUses.get(key(t)) ?? 0) === least);
+    if (!template) throw new Error(`The BC question bank has too few unused templates at level ${level} for ${pool.strand}`);
+    used.add(template.id);
+    standardUses.set(key(template), least + 1);
+    const id = `${label}-${i}`;
+    let q = fillTemplate(template, seed, profile.province, id);
+    for (let retry = 1; seen.has(sameQuestion(q)) && retry < 20; retry++) {
+      q = { ...fillTemplate(template, seed, profile.province, `${id}.${retry}`), id };
+    }
+    seen.add(sameQuestion(q));
+    questions.push(q);
+  }
+  return questions;
+}
+
+// BC strand evidence is at or below school grade. Up adds those questions; down replaces a routed
+// slot when that level has no strand pool (for example, fractions start at grade 3).
+function withStrandMinimum(
+  bank: readonly Template[], profile: ChildProfile, strands: readonly ReportedStrand[],
+  stage1: readonly Question[], form: Question[], route: Route, seed: number,
+): Question[] {
+  const questions = [...stage1, ...form];
+  const counts = new Map(strands.map((strand) => [strand, questions.filter((q) => q.level <= profile.grade && REPORTED_STRAND[q.strand] === strand).length]));
+  const seen = new Set(questions.map(sameQuestion));
+  const result = [...form];
+  for (const strand of strands) {
+    const missing = Math.max(0, STRAND_MINIMUM_QUESTIONS - counts.get(strand)!);
+    if (!missing) continue;
+    const levels = bank.filter((t) => REPORTED_STRAND[t.strand] === strand && levelFor(t, profile.province) <= profile.grade).map((t) => levelFor(t, profile.province));
+    const level = (route === "up" ? profile.grade : Math.min(...levels)) as Level;
+    const added = buildStage(bank, profile, [strand], level, missing, seed, `${route}-${strand}`, seen, [...stage1, ...result]);
+    for (const q of added) {
+      if (route === "up") result.push(q);
+      else {
+        const index = result.findLastIndex((old) => counts.get(REPORTED_STRAND[old.strand])! > STRAND_MINIMUM_QUESTIONS);
+        if (index < 0) throw new Error("The routed form has no slot for the strand minimum");
+        const replaced = REPORTED_STRAND[result[index].strand];
+        counts.set(replaced, counts.get(replaced)! - 1);
+        result[index] = q;
+      }
+      counts.set(strand, counts.get(strand)! + 1);
+    }
+  }
+  return result;
 }
 
 /** How many questions have a template that suits required shown work (Template.whiteboard). */
@@ -166,7 +242,12 @@ export function createSession(profile: ChildProfile, seed: number, options: Sess
   const stage1 = buildStage(bank, profile, band.strands, grade, band.stage1, seed, "s1", seen);
   const rest = band.length - band.stage1;
   // Each form only needs to differ from stage 1, not from the forms the child never sees.
-  const stage2Form = (route: Route, level: number) => buildStage(bank, profile, band.strands, level as Level, rest, seed, route, new Set(seen));
+  const stage2Form = (route: Route, level: number) => {
+    const form = buildStage(bank, profile, band.strands, level as Level, rest, seed, route, new Set(seen), stage1);
+    return scoredAgainst(profile.province) === "BC"
+      ? withStrandMinimum(bank, profile, band.strands, stage1, form, route, seed)
+      : form;
+  };
   const stage2 = { up: stage2Form("up", grade + 1), stay: stage2Form("stay", grade), down: stage2Form("down", grade - 1) };
 
   // #67: exactly band.whiteboardRequired show-your-work questions on every route.
@@ -259,7 +340,11 @@ export function restoreSession(stored: StoredTest, submissions: readonly Submiss
 
 /** What the browser gets next: the current question without its answer, or "complete". */
 export function testStep(session: Session): TestStep {
-  const { length: total, stage1: breakAfter } = bandFor(session.profile.grade);
+  const breakAfter = session.stage1.length;
+  // Before routing, use the longest stored form. Once routed, the exact stored form is authoritative.
+  const total = breakAfter + (session.route
+    ? session.stage2[session.route].length
+    : Math.max(...Object.values(session.stage2).map((form) => form.length)));
   const q = nextQuestion(session);
   return q
     ? { status: "question", question: toPublicQuestion(q), number: session.answers.length + 1, total, breakAfter }
