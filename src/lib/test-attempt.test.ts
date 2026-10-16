@@ -967,7 +967,7 @@ describe("when the facts store fails", () => {
  * when the script says so, with a drawing on each question that needs shown work. With `facts`, at the halfway break
  * the child does the first five facts of the timed section. Returns the time of the last answer.
  */
-async function takeWholeTest(memory: ReturnType<typeof family>, script: Script, { facts = false } = {}): Promise<number> {
+async function takeWholeTest(memory: ReturnType<typeof family>, script: Script, { facts = false, timeMs = () => 20_000 }: { facts?: boolean; timeMs?: (n: number) => number } = {}): Promise<number> {
   let at = T0;
   for (let n = 0; ; n++) {
     const row = memory.tests[0];
@@ -975,7 +975,7 @@ async function takeWholeTest(memory: ReturnType<typeof family>, script: Script, 
     if (!q) return at;
     if (facts && n === row.test.stage1.length) await quickFacts(memory, (at += 60_000));
     const wrong = q.format === "choice" ? q.choices!.find((c) => c !== q.answer)! : "no idea";
-    const input = { questionId: q.id, response: script(q, n) ? q.answer : wrong, timeMs: 20_000, work: { png: q.showWork ? DRAWING : null, text: "" } };
+    const input = { questionId: q.id, response: script(q, n) ? q.answer : wrong, timeMs: timeMs(n), work: { png: q.showWork ? DRAWING : null, text: "" } };
     const result = await answerQuestion(memory.store, P1, row.id, input, (at += 60_000));
     if (!result.ok) throw new Error(`answer ${n + 1}: ${result.error}`);
   }
@@ -1076,6 +1076,25 @@ describe("finishing a test", () => {
     expect(await finishTest(memory.store, P1, "a1", "no", T0 + HOUR)).toEqual({ ok: false, error: "not_found" });
     expect(await finishTest(memory.store, P1, "no-such-test", "no", T0 + HOUR)).toEqual({ ok: false, error: "not_found" });
     expect(memory.tests).toEqual(before);
+  });
+});
+
+// #189 (spec #181): more than 30% very fast answers, and the report offers a new test at once, without the 30-day wait.
+describe("a new test after a rushed one", () => {
+  it("opens at once after a test with 12 of 36 answers very fast, and the start screen offers it", async () => {
+    const memory = family(stored(open("a1", T0)));
+    const last = await takeWholeTest(memory, allRight, { timeMs: (n) => (n % 3 === 0 ? 1_000 : 20_000) });
+    expect(await finishTest(memory.store, P1, "a1", "no", last + 60_000)).toMatchObject({ ok: true });
+    expect(memory.tests[0].placement?.pace).toMatchObject({ veryFast: 12, answers: 36, unreliable: true });
+    expect(stateFor(await startStates(memory.store, P1, last + 2 * 60_000), C1)).toEqual({ kind: "start", retake: true });
+    expect(await start(memory.store, last + 3 * 60_000, { restart: false, newSeed: seeds(8) })).toEqual({ ok: true, id: "a2", resumed: false });
+  });
+
+  it("still waits 30 days after a test with 10 of 36 answers very fast", async () => {
+    const memory = family(stored(open("a1", T0)));
+    const last = await takeWholeTest(memory, allRight, { timeMs: (n) => (n % 3 === 0 && n < 30 ? 1_000 : 20_000) });
+    expect(await finishTest(memory.store, P1, "a1", "no", last + 60_000)).toMatchObject({ ok: true });
+    expect(await start(memory.store, last + 3 * 60_000, { restart: false, newSeed: seeds(8) })).toMatchObject({ ok: false, error: "retake_closed" });
   });
 });
 

@@ -100,7 +100,8 @@ export function memoryAttemptStore({ children: kids = [], tests: initial = [] }:
       await begin("attempts");
       return tests
         .filter((t) => t.parentId === parent && (childId === undefined || t.childId === childId))
-        .map((t) => ({ ...attemptOf(t), childId: t.childId, seed: t.seed }));
+        // #189: a completed test whose stored placement may not be reliable (the database reads placement->pace->unreliable).
+        .map((t) => ({ ...attemptOf(t), childId: t.childId, seed: t.seed, ...(t.status === "completed" && t.placement?.pace?.unreliable ? { unreliable: true } : {}) }));
     },
     async load(parent, id) {
       await begin("load");

@@ -85,7 +85,7 @@ export interface NewAnswer extends Answer {
 export interface AttemptStore extends FactsStore {
   /** One of the parent's children; null when the parent has no child with this id. */
   child(parent: string, childId: string): Promise<AttemptChild | null>;
-  /** The parent's tests: of one child, or of every child. */
+  /** The parent's tests: of one child, or of every child. A completed test whose result may not be reliable has `unreliable` (#189). */
   attempts(parent: string, childId?: string): Promise<StoredAttempt[]>;
   /** One of the parent's tests with its questions and answers; null when the parent has no test with this id. */
   load(parent: string, id: string): Promise<LoadedAttempt | null>;

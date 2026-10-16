@@ -128,3 +128,19 @@ describe("a stopped test", () => {
     expect(attemptState({ ...attempt, status: "completed", completedAt: T0 + HOUR }, T0 + 99 * HOUR)).toBe("completed");
   });
 });
+
+// #189 (spec #181): when more than 30% of the answers were very fast, the result may not be reliable, so the report
+// offers a new test at once, without the 30-day wait.
+describe("a new test after a result that may not be reliable", () => {
+  it("opens at once when the last completed test may not be reliable", () => {
+    const rushed = { ...completed("a1", T0), unreliable: true };
+    expect(startState([rushed], T0 + 2 * HOUR)).toEqual({ kind: "start", retake: true });
+    expect(decideStart([rushed], T0 + 2 * HOUR, { restart: false })).toEqual({ action: "create", expire: null });
+  });
+
+  it("waits 30 days after a reliable test, even when an earlier one was not", () => {
+    const rushed = { ...completed("a1", T0), unreliable: true };
+    const retake = completed("a2", T0 + DAY);
+    expect(startState([rushed, retake], T0 + 3 * DAY)).toMatchObject({ kind: "wait", completedAt: T0 + DAY + HOUR });
+  });
+});

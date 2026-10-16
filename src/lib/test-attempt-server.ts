@@ -35,11 +35,17 @@ export function attemptStore(admin: SupabaseClient): AttemptStore {
     },
 
     async attempts(parent, childId) {
-      let query = admin.from("assessments").select(`child_id, seed, ${ATTEMPT_COLUMNS}`).eq("parent_id", parent);
+      // #189: placement->pace->unreliable is true when the completed test's result may not be reliable (a new test opens at once).
+      let query = admin.from("assessments").select(`child_id, seed, ${ATTEMPT_COLUMNS}, unreliable:placement->pace->unreliable`).eq("parent_id", parent);
       if (childId !== undefined) query = query.eq("child_id", childId);
-      const { data, error } = await query.returns<(AttemptRow & { child_id: string; seed: number })[]>();
+      const { data, error } = await query.returns<(AttemptRow & { child_id: string; seed: number; unreliable: boolean | null })[]>();
       if (error) throw new StoreError("attempts load failed", error.message);
-      return (data ?? []).map((row) => ({ ...toAttempt(row), childId: row.child_id, seed: row.seed }));
+      return (data ?? []).map((row) => ({
+        ...toAttempt(row),
+        childId: row.child_id,
+        seed: row.seed,
+        ...(row.status === "completed" && row.unreliable === true ? { unreliable: true } : {}),
+      }));
     },
 
     async load(parent, id) {
