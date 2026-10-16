@@ -11,7 +11,7 @@ import type { DeliveryType } from "@/lib/resend-webhook";
 export interface RawParent { id: string; created_at: string; name: string; email: string; postal: string; source: Record<string, string> | null }
 export interface RawChild { id: string; created_at: string; parent_id: string; first_name: string; grade: number; province: Province }
 export interface RawTest { id: string; created_at: string; status: AssessmentStatus; parent_id: string; child_id: string; grade: number; province: Province; started_at: string; completed_at: string | null; last_answer_at: string | null; answered: number }
-export interface RawReport { id: string; created_at: string; assessment_id: string; parent_id: string; child_id: string; emailed_at: string | null; email_error: string | null; alerted_at: string | null; alert_error: string | null }
+export interface RawReport { id: string; created_at: string; assessment_id: string; parent_id: string; child_id: string; emailed_at: string | null; email_error: string | null; alerted_at: string | null; alert_error: string | null; email_clicks: number; email_first_clicked_at: string | null }
 export interface RawCard {
   id: string; created_at: string; updated_at: string; parent_id: string; child_id: string; plan: "one" | "both"; price: number;
   stripe_customer_id: string | null; card_saved_at: string | null;
@@ -19,7 +19,7 @@ export interface RawCard {
   saved_in_stripe_only?: boolean;
 }
 export interface RawWaitlist { id: string; created_at: string; parent_id: string; child_id: string; province: Province }
-export interface RawEmail { id: string; created_at: string; parent_id: string; child_id: string | null; assessment_id: string | null; kind: "continue" | "come_back" | "start" | "start_followup" | "unsubscribe"; status: "claimed" | "sent" | "failed" | null; attempts: number; sent_at: string | null; error: string | null }
+export interface RawEmail { id: string; created_at: string; parent_id: string; child_id: string | null; assessment_id: string | null; kind: "continue" | "come_back" | "start" | "start_followup" | "unsubscribe"; status: "claimed" | "sent" | "failed" | null; attempts: number; sent_at: string | null; error: string | null; clicks: number; first_clicked_at: string | null }
 /** A Stripe subscription of a saved card's customer. Times are ISO. `amount`: the price per unit, in cents. */
 export interface RawSubscription {
   id: string;
@@ -132,6 +132,10 @@ export function deliveryLine(e: EmailEvent): { text: string; bad: boolean } | nu
   const { type, detail } = e.delivery;
   return { text: `${DELIVERY_TEXT[type]}${detail ? `: ${detail}` : ""}`, bad: deliveryProblem(type) };
 }
+/** "Clicked 2 times" for an email the parent clicked (D-105), else null. */
+export const clicksText = (e: EmailEvent) => (e.clicks ? `Clicked ${e.clicks.count === 1 ? "once" : `${e.clicks.count} times`}` : null);
+/** The emails a parent can click: every one to the parent with a button (not the alert to Savar, not an unsubscribe). */
+export const clickable = (e: EmailEvent) => e.kind !== "alert" && e.kind !== "unsubscribe";
 /** The dot of an email in the lists: failed when it did not reach the parent. */
 export const emailDot = (e: EmailEvent) => (emailFailed(e) ? "failed" : e.status);
 
@@ -166,6 +170,8 @@ export interface EmailEvent {
   error: string | null;
   /** Resend's newest delivery event of the email (D-104); null before any arrives, or for an email without a copy. */
   delivery: Delivery | null;
+  /** The parent's visits from the email's button (D-105): how many, and the first; null when never clicked. */
+  clicks: { count: number; first: string } | null;
 }
 
 // Families
@@ -268,6 +274,7 @@ export function buildFamilies(rows: DashboardRows, now = new Date()): Family[] {
         status: e.kind === "unsubscribe" || e.status === "sent" ? "sent" : e.status === "failed" ? "failed" : "pending",
         subject: subjectFor(e.kind, child, grade),
         delivery: deliveryOf.get(e.id) ?? null,
+        clicks: e.clicks > 0 && e.first_clicked_at ? { count: e.clicks, first: e.first_clicked_at } : null,
       };
     });
     for (const r of mine(rows.reports)) {
@@ -275,8 +282,8 @@ export function buildFamilies(rows: DashboardRows, now = new Date()): Family[] {
       const grade = testById.get(r.assessment_id)?.grade ?? null;
       const base = { familyId: p.id, familyName: p.name, childName: child, attempts: 1 };
       const delivered = (which: "report" | "alert") => deliveryOf.get(reportEmailId(r.id, which)) ?? null;
-      emails.push({ ...base, id: reportEmailId(r.id, "report"), kind: "report", at: r.emailed_at ?? r.created_at, error: r.email_error, status: emailStatus(r.emailed_at, r.email_error), subject: subjectFor("report", child, grade), delivery: delivered("report") });
-      emails.push({ ...base, id: reportEmailId(r.id, "alert"), kind: "alert", at: r.alerted_at ?? r.created_at, error: r.alert_error, status: emailStatus(r.alerted_at, r.alert_error), subject: subjectFor("alert", child, grade), delivery: delivered("alert") });
+      emails.push({ ...base, id: reportEmailId(r.id, "report"), kind: "report", at: r.emailed_at ?? r.created_at, error: r.email_error, status: emailStatus(r.emailed_at, r.email_error), subject: subjectFor("report", child, grade), delivery: delivered("report"), clicks: r.email_clicks > 0 && r.email_first_clicked_at ? { count: r.email_clicks, first: r.email_first_clicked_at } : null });
+      emails.push({ ...base, id: reportEmailId(r.id, "alert"), kind: "alert", at: r.alerted_at ?? r.created_at, error: r.alert_error, status: emailStatus(r.alerted_at, r.alert_error), subject: subjectFor("alert", child, grade), delivery: delivered("alert"), clicks: null });
     }
     emails.sort(newestFirst);
 
@@ -404,7 +411,7 @@ export interface Dashboard {
   /** Families that reached each funnel stage: ever, and among those who signed up in the range. */
   funnel: { stage: FunnelStage; ever: number; inRange: number }[];
   stageCounts: Record<Stage, number>;
-  emailSummary: (EmailKindInfo & { sent: number; failed: number; pending: number; sentInRange: number; last: string | null })[];
+  emailSummary: (EmailKindInfo & { sent: number; failed: number; pending: number; sentInRange: number; last: string | null; clicked: number })[];
   needs: { title: string; detail: string; tone: "warn" | "bad" | "info"; families: Family[] }[];
   stripeNote: string | null;
   stripeMode: "live" | "test" | null;
@@ -491,7 +498,7 @@ export function buildDashboard(rows: DashboardRows, range: RangeKey, now: Date, 
   const emailSummary = EMAIL_KINDS.map((k) => {
     const list = emails.filter((e) => e.kind === k.kind);
     const sent = list.filter((e) => e.status === "sent");
-    return { ...k, sent: sent.length, failed: list.filter(emailFailed).length, pending: list.filter((e) => e.status === "pending").length, sentInRange: sent.filter((e) => all || inCur(e.at)).length, last: sent[0]?.at ?? null };
+    return { ...k, sent: sent.length, failed: list.filter(emailFailed).length, pending: list.filter((e) => e.status === "pending").length, sentInRange: sent.filter((e) => all || inCur(e.at)).length, last: sent[0]?.at ?? null, clicked: sent.filter((e) => e.clicks).length };
   });
 
   const ageDays = (iso: string) => (now.getTime() - new Date(iso).getTime()) / DAY_MS;

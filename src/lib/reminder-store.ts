@@ -177,9 +177,12 @@ async function withAnswers(admin: SupabaseClient, row: TestRow): Promise<LoadedT
   return { ...toAttempt(row, answered >= total), childId: row.child_id, answered, total };
 }
 
-/** Where a reminder's links go. The start screen sends a signed-out parent through sign-in and back. */
+/**
+ * Where a reminder's links go. The start screen sends a signed-out parent through sign-in and back, and counts the
+ * click (D-105); a continue or come back reminder names its test (`a`), so the click finds its one log row.
+ */
 export const reminderLinks = (origin: string, r: DueReminder, token: string) => ({
-  url: `${origin}${startPath(r.childId)}?reminder=${r.kind}`,
+  url: `${origin}${startPath(r.childId)}?reminder=${r.kind}${r.assessmentId ? `&a=${r.assessmentId}` : ""}`,
   unsubscribeUrl: `${origin}/unsubscribe?t=${token}`,
   /** RFC 8058 one-click: mail apps POST here from their own Unsubscribe button. */
   oneClickUrl: `${origin}/api/unsubscribe?t=${token}`,

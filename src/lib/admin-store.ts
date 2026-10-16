@@ -452,10 +452,10 @@ export async function dashboardRows(a: AdminSession): Promise<DashboardRows> {
     allRows<RawParent>(a.db.rpc("admin_parents").select(PARENT_COLUMNS).order("id"), "parents"),
     allRows<RawChild>(a.db.rpc("admin_children").select(CHILD_COLUMNS).order("id"), "children"),
     allRows<Omit<RawTest, "answered"> & { answers: { count: number }[] }>(a.db.rpc("admin_assessments").select("id, created_at, status, parent_id, child_id, grade, province, started_at, completed_at, last_answer_at, answers(count)").order("id"), "tests"),
-    allRows<RawReport>(a.db.rpc("admin_reports").select("id, created_at, assessment_id, parent_id, child_id, emailed_at, email_error, alerted_at, alert_error").order("id"), "reports"),
+    allRows<RawReport>(a.db.rpc("admin_reports").select("id, created_at, assessment_id, parent_id, child_id, emailed_at, email_error, alerted_at, alert_error, email_clicks, email_first_clicked_at").order("id"), "reports"),
     allRows<RawCard>(a.db.rpc("admin_card_setups").select("id, created_at, updated_at, parent_id, child_id, plan, price, stripe_customer_id, card_saved_at").order("id"), "card setups"),
     allRows<RawWaitlist>(a.db.rpc("admin_waitlist_joins").select("id, created_at, parent_id, child_id, province").order("id"), "waitlist"),
-    allRows<RawEmail>(a.db.from("email_log").select("id, created_at, parent_id, child_id, assessment_id, kind, status, attempts, sent_at, error").order("id"), "email log"),
+    allRows<RawEmail>(a.db.from("email_log").select("id, created_at, parent_id, child_id, assessment_id, kind, status, attempts, sent_at, error, clicks, first_clicked_at").order("id"), "email log"),
   ]);
   const [stripeRead, testIds, deliveries] = await Promise.all([cardSubscriptions(cards), testAccountIds(a), deliveryRows(a), confirmCardsInStripe(cards)]);
   return {

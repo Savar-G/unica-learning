@@ -229,3 +229,5 @@
 /* Resend's delivery events of the email (D-104), under its result line. */
 .mail-events { margin: 0; padding: 8px 18px 10px 36px; border: 1px solid var(--line); border-top: 0; background: #fff; font-size: 13px; line-height: 1.6; }
 .mail-events li.is-bad b { color: #c2410c; }
+/* The parent's clicks on the email's button (D-105). */
+.mail-clicks { margin: 0; padding: 9px 18px; border: 1px solid var(--line); border-top: 0; background: #fff; font-size: 13.5px; }
