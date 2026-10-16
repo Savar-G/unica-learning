@@ -37,6 +37,7 @@ const NAV = [
   { key: "emails", href: `${ADMIN_PATH}/emails`, label: "Emails" },
   { key: "templates", href: `${ADMIN_PATH}/templates`, label: "Templates" },
   { key: "skill-map", href: `${ADMIN_PATH}/skill-map`, label: "Skill map" },
+  { key: "export", href: `${ADMIN_PATH}/export`, label: "Export" },
 ] as const;
 
 export type AdminSection = (typeof NAV)[number]["key"];
