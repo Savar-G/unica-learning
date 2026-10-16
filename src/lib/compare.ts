@@ -108,7 +108,7 @@ export const ONE_BY_ONE: { id: Exclude<OptionId, "us">; tag: string; title: stri
     good: ["A trained teacher, every school day", "Friends, group work and every subject", "Free at public schools"],
     hardTitle: "Harder at school",
     hard: ["One teacher for up to 24 children in grades 1-3 and up to 30 in grades 4-7, so the class moves on together", "Written report cards come 3 times a year"],
-    us: ["Books follow the BC curriculum, so home practice matches class", "More practice on the gaps, and new topics before the class gets there", "You see the gaps after every scan"],
+    us: ["Books follow your school's curriculum, so home practice matches class", "More practice on the gaps, and new topics before the class gets there", "You see the gaps after every scan"],
   },
   {
     id: "tutor",
@@ -146,7 +146,7 @@ export const ONE_BY_ONE: { id: Exclude<OptionId, "us">; tag: string; title: stri
 ];
 
 export const COMPARE_FAQ: { question: string; answer: string }[] = [
-  { question: `Does ${BRAND} replace school?`, answer: "No. It works alongside school. Books follow the BC curriculum and move ahead when your child is ready." },
+  { question: `Does ${BRAND} replace school?`, answer: "No. It works alongside school. Books follow your school's curriculum and move ahead when your child is ready." },
   { question: "Can we keep our tutor?", answer: `Yes. A tutor can explain live, and ${BRAND} gives your child daily practice between sessions.` },
   { question: "Is there any screen time?", answer: "Daily practice is on paper. The free math assessment is online. The app is for you: scan a page to check answers or see every step." },
   { question: "Where do these prices come from?", answer: "Public price lists and rate pages, checked October 2026. Prices vary by tutor, centre and plan." },
