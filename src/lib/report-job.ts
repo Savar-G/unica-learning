@@ -18,7 +18,7 @@ import { aiReport, aiReviewer, type AiOutcome, type WorkReviewer } from "@/lib/w
 // finish response. In order:
 //   1. Load the finished assessment and everything the report needs, in one call to the report-loading module (#162):
 //      one read of the stored test and one of its answers.
-//   2. The AI step (#68, src/lib/work-review.ts), only when ANTHROPIC_API_KEY is set: review the child's shown work
+//   2. The AI step (#68, src/lib/work-review.ts), only when OPENROUTER_API_KEY is set: review the child's shown work
 //      (#67: from the answers and the private bucket), store the reviews (work_reviews), and write the report text.
 //      It stops after at most REVIEW_STAGE_MS + TEXT_STAGE_MS (165 s; Vercel stops a function at 300 s). Off, failed or
 //      timed out: the report has no AI comments and no AI text.
@@ -44,7 +44,7 @@ const message = (e: unknown) => (e instanceof Error ? e.message : String(e));
 
 /** The job's seams. Each one left out is the production adapter. */
 export interface ReportJobOptions {
-  /** The AI work reviewer; by default the switch (aiReviewer), which is null (off) without ANTHROPIC_API_KEY. */
+  /** The AI work reviewer; by default the switch (aiReviewer), which is null (off) without OPENROUTER_API_KEY. */
   reviewer?: WorkReviewer | null;
   /** The delivery module's transport; by default Resend. */
   transport?: MailTransport;

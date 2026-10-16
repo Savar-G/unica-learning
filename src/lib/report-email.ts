@@ -339,7 +339,7 @@ const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : "s"}`;
 
 /** What the AI step did (#68), in one line for Savar. */
 function aiLine(ai: AiOutcome): string {
-  if (!ai.on) return "AI review: off (no ANTHROPIC_API_KEY). The report has no AI comments and no AI text.";
+  if (!ai.on) return "AI review: off (no OPENROUTER_API_KEY). The report has no AI comments and no AI text.";
   const parts = [`${plural(ai.pieces, "piece")} of work`, `${ai.reviewed} reviewed`, `${ai.sure} sure enough to show a comment`];
   if (ai.failed > 0) parts.push(`${ai.failed} failed or timed out`);
   if (ai.skipped > 0) parts.push(`${ai.skipped} over the limit not reviewed`);

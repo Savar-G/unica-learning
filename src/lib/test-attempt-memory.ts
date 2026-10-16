@@ -8,6 +8,7 @@ import type { Attempt, HelpAnswer, Placement, Route, StoredTest, Submission } fr
 import type { FactsTest } from "@/lib/assessment";
 import { StoreError, type AttemptChild, type AttemptStore, type NewAnswer } from "@/lib/test-attempt";
 import type { FactsStore, NewFactAnswer } from "@/lib/test-attempt";
+import type { QuestionShown, ShownStore } from "@/lib/test-attempt";
 import type { ContextStore } from "@/lib/test-attempt";
 import type { TestDevice } from "@/lib/test-context";
 import { workPath } from "@/lib/work-payload";
@@ -47,6 +48,9 @@ export interface MemoryFacts {
   test: FactsTest;
   answers: NewFactAnswer[];
 }
+
+/** When the server first served the question at a place in a test (#184): one row of public.question_shows. */
+export type MemoryShown = QuestionShown & { assessmentId: string };
 
 const tick = () => new Promise((resolve) => setTimeout(resolve, 0));
 
@@ -101,6 +105,25 @@ export function memoryAttemptStore({ children: kids = [], tests: initial = [] }:
     },
   };
 
+  /**
+   * The serve times (#184), returned too, so a test can check them: rows of public.question_shows. They keep the
+   * database's guard: one row per place in a test (the primary key), so a later serve changes nothing.
+   */
+  const shows: MemoryShown[] = [];
+  const showsOps: ShownStore = {
+    async recordShown(id, shown) {
+      await begin("recordShown");
+      if (!tests.some((t) => t.id === id)) throw new Error("question_shows: no such test"); // the foreign key
+      if (shows.some((s) => s.assessmentId === id && s.position === shown.position)) return;
+      shows.push({ assessmentId: id, ...shown });
+    },
+    async shownAt(id, position) {
+      await begin("shownAt");
+      const row = shows.find((s) => s.assessmentId === id && s.position === position);
+      return row ? { position: row.position, questionId: row.questionId, at: row.at } : null;
+    },
+  };
+
   /** The test context (#185): each write changes only an open test, and only fields still empty (guarded updates). */
   const openTest = (id: string) => tests.find((t) => t.id === id && t.status === "in_progress");
   const contextOps: ContextStore = {
@@ -123,6 +146,7 @@ export function memoryAttemptStore({ children: kids = [], tests: initial = [] }:
 
   const store: AttemptStore = {
     ...factsOps,
+    ...showsOps,
     ...contextOps,
     async child(parent, childId) {
       await begin("child");
@@ -198,5 +222,5 @@ export function memoryAttemptStore({ children: kids = [], tests: initial = [] }:
       return { id };
     },
   };
-  return { store, children, tests, drawings, facts, fail };
+  return { store, children, tests, drawings, facts, shows, fail };
 }
