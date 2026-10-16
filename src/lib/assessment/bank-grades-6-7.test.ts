@@ -9,6 +9,7 @@ import {
   REPORTED_STRAND,
   type Grade,
   type Province,
+  type Question,
   type TaggedProvince,
 } from "@/lib/assessment";
 
@@ -87,6 +88,28 @@ describe("siblings and retakes in grades 6-7", () => {
   });
 });
 
+/**
+ * A "greatest or least fraction" question (#187): asked for the greatest, the numerator error picks the biggest
+ * numerator and the denominator error (F1) the biggest denominator. Asked for the least, F1 picks the smallest
+ * denominator, and the answer has the biggest one.
+ */
+function expectFractionErrors(q: Question) {
+  const parts = (value: string) => value.split("/").map(Number);
+  const numerators = q.choices!.map((c) => parts(c)[0]);
+  const denominators = q.choices!.map((c) => parts(c)[1]);
+  const numeratorError = q.wrong.filter((w) => w.misconception === "numerator-only");
+  const denominatorError = q.wrong.filter((w) => w.misconception === "F1");
+  expect(denominatorError).toHaveLength(1);
+  if (q.values.greatest) {
+    expect(numeratorError).toHaveLength(1);
+    expect(parts(numeratorError[0].value)[0]).toBe(Math.max(...numerators));
+    expect(parts(denominatorError[0].value)[1]).toBe(Math.max(...denominators));
+  } else {
+    expect(parts(denominatorError[0].value)[1]).toBe(Math.min(...denominators));
+    expect(parts(q.answer)[1]).toBe(Math.max(...denominators));
+  }
+}
+
 describe("the grades 6-7 bank", () => {
   it("keeps every generated misconception code within the answer storage limit", () => {
     for (const template of BANK) {
@@ -125,20 +148,29 @@ describe("the grades 6-7 bank", () => {
 
   it("makes comparison distractors follow their named error", () => {
     for (const seed of SEEDS) {
+      // The template asks for the least or the greatest decimal (#187); the hundredths choice drops the zero only
+      // when the least is asked.
       const least = fillTemplate(BANK.find((t) => t.id === "g67-5-least-decimal")!, seed);
       expect(least.wrong.filter((w) => w.misconception === "F6")).toHaveLength(1);
-      expect(least.wrong.find((w) => w.misconception === "zero-placeholder")?.value)
+      expect(least.wrong.find((w) => w.misconception === (least.values.least ? "zero-placeholder" : "decimal-order"))?.value)
         .toBe(String((least.values.t * 10 + least.values.u) / 100));
-      const greatest = fillTemplate(BANK.find((t) => t.id === "g67-5-greatest-fraction")!, seed);
-      const parts = (value: string) => value.split("/").map(Number);
-      const numerators = greatest.choices!.map((c) => parts(c)[0]);
-      const denominators = greatest.choices!.map((c) => parts(c)[1]);
-      const numeratorError = greatest.wrong.filter((w) => w.misconception === "numerator-only");
-      const denominatorError = greatest.wrong.filter((w) => w.misconception === "F1");
-      expect(numeratorError).toHaveLength(1);
-      expect(denominatorError).toHaveLength(1);
-      expect(parts(numeratorError[0].value)[0]).toBe(Math.max(...numerators));
-      expect(parts(denominatorError[0].value)[1]).toBe(Math.max(...denominators));
+      expectFractionErrors(fillTemplate(BANK.find((t) => t.id === "g67-5-greatest-fraction")!, seed));
+      // "Longer is larger" (F6) picks the longest-looking decimal: the largest hundredths when the greatest is asked,
+      // the tenths when the least is asked (#187).
+      const decimals = fillTemplate(BANK.find((t) => t.id === "g67-5-greatest-decimal")!, seed);
+      const f6 = decimals.wrong.filter((w) => w.misconception === "F6").map((w) => Number(w.value));
+      const hundredths = decimals.choices!.map(Number).filter((x) => Math.round(x * 100) % 10 !== 0);
+      expect(f6, `seed ${seed}`).toEqual([decimals.values.greatest ? Math.max(...hundredths) : decimals.values.t / 10]);
+      if (decimals.values.greatest) {
+        // The least choice of all is "more and less mixed up", not an intermediate pick.
+        expect(decimals.wrong.find((w) => Number(w.value) === Math.min(...hundredths))?.misconception, `seed ${seed}`).toBe("more-less");
+      }
+      // Lining numbers up by their first digit (digit-compare) picks the first in text order: the least when asked for
+      // the least, the greatest when asked for the greatest (#187).
+      const large = fillTemplate(BANK.find((t) => t.id === "g67-6-greatest-large")!, seed);
+      const byText = [...large.choices!].sort((x, y) => x.replace(/,/g, "").localeCompare(y.replace(/,/g, "")));
+      const firstDigitPick = large.values.greatest ? byText[byText.length - 1] : byText[0];
+      expect(large.wrong.find((w) => w.value === firstDigitPick)?.misconception, `seed ${seed}: ${large.choices}`).toBe("digit-compare");
     }
   });
 
@@ -205,14 +237,7 @@ describe("the grades 6-7 bank", () => {
       expect(ratio.wrong.find((w) => w.value === `${ratio.values.b}:${ratio.values.a}`)?.misconception).toBe("F4");
       const fraction = fillTemplate(BANK.find((t) => t.id === "g67-6-ratio-to-fraction")!, seed);
       expect(fraction.wrong.find((w) => w.value === `${fraction.values.g}/${fraction.values.b}`)?.misconception).toBe("F4");
-      const greatest = fillTemplate(BANK.find((t) => t.id === "g67-6-greatest-fraction")!, seed);
-      const parts = (value: string) => value.split("/").map(Number);
-      const numerator = greatest.wrong.filter((w) => w.misconception === "numerator-only");
-      const denominator = greatest.wrong.filter((w) => w.misconception === "F1");
-      expect(numerator).toHaveLength(1);
-      expect(denominator).toHaveLength(1);
-      expect(parts(numerator[0].value)[0]).toBe(Math.max(...greatest.choices!.map((c) => parts(c)[0])));
-      expect(parts(denominator[0].value)[1]).toBe(Math.max(...greatest.choices!.map((c) => parts(c)[1])));
+      expectFractionErrors(fillTemplate(BANK.find((t) => t.id === "g67-6-greatest-fraction")!, seed));
     }
   });
 

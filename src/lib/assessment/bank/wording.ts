@@ -1,0 +1,146 @@
+// Word problem or bare-number question, for every template in the banks (#187). The learner profile compares a
+// child's correct rate on the two kinds for the same skill: a child who can do a skill with numbers but not in a
+// story may have a reading problem.
+//
+// A word problem sets the math in a real-world situation told in sentences (people, objects, money, events, a
+// spinner or a bag to draw from), so the child must read it and decide what math to do. A bare-number question gives
+// the numbers, symbols, shapes, pattern or figure directly with a short instruction, including a stated shape or
+// object whose named measure is asked ("A rectangular patio is 14 m long and 4 m wide. What is its perimeter?").
+// A template has one wording for every seed: a template that mixed the two was split (g67-6-lcm, g67-6-lcm-story).
+//
+// 153 word problems and 380 bare-number questions. A test in bank-coverage.test.ts fails when a template has no entry.
+import type { Wording } from "../types";
+
+const WORD_PROBLEMS = [
+  // Grades 1-2 bank (also levels 2 and 3 of the grades 3-5 bank): 51
+  "k-who-has-more", "k-rest-are", "k-in-all", "k-how-many-more", "k-take-away", "k-balance-match", "k-balance-tips",
+  "k-heavier-object", "k-balance-heavier", "k-graph-which-more", "k-graph-count", "k-likely-event", "1-count-coins",
+  "1-story-add", "1-story-take", "1-story-compare", "1-build-to", "1-change-story", "1-balance-cubes",
+  "1-cubes-longer", "1-unit-size", "1-order-three", "1-graph-how-many-more", "1-graph-in-all",
+  "1-never-sometimes-always", "1-more-likely", "1-cover-card", "1-length-together", "1-tallest-child",
+  "1-heaviest-box", "2-half-full-referent", "2-story-add-2-digit", "2-story-subtract-2-digit", "2-three-addends",
+  "2-coins-mixed", "2-change-unknown", "2-change-unknown-add", "2-ruler-length", "2-graph-in-all", "2-graph-fewer",
+  "2-spinner", "2-certain-possible", "2-compare-lengths", "3-story-subtract", "3-equal-groups", "3-share-equally",
+  "3-money-total", "3-growing-tables", "3-bar-graph-more", "3-bag-likely", "3-coin-streak",
+  // Grades 3-5 bank: 60
+  "g35-3-array", "g35-3-groups-of", "g35-3-story-add", "g35-3-fraction-eaten", "g35-3-fraction-left",
+  "g35-3-fraction-of-set", "g35-3-equal-parts", "g35-3-fraction-of-amount", "g35-3-whole-as-fraction",
+  "g35-3-fraction-rest", "g35-3-unit-fraction", "g35-3-fraction-words", "g35-3-bar-rows", "g35-3-make-a-whole",
+  "g35-3-start-unknown-story", "g35-3-number-sentence", "g35-3-tally", "g35-3-most-least-likely",
+  "g35-3-likelihood-words", "g35-4-share", "g35-4-make-change", "g35-4-story-multiply", "g35-4-compare-unit",
+  "g35-4-decreasing-table", "g35-4-equation-for-story", "g35-4-perimeter-sides", "g35-4-pictograph",
+  "g35-4-pictograph-half", "g35-4-bar-scale", "g35-4-spin-predict", "g35-4-experiment-predict",
+  "g35-4-experiment-results", "g35-4-dice-likelihood", "g35-5-remainder", "g35-5-full-groups", "g35-5-enough-buses",
+  "g35-5-divide-two-digit", "g35-5-budget-left", "g35-5-change-large", "g35-5-expression-rows",
+  "g35-5-expression-cards-total", "g35-5-expression-cards-left", "g35-5-expression-sharing", "g35-5-equation-story",
+  "g35-5-duration", "g35-5-end-time", "g35-5-double-bar-difference", "g35-5-pictograph-total",
+  "g35-5-bag-probability", "g35-6-meeting-cycles", "g35-6-decimal-product-story", "g35-6-decimal-unit-cost",
+  "g35-6-ratio-part-to-part", "g35-6-ratio-part-to-whole", "g35-6-ratio-recipe", "g35-6-percent-discount",
+  "g35-6-percent-sale-price", "g35-6-experimental-estimate", "g35-6-experimental-probability",
+  "g35-6-theoretical-probability",
+  // Grades 6-7 bank: 42
+  "g67-5-share-remainder", "g67-5-groups-needed", "g67-5-make-change", "g67-5-story-equation", "g67-5-elapsed-time",
+  "g67-5-double-bar-graph", "g67-5-pictograph", "g67-5-spinner-probability", "g67-6-lcm-story", "g67-6-save-weeks",
+  "g67-6-share-money", "g67-6-ratio-part-part", "g67-6-ratio-part-whole", "g67-6-equivalent-ratio",
+  "g67-6-ratio-to-fraction", "g67-6-percent-whole", "g67-6-discount", "g67-6-story-equation", "g67-6-balance-box",
+  "g67-6-line-graph", "g67-6-spinner-event", "g67-6-theoretical", "g67-7-temperature", "g67-7-change-several",
+  "g67-7-ratio-percent", "g67-7-sales-tax", "g67-7-tip", "g67-7-sale-price", "g67-7-two-step-story",
+  "g67-7-story-equation", "g67-7-draining-pool", "g67-7-balance-boxes", "g67-7-circle-graph-amount",
+  "g67-7-circle-graph-percent", "g67-7-count-outcomes", "g67-7-experimental", "g67-7-dice-sum", "g67-8-square-tile",
+  "g67-8-unit-rate", "g67-8-three-part-ratio", "g67-8-expression-story", "g67-8-independent-probability",
+];
+
+const BARE_NUMBERS = [
+  // Grades 1-2 bank (also levels 2 and 3 of the grades 3-5 bank): 76
+  "k-count-shapes", "k-number-after", "k-number-before", "k-missing-number", "k-make-five", "k-split-number",
+  "k-pattern-ab", "k-pattern-abc", "k-pattern-aab", "k-number-pattern", "k-longer-line", "k-shape-attribute",
+  "k-can-roll", "1-ten-and-more", "1-skip-count", "1-smallest-biggest", "1-more-or-less", "1-make-ten", "1-add-to-20",
+  "1-subtract-from-20", "1-pattern-four", "1-pattern-missing", "1-pattern-letters", "1-number-pattern",
+  "1-missing-addend", "1-which-sum-more", "1-pattern-predict", "1-letters-to-shapes", "1-equal-or-not",
+  "1-shape-sides", "1-sides-in-all", "2-digit-value", "2-even-or-odd", "2-ten-more-less", "2-greatest",
+  "2-tens-and-ones", "2-skip-count-back", "2-closest-benchmark", "2-add-2-digit", "2-subtract-2-digit",
+  "2-make-ten-strategy", "2-balance-equation", "2-missing-left", "2-missing-addend", "2-increasing-pattern",
+  "2-pattern-core", "2-pattern-rows", "2-number-pattern-predict", "2-shape-pattern-predict", "2-true-equation",
+  "2-missing-in-pattern", "2-length-unit", "2-square-or-rectangle", "2-turned-shape", "2-face-of-solid",
+  "2-roll-and-stack", "2-sides-in-all", "3-build-number", "3-ten-more-less", "3-greatest", "3-after-99",
+  "3-digit-value", "3-add-3-digit", "3-subtract-across-zero", "3-decreasing-pattern", "3-increasing-pattern",
+  "3-pattern-rule", "3-start-unknown", "3-change-unknown", "3-balance-equation", "3-area-tiles", "3-mass-unit",
+  "3-length-convert", "3-solid-parts", "3-time-units", "3-days-weeks",
+  // Grades 3-5 bank: 158
+  "g35-3-skip-count", "g35-3-order-numbers", "g35-3-fraction-number-line", "g35-3-missing-middle", "g35-3-doubling",
+  "g35-3-double-unknown", "g35-3-subtract-unknown", "g35-3-rule-in-words", "g35-3-capacity-unit",
+  "g35-3-solid-from-faces", "g35-3-mass-referent", "g35-4-digit-value", "g35-4-order-numbers", "g35-4-expanded-form",
+  "g35-4-hundred-more", "g35-4-subtract", "g35-4-add", "g35-4-multiply", "g35-4-divide", "g35-4-add-decimals",
+  "g35-4-subtract-decimals", "g35-4-multiple", "g35-4-between", "g35-4-tenths-region", "g35-4-tenths-left",
+  "g35-4-tenths-order", "g35-4-tenths-value", "g35-4-tenths-fraction", "g35-4-compare-like", "g35-4-benchmark",
+  "g35-4-tenths-decimal", "g35-4-hundredths-decimal", "g35-4-decimal-to-fraction", "g35-4-compare-decimals",
+  "g35-4-money-notation", "g35-4-decimal-digit", "g35-4-decimal-number-line", "g35-4-hundredths-grid",
+  "g35-4-more-than-half", "g35-4-tenths-as-hundredths", "g35-4-table-pattern", "g35-4-missing-factor",
+  "g35-4-missing-divisor", "g35-4-subtract-unknown", "g35-4-balance-multiply", "g35-4-table-rule",
+  "g35-4-figure-pattern", "g35-4-three-same", "g35-4-true-equation", "g35-4-machine-input", "g35-4-perimeter",
+  "g35-4-square-side", "g35-4-read-clock", "g35-4-quarter-to", "g35-4-24-hour", "g35-4-regular-polygon",
+  "g35-4-sides-in-all", "g35-4-symmetry", "g35-5-large-digit", "g35-5-expanded-large", "g35-5-ten-thousand-more",
+  "g35-5-order-large", "g35-5-add-large", "g35-5-subtract-large", "g35-5-multiply-two-digit", "g35-5-annexing-zeros",
+  "g35-5-distributive", "g35-5-equivalent-numerator", "g35-5-equivalent-denominator", "g35-5-equivalent-scale-up",
+  "g35-5-equivalent-scale-down", "g35-5-equivalent-region", "g35-5-equivalent-number-line",
+  "g35-5-fraction-to-hundredths", "g35-5-decimal-half", "g35-5-fraction-near-whole", "g35-5-equivalent-decimal",
+  "g35-5-thousandths-fraction", "g35-5-thousandths-digit", "g35-5-compare-thousandths", "g35-5-decimal-between",
+  "g35-5-add-thousandths", "g35-5-subtract-thousandths", "g35-5-variable-add", "g35-5-variable-subtract",
+  "g35-5-variable-take-away", "g35-5-variable-multiply", "g35-5-variable-divide", "g35-5-variable-dividend",
+  "g35-5-pattern-next", "g35-5-pattern-missing", "g35-5-pattern-back", "g35-5-pattern-step", "g35-5-pattern-start",
+  "g35-5-pattern-far", "g35-5-evaluate-add", "g35-5-evaluate-subtract", "g35-5-evaluate-take-away",
+  "g35-5-evaluate-multiply", "g35-5-evaluate-divide", "g35-5-evaluate-divisor", "g35-5-variable-rule",
+  "g35-5-rectangle-area", "g35-5-area-two-digit", "g35-5-square-area", "g35-5-area-width", "g35-5-same-area",
+  "g35-5-same-perimeter", "g35-5-same-area-perimeter", "g35-5-prism-faces", "g35-5-pyramid-faces",
+  "g35-5-transformation", "g35-5-mirror-distance", "g35-6-common-factor", "g35-6-least-multiple", "g35-6-prime",
+  "g35-6-divisibility", "g35-6-all-factors", "g35-6-order-product", "g35-6-order-brackets", "g35-6-order-quotient",
+  "g35-6-order-two-products", "g35-6-decimal-multiply", "g35-6-decimal-divide", "g35-6-mixed-to-mixed",
+  "g35-6-mixed-to-improper", "g35-6-mixed-whole-count", "g35-6-mixed-remainder", "g35-6-ratio-equivalent",
+  "g35-6-percent-of-hundred", "g35-6-percent-of-amount", "g35-6-linear-output", "g35-6-linear-table",
+  "g35-6-linear-step", "g35-6-linear-initial", "g35-6-linear-tenth", "g35-6-linear-difference", "g35-6-equation-add",
+  "g35-6-equation-subtract", "g35-6-equation-multiply", "g35-6-equation-divide", "g35-6-equation-subtrahend",
+  "g35-6-equation-divisor", "g35-6-table-rule", "g35-6-like-terms-equation", "g35-6-rule-point",
+  "g35-6-triangle-area", "g35-6-triangle-height", "g35-6-parallelogram-area", "g35-6-trapezoid-area",
+  "g35-6-volume-cubes", "g35-6-capacity", "g35-6-angle-name", "g35-6-straight-angle", "g35-6-complementary-angle",
+  "g35-6-triangle-sides", "g35-6-coordinate", "g35-6-coordinate-slide",
+  // Grades 6-7 bank: 146
+  "g67-5-write-digits", "g67-5-ten-thousand-more", "g67-5-digit-value", "g67-5-multiply-2x2", "g67-5-add-decimals",
+  "g67-5-subtract-decimals", "g67-5-facts-tens", "g67-5-add-large", "g67-5-equivalent-fraction",
+  "g67-5-missing-numerator", "g67-5-greatest-decimal", "g67-5-least-decimal", "g67-5-decimal-place",
+  "g67-5-fraction-to-decimal", "g67-5-greatest-fraction", "g67-5-decimal-as-fraction", "g67-5-build-decimal",
+  "g67-5-rule-output", "g67-5-equation-add", "g67-5-equation-subtract", "g67-5-equation-multiply",
+  "g67-5-pattern-term", "g67-5-pattern-down", "g67-5-table-rule", "g67-5-balance", "g67-5-rectangle-area",
+  "g67-5-area-side", "g67-5-same-area", "g67-5-solid-from-faces", "g67-5-solid-count", "g67-5-name-transformation",
+  "g67-6-large-digits", "g67-6-greatest-large", "g67-6-decimal-digit-value", "g67-6-lcm", "g67-6-gcf",
+  "g67-6-which-prime", "g67-6-which-composite", "g67-6-order-of-operations", "g67-6-brackets", "g67-6-decimal-times",
+  "g67-6-decimal-divide", "g67-6-times-four", "g67-6-improper-to-mixed", "g67-6-mixed-to-improper",
+  "g67-6-count-parts", "g67-6-greatest-fraction", "g67-6-equivalent-ratio-choice", "g67-6-percent-of",
+  "g67-6-percent-grid", "g67-6-percent-to-decimal", "g67-6-nth-term", "g67-6-table-value", "g67-6-expression-words",
+  "g67-6-shrinking-rule", "g67-6-equation-times", "g67-6-equation-plus", "g67-6-equation-words", "g67-6-keep-balance",
+  "g67-6-evaluate", "g67-6-point-on-rule", "g67-6-figure-pattern", "g67-6-equation-check", "g67-6-triangle-area",
+  "g67-6-parallelogram-area", "g67-6-trapezoid-area", "g67-6-angle-type", "g67-6-triangle-angle",
+  "g67-6-straight-line-angle", "g67-6-box-volume", "g67-6-litres", "g67-6-cubic-units", "g67-6-triangle-sides",
+  "g67-6-triangle-angles", "g67-6-plot-point", "g67-6-translate-point", "g67-6-l-shape-perimeter",
+  "g67-7-greatest-integer", "g67-7-order-integers", "g67-7-add-integers", "g67-7-subtract-integers",
+  "g67-7-multiply-integers", "g67-7-divide-integers", "g67-7-integer-order-of-operations", "g67-7-decimal-multiply",
+  "g67-7-decimal-divide", "g67-7-bigger-or-smaller", "g67-7-decimal-order-of-operations", "g67-7-times-five",
+  "g67-7-fraction-to-decimal", "g67-7-fraction-to-percent", "g67-7-greatest-mixed-forms", "g67-7-repeating-decimal",
+  "g67-7-decimal-to-fraction", "g67-7-percent-to-fraction", "g67-7-decimal-between", "g67-7-order-forms",
+  "g67-7-write-decimal", "g67-7-evaluate-relation", "g67-7-rule-from-table", "g67-7-integer-add-equation",
+  "g67-7-integer-subtract-equation", "g67-7-two-step-plus", "g67-7-two-step-minus", "g67-7-two-step-divide",
+  "g67-7-check-solution", "g67-7-table-far", "g67-7-negative-input", "g67-7-point-on-line", "g67-7-figure-expression",
+  "g67-7-circumference", "g67-7-circle-area", "g67-7-diameter-from-circumference", "g67-7-cylinder-base-area",
+  "g67-7-cylinder-volume", "g67-7-quadrant", "g67-7-reflect-point", "g67-7-translate-point", "g67-7-half-turn",
+  "g67-7-circle-graph-degrees", "g67-8-square", "g67-8-perfect-square", "g67-8-square-root", "g67-8-square-side",
+  "g67-8-root-between", "g67-8-add-fractions", "g67-8-add-mixed-numbers", "g67-8-subtract-fractions",
+  "g67-8-multiply-fractions", "g67-8-divide-fractions", "g67-8-small-percent", "g67-8-large-percent",
+  "g67-8-negative-equation", "g67-8-negative-coefficient", "g67-8-substitute-signed", "g67-8-combine-expression",
+  "g67-8-large-relation", "g67-8-integer-table", "g67-8-inverse-input", "g67-8-prism-surface", "g67-8-cube-surface",
+  "g67-8-hypotenuse", "g67-8-missing-leg", "g67-8-mean", "g67-8-median", "g67-8-mode",
+];
+
+/** Every template id, with its wording. */
+export const WORDING: Readonly<Record<string, Wording>> = Object.fromEntries([
+  ...WORD_PROBLEMS.map((id) => [id, "word-problem"] as const),
+  ...BARE_NUMBERS.map((id) => [id, "bare-number"] as const),
+]);

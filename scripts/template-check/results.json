@@ -427,9 +427,9 @@
       }
     },
     "2-roll-and-stack": {
-      "hash": "fea00695f56507bc",
+      "hash": "15d41d9c5a6327a4",
       "status": "pass",
-      "checkedAt": "2026-10-12",
+      "checkedAt": "2026-10-16",
       "model": "gpt-6.1-sol",
       "provider": "codex",
       "effort": "medium",
@@ -442,30 +442,30 @@
           {
             "province": "AB",
             "ok": true,
-            "suggestedGrade": null,
+            "suggestedGrade": "grade 2",
             "confidence": "medium",
-            "reason": "Grade 2 is reasonable for comparing two attributes of solid objects."
+            "reason": "Comparing solids by two physical attributes fits Grade 2 geometry."
           },
           {
             "province": "SK",
             "ok": true,
-            "suggestedGrade": null,
+            "suggestedGrade": "grade 2",
             "confidence": "medium",
-            "reason": "Grade 2 is reasonable for comparing two attributes of solid objects."
+            "reason": "Comparing solids by their surfaces and corners fits Grade 2 geometry."
           },
           {
             "province": "MB",
             "ok": true,
-            "suggestedGrade": null,
+            "suggestedGrade": "grade 2",
             "confidence": "medium",
-            "reason": "Grade 2 is reasonable for comparing two attributes of solid objects."
+            "reason": "Comparing solids by their surfaces and corners fits Grade 2 geometry."
           },
           {
             "province": "ON",
             "ok": true,
-            "suggestedGrade": null,
+            "suggestedGrade": "grade 2",
             "confidence": "medium",
-            "reason": "Grade 2 is reasonable for comparing two attributes of solid objects."
+            "reason": "Identifying solids from multiple attributes fits Grade 2 geometry."
           }
         ],
         "wordingProblems": [],
@@ -1510,9 +1510,9 @@
       }
     },
     "k-can-roll": {
-      "hash": "ab6bd26c45d25bfa",
+      "hash": "4e1ce204772f0f68",
       "status": "pass",
-      "checkedAt": "2026-10-12",
+      "checkedAt": "2026-10-16",
       "model": "gpt-6.1-sol",
       "provider": "codex",
       "effort": "medium",
@@ -1525,30 +1525,30 @@
           {
             "province": "AB",
             "ok": true,
-            "suggestedGrade": null,
+            "suggestedGrade": "K",
             "confidence": "medium",
-            "reason": "Comparing familiar objects by whether they roll is suitable for Kindergarten."
+            "reason": "Sorting familiar objects by rolling or stacking fits Kindergarten."
           },
           {
             "province": "SK",
             "ok": true,
-            "suggestedGrade": null,
+            "suggestedGrade": "K",
             "confidence": "medium",
-            "reason": "Comparing familiar objects by whether they roll is suitable for Kindergarten."
+            "reason": "Sorting familiar objects by one physical attribute fits Kindergarten."
           },
           {
             "province": "MB",
             "ok": true,
-            "suggestedGrade": null,
+            "suggestedGrade": "K",
             "confidence": "medium",
-            "reason": "Comparing familiar objects by whether they roll is suitable for Kindergarten."
+            "reason": "Sorting familiar objects by one physical attribute fits Kindergarten."
           },
           {
             "province": "ON",
             "ok": true,
-            "suggestedGrade": null,
+            "suggestedGrade": "K",
             "confidence": "medium",
-            "reason": "Comparing familiar objects by whether they roll is suitable for Kindergarten."
+            "reason": "Exploring whether familiar objects roll or stack fits Kindergarten."
           }
         ],
         "wordingProblems": [],
@@ -1651,9 +1651,9 @@
       }
     },
     "k-likely-event": {
-      "hash": "459952fd540e3ae8",
-      "status": "review",
-      "checkedAt": "2026-10-12",
+      "hash": "d0d70e8acbecccfe",
+      "status": "pass",
+      "checkedAt": "2026-10-16",
       "model": "gpt-6.1-sol",
       "provider": "codex",
       "effort": "medium",
@@ -1666,37 +1666,35 @@
           {
             "province": "AB",
             "ok": true,
-            "suggestedGrade": null,
-            "confidence": "low",
-            "reason": "The Grade 6 tag is plausible. The supplied notes do not confirm the probability outcome."
+            "suggestedGrade": "grade 6",
+            "confidence": "medium",
+            "reason": "The probability tag is reasonable. The supplied notes do not establish an earlier outcome."
           },
           {
             "province": "SK",
             "ok": true,
-            "suggestedGrade": null,
+            "suggestedGrade": "grade 5",
             "confidence": "medium",
-            "reason": "Grade 5 is consistent with qualitative probability."
+            "reason": "Qualitative likelihood fits Grade 5 probability."
           },
           {
             "province": "MB",
             "ok": true,
-            "suggestedGrade": null,
+            "suggestedGrade": "grade 5",
             "confidence": "medium",
-            "reason": "Grade 5 is consistent with comparing the likelihood of familiar events."
+            "reason": "Qualitative likelihood fits Grade 5 probability."
           },
           {
             "province": "ON",
             "ok": true,
-            "suggestedGrade": null,
+            "suggestedGrade": "grade 1",
             "confidence": "medium",
-            "reason": "Grade 1 is consistent with qualitative descriptions of likelihood."
+            "reason": "Comparing the likelihood of familiar events fits Grade 1."
           }
         ],
         "wordingProblems": [],
-        "problems": [
-          "The supplied notes do not confirm the current Alberta grade for this probability task."
-        ],
-        "verdict": "review"
+        "problems": [],
+        "verdict": "pass"
       }
     },
     "1-ten-and-more": {
@@ -3018,9 +3016,9 @@
       }
     },
     "1-more-likely": {
-      "hash": "7810534c8634689a",
-      "status": "review",
-      "checkedAt": "2026-10-12",
+      "hash": "ed8b32ba3afefb18",
+      "status": "pass",
+      "checkedAt": "2026-10-16",
       "model": "gpt-6.1-sol",
       "provider": "codex",
       "effort": "medium",
@@ -3033,37 +3031,35 @@
           {
             "province": "AB",
             "ok": true,
-            "suggestedGrade": null,
-            "confidence": "low",
-            "reason": "The Grade 6 tag is plausible. The supplied notes do not confirm the probability outcome."
+            "suggestedGrade": "grade 6",
+            "confidence": "medium",
+            "reason": "The probability tag is reasonable. The supplied notes do not establish an earlier outcome."
           },
           {
             "province": "SK",
             "ok": true,
-            "suggestedGrade": null,
+            "suggestedGrade": "grade 5",
             "confidence": "medium",
-            "reason": "Grade 5 is consistent with comparing event likelihoods."
+            "reason": "Comparing likelihood fits Grade 5 probability."
           },
           {
             "province": "MB",
             "ok": true,
-            "suggestedGrade": null,
+            "suggestedGrade": "grade 5",
             "confidence": "medium",
-            "reason": "Grade 5 is consistent with comparing event likelihoods."
+            "reason": "Comparing likelihood fits Grade 5 probability."
           },
           {
             "province": "ON",
             "ok": true,
-            "suggestedGrade": null,
+            "suggestedGrade": "grade 1",
             "confidence": "medium",
-            "reason": "Grade 1 is consistent with comparing familiar events using probability language."
+            "reason": "Comparing familiar events with likely and unlikely language fits Grade 1."
           }
         ],
         "wordingProblems": [],
-        "problems": [
-          "The supplied notes do not confirm the current Alberta grade for this probability task."
-        ],
-        "verdict": "review"
+        "problems": [],
+        "verdict": "pass"
       }
     },
     "1-cover-card": {
@@ -4157,9 +4153,9 @@
       }
     },
     "2-true-equation": {
-      "hash": "190b5218f75b86e7",
+      "hash": "c7a6d3b3d1268162",
       "status": "pass",
-      "checkedAt": "2026-10-12",
+      "checkedAt": "2026-10-16",
       "model": "gpt-6.1-sol",
       "provider": "codex",
       "effort": "medium",
@@ -4172,30 +4168,30 @@
           {
             "province": "AB",
             "ok": true,
-            "suggestedGrade": null,
+            "suggestedGrade": "grade 3",
             "confidence": "high",
-            "reason": "The supplied MAT3-OI2-GQ1-LO1-KO1-SP outcome includes equality between two expressions."
+            "reason": "MAT3-OI2-GQ1-LO1-KO1-SP includes equality between two expressions. These questions identify such equalities."
           },
           {
             "province": "SK",
             "ok": true,
-            "suggestedGrade": null,
+            "suggestedGrade": "grade 2",
             "confidence": "medium",
-            "reason": "Grade 2 is consistent with comparing expressions through equality."
+            "reason": "Recognizing equal addition expressions within 20 fits Grade 2 equality work."
           },
           {
             "province": "MB",
             "ok": true,
-            "suggestedGrade": null,
+            "suggestedGrade": "grade 2",
             "confidence": "medium",
-            "reason": "Grade 2 is consistent with comparing expressions through equality."
+            "reason": "Recognizing equal addition expressions within 20 fits Grade 2 equality work."
           },
           {
             "province": "ON",
             "ok": true,
-            "suggestedGrade": null,
+            "suggestedGrade": "grade 2",
             "confidence": "high",
-            "reason": "The supplied Grade 2 C2.2-C2.3 outcomes support equivalent addition expressions within 100."
+            "reason": "C2.2 and C2.3 support equivalent addition expressions with these small whole numbers."
           }
         ],
         "wordingProblems": [],
@@ -6010,9 +6006,9 @@
       }
     },
     "g35-3-order-numbers": {
-      "hash": "a25721d3473a419a",
+      "hash": "f52ad0730d7ac131",
       "status": "pass",
-      "checkedAt": "2026-10-12",
+      "checkedAt": "2026-10-16",
       "model": "gpt-6.1-sol",
       "provider": "codex",
       "effort": "medium",
@@ -6025,30 +6021,30 @@
           {
             "province": "AB",
             "ok": true,
-            "suggestedGrade": null,
-            "confidence": "low",
-            "reason": "The supplied notes do not establish a different grade for ordering three-digit numbers."
+            "suggestedGrade": "grade 3",
+            "confidence": "medium",
+            "reason": "Ordering three-digit whole numbers fits Grade 3 number work."
           },
           {
             "province": "SK",
             "ok": true,
-            "suggestedGrade": null,
-            "confidence": "low",
-            "reason": "The supplied notes do not establish a different grade for ordering three-digit numbers."
+            "suggestedGrade": "grade 3",
+            "confidence": "medium",
+            "reason": "Ordering whole numbers below 1000 fits Grade 3."
           },
           {
             "province": "MB",
             "ok": true,
-            "suggestedGrade": null,
-            "confidence": "low",
-            "reason": "The supplied notes do not establish a different grade for ordering three-digit numbers."
+            "suggestedGrade": "grade 3",
+            "confidence": "medium",
+            "reason": "Ordering whole numbers below 1000 fits Grade 3."
           },
           {
             "province": "ON",
             "ok": true,
-            "suggestedGrade": null,
-            "confidence": "low",
-            "reason": "The supplied notes do not establish a different grade for ordering three-digit numbers."
+            "suggestedGrade": "grade 3",
+            "confidence": "medium",
+            "reason": "Ordering whole numbers below 1000 fits Grade 3."
           }
         ],
         "wordingProblems": [],
@@ -7392,9 +7388,9 @@
       }
     },
     "g35-4-order-numbers": {
-      "hash": "fcfe713b856cb379",
+      "hash": "8e18f64d037dd09f",
       "status": "pass",
-      "checkedAt": "2026-10-12",
+      "checkedAt": "2026-10-16",
       "model": "gpt-6.1-sol",
       "provider": "codex",
       "effort": "medium",
@@ -7407,30 +7403,30 @@
           {
             "province": "AB",
             "ok": true,
-            "suggestedGrade": null,
+            "suggestedGrade": "grade 4",
             "confidence": "medium",
-            "reason": "Ordering four-digit numbers fits the Grade 4 number range supported by the supplied notes."
+            "reason": "Ordering four-digit numbers fits Grade 4 work within 10000."
           },
           {
             "province": "SK",
             "ok": true,
-            "suggestedGrade": null,
+            "suggestedGrade": "grade 4",
             "confidence": "medium",
-            "reason": "Comparing and ordering whole numbers to 10000 fits Grade 4."
+            "reason": "Ordering four-digit whole numbers fits Grade 4."
           },
           {
             "province": "MB",
             "ok": true,
-            "suggestedGrade": null,
+            "suggestedGrade": "grade 4",
             "confidence": "medium",
-            "reason": "Comparing and ordering whole numbers to 10000 fits Grade 4."
+            "reason": "Ordering four-digit whole numbers fits Grade 4."
           },
           {
             "province": "ON",
             "ok": true,
-            "suggestedGrade": null,
+            "suggestedGrade": "grade 4",
             "confidence": "medium",
-            "reason": "Comparing and ordering whole numbers to 10000 fits Grade 4."
+            "reason": "Ordering four-digit whole numbers fits Grade 4."
           }
         ],
         "wordingProblems": [],
@@ -8580,9 +8576,9 @@
       }
     },
     "g35-4-more-than-half": {
-      "hash": "71fc9df57719d3c4",
+      "hash": "2b90ea9994c1637c",
       "status": "review",
-      "checkedAt": "2026-10-12",
+      "checkedAt": "2026-10-16",
       "model": "gpt-6.1-sol",
       "provider": "codex",
       "effort": "medium",
@@ -8603,28 +8599,27 @@
             "province": "SK",
             "ok": true,
             "suggestedGrade": null,
-            "confidence": "low",
-            "reason": "The supplied notes do not confirm the Grade 4 outcome or its denominator limits for this comparison."
+            "confidence": "medium",
+            "reason": "Comparison with one half is suitable for Grade 4 fraction work."
           },
           {
             "province": "MB",
             "ok": true,
             "suggestedGrade": null,
-            "confidence": "low",
-            "reason": "The supplied notes do not confirm the Grade 4 outcome or its denominator limits for this comparison."
+            "confidence": "medium",
+            "reason": "Comparison with one half is suitable for Grade 4 fraction work."
           },
           {
             "province": "ON",
             "ok": true,
             "suggestedGrade": null,
             "confidence": "medium",
-            "reason": "Grade 5 B1.4 supports comparison through twelfths, but several examples include 6/13. The Grade 6 tag is defensible pending confirmation of that boundary."
+            "reason": "Grade 5 B1.4 supports fraction comparison through twelfths. The examples include 6/13, so the supplied evidence does not establish Grade 5 for the full set. Retain Grade 6 for source review."
           }
         ],
         "wordingProblems": [],
         "problems": [
-          "Review the SK and MB comparison outcomes.",
-          "The choice 6/13 exceeds the stated ON Grade 5 denominator range. Do not change the ON tag using only the correct choices."
+          "The Ontario grade needs source review because the examples include a denominator of 13."
         ],
         "verdict": "review"
       }
@@ -9163,9 +9158,9 @@
       }
     },
     "g35-4-true-equation": {
-      "hash": "8156e5366e354eda",
+      "hash": "35775b45396b79d8",
       "status": "review",
-      "checkedAt": "2026-10-12",
+      "checkedAt": "2026-10-16",
       "model": "gpt-6.1-sol",
       "provider": "codex",
       "effort": "medium",
@@ -9180,33 +9175,33 @@
             "ok": true,
             "suggestedGrade": null,
             "confidence": "medium",
-            "reason": "The supplied Grade 3 outcome includes equality between expressions. Its scope for comparing two products remains uncertain."
+            "reason": "The supplied Grade 3 outcome supports equality between expressions. The examples use small products."
           },
           {
             "province": "SK",
             "ok": false,
             "suggestedGrade": "grade 4",
             "confidence": "medium",
-            "reason": "These small multiplication equalities appear suitable for Grade 4. P4.2 supports equations, but does not establish this exact comparison task."
+            "reason": "Recognizing equal products appears suitable for Grade 4 multiplication and equality work. The supplied Grade 5 equation outcome does not establish that this simpler task first occurs in Grade 5."
           },
           {
             "province": "MB",
             "ok": false,
             "suggestedGrade": "grade 4",
             "confidence": "medium",
-            "reason": "These small multiplication equalities appear suitable for Grade 4. The supplied equation evidence does not establish the exact first grade for this task."
+            "reason": "Recognizing equal products appears suitable for Grade 4 multiplication and equality work. Confirm the earliest outcome for expressions on both sides."
           },
           {
             "province": "ON",
             "ok": true,
             "suggestedGrade": null,
             "confidence": "medium",
-            "reason": "Grade 4 multiplication facts support the correct products. The incorrect products with a factor of 11 can be rejected through multiplication strategies."
+            "reason": "Grade 4 multiplication facts and equality work support these comparisons. The choices containing a factor of 11 need only be rejected."
           }
         ],
         "wordingProblems": [],
         "problems": [
-          "The SK and MB tags may be one grade later than needed. The exact AB task scope needs review."
+          "The Saskatchewan and Manitoba Grade 5 tags appear later than this task requires. Confirm Grade 4 against the specific equality outcomes."
         ],
         "verdict": "review"
       }
@@ -9543,9 +9538,9 @@
       }
     },
     "g35-4-regular-polygon": {
-      "hash": "662173a9997419e8",
+      "hash": "116485e22d7bf01e",
       "status": "review",
-      "checkedAt": "2026-10-12",
+      "checkedAt": "2026-10-16",
       "model": "gpt-6.1-sol",
       "provider": "codex",
       "effort": "medium",
@@ -9560,33 +9555,34 @@
             "ok": true,
             "suggestedGrade": null,
             "confidence": "low",
-            "reason": "The supplied notes do not confirm the current outcome for regular polygons. There is insufficient evidence to replace Grade 3."
+            "reason": "Grade 3 is plausible for classification using a supplied definition. The supplied Alberta notes do not verify the specific polygon outcome."
           },
           {
             "province": "SK",
             "ok": true,
             "suggestedGrade": null,
             "confidence": "medium",
-            "reason": "SS3.5 supports shape classification. It does not explicitly settle the introduction of regular polygons."
+            "reason": "SS3.5 supports shape classification. The supplied notes do not confirm its exact regular-polygon scope."
           },
           {
             "province": "MB",
             "ok": true,
             "suggestedGrade": null,
-            "confidence": "low",
-            "reason": "The supplied notes do not establish the first grade for regular polygons. There is insufficient evidence to replace Grade 6."
+            "confidence": "medium",
+            "reason": "Grade 6 is plausible for formal classification of regular and irregular polygons."
           },
           {
             "province": "ON",
-            "ok": true,
-            "suggestedGrade": null,
-            "confidence": "low",
-            "reason": "The supplied notes do not establish the first grade for regular polygons. There is insufficient evidence to replace Grade 6."
+            "ok": false,
+            "suggestedGrade": "grade 3",
+            "confidence": "medium",
+            "reason": "Basic recognition of regular and irregular polygons appears earlier than Grade 6, especially when the definition is supplied. Confirm the exact current outcome."
           }
         ],
         "wordingProblems": [],
         "problems": [
-          "The province tags need source review for regular polygons. General shape classification does not establish the first taught grade."
+          "Confirm the specific Alberta and Saskatchewan polygon outcomes.",
+          "The Ontario Grade 6 tag appears too late for this recognition task."
         ],
         "verdict": "review"
       }
@@ -9970,9 +9966,9 @@
       }
     },
     "g35-4-tenths-order": {
-      "hash": "3e649fe75e8c12b4",
+      "hash": "764fcfbd49c9b161",
       "status": "pass",
-      "checkedAt": "2026-10-12",
+      "checkedAt": "2026-10-16",
       "model": "gpt-6.1-sol",
       "provider": "codex",
       "effort": "medium",
@@ -9985,30 +9981,30 @@
           {
             "province": "AB",
             "ok": true,
-            "suggestedGrade": null,
+            "suggestedGrade": "grade 4",
             "confidence": "medium",
-            "reason": "Comparing decimal tenths fits Grade 4 decimal work."
+            "reason": "Comparing decimal tenths fits the supplied Grade 4 decimal scope."
           },
           {
             "province": "SK",
             "ok": true,
-            "suggestedGrade": null,
+            "suggestedGrade": "grade 5",
             "confidence": "high",
-            "reason": "The supplied N5.6 outcome explicitly includes comparing and ordering decimals. The notes permit this later tag."
+            "reason": "N5.6 explicitly includes comparing and ordering decimals. The notes do not establish an earlier comparison outcome."
           },
           {
             "province": "MB",
             "ok": true,
-            "suggestedGrade": null,
+            "suggestedGrade": "grade 5",
             "confidence": "high",
-            "reason": "The supplied 5.N.10 outcome explicitly includes comparing and ordering decimal tenths."
+            "reason": "5.N.10 explicitly includes comparing and ordering decimal tenths."
           },
           {
             "province": "ON",
             "ok": true,
-            "suggestedGrade": null,
-            "confidence": "medium",
-            "reason": "All choices are decimal tenths, which fit the supplied Grade 4 decimal scope."
+            "suggestedGrade": "grade 4",
+            "confidence": "high",
+            "reason": "B1.7-B1.9 cover decimal tenths. All examples use tenths."
           }
         ],
         "wordingProblems": [],
@@ -10264,9 +10260,9 @@
       }
     },
     "g35-5-order-large": {
-      "hash": "b4463703a40bc4ee",
-      "status": "review",
-      "checkedAt": "2026-10-12",
+      "hash": "61d9157df4a81419",
+      "status": "pass",
+      "checkedAt": "2026-10-16",
       "model": "gpt-6.1-sol",
       "provider": "codex",
       "effort": "medium",
@@ -10281,21 +10277,21 @@
             "ok": true,
             "suggestedGrade": null,
             "confidence": "medium",
-            "reason": "The supplied Grade 5 million-range work supports this number range, but the ordering outcome is not supplied."
+            "reason": "The supplied notes place million-range number work in Grade 5."
           },
           {
             "province": "SK",
             "ok": true,
             "suggestedGrade": null,
-            "confidence": "low",
-            "reason": "The supplied notes do not establish the grade for ordering six-digit whole numbers."
+            "confidence": "medium",
+            "reason": "Ordering six-digit whole numbers is consistent with Grade 5 place value."
           },
           {
             "province": "MB",
             "ok": true,
             "suggestedGrade": null,
-            "confidence": "low",
-            "reason": "The supplied notes do not establish the grade for ordering six-digit whole numbers."
+            "confidence": "medium",
+            "reason": "Ordering six-digit whole numbers is consistent with Grade 5 place value."
           },
           {
             "province": "ON",
@@ -10306,10 +10302,8 @@
           }
         ],
         "wordingProblems": [],
-        "problems": [
-          "The SK and MB grades need source confirmation. Each marked list is in decreasing order. Each wrong list reverses the order or swaps adjacent numbers."
-        ],
-        "verdict": "review"
+        "problems": [],
+        "verdict": "pass"
       }
     },
     "g35-5-add-large": {
@@ -11136,9 +11130,9 @@
       }
     },
     "g35-5-decimal-half": {
-      "hash": "ce61c3d8a41bb0ef",
-      "status": "review",
-      "checkedAt": "2026-10-12",
+      "hash": "1560032b2ebdbfcf",
+      "status": "pass",
+      "checkedAt": "2026-10-16",
       "model": "gpt-6.1-sol",
       "provider": "codex",
       "effort": "medium",
@@ -11152,15 +11146,15 @@
             "province": "AB",
             "ok": true,
             "suggestedGrade": null,
-            "confidence": "low",
-            "reason": "Grade 5 is plausible. The supplied notes do not establish the grade for decimal comparison with one half."
+            "confidence": "medium",
+            "reason": "Comparison of decimal hundredths with one half is suitable for Grade 5."
           },
           {
             "province": "SK",
             "ok": true,
             "suggestedGrade": null,
             "confidence": "high",
-            "reason": "N5.6 explicitly compares and orders decimals to thousandths."
+            "reason": "N5.6 explicitly compares and orders decimals to thousandths, which includes these hundredths."
           },
           {
             "province": "MB",
@@ -11174,20 +11168,18 @@
             "ok": true,
             "suggestedGrade": null,
             "confidence": "high",
-            "reason": "Grade 5 B1.5 covers decimal hundredths."
+            "reason": "Grade 5 B1.5 supports decimal hundredths and their comparison."
           }
         ],
         "wordingProblems": [],
-        "problems": [
-          "The Alberta grade needs source review."
-        ],
-        "verdict": "review"
+        "problems": [],
+        "verdict": "pass"
       }
     },
     "g35-5-fraction-near-whole": {
-      "hash": "3b0bb583e7048ce9",
+      "hash": "d96ed422af14bf79",
       "status": "review",
-      "checkedAt": "2026-10-12",
+      "checkedAt": "2026-10-16",
       "model": "gpt-6.1-sol",
       "provider": "codex",
       "effort": "medium",
@@ -11199,36 +11191,36 @@
         "provinceTags": [
           {
             "province": "AB",
-            "ok": true,
-            "suggestedGrade": "grade 3",
-            "confidence": "low",
-            "reason": "Grade 3 fraction naming does not establish comparison with one whole. Grade 4 explicitly includes fraction comparison. Check the Grade 3 scope."
+            "ok": false,
+            "suggestedGrade": "grade 4",
+            "confidence": "medium",
+            "reason": "The supplied Grade 3 evidence establishes fraction naming, not this full comparison task. Grade 4 explicitly compares and orders fractions."
           },
           {
             "province": "SK",
-            "ok": true,
-            "suggestedGrade": "grade 5",
-            "confidence": "low",
-            "reason": "Retain Grade 5. The supplied equivalent-fraction outcome does not establish this comparison task."
+            "ok": false,
+            "suggestedGrade": "grade 4",
+            "confidence": "medium",
+            "reason": "All choices have a common denominator. This simpler comparison appears suitable for Grade 4 rather than requiring Grade 5 equivalent-fraction work."
           },
           {
             "province": "MB",
-            "ok": true,
-            "suggestedGrade": "grade 5",
-            "confidence": "low",
-            "reason": "Retain Grade 5. The supplied notes do not confirm fraction comparison with one whole."
+            "ok": false,
+            "suggestedGrade": "grade 4",
+            "confidence": "medium",
+            "reason": "Comparing proper fractions with a common denominator appears suitable for Grade 4. Confirm the exact denominator scope."
           },
           {
             "province": "ON",
             "ok": true,
-            "suggestedGrade": "grade 5",
+            "suggestedGrade": null,
             "confidence": "high",
-            "reason": "Grade 5 B1.4 includes fraction comparison from halves to twelfths. All choices are within that range."
+            "reason": "Grade 5 B1.4 compares fractions from halves through twelfths, including all supplied denominators."
           }
         ],
         "wordingProblems": [],
         "problems": [
-          "The AB, SK and MB outcomes for comparison with one whole need confirmation."
+          "Confirm the earliest comparison outcomes for Alberta, Saskatchewan and Manitoba. The examples require only common-denominator comparisons."
         ],
         "verdict": "review"
       }
@@ -11381,9 +11373,9 @@
       }
     },
     "g35-5-compare-thousandths": {
-      "hash": "1ef864fe3365ed72",
-      "status": "review",
-      "checkedAt": "2026-10-12",
+      "hash": "11fec6ca3377c0f5",
+      "status": "pass",
+      "checkedAt": "2026-10-16",
       "model": "gpt-6.1-sol",
       "provider": "codex",
       "effort": "medium",
@@ -11397,8 +11389,8 @@
             "province": "AB",
             "ok": true,
             "suggestedGrade": null,
-            "confidence": "low",
-            "reason": "Grade 5 is plausible. The supplied notes do not identify the outcome for comparing decimals to thousandths."
+            "confidence": "medium",
+            "reason": "Comparing decimal thousandths is consistent with Grade 5 decimal work."
           },
           {
             "province": "SK",
@@ -11412,21 +11404,19 @@
             "ok": true,
             "suggestedGrade": null,
             "confidence": "high",
-            "reason": "5.N.10 explicitly compares and orders decimal tenths, hundredths and thousandths."
+            "reason": "5.N.10 explicitly compares and orders tenths, hundredths and thousandths."
           },
           {
             "province": "ON",
             "ok": true,
             "suggestedGrade": null,
             "confidence": "high",
-            "reason": "Grade 6 B1.4 covers thousandths, and B1.3 covers decimal comparison."
+            "reason": "Grade 6 B1.4 supports decimal thousandths, and B1.3 supports decimal comparison."
           }
         ],
         "wordingProblems": [],
-        "problems": [
-          "The Alberta grade needs source review."
-        ],
-        "verdict": "review"
+        "problems": [],
+        "verdict": "pass"
       }
     },
     "g35-5-add-thousandths": {
@@ -12739,9 +12729,9 @@
       }
     },
     "g35-5-double-bar-difference": {
-      "hash": "e96ab2616d7c845e",
+      "hash": "3df4b974e375a2a9",
       "status": "review",
-      "checkedAt": "2026-10-12",
+      "checkedAt": "2026-10-16",
       "model": "gpt-6.1-sol",
       "provider": "codex",
       "effort": "medium",
@@ -12756,33 +12746,33 @@
             "ok": true,
             "suggestedGrade": null,
             "confidence": "low",
-            "reason": "The supplied Alberta notes do not confirm the grade for reading double bar graphs with a scale of two."
+            "reason": "Grade 5 is plausible, but the supplied notes do not confirm the current double bar graph outcome."
           },
           {
             "province": "SK",
             "ok": true,
             "suggestedGrade": null,
             "confidence": "high",
-            "reason": "The supplied SP5.2 notes explicitly include double bar graphs in Grade 5."
+            "reason": "SP5.2 includes double bar graphs."
           },
           {
             "province": "MB",
             "ok": true,
             "suggestedGrade": null,
             "confidence": "medium",
-            "reason": "Reading and comparing values on double bar graphs fits Grade 5 data work."
+            "reason": "Grade 5 is a reasonable placement for comparing values in double bar graphs."
           },
           {
             "province": "ON",
             "ok": true,
             "suggestedGrade": null,
             "confidence": "medium",
-            "reason": "Reading a scaled double bar graph and finding a difference fits Grade 4 data work."
+            "reason": "Grade 4 is a reasonable placement for reading and comparing scaled bar graph values."
           }
         ],
         "wordingProblems": [],
         "problems": [
-          "Confirm the current Alberta outcome for scaled double bar graphs."
+          "Confirm the Alberta tag against the current graph outcome. All eight differences and both wrong-answer patterns are correct."
         ],
         "verdict": "review"
       }
@@ -12982,9 +12972,9 @@
       }
     },
     "g35-6-prime": {
-      "hash": "a4dd0cbc581adafc",
+      "hash": "4b9993ff6a2d2379",
       "status": "review",
-      "checkedAt": "2026-10-12",
+      "checkedAt": "2026-10-16",
       "model": "gpt-6.1-sol",
       "provider": "codex",
       "effort": "medium",
@@ -12997,43 +12987,43 @@
           {
             "province": "AB",
             "ok": true,
-            "suggestedGrade": "grade 4",
+            "suggestedGrade": null,
             "confidence": "low",
-            "reason": "Retain Grade 4. The supplied arithmetic outcome does not establish identification of prime numbers."
+            "reason": "The supplied notes do not confirm the current grade for prime and composite numbers. Retain Grade 4 pending source review."
           },
           {
             "province": "SK",
             "ok": true,
-            "suggestedGrade": "grade 6",
-            "confidence": "low",
-            "reason": "Retain Grade 6. The supplied notes do not establish the prime-number outcome."
+            "suggestedGrade": null,
+            "confidence": "medium",
+            "reason": "Grade 6 is a reasonable placement for prime and composite classification."
           },
           {
             "province": "MB",
             "ok": true,
-            "suggestedGrade": "grade 6",
-            "confidence": "low",
-            "reason": "Retain Grade 6. The supplied notes do not establish the prime-number outcome."
+            "suggestedGrade": null,
+            "confidence": "medium",
+            "reason": "Grade 6 is a reasonable placement for prime and composite classification."
           },
           {
             "province": "ON",
             "ok": true,
-            "suggestedGrade": "grade 6",
-            "confidence": "low",
-            "reason": "Retain Grade 6. The supplied notes do not establish the prime-number outcome."
+            "suggestedGrade": null,
+            "confidence": "medium",
+            "reason": "Grade 6 is a reasonable placement for prime and composite classification."
           }
         ],
         "wordingProblems": [],
         "problems": [
-          "The provincial outcomes for prime numbers need confirmation."
+          "Confirm the Alberta tag. Each example has exactly one correct choice, and all coded errors are plausible."
         ],
         "verdict": "review"
       }
     },
     "g35-6-divisibility": {
-      "hash": "2730b7478128ee95",
+      "hash": "5b1d3238fb454b19",
       "status": "review",
-      "checkedAt": "2026-10-12",
+      "checkedAt": "2026-10-16",
       "model": "gpt-6.1-sol",
       "provider": "codex",
       "effort": "medium",
@@ -13046,35 +13036,35 @@
           {
             "province": "AB",
             "ok": true,
-            "suggestedGrade": "grade 5",
+            "suggestedGrade": null,
             "confidence": "low",
-            "reason": "Retain Grade 5. The supplied notes do not establish the divisibility-rule outcome."
+            "reason": "The supplied notes do not confirm the current grade for divisibility rules for 4, 6 and 9."
           },
           {
             "province": "SK",
             "ok": true,
-            "suggestedGrade": "grade 7",
-            "confidence": "low",
-            "reason": "Retain Grade 7. The supplied notes do not establish the earliest grade for divisibility rules."
+            "suggestedGrade": null,
+            "confidence": "medium",
+            "reason": "Grade 7 is a reasonable placement for applying these divisibility rules."
           },
           {
             "province": "MB",
             "ok": true,
-            "suggestedGrade": "grade 7",
-            "confidence": "low",
-            "reason": "Retain Grade 7. The supplied notes do not establish the earliest grade for divisibility rules."
+            "suggestedGrade": null,
+            "confidence": "medium",
+            "reason": "Grade 7 is a reasonable placement for applying these divisibility rules."
           },
           {
             "province": "ON",
             "ok": true,
-            "suggestedGrade": "grade 6",
-            "confidence": "low",
-            "reason": "Retain Grade 6. The supplied notes do not establish the divisibility-rule outcome."
+            "suggestedGrade": null,
+            "confidence": "medium",
+            "reason": "Grade 6 is a reasonable placement for these factor and divisibility tasks."
           }
         ],
         "wordingProblems": [],
         "problems": [
-          "The provincial outcomes for divisibility rules need confirmation."
+          "Confirm the Alberta tag. The correct quotients are 44, 37, 32, 39, 34, 23, 55 and 73. No other choice divides evenly by the stated divisor."
         ],
         "verdict": "review"
       }
@@ -16648,9 +16638,9 @@
       }
     },
     "g67-5-greatest-decimal": {
-      "hash": "d58babba606acb19",
+      "hash": "fd8dc152c1eb1f79",
       "status": "review",
-      "checkedAt": "2026-10-12",
+      "checkedAt": "2026-10-16",
       "model": "gpt-6.1-sol",
       "provider": "codex",
       "effort": "medium",
@@ -16664,42 +16654,42 @@
             "province": "AB",
             "ok": true,
             "suggestedGrade": null,
-            "confidence": "medium",
-            "reason": "The supplied notes confirm Grade 4 decimal arithmetic, but do not explicitly confirm decimal comparison. Retain Grade 4 for source review."
+            "confidence": "low",
+            "reason": "Grade 4 is plausible. The supplied notes do not confirm the current outcome for comparing decimal tenths and hundredths."
           },
           {
             "province": "SK",
             "ok": true,
             "suggestedGrade": null,
             "confidence": "high",
-            "reason": "Grade 5 N5.6 explicitly compares and orders decimals to thousandths. These tenths and hundredths fit that scope."
+            "reason": "N5.6 explicitly includes comparing and ordering decimals to thousandths. These examples use tenths and hundredths."
           },
           {
             "province": "MB",
             "ok": true,
             "suggestedGrade": null,
             "confidence": "high",
-            "reason": "Grade 5 5.N.10 explicitly compares and orders tenths, hundredths and thousandths."
+            "reason": "5.N.10 explicitly includes comparing and ordering decimal tenths, hundredths and thousandths."
           },
           {
             "province": "ON",
             "ok": true,
             "suggestedGrade": null,
-            "confidence": "medium",
-            "reason": "Grade 5 B1.5 covers hundredths. The supplied notes do not state the exact decimal-comparison outcome."
+            "confidence": "high",
+            "reason": "Grade 5 B1.5 supports decimal hundredths. These comparisons fit that difficulty."
           }
         ],
         "wordingProblems": [],
         "problems": [
-          "Confirm the AB and ON comparison outcomes. All marked greatest values are correct. The length misconception can favour any two-digit decimal over the one-digit decimal, so each coded wrong answer is plausible."
+          "Confirm the Alberta Grade 4 decimal comparison outcome. All eight marked answers are uniquely correct, and all coded errors are plausible."
         ],
         "verdict": "review"
       }
     },
     "g67-5-least-decimal": {
-      "hash": "75a887a8eecea251",
+      "hash": "22e2771648e507a1",
       "status": "review",
-      "checkedAt": "2026-10-12",
+      "checkedAt": "2026-10-16",
       "model": "gpt-6.1-sol",
       "provider": "codex",
       "effort": "medium",
@@ -16714,7 +16704,7 @@
             "ok": true,
             "suggestedGrade": null,
             "confidence": "low",
-            "reason": "The supplied notes do not establish the grade for comparing decimal thousandths. Retain Grade 5 pending review."
+            "reason": "Grade 5 is plausible, but the supplied notes do not confirm the current thousandths comparison outcome."
           },
           {
             "province": "SK",
@@ -16728,7 +16718,7 @@
             "ok": true,
             "suggestedGrade": null,
             "confidence": "high",
-            "reason": "5.N.10 explicitly compares and orders tenths, hundredths and thousandths."
+            "reason": "5.N.10 explicitly compares and orders decimals to thousandths."
           },
           {
             "province": "ON",
@@ -16740,7 +16730,7 @@
         ],
         "wordingProblems": [],
         "problems": [
-          "The supplied Alberta evidence does not confirm the thousandth-comparison grade."
+          "Confirm the Alberta tag. Omitting the internal zero makes the correct least value appear equal to the coded wrong choice, so that error is plausible."
         ],
         "verdict": "review"
       }
@@ -16844,9 +16834,9 @@
       }
     },
     "g67-5-greatest-fraction": {
-      "hash": "22522ec6f2bcbf2c",
+      "hash": "ff22e3310fbee06a",
       "status": "review",
-      "checkedAt": "2026-10-12",
+      "checkedAt": "2026-10-16",
       "model": "gpt-6.1-sol",
       "provider": "codex",
       "effort": "medium",
@@ -16861,33 +16851,33 @@
             "ok": true,
             "suggestedGrade": null,
             "confidence": "medium",
-            "reason": "The supplied Grade 4 outcome includes comparison of fractions. Its denominator range is not given, so denominators through 36 need confirmation."
+            "reason": "MAT4-OI1-GQ5-LO1-KO1-SP includes fraction comparison. The supplied notes do not establish its denominator limits for choices through thirty-sixths."
           },
           {
             "province": "SK",
             "ok": true,
             "suggestedGrade": null,
             "confidence": "medium",
-            "reason": "Grade 5 equivalent-fraction work supports these comparisons. The supplied notes do not establish the full comparison scope."
+            "reason": "Grade 5 equivalent fractions support these comparisons with related denominators."
           },
           {
             "province": "MB",
             "ok": true,
             "suggestedGrade": null,
             "confidence": "medium",
-            "reason": "Grade 5 is plausible for unlike-denominator comparisons. The supplied notes do not confirm the full denominator range."
+            "reason": "Grade 5 is a reasonable placement for comparisons using equivalent fractions and related denominators."
           },
           {
             "province": "ON",
             "ok": true,
             "suggestedGrade": null,
             "confidence": "medium",
-            "reason": "Several choices exceed the Grade 5 halves-to-twelfths range. Grade 6 fraction comparison is appropriate."
+            "reason": "Several denominators exceed the halves-to-twelfths scope supplied for Grade 5. Retaining Grade 6 is reasonable."
           }
         ],
         "wordingProblems": [],
         "problems": [
-          "Confirm the AB, SK and MB comparison outcomes for the full choice range, including denominators 28, 32 and 36."
+          "Confirm that the Alberta outcome covers the full denominator range. All eight marked answers are correct, and each coded error fits its wrong answer."
         ],
         "verdict": "review"
       }
@@ -17947,9 +17937,9 @@
       }
     },
     "g67-6-greatest-large": {
-      "hash": "97104b1ea986a0b7",
-      "status": "review",
-      "checkedAt": "2026-10-12",
+      "hash": "cd0a5c657c00b653",
+      "status": "pass",
+      "checkedAt": "2026-10-16",
       "model": "gpt-6.1-sol",
       "provider": "codex",
       "effort": "medium",
@@ -17964,33 +17954,33 @@
             "ok": true,
             "suggestedGrade": null,
             "confidence": "medium",
-            "reason": "The notes support million-range operations in Grade 5. The exact comparison range needs confirmation because examples exceed one million."
+            "reason": "The supplied current curriculum notes place million-range number work in Grade 5."
           },
           {
             "province": "SK",
             "ok": true,
             "suggestedGrade": null,
-            "confidence": "low",
-            "reason": "The supplied notes do not establish the Grade 6 whole-number comparison range."
+            "confidence": "medium",
+            "reason": "Grade 6 is a reasonable placement for comparing whole numbers greater than one million."
           },
           {
             "province": "MB",
             "ok": true,
             "suggestedGrade": null,
-            "confidence": "low",
-            "reason": "The supplied notes do not establish the Grade 6 whole-number comparison range."
+            "confidence": "medium",
+            "reason": "Grade 6 is a reasonable placement for comparing whole numbers greater than one million."
           },
           {
             "province": "ON",
             "ok": true,
             "suggestedGrade": null,
             "confidence": "medium",
-            "reason": "Grade 6 B1.1 covers numbers up to one million. These examples exceed that limit, but the notes do not establish the Grade 7 outcome."
+            "reason": "The examples exceed one million, the supplied Grade 6 range. Grade 7 is reasonable."
           }
         ],
         "wordingProblems": [],
         "problems": [],
-        "verdict": "review"
+        "verdict": "pass"
       }
     },
     "g67-6-decimal-digit-value": {
@@ -18041,9 +18031,9 @@
       }
     },
     "g67-6-lcm": {
-      "hash": "4f39ca9d38b5f345",
+      "hash": "7b68eb18a2aaaf74",
       "status": "review",
-      "checkedAt": "2026-10-12",
+      "checkedAt": "2026-10-16",
       "model": "gpt-6.1-sol",
       "provider": "codex",
       "effort": "medium",
@@ -18056,35 +18046,35 @@
           {
             "province": "AB",
             "ok": true,
-            "suggestedGrade": "grade 6",
+            "suggestedGrade": null,
             "confidence": "low",
-            "reason": "The supplied notes do not establish the grade for least common multiples."
+            "reason": "Grade 6 is plausible, but the supplied notes do not confirm the current least common multiple outcome."
           },
           {
             "province": "SK",
             "ok": true,
-            "suggestedGrade": "grade 6",
-            "confidence": "low",
-            "reason": "The supplied notes do not establish the grade for least common multiples."
+            "suggestedGrade": null,
+            "confidence": "medium",
+            "reason": "Grade 6 is a reasonable placement for these factor and common multiple tasks."
           },
           {
             "province": "MB",
             "ok": true,
-            "suggestedGrade": "grade 6",
-            "confidence": "low",
-            "reason": "The supplied notes do not establish the grade for least common multiples."
+            "suggestedGrade": null,
+            "confidence": "medium",
+            "reason": "Grade 6 is a reasonable placement for these factor and common multiple tasks."
           },
           {
             "province": "ON",
             "ok": true,
-            "suggestedGrade": "grade 7",
-            "confidence": "low",
-            "reason": "The supplied notes do not establish the grade for least common multiples."
+            "suggestedGrade": null,
+            "confidence": "medium",
+            "reason": "Grade 7 is a reasonable placement for least common multiple tasks."
           }
         ],
         "wordingProblems": [],
         "problems": [
-          "The supplied notes do not confirm the province grades for least common multiples."
+          "Confirm the Alberta tag. The least common multiples are 12, 20, 28, 30, 40, 45, 60 and 84. Each wrong answer is either the product or the greatest common factor."
         ],
         "verdict": "review"
       }
@@ -18137,9 +18127,9 @@
       }
     },
     "g67-6-which-prime": {
-      "hash": "94aa3174b48aa987",
+      "hash": "3e73f83d39df5a2a",
       "status": "review",
-      "checkedAt": "2026-10-12",
+      "checkedAt": "2026-10-16",
       "model": "gpt-6.1-sol",
       "provider": "codex",
       "effort": "medium",
@@ -18154,39 +18144,41 @@
             "ok": true,
             "suggestedGrade": null,
             "confidence": "low",
-            "reason": "The supplied notes do not confirm the current Grade 4 outcome for prime numbers. Retain the tag for source review."
+            "reason": "The supplied notes do not confirm the current grade for prime numbers. Retain Grade 4 pending source review."
           },
           {
             "province": "SK",
             "ok": true,
             "suggestedGrade": null,
-            "confidence": "low",
-            "reason": "The supplied notes do not confirm the outcome for prime numbers. There is no supplied evidence to change Grade 6."
+            "confidence": "medium",
+            "reason": "Grade 6 is a reasonable placement for prime identification through factors."
           },
           {
             "province": "MB",
             "ok": true,
             "suggestedGrade": null,
-            "confidence": "low",
-            "reason": "The supplied notes do not confirm the outcome for prime numbers. There is no supplied evidence to change Grade 6."
+            "confidence": "medium",
+            "reason": "Grade 6 is a reasonable placement for prime identification through factors."
           },
           {
             "province": "ON",
             "ok": true,
             "suggestedGrade": null,
-            "confidence": "low",
-            "reason": "The supplied notes do not confirm the outcome for prime numbers. There is no supplied evidence to change Grade 6."
+            "confidence": "medium",
+            "reason": "Grade 6 is a reasonable placement for prime identification through factors."
           }
         ],
         "wordingProblems": [],
-        "problems": [],
+        "problems": [
+          "Confirm the Alberta tag. Each example has exactly one prime number. Every wrong choice is an odd composite number."
+        ],
         "verdict": "review"
       }
     },
     "g67-6-which-composite": {
-      "hash": "b07fbed1095a1c4c",
+      "hash": "ec49a3fb8fffdef2",
       "status": "review",
-      "checkedAt": "2026-10-12",
+      "checkedAt": "2026-10-16",
       "model": "gpt-6.1-sol",
       "provider": "codex",
       "effort": "medium",
@@ -18201,32 +18193,34 @@
             "ok": true,
             "suggestedGrade": null,
             "confidence": "low",
-            "reason": "The supplied notes do not confirm the current Grade 4 outcome for composite numbers. Retain the tag for source review."
+            "reason": "Retain Grade 4 pending confirmation. The supplied Alberta notes do not establish the grade for prime and composite numbers."
           },
           {
             "province": "SK",
             "ok": true,
             "suggestedGrade": null,
-            "confidence": "low",
-            "reason": "The supplied notes do not confirm the outcome for composite numbers. There is no supplied evidence to change Grade 6."
+            "confidence": "medium",
+            "reason": "Grade 6 is a reasonable placement for identifying prime and composite numbers."
           },
           {
             "province": "MB",
             "ok": true,
             "suggestedGrade": null,
-            "confidence": "low",
-            "reason": "The supplied notes do not confirm the outcome for composite numbers. There is no supplied evidence to change Grade 6."
+            "confidence": "medium",
+            "reason": "Grade 6 is a reasonable placement for identifying prime and composite numbers."
           },
           {
             "province": "ON",
             "ok": true,
             "suggestedGrade": null,
-            "confidence": "low",
-            "reason": "The supplied notes do not confirm the outcome for composite numbers. There is no supplied evidence to change Grade 6."
+            "confidence": "medium",
+            "reason": "Grade 6 is a reasonable placement for identifying prime and composite numbers."
           }
         ],
         "wordingProblems": [],
-        "problems": [],
+        "problems": [
+          "Confirm the Alberta grade against the implemented curriculum. The supplied notes do not resolve this tag."
+        ],
         "verdict": "review"
       }
     },
@@ -18703,9 +18697,9 @@
       }
     },
     "g67-6-greatest-fraction": {
-      "hash": "0eda93f4ba39572e",
+      "hash": "5b5b2bd01ec2bcfd",
       "status": "pass",
-      "checkedAt": "2026-10-12",
+      "checkedAt": "2026-10-16",
       "model": "gpt-6.1-sol",
       "provider": "codex",
       "effort": "medium",
@@ -18720,28 +18714,28 @@
             "ok": true,
             "suggestedGrade": null,
             "confidence": "high",
-            "reason": "MAT4-OI1-GQ5-LO1-KO1-SP includes comparing and ordering fractions."
+            "reason": "The supplied MAT4-OI1-GQ5-LO1-KO1-SP outcome explicitly includes comparing and ordering fractions."
           },
           {
             "province": "SK",
             "ok": true,
             "suggestedGrade": null,
-            "confidence": "low",
-            "reason": "The supplied notes do not establish a different grade for these proper-fraction comparisons."
+            "confidence": "medium",
+            "reason": "Grade 5 is a reasonable placement for comparing proper fractions with unlike denominators."
           },
           {
             "province": "MB",
             "ok": true,
             "suggestedGrade": null,
-            "confidence": "low",
-            "reason": "The supplied notes do not establish a different grade for these proper-fraction comparisons."
+            "confidence": "medium",
+            "reason": "Grade 5 is a reasonable placement for comparing proper fractions with unlike denominators."
           },
           {
             "province": "ON",
             "ok": true,
             "suggestedGrade": null,
             "confidence": "high",
-            "reason": "Grade 6 B1.3 includes fraction comparison. These choices include denominators beyond the Grade 5 halves-to-twelfths range."
+            "reason": "Grade 6 B1.3 supports fraction comparison. These examples include denominators beyond the halves-to-twelfths range stated for Grade 5."
           }
         ],
         "wordingProblems": [],
@@ -20770,9 +20764,9 @@
       }
     },
     "g67-7-order-integers": {
-      "hash": "6bafbd12aecdec5e",
-      "status": "review",
-      "checkedAt": "2026-10-12",
+      "hash": "dac717a8e90a7a5c",
+      "status": "pass",
+      "checkedAt": "2026-10-16",
       "model": "gpt-6.1-sol",
       "provider": "codex",
       "effort": "medium",
@@ -20786,34 +20780,34 @@
             "province": "AB",
             "ok": true,
             "suggestedGrade": null,
-            "confidence": "low",
-            "reason": "The supplied notes do not give an integer-ordering outcome. Retain Grade 6 pending source review."
+            "confidence": "medium",
+            "reason": "Grade 6 is a reasonable placement for ordering small positive and negative integers."
           },
           {
             "province": "SK",
             "ok": true,
             "suggestedGrade": null,
-            "confidence": "low",
-            "reason": "The supplied notes do not give an integer-ordering outcome. Retain Grade 6 pending source review."
+            "confidence": "medium",
+            "reason": "Grade 6 is a reasonable placement for ordering small positive and negative integers."
           },
           {
             "province": "MB",
             "ok": true,
             "suggestedGrade": null,
-            "confidence": "low",
-            "reason": "The supplied notes do not give an integer-ordering outcome. Retain Grade 6 pending source review."
+            "confidence": "medium",
+            "reason": "Grade 6 is a reasonable placement for ordering small positive and negative integers."
           },
           {
             "province": "ON",
             "ok": true,
             "suggestedGrade": null,
             "confidence": "high",
-            "reason": "The supplied Grade 6 B1.3 expectation supports integer comparison. These lists require repeated comparisons."
+            "reason": "The supplied Grade 6 B1.3 expectation explicitly includes comparing integers."
           }
         ],
         "wordingProblems": [],
         "problems": [],
-        "verdict": "review"
+        "verdict": "pass"
       }
     },
     "g67-7-add-integers": {
@@ -21479,9 +21473,9 @@
       }
     },
     "g67-7-greatest-mixed-forms": {
-      "hash": "5e80f0d41afc7d59",
+      "hash": "8c3cc941221258f0",
       "status": "review",
-      "checkedAt": "2026-10-12",
+      "checkedAt": "2026-10-16",
       "model": "gpt-6.1-sol",
       "provider": "codex",
       "effort": "medium",
@@ -21495,33 +21489,35 @@
             "province": "AB",
             "ok": true,
             "suggestedGrade": null,
-            "confidence": "low",
-            "reason": "The supplied fraction conversion outcome does not establish the first grade for comparison across fractions, decimals and percents."
+            "confidence": "medium",
+            "reason": "Grade 7 is a reasonable placement for comparing fractions, decimals and percents together."
           },
           {
             "province": "SK",
             "ok": true,
             "suggestedGrade": null,
-            "confidence": "low",
-            "reason": "N5.6 supports decimal ordering, but it does not establish comparison across all three forms."
+            "confidence": "medium",
+            "reason": "Grade 7 is a reasonable placement for comparing fractions, decimals and percents together."
           },
           {
             "province": "MB",
             "ok": true,
             "suggestedGrade": null,
-            "confidence": "low",
-            "reason": "5.N.10 supports decimal ordering, but it does not establish comparison across all three forms."
+            "confidence": "medium",
+            "reason": "Grade 7 is a reasonable placement for comparing fractions, decimals and percents together."
           },
           {
             "province": "ON",
             "ok": true,
             "suggestedGrade": null,
             "confidence": "low",
-            "reason": "Grade 6 B1.3 supports comparison of decimals and fractions. The supplied notes do not establish the percent component."
+            "reason": "Retain Grade 7 pending confirmation. The supplied Grade 6 notes support fraction and decimal comparison but do not resolve comparison with percents."
           }
         ],
         "wordingProblems": [],
-        "problems": [],
+        "problems": [
+          "Confirm whether Ontario introduces this combined comparison in Grade 6 or Grade 7."
+        ],
         "verdict": "review"
       }
     },
@@ -21718,9 +21714,9 @@
       }
     },
     "g67-7-order-forms": {
-      "hash": "7f48fd37c9f0ee35",
+      "hash": "111cb4562eed762a",
       "status": "review",
-      "checkedAt": "2026-10-12",
+      "checkedAt": "2026-10-16",
       "model": "gpt-6.1-sol",
       "provider": "codex",
       "effort": "medium",
@@ -21734,34 +21730,34 @@
             "province": "AB",
             "ok": true,
             "suggestedGrade": null,
-            "confidence": "low",
-            "reason": "The supplied notes do not establish the grade for ordering fractions, decimals and percents together."
+            "confidence": "medium",
+            "reason": "Grade 7 is a reasonable placement for ordering fractions, decimals and percents together."
           },
           {
             "province": "SK",
             "ok": true,
             "suggestedGrade": null,
-            "confidence": "low",
-            "reason": "The supplied decimal and fraction outcomes do not establish ordering across all three forms."
+            "confidence": "medium",
+            "reason": "Grade 7 is a reasonable placement for ordering fractions, decimals and percents together."
           },
           {
             "province": "MB",
             "ok": true,
             "suggestedGrade": null,
-            "confidence": "low",
-            "reason": "The supplied notes do not establish the grade for ordering fractions, decimals and percents together."
+            "confidence": "medium",
+            "reason": "Grade 7 is a reasonable placement for ordering fractions, decimals and percents together."
           },
           {
             "province": "ON",
             "ok": true,
             "suggestedGrade": null,
             "confidence": "low",
-            "reason": "Grade 6 B1.3 supports decimal and fraction comparison. The supplied notes do not establish the percent component."
+            "reason": "Retain Grade 7 pending confirmation. The supplied Grade 6 notes do not resolve ordering that also includes percents."
           }
         ],
         "wordingProblems": [],
         "problems": [
-          "The province grades require source review. Each marked list is the only list in increasing order."
+          "Confirm whether Ontario introduces this combined ordering in Grade 6 or Grade 7."
         ],
         "verdict": "review"
       }
@@ -23357,9 +23353,9 @@
       }
     },
     "g67-7-dice-sum": {
-      "hash": "5b1407949d9127f8",
+      "hash": "6542aa66c2e4fd52",
       "status": "pass",
-      "checkedAt": "2026-10-12",
+      "checkedAt": "2026-10-16",
       "model": "gpt-6.1-sol",
       "provider": "codex",
       "effort": "medium",
@@ -23374,28 +23370,28 @@
             "ok": true,
             "suggestedGrade": null,
             "confidence": "medium",
-            "reason": "Grade 7 fits comparing probabilities using the outcomes of two independent events."
+            "reason": "Grade 7 is a reasonable placement for comparing probabilities from two dice."
           },
           {
             "province": "SK",
             "ok": true,
             "suggestedGrade": null,
             "confidence": "medium",
-            "reason": "Grade 7 fits comparing probabilities using the outcomes of two independent events."
+            "reason": "Grade 7 is a reasonable placement for a sample space with two independent events."
           },
           {
             "province": "MB",
             "ok": true,
             "suggestedGrade": null,
             "confidence": "medium",
-            "reason": "Grade 7 fits comparing probabilities using the outcomes of two independent events."
+            "reason": "Grade 7 is a reasonable placement for a sample space with two independent events."
           },
           {
             "province": "ON",
             "ok": true,
             "suggestedGrade": null,
             "confidence": "medium",
-            "reason": "Grade 7 fits comparing probabilities using the outcomes of two independent events."
+            "reason": "Grade 7 is a reasonable placement for comparing probabilities from two dice."
           }
         ],
         "wordingProblems": [],
@@ -23451,9 +23447,9 @@
       }
     },
     "g67-8-perfect-square": {
-      "hash": "abb644f29834d694",
+      "hash": "8b21dc870ff9a5eb",
       "status": "pass",
-      "checkedAt": "2026-10-12",
+      "checkedAt": "2026-10-16",
       "model": "gpt-6.1-sol",
       "provider": "codex",
       "effort": "medium",
@@ -23468,28 +23464,28 @@
             "ok": true,
             "suggestedGrade": null,
             "confidence": "medium",
-            "reason": "Grade 8 fits identifying perfect squares."
+            "reason": "Grade 8 is a reasonable placement for identifying perfect squares through 361."
           },
           {
             "province": "SK",
             "ok": true,
             "suggestedGrade": null,
             "confidence": "medium",
-            "reason": "Grade 8 fits identifying perfect squares."
+            "reason": "Grade 8 is a reasonable placement for identifying perfect squares through 361."
           },
           {
             "province": "MB",
             "ok": true,
             "suggestedGrade": null,
             "confidence": "medium",
-            "reason": "Grade 8 fits identifying perfect squares."
+            "reason": "Grade 8 is a reasonable placement for identifying perfect squares through 361."
           },
           {
             "province": "ON",
             "ok": true,
             "suggestedGrade": null,
             "confidence": "medium",
-            "reason": "Grade 8 fits identifying perfect squares."
+            "reason": "Grade 8 is a reasonable placement for identifying perfect squares through 361."
           }
         ],
         "wordingProblems": [],
@@ -25313,6 +25309,290 @@
         "wordingProblems": [],
         "problems": [],
         "verdict": "pass"
+      }
+    },
+    "2-closest-benchmark": {
+      "hash": "3e999e4f37f2f072",
+      "status": "pass",
+      "checkedAt": "2026-10-16",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium",
+      "findings": {
+        "id": "2-closest-benchmark",
+        "answerCorrect": true,
+        "wrongAnswersOk": true,
+        "bcGradeFits": true,
+        "provinceTags": [
+          {
+            "province": "AB",
+            "ok": true,
+            "suggestedGrade": "grade 3",
+            "confidence": "medium",
+            "reason": "Comparing distances to whole-number benchmarks fits Grade 3 estimation."
+          },
+          {
+            "province": "SK",
+            "ok": true,
+            "suggestedGrade": "grade 3",
+            "confidence": "medium",
+            "reason": "Using whole-number benchmarks for estimation fits Grade 3."
+          },
+          {
+            "province": "MB",
+            "ok": true,
+            "suggestedGrade": "grade 3",
+            "confidence": "medium",
+            "reason": "Using whole-number benchmarks for estimation fits Grade 3."
+          },
+          {
+            "province": "ON",
+            "ok": true,
+            "suggestedGrade": "grade 3",
+            "confidence": "medium",
+            "reason": "Selecting the nearest whole-number benchmark fits Grade 3 estimation."
+          }
+        ],
+        "wordingProblems": [],
+        "problems": [],
+        "verdict": "pass"
+      }
+    },
+    "2-half-full-referent": {
+      "hash": "7e74332476ef1fcf",
+      "status": "pass",
+      "checkedAt": "2026-10-16",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium",
+      "findings": {
+        "id": "2-half-full-referent",
+        "answerCorrect": true,
+        "wrongAnswersOk": true,
+        "bcGradeFits": true,
+        "provinceTags": [
+          {
+            "province": "AB",
+            "ok": true,
+            "suggestedGrade": "grade 3",
+            "confidence": "medium",
+            "reason": "Finding half of a whole quantity fits the supplied Grade 3 fraction evidence."
+          },
+          {
+            "province": "SK",
+            "ok": true,
+            "suggestedGrade": "grade 2",
+            "confidence": "medium",
+            "reason": "Using half of a familiar quantity as an estimate fits Grade 2 difficulty."
+          },
+          {
+            "province": "MB",
+            "ok": true,
+            "suggestedGrade": "grade 2",
+            "confidence": "medium",
+            "reason": "Using half of a familiar quantity as an estimate fits Grade 2 difficulty."
+          },
+          {
+            "province": "ON",
+            "ok": true,
+            "suggestedGrade": "grade 3",
+            "confidence": "medium",
+            "reason": "Estimating half of a set of 50 or 100 fits Grade 3 fraction work."
+          }
+        ],
+        "wordingProblems": [],
+        "problems": [],
+        "verdict": "pass"
+      }
+    },
+    "g35-4-experiment-predict": {
+      "hash": "106d23b16a5d7cf3",
+      "status": "pass",
+      "checkedAt": "2026-10-16",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium",
+      "findings": {
+        "id": "g35-4-experiment-predict",
+        "answerCorrect": true,
+        "wrongAnswersOk": true,
+        "bcGradeFits": true,
+        "provinceTags": [
+          {
+            "province": "AB",
+            "ok": true,
+            "suggestedGrade": null,
+            "confidence": "medium",
+            "reason": "Grade 6 is consistent with probability experiments in the current Alberta sequence."
+          },
+          {
+            "province": "SK",
+            "ok": true,
+            "suggestedGrade": null,
+            "confidence": "medium",
+            "reason": "Predicting results of repeated chance experiments is suitable for Grade 5."
+          },
+          {
+            "province": "MB",
+            "ok": true,
+            "suggestedGrade": null,
+            "confidence": "medium",
+            "reason": "Predicting results of repeated chance experiments is suitable for Grade 5."
+          },
+          {
+            "province": "ON",
+            "ok": true,
+            "suggestedGrade": null,
+            "confidence": "medium",
+            "reason": "Qualitative predictions from simple chance experiments are suitable for Grade 4."
+          }
+        ],
+        "wordingProblems": [],
+        "problems": [],
+        "verdict": "pass"
+      }
+    },
+    "g35-4-experiment-results": {
+      "hash": "0dc1193d98ba1db9",
+      "status": "pass",
+      "checkedAt": "2026-10-16",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium",
+      "findings": {
+        "id": "g35-4-experiment-results",
+        "answerCorrect": true,
+        "wrongAnswersOk": true,
+        "bcGradeFits": true,
+        "provinceTags": [
+          {
+            "province": "AB",
+            "ok": true,
+            "suggestedGrade": null,
+            "confidence": "medium",
+            "reason": "Grade 6 is consistent with interpreting probability experiments in the current Alberta sequence."
+          },
+          {
+            "province": "SK",
+            "ok": true,
+            "suggestedGrade": null,
+            "confidence": "medium",
+            "reason": "Using experimental results to compare simple spinner models is suitable for Grade 5."
+          },
+          {
+            "province": "MB",
+            "ok": true,
+            "suggestedGrade": null,
+            "confidence": "medium",
+            "reason": "Using experimental results to compare simple spinner models is suitable for Grade 5."
+          },
+          {
+            "province": "ON",
+            "ok": true,
+            "suggestedGrade": null,
+            "confidence": "medium",
+            "reason": "These qualitative comparisons of experimental results are suitable for Grade 4 probability work."
+          }
+        ],
+        "wordingProblems": [],
+        "problems": [],
+        "verdict": "pass"
+      }
+    },
+    "g35-4-dice-likelihood": {
+      "hash": "c1b9f9a695360985",
+      "status": "pass",
+      "checkedAt": "2026-10-16",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium",
+      "findings": {
+        "id": "g35-4-dice-likelihood",
+        "answerCorrect": true,
+        "wrongAnswersOk": true,
+        "bcGradeFits": true,
+        "provinceTags": [
+          {
+            "province": "AB",
+            "ok": true,
+            "suggestedGrade": null,
+            "confidence": "medium",
+            "reason": "Grade 6 is consistent with comparing probabilities in the current Alberta sequence."
+          },
+          {
+            "province": "SK",
+            "ok": true,
+            "suggestedGrade": null,
+            "confidence": "medium",
+            "reason": "Comparing events by counting possible outcomes is suitable for Grade 5."
+          },
+          {
+            "province": "MB",
+            "ok": true,
+            "suggestedGrade": null,
+            "confidence": "medium",
+            "reason": "Comparing events by counting possible outcomes is suitable for Grade 5."
+          },
+          {
+            "province": "ON",
+            "ok": true,
+            "suggestedGrade": null,
+            "confidence": "medium",
+            "reason": "Comparing the likelihood of simple number-cube events is suitable for Grade 4."
+          }
+        ],
+        "wordingProblems": [],
+        "problems": [],
+        "verdict": "pass"
+      }
+    },
+    "g67-6-lcm-story": {
+      "hash": "0318b15913eca97e",
+      "status": "review",
+      "checkedAt": "2026-10-16",
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "effort": "medium",
+      "findings": {
+        "id": "g67-6-lcm-story",
+        "answerCorrect": true,
+        "wrongAnswersOk": true,
+        "bcGradeFits": true,
+        "provinceTags": [
+          {
+            "province": "AB",
+            "ok": true,
+            "suggestedGrade": null,
+            "confidence": "low",
+            "reason": "Grade 6 is plausible, but the supplied notes do not confirm least common multiple problems in the current Alberta curriculum."
+          },
+          {
+            "province": "SK",
+            "ok": true,
+            "suggestedGrade": null,
+            "confidence": "medium",
+            "reason": "Grade 6 is plausible for factors and multiples. The supplied notes do not establish the exact scope for least common multiple stories."
+          },
+          {
+            "province": "MB",
+            "ok": true,
+            "suggestedGrade": null,
+            "confidence": "medium",
+            "reason": "Grade 6 is plausible for factors and multiples. The supplied notes do not establish the exact scope for least common multiple stories."
+          },
+          {
+            "province": "ON",
+            "ok": true,
+            "suggestedGrade": null,
+            "confidence": "medium",
+            "reason": "Grade 7 is plausible for explicit least common multiple problems. The supplied notes do not confirm the outcome or its number limits."
+          }
+        ],
+        "wordingProblems": [],
+        "problems": [
+          "Confirm the provincial outcomes for least common multiple stories. All eight marked answers are correct. Each coded wrong answer equals either the product or the greatest common factor, as stated."
+        ],
+        "verdict": "review"
       }
     }
   }

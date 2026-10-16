@@ -21,6 +21,12 @@ export type Strand = "N" | "O" | "F" | "A" | "MG" | "DP";
 /** The 4 strands a parent sees on the report. */
 export type ReportedStrand = "number" | "fractions" | "algebra" | "shapes";
 
+/**
+ * "word-problem" = the math is set in a real-world situation told in sentences; "bare-number" = the numbers, symbols,
+ * shapes or figure are given directly (#187). Every bank template has one (bank/wording.ts).
+ */
+export type Wording = "word-problem" | "bare-number";
+
 /** "choice" = tap one of several answers; "number" = type a number on the number pad. */
 export type AnswerFormat = "choice" | "number";
 

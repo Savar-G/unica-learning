@@ -140,15 +140,17 @@ describe("current provincial curriculum corrections through the public interface
 
 describe("grade 3-5 speech and figures through the public interface", () => {
   it("keeps misconception codes within the answer storage limit for new and reused templates", () => {
+    // One assertion over the collected failures: an expect per code made this scan of every template near the timeout.
     const templates = new Map(Object.values(BANKS).flat().map((t) => [t.id, t]));
+    const bad: string[] = [];
     for (const t of templates.values()) {
       for (const seed of SEEDS) {
         for (const w of fillTemplate(t, seed).wrong) {
-          expect(w.misconception.length, `${t.id}, seed ${seed}: ${w.misconception}`).toBeLessThanOrEqual(20);
-          expect(MISCONCEPTIONS[w.misconception]).toBeDefined();
+          if (w.misconception.length > 20 || !MISCONCEPTIONS[w.misconception]) bad.push(`${t.id}, seed ${seed}: ${w.misconception}`);
         }
       }
     }
+    expect(bad).toEqual([]);
   });
   it.each([false, true])("stores the compensation error and advances on the Ontario down route (legacy snapshot: %s)", (legacy) => {
     // The first seed whose Ontario grade 3 down form asks the make-ten strategy, so the test does not depend on how
