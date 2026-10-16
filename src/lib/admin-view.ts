@@ -1,5 +1,5 @@
 // The admin area (#77) in plain data: the list filters, the test's answers beside its questions, and the words for the
-// flags. Pure: no network, database or clock, so the pages (src/app/admin) only fetch and show. Server and admin only:
+// flags. Pure: no network, database or clock, so the pages (src/app/(product)/admin) only fetch and show. Server and admin only:
 // it handles correct answers, which a parent's browser must never get.
 import {
   MISCONCEPTIONS,

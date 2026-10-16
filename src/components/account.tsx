@@ -47,6 +47,8 @@ function errorText(error: AccountError | undefined): ReactNode {
       return <>Many people are signing up right now. Try again in a few minutes, or email <a href={SUPPORT_HREF}>{SUPPORT_EMAIL}</a>.</>;
     case "signed_out":
       return <>Your session ended. <Link href="/sign-in">Sign in</Link> again.</>;
+    case "password_change_blocked":
+      return <>We cannot set your password right now. Email <a href={SUPPORT_HREF}>{SUPPORT_EMAIL}</a> and we will help you finish your account.</>;
     case "unavailable":
       return <>We cannot set up this account right now. Email <a href={SUPPORT_HREF}>{SUPPORT_EMAIL}</a> and we will help.</>;
     case "unproved":
@@ -202,6 +204,16 @@ export function AccountSignup() {
     if (!res.ok) {
       track("account_signup_failed", { code: res.error ?? "unknown" });
       setBusy(false);
+      if (res.error === "signed_out") {
+        setProved(null);
+        setCode("");
+        setNote(null);
+        setSentNow(false);
+        setErrors({});
+        setStep("form");
+        setFailure("signed_out");
+        return;
+      }
       // A password Supabase will not take: back to the form to choose another. The email stays proved.
       if (res.error === "weak_password" || res.error === "invalid") {
         setFailure(res.error);
@@ -346,7 +358,14 @@ export function AccountSignup() {
   return (
     <form ref={form} className="acct-form" onSubmit={submit} onFocus={onStart} noValidate>
       <GoogleButton />
-      {failure && <p role="alert" className="acct-alert">{failure === "send_failed" ? codeNoteText("send_failed") : errorText(failure)}</p>}
+      {failure && (
+        <p role="alert" className="acct-alert">
+          {failure === "send_failed" ? codeNoteText("send_failed")
+            // The proof was cleared (#121): a new code signs the parent in again, and the entries are still here.
+            : failure === "signed_out" ? "Your session ended before we saved your account. Your details are still here. Select Create account, and we will email you a new code."
+            : errorText(failure)}
+        </p>
+      )}
       {!failure && Object.values(errors).some(Boolean) && <p role="alert" className="acct-alert">{errorText("invalid")}</p>}
       <fieldset>
         <legend>About you</legend>
