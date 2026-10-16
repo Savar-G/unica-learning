@@ -2,7 +2,7 @@
 
 // The unsubscribe page's action (#73). One click: the link in a reminder opens the page, and the page turns reminders
 // off as it loads. It posts from the browser, so a mail scanner that only fetches the link does not unsubscribe
-// anyone. Without JavaScript the page shows a button instead (src/app/unsubscribe/page.tsx); this renders nothing then.
+// anyone. Without JavaScript the page shows a button instead (src/app/(product)/unsubscribe/page.tsx); this renders nothing then.
 import { useEffect, useState, type ReactNode } from "react";
 import { track } from "@/lib/track";
 
