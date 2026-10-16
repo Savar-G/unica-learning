@@ -3,7 +3,12 @@ import { randomUUID } from "node:crypto";
 import { setTimeout as wait } from "node:timers/promises";
 import type Stripe from "stripe";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { checkFamilyPayments, deleteFamily, withDeletionHeartbeat, type FamilyDeletionResult, type FamilyDeletionStore, type FamilyPaymentStore, type PaymentOperation, type PaymentProgress, type RetentionCardState } from "@/lib/assessment";
+import {
+  checkFamilyPayments, deleteFamily, settlePaymentOperations, withDeletionHeartbeat,
+  type FamilyCard, type FamilyDeletionResult, type FamilyDeletionStore, type FamilyPaymentStore, type PaymentOperation, type PaymentProgress,
+  type RetentionCandidate, type RetentionCardState, type RetentionClaim, type RetentionFamily,
+} from "@/lib/assessment";
+import { readCustomerPayments } from "@/lib/retention-stripe";
 import { stripe } from "@/lib/stripe";
 import { WORK_BUCKET } from "@/lib/work-store";
 
@@ -67,20 +72,47 @@ export async function deletionCandidates(db: SupabaseClient): Promise<string[]> 
   }
 }
 
-/** Run after freezing and settling app card operations. Remote journal and canceled-intent traversal are durable.
- * Fresh current-state reads remain mandatory; unknown results keep the checking job and its fence. */
-async function cardState(db: SupabaseClient, parent: string, token: string, deadline: number, retention: boolean, control: SupabaseClient, execution?: FamilyDeletionExecution): Promise<RetentionCardState> {
-  const customers: string[] = [];
-  let saved = false;
-  for (let from = 0; retention; from += 100) {
+const isFamilyCard = (c: unknown): c is FamilyCard => typeof c === "object" && c !== null
+  && (typeof (c as FamilyCard).customer === "string" || (c as FamilyCard).customer === null) && typeof (c as FamilyCard).saved === "boolean";
+
+/** Every family the worker decides (#191): the queue, due free-test families, and every family with Stripe history. */
+export async function retentionCandidates(db: SupabaseClient): Promise<RetentionCandidate[]> {
+  const families: RetentionCandidate[] = [];
+  let after: string | null = null;
+  for (;;) {
+    const page: { parent_id: string; queued: boolean; last_activity: string | null; cards: unknown }[] =
+      await rpc(db, "family_retention_candidates", { after_id: after, page_size: 100 });
+    if (page.length === 0) return families;
+    for (const r of page) {
+      if (typeof r.parent_id !== "string" || typeof r.queued !== "boolean" || !(r.last_activity === null || typeof r.last_activity === "string")
+        || !Array.isArray(r.cards) || !r.cards.every(isFamilyCard)) throw new Error("Retention candidate unreadable");
+      families.push({ id: r.parent_id, queued: r.queued, lastTestAt: r.last_activity, cards: r.cards });
+    }
+    const next = page.at(-1)!.parent_id;
+    if (next === after) throw new Error("Deletion pagination did not advance");
+    after = next;
+  }
+}
+
+/** The database half of the retention facts for a frozen family. The fence keeps both parts from changing. */
+async function frozenFamily(db: SupabaseClient, parent: string, deadline: number, execution?: FamilyDeletionExecution): Promise<RetentionFamily | null> {
+  const cards: FamilyCard[] = [];
+  for (let from = 0; ; from += 100) {
     paymentOptions(deadline, execution);
     const { data, error } = await db.from("card_setups").select("id, stripe_customer_id, card_saved_at")
       .eq("parent_id", parent).order("id").range(from, from + 99);
-    if (error) return "unknown";
-    saved ||= data.some((r) => r.card_saved_at);
-    customers.push(...data.flatMap((r) => r.stripe_customer_id ? [r.stripe_customer_id as string] : []));
+    if (error) return null;
+    cards.push(...data.map((r) => ({ customer: (r.stripe_customer_id as string | null) ?? null, saved: !!r.card_saved_at })));
     if (data.length < 100) break;
   }
+  paymentOptions(deadline, execution);
+  const lastTestAt = await rpc<string | null>(db, "family_last_activity", { p: parent });
+  return { cards: cards.filter((c) => c.customer || c.saved), lastTestAt };
+}
+
+/** Run after freezing and settling app card operations. Remote journal and canceled-intent traversal are durable.
+ * Fresh current-state reads remain mandatory; unknown results keep the checking job and its fence. */
+function paymentStore(db: SupabaseClient, parent: string, token: string, deadline: number, control: SupabaseClient, execution?: FamilyDeletionExecution): FamilyPaymentStore {
   const s = execution?.payments ?? stripe();
   const args = { p: parent, token };
   const guarded = <T>(name: string, values: Record<string, unknown>) => { paymentOptions(deadline, execution); return rpc<T>(db, name, { ...args, ...values }); };
@@ -149,14 +181,7 @@ async function cardState(db: SupabaseClient, parent: string, token: string, dead
     cancel: (customer, id) => mutate({ kind: "intent", customer, id }),
     async current(customer) {
       if (!s) throw new Error("Payment provider unavailable");
-      const loads = [
-        () => s.checkout.sessions.list({ customer, status: "complete", limit: 1 }, paymentOptions(deadline, execution)),
-        () => s.paymentMethods.list({ customer, limit: 1 }, paymentOptions(deadline, execution)),
-        () => s.subscriptions.list({ customer, status: "all", limit: 1 }, paymentOptions(deadline, execution)),
-      ];
-      const results = await Promise.allSettled(loads.map(async load => load()));
-      if (results.some(r => r.status === "rejected")) return "unknown";
-      return results.some(r => r.status === "fulfilled" && r.value.data.length) ? "saved" : "clear";
+      return readCustomerPayments(s, customer, () => paymentOptions(deadline, execution));
     },
     progress: customer => guarded<PaymentProgress | null>("read_family_payment_progress", { customer }),
     async intents(customer, after) {
@@ -167,7 +192,7 @@ async function cardState(db: SupabaseClient, parent: string, token: string, dead
     },
     saveProgress: (customer, progress) => guarded("save_family_payment_progress", { customer, head_id: progress.head, after_id: progress.after, finished: progress.done }),
   };
-  return checkFamilyPayments(store, customers, saved);
+  return store;
 }
 
 function deletionStore(db: SupabaseClient, parent: string, token: string, deadline: number, execution?: FamilyDeletionExecution): FamilyDeletionStore {
@@ -200,21 +225,34 @@ function deletionStore(db: SupabaseClient, parent: string, token: string, deadli
   };
 }
 
-/** An explicit request and the scheduled job share the same durable, retryable process. No analytics or email. */
-export async function runFamilyDeletion(db: SupabaseClient, parent: string, control: SupabaseClient = db, deadline = Date.now() + 45_000, execution?: FamilyDeletionExecution): Promise<FamilyDeletionResult> {
+/**
+ * An explicit request and the scheduled job share the same durable, retryable process. No analytics or email.
+ * `retention`: the Node worker's claim (#191). Without it, the claim is the #78 one (queue or free-test rule).
+ */
+export async function runFamilyDeletion(db: SupabaseClient, parent: string, control: SupabaseClient = db, deadline = Date.now() + 45_000, execution?: FamilyDeletionExecution, retention?: RetentionClaim): Promise<FamilyDeletionResult> {
   if (execution && (!Number.isFinite(execution.renewEveryMs) || execution.renewEveryMs <= 0
     || !Number.isFinite(execution.paymentRequestTimeoutMs) || execution.paymentRequestTimeoutMs <= 0)) throw Error("Invalid execution policy");
   timeRemaining(deadline, execution);
   parent = parent.toLowerCase();
   const token = randomUUID();
   const args = { p: parent, token };
-  const claim = await rpc<{ state: "ready" | "busy" | "excluded"; reason?: "request" | "retention"; phase?: "checking" | "deleting" }>(db, "claim_family_deletion", args);
+  type Claim = { state: "ready" | "busy" | "excluded"; reason?: "request" | "retention"; phase?: "checking" | "deleting" };
+  const claim = retention
+    ? await rpc<Claim>(db, "claim_family_retention", { ...args, subscription_ended_at: retention.endedAt })
+    : await rpc<Claim>(db, "claim_family_deletion", args);
   if (claim.state !== "ready") return { state: claim.state };
   const action = async (): Promise<FamilyDeletionResult> => {
     if (claim.phase === "checking") {
-      const state = await cardState(db, parent, token, deadline, claim.reason === "retention", control, execution);
-      if (state === "unknown") throw new Error("Payment check incomplete");
-      const keep = claim.reason === "retention" && state === "saved";
+      const payments = paymentStore(db, parent, token, deadline, control, execution);
+      let keep = false;
+      if (claim.reason === "retention") {
+        // The rules decide again from fresh reads after the freeze. Only a delete answer moves on. A keep answer
+        // unfreezes the family. Unknown keeps the request and its fence for a later run.
+        const family = await frozenFamily(db, parent, deadline, execution);
+        const decision = family ? await checkFamilyPayments(payments, family, Date.now()) : { action: "unknown" as const };
+        if (decision.action === "unknown") throw new Error("Payment check incomplete");
+        keep = decision.action === "keep";
+      } else if (await settlePaymentOperations(payments) === "unknown") throw new Error("Payment check incomplete");
       timeRemaining(deadline, execution);
       if (!await rpc<boolean>(db, "decide_family_deletion", { ...args, keep_family: keep })) throw new Error("Deletion decision lost");
       if (keep) return { state: "excluded" };

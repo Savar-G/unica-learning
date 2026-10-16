@@ -1,7 +1,8 @@
 import "server-only";
 import { runRetentionWorker, workerConfiguration } from "@/lib/assessment";
 import { deletionClient, deletionPayments } from "./family-deletion-client";
-import { advanceDeletionCursor, deletionCandidates, deletionCursor, runFamilyDeletion } from "./family-deletion-store";
+import { advanceDeletionCursor, deletionCursor, retentionCandidates, runFamilyDeletion } from "./family-deletion-store";
+import { readCustomerPayments, verifyRetentionKey } from "./retention-stripe";
 
 export const RETENTION_WORK_MS = 14 * 60_000;
 export const RETENTION_CONTROL_MS = 30_000;
@@ -14,18 +15,22 @@ export async function runNodeRetention(args: readonly string[], env: Record<stri
   const stopAt = Date.now() + RETENTION_WORK_MS;
   const work = AbortSignal.any([shutdown, AbortSignal.timeout(RETENTION_WORK_MS)]);
   const db = deletionClient(config.url, config.secret, work, 30_000);
+  // Read-only Stripe client for the key check and the decisions before any claim (also in dry mode).
+  const reads = config.stripeKey ? deletionPayments(config.stripeKey, work) : null;
   const result = await runRetentionWorker(config, {
-    candidates: () => deletionCandidates(db),
+    candidates: () => retentionCandidates(db),
     cursor: () => deletionCursor(db),
     async advance(id) { work.throwIfAborted(); await advanceDeletionCursor(db, id); },
     async verifyPayments() {
-      // Authenticate the real live-mode key through an existing read permission, before any claim.
+      // Authenticate the real live-mode key through the read permissions the rules use, before any claim.
       work.throwIfAborted();
-      const payments = deletionPayments(config.stripeKey!, work);
-      const page = await payments.checkout.sessions.list({ status: "open", limit: 1 }, { timeout: 30_000, maxNetworkRetries: 0 });
-      if (page.data.some(session => session.livemode !== true)) throw Error("Worker provider mode unavailable");
+      await verifyRetentionKey(reads!);
     },
-    async run(id, limitMs) {
+    async customerPayments(customer) {
+      work.throwIfAborted();
+      return readCustomerPayments(reads!, customer, () => ({ timeout: 30_000, maxNetworkRetries: 0 }));
+    },
+    async run(id, limitMs, claim) {
       work.throwIfAborted();
       const stopped = new AbortController();
       const signal = AbortSignal.any([work, stopped.signal, AbortSignal.timeout(limitMs)]);
@@ -36,9 +41,9 @@ export async function runNodeRetention(args: readonly string[], env: Record<stri
         return await runFamilyDeletion(worker, id, control, Date.now() + limitMs, {
           signal, renewEveryMs: 60_000, paymentRequestTimeoutMs: 30_000,
           abortWork: () => stopped.abort(), payments: deletionPayments(config.stripeKey!, signal),
-        });
+        }, claim);
       } finally { stopped.abort(); }
     },
-  }, () => work.aborted ? 0 : stopAt - Date.now());
+  }, () => work.aborted ? 0 : stopAt - Date.now(), Date.now());
   return shutdown.aborted ? { ...result, ok: false, interrupted: true } : result;
 }
