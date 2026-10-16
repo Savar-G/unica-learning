@@ -13,6 +13,7 @@ import { findSavedCard } from "@/lib/saved-card";
 import { stripeCardProvider } from "@/lib/saved-card-server";
 import { stripe } from "@/lib/stripe";
 import type { DashboardRows, Delivery, EmailCopyView, RawCard, RawDelivery, RawChild, RawEmail, RawParent, RawReport, RawTest, RawWaitlist } from "@/lib/admin-dashboard";
+import type { TemplateFilters, TemplateStat } from "@/lib/admin-templates";
 
 // The admin area's data (#77). The gate and every read are here, so no admin page reads the database on its own; the
 // report view is read by the report-loading module with the admin's session (src/lib/report-loading-server.ts, #161).
@@ -447,6 +448,27 @@ async function familyEmails(a: AdminSession, id: string): Promise<EmailRow[]> {
     rows.push(...result.rows);
     if (!result.more) return rows;
   }
+}
+
+// Question templates (#199)
+
+type TemplateStatRow = Omit<TemplateStat, "wrong"> & { wrong: { response: string; misconception: string | null; count: number | string }[] };
+
+/**
+ * The counts per question template across children (admin_template_stats, migration add_template_stats): the database
+ * counts the answers, so the page reads one row per template. `templateId`: only that template's row.
+ */
+export async function templateStats(a: AdminSession, f: TemplateFilters, templateId?: string): Promise<TemplateStat[]> {
+  const args = { with_tests: f.withTests, school_grade: f.grade, curriculum: f.province };
+  const q = a.db.rpc("admin_template_stats", args).select("*");
+  const rows = await allRows<TemplateStatRow>((templateId === undefined ? q : q.eq("template_id", templateId)).order("template_id"), "template stats");
+  return rows.map((r) => ({
+    template_id: r.template_id,
+    shown: Number(r.shown),
+    correct: Number(r.correct),
+    median_ms: r.median_ms === null ? null : Number(r.median_ms),
+    wrong: r.wrong.map((w) => ({ response: w.response, misconception: w.misconception, count: Number(w.count) })),
+  }));
 }
 
 // The dashboard and activity log (D-099)

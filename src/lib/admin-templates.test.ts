@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { Level, Strand, Template } from "@/lib/assessment";
+import { BANKS, BC_SKILL_MAP, type Level, type Strand, type Template } from "@/lib/assessment";
 import { WRONG_SHOWN, adminTemplatePath, parseTemplateFilters, skillMapStandardPath, templateStats, templateTable, type AnswerFact, type TemplateStat } from "@/lib/admin-templates";
 
 const answer = (over: Partial<AnswerFact> = {}): AnswerFact => ({
@@ -87,6 +87,14 @@ describe("templateTable", () => {
     expect(line.wrong[1]).toMatchObject({ response: String(WRONG_SHOWN), count: WRONG_SHOWN + 1, misconception: null });
     // the two least chosen: counts 1 and 2
     expect(line.moreWrong).toEqual({ answers: 2, times: 3 });
+  });
+
+  it("lists each template of the real bank once, linked to a standard the skill map has", () => {
+    const bank = Object.values(BANKS).flat();
+    const lines = templateTable([], bank).grades.flatMap((g) => g.lines);
+    expect(lines.map((l) => l.id).sort()).toEqual([...new Set(bank.map((t) => t.id))].sort());
+    const onTheMap = new Set(BC_SKILL_MAP.standards.map((s) => skillMapStandardPath(s.code)));
+    expect(lines.filter((l) => !l.standardHref || !onTheMap.has(l.standardHref)).map((l) => l.id)).toEqual([]);
   });
 
   it("keeps the answers of templates that left the bank in their own list", () => {

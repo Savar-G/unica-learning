@@ -1,0 +1,14 @@
+/* The admin table per question template (#199). */
+.adm-templates section { margin-top: 8px; }
+.adm-templates .adm-table td { vertical-align: top; }
+/* A template nobody has answered yet: still listed, so gaps in the data show. */
+.adm-templates tr.is-unseen td { color: var(--ink-2); }
+
+/* The wrong answers chosen, most chosen first. */
+.adm-wrong { display: grid; gap: 6px; margin: 0; padding: 0; list-style: none; }
+.adm-wrong .adm-count { font: 400 12.5px/1.35 var(--mono); color: var(--ink-2); }
+
+/* Sample questions on the page of one template. */
+.adm-samples { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 14px; margin: 0; padding: 0; list-style: none; }
+.adm-samples > li { display: grid; gap: 8px; padding: 14px 16px; border: 1px solid var(--line); border-radius: 8px; }
+.adm-samples p { margin: 0; }

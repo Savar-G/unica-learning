@@ -2,6 +2,7 @@
 // needs first. A server component with no JavaScript; each prerequisite links to the row of that skill.
 import { STRAND_NAMES, type SkillMap, type Strand } from "@/lib/assessment";
 import { Chip, Table } from "@/components/admin";
+import { standardAnchor } from "@/lib/admin-templates";
 
 const STRAND_ORDER: readonly Strand[] = ["N", "O", "F", "A", "MG", "DP"];
 const gradeName = (grade: number) => (grade === 0 ? "Kindergarten" : `Grade ${grade}`);
@@ -34,7 +35,7 @@ export function SkillMapView({ map }: { map: SkillMap }) {
                 <Table label={`${gradeName(g)}, ${STRAND_NAMES[strand]}`} head={["Standard", "Skill", "Needs first"]} empty="No standards.">
                   {standards.flatMap((s) => s.skills.map((k, i) => (
                     <tr key={k.id} id={anchor(k.id)}>
-                      {i === 0 && <td rowSpan={s.skills.length} className="adm-wide"><strong>{s.code}</strong> {s.text}</td>}
+                      {i === 0 && <td rowSpan={s.skills.length} className="adm-wide" id={standardAnchor(s.code)}><strong>{s.code}</strong> {s.text}</td>}
                       <td className="adm-wide">{k.text}<span className="adm-sub adm-mono">{k.id}</span></td>
                       <td className="adm-wide">
                         {k.requires.length === 0 ? <span className="adm-note">Nothing in the map</span> : (
