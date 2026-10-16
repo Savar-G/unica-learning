@@ -49,7 +49,7 @@ async function call<T>(url: string, init?: RequestInit): Promise<T | { ok: false
 const post = (body: unknown): RequestInit => ({ method: "POST", body: JSON.stringify(body) });
 
 /** #185: one record of the test context (the device, or a break event). The screen never waits for it. */
-const sendContext = (testId: string, body: { device: TestDevice } | { break: BreakEvent }) =>
+const sendContext = (testId: string, body: { device: TestDevice } | { break: "shown" } | { break: Exclude<BreakEvent, "shown">; lengthMs: number }) =>
   call<ContextResult>(`/api/account/assessments/${testId}/context`, post(body));
 
 /** What this browser says about its device (#185), with the pointer types used on the page so far. */
@@ -85,8 +85,9 @@ export function TakeTest({ childId, name, total, breakAfter, ready, done, mode: 
   const factsDone = useRef(false);
   // #185: the pointer types the child used on this page (a finger, a pen or a mouse), each once, the latest last.
   const pointers = useRef<string[]>([]);
-  // #185: the request that saved "break shown". The break's end goes after it, so the server never gets the end first.
-  const breakShown = useRef<Promise<unknown> | null>(null);
+  // #185: when the break screen showed (performance.now()), for the break's length. The end goes at once with it, and
+  // never waits on the "shown" request: a slow save must not make the break longer.
+  const breakShownAt = useRef<number | null>(null);
 
   // The voices for "read it to me" load while the child reads the start screen, so the button is there with question 1.
   useEffect(() => warmUpVoices(), []);
@@ -152,7 +153,8 @@ export function TakeTest({ childId, name, total, breakAfter, ready, done, mode: 
       markBreakSeen(id);
       track("test_break", { status: "shown" });
       // #185: the server saves when the break was shown, by its own clock.
-      breakShown.current = sendContext(id, { break: "shown" });
+      breakShownAt.current = performance.now();
+      void sendContext(id, { break: "shown" });
       setScreen({ name: "break", next: step });
       return true;
     }
@@ -236,9 +238,10 @@ export function TakeTest({ childId, name, total, breakAfter, ready, done, mode: 
         {screen.name === "break" && (
           <TestBreak name={name} answered={screen.next.breakAfter} total={screen.next.total} onDone={(how) => {
             track("test_break", { status: how });
-            // #185: how the break ended, saved after its start.
+            // #185: how the break ended and how long it lasted on this screen, sent at once.
             const id = testId.current;
-            if (id) void (breakShown.current ?? Promise.resolve()).then(() => sendContext(id, { break: how }));
+            const shownAt = breakShownAt.current;
+            if (id && shownAt !== null) void sendContext(id, { break: how, lengthMs: Math.round(performance.now() - shownAt) });
             void show(screen.next);
           }} />
         )}

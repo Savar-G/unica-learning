@@ -2,7 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getTest, requireAdmin } from "@/lib/admin-store";
 import { adminParentPath, adminReportPath, answerLines, duration, factLines, flagText, helpAnswerText, levelText, shownWithoutAnswer, when } from "@/lib/admin-view";
-import { breakText, deviceFacts } from "@/lib/admin-view";
+import { contextFacts } from "@/lib/admin-view";
 import { QuestionTimeline, ShownWithoutAnswer, awayCount, changeCount, readAloudCount } from "@/components/admin-timeline";
 import { AdminFrame, Chip, StatusChip, Table, gradeAndPlace } from "@/components/admin";
 import { EmailTable, RecordFacts, ReviewDetail, childPath } from "@/components/admin-records";
@@ -26,10 +26,7 @@ export default async function TestDetailPage({ params }: PageProps<"/admin/asses
       ["Did anyone help?", helpAnswerText(t.help)], ["Seed", t.seed], ["Test id", t.id],
     ]} />
     <h2>Break and device</h2>
-    <RecordFacts facts={[
-      ["Halfway break", breakText(detail.context)], ["Break shown (Pacific)", when(detail.context.break_started_at)],
-      ["Break ended (Pacific)", when(detail.context.break_ended_at)], ...deviceFacts(detail.context.device),
-    ]} />
+    <RecordFacts facts={contextFacts(detail.context)} />
     <h2>Flags</h2>
     {t.flags?.length ? <ul className="adm-list">{t.flags.map((f, i) => <li key={i}>{flagText(f, numbers)}</li>)}</ul> : <p className="adm-note">{t.status === "completed" ? "No flags." : "Flags are recorded when the test finishes."}</p>}
     <h2>Report and delivery</h2>

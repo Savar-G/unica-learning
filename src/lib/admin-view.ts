@@ -309,14 +309,8 @@ export interface TestContextRecord {
   break_started_at: string | null;
   break_ended_at: string | null;
   break_skipped: boolean | null;
-}
-
-/** The halfway break (#185) in plain words: how it ended and how long it lasted, by the server's clock. */
-export function breakText(c: TestContextRecord): string {
-  if (!c.break_started_at) return "No break recorded";
-  if (!c.break_ended_at) return "Shown, no end recorded";
-  const length = duration(Math.max(0, Date.parse(c.break_ended_at) - Date.parse(c.break_started_at)));
-  return c.break_skipped ? `Skipped ("Keep going") after ${length}` : `Took a break ("I am back from my break") of ${length}`;
+  /** The break's length as the browser measured it (migration add_break_length). */
+  break_ms: number | null;
 }
 
 const DEVICE_WORDS: Record<TestDevice["deviceClass"] | NonNullable<TestDevice["input"]> | TestDevice["browser"], string> = {
@@ -324,14 +318,36 @@ const DEVICE_WORDS: Record<TestDevice["deviceClass"] | NonNullable<TestDevice["i
   safari: "Safari", chrome: "Chrome", firefox: "Firefox", edge: "Edge", samsung: "Samsung Internet", other: "Other",
 };
 
-/** The device of a test (#185) as admin record rows: class, input, screen size and browser. */
-export function deviceFacts(device: TestDevice | null): [string, string][] {
-  if (!device) return [["Device", "Not recorded"]];
+/** How the halfway break went, in plain words. */
+function breakWords(c: TestContextRecord): string {
+  if (!c.break_started_at) return "Not recorded";
+  if (!c.break_ended_at) return "Shown, no end recorded";
+  return c.break_skipped ? 'Skipped ("Keep going")' : 'Took a break ("I am back from my break")';
+}
+
+/** The break's length: the browser's when it is stored, else the time between the two server times. */
+function breakLength(c: TestContextRecord): number | null {
+  if (!c.break_started_at || !c.break_ended_at) return null;
+  return c.break_ms ?? Math.max(0, Date.parse(c.break_ended_at) - Date.parse(c.break_started_at));
+}
+
+/**
+ * The "Break and device" rows of the admin page for one test (#185): how the halfway break went, its length, when it
+ * was shown and when it ended (Pacific), then the device, input, screen size and browser. A test from before #185 shows
+ * "Not recorded" and dashes, always in the same rows.
+ */
+export function contextFacts(c: TestContextRecord): [string, string][] {
+  const length = breakLength(c);
+  const d = c.device;
   return [
-    ["Device", DEVICE_WORDS[device.deviceClass]],
-    ["Input", device.input ? DEVICE_WORDS[device.input] : "Not known"],
-    ["Screen (CSS pixels)", `${device.screenWidth} × ${device.screenHeight}`],
-    ["Browser", DEVICE_WORDS[device.browser]],
+    ["Halfway break", breakWords(c)],
+    ["Break length", length === null ? "-" : duration(length)],
+    ["Break shown (Pacific)", when(c.break_started_at)],
+    ["Break ended (Pacific)", when(c.break_ended_at)],
+    ["Device", d ? DEVICE_WORDS[d.deviceClass] : "Not recorded"],
+    ["Input", d ? (d.input ? DEVICE_WORDS[d.input] : "Not known") : "-"],
+    ["Screen (CSS pixels)", d ? `${d.screenWidth} × ${d.screenHeight}` : "-"],
+    ["Browser", d ? DEVICE_WORDS[d.browser] : "-"],
   ];
 }
 

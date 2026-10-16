@@ -30,14 +30,15 @@ export type MemoryTest = Attempt & {
   help?: HelpAnswer | null;
 } & MemoryContext;
 /**
- * The test context of a stored test (#185): its device, and its halfway break (when it was shown, when it ended, and
- * whether the child skipped it). None until the screen sends them.
+ * The test context of a stored test (#185): its device, and its halfway break (when it was shown, when it ended,
+ * whether the child skipped it, and its length as the browser measured it). None until the screen sends them.
  */
 export interface MemoryContext {
   device?: TestDevice | null;
   breakStartedAt?: number | null;
   breakEndedAt?: number | null;
   breakSkipped?: boolean | null;
+  breakMs?: number | null;
 }
 /** A row of public.children. */
 export type MemoryChild = AttemptChild & { parentId: string };
@@ -137,10 +138,12 @@ export function memoryAttemptStore({ children: kids = [], tests: initial = [] }:
       const row = openTest(id);
       if (row && row.breakStartedAt == null) row.breakStartedAt = at;
     },
-    async endBreak(id, at, skipped) {
+    async endBreak(id, { at, skipped, lengthMs }) {
       await begin("endBreak");
       const row = openTest(id);
-      if (row && row.breakStartedAt != null && row.breakEndedAt == null) Object.assign(row, { breakEndedAt: at, breakSkipped: skipped });
+      if (!row || row.breakEndedAt != null) return;
+      // The end reached the store first: its start is the browser's length before it.
+      Object.assign(row, { breakStartedAt: row.breakStartedAt ?? at - lengthMs, breakEndedAt: at, breakSkipped: skipped, breakMs: lengthMs });
     },
   };
 

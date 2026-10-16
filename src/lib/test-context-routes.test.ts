@@ -57,8 +57,8 @@ const context = (id: string, body: unknown) => contextRoute(postJson(`https://un
 /** The status code and the JSON body. */
 const sent = async (res: Response) => ({ status: res.status, body: await res.json() });
 const OK = { status: 200, body: { ok: true } };
-const breakOf = (t: MemoryTest) => ({ startedAt: t.breakStartedAt ?? null, endedAt: t.breakEndedAt ?? null, skipped: t.breakSkipped ?? null });
-const NO_BREAK = { startedAt: null, endedAt: null, skipped: null };
+const breakOf = (t: MemoryTest) => ({ startedAt: t.breakStartedAt ?? null, endedAt: t.breakEndedAt ?? null, skipped: t.breakSkipped ?? null, lengthMs: t.breakMs ?? null });
+const NO_BREAK = { startedAt: null, endedAt: null, skipped: null, lengthMs: null };
 
 beforeEach(() => {
   signedIn = P1;
@@ -73,18 +73,19 @@ afterEach(() => {
 });
 
 describe("POST /api/account/assessments/[id]/context (the halfway break and the device)", () => {
-  it("saves the break when it is shown and when it ends, by the server's clock", async () => {
+  it("saves the break when it is shown and when it ends, with the length the browser measured", async () => {
     expect(await sent(await context(TEST, { break: "shown" }))).toEqual(OK);
     vi.setSystemTime(T0 + HOUR + 95_000);
-    expect(await sent(await context(TEST, { break: "rested" }))).toEqual(OK);
-    expect(breakOf(memory.tests[0])).toEqual({ startedAt: T0 + HOUR, endedAt: T0 + HOUR + 95_000, skipped: false });
+    expect(await sent(await context(TEST, { break: "rested", lengthMs: 94_600.4 }))).toEqual(OK);
+    expect(breakOf(memory.tests[0])).toEqual({ startedAt: T0 + HOUR, endedAt: T0 + HOUR + 95_000, skipped: false, lengthMs: 94_600 });
   });
 
-  it("saves a skipped break", async () => {
-    await context(TEST, { break: "shown" });
+  it("saves a skipped break whose end arrives before its start, and the late start changes nothing", async () => {
     vi.setSystemTime(T0 + HOUR + 1_500);
-    expect(await sent(await context(TEST, { break: "skipped" }))).toEqual(OK);
-    expect(breakOf(memory.tests[0])).toEqual({ startedAt: T0 + HOUR, endedAt: T0 + HOUR + 1_500, skipped: true });
+    expect(await sent(await context(TEST, { break: "skipped", lengthMs: 1_500 }))).toEqual(OK);
+    vi.setSystemTime(T0 + HOUR + 8_000);
+    expect(await sent(await context(TEST, { break: "shown" }))).toEqual(OK);
+    expect(breakOf(memory.tests[0])).toEqual({ startedAt: T0 + HOUR, endedAt: T0 + HOUR + 1_500, skipped: true, lengthMs: 1_500 });
   });
 
   it("saves the device once per test", async () => {
@@ -105,7 +106,7 @@ describe("POST /api/account/assessments/[id]/context (the halfway break and the 
 
   it("answers 400 for a body that is not JSON, that has neither a device nor a break, or whose device or break does not fit", async () => {
     expect(await sent(await context(TEST, "{not json"))).toEqual({ status: 400, body: { ok: false, error: "bad_json" } });
-    for (const body of [{}, null, { break: "lunch" }, { device: { ...IPAD, deviceClass: "watch" } }, { device: "ipad" }, { device: IPAD, break: "shown" }]) {
+    for (const body of [{}, null, { break: "lunch" }, { device: { ...IPAD, deviceClass: "watch" } }, { device: "ipad" }, { device: IPAD, break: "shown" }, { break: "skipped" }, { break: "rested", lengthMs: -1 }, { break: "rested", lengthMs: "900" }]) {
       expect(await sent(await context(TEST, body))).toEqual({ status: 400, body: { ok: false, error: "invalid" } });
     }
     expect(breakOf(memory.tests[0])).toEqual(NO_BREAK);

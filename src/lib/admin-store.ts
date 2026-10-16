@@ -229,7 +229,7 @@ const ANSWER_COLUMNS = "position, question_id, response, correct, misconception,
 const TIMELINE_COLUMNS = "template_id, shown_at, answered_at, answer_changes, read_aloud_count, read_aloud_at_ms, away_count, away_ms";
 const REVIEW_COLUMNS = "question_id, error_type, kind, comment, score, confidence, model";
 /** The test context columns (#185). */
-const CONTEXT_COLUMNS = "device, break_started_at, break_ended_at, break_skipped";
+const CONTEXT_COLUMNS = "device, break_started_at, break_ended_at, break_skipped, break_ms";
 /** The quick facts answer columns, with the time for each fact by the server and the browser (#185). */
 const FACT_ANSWER_COLUMNS = "position, fact_id, response, correct, at_ms, server_ms, browser_ms";
 
@@ -239,8 +239,8 @@ export async function getTest(a: AdminSession, id: string): Promise<TestDetail |
   const row = must<(TestQueryRow & { seed: number; resume_until: string; test: StoredTest } & TestContextRecord) | null>(
     await a.db.rpc("admin_assessments").select(`${TEST_COLUMNS}, seed, resume_until, test, ${CONTEXT_COLUMNS}`).eq("id", id).maybeSingle(), "test");
   if (!row) return null;
-  const { device, break_started_at, break_ended_at, break_skipped, ...withoutContext } = row;
-  const context: TestContextRecord = { device, break_started_at, break_ended_at, break_skipped };
+  const { device, break_started_at, break_ended_at, break_skipped, break_ms, ...withoutContext } = row;
+  const context: TestContextRecord = { device, break_started_at, break_ended_at, break_skipped, break_ms };
   const { test: stored, seed, resume_until, ...listRow } = withoutContext;
   const [[test], answers, reviews, report, facts, factAnswers, emails, shows] = await Promise.all([
     withPeople(a, [listRow]),

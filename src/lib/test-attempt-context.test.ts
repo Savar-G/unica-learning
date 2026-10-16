@@ -78,63 +78,95 @@ describe("the time for each quick fact", () => {
 /** Keeps the expected store failures out of the test output, and lets a test read what was logged. */
 const logs = () => vi.spyOn(console, "error").mockImplementation(() => {});
 /** The break's stored fields, with "not stored" as null. */
-const breakOf = (t: MemoryTest) => ({ startedAt: t.breakStartedAt ?? null, endedAt: t.breakEndedAt ?? null, skipped: t.breakSkipped ?? null });
-const NO_BREAK = { startedAt: null, endedAt: null, skipped: null };
+const breakOf = (t: MemoryTest) => ({
+  startedAt: t.breakStartedAt ?? null,
+  endedAt: t.breakEndedAt ?? null,
+  skipped: t.breakSkipped ?? null,
+  lengthMs: t.breakMs ?? null,
+});
+const NO_BREAK = { startedAt: null, endedAt: null, skipped: null, lengthMs: null };
+const SHOWN = { event: "shown" } as const;
+/** The end of the break as the screen sends it: how it ended, and its length as the browser measured it. */
+const skipped = (lengthMs: number) => ({ event: "skipped", lengthMs }) as const;
+const rested = (lengthMs: number) => ({ event: "rested", lengthMs }) as const;
 
 describe("the halfway break", () => {
-  it("is saved when it is shown and when it ends, by the server's clock: Keep going is a skip", async () => {
+  it("is saved when it is shown and when it ends: Keep going is a skip, with the length the browser measured", async () => {
     const memory = testWith(18);
-    expect(await recordBreak(memory.store, P1, "a1", "shown", T0 + HOUR)).toEqual({ ok: true });
-    expect(await recordBreak(memory.store, P1, "a1", "skipped", T0 + HOUR + 4_000)).toEqual({ ok: true });
-    expect(breakOf(memory.tests[0])).toEqual({ startedAt: T0 + HOUR, endedAt: T0 + HOUR + 4_000, skipped: true });
+    expect(await recordBreak(memory.store, P1, "a1", SHOWN, T0 + HOUR)).toEqual({ ok: true });
+    expect(await recordBreak(memory.store, P1, "a1", skipped(3_900), T0 + HOUR + 4_000)).toEqual({ ok: true });
+    expect(breakOf(memory.tests[0])).toEqual({ startedAt: T0 + HOUR, endedAt: T0 + HOUR + 4_000, skipped: true, lengthMs: 3_900 });
   });
 
   it("a child who rested did not skip it, and the break ends when they come back", async () => {
     const memory = testWith(18);
-    await recordBreak(memory.store, P1, "a1", "shown", T0 + HOUR);
-    await recordBreak(memory.store, P1, "a1", "rested", T0 + HOUR + 3 * 60_000);
-    expect(breakOf(memory.tests[0])).toEqual({ startedAt: T0 + HOUR, endedAt: T0 + HOUR + 3 * 60_000, skipped: false });
+    await recordBreak(memory.store, P1, "a1", SHOWN, T0 + HOUR);
+    await recordBreak(memory.store, P1, "a1", rested(3 * 60_000), T0 + HOUR + 3 * 60_000);
+    expect(breakOf(memory.tests[0])).toEqual({ startedAt: T0 + HOUR, endedAt: T0 + HOUR + 3 * 60_000, skipped: false, lengthMs: 3 * 60_000 });
+  });
+
+  it("keeps the length the browser measured, not the time between the two requests", async () => {
+    const memory = testWith(18);
+    await recordBreak(memory.store, P1, "a1", SHOWN, T0 + HOUR);
+    // The child pressed Keep going after 1.5 seconds; the end reached the server 8 seconds after the start did.
+    await recordBreak(memory.store, P1, "a1", skipped(1_500), T0 + HOUR + 8_000);
+    expect(breakOf(memory.tests[0])).toMatchObject({ startedAt: T0 + HOUR, skipped: true, lengthMs: 1_500 });
+  });
+
+  it("a slow 'shown' save does not make the stored break longer: the end saved first sets the start from its length", async () => {
+    const memory = testWith(18);
+    // The "shown" request reads the test at once, but its write lands only after the end is saved.
+    let land!: () => void;
+    const slow = new Promise<void>((resolve) => (land = resolve));
+    const store = { ...memory.store, startBreak: async (id: string, at: number) => { await slow; return memory.store.startBreak(id, at); } };
+    const shown = recordBreak(store, P1, "a1", SHOWN, T0 + HOUR);
+    expect(await recordBreak(store, P1, "a1", skipped(1_500), T0 + HOUR + 1_500)).toEqual({ ok: true });
+    land();
+    expect(await shown).toEqual({ ok: true });
+    expect(breakOf(memory.tests[0])).toEqual({ startedAt: T0 + HOUR, endedAt: T0 + HOUR + 1_500, skipped: true, lengthMs: 1_500 });
+  });
+
+  it("keeps a length over a day as a day: the test closes 24 hours after the last answer", async () => {
+    const memory = testWith(18);
+    await recordBreak(memory.store, P1, "a1", SHOWN, T0 + HOUR);
+    await recordBreak(memory.store, P1, "a1", rested(30 * HOUR + 0.4), T0 + 31 * HOUR);
+    expect(breakOf(memory.tests[0]).lengthMs).toBe(24 * HOUR);
   });
 
   it("is saved once per test: a break shown again (a resume on another device) keeps its first start and its first end", async () => {
     const memory = testWith(18);
-    await recordBreak(memory.store, P1, "a1", "shown", T0 + HOUR);
-    await recordBreak(memory.store, P1, "a1", "shown", T0 + HOUR + 60_000);
-    await recordBreak(memory.store, P1, "a1", "rested", T0 + HOUR + 2 * 60_000);
-    await recordBreak(memory.store, P1, "a1", "shown", T0 + HOUR + 3 * 60_000);
-    await recordBreak(memory.store, P1, "a1", "skipped", T0 + HOUR + 4 * 60_000);
-    expect(breakOf(memory.tests[0])).toEqual({ startedAt: T0 + HOUR, endedAt: T0 + HOUR + 2 * 60_000, skipped: false });
+    await recordBreak(memory.store, P1, "a1", SHOWN, T0 + HOUR);
+    await recordBreak(memory.store, P1, "a1", SHOWN, T0 + HOUR + 60_000);
+    await recordBreak(memory.store, P1, "a1", rested(2 * 60_000), T0 + HOUR + 2 * 60_000);
+    await recordBreak(memory.store, P1, "a1", SHOWN, T0 + HOUR + 3 * 60_000);
+    await recordBreak(memory.store, P1, "a1", skipped(1_000), T0 + HOUR + 4 * 60_000);
+    expect(breakOf(memory.tests[0])).toEqual({ startedAt: T0 + HOUR, endedAt: T0 + HOUR + 2 * 60_000, skipped: false, lengthMs: 2 * 60_000 });
   });
 
   it("keeps the first start when the break is shown twice at once", async () => {
     const memory = testWith(18);
-    await Promise.all([recordBreak(memory.store, P1, "a1", "shown", T0 + HOUR), recordBreak(memory.store, P1, "a1", "shown", T0 + HOUR + 5)]);
-    expect(breakOf(memory.tests[0])).toEqual({ startedAt: T0 + HOUR, endedAt: null, skipped: null });
+    await Promise.all([recordBreak(memory.store, P1, "a1", SHOWN, T0 + HOUR), recordBreak(memory.store, P1, "a1", SHOWN, T0 + HOUR + 5)]);
+    expect(breakOf(memory.tests[0])).toEqual({ startedAt: T0 + HOUR, endedAt: null, skipped: null, lengthMs: null });
   });
 
-  it("stores no end for a break that was never shown", async () => {
-    const memory = testWith(18);
-    expect(await recordBreak(memory.store, P1, "a1", "skipped", T0 + HOUR)).toEqual({ ok: true });
-    expect(breakOf(memory.tests[0])).toEqual(NO_BREAK);
-  });
-
-  it.each([10, 19, 36])("refuses a break shown when the test is not at the halfway point (%i answers in), and stores nothing", async (answered) => {
+  it.each([10, 19, 36])("refuses a break record when the test is not at the halfway point (%i answers in), and stores nothing", async (answered) => {
     const memory = testWith(answered);
-    expect(await recordBreak(memory.store, P1, "a1", "shown", T0 + HOUR)).toEqual({ ok: false, error: "conflict" });
+    expect(await recordBreak(memory.store, P1, "a1", SHOWN, T0 + HOUR)).toEqual({ ok: false, error: "conflict" });
+    expect(await recordBreak(memory.store, P1, "a1", skipped(1_000), T0 + HOUR)).toEqual({ ok: false, error: "conflict" });
     expect(breakOf(memory.tests[0])).toEqual(NO_BREAK);
   });
 
   it.each(["completed", "expired"] as const)("takes no break once the test is %s, and stores nothing", async (status) => {
     const memory = memoryAttemptStore({ tests: [{ ...stored(open("a1", T0), { answered: 18 }), status }] });
-    expect(await recordBreak(memory.store, P1, "a1", "shown", T0 + HOUR)).toEqual({ ok: false, error: "conflict" });
-    expect(await recordBreak(memory.store, P1, "a1", "rested", T0 + HOUR)).toEqual({ ok: false, error: "conflict" });
+    expect(await recordBreak(memory.store, P1, "a1", SHOWN, T0 + HOUR)).toEqual({ ok: false, error: "conflict" });
+    expect(await recordBreak(memory.store, P1, "a1", rested(1_000), T0 + HOUR)).toEqual({ ok: false, error: "conflict" });
     expect(breakOf(memory.tests[0])).toEqual(NO_BREAK);
   });
 
   it("is not found for another family's test, or an unknown one, and stores nothing", async () => {
     const memory = memoryAttemptStore({ tests: [stored(open("a1", T0), { parent: "parent-2", answered: 18 })] });
-    expect(await recordBreak(memory.store, P1, "a1", "shown", T0 + HOUR)).toEqual({ ok: false, error: "not_found" });
-    expect(await recordBreak(memory.store, P1, "a2", "shown", T0 + HOUR)).toEqual({ ok: false, error: "not_found" });
+    expect(await recordBreak(memory.store, P1, "a1", SHOWN, T0 + HOUR)).toEqual({ ok: false, error: "not_found" });
+    expect(await recordBreak(memory.store, P1, "a2", SHOWN, T0 + HOUR)).toEqual({ ok: false, error: "not_found" });
     expect(breakOf(memory.tests[0])).toEqual(NO_BREAK);
   });
 
@@ -142,10 +174,12 @@ describe("the halfway break", () => {
     const log = logs();
     const memory = testWith(18);
     memory.fail.startBreak = new StoreError("break save failed", "timeout");
-    expect(await recordBreak(memory.store, P1, "a1", "shown", T0 + HOUR)).toEqual({ ok: false, error: "store_failed" });
+    expect(await recordBreak(memory.store, P1, "a1", SHOWN, T0 + HOUR)).toEqual({ ok: false, error: "store_failed" });
+    memory.fail.endBreak = new StoreError("break save failed", "timeout");
+    expect(await recordBreak(memory.store, P1, "a1", skipped(1_000), T0 + HOUR)).toEqual({ ok: false, error: "store_failed" });
     memory.fail.load = new StoreError("load failed", "timeout");
-    expect(await recordBreak(memory.store, P1, "a1", "rested", T0 + HOUR)).toEqual({ ok: false, error: "store_failed" });
-    expect(log.mock.calls).toEqual([["[test] break save failed", "timeout"], ["[test] load failed", "timeout"]]);
+    expect(await recordBreak(memory.store, P1, "a1", rested(1_000), T0 + HOUR)).toEqual({ ok: false, error: "store_failed" });
+    expect(log.mock.calls).toEqual([["[test] break save failed", "timeout"], ["[test] break save failed", "timeout"], ["[test] load failed", "timeout"]]);
     expect(breakOf(memory.tests[0])).toEqual(NO_BREAK);
   });
 });

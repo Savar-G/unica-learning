@@ -266,10 +266,22 @@ function contextStore(admin: SupabaseClient): ContextStore {
       if (error) throw new StoreError("break save failed", error.message);
     },
 
-    async endBreak(id, at, skipped) {
-      const { error } = await admin.from("assessments").update({ break_ended_at: iso(at), break_skipped: skipped })
-        .eq("id", id).eq("status", "in_progress").not("break_started_at", "is", null).is("break_ended_at", null);
-      if (error) throw new StoreError("break save failed", error.message);
+    async endBreak(id, { at, skipped, lengthMs }) {
+      const ended = { break_ended_at: iso(at), break_skipped: skipped, break_ms: lengthMs };
+      // Two rounds: "shown" can land between the two updates, and then the first one takes the end.
+      for (let round = 0; round < 2; round++) {
+        // The usual order: the break has its start.
+        const after = await admin.from("assessments").update(ended)
+          .eq("id", id).eq("status", "in_progress").not("break_started_at", "is", null).is("break_ended_at", null).select("id");
+        if (after.error) throw new StoreError("break save failed", after.error.message);
+        if ((after.data ?? []).length > 0) return;
+        // The end reached the server first: its start is the browser's length before it.
+        const first = await admin.from("assessments").update({ ...ended, break_started_at: iso(at - lengthMs) })
+          .eq("id", id).eq("status", "in_progress").is("break_started_at", null).is("break_ended_at", null).select("id");
+        if (first.error) throw new StoreError("break save failed", first.error.message);
+        if ((first.data ?? []).length > 0) return;
+      }
+      // The break had ended already (or the test closed): nothing changes.
     },
   };
 }

@@ -13,6 +13,16 @@ export const BREAK_EVENTS = ["shown", "rested", "skipped"] as const;
 export type BreakEvent = (typeof BREAK_EVENTS)[number];
 export const isBreakEvent = (v: unknown): v is BreakEvent => typeof v === "string" && (BREAK_EVENTS as readonly string[]).includes(v);
 
+/**
+ * One record of the halfway break. The end carries the break's length as the browser measured it, from the break
+ * screen showing to the press. The screen sends the end at once, never after the "shown" save, so a slow save never
+ * makes the break longer; when the end reaches the server first, its start is the length before it.
+ */
+export type BreakRecord = { event: "shown" } | { event: Exclude<BreakEvent, "shown">; lengthMs: number };
+
+/** A break length from a request: milliseconds, 0 or more. */
+export const isBreakLength = (v: unknown): v is number => typeof v === "number" && Number.isFinite(v) && v >= 0;
+
 export const DEVICE_CLASSES = ["phone", "tablet", "desktop"] as const;
 export type DeviceClass = (typeof DEVICE_CLASSES)[number];
 

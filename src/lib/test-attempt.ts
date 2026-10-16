@@ -40,7 +40,7 @@ import {
 import { FACTS_SECONDS, createFacts, factsStep, restoreFacts, storedFacts, submitFact, type FactAnswer, type FactsSession, type FactsStep, type FactsTest, type FactSubmission } from "@/lib/assessment";
 import { ANSWER_MAX, QUESTION_TIME_CAP_MS } from "@/lib/test-api";
 import type { AnswerEvents } from "@/lib/answer-events";
-import type { BreakEvent, TestDevice } from "@/lib/test-context";
+import type { BreakRecord, TestDevice } from "@/lib/test-context";
 
 /** One of the parent's children, as a new test needs them. */
 export interface AttemptChild {
@@ -732,7 +732,9 @@ async function shownOf(store: AttemptStore, id: string, position: number): Promi
 
 // The test context (#185): the halfway break and the device, saved once per test for the admin view and later
 // analysis. The screen sends them beside the test and never waits for them, so a failure here never stops the child.
-// The break's times are the server's clock: the request that says the break is shown, and the one that says it ended.
+// The break's times are the server's clock: when it got "shown", and when it got the end. Its length is the browser's:
+// the screen sends the end at once with the time from the break screen showing to the press, so a slow "shown" save or
+// a slow network never makes the break longer.
 
 /**
  * The store seam's operations for the test context. Each changes a test only while it is in progress, and writes only
@@ -744,31 +746,37 @@ export interface ContextStore {
   recordDevice(id: string, device: TestDevice): Promise<void>;
   /** Saves when the halfway break was shown, only when the test has no break yet. */
   startBreak(id: string, at: number): Promise<void>;
-  /** Saves when the break ended and whether the child skipped it, only once it started and has not ended yet. */
-  endBreak(id: string, at: number, skipped: boolean): Promise<void>;
+  /**
+   * Saves the end of the break: when it ended (`at`), whether the child skipped it, and its length. Only once: an ended
+   * break changes nothing. When the break has no start yet (the end reached the server first, or "shown" was lost),
+   * also saves the start, as `at - lengthMs`; a later "shown" then changes nothing.
+   */
+  endBreak(id: string, end: { at: number; skipped: boolean; lengthMs: number }): Promise<void>;
 }
 
 /** Why the module refused a context record: a subset of Refusal. */
 export type ContextRefusal =
   | { ok: false; error: "not_found" }
-  /** The test is not in progress, or the break is shown when the test is not at the halfway point. */
+  /** The test is not in progress, or a break record comes when the test is not at the halfway point. */
   | { ok: false; error: "conflict" }
   | StoreFailed;
 
 export type ContextOutcome = { ok: true } | ContextRefusal;
 
+/** The longest break kept: the test closes 24 hours after the last answer (#72). */
+const BREAK_MAX_MS = 24 * 60 * 60_000;
+
 /**
- * Saves the halfway break of the parent's test at `now`. "shown" is taken only at the halfway point, when the next
- * question is the first after the break (the assessment core's breakDue). An end with no start stores nothing.
+ * Saves a record of the halfway break of the parent's test at `now`. Taken only at the halfway point, when the next
+ * question is the first after the break (the assessment core's breakDue).
  */
-export async function recordBreak(store: AttemptStore, parent: string, id: string, event: BreakEvent, now: number): Promise<ContextOutcome> {
+export async function recordBreak(store: AttemptStore, parent: string, id: string, record: BreakRecord, now: number): Promise<ContextOutcome> {
   const read = await readTest(store, parent, id);
   if (!read.ok) return contextRefusal(read);
-  if (read.attempt.status !== "in_progress") return { ok: false, error: "conflict" };
-  if (event === "shown" && !breakDue(testStep(read.session))) return { ok: false, error: "conflict" };
+  if (read.attempt.status !== "in_progress" || !breakDue(testStep(read.session))) return { ok: false, error: "conflict" };
   try {
-    if (event === "shown") await store.startBreak(id, now);
-    else await store.endBreak(id, now, event === "skipped");
+    if (record.event === "shown") await store.startBreak(id, now);
+    else await store.endBreak(id, { at: now, skipped: record.event === "skipped", lengthMs: Math.min(Math.round(record.lengthMs), BREAK_MAX_MS) });
   } catch (e) {
     return storeFailed(e);
   }
