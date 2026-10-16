@@ -80,9 +80,8 @@ export function Hero() {
         highlight={HERO.highlight}
         lead={
           <>
-            Same material, same pace. <span className="nowrap">Miss <SwapWord words={TOPICS} /></span> and every lesson after
-            it gets harder. Unica gives your child more practice where they need help and new challenges when they’re ready.
-            We use their completed work to shape each new personalized workbook, then mail it home.
+            <span className="nowrap">Miss <SwapWord words={TOPICS} /></span> once and every lesson after it gets harder.
+            Unica gives your child a workbook built for where they are.
           </>
         }
         meta={["Free assessment and report", "30-day money-back guarantee", "Cancel anytime"]}
