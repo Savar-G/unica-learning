@@ -42,6 +42,30 @@ describe("retention rules", () => {
     expect(retentionDecision(former("2026-01-01T00:00:00Z", "2026-03-01T00:00:00Z"), Date.parse("2027-03-01T00:00:00Z")).action).toBe("delete");
     expect(retentionDecision(former("2026-04-16T12:00:00Z", null), NOW).action).toBe("delete");
   });
+
+  it("deletes a free-test family 12 calendar months (UTC) after the latest test activity", () => {
+    const free = (lastTestAt: string | null) => ({ lastTestAt, payments: [] });
+    expect(retentionDecision(free("2025-01-31T09:00:00Z"), Date.parse("2026-01-31T08:59:59Z"))).toEqual({ action: "keep", reason: "free_test" });
+    expect(retentionDecision(free("2025-01-31T09:00:00Z"), Date.parse("2026-01-31T09:00:00Z"))).toEqual({ action: "delete", rule: "free_test" });
+    // 29 February + 12 months is 28 February.
+    expect(retentionDecision(free("2024-02-29T12:00:00Z"), Date.parse("2025-02-28T11:59:59Z")).action).toBe("keep");
+    expect(retentionDecision(free("2024-02-29T12:00:00Z"), Date.parse("2025-02-28T12:00:00Z")).action).toBe("delete");
+    // A Stripe customer with nothing saved (the parent left the card page), or a subscription that never started.
+    expect(retentionDecision({ lastTestAt: LONG_AGO, payments: [{ savedCard: false, subscriptions: [] },
+      { savedCard: false, subscriptions: [{ status: "incomplete_expired", endedAt: "2021-01-01T00:00:00Z" }] }] }, NOW)).toEqual({ action: "delete", rule: "free_test" });
+    // With no test, there is no test-based deadline.
+    expect(retentionDecision(free(null), NOW)).toEqual({ action: "keep", reason: "no_test" });
+  });
+
+  it("keeps the family when Stripe did not answer or holds a state the rules do not know", () => {
+    const unknown = { action: "unknown" };
+    expect(retentionDecision({ lastTestAt: LONG_AGO, payments: "unknown" }, NOW)).toEqual(unknown);
+    for (const subscription of [{ status: "canceled", endedAt: null }, { status: "canceled", endedAt: "not a date" }, { status: "suspended", endedAt: null }]) {
+      expect(retentionDecision({ lastTestAt: LONG_AGO, payments: [{ savedCard: false, subscriptions: [{ status: "canceled", endedAt: LONG_AGO }, subscription] }] }, NOW)).toEqual(unknown);
+    }
+    expect(retentionDecision({ lastTestAt: "bad", payments: [] }, NOW)).toEqual(unknown);
+    expect(retentionDecision({ lastTestAt: LONG_AGO, payments: [] }, Number.NaN)).toEqual(unknown);
+  });
 });
 
 // Format-only synthetic values. Only a transport preflight can establish real API authentication.

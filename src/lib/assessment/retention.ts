@@ -13,6 +13,16 @@ export interface CustomerPayments {
   subscriptions: SubscriptionFact[];
 }
 
+/** One card setup row of the family (`card_setups`): its Stripe customer, if one was made, and whether the site saw a saved card. */
+export interface FamilyCard { customer: string | null; saved: boolean }
+
+/** A family as the database knows it, before Stripe is asked. */
+export interface RetentionFamily {
+  cards: FamilyCard[];
+  /** The latest test activity across all the family's children (ISO), or null when no child started a test. */
+  lastTestAt: string | null;
+}
+
 export interface RetentionFacts {
   /** The latest test activity across all the family's children (ISO), or null when no child started a test. */
   lastTestAt: string | null;
