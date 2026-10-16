@@ -1,4 +1,6 @@
+import { after } from "next/server";
 import { isUuid } from "@/lib/assessment-store";
+import { rebuildLatestProfile } from "@/lib/learner-profile";
 import { parseLearning, toRow, type LearningError, type LearningResult } from "@/lib/learning-style";
 import { parentId, sessionClient } from "@/lib/supabase-auth";
 
@@ -7,7 +9,8 @@ const fail = (error: LearningError, status: number) => Response.json({ ok: false
 // The parent saves how their child likes to learn (#126), from the report or the account. Written with the parent's
 // own session: row-level security lets a parent update only these columns, and only on their own children, so another
 // family's child id updates nothing. Empty answers clear what was stored. JSON only: a form on another site cannot
-// send it with the parent's cookies.
+// send it with the parent's cookies. #196: the answers are part of the learner profile, and the card is answered after
+// the report job built it, so the profile of the child's latest finished test is built again after the response.
 export async function POST(request: Request) {
   if (!request.headers.get("content-type")?.startsWith("application/json")) return fail("bad_json", 415);
   const db = await sessionClient();
@@ -28,5 +31,6 @@ export async function POST(request: Request) {
     .eq("id", child).select("id");
   if (error) return fail("store_failed", 500);
   if (!data?.length) return fail("not_found", 404);
+  after(() => rebuildLatestProfile(child));
   return Response.json({ ok: true } satisfies LearningResult);
 }

@@ -10,6 +10,7 @@ import {
   flagText,
   helpAnswerText,
   parseFilters,
+  questionNumbers,
   when,
   type AdminTestRow,
   type AnswerRecord,
@@ -270,6 +271,13 @@ describe("flags and times in plain words (#77)", () => {
     expect(flagText({ kind: "too-fast", questionIds: ["q7"], right: 1 }, numbers)).toBe("1 answer under 3 s, 1 right: question 7");
     expect(flagText({ kind: "pause-then-perfect", questionId: "q7", pauseMs: 250_000, rightBefore: 1 }, numbers))
       .toBe("4 min 10 s on question 7, then 4 right in a row (1 of 4 right before)");
+  });
+
+  it("numbers the questions from the stored answers, as the test page does, for the flags on the profile page (#196)", () => {
+    const answers = [{ position: 4, question_id: "s2-1" }, { position: 0, question_id: "s1-1" }, { position: 1, question_id: "s1-5" }];
+    const numbers = questionNumbers(answers);
+    expect([...numbers]).toEqual([["s1-1", 1], ["s1-5", 2], ["s2-1", 5]]);
+    expect(flagText({ kind: "too-fast", questionIds: ["s1-5", "s2-1"], right: 0 }, numbers)).toBe("2 answers under 3 s, 0 right: questions 2, 5");
   });
 
   it("falls back to the question id when the number is not known", () => {

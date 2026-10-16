@@ -3,9 +3,11 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ReportCard } from "@/components/report";
-import { createSession, REPORT_TEXT_NAME, storedTest, type ComparisonTest } from "@/lib/assessment";
+import { createSession, PROFILE_SCHEMA_VERSION, REPORT_TEXT_NAME, storedProfile, storedTest, type ComparisonTest, type ProfileLearning } from "@/lib/assessment";
 import { knowsUpTo, takeTest } from "@/lib/assessment/scripted-child";
 import { memoryTransport } from "@/lib/email-delivery-memory";
+import { rebuildLatestProfile, rebuildLearnerProfile } from "@/lib/learner-profile";
+import { memoryLearnerProfileStore } from "@/lib/learner-profile-memory";
 import { runReportJob } from "@/lib/report-job";
 import { memoryReportJobStore } from "@/lib/report-job-memory";
 import { loadReportView, type ComparisonRead } from "@/lib/report-loading";
@@ -21,8 +23,10 @@ import { fakeReviewer } from "@/lib/work-review-fake";
 // stored AI reviews, the parent's contact details, the unsubscribe check; src/lib/report-job-memory.ts) over the same
 // tables and with the same read counter, a comparison read that returns a cohort, and the AI step's fake reviewer. The
 // emails go through the delivery module (#151) with the in-memory transport and the in-memory report row ledger, which
-// keeps the report row's claim rules. The comparison read and the ledger count their reads in the same counter too. The network is a stub that records any request, so a test sees any call to
-// Supabase or Resend.
+// keeps the report row's claim rules. The comparison read and the ledger count their reads in the same counter too. The
+// learner profile (#196) goes to the in-memory profile store (src/lib/learner-profile-memory.ts), which reads the
+// parent's answers on the learning card and counts its reads in the same counter. The network is a stub that records
+// any request, so a test sees any call to Supabase or Resend.
 vi.mock("server-only", () => ({}));
 
 const ORIGIN = "https://unica.test";
@@ -30,7 +34,8 @@ const TEST = "test-1";
 
 // Asha, grade 4 in BC, child of Priya, works at grade 4: every grade 4 question right, every grade 5 question wrong,
 // 20 seconds each. 42 questions (18 above her school grade), 14 minutes. She showed work on her first two
-// show-your-work questions: one drawn, one typed.
+// show-your-work questions: one drawn, one typed. She had "Read it to me" read the first question twice, and left the
+// tab once, for 4 seconds, on the second (#184).
 const { asked, placement } = takeTest({ grade: 4, province: "BC" }, 101, knowsUpTo(4));
 const [DRAWN, TYPED] = asked.flatMap((q, n) => (q.showWork ? [n] : []));
 const DRAWING = `parent-1/${TEST}/${asked[DRAWN].id}-x.png`;
@@ -47,9 +52,12 @@ const cohort: ComparisonTest[] = [
 /**
  * The database in memory, with Asha's finished test. `unsubscribed`: Priya has unsubscribed. `parent`: null when the
  * parent row is missing. `child`: false when Asha's child row is missing. `helped`: Asha said someone helped, so the
- * report warns that the level may be too high. `comparison` counts the comparison reads.
+ * report warns that the level may be too high. `learning`: Priya's answers on the "Tell us how Asha learns" card
+ * (#126, #195). `comparison` counts the comparison reads.
  */
-function database({ unsubscribed = false, parent = PRIYA as typeof PRIYA | null, child = true, helped = false, rushed = false } = {}) {
+function database({
+  unsubscribed = false, parent = PRIYA as typeof PRIYA | null, child = true, helped = false, rushed = false, learning = null as ProfileLearning | null,
+} = {}) {
   const tables: MemoryReportTables = {
     reports: [],
     assessments: [{
@@ -66,6 +74,7 @@ function database({ unsubscribed = false, parent = PRIYA as typeof PRIYA | null,
     answers: asked.map((q, n) => ({
       assessmentId: TEST, position: n, questionId: q.id, response: q.level <= 4 ? q.answer : "no idea", correct: q.level <= 4, misconception: null,
       timeMs: 20_000, workRequired: q.showWork === true, workPath: n === DRAWN ? DRAWING : null, workText: n === TYPED ? "6 x 4 = 24" : null,
+      readAloud: n === 0 ? 2 : 0, away: n === 1 ? { count: 1, ms: 4000 } : { count: 0, ms: 0 },
     })),
     children: child ? [{ id: "child-1", parentId: "parent-1", firstName: "Asha" }] : [],
     drawings: [DRAWING],
@@ -76,13 +85,14 @@ function database({ unsubscribed = false, parent = PRIYA as typeof PRIYA | null,
     parents: parent ? [{ id: "parent-1", ...parent }] : [],
     unsubscribed: unsubscribed ? ["parent-1"] : [],
   });
+  const profiles = memoryLearnerProfileStore(tables, { reads: readers.reads, learning: learning ? { "child-1": learning } : {} });
   // One comparison read is one scan of the completed tests (src/lib/comparison-store.ts): one request for each 500
   // tests, and one more. The count is of the scans, as the number of requests depends on how many tests there are.
   const comparison = vi.fn<ComparisonRead>(async (assessmentId) => {
     countRead(readers.reads, "comparison");
     return { assessmentId, tests: cohort };
   });
-  return { tables, readers, job, comparison };
+  return { tables, readers, job, profiles, comparison };
 }
 type Database = ReturnType<typeof database>;
 
@@ -96,7 +106,9 @@ const run = (
   mail: ReturnType<typeof memoryTransport>,
   book: { ledger: ReportLedger<string> },
   reviewer: WorkReviewer | null = fakeReviewer(),
-) => runReportJob(TEST, ORIGIN, { reader: db.readers.key(), comparison: db.comparison, store: db.job.store, reviewer, transport: mail.transport, ledger: book.ledger });
+) => runReportJob(TEST, ORIGIN, {
+  reader: db.readers.key(), comparison: db.comparison, store: db.job.store, profiles: db.profiles.store, reviewer, transport: mail.transport, ledger: book.ledger,
+});
 
 let network: string[];
 beforeEach(() => {
@@ -144,8 +156,9 @@ describe("the stored report", () => {
     // Every read that production makes, one for each database request: the stored test and its answers, through the
     // module; the check for a stored report, then the comparison scan and the stored AI reviews; the parent and the
     // stored report's view (#163; one request, with the test and the child), for the emails; then the ledger's check
-    // that the parent email has not gone (src/lib/report-row-ledger.ts), and the unsubscribe check.
-    expect(db.readers.reads).toEqual({ assessments: 1, answers: 1, reports: 3, comparison: 1, work_reviews: 1, parents: 1, email_log: 1 });
+    // that the parent email has not gone (src/lib/report-row-ledger.ts), and the unsubscribe check. The learner profile
+    // (#196) is built from the same inputs: it reads only the parent's answers on the learning card (children).
+    expect(db.readers.reads).toEqual({ assessments: 1, answers: 1, reports: 3, comparison: 1, work_reviews: 1, parents: 1, email_log: 1, children: 1 });
     expect(db.comparison.mock.calls).toEqual([[TEST]]);
 
     expect(mail.delivered.map((m) => m.to)).toEqual(["priya@family.ca", "savar@unicalearning.com"]);
@@ -160,8 +173,9 @@ describe("the stored report", () => {
     expect(db.job.reviews()).toHaveLength(2);
     expect(mail.delivered).toHaveLength(2);
     // The second run reads its inputs, finds the stored report, and reads the parent and the view; the ledger finds
-    // that the parent email went, so the run makes no unsubscribe check. It calls no network itself.
-    expect(db.readers.reads).toEqual({ assessments: 2, answers: 2, reports: 6, comparison: 1, work_reviews: 1, parents: 2, email_log: 1 });
+    // that the parent email went, so the run makes no unsubscribe check. It builds the profile again (#196). It calls no
+    // network itself.
+    expect(db.readers.reads).toEqual({ assessments: 2, answers: 2, reports: 6, comparison: 1, work_reviews: 1, parents: 2, email_log: 1, children: 2 });
     expect(network).toEqual([]);
   });
 
@@ -494,7 +508,7 @@ describe("a report step that fails", () => {
     const db = database();
     const mail = memoryTransport();
     const reader = { ...db.readers.key(), answers: async () => { throw new Error("answers load: database down"); } };
-    await expect(runReportJob(TEST, ORIGIN, { reader, comparison: db.comparison, store: db.job.store, reviewer: null, transport: mail.transport, ledger: memoryReportLedger().ledger }))
+    await expect(runReportJob(TEST, ORIGIN, { reader, comparison: db.comparison, store: db.job.store, profiles: db.profiles.store, reviewer: null, transport: mail.transport, ledger: memoryReportLedger().ledger }))
       .resolves.toBeUndefined();
     expect(mail.delivered.map((m) => [m.to, m.subject])).toEqual([["savar@unicalearning.com", `Report FAILED for assessment ${TEST}`]]);
     expect(mail.delivered[0].text).toContain("The report step failed: answers load: database down");
@@ -509,5 +523,105 @@ describe("a report step that fails", () => {
     await expect(run(db, mail, { ledger: broken })).resolves.toBeUndefined();
     expect(mail.delivered.map((m) => [m.to, m.subject])).toEqual([["savar@unicalearning.com", `Report FAILED for assessment ${TEST}`]]);
     expect(mail.delivered[0].text).toContain("The report step failed: claim emailed_at: database down");
+  });
+});
+
+// The learner profile (#196, spec #181): built by the job from the same read as the report, stored in the profile store
+// (public.learner_profiles), one per test, and built again on each later run of the job.
+describe("the learner profile", () => {
+  const PRIYAS_ANSWERS: ProfileLearning = { styles: ["pictures"], interests: ["space"], feeling: "okay", goal: "keep_up", weeklyTime: "1_to_2h" };
+
+  it("is built and stored after finish, from the job's own read of the test, with its schema version", async () => {
+    const db = database({ learning: PRIYAS_ANSWERS });
+    await run(db, memoryTransport(), memoryReportLedger());
+
+    expect(db.profiles.rows()).toHaveLength(1);
+    const [row] = db.profiles.rows();
+    expect(row).toMatchObject({ assessmentId: TEST, parentId: "parent-1", childId: "child-1", schemaVersion: PROFILE_SCHEMA_VERSION });
+    const profile = storedProfile(row.profile)!;
+    expect(profile.schemaVersion).toBe(PROFILE_SCHEMA_VERSION);
+    // Asha's test: every grade 4 question right, so no struggle, and each standard at her school grade is a strength.
+    expect(profile.test).toEqual({ grade: 4, province: "BC", route: "up", answered: 42 });
+    expect(profile.level).toMatchObject({ working: 4, certainty: "clear" });
+    expect(profile.struggles).toEqual([]);
+    expect(profile.strengths.length).toBeGreaterThan(0);
+    // The stored answers' timeline and shown work (#184, #67), and Priya's answers on the card (#195).
+    expect(profile.behaviour).toMatchObject({
+      readAloud: { recorded: 42, questions: 1, uses: 2 },
+      away: { recorded: 42, questions: 1, times: 1, ms: 4000 },
+      whiteboard: { requiredWithWork: 2, optionalWithWork: 0 },
+      help: { answer: "no", likely: false },
+    });
+    expect(profile.preferences).toEqual({ styles: ["pictures"], interests: ["space"] });
+    expect(profile.parent).toEqual({ feeling: "okay", goal: "keep_up", weeklyTime: "1_to_2h" });
+    // Never a name, the drawing or the typed working.
+    const json = JSON.stringify(row.profile);
+    for (const secret of ["Asha", "Priya", DRAWING, "6 x 4 = 24"]) expect(json).not.toContain(secret);
+  });
+
+  it("is built again in place on a later run, as when an extra round (#190) finishes: the new placement and answers count", async () => {
+    const db = database();
+    await run(db, memoryTransport(), memoryReportLedger());
+    expect(storedProfile(db.profiles.rows()[0].profile)!.test.answered).toBe(42);
+
+    // The extra round's stand-in: 8 more right answers to questions of the stored test that the route did not ask, and
+    // the placement scored again. Meanwhile Priya answered the learning card on the report.
+    const [test] = db.tables.assessments!;
+    const more = test.test.stage2.stay.slice(0, 8);
+    db.tables.answers!.push(...more.map((q, n) => ({
+      assessmentId: TEST, position: 42 + n, questionId: q.id, response: q.answer, correct: true, misconception: null,
+      timeMs: 20_000, workRequired: false, workPath: null, workText: null, readAloud: 0, away: { count: 0, ms: 0 },
+    })));
+    test.placement = { ...test.placement!, workingLevel: 5 };
+    db.profiles.learning["child-1"] = PRIYAS_ANSWERS;
+    await run(db, memoryTransport(), memoryReportLedger());
+
+    expect(db.profiles.rows()).toHaveLength(1);
+    const profile = storedProfile(db.profiles.rows()[0].profile)!;
+    expect(profile.test.answered).toBe(50);
+    expect(profile.standards.reduce((n, s) => n + s.total, 0)).toBe(50);
+    expect(profile.level.working).toBe(5);
+    expect(profile.parent).toEqual({ feeling: "okay", goal: "keep_up", weeklyTime: "1_to_2h" });
+  });
+
+  it("can be built again on its own: for one test (#190), and for the child's latest finished test when the parent answers the card", async () => {
+    const db = database();
+    // An older finished test of Asha's, from September.
+    db.tables.assessments!.push({ ...structuredClone(db.tables.assessments![0]), id: "test-0", completedAt: "2026-09-01T12:00:00Z" });
+    await run(db, memoryTransport(), memoryReportLedger());
+    const options = { reader: db.readers.key(), store: db.profiles.store };
+
+    db.tables.assessments![0].placement = { ...db.tables.assessments![0].placement!, workingLevel: 5 };
+    expect((await rebuildLearnerProfile(TEST, options))?.level.working).toBe(5);
+    expect(storedProfile(db.profiles.rows()[0].profile)!.level.working).toBe(5);
+
+    db.profiles.learning["child-1"] = PRIYAS_ANSWERS;
+    expect((await rebuildLatestProfile("child-1", options))?.parent).toEqual({ feeling: "okay", goal: "keep_up", weeklyTime: "1_to_2h" });
+    expect(db.profiles.rows().map((r) => [r.assessmentId, storedProfile(r.profile)!.parent.goal])).toEqual([[TEST, "keep_up"]]);
+    // A child with no finished test has no profile to build; a test that is not finished has none either.
+    expect(await rebuildLatestProfile("child-2", options)).toBeNull();
+    db.tables.assessments![1] = { ...db.tables.assessments![1], status: "in_progress", completedAt: null, placement: null };
+    expect(await rebuildLearnerProfile("test-0", options)).toBeNull();
+    expect(db.profiles.rows()).toHaveLength(1);
+  });
+
+  it("is not built for a test not scored against BC: the skill map and the tags are BC's", async () => {
+    const db = database();
+    db.tables.assessments![0].placement = { ...db.tables.assessments![0].placement!, scoredAgainst: "AB" };
+    const mail = memoryTransport();
+    await run(db, mail, memoryReportLedger());
+    expect(db.profiles.rows()).toEqual([]);
+    expect(db.tables.reports).toHaveLength(1);
+    expect(mail.delivered.map((m) => m.to)).toEqual(["priya@family.ca", "savar@unicalearning.com"]);
+  });
+
+  it("keeps the report and its emails when the profile cannot be stored, and logs the failure", async () => {
+    const db = database();
+    const mail = memoryTransport();
+    const profiles = { ...db.profiles.store, save: async () => { throw new Error("profile save: database down"); } };
+    await runReportJob(TEST, ORIGIN, { reader: db.readers.key(), comparison: db.comparison, store: db.job.store, profiles, reviewer: null, transport: mail.transport, ledger: memoryReportLedger().ledger });
+    expect(db.tables.reports).toHaveLength(1);
+    expect(mail.delivered.map((m) => m.to)).toEqual(["priya@family.ca", "savar@unicalearning.com"]);
+    expect(console.error).toHaveBeenCalledWith("[profile] failed", TEST, "profile save: database down");
   });
 });

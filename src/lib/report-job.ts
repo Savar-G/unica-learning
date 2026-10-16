@@ -4,6 +4,8 @@ import { SUPPORT_EMAIL } from "@/lib/contact";
 import { adminTestPath } from "@/lib/admin-view";
 import { loadComparisonInput } from "@/lib/comparison-store";
 import { sendEmail, sendEmailOnce, type MailTransport, type Sender } from "@/lib/email-delivery";
+import { storeLearnerProfile, type LearnerProfileStore } from "@/lib/learner-profile";
+import { learnerProfileStore } from "@/lib/learner-profile-store";
 import { reportAlert, reportEmail, type ParentContact } from "@/lib/report-email";
 import { reportJobStore, type ReportJobStore, type StoredReport } from "@/lib/report-job-store";
 import { loadReportInputs, loadReportView, type ComparisonRead, type ReportInputs, type ReportReader } from "@/lib/report-loading";
@@ -23,6 +25,9 @@ import { aiReport, aiReviewer, type AiOutcome, type WorkReviewer } from "@/lib/w
 //      It stops after at most REVIEW_STAGE_MS + TEXT_STAGE_MS (165 s; Vercel stops a function at 300 s). Off, failed or
 //      timed out: the report has no AI comments and no AI text.
 //   3. Build the report model with the assessment core, and store it: one report per assessment.
+//   3b. Build the learner profile (#196, src/lib/learner-profile.ts) from the same inputs and store it: one per test,
+//      built again on each run, so a run after an extra round (#190) or a later answer on the learning card counts.
+//      A failure is logged; the report and its emails go on.
 //   4. Email the report to the parent. The email and the alert show the report view of the stored report, from the
 //      report-loading module (#163): the same view that the report page and the admin report view show.
 //   5. Email Savar an alert, with what the AI did, and whether the parent email was sent, refused or unknown.
@@ -31,8 +36,8 @@ import { aiReport, aiReviewer, type AiOutcome, type WorkReviewer } from "@/lib/w
 // sent. If the parent email fails, the report is still stored and visible in the account, and the alert tells Savar.
 // Its database seams: the report-loading module's reader (the inputs and the view; it signs nothing, as the emails have
 // no drawings) and the comparison read, the job's own store (src/lib/report-job-store.ts: the report insert, the stored
-// AI reviews, the parent, the unsubscribe check), and the report row ledger. By default each is Supabase with the
-// secret key; tests give the in-memory adapters.
+// AI reviews, the parent, the unsubscribe check), the learner profile's store, and the report row ledger. By default
+// each is Supabase with the secret key; tests give the in-memory adapters.
 
 /** What the alert says about the parent email: sent, refused (not sent), or unknown (uncertain). */
 type ParentEmail = Parameters<typeof reportAlert>[0]["parentEmail"];
@@ -56,11 +61,13 @@ export interface ReportJobOptions {
   comparison?: ComparisonRead;
   /** The job's own reads and writes. */
   store?: ReportJobStore;
+  /** The learner profile's store (#196). */
+  profiles?: LearnerProfileStore;
 }
 
 /** The given database seams; the missing ones are Supabase with the secret key. Null without the key. */
-function database({ ledger, reader, comparison, store }: ReportJobOptions) {
-  if (ledger && reader && comparison && store) return { ledger, reader, comparison, store };
+function database({ ledger, reader, comparison, store, profiles }: ReportJobOptions) {
+  if (ledger && reader && comparison && store && profiles) return { ledger, reader, comparison, store, profiles };
   const admin = adminClient();
   if (!admin) return null;
   return {
@@ -68,13 +75,15 @@ function database({ ledger, reader, comparison, store }: ReportJobOptions) {
     reader: reader ?? secretKeyReportReader(admin),
     comparison: comparison ?? ((id: string) => loadComparisonInput(admin, id)),
     store: store ?? reportJobStore(admin),
+    profiles: profiles ?? learnerProfileStore(admin),
   };
 }
 
 /**
  * Builds, stores and emails the report for one finished assessment. Never throws: failures are logged and alerted.
  * Tests give the in-memory adapters (src/lib/report-loading-memory.ts, src/lib/report-job-memory.ts,
- * src/lib/email-delivery-memory.ts, src/lib/report-row-ledger-memory.ts) and the fake reviewer.
+ * src/lib/email-delivery-memory.ts, src/lib/report-row-ledger-memory.ts, src/lib/learner-profile-memory.ts) and the
+ * fake reviewer.
  */
 export async function runReportJob(assessmentId: string, origin: string, options: ReportJobOptions = {}): Promise<void> {
   const db = database(options);
@@ -89,6 +98,7 @@ export async function runReportJob(assessmentId: string, origin: string, options
     }
     const { assessment } = inputs;
     const { report, ai } = await storeReport(store, inputs, reviewer === undefined ? aiReviewer() : reviewer);
+    await profileStep(db.profiles, inputs);
 
     // The view of the email and the alert, from the report-loading module with the secret key (#163): the same view
     // that the report page and the admin report view show. The secret key signs nothing: the email has no drawings.
@@ -133,6 +143,15 @@ async function storeReport(store: ReportJobStore, inputs: ReportInputs, reviewer
   const raced = await store.report(a.id);
   if (!raced) throw new Error("report reload: no row");
   return { report: raced };
+}
+
+/** The learner profile (#196), built and stored again on each run. Never throws: the report and its emails go on. */
+async function profileStep(profiles: LearnerProfileStore, inputs: ReportInputs) {
+  try {
+    await storeLearnerProfile(profiles, inputs);
+  } catch (e) {
+    console.error("[profile] failed", inputs.assessment.id, message(e));
+  }
 }
 
 /**

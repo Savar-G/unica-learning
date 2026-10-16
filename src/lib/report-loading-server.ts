@@ -20,7 +20,7 @@ import { signWork } from "@/lib/work-store";
 const REPORT_COLUMNS = "id, assessment_id, child_id, model, questions, minutes";
 /** The test with its stored test, for the report inputs. A parent may not read `test`. */
 const ASSESSMENT_COLUMNS = "id, parent_id, child_id, status, grade, province, completed_at, placement, help, test";
-const ANSWER_COLUMNS = "position, question_id, response, correct, misconception, time_ms, work_required, work_path, work_text";
+const ANSWER_COLUMNS = "position, question_id, response, correct, misconception, time_ms, work_required, work_path, work_text, read_aloud_count, away_count, away_ms";
 
 interface ReportRow {
   id: string;
@@ -54,6 +54,10 @@ interface AnswerRow {
   work_required: boolean;
   work_path: string | null;
   work_text: string | null;
+  /** #184 (migration add_answer_timeline): null on answers stored before it. */
+  read_aloud_count: number | null;
+  away_count: number | null;
+  away_ms: number | null;
 }
 
 const record = (row: ReportRow, assessment: ReportAssessmentRow | null, child: ChildRow | null): ReportRecord => ({
@@ -90,6 +94,8 @@ const storedAnswer = (row: AnswerRow): StoredAnswer => ({
   workRequired: row.work_required,
   workPath: row.work_path,
   workText: row.work_text,
+  readAloud: row.read_aloud_count,
+  away: row.away_count === null ? null : { count: row.away_count, ms: row.away_ms ?? 0 },
 });
 
 type Result<T> = { data: T; error: { message: string } | null };
