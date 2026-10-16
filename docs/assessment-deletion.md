@@ -6,7 +6,7 @@ The owner approved public assessment launch without a separate pilot. The Node w
 
 ## Retention rules (#191)
 
-Spec #181 and D-108 (updates D-085) set these rules. Apply `supabase/migrations/20261016_add_customer_retention.sql` before the code ships. It adds three functions and changes no #78 function. It was applied to production on 16 October 2026 (registry version `20261016171444`).
+Spec #181 and D-109 (updates D-085) set these rules. Apply `supabase/migrations/20261016_add_customer_retention.sql` before the code ships. It adds three functions and changes no #78 function. It was applied to production on 16 October 2026 (registry version `20261016171444`).
 
 | Family | Rule |
 | --- | --- |
