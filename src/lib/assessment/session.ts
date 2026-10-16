@@ -12,7 +12,7 @@ import { levelCertainty, strandCertainty, strandStatus, workingLevelOf } from ".
 import { bankFor } from "./bank";
 import { factsResult, type FactsSession } from "./facts";
 import { flagsFor, type HelpAnswer } from "./flags";
-import { leftOutOfScore, paceOf } from "./rushing";
+import { leftOutOfScore, paceOf, takeYourTime } from "./rushing";
 import { rngFor } from "./rng";
 import type {
   Answer,
@@ -261,7 +261,7 @@ export function testStep(session: Session): TestStep {
   const { length: total, stage1: breakAfter } = bandFor(session.profile.grade);
   const q = nextQuestion(session);
   return q
-    ? { status: "question", question: toPublicQuestion(q), number: session.answers.length + 1, total, breakAfter }
+    ? { status: "question", question: toPublicQuestion(q), number: session.answers.length + 1, total, breakAfter, takeYourTime: takeYourTime(session.answers) }
     : { status: "complete", total };
 }
 

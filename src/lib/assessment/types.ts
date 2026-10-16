@@ -119,7 +119,15 @@ export type PublicQuestion = Pick<Question, "id" | "level" | "strand" | "format"
  * `breakAfter` is the number of questions before the halfway break (the end of stage 1), for the progress display.
  */
 export type TestStep =
-  | { status: "question"; question: PublicQuestion; number: number; total: number; breakAfter: number }
+  | {
+      status: "question";
+      question: PublicQuestion;
+      number: number;
+      total: number;
+      breakAfter: number;
+      /** #189: the last RUSH_RUN answers were all very fast, so the screen says "Take your time". */
+      takeYourTime: boolean;
+    }
   | { status: "complete"; total: number };
 
 export interface ChildProfile {

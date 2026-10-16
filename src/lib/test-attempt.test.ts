@@ -258,6 +258,33 @@ describe("answering a question", () => {
   });
 });
 
+// #189 (spec #181): a very fast answer takes under 3 seconds. After 3 in a row, the next question says "Take your time".
+describe("Take your time", () => {
+  /** Answers the current question right in `timeMs`, with a drawing when the question needs shown work. */
+  const answerIn = async (memory: ReturnType<typeof family>, timeMs: number, at: number) => {
+    const row = memory.tests[0];
+    const input = { ...sent(row, { png: current(row).showWork ? DRAWING : null }), timeMs };
+    const result = await answerQuestion(memory.store, P1, "a1", input, at);
+    if (!result.ok || result.step.status !== "question") throw new Error("expected the next question");
+    return result.step;
+  };
+
+  it("appears after the third very fast answer in a row, stays while the run goes on, and goes after a slower answer", async () => {
+    const memory = family(stored(open("a1", T0)));
+    expect((await answerIn(memory, 1_000, T0 + 1)).takeYourTime).toBe(false);
+    expect((await answerIn(memory, 2_999, T0 + 2)).takeYourTime).toBe(false);
+    expect((await answerIn(memory, 500, T0 + 3)).takeYourTime).toBe(true);
+    expect((await answerIn(memory, 800, T0 + 4)).takeYourTime).toBe(true);
+    expect((await answerIn(memory, 3_000, T0 + 5)).takeYourTime).toBe(false);
+  });
+
+  it("is on the step a reload reads, so the message is still there after the page opens again", async () => {
+    const memory = family(stored(open("a1", T0)));
+    for (let i = 0; i < 3; i++) await answerIn(memory, 1_000, T0 + i);
+    expect(await nextStep(memory.store, P1, "a1", T0 + 10)).toMatchObject({ ok: true, step: { status: "question", number: 4, takeYourTime: true } });
+  });
+});
+
 describe("the work on the whiteboard (#67)", () => {
   it("stores the drawing, and the answer points to it", async () => {
     const memory = family(stored(open("a1", T0)));
