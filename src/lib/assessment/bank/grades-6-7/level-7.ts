@@ -303,15 +303,16 @@ export const LEVEL_7: readonly TaggedTemplate[] = [
     fill(rng) {
       const [n, d] = rng.pick([[5, 8], [3, 8], [7, 8], [3, 4], [2, 5], [3, 5], [4, 5], [7, 20], [9, 20], [13, 20]] as const);
       const v = Math.round((n * 1000) / d); // thousandths
-      // Greatest, or least (#187: the ask varies). The other values sit just below the fraction (greatest) or just
-      // above it (least), in other forms: a percent with more digits and a long decimal.
-      const greatest = rng.int(0, 1) === 1, side = greatest ? -1 : 1;
-      const pct = greatest ? Math.floor(v / 10) - (v % 10 === 0 ? 1 : 0) : Math.ceil(v / 10) + (v % 10 === 0 ? 1 : 0);
-      const long = v + side * rng.int(1, 4);
+      // Three values just below the fraction, in other forms: a percent with more digits, a short decimal, a long decimal.
+      const pct = Math.floor(v / 10) - (v % 10 === 0 ? 1 : 0);
+      const long = v - rng.int(1, 4);
+      // The prompt names the numbers in a drawn order (#187: no fixed prompt); the read-aloud leaves them to the screen,
+      // which speaks the choices (#79).
+      const named = rng.shuffle([frac(n, d), `${pct}%`, fmt(long / 1000)].filter((x, i, all) => all.indexOf(x) === i));
       return {
-        values: { n, d, greatest: greatest ? 1 : 0 },
-        prompt: `Which number is the ${greatest ? "greatest" : "least"}?`,
-        readAloud: `Which number is the ${greatest ? "greatest" : "least"}?`,
+        values: { n, d },
+        prompt: `Which number is the greatest: ${named.slice(0, -1).join(", ")} or ${named[named.length - 1]}?`,
+        readAloud: "Which number is the greatest?",
         answer: frac(n, d),
         wrong: [
           wrong(`${pct}%`, "form-compare"),

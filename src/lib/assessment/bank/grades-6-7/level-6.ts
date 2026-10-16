@@ -34,8 +34,9 @@ export const LEVEL_6: readonly TaggedTemplate[] = [
     id: "g67-6-greatest-large",
     strand: "N", grades: { BC: 6, AB: 5, SK: 6, MB: 6, ON: 7 }, format: "choice", whiteboard: false, standard: "6.1",
     fill(rng) {
-      const a = rng.int(1, 9);
-      const [p, q] = draw(rng, (g) => [g.int(2, 9), g.int(1, 8)], ([p, q]) => p > q && p !== a);
+      // p > a (#187): a child who lines the numbers up by their first digits sees the short number as the greatest,
+      // and the million that starts with a and then the smaller digit q as the least.
+      const [a, p, q] = draw(rng, (g) => [g.int(1, 8), g.int(2, 9), g.int(1, 8)], ([a, p, q]) => p > q && p > a);
       const M = 1_000_000;
       const big = a * M + p * 100_000 + q * 10_000, swapped = a * M + q * 100_000 + p * 10_000, short = p * 100_000 + q * 10_000 + a * 1000;
       // Greatest, or least (#187: the ask varies): short < swapped < big. A child who lines numbers up by their first

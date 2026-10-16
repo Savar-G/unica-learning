@@ -292,6 +292,19 @@ describe("primary-source tag and wording corrections from the #75 checker run", 
   ] as const)("%s uses the grade where each province's curriculum teaches it", (id, expected) => {
     expect(levels(id)).toEqual([...expected]);
   });
+  it("codes the other benchmark that brackets the number as near, and the third one as far (#187)", () => {
+    for (const seed of SEEDS) {
+      const q = fillTemplate(byId("2-closest-benchmark"), seed);
+      const n = q.values.n, answer = Number(q.answer);
+      for (const w of q.wrong) {
+        const m = Number(w.value);
+        const brackets = (m < n && n < answer) || (answer < n && n < m);
+        const between = [25, 50, 100].some((b) => b !== m && b !== answer && Math.min(m, answer) < b && b < Math.max(m, answer));
+        expect(w.misconception, `seed ${seed}: ${n} -> ${answer}, ${m}`).toBe(brackets && !between ? "benchmark-near" : "benchmark-far");
+      }
+    }
+  });
+
   it("says what makes the unlikely event unlikely, and that the coin is fair", () => {
     for (const seed of SEEDS) {
       const likely = fillTemplate(byId("1-more-likely"), seed);

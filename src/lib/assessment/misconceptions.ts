@@ -269,7 +269,6 @@ export const MISCONCEPTIONS = {
   "volume-not-area": { description: "Finds the volume when the question asks for the surface area", evidence: "none" },
   // Bank fixes (#187).
   "regular-swap": { description: "Mixes up regular and irregular polygons", evidence: "none" },
-  "cube-neighbour": { description: "Treats a whole number next to a perfect cube as a perfect cube", evidence: "none" },
   "benchmark-near": { description: "Picks the benchmark next to the closest one: does not compare the two distances", evidence: "none" },
   "benchmark-far": { description: "Picks a benchmark far from the number: does not judge closeness", evidence: "none" },
   "referent-whole": { description: "Gives the amount of the full referent when the question asks about a part of it", evidence: "none" },

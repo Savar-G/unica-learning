@@ -1128,7 +1128,7 @@ export const LEVEL_4: readonly TaggedTemplate[] = [
       const name = rng.pick(NAMES), trials = rng.pick([10, 20, 30]);
       const setup = rng.int(0, 1) === 1
         ? `A spinner has ${total} equal parts: ${count(many, "part")} ${many === 1 ? "is" : "are"} ${x} and ${count(few, "part")} ${few === 1 ? "is" : "are"} ${y}. ${name} spins it ${trials} times.`
-        : `A bag has ${count(many, `${x} cube`)} and ${count(few, `${y} cube`)}. ${name} picks one cube without looking, then puts it back, ${trials} times.`;
+        : `A bag has ${count(many, `${x} cube`)} and ${count(few, `${y} cube`)}. ${name} picks one cube without looking and puts it back. ${name} does this ${trials} times.`;
       const text = `${setup} What result is most likely?`;
       return {
         values: { total, many, trials },
@@ -1154,7 +1154,8 @@ export const LEVEL_4: readonly TaggedTemplate[] = [
       const hits = parts === 4 ? rng.int(13, 17) : rng.int(15, 18);
       const name = rng.pick(NAMES);
       const spinner = (a: number, b: number) => `${count(a, `${x} part`)} and ${count(b, `${y} part`)}`;
-      const text = `${name} spun a spinner ${trials} times. It landed on ${x} ${hits} times and on ${y} ${trials - hits} times. Which spinner did ${name} most likely use?`;
+      // Every choice has the same number of equal parts, and the text says so: the reasoning needs equal parts.
+      const text = `${name} has a spinner with ${parts} equal parts. ${name} spun it ${trials} times. It landed on ${x} ${hits} times and on ${y} ${trials - hits} times. Which spinner did ${name} most likely use?`;
       return {
         values: { parts, hits },
         prompt: text,

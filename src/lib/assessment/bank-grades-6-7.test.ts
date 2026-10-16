@@ -155,6 +155,18 @@ describe("the grades 6-7 bank", () => {
       expect(least.wrong.find((w) => w.misconception === (least.values.least ? "zero-placeholder" : "decimal-order"))?.value)
         .toBe(String((least.values.t * 10 + least.values.u) / 100));
       expectFractionErrors(fillTemplate(BANK.find((t) => t.id === "g67-5-greatest-fraction")!, seed));
+      // "Longer is larger" (F6) picks the longest-looking decimal: the largest hundredths when the greatest is asked,
+      // the tenths when the least is asked (#187).
+      const decimals = fillTemplate(BANK.find((t) => t.id === "g67-5-greatest-decimal")!, seed);
+      const f6 = decimals.wrong.filter((w) => w.misconception === "F6").map((w) => Number(w.value));
+      const hundredths = decimals.choices!.map(Number).filter((x) => Math.round(x * 100) % 10 !== 0);
+      expect(f6, `seed ${seed}`).toEqual([decimals.values.greatest ? Math.max(...hundredths) : decimals.values.t / 10]);
+      // Lining numbers up by their first digit (digit-compare) picks the first in text order: the least when asked for
+      // the least, the greatest when asked for the greatest (#187).
+      const large = fillTemplate(BANK.find((t) => t.id === "g67-6-greatest-large")!, seed);
+      const byText = [...large.choices!].sort((x, y) => x.replace(/,/g, "").localeCompare(y.replace(/,/g, "")));
+      const firstDigitPick = large.values.greatest ? byText[byText.length - 1] : byText[0];
+      expect(large.wrong.find((w) => w.value === firstDigitPick)?.misconception, `seed ${seed}: ${large.choices}`).toBe("digit-compare");
     }
   });
 
@@ -341,9 +353,7 @@ describe("the grades 6-7 bank", () => {
       const question = (id: string) => fillTemplate(BANK.find((t) => t.id === id)!, seed);
       expect(question("g67-7-circle-graph-percent").wrong.every((w) => w.misconception !== "F10")).toBe(true);
       expect(question("g67-7-experimental").wrong.find((w) => w.value === "1/6")?.misconception).toBe("theory-as-data");
-      const power = question("g67-8-perfect-square");
-      const codes = power.values.cube ? ["cube-neighbour", "power-multiply"] : ["square-neighbour"];
-      expect(power.wrong.every((w) => codes.includes(w.misconception))).toBe(true);
+      expect(question("g67-8-perfect-square").wrong.every((w) => w.misconception === "square-neighbour")).toBe(true);
       expect(question("g67-8-square-side").wrong[0].misconception).toBe("M2");
       const tiles = question("g67-8-square-tile");
       expect(tiles.prompt).toContain("same size"); expect(tiles.readAloud).toContain("same size");

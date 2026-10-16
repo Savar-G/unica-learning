@@ -123,7 +123,9 @@ export const LEVEL_2: readonly TaggedTemplate[] = [
       const near = (n: number) => [...marks].sort((a, b) => Math.abs(a - n) - Math.abs(b - n));
       const n = draw(rng, (r) => r.int(12, 96), (n) => n % 25 !== 0 && Math.abs(near(n)[1] - n) - Math.abs(near(n)[0] - n) >= 3);
       const [answer, ...others] = near(n);
-      const nextTo = (m: number) => Math.abs(marks.indexOf(m) - marks.indexOf(answer)) === 1;
+      // "Near" is the other benchmark that brackets the number (43 is between 25 and 50); any other one is far.
+      const bracket = answer > n ? Math.max(...marks.filter((m) => m < n)) : Math.min(...marks.filter((m) => m > n));
+      const nextTo = (m: number) => m === bracket;
       return {
         values: { n },
         prompt: `Which number is ${n} closest to?`,
