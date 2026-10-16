@@ -106,7 +106,7 @@ export async function boardImage(strokes: readonly Stroke[], size: BoardSize): P
 
 export function loadDraft(key: string): BoardState | null {
   try {
-    return decodeDraft(window.localStorage.getItem(key));
+    return decodeDraft(window.localStorage.getItem(key), performance.timeOrigin);
   } catch {
     return null;
   }
@@ -114,8 +114,8 @@ export function loadDraft(key: string): BoardState | null {
 
 export function saveDraft(key: string, board: BoardState): void {
   try {
-    if (board.strokes.length === 0 && board.text === "") window.localStorage.removeItem(key);
-    else window.localStorage.setItem(key, encodeDraft(board));
+    if (board.strokes.length === 0 && board.text === "" && board.log.length === 0) window.localStorage.removeItem(key);
+    else window.localStorage.setItem(key, encodeDraft(board, performance.timeOrigin));
   } catch {
     // Full or blocked storage: the work is still on the screen.
   }
