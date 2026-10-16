@@ -142,7 +142,7 @@ describe("the report inputs (#162)", () => {
 
     // Asked: each piece of shown work, with the child's answer, the right answer and the level from the stored test.
     expect(inputs.reviewPieces()).toEqual([
-      { questionId: "s1-3", prompt: asked[3].prompt, answer: "4", rightAnswer: "4", correct: true, level: 4, required: true, misconception: null, image: drawing("parent-1", 3), text: null },
+      { questionId: "s1-3", prompt: asked[3].prompt, answer: asked[3].answer, rightAnswer: asked[3].answer, correct: true, level: 4, required: true, misconception: null, image: drawing("parent-1", 3), text: null },
       { questionId: "s1-4", prompt: asked[4].prompt, answer: "6.90", rightAnswer: "6.90", correct: true, level: 4, required: true, misconception: null, image: null, text: "20.00 - 13.10" },
       { questionId: "s1-6", prompt: asked[6].prompt, answer: "12", rightAnswer: "12", correct: true, level: 4, required: false, misconception: null, image: drawing("parent-1", 6), text: null },
       {

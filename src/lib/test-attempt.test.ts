@@ -482,7 +482,12 @@ describe("one answer per question", () => {
   });
 
   it("refuses a response that does not fit the question, or a time that is not one, and stores nothing", async () => {
-    const memory = family(stored(open("a1", T0), { answered: 2 }));
+    // A seed whose third question is a choice and whose fourth is a number, whatever the bank holds.
+    const seed = Array.from({ length: 200 }, (_, i) => i + 1).find((s) => {
+      const { stage1 } = createSession(ASHA, s);
+      return stage1[2].format === "choice" && stage1[3].format === "number";
+    });
+    const memory = family(stored(open("a1", T0), { answered: 2, seed }));
     const third = sent(memory.tests[0]); // a choice question
     const fourth = { ...third, questionId: memory.tests[0].test.stage1[3].id }; // a number question
     const refused = [
