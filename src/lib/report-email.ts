@@ -407,7 +407,7 @@ export function reportAlert({
     m.helpWarning ? "Help likely: yes. The report says the level may be too high and suggests a retake." : "Help likely: no",
     `Areas: ${m.strands.map((s) => `${s.name} ${STATUS_LABEL[s.status]} ${s.correct}/${s.total}${s.certainty ? ` ${s.certainty}` : ""}`).join("; ")}`,
     // #189: the reliability note and the rushed wrong answers left out of the score.
-    m.reliability ? `Reliability note: yes, ${m.reliability.veryFast} of ${m.reliability.answers} answers very fast. A new test is open at once.` : "Reliability note: no",
+    m.reliability ? `Reliability note: yes, ${m.reliability.veryFast} of ${m.reliability.answers} answers very fast. The report offers a new test; the start screen shows when it opens (at once at most once per 30 days, D-108).` : "Reliability note: no",
     ...(m.leftOut ? [`Left out of the score: ${plural(m.leftOut, "rushed wrong answer")}`] : []),
     `Facts: ${facts ? factsLine(facts) : "none"}`,
     ...(ai ? [aiLine(ai)] : []),

@@ -212,6 +212,15 @@ describe("the alert to Savar for each finished test", () => {
     expect(text).toContain("Flags: none");
     expect(text).toContain(`Report: ${URL}`);
   });
+  // #189, D-108: the alert does not read the start rules, so it promises no new test at once (a second unreliable test
+  // within 30 days waits).
+  it("gives the reliability note with the count, and names no retake time", () => {
+    const v = view(knowsUpTo(3));
+    const { text } = alert({ view: { ...v, model: { ...v.model, reliability: { veryFast: 12, answers: 36 } } } });
+    expect(text).toContain("Reliability note: yes, 12 of 36 answers very fast. The report offers a new test; the start screen shows when it opens (at once at most once per 30 days, D-108).");
+    expect(text).not.toContain("at once.");
+    expect(alert().text).toContain("Reliability note: no");
+  });
   it("lists each flag in plain words (#71)", () => {
     const { text } = alert({
       flags: [

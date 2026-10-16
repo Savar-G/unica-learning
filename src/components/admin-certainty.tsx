@@ -20,7 +20,7 @@ export function ResultCertainty({ placement }: { placement: Placement | null }) 
     {pace ? <>
       <p>{pace.veryFast} of {pace.answers} answers under {TOO_FAST_MS / 1000} s. {pace.leftOut.length} wrong {pace.leftOut.length === 1 ? "answer" : "answers"} from runs of very fast answers left out of the score.</p>
       {pace.unreliable
-        ? <p><Chip tone="bad">Reliability note</Chip> Over {UNRELIABLE_FAST_PERCENT}% very fast: the report says the result may not be reliable and offers a new test at once.</p>
+        ? <p><Chip tone="bad">Reliability note</Chip> Over {UNRELIABLE_FAST_PERCENT}% very fast: the report says the result may not be reliable and offers a new test: at once at most once per 30 days, else on the day it opens (D-108).</p>
         : <p className="adm-note">No reliability note (very fast answers at or under {UNRELIABLE_FAST_PERCENT}%).</p>}
     </> : <p className="adm-note">Pace not recorded (before #189).</p>}
   </>;

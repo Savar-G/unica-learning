@@ -233,7 +233,6 @@ function ReportAreas({ view }: { view: ReportView }) {
   );
 }
 
-/** Needs practice in sunflower, like Developing; never the tangerine of Needs attention. */
 /** #189: how sure one result is, under its status: a filled dot for Clear, a ring for an early sign. Nothing before #189. */
 function Certainty({ view, certainty, lead }: { view: ReportView; certainty: CertaintyValue | undefined; lead?: string }) {
   const text = certaintyText(view, certainty);
@@ -241,6 +240,7 @@ function Certainty({ view, certainty, lead }: { view: ReportView; certainty: Cer
   return <span className={`rpt-sure is-${certainty}`}>{lead && <span className="rpt-sure-lead">{lead} </span>}{text}</span>;
 }
 
+/** Needs practice in sunflower, like Developing; never the tangerine of Needs attention. */
 const factsChip = (label: string) => `rpt-chip ${label === "Needs practice" ? "is-developing" : "is-secure"}`;
 
 function FactsCard({ title, measure }: { title: string; measure: FactsMeasure }) {
