@@ -3,7 +3,7 @@ import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { BRAND } from "@/lib/site";
 
-export const alt = `${BRAND}: Schools and tutoring programs put every child in the same box.`;
+export const alt = `${BRAND}: Schools and tutoring put every child in the same box.`;
 export const size = { width: 1200, height: 630 };
 export const contentType = "image/png";
 
@@ -25,9 +25,8 @@ export default async function Image() {
             <div style={{ fontSize: 22, letterSpacing: 3, textTransform: "uppercase", marginBottom: 22 }}>Math learning program, ages 6-12</div>
             <div style={{ display: "flex", flexDirection: "column", fontFamily: "Zodiak", fontSize: 64, lineHeight: 1.05, letterSpacing: -1.5 }}>
               <span>Schools and tutoring</span>
-              <span>programs put every</span>
+              <span>put every child in</span>
               <div style={{ display: "flex" }}>
-                <span>child in&nbsp;</span>
                 <span style={{ background: "#FFD23F", padding: "0 8px", marginLeft: -8 }}>the same box.</span>
               </div>
             </div>

@@ -23,14 +23,14 @@ const SEEDS = Array.from({ length: 400 }, (_, i) => i * 7919 + 3);
 const NOT_SPOKEN = /[=+−×÷●■▲★◆▼▬$]|\s\?/;
 
 describe("grade 1-2 tests from the default bank", () => {
-  it.each([1, 2] as Grade[])("grade %i: 24 questions, 12 in stage 1 at the school grade, in every province", (grade) => {
+  it.each([1, 2] as Grade[])("grade %i: routed lengths, 12 in stage 1 at the school grade, in every province", (grade) => {
     for (const province of PROVINCES) {
       const session = createSession({ grade, province }, 1);
       expect(session.stage1, province).toHaveLength(12);
       expect(session.stage1.every((q) => q.level === grade), province).toBe(true);
       for (const [route, level] of [["up", grade + 1], ["stay", grade], ["down", grade - 1]] as const) {
-        expect(session.stage2[route], `${province} ${route}`).toHaveLength(12);
-        expect(session.stage2[route].every((q) => q.level === level), `${province} ${route}`).toBe(true);
+        expect(session.stage2[route], `${province} ${route}`).toHaveLength(route === "up" && (province === "BC" || province === "other") ? 18 : 12);
+        expect(session.stage2[route].every((q, i) => q.level === (route === "up" && i >= 12 ? grade : level)), `${province} ${route}`).toBe(true);
       }
     }
   });
@@ -71,7 +71,7 @@ describe("a grade 1-2 test, every route, every province", () => {
       for (const s of sessions(grade, "BC", 60)) {
         for (const route of ["up", "stay", "down"] as const) {
           const asked = [...s.stage1, ...s.stage2[route]].map((q) => `${q.prompt} ${[...(q.choices ?? [])].sort()}`);
-          expect(new Set(asked).size, `grade ${grade} seed ${s.seed} ${route}`).toBe(24);
+          expect(new Set(asked).size, `grade ${grade} seed ${s.seed} ${route}`).toBe(asked.length);
         }
       }
     }
@@ -93,7 +93,8 @@ describe("a grade 1-2 test, every route, every province", () => {
           if (bPrompts.has(q.prompt)) sharedQuestions++;
         }
       }
-      expect(sharedTemplates / templates, `grade ${grade} templates`).toBeLessThan(0.4);
+      // Rotation must include small standard pools. It increases template overlap while numbers still vary.
+      expect(sharedTemplates / templates, `grade ${grade} templates`).toBeLessThan(0.5);
       expect(sharedQuestions / questions, `grade ${grade} questions`).toBeLessThan(0.1);
     }
   });
@@ -102,7 +103,7 @@ describe("a grade 1-2 test, every route, every province", () => {
 describe("scripted children, grades 1-2, on the real bank", () => {
   it("a grade 2 child who gets everything right is routed up and placed at level 3", () => {
     const { asked, placement } = takeTest({ grade: 2, province: "BC" }, 3, allRight);
-    expect(asked).toHaveLength(24);
+    expect(asked).toHaveLength(30);
     expect(placement.route).toBe("up");
     expect(Math.max(...asked.map((q) => q.level))).toBe(3);
     expect(placement.workingLevel).toBe(3);

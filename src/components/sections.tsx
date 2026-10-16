@@ -14,8 +14,6 @@ import {
   BeliefList,
   Eyebrow,
   Faq as FaqList,
-  FeatureCard,
-  FeatureGrid,
   Hero as HeroBlock,
   Highlight,
   IncludedCard,
@@ -80,9 +78,8 @@ export function Hero() {
         highlight={HERO.highlight}
         lead={
           <>
-            Same material, same pace. <span className="nowrap">Miss <SwapWord words={TOPICS} /></span> and every lesson after
-            it gets harder. Unica gives your child more practice where they need help and new challenges when they’re ready.
-            We use their completed work to shape each new personalized workbook, then mail it home.
+            <span className="nowrap">Miss <SwapWord words={TOPICS} /></span> once and every lesson after it gets harder.
+            Unica gives your child a workbook built for where they are.
           </>
         }
         meta={["Free assessment and report", "30-day money-back guarantee", "Cancel anytime"]}
@@ -103,14 +100,14 @@ export function Hero() {
 const STEP_SIZES = "(min-width: 1080px) 380px, (min-width: 700px) 45vw, 92vw";
 
 const STEPS = [
-  { n: "01", t: "Assess", d: "Your child takes the free math assessment online, on a laptop or tablet. The report shows their math level and gaps. You choose a plan after the report.",
+  { n: "01", t: "Assess", d: "Your child takes the free online assessment. The report shows their level and gaps. You choose a plan after.",
     v: <Image src={assessPhoto} alt="A girl and her mother sit at a laptop, with a workbook open on the table" sizes={STEP_SIZES} placeholder="blur" />, tone: "photo" as const },
-  { n: "02", t: "Deliver", d: "We mail a personalized workbook matched to your child's level and gaps. It covers your school curriculum.", v: <Image src={deliverPhoto} alt="Two mailers waiting on a front step" sizes={STEP_SIZES} placeholder="blur" />, tone: "photo" as const },
-  { n: "03", t: "Practice", d: "Your child works on paper for about 15-30 minutes a day, 5 days a week.",
+  { n: "02", t: "Deliver", d: "We mail a workbook matched to their level and gaps. It follows your school curriculum.", v: <Image src={deliverPhoto} alt="Two mailers waiting on a front step" sizes={STEP_SIZES} placeholder="blur" />, tone: "photo" as const },
+  { n: "03", t: "Practice", d: "Your child works on paper for 15-30 minutes a day, 5 days a week.",
     v: <Image src={practice6} alt="A girl works through an arithmetic page in pencil" sizes={STEP_SIZES} placeholder="blur" />, tone: "photo" as const },
-  { n: "04", t: "Scan", d: "Take a photo of the finished pages. We mark the work, show you the gaps, and give the solutions so your child can understand what went wrong.", v: <Image src={scanPhoto} alt="A phone camera frames a page to photograph it" sizes={STEP_SIZES} placeholder="blur" />, tone: "photo" as const },
-  { n: "05", t: "Adapt", d: "Based on how they did, we choose and adjust their next workbook: more practice where they're struggling, and moving ahead where they're ready, so they see new topics before their class does. Every book is shaped by how your child is doing.", v: <Image src={adaptPhoto} alt="A girl shows her finished work to her parents" sizes={STEP_SIZES} placeholder="blur" />, tone: "photo" as const },
-  { n: "06", t: "Repeat", d: <>Your next book arrives before the current one runs out, so there&apos;s never a gap. Then the loop starts again. <em>Struggling with fractions? Your next book focuses on fractions.</em></>, v: <Image src={repeatPhoto} alt="A girl starts on her next book at the dining table" sizes={STEP_SIZES} placeholder="blur" />, tone: "photo" as const },
+  { n: "04", t: "Scan", d: "Take a photo of the finished pages. We mark the work, show you the gaps, and give the solutions.", v: <Image src={scanPhoto} alt="A phone camera frames a page to photograph it" sizes={STEP_SIZES} placeholder="blur" />, tone: "photo" as const },
+  { n: "05", t: "Adapt", d: "We shape the next workbook from how they did: more practice where they struggle, new topics where they're ready.", v: <Image src={adaptPhoto} alt="A girl shows her finished work to her parents" sizes={STEP_SIZES} placeholder="blur" />, tone: "photo" as const },
+  { n: "06", t: "Repeat", d: <>The next book arrives before this one runs out. <em>Struggling with fractions? Your next book focuses on fractions.</em></>, v: <Image src={repeatPhoto} alt="A girl starts on her next book at the dining table" sizes={STEP_SIZES} placeholder="blur" />, tone: "photo" as const },
 ];
 
 export function How() {
@@ -118,7 +115,7 @@ export function How() {
     <Section id="how" aria-labelledby="howT">
       <Knot />
       <Rise>
-        <SectionHeader eyebrow="How it works" title="Six steps. One loop." titleId="howT" lead="Every book is built from the last one, so the work always matches what your child needs next." />
+        <SectionHeader eyebrow="How it works" title="Start easily. Repeat easily." titleId="howT" lead="Every book is built from the last one." />
       </Rise>
       <StepGrid>
         {STEPS.map((s, i) => (
@@ -131,43 +128,17 @@ export function How() {
   );
 }
 
-// Personalization leads; paper and pencil is the weaker selling point, so it goes last.
-const WHY: [string, string][] = [
-  ["Made for your child.", "Every page targets what they're ready for next, not what the rest of the class is on."],
-  ["Master it, then move on.", "If your child is struggling with a concept, the next book stays on it and teaches it a different way. They move on when they've mastered it."],
-  ["You see everything.", "A progress report, updated continuously: what they got right, what keeps coming back, and what's next."],
-  ["Real paper. Real pencil.", "Daily practice happens away from screens. Each book comes to your door, so you never print a page. The app is for you, not them."],
-];
-
-export function Why() {
-  return (
-    <Section id="why" aria-labelledby="whyT">
-      <Knot />
-      <Rise>
-        <SectionHeader eyebrow={`Why choose ${BRAND}?`} title="Built different, on purpose." titleId="whyT" />
-      </Rise>
-      <FeatureGrid>
-        {WHY.map(([h, p], i) => (
-          <FeatureCard key={h} index={(i + 1) as 1 | 2 | 3 | 4} title={h} className="rise" style={d(i * 0.08)}>
-            {p}
-          </FeatureCard>
-        ))}
-      </FeatureGrid>
-    </Section>
-  );
-}
-
 // Program parts first, the workbook last (D-095). The left column reads first, then the photo, then the right column.
 const INCLUDED: [IconName, string, ReactNode, number][][] = [
   [
-    ["layers", "A plan built from your child's assessment", "The free online assessment finds your child's level and gaps. The plan sets what each book covers.", 0],
-    ["calendar", "Daily practice, rewarded", <>15-30 minutes a day, 5 days a week. Your child earns rewards for every page they finish and every week they keep the habit. <Link href="/rewards" className="more-link">See the rewards <span aria-hidden="true">→</span></Link></>, 0.08],
-    ["cam", "Stuck? Scan it.", "When your child is stuck, scan the problem with our app. You see every step, explained, so you can walk them through it.", 0.16],
+    ["layers", "A plan built for your child", "The free assessment finds your child's level and gaps. It sets what each book covers.", 0],
+    ["calendar", "Daily practice, rewarded", <>15-30 minutes a day, 5 days a week, with rewards for every page and every week. <Link href="/rewards" className="more-link">See the rewards <span aria-hidden="true">→</span></Link></>, 0.08],
+    ["pencil", "Real paper. Real pencil.", "Daily practice happens away from screens. The app is for you, not them.", 0.16],
   ],
   [
-    ["test", "Instant answer check", "Scan a finished page and see what's right in seconds. No answer key needed. Each scan also helps us plan the next book.", 0.04],
-    ["chart", "Progress reports", "A progress report and worked solutions in the app, updated after every scan.", 0.12],
-    ["book", "Personalized workbooks, mailed home", "1 math workbook, about 20-25 pages, delivered to your door before the current book ends.", 0.2],
+    ["cam", "Instant answer check", "Take a photo of a finished page in our app and see what's right in seconds. Stuck on a problem? Photograph it to see every step explained.", 0.04],
+    ["chart", "Progress reports", "A report and worked solutions in the app after every scan.", 0.12],
+    ["book", "Workbooks mailed home", "1 math workbook a month, about 20-25 pages, delivered before the current book ends.", 0.2],
   ],
 ];
 
@@ -189,8 +160,7 @@ export function Included() {
         <SectionHeader eyebrow="What you get each month" title="Everything your child needs. Nothing they don't." titleId="incT" />
       </Rise>
       <div className="inc">
-        {/* Phones hide the Why section (D-072), so its screen-time point moves here. */}
-        {col(INCLUDED[0], <IncludedCard icon="pencil" title={WHY[0][0]} className="rise m-only">{WHY[0][1]}</IncludedCard>)}
+        {col(INCLUDED[0])}
         <Rise>
           <div className="ph" style={{ aspectRatio: "3 / 4", borderRadius: 4 }}><Image src={emo1} alt="A boy works on a paper page at his desk" sizes="(min-width: 980px) 300px, 92vw" placeholder="blur" /></div>
         </Rise>

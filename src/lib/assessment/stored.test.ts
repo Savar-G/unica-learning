@@ -55,7 +55,7 @@ describe("the step the browser receives", () => {
   it("numbers the questions from 1 to the test length, then reports the test complete", () => {
     const live = createSession({ grade: 5, province: "BC" }, 2);
     const first = testStep(live);
-    expect(first).toMatchObject({ status: "question", number: 1, total: 36 });
+    expect(first).toMatchObject({ status: "question", number: 1, total: 42 });
     const { session } = answerAll(live);
     expect(testStep(session)).toEqual({ status: "complete", total: 36 });
   });

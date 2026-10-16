@@ -1,6 +1,6 @@
 // Parent-section copy (D-075, reworked in D-098), shared by the home page section (components/parent.tsx) and /llms.txt.
 export const PARENT_TITLE = "Less for you to do, not more.";
-export const PARENT_LEAD = "A busy week does not need another job. Here is what we take off your list.";
+export const PARENT_LEAD = "Here is what we take off your list.";
 
 // Jobs a parent does not have to do (shown struck out), each with how we handle it.
 export const PARENT_NOT_YOURS: [string, string][] = [
@@ -13,9 +13,9 @@ export const PARENT_NOT_YOURS: [string, string][] = [
 
 // What the parent still does.
 export const PARENT_YOURS: string[] = [
-  "Hand them the book at the same time each day. They work for 15-30 minutes.",
+  "Hand them the book at the same time each day.",
   "Take a photo of the finished pages.",
-  "In the first week, sit beside them while they learn the routine.",
+  "Sit beside them in the first week.",
 ];
 
-export const PARENT_NOTE = "If they do not want to, keep it short. Every finished page earns points toward rewards they pick. Pause anytime.";
+export const PARENT_NOTE = "If they do not want to, keep it short. Finished pages earn reward points. Pause anytime.";

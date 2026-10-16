@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
-  SAMPLE_BANK,
+  bankFor,
   bandFor,
   createSession,
   nextQuestion,
@@ -10,12 +10,10 @@ import {
   testStep,
   workProblem,
   type ChildProfile,
-  type Level,
   type PublicQuestion,
   type Question,
   type Route,
   type Session,
-  type Strand,
   type Template,
 } from "@/lib/assessment";
 import { allRight, allWrong, type Script } from "./scripted-child";
@@ -38,21 +36,6 @@ function walk(profile: ChildProfile, seed: number, isRight: Script, bank?: reado
 const staysOnGrade: Script = (_, i) => i % 2 === 0;
 const ROUTES = [[allRight, "up"], [staysOnGrade, "stay"], [allWrong, "down"]] as const;
 
-/** Fixture templates at one level, one per strand, so a band the sample bank does not cover can be built. */
-const fixtures = (level: Level, strands: readonly Strand[], whiteboard = false): Template[] =>
-  strands.map((strand) => ({
-    id: `fixture-${level}-${strand}`,
-    strand,
-    grades: { BC: level },
-    format: "number",
-    whiteboard,
-    standard: `${level}.1`,
-    fill: (rng) => {
-      const a = rng.int(1, 99), b = rng.int(1, 99);
-      return { values: { a, b }, prompt: `${strand}${level}: ${a} + ${b} = ?`, readAloud: `${a} plus ${b}`, answer: String(a + b), wrong: [{ value: String(a + b + 1), misconception: "O3" }] };
-    },
-  }));
-
 describe("shown work: which questions require it", () => {
   it("grades 3-5: every route requires shown work on exactly 7 questions", () => {
     for (const seed of [1, 2, 3, 4, 5]) {
@@ -65,11 +48,11 @@ describe("shown work: which questions require it", () => {
   });
 
   it("grades 1-2: 5 questions, even when few templates suit shown work", () => {
-    const bank = [...SAMPLE_BANK, ...fixtures(1, ["N", "A", "MG"])];
+    const bank = bankFor(2).map((t) => ({ ...t, whiteboard: false }));
     for (const seed of [1, 2, 3]) {
       for (const [script, route] of ROUTES) {
         const { seen } = walk({ grade: 2, province: "BC" }, seed, script, bank);
-        expect(seen, `seed ${seed}, ${route}`).toHaveLength(24);
+        expect(seen, `seed ${seed}, ${route}`).toHaveLength(route === "up" ? 30 : 24);
         expect(seen.filter((q) => q.showWork), `seed ${seed}, ${route}`).toHaveLength(5);
       }
     }
@@ -77,11 +60,11 @@ describe("shown work: which questions require it", () => {
 
   it("a flag on a template means it may be required, not that it is: with every template flagged, still exactly 5", () => {
     // The grades 1-2 bank (#74) flags about 13 questions per route; the test asks for work on only 5 of them.
-    const bank = [...SAMPLE_BANK, ...fixtures(1, ["N", "A", "MG"])].map((t) => ({ ...t, whiteboard: true }));
+    const bank = bankFor(2).map((t) => ({ ...t, whiteboard: true }));
     for (const seed of [1, 2, 3, 4]) {
       for (const [script, route] of ROUTES) {
         const { seen } = walk({ grade: 2, province: "BC" }, seed, script, bank);
-        expect(seen.filter((q) => q.whiteboard), `seed ${seed}, ${route}`).toHaveLength(24);
+        expect(seen.filter((q) => q.whiteboard), `seed ${seed}, ${route}`).toHaveLength(route === "up" ? 30 : 24);
         expect(seen.filter((q) => q.showWork), `seed ${seed}, ${route}`).toHaveLength(5);
       }
     }
@@ -90,17 +73,17 @@ describe("shown work: which questions require it", () => {
   });
 
   it("grades 6-7: 10 questions", () => {
-    const bank = [...SAMPLE_BANK, ...fixtures(7, ["N", "F", "A", "MG"], true)];
+    const bank = bankFor(6);
     for (const [script, route] of ROUTES) {
       const { seen } = walk({ grade: 6, province: "BC" }, 1, script, bank);
-      expect(seen, route).toHaveLength(42);
+      expect(seen, route).toHaveLength(route === "up" ? 45 : 42);
       expect(seen.filter((q) => q.showWork), route).toHaveLength(10);
     }
   });
 
   it("reads the template's flag: with enough suited templates, every required question comes from one", () => {
     // Number operations and algebra suit shown work in this bank; nothing else does.
-    const bank = SAMPLE_BANK.map((t) => ({ ...t, whiteboard: t.strand === "O" || t.strand === "A" }));
+    const bank = bankFor(4).map((t) => ({ ...t, whiteboard: t.strand === "O" || t.strand === "A" }));
     const suits = new Set(bank.filter((t) => t.whiteboard).map((t) => t.id));
     for (const seed of [1, 2, 3, 4]) {
       for (const [script, route] of ROUTES) {
@@ -142,7 +125,7 @@ function at(profile: ChildProfile, showWork: boolean, bank?: readonly Template[]
   throw new Error("no such question");
 }
 
-const grade1Bank = [...SAMPLE_BANK, ...fixtures(0, ["N", "A", "MG"]), ...fixtures(1, ["N", "A", "MG"])];
+const grade1Bank = bankFor(1);
 
 describe("shown work: what may go with an answer", () => {
   const drawing = { drawn: true, text: "" };
