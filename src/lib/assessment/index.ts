@@ -32,7 +32,7 @@ export {
   type ReviewedWork,
 } from "./ai-checks";
 export { SAMPLE_BANK } from "./sample-bank";
-export { BANKS, GRADE_1_2_BANK, bankFor } from "./bank";
+export { BANKS, GRADE_1_2_BANK, bankFor, wordingOf, type BankTemplate } from "./bank";
 export type { TaggedTemplate } from "./bank/kit";
 export {
   breakDue,
