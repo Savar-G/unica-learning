@@ -41,9 +41,10 @@ const unknownPassword = () => `${randomBytes(32).toString("base64url")}aA1!`;
  * old (more than 24 hours, if that setting is ever turned on), needs a new sign-in. Only the parent's own password can
  * be weak.
  */
-function passwordFailed(step: "password reset" | "password save", error: AuthError) {
-  if (step === "password save" && error.code === "weak_password") return fail("weak_password", 400);
-  console.error(`[account] ${step} failed`, error.code, error.message);
+function passwordFailed(logLabel: string, error: AuthError, chosenPassword: boolean) {
+  if (chosenPassword && error.code === "weak_password") return fail("weak_password", 400);
+  console.error(`[account] ${logLabel} failed`, error.code, error.message);
+  if (error.code === "current_password_required") return fail("password_change_blocked", 503);
   if (isAuthSessionMissingError(error) || error.code === "reauthentication_needed") return fail("signed_out", 401);
   return fail("store_failed", 502);
 }
@@ -68,7 +69,7 @@ export async function POST(request: Request) {
   if (!signInMethods(jwt).some((method) => PROVED.has(method))) return fail("unproved", 403);
 
   const { error: resetError } = await session.auth.updateUser({ password: unknownPassword() });
-  if (resetError) return passwordFailed("password reset", resetError);
+  if (resetError) return passwordFailed("password reset", resetError, false);
 
   let body: Partial<FinishPayload>;
   try {
@@ -82,8 +83,13 @@ export async function POST(request: Request) {
 
   if (body.password !== undefined) {
     const { error } = await session.auth.updateUser({ password: body.password });
-    if (error) return passwordFailed("password save", error);
+    if (error) return passwordFailed("password save", error, true);
   }
+
+  // An already-running Auth password change can end our session after our own changes. Check again before the
+  // service-key write. This narrows the race; Auth and create_family still do not share a transaction (#121).
+  const { data: { user: currentUser }, error: sessionError } = await session.auth.getUser();
+  if (sessionError || currentUser?.id !== user.id) return fail("signed_out", 401);
 
   const family = await createFamily(admin, user.id, { ...details, email: user.email.toLowerCase() }, child);
   if (family.status === "exists") return Response.json({ ok: true, existing: true } satisfies AccountResult);

@@ -46,7 +46,9 @@ function errorText(error: AccountError | undefined): ReactNode {
     case "busy":
       return <>Many people are signing up right now. Try again in a few minutes, or email <a href={SUPPORT_HREF}>{SUPPORT_EMAIL}</a>.</>;
     case "signed_out":
-      return <>Your session ended. <Link href="/sign-in">Sign in</Link> again.</>;
+      return <>Your session ended. <Link href="/sign-in/reset">Get a link by email</Link> to sign in again.</>;
+    case "password_change_blocked":
+      return <>We cannot set your password right now. Email <a href={SUPPORT_HREF}>{SUPPORT_EMAIL}</a> and we will help you finish your account.</>;
     case "unavailable":
       return <>We cannot set up this account right now. Email <a href={SUPPORT_HREF}>{SUPPORT_EMAIL}</a> and we will help.</>;
     case "unproved":
@@ -202,6 +204,16 @@ export function AccountSignup() {
     if (!res.ok) {
       track("account_signup_failed", { code: res.error ?? "unknown" });
       setBusy(false);
+      if (res.error === "signed_out") {
+        setProved(null);
+        setCode("");
+        setNote(null);
+        setSentNow(false);
+        setErrors({});
+        setStep("form");
+        setFailure("signed_out");
+        return;
+      }
       // A password Supabase will not take: back to the form to choose another. The email stays proved.
       if (res.error === "weak_password" || res.error === "invalid") {
         setFailure(res.error);

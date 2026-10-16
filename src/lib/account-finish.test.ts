@@ -62,6 +62,10 @@ interface World {
   endsAfterCheck?: boolean;
   /** "Secure password change" is on and the session is more than 24 hours old. */
   staleSession?: boolean;
+  /** Auth requires the current password at this password change (1 = random, 2 = chosen). */
+  currentPasswordRequiredAt?: number;
+  /** A conflicting password change ends the parent's session after this route's last password change. */
+  endsAfterPasswordChange?: number;
 }
 
 /** Every request the route sends to Supabase, in order, with its body and Authorization header. */
@@ -69,6 +73,7 @@ let calls: { method: string; path: string; query: string; body: unknown; auth: s
 
 function supabase(world: World) {
   calls = [];
+  let passwordChanges = 0;
   auth = { password: world.earlierPassword ?? null, sessions: new Set(world.earlierPassword ? [PARENT, STRANGER] : [PARENT]) };
   const fakeUser = () => ({ id: ID, aud: "authenticated", email: user?.email, email_confirmed_at: user?.email_confirmed_at });
   const fetch: typeof globalThis.fetch = async (input, init) => {
@@ -97,11 +102,14 @@ function supabase(world: World) {
       if (!session) return ended();
       if (method === "GET" && world.endsAfterCheck) auth.sessions.delete(session);
       if (method === "PUT" && typeof (body as { password?: unknown })?.password === "string") {
+        passwordChanges++;
+        if (world.currentPasswordRequiredAt === passwordChanges) return json({ code: "current_password_required", message: "Current password is required" }, 422);
         if (world.staleSession) return json({ code: "reauthentication_needed", message: "Password update requires reauthentication" }, 400);
         const refused = newPassword((body as { password: string }).password);
         if (refused) return refused;
         auth.password = (body as { password: string }).password;
         auth.sessions = new Set([session]);
+        if (world.endsAfterPasswordChange === passwordChanges) auth.sessions = new Set([STRANGER]);
       }
       return json(fakeUser());
     }
@@ -266,6 +274,14 @@ describe("a password set before the email was proved never reaches a family acco
 });
 
 describe("a parent whose first finish failed (2026-10-12, #82)", () => {
+  it.each([false, true])("writes no family if the session ends after the last password change (chosen password: %s)", async (chosenPassword) => {
+    supabase({ endsAfterPasswordChange: chosenPassword ? 2 : 1 });
+    const res = await finish({ ...details, ...(chosenPassword ? { password: "a-long-password" } : {}) });
+    expect(res.status).toBe(401);
+    expect(await res.json()).toEqual({ ok: false, error: "signed_out" });
+    expect(paths()).not.toContain(FAMILY);
+  });
+
   // Before the fix, an admin password change ended the parent's own session too, and the request failed: the account
   // had a password nobody knows, no session and no family. The parent signs in again with an emailed code, then
   // submits the form again.
@@ -291,6 +307,14 @@ describe("a parent whose first finish failed (2026-10-12, #82)", () => {
 });
 
 describe("when Auth refuses the first password change", () => {
+  it.each([1, 2])("identifies a blocked password change at step %i and writes no family", async (currentPasswordRequiredAt) => {
+    supabase({ currentPasswordRequiredAt });
+    const res = await finish({ ...details, password: "a-long-password" });
+    expect(res.status).toBe(503);
+    expect(await res.json()).toEqual({ ok: false, error: "password_change_blocked" });
+    expect(paths()).not.toContain(FAMILY);
+  });
+
   it("asks for a new sign-in, and writes nothing, when the session ends between the check and the change", async () => {
     supabase({ endsAfterCheck: true, earlierPassword: "strangers-password" });
     const res = await finish({ ...details, password: "a-long-password" });
