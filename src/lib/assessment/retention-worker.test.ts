@@ -89,22 +89,79 @@ it("requires explicit activation and production credentials, and defaults manual
     expect(() => workerConfiguration(["--mode", "delete"], { ...env, SUPABASE_SECRET_KEY: value })).toThrow("Worker credentials unavailable");
   }
   expect(() => workerConfiguration(["--mode", "delete"], { ...env, SUPABASE_URL: "https://foreign.supabase.co" })).toThrow("Worker credentials unavailable");
-  expect(workerConfiguration(["--mode", "dry"], { ...env, STRIPE_SECRET_KEY: undefined })).toMatchObject({ kind: "run", mode: "dry" });
+  // Dry mode reads Stripe only with a valid restricted live key. Without one, families with Stripe history are unknown.
+  expect(workerConfiguration(["--mode", "dry"], { ...env, STRIPE_SECRET_KEY: undefined })).toEqual(expect.objectContaining({ kind: "run", mode: "dry", stripeKey: undefined }));
+  expect(workerConfiguration(["--mode", "dry"], env)).toMatchObject({ kind: "run", mode: "dry", stripeKey: env.STRIPE_SECRET_KEY });
+  expect(() => workerConfiguration(["--mode", "dry"], { ...env, STRIPE_SECRET_KEY: `sk_live_${"B".repeat(32)}` })).toThrow("Worker credentials unavailable");
   expect(() => workerConfiguration(["--mode", "unsafe"], env)).toThrow("Invalid worker arguments");
 });
 
-it("dry mode reads every candidate but performs no claim, cursor, renewal or payment check", async () => {
-  const calls: string[] = [];
-  const store = {
-    async candidates() { calls.push("candidates"); return Array.from({ length: 1007 }, (_, i) => String(i)); },
-    async verifyPayments() { calls.push("payments"); }, async cursor() { calls.push("cursor"); return null; },
-    async advance() { calls.push("advance"); }, async run() { calls.push("run"); return { state: "deleted" as const, images: 0 }; },
+describe("retention run", () => {
+  const NOW = Date.parse("2026-10-16T12:00:00Z");
+  const OLD = "2024-01-01T00:00:00Z";
+  // Ids sort in the order the database pages them.
+  const families = [
+    { id: "a-request", queued: true, lastTestAt: null, cards: [] },
+    { id: "b-free-test", queued: false, lastTestAt: OLD, cards: [] },
+    { id: "c-former", queued: false, lastTestAt: OLD, cards: [{ customer: "cus_former", saved: true }] },
+    { id: "d-customer", queued: false, lastTestAt: OLD, cards: [{ customer: "cus_paying", saved: true }] },
+    { id: "e-waiting", queued: false, lastTestAt: OLD, cards: [{ customer: "cus_waiting", saved: true }] },
+    { id: "f-recent-end", queued: false, lastTestAt: OLD, cards: [{ customer: "cus_recent", saved: true }] },
+    { id: "g-stripe-down", queued: false, lastTestAt: OLD, cards: [{ customer: "cus_down", saved: false }] },
+    { id: "h-no-test", queued: false, lastTestAt: null, cards: [{ customer: "cus_left_page", saved: false }] },
+  ];
+  const stripe: Record<string, { savedCard: boolean; subscriptions: { status: string; endedAt: string | null }[] }> = {
+    cus_former: { savedCard: true, subscriptions: [{ status: "canceled", endedAt: "2026-03-01T00:00:00Z" }] },
+    cus_paying: { savedCard: true, subscriptions: [{ status: "active", endedAt: null }] },
+    cus_waiting: { savedCard: true, subscriptions: [] },
+    cus_recent: { savedCard: true, subscriptions: [{ status: "canceled", endedAt: "2026-09-01T00:00:00Z" }] },
+    cus_left_page: { savedCard: false, subscriptions: [] },
   };
-  expect(await runRetentionWorker(workerConfiguration([], env), store, () => 840_000)).toEqual({ ok: true, dry: true, eligible: 1007 });
-  expect(calls).toEqual(["candidates"]);
-  calls.length = 0;
-  expect(await runRetentionWorker({ kind: "disabled" }, store, () => 840_000)).toEqual({ ok: true, disabled: true });
-  expect(calls).toEqual([]);
+  function store() {
+    const calls: string[] = [];
+    const runs: { id: string; endedAt: string | null }[] = [];
+    let cursor: string | null = null;
+    return { calls, runs, store: {
+      async candidates() { calls.push("candidates"); return families.map((f) => ({ ...f, cards: [...f.cards] })); },
+      async verifyPayments() { calls.push("verify"); },
+      async customerPayments(customer: string) { calls.push(`stripe:${customer}`); if (!stripe[customer]) throw Error("Stripe unavailable"); return stripe[customer]; },
+      async cursor() { calls.push("cursor"); return cursor; },
+      async advance(id: string) { calls.push("advance"); cursor = id; },
+      async run(id: string, _limit: number, claim: { endedAt: string | null }) { calls.push("run"); runs.push({ id, endedAt: claim.endedAt }); return { state: "deleted" as const, images: 0 }; },
+    } };
+  }
+  const decisions = { queued: 1, delete_free_test: 1, delete_former_customer: 1, keep_customer: 2, keep_former_customer: 1, keep_free_test: 0, keep_no_test: 1, unknown: 1 };
+
+  it("dry mode shows the decision for every family, reads Stripe only, and claims nothing", async () => {
+    const s = store();
+    expect(await runRetentionWorker(workerConfiguration([], env), s.store, () => 840_000, NOW))
+      .toEqual({ ok: false, dry: true, eligible: 3, ...decisions });
+    expect(s.calls.filter((c) => !c.startsWith("stripe:"))).toEqual(["verify", "candidates"]);
+    expect(s.runs).toEqual([]);
+    // Without a Stripe key, no Stripe read runs, and every family with Stripe history is unknown, so it stays.
+    const keyless = store();
+    expect(await runRetentionWorker(workerConfiguration([], { ...env, STRIPE_SECRET_KEY: undefined }), keyless.store, () => 840_000, NOW))
+      .toMatchObject({ ok: false, dry: true, eligible: 2, queued: 1, delete_free_test: 1, delete_former_customer: 0, unknown: 6 });
+    expect(keyless.calls).toEqual(["candidates"]);
+  });
+
+  it("delete mode claims only the families the rules delete, with the Stripe end date", async () => {
+    const s = store();
+    expect(await runRetentionWorker(workerConfiguration(["--mode", "delete"], env), s.store, () => 840_000, NOW))
+      .toEqual({ ok: false, eligible: 3, deleted: 3, busy: 0, excluded: 0, failed: 0, images: 0, ...decisions });
+    expect(s.runs).toEqual([
+      { id: "a-request", endedAt: null },
+      { id: "b-free-test", endedAt: null },
+      { id: "c-former", endedAt: "2026-03-01T00:00:00.000Z" },
+    ]);
+    expect(s.calls[0]).toBe("verify");
+  });
+
+  it("disabled mode does nothing", async () => {
+    const s = store();
+    expect(await runRetentionWorker({ kind: "disabled" }, s.store, () => 840_000, NOW)).toEqual({ ok: true, disabled: true });
+    expect(s.calls).toEqual([]);
+  });
 });
 
 it.each(["false", "failed"])("%s renewal aborts work and awaits the started remote operation", async failure => {
