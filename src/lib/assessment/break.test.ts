@@ -12,11 +12,11 @@ function steps(session: Session): TestStep[] {
 }
 
 describe("the halfway break", () => {
-  it("comes once, before question 19 of 36: after stage 1, before the routed half", () => {
+  it("comes once, before question 19 of 42: after stage 1, before the routed half", () => {
     const all = steps(createSession({ grade: 4, province: "BC" }, 3));
     const due = all.filter(breakDue);
     expect(due).toHaveLength(1);
-    expect(due[0]).toMatchObject({ status: "question", number: 19, total: 36 });
+    expect(due[0]).toMatchObject({ status: "question", number: 19, total: 42 });
   });
 
   it("is never due on the first question or when the test is complete", () => {

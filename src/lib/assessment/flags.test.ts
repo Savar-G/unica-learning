@@ -7,7 +7,7 @@ type Script = (q: Question, index: number) => Step;
 
 const GRADE_4: ChildProfile = { grade: 4, province: "BC" };
 
-/** A child who takes the whole test (36 questions for grade 4) with the given rights and times. */
+/** A child who takes the whole routed test (42 questions on the grade 4 up route) with the given rights and times. */
 function takeTest(script: Script, help: HelpAnswer | null = null) {
   let session = createSession(GRADE_4, 1);
   for (let q = nextQuestion(session); q; q = nextQuestion(session)) {
@@ -61,7 +61,7 @@ describe("help flags (#71)", () => {
     it("no flag for a pause without 4 answers on each side", () => {
       const early: Script = (q, i) => ({ right: i >= 3, seconds: i === 3 ? 600 : 20 });
       expect(takeTest(early).flags).toEqual([]);
-      const late: Script = (q, i) => ({ right: i < 30 || i >= 33, seconds: i === 33 ? 600 : 20 });
+      const late: Script = (q, i) => ({ right: i < 36 || i >= 39, seconds: i === 39 ? 600 : 20 });
       expect(takeTest(late).flags).toEqual([]);
     });
   });
