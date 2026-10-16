@@ -1,5 +1,6 @@
 // The assessment core: the one tested seam (spec #54). Import from "@/lib/assessment" only.
 export * from "./attempt";
+export * from "./certainty";
 export * from "./constants";
 export * from "./deletion";
 export * from "./facts";

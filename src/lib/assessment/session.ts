@@ -4,12 +4,11 @@ import {
   REPORTED_STRAND,
   ROUTE_DOWN_BELOW_PERCENT,
   ROUTE_UP_PERCENT,
-  STRAND_DEVELOPING_PERCENT,
-  STRAND_SECURE_PERCENT,
   WORKING_LEVEL_PERCENT,
   atLeast,
   bandFor,
 } from "./constants";
+import { levelCertainty, strandCertainty, strandStatus, workingLevelOf } from "./certainty";
 import { bankFor } from "./bank";
 import { factsResult, type FactsSession } from "./facts";
 import { flagsFor, type HelpAnswer } from "./flags";
@@ -28,7 +27,6 @@ import type {
   Session,
   StrandResult,
   StoredTest,
-  StrandStatus,
   TaggedProvince,
   Template,
   TestStep,
@@ -269,12 +267,6 @@ export function testStep(session: Session): TestStep {
 /** True on the first question after halfway: the browser shows the skippable break screen before it (D-083). */
 export const breakDue = (step: TestStep): boolean => step.status === "question" && step.number === step.breakAfter + 1;
 
-function statusFor(correct: number, total: number): StrandStatus {
-  if (atLeast(correct, total, STRAND_SECURE_PERCENT)) return "secure";
-  if (atLeast(correct, total, STRAND_DEVELOPING_PERCENT)) return "developing";
-  return "needs-attention";
-}
-
 /**
  * Scores a completed test. The facts section (#70), when the child had one, goes beside it and never changes the working level.
  * `help` is the child's answer to "Did anyone help?" (#71), or null when it was not asked. It only adds flags.
@@ -290,9 +282,7 @@ export function finish(session: Session, facts: FactsSession | null = null, help
   const levels: LevelResult[] = [...new Set(marked.map((m) => m.q.level))]
     .sort((a, b) => a - b)
     .map((level) => ({ level, ...tally(marked.filter((m) => m.q.level === level)) }));
-  const cleared = levels.filter((l) => atLeast(l.correct, l.total, WORKING_LEVEL_PERCENT));
-  // No level cleared: the child works below everything the test showed them.
-  const workingLevel = cleared.length > 0 ? cleared[cleared.length - 1].level : (Math.max(0, levels[0].level - 1) as Level);
+  const workingLevel = workingLevelOf(levels);
 
   // An area's status counts only the questions at or below the school grade (D-084: never invent a weakness; decision
   // of 2026-10-11 on #65). Harder questions from a stage 2 routed up still count toward the working level above, but a
@@ -301,14 +291,15 @@ export function finish(session: Session, facts: FactsSession | null = null, help
   const strands: StrandResult[] = bandFor(session.profile.grade)
     .strands.map((strand) => ({ strand, ...tally(atOrBelowGrade.filter((m) => REPORTED_STRAND[m.q.strand] === strand)) }))
     .filter((s) => s.total > 0)
-    .map((s) => ({ ...s, status: statusFor(s.correct, s.total) }));
+    .map((s) => ({ ...s, status: strandStatus(s.correct, s.total), certainty: strandCertainty(s.correct, s.total) }));
 
   return {
     grade: session.profile.grade,
     province: session.profile.province,
     scoredAgainst: scoredAgainst(session.profile.province),
     workingLevel,
-    confidence: cleared.length > 0 ? "normal" : "low",
+    confidence: levels.some((l) => atLeast(l.correct, l.total, WORKING_LEVEL_PERCENT)) ? "normal" : "low",
+    levelCertainty: levelCertainty(levels),
     // Only a child routed up who clears the higher level may work above what the test could show.
     atCeiling: session.route === "up" && workingLevel === session.profile.grade + 1,
     route: session.route,

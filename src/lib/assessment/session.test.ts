@@ -77,7 +77,7 @@ describe("area status: only questions at or below the school grade", () => {
     // Grade 4, knows grade 3 except fractions: stage 1 all wrong routes down, stage 2 at grade 3 has fractions wrong.
     const { placement } = takeTest({ grade: 4, province: "BC" }, 1, (q) => q.level <= 3 && q.strand !== "F");
     expect(placement.workingLevel).toBe(3);
-    expect(placement.strands.find((s) => s.strand === "fractions")).toEqual({ strand: "fractions", status: "needs-attention", correct: 0, total: 10 });
+    expect(placement.strands.find((s) => s.strand === "fractions")).toEqual({ strand: "fractions", status: "needs-attention", correct: 0, total: 10, certainty: "clear" });
   });
 
   it("an area with no question at or below the school grade gets no status and no count, not Needs attention", () => {
@@ -100,7 +100,7 @@ describe("strand status at its exact boundaries", () => {
   };
 
   it("8 of 10 (80%) is secure", () => {
-    expect(numberStrand(8)).toEqual({ strand: "number", status: "secure", correct: 8, total: 10 });
+    expect(numberStrand(8)).toEqual({ strand: "number", status: "secure", correct: 8, total: 10, certainty: "early-sign" });
   });
   it("7 of 10 (70%) is developing", () => {
     expect(numberStrand(7).status).toBe("developing");
