@@ -335,6 +335,13 @@ describe("certainty and reliability on the report", () => {
     expect(report(placement).reliability).toEqual({ veryFast: 12, answers: 36 });
   });
 
+  it("counts the rushed wrong answers left out of the score, so the report can say so", () => {
+    const fast = (_: unknown, i: number) => (i < 3 ? 1_000 : 20_000);
+    const placement = takeTest({ grade: 4, province: "BC" }, 1, (_, i) => i >= 3, undefined, fast).placement;
+    expect(report(placement).leftOut).toBe(3);
+    expect(report(grade4()).leftOut).toBeUndefined();
+  });
+
   it("has no reliability note for a test at a steady pace, nor for a placement stored before #189", () => {
     expect(report(grade4()).reliability).toBeUndefined();
     const { pace: _pace, levelCertainty: _level, ...older } = grade4();

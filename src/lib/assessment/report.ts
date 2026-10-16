@@ -87,6 +87,8 @@ export interface ReportModel {
    * report offers a new test at once. Absent when the pace was fine, and in reports stored before #189.
    */
   reliability?: { veryFast: number; answers: number };
+  /** #189: very fast wrong answers in a run, left out of the score. Absent when there were none, and before #189. */
+  leftOut?: number;
   /**
    * #68: a short paragraph the AI wrote from this model, shown under the verdict. "{name}" stands for the child's first
    * name (REPORT_TEXT_NAME), so neither the stored model nor the AI holds the name. Absent when the AI is off or failed,
@@ -148,6 +150,7 @@ export function reportModel(placement: Placement, context: ReportContext): Repor
     facts: placement.facts ? factsReport(placement.facts) : null,
     helpWarning: helpLikely(placement.flags),
     ...(placement.pace?.unreliable ? { reliability: { veryFast: placement.pace.veryFast, answers: placement.pace.answers } } : {}),
+    ...(placement.pace?.leftOut.length ? { leftOut: placement.pace.leftOut.length } : {}),
   };
   if (!context.reportText) return model;
   const check = checkReportText(model, context.reportText);

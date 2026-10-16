@@ -15,6 +15,9 @@ import {
   reportPath,
   reportReturnPath,
   summaryText,
+  certaintyText,
+  leftOutLine,
+  reliabilityNote,
   thresholdsLine,
   verdictSentence,
   type ReportView,
@@ -211,7 +214,12 @@ describe("the areas", () => {
     expect(STATUS_LABEL).toEqual({ secure: "Secure", developing: "Developing", "needs-attention": "Needs attention" });
   });
   it("state the thresholds and that the count is an early signal, not a verdict (D-084)", () => {
-    expect(thresholdsLine(view(knowsUpTo(4)))).toBe("Secure: 80% or more right. Developing: 50-79%. Needs attention: under 50%. 36 questions is an early signal, not a final verdict.");
+    expect(thresholdsLine(view(knowsUpTo(4)))).toBe("Secure: 80% or more right. Developing: 50-79%. Needs attention: under 50%. Clear: one more right or wrong answer would not change the result. Early sign: one more answer could change it.");
+  });
+  it("keeps the early-signal line for a report stored before the certainty labels (#189)", () => {
+    const v = view(knowsUpTo(4));
+    const older = { ...v, model: { ...v.model, strands: v.model.strands.map(({ certainty: _c, ...s }) => s) } };
+    expect(thresholdsLine(older)).toBe("Secure: 80% or more right. Developing: 50-79%. Needs attention: under 50%. 36 questions is an early signal, not a final verdict.");
   });
 });
 
@@ -305,5 +313,47 @@ describe("how we help, by verdict (D-084)", () => {
     for (const v of [view(knowsUpTo(3)), view(knowsUpTo(4)), view(allRight)]) {
       expect(howWeHelp(secure(v)).text, v.model.howWeHelp).not.toMatch(/practice/);
     }
+  });
+});
+
+// #189 (spec #181): certainty labels, and the reliability note with a new test at once.
+describe("certainty labels", () => {
+  it("says Clear, or Early sign with workbook 1 checking it for a BC family", () => {
+    const v = view(allRight);
+    expect(certaintyText(v, "clear")).toBe("Clear");
+    expect(certaintyText(v, "early-sign")).toBe("Early sign: workbook 1 checks this");
+  });
+  it("names no workbook for a family on the waitlist, who has no workbook yet", () => {
+    expect(certaintyText(view(allRight, { province: "ON" }), "early-sign")).toBe("Early sign");
+  });
+  it("shows nothing for a result stored before the labels", () => {
+    expect(certaintyText(view(allRight), undefined)).toBeNull();
+  });
+});
+
+describe("the reliability note", () => {
+  const rushed = (v: ReportView): ReportView => ({ ...v, model: { ...v.model, reliability: { veryFast: 12, answers: 36 } } });
+  it("is absent at a steady pace", () => {
+    expect(reliabilityNote(view(allRight))).toBeNull();
+  });
+  it("gives the count of very fast answers and offers a new test now, with no wait", () => {
+    expect(reliabilityNote(rushed(view(allRight)))).toEqual({
+      title: "This result may not be reliable",
+      text: "Maya answered 12 of 36 questions in under 3 seconds. Most questions take longer than that to work out, so this report may not show what Maya can do.",
+      offer: "Maya can take a new test now, with new questions. There is no 30-day wait.",
+    });
+  });
+  it("changes the help warning's retake date to now, so the two notes agree", () => {
+    const v = rushed(view(knowsUpTo(4)));
+    expect(helpWarning({ ...v, model: { ...v.model, helpWarning: true } })?.retake).toBe("For a level you can trust, Maya can take a new test alone, with new questions. It is open now.");
+  });
+});
+
+describe("rushed wrong answers left out", () => {
+  it("says how many were left out, and nothing when none were", () => {
+    const v = view(allRight);
+    expect(leftOutLine({ ...v, model: { ...v.model, leftOut: 3 } })).toBe("3 wrong answers from a run of very fast answers were left out of the score. They look like guesses, not what Maya knows.");
+    expect(leftOutLine({ ...v, model: { ...v.model, leftOut: 1 } })).toBe("1 wrong answer from a run of very fast answers was left out of the score. It looks like a guess, not what Maya knows.");
+    expect(leftOutLine(v)).toBeNull();
   });
 });

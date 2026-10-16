@@ -7,8 +7,10 @@ import {
   REPORT_TEXT_NAME,
   RETAKE_DAYS,
   STRAND_DEVELOPING_PERCENT,
+  TOO_FAST_MS,
   STRAND_SECURE_PERCENT,
   WORKING_LEVEL_PERCENT,
+  type Certainty,
   type Level,
   type Province,
   type ReportModel,
@@ -116,9 +118,51 @@ export const STATUS_LABEL: Record<StrandStatus, string> = {
   "needs-attention": "Needs attention",
 };
 
-/** The legend under the areas: the thresholds, and what the question count can and cannot say (D-084). */
-export const thresholdsLine = (v: ReportView) =>
-  `Secure: ${STRAND_SECURE_PERCENT}% or more right. Developing: ${STRAND_DEVELOPING_PERCENT}-${STRAND_SECURE_PERCENT - 1}%. Needs attention: under ${STRAND_DEVELOPING_PERCENT}%. ${v.questions} questions is an early signal, not a final verdict.`;
+/**
+ * The legend under the areas: the thresholds, and what the question count can and cannot say (D-084). With the
+ * certainty labels (#189), it says what Clear and Early sign mean; a report stored before them keeps the early-signal line.
+ */
+export function thresholdsLine(v: ReportView): string {
+  const thresholds = `Secure: ${STRAND_SECURE_PERCENT}% or more right. Developing: ${STRAND_DEVELOPING_PERCENT}-${STRAND_SECURE_PERCENT - 1}%. Needs attention: under ${STRAND_DEVELOPING_PERCENT}%.`;
+  const labelled = v.model.strands.some((s) => s.certainty);
+  return labelled
+    ? `${thresholds} Clear: one more right or wrong answer would not change the result. Early sign: one more answer could change it.`
+    : `${thresholds} ${v.questions} questions is an early signal, not a final verdict.`;
+}
+
+/**
+ * How sure one result is (#189, D-107): "Clear", or "Early sign: workbook 1 checks this". A family on the waitlist has
+ * no workbook yet, so their early sign names none. Null for a result stored before the labels.
+ */
+export function certaintyText(v: ReportView, certainty: Certainty | undefined): string | null {
+  if (!certainty) return null;
+  if (certainty === "clear") return "Clear";
+  return v.model.callToAction === "card" ? "Early sign: workbook 1 checks this" : "Early sign";
+}
+
+/** #189: wrong answers from a run of very fast answers that left the score; null when there were none. */
+export function leftOutLine(v: ReportView): string | null {
+  const n = v.model.leftOut ?? 0;
+  if (n === 0) return null;
+  return n === 1
+    ? `1 wrong answer from a run of very fast answers was left out of the score. It looks like a guess, not what ${v.childName} knows.`
+    : `${n} wrong answers from a run of very fast answers were left out of the score. They look like guesses, not what ${v.childName} knows.`;
+}
+
+/**
+ * #189: more than 30% of the answers were very fast, so the result may not be reliable, and a new test opens at once
+ * (no 30-day wait). Null at a steady pace, and for reports stored before #189.
+ */
+export function reliabilityNote(v: ReportView): { title: string; text: string; offer: string } | null {
+  const r = v.model.reliability;
+  if (!r) return null;
+  const name = v.childName;
+  return {
+    title: "This result may not be reliable",
+    text: `${name} answered ${r.veryFast} of ${r.answers} questions in under ${TOO_FAST_MS / 1000} seconds. Most questions take longer than that to work out, so this report may not show what ${name} can do.`,
+    offer: `${name} can take a new test now, with new questions. There is no ${RETAKE_DAYS}-day wait.`,
+  };
+}
 
 /** Share right, in whole percent, for the meter. */
 export const sharePercent = (s: { correct: number; total: number }) => (s.total > 0 ? Math.round((s.correct / s.total) * 100) : 0);
@@ -195,12 +239,17 @@ const DAY_MS = 24 * 60 * 60_000;
  */
 export function helpWarning(v: ReportView): { title: string; text: string; retake: string } | null {
   if (!v.model.helpWarning) return null;
+  const text = "We saw signs in this test that can make a level look higher than it is, such as help with some questions or answers given very quickly.";
+  // #189: after a result that may not be reliable, the next test is open now.
+  if (v.model.reliability) {
+    return { title: "This level may be too high", text, retake: `For a level you can trust, ${v.childName} can take a new test alone, with new questions. It is open now.` };
+  }
   const opensAt = Date.parse(v.completedAt) + RETAKE_DAYS * DAY_MS;
   // The last moment of the 24 hours from opensAt falls on the day after it, unless it opens at midnight.
   const firstWholeDay = familyDate(v, opensAt + DAY_MS - 1);
   return {
     title: "This level may be too high",
-    text: "We saw signs in this test that can make a level look higher than it is, such as help with some questions or answers given very quickly.",
+    text,
     retake: `For a level you can trust, ${v.childName} can take a new test alone, with new questions, from ${firstWholeDay}.`,
   };
 }
