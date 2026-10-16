@@ -13,7 +13,7 @@ import { aiReport, type ReviewStore } from "@/lib/work-review";
 vi.mock("server-only", () => ({}));
 
 // Asha, grade 4 in BC, child of parent-1, works at grade 4: she gets every grade 4 question right and every grade 5
-// question wrong, 20 seconds each. Her test went up to grade 5: 36 questions, 18 of them above her school grade.
+// question wrong, 20 seconds each. Her test went up to grade 5: 42 questions, 18 of them above her school grade.
 const { asked, placement } = takeTest({ grade: 4, province: "BC" }, 1, knowsUpTo(4));
 // The stored test: the same seed draws the same questions.
 const test = storedTest(createSession({ grade: 4, province: "BC" }, 1));
@@ -36,7 +36,7 @@ const ASSESSMENT: MemoryAssessment = {
 // mistake). Stored in any order: the reader gives them in test order.
 const WORK: Record<number, Partial<MemoryAnswer>> = {
   3: { workPath: drawing("parent-1", 3) },
-  4: { workText: "20.00 - 13.10" },
+  4: { workRequired: true, workText: "20.00 - 13.10" },
   6: { workPath: drawing("parent-1", 6) },
   26: { response: "614.1", misconception: "operation", workPath: drawing("parent-1", 26) },
 };
@@ -156,15 +156,15 @@ describe("the report inputs (#162)", () => {
 
   it("counts every marked question, also those above the school grade, and the minutes from the answer times, at least 1", async () => {
     const inputs = await loadReportInputs(memoryReportReaders(tables()).key(), "test-1", noComparison);
-    // 36 questions: 18 at grade 4, and 18 at grade 5 that the report's areas leave out. 36 answers of 20 s: 12 minutes.
-    expect(placement.strands.reduce((n, s) => n + s.total, 0)).toBe(18);
-    expect(inputs).toMatchObject({ questions: 36, minutes: 12 });
+    // 42 questions: 24 at grade 4 and 18 at grade 5. At 20 seconds each, the total is 14 minutes.
+    expect(placement.strands.reduce((n, s) => n + s.total, 0)).toBe(24);
+    expect(inputs).toMatchObject({ questions: 42, minutes: 14 });
 
     // Each answer's time counts, to the nearest minute; under half a minute is still 1 minute.
     const cases: [string, (n: number) => number, number][] = [
-      ["1 minute on each grade 4 question, 30 s on each grade 5 one", (n) => (n < 18 ? 60_000 : 30_000), 27],
-      ["2.5 s each (1.5 minutes)", () => 2_500, 2],
-      ["0.5 s each (18 s)", () => 500, 1],
+      ["1 minute on each grade 4 question, 30 s on each grade 5 one", (n) => (asked[n].level === 4 ? 60_000 : 30_000), 33],
+      ["2.5 s each (1.75 minutes)", () => 2_500, 2],
+      ["0.5 s each (21 s)", () => 500, 1],
       ["no time at all", () => 0, 1],
     ];
     for (const [name, timeMs, minutes] of cases) {

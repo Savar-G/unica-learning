@@ -37,7 +37,7 @@ describe("public question speech does not disclose server choice order", () => {
       session = submitAnswer(session, { questionId: q.id, response: q.answer, timeMs: 1000 });
       expect(session.answers.at(-1)?.correct).toBe(true);
     }
-    expect(session.answers).toHaveLength(42);
+    expect(session.answers).toHaveLength(province === "BC" ? 45 : 42);
     expect(nonIntegerChoices).toBeGreaterThan(0);
   });
 

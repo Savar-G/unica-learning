@@ -25,7 +25,7 @@ function stored(attempt: Attempt, { parent = P1, answered = 0 }: { parent?: stri
 }
 
 const open = (id: string, at: number) => startAttempt(id, at);
-/** Asha's open test with `answered` answers in: 18 is the halfway break (the end of stage 1), 36 is every answer. */
+/** Asha's open test with `answered` answers in: 18 is the halfway break (the end of stage 1), 42 is every answer (all right routes up, #188). */
 const testWith = (answered: number) => memoryAttemptStore({ tests: [stored(open("a1", T0), { answered })] });
 
 afterEach(() => vi.restoreAllMocks());
@@ -61,7 +61,7 @@ describe("the time for each quick fact", () => {
   });
 
   it("gives the finished test its fact speed from each fact's browser time, not from when the answers reached the server", async () => {
-    const memory = testWith(36);
+    const memory = testWith(42);
     await startFacts(memory.store, P1, "a1", T0 + HOUR);
     const facts = createFacts(ASHA, 7).facts;
     // The child took about 3 seconds on each fact, but the saves queued, so the answers reached the server in a burst.
@@ -118,7 +118,7 @@ describe("the halfway break", () => {
   });
 
   it("keeps a captured end when finish wins the write race, without changing the score", async () => {
-    const memory = testWith(36);
+    const memory = testWith(42);
     let release!: () => void;
     let entered!: () => void;
     const waiting = new Promise<void>((resolve) => (entered = resolve));
@@ -185,7 +185,7 @@ describe("the halfway break", () => {
     expect(breakOf(memory.tests[0])).toEqual({ startedAt: T0 + HOUR, endedAt: null, skipped: null, lengthMs: null });
   });
 
-  it.each([10, 19, 36])("refuses a new break screen away from halfway (%i answers in)", async (answered) => {
+  it.each([10, 19, 42])("refuses a new break screen away from halfway (%i answers in)", async (answered) => {
     const memory = testWith(answered);
     expect(await recordBreak(memory.store, P1, "a1", SHOWN, T0 + HOUR)).toEqual({ ok: false, error: "conflict" });
     expect(breakOf(memory.tests[0])).toEqual(NO_BREAK);
@@ -201,8 +201,8 @@ describe("the halfway break", () => {
   });
 
   it("accepts the end after finish only within the original deadline, and keeps its first value", async () => {
-    const memory = testWith(36);
-    await finishTest(memory.store, P1, "a1", "no", T0 + HOUR);
+    const memory = testWith(42);
+    expect(await finishTest(memory.store, P1, "a1", "no", T0 + HOUR)).toMatchObject({ ok: true });
     const placement = structuredClone(memory.tests[0].placement);
     const deadline = memory.tests[0].resumeUntil;
     expect(await recordBreak(memory.store, P1, "a1", rested(1_500), deadline)).toEqual({ ok: true });

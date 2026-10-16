@@ -102,7 +102,7 @@ describe("POST /api/account/assessments/[id]/context (the halfway break and the 
   });
 
   it("accepts a captured end after the finish route without changing the score or allowing new context", async () => {
-    testWith(36);
+    testWith(42);
     expect((await finishRoute(postJson(`https://unica.test/api/account/assessments/${TEST}/finish`, { help: "no" }), ctxOf(TEST))).status).toBe(200);
     const placement = structuredClone(memory.tests[0].placement);
     vi.setSystemTime(T0 + HOUR + 8_000);
