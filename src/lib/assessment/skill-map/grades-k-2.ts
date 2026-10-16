@@ -75,6 +75,8 @@ export const BC_GRADES_K_2: readonly BcStandard[] = [
     skill("1.7-non-standard-units", "Measure a length by repeating one non-standard unit with no gaps or overlaps", "K7-compare-length"),
     skill("1.7-unit-size", "Explain why a smaller unit gives a larger count", "1.7-non-standard-units"),
     skill("1.7-order-by-measure", "Order three objects by length or mass from two comparisons", "K7-compare-length", "K7-compare-mass-capacity"),
+    // Added with the skill tags (#193): no skill above covers comparing surfaces.
+    skill("1.7-compare-by-covering", "Compare the size of two surfaces by covering each with same-size units and comparing the counts", "1.7-non-standard-units"),
   ] },
   { code: "1.8", grade: 1, strand: "MG", text: "comparison of 2D shapes and 3D objects", skills: [
     skill("1.8-sort-shapes", "Sort 2D shapes and 3D objects by one attribute and explain the sorting rule", "K8-shape-attributes"),

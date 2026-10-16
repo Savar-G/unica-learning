@@ -5,6 +5,7 @@ import { adminParentPath, adminReportPath, answerLines, duration, factLines, fla
 import { QuestionTimeline, ShownWithoutAnswer, awayCount, changeCount, readAloudCount } from "@/components/admin-timeline";
 import { AdminFrame, Chip, StatusChip, Table, gradeAndPlace } from "@/components/admin";
 import { EmailTable, RecordFacts, ReviewDetail, childPath } from "@/components/admin-records";
+import { QuestionSkills } from "@/components/admin-question-skills";
 
 export default async function TestDetailPage({ params }: PageProps<"/admin/assessments/[id]">) {
   const admin = await requireAdmin();
@@ -34,6 +35,8 @@ export default async function TestDetailPage({ params }: PageProps<"/admin/asses
       {lines.map((a) => <tr key={a.number} className={a.correct ? "" : "is-wrong"}><td><a href={`#question-${a.number}`}>{a.number}</a></td><td>{a.stage ?? "-"}</td><td>{a.level === null ? "-" : `${levelText(a.level)} / ${a.strand}`}</td><td><span className="adm-mono">{a.templateId ?? "-"}</span><span className="adm-sub">BC {a.standard ?? "-"}</span></td><td className="adm-wide">{a.prompt ?? a.questionId}</td><td>{a.rightAnswer ?? "-"}</td><td>{a.response || "Skipped"}</td><td>{a.correct ? "Right" : "Wrong"}</td><td className="adm-nowrap">{duration(a.timeMs)}{a.tooFast && <span className="adm-sub">Under 3 s</span>}</td><td className="adm-nowrap">{a.timeline.serverMs === null ? "-" : duration(a.timeline.serverMs)}</td><td className="adm-num">{changeCount(a)}</td><td className="adm-num">{readAloudCount(a)}</td><td className="adm-nowrap">{awayCount(a)}</td><td>{a.misconception ?? "-"}</td></tr>)}
     </Table>
     <ShownWithoutAnswer lines={shownWithoutAnswer(t.stored, detail.shows, detail.answers)} />
+    <h2>Skills of each question</h2>
+    <QuestionSkills lines={lines} />
     <h2>Each question as the child saw it</h2>
     <QuestionTimeline lines={lines} />
     <h2>Shown work and AI reviews</h2>
