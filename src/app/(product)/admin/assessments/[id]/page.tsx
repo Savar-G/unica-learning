@@ -2,7 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getStrokes, getTest, requireAdmin } from "@/lib/admin-store";
 import { adminParentPath, adminReportPath, answerLines, duration, factLines, flagText, helpAnswerText, levelText, shownWithoutAnswer, when } from "@/lib/admin-view";
-import { contextFacts } from "@/lib/admin-view";
+import { contextFacts, extraRoundFacts } from "@/lib/admin-view";
 import { QuestionTimeline, ShownWithoutAnswer, awayCount, changeCount, readAloudCount } from "@/components/admin-timeline";
 import { AdminFrame, Chip, StatusChip, Table, gradeAndPlace } from "@/components/admin";
 import { EmailTable, RecordFacts, ReviewDetail, childPath } from "@/components/admin-records";
@@ -32,6 +32,8 @@ export default async function TestDetailPage({ params }: PageProps<"/admin/asses
     ]} />
     <h2>Break and device</h2>
     <RecordFacts facts={contextFacts(detail.context)} />
+    <h2>Extra round</h2>
+    <RecordFacts facts={extraRoundFacts(detail.extraRound, t.stored, t.completed_at)} />
     <h2>Flags</h2>
     {t.flags?.length ? <ul className="adm-list">{t.flags.map((f, i) => <li key={i}>{flagText(f, numbers)}</li>)}</ul> : <p className="adm-note">{t.status === "completed" ? "No flags." : "Flags are recorded when the test finishes."}</p>}
     <h2>How sure the result is</h2>
@@ -41,7 +43,7 @@ export default async function TestDetailPage({ params }: PageProps<"/admin/asses
     <h2>Answers and times</h2>
     <p className="adm-note">Thinking time is measured in the browser. Time on the server runs from when the server sent the question to when the answer arrived (#184). Changes, read aloud and away: what the child did before Next. A dash: not recorded (a test from before #184).</p>
     <Table label="Answers" head={["#", "Stage", "Level / strand", "Template / BC", "Question", "Right answer", "Child answer", "Result", "Thinking time", "Time on the server", "Changes", "Read aloud", "Away", "Mistake"]} empty="No answers yet.">
-      {lines.map((a) => <tr key={a.number} className={a.correct ? "" : "is-wrong"}><td><a href={`#question-${a.number}`}>{a.number}</a></td><td>{a.stage ?? "-"}</td><td>{a.level === null ? "-" : `${levelText(a.level)} / ${a.strand}`}</td><td><span className="adm-mono">{a.templateId ?? "-"}</span><span className="adm-sub">BC {a.standard ?? "-"}</span></td><td className="adm-wide">{a.prompt ?? a.questionId}</td><td>{a.rightAnswer ?? "-"}</td><td>{a.response || "Skipped"}</td><td>{a.correct ? "Right" : "Wrong"}{a.leftOut && <span className="adm-sub">Left out: rushed</span>}</td><td className="adm-nowrap">{duration(a.timeMs)}{a.tooFast && <span className="adm-sub">Under 3 s</span>}</td><td className="adm-nowrap">{a.timeline.serverMs === null ? "-" : duration(a.timeline.serverMs)}</td><td className="adm-num">{changeCount(a)}</td><td className="adm-num">{readAloudCount(a)}</td><td className="adm-nowrap">{awayCount(a)}</td><td>{a.misconception ?? "-"}</td></tr>)}
+      {lines.map((a) => <tr key={a.number} className={a.correct ? "" : "is-wrong"}><td><a href={`#question-${a.number}`}>{a.number}</a></td><td>{a.stage === "extra" ? "Extra" : a.stage ?? "-"}</td><td>{a.level === null ? "-" : `${levelText(a.level)} / ${a.strand}`}</td><td><span className="adm-mono">{a.templateId ?? "-"}</span><span className="adm-sub">BC {a.standard ?? "-"}</span></td><td className="adm-wide">{a.prompt ?? a.questionId}</td><td>{a.rightAnswer ?? "-"}</td><td>{a.response || "Skipped"}</td><td>{a.correct ? "Right" : "Wrong"}{a.leftOut && <span className="adm-sub">Left out: rushed</span>}</td><td className="adm-nowrap">{duration(a.timeMs)}{a.tooFast && <span className="adm-sub">Under 3 s</span>}</td><td className="adm-nowrap">{a.timeline.serverMs === null ? "-" : duration(a.timeline.serverMs)}</td><td className="adm-num">{changeCount(a)}</td><td className="adm-num">{readAloudCount(a)}</td><td className="adm-nowrap">{awayCount(a)}</td><td>{a.misconception ?? "-"}</td></tr>)}
     </Table>
     <ShownWithoutAnswer lines={shownWithoutAnswer(t.stored, detail.shows, detail.answers)} />
     <h2>Skills of each question</h2>

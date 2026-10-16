@@ -6,6 +6,8 @@ import {
   MISCONCEPTIONS,
   SAMPLE_BANK,
   PAUSE_WINDOW,
+  REPORTED_STRAND,
+  REPORTED_STRAND_NAMES,
   TOO_FAST_MS,
   helpLikely,
   type FactsTest,
@@ -361,6 +363,43 @@ export function contextFacts(c: TestContextRecord): [string, string][] {
     ["Input", d ? (d.input ? DEVICE_WORDS[d.input] : "Not known") : "-"],
     ["Screen (CSS pixels)", d ? `${d.screenWidth} × ${d.screenHeight}` : "-"],
     ["Browser", d ? DEVICE_WORDS[d.browser] : "-"],
+  ];
+}
+
+/** The extra round of one test (#190), as public.assessments stores it (migration add_extra_round). Null when not recorded. */
+export interface ExtraRoundColumns {
+  extra_offered_at: string | null;
+  extra_skipped_at: string | null;
+  extra_started_at: string | null;
+  extra_finished_at: string | null;
+}
+
+/** What happened to the extra round, in plain words. A round that started after the test was completed came from the report. */
+function extraRoundWords(r: ExtraRoundColumns, completedAt: string | null): string {
+  if (r.extra_started_at) {
+    const fromReport = completedAt !== null && Date.parse(r.extra_started_at) > Date.parse(completedAt);
+    const taken = fromReport ? "Taken from the report" : "Taken during the test";
+    return r.extra_finished_at ? taken : `${taken}, not finished`;
+  }
+  if (r.extra_skipped_at) return "Skipped";
+  return r.extra_offered_at ? "Offered, no choice yet" : "Not offered";
+}
+
+/**
+ * The "Extra round" rows of the admin page for one test (#190, spec #181 story 16): whether it was offered, skipped or
+ * taken, its questions and areas from the stored round, and its times (Pacific). A test from before #190 shows "Not
+ * offered" and dashes, always in the same rows.
+ */
+export function extraRoundFacts(r: ExtraRoundColumns, stored: StoredTest, completedAt: string | null): [string, string][] {
+  const extra = stored.extra ?? [];
+  const areas = [...new Set(extra.map((q) => REPORTED_STRAND_NAMES[REPORTED_STRAND[q.strand]]))];
+  return [
+    ["Extra round", extraRoundWords(r, completedAt)],
+    ["Extra questions", extra.length ? `${extra.length}: ${areas.join(", ")}` : "-"],
+    ["Offered (Pacific)", when(r.extra_offered_at)],
+    ["Skipped (Pacific)", when(r.extra_skipped_at)],
+    ["Started (Pacific)", when(r.extra_started_at)],
+    ["Finished (Pacific)", when(r.extra_finished_at)],
   ];
 }
 
