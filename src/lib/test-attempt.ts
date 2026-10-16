@@ -284,14 +284,22 @@ async function startFor(
  * read outlives the request.
  */
 async function withAnswers(store: AttemptStore, parent: string, childId?: string): Promise<StoredAttempt[]> {
+  return (await withReads(store, parent, childId)).attempts;
+}
+
+/** `withAnswers`, with the read of each open test too, for a caller that needs more from it. */
+async function withReads(store: AttemptStore, parent: string, childId?: string): Promise<{ attempts: StoredAttempt[]; reads: Map<string, ReadTest> }> {
   const attempts = await store.attempts(parent, childId);
-  const reads = await Promise.all(attempts.map((a) => (a.status === "in_progress" ? readTest(store, parent, a.id) : null)));
-  return attempts.map((a, i) => {
-    const read = reads[i];
+  const results = await Promise.all(attempts.map((a) => (a.status === "in_progress" ? readTest(store, parent, a.id) : null)));
+  const reads = new Map<string, ReadTest>();
+  const withAll = attempts.map((a, i) => {
+    const read = results[i];
     if (!read) return a;
     if (!read.ok) throw new Error("open test read failed");
+    reads.set(a.id, read);
     return { ...a, answeredAll: read.attempt.answeredAll };
   });
+  return { attempts: withAll, reads };
 }
 
 /**
@@ -300,23 +308,24 @@ async function withAnswers(store: AttemptStore, parent: string, childId?: string
  * "Start test" (an empty map); the start request checks the rules again.
  */
 export async function startStates(store: AttemptStore, parent: string, now: number, childId?: string): Promise<Map<string, StartState>> {
-  let attempts: StoredAttempt[];
+  let loaded: Awaited<ReturnType<typeof withReads>>;
   try {
-    attempts = await withAnswers(store, parent, childId);
+    loaded = await withReads(store, parent, childId);
   } catch (e) {
     console.error("[test]", messageOf(e));
     return new Map();
   }
   const byChild = new Map<string, Attempt[]>();
-  for (const a of attempts) byChild.set(a.childId, [...(byChild.get(a.childId) ?? []), a]);
-  const states = [...byChild].map(([id, list]) => [id, startState(list, now)] as const);
-  // #190 (#225): a test with every main answer in may wait on a round the child left part way: the start screen's
-  // "Keep going / Stop here". A failed read leaves the plain "finish".
-  return new Map(await Promise.all(states.map(async ([id, state]): Promise<[string, StartState]> => {
+  for (const a of loaded.attempts) byChild.set(a.childId, [...(byChild.get(a.childId) ?? []), a]);
+  return new Map([...byChild].map(([id, list]): [string, StartState] => {
+    const state = startState(list, now);
     if (state.kind !== "finish") return [id, state];
-    const round = await roundInProgress(store, parent, state.attemptId);
+    // #190 (#225): a test with every main answer in may wait on a round the child left part way: the start screen's
+    // "Keep going / Stop here". Read from the test's answers already read above.
+    const read = loaded.reads.get(state.attemptId);
+    const round = read && roundTaken(read);
     return [id, round ? { ...state, round } : state];
-  })));
+  }));
 }
 
 /** A child's start state; a child with no tests can start one. */
@@ -1091,7 +1100,12 @@ export async function stopExtraRound(store: AttemptStore, parent: string, id: st
  */
 export async function roundInProgress(store: AttemptStore, parent: string, id: string): Promise<{ answered: number; questions: number } | null> {
   const read = await readTest(store, parent, id);
-  if (!read.ok || read.attempt.status !== "in_progress" || stopped(read.round) || !nextQuestion(read.session)) return null;
+  return read.ok ? roundTaken(read) : null;
+}
+
+/** The round `roundInProgress` reports, from a read of the test. */
+function roundTaken(read: ReadTest): { answered: number; questions: number } | null {
+  if (read.attempt.status !== "in_progress" || stopped(read.round) || !nextQuestion(read.session)) return null;
   const taken = extraRoundTaken(read.session);
   return taken && { answered: taken.answered, questions: taken.questions };
 }
