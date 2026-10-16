@@ -40,6 +40,7 @@ import {
 import { FACTS_SECONDS, createFacts, factsStep, restoreFacts, storedFacts, submitFact, type FactAnswer, type FactsSession, type FactsStep, type FactsTest, type FactSubmission } from "@/lib/assessment";
 import { ANSWER_MAX, QUESTION_TIME_CAP_MS } from "@/lib/test-api";
 import type { AnswerEvents } from "@/lib/answer-events";
+import type { BreakRecord, BreakResume, TestDevice } from "@/lib/test-context";
 
 /** One of the parent's children, as a new test needs them. */
 export interface AttemptChild {
@@ -56,6 +57,7 @@ export interface LoadedAttempt {
   attempt: Attempt;
   test: StoredTest;
   answers: Submission[];
+  break?: BreakResume;
 }
 
 /** A new test to store: its times, the seed, and the questions drawn from it. */
@@ -77,6 +79,8 @@ export interface NewAnswer extends Answer {
   workPath: string | null;
   /** The typed working, or null when the child typed none. */
   workText: string | null;
+  /** Where the whiteboard strokes are stored (#186). Left out when the child drew no strokes, or they were not stored. */
+  strokesPath?: string;
   /** When the server served the question and received the answer, and what the child did before Next (#184). */
   timeline: AnswerTimeline;
 }
@@ -94,12 +98,13 @@ export interface AnswerTimeline {
 /**
  * The store seam. Each operation keeps one database guard. Reads return only the given parent's rows. An attempt the
  * store returns has no `answeredAll`: the module works it out from the answers. A database error throws (a StoreError).
- * The operations of the timed facts section are in FactsStore; the serve times of the answer timeline in ShownStore.
+ * The operations of the timed facts section are in FactsStore; the serve times of the answer timeline in ShownStore;
+ * the test context (#185) in ContextStore.
  */
-export interface AttemptStore extends FactsStore, ShownStore {
+export interface AttemptStore extends FactsStore, ShownStore, ContextStore {
   /** One of the parent's children; null when the parent has no child with this id. */
   child(parent: string, childId: string): Promise<AttemptChild | null>;
-  /** The parent's tests: of one child, or of every child. */
+  /** The parent's tests: of one child, or of every child. A completed test whose result may not be reliable has `unreliable` (#189). */
   attempts(parent: string, childId?: string): Promise<StoredAttempt[]>;
   /** One of the parent's tests with its questions and answers; null when the parent has no test with this id. */
   load(parent: string, id: string): Promise<LoadedAttempt | null>;
@@ -119,6 +124,10 @@ export interface AttemptStore extends FactsStore, ShownStore {
   storeDrawing(parent: string, id: string, questionId: string, png: Uint8Array): Promise<string>;
   /** Removes a drawing whose answer was not stored. */
   removeDrawing(path: string): Promise<void>;
+  /** Stores the whiteboard strokes (#186, checked JSON) for one question of the parent's test, under a new name. Returns its path. */
+  storeStrokes(parent: string, id: string, questionId: string, json: string): Promise<string>;
+  /** Removes strokes whose answer was not stored. */
+  removeStrokes(path: string): Promise<void>;
   /** Stores one answer. "taken": the test already has an answer in this place (another tab answered first). */
   insertAnswer(id: string, answer: NewAnswer): Promise<"stored" | "taken">;
   /** Records the stage 2 route the child was given when stage 1 ended, for the admin view. */
@@ -179,7 +188,7 @@ type StoreFailed = { ok: false; error: "store_failed"; unreadable?: true };
 const messageOf = (e: unknown) => (e instanceof Error ? e.message : e);
 
 /** Logs a failed store read the way the routes logged it before the module, and refuses. */
-function storeFailed(e: unknown): Refusal {
+function storeFailed(e: unknown): StoreFailed {
   if (e instanceof StoreError) console.error(`[test] ${e.what}`, e.detail);
   else console.error("[test]", messageOf(e));
   return { ok: false, error: "store_failed" };
@@ -291,7 +300,28 @@ export async function startStates(store: AttemptStore, parent: string, now: numb
 /** A child's start state; a child with no tests can start one. */
 export const stateFor = (states: Map<string, StartState>, childId: string): StartState => states.get(childId) ?? { kind: "start", retake: false };
 
-export type StepOutcome = { ok: true; step: TestStep } | Refusal;
+/** #189: when the child's next test opens, for the report's reliability note: open now (`resume`: one is in progress), or at `at`. */
+export type RetakeState = { kind: "open"; resume: boolean } | { kind: "opens"; at: number };
+
+/**
+ * The child's next test at `now`, by the same rules and reads as the start screen (D-108: at once at most once per 30
+ * days after an unreliable result). Null when the tests cannot be read: unlike the start screen, the report then makes
+ * no promise, because "no 30-day wait" could be false. Writes nothing.
+ */
+export async function retakeState(store: AttemptStore, parent: string, childId: string, now: number): Promise<RetakeState | null> {
+  let attempts: StoredAttempt[];
+  try {
+    attempts = await withAnswers(store, parent, childId);
+  } catch (e) {
+    console.error("[test]", messageOf(e));
+    return null;
+  }
+  const state = startState(attempts, now);
+  if (state.kind === "wait") return { kind: "opens", at: state.opensAt };
+  return { kind: "open", resume: state.kind === "resume" || state.kind === "finish" };
+}
+
+export type StepOutcome = { ok: true; step: TestStep; break?: BreakResume } | Refusal;
 
 /**
  * The next question of the parent's test, without its answer, or "complete". A test that ran out of time at `now` is
@@ -301,7 +331,7 @@ export async function nextStep(store: AttemptStore, parent: string, id: string, 
   const open = await openTest(store, parent, id, now);
   if (!open.ok) return open;
   await served(store, id, open.session, now);
-  return { ok: true, step: testStep(open.session) };
+  return { ok: true, step: testStep(open.session), ...(open.break && { break: open.break }) };
 }
 
 /** The whiteboard work that comes with an answer (#67), as the route parsed it (src/lib/work-payload.ts). */
@@ -310,6 +340,8 @@ export interface AnswerWork {
   png: Uint8Array | null;
   /** The typed working, trimmed and within the size limit; "" when the child typed none. */
   text: string;
+  /** The whiteboard strokes (#186) as checked JSON within the size limit; null or left out when there are none. */
+  strokes?: string | null;
 }
 
 /** A child's answer to the current question, as the route read it from the request. */
@@ -367,6 +399,8 @@ export async function answerQuestion(store: AttemptStore, parent: string, id: st
     return { ok: false, error: "store_failed" };
   };
 
+  // #186: the strokes upload at the same time as the drawing. If the answer is not stored, they go too.
+  const strokesUpload = storeStrokes(store, parent, id, q.id, input.work.strokes);
   // The drawing first, under a new name, so the answer can point to it. If the answer is not stored, the drawing goes.
   let workPath: string | null = null;
   if (input.work.png) {
@@ -374,9 +408,11 @@ export async function answerQuestion(store: AttemptStore, parent: string, id: st
       workPath = await store.storeDrawing(parent, id, q.id, input.work.png);
     } catch (e) {
       logFailure("[work] upload failed", e);
+      await removeStrokes(store, await strokesUpload);
       return failed();
     }
   }
+  const strokesPath = await strokesUpload;
   let inserted: "stored" | "taken";
   try {
     inserted = await store.insertAnswer(id, {
@@ -387,16 +423,19 @@ export async function answerQuestion(store: AttemptStore, parent: string, id: st
       workRequired: q.showWork === true,
       workPath,
       workText: input.work.text || null,
+      strokesPath,
       timeline: { shownAt: shown?.questionId === q.id ? shown.at : null, answeredAt: now, events: input.events ?? null },
     });
   } catch (e) {
     await removeDrawing(store, workPath);
+    await removeStrokes(store, strokesPath);
     logFailure("[test] answer save failed", e);
     return failed();
   }
   if (inserted === "taken") {
     // Another request stored this question's answer first. Send the step after it, read fresh, so the screen moves on.
     await removeDrawing(store, workPath);
+    await removeStrokes(store, strokesPath);
     return freshConflict(store, parent, id, now);
   }
   const route = next.route;
@@ -422,6 +461,24 @@ function logFailure(line: string, e: unknown): void {
 const removeDrawing = (store: AttemptStore, path: string | null) =>
   path ? bestEffort("[work] remove failed", () => store.removeDrawing(path)) : Promise.resolve();
 
+/**
+ * Stores the whiteboard strokes of an answer (#186), if any, and returns their path. Strokes are for admins only, so a
+ * failed upload never stops the child's answer: it is logged, and the answer is stored with the drawing alone.
+ */
+async function storeStrokes(store: AttemptStore, parent: string, id: string, questionId: string, json: string | null | undefined): Promise<string | undefined> {
+  if (!json) return undefined;
+  try {
+    return await store.storeStrokes(parent, id, questionId, json);
+  } catch (e) {
+    logFailure("[strokes] upload failed", e);
+    return undefined;
+  }
+}
+
+/** Removes strokes whose answer was not stored, so the bucket holds no strokes without their answer. A failure is logged. */
+const removeStrokes = (store: AttemptStore, path: string | undefined) =>
+  path ? bestEffort("[strokes] remove failed", () => store.removeStrokes(path)) : Promise.resolve();
+
 /** A store write the request does not wait on to succeed: a failure is logged with `line`, and the request goes on. */
 async function bestEffort(line: string, write: () => Promise<void>): Promise<void> {
   try {
@@ -441,7 +498,7 @@ async function freshConflict(store: AttemptStore, parent: string, id: string, no
 }
 
 /** The parent's test at `now`, or "expired" when it ran out of time: then it is marked expired if still in progress. */
-async function openTest(store: AttemptStore, parent: string, id: string, now: number): Promise<{ ok: true; attempt: Attempt; session: Session } | Refusal> {
+async function openTest(store: AttemptStore, parent: string, id: string, now: number): Promise<{ ok: true; attempt: Attempt; session: Session; break?: BreakResume } | Refusal> {
   const read = await readTest(store, parent, id);
   if (!read.ok || attemptState(read.attempt, now) !== "expired") return read;
   if (read.attempt.status === "in_progress") {
@@ -455,7 +512,7 @@ async function openTest(store: AttemptStore, parent: string, id: string, now: nu
 }
 
 /** The parent's test and its session, rebuilt from the answers with the assessment core. No time check. */
-async function readTest(store: AttemptStore, parent: string, id: string): Promise<{ ok: true; attempt: Attempt; session: Session } | Refusal> {
+async function readTest(store: AttemptStore, parent: string, id: string): Promise<{ ok: true; attempt: Attempt; session: Session; break?: BreakResume } | Refusal> {
   let loaded: LoadedAttempt | null;
   try {
     loaded = await store.load(parent, id);
@@ -471,7 +528,7 @@ async function readTest(store: AttemptStore, parent: string, id: string): Promis
     return { ok: false, error: "store_failed", unreadable: true };
   }
   // A test with every answer in never expires: it only waits to be scored.
-  return { ok: true, attempt: { ...loaded.attempt, answeredAll: testStep(session).status === "complete" }, session };
+  return { ok: true, attempt: { ...loaded.attempt, answeredAll: testStep(session).status === "complete" }, session, ...(loaded.break && { break: loaded.break }) };
 }
 
 // The timed facts section (#70, #148), at the halfway break. The server's clock times it: the section starts at the
@@ -600,7 +657,9 @@ export async function startFacts(store: AttemptStore, parent: string, id: string
 
 /**
  * Marks one fact answer with the assessment core and stores it, then sends the facts still to come. Its time is `now`
- * since the section started (its arrival), never earlier than the answer before it. Refuses with "conflict" when the
+ * since the section started (its arrival), never earlier than the answer before it. It also stores the time on the fact
+ * by the server (since the answer before) and by the browser (`browserMs`, when the screen sent one, #185); the fact
+ * speed uses the browser's. Refuses with "conflict" when the
  * test is not in progress or the section has not started. An answer after the time is up, or for a fact already
  * answered, stores nothing: "conflict" with where the section is now. The store keeps one answer per fact, so when
  * another request stored this fact's answer in the same moment, this one gets "conflict" with a fresh step.
@@ -610,7 +669,7 @@ export async function answerFact(
   parent: string,
   id: string,
   now: number,
-  { factId, response }: { factId: string; response: string },
+  { factId, response, browserMs }: { factId: string; response: string; browserMs?: number | null },
 ): Promise<FactsOutcome> {
   const owner = await parentTest(store, parent, id);
   if (!owner.ok) return owner;
@@ -623,7 +682,7 @@ export async function answerFact(
   const atMs = Math.max(now - startedAt, session.answers.at(-1)?.atMs ?? 0);
   let next: FactsSession;
   try {
-    next = submitFact(session, { factId, response, atMs });
+    next = submitFact(session, { factId, response, atMs, browserMs });
   } catch {
     // The time is up, or the answer is for a fact already answered (or not yet asked): store nothing, and send where
     // the section is now.
@@ -724,4 +783,87 @@ async function shownOf(store: AttemptStore, id: string, position: number): Promi
     logFailure("[test] shown time load failed", e);
     return null;
   }
+}
+
+// The test context (#185): the halfway break and the device, saved once per test for the admin view and later
+// analysis. The screen sends them beside the test and never waits for them, so a failure here never stops the child.
+// The break's times are the server's clock: when it got "shown", and when it got the end. Its length is the browser's:
+// the screen sends the end at once with the time from the break screen showing to the press, so a slow "shown" save or
+// a slow network never makes the break longer.
+
+/**
+ * The store seam's operations for the test context. Device and shown writes require an open test. Each writes only
+ * fields that are still empty, so the first record wins: a break shown again, or a resume on another device, changes
+ * nothing. The module calls them only for a test that `load` returned for the parent, so they take the test's id alone.
+ */
+export interface ContextStore {
+  /** Saves the device, only when the test has none yet. */
+  recordDevice(id: string, device: TestDevice): Promise<void>;
+  /** Saves when the halfway break was shown, only when the test has no break yet. */
+  startBreak(id: string, at: number): Promise<void>;
+  /**
+   * Saves the end of the break: when it ended (`at`), whether the child skipped it, and its length. Only once: an ended
+   * break changes nothing. When the break has no start yet (the end reached the server first, or "shown" was lost),
+   * also saves the start, as `at - lengthMs`; a later "shown" then changes nothing. Takes an end after finish too,
+   * within the existing resume deadline. Refuses expired rows. Does not change the score or the deadline.
+   */
+  endBreak(id: string, end: { at: number; skipped: boolean; lengthMs: number }): Promise<void>;
+}
+
+/** Why the module refused a context record: a subset of Refusal. */
+export type ContextRefusal =
+  | { ok: false; error: "not_found" }
+  /** The stage, status, deadline or captured timing does not permit this context record. */
+  | { ok: false; error: "conflict" }
+  | StoreFailed;
+
+export type ContextOutcome = { ok: true } | ContextRefusal;
+
+/** The longest break kept: the test closes 24 hours after the last answer (#72). */
+const BREAK_MAX_MS = 24 * 60 * 60_000;
+
+/**
+ * Saves the halfway break of the parent's test at `now`. A new screen requires the halfway point. An end is valid
+ * from halfway onward, including after finish, until the existing resume deadline. Receipt time stays server time;
+ * length stays browser time. An end received before its shown request can supply the missing start.
+ */
+export async function recordBreak(store: AttemptStore, parent: string, id: string, record: BreakRecord, now: number): Promise<ContextOutcome> {
+  const read = await readTest(store, parent, id);
+  if (!read.ok) return contextRefusal(read);
+  const step = testStep(read.session);
+  const pastBreak = step.status === "complete" || (step.status === "question" && step.number > step.breakAfter);
+  const { attempt } = read;
+  // Context does not extend the answer window. An end can arrive after finish, but cannot reopen an expired test,
+  // create a new break screen after finish, or change any score. The store repeats the status/deadline guards.
+  const eligible = record.event === "shown"
+    ? attempt.status === "in_progress" && breakDue(step)
+    : pastBreak && (attempt.status === "in_progress" || (attempt.status === "completed" && step.status === "complete"));
+  if (!eligible || now > attempt.resumeUntil) return { ok: false, error: "conflict" };
+  if (record.event !== "shown" && (!Number.isFinite(record.lengthMs) || record.lengthMs < 0)) return { ok: false, error: "conflict" };
+  try {
+    if (record.event === "shown") await store.startBreak(id, now);
+    else await store.endBreak(id, { at: now, skipped: record.event === "skipped", lengthMs: Math.min(Math.round(record.lengthMs), BREAK_MAX_MS) });
+  } catch (e) {
+    return storeFailed(e);
+  }
+  return { ok: true };
+}
+
+/** Saves the device of the parent's test, once per test: a later device (a resume elsewhere) changes nothing. */
+export async function recordDevice(store: AttemptStore, parent: string, id: string, device: TestDevice): Promise<ContextOutcome> {
+  const read = await readTest(store, parent, id);
+  if (!read.ok) return contextRefusal(read);
+  if (read.attempt.status !== "in_progress") return { ok: false, error: "conflict" };
+  try {
+    await store.recordDevice(id, device);
+  } catch (e) {
+    return storeFailed(e);
+  }
+  return { ok: true };
+}
+
+/** A refused test read as a context refusal: the read refuses only with not_found or store_failed. */
+function contextRefusal(refusal: Refusal): ContextRefusal {
+  if (refusal.error === "not_found") return refusal;
+  return refusal.error === "store_failed" ? refusal : { ok: false, error: "store_failed" };
 }

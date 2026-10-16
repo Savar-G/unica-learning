@@ -141,6 +141,16 @@ describe("facts section: speed beside accuracy in the placement and the report",
     expect(report(s).facts).toMatchObject({ answered: 4, correct: 4, secondsPerFact: 2, speed: "quick" });
   });
 
+  it("speed uses each fact's browser time when it has one: answers that reached the server in a burst do not look quick (#185)", () => {
+    let s = factsFor4();
+    // About 4 seconds on each fact in the browser; the saves queued, so the server got them 0.3 seconds apart.
+    for (const [i, browserMs] of [4_100, 3_900, 4_000, 4_200, 3_800].entries()) {
+      const fact = s.facts[s.answers.length];
+      s = submitFact(s, { factId: fact.id, response: String(fact.answer), atMs: 20 * SECOND + i * 300, browserMs });
+    }
+    expect(report(s).facts).toMatchObject({ answered: 5, correct: 5, secondsPerFact: 4, speed: "needs-practice" });
+  });
+
   it("nothing answered: counts only, no speed or accuracy status", () => {
     expect(report(factsFor4()).facts).toMatchObject({ answered: 0, correct: 0, secondsPerFact: null, accuracy: null, speed: null });
   });

@@ -4,12 +4,13 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Grade, StartState, StoredTest } from "@/lib/assessment";
 import type { Child } from "@/lib/account";
 import { isUuid, toAttempt, type AttemptRow } from "@/lib/assessment-store";
-import { startStates, StoreError, type AttemptStore } from "@/lib/test-attempt";
+import { retakeState, startStates, StoreError, type AttemptStore, type RetakeState } from "@/lib/test-attempt";
 import { adminClient } from "@/lib/supabase-auth";
 import type { FactsTest } from "@/lib/assessment";
 import type { FactsStore } from "@/lib/test-attempt";
 import type { AnswerTimeline, ShownStore } from "@/lib/test-attempt";
-import { workPath } from "@/lib/work-payload";
+import type { ContextStore } from "@/lib/test-attempt";
+import { strokesPath, workPath } from "@/lib/work-payload";
 import { WORK_BUCKET } from "@/lib/work-store";
 
 // The test attempt module's Supabase store (src/lib/test-attempt.ts, #146): the database, read and written with the
@@ -19,6 +20,8 @@ import { WORK_BUCKET } from "@/lib/work-store";
 // Answers (#147): one answer per place in a test (unique on assessment_id and position). The drawings go to the private
 // bucket (src/lib/work-store.ts), written with the secret key in the parent's folder. Finish (#150): the update that
 // completes a test is guarded by its status, so two finishes at once store one placement.
+// Strokes (#186): JSON files in the same private bucket and folder as the drawings. The storage policy lets a parent
+// read only the .png drawings; the strokes are for admins (migration add_answer_strokes).
 
 const iso = (ms: number) => new Date(ms).toISOString();
 
@@ -29,6 +32,7 @@ export function attemptStore(admin: SupabaseClient): AttemptStore {
   return {
     ...factsStore(admin),
     ...shownStore(admin),
+    ...contextStore(admin),
     async child(parent, childId) {
       const { data, error } = await admin.from("children").select("id, grade, province")
         .eq("id", childId).eq("parent_id", parent).maybeSingle<Pick<Child, "id" | "grade" | "province">>();
@@ -37,16 +41,22 @@ export function attemptStore(admin: SupabaseClient): AttemptStore {
     },
 
     async attempts(parent, childId) {
-      let query = admin.from("assessments").select(`child_id, seed, ${ATTEMPT_COLUMNS}`).eq("parent_id", parent);
+      // #189: placement->pace->unreliable is true when the completed test's result may not be reliable (a new test opens at once).
+      let query = admin.from("assessments").select(`child_id, seed, ${ATTEMPT_COLUMNS}, unreliable:placement->pace->unreliable`).eq("parent_id", parent);
       if (childId !== undefined) query = query.eq("child_id", childId);
-      const { data, error } = await query.returns<(AttemptRow & { child_id: string; seed: number })[]>();
+      const { data, error } = await query.returns<(AttemptRow & { child_id: string; seed: number; unreliable: boolean | null })[]>();
       if (error) throw new StoreError("attempts load failed", error.message);
-      return (data ?? []).map((row) => ({ ...toAttempt(row), childId: row.child_id, seed: row.seed }));
+      return (data ?? []).map((row) => ({
+        ...toAttempt(row),
+        childId: row.child_id,
+        seed: row.seed,
+        ...(row.status === "completed" && row.unreliable === true ? { unreliable: true } : {}),
+      }));
     },
 
     async load(parent, id) {
-      const { data: row, error } = await admin.from("assessments").select(`${ATTEMPT_COLUMNS}, test`)
-        .eq("id", id).eq("parent_id", parent).maybeSingle<AttemptRow & { test: StoredTest }>();
+      const { data: row, error } = await admin.from("assessments").select(`${ATTEMPT_COLUMNS}, test, break_started_at, break_ended_at`)
+        .eq("id", id).eq("parent_id", parent).maybeSingle<AttemptRow & { test: StoredTest; break_started_at: string | null; break_ended_at: string | null }>();
       if (error) throw new StoreError("load failed", error.message);
       if (!row) return null;
       const { data: answers, error: answersError } = await admin.from("answers")
@@ -57,6 +67,7 @@ export function attemptStore(admin: SupabaseClient): AttemptStore {
         attempt: toAttempt(row),
         test: row.test,
         answers: (answers ?? []).map((a) => ({ questionId: a.question_id, response: a.response, timeMs: a.time_ms })),
+        ...(row.break_started_at && { break: { startedAt: Date.parse(row.break_started_at), ended: row.break_ended_at != null } }),
       };
     },
 
@@ -99,6 +110,18 @@ export function attemptStore(admin: SupabaseClient): AttemptStore {
       if (error) throw new StoreError("remove failed", error.message);
     },
 
+    async storeStrokes(parent, id, questionId, json) {
+      const path = strokesPath(parent, id, questionId, randomBytes(6).toString("hex"));
+      const { error } = await admin.storage.from(WORK_BUCKET).upload(path, json, { contentType: "application/json", upsert: false, cacheControl: "3600" });
+      if (error) throw new StoreError("upload failed", error.message);
+      return path;
+    },
+
+    async removeStrokes(path) {
+      const { error } = await admin.storage.from(WORK_BUCKET).remove([path]);
+      if (error) throw new StoreError("remove failed", error.message);
+    },
+
     async insertAnswer(id, answer) {
       const { error } = await admin.from("answers").insert({
         assessment_id: id,
@@ -113,6 +136,7 @@ export function attemptStore(admin: SupabaseClient): AttemptStore {
         work_required: answer.workRequired,
         work_path: answer.workPath,
         work_text: answer.workText,
+        strokes_path: answer.strokesPath ?? null,
         ...timelineColumns(answer.timeline),
       });
       // One answer per place (unique index on assessment_id and position): another request stored it first.
@@ -178,13 +202,13 @@ function factsStore(admin: SupabaseClient): FactsStore {
         .maybeSingle<{ started_at: string; test: FactsTest }>();
       if (error) throw new StoreError("load failed", error.message);
       if (!row) return null;
-      const { data: answers, error: answersError } = await admin.from("fact_answers").select("fact_id, response, at_ms")
-        .eq("assessment_id", id).order("position").returns<{ fact_id: string; response: string; at_ms: number }[]>();
+      const { data: answers, error: answersError } = await admin.from("fact_answers").select("fact_id, response, at_ms, browser_ms")
+        .eq("assessment_id", id).order("position").returns<{ fact_id: string; response: string; at_ms: number; browser_ms: number | null }[]>();
       if (answersError) throw new StoreError("answers load failed", answersError.message);
       return {
         startedAt: Date.parse(row.started_at),
         test: row.test,
-        answers: (answers ?? []).map((a) => ({ factId: a.fact_id, response: a.response, atMs: a.at_ms })),
+        answers: (answers ?? []).map((a) => ({ factId: a.fact_id, response: a.response, atMs: a.at_ms, browserMs: a.browser_ms })),
       };
     },
 
@@ -196,9 +220,11 @@ function factsStore(admin: SupabaseClient): FactsStore {
       return "stored";
     },
 
-    async insertFactAnswer(id, { position, factId, response, correct, atMs }) {
-      const { error } = await admin.from("fact_answers")
-        .insert({ assessment_id: id, position, fact_id: factId, response, correct, at_ms: Math.round(atMs) });
+    async insertFactAnswer(id, { position, factId, response, correct, atMs, serverMs, browserMs }) {
+      // #185: the time on the fact by the server and by the browser (null when the screen sent none).
+      const { error } = await admin.from("fact_answers").insert({
+        assessment_id: id, position, fact_id: factId, response, correct, at_ms: Math.round(atMs), server_ms: Math.round(serverMs), browser_ms: browserMs,
+      });
       // One answer per position (unique): another request answered this fact first.
       if (error?.code === "23505") return "taken";
       if (error) throw new StoreError("answer save failed", error.message);
@@ -241,4 +267,54 @@ function timelineColumns({ shownAt, answeredAt, events }: AnswerTimeline) {
     away_count: events?.away.count ?? null,
     away_ms: events?.away.ms ?? null,
   };
+}
+
+/**
+ * The store's operations for the test context (#185): columns of public.assessments. Each update is guarded in the
+ * update itself: only an eligible status/deadline, and only fields still empty, so two requests at once (or a resume on another
+ * device) cannot overwrite the first record. The module calls them only for a test that `load` found for the parent.
+ */
+function contextStore(admin: SupabaseClient): ContextStore {
+  return {
+    async recordDevice(id, device) {
+      const { error } = await admin.from("assessments").update({ device })
+        .eq("id", id).eq("status", "in_progress").is("device", null);
+      if (error) throw new StoreError("device save failed", error.message);
+    },
+
+    async startBreak(id, at) {
+      const { error } = await admin.from("assessments").update({ break_started_at: iso(at) })
+        .eq("id", id).eq("status", "in_progress").gte("resume_until", iso(at)).is("break_started_at", null);
+      if (error) throw new StoreError("break save failed", error.message);
+    },
+
+    async endBreak(id, { at, skipped, lengthMs }) {
+      const ended = { break_ended_at: iso(at), break_skipped: skipped, break_ms: lengthMs };
+      // Two rounds: "shown" can land between the two updates, and then the first one takes the end.
+      for (let round = 0; round < 2; round++) {
+        // The usual order: the break has its start.
+        const after = await admin.from("assessments").update(ended)
+          .eq("id", id).in("status", ["in_progress", "completed"]).gte("resume_until", iso(at)).not("break_started_at", "is", null).is("break_ended_at", null).select("id");
+        if (after.error) throw new StoreError("break save failed", after.error.message);
+        if ((after.data ?? []).length > 0) return;
+        // The end reached the server first: its start is the browser's length before it.
+        const first = await admin.from("assessments").update({ ...ended, break_started_at: iso(at - lengthMs) })
+          .eq("id", id).in("status", ["in_progress", "completed"]).gte("resume_until", iso(at)).is("break_started_at", null).is("break_ended_at", null).select("id");
+        if (first.error) throw new StoreError("break save failed", first.error.message);
+        if ((first.data ?? []).length > 0) return;
+      }
+      // The break had ended already (or the test closed): nothing changes.
+    },
+  };
+}
+
+/**
+ * #189: when the child's next test opens, for the report's reliability note (D-108). Null when it cannot be known (no
+ * secret key, an id that is not a uuid, or a failed read): the report then shows no button and names no time.
+ */
+export async function parentRetakeState(parent: string, childId: string): Promise<RetakeState | null> {
+  if (!isUuid(childId)) return null;
+  const admin = adminClient();
+  if (!admin) return null;
+  return retakeState(attemptStore(admin), parent, childId, Date.now());
 }

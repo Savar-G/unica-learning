@@ -6,6 +6,13 @@ import type { CodedWrong, Level, TaggedProvince, Template } from "../types";
 /** A template with the grade tag of all five provinces (D-083: every tag is done before launch). */
 export type TaggedTemplate = Template & { grades: Record<TaggedProvince, Level> };
 
+/**
+ * The BC skill map skills a template tests (#193), main skill first. A plain list when every skill is in the
+ * template's own standard; with a note when a skill comes from another standard (a prerequisite, or a skill the
+ * question also needs), so a reviewer sees why.
+ */
+export type SkillTag = readonly string[] | { readonly skills: readonly string[]; readonly note: string };
+
 /** Draws until `ok` accepts, so a template never yields a question where a wrong answer equals the right one. */
 export function draw<T>(rng: Rng, make: (rng: Rng) => T, ok: (v: T) => boolean): T {
   for (let i = 0; i < 1000; i++) {

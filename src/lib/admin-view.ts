@@ -23,6 +23,7 @@ import {
 import { CURRICULA } from "@/lib/signup";
 import type { AssessmentStatus } from "@/lib/test-api";
 import type { AnswerChange, AnswerEvents } from "@/lib/answer-events";
+import type { TestDevice } from "@/lib/test-context";
 
 export const ADMIN_PATH = "/admin";
 /** The tests list. /admin is the dashboard (D-099). */
@@ -155,6 +156,8 @@ export interface AnswerLine {
   timeMs: number;
   /** Under TOO_FAST_MS: the help flags count these. */
   tooFast: boolean;
+  /** #189: a very fast wrong answer inside a run of very fast answers: left out of the score, not counted as wrong. */
+  leftOut: boolean;
   work: { required: boolean; image: string | null; text: string | null };
   review: (Omit<ReviewRecord, "score"> & { score: number }) | null;
   /** The question's template; from the answer row when the question is missing from the stored test. */
@@ -203,13 +206,19 @@ function misconceptionText(id: string | null): string | null {
   return known ? `${id}: ${known.description}` : id;
 }
 
-/** The answers in test order, each with its question from the stored test and its AI review. */
-export function answerLines(test: StoredTest, answers: readonly AnswerRecord[], reviews: readonly ReviewRecord[]): AnswerLine[] {
+/**
+ * The answers in test order, each with its question from the stored test and its AI review. `leftOut`: the questions
+ * the stored placement left out of the score (placement.pace.leftOut, #189); absent for a test stored before #189 or not
+ * finished, whose score counted every answer.
+ */
+export function answerLines(test: StoredTest, answers: readonly AnswerRecord[], reviews: readonly ReviewRecord[], leftOut: readonly string[] = []): AnswerLine[] {
   const stage = new Map<string, { q: Question; stage: 1 | 2 }>();
   for (const q of test.stage1) stage.set(q.id, { q, stage: 1 });
   for (const q of [...test.stage2.up, ...test.stage2.stay, ...test.stage2.down]) stage.set(q.id, { q, stage: 2 });
   const reviewed = new Map(reviews.map((r) => [r.question_id, { ...r, score: Number(r.score) }]));
-  return [...answers].sort((a, b) => a.position - b.position).map((a) => {
+  const ordered = [...answers].sort((a, b) => a.position - b.position);
+  const out = new Set(leftOut);
+  return ordered.map((a) => {
     const found = stage.get(a.question_id);
     return {
       number: a.position + 1,
@@ -224,6 +233,7 @@ export function answerLines(test: StoredTest, answers: readonly AnswerRecord[], 
       misconception: misconceptionText(a.misconception),
       timeMs: a.time_ms,
       tooFast: a.time_ms < TOO_FAST_MS,
+      leftOut: out.has(a.question_id),
       work: { required: a.work_required, image: a.work_path, text: a.work_text },
       review: reviewed.get(a.question_id) ?? null,
       templateId: found?.q.templateId ?? a.template_id ?? null,
@@ -259,6 +269,10 @@ export interface FactAnswerRecord {
   correct: boolean;
   /** The server's time since the section started. */
   at_ms: number;
+  /** #185: the server's time on the fact (since the answer before). Null or absent for answers from before #185. */
+  server_ms?: number | null;
+  /** #185: the browser's time on the fact, from when it appeared to Enter. Null when the screen sent none. */
+  browser_ms?: number | null;
 }
 
 export interface FactLine {
@@ -269,11 +283,13 @@ export interface FactLine {
   skipped: boolean;
   correct: boolean;
   atMs: number;
-  /** Time since the answer before (or since the start, for the first). */
-  tookMs: number;
+  /** The server's time on the fact: since the answer before (or since the start, for the first). */
+  serverMs: number;
+  /** The browser's time on the fact (#185); null when there is none. The fact speed uses it when it is there. */
+  browserMs: number | null;
 }
 
-/** The quick facts answers in order, each with its fact and the time it took. */
+/** The quick facts answers in order, each with its fact and the time it took, by the server and by the browser. */
 export function factLines(test: FactsTest, answers: readonly FactAnswerRecord[]): FactLine[] {
   const facts = new Map(test.facts.map((f) => [f.id, f]));
   let before = 0;
@@ -287,11 +303,61 @@ export function factLines(test: FactsTest, answers: readonly FactAnswerRecord[])
       skipped: a.response === "",
       correct: a.correct,
       atMs: a.at_ms,
-      tookMs: a.at_ms - before,
+      // Answers from before #185 have no stored server time: it is the time since the answer before.
+      serverMs: a.server_ms ?? a.at_ms - before,
+      browserMs: a.browser_ms ?? null,
     };
     before = a.at_ms;
     return line;
   });
+}
+
+/** The test context of one test (#185), as public.assessments stores it. Null everywhere for tests from before #185. */
+export interface TestContextRecord {
+  device: TestDevice | null;
+  break_started_at: string | null;
+  break_ended_at: string | null;
+  break_skipped: boolean | null;
+  /** The break's length as the browser measured it (migration add_break_length). */
+  break_ms: number | null;
+}
+
+const DEVICE_WORDS: Record<TestDevice["deviceClass"] | NonNullable<TestDevice["input"]> | TestDevice["browser"], string> = {
+  phone: "Phone", tablet: "Tablet", desktop: "Computer", touch: "Touch", pen: "Pen", mouse: "Mouse or trackpad",
+  safari: "Safari", chrome: "Chrome", firefox: "Firefox", edge: "Edge", samsung: "Samsung Internet", other: "Other",
+};
+
+/** How the halfway break went, in plain words. */
+function breakWords(c: TestContextRecord): string {
+  if (!c.break_started_at) return "Not recorded";
+  if (!c.break_ended_at) return "Shown, no end recorded";
+  return c.break_skipped ? 'Skipped ("Keep going")' : 'Took a break ("I am back from my break")';
+}
+
+/** The break's length: the browser's when it is stored, else the time between the two server times. */
+function breakLength(c: TestContextRecord): number | null {
+  if (!c.break_started_at || !c.break_ended_at) return null;
+  return c.break_ms ?? Math.max(0, Date.parse(c.break_ended_at) - Date.parse(c.break_started_at));
+}
+
+/**
+ * The "Break and device" rows of the admin page for one test (#185): how the halfway break went, its length, when it
+ * was shown and when it ended (Pacific), then the device, input, screen size and browser. A test from before #185 shows
+ * "Not recorded" and dashes, always in the same rows.
+ */
+export function contextFacts(c: TestContextRecord): [string, string][] {
+  const length = breakLength(c);
+  const d = c.device;
+  return [
+    ["Halfway break", breakWords(c)],
+    ["Break length", length === null ? "-" : duration(length)],
+    ["Break shown (Pacific)", when(c.break_started_at)],
+    ["Break ended (Pacific)", when(c.break_ended_at)],
+    ["Device", d ? DEVICE_WORDS[d.deviceClass] : "Not recorded"],
+    ["Input", d ? (d.input ? DEVICE_WORDS[d.input] : "Not known") : "-"],
+    ["Screen (CSS pixels)", d ? `${d.screenWidth} × ${d.screenHeight}` : "-"],
+    ["Browser", d ? DEVICE_WORDS[d.browser] : "-"],
+  ];
 }
 
 const PACIFIC = new Intl.DateTimeFormat("en-CA", {

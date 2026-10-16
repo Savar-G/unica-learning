@@ -1,10 +1,12 @@
 // The assessment core: the one tested seam (spec #54). Import from "@/lib/assessment" only.
 export * from "./attempt";
+export * from "./certainty";
 export * from "./constants";
 export * from "./deletion";
 export * from "./retention";
 export * from "./facts";
 export * from "./flags";
+export * from "./rushing";
 export { comparisonFor, type ComparisonInput, type ComparisonTest } from "./comparison";
 export { MISCONCEPTIONS, type Misconception, type MisconceptionId } from "./misconceptions";
 export {
@@ -56,3 +58,4 @@ export { isLineChoice, namesChoice, readAloudText, sayChoice, spokenChoices } fr
 export * from "./payments";
 export * from "./retention-worker";
 export { BC_SKILL_MAP, STRAND_NAMES, skillMapProblems, type BcSkill, type BcStandard, type SkillMap } from "./skill-map";
+export { SKILL_TAGS, skillTagProblems, tagSkills, templateSkills, type SkillTag, type TemplateSkill } from "./skill-tags";

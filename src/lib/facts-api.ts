@@ -8,3 +8,5 @@ export type FactsStepResult = { ok: true; step: FactsStep } | { ok: false; error
 export const FACT_ANSWER_MAX = 3;
 /** A fact answer: empty (skipped) or up to three digits. */
 export const isFactResponse = (v: unknown): v is string => typeof v === "string" && /^\d{0,3}$/.test(v);
+/** The browser's time on a fact (#185): milliseconds, or null when the screen sent none. */
+export const isFactTime = (v: unknown): v is number | null => v === null || (typeof v === "number" && Number.isFinite(v) && v >= 0);

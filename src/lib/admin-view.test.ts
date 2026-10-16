@@ -15,6 +15,50 @@ import {
   type AnswerRecord,
   type ReviewRecord,
 } from "@/lib/admin-view";
+import { contextFacts, type TestContextRecord } from "@/lib/admin-view";
+
+describe("the break and the device of one test (#185)", () => {
+  const NONE: TestContextRecord = { device: null, break_started_at: null, break_ended_at: null, break_skipped: null, break_ms: null };
+
+  it("shows a stored break (shown, skipped, start, end and length) and a stored device", () => {
+    expect(contextFacts({
+      device: { deviceClass: "tablet", input: "pen", screenWidth: 1024, screenHeight: 1366, browser: "safari" },
+      break_started_at: "2026-10-11T17:55:00.000Z",
+      break_ended_at: "2026-10-11T17:56:04.000Z",
+      break_skipped: true,
+      break_ms: 3_900,
+    })).toEqual([
+      ["Halfway break", 'Skipped ("Keep going")'],
+      ["Break length", "3.9 s"],
+      ["Break shown (Pacific)", "2026-10-11 10:55"],
+      ["Break ended (Pacific)", "2026-10-11 10:56"],
+      ["Device", "Tablet"],
+      ["Input", "Pen"],
+      ["Screen (CSS pixels)", "1024 × 1366"],
+      ["Browser", "Safari"],
+    ]);
+  });
+
+  it("shows a break the child rested in, and a break shown with no end", () => {
+    const rested = contextFacts({ ...NONE, break_started_at: "2026-10-11T17:55:00.000Z", break_ended_at: "2026-10-11T17:58:10.000Z", break_skipped: false, break_ms: 190_000 });
+    expect(rested.slice(0, 2)).toEqual([["Halfway break", 'Took a break ("I am back from my break")'], ["Break length", "3 min 10 s"]]);
+    const open = contextFacts({ ...NONE, break_started_at: "2026-10-11T17:55:00.000Z" });
+    expect(open.slice(0, 4)).toEqual([["Halfway break", "Shown, no end recorded"], ["Break length", "-"], ["Break shown (Pacific)", "2026-10-11 10:55"], ["Break ended (Pacific)", "-"]]);
+  });
+
+  it("shows a test stored before #185 as not recorded, with dashes", () => {
+    expect(contextFacts(NONE)).toEqual([
+      ["Halfway break", "Not recorded"],
+      ["Break length", "-"],
+      ["Break shown (Pacific)", "-"],
+      ["Break ended (Pacific)", "-"],
+      ["Device", "Not recorded"],
+      ["Input", "-"],
+      ["Screen (CSS pixels)", "-"],
+      ["Browser", "-"],
+    ]);
+  });
+});
 
 describe("admin list filters (#77)", () => {
   it("reads each filter from the query string", () => {
@@ -162,6 +206,18 @@ describe("a test's answers beside its questions (#77)", () => {
     expect(lines[1].work).toEqual({ required: false, image: null, text: null });
   });
 
+  it("marks the answers the stored placement left out of the score (#189), and none for a test stored before #189", () => {
+    const rushedAnswers = [
+      answer(0, "q1", { response: "45", correct: false, time_ms: 1_000 }),
+      answer(1, "q2", { response: "13", time_ms: 1_200 }),
+      answer(2, "u1", { response: "9", correct: false, time_ms: 900 }),
+    ];
+    expect(answerLines(test, rushedAnswers, [], ["q1", "u1"]).map((l) => l.leftOut)).toEqual([true, false, true]);
+    // Stored before #189: no pace, so its score counted every answer, and nothing is marked.
+    expect(answerLines(test, rushedAnswers, []).map((l) => l.leftOut)).toEqual([false, false, false]);
+    expect(lines.map((l) => l.leftOut)).toEqual([false, false, false]);
+  });
+
   it("still shows an answer whose question is missing from the stored test", () => {
     const [line] = answerLines(test, [answer(0, "gone", { response: "9" })], []);
     expect(line).toMatchObject({ number: 1, prompt: null, rightAnswer: null, response: "9" });
@@ -178,16 +234,29 @@ describe("the quick facts answers (#77)", () => {
     ],
   };
 
-  it("shows each fact in order, the answer, and the time it took after the one before", () => {
+  it("shows each fact in order, the answer, and the server's time after the one before (answers from before #185)", () => {
     const lines = factLines(facts, [
       { position: 1, fact_id: "f2", response: "", correct: false, at_ms: 6_100 },
       { position: 0, fact_id: "f1", response: "12", correct: true, at_ms: 2_400 },
       { position: 2, fact_id: "f3", response: "17", correct: false, at_ms: 9_000 },
     ]);
     expect(lines).toEqual([
-      { number: 1, fact: "7 + 5", rightAnswer: "12", response: "12", skipped: false, correct: true, atMs: 2_400, tookMs: 2_400 },
-      { number: 2, fact: "15 - 8", rightAnswer: "7", response: "", skipped: true, correct: false, atMs: 6_100, tookMs: 3_700 },
-      { number: 3, fact: "9 + 9", rightAnswer: "18", response: "17", skipped: false, correct: false, atMs: 9_000, tookMs: 2_900 },
+      { number: 1, fact: "7 + 5", rightAnswer: "12", response: "12", skipped: false, correct: true, atMs: 2_400, serverMs: 2_400, browserMs: null },
+      { number: 2, fact: "15 - 8", rightAnswer: "7", response: "", skipped: true, correct: false, atMs: 6_100, serverMs: 3_700, browserMs: null },
+      { number: 3, fact: "9 + 9", rightAnswer: "18", response: "17", skipped: false, correct: false, atMs: 9_000, serverMs: 2_900, browserMs: null },
+    ]);
+  });
+
+  it("shows the time for each fact as stored: the server's and the browser's (#185)", () => {
+    const lines = factLines(facts, [
+      { position: 0, fact_id: "f1", response: "12", correct: true, at_ms: 2_400, server_ms: 2_400, browser_ms: 1_950 },
+      { position: 1, fact_id: "f2", response: "7", correct: true, at_ms: 2_600, server_ms: 200, browser_ms: 2_100 },
+      { position: 2, fact_id: "f3", response: "18", correct: true, at_ms: 9_000, server_ms: 6_400, browser_ms: null },
+    ]);
+    expect(lines.map(({ number, atMs, serverMs, browserMs }) => ({ number, atMs, serverMs, browserMs }))).toEqual([
+      { number: 1, atMs: 2_400, serverMs: 2_400, browserMs: 1_950 },
+      { number: 2, atMs: 2_600, serverMs: 200, browserMs: 2_100 },
+      { number: 3, atMs: 9_000, serverMs: 6_400, browserMs: null },
     ]);
   });
 });

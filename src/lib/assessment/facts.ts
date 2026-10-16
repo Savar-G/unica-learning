@@ -1,6 +1,7 @@
 // The timed facts section (#70): quick number facts, only the ones BC expects at the child's grade.
 // Pure functions over plain data, like the session: the caller passes the seed and every time value.
-// The server measures the times (ms since the section started), so the browser clock never decides a result.
+// The server measures the times (ms since the section started), so the browser clock never decides when the time is up
+// or which answers count. Each fact also keeps the browser's time on it, which the speed uses when it is there (#185).
 import { atLeast } from "./constants";
 import { rngFor, type Rng } from "./rng";
 import type { ChildProfile, Grade } from "./types";
@@ -85,11 +86,33 @@ export interface FactSubmission {
   response: string;
   /** Milliseconds from the start of the section to when the server received the answer, measured by the server. */
   atMs: number;
+  /**
+   * #185: the time on this fact as the browser measured it, from when the fact appeared to when the child pressed
+   * Enter. It leaves out the time the answer waited to be saved (#122). Absent or null when the screen sent none.
+   */
+  browserMs?: number | null;
 }
 
 export interface FactAnswer extends FactSubmission {
   correct: boolean;
+  /** #185: the server's time on this fact: from the answer before it (or the start of the section) to this one's arrival. */
+  serverMs: number;
+  /** The browser's time on this fact, whole milliseconds, never more than `atMs`; null when there is none. */
+  browserMs: number | null;
 }
+
+/**
+ * The browser's time on a fact as the section keeps it: whole milliseconds, and never more than the time the section
+ * had run when the answer arrived (the fact appeared after the start and was answered before its arrival). Null when
+ * the browser sent no time, or something that is not a time.
+ */
+function browserTime(ms: number | null | undefined, atMs: number): number | null {
+  if (typeof ms !== "number" || !Number.isFinite(ms) || ms < 0) return null;
+  return Math.min(Math.round(ms), atMs);
+}
+
+/** The time on a fact for its speed: the browser's when there is one, else the server's (#185). */
+const factTime = (a: FactAnswer) => a.browserMs ?? a.serverMs;
 
 /** Plain data, so the server can store it and pick it up again. */
 export interface FactsSession extends FactsTest {
@@ -139,7 +162,9 @@ export function submitFact(session: FactsSession, submission: FactSubmission): F
   if (submission.atMs > SECTION_MS + FACTS_LATE_MS) throw new Error("The time is up");
   const response = submission.response.trim();
   const correct = /^\d+$/.test(response) && Number(response) === fact.answer;
-  return { ...session, answers: [...session.answers, { factId: fact.id, response, atMs: submission.atMs, correct }] };
+  const { atMs } = submission;
+  const answer: FactAnswer = { factId: fact.id, response, atMs, correct, serverMs: atMs - last, browserMs: browserTime(submission.browserMs, atMs) };
+  return { ...session, answers: [...session.answers, answer] };
 }
 
 /** What the browser gets: the facts still to come and the time left, or "done". `elapsedMs` comes from the server. */
@@ -175,7 +200,7 @@ export interface FactsResult {
   answered: number;
   correct: number;
   skipped: number;
-  /** Median time per answered fact, from the server's times; null when nothing was answered. */
+  /** Median time per answered fact: each fact's browser time, or its server time when it has none (#185); null when nothing was answered. */
   medianMs: number | null;
   accuracy: FactsAccuracy | null;
   speed: FactsSpeed | null;
@@ -188,18 +213,21 @@ function median(values: number[]): number | null {
   return sorted.length % 2 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
 }
 
-/** Scores the section. The time of a fact runs from the answer before it (or the start) to its own answer. */
+/**
+ * Scores the section. The time of a fact is the browser's, from when it appeared to Enter; without one, the server's,
+ * from the answer before it (or the start) to its own answer (#185). The browser's time leaves out the save queue, so a
+ * fast child's speed is their typing speed, not the network's (#122).
+ */
 export function factsResult(session: FactsSession): FactsResult {
-  const timed = session.answers.map((a, i) => ({ ...a, timeMs: a.atMs - (i > 0 ? session.answers[i - 1].atMs : 0) }));
-  const answered = timed.filter((a) => !isSkip(a.response));
+  const answered = session.answers.filter((a) => !isSkip(a.response));
   const correct = answered.filter((a) => a.correct).length;
-  const medianMs = median(answered.map((a) => a.timeMs));
+  const medianMs = median(answered.map(factTime));
   return {
     families: [...FACTS_BY_GRADE[session.grade]],
     seconds: FACTS_SECONDS,
     answered: answered.length,
     correct,
-    skipped: timed.length - answered.length,
+    skipped: session.answers.length - answered.length,
     medianMs,
     accuracy: answered.length === 0 ? null : atLeast(correct, answered.length, FACTS_SECURE_PERCENT) ? "secure" : "needs-practice",
     speed: medianMs === null ? null : medianMs <= FACTS_QUICK_MS ? "quick" : "needs-practice",
@@ -246,5 +274,5 @@ export function factsReport(result: FactsResult): ReportFacts {
 /** Rebuilds a section from the stored facts and the answers in order, marking each one again. */
 export function restoreFacts(stored: FactsTest, submissions: readonly FactSubmission[]): FactsSession {
   const start: FactsSession = { grade: stored.grade, facts: stored.facts, answers: [] };
-  return submissions.reduce((session, { factId, response, atMs }) => submitFact(session, { factId, response, atMs }), start);
+  return submissions.reduce((session, { factId, response, atMs, browserMs }) => submitFact(session, { factId, response, atMs, browserMs }), start);
 }

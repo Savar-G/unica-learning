@@ -7,8 +7,10 @@ import {
   REPORT_TEXT_NAME,
   RETAKE_DAYS,
   STRAND_DEVELOPING_PERCENT,
+  TOO_FAST_MS,
   STRAND_SECURE_PERCENT,
   WORKING_LEVEL_PERCENT,
+  type Certainty,
   type Level,
   type Province,
   type ReportModel,
@@ -116,9 +118,89 @@ export const STATUS_LABEL: Record<StrandStatus, string> = {
   "needs-attention": "Needs attention",
 };
 
-/** The legend under the areas: the thresholds, and what the question count can and cannot say (D-084). */
-export const thresholdsLine = (v: ReportView) =>
-  `Secure: ${STRAND_SECURE_PERCENT}% or more right. Developing: ${STRAND_DEVELOPING_PERCENT}-${STRAND_SECURE_PERCENT - 1}%. Needs attention: under ${STRAND_DEVELOPING_PERCENT}%. ${v.questions} questions is an early signal, not a final verdict.`;
+/**
+ * The legend under the areas: the thresholds, and what the question count can and cannot say (D-084). With the
+ * certainty labels (#189), it says what Clear and Early sign mean; a report stored before them keeps the early-signal line.
+ */
+export function thresholdsLine(v: ReportView): string {
+  const thresholds = `Secure: ${STRAND_SECURE_PERCENT}% or more right. Developing: ${STRAND_DEVELOPING_PERCENT}-${STRAND_SECURE_PERCENT - 1}%. Needs attention: under ${STRAND_DEVELOPING_PERCENT}%.`;
+  const labelled = v.model.strands.some((s) => s.certainty);
+  return labelled
+    ? `${thresholds} Clear: one more right or wrong answer would not change the result. Early sign: one more answer could change it.`
+    : `${thresholds} ${v.questions} questions is an early signal, not a final verdict.`;
+}
+
+/**
+ * How sure one result is (#189, D-108): "Clear", or "Early sign: workbook 1 checks this". A family on the waitlist has
+ * no workbook yet, so their early sign names none. Null for a result stored before the labels.
+ */
+export function certaintyText(v: ReportView, certainty: Certainty | undefined): string | null {
+  if (!certainty) return null;
+  if (certainty === "clear") return "Clear";
+  return v.model.callToAction === "card" ? "Early sign: workbook 1 checks this" : "Early sign";
+}
+
+/** #189: wrong answers from a run of very fast answers that left the score; null when there were none. */
+export function leftOutLine(v: ReportView): string | null {
+  const n = v.model.leftOut ?? 0;
+  if (n === 0) return null;
+  return n === 1
+    ? `1 wrong answer from a run of very fast answers was left out of the score. It looks like a guess, not what ${v.childName} knows.`
+    : `${n} wrong answers from a run of very fast answers were left out of the score. They look like guesses, not what ${v.childName} knows.`;
+}
+
+/**
+ * When the child's next test opens, as the account's start rules say (#189, D-108): "open" now, or it "opens" at `at`
+ * (epoch ms). The report page reads it; the email and the admin's copy do not know it, so they pass nothing.
+ */
+export type RetakeState = { kind: "open" } | { kind: "opens"; at: number };
+
+/** The first whole day a test that opens at `at` is open, in the family's time zone, so the date is true all day. */
+const firstWholeDay = (v: ReportView, at: number) => familyDate(v, at + DAY_MS - 1);
+
+/**
+ * #189: more than 30% of the answers were very fast, so the result may not be reliable. The offer follows `retake`: a
+ * new test now (the bypass of the 30-day wait, at most once per 30 days, D-108), the day it opens, or, when unknown,
+ * no time at all. Null at a steady pace, and for reports stored before #189.
+ */
+/** When the note and the help warning say the next test opens: now, from a day in the family's time zone, or unknown. */
+export type RetakeWhen = { kind: "now" } | { kind: "from"; date: string } | { kind: "unknown" };
+
+export function retakeWhen(v: ReportView, retake?: RetakeState): RetakeWhen {
+  if (!retake) return { kind: "unknown" };
+  return retake.kind === "open" ? { kind: "now" } : { kind: "from", date: firstWholeDay(v, retake.at) };
+}
+
+export interface ReliabilityNote {
+  title: string;
+  text: string;
+  offer: string;
+  /** The count the text gives. */
+  veryFast: number;
+  answers: number;
+  /** When the offer says the next test opens. */
+  when: RetakeWhen;
+}
+
+export function reliabilityNote(v: ReportView, retake?: RetakeState): ReliabilityNote | null {
+  const r = v.model.reliability;
+  if (!r) return null;
+  const name = v.childName;
+  const when = retakeWhen(v, retake);
+  const offer = when.kind === "unknown"
+    ? `${name} can take a new test, with new questions. Your account shows when it opens.`
+    : when.kind === "now"
+      ? `${name} can take a new test now, with new questions. There is no ${RETAKE_DAYS}-day wait.`
+      : `${name} can take a new test, with new questions, from ${when.date}.`;
+  return {
+    title: "This result may not be reliable",
+    text: `${name} answered ${r.veryFast} of ${r.answers} questions in under ${TOO_FAST_MS / 1000} seconds. Most questions take longer than that to work out, so this report may not show what ${name} can do.`,
+    offer,
+    veryFast: r.veryFast,
+    answers: r.answers,
+    when,
+  };
+}
 
 /** Share right, in whole percent, for the meter. */
 export const sharePercent = (s: { correct: number; total: number }) => (s.total > 0 ? Math.round((s.correct / s.total) * 100) : 0);
@@ -193,16 +275,19 @@ const DAY_MS = 24 * 60 * 60_000;
  * the 30-day rule of #72 (RETAKE_DAYS after this test finished): the date is the first whole day the next test is
  * open, in the family's time zone, so it is true all day. The account shows the exact time.
  */
-export function helpWarning(v: ReportView): { title: string; text: string; retake: string } | null {
+export function helpWarning(v: ReportView, retake?: RetakeState): { title: string; text: string; retake: string } | null {
   if (!v.model.helpWarning) return null;
-  const opensAt = Date.parse(v.completedAt) + RETAKE_DAYS * DAY_MS;
-  // The last moment of the 24 hours from opensAt falls on the day after it, unless it opens at midnight.
-  const firstWholeDay = familyDate(v, opensAt + DAY_MS - 1);
-  return {
-    title: "This level may be too high",
-    text: "We saw signs in this test that can make a level look higher than it is, such as help with some questions or answers given very quickly.",
-    retake: `For a level you can trust, ${v.childName} can take a new test alone, with new questions, from ${firstWholeDay}.`,
-  };
+  const title = "This level may be too high";
+  const text = "We saw signs in this test that can make a level look higher than it is, such as help with some questions or answers given very quickly.";
+  const trust = `For a level you can trust, ${v.childName} can take a new test alone, with new questions`;
+  // #189: after a result that may not be reliable, the retake line agrees with the reliability note (D-108).
+  if (v.model.reliability) {
+    const when = retakeWhen(v, retake);
+    const tail = when.kind === "unknown" ? ". Your account shows when it opens." : when.kind === "now" ? ". It is open now." : `, from ${when.date}.`;
+    return { title, text, retake: `${trust}${tail}` };
+  }
+  // The last moment of the 24 hours from the opening falls on the day after it, unless it opens at midnight.
+  return { title, text, retake: `${trust}, from ${firstWholeDay(v, Date.parse(v.completedAt) + RETAKE_DAYS * DAY_MS)}.` };
 }
 
 /** The short curriculum name: "BC", "Ontario". */

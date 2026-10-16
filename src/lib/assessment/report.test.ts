@@ -317,3 +317,39 @@ describe("report model", () => {
     ]);
   });
 });
+
+// #189 (spec #181): the report shows how sure each result is, and a reliability note when more than 30% of the answers
+// were very fast.
+describe("certainty and reliability on the report", () => {
+  it("carries the certainty of each area and of the working level", () => {
+    const placement = takeTest({ grade: 4, province: "BC" }, 1, (_, i) => i !== 0).placement;
+    const model = report(placement);
+    expect(model.level.certainty).toBe("clear");
+    expect(model.strands.filter((s) => s.certainty === "early-sign")).toHaveLength(1);
+    expect(model.strands.filter((s) => s.certainty === "clear")).toHaveLength(3);
+  });
+
+  it("has a reliability note with the count of very fast answers when more than 30% were very fast", () => {
+    const fast = (_: unknown, i: number) => (i % 3 === 0 ? 1_000 : 20_000);
+    const placement = takeTest({ grade: 4, province: "BC" }, 1, allRight, undefined, fast).placement;
+    expect(report(placement).reliability).toEqual({ veryFast: 14, answers: 42 });
+  });
+
+  it("counts the rushed wrong answers left out of the score, so the report can say so", () => {
+    const fast = (_: unknown, i: number) => (i < 3 ? 1_000 : 20_000);
+    const placement = takeTest({ grade: 4, province: "BC" }, 1, (_, i) => i >= 3, undefined, fast).placement;
+    expect(report(placement).leftOut).toBe(3);
+    expect(report(grade4()).leftOut).toBeUndefined();
+  });
+
+  it("has no reliability note for a test at a steady pace, nor for a placement stored before #189", () => {
+    expect(report(grade4()).reliability).toBeUndefined();
+    // As stored before #189: the keys are absent.
+    const without = <T extends object>(o: T, ...keys: string[]) => Object.fromEntries(Object.entries(o).filter(([k]) => !keys.includes(k))) as T;
+    const older = without(grade4(), "pace", "levelCertainty");
+    const model = report({ ...older, strands: older.strands.map((s) => without(s, "certainty")) });
+    expect(model.reliability).toBeUndefined();
+    expect(model.level.certainty).toBeUndefined();
+    expect(model.strands.every((s) => s.certainty === undefined)).toBe(true);
+  });
+});
