@@ -2,7 +2,8 @@ import { describe, expect, it } from "vitest";
 import { BANKS, RESPONSE_MAX, fillTemplate } from "@/lib/assessment";
 
 // A choice answer is stored as the choice text (#165). A choice the answers table refuses fails the answer route,
-// so no template may give one. Every grade and province draws from these banks.
+// so no template may give one. Every grade and province draws from these banks, and the province changes only a
+// question's level, never its choices (fillTemplate), so one scan per template covers them all.
 const SEEDS = Array.from({ length: 400 }, (_, i) => i * 7919 + 3);
 
 describe.each(Object.entries(BANKS))("the grades %s bank", (_, bank) => {
