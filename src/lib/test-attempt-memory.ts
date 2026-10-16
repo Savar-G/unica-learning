@@ -4,13 +4,16 @@
 // two calls started together interleave as two requests would; the check and the write after it happen together, as
 // in one database statement. Answers (#147): one answer per place in a test (the unique index on assessment_id and
 // position), and the drawings bucket as a map by path. Finish (#150): a test is completed only while it is in progress.
+// Strokes (#186): the stroke files of the same bucket, as their own map by path, so a test can check them apart.
 import type { Attempt, HelpAnswer, Placement, Route, StoredTest, Submission } from "@/lib/assessment";
 import type { FactsTest } from "@/lib/assessment";
 import { StoreError, type AttemptChild, type AttemptStore, type NewAnswer } from "@/lib/test-attempt";
 import type { FactsStore, NewFactAnswer } from "@/lib/test-attempt";
 import type { QuestionShown, ShownStore } from "@/lib/test-attempt";
+import type { ContextStore } from "@/lib/test-attempt";
 import { NO_ROUND, type ExtraRoundRecord, type ExtraRoundStore } from "@/lib/test-attempt";
-import { workPath } from "@/lib/work-payload";
+import type { TestDevice } from "@/lib/test-context";
+import { strokesPath, workPath } from "@/lib/work-payload";
 
 /** A row of public.answers. A test can give only what the module reads back (a Submission); the module stores all of it. */
 export type MemoryAnswer = Submission & Partial<NewAnswer>;
@@ -29,7 +32,18 @@ export type MemoryTest = Attempt & {
   help?: HelpAnswer | null;
   /** #190: the extra round's record; absent means nothing recorded. */
   extraRound?: ExtraRoundRecord;
-};
+} & MemoryContext;
+/**
+ * The test context of a stored test (#185): its device, and its halfway break (when it was shown, when it ended,
+ * whether the child skipped it, and its length as the browser measured it). None until the screen sends them.
+ */
+export interface MemoryContext {
+  device?: TestDevice | null;
+  breakStartedAt?: number | null;
+  breakEndedAt?: number | null;
+  breakSkipped?: boolean | null;
+  breakMs?: number | null;
+}
 /** A row of public.children. */
 export type MemoryChild = AttemptChild & { parentId: string };
 /** A test's facts section: one row of public.assessment_facts with its rows of public.fact_answers (`position` is 0-based). */
@@ -51,7 +65,8 @@ const attemptOf = ({ id, status, startedAt, lastAnswerAt, resumeUntil, completed
 
 /**
  * A store over `children` and `tests`. The returned arrays are the store's rows, so a test can check what it holds.
- * A new test gets the id "a<n>", counting on from the tests given. `drawings` is the drawings bucket, by path.
+ * A new test gets the id "a<n>", counting on from the tests given. `drawings` is the drawings bucket, by path;
+ * `strokes` the stroke files in it (#186), by path.
  */
 export function memoryAttemptStore({ children: kids = [], tests: initial = [] }: { children?: MemoryChild[]; tests?: MemoryTest[] } = {}) {
   const children = kids.map((c) => ({ ...c }));
@@ -59,6 +74,7 @@ export function memoryAttemptStore({ children: kids = [], tests: initial = [] }:
   let next = tests.length;
   const drawings = new Map<string, Uint8Array>();
   let drawn = 0;
+  const strokes = new Map<string, string>();
   /** Set an operation's error to make every call of it throw, as a database error would. */
   const fail: Partial<Record<keyof AttemptStore, Error>> = {};
   const begin = async (operation: keyof AttemptStore) => {
@@ -76,7 +92,7 @@ export function memoryAttemptStore({ children: kids = [], tests: initial = [] }:
       await begin("loadFacts");
       const row = facts.find((f) => f.assessmentId === id);
       if (!row) return null;
-      const answers = [...row.answers].sort((x, y) => x.position - y.position).map(({ factId, response, atMs }) => ({ factId, response, atMs }));
+      const answers = [...row.answers].sort((x, y) => x.position - y.position).map(({ factId, response, atMs, browserMs }) => ({ factId, response, atMs, browserMs }));
       return { startedAt: row.startedAt, test: row.test, answers };
     },
     async insertFacts(id, { startedAt, test }) {
@@ -112,6 +128,28 @@ export function memoryAttemptStore({ children: kids = [], tests: initial = [] }:
       await begin("shownAt");
       const row = shows.find((s) => s.assessmentId === id && s.position === position);
       return row ? { position: row.position, questionId: row.questionId, at: row.at } : null;
+    },
+  };
+
+  /** The test context (#185): device/shown require an open test; an end also takes a completed test before its deadline. */
+  const openTest = (id: string) => tests.find((t) => t.id === id && t.status === "in_progress");
+  const contextOps: ContextStore = {
+    async recordDevice(id, device) {
+      await begin("recordDevice");
+      const row = openTest(id);
+      if (row && !row.device) row.device = { ...device };
+    },
+    async startBreak(id, at) {
+      await begin("startBreak");
+      const row = openTest(id);
+      if (row && row.resumeUntil >= at && row.breakStartedAt == null) row.breakStartedAt = at;
+    },
+    async endBreak(id, { at, skipped, lengthMs }) {
+      await begin("endBreak");
+      const row = tests.find((t) => t.id === id && (t.status === "in_progress" || t.status === "completed") && t.resumeUntil >= at);
+      if (!row || row.breakEndedAt != null) return;
+      // The end reached the store first: its start is the browser's length before it.
+      Object.assign(row, { breakStartedAt: row.breakStartedAt ?? at - lengthMs, breakEndedAt: at, breakSkipped: skipped, breakMs: lengthMs });
     },
   };
 
@@ -153,6 +191,7 @@ export function memoryAttemptStore({ children: kids = [], tests: initial = [] }:
   const store: AttemptStore = {
     ...factsOps,
     ...showsOps,
+    ...contextOps,
     ...roundOps,
     async child(parent, childId) {
       await begin("child");
@@ -172,7 +211,14 @@ export function memoryAttemptStore({ children: kids = [], tests: initial = [] }:
       if (!row) return null;
       const answers = row.answers.map(({ questionId, response, timeMs }) => ({ questionId, response, timeMs }));
       // Stored as JSON, as in the database: a later write to the row does not change what was read.
-      return { attempt: attemptOf(row), test: structuredClone(row.test), answers, help: row.help ?? null, extraRound: { ...(row.extraRound ?? NO_ROUND) } };
+      return {
+        attempt: attemptOf(row),
+        test: structuredClone(row.test),
+        answers,
+        ...(row.breakStartedAt != null && { break: { startedAt: row.breakStartedAt, ended: row.breakEndedAt != null } }),
+        help: row.help ?? null,
+        extraRound: { ...(row.extraRound ?? NO_ROUND) },
+      };
     },
     async expire(id, now) {
       await begin("expire");
@@ -205,6 +251,16 @@ export function memoryAttemptStore({ children: kids = [], tests: initial = [] }:
       await begin("removeDrawing");
       drawings.delete(path);
     },
+    async storeStrokes(parent, id, questionId, json) {
+      await begin("storeStrokes");
+      const path = strokesPath(parent, id, questionId, String(++drawn));
+      strokes.set(path, json);
+      return path;
+    },
+    async removeStrokes(path) {
+      await begin("removeStrokes");
+      strokes.delete(path);
+    },
     async insertAnswer(id, answer) {
       await begin("insertAnswer");
       const row = tests.find((t) => t.id === id);
@@ -235,5 +291,5 @@ export function memoryAttemptStore({ children: kids = [], tests: initial = [] }:
       return { id };
     },
   };
-  return { store, children, tests, drawings, facts, shows, fail };
+  return { store, children, tests, drawings, strokes, facts, shows, fail };
 }

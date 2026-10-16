@@ -44,7 +44,8 @@ export function FactsSection({ testId, onDone, onError, problem }: { testId: str
   const [view, setView] = useState<View>({ name: "loading", failed: false });
   const base = `/api/account/assessments/${testId}/facts`;
   // Answers wait here and go to the server one at a time, in order, so the server's times follow the child's pace.
-  const queue = useRef<{ factId: string; response: string }[]>([]);
+  // Each one carries the browser's time on its fact (#185): the wait in this queue is not the child's (#122).
+  const queue = useRef<{ factId: string; response: string; timeMs: number }[]>([]);
   const sending = useRef<Promise<void> | null>(null);
   const tracked = useRef(false);
   // The parent passes new callbacks on each render; keep the latest here so a re-render never reloads the section.
@@ -131,8 +132,8 @@ export function FactsSection({ testId, onDone, onError, problem }: { testId: str
     else onError(res.error);
   };
 
-  const answer = useCallback((factId: string, response: string) => {
-    queue.current.push({ factId, response });
+  const answer = useCallback((factId: string, response: string, timeMs: number) => {
+    queue.current.push({ factId, response, timeMs });
     flush();
   }, [flush]);
 
@@ -199,7 +200,8 @@ function Running({ facts, seconds, deadline, onAnswer, onEnd, problem }: {
   facts: PublicFact[];
   seconds: number;
   deadline: number;
-  onAnswer: (factId: string, response: string) => void;
+  /** `timeMs`: the browser's time on the fact, from when it appeared to Enter (#185). */
+  onAnswer: (factId: string, response: string, timeMs: number) => void;
   onEnd: (reason: FactsEnd) => void;
   problem: ReactNode;
 }) {
@@ -210,7 +212,12 @@ function Running({ facts, seconds, deadline, onAnswer, onEnd, problem }: {
   const fact = facts[index];
   // Start unmounts the Start button: move focus to the fact, not the page body.
   const factRef = useRef<HTMLParagraphElement>(null);
-  useEffect(() => factRef.current?.focus(), []);
+  // When the fact on screen appeared: the first when the section shows, each next one at the Enter before it.
+  const shownAt = useRef<number | null>(null);
+  useEffect(() => {
+    shownAt.current = performance.now();
+    factRef.current?.focus();
+  }, []);
 
   const end = useCallback((reason: FactsEnd) => {
     if (over.current) return;
@@ -237,7 +244,10 @@ function Running({ facts, seconds, deadline, onAnswer, onEnd, problem }: {
 
   const enter = useCallback(() => {
     if (over.current || !fact) return;
-    onAnswer(fact.id, entry);
+    const now = performance.now();
+    onAnswer(fact.id, entry, Math.round(now - (shownAt.current ?? now)));
+    // The next fact appears with this Enter.
+    shownAt.current = now;
     setEntry("");
     if (index + 1 >= facts.length) end("all_answered");
     else setIndex(index + 1);

@@ -1,0 +1,9 @@
+{
+  "round": 24,
+  "decision": "What should the copy and structure of a new /compare page be (Unica vs school, tutor programs, learning centres, online learning platforms)?",
+  "primary_axis": "copy",
+  "invariants": ["warm look tokens", "check-table marks from D-097", "categories only, no brand names (D-064)", "facts from .design/research/competitors-2026-10.md and compare-page-2026-10-16.md", "no performance claims"],
+  "options": [
+    {"id": "A", "artifact": "compare-page.html", "bet": "Explicit headline listing all four options, a five-column at-a-glance table, then one block per option (good at / harder / with Unica), FAQ and the free assessment", "benefit": "Fair to each option, so the comparison reads as honest", "cost": "Long page; five columns need a phone switch", "risk": "Online platforms look strong on price and adapting"}
+  ]
+}

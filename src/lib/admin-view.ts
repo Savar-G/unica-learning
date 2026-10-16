@@ -23,6 +23,7 @@ import {
 import { CURRICULA } from "@/lib/signup";
 import type { AssessmentStatus } from "@/lib/test-api";
 import type { AnswerChange, AnswerEvents } from "@/lib/answer-events";
+import type { TestDevice } from "@/lib/test-context";
 
 export const ADMIN_PATH = "/admin";
 /** The tests list. /admin is the dashboard (D-099). */
@@ -272,6 +273,10 @@ export interface FactAnswerRecord {
   correct: boolean;
   /** The server's time since the section started. */
   at_ms: number;
+  /** #185: the server's time on the fact (since the answer before). Null or absent for answers from before #185. */
+  server_ms?: number | null;
+  /** #185: the browser's time on the fact, from when it appeared to Enter. Null when the screen sent none. */
+  browser_ms?: number | null;
 }
 
 export interface FactLine {
@@ -282,11 +287,13 @@ export interface FactLine {
   skipped: boolean;
   correct: boolean;
   atMs: number;
-  /** Time since the answer before (or since the start, for the first). */
-  tookMs: number;
+  /** The server's time on the fact: since the answer before (or since the start, for the first). */
+  serverMs: number;
+  /** The browser's time on the fact (#185); null when there is none. The fact speed uses it when it is there. */
+  browserMs: number | null;
 }
 
-/** The quick facts answers in order, each with its fact and the time it took. */
+/** The quick facts answers in order, each with its fact and the time it took, by the server and by the browser. */
 export function factLines(test: FactsTest, answers: readonly FactAnswerRecord[]): FactLine[] {
   const facts = new Map(test.facts.map((f) => [f.id, f]));
   let before = 0;
@@ -300,11 +307,61 @@ export function factLines(test: FactsTest, answers: readonly FactAnswerRecord[])
       skipped: a.response === "",
       correct: a.correct,
       atMs: a.at_ms,
-      tookMs: a.at_ms - before,
+      // Answers from before #185 have no stored server time: it is the time since the answer before.
+      serverMs: a.server_ms ?? a.at_ms - before,
+      browserMs: a.browser_ms ?? null,
     };
     before = a.at_ms;
     return line;
   });
+}
+
+/** The test context of one test (#185), as public.assessments stores it. Null everywhere for tests from before #185. */
+export interface TestContextRecord {
+  device: TestDevice | null;
+  break_started_at: string | null;
+  break_ended_at: string | null;
+  break_skipped: boolean | null;
+  /** The break's length as the browser measured it (migration add_break_length). */
+  break_ms: number | null;
+}
+
+const DEVICE_WORDS: Record<TestDevice["deviceClass"] | NonNullable<TestDevice["input"]> | TestDevice["browser"], string> = {
+  phone: "Phone", tablet: "Tablet", desktop: "Computer", touch: "Touch", pen: "Pen", mouse: "Mouse or trackpad",
+  safari: "Safari", chrome: "Chrome", firefox: "Firefox", edge: "Edge", samsung: "Samsung Internet", other: "Other",
+};
+
+/** How the halfway break went, in plain words. */
+function breakWords(c: TestContextRecord): string {
+  if (!c.break_started_at) return "Not recorded";
+  if (!c.break_ended_at) return "Shown, no end recorded";
+  return c.break_skipped ? 'Skipped ("Keep going")' : 'Took a break ("I am back from my break")';
+}
+
+/** The break's length: the browser's when it is stored, else the time between the two server times. */
+function breakLength(c: TestContextRecord): number | null {
+  if (!c.break_started_at || !c.break_ended_at) return null;
+  return c.break_ms ?? Math.max(0, Date.parse(c.break_ended_at) - Date.parse(c.break_started_at));
+}
+
+/**
+ * The "Break and device" rows of the admin page for one test (#185): how the halfway break went, its length, when it
+ * was shown and when it ended (Pacific), then the device, input, screen size and browser. A test from before #185 shows
+ * "Not recorded" and dashes, always in the same rows.
+ */
+export function contextFacts(c: TestContextRecord): [string, string][] {
+  const length = breakLength(c);
+  const d = c.device;
+  return [
+    ["Halfway break", breakWords(c)],
+    ["Break length", length === null ? "-" : duration(length)],
+    ["Break shown (Pacific)", when(c.break_started_at)],
+    ["Break ended (Pacific)", when(c.break_ended_at)],
+    ["Device", d ? DEVICE_WORDS[d.deviceClass] : "Not recorded"],
+    ["Input", d ? (d.input ? DEVICE_WORDS[d.input] : "Not known") : "-"],
+    ["Screen (CSS pixels)", d ? `${d.screenWidth} × ${d.screenHeight}` : "-"],
+    ["Browser", d ? DEVICE_WORDS[d.browser] : "-"],
+  ];
 }
 
 const PACIFIC = new Intl.DateTimeFormat("en-CA", {

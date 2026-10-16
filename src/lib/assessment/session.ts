@@ -348,13 +348,21 @@ export function restoreSession(stored: StoredTest, submissions: readonly Submiss
   return submissions.reduce((session, { questionId, response, timeMs }) => submitAnswer(session, { questionId, response, timeMs }), start);
 }
 
+/**
+ * How many questions a stored test has once it is routed: stage 1 plus the stored form of its route. The up route is
+ * longer than the grade band's length (#188), so the band is only the answer while the route is not chosen yet.
+ */
+export function testLength(test: StoredTest, route: Route | null): number {
+  return route ? test.stage1.length + test.stage2[route].length : bandFor(test.profile.grade).length;
+}
+
 /** What the browser gets next: the current question without its answer, or "complete". */
 export function testStep(session: Session): TestStep {
   const breakAfter = session.stage1.length;
   // Before routing, use the longest stored form. Once routed, the exact stored form is authoritative.
-  const main = breakAfter + (session.route
-    ? session.stage2[session.route].length
-    : Math.max(...Object.values(session.stage2).map((form) => form.length)));
+  const main = session.route
+    ? testLength(session, session.route)
+    : breakAfter + Math.max(...Object.values(session.stage2).map((form) => form.length));
   // #190: the extra round, when the child took one, comes after the main test and counts in its total.
   const extra = session.extra?.length ?? 0;
   const total = main + extra;

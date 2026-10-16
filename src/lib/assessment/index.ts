@@ -4,6 +4,7 @@ export * from "./certainty";
 export * from "./constants";
 export * from "./deletion";
 export { extraRoundOffer, extraRoundTaken, mainAnswered, startExtraRound } from "./extra-round";
+export * from "./retention";
 export * from "./facts";
 export * from "./flags";
 export * from "./rushing";
@@ -47,6 +48,7 @@ export {
   scoredAgainst,
   storedTest,
   submitAnswer,
+  testLength,
   testStep,
   toPublicQuestion,
   type SessionOptions,
@@ -58,3 +60,4 @@ export { isLineChoice, namesChoice, readAloudText, sayChoice, spokenChoices } fr
 export * from "./payments";
 export * from "./retention-worker";
 export { BC_SKILL_MAP, STRAND_NAMES, skillMapProblems, type BcSkill, type BcStandard, type SkillMap } from "./skill-map";
+export { SKILL_TAGS, skillTagProblems, tagSkills, templateSkills, type SkillTag, type TemplateSkill } from "./skill-tags";

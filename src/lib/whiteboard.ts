@@ -13,13 +13,27 @@ export interface Stroke {
   pts: [number, number][];
 }
 
+/**
+ * One thing the child did on the board, in order (#186): a finished stroke with the time of each of its points (the
+ * clock of performance.now() and the pointer events), an undo, or a clear. `times` is null for a stroke the draft kept
+ * from an old draft that did not record times.
+ */
+export type BoardEvent =
+  | { kind: "stroke"; stroke: Stroke; times: number[] | null }
+  | { kind: "undo"; at: number }
+  | { kind: "clear"; at: number };
+
 /** What is on the board for one question. */
 export interface BoardState {
   strokes: Stroke[];
   text: string;
+  /** Everything drawn, undone and cleared, in order, for the admin's stroke replay (#186). */
+  log: BoardEvent[];
+  /** The original question start, on this visit's performance clock. Negative after a reload. */
+  shownAt?: number;
 }
 
-export const emptyBoard = (): BoardState => ({ strokes: [], text: "" });
+export const emptyBoard = (): BoardState => ({ strokes: [], text: "", log: [] });
 
 /** True when at least one pencil stroke is on the board. Eraser strokes alone are not a drawing. */
 export const hasDrawing = (strokes: readonly Stroke[]) => strokes.some((s) => !s.erase && s.pts.length > 0);
@@ -134,10 +148,20 @@ export const draftPrefix = (testId: string) => `${DRAFT_ROOT}${testId}:`;
 
 const round = (n: number) => Math.round(n * 10_000) / 10_000;
 
-export function encodeDraft(board: BoardState): string {
+const draftStroke = (s: Stroke): Stroke => ({ erase: s.erase, w: round(s.w), pts: s.pts.map(([x, y]) => [round(x), round(y)]) });
+
+/** Store the event clock against its time origin so a later visit can recover the original relative times. */
+export function encodeDraft(board: Pick<BoardState, "strokes" | "text"> & Partial<Pick<BoardState, "log" | "shownAt">>, timeOrigin = 0): string {
   return JSON.stringify({
-    strokes: board.strokes.map((s) => ({ erase: s.erase, w: round(s.w), pts: s.pts.map(([x, y]) => [round(x), round(y)]) })),
+    strokes: board.strokes.map(draftStroke),
     text: board.text,
+    ...(board.log ? {
+      v: 2,
+      shownAt: (board.shownAt ?? 0) + timeOrigin,
+      log: board.log.map((e) => e.kind === "stroke"
+        ? { kind: e.kind, stroke: draftStroke(e.stroke), times: e.times?.map((t) => t + timeOrigin) ?? null }
+        : { kind: e.kind, at: e.at + timeOrigin }),
+    } : {}),
   });
 }
 
@@ -150,8 +174,16 @@ const isStroke = (s: unknown): s is Stroke => {
   return typeof erase === "boolean" && typeof w === "number" && w > 0 && w <= 100 && Array.isArray(pts) && pts.length > 0 && pts.every(isPoint);
 };
 
-/** The board saved under a draft key, or null when there is none or it is not a board. */
-export function decodeDraft(raw: string | null): BoardState | null {
+const isEvent = (e: unknown): e is BoardEvent => {
+  if (!e || typeof e !== "object") return false;
+  const event = e as Partial<BoardEvent>;
+  if (event.kind === "undo" || event.kind === "clear") return Number.isFinite(event.at);
+  return event.kind === "stroke" && isStroke(event.stroke) && (event.times === null ||
+    (Array.isArray(event.times) && event.times.length === event.stroke.pts.length && event.times.every(Number.isFinite)));
+};
+
+/** Restore the log onto this visit's clock. Old drafts keep their visible work, with unknown times. */
+export function decodeDraft(raw: string | null, timeOrigin = 0): BoardState | null {
   if (!raw) return null;
   let data: unknown;
   try {
@@ -160,7 +192,15 @@ export function decodeDraft(raw: string | null): BoardState | null {
     return null;
   }
   if (!data || typeof data !== "object" || Array.isArray(data)) return null;
-  const { strokes, text } = data as { strokes?: unknown; text?: unknown };
+  const { strokes, text, v, shownAt, log } = data as { strokes?: unknown; text?: unknown; v?: unknown; shownAt?: unknown; log?: unknown };
   if (!Array.isArray(strokes) || !strokes.every(isStroke) || typeof text !== "string" || [...text].length > WORK_TEXT_MAX) return null;
-  return { strokes, text };
+  if (v === 2 && typeof shownAt === "number" && Number.isFinite(shownAt) && Array.isArray(log) && log.every(isEvent)) {
+    return {
+      strokes, text, shownAt: shownAt - timeOrigin,
+      log: log.map((e) => e.kind === "stroke"
+        ? { kind: e.kind, stroke: draftStroke(e.stroke), times: e.times?.map((t) => t - timeOrigin) ?? null }
+        : { kind: e.kind, at: e.at - timeOrigin }),
+    };
+  }
+  return { strokes, text, log: strokes.map((stroke) => ({ kind: "stroke", stroke, times: null })) };
 }
