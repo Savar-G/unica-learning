@@ -683,6 +683,20 @@ describe("the learner profile's AI parts", () => {
     reader: db.readers.key(), comparison: db.comparison, store: db.job.store, profiles: db.profiles.store, reviewer: null, profileAi, transport: mail.transport, ledger: memoryReportLedger().ledger,
   });
   const stored = (db: Database) => storedProfile(db.profiles.rows()[0].profile)!;
+  /** The model id on each AI part of a profile. */
+  const models = (profile: LearnerProfile) => Object.values(profile.ai ?? {}).map((part) => part.model);
+  const PRIYAS_PARENT = { feeling: "avoids", goal: "catch_up", weeklyTime: "1_to_2h" };
+  /** A fake client whose answers wait until the test lets them go, as a slow AI. */
+  function held(model: string) {
+    let release = () => {};
+    const gate = new Promise<void>((resolve) => { release = resolve; });
+    return { client: fakeAiClient({ model, answer: async (r) => { await gate; return good(r); } }), release: () => release() };
+  }
+  /** The learning card's rebuild, as the learning route runs it after Priya saves the card. */
+  const answerCard = (db: Database, ai: AiClient) => {
+    db.profiles.learning["child-1"] = PRIYAS_ANSWERS;
+    return rebuildLatestProfile("child-1", { reader: db.readers.key(), store: db.profiles.store, ai });
+  };
 
   it("are written through the AI client from the facts, and stored with the facts, each labelled with the model id", async () => {
     const db = struggling(PRIYAS_ANSWERS);
@@ -698,7 +712,8 @@ describe("the learner profile's AI parts", () => {
     const read = factsOf(request);
     const profile = stored(db);
     const { ai: parts, ...facts } = profile;
-    expect(read.profile).toEqual(facts);
+    // The AI read the stored facts, without the store's build id.
+    expect({ ...read.profile, buildId: expect.any(String) }).toEqual(facts);
     expect(read.child).toBe(REPORT_TEXT_NAME);
     expect(read.profile.parent).toEqual({ feeling: "avoids", goal: "catch_up", weeklyTime: "1_to_2h" });
     expect(Object.keys(read.misconceptions).length).toBeGreaterThan(0);
@@ -798,6 +813,104 @@ describe("the learner profile's AI parts", () => {
     expect(factsOf(ai.requests[1]).profile.parent).toEqual({ feeling: "avoids", goal: "catch_up", weeklyTime: "1_to_2h" });
     expect(stored(db).parent.goal).toBe("catch_up");
     expect(stored(db).ai?.workbookPlan?.model).toBe(MODEL);
+  });
+
+  it("are asked for after the report's emails: a slow AI never holds up the parent's email", async () => {
+    const db = struggling();
+    const mail = memoryTransport();
+    const job = held(MODEL);
+    const running = runWith(db, job.client, mail);
+    await vi.waitFor(() => expect(job.client.requests).toHaveLength(1));
+
+    // The AI has not answered: the report, the profile's facts and both emails are done.
+    expect(db.tables.reports).toHaveLength(1);
+    expect(mail.delivered.map((m) => m.to)).toEqual(["priya@family.ca", "savar@unicalearning.com"]);
+    expect(stored(db).struggles.map((s) => s.code)).toEqual([WEAK]);
+    expect(stored(db).ai).toBeUndefined();
+    job.release();
+    await running;
+    expect(models(stored(db))).toEqual([MODEL, MODEL, MODEL, MODEL]);
+    expect(mail.delivered).toHaveLength(2);
+  });
+
+  it("are not stored when the learning card's rebuild stored newer facts while the job's AI wrote: the card's answers stay", async () => {
+    const CARD = ["card-model", "card-model", "card-model", "card-model"];
+    for (const [cardAi, cardModels] of [
+      [fakeAiClient({ model: "card-model", answer: good }), CARD],
+      [fakeAiClient({ model: "card-model", answer: () => { throw new Error("OpenRouter answered 503: no provider"); } }), []],
+    ] as const) {
+      const db = struggling();
+      const job = held("job-model");
+      const running = runWith(db, job.client);
+      // The job stored the facts and asked its AI, which has not answered.
+      await vi.waitFor(() => expect(job.client.requests).toHaveLength(1));
+      expect(factsOf(job.client.requests[0]).profile.parent).toEqual({ feeling: null, goal: null, weeklyTime: null });
+
+      // Meanwhile Priya saves the learning card: its rebuild starts and finishes, with or without its AI parts.
+      await answerCard(db, cardAi);
+      const card = stored(db);
+      expect(card.parent).toEqual(PRIYAS_PARENT);
+      expect(models(card)).toEqual(cardModels);
+
+      // Then the job's AI answers, from the facts without her answers: its parts are not stored, and her answers stay.
+      job.release();
+      await running;
+      expect(db.profiles.rows()).toHaveLength(1);
+      expect(stored(db)).toEqual(card);
+      expect(stored(db).parent).toEqual(PRIYAS_PARENT);
+      expect(stored(db).preferences).toEqual({ styles: ["pictures"], interests: ["space"] });
+      expect(models(stored(db))).not.toContain("job-model");
+    }
+    expect(console.info).toHaveBeenCalledWith("[profile] AI parts not stored: a later build replaced the profile", TEST);
+  });
+
+  it("are stored by each build in turn when the job's AI answers before the parent saves the card", async () => {
+    const db = struggling();
+    const job = held("job-model");
+    const running = runWith(db, job.client);
+    await vi.waitFor(() => expect(job.client.requests).toHaveLength(1));
+    job.release();
+    await running;
+    expect(models(stored(db))).toEqual(["job-model", "job-model", "job-model", "job-model"]);
+
+    await answerCard(db, fakeAiClient({ model: "card-model", answer: good }));
+    expect(stored(db).parent).toEqual(PRIYAS_PARENT);
+    expect(models(stored(db))).toEqual(["card-model", "card-model", "card-model", "card-model"]);
+  });
+
+  it("of the later build are stored when both AIs write at once and the card's answers last", async () => {
+    const db = struggling();
+    const job = held("job-model");
+    const card = held("card-model");
+    const running = runWith(db, job.client);
+    await vi.waitFor(() => expect(job.client.requests).toHaveLength(1));
+    const rebuilt = answerCard(db, card.client);
+    await vi.waitFor(() => expect(card.client.requests).toHaveLength(1));
+
+    // The job's AI answers first: the card's build holds the row, so the job's parts are not stored.
+    job.release();
+    await running;
+    expect(stored(db).parent).toEqual(PRIYAS_PARENT);
+    expect(stored(db).ai).toBeUndefined();
+
+    card.release();
+    expect((await rebuilt)?.ai?.workbookPlan?.model).toBe("card-model");
+    expect(stored(db).parent).toEqual(PRIYAS_PARENT);
+    expect(models(stored(db))).toEqual(["card-model", "card-model", "card-model", "card-model"]);
+  });
+
+  it("keep the report and its emails when they cannot be stored, and log the failure", async () => {
+    const db = struggling();
+    const mail = memoryTransport();
+    const profiles = { ...db.profiles.store, saveAi: async () => { throw new Error("profile AI save: database down"); } };
+    await runReportJob(TEST, ORIGIN, {
+      reader: db.readers.key(), comparison: db.comparison, store: db.job.store, profiles, reviewer: null, profileAi: fakeAiClient({ model: MODEL, answer: good }), transport: mail.transport, ledger: memoryReportLedger().ledger,
+    });
+    expect(db.tables.reports).toHaveLength(1);
+    expect(mail.delivered.map((m) => m.to)).toEqual(["priya@family.ca", "savar@unicalearning.com"]);
+    expect(stored(db).struggles.map((s) => s.code)).toEqual([WEAK]);
+    expect(stored(db).ai).toBeUndefined();
+    expect(console.error).toHaveBeenCalledWith("[profile] failed", TEST, "profile AI save: database down");
   });
 
   it("are not asked for when the AI is off: no client, no call, the facts only", async () => {

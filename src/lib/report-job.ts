@@ -5,7 +5,7 @@ import { SUPPORT_EMAIL } from "@/lib/contact";
 import { adminTestPath } from "@/lib/admin-view";
 import { loadComparisonInput } from "@/lib/comparison-store";
 import { sendEmail, sendEmailOnce, type MailTransport, type Sender } from "@/lib/email-delivery";
-import { storeLearnerProfile, type LearnerProfileStore } from "@/lib/learner-profile";
+import { addProfileAi, storeProfileFacts, type LearnerProfileStore, type ProfileBuild } from "@/lib/learner-profile";
 import { profileAiClient } from "@/lib/learner-profile-ai";
 import { learnerProfileStore } from "@/lib/learner-profile-store";
 import { reportAlert, reportEmail, type ParentContact } from "@/lib/report-email";
@@ -27,14 +27,16 @@ import { aiReport, aiReviewer, type AiOutcome, type WorkReviewer } from "@/lib/w
 //      It stops after at most REVIEW_STAGE_MS + TEXT_STAGE_MS (165 s; Vercel stops a function at 300 s). Off, failed or
 //      timed out: the report has no AI comments and no AI text.
 //   3. Build the report model with the assessment core, and store it: one report per assessment.
-//   3b. Build the learner profile (#196, src/lib/learner-profile.ts) from the same inputs and store it: one per test,
-//      built again on each run, so a run after an extra round (#190) or a later answer on the learning card counts.
-//      Then, only when OPENROUTER_API_KEY is set, the AI writes its parts (#197) and the profile is stored again with
-//      the parts that pass the checks; this stops after at most PROFILE_AI_MS (60 s), so the job stays under 300 s.
-//      A failure is logged; the facts stay stored, and the report and its emails go on.
+//   3b. Build the learner profile's facts (#196, src/lib/learner-profile.ts) from the same inputs and store them: one
+//      profile per test, built again on each run, so a run after an extra round (#190) or a later answer on the
+//      learning card counts. A failure is logged, and the report and its emails go on.
 //   4. Email the report to the parent. The email and the alert show the report view of the stored report, from the
 //      report-loading module (#163): the same view that the report page and the admin report view show.
 //   5. Email Savar an alert, with what the AI did, and whether the parent email was sent, refused or unknown.
+//   6. Last, only when OPENROUTER_API_KEY is set and the facts were stored: the AI writes the profile's parts (#197),
+//      and the profile is stored again with the parts that pass the checks, unless a later build replaced it. Only
+//      admins read them, so the emails never wait for them. This stops after at most PROFILE_AI_MS (60 s), so the job
+//      stays under 300 s. A failure is logged; the facts stay stored.
 // Safe to run twice: the report is stored once, and each email is sent at most once through the delivery module
 // (src/lib/email-delivery.ts, #151), which claims it on the report row (src/lib/report-row-ledger.ts) before it is
 // sent. If the parent email fails, the report is still stored and visible in the account, and the alert tells Savar.
@@ -96,6 +98,7 @@ export async function runReportJob(assessmentId: string, origin: string, options
   if (!db) return;
   const { ledger: book, store } = db;
   const { reviewer, transport, profileAi } = options;
+  let profile: ProfileBuild | null = null;
   try {
     const inputs = await loadReportInputs(db.reader, assessmentId, db.comparison);
     if (!inputs) {
@@ -104,7 +107,7 @@ export async function runReportJob(assessmentId: string, origin: string, options
     }
     const { assessment } = inputs;
     const { report, ai } = await storeReport(store, inputs, reviewer === undefined ? aiReviewer() : reviewer);
-    await profileStep(db.profiles, inputs, profileAi === undefined ? profileAiClient() : profileAi);
+    profile = await profileStep(assessmentId, () => storeProfileFacts(db.profiles, inputs));
 
     // The view of the email and the alert, from the report-loading module with the secret key (#163): the same view
     // that the report page and the admin report view show. The secret key signs nothing: the email has no drawings.
@@ -118,12 +121,15 @@ export async function runReportJob(assessmentId: string, origin: string, options
     const parentEmail = await emailParent(store, book, transport, report.id, view, { ...parent, id: assessment.parentId }, `${url}?src=email`);
     // Another run holds the claim of the parent email: it is sending now, or its send's outcome is unknown. That run
     // sends (or sent) the alert.
-    if (parentEmail === "busy") return;
-    await alertSavar(book, transport, report.id, reportAlert({ view, parent, url: `${origin}${adminTestPath(assessment.id)}`, flags: assessment.placement.flags ?? [], help: assessment.help, parentEmail, ai }), parent.email);
+    if (parentEmail !== "busy") {
+      await alertSavar(book, transport, report.id, reportAlert({ view, parent, url: `${origin}${adminTestPath(assessment.id)}`, flags: assessment.placement.flags ?? [], help: assessment.help, parentEmail, ai }), parent.email);
+    }
   } catch (e) {
     console.error("[report] failed", assessmentId, message(e));
     await alertFailure(transport, assessmentId, message(e));
   }
+  // Step 6, after the emails: the profile's AI parts, over the facts this run stored.
+  if (profile) await profileStep(assessmentId, () => addProfileAi(db.profiles, profile, { ai: profileAi === undefined ? profileAiClient() : profileAi }));
 }
 
 /**
@@ -151,12 +157,13 @@ async function storeReport(store: ReportJobStore, inputs: ReportInputs, reviewer
   return { report: raced };
 }
 
-/** The learner profile (#196) with its AI parts (#197), built and stored again on each run. Never throws: the report and its emails go on. */
-async function profileStep(profiles: LearnerProfileStore, inputs: ReportInputs, ai: AiClient | null) {
+/** A step of the learner profile (#196, #197): its result, or null when it failed. Never throws: the report and its emails go on. */
+async function profileStep<T>(assessmentId: string, step: () => Promise<T>): Promise<T | null> {
   try {
-    await storeLearnerProfile(profiles, inputs, { ai });
+    return await step();
   } catch (e) {
-    console.error("[profile] failed", inputs.assessment.id, message(e));
+    console.error("[profile] failed", assessmentId, message(e));
+    return null;
   }
 }
 

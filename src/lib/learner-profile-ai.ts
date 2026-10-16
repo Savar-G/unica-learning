@@ -21,7 +21,7 @@ import { fakeProfileAi } from "@/lib/learner-profile-ai-fake";
 
 /**
  * The AI parts stop after this long; then the profile keeps its facts. The report job runs this after its own AI step
- * (at most 165 s): together they stay well under Vercel's 300 s.
+ * (at most 165 s) and the report's emails: together they stay well under Vercel's 300 s.
  */
 export const PROFILE_AI_MS = 60_000;
 
