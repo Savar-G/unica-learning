@@ -1,4 +1,4 @@
-// How sure a result is (#189, spec #181, D-107 updates D-084). A result is "clear" when one more right answer or one
+// How sure a result is (#189, spec #181, D-108 updates D-084). A result is "clear" when one more right answer or one
 // more wrong answer would not change it, and otherwise an "early sign". Savar tunes this rule after the first reports.
 import { STRAND_DEVELOPING_PERCENT, STRAND_SECURE_PERCENT, WORKING_LEVEL_PERCENT, atLeast } from "./constants";
 import type { Level, LevelResult, StrandStatus } from "./types";

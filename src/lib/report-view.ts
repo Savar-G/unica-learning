@@ -131,7 +131,7 @@ export function thresholdsLine(v: ReportView): string {
 }
 
 /**
- * How sure one result is (#189, D-107): "Clear", or "Early sign: workbook 1 checks this". A family on the waitlist has
+ * How sure one result is (#189, D-108): "Clear", or "Early sign: workbook 1 checks this". A family on the waitlist has
  * no workbook yet, so their early sign names none. Null for a result stored before the labels.
  */
 export function certaintyText(v: ReportView, certainty: Certainty | undefined): string | null {

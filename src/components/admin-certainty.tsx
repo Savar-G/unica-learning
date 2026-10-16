@@ -1,4 +1,4 @@
-// #189 (spec #181, D-107): the admin's view of how sure a test's result is: the working level and each area with its
+// #189 (spec #181, D-108): the admin's view of how sure a test's result is: the working level and each area with its
 // certainty label, the pace, the rushed wrong answers left out of the score, and whether the parent's report shows the
 // reliability note. A server component over the stored placement; placements stored before #189 have no labels.
 import { REPORTED_STRAND_NAMES, TOO_FAST_MS, UNRELIABLE_FAST_PERCENT, type Certainty, type Placement } from "@/lib/assessment";

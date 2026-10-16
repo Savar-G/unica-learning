@@ -1,0 +1,54 @@
+{
+  "round": 23,
+  "ticket": "#195 (spec #181)",
+  "decision": "How should the 'Tell us how {child} learns' card (D-100) hold six questions (three new one-answer questions, the two D-100 choice questions and the free text) and the hint 'If {child} is nearby, answer these together.' while the plan buttons stay below it?",
+  "primary_axis": "Grouping and density of the questions in the card",
+  "invariants": [
+    "Same copy: title, lead, the six questions, the option labels, the hint 'If {child} is nearby, answer these together.'",
+    "Same D-100 chip style (white chips, ink when chosen), same white card, same Save / Skip buttons",
+    "Same place: the Next step row of the real sample report (Leah, Grade 3, BC), above a static copy of the plan block",
+    "Viewports 1280 x 900 and 390 x 844; reduced motion; cookie banner closed"
+  ],
+  "run": "npm run dev, then /prototype/learning-card?v=a|b|c (route deleted before the commit; its source is prototype-route.tsx.txt)",
+  "options": [
+    {
+      "id": "A",
+      "name": "One list",
+      "artifact": "/prototype/learning-card?v=a",
+      "screenshots": ["a-desktop.png", "a-phone.png"],
+      "bet": "Add the new questions in reading order (feeling, styles, interests, hard in math, goal, time); the hint sits under the lead",
+      "benefit": "Smallest change to D-100",
+      "cost": "Card 1.02 screens on desktop, 1.54 on a phone",
+      "risk": "The hint reads as if the child should also answer the parent's goal and the time each week"
+    },
+    {
+      "id": "B",
+      "name": "Two groups",
+      "artifact": "/prototype/learning-card?v=b (the real LearningStep)",
+      "screenshots": ["b-desktop.png", "b-phone.png", "b-answered-desktop.png", "b-saved-desktop.png", "b-saved-phone.png"],
+      "bet": "Two groups under the system's mono eyebrow with the orange square: 'About {child}' (hint, feeling, styles, interests, hard in math), then a thin rule and 'Your goal and time' (goal, time)",
+      "benefit": "The hint applies only to the questions the child can answer; the parent's two questions stand apart; uses an existing label pattern (eyebrow)",
+      "cost": "Tallest: 1.14 screens on desktop, 1.66 on a phone (about 105 px more than A)",
+      "risk": "The plan buttons move further down the report"
+    },
+    {
+      "id": "C",
+      "name": "Compact rows",
+      "artifact": "/prototype/learning-card?v=c",
+      "screenshots": ["c-desktop.png", "c-phone.png"],
+      "bet": "The three one-answer questions first, as rows (question left, small chips right), then the D-100 questions",
+      "benefit": "Shortest: 0.93 screens on desktop, 1.51 on a phone",
+      "cost": "A second layout inside one card; small chips (about 34 px high) for every new answer",
+      "risk": "Reads like a settings form; on a phone the rows stack, so most of the saving goes away"
+    }
+  ],
+  "measured": "Card height / viewport height and the plan block's offset from the card top, from /tmp/pw195/shoot-variants.js: A 919 px / 1298 px, B 1024 px / 1402 px, C 841 px / 1271 px (desktop / phone). No horizontal overflow in any option.",
+  "recommendation": "B",
+  "selection": {
+    "chosen": "b",
+    "by": "Agent (unattended overnight run, Savar asleep; spec #181 comment). Savar can swap to A or C.",
+    "date": "2026-10-16",
+    "decision": "D-107",
+    "why": "Most consistent with DESIGN.md: it keeps the D-100 chips and card and uses the system's eyebrow label (Geist Mono with the orange square). It is the only option where the hint 'answer these together' covers only the questions a child can answer. Its cost is about 0.1 screen more than A."
+  }
+}

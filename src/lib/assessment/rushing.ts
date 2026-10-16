@@ -1,4 +1,4 @@
-// Rushing (#189, spec #181, D-107): very fast answers. A run of them gets "Take your time" on the test screen; a very
+// Rushing (#189, spec #181, D-108): very fast answers. A run of them gets "Take your time" on the test screen; a very
 // fast wrong answer inside such a run is left out of the score, because it is a guess, not a sign of what the child
 // knows; very fast right answers still count. When too many answers are very fast, the report says the result may not
 // be reliable and offers a new test at once. Pure, like the session: every time comes in with the answers.

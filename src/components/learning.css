@@ -6,6 +6,12 @@
 .support-page .lrn p { margin: 0; font-size: 15px; line-height: 1.5; color: var(--ink-2); }
 .support-page .lrn.is-folded p { flex: 1 1 30ch; }
 .support-page .lrn .lrn-lead { max-width: 60ch; margin-bottom: 18px; }
+/* #195 (D-107): two groups, each under a mono eyebrow with the orange square. "About {child}" first, with the hint to
+   answer together; "Your goal and time" after a thin rule. */
+.lrn-group { margin: 0; }
+.lrn-group + .lrn-group { padding-top: 20px; border-top: 1px solid #e4e4e7; }
+.support-page .lrn .lrn-group > .eyebrow { margin: 0 0 14px; }
+.support-page .lrn .lrn-together { margin: -6px 0 16px; }
 .lrn-q { margin: 0 0 18px; padding: 0; border: 0; min-width: 0; }
 .lrn-q legend, .lrn-q.fld label { margin-bottom: 10px; padding: 0; font: 600 15.5px/1.4 var(--sans); color: var(--ink); }
 .lrn-q legend span, .lrn-q.fld label span { font-weight: 400; color: var(--ink-2); }
