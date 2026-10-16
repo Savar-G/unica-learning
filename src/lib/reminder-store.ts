@@ -1,6 +1,6 @@
 import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { bandFor, type Grade } from "@/lib/assessment";
+import { bandFor, testLength, type Grade, type Route, type StoredTest } from "@/lib/assessment";
 import { toAttempt, type AttemptRow } from "@/lib/assessment-store";
 import { SUPPORT_EMAIL } from "@/lib/contact";
 import { saveEmailCopy } from "@/lib/email-copies";
@@ -70,7 +70,7 @@ async function allRows<T>(page: (from: number, to: number) => PromiseLike<{ data
   }
 }
 
-type TestRow = AttemptRow & { child_id: string; grade: number };
+type TestRow = AttemptRow & { child_id: string; grade: number; route: Route | null };
 type LogRow = { id: string; created_at: string; kind: LogEntry["kind"]; parent_id: string; child_id: string | null; assessment_id: string | null; status: LogEntry["status"]; attempts: number };
 
 export function reminderStore(admin: SupabaseClient): ReminderStore<LoadedState> {
@@ -94,7 +94,7 @@ export function reminderStore(admin: SupabaseClient): ReminderStore<LoadedState>
       const [childRows, testRows] = await Promise.all([
         inChunks(childIds, (ids) => admin.from("children").select("id, parent_id, first_name, grade, created_at").in("id", ids)
           .returns<{ id: string; parent_id: string; first_name: string; grade: Grade; created_at: string }[]>()),
-        inChunks(childIds, (ids) => admin.from("assessments").select("id, child_id, grade, status, started_at, last_answer_at, resume_until, completed_at").in("child_id", ids)
+        inChunks(childIds, (ids) => admin.from("assessments").select("id, child_id, grade, route, status, started_at, last_answer_at, resume_until, completed_at").in("child_id", ids)
           .returns<TestRow[]>()),
       ]);
       const parentIds = [...new Set(childRows.map((c) => c.parent_id))];
@@ -166,10 +166,19 @@ export function emailLogLedger(admin: SupabaseClient): SendLedger<DueReminder, s
   };
 }
 
+/** The test's length as stored: stage 1 plus the stored route's form (#214). The band's length only while the route is not chosen. */
+async function lengthOf(admin: SupabaseClient, row: TestRow): Promise<number> {
+  const band = bandFor(row.grade as Grade).length;
+  // A test the child can no longer continue is never named in an email, so its (large) stored test is not read.
+  if (!row.route || (row.status !== "in_progress" && row.status !== "expired")) return band;
+  const { data, error } = await admin.from("assessments").select("test").eq("id", row.id).maybeSingle<{ test: StoredTest | null }>();
+  if (error) throw new Error(`test load: ${error.message}`);
+  return data?.test ? testLength(data.test, row.route) : band;
+}
+
 /** A test row in the rules' terms. One in progress counts its answers: with every answer in, it waits to be scored. */
 async function withAnswers(admin: SupabaseClient, row: TestRow): Promise<LoadedTest> {
-  // The test length is fixed by grade band (D-083): stage 1 and the stage 2 form together.
-  const total = bandFor(row.grade as Grade).length;
+  const total = await lengthOf(admin, row);
   if (row.status !== "in_progress") return { ...toAttempt(row), childId: row.child_id, answered: 0, total };
   const { count, error } = await admin.from("answers").select("id", { count: "exact", head: true }).eq("assessment_id", row.id);
   if (error) throw new Error(`answers count: ${error.message}`);

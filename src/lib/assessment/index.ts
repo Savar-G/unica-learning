@@ -44,6 +44,7 @@ export {
   scoredAgainst,
   storedTest,
   submitAnswer,
+  testLength,
   testStep,
   toPublicQuestion,
   type SessionOptions,
