@@ -70,3 +70,9 @@ export const COMPARISON_PERCENTILE_FROM = 400;
 
 /** Pieces of the child's shown work on the report (D-087: three whiteboard images). */
 export const REPORT_WORK_MAX = 3;
+
+/**
+ * The longest response the answers table takes (`answers.response`, supabase/migrations/20261015_widen_answer_response.sql).
+ * A choice answer is stored as the choice text, so every choice in the bank must fit (#165).
+ */
+export const RESPONSE_MAX = 80;

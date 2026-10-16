@@ -47,7 +47,7 @@ function build(path: string, title: Metadata["title"], full: string, description
   };
 }
 
-// Home page (src/app/page.tsx): the full brand title and the site description.
+// Home page (src/app/(site)/page.tsx): the full brand title and the site description.
 export const homeMetadata: Metadata = build("/", { absolute: SITE_TITLE }, SITE_TITLE, SITE_DESCRIPTION, true);
 
 // Other routes: title, description and canonical. Pass index: false to add noindex.
