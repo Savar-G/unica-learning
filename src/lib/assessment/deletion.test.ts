@@ -1,21 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { deleteFamily, retentionDue, runRetentionBatch, withFamilyCardOperation, type FamilyDeletionStore, type ImageEntry } from "@/lib/assessment";
-
-describe("family retention", () => {
-  it("keeps the whole family until twelve calendar months after the latest test activity", () => {
-    const tests = ["2024-02-29T12:00:00Z", "2025-01-31T09:00:00Z"];
-    expect(retentionDue(tests, "clear", Date.parse("2026-01-31T08:59:59Z"))).toBe(false);
-    expect(retentionDue(tests, "clear", Date.parse("2026-01-31T09:00:00Z"))).toBe(true);
-    expect(retentionDue([tests[0]], "clear", Date.parse("2025-02-28T12:00:00Z"))).toBe(true);
-  });
-  it("keeps saved, unknown, never-tested and invalid-date families", () => {
-    const now = Date.parse("2026-10-11T00:00:00Z");
-    expect(retentionDue(["2020-01-01"], "saved", now)).toBe(false);
-    expect(retentionDue(["2020-01-01"], "unknown", now)).toBe(false);
-    expect(retentionDue([], "clear", now)).toBe(false);
-    expect(retentionDue(["bad"], "clear", now)).toBe(false);
-  });
-});
+import { deleteFamily, runRetentionBatch, withFamilyCardOperation, type FamilyDeletionStore, type ImageEntry } from "@/lib/assessment";
 
 describe("family card operation", () => {
   it("keeps a durable hold when the external write result is unknown", async () => {

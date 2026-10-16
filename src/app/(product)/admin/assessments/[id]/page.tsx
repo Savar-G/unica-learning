@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getStrokes, getTest, requireAdmin } from "@/lib/admin-store";
 import { adminParentPath, adminReportPath, answerLines, duration, factLines, flagText, helpAnswerText, levelText, shownWithoutAnswer, when } from "@/lib/admin-view";
+import { contextFacts } from "@/lib/admin-view";
 import { QuestionTimeline, ShownWithoutAnswer, awayCount, changeCount, readAloudCount } from "@/components/admin-timeline";
 import { AdminFrame, Chip, StatusChip, Table, gradeAndPlace } from "@/components/admin";
 import { EmailTable, RecordFacts, ReviewDetail, childPath } from "@/components/admin-records";
@@ -20,7 +21,7 @@ export default async function TestDetailPage({ params }: PageProps<"/admin/asses
   const numbers = new Map(lines.map((a) => [a.questionId, a.number]));
   const work = lines.filter((a) => a.work.required || a.work.image || a.work.text || a.review || a.questionId in strokes);
   const quick = facts ? factLines(facts.test, facts.answers) : [];
-  return <AdminFrame email={admin.email} section="tests" wide title={`${t.child?.first_name ?? "Child"}'s test`}>
+  return <AdminFrame email={admin.email} section="tests" title={`${t.child?.first_name ?? "Child"}'s test`}>
     <RecordFacts facts={[
       ["Parent", <Link key="parent" href={adminParentPath(t.parent_id)}>{t.parent?.name ?? "Family"}</Link>],
       ["Child", <Link key="child" href={childPath(t.child_id)}>{t.child?.first_name ?? "Child"}</Link>],
@@ -29,6 +30,8 @@ export default async function TestDetailPage({ params }: PageProps<"/admin/asses
       ["Resume until (Pacific)", when(t.resume_until)], ["Working level", t.placement ? levelText(t.placement.workingLevel) : "-"], ["Route", t.route ?? "-"],
       ["Did anyone help?", helpAnswerText(t.help)], ["Seed", t.seed], ["Test id", t.id],
     ]} />
+    <h2>Break and device</h2>
+    <RecordFacts facts={contextFacts(detail.context)} />
     <h2>Flags</h2>
     {t.flags?.length ? <ul className="adm-list">{t.flags.map((f, i) => <li key={i}>{flagText(f, numbers)}</li>)}</ul> : <p className="adm-note">{t.status === "completed" ? "No flags." : "Flags are recorded when the test finishes."}</p>}
     <h2>How sure the result is</h2>
@@ -61,9 +64,9 @@ export default async function TestDetailPage({ params }: PageProps<"/admin/asses
       <ReviewDetail review={a.review} />
     </li>)}</ul>}
     <h2>Quick facts</h2>
-    {facts && <p className="adm-note">Started: {when(facts.started_at)} (Pacific).</p>}
-    <Table label="Quick facts" head={["#", "Fact", "Right answer", "Child answer", "Result", "Time since start", "Time since last answer"]} empty="No quick facts answers.">
-      {quick.map((f) => <tr key={f.number}><td>{f.number}</td><td>{f.fact}</td><td>{f.rightAnswer}</td><td>{f.skipped ? "Skipped" : f.response}</td><td>{f.correct ? "Right" : "Wrong"}</td><td>{duration(f.atMs)}</td><td>{duration(f.tookMs)}</td></tr>)}
+    {facts && <p className="adm-note">Started: {when(facts.started_at)} (Pacific). Server time: since the answer before, by the server&apos;s clock. Browser time: from when the fact appeared to Enter. The fact speed uses the browser time when there is one.</p>}
+    <Table label="Quick facts" head={["#", "Fact", "Right answer", "Child answer", "Result", "Time since start", "Server time", "Browser time"]} empty="No quick facts answers.">
+      {quick.map((f) => <tr key={f.number}><td>{f.number}</td><td>{f.fact}</td><td>{f.rightAnswer}</td><td>{f.skipped ? "Skipped" : f.response}</td><td>{f.correct ? "Right" : "Wrong"}</td><td>{duration(f.atMs)}</td><td>{duration(f.serverMs)}</td><td>{f.browserMs === null ? "-" : duration(f.browserMs)}</td></tr>)}
     </Table>
     <h2>Emails and unsubscribes</h2><EmailTable emails={detail.emails} />
   </AdminFrame>;

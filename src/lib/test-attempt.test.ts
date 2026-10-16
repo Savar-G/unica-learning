@@ -829,8 +829,8 @@ describe("the timed facts section", () => {
     expect(await answerFact(memory.store, P1, "a1", T0 + HOUR + 6_000, { factId: f1.id, response: "" }))
       .toMatchObject({ ok: true, step: { status: "running", remainingMs: 54_000, answered: 1 } });
     expect(memory.facts[0].answers).toEqual([
-      { position: 0, factId: f0.id, response: String(f0.answer), correct: true, atMs: 2_500 },
-      { position: 1, factId: f1.id, response: "", correct: false, atMs: 6_000 },
+      { position: 0, factId: f0.id, response: String(f0.answer), correct: true, atMs: 2_500, serverMs: 2_500, browserMs: null },
+      { position: 1, factId: f1.id, response: "", correct: false, atMs: 6_000, serverMs: 3_500, browserMs: null },
     ]);
     // A reload goes on from the third fact.
     const reread = await readFacts(memory.store, P1, "a1", T0 + HOUR + 9_000);
@@ -963,7 +963,7 @@ describe("when the facts store fails", () => {
     const log = logs();
     const memory = atBreak();
     await startFacts(memory.store, P1, "a1", T0);
-    memory.facts[0].answers.push({ position: 0, factId: "f5", response: "1", correct: false, atMs: 900 });
+    memory.facts[0].answers.push({ position: 0, factId: "f5", response: "1", correct: false, atMs: 900, serverMs: 900, browserMs: null });
     expect(await readFacts(memory.store, P1, "a1", T0 + 1_000)).toEqual({ ok: false, error: "store_failed", unreadable: true });
     expect(log.mock.calls).toEqual([["[facts] restore failed", "a1", "Expected an answer to f0, got f5"]]);
   });
@@ -1218,7 +1218,7 @@ describe("when finishing fails in the store", () => {
   it("a stored test or facts section the assessment core cannot rebuild is store_failed, as unreadable, and nothing is scored", async () => {
     const log = logs();
     const memory = await complete();
-    memory.facts[0].answers.push({ position: 0, factId: "f5", response: "1", correct: false, atMs: 900 });
+    memory.facts[0].answers.push({ position: 0, factId: "f5", response: "1", correct: false, atMs: 900, serverMs: 900, browserMs: null });
     expect(await finishTest(memory.store, P1, "a1", "no", T0 + 2 * HOUR)).toEqual({ ok: false, error: "store_failed", unreadable: true });
     const broken = family(stored(open("a1", T0), { answered: 42 }));
     broken.tests[0].answers[3].questionId = "not-this-test";
