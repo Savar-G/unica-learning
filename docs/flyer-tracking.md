@@ -5,8 +5,8 @@ Two printed flyers, each with its own QR code. The site counts scans and keeps e
 ## How it works
 
 1. Flyer A's QR code is `https://unicalearning.com/f/a`. Flyer B's is `https://unicalearning.com/f/b`.
-2. `src/app/f/[code]/route.ts` counts the scan (`flyer_scans`, after the response, so it never slows or breaks the redirect), then redirects to `/start?utm_source=flyer&utm_medium=print&utm_campaign=door-to-door&utm_content=<code>`.
-3. The signup form already keeps the UTM tags of the page it is on (`collectSource` in `src/components/account.tsx`), so the family's `parents.source` holds `utm_source=flyer` and `utm_content=a|b`.
+2. `src/app/f/[code]/route.ts` counts the scan (`flyer_scans`, after the response, so it never slows or breaks the redirect), then redirects to the home page with `?utm_source=flyer&utm_medium=print&utm_campaign=door-to-door&utm_content=<code>`.
+3. Every "Take free assessment" button is a `StartLink`, which carries the visit's `utm_*` tags on to `/start` (`startHref` in `src/lib/visit-source.ts`). `/start` keeps the tags for the browser tab and the signup form sends them as the family's source (`visitSource`, same file), so `parents.source` holds `utm_source=flyer` and `utm_content=a|b`, also for a parent who signs up with Google. The tags travel only through those buttons: a visitor who browses to another page (say Our story) and starts from there arrives with no tags, and that signup counts as unattributed.
 4. `/admin/flyers` joins the scans, the "handed out" counts (`flyer_batches`, typed in on that page) and the families' stages (the same stage logic as the dashboard) into one table per flyer, with a verdict.
 
 Link previews, crawlers and requests with no user agent are redirected but not counted. No IP, device or cookie is stored. A scan is a raw count: one person scanning twice counts twice.
