@@ -28,6 +28,7 @@ import "./admin.css";
 const NAV = [
   { key: "dashboard", href: ADMIN_PATH, label: "Dashboard" },
   { key: "activity", href: `${ADMIN_PATH}/activity`, label: "Activity" },
+  { key: "flyers", href: `${ADMIN_PATH}/flyers`, label: "Flyers" },
   { key: "tests", href: ADMIN_TESTS_PATH, label: "Tests" },
   { key: "reviews", href: `${ADMIN_PATH}/reviews`, label: "AI reviews" },
   { key: "parents", href: `${ADMIN_PATH}/parents`, label: "Parents" },
