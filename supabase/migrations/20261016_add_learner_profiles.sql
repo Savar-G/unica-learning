@@ -1,5 +1,5 @@
--- Not applied yet: apply to project "pagewise" (cdjobwsyzndtltzfpyqa) as migration add_learner_profiles before the code
--- that writes it ships, then change this line to "Applied ..." with the date.
+-- Applied to project "pagewise" (cdjobwsyzndtltzfpyqa) as migration add_learner_profiles, 2026-10-16 (SQL editor,
+-- registry 20261016214625).
 -- The learner profile (#196, spec #181, D-115): one structured, versioned JSON profile per finished test, built by the
 -- report job after finish (src/lib/learner-profile.ts) and built again after an extra round (#190) or when the parent
 -- answers the learning card for the child's latest test. The facts are written by code (src/lib/assessment/profile.ts);
