@@ -11,6 +11,7 @@ import Link from "next/link";
 import { Button } from "@/ds";
 import { breakDue, hasWork, readAloudText, spokenChoices, type HelpAnswer, type PublicQuestion, type TestStep } from "@/lib/assessment";
 import { ANSWER_MAX, type FinishResult, type StartResult, type StepResult, type TestError, type WorkPayload } from "@/lib/test-api";
+import { answerRecorder, type AnswerEvents } from "@/lib/answer-events";
 import { track } from "@/lib/track";
 import { SUPPORT_EMAIL, SUPPORT_HREF } from "@/lib/contact";
 import { draftKey, draftPrefix, emptyBoard, hasDrawing, type BoardState } from "@/lib/whiteboard";
@@ -133,6 +134,17 @@ export function TakeTest({ childId, name, total, breakAfter, ready, done, mode: 
     return true;
   }, []);
 
+  /**
+   * After the quick facts, the first question after halfway (#184): the screen asks the server for the step again, so
+   * the server records when the question really appears. When that request fails, the question the screen holds shows.
+   */
+  const afterFacts = useCallback(async (held: Extract<TestStep, { status: "question" }>) => {
+    const res = await call<StepResult>(`/api/account/assessments/${testId.current}`);
+    if (res.ok) return show(res.step);
+    if (res.error === "expired") return expire();
+    return show(held);
+  }, [show, expire]);
+
   const start = async () => {
     if (busy) return;
     setBusy(true);
@@ -157,10 +169,13 @@ export function TakeTest({ childId, name, total, breakAfter, ready, done, mode: 
     setBusy(false);
   };
 
-  /** Sends one answer, with the whiteboard work (#67). Resolves false when it failed and the child should try again. */
-  const answer = async (questionId: string, response: string, timeMs: number, work?: WorkPayload) => {
+  /**
+   * Sends one answer, with the whiteboard work (#67) and what the child did before Next (#184). Resolves false when it
+   * failed and the child should try again.
+   */
+  const answer = async (questionId: string, response: string, timeMs: number, work?: WorkPayload, events?: AnswerEvents) => {
     setFailure(null);
-    const res = await call<StepResult>(`/api/account/assessments/${testId.current}/answers`, post({ questionId, response, timeMs, work }));
+    const res = await call<StepResult>(`/api/account/assessments/${testId.current}/answers`, post({ questionId, response, timeMs, work, events }));
     if (res.ok) return show(res.step);
     // Another tab or a retry answered first: carry on from where the server is.
     if (res.error === "conflict" && "step" in res && res.step) return show(res.step);
@@ -191,7 +206,7 @@ export function TakeTest({ childId, name, total, breakAfter, ready, done, mode: 
           }} />
         )}
         {screen.name === "facts" && (
-          <FactsSection testId={screen.testId} problem={<Problem error={failure} />} onError={setFailure} onDone={() => { factsDone.current = true; void show(screen.next); }} />
+          <FactsSection testId={screen.testId} problem={<Problem error={failure} />} onError={setFailure} onDone={() => { factsDone.current = true; void afterFacts(screen.next); }} />
         )}
         {screen.name === "help" && (
           <TestHelp problem={<Problem error={failure} />} onAnswer={async (help) => {
@@ -285,7 +300,7 @@ interface QuestionProps {
   typing: boolean;
   question: PublicQuestion;
   last: boolean;
-  onAnswer: (id: string, response: string, timeMs: number, work?: WorkPayload) => Promise<boolean>;
+  onAnswer: (id: string, response: string, timeMs: number, work?: WorkPayload, events?: AnswerEvents) => Promise<boolean>;
   failure: TestError | null;
 }
 
@@ -300,6 +315,24 @@ function Question({ testId, typing, question, last, onAnswer, failure }: Questio
     shownAt.current = performance.now();
     heading.current?.focus();
   }, []);
+
+  // #184: what the child does before Next, from when the question appears: each answer change, each "Read it to me",
+  // and each time the tab is hidden (another tab or app in front) with how long.
+  const [recorder] = useState(answerRecorder);
+  const recordedValue = useRef("");
+  useEffect(() => {
+    if (value === recordedValue.current) return;
+    recordedValue.current = value;
+    recorder.change(value, performance.now() - shownAt.current);
+  }, [value, recorder]);
+  useEffect(() => {
+    const at = () => performance.now() - shownAt.current;
+    const onVisibility = () => (document.hidden ? recorder.hidden(at()) : recorder.visible(at()));
+    if (document.hidden) recorder.hidden(at());
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => document.removeEventListener("visibilitychange", onVisibility);
+  }, [recorder]);
+  const onRead = useCallback(() => recorder.readAloud(performance.now() - shownAt.current), [recorder]);
 
   // #67: the whiteboard. A resume of this question on this device brings back the work from before the stop (#72).
   const draft = draftKey(testId, question.id);
@@ -360,7 +393,7 @@ function Question({ testId, typing, question, last, onAnswer, failure }: Questio
       return;
     }
     const work: WorkPayload | undefined = image || typed ? { ...(image ? { image } : {}), ...(typed ? { text: typed } : {}) } : undefined;
-    const ok = await onAnswer(question.id, value, timeMs, work);
+    const ok = await onAnswer(question.id, value, timeMs, work, recorder.events(timeMs));
     // On success this question unmounts; on failure the child keeps the answer and the work, and can press Next again.
     if (!ok) {
       setSending(false);
@@ -405,7 +438,7 @@ function Question({ testId, typing, question, last, onAnswer, failure }: Questio
     <form className="test-split test-desk" onSubmit={submit}>
       <div className="test-pane test-pane-l">
         <div className="test-qrow">
-          <ReadAloud key={question.id} text={spoken} />
+          <ReadAloud key={question.id} text={spoken} onRead={onRead} />
           <h1 id="test-q-title" ref={heading} tabIndex={-1} className="test-prompt"><PromptText text={question.prompt} /></h1>
         </div>
         {question.figure?.kind === "bars" && <BarGraph figure={question.figure} />}

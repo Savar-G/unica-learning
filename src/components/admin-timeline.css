@@ -1,0 +1,18 @@
+/* The answer timeline in the admin view of one test (#184): one card per question, in the shown-work grid (.adm-work). */
+/* --test-rule: the bar graph's major lines (test-base.css sets it on the test screen only). */
+.adm-timeline { grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); --test-rule: #d4d4d8; }
+.adm-timeline h3 { margin: 0; }
+.adm-timeline p { margin: 0; }
+.adm-timeline .adm-facts { grid-template-columns: repeat(2, minmax(0, 1fr)); padding: 10px 12px; gap: 10px 16px; }
+.adm-timeline-q { display: grid; gap: 8px; }
+.adm-timeline-q .test-bars { margin: 0; }
+
+/* The choices in the order the child saw them. */
+.adm-choices { display: grid; gap: 6px; margin: 0; padding-left: 22px; }
+.adm-choices li { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; }
+.adm-choices .test-line { max-width: 220px; }
+
+/* Answer changes, read aloud, time away. */
+.adm-events { display: grid; gap: 6px; margin: 0; padding-top: 10px; border-top: 1px solid var(--line-soft); font-size: 14px; }
+.adm-events dt { font: 400 11.5px/1.2 var(--mono); letter-spacing: 0.03em; text-transform: uppercase; color: var(--ink-2); }
+.adm-events dd { margin: 2px 0 0; overflow-wrap: anywhere; }

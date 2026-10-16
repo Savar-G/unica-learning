@@ -43,8 +43,8 @@ function onVoicesChanged(notify: () => void) {
   return () => synth.removeEventListener?.("voiceschanged", notify);
 }
 
-/** Give it a `key` per question, so a new question starts silent. */
-export function ReadAloud({ text }: { text: string }) {
+/** Give it a `key` per question, so a new question starts silent. `onRead`: called each time the voice starts (#184). */
+export function ReadAloud({ text, onRead }: { text: string; onRead?: () => void }) {
   // False on the server and in the first render, so the button never flashes on a browser without speech.
   const supported = useSyncExternalStore(onVoicesChanged, hasVoices, () => false);
   const [speaking, setSpeaking] = useState(false);
@@ -88,7 +88,8 @@ export function ReadAloud({ text }: { text: string }) {
     setSpeaking(true);
     synth.speak(u);
     track("read_aloud");
-  }, [text]);
+    onRead?.();
+  }, [text, onRead]);
 
   if (!supported) return null;
   return (

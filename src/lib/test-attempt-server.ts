@@ -8,6 +8,7 @@ import { startStates, StoreError, type AttemptStore } from "@/lib/test-attempt";
 import { adminClient } from "@/lib/supabase-auth";
 import type { FactsTest } from "@/lib/assessment";
 import type { FactsStore } from "@/lib/test-attempt";
+import type { AnswerTimeline, ShownStore } from "@/lib/test-attempt";
 import { workPath } from "@/lib/work-payload";
 import { WORK_BUCKET } from "@/lib/work-store";
 
@@ -27,6 +28,7 @@ const ATTEMPT_COLUMNS = "id, status, started_at, last_answer_at, resume_until, c
 export function attemptStore(admin: SupabaseClient): AttemptStore {
   return {
     ...factsStore(admin),
+    ...shownStore(admin),
     async child(parent, childId) {
       const { data, error } = await admin.from("children").select("id, grade, province")
         .eq("id", childId).eq("parent_id", parent).maybeSingle<Pick<Child, "id" | "grade" | "province">>();
@@ -111,6 +113,7 @@ export function attemptStore(admin: SupabaseClient): AttemptStore {
         work_required: answer.workRequired,
         work_path: answer.workPath,
         work_text: answer.workText,
+        ...timelineColumns(answer.timeline),
       });
       // One answer per place (unique index on assessment_id and position): another request stored it first.
       if (error?.code === "23505") return "taken";
@@ -201,5 +204,41 @@ function factsStore(admin: SupabaseClient): FactsStore {
       if (error) throw new StoreError("answer save failed", error.message);
       return "stored";
     },
+  };
+}
+
+/**
+ * The store's operations for the serve times of the answer timeline (#184): the table question_shows, one row per place
+ * in a test (the primary key). Only the server writes it. Like the facts rows, these rows have no parent column: the
+ * module calls these operations only for a test that `load` found for the parent.
+ */
+function shownStore(admin: SupabaseClient): ShownStore {
+  return {
+    async recordShown(id, { position, questionId, at }) {
+      // The first serve wins: a later serve of the same place is ignored (on conflict do nothing).
+      const { error } = await admin.from("question_shows")
+        .upsert({ assessment_id: id, position, question_id: questionId, shown_at: iso(at) }, { onConflict: "assessment_id,position", ignoreDuplicates: true });
+      if (error) throw new StoreError("shown time save failed", error.message);
+    },
+
+    async shownAt(id, position) {
+      const { data, error } = await admin.from("question_shows").select("question_id, shown_at")
+        .eq("assessment_id", id).eq("position", position).maybeSingle<{ question_id: string; shown_at: string }>();
+      if (error) throw new StoreError("shown time load failed", error.message);
+      return data ? { position, questionId: data.question_id, at: Date.parse(data.shown_at) } : null;
+    },
+  };
+}
+
+/** The answer timeline's columns of public.answers (#184, migration add_answer_timeline). Null where nothing was recorded. */
+function timelineColumns({ shownAt, answeredAt, events }: AnswerTimeline) {
+  return {
+    shown_at: shownAt === null ? null : iso(shownAt),
+    answered_at: iso(answeredAt),
+    answer_changes: events?.changes ?? null,
+    read_aloud_count: events?.readAloud.count ?? null,
+    read_aloud_at_ms: events?.readAloud.atMs ?? null,
+    away_count: events?.away.count ?? null,
+    away_ms: events?.away.ms ?? null,
   };
 }
