@@ -131,7 +131,7 @@ export function How() {
 // Program parts first, the workbook last (D-095). The left column reads first, then the photo, then the right column.
 const INCLUDED: [IconName, string, ReactNode, number][][] = [
   [
-    ["layers", "A plan built from your child's assessment", "The free assessment finds your child's level and gaps. It sets what each book covers.", 0],
+    ["layers", "A plan built for your child", "The free assessment finds your child's level and gaps. It sets what each book covers.", 0],
     ["calendar", "Daily practice, rewarded", <>15-30 minutes a day, 5 days a week, with rewards for every page and every week. <Link href="/rewards" className="more-link">See the rewards <span aria-hidden="true">→</span></Link></>, 0.08],
     ["pencil", "Real paper. Real pencil.", "Daily practice happens away from screens. The app is for you, not them.", 0.16],
   ],
