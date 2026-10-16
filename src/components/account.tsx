@@ -46,7 +46,7 @@ function errorText(error: AccountError | undefined): ReactNode {
     case "busy":
       return <>Many people are signing up right now. Try again in a few minutes, or email <a href={SUPPORT_HREF}>{SUPPORT_EMAIL}</a>.</>;
     case "signed_out":
-      return <>Your session ended. <Link href="/sign-in/reset">Get a link by email</Link> to sign in again.</>;
+      return <>Your session ended. <Link href="/sign-in">Sign in</Link> again.</>;
     case "password_change_blocked":
       return <>We cannot set your password right now. Email <a href={SUPPORT_HREF}>{SUPPORT_EMAIL}</a> and we will help you finish your account.</>;
     case "unavailable":

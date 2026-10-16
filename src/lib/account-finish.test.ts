@@ -66,6 +66,8 @@ interface World {
   currentPasswordRequiredAt?: number;
   /** A conflicting password change ends the parent's session after this route's last password change. */
   endsAfterPasswordChange?: number;
+  /** Auth fails (500) on the session check after the last password change. */
+  sessionCheckDown?: boolean;
 }
 
 /** Every request the route sends to Supabase, in order, with its body and Authorization header. */
@@ -101,9 +103,10 @@ function supabase(world: World) {
       const session = caller();
       if (!session) return ended();
       if (method === "GET" && world.endsAfterCheck) auth.sessions.delete(session);
+      if (method === "GET" && world.sessionCheckDown && passwordChanges > 0) return json({ code: "unexpected_failure", message: "down" }, 500);
       if (method === "PUT" && typeof (body as { password?: unknown })?.password === "string") {
         passwordChanges++;
-        if (world.currentPasswordRequiredAt === passwordChanges) return json({ code: "current_password_required", message: "Current password is required" }, 422);
+        if (world.currentPasswordRequiredAt === passwordChanges) return json({ code: "current_password_required", message: "Current password required when setting new password." }, 400);
         if (world.staleSession) return json({ code: "reauthentication_needed", message: "Password update requires reauthentication" }, 400);
         const refused = newPassword((body as { password: string }).password);
         if (refused) return refused;
@@ -279,6 +282,14 @@ describe("a parent whose first finish failed (2026-10-12, #82)", () => {
     const res = await finish({ ...details, ...(chosenPassword ? { password: "a-long-password" } : {}) });
     expect(res.status).toBe(401);
     expect(await res.json()).toEqual({ ok: false, error: "signed_out" });
+    expect(paths()).not.toContain(FAMILY);
+  });
+
+  it("keeps the proof, and writes no family, when Auth fails on the session check", async () => {
+    supabase({ sessionCheckDown: true });
+    const res = await finish({ ...details, password: "a-long-password" });
+    expect(res.status).toBe(502);
+    expect(await res.json()).toEqual({ ok: false, error: "store_failed" });
     expect(paths()).not.toContain(FAMILY);
   });
 
