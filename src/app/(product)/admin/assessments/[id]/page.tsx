@@ -19,7 +19,7 @@ export default async function TestDetailPage({ params }: PageProps<"/admin/asses
   const numbers = new Map(lines.map((a) => [a.questionId, a.number]));
   const work = lines.filter((a) => a.work.required || a.work.image || a.work.text || a.review || a.questionId in strokes);
   const quick = facts ? factLines(facts.test, facts.answers) : [];
-  return <AdminFrame email={admin.email} section="tests" wide title={`${t.child?.first_name ?? "Child"}'s test`}>
+  return <AdminFrame email={admin.email} section="tests" title={`${t.child?.first_name ?? "Child"}'s test`}>
     <RecordFacts facts={[
       ["Parent", <Link key="parent" href={adminParentPath(t.parent_id)}>{t.parent?.name ?? "Family"}</Link>],
       ["Child", <Link key="child" href={childPath(t.child_id)}>{t.child?.first_name ?? "Child"}</Link>],
