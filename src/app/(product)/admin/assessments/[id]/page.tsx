@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getStrokes, getTest, requireAdmin } from "@/lib/admin-store";
-import { adminParentPath, adminReportPath, answerLines, duration, factLines, flagText, helpAnswerText, levelText, shownWithoutAnswer, when } from "@/lib/admin-view";
+import { adminParentPath, adminProfilePath, adminReportPath, answerLines, duration, factLines, flagText, helpAnswerText, levelText, shownWithoutAnswer, when } from "@/lib/admin-view";
 import { contextFacts } from "@/lib/admin-view";
 import { QuestionTimeline, ShownWithoutAnswer, awayCount, changeCount, readAloudCount } from "@/components/admin-timeline";
 import { AdminFrame, Chip, StatusChip, Table, gradeAndPlace } from "@/components/admin";
@@ -29,6 +29,7 @@ export default async function TestDetailPage({ params }: PageProps<"/admin/asses
       ["Started (Pacific)", when(t.started_at)], ["Last answer (Pacific)", when(t.last_answer_at)], ["Completed (Pacific)", when(t.completed_at)],
       ["Resume until (Pacific)", when(t.resume_until)], ["Working level", t.placement ? levelText(t.placement.workingLevel) : "-"], ["Route", t.route ?? "-"],
       ["Did anyone help?", helpAnswerText(t.help)], ["Seed", t.seed], ["Test id", t.id],
+      ["Learner profile", t.status === "completed" ? <Link key="profile" href={adminProfilePath(t.id)}>Open the profile</Link> : "-"],
     ]} />
     <h2>Break and device</h2>
     <RecordFacts facts={contextFacts(detail.context)} />

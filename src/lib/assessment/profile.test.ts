@@ -11,6 +11,7 @@ import {
   finish,
   learnerProfile,
   nextQuestion,
+  storedProfile,
   submitAnswer,
   createFacts,
   submitFact,
@@ -72,6 +73,17 @@ describe("the learner profile", () => {
       ["algebra", 4, "secure", "clear"],
       ["shapes", 4, "secure", "clear"],
     ]);
+  });
+
+  it("reads back from storage only at its own schema version: a reader never guesses at another shape", () => {
+    const { placement, answers } = taken({ grade: 4, province: "BC" }, 101, knows(4));
+    const profile = learnerProfile({ placement, answers, help: "no", learning: null })!;
+    // Stored as JSON, as in the database.
+    const json = JSON.parse(JSON.stringify(profile));
+    expect(storedProfile(json)).toEqual(profile);
+    expect(storedProfile({ ...json, schemaVersion: PROFILE_SCHEMA_VERSION + 1 })).toBeNull();
+    expect(storedProfile({ ...json, schemaVersion: "1" })).toBeNull();
+    for (const value of [null, "profile", [json], 1]) expect(storedProfile(value)).toBeNull();
   });
 
   it("is built for tests scored against BC only: another province is, Alberta is not", () => {

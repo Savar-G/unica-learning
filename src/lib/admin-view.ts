@@ -31,6 +31,8 @@ export const ADMIN_TESTS_PATH = `${ADMIN_PATH}/tests`;
 /** One test in the admin area. Savar's alert email for each finished test links here (#65). */
 export const adminTestPath = (id: string) => `${ADMIN_PATH}/assessments/${id}`;
 export const adminParentPath = (id: string) => `${ADMIN_PATH}/parents/${id}`;
+/** The learner profile of one test (#196). */
+export const adminProfilePath = (id: string) => `${adminTestPath(id)}/profile`;
 /** The parent's report as the parent sees it, opened by an admin. */
 export const adminReportPath = (id: string) => `${ADMIN_PATH}/reports/${id}`;
 /** One logged email, as the parent got it (D-103). `id`: its id in the email list. */

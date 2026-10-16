@@ -401,7 +401,8 @@ export function learnerProfile(input: ProfileInput): LearnerProfile | null {
   });
 
   const standards = standardsOf(counted, placement.grade);
-  const strengths = standards.filter((s) => s.status === "secure").map(({ status: _, ...s }) => s);
+  const strengths = standards.filter((s) => s.status === "secure")
+    .map(({ code, text, grade, strand, aboveGrade, correct, total, certainty }): ProfileStrength => ({ code, text, grade, strand, aboveGrade, correct, total, certainty }));
   // D-084: never invent a weakness. A standard above the school grade is not a struggle.
   const struggles = standards
     .filter((s) => !s.aboveGrade && s.status !== "secure")
@@ -432,7 +433,7 @@ export function learnerProfile(input: ProfileInput): LearnerProfile | null {
     test: { grade: placement.grade, province: placement.province, route: placement.route, answered: answers.length },
     level: {
       working: placement.workingLevel,
-      certainty: placement.levelCertainty ?? levelCertainty(placement.levels),
+      certainty: levelSure,
       confidence: placement.confidence,
       atCeiling: placement.atCeiling,
     },
@@ -455,4 +456,14 @@ export function learnerProfile(input: ProfileInput): LearnerProfile | null {
       ],
     },
   };
+}
+
+/**
+ * A stored profile (public.learner_profiles.profile) as this version's profile; null when it is not a profile or was
+ * written at another schema version. A reader never guesses at another version's shape: an older profile is built
+ * again from the test.
+ */
+export function storedProfile(value: unknown): LearnerProfile | null {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) return null;
+  return (value as { schemaVersion?: unknown }).schemaVersion === PROFILE_SCHEMA_VERSION ? (value as LearnerProfile) : null;
 }

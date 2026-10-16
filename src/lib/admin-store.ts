@@ -284,6 +284,30 @@ export async function getStrokes(a: AdminSession, id: string): Promise<Record<st
   return Object.fromEntries(rows.map((r) => [r.question_id, urls[r.strokes_path] ?? null]));
 }
 
+// The learner profile (#196)
+
+/** One test's learner profile (public.learner_profiles: admins read it), with the test, its child and its parent. */
+export interface ProfileDetail {
+  test: { id: string; child_id: string; parent_id: string; grade: number; province: Province; status: AssessmentStatus; completed_at: string | null; child: ChildRow | null; parent: ParentRow | null };
+  /** The stored profile; null when none is stored for the test. `profile` is the stored JSON, at any schema version. */
+  stored: { created_at: string; built_at: string; schema_version: number; profile: unknown } | null;
+}
+
+/** The learner profile of one test, or null when there is no such test. */
+export async function getProfile(a: AdminSession, id: string): Promise<ProfileDetail | null> {
+  if (!isUuid(id)) return null;
+  const test = must<Omit<ProfileDetail["test"], "child" | "parent"> | null>(
+    await a.db.rpc("admin_assessments").select("id, child_id, parent_id, grade, province, status, completed_at").eq("id", id).maybeSingle(), "profile test");
+  if (!test) return null;
+  const [[child], [parent], stored] = await Promise.all([
+    childrenById(a, [test.child_id]),
+    parentsById(a, [test.parent_id]),
+    a.db.from("learner_profiles").select("created_at, built_at, schema_version, profile").eq("assessment_id", id).maybeSingle()
+      .then((r) => must<ProfileDetail["stored"]>(r, "learner profile")),
+  ]);
+  return { test: { ...test, child: child ?? null, parent: parent ?? null }, stored };
+}
+
 // Parents and children
 
 export interface ParentListRow extends ParentRow {

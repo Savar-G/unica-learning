@@ -7,6 +7,7 @@ import {
   type HelpAnswer,
   type MisconceptionId,
   type Placement,
+  type ProfileAnswer,
   type Province,
   type ReportModel,
   type ShownWork,
@@ -79,6 +80,10 @@ export interface StoredAnswer {
   workPath: string | null;
   /** The typed working; null when the child typed none. */
   workText: string | null;
+  /** #184: "Read it to me" uses on the question; null when not recorded (an answer from before #184). */
+  readAloud: number | null;
+  /** #184: time away from the tab on the question; null when not recorded. */
+  away: { count: number; ms: number } | null;
 }
 
 /** Who reads: the seam. A database error throws; a row the reader cannot see is not an error. */
@@ -116,6 +121,12 @@ export interface ReportInputs {
    * and the known mistake a coded wrong answer matches. Built from the same read, only when the AI step asks.
    */
   reviewPieces(): ReviewPiece[];
+  /**
+   * Every answer as the learner profile (#196) reads it: the question as the child saw it, the mark, the time, whether
+   * work was shown (never the work itself), the read-aloud uses and the time away. In test order; built from the same
+   * read, only when asked.
+   */
+  profileAnswers(): ProfileAnswer[];
   /**
    * The comparison input (#101): the comparison read, made only when asked. The job asks only when it builds a new
    * report, so a run that finds the report already stored makes no comparison read.
@@ -177,6 +188,21 @@ export async function loadReportInputs(reader: ReportReader, assessmentId: strin
         misconception,
         image: x.workPath,
         text: x.workText,
+      }];
+    }),
+    // An answer whose question is not in the stored test is left out.
+    profileAnswers: () => answers.flatMap((x): ProfileAnswer[] => {
+      const q = questions.get(x.questionId);
+      if (!q) return [];
+      return [{
+        question: q,
+        response: x.response,
+        correct: x.correct,
+        misconception: x.misconception,
+        timeMs: x.timeMs,
+        work: { required: x.workRequired, drawing: x.workPath !== null, typed: x.workText !== null },
+        readAloud: x.readAloud,
+        away: x.away,
       }];
     }),
     comparison: () => comparison(a.id),
