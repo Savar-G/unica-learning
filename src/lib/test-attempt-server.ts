@@ -4,7 +4,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Grade, StartState, StoredTest } from "@/lib/assessment";
 import type { Child } from "@/lib/account";
 import { isUuid, toAttempt, type AttemptRow } from "@/lib/assessment-store";
-import { startStates, StoreError, type AttemptStore } from "@/lib/test-attempt";
+import { retakeState, startStates, StoreError, type AttemptStore, type RetakeState } from "@/lib/test-attempt";
 import { adminClient } from "@/lib/supabase-auth";
 import type { FactsTest } from "@/lib/assessment";
 import type { FactsStore } from "@/lib/test-attempt";
@@ -37,11 +37,17 @@ export function attemptStore(admin: SupabaseClient): AttemptStore {
     },
 
     async attempts(parent, childId) {
-      let query = admin.from("assessments").select(`child_id, seed, ${ATTEMPT_COLUMNS}`).eq("parent_id", parent);
+      // #189: placement->pace->unreliable is true when the completed test's result may not be reliable (a new test opens at once).
+      let query = admin.from("assessments").select(`child_id, seed, ${ATTEMPT_COLUMNS}, unreliable:placement->pace->unreliable`).eq("parent_id", parent);
       if (childId !== undefined) query = query.eq("child_id", childId);
-      const { data, error } = await query.returns<(AttemptRow & { child_id: string; seed: number })[]>();
+      const { data, error } = await query.returns<(AttemptRow & { child_id: string; seed: number; unreliable: boolean | null })[]>();
       if (error) throw new StoreError("attempts load failed", error.message);
-      return (data ?? []).map((row) => ({ ...toAttempt(row), childId: row.child_id, seed: row.seed }));
+      return (data ?? []).map((row) => ({
+        ...toAttempt(row),
+        childId: row.child_id,
+        seed: row.seed,
+        ...(row.status === "completed" && row.unreliable === true ? { unreliable: true } : {}),
+      }));
     },
 
     async load(parent, id) {
@@ -241,4 +247,15 @@ function timelineColumns({ shownAt, answeredAt, events }: AnswerTimeline) {
     away_count: events?.away.count ?? null,
     away_ms: events?.away.ms ?? null,
   };
+}
+
+/**
+ * #189: when the child's next test opens, for the report's reliability note (D-108). Null when it cannot be known (no
+ * secret key, an id that is not a uuid, or a failed read): the report then shows no button and names no time.
+ */
+export async function parentRetakeState(parent: string, childId: string): Promise<RetakeState | null> {
+  if (!isUuid(childId)) return null;
+  const admin = adminClient();
+  if (!admin) return null;
+  return retakeState(attemptStore(admin), parent, childId, Date.now());
 }

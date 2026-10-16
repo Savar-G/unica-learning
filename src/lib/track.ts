@@ -23,6 +23,7 @@
 // No answer travels with it: no learning style, interest, note, feeling about math, goal or weekly time (#195) goes to
 // analytics.
 // Help flags (#71): test_help (status yes, a-little or no: the answer to "Did anyone help?", sent once the test is stored).
+// Rushing (#189): test_pace (status shown: "Take your time" showed after three very fast answers in a row). No time or score.
 // Reminders (#73): reminder_open (status = continue, come_back, start or start_followup: the parent opened the start screen from that
 // reminder email), unsubscribe (status done or failed: the unsubscribe page turned reminders off), unsubscribe_page
 // (status unsubscribed = already off, unknown = a link that does not work, failed).

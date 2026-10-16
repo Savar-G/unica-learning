@@ -14,7 +14,7 @@ import {
   type Submission,
 } from "@/lib/assessment";
 import { allRight, knowsUpTo, takeTest, type Script } from "@/lib/assessment/scripted-child";
-import { answerQuestion, finishTest, nextStep, startStates, startTest, stateFor, StoreError, type AnswerInput, type AttemptStore, type HelpInput } from "@/lib/test-attempt";
+import { answerQuestion, finishTest, nextStep, retakeState, startStates, startTest, stateFor, StoreError, type AnswerInput, type AttemptStore, type HelpInput } from "@/lib/test-attempt";
 import { memoryAttemptStore, type MemoryTest } from "@/lib/test-attempt-memory";
 import { answerFact, readFacts, startFacts } from "@/lib/test-attempt";
 import { createFacts } from "@/lib/assessment";
@@ -257,6 +257,33 @@ describe("answering a question", () => {
       // #184: no serve was recorded for this question and the screen sent no events.
       timeline: { shownAt: null, answeredAt: at, events: null },
     });
+  });
+});
+
+// #189 (spec #181): a very fast answer takes under 3 seconds. After 3 in a row, the next question says "Take your time".
+describe("Take your time", () => {
+  /** Answers the current question right in `timeMs`, with a drawing when the question needs shown work. */
+  const answerIn = async (memory: ReturnType<typeof family>, timeMs: number, at: number) => {
+    const row = memory.tests[0];
+    const input = { ...sent(row, { png: current(row).showWork ? DRAWING : null }), timeMs };
+    const result = await answerQuestion(memory.store, P1, "a1", input, at);
+    if (!result.ok || result.step.status !== "question") throw new Error("expected the next question");
+    return result.step;
+  };
+
+  it("appears after the third very fast answer in a row, stays while the run goes on, and goes after a slower answer", async () => {
+    const memory = family(stored(open("a1", T0)));
+    expect((await answerIn(memory, 1_000, T0 + 1)).takeYourTime).toBe(false);
+    expect((await answerIn(memory, 2_999, T0 + 2)).takeYourTime).toBe(false);
+    expect((await answerIn(memory, 500, T0 + 3)).takeYourTime).toBe(true);
+    expect((await answerIn(memory, 800, T0 + 4)).takeYourTime).toBe(true);
+    expect((await answerIn(memory, 3_000, T0 + 5)).takeYourTime).toBe(false);
+  });
+
+  it("is on the step a reload reads, so the message is still there after the page opens again", async () => {
+    const memory = family(stored(open("a1", T0)));
+    for (let i = 0; i < 3; i++) await answerIn(memory, 1_000, T0 + i);
+    expect(await nextStep(memory.store, P1, "a1", T0 + 10)).toMatchObject({ ok: true, step: { status: "question", number: 4, takeYourTime: true } });
   });
 });
 
@@ -947,7 +974,7 @@ describe("when the facts store fails", () => {
  * when the script says so, with a drawing on each question that needs shown work. With `facts`, at the halfway break
  * the child does the first five facts of the timed section. Returns the time of the last answer.
  */
-async function takeWholeTest(memory: ReturnType<typeof family>, script: Script, { facts = false } = {}): Promise<number> {
+async function takeWholeTest(memory: ReturnType<typeof family>, script: Script, { facts = false, timeMs = () => 20_000 }: { facts?: boolean; timeMs?: (n: number) => number } = {}): Promise<number> {
   let at = T0;
   for (let n = 0; ; n++) {
     const row = memory.tests[0];
@@ -955,7 +982,7 @@ async function takeWholeTest(memory: ReturnType<typeof family>, script: Script, 
     if (!q) return at;
     if (facts && n === row.test.stage1.length) await quickFacts(memory, (at += 60_000));
     const wrong = q.format === "choice" ? q.choices!.find((c) => c !== q.answer)! : "no idea";
-    const input = { questionId: q.id, response: script(q, n) ? q.answer : wrong, timeMs: 20_000, work: { png: q.showWork ? DRAWING : null, text: "" } };
+    const input = { questionId: q.id, response: script(q, n) ? q.answer : wrong, timeMs: timeMs(n), work: { png: q.showWork ? DRAWING : null, text: "" } };
     const result = await answerQuestion(memory.store, P1, row.id, input, (at += 60_000));
     if (!result.ok) throw new Error(`answer ${n + 1}: ${result.error}`);
   }
@@ -1056,6 +1083,49 @@ describe("finishing a test", () => {
     expect(await finishTest(memory.store, P1, "a1", "no", T0 + HOUR)).toEqual({ ok: false, error: "not_found" });
     expect(await finishTest(memory.store, P1, "no-such-test", "no", T0 + HOUR)).toEqual({ ok: false, error: "not_found" });
     expect(memory.tests).toEqual(before);
+  });
+});
+
+// #189 (spec #181): more than 30% very fast answers, and the report offers a new test at once, without the 30-day wait.
+describe("a new test after a rushed one", () => {
+  it("opens at once after a test with 14 of 42 answers very fast, and the start screen offers it", async () => {
+    const memory = family(stored(open("a1", T0)));
+    const last = await takeWholeTest(memory, allRight, { timeMs: (n) => (n % 3 === 0 ? 1_000 : 20_000) });
+    expect(await finishTest(memory.store, P1, "a1", "no", last + 60_000)).toMatchObject({ ok: true });
+    expect(memory.tests[0].placement?.pace).toMatchObject({ veryFast: 14, answers: 42, unreliable: true });
+    expect(stateFor(await startStates(memory.store, P1, last + 2 * 60_000), C1)).toEqual({ kind: "start", retake: true });
+    expect(await start(memory.store, last + 3 * 60_000, { restart: false, newSeed: seeds(8) })).toEqual({ ok: true, id: "a2", resumed: false });
+  });
+
+  it("still waits 30 days after a test with 12 of 42 answers very fast", async () => {
+    const memory = family(stored(open("a1", T0)));
+    const last = await takeWholeTest(memory, allRight, { timeMs: (n) => (n % 3 === 0 && n < 36 ? 1_000 : 20_000) });
+    expect(await finishTest(memory.store, P1, "a1", "no", last + 60_000)).toMatchObject({ ok: true });
+    expect(memory.tests[0].placement?.pace).toMatchObject({ veryFast: 12, answers: 42, unreliable: false });
+    expect(await start(memory.store, last + 3 * 60_000, { restart: false, newSeed: seeds(8) })).toMatchObject({ ok: false, error: "retake_closed" });
+  });
+});
+
+// #189, D-108: the report page's retake state. On a read failure it is unknown (null): the report then shows no button
+// and names no time, never "no 30-day wait".
+describe("the retake state the report page reads", () => {
+  const rushedDone = (id: string, at: number): MemoryTest => ({
+    ...stored(done(id, at), { seed: at === T0 ? 7 : 8 }),
+    placement: { ...takeTest(ASHA, 7, allRight).placement, pace: { veryFast: 12, answers: 36, leftOut: [], unreliable: true } },
+  });
+
+  it("is open after one unreliable test, and waits after a second one within 30 days", async () => {
+    expect(await retakeState(family(rushedDone("a1", T0)).store, P1, C1, T0 + 2 * HOUR)).toEqual({ kind: "open", resume: false });
+    const twice = family(rushedDone("a1", T0), rushedDone("a2", T0 + 2 * HOUR));
+    expect(await retakeState(twice.store, P1, C1, T0 + 4 * HOUR)).toEqual({ kind: "opens", at: T0 + 3 * HOUR + 30 * DAY });
+  });
+
+  it("is unknown when the tests cannot be read, though the start screen would offer Start test", async () => {
+    logs();
+    const twice = family(rushedDone("a1", T0), rushedDone("a2", T0 + 2 * HOUR));
+    twice.fail.attempts = new StoreError("attempts load failed", "timeout");
+    expect(stateFor(await startStates(twice.store, P1, T0 + 4 * HOUR, C1), C1).kind).toBe("start");
+    expect(await retakeState(twice.store, P1, C1, T0 + 4 * HOUR)).toBeNull();
   });
 });
 

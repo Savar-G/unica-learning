@@ -27,6 +27,12 @@ export interface Attempt {
    * finished test whose scoring call failed is not lost. Leave it out when unknown (the answers were not loaded).
    */
   answeredAll?: boolean;
+  /**
+   * #189: the completed test's result may not be reliable (more than UNRELIABLE_FAST_PERCENT very fast answers), so a
+   * new test opens at once, without the 30-day wait, at most once per 30 days (D-108, startState). Leave it out when
+   * unknown or not completed.
+   */
+  unreliable?: boolean;
 }
 
 /** A new attempt that starts at `now`. */
@@ -54,7 +60,7 @@ export function recordAnswer(attempt: Attempt, now: number): Attempt {
 
 /** What a child's start screen offers. Times are epoch milliseconds. */
 export type StartState =
-  /** "Start test": no test yet, or the last completed one is 30 days old (`retake`). */
+  /** "Start test": no test yet, or the last completed one is 30 days old or may not be reliable (`retake`). */
   | { kind: "start"; retake: boolean }
   /** "Continue test": the open test, until `resumeUntil`. */
   | { kind: "resume"; attemptId: string; resumeUntil: number }
@@ -74,9 +80,13 @@ export function startState(attempts: readonly Attempt[], now: number): StartStat
   if (open?.answeredAll) return { kind: "finish", attemptId: open.id };
   if (open) return { kind: "resume", attemptId: open.id, resumeUntil: open.resumeUntil };
 
-  const done = attempts.filter((a) => a.status === "completed" && a.completedAt !== null).map((a) => a.completedAt!);
-  const lastDone = done.length > 0 ? Math.max(...done) : null;
-  if (lastDone !== null) {
+  const done = attempts.filter((a) => a.status === "completed" && a.completedAt !== null);
+  const last = done.reduce<Attempt | null>((latest, a) => (!latest || a.completedAt! > latest.completedAt! ? a : latest), null);
+  const lastDone = last?.completedAt ?? null;
+  // #189 (D-108): after a result that may not be reliable, the next test opens at once, at most once per 30 days: only
+  // when no other test was completed in the 30 days before the unreliable one. Otherwise the 30-day wait applies.
+  const retakeNow = last?.unreliable === true && !done.some((a) => a !== last && a.completedAt! > lastDone! - RETAKE_DAYS * DAY_MS);
+  if (lastDone !== null && !retakeNow) {
     const opensAt = lastDone + RETAKE_DAYS * DAY_MS;
     if (now < opensAt) return { kind: "wait", completedAt: lastDone, opensAt };
   }

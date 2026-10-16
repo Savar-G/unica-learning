@@ -28,7 +28,7 @@ import "./test.css";
 type Screen =
   | { name: "intro" }
   /** `testId` keys the saved whiteboard of the question (#67). */
-  | { name: "question"; question: PublicQuestion; number: number; total: number; breakAfter: number; testId: string }
+  | { name: "question"; question: PublicQuestion; number: number; total: number; breakAfter: number; testId: string; takeYourTime: boolean }
   | { name: "break"; next: Extract<TestStep, { status: "question" }> }
   /** The timed facts section (#70), after the halfway break; then the test carries on with `next`. */
   | { name: "facts"; testId: string; next: Extract<TestStep, { status: "question" }> }
@@ -135,7 +135,8 @@ export function TakeTest({ childId, name, breakAfter, ready, done, mode: firstMo
       setScreen({ name: "facts", testId: id, next: step });
       return true;
     }
-    setScreen({ name: "question", question: step.question, number: step.number, total: step.total, breakAfter: step.breakAfter, testId: id });
+    // #189: the last three answers were very fast, so the question says "Take your time" (absent from an older server: off).
+    setScreen({ name: "question", question: step.question, number: step.number, total: step.total, breakAfter: step.breakAfter, testId: id, takeYourTime: step.takeYourTime === true });
     return true;
   }, [breakAfter]);
 
@@ -202,7 +203,7 @@ export function TakeTest({ childId, name, breakAfter, ready, done, mode: firstMo
       <main id="main" className="test-main">
         {screen.name === "intro" && <Intro name={name} ready={ready} busy={busy} onStart={start} failure={failure} mode={mode} />}
         {screen.name === "question" && (
-          <Question key={screen.question.id} testId={screen.testId} typing={typing} question={screen.question} last={screen.number === screen.total} onAnswer={answer} failure={failure} />
+          <Question key={screen.question.id} testId={screen.testId} typing={typing} question={screen.question} last={screen.number === screen.total} takeYourTime={screen.takeYourTime} onAnswer={answer} failure={failure} />
         )}
         {screen.name === "break" && (
           <TestBreak name={name} answered={screen.next.breakAfter} total={screen.next.total} onDone={(how) => {
@@ -305,12 +306,14 @@ interface QuestionProps {
   typing: boolean;
   question: PublicQuestion;
   last: boolean;
+  /** #189: show "Take your time" above the question: the last three answers were very fast. */
+  takeYourTime: boolean;
   onAnswer: (id: string, response: string, timeMs: number, work?: WorkPayload, events?: AnswerEvents) => Promise<boolean>;
   failure: TestError | null;
 }
 
 // One question in the split desk (D-088): the question and the answer on the left, the whiteboard on the right.
-function Question({ testId, typing, question, last, onAnswer, failure }: QuestionProps) {
+function Question({ testId, typing, question, last, takeYourTime, onAnswer, failure }: QuestionProps) {
   const [value, setValue] = useState("");
   const [sending, setSending] = useState(false);
   // Time on the question runs from when it appears to when the child presses Next.
@@ -442,34 +445,50 @@ function Question({ testId, typing, question, last, onAnswer, failure }: Questio
   return (
     <form className="test-split test-desk" onSubmit={submit}>
       <div className="test-pane test-pane-l">
+        {takeYourTime && <TakeYourTime />}
         <div className="test-qrow">
           <ReadAloud key={question.id} text={spoken} onRead={onRead} />
           <h1 id="test-q-title" ref={heading} tabIndex={-1} className="test-prompt"><PromptText text={question.prompt} /></h1>
         </div>
         {question.figure?.kind === "bars" && <BarGraph figure={question.figure} />}
-        {question.format === "choice" ? (
-          <Choices options={shown.map((c, i) => ({ value: c, label: <ChoiceFace text={c} />, name: names[i] }))} value={value || null} onChange={setValue} labelledBy="test-q-title" />
-        ) : (
-          <div className="test-num">
-            <output className="test-display" aria-live="polite" aria-label="Your answer">{value || <i>Type your answer</i>}</output>
-            <div className="test-pad" role="group" aria-label="Number pad">
-              {PAD_KEYS.map((k) => (
-                <button key={k} type="button" onClick={() => press(k)} aria-label={k === "." ? "Decimal point" : undefined}>{k}</button>
-              ))}
-              <button type="button" onClick={() => press("back")} aria-label="Delete">⌫</button>
+        <div className="test-response">
+          {question.format === "choice" ? (
+            <Choices options={shown.map((c, i) => ({ value: c, label: <ChoiceFace text={c} />, name: names[i] }))} value={value || null} onChange={setValue} labelledBy="test-q-title" />
+          ) : (
+            <div className="test-num">
+              <output className="test-display" aria-live="polite" aria-label="Your answer">{value || <i>Type your answer</i>}</output>
+              <div className="test-pad" role="group" aria-label="Number pad">
+                {PAD_KEYS.map((k) => (
+                  <button key={k} type="button" onClick={() => press(k)} aria-label={k === "." ? "Decimal point" : undefined}>{k}</button>
+                ))}
+                <button type="button" onClick={() => press("back")} aria-label="Delete">⌫</button>
+              </div>
             </div>
+          )}
+          <Problem error={failure} />
+          <div className="test-next">
+            <p className="test-why" aria-live="polite">{nudge ? "Now show your work on the board" : ""}</p>
+            <Button type="submit" disabled={!value || sending || needsWork} aria-busy={sending}>{last ? "Finish" : "Next"}</Button>
           </div>
-        )}
-        <Problem error={failure} />
-        <div className="test-next">
-          <p className="test-why" aria-live="polite">{nudge ? "Now show your work on the board" : ""}</p>
-          <Button type="submit" disabled={!value || sending || needsWork} aria-busy={sending}>{last ? "Finish" : "Next"}</Button>
         </div>
       </div>
       <div className="test-pane test-pane-r">
         <Whiteboard board={board} onChange={setBoard} typing={typing} required={question.showWork} nudge={nudge} onSize={onBoardSize} />
       </div>
     </form>
+  );
+}
+
+/**
+ * #189: after three very fast answers in a row. A calm note above the question, never a block: the child reads it with
+ * the question and goes on. role="status", so a screen reader says it once.
+ */
+function TakeYourTime() {
+  useEffect(() => track("test_pace", { status: "shown" }), []);
+  return (
+    <p className="test-pace" role="status">
+      <b>Take your time.</b> Read each question and work it out before you press Next.
+    </p>
   );
 }
 

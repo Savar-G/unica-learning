@@ -1,4 +1,6 @@
 import type { CurriculumId } from "@/lib/signup";
+import type { Certainty } from "./certainty";
+import type { Pace } from "./rushing";
 import type { FactsResult } from "./facts";
 import type { Flag } from "./flags";
 import type { MisconceptionId } from "./misconceptions";
@@ -123,7 +125,15 @@ export type PublicQuestion = Pick<Question, "id" | "level" | "strand" | "format"
  * `breakAfter` is the number of questions before the halfway break (the end of stage 1), for the progress display.
  */
 export type TestStep =
-  | { status: "question"; question: PublicQuestion; number: number; total: number; breakAfter: number }
+  | {
+      status: "question";
+      question: PublicQuestion;
+      number: number;
+      total: number;
+      breakAfter: number;
+      /** #189: the last RUSH_RUN answers were all very fast, so the screen says "Take your time". */
+      takeYourTime: boolean;
+    }
   | { status: "complete"; total: number };
 
 export interface ChildProfile {
@@ -164,6 +174,8 @@ export interface StrandResult {
   status: StrandStatus;
   correct: number;
   total: number;
+  /** #189: "clear" when one more answer, right or wrong, would not change the status. Absent in placements stored before #189. */
+  certainty?: Certainty;
 }
 
 export interface LevelResult {
@@ -180,6 +192,8 @@ export interface Placement {
   workingLevel: Level;
   /** "low" when no level reached the working-level bar, so the level is an estimate below the lowest level seen. */
   confidence: "normal" | "low";
+  /** #189: "clear" when one more answer, right or wrong, would not change the working level. Absent before #189. */
+  levelCertainty?: Certainty;
   /** True when the child cleared the highest level the test reached; they may work higher still. */
   atCeiling: boolean;
   route: Route;
@@ -190,4 +204,6 @@ export interface Placement {
   facts: FactsResult | null;
   /** Help flags (#71): for Savar's alert and the admin area, never the parent's report. Empty in placements stored before #71. */
   flags: Flag[];
+  /** #189: very fast answers, the ones left out of the score, and whether the result may not be reliable. Absent before #189. */
+  pace?: Pace;
 }
