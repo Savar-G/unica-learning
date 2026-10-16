@@ -10,7 +10,7 @@ import { sessionClient } from "@/lib/supabase-auth";
 import type { AssessmentStatus } from "@/lib/test-api";
 import { signWork } from "@/lib/work-store";
 import { stripe } from "@/lib/stripe";
-import type { DashboardRows, RawCard, RawChild, RawEmail, RawParent, RawReport, RawTest, RawWaitlist } from "@/lib/admin-dashboard";
+import type { DashboardRows, EmailCopyView, RawCard, RawChild, RawEmail, RawParent, RawReport, RawTest, RawWaitlist } from "@/lib/admin-dashboard";
 
 // The admin area's data (#77). The gate and every read are here, so no admin page reads the database on its own; the
 // report view is read by the report-loading module with the admin's session (src/lib/report-loading-server.ts, #161).
@@ -559,3 +559,19 @@ export async function setTestAccount(a: AdminSession, parentId: string, test: bo
     : await a.db.from("test_accounts").delete().eq("parent_id", parentId);
   if (error) throw new Error(`[admin] test account: ${error.message}`);
 }
+
+/**
+ * The kept copy of a logged email (D-103), by its id in the email list: a reminder's log id, or "<report id>:report" or
+ * "<report id>:alert". Null when there is no copy: the email went before copies were kept, or its copy failed.
+ */
+export async function getEmailCopy(a: AdminSession, emailId: string): Promise<EmailCopyView | null> {
+  const [id, which, ...rest] = emailId.split(":");
+  if (!isUuid(id) || rest.length > 0 || (which !== undefined && which !== "report" && which !== "alert")) return null;
+  const query = a.db.from("email_copies").select("outcome, from_address, to_address, reply_to, subject, text_body, html_body, updated_at");
+  const row = must<EmailCopyRow | null>(
+    await (which ? query.eq("report_id", id).eq("report_email", which === "report" ? "parent" : "alert") : query.eq("email_log_id", id)).maybeSingle(),
+    "email copy",
+  );
+  return row && { outcome: row.outcome, from: row.from_address, to: row.to_address, replyTo: row.reply_to, subject: row.subject, text: row.text_body, html: row.html_body, keptAt: row.updated_at };
+}
+type EmailCopyRow = { outcome: EmailCopyView["outcome"]; from_address: string | null; to_address: string; reply_to: string | null; subject: string; text_body: string; html_body: string | null; updated_at: string };

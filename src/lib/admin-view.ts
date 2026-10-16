@@ -28,6 +28,8 @@ export const adminTestPath = (id: string) => `${ADMIN_PATH}/assessments/${id}`;
 export const adminParentPath = (id: string) => `${ADMIN_PATH}/parents/${id}`;
 /** The parent's report as the parent sees it, opened by an admin. */
 export const adminReportPath = (id: string) => `${ADMIN_PATH}/reports/${id}`;
+/** One logged email, as the parent got it (D-103). `id`: its id in the email list. */
+export const adminEmailPath = (id: string, demo = false) => `${ADMIN_PATH}/emails/${encodeURIComponent(id)}${demo ? "?demo=1" : ""}`;
 
 export const STATUSES: readonly AssessmentStatus[] = ["in_progress", "completed", "expired"];
 export const STATUS_TEXT: Record<AssessmentStatus, string> = { in_progress: "In progress", completed: "Completed", expired: "Expired" };

@@ -1,6 +1,7 @@
 import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { SendLedger } from "@/lib/email-delivery";
+import { saveEmailCopy } from "@/lib/email-copies";
 
 // The report row ledger (#151, spec #143): the send ledger of the report email and the report alert. The claims stay
 // where they were before the delivery module, on the report row, so the admin view and the unsubscribe lookup (email
@@ -86,6 +87,12 @@ export function reportRowLedger(admin: SupabaseClient): ReportLedger<ReportClaim
     },
     async unknown(claim, error) {
       await write(admin, claim, { [COLUMNS[claim.email].error]: error.slice(0, 500) }, true);
+    },
+    // The admin's email view (D-103): the report email or alert as it was sent, beside the report row.
+    async keepCopy(claim, key, copy) {
+      const { data, error } = await admin.from("reports").select("parent_id").eq("id", key.report).maybeSingle<{ parent_id: string }>();
+      if (error || !data) return console.error("[report] copy not kept: no report row", key.report, error?.message ?? "");
+      await saveEmailCopy(admin, { reportId: key.report, reportEmail: key.email }, data.parent_id, copy);
     },
     async parentEmailSent(report) {
       const { data, error } = await admin.from("reports").select("email_id").eq("id", report).maybeSingle<{ email_id: string | null }>();

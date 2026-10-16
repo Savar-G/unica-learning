@@ -27,6 +27,7 @@ import {
   type Family,
   type Stage,
 } from "@/lib/admin-dashboard";
+import { adminEmailPath } from "@/lib/admin-view";
 
 const ICON: Record<Activity["kind"], string> = { account: "+", test_start: "▶", test_finish: "✓", card_start: "$", card_saved: "▣", paying: "★", cancelled: "✕", waitlist: "◷", email: "✉" };
 const GROUPS = { all: "Everything", people: "Signups and tests", money: "Payments", email: "Emails" } as const;
@@ -243,7 +244,7 @@ export function EmailLog({ d, ctx, filter, nav }: { d: Dashboard; ctx: Ctx; filt
                 <td className="dash-nowrap">{at(e.at)}<span className="dash-sub">{ago(e.at, d.now)}</span></td>
                 <td>{EMAIL_LABEL[e.kind]}</td>
                 <td><Link href={familyHref(ctx, e.familyId)}>{e.familyName}</Link></td>
-                <td className="dash-muted">{e.kind === "unsubscribe" ? "-" : e.subject}</td>
+                <td className="dash-muted">{e.kind === "unsubscribe" ? "-" : <Link href={adminEmailPath(e.id, ctx.demo)}>{e.subject}</Link>}</td>
                 <td>{e.status === "failed" ? <span className="dash-bad-text">Failed after {e.attempts} {e.attempts === 1 ? "try" : "tries"}: {e.error ?? "unknown error"}</span> : e.status === "pending" ? "Waiting to send" : e.kind === "unsubscribe" ? "Reminders off" : "Sent"}</td>
               </tr>
             ))}

@@ -1,5 +1,5 @@
 import "server-only";
-import { resendConfigProblem, resendTransport } from "@/lib/email-resend";
+import { resendConfigProblem, resendSender, resendTransport } from "@/lib/email-resend";
 
 // The parent email delivery module (#149, spec #143): every email the site sends goes through here. A caller gives a
 // finished message and, when the email must go at most once, a send key. The module owns the "send once" protocol:
@@ -60,6 +60,19 @@ export interface SendLedger<K, H> {
   refused(handle: H, error: string): Promise<void>;
   /** The email may have gone: keeps the claim, so nothing sends it again, and stores the error. Never throws. */
   unknown(handle: H, error: string): Promise<void>;
+  /**
+   * Keeps a copy of the email of this claim, after each attempt, over the copy of an attempt before (D-103), so the
+   * admin can read it the way it was sent. Optional: a ledger without it keeps no copy.
+   */
+  keepCopy?(handle: H, key: K, copy: EmailCopy): Promise<void>;
+}
+
+/** The email as it was handed to the transport, for the ledger's copy (D-103). */
+export interface EmailCopy {
+  /** The sender address the transport used; null when it had none (the email was refused). */
+  from: string | null;
+  message: EmailMessage;
+  outcome: SendResult["status"];
 }
 
 /** What a send once did. "busy": another run holds the claim, or the email already went; nothing was sent. */
@@ -86,6 +99,14 @@ export async function sendEmailOnce<K, H>(
     else await ledger.unknown(handle, result.error);
   } catch (e) {
     console.error("[email] ledger write failed; the claim stays held", result.status, e instanceof Error ? e.message : e);
+  }
+  if (ledger.keepCopy) {
+    // A copy that is not kept never changes the email's outcome.
+    try {
+      await ledger.keepCopy(handle, key, { from: resendSender(message), message, outcome: result.status });
+    } catch (e) {
+      console.error("[email] copy not kept", result.status, e instanceof Error ? e.message : e);
+    }
   }
   return result;
 }

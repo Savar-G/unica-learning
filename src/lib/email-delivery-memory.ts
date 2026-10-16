@@ -1,4 +1,4 @@
-import type { EmailMessage, MailTransport, SendLedger } from "@/lib/email-delivery";
+import type { EmailCopy, EmailMessage, MailTransport, SendLedger } from "@/lib/email-delivery";
 
 // In-memory adapters of the delivery module's seams, for tests (#149). Each step waits a tick, so two sends at once
 // really interleave, as two requests do against Resend and the database.
@@ -72,6 +72,8 @@ const jsonKey = <K>(key: K) => (typeof key === "string" ? key : JSON.stringify(k
  */
 export function memoryLedger<K>({ keyOf = jsonKey, now = Date.now, canTakeOver = () => false }: MemoryLedgerOptions<K> = {}) {
   const entries = new Map<string, LedgerEntry>();
+  /** The kept copy of each key's email (D-103): the last attempt's. */
+  const copies = new Map<string, EmailCopy>();
   const copy = (e: LedgerEntry): LedgerEntry => ({ ...e, fields: { ...e.fields } });
   const ledger: SendLedger<K, string> = {
     async claim(key, fields) {
@@ -104,6 +106,10 @@ export function memoryLedger<K>({ keyOf = jsonKey, now = Date.now, canTakeOver =
       await tick();
       Object.assign(entries.get(id)!, { state: "unknown", error });
     },
+    async keepCopy(id, _key, kept) {
+      await tick();
+      copies.set(id, kept);
+    },
   };
   return {
     ledger,
@@ -112,5 +118,7 @@ export function memoryLedger<K>({ keyOf = jsonKey, now = Date.now, canTakeOver =
       const e = entries.get(keyOf(key));
       return e && copy(e);
     },
+    /** The kept copy of this key's email, if one was kept. */
+    keptCopy: (key: K): EmailCopy | undefined => copies.get(keyOf(key)),
   };
 }

@@ -21,7 +21,7 @@ export function resendConfigProblem(): string | null {
 }
 
 /** The sender address of the message, or null when a parent email has no EMAIL_FROM. */
-function senderOf(message: EmailMessage): string | null {
+export function resendSender(message: EmailMessage): string | null {
   const from = process.env.EMAIL_FROM;
   if (from) return from;
   return message.sender.to === "savar" ? `${message.sender.testSenderName} <${TEST_SENDER}>` : null;
@@ -36,7 +36,7 @@ export function resendTransport({ fetch: request = (input, init) => fetch(input,
     async send(message): Promise<SendResult> {
       const key = process.env.RESEND_API_KEY;
       if (!key) return { status: "refused", error: "RESEND_API_KEY is not set" };
-      const from = senderOf(message);
+      const from = resendSender(message);
       if (!from) return { status: "refused", error: "EMAIL_FROM is not set" };
 
       // The time limit covers the answer's body too.
