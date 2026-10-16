@@ -3,7 +3,8 @@
    Each trait cell leads with a mark (full = yes, half = partly) so the table scans before it reads.
    Our column has the accent-soft tint, a gradient bar along its top (the D-037 colours) and accent marks;
    the other columns stay plain ink-2, so nothing reads as a plan tier.
-   Under 900px the row label moves above its three cells and the corner header cell is hidden. */
+   Under 900px the row label moves above its three cells and the corner header cell is hidden.
+   .cmp-all is the five-column table on /compare (D-114); under 900px it shows two columns, picked by the switch. */
 
 .cmp { margin: clamp(48px, 6vw, 80px) 0 0; }
 .cmp-kicker { margin: 0 0 18px; font: 400 12.5px/1.3 var(--mono); letter-spacing: 0.04em; text-transform: uppercase; color: var(--ink-2); }
@@ -29,10 +30,23 @@
 .cmp-mk.yes::after { content: ""; position: absolute; left: 7px; top: 4px; width: 5px; height: 9px; border: solid #fff; border-width: 0 2px 2px 0; transform: rotate(45deg); }
 .cmp-mk.part { background: linear-gradient(90deg, var(--ink-2) 50%, transparent 50%); }
 .us .cmp-mk.yes { background: var(--accent); }
+.cmp-mk.no { background: transparent; }
 
-.cmp-legend { display: flex; align-items: center; gap: 8px; margin: 16px 0 0; font: 400 12.5px/1 var(--mono); color: var(--ink-2); }
-.cmp-legend .cmp-mk { width: 14px; height: 14px; margin: 0 0 0 10px; }
-.cmp-legend .cmp-mk:first-child { margin-left: 0; }
+.cmp-more { margin: 28px 0 0; }
+.cmp-more a { font-weight: 500; color: var(--ink); text-underline-offset: 4px; }
+
+/* /compare: five columns (D-114) */
+.cmp-all { grid-template-columns: minmax(130px, 0.7fr) repeat(5, minmax(0, 1fr)); }
+.cmp-all .cmp-row:not(.cmp-head) > span { flex-direction: column; gap: 10px; padding: 16px 14px; font-size: 14px; }
+.cmp-all .cmp-row:not(.cmp-head) > [role="rowheader"] { padding-left: 0; font-size: 15px; }
+.cmp-all .cmp-head > span { padding-left: 14px; padding-right: 14px; font-size: clamp(16px, 1.4vw, 19px); }
+.cmp-all .cmp-cost > span { gap: 6px; font-size: 12px; }
+.cmp-all .cmp-cost b { font-size: clamp(22px, 2vw, 26px); }
+.cmp-switch { display: none; }
+
+.cmp-legend { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 18px; margin: 16px 0 0; font: 400 12.5px/1 var(--mono); color: var(--ink-2); }
+.cmp-legend > span { display: inline-flex; align-items: center; gap: 8px; }
+.cmp-legend .cmp-mk { width: 14px; height: 14px; margin: 0; }
 .cmp-legend .cmp-mk.yes::after { left: 5px; top: 2px; width: 3px; height: 7px; }
 
 @media (max-width: 899px) {
@@ -42,4 +56,19 @@
   .cmp-head > [role="columnheader"]:first-child { display: none; }
   .cmp-head > span { font-size: 15px; }
   .cmp-cost b { font-size: 22px; }
+}
+
+@media (max-width: 899px) {
+  .cmp-all { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .cmp-all .cmp-row:not(.cmp-head) > span { padding: 12px 10px; font-size: 13px; }
+  .cmp-all .cmp-row:not(.cmp-head) > [role="rowheader"] { padding: 22px 0 4px; }
+  .cmp-all .cmp-head > span { align-items: flex-start; justify-content: flex-end; padding-left: 10px; padding-right: 10px; font-size: 16px; }
+  .cmp-pick:not([data-pick="school"]) [data-col="school"],
+  .cmp-pick:not([data-pick="tutor"]) [data-col="tutor"],
+  .cmp-pick:not([data-pick="centre"]) [data-col="centre"],
+  .cmp-pick:not([data-pick="online"]) [data-col="online"] { display: none; }
+  .cmp-switch { display: flex; flex-wrap: wrap; gap: 6px; margin: 0 0 18px; }
+  .cmp-switch p { flex-basis: 100%; margin: 0 0 4px; font-size: 14px; color: var(--ink-2); }
+  .cmp-switch button { appearance: none; border: 1px solid var(--line); background: #fff; color: var(--ink); border-radius: 999px; padding: 8px 14px; font: 400 14px/1 var(--sans); cursor: pointer; }
+  .cmp-switch button[aria-pressed="true"] { background: var(--btn, var(--ink)); border-color: var(--btn, var(--ink)); color: #fff; }
 }
