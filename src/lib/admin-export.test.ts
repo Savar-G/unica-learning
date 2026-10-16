@@ -1,6 +1,6 @@
 import { readdirSync, readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { createSession, finish, learnerProfile, nextQuestion, storedTest, submitAnswer, type ProfileAnswer, type Session } from "@/lib/assessment";
+import { createSession, finish, learnerProfile, nextQuestion, startExtraRound, storedTest, submitAnswer, type ProfileAnswer, type Session } from "@/lib/assessment";
 import { EXPORT_DATASETS, exportChunks, type ExportReader, type ExportRequest } from "@/lib/admin-export";
 import { memoryExportReader, type ExportData } from "@/lib/admin-export-memory";
 
@@ -52,6 +52,7 @@ const test = (n: number, over: Record<string, unknown> = {}) => ({
   last_answer_at: "2026-10-16T10:20:00+00:00", completed_at: "2026-10-16T10:21:00+00:00", resume_until: "2026-10-17T10:00:00+00:00",
   route: "up", help: "no", placement: { workingLevel: 3, flags: [] }, device: null,
   break_started_at: null, break_ended_at: null, break_skipped: null, break_ms: null,
+  extra_offered_at: null, extra_skipped_at: null, extra_started_at: null, extra_finished_at: null,
   test: { seed: 42, profile: { grade: 3, province: "BC" }, stage1: [], stage2: { up: [], stay: [], down: [] } },
   ...over,
 });
@@ -62,7 +63,7 @@ const answer = (testN: number, position: number, over: Record<string, unknown> =
   question_id: `q${position}`, template_id: "add-within-10", values: { a: 3, b: 4 }, response: "7", correct: true,
   misconception: null, time_ms: 8000, shown_at: "2026-10-16T10:00:50+00:00", answered_at: "2026-10-16T10:01:00+00:00",
   answer_changes: [{ value: "6", atMs: 3000 }, { value: "7", atMs: 5000 }], read_aloud_count: 1, read_aloud_at_ms: [1200],
-  away_count: 0, away_ms: 0, work_required: false, work_path: null, work_text: null, strokes_path: null,
+  away_count: 0, away_ms: 0, work_required: false, work_path: null, work_text: null, strokes_path: null, round: "main",
   ...over,
 });
 
@@ -333,6 +334,55 @@ describe("the questions as drawn", () => {
   });
 });
 
+describe("the extra round (#190)", () => {
+  /** A grade 4 test from seed 1 with the first answer wrong (an early sign), then the extra round drawn and taken. */
+  function withRound(): Session {
+    let session = createSession({ grade: 4, province: "BC" }, 1);
+    for (let q = nextQuestion(session); q; q = nextQuestion(session)) {
+      session = submitAnswer(session, { questionId: q.id, response: session.answers.length === 0 ? "no idea" : q.answer, timeMs: 20_000 });
+    }
+    return startExtraRound(session);
+  }
+  const session = withRound();
+  const stored = storedTest(session);
+  const route = session.route!;
+  const main = stored.stage1.length + stored.stage2[route].length;
+  const times = {
+    // A round stopped part way: skipped after it started (D-116).
+    stopped: { extra_offered_at: "2026-10-16T10:20:00+00:00", extra_started_at: "2026-10-16T10:20:05+00:00", extra_skipped_at: "2026-10-16T10:24:00+00:00" },
+    finished: { extra_offered_at: "2026-10-16T10:20:00+00:00", extra_started_at: "2026-10-16T10:20:05+00:00", extra_finished_at: "2026-10-16T10:30:00+00:00" },
+  };
+  const data = {
+    assessments: [test(1, { route, test: stored, ...times.finished }), test(2, { route, test: stored, ...times.stopped })],
+    answers: [answer(1, main - 1), answer(1, main, { question_id: "x-0", round: "extra" })],
+  };
+
+  it("has its times on each test: offered, skipped (a stop when after the start), started and finished", async () => {
+    const rows = await csv(data, { dataset: "tests", withTests: true });
+    expect(rows[0]).toMatchObject({ ...times.finished, extra_skipped_at: "" });
+    expect(rows[1]).toMatchObject({ ...times.stopped, extra_finished_at: "" });
+    const json = JSON.parse(await download(data, { dataset: "tests", format: "json", withTests: true }));
+    expect(json[0]).toMatchObject({ ...times.finished, extra_skipped_at: null });
+  });
+
+  it("marks each answer with its round", async () => {
+    const rows = await csv(data, { dataset: "answers", withTests: true });
+    expect(rows.map((r) => [r.position, r.question_id, r.round])).toEqual([[String(main - 1), `q${main - 1}`, "main"], [String(main), "x-0", "extra"]]);
+  });
+
+  it("has its questions as drawn, marked extra and numbered on after the main test, as the answers number them", async () => {
+    const rows = (await csv(data, { dataset: "questions", withTests: true })).filter((r) => r.assessment_id === uuid(1));
+    const extra = rows.filter((r) => r.round === "extra");
+    expect(stored.extra?.length).toBe(8);
+    expect(extra.map((r) => r.question_id)).toEqual(stored.extra!.map((q) => q.id));
+    expect(extra.map((r) => r.position)).toEqual(stored.extra!.map((_, i) => String(main + i)));
+    expect(extra.map((r) => r.index)).toEqual(stored.extra!.map((_, i) => String(i)));
+    expect(extra[0]).toMatchObject({ question_id: "x-0", stage: "", route: "", template_id: stored.extra![0].templateId });
+    expect(JSON.parse(extra[0].question)).toEqual(stored.extra![0]);
+    expect(new Set(rows.filter((r) => r.round !== "extra").map((r) => r.round))).toEqual(new Set(["main"]));
+  });
+});
+
 describe("the questionnaire answers", () => {
   const child = (n: number, over: Record<string, unknown> = {}) => ({
     id: uuid(2000 + n), created_at: "2026-10-15T09:00:00+00:00", parent_id: uuid(1000 + n), first_name: "Zoë", grade: 4, province: "BC",
@@ -400,5 +450,10 @@ describe("the columns the export reads", () => {
     const missing = asked.flatMap(({ table, columns }) => columns.filter((c) => !tables.get(table)?.has(c)).map((c) => `${table}.${c}`));
     expect(new Set(asked.map((a) => a.table))).toEqual(new Set(["assessments", "children", "answers", "question_shows", "assessment_facts", "fact_answers", "learner_profiles"]));
     expect([...new Set(missing)]).toEqual([]);
+    // The extra round (#190): its times on the test and its marker on each answer.
+    const read = new Set(asked.flatMap(({ table, columns }) => columns.map((c) => `${table}.${c}`)));
+    for (const c of ["assessments.extra_offered_at", "assessments.extra_skipped_at", "assessments.extra_started_at", "assessments.extra_finished_at", "answers.round"]) {
+      expect(read).toContain(c);
+    }
   });
 });
