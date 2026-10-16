@@ -4,7 +4,17 @@
 import Link from "next/link";
 import { EmailFrame } from "@/components/admin-email-frame";
 import { familyHref, type Ctx } from "@/components/admin-dashboard-parts";
-import { EMAIL_LABEL, at, ago, type EmailCopyView, type EmailEvent } from "@/lib/admin-dashboard";
+import { DELIVERY_TEXT, EMAIL_LABEL, at, ago, deliveryProblem, type Delivery, type EmailCopyView, type EmailEvent } from "@/lib/admin-dashboard";
+
+/** What a delivery event means for the parent, in plain words (D-104). */
+const DELIVERY_MEANS: Record<Delivery["type"], string> = {
+  delivered: "The parent's mail server took it.",
+  delivery_delayed: "The parent's mail server did not take it yet. Resend keeps trying.",
+  bounced: "The parent's mail server refused it. The address may be wrong or full.",
+  complained: "The parent marked it as spam. Resend sends nothing more to this address.",
+  failed: "Resend could not send it.",
+  suppressed: "Resend did not send it, because this address bounced or marked an email as spam before.",
+};
 
 /** "Unica Learning <hello@unicalearning.com>" as a name and an address. */
 function splitAddress(from: string): { name: string; address: string | null } {
@@ -20,7 +30,10 @@ function resultText(e: EmailEvent, copy: EmailCopyView | null): { text: string; 
       ? { text: `Delivery unknown: Resend did not answer, so the email may have gone. It is not sent again. ${e.error ?? ""}`.trim(), bad: true }
       : { text: "Waiting to send.", bad: false };
   }
-  return { text: e.kind === "alert" ? "Sent to you." : "Sent to the parent.", bad: false };
+  // After the send: Resend's newest delivery event (D-104).
+  const last = copy?.events.at(-1) ?? e.delivery;
+  if (last) return { text: `${DELIVERY_TEXT[last.type]}. ${DELIVERY_MEANS[last.type]}`, bad: deliveryProblem(last.type) || last.type === "delivery_delayed" };
+  return { text: `${e.kind === "alert" ? "Sent to you" : "Sent to the parent"}. Resend took it; no delivery report from Resend yet.`, bad: false };
 }
 
 export function EmailView({ e, copy, ctx, back, now }: { e: EmailEvent; copy: EmailCopyView | null; ctx: Ctx; back: string; now: string }) {
@@ -48,6 +61,15 @@ export function EmailView({ e, copy, ctx, back, now }: { e: EmailEvent; copy: Em
         <p className="mail-when">{at(e.at)}<span className="dash-sub">{ago(e.at, now)}</span></p>
       </div>
       <p className={`mail-result${result.bad ? " is-bad" : ""}`}>{result.text}</p>
+      {copy && copy.events.length > 0 && (
+        <ol className="mail-events" aria-label="Delivery events from Resend">
+          {copy.events.map((d, i) => (
+            <li key={i} className={deliveryProblem(d.type) ? "is-bad" : undefined}>
+              <b>{DELIVERY_TEXT[d.type]}</b> · {at(d.at)}{d.detail && <span className="dash-sub">{d.detail}</span>}
+            </li>
+          ))}
+        </ol>
+      )}
       <p className="dash-muted mail-family">Family: <Link href={familyHref(ctx, e.familyId)}>{e.familyName}</Link>{e.childName && <> · {e.childName}</>}</p>
       {copy ? (
         <>

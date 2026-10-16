@@ -10,7 +10,7 @@ import { sessionClient } from "@/lib/supabase-auth";
 import type { AssessmentStatus } from "@/lib/test-api";
 import { signWork } from "@/lib/work-store";
 import { stripe } from "@/lib/stripe";
-import type { DashboardRows, EmailCopyView, RawCard, RawChild, RawEmail, RawParent, RawReport, RawTest, RawWaitlist } from "@/lib/admin-dashboard";
+import type { DashboardRows, Delivery, EmailCopyView, RawCard, RawDelivery, RawChild, RawEmail, RawParent, RawReport, RawTest, RawWaitlist } from "@/lib/admin-dashboard";
 
 // The admin area's data (#77). The gate and every read are here, so no admin page reads the database on its own; the
 // report view is read by the report-loading module with the admin's session (src/lib/report-loading-server.ts, #161).
@@ -457,9 +457,9 @@ export async function dashboardRows(a: AdminSession): Promise<DashboardRows> {
     allRows<RawWaitlist>(a.db.rpc("admin_waitlist_joins").select("id, created_at, parent_id, child_id, province").order("id"), "waitlist"),
     allRows<RawEmail>(a.db.from("email_log").select("id, created_at, parent_id, child_id, assessment_id, kind, status, attempts, sent_at, error").order("id"), "email log"),
   ]);
-  const [stripeRead, testIds] = await Promise.all([cardSubscriptions(cards), testAccountIds(a), confirmCardsInStripe(cards)]);
+  const [stripeRead, testIds, deliveries] = await Promise.all([cardSubscriptions(cards), testAccountIds(a), deliveryRows(a), confirmCardsInStripe(cards)]);
   return {
-    parents, children, reports, cards, waitlist, emails, testIds, ...stripeRead,
+    parents, children, reports, cards, waitlist, emails, deliveries, testIds, ...stripeRead,
     tests: tests.map(({ answers, ...t }) => ({ ...t, answered: answers[0]?.count ?? 0 })),
   };
 }
@@ -567,11 +567,36 @@ export async function setTestAccount(a: AdminSession, parentId: string, test: bo
 export async function getEmailCopy(a: AdminSession, emailId: string): Promise<EmailCopyView | null> {
   const [id, which, ...rest] = emailId.split(":");
   if (!isUuid(id) || rest.length > 0 || (which !== undefined && which !== "report" && which !== "alert")) return null;
-  const query = a.db.from("email_copies").select("outcome, from_address, to_address, reply_to, subject, text_body, html_body, updated_at");
+  const query = a.db.from("email_copies").select("outcome, email_id, from_address, to_address, reply_to, subject, text_body, html_body, updated_at");
   const row = must<EmailCopyRow | null>(
     await (which ? query.eq("report_id", id).eq("report_email", which === "report" ? "parent" : "alert") : query.eq("email_log_id", id)).maybeSingle(),
     "email copy",
   );
-  return row && { outcome: row.outcome, from: row.from_address, to: row.to_address, replyTo: row.reply_to, subject: row.subject, text: row.text_body, html: row.html_body, keptAt: row.updated_at };
+  if (!row) return null;
+  const events = row.email_id
+    ? must<{ type: Delivery["type"]; occurred_at: string; detail: string | null }[]>(
+        await a.db.from("email_events").select("type, occurred_at, detail").eq("email_id", row.email_id).order("occurred_at"),
+        "email events",
+      ).map((e) => ({ type: e.type, at: e.occurred_at, detail: e.detail }))
+    : [];
+  return { outcome: row.outcome, from: row.from_address, to: row.to_address, replyTo: row.reply_to, subject: row.subject, text: row.text_body, html: row.html_body, keptAt: row.updated_at, events };
 }
-type EmailCopyRow = { outcome: EmailCopyView["outcome"]; from_address: string | null; to_address: string; reply_to: string | null; subject: string; text_body: string; html_body: string | null; updated_at: string };
+type EmailCopyRow = { outcome: EmailCopyView["outcome"]; email_id: string | null; from_address: string | null; to_address: string; reply_to: string | null; subject: string; text_body: string; html_body: string | null; updated_at: string };
+
+/**
+ * Resend's delivery events (D-104) of every email with a kept copy, each with the email it belongs to. Events of
+ * emails without a copy (sign-in links, signup alerts) are left out.
+ */
+async function deliveryRows(a: AdminSession): Promise<RawDelivery[]> {
+  const [copies, events] = await Promise.all([
+    allRows<{ email_id: string; email_log_id: string | null; report_id: string | null; report_email: "parent" | "alert" | null }>(
+      a.db.from("email_copies").select("email_id, email_log_id, report_id, report_email").not("email_id", "is", null).order("id"), "email copies"),
+    allRows<{ email_id: string; type: RawDelivery["type"]; occurred_at: string; detail: string | null }>(
+      a.db.from("email_events").select("email_id, type, occurred_at, detail").order("id"), "email events"),
+  ]);
+  const byEmail = new Map(copies.map((c) => [c.email_id, c]));
+  return events.flatMap((e) => {
+    const c = byEmail.get(e.email_id);
+    return c ? [{ email_log_id: c.email_log_id, report_id: c.report_id, report_email: c.report_email, type: e.type, occurred_at: e.occurred_at, detail: e.detail }] : [];
+  });
+}

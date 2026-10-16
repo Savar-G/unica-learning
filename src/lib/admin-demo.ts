@@ -2,7 +2,7 @@
 // with more than a handful of rows and without an admin sign-in. Seeded, so every reload shows the same numbers. No
 // real person is in here, and nothing here reads the database.
 import type { Province } from "@/lib/assessment";
-import type { DashboardRows, EmailCopyView, EmailEvent, Family, RawCard, RawChild, RawEmail, RawParent, RawReport, RawSubscription, RawTest, RawWaitlist } from "@/lib/admin-dashboard";
+import type { DashboardRows, EmailCopyView, EmailEvent, Family, RawCard, RawDelivery, RawChild, RawEmail, RawParent, RawReport, RawSubscription, RawTest, RawWaitlist } from "@/lib/admin-dashboard";
 import { SUPPORT_EMAIL } from "@/lib/contact";
 import { reminderEmail } from "@/lib/reminder-email";
 
@@ -27,7 +27,16 @@ export function demoRows(now: Date): DashboardRows {
   const pick = <T,>(xs: T[]) => xs[Math.floor(r() * xs.length)];
   const iso = (ms: number) => new Date(Math.min(ms, now.getTime() - 60_000)).toISOString();
   const H = 3_600_000;
-  const out: DashboardRows = { parents: [], children: [], tests: [], reports: [], cards: [], waitlist: [], emails: [], subscriptions: [], testIds: [], stripeNote: null, stripeMode: "test" };
+  const out: DashboardRows = { parents: [], children: [], tests: [], reports: [], cards: [], waitlist: [], emails: [], deliveries: [], subscriptions: [], testIds: [], stripeNote: null, stripeMode: "test" };
+  // Delivery events (D-104) draw from their own sequence, so the rest of the demo stays the same.
+  const rd = rng(7);
+  const deliver = (to: Pick<RawDelivery, "email_log_id" | "report_id" | "report_email">, sentMs: number) => {
+    const x = rd();
+    const type: RawDelivery["type"] = x < 0.04 ? "bounced" : x < 0.05 ? "complained" : "delivered";
+    const detail = type === "bounced" ? "Permanent, General: 550 5.1.1 <[address]>: Recipient address rejected" : null;
+    if (type === "complained") out.deliveries.push({ ...to, type: "delivered", occurred_at: iso(sentMs + 20_000), detail: null });
+    out.deliveries.push({ ...to, type, occurred_at: iso(sentMs + (type === "complained" ? 3 * 3_600_000 : 20_000)), detail });
+  };
   let n = 0;
   const id = (p: string) => `${p}-${(++n).toString().padStart(4, "0")}`;
 
@@ -50,7 +59,9 @@ export function demoRows(now: Date): DashboardRows {
     const kid = kids[0];
     const email = (kind: RawEmail["kind"], atMs: number, assessment: string | null, fail = r() < 0.05): void => {
       if (atMs > now.getTime()) return;
-      out.emails.push({ id: id("demo-email"), created_at: iso(atMs), parent_id: pid, child_id: kid.id, assessment_id: assessment, kind, status: kind === "unsubscribe" ? null : fail ? "failed" : "sent", attempts: fail ? 3 : 1, sent_at: fail || kind === "unsubscribe" ? null : iso(atMs + 60_000), error: fail ? "Resend: rate limit (429)" : null });
+      const row: RawEmail = { id: id("demo-email"), created_at: iso(atMs), parent_id: pid, child_id: kid.id, assessment_id: assessment, kind, status: kind === "unsubscribe" ? null : fail ? "failed" : "sent", attempts: fail ? 3 : 1, sent_at: fail || kind === "unsubscribe" ? null : iso(atMs + 60_000), error: fail ? "Resend: rate limit (429)" : null };
+      out.emails.push(row);
+      if (row.status === "sent") deliver({ email_log_id: row.id, report_id: null, report_email: null }, atMs + 60_000);
     };
 
     // the funnel
@@ -81,6 +92,8 @@ export function demoRows(now: Date): DashboardRows {
     if (r() < 0.04) report.email_error = "Resend: 500 internal error";
     else report.emailed_at = iso(finishedMs + 140_000);
     out.reports.push(report);
+    if (report.emailed_at) deliver({ email_log_id: null, report_id: report.id, report_email: "parent" }, finishedMs + 140_000);
+    deliver({ email_log_id: null, report_id: report.id, report_email: "alert" }, finishedMs + 150_000);
 
     if (province !== "BC") {
       if (r() < 0.55) out.waitlist.push({ id: id("demo-wait"), created_at: iso(finishedMs + 0.3 * H), parent_id: pid, child_id: kid.id, province } satisfies RawWaitlist);
@@ -120,5 +133,5 @@ export function demoEmailCopy(e: EmailEvent, f: Family | undefined): EmailCopyVi
   const mail = e.kind === "continue"
     ? reminderEmail({ ...common, kind: "continue", answered: 12, resumeUntil: Date.parse(e.at) + 23 * 3_600_000 })
     : reminderEmail({ ...common, kind: e.kind });
-  return { outcome: e.status === "failed" ? "refused" : "sent", from: "Unica Learning <hello@unicalearning.com>", to: f.email, replyTo: SUPPORT_EMAIL, subject: mail.subject, text: mail.text, html: mail.html, keptAt: e.at };
+  return { outcome: e.status === "failed" ? "refused" : "sent", from: "Unica Learning <hello@unicalearning.com>", to: f.email, replyTo: SUPPORT_EMAIL, subject: mail.subject, text: mail.text, html: mail.html, keptAt: e.at, events: e.delivery ? [e.delivery] : [] };
 }

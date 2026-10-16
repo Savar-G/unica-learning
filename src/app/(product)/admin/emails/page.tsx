@@ -3,7 +3,7 @@ import { AdminFrame } from "@/components/admin";
 import { EmailLog } from "@/components/admin-activity";
 import { Notes, href } from "@/components/admin-dashboard-parts";
 import { FamilyDrawer } from "@/components/admin-family";
-import { EMAIL_KINDS, type EmailKind } from "@/lib/admin-dashboard";
+import { EMAIL_KINDS, emailFailed, type EmailKind } from "@/lib/admin-dashboard";
 import { loadDashboard } from "@/lib/admin-dashboard-load";
 import { ADMIN_PATH } from "@/lib/admin-view";
 import { pageMetadata } from "@/lib/metadata";
@@ -17,7 +17,7 @@ export default async function EmailsPage({ searchParams }: PageProps<"/admin/ema
   const { who, d, query, demo } = await loadDashboard(await searchParams);
   const ctx = { path: PATH, query, demo };
   const filter: EmailKind | "failed" | null = query.kind === "failed" ? "failed" : (EMAIL_KINDS.find((k) => k.kind === query.kind)?.kind ?? null);
-  const count = (k: EmailKind | "failed") => d.emails.filter((e) => (k === "failed" ? e.status === "failed" : e.kind === k)).length;
+  const count = (k: EmailKind | "failed") => d.emails.filter((e) => (k === "failed" ? emailFailed(e) : e.kind === k)).length;
   const nav = (
     <nav className="dash-pills" aria-label="Kind of email">
       <Link href={href(ctx, { kind: null })} aria-current={!filter ? "true" : undefined}>All <span>{d.emails.length}</span></Link>

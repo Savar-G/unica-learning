@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { activities, buildDashboard, buildFamilies, dayKey, monthlyAmount, pickRange, rangeDays, shiftDay, type DashboardRows, type RawEmail, type RawSubscription } from "@/lib/admin-dashboard";
+import { activities, buildDashboard, buildFamilies, deliveryLine, emailFailed, dayKey, monthlyAmount, pickRange, rangeDays, shiftDay, type DashboardRows, type RawEmail, type RawSubscription } from "@/lib/admin-dashboard";
 
 // 2026-10-12 19:00 Pacific (PDT, UTC-7)
 const NOW = new Date("2026-10-13T02:00:00Z");
@@ -7,7 +7,7 @@ const DAY = 86_400_000;
 const ago = (days: number, hours = 0) => new Date(NOW.getTime() - days * DAY - hours * 3_600_000).toISOString();
 
 function rows(over: Partial<DashboardRows> = {}): DashboardRows {
-  return { parents: [], children: [], tests: [], reports: [], cards: [], waitlist: [], emails: [], subscriptions: [], testIds: [], stripeNote: null, stripeMode: null, ...over };
+  return { parents: [], children: [], tests: [], reports: [], cards: [], waitlist: [], emails: [], deliveries: [], subscriptions: [], testIds: [], stripeNote: null, stripeMode: null, ...over };
 }
 const parent = (id: string, created: string) => ({ id, created_at: created, name: `Parent ${id}`, email: `${id}@example.com`, postal: "V3S 1A1", source: null });
 const child = (id: string, parentId: string, province: "BC" | "ON" = "BC") => ({ id, created_at: ago(30), parent_id: parentId, first_name: `Kid ${id}`, grade: 3, province });
@@ -298,5 +298,43 @@ describe("next start reminder", () => {
     expect(next(family({ emails: [startSent(ago(1)), email("u", "p", "unsubscribe", ago(1))] }))).toEqual([]);
     expect(next(family({ tests: [test("t1", "p", "k1", ago(1), null)] }))).toEqual([]);
     expect(next(family({ parents: [parent("p", added)] }))).toEqual([]);
+  });
+});
+
+// Resend's delivery events (D-104), joined to the email list through the kept copies.
+describe("email delivery", () => {
+  const report = { id: "r1", created_at: ago(1), assessment_id: "t1", parent_id: "p", child_id: "k1", emailed_at: ago(1), email_error: null, alerted_at: ago(1), alert_error: null };
+  const r = (deliveries: DashboardRows["deliveries"]) => rows({
+    parents: [parent("p", ago(5))], children: [child("k1", "p")], tests: [test("t1", "p", "k1", ago(2), ago(1))], reports: [report],
+    emails: [email("e1", "p", "start", ago(3))], deliveries,
+  });
+  const at = (h: number) => ago(0, h);
+  const log = { email_log_id: "e1", report_id: null, report_email: null };
+  const byId = (d: DashboardRows) => Object.fromEntries(buildFamilies(d, NOW)[0].emails.map((e) => [e.id, e]));
+
+  it("shows each email's newest event: a reminder, the report email and the alert each get their own", () => {
+    const emails = byId(r([
+      { ...log, type: "delivered", occurred_at: at(5), detail: null },
+      { ...log, type: "complained", occurred_at: at(2), detail: null },
+      { email_log_id: null, report_id: "r1", report_email: "parent", type: "bounced", occurred_at: at(3), detail: "Permanent: no such user" },
+      { email_log_id: null, report_id: "r1", report_email: "alert", type: "delivered", occurred_at: at(3), detail: null },
+    ]));
+    expect(emails.e1.delivery).toEqual({ type: "complained", at: at(2), detail: null });
+    expect(deliveryLine(emails["r1:report"])).toEqual({ text: "Bounced: Permanent: no such user", bad: true });
+    expect(deliveryLine(emails["r1:alert"])).toEqual({ text: "Delivered", bad: false });
+  });
+
+  it("counts a bounced or spam-marked email as failed, and lists the family under Email failed", () => {
+    const d = r([{ ...log, type: "bounced", occurred_at: at(2), detail: null }]);
+    const e = byId(d).e1;
+    expect(e.status).toBe("sent");
+    expect(emailFailed(e)).toBe(true);
+    expect(buildDashboard(d, "7d", NOW).needs.find((n) => n.title === "Email failed")?.families.map((f) => f.id)).toEqual(["p"]);
+  });
+
+  it("is nothing before an event arrives; a delay or a delivery is not a failure", () => {
+    expect(byId(r([])).e1.delivery).toBeNull();
+    expect(emailFailed(byId(r([{ ...log, type: "delivery_delayed", occurred_at: at(2), detail: null }])).e1)).toBe(false);
+    expect(buildDashboard(r([{ ...log, type: "delivered", occurred_at: at(2), detail: null }]), "7d", NOW).needs.find((n) => n.title === "Email failed")).toBeUndefined();
   });
 });
