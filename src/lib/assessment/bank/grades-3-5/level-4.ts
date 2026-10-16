@@ -1114,4 +1114,86 @@ export const LEVEL_4: readonly TaggedTemplate[] = [
       };
     },
   },
+  // Probability experiments (4.17: predict single outcomes with spinners, dice and bag draws, and record the results;
+  // #187). Words only, never a fraction or an expected count (that is 5.18 and 6.18). Other provinces: SK SP5.3 and
+  // MB 5.SP.3-4 describe, predict and test likelihood in grade 5; AB names likelihood first in grade 6
+  // (MAT6-OI8-GQ1-LO1-KO2-SP); ON4 D2.1 uses likelihood words to make predictions.
+  {
+    // Predict the result of many trials from the parts of a spinner or the cubes in a bag.
+    id: "g35-4-experiment-predict",
+    strand: "DP", grades: { BC: 4, AB: 6, SK: 5, MB: 5, ON: 4 }, format: "choice", whiteboard: false, standard: "4.17",
+    fill(rng) {
+      const [x, y] = rng.shuffle(["red", "blue", "green", "yellow"]);
+      const total = rng.pick([4, 5, 6, 8]), many = rng.int(Math.floor(total / 2) + 1, total - 1), few = total - many;
+      const name = rng.pick(NAMES), trials = rng.pick([10, 20, 30]);
+      const setup = rng.int(0, 1) === 1
+        ? `A spinner has ${total} equal parts: ${count(many, "part")} ${many === 1 ? "is" : "are"} ${x} and ${count(few, "part")} ${few === 1 ? "is" : "are"} ${y}. ${name} spins it ${trials} times.`
+        : `A bag has ${count(many, `${x} cube`)} and ${count(few, `${y} cube`)}. ${name} picks one cube without looking, then puts it back, ${trials} times.`;
+      const text = `${setup} What result is most likely?`;
+      return {
+        values: { total, many, trials },
+        prompt: text,
+        readAloud: text,
+        answer: `${cap(x)} more often than ${y}`,
+        wrong: [
+          wrong(`${cap(y)} more often than ${x}`, "chance-reversed"),
+          wrong(`${cap(x)} and ${y} the same number of times`, "D3"),
+          wrong(`${cap(x)} all ${trials} times`, "sure-of-possible"),
+        ],
+      };
+    },
+  },
+  {
+    // Read the results of an experiment: which spinner most likely gave them.
+    id: "g35-4-experiment-results",
+    strand: "DP", grades: { BC: 4, AB: 6, SK: 5, MB: 5, ON: 4 }, format: "choice", whiteboard: false, standard: "4.17",
+    fill(rng) {
+      const [x, y] = rng.shuffle(["red", "blue", "green", "yellow"]);
+      // 3 of 4 parts or 5 of 6 parts: the results land near that share, and the other colour still comes up.
+      const parts = rng.pick([4, 6]), trials = 20;
+      const hits = parts === 4 ? rng.int(13, 17) : rng.int(15, 18);
+      const name = rng.pick(NAMES);
+      const spinner = (a: number, b: number) => `${count(a, `${x} part`)} and ${count(b, `${y} part`)}`;
+      const text = `${name} spun a spinner ${trials} times. It landed on ${x} ${hits} times and on ${y} ${trials - hits} times. Which spinner did ${name} most likely use?`;
+      return {
+        values: { parts, hits },
+        prompt: text,
+        readAloud: text,
+        answer: spinner(parts - 1, 1),
+        wrong: [
+          wrong(spinner(1, parts - 1), "chance-reversed"),
+          wrong(spinner(parts / 2, parts / 2), "D3"),
+          // The other colour came up, so a spinner with none of it could not have given these results.
+          wrong(`${count(parts, `${x} part`)} and no ${y} parts`, "impossible-possible"),
+        ],
+      };
+    },
+  },
+  {
+    // Roll a number cube: which of two events is more (or less) likely. The two events never have the same chance.
+    id: "g35-4-dice-likelihood",
+    strand: "DP", grades: { BC: 4, AB: 6, SK: 5, MB: 5, ON: 4 }, format: "choice", whiteboard: false, standard: "4.17",
+    fill(rng) {
+      // [event, how many of the 6 faces give it]
+      const events = [
+        ["an even number", 3], ["an odd number", 3], ["a number less than 5", 4], ["a number greater than 2", 4],
+        ["a 6", 1], ["a 1", 1], ["a number less than 3", 2], ["a 3 or a 4", 2], ["a number greater than 1", 5],
+      ] as const;
+      const [a, b] = draw(rng, (r) => r.shuffle(events).slice(0, 2), ([a, b]) => a[1] !== b[1]);
+      const more = rng.int(0, 1) === 1;
+      const [likely, unlikely] = a[1] > b[1] ? [a, b] : [b, a];
+      // The events are the choices, which the screen speaks (#79), so the text does not name them.
+      const text = `You roll a number cube with the numbers 1 to 6 on its faces. Which is ${more ? "more" : "less"} likely?`;
+      return {
+        values: { a: a[1], b: b[1], more: more ? 1 : 0 },
+        prompt: text,
+        readAloud: text,
+        answer: `Rolling ${(more ? likely : unlikely)[0]}`,
+        wrong: [
+          wrong(`Rolling ${(more ? unlikely : likely)[0]}`, more ? "chance-reversed" : "likelihood-reversed"),
+          wrong("They are equally likely", "D3"),
+        ],
+      };
+    },
+  },
 ];

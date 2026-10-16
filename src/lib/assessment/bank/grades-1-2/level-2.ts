@@ -114,6 +114,48 @@ export const LEVEL_2: readonly TaggedTemplate[] = [
     },
   },
   {
+    // Benchmarks of 25, 50 and 100 (2.2; #187). The number is never a tie: it is at least 3 closer to the answer than
+    // to the next benchmark. The other provinces: no outcome confirmed, so grade 3 (the later grade wins).
+    id: "2-closest-benchmark",
+    strand: "N", grades: { BC: 2, AB: 3, SK: 3, MB: 3, ON: 3 }, format: "choice", whiteboard: true, standard: "2.2",
+    fill(rng) {
+      const marks = [25, 50, 100];
+      const near = (n: number) => [...marks].sort((a, b) => Math.abs(a - n) - Math.abs(b - n));
+      const n = draw(rng, (r) => r.int(12, 96), (n) => n % 25 !== 0 && Math.abs(near(n)[1] - n) - Math.abs(near(n)[0] - n) >= 3);
+      const [answer, ...others] = near(n);
+      const nextTo = (m: number) => Math.abs(marks.indexOf(m) - marks.indexOf(answer)) === 1;
+      return {
+        values: { n },
+        prompt: `Which number is ${n} closest to?`,
+        readAloud: `Which number is ${n} closest to?`,
+        answer: String(answer),
+        wrong: others.map((m) => wrong(m, nextTo(m) ? "benchmark-near" : "benchmark-far")),
+      };
+    },
+  },
+  {
+    // A personal referent (2.2; #187): a full container of a known size, and an estimate of a half-full one.
+    // SK and MB: WNCP grade 2 estimates quantities to 100 with referents (recalled). AB and ON: unsure, so grade 3.
+    id: "2-half-full-referent",
+    strand: "N", grades: { BC: 2, AB: 3, SK: 2, MB: 2, ON: 3 }, format: "choice", whiteboard: false, standard: "2.2",
+    fill(rng) {
+      const full = rng.pick([50, 100]);
+      const [container, things] = rng.pick([["jar", "beads"], ["box", "crayons"], ["bag", "marbles"], ["cup", "buttons"]] as const);
+      const name = rng.pick(NAMES);
+      const text = `A full ${container} holds about ${full} ${things}. ${name} has a ${container} that is about half full. About how many ${things} are in it?`;
+      return {
+        values: { full },
+        prompt: text,
+        readAloud: text,
+        answer: `About ${full / 2}`,
+        // The choices are always 25, 50 and 100: the full amount, half of it, and half again or double.
+        wrong: full === 100
+          ? [wrong("About 100", "referent-whole"), wrong("About 25", "referent-quarter")]
+          : [wrong("About 50", "referent-whole"), wrong("About 100", "referent-double")],
+      };
+    },
+  },
+  {
     id: "2-add-2-digit",
     strand: "O", grades: { BC: 2, AB: 2, SK: 2, MB: 2, ON: 2 }, format: "number", whiteboard: true, standard: "2.4",
     fill(rng) {
