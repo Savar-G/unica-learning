@@ -12,12 +12,12 @@ import { Button } from "@/ds";
 import { breakDue, hasWork, readAloudText, spokenChoices, type HelpAnswer, type PublicQuestion, type TestStep } from "@/lib/assessment";
 import { ANSWER_MAX, type FinishResult, type StartResult, type StepResult, type TestError, type WorkPayload } from "@/lib/test-api";
 import { answerRecorder, type AnswerEvents } from "@/lib/answer-events";
-import { deviceOf, type BreakEvent, type ContextResult, type TestDevice } from "@/lib/test-context";
+import { deviceOf, type BreakEvent, type BreakResume, type ContextResult, type TestDevice } from "@/lib/test-context";
 import { track } from "@/lib/track";
 import { SUPPORT_EMAIL, SUPPORT_HREF } from "@/lib/contact";
 import { draftKey, draftPrefix, emptyBoard, hasDrawing, type BoardState } from "@/lib/whiteboard";
 import { FactsSection } from "./facts";
-import { breakSeen, markBreakSeen, TestBreak } from "./test-break";
+import { breakSeen, loadBreak, markBreakSeen, saveBreak, TestBreak } from "./test-break";
 import { Choices } from "./test-choices";
 import { BarGraph, ChoiceFace, PromptText } from "./test-figures";
 import { TestHelp } from "./test-help";
@@ -141,7 +141,7 @@ export function TakeTest({ childId, name, total, breakAfter, ready, done, mode: 
   }, [expire]);
 
   /** Shows the step the server sent: the next question, or the end of the test. */
-  const show = useCallback(async (step: TestStep) => {
+  const show = useCallback(async (step: TestStep, resume?: BreakResume) => {
     // Every answer is in: "Did anyone help?" (#71) comes last, and its Finish sends the test.
     if (step.status === "complete") {
       setScreen({ name: "help" });
@@ -149,11 +149,18 @@ export function TakeTest({ childId, name, total, breakAfter, ready, done, mode: 
     }
     // The skippable halfway break (#69) comes once per test, before the first question of the second half.
     const id = testId.current ?? "";
-    if (breakDue(step) && !breakSeen(id)) {
+    const saved = loadBreak(id);
+    if (resume?.ended || saved?.end) {
       markBreakSeen(id);
+    }
+    const unfinished = resume && !resume.ended && !saved?.end;
+    if ((unfinished && step.number > step.breakAfter) || (breakDue(step) && !breakSeen(id))) {
       track("test_break", { status: "shown" });
-      // #185: the server saves when the break was shown, by its own clock.
-      breakShownAt.current = performance.now();
+      // Keep the browser's original start across a reload. Within a page use its monotonic clock, never the save
+      // response. On another browser the server's saved start is the available duration basis.
+      const startedAt = saved?.startedAt ?? resume?.startedAt ?? Date.now();
+      saveBreak(id, { startedAt, end: null });
+      breakShownAt.current = performance.now() - Math.max(0, Date.now() - startedAt);
       void sendContext(id, { break: "shown" });
       setScreen({ name: "break", next: step });
       return true;
@@ -199,7 +206,12 @@ export function TakeTest({ childId, name, total, breakAfter, ready, done, mode: 
     if (started.resumed) track("test_resume");
     else track("test_start", { status: mode === "restart" ? "restart" : "new" });
     const res = await call<StepResult>(`/api/account/assessments/${started.id}`);
-    if (res.ok) await show(res.step);
+    if (res.ok) {
+      // A captured end survived a reload while its request was pending. Resend the same value once on resume.
+      const saved = loadBreak(started.id);
+      if (!res.break?.ended && saved?.end) void sendContext(started.id, { break: saved.end.event, lengthMs: saved.end.lengthMs });
+      await show(res.step, res.break);
+    }
     else if (res.error === "expired") expire();
     else setFailure(res.error);
     setBusy(false);
@@ -241,7 +253,12 @@ export function TakeTest({ childId, name, total, breakAfter, ready, done, mode: 
             // #185: how the break ended and how long it lasted on this screen, sent at once.
             const id = testId.current;
             const shownAt = breakShownAt.current;
-            if (id && shownAt !== null) void sendContext(id, { break: how, lengthMs: Math.round(performance.now() - shownAt) });
+            if (id && shownAt !== null) {
+              const lengthMs = Math.round(performance.now() - shownAt);
+              saveBreak(id, { startedAt: loadBreak(id)?.startedAt ?? Date.now() - lengthMs, end: { event: how, lengthMs } });
+              markBreakSeen(id);
+              void sendContext(id, { break: how, lengthMs });
+            }
             void show(screen.next);
           }} />
         )}

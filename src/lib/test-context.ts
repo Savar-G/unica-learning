@@ -8,6 +8,12 @@ import type { TestError } from "@/lib/test-api";
 /** What the context route answers. The screen never waits for it: a failure never stops the child. */
 export type ContextResult = { ok: true } | { ok: false; error: TestError };
 
+/** The only context the child needs to resume a break. No device data, answers or marking fields. */
+export interface BreakResume {
+  startedAt: number;
+  ended: boolean;
+}
+
 /** The break screen was shown, or the child left it: "Keep going" is skipped, "I am back from my break" is rested. */
 export const BREAK_EVENTS = ["shown", "rested", "skipped"] as const;
 export type BreakEvent = (typeof BREAK_EVENTS)[number];

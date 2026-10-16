@@ -47,8 +47,8 @@ export function attemptStore(admin: SupabaseClient): AttemptStore {
     },
 
     async load(parent, id) {
-      const { data: row, error } = await admin.from("assessments").select(`${ATTEMPT_COLUMNS}, test`)
-        .eq("id", id).eq("parent_id", parent).maybeSingle<AttemptRow & { test: StoredTest }>();
+      const { data: row, error } = await admin.from("assessments").select(`${ATTEMPT_COLUMNS}, test, break_started_at, break_ended_at`)
+        .eq("id", id).eq("parent_id", parent).maybeSingle<AttemptRow & { test: StoredTest; break_started_at: string | null; break_ended_at: string | null }>();
       if (error) throw new StoreError("load failed", error.message);
       if (!row) return null;
       const { data: answers, error: answersError } = await admin.from("answers")
@@ -59,6 +59,7 @@ export function attemptStore(admin: SupabaseClient): AttemptStore {
         attempt: toAttempt(row),
         test: row.test,
         answers: (answers ?? []).map((a) => ({ questionId: a.question_id, response: a.response, timeMs: a.time_ms })),
+        ...(row.break_started_at && { break: { startedAt: Date.parse(row.break_started_at), ended: row.break_ended_at != null } }),
       };
     },
 
@@ -249,7 +250,7 @@ function timelineColumns({ shownAt, answeredAt, events }: AnswerTimeline) {
 
 /**
  * The store's operations for the test context (#185): columns of public.assessments. Each update is guarded in the
- * update itself: only an open test, and only fields still empty, so two requests at once (or a resume on another
+ * update itself: only an eligible status/deadline, and only fields still empty, so two requests at once (or a resume on another
  * device) cannot overwrite the first record. The module calls them only for a test that `load` found for the parent.
  */
 function contextStore(admin: SupabaseClient): ContextStore {
@@ -262,7 +263,7 @@ function contextStore(admin: SupabaseClient): ContextStore {
 
     async startBreak(id, at) {
       const { error } = await admin.from("assessments").update({ break_started_at: iso(at) })
-        .eq("id", id).eq("status", "in_progress").is("break_started_at", null);
+        .eq("id", id).eq("status", "in_progress").gte("resume_until", iso(at)).is("break_started_at", null);
       if (error) throw new StoreError("break save failed", error.message);
     },
 
@@ -272,12 +273,12 @@ function contextStore(admin: SupabaseClient): ContextStore {
       for (let round = 0; round < 2; round++) {
         // The usual order: the break has its start.
         const after = await admin.from("assessments").update(ended)
-          .eq("id", id).eq("status", "in_progress").not("break_started_at", "is", null).is("break_ended_at", null).select("id");
+          .eq("id", id).in("status", ["in_progress", "completed"]).gte("resume_until", iso(at)).not("break_started_at", "is", null).is("break_ended_at", null).select("id");
         if (after.error) throw new StoreError("break save failed", after.error.message);
         if ((after.data ?? []).length > 0) return;
         // The end reached the server first: its start is the browser's length before it.
         const first = await admin.from("assessments").update({ ...ended, break_started_at: iso(at - lengthMs) })
-          .eq("id", id).eq("status", "in_progress").is("break_started_at", null).is("break_ended_at", null).select("id");
+          .eq("id", id).in("status", ["in_progress", "completed"]).gte("resume_until", iso(at)).is("break_started_at", null).is("break_ended_at", null).select("id");
         if (first.error) throw new StoreError("break save failed", first.error.message);
         if ((first.data ?? []).length > 0) return;
       }

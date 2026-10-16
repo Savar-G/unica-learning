@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createFacts, createSession, nextQuestion, restoreSession, startAttempt, storedTest, submitAnswer, type Attempt, type Submission } from "@/lib/assessment";
-import { answerFact, finishTest, recordBreak, recordDevice, startFacts, StoreError } from "@/lib/test-attempt";
+import { answerFact, answerQuestion, nextStep, finishTest, recordBreak, recordDevice, startFacts, StoreError } from "@/lib/test-attempt";
 import { memoryAttemptStore, type MemoryTest } from "@/lib/test-attempt-memory";
 import type { TestDevice } from "@/lib/test-context";
 
@@ -98,6 +98,42 @@ describe("the halfway break", () => {
     expect(breakOf(memory.tests[0])).toEqual({ startedAt: T0 + HOUR, endedAt: T0 + HOUR + 4_000, skipped: true, lengthMs: 3_900 });
   });
 
+  it("returns only the break resume state with the next question after a reload", async () => {
+    const memory = testWith(18);
+    await recordBreak(memory.store, P1, "a1", SHOWN, T0 + HOUR);
+    expect(await nextStep(memory.store, P1, "a1", T0 + HOUR + 5_000)).toMatchObject({ ok: true, break: { startedAt: T0 + HOUR, ended: false } });
+    await recordBreak(memory.store, P1, "a1", rested(6_000), T0 + HOUR + 6_000);
+    expect(await nextStep(memory.store, P1, "a1", T0 + HOUR + 7_000)).toMatchObject({ ok: true, break: { startedAt: T0 + HOUR, ended: true } });
+  });
+
+  it("saves a captured break end after the next question answer", async () => {
+    const memory = testWith(18);
+    await recordBreak(memory.store, P1, "a1", SHOWN, T0 + HOUR);
+    const step = await nextStep(memory.store, P1, "a1", T0 + HOUR + 2_000);
+    if (!step.ok || step.step.status !== "question") throw new Error("missing question");
+    const question = nextQuestion(restoreSession(memory.tests[0].test, memory.tests[0].answers))!;
+    expect(await answerQuestion(memory.store, P1, "a1", { questionId: question.id, response: question.answer, timeMs: 5_000, work: { png: null, text: "5 + 1" } }, T0 + HOUR + 5_000)).toMatchObject({ ok: true });
+    expect(await recordBreak(memory.store, P1, "a1", rested(1_500), T0 + HOUR + 8_000)).toEqual({ ok: true });
+    expect(breakOf(memory.tests[0])).toEqual({ startedAt: T0 + HOUR, endedAt: T0 + HOUR + 8_000, skipped: false, lengthMs: 1_500 });
+  });
+
+  it("keeps a captured end when finish wins the write race, without changing the score", async () => {
+    const memory = testWith(36);
+    let release!: () => void;
+    let entered!: () => void;
+    const waiting = new Promise<void>((resolve) => (entered = resolve));
+    const held = new Promise<void>((resolve) => (release = resolve));
+    const store = { ...memory.store, endBreak: async (...args: Parameters<typeof memory.store.endBreak>) => { entered(); await held; return memory.store.endBreak(...args); } };
+    const end = recordBreak(store, P1, "a1", rested(1_500), T0 + HOUR);
+    await waiting;
+    expect(await finishTest(memory.store, P1, "a1", "no", T0 + HOUR + 1)).toMatchObject({ ok: true });
+    const placement = structuredClone(memory.tests[0].placement);
+    release();
+    expect(await end).toEqual({ ok: true });
+    expect(breakOf(memory.tests[0])).toMatchObject({ skipped: false, lengthMs: 1_500 });
+    expect(memory.tests[0].placement).toEqual(placement);
+  });
+
   it("a child who rested did not skip it, and the break ends when they come back", async () => {
     const memory = testWith(18);
     await recordBreak(memory.store, P1, "a1", SHOWN, T0 + HOUR);
@@ -129,7 +165,7 @@ describe("the halfway break", () => {
   it("keeps a length over a day as a day: the test closes 24 hours after the last answer", async () => {
     const memory = testWith(18);
     await recordBreak(memory.store, P1, "a1", SHOWN, T0 + HOUR);
-    await recordBreak(memory.store, P1, "a1", rested(30 * HOUR + 0.4), T0 + 31 * HOUR);
+    await recordBreak(memory.store, P1, "a1", rested(30 * HOUR + 0.4), T0 + HOUR + 1_000);
     expect(breakOf(memory.tests[0]).lengthMs).toBe(24 * HOUR);
   });
 
@@ -149,10 +185,59 @@ describe("the halfway break", () => {
     expect(breakOf(memory.tests[0])).toEqual({ startedAt: T0 + HOUR, endedAt: null, skipped: null, lengthMs: null });
   });
 
-  it.each([10, 19, 36])("refuses a break record when the test is not at the halfway point (%i answers in), and stores nothing", async (answered) => {
+  it.each([10, 19, 36])("refuses a new break screen away from halfway (%i answers in)", async (answered) => {
     const memory = testWith(answered);
     expect(await recordBreak(memory.store, P1, "a1", SHOWN, T0 + HOUR)).toEqual({ ok: false, error: "conflict" });
-    expect(await recordBreak(memory.store, P1, "a1", skipped(1_000), T0 + HOUR)).toEqual({ ok: false, error: "conflict" });
+    expect(breakOf(memory.tests[0])).toEqual(NO_BREAK);
+  });
+
+  it("refuses an end before halfway and invalid module timings", async () => {
+    const early = testWith(10);
+    expect(await recordBreak(early.store, P1, "a1", rested(1_000), T0 + HOUR)).toEqual({ ok: false, error: "conflict" });
+    expect(breakOf(early.tests[0])).toEqual(NO_BREAK);
+    const memory = testWith(18);
+    for (const length of [-1, NaN, Infinity]) expect(await recordBreak(memory.store, P1, "a1", rested(length), T0 + HOUR)).toEqual({ ok: false, error: "conflict" });
+    expect(breakOf(memory.tests[0])).toEqual(NO_BREAK);
+  });
+
+  it("accepts the end after finish only within the original deadline, and keeps its first value", async () => {
+    const memory = testWith(36);
+    await finishTest(memory.store, P1, "a1", "no", T0 + HOUR);
+    const placement = structuredClone(memory.tests[0].placement);
+    const deadline = memory.tests[0].resumeUntil;
+    expect(await recordBreak(memory.store, P1, "a1", rested(1_500), deadline)).toEqual({ ok: true });
+    const first = breakOf(memory.tests[0]);
+    expect(first).toMatchObject({ endedAt: deadline, skipped: false, lengthMs: 1_500 });
+    expect(await recordBreak(memory.store, P1, "a1", skipped(8_000), deadline)).toEqual({ ok: true });
+    expect(breakOf(memory.tests[0])).toEqual(first);
+    expect(memory.tests[0].placement).toEqual(placement);
+    expect(memory.tests[0].resumeUntil).toBe(deadline);
+    expect(await recordBreak(memory.store, P1, "a1", rested(1_500), deadline + 1)).toEqual({ ok: false, error: "conflict" });
+  });
+
+  it("saves only one of two concurrent ends, and a concurrent expiry prevents the held write", async () => {
+    const memory = testWith(18);
+    await Promise.all([recordBreak(memory.store, P1, "a1", rested(1_500), T0 + HOUR), recordBreak(memory.store, P1, "a1", skipped(1_600), T0 + HOUR)]);
+    expect(breakOf(memory.tests[0])).toMatchObject({ skipped: false, lengthMs: 1_500 });
+    const stale = testWith(18);
+    let release!: () => void;
+    let entered!: () => void;
+    const waiting = new Promise<void>((r) => (entered = r));
+    const held = new Promise<void>((r) => (release = r));
+    const store = { ...stale.store, endBreak: async (...args: Parameters<typeof stale.store.endBreak>) => { entered(); await held; return stale.store.endBreak(...args); } };
+    const end = recordBreak(store, P1, "a1", rested(1_500), T0 + HOUR);
+    await waiting;
+    await nextStep(stale.store, P1, "a1", T0 + 25 * HOUR);
+    release();
+    await end;
+    expect(stale.tests[0].status).toBe("expired");
+    expect(breakOf(stale.tests[0])).toEqual(NO_BREAK);
+  });
+
+  it("takes no context after the deadline even before another request marks it expired", async () => {
+    const memory = testWith(18);
+    expect(await recordBreak(memory.store, P1, "a1", SHOWN, T0 + 25 * HOUR)).toEqual({ ok: false, error: "conflict" });
+    expect(await recordBreak(memory.store, P1, "a1", rested(1_000), T0 + 25 * HOUR)).toEqual({ ok: false, error: "conflict" });
     expect(breakOf(memory.tests[0])).toEqual(NO_BREAK);
   });
 

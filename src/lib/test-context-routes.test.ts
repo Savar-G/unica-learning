@@ -8,6 +8,7 @@ import type { TestDevice } from "@/lib/test-context";
 // time sent with each quick fact. The module's store is the in-memory one; the session is a signed-in parent id (or
 // none), and the secret key is there or not. The clock is the server's (Date.now()).
 vi.mock("server-only", () => ({}));
+vi.mock("next/server", async (original) => ({ ...(await original<typeof import("next/server")>()), after: () => {} }));
 
 let signedIn: string | null;
 let secretKey: boolean;
@@ -23,6 +24,9 @@ vi.mock("@/lib/test-attempt-server", () => ({ attemptStore: () => memory.store }
 const { POST: contextRoute } = await import("@/app/api/account/assessments/[id]/context/route");
 const { POST: factsStartRoute } = await import("@/app/api/account/assessments/[id]/facts/route");
 const { POST: factAnswerRoute } = await import("@/app/api/account/assessments/[id]/facts/answers/route");
+const { GET: stepRoute } = await import("@/app/api/account/assessments/[id]/route");
+const { POST: answerRoute } = await import("@/app/api/account/assessments/[id]/answers/route");
+const { POST: finishRoute } = await import("@/app/api/account/assessments/[id]/finish/route");
 
 const HOUR = 60 * 60_000;
 const T0 = Date.UTC(2026, 10, 2, 18, 0);
@@ -73,6 +77,44 @@ afterEach(() => {
 });
 
 describe("POST /api/account/assessments/[id]/context (the halfway break and the device)", () => {
+  it("returns a safe pending break state for reload and hides it from another parent", async () => {
+    await context(TEST, { break: "shown" });
+    const request = () => stepRoute(new Request(`https://unica.test/api/account/assessments/${TEST}`), ctxOf(TEST));
+    const response = await request();
+    const body = await response.json();
+    expect(response.headers.get("cache-control")).toBe("no-store");
+    expect(Object.keys(body).sort()).toEqual(["break", "ok", "step"]);
+    expect(body.break).toEqual({ startedAt: T0 + HOUR, ended: false });
+    expect(Object.keys(body.step.question).sort()).toEqual(["choices", "format", "id", "level", "prompt", "readAloud", "say", "showWork", "strand", "whiteboard"]);
+    signedIn = P2;
+    expect(await sent(await request())).toEqual({ status: 404, body: { ok: false, error: "not_found" } });
+  });
+
+  it("accepts an end after a later answer, and concurrent duplicate ends keep the first context", async () => {
+    await context(TEST, { break: "shown" });
+    const q = nextQuestion(restoreSession(memory.tests[0].test, memory.tests[0].answers))!;
+    const response = await answerRoute(postJson(`https://unica.test/api/account/assessments/${TEST}/answers`, { questionId: q.id, response: q.answer, timeMs: 5_000, work: { text: "5 + 1" } }), ctxOf(TEST));
+    expect(response.status).toBe(200);
+    vi.setSystemTime(T0 + HOUR + 8_000);
+    expect(await Promise.all([context(TEST, { break: "rested", lengthMs: 1_500 }), context(TEST, { break: "skipped", lengthMs: 8_000 })]).then((rs) => Promise.all(rs.map(sent)))).toEqual([OK, OK]);
+    expect(memory.tests[0].answers).toHaveLength(19);
+    expect(breakOf(memory.tests[0])).toEqual({ startedAt: T0 + HOUR, endedAt: T0 + HOUR + 8_000, skipped: false, lengthMs: 1_500 });
+  });
+
+  it("accepts a captured end after the finish route without changing the score or allowing new context", async () => {
+    testWith(36);
+    expect((await finishRoute(postJson(`https://unica.test/api/account/assessments/${TEST}/finish`, { help: "no" }), ctxOf(TEST))).status).toBe(200);
+    const placement = structuredClone(memory.tests[0].placement);
+    vi.setSystemTime(T0 + HOUR + 8_000);
+    expect(await sent(await context(TEST, { break: "rested", lengthMs: 1_500 }))).toEqual(OK);
+    expect(breakOf(memory.tests[0])).toMatchObject({ endedAt: T0 + HOUR + 8_000, skipped: false, lengthMs: 1_500 });
+    expect(memory.tests[0].placement).toEqual(placement);
+    expect(await sent(await context(TEST, { break: "shown" }))).toEqual({ status: 409, body: { ok: false, error: "conflict" } });
+    expect(await sent(await context(TEST, { device: IPAD }))).toEqual({ status: 409, body: { ok: false, error: "conflict" } });
+    vi.setSystemTime(T0 + 25 * HOUR);
+    expect(await sent(await context(TEST, { break: "rested", lengthMs: 1_500 }))).toEqual({ status: 409, body: { ok: false, error: "conflict" } });
+  });
+
   it("saves the break when it is shown and when it ends, with the length the browser measured", async () => {
     expect(await sent(await context(TEST, { break: "shown" }))).toEqual(OK);
     vi.setSystemTime(T0 + HOUR + 95_000);

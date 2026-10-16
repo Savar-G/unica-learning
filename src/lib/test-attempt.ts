@@ -40,7 +40,7 @@ import {
 import { FACTS_SECONDS, createFacts, factsStep, restoreFacts, storedFacts, submitFact, type FactAnswer, type FactsSession, type FactsStep, type FactsTest, type FactSubmission } from "@/lib/assessment";
 import { ANSWER_MAX, QUESTION_TIME_CAP_MS } from "@/lib/test-api";
 import type { AnswerEvents } from "@/lib/answer-events";
-import type { BreakRecord, TestDevice } from "@/lib/test-context";
+import type { BreakRecord, BreakResume, TestDevice } from "@/lib/test-context";
 
 /** One of the parent's children, as a new test needs them. */
 export interface AttemptChild {
@@ -57,6 +57,7 @@ export interface LoadedAttempt {
   attempt: Attempt;
   test: StoredTest;
   answers: Submission[];
+  break?: BreakResume;
 }
 
 /** A new test to store: its times, the seed, and the questions drawn from it. */
@@ -293,7 +294,7 @@ export async function startStates(store: AttemptStore, parent: string, now: numb
 /** A child's start state; a child with no tests can start one. */
 export const stateFor = (states: Map<string, StartState>, childId: string): StartState => states.get(childId) ?? { kind: "start", retake: false };
 
-export type StepOutcome = { ok: true; step: TestStep } | Refusal;
+export type StepOutcome = { ok: true; step: TestStep; break?: BreakResume } | Refusal;
 
 /**
  * The next question of the parent's test, without its answer, or "complete". A test that ran out of time at `now` is
@@ -303,7 +304,7 @@ export async function nextStep(store: AttemptStore, parent: string, id: string, 
   const open = await openTest(store, parent, id, now);
   if (!open.ok) return open;
   await served(store, id, open.session, now);
-  return { ok: true, step: testStep(open.session) };
+  return { ok: true, step: testStep(open.session), ...(open.break && { break: open.break }) };
 }
 
 /** The whiteboard work that comes with an answer (#67), as the route parsed it (src/lib/work-payload.ts). */
@@ -443,7 +444,7 @@ async function freshConflict(store: AttemptStore, parent: string, id: string, no
 }
 
 /** The parent's test at `now`, or "expired" when it ran out of time: then it is marked expired if still in progress. */
-async function openTest(store: AttemptStore, parent: string, id: string, now: number): Promise<{ ok: true; attempt: Attempt; session: Session } | Refusal> {
+async function openTest(store: AttemptStore, parent: string, id: string, now: number): Promise<{ ok: true; attempt: Attempt; session: Session; break?: BreakResume } | Refusal> {
   const read = await readTest(store, parent, id);
   if (!read.ok || attemptState(read.attempt, now) !== "expired") return read;
   if (read.attempt.status === "in_progress") {
@@ -457,7 +458,7 @@ async function openTest(store: AttemptStore, parent: string, id: string, now: nu
 }
 
 /** The parent's test and its session, rebuilt from the answers with the assessment core. No time check. */
-async function readTest(store: AttemptStore, parent: string, id: string): Promise<{ ok: true; attempt: Attempt; session: Session } | Refusal> {
+async function readTest(store: AttemptStore, parent: string, id: string): Promise<{ ok: true; attempt: Attempt; session: Session; break?: BreakResume } | Refusal> {
   let loaded: LoadedAttempt | null;
   try {
     loaded = await store.load(parent, id);
@@ -473,7 +474,7 @@ async function readTest(store: AttemptStore, parent: string, id: string): Promis
     return { ok: false, error: "store_failed", unreadable: true };
   }
   // A test with every answer in never expires: it only waits to be scored.
-  return { ok: true, attempt: { ...loaded.attempt, answeredAll: testStep(session).status === "complete" }, session };
+  return { ok: true, attempt: { ...loaded.attempt, answeredAll: testStep(session).status === "complete" }, session, ...(loaded.break && { break: loaded.break }) };
 }
 
 // The timed facts section (#70, #148), at the halfway break. The server's clock times it: the section starts at the
@@ -737,7 +738,7 @@ async function shownOf(store: AttemptStore, id: string, position: number): Promi
 // a slow network never makes the break longer.
 
 /**
- * The store seam's operations for the test context. Each changes a test only while it is in progress, and writes only
+ * The store seam's operations for the test context. Device and shown writes require an open test. Each writes only
  * fields that are still empty, so the first record wins: a break shown again, or a resume on another device, changes
  * nothing. The module calls them only for a test that `load` returned for the parent, so they take the test's id alone.
  */
@@ -749,7 +750,8 @@ export interface ContextStore {
   /**
    * Saves the end of the break: when it ended (`at`), whether the child skipped it, and its length. Only once: an ended
    * break changes nothing. When the break has no start yet (the end reached the server first, or "shown" was lost),
-   * also saves the start, as `at - lengthMs`; a later "shown" then changes nothing.
+   * also saves the start, as `at - lengthMs`; a later "shown" then changes nothing. Takes an end after finish too,
+   * within the existing resume deadline. Refuses expired rows. Does not change the score or the deadline.
    */
   endBreak(id: string, end: { at: number; skipped: boolean; lengthMs: number }): Promise<void>;
 }
@@ -757,7 +759,7 @@ export interface ContextStore {
 /** Why the module refused a context record: a subset of Refusal. */
 export type ContextRefusal =
   | { ok: false; error: "not_found" }
-  /** The test is not in progress, or a break record comes when the test is not at the halfway point. */
+  /** The stage, status, deadline or captured timing does not permit this context record. */
   | { ok: false; error: "conflict" }
   | StoreFailed;
 
@@ -767,13 +769,23 @@ export type ContextOutcome = { ok: true } | ContextRefusal;
 const BREAK_MAX_MS = 24 * 60 * 60_000;
 
 /**
- * Saves a record of the halfway break of the parent's test at `now`. Taken only at the halfway point, when the next
- * question is the first after the break (the assessment core's breakDue).
+ * Saves the halfway break of the parent's test at `now`. A new screen requires the halfway point. An end is valid
+ * from halfway onward, including after finish, until the existing resume deadline. Receipt time stays server time;
+ * length stays browser time. An end received before its shown request can supply the missing start.
  */
 export async function recordBreak(store: AttemptStore, parent: string, id: string, record: BreakRecord, now: number): Promise<ContextOutcome> {
   const read = await readTest(store, parent, id);
   if (!read.ok) return contextRefusal(read);
-  if (read.attempt.status !== "in_progress" || !breakDue(testStep(read.session))) return { ok: false, error: "conflict" };
+  const step = testStep(read.session);
+  const pastBreak = step.status === "complete" || (step.status === "question" && step.number > step.breakAfter);
+  const { attempt } = read;
+  // Context does not extend the answer window. An end can arrive after finish, but cannot reopen an expired test,
+  // create a new break screen after finish, or change any score. The store repeats the status/deadline guards.
+  const eligible = record.event === "shown"
+    ? attempt.status === "in_progress" && breakDue(step)
+    : pastBreak && (attempt.status === "in_progress" || (attempt.status === "completed" && step.status === "complete"));
+  if (!eligible || now > attempt.resumeUntil) return { ok: false, error: "conflict" };
+  if (record.event !== "shown" && (!Number.isFinite(record.lengthMs) || record.lengthMs < 0)) return { ok: false, error: "conflict" };
   try {
     if (record.event === "shown") await store.startBreak(id, now);
     else await store.endBreak(id, { at: now, skipped: record.event === "skipped", lengthMs: Math.min(Math.round(record.lengthMs), BREAK_MAX_MS) });

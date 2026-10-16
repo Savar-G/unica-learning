@@ -3,6 +3,7 @@
 import type { TestStep } from "@/lib/assessment";
 import type { Refusal } from "@/lib/test-attempt";
 import type { FactsRefusal } from "@/lib/test-attempt";
+import type { BreakResume } from "@/lib/test-context";
 
 /** An assessment row's status. "expired" comes with stop and resume (#72). */
 export type AssessmentStatus = "in_progress" | "completed" | "expired";
@@ -28,7 +29,7 @@ export type TestError =
   | "store_failed";
 
 export type StartResult = { ok: true; id: string; resumed: boolean } | { ok: false; error: TestError };
-export type StepResult = { ok: true; step: TestStep } | { ok: false; error: TestError; step?: TestStep };
+export type StepResult = { ok: true; step: TestStep; break?: BreakResume } | { ok: false; error: TestError; step?: TestStep };
 export type FinishResult = { ok: true } | { ok: false; error: TestError };
 
 /** The longest typed answer the number pad allows. */

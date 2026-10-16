@@ -125,7 +125,7 @@ export function memoryAttemptStore({ children: kids = [], tests: initial = [] }:
     },
   };
 
-  /** The test context (#185): each write changes only an open test, and only fields still empty (guarded updates). */
+  /** The test context (#185): device/shown require an open test; an end also takes a completed test before its deadline. */
   const openTest = (id: string) => tests.find((t) => t.id === id && t.status === "in_progress");
   const contextOps: ContextStore = {
     async recordDevice(id, device) {
@@ -136,11 +136,11 @@ export function memoryAttemptStore({ children: kids = [], tests: initial = [] }:
     async startBreak(id, at) {
       await begin("startBreak");
       const row = openTest(id);
-      if (row && row.breakStartedAt == null) row.breakStartedAt = at;
+      if (row && row.resumeUntil >= at && row.breakStartedAt == null) row.breakStartedAt = at;
     },
     async endBreak(id, { at, skipped, lengthMs }) {
       await begin("endBreak");
-      const row = openTest(id);
+      const row = tests.find((t) => t.id === id && (t.status === "in_progress" || t.status === "completed") && t.resumeUntil >= at);
       if (!row || row.breakEndedAt != null) return;
       // The end reached the store first: its start is the browser's length before it.
       Object.assign(row, { breakStartedAt: row.breakStartedAt ?? at - lengthMs, breakEndedAt: at, breakSkipped: skipped, breakMs: lengthMs });
@@ -165,7 +165,9 @@ export function memoryAttemptStore({ children: kids = [], tests: initial = [] }:
     async load(parent, id) {
       await begin("load");
       const row = tests.find((t) => t.id === id && t.parentId === parent);
-      return row ? { attempt: attemptOf(row), test: row.test, answers: row.answers.map(({ questionId, response, timeMs }) => ({ questionId, response, timeMs })) } : null;
+      return row ? { attempt: attemptOf(row), test: row.test, answers: row.answers.map(({ questionId, response, timeMs }) => ({ questionId, response, timeMs })),
+        ...(row.breakStartedAt != null && { break: { startedAt: row.breakStartedAt, ended: row.breakEndedAt != null } }),
+      } : null;
     },
     async expire(id, now) {
       await begin("expire");
