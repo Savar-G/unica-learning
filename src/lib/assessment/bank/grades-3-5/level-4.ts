@@ -1092,9 +1092,10 @@ export const LEVEL_4: readonly TaggedTemplate[] = [
     },
   },
   {
-    // Predict the results of spins (4.17: "predict single outcomes"). WNCP's probability experiments are grade 6,
-    // and AB and ON are unsure, so the others get 6.
-    // ON5 D2.1 expresses probability as a fraction and uses it to predict.
+    // Predict how many of many spins land on a colour (6.18: theoretical probability; an expected count needs the
+    // probability as a fraction, which BC 4.17 single-outcome predictions do not, so #75 moved it to 6.18 and BC 6).
+    // The id keeps "4" because stored tests use it. WNCP's probability experiments are grade 6, and AB and ON are
+    // unsure, so the others get 6. ON5 D2.1 expresses probability as a fraction and uses it to predict.
     id: "g35-4-spin-predict",
     strand: "DP", grades: { BC: 6, AB: 6, SK: 6, MB: 6, ON: 5 }, format: "choice", whiteboard: false, standard: "6.18",
     fill(rng) {
