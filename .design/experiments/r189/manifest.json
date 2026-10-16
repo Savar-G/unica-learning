@@ -31,7 +31,7 @@
       "decision": "Where the reliability note and the new-test offer sit",
       "shipped": "A",
       "options": [
-        { "id": "A", "name": "First context note", "screenshots": ["report-note-a.png", "report-rushed-full-a.png", "report-rushed-phone.png"], "bet": "The help-warning card style (#71), first in the row under the band, with 'Start a new test'", "benefit": "Reuses an existing report pattern; read right after the level", "cost": "Sits beside the FSA line on desktop", "risk": "Low" },
+        { "id": "A", "name": "First context note", "screenshots": ["report-note-a.png", "report-note-wait.png", "report-rushed-full-a.png", "report-rushed-phone.png"], "bet": "The help-warning card style (#71), first in the row under the band, with 'Start a new test' while a new test is open now; when the 30-day wait applies (D-108) it names the day instead (report-note-wait.png)", "benefit": "Reuses an existing report pattern; read right after the level", "cost": "Sits beside the FSA line on desktop", "risk": "Low" },
         { "id": "B", "name": "Banner above the band", "screenshots": ["report-note-b.png"], "bet": "The note before the level", "benefit": "Read first", "cost": "The report opens with a warning, before any result", "risk": "Feels like an error page" },
         { "id": "C", "name": "Inside the band", "screenshots": ["report-note-c.png"], "bet": "Under the ruler, in the colour band", "benefit": "Tied to the level it qualifies", "cost": "Yellow card on a yellow field; crowds the band", "risk": "Low contrast against the sunflower field" }
       ]
