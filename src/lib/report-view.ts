@@ -43,6 +43,9 @@ export const workResult = (correct: boolean) => (correct ? "Right answer" : "Not
 /** The report page in the parent's account. */
 export const reportPath = (id: string) => `/account/report/${id}`;
 
+/** #190: the screen of a test's extra round, which the report offers again. */
+export const extraRoundPath = (assessmentId: string) => `/account/extra/${assessmentId}`;
+
 /** "grade 3", or "kindergarten" for level 0. */
 export const levelName = (level: Level | number) => (level === 0 ? "kindergarten" : `grade ${level}`);
 
@@ -147,6 +150,38 @@ export function leftOutLine(v: ReportView): string | null {
   return n === 1
     ? `1 wrong answer from a run of very fast answers was left out of the score. It looks like a guess, not what ${v.childName} knows.`
     : `${n} wrong answers from a run of very fast answers were left out of the score. They look like guesses, not what ${v.childName} knows.`;
+}
+
+/** #190: the result includes the extra round the child took; null when it does not. */
+export function extraRoundLine(v: ReportView): string | null {
+  const n = v.model.extraRound?.questions ?? 0;
+  if (n === 0) return null;
+  return `These results include ${n} extra question${n === 1 ? "" : "s"} that ${v.childName} chose to answer.`;
+}
+
+/**
+ * #190: the extra round the report offers (the page reads it from the test attempt module): the round of a test whose
+ * child skipped it, or the rest of a round the child started. The email does not offer it.
+ */
+export type ExtraRoundCard = { kind: "offer"; questions: number } | { kind: "continue"; questions: number; answered: number };
+
+export function extraRoundOfferText(v: ReportView, card: ExtraRoundCard): { title: string; text: string; label: string } {
+  const name = v.childName;
+  const n = card.questions;
+  const questions = `${n} more question${n === 1 ? "" : "s"}`;
+  const after = "Then this report is made again with the answers.";
+  if (card.kind === "continue") {
+    return {
+      title: `${name} stopped part way through the extra questions`,
+      text: `${card.answered} of ${n} are answered. ${name} goes on from the next question. ${after}`,
+      label: "Continue the extra questions",
+    };
+  }
+  return {
+    title: `${name} can answer ${questions}`,
+    text: `Some results above are early signs. ${n === 1 ? "One more question" : `${n} more questions`} on the areas marked Early sign give more answers to go on. ${name} answers them alone, on a laptop or tablet. ${after}`,
+    label: "Start the extra questions",
+  };
 }
 
 /**

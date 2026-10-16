@@ -16,6 +16,7 @@ import {
   factsView,
   helpWarning,
   howWeHelp,
+  extraRoundLine,
   leftOutLine,
   levelName,
   levelNotes,
@@ -165,6 +166,8 @@ export function reportEmail({ view: v, parentName, url, unsubscribeUrl, offer = 
   const reliability = reliabilityNote(v);
   const levelSure = certaintyText(v, v.model.level.certainty);
   const leftOut = leftOutLine(v);
+  // #190: the results include the extra round the child took.
+  const extraLine = extraRoundLine(v);
   const sure = (s: ReportView["model"]["strands"][number]) => certaintyText(v, s.certainty);
   const step = offer ? nextStep(v) : null;
   const stepUrl = step ? withStep(url, step.email.step) : null;
@@ -186,7 +189,7 @@ export function reportEmail({ view: v, parentName, url, unsubscribeUrl, offer = 
     ...(fsa ? [`For context: ${fsa.text}\nSource: ${fsa.source.name}, ${fsa.source.url}`] : []),
     ...(comparison ? [`${comparison.title}\n${comparison.text}\n${comparison.note}`] : []),
     ...(warning ? [`${warning.title}\n${warning.text}\n${warning.retake}`] : []),
-    ["By area", ...areas, thresholdsLine(v), ...(leftOut ? [leftOut] : [])].join("\n"),
+    ["By area", ...areas, thresholdsLine(v), ...(leftOut ? [leftOut] : []), ...(extraLine ? [extraLine] : [])].join("\n"),
     ...(facts ? [[`Number facts: ${factsLine(facts)}`, ...(facts.accuracy && facts.note ? [facts.note] : []), `${facts.scope} ${facts.round}`].join("\n")] : []),
     ...(work ? [work] : []),
     ...(offer ? [`How we help: ${help.title}\n${help.text}`] : []),
@@ -281,6 +284,7 @@ ${heading("By area")}
 <p style="margin:2px 0 6px;font-family:${MONO};font-size:11px;line-height:1.6;color:${INK_2}">${legend}</p>
 ${p(esc(thresholdsLine(v)), `margin:0;font-size:13px;color:${INK_2}`)}
 ${leftOut ? p(esc(leftOut), `margin:6px 0 0;font-size:13px;color:${INK_2}`) : ""}
+${extraLine ? p(esc(extraLine), `margin:6px 0 0;font-size:13px;color:${INK_2}`) : ""}
 </td></tr>
 ${facts ? `<tr><td style="padding:30px 20px 0">
 ${heading("Number facts")}
