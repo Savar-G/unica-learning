@@ -135,7 +135,7 @@ describe("retention run", () => {
   it("dry mode shows the decision for every family, reads Stripe only, and claims nothing", async () => {
     const s = store();
     expect(await runRetentionWorker(workerConfiguration([], env), s.store, () => 840_000, NOW))
-      .toEqual({ ok: false, dry: true, eligible: 3, ...decisions });
+      .toEqual({ ok: false, dry: true, eligible: 3, deferred: 0, ...decisions });
     expect(s.calls.filter((c) => !c.startsWith("stripe:"))).toEqual(["verify", "candidates"]);
     expect(s.runs).toEqual([]);
     // Without a Stripe key, no Stripe read runs, and every family with Stripe history is unknown, so it stays.
@@ -148,13 +148,105 @@ describe("retention run", () => {
   it("delete mode claims only the families the rules delete, with the Stripe end date", async () => {
     const s = store();
     expect(await runRetentionWorker(workerConfiguration(["--mode", "delete"], env), s.store, () => 840_000, NOW))
-      .toEqual({ ok: false, eligible: 3, deleted: 3, busy: 0, excluded: 0, failed: 0, images: 0, ...decisions });
+      .toEqual({ ok: false, eligible: 3, deleted: 3, busy: 0, excluded: 0, failed: 0, images: 0, deferred: 0, ...decisions });
     expect(s.runs).toEqual([
       { id: "a-request", endedAt: null },
       { id: "b-free-test", endedAt: null },
       { id: "c-former", endedAt: "2026-03-01T00:00:00.000Z" },
     ]);
     expect(s.calls[0]).toBe("verify");
+  });
+
+  it("retries queued work within each budget despite slow unrelated Stripe reads", async () => {
+    const s = store();
+    const queued = { id: "z-request", queued: true, lastTestAt: null, cards: [] };
+    const unrelated = Array.from({ length: 29 }, (_, i) => ({
+      id: `a-${String(i).padStart(2, "0")}`, queued: false, lastTestAt: OLD,
+      cards: [{ customer: `cus_slow_${i}`, saved: true }],
+    }));
+    s.store.candidates = async () => [...unrelated, queued];
+    let remaining = 0, attempts = 0;
+    s.store.customerPayments = async () => {
+      remaining -= 29_000;
+      return stripe.cus_paying;
+    };
+    s.store.run = async (id, limitMs) => {
+      expect(id).toBe("z-request");
+      expect(limitMs).toBeGreaterThanOrEqual(600_000);
+      attempts++;
+      remaining -= 600_000;
+      throw Error("Incomplete request, retry next run");
+    };
+    for (let attempt = 1; attempt <= 3; attempt++) {
+      remaining = 840_000;
+      expect(await runRetentionWorker(workerConfiguration(["--mode", "delete"], env), s.store, () => remaining, NOW))
+        .toMatchObject({ ok: false, eligible: 1, queued: 1, failed: 1 });
+      expect(attempts).toBe(attempt);
+      expect(remaining).toBeGreaterThanOrEqual(0);
+    }
+  });
+
+  it("resumes bounded read-only decisions after the saved cursor and reaches a later former customer", async () => {
+    const s = store();
+    const candidates = Array.from({ length: 30 }, (_, i) => ({
+      id: `family-${String(i).padStart(2, "0")}`, queued: false, lastTestAt: OLD,
+      cards: [{ customer: i === 29 ? "cus_former" : `cus_slow_${i}`, saved: true }],
+    }));
+    s.store.candidates = async () => candidates;
+    let remaining = 0;
+    const read: string[] = [];
+    s.store.customerPayments = async (customer) => {
+      read.push(customer);
+      remaining -= 29_000;
+      return customer === "cus_former" ? stripe.cus_former : stripe.cus_paying;
+    };
+    for (let attempt = 0; attempt < 4 && !s.runs.length; attempt++) {
+      remaining = 840_000;
+      const result = await runRetentionWorker(workerConfiguration(["--mode", "delete"], env), s.store, () => remaining, NOW);
+      expect(remaining).toBeGreaterThanOrEqual(0);
+      expect(result).toMatchObject({ ok: false, deferred: expect.any(Number) });
+    }
+    expect(s.runs).toEqual([{ id: "family-29", endedAt: "2026-03-01T00:00:00.000Z" }]);
+    expect(read.slice(0, 30)).toEqual(candidates.map((f) => f.cards[0].customer));
+  });
+
+  it("rotates queued retries when one slow attempt uses the reserved budget", async () => {
+    const s = store();
+    s.store.candidates = async () => ["a", "b", "c"].map((id) => ({ id, queued: true, lastTestAt: null, cards: [] }));
+    let remaining = 0;
+    const attempted: string[] = [];
+    s.store.run = async (id, limitMs) => {
+      attempted.push(id);
+      remaining -= limitMs;
+      throw Error("Retry required");
+    };
+    for (let run = 0; run < 3; run++) {
+      remaining = 840_000;
+      expect(await runRetentionWorker(workerConfiguration(["--mode", "delete"], env), s.store, () => remaining, NOW))
+        .toMatchObject({ ok: false, failed: 1, deferred: 2 });
+    }
+    expect(attempted).toEqual(["a", "b", "c"]);
+  });
+
+  it("does not read or claim a candidate if cursor persistence uses the remaining budget", async () => {
+    const s = store();
+    let remaining = 1_000;
+    s.store.advance = async () => { remaining = 0; };
+    expect(await runRetentionWorker(workerConfiguration(["--mode", "delete"], env), s.store, () => remaining, NOW))
+      .toMatchObject({ ok: false, eligible: 0, deferred: 8, deleted: 0 });
+    expect(s.runs).toEqual([]);
+    expect(s.calls.filter((call) => call.startsWith("stripe:"))).toEqual([]);
+  });
+
+  it("reports a partial dry scan without changing the cursor or claiming a family", async () => {
+    const s = store();
+    s.store.candidates = async () => families.filter((f) => ["d-customer", "e-waiting"].includes(f.id));
+    let remaining = 29_000;
+    s.store.customerPayments = async () => { remaining = 0; return stripe.cus_paying; };
+    expect(await runRetentionWorker(workerConfiguration([], env), s.store, () => remaining, NOW))
+      .toMatchObject({ ok: false, dry: true, eligible: 0, keep_customer: 1, deferred: 1 });
+    expect(s.calls).toEqual(["verify"]);
+    expect(s.runs).toEqual([]);
   });
 
   it("disabled mode does nothing", async () => {

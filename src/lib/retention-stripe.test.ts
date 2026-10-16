@@ -1,5 +1,6 @@
 import Stripe from "stripe";
 import { describe, expect, it, vi } from "vitest";
+import { checkFamilyPayments, type FamilyPaymentStore, type PaymentProgress } from "@/lib/assessment";
 
 // The retention worker's Stripe reads (#191). The real Stripe SDK runs against a fake network, so the test checks the
 // requests that leave and the facts that come back: every subscription with its status and Stripe's end date.
@@ -57,6 +58,45 @@ describe("Stripe facts for one customer", () => {
     await expect(readCustomerPayments(foreign.s, "cus_1", options)).rejects.toThrow();
     const stuck = stripeWith((url) => url.pathname === "/v1/subscriptions" ? { body: list([], true) } : { body: list([]) });
     await expect(readCustomerPayments(stuck.s, "cus_1", options)).rejects.toThrow();
+  });
+
+  describe.each([1, 2])("payment read %i", (invalidRead) => {
+    it.each([undefined, null, 0, 1, "", "false", [], {}])("keeps a former customer unknown with invalid subscription pagination %j", async (hasMore) => {
+      let paymentReads = 0;
+      let progress: PaymentProgress | null = null;
+      const mutations: string[] = [];
+      const { s } = stripeWith((url) => {
+        if (url.pathname !== "/v1/subscriptions") return { body: list([]) };
+        if (url.searchParams.has("starting_after")) return { body: list([]) };
+        const page = list([sub("sub_old", "cus_1", "canceled", "2020-01-01T00:00:00Z")]);
+        return { body: paymentReads === invalidRead ? { ...page, has_more: hasMore } : page };
+      });
+      const store: FamilyPaymentStore = {
+        async pending() { return []; },
+        async reconcile() { throw Error("No pending operations"); },
+        async current(customer) { paymentReads++; return readCustomerPayments(s, customer, options); },
+        async openSessions() { return []; },
+        async intents() { return { data: [], more: false }; },
+        async progress() { return progress; },
+        async saveProgress(_customer, value) { progress = value; },
+        async expire(_customer, id) { mutations.push(id); return "clear"; },
+        async cancel(_customer, id) { mutations.push(id); return "clear"; },
+      };
+      expect(await checkFamilyPayments(store, {
+        lastTestAt: "2020-01-01T00:00:00Z", cards: [{ customer: "cus_1", saved: true }],
+      }, Date.parse("2026-10-16T12:00:00Z"))).toEqual({ action: "unknown" });
+      expect(mutations).toEqual([]);
+    });
+  });
+
+  it.each([undefined, null, "false"])("rejects invalid pagination %j on a later subscription page", async (hasMore) => {
+    const { s } = stripeWith((url) => {
+      if (url.pathname !== "/v1/subscriptions") return { body: list([]) };
+      return { body: url.searchParams.has("starting_after")
+        ? { ...list([]), has_more: hasMore }
+        : list([sub("sub_old", "cus_1", "canceled", "2020-01-01T00:00:00Z")], true) };
+    });
+    await expect(readCustomerPayments(s, "cus_1", options)).rejects.toThrow();
   });
 });
 

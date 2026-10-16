@@ -1,4 +1,4 @@
-import { runRetentionBatch, type FamilyDeletionResult } from "./deletion";
+import type { FamilyDeletionResult } from "./deletion";
 import { readFamilyPayments } from "./payments";
 import { retentionDecision, type CustomerPayments, type RetentionFamily } from "./retention";
 
@@ -42,37 +42,59 @@ export interface RetentionWorkerStore {
 }
 
 /**
- * Decide every candidate from read-only reads, then (delete mode only) claim the families the rules delete. A claim
- * freezes the family, and the fresh check after the freeze decides again. Dry mode and every keep or unknown decision
- * change nothing. Output: counts only, never ids.
+ * Retry queued work before unrelated Stripe reads. In delete mode, save each candidate's position before reading or
+ * claiming it, and finish that candidate before scheduling another. A claim freezes the family; the fresh check
+ * after the freeze decides again. Dry mode changes nothing. Output: counts only, never ids.
  */
 export async function runRetentionWorker(config: WorkerConfiguration, store: RetentionWorkerStore, remainingMs: () => number, now: number) {
   if (config.kind !== "run") return { ok: true, disabled: true };
   if (config.stripeKey) await store.verifyPayments();
   const candidates = await store.candidates();
   const decisions = { queued: 0, delete_free_test: 0, delete_former_customer: 0, keep_customer: 0, keep_former_customer: 0, keep_free_test: 0, keep_no_test: 0, unknown: 0 };
-  const claims = new Map<string, RetentionClaim>();
+  const counts = { eligible: 0, deleted: 0, busy: 0, excluded: 0, failed: 0, images: 0 };
+  const dry = config.mode === "dry";
+  const cursor = dry ? null : await store.cursor();
+  const rotated = cursor === null ? candidates : [...candidates.filter((f) => f.id > cursor), ...candidates.filter((f) => f.id <= cursor)];
+  const order = dry ? candidates : [...rotated.filter((f) => f.queued), ...rotated.filter((f) => !f.queued)];
+  const budget = Math.min(600_000, remainingMs());
+  let deferred = candidates.length, attempted = false;
   const read = (customer: string) => config.stripeKey ? store.customerPayments(customer) : Promise.reject(Error("No Stripe key"));
-  for (const family of candidates) {
-    if (family.queued) { decisions.queued++; claims.set(family.id, { endedAt: null }); continue; }
-    const decision = retentionDecision({ lastTestAt: family.lastTestAt, payments: await readFamilyPayments(family.cards, read) }, now);
-    if (decision.action === "unknown") decisions.unknown++;
-    else if (decision.action === "keep") decisions[`keep_${decision.reason}`]++;
-    else {
+  for (const family of order) {
+    const remaining = remainingMs();
+    // Reserve a full attempt for later candidates. Do not restart a large read-only scan on every invocation.
+    if (budget <= 0 || remaining <= 0 || (!dry && attempted && remaining < budget)) break;
+    if (!dry) {
+      await store.advance(family.id);
+      if (remainingMs() <= 0) break;
+    }
+    attempted = true;
+    deferred--;
+    let claim: RetentionClaim;
+    if (family.queued) {
+      decisions.queued++;
+      claim = { endedAt: null };
+    } else {
+      const decision = retentionDecision({ lastTestAt: family.lastTestAt, payments: await readFamilyPayments(family.cards, read) }, now);
+      if (decision.action === "unknown") { decisions.unknown++; continue; }
+      if (decision.action === "keep") { decisions[`keep_${decision.reason}`]++; continue; }
       decisions[`delete_${decision.rule}`]++;
-      claims.set(family.id, { endedAt: decision.rule === "former_customer" ? decision.endedAt : null });
+      claim = { endedAt: decision.rule === "former_customer" ? decision.endedAt : null };
+    }
+    counts.eligible++;
+    if (!dry) {
+      const limit = Math.min(budget, remainingMs());
+      if (limit <= 0) { counts.failed++; break; }
+      try {
+        const result = await store.run(family.id, limit, claim);
+        counts[result.state]++;
+        if (result.state === "deleted") counts.images += result.images;
+      } catch { counts.failed++; }
     }
   }
-  // An unknown family is kept, and the run reports it as not ok so that someone looks.
-  const ok = decisions.unknown === 0;
-  if (config.mode === "dry") return { ok, dry: true, eligible: claims.size, ...decisions };
-  const ids = candidates.flatMap((c) => (claims.has(c.id) ? [c.id] : []));
-  const counts = await runRetentionBatch(ids, {
-    cursor: () => store.cursor(),
-    advance: (id) => store.advance(id),
-    run: (id, limitMs) => store.run(id, limitMs, claims.get(id)!),
-  }, remainingMs, 600_000);
-  return { ok: ok && counts.failed === 0, ...counts, ...decisions };
+  // Unknown or unprocessed candidates make an incomplete run visible to the operator.
+  const ok = decisions.unknown === 0 && counts.failed === 0 && deferred === 0;
+  if (dry) return { ok, dry: true, eligible: counts.eligible, deferred, ...decisions };
+  return { ok, ...counts, deferred, ...decisions };
 }
 
 export interface DeletionHeartbeatStore {

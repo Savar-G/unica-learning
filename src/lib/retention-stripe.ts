@@ -17,12 +17,13 @@ async function subscriptionsOf(s: Stripe, customer: string, options: Options): P
   let after: string | undefined;
   for (let page = 0; page < SUBSCRIPTION_PAGES; page++) {
     const list = await s.subscriptions.list({ customer, status: "all", limit: 100, starting_after: after }, options());
+    if (typeof list.has_more !== "boolean") throw new Error("Subscription pagination unreadable");
     for (const sub of list.data) {
       if (customerOf(sub.customer) !== customer) throw new Error("Subscription scope changed");
       // Stripe's `ended_at`, in seconds. A canceled subscription without one is unknown to the rules.
       facts.push({ status: sub.status, endedAt: typeof sub.ended_at === "number" ? new Date(sub.ended_at * 1000).toISOString() : null });
     }
-    if (!list.has_more) return facts;
+    if (list.has_more === false) return facts;
     const next = list.data.at(-1)?.id;
     if (!next || next === after) throw new Error("Subscription pagination did not advance");
     after = next;
