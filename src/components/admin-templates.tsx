@@ -55,7 +55,7 @@ export function TemplateFilterForm({ action, filters, demo }: { action: string; 
 export function CountedNote({ filters }: { filters: TemplateFilters }) {
   const who = filters.withTests ? "every family, with the team and test families" : "real families only: the team and test families are left out";
   const which = [filters.grade ? `school grade ${filters.grade}` : null, filters.province ? CURRICULA[filters.province] : null].filter(Boolean).join(", ");
-  return <p className="adm-note">Counts {who}{which ? `; ${which}` : ""}. Shown: the answers (each question is answered before the next one shows). Time: the thinking time the browser measured.</p>;
+  return <p className="adm-note">Counts {who}{which ? `; ${which}` : ""}. Shown includes served questions without an answer. Correct and median time use answered questions only. Time: the thinking time the browser measured. Older answers count as shown when no serve record exists.</p>;
 }
 
 export function WrongList({ wrong, more }: { wrong: readonly WrongLine[]; more?: TemplateLine["moreWrong"] }) {
@@ -73,15 +73,16 @@ export function WrongList({ wrong, more }: { wrong: readonly WrongLine[]; more?:
   );
 }
 
-function Rows({ lines, demo, label }: { lines: TemplateLine[]; demo: boolean; label: string }) {
+function Rows({ lines, filters, demo, label }: { lines: TemplateLine[]; filters: TemplateFilters; demo: boolean; label: string }) {
   return (
-    <Table label={label} head={["Template", "Strand", "BC standard", "Shown", "Correct", "Median time", "Wrong answers chosen"]} empty="No templates.">
+    <Table label={label} head={["Template", "Strand", "BC standard", "Shown", "Answered", "Correct", "Median time", "Wrong answers chosen"]} empty="No templates.">
       {lines.map((l) => (
         <tr key={l.id} className={l.shown === 0 ? "is-unseen" : undefined}>
-          <td><Link className="adm-mono" href={demoHref(l.href, demo)}>{l.id}</Link></td>
+          <td><Link className="adm-mono" href={`${l.href}${templateQuery(filters, demo)}`}>{l.id}</Link></td>
           <td>{l.strand ? STRAND_NAMES[l.strand] : "-"}</td>
           <td>{l.standard && l.standardHref ? <Link href={demoHref(l.standardHref, demo)}>{l.standard}</Link> : "-"}</td>
           <td className="adm-num">{l.shown}</td>
+          <td className="adm-num">{l.answered}</td>
           <td className="adm-num">{l.percentCorrect === null ? "-" : `${l.percentCorrect}%`}</td>
           <td className="adm-num adm-nowrap">{l.medianMs === null ? "-" : duration(l.medianMs)}</td>
           <td className="adm-wide"><WrongList wrong={l.wrong} more={l.moreWrong} /></td>
@@ -106,14 +107,14 @@ export function TemplateTableView({ table, filters, demo }: { table: TemplateTab
       {table.grades.map((g) => (
         <section key={g.level} aria-labelledby={`grade-${g.level}`}>
           <h2 id={`grade-${g.level}`}>{gradeName(g.level)}</h2>
-          <Rows lines={g.lines} demo={demo} label={`${gradeName(g.level)} templates`} />
+          <Rows lines={g.lines} filters={filters} demo={demo} label={`${gradeName(g.level)} templates`} />
         </section>
       ))}
       {table.retired.length > 0 && (
         <section aria-labelledby="retired">
           <h2 id="retired">Not in the bank</h2>
           <p className="adm-note">Answers to templates that are no longer in the question bank.</p>
-          <Rows lines={table.retired} demo={demo} label="Templates not in the bank" />
+          <Rows lines={table.retired} filters={filters} demo={demo} label="Templates not in the bank" />
         </section>
       )}
     </div>

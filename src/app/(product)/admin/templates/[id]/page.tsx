@@ -61,6 +61,7 @@ export default async function TemplatePage({ params, searchParams }: PageProps<"
       <CountedNote filters={filters} />
       <RecordFacts facts={[
         ["Shown", line?.shown ?? 0],
+        ["Answered", line?.answered ?? 0],
         ["Correct", line?.percentCorrect == null ? "-" : `${line.percentCorrect}%`],
         ["Median time", line?.medianMs == null ? "-" : duration(line.medianMs)],
         ["Wrong answers", allWrong.reduce((n, w) => n + w.count, 0)],

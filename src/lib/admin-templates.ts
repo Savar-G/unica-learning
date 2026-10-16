@@ -1,6 +1,6 @@
 // The admin table per question template (#199, spec #181): for each template, across all children, the times shown,
 // the percent correct, the median time and each wrong answer chosen with its count. Pure: no network, database or
-// clock. The database counts the live answers (migration add_template_stats, function admin_template_stats);
+// clock. The database counts served questions and answers (function admin_template_stats_v2);
 // templateStats below is the same count in TypeScript, for the local demo and as the written rules of that function.
 import { MISCONCEPTIONS, type Grade, type Level, type MisconceptionId, type Province, type Strand, type Template } from "@/lib/assessment";
 import { ADMIN_PATH, GRADES, PROVINCES } from "@/lib/admin-view";
@@ -14,13 +14,14 @@ export const skillMapStandardPath = (code: string) => `${ADMIN_PATH}/skill-map#$
 /** The id of a standard's cell on the skill map. */
 export const standardAnchor = (code: string) => `standard-${code}`;
 
-/** One answer, with what the filters need from its test. */
+/** One served question, with its answer when there is one, and the test's filter fields. */
 export interface AnswerFact {
   templateId: string;
-  correct: boolean;
+  /** Null means served but not answered. */
+  correct: boolean | null;
   /** The thinking time the browser measured (answers.time_ms). */
-  timeMs: number;
-  response: string;
+  timeMs: number | null;
+  response: string | null;
   misconception: string | null;
   /** The child's school grade and curriculum when the test started (assessments.grade, province). */
   grade: number;
@@ -43,10 +44,11 @@ export interface WrongCount {
   count: number;
 }
 
-/** One row of admin_template_stats. "Shown" counts the answers: a question is answered before the next one shows. */
+/** One row of admin_template_stats_v2. Each served position counts once, answered or not. */
 export interface TemplateStat {
   template_id: string;
   shown: number;
+  answered: number;
   correct: number;
   /** The median thinking time; null when nothing was answered. */
   median_ms: number | null;
@@ -62,7 +64,7 @@ function median(values: number[]): number | null {
   return sorted.length % 2 === 1 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
 }
 
-/** The counts per template of the answers the filters keep, as admin_template_stats returns them. */
+/** The counts per template of the served questions the filters keep. */
 export function templateStats(answers: readonly AnswerFact[], f: TemplateFilters): TemplateStat[] {
   const byTemplate = new Map<string, AnswerFact[]>();
   for (const a of answers) {
@@ -76,17 +78,18 @@ export function templateStats(answers: readonly AnswerFact[], f: TemplateFilters
   return [...byTemplate].map(([id, rows]) => {
     const wrong = new Map<string, WrongCount>();
     for (const r of rows) {
-      if (r.correct) continue;
+      if (r.correct !== false) continue;
       const key = JSON.stringify([r.response, r.misconception]);
-      const w = wrong.get(key) ?? { response: r.response, misconception: r.misconception, count: 0 };
+      const w = wrong.get(key) ?? { response: r.response ?? "", misconception: r.misconception, count: 0 };
       w.count++;
       wrong.set(key, w);
     }
     return {
       template_id: id,
       shown: rows.length,
+      answered: rows.filter((r) => r.correct !== null).length,
       correct: rows.filter((r) => r.correct).length,
-      median_ms: median(rows.map((r) => r.timeMs)),
+      median_ms: median(rows.flatMap((r) => r.correct !== null && r.timeMs !== null ? [r.timeMs] : [])),
       wrong: [...wrong.values()],
     };
   });
@@ -111,6 +114,7 @@ export interface TemplateLine {
   /** The template's BC grade (K is 0). */
   level: Level | null;
   shown: number;
+  answered: number;
   /** Whole percent; null when never answered. */
   percentCorrect: number | null;
   medianMs: number | null;
@@ -142,7 +146,8 @@ function line(id: string, t: Template | undefined, s: TemplateStat | undefined):
     standard: t?.standard ?? null,
     level: t?.grades.BC ?? null,
     shown: s?.shown ?? 0,
-    percentCorrect: s && s.shown > 0 ? Math.round((100 * s.correct) / s.shown) : null,
+    answered: s?.answered ?? 0,
+    percentCorrect: s && s.answered > 0 ? Math.round((100 * s.correct) / s.answered) : null,
     medianMs: s?.median_ms ?? null,
     wrong: wrong.slice(0, WRONG_SHOWN).map((w) => ({
       ...w,
@@ -168,7 +173,7 @@ export function templateTable(stats: readonly TemplateStat[], bank: readonly Tem
       lines: templates.filter((t) => t.grades.BC === level).sort(order).map((t) => line(t.id, t, counted.get(t.id))),
     })),
     retired: stats.filter((s) => !known.has(s.template_id)).sort((a, b) => byText(a.template_id, b.template_id)).map((s) => line(s.template_id, undefined, s)),
-    answers: stats.reduce((n, s) => n + s.shown, 0),
+    answers: stats.reduce((n, s) => n + s.answered, 0),
   };
 }
 

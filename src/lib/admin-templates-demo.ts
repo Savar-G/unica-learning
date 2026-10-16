@@ -19,7 +19,7 @@ function rng(seed: number) {
 
 const GRADES: readonly Grade[] = [1, 2, 3, 4, 5, 6, 7];
 
-/** The answers of `tests` made-up tests, spread over grades 1-7; the first two are test families. */
+/** Served questions from made-up tests; the first two are test families. Some tests stop before an answer. */
 export function demoAnswers(tests = 42): AnswerFact[] {
   const r = rng(199);
   const out: AnswerFact[] = [];
@@ -30,6 +30,10 @@ export function demoAnswers(tests = 42): AnswerFact[] {
     const knows = grade - 1 + Math.floor(r() * 3);
     let session = createSession({ grade, province }, 1000 + i);
     for (let q = nextQuestion(session); q; q = nextQuestion(session)) {
+      if (i % 3 === 0 && session.answers.length === 3) {
+        out.push({ templateId: q.templateId, correct: null, timeMs: null, response: null, misconception: null, grade, province, testFamily: i < 2 });
+        break;
+      }
       const right = q.level <= knows ? r() < 0.88 : r() < 0.3;
       const coded = q.wrong.length > 0 && r() < 0.75;
       const response = right ? q.answer : coded ? q.wrong[Math.floor(r() * q.wrong.length)].value : q.format === "choice" ? (q.choices?.find((c) => c !== q.answer) ?? "") : String(Math.floor(r() * 100));

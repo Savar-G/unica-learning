@@ -17,6 +17,15 @@ const answer = (over: Partial<AnswerFact> = {}): AnswerFact => ({
 const ALL = { withTests: false, grade: null, province: null } as const;
 
 describe("templateStats", () => {
+  it("counts an unanswered served question without changing answer accuracy or time", () => {
+    const rows = [answer(), answer({ correct: null, response: null, timeMs: null })];
+    const stats = templateStats(rows, ALL);
+    expect(stats[0]).toMatchObject({ shown: 2, answered: 1, correct: 1, median_ms: 10_000, wrong: [] });
+    const table = templateTable(stats, [template("add-within-10", 2)]);
+    expect(table.grades[0].lines[0]).toMatchObject({ shown: 2, answered: 1, percentCorrect: 100 });
+    expect(table.answers).toBe(1);
+  });
+
   it("counts the times shown, the right answers, the median time and each wrong answer with its count", () => {
     const stats = templateStats([
       answer({ timeMs: 4_000 }),
@@ -42,9 +51,11 @@ describe("templateStats", () => {
   });
 
   it("leaves test families out unless they are asked for", () => {
-    const rows = [answer(), answer({ testFamily: true, correct: false, response: "1" })];
-    expect(templateStats(rows, ALL)[0]).toMatchObject({ shown: 1, correct: 1 });
-    expect(templateStats(rows, { ...ALL, withTests: true })[0]).toMatchObject({ shown: 2, correct: 1 });
+    const rows = [answer(), answer({ correct: null, response: null, timeMs: null }),
+      answer({ testFamily: true, correct: false, response: "1" }),
+      answer({ testFamily: true, correct: null, response: null, timeMs: null })];
+    expect(templateStats(rows, ALL)[0]).toMatchObject({ shown: 2, answered: 1, correct: 1 });
+    expect(templateStats(rows, { ...ALL, withTests: true })[0]).toMatchObject({ shown: 4, answered: 2, correct: 1 });
   });
 
   it("keeps only the answers of the chosen school grade and curriculum", () => {
@@ -53,13 +64,21 @@ describe("templateStats", () => {
     expect(templateStats(rows, { ...ALL, grade: 3, province: "AB" })[0].shown).toBe(1);
     expect(templateStats(rows, { ...ALL, grade: 5 })).toEqual([]);
   });
+
+  it("keeps a served-only template in the selected cohort with no answer statistics", () => {
+    const rows = [answer({ correct: null, response: null, timeMs: null, grade: 3, province: "BC" }),
+      answer({ grade: 2 }), answer({ grade: 3, province: "AB" })];
+    const stats = templateStats(rows, { ...ALL, grade: 3, province: "BC" });
+    expect(stats).toEqual([{ template_id: "add-within-10", shown: 1, answered: 0, correct: 0, median_ms: null, wrong: [] }]);
+    expect(templateTable(stats, [template("add-within-10", 2)]).grades[0].lines[0].percentCorrect).toBeNull();
+  });
 });
 
 const template = (id: string, level: Level, strand: Strand = "N", standard = `${level}.1`): Template => ({
   id, strand, standard, grades: { BC: level }, format: "number", whiteboard: false,
   fill: () => ({ prompt: "1 + 1", readAloud: "1 plus 1", answer: "2", wrong: [], values: {} }),
 });
-const stat = (over: Partial<TemplateStat> & { template_id: string }): TemplateStat => ({ shown: 0, correct: 0, median_ms: null, wrong: [], ...over });
+const stat = (over: Partial<TemplateStat> & { template_id: string }): TemplateStat => ({ shown: 0, answered: over.shown ?? 0, correct: 0, median_ms: null, wrong: [], ...over });
 
 describe("templateTable", () => {
   it("has one row per bank template, by BC grade, with the template and its BC standard as links", () => {
