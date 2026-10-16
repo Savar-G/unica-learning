@@ -2,11 +2,14 @@
 // flags. Pure: no network, database or clock, so the pages (src/app/(product)/admin) only fetch and show. Server and admin only:
 // it handles correct answers, which a parent's browser must never get.
 import {
+  BANKS,
   MISCONCEPTIONS,
+  SAMPLE_BANK,
   PAUSE_WINDOW,
   TOO_FAST_MS,
   helpLikely,
   type FactsTest,
+  type Figure,
   type Flag,
   type Grade,
   type HelpAnswer,
@@ -19,6 +22,7 @@ import {
 } from "@/lib/assessment";
 import { CURRICULA } from "@/lib/signup";
 import type { AssessmentStatus } from "@/lib/test-api";
+import type { AnswerChange, AnswerEvents } from "@/lib/answer-events";
 
 export const ADMIN_PATH = "/admin";
 /** The tests list. /admin is the dashboard (D-099). */
@@ -104,6 +108,22 @@ export interface AnswerRecord {
   work_required: boolean;
   work_path: string | null;
   work_text: string | null;
+  /** The answer timeline (#184). Absent or null on answers stored before it. */
+  template_id?: string;
+  shown_at?: string | null;
+  answered_at?: string | null;
+  answer_changes?: AnswerChange[] | null;
+  read_aloud_count?: number | null;
+  read_aloud_at_ms?: number[] | null;
+  away_count?: number | null;
+  away_ms?: number | null;
+}
+
+/** When the server first served the question at a place in the test (public.question_shows, #184). */
+export interface ShownRecord {
+  position: number;
+  question_id: string;
+  shown_at: string;
 }
 
 /** One AI review of shown work (public.work_reviews, #68). score is numeric, so it can come back as a string. */
@@ -137,6 +157,44 @@ export interface AnswerLine {
   tooFast: boolean;
   work: { required: boolean; image: string | null; text: string | null };
   review: (Omit<ReviewRecord, "score"> & { score: number }) | null;
+  /** The question's template; from the answer row when the question is missing from the stored test. */
+  templateId: string | null;
+  /** The template's BC learning standard, for example "4.1"; null when the template is no longer in the bank. */
+  standard: string | null;
+  /** The choices in the order the child saw them; null for a number question. */
+  choices: string[] | null;
+  figure: Figure | null;
+  timeline: AnswerLineTimeline;
+}
+
+/**
+ * The answer timeline (#184). Every field is null on an answer stored before it. The times on the server are ISO
+ * moments; the event times are milliseconds since the question appeared in the browser.
+ */
+export interface AnswerLineTimeline {
+  shownAt: string | null;
+  answeredAt: string | null;
+  /** From the serve to the arrival of the answer, by the server's clock. */
+  serverMs: number | null;
+  changes: AnswerChange[] | null;
+  readAloud: AnswerEvents["readAloud"] | null;
+  away: AnswerEvents["away"] | null;
+}
+
+/** The BC learning standard of each template, by id, from every bank (an id in two bands has one standard). */
+const STANDARDS = new Map([...Object.values(BANKS).flat(), ...SAMPLE_BANK].map((t) => [t.id, t.standard]));
+
+function timelineOf(a: AnswerRecord): AnswerLineTimeline {
+  const shownAt = a.shown_at ?? null;
+  const answeredAt = a.answered_at ?? null;
+  return {
+    shownAt,
+    answeredAt,
+    serverMs: shownAt && answeredAt ? Math.max(0, Date.parse(answeredAt) - Date.parse(shownAt)) : null,
+    changes: a.answer_changes ?? null,
+    readAloud: a.read_aloud_count == null ? null : { count: a.read_aloud_count, atMs: a.read_aloud_at_ms ?? [] },
+    away: a.away_count == null ? null : { count: a.away_count, ms: a.away_ms ?? 0 },
+  };
 }
 
 function misconceptionText(id: string | null): string | null {
@@ -168,8 +226,29 @@ export function answerLines(test: StoredTest, answers: readonly AnswerRecord[], 
       tooFast: a.time_ms < TOO_FAST_MS,
       work: { required: a.work_required, image: a.work_path, text: a.work_text },
       review: reviewed.get(a.question_id) ?? null,
+      templateId: found?.q.templateId ?? a.template_id ?? null,
+      standard: STANDARDS.get(found?.q.templateId ?? a.template_id ?? "") ?? null,
+      choices: found?.q.format === "choice" ? (found.q.choices ?? []) : null,
+      figure: found?.q.figure ?? null,
+      timeline: timelineOf(a),
     };
   });
+}
+
+/** A question the server served that has no answer: where the child stopped (#184). */
+export interface ShownLine {
+  number: number;
+  questionId: string;
+  prompt: string | null;
+  shownAt: string;
+}
+
+/** The questions the server served that have no answer yet, in test order. */
+export function shownWithoutAnswer(test: StoredTest, shows: readonly ShownRecord[], answers: readonly AnswerRecord[]): ShownLine[] {
+  const answered = new Set(answers.map((a) => a.position));
+  const prompts = new Map([...test.stage1, ...test.stage2.up, ...test.stage2.stay, ...test.stage2.down].map((q) => [q.id, q.prompt]));
+  return [...shows].sort((a, b) => a.position - b.position).filter((s) => !answered.has(s.position))
+    .map((s) => ({ number: s.position + 1, questionId: s.question_id, prompt: prompts.get(s.question_id) ?? null, shownAt: s.shown_at }));
 }
 
 /** One stored quick facts answer (public.fact_answers, #70). An empty response is a skip. */
@@ -230,6 +309,24 @@ export function when(iso: string | null): string {
   if (!iso) return "-";
   const part = Object.fromEntries(PACIFIC.formatToParts(new Date(iso)).map((p) => [p.type, p.value]));
   return `${part.year}-${part.month}-${part.day} ${part.hour}:${part.minute}`;
+}
+
+const PACIFIC_SECONDS = new Intl.DateTimeFormat("en-CA", {
+  timeZone: "America/Vancouver",
+  year: "numeric",
+  month: "2-digit",
+  day: "2-digit",
+  hour: "2-digit",
+  minute: "2-digit",
+  second: "2-digit",
+  hourCycle: "h23",
+});
+
+/** A moment the server stored, to the second, as "2026-10-11 10:55:03" Pacific time (#184); "-" for none. */
+export function whenExact(iso: string | null): string {
+  if (!iso) return "-";
+  const part = Object.fromEntries(PACIFIC_SECONDS.formatToParts(new Date(iso)).map((p) => [p.type, p.value]));
+  return `${part.year}-${part.month}-${part.day} ${part.hour}:${part.minute}:${part.second}`;
 }
 
 /** "2.5 s" below a minute, else "4 min 10 s". */

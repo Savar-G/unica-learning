@@ -254,6 +254,8 @@ describe("answering a question", () => {
       workRequired: false,
       workPath: null,
       workText: null,
+      // #184: no serve was recorded for this question and the screen sent no events.
+      timeline: { shownAt: null, answeredAt: at, events: null },
     });
   });
 });
