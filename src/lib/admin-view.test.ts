@@ -162,6 +162,16 @@ describe("a test's answers beside its questions (#77)", () => {
     expect(lines[1].work).toEqual({ required: false, image: null, text: null });
   });
 
+  it("marks the very fast wrong answers of a run of three very fast answers as left out of the score (#189)", () => {
+    const rushed = answerLines(test, [
+      answer(0, "q1", { response: "45", correct: false, time_ms: 1_000 }),
+      answer(1, "q2", { response: "13", time_ms: 1_200 }),
+      answer(2, "u1", { response: "9", correct: false, time_ms: 900 }),
+    ], []);
+    expect(rushed.map((l) => l.leftOut)).toEqual([true, false, true]);
+    expect(lines.map((l) => l.leftOut)).toEqual([false, false, false]);
+  });
+
   it("still shows an answer whose question is missing from the stored test", () => {
     const [line] = answerLines(test, [answer(0, "gone", { response: "9" })], []);
     expect(line).toMatchObject({ number: 1, prompt: null, rightAnswer: null, response: "9" });

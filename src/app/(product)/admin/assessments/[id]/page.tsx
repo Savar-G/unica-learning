@@ -4,6 +4,7 @@ import { getTest, requireAdmin } from "@/lib/admin-store";
 import { adminParentPath, adminReportPath, answerLines, duration, factLines, flagText, helpAnswerText, levelText, when } from "@/lib/admin-view";
 import { AdminFrame, Chip, StatusChip, Table, gradeAndPlace } from "@/components/admin";
 import { EmailTable, RecordFacts, ReviewDetail, childPath } from "@/components/admin-records";
+import { ResultCertainty } from "@/components/admin-certainty";
 
 export default async function TestDetailPage({ params }: PageProps<"/admin/assessments/[id]">) {
   const admin = await requireAdmin();
@@ -25,11 +26,13 @@ export default async function TestDetailPage({ params }: PageProps<"/admin/asses
     ]} />
     <h2>Flags</h2>
     {t.flags?.length ? <ul className="adm-list">{t.flags.map((f, i) => <li key={i}>{flagText(f, numbers)}</li>)}</ul> : <p className="adm-note">{t.status === "completed" ? "No flags." : "Flags are recorded when the test finishes."}</p>}
+    <h2>How sure the result is</h2>
+    <ResultCertainty placement={t.placement} />
     <h2>Report and delivery</h2>
     {report ? <><p><Link href={adminReportPath(report.id)}>Open the report</Link></p><RecordFacts facts={[["Created (Pacific)", when(report.created_at)], ["Questions", report.questions], ["Minutes", report.minutes], ["Parent email (Pacific)", when(report.emailed_at)], ["Parent email error", report.email_error], ["Alert (Pacific)", when(report.alerted_at)], ["Alert error", report.alert_error]]} /></> : <p className="adm-note">No report has been stored.</p>}
     <h2>Answers and times</h2>
     <Table label="Answers" head={["#", "Stage", "Level / strand", "Question", "Right answer", "Child answer", "Result", "Time", "Mistake"]} empty="No answers yet.">
-      {lines.map((a) => <tr key={a.number} className={a.correct ? "" : "is-wrong"}><td>{a.number}</td><td>{a.stage ?? "-"}</td><td>{a.level === null ? "-" : `${levelText(a.level)} / ${a.strand}`}</td><td className="adm-wide">{a.prompt ?? a.questionId}</td><td>{a.rightAnswer ?? "-"}</td><td>{a.response || "Skipped"}</td><td>{a.correct ? "Right" : "Wrong"}</td><td className="adm-nowrap">{duration(a.timeMs)}{a.tooFast && <span className="adm-sub">Under 3 s</span>}</td><td>{a.misconception ?? "-"}</td></tr>)}
+      {lines.map((a) => <tr key={a.number} className={a.correct ? "" : "is-wrong"}><td>{a.number}</td><td>{a.stage ?? "-"}</td><td>{a.level === null ? "-" : `${levelText(a.level)} / ${a.strand}`}</td><td className="adm-wide">{a.prompt ?? a.questionId}</td><td>{a.rightAnswer ?? "-"}</td><td>{a.response || "Skipped"}</td><td>{a.correct ? "Right" : "Wrong"}{a.leftOut && <span className="adm-sub">Left out: rushed</span>}</td><td className="adm-nowrap">{duration(a.timeMs)}{a.tooFast && <span className="adm-sub">Under 3 s</span>}</td><td>{a.misconception ?? "-"}</td></tr>)}
     </Table>
     <h2>Shown work and AI reviews</h2>
     {work.length === 0 ? <p className="adm-note">No shown work yet.</p> : <ul className="adm-work">{work.map((a) => <li key={a.questionId} id={`work-${a.questionId}`}>

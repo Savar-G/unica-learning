@@ -344,8 +344,10 @@ describe("certainty and reliability on the report", () => {
 
   it("has no reliability note for a test at a steady pace, nor for a placement stored before #189", () => {
     expect(report(grade4()).reliability).toBeUndefined();
-    const { pace: _pace, levelCertainty: _level, ...older } = grade4();
-    const model = report({ ...older, strands: older.strands.map(({ certainty: _c, ...s }) => s) });
+    // As stored before #189: the keys are absent.
+    const without = <T extends object>(o: T, ...keys: string[]) => Object.fromEntries(Object.entries(o).filter(([k]) => !keys.includes(k))) as T;
+    const older = without(grade4(), "pace", "levelCertainty");
+    const model = report({ ...older, strands: older.strands.map((s) => without(s, "certainty")) });
     expect(model.reliability).toBeUndefined();
     expect(model.level.certainty).toBeUndefined();
     expect(model.strands.every((s) => s.certainty === undefined)).toBe(true);

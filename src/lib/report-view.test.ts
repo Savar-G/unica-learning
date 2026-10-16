@@ -218,7 +218,8 @@ describe("the areas", () => {
   });
   it("keeps the early-signal line for a report stored before the certainty labels (#189)", () => {
     const v = view(knowsUpTo(4));
-    const older = { ...v, model: { ...v.model, strands: v.model.strands.map(({ certainty: _c, ...s }) => s) } };
+    // As stored before #189: no certainty key on any area.
+    const older = { ...v, model: { ...v.model, strands: v.model.strands.map((s) => Object.fromEntries(Object.entries(s).filter(([k]) => k !== "certainty")) as typeof s) } };
     expect(thresholdsLine(older)).toBe("Secure: 80% or more right. Developing: 50-79%. Needs attention: under 50%. 36 questions is an early signal, not a final verdict.");
   });
 });

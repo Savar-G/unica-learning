@@ -6,6 +6,7 @@ import {
   PAUSE_WINDOW,
   TOO_FAST_MS,
   helpLikely,
+  leftOutOfScore,
   type FactsTest,
   type Flag,
   type Grade,
@@ -135,6 +136,8 @@ export interface AnswerLine {
   timeMs: number;
   /** Under TOO_FAST_MS: the help flags count these. */
   tooFast: boolean;
+  /** #189: a very fast wrong answer inside a run of very fast answers: left out of the score, not counted as wrong. */
+  leftOut: boolean;
   work: { required: boolean; image: string | null; text: string | null };
   review: (Omit<ReviewRecord, "score"> & { score: number }) | null;
 }
@@ -151,7 +154,9 @@ export function answerLines(test: StoredTest, answers: readonly AnswerRecord[], 
   for (const q of test.stage1) stage.set(q.id, { q, stage: 1 });
   for (const q of [...test.stage2.up, ...test.stage2.stay, ...test.stage2.down]) stage.set(q.id, { q, stage: 2 });
   const reviewed = new Map(reviews.map((r) => [r.question_id, { ...r, score: Number(r.score) }]));
-  return [...answers].sort((a, b) => a.position - b.position).map((a) => {
+  const ordered = [...answers].sort((a, b) => a.position - b.position);
+  const out = leftOutOfScore(ordered.map((a) => ({ questionId: a.question_id, timeMs: a.time_ms, correct: a.correct })));
+  return ordered.map((a, i) => {
     const found = stage.get(a.question_id);
     return {
       number: a.position + 1,
@@ -166,6 +171,7 @@ export function answerLines(test: StoredTest, answers: readonly AnswerRecord[], 
       misconception: misconceptionText(a.misconception),
       timeMs: a.time_ms,
       tooFast: a.time_ms < TOO_FAST_MS,
+      leftOut: out[i],
       work: { required: a.work_required, image: a.work_path, text: a.work_text },
       review: reviewed.get(a.question_id) ?? null,
     };
