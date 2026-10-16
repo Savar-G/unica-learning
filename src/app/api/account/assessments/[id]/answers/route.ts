@@ -4,6 +4,7 @@ import { ANSWER_BODY_MAX, refusalResponse, testFail, type StepResult } from "@/l
 import { answerQuestion } from "@/lib/test-attempt";
 import { attemptStore } from "@/lib/test-attempt-server";
 import { parseWork } from "@/lib/work-payload";
+import { parseAnswerEvents } from "@/lib/answer-events";
 
 // Marks the answer to the current question, stores it with its whiteboard work (#67), and returns the next step.
 // The browser learns nothing about whether the answer was right. The test attempt module (src/lib/test-attempt.ts,
@@ -20,7 +21,7 @@ export async function POST(request: Request, ctx: RouteContext<"/api/account/ass
   if (Number(request.headers.get("content-length") ?? 0) > ANSWER_BODY_MAX) return tooBig();
   const raw = await readCapped(request, ANSWER_BODY_MAX);
   if (raw === null) return tooBig();
-  let body: { questionId?: unknown; response?: unknown; timeMs?: unknown; work?: unknown };
+  let body: { questionId?: unknown; response?: unknown; timeMs?: unknown; work?: unknown; events?: unknown };
   try {
     body = JSON.parse(raw);
   } catch {
@@ -37,6 +38,8 @@ export async function POST(request: Request, ctx: RouteContext<"/api/account/ass
     response: typeof body.response === "string" ? body.response : "",
     timeMs: Number(body.timeMs),
     work: { png: work.png, text: work.text },
+    // #184: what the child did before Next, bounded. Events that cannot be used never stop the answer.
+    events: parseAnswerEvents(body.events),
   }, Date.now());
   if (!result.ok) return refusalResponse(result);
   return Response.json({ ok: true, step: result.step } satisfies StepResult);

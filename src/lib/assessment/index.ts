@@ -56,3 +56,4 @@ export { hasWork, workProblem, type BoardWork, type WorkProblem } from "./work";
 export { isLineChoice, namesChoice, readAloudText, sayChoice, spokenChoices } from "./read-aloud";
 export * from "./payments";
 export * from "./retention-worker";
+export { BC_SKILL_MAP, STRAND_NAMES, skillMapProblems, type BcSkill, type BcStandard, type SkillMap } from "./skill-map";
