@@ -55,6 +55,8 @@ export const BC_GRADES_6_8: readonly BcStandard[] = [
     skill("6.10-preserve-equality", "Keep a balance or an equation equal by doing the same thing to both sides", "3.8-balance-equations"),
     skill("6.10-solve-one-step", "Solve a one-step equation with whole-number coefficients and solutions", "5.11-solve-one-step", "6.10-preserve-equality"),
     skill("6.10-combine-like-terms", "Combine like terms to solve an equation, for example 4x + 5x = 45", "6.10-solve-one-step"),
+    // Added with the skill tags (#193): a template asks for the equation of a story.
+    skill("6.10-write-equation", "Write a one-step equation with a variable for a situation", "5.11-write-equation"),
   ] },
   { code: "6.11", grade: 6, strand: "MG", text: "perimeter of complex shapes", skills: [
     skill("6.11-complex-perimeter", "Find the perimeter of a composite shape, also with missing side lengths", "4.14-perimeter"),
@@ -112,6 +114,8 @@ export const BC_GRADES_6_8: readonly BcStandard[] = [
     skill("7.3-multiply-decimals", "Multiply a decimal by a decimal", "6.8-multiply-decimal"),
     skill("7.3-divide-decimals", "Divide by a decimal", "6.8-divide-decimal"),
     skill("7.3-estimate-product", "Tell if a product is more or less than a factor when the other factor is less than 1", "7.3-multiply-decimals"),
+    // Added with the skill tags (#193): a template asks the same about a quotient.
+    skill("7.3-estimate-quotient", "Tell if a quotient is more or less than the number divided when the divisor is less than 1", "7.3-divide-decimals"),
     skill("7.3-decimal-order-of-operations", "Use the order of operations with decimals", "7.3-multiply-decimals", "6.3-order-of-operations"),
   ] },
   { code: "7.4", grade: 7, strand: "F", text: "relationships between decimals, fractions, ratios, and percents", skills: [
