@@ -11,7 +11,9 @@ import type { PlanId } from "@/lib/site";
 import { adminClient, parentId, sessionClient } from "@/lib/supabase-auth";
 import { recordReportEmailClick } from "@/lib/email-clicks";
 import { TrackOnce } from "@/components/account";
-import { ReportCard, type ReportNextContext } from "@/components/report";
+import { ReportCard, type NewTestOffer, type ReportNextContext } from "@/components/report";
+import { startPath } from "@/lib/sign-in-link";
+import { parentRetakeState } from "@/lib/test-attempt-server";
 import type { NextStepStart } from "@/components/report-next";
 import { SupportPage } from "@/components/support-page";
 
@@ -43,7 +45,11 @@ export default async function ReportPage({ params, searchParams }: PageProps<"/a
   if (!report) notFound();
   const { view, childId } = report;
 
-  const [start, learning] = await Promise.all([nextStepStart(db, childId), learningStart(db, childId)]);
+  const [start, learning, newTest] = await Promise.all([
+    nextStepStart(db, childId),
+    learningStart(db, childId),
+    view.model.reliability ? newTestOffer(parent, childId) : null,
+  ]);
   // Back from the payment page without a card: not a new report open.
   const cancelled = query.card === "cancelled";
   // The click on the report email's button (D-105), counted after the page is sent. Only for this parent's own report.
@@ -64,9 +70,22 @@ export default async function ReportPage({ params, searchParams }: PageProps<"/a
     <SupportPage label="" title="" wide>
       {!cancelled && <TrackOnce event="report_open" props={{ src }} />}
       <p className="small rpt-back"><Link href="/account">← Your account</Link></p>
-      <ReportCard view={view} next={next} />
+      <ReportCard view={view} next={next} newTest={newTest} />
     </SupportPage>
   );
+}
+
+/**
+ * #189: when the child's next test opens after a result that may not be reliable, by the same start rules as the start
+ * screen: at once (at most once per 30 days, D-108), with the button; otherwise the day it opens. Null when that cannot
+ * be read: the note then shows no button and names no time.
+ */
+async function newTestOffer(parent: string, childId: string): Promise<NewTestOffer | null> {
+  const state = await parentRetakeState(parent, childId);
+  if (!state) return null;
+  const href = startPath(childId);
+  if (state.kind === "opens") return { state, href, label: "" };
+  return { state: { kind: "open" }, href, label: state.resume ? "Continue the new test" : "Start a new test" };
 }
 
 /** The parent's answers about how this child learns (#126), read with the parent's session; null when none. */

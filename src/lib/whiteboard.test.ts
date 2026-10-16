@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { WORK_TEXT_MAX } from "@/lib/test-api";
+import { recordStrokes, replayLength } from "@/lib/strokes";
 import {
   PALM_AFTER_PEN_MS,
   decodeDraft,
@@ -11,6 +12,7 @@ import {
   pointerUp,
   type PalmGuard,
   type Stroke,
+  type BoardState,
 } from "@/lib/whiteboard";
 
 // The whiteboard (#67): mouse, finger and stylus; a palm resting on a tablet must not draw or spoil the pen's stroke.
@@ -110,6 +112,56 @@ describe("the part of the board the saved image shows", () => {
 });
 
 describe("the saved draft, for a resume of the same question (#72)", () => {
+  it("keeps the original drawing chronology and timing across a reload (#186)", () => {
+    const first = stroke([[0.1, 0.1], [0.2, 0.2]]);
+    const second = stroke([[0.4, 0.4]]);
+    const board: BoardState = {
+      strokes: [first], text: "", shownAt: 10_000,
+      log: [
+        { kind: "stroke", stroke: first, times: [10_200, 10_600] },
+        { kind: "stroke", stroke: second, times: [11_000] },
+        { kind: "undo", at: 11_400 },
+      ],
+    };
+    const back = decodeDraft(encodeDraft(board, 1_000_000), 1_020_000)!;
+    const recording = recordStrokes(back.log, back.shownAt!, { width: 800, height: 600 })!;
+    expect(recording.events).toEqual([
+      { kind: "stroke", erase: false, w: 3, pts: [[0.1, 0.1, 200], [0.2, 0.2, 600]] },
+      { kind: "stroke", erase: false, w: 3, pts: [[0.4, 0.4, 1000]] },
+      { kind: "undo", t: 1400 },
+    ]);
+    expect(replayLength(recording)).toBe(1400);
+    back.log.push({ kind: "stroke", stroke: second, times: [2000] });
+    expect(recordStrokes(back.log, back.shownAt!, { width: 800, height: 600 })?.events.at(-1))
+      .toEqual({ kind: "stroke", erase: false, w: 3, pts: [[0.4, 0.4, 12_000]] });
+  });
+
+  it("keeps a cleared board's full history through repeated reloads", () => {
+    const ink = stroke([[0.2, 0.3]]);
+    const board: BoardState = {
+      strokes: [], text: "", shownAt: 100,
+      log: [{ kind: "stroke", stroke: ink, times: [300] }, { kind: "clear", at: 1500 }],
+    };
+    const once = decodeDraft(encodeDraft(board, 1_000_000), 1_010_000)!;
+    const twice = decodeDraft(encodeDraft(once, 1_010_000), 1_030_000)!;
+    expect(twice.strokes).toEqual([]);
+    expect(recordStrokes(twice.log, twice.shownAt!, { width: 800, height: 600 })?.events).toEqual([
+      { kind: "stroke", erase: false, w: 3, pts: [[0.2, 0.3, 200]] },
+      { kind: "clear", t: 1400 },
+    ]);
+  });
+
+  it("keeps old drafts and visible work when new timing metadata is invalid", () => {
+    const work = { strokes: [stroke([[0.3, 0.4]])], text: "12 x 4" };
+    for (const metadata of [{}, { v: 2, shownAt: 100, log: [{ kind: "stroke", stroke: work.strokes[0], times: [] }] },
+      { v: 2, shownAt: "bad", log: [] }, { v: 2, shownAt: 100, log: [{ kind: "clear", at: "bad" }] }]) {
+      const back = decodeDraft(JSON.stringify({ ...work, ...metadata }), 1_020_000)!;
+      expect(back.strokes).toEqual(work.strokes);
+      expect(back.text).toBe("12 x 4");
+      expect(back.log).toEqual([{ kind: "stroke", stroke: work.strokes[0], times: null }]);
+    }
+  });
+
   it("comes back with the same strokes and text", () => {
     const work = { strokes: [stroke([[0.123456, 0.654321], [0.2, 0.3]]), stroke([[0.5, 0.5]], true)], text: "12 x 4" };
     const back = decodeDraft(encodeDraft(work));

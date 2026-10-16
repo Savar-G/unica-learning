@@ -180,7 +180,8 @@ export async function loadReportInputs(reader: ReportReader, assessmentId: strin
       }];
     }),
     comparison: () => comparison(a.id),
-    questions: a.placement.levels.reduce((n, l) => n + l.total, 0),
+    // Every answered question (#189): the placement's levels leave out rushed wrong answers, so they cannot count them.
+    questions: answers.length,
     minutes: Math.max(1, Math.round(answers.reduce((ms, x) => ms + x.timeMs, 0) / 60_000)),
   };
 }

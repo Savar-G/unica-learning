@@ -4,12 +4,13 @@
 // two calls started together interleave as two requests would; the check and the write after it happen together, as
 // in one database statement. Answers (#147): one answer per place in a test (the unique index on assessment_id and
 // position), and the drawings bucket as a map by path. Finish (#150): a test is completed only while it is in progress.
+// Strokes (#186): the stroke files of the same bucket, as their own map by path, so a test can check them apart.
 import type { Attempt, HelpAnswer, Placement, Route, StoredTest, Submission } from "@/lib/assessment";
 import type { FactsTest } from "@/lib/assessment";
 import { StoreError, type AttemptChild, type AttemptStore, type NewAnswer } from "@/lib/test-attempt";
 import type { FactsStore, NewFactAnswer } from "@/lib/test-attempt";
 import type { QuestionShown, ShownStore } from "@/lib/test-attempt";
-import { workPath } from "@/lib/work-payload";
+import { strokesPath, workPath } from "@/lib/work-payload";
 
 /** A row of public.answers. A test can give only what the module reads back (a Submission); the module stores all of it. */
 export type MemoryAnswer = Submission & Partial<NewAnswer>;
@@ -48,7 +49,8 @@ const attemptOf = ({ id, status, startedAt, lastAnswerAt, resumeUntil, completed
 
 /**
  * A store over `children` and `tests`. The returned arrays are the store's rows, so a test can check what it holds.
- * A new test gets the id "a<n>", counting on from the tests given. `drawings` is the drawings bucket, by path.
+ * A new test gets the id "a<n>", counting on from the tests given. `drawings` is the drawings bucket, by path;
+ * `strokes` the stroke files in it (#186), by path.
  */
 export function memoryAttemptStore({ children: kids = [], tests: initial = [] }: { children?: MemoryChild[]; tests?: MemoryTest[] } = {}) {
   const children = kids.map((c) => ({ ...c }));
@@ -56,6 +58,7 @@ export function memoryAttemptStore({ children: kids = [], tests: initial = [] }:
   let next = tests.length;
   const drawings = new Map<string, Uint8Array>();
   let drawn = 0;
+  const strokes = new Map<string, string>();
   /** Set an operation's error to make every call of it throw, as a database error would. */
   const fail: Partial<Record<keyof AttemptStore, Error>> = {};
   const begin = async (operation: keyof AttemptStore) => {
@@ -124,7 +127,8 @@ export function memoryAttemptStore({ children: kids = [], tests: initial = [] }:
       await begin("attempts");
       return tests
         .filter((t) => t.parentId === parent && (childId === undefined || t.childId === childId))
-        .map((t) => ({ ...attemptOf(t), childId: t.childId, seed: t.seed }));
+        // #189: a completed test whose stored placement may not be reliable (the database reads placement->pace->unreliable).
+        .map((t) => ({ ...attemptOf(t), childId: t.childId, seed: t.seed, ...(t.status === "completed" && t.placement?.pace?.unreliable ? { unreliable: true } : {}) }));
     },
     async load(parent, id) {
       await begin("load");
@@ -162,6 +166,16 @@ export function memoryAttemptStore({ children: kids = [], tests: initial = [] }:
       await begin("removeDrawing");
       drawings.delete(path);
     },
+    async storeStrokes(parent, id, questionId, json) {
+      await begin("storeStrokes");
+      const path = strokesPath(parent, id, questionId, String(++drawn));
+      strokes.set(path, json);
+      return path;
+    },
+    async removeStrokes(path) {
+      await begin("removeStrokes");
+      strokes.delete(path);
+    },
     async insertAnswer(id, answer) {
       await begin("insertAnswer");
       const row = tests.find((t) => t.id === id);
@@ -189,5 +203,5 @@ export function memoryAttemptStore({ children: kids = [], tests: initial = [] }:
       return { id };
     },
   };
-  return { store, children, tests, drawings, facts, shows, fail };
+  return { store, children, tests, drawings, strokes, facts, shows, fail };
 }
