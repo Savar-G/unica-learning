@@ -209,3 +209,51 @@ it("awaits every started check after a failure and stops scheduling more custome
   expect(await result).toEqual(UNKNOWN);
   expect(started).toHaveLength(4);
 });
+
+it("keeps an unresolved historical booking unknown instead of treating it as a free test", async () => {
+  const f = fixture();
+  const booked = { cards: [{ customer: null, saved: false, booking: null }], lastTestAt: "2020-01-01T00:00:00Z" };
+  expect(await checkFamilyPayments(f.store, booked, NOW)).toEqual(UNKNOWN);
+  expect(f.expired).toEqual([]);
+  expect(f.canceled).toEqual([]);
+});
+
+for (const [name, payments] of [
+  ["waiting saved card", SAVED],
+  ["active subscription", { savedCard: false, subscriptions: [{ status: "active", endedAt: null }] }],
+] as const) {
+  it(`keeps a historical booking with a ${name} at the fresh frozen check`, async () => {
+    const f = fixture();
+    f.store.bookingCustomers = async () => ["booking_customer"];
+    f.store.current = async customer => { expect(customer).toBe("booking_customer"); return { ...payments, subscriptions: [...payments.subscriptions] }; };
+    const booked = { cards: [{ customer: null, saved: false, booking: { email: "parent@example.invalid", ref: "booking_ref" } }], lastTestAt: "2020-01-01T00:00:00Z" };
+    expect(await checkFamilyPayments(f.store, booked, NOW)).toEqual(CUSTOMER);
+    expect(f.expired).toEqual([]);
+    expect(f.canceled).toEqual([]);
+  });
+}
+
+it("rechecks booking links and keeps new cards, live subscriptions and unresolved links at the final read", async () => {
+  const booked = { cards: [{ customer: null, saved: false, booking: { email: "parent@example.invalid", ref: "booking_ref" } }], lastTestAt: "2020-01-01T00:00:00Z" };
+  for (const final of [SAVED, { savedCard: false, subscriptions: [{ status: "active", endedAt: null }] }]) {
+    const f = fixture();
+    let reads = 0;
+    f.store.bookingCustomers = async () => ["booking_customer"];
+    f.store.current = async () => ++reads === 1 ? NOTHING : final;
+    expect(await checkFamilyPayments(f.store, booked, NOW)).toEqual(CUSTOMER);
+  }
+  for (const lastLink of [[], ["new_customer"]]) {
+    const f = fixture();
+    let links = 0;
+    f.store.bookingCustomers = async () => ++links === 1 ? ["booking_customer"] : lastLink;
+    expect(await checkFamilyPayments(f.store, booked, NOW)).toEqual(UNKNOWN);
+  }
+});
+
+it("deletes a former booking customer at six months even with a later test", async () => {
+  const f = fixture();
+  f.store.bookingCustomers = async () => ["booking_customer"];
+  f.store.current = async () => former("2026-01-01T00:00:00Z");
+  expect(await checkFamilyPayments(f.store, { cards: [{ customer: null, saved: false, booking: { email: "parent@example.invalid", ref: "booking_ref" } }], lastTestAt: "2026-03-01T00:00:00Z" }, Date.parse("2026-07-01T00:00:00Z")))
+    .toEqual({ action: "delete", rule: "former_customer", endedAt: "2026-01-01T00:00:00.000Z" });
+});

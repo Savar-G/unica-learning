@@ -1,6 +1,6 @@
 import type { FamilyDeletionResult } from "./deletion";
 import { readFamilyPayments } from "./payments";
-import { retentionDecision, type CustomerPayments, type RetentionFamily } from "./retention";
+import { retentionDecision, type BookingLink, type CustomerPayments, type RetentionFamily } from "./retention";
 
 export type WorkerConfiguration = { kind: "help" } | { kind: "disabled" } | {
   kind: "run"; mode: "dry" | "delete"; url: string; secret: string; stripeKey?: string;
@@ -36,6 +36,7 @@ export interface RetentionWorkerStore {
   verifyPayments(): Promise<void>;
   /** Read-only Stripe facts for one customer. A failure means unknown. */
   customerPayments(customer: string): Promise<CustomerPayments>;
+  bookingCustomers?(booking: BookingLink): Promise<string[]>;
   cursor(): Promise<string | null>;
   advance(parent: string): Promise<void>;
   run(parent: string, limitMs: number, claim: RetentionClaim): Promise<FamilyDeletionResult>;
@@ -74,7 +75,7 @@ export async function runRetentionWorker(config: WorkerConfiguration, store: Ret
       decisions.queued++;
       claim = { endedAt: null };
     } else {
-      const decision = retentionDecision({ lastTestAt: family.lastTestAt, payments: await readFamilyPayments(family.cards, read) }, now);
+      const decision = retentionDecision({ lastTestAt: family.lastTestAt, payments: await readFamilyPayments(family.cards, read, config.stripeKey ? store.bookingCustomers?.bind(store) : undefined) }, now);
       if (decision.action === "unknown") { decisions.unknown++; continue; }
       if (decision.action === "keep") { decisions[`keep_${decision.reason}`]++; continue; }
       decisions[`delete_${decision.rule}`]++;

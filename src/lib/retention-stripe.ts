@@ -1,6 +1,6 @@
 import "server-only";
 import type Stripe from "stripe";
-import type { CustomerPayments, SubscriptionFact } from "@/lib/assessment";
+import type { BookingLink, CustomerPayments, SubscriptionFact } from "@/lib/assessment";
 
 // Read-only Stripe facts for the retention rules (#191). The restricted key `unica-retention-worker` reads Checkout
 // Sessions, Payment Methods and Subscriptions. These reads change nothing, so dry mode can use them too.
@@ -46,6 +46,32 @@ export async function readCustomerPayments(s: Stripe, customer: string, options:
     throw new Error("Payment scope changed");
   }
   return { savedCard: complete.value.data.length > 0 || methods.value.data.length > 0, subscriptions: subscriptions.value };
+}
+
+/** Resolve only customers with the confirmed account email and the exact old booking reference.
+ * A complete list with no match is unresolved, not evidence that the booking never saved a card. */
+export async function readBookingCustomers(s: Stripe, booking: BookingLink, options: Options): Promise<string[]> {
+  if (!booking.email || !booking.ref) throw Error("Booking link unavailable");
+  const customers = new Set<string>();
+  const seen = new Set<string>();
+  let after: string | undefined;
+  for (let page = 0; page < 10; page++) {
+    const list = await s.customers.list({ email: booking.email, limit: 100, starting_after: after }, options());
+    if (typeof list.has_more !== "boolean") throw Error("Customer pagination unreadable");
+    for (const customer of list.data) {
+      if (!customer.id || seen.has(customer.id) || customer.email?.toLowerCase() !== booking.email.toLowerCase()) throw Error("Booking customer scope changed");
+      seen.add(customer.id);
+      if (customer.metadata?.ref === booking.ref) customers.add(customer.id);
+    }
+    if (!list.has_more) {
+      if (!customers.size) throw Error("Booking customer unresolved");
+      return [...customers];
+    }
+    const next = list.data.at(-1)?.id;
+    if (!next || next === after) throw Error("Customer pagination did not advance");
+    after = next;
+  }
+  throw Error("Too many booking customers");
 }
 
 /** Authenticate the real live-mode key through the read permissions the rules need, before any claim. */

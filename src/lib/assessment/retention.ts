@@ -13,8 +13,11 @@ export interface CustomerPayments {
   subscriptions: SubscriptionFact[];
 }
 
-/** One card setup row of the family (`card_setups`): its Stripe customer, if one was made, and whether the site saw a saved card. */
-export interface FamilyCard { customer: string | null; saved: boolean }
+/** A booking tied to the confirmed account email. Stripe must also match the booking reference. */
+export interface BookingLink { email: string; ref: string }
+
+/** A report card setup or an old booking. A null booking link is unresolved and must keep the family. */
+export interface FamilyCard { customer: string | null; saved: boolean; booking?: BookingLink | null }
 
 /** A family as the database knows it, before Stripe is asked. */
 export interface RetentionFamily {
@@ -63,8 +66,7 @@ const time = (iso: string | null) => (iso === null ? null : Date.parse(iso));
  * The decision for one family that is not in the deletion queue. Any doubt keeps the family:
  * - Stripe did not answer, a status is new, an end date is missing, or a date does not parse: unknown.
  * - A live subscription, or a saved card with no subscription yet: a customer, kept.
- * - Only ended subscriptions: a former customer, deleted 6 months after the latest end. A test taken after that end
- *   keeps the family until 12 months after the test, as for a family that never paid.
+ * - Only ended subscriptions: a former customer, deleted 6 months after the latest end, including with later tests.
  * - Nothing in Stripe and no saved card: a free-test family, deleted 12 months after the latest test activity.
  */
 export function retentionDecision(facts: RetentionFacts, now: number): RetentionDecision {
@@ -87,8 +89,7 @@ export function retentionDecision(facts: RetentionFacts, now: number): Retention
   const lastTest = time(facts.lastTestAt);
   if (doubt || !Number.isFinite(now) || (lastTest !== null && !Number.isFinite(lastTest))) return UNKNOWN;
   if (ended !== null) {
-    let due = addUtcMonths(ended, 6);
-    if (lastTest !== null && lastTest > ended) due = Math.max(due, addUtcMonths(lastTest, 12));
+    const due = addUtcMonths(ended, 6);
     return now >= due ? { action: "delete", rule: "former_customer", endedAt } : { action: "keep", reason: "former_customer" };
   }
   if (lastTest === null) return { action: "keep", reason: "no_test" };

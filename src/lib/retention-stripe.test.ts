@@ -5,7 +5,7 @@ import { checkFamilyPayments, type FamilyPaymentStore, type PaymentProgress } fr
 // The retention worker's Stripe reads (#191). The real Stripe SDK runs against a fake network, so the test checks the
 // requests that leave and the facts that come back: every subscription with its status and Stripe's end date.
 vi.mock("server-only", () => ({}));
-const { readCustomerPayments, verifyRetentionKey } = await import("@/lib/retention-stripe");
+const { readBookingCustomers, readCustomerPayments, verifyRetentionKey } = await import("@/lib/retention-stripe");
 
 type Route = (url: URL) => { status?: number; body: unknown };
 function stripeWith(route: Route) {
@@ -110,4 +110,45 @@ describe("Stripe key preflight", () => {
     const test = stripeWith(() => ({ body: list([{ ...sub("sub_1", "cus_1", "active", null), livemode: false }]) }));
     await expect(verifyRetentionKey(test.s)).rejects.toThrow();
   });
+});
+
+it("keeps a booking customer found on a later complete customer page through the public payment check", async () => {
+  const booking = { email: "parent@example.invalid", ref: "booking_ref" };
+  const { s } = stripeWith(url => {
+    if (url.pathname === "/v1/customers") return { body: url.searchParams.get("starting_after")
+      ? list([{ id: "cus_booking", object: "customer", email: booking.email, metadata: { ref: booking.ref } }])
+      : list([{ id: "cus_other", object: "customer", email: booking.email, metadata: { ref: "other" } }], true) };
+    if (url.pathname === "/v1/payment_methods") return { body: list([{ id: "pm_booking", customer: "cus_booking" }]) };
+    return { body: list([]) };
+  });
+  const guard: FamilyPaymentStore = {
+    async bookingCustomers(link) { return readBookingCustomers(s, link, options); },
+    async current(customer) { return readCustomerPayments(s, customer, options); },
+    async pending() { return []; }, async reconcile() { throw Error("unexpected"); },
+    async openSessions() { throw Error("customer cleanup"); }, async expire() { throw Error("customer cleanup"); },
+    async intents() { throw Error("customer cleanup"); }, async cancel() { throw Error("customer cleanup"); },
+    async progress() { throw Error("customer cleanup"); }, async saveProgress() { throw Error("customer cleanup"); },
+  };
+  expect(await checkFamilyPayments(guard, { cards: [{ customer: null, saved: false, booking }], lastTestAt: "2020-01-01T00:00:00Z" }, Date.parse("2026-10-16T00:00:00Z")))
+    .toEqual({ action: "keep", reason: "customer" });
+});
+
+it.each([
+  { name: "no customer", body: list([]) },
+  { name: "wrong reference", body: list([{ id: "cus_unlinked", email: "parent@example.invalid", metadata: { ref: "wrong_ref" } }]) },
+  { name: "wrong email", body: list([{ id: "cus_unlinked", email: "other@example.invalid", metadata: { ref: "booking_ref" } }]) },
+  { name: "missing reference", body: list([{ id: "cus_unlinked", email: "parent@example.invalid", metadata: {} }]) },
+  { name: "unknown pagination", body: { ...list([{ id: "cus_linked", email: "parent@example.invalid", metadata: { ref: "booking_ref" } }]), has_more: "false" } },
+  { name: "incomplete page", body: list([], true) },
+  { name: "refused read", body: forbidden.body, status: 403 },
+])("keeps an unresolved booking link: $name", async ({ body, status }) => {
+  const { s } = stripeWith(() => ({ body, status }));
+  await expect(readBookingCustomers(s, { email: "parent@example.invalid", ref: "booking_ref" }, options)).rejects.toThrow();
+});
+
+it("does not use an earlier match when a later customer page fails", async () => {
+  const { s } = stripeWith(url => url.searchParams.has("starting_after") ? forbidden : { body: list([
+    { id: "cus_linked", email: "parent@example.invalid", metadata: { ref: "booking_ref" } },
+  ], true) });
+  await expect(readBookingCustomers(s, { email: "parent@example.invalid", ref: "booking_ref" }, options)).rejects.toThrow();
 });

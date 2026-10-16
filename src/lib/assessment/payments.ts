@@ -1,9 +1,10 @@
 import type { RetentionCardState } from "./deletion";
-import { retentionDecision, type CustomerPayments, type FamilyCard, type RetentionDecision, type RetentionFamily } from "./retention";
+import { retentionDecision, type BookingLink, type CustomerPayments, type FamilyCard, type RetentionDecision, type RetentionFamily } from "./retention";
 
 export interface PaymentOperation { kind: "session" | "intent"; customer: string; id: string }
 export interface PaymentProgress { head: string | null; after: string | null; done: boolean }
 export interface FamilyPaymentStore {
+  bookingCustomers?(booking: BookingLink): Promise<string[]>;
   pending(): Promise<PaymentOperation[]>;
   reconcile(operation: PaymentOperation): Promise<RetentionCardState>;
   openSessions(customer: string): Promise<string[]>;
@@ -38,11 +39,29 @@ async function checkTogether<T>(items: readonly T[], check: (item: T) => Promise
 
 const customersOf = (cards: readonly FamilyCard[]) => [...new Set(cards.flatMap((c) => (c.customer ? [c.customer] : [])))];
 
+/** Resolve booking references on every decision. An absent reader, missing link or incomplete result is unknown. */
+async function resolveCards(cards: readonly FamilyCard[], resolve?: (booking: BookingLink) => Promise<string[]>): Promise<FamilyCard[] | "unknown"> {
+  const result: FamilyCard[] = [];
+  try {
+    for (const card of cards) {
+      if (card.booking === undefined) { result.push(card); continue; }
+      if (!card.booking || !resolve) return "unknown";
+      const customers = await resolve(card.booking);
+      if (!customers.length || customers.some(c => typeof c !== "string" || !c)) return "unknown";
+      result.push(...customers.map(customer => ({ customer, saved: false })));
+    }
+    return result;
+  } catch { return "unknown"; }
+}
+
 /**
  * Read every Stripe customer of the family, four at a time, and add the site's record of a saved card. One failed read
  * makes the whole family unknown: no later customer is started, and every started read is awaited.
  */
-export async function readFamilyPayments(cards: readonly FamilyCard[], read: (customer: string) => Promise<CustomerPayments>): Promise<CustomerPayments[] | "unknown"> {
+export async function readFamilyPayments(cards: readonly FamilyCard[], read: (customer: string) => Promise<CustomerPayments>, resolve?: (booking: BookingLink) => Promise<string[]>): Promise<CustomerPayments[] | "unknown"> {
+  const linked = await resolveCards(cards, resolve);
+  if (linked === "unknown") return "unknown";
+  cards = linked;
   const customers = customersOf(cards);
   const facts = new Map<string, CustomerPayments>();
   let next = 0, failed = false;
@@ -131,12 +150,14 @@ export async function settlePaymentOperations(store: FamilyPaymentStore): Promis
  * back, and decides again from a second complete set of fresh reads. No clear result is stored between attempts.
  */
 export async function checkFamilyPayments(store: FamilyPaymentStore, family: RetentionFamily, now: number): Promise<RetentionDecision> {
-  const decide = async () => retentionDecision({ lastTestAt: family.lastTestAt, payments: await readFamilyPayments(family.cards, c => store.current(c)) }, now);
-  const customers = customersOf(family.cards);
+  const decide = async (cards: FamilyCard[]) => retentionDecision({ lastTestAt: family.lastTestAt, payments: await readFamilyPayments(cards, c => store.current(c)) }, now);
   try {
     const pending = await settlePaymentOperations(store);
     if (pending !== "clear") return pending === "saved" ? SAVED_NOW : UNKNOWN;
-    const first = await decide();
+    const cards = await resolveCards(family.cards, store.bookingCustomers?.bind(store));
+    if (cards === "unknown") return UNKNOWN;
+    const customers = customersOf(cards);
+    const first = await decide(cards);
     if (first.action !== "delete") return first;
     const history = first.rule === "former_customer";
     const prepared = await checkTogether(customers, async customer => {
@@ -152,7 +173,10 @@ export async function checkFamilyPayments(store: FamilyPaymentStore, family: Ret
     if (prepared !== "clear") return prepared === "saved" ? SAVED_NOW : UNKNOWN;
     const verified = await checkTogether(customers, customer => verifyPrepared(store, customer, history));
     if (verified !== "clear") return verified === "saved" ? SAVED_NOW : UNKNOWN;
-    const final = await decide();
+    const freshCards = await resolveCards(family.cards, store.bookingCustomers?.bind(store));
+    if (freshCards === "unknown") return UNKNOWN;
+    const final = await decide(freshCards);
+    if (final.action === "delete" && customersOf(freshCards).sort().join("\n") !== [...customers].sort().join("\n")) return UNKNOWN;
     // The cleanup above followed the first rule. A different rule now is a state change: decide on a later attempt.
     if (final.action === "delete" && final.rule !== first.rule) return UNKNOWN;
     return final;

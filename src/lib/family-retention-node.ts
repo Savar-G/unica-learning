@@ -2,7 +2,7 @@ import "server-only";
 import { runRetentionWorker, workerConfiguration } from "@/lib/assessment";
 import { deletionClient, deletionPayments } from "./family-deletion-client";
 import { advanceDeletionCursor, deletionCursor, retentionCandidates, runFamilyDeletion } from "./family-deletion-store";
-import { readCustomerPayments, verifyRetentionKey } from "./retention-stripe";
+import { readBookingCustomers, readCustomerPayments, verifyRetentionKey } from "./retention-stripe";
 
 export const RETENTION_WORK_MS = 14 * 60_000;
 export const RETENTION_CONTROL_MS = 30_000;
@@ -25,6 +25,10 @@ export async function runNodeRetention(args: readonly string[], env: Record<stri
       // Authenticate the real live-mode key through the read permissions the rules use, before any claim.
       work.throwIfAborted();
       await verifyRetentionKey(reads!);
+    },
+    async bookingCustomers(booking) {
+      work.throwIfAborted();
+      return readBookingCustomers(reads!, booking, () => ({ timeout: 30_000, maxNetworkRetries: 0 }));
     },
     async customerPayments(customer) {
       work.throwIfAborted();

@@ -36,9 +36,13 @@ describe("retention rules", () => {
     expect(retentionDecision(former("2025-08-31T10:00:00Z"), Date.parse("2026-02-28T10:00:00Z")).action).toBe("delete");
     expect(retentionDecision(former("2023-08-31T10:00:00Z"), Date.parse("2024-02-29T09:59:59Z")).action).toBe("keep");
     expect(retentionDecision(former("2023-08-31T10:00:00Z"), Date.parse("2024-02-29T10:00:00Z")).action).toBe("delete");
-    // A test during the subscription does not move the deadline. A free test after the end keeps 12 months from it.
+    // Tests before or after the subscription end do not move its six-month deadline.
     expect(retentionDecision(former("2026-04-16T12:00:00Z", "2026-04-01T00:00:00Z"), NOW).action).toBe("delete");
-    expect(retentionDecision(former("2026-01-01T00:00:00Z", "2026-03-01T00:00:00Z"), NOW)).toEqual({ action: "keep", reason: "former_customer" });
+    expect(retentionDecision(former("2026-01-01T00:00:00Z", "2026-03-01T00:00:00Z"), Date.parse("2026-06-30T23:59:59.999Z")))
+      .toEqual({ action: "keep", reason: "former_customer" });
+    expect(retentionDecision(former("2026-01-01T00:00:00Z", "2026-03-01T00:00:00Z"), Date.parse("2026-07-01T00:00:00Z")))
+      .toEqual({ action: "delete", rule: "former_customer", endedAt: "2026-01-01T00:00:00.000Z" });
+    expect(retentionDecision(former("2026-01-01T00:00:00Z", "2026-03-01T00:00:00Z"), NOW).action).toBe("delete");
     expect(retentionDecision(former("2026-01-01T00:00:00Z", "2026-03-01T00:00:00Z"), Date.parse("2027-03-01T00:00:00Z")).action).toBe("delete");
     expect(retentionDecision(former("2026-04-16T12:00:00Z", null), NOW).action).toBe("delete");
   });
@@ -283,4 +287,34 @@ it("stops its heartbeat and awaits an in-flight renewal before returning", async
   finishAction(); for (let i = 0; i < 3; i++) await Promise.resolve();
   expect(finished).toBe(false);
   settleRenew(false); expect(await result).toBe("completed"); expect(aborted).toBe(false);
+});
+
+it("keeps booking customers before the freeze and keeps unresolved bookings unknown", async () => {
+  const cards = [{ customer: null, saved: false, booking: { email: "parent@example.invalid", ref: "booking_ref" } }];
+  for (const payments of [
+    { savedCard: true, subscriptions: [] },
+    { savedCard: false, subscriptions: [{ status: "active", endedAt: null }] },
+  ]) {
+    const result = await runRetentionWorker(workerConfiguration([], env), {
+      async candidates() { return [{ id: "booking_parent", queued: false, cards, lastTestAt: "2020-01-01T00:00:00Z" }]; },
+      async bookingCustomers() { return ["booking_customer"]; },
+      async customerPayments(customer) { expect(customer).toBe("booking_customer"); return payments; },
+      async verifyPayments() {}, async cursor() { throw Error("dry cursor"); }, async advance() { throw Error("dry write"); }, async run() { throw Error("customer must not be claimed"); },
+    }, () => 840_000, Date.parse("2026-10-16T00:00:00Z"));
+    expect(result).toMatchObject({ ok: true, keep_customer: 1, eligible: 0, unknown: 0 });
+  }
+});
+
+it("does not claim unresolved booking families or resolve them without a Stripe key", async () => {
+  for (const missingKey of [false, true]) {
+    for (const link of [null, { email: "parent@example.invalid", ref: "booking_ref" }]) {
+      const result = await runRetentionWorker(workerConfiguration([], { ...env, STRIPE_SECRET_KEY: missingKey ? undefined : env.STRIPE_SECRET_KEY }), {
+        async candidates() { return [{ id: "booking_parent", queued: false, cards: [{ customer: null, saved: false, booking: link }], lastTestAt: "2020-01-01T00:00:00Z" }]; },
+        async bookingCustomers() { if (missingKey) throw Error("keyless read"); return []; },
+        async customerPayments() { throw Error("unresolved customer read"); },
+        async verifyPayments() {}, async cursor() { return null; }, async advance() { throw Error("dry write"); }, async run() { throw Error("unknown claim"); },
+      }, () => 840_000, Date.parse("2026-10-16T00:00:00Z"));
+      expect(result).toMatchObject({ ok: false, unknown: 1, eligible: 0, delete_free_test: 0 });
+    }
+  }
 });

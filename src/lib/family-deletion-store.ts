@@ -8,7 +8,7 @@ import {
   type FamilyCard, type FamilyDeletionResult, type FamilyDeletionStore, type FamilyPaymentStore, type PaymentOperation, type PaymentProgress,
   type RetentionCandidate, type RetentionCardState, type RetentionClaim, type RetentionFamily,
 } from "@/lib/assessment";
-import { readCustomerPayments } from "@/lib/retention-stripe";
+import { readBookingCustomers, readCustomerPayments } from "@/lib/retention-stripe";
 import { stripe } from "@/lib/stripe";
 import { WORK_BUCKET } from "@/lib/work-store";
 
@@ -73,7 +73,10 @@ export async function deletionCandidates(db: SupabaseClient): Promise<string[]> 
 }
 
 const isFamilyCard = (c: unknown): c is FamilyCard => typeof c === "object" && c !== null
-  && (typeof (c as FamilyCard).customer === "string" || (c as FamilyCard).customer === null) && typeof (c as FamilyCard).saved === "boolean";
+  && (typeof (c as FamilyCard).customer === "string" || (c as FamilyCard).customer === null) && typeof (c as FamilyCard).saved === "boolean"
+  && ((c as FamilyCard).booking === undefined || (c as FamilyCard).booking === null
+    || (typeof (c as FamilyCard).booking?.email === "string" && !!(c as FamilyCard).booking?.email
+      && typeof (c as FamilyCard).booking?.ref === "string" && !!(c as FamilyCard).booking?.ref));
 
 /** Every family the worker decides (#191): the queue, due free-test families, and every family with Stripe history. */
 export async function retentionCandidates(db: SupabaseClient): Promise<RetentionCandidate[]> {
@@ -96,18 +99,12 @@ export async function retentionCandidates(db: SupabaseClient): Promise<Retention
 
 /** The database half of the retention facts for a frozen family. The fence keeps both parts from changing. */
 async function frozenFamily(db: SupabaseClient, parent: string, deadline: number, execution?: FamilyDeletionExecution): Promise<RetentionFamily | null> {
-  const cards: FamilyCard[] = [];
-  for (let from = 0; ; from += 100) {
-    paymentOptions(deadline, execution);
-    const { data, error } = await db.from("card_setups").select("id, stripe_customer_id, card_saved_at")
-      .eq("parent_id", parent).order("id").range(from, from + 99);
-    if (error) return null;
-    cards.push(...data.map((r) => ({ customer: (r.stripe_customer_id as string | null) ?? null, saved: !!r.card_saved_at })));
-    if (data.length < 100) break;
-  }
+  paymentOptions(deadline, execution);
+  const cards = await rpc<unknown>(db, "family_retention_cards", { p: parent });
+  if (!Array.isArray(cards) || !cards.every(isFamilyCard)) return null;
   paymentOptions(deadline, execution);
   const lastTestAt = await rpc<string | null>(db, "family_last_activity", { p: parent });
-  return { cards: cards.filter((c) => c.customer || c.saved), lastTestAt };
+  return { cards, lastTestAt };
 }
 
 /** Run after freezing and settling app card operations. Remote journal and canceled-intent traversal are durable.
@@ -171,6 +168,10 @@ function paymentStore(db: SupabaseClient, parent: string, token: string, deadlin
   };
   const store: FamilyPaymentStore = {
     pending, reconcile,
+    async bookingCustomers(booking) {
+      if (!s) throw new Error("Payment provider unavailable");
+      return readBookingCustomers(s, booking, () => paymentOptions(deadline, execution));
+    },
     async openSessions(customer) {
       if (!s) throw new Error("Payment provider unavailable");
       const page = await s.checkout.sessions.list({ customer, status: "open", limit: 100 }, paymentOptions(deadline, execution));
