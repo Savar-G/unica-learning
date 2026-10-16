@@ -94,3 +94,11 @@
 .adm-delete input { box-sizing: border-box; width: min(100%, 400px); min-height: 44px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 6px; background: #fff; color: var(--ink); }
 .adm-delete .adm-btn { min-height: 44px; }
 .adm-delete [role="alert"] { padding: 10px 12px; border-left: 3px solid var(--tang); background: var(--adm-bad); }
+
+/* the BC skill map (#192) */
+.adm-skill-map h3 { margin: 22px 0 8px; }
+.adm-skill-map ul { margin: 0; padding-left: 1.1em; }
+.adm-skill-map li + li { margin-top: 4px; }
+.adm-skill-map tr:target td:not([rowspan]) { background: var(--adm-warn); }
+.adm-skill-map tr[id], .adm-skill-map h2 { scroll-margin-top: 80px; }
+@media (max-width: 700px) { .adm-skill-map tr[id], .adm-skill-map h2 { scroll-margin-top: 190px; } }
