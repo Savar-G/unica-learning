@@ -31,6 +31,8 @@ import {
 const FAMILY = "11111111-1111-4111-8111-111111111111";
 const CHILD = "22222222-2222-4222-8222-222222222222";
 const TEST = "33333333-3333-4333-8333-333333333333";
+/** #197: the profile's build id, a random id of the family's profile row. */
+const BUILD = "55555555-5555-4555-8555-555555555555";
 const START = "2026-03-14T15:09:26.535Z";
 const at = (ms: number) => new Date(Date.parse(START) + ms).toISOString();
 
@@ -38,7 +40,7 @@ const at = (ms: number) => new Date(Date.parse(START) + ms).toISOString();
 const IDENTIFYING = [
   FAMILY, CHILD, TEST, "Maya", "Rivera", "maya.parent@example.invalid", "V4N 5B2", "V4N5B2",
   `${FAMILY}/${TEST}/s1-0-abc.png`, `${FAMILY}/${TEST}/s1-0-abc.strokes.json`, "I counted on my fingers",
-  "She finds fractions hard, call me at 604-555-0199", "AI wrote this likely cause", "Mozilla/5.0 (iPad)", "123456789",
+  "She finds fractions hard, call me at 604-555-0199", "AI wrote this likely cause", "Mozilla/5.0 (iPad)", "123456789", BUILD,
 ];
 
 /** A whole grade 3 BC test through the session, with facts, as the database hands it to the copy. */
@@ -64,7 +66,7 @@ function source() {
     work: { required: questions[i].showWork === true, drawing: i === 0, typed: i === 0 }, readAloud: i === 0 ? 2 : 0, away: { count: 0, ms: 0 },
   }));
   const learning = { styles: ["pictures" as const], interests: ["space" as const], feeling: "okay" as const, goal: "catch_up" as const, weeklyTime: "1_to_2h" as const };
-  const profile = { ...learnerProfile({ placement, answers: profileAnswers, help: "a-little", learning })!, ai: { likelyCauses: { model: "m", value: { "3.1": "AI wrote this likely cause" } } }, note: "Maya" };
+  const profile = { ...learnerProfile({ placement, answers: profileAnswers, help: "a-little", learning })!, ai: { likelyCauses: { model: "m", value: { "3.1": "AI wrote this likely cause" } } }, buildId: BUILD, note: "Maya" };
   return {
     id: TEST,
     copied: false,
@@ -162,7 +164,7 @@ describe("the copy without names", () => {
     for (const f of copy.facts!.answers) expect(Object.keys(f)).toEqual([...COPY_FIELDS.fact]);
     const text = JSON.stringify(copy);
     for (const value of IDENTIFYING) expect(text).not.toContain(value);
-    for (const key of ["parentId", "childId", "firstName", "email", "postal", "seed", "workPath", "workText", "strokesPath", "userAgent", "note", "ai", "childName", "parentEmail"]) {
+    for (const key of ["parentId", "childId", "firstName", "email", "postal", "seed", "workPath", "workText", "strokesPath", "userAgent", "note", "ai", "buildId", "childName", "parentEmail"]) {
       expect(keysOf(copy)).not.toContain(key);
     }
     // The field names the dry run prints are the ones the copy holds.
@@ -232,7 +234,7 @@ describe("the copy without names", () => {
   it("keeps the profile facts without any AI part, and the questionnaire choices without the free text", () => {
     const s = source();
     const copy = anonymousTestCopy(s);
-    const facts = Object.fromEntries(Object.entries(s.profile).filter(([k]) => k !== "ai" && k !== "note"));
+    const facts = Object.fromEntries(Object.entries(s.profile).filter(([k]) => !["ai", "buildId", "note"].includes(k)));
     expect(copy.profile).toEqual(facts);
     expect(copy.questionnaire).toEqual({ styles: ["pictures"], interests: ["space"], feeling: "okay", goal: "catch_up", weeklyTime: "1_to_2h" });
     // A profile of a version the copy does not know is left out, never passed through unchecked.

@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { COPY_FIELDS, anonymousTestCopy, type AnonymousTestCopy } from "@/lib/assessment";
-import { anonymousCopiesCsv, anonymousCopiesJson, type AnonymousTestRow } from "@/lib/anonymous-copy-export";
+import { anonymousCopiesCsv, anonymousCopiesHref, anonymousCopiesJson, type AnonymousTestRow } from "@/lib/anonymous-copy-export";
 
 // The admins' export of the copies without names (#201, spec #181 story 18): CSV and JSON, test families left out unless
 // asked (D-099). The route answers 404 to anyone who is not a live admin.
@@ -42,6 +42,11 @@ describe("the export of the copies without names", () => {
     expect(lines[0]).toContain(",70,false,place-value,8000,");
     // The question shown with no answer has empty cells for what the child did.
     expect(lines[1]).toContain(",1,s1-1,main,");
+  });
+
+  it("the export page (#200, D-118) links each file, with test families only when asked", () => {
+    expect(anonymousCopiesHref({ format: "csv", withTests: false })).toBe("/api/admin/anonymous-copies?format=csv");
+    expect(anonymousCopiesHref({ format: "json", withTests: true })).toBe("/api/admin/anonymous-copies?format=json&test=1");
   });
 });
 

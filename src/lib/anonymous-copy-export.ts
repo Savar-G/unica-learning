@@ -1,7 +1,7 @@
 // The admins' export of the copies without names (#201, spec #181 story 18, D-119): the rows of public.anonymous_tests
 // as JSON (every copy, whole) or CSV (one row per question shown, with the test's columns). Test families (D-099) are
 // left out unless asked. Pure: the route reads the rows with the admin's session (src/lib/admin-store.ts) and sends
-// the file. #200's export of the raw data can link to this one: /api/admin/anonymous-copies?format=csv|json[&test=1].
+// the file. The export page of the raw data (#200, D-118) lists it as one more dataset (anonymousCopiesHref).
 import { COPY_FIELDS, type AnonymousTestCopy } from "@/lib/assessment";
 
 /** One stored copy: its random id and the copy JSON. */
@@ -16,6 +16,13 @@ export interface ExportOptions {
 }
 
 export const ANONYMOUS_COPIES_PATH = "/api/admin/anonymous-copies";
+
+/** The link to one file of the copies: CSV or JSON, with the test families when asked. */
+export function anonymousCopiesHref({ format, withTests }: { format: "csv" | "json"; withTests: boolean }): string {
+  const q = new URLSearchParams({ format });
+  if (withTests) q.set("test", "1");
+  return `${ANONYMOUS_COPIES_PATH}?${q}`;
+}
 
 const kept = (rows: readonly AnonymousTestRow[], { includeTestFamilies }: ExportOptions) =>
   rows.filter((r) => includeTestFamilies || r.copy.testFamily !== true);

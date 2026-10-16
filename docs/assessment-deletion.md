@@ -57,7 +57,7 @@ Any failed, lost or missing step throws. The request and its fence stay for a la
 
 Dry mode reads `family_copy_sources` for each family it would claim and prints `copy`: `families`, `tests` (copies to write), `copied` (already written), `questions`, `extraRounds` (rounds taken), `facts`, `profiles`, `questionnaires`, `failed` and `fields` (the field names). It never prints ids or values. `failed` above 0 makes `ok` false. Delete mode prints `copies`, the copies written in that run.
 
-Admins export the copies at `/api/admin/anonymous-copies?format=csv` (one row per question shown) or `?format=json` (every copy, whole). Test families are left out unless `&test=1`.
+Admins export the copies at `/api/admin/anonymous-copies?format=csv` (one row per question shown) or `?format=json` (every copy, whole). Test families are left out unless `&test=1`. The admin export page (`/admin/export`, #200) lists them as the dataset "Copies without names".
 
 Limits: the local checks ran on PGlite with one connection (the real migration chain, the real built worker entry, blocked network). They do not prove hosted lock behavior. The HTTP route's `dry=1` still lists candidates only. Hosted checks still required: the migration registry and grants, a manual Actions dry run that shows `copy`, and deleting a named QA family on the preview, then confirming that its copies exist and the family is gone.
 

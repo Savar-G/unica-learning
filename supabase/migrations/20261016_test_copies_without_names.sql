@@ -46,10 +46,11 @@ create policy "Admins read anonymous tests" on public.anonymous_tests
   for select to authenticated using ((select public.is_admin()));
 
 -- Every test of a family, with what the copy reads and nothing more: no name, email, postal code, drawing or stroke
--- path, typed working or free text (the learning note, the profile's AI parts), and no family, child or test id but the
--- test's own (the worker needs it to save the copy once; the copy leaves it out). `copied`: the test already has its
--- copy. The extra round (#190): its four times (the copy keeps them as times since the start, never a date and time),
--- its questions in `stored` (test->'extra') and each answer's round. Read only, so the dry run uses it too. Service only.
+-- path, typed working or free text (the learning note, the profile's AI parts), no profile build id, and no family,
+-- child or test id but the test's own (the worker needs it to save the copy once; the copy leaves it out). `copied`:
+-- the test already has its copy. The extra round (#190): its four times (the copy keeps them as times since the start,
+-- never a date and time), its questions in `stored` (test->'extra') and each answer's round. Read only, so the dry run
+-- uses it too. Service only.
 create function public.family_copy_sources(p uuid) returns jsonb
 language sql stable security definer set search_path = '' set timezone = 'UTC' as $$
   select coalesce(jsonb_agg(jsonb_build_object(
@@ -80,8 +81,9 @@ language sql stable security definer set search_path = '' set timezone = 'UTC' a
           'serverMs', y.server_ms, 'browserMs', y.browser_ms
         ) order by y.position), '[]'::jsonb) from public.fact_answers y where y.assessment_id = a.id
       )) from public.assessment_facts f where f.assessment_id = a.id),
-    -- The profile's facts: its AI parts (#197, free text) never leave the database.
-    'profile', (select l.profile - 'ai' from public.learner_profiles l where l.assessment_id = a.id),
+    -- The profile's facts: its AI parts (#197, free text) and its build id (#197, a random id of the family's profile
+    -- row) never leave the database.
+    'profile', (select l.profile - 'ai' - 'buildId' from public.learner_profiles l where l.assessment_id = a.id),
     'learning', (select jsonb_build_object(
         'styles', c.learning_styles, 'interests', c.interests, 'feeling', c.math_feeling, 'goal', c.learning_goal,
         'weeklyTime', c.weekly_time
