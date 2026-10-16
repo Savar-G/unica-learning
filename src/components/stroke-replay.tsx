@@ -114,23 +114,23 @@ export function StrokeReplay({ src, label }: { src: string; label: string }) {
 
   if (!loaded) {
     return (
-      <div className="sr">
-        <div className="sr-controls">
+      <div className="replay">
+        <div className="replay-controls">
           <button type="button" className="is-primary" onClick={play} disabled={status === "loading"} aria-busy={status === "loading"}>
             {status === "loading" ? "Loading…" : "Replay the strokes"}
           </button>
         </div>
-        {status === "failed" && <p className="sr-note" role="alert">The strokes did not load. Reload the page to try again.</p>}
+        {status === "failed" && <p className="replay-note" role="alert">The strokes did not load. Reload the page to try again.</p>}
       </div>
     );
   }
   const ended = time >= loaded.length;
   return (
-    <div className="sr">
-      <div className="sr-board" ref={frame}>
+    <div className="replay">
+      <div className="replay-board" ref={frame}>
         <canvas ref={canvas} role="img" aria-label={label} />
       </div>
-      <div className="sr-controls">
+      <div className="replay-controls">
         <button type="button" className="is-primary" onClick={() => (playing ? setPlaying(false) : void play())}>
           {playing ? "Pause" : ended ? "Play again" : "Play"}
         </button>
@@ -144,12 +144,12 @@ export function StrokeReplay({ src, label }: { src: string; label: string }) {
           aria-label="Replay position"
           aria-valuetext={`${clock(time)} of ${clock(loaded.length)}`}
         />
-        <span className="sr-time">{clock(time)} / {clock(loaded.length)}</span>
+        <span className="replay-time">{clock(time)} / {clock(loaded.length)}</span>
         <button type="button" onClick={() => setSpeed(SPEEDS[(SPEEDS.indexOf(speed) + 1) % SPEEDS.length])} aria-label={`Speed ${speed} times. Change the speed`}>
           {speed}x
         </button>
       </div>
-      <p className="sr-note">{loaded.summary}. Times run from when the question was shown.</p>
+      <p className="replay-note">{loaded.summary}. Times run from when the question was shown.</p>
     </div>
   );
 }
