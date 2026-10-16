@@ -9,6 +9,8 @@ import { filterTests, type AdminFilters, type AnswerRecord, type FactAnswerRecor
 import { sessionClient } from "@/lib/supabase-auth";
 import type { AssessmentStatus } from "@/lib/test-api";
 import { signWork } from "@/lib/work-store";
+import { findSavedCard } from "@/lib/saved-card";
+import { stripeCardProvider } from "@/lib/saved-card-server";
 import { stripe } from "@/lib/stripe";
 import type { DashboardRows, Delivery, EmailCopyView, RawCard, RawDelivery, RawChild, RawEmail, RawParent, RawReport, RawTest, RawWaitlist } from "@/lib/admin-dashboard";
 
@@ -509,22 +511,20 @@ async function cardSubscriptions(cards: RawCard[]): Promise<StripeRead> {
 }
 
 /**
- * The site records a saved card when the parent returns to the thank-you page. A parent who closes the tab first has
- * a saved card in Stripe that the site never recorded. For each card setup with no saved time, ask Stripe for the
- * customer's finished setup Checkout Session and take its time. Read only; nothing is written back.
+ * The site records a saved card when the parent returns to the thank-you page or opens the report again. A parent who
+ * does neither has a saved card in Stripe that the site never recorded. For each card setup with no saved time, ask
+ * the saved-card module what Stripe says, with the same rules as the report, and take the card's time. Read only;
+ * nothing is written back.
  */
 async function confirmCardsInStripe(cards: RawCard[]): Promise<void> {
   const s = stripe();
   const open = cards.filter((c) => c.stripe_customer_id && !c.card_saved_at);
   if (!s || open.length === 0) return;
+  const provider = stripeCardProvider(s);
   await Promise.all(open.map(async (c) => {
-    try {
-      const sessions = await s.checkout.sessions.list({ customer: c.stripe_customer_id!, limit: 10 });
-      const done = sessions.data.filter((x) => x.mode === "setup" && x.status === "complete").sort((x, y) => x.created - y.created)[0];
-      if (done) Object.assign(c, { card_saved_at: new Date(done.created * 1000).toISOString(), saved_in_stripe_only: true });
-    } catch (e) {
-      console.error("[admin] stripe checkout sessions failed", e instanceof Error ? e.message : e);
-    }
+    const answer = await findSavedCard(c, provider);
+    if (answer.state === "saved") Object.assign(c, { card_saved_at: answer.evidence.savedAt, saved_in_stripe_only: true });
+    else if (answer.state === "unknown") console.error("[admin] stripe saved card check failed", c.id);
   }));
 }
 

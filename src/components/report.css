@@ -164,7 +164,12 @@
 .rpt-next .btn { min-height: 46px; }
 .rpt-plans .btn.ghost { background: #fff; border-color: #fff; }
 .rpt-plans .btn.ghost .spin { border-color: rgba(0, 0, 0, 0.18); border-top-color: var(--ink); }
+/* Off while the site checks for a saved card, or could not check; the button with the spinner stays as it is. */
+.rpt-plans .btn:disabled:not([aria-busy="true"]) { opacity: 0.35; cursor: not-allowed; transform: none; box-shadow: none; }
 .support-page .rpt .rpt-next .rpt-next-note { padding: 10px 14px; border-radius: 8px; background: #fff; font-size: 15px; }
+/* A note with a button in it (could not check the card): the same gap below it as a one-line note. */
+.support-page .rpt .rpt-next div.rpt-next-note { margin-bottom: 20px; }
+.support-page .rpt .rpt-next div.rpt-next-note p { margin-bottom: 10px; font-size: 15px; }
 .support-page .rpt .rpt-next .rpt-small { margin: 0; color: var(--ink); }
 [id="rpt-next"] { scroll-margin-top: 96px; }
 

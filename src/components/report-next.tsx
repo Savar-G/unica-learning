@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import type { Province } from "@/lib/assessment";
 import { SUPPORT_EMAIL, SUPPORT_HREF } from "@/lib/contact";
-import { CARD_ROUTE, WAITLIST_ROUTE, type CardRequest, type CardResult, type ReportSrc, type WaitlistRequest, type WaitlistResult } from "@/lib/next-step";
+import { CARD_CHECK_ROUTE, CARD_ROUTE, WAITLIST_ROUTE, type CardCheckResult, type CardRequest, type CardResult, type ReportSrc, type WaitlistRequest, type WaitlistResult } from "@/lib/next-step";
 import type { NextStep, PlanOption } from "@/lib/report-view";
 import { CURRICULA } from "@/lib/signup";
 import type { PlanId } from "@/lib/site";
@@ -21,7 +21,7 @@ export interface NextStepStart {
   cancelled: boolean;
 }
 
-type CardState = "choose" | "later" | "saved" | "error";
+type CardState = "choose" | "later" | "saved" | "error" | "checking" | "unknown";
 type WaitState = "join" | "joined" | "error";
 
 const post = async <T,>(url: string, body: CardRequest | WaitlistRequest): Promise<{ status: number; result: T | null }> => {
@@ -43,7 +43,8 @@ export function ReportNextActions({ reportId, step, childName, province, src, as
   asked: boolean;
   start: NextStepStart;
 }) {
-  const [card, setCard] = useState<CardState>(start.saved ? "saved" : "choose");
+  const [card, setCard] = useState<CardState>(start.saved ? "saved" : "checking");
+  const [checkAttempt, setCheckAttempt] = useState(0);
   const [savedPlan, setSavedPlan] = useState<PlanId | null>(start.saved);
   const [wait, setWait] = useState<WaitState>(start.joined ? "joined" : "join");
   const [busy, setBusy] = useState<PlanId | "waitlist" | null>(null);
@@ -56,6 +57,36 @@ export function ReportNextActions({ reportId, step, childName, province, src, as
   /** The session ended in another tab: sign in again and come back to this step. */
   const signInAgain = () => router.push(`/sign-in?next=${encodeURIComponent(`${location.pathname}${location.search}${location.hash}`)}`);
 
+  // No saved card in card_setups: ask Stripe while the report stays readable, with the plan buttons off. Only a
+  // finished answer of "no card" turns them on; a failed, slow or unreadable answer is "could not check".
+  useEffect(() => {
+    if (step.kind !== "card" || start.saved) return;
+    let active = true;
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 15000);
+    void fetch(CARD_CHECK_ROUTE, {
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ report: reportId }), signal: controller.signal,
+    })
+      .then(async (res) => {
+        if (res.status === 401) {
+          if (active) router.push(`/sign-in?next=${encodeURIComponent(`${location.pathname}${location.search}${location.hash}`)}`);
+          return;
+        }
+        const result = res.ok ? ((await res.json()) as CardCheckResult) : null;
+        if (!active) return;
+        if (result?.state === "saved") {
+          setSavedPlan(result.plan);
+          setCard("saved");
+          setAnnounce("Your card is saved.");
+        } else setCard(result?.state === "absent" ? "choose" : "unknown");
+      })
+      .catch(() => { if (active) setCard("unknown"); })
+      .finally(() => clearTimeout(timeout));
+    return () => { active = false; clearTimeout(timeout); controller.abort(); };
+  }, [reportId, step.kind, start.saved, checkAttempt, router]);
+
+  const checkAgain = () => { setCard("checking"); setCheckAttempt((n) => n + 1); };
+
   // Back from the payment page: once per visit, and the query leaves the address so a reload does not count again.
   useEffect(() => {
     if (!cancelled.current) return;
@@ -67,17 +98,22 @@ export function ReportNextActions({ reportId, step, childName, province, src, as
     history.replaceState(null, "", `${location.pathname}${rest ? `?${rest}` : ""}${location.hash}`);
   }, []);
 
-  // Back from the payment page with the browser's back button: the page can come back with the spinner still on.
+  // Back from the payment page with the browser's back button: the page can come back with the spinner still on, and
+  // the card may be saved by now, so it checks again.
   useEffect(() => {
     const onShow = (e: PageTransitionEvent) => {
-      if (e.persisted) { setBusy(null); sending.current = false; }
+      if (!e.persisted) return;
+      setBusy(null);
+      sending.current = false;
+      if (step.kind === "card" && !start.saved) { setCard("checking"); setCheckAttempt((n) => n + 1); }
     };
     window.addEventListener("pageshow", onShow);
     return () => window.removeEventListener("pageshow", onShow);
-  }, []);
+  }, [step.kind, start.saved]);
 
   const choose = async (option: PlanOption) => {
-    if (sending.current) return;
+    // The buttons are off until the check finds no card; this guards a click that came before.
+    if (sending.current || card === "checking" || card === "unknown") return;
     sending.current = true;
     setBusy(option.plan);
     const { status, result } = await post<CardResult>(CARD_ROUTE, { report: reportId, plan: option.plan, src });
@@ -136,7 +172,7 @@ export function ReportNextActions({ reportId, step, childName, province, src, as
   return (
     <div className={`rpt-next is-card${asked ? " is-asked" : ""}`}>
       {card === "saved" ? <>
-        <h3>Your card is saved.</h3>
+        <h3>Card saved</h3>
         <p>{savedOption ? `Plan: ${savedOption.label}. ` : ""}We charge nothing until the first workbook ships. To change the plan, email <a href={SUPPORT_HREF}>{SUPPORT_EMAIL}</a>.</p>
       </> : card === "later" ? <>
         <h3>We received your plan choice.</h3>
@@ -145,10 +181,15 @@ export function ReportNextActions({ reportId, step, childName, province, src, as
         <h3>{step.title}</h3>
         <p>{step.text}</p>
         {start.cancelled && card === "choose" && <p className="rpt-next-note">Your card is not saved yet, and nothing was charged. Choose a plan when you are ready.</p>}
+        {card === "checking" && <p className="rpt-next-note" role="status">Checking your card…</p>}
+        {card === "unknown" && <div className="rpt-next-note" role="alert">
+          <p>We could not check your card. Try again in a moment. {help}</p>
+          <button className="btn ghost" type="button" onClick={checkAgain}>Try again</button>
+        </div>}
         {card === "error" && <p className="rpt-next-note" role="alert">We could not open the payment page. Nothing was charged. Try again in a moment. {help}</p>}
         <div className="rpt-plans">
           {step.plans.map((option, i) => (
-            <button key={option.plan} className={`btn${i < step.plans.length - 1 ? " ghost" : ""}`} type="button" onClick={() => void choose(option)} disabled={busy !== null} aria-busy={busy === option.plan}>
+            <button key={option.plan} className={`btn${i < step.plans.length - 1 ? " ghost" : ""}`} type="button" onClick={() => void choose(option)} disabled={busy !== null || card === "checking" || card === "unknown"} aria-busy={busy === option.plan}>
               {busy === option.plan ? spinner("Opening the payment page") : option.label}
             </button>
           ))}

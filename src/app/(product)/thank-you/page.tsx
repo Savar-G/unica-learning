@@ -2,6 +2,7 @@ import { pageMetadata } from "@/lib/metadata";
 import { BookingResult } from "@/components/booking-result";
 import { SupportPage } from "@/components/support-page";
 import { recordCardSaved } from "@/lib/next-step-server";
+import { checkoutEvidence } from "@/lib/saved-card-server";
 import { BRAND } from "@/lib/site";
 import { REPORT_SOURCE, stripe } from "@/lib/stripe";
 
@@ -25,15 +26,14 @@ export default async function ThankYou({ searchParams }: PageProps<"/thank-you">
   if (client && typeof session_id === "string" && /^cs_(test_|live_)?[A-Za-z0-9]{10,200}$/.test(session_id)) {
     try {
       const session = await client.checkout.sessions.retrieve(session_id, { expand: ["setup_intent"] });
-      const setup = session.setup_intent;
-      if (session.mode === "setup" && session.status === "complete" && session.metadata?.ref
-        && session.client_reference_id === session.metadata.ref
-        && setup && typeof setup !== "string" && setup.status === "succeeded") {
+      // The parent is back from Stripe now, so now is when the site learned of the card.
+      const evidence = checkoutEvidence(session, new Date());
+      if (evidence) {
         card = "saved";
-        confirmationRef = session.metadata.ref;
+        confirmationRef = evidence.ref;
         // Stripe's metadata, not the address, decides the path of a confirmed card.
-        path = session.metadata.source === REPORT_SOURCE ? "report" : "signup";
-        if (path === "report") await recordCardSaved(session.metadata, typeof session.customer === "string" ? session.customer : null);
+        path = evidence.metadata.source === REPORT_SOURCE ? "report" : "signup";
+        if (path === "report") await recordCardSaved(evidence);
       }
     } catch {
       // A failed lookup must not claim that Stripe saved a card.
