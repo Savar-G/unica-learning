@@ -332,7 +332,7 @@ describe("certainty and reliability on the report", () => {
   it("has a reliability note with the count of very fast answers when more than 30% were very fast", () => {
     const fast = (_: unknown, i: number) => (i % 3 === 0 ? 1_000 : 20_000);
     const placement = takeTest({ grade: 4, province: "BC" }, 1, allRight, undefined, fast).placement;
-    expect(report(placement).reliability).toEqual({ veryFast: 12, answers: 36 });
+    expect(report(placement).reliability).toEqual({ veryFast: 14, answers: 42 });
   });
 
   it("counts the rushed wrong answers left out of the score, so the report can say so", () => {

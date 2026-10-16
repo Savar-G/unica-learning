@@ -45,14 +45,14 @@ describe("a finished test labels each area and the working level", () => {
   });
 
   it("an area with one wrong answer among its few questions is Secure, but an early sign", () => {
-    // Grade 4, routed up: each area has 4-5 questions at or below grade 4. With one wrong, 4 of 5 is Secure (80%),
-    // and 4 of 6 (67%) would be Developing.
+    // Grade 4, routed up: each area has six questions at or below grade 4. With one wrong, 5 of 6 is Secure,
+    // and 5 of 7 (71%) would be Developing.
     const { asked, placement } = takeTest({ grade: 4, province: "BC" }, 1, (_, i) => i !== 0);
     expect(placement.route).toBe("up");
     const missed = placement.strands.find((s) => s.correct === s.total - 1)!;
-    expect(missed.total).toBe(5);
+    expect(missed.total).toBe(6);
     expect(missed.status).toBe("secure");
     expect(missed.certainty).toBe("early-sign");
-    expect(asked).toHaveLength(36);
+    expect(asked).toHaveLength(42);
   });
 });

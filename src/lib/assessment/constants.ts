@@ -6,7 +6,7 @@ export type GradeBandId = "1-2" | "3-5" | "6-7";
 export interface GradeBand {
   id: GradeBandId;
   grades: readonly Grade[];
-  /** Questions in the whole test. */
+  /** Questions on stay and down routes. Up routes can add school-grade questions. */
   length: number;
   /** Stage 1 questions, all at the school grade. */
   stage1: number;
@@ -40,6 +40,9 @@ export const ROUTE_DOWN_BELOW_PERCENT = 40;
 
 /** Working level = the highest level with this percent correct. */
 export const WORKING_LEVEL_PERCENT = 70;
+
+/** BC selection: questions at or below school grade per reported strand (#188, D-110). */
+export const STRAND_MINIMUM_QUESTIONS = 6;
 
 export const STRAND_SECURE_PERCENT = 80;
 export const STRAND_DEVELOPING_PERCENT = 50;

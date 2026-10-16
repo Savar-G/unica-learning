@@ -468,7 +468,7 @@ describe("grade 3-5 speech and figures through the public interface", () => {
 });
 
 describe("grade 3-5 tests from the default bank", () => {
-  it.each(GRADES)("grade %i: 36 questions, 18 in stage 1 at the school grade, routes down and up, in every province", (grade) => {
+  it.each(GRADES)("grade %i: routed lengths, 18 in stage 1 at the school grade, routes down and up, in every province", (grade) => {
     for (const province of PROVINCES) {
       for (const seed of [1, 2, 3]) {
         const session = createSession({ grade, province }, seed);
@@ -476,10 +476,11 @@ describe("grade 3-5 tests from the default bank", () => {
         expect(session.stage1.every((q) => q.level === grade), province).toBe(true);
         for (const [route, level] of [["up", grade + 1], ["stay", grade], ["down", grade - 1]] as const) {
           const form = session.stage2[route];
-          expect(form, `${province} ${route}`).toHaveLength(18);
-          expect(form.every((q) => q.level === level), `${province} ${route}`).toBe(true);
+          const bc = province === "BC" || province === "other";
+          expect(form, `${province} ${route}`).toHaveLength(bc && route === "up" ? 24 : 18);
+          expect(form.every((q, i) => q.level === (bc && route === "up" && i >= 18 ? grade : bc && grade === 3 && route === "down" && q.strand === "F" ? 3 : level)), `${province} ${route}`).toBe(true);
           // Every reported strand is asked at every level; fractions only from level 3.
-          const strands = level >= 3 ? ["algebra", "fractions", "number", "shapes"] : ["algebra", "number", "shapes"];
+          const strands = level >= 3 || (bc && grade === 3 && route === "down") ? ["algebra", "fractions", "number", "shapes"] : ["algebra", "number", "shapes"];
           expect(Object.keys(strandCounts(form)).sort(), `${province} ${route}`).toEqual(strands);
         }
         expect(Object.keys(strandCounts(session.stage1)).sort(), province).toEqual(["algebra", "fractions", "number", "shapes"]);
@@ -524,7 +525,7 @@ describe("a grade 3-5 test, every route, every province", () => {
         for (const s of sessions(grade, province, 20)) {
           for (const route of ROUTES) {
             const asked = [...s.stage1, ...s.stage2[route]].map((q) => `${q.prompt} ${[...(q.choices ?? [])].sort()} ${JSON.stringify(q.figure ?? null)}`);
-            expect(new Set(asked).size, `grade ${grade} ${province} seed ${s.seed} ${route}`).toBe(36);
+            expect(new Set(asked).size, `grade ${grade} ${province} seed ${s.seed} ${route}`).toBe(asked.length);
           }
         }
       }
@@ -558,7 +559,7 @@ describe("a grade 3-5 test, every route, every province", () => {
 describe("scripted children, grades 3-5, on the real bank", () => {
   it.each(TAGGED)("%s: a grade 5 child who gets everything right is routed up and placed at level 6", (province) => {
     const { asked, placement } = takeTest({ grade: 5, province }, 3, allRight);
-    expect(asked).toHaveLength(36);
+    expect(asked).toHaveLength(province === "BC" ? 42 : 36);
     expect(placement.route).toBe("up");
     expect(Math.max(...asked.map((q) => q.level))).toBe(6);
     expect(placement.workingLevel).toBe(6);
@@ -588,7 +589,7 @@ describe("scripted children, grades 3-5, on the real bank", () => {
     const { placement } = takeTest({ grade: 4, province }, 5, knowsUpTo(4));
     expect(placement.route).toBe("up");
     expect(placement.levels).toEqual([
-      { level: 4, correct: 18, total: 18 },
+      { level: 4, correct: province === "BC" ? 24 : 18, total: province === "BC" ? 24 : 18 },
       { level: 5, correct: 0, total: 18 },
     ]);
     expect(placement.workingLevel).toBe(4);

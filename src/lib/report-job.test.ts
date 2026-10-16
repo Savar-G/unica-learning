@@ -29,7 +29,7 @@ const ORIGIN = "https://unica.test";
 const TEST = "test-1";
 
 // Asha, grade 4 in BC, child of Priya, works at grade 4: every grade 4 question right, every grade 5 question wrong,
-// 20 seconds each. 36 questions (18 above her school grade), 12 minutes. She showed work on her first two
+// 20 seconds each. 42 questions (18 above her school grade), 14 minutes. She showed work on her first two
 // show-your-work questions: one drawn, one typed.
 const { asked, placement } = takeTest({ grade: 4, province: "BC" }, 101, knowsUpTo(4));
 const [DRAWN, TYPED] = asked.flatMap((q, n) => (q.showWork ? [n] : []));
@@ -126,7 +126,7 @@ describe("the stored report", () => {
 
     expect(db.tables.reports).toHaveLength(1);
     const [report] = db.tables.reports!;
-    expect(report).toMatchObject({ id: "report-1", assessmentId: TEST, parentId: "parent-1", childId: "child-1", questions: 36, minutes: 12 });
+    expect(report).toMatchObject({ id: "report-1", assessmentId: TEST, parentId: "parent-1", childId: "child-1", questions: 42, minutes: 14 });
     expect(report.model.comparison).toEqual({ stage: "percentile", n: 400, percentile: 50 });
     // The fake reviewer's comment on each piece of work: both answers were right.
     expect(report.model.work?.map((w) => [w.questionId, w.image, w.text, w.comment])).toEqual([
@@ -150,7 +150,7 @@ describe("the stored report", () => {
 
     expect(mail.delivered.map((m) => m.to)).toEqual(["priya@family.ca", "savar@unicalearning.com"]);
     expect(mail.delivered[1].text).toContain("AI review (fake): 2 pieces of work, 2 reviewed, 2 sure enough to show a comment. Report text: kept.");
-    expect(mail.delivered[1].text).toContain("Questions: 36 questions in 12 minutes");
+    expect(mail.delivered[1].text).toContain("Questions: 42 questions in 14 minutes");
 
     // A second run finds the report: no new report, no comparison read, no review, no email.
     await run(db, mail, book);
@@ -372,7 +372,7 @@ describe("the report email and the report page (#163)", () => {
 
     expectEverywhere(places(email, page), [
       "Asha",
-      "36 questions in 12 minutes",
+      "42 questions in 14 minutes",
       "Asha is working at a grade 4 level.",
       "That matches Asha's school grade.",
       "Asha's result is at the 50th percentile among 400 grade 4 children who took this test.",
@@ -380,10 +380,10 @@ describe("the report email and the report page (#163)", () => {
     // Each area as one row: its name, its status and its count together, in order. Asha got every grade 4 question
     // right. A row is matched whole, so a count or a status in the AI text or the legend cannot stand in for it.
     const areas = [
-      "Number and operations: Secure, 5 of 5 right (Clear)",
-      "Fractions and decimals: Secure, 5 of 5 right (Clear)",
-      "Patterns and algebra: Secure, 4 of 4 right (Clear)",
-      "Shapes, measurement and data: Secure, 4 of 4 right (Clear)",
+      "Number and operations: Secure, 6 of 6 right (Clear)",
+      "Fractions and decimals: Secure, 6 of 6 right (Clear)",
+      "Patterns and algebra: Secure, 6 of 6 right (Clear)",
+      "Shapes, measurement and data: Secure, 6 of 6 right (Clear)",
     ];
     expect(emailAreas(email.text)).toEqual(areas);
     expect(pageAreas(page.html)).toEqual(areas);
@@ -405,7 +405,7 @@ describe("the report email and the report page (#163)", () => {
     expectEverywhere(places(email, page), [
       "This level may be too high",
       "For a level you can trust, Asha can take a new test alone, with new questions, from November 10, 2026.",
-      "36 questions in 12 minutes",
+      "42 questions in 14 minutes",
     ]);
     // The page also shows the finish date itself.
     expect(page.text).toContain("October 10, 2026");

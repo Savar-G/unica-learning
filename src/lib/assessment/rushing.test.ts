@@ -47,10 +47,10 @@ describe("the reliability note: more than 30% very fast answers", () => {
     expect(paceOf(answers("ffssfsssfs"))).toMatchObject({ veryFast: 4, answers: 10, unreliable: true });
   });
 
-  it("a finished test with 11 of 36 answers very fast carries the note; 10 of 36 does not", () => {
+  it("a finished up-route test with 13 of 42 answers very fast carries the note; 12 of 42 does not", () => {
     const fastFor = (n: number) => (_: unknown, i: number) => (i % 3 === 0 && i / 3 < n ? 1_000 : 20_000);
-    expect(takeTest({ grade: 4, province: "BC" }, 1, () => true, undefined, fastFor(11)).placement.pace?.unreliable).toBe(true);
-    expect(takeTest({ grade: 4, province: "BC" }, 1, () => true, undefined, fastFor(10)).placement.pace?.unreliable).toBe(false);
+    expect(takeTest({ grade: 4, province: "BC" }, 1, () => true, undefined, fastFor(13)).placement.pace?.unreliable).toBe(true);
+    expect(takeTest({ grade: 4, province: "BC" }, 1, () => true, undefined, fastFor(12)).placement.pace?.unreliable).toBe(false);
   });
 });
 
