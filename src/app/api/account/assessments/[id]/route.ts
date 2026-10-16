@@ -15,5 +15,5 @@ export async function GET(_request: Request, ctx: RouteContext<"/api/account/ass
   if (!isUuid(id)) return testFail("not_found", 404);
   const result = await nextStep(attemptStore(admin), parent, id, Date.now());
   if (!result.ok) return refusalResponse(result);
-  return Response.json({ ok: true, step: result.step } satisfies StepResult, { headers: { "Cache-Control": "no-store" } });
+  return Response.json({ ok: true, step: result.step, ...(result.break && { break: result.break }) } satisfies StepResult, { headers: { "Cache-Control": "no-store" } });
 }

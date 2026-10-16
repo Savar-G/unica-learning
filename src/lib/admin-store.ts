@@ -6,6 +6,7 @@ import type { FactsTest, HelpAnswer, Placement, Province, StoredTest } from "@/l
 import { isUuid } from "@/lib/assessment-store";
 import { LEARNING_COLUMNS, type LearningRow } from "@/lib/learning-style";
 import { filterTests, type AdminFilters, type AnswerRecord, type FactAnswerRecord, type ReviewRecord, type ShownRecord } from "@/lib/admin-view";
+import type { TestContextRecord } from "@/lib/admin-view";
 import { sessionClient } from "@/lib/supabase-auth";
 import type { AssessmentStatus } from "@/lib/test-api";
 import { signWork } from "@/lib/work-store";
@@ -211,6 +212,8 @@ export async function listTests(a: AdminSession, f: AdminFilters, offset = 0): P
 
 export interface TestDetail {
   test: TestRow & { seed: number; resume_until: string; stored: StoredTest };
+  /** The test context (#185): the device and the halfway break. */
+  context: TestContextRecord;
   answers: AnswerRecord[];
   reviews: ReviewRecord[];
   report: { id: string; created_at: string; questions: number; minutes: number; emailed_at: string | null; email_error: string | null; alerted_at: string | null; alert_error: string | null } | null;
@@ -226,14 +229,20 @@ const ANSWER_COLUMNS = "position, question_id, response, correct, misconception,
 /** The answer timeline's columns (#184, migration add_answer_timeline). */
 const TIMELINE_COLUMNS = "template_id, shown_at, answered_at, answer_changes, read_aloud_count, read_aloud_at_ms, away_count, away_ms";
 const REVIEW_COLUMNS = "question_id, error_type, kind, comment, score, confidence, model";
+/** The test context columns (#185). */
+const CONTEXT_COLUMNS = "device, break_started_at, break_ended_at, break_skipped, break_ms";
+/** The quick facts answer columns, with the time for each fact by the server and the browser (#185). */
+const FACT_ANSWER_COLUMNS = "position, fact_id, response, correct, at_ms, server_ms, browser_ms";
 
 /** Everything about one test, or null when there is no such test. */
 export async function getTest(a: AdminSession, id: string): Promise<TestDetail | null> {
   if (!isUuid(id)) return null;
-  const row = must<(TestQueryRow & { seed: number; resume_until: string; test: StoredTest }) | null>(
-    await a.db.rpc("admin_assessments").select(`${TEST_COLUMNS}, seed, resume_until, test`).eq("id", id).maybeSingle(), "test");
+  const row = must<(TestQueryRow & { seed: number; resume_until: string; test: StoredTest } & TestContextRecord) | null>(
+    await a.db.rpc("admin_assessments").select(`${TEST_COLUMNS}, seed, resume_until, test, ${CONTEXT_COLUMNS}`).eq("id", id).maybeSingle(), "test");
   if (!row) return null;
-  const { test: stored, seed, resume_until, ...listRow } = row;
+  const { device, break_started_at, break_ended_at, break_skipped, break_ms, ...withoutContext } = row;
+  const context: TestContextRecord = { device, break_started_at, break_ended_at, break_skipped, break_ms };
+  const { test: stored, seed, resume_until, ...listRow } = withoutContext;
   const [[test], answers, reviews, report, facts, factAnswers, emails, shows] = await Promise.all([
     withPeople(a, [listRow]),
     a.db.from("answers").select(`${ANSWER_COLUMNS}, ${TIMELINE_COLUMNS}`).eq("assessment_id", id).order("position").then((r) => must<AnswerRecord[]>(r, "answers")),
@@ -242,7 +251,7 @@ export async function getTest(a: AdminSession, id: string): Promise<TestDetail |
       .maybeSingle().then((r) => must<TestDetail["report"]>(r, "report")),
     a.db.from("assessment_facts").select("started_at, test").eq("assessment_id", id).maybeSingle()
       .then((r) => must<{ started_at: string; test: FactsTest } | null>(r, "facts")),
-    a.db.from("fact_answers").select("position, fact_id, response, correct, at_ms").eq("assessment_id", id).order("position")
+    a.db.from("fact_answers").select(FACT_ANSWER_COLUMNS).eq("assessment_id", id).order("position")
       .then((r) => must<FactAnswerRecord[]>(r, "fact answers")),
     emailRows(a, (q) => q.eq("assessment_id", id)),
     a.db.from("question_shows").select("position, question_id, shown_at").eq("assessment_id", id).order("position")
@@ -251,6 +260,7 @@ export async function getTest(a: AdminSession, id: string): Promise<TestDetail |
   const paths = answers.flatMap((x) => (x.work_path ? [x.work_path] : []));
   return {
     test: { ...test, seed, resume_until, stored },
+    context,
     answers,
     reviews,
     report,
