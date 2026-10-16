@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { DailyBars, Funnel, Spark } from "@/components/admin-charts";
 import { Card, Delta, Notes, RangeTabs, StageChip, TestMark, familyHref, href, type Ctx } from "@/components/admin-dashboard-parts";
-import { ALL_STAGES, EMAIL_LABEL, RANGES, STAGE_SHORT, ago, at, kidsText, since, type Dashboard } from "@/lib/admin-dashboard";
+import { ALL_STAGES, EMAIL_LABEL, RANGES, deliveryLine, emailDot, STAGE_SHORT, ago, at, kidsText, since, type Dashboard } from "@/lib/admin-dashboard";
 import { ADMIN_PATH } from "@/lib/admin-view";
 
 /** Families per page of the table; the stage pills and search narrow it. */
@@ -122,10 +122,10 @@ export function DashboardView({ d, ctx }: { d: Dashboard; ctx: Ctx }) {
         <ul className="dash-mails">
           {d.emails.slice(0, 12).map((e) => (
             <li key={e.id}>
-              <span className={`dash-dot is-${e.status}`} />
+              <span className={`dash-dot is-${emailDot(e)}`} />
               <div>
                 <b>{EMAIL_LABEL[e.kind]}</b> {e.kind === "alert" ? "about" : e.kind === "unsubscribe" ? "by" : "to"} <Link href={familyHref(ctx, e.familyId)}>{e.familyName}</Link>
-                <span className="dash-sub">{e.status === "failed" ? `Failed: ${e.error ?? "unknown error"}` : e.status === "pending" ? "Waiting to send" : e.kind === "unsubscribe" ? "Reminders turned off" : e.subject} · {at(e.at)}</span>
+                <span className="dash-sub">{e.status === "failed" ? `Failed: ${e.error ?? "unknown error"}` : e.status === "pending" ? "Waiting to send" : e.kind === "unsubscribe" ? "Reminders turned off" : deliveryLine(e)?.bad ? deliveryLine(e)!.text : e.subject} · {at(e.at)}</span>
               </div>
             </li>
           ))}

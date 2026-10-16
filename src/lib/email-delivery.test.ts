@@ -273,7 +273,7 @@ describe("the copy of a sent email", () => {
     const mail = memoryTransport();
     const book = memoryLedger<string>();
     await sendEmailOnce(book.ledger, "k", report, { transport: mail.transport });
-    expect(book.keptCopy("k")).toEqual({ from: "Unica Learning <hello@unicalearning.com>", message: report, outcome: "sent" });
+    expect(book.keptCopy("k")).toEqual({ from: "Unica Learning <hello@unicalearning.com>", message: report, outcome: "sent", emailId: "email-1" });
   });
 
   it("is kept for a refused and an unknown send too, and a retry keeps the last attempt's", async () => {
@@ -281,7 +281,7 @@ describe("the copy of a sent email", () => {
     const book = memoryLedger<string>();
     mail.answerNext("refuse");
     await sendEmailOnce(book.ledger, "k", report, { transport: mail.transport });
-    expect(book.keptCopy("k")?.outcome).toBe("refused");
+    expect(book.keptCopy("k")).toMatchObject({ outcome: "refused", emailId: null });
     await sendEmailOnce(book.ledger, "k", { ...report, subject: "Second try" }, { transport: mail.transport });
     expect(book.keptCopy("k")).toMatchObject({ outcome: "sent", message: { subject: "Second try" } });
     mail.answerNext("no_answer");

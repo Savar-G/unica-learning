@@ -4,6 +4,7 @@
 import type { Province } from "@/lib/assessment";
 import type { AssessmentStatus } from "@/lib/test-api";
 import { canGetEmail, nextStartReminder, type StartKind } from "@/lib/reminder-schedule";
+import type { DeliveryType } from "@/lib/resend-webhook";
 
 // Rows, as admin-store reads them
 
@@ -34,6 +35,9 @@ export interface RawSubscription {
   currency: string | null;
 }
 
+/** One delivery event from Resend's webhook (D-104), joined to its email through the kept copy. */
+export interface RawDelivery { email_log_id: string | null; report_id: string | null; report_email: "parent" | "alert" | null; type: DeliveryType; occurred_at: string; detail: string | null }
+
 export interface DashboardRows {
   parents: RawParent[];
   children: RawChild[];
@@ -42,6 +46,8 @@ export interface DashboardRows {
   cards: RawCard[];
   waitlist: RawWaitlist[];
   emails: RawEmail[];
+  /** Resend's delivery events of the emails with a kept copy (D-104), each with the email it belongs to. */
+  deliveries: RawDelivery[];
   subscriptions: RawSubscription[];
   /** Parents left out of the numbers: admin accounts and families marked as a test (D-099). */
   testIds: string[];
@@ -111,6 +117,24 @@ export const EMAIL_KINDS: readonly EmailKindInfo[] = [
 ];
 export const EMAIL_LABEL = Object.fromEntries(EMAIL_KINDS.map((k) => [k.kind, k.label])) as Record<EmailKind, string>;
 
+/** What Resend said happened to an email after it took it (D-104). */
+export const DELIVERY_TEXT: Record<DeliveryType, string> = {
+  delivered: "Delivered", delivery_delayed: "Delivery delayed", bounced: "Bounced", complained: "Marked as spam", failed: "Not delivered", suppressed: "Not sent: address on the suppression list",
+};
+/** The delivery events that mean the parent did not get the email, or did not want it. */
+export const deliveryProblem = (type: DeliveryType | undefined) => type === "bounced" || type === "complained" || type === "failed" || type === "suppressed";
+export interface Delivery { type: DeliveryType; at: string; detail: string | null }
+/** An email that did not reach the parent: Resend refused it, or it bounced, failed or was marked as spam. */
+export const emailFailed = (e: EmailEvent) => e.status === "failed" || deliveryProblem(e.delivery?.type);
+/** Resend's newest delivery event of a sent email as one line, or null before one arrives (D-104). */
+export function deliveryLine(e: EmailEvent): { text: string; bad: boolean } | null {
+  if (e.status !== "sent" || !e.delivery) return null;
+  const { type, detail } = e.delivery;
+  return { text: `${DELIVERY_TEXT[type]}${detail ? `: ${detail}` : ""}`, bad: deliveryProblem(type) };
+}
+/** The dot of an email in the lists: failed when it did not reach the parent. */
+export const emailDot = (e: EmailEvent) => (emailFailed(e) ? "failed" : e.status);
+
 /** The kept copy of a logged email (public.email_copies, D-103): what the site handed to Resend on the last attempt. */
 export interface EmailCopyView {
   outcome: "sent" | "refused" | "unknown";
@@ -122,6 +146,8 @@ export interface EmailCopyView {
   html: string | null;
   /** When the last attempt's copy was kept. */
   keptAt: string;
+  /** Resend's delivery events of the email, oldest first (D-104). */
+  events: Delivery[];
 }
 /** The email list id of a report's emails: "<report id>:report" or "<report id>:alert". A reminder's id is its log id. */
 export const reportEmailId = (reportId: string, which: "report" | "alert") => `${reportId}:${which}`;
@@ -138,6 +164,8 @@ export interface EmailEvent {
   subject: string;
   attempts: number;
   error: string | null;
+  /** Resend's newest delivery event of the email (D-104); null before any arrives, or for an email without a copy. */
+  delivery: Delivery | null;
 }
 
 // Families
@@ -211,6 +239,13 @@ export function buildFamilies(rows: DashboardRows, now = new Date()): Family[] {
   const childName = new Map(rows.children.map((c) => [c.id, c.first_name]));
   const testById = new Map(rows.tests.map((t) => [t.id, t]));
   const reportByTest = new Map(rows.reports.map((r) => [r.assessment_id, r.id]));
+  // The newest delivery event of each email, by its id in the email list.
+  const deliveryOf = new Map<string, Delivery>();
+  for (const d of rows.deliveries) {
+    const key = d.email_log_id ?? (d.report_id && reportEmailId(d.report_id, d.report_email === "alert" ? "alert" : "report"));
+    const held = key ? deliveryOf.get(key) : undefined;
+    if (key && (!held || held.at <= d.occurred_at)) deliveryOf.set(key, { type: d.type, at: d.occurred_at, detail: d.detail });
+  }
   const subsOf = new Map<string, RawSubscription[]>();
   for (const s of rows.subscriptions) if (!NEVER_STARTED.has(s.status)) subsOf.set(s.customer, [...(subsOf.get(s.customer) ?? []), s]);
 
@@ -232,14 +267,16 @@ export function buildFamilies(rows: DashboardRows, now = new Date()): Family[] {
         id: e.id, kind: e.kind, at: e.sent_at ?? e.created_at, familyId: p.id, familyName: p.name, childName: child, attempts: e.attempts, error: e.error,
         status: e.kind === "unsubscribe" || e.status === "sent" ? "sent" : e.status === "failed" ? "failed" : "pending",
         subject: subjectFor(e.kind, child, grade),
+        delivery: deliveryOf.get(e.id) ?? null,
       };
     });
     for (const r of mine(rows.reports)) {
       const child = childName.get(r.child_id) ?? null;
       const grade = testById.get(r.assessment_id)?.grade ?? null;
       const base = { familyId: p.id, familyName: p.name, childName: child, attempts: 1 };
-      emails.push({ ...base, id: reportEmailId(r.id, "report"), kind: "report", at: r.emailed_at ?? r.created_at, error: r.email_error, status: emailStatus(r.emailed_at, r.email_error), subject: subjectFor("report", child, grade) });
-      emails.push({ ...base, id: reportEmailId(r.id, "alert"), kind: "alert", at: r.alerted_at ?? r.created_at, error: r.alert_error, status: emailStatus(r.alerted_at, r.alert_error), subject: subjectFor("alert", child, grade) });
+      const delivered = (which: "report" | "alert") => deliveryOf.get(reportEmailId(r.id, which)) ?? null;
+      emails.push({ ...base, id: reportEmailId(r.id, "report"), kind: "report", at: r.emailed_at ?? r.created_at, error: r.email_error, status: emailStatus(r.emailed_at, r.email_error), subject: subjectFor("report", child, grade), delivery: delivered("report") });
+      emails.push({ ...base, id: reportEmailId(r.id, "alert"), kind: "alert", at: r.alerted_at ?? r.created_at, error: r.alert_error, status: emailStatus(r.alerted_at, r.alert_error), subject: subjectFor("alert", child, grade), delivery: delivered("alert") });
     }
     emails.sort(newestFirst);
 
@@ -454,7 +491,7 @@ export function buildDashboard(rows: DashboardRows, range: RangeKey, now: Date, 
   const emailSummary = EMAIL_KINDS.map((k) => {
     const list = emails.filter((e) => e.kind === k.kind);
     const sent = list.filter((e) => e.status === "sent");
-    return { ...k, sent: sent.length, failed: list.filter((e) => e.status === "failed").length, pending: list.filter((e) => e.status === "pending").length, sentInRange: sent.filter((e) => all || inCur(e.at)).length, last: sent[0]?.at ?? null };
+    return { ...k, sent: sent.length, failed: list.filter(emailFailed).length, pending: list.filter((e) => e.status === "pending").length, sentInRange: sent.filter((e) => all || inCur(e.at)).length, last: sent[0]?.at ?? null };
   });
 
   const ageDays = (iso: string) => (now.getTime() - new Date(iso).getTime()) / DAY_MS;
@@ -463,7 +500,7 @@ export function buildDashboard(rows: DashboardRows, range: RangeKey, now: Date, 
     { title: "Start a subscription", detail: "Card saved, and no Stripe subscription yet", tone: "warn" as const, families: families.filter((f) => f.stage === "card_saved") },
     { title: "Left the payment page", detail: "Opened the payment page but did not save a card", tone: "info" as const, families: families.filter((f) => f.stage === "card_started") },
     { title: "Stuck in the test", detail: `Test started more than ${STUCK_DAYS} days ago and not finished`, tone: "info" as const, families: families.filter((f) => f.stage === "started" && ageDays(f.stageAt) > STUCK_DAYS) },
-    { title: "Email failed", detail: "An email to the parent did not send", tone: "bad" as const, families: families.filter((f) => f.emails.some((e) => e.status === "failed" && e.kind !== "alert")) },
+    { title: "Email failed", detail: "An email to the parent did not send, bounced, or was marked as spam", tone: "bad" as const, families: families.filter((f) => f.emails.some((e) => emailFailed(e) && e.kind !== "alert")) },
   ].filter((n) => n.families.length > 0);
 
   return {

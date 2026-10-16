@@ -21,6 +21,8 @@ export function copyRow(target: CopyTarget, parentId: string, copy: EmailCopy): 
     parent_id: parentId,
     ...("emailLogId" in target ? { email_log_id: target.emailLogId } : { report_id: target.reportId, report_email: target.reportEmail }),
     outcome: copy.outcome,
+    // Resend answers "sent" without an id only in odd cases (see email-resend.ts); that stand-in finds no events.
+    email_id: copy.emailId && copy.emailId !== "sent" ? copy.emailId.slice(0, 100) : null,
     from_address: copy.from?.slice(0, 320) ?? null,
     to_address: m.to.slice(0, 320),
     reply_to: m.replyTo?.slice(0, 320) ?? null,

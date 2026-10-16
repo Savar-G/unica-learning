@@ -9,6 +9,8 @@ import {
   ALL_STAGES,
   EMAIL_KINDS,
   EMAIL_LABEL,
+  deliveryLine,
+  emailFailed,
   RANGES,
   STAGES,
   STAGE_ACTION,
@@ -23,6 +25,7 @@ import {
   since,
   type Activity,
   type Dashboard,
+  type EmailEvent,
   type EmailKind,
   type Family,
   type Stage,
@@ -60,7 +63,7 @@ function parseView(raw: string | undefined): View {
 export function ActivityView({ d, ctx }: { d: Dashboard; ctx: Ctx }) {
   const raw = ctx.query.view ?? "activity";
   const view = parseView(raw);
-  const failed = d.emails.filter((e) => e.status === "failed" && e.kind !== "alert").length;
+  const failed = d.emails.filter((e) => emailFailed(e) && e.kind !== "alert").length;
   const needs = new Set(d.needs.flatMap((n) => n.families.map((f) => f.id))).size;
   const rail = (key: string, label: string, n: number | null, tone?: "warn" | "bad") => (
     <Link className="dash-rail-link" href={href(ctx, { view: key === "activity" ? null : key, group: null })} aria-current={key === raw ? "true" : undefined}>
@@ -226,9 +229,15 @@ function NeedsList({ d, ctx }: { d: Dashboard; ctx: Ctx }) {
   );
 }
 
+/** A sent email's newest delivery event from Resend (D-104), else "Sent". */
+function Delivered({ e }: { e: EmailEvent }) {
+  const line = deliveryLine(e);
+  return line ? <span className={line.bad ? "dash-bad-text" : undefined}>{line.text}</span> : <>Sent</>;
+}
+
 /** Every logged email, newest first; also the Emails tab. `nav`: shown under the title. */
 export function EmailLog({ d, ctx, filter, nav }: { d: Dashboard; ctx: Ctx; filter: EmailKind | "failed" | null; nav?: ReactNode }) {
-  const rows = d.emails.filter((e) => !filter || (filter === "failed" ? e.status === "failed" : e.kind === filter));
+  const rows = d.emails.filter((e) => !filter || (filter === "failed" ? emailFailed(e) : e.kind === filter));
   const info = filter && filter !== "failed" ? EMAIL_KINDS.find((k) => k.kind === filter) : null;
   return (
     <>
@@ -245,7 +254,7 @@ export function EmailLog({ d, ctx, filter, nav }: { d: Dashboard; ctx: Ctx; filt
                 <td>{EMAIL_LABEL[e.kind]}</td>
                 <td><Link href={familyHref(ctx, e.familyId)}>{e.familyName}</Link></td>
                 <td className="dash-muted">{e.kind === "unsubscribe" ? "-" : <Link href={adminEmailPath(e.id, ctx.demo)}>{e.subject}</Link>}</td>
-                <td>{e.status === "failed" ? <span className="dash-bad-text">Failed after {e.attempts} {e.attempts === 1 ? "try" : "tries"}: {e.error ?? "unknown error"}</span> : e.status === "pending" ? "Waiting to send" : e.kind === "unsubscribe" ? "Reminders off" : "Sent"}</td>
+                <td>{e.status === "failed" ? <span className="dash-bad-text">Failed after {e.attempts} {e.attempts === 1 ? "try" : "tries"}: {e.error ?? "unknown error"}</span> : e.status === "pending" ? "Waiting to send" : e.kind === "unsubscribe" ? "Reminders off" : <Delivered e={e} />}</td>
               </tr>
             ))}
           </tbody>

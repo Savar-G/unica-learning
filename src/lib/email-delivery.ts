@@ -73,6 +73,8 @@ export interface EmailCopy {
   from: string | null;
   message: EmailMessage;
   outcome: SendResult["status"];
+  /** Resend's id of the email when it went, so its delivery events find it (D-104); null otherwise. */
+  emailId: string | null;
 }
 
 /** What a send once did. "busy": another run holds the claim, or the email already went; nothing was sent. */
@@ -103,7 +105,7 @@ export async function sendEmailOnce<K, H>(
   if (ledger.keepCopy) {
     // A copy that is not kept never changes the email's outcome.
     try {
-      await ledger.keepCopy(handle, key, { from: resendSender(message), message, outcome: result.status });
+      await ledger.keepCopy(handle, key, { from: resendSender(message), message, outcome: result.status, emailId: result.status === "sent" ? result.emailId : null });
     } catch (e) {
       console.error("[email] copy not kept", result.status, e instanceof Error ? e.message : e);
     }
