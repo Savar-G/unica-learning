@@ -11,7 +11,7 @@ export default async function TestDetailPage({ params }: PageProps<"/admin/asses
   const detail = await getTest(admin, (await params).id);
   if (!detail) notFound();
   const { test: t, report, facts, images } = detail;
-  const lines = answerLines(t.stored, detail.answers, detail.reviews);
+  const lines = answerLines(t.stored, detail.answers, detail.reviews, t.placement?.pace?.leftOut);
   const numbers = new Map(lines.map((a) => [a.questionId, a.number]));
   const work = lines.filter((a) => a.work.required || a.work.image || a.work.text || a.review);
   const quick = facts ? factLines(facts.test, facts.answers) : [];
