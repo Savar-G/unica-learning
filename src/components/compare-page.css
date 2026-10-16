@@ -3,7 +3,7 @@
    ours has the accent-soft tint and the gradient bar. Under 900px they stack. */
 .cmpp { padding: clamp(48px, 8vw, 104px) var(--pad-x) clamp(56px, 8vw, 112px); }
 .cmpp-head h1 { margin: 18px 0 22px; max-width: 20ch; font-size: clamp(38px, 5.4vw, 68px); line-height: 1.04; }
-/* The highlighter stroke of <Highlight>, but this phrase is too long for its one-line mark, so it wraps line by line. */
+/* The highlighter stroke of <Highlight>, but "How Unica Learning compares" is too long for its one-line mark on phones, so it wraps line by line. */
 .cmpp-hl { background: linear-gradient(transparent 58%, var(--sun) 58%, var(--sun) 92%, transparent 92%); -webkit-box-decoration-break: clone; box-decoration-break: clone; }
 .cmpp-head .lead { margin: 0; max-width: 60ch; font-size: clamp(17px, 1.4vw, 20px); }
 .cmpp-jump { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 30px; }
