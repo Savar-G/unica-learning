@@ -1,5 +1,5 @@
-// The AI client (#183): one interface for every AI feature (the work review and the report text of #68, and later the
-// learner profile of #197). Text and images go in; JSON that matches a schema comes out. The live adapter is OpenRouter
+// The AI client (#183): one interface for every AI feature (the work review and the report text of #68, and the learner
+// profile's AI parts of #197, src/lib/learner-profile-ai.ts). Text and images go in; JSON that matches a schema comes out. The live adapter is OpenRouter
 // (src/lib/ai-openrouter.ts), so any model on OpenRouter works with one setting; tests use the fake
 // (src/lib/ai-client-fake.ts).
 // Behind a switch: on only when OPENROUTER_API_KEY is set. Off, there is no client, so no AI call can happen.
@@ -45,4 +45,25 @@ export function aiClient(env: Record<string, string | undefined> = process.env):
   const apiKey = env.OPENROUTER_API_KEY?.trim();
   if (!apiKey) return null;
   return openRouterClient({ apiKey, model: env.AI_MODEL?.trim() || AI_DEFAULT_MODEL });
+}
+
+/**
+ * Runs one AI request with a time limit: the request's signal aborts after `ms`, and the result rejects with "time is
+ * up" then, also when the request does not stop on its signal.
+ */
+export async function withTimeLimit<T>(ms: number, request: (signal: AbortSignal) => Promise<T>): Promise<T> {
+  const controller = new AbortController();
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timeUp = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => {
+      controller.abort();
+      reject(new Error("time is up"));
+    }, ms);
+  });
+  try {
+    return await Promise.race([request(controller.signal), timeUp]);
+  } finally {
+    clearTimeout(timer);
+    controller.abort();
+  }
 }

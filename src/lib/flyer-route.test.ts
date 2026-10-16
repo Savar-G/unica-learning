@@ -27,12 +27,12 @@ describe("the flyer scan route", () => {
     vi.spyOn(console, "error").mockImplementation(() => {});
   });
 
-  it("counts the scan and sends the visitor to the signup tagged with the flyer", async () => {
+  it("counts the scan and sends the visitor to the home page tagged with the flyer", async () => {
     const res = await scan("a");
     expect(res.status).toBe(302);
     expect(res.headers.get("cache-control")).toBe("no-store");
     const to = new URL(res.headers.get("location")!);
-    expect(to.origin + to.pathname).toBe("https://unicalearning.com/start");
+    expect(to.origin + to.pathname).toBe("https://unicalearning.com/");
     expect(to.searchParams.get("utm_source")).toBe("flyer");
     expect(to.searchParams.get("utm_content")).toBe("a");
     expect(inserts).toEqual([{ table: "flyer_scans", row: { code: "a" } }]);
@@ -46,7 +46,8 @@ describe("the flyer scan route", () => {
 
   it("sends an unknown code to the home page and counts nothing", async () => {
     const res = await scan("zzz");
-    expect(new URL(res.headers.get("location")!).pathname).toBe("/");
+    const to = new URL(res.headers.get("location")!);
+    expect(to.pathname + to.search).toBe("/");
     expect(inserts).toEqual([]);
   });
 

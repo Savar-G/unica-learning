@@ -1,6 +1,7 @@
 -- Door-to-door flyer test (A/B): two printed flyers, each with its own QR code to unicalearning.com/f/<code>.
--- /f/<code> (src/app/f/[code]/route.ts) counts the scan, then sends the visitor to /start with utm_source=flyer and
--- utm_content=<code>, so a signup keeps the flyer in parents.source (already stored by the signup form).
+-- /f/<code> (src/app/f/[code]/route.ts) counts the scan, then sends the visitor to the home page with utm_source=flyer
+-- and utm_content=<code>; the "Take free assessment" buttons carry those tags on to /start, so a signup keeps the flyer
+-- in parents.source (already stored by the signup form).
 -- flyer_scans: one row per scan, with the code and the time. No IP, no device, no cookie: the count is raw, so one
 --   person scanning twice counts twice. Signups (one family each) are the number to judge a flyer by.
 -- flyer_batches: how many of each flyer were handed out, typed by an admin on /admin/flyers, so scans and signups can
