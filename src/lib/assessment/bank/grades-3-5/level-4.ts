@@ -43,6 +43,7 @@ export const LEVEL_4: readonly TaggedTemplate[] = [
     id: "g35-4-order-numbers",
     strand: "N", grades: { BC: 4, AB: 4, SK: 4, MB: 4, ON: 4 }, format: "choice", whiteboard: false, standard: "4.1",
     fill(rng) {
+      const up = rng.int(0, 1) === 1;
       const { v, answer, wrong: w } = drawChoices(
         rng,
         (r) => {
@@ -53,7 +54,8 @@ export const LEVEL_4: readonly TaggedTemplate[] = [
         },
         (nums) => {
           const list = (order: number[]) => order.map(fmt).join("; ");
-          const by = (key: (n: number) => number) => [...nums].sort((a, b) => key(a) - key(b) || a - b);
+          // Least to greatest, or greatest to least (#187: the ask varies); each error keeps the asked direction.
+          const by = (key: (n: number) => number) => [...nums].sort((a, b) => (up ? 1 : -1) * (key(a) - key(b) || a - b));
           return {
             answer: list(by((n) => n)),
             candidates: [
@@ -65,9 +67,9 @@ export const LEVEL_4: readonly TaggedTemplate[] = [
         },
       );
       return {
-        values: { a: v[0], b: v[1], c: v[2] },
-        prompt: "Which list goes from least to greatest?",
-        readAloud: "Which list of numbers goes from least to greatest?",
+        values: { a: v[0], b: v[1], c: v[2], up: up ? 1 : 0 },
+        prompt: `Which list goes from ${up ? "least to greatest" : "greatest to least"}?`,
+        readAloud: `Which list of numbers goes from ${up ? "least to greatest" : "greatest to least"}?`,
         answer,
         wrong: w,
       };
@@ -352,8 +354,12 @@ export const LEVEL_4: readonly TaggedTemplate[] = [
       const n = draw(rng, (r) => r.int(1, 9), (n) => n !== 5);
       const whole = rng.int(2, 8);
       if (task === "order") {
-        const ns = rng.shuffle([1, 2, 3, 4, 5, 6, 7, 8, 9]).slice(0, 4).sort((a, b) => a - b);
-        return { values: { n: ns[0], whole }, prompt: "Which decimal is least?", readAloud: "Which decimal is least?", answer: dec(ns[0], 1),
+        // Least or greatest (#187: the ask varies). The opposite end is coded as mixing up more and less.
+        const least = rng.int(0, 1) === 1;
+        const ns = rng.shuffle([1, 2, 3, 4, 5, 6, 7, 8, 9]).slice(0, 4).sort((a, b) => (least ? a - b : b - a));
+        const ask = `Which decimal is ${least ? "least" : "greatest"}?`;
+        const values: Record<string, number> = { n: ns[0], whole, least: least ? 1 : 0 };
+        return { values, prompt: ask, readAloud: ask, answer: dec(ns[0], 1),
           wrong: ns.slice(1).map((v, i) => wrong(dec(v, 1), i === 2 ? "more-less" : "decimal-order")) };
       }
       const right = task === "left" ? dec(10 - n, 1) : task === "fraction" ? frac(n, 10) : dec(n, 1);
@@ -591,15 +597,20 @@ export const LEVEL_4: readonly TaggedTemplate[] = [
     id: "g35-4-more-than-half",
     strand: "F", grades: { BC: 4, AB: 4, SK: 4, MB: 4, ON: 6 }, format: "choice", whiteboard: true, standard: "4.3",
     fill(rng) {
-      // The answer has small numbers; the wrong choices have bigger numbers but are less than one half.
-      const [an, ad] = rng.pick([[2, 3], [3, 4], [3, 5], [4, 5], [4, 6], [5, 8], [4, 7]] as const);
-      const lows = rng.shuffle([[4, 9], [5, 12], [3, 8], [4, 10], [5, 11], [6, 13], [2, 7], [3, 10]] as const).slice(0, 3);
+      // Greater than one half: the answer has small numbers; the wrong choices have bigger numbers but are less than
+      // one half. Less than one half (#187: the ask varies): the reverse, so judging by the size of the numbers fails
+      // both ways.
+      const greater = rng.int(0, 1) === 1;
+      const highs: readonly (readonly [number, number])[] = [[2, 3], [3, 4], [3, 5], [4, 5], [4, 6], [5, 8], [4, 7]];
+      const lows: readonly (readonly [number, number])[] = [[4, 9], [5, 12], [3, 8], [4, 10], [5, 11], [6, 13], [2, 7], [3, 10]];
+      const [an, ad] = rng.pick(greater ? highs : lows);
+      const others = rng.shuffle(greater ? lows : highs).slice(0, 3);
       return {
-        values: { an, ad },
-        prompt: "Which fraction is greater than 1/2?",
-        readAloud: "Which fraction is greater than one half?",
+        values: { an, ad, greater: greater ? 1 : 0 },
+        prompt: `Which fraction is ${greater ? "greater" : "less"} than 1/2?`,
+        readAloud: `Which fraction is ${greater ? "greater" : "less"} than one half?`,
         answer: frac(an, ad),
-        wrong: lows.map(([n, d]) => wrong(frac(n, d), "benchmark-size")),
+        wrong: others.map(([n, d]) => wrong(frac(n, d), "benchmark-size")),
       };
     },
   },
@@ -808,8 +819,9 @@ export const LEVEL_4: readonly TaggedTemplate[] = [
       const extra = rng.int(2, 5);
       return {
         values: { p, extra },
-        prompt: "Which equation is true?",
-        readAloud: "Which equation is true?",
+        // The prompt names the product the choices start from (#187: no fixed prompt).
+        prompt: `Which equation about ${a} × ${b} is true?`,
+        readAloud: `Which equation about ${a} times ${b} is true?`,
         answer: `${a} × ${b} = ${c} × ${d}`,
         wrong: [
           wrong(`${a} × ${b} = ${p} + ${extra}`, "A1"),
@@ -949,24 +961,38 @@ export const LEVEL_4: readonly TaggedTemplate[] = [
     id: "g35-4-regular-polygon",
     strand: "MG", grades: { BC: 4, AB: 3, SK: 3, MB: 6, ON: 6 }, format: "choice", whiteboard: false, standard: "4.13",
     fill(rng) {
-      const answer = rng.pick([
+      const regular = [
         "A triangle with 3 equal sides and 3 equal angles",
         "A square",
         "A hexagon with 6 equal sides and 6 equal angles",
         "A pentagon with 5 equal sides and 5 equal angles",
-      ]);
-      const others = rng.shuffle([
+      ];
+      const irregular = [
         ["A rectangle that is not a square", "one-attribute"],
         ["A rhombus with no square corners", "one-attribute"],
         ["A triangle with sides of 3 cm, 4 cm and 5 cm", "regular-all"],
-        ["A circle", "shape-name"],
-      ] as const).slice(0, 3);
+      ] as const;
+      // A regular or an irregular polygon (#187: the ask varies). Asked for an irregular one, a child who picks a
+      // regular polygon has the two words the wrong way round; the circle is not a polygon at all.
+      if (rng.int(0, 1) === 1) {
+        const answer = rng.pick(regular);
+        const others = rng.shuffle([...irregular, ["A circle", "shape-name"] as const]).slice(0, 3);
+        return {
+          values: { regular: 1 },
+          prompt: "A regular polygon has all sides equal and all angles equal. Which shape is a regular polygon?",
+          readAloud: "A regular polygon has all sides equal and all angles equal. Which shape is a regular polygon?",
+          answer,
+          wrong: others.map(([v, m]) => wrong(v, m)),
+        };
+      }
+      const [answer] = rng.pick(irregular);
+      const others = rng.shuffle(regular).slice(0, 2);
       return {
-        values: {},
-        prompt: "A regular polygon has all sides equal and all angles equal. Which shape is a regular polygon?",
-        readAloud: "A regular polygon has all sides equal and all angles equal. Which shape is a regular polygon?",
+        values: { regular: 0 },
+        prompt: "A polygon is irregular when its sides or its angles are not all equal. Which shape is an irregular polygon?",
+        readAloud: "A polygon is irregular when its sides or its angles are not all equal. Which shape is an irregular polygon?",
         answer,
-        wrong: others.map(([v, m]) => wrong(v, m)),
+        wrong: [...others.map((v) => wrong(v, "regular-swap")), wrong("A circle", "shape-name")],
       };
     },
   },
@@ -1084,6 +1110,89 @@ export const LEVEL_4: readonly TaggedTemplate[] = [
           wrong(`About ${spins - answer}`, "probability-other"),
           wrong(`About ${spins / 2}`, "D3"),
           wrong(`About ${spins}`, "sure-of-possible"),
+        ],
+      };
+    },
+  },
+  // Probability experiments (4.17: predict single outcomes with spinners, dice and bag draws, and record the results;
+  // #187). Words only, never a fraction or an expected count (that is 5.18 and 6.18). Other provinces: SK SP5.3 and
+  // MB 5.SP.3-4 describe, predict and test likelihood in grade 5; AB names likelihood first in grade 6
+  // (MAT6-OI8-GQ1-LO1-KO2-SP); ON4 D2.1 uses likelihood words to make predictions.
+  {
+    // Predict the result of many trials from the parts of a spinner or the cubes in a bag.
+    id: "g35-4-experiment-predict",
+    strand: "DP", grades: { BC: 4, AB: 6, SK: 5, MB: 5, ON: 4 }, format: "choice", whiteboard: false, standard: "4.17",
+    fill(rng) {
+      const [x, y] = rng.shuffle(["red", "blue", "green", "yellow"]);
+      const total = rng.pick([4, 5, 6, 8]), many = rng.int(Math.floor(total / 2) + 1, total - 1), few = total - many;
+      const name = rng.pick(NAMES), trials = rng.pick([10, 20, 30]);
+      const setup = rng.int(0, 1) === 1
+        ? `A spinner has ${total} equal parts: ${count(many, "part")} ${many === 1 ? "is" : "are"} ${x} and ${count(few, "part")} ${few === 1 ? "is" : "are"} ${y}. ${name} spins it ${trials} times.`
+        : `A bag has ${count(many, `${x} cube`)} and ${count(few, `${y} cube`)}. ${name} picks one cube without looking and puts it back. ${name} does this ${trials} times.`;
+      const text = `${setup} What result is most likely?`;
+      return {
+        values: { total, many, trials },
+        prompt: text,
+        readAloud: text,
+        answer: `${cap(x)} more often than ${y}`,
+        wrong: [
+          wrong(`${cap(y)} more often than ${x}`, "chance-reversed"),
+          wrong(`${cap(x)} and ${y} the same number of times`, "D3"),
+          wrong(`${cap(x)} all ${trials} times`, "sure-of-possible"),
+        ],
+      };
+    },
+  },
+  {
+    // Read the results of an experiment: which spinner most likely gave them.
+    id: "g35-4-experiment-results",
+    strand: "DP", grades: { BC: 4, AB: 6, SK: 5, MB: 5, ON: 4 }, format: "choice", whiteboard: false, standard: "4.17",
+    fill(rng) {
+      const [x, y] = rng.shuffle(["red", "blue", "green", "yellow"]);
+      // 3 of 4 parts or 5 of 6 parts: the results land near that share, and the other colour still comes up.
+      const parts = rng.pick([4, 6]), trials = 20;
+      const hits = parts === 4 ? rng.int(13, 17) : rng.int(15, 18);
+      const name = rng.pick(NAMES);
+      const spinner = (a: number, b: number) => `${count(a, `${x} part`)} and ${count(b, `${y} part`)}`;
+      // Every choice has the same number of equal parts, and the text says so: the reasoning needs equal parts.
+      const text = `${name} has a spinner with ${parts} equal parts. ${name} spun it ${trials} times. It landed on ${x} ${hits} times and on ${y} ${trials - hits} times. Which spinner did ${name} most likely use?`;
+      return {
+        values: { parts, hits },
+        prompt: text,
+        readAloud: text,
+        answer: spinner(parts - 1, 1),
+        wrong: [
+          wrong(spinner(1, parts - 1), "chance-reversed"),
+          wrong(spinner(parts / 2, parts / 2), "D3"),
+          // The other colour came up, so a spinner with none of it could not have given these results.
+          wrong(`${count(parts, `${x} part`)} and no ${y} parts`, "impossible-possible"),
+        ],
+      };
+    },
+  },
+  {
+    // Roll a number cube: which of two events is more (or less) likely. The two events never have the same chance.
+    id: "g35-4-dice-likelihood",
+    strand: "DP", grades: { BC: 4, AB: 6, SK: 5, MB: 5, ON: 4 }, format: "choice", whiteboard: false, standard: "4.17",
+    fill(rng) {
+      // [event, how many of the 6 faces give it]
+      const events = [
+        ["an even number", 3], ["an odd number", 3], ["a number less than 5", 4], ["a number greater than 2", 4],
+        ["a 6", 1], ["a 1", 1], ["a number less than 3", 2], ["a 3 or a 4", 2], ["a number greater than 1", 5],
+      ] as const;
+      const [a, b] = draw(rng, (r) => r.shuffle(events).slice(0, 2), ([a, b]) => a[1] !== b[1]);
+      const more = rng.int(0, 1) === 1;
+      const [likely, unlikely] = a[1] > b[1] ? [a, b] : [b, a];
+      // The events are the choices, which the screen speaks (#79), so the text does not name them.
+      const text = `You roll a number cube with the numbers 1 to 6 on its faces. Which is ${more ? "more" : "less"} likely?`;
+      return {
+        values: { a: a[1], b: b[1], more: more ? 1 : 0 },
+        prompt: text,
+        readAloud: text,
+        answer: `Rolling ${(more ? likely : unlikely)[0]}`,
+        wrong: [
+          wrong(`Rolling ${(more ? unlikely : likely)[0]}`, more ? "chance-reversed" : "likelihood-reversed"),
+          wrong("They are equally likely", "D3"),
         ],
       };
     },

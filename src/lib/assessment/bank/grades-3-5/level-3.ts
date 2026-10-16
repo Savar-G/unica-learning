@@ -53,6 +53,7 @@ export const LEVEL_3: readonly TaggedTemplate[] = [
     id: "g35-3-order-numbers",
     strand: "N", grades: { BC: 3, AB: 3, SK: 3, MB: 3, ON: 3 }, format: "choice", whiteboard: false, standard: "3.1",
     fill(rng) {
+      const up = rng.int(0, 1) === 1;
       const { v, answer, wrong: w } = drawChoices(
         rng,
         (r) => {
@@ -62,7 +63,8 @@ export const LEVEL_3: readonly TaggedTemplate[] = [
         },
         (nums) => {
           const list = (order: number[]) => order.join(", ");
-          const by = (key: (n: number) => number) => [...nums].sort((a, b) => key(a) - key(b) || a - b);
+          // Least to greatest, or greatest to least (#187: the ask varies); each error keeps the asked direction.
+          const by = (key: (n: number) => number) => [...nums].sort((a, b) => (up ? 1 : -1) * (key(a) - key(b) || a - b));
           return {
             answer: list(by((n) => n)),
             candidates: [
@@ -74,9 +76,9 @@ export const LEVEL_3: readonly TaggedTemplate[] = [
         },
       );
       return {
-        values: { a: v[0], b: v[1], c: v[2] },
-        prompt: "Which list goes from least to greatest?",
-        readAloud: "Which list of numbers goes from least to greatest?",
+        values: { a: v[0], b: v[1], c: v[2], up: up ? 1 : 0 },
+        prompt: `Which list goes from ${up ? "least to greatest" : "greatest to least"}?`,
+        readAloud: `Which list of numbers goes from ${up ? "least to greatest" : "greatest to least"}?`,
         answer,
         wrong: w,
       };

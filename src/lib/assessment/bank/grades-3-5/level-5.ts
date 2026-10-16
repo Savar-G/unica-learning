@@ -48,8 +48,11 @@ export const LEVEL_5: readonly TaggedTemplate[] = [
   }, "choice", { ON: 6 }),
   template("order-large", "N", "5.1", (rng) => {
     const base = rng.int(10, 89) * 10000, a = base + rng.int(100, 999), b = base + rng.int(1000, 1999), c = base + rng.int(2000, 2999);
-    return { values: { a, b, c }, prompt: `Which list goes from greatest to least?`, readAloud: `Which list goes from greatest to least?`,
-      answer: [c, b, a].map(fmt).join(", "), wrong: [wrong([a, b, c].map(fmt).join(", "), "more-less"), wrong([b, c, a].map(fmt).join(", "), "order-adjacent"), wrong([c, a, b].map(fmt).join(", "), "order-adjacent")] };
+    // Greatest to least, or least to greatest (#187: the ask varies). Each wrong list swaps two neighbours or reverses.
+    const down = rng.int(0, 1) === 1, list = (ns: number[]) => (down ? [...ns].reverse() : ns).map(fmt).join(", ");
+    const ask = `Which list goes from ${down ? "greatest to least" : "least to greatest"}?`;
+    return { values: { a, b, c, down: down ? 1 : 0 }, prompt: ask, readAloud: ask,
+      answer: list([a, b, c]), wrong: [wrong(list([c, b, a]), "more-less"), wrong(list([b, a, c]), "order-adjacent"), wrong(list([a, c, b]), "order-adjacent")] };
   }, "choice", { ON: 6 }),
   template("add-large", "O", "5.5", (rng) => {
     const [a, b] = draw(rng, (r) => [r.int(120000, 399999), r.int(110000, 299999)], ([a, b]) => a > b && a % 10 + b % 10 >= 10);
@@ -151,15 +154,26 @@ export const LEVEL_5: readonly TaggedTemplate[] = [
   // SK N5.6 with N5.5 and MB 5.N.9 with 5.N.7 relate decimals to fractions through equivalent fractions.
   }, "choice", { AB: 6 }),
   template("decimal-half", "F", "5.4", (rng) => {
-    const high = rng.int(51, 89), lows = rng.shuffle([12, 21, 32, 43, 49]).slice(0, 3);
-    return { values: { high }, prompt: "Which decimal is greater than one half?", readAloud: "Which decimal is greater than one half?",
-      answer: dec(high, 2), wrong: lows.map((n) => wrong(dec(n, 2), "F6")) };
+    // Greater or less than one half (#187: the ask varies).
+    if (rng.int(0, 1) === 1) {
+      const high = rng.int(51, 89), lows = rng.shuffle([12, 21, 32, 43, 49]).slice(0, 3);
+      const values: Record<string, number> = { high, greater: 1 };
+      return { values, prompt: "Which decimal is greater than one half?", readAloud: "Which decimal is greater than one half?",
+        answer: dec(high, 2), wrong: lows.map((n) => wrong(dec(n, 2), "F6")) };
+    }
+    // Less than one half: the two shorter decimals look smaller to a child who thinks a longer decimal is larger (F6).
+    const low = rng.pick([12, 21, 32, 43, 49]), tenths = rng.shuffle([6, 7, 8, 9]).slice(0, 2), high = rng.int(51, 89);
+    return { values: { low, high, greater: 0 }, prompt: "Which decimal is less than one half?", readAloud: "Which decimal is less than one half?",
+      answer: dec(low, 2), wrong: [...tenths.map((t) => wrong(dec(t, 1), "F6")), wrong(dec(high, 2), "more-less")] };
   }, "choice"),
   template("fraction-near-whole", "F", "5.4", (rng) => {
     // Halves to twelfths, the ON5 B1.4 comparison range.
-    const d = rng.int(6, 12), low = rng.shuffle([1, 2, 3]).slice(0, 3);
-    return { values: { d }, prompt: "Which fraction is closest to one whole?", readAloud: "Which fraction is closest to one whole?",
-      answer: frac(d - 1, d), wrong: low.map((n) => wrong(frac(n, d), n === 1 ? "more-less" : "fraction-order")) };
+    // Closest to one whole or to zero (#187: the ask varies). The fraction at the other end mixes up the two.
+    const d = rng.int(6, 12), whole = rng.int(0, 1) === 1;
+    const near = whole ? d - 1 : 1, far = [1, 2, 3].map((k) => (whole ? k : d - k));
+    const ask = `Which fraction is closest to ${whole ? "one whole" : "zero"}?`;
+    return { values: { d, whole: whole ? 1 : 0 }, prompt: ask, readAloud: ask,
+      answer: frac(near, d), wrong: far.map((n, k) => wrong(frac(n, d), k === 0 ? "more-less" : "fraction-order")) };
   // AB grade 3 compares fractions to the benchmarks 0, 1/2 and 1 (denominators to 12).
   }, "choice", { AB: 3 }),
   template("equivalent-decimal", "F", "5.4", (rng) => {
@@ -180,8 +194,13 @@ export const LEVEL_5: readonly TaggedTemplate[] = [
   }, "choice", thousandths),
   template("compare-thousandths", "F", "5.4", (rng) => {
     const t = rng.int(4, 8), a = rng.int(111, t * 100 - 1), b = rng.int(t * 100 + 1, 899);
-    return { values: { t, a, b }, prompt: "Which decimal is greatest?", readAloud: "Which decimal is greatest?", answer: dec(b, 3),
-      wrong: [wrong(dec(t, 1), "decimal-order"), wrong(dec(a, 3), "decimal-order"), wrong(dec(t, 2), "more-less")] };
+    // Greatest or least (#187: the ask varies). Least: the shortest decimal is not the smallest one (F6).
+    if (rng.int(0, 1) === 1) {
+      return { values: { t, a, b, greatest: 1 }, prompt: "Which decimal is greatest?", readAloud: "Which decimal is greatest?", answer: dec(b, 3),
+        wrong: [wrong(dec(t, 1), "decimal-order"), wrong(dec(a, 3), "decimal-order"), wrong(dec(t, 2), "more-less")] };
+    }
+    return { values: { t, a, b, greatest: 0 }, prompt: "Which decimal is least?", readAloud: "Which decimal is least?", answer: dec(t, 2),
+      wrong: [wrong(dec(t, 1), "F6"), wrong(dec(a, 3), "decimal-order"), wrong(dec(b, 3), "more-less")] };
   }, "choice", thousandths),
   // A thousandths decimal between two hundredths: AB MAT5-OI1-GQ1-LO1-KO1-SP (a decimal between two decimals), SK N5.6,
   // MB 5.N.10. Each wrong choice is just past one end of the interval.
@@ -378,9 +397,15 @@ export const LEVEL_5: readonly TaggedTemplate[] = [
   }, "number", { ON: 4 }),
   template("double-bar-difference", "DP", "5.17", (rng) => {
     const scale = 2, a = rng.int(7, 14), b = rng.int(1, 5), c = rng.int(2, 6), d = rng.int(3, 8);
-    return { values: { scale, a, b, c, d }, figure: { kind: "bars", bars: [{ label: "Mon Ana", value: a * scale }, { label: "Mon Ben", value: c * scale }, { label: "Tue Ana", value: b * scale }, { label: "Tue Ben", value: d * scale }] }, prompt: "The graph compares books Ana and Ben read on Monday and Tuesday. How many more books did Ana read on Monday than Tuesday?",
+    // The two children and what they count change with the seed (#187: no fixed prompt). The child asked about is
+    // named first.
+    const [x, y] = rng.shuffle(NAMES), [things, verb] = rng.pick([["books", "read"], ["drawings", "make"], ["puzzles", "finish"]] as const);
+    const past = { read: "read", make: "made", finish: "finished" }[verb];
+    const about = `The graph compares ${things} ${x} and ${y} ${past} on Monday and Tuesday.`;
+    const ask = `How many more ${things} did ${x} ${verb} on Monday than Tuesday?`;
+    return { values: { scale, a, b, c, d }, figure: { kind: "bars", bars: [{ label: `Mon ${x}`, value: a * scale }, { label: `Mon ${y}`, value: c * scale }, { label: `Tue ${x}`, value: b * scale }, { label: `Tue ${y}`, value: d * scale }] }, prompt: `${about} ${ask}`,
       // The voice does not read the bars: reading the graph and its scale is the skill (#79).
-      readAloud: "The graph compares books Ana and Ben read on Monday and Tuesday. Look at the graph. How many more books did Ana read on Monday than Tuesday?", answer: String((a - b) * scale),
+      readAloud: `${about} Look at the graph. ${ask}`, answer: String((a - b) * scale),
       wrong: typedWrong((a - b) * scale, [[a - b, "D1"], [(a + b) * scale, "operation"]]) };
   // ON4 D1.3 and D1.6: multiple-bar graphs.
   }, "number", { ON: 4 }),
