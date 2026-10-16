@@ -2,6 +2,7 @@
 // as JSON (every copy, whole) or CSV (one row per question shown, with the test's columns). Test families (D-099) are
 // left out unless asked. Pure: the route reads the rows with the admin's session (src/lib/admin-store.ts) and sends
 // the file. The export page of the raw data (#200, D-118) lists it as one more dataset (anonymousCopiesHref).
+import { BOM, csvLine } from "@/lib/admin-export";
 import { COPY_FIELDS, type AnonymousTestCopy } from "@/lib/assessment";
 
 /** One stored copy: its random id and the copy JSON. */
@@ -37,19 +38,12 @@ const TEST_COLUMNS = ["copyVersion", "grade", "province", "testMonth", "testFami
 
 const snake = (name: string) => name.replace(/[A-Z]/g, (c) => `_${c.toLowerCase()}`);
 
-/** A cell: empty for no value, JSON for a list or an object, quoted when it holds a comma, a quote or a line break. */
-function cell(value: unknown): string {
-  const text = value === null || value === undefined ? "" : typeof value === "object" ? JSON.stringify(value) : String(value);
-  // A spreadsheet runs a cell that starts with = + or @ as a formula. No copy field should, but never let one.
-  const safe = /^[=+@]/.test(text) ? `'${text}` : text;
-  return /[",\r\n]/.test(safe) ? `"${safe.replaceAll('"', '""')}"` : safe;
-}
-
 /** One row per question shown, in each copy's order. */
 export function anonymousCopiesCsv(rows: readonly AnonymousTestRow[], options: ExportOptions): string {
   const header = ["copy_id", ...TEST_COLUMNS.map(snake), ...COPY_FIELDS.question.map(snake)];
-  const lines = kept(rows, options).flatMap((r) => r.copy.questions.map((q) => [
+  const lines = kept(rows, options).flatMap((r) => r.copy.questions.map((q) => csvLine([
     r.id, ...TEST_COLUMNS.map((k) => r.copy[k]), ...COPY_FIELDS.question.map((k) => q[k]),
-  ].map(cell).join(",")));
-  return [header.join(","), ...lines].map((line) => `${line}\r\n`).join("");
+  ])));
+  // The cells, the byte order mark and the formula guard of the raw data export (D-118).
+  return BOM + csvLine(header) + lines.join("");
 }

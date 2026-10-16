@@ -30,7 +30,7 @@ describe("the export of the copies without names", () => {
   });
 
   it("CSV: one row per question shown, with the test's columns, quoting text and writing lists and objects as JSON", () => {
-    const [header, ...lines] = anonymousCopiesCsv(rows, { includeTestFamilies: false }).trimEnd().split("\r\n");
+    const [header, ...lines] = anonymousCopiesCsv(rows, { includeTestFamilies: false }).slice(1).trimEnd().split("\r\n");
     const columns = header.split(",");
     expect(columns.slice(0, 2)).toEqual(["copy_id", "copy_version"]);
     expect(columns).toEqual(expect.arrayContaining(["grade", "province", "test_month", "test_family", "status", "route", "duration_ms", "round", "template_id", "response", "correct", "misconception", "time_ms", "shown_at_ms"]));
@@ -42,6 +42,26 @@ describe("the export of the copies without names", () => {
     expect(lines[0]).toContain(",70,false,place-value,8000,");
     // The question shown with no answer has empty cells for what the child did.
     expect(lines[1]).toContain(",1,s1-1,main,");
+  });
+
+  it("CSV: UTF-8 with a byte order mark, so Excel reads the bank's signs (D-118)", () => {
+    const csv = anonymousCopiesCsv([{ id: "copy-a", copy: copy({ questions: [{ ...copy().questions[0], prompt: "6 × 4 − 3 ÷ 1" }] }) }], { includeTestFamilies: false });
+    expect(csv.startsWith("\uFEFF")).toBe(true);
+    // Read back as a spreadsheet does: the bytes as UTF-8, the mark dropped.
+    const read = new TextDecoder("utf-8").decode(new TextEncoder().encode(csv));
+    expect(read.startsWith("copy_id,")).toBe(true);
+    expect(read).toContain(",6 × 4 − 3 ÷ 1,");
+  });
+
+  it("CSV: a text a spreadsheet would run as a formula gets an apostrophe; a plain negative number does not", () => {
+    const cells = (response: string) => {
+      const [, line] = anonymousCopiesCsv([{ id: "copy-a", copy: copy({ questions: [{ ...copy().questions[0], response }] }) }], { includeTestFamilies: false }).split("\r\n");
+      return line;
+    };
+    const guarded: [string, string][] = [["=1+2", "'=1+2"], ["+1+2", "'+1+2"], ["-1+2", "'-1+2"], ["@SUM(A1)", "'@SUM(A1)"], ["\t=1", "'\t=1"], ["\r=1", "\"'\r=1\""]];
+    for (const [text, cell] of guarded) expect(cells(text)).toContain(`,${cell},`);
+    expect(cells("-7")).toContain(",-7,");
+    expect(cells("-7.5")).toContain(",-7.5,");
   });
 
   it("the export page (#200, D-118) links each file, with test families only when asked", () => {

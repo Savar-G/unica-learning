@@ -176,6 +176,12 @@ describe("the copy without names", () => {
     ]);
   });
 
+  it("marks the copy of a test family's test (D-099), so the export can leave it out", () => {
+    expect(anonymousTestCopy({ ...source(), testFamily: true }).testFamily).toBe(true);
+    expect(anonymousTestCopy({ ...source(), testFamily: false }).testFamily).toBe(false);
+    expect(anonymousTestCopy({ ...source(), testFamily: "yes" }).testFamily).toBe(false);
+  });
+
   it("keeps the test month, the route and every question as shown, with each response, mark and misconception", () => {
     const s = source();
     const copy = anonymousTestCopy(s);
