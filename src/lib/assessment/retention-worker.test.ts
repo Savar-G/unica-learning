@@ -1,5 +1,48 @@
-import { expect, it } from "vitest";
-import { workerConfiguration, runRetentionWorker, withDeletionHeartbeat } from "@/lib/assessment";
+import { describe, expect, it } from "vitest";
+import { retentionDecision, workerConfiguration, runRetentionWorker, withDeletionHeartbeat } from "@/lib/assessment";
+
+// The retention rules (#191, spec #181). A customer keeps their data. A former customer is deleted 6 calendar months
+// (UTC) after the subscription ends in Stripe. A free-test family (no card ever saved) is deleted 12 calendar months
+// after the latest test activity. Without a Stripe answer, the family is kept.
+describe("retention rules", () => {
+  const LONG_AGO = "2020-01-01T00:00:00Z";
+  const NOW = Date.parse("2026-10-16T12:00:00Z");
+
+  it("keeps a customer: a live subscription, or a saved card that waits for the first workbook", () => {
+    for (const status of ["active", "trialing", "past_due", "unpaid", "paused", "incomplete"]) {
+      expect(retentionDecision({ lastTestAt: LONG_AGO, payments: [{ savedCard: true, subscriptions: [{ status, endedAt: null }] }] }, NOW))
+        .toEqual({ action: "keep", reason: "customer" });
+    }
+    expect(retentionDecision({ lastTestAt: LONG_AGO, payments: [{ savedCard: true, subscriptions: [] }] }, NOW))
+      .toEqual({ action: "keep", reason: "customer" });
+    // One child's subscription ended long ago, and another child's card waits for its first workbook.
+    expect(retentionDecision({ lastTestAt: LONG_AGO, payments: [
+      { savedCard: true, subscriptions: [{ status: "canceled", endedAt: LONG_AGO }] },
+      { savedCard: true, subscriptions: [] },
+    ] }, NOW)).toEqual({ action: "keep", reason: "customer" });
+  });
+
+  it("deletes a former customer 6 calendar months (UTC) after the latest subscription end in Stripe", () => {
+    const former = (endedAt: string, lastTestAt: string | null = LONG_AGO) => ({ lastTestAt, payments: [
+      // The card stays on the customer after the subscription ends. It no longer waits for a first workbook.
+      { savedCard: true, subscriptions: [{ status: "canceled", endedAt: "2020-06-01T00:00:00Z" }, { status: "canceled", endedAt }] },
+      { savedCard: false, subscriptions: [{ status: "incomplete_expired", endedAt: null }] },
+    ] });
+    expect(retentionDecision(former("2026-04-16T12:00:00Z"), Date.parse("2026-10-16T11:59:59.999Z"))).toEqual({ action: "keep", reason: "former_customer" });
+    expect(retentionDecision(former("2026-04-16T12:00:00Z"), Date.parse("2026-10-16T12:00:00Z")))
+      .toEqual({ action: "delete", rule: "former_customer", endedAt: "2026-04-16T12:00:00.000Z" });
+    // 31 August + 6 months is the last day of February, as Postgres adds an interval in UTC.
+    expect(retentionDecision(former("2025-08-31T10:00:00Z"), Date.parse("2026-02-28T09:59:59Z")).action).toBe("keep");
+    expect(retentionDecision(former("2025-08-31T10:00:00Z"), Date.parse("2026-02-28T10:00:00Z")).action).toBe("delete");
+    expect(retentionDecision(former("2023-08-31T10:00:00Z"), Date.parse("2024-02-29T09:59:59Z")).action).toBe("keep");
+    expect(retentionDecision(former("2023-08-31T10:00:00Z"), Date.parse("2024-02-29T10:00:00Z")).action).toBe("delete");
+    // A test during the subscription does not move the deadline. A free test after the end keeps 12 months from it.
+    expect(retentionDecision(former("2026-04-16T12:00:00Z", "2026-04-01T00:00:00Z"), NOW).action).toBe("delete");
+    expect(retentionDecision(former("2026-01-01T00:00:00Z", "2026-03-01T00:00:00Z"), NOW)).toEqual({ action: "keep", reason: "former_customer" });
+    expect(retentionDecision(former("2026-01-01T00:00:00Z", "2026-03-01T00:00:00Z"), Date.parse("2027-03-01T00:00:00Z")).action).toBe("delete");
+    expect(retentionDecision(former("2026-04-16T12:00:00Z", null), NOW).action).toBe("delete");
+  });
+});
 
 // Format-only synthetic values. Only a transport preflight can establish real API authentication.
 const env = {

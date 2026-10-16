@@ -2,6 +2,7 @@
 export * from "./attempt";
 export * from "./constants";
 export * from "./deletion";
+export * from "./retention";
 export * from "./facts";
 export * from "./flags";
 export { comparisonFor, type ComparisonInput, type ComparisonTest } from "./comparison";
