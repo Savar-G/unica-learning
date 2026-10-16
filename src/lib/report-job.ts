@@ -122,12 +122,15 @@ export async function runReportJob(assessmentId: string, origin: string, options
 
 /**
  * The stored report for the assessment, built now if there is none yet. `ai` says what the AI step did; absent when an
- * earlier run built the report.
+ * earlier run built the report. #190: a report built before an extra round finished from the report is built again,
+ * in place; the AI reviews only the new work (the stored reviews are kept). Its emails went with the first report, so
+ * the ledger sends none again: no second email.
  */
 async function storeReport(store: ReportJobStore, inputs: ReportInputs, reviewer: WorkReviewer | null): Promise<{ report: StoredReport; ai?: AiOutcome }> {
   const { assessment: a, shownWork } = inputs;
   const existing = await store.report(a.id);
-  if (existing) return { report: existing };
+  const rebuild = existing !== null && !!a.placement.extraRound && !existing.model.extraRound;
+  if (existing && !rebuild) return { report: existing };
 
   const comparison = await inputs.comparison();
   // #67: the child's whiteboard work; the model picks what the report shows. #68: the AI reviews it first, when on.
@@ -137,6 +140,7 @@ async function storeReport(store: ReportJobStore, inputs: ReportInputs, reviewer
     store: store.reviews(a),
     build: (workReviews, reportText) => reportModel(a.placement, { comparison, workReviews, shownWork, reportText }),
   });
+  if (existing) return { report: await store.updateReport(existing.id, { model, questions: inputs.questions, minutes: inputs.minutes }), ai };
   const report = await store.insertReport({ assessmentId: a.id, parentId: a.parentId, childId: a.childId, model, questions: inputs.questions, minutes: inputs.minutes });
   if (report) return { report, ai };
   // A second run that got here at the same time inserted nothing: it reads the first run's report.
