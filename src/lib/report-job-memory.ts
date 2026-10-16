@@ -2,7 +2,7 @@
 // module's in-memory tables (src/lib/report-loading-memory.ts): a report the job stores is in their reports table, as
 // in one database, so the in-memory readers find it (#163). The parents, the unsubscribes and the stored AI reviews are
 // its own. It keeps the database's rules: one report per test, and one stored review per question. It counts its reads
-// of each table, one for each database request, in the readers' counter (`reads`), so a test sees every read the job makes.
+// of each table, one for each database request, in the readers' counter (`reads`), so a test sees the job's reads.
 import type { ParentContact } from "@/lib/report-email";
 import type { ReportJobStore, StoredReport } from "@/lib/report-job-store";
 import type { MemoryReport, MemoryReportTables } from "@/lib/report-loading-memory";
@@ -26,17 +26,21 @@ const stored = ({ id, model, questions, minutes }: MemoryReport): StoredReport =
  */
 export function memoryReportJobStore(
   tables: MemoryReportTables,
-  { reads = {}, parents = [], unsubscribed = [] }: { reads?: Record<string, number>; parents?: MemoryParent[]; unsubscribed?: string[] } = {},
+  {
+    reads = {},
+    parents = [],
+    unsubscribed = [],
+  }: { reads?: Record<string, number>; parents?: MemoryParent[]; unsubscribed?: string[] } = {},
 ) {
   const reviews: { assessmentId: string; parentId: string; review: StoredReview }[] = [];
   const downloads: string[] = [];
-  const read = (table: string) => {
+  const count = (table: string) => {
     reads[table] = (reads[table] ?? 0) + 1;
   };
 
   const store: ReportJobStore = {
     async report(assessmentId) {
-      read("reports");
+      count("reports");
       const row = (tables.reports ?? []).find((r) => r.assessmentId === assessmentId);
       return row ? stored(row) : null;
     },
@@ -50,7 +54,7 @@ export function memoryReportJobStore(
     },
     reviews: (assessment) => ({
       async stored() {
-        read("work_reviews");
+        count("work_reviews");
         return reviews.filter((r) => r.assessmentId === assessment.id).map((r) => ({ ...r.review }));
       },
       async save(list) {
@@ -65,13 +69,13 @@ export function memoryReportJobStore(
       },
     }),
     async parent(parentId) {
-      read("parents");
+      count("parents");
       const row = parents.find((p) => p.id === parentId);
       return row ? { name: row.name, email: row.email } : null;
     },
     async unsubscribed(parentId) {
       // The unsubscribes are rows of public.email_log.
-      read("email_log");
+      count("email_log");
       return unsubscribed.includes(parentId);
     },
   };

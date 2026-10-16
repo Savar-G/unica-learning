@@ -40,8 +40,9 @@ export interface MemoryReportTables {
 /**
  * The readers over the tables: one parent's session, the admin's, or the secret key. `signed` lists every sign call of
  * a session, with the reader and the paths it was asked to sign, so a test can check what was signed. `reads` counts
- * the reads of each table, by any reader; the job's store (src/lib/report-job-memory.ts) can count its reads in it too. A table left out is made empty on `tables`, so that other adapters over the
- * same tables (src/lib/report-job-memory.ts) see the same rows.
+ * the reads of each table, by table name, by any reader; the job's store (src/lib/report-job-memory.ts) counts its
+ * reads in it too. A table left out is made empty on `tables`, so that other adapters over the same tables
+ * (src/lib/report-job-memory.ts) see the same rows.
  */
 export function memoryReportReaders(tables: MemoryReportTables) {
   const reports = (tables.reports ??= []);
@@ -50,7 +51,7 @@ export function memoryReportReaders(tables: MemoryReportTables) {
   const children = (tables.children ??= []);
   const drawings = (tables.drawings ??= []);
   const signed: { reader: string; paths: string[] }[] = [];
-  const reads = { reports: 0, assessments: 0, answers: 0 };
+  const reads: Record<string, number> = { reports: 0, assessments: 0, answers: 0 };
 
   const reader = (who: string, sees: (parentId: string) => boolean, { tests = true, signs = true } = {}): ReportReader => ({
     async report(id) {

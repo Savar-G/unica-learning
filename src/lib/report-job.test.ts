@@ -18,9 +18,10 @@ import { fakeReviewer } from "@/lib/work-review-fake";
 // The report job (#65), through its public interface, on in-memory adapters only (#162): the report-loading module's
 // reader with the secret key's access (src/lib/report-loading-memory.ts), the job's own store (the report insert, the
 // stored AI reviews, the parent's contact details, the unsubscribe check; src/lib/report-job-memory.ts) over the same
-// tables and with the same read counter, a comparison read that returns a cohort, and the AI step's fake reviewer. The emails go through the delivery
-// module (#151) with the in-memory transport and the in-memory report row ledger, which keeps the report row's claim
-// rules. The network is a stub that records any request, so a test sees any call to Supabase or Resend.
+// tables and with the same read counter, a comparison read that returns a cohort, and the AI step's fake reviewer. The
+// emails go through the delivery module (#151) with the in-memory transport and the in-memory report row ledger, which
+// keeps the report row's claim rules. The network is a stub that records any request, so a test sees any call to
+// Supabase or Resend.
 vi.mock("server-only", () => ({}));
 
 const ORIGIN = "https://unica.test";
@@ -64,7 +65,11 @@ function database({ unsubscribed = false, parent = PRIYA as typeof PRIYA | null,
     drawings: [DRAWING],
   };
   const readers = memoryReportReaders(tables);
-  const job = memoryReportJobStore(tables, { reads: readers.reads, parents: parent ? [{ id: "parent-1", ...parent }] : [], unsubscribed: unsubscribed ? ["parent-1"] : [] });
+  const job = memoryReportJobStore(tables, {
+    reads: readers.reads,
+    parents: parent ? [{ id: "parent-1", ...parent }] : [],
+    unsubscribed: unsubscribed ? ["parent-1"] : [],
+  });
   const comparison = vi.fn<ComparisonRead>(async (assessmentId) => ({ assessmentId, tests: cohort }));
   return { tables, readers, job, comparison };
 }
@@ -127,8 +132,9 @@ describe("the stored report", () => {
     for (const secret of ["private-child-", "private-parent@", "stage1", "excludedEmails", "tests"]) expect(snapshot).not.toContain(secret);
     // The reads that production makes, one for each database request: the stored test and its answers, through the
     // module; the check for a stored report, then the stored AI reviews; the parent and the stored report's view (#163;
-    // one request, with the test and the child), for the emails; and the unsubscribe check. The report row ledger's
-    // reads of the report row are its own (book.entry).
+    // one request, with the test and the child), for the emails; and the unsubscribe check. Not in this count: the
+    // comparison read (counted by its calls below) and the report row ledger's read of the report row before the parent
+    // email (src/lib/report-row-ledger.ts).
     expect(db.readers.reads).toEqual({ assessments: 1, answers: 1, reports: 2, work_reviews: 1, parents: 1, email_log: 1 });
     expect(db.comparison.mock.calls).toEqual([[TEST]]);
 
