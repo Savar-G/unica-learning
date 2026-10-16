@@ -263,3 +263,49 @@ describe("a transport that throws", () => {
     expect(await sendEmailOnce(book.ledger, "k", report, { transport: memoryTransport().transport })).toEqual({ status: "busy" });
   });
 });
+
+// The admin's email view (D-103): the ledger keeps a copy of the email after each attempt.
+describe("the copy of a sent email", () => {
+  beforeEach(() => vi.stubEnv("EMAIL_FROM", "Unica Learning <hello@unicalearning.com>"));
+  afterEach(() => vi.unstubAllEnvs());
+
+  it("is the message as it was handed to the transport, with its sender and outcome", async () => {
+    const mail = memoryTransport();
+    const book = memoryLedger<string>();
+    await sendEmailOnce(book.ledger, "k", report, { transport: mail.transport });
+    expect(book.keptCopy("k")).toEqual({ from: "Unica Learning <hello@unicalearning.com>", message: report, outcome: "sent" });
+  });
+
+  it("is kept for a refused and an unknown send too, and a retry keeps the last attempt's", async () => {
+    const mail = memoryTransport();
+    const book = memoryLedger<string>();
+    mail.answerNext("refuse");
+    await sendEmailOnce(book.ledger, "k", report, { transport: mail.transport });
+    expect(book.keptCopy("k")?.outcome).toBe("refused");
+    await sendEmailOnce(book.ledger, "k", { ...report, subject: "Second try" }, { transport: mail.transport });
+    expect(book.keptCopy("k")).toMatchObject({ outcome: "sent", message: { subject: "Second try" } });
+    mail.answerNext("no_answer");
+    await sendEmailOnce(book.ledger, "k2", report, { transport: mail.transport });
+    expect(book.keptCopy("k2")?.outcome).toBe("unknown");
+  });
+
+  it("is not kept when another run holds the claim: nothing was sent", async () => {
+    const mail = memoryTransport();
+    const book = memoryLedger<string>();
+    await sendEmailOnce(book.ledger, "k", report, { transport: mail.transport });
+    const before = book.keptCopy("k");
+    expect(await sendEmailOnce(book.ledger, "k", { ...report, subject: "Not sent" }, { transport: mail.transport })).toEqual({ status: "busy" });
+    expect(book.keptCopy("k")).toBe(before);
+  });
+
+  it("that cannot be kept does not change the outcome", async () => {
+    const mail = memoryTransport();
+    const book = memoryLedger<string>();
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    const broken: SendLedger<string, string> = { ...book.ledger, keepCopy: async () => { throw new Error("database down"); } };
+    expect(await sendEmailOnce(broken, "k", report, { transport: mail.transport })).toEqual({ status: "sent", emailId: "email-1" });
+    expect(book.entry("k")?.state).toBe("sent");
+    expect(String(error.mock.calls[0]?.[0])).toBe("[email] copy not kept");
+    error.mockRestore();
+  });
+});

@@ -1,6 +1,6 @@
 // One family's whole story in a side panel (?family=<id>) on the dashboard and activity pages (D-099).
 import Link from "next/link";
-import { adminParentPath, adminReportPath, adminTestPath } from "@/lib/admin-view";
+import { adminEmailPath, adminParentPath, adminReportPath, adminTestPath } from "@/lib/admin-view";
 import { EMAIL_LABEL, STAGES, STAGE_ACTION, STAGE_TEXT, ago, at, nextReminderText, paymentText, type Dashboard, type Stage } from "@/lib/admin-dashboard";
 import { stripeCustomerUrl as stripeUrl } from "@/lib/stripe";
 import { StageChip, TestMark, href, type Ctx } from "@/components/admin-dashboard-parts";
@@ -59,7 +59,7 @@ export function FamilyDrawer({ ctx, d, id }: { ctx: Ctx; d: Dashboard; id: strin
             {f.emails.map((e) => (
               <li key={e.id}>
                 <span className={`dash-dot is-${e.status}`} />
-                <div><b>{EMAIL_LABEL[e.kind]}</b>{e.kind !== "unsubscribe" && <span className="dash-muted"> &ldquo;{e.subject}&rdquo;</span>}
+                <div><b>{EMAIL_LABEL[e.kind]}</b>{e.kind !== "unsubscribe" && <> <Link href={adminEmailPath(e.id, ctx.demo)} className="dash-muted">&ldquo;{e.subject}&rdquo;</Link></>}
                   <span className="dash-sub">{e.status === "failed" ? `Failed after ${e.attempts} ${e.attempts === 1 ? "try" : "tries"}: ${e.error ?? "unknown error"}` : e.status === "pending" ? "Waiting to send" : e.kind === "alert" ? "Sent to you" : "Sent to the parent"} · {at(e.at)}</span></div>
               </li>
             ))}

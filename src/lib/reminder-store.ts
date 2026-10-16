@@ -3,6 +3,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { bandFor, type Grade } from "@/lib/assessment";
 import { toAttempt, type AttemptRow } from "@/lib/assessment-store";
 import { SUPPORT_EMAIL } from "@/lib/contact";
+import { saveEmailCopy } from "@/lib/email-copies";
 import type { EmailMessage, SendLedger } from "@/lib/email-delivery";
 import { reminderEmail } from "@/lib/reminder-email";
 import {
@@ -159,6 +160,9 @@ export function emailLogLedger(admin: SupabaseClient): SendLedger<DueReminder, s
       const { error } = await admin.from("email_log").update({ error: message.slice(0, 500) }).eq("id", logId);
       if (error) console.error("[reminders] unknown mark failed; the row stays claimed", logId, error.message);
     },
+
+    // The admin's email view (D-103): the reminder as it was sent, beside its log row.
+    keepCopy: (logId, r, copy) => saveEmailCopy(admin, { emailLogId: logId }, r.parentId, copy),
   };
 }
 

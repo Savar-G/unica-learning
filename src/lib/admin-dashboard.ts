@@ -111,6 +111,21 @@ export const EMAIL_KINDS: readonly EmailKindInfo[] = [
 ];
 export const EMAIL_LABEL = Object.fromEntries(EMAIL_KINDS.map((k) => [k.kind, k.label])) as Record<EmailKind, string>;
 
+/** The kept copy of a logged email (public.email_copies, D-103): what the site handed to Resend on the last attempt. */
+export interface EmailCopyView {
+  outcome: "sent" | "refused" | "unknown";
+  from: string | null;
+  to: string;
+  replyTo: string | null;
+  subject: string;
+  text: string;
+  html: string | null;
+  /** When the last attempt's copy was kept. */
+  keptAt: string;
+}
+/** The email list id of a report's emails: "<report id>:report" or "<report id>:alert". A reminder's id is its log id. */
+export const reportEmailId = (reportId: string, which: "report" | "alert") => `${reportId}:${which}`;
+
 export interface EmailEvent {
   id: string;
   kind: EmailKind;
@@ -223,8 +238,8 @@ export function buildFamilies(rows: DashboardRows, now = new Date()): Family[] {
       const child = childName.get(r.child_id) ?? null;
       const grade = testById.get(r.assessment_id)?.grade ?? null;
       const base = { familyId: p.id, familyName: p.name, childName: child, attempts: 1 };
-      emails.push({ ...base, id: `${r.id}:report`, kind: "report", at: r.emailed_at ?? r.created_at, error: r.email_error, status: emailStatus(r.emailed_at, r.email_error), subject: subjectFor("report", child, grade) });
-      emails.push({ ...base, id: `${r.id}:alert`, kind: "alert", at: r.alerted_at ?? r.created_at, error: r.alert_error, status: emailStatus(r.alerted_at, r.alert_error), subject: subjectFor("alert", child, grade) });
+      emails.push({ ...base, id: reportEmailId(r.id, "report"), kind: "report", at: r.emailed_at ?? r.created_at, error: r.email_error, status: emailStatus(r.emailed_at, r.email_error), subject: subjectFor("report", child, grade) });
+      emails.push({ ...base, id: reportEmailId(r.id, "alert"), kind: "alert", at: r.alerted_at ?? r.created_at, error: r.alert_error, status: emailStatus(r.alerted_at, r.alert_error), subject: subjectFor("alert", child, grade) });
     }
     emails.sort(newestFirst);
 

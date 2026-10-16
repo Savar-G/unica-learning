@@ -2,7 +2,9 @@
 // with more than a handful of rows and without an admin sign-in. Seeded, so every reload shows the same numbers. No
 // real person is in here, and nothing here reads the database.
 import type { Province } from "@/lib/assessment";
-import type { DashboardRows, RawCard, RawChild, RawEmail, RawParent, RawReport, RawSubscription, RawTest, RawWaitlist } from "@/lib/admin-dashboard";
+import type { DashboardRows, EmailCopyView, EmailEvent, Family, RawCard, RawChild, RawEmail, RawParent, RawReport, RawSubscription, RawTest, RawWaitlist } from "@/lib/admin-dashboard";
+import { SUPPORT_EMAIL } from "@/lib/contact";
+import { reminderEmail } from "@/lib/reminder-email";
 
 const FIRST = ["Priya", "Daniel", "Mei", "Omar", "Sarah", "Arjun", "Lina", "Jason", "Fatima", "Chris", "Aisha", "Kevin", "Nora", "Raj", "Elena", "Tom", "Harpreet", "Grace", "Wei", "Maya"];
 const LAST = ["Sandhu", "Chen", "Patel", "Nguyen", "Smith", "Gill", "Kim", "Singh", "Brown", "Ali", "Wong", "Dhillon", "Garcia", "Lee", "Martin"];
@@ -105,4 +107,18 @@ export function demoRows(now: Date): DashboardRows {
   // two made-up test families, so the "hidden" note and its toggle show
   out.testIds = out.parents.slice(0, 2).map((p) => p.id);
   return out;
+}
+
+/**
+ * A made-up copy of a demo reminder (D-103), built with the real reminder template, so the email view has something to
+ * show in local development. Null for the report emails: the demo has no reports to build them from.
+ */
+export function demoEmailCopy(e: EmailEvent, f: Family | undefined): EmailCopyView | null {
+  if (!f || (e.kind !== "start" && e.kind !== "start_followup" && e.kind !== "continue" && e.kind !== "come_back")) return null;
+  const child = e.childName ?? f.children[0]?.name ?? "Maya";
+  const common = { parentName: f.name, childName: child, url: "https://unicalearning.com/account/start/demo?reminder=" + e.kind, unsubscribeUrl: "https://unicalearning.com/unsubscribe?t=hidden", postal: f.postal, total: 30 };
+  const mail = e.kind === "continue"
+    ? reminderEmail({ ...common, kind: "continue", answered: 12, resumeUntil: Date.parse(e.at) + 23 * 3_600_000 })
+    : reminderEmail({ ...common, kind: e.kind });
+  return { outcome: e.status === "failed" ? "refused" : "sent", from: "Unica Learning <hello@unicalearning.com>", to: f.email, replyTo: SUPPORT_EMAIL, subject: mail.subject, text: mail.text, html: mail.html, keptAt: e.at };
 }
