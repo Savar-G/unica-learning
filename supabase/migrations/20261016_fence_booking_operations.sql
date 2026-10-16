@@ -186,7 +186,9 @@ language sql security definer set search_path = '' as $$
       from public.parents parent left join auth.users u on u.id = parent.id
       join public.signups s on lower(s.email) = lower(parent.email) or lower(s.email) = lower(u.email)
         or exists(select 1 from public.booking_family_links l where l.signup_id = s.id and l.parent_id = parent.id)
-      where parent.id = p and s.booking_state is distinct from 'not_started'
+      -- Reserved signups keep their reference even when Stripe was off. The existing flow permits a later
+      -- manual card link. No match stays unknown; it is never proof that this booking cannot become a customer.
+      where parent.id = p and (s.booking_state is distinct from 'not_started' or s.status = 'reserved')
   ) f;
 $$;
 
