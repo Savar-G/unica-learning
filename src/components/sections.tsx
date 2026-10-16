@@ -115,7 +115,7 @@ export function How() {
     <Section id="how" aria-labelledby="howT">
       <Knot />
       <Rise>
-        <SectionHeader eyebrow="How it works" title="Six steps. One loop." titleId="howT" lead="Every book is built from the last one." />
+        <SectionHeader eyebrow="How it works" title="Start easily. Repeat easily." titleId="howT" lead="Every book is built from the last one." />
       </Rise>
       <StepGrid>
         {STEPS.map((s, i) => (
