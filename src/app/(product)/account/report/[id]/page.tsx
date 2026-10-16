@@ -13,8 +13,7 @@ import { recordReportEmailClick } from "@/lib/email-clicks";
 import { TrackOnce } from "@/components/account";
 import { ReportCard, type NewTestOffer, type ReportNextContext } from "@/components/report";
 import { startPath } from "@/lib/sign-in-link";
-import { stateFor } from "@/lib/test-attempt";
-import { parentStartStates } from "@/lib/test-attempt-server";
+import { parentRetakeState } from "@/lib/test-attempt-server";
 import type { NextStepStart } from "@/components/report-next";
 import { SupportPage } from "@/components/support-page";
 
@@ -78,14 +77,15 @@ export default async function ReportPage({ params, searchParams }: PageProps<"/a
 
 /**
  * #189: when the child's next test opens after a result that may not be reliable, by the same start rules as the start
- * screen: at once (at most once per 30 days, D-108), with the button; otherwise the day it opens.
+ * screen: at once (at most once per 30 days, D-108), with the button; otherwise the day it opens. Null when that cannot
+ * be read: the note then shows no button and names no time.
  */
-async function newTestOffer(parent: string, childId: string): Promise<NewTestOffer> {
-  const state = stateFor(await parentStartStates(parent, childId), childId);
+async function newTestOffer(parent: string, childId: string): Promise<NewTestOffer | null> {
+  const state = await parentRetakeState(parent, childId);
+  if (!state) return null;
   const href = startPath(childId);
-  if (state.kind === "wait") return { state: { kind: "opens", at: state.opensAt }, href, label: "" };
-  const label = state.kind === "resume" || state.kind === "finish" ? "Continue the new test" : "Start a new test";
-  return { state: { kind: "open" }, href, label };
+  if (state.kind === "opens") return { state, href, label: "" };
+  return { state: { kind: "open" }, href, label: state.resume ? "Continue the new test" : "Start a new test" };
 }
 
 /** The parent's answers about how this child learns (#126), read with the parent's session; null when none. */

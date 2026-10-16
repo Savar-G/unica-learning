@@ -14,7 +14,7 @@ import {
   type Submission,
 } from "@/lib/assessment";
 import { allRight, knowsUpTo, takeTest, type Script } from "@/lib/assessment/scripted-child";
-import { answerQuestion, finishTest, nextStep, startStates, startTest, stateFor, StoreError, type AnswerInput, type AttemptStore, type HelpInput } from "@/lib/test-attempt";
+import { answerQuestion, finishTest, nextStep, retakeState, startStates, startTest, stateFor, StoreError, type AnswerInput, type AttemptStore, type HelpInput } from "@/lib/test-attempt";
 import { memoryAttemptStore, type MemoryTest } from "@/lib/test-attempt-memory";
 import { answerFact, readFacts, startFacts } from "@/lib/test-attempt";
 import { createFacts } from "@/lib/assessment";
@@ -1097,6 +1097,29 @@ describe("a new test after a rushed one", () => {
     const last = await takeWholeTest(memory, allRight, { timeMs: (n) => (n % 3 === 0 && n < 30 ? 1_000 : 20_000) });
     expect(await finishTest(memory.store, P1, "a1", "no", last + 60_000)).toMatchObject({ ok: true });
     expect(await start(memory.store, last + 3 * 60_000, { restart: false, newSeed: seeds(8) })).toMatchObject({ ok: false, error: "retake_closed" });
+  });
+});
+
+// #189, D-108: the report page's retake state. On a read failure it is unknown (null): the report then shows no button
+// and names no time, never "no 30-day wait".
+describe("the retake state the report page reads", () => {
+  const rushedDone = (id: string, at: number): MemoryTest => ({
+    ...stored(done(id, at), { seed: at === T0 ? 7 : 8 }),
+    placement: { ...takeTest(ASHA, 7, allRight).placement, pace: { veryFast: 12, answers: 36, leftOut: [], unreliable: true } },
+  });
+
+  it("is open after one unreliable test, and waits after a second one within 30 days", async () => {
+    expect(await retakeState(family(rushedDone("a1", T0)).store, P1, C1, T0 + 2 * HOUR)).toEqual({ kind: "open", resume: false });
+    const twice = family(rushedDone("a1", T0), rushedDone("a2", T0 + 2 * HOUR));
+    expect(await retakeState(twice.store, P1, C1, T0 + 4 * HOUR)).toEqual({ kind: "opens", at: T0 + 3 * HOUR + 30 * DAY });
+  });
+
+  it("is unknown when the tests cannot be read, though the start screen would offer Start test", async () => {
+    logs();
+    const twice = family(rushedDone("a1", T0), rushedDone("a2", T0 + 2 * HOUR));
+    twice.fail.attempts = new StoreError("attempts load failed", "timeout");
+    expect(stateFor(await startStates(twice.store, P1, T0 + 4 * HOUR, C1), C1).kind).toBe("start");
+    expect(await retakeState(twice.store, P1, C1, T0 + 4 * HOUR)).toBeNull();
   });
 });
 
