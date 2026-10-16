@@ -14,11 +14,15 @@ import {
   breakDue,
   createSession,
   decideStart,
+  extraRoundOffer,
+  extraRoundTaken,
   finish,
+  mainAnswered,
   nextQuestion,
   recordAnswer,
   restoreSession,
   startAttempt,
+  startExtraRound,
   startState,
   storedTest,
   submitAnswer,
@@ -26,6 +30,7 @@ import {
   workProblem,
   type Answer,
   type Attempt,
+  type ExtraRoundOffer,
   type Grade,
   type HelpAnswer,
   type Placement,
@@ -56,6 +61,10 @@ export interface LoadedAttempt {
   attempt: Attempt;
   test: StoredTest;
   answers: Submission[];
+  /** The child's answer to "Did anyone help?" (#71); null or absent before the test is finished or when it was not asked. */
+  help?: HelpAnswer | null;
+  /** #190: the extra round's record; absent on tests stored before #190 (read as nothing recorded). */
+  extraRound?: ExtraRoundRecord;
 }
 
 /** A new test to store: its times, the seed, and the questions drawn from it. */
@@ -79,7 +88,12 @@ export interface NewAnswer extends Answer {
   workText: string | null;
   /** When the server served the question and received the answer, and what the child did before Next (#184). */
   timeline: AnswerTimeline;
+  /** #190: "extra" for an answer to the extra round, else "main". */
+  round: AnswerRound;
 }
+
+/** #190: which part of the test an answer is for: the main test, or the optional extra round after it. */
+export type AnswerRound = "main" | "extra";
 
 /** The answer timeline of one answer (#184). Times are epoch ms by the server's clock. */
 export interface AnswerTimeline {
@@ -94,9 +108,10 @@ export interface AnswerTimeline {
 /**
  * The store seam. Each operation keeps one database guard. Reads return only the given parent's rows. An attempt the
  * store returns has no `answeredAll`: the module works it out from the answers. A database error throws (a StoreError).
- * The operations of the timed facts section are in FactsStore; the serve times of the answer timeline in ShownStore.
+ * The operations of the timed facts section are in FactsStore; the serve times of the answer timeline in ShownStore;
+ * the extra round (#190) in ExtraRoundStore.
  */
-export interface AttemptStore extends FactsStore, ShownStore {
+export interface AttemptStore extends FactsStore, ShownStore, ExtraRoundStore {
   /** One of the parent's children; null when the parent has no child with this id. */
   child(parent: string, childId: string): Promise<AttemptChild | null>;
   /** The parent's tests: of one child, or of every child. A completed test whose result may not be reliable has `unreliable` (#189). */
@@ -321,8 +336,9 @@ export type StepOutcome = { ok: true; step: TestStep } | Refusal;
 export async function nextStep(store: AttemptStore, parent: string, id: string, now: number): Promise<StepOutcome> {
   const open = await openTest(store, parent, id, now);
   if (!open.ok) return open;
-  await served(store, id, open.session, now);
-  return { ok: true, step: testStep(open.session) };
+  const step = stepOf(open);
+  await shown(store, id, open.session, step, now);
+  return { ok: true, step };
 }
 
 /** The whiteboard work that comes with an answer (#67), as the route parsed it (src/lib/work-payload.ts). */
@@ -355,11 +371,14 @@ export async function answerQuestion(store: AttemptStore, parent: string, id: st
   if (!open.ok) return open;
   const { attempt, session } = open;
   const q = nextQuestion(session);
+  // #190: a question of the extra round. A round taken from the report runs on a completed test, until it is finished.
+  const inRound = q !== null && mainAnswered(session);
   // The test is complete or no longer in progress, or a second tab (or a retried request) answered this question already.
-  if (attempt.status !== "in_progress" || !q || input.questionId !== q.id) {
+  if (!takesAnswers(open) || !q || input.questionId !== q.id) {
     // The screen shows the step that comes with the conflict (#184).
-    if (attempt.status === "in_progress") await served(store, id, session, now);
-    return { ok: false, error: "conflict", step: testStep(session) };
+    const step = stepOf(open);
+    if (takesAnswers(open)) await shown(store, id, session, step, now);
+    return { ok: false, error: "conflict", step };
   }
   const response = input.response.trim();
   const valid = q.format === "choice" ? (q.choices ?? []).includes(response) : response.length > 0 && response.length <= ANSWER_MAX;
@@ -370,21 +389,27 @@ export async function answerQuestion(store: AttemptStore, parent: string, id: st
   const next = submitAnswer(session, { questionId: q.id, response, timeMs: Math.min(Math.round(input.timeMs), QUESTION_TIME_CAP_MS) });
   const marked = next.answers.at(-1)!;
   // #72: the deadline moves to 24 hours from this answer, only if the test is still open now. An answer that arrives
-  // after the deadline, or after "Start again" expired the test, stops here and stores nothing.
-  const until = recordAnswer(attempt, now).resumeUntil;
-  let opened: boolean;
-  let shown: QuestionShown | null;
-  try {
-    // #184: the question's serve time is read beside the deadline move. A failed read stores the answer without it.
-    [opened, shown] = await Promise.all([store.openAnswerWindow(id, now, until), shownOf(store, id, session.answers.length)]);
-  } catch (e) {
-    console.error("[test]", messageOf(e));
-    return { ok: false, error: "store_failed" };
+  // after the deadline, or after "Start again" expired the test, stops here and stores nothing. #190: an answer to the
+  // extra round moves no deadline: every main answer is in, so the test never expires. The unique place of each answer
+  // still keeps one answer per question.
+  const until = inRound ? null : recordAnswer(attempt, now).resumeUntil;
+  let questionShown: QuestionShown | null;
+  if (until === null) {
+    questionShown = await shownOf(store, id, session.answers.length);
+  } else {
+    let opened: boolean;
+    try {
+      // #184: the question's serve time is read beside the deadline move. A failed read stores the answer without it.
+      [opened, questionShown] = await Promise.all([store.openAnswerWindow(id, now, until), shownOf(store, id, session.answers.length)]);
+    } catch (e) {
+      console.error("[test]", messageOf(e));
+      return { ok: false, error: "store_failed" };
+    }
+    if (!opened) return freshConflict(store, parent, id, now);
   }
-  if (!opened) return freshConflict(store, parent, id, now);
   /** An answer that was not stored gives no extra time: the deadline goes back where it was, unless something moved it since. */
   const failed = async (): Promise<Refusal> => {
-    await bestEffort("[test] deadline undo failed", () => store.undoAnswerWindow(id, until, attempt.resumeUntil));
+    if (until !== null) await bestEffort("[test] deadline undo failed", () => store.undoAnswerWindow(id, until, attempt.resumeUntil));
     return { ok: false, error: "store_failed" };
   };
 
@@ -408,7 +433,8 @@ export async function answerQuestion(store: AttemptStore, parent: string, id: st
       workRequired: q.showWork === true,
       workPath,
       workText: input.work.text || null,
-      timeline: { shownAt: shown?.questionId === q.id ? shown.at : null, answeredAt: now, events: input.events ?? null },
+      timeline: { shownAt: questionShown?.questionId === q.id ? questionShown.at : null, answeredAt: now, events: input.events ?? null },
+      round: inRound ? "extra" : "main",
     });
   } catch (e) {
     await removeDrawing(store, workPath);
@@ -421,6 +447,7 @@ export async function answerQuestion(store: AttemptStore, parent: string, id: st
     return freshConflict(store, parent, id, now);
   }
   const route = next.route;
+  const step = stepOf({ ...open, session: next });
   await Promise.all([
     (async () => {
       // The answer time is written only once the answer is stored: the reminder emails (#73) count from it.
@@ -428,10 +455,10 @@ export async function answerQuestion(store: AttemptStore, parent: string, id: st
       // Stage 1 just ended: record the route for the admin view.
       if (!session.route && route) await bestEffort("[test] route save failed", () => store.recordRoute(id, route));
     })(),
-    // #184: the next question goes out in this response.
-    served(store, id, next, now),
+    // #184: the next question goes out in this response; #190: or the offer of the extra round.
+    shown(store, id, next, step, now),
   ]);
-  return { ok: true, step: testStep(next) };
+  return { ok: true, step };
 }
 
 /** Logs a failed store write the way the answer route logged it before the module (#147): the line, then the cause. */
@@ -457,12 +484,25 @@ async function freshConflict(store: AttemptStore, parent: string, id: string, no
   const fresh = await openTest(store, parent, id, now);
   if (!fresh.ok) return fresh;
   // The screen shows the step that comes with the conflict (#184).
-  if (fresh.attempt.status === "in_progress") await served(store, id, fresh.session, now);
-  return { ok: false, error: "conflict", step: testStep(fresh.session) };
+  const step = stepOf(fresh);
+  if (takesAnswers(fresh)) await shown(store, id, fresh.session, step, now);
+  return { ok: false, error: "conflict", step };
+}
+
+/**
+ * A stored test as the module reads it: the attempt, its session rebuilt from the answers, the extra round's record
+ * (#190) and the stored answer to "Did anyone help?".
+ */
+interface ReadTest {
+  ok: true;
+  attempt: Attempt;
+  session: Session;
+  round: ExtraRoundRecord;
+  help: HelpAnswer | null;
 }
 
 /** The parent's test at `now`, or "expired" when it ran out of time: then it is marked expired if still in progress. */
-async function openTest(store: AttemptStore, parent: string, id: string, now: number): Promise<{ ok: true; attempt: Attempt; session: Session } | Refusal> {
+async function openTest(store: AttemptStore, parent: string, id: string, now: number): Promise<ReadTest | Refusal> {
   const read = await readTest(store, parent, id);
   if (!read.ok || attemptState(read.attempt, now) !== "expired") return read;
   if (read.attempt.status === "in_progress") {
@@ -476,7 +516,7 @@ async function openTest(store: AttemptStore, parent: string, id: string, now: nu
 }
 
 /** The parent's test and its session, rebuilt from the answers with the assessment core. No time check. */
-async function readTest(store: AttemptStore, parent: string, id: string): Promise<{ ok: true; attempt: Attempt; session: Session } | Refusal> {
+async function readTest(store: AttemptStore, parent: string, id: string): Promise<ReadTest | Refusal> {
   let loaded: LoadedAttempt | null;
   try {
     loaded = await store.load(parent, id);
@@ -491,8 +531,15 @@ async function readTest(store: AttemptStore, parent: string, id: string): Promis
     console.error("[test] restore failed", id, messageOf(e));
     return { ok: false, error: "store_failed", unreadable: true };
   }
-  // A test with every answer in never expires: it only waits to be scored.
-  return { ok: true, attempt: { ...loaded.attempt, answeredAll: testStep(session).status === "complete" }, session };
+  // A test with every answer in never expires: it only waits to be scored. #190: every main answer counts; an extra
+  // round the child is still taking never closes the test.
+  return {
+    ok: true,
+    attempt: { ...loaded.attempt, answeredAll: mainAnswered(session) },
+    session,
+    round: loaded.extraRound ?? NO_ROUND,
+    help: loaded.help ?? null,
+  };
 }
 
 // The timed facts section (#70, #148), at the halfway break. The server's clock times it: the section starts at the
@@ -687,6 +734,8 @@ export async function finishTest(store: AttemptStore, parent: string, id: string
   const open = await openTest(store, parent, id, now);
   if (!open.ok) return open;
   const { attempt, session } = open;
+  // #190: a round taken from the report finishes on the completed test, and scores it again.
+  if (attempt.status === "completed" && session.extra && open.round.finishedAt === null) return finishRound(store, id, open, now);
   if (attempt.status === "completed") return { ok: true, id: attempt.id, finished: "already" };
   if (attempt.status !== "in_progress" || testStep(session).status !== "complete") return { ok: false, error: "incomplete" };
   // As before the module, the help answer is checked only for a test that can be finished now.
@@ -745,4 +794,184 @@ async function shownOf(store: AttemptStore, id: string, position: number): Promi
     logFailure("[test] shown time load failed", e);
     return null;
   }
+}
+
+// The optional extra round (#190, spec #181). After the last main question, only when an area's result is an early
+// sign, the child can take up to 8 more questions or skip them, before "Did anyone help?". The assessment core draws
+// the round and scores it; this stores it. A skipped round is offered again on the report while the test is the
+// child's latest: then the round runs on the completed test, and its finish scores the test again (the finish route then
+// runs the report job, which builds the report again).
+
+/** #190: when the extra round was offered, skipped, started and finished (epoch ms, the server's clock); null when not. */
+export interface ExtraRoundRecord {
+  offeredAt: number | null;
+  skippedAt: number | null;
+  startedAt: number | null;
+  finishedAt: number | null;
+}
+
+/** A test with nothing recorded about the extra round. */
+export const NO_ROUND: ExtraRoundRecord = { offeredAt: null, skippedAt: null, startedAt: null, finishedAt: null };
+
+/**
+ * The store seam's operations for the extra round (#190). Each keeps one database guard. The module calls them only for
+ * a test that `load` returned for the parent, so they take the test's id alone. `load` returns the round's record.
+ */
+export interface ExtraRoundStore {
+  /** Records when the round was first offered. A later offer changes nothing. */
+  recordExtraOffer(id: string, at: number): Promise<void>;
+  /** Records the child's skip, only while the test is in progress and the round was neither skipped nor started. */
+  skipExtraRound(id: string, at: number): Promise<void>;
+  /**
+   * Stores the test with its drawn round (`test.extra`) and the start time, only while the round has not started and
+   * the test has not expired. "taken": another request started it first (or the test expired): read again.
+   */
+  startExtraRound(id: string, round: { at: number; test: StoredTest }): Promise<"stored" | "taken">;
+  /**
+   * A round taken from the report: stores the placement scored again with the round's answers, and the finish time,
+   * only while the test is completed and its round started and not finished. False: another request finished it first.
+   */
+  finishExtraRound(id: string, finished: { at: number; placement: Placement }): Promise<boolean>;
+}
+
+/** True while the test takes answers: in progress, or completed with a round taken from the report and not finished. */
+const takesAnswers = ({ attempt, session, round }: ReadTest): boolean =>
+  attempt.status === "in_progress" || (attempt.status === "completed" && !!session.extra && round.finishedAt === null);
+
+/**
+ * The step the screen shows next. When every answer of an open test is in and the child neither skipped nor took the
+ * round, the step offers the round if an area is an early sign.
+ */
+function stepOf({ attempt, session, round }: ReadTest): TestStep {
+  const step = testStep(session);
+  if (step.status !== "complete" || attempt.status !== "in_progress" || round.skippedAt !== null) return step;
+  const offer = extraRoundOffer(session);
+  return offer ? { ...step, extraRound: offer } : step;
+}
+
+/**
+ * The child takes the extra round of the parent's test at `now`: the assessment core draws its questions, and the store
+ * keeps them with the test and the start time. Sends the round's next question. Taking a round that has started (a
+ * double click, a reload) sends where it is now; two requests at once start it once. "conflict" with the step when no
+ * round is due.
+ */
+export async function takeExtraRound(store: AttemptStore, parent: string, id: string, now: number): Promise<StepOutcome> {
+  const open = await openTest(store, parent, id, now);
+  if (!open.ok) return open;
+  if (open.session.extra) return carryOn(store, id, open, now);
+  const refuse: Refusal = { ok: false, error: "conflict", step: stepOf(open) };
+  if (open.attempt.status === "completed") {
+    // From the report: only while the test is the child's latest.
+    let latest: boolean;
+    try {
+      latest = await latestTest(store, parent, id);
+    } catch (e) {
+      return storeFailed(e);
+    }
+    if (!latest) return refuse;
+  } else if (open.attempt.status !== "in_progress") {
+    return refuse;
+  }
+  let next: Session;
+  try {
+    next = startExtraRound(open.session);
+  } catch {
+    return refuse;
+  }
+  let started: "stored" | "taken";
+  try {
+    started = await store.startExtraRound(id, { at: now, test: storedTest(next) });
+  } catch (e) {
+    return storeFailed(e);
+  }
+  if (started === "stored") return carryOn(store, id, { ...open, session: next }, now);
+  // Another request started the round first: carry on with that one, read fresh.
+  const fresh = await openTest(store, parent, id, now);
+  if (!fresh.ok) return fresh;
+  return fresh.session.extra ? carryOn(store, id, fresh, now) : { ok: false, error: "conflict", step: stepOf(fresh) };
+}
+
+/**
+ * The child skips the extra round of the parent's test at `now`, during the test: the store records the skip, and the
+ * step goes on to "Did anyone help?" without the offer. A second skip changes nothing. "conflict" with the step when no
+ * round is due, or the round has started.
+ */
+export async function skipExtraRound(store: AttemptStore, parent: string, id: string, now: number): Promise<StepOutcome> {
+  const open = await openTest(store, parent, id, now);
+  if (!open.ok) return open;
+  if (open.attempt.status !== "in_progress" || !extraRoundOffer(open.session)) return { ok: false, error: "conflict", step: stepOf(open) };
+  try {
+    await store.skipExtraRound(id, now);
+  } catch (e) {
+    return storeFailed(e);
+  }
+  return { ok: true, step: testStep(open.session) };
+}
+
+/** True when the parent's test is their child's latest: no other test of the child started after it. Throws on a store failure. */
+async function latestTest(store: AttemptStore, parent: string, id: string): Promise<boolean> {
+  const all = await store.attempts(parent);
+  const test = all.find((a) => a.id === id);
+  return !!test && !all.some((a) => a.childId === test.childId && a.id !== id && a.startedAt > test.startedAt);
+}
+
+/**
+ * Finishes a round taken from the report on the completed test at `now`: scores the test again with the round's
+ * answers, the facts section and the stored help answer, and stores the new placement once.
+ */
+async function finishRound(store: AttemptStore, id: string, read: ReadTest, now: number): Promise<FinishOutcome> {
+  if (testStep(read.session).status !== "complete") return { ok: false, error: "incomplete" };
+  const facts = await readSection(store, id);
+  if (!facts.ok) return facts;
+  const placement = finish(read.session, facts.section?.session ?? null, read.help);
+  let won: boolean;
+  try {
+    won = await store.finishExtraRound(id, { at: now, placement });
+  } catch (e) {
+    return storeFailed(e);
+  }
+  return { ok: true, id: read.attempt.id, finished: won ? "now" : "already" };
+}
+
+/**
+ * #190: what the report offers about the extra round: the round of a test whose child skipped it (or never saw the
+ * offer), or the rest of a round the child started from the report. Only for a completed test that is the child's
+ * latest, with an early-sign area. Null otherwise, and when the test cannot be read. Writes nothing.
+ */
+export type ExtraRoundState =
+  | { kind: "offer"; offer: ExtraRoundOffer }
+  | { kind: "continue"; offer: ExtraRoundOffer; answered: number };
+
+export async function extraRoundState(store: AttemptStore, parent: string, id: string): Promise<ExtraRoundState | null> {
+  const read = await readTest(store, parent, id);
+  if (!read.ok || read.attempt.status !== "completed" || read.round.finishedAt !== null) return null;
+  try {
+    if (!(await latestTest(store, parent, id))) return null;
+  } catch (e) {
+    console.error("[test]", messageOf(e));
+    return null;
+  }
+  const taken = extraRoundTaken(read.session);
+  if (taken) {
+    const { answered, ...offer } = taken;
+    return { kind: "continue", offer, answered };
+  }
+  const offer = extraRoundOffer(read.session);
+  return offer ? { kind: "offer", offer } : null;
+}
+
+/** Sends the step of a test that takes answers, and records it as shown. */
+async function carryOn(store: AttemptStore, id: string, read: ReadTest, now: number): Promise<StepOutcome> {
+  const step = stepOf(read);
+  await shown(store, id, read.session, step, now);
+  return { ok: true, step };
+}
+
+/** Records what the screen shows now: the serve of a question (#184), or the offer of the extra round. Failures are logged. */
+async function shown(store: AttemptStore, id: string, session: Session, step: TestStep, now: number): Promise<void> {
+  if (step.status === "complete") {
+    if (step.extraRound) await bestEffort("[test] extra round offer save failed", () => store.recordExtraOffer(id, now));
+    return;
+  }
+  await served(store, id, session, now);
 }

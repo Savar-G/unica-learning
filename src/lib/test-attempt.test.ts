@@ -256,6 +256,8 @@ describe("answering a question", () => {
       workText: null,
       // #184: no serve was recorded for this question and the screen sent no events.
       timeline: { shownAt: null, answeredAt: at, events: null },
+      // #190: an answer to the main test, not the extra round.
+      round: "main",
     });
   });
 });

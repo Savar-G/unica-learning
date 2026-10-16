@@ -3,6 +3,7 @@ export * from "./attempt";
 export * from "./certainty";
 export * from "./constants";
 export * from "./deletion";
+export { extraRoundOffer, extraRoundTaken, mainAnswered, startExtraRound } from "./extra-round";
 export * from "./facts";
 export * from "./flags";
 export * from "./rushing";

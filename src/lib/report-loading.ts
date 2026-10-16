@@ -137,10 +137,13 @@ export type ComparisonRead = (assessmentId: string) => Promise<ComparisonInput>;
 export async function loadReportInputs(reader: ReportReader, assessmentId: string, comparison: ComparisonRead): Promise<ReportInputs | null> {
   const a = await reader.assessment(assessmentId);
   if (!a || a.status !== "completed" || !a.completedAt || !a.placement) return null;
-  const answers = await reader.answers(a.id);
-  // The question map: every question the test could ask, from stage 1 and the three stage 2 paths.
-  const { stage1, stage2 } = a.test;
-  const questions = new Map([...stage1, ...stage2.up, ...stage2.stay, ...stage2.down].map((q) => [q.id, q]));
+  const stored = await reader.answers(a.id);
+  // The question map: every question the test could ask, from stage 1, the three stage 2 paths and the extra round (#190).
+  const { stage1, stage2, extra = [] } = a.test;
+  const questions = new Map([...stage1, ...stage2.up, ...stage2.stay, ...stage2.down, ...extra].map((q) => [q.id, q]));
+  // #190: the answers the placement scored. A round started from the report counts only once it is finished.
+  const unscored = a.placement.extraRound ? new Set<string>() : new Set(extra.map((q) => q.id));
+  const answers = stored.filter((x) => !unscored.has(x.questionId));
   const withWork = answers.filter((x) => x.workPath !== null || x.workText !== null);
   return {
     assessment: {

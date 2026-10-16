@@ -142,8 +142,11 @@ export interface AnswerLine {
   /** 1-based, in test order. */
   number: number;
   questionId: string;
-  /** Stage 1 (at the school grade) or stage 2 (after the route); null when the question is not in the stored test. */
-  stage: 1 | 2 | null;
+  /**
+   * Stage 1 (at the school grade), stage 2 (after the route), or "extra" for the optional extra round (#190); null when
+   * the question is not in the stored test.
+   */
+  stage: 1 | 2 | "extra" | null;
   prompt: string | null;
   level: Level | null;
   strand: Strand | null;
@@ -211,9 +214,10 @@ function misconceptionText(id: string | null): string | null {
  * finished, whose score counted every answer.
  */
 export function answerLines(test: StoredTest, answers: readonly AnswerRecord[], reviews: readonly ReviewRecord[], leftOut: readonly string[] = []): AnswerLine[] {
-  const stage = new Map<string, { q: Question; stage: 1 | 2 }>();
+  const stage = new Map<string, { q: Question; stage: 1 | 2 | "extra" }>();
   for (const q of test.stage1) stage.set(q.id, { q, stage: 1 });
   for (const q of [...test.stage2.up, ...test.stage2.stay, ...test.stage2.down]) stage.set(q.id, { q, stage: 2 });
+  for (const q of test.extra ?? []) stage.set(q.id, { q, stage: "extra" });
   const reviewed = new Map(reviews.map((r) => [r.question_id, { ...r, score: Number(r.score) }]));
   const ordered = [...answers].sort((a, b) => a.position - b.position);
   const out = new Set(leftOut);
@@ -255,7 +259,7 @@ export interface ShownLine {
 /** The questions the server served that have no answer yet, in test order. */
 export function shownWithoutAnswer(test: StoredTest, shows: readonly ShownRecord[], answers: readonly AnswerRecord[]): ShownLine[] {
   const answered = new Set(answers.map((a) => a.position));
-  const prompts = new Map([...test.stage1, ...test.stage2.up, ...test.stage2.stay, ...test.stage2.down].map((q) => [q.id, q.prompt]));
+  const prompts = new Map([...test.stage1, ...test.stage2.up, ...test.stage2.stay, ...test.stage2.down, ...(test.extra ?? [])].map((q) => [q.id, q.prompt]));
   return [...shows].sort((a, b) => a.position - b.position).filter((s) => !answered.has(s.position))
     .map((s) => ({ number: s.position + 1, questionId: s.question_id, prompt: prompts.get(s.question_id) ?? null, shownAt: s.shown_at }));
 }
