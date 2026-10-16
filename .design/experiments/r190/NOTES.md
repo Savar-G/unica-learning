@@ -1,4 +1,4 @@
-# Round r190: the optional extra round (#190, spec #181, D-115)
+# Round r190: the optional extra round (#190, spec #181, D-116)
 
 Savar could not be reached during the build, so the implementer shipped option A of each open look and kept B and C
 here as screenshots. Each look is in `manifest.json`. Swap by moving the markup in `src/components/test-extra.tsx`

@@ -18,8 +18,8 @@ export interface MemoryReport {
 }
 /** The columns of public.assessments the readers read, with the stored test. */
 export type MemoryAssessment = AssessmentRecord;
-/** The columns of public.answers the readers read. */
-export interface MemoryAnswer extends StoredAnswer {
+/** The columns of public.answers the readers read. The answer timeline (#184) may be left out: it is then null. */
+export interface MemoryAnswer extends Omit<StoredAnswer, "readAloud" | "away">, Partial<Pick<StoredAnswer, "readAloud" | "away">> {
   assessmentId: string;
 }
 /** The columns of public.children the report view reads. */
@@ -98,6 +98,8 @@ export function memoryReportReaders(tables: MemoryReportTables) {
           workRequired: a.workRequired,
           workPath: a.workPath,
           workText: a.workText,
+          readAloud: a.readAloud ?? null,
+          away: a.away ? { ...a.away } : null,
         }));
     },
     async sign(paths) {

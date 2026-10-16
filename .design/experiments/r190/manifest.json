@@ -1,7 +1,7 @@
 {
   "round": 190,
   "ticket": "#190 (spec #181): the optional extra round for early-sign areas",
-  "decision": "D-115",
+  "decision": "D-116",
   "note": "Round named after the ticket so parallel tickets of spec #181 do not take the same r<n>. Savar could not be reached: the implementer shipped option A of each look (most consistent with DESIGN.md, D-088 and the r189 report patterns) and lists the others so Savar can swap.",
   "invariants": [
     "Copy: no performance claims (DESIGN.md). The child is told the questions help us see more clearly and that skipping is fine; the parent is told the report is made again with the answers",

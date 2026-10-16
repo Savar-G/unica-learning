@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { REPORTED_STRAND, createSession, nextQuestion, restoreSession, startAttempt, storedTest, type Question } from "@/lib/assessment";
+import { REPORTED_STRAND, createSession, nextQuestion, restoreSession, startAttempt, storedTest, type LearnerProfile, type Question } from "@/lib/assessment";
 import { memoryTransport } from "@/lib/email-delivery-memory";
+import { memoryLearnerProfileStore } from "@/lib/learner-profile-memory";
 import { runReportJob } from "@/lib/report-job";
 import { memoryReportJobStore } from "@/lib/report-job-memory";
 import { memoryReportReaders, type MemoryReportTables } from "@/lib/report-loading-memory";
@@ -90,7 +91,7 @@ describe("a finished extra round", () => {
     const job = memoryReportJobStore(tables, { reads: readers.reads, parents: [{ id: "parent-1", ...PRIYA }] });
     const mail = memoryTransport();
     const book = memoryReportLedger();
-    const run = () => runReportJob("a1", ORIGIN, { reader: readers.key(), comparison: async (id) => ({ assessmentId: id, tests: [] }), store: job.store, reviewer: null, transport: mail.transport, ledger: book.ledger });
+    const run = () => runReportJob("a1", ORIGIN, { reader: readers.key(), comparison: async (id) => ({ assessmentId: id, tests: [] }), store: job.store, profiles: memoryLearnerProfileStore(tables).store, reviewer: null, transport: mail.transport, ledger: book.ledger });
 
     // After the finish: the report of the main test, emailed once.
     await run();
@@ -147,7 +148,7 @@ describe("a finished extra round", () => {
     const job = memoryReportJobStore(tables, { reads: readers.reads, parents: [{ id: "parent-1", ...PRIYA }] });
     const mail = memoryTransport();
     const book = memoryReportLedger();
-    const run = () => runReportJob("a1", ORIGIN, { reader: readers.key(), comparison: async (id) => ({ assessmentId: id, tests: [] }), store: job.store, reviewer: null, transport: mail.transport, ledger: book.ledger });
+    const run = () => runReportJob("a1", ORIGIN, { reader: readers.key(), comparison: async (id) => ({ assessmentId: id, tests: [] }), store: job.store, profiles: memoryLearnerProfileStore(tables).store, reviewer: null, transport: mail.transport, ledger: book.ledger });
 
     // The report of the main test alone, emailed once: the 3 round answers and their work are not in it.
     await run();
@@ -187,10 +188,79 @@ describe("a finished extra round", () => {
     const readers = memoryReportReaders(tables);
     const job = memoryReportJobStore(tables, { reads: readers.reads, parents: [{ id: "parent-1", ...PRIYA }] });
     const mail = memoryTransport();
-    await runReportJob("a1", ORIGIN, { reader: readers.key(), comparison: async (id) => ({ assessmentId: id, tests: [] }), store: job.store, reviewer: null, transport: mail.transport, ledger: memoryReportLedger().ledger });
+    await runReportJob("a1", ORIGIN, { reader: readers.key(), comparison: async (id) => ({ assessmentId: id, tests: [] }), store: job.store, profiles: memoryLearnerProfileStore(tables).store, reviewer: null, transport: mail.transport, ledger: memoryReportLedger().ledger });
     const early = REPORTED_STRAND[memory.tests[0].test.stage1[0].strand];
     expect(tables.reports![0]).toMatchObject({ questions: 50, minutes: 17 });
     expect(tables.reports![0].model.extraRound).toEqual({ questions: 8, strands: [early] });
     expect(mail.delivered).toHaveLength(2);
+  });
+});
+
+// #196 (D-115) with #190 (D-116): the report job builds the learner profile from the same answers as the report.
+describe("the learner profile after an extra round", () => {
+  /** The report job over the attempt module's test, with its own profile store; `run` copies the test in first. */
+  function job(memory: ReturnType<typeof memoryAttemptStore>) {
+    const tables: MemoryReportTables = { reports: [], children: [{ id: "child-1", parentId: "parent-1", firstName: "Asha" }], drawings: [] };
+    const readers = memoryReportReaders(tables);
+    const reports = memoryReportJobStore(tables, { reads: readers.reads, parents: [{ id: "parent-1", ...PRIYA }] });
+    const profiles = memoryLearnerProfileStore(tables);
+    const run = async () => {
+      copy(memory.tests[0], tables);
+      await runReportJob("a1", ORIGIN, { reader: readers.key(), comparison: async (id) => ({ assessmentId: id, tests: [] }), store: reports.store, profiles: profiles.store, reviewer: null, transport: memoryTransport().transport, ledger: memoryReportLedger().ledger });
+    };
+    return { run, rows: profiles.rows };
+  }
+  const stored = (rows: ReturnType<ReturnType<typeof job>["rows"]>) => rows.map((r) => r.profile as LearnerProfile);
+
+  it("is rebuilt in place with the round's answers when the round is finished from the report", async () => {
+    const memory = await finishedAfterSkip();
+    const { run, rows } = job(memory);
+    const early = REPORTED_STRAND[memory.tests[0].test.stage1[0].strand];
+
+    await run();
+    expect(rows()).toHaveLength(1);
+    const before = stored(rows())[0];
+    expect(before.test.answered).toBe(42);
+    expect(before.strands.find((s) => s.strand === early)).toMatchObject({ correct: 5, total: 6, certainty: "early-sign" });
+    expect(before.unknowns.earlySigns.strands).toContain(early);
+
+    let at = T0 + 2 * DAY;
+    expect(await takeExtraRound(memory.store, "parent-1", "a1", at)).toMatchObject({ ok: true });
+    await answerAll(memory, () => true, () => (at += MINUTE));
+    expect(await finishTest(memory.store, "parent-1", "a1", null, (at += MINUTE))).toEqual({ ok: true, id: "a1", finished: "now" });
+    await run();
+
+    expect(rows()).toHaveLength(1);
+    expect(rows()[0]).toMatchObject({ assessmentId: "a1", parentId: "parent-1", childId: "child-1" });
+    const after = stored(rows())[0];
+    expect(after.test.answered).toBe(50);
+    expect(after.strands.find((s) => s.strand === early)).toMatchObject({ correct: 13, total: 14, certainty: "clear" });
+    expect(after.unknowns.earlySigns.strands).not.toContain(early);
+  });
+
+  it("is built from the main test only when the round is stopped part way", async () => {
+    const test = storedTest(createSession(ASHA, 1));
+    const row: MemoryTest = { ...startAttempt("a1", T0), parentId: "parent-1", childId: "child-1", seed: 1, test, answers: [] };
+    const memory = memoryAttemptStore({ children: [{ id: "child-1", parentId: "parent-1", ...ASHA }], tests: [row] });
+    let at = T0;
+    await answerAll(memory, (n) => n !== 0, () => (at += MINUTE));
+    await takeExtraRound(memory.store, "parent-1", "a1", (at += MINUTE));
+    // Three round answers, all wrong: were they counted, the area would be 5 of 9.
+    for (let i = 0; i < 3; i++) {
+      const q = nextQuestion(restoreSession(memory.tests[0].test, memory.tests[0].answers))!;
+      expect(await answerQuestion(memory.store, "parent-1", "a1", { questionId: q.id, response: wrongTo(q), timeMs: 20_000, work: { png: null, text: q.showWork ? "My working" : "" } }, (at += MINUTE))).toMatchObject({ ok: true });
+    }
+    await stopExtraRound(memory.store, "parent-1", "a1", (at += MINUTE));
+    await finishTest(memory.store, "parent-1", "a1", "no", (at += MINUTE));
+    expect(memory.tests[0].answers).toHaveLength(45);
+    const { run, rows } = job(memory);
+    const early = REPORTED_STRAND[memory.tests[0].test.stage1[0].strand];
+
+    await run();
+    const [profile] = stored(rows());
+    expect(profile.test.answered).toBe(42);
+    expect(profile.strands.find((s) => s.strand === early)).toMatchObject({ correct: 5, total: 6, certainty: "early-sign" });
+    const round = new Set(memory.tests[0].test.extra!.map((q) => q.id));
+    expect(profile.struggles.flatMap((s) => s.wrong).filter((w) => round.has(w.questionId))).toEqual([]);
   });
 });

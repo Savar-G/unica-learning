@@ -33,6 +33,8 @@ export const ADMIN_TESTS_PATH = `${ADMIN_PATH}/tests`;
 /** One test in the admin area. Savar's alert email for each finished test links here (#65). */
 export const adminTestPath = (id: string) => `${ADMIN_PATH}/assessments/${id}`;
 export const adminParentPath = (id: string) => `${ADMIN_PATH}/parents/${id}`;
+/** The learner profile of one test (#196). */
+export const adminProfilePath = (id: string) => `${adminTestPath(id)}/profile`;
 /** The parent's report as the parent sees it, opened by an admin. */
 export const adminReportPath = (id: string) => `${ADMIN_PATH}/reports/${id}`;
 /** One logged email, as the parent got it (D-103). `id`: its id in the email list. */
@@ -210,6 +212,10 @@ function misconceptionText(id: string | null): string | null {
   const known = MISCONCEPTIONS[id as MisconceptionId];
   return known ? `${id}: ${known.description}` : id;
 }
+
+/** Question id to its number in the test (position + 1, as answerLines numbers them), in test order: for flagText. */
+export const questionNumbers = (answers: readonly Pick<AnswerRecord, "position" | "question_id">[]): Map<string, number> =>
+  new Map([...answers].sort((a, b) => a.position - b.position).map((a) => [a.question_id, a.position + 1]));
 
 /**
  * The answers in test order, each with its question from the stored test and its AI review. `leftOut`: the questions

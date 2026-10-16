@@ -5,7 +5,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import type { FactsTest, HelpAnswer, Placement, Province, StoredTest } from "@/lib/assessment";
 import { isUuid } from "@/lib/assessment-store";
 import { LEARNING_COLUMNS, type LearningRow } from "@/lib/learning-style";
-import { filterTests, type AdminFilters, type AnswerRecord, type FactAnswerRecord, type ReviewRecord, type ShownRecord } from "@/lib/admin-view";
+import { filterTests, questionNumbers, type AdminFilters, type AnswerRecord, type FactAnswerRecord, type ReviewRecord, type ShownRecord } from "@/lib/admin-view";
 import type { ExtraRoundColumns, TestContextRecord } from "@/lib/admin-view";
 import { sessionClient } from "@/lib/supabase-auth";
 import type { AssessmentStatus } from "@/lib/test-api";
@@ -288,6 +288,34 @@ export async function getStrokes(a: AdminSession, id: string): Promise<Record<st
     await a.db.from("answers").select("question_id, strokes_path").eq("assessment_id", id).not("strokes_path", "is", null), "strokes");
   const urls = await signWork(a.db, rows.map((r) => r.strokes_path));
   return Object.fromEntries(rows.map((r) => [r.question_id, urls[r.strokes_path] ?? null]));
+}
+
+// The learner profile (#196)
+
+/** One test's learner profile (public.learner_profiles: admins read it), with the test, its child and its parent. */
+export interface ProfileDetail {
+  test: { id: string; child_id: string; parent_id: string; grade: number; province: Province; status: AssessmentStatus; completed_at: string | null; child: ChildRow | null; parent: ParentRow | null };
+  /** The stored profile; null when none is stored for the test. `profile` is the stored JSON, at any schema version. */
+  stored: { created_at: string; built_at: string; schema_version: number; profile: unknown } | null;
+  /** Question id to its number in the test (questionNumbers), for the help flags. */
+  numbers: ReadonlyMap<string, number>;
+}
+
+/** The learner profile of one test, or null when there is no such test. */
+export async function getProfile(a: AdminSession, id: string): Promise<ProfileDetail | null> {
+  if (!isUuid(id)) return null;
+  const test = must<Omit<ProfileDetail["test"], "child" | "parent"> | null>(
+    await a.db.rpc("admin_assessments").select("id, child_id, parent_id, grade, province, status, completed_at").eq("id", id).maybeSingle(), "profile test");
+  if (!test) return null;
+  const [[child], [parent], stored, answers] = await Promise.all([
+    childrenById(a, [test.child_id]),
+    parentsById(a, [test.parent_id]),
+    a.db.from("learner_profiles").select("created_at, built_at, schema_version, profile").eq("assessment_id", id).maybeSingle()
+      .then((r) => must<ProfileDetail["stored"]>(r, "learner profile")),
+    a.db.from("answers").select("position, question_id").eq("assessment_id", id)
+      .then((r) => must<Pick<AnswerRecord, "position" | "question_id">[]>(r, "answers")),
+  ]);
+  return { test: { ...test, child: child ?? null, parent: parent ?? null }, stored, numbers: questionNumbers(answers) };
 }
 
 // Parents and children
