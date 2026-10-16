@@ -136,7 +136,7 @@ const INCLUDED: [IconName, string, ReactNode, number][][] = [
     ["pencil", "Real paper. Real pencil.", "Daily practice happens away from screens. The app is for you, not them.", 0.16],
   ],
   [
-    ["cam", "Scan it.", "Scan a finished page to see what's right in seconds. Stuck on a problem? Scan it to see every step explained.", 0.04],
+    ["cam", "Instant answer check", "Scan a finished page to see what's right in seconds. Stuck on a problem? Scan it to see every step explained.", 0.04],
     ["chart", "Progress reports", "A report and worked solutions in the app after every scan.", 0.12],
     ["book", "Workbooks mailed home", "1 math workbook a month, about 20-25 pages, delivered before the current book ends.", 0.2],
   ],
