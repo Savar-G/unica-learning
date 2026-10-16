@@ -1,3 +1,4 @@
+-- Applied to project "pagewise" (cdjobwsyzndtltzfpyqa) as migration fix_template_shown_counts (20261016203610), 2026-10-16.
 -- #199, spec #181: count served positions even when the child has not answered.
 -- Additive: keep admin_template_stats for the previous site version. Apply this function before the new site ships.
 -- Answers are also evidence of a serve, including answers saved before question_shows existed.
