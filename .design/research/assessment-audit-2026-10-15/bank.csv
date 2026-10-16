@@ -1,0 +1,528 @@
+id,bands,strand,reported_strand,level_BC,level_AB,level_SK,level_MB,level_ON,answer_type,whiteboard_suited,bc_standard,skill_id,difficulty,sample_prompt_120,sample_correct_answer,n_coded_wrong_sample,misconception_tags_over_50_seeds,has_figure,has_say,template_uses_randomization
+k-count-shapes,1-2,N,number,0,0,0,0,0,number,false,K1,k-count-shapes,,How many squares? ■ ■ ■ ■ ■ ■,6,2,one-to-one,false,false,true
+k-number-after,1-2,N,number,0,0,0,0,0,number,false,K1,k-number-after,,What number comes just after 6?,7,1,before-after,false,false,true
+k-number-before,1-2,N,number,0,0,0,0,0,number,false,K1,k-number-before,,What number comes just before 7?,6,1,before-after,false,false,true
+k-missing-number,1-2,N,number,0,0,0,0,0,number,false,K1,k-missing-number,,"What number is missing? 5, 6, ?, 8, 9",7,1,next-not-asked,false,false,true
+k-who-has-more,1-2,N,number,0,0,0,0,0,choice,true,K2,k-who-has-more,,Ava has 2 blocks: ● ●. Lucas has 8 blocks: ● ● ● ● ● ● ● ●. Who has more blocks?,Lucas,2,more-less|same-size,false,false,true
+k-make-five,1-2,N,number,0,0,0,0,0,number,true,K2,k-make-five,,4 and how many more make 5?,1,2,count-start|operation,false,false,true
+k-split-number,1-2,N,number,0,0,0,0,0,number,true,K3,k-split-number,,8 and how many more make 10? ● ● ● ● ● ● ● ●,2,2,count-start|operation,false,false,true
+k-rest-are,1-2,N,number,0,1,1,1,1,number,true,K3,k-rest-are,,There are 10 cars. 3 are red. The rest are white. How many cars are white?,7,2,count-start|operation,false,false,true
+k-in-all,1-2,N,number,0,1,1,1,1,number,true,K3,k-in-all,,Jonah has 3 green frogs and 5 yellow frogs. How many frogs does Jonah have in all?,8,2,count-start|operation,false,false,true
+k-pattern-ab,1-2,A,algebra,0,0,0,0,0,choice,true,K4,k-pattern-ab,,What comes next? ● ★ ● ★ ● ★ ?,● circle,2,A2|pattern-new-shape,false,false,true
+k-pattern-abc,1-2,A,algebra,0,0,0,0,0,choice,true,K4,k-pattern-abc,,What comes next? ★ ▲ ● ★ ▲ ● ★ ?,▲ triangle,2,A2|pattern-core,false,false,true
+k-pattern-aab,1-2,A,algebra,0,0,0,0,0,choice,true,K4,k-pattern-aab,,What comes next? ■ ★ ★ ■ ★ ★ ■ ?,★ star,2,A2|pattern-core|pattern-new-shape,false,false,true
+k-number-pattern,1-2,A,algebra,0,0,0,0,0,choice,false,K4,k-number-pattern,,"What comes next? 1, 5, 1, 5, 1, ?",5,2,A2|pattern-growing,false,false,true
+k-how-many-more,1-2,A,algebra,0,1,1,1,1,number,true,K5,k-how-many-more,,Ben has 3 blocks and wants to have 8 blocks in all. How many more blocks does Ben need?,5,2,count-start|operation,false,false,true
+k-take-away,1-2,A,algebra,0,1,1,1,1,number,true,K5,k-take-away,,There are 9 frogs. 6 frogs hop away. How many frogs are left?,3,2,count-start|operation,false,false,true
+k-balance-match,1-2,A,algebra,0,1,1,1,1,number,true,K6,k-balance-match,,One side of a balance has 4 red cubes and 2 blue cubes. The other side is empty. All the cubes weigh the same. How many ,6,2,one-part,false,false,true
+k-balance-tips,1-2,A,algebra,0,1,1,1,1,choice,false,K6,k-balance-tips,,A balance has 6 cubes on the blue side and 2 cubes on the green side. All the cubes are the same. Which side goes down?,The blue side,2,balance-up|same-size,false,false,true
+k-longer-line,1-2,MG,shapes,0,0,0,0,0,choice,false,K7,k-longer-line,,Which line is longer?,▬▬▬▬▬▬,2,more-less|same-size,false,false,true
+k-heavier-object,1-2,MG,shapes,0,0,0,0,0,choice,false,K7,k-heavier-object,,A small rock and a big feather are on a balance. The side with a small rock is lower. Which object is heavier?,A small rock,2,bigger-heavier|same-size,false,false,true
+k-balance-heavier,1-2,MG,shapes,0,0,0,0,0,choice,false,K7,k-balance-heavier,,"On a balance, the side with the book goes down and the side with the banana goes up. Which is heavier?",The book,2,balance-up|same-size,false,false,true
+k-shape-attribute,1-2,MG,shapes,0,1,1,1,0,choice,false,K8,k-shape-attribute,,Which shape has no corners?,●,2,shape-name,false,false,true
+k-can-roll,1-2,MG,shapes,0,0,0,0,0,choice,false,K8,k-can-roll,,Which one can roll?,An orange,2,roll-slide,false,false,false
+k-graph-which-more,1-2,DP,shapes,0,2,2,2,1,choice,false,K9,k-graph-which-more,,Children chose a favourite colour. Red: ● ● ● ● ● ● ●. Blue: ● ●. Which did more children choose?,Red,2,more-less|same-size,false,false,true
+k-graph-count,1-2,DP,shapes,0,2,2,2,1,number,false,K9,k-graph-count,,Children chose a favourite colour. Red: ● ● ● ● ●. Blue: ● ● ● ● ● ● ●. Each ● is 1 child. How many children chose red?,5,1,wrong-row,false,false,true
+k-likely-event,1-2,DP,shapes,0,6,5,5,1,choice,false,K10,k-likely-event,,Which of these is most likely to happen?,You will see the sky today,2,chance-reversed,false,false,false
+1-ten-and-more,1-2,N,number,1,1,1,1,1,choice,false,1.1,1-ten-and-more,,Which number is 10 and 6 more?,16,2,N1|digit-reversal,false,false,true
+1-skip-count,1-2,N,number,1,1,1,1,1,number,false,1.1,1-skip-count,,"Count by 5s: 10, 15, ?, 25",20,1,skip-by-one,false,false,true
+1-smallest-biggest,1-2,N,number,1,1,1,1,1,choice,false,1.1,1-smallest-biggest,,"Which number is the biggest: 15, 7 or 5?",15,2,digit-compare|more-less,false,false,true
+1-more-or-less,1-2,N,number,1,1,1,1,1,number,false,1.1,1-more-or-less,,What number is 2 more than 5?,7,2,count-start|more-less,false,false,true
+1-make-ten,1-2,N,number,1,1,1,1,1,number,true,1.2,1-make-ten,,1 and how many more make 10?,9,2,count-start|operation,false,false,true
+1-count-coins,1-2,N,number,1,2,2,2,2,number,true,1.11,1-count-coins,,Lucas has 5 nickels. Each one is worth 5 cents. How many cents is that in all?,25,2,coin-count|operation,false,false,true
+1-add-to-20,1-2,O,number,1,1,1,1,1,number,true,1.3,1-add-to-20,,5 + 7 = ?,12,2,count-start|operation,false,false,true
+1-subtract-from-20,1-2,O,number,1,1,1,1,1,number,true,1.3,1-subtract-from-20,,14 − 9 = ?,5,2,count-start|operation,false,false,true
+1-story-add,1-2,O,number,1,1,1,1,1,number,true,1.3,1-story-add,,Ben has 8 crayons and gets 9 more. How many crayons does Ben have now?,17,2,count-start|operation,false,false,true
+1-story-take,1-2,O,number,1,1,1,1,1,number,true,1.3,1-story-take,,Leah has 16 stickers and gives away 9. How many stickers does Leah have left?,7,2,count-start|operation,false,false,true
+1-story-compare,1-2,O,number,1,1,1,1,1,number,true,1.3,1-story-compare,,Noah has 15 toy cars. Mei has 8 toy cars. How many more toy cars does Noah have than Mei?,7,2,difference-whole|operation,false,false,true
+1-pattern-four,1-2,A,algebra,1,1,1,1,1,choice,false,1.4,1-pattern-four,,What comes next? ● ■ ★ ★ ● ■ ★ ★ ?,● circle,2,A2|pattern-core|pattern-new-shape,false,false,true
+1-pattern-missing,1-2,A,algebra,1,1,1,1,1,choice,false,1.4,1-pattern-missing,,What shape is missing? ★ ● ★ ? ★ ● ★ ●,● circle,2,A2|pattern-core|pattern-new-shape,false,false,true
+1-pattern-letters,1-2,A,algebra,1,1,1,1,1,choice,false,1.4,1-pattern-letters,,Which letters show the part that repeats? ▲ ▲ ● ▲ ▲ ●,A A B,2,pattern-core,false,false,true
+1-number-pattern,1-2,A,algebra,1,1,1,1,1,choice,false,1.4,1-number-pattern,,"What comes next? 5, 4, 1, 5, 4, 1, 5, 4, ?",1,2,A2|pattern-growing,false,false,true
+1-build-to,1-2,A,algebra,1,1,1,1,1,number,true,1.5,1-build-to,,Jonah has 5 blocks and wants to have 11. How many more blocks does Jonah need?,6,2,count-start|operation,false,false,true
+1-missing-addend,1-2,A,algebra,1,1,3,3,1,number,true,1.5,1-missing-addend,,2 + ? = 5,3,2,count-start|operation,false,false,true
+1-which-sum-more,1-2,A,algebra,1,1,1,1,1,choice,true,1.6,1-which-sum-more,,Which is more: 7 + 2 or 4 + 7?,4 + 7,2,first-number|same-size,false,false,true
+1-pattern-predict,1-2,A,algebra,1,1,1,1,1,choice,true,1.4,1-pattern-predict,,The pattern keeps going: ★ ▲ ★ ▲ … What is the 8th shape?,▲ triangle,2,one-to-one|pattern-new-shape,false,false,true
+1-letters-to-shapes,1-2,A,algebra,1,1,1,1,1,choice,false,1.4,1-letters-to-shapes,,Which pattern is an A A B pattern?,★ ★ ● ★ ★ ●,2,pattern-core,false,false,true
+1-change-story,1-2,A,algebra,1,1,1,1,1,number,true,1.5,1-change-story,,There are 9 children on a bus. Some more get on. Now there are 14. How many more children came?,5,2,count-start|operation,false,false,true
+1-balance-cubes,1-2,A,algebra,1,1,1,1,1,number,true,1.6,1-balance-cubes,,One side of a balance has 8 cubes. The other side has 4 cubes. All the cubes are the same. How many cubes must you add t,4,2,difference-whole|operation,false,false,true
+1-equal-or-not,1-2,A,algebra,1,1,1,1,1,choice,true,1.6,1-equal-or-not,,Is 4 + 4 the same amount as 2 + 6?,"Yes, they are the same amount",2,first-number|looks-different|same-size,false,false,true
+1-cubes-longer,1-2,MG,shapes,1,2,2,2,1,number,true,1.7,1-cubes-longer,,A shoe is 7 cubes long. A sock is 5 cubes long. They start at the same line. How many cubes longer is the shoe?,2,2,difference-whole|operation,false,false,true
+1-unit-size,1-2,MG,shapes,1,2,2,2,2,choice,false,1.7,1-unit-size,,"Kai measures a rug and gets 12 steps. Mia measures it with smaller steps. Will Mia get more than 12, fewer than 12, or e",More than 12,2,count-unchanged|unit-size,false,false,true
+1-order-three,1-2,MG,shapes,1,1,1,1,1,choice,true,1.7,1-order-three,,The red stick is shorter than the yellow stick. The yellow stick is shorter than the green stick. Which stick is the lon,The green stick,2,more-less|order-pair,false,false,true
+1-shape-sides,1-2,MG,shapes,1,1,1,1,1,choice,false,1.8,1-shape-sides,,Which shape has exactly 4 sides?,■ square,2,shape-name,false,false,true
+1-sides-in-all,1-2,MG,shapes,1,1,1,1,1,number,true,1.8,1-sides-in-all,,How many sides do 3 squares have in all? ■ ■ ■,12,2,one-part|operation,false,false,true
+1-graph-how-many-more,1-2,DP,shapes,1,2,2,2,1,number,true,1.9,1-graph-how-many-more,,Each ● is 1 child. Soccer: ● ● ● ● ● ● ● ●. Swimming: ●. How many more children chose soccer than swimming?,7,2,difference-whole|operation,false,false,true
+1-graph-in-all,1-2,DP,shapes,1,2,2,2,1,number,false,1.9,1-graph-in-all,,Children chose a favourite colour. Each ● is 1 child. Red: ● ● ● ●. Blue: ● ● ●. How many children are there in all?,7,2,one-part|operation,false,false,true
+1-never-sometimes-always,1-2,DP,shapes,1,6,5,5,1,choice,false,1.10,1-never-sometimes-always,,"A bag has red blocks and blue blocks. You pick a block without looking, put it back, and do this again and again. How of",Sometimes,2,certain-likely|impossible-possible|opposite-extreme|rules-out-possible|sure-of-possible,false,false,true
+1-more-likely,1-2,DP,shapes,1,6,5,5,1,choice,false,1.10,1-more-likely,,Which is more likely to happen?,You will see a bird outside today,2,D3|chance-reversed,false,false,false
+1-cover-card,1-2,MG,shapes,1,1,1,1,1,choice,false,1.7,1-cover-card,,It takes 6 sticky notes to cover a red card and 12 sticky notes to cover a blue card. All the notes are the same size. W,The blue card,2,more-less|same-size,false,false,true
+1-length-together,1-2,MG,shapes,1,2,2,2,2,number,true,1.7,1-length-together,,"A book is 4 cubes long. A pencil is 9 cubes long. If you put them end to end, how many cubes long are they together?",13,2,one-part|operation,false,false,true
+1-tallest-child,1-2,MG,shapes,1,1,1,1,1,choice,true,1.7,1-tallest-child,,Theo is shorter than Leah. Leah is shorter than Mia. Who is the shortest?,Theo,2,more-less|order-pair,false,false,true
+1-heaviest-box,1-2,MG,shapes,1,1,1,1,1,choice,true,1.7,1-heaviest-box,,Three boxes were weighed on a balance. The blue box is heavier than the red box. The red box is heavier than the yellow ,The blue box,2,more-less|order-pair,false,false,true
+2-digit-value,1-2|3-5,N,number,2,2,2,2,2,number,false,2.1,2-digit-value,,What is the value of the 2 in 25?,20,1,N2,false,false,true
+2-even-or-odd,1-2|3-5,N,number,2,2,2,2,2,choice,false,2.1,2-even-or-odd,,"Which number is odd: 56, 21 or 14?",21,2,even-odd,false,false,true
+2-ten-more-less,1-2|3-5,N,number,2,2,2,2,2,number,false,2.1,2-ten-more-less,,What number is 10 more than 39?,49,1,tens-as-ones,false,false,true
+2-greatest,1-2|3-5,N,number,2,2,2,2,2,choice,false,2.1,2-greatest,,"Which number is the greatest: 35, 49 or 53?",53,2,digit-compare|digit-reversal,false,false,true
+2-tens-and-ones,1-2|3-5,N,number,2,2,2,2,2,number,true,2.1,2-tens-and-ones,,What number is 7 tens and 5 ones?,75,2,N2|digit-reversal,false,false,true
+2-skip-count-back,1-2|3-5,N,number,2,2,2,2,2,number,false,2.1,2-skip-count-back,,"Count back by 2s: 58, 56, 54, ?",52,2,pattern-direction|skip-by-one,false,false,true
+2-add-2-digit,1-2|3-5,O,number,2,2,2,2,2,number,true,2.4,2-add-2-digit,,36 + 19 = ?,55,2,O3|operation,false,false,true
+2-subtract-2-digit,1-2|3-5,O,number,2,2,2,2,2,number,true,2.4,2-subtract-2-digit,,71 − 13 = ?,58,2,O1|regroup-forget,false,false,true
+2-story-add-2-digit,1-2|3-5,O,number,2,2,2,2,2,number,true,2.4,2-story-add-2-digit,,A class collects 55 cans on Monday and 16 cans on Tuesday. How many cans is that in all?,71,2,O3|operation,false,false,true
+2-story-subtract-2-digit,1-2|3-5,O,number,2,2,2,2,2,number,true,2.4,2-story-subtract-2-digit,,A book has 65 pages. Mia has read 27 pages. How many pages are left to read?,38,2,O1|operation,false,false,true
+2-three-addends,1-2|3-5,O,number,2,2,2,2,2,number,true,2.4,2-three-addends,,Room 1 finished 24 books. Room 2 finished 12 books. Room 3 finished 17 books. How many books did the three rooms finish ,53,2,leaves-out-addend|one-part,false,false,true
+2-coins-mixed,1-2|3-5,O,number,2,3,2,2,2,number,true,2.12,2-coins-mixed,,"Lucas has 1 quarter, 4 dimes and 2 nickels. A quarter is 25 cents, a dime is 10 cents and a nickel is 5 cents. How many ",75,1,coin-count,false,false,true
+2-make-ten-strategy,1-2|3-5,O,number,2,2,2,2,2,choice,true,2.3,2-make-ten-strategy,,Which is the same as 9 + 4?,10 + 3,2,compensation|compensation-dir,false,false,true
+2-balance-equation,1-2|3-5,A,algebra,2,3,3,3,2,number,true,2.7,2-balance-equation,,5 + 4 = ? + 2,7,2,A1,false,false,true
+2-missing-left,1-2|3-5,A,algebra,2,3,3,3,2,number,true,2.6,2-missing-left,,17 = ? + 5,12,2,A1|count-start,false,false,true
+2-missing-addend,1-2|3-5,A,algebra,2,3,3,3,2,number,true,2.6,2-missing-addend,,3 + ? = 11,8,2,count-start|operation,false,false,true
+2-increasing-pattern,1-2|3-5,A,algebra,2,2,2,2,2,number,true,2.5,2-increasing-pattern,,"What comes next? 6, 16, 26, 36, ?",46,2,A2|skip-by-one,false,false,true
+2-pattern-core,1-2|3-5,A,algebra,2,2,2,2,2,choice,false,2.5,2-pattern-core,,What part of this pattern repeats? ▲ ■ ■ ★ ▲ ■ ■ ★ ▲ ■ ■ ★,▲ ■ ■ ★,2,pattern-core,false,false,true
+2-change-unknown,1-2|3-5,A,algebra,2,2,2,2,2,number,true,2.6,2-change-unknown,,There were 12 birds in a tree. Some flew away. Now there are 8. How many birds flew away?,4,2,count-start|operation,false,false,true
+2-pattern-rows,1-2|3-5,A,algebra,2,2,2,2,1,number,true,2.5,2-pattern-rows,,Each row has 2 more dots than the row before. Row 1: ● ●. Row 2: ● ● ● ●. Row 3: ● ● ● ● ● ●. How many dots will row 5 h,10,1,next-not-asked,false,false,true
+2-number-pattern-predict,1-2|3-5,A,algebra,2,2,2,2,2,choice,true,2.5,2-number-pattern-predict,,"The pattern keeps going: 9, 2, 6, 9, 2, 6, … What is the 11th number in the pattern?",2,2,one-to-one,false,false,true
+2-shape-pattern-predict,1-2|3-5,A,algebra,2,2,2,2,2,choice,true,2.5,2-shape-pattern-predict,,The pattern keeps going: ★ ● ● ■ ★ ● ● ■ … What is the 12th shape?,■ square,2,one-to-one|pattern-core|pattern-new-shape,false,false,true
+2-true-equation,1-2|3-5,A,algebra,2,3,2,2,2,choice,false,2.7,2-true-equation,,Which is true?,9 + 5 = 10 + 4,2,A1|compensation,false,false,false
+2-missing-in-pattern,1-2|3-5,A,algebra,2,2,2,2,2,number,true,2.5,2-missing-in-pattern,,"What number is missing? 12, 14, ?, 18, 20",16,2,next-not-asked|skip-by-one,false,false,true
+2-change-unknown-add,1-2|3-5,A,algebra,2,2,2,2,2,number,true,2.6,2-change-unknown-add,,There were 15 people on a train. Some more got on. Now there are 24. How many got on?,9,2,count-start|operation,false,false,true
+2-ruler-length,1-2|3-5,MG,shapes,2,3,3,3,2,number,true,2.8,2-ruler-length,,"A leaf starts at the 6 cm mark of a ruler and ends at the 10 cm mark. How long is the leaf, in cm?",4,2,M1|N4,false,false,true
+2-length-unit,1-2|3-5,MG,shapes,2,3,3,3,2,choice,false,2.8,2-length-unit,,Which unit is best for measuring the length of a spoon?,Centimetres,2,unit-choice|unit-kind,false,false,true
+2-square-or-rectangle,1-2|3-5,MG,shapes,2,2,2,2,2,choice,false,2.9,2-square-or-rectangle,,"Which shape has 4 square corners, 2 long sides and 2 short sides?",▬ rectangle,2,shape-name|square-rectangle,false,false,true
+2-turned-shape,1-2|3-5,MG,shapes,2,2,2,2,2,choice,false,2.9,2-turned-shape,,"A rectangle is turned so it stands on a short side, like this: ▮. What shape is it now?",Still a rectangle,2,M4|shape-name,false,false,true
+2-face-of-solid,1-2|3-5,MG,shapes,2,1,1,1,2,choice,false,2.9,2-face-of-solid,,"What shape is the flat bottom of a cone, like a party hat?",● circle,2,shape-name|side-view,false,false,true
+2-roll-and-stack,1-2|3-5,MG,shapes,2,2,2,2,2,choice,false,2.9,2-roll-and-stack,,Which one can roll and can also be stacked into a tower?,A can (a cylinder),2,one-attribute,false,false,false
+2-graph-in-all,1-2|3-5,DP,shapes,2,2,2,2,2,number,false,2.10,2-graph-in-all,,Children chose a favourite pet. Each ● is 1 child. Dogs: ● ● ● ● ● ●. Cats: ● ● ● ● ●. Fish: ● ● ● ●. How many children ,15,2,leaves-out-addend|one-part,false,false,true
+2-graph-fewer,1-2|3-5,DP,shapes,2,2,2,2,2,number,true,2.10,2-graph-fewer,,Children chose a favourite sport. Each ★ is 1 child. Hockey: ★ ★ ★ ★ ★ ★ ★ ★ ★ ★. Soccer: ★ ★ ★. How many fewer children,7,2,difference-whole|operation,false,false,true
+2-spinner,1-2|3-5,DP,shapes,2,6,5,5,3,choice,false,2.11,2-spinner,,A spinner has 6 equal parts: 5 are blue and 1 is green. Which colour is it more likely to land on?,Blue,2,D3|chance-reversed,false,false,true
+2-certain-possible,1-2|3-5,DP,shapes,2,6,5,5,1,choice,false,2.11,2-certain-possible,,A bag has only red cubes. You pick one cube without looking. How likely is it that it is red?,Certain,2,certain-likely|impossible-possible|opposite-extreme|rules-out-possible|sure-of-possible,false,false,true
+2-compare-lengths,1-2|3-5,MG,shapes,2,3,3,3,2,number,true,2.8,2-compare-lengths,,"A green ribbon is 49 cm long. A blue ribbon is 23 cm long. How much longer is the green ribbon, in cm?",26,2,difference-whole|operation,false,false,true
+2-sides-in-all,1-2|3-5,MG,shapes,2,2,2,2,2,number,true,2.9,2-sides-in-all,,"How many sides do 2 triangles, 2 squares and 1 rectangle have in all? ▲ ▲ ■ ■ ▬",18,1,count-objects,false,false,true
+3-build-number,1-2|3-5,N,number,3,3,3,3,3,number,true,3.1,3-build-number,,"What number is 2 hundreds, 0 tens and 1 one?",201,2,N1|zero-placeholder,false,false,true
+3-ten-more-less,1-2|3-5,N,number,3,3,3,3,3,number,false,3.1,3-ten-more-less,,What number is 10 more than 695?,705,2,O3|regroup-forget|tens-as-ones,false,false,true
+3-greatest,1-2|3-5,N,number,3,3,3,3,3,choice,false,3.1,3-greatest,,"Which number is the greatest: 831, 318 or 813?",831,2,digit-compare,false,false,true
+3-after-99,1-2|3-5,N,number,3,3,3,3,3,number,false,3.1,3-after-99,,What number comes just after 899?,900,1,N3,false,false,true
+3-digit-value,1-2|3-5,N,number,3,3,3,3,3,number,false,3.1,3-digit-value,,What is the value of the 8 in 879?,800,2,N2,false,false,true
+3-add-3-digit,1-2|3-5,O,number,3,3,3,3,3,number,true,3.3,3-add-3-digit,,355 + 195 = ?,550,2,O3,false,false,true
+3-subtract-across-zero,1-2|3-5,O,number,3,3,3,3,3,number,true,3.3,3-subtract-across-zero,,703 − 328 = ?,375,2,O2|regroup-forget,false,false,true
+3-story-subtract,1-2|3-5,O,number,3,3,3,3,3,number,true,3.3,3-story-subtract,,A school has 818 books. 231 books are lent out. How many books are left?,587,2,O1|operation,false,false,true
+3-equal-groups,1-2|3-5,O,number,3,3,3,3,2,number,true,3.5,3-equal-groups,,There are 2 boxes with 3 crayons in each. How many crayons are there in all?,6,1,operation,false,false,true
+3-share-equally,1-2|3-5,O,number,3,3,3,3,3,number,true,3.5,3-share-equally,,20 stickers are shared equally among 5 friends. How many stickers does each friend get?,4,2,operation,false,false,true
+3-money-total,1-2|3-5,O,number,3,3,2,2,2,number,true,3.14,3-money-total,,"Lucas has one $20 bill, one $10 bill and four toonies ($2 coins). How many dollars is that in all?",38,1,coin-count,false,false,true
+3-decreasing-pattern,1-2|3-5,A,algebra,3,3,3,3,3,number,false,3.6,3-decreasing-pattern,,"What comes next? 85, 80, 75, 70, ?",65,2,pattern-direction|skip-by-one,false,false,true
+3-increasing-pattern,1-2|3-5,A,algebra,3,3,3,3,3,number,true,3.6,3-increasing-pattern,,"What comes next? 8, 11, 14, 17, ?",20,1,skip-by-one,false,false,true
+3-pattern-rule,1-2|3-5,A,algebra,3,3,3,3,3,choice,false,3.7,3-pattern-rule,,"What is the rule for this pattern? 4, 9, 14, 19",Start at 4 and add 5 each time,2,rule-start|rule-swap,false,false,true
+3-start-unknown,1-2|3-5,A,algebra,3,3,3,3,2,number,true,3.8,3-start-unknown,,? − 7 = 6,13,1,A4|operation,false,false,true
+3-change-unknown,1-2|3-5,A,algebra,3,3,3,3,2,number,true,3.8,3-change-unknown,,32 + ? = 41,9,2,count-start|operation,false,false,true
+3-balance-equation,1-2|3-5,A,algebra,3,3,3,3,2,number,true,3.8,3-balance-equation,,16 + 4 = 18 + ?,2,2,A1,false,false,true
+3-growing-tables,1-2|3-5,A,algebra,3,3,3,3,3,number,true,3.7,3-growing-tables,,1 table seats 6 children. 2 tables pushed together in a row seat 10. 3 tables in a row seat 14. How many children can si,30,2,next-not-asked|pattern-multiply,false,false,true
+3-area-tiles,1-2|3-5,MG,shapes,3,4,4,4,3,number,true,3.9,3-area-tiles,,"A rectangle is covered by 5 rows of square tiles, with 3 tiles in each row. What is its area, in square units?",15,2,M2,false,false,true
+3-mass-unit,1-2|3-5,MG,shapes,3,3,3,3,3,choice,false,3.9,3-mass-unit,,Which unit is best for measuring the mass of a sock?,Grams,2,unit-choice|unit-kind,false,false,true
+3-length-convert,1-2|3-5,MG,shapes,3,3,3,3,3,number,false,3.9,3-length-convert,,How many centimetres are in 3 metres?,300,2,unit-convert,false,false,true
+3-solid-parts,1-2|3-5,MG,shapes,3,3,3,3,3,number,true,3.11,3-solid-parts,,How many faces does a box shaped like a rectangular prism have?,6,2,faces-corners|visible-parts,false,false,true
+3-time-units,1-2|3-5,MG,shapes,3,3,3,3,3,number,false,3.10,3-time-units,,How many minutes are in 1 hour?,60,1,M8,false,false,true
+3-days-weeks,1-2|3-5,MG,shapes,3,2,2,2,3,number,true,3.10,3-days-weeks,,How many days are in 2 weeks?,14,1,operation,false,false,true
+3-bar-graph-more,1-2|3-5,DP,shapes,3,3,3,3,3,number,true,3.12,3-bar-graph-more,,A class made a bar graph of their favourite thing to do. How many more children chose reading than drawing?,5,2,difference-whole|operation,true,false,true
+3-bag-likely,1-2|3-5,DP,shapes,3,6,5,5,3,choice,false,3.13,3-bag-likely,,A bag has 2 red marbles and 4 yellow marbles. You pick one without looking. Which colour are you more likely to pick?,Yellow,2,D3|chance-reversed,false,false,true
+3-coin-streak,1-2|3-5,DP,shapes,3,6,5,5,3,choice,false,3.13,3-coin-streak,,"A fair coin landed on tails 5 times in a row. On the next toss, which is more likely?",Heads and tails are equally likely,2,D2|streak,false,false,true
+g35-3-skip-count,3-5,N,number,3,3,3,3,3,number,false,3.1,g35-3-skip-count,,"What number comes next? 157, 182, 207, 232, ?",257,2,A2|skip-by-one,false,false,true
+g35-3-order-numbers,3-5,N,number,3,3,3,3,3,choice,false,3.1,g35-3-order-numbers,,Which list goes from least to greatest?,"395, 539, 935",3,digit-compare|more-less,false,true,false
+g35-3-array,3-5,O,number,3,3,3,3,3,number,true,3.5,g35-3-array,,Sofia sees 3 rows of stamps on a sheet. There are 5 stamps in each row. How many stamps are there in all?,15,1,operation,false,false,true
+g35-3-groups-of,3-5,O,number,3,3,3,3,3,number,true,3.5,g35-3-groups-of,,There are 20 cupcakes. Each box holds 5 cupcakes. How many boxes can be filled?,4,2,operation,false,false,true
+g35-3-story-add,3-5,O,number,3,3,3,3,3,number,true,3.3,g35-3-story-add,,A store has 579 big jars and 201 small jars. How many is that in all?,780,1,O3,false,false,true
+g35-3-fraction-eaten,3-5,F,fractions,3,3,3,3,3,choice,true,3.2,g35-3-fraction-eaten,,A sandwich is cut into 5 equal pieces. Liam eats 3 pieces. What fraction of the sandwich did Liam eat?,3/5,3,F4|fraction-flip|fraction-other-part,false,true,true
+g35-3-fraction-left,3-5,F,fractions,3,3,3,3,3,choice,true,3.2,g35-3-fraction-left,,A pie is cut into 6 equal pieces. Noah eats 2 pieces. What fraction of the pie is left?,4/6,3,F4|fraction-flip|fraction-other-part,false,true,true
+g35-3-fraction-of-set,3-5,F,fractions,3,3,4,4,4,choice,false,3.2,g35-3-fraction-of-set,,There are 9 marbles in a bag. 4 of them are red. What fraction of the marbles are red?,4/9,3,F4|fraction-flip|fraction-other-part,false,true,true
+g35-3-equal-parts,3-5,F,fractions,3,3,3,3,3,choice,false,3.2,g35-3-equal-parts,,Mei wants to cut a pie into fourths. How must Mei cut it?,Into 4 pieces that are all the same size,3,F3|denominator-meaning,false,true,true
+g35-3-fraction-number-line,3-5,F,fractions,3,3,4,4,4,choice,true,3.2,g35-3-fraction-number-line,,A number line goes from 0 to 1. It is split into 5 equal parts. A dot is 2 parts from 0. What fraction is at the dot?,2/5,3,F5|fraction-other-part,false,true,true
+g35-3-fraction-of-amount,3-5,F,fractions,3,3,4,4,4,number,true,3.2,g35-3-fraction-of-amount,,Noah has 12 cards. Noah gives 1/4 of them to Ben. How many cards does Ben get?,3,3,denominator-meaning|fraction-other-part|operation,false,false,true
+g35-3-whole-as-fraction,3-5,F,fractions,3,3,3,3,3,choice,false,3.2,g35-3-whole-as-fraction,,A sandwich is cut into 10 equal pieces. A family eats all 10 pieces. What fraction of the sandwich did they eat?,10/10,3,denominator-meaning|one-part|one-to-one,false,true,true
+g35-3-fraction-rest,3-5,F,fractions,3,3,3,3,3,choice,true,3.2,g35-3-fraction-rest,,Ben ate 2/8 of a pizza. What fraction of the pizza is left?,6/8,3,F4|fraction-flip|fraction-other-part,false,true,true
+g35-3-unit-fraction,3-5,F,fractions,3,3,3,3,3,choice,false,3.2,g35-3-unit-fraction,,A field has 4 equal sections. 1 section is for soccer. What fraction of the field is that?,1/4,3,F4|denominator-meaning|fraction-other-part,false,true,true
+g35-3-fraction-words,3-5,F,fractions,3,3,3,3,3,choice,false,3.2,g35-3-fraction-words,,A flag has 8 equal stripes. 5 of the stripes are yellow. Which words name the yellow part of the flag?,5 eighths,3,F4|fraction-flip|fraction-other-part,false,true,true
+g35-3-bar-rows,3-5,F,fractions,3,3,3,3,3,choice,true,3.2,g35-3-bar-rows,,A chocolate bar has 2 rows of 4 equal squares. Zara eats 5 squares. What fraction of the bar did Zara eat?,5/8,3,F4|fraction-flip|fraction-other-part|one-part,false,true,true
+g35-3-make-a-whole,3-5,F,fractions,3,3,3,3,3,number,true,3.2,g35-3-make-a-whole,,Omar has 1/8 of a pizza. How many more eighths does Omar need to make a whole pizza?,7,3,difference-whole|operation,false,false,true
+g35-3-missing-middle,3-5,A,algebra,3,3,3,3,3,number,false,3.6,g35-3-missing-middle,,"What number is missing? 17, 20, 23, ?, 29",26,1,skip-by-one,false,false,true
+g35-3-doubling,3-5,A,algebra,3,4,4,4,3,number,false,3.6,g35-3-doubling,,"What comes next? 7, 14, 28, 56, ?",112,2,A2|pattern-first-step,false,false,true
+g35-3-start-unknown-story,3-5,A,algebra,3,3,3,3,3,number,true,3.8,g35-3-start-unknown-story,,Some birds were at a lake. Then 51 went away. Now there are 133. How many birds were at the lake at first?,184,1,A4|operation,false,false,true
+g35-3-double-unknown,3-5,A,algebra,3,3,3,3,3,number,true,3.8,g35-3-double-unknown,,? + ? = 24. Both missing numbers are the same. What is the missing number?,12,1,A1,false,false,true
+g35-3-subtract-unknown,3-5,A,algebra,3,3,3,3,3,number,true,3.8,g35-3-subtract-unknown,,206 − ? = 69,137,1,operation,false,false,true
+g35-3-rule-in-words,3-5,A,algebra,3,3,3,3,3,number,false,3.7,g35-3-rule-in-words,,A pattern starts at 73 and takes away 8 each time. What is the 5th number in the pattern?,41,3,A5|next-not-asked|one-to-one|pattern-direction,false,false,true
+g35-3-number-sentence,3-5,A,algebra,3,3,3,3,2,choice,false,3.8,g35-3-number-sentence,,Mei had some beads. Mei gave away 11 and has 7 left. Which number sentence shows this story?,? − 11 = 7,3,A4|equation-roles|operation|story-total,false,true,true
+g35-3-capacity-unit,3-5,MG,shapes,3,8,5,5,4,choice,false,3.9,g35-3-capacity-unit,,Which unit is best for measuring how much water a bathtub holds?,Litres,3,unit-choice|unit-kind,false,true,true
+g35-3-solid-from-faces,3-5,MG,shapes,3,2,3,3,3,choice,false,3.11,g35-3-solid-from-faces,,"I am a solid. I have 1 flat face that is a circle, 1 curved surface and 1 point at the top. What am I?",Cone,3,shape-name,false,true,true
+g35-3-mass-referent,3-5,MG,shapes,3,8,3,3,4,choice,false,3.9,g35-3-mass-referent,,Which one has a mass of about 1 gram?,A raisin,3,referent-size,false,true,true
+g35-3-tally,3-5,DP,shapes,3,2,3,3,1,number,false,3.12,g35-3-tally,,"In a tally chart, each bundle of tally marks shows 5. The row for rabbits has 5 bundles and 1 more mark. How many childr",26,2,count-objects|one-to-one,false,false,true
+g35-3-most-least-likely,3-5,DP,shapes,3,6,5,5,3,choice,false,3.13,g35-3-most-least-likely,,"A bag has 4 green cubes, 5 red cubes, 2 yellow cubes. You pick one cube without looking. Which colour are you most likel",Red,3,D3|chance-reversed|likelihood-order|likelihood-reversed,false,true,true
+g35-3-likelihood-words,3-5,DP,shapes,3,6,5,5,3,choice,false,3.13,g35-3-likelihood-words,,A bag has 10 green cubes and 2 yellow cubes. You pick one cube without looking. How likely is it that you pick a green c,Certain,3,D6|certain|certain-likely|chance-reversed|impossible-possible|likelihood-reversed|opposite-extreme|rules-out-possible|sure-of-possible,false,true,true
+g35-4-digit-value,3-5,N,number,4,4,4,4,4,number,false,4.1,g35-4-digit-value,,"What is the value of the 5 in 7,584?",500,3,N2,false,false,true
+g35-4-order-numbers,3-5,N,number,4,4,4,4,4,choice,false,4.1,g35-4-order-numbers,,Which list goes from least to greatest?,"6,018; 6,081; 6,108",3,digit-compare|more-less,false,true,false
+g35-4-expanded-form,3-5,N,number,4,4,4,4,4,number,true,4.1,g35-4-expanded-form,,"What number is 8,000 + 70 + 9?",8079,2,N1|zero-placeholder,false,false,true
+g35-4-hundred-more,3-5,N,number,4,4,4,4,4,number,false,4.1,g35-4-hundred-more,,"What number is 100 less than 3,089?",2989,2,N2,false,false,true
+g35-4-subtract,3-5,O,number,4,4,4,4,4,number,true,4.4,g35-4-subtract,,"3,615 − 1,389 = ?",2226,2,O1|regroup-forget,false,false,true
+g35-4-add,3-5,O,number,4,4,4,4,4,number,true,4.4,g35-4-add,,"6,428 + 2,979 = ?",9407,2,O3,false,false,true
+g35-4-multiply,3-5,O,number,4,4,4,4,4,number,true,4.5,g35-4-multiply,,44 × 9 = ?,396,2,O3|O5,false,false,true
+g35-4-divide,3-5,O,number,4,4,5,5,4,number,true,4.5,g35-4-divide,,462 ÷ 6 = ?,77,2,division-digitwise|operation,false,false,true
+g35-4-share,3-5,O,number,4,4,4,4,4,number,true,4.5,g35-4-share,,Jonah shares 87 stickers equally among 3 friends. How many stickers does each friend get?,29,2,division-digitwise|operation,false,false,true
+g35-4-make-change,3-5,O,number,4,4,4,4,5,number,true,4.18,g35-4-make-change,,"A ball costs $5.10. Nia pays with a $10 bill. How much change should Nia get, in dollars?",4.90,2,operation|regroup-forget,false,false,true
+g35-4-add-decimals,3-5,O,number,4,4,4,4,5,number,true,4.6,g35-4-add-decimals,,3.82 + 3.4 = ?,7.22,1,O8,false,false,true
+g35-4-subtract-decimals,3-5,O,number,4,4,4,4,5,number,true,4.6,g35-4-subtract-decimals,,4.7 − 1.97 = ?,2.73,1,O1,false,false,true
+g35-4-story-multiply,3-5,O,number,4,4,4,4,4,number,true,4.5,g35-4-story-multiply,,Each shelf has 39 books. How many books are in 7 shelves?,273,3,O3|O5|operation,false,false,true
+g35-4-multiple,3-5,N,number,4,4,6,6,6,choice,false,4.1,g35-4-multiple,,Which number is a multiple of 4?,28,3,factor-multiple|multiple-last-digit|skip-by-one,false,true,true
+g35-4-between,3-5,N,number,4,4,4,4,4,choice,false,4.1,g35-4-between,,"Which number is between 4,300 and 4,400?","4,362",3,N2|digit-compare,false,true,true
+g35-4-tenths-region,3-5,F,fractions,4,4,4,4,4,choice,true,4.2,g35-4-tenths-region,,A strip has 10 equal parts. 4 parts are shaded. Which decimal names the shaded part?,0.4,3,N2|decimal-point|fraction-other-part,false,true,true
+g35-4-tenths-left,3-5,F,fractions,4,4,4,4,4,choice,true,4.2,g35-4-tenths-left,,2/10 of a strip is shaded. Which decimal names the part not shaded?,0.8,3,decimal-point|fraction-other-part,false,true,true
+g35-4-tenths-order,3-5,F,fractions,4,4,5,5,4,choice,true,4.2,g35-4-tenths-order,,Which decimal is least?,0.1,3,decimal-order|more-less,false,true,false
+g35-4-tenths-value,3-5,F,fractions,4,4,4,4,4,choice,true,4.2,g35-4-tenths-value,,What is the value of the 2 in 2.2?,0.2,3,N2|complement|decimal-point,false,true,true
+g35-4-tenths-fraction,3-5,F,fractions,4,4,4,4,4,choice,true,4.2,g35-4-tenths-fraction,,Which fraction is equal to 2.8 − 2?,8/10,3,decimal-point|fraction-flip,false,true,true
+g35-4-compare-like,3-5,F,fractions,4,4,4,3,5,choice,false,4.3,g35-4-compare-like,,Which fraction is the greatest?,4/5,3,fraction-order|more-less,false,true,true
+g35-4-compare-unit,3-5,F,fractions,4,4,4,4,5,choice,true,4.3,g35-4-compare-unit,,Some chocolate bars are all the same size. Which piece is the biggest?,1/2 of a chocolate bar,3,F1|fraction-order,false,true,true
+g35-4-benchmark,3-5,F,fractions,4,3,4,4,5,choice,true,4.3,g35-4-benchmark,,Which benchmark is closest to 1/8?,0,2,benchmark-half|benchmark-one|benchmark-zero,false,true,true
+g35-4-tenths-decimal,3-5,F,fractions,4,4,4,4,4,choice,false,4.2,g35-4-tenths-decimal,,Which decimal is the same as 7/10?,0.7,3,F7|decimal-point,false,true,true
+g35-4-hundredths-decimal,3-5,F,fractions,4,4,4,4,5,choice,false,4.2,g35-4-hundredths-decimal,,Which decimal is the same as 85/100?,0.85,3,F7|decimal-point,false,true,true
+g35-4-decimal-to-fraction,3-5,F,fractions,4,4,4,4,4,choice,false,4.2,g35-4-decimal-to-fraction,,Which fraction is the same as 0.7?,7/10,3,decimal-point|decimal-unit-part,false,true,true
+g35-4-compare-decimals,3-5,F,fractions,4,4,5,5,5,choice,false,4.2,g35-4-compare-decimals,,Which decimal is the least?,0.02,3,F6|decimal-order,false,true,true
+g35-4-money-notation,3-5,F,fractions,4,4,4,4,5,choice,false,4.18,g35-4-money-notation,,How do you write 13 dollars and 9 cents with a dollar sign?,$13.09,2,money-join|zero-placeholder,false,true,true
+g35-4-decimal-digit,3-5,F,fractions,4,4,4,4,5,choice,false,4.2,g35-4-decimal-digit,,"In 3.29, what is the value of the 2?",2 tenths,3,N2,false,true,true
+g35-4-decimal-number-line,3-5,F,fractions,4,4,4,4,4,choice,true,4.2,g35-4-decimal-number-line,,A number line goes from 0 to 1. It is split into 10 equal parts. A dot is 1 part from 0. Which decimal is at the dot?,0.1,3,F5|decimal-point,false,true,true
+g35-4-hundredths-grid,3-5,F,fractions,4,4,4,4,5,choice,false,4.2,g35-4-hundredths-grid,,A grid has 100 equal squares. 44 of the squares are shaded. Which decimal names the shaded part?,0.44,3,decimal-point|fraction-other-part,false,true,true
+g35-4-more-than-half,3-5,F,fractions,4,4,4,4,6,choice,true,4.3,g35-4-more-than-half,,Which fraction is greater than 1/2?,2/3,3,benchmark-size,false,true,false
+g35-4-tenths-as-hundredths,3-5,F,fractions,4,4,4,4,5,number,false,4.2,g35-4-tenths-as-hundredths,,0.4 is the same as how many hundredths?,40,2,decimal-point,false,false,true
+g35-4-table-pattern,3-5,A,algebra,4,4,4,4,4,number,true,4.9,g35-4-table-pattern,,"In a table, input 1 gives 1, input 2 gives 7, input 3 gives 13 and input 4 gives 19. The pattern keeps going. What does ",31,2,A5|next-not-asked,false,false,true
+g35-4-missing-factor,3-5,A,algebra,4,3,4,4,4,number,true,4.11,g35-4-missing-factor,,? × 7 = 21,3,3,operation,false,false,true
+g35-4-missing-divisor,3-5,A,algebra,4,3,4,4,4,number,true,4.11,g35-4-missing-divisor,,45 ÷ ? = 5,9,2,operation,false,false,true
+g35-4-subtract-unknown,3-5,A,algebra,4,4,4,4,4,number,true,4.11,g35-4-subtract-unknown,,"2,450 − ? = 1,700",750,1,operation,false,false,true
+g35-4-decreasing-table,3-5,A,algebra,4,4,4,3,4,number,true,4.9,g35-4-decreasing-table,,"A tank holds 600 litres of water. Kai uses 20 litres each day. After 1 day there are 580 litres, after 2 days 560 and af",480,2,one-to-one|pattern-direction,false,false,true
+g35-4-equation-for-story,3-5,A,algebra,4,4,4,4,4,choice,false,4.10,g35-4-equation-for-story,,Zara has some jars. Each jar has 4 cookies. Zara has 36 cookies in all. Which equation shows this?,? × 4 = 36,3,operation,false,true,true
+g35-4-balance-multiply,3-5,A,algebra,4,5,5,5,4,number,true,4.10,g35-4-balance-multiply,,6 × 2 = 4 × ?,3,2,A1|operation,false,false,true
+g35-4-table-rule,3-5,A,algebra,4,5,4,4,4,choice,false,4.9,g35-4-table-rule,,"In a table, input 1 gives 3, input 2 gives 6 and input 3 gives 9. Which rule fits every row?",Multiply the input by 3,2,rule-from-change|rule-one-row,false,true,true
+g35-4-figure-pattern,3-5,A,algebra,4,5,5,5,4,number,true,4.9,g35-4-figure-pattern,,Figure 1 has 7 blocks. Figure 2 has 9 blocks. Figure 3 has 11 blocks. The pattern keeps growing the same way. How many b,21,3,A5|next-not-asked|pattern-multiply,false,false,true
+g35-4-three-same,3-5,A,algebra,4,5,4,4,5,number,true,4.11,g35-4-three-same,,? + ? + ? = 15. All three missing numbers are the same. What is the missing number?,5,3,A1|operation,false,false,true
+g35-4-true-equation,3-5,A,algebra,4,3,5,5,4,choice,false,4.10,g35-4-true-equation,,Which equation is true?,4 × 5 = 2 × 10,3,A1|operation|same-size,false,true,false
+g35-4-machine-input,3-5,A,algebra,4,4,4,4,4,number,true,4.10,g35-4-machine-input,,A number machine multiplies every number by 6. A number goes in and 54 comes out. What number went in?,9,2,operation,false,false,true
+g35-4-perimeter,3-5,MG,shapes,4,3,3,3,3,number,true,4.14,g35-4-perimeter,,"A rectangular playground is 6 m long and 5 m wide. What is its perimeter, in m?",22,2,M2,false,false,true
+g35-4-perimeter-sides,3-5,MG,shapes,4,3,3,3,3,number,true,4.14,g35-4-perimeter-sides,,"A garden has 5 straight sides. They measure 11 m, 6 m, 10 m, 5 m and 3 m. How long is a fence that goes all the way arou",35,1,leaves-out-addend,false,false,true
+g35-4-square-side,3-5,MG,shapes,4,4,4,4,4,number,true,4.14,g35-4-square-side,,"A square has a perimeter of 52 cm. How long is each side, in cm?",13,3,M2|operation,false,false,true
+g35-4-read-clock,3-5,MG,shapes,4,3,4,4,3,choice,false,4.12,g35-4-read-clock,,"On a clock, the short hand is between the 1 and the 2. The long hand points to the 6. What time is it?",1:30,3,M7|clock-hands,false,true,true
+g35-4-quarter-to,3-5,MG,shapes,4,3,4,4,3,choice,false,4.12,g35-4-quarter-to,,What time is quarter past 9?,9:15,3,clock-fraction|clock-hour|clock-hundred|clock-to,false,true,true
+g35-4-24-hour,3-5,MG,shapes,4,3,4,4,4,choice,false,4.12,g35-4-24-hour,,A train leaves at 21:00 on a 24-hour clock. What time is that on a 12-hour clock?,9:00 p.m.,3,clock-24,false,true,true
+g35-4-regular-polygon,3-5,MG,shapes,4,3,3,6,6,choice,false,4.13,g35-4-regular-polygon,,A regular polygon has all sides equal and all angles equal. Which shape is a regular polygon?,A triangle with 3 equal sides and 3 equal angles,3,one-attribute|regular-all|shape-name,false,true,false
+g35-4-sides-in-all,3-5,MG,shapes,4,4,4,4,4,number,true,4.13,g35-4-sides-in-all,,How many sides do 3 triangles and 2 pentagons have in all?,19,2,count-objects|ignores-given|shape-name,false,false,true
+g35-4-symmetry,3-5,MG,shapes,4,5,4,4,4,number,true,4.15,g35-4-symmetry,,How many lines of symmetry does a triangle with 3 equal sides have?,3,1,symmetry-lines,false,false,true
+g35-4-pictograph,3-5,DP,shapes,4,4,4,4,3,number,false,4.16,g35-4-pictograph,,"In a pictograph, each picture stands for 5 children. The row for basketball has 7 pictures. How many children chose bask",35,2,D1|operation,false,false,true
+g35-4-pictograph-half,3-5,DP,shapes,4,4,4,4,3,number,true,4.16,g35-4-pictograph-half,,"In a pictograph of books read, each picture stands for 10 books. Nia's row has 2 whole pictures and a half picture. How ",25,3,D1|half-symbol|one-part,false,false,true
+g35-4-bar-scale,3-5,DP,shapes,4,4,4,4,3,number,true,4.16,g35-4-bar-scale,,The graph shows children who chose fruit. How many more chose bananas than apples?,12,2,D1|graph-value,true,false,true
+g35-4-spin-predict,3-5,DP,shapes,6,6,6,6,5,choice,false,6.18,g35-4-spin-predict,,A spinner has 8 equal parts: 6 parts are red and the rest are blue. You spin it 64 times. About how many times will it l,About 48,3,D3|probability-other|sure-of-possible,false,true,true
+g35-5-large-digit,3-5,N,number,5,5,5,5,6,choice,true,5.1,g35-5-large-digit,,"In 956,872, what is the value of the digit 5?","50,000",3,N2,false,true,true
+g35-5-expanded-large,3-5,N,number,5,5,5,5,6,choice,true,5.1,g35-5-expanded-large,,"Which number is 700,000 + 49,000 + 518?","749,518",2,N2,false,true,true
+g35-5-ten-thousand-more,3-5,N,number,5,5,5,5,6,choice,true,5.1,g35-5-ten-thousand-more,,"What is 10,000 more than 493,598?","503,598",3,N2|operation,false,true,true
+g35-5-order-large,3-5,N,number,5,5,5,5,6,choice,true,5.1,g35-5-order-large,,Which list goes from greatest to least?,"582,558, 581,090, 580,758",3,more-less|order-adjacent,false,true,false
+g35-5-add-large,3-5,O,number,5,5,5,5,6,choice,true,5.5,g35-5-add-large,,"398,139 + 236,413 = ?","634,552",2,O3|operation,false,true,true
+g35-5-subtract-large,3-5,O,number,5,5,5,5,6,choice,true,5.5,g35-5-subtract-large,,"511,461 − 123,368 = ?","388,093",2,operation|regroup-forget,false,true,true
+g35-5-multiply-two-digit,3-5,O,number,5,5,5,5,5,number,true,5.6,g35-5-multiply-two-digit,,26 × 19 = ?,494,2,operation|place-pairs,false,false,true
+g35-5-remainder,3-5,O,number,5,4,5,5,4,number,true,5.6,g35-5-remainder,,133 pencils go into packs of 8. How many pencils are left after all full packs are made?,5,2,remainder-quotient|remainder-zero,false,false,true
+g35-5-full-groups,3-5,O,number,5,4,5,5,4,number,true,5.6,g35-5-full-groups,,There are 190 beads. A bracelet needs 8 beads. How many complete bracelets can be made?,23,2,remainder-context|remainder-quotient,false,false,true
+g35-5-enough-buses,3-5,O,number,5,5,5,5,5,number,true,5.6,g35-5-enough-buses,,61 people need a ride. Each bus holds 12 people. What is the least number of buses needed?,6,2,remainder-ignore|remainder-quotient,false,false,true
+g35-5-divide-two-digit,3-5,O,number,5,6,6,5,5,number,true,5.6,g35-5-divide-two-digit,,666 eggs are put into trays of 37. How many trays are filled?,18,2,operation,false,false,true
+g35-5-annexing-zeros,3-5,O,number,5,5,5,5,5,number,true,5.9,g35-5-annexing-zeros,,20 × 40 = ?,800,3,annexing-zeros|operation,false,false,true
+g35-5-distributive,3-5,O,number,5,4,4,5,4,number,true,5.9,g35-5-distributive,,Use 60 and 7 to find 67 × 6. What is the answer?,402,2,distribute-one,false,false,true
+g35-5-budget-left,3-5,O,number,5,5,5,5,5,number,true,5.19,g35-5-budget-left,,A club has $350.00. It spends $58.00 on supplies and $24.00 on snacks. How many dollars are left?,268.00,2,ignores-given,false,false,true
+g35-5-change-large,3-5,O,number,5,4,5,4,5,number,true,5.19,g35-5-change-large,,A purchase costs $93.36. You pay $200.00. How many dollars in change should you get?,106.64,2,ignores-given|operation,false,false,true
+g35-5-equivalent-numerator,3-5,F,fractions,5,4,5,5,6,number,true,5.3,g35-5-equivalent-numerator,,The fractions 1/3 and ?/12 are equal. What is the missing number?,4,2,F9|fraction-one-side,false,false,true
+g35-5-equivalent-denominator,3-5,F,fractions,5,4,5,5,6,number,true,5.3,g35-5-equivalent-denominator,,The fractions 7/10 and 28/? are equal. What is the missing number?,40,2,F9|fraction-one-side,false,false,true
+g35-5-equivalent-scale-up,3-5,F,fractions,5,4,5,5,6,choice,true,5.3,g35-5-equivalent-scale-up,,Which fraction with 20 on the bottom is equal to 2/5?,8/20,3,F9|complement|fraction-one-side,false,true,true
+g35-5-equivalent-scale-down,3-5,F,fractions,5,4,5,5,6,choice,true,5.3,g35-5-equivalent-scale-down,,Which fraction with 3 on the bottom is equal to 8/12?,2/3,3,complement|fraction-one-side|fraction-subtract,false,true,true
+g35-5-equivalent-region,3-5,F,fractions,5,4,5,5,6,choice,true,5.3,g35-5-equivalent-region,,A whole is cut into 5 equal parts. 1 part is shaded. Each part is then cut into 2 equal pieces. What fraction is shaded ,2/10,3,F9|fraction-one-side|fraction-other-part,false,true,true
+g35-5-equivalent-number-line,3-5,F,fractions,5,4,5,5,6,choice,true,5.3,g35-5-equivalent-number-line,,A point is 6 tenths of the way from 0 to 1. Which fraction with 50 on the bottom names the same point?,30/50,3,F9|complement|fraction-one-side,false,true,true
+g35-5-fraction-to-hundredths,3-5,F,fractions,5,6,5,5,5,choice,true,5.4,g35-5-fraction-to-hundredths,,Which decimal is equal to 3/5?,0.60,3,F7|complement|decimal-point,false,true,true
+g35-5-decimal-half,3-5,F,fractions,5,5,5,5,5,choice,true,5.4,g35-5-decimal-half,,Which decimal is greater than one half?,0.65,3,F6,false,true,false
+g35-5-fraction-near-whole,3-5,F,fractions,5,3,5,5,5,choice,true,5.4,g35-5-fraction-near-whole,,Which fraction is closest to one whole?,6/7,3,fraction-order|more-less,false,true,false
+g35-5-equivalent-decimal,3-5,F,fractions,5,4,5,5,5,choice,true,5.4,g35-5-equivalent-decimal,,Which decimal is equal to 0.90?,0.9,3,decimal-point,false,true,true
+g35-5-thousandths-fraction,3-5,F,fractions,5,5,5,5,6,choice,true,5.2,g35-5-thousandths-fraction,,Which decimal is equal to 585/1000?,0.585,3,F7|decimal-point,false,true,true
+g35-5-thousandths-digit,3-5,F,fractions,5,5,5,5,6,choice,true,5.2,g35-5-thousandths-digit,,What is the value of the 3 in 0.873?,3 thousandths,3,N2,false,true,true
+g35-5-compare-thousandths,3-5,F,fractions,5,5,5,5,6,choice,true,5.4,g35-5-compare-thousandths,,Which decimal is greatest?,0.701,3,decimal-order|more-less,false,true,false
+g35-5-decimal-between,3-5,F,fractions,5,5,5,5,6,choice,true,5.2,g35-5-decimal-between,,Which decimal is between 8.67 and 8.68?,8.673,2,bounds-error,false,true,true
+g35-5-add-thousandths,3-5,O,number,5,5,5,5,6,number,true,5.7,g35-5-add-thousandths,,4.882 + 1.559 = ?,6.441,2,decimal-point|operation,false,false,true
+g35-5-subtract-thousandths,3-5,O,number,5,5,5,5,6,number,true,5.7,g35-5-subtract-thousandths,,6.421 − 2.586 = ?,3.835,2,decimal-point|operation,false,false,true
+g35-5-variable-add,3-5,A,algebra,5,3,3,3,2,number,true,5.11,g35-5-variable-add,,Find x. x + 8 = 20,12,2,inverse-operation|known-as-unknown,false,false,true
+g35-5-variable-subtract,3-5,A,algebra,5,3,3,3,2,number,true,5.11,g35-5-variable-subtract,,Find x. x − 8 = 41,49,2,inverse-operation|known-as-unknown,false,false,true
+g35-5-variable-take-away,3-5,A,algebra,5,3,3,3,2,number,true,5.11,g35-5-variable-take-away,,Find a. 42 − a = 7,35,2,known-as-unknown|operation,false,false,true
+g35-5-variable-multiply,3-5,A,algebra,5,4,5,5,6,number,true,5.11,g35-5-variable-multiply,,Find a. 6 × a = 90,15,2,known-as-unknown|operation,false,false,true
+g35-5-variable-divide,3-5,A,algebra,5,4,5,5,6,number,true,5.11,g35-5-variable-divide,,Find a. 217 ÷ a = 7,31,2,known-as-unknown|unknown-divisor,false,false,true
+g35-5-variable-dividend,3-5,A,algebra,5,4,5,5,6,number,true,5.11,g35-5-variable-dividend,,Find x. x ÷ 5 = 21,105,2,inverse-operation|known-as-unknown,false,false,true
+g35-5-pattern-next,3-5,A,algebra,3,4,2,2,2,number,true,3.6,g35-5-pattern-next,,"The pattern adds the same amount each time: 34, 37, 40, 43. What comes next?",46,2,pattern-step-count|skip-by-one,false,false,true
+g35-5-pattern-missing,3-5,A,algebra,3,4,2,2,2,number,true,3.6,g35-5-pattern-missing,,"The pattern adds the same amount each time: 22, 28, ?, 40. What is missing?",34,2,A2|pattern-step-count,false,false,true
+g35-5-pattern-back,3-5,A,algebra,5,5,5,5,4,number,true,5.10,g35-5-pattern-back,,"The pattern adds the same amount each time: ?, 20, 24, 28. What is missing?",16,2,pattern-earlier|pattern-step-count,false,false,true
+g35-5-pattern-step,3-5,A,algebra,3,3,2,2,3,number,true,3.6,g35-5-pattern-step,,"The pattern adds the same amount each time: 18, 27, 36, 45. How much is added each time?",9,1,pattern-start-step|pattern-step-count,false,false,true
+g35-5-pattern-start,3-5,A,algebra,5,5,5,5,4,number,true,5.10,g35-5-pattern-start,,A pattern adds 5 each time. Its fourth term is 26. What is its first term?,11,2,pattern-step-count,false,false,true
+g35-5-pattern-far,3-5,A,algebra,5,5,5,5,4,number,true,5.10,g35-5-pattern-far,,A pattern starts at 25 and adds 9 each time. What is its tenth term?,106,1,pattern-step-count,false,false,true
+g35-5-evaluate-add,3-5,A,algebra,5,5,6,7,5,number,true,5.11,g35-5-evaluate-add,,Evaluate n + 6 when n is 19.,25,2,expression-copy|operation,false,false,true
+g35-5-evaluate-subtract,3-5,A,algebra,5,5,6,7,5,number,true,5.11,g35-5-evaluate-subtract,,Evaluate n − 5 when n is 14.,9,2,expression-copy|operation,false,false,true
+g35-5-evaluate-take-away,3-5,A,algebra,5,5,6,7,5,number,true,5.11,g35-5-evaluate-take-away,,Evaluate 40 − n when n is 36.,4,2,expression-copy|operation,false,false,true
+g35-5-evaluate-multiply,3-5,A,algebra,5,5,6,7,5,number,true,5.11,g35-5-evaluate-multiply,,Evaluate 6n when n is 22.,132,3,A3|expression-copy|operation,false,false,true
+g35-5-evaluate-divide,3-5,A,algebra,5,5,6,7,5,number,true,5.11,g35-5-evaluate-divide,,Evaluate n ÷ 8 when n is 256.,32,2,expression-copy|operation,false,false,true
+g35-5-evaluate-divisor,3-5,A,algebra,5,5,6,7,5,number,true,5.11,g35-5-evaluate-divisor,,Evaluate 180 ÷ n when n is 5.,36,2,expression-copy|operation,false,false,true
+g35-5-expression-rows,3-5,A,algebra,5,5,6,7,5,number,true,5.11,g35-5-expression-rows,,Each row has 8 seats. The expression 8n gives the number of seats in n rows. Evaluate it when n is 17.,136,2,expression-copy|operation,false,false,true
+g35-5-expression-cards-total,3-5,A,algebra,5,5,6,7,5,number,true,5.11,g35-5-expression-cards-total,,The expression n + 7 gives the number of cards after 7 more are added. Evaluate it when n is 39.,46,2,expression-copy|operation,false,false,true
+g35-5-expression-cards-left,3-5,A,algebra,5,5,6,7,5,number,true,5.11,g35-5-expression-cards-left,,The expression n − 9 gives the number of cards after 9 are given away. Evaluate it when n is 39.,30,2,expression-copy|operation,false,false,true
+g35-5-expression-sharing,3-5,A,algebra,5,5,6,7,5,number,true,5.11,g35-5-expression-sharing,,The expression n ÷ 4 gives the number of beads in each of 4 equal groups. Evaluate it when n is 156.,39,2,expression-copy|operation,false,false,true
+g35-5-variable-rule,3-5,A,algebra,5,5,5,5,5,number,true,5.10,g35-5-variable-rule,,The rule is 8 × n. What is the result when n is 11?,88,2,A3|operation,false,false,true
+g35-5-equation-story,3-5,A,algebra,5,3,4,4,2,choice,true,5.11,g35-5-equation-story,,Jonah has 69 cards and gives away n cards. 49 cards remain. Which equation fits?,69 − n = 49,3,equation-roles|ignores-given|operation,false,true,true
+g35-5-rectangle-area,3-5,MG,shapes,5,4,5,5,4,number,true,5.12,g35-5-rectangle-area,,A rectangle is 4 cm long and 6 cm wide. What is its area in square centimetres?,24,2,M2,false,false,true
+g35-5-area-two-digit,3-5,MG,shapes,5,5,5,5,5,number,true,5.12,g35-5-area-two-digit,,A rectangular garden is 13 m long and 19 m wide. What is its area in square metres?,247,3,M2|area-add|place-pairs,false,false,true
+g35-5-square-area,3-5,MG,shapes,5,5,5,5,5,number,true,5.12,g35-5-square-area,,A square has a side of 5 cm. What is its area in square centimetres?,25,2,M2,false,false,true
+g35-5-area-width,3-5,MG,shapes,5,5,5,5,4,number,true,5.12,g35-5-area-width,,A rectangle has an area of 48 square centimetres. Its length is 8 cm. What is its width in centimetres?,6,2,inverse-operation|operation,false,false,true
+g35-5-same-area,3-5,MG,shapes,5,5,5,5,4,number,true,5.13,g35-5-same-area,,"One rectangle is 8 cm by 6 cm. Another has the same area and is 12 cm long. What is its perimeter, in centimetres?",32,2,M2|area-perimeter-link,false,false,true
+g35-5-same-perimeter,3-5,MG,shapes,5,5,5,5,4,number,true,5.13,g35-5-same-perimeter,,A rectangle is 12 cm by 4 cm. A second rectangle has the same perimeter and is 11 cm long. What is the second rectangle',55,2,M2|area-perimeter-link,false,false,true
+g35-5-same-area-perimeter,3-5,MG,shapes,5,5,5,5,4,choice,true,5.13,g35-5-same-area-perimeter,,Each rectangle has an area of 72 square centimetres. Which one has the greatest perimeter?,2 cm by 36 cm,3,area-perimeter-link|more-less,false,true,true
+g35-5-duration,3-5,MG,shapes,5,4,4,4,4,number,true,5.14,g35-5-duration,,A lesson starts at 7:44 p.m. and ends at 8:13 p.m. How many minutes does it last?,29,2,M8|minutes-reversed,false,false,true
+g35-5-end-time,3-5,MG,shapes,5,4,4,4,4,choice,true,5.14,g35-5-end-time,,A trip starts at 1:47 p.m. and lasts 31 minutes. When does it end?,2:18,3,M8|clock-carry|ignores-given,false,true,true
+g35-5-prism-faces,3-5,MG,shapes,5,4,4,3,3,number,true,5.15,g35-5-prism-faces,,A prism has two bases. Each base is a polygon with 4 sides. How many faces does the prism have?,6,3,faces-corners|missing-base,false,false,true
+g35-5-pyramid-faces,3-5,MG,shapes,5,4,3,3,3,number,true,5.15,g35-5-pyramid-faces,,"A pyramid has a base with 3 sides. How many faces does it have, including the base?",4,3,faces-corners|missing-base|shape-name,false,false,true
+g35-5-transformation,3-5,MG,shapes,5,2,5,5,5,choice,true,5.16,g35-5-transformation,,Nia moves a rectangle. It flips across a mirror line. What is this movement called?,Reflection,2,transformation-name,false,true,true
+g35-5-mirror-distance,3-5,MG,shapes,5,5,5,5,4,number,true,5.16,g35-5-mirror-distance,,A point is 2 cm to the left of a mirror line. Its reflection is on the right. How far is the reflection from the mirror ,2,2,reflection-distance,false,false,true
+g35-5-double-bar-difference,3-5,DP,shapes,5,5,5,5,4,number,true,5.17,g35-5-double-bar-difference,,The graph compares books Ana and Ben read on Monday and Tuesday. How many more books did Ana read on Monday than Tuesday,22,2,D1|operation,true,false,false
+g35-5-pictograph-total,3-5,DP,shapes,5,4,4,4,3,number,true,5.17,g35-5-pictograph-total,,A graph uses one symbol for 4 tickets. There are 12 symbols for adults and 3 symbols for children. How many tickets is t,60,2,D1,false,false,true
+g35-5-bag-probability,3-5,DP,shapes,5,6,6,6,5,choice,true,5.18,g35-5-bag-probability,,A bag has 5 red marbles and 4 blue marbles of the same size. One is drawn without looking. What is the probability it is,5/9,3,D3|D4|probability-other,false,true,true
+g35-6-common-factor,3-5,N,number,6,4,6,6,7,number,true,6.4,g35-6-common-factor,,What is the greatest common factor of 20 and 25?,5,2,common-not-greatest|factor-multiple,false,false,true
+g35-6-least-multiple,3-5,N,number,6,8,6,6,7,number,true,6.4,g35-6-least-multiple,,What is the least common multiple of 14 and 21?,42,2,factor-multiple|lcm-product,false,false,true
+g35-6-prime,3-5,N,number,6,4,6,6,6,choice,true,6.4,g35-6-prime,,Which number is prime?,23,3,N5,false,true,false
+g35-6-divisibility,3-5,N,number,6,5,7,7,6,choice,true,6.4,g35-6-divisibility,,Which number is divisible by 3 with no remainder?,222,3,divisibility,false,true,false
+g35-6-all-factors,3-5,N,number,6,4,6,6,6,choice,true,6.4,g35-6-all-factors,,Which list contains all the factors of 22?,"1, 2, 11, 22",3,factor-incomplete|factor-multiple,false,true,true
+g35-6-meeting-cycles,3-5,N,number,6,8,6,6,7,number,true,6.4,g35-6-meeting-cycles,,Two lights flash together now. One flashes every 6 seconds and the other every 9 seconds. In how many seconds will they ,18,2,factor-multiple|lcm-product,false,false,true
+g35-6-order-product,3-5,O,number,6,4,6,6,6,number,true,6.3,g35-6-order-product,,3 + 6 × 5 = ?,33,2,O7|operation,false,false,true
+g35-6-order-brackets,3-5,O,number,6,5,6,6,6,number,true,6.3,g35-6-order-brackets,,(4 + 11) × 5 = ?,75,2,brackets-ignored|operation,false,false,true
+g35-6-order-quotient,3-5,O,number,6,4,6,6,6,number,true,6.3,g35-6-order-quotient,,8 + 35 ÷ 5 = ?,15,2,O7|operation,false,false,true
+g35-6-order-two-products,3-5,O,number,6,4,6,6,6,number,true,6.3,g35-6-order-two-products,,3 × 6 + 3 × 4 = ?,30,2,O7|operation,false,false,true
+g35-6-decimal-multiply,3-5,O,number,6,6,6,6,6,number,true,6.8,g35-6-decimal-multiply,,5.2 × 6 = ?,31.2,2,decimal-point,false,false,true
+g35-6-decimal-divide,3-5,O,number,6,6,6,6,6,number,true,6.8,g35-6-decimal-divide,,22.8 ÷ 6 = ?,3.8,2,decimal-point,false,false,true
+g35-6-decimal-product-story,3-5,O,number,6,6,6,6,7,number,true,6.8,g35-6-decimal-product-story,,Each bag holds 0.226 kg of rice. How many kilograms do 6 bags hold?,1.356,2,decimal-point|operation,false,false,true
+g35-6-decimal-unit-cost,3-5,O,number,6,6,6,6,6,number,true,6.8,g35-6-decimal-unit-cost,,5 identical notebooks cost $19.80. How many dollars does one notebook cost?,3.96,2,decimal-point|operation,false,false,true
+g35-6-mixed-to-mixed,3-5,F,fractions,6,5,6,6,5,choice,true,6.5,g35-6-mixed-to-mixed,,Which mixed number equals 27/5?,5 2/5,2,mixed-denominator,false,true,true
+g35-6-mixed-to-improper,3-5,F,fractions,6,5,6,6,5,choice,true,6.5,g35-6-mixed-to-improper,,Which improper fraction equals 2 7/8?,23/8,3,F8|mixed-convert|mixed-denominator,false,true,true
+g35-6-mixed-whole-count,3-5,F,fractions,6,5,6,6,5,number,true,6.5,g35-6-mixed-whole-count,,How many whole units are in 23/6?,3,2,ignores-given|remainder-quotient,false,false,true
+g35-6-mixed-remainder,3-5,F,fractions,6,5,6,6,5,number,true,6.5,g35-6-mixed-remainder,,14/3 is 4 wholes and how many thirds?,2,2,ignores-given|remainder-quotient,false,false,true
+g35-6-ratio-part-to-part,3-5,F,fractions,6,5,6,6,5,choice,true,6.6,g35-6-ratio-part-to-part,,A tray has 4 red cubes and 7 blue cubes. What is the ratio of red cubes to blue cubes?,4 to 7,2,ratio-order|ratio-whole,false,true,true
+g35-6-ratio-part-to-whole,3-5,F,fractions,6,5,6,6,5,choice,true,6.6,g35-6-ratio-part-to-whole,,A tray has 7 red cubes and 6 blue cubes. What is the ratio of red cubes to all the cubes?,7 to 13,2,F4|ratio-order,false,true,true
+g35-6-ratio-equivalent,3-5,F,fractions,6,6,6,6,6,choice,true,6.6,g35-6-ratio-equivalent,,Which ratio is equal to 7 to 4?,28 to 16,3,F9|fraction-one-side|ratio-order,false,true,true
+g35-6-ratio-recipe,3-5,F,fractions,6,6,6,6,6,number,true,6.6,g35-6-ratio-recipe,,A drink uses 2 cups of juice for every 4 cups of water. How many cups of juice go with 20 cups of water?,10,2,F9|fraction-one-side,false,false,true
+g35-6-percent-of-hundred,3-5,F,fractions,6,6,6,6,5,number,true,6.7,g35-6-percent-of-hundred,,A grid has 100 equal squares. 25 are shaded. What percent is shaded? Enter the number only.,25,2,F10|fraction-other-part,false,false,true
+g35-6-percent-of-amount,3-5,F,fractions,6,6,6,6,6,number,true,6.7,g35-6-percent-of-amount,,What is 50% of 100?,50,1,F10|fraction-other-part,false,false,true
+g35-6-percent-discount,3-5,F,fractions,6,6,6,6,6,number,true,6.7,g35-6-percent-discount,,An item costs $200.00. It has a 10% discount. How many dollars is the discount?,20,2,F10|fraction-other-part,false,false,true
+g35-6-percent-sale-price,3-5,F,fractions,6,6,6,6,6,number,true,6.7,g35-6-percent-sale-price,,An item costs $40.00. It has a 75% discount. How many dollars is the sale price?,10,2,F10|discount-amount,false,false,true
+g35-6-linear-output,3-5,A,algebra,6,5,6,6,5,number,true,6.9,g35-6-linear-output,,The rule is 8 × n + 8. What is the result when n is 9?,80,2,A5|next-not-asked,false,false,true
+g35-6-linear-table,3-5,A,algebra,6,6,6,6,5,number,true,6.9,g35-6-linear-table,,"An input-output table has the rule: multiply by 4, then add 2. What is the output for input 5?",22,2,A5|next-not-asked,false,false,true
+g35-6-linear-step,3-5,A,algebra,6,6,6,6,5,number,true,6.9,g35-6-linear-step,,A rule is 7 × n + 5. How much does the result increase when n increases by 1?,7,2,input-step-two|rule-swap,false,false,true
+g35-6-linear-initial,3-5,A,algebra,6,5,6,6,5,number,true,6.9,g35-6-linear-initial,,A rule is 3 × n + 7. What is its result when n is 0?,7,2,A5|next-not-asked,false,false,true
+g35-6-linear-tenth,3-5,A,algebra,6,5,5,5,4,number,true,6.9,g35-6-linear-tenth,,"A pattern has 10, 16, 22 as its first three terms. It adds the same amount each time. What is its tenth term?",64,2,A5|next-not-asked,false,false,true
+g35-6-linear-difference,3-5,A,algebra,6,5,6,6,5,number,true,6.9,g35-6-linear-difference,,A rule is 8 × n + 2. How much greater is the result when n is 8 than when n is 6?,16,2,coefficient-ignore|pattern-step-count,false,false,true
+g35-6-equation-add,3-5,A,algebra,6,3,3,3,2,number,true,6.10,g35-6-equation-add,,Find x. x + 6 = 78,72,2,inverse-operation|known-as-unknown,false,false,true
+g35-6-equation-subtract,3-5,A,algebra,6,3,3,3,2,number,true,6.10,g35-6-equation-subtract,,Find x. x − 5 = 81,86,2,inverse-operation|known-as-unknown,false,false,true
+g35-6-equation-multiply,3-5,A,algebra,6,4,5,5,6,number,true,6.10,g35-6-equation-multiply,,Find x. 4x = 312,78,2,known-as-unknown|operation,false,false,true
+g35-6-equation-divide,3-5,A,algebra,6,4,5,5,6,number,true,6.10,g35-6-equation-divide,,Find x. x ÷ 8 = 61,488,2,inverse-operation|known-as-unknown,false,false,true
+g35-6-equation-subtrahend,3-5,A,algebra,6,3,3,3,2,number,true,6.10,g35-6-equation-subtrahend,,Find x. 83 − x = 7,76,2,known-as-unknown|operation,false,false,true
+g35-6-equation-divisor,3-5,A,algebra,6,4,5,5,6,number,true,6.10,g35-6-equation-divisor,,Find x. 208 ÷ x = 4,52,2,known-as-unknown|unknown-divisor,false,false,true
+g35-6-table-rule,3-5,A,algebra,6,6,6,6,5,choice,true,6.9,g35-6-table-rule,,"A table shows input 1 gives 12, input 2 gives 20, and input 3 gives 28. Which rule fits all three rows?","Multiply by 8, then add 4",3,A5|rule-one-row|rule-swap,false,true,true
+g35-6-like-terms-equation,3-5,A,algebra,6,6,8,8,6,number,true,6.10,g35-6-like-terms-equation,,Find x. 4x + 5x = 45,5,2,coefficient-product|operation,false,false,true
+g35-6-rule-point,3-5,A,algebra,6,6,6,6,5,choice,true,6.9,g35-6-rule-point,,"A rule says: output = 5 × input + 2. Which point (input, output) fits the rule?","(7, 37)",3,A5|add-before-multiply|coordinates-swap,false,true,true
+g35-6-triangle-area,3-5,MG,shapes,6,6,7,7,5,number,true,6.12,g35-6-triangle-area,,A triangle has a base of 18 cm and a perpendicular height of 11 cm. What is its area in square centimetres?,99,2,M3|area-add,false,false,true
+g35-6-triangle-height,3-5,MG,shapes,6,6,7,7,5,number,true,6.12,g35-6-triangle-height,,A triangle has an area of 90 square centimetres and a base of 20 cm. What is its perpendicular height in centimetres?,9,2,M3|inverse-operation,false,false,true
+g35-6-parallelogram-area,3-5,MG,shapes,6,6,7,7,5,number,true,6.12,g35-6-parallelogram-area,,"A parallelogram has a base of 5 cm, a perpendicular height of 4 cm, and a slanted side of 6 cm. What is its area in squa",20,2,M2|slant-height,false,false,true
+g35-6-trapezoid-area,3-5,MG,shapes,6,7,7,7,6,number,true,6.12,g35-6-trapezoid-area,,A trapezoid has parallel sides of 6 cm and 8 cm. Its perpendicular height is 3 cm. What is its area in square centimetre,21,2,half-area|ignores-given,false,false,true
+g35-6-volume-cubes,3-5,MG,shapes,6,6,5,5,7,number,true,6.14,g35-6-volume-cubes,,A solid has 2 layers of unit cubes. Each layer has 4 rows of 3 cubes. What is its volume in cubic units?,24,2,M9|one-part,false,false,true
+g35-6-capacity,3-5,MG,shapes,6,8,5,5,4,number,true,6.14,g35-6-capacity,,A jug holds 4 L and 500 mL. How many millilitres is that?,4500,2,unit-convert,false,false,true
+g35-6-angle-name,3-5,MG,shapes,6,4,6,6,5,choice,true,6.13,g35-6-angle-name,,An angle measures 120 degrees. What kind of angle is it?,Obtuse,3,angle-names,false,true,true
+g35-6-straight-angle,3-5,MG,shapes,6,4,6,6,6,number,true,6.13,g35-6-straight-angle,,A straight angle is split into two angles. One is 127 degrees. How many degrees is the other?,53,2,full-turn|operation,false,false,true
+g35-6-complementary-angle,3-5,MG,shapes,6,4,6,6,6,number,true,6.13,g35-6-complementary-angle,,"Two angles together make a right angle. One angle is 29°. What is the other angle, in degrees?",61,2,angle-sum,false,false,true
+g35-6-triangle-sides,3-5,MG,shapes,6,4,6,6,5,choice,true,6.15,g35-6-triangle-sides,,"A triangle has sides of 5 cm, 5 cm and 8 cm. Which description fits?","Isosceles, but not equilateral",2,shape-name,false,true,true
+g35-6-coordinate,3-5,MG,shapes,6,5,6,6,4,choice,true,6.16,g35-6-coordinate,,A point is 4 units right and 9 units up from the origin. Which ordered pair names it?,"(4, 9)",3,N4|coordinates-swap,false,true,true
+g35-6-coordinate-slide,3-5,MG,shapes,6,6,6,6,4,choice,true,6.16,g35-6-coordinate-slide,,"A point starts at (2, 7). It moves 4 units right and 5 units up. Where is it now?","(6, 12)",3,ignores-given,false,true,true
+g35-6-experimental-estimate,3-5,DP,shapes,6,6,6,6,6,number,true,6.18,g35-6-experimental-estimate,,A spinner landed on red 29 times in 40 spins. Use this result to estimate how many times it will land on red in 200 spin,145,2,count-other|frequency-copy,false,false,true
+g35-6-experimental-probability,3-5,DP,shapes,6,6,6,6,5,choice,true,6.18,g35-6-experimental-probability,,A spinner landed on red 9 times in 40 spins. What fraction of the spins landed on red?,9/40,3,D4|fraction-flip|probability-other,false,true,true
+g35-6-theoretical-probability,3-5,DP,shapes,6,6,6,6,5,choice,true,6.18,g35-6-theoretical-probability,,A fair coin landed heads 4 times in 50 tosses. Its last toss was tails. What is the theoretical probability of heads on ,1/2,3,D5|coin-due-certain|coin-repeat-certain,false,true,true
+g67-5-write-digits,6-7,N,number,5,5,5,5,6,number,false,5.1,g67-5-write-digits,,"Write this number in digits: two hundred fourteen thousand, eighty-six.",214086,1,zero-placeholder,false,false,true
+g67-5-ten-thousand-more,6-7,N,number,5,5,5,5,6,number,false,5.1,g67-5-ten-thousand-more,,"What number is 10,000 more than 831,200?",841200,2,N2,false,false,true
+g67-5-digit-value,6-7,N,number,5,5,5,5,6,number,false,5.1,g67-5-digit-value,,"What is the value of the 2 in 642,837?",2000,3,N2,false,false,true
+g67-5-multiply-2x2,6-7,O,number,5,5,5,5,5,number,true,5.6,g67-5-multiply-2x2,,45 × 21 = ?,945,1,partial-shift,false,false,true
+g67-5-share-remainder,6-7,O,number,5,4,5,5,4,number,true,5.6,g67-5-share-remainder,,244 beads are shared equally among 5 friends. Each friend gets as many as possible. How many beads does each friend get?,48,1,O6|remainder-decimal,false,false,true
+g67-5-groups-needed,6-7,O,number,5,6,6,5,5,number,true,5.6,g67-5-groups-needed,,121 players are going on a trip. Each van holds 31 players. How many vans are needed so that everyone has a place?,4,2,remainder-decimal|remainder-ignore,false,false,true
+g67-5-add-decimals,6-7,O,number,5,4,5,4,5,number,true,5.7,g67-5-add-decimals,,6.3 + 7.89 = ?,14.19,2,O8,false,false,true
+g67-5-subtract-decimals,6-7,O,number,5,5,5,5,6,number,true,5.7,g67-5-subtract-decimals,,16.823 − 9.26 = ?,7.563,1,O8,false,false,true
+g67-5-make-change,6-7,O,number,5,4,4,4,5,number,true,5.19,g67-5-make-change,,"A lunch costs $6.85. You pay with a $20 bill. How much change do you get, in dollars?",13.15,1,regroup-forget,false,false,true
+g67-5-facts-tens,6-7,O,number,5,5,5,5,5,number,false,5.9,g67-5-facts-tens,,600 × 5 = ?,3000,2,annexing-zeros,false,false,true
+g67-5-add-large,6-7,O,number,5,5,5,5,5,number,true,5.5,g67-5-add-large,,"12,532 + 18,638 = ?",31170,1,O3,false,false,true
+g67-5-equivalent-fraction,6-7,F,fractions,5,4,5,5,6,choice,false,5.3,g67-5-equivalent-fraction,,Which fraction is equal to 1/6?,4/24,3,F9|fraction-one-side,false,true,true
+g67-5-missing-numerator,6-7,F,fractions,5,4,5,5,6,number,true,5.3,g67-5-missing-numerator,,3/7 = ?/35. What is the missing number?,15,2,F9|fraction-one-side,false,false,true
+g67-5-greatest-decimal,6-7,F,fractions,5,4,5,5,5,choice,false,5.4,g67-5-greatest-decimal,,Which decimal is the greatest?,0.5,3,F6,false,true,false
+g67-5-least-decimal,6-7,F,fractions,5,5,5,5,6,choice,false,5.4,g67-5-least-decimal,,Which decimal is the least?,0.604,2,F6|zero-placeholder,false,true,false
+g67-5-decimal-place,6-7,F,fractions,5,5,5,5,6,choice,false,5.2,g67-5-decimal-place,,What is the value of the 2 in 1.289?,2 tenths,3,N2,false,true,true
+g67-5-fraction-to-decimal,6-7,F,fractions,5,5,4,4,5,number,true,5.4,g67-5-fraction-to-decimal,,Write 7/10 as a decimal.,0.7,2,F7,false,false,true
+g67-5-greatest-fraction,6-7,F,fractions,5,4,5,5,6,choice,true,5.4,g67-5-greatest-fraction,,Which fraction is the greatest?,8/9,2,F1|numerator-only,false,true,false
+g67-5-decimal-as-fraction,6-7,F,fractions,5,4,4,4,5,choice,false,5.2,g67-5-decimal-as-fraction,,Which fraction is equal to 0.72?,72/100,3,F7|decimal-point,false,true,true
+g67-5-build-decimal,6-7,F,fractions,5,5,5,5,6,number,true,5.2,g67-5-build-decimal,,Write 7 hundredths and 2 thousandths as a decimal.,0.072,1,zero-placeholder,false,false,true
+g67-5-rule-output,6-7,A,algebra,5,5,5,5,5,number,true,5.10,g67-5-rule-output,,Rule: output = 5 × input + 1. What is the output when the input is 9?,46,2,add-before-multiply|operation,false,false,true
+g67-5-equation-add,6-7,A,algebra,5,3,3,3,2,number,true,5.11,g67-5-equation-add,,12 + n = 15. What is n?,3,1,inverse-op,false,false,true
+g67-5-equation-subtract,6-7,A,algebra,5,3,3,3,2,number,true,5.11,g67-5-equation-subtract,,y − 29 = 27. What is y?,56,1,A4,false,false,true
+g67-5-equation-multiply,6-7,A,algebra,5,4,5,5,5,number,true,5.11,g67-5-equation-multiply,,8 × y = 72. What is y?,9,2,inverse-op|operation,false,false,true
+g67-5-pattern-term,6-7,A,algebra,5,5,5,5,4,number,true,5.10,g67-5-pattern-term,,"The pattern 20, 27, 34, 41, … adds the same number each time. What is the 9th number in the pattern?",76,2,A5|next-not-asked,false,false,true
+g67-5-pattern-down,6-7,A,algebra,5,5,5,5,4,number,true,5.10,g67-5-pattern-down,,A pattern starts at 114 and goes down by 6 each time. What is the 5th number in the pattern?,90,2,pattern-direction|pattern-step-count,false,false,true
+g67-5-table-rule,6-7,A,algebra,5,5,5,5,5,choice,false,5.10,g67-5-table-rule,,"A table has these input and output pairs: input 1, output 11; input 2, output 15; input 3, output 19. Which rule fits ev",output = 4 × input + 7,3,A5|rule-start,false,true,true
+g67-5-story-equation,6-7,A,algebra,5,5,5,5,5,choice,false,5.11,g67-5-story-equation,,Mei has some stickers. Mei gives away 13 and now has 18. Let s be the number of stickers Mei had at first. Which equatio,s − 13 = 18,3,operation|start-as-total,false,true,true
+g67-5-balance,6-7,A,algebra,5,5,5,5,2,number,true,5.11,g67-5-balance,,6 + 6 = n + 11. What is n?,1,2,A1,false,false,true
+g67-5-rectangle-area,6-7,MG,shapes,5,4,5,4,4,number,true,5.12,g67-5-rectangle-area,,"A rectangle is 5 cm long and 4 cm wide. What is its area, in square centimetres?",20,2,M2,false,false,true
+g67-5-area-side,6-7,MG,shapes,5,5,5,5,4,number,true,5.12,g67-5-area-side,,"A rectangle has an area of 45 square centimetres. One side is 5 cm long. How long is the other side, in centimetres?",9,1,operation,false,false,true
+g67-5-same-area,6-7,MG,shapes,5,5,5,5,4,choice,true,5.13,g67-5-same-area,,Two rectangles both have an area of 30 square centimetres. One is 3 cm by 10 cm. The other is 2 cm by 15 cm. Which one h,The 2 cm by 15 cm rectangle,2,M2|more-less,false,true,true
+g67-5-elapsed-time,6-7,MG,shapes,5,4,5,5,4,choice,true,5.14,g67-5-elapsed-time,,A soccer game starts at 7:55 p.m. and lasts 2 hours 50 minutes. When does it end?,10:45 p.m.,3,clock-carry|clock-no-regroup|one-part,false,true,true
+g67-5-solid-from-faces,6-7,MG,shapes,5,4,3,3,3,choice,false,5.15,g67-5-solid-from-faces,,"Which solid has exactly 2 hexagon faces and 6 rectangle faces, with no other faces?",hexagonal prism,3,shape-name,false,true,true
+g67-5-solid-count,6-7,MG,shapes,5,5,3,3,3,number,true,5.15,g67-5-solid-count,,How many vertices (corners) does a hexagonal prism have?,12,2,faces-corners,false,false,true
+g67-5-name-transformation,6-7,MG,shapes,5,2,5,5,5,choice,false,5.16,g67-5-name-transformation,,A letter L shape is turned a quarter turn around one of its corners. What is this move called?,rotation,2,transform-name,false,true,true
+g67-5-double-bar-graph,6-7,DP,shapes,5,4,5,5,4,number,true,5.17,g67-5-double-bar-graph,,"In a double bar graph of laps swum, the value increases by 10 between adjacent grid lines. The bar for Monday reaches 2 ",70,2,D1|graph-value,false,false,true
+g67-5-pictograph,6-7,DP,shapes,5,4,4,4,3,number,true,5.17,g67-5-pictograph,,"In a pictograph, each picture stands for 2 students. The row for swimming has 6 and a half pictures. How many students c",13,2,D1|one-part,false,false,true
+g67-5-spinner-probability,6-7,DP,shapes,5,6,6,6,5,choice,false,5.18,g67-5-spinner-probability,,A spinner has 9 equal parts. 4 parts are red and the rest are blue. What is the probability of spinning red?,4/9,3,D3|D4|probability-other,false,true,true
+g67-6-large-digits,6-7,N,number,6,6,6,6,7,number,false,6.1,g67-6-large-digits,,Write 7.5 billion in digits.,7500000000,2,decimal-point,false,false,true
+g67-6-greatest-large,6-7,N,number,6,5,6,6,7,choice,false,6.1,g67-6-greatest-large,,Which number is the greatest?,"1,620,000",2,digit-compare,false,true,false
+g67-6-decimal-digit-value,6-7,N,number,6,5,5,5,6,number,false,6.1,g67-6-decimal-digit-value,,What is the value of the 7 in 1.972? Write it as a decimal.,0.07,3,N2,false,false,true
+g67-6-lcm,6-7,N,number,6,6,6,6,7,number,true,6.4,g67-6-lcm,,Hot dogs come in packs of 6 and buns come in packs of 14. What is the least number of hot dogs you can buy to have the s,42,2,gcf-lcm|lcm-product,false,false,true
+g67-6-gcf,6-7,N,number,6,4,6,6,7,number,true,6.4,g67-6-gcf,,What is the greatest common factor of 28 and 32?,4,2,factor-not-greatest|gcf-lcm,false,false,true
+g67-6-which-prime,6-7,N,number,6,4,6,6,6,choice,false,6.4,g67-6-which-prime,,Which number is prime?,43,3,N5,false,true,false
+g67-6-which-composite,6-7,N,number,6,4,6,6,6,choice,false,6.4,g67-6-which-composite,,Which number is composite?,81,3,prime-composite,false,true,false
+g67-6-order-of-operations,6-7,O,number,6,4,6,6,6,number,true,6.3,g67-6-order-of-operations,,4 + 9 × 9 = ?,85,1,O7,false,false,true
+g67-6-brackets,6-7,O,number,6,5,6,6,6,number,true,6.3,g67-6-brackets,,(9 + 12) ÷ 3 = ?,7,1,brackets-ignored,false,false,true
+g67-6-decimal-times,6-7,O,number,6,6,6,6,6,number,true,6.8,g67-6-decimal-times,,0.731 × 5 = ?,3.655,2,decimal-point,false,false,true
+g67-6-decimal-divide,6-7,O,number,6,6,6,6,6,number,true,6.8,g67-6-decimal-divide,,1.14 ÷ 3 = ?,0.38,2,decimal-point,false,false,true
+g67-6-times-four,6-7,O,number,6,4,4,4,4,number,true,6.2,g67-6-times-four,,14 × 4 = ?,56,2,O5|one-part,false,false,true
+g67-6-save-weeks,6-7,O,number,6,6,6,5,5,number,true,6.19,g67-6-save-weeks,,Ava saves $22 each week to buy a guitar that costs $195. How many weeks does Ava need to save to have enough?,9,2,operation|remainder-ignore,false,false,true
+g67-6-share-money,6-7,O,number,6,6,6,6,6,number,true,6.8,g67-6-share-money,,"4 friends share $19.60 equally. How much does each friend get, in dollars?",4.9,2,decimal-point|operation,false,false,true
+g67-6-improper-to-mixed,6-7,F,fractions,6,5,6,6,5,choice,true,6.5,g67-6-improper-to-mixed,,Write 31/6 as a mixed number.,5 1/6,2,mixed-denominator|remainder-swap,false,true,true
+g67-6-mixed-to-improper,6-7,F,fractions,6,5,6,6,5,choice,true,6.5,g67-6-mixed-to-improper,,Write 1 1/6 as an improper fraction.,7/6,3,F8|mixed-convert|one-part,false,true,true
+g67-6-count-parts,6-7,F,fractions,6,5,6,6,5,number,true,6.5,g67-6-count-parts,,How many eighths are in 2 3/8?,19,2,F8|mixed-convert,false,false,true
+g67-6-greatest-fraction,6-7,F,fractions,6,4,5,5,6,choice,true,6.5,g67-6-greatest-fraction,,Which fraction is the greatest?,8/9,2,F1|numerator-only,false,true,false
+g67-6-ratio-part-part,6-7,F,fractions,6,6,6,6,6,choice,false,6.6,g67-6-ratio-part-part,,A shelter has 2 cats and 9 dogs. What is the ratio of cats to dogs?,2:9,2,ratio-order|ratio-whole,false,true,true
+g67-6-ratio-part-whole,6-7,F,fractions,6,5,6,6,5,choice,false,6.6,g67-6-ratio-part-whole,,A shelter has 5 cats and 9 dogs. What is the ratio of dogs to all the animals?,9:14,3,F4|fraction-other-part|ratio-order,false,true,true
+g67-6-equivalent-ratio,6-7,F,fractions,6,6,6,6,5,number,true,6.6,g67-6-equivalent-ratio,,A recipe uses 3 cups of blue paint for every 7 cups of white paint. How many cups of white paint go with 12 cups of blue,28,1,F9,false,false,true
+g67-6-equivalent-ratio-choice,6-7,F,fractions,6,6,6,6,5,choice,false,6.6,g67-6-equivalent-ratio-choice,,Which ratio is equivalent to 27:21?,9:7,3,F9|fraction-one-side|ratio-order,false,true,true
+g67-6-ratio-to-fraction,6-7,F,fractions,6,5,6,6,5,choice,false,6.6,g67-6-ratio-to-fraction,,"In a class, the ratio of girls to boys is 2:3. What fraction of the class are girls?",2/5,3,F4|fraction-flip|fraction-other-part,false,true,true
+g67-6-percent-of,6-7,F,fractions,6,6,6,7,6,number,true,6.7,g67-6-percent-of,,What is 50% of 200?,100,2,F10,false,false,true
+g67-6-percent-grid,6-7,F,fractions,6,4,6,6,5,number,false,6.7,g67-6-percent-grid,,A grid has 100 equal squares. 68 of them are shaded. What percent of the grid is shaded?,68,2,decimal-point|fraction-other-part,false,false,true
+g67-6-percent-whole,6-7,F,fractions,6,6,6,7,6,number,true,6.7,g67-6-percent-whole,,Liam has read 11 pages. That is 25% of the book. How many pages does the book have?,44,2,operation|percent-of-part,false,false,true
+g67-6-discount,6-7,F,fractions,6,6,6,7,6,number,true,6.7,g67-6-discount,,"A jacket costs $120. It is on sale for 20% off. What is the sale price, in dollars?",96,2,F10|discount-price,false,false,true
+g67-6-percent-to-decimal,6-7,F,fractions,6,4,6,6,5,number,false,6.7,g67-6-percent-to-decimal,,Write 73% as a decimal.,0.73,2,decimal-point,false,false,true
+g67-6-nth-term,6-7,A,algebra,6,5,6,6,5,number,true,6.9,g67-6-nth-term,,"The pattern 14, 19, 24, 29, … follows the rule 5n + 9, where n is the position. What is the 22nd number?",119,2,A3|A5,false,false,true
+g67-6-table-value,6-7,A,algebra,6,6,6,6,4,number,true,6.9,g67-6-table-value,,"In a table, when x is 1, y is 6; when x is 2, y is 9; when x is 3, y is 12. The pattern continues. What is y when x is 1",48,2,A5|next-not-asked,false,false,true
+g67-6-expression-words,6-7,A,algebra,6,5,6,6,5,choice,false,6.9,g67-6-expression-words,,"Which expression means ""8 more than 5 times a number n""?",5n + 8,3,group-translation|product-as-sum|rule-swap,false,true,true
+g67-6-shrinking-rule,6-7,A,algebra,6,6,6,6,6,choice,false,6.9,g67-6-shrinking-rule,,"The pattern 38, 31, 24, 17, … goes down by the same amount each time. Which expression gives the number in position n?",45 − 7n,3,A5|pattern-direction|pattern-unit-step,false,true,true
+g67-6-equation-times,6-7,A,algebra,6,4,5,5,6,number,true,6.10,g67-6-equation-times,,8y = 32. What is y?,4,2,inverse-op|operation,false,false,true
+g67-6-equation-plus,6-7,A,algebra,6,3,3,3,3,number,true,6.10,g67-6-equation-plus,,y + 27 = 100. What is y?,73,1,inverse-op,false,false,true
+g67-6-equation-words,6-7,A,algebra,6,4,5,5,4,number,true,6.10,g67-6-equation-words,,6 times a number is 90. What is the number?,15,2,inverse-op|operation,false,false,true
+g67-6-story-equation,6-7,A,algebra,6,5,5,5,6,choice,false,6.10,g67-6-story-equation,,Each box has the same number of crayons. 5 boxs hold 40 crayons. Let c be the number of crayons in one box. Which equati,5c = 40,3,operation,false,true,true
+g67-6-balance-box,6-7,A,algebra,6,3,3,3,2,number,true,6.10,g67-6-balance-box,,A balance is level. One side has a box and 3 marbles. The other side has 26 marbles. All marbles have the same mass. The,23,1,inverse-op,false,false,true
+g67-6-keep-balance,6-7,A,algebra,6,4,6,6,6,choice,false,6.10,g67-6-keep-balance,,x + 12 = 21. You multiply the left side by 12. What must you do to the right side to keep both sides equal?,Multiply it by 12,2,A1|balance-opposite,false,true,true
+g67-6-evaluate,6-7,A,algebra,6,5,7,7,5,number,true,6.9,g67-6-evaluate,,What is 6n + 8 when n = 8?,56,2,A3|product-as-sum,false,false,true
+g67-6-point-on-rule,6-7,A,algebra,6,6,6,6,6,choice,false,6.9,g67-6-point-on-rule,,The rule is y = 5x + 2. Which point is on its graph?,"(8, 42)",3,A5|coordinate-swap|product-as-sum,false,true,true
+g67-6-figure-pattern,6-7,A,algebra,6,5,5,5,4,number,true,6.9,g67-6-figure-pattern,,"Figure 1 has 4 squares, figure 2 has 7 squares and figure 3 has 10 squares. The pattern grows the same way. How many squ",22,2,A5|pattern-step-count,false,false,true
+g67-6-equation-check,6-7,A,algebra,6,4,4,4,5,choice,false,6.10,g67-6-equation-check,,Which value of x makes 4x = 24 true?,6,3,inverse-op|operation,false,true,true
+g67-6-triangle-area,6-7,MG,shapes,6,6,7,7,5,number,true,6.12,g67-6-triangle-area,,"A triangle has a base of 6 cm and a height of 8 cm. What is its area, in square centimetres?",24,2,M3|area-add,false,false,true
+g67-6-parallelogram-area,6-7,MG,shapes,6,6,7,7,5,number,true,6.12,g67-6-parallelogram-area,,"A parallelogram has a base of 13 cm and a height of 5 cm. Its slanted sides are 6 cm long. What is its area, in square c",65,2,M2|slant-height,false,false,true
+g67-6-trapezoid-area,6-7,MG,shapes,6,7,7,7,6,number,true,6.12,g67-6-trapezoid-area,,"A trapezoid has parallel sides of 7 cm and 15 cm. Its height is 3 cm. What is its area, in square centimetres?",33,2,area-add|half-area,false,false,true
+g67-6-angle-type,6-7,MG,shapes,6,6,6,6,6,choice,false,6.13,g67-6-angle-type,,An angle measures 180°. What kind of angle is it?,straight,3,angle-type,false,true,true
+g67-6-triangle-angle,6-7,MG,shapes,6,6,6,6,6,number,true,6.13,g67-6-triangle-angle,,"Two angles of a triangle measure 25° and 40°. What is the third angle, in degrees?",115,1,angle-sum,false,false,true
+g67-6-straight-line-angle,6-7,MG,shapes,6,4,6,6,6,number,true,6.13,g67-6-straight-line-angle,,"Two angles share a corner and together fill the straight line. One measures 32°. What does the other one measure, in deg",148,2,angle-sum,false,false,true
+g67-6-box-volume,6-7,MG,shapes,6,6,6,6,7,number,true,6.14,g67-6-box-volume,,"A box is 3 cm long, 8 cm wide and 4 cm high. What is its volume, in cubic centimetres?",96,2,M9,false,false,true
+g67-6-litres,6-7,MG,shapes,6,6,5,5,6,number,true,6.14,g67-6-litres,,A jug holds 4500 mL. How many litres is that?,4.5,2,unit-convert,false,false,true
+g67-6-cubic-units,6-7,MG,shapes,6,6,6,6,7,number,false,6.14,g67-6-cubic-units,,A box holds exactly 350 cubic centimetres of water. How many millilitres of water is that?,350,2,M11|unit-convert,false,false,true
+g67-6-triangle-sides,6-7,MG,shapes,6,4,6,6,5,choice,false,6.15,g67-6-triangle-sides,,"A triangle has sides of 8 cm, 6 cm and 9 cm. What is its most specific side classification?",scalene,3,triangle-type,false,true,true
+g67-6-triangle-angles,6-7,MG,shapes,6,4,6,6,5,choice,false,6.15,g67-6-triangle-angles,,"A triangle has angles of 40°, 75° and 65°. What is its angle classification?",acute,3,triangle-type,false,true,true
+g67-6-plot-point,6-7,MG,shapes,6,5,6,6,4,choice,false,6.16,g67-6-plot-point,,"Start at the origin, (0, 0). Move 1 unit right and 6 units up. Which point are you on?","(1, 6)",3,coordinate-swap|one-part,false,true,true
+g67-6-translate-point,6-7,MG,shapes,6,6,6,6,4,choice,true,6.16,g67-6-translate-point,,"The point (4, 5) moves 2 units right and 3 units down. Where does it end up?","(6, 2)",3,move-distance-swap|one-part|transform-sign,false,true,true
+g67-6-line-graph,6-7,DP,shapes,6,6,6,6,6,choice,true,6.17,g67-6-line-graph,,"A line graph shows the temperature outside: week 1, 8 °C; week 2, 10 °C; week 3, 15 °C; week 4, 25 °C; week 5, 31 °C. Be",week 3 and week 4,3,change-order|graph-value|more-less,false,true,true
+g67-6-spinner-event,6-7,DP,shapes,6,6,6,6,5,choice,false,6.18,g67-6-spinner-event,,"A spinner has 7 equal parts, numbered 1 to 7. What is the probability of spinning an odd number?",4/7,3,D3|D4|probability-other,false,true,true
+g67-6-theoretical,6-7,DP,shapes,6,6,6,6,5,choice,false,6.18,g67-6-theoretical,,A fair die was rolled 12 times. It landed on the number 5 a total of 5 times. What is the theoretical probability of rol,1/6,2,D4|D5,false,true,true
+g67-6-l-shape-perimeter,6-7,MG,shapes,6,3,3,3,3,number,true,6.11,g67-6-l-shape-perimeter,,"An L-shaped garden has 6 straight sides. Going around it, the sides measure 14 m, 8 m, 2 m, 6 m, 12 m, 2 m. What is its ",44,2,M2|leaves-out-addend,false,false,true
+g67-7-greatest-integer,6-7,N,number,7,6,6,6,6,choice,false,7.2,g67-7-greatest-integer,,Compare −6 and −15. Which number is the greatest?,−6,2,N6|negative-equal,false,true,true
+g67-7-order-integers,6-7,N,number,7,6,6,6,6,choice,false,7.2,g67-7-order-integers,,Which list is in order from least to greatest?,"−3, −2, 4, 8",3,N6|absolute-order|more-less,false,true,false
+g67-7-add-integers,6-7,O,number,7,7,7,7,7,choice,true,7.2,g67-7-add-integers,,−4 + 13 = ?,9,3,O9,false,true,true
+g67-7-subtract-integers,6-7,O,number,7,7,7,7,7,choice,true,7.2,g67-7-subtract-integers,,−4 − (−9) = ?,5,2,O9,false,true,true
+g67-7-multiply-integers,6-7,O,number,7,8,8,8,8,choice,true,7.2,g67-7-multiply-integers,,(−9) × (−6) = ?,54,2,operation|sign-rule,false,true,true
+g67-7-divide-integers,6-7,O,number,7,8,8,8,8,choice,true,7.2,g67-7-divide-integers,,−10 ÷ 2 = ?,−5,3,operation|sign-rule,false,true,true
+g67-7-temperature,6-7,O,number,7,7,7,7,7,choice,true,7.2,g67-7-temperature,,"The temperature is −14°C. It rises by 19 degrees. What is the new temperature, in degrees Celsius?",5,3,O9|one-part,false,true,true
+g67-7-integer-order-of-operations,6-7,O,number,7,8,8,8,8,choice,true,7.2,g67-7-integer-order-of-operations,,2 + 5 × (−3) = ?,−13,3,O7|operation|sign-rule,false,true,true
+g67-7-decimal-multiply,6-7,O,number,7,7,7,7,7,number,true,7.3,g67-7-decimal-multiply,,5.1 × 0.9 = ?,4.59,2,decimal-point,false,false,true
+g67-7-decimal-divide,6-7,O,number,7,7,7,7,7,number,true,7.3,g67-7-decimal-divide,,3 ÷ 0.6 = ?,5,2,decimal-point,false,false,true
+g67-7-bigger-or-smaller,6-7,O,number,7,7,7,7,6,choice,false,7.3,g67-7-bigger-or-smaller,,"Without working it out: is 53 × 0.8 more than 53, less than 53 or equal to 53?",Less than 53,2,O4|same-size,false,true,true
+g67-7-decimal-order-of-operations,6-7,O,number,7,6,7,7,6,number,true,7.3,g67-7-decimal-order-of-operations,,2.6 + 3.2 × 6 = ?,21.8,1,O7,false,false,true
+g67-7-times-five,6-7,O,number,7,5,5,5,5,number,true,7.1,g67-7-times-five,,116 × 50 = ?,5800,2,method-step,false,false,true
+g67-7-change-several,6-7,O,number,7,6,6,6,5,number,true,7.3,g67-7-change-several,,"Omar buys 4 markers for $3.15 each and pays with a $20 bill. How much change does Omar get, in dollars?",7.4,2,cost-not-change|one-part,false,false,true
+g67-7-fraction-to-decimal,6-7,F,fractions,7,6,7,7,7,choice,true,7.4,g67-7-fraction-to-decimal,,Which decimal is equal to 14/25?,0.56,3,F7|fraction-flip,false,true,true
+g67-7-fraction-to-percent,6-7,F,fractions,7,4,7,7,5,number,true,7.4,g67-7-fraction-to-percent,,Write 1/4 as a percent.,25,2,decimal-point|operation,false,false,true
+g67-7-greatest-mixed-forms,6-7,F,fractions,7,7,7,7,7,choice,false,7.4,g67-7-greatest-mixed-forms,,Which number is the greatest?,3/4,2,form-compare,false,true,false
+g67-7-repeating-decimal,6-7,F,fractions,7,7,7,7,6,choice,true,7.4,g67-7-repeating-decimal,,Which fraction is equal to a decimal that ends (stops)?,3/4,3,decimal-repeat,false,true,true
+g67-7-decimal-to-fraction,6-7,F,fractions,7,4,7,7,7,choice,false,7.4,g67-7-decimal-to-fraction,,Which fraction in lowest terms is equal to 0.45?,9/20,3,F7|decimal-point,false,true,true
+g67-7-percent-to-fraction,6-7,F,fractions,7,4,7,7,7,choice,true,7.4,g67-7-percent-to-fraction,,Write 55% as a fraction in lowest terms.,11/20,3,F7|decimal-point|fraction-flip,false,true,true
+g67-7-decimal-between,6-7,F,fractions,7,6,7,7,6,choice,true,7.4,g67-7-decimal-between,,Which decimal is between 1/2 and 3/5?,0.55,3,F7|bounds-error,false,true,true
+g67-7-order-forms,6-7,F,fractions,7,7,7,7,7,choice,false,7.4,g67-7-order-forms,,Which list is in order from least to greatest?,"0.37, 2/5, 44%",3,form-compare|more-less,false,true,false
+g67-7-ratio-percent,6-7,F,fractions,7,5,7,7,6,number,true,7.4,g67-7-ratio-percent,,A class has 11 girls and 9 boys. What percent of the class are girls?,55,1,F4|fraction-other-part,false,false,true
+g67-7-sales-tax,6-7,F,fractions,7,6,7,7,6,number,true,7.13,g67-7-sales-tax,,"A pair of skates costs $250. The sales tax is 13%. What is the total cost with tax, in dollars?",282.5,2,amount-not-total|percent-as-amount,false,false,true
+g67-7-tip,6-7,F,fractions,7,6,7,7,6,number,true,7.13,g67-7-tip,,"A meal costs $70. The family leaves a 15% tip. How much do they pay in all, in dollars?",80.5,2,amount-not-total|percent-as-amount,false,false,true
+g67-7-sale-price,6-7,F,fractions,7,6,7,7,6,number,true,7.13,g67-7-sale-price,,"A bike helmet costs $140. It is 45% off. What is the sale price, in dollars?",77,2,F10|discount-price,false,false,true
+g67-7-write-decimal,6-7,F,fractions,7,6,7,7,7,number,true,7.4,g67-7-write-decimal,,Write 7/8 as a decimal.,0.875,2,F7,false,false,true
+g67-7-evaluate-relation,6-7,A,algebra,7,5,7,7,5,number,true,7.5,g67-7-evaluate-relation,,y = 2n − 2. What is y when n = 14?,26,2,operation|sub-before-multiply,false,false,true
+g67-7-rule-from-table,6-7,A,algebra,7,6,7,7,6,choice,true,7.5,g67-7-rule-from-table,,"A table of values has the pairs (n, y): (4, 17), (5, 21), (6, 25). Which rule fits?",y = 4n + 1,3,A5|rule-start|step-as-addend,false,true,true
+g67-7-integer-add-equation,6-7,A,algebra,7,7,7,7,8,choice,true,7.2,g67-7-integer-add-equation,,x + 13 = 2. What is x?,−11,2,inverse-op|opposite-sign,false,true,true
+g67-7-integer-subtract-equation,6-7,A,algebra,7,7,7,7,8,choice,true,7.2,g67-7-integer-subtract-equation,,x − 13 = −5. What is x?,8,2,inverse-op|opposite-sign,false,true,true
+g67-7-two-step-plus,6-7,A,algebra,7,5,7,7,6,number,true,7.6,g67-7-two-step-plus,,Solve 4x + 18 = 42. What is x?,6,2,A6,false,false,true
+g67-7-two-step-minus,6-7,A,algebra,7,5,7,7,6,number,true,7.6,g67-7-two-step-minus,,Solve 5x − 4 = 11. What is x?,3,2,A6,false,false,true
+g67-7-two-step-divide,6-7,A,algebra,7,5,7,7,6,number,true,7.6,g67-7-two-step-divide,,Solve x ÷ 4 + 3 = 7. What is x?,16,2,A6,false,false,true
+g67-7-two-step-story,6-7,A,algebra,7,5,7,7,6,number,true,7.6,g67-7-two-step-story,,Renting a bike costs $9 plus $4 for each hour. It cost $25. How many hours was it?,4,1,A6,false,false,true
+g67-7-story-equation,6-7,A,algebra,7,5,7,7,6,choice,false,7.6,g67-7-story-equation,,Priya pays $4 to join a club and $3 for each class. In all Priya pays $34. Let k be the number of classes. Which equatio,3k + 4 = 34,3,group-translation|inverse-op|rule-swap,false,true,true
+g67-7-check-solution,6-7,A,algebra,7,5,7,7,6,choice,true,7.6,g67-7-check-solution,,Which value of x makes 2x + 8 = 32 true?,12,3,A6,false,true,true
+g67-7-table-far,6-7,A,algebra,7,7,7,7,7,number,true,7.5,g67-7-table-far,,"A table of values has the pairs (x, y): (1, 15), (2, 22), (3, 29). The pattern continues. What is y when x = 39?",281,2,A5|step-as-addend,false,false,true
+g67-7-negative-input,6-7,A,algebra,7,8,8,8,8,choice,true,7.5,g67-7-negative-input,,y = 5x + 1. What is y when x = −4?,−19,3,O9|product-as-sum|sign-rule,false,true,true
+g67-7-point-on-line,6-7,A,algebra,7,7,7,7,7,choice,false,7.5,g67-7-point-on-line,,Which point is on the graph of y = x − 8?,"(1, −7)",3,O9|coordinate-swap|operation,false,true,true
+g67-7-draining-pool,6-7,A,algebra,7,7,7,7,7,number,true,7.5,g67-7-draining-pool,,A phone battery has 150 units of charge. It uses 5 units of charge each minute. How much is left after 4 minutes?,130,2,count-start|pattern-direction,false,false,true
+g67-7-figure-expression,6-7,A,algebra,7,6,7,7,6,choice,false,7.5,g67-7-figure-expression,,"Figure 1 has 8 tiles, figure 2 has 10 and figure 3 has 12. Which expression gives the number of tiles in figure n?",2n + 6,3,A5|rule-start|step-as-addend,false,true,true
+g67-7-balance-boxes,6-7,A,algebra,7,5,7,7,6,number,true,7.6,g67-7-balance-boxes,,A balance is level. One side has 3 boxes and 6 marbles. The other side has 18 marbles. Every box holds the same number o,4,2,A6,false,false,true
+g67-7-circumference,6-7,MG,shapes,7,7,7,7,7,number,true,7.7,g67-7-circumference,,"A circle has a diameter of 28 cm. Use 3.14 for π. What is its circumference, in centimetres?",87.92,2,M10,false,false,true
+g67-7-circle-area,6-7,MG,shapes,7,7,7,7,7,number,true,7.7,g67-7-circle-area,,"A circle has a radius of 6 cm. Use 3.14 for π. What is its area, in square centimetres?",113.04,2,M10,false,false,true
+g67-7-diameter-from-circumference,6-7,MG,shapes,7,7,7,7,7,number,true,7.7,g67-7-diameter-from-circumference,,"A circle has a circumference of 9.42 cm. Use 3.14 for π. What is its diameter, in centimetres?",3,2,M10,false,false,true
+g67-7-cylinder-base-area,6-7,MG,shapes,7,8,8,8,7,number,true,7.8,g67-7-cylinder-base-area,,"A cylinder has a base with an area of 39 square cm. It is 8 cm tall. What is its volume, in cubic centimetres?",312,1,operation,false,false,true
+g67-7-cylinder-volume,6-7,MG,shapes,7,8,8,8,7,number,true,7.8,g67-7-cylinder-volume,,"A cylinder has a radius of 4 cm and a height of 5 cm. Use 3.14 for π. What is its volume, in cubic centimetres?",251.2,2,M10,false,false,true
+g67-7-quadrant,6-7,MG,shapes,7,6,7,7,6,choice,false,7.9,g67-7-quadrant,,"On a coordinate grid, which part holds the point (9, −4)?",Bottom right,3,coordinate-swap|quadrant-sign,false,true,true
+g67-7-reflect-point,6-7,MG,shapes,7,6,7,7,7,choice,true,7.10,g67-7-reflect-point,,"Reflect the point (−9, −3) in the x-axis. Where does it land?","(−9, 3)",3,coordinate-swap|transform-sign,false,true,true
+g67-7-translate-point,6-7,MG,shapes,7,6,7,7,6,choice,true,7.10,g67-7-translate-point,,"The point (−4, 3) moves 6 units right and 3 units down. Where does it end up?","(2, 0)",3,move-distance-swap|transform-sign,false,true,true
+g67-7-half-turn,6-7,MG,shapes,7,7,7,7,7,choice,true,7.10,g67-7-half-turn,,"The point (7, 5) turns a half turn around the origin, (0, 0). Where does it land?","(−7, −5)",3,coordinate-swap|transform-sign,false,true,true
+g67-7-circle-graph-amount,6-7,DP,shapes,7,7,7,7,7,number,true,7.11,g67-7-circle-graph-amount,,"A circle graph shows how 400 students answered a survey. The section for ""walk to school"" is 40% of the circle. How many",160,2,F10|percent-as-count,false,false,true
+g67-7-circle-graph-degrees,6-7,DP,shapes,7,7,7,7,7,number,true,7.11,g67-7-circle-graph-degrees,,A section of a circle graph is 20% of the circle. How many degrees is the angle at the centre of that section?,72,2,F10|percent-as-degrees,false,false,true
+g67-7-circle-graph-percent,6-7,DP,shapes,7,7,7,7,7,number,true,7.11,g67-7-circle-graph-percent,,"320 people named their favourite fruit, and 32 of them chose oranges. In a circle graph, what percent of the circle is o",10,1,count-as-percent|percent-inverse,false,false,true
+g67-7-count-outcomes,6-7,DP,shapes,8,7,7,7,7,number,true,8.13,g67-7-count-outcomes,,You roll a die and then roll a die. How many different outcomes are possible?,36,1,one-part|outcomes-add,false,false,true
+g67-7-experimental,6-7,DP,shapes,7,7,7,7,7,choice,false,7.12,g67-7-experimental,,Two dice were rolled together 50 times. A sum of 7 came up 11 times. What is the experimental probability of rolling a s,11/50,3,D4|probability-other|theory-as-data,false,true,true
+g67-7-dice-sum,6-7,DP,shapes,8,7,7,7,7,choice,true,8.13,g67-7-dice-sum,,Two fair dice are rolled and the numbers are added. Which sum is more likely?,A sum of 9,2,D3|chance-reversed,false,true,false
+g67-8-square,6-7,N,number,8,8,8,8,7,number,true,8.1,g67-8-square,,What is 4²?,16,1,power-multiply,false,false,true
+g67-8-perfect-square,6-7,N,number,8,8,8,8,8,choice,true,8.1,g67-8-perfect-square,,Which number is a perfect square?,225,2,square-neighbour,false,true,false
+g67-8-square-root,6-7,N,number,8,8,8,8,8,number,true,8.2,g67-8-square-root,,What is the positive square root of 225?,15,1,root-half,false,false,true
+g67-8-square-side,6-7,N,number,8,8,8,8,7,number,true,8.2,g67-8-square-side,,"A square has an area of 64 square centimetres. How long is each side, in centimetres?",8,2,M2|root-half,false,false,true
+g67-8-root-between,6-7,N,number,8,8,8,8,8,choice,true,8.2,g67-8-root-between,,Between which two consecutive whole numbers is the positive square root of 156?,12 and 13,2,root-estimate,false,true,true
+g67-8-square-tile,6-7,N,number,8,8,8,8,7,number,true,8.2,g67-8-square-tile,,81 square tiles of the same size form a square array in rows with no gaps. How many tiles are in each row?,9,1,root-half,false,false,true
+g67-8-add-fractions,6-7,F,fractions,8,7,7,7,6,choice,true,8.5,g67-8-add-fractions,,3/7 + 3/4 = ?,33/28,2,F2|fraction-one-side,false,true,true
+g67-8-add-mixed-numbers,6-7,F,fractions,8,7,7,7,7,choice,true,8.5,g67-8-add-mixed-numbers,,4 2/3 + 2 3/5 = ?,7 4/15,2,F2|fraction-one-side|leaves-out-addend,false,true,true
+g67-8-subtract-fractions,6-7,F,fractions,8,7,7,7,6,choice,true,8.5,g67-8-subtract-fractions,,3/9 − 1/5 = ?,2/15,2,F2|fraction-one-side,false,true,true
+g67-8-multiply-fractions,6-7,F,fractions,8,8,8,8,7,choice,true,8.5,g67-8-multiply-fractions,,2/5 × 2/5 = ?,4/25,2,F2|fraction-one-side,false,true,true
+g67-8-divide-fractions,6-7,F,fractions,8,8,8,8,8,choice,true,8.5,g67-8-divide-fractions,,1/7 ÷ 3/5 = ?,5/21,2,division-reversed|operation,false,true,true
+g67-8-small-percent,6-7,F,fractions,8,8,8,8,8,number,true,8.3,g67-8-small-percent,,What is 0.2% of 10000?,20,2,decimal-point,false,false,true
+g67-8-large-percent,6-7,F,fractions,8,8,8,8,8,number,true,8.3,g67-8-large-percent,,What is 200% of 460?,920,2,amount-not-total|decimal-point,false,false,true
+g67-8-unit-rate,6-7,F,fractions,8,8,8,8,6,number,true,8.4,g67-8-unit-rate,,A train travels 720 kilometres in 6 hours at a constant speed. How many kilometres does it travel in one hour?,120,2,operation|total-for-unit,false,false,true
+g67-8-three-part-ratio,6-7,F,fractions,8,8,8,8,8,number,true,8.4,g67-8-three-part-ratio,,"A rope 152 metres long is cut into three pieces in the ratio 4:6:9. How long is the shortest piece, in metres?",32,2,more-less|operation,false,false,true
+g67-8-negative-equation,6-7,A,algebra,8,8,8,8,8,choice,true,8.8,g67-8-negative-equation,,4x + 8 = −16. What is x?,−6,2,A6|O9,false,true,true
+g67-8-negative-coefficient,6-7,A,algebra,8,8,8,8,8,number,true,8.8,g67-8-negative-coefficient,,−5x − 10 = −40. What is x?,6,2,A6,false,false,true
+g67-8-substitute-signed,6-7,A,algebra,8,8,8,8,8,choice,true,8.7,g67-8-substitute-signed,,What is 6n − 15 when n = −5?,−45,2,operation|sign-rule,false,true,true
+g67-8-combine-expression,6-7,A,algebra,8,5,7,7,5,number,true,8.7,g67-8-combine-expression,,What is 8n − 3n + 6 when n = 9?,51,2,operation|variable-one,false,false,true
+g67-8-large-relation,6-7,A,algebra,8,8,8,8,8,choice,true,8.6,g67-8-large-relation,,y = 6x − 56. What is y when x = −10?,−116,2,operation|sign-rule,false,true,true
+g67-8-integer-table,6-7,A,algebra,8,8,8,8,8,choice,true,8.6,g67-8-integer-table,,"A table has (x, y) pairs (−2, 3), (−1, 6) and (0, 9). Which rule fits all three pairs?",y = 3x + 9,2,A5|constant-sign,false,true,true
+g67-8-inverse-input,6-7,A,algebra,8,8,8,8,8,choice,true,8.6,g67-8-inverse-input,,y = 4x + 7. What is x when y = −21?,−7,2,A6|sign-rule,false,true,true
+g67-8-expression-story,6-7,O,number,6,4,6,6,5,number,true,6.3,g67-8-expression-story,,"A game gives 2 points for each token, then takes away one point for every two tokens. With 36 tokens, how many points re",54,2,one-part|operation,false,false,true
+g67-8-prism-surface,6-7,MG,shapes,8,8,8,8,6,number,true,8.9,g67-8-prism-surface,,"A closed rectangular box is 7 cm long, 4 cm wide and 8 cm high. What is its total surface area, in square centimetres?",232,2,one-part|volume-not-area,false,false,true
+g67-8-cube-surface,6-7,MG,shapes,8,8,8,8,6,number,true,8.9,g67-8-cube-surface,,"A cube has edges of 10 cm. What is its total surface area, in square centimetres?",600,2,one-part|volume-not-area,false,false,true
+g67-8-hypotenuse,6-7,MG,shapes,8,8,8,8,8,number,true,8.10,g67-8-hypotenuse,,"The two sides that meet at the right angle of a right triangle are 48 cm and 90 cm. How long is the longest side, in cen",102,2,pythagoras-add|pythagoras-no-root,false,false,true
+g67-8-missing-leg,6-7,MG,shapes,8,8,8,8,8,number,true,8.10,g67-8-missing-leg,,"A right triangle has a longest side of 78 cm. One of its other sides is 30 cm. How long is the remaining side, in centim",72,2,pythagoras-add|pythagoras-no-root,false,false,true
+g67-8-mean,6-7,DP,shapes,8,7,7,7,5,number,true,8.12,g67-8-mean,,"Find the mean of these five values: 11, 9, 11, 18, 16.",13,2,average-kind|sum-for-mean,false,false,true
+g67-8-median,6-7,DP,shapes,8,7,7,7,4,number,true,8.12,g67-8-median,,"Find the median of these six values: 11, 6, 9, 13, 8, 11.",10,2,median-unsorted|one-part,false,false,true
+g67-8-mode,6-7,DP,shapes,8,7,7,7,3,number,false,8.12,g67-8-mode,,"Find the mode of these seven values: 17, 19, 27, 17, 19, 19, 16.",19,2,mode-largest|one-part,false,false,true
+g67-8-independent-probability,6-7,DP,shapes,8,7,7,7,6,choice,true,8.13,g67-8-independent-probability,,A fair spinner has 8 equal sections numbered 1 to 8. You spin it once and toss a fair coin once. What is the probability,1/16,2,one-part|probability-add,false,true,true
