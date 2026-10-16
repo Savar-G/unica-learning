@@ -4,6 +4,7 @@
 // rail. Draw with a mouse, a finger or a stylus; grades 3-7 can also type. Its own component, so the test-screen design
 // (#79) can move it as one piece. The rules (palm rejection, image size, the draft) are in src/lib/whiteboard.ts.
 // Strokes are stored as fractions of the board's width, so the drawing keeps its shape when the board changes size.
+// #186: the board also keeps a log of every stroke (with the time of each point), undo and clear, for the admin's replay.
 import { useCallback, useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
 import { WORK_IMAGE_MAX_BYTES, WORK_TEXT_MAX } from "@/lib/test-api";
 import {
@@ -15,13 +16,14 @@ import {
   newPalmGuard,
   pointerDown,
   pointerUp,
+  type BoardEvent,
   type BoardState,
   type Stroke,
 } from "@/lib/whiteboard";
+import { paint } from "./board-paint";
 import "./test-base.css";
 import "./whiteboard.css";
 
-const INK = "#1f1c19";
 const PENCIL_W = 3.2;
 const ERASER_W = 26;
 
@@ -42,30 +44,6 @@ export interface WhiteboardProps {
   nudge: boolean;
   /** Called with the board's size whenever it changes. */
   onSize?: (size: BoardSize) => void;
-}
-
-function paint(ctx: CanvasRenderingContext2D, s: Stroke, width: number, scale = 1, from = 0) {
-  if (s.pts.length === 0) return;
-  ctx.save();
-  ctx.globalCompositeOperation = s.erase ? "destination-out" : "source-over";
-  ctx.strokeStyle = INK;
-  ctx.fillStyle = INK;
-  ctx.lineCap = "round";
-  ctx.lineJoin = "round";
-  ctx.lineWidth = s.w * scale;
-  if (s.pts.length === 1) {
-    const [x, y] = s.pts[0];
-    ctx.beginPath();
-    ctx.arc(x * width, y * width, (s.w * scale) / 2, 0, Math.PI * 2);
-    ctx.fill();
-  } else {
-    const start = Math.max(0, from - 1);
-    ctx.beginPath();
-    ctx.moveTo(s.pts[start][0] * width, s.pts[start][1] * width);
-    for (let i = start + 1; i < s.pts.length; i++) ctx.lineTo(s.pts[i][0] * width, s.pts[i][1] * width);
-    ctx.stroke();
-  }
-  ctx.restore();
 }
 
 /** True when any pixel of the layer has ink. */
@@ -158,7 +136,9 @@ export function Whiteboard({ board, onChange, typing, required, nudge, onSize }:
   const canvas = useRef<HTMLCanvasElement>(null);
   const size = useRef<BoardSize>({ width: 0, height: 0 });
   const strokes = useRef(board.strokes);
-  const current = useRef<{ id: number; stroke: Stroke } | null>(null);
+  const log = useRef(board.log);
+  /** The stroke in progress, with the time of each point (event.timeStamp, the clock of performance.now()). */
+  const current = useRef<{ id: number; stroke: Stroke; times: number[] } | null>(null);
   const guard = useRef(newPalmGuard());
   const [tool, setTool] = useState<"pencil" | "eraser">("pencil");
   const [mode, setMode] = useState<"draw" | "type">("draw");
@@ -204,6 +184,9 @@ export function Whiteboard({ board, onChange, typing, required, nudge, onSize }:
     strokes.current = board.strokes;
     redraw();
   }, [board.strokes, redraw]);
+  useEffect(() => {
+    log.current = board.log;
+  }, [board.log]);
 
   const at = (e: { clientX: number; clientY: number }): [number, number] => {
     const r = canvas.current!.getBoundingClientRect();
@@ -223,7 +206,7 @@ export function Whiteboard({ board, onChange, typing, required, nudge, onSize }:
       // The pointer is already gone; the stroke still ends on pointerup.
     }
     const w = tool === "eraser" ? ERASER_W : e.pointerType === "pen" ? 2 + (e.pressure || 0.5) * 3 : PENCIL_W;
-    current.current = { id: e.pointerId, stroke: { erase: tool === "eraser", w, pts: [at(e)] } };
+    current.current = { id: e.pointerId, stroke: { erase: tool === "eraser", w, pts: [at(e)] }, times: [e.timeStamp] };
     redraw();
   };
 
@@ -233,7 +216,10 @@ export function Whiteboard({ board, onChange, typing, required, nudge, onSize }:
     const from = cur.stroke.pts.length;
     const native = e.nativeEvent;
     const events = typeof native.getCoalescedEvents === "function" ? native.getCoalescedEvents() : [];
-    for (const ev of events.length ? events : [native]) cur.stroke.pts.push(at(ev));
+    for (const ev of events.length ? events : [native]) {
+      cur.stroke.pts.push(at(ev));
+      cur.times.push(ev.timeStamp);
+    }
     const ctx = canvas.current?.getContext("2d");
     if (ctx) paint(ctx, cur.stroke, size.current.width, 1, from);
   };
@@ -245,7 +231,15 @@ export function Whiteboard({ board, onChange, typing, required, nudge, onSize }:
     if (!ended || !cur || cur.id !== e.pointerId) return;
     current.current = null;
     strokes.current = [...strokes.current, cur.stroke];
-    onChange({ ...board, strokes: strokes.current });
+    log.current = [...log.current, { kind: "stroke", stroke: cur.stroke, times: cur.times }];
+    onChange({ ...board, strokes: strokes.current, log: log.current });
+  };
+
+  /** Undo and Clear: the board changes, and the log keeps what the child did, with when (#186). */
+  const edit = (kind: Exclude<BoardEvent["kind"], "stroke">) => {
+    log.current = [...log.current, { kind, at: performance.now() }];
+    strokes.current = kind === "undo" ? strokes.current.slice(0, -1) : [];
+    onChange({ ...board, strokes: strokes.current, log: log.current });
   };
 
   const empty = board.strokes.length === 0;
@@ -293,8 +287,8 @@ export function Whiteboard({ board, onChange, typing, required, nudge, onSize }:
             <div className="wb-tools">
               <button type="button" className="wb-tool" aria-pressed={tool === "pencil"} onClick={() => setTool("pencil")} aria-label="Pencil"><PencilIcon /></button>
               <button type="button" className="wb-tool" aria-pressed={tool === "eraser"} onClick={() => setTool("eraser")} aria-label="Eraser"><EraserIcon /></button>
-              <button type="button" className="wb-tool" onClick={() => onChange({ ...board, strokes: board.strokes.slice(0, -1) })} disabled={empty} aria-label="Undo"><UndoIcon /></button>
-              <button type="button" className="wb-tool wb-clear" onClick={() => onChange({ ...board, strokes: [] })} disabled={empty}>Clear</button>
+              <button type="button" className="wb-tool" onClick={() => edit("undo")} disabled={empty} aria-label="Undo"><UndoIcon /></button>
+              <button type="button" className="wb-tool wb-clear" onClick={() => edit("clear")} disabled={empty}>Clear</button>
             </div>
           )}
         </div>

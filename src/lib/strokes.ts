@@ -128,6 +128,38 @@ export function parseStrokes(raw: unknown): { strokes: string | null; dropped?: 
   return json.length <= STROKES_MAX_BYTES ? { strokes: json } : { strokes: null, dropped: "too_big" };
 }
 
+/** A stroke on the replayed board: the points drawn so far. */
+export type ReplayStroke = Omit<Extract<StrokeEvent, { kind: "stroke" }>, "kind">;
+
+/** When an event starts: a stroke's first point, an undo's or a clear's time. */
+const startOf = (e: StrokeEvent) => (e.kind === "stroke" ? e.pts[0][2] : e.t);
+
+/**
+ * The board as it was `t` ms after the question was shown, for the admin's replay: the strokes in the order the child
+ * drew them, the stroke in progress up to that moment, with each undo (the last stroke goes) and clear (every stroke
+ * goes) done at its time. Eraser strokes are strokes of their own, painted in order.
+ */
+export function boardAt(recording: StrokeRecording, t: number): ReplayStroke[] {
+  let board: ReplayStroke[] = [];
+  for (const e of recording.events) {
+    if (startOf(e) > t) break;
+    if (e.kind === "undo") board = board.slice(0, -1);
+    else if (e.kind === "clear") board = [];
+    else {
+      const drawn = e.pts.findIndex((p) => p[2] > t);
+      board.push({ erase: e.erase, w: e.w, pts: drawn === -1 ? e.pts : e.pts.slice(0, drawn) });
+    }
+  }
+  return board;
+}
+
+/** How long the replay runs, in ms: until the last thing the child did. */
+export function replayLength(recording: StrokeRecording): number {
+  let end = 0;
+  for (const e of recording.events) end = Math.max(end, e.kind === "stroke" ? e.pts[e.pts.length - 1][2] : e.t);
+  return end;
+}
+
 function thin(pts: TimedPoint[], step: number): TimedPoint[] {
   if (pts.length <= 2) return pts;
   const kept = [pts[0]];

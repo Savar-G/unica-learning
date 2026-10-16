@@ -15,6 +15,7 @@ import { answerRecorder, type AnswerEvents } from "@/lib/answer-events";
 import { track } from "@/lib/track";
 import { SUPPORT_EMAIL, SUPPORT_HREF } from "@/lib/contact";
 import { draftKey, draftPrefix, emptyBoard, hasDrawing, type BoardState } from "@/lib/whiteboard";
+import { fitStrokes, recordStrokes } from "@/lib/strokes";
 import { FactsSection } from "./facts";
 import { breakSeen, markBreakSeen, TestBreak } from "./test-break";
 import { Choices } from "./test-choices";
@@ -392,7 +393,12 @@ function Question({ testId, typing, question, last, onAnswer, failure }: Questio
       setSending(false);
       return;
     }
-    const work: WorkPayload | undefined = image || typed ? { ...(image ? { image } : {}), ...(typed ? { text: typed } : {}) } : undefined;
+    // #186: every stroke, undo and clear, for the admin's replay, thinned to the size limit (or none when it cannot fit).
+    const recorded = recordStrokes(board.log, shownAt.current, boardSize.current);
+    const strokes = recorded && fitStrokes(recorded);
+    const work: WorkPayload | undefined = image || typed || strokes
+      ? { ...(image ? { image } : {}), ...(typed ? { text: typed } : {}), ...(strokes ? { strokes } : {}) }
+      : undefined;
     const ok = await onAnswer(question.id, value, timeMs, work, recorder.events(timeMs));
     // On success this question unmounts; on failure the child keeps the answer and the work, and can press Next again.
     if (!ok) {
@@ -401,7 +407,7 @@ function Question({ testId, typing, question, last, onAnswer, failure }: Questio
     }
     stored.current = true;
     saveDraft(draft, emptyBoard());
-    if (work) track("test_work", { status: question.showWork ? "required" : "optional", channel: image && typed ? "both" : image ? "draw" : "type" });
+    if (image || typed) track("test_work", { status: question.showWork ? "required" : "optional", channel: image && typed ? "both" : image ? "draw" : "type" });
   };
 
   const submitRef = useRef(submit);

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { encodeStrokes, fitStrokes, recordStrokes, type StrokeEvent, type StrokeRecording, type TimedPoint } from "@/lib/strokes";
+import { boardAt, encodeStrokes, fitStrokes, recordStrokes, replayLength, type StrokeEvent, type StrokeRecording, type TimedPoint } from "@/lib/strokes";
 import type { BoardEvent } from "@/lib/whiteboard";
 
 // The whiteboard strokes (#186): what the child drew, in order, with times since the question was shown, so an admin
@@ -84,6 +84,39 @@ describe("the size limit of a recording", () => {
     // 2,000 separate dots: nothing to thin.
     const dots = recording(...Array.from({ length: 2000 }, (_, i) => line([[round(i / 2000), 0.5, i * 10]])));
     expect(fitStrokes(dots, 20_000)).toBeNull();
+  });
+});
+
+describe("the admin's replay", () => {
+  // A line, a second line that is undone, an eraser stroke over the first line, a clear, then a dot.
+  const work = recording(
+    line([[0.1, 0.1, 100], [0.2, 0.1, 200], [0.3, 0.1, 300]]),
+    line([[0.1, 0.5, 1000], [0.2, 0.5, 1100]]),
+    { kind: "undo", t: 1500 },
+    { kind: "stroke", erase: true, w: 26, pts: [[0.2, 0.1, 2000], [0.25, 0.1, 2100]] },
+    { kind: "clear", t: 3000 },
+    line([[0.6, 0.6, 3500]]),
+  );
+  /** The board at `t`, as each stroke's points (x, y) and whether it erases. */
+  const at = (t: number) => boardAt(work, t).map((s) => ({ erase: s.erase, pts: s.pts.map(([x, y]) => [x, y]) }));
+
+  it("draws the strokes in the order the child drew them, and a stroke in progress up to that moment", () => {
+    expect(at(0)).toEqual([]);
+    expect(at(250)).toEqual([{ erase: false, pts: [[0.1, 0.1], [0.2, 0.1]] }]);
+    expect(at(1100)).toEqual([{ erase: false, pts: [[0.1, 0.1], [0.2, 0.1], [0.3, 0.1]] }, { erase: false, pts: [[0.1, 0.5], [0.2, 0.5]] }]);
+  });
+
+  it("an undo takes the last stroke away, the eraser is a stroke of its own, and a clear empties the board", () => {
+    expect(at(1499)).toHaveLength(2);
+    expect(at(1500)).toEqual([{ erase: false, pts: [[0.1, 0.1], [0.2, 0.1], [0.3, 0.1]] }]);
+    expect(at(2100)).toEqual([{ erase: false, pts: [[0.1, 0.1], [0.2, 0.1], [0.3, 0.1]] }, { erase: true, pts: [[0.2, 0.1], [0.25, 0.1]] }]);
+    expect(at(3000)).toEqual([]);
+    expect(at(3500)).toEqual([{ erase: false, pts: [[0.6, 0.6]] }]);
+  });
+
+  it("lasts until the last thing the child did", () => {
+    expect(replayLength(work)).toBe(3500);
+    expect(replayLength(recording(line([[0.1, 0.1, 0]])))).toBe(0);
   });
 });
 

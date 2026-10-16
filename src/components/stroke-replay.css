@@ -1,0 +1,18 @@
+/* The admin's stroke replay (#186): the child's board on dotted paper, and plain controls under it. Uses the admin
+   area's tokens (admin.css). */
+.sr { display: grid; gap: 8px; }
+.sr-board {
+  border: 1px solid var(--line); border-radius: 6px; overflow: hidden;
+  background-color: #fff; background-image: radial-gradient(#d6d8de 1px, transparent 1.2px); background-size: 16px 16px;
+}
+.sr-board canvas { display: block; width: 100%; }
+.sr-controls { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.sr-controls button {
+  min-height: 36px; padding: 6px 12px; border: 1px solid var(--line); border-radius: 6px; background: #fff;
+  font: 500 14px/1 var(--sans); color: var(--ink); cursor: pointer;
+}
+.sr-controls button.is-primary { border-color: var(--ink); background: var(--ink); color: #fff; }
+.sr-controls button:disabled { opacity: 0.6; cursor: default; }
+.sr-controls input[type="range"] { flex: 1; min-width: 120px; accent-color: var(--ink); }
+.sr-time { font: 400 12.5px/1 var(--mono); color: var(--ink-2); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.sr-note { margin: 0; font-size: 13px; color: var(--ink-2); }
