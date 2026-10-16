@@ -5,6 +5,7 @@ export * from "./constants";
 export * from "./deletion";
 export * from "./facts";
 export * from "./flags";
+export * from "./rushing";
 export { comparisonFor, type ComparisonInput, type ComparisonTest } from "./comparison";
 export { MISCONCEPTIONS, type Misconception, type MisconceptionId } from "./misconceptions";
 export {

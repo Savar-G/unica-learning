@@ -1,5 +1,6 @@
 import type { CurriculumId } from "@/lib/signup";
 import type { Certainty } from "./certainty";
+import type { Pace } from "./rushing";
 import type { FactsResult } from "./facts";
 import type { Flag } from "./flags";
 import type { MisconceptionId } from "./misconceptions";
@@ -189,4 +190,6 @@ export interface Placement {
   facts: FactsResult | null;
   /** Help flags (#71): for Savar's alert and the admin area, never the parent's report. Empty in placements stored before #71. */
   flags: Flag[];
+  /** #189: very fast answers, the ones left out of the score, and whether the result may not be reliable. Absent before #189. */
+  pace?: Pace;
 }
