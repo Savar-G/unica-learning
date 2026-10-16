@@ -114,6 +114,50 @@ export const LEVEL_2: readonly TaggedTemplate[] = [
     },
   },
   {
+    // Benchmarks of 25, 50 and 100 (2.2; #187). The number is never a tie: it is at least 3 closer to the answer than
+    // to the next benchmark. The other provinces: no outcome confirmed, so grade 3 (the later grade wins).
+    id: "2-closest-benchmark",
+    strand: "N", grades: { BC: 2, AB: 3, SK: 3, MB: 3, ON: 3 }, format: "choice", whiteboard: true, standard: "2.2",
+    fill(rng) {
+      const marks = [25, 50, 100];
+      const near = (n: number) => [...marks].sort((a, b) => Math.abs(a - n) - Math.abs(b - n));
+      const n = draw(rng, (r) => r.int(12, 96), (n) => n % 25 !== 0 && Math.abs(near(n)[1] - n) - Math.abs(near(n)[0] - n) >= 3);
+      const [answer, ...others] = near(n);
+      // "Near" is the other benchmark that brackets the number (43 is between 25 and 50); any other one is far.
+      const bracket = answer > n ? Math.max(...marks.filter((m) => m < n)) : Math.min(...marks.filter((m) => m > n));
+      const nextTo = (m: number) => m === bracket;
+      return {
+        values: { n },
+        prompt: `Which number is ${n} closest to?`,
+        readAloud: `Which number is ${n} closest to?`,
+        answer: String(answer),
+        wrong: others.map((m) => wrong(m, nextTo(m) ? "benchmark-near" : "benchmark-far")),
+      };
+    },
+  },
+  {
+    // A personal referent (2.2; #187): a full container of a known size, and an estimate of a half-full one.
+    // SK and MB: WNCP grade 2 estimates quantities to 100 with referents (recalled). AB and ON: unsure, so grade 3.
+    id: "2-half-full-referent",
+    strand: "N", grades: { BC: 2, AB: 3, SK: 2, MB: 2, ON: 3 }, format: "choice", whiteboard: false, standard: "2.2",
+    fill(rng) {
+      const full = rng.pick([50, 100]);
+      const [container, things] = rng.pick([["jar", "beads"], ["box", "crayons"], ["bag", "marbles"], ["cup", "buttons"]] as const);
+      const name = rng.pick(NAMES);
+      const text = `A full ${container} holds about ${full} ${things}. ${name} has a ${container} that is about half full. About how many ${things} are in it?`;
+      return {
+        values: { full },
+        prompt: text,
+        readAloud: text,
+        answer: `About ${full / 2}`,
+        // The choices are always 25, 50 and 100: the full amount, half of it, and half again or double.
+        wrong: full === 100
+          ? [wrong("About 100", "referent-whole"), wrong("About 25", "referent-quarter")]
+          : [wrong("About 50", "referent-whole"), wrong("About 100", "referent-double")],
+      };
+    },
+  },
+  {
     id: "2-add-2-digit",
     strand: "O", grades: { BC: 2, AB: 2, SK: 2, MB: 2, ON: 2 }, format: "number", whiteboard: true, standard: "2.4",
     fill(rng) {
@@ -409,10 +453,11 @@ export const LEVEL_2: readonly TaggedTemplate[] = [
       const right = `${a} + ${b} = 10 + ${sum - 10}`;
       const running = `${a} + ${b} = ${sum} + ${extra}`; // reads "=" as "the answer comes next"
       const unchanged = `${a} + ${b} = 10 + ${b}`; // makes a ten from a but does not take the amount from b
+      // The prompt names the sum the choices start from (#187: no fixed prompt).
       return {
         values: { a, b, extra },
-        prompt: "Which is true?",
-        readAloud: "Which is true?",
+        prompt: `Which is true about ${a} + ${b}?`,
+        readAloud: `Which is true about ${a} plus ${b}?`,
         answer: right,
         wrong: [wrong(running, "A1"), wrong(unchanged, "compensation")],
       };
@@ -574,13 +619,19 @@ export const LEVEL_2: readonly TaggedTemplate[] = [
       const sphere = rng.pick(["A ball", "An orange", "A marble"]);
       const cube = rng.pick(["A block", "A sugar cube", "A building block"]);
       const [can, ball, box] = [`${cylinder} (a cylinder)`, `${sphere} (a sphere)`, `${cube} (a cube)`];
-      // Only "can roll and can stack": "cannot roll" is unclear for a cube, since children roll dice in games.
+      // Two pairs of attributes, each true of one solid only (#187: the ask varies). Never "cannot roll": that is
+      // unclear for a cube, since children roll dice in games.
+      const corners = rng.int(0, 1) === 1;
+      const ask = corners ? "Which one has flat faces and also has corners?" : "Which one can roll and can also be stacked into a tower?";
       return {
-        values: { cylinder: ["A can", "A jar", "A paint can"].indexOf(cylinder) },
-        prompt: "Which one can roll and can also be stacked into a tower?",
-        readAloud: "Which one can roll and can also be stacked into a tower?",
-        answer: can,
-        wrong: [wrong(ball, "one-attribute"), wrong(box, "one-attribute")],
+        values: { cylinder: ["A can", "A jar", "A paint can"].indexOf(cylinder), corners: corners ? 1 : 0 },
+        prompt: ask,
+        readAloud: ask,
+        answer: corners ? box : can,
+        // Flat faces and corners: the cylinder has flat faces only; the sphere has neither.
+        wrong: corners
+          ? [wrong(can, "one-attribute"), wrong(ball, "faces-corners")]
+          : [wrong(ball, "one-attribute"), wrong(box, "one-attribute")],
       };
     },
   },

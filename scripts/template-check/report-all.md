@@ -1,17 +1,12 @@
 # Template check report
 
-Made by `npm run check:templates` (scripts/check-templates.mjs). Bank: all, 527 templates. Updated 2026-10-12 16:56 UTC.
+Made by `npm run check:templates` (scripts/check-templates.mjs). Bank: all, 533 templates. Updated 2026-10-16 17:09 UTC.
 
-Pass: 260. Review: 267. Fail: 0. Error: 0. Not checked: 0. Changed since its check: 0.
+Pass: 272. Review: 261. Fail: 0. Error: 0. Not checked: 0. Changed since its check: 0.
 
 A template passes when the checker found its answers correct, its coded wrong answers wrong, and its BC grade right. Review means a wording problem or a province tag doubt that a person should decide.
 
-## Review (267)
-
-### k-likely-event
-
-- The supplied notes do not confirm the current Alberta grade for this probability task.
-- Checked 2026-10-12 with gpt-6.1-sol.
+## Review (261)
 
 ### 1-missing-addend
 
@@ -19,11 +14,6 @@ A template passes when the checker found its answers correct, its coded wrong an
 - Checked 2026-10-12 with gpt-6.1-sol.
 
 ### 1-never-sometimes-always
-
-- The supplied notes do not confirm the current Alberta grade for this probability task.
-- Checked 2026-10-12 with gpt-6.1-sol.
-
-### 1-more-likely
 
 - The supplied notes do not confirm the current Alberta grade for this probability task.
 - Checked 2026-10-12 with gpt-6.1-sol.
@@ -195,9 +185,8 @@ A template passes when the checker found its answers correct, its coded wrong an
 
 ### g35-4-more-than-half
 
-- Review the SK and MB comparison outcomes.
-- The choice 6/13 exceeds the stated ON Grade 5 denominator range. Do not change the ON tag using only the correct choices.
-- Checked 2026-10-12 with gpt-6.1-sol.
+- The Ontario grade needs source review because the examples include a denominator of 13.
+- Checked 2026-10-16 with gpt-6.1-sol.
 
 ### g35-4-table-pattern
 
@@ -248,10 +237,10 @@ A template passes when the checker found its answers correct, its coded wrong an
 
 ### g35-4-true-equation
 
-- The SK and MB tags may be one grade later than needed. The exact AB task scope needs review.
-- SK: suggests grade 4 (medium confidence). These small multiplication equalities appear suitable for Grade 4. P4.2 supports equations, but does not establish this exact comparison task.
-- MB: suggests grade 4 (medium confidence). These small multiplication equalities appear suitable for Grade 4. The supplied equation evidence does not establish the exact first grade for this task.
-- Checked 2026-10-12 with gpt-6.1-sol.
+- The Saskatchewan and Manitoba Grade 5 tags appear later than this task requires. Confirm Grade 4 against the specific equality outcomes.
+- SK: suggests grade 4 (medium confidence). Recognizing equal products appears suitable for Grade 4 multiplication and equality work. The supplied Grade 5 equation outcome does not establish that this simpler task first occurs in Grade 5.
+- MB: suggests grade 4 (medium confidence). Recognizing equal products appears suitable for Grade 4 multiplication and equality work. Confirm the earliest outcome for expressions on both sides.
+- Checked 2026-10-16 with gpt-6.1-sol.
 
 ### g35-4-24-hour
 
@@ -260,8 +249,10 @@ A template passes when the checker found its answers correct, its coded wrong an
 
 ### g35-4-regular-polygon
 
-- The province tags need source review for regular polygons. General shape classification does not establish the first taught grade.
-- Checked 2026-10-12 with gpt-6.1-sol.
+- Confirm the specific Alberta and Saskatchewan polygon outcomes.
+- The Ontario Grade 6 tag appears too late for this recognition task.
+- ON: suggests grade 3 (medium confidence). Basic recognition of regular and irregular polygons appears earlier than Grade 6, especially when the definition is supplied. Confirm the exact current outcome.
+- Checked 2026-10-16 with gpt-6.1-sol.
 
 ### g35-4-spin-predict
 
@@ -282,11 +273,6 @@ A template passes when the checker found its answers correct, its coded wrong an
 ### g35-5-ten-thousand-more
 
 - The SK and MB grades need source confirmation. All eight answers are correct. The coded errors add 1000, add 100000 or subtract 10000.
-- Checked 2026-10-12 with gpt-6.1-sol.
-
-### g35-5-order-large
-
-- The SK and MB grades need source confirmation. Each marked list is in decreasing order. Each wrong list reverses the order or swaps adjacent numbers.
 - Checked 2026-10-12 with gpt-6.1-sol.
 
 ### g35-5-add-large
@@ -358,15 +344,13 @@ A template passes when the checker found its answers correct, its coded wrong an
 - Review the Ontario Grade 5 suitability of the thousandth wrong choices.
 - Checked 2026-10-12 with gpt-6.1-sol.
 
-### g35-5-decimal-half
-
-- The Alberta grade needs source review.
-- Checked 2026-10-12 with gpt-6.1-sol.
-
 ### g35-5-fraction-near-whole
 
-- The AB, SK and MB outcomes for comparison with one whole need confirmation.
-- Checked 2026-10-12 with gpt-6.1-sol.
+- Confirm the earliest comparison outcomes for Alberta, Saskatchewan and Manitoba. The examples require only common-denominator comparisons.
+- AB: suggests grade 4 (medium confidence). The supplied Grade 3 evidence establishes fraction naming, not this full comparison task. Grade 4 explicitly compares and orders fractions.
+- SK: suggests grade 4 (medium confidence). All choices have a common denominator. This simpler comparison appears suitable for Grade 4 rather than requiring Grade 5 equivalent-fraction work.
+- MB: suggests grade 4 (medium confidence). Comparing proper fractions with a common denominator appears suitable for Grade 4. Confirm the exact denominator scope.
+- Checked 2026-10-16 with gpt-6.1-sol.
 
 ### g35-5-equivalent-decimal
 
@@ -379,11 +363,6 @@ A template passes when the checker found its answers correct, its coded wrong an
 - Checked 2026-10-12 with gpt-6.1-sol.
 
 ### g35-5-thousandths-digit
-
-- The Alberta grade needs source review.
-- Checked 2026-10-12 with gpt-6.1-sol.
-
-### g35-5-compare-thousandths
 
 - The Alberta grade needs source review.
 - Checked 2026-10-12 with gpt-6.1-sol.
@@ -569,8 +548,8 @@ A template passes when the checker found its answers correct, its coded wrong an
 
 ### g35-5-double-bar-difference
 
-- Confirm the current Alberta outcome for scaled double bar graphs.
-- Checked 2026-10-12 with gpt-6.1-sol.
+- Confirm the Alberta tag against the current graph outcome. All eight differences and both wrong-answer patterns are correct.
+- Checked 2026-10-16 with gpt-6.1-sol.
 
 ### g35-5-pictograph-total
 
@@ -593,13 +572,13 @@ A template passes when the checker found its answers correct, its coded wrong an
 
 ### g35-6-prime
 
-- The provincial outcomes for prime numbers need confirmation.
-- Checked 2026-10-12 with gpt-6.1-sol.
+- Confirm the Alberta tag. Each example has exactly one correct choice, and all coded errors are plausible.
+- Checked 2026-10-16 with gpt-6.1-sol.
 
 ### g35-6-divisibility
 
-- The provincial outcomes for divisibility rules need confirmation.
-- Checked 2026-10-12 with gpt-6.1-sol.
+- Confirm the Alberta tag. The correct quotients are 44, 37, 32, 39, 34, 23, 55 and 73. No other choice divides evenly by the stated divisor.
+- Checked 2026-10-16 with gpt-6.1-sol.
 
 ### g35-6-all-factors
 
@@ -874,13 +853,13 @@ A template passes when the checker found its answers correct, its coded wrong an
 
 ### g67-5-greatest-decimal
 
-- Confirm the AB and ON comparison outcomes. All marked greatest values are correct. The length misconception can favour any two-digit decimal over the one-digit decimal, so each coded wrong answer is plausible.
-- Checked 2026-10-12 with gpt-6.1-sol.
+- Confirm the Alberta Grade 4 decimal comparison outcome. All eight marked answers are uniquely correct, and all coded errors are plausible.
+- Checked 2026-10-16 with gpt-6.1-sol.
 
 ### g67-5-least-decimal
 
-- The supplied Alberta evidence does not confirm the thousandth-comparison grade.
-- Checked 2026-10-12 with gpt-6.1-sol.
+- Confirm the Alberta tag. Omitting the internal zero makes the correct least value appear equal to the coded wrong choice, so that error is plausible.
+- Checked 2026-10-16 with gpt-6.1-sol.
 
 ### g67-5-decimal-place
 
@@ -894,8 +873,8 @@ A template passes when the checker found its answers correct, its coded wrong an
 
 ### g67-5-greatest-fraction
 
-- Confirm the AB, SK and MB comparison outcomes for the full choice range, including denominators 28, 32 and 36.
-- Checked 2026-10-12 with gpt-6.1-sol.
+- Confirm that the Alberta outcome covers the full denominator range. All eight marked answers are correct, and each coded error fits its wrong answer.
+- Checked 2026-10-16 with gpt-6.1-sol.
 
 ### g67-5-decimal-as-fraction
 
@@ -971,18 +950,19 @@ A template passes when the checker found its answers correct, its coded wrong an
 - The province tags need source review for the full range, including billions.
 - Checked 2026-10-12 with gpt-6.1-sol.
 
-### g67-6-greatest-large
-
-- Checked 2026-10-12 with gpt-6.1-sol.
-
 ### g67-6-decimal-digit-value
 
 - Checked 2026-10-12 with gpt-6.1-sol.
 
 ### g67-6-lcm
 
-- The supplied notes do not confirm the province grades for least common multiples.
-- Checked 2026-10-12 with gpt-6.1-sol.
+- Confirm the Alberta tag. The least common multiples are 12, 20, 28, 30, 40, 45, 60 and 84. Each wrong answer is either the product or the greatest common factor.
+- Checked 2026-10-16 with gpt-6.1-sol.
+
+### g67-6-lcm-story
+
+- Confirm the provincial outcomes for least common multiple stories. All eight marked answers are correct. Each coded wrong answer equals either the product or the greatest common factor, as stated.
+- Checked 2026-10-16 with gpt-6.1-sol.
 
 ### g67-6-gcf
 
@@ -990,11 +970,13 @@ A template passes when the checker found its answers correct, its coded wrong an
 
 ### g67-6-which-prime
 
-- Checked 2026-10-12 with gpt-6.1-sol.
+- Confirm the Alberta tag. Each example has exactly one prime number. Every wrong choice is an odd composite number.
+- Checked 2026-10-16 with gpt-6.1-sol.
 
 ### g67-6-which-composite
 
-- Checked 2026-10-12 with gpt-6.1-sol.
+- Confirm the Alberta grade against the implemented curriculum. The supplied notes do not resolve this tag.
+- Checked 2026-10-16 with gpt-6.1-sol.
 
 ### g67-6-order-of-operations
 
@@ -1162,10 +1144,6 @@ A template passes when the checker found its answers correct, its coded wrong an
 
 - Checked 2026-10-12 with gpt-6.1-sol.
 
-### g67-7-order-integers
-
-- Checked 2026-10-12 with gpt-6.1-sol.
-
 ### g67-7-decimal-multiply
 
 - Check whether the current AB Grade 6 outcome includes these decimal products.
@@ -1199,7 +1177,8 @@ A template passes when the checker found its answers correct, its coded wrong an
 
 ### g67-7-greatest-mixed-forms
 
-- Checked 2026-10-12 with gpt-6.1-sol.
+- Confirm whether Ontario introduces this combined comparison in Grade 6 or Grade 7.
+- Checked 2026-10-16 with gpt-6.1-sol.
 
 ### g67-7-repeating-decimal
 
@@ -1219,8 +1198,8 @@ A template passes when the checker found its answers correct, its coded wrong an
 
 ### g67-7-order-forms
 
-- The province grades require source review. Each marked list is the only list in increasing order.
-- Checked 2026-10-12 with gpt-6.1-sol.
+- Confirm whether Ontario introduces this combined ordering in Grade 6 or Grade 7.
+- Checked 2026-10-16 with gpt-6.1-sol.
 
 ### g67-7-ratio-percent
 
@@ -1377,7 +1356,7 @@ A template passes when the checker found its answers correct, its coded wrong an
 - The current Alberta grade placement needs source review. Each correct probability is 1 divided by twice the number of spinner sections. Each addition error equals the spinner probability plus 1/2. Each other error ignores the coin.
 - Checked 2026-10-12 with gpt-6.1-sol.
 
-## Pass (260)
+## Pass (272)
 
 - `k-count-shapes` (2026-10-12, gpt-6.1-sol)
 - `k-number-after` (2026-10-12, gpt-6.1-sol)
@@ -1400,9 +1379,10 @@ A template passes when the checker found its answers correct, its coded wrong an
 - `k-heavier-object` (2026-10-12, gpt-6.1-sol)
 - `k-balance-heavier` (2026-10-12, gpt-6.1-sol)
 - `k-shape-attribute` (2026-10-12, gpt-6.1-sol)
-- `k-can-roll` (2026-10-12, gpt-6.1-sol)
+- `k-can-roll` (2026-10-16, gpt-6.1-sol)
 - `k-graph-which-more` (2026-10-12, gpt-6.1-sol)
 - `k-graph-count` (2026-10-12, gpt-6.1-sol)
+- `k-likely-event` (2026-10-16, gpt-6.1-sol)
 - `1-ten-and-more` (2026-10-12, gpt-6.1-sol)
 - `1-skip-count` (2026-10-12, gpt-6.1-sol)
 - `1-smallest-biggest` (2026-10-12, gpt-6.1-sol)
@@ -1432,6 +1412,7 @@ A template passes when the checker found its answers correct, its coded wrong an
 - `1-sides-in-all` (2026-10-12, gpt-6.1-sol)
 - `1-graph-how-many-more` (2026-10-12, gpt-6.1-sol)
 - `1-graph-in-all` (2026-10-12, gpt-6.1-sol)
+- `1-more-likely` (2026-10-16, gpt-6.1-sol)
 - `1-length-together` (2026-10-12, gpt-6.1-sol)
 - `1-tallest-child` (2026-10-12, gpt-6.1-sol)
 - `1-heaviest-box` (2026-10-12, gpt-6.1-sol)
@@ -1441,6 +1422,8 @@ A template passes when the checker found its answers correct, its coded wrong an
 - `2-greatest` (2026-10-12, gpt-6.1-sol)
 - `2-tens-and-ones` (2026-10-12, gpt-6.1-sol)
 - `2-skip-count-back` (2026-10-12, gpt-6.1-sol)
+- `2-closest-benchmark` (2026-10-16, gpt-6.1-sol)
+- `2-half-full-referent` (2026-10-16, gpt-6.1-sol)
 - `2-add-2-digit` (2026-10-12, gpt-6.1-sol)
 - `2-subtract-2-digit` (2026-10-12, gpt-6.1-sol)
 - `2-story-add-2-digit` (2026-10-12, gpt-6.1-sol)
@@ -1455,11 +1438,11 @@ A template passes when the checker found its answers correct, its coded wrong an
 - `2-change-unknown` (2026-10-12, gpt-6.1-sol)
 - `2-number-pattern-predict` (2026-10-12, gpt-6.1-sol)
 - `2-shape-pattern-predict` (2026-10-12, gpt-6.1-sol)
-- `2-true-equation` (2026-10-12, gpt-6.1-sol)
+- `2-true-equation` (2026-10-16, gpt-6.1-sol)
 - `2-square-or-rectangle` (2026-10-12, gpt-6.1-sol)
 - `2-turned-shape` (2026-10-12, gpt-6.1-sol)
 - `2-face-of-solid` (2026-10-12, gpt-6.1-sol)
-- `2-roll-and-stack` (2026-10-12, gpt-6.1-sol)
+- `2-roll-and-stack` (2026-10-16, gpt-6.1-sol)
 - `2-graph-in-all` (2026-10-12, gpt-6.1-sol)
 - `2-graph-fewer` (2026-10-12, gpt-6.1-sol)
 - `2-compare-lengths` (2026-10-12, gpt-6.1-sol)
@@ -1487,7 +1470,7 @@ A template passes when the checker found its answers correct, its coded wrong an
 - `3-days-weeks` (2026-10-12, gpt-6.1-sol)
 - `3-bar-graph-more` (2026-10-12, gpt-6.1-sol)
 - `g35-3-skip-count` (2026-10-12, gpt-6.1-sol)
-- `g35-3-order-numbers` (2026-10-12, gpt-6.1-sol)
+- `g35-3-order-numbers` (2026-10-16, gpt-6.1-sol)
 - `g35-3-array` (2026-10-12, gpt-6.1-sol)
 - `g35-3-groups-of` (2026-10-12, gpt-6.1-sol)
 - `g35-3-story-add` (2026-10-12, gpt-6.1-sol)
@@ -1508,7 +1491,7 @@ A template passes when the checker found its answers correct, its coded wrong an
 - `g35-3-most-least-likely` (2026-10-12, gpt-6.1-sol)
 - `g35-3-likelihood-words` (2026-10-12, gpt-6.1-sol)
 - `g35-4-digit-value` (2026-10-12, gpt-6.1-sol)
-- `g35-4-order-numbers` (2026-10-12, gpt-6.1-sol)
+- `g35-4-order-numbers` (2026-10-16, gpt-6.1-sol)
 - `g35-4-expanded-form` (2026-10-12, gpt-6.1-sol)
 - `g35-4-hundred-more` (2026-10-12, gpt-6.1-sol)
 - `g35-4-subtract` (2026-10-12, gpt-6.1-sol)
@@ -1524,7 +1507,7 @@ A template passes when the checker found its answers correct, its coded wrong an
 - `g35-4-between` (2026-10-12, gpt-6.1-sol)
 - `g35-4-tenths-region` (2026-10-12, gpt-6.1-sol)
 - `g35-4-tenths-left` (2026-10-12, gpt-6.1-sol)
-- `g35-4-tenths-order` (2026-10-12, gpt-6.1-sol)
+- `g35-4-tenths-order` (2026-10-16, gpt-6.1-sol)
 - `g35-4-compare-like` (2026-10-12, gpt-6.1-sol)
 - `g35-4-tenths-decimal` (2026-10-12, gpt-6.1-sol)
 - `g35-4-decimal-to-fraction` (2026-10-12, gpt-6.1-sol)
@@ -1544,12 +1527,18 @@ A template passes when the checker found its answers correct, its coded wrong an
 - `g35-4-pictograph` (2026-10-12, gpt-6.1-sol)
 - `g35-4-pictograph-half` (2026-10-12, gpt-6.1-sol)
 - `g35-4-bar-scale` (2026-10-12, gpt-6.1-sol)
+- `g35-4-experiment-predict` (2026-10-16, gpt-6.1-sol)
+- `g35-4-experiment-results` (2026-10-16, gpt-6.1-sol)
+- `g35-4-dice-likelihood` (2026-10-16, gpt-6.1-sol)
+- `g35-5-order-large` (2026-10-16, gpt-6.1-sol)
 - `g35-5-remainder` (2026-10-12, gpt-6.1-sol)
 - `g35-5-full-groups` (2026-10-12, gpt-6.1-sol)
 - `g35-5-enough-buses` (2026-10-12, gpt-6.1-sol)
 - `g35-5-annexing-zeros` (2026-10-12, gpt-6.1-sol)
 - `g35-5-budget-left` (2026-10-12, gpt-6.1-sol)
 - `g35-5-change-large` (2026-10-12, gpt-6.1-sol)
+- `g35-5-decimal-half` (2026-10-16, gpt-6.1-sol)
+- `g35-5-compare-thousandths` (2026-10-16, gpt-6.1-sol)
 - `g35-5-variable-add` (2026-10-12, gpt-6.1-sol)
 - `g35-5-variable-subtract` (2026-10-12, gpt-6.1-sol)
 - `g35-5-variable-take-away` (2026-10-12, gpt-6.1-sol)
@@ -1575,12 +1564,13 @@ A template passes when the checker found its answers correct, its coded wrong an
 - `g67-5-pattern-term` (2026-10-12, gpt-6.1-sol)
 - `g67-5-pattern-down` (2026-10-12, gpt-6.1-sol)
 - `g67-5-table-rule` (2026-10-12, gpt-6.1-sol)
+- `g67-6-greatest-large` (2026-10-16, gpt-6.1-sol)
 - `g67-6-decimal-times` (2026-10-12, gpt-6.1-sol)
 - `g67-6-decimal-divide` (2026-10-12, gpt-6.1-sol)
 - `g67-6-share-money` (2026-10-12, gpt-6.1-sol)
 - `g67-6-mixed-to-improper` (2026-10-12, gpt-6.1-sol)
 - `g67-6-count-parts` (2026-10-12, gpt-6.1-sol)
-- `g67-6-greatest-fraction` (2026-10-12, gpt-6.1-sol)
+- `g67-6-greatest-fraction` (2026-10-16, gpt-6.1-sol)
 - `g67-6-ratio-part-part` (2026-10-12, gpt-6.1-sol)
 - `g67-6-equation-words` (2026-10-12, gpt-6.1-sol)
 - `g67-6-balance-box` (2026-10-12, gpt-6.1-sol)
@@ -1593,6 +1583,7 @@ A template passes when the checker found its answers correct, its coded wrong an
 - `g67-6-triangle-angles` (2026-10-12, gpt-6.1-sol)
 - `g67-6-plot-point` (2026-10-12, gpt-6.1-sol)
 - `g67-6-l-shape-perimeter` (2026-10-12, gpt-6.1-sol)
+- `g67-7-order-integers` (2026-10-16, gpt-6.1-sol)
 - `g67-7-add-integers` (2026-10-12, gpt-6.1-sol)
 - `g67-7-subtract-integers` (2026-10-12, gpt-6.1-sol)
 - `g67-7-multiply-integers` (2026-10-12, gpt-6.1-sol)
@@ -1617,9 +1608,9 @@ A template passes when the checker found its answers correct, its coded wrong an
 - `g67-7-circle-graph-percent` (2026-10-12, gpt-6.1-sol)
 - `g67-7-count-outcomes` (2026-10-12, gpt-6.1-sol)
 - `g67-7-experimental` (2026-10-12, gpt-6.1-sol)
-- `g67-7-dice-sum` (2026-10-12, gpt-6.1-sol)
+- `g67-7-dice-sum` (2026-10-16, gpt-6.1-sol)
 - `g67-8-square` (2026-10-12, gpt-6.1-sol)
-- `g67-8-perfect-square` (2026-10-12, gpt-6.1-sol)
+- `g67-8-perfect-square` (2026-10-16, gpt-6.1-sol)
 - `g67-8-square-root` (2026-10-12, gpt-6.1-sol)
 - `g67-8-square-side` (2026-10-12, gpt-6.1-sol)
 - `g67-8-square-tile` (2026-10-12, gpt-6.1-sol)
