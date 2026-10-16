@@ -62,3 +62,5 @@ export { BC_SKILL_MAP, STRAND_NAMES, skillMapProblems, type BcSkill, type BcStan
 export { SKILL_TAGS, skillTagProblems, tagSkills, templateSkills, type SkillTag, type TemplateSkill } from "./skill-tags";
 // The learner profile (#196): the facts code writes about one finished test.
 export * from "./profile";
+// The copy without names (#201): each test of a family, copied before the family is deleted.
+export * from "./anonymous-copy";
