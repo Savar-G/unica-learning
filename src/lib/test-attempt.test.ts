@@ -327,6 +327,55 @@ describe("the work on the whiteboard (#67)", () => {
   });
 });
 
+describe("the whiteboard strokes (#186)", () => {
+  /** A stroke recording as the answer route passes it on: checked JSON text. */
+  const STROKES = '{"v":1,"width":800,"height":600,"events":[{"kind":"stroke","erase":false,"w":3.2,"pts":[[0.1,0.1,400],[0.2,0.15,480]]}]}';
+
+  it("stores the strokes with the answer, in the parent's folder but not as a drawing, and the answer points to them", async () => {
+    const memory = family(stored(open("a1", T0)));
+    const first = current(memory.tests[0]);
+    expect(await answerQuestion(memory.store, P1, "a1", sent(memory.tests[0], { png: DRAWING, strokes: STROKES }), T0 + HOUR)).toMatchObject({ ok: true, step: { number: 2 } });
+    const [path] = [...memory.strokes.keys()];
+    // The parent's folder: a family deletion removes it. Not a .png: parents read only the drawings (storage policy).
+    expect(path).toMatch(new RegExp(`^${P1}/a1/${first.id}-`));
+    expect(path).not.toMatch(/\.png$/);
+    expect(memory.strokes.get(path)).toBe(STROKES);
+    expect(memory.tests[0].answers).toMatchObject([{ questionId: first.id, workPath: [...memory.drawings.keys()][0], strokesPath: path }]);
+  });
+
+  it("an answer that is not stored leaves no strokes behind: a failed insert, a failed drawing upload, another tab first", async () => {
+    logs();
+    const insertFails = family(stored(recordAnswer(open("a1", T0), T0 + HOUR)));
+    insertFails.fail.insertAnswer = new StoreError("answer save failed", "connection reset");
+    expect(await answerQuestion(insertFails.store, P1, "a1", sent(insertFails.tests[0], { png: DRAWING, strokes: STROKES }), T0 + 2 * HOUR)).toEqual({ ok: false, error: "store_failed" });
+    expect([insertFails.strokes.size, insertFails.drawings.size, insertFails.tests[0].answers.length]).toEqual([0, 0, 0]);
+
+    const uploadFails = family(stored(recordAnswer(open("a1", T0), T0 + HOUR)));
+    uploadFails.fail.storeDrawing = new StoreError("upload failed", "bucket full");
+    expect(await answerQuestion(uploadFails.store, P1, "a1", sent(uploadFails.tests[0], { png: DRAWING, strokes: STROKES }), T0 + 2 * HOUR)).toEqual({ ok: false, error: "store_failed" });
+    expect([uploadFails.strokes.size, uploadFails.tests[0].answers.length]).toEqual([0, 0]);
+
+    const twoTabs = family(stored(open("a1", T0)));
+    const results = await Promise.all([
+      answerQuestion(twoTabs.store, P1, "a1", sent(twoTabs.tests[0], { png: DRAWING, strokes: STROKES }), T0 + HOUR),
+      answerQuestion(twoTabs.store, P1, "a1", sent(twoTabs.tests[0], { png: DRAWING, strokes: STROKES.replace("400", "401") }), T0 + HOUR),
+    ]);
+    expect(results).toMatchObject([{ ok: true }, { ok: false, error: "conflict" }]);
+    expect([...twoTabs.strokes]).toEqual([[twoTabs.tests[0].answers[0].strokesPath, STROKES]]);
+  });
+
+  it("a failed strokes upload never stops the answer: it is stored with the drawing alone, and the failure is logged", async () => {
+    const log = logs();
+    const memory = family(stored(open("a1", T0)));
+    memory.fail.storeStrokes = new StoreError("upload failed", "bucket full");
+    expect(await answerQuestion(memory.store, P1, "a1", sent(memory.tests[0], { png: DRAWING, strokes: STROKES }), T0 + HOUR)).toMatchObject({ ok: true, step: { number: 2 } });
+    expect(memory.tests[0].answers).toHaveLength(1);
+    expect(memory.tests[0].answers[0].workPath).toBe([...memory.drawings.keys()][0]);
+    expect(memory.tests[0].answers[0].strokesPath).toBeUndefined();
+    expect(log.mock.calls).toEqual([["[strokes] upload failed", "bucket full"]]);
+  });
+});
+
 describe("a child who answers every question", () => {
   it("is routed once, when stage 1 ends, and each stored answer moves the deadline and the last answer time", async () => {
     const memory = family(stored(open("a1", T0)));

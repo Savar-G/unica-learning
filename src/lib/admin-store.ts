@@ -261,6 +261,19 @@ export async function getTest(a: AdminSession, id: string): Promise<TestDetail |
   };
 }
 
+/**
+ * The whiteboard strokes of one test (#186), by question id: a short-lived signed URL for the replay, or null when the
+ * strokes are stored but could not be signed. A question without strokes is not in the map: its drawing shows alone.
+ * Signed with the admin's session: the storage policy lets only admins read stroke files (migration add_answer_strokes).
+ */
+export async function getStrokes(a: AdminSession, id: string): Promise<Record<string, string | null>> {
+  if (!isUuid(id)) return {};
+  const rows = must<{ question_id: string; strokes_path: string }[]>(
+    await a.db.from("answers").select("question_id, strokes_path").eq("assessment_id", id).not("strokes_path", "is", null), "strokes");
+  const urls = await signWork(a.db, rows.map((r) => r.strokes_path));
+  return Object.fromEntries(rows.map((r) => [r.question_id, urls[r.strokes_path] ?? null]));
+}
+
 // Parents and children
 
 export interface ParentListRow extends ParentRow {

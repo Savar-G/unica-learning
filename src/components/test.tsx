@@ -15,6 +15,7 @@ import { answerRecorder, type AnswerEvents } from "@/lib/answer-events";
 import { track } from "@/lib/track";
 import { SUPPORT_EMAIL, SUPPORT_HREF } from "@/lib/contact";
 import { draftKey, draftPrefix, emptyBoard, hasDrawing, type BoardState } from "@/lib/whiteboard";
+import { fitStrokes, recordStrokes } from "@/lib/strokes";
 import { FactsSection } from "./facts";
 import { breakSeen, markBreakSeen, TestBreak } from "./test-break";
 import { Choices } from "./test-choices";
@@ -344,20 +345,20 @@ function Question({ testId, typing, question, last, takeYourTime, onAnswer, fail
 
   // #67: the whiteboard. A resume of this question on this device brings back the work from before the stop (#72).
   const draft = draftKey(testId, question.id);
-  const [board, setBoard] = useState<BoardState>(() => (testId ? loadDraft(draft) : null) ?? emptyBoard());
+  const [board, setBoard] = useState<BoardState>(() => {
+    const restored = (testId ? loadDraft(draft) : null) ?? emptyBoard();
+    return { ...restored, shownAt: restored.shownAt ?? performance.now() };
+  });
+  const stored = useRef(false);
+  // Save each completed action before a reload can discard it, including an undo or clear to an empty board.
+  const changeBoard = (next: BoardState) => {
+    if (testId && !stored.current) saveDraft(draft, next);
+    setBoard(next);
+  };
   const boardSize = useRef<BoardSize>({ width: 0, height: 0 });
   const onBoardSize = useCallback((size: BoardSize) => {
     boardSize.current = size;
   }, []);
-  const stored = useRef(false);
-  useEffect(() => {
-    if (!testId) return;
-    const t = window.setTimeout(() => {
-      if (!stored.current) saveDraft(draft, board);
-    }, 250);
-    return () => window.clearTimeout(t);
-  }, [testId, draft, board]);
-
   // The strokes that turned out to be an empty picture (the eraser took every line): no drawing until the child draws again.
   const [erased, setErased] = useState<BoardState["strokes"] | null>(null);
   const drawn = hasDrawing(board.strokes) && erased !== board.strokes;
@@ -400,7 +401,12 @@ function Question({ testId, typing, question, last, takeYourTime, onAnswer, fail
       setSending(false);
       return;
     }
-    const work: WorkPayload | undefined = image || typed ? { ...(image ? { image } : {}), ...(typed ? { text: typed } : {}) } : undefined;
+    // #186: every stroke, undo and clear, for the admin's replay, thinned to the size limit (or none when it cannot fit).
+    const recorded = recordStrokes(board.log, board.shownAt ?? shownAt.current, boardSize.current);
+    const strokes = recorded && fitStrokes(recorded);
+    const work: WorkPayload | undefined = image || typed || strokes
+      ? { ...(image ? { image } : {}), ...(typed ? { text: typed } : {}), ...(strokes ? { strokes } : {}) }
+      : undefined;
     const ok = await onAnswer(question.id, value, timeMs, work, recorder.events(timeMs));
     // On success this question unmounts; on failure the child keeps the answer and the work, and can press Next again.
     if (!ok) {
@@ -409,7 +415,7 @@ function Question({ testId, typing, question, last, takeYourTime, onAnswer, fail
     }
     stored.current = true;
     saveDraft(draft, emptyBoard());
-    if (work) track("test_work", { status: question.showWork ? "required" : "optional", channel: image && typed ? "both" : image ? "draw" : "type" });
+    if (image || typed) track("test_work", { status: question.showWork ? "required" : "optional", channel: image && typed ? "both" : image ? "draw" : "type" });
   };
 
   const submitRef = useRef(submit);
@@ -473,7 +479,7 @@ function Question({ testId, typing, question, last, takeYourTime, onAnswer, fail
         </div>
       </div>
       <div className="test-pane test-pane-r">
-        <Whiteboard board={board} onChange={setBoard} typing={typing} required={question.showWork} nudge={nudge} onSize={onBoardSize} />
+        <Whiteboard board={board} onChange={changeBoard} typing={typing} required={question.showWork} nudge={nudge} onSize={onBoardSize} />
       </div>
     </form>
   );

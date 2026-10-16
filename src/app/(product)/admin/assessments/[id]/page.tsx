@@ -1,20 +1,23 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { getTest, requireAdmin } from "@/lib/admin-store";
+import { getStrokes, getTest, requireAdmin } from "@/lib/admin-store";
 import { adminParentPath, adminReportPath, answerLines, duration, factLines, flagText, helpAnswerText, levelText, shownWithoutAnswer, when } from "@/lib/admin-view";
 import { QuestionTimeline, ShownWithoutAnswer, awayCount, changeCount, readAloudCount } from "@/components/admin-timeline";
 import { AdminFrame, Chip, StatusChip, Table, gradeAndPlace } from "@/components/admin";
 import { EmailTable, RecordFacts, ReviewDetail, childPath } from "@/components/admin-records";
+import { StrokeReplay } from "@/components/stroke-replay";
 import { ResultCertainty } from "@/components/admin-certainty";
 
 export default async function TestDetailPage({ params }: PageProps<"/admin/assessments/[id]">) {
   const admin = await requireAdmin();
-  const detail = await getTest(admin, (await params).id);
+  const id = (await params).id;
+  // #186: the whiteboard strokes, by question id, for the replay.
+  const [detail, strokes] = await Promise.all([getTest(admin, id), getStrokes(admin, id)]);
   if (!detail) notFound();
   const { test: t, report, facts, images } = detail;
   const lines = answerLines(t.stored, detail.answers, detail.reviews, t.placement?.pace?.leftOut);
   const numbers = new Map(lines.map((a) => [a.questionId, a.number]));
-  const work = lines.filter((a) => a.work.required || a.work.image || a.work.text || a.review);
+  const work = lines.filter((a) => a.work.required || a.work.image || a.work.text || a.review || a.questionId in strokes);
   const quick = facts ? factLines(facts.test, facts.answers) : [];
   return <AdminFrame email={admin.email} section="tests" wide title={`${t.child?.first_name ?? "Child"}'s test`}>
     <RecordFacts facts={[
@@ -47,8 +50,11 @@ export default async function TestDetailPage({ params }: PageProps<"/admin/asses
         // Signed private URLs must not pass through the image optimizer.
         // eslint-disable-next-line @next/next/no-img-element
         <a href={images[a.work.image]} target="_blank" rel="noopener noreferrer"><img src={images[a.work.image]} alt={`Drawing for question ${a.number}`} /></a> : <p>The drawing did not load. Reload the page to try again.</p>}</div>}
+      {a.questionId in strokes && (strokes[a.questionId]
+        ? <StrokeReplay src={strokes[a.questionId]!} label={`Strokes for question ${a.number}`} />
+        : <p className="adm-note">The strokes did not load. Reload the page to try again.</p>)}
       {a.work.text && <pre className="adm-typed">{a.work.text}</pre>}
-      {!a.work.image && !a.work.text && <p className="adm-note">No work stored.</p>}
+      {!a.work.image && !a.work.text && !(a.questionId in strokes) && <p className="adm-note">No work stored.</p>}
       <ReviewDetail review={a.review} />
     </li>)}</ul>}
     <h2>Quick facts</h2>
