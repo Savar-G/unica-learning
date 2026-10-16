@@ -33,6 +33,8 @@ export interface FinishPayload {
 
 export type AccountError =
   | "bad_json" | "invalid" | "weak_password" | "too_many" | "signed_out" | "busy" | "store_failed" | "send_failed"
+  /** Auth requires an old password that signup cannot supply. */
+  | "password_change_blocked"
   /** The session's email is not confirmed: no family rows for an address nobody proved (#82). */
   | "unconfirmed"
   /** The family is being deleted (#78), so the same sign-in cannot make it again. */
