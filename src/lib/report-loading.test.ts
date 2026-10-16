@@ -173,6 +173,18 @@ describe("the report inputs (#162)", () => {
     }
   });
 
+  it("counts every answered question, also the rushed wrong answers left out of the score (#189)", async () => {
+    // Asha's first three answers are very fast and wrong: a run of three, so the score leaves them out of its levels.
+    const fast = (n: number) => (n < 3 ? 1_000 : 20_000);
+    const rushed = takeTest({ grade: 4, province: "BC" }, 1, (q, n) => n >= 3 && q.level <= 4, undefined, (_, n) => fast(n)).placement;
+    expect(rushed.levels.reduce((n, l) => n + l.total, 0)).toBe(33);
+    const rows = answers(fast).map((a) => (a.position < 3 ? { ...a, response: "no idea", correct: false } : a));
+    const inputs = await loadReportInputs(
+      memoryReportReaders({ ...tables(), assessments: [{ ...ASSESSMENT, placement: rushed }], answers: rows }).key(), "test-1", noComparison,
+    );
+    expect(inputs?.questions).toBe(36);
+  });
+
   it("is null for a test that is not completed or has no placement, and then the answers are not read", async () => {
     const cases: [string, Partial<MemoryAssessment>][] = [
       ["in progress", { status: "in_progress", completedAt: null, placement: null }],
