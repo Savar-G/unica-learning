@@ -1,0 +1,34 @@
+{
+  "round": 190,
+  "ticket": "#190 (spec #181): the optional extra round for early-sign areas",
+  "decision": "D-115",
+  "note": "Round named after the ticket so parallel tickets of spec #181 do not take the same r<n>. Savar could not be reached: the implementer shipped option A of each look (most consistent with DESIGN.md, D-088 and the r189 report patterns) and lists the others so Savar can swap.",
+  "invariants": [
+    "Copy: no performance claims (DESIGN.md). The child is told the questions help us see more clearly and that skipping is fine; the parent is told the report is made again with the answers",
+    "Real components: TakeTest (test.tsx with test-extra.tsx) and ReportCard (report.tsx), driven through the real test attempt module on its in-memory store",
+    "No database or network: a temporary harness page and API under /dev-r190 (not committed) answered the test API from the in-memory store; the dev server ran on port 3190 with no .env.local",
+    "Viewports 1280 x 800 and 820 x 1180 (tablet, portrait)"
+  ],
+  "looks": [
+    {
+      "decision": "How the test offers the extra round, after the last main question",
+      "shipped": "A",
+      "options": [
+        { "id": "A", "name": "Message screen like the halfway break", "screenshots": ["test-offer-a.png", "test-offer-a-tablet.png"], "bet": "The split-desk message pane (kicker 'Main questions done', large title, lead) with 'Yes, 8 more' and 'No, thanks' as two buttons; the colour field on the right", "benefit": "One tap either way; reuses the break screen the child has already seen, so it reads as a pause, not a question", "cost": "Two buttons of different weight: yes is the dark button", "risk": "Low" },
+        { "id": "B", "name": "Choice rows with Next, like 'Did anyone help?'", "screenshots": ["test-offer-b.png"], "bet": "Two full-width radio rows and Next, the help screen's pattern", "benefit": "Neutral weight for yes and no", "cost": "One more tap; looks like another test question", "risk": "A child may think the choice is marked" },
+        { "id": "C", "name": "Full colour field", "screenshots": ["test-offer-c.png"], "bet": "The end screen's colour field with 'Great work, Asha! Want 8 more?'", "benefit": "Most celebratory", "cost": "Reads like the end of the test, so 'No, thanks' feels like quitting and 'Yes' like starting over; 'Great work' praises a result the child has not seen", "risk": "Mixed message with the end screen" }
+      ]
+    },
+    {
+      "decision": "Where the report offers a skipped round again",
+      "shipped": "A",
+      "options": [
+        { "id": "A", "name": "Card under the area table", "screenshots": ["report-offer-a.png", "report-offer-full-a.png"], "bet": "A soft grey card with the tangerine square right under the 'Early sign' labels it checks; 'Start the extra questions' (after a stop: 'Continue the extra questions')", "benefit": "Next to the results it makes more certain; the r189 card styles", "cost": "Sits mid-report, below the fold", "risk": "Low" },
+        { "id": "B", "name": "First in the context row", "screenshots": ["report-offer-b.png"], "bet": "Beside the FSA note, where the reliability note sits", "benefit": "Seen early", "cost": "Asks for more questions before the parent has read any area result", "risk": "Competes with the reliability note when both show" },
+        { "id": "C", "name": "In the next-step row", "screenshots": ["report-offer-c.png"], "bet": "Above the plan buttons", "benefit": "With the other actions", "cost": "Competes with starting the books; far from the early-sign labels", "risk": "Reads like a step before buying" }
+      ]
+    }
+  ],
+  "flow": ["test-round-question.png", "report-round-intro.png", "report-round-end.png"],
+  "email": "No second email (the simpler path): the report row is built again in place, and the parent reads it in the account."
+}
