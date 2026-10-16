@@ -146,7 +146,8 @@ export const draftPrefix = (testId: string) => `${DRAFT_ROOT}${testId}:`;
 
 const round = (n: number) => Math.round(n * 10_000) / 10_000;
 
-export function encodeDraft(board: BoardState): string {
+/** The draft keeps what is on the board, not its log (#186): the log's times mean nothing after a reload. */
+export function encodeDraft(board: Pick<BoardState, "strokes" | "text">): string {
   return JSON.stringify({
     strokes: board.strokes.map((s) => ({ erase: s.erase, w: round(s.w), pts: s.pts.map(([x, y]) => [round(x), round(y)]) })),
     text: board.text,

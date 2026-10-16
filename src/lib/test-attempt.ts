@@ -11,6 +11,7 @@
 // write in one request use the same time.
 import {
   attemptState,
+  breakDue,
   createSession,
   decideStart,
   finish,
@@ -38,6 +39,7 @@ import {
 } from "@/lib/assessment";
 import { FACTS_SECONDS, createFacts, factsStep, restoreFacts, storedFacts, submitFact, type FactAnswer, type FactsSession, type FactsStep, type FactsTest, type FactSubmission } from "@/lib/assessment";
 import { ANSWER_MAX, QUESTION_TIME_CAP_MS } from "@/lib/test-api";
+import type { AnswerEvents } from "@/lib/answer-events";
 
 /** One of the parent's children, as a new test needs them. */
 export interface AttemptChild {
@@ -77,14 +79,26 @@ export interface NewAnswer extends Answer {
   workText: string | null;
   /** Where the whiteboard strokes are stored (#186). Left out when the child drew no strokes, or they were not stored. */
   strokesPath?: string;
+  /** When the server served the question and received the answer, and what the child did before Next (#184). */
+  timeline: AnswerTimeline;
+}
+
+/** The answer timeline of one answer (#184). Times are epoch ms by the server's clock. */
+export interface AnswerTimeline {
+  /** When the server first served the question; null when it has no record (a serve before #184, or a failed write). */
+  shownAt: number | null;
+  /** When the server received the answer: the clock reading of the answer request. */
+  answeredAt: number;
+  /** What the browser recorded before Next; null when it sent nothing usable (a screen from before #184). */
+  events: AnswerEvents | null;
 }
 
 /**
  * The store seam. Each operation keeps one database guard. Reads return only the given parent's rows. An attempt the
  * store returns has no `answeredAll`: the module works it out from the answers. A database error throws (a StoreError).
- * The operations of the timed facts section are in FactsStore.
+ * The operations of the timed facts section are in FactsStore; the serve times of the answer timeline in ShownStore.
  */
-export interface AttemptStore extends FactsStore {
+export interface AttemptStore extends FactsStore, ShownStore {
   /** One of the parent's children; null when the parent has no child with this id. */
   child(parent: string, childId: string): Promise<AttemptChild | null>;
   /** The parent's tests: of one child, or of every child. */
@@ -291,7 +305,9 @@ export type StepOutcome = { ok: true; step: TestStep } | Refusal;
  */
 export async function nextStep(store: AttemptStore, parent: string, id: string, now: number): Promise<StepOutcome> {
   const open = await openTest(store, parent, id, now);
-  return open.ok ? { ok: true, step: testStep(open.session) } : open;
+  if (!open.ok) return open;
+  await served(store, id, open.session, now);
+  return { ok: true, step: testStep(open.session) };
 }
 
 /** The whiteboard work that comes with an answer (#67), as the route parsed it (src/lib/work-payload.ts). */
@@ -313,6 +329,8 @@ export interface AnswerInput {
   /** Time on the question in milliseconds, as the browser measured it. */
   timeMs: number;
   work: AnswerWork;
+  /** What the child did before Next (#184), as the route bounded it; null or absent when the browser sent none. */
+  events?: AnswerEvents | null;
 }
 
 /**
@@ -325,7 +343,11 @@ export async function answerQuestion(store: AttemptStore, parent: string, id: st
   const { attempt, session } = open;
   const q = nextQuestion(session);
   // The test is complete or no longer in progress, or a second tab (or a retried request) answered this question already.
-  if (attempt.status !== "in_progress" || !q || input.questionId !== q.id) return { ok: false, error: "conflict", step: testStep(session) };
+  if (attempt.status !== "in_progress" || !q || input.questionId !== q.id) {
+    // The screen shows the step that comes with the conflict (#184).
+    if (attempt.status === "in_progress") await served(store, id, session, now);
+    return { ok: false, error: "conflict", step: testStep(session) };
+  }
   const response = input.response.trim();
   const valid = q.format === "choice" ? (q.choices ?? []).includes(response) : response.length > 0 && response.length <= ANSWER_MAX;
   if (!valid || !Number.isFinite(input.timeMs) || input.timeMs < 0) return { ok: false, error: "invalid" };
@@ -338,8 +360,10 @@ export async function answerQuestion(store: AttemptStore, parent: string, id: st
   // after the deadline, or after "Start again" expired the test, stops here and stores nothing.
   const until = recordAnswer(attempt, now).resumeUntil;
   let opened: boolean;
+  let shown: QuestionShown | null;
   try {
-    opened = await store.openAnswerWindow(id, now, until);
+    // #184: the question's serve time is read beside the deadline move. A failed read stores the answer without it.
+    [opened, shown] = await Promise.all([store.openAnswerWindow(id, now, until), shownOf(store, id, session.answers.length)]);
   } catch (e) {
     console.error("[test]", messageOf(e));
     return { ok: false, error: "store_failed" };
@@ -376,6 +400,7 @@ export async function answerQuestion(store: AttemptStore, parent: string, id: st
       workPath,
       workText: input.work.text || null,
       strokesPath,
+      timeline: { shownAt: shown?.questionId === q.id ? shown.at : null, answeredAt: now, events: input.events ?? null },
     });
   } catch (e) {
     await removeDrawing(store, workPath);
@@ -389,11 +414,17 @@ export async function answerQuestion(store: AttemptStore, parent: string, id: st
     await removeStrokes(store, strokesPath);
     return freshConflict(store, parent, id, now);
   }
-  // The answer time is written only once the answer is stored: the reminder emails (#73) count from it.
-  await bestEffort("[test] answer time save failed", () => store.recordAnswerTime(id, now));
-  // Stage 1 just ended: record the route for the admin view.
   const route = next.route;
-  if (!session.route && route) await bestEffort("[test] route save failed", () => store.recordRoute(id, route));
+  await Promise.all([
+    (async () => {
+      // The answer time is written only once the answer is stored: the reminder emails (#73) count from it.
+      await bestEffort("[test] answer time save failed", () => store.recordAnswerTime(id, now));
+      // Stage 1 just ended: record the route for the admin view.
+      if (!session.route && route) await bestEffort("[test] route save failed", () => store.recordRoute(id, route));
+    })(),
+    // #184: the next question goes out in this response.
+    served(store, id, next, now),
+  ]);
   return { ok: true, step: testStep(next) };
 }
 
@@ -436,7 +467,10 @@ async function bestEffort(line: string, write: () => Promise<void>): Promise<voi
 /** A conflict with the test's step, read fresh after another request changed it; or why it cannot be read. */
 async function freshConflict(store: AttemptStore, parent: string, id: string, now: number): Promise<Refusal> {
   const fresh = await openTest(store, parent, id, now);
-  return fresh.ok ? { ok: false, error: "conflict", step: testStep(fresh.session) } : fresh;
+  if (!fresh.ok) return fresh;
+  // The screen shows the step that comes with the conflict (#184).
+  if (fresh.attempt.status === "in_progress") await served(store, id, fresh.session, now);
+  return { ok: false, error: "conflict", step: testStep(fresh.session) };
 }
 
 /** The parent's test at `now`, or "expired" when it ran out of time: then it is marked expired if still in progress. */
@@ -679,4 +713,48 @@ export async function finishTest(store: AttemptStore, parent: string, id: string
     return storeFailed(e);
   }
   return { ok: true, id: attempt.id, finished: "now" };
+}
+
+// The answer timeline (#184): the server records when it serves each question and when it receives each answer. The
+// time the browser measures stays the thinking time; the admin shows both.
+
+/** When the server first served the question at a place in a test (epoch ms, the server's clock). */
+export interface QuestionShown {
+  position: number;
+  questionId: string;
+  at: number;
+}
+
+/**
+ * The store seam's operations for the serve times (#184): one row per place in a test. The module calls them only for
+ * a test that `load` returned for the parent, so they take the test's id alone.
+ */
+export interface ShownStore {
+  /** Records when the server first served the question at `shown.position`. A later serve of that place changes nothing. */
+  recordShown(id: string, shown: QuestionShown): Promise<void>;
+  /** When the server first served the question at `position`; null when it has no record (a serve before #184). */
+  shownAt(id: string, position: number): Promise<QuestionShown | null>;
+}
+
+/** Records the serve of the question step the browser shows now. A failure is logged, and the request goes on. */
+async function served(store: AttemptStore, id: string, session: Session, now: number): Promise<void> {
+  const step = testStep(session);
+  if (step.status !== "question") return;
+  // The first question after halfway shows only after the break and the quick facts (#69, #70). The screen asks for it
+  // again once the facts are done, and that serve is the one that counts.
+  if (breakDue(step)) {
+    const facts = await readSection(store, id);
+    if (!facts.ok || !facts.section || stepAt(facts.section, now).status !== "done") return;
+  }
+  await bestEffort("[test] shown time save failed", () => store.recordShown(id, { position: session.answers.length, questionId: step.question.id, at: now }));
+}
+
+/** When the server first served the question at `position`; null when it has none or the read failed (logged). */
+async function shownOf(store: AttemptStore, id: string, position: number): Promise<QuestionShown | null> {
+  try {
+    return await store.shownAt(id, position);
+  } catch (e) {
+    logFailure("[test] shown time load failed", e);
+    return null;
+  }
 }
