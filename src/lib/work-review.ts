@@ -1,8 +1,8 @@
 // The AI step of the report job (#68, D-084): the AI reads each piece of the child's shown work, and writes the report
-// text from the report model. Behind a switch: on only when ANTHROPIC_API_KEY is set (decision 2026-10-10 on #68, no key
-// yet). Off, nothing here calls the AI, and the report has no AI comments and no AI text.
+// text from the report model. Behind a switch: on only when OPENROUTER_API_KEY is set (the AI client, #183). Off,
+// nothing here calls the AI, and the report has no AI comments and no AI text.
 // For the server only: the background job (src/lib/report-job.ts) runs it before the report email. It has no
-// "server-only" import so that its tests can run, as src/lib/sign-in-link.ts. The live site uses only an Anthropic API
+// "server-only" import so that its tests can run, as src/lib/sign-in-link.ts. The live site uses only an OpenRouter API
 // key, never a Claude subscription or `claude -p`.
 // The rules for what a parent sees are in the assessment core (workReview, checkReportText): a comment shows only when
 // the review is sure; report text with a number that is not in the model is rejected. The AI never changes a mark.
@@ -16,11 +16,10 @@ import {
   type ReviewResult,
   type WorkReview,
 } from "@/lib/assessment";
-import { claudeReviewer } from "@/lib/work-review-claude";
+import { aiClient } from "@/lib/ai-client";
+import { aiWorkReviewer } from "@/lib/work-review-ai";
 import { fakeReviewer } from "@/lib/work-review-fake";
 
-/** The model when AI_REVIEW_MODEL is not set: vision, structured output, and the cost the ticket assumed. */
-export const AI_REVIEW_DEFAULT_MODEL = "claude-sonnet-5-5";
 /** Pieces of work reviewed per test at most: show-your-work questions first, then optional work, in test order. */
 export const REVIEW_MAX = 20;
 /** Reviews that run at the same time. */
@@ -64,7 +63,7 @@ export type ReviewInput = Omit<ReviewPiece, "questionId" | "required" | "image">
   png: Uint8Array | null;
 };
 
-/** The work reviewer (spec #54): the real one calls Claude through the Anthropic API; tests and dev use the fake. */
+/** The work reviewer (spec #54): the real one calls the model through the AI client (OpenRouter); tests and dev use the fake. */
 export interface WorkReviewer {
   /** The model id, stored with each review ("fake" for the fake). */
   readonly model: string;
@@ -114,16 +113,16 @@ export type AiOutcome =
     };
 
 /**
- * The reviewer, or null when the AI is off. On only when ANTHROPIC_API_KEY is set; the model comes from AI_REVIEW_MODEL.
+ * The reviewer, or null when the AI is off. On only when OPENROUTER_API_KEY is set; the model (an OpenRouter model id)
+ * comes from AI_MODEL (aiClient).
  * In development (never in a production build), AI_REVIEW_FAKE=sure or unsure gives the fake, for a report with
  * comments without a key.
  */
 export function aiReviewer(env: Record<string, string | undefined> = process.env): WorkReviewer | null {
   const fake = env.AI_REVIEW_FAKE;
   if (env.NODE_ENV !== "production" && (fake === "sure" || fake === "unsure")) return fakeReviewer({ mode: fake });
-  const apiKey = env.ANTHROPIC_API_KEY?.trim();
-  if (!apiKey) return null;
-  return claudeReviewer({ apiKey, model: env.AI_REVIEW_MODEL?.trim() || AI_REVIEW_DEFAULT_MODEL });
+  const client = aiClient(env);
+  return client ? aiWorkReviewer(client) : null;
 }
 
 const message = (e: unknown) => (e instanceof Error ? e.message : String(e));

@@ -169,7 +169,7 @@ describe("the stored report", () => {
     expect(report.model.summary).toBeUndefined();
     expect(db.job.reviews()).toEqual([]);
     expect(db.job.downloads).toEqual([]);
-    expect(mail.delivered[1].text).toContain("AI review: off (no ANTHROPIC_API_KEY). The report has no AI comments and no AI text.");
+    expect(mail.delivered[1].text).toContain("AI review: off (no OPENROUTER_API_KEY). The report has no AI comments and no AI text.");
   });
 
   it("does nothing for a test that is not finished: no report, no email, no alert", async () => {

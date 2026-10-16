@@ -1,18 +1,12 @@
-// The real work reviewer (#68): Claude with vision through the Anthropic API, with structured output. Server only, and
-// only with an API key (never a Claude subscription): the client gets the key explicitly and no bearer token, so it can
-// never fall back to a local sign-in. No "server-only" import so that its tests can run with fetch mocked.
+// The real work reviewer (#68): a vision model through the AI client (#183, OpenRouter), with structured output. Server
+// only, and only with an API key.
 // What it sends: for a review, the question, the question's level, the right answer, the child's answer, the mark, the
 // known mistake the answer matches, the typed working and the drawing (PNG); for the report text, the report's facts
 // (reportFacts in the assessment core: the levels, the areas, the number facts, the work questions and sure comments) with
 // "{name}" for the child. Never a name, an email, a postal code or an account id.
-import Anthropic from "@anthropic-ai/sdk";
-import { jsonSchemaOutputFormat } from "@anthropic-ai/sdk/helpers/json-schema";
-import { REPORT_TEXT_NAME, reportFacts } from "@/lib/assessment";
+import type { AiClient, AiPart } from "@/lib/ai-client";
+import { REPORT_TEXT_NAME, reportFacts, type ReviewResult } from "@/lib/assessment";
 import type { ReviewInput, WorkReviewer } from "@/lib/work-review";
-
-/** One request to the API stops after this long. The SDK tries once more after a time-out or a 429 / 5xx answer. */
-export const AI_REQUEST_TIMEOUT_MS = 60_000;
-const MAX_TOKENS = 16_000;
 
 const REVIEW_SCHEMA = {
   type: "object",
@@ -24,14 +18,14 @@ const REVIEW_SCHEMA = {
   },
   required: ["error_type", "kind", "comment", "confidence"],
   additionalProperties: false,
-} as const;
+};
 
 const TEXT_SCHEMA = {
   type: "object",
   properties: { text: { type: "string" } },
   required: ["text"],
   additionalProperties: false,
-} as const;
+};
 
 const REVIEW_SYSTEM = `You review one piece of a child's math work from an online placement test for children in grades 1 to 7 in Canada.
 
@@ -61,9 +55,10 @@ Rules:
 - Do not compare the child with other children. Do not mention books, prices, the company, how the test works, AI or yourself. Do not write "I". Do not use dashes as punctuation.`;
 
 const LEVEL = (level: number) => (level === 0 ? "kindergarten" : `grade ${level}`);
+const KINDS: readonly ReviewResult["kind"][] = ["slip", "misunderstanding", "none"];
 
-/** The review request's content: the drawing first, then the facts, with the child's typed working in tags. */
-function reviewContent(input: ReviewInput): Anthropic.ContentBlockParam[] {
+/** The review request's content: the facts, with the child's typed working in tags, then the drawing. */
+function reviewContent(input: ReviewInput): AiPart[] {
   const facts = [
     `Question: ${input.prompt}`,
     `Question level: ${LEVEL(input.level)}`,
@@ -71,66 +66,38 @@ function reviewContent(input: ReviewInput): Anthropic.ContentBlockParam[] {
     `Child's answer: ${input.answer}`,
     `Mark: ${input.correct ? "right" : "wrong"}`,
     ...(input.misconception ? [`The child's answer matches this known mistake: ${input.misconception}`] : []),
-    `Drawing: ${input.png ? "the image above" : "none"}`,
+    `Drawing: ${input.png ? "the image after this text" : "none"}`,
     input.text ? `Typed working:\n<typed_working>\n${input.text}\n</typed_working>` : "Typed working: none",
   ].join("\n");
-  const image: Anthropic.ContentBlockParam[] = input.png
-    ? [{ type: "image", source: { type: "base64", media_type: "image/png", data: Buffer.from(input.png).toString("base64") } }]
-    : [];
-  return [...image, { type: "text", text: facts }];
+  return [{ type: "text", text: facts }, ...(input.png ? [{ type: "image" as const, mediaType: "image/png" as const, data: input.png }] : [])];
 }
 
-/** The parsed output, or an error when the model declined, was cut off, or returned no valid JSON. */
-function output<T>(response: { stop_reason: string | null; parsed_output?: T | null }): T {
-  if (response.stop_reason !== "end_turn") throw new Error(`the model stopped: ${response.stop_reason}`);
-  if (!response.parsed_output) throw new Error("no structured output");
-  return response.parsed_output;
+const isObject = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null && !Array.isArray(v);
+
+/** The review from the output, or an error when the output does not have the review's shape. */
+function reviewResult(out: unknown): ReviewResult {
+  if (!isObject(out)) throw new Error("the review output is not an object");
+  const { error_type, kind, comment, confidence } = out;
+  if (typeof error_type !== "string" || typeof comment !== "string" || typeof confidence !== "number" || !KINDS.includes(kind as ReviewResult["kind"])) {
+    throw new Error("the review output does not have the review's fields");
+  }
+  return { errorType: error_type, kind: kind as ReviewResult["kind"], comment, score: confidence };
 }
 
-export function claudeReviewer({
-  apiKey,
-  model,
-  fetch,
-  maxRetries = 1,
-  timeout = AI_REQUEST_TIMEOUT_MS,
-}: {
-  apiKey: string;
-  model: string;
-  /** For tests: the fetch the SDK uses. */
-  fetch?: typeof globalThis.fetch;
-  maxRetries?: number;
-  timeout?: number;
-}): WorkReviewer {
-  // authToken null: an ANTHROPIC_AUTH_TOKEN in the environment is never sent; the API key is the only credential.
-  const client = new Anthropic({ apiKey, authToken: null, fetch, maxRetries, timeout });
+export function aiWorkReviewer(client: AiClient): WorkReviewer {
   return {
-    model,
+    model: client.model,
     async review(input, signal) {
-      const response = await client.messages.parse(
-        {
-          model,
-          max_tokens: MAX_TOKENS,
-          output_config: { effort: "medium", format: jsonSchemaOutputFormat(REVIEW_SCHEMA) },
-          system: [{ type: "text", text: REVIEW_SYSTEM, cache_control: { type: "ephemeral" } }],
-          messages: [{ role: "user", content: reviewContent(input) }],
-        },
-        { signal },
-      );
-      const out = output(response);
-      return { errorType: out.error_type, kind: out.kind, comment: out.comment, score: out.confidence };
+      const out = await client.json({ name: "work_review", system: REVIEW_SYSTEM, content: reviewContent(input), schema: REVIEW_SCHEMA, effort: "medium" }, signal);
+      return reviewResult(out);
     },
     async reportText(report, signal) {
-      const response = await client.messages.parse(
-        {
-          model,
-          max_tokens: MAX_TOKENS,
-          output_config: { effort: "low", format: jsonSchemaOutputFormat(TEXT_SCHEMA) },
-          system: TEXT_SYSTEM,
-          messages: [{ role: "user", content: JSON.stringify(reportFacts(report), null, 2) }],
-        },
-        { signal },
+      const out = await client.json(
+        { name: "report_text", system: TEXT_SYSTEM, content: [{ type: "text", text: JSON.stringify(reportFacts(report), null, 2) }], schema: TEXT_SCHEMA, effort: "low" },
+        signal,
       );
-      return output(response).text;
+      if (!isObject(out) || typeof out.text !== "string") throw new Error("the report text output has no text");
+      return out.text;
     },
   };
 }

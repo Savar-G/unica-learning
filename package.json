@@ -12,7 +12,6 @@
     "check:templates": "node scripts/check-templates.mjs"
   },
   "dependencies": {
-    "@anthropic-ai/sdk": "^0.133.0",
     "@supabase/ssr": "^0.12.7",
     "@supabase/supabase-js": "^2.117.2",
     "@vercel/analytics": "^2.0.1",
