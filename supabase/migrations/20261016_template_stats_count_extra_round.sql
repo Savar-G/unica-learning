@@ -1,3 +1,5 @@
+-- Applied to project "pagewise" (cdjobwsyzndtltzfpyqa) as migration template_stats_count_extra_round, 2026-10-16
+-- (SQL editor, registry 20261016222202).
 -- #221, spec #181: count a served, unanswered extra-round question (#190) in "times shown", like a main-test question
 -- (D-111). The round's questions are stored with the test (test->'extra', ids x-0, x-1, ...) when the child takes it,
 -- and their serves go to question_shows with positions numbered on after the main test.
