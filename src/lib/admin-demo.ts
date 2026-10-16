@@ -59,7 +59,9 @@ export function demoRows(now: Date): DashboardRows {
     const kid = kids[0];
     const email = (kind: RawEmail["kind"], atMs: number, assessment: string | null, fail = r() < 0.05): void => {
       if (atMs > now.getTime()) return;
-      const row: RawEmail = { id: id("demo-email"), created_at: iso(atMs), parent_id: pid, child_id: kid.id, assessment_id: assessment, kind, status: kind === "unsubscribe" ? null : fail ? "failed" : "sent", attempts: fail ? 3 : 1, sent_at: fail || kind === "unsubscribe" ? null : iso(atMs + 60_000), error: fail ? "Resend: rate limit (429)" : null };
+      const row: RawEmail = { id: id("demo-email"), created_at: iso(atMs), parent_id: pid, child_id: kid.id, assessment_id: assessment, kind, status: kind === "unsubscribe" ? null : fail ? "failed" : "sent", attempts: fail ? 3 : 1, sent_at: fail || kind === "unsubscribe" ? null : iso(atMs + 60_000), error: fail ? "Resend: rate limit (429)" : null, clicks: 0, first_clicked_at: null };
+      // About a third of parents click a reminder (D-105); some come back to it later.
+      if (row.status === "sent" && kind !== "unsubscribe" && rd() < 0.35) Object.assign(row, { clicks: rd() < 0.7 ? 1 : 2, first_clicked_at: iso(atMs + (0.2 + rd() * 6) * H) });
       out.emails.push(row);
       if (row.status === "sent") deliver({ email_log_id: row.id, report_id: null, report_email: null }, atMs + 60_000);
     };
@@ -88,9 +90,10 @@ export function demoRows(now: Date): DashboardRows {
       if (expired) email("come_back", startedMs + 8 * 24 * H, tid);
       continue;
     }
-    const report: RawReport = { id: id("demo-report"), created_at: iso(finishedMs + 120_000), assessment_id: tid, parent_id: pid, child_id: kid.id, emailed_at: null, email_error: null, alerted_at: iso(finishedMs + 150_000), alert_error: null };
+    const report: RawReport = { id: id("demo-report"), created_at: iso(finishedMs + 120_000), assessment_id: tid, parent_id: pid, child_id: kid.id, emailed_at: null, email_error: null, alerted_at: iso(finishedMs + 150_000), alert_error: null, email_clicks: 0, email_first_clicked_at: null };
     if (r() < 0.04) report.email_error = "Resend: 500 internal error";
     else report.emailed_at = iso(finishedMs + 140_000);
+    if (report.emailed_at && rd() < 0.6) Object.assign(report, { email_clicks: rd() < 0.6 ? 1 : 3, email_first_clicked_at: iso(finishedMs + (0.5 + rd() * 20) * H) });
     out.reports.push(report);
     if (report.emailed_at) deliver({ email_log_id: null, report_id: report.id, report_email: "parent" }, finishedMs + 140_000);
     deliver({ email_log_id: null, report_id: report.id, report_email: "alert" }, finishedMs + 150_000);

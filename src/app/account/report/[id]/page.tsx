@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
+import { after } from "next/server";
 import { isUuid } from "@/lib/assessment-store";
 import { fromRow, LEARNING_COLUMNS, type LearningAnswers, type LearningRow } from "@/lib/learning-style";
 import { pageMetadata } from "@/lib/metadata";
@@ -7,7 +8,8 @@ import { loadReportView } from "@/lib/report-loading";
 import { parentReportReader } from "@/lib/report-loading-server";
 import { reportReturnPath } from "@/lib/report-view";
 import type { PlanId } from "@/lib/site";
-import { parentId, sessionClient } from "@/lib/supabase-auth";
+import { adminClient, parentId, sessionClient } from "@/lib/supabase-auth";
+import { recordReportEmailClick } from "@/lib/email-clicks";
 import { TrackOnce } from "@/components/account";
 import { ReportCard, type ReportNextContext } from "@/components/report";
 import type { NextStepStart } from "@/components/report-next";
@@ -34,7 +36,8 @@ export default async function ReportPage({ params, searchParams }: PageProps<"/a
   // The email's next step link (#66): the plan choice or the waitlist. Sign-in comes back to the same step.
   const step = query.step === "plan" || query.step === "waitlist" ? query.step : null;
   const db = await sessionClient();
-  if (!(await parentId(db))) redirect(`/sign-in?next=${encodeURIComponent(reportReturnPath(id, { src, step }))}`);
+  const parent = await parentId(db);
+  if (!parent) redirect(`/sign-in?next=${encodeURIComponent(reportReturnPath(id, { src, step }))}`);
 
   const report = await loadReportView(parentReportReader(db), id);
   if (!report) notFound();
@@ -43,6 +46,13 @@ export default async function ReportPage({ params, searchParams }: PageProps<"/a
   const [start, learning] = await Promise.all([nextStepStart(db, childId), learningStart(db, childId)]);
   // Back from the payment page without a card: not a new report open.
   const cancelled = query.card === "cancelled";
+  // The click on the report email's button (D-105), counted after the page is sent. Only for this parent's own report.
+  if (src === "email" && !cancelled) {
+    after(async () => {
+      const admin = adminClient();
+      if (admin) await recordReportEmailClick(admin, parent, id);
+    });
+  }
   const next: ReportNextContext = {
     src,
     asked: step !== null,

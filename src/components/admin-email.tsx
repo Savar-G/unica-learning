@@ -4,7 +4,7 @@
 import Link from "next/link";
 import { EmailFrame } from "@/components/admin-email-frame";
 import { familyHref, type Ctx } from "@/components/admin-dashboard-parts";
-import { DELIVERY_TEXT, EMAIL_LABEL, at, ago, deliveryProblem, type Delivery, type EmailCopyView, type EmailEvent } from "@/lib/admin-dashboard";
+import { DELIVERY_TEXT, EMAIL_LABEL, at, ago, clickable, clicksText, deliveryProblem, type Delivery, type EmailCopyView, type EmailEvent } from "@/lib/admin-dashboard";
 
 /** What a delivery event means for the parent, in plain words (D-104). */
 const DELIVERY_MEANS: Record<Delivery["type"], string> = {
@@ -69,6 +69,12 @@ export function EmailView({ e, copy, ctx, back, now }: { e: EmailEvent; copy: Em
             </li>
           ))}
         </ol>
+      )}
+      {clickable(e) && e.status === "sent" && (
+        <p className="mail-clicks">
+          {e.clicks ? <><b>{clicksText(e)}</b> · first click {at(e.clicks.first)}</> : "Not clicked yet."}
+          <span className="dash-muted"> Counted when the parent opens our page from the email&apos;s button, signed in.</span>
+        </p>
       )}
       <p className="dash-muted mail-family">Family: <Link href={familyHref(ctx, e.familyId)}>{e.familyName}</Link>{e.childName && <> · {e.childName}</>}</p>
       {copy ? (

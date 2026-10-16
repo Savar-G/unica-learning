@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { activities, buildDashboard, buildFamilies, deliveryLine, emailFailed, dayKey, monthlyAmount, pickRange, rangeDays, shiftDay, type DashboardRows, type RawEmail, type RawSubscription } from "@/lib/admin-dashboard";
+import { activities, buildDashboard, buildFamilies, clicksText, deliveryLine, emailFailed, dayKey, monthlyAmount, pickRange, rangeDays, shiftDay, type DashboardRows, type RawEmail, type RawSubscription } from "@/lib/admin-dashboard";
 
 // 2026-10-12 19:00 Pacific (PDT, UTC-7)
 const NOW = new Date("2026-10-13T02:00:00Z");
@@ -18,7 +18,7 @@ const card = (id: string, parentId: string, created: string, saved: string | nul
   id, created_at: created, updated_at: saved ?? created, parent_id: parentId, child_id: "c", plan: "one" as const, price: 99, stripe_customer_id: customer, card_saved_at: saved,
 });
 const email = (id: string, parentId: string, kind: RawEmail["kind"], at: string, status: RawEmail["status"] = "sent"): RawEmail => ({
-  id, created_at: at, parent_id: parentId, child_id: "k1", assessment_id: null, kind, status, attempts: status === "failed" ? 3 : 1, sent_at: status === "sent" ? at : null, error: status === "failed" ? "429" : null,
+  id, created_at: at, parent_id: parentId, child_id: "k1", assessment_id: null, kind, status, attempts: status === "failed" ? 3 : 1, sent_at: status === "sent" ? at : null, error: status === "failed" ? "429" : null, clicks: 0, first_clicked_at: null,
 });
 
 const sub = (customer: string, status: string, created: string, over: Partial<RawSubscription> = {}): RawSubscription => ({
@@ -94,7 +94,7 @@ describe("emails", () => {
     children: [child("k1", "a")],
     tests: [test("t1", "a", "k1", ago(9), ago(5))],
     reports: [
-      { id: "r1", created_at: ago(5), assessment_id: "t1", parent_id: "a", child_id: "k1", emailed_at: null, email_error: "Resend 500", alerted_at: ago(5), alert_error: null },
+      { id: "r1", created_at: ago(5), assessment_id: "t1", parent_id: "a", child_id: "k1", emailed_at: null, email_error: "Resend 500", alerted_at: ago(5), alert_error: null, email_clicks: 0, email_first_clicked_at: null },
     ],
     emails: [email("e1", "a", "start", ago(9, 1)), email("e2", "a", "continue", ago(8), "failed"), email("e3", "a", "unsubscribe", ago(7), null)],
   });
@@ -303,7 +303,7 @@ describe("next start reminder", () => {
 
 // Resend's delivery events (D-104), joined to the email list through the kept copies.
 describe("email delivery", () => {
-  const report = { id: "r1", created_at: ago(1), assessment_id: "t1", parent_id: "p", child_id: "k1", emailed_at: ago(1), email_error: null, alerted_at: ago(1), alert_error: null };
+  const report = { id: "r1", created_at: ago(1), assessment_id: "t1", parent_id: "p", child_id: "k1", emailed_at: ago(1), email_error: null, alerted_at: ago(1), alert_error: null, email_clicks: 0, email_first_clicked_at: null };
   const r = (deliveries: DashboardRows["deliveries"]) => rows({
     parents: [parent("p", ago(5))], children: [child("k1", "p")], tests: [test("t1", "p", "k1", ago(2), ago(1))], reports: [report],
     emails: [email("e1", "p", "start", ago(3))], deliveries,
@@ -336,5 +336,28 @@ describe("email delivery", () => {
     expect(byId(r([])).e1.delivery).toBeNull();
     expect(emailFailed(byId(r([{ ...log, type: "delivery_delayed", occurred_at: at(2), detail: null }])).e1)).toBe(false);
     expect(buildDashboard(r([{ ...log, type: "delivered", occurred_at: at(2), detail: null }]), "7d", NOW).needs.find((n) => n.title === "Email failed")).toBeUndefined();
+  });
+});
+
+// Our own click tracking (D-105): the parent's visits from an email's button.
+describe("email clicks", () => {
+  const report = { id: "r1", created_at: ago(1), assessment_id: "t1", parent_id: "p", child_id: "k1", emailed_at: ago(1), email_error: null, alerted_at: ago(1), alert_error: null, email_clicks: 3, email_first_clicked_at: ago(0, 20) };
+  const d = rows({
+    parents: [parent("p", ago(5))], children: [child("k1", "p")], tests: [test("t1", "p", "k1", ago(2), ago(1))], reports: [report],
+    emails: [{ ...email("e1", "p", "start", ago(3)), clicks: 1, first_clicked_at: ago(2, 20) }, email("e2", "p", "start_followup", ago(1))],
+  });
+  const byId = Object.fromEntries(buildFamilies(d, NOW)[0].emails.map((e) => [e.id, e]));
+
+  it("shows how many times the parent clicked each email, and when first", () => {
+    expect(byId.e1.clicks).toEqual({ count: 1, first: ago(2, 20) });
+    expect(clicksText(byId.e1)).toBe("Clicked once");
+    expect(clicksText(byId["r1:report"])).toBe("Clicked 3 times");
+    expect(byId.e2.clicks).toBeNull();
+    expect(byId["r1:alert"].clicks).toBeNull();
+  });
+
+  it("counts the clicked emails of each kind in the summary", () => {
+    const summary = Object.fromEntries(buildDashboard(d, "7d", NOW).emailSummary.map((k) => [k.kind, k]));
+    expect([summary.start.clicked, summary.start_followup.clicked, summary.report.clicked]).toEqual([1, 0, 1]);
   });
 });

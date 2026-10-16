@@ -105,13 +105,14 @@ export function DashboardView({ d, ctx }: { d: Dashboard; ctx: Ctx }) {
       <Card title="Emails" aside={<span className="dash-muted">{d.emails.filter((e) => e.status === "sent" && e.kind !== "unsubscribe").length} sent at any time</span>}>
         <div className="dash-scroll">
           <table className="dash-table">
-            <thead><tr><th scope="col">Email</th><th scope="col">Subject</th><th scope="col">Goes to</th><th scope="col">Sends when</th><th scope="col" className="dash-num">Sent, {d.range === "all" ? "all time" : RANGES[d.range].label.toLowerCase()}</th><th scope="col" className="dash-num">Sent, all time</th><th scope="col" className="dash-num">Failed</th><th scope="col">Last sent</th></tr></thead>
+            <thead><tr><th scope="col">Email</th><th scope="col">Subject</th><th scope="col">Goes to</th><th scope="col">Sends when</th><th scope="col" className="dash-num">Sent, {d.range === "all" ? "all time" : RANGES[d.range].label.toLowerCase()}</th><th scope="col" className="dash-num">Sent, all time</th><th scope="col" className="dash-num">Failed</th><th scope="col" className="dash-num">Clicked</th><th scope="col">Last sent</th></tr></thead>
             <tbody>
               {d.emailSummary.map((e) => (
                 <tr key={e.kind}>
                   <td><b>{e.label}</b></td><td className="dash-muted">{e.subject}</td><td>{e.to}</td><td>{e.trigger}</td>
                   <td className="dash-num">{e.sentInRange}</td><td className="dash-num">{e.sent}</td>
                   <td className="dash-num">{e.failed > 0 ? <b className="dash-bad-text">{e.failed}</b> : 0}</td>
+                  <td className="dash-num">{e.kind === "alert" || e.kind === "unsubscribe" || e.sent === 0 ? "-" : <>{e.clicked}<span className="dash-sub">{Math.round((100 * e.clicked) / e.sent)}% of sent</span></>}</td>
                   <td className="dash-nowrap">{e.last ? <>{at(e.last)}<span className="dash-sub">{ago(e.last, d.now)}</span></> : "-"}</td>
                 </tr>
               ))}

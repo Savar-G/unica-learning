@@ -9,6 +9,8 @@ import {
   ALL_STAGES,
   EMAIL_KINDS,
   EMAIL_LABEL,
+  clickable,
+  clicksText,
   deliveryLine,
   emailFailed,
   RANGES,
@@ -246,7 +248,7 @@ export function EmailLog({ d, ctx, filter, nav }: { d: Dashboard; ctx: Ctx; filt
       {info && <p className="dash-lead">Subject: &ldquo;{info.subject}&rdquo;. Goes to: {info.to.toLowerCase()}. Sends when: {info.trigger.toLowerCase()}.</p>}
       <div className="dash-scroll dash-card">
         <table className="dash-table">
-          <thead><tr><th scope="col">When</th><th scope="col">Email</th><th scope="col">Family</th><th scope="col">Subject</th><th scope="col">Result</th></tr></thead>
+          <thead><tr><th scope="col">When</th><th scope="col">Email</th><th scope="col">Family</th><th scope="col">Subject</th><th scope="col">Result</th><th scope="col">Clicked</th></tr></thead>
           <tbody>
             {rows.slice(0, LOG_MAX).map((e) => (
               <tr key={e.id}>
@@ -255,6 +257,7 @@ export function EmailLog({ d, ctx, filter, nav }: { d: Dashboard; ctx: Ctx; filt
                 <td><Link href={familyHref(ctx, e.familyId)}>{e.familyName}</Link></td>
                 <td className="dash-muted">{e.kind === "unsubscribe" ? "-" : <Link href={adminEmailPath(e.id, ctx.demo)}>{e.subject}</Link>}</td>
                 <td>{e.status === "failed" ? <span className="dash-bad-text">Failed after {e.attempts} {e.attempts === 1 ? "try" : "tries"}: {e.error ?? "unknown error"}</span> : e.status === "pending" ? "Waiting to send" : e.kind === "unsubscribe" ? "Reminders off" : <Delivered e={e} />}</td>
+                <td className="dash-nowrap">{!clickable(e) || e.status !== "sent" ? "-" : e.clicks ? <>{clicksText(e)}<span className="dash-sub">first {at(e.clicks.first)}</span></> : <span className="dash-muted">Not yet</span>}</td>
               </tr>
             ))}
           </tbody>
