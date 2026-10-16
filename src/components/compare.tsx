@@ -1,61 +1,55 @@
 // "How we compare", folded into Pricing under the plan card (D-076): a check table (D-097, variant C of round r19).
-// Every competitor fact is backed by .design/research/competitors-2026-10.md; re-check it before editing.
-// Categories only, never a competitor name (D-064). Marks scan before words: a full mark is yes, a half mark is partly.
-import { BRAND, PLANS } from "@/lib/site";
+// The same grid, with all five options, is the at-a-glance table on /compare (D-114). The facts live in
+// src/lib/compare.ts. Marks scan before words: a full mark is yes, a half mark is partly, an empty mark is no.
+import Link from "next/link";
+import { COST, MARK_LABEL, OPTIONS, ROWS, type Mark, type OptionId, type RowId } from "@/lib/compare";
 import { Rise } from "./drawn";
 import "@/ds/styles/compare.css";
 
-type Mark = "yes" | "part";
-type Cell = [Mark, string];
-
-const COLUMNS = ["Private tutor", "Learning centre", BRAND];
-
-const ROWS: { label: string; cells: [Cell, Cell, Cell] }[] = [
-  { label: "Personal to your child", cells: [["yes", "The tutor adjusts each session"], ["part", "Own pace, on a set path"], ["yes", "Every book matched to their level and gaps"]] },
-  { label: "A structured plan", cells: [["part", "Depends on the tutor"], ["yes", "A set program at the centre"], ["yes", "A new book before the last one runs out"]] },
-  { label: "Gaps shown to you", cells: [["part", "When the tutor reports them"], ["part", "Depends on the centre"], ["yes", "A gap report after every scan"]] },
-];
-
-const COST: [string, string][] = [
-  ["$40-$100", "an hour"],
-  ["$200+", "per subject, a month"],
-  [`CAD ${PLANS.one.price}`, "a month, delivery included"],
-];
-
-const LABEL: Record<Mark, string> = { yes: "Yes", part: "Partly" };
-
-function MarkIcon({ m }: { m: Mark }) {
-  return <span className={`cmp-mk ${m}`} role="img" aria-label={LABEL[m]} />;
+export function MarkIcon({ m }: { m: Mark }) {
+  return <span className={`cmp-mk ${m}`} role="img" aria-label={MARK_LABEL[m]} />;
 }
 
-// The last column is ours.
-const us = (i: number) => (i === COLUMNS.length - 1 ? "us" : undefined);
+/** The check table: `columns` in order (ours last), `rows` by id, then Cost. Each cell carries data-col for the phone switch. */
+export function CompareGrid({ columns, rows, labelledBy, className = "" }: { columns: OptionId[]; rows: RowId[]; labelledBy: string; className?: string }) {
+  const cls = (id: OptionId) => (id === "us" ? "us" : undefined);
+  const name = (id: OptionId) => OPTIONS.find((o) => o.id === id)?.name;
+  return (
+    <div className={`cmp-tbl ${className}`.trim()} role="table" aria-labelledby={labelledBy}>
+      <div className="cmp-row cmp-head" role="row">
+        <span role="columnheader" />
+        {columns.map((id) => <span role="columnheader" key={id} className={cls(id)} data-col={id}>{name(id)}</span>)}
+      </div>
+      {ROWS.filter((r) => rows.includes(r.id)).map((r) => (
+        <div className="cmp-row" role="row" key={r.id}>
+          <span role="rowheader">{r.label}</span>
+          {columns.map((id) => {
+            const [m, text] = r.cells[id];
+            return <span role="cell" key={id} className={cls(id)} data-col={id}><MarkIcon m={m} />{text}</span>;
+          })}
+        </div>
+      ))}
+      <div className="cmp-row cmp-cost" role="row">
+        <span role="rowheader">Cost</span>
+        {columns.map((id) => (
+          <span role="cell" key={id} className={cls(id)} data-col={id}><b>{COST[id][0]}</b> {COST[id][1]}</span>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+export function CompareLegend({ marks }: { marks: Mark[] }) {
+  return <p className="cmp-legend">{marks.map((m) => <span key={m}><MarkIcon m={m} /> {MARK_LABEL[m]}</span>)}</p>;
+}
 
 export function CompareTable() {
   return (
     <Rise className="cmp">
       <p className="cmp-kicker" id="cmpT">How we compare</p>
-      <div className="cmp-tbl" role="table" aria-labelledby="cmpT">
-        <div className="cmp-row cmp-head" role="row">
-          <span role="columnheader" />
-          {COLUMNS.map((c, i) => <span role="columnheader" key={c} className={us(i)}>{c}</span>)}
-        </div>
-        {ROWS.map((r) => (
-          <div className="cmp-row" role="row" key={r.label}>
-            <span role="rowheader">{r.label}</span>
-            {r.cells.map(([m, text], i) => (
-              <span role="cell" key={COLUMNS[i]} className={us(i)}><MarkIcon m={m} />{text}</span>
-            ))}
-          </div>
-        ))}
-        <div className="cmp-row cmp-cost" role="row">
-          <span role="rowheader">Cost</span>
-          {COST.map(([price, unit], i) => (
-            <span role="cell" key={COLUMNS[i]} className={us(i)}><b>{price}</b> {unit}</span>
-          ))}
-        </div>
-      </div>
-      <p className="cmp-legend"><MarkIcon m="yes" /> Yes <MarkIcon m="part" /> Partly</p>
+      <CompareGrid columns={["tutor", "centre", "us"]} rows={["personal", "plan", "gaps"]} labelledBy="cmpT" />
+      <CompareLegend marks={["yes", "part"]} />
+      <p className="cmp-more"><Link href="/compare">See the full comparison →</Link></p>
     </Rise>
   );
 }

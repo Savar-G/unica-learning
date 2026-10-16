@@ -35,16 +35,19 @@ export const cardTerms = (price: number) =>
  * Creates the Stripe customer and a hosted Checkout page in setup mode: it saves the card and charges nothing.
  * When the first workbook ships, start a CAD `price` monthly subscription on this customer, with 30% off the first
  * month (metadata first_month_price; D-053, D-091).
- * Returns the Checkout page URL.
+ * Returns the customer and Checkout page URL so the booking can durably release its hold.
  */
-export async function cardSetupUrl(s: Stripe, p: CardSetup): Promise<string | null> {
+export async function cardSetupUrl(s: Stripe, p: CardSetup): Promise<{ customer: string; url: string | null }> {
   const metadata = cardMetadata(p);
   const description = cardDescription(p);
-  const customer = await s.customers.create({ email: p.email, name: p.name, description, metadata });
-  return checkoutUrl(s, customer.id, p, metadata, description, {
+  const options = { timeout: 15_000, maxNetworkRetries: 0 };
+  const customer = await s.customers.create({ email: p.email, name: p.name, description, metadata }, options);
+  if (!customer.id) throw Error("Booking customer unavailable");
+  const url = await checkoutUrl(s, customer.id, p, metadata, description, {
     success: `${p.origin}/thank-you?session_id={CHECKOUT_SESSION_ID}`,
     cancel: `${p.origin}/?card=cancelled`,
-  });
+  }, options);
+  return { customer: customer.id, url };
 }
 
 /** The metadata keys every card setup carries; the report path adds its own (D-053). */
@@ -55,7 +58,7 @@ const cardMetadata = (p: CardSetup): Record<string, string> => ({
 const cardDescription = (p: CardSetup) => `${p.subject}, grade ${p.grade}, ${priceWithOffer(p.price)} from the first workbook`;
 
 /** A hosted Checkout page in setup mode for this customer. The parent sees cardTerms above the button. */
-async function checkoutUrl(s: Stripe, customer: string, p: CardSetup, metadata: Record<string, string>, description: string, urls: { success: string; cancel: string }) {
+async function checkoutUrl(s: Stripe, customer: string, p: CardSetup, metadata: Record<string, string>, description: string, urls: { success: string; cancel: string }, options?: Stripe.RequestOptions) {
   const session = await s.checkout.sessions.create({
     mode: "setup",
     currency: "cad",
@@ -66,7 +69,7 @@ async function checkoutUrl(s: Stripe, customer: string, p: CardSetup, metadata: 
     custom_text: { submit: { message: cardTerms(p.price) } },
     success_url: urls.success,
     cancel_url: urls.cancel,
-  });
+  }, options);
   return session.url;
 }
 

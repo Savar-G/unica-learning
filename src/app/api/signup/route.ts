@@ -2,7 +2,7 @@ import { after } from "next/server";
 import { PLANS, priceWithOffer } from "@/lib/site";
 import { CURRICULA, EMAIL, POSTAL, clip, cleanSource, statusFor, type CurriculumId, type SignupPayload, type SignupResult } from "@/lib/signup";
 import { cardSetupUrl, stripe } from "@/lib/stripe";
-import { supabase } from "@/lib/supabase";
+import { adminClient } from "@/lib/supabase-auth";
 
 // One plan for now: math (Savar, 2026-10-11).
 const SUBJECTS = new Set(["Math"]);
@@ -50,9 +50,16 @@ export async function POST(request: Request) {
     return Response.json({ ok: false, error: "invalid" } satisfies SignupResult, { status: 400 });
   }
 
-  const { error } = await supabase().from("signups").insert(row);
-  if (error) {
-    console.error("[signup] insert failed", error.message);
+  const db = adminClient();
+  let admitted = false;
+  try {
+    if (db) {
+      const { data, error } = await db.rpc("begin_booking_signup", { payload: row });
+      admitted = !error && data === true;
+    }
+  } catch { /* A lost admission reply never permits a Stripe call. */ }
+  if (!admitted) {
+    console.error("[signup] admission unavailable");
     return Response.json({ ok: false, error: "store_failed" } satisfies SignupResult, { status: 502 });
   }
 
@@ -60,12 +67,24 @@ export async function POST(request: Request) {
   let cardUrl: string | null = null;
   let stripeState: "sent" | "off" | "failed" = "off";
   const s = stripe();
-  if (status === "reserved" && s) {
+  if (status === "reserved") {
+    let invoked = false;
     try {
-      cardUrl = await cardSetupUrl(s, { ...row, ref, plan, curriculum: row.curriculum, origin: new URL(request.url).origin });
-      stripeState = cardUrl ? "sent" : "failed";
-    } catch (e) {
-      console.error("[signup] stripe failed", e instanceof Error ? e.message : e);
+      if (s && !request.signal.aborted) {
+        invoked = true;
+        const setup = await cardSetupUrl(s, { ...row, ref, plan, curriculum: row.curriculum, origin: new URL(request.url).origin });
+        const { data, error } = await db!.rpc("finish_booking_signup", { booking_ref: ref, customer: setup.customer });
+        if (error || data !== true) throw Error("Booking completion unavailable");
+        cardUrl = setup.url;
+        stripeState = cardUrl ? "sent" : "failed";
+      } else {
+        // No remote request started. This is the only path that can release a hold without a customer.
+        const { data, error } = await db!.rpc("finish_booking_signup", { booking_ref: ref, customer: null });
+        if (error || data !== true) throw Error("Booking completion unavailable");
+      }
+    } catch {
+      // Timeout, abort and lost responses can still complete remotely. Keep the durable pending hold.
+      console.error("[signup] booking result unavailable", invoked ? "remote-started" : "not-started");
       stripeState = "failed";
     }
   }

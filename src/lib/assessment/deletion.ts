@@ -42,20 +42,6 @@ export async function runRetentionBatch(ids: string[], store: RetentionBatchStor
   return counts;
 }
 
-/** Calendar months in UTC, including the shorter anniversary of 29 February. No test means no test-based deadline. */
-export function retentionDue(testActivity: string[], cards: RetentionCardState, now: number): boolean {
-  if (cards !== "clear" || testActivity.length === 0 || !Number.isFinite(now)) return false;
-  const times = testActivity.map(Date.parse);
-  if (times.some((n) => !Number.isFinite(n))) return false;
-  const last = new Date(Math.max(...times));
-  const day = last.getUTCDate();
-  last.setUTCDate(1);
-  last.setUTCFullYear(last.getUTCFullYear() + 1);
-  const days = new Date(Date.UTC(last.getUTCFullYear(), last.getUTCMonth() + 1, 0)).getUTCDate();
-  last.setUTCDate(Math.min(day, days));
-  return now >= last.getTime();
-}
-
 export interface ImageEntry { name: string; folder: boolean }
 
 /** External boundary. The database must freeze writes for this family before this interface is used. */

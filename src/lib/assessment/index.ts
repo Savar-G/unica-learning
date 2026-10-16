@@ -3,6 +3,7 @@ export * from "./attempt";
 export * from "./certainty";
 export * from "./constants";
 export * from "./deletion";
+export * from "./retention";
 export * from "./facts";
 export * from "./flags";
 export * from "./rushing";
@@ -46,6 +47,7 @@ export {
   scoredAgainst,
   storedTest,
   submitAnswer,
+  testLength,
   testStep,
   toPublicQuestion,
   type SessionOptions,

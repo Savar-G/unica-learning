@@ -1,4 +1,6 @@
-import { runRetentionBatch, type RetentionBatchStore } from "./deletion";
+import type { FamilyDeletionResult } from "./deletion";
+import { readFamilyPayments } from "./payments";
+import { retentionDecision, type BookingLink, type CustomerPayments, type RetentionFamily } from "./retention";
 
 export type WorkerConfiguration = { kind: "help" } | { kind: "disabled" } | {
   kind: "run"; mode: "dry" | "delete"; url: string; secret: string; stripeKey?: string;
@@ -12,24 +14,88 @@ export function workerConfiguration(args: readonly string[], env: Record<string,
   if (mode === "delete" && env.RETENTION_WORKER_ENABLED !== "on") return { kind: "disabled" };
   const invalid = (value: string) => /sensitive|placeholder|changeme|example|dummy|fake/i.test(value);
   const url = env.SUPABASE_URL ?? "", secret = env.SUPABASE_SECRET_KEY ?? "", stripeKey = env.STRIPE_SECRET_KEY ?? "";
+  // Delete mode needs the restricted live key. Dry mode uses it when given (Stripe reads only) and refuses any other key.
+  const stripeNeeded = mode === "delete" || stripeKey !== "";
   if (url !== "https://cdjobwsyzndtltzfpyqa.supabase.co" || !/^sb_secret_[A-Za-z0-9_-]{20,200}$/.test(secret) || invalid(secret)
-    || (mode === "delete" && (!/^rk_live_[A-Za-z0-9_]{24,200}$/.test(stripeKey) || invalid(stripeKey)))) throw Error("Worker credentials unavailable");
-  return { kind: "run", mode, url, secret, stripeKey: mode === "delete" ? stripeKey : undefined };
+    || (stripeNeeded && (!/^rk_live_[A-Za-z0-9_]{24,200}$/.test(stripeKey) || invalid(stripeKey)))) throw Error("Worker credentials unavailable");
+  return { kind: "run", mode, url, secret, stripeKey: stripeNeeded ? stripeKey : undefined };
 }
 
-export interface RetentionWorkerStore extends RetentionBatchStore {
-  candidates(): Promise<string[]>;
+/** A family the database lists: in the deletion queue, due by the free-test rule, or with Stripe history to check. */
+export interface RetentionCandidate extends RetentionFamily {
+  id: string;
+  /** Already in the deletion queue (a request, or a retention check that started earlier). */
+  queued: boolean;
+}
+
+/** What the database must check again before it freezes a family. `endedAt`: the former customer's Stripe end date. */
+export interface RetentionClaim { endedAt: string | null }
+
+export interface RetentionWorkerStore {
+  candidates(): Promise<RetentionCandidate[]>;
   verifyPayments(): Promise<void>;
+  /** Read-only Stripe facts for one customer. A failure means unknown. */
+  customerPayments(customer: string): Promise<CustomerPayments>;
+  bookingCustomers?(booking: BookingLink): Promise<string[]>;
+  cursor(): Promise<string | null>;
+  advance(parent: string): Promise<void>;
+  run(parent: string, limitMs: number, claim: RetentionClaim): Promise<FamilyDeletionResult>;
 }
 
-/** Dry mode performs only the paged candidate read. Clear permission is never stored by this runner. */
-export async function runRetentionWorker(config: WorkerConfiguration, store: RetentionWorkerStore, remainingMs: () => number) {
+/**
+ * Retry queued work before unrelated Stripe reads. In delete mode, save each candidate's position before reading or
+ * claiming it, and finish that candidate before scheduling another. A claim freezes the family; the fresh check
+ * after the freeze decides again. Dry mode changes nothing. Output: counts only, never ids.
+ */
+export async function runRetentionWorker(config: WorkerConfiguration, store: RetentionWorkerStore, remainingMs: () => number, now: number) {
   if (config.kind !== "run") return { ok: true, disabled: true };
-  if (config.mode === "delete") await store.verifyPayments();
-  const ids = await store.candidates();
-  if (config.mode === "dry") return { ok: true, dry: true, eligible: ids.length };
-  const counts = await runRetentionBatch(ids, store, remainingMs, 600_000);
-  return { ok: counts.failed === 0, ...counts };
+  if (config.stripeKey) await store.verifyPayments();
+  const candidates = await store.candidates();
+  const decisions = { queued: 0, delete_free_test: 0, delete_former_customer: 0, keep_customer: 0, keep_former_customer: 0, keep_free_test: 0, keep_no_test: 0, unknown: 0 };
+  const counts = { eligible: 0, deleted: 0, busy: 0, excluded: 0, failed: 0, images: 0 };
+  const dry = config.mode === "dry";
+  const cursor = dry ? null : await store.cursor();
+  const rotated = cursor === null ? candidates : [...candidates.filter((f) => f.id > cursor), ...candidates.filter((f) => f.id <= cursor)];
+  const order = dry ? candidates : [...rotated.filter((f) => f.queued), ...rotated.filter((f) => !f.queued)];
+  const budget = Math.min(600_000, remainingMs());
+  let deferred = candidates.length, attempted = false;
+  const read = (customer: string) => config.stripeKey ? store.customerPayments(customer) : Promise.reject(Error("No Stripe key"));
+  for (const family of order) {
+    const remaining = remainingMs();
+    // Reserve a full attempt for later candidates. Do not restart a large read-only scan on every invocation.
+    if (budget <= 0 || remaining <= 0 || (!dry && attempted && remaining < budget)) break;
+    if (!dry) {
+      await store.advance(family.id);
+      if (remainingMs() <= 0) break;
+    }
+    attempted = true;
+    deferred--;
+    let claim: RetentionClaim;
+    if (family.queued) {
+      decisions.queued++;
+      claim = { endedAt: null };
+    } else {
+      const decision = retentionDecision({ lastTestAt: family.lastTestAt, payments: await readFamilyPayments(family.cards, read, config.stripeKey ? store.bookingCustomers?.bind(store) : undefined) }, now);
+      if (decision.action === "unknown") { decisions.unknown++; continue; }
+      if (decision.action === "keep") { decisions[`keep_${decision.reason}`]++; continue; }
+      decisions[`delete_${decision.rule}`]++;
+      claim = { endedAt: decision.rule === "former_customer" ? decision.endedAt : null };
+    }
+    counts.eligible++;
+    if (!dry) {
+      const limit = Math.min(budget, remainingMs());
+      if (limit <= 0) { counts.failed++; break; }
+      try {
+        const result = await store.run(family.id, limit, claim);
+        counts[result.state]++;
+        if (result.state === "deleted") counts.images += result.images;
+      } catch { counts.failed++; }
+    }
+  }
+  // Unknown or unprocessed candidates make an incomplete run visible to the operator.
+  const ok = decisions.unknown === 0 && counts.failed === 0 && deferred === 0;
+  if (dry) return { ok, dry: true, eligible: counts.eligible, deferred, ...decisions };
+  return { ok, ...counts, deferred, ...decisions };
 }
 
 export interface DeletionHeartbeatStore {

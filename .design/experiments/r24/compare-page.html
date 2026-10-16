@@ -1,0 +1,280 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>r24 - Compare page copy draft</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@300;400;500;600&family=Geist+Mono&family=Caveat:wght@600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --sans: "Geist", ui-sans-serif, system-ui, sans-serif; --mono: "Geist Mono", ui-monospace, monospace; --pen: "Caveat", cursive;
+    --ink: #0c0c0e; --ink-2: #44444c; --line: #e4e4e7; --card: #f5f4f2; --soft: #faf9f7;
+    --accent: #ff6a3d; --accent-soft: #fff1ea; --sun: #ffc93c; --btn: #2b2622;
+    --g1: #ffc93c; --g2: #ff9466; --g3: #8fb4ff; --g4: #a6e8cb;
+    --pad: max(24px, calc((100% - 1180px) / 2));
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; font: 400 16px/1.55 var(--sans); color: var(--ink); background: #fff; }
+  .note { background: #111; color: #fff; font: 400 12.5px/1.5 var(--mono); padding: 10px var(--pad); }
+  .note b { color: var(--sun); font-weight: 400; }
+  nav { display: flex; justify-content: space-between; align-items: center; padding: 16px var(--pad); border-bottom: 1px solid var(--line); }
+  .logo { font: 600 21px/1 var(--sans); letter-spacing: -0.03em; display: flex; align-items: center; gap: 4px; }
+  .logo i { width: 8px; height: 8px; background: var(--accent); display: inline-block; }
+  .btn { display: inline-flex; align-items: center; gap: 10px; background: var(--btn); color: #fff; border-radius: 6px; padding: 12px 22px; font: 500 15px/1 var(--sans); text-decoration: none; }
+  .btn.sm { padding: 10px 16px; font-size: 14px; }
+  section { padding: clamp(56px, 7vw, 96px) var(--pad); }
+  .eyebrow { font: 400 12.5px/1.2 var(--mono); letter-spacing: .02em; display: inline-flex; align-items: center; gap: 9px; text-transform: uppercase; }
+  .eyebrow::before { content: ""; width: 9px; height: 9px; background: var(--accent); }
+  h1, h2 { font-weight: 300; letter-spacing: -0.035em; margin: 16px 0 20px; }
+  h1 { font-size: clamp(40px, 5.4vw, 72px); line-height: 1.02; max-width: 15ch; }
+  h2 { font-size: clamp(30px, 3.6vw, 48px); line-height: 1.06; max-width: 22ch; }
+  h3 { font-weight: 500; letter-spacing: -0.02em; font-size: 22px; margin: 0 0 6px; }
+  .lead { color: var(--ink-2); font-size: clamp(17px, 1.4vw, 20px); max-width: 60ch; margin: 0; }
+  .hl { background: linear-gradient(transparent 62%, var(--sun) 62%, var(--sun) 88%, transparent 88%); }
+  .jump { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 32px; }
+  .jump a { border: 1px solid var(--line); border-radius: 999px; padding: 8px 14px; font-size: 14px; color: var(--ink); text-decoration: none; }
+
+  /* at-a-glance table: same marks as the home table (D-097), five columns */
+  .kicker { font: 400 12.5px/1.3 var(--mono); letter-spacing: .04em; text-transform: uppercase; color: var(--ink-2); margin: 0 0 18px; }
+  .tbl { display: grid; grid-template-columns: minmax(140px, .8fr) repeat(5, minmax(0, 1fr)); }
+  .row { display: contents; }
+  .row > span { display: flex; flex-direction: column; gap: 10px; padding: 16px 14px; border-top: 1px solid var(--line); font-size: 14px; line-height: 1.4; color: var(--ink-2); }
+  .row > .rh { padding-left: 0; font-weight: 500; color: var(--ink); font-size: 15px; }
+  .row > .us { background: var(--accent-soft); color: var(--ink); }
+  .head > span { border-top: 0; padding-bottom: 12px; justify-content: flex-end; font: 500 19px/1.15 var(--sans); letter-spacing: -.02em; color: var(--ink); }
+  .head > .us { position: relative; border-radius: 6px 6px 0 0; padding-top: 24px; overflow: hidden; }
+  .head > .us::before { content: ""; position: absolute; inset: 0 0 auto; height: 6px; background: linear-gradient(90deg, var(--g1), var(--g2), var(--g3)); }
+  .cost > span { font: 400 12px/1.3 var(--mono); }
+  .cost b { display: block; font: 300 26px/1 var(--sans); letter-spacing: -.03em; color: var(--ink-2); }
+  .cost .us b { font-weight: 400; color: var(--ink); }
+  .cost > .rh { font: 500 15px/1.4 var(--sans); }
+  .cost > .us { border-radius: 0 0 6px 6px; }
+  .mk { flex: none; width: 20px; height: 20px; border-radius: 50%; position: relative; box-shadow: inset 0 0 0 1.5px var(--ink-2); }
+  .mk.yes { background: var(--ink); box-shadow: none; }
+  .mk.yes::after { content: ""; position: absolute; left: 7px; top: 4px; width: 5px; height: 9px; border: solid #fff; border-width: 0 2px 2px 0; transform: rotate(45deg); }
+  .mk.part { background: linear-gradient(90deg, var(--ink-2) 50%, transparent 50%); }
+  .us .mk.yes { background: var(--accent); }
+  .legend { display: flex; align-items: center; gap: 8px; margin: 16px 0 0; font: 400 12.5px/1 var(--mono); color: var(--ink-2); }
+  .legend .mk { width: 14px; height: 14px; margin-left: 10px; }
+  .legend .mk:first-child { margin-left: 0; }
+  .legend .mk.yes::after { left: 5px; top: 2px; width: 3px; height: 7px; }
+  .src { font: 400 12px/1.5 var(--mono); color: var(--ink-2); margin-top: 10px; }
+
+  /* one-by-one blocks */
+  .one { display: grid; grid-template-columns: minmax(0, .9fr) minmax(0, 1.6fr); gap: 48px; padding: 48px 0; border-top: 1px solid var(--line); }
+  .one:first-of-type { border-top: 0; }
+  .one .tag { font: 400 12.5px/1 var(--mono); color: var(--ink-2); text-transform: uppercase; letter-spacing: .04em; }
+  .one h3 { font-size: clamp(26px, 2.6vw, 34px); font-weight: 400; letter-spacing: -.03em; line-height: 1.1; margin: 12px 0 14px; }
+  .one .sum { color: var(--ink-2); margin: 0; }
+  .cols { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; }
+  .col { border-radius: 8px; padding: 20px; background: var(--soft); }
+  .col.us { background: var(--accent-soft); position: relative; overflow: hidden; }
+  .col.us::before { content: ""; position: absolute; inset: 0 0 auto; height: 4px; background: linear-gradient(90deg, var(--g1), var(--g2), var(--g3)); }
+  .col p { margin: 0 0 12px; font: 500 13px/1 var(--mono); text-transform: uppercase; letter-spacing: .04em; color: var(--ink-2); }
+  .col ul { margin: 0; padding: 0; list-style: none; display: grid; gap: 10px; font-size: 15px; line-height: 1.45; }
+  .col li { padding-left: 16px; position: relative; }
+  .col li::before { content: ""; position: absolute; left: 0; top: .6em; width: 6px; height: 6px; border-radius: 50%; background: var(--ink-2); }
+  .col.us li::before { background: var(--accent); }
+  .price { margin-top: 18px; font: 400 12.5px/1.4 var(--mono); color: var(--ink-2); }
+
+  /* FAQ + closing */
+  .faq { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 48px; }
+  .faq div { border-top: 1px solid var(--line); padding: 22px 0; }
+  .faq b { display: block; font-weight: 500; margin-bottom: 6px; }
+  .faq span { color: var(--ink-2); }
+  .close { margin: 0 var(--pad) 80px; padding: clamp(40px, 6vw, 72px); border-radius: 12px; text-align: center;
+    background: radial-gradient(40% 70% at 15% 30%, var(--g1), transparent 70%), radial-gradient(40% 70% at 80% 25%, var(--g2), transparent 70%), radial-gradient(50% 70% at 60% 95%, var(--g3), transparent 70%), #fff; }
+  .close h2 { margin: 0 auto 14px; }
+  .close p { margin: 0 auto 26px; color: var(--ink); max-width: 46ch; }
+
+  /* entry link in context (home, under the table) */
+  .entry { margin: 0 var(--pad); padding: 28px 32px; border: 1px dashed #c9c9cf; border-radius: 10px; }
+  .entry .fake { font: 400 12.5px/1 var(--mono); color: var(--ink-2); display: flex; gap: 8px; align-items: center; }
+  .entry a { display: inline-block; margin-top: 18px; color: var(--ink); font-weight: 500; text-underline-offset: 4px; }
+
+  /* phone: head-to-head switch */
+  .phone-wrap { display: grid; grid-template-columns: 390px minmax(0, 1fr); gap: 56px; align-items: start; }
+  .phone { width: 390px; border: 1px solid var(--line); border-radius: 28px; padding: 26px 18px; box-shadow: 0 20px 50px -30px rgba(0,0,0,.35); }
+  .seg { display: flex; flex-wrap: wrap; gap: 6px; margin: 10px 0 18px; }
+  .seg span { border: 1px solid var(--line); border-radius: 999px; padding: 7px 12px; font-size: 13px; }
+  .seg .on { background: var(--btn); color: #fff; border-color: var(--btn); }
+  .h2h { display: grid; grid-template-columns: 1fr 1fr; }
+  .h2h > span { padding: 12px 10px; border-top: 1px solid var(--line); font-size: 13px; line-height: 1.4; color: var(--ink-2); display: flex; flex-direction: column; gap: 6px; }
+  .h2h > .lab { grid-column: 1 / -1; border-top: 0; padding: 16px 0 2px; font: 500 14px/1.3 var(--sans); color: var(--ink); }
+  .h2h > .us { background: var(--accent-soft); color: var(--ink); }
+  .h2h .hd { font: 500 16px/1.2 var(--sans); color: var(--ink); border-top: 0; }
+  .h2h .mk { width: 16px; height: 16px; }
+  .h2h .mk.yes::after { left: 5px; top: 2px; width: 4px; height: 8px; }
+</style>
+</head>
+<body>
+
+<div class="note"><b>r24 draft.</b> New page /compare. Copy to review first; the look reuses the home table (D-097) and warm tokens. Sources: .design/research/competitors-2026-10.md and compare-page-2026-10-16.md. † = open question for Savar.</div>
+
+<nav><span class="logo">Unica<i></i></span><a class="btn sm" href="#">Free assessment</a></nav>
+
+<!-- 1. HERO -->
+<section>
+  <span class="eyebrow">How we compare</span>
+  <h1 style="max-width:20ch">How Unica compares to <span class="hl">school, tutors, learning centres and online learning platforms.</span></h1>
+  <p class="lead">Side by side: how personal each one is, whether there is a plan, what you see about your child's gaps, how much is on a screen, and what it costs.</p>
+  <div class="jump"><a href="#school">vs School</a><a href="#tutor">vs Tutor programs</a><a href="#centre">vs Learning centres</a><a href="#app">vs Online learning platforms</a></div>
+</section>
+
+<!-- 2. AT A GLANCE -->
+<section style="padding-top:0">
+  <p class="kicker">At a glance</p>
+  <div class="tbl" role="table">
+    <div class="row head"><span></span><span>School</span><span>Tutor</span><span>Learning centre</span><span>Online platform</span><span class="us">Unica</span></div>
+
+    <div class="row"><span class="rh">Personal to your child</span>
+      <span><i class="mk part"></i>One teacher for the whole class</span>
+      <span><i class="mk yes"></i>The tutor adjusts each session</span>
+      <span><i class="mk part"></i>Own pace, on a set path</span>
+      <span><i class="mk yes"></i>Adapts to their answers on screen</span>
+      <span class="us"><i class="mk yes"></i>Every book matched to their level and gaps</span></div>
+
+    <div class="row"><span class="rh">Moves at their pace</span>
+      <span><i class="mk part"></i>The class moves on together</span>
+      <span><i class="mk yes"></i>Set by the tutor</span>
+      <span><i class="mk yes"></i>Moves up when they're ready</span>
+      <span><i class="mk yes"></i>Moves up when they're ready</span>
+      <span class="us"><i class="mk yes"></i>More practice where they need it, new topics when they're ready</span></div>
+
+    <div class="row"><span class="rh">A structured plan</span>
+      <span><i class="mk yes"></i>The provincial curriculum, grade by grade</span>
+      <span><i class="mk part"></i>Depends on the tutor</span>
+      <span><i class="mk yes"></i>A set program at the centre</span>
+      <span><i class="mk part"></i>Suggested skills; your child often picks</span>
+      <span class="us"><i class="mk yes"></i>A new book before the last one runs out</span></div>
+
+    <div class="row"><span class="rh">Gaps shown to you</span>
+      <span><i class="mk part"></i>Written report cards 3 times a year</span>
+      <span><i class="mk part"></i>When the tutor reports them</span>
+      <span><i class="mk part"></i>Depends on the centre</span>
+      <span><i class="mk yes"></i>Reports on the platform</span>
+      <span class="us"><i class="mk yes"></i>A gap report after every check-in</span></div>
+
+    <div class="row"><span class="rh">Pencil and paper</span>
+      <span><i class="mk part"></i>Paper and screens; varies by class</span>
+      <span><i class="mk part"></i>Depends on the tutor</span>
+      <span><i class="mk part"></i>Depends on the centre</span>
+      <span><i class="mk"></i>On a screen</span>
+      <span class="us"><i class="mk yes"></i>Every day; the screen stays with you</span></div>
+
+    <div class="row"><span class="rh">No driving</span>
+      <span><i class="mk"></i>At school</span>
+      <span><i class="mk part"></i>Online, at home, or at the tutor's</span>
+      <span><i class="mk"></i>At the centre, often twice a week</span>
+      <span><i class="mk yes"></i>At home</span>
+      <span class="us"><i class="mk yes"></i>Mailed to your door</span></div>
+
+    <div class="row cost"><span class="rh">Cost</span>
+      <span><b>Free</b>public school</span>
+      <span><b>$40-$100</b>an hour</span>
+      <span><b>$200+</b>per subject, a month †</span>
+      <span><b>$0-$25</b>a month</span>
+      <span class="us"><b>CAD 99</b>a month, delivery included</span></div>
+  </div>
+  <p class="legend"><i class="mk yes"></i> Yes <i class="mk part"></i> Partly <i class="mk"></i> No</p>
+  <p class="src">Prices from public sources, checked October 2026. They vary by tutor, centre and plan.</p>
+</section>
+
+<!-- 3. ONE BY ONE -->
+<section style="padding-top:0">
+  <p class="kicker">One by one</p>
+
+  <div class="one" id="school">
+    <div><span class="tag">vs School</span><h3>Unica works alongside school, not instead of it.</h3>
+      <p class="sum">School teaches the whole class. Unica gives your child practice at home that is made for them alone.</p></div>
+    <div class="cols">
+      <div class="col"><p>School is good at</p><ul><li>A trained teacher, every school day</li><li>Friends, group work and every subject</li><li>Free at public schools</li></ul></div>
+      <div class="col"><p>Harder at school</p><ul><li>One teacher for up to 24 children in grades 1-3 and up to 30 in grades 4-7, so the class moves on together</li><li>Written report cards come 3 times a year</li></ul></div>
+      <div class="col us"><p>With Unica</p><ul><li>Books follow the BC curriculum, so home practice matches class</li><li>More practice on the gaps, and new topics before the class gets there</li><li>You see the gaps after every check-in</li></ul></div>
+    </div>
+  </div>
+
+  <div class="one" id="tutor">
+    <div><span class="tag">vs Tutor programs</span><h3>A tutor explains. Unica keeps them practising every day.</h3>
+      <p class="sum">Tutoring is time with a person. Unica is a plan your child works through at home, 15-30 minutes a day.</p></div>
+    <div class="cols">
+      <div class="col"><p>A tutor is good at</p><ul><li>Explaining live and answering questions</li><li>Adjusting to your child each session</li><li>Help with homework and tests</li></ul></div>
+      <div class="col"><p>Harder with a tutor</p><ul><li>Often an hour or two a week; the other days are up to you</li><li>$40-$100 an hour, every week</li><li>How much you hear about gaps depends on the tutor</li></ul></div>
+      <div class="col us"><p>With Unica</p><ul><li>Practice 5 days a week, built from their last book</li><li>A report and worked solutions after every check-in</li><li>CAD 99 a month. You can keep a tutor too.</li></ul></div>
+    </div>
+  </div>
+
+  <div class="one" id="centre">
+    <div><span class="tag">vs Learning centres</span><h3>Structured like a learning centre, without the drive.</h3>
+      <p class="sum">A centre gives your child a program and a routine. Unica does too, and builds each book from how they did on the last one.</p></div>
+    <div class="cols">
+      <div class="col"><p>A centre is good at</p><ul><li>A set program and a daily habit</li><li>A placement test to start</li><li>Instructors at the centre</li></ul></div>
+      <div class="col"><p>Harder with a centre</p><ul><li>You drive there, often twice a week, and wait</li><li>Your child moves along a set path</li><li>$200+ per subject a month, often plus an enrolment fee</li></ul></div>
+      <div class="col us"><p>With Unica</p><ul><li>Every book is built from their own work</li><li>It comes to your door</li><li>CAD 99 a month, no enrolment fee</li></ul></div>
+    </div>
+  </div>
+
+  <div class="one" id="app">
+    <div><span class="tag">vs Online learning platforms</span><h3>Adapts like an online platform, on paper instead of a screen.</h3>
+      <p class="sum">Online platforms adapt to every tap. Unica adapts too, from the work your child does with a pencil.</p></div>
+    <div class="cols">
+      <div class="col"><p>An online platform is good at</p><ul><li>Adapting to answers right away</li><li>Low cost, and some are free</li><li>Practice anywhere, any time</li></ul></div>
+      <div class="col"><p>Harder with an online platform</p><ul><li>Practice happens on a screen</li><li>Answers are tapped or typed, so the working on paper is never marked</li></ul></div>
+      <div class="col us"><p>With Unica</p><ul><li>Your child works with pencil and paper</li><li>You take a photo; we mark the work and show you the gaps</li><li>The screen stays with you</li></ul></div>
+    </div>
+  </div>
+</section>
+
+<!-- 4. FAQ -->
+<section style="padding-top:0">
+  <p class="kicker">Questions parents ask</p>
+  <div class="faq">
+    <div><b>Does Unica replace school?</b><span>No. It works alongside school. Books follow the BC curriculum and move ahead when your child is ready.</span></div>
+    <div><b>Can we keep our tutor?</b><span>Yes. A tutor can explain live, and Unica gives your child daily practice between sessions.</span></div>
+    <div><b>Is there any screen time?</b><span>Daily practice is on paper. The free math assessment is online. The app is for you: scan a page to check answers or see every step.</span></div>
+    <div><b>Where do these prices come from?</b><span>Public price lists and rate pages, checked October 2026. Prices vary by tutor, centre and plan.</span></div>
+  </div>
+</section>
+
+<!-- 5. CLOSE -->
+<div class="close">
+  <h2>See where your child is, before you choose anything.</h2>
+  <p>The math assessment and report are free. Choose a plan after you read it. 30-day money-back guarantee.</p>
+  <a class="btn" href="#">Take free assessment →</a>
+</div>
+
+<!-- ENTRY POINT -->
+<section style="padding-top:0">
+  <p class="kicker">How visitors get here: home page, under the "How we compare" table</p>
+</section>
+<div class="entry">
+  <span class="fake"><i class="mk yes" style="width:14px;height:14px"></i> Yes <i class="mk part" style="width:14px;height:14px;margin-left:10px"></i> Partly</span>
+  <a href="#">Compare with school and online learning platforms too →</a>
+</div>
+
+<!-- PHONE -->
+<section>
+  <p class="kicker">On phones: one head-to-head at a time</p>
+  <div class="phone-wrap">
+    <div class="phone">
+      <span class="eyebrow">At a glance</span>
+      <div class="seg"><span>School</span><span class="on">Tutor</span><span>Centre</span><span>Online</span></div>
+      <div class="h2h">
+        <span class="hd">Tutor</span><span class="hd us" style="border-radius:6px 6px 0 0">Unica</span>
+        <span class="lab">Personal to your child</span>
+        <span><i class="mk yes"></i>The tutor adjusts each session</span><span class="us"><i class="mk yes"></i>Every book matched to their level and gaps</span>
+        <span class="lab">A structured plan</span>
+        <span><i class="mk part"></i>Depends on the tutor</span><span class="us"><i class="mk yes"></i>A new book before the last one runs out</span>
+        <span class="lab">Gaps shown to you</span>
+        <span><i class="mk part"></i>When the tutor reports them</span><span class="us"><i class="mk yes"></i>A gap report after every check-in</span>
+        <span class="lab">Cost</span>
+        <span><b style="font:300 22px/1 var(--sans)">$40-$100</b>an hour</span><span class="us"><b style="font:400 22px/1 var(--sans)">CAD 99</b>a month</span>
+      </div>
+    </div>
+    <div class="lead" style="font-size:16px">Five columns do not fit a phone. Under 700 px the table becomes a switch: "Compare Unica with" School, Tutor, Centre, Online, two columns at a time. The one-by-one blocks stack (good at, harder, with Unica).</div>
+  </div>
+</section>
+
+</body>
+</html>
