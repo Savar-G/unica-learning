@@ -575,13 +575,16 @@ export const LEVEL_1: readonly TaggedTemplate[] = [
       ] as const;
       const i = rng.int(0, pairs.length - 1);
       const [likely, unlikely] = pairs[i];
+      // More likely or less likely (1.10 comparative language; #187: the ask varies).
+      const more = rng.int(0, 1) === 1;
+      const ask = `Which is ${more ? "more" : "less"} likely to happen?`;
       return {
-        values: { pair: i },
-        prompt: "Which is more likely to happen?",
+        values: { pair: i, more: more ? 1 : 0 },
+        prompt: ask,
         // Each choice is its own sentence, so the three do not run together when spoken.
-        readAloud: "Which is more likely to happen?",
-        answer: likely,
-        wrong: [wrong(unlikely, "chance-reversed"), wrong("They are equally likely", "D3")],
+        readAloud: ask,
+        answer: more ? likely : unlikely,
+        wrong: [wrong(more ? unlikely : likely, more ? "chance-reversed" : "likelihood-reversed"), wrong("They are equally likely", "D3")],
       };
     },
   },

@@ -409,10 +409,11 @@ export const LEVEL_2: readonly TaggedTemplate[] = [
       const right = `${a} + ${b} = 10 + ${sum - 10}`;
       const running = `${a} + ${b} = ${sum} + ${extra}`; // reads "=" as "the answer comes next"
       const unchanged = `${a} + ${b} = 10 + ${b}`; // makes a ten from a but does not take the amount from b
+      // The prompt names the sum the choices start from (#187: no fixed prompt).
       return {
         values: { a, b, extra },
-        prompt: "Which is true?",
-        readAloud: "Which is true?",
+        prompt: `Which is true about ${a} + ${b}?`,
+        readAloud: `Which is true about ${a} plus ${b}?`,
         answer: right,
         wrong: [wrong(running, "A1"), wrong(unchanged, "compensation")],
       };
@@ -574,13 +575,19 @@ export const LEVEL_2: readonly TaggedTemplate[] = [
       const sphere = rng.pick(["A ball", "An orange", "A marble"]);
       const cube = rng.pick(["A block", "A sugar cube", "A building block"]);
       const [can, ball, box] = [`${cylinder} (a cylinder)`, `${sphere} (a sphere)`, `${cube} (a cube)`];
-      // Only "can roll and can stack": "cannot roll" is unclear for a cube, since children roll dice in games.
+      // Two pairs of attributes, each true of one solid only (#187: the ask varies). Never "cannot roll": that is
+      // unclear for a cube, since children roll dice in games.
+      const corners = rng.int(0, 1) === 1;
+      const ask = corners ? "Which one has flat faces and also has corners?" : "Which one can roll and can also be stacked into a tower?";
       return {
-        values: { cylinder: ["A can", "A jar", "A paint can"].indexOf(cylinder) },
-        prompt: "Which one can roll and can also be stacked into a tower?",
-        readAloud: "Which one can roll and can also be stacked into a tower?",
-        answer: can,
-        wrong: [wrong(ball, "one-attribute"), wrong(box, "one-attribute")],
+        values: { cylinder: ["A can", "A jar", "A paint can"].indexOf(cylinder), corners: corners ? 1 : 0 },
+        prompt: ask,
+        readAloud: ask,
+        answer: corners ? box : can,
+        // Flat faces and corners: the cylinder has flat faces only; the sphere has neither.
+        wrong: corners
+          ? [wrong(can, "one-attribute"), wrong(ball, "faces-corners")]
+          : [wrong(ball, "one-attribute"), wrong(box, "one-attribute")],
       };
     },
   },

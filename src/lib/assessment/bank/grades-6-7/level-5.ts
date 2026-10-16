@@ -270,12 +270,24 @@ export const LEVEL_5: readonly TaggedTemplate[] = [
     fill(rng) {
       const t = rng.int(3, 8);
       const longer = rng.shuffle(Array.from({ length: t * 10 - 10 }, (_, i) => i + 10).filter((h) => h % 10 !== 0)).slice(0, 3);
+      // Greatest, or least (#187: the ask varies). Asked for the least, a child who thinks longer is larger picks the
+      // short tenths decimal; the other hundredths are not the least either.
+      if (rng.int(0, 1) === 1) {
+        return {
+          values: { t, greatest: 1 },
+          prompt: "Which decimal is the greatest?",
+          readAloud: "Which decimal is the greatest?",
+          answer: fmt(t / 10),
+          wrong: longer.map((h) => wrong(fmt(h / 100), "F6")),
+        };
+      }
+      const [least, ...rest] = [...longer].sort((x, y) => x - y);
       return {
-        values: { t },
-        prompt: "Which decimal is the greatest?",
-        readAloud: "Which decimal is the greatest?",
-        answer: fmt(t / 10),
-        wrong: longer.map((h) => wrong(fmt(h / 100), "F6")),
+        values: { t, greatest: 0 },
+        prompt: "Which decimal is the least?",
+        readAloud: "Which decimal is the least?",
+        answer: fmt(least / 100),
+        wrong: [wrong(fmt(t / 10), "F6"), ...rest.map((h) => wrong(fmt(h / 100), "decimal-order"))],
       };
     },
   },
@@ -285,12 +297,16 @@ export const LEVEL_5: readonly TaggedTemplate[] = [
     strand: "F", grades: { BC: 5, AB: 5, SK: 5, MB: 5, ON: 6 }, format: "choice", whiteboard: false, standard: "5.4",
     fill(rng) {
       const t = rng.int(2, 8), u = rng.int(1, 9);
+      // Least, or greatest (#187: the ask varies). Asked for the greatest, the longest decimal draws F6.
+      const least = rng.int(0, 1) === 1;
       return {
-        values: { t, u },
-        prompt: "Which decimal is the least?",
-        readAloud: "Which decimal is the least?",
-        answer: fmt((t * 100 + u) / 1000),
-        wrong: [wrong(fmt((t + 1) / 10), "F6"), wrong(fmt((t * 10 + u) / 100), "zero-placeholder")],
+        values: { t, u, least: least ? 1 : 0 },
+        prompt: `Which decimal is the ${least ? "least" : "greatest"}?`,
+        readAloud: `Which decimal is the ${least ? "least" : "greatest"}?`,
+        answer: least ? fmt((t * 100 + u) / 1000) : fmt((t + 1) / 10),
+        wrong: least
+          ? [wrong(fmt((t + 1) / 10), "F6"), wrong(fmt((t * 10 + u) / 100), "zero-placeholder")]
+          : [wrong(fmt((t * 100 + u) / 1000), "F6"), wrong(fmt((t * 10 + u) / 100), "decimal-order")],
       };
     },
   },
@@ -341,12 +357,17 @@ export const LEVEL_5: readonly TaggedTemplate[] = [
         const b = g.int(3, 9), n = g.int(2, b - 1);
         return { b, n };
       }, (v) => gcd(v.n, v.b) === 1);
+      // Greatest, or least (#187: the ask varies). n/(4b) < (n+1)/(2b) < n/b. Asked for the least, a child who thinks
+      // a bigger denominator is bigger picks n/b.
+      const greatest = rng.int(0, 1) === 1;
       return {
-        values: { b, n },
-        prompt: "Which fraction is the greatest?",
-        readAloud: "Which fraction is the greatest?",
-        answer: frac(n, b),
-        wrong: [wrong(frac(n + 1, 2 * b), "numerator-only"), wrong(frac(n, 4 * b), "F1")],
+        values: { b, n, greatest: greatest ? 1 : 0 },
+        prompt: `Which fraction is the ${greatest ? "greatest" : "least"}?`,
+        readAloud: `Which fraction is the ${greatest ? "greatest" : "least"}?`,
+        answer: greatest ? frac(n, b) : frac(n, 4 * b),
+        wrong: greatest
+          ? [wrong(frac(n + 1, 2 * b), "numerator-only"), wrong(frac(n, 4 * b), "F1")]
+          : [wrong(frac(n + 1, 2 * b), "fraction-order"), wrong(frac(n, b), "F1")],
       };
     },
   },

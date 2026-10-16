@@ -267,6 +267,9 @@ export const MISCONCEPTIONS = {
   "factor-not-greatest": { description: "Gives a common factor that is not the greatest one", evidence: "none" },
   "root-estimate": { description: "Picks the wrong pair of whole numbers when estimating a square root", evidence: "none" },
   "volume-not-area": { description: "Finds the volume when the question asks for the surface area", evidence: "none" },
+  // Bank fixes (#187).
+  "regular-swap": { description: "Mixes up regular and irregular polygons", evidence: "none" },
+  "cube-neighbour": { description: "Treats a whole number next to a perfect cube as a perfect cube", evidence: "none" },
 } satisfies Record<string, Misconception>;
 
 export type MisconceptionId = keyof typeof MISCONCEPTIONS;

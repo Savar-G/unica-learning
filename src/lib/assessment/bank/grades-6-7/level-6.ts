@@ -37,15 +37,18 @@ export const LEVEL_6: readonly TaggedTemplate[] = [
       const a = rng.int(1, 9);
       const [p, q] = draw(rng, (g) => [g.int(2, 9), g.int(1, 8)], ([p, q]) => p > q && p !== a);
       const M = 1_000_000;
+      const big = a * M + p * 100_000 + q * 10_000, swapped = a * M + q * 100_000 + p * 10_000, short = p * 100_000 + q * 10_000 + a * 1000;
+      // Greatest, or least (#187: the ask varies): short < swapped < big. A child who lines numbers up by their first
+      // digits, not by place value, misses either way.
+      const greatest = rng.int(0, 1) === 1;
       return {
-        values: { a, p, q },
-        prompt: "Which number is the greatest?",
-        readAloud: "Which number is the greatest?",
-        answer: fmt(a * M + p * 100_000 + q * 10_000),
-        wrong: [
-          wrong(fmt(a * M + q * 100_000 + p * 10_000), "digit-compare"),
-          wrong(fmt(p * 100_000 + q * 10_000 + a * 1000), "digit-compare"),
-        ],
+        values: { a, p, q, greatest: greatest ? 1 : 0 },
+        prompt: `Which number is the ${greatest ? "greatest" : "least"}?`,
+        readAloud: `Which number is the ${greatest ? "greatest" : "least"}?`,
+        answer: fmt(greatest ? big : short),
+        wrong: greatest
+          ? [wrong(fmt(swapped), "digit-compare"), wrong(fmt(short), "digit-compare")]
+          : [wrong(fmt(swapped), "digit-compare"), wrong(fmt(big), "more-less")],
       };
     },
   },
@@ -116,10 +119,12 @@ export const LEVEL_6: readonly TaggedTemplate[] = [
     fill(rng) {
       const p = rng.pick(PRIMES.filter((x) => x < 50));
       const others = rng.shuffle(ODD_COMPOSITES.filter((x) => x < 60)).slice(0, 3);
+      // By its name or by its definition (#187: the ask varies).
+      const byName = rng.int(0, 1) === 1;
       return {
-        values: { p },
-        prompt: "Which number is prime?",
-        readAloud: "Which number is a prime number?",
+        values: { p, byName: byName ? 1 : 0 },
+        prompt: byName ? "Which number is prime?" : "Which number has exactly two factors?",
+        readAloud: byName ? "Which number is a prime number?" : "Which number has exactly two factors?",
         answer: String(p),
         wrong: others.map((c) => wrong(c, "N5")),
       };
@@ -132,10 +137,12 @@ export const LEVEL_6: readonly TaggedTemplate[] = [
     fill(rng) {
       const c = rng.pick(ODD_COMPOSITES.filter((x) => x > 20 && x % 5 !== 0));
       const others = rng.shuffle(PRIMES).slice(0, 3);
+      // By its name or by its definition (#187: the ask varies).
+      const byName = rng.int(0, 1) === 1;
       return {
-        values: { c },
-        prompt: "Which number is composite?",
-        readAloud: "Which number is a composite number?",
+        values: { c, byName: byName ? 1 : 0 },
+        prompt: byName ? "Which number is composite?" : "Which number has more than two factors?",
+        readAloud: byName ? "Which number is a composite number?" : "Which number has more than two factors?",
         answer: String(c),
         wrong: others.map((p) => wrong(p, "prime-composite")),
       };
@@ -342,12 +349,17 @@ export const LEVEL_6: readonly TaggedTemplate[] = [
         const b = g.int(3, 11), n = g.int(2, b - 1);
         return { n, b };
       }, (v) => gcd(v.n, v.b) === 1 && gcd(v.n + 1, 2 * v.b + 1) === 1 && gcd(v.n, 2 * v.b + 3) === 1);
+      // Greatest, or least (#187: the ask varies). n/(2b+3) < (n+1)/(2b+1) < n/b. Asked for the least, a child who
+      // thinks a bigger denominator is bigger picks n/b.
+      const greatest = rng.int(0, 1) === 1;
       return {
-        values: { n, b },
-        prompt: "Which fraction is the greatest?",
-        readAloud: "Which fraction is the greatest?",
-        answer: frac(n, b),
-        wrong: [wrong(frac(n + 1, 2 * b + 1), "numerator-only"), wrong(frac(n, 2 * b + 3), "F1")],
+        values: { n, b, greatest: greatest ? 1 : 0 },
+        prompt: `Which fraction is the ${greatest ? "greatest" : "least"}?`,
+        readAloud: `Which fraction is the ${greatest ? "greatest" : "least"}?`,
+        answer: greatest ? frac(n, b) : frac(n, 2 * b + 3),
+        wrong: greatest
+          ? [wrong(frac(n + 1, 2 * b + 1), "numerator-only"), wrong(frac(n, 2 * b + 3), "F1")]
+          : [wrong(frac(n + 1, 2 * b + 1), "fraction-order"), wrong(frac(n, b), "F1")],
       };
     },
   },

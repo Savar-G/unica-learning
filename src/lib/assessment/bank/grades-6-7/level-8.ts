@@ -18,8 +18,15 @@ export const LEVEL_8: readonly TaggedTemplate[] = [
   {
     id: "g67-8-perfect-square", strand: "N", grades: GRADES, standard: "8.1", format: "choice", whiteboard: true,
     fill(rng) {
-      const n = rng.int(4, 20);
-      return { values: { n }, prompt: "Which number is a perfect square?", readAloud: "Which number is a perfect square?", answer: String(n * n), wrong: [wrong(n * n - 1, "square-neighbour"), wrong(n * n + 1, "square-neighbour")] };
+      // A perfect square or a perfect cube (8.1 names both; #187: the ask varies). For cubes, n stops at 7 so that 3n
+      // (the exponent error) is never a cube itself.
+      if (rng.int(0, 1) === 1) {
+        const n = rng.int(4, 20);
+        return { values: { n, cube: 0 }, prompt: "Which number is a perfect square?", readAloud: "Which number is a perfect square?", answer: String(n * n), wrong: [wrong(n * n - 1, "square-neighbour"), wrong(n * n + 1, "square-neighbour")] };
+      }
+      const n = rng.int(2, 7), cube = n ** 3;
+      return { values: { n, cube: 1 }, prompt: "Which number is a perfect cube?", readAloud: "Which number is a perfect cube?", answer: String(cube),
+        wrong: [wrong(cube - 1, "cube-neighbour"), wrong(cube + 1, "cube-neighbour"), wrong(3 * n, "power-multiply")] };
     },
   },
   {

@@ -370,13 +370,14 @@ export const LEVEL_K: readonly TaggedTemplate[] = [
     id: "k-can-roll",
     strand: "MG", grades: { BC: 0, AB: 0, SK: 0, MB: 0, ON: 0 }, format: "choice", whiteboard: false, standard: "K8",
     fill(rng) {
-      // Always "can roll": young listeners often miss a "not".
+      // "Can roll" or "can stack", never "cannot": young listeners often miss a "not" (#187: the ask varies).
       const rollers = ["A ball", "An orange", "A marble"], flats = ["A box", "A book", "A block"];
-      const answer = rng.pick(rollers);
-      const others = rng.shuffle(flats).slice(0, 2);
-      const ask = "Which one can roll?";
+      const stack = rng.int(0, 1) === 1;
+      const answer = rng.pick(stack ? flats : rollers);
+      const others = rng.shuffle(stack ? rollers : flats).slice(0, 2);
+      const ask = stack ? "Which one can you stack to make a tall tower?" : "Which one can roll?";
       return {
-        values: { roller: rollers.indexOf(answer) },
+        values: { stack: stack ? 1 : 0, pick: (stack ? flats : rollers).indexOf(answer) },
         prompt: ask,
         readAloud: ask,
         answer,
@@ -423,15 +424,18 @@ export const LEVEL_K: readonly TaggedTemplate[] = [
     fill(rng) {
       const likely = ["You will eat lunch today", "You will see the sky today", "You will hear a car today"];
       const unlikely = ["A cow will fly over your house today", "A dinosaur will visit your school today", "A fish will talk to you today"];
-      const answer = rng.pick(likely);
-      const others = rng.shuffle(unlikely).slice(0, 2);
+      // Most likely or least likely (K10 comparative language; #187: the ask varies).
+      const most = rng.int(0, 1) === 1;
+      const answer = rng.pick(most ? likely : unlikely);
+      const others = rng.shuffle(most ? unlikely : likely).slice(0, 2);
+      const ask = `Which of these is ${most ? "most" : "least"} likely to happen?`;
       return {
-        values: { likely: likely.indexOf(answer) },
-        prompt: "Which of these is most likely to happen?",
+        values: { most: most ? 1 : 0, pick: (most ? likely : unlikely).indexOf(answer) },
+        prompt: ask,
         // Each choice is its own sentence, so the three do not run together when spoken.
-        readAloud: "Which of these is most likely to happen?",
+        readAloud: ask,
         answer,
-        wrong: others.map((o) => wrong(o, "chance-reversed")),
+        wrong: others.map((o) => wrong(o, most ? "chance-reversed" : "likelihood-reversed")),
       };
     },
   },
