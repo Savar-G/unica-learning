@@ -15,6 +15,7 @@ import { stripeCardProvider } from "@/lib/saved-card-server";
 import { stripe } from "@/lib/stripe";
 import type { DashboardRows, Delivery, EmailCopyView, RawCard, RawDelivery, RawChild, RawEmail, RawParent, RawReport, RawTest, RawWaitlist } from "@/lib/admin-dashboard";
 import type { TemplateFilters, TemplateStat } from "@/lib/admin-templates";
+import type { ExportReader, ExportRow, PagedTable } from "@/lib/admin-export";
 
 // The admin area's data (#77). The gate and every read are here, so no admin page reads the database on its own; the
 // report view is read by the report-loading module with the admin's session (src/lib/report-loading-server.ts, #161).
@@ -521,6 +522,46 @@ export async function templateStats(a: AdminSession, f: TemplateFilters, templat
     median_ms: r.median_ms === null ? null : Number(r.median_ms),
     wrong: r.wrong.map((w) => ({ response: w.response, misconception: w.misconception, count: Number(w.count) })),
   }));
+}
+
+// The raw data export (#200)
+
+/** Rows per database read of the export. Each read goes on until a page comes back empty, so a lower cap loses nothing. */
+const EXPORT_READ = 1000;
+
+/** A filter for the rows after `last` in the order of `keys` (each key's value is a uuid or a whole number). */
+function afterRow(keys: readonly string[], last: ExportRow): string {
+  const is = (k: string, op: "eq" | "gt") => `${k}.${op}.${String(last[k])}`;
+  return keys.map((k, i) => (i === 0 ? is(k, "gt") : `and(${[...keys.slice(0, i).map((p) => is(p, "eq")), is(k, "gt")].join(",")})`)).join(",");
+}
+
+/**
+ * The export's reads (src/lib/admin-export.ts), with the admin's session: tests and children through the admin_*
+ * functions, the rest through the admin read policies. Keyset pages (after the last row's key), so rows written during
+ * the export are never read twice or skipped.
+ */
+export function exportReader(a: AdminSession): ExportReader {
+  const paged = (table: PagedTable, columns: string) => a.db.rpc(table === "assessments" ? "admin_assessments" : "admin_children").select(columns);
+  return {
+    testFamilies: () => testAccountIds(a),
+    page: async (table, columns, after, limit) => {
+      const q = paged(table, columns.join(", "));
+      return must<ExportRow[]>(await (after === null ? q : q.gt("id", after)).order("id").limit(limit), `export ${table}`);
+    },
+    ofTests: async (table, columns, order, testIds) => {
+      const keys = ["assessment_id", ...order];
+      const out: ExportRow[] = [];
+      for (let last: ExportRow | null = null; ;) {
+        let q = a.db.from(table).select([...new Set([...keys, ...columns])].join(", ")).in("assessment_id", testIds);
+        if (last) q = q.or(afterRow(keys, last));
+        for (const k of keys) q = q.order(k);
+        const rows = must<ExportRow[]>(await q.limit(EXPORT_READ), `export ${table}`);
+        if (rows.length === 0) return out;
+        out.push(...rows);
+        last = rows[rows.length - 1];
+      }
+    },
+  };
 }
 
 // The dashboard and activity log (D-099)
