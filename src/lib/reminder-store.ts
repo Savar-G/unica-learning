@@ -9,6 +9,7 @@ import {
   LATE_LIMIT_MS,
   MAX_SEND_ATTEMPTS,
   START_AFTER_MS,
+  START_WINDOW_MS,
   type DueReminder,
   type LogEntry,
   type ReminderChild,
@@ -69,21 +70,21 @@ async function allRows<T>(page: (from: number, to: number) => PromiseLike<{ data
 }
 
 type TestRow = AttemptRow & { child_id: string; grade: number };
-type LogRow = { id: string; kind: LogEntry["kind"]; parent_id: string; child_id: string | null; assessment_id: string | null; status: LogEntry["status"]; attempts: number };
+type LogRow = { id: string; created_at: string; kind: LogEntry["kind"]; parent_id: string; child_id: string | null; assessment_id: string | null; status: LogEntry["status"]; attempts: number };
 
 export function reminderStore(admin: SupabaseClient): ReminderStore<LoadedState> {
   return {
     async load(now) {
       // Children who could be due: those with an unfinished test whose deadline is ahead or ended inside the late limit
       // ("continue" needs an open test, "come back" one at most LATE_LIMIT_MS past its deadline), and those added inside
-      // the start window. A test left in progress for good is not read again once it is past every rule.
+      // the start window (both start reminders). A test left in progress for good is not read again once it is past every rule.
       const [open, fresh] = await Promise.all([
         allRows((from, to) => admin.from("assessments").select("child_id")
           .in("status", ["in_progress", "expired"]).gte("resume_until", iso(now - LATE_LIMIT_MS - SLACK_MS))
           .order("id").range(from, to).returns<{ child_id: string }[]>()),
         allRows((from, to) => admin.from("children").select("id")
           .lte("created_at", iso(now - START_AFTER_MS + SLACK_MS))
-          .gte("created_at", iso(now - START_AFTER_MS - LATE_LIMIT_MS - SLACK_MS))
+          .gte("created_at", iso(now - START_WINDOW_MS - SLACK_MS))
           .order("id").range(from, to).returns<{ id: string }[]>()),
       ]);
       const childIds = [...new Set([...open.map((r) => r.child_id), ...fresh.map((r) => r.id)])];
@@ -99,7 +100,7 @@ export function reminderStore(admin: SupabaseClient): ReminderStore<LoadedState>
       const [parentRows, logRows, tests] = await Promise.all([
         inChunks(parentIds, (ids) => admin.from("parents").select("id, name, email, postal").in("id", ids)
           .returns<{ id: string; name: string; email: string; postal: string }[]>()),
-        inChunks(parentIds, (ids) => admin.from("email_log").select("id, kind, parent_id, child_id, assessment_id, status, attempts").in("parent_id", ids)
+        inChunks(parentIds, (ids) => admin.from("email_log").select("id, created_at, kind, parent_id, child_id, assessment_id, status, attempts").in("parent_id", ids)
           .returns<LogRow[]>()),
         Promise.all(testRows.map((row) => withAnswers(admin, row))),
       ]);
@@ -107,7 +108,7 @@ export function reminderStore(admin: SupabaseClient): ReminderStore<LoadedState>
         parents: parentRows.map((p) => ({ id: p.id, name: p.name, email: p.email, postal: p.postal })),
         children: childRows.map((c) => ({ id: c.id, parentId: c.parent_id, firstName: c.first_name, grade: c.grade, createdAt: Date.parse(c.created_at) })),
         tests,
-        log: logRows.map((e) => ({ id: e.id, kind: e.kind, parentId: e.parent_id, childId: e.child_id, assessmentId: e.assessment_id, status: e.status, attempts: e.attempts })),
+        log: logRows.map((e) => ({ id: e.id, kind: e.kind, parentId: e.parent_id, childId: e.child_id, assessmentId: e.assessment_id, status: e.status, attempts: e.attempts, at: Date.parse(e.created_at) })),
       };
     },
 

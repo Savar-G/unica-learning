@@ -32,9 +32,9 @@ function stopped(id: string, lastAnswer: number, childId = "c1"): ReminderTest {
 }
 
 let logId = 0;
-/** A log row for a reminder about test `assessmentId` (or child c1 for "start"). */
-function sent(kind: ReminderKind, assessmentId: string | null, status: LogStatus = "sent", attempts = 1): LogEntry {
-  return { id: `l${++logId}`, kind, parentId: "p1", childId: "c1", assessmentId, status, attempts };
+/** A log row for a reminder about test `assessmentId` (or child c1 for the start reminders), written at `at`. */
+function sent(kind: ReminderKind, assessmentId: string | null, status: LogStatus = "sent", attempts = 1, at = T0): LogEntry {
+  return { id: `l${++logId}`, kind, parentId: "p1", childId: "c1", assessmentId, status, attempts, at };
 }
 
 function state(over: Partial<ReminderState> = {}): ReminderState {
@@ -133,9 +133,9 @@ describe("the start reminder", () => {
     expect(dueReminders({ ...signedUp, log: [sent("start", null)] }, T0 + 2 * DAY)).toEqual([]);
   });
 
-  it("is dropped when it is more than 7 days late", () => {
-    expect(dueReminders(signedUp, T0 + DAY + 7 * DAY)).toHaveLength(1);
-    expect(dueReminders(signedUp, T0 + DAY + 7 * DAY + 1)).toEqual([]);
+  it("is due until the second start reminder is due, which replaces it: one that never went does not go after it", () => {
+    expect(dueReminders(signedUp, T0 + 3 * DAY - 1)).toMatchObject([{ kind: "start", dueAt: T0 + DAY }]);
+    expect(dueReminders(signedUp, T0 + 3 * DAY)).toMatchObject([{ kind: "start_followup", dueAt: T0 + 3 * DAY }]);
   });
 
   it("goes for each child who has not started, named in their own reminder", () => {
@@ -149,6 +149,47 @@ describe("the start reminder", () => {
   });
 });
 
+describe("the second start reminder", () => {
+  const signedUp = state({ children: [{ id: "c1", parentId: "p1", createdAt: T0 }] });
+  const afterFirst = (at = T0 + DAY) => ({ ...signedUp, log: [sent("start", null, "sent", 1, at)] });
+
+  it("is due exactly 3 days after the signup when the child has not started a test", () => {
+    expect(dueReminders(afterFirst(), T0 + 3 * DAY - 1)).toEqual([]);
+    expect(dueReminders(afterFirst(), T0 + 3 * DAY)).toEqual([
+      { kind: "start_followup", parentId: "p1", childId: "c1", assessmentId: null, dueAt: T0 + 3 * DAY, retry: null },
+    ]);
+  });
+
+  it("waits 2 days after the first one when the first went late", () => {
+    const late = afterFirst(T0 + 3 * DAY - HOUR);
+    expect(dueReminders(late, T0 + 5 * DAY - HOUR - 1)).toEqual([]);
+    expect(dueReminders(late, T0 + 5 * DAY - HOUR)).toMatchObject([{ kind: "start_followup", dueAt: T0 + 5 * DAY - HOUR }]);
+  });
+
+  it("does not go when the child started a test after the first reminder, finished or not", () => {
+    const open = stopped("a1", T0 + 2 * DAY);
+    const finished: ReminderTest = { ...open, status: "completed", completedAt: T0 + 2 * DAY };
+    expect(dueReminders({ ...afterFirst(), tests: [open] }, T0 + 3 * DAY).map((r) => r.kind)).not.toContain("start_followup");
+    expect(dueReminders({ ...afterFirst(), tests: [finished] }, T0 + 3 * DAY)).toEqual([]);
+  });
+
+  it("goes once per child", () => {
+    const both = { ...signedUp, log: [sent("start", null, "sent", 1, T0 + DAY), sent("start_followup", null, "sent", 1, T0 + 3 * DAY)] };
+    expect(dueReminders(both, T0 + 4 * DAY)).toEqual([]);
+  });
+
+  it("is dropped when it is more than 7 days late, and the first one does not go in its place", () => {
+    expect(dueReminders(afterFirst(), T0 + 3 * DAY + 7 * DAY)).toHaveLength(1);
+    expect(dueReminders(afterFirst(), T0 + 3 * DAY + 7 * DAY + 1)).toEqual([]);
+    expect(dueReminders(signedUp, T0 + 3 * DAY + 7 * DAY + 1)).toEqual([]);
+  });
+
+  it("does not go to a parent who unsubscribed after the first one", () => {
+    const unsubscribed: LogEntry = { id: "u1", kind: "unsubscribe", parentId: "p1", childId: null, assessmentId: null, status: null, attempts: 0, at: T0 + 2 * DAY };
+    expect(dueReminders({ ...afterFirst(), log: [...afterFirst().log, unsubscribed] }, T0 + 3 * DAY)).toEqual([]);
+  });
+});
+
 describe("over the life of a test, with the job every 15 minutes", () => {
   /** Runs the decision every 15 minutes from `from` to `to`, logs each reminder as sent, and returns what went when. */
   function runEvery15Minutes(s: ReminderState, from: number, to: number, tests: (now: number) => ReminderTest[]) {
@@ -156,7 +197,7 @@ describe("over the life of a test, with the job every 15 minutes", () => {
     const out: { kind: ReminderKind; childId: string; at: number }[] = [];
     for (let now = from; now <= to; now += 15 * MIN) {
       for (const r of dueReminders({ ...s, tests: tests(now), log }, now)) {
-        log.push({ id: `run-${log.length}`, kind: r.kind, parentId: r.parentId, childId: r.childId, assessmentId: r.assessmentId, status: "sent", attempts: 1 });
+        log.push({ id: `run-${log.length}`, kind: r.kind, parentId: r.parentId, childId: r.childId, assessmentId: r.assessmentId, status: "sent", attempts: 1, at: now });
         out.push({ kind: r.kind, childId: r.childId, at: now });
       }
     }
@@ -182,9 +223,18 @@ describe("over the life of a test, with the job every 15 minutes", () => {
     expect(runEvery15Minutes(state(), T0, T0 + 40 * DAY, tests)).toEqual([]);
   });
 
-  it("sends one start reminder for a child who never starts", () => {
+  it("sends two start reminders, on day 1 and day 3, for a child who never starts", () => {
     const s = state({ children: [{ id: "c1", parentId: "p1", createdAt: T0 }] });
-    expect(runEvery15Minutes(s, T0, T0 + 10 * DAY, () => [])).toEqual([{ kind: "start", childId: "c1", at: T0 + DAY }]);
+    expect(runEvery15Minutes(s, T0, T0 + 30 * DAY, () => [])).toEqual([
+      { kind: "start", childId: "c1", at: T0 + DAY },
+      { kind: "start_followup", childId: "c1", at: T0 + 3 * DAY },
+    ]);
+  });
+
+  it("sends one start reminder for a child who starts on day 2", () => {
+    const s = state({ children: [{ id: "c1", parentId: "p1", createdAt: T0 }] });
+    const tests = (now: number) => (now < T0 + 2 * DAY ? [] : [{ ...stopped("a1", T0 + 2 * DAY), status: "completed" as const, completedAt: T0 + 2 * DAY }]);
+    expect(runEvery15Minutes(s, T0, T0 + 30 * DAY, tests)).toEqual([{ kind: "start", childId: "c1", at: T0 + DAY }]);
   });
 });
 
@@ -196,7 +246,7 @@ describe("who never gets a reminder", () => {
   });
 
   it("a parent who unsubscribed, for any child or reminder", () => {
-    const unsubscribed: LogEntry = { id: "u1", kind: "unsubscribe", parentId: "p1", childId: null, assessmentId: null, status: null, attempts: 0 };
+    const unsubscribed: LogEntry = { id: "u1", kind: "unsubscribe", parentId: "p1", childId: null, assessmentId: null, status: null, attempts: 0, at: T0 };
     expect(dueReminders(due, T0).map((r) => r.parentId)).toEqual(["p1", "p2"]);
     expect(dueReminders({ ...due, log: [unsubscribed] }, T0).map((r) => r.childId)).toEqual(["c2"]);
   });
@@ -258,9 +308,10 @@ describe("the reminder job", () => {
         await tick();
         const log: LogEntry[] = [...named.values()].map((r) => {
           const e = book.entry(r)!;
-          return { id: e.key, kind: r.kind, parentId: r.parentId, childId: r.childId, assessmentId: r.assessmentId, status: STATUS[e.state], attempts: e.claims };
+          // The in-memory ledger keeps no time: a row counts as written when its reminder was due.
+          return { id: e.key, kind: r.kind, parentId: r.parentId, childId: r.childId, assessmentId: r.assessmentId, status: STATUS[e.state], attempts: e.claims, at: r.dueAt };
         });
-        return { ...base, log };
+        return { ...base, log: [...base.log, ...log] };
       },
       ledger: {
         ...book.ledger,
@@ -349,6 +400,41 @@ describe("the reminder job", () => {
     expect(new Set(tokens).size).toBe(2);
     expect(rows().map((r) => r.hash)).toEqual(tokens.map((t) => hashToken(t)));
     expect(rows().every((r) => /^[0-9a-f]{64}$/.test(r.hash ?? ""))).toBe(true);
+  });
+
+  // Arjun (c2) was added a day before T0: the first start reminder is due at T0, the last one 2 days later.
+  describe("the two start reminders and the unsubscribe link", () => {
+    const arjun = () => ({ ...family, children: [family.children[1]], tests: [], log: [] as LogEntry[] });
+    const tokenIn = (m: EmailMessage) => m.text.match(/\/unsubscribe\?t=([\w-]+)/)?.[1] ?? "";
+
+    it("sends the last one on day 3, with its own unsubscribe link, when the parent did nothing", async () => {
+      const { store, rows } = memoryStore(arjun());
+      const mail = memoryTransport();
+      expect(await run(store, T0, mail.transport)).toEqual(counts({ due: 1, sent: 1 }));
+      expect(await run(store, T0 + 2 * DAY - 15 * MIN, mail.transport)).toEqual(counts({}));
+      expect(await run(store, T0 + 2 * DAY, mail.transport)).toEqual(counts({ due: 1, sent: 1 }));
+      expect(mail.delivered.map(whichReminder)).toEqual(["c2:start", "c2:start_followup"]);
+      expect(mail.delivered[1].subject).toBe("Last reminder: Arjun's free math test");
+      // The day-3 email's link names its own log row, so unsubscribing from it works too.
+      expect(rows().map((r) => [r.row, r.hash])).toEqual([
+        ["start:c2", hashToken(tokenIn(mail.delivered[0]))],
+        ["start_followup:c2", hashToken(tokenIn(mail.delivered[1]))],
+      ]);
+    });
+
+    it("sends nothing on day 3 when the parent unsubscribed with the link in the first one", async () => {
+      const s = arjun();
+      const { store, rows } = memoryStore(s);
+      const mail = memoryTransport();
+      await run(store, T0, mail.transport);
+      // What the unsubscribe page does with the link (unsubscribe in reminder-store.ts): it finds the log row by the
+      // token's hash, and writes one unsubscribe row for that row's parent.
+      const row = rows().find((r) => r.hash === hashToken(tokenIn(mail.delivered[0])));
+      expect(row?.row).toBe("start:c2");
+      s.log.push({ id: "u1", kind: "unsubscribe", parentId: "p1", childId: null, assessmentId: null, status: null, attempts: 0, at: T0 + HOUR });
+      for (let now = T0 + 15 * MIN; now <= T0 + 20 * DAY; now += 15 * MIN) expect(await run(store, now, mail.transport)).toEqual(counts({}));
+      expect(mail.delivered.map(whichReminder)).toEqual(["c2:start"]);
+    });
   });
 
   it("tries a refused send again on the next runs, and gives up after 3 tries", async () => {

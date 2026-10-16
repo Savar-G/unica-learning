@@ -22,7 +22,7 @@
 // How the child learns (#126): learning_step (src = report or account, status = saved, cleared, skipped or error).
 // No answer travels with it: no learning style, interest or note goes to analytics.
 // Help flags (#71): test_help (status yes, a-little or no: the answer to "Did anyone help?", sent once the test is stored).
-// Reminders (#73): reminder_open (status = continue, come_back or start: the parent opened the start screen from that
+// Reminders (#73): reminder_open (status = continue, come_back, start or start_followup: the parent opened the start screen from that
 // reminder email), unsubscribe (status done or failed: the unsubscribe page turned reminders off), unsubscribe_page
 // (status unsubscribed = already off, unknown = a link that does not work, failed).
 // Analytics run only after the visitor accepts (see consent.ts). Without consent an event is dropped, not queued.

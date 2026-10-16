@@ -269,3 +269,34 @@ describe("accuracy rules", () => {
     expect([k.value, k.prev]).toEqual([1, 1]);
   });
 });
+
+// The next start reminder in the family drawer (D-102): the job's own rules, from the email log.
+describe("next start reminder", () => {
+  const H = 3_600_000;
+  const added = ago(2);
+  const family = (over: Partial<DashboardRows> = {}) =>
+    rows({ parents: [{ ...parent("p", added), email: "priya@family.ca" }], children: [{ ...child("k1", "p"), created_at: added }], ...over });
+  const next = (r: DashboardRows) => buildFamilies(r, NOW)[0].nextReminders;
+  const startSent = (at: string) => email("e1", "p", "start", at);
+
+  it("is the first one, 24 hours after the child was added, until it is logged", () => {
+    expect(next(family())).toEqual([{ childName: "Kid k1", kind: "start", at: new Date(Date.parse(added) + 24 * H).toISOString() }]);
+  });
+
+  it("is the last one on day 3 once the first is logged, and none once both are", () => {
+    const first = new Date(Date.parse(added) + 24 * H).toISOString();
+    expect(next(family({ emails: [startSent(first)] }))).toEqual([{ childName: "Kid k1", kind: "start_followup", at: new Date(Date.parse(added) + 72 * H).toISOString() }]);
+    expect(next(family({ emails: [startSent(first), email("e2", "p", "start_followup", ago(0))] }))).toEqual([]);
+  });
+
+  it("is 48 hours after a first one that went late", () => {
+    const late = new Date(Date.parse(added) + 47 * H).toISOString();
+    expect(next(family({ emails: [startSent(late)] }))).toMatchObject([{ kind: "start_followup", at: new Date(Date.parse(late) + 48 * H).toISOString() }]);
+  });
+
+  it("is none after an unsubscribe, for a child with a test, or for an address that cannot get email", () => {
+    expect(next(family({ emails: [startSent(ago(1)), email("u", "p", "unsubscribe", ago(1))] }))).toEqual([]);
+    expect(next(family({ tests: [test("t1", "p", "k1", ago(1), null)] }))).toEqual([]);
+    expect(next(family({ parents: [parent("p", added)] }))).toEqual([]);
+  });
+});

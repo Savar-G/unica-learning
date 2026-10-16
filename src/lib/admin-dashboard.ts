@@ -3,6 +3,7 @@
 // `now`), so the pages only fetch (dashboardRows in admin-store) and show. Days are Pacific days.
 import type { Province } from "@/lib/assessment";
 import type { AssessmentStatus } from "@/lib/test-api";
+import { canGetEmail, nextStartReminder, type StartKind } from "@/lib/reminder-schedule";
 
 // Rows, as admin-store reads them
 
@@ -17,7 +18,7 @@ export interface RawCard {
   saved_in_stripe_only?: boolean;
 }
 export interface RawWaitlist { id: string; created_at: string; parent_id: string; child_id: string; province: Province }
-export interface RawEmail { id: string; created_at: string; parent_id: string; child_id: string | null; assessment_id: string | null; kind: "continue" | "come_back" | "start" | "unsubscribe"; status: "claimed" | "sent" | "failed" | null; attempts: number; sent_at: string | null; error: string | null }
+export interface RawEmail { id: string; created_at: string; parent_id: string; child_id: string | null; assessment_id: string | null; kind: "continue" | "come_back" | "start" | "start_followup" | "unsubscribe"; status: "claimed" | "sent" | "failed" | null; attempts: number; sent_at: string | null; error: string | null }
 /** A Stripe subscription of a saved card's customer. Times are ISO. `amount`: the price per unit, in cents. */
 export interface RawSubscription {
   id: string;
@@ -73,7 +74,7 @@ export const STAGE_SHORT: Record<Stage, string> = {
 };
 /** What happens next for a family in this stage, or what Savar can do. */
 export const STAGE_ACTION: Record<Stage, string> = {
-  account: "The start reminder goes out automatically.",
+  account: "Start reminders go out automatically: on day 1, and a last one on day 3.",
   started: "The continue reminder goes out automatically.",
   finished: "Report sent. Waiting for the parent to choose a plan.",
   card_started: "The parent left the payment page. Consider a personal email.",
@@ -96,11 +97,12 @@ export function monthlyAmount(s: RawSubscription): number {
 
 // Emails
 
-export type EmailKind = "start" | "continue" | "come_back" | "report" | "alert" | "unsubscribe";
+export type EmailKind = "start" | "start_followup" | "continue" | "come_back" | "report" | "alert" | "unsubscribe";
 export interface EmailKindInfo { kind: EmailKind; label: string; subject: string; to: string; trigger: string }
 /** Every email the site logs. The subjects follow reminder-email.ts and report-email.ts. */
 export const EMAIL_KINDS: readonly EmailKindInfo[] = [
   { kind: "start", label: "Start reminder", subject: "{child} has not started the free math test", to: "Parent", trigger: "Account made, no test started" },
+  { kind: "start_followup", label: "Last start reminder", subject: "Last reminder: {child}'s free math test", to: "Parent", trigger: "Day 3, still no test started" },
   { kind: "continue", label: "Continue reminder", subject: "{child} can finish the math test", to: "Parent", trigger: "Test started, not finished" },
   { kind: "come_back", label: "Come back reminder", subject: "{child} can start the math test again", to: "Parent", trigger: "Test expired before the end" },
   { kind: "report", label: "Report email", subject: "{child}'s math report is ready", to: "Parent", trigger: "Test finished, report built" },
@@ -158,6 +160,11 @@ export interface Family {
   /** The newest email to the parent (not an alert, not an unsubscribe). */
   lastEmail: EmailEvent | null;
   unsubscribed: boolean;
+  /**
+   * The start reminder each child with no test gets next, by the job's own rules (D-102); empty when the parent
+   * unsubscribed or the address cannot get email. `at` can be past: the job sends it on its next run (every 15 minutes).
+   */
+  nextReminders: { childName: string; kind: StartKind; at: string }[];
   lastActivityAt: string;
   /** An admin's own family or one marked as a test: left out of the numbers unless asked for. */
   test: boolean;
@@ -184,7 +191,7 @@ function subjectFor(kind: EmailKind, child: string | null, grade: number | null)
 
 const emailStatus = (sentAt: string | null, error: string | null): EmailEvent["status"] => (sentAt ? "sent" : error ? "failed" : "pending");
 
-export function buildFamilies(rows: DashboardRows): Family[] {
+export function buildFamilies(rows: DashboardRows, now = new Date()): Family[] {
   const testIds = new Set(rows.testIds);
   const childName = new Map(rows.children.map((c) => [c.id, c.first_name]));
   const testById = new Map(rows.tests.map((t) => [t.id, t]));
@@ -235,6 +242,15 @@ export function buildFamilies(rows: DashboardRows): Family[] {
     // the furthest stage; waitlist beats finished and cancelled beats paying (same ranks), since each came after
     const stage = (Object.keys(reached) as Stage[]).reduce<Stage>((best, s) => (RANK[s] > RANK[best] || (RANK[s] === RANK[best] && (s === "waitlist" || s === "cancelled")) ? s : best), "account");
     const card = cards[0] ?? null;
+    const unsubscribed = emails.some((e) => e.kind === "unsubscribe");
+    const logOf = mine(rows.emails);
+    const nextReminders = unsubscribed || !canGetEmail(p.email) ? [] : children.flatMap((c) => {
+      if (tests.some((t) => t.child_id === c.id)) return [];
+      const first = logOf.find((e) => e.kind === "start" && e.child_id === c.id);
+      const followup = logOf.some((e) => e.kind === "start_followup" && e.child_id === c.id);
+      const next = nextStartReminder(Date.parse(c.created_at), { firstStartAt: first ? Date.parse(first.created_at) : null, followup }, now.getTime());
+      return next ? [{ childName: c.first_name, kind: next.kind, at: new Date(next.dueAt).toISOString() }] : [];
+    });
 
     return {
       id: p.id, name: p.name, email: p.email, postal: p.postal, createdAt: p.created_at, source: sourceOf(p.source),
@@ -248,7 +264,8 @@ export function buildFamilies(rows: DashboardRows): Family[] {
       subscriptions: subs,
       emails,
       lastEmail: emails.find((e) => e.kind !== "alert" && e.kind !== "unsubscribe") ?? null,
-      unsubscribed: emails.some((e) => e.kind === "unsubscribe"),
+      unsubscribed,
+      nextReminders,
       test: testIds.has(p.id),
       lastActivityAt: latest([p.created_at, ...tests.flatMap((t) => [t.started_at, t.last_answer_at, t.completed_at]), ...cards.flatMap((c) => [c.updated_at, c.card_saved_at]), ...waits.map((w) => w.created_at), ...subs.flatMap((s) => [s.created, s.endedAt])]),
     };
@@ -359,7 +376,7 @@ const DAY_MS = 86_400_000;
 
 /** `withTests`: count the team and test families too. */
 export function buildDashboard(rows: DashboardRows, range: RangeKey, now: Date, { withTests = false } = {}): Dashboard {
-  const everyone = buildFamilies(rows);
+  const everyone = buildFamilies(rows, now);
   const families = everyone.filter((f) => withTests || !f.test).sort((a, b) => b.lastActivityAt.localeCompare(a.lastActivityAt));
   const emails = families.flatMap((f) => f.emails).sort(newestFirst);
   const first = earliest(families.map((f) => f.createdAt));
@@ -445,6 +462,9 @@ export function buildDashboard(rows: DashboardRows, range: RangeKey, now: Date, 
 const PACIFIC_TIME = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Vancouver", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
 /** "Oct 12, 6:10 p.m." in Pacific time. */
 export const at = (iso: string | null | undefined) => (iso ? PACIFIC_TIME.format(new Date(iso)) : "-");
+/** "Last start reminder for Kingston, Oct 18, 1:09 p.m.": a family's next start reminder, or "due now" once its time passed. */
+export const nextReminderText = (r: Family["nextReminders"][number], now: string) =>
+  `${EMAIL_LABEL[r.kind]} for ${r.childName}, ${Date.parse(r.at) <= Date.parse(now) ? "due now (the job runs every 15 minutes)" : at(r.at)}`;
 /** "5 min ago", "3 h ago", "2 days ago". */
 export function ago(iso: string | null | undefined, now: string): string {
   if (!iso) return "-";

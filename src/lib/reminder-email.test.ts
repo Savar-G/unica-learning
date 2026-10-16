@@ -55,8 +55,21 @@ describe("the start your test reminder", () => {
   });
 });
 
+describe("the last start reminder", () => {
+  const e = email({ kind: "start_followup", url: URL.replace("continue", "start_followup") });
+
+  it("says it is the last reminder, that the test is free with no card, and what the child needs", () => {
+    expect(e.subject).toBe("Last reminder: Maya's free math test");
+    expect(e.text).toContain("Maya has not started the free math placement test yet. This is our last reminder about it.");
+    expect(e.text).toContain("The test is free, and you do not give a card for it.");
+    expect(e.text).toContain("laptop or tablet");
+    expect(e.text).toContain("36 questions");
+    expect(e.html).toContain("Start Maya&#39;s test");
+  });
+});
+
 describe("every reminder", () => {
-  const all = (["continue", "come_back", "start"] as const).map((kind) => email({ kind }));
+  const all = (["continue", "come_back", "start", "start_followup"] as const).map((kind) => email({ kind }));
 
   it("has a working unsubscribe link, in the text and the HTML", () => {
     for (const e of all) {

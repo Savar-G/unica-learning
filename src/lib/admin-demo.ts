@@ -35,7 +35,7 @@ export function demoRows(now: Date): DashboardRows {
     const created = now.getTime() - daysAgo * 24 * H - r() * 20 * H;
     const pid = id("demo-parent");
     const first = pick(FIRST);
-    const parent: RawParent = { id: pid, created_at: iso(created), name: `${first} ${pick(LAST)}`, email: `${first.toLowerCase()}${i}@example.com`, postal: pick(["V3S", "V4N", "V6B", "V5K", "T2P", "M5V"]) + " 1A1", source: { utm_source: pick(["facebook", "google", "instagram", "friend", "facebook", "google"]) } };
+    const parent: RawParent = { id: pid, created_at: iso(created), name: `${first} ${pick(LAST)}`, email: `${first.toLowerCase()}${i}@example.ca`, postal: pick(["V3S", "V4N", "V6B", "V5K", "T2P", "M5V"]) + " 1A1", source: { utm_source: pick(["facebook", "google", "instagram", "friend", "facebook", "google"]) } };
     out.parents.push(parent);
     const province: Province = r() < 0.72 ? "BC" : pick(["AB", "ON", "other"] as Province[]);
     const kidCount = r() < 0.18 ? 2 : 1;
@@ -54,13 +54,14 @@ export function demoRows(now: Date): DashboardRows {
     // the funnel
     if (r() > 0.76) {
       email("start", created + 26 * H, null);
-      if (r() < 0.5) email("start", created + 74 * H, null);
+      if (r() < 0.5) email("start_followup", created + 72 * H, null);
       if (r() < 0.08) email("unsubscribe", created + 80 * H, null);
       continue;
     }
     const startedMs = created + (r() < 0.6 ? r() * 2 * H : 26 * H + r() * 30 * H);
     if (startedMs > now.getTime()) continue;
     if (startedMs > created + 24 * H) email("start", created + 24 * H, null);
+    if (startedMs > created + 72 * H) email("start_followup", created + 72 * H, null);
     const tid = id("demo-test");
     const finishes = r() < 0.72;
     const finishedMs = startedMs + (r() < 0.7 ? 0.4 * H + r() * 0.5 * H : 20 * H + r() * 40 * H);
