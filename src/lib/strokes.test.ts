@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { recordStrokes } from "@/lib/strokes";
+import { encodeStrokes, fitStrokes, recordStrokes, type StrokeEvent, type StrokeRecording, type TimedPoint } from "@/lib/strokes";
 import type { BoardEvent } from "@/lib/whiteboard";
 
 // The whiteboard strokes (#186): what the child drew, in order, with times since the question was shown, so an admin
@@ -50,3 +50,41 @@ describe("the recording of a question's whiteboard", () => {
     expect(recordStrokes([{ kind: "clear", at: 10_500 }], SHOWN, BOARD)).toBeNull();
   });
 });
+
+/** A recording of the given strokes on an 800 x 600 board. */
+const recording = (...events: StrokeEvent[]): StrokeRecording => ({ v: 1, width: 800, height: 600, events });
+/** A pencil stroke through the given points. */
+const line = (pts: TimedPoint[]): StrokeEvent => ({ kind: "stroke", erase: false, w: 3.2, pts });
+const bytes = (r: StrokeRecording | null) => (r ? new TextEncoder().encode(encodeStrokes(r)).length : 0);
+
+describe("the size limit of a recording", () => {
+  it("a recording under the limit is sent as it is", () => {
+    const small = recording(line([[0.1, 0.1, 0], [0.1, 0.1, 50], [0.2, 0.2, 100]]));
+    expect(fitStrokes(small, 10_000)).toEqual(small);
+  });
+
+  it("a long recording is thinned until it fits, and each stroke keeps its first and last point", () => {
+    // A slow stylus: 20 rows of 1,000 points, each 0.0004 board widths (a third of a pixel) from the last.
+    const rows = Array.from({ length: 20 }, (_, r) => line(Array.from({ length: 1000 }, (_, i): TimedPoint => [round(0.1 + i * 0.0004), round(0.05 + r * 0.04), r * 5000 + i * 4])));
+    const long = recording(...rows);
+    expect(bytes(long)).toBeGreaterThan(300_000);
+    const fitted = fitStrokes(long, 100_000);
+    expect(bytes(fitted)).toBeLessThanOrEqual(100_000);
+    expect(fitted?.events).toHaveLength(20);
+    fitted?.events.forEach((e, r) => {
+      const pts = (e as Extract<StrokeEvent, { kind: "stroke" }>).pts;
+      const all = (rows[r] as Extract<StrokeEvent, { kind: "stroke" }>).pts;
+      expect([pts[0], pts.at(-1)]).toEqual([all[0], all.at(-1)]);
+      // Still a line to replay, not two dots.
+      expect(pts.length).toBeGreaterThan(10);
+    });
+  });
+
+  it("a recording that cannot be thinned to fit is not sent: the drawing still goes", () => {
+    // 2,000 separate dots: nothing to thin.
+    const dots = recording(...Array.from({ length: 2000 }, (_, i) => line([[round(i / 2000), 0.5, i * 10]])));
+    expect(fitStrokes(dots, 20_000)).toBeNull();
+  });
+});
+
+const round = (n: number) => Math.round(n * 10_000) / 10_000;

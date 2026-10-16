@@ -4,6 +4,7 @@
 // as a JSON file in the private bucket (src/lib/test-attempt.ts), never in the report or the copy without names.
 // Pure: no DOM, network or clock. The browser builds the recording when the child presses Next (src/components/test.tsx),
 // the server checks it (src/lib/work-payload.ts), and the admin replay reads it (src/components/stroke-replay.tsx).
+import { STROKES_MAX_BYTES } from "@/lib/test-api";
 import type { BoardEvent } from "@/lib/whiteboard";
 
 /** One point: x and y in board widths from the top-left corner (as the board keeps them), t in ms since the question was shown. */
@@ -58,4 +59,82 @@ export function recordStrokes(log: readonly BoardEvent[], shownAt: number, size:
   const width = size.width > 0 ? Math.round(size.width) : 800;
   const height = size.height > 0 ? Math.round(size.height) : Math.round(width * 0.75);
   return { v: 1, width, height, events };
+}
+
+/** The recording as stored and sent: JSON. Every character is ASCII, so its length is its size in bytes. */
+export const encodeStrokes = (recording: StrokeRecording): string => JSON.stringify(recording);
+
+/** How far apart (in board widths) the kept points of a stroke must be, tried in turn until the recording fits. */
+const THIN_STEPS = [0, 0.001, 0.002, 0.004, 0.008, 0.016];
+
+/**
+ * The recording within `maxBytes`: as it is when it fits, else with fewer points on each stroke (a point closer than
+ * the step to the last kept point goes; the first and last points stay). Null when even the coarsest step does not
+ * fit: then the answer goes with its drawing and no strokes.
+ */
+export function fitStrokes(recording: StrokeRecording, maxBytes = STROKES_MAX_BYTES): StrokeRecording | null {
+  for (const step of THIN_STEPS) {
+    const fitted = step === 0 ? recording : { ...recording, events: recording.events.map((e) => (e.kind === "stroke" ? { ...e, pts: thin(e.pts, step) } : e)) };
+    if (encodeStrokes(fitted).length <= maxBytes) return fitted;
+  }
+  return null;
+}
+
+const isRecord = (raw: unknown): raw is Record<string, unknown> => typeof raw === "object" && raw !== null && !Array.isArray(raw);
+const isTime = (t: unknown): t is number => Number.isInteger(t) && (t as number) >= 0 && (t as number) <= STROKE_TIME_MAX_MS;
+/** A board coordinate. Work can reach past the board's edge (the pointer leaves it mid-stroke), but not far. */
+const isCoordinate = (n: unknown): n is number => typeof n === "number" && Number.isFinite(n) && Math.abs(n) <= 100;
+const isSide = (n: unknown): n is number => typeof n === "number" && Number.isFinite(n) && n > 0 && n <= 10_000;
+
+function readEvent(raw: unknown): StrokeEvent | null {
+  if (!isRecord(raw)) return null;
+  if (raw.kind === "undo" || raw.kind === "clear") return isTime(raw.t) ? { kind: raw.kind, t: raw.t } : null;
+  if (raw.kind !== "stroke" || typeof raw.erase !== "boolean" || typeof raw.w !== "number" || !(raw.w > 0 && raw.w <= 100)) return null;
+  if (!Array.isArray(raw.pts) || raw.pts.length === 0) return null;
+  const pts: TimedPoint[] = [];
+  for (const p of raw.pts) {
+    if (!Array.isArray(p) || p.length !== 3 || !isCoordinate(p[0]) || !isCoordinate(p[1]) || !isTime(p[2])) return null;
+    pts.push([p[0], p[1], p[2]]);
+  }
+  return { kind: "stroke", erase: raw.erase, w: raw.w, pts };
+}
+
+/**
+ * A stroke recording rebuilt from its known fields only, or null when `raw` is not one: the version, a board size,
+ * and events with points [x, y, t] (t a whole number of milliseconds, up to STROKE_TIME_MAX_MS), at least one a stroke.
+ */
+export function readStrokes(raw: unknown): StrokeRecording | null {
+  if (!isRecord(raw) || raw.v !== 1 || !isSide(raw.width) || !isSide(raw.height) || !Array.isArray(raw.events)) return null;
+  const events: StrokeEvent[] = [];
+  for (const e of raw.events) {
+    const event = readEvent(e);
+    if (!event) return null;
+    events.push(event);
+  }
+  if (!events.some((e) => e.kind === "stroke")) return null;
+  return { v: 1, width: raw.width, height: raw.height, events };
+}
+
+/**
+ * The strokes sent with an answer, checked on the server: the JSON to store (only the recording's known fields), or
+ * null when none came. Strokes that are not a recording, or are over STROKES_MAX_BYTES, are left out with the reason:
+ * they are for admins only, so they never stop the child's answer.
+ */
+export function parseStrokes(raw: unknown): { strokes: string | null; dropped?: "invalid" | "too_big" } {
+  if (raw === undefined || raw === null) return { strokes: null };
+  const recording = readStrokes(raw);
+  if (!recording) return { strokes: null, dropped: "invalid" };
+  const json = encodeStrokes(recording);
+  return json.length <= STROKES_MAX_BYTES ? { strokes: json } : { strokes: null, dropped: "too_big" };
+}
+
+function thin(pts: TimedPoint[], step: number): TimedPoint[] {
+  if (pts.length <= 2) return pts;
+  const kept = [pts[0]];
+  for (let i = 1; i < pts.length - 1; i++) {
+    const [x, y] = kept[kept.length - 1];
+    if (Math.hypot(pts[i][0] - x, pts[i][1] - y) >= step) kept.push(pts[i]);
+  }
+  kept.push(pts[pts.length - 1]);
+  return kept;
 }

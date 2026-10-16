@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { WORK_IMAGE_MAX_BYTES, WORK_TEXT_MAX } from "@/lib/test-api";
+import { STROKES_MAX_BYTES, WORK_IMAGE_MAX_BYTES, WORK_TEXT_MAX } from "@/lib/test-api";
 import { parseWork, workPath } from "@/lib/work-payload";
 
 // A real 1 x 1 PNG.
@@ -14,7 +14,7 @@ const pngOfSize = (bytes: number) => {
 
 describe("the work sent with an answer (#67)", () => {
   it("no work at all is an empty board", () => {
-    for (const raw of [undefined, null, {}]) expect(parseWork(raw), String(raw)).toEqual({ ok: true, png: null, text: "" });
+    for (const raw of [undefined, null, {}]) expect(parseWork(raw), String(raw)).toEqual({ ok: true, png: null, text: "", strokes: null });
   });
 
   it("takes a PNG drawing and typed working", () => {
@@ -59,6 +59,58 @@ describe("the work sent with an answer (#67)", () => {
       { text: ["a"] },
     ]) {
       expect(parseWork(raw), JSON.stringify(raw)).toMatchObject({ ok: false, error: "invalid" });
+    }
+  });
+});
+
+describe("the whiteboard strokes sent with an answer (#186)", () => {
+  const RECORDING = { v: 1, width: 800, height: 600, events: [
+    { kind: "stroke", erase: false, w: 3.2, pts: [[0.1, 0.2, 400], [0.15, 0.25, 480]] },
+    { kind: "undo", t: 900 },
+    { kind: "stroke", erase: true, w: 26, pts: [[0.12, 0.22, 1000]] },
+    { kind: "clear", t: 2000 },
+  ] };
+
+  it("are stored as JSON holding only the recording, whatever else the request adds", () => {
+    const parsed = parseWork({ image: PNG_1PX, strokes: { ...RECORDING, name: "Asha", events: RECORDING.events.map((e) => ({ ...e, note: "x" })) } });
+    expect(parsed.ok && parsed.strokes !== null && JSON.parse(parsed.strokes)).toEqual(RECORDING);
+  });
+
+  /** A recording whose JSON is exactly `size` bytes: one stroke of [0,0,0] points, the last point's time sets the rest. */
+  const ofSize = (size: number) => {
+    const make = (n: number, t: number) => ({ v: 1, width: 800, height: 600, events: [{ kind: "stroke", erase: false, w: 3, pts: [...Array.from({ length: n - 1 }, () => [0, 0, 0]), [0, 0, t]] }] });
+    const extra = size - JSON.stringify(make(1, 0)).length;
+    const made = make(1 + Math.floor(extra / 8), extra % 8 === 0 ? 0 : 10 ** (extra % 8));
+    expect(JSON.stringify(made).length).toBe(size);
+    return made;
+  };
+
+  it("are taken up to the size limit; over it they are left out and the answer still goes", () => {
+    expect(parseWork({ image: PNG_1PX, strokes: ofSize(STROKES_MAX_BYTES) })).toMatchObject({ ok: true, strokes: expect.any(String) });
+    const over = parseWork({ image: PNG_1PX, text: "12", strokes: ofSize(STROKES_MAX_BYTES + 1) });
+    expect(over).toMatchObject({ ok: true, text: "12", strokes: null, strokesDropped: "too_big" });
+    expect(over.ok && over.png).not.toBeNull();
+  });
+
+  it("that are not a recording are left out, and the answer still goes", () => {
+    const stroke = RECORDING.events[0];
+    for (const strokes of [
+      "strokes",
+      [],
+      { ...RECORDING, v: 2 },
+      { ...RECORDING, width: 0 },
+      { ...RECORDING, events: [] },
+      { ...RECORDING, events: [{ kind: "undo", t: 5 }] },
+      { ...RECORDING, events: [{ ...stroke, pts: [] }] },
+      { ...RECORDING, events: [{ ...stroke, pts: [[0.1, 0.2]] }] },
+      { ...RECORDING, events: [{ ...stroke, pts: [[0.1, "0.2", 5]] }] },
+      { ...RECORDING, events: [{ ...stroke, pts: [[0.1, 0.2, -1]] }] },
+      { ...RECORDING, events: [{ ...stroke, pts: [[0.1, 0.2, 2.5]] }] },
+      { ...RECORDING, events: [{ ...stroke, w: 0 }] },
+      { ...RECORDING, events: [{ ...stroke, erase: "no" }] },
+      { ...RECORDING, events: [stroke, { kind: "redo", t: 5 }] },
+    ]) {
+      expect(parseWork({ image: PNG_1PX, strokes }), JSON.stringify(strokes)).toMatchObject({ ok: true, strokes: null, strokesDropped: "invalid" });
     }
   });
 });
