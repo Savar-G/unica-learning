@@ -97,10 +97,19 @@ export function reportFacts(m: ReportModel) {
  * report's facts (reportFacts; a number word counts as its number). Returns the tidied text to keep, or why it was rejected.
  */
 export function checkReportText(model: ReportModel, text: string): ReportTextCheck {
+  return checkAiText(text, reportFacts(model), REPORT_TEXT_MAX);
+}
+
+/**
+ * The AI text checks for any AI text (the report text, the learner profile's AI parts, #197): the text rules with at
+ * most `max` characters, then every number must be among the numbers of `facts`, the facts the AI wrote from (a number
+ * word counts as its number). Returns the tidied text to keep, or why it was rejected.
+ */
+export function checkAiText(text: string, facts: unknown, max: number): ReportTextCheck {
   const tidy = tidyText(text);
-  const problem = textProblem(tidy, REPORT_TEXT_MAX);
+  const problem = textProblem(tidy, max);
   if (problem) return { ok: false, ...problem };
-  const known = numbersOf(reportFacts(model));
+  const known = numbersOf(facts);
   const unknown = numbersIn(tidy).filter((n) => !known.has(n));
   if (unknown.length > 0) return { ok: false, problem: "number", detail: [...new Set(unknown)].join(", ") };
   return { ok: true, text: tidy };

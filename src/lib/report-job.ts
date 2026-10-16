@@ -1,10 +1,12 @@
 import "server-only";
+import type { AiClient } from "@/lib/ai-client";
 import { reportModel } from "@/lib/assessment";
 import { SUPPORT_EMAIL } from "@/lib/contact";
 import { adminTestPath } from "@/lib/admin-view";
 import { loadComparisonInput } from "@/lib/comparison-store";
 import { sendEmail, sendEmailOnce, type MailTransport, type Sender } from "@/lib/email-delivery";
 import { storeLearnerProfile, type LearnerProfileStore } from "@/lib/learner-profile";
+import { profileAiClient } from "@/lib/learner-profile-ai";
 import { learnerProfileStore } from "@/lib/learner-profile-store";
 import { reportAlert, reportEmail, type ParentContact } from "@/lib/report-email";
 import { reportJobStore, type ReportJobStore, type StoredReport } from "@/lib/report-job-store";
@@ -27,7 +29,9 @@ import { aiReport, aiReviewer, type AiOutcome, type WorkReviewer } from "@/lib/w
 //   3. Build the report model with the assessment core, and store it: one report per assessment.
 //   3b. Build the learner profile (#196, src/lib/learner-profile.ts) from the same inputs and store it: one per test,
 //      built again on each run, so a run after an extra round (#190) or a later answer on the learning card counts.
-//      A failure is logged; the report and its emails go on.
+//      Then, only when OPENROUTER_API_KEY is set, the AI writes its parts (#197) and the profile is stored again with
+//      the parts that pass the checks; this stops after at most PROFILE_AI_MS (60 s), so the job stays under 300 s.
+//      A failure is logged; the facts stay stored, and the report and its emails go on.
 //   4. Email the report to the parent. The email and the alert show the report view of the stored report, from the
 //      report-loading module (#163): the same view that the report page and the admin report view show.
 //   5. Email Savar an alert, with what the AI did, and whether the parent email was sent, refused or unknown.
@@ -63,6 +67,8 @@ export interface ReportJobOptions {
   store?: ReportJobStore;
   /** The learner profile's store (#196). */
   profiles?: LearnerProfileStore;
+  /** The AI client of the profile's AI parts (#197); by default the switch (profileAiClient), null (off) without OPENROUTER_API_KEY. */
+  profileAi?: AiClient | null;
 }
 
 /** The given database seams; the missing ones are Supabase with the secret key. Null without the key. */
@@ -89,7 +95,7 @@ export async function runReportJob(assessmentId: string, origin: string, options
   const db = database(options);
   if (!db) return;
   const { ledger: book, store } = db;
-  const { reviewer, transport } = options;
+  const { reviewer, transport, profileAi } = options;
   try {
     const inputs = await loadReportInputs(db.reader, assessmentId, db.comparison);
     if (!inputs) {
@@ -98,7 +104,7 @@ export async function runReportJob(assessmentId: string, origin: string, options
     }
     const { assessment } = inputs;
     const { report, ai } = await storeReport(store, inputs, reviewer === undefined ? aiReviewer() : reviewer);
-    await profileStep(db.profiles, inputs);
+    await profileStep(db.profiles, inputs, profileAi === undefined ? profileAiClient() : profileAi);
 
     // The view of the email and the alert, from the report-loading module with the secret key (#163): the same view
     // that the report page and the admin report view show. The secret key signs nothing: the email has no drawings.
@@ -145,10 +151,10 @@ async function storeReport(store: ReportJobStore, inputs: ReportInputs, reviewer
   return { report: raced };
 }
 
-/** The learner profile (#196), built and stored again on each run. Never throws: the report and its emails go on. */
-async function profileStep(profiles: LearnerProfileStore, inputs: ReportInputs) {
+/** The learner profile (#196) with its AI parts (#197), built and stored again on each run. Never throws: the report and its emails go on. */
+async function profileStep(profiles: LearnerProfileStore, inputs: ReportInputs, ai: AiClient | null) {
   try {
-    await storeLearnerProfile(profiles, inputs);
+    await storeLearnerProfile(profiles, inputs, { ai });
   } catch (e) {
     console.error("[profile] failed", inputs.assessment.id, message(e));
   }

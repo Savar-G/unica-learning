@@ -3,7 +3,21 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ReportCard } from "@/components/report";
-import { createSession, PROFILE_SCHEMA_VERSION, REPORT_TEXT_NAME, storedProfile, storedTest, type ComparisonTest, type ProfileLearning } from "@/lib/assessment";
+import {
+  BANKS,
+  BC_SKILL_MAP,
+  createSession,
+  PROFILE_AI_SCHEMA,
+  PROFILE_SCHEMA_VERSION,
+  REPORT_TEXT_NAME,
+  storedProfile,
+  storedTest,
+  type ComparisonTest,
+  type LearnerProfile,
+  type ProfileLearning,
+} from "@/lib/assessment";
+import type { AiClient, AiJsonRequest } from "@/lib/ai-client";
+import { fakeAiClient } from "@/lib/ai-client-fake";
 import { knowsUpTo, takeTest } from "@/lib/assessment/scripted-child";
 import { memoryTransport } from "@/lib/email-delivery-memory";
 import { rebuildLatestProfile, rebuildLearnerProfile } from "@/lib/learner-profile";
@@ -623,5 +637,173 @@ describe("the learner profile", () => {
     expect(db.tables.reports).toHaveLength(1);
     expect(mail.delivered.map((m) => m.to)).toEqual(["priya@family.ca", "savar@unicalearning.com"]);
     expect(console.error).toHaveBeenCalledWith("[profile] failed", TEST, "profile save: database down");
+  });
+});
+
+// The learner profile's AI parts (#197, spec #181): written through the AI client from the profile facts, the skill-map
+// neighbours and the misconception descriptions, checked, and stored with the facts. Here with the fake client.
+describe("the learner profile's AI parts", () => {
+  const MODEL = "openai/gpt-5.5-mini";
+  const PRIYAS_ANSWERS: ProfileLearning = { styles: ["pictures"], interests: ["space"], feeling: "avoids", goal: "catch_up", weeklyTime: "1_to_2h" };
+  const STANDARD = new Map(BANKS["3-5"].map((t) => [t.id, t.standard]));
+  /** The grade 4 standard Asha struggles with: she gives a coded wrong answer on each of its questions that has one. */
+  const WEAK = STANDARD.get(asked.find((q) => q.level === 4 && q.wrong.length > 0)!.templateId)!;
+  /** A standard above Asha's grade that builds on a skill of WEAK: its prerequisites are not secure, so it is no next challenge. */
+  const NOT_READY = BC_SKILL_MAP.standards.find((s) => s.grade > 4 && s.skills.some((k) => k.requires.some((r) => r.startsWith(`${WEAK}-`))))!.code;
+
+  function struggling(learning: ProfileLearning | null = null) {
+    const db = database({ learning });
+    for (const a of db.tables.answers!) {
+      const q = asked[a.position];
+      if (STANDARD.get(q.templateId) === WEAK && q.wrong[0]) Object.assign(a, { response: q.wrong[0].value, correct: false, misconception: q.wrong[0].misconception });
+    }
+    return db;
+  }
+  /** What the AI read: the JSON in the request's one text part. */
+  const factsOf = (request: AiJsonRequest) => JSON.parse(request.content[0].type === "text" ? request.content[0].text : "null");
+  /** Output that passes the checks, written from what the AI read. */
+  const good = (request: AiJsonRequest) => {
+    const f = factsOf(request);
+    const ready: string[] = f.next_challenge_candidates.map((c: { code: string }) => c.code);
+    return {
+      struggles: f.profile.struggles.map((s: LearnerProfile["struggles"][number]) => ({
+        code: s.code,
+        likely_cause: `The wrong answers match a known mistake, and a skill this builds on may not be secure yet.`,
+        how_to_help: `Practise ${s.text} in short daily sets, with ${REPORT_TEXT_NAME} saying each step aloud.`,
+      })),
+      next_challenge: ready.slice(0, 2),
+      workbook_plan: {
+        review: { percent: 20, standards: [f.profile.strengths[0].code] },
+        practise: { percent: 60, standards: f.profile.struggles.map((s: { code: string }) => s.code) },
+        stretch: { percent: 20, standards: ready.slice(0, 1) },
+      },
+    };
+  };
+  const runWith = (db: Database, profileAi: AiClient | null, mail = memoryTransport()) => runReportJob(TEST, ORIGIN, {
+    reader: db.readers.key(), comparison: db.comparison, store: db.job.store, profiles: db.profiles.store, reviewer: null, profileAi, transport: mail.transport, ledger: memoryReportLedger().ledger,
+  });
+  const stored = (db: Database) => storedProfile(db.profiles.rows()[0].profile)!;
+
+  it("are written through the AI client from the facts, and stored with the facts, each labelled with the model id", async () => {
+    const db = struggling(PRIYAS_ANSWERS);
+    const ai = fakeAiClient({ model: MODEL, answer: good });
+    const mail = memoryTransport();
+    await runWith(db, ai, mail);
+
+    // One request: the facts as JSON text, and the schema of the output.
+    expect(ai.requests).toHaveLength(1);
+    const [request] = ai.requests;
+    expect(request).toMatchObject({ name: "learner_profile", schema: PROFILE_AI_SCHEMA });
+    expect(request.content.map((c) => c.type)).toEqual(["text"]);
+    const read = factsOf(request);
+    const profile = stored(db);
+    const { ai: parts, ...facts } = profile;
+    expect(read.profile).toEqual(facts);
+    expect(read.child).toBe(REPORT_TEXT_NAME);
+    expect(read.profile.parent).toEqual({ feeling: "avoids", goal: "catch_up", weeklyTime: "1_to_2h" });
+    expect(Object.keys(read.misconceptions).length).toBeGreaterThan(0);
+    expect(read.struggle_skills.map((s: { code: string }) => s.code)).toEqual([WEAK]);
+    // Never a name, the drawing or the typed working.
+    const sent = JSON.stringify(request);
+    for (const secret of ["Asha", "Priya", "priya@family.ca", DRAWING, "6 x 4 = 24", "child-1", "parent-1"]) expect(sent).not.toContain(secret);
+
+    // The facts as code wrote them, and the four AI parts, each with the model id.
+    expect(facts.struggles.map((s) => s.code)).toEqual([WEAK]);
+    const answer = good(request);
+    expect(parts).toEqual({
+      likelyCauses: { model: MODEL, value: { [WEAK]: answer.struggles[0].likely_cause } },
+      howToHelp: { model: MODEL, value: { [WEAK]: answer.struggles[0].how_to_help } },
+      nextChallenge: { model: MODEL, value: answer.next_challenge },
+      workbookPlan: { model: MODEL, value: answer.workbook_plan },
+    });
+    expect(profile.schemaVersion).toBe(1);
+    // The report and its emails as without the AI parts.
+    expect(db.tables.reports).toHaveLength(1);
+    expect(mail.delivered.map((m) => m.to)).toEqual(["priya@family.ca", "savar@unicalearning.com"]);
+  });
+
+  it("are left out when the output is not JSON or does not match the schema: the profile keeps its facts", async () => {
+    for (const ai of [
+      fakeAiClient({ model: MODEL, answer: () => { throw new Error("the output is not valid JSON"); } }),
+      fakeAiClient({ model: MODEL, answer: (r) => ({ ...good(r), struggles: "none" }) }),
+      fakeAiClient({ model: MODEL, answer: (r) => ({ ...good(r), workbook_plan: undefined }) }),
+    ]) {
+      const db = struggling();
+      await runWith(db, ai);
+      expect(ai.requests).toHaveLength(1);
+      expect(db.profiles.rows()).toHaveLength(1);
+      expect(stored(db).ai).toBeUndefined();
+      expect(stored(db).struggles.map((s) => s.code)).toEqual([WEAK]);
+    }
+    expect(console.error).toHaveBeenCalledWith("[profile] AI failed", TEST, "the output is not valid JSON");
+    expect(console.error).toHaveBeenCalledWith("[profile] AI failed", TEST, "the output does not match the schema: output.struggles is not an array");
+  });
+
+  it("drop a next challenge that names a standard whose prerequisites are not secure, and keep the rest", async () => {
+    const db = struggling();
+    const ai = fakeAiClient({ model: MODEL, answer: (r) => {
+      const out = good(r);
+      return { ...out, next_challenge: [NOT_READY, ...out.next_challenge], workbook_plan: { ...out.workbook_plan, stretch: { percent: 20, standards: [NOT_READY] } } };
+    } });
+    await runWith(db, ai);
+
+    const candidates = factsOf(ai.requests[0]).next_challenge_candidates.map((c: { code: string }) => c.code);
+    expect(candidates).not.toContain(NOT_READY);
+    const parts = stored(db).ai!;
+    expect(parts.nextChallenge).toEqual({ model: MODEL, value: candidates.slice(0, 2) });
+    expect(parts.workbookPlan?.value.stretch).toEqual({ percent: 20, standards: [] });
+    expect(parts.likelyCauses?.value).toHaveProperty(WEAK);
+    expect(console.info).toHaveBeenCalledWith("[profile] AI parts dropped", TEST, JSON.stringify([
+      { part: "nextChallenge", code: NOT_READY, problem: "prerequisites-not-secure" },
+      { part: "workbookPlan", code: NOT_READY, problem: "prerequisites-not-secure" },
+    ]));
+  });
+
+  it("are left out when the AI fails: the facts are stored, and the report and its emails go on", async () => {
+    const db = struggling();
+    const mail = memoryTransport();
+    const ai = fakeAiClient({ model: MODEL, answer: () => { throw new Error("OpenRouter answered 503: no provider"); } });
+    await runWith(db, ai, mail);
+
+    expect(stored(db).ai).toBeUndefined();
+    expect(stored(db).struggles.map((s) => s.code)).toEqual([WEAK]);
+    expect(db.tables.reports).toHaveLength(1);
+    expect(mail.delivered.map((m) => m.to)).toEqual(["priya@family.ca", "savar@unicalearning.com"]);
+    expect(console.error).toHaveBeenCalledWith("[profile] AI failed", TEST, "OpenRouter answered 503: no provider");
+  });
+
+  it("are left out when the AI takes too long, and the facts are stored before the AI answers", async () => {
+    const db = struggling();
+    const options = { reader: db.readers.key(), store: db.profiles.store };
+    // A request that never answers, and ignores its signal: the time limit ends it.
+    const silent = fakeAiClient({ model: MODEL, answer: () => new Promise(() => {}) });
+    const built = rebuildLearnerProfile(TEST, { ...options, ai: silent, aiMs: 20 });
+    await vi.waitFor(() => expect(silent.requests).toHaveLength(1));
+    // The AI has not answered: the facts are already stored.
+    expect(stored(db).struggles.map((s) => s.code)).toEqual([WEAK]);
+    expect((await built)?.ai).toBeUndefined();
+    expect(stored(db).ai).toBeUndefined();
+    expect(console.error).toHaveBeenCalledWith("[profile] AI failed", TEST, "time is up");
+  });
+
+  it("are written again when the parent answers the learning card: the AI reads the parent's answers", async () => {
+    const db = struggling();
+    const ai = fakeAiClient({ model: MODEL, answer: good });
+    await runWith(db, ai);
+    expect(factsOf(ai.requests[0]).profile.parent).toEqual({ feeling: null, goal: null, weeklyTime: null });
+
+    db.profiles.learning["child-1"] = PRIYAS_ANSWERS;
+    await rebuildLatestProfile("child-1", { reader: db.readers.key(), store: db.profiles.store, ai });
+    expect(ai.requests).toHaveLength(2);
+    expect(factsOf(ai.requests[1]).profile.parent).toEqual({ feeling: "avoids", goal: "catch_up", weeklyTime: "1_to_2h" });
+    expect(stored(db).parent.goal).toBe("catch_up");
+    expect(stored(db).ai?.workbookPlan?.model).toBe(MODEL);
+  });
+
+  it("are not asked for when the AI is off: no client, no call, the facts only", async () => {
+    const db = struggling();
+    await runWith(db, null);
+    expect(db.profiles.rows()).toHaveLength(1);
+    expect("ai" in (db.profiles.rows()[0].profile as object)).toBe(false);
   });
 });
