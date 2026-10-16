@@ -208,6 +208,10 @@ function misconceptionText(id: string | null): string | null {
   return known ? `${id}: ${known.description}` : id;
 }
 
+/** Question id to its number in the test (position + 1, as answerLines numbers them), in test order: for flagText. */
+export const questionNumbers = (answers: readonly Pick<AnswerRecord, "position" | "question_id">[]): Map<string, number> =>
+  new Map([...answers].sort((a, b) => a.position - b.position).map((a) => [a.question_id, a.position + 1]));
+
 /**
  * The answers in test order, each with its question from the stored test and its AI review. `leftOut`: the questions
  * the stored placement left out of the score (placement.pace.leftOut, #189); absent for a test stored before #189 or not

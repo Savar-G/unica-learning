@@ -17,6 +17,7 @@ import {
   storedProfile,
   type Tally,
   type WordsOrNumbers,
+  type WordsOrNumbersFinding,
 } from "@/lib/assessment";
 import type { ProfileDetail } from "@/lib/admin-store";
 import { adminTestPath, duration, flagText, helpAnswerText, levelText, when } from "@/lib/admin-view";
@@ -32,10 +33,16 @@ const misconception = (id: string | null) => (id ? MISCONCEPTIONS[id as Misconce
 const yesNo = (value: boolean) => (value ? "Yes" : "No");
 
 const WORDS_FINDING: Record<WordsOrNumbers["finding"], string> = {
-  "words-harder": "Word problems are harder: secure with bare numbers, needs attention in word problems.",
-  "numbers-harder": "Bare numbers are harder: secure in word problems, needs attention with bare numbers.",
-  "no-gap": "No gap between word problems and bare numbers.",
-  "not-enough-evidence": `Not enough evidence: fewer than ${WORDS_MIN_ANSWERS} answers of each kind.`,
+  gap: "A gap between word problems and bare numbers on at least one skill: see the skills below.",
+  "no-gap": "No gap between word problems and bare numbers on any skill with enough answers.",
+  "not-enough-evidence": `Not enough evidence: no skill had ${WORDS_MIN_ANSWERS} answers of each kind.`,
+};
+
+const SKILL_FINDING: Record<WordsOrNumbersFinding, string> = {
+  "words-harder": "Word problems harder",
+  "numbers-harder": "Bare numbers harder",
+  "no-gap": "No gap",
+  "not-enough-evidence": "Not enough evidence",
 };
 
 const AI_PARTS: { key: keyof ProfileAi; label: string }[] = [
@@ -61,11 +68,11 @@ export function AdminProfile({ email, detail }: { email: string; detail: Profile
         <p className="adm-note">This profile was built at schema version {stored.schema_version}, which this page does not read. The next build of the test replaces it.</p>
         <pre className="adm-typed">{JSON.stringify(stored.profile, null, 2)}</pre>
       </>
-      : <ProfileFacts profile={profile} />}
+      : <ProfileFacts profile={profile} numbers={detail.numbers} />}
   </AdminFrame>;
 }
 
-function ProfileFacts({ profile }: { profile: LearnerProfile }) {
+function ProfileFacts({ profile, numbers }: { profile: LearnerProfile; numbers: ReadonlyMap<string, number> }) {
   const { level, behaviour: b, wordsOrNumbers: w, unknowns: u, facts } = profile;
   const ai = AI_PARTS.flatMap(({ key, label }) => {
     const part = profile.ai?.[key] as AiWritten<unknown> | undefined;
@@ -96,10 +103,9 @@ function ProfileFacts({ profile }: { profile: LearnerProfile }) {
     </section>)}
 
     <h2>4. Words or numbers</h2>
-    <p>{WORDS_FINDING[w.finding]}</p>
-    <RecordFacts facts={[["Word problems", rate(w.words)], ["Bare numbers", rate(w.numbers)]]} />
-    <Table label="Skills asked both ways" head={["Skill", "Word problems", "Bare numbers"]} empty="No skill was asked both as a word problem and with bare numbers at or below the school grade.">
-      {w.skills.map((s) => <tr key={s.id}><td className="adm-mono">{s.id}</td><td>{right(s.words)}</td><td>{right(s.numbers)}</td></tr>)}
+    <p>{WORDS_FINDING[w.finding]} Decided skill by skill: {WORDS_MIN_ANSWERS} or more answers of each kind on the skill, and secure in one kind with needs attention in the other.</p>
+    <Table label="Skills asked both ways" head={["Skill", "Word problems", "Bare numbers", "Finding"]} empty="No skill was asked both as a word problem and with bare numbers at or below the school grade.">
+      {w.skills.map((s) => <tr key={s.id}><td className="adm-mono">{s.id}</td><td>{rate(s.words)}</td><td>{rate(s.numbers)}</td><td>{s.finding === "words-harder" || s.finding === "numbers-harder" ? <Chip tone="warn">{SKILL_FINDING[s.finding]}</Chip> : SKILL_FINDING[s.finding]}</td></tr>)}
     </Table>
 
     <h2>5. Fact fluency</h2>
@@ -120,7 +126,7 @@ function ProfileFacts({ profile }: { profile: LearnerProfile }) {
       ["Time away", b.away ? `${b.away.times} times on ${b.away.questions} of ${b.away.recorded} questions, ${duration(b.away.ms)}` : "Not recorded"],
       ["Did anyone help?", helpAnswerText(b.help.answer)], ["Help likely", yesNo(b.help.likely)],
     ]} />
-    {b.help.flags.length > 0 && <ul className="adm-list">{b.help.flags.map((f, i) => <li key={i}>{flagText(f, new Map())}</li>)}</ul>}
+    {b.help.flags.length > 0 && <ul className="adm-list">{b.help.flags.map((f, i) => <li key={i}>{flagText(f, numbers)}</li>)}</ul>}
 
     <h2>7. Learning preferences and interests</h2>
     <RecordFacts facts={[

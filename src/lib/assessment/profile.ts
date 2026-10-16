@@ -18,7 +18,7 @@ export const PROFILE_SCHEMA_VERSION = 1;
 
 /**
  * Words or numbers, the minimum evidence: at least this many scored answers of each kind (word problem, bare number)
- * on the skills that have both kinds in the test. Below it, the finding is "not-enough-evidence". A starting value;
+ * on one skill. Below it, that skill's finding is "not-enough-evidence". A starting value;
  * Savar tunes it from the first real results. Never inline it.
  */
 export const WORDS_MIN_ANSWERS = 3;
@@ -128,20 +128,23 @@ export interface ProfileStruggle extends ProfileStandard {
   misconceptions: string[];
 }
 
+/** A skill's words-or-numbers finding: the gap rule (WordsOrNumbers) on its own answers. */
+export type WordsOrNumbersFinding = "words-harder" | "numbers-harder" | "no-gap" | "not-enough-evidence";
+
 /**
  * Words or numbers (spec story 7): the correct rate on word problems beside the correct rate on bare-number questions
- * for the same skills. Only scored answers at or below the school grade count, and only on a skill the test asked in
- * both kinds (a skill a template is tagged with, #193); each answer counts once in `words` and `numbers`.
- * The finding, with WORDS_MIN_ANSWERS of each kind or more: "words-harder" when the bare-number answers are secure
- * (STRAND_SECURE_PERCENT) and the word problems need attention (below STRAND_DEVELOPING_PERCENT); "numbers-harder" for
- * the reverse; else "no-gap". With fewer, "not-enough-evidence".
+ * for the same skill, decided skill by skill. Only scored answers at or below the school grade count, and only on a
+ * skill the test asked in both kinds (a skill a template is tagged with, #193). For each skill, with WORDS_MIN_ANSWERS
+ * of each kind or more: "words-harder" when its bare-number answers are secure (STRAND_SECURE_PERCENT) and its word
+ * problems need attention (below STRAND_DEVELOPING_PERCENT); "numbers-harder" for the reverse; else "no-gap". With
+ * fewer, "not-enough-evidence". Never word problems on one skill beside bare numbers on another.
+ * The finding of the test: "gap" when a skill shows one; else "no-gap" when a skill had enough evidence; else
+ * "not-enough-evidence".
  */
 export interface WordsOrNumbers {
-  finding: "words-harder" | "numbers-harder" | "no-gap" | "not-enough-evidence";
-  words: Tally;
-  numbers: Tally;
-  /** Each skill asked in both kinds, in test order. */
-  skills: { id: string; words: Tally; numbers: Tally }[];
+  finding: "gap" | "no-gap" | "not-enough-evidence";
+  /** Each skill asked in both kinds, in test order, with its tallies and its own finding. */
+  skills: { id: string; finding: WordsOrNumbersFinding; words: Tally; numbers: Tally }[];
 }
 
 /**
@@ -300,17 +303,22 @@ function wordsOrNumbersOf(counted: readonly ProfileAnswer[], grade: Grade): Word
       bySkill.set(skill.id, kinds);
     }
   }
-  const paired = [...bySkill].filter(([, k]) => k.words.length > 0 && k.numbers.length > 0);
-  const once = (lists: ProfileAnswer[][]) => tally([...new Map(lists.flat().map((a) => [a.question.id, a])).values()]);
-  const words = once(paired.map(([, k]) => k.words));
-  const numbers = once(paired.map(([, k]) => k.numbers));
   const status = (t: Tally) => strandStatus(t.correct, t.total);
+  const skills = [...bySkill].filter(([, k]) => k.words.length > 0 && k.numbers.length > 0).map(([id, k]) => {
+    const words = tally(k.words);
+    const numbers = tally(k.numbers);
+    const finding: WordsOrNumbersFinding =
+      words.total < WORDS_MIN_ANSWERS || numbers.total < WORDS_MIN_ANSWERS ? "not-enough-evidence"
+      : status(numbers) === "secure" && status(words) === "needs-attention" ? "words-harder"
+      : status(words) === "secure" && status(numbers) === "needs-attention" ? "numbers-harder"
+      : "no-gap";
+    return { id, finding, words, numbers };
+  });
   const finding: WordsOrNumbers["finding"] =
-    words.total < WORDS_MIN_ANSWERS || numbers.total < WORDS_MIN_ANSWERS ? "not-enough-evidence"
-    : status(numbers) === "secure" && status(words) === "needs-attention" ? "words-harder"
-    : status(words) === "secure" && status(numbers) === "needs-attention" ? "numbers-harder"
-    : "no-gap";
-  return { finding, words, numbers, skills: paired.map(([id, k]) => ({ id, words: tally(k.words), numbers: tally(k.numbers) })) };
+    skills.some((s) => s.finding === "words-harder" || s.finding === "numbers-harder") ? "gap"
+    : skills.some((s) => s.finding === "no-gap") ? "no-gap"
+    : "not-enough-evidence";
+  return { finding, skills };
 }
 
 /** The first and the last third of the answers at the school grade (Thirds). */

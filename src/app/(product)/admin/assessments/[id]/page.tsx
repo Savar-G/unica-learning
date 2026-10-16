@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getStrokes, getTest, requireAdmin } from "@/lib/admin-store";
-import { adminParentPath, adminProfilePath, adminReportPath, answerLines, duration, factLines, flagText, helpAnswerText, levelText, shownWithoutAnswer, when } from "@/lib/admin-view";
+import { adminParentPath, adminProfilePath, adminReportPath, answerLines, duration, factLines, flagText, helpAnswerText, levelText, questionNumbers, shownWithoutAnswer, when } from "@/lib/admin-view";
 import { contextFacts } from "@/lib/admin-view";
 import { QuestionTimeline, ShownWithoutAnswer, awayCount, changeCount, readAloudCount } from "@/components/admin-timeline";
 import { AdminFrame, Chip, StatusChip, Table, gradeAndPlace } from "@/components/admin";
@@ -18,7 +18,7 @@ export default async function TestDetailPage({ params }: PageProps<"/admin/asses
   if (!detail) notFound();
   const { test: t, report, facts, images } = detail;
   const lines = answerLines(t.stored, detail.answers, detail.reviews, t.placement?.pace?.leftOut);
-  const numbers = new Map(lines.map((a) => [a.questionId, a.number]));
+  const numbers = questionNumbers(detail.answers);
   const work = lines.filter((a) => a.work.required || a.work.image || a.work.text || a.review || a.questionId in strokes);
   const quick = facts ? factLines(facts.test, facts.answers) : [];
   return <AdminFrame email={admin.email} section="tests" title={`${t.child?.first_name ?? "Child"}'s test`}>
