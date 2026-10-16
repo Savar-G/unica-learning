@@ -1,4 +1,4 @@
-// Sample bank: levels 2-6, enough for a full grade 3, 4 or 5 test.
+// Fixture bank: levels 2-6. Use bankFor for full BC tests with strand minimums and no repeated templates.
 // Items follow the curriculum map, section 3; wrong answers follow section 4.
 // The full banks replace this: grades 1-2 (#74), 3-5 (#75), 6-7 (#76).
 // Other provinces' grades are set only where the curriculum map, section 5, gives them.
