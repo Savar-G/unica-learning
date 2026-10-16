@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { flyerDestination, flyerOf, flyerRows, flyerUrl, flyerVerdict, isLikelyBot, per100, twoRatePValue, type FlyerRow } from "@/lib/flyers";
+import { flyerDestination, flyerOf, flyerRows, flyerUrl, flyerVerdict, isLikelyBot, per100, fisherPValue, TARGET_SIGNUPS, type FlyerRow } from "@/lib/flyers";
 
 // The door-to-door flyer test: where a scan goes, which signups belong to which flyer, and what the comparison says.
 
@@ -83,10 +83,19 @@ describe("per 100 flyers", () => {
 describe("the comparison", () => {
   const row = (code: "a" | "b", delivered: number, accounts: number): FlyerRow => ({ code, delivered, scans: 0, accounts, started: 0, finished: 0, cardSaved: 0, paying: 0 });
 
-  it("says p is near 1 for equal rates and small for a large gap", () => {
-    expect(twoRatePValue(10, 200, 10, 200)).toBeCloseTo(1, 1);
-    expect(twoRatePValue(40, 200, 15, 200)).toBeLessThan(0.01);
-    expect(twoRatePValue(1, 0, 1, 10)).toBeNull();
+  it("says p is 1 for equal rates and small for a large gap", () => {
+    expect(fisherPValue(10, 200, 10, 200)).toBeCloseTo(1, 6);
+    expect(fisherPValue(40, 200, 15, 200)).toBeLessThan(0.01);
+    expect(fisherPValue(12, 4000, 3, 1000)).toBeCloseTo(1, 6);
+  });
+
+  it("is Fisher's exact test (the tea-tasting table: 3 of 4 against 1 of 4 gives p = 0.486)", () => {
+    expect(fisherPValue(3, 4, 1, 4)).toBeCloseTo(0.4857, 4);
+  });
+
+  it("cannot be told without flyers, or with more signups than flyers", () => {
+    expect(fisherPValue(1, 0, 1, 10)).toBeNull();
+    expect(fisherPValue(5, 4, 1, 10)).toBeNull();
   });
 
   it("asks for the handed-out counts first, because rates need them", () => {
@@ -98,6 +107,17 @@ describe("the comparison", () => {
     const early = flyerVerdict(row("a", 100, 6), row("b", 100, 1));
     expect(early.status).toBe("too-early");
     expect(early.leader).toBe("a");
+  });
+
+  it("asks to check the counts when a flyer has more signups than were handed out", () => {
+    expect(flyerVerdict(row("a", 5, 8), row("b", 100, 4)).status).toBe("check-delivered");
+  });
+
+  it("does not call a winner before the target, however large the gap looks", () => {
+    const early = flyerVerdict(row("a", 200, 20), row("b", 200, 4));
+    expect(20 + 4).toBeLessThan(TARGET_SIGNUPS);
+    expect(early).toMatchObject({ status: "leaning", leader: "a" });
+    expect(early.text).toContain(`${TARGET_SIGNUPS} signups in total`);
   });
 
   it("calls a winner only when the gap is unlikely to be luck", () => {

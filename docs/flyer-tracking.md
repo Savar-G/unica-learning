@@ -15,8 +15,10 @@ Link previews, crawlers and requests with no user agent are redirected but not c
 
 The measure that decides the test is **signups per 100 flyers handed out**. Scans are a softer signal (curiosity, repeat scans).
 
-- Under 10 signups in total: no call. One more family can change the order.
-- At 10 or more: a two-proportion z-test on signups per flyer handed out. p < 0.05 is called a clear winner, p < 0.2 is "leaning", anything above is "no clear difference".
+- Under 10 signups in total (`MIN_SIGNUPS`): no call. One more family can change the order.
+- From 10: Fisher's exact test on signups per flyer handed out (exact, because the counts are small). p < 0.2 is "leaning", anything above is "no clear difference".
+- A winner ("clear", p < 0.05) is called only at 40 signups in total (`TARGET_SIGNUPS` in `src/lib/flyers.ts`). The target is fixed before the test so that checking the page every day does not turn a lucky week into a winner. 40 catches a large gap (about two and a half times the signups); to find a smaller one, raise the target before the test starts.
+- Google signups keep their flyer too: `/start` keeps the UTM tags for the browser tab (`src/lib/visit-source.ts`), and the account form on `/account/finish` reads them back. A parent who scans, leaves, and signs up later from a fresh visit is not counted for either flyer.
 
 Run it fairly: alternate A and B house by house on the same streets in the same hours, hand out about equal numbers, and do not change a flyer, the price or the offer mid-test.
 

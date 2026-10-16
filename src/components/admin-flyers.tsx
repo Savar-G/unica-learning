@@ -3,7 +3,7 @@
 import type { ReactNode } from "react";
 import { at } from "@/lib/admin-dashboard";
 import type { FlyerPage } from "@/lib/flyer-store";
-import { FLYERS, flyerUrl, MIN_SIGNUPS, per100, type FlyerRow } from "@/lib/flyers";
+import { FLYERS, flyerUrl, MIN_SIGNUPS, per100, TARGET_SIGNUPS, type FlyerRow } from "@/lib/flyers";
 import { DeliveredForm } from "./admin-flyers-form";
 
 const n = (v: number) => v.toLocaleString("en-CA");
@@ -75,7 +75,7 @@ export function FlyersView({ d }: { d: FlyerPage }) {
         <li>Alternate A and B house by house on the same streets, in the same hours. Do not give A to one street and B to another.</li>
         <li>Hand out about the same number of each, and type the counts in above. Everything is shown per 100 flyers, so a few more of one is fine.</li>
         <li>Do not change a flyer, the price or the offer during the test. Start a new test if you do.</li>
-        <li>Judge by signups per 100 flyers, not scans: scans include people who looked and left, and repeat scans. Wait for at least {MIN_SIGNUPS} signups in total before trusting a winner.</li>
+        <li>Judge by signups per 100 flyers, not scans: scans include people who looked and left, and repeat scans. The page says nothing under {MIN_SIGNUPS} signups in total, and only calls a winner at {TARGET_SIGNUPS}. Decide the target before you start, and do not stop early because one flyer looks ahead.</li>
         <li>
           {d.withTests ? "Team and test families are counted." : "Team and test families are left out."}{" "}
           <a href={d.withTests ? "?" : "?tests=1"}>{d.withTests ? "Leave them out" : "Count them too"}</a>

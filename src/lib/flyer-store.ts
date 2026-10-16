@@ -21,7 +21,8 @@ export interface FlyerPage {
   withTests: boolean;
 }
 
-const missingTable = (e: { code?: string; message: string }) => e.code === "PGRST205" || e.code === "42P01" || /flyer_(scans|batches)/.test(e.message);
+// Only "no such table" means the migration is not applied. Any other error (a missing grant, say) is a real failure.
+const missingTable = (e: { code?: string }) => e.code === "PGRST205" || e.code === "42P01";
 
 async function flyerTables(a: AdminSession) {
   const batches = await a.db.from("flyer_batches").select("code, delivered");
@@ -40,6 +41,7 @@ async function flyerTables(a: AdminSession) {
         a.db.from("flyer_scans").select("scanned_at").eq("code", code).order("scanned_at", { ascending: false }).limit(1),
       ]);
       if (count.error) throw new Error(`flyer scans: ${count.error.message}`);
+      if (last.error) throw new Error(`flyer last scan: ${last.error.message}`);
       scans[code] = count.count ?? 0;
       lastScan[code] = (last.data as { scanned_at: string }[] | null)?.[0]?.scanned_at ?? null;
     }),
