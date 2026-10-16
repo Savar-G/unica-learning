@@ -309,7 +309,14 @@ export async function startStates(store: AttemptStore, parent: string, now: numb
   }
   const byChild = new Map<string, Attempt[]>();
   for (const a of attempts) byChild.set(a.childId, [...(byChild.get(a.childId) ?? []), a]);
-  return new Map([...byChild].map(([id, list]) => [id, startState(list, now)]));
+  const states = [...byChild].map(([id, list]) => [id, startState(list, now)] as const);
+  // #190 (#225): a test with every main answer in may wait on a round the child left part way: the start screen's
+  // "Keep going / Stop here". A failed read leaves the plain "finish".
+  return new Map(await Promise.all(states.map(async ([id, state]): Promise<[string, StartState]> => {
+    if (state.kind !== "finish") return [id, state];
+    const round = await roundInProgress(store, parent, state.attemptId);
+    return [id, round ? { ...state, round } : state];
+  })));
 }
 
 /** A child's start state; a child with no tests can start one. */

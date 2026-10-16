@@ -11,7 +11,7 @@ import {
   type StoredTest,
   type Submission,
 } from "@/lib/assessment";
-import { answerQuestion, extraRoundState, finishTest, nextStep, roundInProgress, skipExtraRound, stopExtraRound, StoreError, takeExtraRound, type AnswerInput } from "@/lib/test-attempt";
+import { answerQuestion, extraRoundState, finishTest, nextStep, roundInProgress, skipExtraRound, startStates, stopExtraRound, StoreError, takeExtraRound, type AnswerInput } from "@/lib/test-attempt";
 import { memoryAttemptStore, type MemoryTest } from "@/lib/test-attempt-memory";
 
 // The optional extra round (#190, spec #181) through the test attempt module, against the in-memory store with the
@@ -317,6 +317,24 @@ describe("stopping the round part way, during the test", () => {
     const done = await takenAndAnswered(0);
     await answerRound(done.memory, TAKEN);
     expect(await roundInProgress(done.memory.store, P1, "a1")).toBeNull();
+  });
+
+  // The account page's card for the test (#225): the same child who gets the return screen is told they were doing the
+  // extra questions, not that "all answers are in".
+  it("tells the account card the child was doing the round, until the stop or the end", async () => {
+    const { memory, at } = await takenAndAnswered(3);
+    const FINISH = { kind: "finish", attemptId: "a1" };
+    const states = () => startStates(memory.store, P1, at + MINUTE);
+    expect((await states()).get(C1)).toEqual({ ...FINISH, round: { answered: 3, questions: 8 } });
+    // Stopped: the test finishes as if the round had been skipped, so the card has nothing to say about a round.
+    await stopExtraRound(memory.store, P1, "a1", at + MINUTE);
+    expect((await states()).get(C1)).toEqual(FINISH);
+    // The round is offered, not started: the card says only that the answers are in.
+    expect((await startStates(family(mainDone(firstWrong)).store, P1, at)).get(C1)).toEqual(FINISH);
+    // Every round answer is in.
+    const done = await takenAndAnswered(0);
+    await answerRound(done.memory, TAKEN);
+    expect((await startStates(done.memory.store, P1, at)).get(C1)).toEqual(FINISH);
   });
 });
 

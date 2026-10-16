@@ -11,7 +11,7 @@
 // Stop and resume (#72): test_stop (status closed = the tab closed or left, sent with a beacon; offline = the connection
 // dropped, retried by PostHog when it comes back), during a question, the break or quick facts; test_resume (an open
 // test continued, or one with every answer in opened to finish). test_start is now only a new test (status new, or
-// restart after one expired). test_start_click status: new, retake, in_progress, finish, expired.
+// restart after one expired). test_start_click status: new, retake, in_progress, finish, round (#225: left part way through the extra round), expired.
 // The report (#65): report_open (src = email when the parent came from the report email, else account).
 // Whiteboard (#67): test_work (an answer stored with work; status required or optional, channel draw, type or both),
 // test_work_nudge (a show-your-work question was answered with an empty board, once per question).

@@ -10,7 +10,7 @@ import type { FactsTest } from "@/lib/assessment";
 import type { FactsStore } from "@/lib/test-attempt";
 import type { AnswerTimeline, ShownStore } from "@/lib/test-attempt";
 import type { ContextStore } from "@/lib/test-attempt";
-import { extraRoundState, roundInProgress, type ExtraRoundRecord, type ExtraRoundState, type ExtraRoundStore } from "@/lib/test-attempt";
+import { extraRoundState, type ExtraRoundRecord, type ExtraRoundState, type ExtraRoundStore } from "@/lib/test-attempt";
 import { strokesPath, workPath } from "@/lib/work-payload";
 import { WORK_BUCKET } from "@/lib/work-store";
 
@@ -336,17 +336,6 @@ export async function parentExtraRound(parent: string, assessmentId: string): Pr
   const admin = adminClient();
   if (!admin) return null;
   return extraRoundState(attemptStore(admin), parent, assessmentId);
-}
-
-/**
- * #190: the extra round the child is taking in the open test, for the start screen: Keep going or Stop here. Null when
- * there is none, or it cannot be known (no secret key, an id that is not a uuid, a failed read).
- */
-export async function parentRoundInProgress(parent: string, assessmentId: string): Promise<{ answered: number; questions: number } | null> {
-  if (!isUuid(assessmentId)) return null;
-  const admin = adminClient();
-  if (!admin) return null;
-  return roundInProgress(attemptStore(admin), parent, assessmentId);
 }
 
 /** #190: the columns of public.assessments that record the extra round (migration add_extra_round). */
