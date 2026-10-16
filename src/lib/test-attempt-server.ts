@@ -1,7 +1,7 @@
 import "server-only";
 import { randomBytes } from "node:crypto";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import type { Grade, StartState, StoredTest } from "@/lib/assessment";
+import type { Grade, HelpAnswer, StartState, StoredTest } from "@/lib/assessment";
 import type { Child } from "@/lib/account";
 import { isUuid, toAttempt, type AttemptRow } from "@/lib/assessment-store";
 import { retakeState, startStates, StoreError, type AttemptStore, type RetakeState } from "@/lib/test-attempt";
@@ -10,6 +10,7 @@ import type { FactsTest } from "@/lib/assessment";
 import type { FactsStore } from "@/lib/test-attempt";
 import type { AnswerTimeline, ShownStore } from "@/lib/test-attempt";
 import type { ContextStore } from "@/lib/test-attempt";
+import { extraRoundState, type ExtraRoundRecord, type ExtraRoundState, type ExtraRoundStore } from "@/lib/test-attempt";
 import { strokesPath, workPath } from "@/lib/work-payload";
 import { WORK_BUCKET } from "@/lib/work-store";
 
@@ -33,6 +34,7 @@ export function attemptStore(admin: SupabaseClient): AttemptStore {
     ...factsStore(admin),
     ...shownStore(admin),
     ...contextStore(admin),
+    ...extraRoundStore(admin),
     async child(parent, childId) {
       const { data, error } = await admin.from("children").select("id, grade, province")
         .eq("id", childId).eq("parent_id", parent).maybeSingle<Pick<Child, "id" | "grade" | "province">>();
@@ -55,8 +57,9 @@ export function attemptStore(admin: SupabaseClient): AttemptStore {
     },
 
     async load(parent, id) {
-      const { data: row, error } = await admin.from("assessments").select(`${ATTEMPT_COLUMNS}, test, break_started_at, break_ended_at`)
-        .eq("id", id).eq("parent_id", parent).maybeSingle<AttemptRow & { test: StoredTest; break_started_at: string | null; break_ended_at: string | null }>();
+      const { data: row, error } = await admin.from("assessments").select(`${ATTEMPT_COLUMNS}, test, break_started_at, break_ended_at, help, ${ROUND_COLUMNS}`)
+        .eq("id", id).eq("parent_id", parent)
+        .maybeSingle<AttemptRow & { test: StoredTest; break_started_at: string | null; break_ended_at: string | null; help: HelpAnswer | null } & RoundRow>();
       if (error) throw new StoreError("load failed", error.message);
       if (!row) return null;
       const { data: answers, error: answersError } = await admin.from("answers")
@@ -68,6 +71,8 @@ export function attemptStore(admin: SupabaseClient): AttemptStore {
         test: row.test,
         answers: (answers ?? []).map((a) => ({ questionId: a.question_id, response: a.response, timeMs: a.time_ms })),
         ...(row.break_started_at && { break: { startedAt: Date.parse(row.break_started_at), ended: row.break_ended_at != null } }),
+        help: row.help,
+        extraRound: roundRecord(row),
       };
     },
 
@@ -138,6 +143,8 @@ export function attemptStore(admin: SupabaseClient): AttemptStore {
         work_text: answer.workText,
         strokes_path: answer.strokesPath ?? null,
         ...timelineColumns(answer.timeline),
+        // #190: "extra" for an answer to the extra round (migration add_extra_round).
+        round: answer.round,
       });
       // One answer per place (unique index on assessment_id and position): another request stored it first.
       if (error?.code === "23505") return "taken";
@@ -152,7 +159,8 @@ export function attemptStore(admin: SupabaseClient): AttemptStore {
 
     async complete(id, { at, placement, help }) {
       const { error } = await admin.from("assessments")
-        .update({ status: "completed", completed_at: iso(at), route: placement.route, placement, help })
+        // #190: a round taken during the test finishes with it.
+        .update({ status: "completed", completed_at: iso(at), route: placement.route, placement, help, ...(placement.extraRound ? { extra_finished_at: iso(at) } : {}) })
         .eq("id", id).eq("status", "in_progress");
       if (error) throw new StoreError("finish failed", error.message);
     },
@@ -317,4 +325,75 @@ export async function parentRetakeState(parent: string, childId: string): Promis
   const admin = adminClient();
   if (!admin) return null;
   return retakeState(attemptStore(admin), parent, childId, Date.now());
+}
+
+/**
+ * #190: what the report offers about the extra round of this test: the round, or the rest of a round the child started.
+ * Null when there is none, or it cannot be known (no secret key, an id that is not a uuid, a failed read).
+ */
+export async function parentExtraRound(parent: string, assessmentId: string): Promise<ExtraRoundState | null> {
+  if (!isUuid(assessmentId)) return null;
+  const admin = adminClient();
+  if (!admin) return null;
+  return extraRoundState(attemptStore(admin), parent, assessmentId);
+}
+
+/** #190: the columns of public.assessments that record the extra round (migration add_extra_round). */
+const ROUND_COLUMNS = "extra_offered_at, extra_skipped_at, extra_started_at, extra_finished_at";
+
+interface RoundRow {
+  extra_offered_at: string | null;
+  extra_skipped_at: string | null;
+  extra_started_at: string | null;
+  extra_finished_at: string | null;
+}
+
+const msOrNull = (time: string | null) => (time ? Date.parse(time) : null);
+
+const roundRecord = (row: RoundRow): ExtraRoundRecord => ({
+  offeredAt: msOrNull(row.extra_offered_at),
+  skippedAt: msOrNull(row.extra_skipped_at),
+  startedAt: msOrNull(row.extra_started_at),
+  finishedAt: msOrNull(row.extra_finished_at),
+});
+
+/**
+ * The store's operations for the extra round (#190): columns of public.assessments, each written by an update guarded
+ * in the update itself, so two requests at once cannot both win. The round's questions go into the stored test
+ * (`test.extra`) in the same update as its start time.
+ */
+function extraRoundStore(admin: SupabaseClient): ExtraRoundStore {
+  return {
+    async recordExtraOffer(id, at) {
+      const { error } = await admin.from("assessments").update({ extra_offered_at: iso(at) }).eq("id", id).is("extra_offered_at", null);
+      if (error) throw new StoreError("extra round offer save failed", error.message);
+    },
+
+    async skipExtraRound(id, at) {
+      const { error } = await admin.from("assessments").update({ extra_skipped_at: iso(at) })
+        .eq("id", id).eq("status", "in_progress").is("extra_started_at", null).is("extra_skipped_at", null);
+      if (error) throw new StoreError("extra round skip failed", error.message);
+    },
+
+    // A stop part way during the test is recorded as the skip time, after the start (no new column).
+    async stopExtraRound(id, at) {
+      const { error } = await admin.from("assessments").update({ extra_skipped_at: iso(at) })
+        .eq("id", id).eq("status", "in_progress").not("extra_started_at", "is", null).is("extra_skipped_at", null).is("extra_finished_at", null);
+      if (error) throw new StoreError("extra round stop failed", error.message);
+    },
+
+    async startExtraRound(id, { at, test }) {
+      const { data, error } = await admin.from("assessments").update({ test, extra_started_at: iso(at) })
+        .eq("id", id).is("extra_started_at", null).neq("status", "expired").select("id");
+      if (error) throw new StoreError("extra round start failed", error.message);
+      return (data ?? []).length === 1 ? "stored" : "taken";
+    },
+
+    async finishExtraRound(id, { at, placement }) {
+      const { data, error } = await admin.from("assessments").update({ placement, extra_finished_at: iso(at) })
+        .eq("id", id).eq("status", "completed").not("extra_started_at", "is", null).is("extra_finished_at", null).select("id");
+      if (error) throw new StoreError("extra round finish failed", error.message);
+      return (data ?? []).length === 1;
+    },
+  };
 }

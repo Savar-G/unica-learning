@@ -18,6 +18,7 @@ import { rngFor } from "./rng";
 import type {
   Answer,
   ChildProfile,
+  ExtraRoundOffer,
   Level,
   LevelResult,
   Placement,
@@ -83,7 +84,7 @@ export interface SessionOptions {
 
 /** Two questions with this key look the same to the child. */
 // A drawn figure (#79) is part of the question: two bar graphs with the same words are different questions.
-const sameQuestion = (q: Question) => `${q.prompt}|${[...(q.choices ?? [])].sort().join("|")}|${q.figure ? JSON.stringify(q.figure) : ""}`;
+export const sameQuestion = (q: Question) => `${q.prompt}|${[...(q.choices ?? [])].sort().join("|")}|${q.figure ? JSON.stringify(q.figure) : ""}`;
 
 // One stage: `count` questions at `level`, rotating through the band's strands.
 // A strand with no questions at this level (fractions below level 3) gives its turns to the others.
@@ -272,9 +273,9 @@ export function createSession(profile: ChildProfile, seed: number, options: Sess
   };
 }
 
-/** Stage 1, then the stage 2 form the child was routed to. */
+/** Stage 1, then the stage 2 form the child was routed to, then the extra round when the child took one (#190). */
 const questionsOnRoute = (session: Session): Question[] =>
-  session.route ? [...session.stage1, ...session.stage2[session.route]] : session.stage1;
+  session.route ? [...session.stage1, ...session.stage2[session.route], ...(session.extra ?? [])] : session.stage1;
 
 /** The next question to show, or null when the test is complete. */
 export function nextQuestion(session: Session): Question | null {
@@ -337,8 +338,8 @@ export function submitAnswer(session: Session, submission: Submission): Session 
 
 /** The part of a session the server stores when the test starts. The answers are stored one row at a time. */
 export function storedTest(session: Session): StoredTest {
-  const { profile, seed, stage1, stage2 } = session;
-  return { profile, seed, stage1, stage2 };
+  const { profile, seed, stage1, stage2, extra } = session;
+  return { profile, seed, stage1, stage2, ...(extra ? { extra } : {}) };
 }
 
 /** Rebuilds a session from the stored test and the answers in the order given, marking each one again. */
@@ -359,13 +360,24 @@ export function testLength(test: StoredTest, route: Route | null): number {
 export function testStep(session: Session): TestStep {
   const breakAfter = session.stage1.length;
   // Before routing, use the longest stored form. Once routed, the exact stored form is authoritative.
-  const total = session.route
+  const main = session.route
     ? testLength(session, session.route)
     : breakAfter + Math.max(...Object.values(session.stage2).map((form) => form.length));
+  // #190: the extra round, when the child took one, comes after the main test and counts in its total.
+  const extra = session.extra?.length ?? 0;
+  const total = main + extra;
   const q = nextQuestion(session);
-  return q
-    ? { status: "question", question: toPublicQuestion(q), number: session.answers.length + 1, total, breakAfter, takeYourTime: takeYourTime(session.answers) }
-    : { status: "complete", total };
+  if (!q) return { status: "complete", total };
+  const number = session.answers.length + 1;
+  return {
+    status: "question",
+    question: toPublicQuestion(q),
+    number,
+    total,
+    breakAfter,
+    takeYourTime: takeYourTime(session.answers),
+    ...(number > main ? { extra: { number: number - main, total: extra } } : {}),
+  };
 }
 
 /** True on the first question after halfway: the browser shows the skippable break screen before it (D-083). */
@@ -418,5 +430,13 @@ export function finish(session: Session, facts: FactsSession | null = null, help
     facts: facts ? factsResult(facts) : null,
     flags: flagsFor(session.answers, help),
     pace: paceOf(session.answers),
+    // #190: the round's answers count above like main answers; this records that the result includes them.
+    ...(session.extra?.length ? { extraRound: extraRoundRecord(session.profile.grade, session.extra) } : {}),
   };
+}
+
+/** #190: the extra round as the placement records it: its size and its areas, in band order. */
+export function extraRoundRecord(grade: Session["profile"]["grade"], extra: readonly Question[]): ExtraRoundOffer {
+  const covered = new Set(extra.map((q) => REPORTED_STRAND[q.strand]));
+  return { questions: extra.length, strands: bandFor(grade).strands.filter((s) => covered.has(s)) };
 }

@@ -4,9 +4,9 @@ import { flyerDestination, flyerOf, flyerRows, flyerUrl, flyerVerdict, isLikelyB
 // The door-to-door flyer test: where a scan goes, which signups belong to which flyer, and what the comparison says.
 
 describe("where a scan goes", () => {
-  it("is the free assessment signup, tagged with the flyer", () => {
+  it("is the home page, tagged with the flyer", () => {
     const url = new URL(flyerDestination("b"), "https://unicalearning.com");
-    expect(url.pathname).toBe("/start");
+    expect(url.pathname).toBe("/");
     expect(Object.fromEntries(url.searchParams)).toEqual({ utm_source: "flyer", utm_medium: "print", utm_campaign: "door-to-door", utm_content: "b" });
   });
 

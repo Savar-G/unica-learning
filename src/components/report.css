@@ -92,6 +92,13 @@
 .rpt-overall .rpt-sure { margin: 10px 0 0; font-size: 13px; color: var(--ink); }
 .rpt-sure-lead { color: var(--ink-2); }
 .support-page .rpt .rpt-reliability-go { margin-top: 12px; }
+/* #190: the extra round, under the areas whose early signs it checks: a soft grey card with the orange marker. */
+.rpt-extra { margin-top: 24px; padding: 18px 20px; border-radius: 10px; background: var(--soft); font-size: 15px; line-height: 1.5; }
+.support-page .rpt .rpt-extra .rpt-k { display: flex; gap: 8px; align-items: center; margin-bottom: 8px; color: var(--ink-2); }
+.rpt-extra .rpt-k::before { content: ""; width: 8px; height: 8px; background: var(--accent); }
+[data-look="warm"] .rpt .rpt-extra h3 { margin: 0 0 6px; font: 600 18px/1.35 var(--sans); letter-spacing: -0.01em; }
+.support-page .rpt .rpt-extra p { max-width: 60ch; }
+.support-page .rpt .rpt-extra-go { margin-top: 14px; }
 .rpt-chip { display: inline-block; padding: 4px 10px; border-radius: 999px; font: 500 12.5px/1.2 var(--mono); white-space: nowrap; }
 .rpt-chip.is-secure { background: var(--st-secure-bg); color: var(--st-secure); }
 .rpt-chip.is-developing { background: var(--st-dev-bg); color: var(--st-dev); }

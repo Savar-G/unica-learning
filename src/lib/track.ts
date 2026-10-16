@@ -11,7 +11,7 @@
 // Stop and resume (#72): test_stop (status closed = the tab closed or left, sent with a beacon; offline = the connection
 // dropped, retried by PostHog when it comes back), during a question, the break or quick facts; test_resume (an open
 // test continued, or one with every answer in opened to finish). test_start is now only a new test (status new, or
-// restart after one expired). test_start_click status: new, retake, in_progress, finish, expired.
+// restart after one expired). test_start_click status: new, retake, in_progress, finish, round (#225: left part way through the extra round), expired.
 // The report (#65): report_open (src = email when the parent came from the report email, else account).
 // Whiteboard (#67): test_work (an answer stored with work; status required or optional, channel draw, type or both),
 // test_work_nudge (a show-your-work question was answered with an empty board, once per question).
@@ -24,6 +24,9 @@
 // analytics.
 // Help flags (#71): test_help (status yes, a-little or no: the answer to "Did anyone help?", sent once the test is stored).
 // Rushing (#189): test_pace (status shown: "Take your time" showed after three very fast answers in a row). No time or score.
+// Extra round (#190): test_extra (status offered, taken, skipped, stopped (Stop here part way) or finished; src = test
+// when the offer came after the last main question, report when the parent opened it from the report). No area, count
+// or score.
 // Reminders (#73): reminder_open (status = continue, come_back, start or start_followup: the parent opened the start screen from that
 // reminder email), unsubscribe (status done or failed: the unsubscribe page turned reminders off), unsubscribe_page
 // (status unsubscribed = already off, unknown = a link that does not work, failed).

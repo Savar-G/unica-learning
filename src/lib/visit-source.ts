@@ -38,3 +38,9 @@ export function visitSource({ search, referrer, stored }: { search: string; refe
   const tags = Object.keys(here).length ? here : storedTags(stored);
   return { ...(referrer ? { referrer } : {}), ...tags };
 }
+
+/** The signup link for a visit: /start, with the visit's tags carried along so a signup keeps its channel. */
+export function startHref(search: URLSearchParams | string): string {
+  const query = new URLSearchParams(sourceTags(new URLSearchParams(search).toString())).toString(); // not .size: older iPhones lack it
+  return query ? `/start?${query}` : "/start";
+}

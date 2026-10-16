@@ -21,8 +21,9 @@ export function FlyersView({ d }: { d: FlyerPage }) {
   return (
     <>
       <p className="adm-lead">
-        Two flyers, two QR codes. Each QR code opens its own address, which counts the scan and sends the parent to the free assessment signup,
-        tagged with the flyer. A signup keeps its flyer, so the funnel below follows each family from the door to a saved card.
+        Two flyers, two QR codes. Each QR code opens its own address, which counts the scan and sends the parent to the home page,
+        tagged with the flyer. The tag goes with them when they tap &quot;Take free assessment&quot;, and a signup keeps its flyer, so the funnel below
+        follows each family from the door to a saved card. A parent who browses to another page first and starts from there is not tagged.
       </p>
 
       {!d.ready && (

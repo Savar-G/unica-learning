@@ -64,8 +64,12 @@ export type StartState =
   | { kind: "start"; retake: boolean }
   /** "Continue test": the open test, until `resumeUntil`. */
   | { kind: "resume"; attemptId: string; resumeUntil: number }
-  /** "Finish test": every answer is in, but the test was not scored (the scoring call failed). Opening it scores it. */
-  | { kind: "finish"; attemptId: string }
+  /**
+   * "Finish test": every main answer is in, but the test was not scored (the scoring call failed, or the child left part
+   * way through the extra round, #190: `round`, the round's questions answered and asked). Opening it scores it, or,
+   * for a round left part way, shows Keep going / Stop here.
+   */
+  | { kind: "finish"; attemptId: string; round?: { answered: number; questions: number } }
   /** "Start again": the last test ran out of time; a new one has new questions. */
   | { kind: "expired"; attemptId: string }
   /** No new test yet: it opens 30 days after the last completed one. */

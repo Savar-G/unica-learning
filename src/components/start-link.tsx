@@ -4,7 +4,9 @@
 // assessment. A link works without JavaScript, with the keyboard and in a new tab. /start sends a signed-in parent to
 // their account. `src` names the entry for cta_click, which reaches analytics only after the visitor accepts.
 import Link, { useLinkStatus } from "next/link";
-import type { ReactNode } from "react";
+import { useSearchParams } from "next/navigation";
+import { Suspense, type ReactNode } from "react";
+import { startHref } from "@/lib/visit-source";
 import { track } from "@/lib/track";
 
 function StartLinkLabel({ children }: { children: ReactNode }) {
@@ -20,12 +22,27 @@ function StartLinkLabel({ children }: { children: ReactNode }) {
   );
 }
 
-export function StartLink({ src, className = "btn", children }: { src: string; className?: string; children: ReactNode }) {
+function Anchor({ href, src, className, children }: { href: string; src: string; className: string; children: ReactNode }) {
   return (
     // Keep this page visible with inline feedback until /start is ready. Use default prefetch so the
     // session-dependent destination is checked on navigation, not reused from a full-page prefetch.
-    <Link className={className} href="/start" onClick={() => track("cta_click", { src })}>
+    <Link className={className} href={href} onClick={() => track("cta_click", { src })}>
       <StartLinkLabel>{children}</StartLinkLabel>
     </Link>
+  );
+}
+
+// The visit's utm_* tags (a flyer's QR code lands on the home page with them) go on to /start, because the signup form
+// keeps the tags of the page it is on. The server-rendered page links to plain /start; the tags are added once the page
+// loads, so the page stays static.
+function TaggedStartLink(props: { src: string; className: string; children: ReactNode }) {
+  return <Anchor {...props} href={startHref(useSearchParams())} />;
+}
+
+export function StartLink({ src, className = "btn", children }: { src: string; className?: string; children: ReactNode }) {
+  return (
+    <Suspense fallback={<Anchor href="/start" src={src} className={className}>{children}</Anchor>}>
+      <TaggedStartLink src={src} className={className}>{children}</TaggedStartLink>
+    </Suspense>
   );
 }

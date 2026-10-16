@@ -44,6 +44,9 @@ export const WORKING_LEVEL_PERCENT = 70;
 /** BC selection: questions at or below school grade per reported strand (#188, D-110). */
 export const STRAND_MINIMUM_QUESTIONS = 6;
 
+/** The optional extra round (#190): at most this many questions, at or below the school grade, on the early-sign areas. */
+export const EXTRA_ROUND_QUESTIONS = 8;
+
 export const STRAND_SECURE_PERCENT = 80;
 export const STRAND_DEVELOPING_PERCENT = 50;
 
