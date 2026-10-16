@@ -18,7 +18,7 @@ import { fakeReviewer } from "@/lib/work-review-fake";
 // The report job (#65), through its public interface, on in-memory adapters only (#162): the report-loading module's
 // reader with the secret key's access (src/lib/report-loading-memory.ts), the job's own store (the report insert, the
 // stored AI reviews, the parent's contact details, the unsubscribe check; src/lib/report-job-memory.ts) over the same
-// tables, a comparison read that returns a cohort, and the AI step's fake reviewer. The emails go through the delivery
+// tables and with the same read counter, a comparison read that returns a cohort, and the AI step's fake reviewer. The emails go through the delivery
 // module (#151) with the in-memory transport and the in-memory report row ledger, which keeps the report row's claim
 // rules. The network is a stub that records any request, so a test sees any call to Supabase or Resend.
 vi.mock("server-only", () => ({}));
@@ -64,7 +64,7 @@ function database({ unsubscribed = false, parent = PRIYA as typeof PRIYA | null,
     drawings: [DRAWING],
   };
   const readers = memoryReportReaders(tables);
-  const job = memoryReportJobStore(tables, { parents: parent ? [{ id: "parent-1", ...parent }] : [], unsubscribed: unsubscribed ? ["parent-1"] : [] });
+  const job = memoryReportJobStore(tables, { reads: readers.reads, parents: parent ? [{ id: "parent-1", ...parent }] : [], unsubscribed: unsubscribed ? ["parent-1"] : [] });
   const comparison = vi.fn<ComparisonRead>(async (assessmentId) => ({ assessmentId, tests: cohort }));
   return { tables, readers, job, comparison };
 }
@@ -125,9 +125,11 @@ describe("the stored report", () => {
     // The stored report holds only the measured summary: none of the cohort's rows.
     const snapshot = JSON.stringify(report);
     for (const secret of ["private-child-", "private-parent@", "stage1", "excludedEmails", "tests"]) expect(snapshot).not.toContain(secret);
-    // One read of the stored test and one of the answers, through the module; then one read of the stored report, for
-    // the view of the email and the alert (#163).
-    expect(db.readers.reads).toEqual({ reports: 1, assessments: 1, answers: 1 });
+    // The reads that production makes, one for each database request: the stored test and its answers, through the
+    // module; the check for a stored report, then the stored AI reviews; the parent and the stored report's view (#163;
+    // one request, with the test and the child), for the emails; and the unsubscribe check. The report row ledger's
+    // reads of the report row are its own (book.entry).
+    expect(db.readers.reads).toEqual({ assessments: 1, answers: 1, reports: 2, work_reviews: 1, parents: 1, email_log: 1 });
     expect(db.comparison.mock.calls).toEqual([[TEST]]);
 
     expect(mail.delivered.map((m) => m.to)).toEqual(["priya@family.ca", "savar@unicalearning.com"]);
@@ -141,8 +143,9 @@ describe("the stored report", () => {
     expect(db.comparison).toHaveBeenCalledTimes(1);
     expect(db.job.reviews()).toHaveLength(2);
     expect(mail.delivered).toHaveLength(2);
-    // The job reads its inputs and its view once per run, and calls no network itself.
-    expect(db.readers.reads).toEqual({ reports: 2, assessments: 2, answers: 2 });
+    // The second run reads its inputs, finds the stored report, and reads the parent and the view; the parent email
+    // went, so it makes no unsubscribe check. It calls no network itself.
+    expect(db.readers.reads).toEqual({ assessments: 2, answers: 2, reports: 4, work_reviews: 1, parents: 2, email_log: 1 });
     expect(network).toEqual([]);
   });
 
@@ -419,9 +422,9 @@ describe("a report step that fails", () => {
     expect(mail.delivered[0].text).toContain("The report step failed: report view not found");
     expect(book.entry(PARENT_EMAIL)).toBeUndefined();
     expect(book.entry(ALERT)).toBeUndefined();
-    // The report is stored; the job asked the module for its view once.
+    // The report is stored; the job checked for a stored report once, and asked the module for its view once.
     expect(db.tables.reports).toHaveLength(1);
-    expect(db.readers.reads.reports).toBe(1);
+    expect(db.readers.reads.reports).toBe(2);
   });
 
   it("alerts Savar when the test cannot be read", async () => {

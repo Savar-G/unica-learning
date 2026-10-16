@@ -1,7 +1,8 @@
 // The report job's store (src/lib/report-job-store.ts) in memory, for tests (#162). It works on the report-loading
 // module's in-memory tables (src/lib/report-loading-memory.ts): a report the job stores is in their reports table, as
 // in one database, so the in-memory readers find it (#163). The parents, the unsubscribes and the stored AI reviews are
-// its own. It keeps the database's rules: one report per test, and one stored review per question.
+// its own. It keeps the database's rules: one report per test, and one stored review per question. It counts its reads
+// of each table, one for each database request, in the readers' counter (`reads`), so a test sees every read the job makes.
 import type { ParentContact } from "@/lib/report-email";
 import type { ReportJobStore, StoredReport } from "@/lib/report-job-store";
 import type { MemoryReport, MemoryReportTables } from "@/lib/report-loading-memory";
@@ -18,15 +19,24 @@ const PNG = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
 const stored = ({ id, model, questions, minutes }: MemoryReport): StoredReport => ({ id, model, questions, minutes });
 
 /**
- * The job's store over the tables. `parents`: the parent rows. `unsubscribed`: the ids of the parents who unsubscribed.
- * `reviews()` gives the stored AI reviews, and `downloads` lists every drawing the job downloaded, so a test can check them.
+ * The job's store over the tables. `reads`: the read counter of each table, by table name; give the readers' counter
+ * (memoryReportReaders().reads) to count the reads of both in one. `parents`: the parent rows. `unsubscribed`: the ids
+ * of the parents who unsubscribed. `reviews()` gives the stored AI reviews, and `downloads` lists every drawing the job
+ * downloaded, so a test can check them.
  */
-export function memoryReportJobStore(tables: MemoryReportTables, { parents = [], unsubscribed = [] }: { parents?: MemoryParent[]; unsubscribed?: string[] } = {}) {
+export function memoryReportJobStore(
+  tables: MemoryReportTables,
+  { reads = {}, parents = [], unsubscribed = [] }: { reads?: Record<string, number>; parents?: MemoryParent[]; unsubscribed?: string[] } = {},
+) {
   const reviews: { assessmentId: string; parentId: string; review: StoredReview }[] = [];
   const downloads: string[] = [];
+  const read = (table: string) => {
+    reads[table] = (reads[table] ?? 0) + 1;
+  };
 
   const store: ReportJobStore = {
     async report(assessmentId) {
+      read("reports");
       const row = (tables.reports ?? []).find((r) => r.assessmentId === assessmentId);
       return row ? stored(row) : null;
     },
@@ -40,6 +50,7 @@ export function memoryReportJobStore(tables: MemoryReportTables, { parents = [],
     },
     reviews: (assessment) => ({
       async stored() {
+        read("work_reviews");
         return reviews.filter((r) => r.assessmentId === assessment.id).map((r) => ({ ...r.review }));
       },
       async save(list) {
@@ -54,12 +65,15 @@ export function memoryReportJobStore(tables: MemoryReportTables, { parents = [],
       },
     }),
     async parent(parentId) {
+      read("parents");
       const row = parents.find((p) => p.id === parentId);
       return row ? { name: row.name, email: row.email } : null;
     },
     async unsubscribed(parentId) {
+      // The unsubscribes are rows of public.email_log.
+      read("email_log");
       return unsubscribed.includes(parentId);
     },
   };
-  return { store, reviews: () => reviews.map((r) => r.review), downloads };
+  return { store, reviews: () => reviews.map((r) => r.review), downloads, reads };
 }
