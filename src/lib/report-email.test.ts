@@ -74,9 +74,9 @@ describe("the report email to the parent", () => {
     const on = reportEmail({ unsubscribeUrl: UNSUB, view: view(knowsUpTo(3), { province: "ON" }), parentName: "Priya", url: URL });
     for (const body of [on.text, on.html]) expect(body).not.toMatch(/Foundation Skills Assessment|FSA/);
   });
-  it("carries number facts with speed beside accuracy, when the child had a facts section", () => {
-    const v = view(knowsUpTo(3));
+  it("carries number facts with speed beside accuracy from grade 5, and accuracy alone in grades 1-4", () => {
     const facts: ReportFacts = { scope: "Addition and subtraction facts to 20", seconds: 60, answered: 12, correct: 12, secondsPerFact: 4.6, accuracy: "secure", speed: "needs-practice" };
+    const v = view(knowsUpTo(5), { grade: 6 });
     const withFacts = reportEmail({ unsubscribeUrl: UNSUB, view: { ...v, model: { ...v.model, facts } }, parentName: "Priya", url: URL });
     expect(withFacts.text).toContain("Number facts: 12 of 12 right (Secure), typically 4.6 seconds a fact (Needs practice)");
     expect(withFacts.text).toContain("Speed comes with practice. It does not change Maya's working level.");
@@ -84,6 +84,12 @@ describe("the report email to the parent", () => {
     expect(withFacts.html).toContain("typically 4.6 seconds a fact");
     // Slow facts need practice; nothing in the parent's email calls the child behind.
     expect(`${withFacts.text}${withFacts.html}`).not.toMatch(/behind/i);
+
+    const young = view(knowsUpTo(1), { grade: 2 });
+    const accuracyOnly = reportEmail({ unsubscribeUrl: UNSUB, view: { ...young, model: { ...young.model, facts } }, parentName: "Priya", url: URL });
+    expect(accuracyOnly.text).toContain("Number facts: 12 of 12 right (Secure)\n");
+    expect(accuracyOnly.html).toContain("12 of 12 right");
+    for (const body of [accuracyOnly.text, accuracyOnly.html]) expect(body).not.toMatch(/seconds a fact|Speed|Quick/);
   });
   it("has no number facts line when the child had no facts section", () => {
     for (const body of [email.text, email.html]) expect(body).not.toMatch(/Number facts/);
@@ -245,7 +251,7 @@ describe("the alert to Savar for each finished test", () => {
       "Help likely: yes. The report says the level may be too high and suggests a retake.",
     );
   });
-  it("gives the number facts, or none", () => {
+  it("gives the number facts, or none; with the speed at every grade, as Savar is an admin", () => {
     expect(alert().text).toContain("Facts: none");
     const v = view(knowsUpTo(3));
     const facts: ReportFacts = { scope: "Addition and subtraction facts to 20", seconds: 60, answered: 12, correct: 12, secondsPerFact: 4.6, accuracy: "secure", speed: "needs-practice" };

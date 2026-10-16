@@ -14,6 +14,10 @@ import { signWork } from "@/lib/work-store";
 //     anyone else; the answers through their admin read policy. Drawings are signed with the admin's session under the
 //     bucket's admin read policy. Never the secret key.
 //   - The secret key, for the report job only: it reads every row, and signs nothing (the report email has no drawings).
+// The learner profile (#198): parents have no read access to public.learner_profiles (admins only, D-115), so the
+// parent's reader reads it with the secret key, filtered on the test of the report the parent's own session found and
+// on the parent's id. loadReportView passes on only the parent's part (reportFindings); the profile stays on the server.
+// The admin reads it with their session (the admin read policy); the report job with the secret key.
 // An id that is not a uuid finds nothing (Postgres would refuse it). A database error throws.
 
 /** The report columns the view needs. A parent may read these columns of their own reports. */
@@ -114,20 +118,33 @@ async function embeddedReport(db: SupabaseClient, id: string, what: string): Pro
   return row ? record(row, row.assessment, row.child) : null;
 }
 
+/** The stored learner profile JSON of a test, as this client may see it, filtered on its parent when given; null when none. */
+async function profileRow(db: SupabaseClient, assessmentId: string, what: string, parentId?: string): Promise<unknown> {
+  if (!isUuid(assessmentId)) return null;
+  let query = db.from("learner_profiles").select("profile").eq("assessment_id", assessmentId);
+  if (parentId !== undefined) query = query.eq("parent_id", parentId);
+  const row = must(await query.maybeSingle<{ profile: unknown }>(), what);
+  return row?.profile ?? null;
+}
+
 /** The test's answers in test order, from the answers table as this client may see it. */
 async function answerRows(db: SupabaseClient, assessmentId: string, what: string): Promise<StoredAnswer[]> {
   const rows = must(await db.from("answers").select(ANSWER_COLUMNS).eq("assessment_id", assessmentId).order("position").returns<AnswerRow[]>(), what);
   return (rows ?? []).map(storedAnswer);
 }
 
-/** The signed-in parent, with their own session client (sessionClient). */
-export function parentReportReader(db: SupabaseClient): ReportReader {
+/**
+ * The signed-in parent, with their own session client (sessionClient). `profiles` (#198): the secret key's client
+ * (adminClient) and the signed-in parent's id, for the learner profile of their own test; without it, no profile.
+ */
+export function parentReportReader(db: SupabaseClient, profiles?: { admin: SupabaseClient | null; parentId: string }): ReportReader {
   return {
     report: (id) => embeddedReport(db, id, "parent report load"),
     // A parent may not read the stored test (its right answers) or the answers: there is no grant, so nothing is read.
     assessment: async () => null,
     answers: async () => [],
     sign: (paths) => signWork(db, paths),
+    profile: async (assessmentId) => (profiles?.admin ? profileRow(profiles.admin, assessmentId, "parent profile load", profiles.parentId) : null),
   };
 }
 
@@ -153,6 +170,7 @@ export function adminReportReader({ db }: AdminSession): ReportReader {
     },
     answers: (assessmentId) => answerRows(db, assessmentId, "admin answers load"),
     sign: (paths) => signWork(db, paths),
+    profile: (assessmentId) => profileRow(db, assessmentId, "admin profile load"),
   };
 }
 
@@ -167,5 +185,6 @@ export function secretKeyReportReader(admin: SupabaseClient): ReportReader {
     },
     answers: (assessmentId) => answerRows(admin, assessmentId, "answers load"),
     sign: async () => ({}),
+    profile: (assessmentId) => profileRow(admin, assessmentId, "profile load"),
   };
 }

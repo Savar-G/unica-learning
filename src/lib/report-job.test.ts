@@ -7,6 +7,7 @@ import {
   BANKS,
   BC_SKILL_MAP,
   createSession,
+  MISCONCEPTIONS,
   PROFILE_AI_SCHEMA,
   PROFILE_SCHEMA_VERSION,
   REPORT_TEXT_NAME,
@@ -14,6 +15,7 @@ import {
   storedTest,
   type ComparisonTest,
   type LearnerProfile,
+  type MisconceptionId,
   type ProfileLearning,
 } from "@/lib/assessment";
 import type { AiClient, AiJsonRequest } from "@/lib/ai-client";
@@ -171,8 +173,9 @@ describe("the stored report", () => {
     // module; the check for a stored report, then the comparison scan and the stored AI reviews; the parent and the
     // stored report's view (#163; one request, with the test and the child), for the emails; then the ledger's check
     // that the parent email has not gone (src/lib/report-row-ledger.ts), and the unsubscribe check. The learner profile
-    // (#196) is built from the same inputs: it reads only the parent's answers on the learning card (children).
-    expect(db.readers.reads).toEqual({ assessments: 1, answers: 1, reports: 3, comparison: 1, work_reviews: 1, parents: 1, email_log: 1, children: 1 });
+    // (#196) is built from the same inputs: it reads only the parent's answers on the learning card (children); the
+    // view reads the stored profile back for the parent's part of it (#198).
+    expect(db.readers.reads).toEqual({ assessments: 1, answers: 1, reports: 3, comparison: 1, work_reviews: 1, parents: 1, email_log: 1, children: 1, learner_profiles: 1 });
     expect(db.comparison.mock.calls).toEqual([[TEST]]);
 
     expect(mail.delivered.map((m) => m.to)).toEqual(["priya@family.ca", "savar@unicalearning.com"]);
@@ -189,7 +192,7 @@ describe("the stored report", () => {
     // The second run reads its inputs, finds the stored report, and reads the parent and the view; the ledger finds
     // that the parent email went, so the run makes no unsubscribe check. It builds the profile again (#196). It calls no
     // network itself.
-    expect(db.readers.reads).toEqual({ assessments: 2, answers: 2, reports: 6, comparison: 1, work_reviews: 1, parents: 2, email_log: 1, children: 2 });
+    expect(db.readers.reads).toEqual({ assessments: 2, answers: 2, reports: 6, comparison: 1, work_reviews: 1, parents: 2, email_log: 1, children: 2, learner_profiles: 2 });
     expect(network).toEqual([]);
   });
 
@@ -918,5 +921,31 @@ describe("the learner profile's AI parts", () => {
     await runWith(db, null);
     expect(db.profiles.rows()).toHaveLength(1);
     expect("ai" in (db.profiles.rows()[0].profile as object)).toBe(false);
+  });
+
+  it("reach the report page once stored; the report email, sent before they exist, shows the facts only (#198)", async () => {
+    const db = struggling();
+    const mail = memoryTransport();
+    await runWith(db, fakeAiClient({ model: MODEL, answer: good }), mail);
+    const [email] = mail.delivered;
+    const page = await reportPage(db);
+    const { struggles, strengths } = stored(db);
+    const shown = struggles[0].wrong.find((w) => w.misconception)!;
+    const mistake = MISCONCEPTIONS[shown.misconception as MisconceptionId].description.toLowerCase();
+
+    // Both: a strength, the struggle with Asha's own wrong answer to one question, and the right answer.
+    expect(strengths.length).toBeGreaterThan(0);
+    expectEverywhere(places(email, page), [words(shown.prompt), shown.response, shown.rightAnswer]);
+    // The email: the likely cause from the known mistake, and no workbook 1 preview: the AI wrote after it went.
+    expect(words(email.text)).toContain(mistake);
+    for (const body of [email.text, email.html]) expect(body).not.toContain("Workbook 1 focuses on");
+    // The page, opened after the AI parts were stored: the AI's likely cause, and the preview.
+    expect(page.text).toContain("The wrong answers match a known mistake, and a skill this builds on may not be secure yet.");
+    expect(page.text).not.toContain(mistake);
+    expect(page.text).toContain("Workbook 1 focuses on");
+    // Never how to help, the model id or the build id: admin only.
+    for (const body of [email.text, email.html, page.html]) {
+      for (const secret of ["short daily sets", MODEL, "buildId"]) expect(body).not.toContain(secret);
+    }
   });
 });

@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { createSession, reportModel, storedTest, type ShownWork } from "@/lib/assessment";
+import { BANKS, createSession, learnerProfile, reportModel, storedTest, type LearnerProfile, type ProfileAi, type ShownWork } from "@/lib/assessment";
 import { knowsUpTo, takeTest } from "@/lib/assessment/scripted-child";
 import { loadReportInputs, loadReportView, type ComparisonRead } from "@/lib/report-loading";
 import { memoryReportReaders, type MemoryAnswer, type MemoryAssessment, type MemoryReportTables } from "@/lib/report-loading-memory";
@@ -70,7 +70,8 @@ describe("the report view (#161)", () => {
     const expected = {
       childId: "child-1",
       assessmentId: "test-1",
-      view: { id: "report-1", childName: "Asha", province: "BC", completedAt: "2026-10-10T19:30:00Z", questions: 36, minutes: 34, model },
+      // No learner profile is stored (#198).
+      view: { id: "report-1", childName: "Asha", province: "BC", completedAt: "2026-10-10T19:30:00Z", questions: 36, minutes: 34, model, findings: null },
     };
     for (const loaded of [asParent, asAdmin]) {
       const { workImages, ...view } = loaded!.view;
@@ -108,6 +109,72 @@ describe("the report view (#161)", () => {
     await loadReportView(readers.admin(), "report-1");
     const onReport = [drawing("parent-1", 0), drawing("parent-1", 2)];
     expect(readers.signed).toEqual([{ reader: "parent-1", paths: onReport }, { reader: "admin", paths: onReport }]);
+  });
+});
+
+describe("the parent's part of the learner profile on the report view (#198)", () => {
+  // Asha's stored learner profile, built from her answers with every answer on one grade 4 standard wrong, so that
+  // standard is a struggle with more than one wrong answer. The stored JSON also has the admin-only parts: her test
+  // behaviour, every wrong answer, how to help, the model ids and the build id.
+  const standardOf = (q: (typeof asked)[number]) => BANKS["3-5"].find((t) => t.id === q.templateId)?.standard;
+  // The grade 4 standard asked most often.
+  const atGrade = asked.filter((q) => q.level === 4).map(standardOf);
+  const missed = atGrade.sort((a, b) => atGrade.filter((x) => x === b).length - atGrade.filter((x) => x === a).length)[0]!;
+  const wrong = (q: (typeof asked)[number]) => q.level > 4 || standardOf(q) === missed;
+  const facts: LearnerProfile = learnerProfile({
+    placement,
+    answers: asked.map((q, n) => ({
+      question: q, response: wrong(q) ? `wrong-${n}` : q.answer, correct: !wrong(q), misconception: null,
+      timeMs: 20_000, work: { required: false, drawing: false, typed: false }, readAloud: null, away: null,
+    })),
+    help: "no",
+    learning: null,
+  })!;
+  const struggle = facts.struggles.find((s) => s.code === missed)!;
+  const AI: ProfileAi = {
+    likelyCauses: { model: "vendor/model-x", value: { [missed]: "{name} may need this step first." } },
+    howToHelp: { model: "vendor/model-x", value: { [missed]: "ADMIN-ONLY how to help" } },
+    workbookPlan: { model: "vendor/model-x", value: { review: { percent: 20, standards: [] }, practise: { percent: 80, standards: [missed] }, stretch: { percent: 0, standards: [] } } },
+  };
+  const stored = (profile: unknown): MemoryReportTables => ({
+    ...tables(),
+    profiles: [{ assessmentId: "test-1", parentId: "parent-1", childId: "child-1", schemaVersion: 1, profile }],
+  });
+
+  it("gives the parent and the admin the strengths, the struggles with one wrong answer each, and the AI parts once stored", async () => {
+    const readers = memoryReportReaders(stored({ ...facts, ai: AI, buildId: "build-1" }));
+    for (const reader of [readers.parent("parent-1"), readers.admin(), readers.key()]) {
+      const findings = (await loadReportView(reader, "report-1"))!.view.findings!;
+      expect(findings.strengths.length).toBe(facts.strengths.length);
+      const shown = findings.struggles.find((s) => s.code === missed)!;
+      expect(struggle.wrong.length).toBeGreaterThan(1);
+      expect(struggle.wrong.map((w) => w.response)).toContain(shown.answer.response);
+      expect(shown.cause).toEqual({ source: "ai", text: "{name} may need this step first." });
+      expect(findings.preview?.focus.map((t) => t.code)).toEqual([missed]);
+    }
+  });
+
+  it("never carries the profile's admin-only parts: test behaviour, the full error list, how to help, model ids or the build id", async () => {
+    const readers = memoryReportReaders(stored({ ...facts, ai: AI, buildId: "build-1" }));
+    const view = JSON.stringify((await loadReportView(readers.parent("parent-1"), "report-1"))!.view);
+    const shown = (await loadReportView(readers.parent("parent-1"), "report-1"))!.view.findings!.struggles.find((s) => s.code === missed)!;
+    for (const secret of ["build-1", "vendor/model-x", "ADMIN-ONLY", "behaviour", "medianMs", "unknowns", "misconceptions"]) expect(view).not.toContain(secret);
+    for (const w of struggle.wrong.filter((x) => x.response !== shown.answer.response)) expect(view).not.toContain(`"${w.response}"`);
+  });
+
+  it("has no findings without a stored profile, or with one at another schema version", async () => {
+    for (const t of [tables(), stored({ ...facts, schemaVersion: 2 })]) {
+      const loaded = await loadReportView(memoryReportReaders(t).parent("parent-1"), "report-1");
+      expect(loaded).not.toBeNull();
+      expect(loaded!.view.findings).toBeNull();
+    }
+  });
+
+  it("still shows the report when the profile cannot be read, without the findings", async () => {
+    const reader = memoryReportReaders(stored(facts)).parent("parent-1");
+    const loaded = await loadReportView({ ...reader, profile: async () => { throw new Error("connection reset"); } }, "report-1");
+    expect(loaded!.view.model).toEqual(model);
+    expect(loaded!.view.findings).toBeNull();
   });
 });
 

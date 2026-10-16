@@ -41,7 +41,9 @@ export default async function ReportPage({ params, searchParams }: PageProps<"/a
   const parent = await parentId(db);
   if (!parent) redirect(`/sign-in?next=${encodeURIComponent(reportReturnPath(id, { src, step }))}`);
 
-  const report = await loadReportView(parentReportReader(db), id);
+  // #198: the learner profile is read with the secret key, filtered on this parent's own test; only its parent's part
+  // (strengths, struggles, words or numbers, the workbook 1 preview) reaches the page.
+  const report = await loadReportView(parentReportReader(db, { admin: adminClient(), parentId: parent }), id);
   if (!report) notFound();
   const { view, childId, assessmentId } = report;
 

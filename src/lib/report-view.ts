@@ -2,6 +2,7 @@
 // thing (spec #54: "the report page in the account and the email show the same report model").
 // Pure: no network, database or clock. Every number here comes from the report model or the stored report.
 import {
+  FACT_SPEED_FROM_GRADE,
   FACTS_QUICK_MS,
   FACTS_SECURE_PERCENT,
   REPORT_TEXT_NAME,
@@ -11,8 +12,10 @@ import {
   STRAND_SECURE_PERCENT,
   WORKING_LEVEL_PERCENT,
   type Certainty,
+  type FindingTopic,
   type Level,
   type Province,
+  type ReportFindings,
   type ReportModel,
   type ReportedStrand,
   type StrandStatus,
@@ -35,6 +38,12 @@ export interface ReportView {
   model: ReportModel;
   /** Short-lived signed URLs of the work drawings, by stored path (#67). Only the report page has them; the email does not. */
   workImages?: Record<string, string>;
+  /**
+   * #198: the parent's part of the test's learner profile (reportFindings), read when the report is shown, so it has
+   * the AI parts once they exist. Absent or null without a stored profile: a test not scored against BC, or a report
+   * shown before its profile was stored. Never the profile itself: its admin-only parts stay on the server.
+   */
+  findings?: ReportFindings | null;
 }
 
 /** "Right answer" or "Not right", under each piece of the child's work (#67, D-087). */
@@ -250,33 +259,41 @@ export interface FactsMeasure {
   detail: string;
 }
 
-/** The number facts row (#70): accuracy beside speed, never speed alone. Slow speed needs practice; it is never "behind". */
+/**
+ * The number facts row (#70): accuracy beside speed, never speed alone. Slow speed needs practice; it is never "behind".
+ * Grades 1-4 see accuracy only (FACT_SPEED_FROM_GRADE, D-120).
+ */
 export interface FactsView {
   scope: string;
   round: string;
-  /** Both null, or both set: speed never shows without accuracy. */
   accuracy: FactsMeasure | null;
+  /** Set only with accuracy, and only from FACT_SPEED_FROM_GRADE. */
   speed: FactsMeasure | null;
   note: string | null;
   thresholds: string;
 }
 
-/** The facts row, or null when the child had no facts section (and for reports stored before #70, which have no facts). */
-export function factsView(v: ReportView): FactsView | null {
+/**
+ * The facts row, or null when the child had no facts section (and for reports stored before #70, which have no facts).
+ * `speed`: whether it shows the speed; by default from FACT_SPEED_FROM_GRADE (the parent's report). Savar's alert shows it at every grade.
+ */
+export function factsView(v: ReportView, { speed: withSpeed = v.model.level.grade >= FACT_SPEED_FROM_GRADE } = {}): FactsView | null {
   const f = v.model.facts ?? null;
   if (!f) return null;
   const base = {
     scope: `${f.scope}.`,
     round: `A ${f.seconds}-second round, only with facts for this grade.`,
-    thresholds: `Secure: ${FACTS_SECURE_PERCENT}% or more right. Quick: ${FACTS_QUICK_MS / 1000} seconds or less a fact.`,
+    thresholds: `Secure: ${FACTS_SECURE_PERCENT}% or more right.${withSpeed ? ` Quick: ${FACTS_QUICK_MS / 1000} seconds or less a fact.` : ""}`,
   };
   if (f.answered === 0 || !f.accuracy || !f.speed || f.secondsPerFact === null) {
     return { ...base, accuracy: null, speed: null, note: `${v.childName} answered no facts in the ${f.seconds} seconds.` };
   }
   const right = `${f.correct} of ${f.answered} right`;
+  const accuracy = { value: right, label: FACTS_LABEL[f.accuracy], big: `${Math.round((f.correct / f.answered) * 100)}%`, detail: right };
+  if (!withSpeed) return { ...base, accuracy, speed: null, note: null };
   return {
     ...base,
-    accuracy: { value: right, label: FACTS_LABEL[f.accuracy], big: `${Math.round((f.correct / f.answered) * 100)}%`, detail: right },
+    accuracy,
     speed: {
       value: `typically ${f.secondsPerFact} second${f.secondsPerFact === 1 ? "" : "s"} a fact`,
       label: FACTS_LABEL[f.speed],
@@ -424,4 +441,123 @@ export function howWeHelp(v: ReportView): { title: string; text: string } {
     case "ahead":
       return { title, text: `${name} already does ${levelName(working)} work. The books start there${practice}, so ${name} learns new things instead of repeating known work, and the topics from school stay covered.` };
   }
+}
+
+/** "Grade 4", or "Kindergarten" for level 0. */
+const gradeLabel = (level: Level) => (level === 0 ? "Kindergarten" : `Grade ${level}`);
+const capital = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
+const lowerFirst = (s: string) => s.charAt(0).toLowerCase() + s.slice(1);
+
+/**
+ * #198: a BC standard as a short, plain topic: the curriculum's own words, without the parts in brackets and without
+ * the "using ..." or "including ..." part that says how it is taught. "increasing and decreasing patterns, using tables
+ * and charts" is "increasing and decreasing patterns".
+ */
+export const topicName = (text: string) =>
+  text.replace(/\s*\([^)]*\)/g, "").replace(/,\s+(using|introducing|including|based on|concretely|both|single)\b.*$/, "").trim();
+
+/** "a", "a and b", "a, b and c"; with semicolons when a topic has a comma of its own. */
+function topicList(topics: readonly FindingTopic[]): string {
+  const names = topics.map((t) => topicName(t.text));
+  if (names.length < 2) return names.join("");
+  const comma = names.some((n) => n.includes(",")) ? "; " : ", ";
+  return `${names.slice(0, -1).join(comma)}${comma === "; " ? "; and " : " and "}${names[names.length - 1]}`;
+}
+
+/** One BC topic of the report, with its result: "Grade 4", "6 of 6 right", and how sure. */
+export interface TopicResult {
+  code: string;
+  title: string;
+  grade: string;
+  count: string;
+  certainty: Certainty;
+  /** "Clear", or "Early sign: workbook 1 checks this" (certaintyText). */
+  sure: string;
+}
+
+const topicResult = (v: ReportView, t: { code: string; text: string; grade: Level; correct: number; total: number; certainty: Certainty }): TopicResult => ({
+  code: t.code,
+  title: capital(topicName(t.text)),
+  grade: gradeLabel(t.grade),
+  count: `${t.correct} of ${t.total} right`,
+  certainty: t.certainty,
+  sure: certaintyText(v, t.certainty) ?? "",
+});
+
+/**
+ * #198: the report shows this many strengths and struggles in full. The page folds the rest under "Show n more", and
+ * the email says the full report has them all: a long list would hide the first ones, which rest on the most answers.
+ */
+export const STRENGTHS_SHOWN = 6;
+export const STRUGGLES_SHOWN = 3;
+
+/** The one-line explanations of the new rows (#198), shared by the page and the email. */
+export const strengthsNote = (v: ReportView) => `BC topics where ${v.childName} got ${STRAND_SECURE_PERCENT}% or more right.`;
+export const strugglesNote = (v: ReportView) =>
+  `BC topics up to ${levelName(v.model.level.grade)} where ${v.childName} got under ${STRAND_SECURE_PERCENT}% right, with one of ${v.childName}'s answers for each.`;
+export const WORDS_OR_NUMBERS_NOTE = "The same skill, asked as a word problem and with numbers only.";
+/** "and 4 more", after the shown ones. */
+export const moreCount = (n: number) => `${n} more`;
+
+/** #198 (spec story 5): the BC topics the child is secure in, clear ones first; null when there are none. */
+export function strengthsView(v: ReportView): TopicResult[] | null {
+  const strengths = v.findings?.strengths ?? [];
+  return strengths.length ? strengths.map((s) => topicResult(v, s)) : null;
+}
+
+/** One struggle: its topic and result, one of the child's wrong answers, and the likely cause. */
+export interface StruggleView extends TopicResult {
+  status: StrandStatus;
+  question: string;
+  /** The child's answer, as given. */
+  answer: string;
+  rightAnswer: string;
+  /** In plain words; null when neither the AI nor a known mistake gives one. */
+  cause: string | null;
+}
+
+/**
+ * #198 (spec story 6): each BC topic at or below the school grade that is not secure, with one real wrong answer and the
+ * likely cause: the AI's text when it wrote one (#197), else the known mistake the answer matches. Null when none.
+ */
+export function strugglesView(v: ReportView): StruggleView[] | null {
+  const struggles = v.findings?.struggles ?? [];
+  if (!struggles.length) return null;
+  return struggles.map((s) => ({
+    ...topicResult(v, s),
+    status: s.status,
+    question: s.answer.prompt,
+    answer: s.answer.response,
+    rightAnswer: s.answer.rightAnswer,
+    cause: !s.cause ? null
+      : s.cause.source === "ai" ? s.cause.text.replaceAll(REPORT_TEXT_NAME, v.childName)
+      : `This answer matches a common mistake, where a child ${lowerFirst(s.cause.text)}.`,
+  }));
+}
+
+/**
+ * #198 (spec story 7): one line for each skill the child did with numbers only but not in word problems, or the
+ * reverse, with both counts. None when no skill showed a gap.
+ */
+export function wordsOrNumbersLines(v: ReportView): string[] {
+  const name = v.childName;
+  return (v.findings?.wordsOrNumbers ?? []).map((g) => {
+    const words = `${g.words.correct} of ${g.words.total}`;
+    const numbers = `${g.numbers.correct} of ${g.numbers.total}`;
+    return g.harder === "words"
+      ? `${capital(g.skill)}: ${name} got ${numbers} right with numbers only, and ${words} as word problems. Reading the question may be part of what makes it hard.`
+      : `${capital(g.skill)}: ${name} got ${words} right as word problems, and ${numbers} with numbers only.`;
+  });
+}
+
+/**
+ * #198 (spec story 9): "Workbook 1 focuses on X. We will challenge {child} on Y." Text only, from the AI's workbook
+ * plan (#197). Null without it, and for a family on the waitlist, which has no workbook yet.
+ */
+export function workbookPreview(v: ReportView): string | null {
+  const preview = v.findings?.preview;
+  if (!preview || v.model.callToAction !== "card") return null;
+  const focus = preview.focus.length ? `Workbook 1 focuses on ${topicList(preview.focus)}.` : null;
+  const challenge = preview.challenge.length ? `We will challenge ${v.childName} on ${topicList(preview.challenge)}.` : null;
+  return [focus, challenge].filter(Boolean).join(" ") || null;
 }

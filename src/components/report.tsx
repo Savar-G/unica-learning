@@ -1,6 +1,8 @@
 // The parent's report (#65), in the chosen design (D-087, option A3 "Report card + ruler", #80): a report card across
 // the nav width; the header table; the level and the verdict in a grainy colour band with the big K-8 ruler; the
 // context (FSA line, comparison, help warning); then rows with the title on the left and the content on the right.
+// #198 (D-120, round r198, option A): under the areas, the strengths, the struggles (each with one of the child's
+// answers and the likely cause) and the words-or-numbers finding; the workbook 1 preview in "How we help".
 // A server component: only the next step needs JavaScript in the browser (report-next.tsx).
 // The words come from src/lib/report-view.ts, which the report email uses too.
 import type { CSSProperties, ReactNode } from "react";
@@ -40,6 +42,18 @@ import {
   type ExtraRoundCard,
   type FactsMeasure,
   type ReportView,
+  type StruggleView,
+  type TopicResult,
+  STRENGTHS_SHOWN,
+  STRUGGLES_SHOWN,
+  WORDS_OR_NUMBERS_NOTE,
+  moreCount,
+  strengthsNote,
+  strengthsView,
+  strugglesNote,
+  strugglesView,
+  wordsOrNumbersLines,
+  workbookPreview,
 } from "@/lib/report-view";
 import "./report.css";
 
@@ -73,6 +87,9 @@ export function ReportCard({ view, next = NO_NEXT, readOnly = false, nextSlot, n
       <ReportOverall view={view} />
       <ReportContext view={view} newTest={newTest} />
       <ReportAreas view={view} extraRound={extraRound} />
+      <ReportStrengths view={view} />
+      <ReportStruggles view={view} />
+      <ReportWordsOrNumbers view={view} />
       <ReportNumberFacts view={view} />
       <ReportWork view={view} />
       <ReportHelp view={view} />
@@ -265,6 +282,91 @@ function Certainty({ view, certainty, lead }: { view: ReportView; certainty: Cer
   return <span className={`rpt-sure is-${certainty}`}>{lead && <span className="rpt-sure-lead">{lead} </span>}{text}</span>;
 }
 
+/** #198: a list that shows its first `shown` items, and folds the rest under "Show n more" (no JavaScript needed). */
+function Folded<T>({ items, shown, className, render }: { items: readonly T[]; shown: number; className: string; render: (item: T) => ReactNode }) {
+  const rest = items.slice(shown);
+  return (
+    <>
+      <ul className={className}>{items.slice(0, shown).map(render)}</ul>
+      {rest.length > 0 && (
+        <details className="rpt-more">
+          <summary>Show {moreCount(rest.length)}</summary>
+          <ul className={className}>{rest.map(render)}</ul>
+        </details>
+      )}
+    </>
+  );
+}
+
+/** One BC topic's grade, count and certainty, on one mono line. */
+function TopicMeta({ topic }: { topic: TopicResult }) {
+  return (
+    <p className="rpt-topic-m">
+      <span>{topic.grade}</span><span>{topic.count}</span>
+      <span className={`rpt-sure is-${topic.certainty}`}>{topic.sure}</span>
+    </p>
+  );
+}
+
+// #198 (spec story 5): the BC topics the child is secure in. Nothing when there are none, or no learner profile.
+function ReportStrengths({ view }: { view: ReportView }) {
+  const strengths = strengthsView(view);
+  if (!strengths) return null;
+  return (
+    <Row id="rpt-strengths" title="Strengths" note={strengthsNote(view)}>
+      <Folded items={strengths} shown={STRENGTHS_SHOWN} className="rpt-strengths" render={(t) => (
+        <li key={t.code}><p className="rpt-topic-t">{t.title}</p><TopicMeta topic={t} /></li>
+      )} />
+    </Row>
+  );
+}
+
+/** One struggle: its topic, the status, one of the child's answers beside the right answer, and the likely cause. */
+function Struggle({ view, s }: { view: ReportView; s: StruggleView }) {
+  return (
+    <li className="rpt-struggle">
+      <div className="rpt-struggle-h">
+        <h3>{s.title}</h3>
+        <span className={`rpt-chip is-${s.status}`}>{STATUS_LABEL[s.status]}</span>
+      </div>
+      <TopicMeta topic={s} />
+      <dl className="rpt-answer">
+        <div className="is-q"><dt>Question</dt><dd>{s.question}</dd></div>
+        <div className="is-wrong"><dt>{view.childName}&apos;s answer</dt><dd>{s.answer}</dd></div>
+        <div className="is-right"><dt>Right answer</dt><dd>{s.rightAnswer}</dd></div>
+      </dl>
+      {s.cause && (
+        <div className="rpt-cause">
+          <p className="rpt-k">Likely cause</p>
+          <p>{s.cause}</p>
+        </div>
+      )}
+    </li>
+  );
+}
+
+// #198 (spec story 6): each BC topic at or below the school grade that is not secure, the clear ones first.
+function ReportStruggles({ view }: { view: ReportView }) {
+  const struggles = strugglesView(view);
+  if (!struggles) return null;
+  return (
+    <Row id="rpt-struggles" title="To work on" note={strugglesNote(view)}>
+      <Folded items={struggles} shown={STRUGGLES_SHOWN} className="rpt-struggles" render={(s) => <Struggle key={s.code} view={view} s={s} />} />
+    </Row>
+  );
+}
+
+// #198 (spec story 7): a skill done with numbers only but not in word problems, or the reverse. Nothing without a gap.
+function ReportWordsOrNumbers({ view }: { view: ReportView }) {
+  const lines = wordsOrNumbersLines(view);
+  if (lines.length === 0) return null;
+  return (
+    <Row id="rpt-words" title="Word problems" note={WORDS_OR_NUMBERS_NOTE}>
+      {lines.map((line) => <p key={line} className="rpt-words">{line}</p>)}
+    </Row>
+  );
+}
+
 /** Needs practice in sunflower, like Developing; never the tangerine of Needs attention. */
 const factsChip = (label: string) => `rpt-chip ${label === "Needs practice" ? "is-developing" : "is-secure"}`;
 
@@ -285,10 +387,11 @@ function ReportNumberFacts({ view }: { view: ReportView }) {
   if (!facts) return null;
   return (
     <Row id="rpt-facts-title" title="Number facts" note={facts.round}>
-      {facts.accuracy && facts.speed && (
+      {facts.accuracy && (
         <div className="rpt-nf">
           <FactsCard title="Accuracy" measure={facts.accuracy} />
-          <FactsCard title="Speed" measure={facts.speed} />
+          {/* D-120: grades 1-4 see accuracy only. */}
+          {facts.speed && <FactsCard title="Speed" measure={facts.speed} />}
         </div>
       )}
       {facts.note && <p className="rpt-nf-note">{facts.note}</p>}
@@ -333,12 +436,20 @@ function ReportWork({ view }: { view: ReportView }) {
   );
 }
 
+// How the books help (by verdict); then, #198 (spec story 9), the workbook 1 preview when the AI's plan exists.
 function ReportHelp({ view }: { view: ReportView }) {
   const help = howWeHelp(view);
+  const preview = workbookPreview(view);
   return (
     <Row id="rpt-help" title="How we help">
       <h3>{help.title}</h3>
       <p className="rpt-help-text">{help.text}</p>
+      {preview && (
+        <aside className="rpt-preview" aria-labelledby="rpt-preview">
+          <p className="rpt-k" id="rpt-preview">Workbook 1</p>
+          <p>{preview}</p>
+        </aside>
+      )}
     </Row>
   );
 }

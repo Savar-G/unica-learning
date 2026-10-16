@@ -186,6 +186,11 @@ export function storedFacts(session: FactsSession): FactsTest {
 export const FACTS_QUICK_MS = 3000;
 /** Percent of answered facts right for accuracy to be "secure". */
 export const FACTS_SECURE_PERCENT = 90;
+/**
+ * The parent's report shows fact speed from this school grade (spec #181 story 8, D-120): BC does not expect memorized
+ * facts in grades 1-4, so their report shows accuracy only. The admin sees the speed at every grade.
+ */
+export const FACT_SPEED_FROM_GRADE = 5;
 
 export type FactsAccuracy = "secure" | "needs-practice";
 export type FactsSpeed = "quick" | "needs-practice";
