@@ -29,6 +29,7 @@
       ]
     }
   ],
-  "flow": ["test-round-question.png", "report-round-intro.png", "report-round-end.png"],
+  "flow": ["test-round-question.png", "report-round-intro.png", "report-round-end.png", "test-round-stop.png", "test-round-stop-tablet.png", "test-round-return.png", "report-round-stopped.png"],
+  "stop": "Added after the verifier's finding (Savar's decision, reversible): each round question has 'Stop here', a ghost button at the far end of the row from Next (test-round-stop.png, tablet: test-round-stop-tablet.png). During the test it goes on to 'Did anyone help?' and the result leaves the round out; a child who left part way comes back to 'Welcome back' with 'Keep going' and 'Stop here' (test-round-return.png). From the report it ends with '3 of 8 done' (report-round-stopped.png), and the report offers the rest. Rejected: 'Stop here' right beside Next (first try of this round: easy to press by mistake).",
   "email": "No second email (the simpler path): the report row is built again in place, and the parent reads it in the account."
 }

@@ -374,9 +374,15 @@ export interface ExtraRoundColumns {
   extra_finished_at: string | null;
 }
 
-/** What happened to the extra round, in plain words. A round that started after the test was completed came from the report. */
+/**
+ * What happened to the extra round, in plain words. A round that started after the test was completed came from the
+ * report. A skip time after the start is a stop part way during the test.
+ */
 function extraRoundWords(r: ExtraRoundColumns, completedAt: string | null): string {
   if (r.extra_started_at) {
+    if (r.extra_skipped_at && Date.parse(r.extra_skipped_at) >= Date.parse(r.extra_started_at)) {
+      return r.extra_finished_at ? "Taken during the test, stopped part way, finished from the report" : "Taken during the test, stopped part way";
+    }
     const fromReport = completedAt !== null && Date.parse(r.extra_started_at) > Date.parse(completedAt);
     const taken = fromReport ? "Taken from the report" : "Taken during the test";
     return r.extra_finished_at ? taken : `${taken}, not finished`;
@@ -397,7 +403,7 @@ export function extraRoundFacts(r: ExtraRoundColumns, stored: StoredTest, comple
     ["Extra round", extraRoundWords(r, completedAt)],
     ["Extra questions", extra.length ? `${extra.length}: ${areas.join(", ")}` : "-"],
     ["Offered (Pacific)", when(r.extra_offered_at)],
-    ["Skipped (Pacific)", when(r.extra_skipped_at)],
+    ["Skipped or stopped (Pacific)", when(r.extra_skipped_at)],
     ["Started (Pacific)", when(r.extra_started_at)],
     ["Finished (Pacific)", when(r.extra_finished_at)],
   ];

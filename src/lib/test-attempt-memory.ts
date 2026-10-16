@@ -155,7 +155,8 @@ export function memoryAttemptStore({ children: kids = [], tests: initial = [] }:
 
   /**
    * The extra round (#190): the columns of public.assessments that record it. They keep the database's guards: an
-   * offer is recorded once, a skip only while the test is in progress and the round not skipped or started, a round
+   * offer is recorded once, a skip only while the test is in progress and the round not skipped or started, a stop (as
+   * the skip time) only while the test is in progress and the round started and not skipped or finished, a round
    * starts once and not on an expired test, and a round from the report finishes once, on a completed test.
    */
   const roundOf = (row: MemoryTest) => (row.extraRound ??= { ...NO_ROUND });
@@ -169,6 +170,11 @@ export function memoryAttemptStore({ children: kids = [], tests: initial = [] }:
       await begin("skipExtraRound");
       const row = tests.find((t) => t.id === id && t.status === "in_progress");
       if (row && roundOf(row).startedAt === null && roundOf(row).skippedAt === null) roundOf(row).skippedAt = at;
+    },
+    async stopExtraRound(id, at) {
+      await begin("stopExtraRound");
+      const row = tests.find((t) => t.id === id && t.status === "in_progress");
+      if (row && roundOf(row).startedAt !== null && roundOf(row).skippedAt === null && roundOf(row).finishedAt === null) roundOf(row).skippedAt = at;
     },
     async startExtraRound(id, { at, test }) {
       await begin("startExtraRound");

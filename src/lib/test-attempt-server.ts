@@ -10,7 +10,7 @@ import type { FactsTest } from "@/lib/assessment";
 import type { FactsStore } from "@/lib/test-attempt";
 import type { AnswerTimeline, ShownStore } from "@/lib/test-attempt";
 import type { ContextStore } from "@/lib/test-attempt";
-import { extraRoundState, type ExtraRoundRecord, type ExtraRoundState, type ExtraRoundStore } from "@/lib/test-attempt";
+import { extraRoundState, roundInProgress, type ExtraRoundRecord, type ExtraRoundState, type ExtraRoundStore } from "@/lib/test-attempt";
 import { strokesPath, workPath } from "@/lib/work-payload";
 import { WORK_BUCKET } from "@/lib/work-store";
 
@@ -338,6 +338,17 @@ export async function parentExtraRound(parent: string, assessmentId: string): Pr
   return extraRoundState(attemptStore(admin), parent, assessmentId);
 }
 
+/**
+ * #190: the extra round the child is taking in the open test, for the start screen: Keep going or Stop here. Null when
+ * there is none, or it cannot be known (no secret key, an id that is not a uuid, a failed read).
+ */
+export async function parentRoundInProgress(parent: string, assessmentId: string): Promise<{ answered: number; questions: number } | null> {
+  if (!isUuid(assessmentId)) return null;
+  const admin = adminClient();
+  if (!admin) return null;
+  return roundInProgress(attemptStore(admin), parent, assessmentId);
+}
+
 /** #190: the columns of public.assessments that record the extra round (migration add_extra_round). */
 const ROUND_COLUMNS = "extra_offered_at, extra_skipped_at, extra_started_at, extra_finished_at";
 
@@ -373,6 +384,13 @@ function extraRoundStore(admin: SupabaseClient): ExtraRoundStore {
       const { error } = await admin.from("assessments").update({ extra_skipped_at: iso(at) })
         .eq("id", id).eq("status", "in_progress").is("extra_started_at", null).is("extra_skipped_at", null);
       if (error) throw new StoreError("extra round skip failed", error.message);
+    },
+
+    // A stop part way during the test is recorded as the skip time, after the start (no new column).
+    async stopExtraRound(id, at) {
+      const { error } = await admin.from("assessments").update({ extra_skipped_at: iso(at) })
+        .eq("id", id).eq("status", "in_progress").not("extra_started_at", "is", null).is("extra_skipped_at", null).is("extra_finished_at", null);
+      if (error) throw new StoreError("extra round stop failed", error.message);
     },
 
     async startExtraRound(id, { at, test }) {

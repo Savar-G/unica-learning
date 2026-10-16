@@ -2,8 +2,9 @@
 
 // The optional extra round (#190, spec #181) on the child's test screens, in the split desk (D-088), option A of round
 // r190: after the last main question, when an area is an early sign, a message screen like the halfway break asks
-// whether the child wants more questions. "Yes" starts the round; "No, thanks" goes on to "Did anyone help?". When the
-// report offers a skipped round again, the round has its own start screen and end screen.
+// whether the child wants more questions. "Yes" starts the round; "No, thanks" goes on to "Did anyone help?". Each
+// question of the round has "Stop here" (test.tsx). When the report offers a skipped or stopped round again, the round
+// has its own start screen and end screen.
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import Link from "next/link";
 import { Button } from "@/ds";
@@ -93,16 +94,45 @@ export function ExtraIntro({ name, entry, busy, onStart, problem }: { name: stri
   );
 }
 
-/** The end of a round the report offered again: the finish builds the report again. */
-export function ExtraEnd({ name, questions, reportHref }: { name: string; questions: number; reportHref: string | null }) {
+/**
+ * The start screen when the child left part way through a round taken during the test (#190): "Keep going" goes on
+ * from the question where the child stopped; "Stop here" goes on to "Did anyone help?". Either choice is fine.
+ */
+export function ExtraReturn({ name, busy, onGo, onStop, problem }: { name: string; busy: boolean; onGo: () => void; onStop: () => void; problem: ReactNode }) {
   const heading = useRef<HTMLHeadingElement>(null);
   useEffect(() => heading.current?.focus(), []);
+  const [stopping, setStopping] = useState(false);
+  return (
+    <section className="test-split test-intro" aria-labelledby="test-extra-return-title">
+      <div className="test-pane test-pane-l is-msg">
+        <p className="test-kicker">Extra questions</p>
+        <h1 id="test-extra-return-title" ref={heading} tabIndex={-1} className="test-title">Welcome back, {name}!</h1>
+        <p className="test-lead">You were doing the extra questions. Your answers are saved. You can keep going, or stop here. It is fine to stop.</p>
+        {problem}
+        <div className="test-btns">
+          <Button onClick={() => { setStopping(false); onGo(); }} disabled={busy} aria-busy={busy && !stopping}>{busy && !stopping ? "Opening…" : "Keep going"}</Button>
+          <Button variant="ghost" onClick={() => { setStopping(true); onStop(); }} disabled={busy} aria-busy={busy && stopping}>{busy && stopping ? "Stopping…" : "Stop here"}</Button>
+        </div>
+      </div>
+      <div className="test-pane test-pane-r test-field" aria-hidden />
+    </section>
+  );
+}
+
+/**
+ * The end of a round the report offered again: the finish builds the report again. `stoppedAfter`: the child pressed
+ * Stop here after this many answers; they are saved, and the report offers the rest.
+ */
+export function ExtraEnd({ name, questions, reportHref, stoppedAfter }: { name: string; questions: number; reportHref: string | null; stoppedAfter?: number }) {
+  const heading = useRef<HTMLHeadingElement>(null);
+  useEffect(() => heading.current?.focus(), []);
+  const stopped = stoppedAfter !== undefined;
   return (
     <section className="test-end test-field" aria-labelledby="test-extra-end-title">
       <div>
-        <p className="test-kicker">All {questions} done</p>
+        <p className="test-kicker">{stopped ? `${stoppedAfter} of ${questions} done` : `All ${questions} done`}</p>
         <h1 id="test-extra-end-title" ref={heading} tabIndex={-1} className="test-title">Thank you, {name}!</h1>
-        <p className="test-lead">Your answers are in. Your grown-up&apos;s report is being updated with them.</p>
+        <p className="test-lead">{stopped ? "Your answers are saved. You can do the rest another time." : <>Your answers are in. Your grown-up&apos;s report is being updated with them.</>}</p>
         <p className="test-end-link">{reportHref ? <Link href={reportHref}>Back to the report</Link> : <Link href="/account">Back to the account</Link>}</p>
       </div>
     </section>

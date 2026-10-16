@@ -185,6 +185,29 @@ describe("the report inputs (#162)", () => {
     expect(inputs?.questions).toBe(42);
   });
 
+  it("leaves out the answers of an extra round the result does not include: started from the report or stopped, and not finished (#190)", async () => {
+    // Two round questions after the main test, both answered in 20 seconds, the first with a drawing.
+    const extra = [{ ...asked[0], id: "x-0" }, { ...asked[1], id: "x-1" }];
+    const round = (position: number, questionId: string, workPath: string | null): MemoryAnswer => ({
+      assessmentId: "test-1", position, questionId, response: "1", correct: true, misconception: null, timeMs: 20_000, workRequired: false, workPath, workText: null,
+    });
+    const rows = [...answers(), round(42, "x-0", drawing("parent-1", 0)), round(43, "x-1", null)];
+    const load = (result: typeof placement) => loadReportInputs(
+      memoryReportReaders({ ...tables(), assessments: [{ ...ASSESSMENT, placement: result, test: { ...test, extra } }], answers: rows }).key(), "test-1", noComparison,
+    );
+
+    // The result has no round: the main test's 42 answers and 14 minutes, and its shown work alone.
+    const without = await load(placement);
+    expect(without).toMatchObject({ questions: 42, minutes: 14 });
+    expect(without?.shownWork.map((w) => w.questionId)).toEqual(["s1-3", "s1-4", "s1-6", "up-8"]);
+    expect(without?.reviewPieces().map((p) => p.questionId)).toEqual(["s1-3", "s1-4", "s1-6", "up-8"]);
+
+    // Once the round is finished, the result includes it, and so do the inputs.
+    const scored = await load({ ...placement, extraRound: { questions: 2, strands: ["number"] } });
+    expect(scored).toMatchObject({ questions: 44, minutes: 15 });
+    expect(scored?.shownWork.map((w) => w.questionId)).toEqual(["s1-3", "s1-4", "s1-6", "up-8", "x-0"]);
+  });
+
   it("is null for a test that is not completed or has no placement, and then the answers are not read", async () => {
     const cases: [string, Partial<MemoryAssessment>][] = [
       ["in progress", { status: "in_progress", completedAt: null, placement: null }],

@@ -86,8 +86,20 @@ describe("POST /api/account/assessments/[id]/extra", () => {
     expect(await sent(await choose({ take: false }))).toMatchObject({ status: 409, body: { ok: false, error: "conflict", step: { number: 43 } } });
   });
 
+  it("stops a round part way: 200 with the step to Did anyone help?, and the stop is stored", async () => {
+    await choose({ take: true });
+    vi.setSystemTime(T0 + 2 * HOUR);
+    expect(await sent(await choose({ stop: true }))).toEqual({ status: 200, body: { ok: true, step: { status: "complete", total: 42 } } });
+    expect(memory.tests[0].extraRound).toMatchObject({ startedAt: T0 + HOUR, skippedAt: T0 + 2 * HOUR });
+  });
+
+  it("refuses a stop before the round started: 409 with where the test is", async () => {
+    expect(await sent(await choose({ stop: true }))).toMatchObject({ status: 409, body: { ok: false, error: "conflict", step: { status: "complete", extraRound: { questions: 8 } } } });
+  });
+
   it("refuses a body without a yes or no as invalid, and bad JSON as bad_json; nothing is stored", async () => {
     expect(await sent(await choose({ take: "yes" }))).toEqual({ status: 400, body: { ok: false, error: "invalid" } });
+    expect(await sent(await choose({ stop: "yes" }))).toEqual({ status: 400, body: { ok: false, error: "invalid" } });
     expect(await sent(await choose("{"))).toEqual({ status: 400, body: { ok: false, error: "bad_json" } });
     expect(memory.tests[0].extraRound?.skippedAt ?? null).toBeNull();
     expect(memory.tests[0].test.extra).toBeUndefined();

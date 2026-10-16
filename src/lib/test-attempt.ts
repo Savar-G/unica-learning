@@ -27,6 +27,7 @@ import {
   storedTest,
   submitAnswer,
   testStep,
+  withoutRound,
   workProblem,
   type Answer,
   type Attempt,
@@ -773,10 +774,17 @@ export type FinishOutcome = { ok: true; id: string; finished: "now" | "already" 
 export async function finishTest(store: AttemptStore, parent: string, id: string, help: HelpInput, now: number): Promise<FinishOutcome> {
   const open = await openTest(store, parent, id, now);
   if (!open.ok) return open;
-  const { attempt, session } = open;
-  // #190: a round taken from the report finishes on the completed test, and scores it again.
-  if (attempt.status === "completed" && session.extra && open.round.finishedAt === null) return finishRound(store, id, open, now);
+  const { attempt } = open;
+  // #190: a round taken from the report finishes on the completed test, and scores it again. A test finished after a
+  // stop stays "already" finished until the rest of the round is answered: a repeated finish (a lost response) runs the
+  // report job again.
+  if (attempt.status === "completed" && open.session.extra && open.round.finishedAt === null) {
+    if (stopped(open.round) && testStep(open.session).status !== "complete") return { ok: true, id: attempt.id, finished: "already" };
+    return finishRound(store, id, open, now);
+  }
   if (attempt.status === "completed") return { ok: true, id: attempt.id, finished: "already" };
+  // #190: a round the child stopped part way does not count: the test is scored as if the round had been skipped.
+  const session = stopped(open.round) ? withoutRound(open.session) : open.session;
   if (attempt.status !== "in_progress" || testStep(session).status !== "complete") return { ok: false, error: "incomplete" };
   // As before the module, the help answer is checked only for a test that can be finished now.
   if (help === "invalid") return { ok: false, error: "invalid" };
@@ -921,13 +929,16 @@ function contextRefusal(refusal: Refusal): ContextRefusal {
 
 // The optional extra round (#190, spec #181). After the last main question, only when an area's result is an early
 // sign, the child can take up to 8 more questions or skip them, before "Did anyone help?". The assessment core draws
-// the round and scores it; this stores it. A skipped round is offered again on the report while the test is the
-// child's latest: then the round runs on the completed test, and its finish scores the test again (the finish route then
-// runs the report job, which builds the report again).
+// the round and scores it; this stores it. A round taken during the test can be stopped part way: the test then goes on
+// to "Did anyone help?" and is scored as if the round had been skipped, and the round's answers so far stay stored. A
+// skipped or stopped round is offered again on the report while the test is the child's latest: then the round runs on
+// the completed test, and its finish scores the test again (the finish route then runs the report job, which builds
+// the report again).
 
 /** #190: when the extra round was offered, skipped, started and finished (epoch ms, the server's clock); null when not. */
 export interface ExtraRoundRecord {
   offeredAt: number | null;
+  /** When the child skipped the round, or, when after the start, stopped it part way during the test. */
   skippedAt: number | null;
   startedAt: number | null;
   finishedAt: number | null;
@@ -935,6 +946,12 @@ export interface ExtraRoundRecord {
 
 /** A test with nothing recorded about the extra round. */
 export const NO_ROUND: ExtraRoundRecord = { offeredAt: null, skippedAt: null, startedAt: null, finishedAt: null };
+
+/**
+ * True when the child stopped the round part way during the test: the store records the stop as a skip after the
+ * start. (A skip before a round taken from the report comes before the start.)
+ */
+const stopped = ({ skippedAt, startedAt }: ExtraRoundRecord): boolean => startedAt !== null && skippedAt !== null && skippedAt >= startedAt;
 
 /**
  * The store seam's operations for the extra round (#190). Each keeps one database guard. The module calls them only for
@@ -945,6 +962,11 @@ export interface ExtraRoundStore {
   recordExtraOffer(id: string, at: number): Promise<void>;
   /** Records the child's skip, only while the test is in progress and the round was neither skipped nor started. */
   skipExtraRound(id: string, at: number): Promise<void>;
+  /**
+   * Records the child's stop part way (as the skip time), only while the test is in progress and the round started and
+   * was neither skipped nor finished.
+   */
+  stopExtraRound(id: string, at: number): Promise<void>;
   /**
    * Stores the test with its drawn round (`test.extra`) and the start time, only while the round has not started and
    * the test has not expired. "taken": another request started it first (or the test expired): read again.
@@ -957,15 +979,20 @@ export interface ExtraRoundStore {
   finishExtraRound(id: string, finished: { at: number; placement: Placement }): Promise<boolean>;
 }
 
-/** True while the test takes answers: in progress, or completed with a round taken from the report and not finished. */
+/**
+ * True while the test takes answers: in progress (until a stop of the round), or completed with a round taken from the
+ * report (or stopped during the test) and not finished.
+ */
 const takesAnswers = ({ attempt, session, round }: ReadTest): boolean =>
-  attempt.status === "in_progress" || (attempt.status === "completed" && !!session.extra && round.finishedAt === null);
+  (attempt.status === "in_progress" && !stopped(round)) || (attempt.status === "completed" && !!session.extra && round.finishedAt === null);
 
 /**
  * The step the screen shows next. When every answer of an open test is in and the child neither skipped nor took the
- * round, the step offers the round if an area is an early sign.
+ * round, the step offers the round if an area is an early sign. After a stop, the step goes on to "Did anyone help?"
+ * with the main test's total, as after a skip.
  */
 function stepOf({ attempt, session, round }: ReadTest): TestStep {
+  if (attempt.status === "in_progress" && stopped(round)) return testStep(withoutRound(session));
   const step = testStep(session);
   if (step.status !== "complete" || attempt.status !== "in_progress" || round.skippedAt !== null) return step;
   const offer = extraRoundOffer(session);
@@ -1031,6 +1058,37 @@ export async function skipExtraRound(store: AttemptStore, parent: string, id: st
   return { ok: true, step: testStep(open.session) };
 }
 
+/**
+ * The child stops the extra round part way during the parent's test at `now`: the store records the stop, and the step
+ * goes on to "Did anyone help?". The finish then scores the main test alone; the round's answers so far stay stored, and
+ * the report offers the rest. A second stop changes nothing. "conflict" with the step when no round taken during the
+ * test has questions left. A round taken from the report needs no stop: its answers are saved as they come.
+ */
+export async function stopExtraRound(store: AttemptStore, parent: string, id: string, now: number): Promise<StepOutcome> {
+  const open = await openTest(store, parent, id, now);
+  if (!open.ok) return open;
+  const { attempt, session, round } = open;
+  if (attempt.status === "in_progress" && stopped(round)) return { ok: true, step: stepOf(open) };
+  if (attempt.status !== "in_progress" || !session.extra || round.skippedAt !== null || !nextQuestion(session)) return { ok: false, error: "conflict", step: stepOf(open) };
+  try {
+    await store.stopExtraRound(id, now);
+  } catch (e) {
+    return storeFailed(e);
+  }
+  return { ok: true, step: stepOf({ ...open, round: { ...round, skippedAt: now } }) };
+}
+
+/**
+ * #190: the extra round the child is taking during the parent's open test, for the start screen: taken during the test,
+ * with questions left, and not stopped. Null otherwise, and when the test cannot be read. Writes nothing.
+ */
+export async function roundInProgress(store: AttemptStore, parent: string, id: string): Promise<{ answered: number; questions: number } | null> {
+  const read = await readTest(store, parent, id);
+  if (!read.ok || read.attempt.status !== "in_progress" || stopped(read.round) || !nextQuestion(read.session)) return null;
+  const taken = extraRoundTaken(read.session);
+  return taken && { answered: taken.answered, questions: taken.questions };
+}
+
 /** True when the parent's test is their child's latest: no other test of the child started after it. Throws on a store failure. */
 async function latestTest(store: AttemptStore, parent: string, id: string): Promise<boolean> {
   const all = await store.attempts(parent);
@@ -1058,8 +1116,9 @@ async function finishRound(store: AttemptStore, id: string, read: ReadTest, now:
 
 /**
  * #190: what the report offers about the extra round: the round of a test whose child skipped it (or never saw the
- * offer), or the rest of a round the child started from the report. Only for a completed test that is the child's
- * latest, with an early-sign area. Null otherwise, and when the test cannot be read. Writes nothing.
+ * offer), or the rest of a round the child stopped part way (during the test or from the report). Only for a completed
+ * test that is the child's latest, with an early-sign area. Null otherwise, and when the test cannot be read. Writes
+ * nothing.
  */
 export type ExtraRoundState =
   | { kind: "offer"; offer: ExtraRoundOffer }

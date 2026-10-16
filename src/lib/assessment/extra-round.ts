@@ -83,6 +83,17 @@ export function extraRoundTaken(session: Session): (ExtraRoundOffer & { answered
 }
 
 /**
+ * The session without its extra round: the main test and its answers alone. A round the child stopped part way during
+ * the test does not count: the test is stepped and scored as if the round had been skipped.
+ */
+export function withoutRound(session: Session): Session {
+  if (!session.extra) return session;
+  const main: Session = { ...session, answers: session.answers.slice(0, mainQuestions(session).length) };
+  delete main.extra;
+  return main;
+}
+
+/**
  * The session with its extra round drawn: the offer's questions, asked after the routed form. The server stores them
  * with the test (storedTest), so the round stays the same when the bank changes later. Throws when no round is due.
  */

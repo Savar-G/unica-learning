@@ -11,3 +11,9 @@ options B and C are DOM moves of the same card on the live page.
 
 The flow screenshots show a round's first question (its own progress, "1 of 8"), the start screen of a round taken
 from the report, and its end screen.
+
+Stop part way (after the verifier's finding): `test-round-stop.png` (and `-tablet`) shows "Stop here" on a round
+question, `test-round-return.png` the start screen after the child left part way, and `report-round-stopped.png` the end
+of a round from the report stopped after 3 answers. Made the same way: a temporary harness page (not committed) ran the
+real `TakeTest` with its requests answered in the browser by the real test attempt module on the in-memory store, on
+port 3191 with no `.env.local`.

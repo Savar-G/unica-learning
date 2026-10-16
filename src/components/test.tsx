@@ -22,7 +22,7 @@ import { breakSeen, loadBreak, markBreakSeen, saveBreak, TestBreak } from "./tes
 import { Choices } from "./test-choices";
 import { BarGraph, ChoiceFace, PromptText } from "./test-figures";
 import { TestHelp } from "./test-help";
-import { ExtraEnd, ExtraIntro, ExtraOffer, type ExtraEntry } from "./test-extra";
+import { ExtraEnd, ExtraIntro, ExtraOffer, ExtraReturn, type ExtraEntry } from "./test-extra";
 import { TestProgress } from "./test-progress";
 import { ReadAloud, warmUpVoices } from "./test-read-aloud";
 import { Whiteboard, boardImage, clearDrafts, loadDraft, saveDraft, type BoardSize } from "./whiteboard";
@@ -39,6 +39,8 @@ type Screen =
   | { name: "help" }
   /** #190: the extra round's offer, after the last main question and before "Did anyone help?". */
   | { name: "offer"; offer: ExtraRoundOffer }
+  /** #190: the child stopped a round the report offered again: its answers so far are saved, and the report offers the rest. */
+  | { name: "stopped"; answered: number }
   | { name: "done" };
 
 async function call<T>(url: string, init?: RequestInit): Promise<T | { ok: false; error: TestError }> {
@@ -71,9 +73,10 @@ function browserDevice(pointers: readonly string[]): TestDevice {
 
 /**
  * #72: "resume" continues the open test where it stopped; "finish" sends a test whose answers are all in but that was
- * never scored; "restart" draws a new one after a test ran out of time.
+ * never scored; "restart" draws a new one after a test ran out of time. #190: "round" continues the extra round the
+ * child left part way, or stops it there.
  */
-export type StartMode = "new" | "resume" | "finish" | "restart";
+export type StartMode = "new" | "resume" | "finish" | "restart" | "round";
 
 /**
  * `typing`: the whiteboard has a text box (grades 3-7); grades 1-2 draw only (#67). `breakAfter`: questions before the
@@ -212,12 +215,16 @@ export function TakeTest({ childId, name, breakAfter, ready, done, mode: firstMo
     return show(held);
   }, [show, expire]);
 
-  /** #190: the child's choice at the offer, or Start on a round the report offered again. Resolves false when it failed. */
-  const chooseRound = async (take: boolean, src: "test" | "report") => {
+  /**
+   * #190: the child's choice at the offer, Start on a round the report offered again, or Stop here part way through a
+   * round taken during the test. Resolves false when it failed.
+   */
+  const chooseRound = async (choice: "take" | "skip" | "stop", src: "test" | "report") => {
     setFailure(null);
-    const res = await call<StepResult>(`/api/account/assessments/${testId.current}/extra`, post({ take }));
+    const body = choice === "stop" ? { stop: true } : { take: choice === "take" };
+    const res = await call<StepResult>(`/api/account/assessments/${testId.current}/extra`, post(body));
     if (res.ok) {
-      track("test_extra", { status: take ? "taken" : "skipped", src });
+      track("test_extra", { status: choice === "take" ? "taken" : choice === "skip" ? "skipped" : "stopped", src });
       return show(res.step);
     }
     // Another tab chose first: carry on from where the server is.
@@ -228,13 +235,25 @@ export function TakeTest({ childId, name, breakAfter, ready, done, mode: firstMo
     return false;
   };
 
-  const start = async () => {
+  /**
+   * #190: Stop here on a question of the extra round. During the test, the server records the stop and "Did anyone
+   * help?" comes next. A round the report offered again needs no request: its answers are saved as they come.
+   */
+  const stopRound = async (answered: number) => {
+    if (!extra) return chooseRound("stop", "test");
+    track("test_extra", { status: "stopped", src: "report" });
+    setScreen({ name: "stopped", answered });
+    return true;
+  };
+
+  /** Start or Continue on the start screen; `stop`: Stop here on the start screen of a round the child left part way (#190). */
+  const start = async (stop = false) => {
     if (busy) return;
     setBusy(true);
     setFailure(null);
     if (extra) {
       testId.current = extra.testId;
-      await chooseRound(true, "report");
+      await chooseRound("take", "report");
       setBusy(false);
       return;
     }
@@ -253,6 +272,11 @@ export function TakeTest({ childId, name, breakAfter, ready, done, mode: firstMo
     clearDrafts((key) => !key.startsWith(draftPrefix(started.id)));
     if (started.resumed) track("test_resume");
     else track("test_start", { status: mode === "restart" ? "restart" : "new" });
+    if (stop) {
+      await chooseRound("stop", "test");
+      setBusy(false);
+      return;
+    }
     const res = await call<StepResult>(`/api/account/assessments/${started.id}`);
     if (res.ok) {
       // A captured end survived a reload while its request was pending. Resend the same value once on resume.
@@ -296,11 +320,14 @@ export function TakeTest({ childId, name, breakAfter, ready, done, mode: firstMo
       </header>
       <main id="main" className="test-main">
         {screen.name === "intro" && (extra
-          ? <ExtraIntro name={name} entry={extra} busy={busy} onStart={start} problem={<Problem error={failure} />} />
-          : <Intro name={name} ready={ready} busy={busy} onStart={start} failure={failure} mode={mode} />)}
-        {screen.name === "offer" && <ExtraOffer name={name} offer={screen.offer} problem={<Problem error={failure} />} onChoose={(take) => chooseRound(take, "test")} />}
+          ? <ExtraIntro name={name} entry={extra} busy={busy} onStart={() => start()} problem={<Problem error={failure} />} />
+          : mode === "round"
+            ? <ExtraReturn name={name} busy={busy} onGo={() => start()} onStop={() => start(true)} problem={<Problem error={failure} />} />
+            : <Intro name={name} ready={ready} busy={busy} onStart={() => start()} failure={failure} mode={mode} />)}
+        {screen.name === "offer" && <ExtraOffer name={name} offer={screen.offer} problem={<Problem error={failure} />} onChoose={(take) => chooseRound(take ? "take" : "skip", "test")} />}
         {screen.name === "question" && (
-          <Question key={screen.question.id} testId={screen.testId} typing={typing} question={screen.question} last={screen.number === screen.total} takeYourTime={screen.takeYourTime} onAnswer={answer} failure={failure} />
+          <Question key={screen.question.id} testId={screen.testId} typing={typing} question={screen.question} last={screen.number === screen.total} takeYourTime={screen.takeYourTime} onAnswer={answer} failure={failure}
+            onStop={screen.extra ? () => stopRound(screen.extra!.number - 1) : undefined} />
         )}
         {screen.name === "break" && (
           <TestBreak name={name} answered={screen.next.breakAfter} total={screen.next.total} onDone={(how) => {
@@ -331,6 +358,7 @@ export function TakeTest({ childId, name, breakAfter, ready, done, mode: firstMo
         {screen.name === "done" && (extra
           ? <ExtraEnd name={name} questions={extra.questions} reportHref={extra.reportHref} />
           : <End name={name} total={progress?.total} />)}
+        {screen.name === "stopped" && extra && <ExtraEnd name={name} questions={extra.questions} reportHref={extra.reportHref} stoppedAfter={screen.answered} />}
       </main>
     </div>
   );
@@ -418,12 +446,15 @@ interface QuestionProps {
   takeYourTime: boolean;
   onAnswer: (id: string, response: string, timeMs: number, work?: WorkPayload, events?: AnswerEvents) => Promise<boolean>;
   failure: TestError | null;
+  /** #190: Stop here, on a question of the extra round. Resolves false when it failed and the child can go on. */
+  onStop?: () => Promise<boolean>;
 }
 
 // One question in the split desk (D-088): the question and the answer on the left, the whiteboard on the right.
-function Question({ testId, typing, question, last, takeYourTime, onAnswer, failure }: QuestionProps) {
+function Question({ testId, typing, question, last, takeYourTime, onAnswer, failure, onStop }: QuestionProps) {
   const [value, setValue] = useState("");
   const [sending, setSending] = useState(false);
+  const [stopping, setStopping] = useState(false);
   // Time on the question runs from when it appears to when the child presses Next.
   const shownAt = useRef(0);
   const heading = useRef<HTMLHeadingElement>(null);
@@ -490,7 +521,7 @@ function Question({ testId, typing, question, last, takeYourTime, onAnswer, fail
 
   const submit = async (e?: FormEvent) => {
     e?.preventDefault();
-    if (!value || sending || needsWork) return;
+    if (!value || sending || stopping || needsWork) return;
     setSending(true);
     const timeMs = performance.now() - shownAt.current;
     let image: string | null = null;
@@ -523,6 +554,13 @@ function Question({ testId, typing, question, last, takeYourTime, onAnswer, fail
     stored.current = true;
     saveDraft(draft, emptyBoard());
     if (image || typed) track("test_work", { status: question.showWork ? "required" : "optional", channel: image && typed ? "both" : image ? "draw" : "type" });
+  };
+
+  // #190: Stop here. On success the next screen replaces this question; on failure the child can answer or stop again.
+  const stop = async () => {
+    if (!onStop || sending || stopping) return;
+    setStopping(true);
+    if (!(await onStop())) setStopping(false);
   };
 
   const submitRef = useRef(submit);
@@ -580,8 +618,10 @@ function Question({ testId, typing, question, last, takeYourTime, onAnswer, fail
           )}
           <Problem error={failure} />
           <div className="test-next">
+            {/* #190: at the far end from Next, so it is not pressed by mistake. */}
+            {onStop && <Button variant="ghost" onClick={stop} disabled={sending || stopping} aria-busy={stopping}>Stop here</Button>}
             <p className="test-why" aria-live="polite">{nudge ? "Now show your work on the board" : ""}</p>
-            <Button type="submit" disabled={!value || sending || needsWork} aria-busy={sending}>{last ? "Finish" : "Next"}</Button>
+            <Button type="submit" disabled={!value || sending || stopping || needsWork} aria-busy={sending}>{last ? "Finish" : "Next"}</Button>
           </div>
         </div>
       </div>

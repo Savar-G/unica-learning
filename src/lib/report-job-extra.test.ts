@@ -5,7 +5,7 @@ import { runReportJob } from "@/lib/report-job";
 import { memoryReportJobStore } from "@/lib/report-job-memory";
 import { memoryReportReaders, type MemoryReportTables } from "@/lib/report-loading-memory";
 import { memoryReportLedger } from "@/lib/report-row-ledger-memory";
-import { answerQuestion, finishTest, skipExtraRound, takeExtraRound } from "@/lib/test-attempt";
+import { answerQuestion, extraRoundState, finishTest, skipExtraRound, stopExtraRound, takeExtraRound } from "@/lib/test-attempt";
 import { memoryAttemptStore, type MemoryTest } from "@/lib/test-attempt-memory";
 
 // #190 (spec #181): a finished extra round builds the report again. The child's test runs through the test attempt
@@ -121,6 +121,55 @@ describe("a finished extra round", () => {
     const rebuilt = JSON.stringify(tables.reports);
     await run();
     expect(JSON.stringify(tables.reports)).toBe(rebuilt);
+    expect(mail.delivered).toHaveLength(2);
+  });
+
+  it("after a stop part way during the test: the report is built from the main test, offered again, and built again with the whole round", async () => {
+    const test = storedTest(createSession(ASHA, 1));
+    const row: MemoryTest = { ...startAttempt("a1", T0), parentId: "parent-1", childId: "child-1", seed: 1, test, answers: [] };
+    const memory = memoryAttemptStore({ children: [{ id: "child-1", parentId: "parent-1", ...ASHA }], tests: [row] });
+    let at = T0;
+    await answerAll(memory, (n) => n !== 0, () => (at += MINUTE));
+    await takeExtraRound(memory.store, "parent-1", "a1", (at += MINUTE));
+    // Three round answers, each with typed work, then the stop.
+    for (let n = 0; n < 3; n++) {
+      const q = nextQuestion(restoreSession(memory.tests[0].test, memory.tests[0].answers))!;
+      const input = { questionId: q.id, response: q.answer, timeMs: 20_000, work: { png: null, text: "Round working" } };
+      expect(await answerQuestion(memory.store, "parent-1", "a1", input, (at += MINUTE))).toMatchObject({ ok: true });
+    }
+    expect(await stopExtraRound(memory.store, "parent-1", "a1", (at += MINUTE))).toEqual({ ok: true, step: { status: "complete", total: 42 } });
+    expect(await finishTest(memory.store, "parent-1", "a1", "no", (at += MINUTE))).toEqual({ ok: true, id: "a1", finished: "now" });
+    expect(memory.tests[0].answers).toHaveLength(45);
+
+    const tables: MemoryReportTables = { reports: [], children: [{ id: "child-1", parentId: "parent-1", firstName: "Asha" }], drawings: [] };
+    copy(memory.tests[0], tables);
+    const readers = memoryReportReaders(tables);
+    const job = memoryReportJobStore(tables, { reads: readers.reads, parents: [{ id: "parent-1", ...PRIYA }] });
+    const mail = memoryTransport();
+    const book = memoryReportLedger();
+    const run = () => runReportJob("a1", ORIGIN, { reader: readers.key(), comparison: async (id) => ({ assessmentId: id, tests: [] }), store: job.store, reviewer: null, transport: mail.transport, ledger: book.ledger });
+
+    // The report of the main test alone, emailed once: the 3 round answers and their work are not in it.
+    await run();
+    const early = REPORTED_STRAND[memory.tests[0].test.stage1[0].strand];
+    expect(tables.reports).toHaveLength(1);
+    expect(tables.reports![0]).toMatchObject({ id: "report-1", questions: 42, minutes: 14 });
+    expect(tables.reports![0].model.strands.find((s) => s.strand === early)).toMatchObject({ correct: 5, total: 6, certainty: "early-sign" });
+    expect(tables.reports![0].model).not.toHaveProperty("extraRound");
+    expect(JSON.stringify(tables.reports![0].model)).not.toContain("Round working");
+    expect(mail.delivered.map((m) => m.to)).toEqual(["priya@family.ca", "savar@unicalearning.com"]);
+
+    // The report offers the rest of the round; finished from the report, the same report row is built again.
+    expect(await extraRoundState(memory.store, "parent-1", "a1")).toEqual({ kind: "continue", offer: { questions: 8, strands: [early] }, answered: 3 });
+    at = T0 + 2 * DAY;
+    expect(await takeExtraRound(memory.store, "parent-1", "a1", at)).toMatchObject({ ok: true, step: { number: 46 } });
+    await answerAll(memory, () => true, () => (at += MINUTE));
+    expect(await finishTest(memory.store, "parent-1", "a1", null, (at += MINUTE))).toEqual({ ok: true, id: "a1", finished: "now" });
+    copy(memory.tests[0], tables);
+    await run();
+    expect(tables.reports).toHaveLength(1);
+    expect(tables.reports![0]).toMatchObject({ id: "report-1", questions: 50, minutes: 17 });
+    expect(tables.reports![0].model.extraRound).toEqual({ questions: 8, strands: [early] });
     expect(mail.delivered).toHaveLength(2);
   });
 

@@ -11,7 +11,7 @@ import {
   type StoredTest,
   type Submission,
 } from "@/lib/assessment";
-import { answerQuestion, extraRoundState, finishTest, nextStep, skipExtraRound, StoreError, takeExtraRound, type AnswerInput } from "@/lib/test-attempt";
+import { answerQuestion, extraRoundState, finishTest, nextStep, roundInProgress, skipExtraRound, stopExtraRound, StoreError, takeExtraRound, type AnswerInput } from "@/lib/test-attempt";
 import { memoryAttemptStore, type MemoryTest } from "@/lib/test-attempt-memory";
 
 // The optional extra round (#190, spec #181) through the test attempt module, against the in-memory store with the
@@ -202,6 +202,124 @@ describe("skipping the round", () => {
   });
 });
 
+// A round taken during the test can be stopped part way (#190): the test then finishes as if the round had been skipped
+// after it started. The round's answers so far stay stored with their mark and do not count, and the report offers the
+// rest of the round while the test is the child's latest.
+describe("stopping the round part way, during the test", () => {
+  const TAKEN = T0 + 2 * HOUR;
+  /** Asha took the round at TAKEN and answered its first `n` questions right, one minute apart. Returns the last answer's time. */
+  const takenAndAnswered = async (n: number) => {
+    const memory = family(mainDone(firstWrong));
+    await takeExtraRound(memory.store, P1, "a1", TAKEN);
+    let at = TAKEN;
+    for (let i = 0; i < n; i++) {
+      const result = await answerQuestion(memory.store, P1, "a1", sent(memory.tests[0]), (at += MINUTE));
+      if (!result.ok) throw new Error(`round answer ${i + 1}: ${result.error}`);
+    }
+    return { memory, at };
+  };
+
+  it("records the stop, and the step goes on to Did anyone help? with the main test's total, also after a reload", async () => {
+    const { memory, at } = await takenAndAnswered(3);
+    expect(await stopExtraRound(memory.store, P1, "a1", at + MINUTE)).toEqual({ ok: true, step: { status: "complete", total: 42 } });
+    expect(await nextStep(memory.store, P1, "a1", at + HOUR)).toEqual({ ok: true, step: { status: "complete", total: 42 } });
+    expect(memory.tests[0].extraRound).toMatchObject({ startedAt: TAKEN, skippedAt: at + MINUTE, finishedAt: null });
+    expect(memory.tests[0].status).toBe("in_progress");
+  });
+
+  it("takes no more round answers during the test", async () => {
+    const { memory, at } = await takenAndAnswered(3);
+    await stopExtraRound(memory.store, P1, "a1", at + MINUTE);
+    expect(await answerQuestion(memory.store, P1, "a1", sent(memory.tests[0]), at + 2 * MINUTE)).toEqual({ ok: false, error: "conflict", step: { status: "complete", total: 42 } });
+    expect(memory.tests[0].answers).toHaveLength(45);
+  });
+
+  it("a round stopped after 3 answers finishes the test: the result is the main test's alone, and the 3 answers stay stored with their mark", async () => {
+    const { memory, at } = await takenAndAnswered(3);
+    await stopExtraRound(memory.store, P1, "a1", at + MINUTE);
+    expect(await finishTest(memory.store, P1, "a1", "no", at + 2 * MINUTE)).toEqual({ ok: true, id: "a1", finished: "now" });
+    expect(memory.tests[0]).toMatchObject({ status: "completed", completedAt: at + 2 * MINUTE, help: "no", extraRound: { skippedAt: at + MINUTE, finishedAt: null } });
+
+    // The same result as a test whose child skipped the round: the 3 round answers do not count.
+    const skipped = family(mainDone(firstWrong));
+    await skipExtraRound(skipped.store, P1, "a1", TAKEN);
+    await finishTest(skipped.store, P1, "a1", "no", at + 2 * MINUTE);
+    expect(memory.tests[0].placement).toEqual(skipped.tests[0].placement);
+    expect(memory.tests[0].placement).not.toHaveProperty("extraRound");
+    expect(memory.tests[0].placement?.strands.find((s) => s.strand === earlyArea(memory.tests[0]))).toMatchObject({ correct: 5, total: 6, certainty: "early-sign" });
+    expect(memory.tests[0].answers.slice(42).map((a) => [a.position, a.questionId, a.round])).toEqual([[42, "x-0", "extra"], [43, "x-1", "extra"], [44, "x-2", "extra"]]);
+
+    // A repeated finish (a lost response) is already finished, and the result stays as it was.
+    const scored = structuredClone(memory.tests[0]);
+    expect(await finishTest(memory.store, P1, "a1", "no", at + 3 * MINUTE)).toEqual({ ok: true, id: "a1", finished: "already" });
+    expect(memory.tests[0]).toEqual(scored);
+  });
+
+  it("the report then offers the rest of the round while the test is the child's latest, and its finish scores every round answer", async () => {
+    const { memory, at } = await takenAndAnswered(3);
+    await stopExtraRound(memory.store, P1, "a1", at + MINUTE);
+    await finishTest(memory.store, P1, "a1", "no", at + 2 * MINUTE);
+    const early = earlyArea(memory.tests[0]);
+    expect(await extraRoundState(memory.store, P1, "a1")).toEqual({ kind: "continue", offer: { questions: 8, strands: [early] }, answered: 3 });
+
+    const later = T0 + 2 * DAY;
+    expect(await takeExtraRound(memory.store, P1, "a1", later)).toMatchObject({ ok: true, step: { number: 46, total: 50, extra: { number: 4, total: 8 } } });
+    const last = await answerRound(memory, later);
+    expect(await finishTest(memory.store, P1, "a1", null, last + MINUTE)).toEqual({ ok: true, id: "a1", finished: "now" });
+    expect(memory.tests[0].placement?.extraRound).toEqual({ questions: 8, strands: [early] });
+    expect(memory.tests[0].placement?.strands.find((s) => s.strand === early)).toMatchObject({ correct: 13, total: 14, certainty: "clear" });
+    expect(memory.tests[0]).toMatchObject({ help: "no", completedAt: at + 2 * MINUTE, extraRound: { skippedAt: at + MINUTE, finishedAt: last + MINUTE } });
+    expect(await extraRoundState(memory.store, P1, "a1")).toBeNull();
+  });
+
+  it("is not offered on the report once a newer test of the child exists", async () => {
+    const { memory, at } = await takenAndAnswered(3);
+    await stopExtraRound(memory.store, P1, "a1", at + MINUTE);
+    await finishTest(memory.store, P1, "a1", "no", at + 2 * MINUTE);
+    memory.tests.push({ ...mainDone(allRight, "a2"), ...startAttempt("a2", T0 + 31 * DAY) });
+    expect(await extraRoundState(memory.store, P1, "a1")).toBeNull();
+  });
+
+  it("a second stop changes nothing", async () => {
+    const { memory, at } = await takenAndAnswered(3);
+    await stopExtraRound(memory.store, P1, "a1", at + MINUTE);
+    expect(await stopExtraRound(memory.store, P1, "a1", at + HOUR)).toEqual({ ok: true, step: { status: "complete", total: 42 } });
+    expect(memory.tests[0].extraRound?.skippedAt).toBe(at + MINUTE);
+  });
+
+  it("is refused before the round starts, after its last answer, and on a completed test, with the step, and records nothing", async () => {
+    const offered = family(mainDone(firstWrong));
+    expect(await stopExtraRound(offered.store, P1, "a1", TAKEN)).toEqual({ ok: false, error: "conflict", step: { status: "complete", total: 42, extraRound: { questions: 8, strands: [earlyArea(offered.tests[0])] } } });
+    expect(offered.tests[0].extraRound?.skippedAt ?? null).toBeNull();
+
+    const { memory } = await takenAndAnswered(0);
+    const last = await answerRound(memory, TAKEN);
+    expect(await stopExtraRound(memory.store, P1, "a1", last + MINUTE)).toEqual({ ok: false, error: "conflict", step: { status: "complete", total: 50 } });
+    expect(memory.tests[0].extraRound?.skippedAt).toBeNull();
+
+    // From the report: the answers so far are saved, and the report offers the rest. There is nothing to stop.
+    const fromReport = family(mainDone(firstWrong));
+    await skipExtraRound(fromReport.store, P1, "a1", TAKEN);
+    await finishTest(fromReport.store, P1, "a1", "no", TAKEN + MINUTE);
+    await takeExtraRound(fromReport.store, P1, "a1", T0 + DAY);
+    expect(await stopExtraRound(fromReport.store, P1, "a1", T0 + DAY + MINUTE)).toMatchObject({ ok: false, error: "conflict", step: { number: 43, extra: { number: 1 } } });
+    expect(fromReport.tests[0].extraRound?.skippedAt).toBe(TAKEN);
+  });
+
+  it("tells the start screen the child was doing the round, until the stop", async () => {
+    const { memory, at } = await takenAndAnswered(3);
+    expect(await roundInProgress(memory.store, P1, "a1")).toEqual({ answered: 3, questions: 8 });
+    await stopExtraRound(memory.store, P1, "a1", at + MINUTE);
+    expect(await roundInProgress(memory.store, P1, "a1")).toBeNull();
+    // Not before the round, not for another family, and not once every round answer is in.
+    expect(await roundInProgress(family(mainDone(firstWrong)).store, P1, "a1")).toBeNull();
+    expect(await roundInProgress(memory.store, "parent-2", "a1")).toBeNull();
+    const done = await takenAndAnswered(0);
+    await answerRound(done.memory, TAKEN);
+    expect(await roundInProgress(done.memory.store, P1, "a1")).toBeNull();
+  });
+});
+
 // The report offers a skipped round again while the test is the child's latest (#190). The round then runs on the
 // completed test, and its finish scores the test again; the finish route then runs the report job.
 describe("the round from the report", () => {
@@ -312,6 +430,17 @@ describe("when the store fails", () => {
     expect(await skipExtraRound(memory.store, P1, "a1", T0 + 2 * HOUR)).toEqual({ ok: false, error: "store_failed" });
     delete memory.fail.skipExtraRound;
     expect(await nextStep(memory.store, P1, "a1", T0 + 3 * HOUR)).toMatchObject({ ok: true, step: { extraRound: { questions: 8 } } });
+  });
+
+  it("a failed stop is store_failed, and the round goes on", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    const memory = family(mainDone(firstWrong));
+    await takeExtraRound(memory.store, P1, "a1", T0 + 2 * HOUR);
+    memory.fail.stopExtraRound = new StoreError("extra round stop failed", "timeout");
+    expect(await stopExtraRound(memory.store, P1, "a1", T0 + 3 * HOUR)).toEqual({ ok: false, error: "store_failed" });
+    delete memory.fail.stopExtraRound;
+    expect(memory.tests[0].extraRound?.skippedAt).toBeNull();
+    expect(await nextStep(memory.store, P1, "a1", T0 + 3 * HOUR)).toMatchObject({ ok: true, step: { number: 43, extra: { number: 1 } } });
   });
 
   it("a failed finish of a round from the report is store_failed, and the stored result stays as it was", async () => {

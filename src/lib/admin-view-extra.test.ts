@@ -54,7 +54,7 @@ describe("the extra round of one test on the admin page", () => {
       ["Extra round", "Taken during the test"],
       ["Extra questions", `8: ${area}`],
       ["Offered (Pacific)", "2026-10-16 11:40"],
-      ["Skipped (Pacific)", "-"],
+      ["Skipped or stopped (Pacific)", "-"],
       ["Started (Pacific)", "2026-10-16 11:41"],
       ["Finished (Pacific)", "2026-10-16 12:00"],
     ]);
@@ -63,7 +63,15 @@ describe("the extra round of one test on the admin page", () => {
   it("a round skipped in the test, then taken from the report and not finished", () => {
     const facts = extraRoundFacts({ ...NONE, extra_offered_at: "2026-10-16T18:40:00.000Z", extra_skipped_at: "2026-10-16T18:41:00.000Z", extra_started_at: "2026-10-18T16:00:00.000Z" }, roundTest(), COMPLETED);
     expect(facts[0]).toEqual(["Extra round", "Taken from the report, not finished"]);
-    expect(facts[3]).toEqual(["Skipped (Pacific)", "2026-10-16 11:41"]);
+    expect(facts[3]).toEqual(["Skipped or stopped (Pacific)", "2026-10-16 11:41"]);
+  });
+
+  it("a round taken during the test and stopped part way: not finished, then finished from the report", () => {
+    const stopped = { ...NONE, extra_offered_at: "2026-10-16T18:40:00.000Z", extra_started_at: "2026-10-16T18:41:00.000Z", extra_skipped_at: "2026-10-16T18:45:00.000Z" };
+    const facts = extraRoundFacts(stopped, roundTest(), COMPLETED);
+    expect(facts[0]).toEqual(["Extra round", "Taken during the test, stopped part way"]);
+    expect(facts[3]).toEqual(["Skipped or stopped (Pacific)", "2026-10-16 11:45"]);
+    expect(extraRoundFacts({ ...stopped, extra_finished_at: "2026-10-18T16:10:00.000Z" }, roundTest(), COMPLETED)[0]).toEqual(["Extra round", "Taken during the test, stopped part way, finished from the report"]);
   });
 
   it("a round offered and skipped, one offered with no choice yet, and a test with none", () => {
@@ -74,7 +82,7 @@ describe("the extra round of one test on the admin page", () => {
       ["Extra round", "Not offered"],
       ["Extra questions", "-"],
       ["Offered (Pacific)", "-"],
-      ["Skipped (Pacific)", "-"],
+      ["Skipped or stopped (Pacific)", "-"],
       ["Started (Pacific)", "-"],
       ["Finished (Pacific)", "-"],
     ]);
