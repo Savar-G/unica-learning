@@ -28,6 +28,7 @@ import {
   metaLine,
   nextStep,
   reliabilityNote,
+  type RetakeState,
   reportDate,
   sharePercent,
   summaryText,
@@ -41,15 +42,19 @@ import "./report.css";
 
 const NO_NEXT: ReportNextContext = { src: "account", asked: false, start: { saved: null, joined: false, cancelled: false } };
 
-/** #189: the button under the reliability note: a new test at once. Null when no new test is open now. */
+/**
+ * #189: when the child's next test opens, from the account's start rules (D-108), and the button under the reliability
+ * note while it is open now.
+ */
 export interface NewTestOffer {
+  state: RetakeState;
   href: string;
   label: string;
 }
 
 /**
- * `nextSlot` replaces the next-step row: the public sample report shows its own button there. `newTest` (#189): the
- * button under the reliability note; without it the note shows its words only (the admin's read-only report).
+ * `nextSlot` replaces the next-step row: the public sample report shows its own button there. `newTest` (#189): when the
+ * next test opens, and the button under the reliability note; without it the note names no time (the admin's copy).
  */
 export function ReportCard({ view, next = NO_NEXT, readOnly = false, nextSlot, newTest = null }: { view: ReportView; next?: ReportNextContext; readOnly?: boolean; nextSlot?: ReactNode; newTest?: NewTestOffer | null }) {
   return (
@@ -149,9 +154,9 @@ function ReportOverall({ view }: { view: ReportView }) {
 // warning (#71). Below 100 eligible children the ruler above is the whole comparison (#101, D-084).
 function ReportContext({ view, newTest }: { view: ReportView; newTest: NewTestOffer | null }) {
   const { fsa } = view.model;
-  const warning = helpWarning(view);
+  const warning = helpWarning(view, newTest?.state);
   const comparison = comparisonView(view);
-  const reliability = reliabilityNote(view);
+  const reliability = reliabilityNote(view, newTest?.state);
   if (!fsa && !warning && !comparison && !reliability) return null;
   return (
     <div className="rpt-context">
@@ -161,7 +166,7 @@ function ReportContext({ view, newTest }: { view: ReportView; newTest: NewTestOf
           <h2 id="rpt-reliability">{reliability.title}</h2>
           <p>{reliability.text}</p>
           <p>{reliability.offer}</p>
-          {newTest && <p className="rpt-reliability-go"><Link className="btn" href={newTest.href}>{newTest.label}</Link></p>}
+          {newTest?.state.kind === "open" && <p className="rpt-reliability-go"><Link className="btn" href={newTest.href}>{newTest.label}</Link></p>}
         </aside>
       )}
       {fsa && (

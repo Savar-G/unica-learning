@@ -150,17 +150,32 @@ export function leftOutLine(v: ReportView): string | null {
 }
 
 /**
- * #189: more than 30% of the answers were very fast, so the result may not be reliable, and a new test opens at once
- * (no 30-day wait). Null at a steady pace, and for reports stored before #189.
+ * When the child's next test opens, as the account's start rules say (#189, D-108): "open" now, or it "opens" at `at`
+ * (epoch ms). The report page reads it; the email and the admin's copy do not know it, so they pass nothing.
  */
-export function reliabilityNote(v: ReportView): { title: string; text: string; offer: string } | null {
+export type RetakeState = { kind: "open" } | { kind: "opens"; at: number };
+
+/** The first whole day a test that opens at `at` is open, in the family's time zone, so the date is true all day. */
+const firstWholeDay = (v: ReportView, at: number) => familyDate(v, at + DAY_MS - 1);
+
+/**
+ * #189: more than 30% of the answers were very fast, so the result may not be reliable. The offer follows `retake`: a
+ * new test now (the bypass of the 30-day wait, at most once per 30 days, D-108), the day it opens, or, when unknown,
+ * no time at all. Null at a steady pace, and for reports stored before #189.
+ */
+export function reliabilityNote(v: ReportView, retake?: RetakeState): { title: string; text: string; offer: string } | null {
   const r = v.model.reliability;
   if (!r) return null;
   const name = v.childName;
+  const offer = !retake
+    ? `${name} can take a new test, with new questions. Your account shows when it opens.`
+    : retake.kind === "open"
+      ? `${name} can take a new test now, with new questions. There is no ${RETAKE_DAYS}-day wait.`
+      : `${name} can take a new test, with new questions, from ${firstWholeDay(v, retake.at)}.`;
   return {
     title: "This result may not be reliable",
     text: `${name} answered ${r.veryFast} of ${r.answers} questions in under ${TOO_FAST_MS / 1000} seconds. Most questions take longer than that to work out, so this report may not show what ${name} can do.`,
-    offer: `${name} can take a new test now, with new questions. There is no ${RETAKE_DAYS}-day wait.`,
+    offer,
   };
 }
 
@@ -237,21 +252,18 @@ const DAY_MS = 24 * 60 * 60_000;
  * the 30-day rule of #72 (RETAKE_DAYS after this test finished): the date is the first whole day the next test is
  * open, in the family's time zone, so it is true all day. The account shows the exact time.
  */
-export function helpWarning(v: ReportView): { title: string; text: string; retake: string } | null {
+export function helpWarning(v: ReportView, retake?: RetakeState): { title: string; text: string; retake: string } | null {
   if (!v.model.helpWarning) return null;
+  const title = "This level may be too high";
   const text = "We saw signs in this test that can make a level look higher than it is, such as help with some questions or answers given very quickly.";
-  // #189: after a result that may not be reliable, the next test is open now.
+  const trust = `For a level you can trust, ${v.childName} can take a new test alone, with new questions`;
+  // #189: after a result that may not be reliable, the retake line agrees with the reliability note (D-108).
   if (v.model.reliability) {
-    return { title: "This level may be too high", text, retake: `For a level you can trust, ${v.childName} can take a new test alone, with new questions. It is open now.` };
+    const when = !retake ? ". Your account shows when it opens." : retake.kind === "open" ? ". It is open now." : `, from ${firstWholeDay(v, retake.at)}.`;
+    return { title, text, retake: `${trust}${when}` };
   }
-  const opensAt = Date.parse(v.completedAt) + RETAKE_DAYS * DAY_MS;
-  // The last moment of the 24 hours from opensAt falls on the day after it, unless it opens at midnight.
-  const firstWholeDay = familyDate(v, opensAt + DAY_MS - 1);
-  return {
-    title: "This level may be too high",
-    text,
-    retake: `For a level you can trust, ${v.childName} can take a new test alone, with new questions, from ${firstWholeDay}.`,
-  };
+  // The last moment of the 24 hours from the opening falls on the day after it, unless it opens at midnight.
+  return { title, text, retake: `${trust}, from ${firstWholeDay(v, Date.parse(v.completedAt) + RETAKE_DAYS * DAY_MS)}.` };
 }
 
 /** The short curriculum name: "BC", "Ontario". */

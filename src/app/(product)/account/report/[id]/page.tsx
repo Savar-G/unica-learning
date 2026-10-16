@@ -77,14 +77,15 @@ export default async function ReportPage({ params, searchParams }: PageProps<"/a
 }
 
 /**
- * #189: the button under the reliability note, by the same start rules as the start screen. A new test opens at once
- * after a result that may not be reliable; once the child has taken a later test, the old report offers nothing.
+ * #189: when the child's next test opens after a result that may not be reliable, by the same start rules as the start
+ * screen: at once (at most once per 30 days, D-108), with the button; otherwise the day it opens.
  */
-async function newTestOffer(parent: string, childId: string): Promise<NewTestOffer | null> {
+async function newTestOffer(parent: string, childId: string): Promise<NewTestOffer> {
   const state = stateFor(await parentStartStates(parent, childId), childId);
-  if (state.kind === "wait") return null;
+  const href = startPath(childId);
+  if (state.kind === "wait") return { state: { kind: "opens", at: state.opensAt }, href, label: "" };
   const label = state.kind === "resume" || state.kind === "finish" ? "Continue the new test" : "Start a new test";
-  return { href: startPath(childId), label };
+  return { state: { kind: "open" }, href, label };
 }
 
 /** The parent's answers about how this child learns (#126), read with the parent's session; null when none. */

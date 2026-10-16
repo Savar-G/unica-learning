@@ -422,9 +422,23 @@ describe("the reliability note on the report email and the report page", () => {
     expectEverywhere(places(email, page), [
       "This result may not be reliable",
       "Asha answered 12 of 36 questions in under 3 seconds.",
-      "Asha can take a new test now, with new questions. There is no 30-day wait.",
+      // The email and this copy of the page do not read the start rules, so they name no time (D-108).
+      "Asha can take a new test, with new questions. Your account shows when it opens.",
       "3 wrong answers from a run of very fast answers were left out of the score.",
     ]);
+  });
+
+  it("on the parent's page, offers the button only while a new test is open, and otherwise the day it opens (D-108)", async () => {
+    const db = database({ rushed: true });
+    await run(db, memoryTransport(), memoryReportLedger());
+    const loaded = (await loadReportView(db.readers.parent("parent-1"), "report-1"))!;
+    const page = (newTest: Parameters<typeof ReportCard>[0]["newTest"]) => renderToStaticMarkup(createElement(ReportCard, { view: loaded.view, readOnly: true, newTest }));
+    const open = page({ state: { kind: "open" }, href: "/account/start/child-1", label: "Start a new test" });
+    expect(words(open)).toContain("Asha can take a new test now, with new questions. There is no 30-day wait.");
+    expect(open).toContain('href="/account/start/child-1"');
+    const waiting = page({ state: { kind: "opens", at: Date.parse("2026-11-09T12:00:00Z") }, href: "/account/start/child-1", label: "" });
+    expect(words(waiting)).toContain("Asha can take a new test, with new questions, from November 10, 2026.");
+    expect(waiting).not.toContain('href="/account/start/child-1"');
   });
 
   it("is on neither at a steady pace", async () => {

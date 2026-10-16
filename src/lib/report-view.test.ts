@@ -337,16 +337,28 @@ describe("the reliability note", () => {
   it("is absent at a steady pace", () => {
     expect(reliabilityNote(view(allRight))).toBeNull();
   });
-  it("gives the count of very fast answers and offers a new test now, with no wait", () => {
-    expect(reliabilityNote(rushed(view(allRight)))).toEqual({
+  it("gives the count of very fast answers and offers a new test now, with no wait, when the account has one open", () => {
+    expect(reliabilityNote(rushed(view(allRight)), { kind: "open" })).toEqual({
       title: "This result may not be reliable",
       text: "Maya answered 12 of 36 questions in under 3 seconds. Most questions take longer than that to work out, so this report may not show what Maya can do.",
       offer: "Maya can take a new test now, with new questions. There is no 30-day wait.",
     });
   });
-  it("changes the help warning's retake date to now, so the two notes agree", () => {
+  // D-108: the new test at once comes at most once per 30 days, so the note must not promise it when the wait applies.
+  it("gives the first whole day of the next test when the 30-day wait applies", () => {
+    // Opens 11:30 a.m. November 9 in BC, so the first whole day is November 10.
+    expect(reliabilityNote(rushed(view(allRight)), { kind: "opens", at: Date.parse("2026-11-09T19:30:00Z") })?.offer)
+      .toBe("Maya can take a new test, with new questions, from November 10, 2026.");
+  });
+  it("promises no time when it does not know whether a new test is open (the email, the admin's copy)", () => {
+    expect(reliabilityNote(rushed(view(allRight)))?.offer).toBe("Maya can take a new test, with new questions. Your account shows when it opens.");
+  });
+  it("makes the help warning's retake line agree with the note", () => {
     const v = rushed(view(knowsUpTo(4)));
-    expect(helpWarning({ ...v, model: { ...v.model, helpWarning: true } })?.retake).toBe("For a level you can trust, Maya can take a new test alone, with new questions. It is open now.");
+    const helped = { ...v, model: { ...v.model, helpWarning: true } };
+    expect(helpWarning(helped, { kind: "open" })?.retake).toBe("For a level you can trust, Maya can take a new test alone, with new questions. It is open now.");
+    expect(helpWarning(helped, { kind: "opens", at: Date.parse("2026-11-09T19:30:00Z") })?.retake).toBe("For a level you can trust, Maya can take a new test alone, with new questions, from November 10, 2026.");
+    expect(helpWarning(helped)?.retake).toBe("For a level you can trust, Maya can take a new test alone, with new questions. Your account shows when it opens.");
   });
 });
 
