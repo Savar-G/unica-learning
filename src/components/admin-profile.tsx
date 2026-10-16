@@ -2,17 +2,20 @@
 // order of the spec, then the parts the AI wrote (#197) with their model ids, then the stored JSON that a workbook
 // generator reads. Server components over the stored profile (getProfile).
 import Link from "next/link";
+import type { ReactNode } from "react";
 import {
+  BC_SKILL_MAP,
   LATE_DROP_POINTS,
   LATE_THIRD_MIN,
   MISCONCEPTIONS,
   REPORTED_STRAND_NAMES,
+  REPORT_TEXT_NAME,
   TOO_FAST_MS,
   WORDS_MIN_ANSWERS,
-  type AiWritten,
   type Certainty,
   type LearnerProfile,
   type MisconceptionId,
+  type PlanPart,
   type ProfileAi,
   storedProfile,
   type Tally,
@@ -45,12 +48,16 @@ const SKILL_FINDING: Record<WordsOrNumbersFinding, string> = {
   "not-enough-evidence": "Not enough evidence",
 };
 
-const AI_PARTS: { key: keyof ProfileAi; label: string }[] = [
-  { key: "likelyCauses", label: "Likely cause of each struggle" },
-  { key: "howToHelp", label: "How to help with each struggle" },
-  { key: "nextChallenge", label: "Next challenge" },
-  { key: "workbookPlan", label: "Workbook 1 plan" },
-];
+const AI_PARTS: Record<keyof ProfileAi, string> = {
+  likelyCauses: "Likely cause of each struggle",
+  howToHelp: "How to help with each struggle",
+  nextChallenge: "Next challenge",
+  workbookPlan: "Workbook 1 plan",
+};
+
+const STANDARD_TEXT = new Map(BC_SKILL_MAP.standards.map((s) => [s.code, s.text]));
+/** A BC standard by its code and its text. */
+const Standard = ({ code }: { code: string }) => <><span className="adm-mono">{code}</span> {STANDARD_TEXT.get(code) ?? ""}</>;
 
 /** The admin page of one test's profile. A profile stored at another schema version shows as its JSON only. */
 export function AdminProfile({ email, detail }: { email: string; detail: ProfileDetail }) {
@@ -68,16 +75,12 @@ export function AdminProfile({ email, detail }: { email: string; detail: Profile
         <p className="adm-note">This profile was built at schema version {stored.schema_version}, which this page does not read. The next build of the test replaces it.</p>
         <pre className="adm-typed">{JSON.stringify(stored.profile, null, 2)}</pre>
       </>
-      : <ProfileFacts profile={profile} numbers={detail.numbers} />}
+      : <ProfileFacts profile={profile} numbers={detail.numbers} name={name} />}
   </AdminFrame>;
 }
 
-function ProfileFacts({ profile, numbers }: { profile: LearnerProfile; numbers: ReadonlyMap<string, number> }) {
+function ProfileFacts({ profile, numbers, name }: { profile: LearnerProfile; numbers: ReadonlyMap<string, number>; name: string }) {
   const { level, behaviour: b, wordsOrNumbers: w, unknowns: u, facts } = profile;
-  const ai = AI_PARTS.flatMap(({ key, label }) => {
-    const part = profile.ai?.[key] as AiWritten<unknown> | undefined;
-    return part ? [{ label, part }] : [];
-  });
   return <>
     <p className="adm-note">Written by code from the test unless marked AI. Only answers at or below the school grade make a struggle; rushed wrong answers left out of the score are not counted.</p>
 
@@ -149,9 +152,38 @@ function ProfileFacts({ profile, numbers }: { profile: LearnerProfile; numbers: 
     ]} />
 
     <h2>Written by AI</h2>
-    {ai.length ? <RecordFacts facts={ai.map(({ label, part }) => [label, <><Chip key="model" tone="info">AI: {part.model}</Chip><pre className="adm-typed">{JSON.stringify(part.value, null, 2)}</pre></>])} /> : <p className="adm-note">No part of this profile was written by AI.</p>}
+    <ProfileAiParts ai={profile.ai ?? {}} struggles={profile.struggles.map((s) => s.code)} name={name} />
 
     <h2>Stored JSON</h2>
     <details><summary>Schema version {profile.schemaVersion}</summary><pre className="adm-typed">{JSON.stringify(profile, null, 2)}</pre></details>
+  </>;
+}
+
+/**
+ * The AI parts (#197), each under its label with the id of the model that wrote it. Code checked every part before it
+ * was stored (checkProfileAi); "{name}" in a text is the child's first name.
+ */
+function ProfileAiParts({ ai, struggles, name }: { ai: ProfileAi; struggles: string[]; name: string }) {
+  const named = (text: string) => text.replaceAll(REPORT_TEXT_NAME, name);
+  const byStruggle = (texts: Record<string, string>) => <ul className="adm-list">
+    {[...struggles.filter((c) => c in texts), ...Object.keys(texts).filter((c) => !struggles.includes(c))].map((code) => <li key={code}><Standard code={code} />: {named(texts[code])}</li>)}
+  </ul>;
+  const plan = (label: string, part: PlanPart) => <li key={label}>{label}: {part.percent}%{part.standards.length > 0 && <ul>{part.standards.map((code) => <li key={code}><Standard code={code} /></li>)}</ul>}</li>;
+  const parts: [keyof ProfileAi, string, ReactNode][] = [];
+  if (ai.likelyCauses) parts.push(["likelyCauses", ai.likelyCauses.model, byStruggle(ai.likelyCauses.value)]);
+  if (ai.howToHelp) parts.push(["howToHelp", ai.howToHelp.model, byStruggle(ai.howToHelp.value)]);
+  if (ai.nextChallenge) parts.push(["nextChallenge", ai.nextChallenge.model, <ul key="next" className="adm-list">{ai.nextChallenge.value.map((code) => <li key={code}><Standard code={code} /></li>)}</ul>]);
+  if (ai.workbookPlan) {
+    const { review, practise, stretch } = ai.workbookPlan.value;
+    parts.push(["workbookPlan", ai.workbookPlan.model, <ul key="plan" className="adm-list">{plan("Review", review)}{plan("Practise", practise)}{plan("Stretch", stretch)}</ul>]);
+  }
+  if (parts.length === 0) return <p className="adm-note">No part of this profile was written by AI. The AI is off, it failed, or the checks kept none of its parts.</p>;
+  return <>
+    <p className="adm-note">Each part names the model that wrote it. Code checked every part: its texts use only numbers from the facts, and a next challenge is not a struggle and needs every prerequisite standard secure.</p>
+    {parts.map(([key, model, value]) => <section key={key}>
+      <h3>{AI_PARTS[key]}</h3>
+      <div className="adm-row"><Chip tone="info">AI: {model}</Chip></div>
+      {value}
+    </section>)}
   </>;
 }

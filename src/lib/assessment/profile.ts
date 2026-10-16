@@ -203,21 +203,35 @@ export interface AiWritten<T> {
   value: T;
 }
 
+/** One part of the workbook 1 plan: its share of the workbook in percent, and the BC standards it works on, by code. */
+export interface PlanPart {
+  percent: number;
+  standards: string[];
+}
+
+/** The workbook 1 plan (#197): review, practise and stretch. The three percents add up to 100. */
+export interface WorkbookPlan {
+  review: PlanPart;
+  practise: PlanPart;
+  stretch: PlanPart;
+}
+
 /**
- * The AI's interpretation (#197, spec #181): written from the facts, the skill-map neighbours and the misconception
- * descriptions, after the same checks as the AI report text. Every part is optional: none is written before #197, and a
- * part is absent when the AI is off or failed, so the profile keeps its facts. No stored profile holds these yet, so
- * #197 may change their shapes without a new schema version.
+ * The AI's interpretation (#197, spec #181, D-117): written from the facts, the skill-map neighbours and the
+ * misconception descriptions (profileAiFacts), and kept only after the checks (checkProfileAi). Every part is optional:
+ * a part is absent when the AI is off or failed, or when the checks dropped all of it, so the profile keeps its facts.
+ * The texts use REPORT_TEXT_NAME for the child. Added within schema version 1: no profile was stored with these parts
+ * before #197.
  */
 export interface ProfileAi {
-  /** The likely cause of each struggle, by standard code. */
+  /** The likely cause of each struggle, by standard code: from the misconceptions and the skill-map prerequisites. */
   likelyCauses?: AiWritten<Record<string, string>>;
   /** How to help with each struggle, by standard code. */
   howToHelp?: AiWritten<Record<string, string>>;
-  /** The next BC standards whose prerequisites are secure, by code. */
+  /** The next BC standards, by code: not yet secure, not a struggle, and every prerequisite standard secure. */
   nextChallenge?: AiWritten<string[]>;
-  /** The workbook 1 plan: review, practise and stretch, with their proportions in percent. */
-  workbookPlan?: AiWritten<{ review: number; practise: number; stretch: number }>;
+  /** The workbook 1 plan: review, practise and stretch, with their proportions. */
+  workbookPlan?: AiWritten<WorkbookPlan>;
 }
 
 /**

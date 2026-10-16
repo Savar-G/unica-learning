@@ -26,6 +26,7 @@ export {
   REVIEW_COMMENT_MAX,
   REVIEW_ERROR_TYPE_MAX,
   REVIEW_SURE_SCORE,
+  checkAiText,
   checkReportText,
   reportFacts,
   workReview,
@@ -63,3 +64,5 @@ export { BC_SKILL_MAP, STRAND_NAMES, skillMapProblems, type BcSkill, type BcStan
 export { SKILL_TAGS, skillTagProblems, tagSkills, templateSkills, type SkillTag, type TemplateSkill } from "./skill-tags";
 // The learner profile (#196): the facts code writes about one finished test.
 export * from "./profile";
+// The learner profile's AI parts (#197): what the AI reads and the checks on what it writes.
+export { PROFILE_AI_SCHEMA, PROFILE_AI_TEXT_MAX, checkProfileAi, profileAiFacts, type ProfileAiCheck, type ProfileAiDrop } from "./profile-ai";

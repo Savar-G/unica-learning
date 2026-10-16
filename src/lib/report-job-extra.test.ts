@@ -1,6 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { REPORTED_STRAND, createSession, nextQuestion, restoreSession, startAttempt, storedTest, type LearnerProfile, type Question } from "@/lib/assessment";
+import type { AiClient } from "@/lib/ai-client";
 import { memoryTransport } from "@/lib/email-delivery-memory";
+import { fakeProfileAi } from "@/lib/learner-profile-ai-fake";
 import { memoryLearnerProfileStore } from "@/lib/learner-profile-memory";
 import { runReportJob } from "@/lib/report-job";
 import { memoryReportJobStore } from "@/lib/report-job-memory";
@@ -198,15 +200,18 @@ describe("a finished extra round", () => {
 
 // #196 (D-115) with #190 (D-116): the report job builds the learner profile from the same answers as the report.
 describe("the learner profile after an extra round", () => {
-  /** The report job over the attempt module's test, with its own profile store; `run` copies the test in first. */
-  function job(memory: ReturnType<typeof memoryAttemptStore>) {
+  /**
+   * The report job over the attempt module's test, with its own profile store; `run` copies the test in first.
+   * `profileAi`: the profile's AI parts (#197), off by default.
+   */
+  function job(memory: ReturnType<typeof memoryAttemptStore>, profileAi: AiClient | null = null) {
     const tables: MemoryReportTables = { reports: [], children: [{ id: "child-1", parentId: "parent-1", firstName: "Asha" }], drawings: [] };
     const readers = memoryReportReaders(tables);
     const reports = memoryReportJobStore(tables, { reads: readers.reads, parents: [{ id: "parent-1", ...PRIYA }] });
     const profiles = memoryLearnerProfileStore(tables);
     const run = async () => {
       copy(memory.tests[0], tables);
-      await runReportJob("a1", ORIGIN, { reader: readers.key(), comparison: async (id) => ({ assessmentId: id, tests: [] }), store: reports.store, profiles: profiles.store, reviewer: null, transport: memoryTransport().transport, ledger: memoryReportLedger().ledger });
+      await runReportJob("a1", ORIGIN, { reader: readers.key(), comparison: async (id) => ({ assessmentId: id, tests: [] }), store: reports.store, profiles: profiles.store, reviewer: null, profileAi, transport: memoryTransport().transport, ledger: memoryReportLedger().ledger });
     };
     return { run, rows: profiles.rows };
   }
@@ -236,6 +241,33 @@ describe("the learner profile after an extra round", () => {
     expect(after.test.answered).toBe(50);
     expect(after.strands.find((s) => s.strand === early)).toMatchObject({ correct: 13, total: 14, certainty: "clear" });
     expect(after.unknowns.earlySigns.strands).not.toContain(early);
+  });
+
+  it("gets its AI parts (#197) again with the rebuild, written from the round's answers", async () => {
+    const memory = await finishedAfterSkip();
+    const ai = fakeProfileAi("sure");
+    const { run, rows } = job(memory, ai);
+    const read = (n: number) => {
+      const part = ai.requests[n].content[0];
+      return JSON.parse(part.type === "text" ? part.text : "null").profile as LearnerProfile;
+    };
+
+    await run();
+    expect(read(0).test.answered).toBe(42);
+    expect(stored(rows())[0].ai?.workbookPlan?.model).toBe("fake");
+
+    let at = T0 + 2 * DAY;
+    await takeExtraRound(memory.store, "parent-1", "a1", at);
+    await answerAll(memory, () => true, () => (at += MINUTE));
+    expect(await finishTest(memory.store, "parent-1", "a1", null, (at += MINUTE))).toEqual({ ok: true, id: "a1", finished: "now" });
+    await run();
+
+    // The rebuild stored the facts without the first build's parts, then asked the AI again, from the new facts.
+    expect(ai.requests).toHaveLength(2);
+    expect(read(1).test.answered).toBe(50);
+    const after = stored(rows())[0];
+    expect(after.test.answered).toBe(50);
+    expect(after.ai?.workbookPlan?.model).toBe("fake");
   });
 
   it("is built from the main test only when the round is stopped part way", async () => {
