@@ -35,7 +35,7 @@ export default async function TemplatePage({ params, searchParams }: PageProps<"
   const table = templateTable(stats, template ? [template] : []);
   const line = table.grades[0]?.lines[0] ?? table.retired[0];
   const standard = template ? BC_SKILL_MAP.standards.find((s) => s.code === template.standard) : undefined;
-  const allWrong = [...(stats[0]?.wrong ?? [])].sort((a, b) => b.count - a.count).map((w) => ({
+  const allWrong = [...(stats[0]?.wrong ?? [])].sort((a, b) => b.count - a.count || a.response.localeCompare(b.response, "en", { numeric: true })).map((w) => ({
     ...w, meaning: w.misconception ? (MISCONCEPTIONS[w.misconception as MisconceptionId]?.description ?? null) : null,
   }));
   const otherLevels = template ? Object.entries(template.grades).filter(([p]) => p !== "BC").map(([p, l]) => `${p} ${levelText(l)}`).join(", ") : "";
