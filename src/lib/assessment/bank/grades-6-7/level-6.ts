@@ -77,12 +77,26 @@ export const LEVEL_6: readonly TaggedTemplate[] = [
     strand: "N", grades: { BC: 6, AB: 6, SK: 6, MB: 6, ON: 7 }, format: "number", whiteboard: true, standard: "6.4",
     fill(rng) {
       const [a, b] = draw(rng, (g) => [g.int(3, 15), g.int(3, 15)], ([a, b]) => a < b && gcd(a, b) > 1 && b % a !== 0);
-      const story = rng.int(0, 1) === 1;
-      const prompt = story
-        ? `Hot dogs come in packs of ${a} and buns come in packs of ${b}. What is the least number of hot dogs you can buy to have the same number of hot dogs and buns?`
-        : `What is the least common multiple of ${a} and ${b}?`;
+      // The numbers only. The same skill as a story is g67-6-lcm-story (#187: one template, one wording).
+      const prompt = `What is the least common multiple of ${a} and ${b}?`;
       return {
-        values: { a, b, story: story ? 1 : 0 },
+        values: { a, b, story: 0 },
+        prompt,
+        readAloud: prompt,
+        answer: String(lcm(a, b)),
+        wrong: [wrong(a * b, "lcm-product"), wrong(gcd(a, b), "gcf-lcm")],
+      };
+    },
+  },
+  {
+    // The least common multiple as a story (#187: split from g67-6-lcm, which held both forms). Same tags as g67-6-lcm.
+    id: "g67-6-lcm-story",
+    strand: "N", grades: { BC: 6, AB: 6, SK: 6, MB: 6, ON: 7 }, format: "number", whiteboard: true, standard: "6.4",
+    fill(rng) {
+      const [a, b] = draw(rng, (g) => [g.int(3, 15), g.int(3, 15)], ([a, b]) => a < b && gcd(a, b) > 1 && b % a !== 0);
+      const prompt = `Hot dogs come in packs of ${a} and buns come in packs of ${b}. What is the least number of hot dogs you can buy to have the same number of hot dogs and buns?`;
+      return {
+        values: { a, b, story: 1 },
         prompt,
         readAloud: prompt,
         answer: String(lcm(a, b)),
@@ -663,11 +677,12 @@ export const LEVEL_6: readonly TaggedTemplate[] = [
     strand: "A", grades: { BC: 6, AB: 5, SK: 5, MB: 5, ON: 6 }, format: "choice", whiteboard: false, standard: "6.10",
     fill(rng) {
       const [a, x] = draw(rng, (g) => [g.int(3, 9), g.int(4, 15)], ([a, x]) => a !== x);
-      const [box, things, v] = rng.pick([["pack", "pencils", "p"], ["box", "crayons", "c"], ["bag", "apples", "a"], ["tray", "muffins", "m"]] as const);
+      // The plural is written out: "boxes", not "boxs" (#187).
+      const [box, boxes, things, v] = rng.pick([["pack", "packs", "pencils", "p"], ["box", "boxes", "crayons", "c"], ["bag", "bags", "apples", "a"], ["tray", "trays", "muffins", "m"]] as const);
       return {
         values: { a, x },
-        prompt: `Each ${box} has the same number of ${things}. ${a} ${box}s hold ${a * x} ${things}. Let ${v} be the number of ${things} in one ${box}. Which equation fits?`,
-        readAloud: `Each ${box} has the same number of ${things}. ${a} ${box}s hold ${a * x} ${things}. Let ${v} be the number of ${things} in one ${box}. Which equation fits?`,
+        prompt: `Each ${box} has the same number of ${things}. ${a} ${boxes} hold ${a * x} ${things}. Let ${v} be the number of ${things} in one ${box}. Which equation fits?`,
+        readAloud: `Each ${box} has the same number of ${things}. ${a} ${boxes} hold ${a * x} ${things}. Let ${v} be the number of ${things} in one ${box}. Which equation fits?`,
         answer: `${a}${v} = ${a * x}`,
         wrong: [wrong(`${v} + ${a} = ${a * x}`, "operation"), wrong(`${v} − ${a} = ${a * x}`, "operation"), wrong(`${v} ÷ ${a} = ${a * x}`, "operation")],
       };

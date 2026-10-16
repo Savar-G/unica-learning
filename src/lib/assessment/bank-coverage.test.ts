@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { BANKS, fillTemplate } from "@/lib/assessment";
+import { BANKS, fillTemplate, wordingOf } from "@/lib/assessment";
 
 // Structural checks across every band's bank (#187): the BC standards it covers, and how much a template varies.
 const SEEDS = Array.from({ length: 50 }, (_, i) => i * 7919 + 3);
@@ -21,6 +21,18 @@ describe("every bank", () => {
     expect(BC_STANDARDS).toHaveLength(106);
     const covered = new Set(TEMPLATES.map((t) => t.standard));
     expect(BC_STANDARDS.filter((s) => !FACTS_SECTION.has(s) && !covered.has(s))).toEqual([]);
+  });
+
+  it("says for every template whether it is a word problem or a bare-number question", () => {
+    const unflagged = TEMPLATES.filter((t) => !["word-problem", "bare-number"].includes(t.wording)).map((t) => t.id);
+    expect(unflagged).toEqual([]);
+    // Worked examples, one pair per band: the same skill as a story and as numbers.
+    const wording = (id: string) => TEMPLATES.find((t) => t.id === id)?.wording;
+    expect([wording("1-story-add"), wording("1-add-to-20")]).toEqual(["word-problem", "bare-number"]);
+    expect([wording("g35-4-share"), wording("g35-4-divide")]).toEqual(["word-problem", "bare-number"]);
+    expect([wording("g67-6-lcm-story"), wording("g67-6-lcm")]).toEqual(["word-problem", "bare-number"]);
+    expect(wordingOf("g35-3-fraction-eaten")).toBe("word-problem");
+    expect(wordingOf("not-a-template")).toBeUndefined();
   });
 
   it("has no template that asks the same prompt for every seed", () => {
