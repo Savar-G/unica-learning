@@ -163,19 +163,42 @@ const firstWholeDay = (v: ReportView, at: number) => familyDate(v, at + DAY_MS -
  * new test now (the bypass of the 30-day wait, at most once per 30 days, D-108), the day it opens, or, when unknown,
  * no time at all. Null at a steady pace, and for reports stored before #189.
  */
-export function reliabilityNote(v: ReportView, retake?: RetakeState): { title: string; text: string; offer: string } | null {
+/** When the note and the help warning say the next test opens: now, from a day in the family's time zone, or unknown. */
+export type RetakeWhen = { kind: "now" } | { kind: "from"; date: string } | { kind: "unknown" };
+
+export function retakeWhen(v: ReportView, retake?: RetakeState): RetakeWhen {
+  if (!retake) return { kind: "unknown" };
+  return retake.kind === "open" ? { kind: "now" } : { kind: "from", date: firstWholeDay(v, retake.at) };
+}
+
+export interface ReliabilityNote {
+  title: string;
+  text: string;
+  offer: string;
+  /** The count the text gives. */
+  veryFast: number;
+  answers: number;
+  /** When the offer says the next test opens. */
+  when: RetakeWhen;
+}
+
+export function reliabilityNote(v: ReportView, retake?: RetakeState): ReliabilityNote | null {
   const r = v.model.reliability;
   if (!r) return null;
   const name = v.childName;
-  const offer = !retake
+  const when = retakeWhen(v, retake);
+  const offer = when.kind === "unknown"
     ? `${name} can take a new test, with new questions. Your account shows when it opens.`
-    : retake.kind === "open"
+    : when.kind === "now"
       ? `${name} can take a new test now, with new questions. There is no ${RETAKE_DAYS}-day wait.`
-      : `${name} can take a new test, with new questions, from ${firstWholeDay(v, retake.at)}.`;
+      : `${name} can take a new test, with new questions, from ${when.date}.`;
   return {
     title: "This result may not be reliable",
     text: `${name} answered ${r.veryFast} of ${r.answers} questions in under ${TOO_FAST_MS / 1000} seconds. Most questions take longer than that to work out, so this report may not show what ${name} can do.`,
     offer,
+    veryFast: r.veryFast,
+    answers: r.answers,
+    when,
   };
 }
 
@@ -259,8 +282,9 @@ export function helpWarning(v: ReportView, retake?: RetakeState): { title: strin
   const trust = `For a level you can trust, ${v.childName} can take a new test alone, with new questions`;
   // #189: after a result that may not be reliable, the retake line agrees with the reliability note (D-108).
   if (v.model.reliability) {
-    const when = !retake ? ". Your account shows when it opens." : retake.kind === "open" ? ". It is open now." : `, from ${firstWholeDay(v, retake.at)}.`;
-    return { title, text, retake: `${trust}${when}` };
+    const when = retakeWhen(v, retake);
+    const tail = when.kind === "unknown" ? ". Your account shows when it opens." : when.kind === "now" ? ". It is open now." : `, from ${when.date}.`;
+    return { title, text, retake: `${trust}${tail}` };
   }
   // The last moment of the 24 hours from the opening falls on the day after it, unless it opens at midnight.
   return { title, text, retake: `${trust}, from ${firstWholeDay(v, Date.parse(v.completedAt) + RETAKE_DAYS * DAY_MS)}.` };

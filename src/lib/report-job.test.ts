@@ -9,6 +9,7 @@ import { memoryTransport } from "@/lib/email-delivery-memory";
 import { runReportJob } from "@/lib/report-job";
 import { memoryReportJobStore } from "@/lib/report-job-memory";
 import { loadReportView, type ComparisonRead } from "@/lib/report-loading";
+import { leftOutLine, reliabilityNote } from "@/lib/report-view";
 import { countRead, memoryReportReaders, type MemoryReportTables } from "@/lib/report-loading-memory";
 import { memoryReportLedger } from "@/lib/report-row-ledger-memory";
 import type { ReportLedger } from "@/lib/report-row-ledger";
@@ -412,42 +413,47 @@ describe("the report email and the report page (#163)", () => {
 });
 
 // #189 (spec #181): the reliability note, the new test at once and the left-out answers, in the email and on the page.
+// State and structure, not copy (spec #181): the same note and left-out line in each place, the count, the button.
 describe("the reliability note on the report email and the report page", () => {
-  it("both say the result may not be reliable, give the count, offer a new test now and say what was left out", async () => {
+  /** Asha's rushed report as the parent's reader loads it, with the email the job sent and the read-only page. */
+  const rushedReport = async () => {
     const db = database({ rushed: true });
     const mail = memoryTransport();
     await run(db, mail, memoryReportLedger());
-    const [email] = mail.delivered;
-    const page = await reportPage(db);
-    expectEverywhere(places(email, page), [
-      "This result may not be reliable",
-      "Asha answered 12 of 36 questions in under 3 seconds.",
-      // The email and this copy of the page do not read the start rules, so they name no time (D-108).
-      "Asha can take a new test, with new questions. Your account shows when it opens.",
-      "3 wrong answers from a run of very fast answers were left out of the score.",
-    ]);
+    const loaded = (await loadReportView(db.readers.parent("parent-1"), "report-1"))!;
+    return { email: mail.delivered[0], page: await reportPage(db), view: loaded.view };
+  };
+
+  it("both carry the same note, with the count and no retake time, and the same left-out line", async () => {
+    const { email, page, view } = await rushedReport();
+    const note = reliabilityNote(view)!;
+    // The email and this copy of the page do not read the start rules (D-108).
+    expect(note).toMatchObject({ veryFast: 12, answers: 36, when: { kind: "unknown" } });
+    expect(view.model.leftOut).toBe(3);
+    expectEverywhere(places(email, page), [note.title, note.text, note.offer, leftOutLine(view)!].map(words));
   });
 
-  it("on the parent's page, offers the button only while a new test is open, and otherwise the day it opens (D-108)", async () => {
-    const db = database({ rushed: true });
-    await run(db, memoryTransport(), memoryReportLedger());
-    const loaded = (await loadReportView(db.readers.parent("parent-1"), "report-1"))!;
-    const page = (newTest: Parameters<typeof ReportCard>[0]["newTest"]) => renderToStaticMarkup(createElement(ReportCard, { view: loaded.view, readOnly: true, newTest }));
+  it("on the parent's page, shows the button only while a new test is open, and otherwise the day it opens (D-108)", async () => {
+    const { view } = await rushedReport();
+    const page = (newTest: Parameters<typeof ReportCard>[0]["newTest"]) => renderToStaticMarkup(createElement(ReportCard, { view, readOnly: true, newTest }));
     const open = page({ state: { kind: "open" }, href: "/account/start/child-1", label: "Start a new test" });
-    expect(words(open)).toContain("Asha can take a new test now, with new questions. There is no 30-day wait.");
     expect(open).toContain('href="/account/start/child-1"');
-    const waiting = page({ state: { kind: "opens", at: Date.parse("2026-11-09T12:00:00Z") }, href: "/account/start/child-1", label: "" });
-    expect(words(waiting)).toContain("Asha can take a new test, with new questions, from November 10, 2026.");
+    expect(words(open)).toContain(words(reliabilityNote(view, { kind: "open" })!.offer));
+    const at = Date.parse("2026-11-09T12:00:00Z");
+    const waiting = page({ state: { kind: "opens", at }, href: "/account/start/child-1", label: "" });
     expect(waiting).not.toContain('href="/account/start/child-1"');
+    expect(reliabilityNote(view, { kind: "opens", at })!.when).toEqual({ kind: "from", date: "November 10, 2026" });
+    expect(words(waiting)).toContain("November 10, 2026");
   });
 
   it("is on neither at a steady pace", async () => {
+    const { view } = await rushedReport();
+    const title = words(reliabilityNote(view)!.title);
     const db = database();
     const mail = memoryTransport();
     await run(db, mail, memoryReportLedger());
-    const [email] = mail.delivered;
     const page = await reportPage(db);
-    for (const text of Object.values(places(email, page))) expect(text).not.toContain("may not be reliable");
+    for (const text of Object.values(places(mail.delivered[0], page))) expect(text).not.toContain(title);
   });
 });
 
