@@ -5,7 +5,9 @@ import {
   FACTS_SECONDS,
   createFacts,
   createSession,
+  factsCoverage,
   factsSkills,
+  factsStandards,
   factsStep,
   finish,
   nextQuestion,
@@ -208,5 +210,27 @@ describe("the skills a facts round tests (#242)", () => {
     expect(factsSkills(FACTS_BY_GRADE[5])).toContain("4.8-multiplication-facts");
     expect(factsSkills(FACTS_BY_GRADE[5])).not.toContain("4.8-division-facts");
     expect(factsSkills(FACTS_BY_GRADE[6])).toContain("4.8-division-facts");
+  });
+
+  it("has one source for the standards and the skills a round tests: each skill under its own standard (#245)", () => {
+    const owner = new Map(BC_SKILL_MAP.standards.flatMap((s) => s.skills.map((k) => [k.id, s] as const)));
+    const families = [...new Set(Object.values(FACTS_BY_GRADE).flat()), ...Object.values(FACTS_BY_GRADE)];
+    for (const family of families) {
+      const list = Array.isArray(family) ? family : [family as FactFamilyId];
+      const coverage = factsCoverage(list);
+      expect(factsStandards(list), `${list}`).toEqual(Object.keys(coverage));
+      expect(factsSkills(list), `${list}`).toEqual([...new Set(Object.values(coverage).flat())]);
+      for (const [code, skills] of Object.entries(coverage)) {
+        for (const id of skills) expect(owner.get(id)?.code, `${list}: ${id}`).toBe(code);
+        // A standard with none of its skills asked counts only when its BC title is the facts the round asks.
+        if (skills.length === 0) expect(BC_SKILL_MAP.standards.find((x) => x.code === code)?.text, `${list}: ${code}`).toMatch(/facts to (20|100)/);
+      }
+      // The standard of every skill the round asks counts as tested: 1.3 for the addition facts to 20, too.
+      for (const id of factsSkills(list)) expect(factsStandards(list), `${list}: ${id}`).toContain(owner.get(id)!.code);
+    }
+    // The grade 4 and grade 5 rounds ask only part of 4.8 and 5.9: their multiplication facts.
+    expect(factsCoverage(FACTS_BY_GRADE[4])["4.8"]).toEqual(["4.8-multiplication-facts"]);
+    expect(factsCoverage(FACTS_BY_GRADE[5])["5.9"]).toEqual(["5.9-recall-facts"]);
+    expect(factsStandards(FACTS_BY_GRADE[3])).toContain("1.3");
   });
 });

@@ -10,7 +10,7 @@
 //   - the plan's three percents add up to 100, and it names only standards the AI read in the facts.
 // Pure, like the profile: the server module (src/lib/learner-profile-ai.ts) sends the request through the AI client.
 import { REPORT_TEXT_NAME, checkAiText, parentTextProblem, type ReportTextProblem } from "./ai-checks";
-import { FACT_SPEED_FROM_GRADE, factsSkills, factsStandards } from "./facts";
+import { FACT_SPEED_FROM_GRADE, factsSkills } from "./facts";
 import { MISCONCEPTIONS, type MisconceptionId } from "./misconceptions";
 import type { LearnerProfile, PlanPart, ProfileAi, WorkbookPlan } from "./profile";
 import { BC_SKILL_MAP } from "./skill-map";
@@ -135,27 +135,25 @@ function challengeProblem(code: string, profile: LearnerProfile): ChallengeProbl
  * child's result on each needed skill's standard); and the next challenge candidates (every standard that passes the
  * challenge rule). Never a name, an id of the family, a drawing or typed working: the profile holds none.
  * The AI text checks take their numbers from all of it. #242: below FACT_SPEED_FROM_GRADE the facts carry no timing, as
- * the parent's report shows no speed (D-120). A needed skill that no question measured reads as tested in the quick
- * facts round only when the round asked that skill (factsSkills: a round of multiplication facts asks no division);
- * a next challenge candidate, when the round asked every skill of it, else partly when it asked some of it.
+ * the parent's report shows no speed (D-120). #245: only what the test measured, never what it did not: no untested
+ * list and no "not tested" label, as what the test did not ask is code's to say. A needed skill has a result when its
+ * standard's questions measured it, or "tested in the quick facts round" when the round asked that skill (factsSkills:
+ * a round of multiplication facts asks no division); else none. A candidate has a result when questions measured it,
+ * and names the skills of it the quick facts round asked, when it asked any.
  */
 export function profileAiFacts(profile: LearnerProfile) {
   const rest: Omit<LearnerProfile, "ai"> & { ai?: unknown } = { ...profile };
   delete rest.ai;
-  const facts = { ...rest, facts: profile.test.grade < FACT_SPEED_FROM_GRADE ? withoutTiming(profile.facts) : profile.facts };
-  const results = new Map(profile.standards.map((s) => [s.code, s.status as string]));
-  const families = profile.facts?.families ?? [];
-  const askedSkills = new Set(factsSkills(families));
-  const askedStandards = new Set(factsStandards(families));
-  const skillResult = (id: string, code: string) => results.get(code) ?? (askedSkills.has(id) ? FACTS_TESTED : "not tested");
-  const result = (code: string) => {
-    const measured = results.get(code);
-    if (measured) return measured;
-    const skills = STANDARDS.get(code)?.skills ?? [];
-    const asked = skills.filter((k) => askedSkills.has(k.id)).length;
-    if (asked > 0 && asked === skills.length) return FACTS_TESTED;
-    return asked > 0 || askedStandards.has(code) ? "partly tested in the quick facts round" : "not tested";
+  const { earlySigns, checkNext } = profile.unknowns;
+  const facts = {
+    ...rest,
+    facts: profile.test.grade < FACT_SPEED_FROM_GRADE ? withoutTiming(profile.facts) : profile.facts,
+    // The early signs, and the struggles to confirm; never the untested standards.
+    unknowns: { earlySigns, checkNext: checkNext.filter((s) => s.reason === "confirm-struggle") },
   };
+  const results = new Map(profile.standards.map((s) => [s.code, s.status as string]));
+  const askedSkills = new Set(factsSkills(profile.facts?.families ?? []));
+  const skillResult = (id: string, code: string) => results.get(code) ?? (askedSkills.has(id) ? FACTS_TESTED : undefined);
   const misconceptions = [...new Set(profile.struggles.flatMap((s) => s.misconceptions))];
   return {
     child: REPORT_TEXT_NAME,
@@ -169,13 +167,21 @@ export function profileAiFacts(profile: LearnerProfile) {
         requires: k.requires.flatMap((id) => {
           const owner = OWNER.get(id);
           const needed = owner?.skills.find((x) => x.id === id);
-          return owner && needed ? [{ id, text: needed.text, standard: owner.code, result: skillResult(id, owner.code) }] : [];
+          const result = owner && skillResult(id, owner.code);
+          return owner && needed ? [{ id, text: needed.text, standard: owner.code, ...(result ? { result } : {}) }] : [];
         }),
       })),
     })),
     next_challenge_candidates: BC_SKILL_MAP.standards
       .filter((s) => challengeProblem(s.code, profile) === null)
-      .map((s) => ({ code: s.code, text: s.text, grade: s.grade, result: result(s.code), prerequisites: prerequisiteStandards(s.code) })),
+      .map((s) => {
+        const result = results.get(s.code);
+        const asked = s.skills.filter((k) => askedSkills.has(k.id)).map((k) => k.id);
+        return {
+          code: s.code, text: s.text, grade: s.grade, ...(result ? { result } : {}),
+          ...(asked.length ? { quick_facts_round_skills: asked } : {}), prerequisites: prerequisiteStandards(s.code),
+        };
+      }),
   };
 }
 
@@ -227,8 +233,9 @@ export function checkProfileAi(profile: LearnerProfile, output: unknown, model: 
       else if (seen.has(s.code)) dropped.push({ part, code: s.code, problem: "repeated" });
       else {
         const check = checkAiText(text, facts, PROFILE_AI_TEXT_MAX);
-        // What an AI text about the child may not say (#242): the likely cause is on the parent's report (D-120).
-        const parent = check.ok ? parentTextProblem(check.text, profile.test.grade) : null;
+        // What a parent's AI text may not say (#242): the likely cause is on the parent's report (D-120). How to help is
+        // the admin's only (#245).
+        const parent = check.ok && part === "likelyCauses" ? parentTextProblem(check.text, profile.test.grade) : null;
         if (!check.ok) dropped.push({ part, code: s.code, problem: check.problem, detail: check.detail });
         else if (parent) dropped.push({ part, code: s.code, ...parent });
         else into[s.code] = check.text;
@@ -262,7 +269,6 @@ export function checkProfileAi(profile: LearnerProfile, output: unknown, model: 
   } else {
     const read = new Set([
       ...profile.standards.map((s) => s.code),
-      ...profile.unknowns.untested.map((s) => s.code),
       ...facts.struggle_skills.flatMap((s) => s.skills.flatMap((k) => k.requires.map((r) => r.standard))),
       ...facts.next_challenge_candidates.map((c) => c.code),
     ]);

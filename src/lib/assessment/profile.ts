@@ -436,8 +436,8 @@ const RETIRED_PARTS = ["wordsOrNumbers"] as const;
  * report, the AI parts), and the stored row is not changed:
  *   - its retired parts are dropped;
  *   - #242: an estimated working level is an early sign, also when it was stored as clear;
- *   - #242: an AI likely cause or way to help that breaks a rule of today (parentTextProblem) is dropped, and a part
- *     with nothing left is absent.
+ *   - #242: an AI likely cause that breaks a rule of today (parentTextProblem) is dropped, and a part with nothing
+ *     left is absent. How to help is the admin's only and is kept as written (#245).
  */
 export function storedProfile(value: unknown): LearnerProfile | null {
   if (typeof value !== "object" || value === null || Array.isArray(value)) return null;
@@ -456,15 +456,17 @@ export function storedProfile(value: unknown): LearnerProfile | null {
   };
 }
 
-/** The stored AI parts without the texts that break a rule of today; undefined when no part is left. */
+/**
+ * The stored AI parts without the parent's texts that break a rule of today; undefined when no part is left. The
+ * likely causes are on the parent's report; how to help is the admin's only, so it is kept as written (#245).
+ */
 function storedAi(ai: ProfileAi, grade: Grade): ProfileAi | undefined {
   const kept: ProfileAi = { ...ai };
-  for (const part of ["likelyCauses", "howToHelp"] as const) {
-    const written = ai[part];
-    if (!written) continue;
+  const written = ai.likelyCauses;
+  if (written) {
     const value = Object.fromEntries(Object.entries(written.value).filter(([, text]) => !parentTextProblem(text, grade)));
-    if (Object.keys(value).length) kept[part] = { ...written, value };
-    else delete kept[part];
+    if (Object.keys(value).length) kept.likelyCauses = { ...written, value };
+    else delete kept.likelyCauses;
   }
   return Object.keys(kept).length ? kept : undefined;
 }

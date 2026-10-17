@@ -6,6 +6,7 @@ import {
   parentTextProblem,
   reportFacts,
   reportModel,
+  storedReportModel,
   type FactsResult,
   type Grade,
   workReview,
@@ -367,6 +368,73 @@ describe("report model", () => {
 
     it("keeps text that states fact speed from grade 5", () => {
       expect(withFacts(5, "{name} got 27 facts right in 60 seconds, accurate and quick.").summary).toBe("{name} got 27 facts right in 60 seconds, accurate and quick.");
+    });
+
+    // #245: review round 2 of #242 (task-state 242/REVIEW-r2.md, review-r2/probe1.txt) found ordinary text the filters
+    // dropped, and wordings they missed.
+    const ORDINARY = [
+      "Draw a quick picture of the groups.",
+      "Ask {name} to read the word problem a second time.",
+      "Encourage {name} to slow down and check each step.",
+      "Read the problem slowly with {name}.",
+      "Spend some time each day on facts to 20.",
+      "Practise for a minute or two with dot cards.",
+      "Help {name} see small groups of dots at a glance.",
+      "{name} may have rushed and misread the sign.",
+      "{name} is building fluency with addition facts to 20.",
+      "Play a quick game of doubles.",
+      "Use a timer-free game.",
+      "{name} added the tens right away and forgot the ones.",
+      "Count the seconds hand on a clock together.",
+      "{name} hesitated between the two fractions.",
+      "{name} added automatically without regrouping.",
+      "{name} did not check the answer.",
+      "{name} did not include the remainder.",
+      "{name} did not measure from zero on the ruler.",
+      "{name} was not asked to show work.",
+      "{name} did not cover the whole area with tiles.",
+      "{name} did not ask for help.",
+      "{name} has not checked the sign.",
+      // Real likely causes from the production end-to-end test (review-r2/probe3.txt).
+      "{name} may have subtracted the smaller number from the larger when the start was unknown.",
+      "On 4 × 9 = 3 × ?, {name} wrote 36 and did not balance both sides.",
+      "{name} found a second rectangle that did not match the same perimeter.",
+    ];
+
+    it("keeps ordinary text at every grade: the filters drop only claims about the facts timing and about what was not tested (#245)", () => {
+      for (const grade of [1, 3, 4, 5, 7] as const) {
+        for (const text of ORDINARY) expect(parentTextProblem(text, grade), `grade ${grade}: ${text}`).toBeNull();
+      }
+    });
+
+    it("still rejects the reworded claims review round 2 found, new and stored (#245)", () => {
+      const timing = [
+        "{name} answered the facts promptly and with time to spare.",
+        "{name} beat the clock on the addition facts.",
+        "{name} got 27 facts right and spent longer on the subtraction facts.",
+        "{name} answered 27 facts before the time ran out.",
+        "{name} answered the facts in the blink of an eye.",
+      ];
+      for (const text of timing) {
+        expect(parentTextProblem(text, 3), text).toMatchObject({ problem: "speed" });
+        expect(withFacts(3, text), text).not.toHaveProperty("summary");
+        expect(storedReportModel({ ...withFacts(3), summary: text }), text).not.toHaveProperty("summary");
+      }
+      const untested = [
+        "The multiplication facts were not part of this test.",
+        "The multiplication facts were not on the test.",
+        "The multiplication facts have yet to be tested.",
+        "Division facts were left out of the test.",
+        "The test skipped the multiplication facts.",
+        "The multiplication facts weren't examined.",
+        "There is no result yet for the multiplication facts.",
+        "The test did not reach the multiplication facts.",
+      ];
+      for (const text of untested) {
+        expect(parentTextProblem(text, 5), text).toMatchObject({ problem: "untested" });
+        expect(withFacts(5, text), text).not.toHaveProperty("summary");
+        expect(storedReportModel({ ...withFacts(5), summary: text }), text).not.toHaveProperty("summary");
+      }
     });
   });
 

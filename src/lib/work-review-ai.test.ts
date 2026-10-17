@@ -75,6 +75,13 @@ describe("the AI work reviewer (#68, #183)", () => {
     expect(facts.areas).toEqual(model.strands.map((s) => expect.objectContaining({ area: s.name, right: s.correct, questions: s.total })));
   });
 
+  it("sends no \"not tested\" label for the report text, in the facts or the instructions (#245)", async () => {
+    const model = reportModel(takeTest({ grade: 5, province: "BC" }, 1, knowsUpTo(4)).placement, { completedTestsInGrade: 0, workReviews: [] });
+    const client = fakeAiClient({ answer: () => ({ text: "{name} is working at a grade 4 level." }) });
+    await aiWorkReviewer(client).reportText(model, signal());
+    expect(JSON.stringify(client.requests[0])).not.toMatch(/not tested|untested|partly tested/i);
+  });
+
   it("report text output without a text string is an error", async () => {
     const model = reportModel(takeTest({ grade: 4, province: "BC" }, 1, knowsUpTo(4)).placement, { completedTestsInGrade: 0, workReviews: [] });
     for (const bad of [null, {}, { text: 4 }]) {
