@@ -6,8 +6,8 @@ import { comparisonFor, type Comparison, type ComparisonInput } from "./comparis
 export type { Comparison } from "./comparison";
 import { factsReport, type ReportFacts } from "./facts";
 import { helpLikely } from "./flags";
-import { checkReportText } from "./ai-checks";
-import type { Certainty } from "./certainty";
+import { checkReportText, parentTextProblem } from "./ai-checks";
+import { storedLevelCertainty, type Certainty } from "./certainty";
 import type { ExtraRoundOffer, Grade, Level, Placement, Province, StrandResult } from "./types";
 
 /** One AI review of a child's shown work (#68). Built by workReview, which decides the confidence. */
@@ -142,7 +142,7 @@ export function reportModel(placement: Placement, context: ReportContext): Repor
       grade,
       atCeiling: placement.atCeiling,
       confidence: placement.confidence,
-      ...(placement.levelCertainty ? { certainty: placement.levelCertainty } : {}),
+      ...(placement.levelCertainty ? { certainty: storedLevelCertainty({ confidence: placement.confidence, certainty: placement.levelCertainty }) } : {}),
     },
     strands: placement.strands.map((s) => ({ ...s, name: REPORTED_STRAND_NAMES[s.strand] })),
     comparison: context.comparison ? comparisonFor(context.comparison) : { stage: "scale" },
@@ -161,4 +161,17 @@ export function reportModel(placement: Placement, context: ReportContext): Repor
   if (!context.reportText) return model;
   const check = checkReportText(model, context.reportText);
   return check.ok ? { ...model, summary: check.text } : model;
+}
+
+/**
+ * A stored report model (public.reports.model) as a report shows it today (#242): an estimated working level is an
+ * early sign, also when it was stored as clear, and an AI summary that breaks a rule of today (parentTextProblem) is
+ * left out, so the plain sentences stand alone. The stored row is not changed. Every report is read through it
+ * (loadReportView): the parent's report, the admin's report view and the report email.
+ */
+export function storedReportModel(model: ReportModel): ReportModel {
+  const { summary, ...rest } = model;
+  const certainty = storedLevelCertainty(model.level);
+  const keep = summary !== undefined && !parentTextProblem(summary, model.level.grade);
+  return { ...rest, level: { ...model.level, ...(certainty ? { certainty } : {}) }, ...(keep ? { summary } : {}) };
 }

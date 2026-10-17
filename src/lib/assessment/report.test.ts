@@ -3,7 +3,11 @@ import {
   REPORT_TEXT_MAX,
   REVIEW_SURE_SCORE,
   checkReportText,
+  parentTextProblem,
+  reportFacts,
   reportModel,
+  type FactsResult,
+  type Grade,
   workReview,
   type Placement,
   type Province,
@@ -283,6 +287,86 @@ describe("report model", () => {
       expect(withText("  {name} is working at a grade 4 level \u2014 the same as\n the school grade. ").summary).toBe(
         "{name} is working at a grade 4 level - the same as the school grade.",
       );
+    });
+  });
+
+  describe("fact speed in the AI report text: hidden for grades 1-4 (#242, D-120)", () => {
+    // 27 of 29 facts right, about 2 seconds a fact: quick and secure.
+    const FACTS: FactsResult = { families: ["add20", "sub20"], seconds: 60, answered: 29, correct: 27, skipped: 0, medianMs: 2000, accuracy: "secure", speed: "quick" };
+    const withFacts = (grade: Grade, reportText: string | null = null) =>
+      reportModel({ ...takeTest({ grade, province: "BC" }, 1, knowsUpTo(grade)).placement, facts: FACTS }, { completedTestsInGrade: 0, workReviews: [], reportText });
+    const SPEEDY = [
+      // The round's 60 seconds is not among the facts below grade 5 either (a "number" problem): see the next tests.
+      "{name} got 27 facts right, accurate and quick.",
+      "{name} answered the facts quickly.",
+      "{name} was fast on the facts.",
+      "The facts speed was good.",
+      "{name} was slow on the facts.",
+    ];
+
+    it("gives the AI no fact speed for grades 1-4, and the speed from grade 5", () => {
+      for (const grade of [1, 2, 3, 4] as const) {
+        const facts = reportFacts(withFacts(grade)).number_facts;
+        expect(facts, `grade ${grade}`).toMatchObject({ right: 27, answered: 29, accuracy: "Secure" });
+        expect(facts, `grade ${grade}`).not.toHaveProperty("speed");
+        expect(facts, `grade ${grade}`).not.toHaveProperty("typical_seconds_per_fact");
+      }
+      for (const grade of [5, 6, 7] as const) {
+        expect(reportFacts(withFacts(grade)).number_facts, `grade ${grade}`).toMatchObject({ speed: "Quick", typical_seconds_per_fact: 2 });
+      }
+    });
+
+    it("rejects text that states fact speed for grades 1-4, so the report keeps its plain sentences", () => {
+      for (const grade of [1, 2, 3, 4] as const) {
+        for (const text of SPEEDY) {
+          expect(checkReportText(withFacts(grade), text), `grade ${grade}: ${text}`).toMatchObject({ ok: false, problem: "speed" });
+          expect(withFacts(grade, text), `grade ${grade}: ${text}`).not.toHaveProperty("summary");
+        }
+        expect(withFacts(grade, "{name} got 27 of the facts right.").summary, `grade ${grade}`).toBe("{name} got 27 of the facts right.");
+      }
+    });
+
+    it("for grades 1-4, gives the AI no timing of the facts at all, and rejects any text that states it (#242 r2)", () => {
+      const TIMING = [
+        "{name} took 2 seconds to answer each fact.",
+        "{name} recalled the facts instantly.",
+        "{name} answered each fact in about 2 seconds.",
+        "{name} kept a steady pace on the facts.",
+        "{name} needed more time on the subtraction facts.",
+        "{name} took longer on the subtraction facts than on the addition facts.",
+        "{name} answered the facts right away, without hesitation.",
+        "{name} recalls the facts fluently.",
+        "{name} answered 29 facts in one minute.",
+        "{name} beat the timer on the facts.",
+        "{name} zipped through the facts in record time.",
+      ];
+      for (const grade of [1, 2, 3, 4] as const) {
+        const model = withFacts(grade);
+        expect(reportFacts(model).number_facts, `grade ${grade}`).not.toHaveProperty("round_seconds");
+        for (const text of TIMING) {
+          expect(parentTextProblem(text, grade), `grade ${grade}: ${text}`).toMatchObject({ problem: "speed" });
+          expect(checkReportText(model, text).ok, `grade ${grade}: ${text}`).toBe(false);
+          expect(withFacts(grade, text), `grade ${grade}: ${text}`).not.toHaveProperty("summary");
+        }
+      }
+      // From grade 5 the report shows the speed, so the text may state it.
+      expect(reportFacts(withFacts(5)).number_facts).toMatchObject({ round_seconds: 60 });
+      expect(withFacts(5, "{name} took 2 seconds to answer each fact.").summary).toBe("{name} took 2 seconds to answer each fact.");
+      // Accuracy and the time each week are not the timing of the facts.
+      expect(withFacts(3, "{name} got 27 of the 29 facts right.").summary).toBe("{name} got 27 of the 29 facts right.");
+    });
+
+    it("rejects text that says something was not tested, at every grade (#242 r2)", () => {
+      for (const grade of [3, 5] as const) {
+        for (const text of ["The multiplication facts were not tested.", "{name} was not asked about division.", "Fractions were untested."]) {
+          expect(checkReportText(withFacts(grade), text), `grade ${grade}: ${text}`).toMatchObject({ ok: false, problem: "untested" });
+          expect(withFacts(grade, text), `grade ${grade}: ${text}`).not.toHaveProperty("summary");
+        }
+      }
+    });
+
+    it("keeps text that states fact speed from grade 5", () => {
+      expect(withFacts(5, "{name} got 27 facts right in 60 seconds, accurate and quick.").summary).toBe("{name} got 27 facts right in 60 seconds, accurate and quick.");
     });
   });
 

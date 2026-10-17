@@ -27,12 +27,23 @@ export function workingLevelOf(levels: readonly LevelResult[]): Level {
   return cleared.length > 0 ? cleared[cleared.length - 1].level : (Math.max(0, levels[0].level - 1) as Level);
 }
 
-/** Clear when one more answer, right or wrong, at any level the test showed would leave the working level as it is. */
+/**
+ * Clear when one more answer, right or wrong, at any level the test showed would leave the working level as it is.
+ * An estimate (no level reaches WORKING_LEVEL_PERCENT, so the level is one the test did not ask) is never clear (#242).
+ */
 export function levelCertainty(levels: readonly LevelResult[]): Certainty {
-  if (levels.length === 0) return "early-sign";
+  if (!levels.some((l) => atLeast(l.correct, l.total, WORKING_LEVEL_PERCENT))) return "early-sign";
   const working = workingLevelOf(levels);
   const changes = levels.some((_, i) =>
     [1, 0].some((right) => workingLevelOf(levels.map((l, j) => (j === i ? { ...l, correct: l.correct + right, total: l.total + 1 } : l))) !== working),
   );
   return changes ? "early-sign" : "clear";
+}
+
+/**
+ * A stored working level's certainty: an estimate (confidence "low") reads as an early sign, also in a result stored
+ * while levelCertainty still called it clear (#242). Undefined for a result stored before the labels (#189).
+ */
+export function storedLevelCertainty(level: { confidence: "normal" | "low"; certainty?: Certainty }): Certainty | undefined {
+  return level.certainty && level.confidence === "low" ? "early-sign" : level.certainty;
 }

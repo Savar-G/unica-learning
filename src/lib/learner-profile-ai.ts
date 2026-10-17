@@ -30,8 +30,8 @@ const SYSTEM = `You interpret the result of a math placement test for one child 
 The JSON holds:
 - profile: the measured facts. Each BC standard tested, with its result. Strengths: the secure standards. Struggles: standards at or below the school grade that are not secure, with the child's real wrong answers and the ids of the known mistakes they match. Number facts, how the child took the test, and the parent's answers: how the child feels about math, the main goal and the time each week.
 - misconceptions: each known mistake id in plain words. A wrong answer can match a known mistake by chance: treat it as a likely cause, not as certain.
-- struggle_skills: for each struggle, its skills, the skills each one needs first, and the child's result on the standard of each needed skill ("not tested" when the test did not ask it).
-- next_challenge_candidates: the standards the child is ready for: not yet secure, not a struggle, and every standard they build on is secure. There may be none.
+- struggle_skills: for each struggle, its skills, the skills each one needs first, and the child's result on each needed skill: its standard's result, or "tested in the quick facts round" when only the facts round asked that skill, or "not tested".
+- next_challenge_candidates: the standards the child is ready for: not yet secure, not a struggle, and every standard they build on is secure. There may be none. A candidate no question asked reads "tested in the quick facts round", "partly tested in the quick facts round" or "not tested".
 
 Return:
 - struggles: one entry for each struggle, with its code.
@@ -44,6 +44,7 @@ Rules for likely_cause and how_to_help:
 - 1 or 2 short sentences, at most ${PROFILE_AI_TEXT_MAX} characters. Plain words. No lists, headings, links or markdown. Name a standard by its words, not its code.
 - Write ${REPORT_TEXT_NAME} where the child's name goes. Never use he, she, him, her, his or hers: repeat ${REPORT_TEXT_NAME} or rephrase.
 - Write every number as digits, and use only numbers that are in the facts. Do not calculate new numbers: no percentages, differences or totals. Do not write numbers as words, and do not use the words "one" or "half".
+- Never say that something was not tested. When the number facts have no speed, say nothing about time or speed: no seconds, pace, quick, fast, slow or time per fact.
 - Never invent a strength or a weakness. Do not compare the child with other children. Do not mention prices, the company, how the test works, AI or yourself. Do not write "I". Do not use dashes as punctuation.`;
 
 /**

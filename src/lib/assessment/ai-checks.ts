@@ -3,7 +3,9 @@
 // parent reads is measured, so report text with any number that is not among the report's facts is rejected, and the
 // report keeps only its plain sentences. A comment with a number that is not in its question, the answers or the typed
 // working is not sure, so the report shows the work without it.
+import { FACT_SPEED_FROM_GRADE } from "./facts";
 import type { ReportModel, WorkReview } from "./report";
+import type { Grade } from "./types";
 
 /** Stands for the child's first name in AI text. The report page and the email put the name in (report-view). */
 export const REPORT_TEXT_NAME = "{name}";
@@ -14,8 +16,9 @@ export const REPORT_TEXT_MAX = 600;
  * Why AI text was not kept. "length": empty or too long. "format": markup, a link, or a placeholder other than the name.
  * "voice": first person, or the AI named (D-085: AI is named only in the privacy page and the terms). "pronoun": he or
  * she (the report does not know the child's gender). "number": a number that is not among the report's facts.
+ * "speed" and "untested": what an AI text about the child may not say (parentTextProblem, #242).
  */
-export type ReportTextProblem = "length" | "format" | "voice" | "pronoun" | "number";
+export type ReportTextProblem = "length" | "format" | "voice" | "pronoun" | "number" | "speed" | "untested";
 
 export type ReportTextCheck = { ok: true; text: string } | { ok: false; problem: ReportTextProblem; detail: string };
 
@@ -33,6 +36,44 @@ function textProblem(text: string, max: number): { problem: Exclude<ReportTextPr
     const found = text.replaceAll(REPORT_TEXT_NAME, "").match(rule);
     if (found) return { problem, detail: found[0] };
   }
+  return null;
+}
+
+/**
+ * A statement of how fast the facts were (#242): speed and pace words, the time per fact, the round's length, and
+ * comparisons of time. Not "minutes" or a clock's hands: the time each week and telling time (4.12) are not about speed.
+ */
+const TIMING = new RegExp([
+  String.raw`\b(?:quick|fast|slow|rapid|swift|speed|instant|immediate)\w*`,
+  String.raw`\b(?:pace[ds]?|pacing|hesitat\w*|fluen\w*|automatic\w*|rush\w*|hurr(?:y|ied|ies|ying)|timed|timing|timer|stopwatch)\b`,
+  String.raw`\bseconds\b|\bsecs?\b|\b(?:a|one|per|each|\d+)[\s-]+second\b|\b(?:a|one|per|each|\d+)[\s-]+minute\b(?!\s+hands?)`,
+  String.raw`\b\d+(?:\.\d+)?\s+(?:s|ms)\b|\bmilliseconds?\b`,
+  String.raw`\b(?:right away|in a flash|in no time|record time|on the spot|at a glance|without (?:a )?pause|a while)\b`,
+  String.raw`\b(?:zip|zoom|breez|rac|flew|fly|flying|sped)\w*\s+(?:through|past)\b`,
+  String.raw`\b(?:took|takes?|taking|needs?|needed|needing)\s+(?:a\s+(?:bit|little)\s+)?(?:longer|(?:more|less|extra)\s+time)\b`,
+  String.raw`\b(?:more|less|extra|longer|shorter)\s+time\s+(?:on|with|for)\s+(?:the\s+)?(?:\w+\s+)?facts?\b`,
+  String.raw`\btime\s+(?:per|a|each|for\s+each|on\s+each|to\s+(?:answer|recall|respond))\b`,
+  String.raw`\bper\s+(?:fact|answer|question)\b`,
+].join("|"), "i");
+const UNTESTED = new RegExp([
+  String.raw`\buntested\b`,
+  String.raw`(?:\bnot|\bnever|n['’]t)\s+(?:yet\s+|been\s+|be\s+|really\s+)*(?:tested|checked|measured|assessed|asked|covered|included|part\s+of\s+the\s+(?:test|round))\b`,
+  String.raw`\b(?:did\s+not|didn['’]t|does\s+not|doesn['’]t)\s+(?:test|check|measure|assess|ask|cover|include)\b`,
+].join("|"), "i");
+
+/**
+ * What an AI text about the child may not say, beyond the rules every AI text follows (#242), in every text a parent
+ * or the admin reads: the report text, the likely causes and the ways to help. "speed": the facts timing (TIMING), for
+ * a school grade under FACT_SPEED_FROM_GRADE (D-120: grades 1-4 see accuracy only; the AI reads no timing there,
+ * reportFacts and profileAiFacts). "untested": that something was not tested, at every grade; the AI cannot know what
+ * the test left out, and what it did not test is code's to say. Null when the text may show. Also for stored text when
+ * it is read (storedReportModel, storedProfile).
+ */
+export function parentTextProblem(text: string, grade: Grade): { problem: "speed" | "untested"; detail: string } | null {
+  const speed = grade < FACT_SPEED_FROM_GRADE ? text.match(TIMING) : null;
+  if (speed) return { problem: "speed", detail: speed[0] };
+  const untested = text.match(UNTESTED);
+  if (untested) return { problem: "untested", detail: untested[0] };
   return null;
 }
 
@@ -71,10 +112,12 @@ const FACTS = { secure: "Secure", quick: "Quick", "needs-practice": "Needs pract
 /**
  * The facts of a report that the AI writes the report text from, and the only numbers that text may use: what the report
  * shows a parent, from the model. Never ids, file paths, the child's typed working, the name, or the comparison and FSA
- * lines (the report text does not repeat them). "{name}" stands for the child.
+ * lines (the report text does not repeat them). "{name}" stands for the child. The facts timing (the round's length,
+ * the time per fact and the speed) only from FACT_SPEED_FROM_GRADE, as the parent's report shows the speed (D-120, #242).
  */
 export function reportFacts(m: ReportModel) {
   const f = m.facts;
+  const timed = m.level.grade >= FACT_SPEED_FROM_GRADE;
   return {
     child: REPORT_TEXT_NAME,
     school_grade: LEVEL(m.level.grade),
@@ -86,7 +129,10 @@ export function reportFacts(m: ReportModel) {
     areas: m.strands.map((s) => ({ area: s.name, result: STATUS[s.status], right: s.correct, questions: s.total })),
     number_facts:
       f && f.answered > 0 && f.accuracy && f.speed
-        ? { what: f.scope, round_seconds: f.seconds, right: f.correct, answered: f.answered, typical_seconds_per_fact: f.secondsPerFact, accuracy: FACTS[f.accuracy], speed: FACTS[f.speed] }
+        ? {
+            what: f.scope, right: f.correct, answered: f.answered, accuracy: FACTS[f.accuracy],
+            ...(timed ? { round_seconds: f.seconds, typical_seconds_per_fact: f.secondsPerFact, speed: FACTS[f.speed] } : {}),
+          }
         : null,
     work: (m.work ?? []).map((w) => ({ question: w.prompt, answer: w.correct ? "right" : "not right", comment: w.comment })),
   };
@@ -94,10 +140,13 @@ export function reportFacts(m: ReportModel) {
 
 /**
  * Checks AI report text against the model it was written from: the text rules, then every number must be among the
- * report's facts (reportFacts; a number word counts as its number). Returns the tidied text to keep, or why it was rejected.
+ * report's facts (reportFacts; a number word counts as its number), then what a parent's text may not say
+ * (parentTextProblem). Returns the tidied text to keep, or why it was rejected.
  */
 export function checkReportText(model: ReportModel, text: string): ReportTextCheck {
-  return checkAiText(text, reportFacts(model), REPORT_TEXT_MAX);
+  const check = checkAiText(text, reportFacts(model), REPORT_TEXT_MAX);
+  const problem = check.ok ? parentTextProblem(check.text, model.level.grade) : null;
+  return problem ? { ok: false, ...problem } : check;
 }
 
 /**

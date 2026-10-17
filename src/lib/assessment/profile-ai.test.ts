@@ -6,12 +6,16 @@ import {
   PROFILE_AI_SCHEMA,
   REPORT_TEXT_NAME,
   checkProfileAi,
+  createFacts,
   createSession,
   finish,
   learnerProfile,
   nextQuestion,
   profileAiFacts,
   submitAnswer,
+  submitFact,
+  type FactsSession,
+  type Grade,
   type LearnerProfile,
   type MisconceptionId,
   type ProfileAnswer,
@@ -22,9 +26,9 @@ import {
 // the AI reads (the profile facts, the skill-map neighbours, the misconception descriptions), and the checks its JSON
 // output passes before any of it is kept. A child takes a whole test through the session, as in the profile's tests.
 
-/** A whole test of a grade 4 child in BC, answered by `respond`. */
-function profileOf(respond: (q: Question) => string): LearnerProfile {
-  let session = createSession({ grade: 4, province: "BC" }, 101);
+/** A whole test of a grade 4 child in BC (or of another grade), answered by `respond`, with the quick facts when given. */
+function profileOf(respond: (q: Question) => string, grade: Grade = 4, facts: FactsSession | null = null): LearnerProfile {
+  let session = createSession({ grade, province: "BC" }, 101);
   for (let q = nextQuestion(session); q; q = nextQuestion(session)) {
     session = submitAnswer(session, { questionId: q.id, response: respond(q), timeMs: 20_000 });
   }
@@ -33,7 +37,13 @@ function profileOf(respond: (q: Question) => string): LearnerProfile {
     question: questions[i], response: a.response, correct: a.correct, misconception: a.misconception, timeMs: a.timeMs,
     work: { required: false, drawing: false, typed: false }, readAloud: null, away: null,
   }));
-  return learnerProfile({ placement: finish(session, null, "no"), answers, help: "no", learning: null })!;
+  return learnerProfile({ placement: finish(session, facts, "no"), answers, help: "no", learning: null })!;
+}
+/** A quick facts section with 10 facts right, 2 seconds each: quick and secure. */
+function factsOf(grade: Grade): FactsSession {
+  let facts = createFacts({ grade, province: "BC" }, 5);
+  facts.facts.slice(0, 10).forEach((f, i) => { facts = submitFact(facts, { factId: f.id, response: String(f.answer), atMs: (i + 1) * 2000, browserMs: 2000 }); });
+  return facts;
 }
 const STANDARD = new Map(BANKS["3-5"].map((t) => [t.id, t.standard]));
 /** Three grade 4 standards: the struggling child gives a coded wrong answer on their questions, and knows the rest to grade 4. */
@@ -109,6 +119,84 @@ describe("what the AI reads", () => {
       }
     }
     expect(profileAiFacts(onGrade).next_challenge_candidates.map((c) => c.code)).not.toContain(notReady(onGrade));
+  });
+});
+
+describe("what the AI reads about the quick facts (#242)", () => {
+  // Grade 5: the facts round asks addition and subtraction facts to 20 and multiplication facts for 2, 3, 4, 5 and 10.
+  // Equivalent fractions (5.3) needs the grade 4 multiplication facts (4.8), which no grade 5 question asks.
+  const FACTS_5 = ["2.3", "3.4", "4.7", "4.8", "5.8", "5.9"];
+  const weak = (q: Question) => (STANDARD_5.get(q.templateId) === "5.3" ? q.wrong[0]?.value ?? "no idea" : q.level <= 5 ? q.answer : "no idea");
+  const STANDARD_5 = new Map(Object.values(BANKS).flat().map((t) => [t.id, t.standard]));
+  const factsNeeded = (p: LearnerProfile) =>
+    profileAiFacts(p).struggle_skills.flatMap((s) => s.skills.flatMap((k) => k.requires)).filter((r) => FACTS_5.includes(r.standard) && !p.standards.some((x) => x.code === r.standard));
+
+  it("a needed skill reads as tested in the quick facts round only when the round asked facts of that skill", () => {
+    const facts = factsOf(5);
+    // The grade 5 round asks multiplication facts, and no division facts.
+    expect(facts.facts.some((f) => f.op === "×")).toBe(true);
+    expect(facts.facts.some((f) => f.op === "÷")).toBe(false);
+    const resultOf = (p: LearnerProfile) => new Map(factsNeeded(p).map((r) => [r.id, r.result]));
+    // 5.3 needs the multiplication facts and the division facts of 4.8, which no grade 5 question asks.
+    expect(resultOf(profileOf(weak, 5))).toEqual(new Map([["4.8-multiplication-facts", "not tested"], ["4.8-division-facts", "not tested"]]));
+    expect(resultOf(profileOf(weak, 5, facts))).toEqual(new Map([["4.8-multiplication-facts", "tested in the quick facts round"], ["4.8-division-facts", "not tested"]]));
+  });
+
+  it("a next challenge candidate reads as tested in the quick facts round only when the round asked every skill of it", () => {
+    const candidates = profileAiFacts(profileOf(weak, 5, factsOf(5))).next_challenge_candidates;
+    for (const c of candidates) {
+      const skills = BC_SKILL_MAP.standards.find((s) => s.code === c.code)!.skills.map((k) => k.id);
+      if (skills.some((id) => id.includes("division"))) expect(c.result, c.code).not.toBe("tested in the quick facts round");
+    }
+  });
+
+  it("has no facts speed or timing for grades 1-4, and keeps them from grade 5", () => {
+    const grade3 = profileAiFacts(profileOf((q) => (q.level <= 3 ? q.answer : "no idea"), 3, factsOf(3))).profile.facts;
+    expect(grade3).toMatchObject({ answered: 10, correct: 10, accuracy: "secure" });
+    expect(grade3).not.toHaveProperty("speed");
+    expect(grade3).not.toHaveProperty("medianMs");
+    expect(grade3).not.toHaveProperty("seconds");
+    expect(profileAiFacts(profileOf(weak, 5, factsOf(5))).profile.facts).toMatchObject({ speed: "quick", medianMs: 2000, seconds: 60 });
+  });
+
+  it("drops a likely cause or a way to help that says something was not tested, and one that states the facts timing for grades 1-4", () => {
+    const grade3 = profileOf((q) => (STANDARD_5.get(q.templateId)?.startsWith("3.") && q.wrong[0] ? q.wrong[0].value : q.level <= 3 ? q.answer : "no idea"), 3, factsOf(3));
+    expect(grade3.struggles.length).toBeGreaterThan(1);
+    const [a, b] = grade3.struggles;
+    const out = goodOutput(grade3);
+    const check = checkProfileAi(grade3, {
+      ...out,
+      struggles: [
+        { code: a.code, likely_cause: "The multiplication facts were not tested.", how_to_help: "Ask the facts that were not tested." },
+        { code: b.code, likely_cause: "{name} answered the facts quickly but skipped steps here.", how_to_help: "Help {name} recall the facts instantly." },
+      ],
+    }, "m");
+    expect(check.ok).toBe(true);
+    if (!check.ok) return;
+    expect(check.ai.likelyCauses).toBeUndefined();
+    expect(check.ai.howToHelp).toBeUndefined();
+    expect(check.dropped).toEqual([
+      { part: "likelyCauses", code: a.code, problem: "untested", detail: "not tested" },
+      { part: "howToHelp", code: a.code, problem: "untested", detail: "not tested" },
+      { part: "likelyCauses", code: b.code, problem: "speed", detail: "quickly" },
+      { part: "howToHelp", code: b.code, problem: "speed", detail: "instantly" },
+    ]);
+  });
+
+  it("drops a way to help that says something was not tested from grade 5 too, and keeps the facts speed there", () => {
+    const grade5 = profileOf(weak, 5, factsOf(5));
+    const [a, b] = grade5.struggles;
+    const check = checkProfileAi(grade5, {
+      ...goodOutput(grade5),
+      struggles: [
+        { code: a.code, likely_cause: "{name} mixed up the steps.", how_to_help: "The division facts were never tested, so ask them." },
+        ...(b ? [{ code: b.code, likely_cause: "{name} recalled the facts instantly, so the facts are not the cause.", how_to_help: "Practise." }] : []),
+      ],
+    }, "m");
+    expect(check.ok).toBe(true);
+    if (!check.ok) return;
+    expect(check.dropped).toContainEqual({ part: "howToHelp", code: a.code, problem: "untested", detail: "never tested" });
+    if (b) expect(check.ai.likelyCauses?.value[b.code]).toContain("instantly");
   });
 });
 

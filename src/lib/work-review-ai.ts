@@ -50,7 +50,8 @@ Rules:
 - The report already says the working level and how it compares with the school grade, just above your paragraph. Do not start by repeating it. Say what the result means: the strongest area, and the areas to practise. Call an area a weakness only when its result is "Developing" or "Needs attention". Never invent a strength or a weakness.
 - If level_is_estimate is true, say that the level is an estimate. If may_work_higher is true, say that the child may work above this level.
 - If help_warning is true, do not praise the level: say that the level may be too high.
-- Number facts speed is never a reason to call a child behind.
+- Number facts speed is never a reason to call a child behind. When number_facts has no speed, say nothing about time or speed: no seconds, pace, quick, fast, slow or time per fact.
+- Never say that something was not tested.
 - The work list is the child's work shown on the report. When a piece has a comment, you may say what it shows.
 - Do not compare the child with other children. Do not mention books, prices, the company, how the test works, AI or yourself. Do not write "I". Do not use dashes as punctuation.`;
 

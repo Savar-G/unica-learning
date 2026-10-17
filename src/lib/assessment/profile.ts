@@ -3,9 +3,10 @@
 // parts, each labelled with its model id). Pure, like the session: the report job passes the stored placement, the
 // answers with their questions, and the parent's questionnaire answers. No network, database or clock.
 import { BANKS } from "./bank";
+import { parentTextProblem } from "./ai-checks";
 import { REPORTED_STRAND, REPORTED_STRAND_NAMES, bandFor } from "./constants";
-import { levelCertainty, strandCertainty, strandStatus, workingLevelOf, type Certainty } from "./certainty";
-import type { FactsResult } from "./facts";
+import { levelCertainty, storedLevelCertainty, strandCertainty, strandStatus, workingLevelOf, type Certainty } from "./certainty";
+import { factsStandards, type FactsResult } from "./facts";
 import { TOO_FAST_MS, helpLikely, type Flag, type HelpAnswer } from "./flags";
 import { RUSH_RUN, paceOf } from "./rushing";
 import type { Interest, LearningGoal, LearningStyle, MathFeeling, WeeklyTime } from "@/lib/learning-style";
@@ -383,13 +384,14 @@ export function learnerProfile(input: ProfileInput): LearnerProfile | null {
       return { ...s, wrong, misconceptions: [...new Set(wrong.flatMap((w) => w.misconception ?? []))] };
     });
 
-  const tested = new Set(standards.map((s) => s.code));
+  // A quick facts round that ran tested its facts standards too (#242).
+  const tested = new Set([...standards.map((s) => s.code), ...factsStandards(placement.facts?.families ?? [])]);
   const untested = BC_SKILL_MAP.standards
     .filter((s) => s.grade === placement.grade && !tested.has(s.code))
     .map((s): StandardRef => ({ code: s.code, text: s.text, strand: REPORTED_STRAND[s.strand] }))
     .sort((a, b) => curriculumOrder({ ...a, grade: placement.grade }, { ...b, grade: placement.grade }));
   const uncertain = strands.filter((s) => s.certainty === "early-sign").map((s) => s.strand);
-  const levelSure = placement.levelCertainty ?? levelCertainty(placement.levels);
+  const levelSure = storedLevelCertainty({ confidence: placement.confidence, certainty: placement.levelCertainty }) ?? levelCertainty(placement.levels);
   const ref = ({ code, text, strand }: StandardRef): StandardRef => ({ code, text, strand });
 
   return {
@@ -428,14 +430,41 @@ export function learnerProfile(input: ProfileInput): LearnerProfile | null {
 const RETIRED_PARTS = ["wordsOrNumbers"] as const;
 
 /**
- * A stored profile (public.learner_profiles.profile) as this version's profile, without its retired parts; null when
+ * A stored profile (public.learner_profiles.profile) as this version's profile, read with the rules of today; null when
  * it is not a profile or was written at another schema version. A reader never guesses at another version's shape: an
- * older profile is built again from the test.
+ * older profile is built again from the test. Every reader gets the same profile (the admin profile, the parent's
+ * report, the AI parts), and the stored row is not changed:
+ *   - its retired parts are dropped;
+ *   - #242: an estimated working level is an early sign, also when it was stored as clear;
+ *   - #242: an AI likely cause or way to help that breaks a rule of today (parentTextProblem) is dropped, and a part
+ *     with nothing left is absent.
  */
 export function storedProfile(value: unknown): LearnerProfile | null {
   if (typeof value !== "object" || value === null || Array.isArray(value)) return null;
   if ((value as { schemaVersion?: unknown }).schemaVersion !== PROFILE_SCHEMA_VERSION) return null;
-  const profile: Record<string, unknown> = { ...value };
-  for (const part of RETIRED_PARTS) delete profile[part];
-  return profile as unknown as LearnerProfile;
+  const stored: Record<string, unknown> = { ...value };
+  for (const part of RETIRED_PARTS) delete stored[part];
+  const profile = stored as unknown as LearnerProfile;
+  const certainty = storedLevelCertainty(profile.level) ?? profile.level.certainty;
+  const { ai: written, ...facts } = profile;
+  const ai = written && storedAi(written, profile.test.grade);
+  return {
+    ...facts,
+    level: { ...profile.level, certainty },
+    unknowns: { ...profile.unknowns, earlySigns: { ...profile.unknowns.earlySigns, level: certainty === "early-sign" } },
+    ...(ai ? { ai } : {}),
+  };
+}
+
+/** The stored AI parts without the texts that break a rule of today; undefined when no part is left. */
+function storedAi(ai: ProfileAi, grade: Grade): ProfileAi | undefined {
+  const kept: ProfileAi = { ...ai };
+  for (const part of ["likelyCauses", "howToHelp"] as const) {
+    const written = ai[part];
+    if (!written) continue;
+    const value = Object.fromEntries(Object.entries(written.value).filter(([, text]) => !parentTextProblem(text, grade)));
+    if (Object.keys(value).length) kept[part] = { ...written, value };
+    else delete kept[part];
+  }
+  return Object.keys(kept).length ? kept : undefined;
 }
