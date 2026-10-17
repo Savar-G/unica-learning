@@ -23,6 +23,7 @@ import {
   type ProfileAnswer,
   type Question,
 } from "@/lib/assessment";
+import { MAIN_REJECTED_UNTESTED } from "./untested-wordings";
 
 // The AI's interpretation of the learner profile (#197, spec #181), through the assessment core's public interface: what
 // the AI reads (the profile facts, the skill-map neighbours, the misconception descriptions), and the checks its JSON
@@ -209,6 +210,19 @@ describe("what the AI reads about the quick facts (#242)", () => {
       { part: "likelyCauses", code: a.code, problem: "untested", detail: "not tested" },
       { part: "likelyCauses", code: b.code, problem: "speed", detail: "quickly" },
     ]);
+  });
+
+  it("drops a likely cause with any wording main's \"not tested\" check rejected in the review probes (#245 r3)", () => {
+    const grade5 = profileOf(weak, 5, factsOf(5));
+    for (const text of MAIN_REJECTED_UNTESTED) {
+      const check = checkProfileAi(grade5, {
+        ...goodOutput(grade5),
+        struggles: grade5.struggles.map((s) => ({ code: s.code, likely_cause: text, how_to_help: "Practise." })),
+      }, "m");
+      expect(check.ok, text).toBe(true);
+      if (!check.ok) return;
+      expect(check.ai.likelyCauses, text).toBeUndefined();
+    }
   });
 
   it("keeps the ways to help as written: they are for the admin only, so the parent text filters do not apply (#245)", () => {

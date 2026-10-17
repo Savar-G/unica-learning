@@ -32,6 +32,7 @@ export {
   parentTextProblem,
   reportFacts,
   workReview,
+  type ParentText,
   type ReportTextCheck,
   type ReportTextProblem,
   type ReviewResult,

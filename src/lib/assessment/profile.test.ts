@@ -21,6 +21,7 @@ import {
   type ProfileAnswer,
   type Question,
 } from "@/lib/assessment";
+import { MAIN_REJECTED_UNTESTED } from "./untested-wordings";
 
 // The learner profile's facts (#196, spec #181), through the assessment core's public interface. A child takes a whole
 // test through the session, and the profile is built from the stored placement and the answers, as the report job does.
@@ -341,6 +342,16 @@ describe("a stored profile reads with the rules of today (#242)", () => {
     const profile = estimate(3);
     const ai: ProfileAi = { likelyCauses: { model: "m", value: { [profile.struggles[0].code]: "{name} answered the facts instantly." } } };
     expect(storedProfile(JSON.parse(JSON.stringify({ ...profile, ai })))).not.toHaveProperty("ai");
+  });
+  it("leaves out a stored likely cause with any wording main's \"not tested\" check rejected in the review probes (#245 r3)", () => {
+    for (const grade of [3, 5] as const) {
+      const profile = estimate(grade);
+      expect(profile.struggles.length, `grade ${grade}`).toBeGreaterThan(0);
+      for (const text of MAIN_REJECTED_UNTESTED) {
+        const ai: ProfileAi = { likelyCauses: { model: "m", value: Object.fromEntries(profile.struggles.map((s) => [s.code, text])) } };
+        expect(storedProfile(JSON.parse(JSON.stringify({ ...profile, ai }))), `grade ${grade}: ${text}`).not.toHaveProperty("ai");
+      }
+    }
   });
 });
 

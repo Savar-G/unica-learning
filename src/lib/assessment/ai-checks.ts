@@ -67,13 +67,11 @@ const THE_TEST = String.raw`(?:the|this)\s+(?:quick\s+)?(?:(?:number\s+)?facts?\
 /** Parts of the child's own answer: "the remainder was not included" is what the answer left out, not the test. */
 const CHILD_WORK = String.raw`(?:answers?|remainders?|units?|regrouping|zeros?|zeroes|signs?|steps?|digits?|decimal\s+point|carry|carrying|labels?|working|work|estimates?|pictures?|drawing)`;
 /**
- * A statement that something was not tested (#242, #245), however it is worded: the words about testing ("tested",
+ * A statement that something was not tested (#245), however it is worded: the words about testing ("tested",
  * "assessed", "evaluated", "examined") after not or never; something passive that "was not checked", "covered",
  * "included" or "asked"; the test as the one that did not ask, skipped or left out; not on, in, or outside the test;
- * yet or still to be tested; no questions, results or information; not known, unknown so far. Not the child's own
- * actions ("did not check the answer", "has not checked the sign", "was not asked to show work", "did not ask for
- * help"), a passive about a part of the child's answer ("the remainder was not included"), or one done by the child
- * ("was not tried by {name}").
+ * yet or still to be tested; no questions, results or information; not known, unknown so far. Its exceptions for the
+ * child's own work ("was not tried by {name}") apply only to what MAIN_UNTESTED lets through.
  */
 const NOT = String.raw`(?:\bnot|\bnever|n['’]t)`;
 const UNTESTED = new RegExp([
@@ -96,15 +94,34 @@ const UNTESTED = new RegExp([
 ].join("|"), "i");
 
 /**
+ * The "not tested" check of #242, kept whole as a safety net under UNTESTED (D-124, #245 review round 3): "not" or
+ * "never" before "tested", "checked", "measured", "assessed", "asked", "covered" or "included", and "did not" or "does
+ * not" before "test", "check", "measure", "assess", "ask", "cover" or "include", whoever is the subject. So it also drops
+ * some harmless likely causes about the child's own work ("{name} did not check the answer.", "The remainder was not
+ * included in the answer."); the report then shows its own sentence for that mistake.
+ */
+const MAIN_UNTESTED = new RegExp([
+  String.raw`\buntested\b`,
+  String.raw`(?:\bnot|\bnever|n['’]t)\s+(?:yet\s+|been\s+|be\s+|really\s+)*(?:tested|checked|measured|assessed|asked|covered|included|part\s+of\s+the\s+(?:test|round))\b`,
+  String.raw`\b(?:did\s+not|didn['’]t|does\s+not|doesn['’]t)\s+(?:test|check|measure|assess|ask|cover|include)\b`,
+].join("|"), "i");
+
+/** Which parent's AI text is checked: the report summary, or a likely cause on the report. */
+export type ParentText = "summary" | "likely-cause";
+
+/**
  * What a parent's AI text about the child may not say, beyond the rules every AI text follows (#242, #245): the report
  * summary and the likely causes a parent reads. Not the ways to help, which only the admin reads (spec #181). A safety
  * net: the AI reads no "not tested" label or untested list, and below FACT_SPEED_FROM_GRADE no facts timing (reportFacts,
- * profileAiFacts), so it has nothing true to say on either. "speed": a sentence about the facts that states their
- * timing (TIMING), for a school grade under FACT_SPEED_FROM_GRADE (D-120: grades 1-4 see accuracy only). "untested":
- * that something was not tested (UNTESTED), at every grade; what the test did not ask is code's to say. Null when the
- * text may show. Also for stored text when it is read (storedReportModel, storedProfile).
+ * profileAiFacts), so it has nothing true to say on either. "speed", for a school grade under FACT_SPEED_FROM_GRADE
+ * (D-120: grades 1-4 see accuracy only): in the summary, any timing word (TIMING), as its facts have no timing of any
+ * kind; in a likely cause, a sentence about the facts that states their timing, as the main test's pace is in its facts.
+ * "untested": that something was not tested (UNTESTED or MAIN_UNTESTED), at every grade; what the test did not ask is
+ * code's to say. Null when the text may show. Also for stored text when it is read (storedReportModel, storedProfile).
  */
-export function parentTextProblem(text: string, grade: Grade): { problem: "speed" | "untested"; detail: string } | null {
+export function parentTextProblem(text: string, grade: Grade, kind: ParentText = "likely-cause"): { problem: "speed" | "untested"; detail: string } | null {
+  const anySpeed = grade < FACT_SPEED_FROM_GRADE && kind === "summary" ? text.match(TIMING) : null;
+  if (anySpeed) return { problem: "speed", detail: anySpeed[0] };
   if (grade < FACT_SPEED_FROM_GRADE) {
     // A sentence is about the facts when it names them, or the sentence before it does ("... the facts. It was quick.").
     const sentences = text.split(/(?<=[.!?;])\s+/);
@@ -114,7 +131,7 @@ export function parentTextProblem(text: string, grade: Grade): { problem: "speed
       if (speed) return { problem: "speed", detail: speed[0] };
     }
   }
-  const untested = text.match(UNTESTED);
+  const untested = text.match(UNTESTED) ?? text.match(MAIN_UNTESTED);
   if (untested) return { problem: "untested", detail: untested[0] };
   return null;
 }
@@ -187,7 +204,7 @@ export function reportFacts(m: ReportModel) {
  */
 export function checkReportText(model: ReportModel, text: string): ReportTextCheck {
   const check = checkAiText(text, reportFacts(model), REPORT_TEXT_MAX);
-  const problem = check.ok ? parentTextProblem(check.text, model.level.grade) : null;
+  const problem = check.ok ? parentTextProblem(check.text, model.level.grade, "summary") : null;
   return problem ? { ok: false, ...problem } : check;
 }
 

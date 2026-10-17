@@ -172,6 +172,6 @@ export function reportModel(placement: Placement, context: ReportContext): Repor
 export function storedReportModel(model: ReportModel): ReportModel {
   const { summary, ...rest } = model;
   const certainty = storedLevelCertainty(model.level);
-  const keep = summary !== undefined && !parentTextProblem(summary, model.level.grade);
+  const keep = summary !== undefined && !parentTextProblem(summary, model.level.grade, "summary");
   return { ...rest, level: { ...model.level, ...(certainty ? { certainty } : {}) }, ...(keep ? { summary } : {}) };
 }

@@ -19,6 +19,7 @@ import {
   type WorkReview,
 } from "@/lib/assessment";
 import { allRight, knowsUpTo, takeTest } from "./scripted-child";
+import { MAIN_REJECTED_UNTESTED } from "./untested-wordings";
 
 const grade4 = (isRight = allRight, province: Province = "BC") => takeTest({ grade: 4, province }, 1, isRight).placement;
 const report = (placement: Placement, completedTestsInGrade = 0, workReviews: WorkReview[] = []) =>
@@ -388,13 +389,7 @@ describe("report model", () => {
       "Count the seconds hand on a clock together.",
       "{name} hesitated between the two fractions.",
       "{name} added automatically without regrouping.",
-      "{name} did not check the answer.",
-      "{name} did not include the remainder.",
-      "{name} did not measure from zero on the ruler.",
-      "{name} was not asked to show work.",
-      "{name} did not cover the whole area with tiles.",
-      "{name} did not ask for help.",
-      "{name} has not checked the sign.",
+      // Not "{name} did not check the answer." and the like: main rejected them, so they stay rejected (D-124, #245 r3).
       // Real likely causes from the production end-to-end test (review-r2/probe3.txt).
       "{name} may have subtracted the smaller number from the larger when the start was unknown.",
       "On 4 × 9 = 3 × ?, {name} wrote 36 and did not balance both sides.",
@@ -508,14 +503,37 @@ describe("report model", () => {
       }
     });
 
-    it("keeps a likely cause about the child's own answer in the passive, and ordinary words in a facts sentence (#245 r2)", () => {
+    it("rejects every wording main's \"not tested\" check rejected in the review probes, new and stored, at every grade (#245 r3)", () => {
+      expect(MAIN_REJECTED_UNTESTED.length).toBeGreaterThan(50);
+      for (const text of MAIN_REJECTED_UNTESTED) {
+        // From grade 5 nothing else applies; below it a facts sentence may be caught as speed first.
+        expect(parentTextProblem(text, 5), text).toMatchObject({ problem: "untested" });
+        for (const grade of [1, 3, 4, 7] as const) expect(parentTextProblem(text, grade), `grade ${grade}: ${text}`).not.toBeNull();
+        for (const grade of [3, 5] as const) {
+          expect(withFacts(grade, text), `grade ${grade}: ${text}`).not.toHaveProperty("summary");
+          expect(storedReportModel({ ...withFacts(grade), summary: text }), `grade ${grade}: ${text}`).not.toHaveProperty("summary");
+        }
+      }
+    });
+
+    it("for grades 1-4, rejects any timing word in the summary, whose facts have no timing; a likely cause keeps the main test's pace (#245 r3)", () => {
+      const timing = ["{name} answered quickly and accurately.", "{name} may have rushed through Number and operations.", "{name} worked at a steady pace."];
+      for (const text of timing) {
+        for (const grade of [1, 3, 4] as const) {
+          expect(parentTextProblem(text, grade, "summary"), `grade ${grade}: ${text}`).toMatchObject({ problem: "speed" });
+          expect(parentTextProblem(text, grade, "likely-cause"), `grade ${grade}: ${text}`).toBeNull();
+        }
+        expect(withFacts(3, text), text).not.toHaveProperty("summary");
+        expect(storedReportModel({ ...withFacts(3), summary: text }), text).not.toHaveProperty("summary");
+        expect(withFacts(5, text).summary, text).toBe(text);
+        expect(storedReportModel({ ...withFacts(5), summary: text }).summary, text).toBe(text);
+      }
+    });
+
+    it("keeps a likely cause main kept about the child's own work, and ordinary words in a facts sentence (#245 r2)", () => {
       const ordinary = [
-        // What the child's answer left out: not a statement about the test.
-        "The remainder was not included in the answer.",
-        "The answer was not checked against the estimate.",
-        "The units were not included.",
-        "The regrouping was not checked.",
-        "The zero in the tens place was not included.",
+        // Main rejected "The remainder was not included in the answer." and "{name} did not check the answer.", so they
+        // stay rejected (MAIN_REJECTED_UNTESTED, D-124). These main kept.
         "Measurement was not tried by {name} on the ruler question.",
         "{name} got no questions wrong in Number and operations.",
         "{name} did not get the multiplication facts right.",
