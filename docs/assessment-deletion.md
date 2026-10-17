@@ -41,6 +41,26 @@ Limits:
 - A Stripe customer deleted in the Dashboard fails its reads, so the family is unknown and stays. If it was already frozen, it stays frozen until someone reconciles it.
 - The read-only step makes about four Stripe list reads per customer per run, one family at a time and four customers at once. It shares the 14-minute work budget with deletions.
 
+## The copy without names (#201)
+
+Spec #181 and D-119 (updates D-085 and D-109). Apply `supabase/migrations/20261016_test_copies_without_names.sql` before this code ships. It adds two tables (`anonymous_tests`, `anonymous_test_links`) and three service-only functions, and changes no existing table, function or trigger. The worker on main writes no copies and keeps working against it. Until the new worker is deployed, its deletions write no copy, as today.
+
+Every deletion runs `deleteFamily` after the payment check has moved the request to the `deleting` phase, which no payment answer can reopen. This covers a parent's request, free-test and former-customer retention, and the manual route. The steps:
+
+1. `family_copy_sources` reads every test of the frozen family. It selects no name, email, postal code, drawing or stroke path, typed working, note or AI text.
+2. The assessment core builds each copy with its allowlist (`anonymousTestCopy`, `COPY_FIELDS`). The extra round (#190, D-116) is in it: each round question shown is marked `round: "extra"` and copied like a main question, and `extraRound` holds the round's state (taken during the test or from the report, offered, skipped, started, stopped part way, finished, as milliseconds since the test started; how many questions it drew; whether the result counts them).
+3. `save_family_test_copy` saves one copy and its link to the test in one transaction. It requires the current, unexpired deleting lease, a test of this family, the allowlisted fields (at the top, in the round's record and in each question), and the database's own grade, province, month and test-family mark. A test that already has its copy returns false and writes nothing.
+4. `confirm_family_copies` must return true: every test of the family has its copy.
+5. Only after step 4 does the worker remove drawings, then delete Auth.
+
+Any failed, lost or missing step throws. The request and its fence stay for a later run (fail closed). A missing function (migration not applied, `PGRST202`) also stops the deletion. The fence keeps new tests out after the request. The link goes with the family through the Auth cascade, so a retry writes no second copy, and nothing links a copy to a family after the deletion. The copy has no timestamp. Its times are milliseconds since the test started, and its only date is the month.
+
+Dry mode reads `family_copy_sources` for each family it would claim and prints `copy`: `families`, `tests` (copies to write), `copied` (already written), `questions`, `extraRounds` (rounds taken), `facts`, `profiles`, `questionnaires`, `failed` and `fields` (the field names). It never prints ids or values. `failed` above 0 makes `ok` false. Delete mode prints `copies`, the copies written in that run.
+
+Admins export the copies at `/api/admin/anonymous-copies?format=csv` (one row per question shown) or `?format=json` (every copy, whole). Test families are left out unless `&test=1`. The admin export page (`/admin/export`, #200) lists them as the dataset "Copies without names".
+
+Limits: the local checks ran on PGlite with one connection (the real migration chain, the real built worker entry, blocked network). They do not prove hosted lock behavior. The HTTP route's `dry=1` still lists candidates only. Hosted checks still required: the migration registry and grants, a manual Actions dry run that shows `copy`, and deleting a named QA family on the preview, then confirming that its copies exist and the family is gone.
+
 ## Process and concurrency
 
 An admin opens a parent record and confirms its email. The route checks the signed-in user with Auth and the current admin registry. The session RPC checks admin membership again under a row lock. It refuses admin accounts and an active card operation. It writes a durable request and freezes the parent. The worker removes all objects in the exact private family folder before deleting Auth. The existing foreign keys remove the family tables. A final SQL check confirms that Auth, parent, and Storage records are absent before it removes the request.

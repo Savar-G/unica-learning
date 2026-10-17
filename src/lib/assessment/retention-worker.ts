@@ -1,3 +1,4 @@
+import { copyFieldNames, copyPreview } from "./anonymous-copy";
 import type { FamilyDeletionResult } from "./deletion";
 import { readFamilyPayments } from "./payments";
 import { retentionDecision, type BookingLink, type CustomerPayments, type RetentionFamily } from "./retention";
@@ -40,19 +41,24 @@ export interface RetentionWorkerStore {
   cursor(): Promise<string | null>;
   advance(parent: string): Promise<void>;
   run(parent: string, limitMs: number, claim: RetentionClaim): Promise<FamilyDeletionResult>;
+  /** Dry mode (#201): the family's tests as the copy without names reads them (family_copy_sources). Read only. */
+  copySources(parent: string): Promise<unknown[]>;
 }
 
 /**
  * Retry queued work before unrelated Stripe reads. In delete mode, save each candidate's position before reading or
  * claiming it, and finish that candidate before scheduling another. A claim freezes the family; the fresh check
- * after the freeze decides again. Dry mode changes nothing. Output: counts only, never ids.
+ * after the freeze decides again. Dry mode changes nothing; for each family a delete run would claim, it builds the
+ * copy without names that the deletion would write (#201) and shows its counts and field names. Output: counts and
+ * field names only, never ids or values.
  */
 export async function runRetentionWorker(config: WorkerConfiguration, store: RetentionWorkerStore, remainingMs: () => number, now: number) {
   if (config.kind !== "run") return { ok: true, disabled: true };
   if (config.stripeKey) await store.verifyPayments();
   const candidates = await store.candidates();
   const decisions = { queued: 0, delete_free_test: 0, delete_former_customer: 0, keep_customer: 0, keep_former_customer: 0, keep_free_test: 0, keep_no_test: 0, unknown: 0 };
-  const counts = { eligible: 0, deleted: 0, busy: 0, excluded: 0, failed: 0, images: 0 };
+  const counts = { eligible: 0, deleted: 0, busy: 0, excluded: 0, failed: 0, images: 0, copies: 0 };
+  const copy = { families: 0, tests: 0, copied: 0, questions: 0, extraRounds: 0, facts: 0, profiles: 0, questionnaires: 0, failed: 0 };
   const dry = config.mode === "dry";
   const cursor = dry ? null : await store.cursor();
   const rotated = cursor === null ? candidates : [...candidates.filter((f) => f.id > cursor), ...candidates.filter((f) => f.id <= cursor)];
@@ -82,19 +88,26 @@ export async function runRetentionWorker(config: WorkerConfiguration, store: Ret
       claim = { endedAt: decision.rule === "former_customer" ? decision.endedAt : null };
     }
     counts.eligible++;
-    if (!dry) {
+    if (dry) {
+      try {
+        const preview = copyPreview(await store.copySources(family.id));
+        copy.families++;
+        for (const k of ["tests", "copied", "questions", "extraRounds", "facts", "profiles", "questionnaires"] as const) copy[k] += preview[k];
+      } catch { copy.failed++; }
+    } else {
       const limit = Math.min(budget, remainingMs());
       if (limit <= 0) { counts.failed++; break; }
       try {
         const result = await store.run(family.id, limit, claim);
         counts[result.state]++;
-        if (result.state === "deleted") counts.images += result.images;
+        if (result.state === "deleted") { counts.images += result.images; counts.copies += result.copies; }
       } catch { counts.failed++; }
     }
   }
-  // Unknown or unprocessed candidates make an incomplete run visible to the operator.
-  const ok = decisions.unknown === 0 && counts.failed === 0 && deferred === 0;
-  if (dry) return { ok, dry: true, eligible: counts.eligible, deferred, ...decisions };
+  // Unknown or unprocessed candidates make an incomplete run visible to the operator. So does a copy that a deletion
+  // could not write: that deletion would stop.
+  const ok = decisions.unknown === 0 && counts.failed === 0 && deferred === 0 && copy.failed === 0;
+  if (dry) return { ok, dry: true, eligible: counts.eligible, deferred, ...decisions, copy: { ...copy, fields: copyFieldNames() } };
   return { ok, ...counts, deferred, ...decisions };
 }
 

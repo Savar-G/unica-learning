@@ -1,3 +1,5 @@
+import { copyFamilyTests, type FamilyCopyStore } from "./anonymous-copy";
+
 /** A saved card or an uncertain payment state keeps a family out of automatic deletion. */
 export type RetentionCardState = "clear" | "saved" | "unknown";
 
@@ -9,7 +11,8 @@ export async function withFamilyCardOperation<T>(store: { begin(): Promise<boole
   return result;
 }
 
-export type FamilyDeletionResult = { state: "deleted"; images: number } | { state: "busy" | "excluded" };
+/** `copies`: the copies without names this run wrote (#201); a retry after an earlier run's copies writes 0. */
+export type FamilyDeletionResult = { state: "deleted"; images: number; copies: number } | { state: "busy" | "excluded" };
 
 /** The external worker must enforce its time limit. Saving the cursor first also survives termination. */
 export interface RetentionBatchStore {
@@ -20,7 +23,7 @@ export interface RetentionBatchStore {
 
 export async function runRetentionBatch(ids: string[], store: RetentionBatchStore, remainingMs: () => number, maximumFamilyMs = 30_000) {
   if (!Number.isFinite(maximumFamilyMs) || maximumFamilyMs <= 0) throw new Error("Invalid deletion budget");
-  const counts = { eligible: ids.length, deleted: 0, busy: 0, excluded: 0, failed: 0, images: 0 };
+  const counts = { eligible: ids.length, deleted: 0, busy: 0, excluded: 0, failed: 0, images: 0, copies: 0 };
   const cursor = await store.cursor();
   const order = cursor === null ? ids : [...ids.filter((id) => id > cursor), ...ids.filter((id) => id <= cursor)];
   const budget = Math.min(maximumFamilyMs, remainingMs());
@@ -36,7 +39,7 @@ export async function runRetentionBatch(ids: string[], store: RetentionBatchStor
     try {
       const result = await store.run(id, limit);
       counts[result.state]++;
-      if (result.state === "deleted") counts.images += result.images;
+      if (result.state === "deleted") { counts.images += result.images; counts.copies += result.copies; }
     } catch { counts.failed++; }
   }
   return counts;
@@ -44,8 +47,11 @@ export async function runRetentionBatch(ids: string[], store: RetentionBatchStor
 
 export interface ImageEntry { name: string; folder: boolean }
 
-/** External boundary. The database must freeze writes for this family before this interface is used. */
-export interface FamilyDeletionStore {
+/**
+ * External boundary. The database must freeze writes for this family before this interface is used. The copy half
+ * (#201) saves each test's copy without names under the same lease.
+ */
+export interface FamilyDeletionStore extends FamilyCopyStore {
   listImages(prefix: string, offset: number, limit: number): Promise<ImageEntry[]>;
   removeImages(paths: string[]): Promise<void>;
   renew(): Promise<void>;
@@ -82,12 +88,18 @@ async function removeFamilyImages(store: FamilyDeletionStore, prefix: string): P
   return removed;
 }
 
-/** Idempotent ordered deletion. A failed step leaves the durable request for a later retry. */
-export async function deleteFamily(store: FamilyDeletionStore, parentId: string): Promise<{ images: number }> {
+/**
+ * Idempotent ordered deletion. A failed step leaves the durable request for a later retry. The copy without names
+ * comes first (#201): nothing is removed until the database confirms a copy of every test of the frozen family, so a
+ * failed copy stops the deletion. A retry finds the saved copies and writes none twice.
+ */
+export async function deleteFamily(store: FamilyDeletionStore, parentId: string): Promise<{ images: number; copies: number }> {
   parentId = parentId.toLowerCase();
+  await store.renew();
+  const copies = await copyFamilyTests(store);
   const images = await removeFamilyImages(store, parentId);
   await store.renew();
   await store.removeAuth();
   await store.complete();
-  return { images };
+  return { images, copies };
 }

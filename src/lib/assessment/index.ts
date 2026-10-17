@@ -66,3 +66,5 @@ export { SKILL_TAGS, skillTagProblems, tagSkills, templateSkills, type SkillTag,
 export * from "./profile";
 // The learner profile's AI parts (#197): what the AI reads and the checks on what it writes.
 export { PROFILE_AI_SCHEMA, PROFILE_AI_TEXT_MAX, checkProfileAi, profileAiFacts, type ProfileAiCheck, type ProfileAiDrop } from "./profile-ai";
+// The copy without names (#201): each test of a family, copied before the family is deleted.
+export * from "./anonymous-copy";

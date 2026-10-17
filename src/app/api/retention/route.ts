@@ -15,7 +15,7 @@ export async function GET(request: Request) {
   const stopAt = Date.now() + 45_000;
   const db = adminClient(AbortSignal.timeout(55_000));
   if (!db) return Response.json({ ok: false, error: "unavailable" }, { status: 503 });
-  const counts = { eligible: 0, deleted: 0, busy: 0, excluded: 0, failed: 0, images: 0 };
+  const counts = { eligible: 0, deleted: 0, busy: 0, excluded: 0, failed: 0, images: 0, copies: 0 };
   try {
     const ids = await deletionCandidates(db);
     counts.eligible = ids.length;

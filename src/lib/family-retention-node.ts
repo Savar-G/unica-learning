@@ -1,7 +1,7 @@
 import "server-only";
 import { runRetentionWorker, workerConfiguration } from "@/lib/assessment";
 import { deletionClient, deletionPayments } from "./family-deletion-client";
-import { advanceDeletionCursor, deletionCursor, retentionCandidates, runFamilyDeletion } from "./family-deletion-store";
+import { advanceDeletionCursor, deletionCursor, familyCopySources, retentionCandidates, runFamilyDeletion } from "./family-deletion-store";
 import { readBookingCustomers, readCustomerPayments, verifyRetentionKey } from "./retention-stripe";
 
 export const RETENTION_WORK_MS = 14 * 60_000;
@@ -20,6 +20,8 @@ export async function runNodeRetention(args: readonly string[], env: Record<stri
   const result = await runRetentionWorker(config, {
     candidates: () => retentionCandidates(db),
     cursor: () => deletionCursor(db),
+    // Dry mode only: the copy each deletion would write, counted, never printed (#201).
+    async copySources(id) { work.throwIfAborted(); return familyCopySources(db, id); },
     async advance(id) { work.throwIfAborted(); await advanceDeletionCursor(db, id); },
     async verifyPayments() {
       // Authenticate the real live-mode key through the read permissions the rules use, before any claim.
