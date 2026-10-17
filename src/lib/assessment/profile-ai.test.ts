@@ -206,7 +206,7 @@ describe("what the AI reads about the quick facts (#242)", () => {
     if (!check.ok) return;
     expect(check.ai.likelyCauses).toBeUndefined();
     expect(check.dropped).toEqual([
-      { part: "likelyCauses", code: a.code, problem: "untested", detail: "were not tested" },
+      { part: "likelyCauses", code: a.code, problem: "untested", detail: "not tested" },
       { part: "likelyCauses", code: b.code, problem: "speed", detail: "quickly" },
     ]);
   });
@@ -383,6 +383,20 @@ describe("the AI output's checks", () => {
     const check = checkProfileAi(struggling, { ...out, workbook_plan: { ...out.workbook_plan, review: { percent: 20, standards: ["9.99", ...out.workbook_plan.review.standards] } } }, "m");
     expect(check.ok && check.ai.workbookPlan?.value.review.standards).toEqual(out.workbook_plan.review.standards);
     expect(check.ok && check.dropped).toEqual([{ part: "workbookPlan", code: "9.99", problem: "unknown-standard" }]);
+  });
+
+  it("keeps a plan standard of the school grade the test did not measure: the AI reads them all as a plain list (#245 r2, D-124)", () => {
+    const untested = onGrade.unknowns.untested.map((s) => s.code);
+    expect(untested.length).toBeGreaterThan(0);
+    const facts = profileAiFacts(onGrade);
+    // Every standard of the school grade, by code and words, with no result: the same for a tested one and an untested one.
+    expect(facts.school_grade_standards).toEqual(BC_SKILL_MAP.standards.filter((s) => s.grade === 4).map((s) => ({ code: s.code, text: s.text })));
+    const out = goodOutput(onGrade);
+    const plan = { ...out.workbook_plan, review: { percent: 20, standards: [untested[0]] }, practise: { percent: 60, standards: untested } };
+    const check = checkProfileAi(onGrade, { ...out, workbook_plan: plan }, "m");
+    expect(check.ok && check.ai.workbookPlan?.value.review.standards).toEqual([untested[0]]);
+    expect(check.ok && check.ai.workbookPlan?.value.practise.standards).toEqual(untested);
+    expect(check.ok && check.dropped.filter((d) => d.part === "workbookPlan")).toEqual([]);
   });
 
   it("sends a schema the structured output accepts: every object closed, every property required", () => {

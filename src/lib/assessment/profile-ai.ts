@@ -139,7 +139,8 @@ function challengeProblem(code: string, profile: LearnerProfile): ChallengeProbl
  * list and no "not tested" label, as what the test did not ask is code's to say. A needed skill has a result when its
  * standard's questions measured it, or "tested in the quick facts round" when the round asked that skill (factsSkills:
  * a round of multiplication facts asks no division); else none. A candidate has a result when questions measured it,
- * and names the skills of it the quick facts round asked, when it asked any.
+ * and names the skills of it the quick facts round asked, when it asked any. And every standard of the school grade, by
+ * code and words, that the workbook plan may name (D-124).
  */
 export function profileAiFacts(profile: LearnerProfile) {
   const rest: Omit<LearnerProfile, "ai"> & { ai?: unknown } = { ...profile };
@@ -182,6 +183,9 @@ export function profileAiFacts(profile: LearnerProfile) {
           ...(asked.length ? { quick_facts_round_skills: asked } : {}), prerequisites: prerequisiteStandards(s.code),
         };
       }),
+    // The plan may name any standard of the school grade, as before #245: all of them, with no result, so the list
+    // says nothing about which the test measured.
+    school_grade_standards: BC_SKILL_MAP.standards.filter((s) => s.grade === profile.test.grade).map((s) => ({ code: s.code, text: s.text })),
   };
 }
 
@@ -271,6 +275,7 @@ export function checkProfileAi(profile: LearnerProfile, output: unknown, model: 
       ...profile.standards.map((s) => s.code),
       ...facts.struggle_skills.flatMap((s) => s.skills.flatMap((k) => k.requires.map((r) => r.standard))),
       ...facts.next_challenge_candidates.map((c) => c.code),
+      ...facts.school_grade_standards.map((s) => s.code),
     ]);
     const known = (code: string) => (read.has(code) ? null : "unknown-standard" as const);
     const part = (p: PlanPart, rule: typeof known | typeof challenge): PlanPart => ({ percent: p.percent, standards: keep("workbookPlan", p.standards, rule) });

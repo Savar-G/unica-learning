@@ -32,13 +32,14 @@ The JSON holds:
 - misconceptions: each known mistake id in plain words. A wrong answer can match a known mistake by chance: treat it as a likely cause, not as certain.
 - struggle_skills: for each struggle, its skills, the skills each one needs first, and the child's result on each needed skill when the test measured it: its standard's result, or "tested in the quick facts round" when only the facts round asked that skill.
 - next_challenge_candidates: the standards the child is ready for: not yet secure, not a struggle, and every standard they build on is secure. There may be none. A candidate has a result when questions measured it, and quick_facts_round_skills lists its skills that the facts round asked.
+- school_grade_standards: every BC standard of the child's school grade, by code and words.
 
 Return:
 - struggles: one entry for each struggle, with its code.
   - likely_cause: the most likely cause, from the wrong answers, the known mistakes they match and the needed skills that are not secure. Say "may" when the evidence is thin: an early sign, or a single wrong answer.
   - how_to_help: what to practise first, and how.
 - next_challenge: up to 3 codes from next_challenge_candidates, the best fit first. Prefer standards of the school grade or the grade after it that build on the strengths. Never a code that is not a candidate.
-- workbook_plan: the mix of the first workbook. review: secure standards to keep fresh, and needed skills that are not secure. practise: the struggles first. stretch: codes from next_challenge only. Each part has a whole-number percent, and the three add up to 100. Give more to practise when there are struggles, and more to stretch when there are none and the parent's goal is to get ahead. A part may have 0 percent and no standards. Use only codes that are in the facts.
+- workbook_plan: the mix of the first workbook. review: secure standards to keep fresh, and needed skills that are not secure. practise: the struggles first. stretch: codes from next_challenge only. Each part has a whole-number percent, and the three add up to 100. Give more to practise when there are struggles, and more to stretch when there are none and the parent's goal is to get ahead. A part may have 0 percent and no standards. Use only codes that are in the facts; review and practise may also use codes from school_grade_standards.
 
 Rules for likely_cause and how_to_help:
 - 1 or 2 short sentences, at most ${PROFILE_AI_TEXT_MAX} characters. Plain words. No lists, headings, links or markdown. Name a standard by its words, not its code.

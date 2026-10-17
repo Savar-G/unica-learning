@@ -43,11 +43,13 @@ function textProblem(text: string, max: number): { problem: Exclude<ReportTextPr
  * A statement of how fast the facts were (#242, #245): speed and pace words, the time per fact, the round's length, and
  * comparisons of time. It counts only in a sentence about the facts (FACTS_TOPIC) or the sentence after one, so "a
  * quick picture", "slow down", "a second time", "rushed" or "hesitated" elsewhere are kept. Not "fluency": it is in
- * the BC titles of the facts.
+ * the BC titles of the facts. Not "prompted", "an efficient strategy" or "read the clock": only "promptly",
+ * "efficiently" and racing the clock are about speed.
  */
 const TIMING = new RegExp([
-  String.raw`\b(?:quick|fast|slow|rapid|swift|speed|instant|immediate|prompt|brisk|efficient)\w*`,
-  String.raw`\b(?:pace[ds]?|pacing|hesitat\w*|fluently|automatic\w*|rush\w*|hurr(?:y|ied|ies|ying)|timed|timing|timer|stopwatch|clock|lightning)\b`,
+  String.raw`\b(?:quick|fast|slow|rapid|swift|speed|instant|immediate|brisk)\w*|\b(?:promptly|efficiently)\b`,
+  String.raw`\b(?:pace[ds]?|pacing|hesitat\w*|fluently|automatic\w*|rush\w*|hurr(?:y|ied|ies|ying)|timed|timing|timer|stopwatch|lightning)\b`,
+  String.raw`\b(?:beat|beats|beating|against|race|races|raced|racing)\s+the\s+clock\b`,
   String.raw`\bseconds\b|\bsecs?\b|\b(?:a|one|per|each|few|\d+)[\s-]+second\b(?!\s+(?:time|try|look|step|number|question|row))|\b(?:a|one|per|each|the|\d+)[\s-]+minute\b(?!\s+hands?)`,
   String.raw`\b\d+(?:\.\d+)?\s+(?:s|ms)\b|\bmilliseconds?\b`,
   String.raw`\b(?:right away|at once|in a (?:flash|snap)|in no time|no time at all|record time|on the spot|at a glance|without (?:a )?(?:pause|delay|stopping)|with no delay|a while|blink of an eye|good clip|steady rate|within moments|time to spare|(?:the )?time (?:ran|was) (?:out|up)|rattled off)\b`,
@@ -58,25 +60,39 @@ const TIMING = new RegExp([
   String.raw`\bper\s+(?:fact|answer|question)\b`,
 ].join("|"), "i");
 /** A sentence about the number facts: the only place a timing word is about the facts. */
-const FACTS_TOPIC = /\b(?:facts?|recall\w*|times\s+tables?)\b/i;
+const FACTS_TOPIC = /\b(?:facts?|recall\w*|times\s+tables?|sums?|number\s+bonds?|(?:the|this)\s+(?:quick\s+)?round)\b/i;
+
+/** What the AI may call the test, as the one that asked or left something out. */
+const THE_TEST = String.raw`(?:the|this)\s+(?:quick\s+)?(?:(?:number\s+)?facts?\s+)?(?:test|round|quiz|assessment|questions)`;
+/** Parts of the child's own answer: "the remainder was not included" is what the answer left out, not the test. */
+const CHILD_WORK = String.raw`(?:answers?|remainders?|units?|regrouping|zeros?|zeroes|signs?|steps?|digits?|decimal\s+point|carry|carrying|labels?|working|work|estimates?|pictures?|drawing)`;
 /**
- * A statement that something was not tested (#242, #245): something "was not tested", "not on the test", "left out of
- * the test", "yet to be tested", or the test as the one that did not ask it. Not the child's own actions ("did not
- * check the answer", "has not checked the sign", "was not asked to show work").
+ * A statement that something was not tested (#242, #245), however it is worded: the words about testing ("tested",
+ * "assessed", "evaluated", "examined") after not or never; something passive that "was not checked", "covered",
+ * "included" or "asked"; the test as the one that did not ask, skipped or left out; not on, in, or outside the test;
+ * yet or still to be tested; no questions, results or information; not known, unknown so far. Not the child's own
+ * actions ("did not check the answer", "has not checked the sign", "was not asked to show work", "did not ask for
+ * help"), a passive about a part of the child's answer ("the remainder was not included"), or one done by the child
+ * ("was not tried by {name}").
  */
-const VERIFIED = String.raw`(?:tested|checked|measured|assessed|evaluated|examined|covered|included|tried|reached|looked\s+at|asked(?!\s+to\b)|part\s+of\s+(?:the|this)\s+(?:test|round))\b`;
+const NOT = String.raw`(?:\bnot|\bnever|n['’]t)`;
 const UNTESTED = new RegExp([
   String.raw`\buntested\b`,
-  String.raw`\b(?:is|are|was|were|be|being)(?:\s+not|\s+never|n['’]t)\s+(?:yet\s+|really\s+)?${VERIFIED}`,
-  String.raw`\b(?:has|have|had)(?:\s+not|\s+never|n['’]t)\s+(?:yet\s+)?been\s+(?:really\s+)?${VERIFIED}`,
-  String.raw`\bnot\s+yet\s+${VERIFIED}`,
-  String.raw`\b(?:not|never)\s+(?:on|in|part\s+of)\s+(?:the|this)\s+(?:test|round)\b`,
-  String.raw`\b(?:left\s+out\s+of|missing\s+from|skipped\s+in)\s+(?:the|this)\s+(?:test|round)\b`,
-  String.raw`\b(?:yet|still\s+needs?|needs?)\s+to\s+be\s+(?:tested|checked|measured|assessed)\b`,
-  String.raw`\b(?:the|this)\s+(?:test|round)\s+(?:did\s+not|didn['’]t|does\s+not|doesn['’]t|never|could\s+not|couldn['’]t)\s+(?:test|check|measure|assess|ask|cover|include|reach|look|get|show)\b`,
-  String.raw`\b(?:the|this)\s+(?:test|round)\s+(?:skipped|left\s+out|had\s+no|has\s+no|gave\s+no|asked\s+no)\b`,
-  String.raw`\bno\s+(?:questions?|results?|information)\s+(?:yet\s+)?(?:were\s+|was\s+)?(?:asked\s+)?(?:about|on|for)\b`,
+  String.raw`${NOT}\s+(?:yet\s+|really\s+|been\s+|be\s+|even\s+)*(?:tested|assessed|evaluated|examined)\b`,
+  String.raw`${NOT}\s+(?:yet\s+|really\s+|been\s+|be\s+|even\s+)*asked\b(?!\s+(?:for\b|to\s+(?!(?:do|answer|try|solve|complete|work)\b)))`,
+  String.raw`(?<!\b${CHILD_WORK}(?:\s+(?:in|of|on|for)\s+(?:the\s+)?\w+(?:\s+\w+)?)?\s+)(?:\b(?:is|are|was|were|be|being|been)(?:\s+not|\s+never|n['’]t)|${NOT}\s+(?:yet\s+)?been)\s+(?:yet\s+|really\s+)?(?:checked|measured|covered|included|tried|reached|looked\s+at|shown|given)\b(?!\s+by\b)`,
+  String.raw`\b${THE_TEST}\s+(?:(?:did|does|do|has|have|had|could|would)(?:\s+not|n['’]t)|never)\s+(?:yet\s+|really\s+|even\s+)?(?:test|check|measur|assess|evaluat|examin|ask|cover|includ|reach|look|get|got|show|touch|go|went|contain|featur|explor|address)\w*`,
+  String.raw`\b${THE_TEST}\s+(?:skipped|skips|left\s+out|leaves\s+out|omitted|missed|excluded|had\s+no|has\s+no|gave\s+no|asked\s+no|included\s+no|showed\s+no)\b`,
+  String.raw`\b(?:not|never)\s+(?:on|in|part\s+of|included\s+in|covered\s+by)\s+${THE_TEST}\b`,
+  String.raw`\b(?:left\s+out\s+of|missing\s+from|skipped\s+in|outside(?:\s+of)?|absent\s+from)\s+${THE_TEST}\b`,
+  String.raw`\b(?:yet|remains?|still\s+needs?|needs?)\s+to\s+be\s+(?:tested|checked|measured|assessed)\b`,
+  String.raw`\bno\s+(?:\w+\s+){0,2}questions?\b(?!\s+(?:wrong|right|incorrect|correct)\b)`,
+  String.raw`\bno\s+(?:\w+\s+){0,2}facts?\s+(?:on|in)\s+${THE_TEST}\b`,
+  String.raw`\bno\s+(?:results?|information|data)\b`,
+  String.raw`\b(?:did\s+not|didn['’]t|was\s+not|wasn['’]t)\s+(?:get|given|see|shown|have)\s+(?:any\s+)?(?:\w+\s+){0,2}(?:questions?|facts?)\b(?!\s+(?:wrong|right|incorrect|correct)\b)`,
   String.raw`\bnot\s+(?:yet\s+)?known\b`,
+  String.raw`\b(?:is|are|remains?|stays?)\s+unknown\b|\bunknown\s+(?:so\s+far|for\s+now|yet)\b`,
+  String.raw`\bdo(?:\s+not|n['’]t)\s+(?:yet\s+)?know\b`,
 ].join("|"), "i");
 
 /**
