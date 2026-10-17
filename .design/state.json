@@ -81,7 +81,7 @@
   },
   "email_design": {
     "route": "focused",
-    "phase": "review",
+    "phase": "handoff",
     "selected_experiment": ".design/experiments/r19/preview.html",
     "contract": ".design/experiments/r19/contract.md",
     "gates": {
@@ -89,6 +89,8 @@
       "ship": "pending"
     },
     "hosted_auth_templates": "prepared, not installed",
-    "evidence": ".design/evidence/email-design/"
+    "evidence": ".design/evidence/email-design/",
+    "review": ".design/reviews/email-design-2026-10-17.md",
+    "local_checks": "passed; hosted installation and inbox checks remain pending"
   }
 }

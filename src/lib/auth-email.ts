@@ -19,7 +19,7 @@ export function authEmail(kind: AuthEmailKind): { subject: string; html: string 
       : "Enter it on the page where you asked for it. If you did not ask for this code, you can ignore this email.";
   return { subject, html: emailDocument({
     title: subject,
-    preview: recovery ? "Choose a new password for your Unica Learning account." : "Enter your code on the signup page.",
+    preview: recovery ? "Choose a new password for your Unica Learning account." : "Enter your code on the page where you asked for it.",
     body: `<tr><td style="padding:0 24px"><p style="margin:0 0 20px">${instruction}</p>${action}<p style="margin:0;font-size:14px;color:#44444c">${note}</p></td></tr>`,
     footer: { why: recovery ? "You get this email because you asked to reset your password." : "You get this email because someone asked for a code for this address.", support: "email" },
   }) };

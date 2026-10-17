@@ -1,6 +1,6 @@
 # Email design A validation
 
-Source: branch `site/email-design`, implementation commit `5d70b49`, based on `eff9d09`.
+Source: branch `site/email-design`, implementation commit `5d70b49`, based on `eff9d09`, with the later preheader correction recorded in the independent review.
 
 ## Results
 
@@ -24,6 +24,10 @@ Source: branch `site/email-design`, implementation commit `5d70b49`, based on `e
 ## Browser tool limits
 
 The development server ran with `npm run dev -- --port 3017`. The collaborative browser opened the real generated start reminder successfully. Later calls returned `Preview automation snapshot timed out after 15000ms` and `Preview automation evaluate timed out after 15000ms`. The remaining checks used the T3 headless HTML renderer with the generated output.
+
+## Independent review
+
+Read-only review found no blockers. See `.design/reviews/email-design-2026-10-17.md`. The reviewer reported 112 passing focused tests and separate parent/internal message comparisons. The parent fixed its one preheader wording note and reran the required checks.
 
 ## Hosted follow-up
 

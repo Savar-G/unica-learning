@@ -7,6 +7,7 @@ describe("hosted account email templates", () => {
     for (const kind of ["confirmation", "magic_link"] as const) {
       const email = authEmail(kind);
       expect(email.html).toContain("{{ .Token }}");
+      expect(email.html).toContain("Enter your code on the page where you asked for it.");
       expect(email.html).not.toMatch(/ConfirmationURL|TokenHash|RedirectTo/);
       expect(email.html).toContain(kind === "confirmation" ? "Enter it on the signup page." : "Enter it on the page where you asked for it.");
     }
