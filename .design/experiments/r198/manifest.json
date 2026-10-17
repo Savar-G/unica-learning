@@ -1,0 +1,60 @@
+{
+  "round": 198,
+  "ticket": "#198 (spec #181): the parent report gains strengths, struggles with one real wrong answer and the likely cause, the words-or-numbers note and the workbook 1 preview",
+  "decision": "D-120",
+  "note": "Round named after the ticket so parallel tickets of spec #181 do not take the same r<n>. Savar could not be reached: the implementer shipped option A (most consistent with DESIGN.md, D-087's row pattern and the r189/r190 report cards) and keeps B and C here so Savar can swap.",
+  "invariants": [
+    "Copy (DESIGN.md): plain language, no performance claims, no proof we do not have. Every number is a count from the child's answers. A likely cause says the answer 'matches a common mistake'; the AI's text keeps its 'may'",
+    "Real data path: the real report job (src/lib/report-job.ts) on the in-memory adapters, with the fake profile AI (learner-profile-ai-fake, 'sure'), and the report view loaded through the parent's in-memory reader (src/lib/report-loading-memory.ts). No database, no network, no email sent, no real AI",
+    "A temporary harness page and email route under /dev-r198 (not committed); dev server on port 3198 with no .env.local; the card read-only, as the admin and sample reports show it",
+    "Same children in each option: Maya (grade 2, working at grade 1) and Arjun (grade 6, working at grade 5); viewports 1280 x 900, 820 x 1180 (tablet) and 390 x 844 (phone)"
+  ],
+  "looks": [
+    {
+      "decision": "How the report shows strengths and struggles",
+      "shipped": "A",
+      "options": [
+        {
+          "id": "A",
+          "name": "Rows under 'By area': Strengths, To work on, Word problems",
+          "screenshots": ["report-sections-a.png", "report-struggles-a.png", "report-full-a.png", "report-phone-a.png"],
+          "bet": "Each section is its own report row (title and one-line note on the left, as D-087). Strengths: a two-column list, each with its grade, count and certainty, a leaf square. To work on: a soft grey card per struggle: topic and status chip, grade, count and certainty, then the question, the child's answer (tangerine) beside the right answer (leaf), then 'Likely cause'. The first 6 strengths and 3 struggles show; the rest fold under 'Show n more' (no JavaScript). The clear ones come first",
+          "benefit": "Reads as more of the same report: the parent meets each struggle with the evidence in one place; the folded list keeps the page short for a child with many struggles",
+          "cost": "Long page for a child far behind; the folded struggles need a tap",
+          "risk": "Low"
+        },
+        {
+          "id": "B",
+          "name": "One row, side by side",
+          "screenshots": ["report-sections-b.png"],
+          "bet": "'What [Name] can do, and what to work on': strengths on the left, struggles on the right, each struggle as one sentence ('[Name] answered 1.4; the right answer is 35') and the cause in small grey",
+          "benefit": "Shorter; strengths and struggles read as one picture",
+          "cost": "The answers sit inside a sentence, so the wrong and right answers are harder to scan; no room for the certainty label; cramped on tablets",
+          "risk": "The struggles column dominates and the strengths look like an afterthought"
+        },
+        {
+          "id": "C",
+          "name": "Struggles as a table; strengths as chips",
+          "screenshots": ["report-sections-c.png"],
+          "bet": "A table like the area table: topic and status, question, the child's answer, right answer, likely cause; every strength as a leaf chip",
+          "benefit": "Dense and scannable; every struggle visible at once",
+          "cost": "Five narrow columns wrap long questions and causes into tall rows; does not fit a phone; the chips drop the grade, count and certainty",
+          "risk": "Reads like a test transcript, not a report; the strengths lose their evidence"
+        }
+      ]
+    },
+    {
+      "decision": "Where the workbook 1 preview goes",
+      "shipped": "A",
+      "options": [
+        { "id": "A", "name": "Card inside 'How we help'", "screenshots": ["report-preview-a.png"], "bet": "A soft grey card with the tangerine square, 'Workbook 1', under how the books help", "benefit": "Right where the report says what the books do; the plan reads as the concrete next step", "cost": "Below the fold", "risk": "Low" }
+      ],
+      "note": "Not varied: the spec gives the sentence, and 'How we help' is the row that already says what the books do. A row of its own or a line in the overall band were considered and not built: the first repeats 'How we help', the second puts a plan before the results it rests on."
+    }
+  ],
+  "states": {
+    "no-ai": "report-grade2-no-ai-full.png in the ticket's evidence folder: the likely cause from the known mistake, no preview",
+    "email": "email-grade2.png and email-grade6.png in the ticket's evidence folder: strengths (6, then a link), up to 3 struggles, word problems; no preview, as the AI writes after the email",
+    "facts": "Grades 1-4: the accuracy card alone; grade 6: accuracy beside speed (report-grade6-ai-full.png)"
+  }
+}

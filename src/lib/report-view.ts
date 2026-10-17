@@ -456,9 +456,12 @@ const lowerFirst = (s: string) => s.charAt(0).toLowerCase() + s.slice(1);
 export const topicName = (text: string) =>
   text.replace(/\s*\([^)]*\)/g, "").replace(/,\s+(using|introducing|including|based on|concretely|both|single)\b.*$/, "").trim();
 
-/** "a", "a and b", "a, b and c"; with semicolons when a topic has a comma of its own. */
-function topicList(topics: readonly FindingTopic[]): string {
-  const names = topics.map((t) => topicName(t.text));
+/**
+ * "a", "a and b", "a, b and c"; with semicolons when a topic has a comma of its own. A topic of another grade than
+ * `grade` names its grade ("grade 5 addition and subtraction facts to 20"): BC repeats some topics from grade to grade.
+ */
+function topicList(topics: readonly FindingTopic[], grade: Level): string {
+  const names = topics.map((t) => `${t.grade === grade ? "" : `${levelName(t.grade)} `}${topicName(t.text)}`);
   if (names.length < 2) return names.join("");
   const comma = names.some((n) => n.includes(",")) ? "; " : ", ";
   return `${names.slice(0, -1).join(comma)}${comma === "; " ? "; and " : " and "}${names[names.length - 1]}`;
@@ -557,7 +560,8 @@ export function wordsOrNumbersLines(v: ReportView): string[] {
 export function workbookPreview(v: ReportView): string | null {
   const preview = v.findings?.preview;
   if (!preview || v.model.callToAction !== "card") return null;
-  const focus = preview.focus.length ? `Workbook 1 focuses on ${topicList(preview.focus)}.` : null;
-  const challenge = preview.challenge.length ? `We will challenge ${v.childName} on ${topicList(preview.challenge)}.` : null;
+  const { grade } = v.model.level;
+  const focus = preview.focus.length ? `Workbook 1 focuses on ${topicList(preview.focus, grade)}.` : null;
+  const challenge = preview.challenge.length ? `We will challenge ${v.childName} on ${topicList(preview.challenge, grade)}.` : null;
   return [focus, challenge].filter(Boolean).join(" ") || null;
 }

@@ -9,16 +9,15 @@ import { BC_SKILL_MAP } from "./skill-map";
 import type { Certainty } from "./certainty";
 import type { Level, StrandStatus } from "./types";
 
-/** A BC standard as the parent reads it: its code and its exact BC text. */
+/** A BC standard as the parent reads it: its code, its exact BC text and the grade where BC teaches it. */
 export interface FindingTopic {
   code: string;
   text: string;
+  grade: Level;
 }
 
 /** A standard the test measured, with its result and how sure it is. */
 export interface FindingStandard extends FindingTopic, Tally {
-  /** The grade where BC teaches it. */
-  grade: Level;
   certainty: Certainty;
 }
 
@@ -78,7 +77,7 @@ export interface ReportFindings {
   preview: WorkbookPreview | null;
 }
 
-const STANDARD_TEXT = new Map(BC_SKILL_MAP.standards.map((s) => [s.code, s.text]));
+const STANDARDS = new Map(BC_SKILL_MAP.standards.map((s) => [s.code, s]));
 const SKILL_TEXT = new Map(BC_SKILL_MAP.standards.flatMap((s) => s.skills.map((k) => [k.id, k.text] as const)));
 const SURE: Record<Certainty, number> = { clear: 0, "early-sign": 1 };
 const known = (id: string | null) => (id ? MISCONCEPTIONS[id as MisconceptionId] : undefined);
@@ -102,7 +101,10 @@ function struggleFinding(s: ProfileStruggle, ai: ProfileAi | undefined): Struggl
 
 /** The standards of one part of the plan, by code and text; none when the part has no share of the workbook. */
 const topics = (part: PlanPart): FindingTopic[] =>
-  part.percent > 0 ? part.standards.flatMap((code) => (STANDARD_TEXT.has(code) ? [{ code, text: STANDARD_TEXT.get(code)! }] : [])) : [];
+  part.percent > 0 ? part.standards.flatMap((code) => {
+    const s = STANDARDS.get(code);
+    return s ? [{ code, text: s.text, grade: s.grade }] : [];
+  }) : [];
 
 function previewOf(ai: ProfileAi | undefined): WorkbookPreview | null {
   const plan = ai?.workbookPlan?.value;

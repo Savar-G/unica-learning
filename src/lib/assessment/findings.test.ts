@@ -141,7 +141,10 @@ describe("words or numbers", () => {
 });
 
 describe("the workbook 1 preview", () => {
-  const topic = (code: string) => ({ code, text: BC_SKILL_MAP.standards.find((s) => s.code === code)!.text });
+  const topic = (code: string) => {
+    const s = BC_SKILL_MAP.standards.find((x) => x.code === code)!;
+    return { code, text: s.text, grade: s.grade };
+  };
   const plan = (review: string[], practise: string[], stretch: string[], percents = [20, 60, 20]): ProfileAi => ({
     workbookPlan: {
       model: "test/model",

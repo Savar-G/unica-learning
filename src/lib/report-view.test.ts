@@ -415,7 +415,7 @@ describe("strengths, struggles, words or numbers and the workbook 1 preview (#19
       },
     ],
     wordsOrNumbers: [{ skill: "Multiply a two- or three-digit number by a one-digit number", harder: "words", words: { correct: 1, total: 3 }, numbers: { correct: 3, total: 3 } }],
-    preview: { focus: [{ code: "4.4", text: "addition and subtraction to 10 000" }], challenge: [{ code: "4.9", text: "increasing and decreasing patterns, using tables and charts" }] },
+    preview: { focus: [{ code: "4.4", text: "addition and subtraction to 10 000", grade: 4 }], challenge: [{ code: "4.9", text: "increasing and decreasing patterns, using tables and charts", grade: 4 }] },
   };
   const withFindings = (findings: ReportFindings | null, v = view(knowsUpTo(3))): ReportView => ({ ...v, findings });
 
@@ -456,6 +456,9 @@ describe("strengths, struggles, words or numbers and the workbook 1 preview (#19
     expect(preview).toMatch(/^Workbook 1 focuses on addition and subtraction to 10 000\. We will challenge Maya on increasing and decreasing patterns\.$/);
     expect(workbookPreview(withFindings({ ...FINDINGS, preview: { ...FINDINGS.preview!, challenge: [] } }))).toBe("Workbook 1 focuses on addition and subtraction to 10 000.");
     expect(workbookPreview(withFindings({ ...FINDINGS, preview: null }))).toBeNull();
+    // A topic from another grade than the child's names its grade: BC repeats some topics, such as the facts to 20.
+    const later = { ...FINDINGS, preview: { focus: FINDINGS.preview!.focus, challenge: [{ code: "5.8", text: "addition and subtraction facts to 20 (extending computational fluency)", grade: 5 as const }] } };
+    expect(workbookPreview(withFindings(later))).toBe("Workbook 1 focuses on addition and subtraction to 10 000. We will challenge Maya on grade 5 addition and subtraction facts to 20.");
     const waitlist = view(knowsUpTo(3), { province: "ON" });
     expect(waitlist.model.callToAction).toBe("waitlist");
     expect(workbookPreview(withFindings(FINDINGS, waitlist))).toBeNull();

@@ -210,7 +210,7 @@ export function reportEmail({ view: v, parentName, url, unsubscribeUrl, offer = 
     ...(warning ? [`${warning.title}\n${warning.text}\n${warning.retake}`] : []),
     ["By area", ...areas, thresholdsLine(v), ...(leftOut ? [leftOut] : []), ...(extraLine ? [extraLine] : [])].join("\n"),
     ...(strengths ? [["Strengths", strengthsNote(v), ...shownStrengths.map((t) => `- ${t.title} (${t.grade}, ${t.count}, ${t.sure})`), ...(moreStrengths > 0 ? [`And ${moreCount(moreStrengths)} in the full report.`] : [])].join("\n")] : []),
-    ...(struggles ? [["To work on", strugglesNote(v), ...shownStruggles.map((t) => [
+    ...(struggles ? [[`To work on\n${strugglesNote(v)}`, ...shownStruggles.map((t) => [
       `${t.title} (${t.grade}): ${STATUS_LABEL[t.status]}, ${t.count} (${t.sure})`,
       `Question: ${t.question}`,
       `${name}'s answer: ${t.answer}. Right answer: ${t.rightAnswer}.`,
