@@ -59,7 +59,7 @@ export function CookieConsent({ privacyHref = "/privacy" }: { privacyHref?: stri
       </div>
       <h2 id="ck-t" className="ck-title">Your cookie choice</h2>
       <p id="ck-d" className="ck-text">
-        We use optional cookies to understand how people use our website. You can accept or reject them. You can still take the free math assessment either way.
+        We use optional cookies to understand how people use our website and to measure whether our ads lead to signups. You can accept or reject them. You can still take the free math assessment either way.
       </p>
       {reopened && consent !== "unset" && (
         <p className="ck-state" role="status">

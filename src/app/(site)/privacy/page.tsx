@@ -10,13 +10,14 @@ export const metadata = pageMetadata({
 });
 
 export default function Privacy() {
-  return <SupportPage label="Updated 16 October 2026" title="Privacy policy">
+  return <SupportPage label="Updated 17 October 2026" title="Privacy policy">
     <p className="lead">{BUSINESS_NAME} is responsible for the information you share through this website. This policy explains what we collect, why we use it, and the choices you have.</p>
     <h2>What you share with us</h2>
     <p>Before the online assessment, families booked through a reservation form. For those bookings, we keep the name, email address, Canadian postal code, chosen plan and subject, the child&apos;s grade, and their school curriculum.</p>
     <p>For an online assessment account, we ask for your name, email address, postal code, and each child&apos;s first name, grade, and school curriculum. To confirm your email address, we email you a one-time code. We keep the child&apos;s test answers, answer times, typed working, drawings and the pen strokes that made them, results, work reviews, and reports. We also keep account sign-in records, card setup or waitlist records, and records of assessment emails and unsubscribe requests. We do not ask for a child&apos;s date of birth.</p>
     <p>After the assessment, you can tell us how your child likes to learn, what they are interested in, and anything else about how they learn. These answers are optional. We keep them with the child&apos;s account and use them only to plan your child&apos;s books. You can change or clear them from your account.</p>
     <p>We also keep information about how you found us, such as a link or advertisement, and the page you came from. After a booking through the old reservation form, we asked how you heard about us. That answer was optional and is kept with the booking.</p>
+    <p>Some links to our website, such as the links in our ads, have tags that tell us where the link was. A link from a Meta or Google ad can also hold a click reference from that company. When you arrive from an ad or from a link with tags, we count the visit. For this count, we keep the tags and the time. We keep only whether a click reference was there, not the reference itself. We do not keep your IP address, and we do not use a cookie for this count. Your browser keeps the tags and a random visit number until you close the tab. If you then create an account, we keep the tags, the click reference and the visit number with your account, so we know which ad or link brought you.</p>
     <h2>How we use your information</h2>
     <p>We use your details to run your child&apos;s assessment, manage your plan or waitlist entry, and email you about the next step. We share the details needed by the companies that help us run the website, send emails, and handle payments.</p>
     <p>If you send us photos of completed pages, we use them to plan your child&apos;s next book and show their progress. You can ask us to delete them.</p>
@@ -29,10 +30,11 @@ export default function Privacy() {
     <p>When you add your card, we send your name, email address, and postal code to our payment provider. We also send your plan, subject, price, your child&apos;s grade and school curriculum, and a reference for your booking. You enter your card details on its secure page. Our booking form does not collect your card number.</p>
     <h2>Cookies and your choice</h2>
     <p>Cookies are small pieces of information saved on your device. If you accept optional cookies, we count page visits and steps in the signup, the assessment, and the plan choice to understand how people use our website. These counts can include your chosen plan, subject and school curriculum. They do not include your name, email address, postal code, or your child&apos;s grade. We do not record your screen or the text you enter.</p>
+    <p>If you accept optional cookies, we also use tools from Meta (Facebook and Instagram) and Google Ads to measure whether our ads lead to signups. They learn which of our pages you open, and when you create an account, open a report, or add a card. We do not send them your name, email address, postal code, or anything about your child. Meta and Google can connect this to an account you have with them, to tell us how many people our ads brought. These tools never run on the pages your child uses for the assessment.</p>
     <p>You can reject optional cookies and still take the free math assessment, choose a plan, or join the waitlist. Use Cookie settings at the bottom of any page to change your choice.</p>
-    <p>Your device also saves your cookie choice and briefly keeps details needed when you return from adding your card. These help the website work and are separate from the optional cookies.</p>
+    <p>Your device also saves your cookie choice, keeps the link tags of your visit until you close the tab, and briefly keeps details needed when you return from adding your card. These help the website work and are separate from the optional cookies.</p>
     <h2>Companies that help us</h2>
-    <p>Other companies help us keep form details, send emails, take payments, make the website available, and count visits. The company that makes the website available may use information about your device and connection to keep it working and protect it from misuse.</p>
+    <p>Other companies help us keep form details, send emails, take payments, make the website available, count visits, and measure our ads. The company that makes the website available may use information about your device and connection to keep it working and protect it from misuse.</p>
     <details>
       <summary>See the companies we use</summary>
       <ul>
@@ -42,6 +44,7 @@ export default function Privacy() {
         <li>Stripe handles adding your card and payments.</li>
         <li>Vercel makes the website available to you.</li>
         <li>PostHog counts visits and signup steps only if you accept optional cookies.</li>
+        <li>Meta (Facebook and Instagram) and Google Ads measure whether our ads lead to signups. They run only if you accept optional cookies, and never on the pages your child uses.</li>
       </ul>
     </details>
     <p>Some of these companies may handle information outside Canada. Information handled there may be subject to the laws of those countries.</p>
