@@ -230,7 +230,7 @@ describe("the report emails", () => {
 
     expect(mail.delivered.map((m) => m.to)).toEqual(["priya@family.ca", "savar@unicalearning.com"]);
     const [report, alert] = mail.delivered;
-    expect(report).toMatchObject({ sender: { to: "parent" }, replyTo: "savar.gupta1922@gmail.com", subject: "Asha's math report is ready" });
+    expect(report).toMatchObject({ sender: { to: "parent" }, replyTo: "contact@unicalearning.com", subject: "Asha's math report is ready" });
     expect(report.text).toContain(`See Asha's full report: ${ORIGIN}/account/report/report-1?src=email`);
     expect(alert).toMatchObject({ sender: { to: "savar", testSenderName: "Unica Learning reports" }, replyTo: "priya@family.ca" });
     expect(alert.text).toContain("Parent email: sent to priya@family.ca");
