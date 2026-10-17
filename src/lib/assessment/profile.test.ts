@@ -21,6 +21,7 @@ import {
   type ProfileAnswer,
   type Question,
 } from "@/lib/assessment";
+import { MAIN_REJECTED_UNTESTED } from "./untested-wordings";
 
 // The learner profile's facts (#196, spec #181), through the assessment core's public interface. A child takes a whole
 // test through the session, and the profile is built from the stored placement and the answers, as the report job does.
@@ -322,7 +323,7 @@ describe("a stored profile reads with the rules of today (#242)", () => {
     expect(old.level.certainty).toBe("clear");
   });
 
-  it("leaves out a stored AI text that says something was not tested, or that states the facts timing below grade 5", () => {
+  it("leaves out a stored likely cause that says something was not tested, or that states the facts timing below grade 5; keeps the admin's ways to help (#245)", () => {
     for (const grade of [3, 5] as const) {
       const profile = estimate(grade);
       const [a, b, c] = profile.struggles.map((s) => s.code);
@@ -334,12 +335,23 @@ describe("a stored profile reads with the rules of today (#242)", () => {
       const read = storedProfile(JSON.parse(JSON.stringify({ ...profile, ai })))!;
       const kept = grade < 5 ? { [c]: "{name} mixed up the steps." } : { [b]: speedy, [c]: "{name} mixed up the steps." };
       expect(read.ai?.likelyCauses?.value, `grade ${grade}`).toEqual(kept);
-      expect(read.ai?.howToHelp?.value, `grade ${grade}`).toEqual(grade < 5 ? { [c]: "Practise one step at a time." } : { [b]: speedy, [c]: "Practise one step at a time." });
+      // How to help is admin-only (spec #181): the parent text filters do not apply.
+      expect(read.ai?.howToHelp?.value, `grade ${grade}`).toEqual(ai.howToHelp?.value);
     }
     // A part with nothing left is absent.
     const profile = estimate(3);
-    const ai: ProfileAi = { howToHelp: { model: "m", value: { [profile.struggles[0].code]: "{name} answered the facts instantly." } } };
+    const ai: ProfileAi = { likelyCauses: { model: "m", value: { [profile.struggles[0].code]: "{name} answered the facts instantly." } } };
     expect(storedProfile(JSON.parse(JSON.stringify({ ...profile, ai })))).not.toHaveProperty("ai");
+  });
+  it("leaves out a stored likely cause with any wording main's \"not tested\" check rejected in the review probes (#245 r3)", () => {
+    for (const grade of [3, 5] as const) {
+      const profile = estimate(grade);
+      expect(profile.struggles.length, `grade ${grade}`).toBeGreaterThan(0);
+      for (const text of MAIN_REJECTED_UNTESTED) {
+        const ai: ProfileAi = { likelyCauses: { model: "m", value: Object.fromEntries(profile.struggles.map((s) => [s.code, text])) } };
+        expect(storedProfile(JSON.parse(JSON.stringify({ ...profile, ai }))), `grade ${grade}: ${text}`).not.toHaveProperty("ai");
+      }
+    }
   });
 });
 

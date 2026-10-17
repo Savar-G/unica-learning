@@ -2,12 +2,14 @@ import { describe, expect, it } from "vitest";
 import {
   BANKS,
   BC_SKILL_MAP,
+  FACTS_BY_GRADE,
   MISCONCEPTIONS,
   PROFILE_AI_SCHEMA,
   REPORT_TEXT_NAME,
   checkProfileAi,
   createFacts,
   createSession,
+  factsSkills,
   finish,
   learnerProfile,
   nextQuestion,
@@ -21,6 +23,7 @@ import {
   type ProfileAnswer,
   type Question,
 } from "@/lib/assessment";
+import { MAIN_REJECTED_UNTESTED } from "./untested-wordings";
 
 // The AI's interpretation of the learner profile (#197, spec #181), through the assessment core's public interface: what
 // the AI reads (the profile facts, the skill-map neighbours, the misconception descriptions), and the checks its JSON
@@ -86,7 +89,9 @@ describe("what the AI reads", () => {
     expect(struggling.struggles.length).toBeGreaterThan(0);
     const facts = profileAiFacts(struggling);
     expect(facts.child).toBe(REPORT_TEXT_NAME);
-    expect(facts.profile).toEqual(struggling);
+    // The profile without the untested standards (#245).
+    const { earlySigns, checkNext } = struggling.unknowns;
+    expect(facts.profile).toEqual({ ...struggling, unknowns: { earlySigns, checkNext: checkNext.filter((s) => s.reason === "confirm-struggle") } });
 
     // Each misconception of the struggles, in plain words.
     const ids = [...new Set(struggling.struggles.flatMap((s) => s.misconceptions))];
@@ -101,7 +106,10 @@ describe("what the AI reads", () => {
       expect(s.skills.map((k) => k.id)).toEqual(mapped.skills.map((k) => k.id));
       for (const k of s.skills) {
         const owner = BC_SKILL_MAP.standards.find((x) => x.skills.some((y) => y.id === k.requires[0]?.id));
-        if (k.requires.length) expect(k.requires[0]).toMatchObject({ standard: owner!.code, result: results.get(owner!.code) ?? "not tested" });
+        if (!k.requires.length) continue;
+        expect(k.requires[0]).toMatchObject({ standard: owner!.code });
+        // #245: a result only when the test measured it; never a "not tested" label.
+        expect(k.requires[0].result).toBe(results.get(owner!.code));
       }
     }
   });
@@ -137,17 +145,41 @@ describe("what the AI reads about the quick facts (#242)", () => {
     expect(facts.facts.some((f) => f.op === "×")).toBe(true);
     expect(facts.facts.some((f) => f.op === "÷")).toBe(false);
     const resultOf = (p: LearnerProfile) => new Map(factsNeeded(p).map((r) => [r.id, r.result]));
-    // 5.3 needs the multiplication facts and the division facts of 4.8, which no grade 5 question asks.
-    expect(resultOf(profileOf(weak, 5))).toEqual(new Map([["4.8-multiplication-facts", "not tested"], ["4.8-division-facts", "not tested"]]));
-    expect(resultOf(profileOf(weak, 5, facts))).toEqual(new Map([["4.8-multiplication-facts", "tested in the quick facts round"], ["4.8-division-facts", "not tested"]]));
+    // 5.3 needs the multiplication facts and the division facts of 4.8, which no grade 5 question asks: no result (#245).
+    expect(resultOf(profileOf(weak, 5))).toEqual(new Map([["4.8-multiplication-facts", undefined], ["4.8-division-facts", undefined]]));
+    expect(resultOf(profileOf(weak, 5, facts))).toEqual(new Map([["4.8-multiplication-facts", "tested in the quick facts round"], ["4.8-division-facts", undefined]]));
   });
 
-  it("a next challenge candidate reads as tested in the quick facts round only when the round asked every skill of it", () => {
-    const candidates = profileAiFacts(profileOf(weak, 5, factsOf(5))).next_challenge_candidates;
+  it("a next challenge candidate has a result only when questions measured it, and names the skills of it the quick facts round asked", () => {
+    const asked = new Set(factsSkills(FACTS_BY_GRADE[5]));
+    // A grade 4 child who knows grade 4, with 4.8 secure as if questions had asked it, and the grade 5 round: 5.9
+    // (recall the multiplication facts, multiply by annexing zeros, the distributive property) is ready.
+    const p = profileOf((q) => (q.level <= 4 ? q.answer : "no idea"), 4, factsOf(5));
+    const ready = { ...p, strengths: [...p.strengths, { ...p.strengths[0], code: "4.8" }] };
+    const candidates = profileAiFacts(ready).next_challenge_candidates;
+    expect(candidates.find((c) => c.code === "5.9")).toEqual(expect.objectContaining({ quick_facts_round_skills: ["5.9-recall-facts"] }));
+    expect(candidates.find((c) => c.code === "5.9")).not.toHaveProperty("result");
     for (const c of candidates) {
       const skills = BC_SKILL_MAP.standards.find((s) => s.code === c.code)!.skills.map((k) => k.id);
-      if (skills.some((id) => id.includes("division"))) expect(c.result, c.code).not.toBe("tested in the quick facts round");
+      expect(c.quick_facts_round_skills, c.code).toEqual(skills.some((id) => asked.has(id)) ? skills.filter((id) => asked.has(id)) : undefined);
+      expect(c.quick_facts_round_skills ?? [], c.code).not.toContain("4.8-division-facts");
     }
+  });
+
+  it("never reads a \"not tested\" label or the untested list, at any grade, with or without the facts round (#245)", () => {
+    let untested = 0;
+    for (const grade of [1, 2, 3, 4, 5, 6, 7] as const) {
+      for (const facts of [null, factsOf(grade)]) {
+        const profile = profileOf((q) => (q.level < grade ? q.answer : q.level === grade ? q.wrong[0]?.value ?? "no idea" : "no idea"), grade, facts);
+        untested += profile.unknowns.untested.length;
+        const read = profileAiFacts(profile);
+        const sent = JSON.stringify(read);
+        expect(sent, `grade ${grade}`).not.toMatch(/not tested|untested|partly tested/i);
+        expect(read.profile.unknowns, `grade ${grade}`).not.toHaveProperty("untested");
+        expect(read.profile.unknowns.checkNext.map((s) => s.reason), `grade ${grade}`).not.toContain("untested-in-early-sign-area");
+      }
+    }
+    expect(untested).toBeGreaterThan(0);
   });
 
   it("has no facts speed or timing for grades 1-4, and keeps them from grade 5", () => {
@@ -159,7 +191,7 @@ describe("what the AI reads about the quick facts (#242)", () => {
     expect(profileAiFacts(profileOf(weak, 5, factsOf(5))).profile.facts).toMatchObject({ speed: "quick", medianMs: 2000, seconds: 60 });
   });
 
-  it("drops a likely cause or a way to help that says something was not tested, and one that states the facts timing for grades 1-4", () => {
+  it("drops a likely cause that says something was not tested, or that states the facts timing for grades 1-4", () => {
     const grade3 = profileOf((q) => (STANDARD_5.get(q.templateId)?.startsWith("3.") && q.wrong[0] ? q.wrong[0].value : q.level <= 3 ? q.answer : "no idea"), 3, factsOf(3));
     expect(grade3.struggles.length).toBeGreaterThan(1);
     const [a, b] = grade3.struggles;
@@ -167,36 +199,58 @@ describe("what the AI reads about the quick facts (#242)", () => {
     const check = checkProfileAi(grade3, {
       ...out,
       struggles: [
-        { code: a.code, likely_cause: "The multiplication facts were not tested.", how_to_help: "Ask the facts that were not tested." },
-        { code: b.code, likely_cause: "{name} answered the facts quickly but skipped steps here.", how_to_help: "Help {name} recall the facts instantly." },
+        { code: a.code, likely_cause: "The multiplication facts were not tested.", how_to_help: "Practise." },
+        { code: b.code, likely_cause: "{name} answered the facts quickly but skipped steps here.", how_to_help: "Practise." },
       ],
     }, "m");
     expect(check.ok).toBe(true);
     if (!check.ok) return;
     expect(check.ai.likelyCauses).toBeUndefined();
-    expect(check.ai.howToHelp).toBeUndefined();
     expect(check.dropped).toEqual([
       { part: "likelyCauses", code: a.code, problem: "untested", detail: "not tested" },
-      { part: "howToHelp", code: a.code, problem: "untested", detail: "not tested" },
       { part: "likelyCauses", code: b.code, problem: "speed", detail: "quickly" },
-      { part: "howToHelp", code: b.code, problem: "speed", detail: "instantly" },
     ]);
   });
 
-  it("drops a way to help that says something was not tested from grade 5 too, and keeps the facts speed there", () => {
+  it("drops a likely cause with any wording main's \"not tested\" check rejected in the review probes (#245 r3)", () => {
     const grade5 = profileOf(weak, 5, factsOf(5));
-    const [a, b] = grade5.struggles;
+    for (const text of MAIN_REJECTED_UNTESTED) {
+      const check = checkProfileAi(grade5, {
+        ...goodOutput(grade5),
+        struggles: grade5.struggles.map((s) => ({ code: s.code, likely_cause: text, how_to_help: "Practise." })),
+      }, "m");
+      expect(check.ok, text).toBe(true);
+      if (!check.ok) return;
+      expect(check.ai.likelyCauses, text).toBeUndefined();
+    }
+  });
+
+  it("keeps the ways to help as written: they are for the admin only, so the parent text filters do not apply (#245)", () => {
+    for (const grade of [3, 5] as const) {
+      const profile = grade === 5 ? profileOf(weak, 5, factsOf(5)) : profileOf((q) => (STANDARD_5.get(q.templateId)?.startsWith("3.") && q.wrong[0] ? q.wrong[0].value : q.level <= 3 ? q.answer : "no idea"), 3, factsOf(3));
+      const texts = ["Play a quick game of doubles, and ask the facts that were not tested.", "Help {name} recall the facts instantly."];
+      const help = Object.fromEntries(profile.struggles.map((s, i) => [s.code, texts[i % texts.length]]));
+      const check = checkProfileAi(profile, {
+        ...goodOutput(profile),
+        struggles: profile.struggles.map((s) => ({ code: s.code, likely_cause: "{name} mixed up the steps.", how_to_help: help[s.code] })),
+      }, "m");
+      expect(check.ok).toBe(true);
+      if (!check.ok) return;
+      expect(check.ai.howToHelp?.value, `grade ${grade}`).toEqual(help);
+      expect(check.dropped, `grade ${grade}`).toEqual([]);
+    }
+  });
+
+  it("keeps the facts speed in a likely cause from grade 5", () => {
+    const grade5 = profileOf(weak, 5, factsOf(5));
+    const [a] = grade5.struggles;
     const check = checkProfileAi(grade5, {
       ...goodOutput(grade5),
-      struggles: [
-        { code: a.code, likely_cause: "{name} mixed up the steps.", how_to_help: "The division facts were never tested, so ask them." },
-        ...(b ? [{ code: b.code, likely_cause: "{name} recalled the facts instantly, so the facts are not the cause.", how_to_help: "Practise." }] : []),
-      ],
+      struggles: [{ code: a.code, likely_cause: "{name} recalled the facts instantly, so the facts are not the cause.", how_to_help: "Practise." }],
     }, "m");
     expect(check.ok).toBe(true);
     if (!check.ok) return;
-    expect(check.dropped).toContainEqual({ part: "howToHelp", code: a.code, problem: "untested", detail: "never tested" });
-    if (b) expect(check.ai.likelyCauses?.value[b.code]).toContain("instantly");
+    expect(check.ai.likelyCauses?.value[a.code]).toContain("instantly");
   });
 });
 
@@ -343,6 +397,20 @@ describe("the AI output's checks", () => {
     const check = checkProfileAi(struggling, { ...out, workbook_plan: { ...out.workbook_plan, review: { percent: 20, standards: ["9.99", ...out.workbook_plan.review.standards] } } }, "m");
     expect(check.ok && check.ai.workbookPlan?.value.review.standards).toEqual(out.workbook_plan.review.standards);
     expect(check.ok && check.dropped).toEqual([{ part: "workbookPlan", code: "9.99", problem: "unknown-standard" }]);
+  });
+
+  it("keeps a plan standard of the school grade the test did not measure: the AI reads them all as a plain list (#245 r2, D-124)", () => {
+    const untested = onGrade.unknowns.untested.map((s) => s.code);
+    expect(untested.length).toBeGreaterThan(0);
+    const facts = profileAiFacts(onGrade);
+    // Every standard of the school grade, by code and words, with no result: the same for a tested one and an untested one.
+    expect(facts.school_grade_standards).toEqual(BC_SKILL_MAP.standards.filter((s) => s.grade === 4).map((s) => ({ code: s.code, text: s.text })));
+    const out = goodOutput(onGrade);
+    const plan = { ...out.workbook_plan, review: { percent: 20, standards: [untested[0]] }, practise: { percent: 60, standards: untested } };
+    const check = checkProfileAi(onGrade, { ...out, workbook_plan: plan }, "m");
+    expect(check.ok && check.ai.workbookPlan?.value.review.standards).toEqual([untested[0]]);
+    expect(check.ok && check.ai.workbookPlan?.value.practise.standards).toEqual(untested);
+    expect(check.ok && check.dropped.filter((d) => d.part === "workbookPlan")).toEqual([]);
   });
 
   it("sends a schema the structured output accepts: every object closed, every property required", () => {

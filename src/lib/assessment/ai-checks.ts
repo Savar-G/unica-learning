@@ -16,7 +16,7 @@ export const REPORT_TEXT_MAX = 600;
  * Why AI text was not kept. "length": empty or too long. "format": markup, a link, or a placeholder other than the name.
  * "voice": first person, or the AI named (D-085: AI is named only in the privacy page and the terms). "pronoun": he or
  * she (the report does not know the child's gender). "number": a number that is not among the report's facts.
- * "speed" and "untested": what an AI text about the child may not say (parentTextProblem, #242).
+ * "speed" and "untested": what a parent's AI text about the child may not say (parentTextProblem, #242, #245).
  */
 export type ReportTextProblem = "length" | "format" | "voice" | "pronoun" | "number" | "speed" | "untested";
 
@@ -40,39 +40,98 @@ function textProblem(text: string, max: number): { problem: Exclude<ReportTextPr
 }
 
 /**
- * A statement of how fast the facts were (#242): speed and pace words, the time per fact, the round's length, and
- * comparisons of time. Not "minutes" or a clock's hands: the time each week and telling time (4.12) are not about speed.
+ * A statement of how fast the facts were (#242, #245): speed and pace words, the time per fact, the round's length, and
+ * comparisons of time. It counts only in a sentence about the facts (FACTS_TOPIC) or the sentence after one, so "a
+ * quick picture", "slow down", "a second time", "rushed" or "hesitated" elsewhere are kept. Not "fluency": it is in
+ * the BC titles of the facts. Not "prompted", "an efficient strategy" or "read the clock": only "promptly",
+ * "efficiently" and racing the clock are about speed.
  */
 const TIMING = new RegExp([
-  String.raw`\b(?:quick|fast|slow|rapid|swift|speed|instant|immediate)\w*`,
-  String.raw`\b(?:pace[ds]?|pacing|hesitat\w*|fluen\w*|automatic\w*|rush\w*|hurr(?:y|ied|ies|ying)|timed|timing|timer|stopwatch)\b`,
-  String.raw`\bseconds\b|\bsecs?\b|\b(?:a|one|per|each|\d+)[\s-]+second\b|\b(?:a|one|per|each|\d+)[\s-]+minute\b(?!\s+hands?)`,
+  String.raw`\b(?:quick|fast|slow|rapid|swift|speed|instant|immediate|brisk)\w*|\b(?:promptly|efficiently)\b`,
+  String.raw`\b(?:pace[ds]?|pacing|hesitat\w*|fluently|automatic\w*|rush\w*|hurr(?:y|ied|ies|ying)|timed|timing|timer|stopwatch|lightning)\b`,
+  String.raw`\b(?:beat|beats|beating|against|race|races|raced|racing)\s+the\s+clock\b`,
+  String.raw`\bseconds\b|\bsecs?\b|\b(?:a|one|per|each|few|\d+)[\s-]+second\b(?!\s+(?:time|try|look|step|number|question|row))|\b(?:a|one|per|each|the|\d+)[\s-]+minute\b(?!\s+hands?)`,
   String.raw`\b\d+(?:\.\d+)?\s+(?:s|ms)\b|\bmilliseconds?\b`,
-  String.raw`\b(?:right away|in a flash|in no time|record time|on the spot|at a glance|without (?:a )?pause|a while)\b`,
+  String.raw`\b(?:right away|at once|in a (?:flash|snap)|in no time|no time at all|record time|on the spot|at a glance|without (?:a )?(?:pause|delay|stopping)|with no delay|a while|blink of an eye|good clip|steady rate|within moments|time to spare|(?:the )?time (?:ran|was) (?:out|up)|rattled off)\b`,
   String.raw`\b(?:zip|zoom|breez|rac|flew|fly|flying|sped)\w*\s+(?:through|past)\b`,
-  String.raw`\b(?:took|takes?|taking|needs?|needed|needing)\s+(?:a\s+(?:bit|little)\s+)?(?:longer|(?:more|less|extra)\s+time)\b`,
-  String.raw`\b(?:more|less|extra|longer|shorter)\s+time\s+(?:on|with|for)\s+(?:the\s+)?(?:\w+\s+)?facts?\b`,
-  String.raw`\btime\s+(?:per|a|each|for\s+each|on\s+each|to\s+(?:answer|recall|respond))\b`,
+  String.raw`\b(?:took|takes?|taking|needs?|needed|needing|spent|spends?|spending)\s+(?:a\s+(?:bit|little)\s+)?(?:longer|(?:more|less|extra)\s+time)\b`,
+  String.raw`\b(?:linger\w*|took a moment|more|less|extra|longer|shorter)\s+(?:time\s+)?(?:on|with|for)\s+(?:the\s+|each\s+)?(?:\w+\s+)?facts?\b`,
+  String.raw`\btime\s+(?:per|on\s+each|to\s+(?:answer|recall|respond))\b`,
   String.raw`\bper\s+(?:fact|answer|question)\b`,
 ].join("|"), "i");
+/** A sentence about the number facts: the only place a timing word is about the facts. */
+const FACTS_TOPIC = /\b(?:facts?|recall\w*|times\s+tables?|sums?|number\s+bonds?|(?:the|this)\s+(?:quick\s+)?round)\b/i;
+
+/** What the AI may call the test, as the one that asked or left something out. */
+const THE_TEST = String.raw`(?:the|this)\s+(?:quick\s+)?(?:(?:number\s+)?facts?\s+)?(?:test|round|quiz|assessment|questions)`;
+/** Parts of the child's own answer: "the remainder was not included" is what the answer left out, not the test. */
+const CHILD_WORK = String.raw`(?:answers?|remainders?|units?|regrouping|zeros?|zeroes|signs?|steps?|digits?|decimal\s+point|carry|carrying|labels?|working|work|estimates?|pictures?|drawing)`;
+/**
+ * A statement that something was not tested (#245), however it is worded: the words about testing ("tested",
+ * "assessed", "evaluated", "examined") after not or never; something passive that "was not checked", "covered",
+ * "included" or "asked"; the test as the one that did not ask, skipped or left out; not on, in, or outside the test;
+ * yet or still to be tested; no questions, results or information; not known, unknown so far. Its exceptions for the
+ * child's own work ("was not tried by {name}") apply only to what MAIN_UNTESTED lets through.
+ */
+const NOT = String.raw`(?:\bnot|\bnever|n['’]t)`;
 const UNTESTED = new RegExp([
+  String.raw`\buntested\b`,
+  String.raw`${NOT}\s+(?:yet\s+|really\s+|been\s+|be\s+|even\s+)*(?:tested|assessed|evaluated|examined)\b`,
+  String.raw`${NOT}\s+(?:yet\s+|really\s+|been\s+|be\s+|even\s+)*asked\b(?!\s+(?:for\b|to\s+(?!(?:do|answer|try|solve|complete|work)\b)))`,
+  String.raw`(?<!\b${CHILD_WORK}(?:\s+(?:in|of|on|for)\s+(?:the\s+)?\w+(?:\s+\w+)?)?\s+)(?:\b(?:is|are|was|were|be|being|been)(?:\s+not|\s+never|n['’]t)|${NOT}\s+(?:yet\s+)?been)\s+(?:yet\s+|really\s+)?(?:checked|measured|covered|included|tried|reached|looked\s+at|shown|given)\b(?!\s+by\b)`,
+  String.raw`\b${THE_TEST}\s+(?:(?:did|does|do|has|have|had|could|would)(?:\s+not|n['’]t)|never)\s+(?:yet\s+|really\s+|even\s+)?(?:test|check|measur|assess|evaluat|examin|ask|cover|includ|reach|look|get|got|show|touch|go|went|contain|featur|explor|address)\w*`,
+  String.raw`\b${THE_TEST}\s+(?:skipped|skips|left\s+out|leaves\s+out|omitted|missed|excluded|had\s+no|has\s+no|gave\s+no|asked\s+no|included\s+no|showed\s+no)\b`,
+  String.raw`\b(?:not|never)\s+(?:on|in|part\s+of|included\s+in|covered\s+by)\s+${THE_TEST}\b`,
+  String.raw`\b(?:left\s+out\s+of|missing\s+from|skipped\s+in|outside(?:\s+of)?|absent\s+from)\s+${THE_TEST}\b`,
+  String.raw`\b(?:yet|remains?|still\s+needs?|needs?)\s+to\s+be\s+(?:tested|checked|measured|assessed)\b`,
+  String.raw`\bno\s+(?:\w+\s+){0,2}questions?\b(?!\s+(?:wrong|right|incorrect|correct)\b)`,
+  String.raw`\bno\s+(?:\w+\s+){0,2}facts?\s+(?:on|in)\s+${THE_TEST}\b`,
+  String.raw`\bno\s+(?:results?|information|data)\b`,
+  String.raw`\b(?:did\s+not|didn['’]t|was\s+not|wasn['’]t)\s+(?:get|given|see|shown|have)\s+(?:any\s+)?(?:\w+\s+){0,2}(?:questions?|facts?)\b(?!\s+(?:wrong|right|incorrect|correct)\b)`,
+  String.raw`\bnot\s+(?:yet\s+)?known\b`,
+  String.raw`\b(?:is|are|remains?|stays?)\s+unknown\b|\bunknown\s+(?:so\s+far|for\s+now|yet)\b`,
+  String.raw`\bdo(?:\s+not|n['’]t)\s+(?:yet\s+)?know\b`,
+].join("|"), "i");
+
+/**
+ * The "not tested" check of #242, kept whole as a safety net under UNTESTED (D-124, #245 review round 3): "not" or
+ * "never" before "tested", "checked", "measured", "assessed", "asked", "covered" or "included", and "did not" or "does
+ * not" before "test", "check", "measure", "assess", "ask", "cover" or "include", whoever is the subject. So it also drops
+ * some harmless likely causes about the child's own work ("{name} did not check the answer.", "The remainder was not
+ * included in the answer."); the report then shows its own sentence for that mistake.
+ */
+const MAIN_UNTESTED = new RegExp([
   String.raw`\buntested\b`,
   String.raw`(?:\bnot|\bnever|n['’]t)\s+(?:yet\s+|been\s+|be\s+|really\s+)*(?:tested|checked|measured|assessed|asked|covered|included|part\s+of\s+the\s+(?:test|round))\b`,
   String.raw`\b(?:did\s+not|didn['’]t|does\s+not|doesn['’]t)\s+(?:test|check|measure|assess|ask|cover|include)\b`,
 ].join("|"), "i");
 
+/** Which parent's AI text is checked: the report summary, or a likely cause on the report. */
+export type ParentText = "summary" | "likely-cause";
+
 /**
- * What an AI text about the child may not say, beyond the rules every AI text follows (#242), in every text a parent
- * or the admin reads: the report text, the likely causes and the ways to help. "speed": the facts timing (TIMING), for
- * a school grade under FACT_SPEED_FROM_GRADE (D-120: grades 1-4 see accuracy only; the AI reads no timing there,
- * reportFacts and profileAiFacts). "untested": that something was not tested, at every grade; the AI cannot know what
- * the test left out, and what it did not test is code's to say. Null when the text may show. Also for stored text when
- * it is read (storedReportModel, storedProfile).
+ * What a parent's AI text about the child may not say, beyond the rules every AI text follows (#242, #245): the report
+ * summary and the likely causes a parent reads. Not the ways to help, which only the admin reads (spec #181). A safety
+ * net: the AI reads no "not tested" label or untested list, and below FACT_SPEED_FROM_GRADE no facts timing (reportFacts,
+ * profileAiFacts), so it has nothing true to say on either. "speed", for a school grade under FACT_SPEED_FROM_GRADE
+ * (D-120: grades 1-4 see accuracy only): in the summary, any timing word (TIMING), as its facts have no timing of any
+ * kind; in a likely cause, a sentence about the facts that states their timing, as the main test's pace is in its facts.
+ * "untested": that something was not tested (UNTESTED or MAIN_UNTESTED), at every grade; what the test did not ask is
+ * code's to say. Null when the text may show. Also for stored text when it is read (storedReportModel, storedProfile).
  */
-export function parentTextProblem(text: string, grade: Grade): { problem: "speed" | "untested"; detail: string } | null {
-  const speed = grade < FACT_SPEED_FROM_GRADE ? text.match(TIMING) : null;
-  if (speed) return { problem: "speed", detail: speed[0] };
-  const untested = text.match(UNTESTED);
+export function parentTextProblem(text: string, grade: Grade, kind: ParentText = "likely-cause"): { problem: "speed" | "untested"; detail: string } | null {
+  const anySpeed = grade < FACT_SPEED_FROM_GRADE && kind === "summary" ? text.match(TIMING) : null;
+  if (anySpeed) return { problem: "speed", detail: anySpeed[0] };
+  if (grade < FACT_SPEED_FROM_GRADE) {
+    // A sentence is about the facts when it names them, or the sentence before it does ("... the facts. It was quick.").
+    const sentences = text.split(/(?<=[.!?;])\s+/);
+    for (const [i, sentence] of sentences.entries()) {
+      const aboutFacts = FACTS_TOPIC.test(sentence) || (i > 0 && FACTS_TOPIC.test(sentences[i - 1]));
+      const speed = aboutFacts ? sentence.match(TIMING) : null;
+      if (speed) return { problem: "speed", detail: speed[0] };
+    }
+  }
+  const untested = text.match(UNTESTED) ?? text.match(MAIN_UNTESTED);
   if (untested) return { problem: "untested", detail: untested[0] };
   return null;
 }
@@ -145,7 +204,7 @@ export function reportFacts(m: ReportModel) {
  */
 export function checkReportText(model: ReportModel, text: string): ReportTextCheck {
   const check = checkAiText(text, reportFacts(model), REPORT_TEXT_MAX);
-  const problem = check.ok ? parentTextProblem(check.text, model.level.grade) : null;
+  const problem = check.ok ? parentTextProblem(check.text, model.level.grade, "summary") : null;
   return problem ? { ok: false, ...problem } : check;
 }
 

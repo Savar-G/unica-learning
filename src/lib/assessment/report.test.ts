@@ -6,6 +6,7 @@ import {
   parentTextProblem,
   reportFacts,
   reportModel,
+  storedReportModel,
   type FactsResult,
   type Grade,
   workReview,
@@ -18,6 +19,7 @@ import {
   type WorkReview,
 } from "@/lib/assessment";
 import { allRight, knowsUpTo, takeTest } from "./scripted-child";
+import { MAIN_REJECTED_UNTESTED } from "./untested-wordings";
 
 const grade4 = (isRight = allRight, province: Province = "BC") => takeTest({ grade: 4, province }, 1, isRight).placement;
 const report = (placement: Placement, completedTestsInGrade = 0, workReviews: WorkReview[] = []) =>
@@ -367,6 +369,219 @@ describe("report model", () => {
 
     it("keeps text that states fact speed from grade 5", () => {
       expect(withFacts(5, "{name} got 27 facts right in 60 seconds, accurate and quick.").summary).toBe("{name} got 27 facts right in 60 seconds, accurate and quick.");
+    });
+
+    // #245: review round 2 of #242 (task-state 242/REVIEW-r2.md, review-r2/probe1.txt) found ordinary text the filters
+    // dropped, and wordings they missed.
+    const ORDINARY = [
+      "Draw a quick picture of the groups.",
+      "Ask {name} to read the word problem a second time.",
+      "Encourage {name} to slow down and check each step.",
+      "Read the problem slowly with {name}.",
+      "Spend some time each day on facts to 20.",
+      "Practise for a minute or two with dot cards.",
+      "Help {name} see small groups of dots at a glance.",
+      "{name} may have rushed and misread the sign.",
+      "{name} is building fluency with addition facts to 20.",
+      "Play a quick game of doubles.",
+      "Use a timer-free game.",
+      "{name} added the tens right away and forgot the ones.",
+      "Count the seconds hand on a clock together.",
+      "{name} hesitated between the two fractions.",
+      "{name} added automatically without regrouping.",
+      // Not "{name} did not check the answer." and the like: main rejected them, so they stay rejected (D-124, #245 r3).
+      // Real likely causes from the production end-to-end test (review-r2/probe3.txt).
+      "{name} may have subtracted the smaller number from the larger when the start was unknown.",
+      "On 4 × 9 = 3 × ?, {name} wrote 36 and did not balance both sides.",
+      "{name} found a second rectangle that did not match the same perimeter.",
+    ];
+
+    it("keeps ordinary text at every grade: the filters drop only claims about the facts timing and about what was not tested (#245)", () => {
+      for (const grade of [1, 3, 4, 5, 7] as const) {
+        for (const text of ORDINARY) expect(parentTextProblem(text, grade), `grade ${grade}: ${text}`).toBeNull();
+      }
+    });
+
+    it("still rejects the reworded claims review round 2 found, new and stored (#245)", () => {
+      const timing = [
+        "{name} answered the facts promptly and with time to spare.",
+        "{name} beat the clock on the addition facts.",
+        "{name} got 27 facts right and spent longer on the subtraction facts.",
+        "{name} answered 27 facts before the time ran out.",
+        "{name} answered the facts in the blink of an eye.",
+      ];
+      for (const text of timing) {
+        expect(parentTextProblem(text, 3), text).toMatchObject({ problem: "speed" });
+        expect(withFacts(3, text), text).not.toHaveProperty("summary");
+        expect(storedReportModel({ ...withFacts(3), summary: text }), text).not.toHaveProperty("summary");
+      }
+      const untested = [
+        "The multiplication facts were not part of this test.",
+        "The multiplication facts were not on the test.",
+        "The multiplication facts have yet to be tested.",
+        "Division facts were left out of the test.",
+        "The test skipped the multiplication facts.",
+        "The multiplication facts weren't examined.",
+        "There is no result yet for the multiplication facts.",
+        "The test did not reach the multiplication facts.",
+      ];
+      for (const text of untested) {
+        expect(parentTextProblem(text, 5), text).toMatchObject({ problem: "untested" });
+        expect(withFacts(5, text), text).not.toHaveProperty("summary");
+        expect(storedReportModel({ ...withFacts(5), summary: text }), text).not.toHaveProperty("summary");
+      }
+    });
+
+    // #245 review round 1 (task-state 245/REVIEW-r1.md, review-r1/probe1.txt and probe2.txt): at grade 5, after a facts
+    // round that asked multiplication, every way of saying the test left something out. Main rejected some; the first
+    // narrowed filter passed them. With #242 review round 2's set (242/review-r2/probe1.txt, UNTESTED).
+    const UNTESTED_PROBES = [
+      // Main rejected these.
+      "Division facts: not tested.",
+      "Not tested: the division facts.",
+      "The multiplication facts, not tested here, may need work.",
+      "The test never checked the multiplication facts.",
+      "The test never asked about division.",
+      "The test never tested division.",
+      "The test didn't measure division.",
+      "The quick facts round did not include multiplication.",
+      "The questions did not cover multiplication facts.",
+      "The multiplication facts were not asked.",
+      "The multiplication facts were never asked.",
+      "{name} was never tested on multiplication facts.",
+      "{name} was not asked any multiplication facts.",
+      "{name} was not asked to do multiplication facts.",
+      "The multiplication facts were not tested.",
+      "{name} was not asked about division.",
+      "Fractions were untested.",
+      // Main passed these too.
+      "The test did not look at division.",
+      "The facts round skipped multiplication.",
+      "Multiplication was not part of the facts round.",
+      "Multiplication was not in the facts round.",
+      "No multiplication questions were asked.",
+      "There were no multiplication questions.",
+      "We do not know yet how {name} does with multiplication facts.",
+      "It is not known how {name} does with multiplication facts.",
+      "The multiplication facts are unknown so far.",
+      "There is no result for multiplication facts.",
+      "Multiplication facts have no result.",
+      "{name} did not get multiplication questions.",
+      "{name} had no multiplication facts on the test.",
+      "This test does not show multiplication facts.",
+      "Multiplication facts remain to be checked.",
+      "Workbook 1 will check the multiplication facts, which the test left out.",
+      "The test left out the multiplication facts.",
+      "The multiplication facts were outside this test.",
+      "The test had no questions on the multiplication facts.",
+      "Division facts were left out of the test.",
+      "The test had no multiplication facts.",
+      "The multiplication facts were not in the test.",
+      "The multiplication facts were not on the test.",
+      "The multiplication facts have yet to be tested.",
+      "The multiplication facts were not looked at.",
+      "The test skipped the multiplication facts.",
+      "Multiplication facts were not part of this test.",
+      "The multiplication facts were not evaluated.",
+      "There is no result yet for the multiplication facts.",
+      "Multiplication facts still need to be tested.",
+      "The test did not reach the multiplication facts.",
+      "No questions asked about multiplication facts.",
+      "The multiplication facts were not tried.",
+      "The test gave no information about multiplication facts.",
+      "Check the multiplication facts next, since the test did not look at them.",
+      "The multiplication facts weren't examined.",
+      "The multiplication facts were not checked.",
+      "Division was not covered.",
+    ];
+
+    it("rejects every wording of \"not tested\" the reviews found, the ones main rejected first, new and stored (#245 r2)", () => {
+      for (const text of UNTESTED_PROBES) {
+        expect(parentTextProblem(text, 5), text).toMatchObject({ problem: "untested" });
+        expect(withFacts(5, text), text).not.toHaveProperty("summary");
+        expect(storedReportModel({ ...withFacts(5), summary: text }), text).not.toHaveProperty("summary");
+      }
+    });
+
+    it("rejects every wording main's \"not tested\" check rejected in the review probes, new and stored, at every grade (#245 r3)", () => {
+      expect(MAIN_REJECTED_UNTESTED.length).toBeGreaterThan(50);
+      for (const text of MAIN_REJECTED_UNTESTED) {
+        // From grade 5 nothing else applies; below it a facts sentence may be caught as speed first.
+        expect(parentTextProblem(text, 5), text).toMatchObject({ problem: "untested" });
+        for (const grade of [1, 3, 4, 7] as const) expect(parentTextProblem(text, grade), `grade ${grade}: ${text}`).not.toBeNull();
+        for (const grade of [3, 5] as const) {
+          expect(withFacts(grade, text), `grade ${grade}: ${text}`).not.toHaveProperty("summary");
+          expect(storedReportModel({ ...withFacts(grade), summary: text }), `grade ${grade}: ${text}`).not.toHaveProperty("summary");
+        }
+      }
+    });
+
+    it("for grades 1-4, rejects any timing word in the summary, whose facts have no timing; a likely cause keeps the main test's pace (#245 r3)", () => {
+      const timing = ["{name} answered quickly and accurately.", "{name} may have rushed through Number and operations.", "{name} worked at a steady pace."];
+      for (const text of timing) {
+        for (const grade of [1, 3, 4] as const) {
+          expect(parentTextProblem(text, grade, "summary"), `grade ${grade}: ${text}`).toMatchObject({ problem: "speed" });
+          expect(parentTextProblem(text, grade, "likely-cause"), `grade ${grade}: ${text}`).toBeNull();
+        }
+        expect(withFacts(3, text), text).not.toHaveProperty("summary");
+        expect(storedReportModel({ ...withFacts(3), summary: text }), text).not.toHaveProperty("summary");
+        expect(withFacts(5, text).summary, text).toBe(text);
+        expect(storedReportModel({ ...withFacts(5), summary: text }).summary, text).toBe(text);
+      }
+    });
+
+    it("keeps a likely cause main kept about the child's own work, and ordinary words in a facts sentence (#245 r2)", () => {
+      const ordinary = [
+        // Main rejected "The remainder was not included in the answer." and "{name} did not check the answer.", so they
+        // stay rejected (MAIN_REJECTED_UNTESTED, D-124). These main kept.
+        "Measurement was not tried by {name} on the ruler question.",
+        "{name} got no questions wrong in Number and operations.",
+        "{name} did not get the multiplication facts right.",
+        // A facts sentence with a word that is not about speed (main kept these).
+        "{name} used an efficient strategy for the addition facts.",
+        "{name} knows the facts and can read the clock.",
+        "When prompted, {name} recalled the facts.",
+      ];
+      for (const grade of [1, 3, 4, 5, 7] as const) {
+        for (const text of ordinary) expect(parentTextProblem(text, grade), `grade ${grade}: ${text}`).toBeNull();
+      }
+    });
+
+    it("rejects the facts timing wordings the reviews found, for grades 1-4 (#245 r2)", () => {
+      // #242 review round 2 (TIMING) and #245 review round 1 (NEW-TIMING), each in a sentence about the facts, the
+      // sums, the number bonds or the round. A timing word with none of these near it is kept (D-124).
+      const timing = [
+        "{name} answered the facts promptly.",
+        "{name} answered the facts briskly.",
+        "{name} finished the facts round with time to spare.",
+        "{name} answered 27 facts before the time ran out.",
+        "{name} rattled off the facts.",
+        "{name} answered the facts in a snap.",
+        "{name} took no time at all on the facts.",
+        "{name} took a moment on each subtraction fact.",
+        "{name} answered 27 facts within the minute.",
+        "{name} answered the facts in the blink of an eye.",
+        "{name} answered the addition facts with no delay.",
+        "{name} answered the facts at a good clip.",
+        "{name} beat the clock on the facts.",
+        "{name} answered the facts like lightning.",
+        "{name} answered the facts efficiently.",
+        "{name} worked through the facts at a steady rate.",
+        "{name} answered the facts one after another without stopping.",
+        "{name} spent longer on the subtraction facts.",
+        "{name} lingered on the subtraction facts.",
+        "{name} knew the facts at once.",
+        "{name} recalls addition facts with speed and ease.",
+        "{name} knows the number facts well, with quick recall.",
+        "The facts went fast for {name}.",
+        "{name} was quick with sums to 20.",
+        "{name}'s number bonds to 20 came fast.",
+        "{name} worked through the round at speed.",
+        "{name} did the quick round well. It was fast work.",
+      ];
+      for (const grade of [1, 3, 4] as const) {
+        for (const text of timing) expect(parentTextProblem(text, grade), `grade ${grade}: ${text}`).toMatchObject({ problem: "speed" });
+      }
     });
   });
 
