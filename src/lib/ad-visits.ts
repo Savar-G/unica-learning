@@ -15,6 +15,9 @@ export interface AdVisitRow {
 }
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+/** Visits /api/visit counts in 10 minutes before it stops counting. A CAD 100 ad test brings far fewer. */
+export const RATE_MAX = 500;
+
 /** The longest UTM value kept; the table's check allows the same. */
 export const TAG_MAX = 100;
 // No control characters (the table checks the same).

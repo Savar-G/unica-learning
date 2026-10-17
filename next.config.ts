@@ -16,6 +16,12 @@ const nextConfig: NextConfig = {
     ];
   },
   skipTrailingSlashRedirect: true,
+  // Pages whose address can hold an id or a token (a Stripe session, a report id, a sign-in or unsubscribe token) send
+  // only the origin as the referrer, so the next page, and any tag on it, never sees the full address (D-123).
+  async headers() {
+    const originOnly = [{ key: "Referrer-Policy", value: "strict-origin" }];
+    return ["/thank-you", "/account/:path*", "/auth/:path*", "/sign-in/:path*", "/unsubscribe"].map((source) => ({ source, headers: originOnly }));
+  },
 };
 
 export default nextConfig;

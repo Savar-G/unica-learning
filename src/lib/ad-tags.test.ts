@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { adConfig, adsBlockedPath, CARD_VALUE, createAdTags, metaCleanAddress, type AdConfig } from "@/lib/ad-tags";
+import { adConfig, adsBlockedPath, CARD_VALUE, createAdTags, metaCleanAddress, metaCleanReferrer, type AdConfig } from "@/lib/ad-tags";
 import type { ConsentState } from "@/lib/consent";
 
 // Meta Pixel and the Google tag: off without their IDs, loaded only after consent, never loaded or sending on a page a
@@ -13,8 +13,8 @@ const ENV = {
   NEXT_PUBLIC_GOOGLE_ADS_CARD_LABEL: "cardLbl",
 };
 
-function page({ config = adConfig(ENV), consent = "unset" as ConsentState, path = "/" } = {}) {
-  const state = { consent, path, idle: [] as (() => void)[], listeners: [] as (() => void)[], installs: 0, installed: [] as string[], cleared: 0 };
+function page({ config = adConfig(ENV), consent = "unset" as ConsentState, path = "/", referrer = "" } = {}) {
+  const state = { consent, path, referrer, idle: [] as (() => void)[], listeners: [] as (() => void)[], installs: 0, installed: [] as string[], cleared: 0 };
   const meta: unknown[][] = [];
   const google: unknown[][] = [];
   const tags = createAdTags({
@@ -23,6 +23,9 @@ function page({ config = adConfig(ENV), consent = "unset" as ConsentState, path 
     subscribe: (fn) => { state.listeners.push(fn); return () => {}; },
     address: () => state.path,
     location: () => `https://unicalearning.com${state.path.split(/[?#]/)[0]}`,
+    referrer: () => state.referrer,
+    origin: () => "https://unicalearning.com",
+    referrerLocation: () => (state.referrer ? "https://unicalearning.com/clean-referrer" : ""),
     whenIdle: (run) => { state.idle.push(run); },
     install: (_c: AdConfig, tag: "meta" | "google") => {
       state.installs += 1;
@@ -145,7 +148,7 @@ describe("ad tags on a child's pages", () => {
 
 describe("Meta's clean addresses", () => {
   it("are fixed marketing and parent pages with only ad tags in the query", () => {
-    for (const a of ["/", "/our-story", "/compare", "/rewards", "/resources", "/resources/bc-grade-1-math-and-reading", "/sample-report", "/start", "/start?utm_source=meta&utm_content=photo-led&fbclid=IwAR1", "/?gclid=Cj0K&utm_campaign=oct", "/account", "/account/finish", "/our-story/", "/#how-it-works"]) {
+    for (const a of ["/", "/our-story", "/compare", "/rewards", "/resources", "/resources/bc-grade-1-math-and-reading", "/sample-report", "/start", "/start?utm_source=meta&utm_content=photo-led&fbclid=IwAR1", "/?fbclid=IwAR1&utm_campaign=oct", "/account", "/account/finish", "/our-story/", "/#how-it-works"]) {
       expect(metaCleanAddress(a), a).toBe(true);
     }
   });
@@ -153,6 +156,8 @@ describe("Meta's clean addresses", () => {
   it("are never an address that holds an id, a token or any other query", () => {
     for (const a of [
       "/thank-you?session_id=cs_test_abc123&from=report",
+      "/?gclid=Cj0K",
+      "/start?utm_source=google&gclid=Cj0K",
       "/thank-you",
       "/account/report/3f2b8c1e-9d4a-4f6b-8e2c-1a2b3c4d5e6f",
       "/account/report/3f2b8c1e-9d4a-4f6b-8e2c-1a2b3c4d5e6f?src=email",
@@ -179,7 +184,7 @@ describe("Meta's clean addresses", () => {
     p.tags.conversion("card_saved");
     expect(p.state.installed).toEqual(["google"]);
     expect(p.meta).toEqual([]);
-    expect(p.google).toEqual([["event", "conversion", { send_to: "AW-1234567890/cardLbl", page_location: "https://unicalearning.com/thank-you", value: 69.3, currency: "CAD" }]]);
+    expect(p.google).toEqual([["event", "conversion", { send_to: "AW-1234567890/cardLbl", page_location: "https://unicalearning.com/thank-you", page_referrer: "", value: 69.3, currency: "CAD" }]]);
   });
 
   it("pause Meta, with no page view, when the visitor moves on to an address that is not clean", () => {
@@ -189,7 +194,39 @@ describe("Meta's clean addresses", () => {
     p.go("/account/report/3f2b8c1e-9d4a-4f6b-8e2c-1a2b3c4d5e6f");
     p.tags.conversion("report_open");
     expect(p.meta).toEqual([["track", "PageView"], ["consent", "revoke"]]);
-    expect(p.google.at(-1)).toEqual(["event", "conversion", { send_to: "AW-1234567890/reportLbl", page_location: "https://unicalearning.com/account/report/3f2b8c1e-9d4a-4f6b-8e2c-1a2b3c4d5e6f" }]);
+    expect(p.google.at(-1)).toEqual(["event", "conversion", { send_to: "AW-1234567890/reportLbl", page_location: "https://unicalearning.com/account/report/3f2b8c1e-9d4a-4f6b-8e2c-1a2b3c4d5e6f", page_referrer: "" }]);
+  });
+});
+
+describe("Meta and the referrer", () => {
+  const O = "https://unicalearning.com";
+  it("counts as clean: no referrer, another site's bare origin, or a clean address here", () => {
+    for (const r of ["", "https://www.facebook.com/", "https://www.google.com/", `${O}/`, `${O}/our-story?utm_source=meta`, `${O}/account`]) {
+      expect(metaCleanReferrer(r, O), r).toBe(true);
+    }
+  });
+
+  it("counts as not clean: an address here with an id or token, another site's full address, or junk", () => {
+    for (const r of [`${O}/thank-you?session_id=cs_test_x`, `${O}/account/report/3f2b8c1e-9d4a-4f6b-8e2c-1a2b3c4d5e6f`, `${O}/sign-in/reset?token_hash=abc`, `${O}/?gclid=Cj0K`, "https://checkout.stripe.com/c/pay/cs_live_abc", "https://example.com/?q=x", "not a url"]) {
+      expect(metaCleanReferrer(r, O), r).toBe(false);
+    }
+  });
+
+  it("keeps Meta unloaded and silent on a clean page reached from an address with an id, while Google loads", () => {
+    const p = page({ consent: "granted", path: "/", referrer: `${O}/thank-you?session_id=cs_test_x` });
+    p.tags.begin();
+    p.idle();
+    p.tags.conversion("account_created");
+    expect(p.state.installed).toEqual(["google"]);
+    expect(p.meta).toEqual([]);
+    expect(p.google[0][2]).toMatchObject({ send_to: "AW-1234567890/leadLbl", page_referrer: "https://unicalearning.com/clean-referrer" });
+  });
+
+  it("runs Meta on the same page when the referrer is clean", () => {
+    const p = page({ consent: "granted", path: "/", referrer: "https://www.facebook.com/" });
+    p.tags.begin();
+    p.idle();
+    expect(p.meta).toEqual([["track", "PageView"]]);
   });
 });
 
@@ -209,7 +246,7 @@ describe("ad conversions", () => {
     for (const path of ["/start?utm_source=meta", "/account/finish"]) {
       const p = sent("account_created", path);
       expect(p.meta).toEqual([["track", "Lead"]]);
-      expect(p.google).toEqual([["event", "conversion", { send_to: "AW-1234567890/leadLbl", page_location: `https://unicalearning.com${path.split("?")[0]}` }]]);
+      expect(p.google).toEqual([["event", "conversion", { send_to: "AW-1234567890/leadLbl", page_location: `https://unicalearning.com${path.split("?")[0]}`, page_referrer: "" }]]);
     }
   });
 
@@ -232,7 +269,7 @@ describe("ad conversions", () => {
     expect(sent("test_finish", "/").google).toEqual([]);
     const all = [sent("account_created", "/start"), sent("report_open", REPORT), sent("card_saved", THANKS)].flatMap((p) => [...p.meta, ...p.google]);
     const keys = new Set(all.flatMap((c) => c.flatMap((a) => (a && typeof a === "object" ? Object.keys(a) : []))));
-    expect([...keys].sort()).toEqual(["currency", "page_location", "send_to", "value"]);
+    expect([...keys].sort()).toEqual(["currency", "page_location", "page_referrer", "send_to", "value"]);
   });
 
   it("skip Google for an event whose label is not set", () => {

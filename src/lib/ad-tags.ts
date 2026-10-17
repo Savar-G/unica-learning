@@ -6,14 +6,16 @@
 // - Never on a page a child uses (adsBlockedPath). The scripts never load there; when they are loaded from an earlier
 //   page of the same visit, they are paused on arrival (Meta consent revoke, Google consent denied) and get no call
 //   until the visitor is back on an allowed page.
-// - Meta Pixel reads the page address itself, so it is stricter: it loads, sends a PageView and sends an event only
-//   on a clean address (metaCleanAddress: a fixed marketing or parent page from an allowlist, with no id, and a query
-//   that holds only utm_*, gclid or fbclid). Anywhere else it is paused and silent. So Meta gets PageView and Lead
+// - Meta Pixel reads the page address and the referrer itself, so it is stricter: it loads, sends a PageView and sends
+//   an event only on a clean address (metaCleanAddress: a fixed marketing or parent page from an allowlist, with no
+//   id, and a query that holds only utm_* or fbclid) with a clean referrer (metaCleanReferrer: none, another site's
+//   bare origin, or a clean address here). Anywhere else it is paused and silent. So Meta gets PageView and Lead
 //   (account_created fires on /start or /account/finish), never ReportOpen or AddPaymentInfo (their pages hold a
 //   report id or a Stripe session reference). Meta's own history tracking and automatic events are off.
 // - A conversion goes out with the existing track() call (track.ts is the one place call sites use) and carries no
-//   personal data: no email, name, child data, grade or ids. Google gets the page address with ids replaced and only
-//   the ad tags (utm_*, gclid) kept in its query, so Google gets all three conversions.
+//   personal data: no email, name, child data, grade or ids. Google gets the page address and the referrer with ids
+//   replaced and only the ad tags (utm_*, gclid) kept in the query (another site's referrer: its origin only), so
+//   Google gets all three conversions.
 // Pure apart from getAdTags and its browser helpers: createAdTags takes its browser parts, so tests use fakes.
 import { getConsent, subscribeConsent, type ConsentState } from "@/lib/consent";
 import { firstMonth, PLANS } from "@/lib/site";
@@ -68,11 +70,12 @@ export function adsBlockedPath(path: string): boolean {
 // The only pages where Meta Pixel may run: fixed marketing and parent pages whose address holds no id. A resources guide
 // has a fixed slug of lowercase words.
 const META_PAGES = /^\/(?:|our-story|compare|rewards|sample-report|privacy|terms|resources|resources\/[a-z0-9]+(?:-[a-z0-9]+)*|start|account|account\/finish)$/;
-const META_QUERY_KEY = /^(?:utm_[a-z]{1,20}|gclid|fbclid)$/;
+// fbclid is Meta's own click ID; Google's gclid is not for Meta, so an address with one is not clean.
+const META_QUERY_KEY = /^(?:utm_[a-z]{1,20}|fbclid)$/;
 
 /**
  * True when Meta Pixel may run on this address (path, query and hash, as in location): an allowlisted page, a query of
- * only utm_*, gclid or fbclid, and no hash beyond a short plain anchor. Anything else may hold an id or a token.
+ * only utm_* or fbclid, and no hash beyond a short plain anchor. Anything else may hold an id or a token.
  */
 export function metaCleanAddress(address: string): boolean {
   let url: URL;
@@ -82,6 +85,19 @@ export function metaCleanAddress(address: string): boolean {
   if (!META_PAGES.test(path)) return false;
   for (const key of url.searchParams.keys()) if (!META_QUERY_KEY.test(key)) return false;
   return url.hash === "" || /^#[A-Za-z][A-Za-z0-9_-]{0,40}$/.test(url.hash);
+}
+
+/**
+ * True when the page's referrer (document.referrer, which Meta sends) holds no id or token: none, another site's bare
+ * origin (browsers send only that by default), or a clean address on this site. Pages whose address can hold an id
+ * send only the origin as the referrer (Referrer-Policy in next.config.ts); this check covers what that misses.
+ */
+export function metaCleanReferrer(referrer: string, origin: string): boolean {
+  if (!referrer) return true;
+  let url: URL;
+  try { url = new URL(referrer); } catch { return false; }
+  if (url.origin !== origin) return url.pathname === "/" && !url.search && !url.hash;
+  return metaCleanAddress(url.pathname + url.search + url.hash);
 }
 
 /** The value of a saved card, the first month's price (D-091). */
@@ -98,6 +114,12 @@ export interface AdDeps {
   address: () => string;
   /** The current page's address with ids replaced and only its ad tags kept in the query, for Google's page_location. */
   location: () => string;
+  /** The page's referrer, as the browser gives it (document.referrer). */
+  referrer: () => string;
+  /** The current page's origin. */
+  origin: () => string;
+  /** The referrer cleaned like `location` (another site: its origin only), for Google's page_referrer. */
+  referrerLocation: () => string;
   whenIdle: (run: () => void) => void;
   /** Adds one tag's script (once) and returns its call function. */
   install: (config: AdConfig, tag: Tag) => Call;
@@ -136,7 +158,7 @@ export function createAdTags(deps: AdDeps) {
   function allowedHere(tag: Tag, address: string): boolean {
     const path = address.split(/[?#]/)[0];
     if (adsBlockedPath(path)) return false;
-    return tag === "google" || metaCleanAddress(address);
+    return tag === "google" || (metaCleanAddress(address) && metaCleanReferrer(deps.referrer(), deps.origin()));
   }
 
   /**
@@ -196,7 +218,7 @@ export function createAdTags(deps: AdDeps) {
     if (event !== "account_created" && event !== "report_open" && event !== "card_saved") return;
     const live = sync(true);
     const google = (label: string | null, extra: Record<string, unknown> = {}) => {
-      if (live.google && label) live.google("event", "conversion", { send_to: `${config.googleAdsId}/${label}`, page_location: deps.location(), ...extra });
+      if (live.google && label) live.google("event", "conversion", { send_to: `${config.googleAdsId}/${label}`, page_location: deps.location(), page_referrer: deps.referrerLocation(), ...extra });
     };
     if (event === "account_created") {
       live.meta?.("track", "Lead");
@@ -227,6 +249,7 @@ function addScript(src: string, onload?: () => void) {
 }
 
 const currentAddress = () => window.location.pathname + window.location.search + window.location.hash;
+const metaCleanHere = () => metaCleanAddress(currentAddress()) && metaCleanReferrer(document.referrer, window.location.origin);
 
 function installMeta(id: string): Call {
   const w = window as AdWindow;
@@ -236,7 +259,7 @@ function installMeta(id: string): Call {
   const flush = () => {
     const calls = pending ?? [];
     pending = null;
-    const clean = metaCleanAddress(currentAddress());
+    const clean = metaCleanHere();
     for (const args of calls) if (clean || args[0] === "consent") w.fbq?.(...args);
   };
   if (!w.fbq) {
@@ -262,7 +285,7 @@ function installMeta(id: string): Call {
   // Consent commands (pause and resume) send nothing to Meta, so they pass on any address.
   return (...args) => {
     if (pending) pending.push(args);
-    else if (args[0] === "consent" || metaCleanAddress(currentAddress())) w.fbq?.(...args);
+    else if (args[0] === "consent" || metaCleanHere()) w.fbq?.(...args);
   };
 }
 
@@ -280,7 +303,7 @@ function installGoogle(id: string): Call {
     w.gtag("js", new Date());
     addScript(`https://www.googletagmanager.com/gtag/js?id=${encodeURIComponent(id)}`);
     // No page_view hits: Google gets the visit (and the gclid in the address) from this call, then only conversions.
-    w.gtag("config", id, { send_page_view: false, allow_ad_personalization_signals: false, page_location: cleanLocation() });
+    w.gtag("config", id, { send_page_view: false, allow_ad_personalization_signals: false, page_location: cleanLocation(), page_referrer: cleanReferrer() });
   }
   return (...args) => w.gtag?.(...args);
 }
@@ -309,16 +332,22 @@ const ID_SEGMENT = /\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{1
 
 const AD_KEYS = ["utm_source", "utm_medium", "utm_campaign", "utm_content", "gclid"];
 
-function cleanLocation() {
-  const all = new URLSearchParams(window.location.search);
+/** An address of this site with ids replaced and only its ad tags kept in the query; another site's origin only. */
+function cleanUrl(href: string): string {
+  let url: URL;
+  try { url = new URL(href); } catch { return ""; }
+  if (url.origin !== window.location.origin) return `${url.origin}/`;
   const kept = new URLSearchParams();
   for (const k of AD_KEYS) {
-    const v = all.get(k);
+    const v = url.searchParams.get(k);
     if (v) kept.set(k, v);
   }
   const query = kept.toString();
-  return window.location.origin + window.location.pathname.replace(ID_SEGMENT, "/id") + (query ? `?${query}` : "");
+  return url.origin + url.pathname.replace(ID_SEGMENT, "/id") + (query ? `?${query}` : "");
 }
+
+const cleanLocation = () => cleanUrl(window.location.href);
+const cleanReferrer = () => (document.referrer ? cleanUrl(document.referrer) : "");
 
 function whenIdle(run: () => void) {
   if ("requestIdleCallback" in window) window.requestIdleCallback(run, { timeout: 3000 });
@@ -336,6 +365,9 @@ export function getAdTags() {
     getConsent,
     subscribe: subscribeConsent,
     address: currentAddress,
+    referrer: () => document.referrer,
+    origin: () => window.location.origin,
+    referrerLocation: cleanReferrer,
     location: cleanLocation,
     whenIdle,
     install: installTag,

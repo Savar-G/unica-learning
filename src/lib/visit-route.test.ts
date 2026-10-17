@@ -6,6 +6,8 @@ const inserts: { table: string; row: Record<string, unknown> }[] = [];
 let storeError: { code?: string; message: string } | null = null;
 let noClient = false;
 let throws = false;
+let recentCount = 0;
+let countError: { code?: string; message: string } | null = null;
 vi.mock("next/server", async (original) => {
   const real = await original<typeof import("next/server")>();
   return { ...real, after: (fn: () => unknown) => void fn() };
@@ -14,6 +16,7 @@ vi.mock("@/lib/supabase-auth", () => ({
   adminClient: () =>
     noClient ? null : {
       from: (table: string) => ({
+        select: () => ({ gte: async () => ({ count: recentCount, error: countError }) }),
         insert: async (row: Record<string, unknown>) => {
           if (throws) throw new Error("network down");
           inserts.push({ table, row });
@@ -23,10 +26,12 @@ vi.mock("@/lib/supabase-auth", () => ({
     },
 }));
 const { POST } = await import("@/app/api/visit/route");
+const { RATE_MAX } = await import("@/lib/ad-visits");
 
 const BROWSER = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.4 Safari/605.1.15";
 const ID = "3f2b8c1e-9d4a-4f6b-8e2c-1a2b3c4d5e6f";
-const visit = (body: unknown, headers: Record<string, string> = { "user-agent": BROWSER }) =>
+const SAME = { "user-agent": BROWSER, "sec-fetch-site": "same-origin" };
+const visit = (body: unknown, headers: Record<string, string> = SAME) =>
   POST(new Request("https://unicalearning.com/api/visit", { method: "POST", headers: { "content-type": "application/json", ...headers }, body: typeof body === "string" ? body : JSON.stringify(body) }));
 
 describe("the ad visit route", () => {
@@ -35,6 +40,8 @@ describe("the ad visit route", () => {
     storeError = null;
     noClient = false;
     throws = false;
+    recentCount = 0;
+    countError = null;
     vi.restoreAllMocks();
     vi.spyOn(console, "error").mockImplementation(() => {});
   });
@@ -66,11 +73,39 @@ describe("the ad visit route", () => {
 
   it("does not count link previews, crawlers, requests with no user agent, or posts from another site", async () => {
     const body = { visitId: ID, utm_source: "meta" };
-    expect((await visit(body, { "user-agent": "facebookexternalhit/1.1" })).status).toBe(204);
-    expect((await visit(body, { "user-agent": "Googlebot/2.1" })).status).toBe(204);
-    expect((await visit(body, {})).status).toBe(204);
-    expect((await visit(body, { "user-agent": BROWSER, "sec-fetch-site": "cross-site" })).status).toBe(204);
+    expect((await visit(body, { ...SAME, "user-agent": "facebookexternalhit/1.1" })).status).toBe(204);
+    expect((await visit(body, { ...SAME, "user-agent": "Googlebot/2.1" })).status).toBe(204);
+    expect((await visit(body, { "sec-fetch-site": "same-origin" })).status).toBe(204);
+    expect((await visit(body, { ...SAME, "sec-fetch-site": "cross-site" })).status).toBe(204);
+    expect((await visit(body, { ...SAME, "sec-fetch-site": "same-site" })).status).toBe(204);
     expect(inserts).toEqual([]);
+  });
+
+  it("does not count a post without Sec-Fetch-Site: same-origin (a script, not the site's own page)", async () => {
+    expect((await visit({ visitId: ID, utm_source: "meta" }, { "user-agent": BROWSER })).status).toBe(204);
+    expect(inserts).toEqual([]);
+  });
+
+  it("does not read a body announced as over 2 KB", async () => {
+    // A small body with a large announced length: refused on the header alone, before the body is read.
+    const res = await visit({ visitId: ID, utm_source: "meta" }, { ...SAME, "content-length": "3100" });
+    expect(res.status).toBe(204);
+    expect(inserts).toEqual([]);
+    expect((await visit({ visitId: ID, utm_source: "meta" }, { ...SAME, "content-length": "lots" })).status).toBe(204);
+    expect(inserts).toEqual([]);
+  });
+
+  it("stops counting past RATE_MAX visits in 10 minutes, and when it cannot check the count", async () => {
+    recentCount = RATE_MAX;
+    expect((await visit({ visitId: ID, utm_source: "meta" })).status).toBe(204);
+    expect(inserts).toEqual([]);
+    recentCount = RATE_MAX - 1;
+    countError = { code: "PGRST205", message: "no table" };
+    expect((await visit({ visitId: ID, utm_source: "meta" })).status).toBe(204);
+    expect(inserts).toEqual([]);
+    countError = null;
+    await visit({ visitId: ID, utm_source: "meta" });
+    expect(inserts).toHaveLength(1);
   });
 
   it("cuts long tags and drops ones with control characters", async () => {
