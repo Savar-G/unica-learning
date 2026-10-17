@@ -16,6 +16,7 @@ import { stripe } from "@/lib/stripe";
 import type { DashboardRows, Delivery, EmailCopyView, RawCard, RawDelivery, RawChild, RawEmail, RawParent, RawReport, RawTest, RawWaitlist } from "@/lib/admin-dashboard";
 import type { TemplateFilters, TemplateStat } from "@/lib/admin-templates";
 import type { ExportReader, ExportRow, PagedTable } from "@/lib/admin-export";
+import type { AnonymousTestRow } from "@/lib/anonymous-copy-export";
 
 // The admin area's data (#77). The gate and every read are here, so no admin page reads the database on its own; the
 // report view is read by the report-loading module with the admin's session (src/lib/report-loading-server.ts, #161).
@@ -727,4 +728,12 @@ async function deliveryRows(a: AdminSession): Promise<RawDelivery[]> {
     const c = byEmail.get(e.email_id);
     return c ? [{ email_log_id: c.email_log_id, report_id: c.report_id, report_email: c.report_email, type: e.type, occurred_at: e.occurred_at, detail: e.detail }] : [];
   });
+}
+
+/**
+ * Every copy without names (#201, public.anonymous_tests: admins read it), for the export. Each row is the copy's random
+ * id and its JSON; nothing in it links to a family.
+ */
+export async function anonymousTestRows(a: AdminSession): Promise<AnonymousTestRow[]> {
+  return allRows<AnonymousTestRow>(a.db.from("anonymous_tests").select("id, copy").order("id"), "anonymous tests");
 }

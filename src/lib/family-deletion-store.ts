@@ -196,9 +196,35 @@ function paymentStore(db: SupabaseClient, parent: string, token: string, deadlin
   return store;
 }
 
+/**
+ * Every test of a family as the copy without names reads it (#201), with `copied` when its copy is saved. Service only
+ * and read only, so the dry run uses it too. The function selects no name, email, postal code, drawing, stroke, typed
+ * working or free text; the assessment core's allowlist then picks the copy's fields. A missing function (the
+ * migration is not applied) throws, so no deletion runs without its copy.
+ */
+export async function familyCopySources(db: SupabaseClient, parent: string): Promise<unknown[]> {
+  const sources = await rpc<unknown>(db, "family_copy_sources", { p: parent.toLowerCase() });
+  if (!Array.isArray(sources)) throw new Error("Copy source unreadable");
+  return sources;
+}
+
 function deletionStore(db: SupabaseClient, parent: string, token: string, deadline: number, execution?: FamilyDeletionExecution): FamilyDeletionStore {
   const args = { p: parent, token };
   return {
+    // #201: under the deleting lease. The save writes the copy and its link to the test in one transaction, so a lost
+    // answer leaves either both or neither; the retry sees the link and writes no second copy.
+    async copySources() {
+      timeRemaining(deadline, execution);
+      return familyCopySources(db, parent);
+    },
+    async saveCopy(test, copy) {
+      timeRemaining(deadline, execution);
+      return rpc<boolean>(db, "save_family_test_copy", { ...args, test_id: test, test_copy: copy });
+    },
+    async confirmCopies() {
+      timeRemaining(deadline, execution);
+      return rpc<boolean>(db, "confirm_family_copies", args);
+    },
     async renew() {
       timeRemaining(deadline, execution);
       if (!await rpc<boolean>(db, "renew_family_deletion", args)) throw new Error("Deletion lease lost");

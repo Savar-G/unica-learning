@@ -246,7 +246,7 @@ async function* pages(reader: ExportReader, d: Dataset, withTests: boolean): Asy
 }
 
 /** The UTF-8 byte order mark: without it, Excel reads a CSV in the computer's old code page and garbles "Zoë". */
-const BOM = "\uFEFF";
+export const BOM = "\uFEFF";
 
 /** A plain number, which a spreadsheet reads as a number and never as a formula. */
 const NUMBER = /^[-+]?(\d+\.?\d*|\.\d+)(e[-+]?\d+)?$/i;
@@ -264,7 +264,8 @@ function csvCell(value: unknown): string {
   return /[",\r\n]/.test(text) ? `"${text.replaceAll('"', '""')}"` : text;
 }
 
-const csvLine = (cells: readonly unknown[]) => `${cells.map(csvCell).join(",")}\r\n`;
+/** One CSV line: the cells and the line break (CRLF, RFC 4180). The copies without names use it too (#201). */
+export const csvLine = (cells: readonly unknown[]) => `${cells.map(csvCell).join(",")}\r\n`;
 
 /** The CSV's header and the cells of a row, with a split column as its parts. */
 function csvColumns({ columns, csvParts }: Dataset): { head: string[]; cells: (row: ExportRow) => unknown[] } {

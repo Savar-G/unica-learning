@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { deleteFamily, runRetentionBatch, withFamilyCardOperation, type FamilyDeletionStore, type ImageEntry } from "@/lib/assessment";
+import {
+  createSession, deleteFamily, runRetentionBatch, storedTest, withFamilyCardOperation,
+  type AnonymousTestCopy, type FamilyCopyStore, type FamilyDeletionStore, type ImageEntry,
+} from "@/lib/assessment";
+
+/** A family with no test: nothing to copy, and the database confirms at once. */
+const noTests: FamilyCopyStore = { async copySources() { return []; }, async saveCopy() { return false; }, async confirmCopies() { return true; } };
 
 describe("family card operation", () => {
   it("keeps a durable hold when the external write result is unknown", async () => {
@@ -26,7 +32,7 @@ describe("scheduled family deletion", () => {
     const store = { async cursor() { return null; }, async advance() {}, async run(_id: string, limit: number) {
       attempts.push(limit);
       if (limit < 80_000) throw Error("fresh 64-customer pass does not fit");
-      return { state: "deleted" as const, images: 0 };
+      return { state: "deleted" as const, images: 0, copies: 0 };
     } };
     expect(await runRetentionBatch(["family"], store, () => 840_000)).toMatchObject({ failed: 1 });
     expect(await runRetentionBatch(["family"], store, () => 840_000, 600_000)).toMatchObject({ deleted: 1 });
@@ -38,7 +44,7 @@ describe("scheduled family deletion", () => {
     expect(await runRetentionBatch(["family"], {
       async cursor() { return null; },
       async advance(id) { cursors.push(id); },
-      async run(_id, limit) { attempts.push(limit); return { state: "deleted", images: 0 }; },
+      async run(_id, limit) { attempts.push(limit); return { state: "deleted", images: 0, copies: 0 }; },
     }, () => times.shift() ?? 0)).toMatchObject({ deleted: 1, failed: 0 });
     expect(cursors).toEqual(["family"]);
     expect(attempts).toEqual([24_998]);
@@ -56,7 +62,7 @@ describe("scheduled family deletion", () => {
         attempts.push(id);
         if (id === "a-slow") { remaining = 0; throw new Error("slow failed service"); }
         remaining -= 1;
-        return { state: "deleted" as const, images: 2 };
+        return { state: "deleted" as const, images: 2, copies: 0 };
       },
     };
     expect(await runRetentionBatch(["a-slow", "b-later", "c-later"], store, () => remaining)).toMatchObject({ deleted: 0, failed: 1 });
@@ -74,7 +80,7 @@ describe("scheduled family deletion", () => {
         if (limit <= 12_000) { remaining -= limit; throw Error("payment deadline"); }
         remaining -= 12_000;
         deleted = true;
-        return { state: "deleted", images: 0 };
+        return { state: "deleted", images: 0, copies: 0 };
       },
     }, () => remaining);
     expect(deleted).toBe(true);
@@ -92,7 +98,7 @@ describe("scheduled family deletion", () => {
         attempts.push(id);
         if (id === "a-slow" || limit <= 20_000) { remaining -= limit; throw Error("deadline"); }
         remaining -= 20_000;
-        return { state: "deleted" as const, images: 0 };
+        return { state: "deleted" as const, images: 0, copies: 0 };
       },
     };
     expect(await runRetentionBatch(["a-slow", "b-later"], store, () => remaining)).toMatchObject({ failed: 1, deleted: 0 });
@@ -112,7 +118,22 @@ function system(count = 1007) {
   let pending = true;
   let failStorage = false;
   let failAuth = false;
+  // One test, copied once (#201). The link from the test to its copy goes with the family.
+  const test = { id: "test-1", copied: false, testFamily: false, grade: 3, province: "BC", status: "in_progress", route: null, help: null,
+    startedAt: "2026-01-05T10:00:00Z", completedAt: null, stored: storedTest(createSession({ grade: 3, province: "BC" }, 7)), placement: null,
+    answers: [], shows: [], facts: null, profile: null, learning: null, device: null };
+  const copies: AnonymousTestCopy[] = [];
+  const log: string[] = [];
+  let failCopy = false;
   const store: FamilyDeletionStore = {
+    async copySources() { log.push("copy"); return auth ? [{ ...test, copied: copies.length > 0 }] : []; },
+    async saveCopy(id, copy) {
+      if (failCopy) { failCopy = false; throw new Error("copy unavailable"); }
+      expect(id).toBe(test.id);
+      copies.push(copy);
+      return true;
+    },
+    async confirmCopies() { return !auth || copies.length === 1; },
     async listImages(prefix, offset, limit) {
       const entries: ImageEntry[] = prefix === "family"
         ? ([...images].some((p) => p.startsWith("family/")) ? [{ name: "test", folder: true }] : [])
@@ -121,20 +142,56 @@ function system(count = 1007) {
     },
     async removeImages(paths) {
       if (failStorage) { failStorage = false; throw new Error("storage unavailable"); }
+      log.push("images");
       paths.forEach((p) => images.delete(p));
     },
     async renew() {},
     async removeAuth() {
       if ([...images].some((p) => p.startsWith("family/"))) throw new Error("images remain");
       if (failAuth) { failAuth = false; throw new Error("auth unavailable"); }
+      log.push("auth");
       auth = false;
     },
     async complete() { pending = false; },
   };
-  return { store, images, state: () => ({ auth, pending }), failStorage: () => { failStorage = true; }, failAuth: () => { failAuth = true; } };
+  return {
+    store, images, copies, log, state: () => ({ auth, pending }),
+    failStorage: () => { failStorage = true; }, failAuth: () => { failAuth = true; }, failCopy: () => { failCopy = true; },
+  };
 }
 
 describe("delete a frozen family", () => {
+  it("writes the copy without names before it removes any image or Auth (#201)", async () => {
+    const s = system(3);
+    expect(await deleteFamily(s.store, "family")).toEqual({ images: 3, copies: 1 });
+    expect(s.log.filter((step, i) => step !== s.log[i - 1])).toEqual(["copy", "images", "auth"]);
+    expect(s.copies).toHaveLength(1);
+    expect(JSON.stringify(s.copies)).not.toContain("test-1");
+    expect(s.state()).toEqual({ auth: false, pending: false });
+  });
+  it("deletes nothing when the copy fails, and a retry does not copy the test twice", async () => {
+    const s = system(3);
+    s.failCopy();
+    await expect(deleteFamily(s.store, "family")).rejects.toThrow("copy unavailable");
+    expect(s.images.size).toBe(4);
+    expect(s.state()).toEqual({ auth: true, pending: true });
+    expect(await deleteFamily(s.store, "family")).toEqual({ images: 3, copies: 1 });
+    // A retry after the family's rows are gone (Auth removed, final cleanup lost) has nothing left to copy.
+    expect(await deleteFamily(s.store, "family")).toEqual({ images: 0, copies: 0 });
+    expect(s.copies).toHaveLength(1);
+  });
+  it("deletes nothing when the database does not confirm a copy of every test, or cannot be read", async () => {
+    for (const fault of ["unconfirmed", "unreadable", "missing"] as const) {
+      const s = system(3);
+      if (fault === "unconfirmed") s.store.confirmCopies = async () => false;
+      if (fault === "unreadable") s.store.copySources = async () => [{ id: "test-1", grade: 3 }];
+      // The migration is not applied: the database function does not exist.
+      if (fault === "missing") s.store.copySources = async () => { throw new Error("Deletion dependency: family_copy_sources (PGRST202)"); };
+      await expect(deleteFamily(s.store, "family")).rejects.toThrow();
+      expect(s.images.size).toBe(4);
+      expect(s.state()).toEqual({ auth: true, pending: true });
+    }
+  });
   it("makes removal progress across slow deadline-limited retries for nested families with short pages", async () => {
     const original = Array.from({ length: 1007 }, (_, i) => `family/${i < 501 ? "child-a/test/nested" : "child-b/test"}/q${String(i).padStart(4, "0")}.png`);
     const images = new Set([...original, "foreign/test/keep.png"]);
@@ -144,6 +201,7 @@ describe("delete a frozen family", () => {
     let complete = false;
     let pageCap = 100;
     const store: FamilyDeletionStore = {
+      ...noTests,
       async renew() { if (elapsed >= 10_000) throw new Error("deadline"); },
       async listImages(prefix, offset, limit) {
         elapsed += 1000;
@@ -182,19 +240,20 @@ describe("delete a frozen family", () => {
     const images = new Set([`${id}/work.png`]);
     let authRemoved = false;
     const store: FamilyDeletionStore = {
+      ...noTests,
       async renew() {},
       async listImages(prefix) { return images.has(`${prefix}/work.png`) ? [{ name: "work.png", folder: false }] : []; },
       async removeImages(paths) { paths.forEach((p) => images.delete(p)); },
       async removeAuth() { if (images.size) throw new Error("Storage remains"); authRemoved = true; },
       async complete() {},
     };
-    expect(await deleteFamily(store, id.toUpperCase())).toEqual({ images: 1 });
+    expect(await deleteFamily(store, id.toUpperCase())).toEqual({ images: 1, copies: 0 });
     expect(images.size).toBe(0);
     expect(authRemoved).toBe(true);
   });
   it("removes all 1007 private images across pages before Auth and leaves another family intact", async () => {
     const s = system();
-    expect(await deleteFamily(s.store, "family")).toEqual({ images: 1007 });
+    expect(await deleteFamily(s.store, "family")).toEqual({ images: 1007, copies: 1 });
     expect([...s.images]).toEqual(["foreign/test/keep.png"]);
     expect(s.state()).toEqual({ auth: false, pending: false });
   });
@@ -203,7 +262,7 @@ describe("delete a frozen family", () => {
     s.failStorage();
     await expect(deleteFamily(s.store, "family")).rejects.toThrow("storage unavailable");
     expect(s.state()).toEqual({ auth: true, pending: true });
-    expect(await deleteFamily(s.store, "family")).toEqual({ images: 203 });
+    expect(await deleteFamily(s.store, "family")).toEqual({ images: 203, copies: 0 });
     expect(s.state()).toEqual({ auth: false, pending: false });
   });
   it("retries Auth after Storage is empty without losing the request", async () => {
@@ -211,7 +270,7 @@ describe("delete a frozen family", () => {
     s.failAuth();
     await expect(deleteFamily(s.store, "family")).rejects.toThrow("auth unavailable");
     expect(s.state()).toEqual({ auth: true, pending: true });
-    expect(await deleteFamily(s.store, "family")).toEqual({ images: 0 });
+    expect(await deleteFamily(s.store, "family")).toEqual({ images: 0, copies: 0 });
     expect(s.state()).toEqual({ auth: false, pending: false });
   });
   it("stops before Auth if the family is no longer fenced or the lease is lost", async () => {

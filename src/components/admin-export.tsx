@@ -4,6 +4,7 @@ import Link from "next/link";
 import { Fragment } from "react";
 import { Table } from "@/components/admin";
 import { ADMIN_EXPORT_PATH, EXPORT_DATASETS, EXPORT_FORMATS, exportHref } from "@/lib/admin-export";
+import { anonymousCopiesHref } from "@/lib/anonymous-copy-export";
 import { ADMIN_PATH } from "@/lib/admin-view";
 
 export function ExportView({ withTests, demo }: { withTests: boolean; demo: boolean }) {
@@ -31,12 +32,25 @@ export function ExportView({ withTests, demo }: { withTests: boolean; demo: bool
             </td>
           </tr>
         ))}
+        {/* #201, D-119: the copies kept when a family is deleted. Their own table and route: no ids, so they join to nothing. */}
+        <tr>
+          <td className="adm-nowrap">Copies without names<span className="adm-sub adm-mono">anonymous_tests</span></td>
+          <td>A question shown in a test copied before its family was deleted (CSV), or a whole copy (JSON). No names or ids: it joins to no other file.</td>
+          <td className="adm-nowrap">
+            {EXPORT_FORMATS.map((format, i) => (
+              <Fragment key={format}>
+                {i > 0 && " · "}
+                <a href={anonymousCopiesHref({ format, withTests })} download>{format.toUpperCase()}</a>
+              </Fragment>
+            ))}
+          </td>
+        </tr>
       </Table>
       <ul className="adm-list adm-note">
         <li>No names, emails or postal codes. Each row has the parent and child ids instead: open a family from <Link href={`${ADMIN_PATH}/parents`}>Parents</Link>.</li>
         <li>Drawings and whiteboard strokes are their paths in the private storage bucket, not the files.</li>
         <li>CSV: UTF-8 with a byte order mark, so Excel reads accents. Nested values are JSON text in one cell, and an empty cell is no value. A text cell that a spreadsheet would run as a formula starts with an apostrophe. A spreadsheet cell holds up to 32,767 characters, so the learner profile has one column per part. A spreadsheet may show a number its own way (137.00 as 137); the JSON has the stored text.</li>
-        <li>Each file is read and sent a page at a time. A large dataset takes a while; a download that stops early ends with an error, never as a shorter file.</li>
+        <li>Each file is read a page at a time. Every file but the copies without names is also sent a page at a time, so a large dataset takes a while. A download that stops early ends with an error, never as a shorter file.</li>
       </ul>
     </>
   );
