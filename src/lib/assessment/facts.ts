@@ -26,6 +26,11 @@ interface FactFamily {
   bcGrade: Grade;
   /** BC learning standard, for example "4.8". */
   standard: string;
+  /**
+   * #242: every BC standard whose facts this family asks: its own, and the same facts in the grades that repeat them
+   * (BC lists "addition and subtraction facts to 20" in grades 2-5, and the facts to 100 in grades 4-7).
+   */
+  tests: readonly string[];
   draw(rng: Rng): Pick<Fact, "a" | "op" | "b" | "answer">;
 }
 
@@ -35,20 +40,25 @@ const mul = (a: number, b: number) => ({ a, op: "×" as const, b, answer: a * b 
 /** Either order: 7 × 5 and 5 × 7 are the same fact. */
 const either = (rng: Rng, a: number, b: number) => (rng.int(0, 1) ? mul(a, b) : mul(b, a));
 
+/** Addition and subtraction facts to 20, in each grade BC lists them. */
+const ADD_SUB_20 = ["2.3", "3.4", "4.7", "5.8"];
+/** Multiplication and division facts to 100, in each grade BC lists them: 10 × 10 holds the 2s, 5s and 10s of grade 4. */
+const FACTS_100 = ["4.8", "5.9", "6.2", "7.1"];
+
 const FAMILIES: Record<FactFamilyId, FactFamily> = {
   // 1.3 addition and subtraction to 20 (understanding); facts to 10 come first (K-1, "ways to make 10").
-  add10: { bcGrade: 1, standard: "1.3", draw: (rng) => { const a = rng.int(1, 9); return add(a, rng.int(1, 10 - a)); } },
-  sub10: { bcGrade: 1, standard: "1.3", draw: (rng) => { const a = rng.int(2, 10); return sub(a, rng.int(1, a)); } },
+  add10: { bcGrade: 1, standard: "1.3", tests: ["1.3"], draw: (rng) => { const a = rng.int(1, 9); return add(a, rng.int(1, 10 - a)); } },
+  sub10: { bcGrade: 1, standard: "1.3", tests: ["1.3"], draw: (rng) => { const a = rng.int(2, 10); return sub(a, rng.int(1, a)); } },
   // 2.3 addition and subtraction facts to 20.
-  add20: { bcGrade: 2, standard: "2.3", draw: (rng) => add(rng.int(2, 10), rng.int(2, 10)) },
-  sub20: { bcGrade: 2, standard: "2.3", draw: (rng) => { const b = rng.int(2, 10); return sub(b + rng.int(2, 10), b); } },
+  add20: { bcGrade: 2, standard: "2.3", tests: ADD_SUB_20, draw: (rng) => add(rng.int(2, 10), rng.int(2, 10)) },
+  sub20: { bcGrade: 2, standard: "2.3", tests: ADD_SUB_20, draw: (rng) => { const b = rng.int(2, 10); return sub(b + rng.int(2, 10), b); } },
   // 4.8: recall 2s, 5s and 10s by the end of grade 4. 3.5 says memorizing multiplication facts is not intended in grade 3.
-  mul2510: { bcGrade: 4, standard: "4.8", draw: (rng) => either(rng, rng.pick([2, 5, 10]), rng.int(2, 10)) },
+  mul2510: { bcGrade: 4, standard: "4.8", tests: ["4.8"], draw: (rng) => either(rng, rng.pick([2, 5, 10]), rng.int(2, 10)) },
   // 5.9: recall many facts (2s, 3s, 4s, 5s, 10s) by the end of grade 5.
-  mul234510: { bcGrade: 5, standard: "5.9", draw: (rng) => either(rng, rng.pick([2, 3, 4, 5, 10]), rng.int(2, 10)) },
+  mul234510: { bcGrade: 5, standard: "5.9", tests: ["4.8", "5.9"], draw: (rng) => either(rng, rng.pick([2, 3, 4, 5, 10]), rng.int(2, 10)) },
   // 6.2 and 7.1: multiplication and division facts to 100 (10 × 10, never 12 × 12).
-  mul100: { bcGrade: 6, standard: "6.2", draw: (rng) => mul(rng.int(2, 10), rng.int(2, 10)) },
-  div100: { bcGrade: 6, standard: "6.2", draw: (rng) => { const b = rng.int(2, 10); const q = rng.int(2, 10); return { a: b * q, op: "÷" as const, b, answer: q }; } },
+  mul100: { bcGrade: 6, standard: "6.2", tests: FACTS_100, draw: (rng) => mul(rng.int(2, 10), rng.int(2, 10)) },
+  div100: { bcGrade: 6, standard: "6.2", tests: FACTS_100, draw: (rng) => { const b = rng.int(2, 10); const q = rng.int(2, 10); return { a: b * q, op: "÷" as const, b, answer: q }; } },
 };
 
 /** The fact families for each school grade: what BC expects at that grade, never above it. */
@@ -61,6 +71,9 @@ export const FACTS_BY_GRADE: Record<Grade, readonly FactFamilyId[]> = {
   6: ["mul100", "div100"],
   7: ["mul100", "div100"],
 };
+
+/** #242: the BC standards a facts section with these families tested, so the profile does not call them untested. */
+export const factsStandards = (families: readonly FactFamilyId[]): string[] => [...new Set(families.flatMap((f) => FAMILIES[f].tests))];
 
 /** How long the section lasts (spec: 60-90 seconds; DESIGN.md: 60). */
 export const FACTS_SECONDS = 60;

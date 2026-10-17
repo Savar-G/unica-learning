@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { levelCertainty, strandCertainty } from "@/lib/assessment";
+import { levelCertainty, storedLevelCertainty, strandCertainty } from "@/lib/assessment";
 import { allRight, takeTest } from "./scripted-child";
 
 // #189 (spec #181): a result is "clear" when one more right answer or one more wrong answer would not change it.
@@ -34,6 +34,27 @@ describe("working level certainty: one answer more right or wrong at any level w
   it("is an early sign when one more right answer lifts the working level", () => {
     // Grade 5: 6 of 9 (67%) does not clear; 7 of 10 (70%) does.
     expect(levelCertainty([{ level: 4, correct: 10, total: 10 }, { level: 5, correct: 6, total: 9 }])).toBe("early-sign");
+  });
+});
+
+describe("an estimated working level is never clear (#242)", () => {
+  it("is an early sign when no level reaches the 70% bar, however far below it each level is", () => {
+    // Grade 4: 2 of 18; grade 5: 1 of 18. The working level is one under the lowest level asked: no question measured it.
+    expect(levelCertainty([{ level: 4, correct: 2, total: 18 }, { level: 5, correct: 1, total: 18 }])).toBe("early-sign");
+  });
+
+  it("a stored estimate that was labelled clear reads as an early sign; other stored labels read as they are", () => {
+    expect(storedLevelCertainty({ confidence: "low", certainty: "clear" })).toBe("early-sign");
+    expect(storedLevelCertainty({ confidence: "normal", certainty: "clear" })).toBe("clear");
+    expect(storedLevelCertainty({ confidence: "normal", certainty: "early-sign" })).toBe("early-sign");
+    // Stored before #189: no label, and none is made up.
+    expect(storedLevelCertainty({ confidence: "low" })).toBeUndefined();
+  });
+
+  it("a child with every answer wrong gets an estimate, labelled an early sign", () => {
+    const { placement } = takeTest({ grade: 5, province: "BC" }, 1, () => false);
+    expect(placement.confidence).toBe("low");
+    expect(placement.levelCertainty).toBe("early-sign");
   });
 });
 

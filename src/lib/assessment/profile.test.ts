@@ -15,6 +15,7 @@ import {
   submitFact,
   type ChildProfile,
   type FactsSession,
+  type Grade,
   type HelpAnswer,
   type ProfileAnswer,
   type Question,
@@ -231,6 +232,34 @@ describe("what we do not know", () => {
     expect([...tested, ...untested].sort()).toEqual([...grade4].sort());
     expect(profile.unknowns.earlySigns).toEqual({ level: false, strands: [] });
     expect(profile.unknowns.checkNext).toEqual([]);
+  });
+
+  it("does not list a standard the quick facts round tested (#242): the round asks the facts standards of the grade", () => {
+    // Grade 3 asks addition and subtraction facts to 20 (3.4); grade 5 also asks multiplication facts (5.8 and 5.9).
+    const factsOf = (grade: Grade) => {
+      let facts = createFacts({ grade, province: "BC" }, 5);
+      facts.facts.slice(0, 10).forEach((f, i) => { facts = submitFact(facts, { factId: f.id, response: String(f.answer), atMs: (i + 1) * 2000, browserMs: 2000 }); });
+      return facts;
+    };
+    const untestedOf = (t: ReturnType<typeof taken>) => learnerProfile({ placement: t.placement, answers: t.answers, help: "no", learning: null })!.unknowns.untested.map((s) => s.code);
+    for (const [grade, factCodes] of [[3, ["3.4"]], [5, ["5.8", "5.9"]]] as const) {
+      const questionsOnly = untestedOf(taken({ grade, province: "BC" }, 101, knows(grade)));
+      const withFacts = untestedOf(taken({ grade, province: "BC" }, 101, knows(grade), undefined, { facts: factsOf(grade) }));
+      // The questions alone leave a facts standard untested; the facts round tests it, and nothing else changes.
+      expect(questionsOnly.filter((c) => (factCodes as readonly string[]).includes(c)).length, `grade ${grade}`).toBeGreaterThan(0);
+      expect(withFacts, `grade ${grade}`).toEqual(questionsOnly.filter((c) => !(factCodes as readonly string[]).includes(c)));
+    }
+  });
+
+  it("calls an estimated working level an early sign, also from a placement stored when it said clear (#242)", () => {
+    // Every answer wrong: no level reaches 70%, so the working level is one under the lowest level asked, an estimate.
+    const { placement, answers } = taken({ grade: 5, province: "BC" }, 101, () => "no idea");
+    expect(placement.confidence).toBe("low");
+    const profile = learnerProfile({ placement, answers, help: "no", learning: null })!;
+    expect(profile.level.certainty).toBe("early-sign");
+    expect(profile.unknowns.earlySigns.level).toBe(true);
+    const stored = learnerProfile({ placement: { ...placement, levelCertainty: "clear" }, answers, help: "no", learning: null })!;
+    expect(stored.level.certainty).toBe("early-sign");
   });
 
   it("names what to check next: struggles that one more answer could change, then untested standards in uncertain areas", () => {

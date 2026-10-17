@@ -1,7 +1,7 @@
 // #189 (spec #181, D-108): the admin's view of how sure a test's result is: the working level and each area with its
 // certainty label, the pace, the rushed wrong answers left out of the score, and whether the parent's report shows the
 // reliability note. A server component over the stored placement; placements stored before #189 have no labels.
-import { REPORTED_STRAND_NAMES, TOO_FAST_MS, UNRELIABLE_FAST_PERCENT, type Certainty, type Placement } from "@/lib/assessment";
+import { REPORTED_STRAND_NAMES, TOO_FAST_MS, UNRELIABLE_FAST_PERCENT, storedLevelCertainty, type Certainty, type Placement } from "@/lib/assessment";
 import { STATUS_LABEL } from "@/lib/report-view";
 import { levelText } from "@/lib/admin-view";
 import { Chip, Table } from "@/components/admin";
@@ -13,7 +13,7 @@ export function ResultCertainty({ placement }: { placement: Placement | null }) 
   if (!placement) return <p className="adm-note">The result is recorded when the test finishes.</p>;
   const pace = placement.pace;
   return <>
-    <p>Working level {levelText(placement.workingLevel)}: {certaintyWord(placement.levelCertainty)}.</p>
+    <p>Working level {levelText(placement.workingLevel)}: {certaintyWord(storedLevelCertainty({ confidence: placement.confidence, certainty: placement.levelCertainty }))}.</p>
     <Table label="Areas" head={["Area", "Status", "Right", "How sure"]} empty="No areas scored.">
       {placement.strands.map((s) => <tr key={s.strand}><td>{REPORTED_STRAND_NAMES[s.strand]}</td><td>{STATUS_LABEL[s.status]}</td><td>{s.correct} of {s.total}</td><td>{certaintyWord(s.certainty)}</td></tr>)}
     </Table>

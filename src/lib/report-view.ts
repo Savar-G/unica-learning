@@ -11,6 +11,8 @@ import {
   TOO_FAST_MS,
   STRAND_SECURE_PERCENT,
   WORKING_LEVEL_PERCENT,
+  parentTextProblem,
+  storedLevelCertainty,
   type Certainty,
   type FindingTopic,
   type Level,
@@ -73,9 +75,11 @@ export function verdictSentence(v: ReportView): string {
 
 /**
  * #68: the paragraph the AI wrote from the report model, with the child's name in place of REPORT_TEXT_NAME. Null when
- * the report has none (the AI is off or failed, or its text broke a rule): the plain sentences then stand alone.
+ * the report has none (the AI is off or failed, or its text broke a rule): the plain sentences then stand alone. A
+ * paragraph stored before #242 that breaks a parent rule (fact speed for grades 1-4) is not shown either.
  */
-export const summaryText = (v: ReportView): string | null => (v.model.summary ? v.model.summary.replaceAll(REPORT_TEXT_NAME, v.childName) : null);
+export const summaryText = (v: ReportView): string | null =>
+  v.model.summary && !parentTextProblem(v.model.summary, v.model.level.grade, "summary") ? v.model.summary.replaceAll(REPORT_TEXT_NAME, v.childName) : null;
 
 const BAND_WORDS = { lower: "lower quarter", middle: "middle half", upper: "upper quarter" } as const;
 const ordinal = (n: number) => `${n}${n % 100 >= 11 && n % 100 <= 13 ? "th" : n % 10 === 1 ? "st" : n % 10 === 2 ? "nd" : n % 10 === 3 ? "rd" : "th"}`;
@@ -151,6 +155,12 @@ export function certaintyText(v: ReportView, certainty: Certainty | undefined): 
   if (certainty === "clear") return "Clear";
   return v.model.callToAction === "card" ? "Early sign: workbook 1 checks this" : "Early sign";
 }
+
+/**
+ * "How sure:" under the verdict (certaintyText of the working level). An estimate is never Clear, also in a report
+ * stored before #242. Null for a report stored before the labels.
+ */
+export const levelCertaintyText = (v: ReportView): string | null => certaintyText(v, storedLevelCertainty(v.model.level));
 
 /** #189: wrong answers from a run of very fast answers that left the score; null when there were none. */
 export function leftOutLine(v: ReportView): string | null {

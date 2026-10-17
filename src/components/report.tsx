@@ -6,7 +6,7 @@
 // A server component: only the next step needs JavaScript in the browser (report-next.tsx).
 // The words come from src/lib/report-view.ts, which the report email uses too.
 import type { CSSProperties, ReactNode } from "react";
-import { STRAND_DEVELOPING_PERCENT, STRAND_SECURE_PERCENT, type Certainty as CertaintyValue } from "@/lib/assessment";
+import { STRAND_DEVELOPING_PERCENT, STRAND_SECURE_PERCENT, storedLevelCertainty, type Certainty as CertaintyValue } from "@/lib/assessment";
 import { CURRICULA } from "@/lib/signup";
 import { BRAND } from "@/lib/site";
 import type { ReportSrc } from "@/lib/next-step";
@@ -166,7 +166,7 @@ function ReportOverall({ view }: { view: ReportView }) {
       <p className="eyebrow">Overall</p>
       <h2 id="rpt-level">{levelSentence(view)}</h2>
       <p className="rpt-verdict">{verdictSentence(view)}</p>
-      <Certainty view={view} certainty={view.model.level.certainty} lead="How sure:" />
+      <Certainty view={view} certainty={storedLevelCertainty(view.model.level)} lead="How sure:" />
       <LevelScale view={view} />
       {levelNotes(view).map((note) => <p key={note} className="rpt-note">{note}</p>)}
       {summary && <p className="rpt-summary">{summary}</p>}

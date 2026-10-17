@@ -28,6 +28,7 @@ export {
   REVIEW_SURE_SCORE,
   checkAiText,
   checkReportText,
+  parentTextProblem,
   reportFacts,
   workReview,
   type ReportTextCheck,

@@ -3,6 +3,7 @@
 // function over the stored profile, with or without its AI parts (#197), so the account report, the report email, the
 // admin report view and the sample report show the same thing. It keeps only what a parent sees: never the test
 // behaviour, the full error list, how to help or the model ids (admin only, spec #181).
+import { parentTextProblem } from "./ai-checks";
 import { MISCONCEPTIONS, type MisconceptionId } from "./misconceptions";
 import type { LearnerProfile, PlanPart, ProfileAi, ProfileStruggle, Tally } from "./profile";
 import { BC_SKILL_MAP } from "./skill-map";
@@ -67,10 +68,12 @@ const STANDARDS = new Map(BC_SKILL_MAP.standards.map((s) => [s.code, s]));
 const SURE: Record<Certainty, number> = { clear: 0, "early-sign": 1 };
 const known = (id: string | null) => (id ? MISCONCEPTIONS[id as MisconceptionId] : undefined);
 
-function struggleFinding(s: ProfileStruggle, ai: ProfileAi | undefined): StruggleFinding {
+function struggleFinding(s: ProfileStruggle, profile: LearnerProfile): StruggleFinding {
   const shown = s.wrong.find((w) => known(w.misconception)) ?? s.wrong[0];
   const mistake = known(shown.misconception);
-  const written = ai?.likelyCauses?.value[s.code];
+  // A cause stored before the parent's rules (#242) that breaks one is not shown: the known mistake stands in.
+  const stored = profile.ai?.likelyCauses?.value[s.code];
+  const written = stored && !parentTextProblem(stored, profile.test.grade, "cause") ? stored : undefined;
   return {
     code: s.code,
     text: s.text,
@@ -112,7 +115,7 @@ export function reportFindings(profile: LearnerProfile): ReportFindings {
     struggles: profile.struggles
       .filter((s) => s.wrong.length > 0)
       .sort((a, b) => SURE[a.certainty] - SURE[b.certainty])
-      .map((s) => struggleFinding(s, profile.ai)),
+      .map((s) => struggleFinding(s, profile)),
     preview: previewOf(profile.ai),
   };
 }

@@ -16,6 +16,7 @@ import {
   reportReturnPath,
   summaryText,
   certaintyText,
+  levelCertaintyText,
   leftOutLine,
   reliabilityNote,
   thresholdsLine,
@@ -115,6 +116,16 @@ describe("the AI paragraph (#68)", () => {
   });
   it("is absent when the report has no AI text: the plain sentences stand alone", () => {
     expect(summaryText(view(knowsUpTo(4)))).toBeNull();
+  });
+  it("for grades 1-4, is absent when it states the facts speed, also in a report stored before the check (#242, D-120)", () => {
+    const speedy = "{name} is secure in every area. Addition and subtraction facts were accurate and quick, with 27 right in 60 seconds.";
+    for (const grade of [1, 2, 3, 4] as const) {
+      const v = view(knowsUpTo(grade), { grade });
+      expect(summaryText({ ...v, model: { ...v.model, summary: speedy } }), `grade ${grade}`).toBeNull();
+      expect(summaryText({ ...v, model: { ...v.model, summary: "{name} got 27 facts right." } }), `grade ${grade}`).toBe("Maya got 27 facts right.");
+    }
+    const v = view(knowsUpTo(5), { grade: 5 });
+    expect(summaryText({ ...v, model: { ...v.model, summary: speedy } })).toContain("accurate and quick");
   });
 });
 
@@ -349,6 +360,17 @@ describe("certainty labels", () => {
     expect(early).toBeTruthy();
     expect(clear).not.toBe(early);
     expect(certaintyText(v, undefined)).toBeNull();
+  });
+  it("never says Clear for a working level that is an estimate, also in a report stored when it did (#242)", () => {
+    // Grade 4, knows up to grade 2: no level reaches 70%, so grade 2 is an estimate.
+    const estimate = view(knowsUpTo(2));
+    expect(estimate.model.level.confidence).toBe("low");
+    const stored: ReportView = { ...estimate, model: { ...estimate.model, level: { ...estimate.model.level, certainty: "clear" } } };
+    for (const v of [estimate, stored]) expect(levelCertaintyText(v)).toBe(certaintyText(v, "early-sign"));
+    // A level the test measured keeps its own label; a report stored before the labels shows none.
+    const found = view(knowsUpTo(4));
+    expect(levelCertaintyText(found)).toBe(certaintyText(found, found.model.level.certainty));
+    expect(levelCertaintyText({ ...stored, model: { ...stored.model, level: { ...stored.model.level, certainty: undefined } } })).toBeNull();
   });
   it("promises no workbook to a family on the waitlist, who has none yet", () => {
     const waitlist = certaintyText(view(allRight, { province: "ON" }), "early-sign");

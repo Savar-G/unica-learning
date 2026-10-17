@@ -7,7 +7,7 @@ export type { Comparison } from "./comparison";
 import { factsReport, type ReportFacts } from "./facts";
 import { helpLikely } from "./flags";
 import { checkReportText } from "./ai-checks";
-import type { Certainty } from "./certainty";
+import { storedLevelCertainty, type Certainty } from "./certainty";
 import type { ExtraRoundOffer, Grade, Level, Placement, Province, StrandResult } from "./types";
 
 /** One AI review of a child's shown work (#68). Built by workReview, which decides the confidence. */
@@ -142,7 +142,7 @@ export function reportModel(placement: Placement, context: ReportContext): Repor
       grade,
       atCeiling: placement.atCeiling,
       confidence: placement.confidence,
-      ...(placement.levelCertainty ? { certainty: placement.levelCertainty } : {}),
+      ...(placement.levelCertainty ? { certainty: storedLevelCertainty({ confidence: placement.confidence, certainty: placement.levelCertainty }) } : {}),
     },
     strands: placement.strands.map((s) => ({ ...s, name: REPORTED_STRAND_NAMES[s.strand] })),
     comparison: context.comparison ? comparisonFor(context.comparison) : { stage: "scale" },

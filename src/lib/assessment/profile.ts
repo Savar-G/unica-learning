@@ -4,8 +4,8 @@
 // answers with their questions, and the parent's questionnaire answers. No network, database or clock.
 import { BANKS } from "./bank";
 import { REPORTED_STRAND, REPORTED_STRAND_NAMES, bandFor } from "./constants";
-import { levelCertainty, strandCertainty, strandStatus, workingLevelOf, type Certainty } from "./certainty";
-import type { FactsResult } from "./facts";
+import { levelCertainty, storedLevelCertainty, strandCertainty, strandStatus, workingLevelOf, type Certainty } from "./certainty";
+import { factsStandards, type FactsResult } from "./facts";
 import { TOO_FAST_MS, helpLikely, type Flag, type HelpAnswer } from "./flags";
 import { RUSH_RUN, paceOf } from "./rushing";
 import type { Interest, LearningGoal, LearningStyle, MathFeeling, WeeklyTime } from "@/lib/learning-style";
@@ -383,13 +383,14 @@ export function learnerProfile(input: ProfileInput): LearnerProfile | null {
       return { ...s, wrong, misconceptions: [...new Set(wrong.flatMap((w) => w.misconception ?? []))] };
     });
 
-  const tested = new Set(standards.map((s) => s.code));
+  // A quick facts round that ran tested its facts standards too (#242).
+  const tested = new Set([...standards.map((s) => s.code), ...factsStandards(placement.facts?.families ?? [])]);
   const untested = BC_SKILL_MAP.standards
     .filter((s) => s.grade === placement.grade && !tested.has(s.code))
     .map((s): StandardRef => ({ code: s.code, text: s.text, strand: REPORTED_STRAND[s.strand] }))
     .sort((a, b) => curriculumOrder({ ...a, grade: placement.grade }, { ...b, grade: placement.grade }));
   const uncertain = strands.filter((s) => s.certainty === "early-sign").map((s) => s.strand);
-  const levelSure = placement.levelCertainty ?? levelCertainty(placement.levels);
+  const levelSure = storedLevelCertainty({ confidence: placement.confidence, certainty: placement.levelCertainty }) ?? levelCertainty(placement.levels);
   const ref = ({ code, text, strand }: StandardRef): StandardRef => ({ code, text, strand });
 
   return {
