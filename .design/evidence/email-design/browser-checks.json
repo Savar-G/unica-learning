@@ -1,0 +1,266 @@
+[
+  {
+    "name": "reminder-continue",
+    "width": 375,
+    "height": 836,
+    "console": [
+      {
+        "level": "log",
+        "text": "{\"width\":375,\"overflow\":false,\"signature\":true,\"links\":[{\"label\":\"Continue Asha's test\",\"href\":\"https://unicalearning.com/account/start/sample?reminder=start\"},{\"label\":\"unicalearning.com\",\"href\":\"https://unicalearning.com\"},{\"label\":\"Unsubscribe from reminders\",\"href\":\"https://unicalearning.com/unsubscribe?t=sample-token\"}],\"logoText\":\"Unica Learning\",\"images\":0}"
+      }
+    ]
+  },
+  {
+    "name": "reminder-continue",
+    "width": 1440,
+    "height": 742,
+    "console": [
+      {
+        "level": "log",
+        "text": "{\"width\":1440,\"overflow\":false,\"signature\":true,\"links\":[{\"label\":\"Continue Asha's test\",\"href\":\"https://unicalearning.com/account/start/sample?reminder=start\"},{\"label\":\"unicalearning.com\",\"href\":\"https://unicalearning.com\"},{\"label\":\"Unsubscribe from reminders\",\"href\":\"https://unicalearning.com/unsubscribe?t=sample-token\"}],\"logoText\":\"Unica Learning\",\"images\":0}"
+      }
+    ]
+  },
+  {
+    "name": "reminder-come_back",
+    "width": 375,
+    "height": 797,
+    "console": [
+      {
+        "level": "log",
+        "text": "{\"width\":375,\"overflow\":false,\"signature\":true,\"links\":[{\"label\":\"Start again\",\"href\":\"https://unicalearning.com/account/start/sample?reminder=start\"},{\"label\":\"unicalearning.com\",\"href\":\"https://unicalearning.com\"},{\"label\":\"Unsubscribe from reminders\",\"href\":\"https://unicalearning.com/unsubscribe?t=sample-token\"}],\"logoText\":\"Unica Learning\",\"images\":0}"
+      }
+    ]
+  },
+  {
+    "name": "reminder-come_back",
+    "width": 1440,
+    "height": 728,
+    "console": [
+      {
+        "level": "log",
+        "text": "{\"width\":1440,\"overflow\":false,\"signature\":true,\"links\":[{\"label\":\"Start again\",\"href\":\"https://unicalearning.com/account/start/sample?reminder=start\"},{\"label\":\"unicalearning.com\",\"href\":\"https://unicalearning.com\"},{\"label\":\"Unsubscribe from reminders\",\"href\":\"https://unicalearning.com/unsubscribe?t=sample-token\"}],\"logoText\":\"Unica Learning\",\"images\":0}"
+      }
+    ]
+  },
+  {
+    "name": "reminder-start",
+    "width": 375,
+    "height": 822,
+    "console": [
+      {
+        "level": "log",
+        "text": "{\"width\":375,\"overflow\":false,\"signature\":true,\"links\":[{\"label\":\"Start Asha's test\",\"href\":\"https://unicalearning.com/account/start/sample?reminder=start\"},{\"label\":\"unicalearning.com\",\"href\":\"https://unicalearning.com\"},{\"label\":\"Unsubscribe from reminders\",\"href\":\"https://unicalearning.com/unsubscribe?t=sample-token\"}],\"logoText\":\"Unica Learning\",\"images\":0}"
+      }
+    ]
+  },
+  {
+    "name": "reminder-start",
+    "width": 1440,
+    "height": 702,
+    "console": [
+      {
+        "level": "log",
+        "text": "{\"width\":1440,\"overflow\":false,\"signature\":true,\"links\":[{\"label\":\"Start Asha's test\",\"href\":\"https://unicalearning.com/account/start/sample?reminder=start\"},{\"label\":\"unicalearning.com\",\"href\":\"https://unicalearning.com\"},{\"label\":\"Unsubscribe from reminders\",\"href\":\"https://unicalearning.com/unsubscribe?t=sample-token\"}],\"logoText\":\"Unica Learning\",\"images\":0}"
+      }
+    ]
+  },
+  {
+    "name": "reminder-start_followup",
+    "width": 375,
+    "height": 888,
+    "console": [
+      {
+        "level": "log",
+        "text": "{\"width\":375,\"overflow\":false,\"signature\":true,\"links\":[{\"label\":\"Start Asha's test\",\"href\":\"https://unicalearning.com/account/start/sample?reminder=start\"},{\"label\":\"unicalearning.com\",\"href\":\"https://unicalearning.com\"},{\"label\":\"Unsubscribe from reminders\",\"href\":\"https://unicalearning.com/unsubscribe?t=sample-token\"}],\"logoText\":\"Unica Learning\",\"images\":0}"
+      }
+    ]
+  },
+  {
+    "name": "reminder-start_followup",
+    "width": 1440,
+    "height": 768,
+    "console": [
+      {
+        "level": "log",
+        "text": "{\"width\":1440,\"overflow\":false,\"signature\":true,\"links\":[{\"label\":\"Start Asha's test\",\"href\":\"https://unicalearning.com/account/start/sample?reminder=start\"},{\"label\":\"unicalearning.com\",\"href\":\"https://unicalearning.com\"},{\"label\":\"Unsubscribe from reminders\",\"href\":\"https://unicalearning.com/unsubscribe?t=sample-token\"}],\"logoText\":\"Unica Learning\",\"images\":0}"
+      }
+    ]
+  },
+  {
+    "name": "sign-in-link",
+    "width": 375,
+    "height": 725,
+    "console": [
+      {
+        "level": "log",
+        "text": "{\"width\":375,\"overflow\":false,\"signature\":true,\"links\":[{\"label\":\"Sign in and start\",\"href\":\"https://unicalearning.com/sign-in/link?t=sample-token\"},{\"label\":\"unicalearning.com\",\"href\":\"https://unicalearning.com\"}],\"logoText\":\"Unica Learning\",\"images\":0}"
+      }
+    ]
+  },
+  {
+    "name": "sign-in-link",
+    "width": 1440,
+    "height": 678,
+    "console": [
+      {
+        "level": "log",
+        "text": "{\"width\":1440,\"overflow\":false,\"signature\":true,\"links\":[{\"label\":\"Sign in and start\",\"href\":\"https://unicalearning.com/sign-in/link?t=sample-token\"},{\"label\":\"unicalearning.com\",\"href\":\"https://unicalearning.com\"}],\"logoText\":\"Unica Learning\",\"images\":0}"
+      }
+    ]
+  },
+  {
+    "name": "report-BC-offer",
+    "width": 375,
+    "height": 2373,
+    "console": [
+      {
+        "level": "log",
+        "text": "{\"width\":375,\"overflow\":false,\"signature\":true,\"links\":[{\"label\":\"Source: BC Ministry of Education and Child Care, Foundation Skills Assessment open data, 2025/26\",\"href\":\"https://catalogue.data.gov.bc.ca/dataset/5554165d-e365-422f-bf85-4f6e4c9167dc\"},{\"label\":\"Choose a plan for Asha\",\"href\":\"https://unicalearning.com/account/report/sample?src=email&step=plan#rpt-next\"},{\"label\":\"See Asha's full report\",\"href\":\"https://unicalearning.com/account/report/sample?src=email\"},{\"label\":\"unicalearning.c…"
+      }
+    ]
+  },
+  {
+    "name": "report-BC-offer",
+    "width": 1440,
+    "height": 1994,
+    "console": [
+      {
+        "level": "log",
+        "text": "{\"width\":1440,\"overflow\":false,\"signature\":true,\"links\":[{\"label\":\"Source: BC Ministry of Education and Child Care, Foundation Skills Assessment open data, 2025/26\",\"href\":\"https://catalogue.data.gov.bc.ca/dataset/5554165d-e365-422f-bf85-4f6e4c9167dc\"},{\"label\":\"Choose a plan for Asha\",\"href\":\"https://unicalearning.com/account/report/sample?src=email&step=plan#rpt-next\"},{\"label\":\"See Asha's full report\",\"href\":\"https://unicalearning.com/account/report/sample?src=email\"},{\"label\":\"unicalearning.…"
+      }
+    ]
+  },
+  {
+    "name": "report-BC-quiet",
+    "width": 375,
+    "height": 1897,
+    "console": [
+      {
+        "level": "log",
+        "text": "{\"width\":375,\"overflow\":false,\"signature\":true,\"links\":[{\"label\":\"Source: BC Ministry of Education and Child Care, Foundation Skills Assessment open data, 2025/26\",\"href\":\"https://catalogue.data.gov.bc.ca/dataset/5554165d-e365-422f-bf85-4f6e4c9167dc\"},{\"label\":\"See Asha's full report\",\"href\":\"https://unicalearning.com/account/report/sample?src=email\"},{\"label\":\"unicalearning.com\",\"href\":\"https://unicalearning.com\"}],\"logoText\":\"Unica Learning\",\"images\":0}"
+      }
+    ]
+  },
+  {
+    "name": "report-BC-quiet",
+    "width": 1440,
+    "height": 1634,
+    "console": [
+      {
+        "level": "log",
+        "text": "{\"width\":1440,\"overflow\":false,\"signature\":true,\"links\":[{\"label\":\"Source: BC Ministry of Education and Child Care, Foundation Skills Assessment open data, 2025/26\",\"href\":\"https://catalogue.data.gov.bc.ca/dataset/5554165d-e365-422f-bf85-4f6e4c9167dc\"},{\"label\":\"See Asha's full report\",\"href\":\"https://unicalearning.com/account/report/sample?src=email\"},{\"label\":\"unicalearning.com\",\"href\":\"https://unicalearning.com\"}],\"logoText\":\"Unica Learning\",\"images\":0}"
+      }
+    ]
+  },
+  {
+    "name": "report-ON-offer",
+    "width": 375,
+    "height": 2043,
+    "console": [
+      {
+        "level": "log",
+        "text": "{\"width\":375,\"overflow\":false,\"signature\":true,\"links\":[{\"label\":\"Join the waitlist\",\"href\":\"https://unicalearning.com/account/report/sample?src=email&step=waitlist#rpt-next\"},{\"label\":\"See Asha's full report\",\"href\":\"https://unicalearning.com/account/report/sample?src=email\"},{\"label\":\"unicalearning.com\",\"href\":\"https://unicalearning.com\"},{\"label\":\"Unsubscribe\",\"href\":\"https://unicalearning.com/unsubscribe?t=sample-token\"}],\"logoText\":\"Unica Learning\",\"images\":0}"
+      }
+    ]
+  },
+  {
+    "name": "report-ON-offer",
+    "width": 1440,
+    "height": 1808,
+    "console": [
+      {
+        "level": "log",
+        "text": "{\"width\":1440,\"overflow\":false,\"signature\":true,\"links\":[{\"label\":\"Join the waitlist\",\"href\":\"https://unicalearning.com/account/report/sample?src=email&step=waitlist#rpt-next\"},{\"label\":\"See Asha's full report\",\"href\":\"https://unicalearning.com/account/report/sample?src=email\"},{\"label\":\"unicalearning.com\",\"href\":\"https://unicalearning.com\"},{\"label\":\"Unsubscribe\",\"href\":\"https://unicalearning.com/unsubscribe?t=sample-token\"}],\"logoText\":\"Unica Learning\",\"images\":0}"
+      }
+    ]
+  },
+  {
+    "name": "report-ON-quiet",
+    "width": 375,
+    "height": 1611,
+    "console": [
+      {
+        "level": "log",
+        "text": "{\"width\":375,\"overflow\":false,\"signature\":true,\"links\":[{\"label\":\"See Asha's full report\",\"href\":\"https://unicalearning.com/account/report/sample?src=email\"},{\"label\":\"unicalearning.com\",\"href\":\"https://unicalearning.com\"}],\"logoText\":\"Unica Learning\",\"images\":0}"
+      }
+    ]
+  },
+  {
+    "name": "report-ON-quiet",
+    "width": 1440,
+    "height": 1471,
+    "console": [
+      {
+        "level": "log",
+        "text": "{\"width\":1440,\"overflow\":false,\"signature\":true,\"links\":[{\"label\":\"See Asha's full report\",\"href\":\"https://unicalearning.com/account/report/sample?src=email\"},{\"label\":\"unicalearning.com\",\"href\":\"https://unicalearning.com\"}],\"logoText\":\"Unica Learning\",\"images\":0}"
+      }
+    ]
+  },
+  {
+    "name": "confirmation",
+    "width": 375,
+    "height": 617,
+    "console": [
+      {
+        "level": "log",
+        "text": "{\"width\":375,\"overflow\":false,\"signature\":true,\"links\":[{\"label\":\"Email us\",\"href\":\"mailto:savar.gupta1922@gmail.com\"},{\"label\":\"unicalearning.com\",\"href\":\"https://unicalearning.com\"}],\"logoText\":\"Unica Learning\",\"images\":0}"
+      }
+    ]
+  },
+  {
+    "name": "confirmation",
+    "width": 1440,
+    "height": 547,
+    "console": [
+      {
+        "level": "log",
+        "text": "{\"width\":1440,\"overflow\":false,\"signature\":true,\"links\":[{\"label\":\"Email us\",\"href\":\"mailto:savar.gupta1922@gmail.com\"},{\"label\":\"unicalearning.com\",\"href\":\"https://unicalearning.com\"}],\"logoText\":\"Unica Learning\",\"images\":0}"
+      }
+    ]
+  },
+  {
+    "name": "magic_link",
+    "width": 375,
+    "height": 639,
+    "console": [
+      {
+        "level": "log",
+        "text": "{\"width\":375,\"overflow\":false,\"signature\":true,\"links\":[{\"label\":\"Email us\",\"href\":\"mailto:savar.gupta1922@gmail.com\"},{\"label\":\"unicalearning.com\",\"href\":\"https://unicalearning.com\"}],\"logoText\":\"Unica Learning\",\"images\":0}"
+      }
+    ]
+  },
+  {
+    "name": "magic_link",
+    "width": 1440,
+    "height": 570,
+    "console": [
+      {
+        "level": "log",
+        "text": "{\"width\":1440,\"overflow\":false,\"signature\":true,\"links\":[{\"label\":\"Email us\",\"href\":\"mailto:savar.gupta1922@gmail.com\"},{\"label\":\"unicalearning.com\",\"href\":\"https://unicalearning.com\"}],\"logoText\":\"Unica Learning\",\"images\":0}"
+      }
+    ]
+  },
+  {
+    "name": "recovery",
+    "width": 375,
+    "height": 626,
+    "console": [
+      {
+        "level": "log",
+        "text": "{\"width\":375,\"overflow\":false,\"signature\":true,\"links\":[{\"label\":\"Reset password\",\"href\":\"https://unicalearning.com/auth/confirm?next=/account/password&token_hash=sample-hash&type=recovery\"},{\"label\":\"Email us\",\"href\":\"mailto:savar.gupta1922@gmail.com\"},{\"label\":\"unicalearning.com\",\"href\":\"https://unicalearning.com\"}],\"logoText\":\"Unica Learning\",\"images\":0}"
+      }
+    ]
+  },
+  {
+    "name": "recovery",
+    "width": 1440,
+    "height": 556,
+    "console": [
+      {
+        "level": "log",
+        "text": "{\"width\":1440,\"overflow\":false,\"signature\":true,\"links\":[{\"label\":\"Reset password\",\"href\":\"https://unicalearning.com/auth/confirm?next=/account/password&token_hash=sample-hash&type=recovery\"},{\"label\":\"Email us\",\"href\":\"mailto:savar.gupta1922@gmail.com\"},{\"label\":\"unicalearning.com\",\"href\":\"https://unicalearning.com\"}],\"logoText\":\"Unica Learning\",\"images\":0}"
+      }
+    ]
+  }
+]

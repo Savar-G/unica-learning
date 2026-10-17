@@ -78,5 +78,17 @@
     "support_email": "savar.gupta1922@gmail.com",
     "legal_business_name": "Unica Learning",
     "guarantee_start": "day of the first payment"
+  },
+  "email_design": {
+    "route": "focused",
+    "phase": "review",
+    "selected_experiment": ".design/experiments/r19/preview.html",
+    "contract": ".design/experiments/r19/contract.md",
+    "gates": {
+      "direction": "approved",
+      "ship": "pending"
+    },
+    "hosted_auth_templates": "prepared, not installed",
+    "evidence": ".design/evidence/email-design/"
   }
 }

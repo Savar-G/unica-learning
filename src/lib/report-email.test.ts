@@ -127,9 +127,16 @@ describe("the report email to the parent", () => {
     expect(email.text).toContain("Unica Learning, 16557 87A Ave, Surrey, BC V4N 5B2");
     expect(email.text).toContain("unicalearning.com");
     expect(email.text).toContain(`Unsubscribe: ${UNSUB}`);
-    expect(email.html).toContain("Unica Learning, 16557 87A Ave, Surrey, BC V4N 5B2");
+    expect(email.html.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ")).toContain("Unica Learning 16557 87A Ave Surrey, BC V4N 5B2");
     expect(email.html).toMatch(new RegExp(`<a href="${UNSUB.replace(/[?.]/g, "\\$&")}"[^>]*>Unsubscribe</a>`));
     expect(email.html).toContain('href="https://unicalearning.com"');
+  });
+  it("keeps the team signature in both report variants", () => {
+    for (const offer of [true, false]) {
+      const e = reportEmail({ unsubscribeUrl: UNSUB, view: view(knowsUpTo(3)), parentName: "Priya", url: URL, offer });
+      for (const body of [e.text, e.html]) expect(body).toContain("The Unica Learning team");
+      expect(e.html.indexOf("The Unica Learning team")).toBeLessThan(e.html.indexOf("16557 87A Ave"));
+    }
   });
   it("says what unsubscribing stops, and that the report stays in the account", () => {
     expect(email.text).toContain("Unsubscribe to stop reminders and emails about our plans. Maya's report stays in your account.");

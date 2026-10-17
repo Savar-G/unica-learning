@@ -6,7 +6,7 @@
 // Email-safe: tables and inline styles only, no web fonts, no forms; the band's one image is an absolute URL, with the
 // band's base colour behind it for mail apps that block images.
 import { PAUSE_WINDOW, STRAND_DEVELOPING_PERCENT, STRAND_SECURE_PERCENT, TOO_FAST_MS, type Flag, type HelpAnswer, type StrandStatus } from "@/lib/assessment";
-import { BUSINESS_NAME, MAILING_ADDRESS, WEBSITE } from "@/lib/contact";
+import { emailEndHtml, emailFooterText, emailHeaderHtml, emailSignatureText } from "@/lib/email-brand";
 import type { AiOutcome } from "@/lib/work-review";
 import {
   NEXT_STEP_ANCHOR,
@@ -194,7 +194,7 @@ export function reportEmail({ view: v, parentName, url, unsubscribeUrl, offer = 
   const unsubscribe = offer
     ? `Unsubscribe to stop reminders and emails about our plans. ${name}'s report stays in your account.`
     : `You unsubscribed from reminders and emails about our plans, so this email has only the report.`;
-  const sender = `${BUSINESS_NAME}, ${MAILING_ADDRESS}`;
+  const footer = { why, note: unsubscribe, ...(offer ? { unsubscribe: { url: unsubscribeUrl, label: "Unsubscribe" } } : {}) };
   const origin = new URL(url).origin;
 
   const text = [
@@ -218,11 +218,11 @@ export function reportEmail({ view: v, parentName, url, unsubscribeUrl, offer = 
     ...(offer ? [`How we help: ${help.title}\n${help.text}`] : []),
     ...(step && stepUrl ? [`${step.title}\n${step.text}\n${step.email.label}: ${stepUrl}`] : []),
     `See ${name}'s full report: ${url}`,
-    [why, unsubscribe, ...(offer ? [`Unsubscribe: ${unsubscribeUrl}`] : []), sender, `${WEBSITE} · Questions? Reply to this email.`].join("\n"),
+    emailSignatureText(),
+    emailFooterText(footer),
   ].join("\n\n");
 
   const p = (body: string, style = "") => `<p style="margin:0 0 14px;${style}">${body}</p>`;
-  const small = `margin:0 0 6px;font-size:13px;line-height:1.5;color:${INK_2}`;
   const heading = (body: string) => `<p style="margin:0 0 10px;font-size:18px;line-height:1.3;font-weight:600;color:${INK}">${body}</p>`;
   const areaRows = v.model.strands
     .map(
@@ -255,8 +255,8 @@ export function reportEmail({ view: v, parentName, url, unsubscribeUrl, offer = 
 <div style="background:#ffffff;padding:24px 0">
 <span style="display:none;max-height:0;overflow:hidden;mso-hide:all">${esc(levelSentence(v))} ${esc(verdictSentence(v))}</span>
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="max-width:600px;margin:0 auto;font-family:${FONT};font-size:16px;line-height:1.5;color:${INK}">
-<tr><td style="padding:0 20px 14px;border-bottom:1px solid ${LINE};font-size:19px;font-weight:600;letter-spacing:-0.02em">${esc(BUSINESS_NAME)}<span style="display:inline-block;width:7px;height:7px;margin-left:2px;background:${ACCENT}"></span></td></tr>
-<tr><td style="padding:24px 20px 6px">
+${emailHeaderHtml(20)}
+<tr><td style="padding:0 20px 6px">
 ${p(`Hi ${esc(first)},`)}
 ${p(esc(intro))}
 </td></tr>
@@ -366,16 +366,12 @@ ${heading(esc(step.title))}
 ${p(esc(step.text), "margin:0 0 20px;font-size:15px")}
 ${button(stepUrl, step.email.label)}
 </td></tr>
-<tr><td style="padding:18px 20px 30px">
+<tr><td style="padding:18px 20px 4px">
 <a href="${esc(url)}" style="color:${INK};text-decoration:underline">See ${esc(name)}&#39;s full report</a>
-</td></tr>` : `<tr><td style="padding:30px 20px 30px">
+</td></tr>` : `<tr><td style="padding:30px 20px 4px">
 ${button(url, `See ${name}'s full report`)}
 </td></tr>`}
-<tr><td style="padding:18px 20px 0;border-top:1px solid ${LINE}">
-${p(`${esc(why)} ${esc(unsubscribe)}${offer ? ` <a href="${esc(unsubscribeUrl)}" style="color:${INK_2}">Unsubscribe</a>` : ""}`, small)}
-${p(esc(sender), small)}
-${p(`<a href="https://${WEBSITE}" style="color:${INK_2}">${WEBSITE}</a> · Questions? Reply to this email.`, small)}
-</td></tr>
+${emailEndHtml(footer, 20)}
 </table>
 </div>
 </body>

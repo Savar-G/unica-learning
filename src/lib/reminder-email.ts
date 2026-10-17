@@ -3,7 +3,7 @@
 // Same look as the report email
 // (src/lib/report-email.ts).
 // CASL: every reminder names the sender, gives the mailing address and the website, and has an unsubscribe link.
-import { BUSINESS_NAME, MAILING_ADDRESS, WEBSITE } from "@/lib/contact";
+import { emailDocument, emailFooterText, emailSignatureText } from "@/lib/email-brand";
 import type { ReminderKind } from "@/lib/reminders";
 
 interface Common {
@@ -26,11 +26,8 @@ const ENTITY: Record<string, string> = { "&": "&amp;", "<": "&lt;", ">": "&gt;",
 const esc = (s: string) => s.replace(/[&<>"']/g, (c) => ENTITY[c]);
 
 // Colours and font of the report email (warm look). Email clients need them inline, as hex.
-const INK = "#0c0c0e";
 const INK_2 = "#44444c";
-const LINE = "#e4e4e7";
 const BUTTON = "#2b2622";
-const FONT = "-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif";
 
 /** The time zone of the province that a postal code's first letter belongs to. A guess for the few that span two zones. */
 const ZONE: Record<string, string> = {
@@ -125,35 +122,26 @@ export function reminderEmail(e: ReminderEmailInput): { subject: string; text: s
   const first = firstName(e.parentName);
   const signIn = "If you are signed out, sign in first and the test opens.";
   const why = `You get this reminder because you signed up for ${e.childName}'s free math placement test.`;
-  const sender = `${BUSINESS_NAME}, ${MAILING_ADDRESS}`;
+  const footer = { why, unsubscribe: { url: e.unsubscribeUrl, label: "Unsubscribe from reminders" } };
 
   const text = [
     `Hi ${first},`,
     ...paragraphs,
     `${button}: ${e.url}\n${signIn}`,
-    [why, `Unsubscribe from reminders: ${e.unsubscribeUrl}`, sender, `${WEBSITE} · Questions? Reply to this email.`].join("\n"),
+    emailSignatureText(),
+    emailFooterText(footer),
   ].join("\n\n");
 
   const p = (body: string, style = "") => `<p style="margin:0 0 14px;${style}">${body}</p>`;
-  const small = `margin:0 0 6px;font-size:13px;color:${INK_2}`;
-  const html = `<div style="background:#ffffff;padding:24px 0">
-<span style="display:none;max-height:0;overflow:hidden">${esc(preview)}</span>
-<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:600px;margin:0 auto;font-family:${FONT};font-size:16px;line-height:1.5;color:${INK}">
-<tr><td style="padding:0 24px 14px;border-bottom:1px solid ${LINE};font-size:18px;font-weight:600">${esc(BUSINESS_NAME)}</td></tr>
-<tr><td style="padding:24px 24px 4px">
+  const html = emailDocument({ title: subject, preview, footer, body: `
+<tr><td style="padding:0 24px 4px">
 ${p(`Hi ${esc(first)},`)}
 ${paragraphs.map((x) => p(esc(x))).join("\n")}
 </td></tr>
 <tr><td style="padding:6px 24px 8px">
 <a href="${esc(e.url)}" style="display:inline-block;background:${BUTTON};color:#ffffff;text-decoration:none;padding:14px 22px;border-radius:6px;font-weight:600">${esc(button)}</a>
 </td></tr>
-<tr><td style="padding:0 24px 28px">${p(esc(signIn), `margin:8px 0 0;font-size:14px;color:${INK_2}`)}</td></tr>
-<tr><td style="padding:16px 24px 0;border-top:1px solid ${LINE}">
-${p(`${esc(why)} <a href="${esc(e.unsubscribeUrl)}" style="color:${INK_2}">Unsubscribe from reminders</a>.`, small)}
-${p(esc(sender), small)}
-${p(`<a href="https://${WEBSITE}" style="color:${INK_2}">${WEBSITE}</a> · Questions? Reply to this email.`, small)}
-</td></tr>
-</table>
-</div>`;
+<tr><td style="padding:0 24px 4px">${p(esc(signIn), `margin:8px 0 0;font-size:14px;color:${INK_2}`)}</td></tr>
+` });
   return { subject, text, html };
 }

@@ -1,0 +1,51 @@
+{
+  "round": 19,
+  "route": "focused",
+  "decision": "Choose the signature and footer for parent emails",
+  "primary_axis": "Sender identity and support placement",
+  "invariants": [
+    "Current start reminder copy",
+    "Existing brand wordmark and orange square",
+    "Dark button",
+    "Business address and reminder unsubscribe"
+  ],
+  "reference": "User attachment 968ac00f-3048-4bd3-876c-1c8672237a48",
+  "artifact": "preview.html",
+  "options": [
+    {
+      "id": "A",
+      "bet": "Team signature",
+      "benefit": "Simple sender identity",
+      "cost": "Less personal",
+      "risk": "May feel less direct than a founder letter"
+    },
+    {
+      "id": "B",
+      "bet": "Founder letter",
+      "benefit": "Names the founders",
+      "cost": "Implies a personal sender",
+      "risk": "Automated reminders can appear personal"
+    },
+    {
+      "id": "C",
+      "bet": "Support block",
+      "benefit": "Makes reply instruction prominent",
+      "cost": "Adds height",
+      "risk": "Competes with the main action"
+    }
+  ],
+  "recommendation": "A",
+  "selection": {
+    "chosen": "A",
+    "by": "Savar",
+    "date": "2026-10-17"
+  },
+  "implementation_changed": true,
+  "implementation": [
+    "src/lib/email-brand.ts",
+    "src/lib/reminder-email.ts",
+    "src/lib/report-email.ts",
+    "src/lib/sign-in-link.ts",
+    "src/lib/auth-email.ts"
+  ]
+}
