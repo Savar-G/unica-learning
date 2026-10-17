@@ -11,3 +11,8 @@ The dev server ran on port 3198 with no `.env.local`; nothing was stored, sent o
 
 The full evidence set for the ticket (grade 2 and grade 6 reports, the report without AI parts, the emails, the sample
 report, tablet and phone) is in the ticket's task-state folder.
+
+Resume check: Option A remains selected under the original reversible-choice instruction. The current local evidence
+is in `/Users/savargupta/.t3/task-state/build-spec-181/198/resume-codex-r3/`. The new checks used port 3199 because
+port 3198 was in use. No environment file was loaded. The temporary route is saved in that evidence directory for
+review. It is removed from the final source. The design review is `.design/reviews/parent-report-198-2026-10-16-r3.md`.

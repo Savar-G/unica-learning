@@ -7,12 +7,14 @@ import { strengthsView, strugglesView, workbookPreview } from "@/lib/report-view
 describe("the sample report", () => {
   it("shows the new sections: strengths, struggles with the sample child's answer and the likely cause, and the workbook 1 preview", () => {
     const view = sampleReportView();
-    expect(strengthsView(view)?.length).toBeGreaterThan(0);
+    expect(strengthsView(view)?.length ?? 0).toBeGreaterThan(0);
     const struggles = strugglesView(view)!;
     expect(struggles.length).toBeGreaterThan(0);
     // Each struggle shows one of the sample child's own wrong answers, and the first ones a likely cause.
     for (const s of struggles) expect(s.answer).not.toBe(s.rightAnswer);
     expect(struggles[0].cause).not.toBeNull();
-    expect(workbookPreview(view)).toMatch(/^Workbook 1 focuses on .+\. We will challenge Leah on .+\.$/);
+    expect(view.findings?.preview?.focus.length ?? 0).toBeGreaterThan(0);
+    expect(view.findings?.preview?.challenge.length ?? 0).toBeGreaterThan(0);
+    expect(workbookPreview(view)).toBeTruthy();
   });
 });

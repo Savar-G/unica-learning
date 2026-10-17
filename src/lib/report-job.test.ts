@@ -173,9 +173,9 @@ describe("the stored report", () => {
     // module; the check for a stored report, then the comparison scan and the stored AI reviews; the parent and the
     // stored report's view (#163; one request, with the test and the child), for the emails; then the ledger's check
     // that the parent email has not gone (src/lib/report-row-ledger.ts), and the unsubscribe check. The learner profile
-    // (#196) is built from the same inputs: it reads only the parent's answers on the learning card (children); the
-    // view reads the stored profile back for the parent's part of it (#198).
-    expect(db.readers.reads).toEqual({ assessments: 1, answers: 1, reports: 3, comparison: 1, work_reviews: 1, parents: 1, email_log: 1, children: 1, learner_profiles: 1 });
+    // (#196) is built from the same inputs: it reads only the parent's answers on the learning card (children).
+    // The email uses this run's facts snapshot (#198), so it makes no stored profile read.
+    expect(db.readers.reads).toEqual({ assessments: 1, answers: 1, reports: 3, comparison: 1, work_reviews: 1, parents: 1, email_log: 1, children: 1 });
     expect(db.comparison.mock.calls).toEqual([[TEST]]);
 
     expect(mail.delivered.map((m) => m.to)).toEqual(["priya@family.ca", "savar@unicalearning.com"]);
@@ -192,7 +192,7 @@ describe("the stored report", () => {
     // The second run reads its inputs, finds the stored report, and reads the parent and the view; the ledger finds
     // that the parent email went, so the run makes no unsubscribe check. It builds the profile again (#196). It calls no
     // network itself.
-    expect(db.readers.reads).toEqual({ assessments: 2, answers: 2, reports: 6, comparison: 1, work_reviews: 1, parents: 2, email_log: 1, children: 2, learner_profiles: 2 });
+    expect(db.readers.reads).toEqual({ assessments: 2, answers: 2, reports: 6, comparison: 1, work_reviews: 1, parents: 2, email_log: 1, children: 2 });
     expect(network).toEqual([]);
   });
 
@@ -921,6 +921,57 @@ describe("the learner profile's AI parts", () => {
     await runWith(db, null);
     expect(db.profiles.rows()).toHaveLength(1);
     expect("ai" in (db.profiles.rows()[0].profile as object)).toBe(false);
+  });
+
+  it("do not enter a retried email when the new facts save fails and the stored profile still has AI (#198)", async () => {
+    const db = struggling();
+    await runWith(db, fakeAiClient({ model: MODEL, answer: good }));
+    const cause = stored(db).ai!.likelyCauses!.value[WEAK];
+    const mail = memoryTransport();
+    await runReportJob(TEST, ORIGIN, {
+      reader: db.readers.key(), comparison: db.comparison, store: db.job.store,
+      profiles: { ...db.profiles.store, save: async () => { throw new Error("profile save unavailable"); } },
+      reviewer: null, profileAi: null, transport: mail.transport, ledger: memoryReportLedger().ledger,
+    });
+    const [email] = mail.delivered;
+    expect(email.to).toBe(PRIYA.email);
+    for (const body of [email.text, email.html!]) expect(words(body)).not.toContain(cause);
+    expect((await reportPage(db)).text).toContain(cause);
+    expect(network).toEqual([]);
+  });
+
+  it("do not enter the email when a learning-card rebuild completes while the job reads the parent (#198)", async () => {
+    const db = struggling();
+    const mail = memoryTransport();
+    let parentRead!: () => void;
+    const readingParent = new Promise<void>((resolve) => { parentRead = resolve; });
+    let rebuilt!: () => void;
+    const rebuiltProfile = new Promise<void>((resolve) => { rebuilt = resolve; });
+    const store = { ...db.job.store, parent: async (id: string) => {
+      parentRead();
+      await rebuiltProfile;
+      return db.job.store.parent(id);
+    } };
+    const reader = db.readers.key();
+    await Promise.all([
+      runReportJob(TEST, ORIGIN, {
+        reader: { ...reader, profile: async (id) => { await rebuiltProfile; return reader.profile(id); } },
+        comparison: db.comparison, store, profiles: db.profiles.store,
+        reviewer: null, profileAi: null, transport: mail.transport, ledger: memoryReportLedger().ledger,
+      }),
+      (async () => {
+        await readingParent;
+        await answerCard(db, fakeAiClient({ model: MODEL, answer: good }));
+        rebuilt();
+      })(),
+    ]);
+    const cause = stored(db).ai!.likelyCauses!.value[WEAK];
+    const [email] = mail.delivered;
+    for (const body of [email.text, email.html!]) expect(words(body)).not.toContain(cause);
+    expect((await reportPage(db)).text).toContain(cause);
+    const struggle = stored(db).struggles[0];
+    const shown = struggle.wrong.find((w) => w.misconception)!;
+    expect(words(email.text)).toContain(MISCONCEPTIONS[shown.misconception as MisconceptionId].description.toLowerCase());
   });
 
   it("reach the report page once stored; the report email, sent before they exist, shows the facts only (#198)", async () => {
