@@ -28,6 +28,14 @@ export interface MemoryChild {
   parentId: string;
   firstName: string;
 }
+/** A row of public.learner_profiles (#196). `profile` is the stored JSON. */
+export interface MemoryProfileRow {
+  assessmentId: string;
+  parentId: string;
+  childId: string;
+  schemaVersion: number;
+  profile: unknown;
+}
 /** The tables, and the drawings bucket as its stored paths (`<parent id>/<assessment id>/<file>`). */
 export interface MemoryReportTables {
   reports?: MemoryReport[];
@@ -35,6 +43,8 @@ export interface MemoryReportTables {
   answers?: MemoryAnswer[];
   children?: MemoryChild[];
   drawings?: string[];
+  /** Written by the learner profile's in-memory store (src/lib/learner-profile-memory.ts). */
+  profiles?: MemoryProfileRow[];
 }
 
 /** Counts one read of the table in a read counter, which counts the reads of each table by table name. */
@@ -55,6 +65,7 @@ export function memoryReportReaders(tables: MemoryReportTables) {
   const answers = (tables.answers ??= []);
   const children = (tables.children ??= []);
   const drawings = (tables.drawings ??= []);
+  const profiles = (tables.profiles ??= []);
   const signed: { reader: string; paths: string[] }[] = [];
   const reads: Record<string, number> = { reports: 0, assessments: 0, answers: 0 };
 
@@ -101,6 +112,12 @@ export function memoryReportReaders(tables: MemoryReportTables) {
           readAloud: a.readAloud ?? null,
           away: a.away ? { ...a.away } : null,
         }));
+    },
+    async profile(assessmentId) {
+      countRead(reads, "learner_profiles");
+      // The parent's reader reads with the secret key, filtered on the parent's own test (#198): the same rows as here.
+      const row = profiles.find((r) => r.assessmentId === assessmentId && sees(r.parentId));
+      return row ? structuredClone(row.profile) : null;
     },
     async sign(paths) {
       if (!signs) return {};

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { reportModel, type Grade, type Province, type ReportFacts } from "@/lib/assessment";
+import { MISCONCEPTIONS, reportModel, type Grade, type Province, type ReportFacts, type ReportFindings } from "@/lib/assessment";
 import { allRight, knowsUpTo, takeTest, type Script } from "@/lib/assessment/scripted-child";
 import {
   comparisonView,
@@ -20,6 +20,10 @@ import {
   reliabilityNote,
   thresholdsLine,
   verdictSentence,
+  strengthsView,
+  strugglesView,
+  wordsOrNumbersLines,
+  workbookPreview,
   type ReportView,
 } from "@/lib/report-view";
 
@@ -147,7 +151,7 @@ describe("the help warning (#71)", () => {
   });
 });
 
-describe("number facts (#70): speed beside accuracy, never alone", () => {
+describe("number facts (#70): speed beside accuracy, never alone; grades 1-4 see accuracy only (D-120)", () => {
   const SLOW: ReportFacts = {
     scope: "Addition and subtraction facts to 20, and multiplication facts for 2, 5 and 10",
     seconds: 60,
@@ -157,10 +161,25 @@ describe("number facts (#70): speed beside accuracy, never alone", () => {
     accuracy: "secure",
     speed: "needs-practice",
   };
-  const withFacts = (facts: ReportFacts | null): ReportView => {
-    const v = view(knowsUpTo(3));
+  /** A grade 6 report (speed shows from grade 5), or another grade's, with these facts. */
+  const withFacts = (facts: ReportFacts | null, grade: Grade = 6): ReportView => {
+    const v = view(knowsUpTo(grade - 1), { grade });
     return { ...v, model: { ...v.model, facts } };
   };
+
+  it("for grades 1-4, shows accuracy without speed: BC does not expect memorized facts there", () => {
+    for (const grade of [1, 2, 3, 4] as const) {
+      expect(factsView(withFacts(SLOW, grade)), `grade ${grade}`).toEqual({
+        scope: "Addition and subtraction facts to 20, and multiplication facts for 2, 5 and 10.",
+        round: "A 60-second round, only with facts for this grade.",
+        accuracy: { value: "12 of 12 right", label: "Secure", big: "100%", detail: "12 of 12 right" },
+        speed: null,
+        note: null,
+        thresholds: "Secure: 90% or more right.",
+      });
+    }
+    for (const grade of [5, 6, 7] as const) expect(factsView(withFacts(SLOW, grade))?.speed, `grade ${grade}`).not.toBeNull();
+  });
 
   it("shows nothing when the child had no facts section", () => {
     expect(factsView(withFacts(null))).toBeNull();
@@ -198,9 +217,11 @@ describe("number facts (#70): speed beside accuracy, never alone", () => {
   });
   it("never shows speed without accuracy", () => {
     const cases: ReportFacts[] = [SLOW, { ...SLOW, speed: "quick" }, { ...SLOW, answered: 0, correct: 0, secondsPerFact: null, accuracy: null, speed: null }];
-    for (const facts of cases) {
-      const f = factsView(withFacts(facts));
-      expect(f?.speed === null, JSON.stringify(facts)).toBe(f?.accuracy === null);
+    for (const grade of [2, 6] as const) {
+      for (const facts of cases) {
+        const f = factsView(withFacts(facts, grade));
+        if (f?.speed) expect(f.accuracy, JSON.stringify(facts)).not.toBeNull();
+      }
     }
   });
 });
@@ -374,5 +395,72 @@ describe("rushed wrong answers left out", () => {
     expect(leftOutLine({ ...v, model: { ...v.model, leftOut: 3 } })).toMatch(/^3 /);
     expect(leftOutLine({ ...v, model: { ...v.model, leftOut: 1 } })).toMatch(/^1 /);
     expect(leftOutLine(v)).toBeNull();
+  });
+});
+
+describe("strengths, struggles, words or numbers and the workbook 1 preview (#198)", () => {
+  // The parent's part of a learner profile (reportFindings), as the loaded report carries it.
+  const FINDINGS: ReportFindings = {
+    strengths: [{ code: "4.5", text: "multiplication and division to two digits (single-digit multiplier)", grade: 4, aboveGrade: false, correct: 6, total: 6, certainty: "clear" }],
+    struggles: [
+      {
+        code: "4.4", text: "addition and subtraction to 10 000", grade: 4, correct: 1, total: 3, certainty: "early-sign", status: "needs-attention",
+        answer: { prompt: "6,205 − 2,457 = ?", response: "4252", rightAnswer: "3748" },
+        cause: { source: "misconception", text: MISCONCEPTIONS.O1.description },
+      },
+      {
+        code: "4.1", text: "number concepts to 10 000", grade: 4, correct: 1, total: 2, certainty: "early-sign", status: "developing",
+        answer: { prompt: "What is the value of the 3 in 3,627?", response: "3", rightAnswer: "3000" },
+        cause: { source: "ai", text: "{name} may read each digit as ones." },
+      },
+    ],
+    wordsOrNumbers: [{ skill: "Multiply a two- or three-digit number by a one-digit number", harder: "words", words: { correct: 1, total: 3 }, numbers: { correct: 3, total: 3 } }],
+    preview: { focus: [{ code: "4.4", text: "addition and subtraction to 10 000", grade: 4 }], challenge: [{ code: "4.9", text: "increasing and decreasing patterns, using tables and charts", grade: 4 }] },
+  };
+  const withFindings = (findings: ReportFindings | null, v = view(knowsUpTo(3))): ReportView => ({ ...v, findings });
+
+  it("shows none of them for a report without findings: no learner profile (another curriculum), or none stored yet", () => {
+    for (const v of [view(knowsUpTo(3)), withFindings(null)]) {
+      expect(strengthsView(v)).toBeNull();
+      expect(strugglesView(v)).toBeNull();
+      expect(wordsOrNumbersLines(v)).toEqual([]);
+      expect(workbookPreview(v)).toBeNull();
+    }
+  });
+
+  it("hides strengths and struggles when there are none", () => {
+    const v = withFindings({ ...FINDINGS, strengths: [], struggles: [] });
+    expect(strengthsView(v)).toBeNull();
+    expect(strugglesView(v)).toBeNull();
+  });
+
+  it("gives each struggle the child's answer, the right answer and the likely cause, in the child's name", () => {
+    const struggles = strugglesView(withFindings(FINDINGS))!;
+    expect(struggles.map((s) => [s.answer, s.rightAnswer])).toEqual([["4252", "3748"], ["3", "3000"]]);
+    // The known mistake in plain words; the AI's text with the child's name for {name}.
+    expect(struggles[0].cause).toContain(MISCONCEPTIONS.O1.description.toLowerCase());
+    expect(struggles[1].cause).toBe("Maya may read each digit as ones.");
+    const noCause = withFindings({ ...FINDINGS, struggles: [{ ...FINDINGS.struggles[0], cause: null }] });
+    expect(strugglesView(noCause)![0].cause).toBeNull();
+  });
+
+  it("says the words-or-numbers finding with both counts, one line per skill with a gap", () => {
+    const [line] = wordsOrNumbersLines(withFindings(FINDINGS));
+    expect(line).toContain("3 of 3");
+    expect(line).toContain("1 of 3");
+    expect(wordsOrNumbersLines(withFindings({ ...FINDINGS, wordsOrNumbers: [] }))).toEqual([]);
+  });
+
+  it("previews workbook 1 for a family that can start the books, and never for the waitlist, which has no workbook yet", () => {
+    const preview = workbookPreview(withFindings(FINDINGS))!;
+    expect(preview).toMatch(/^Workbook 1 focuses on addition and subtraction to 10 000\. We will challenge Maya on increasing and decreasing patterns\.$/);
+    expect(workbookPreview(withFindings({ ...FINDINGS, preview: { ...FINDINGS.preview!, challenge: [] } }))).toBe("Workbook 1 focuses on addition and subtraction to 10 000.");
+    expect(workbookPreview(withFindings({ ...FINDINGS, preview: null }))).toBeNull();
+    // A topic from another grade than the child's names its grade: BC repeats some topics, such as the facts to 20.
+    const later = { ...FINDINGS, preview: { focus: FINDINGS.preview!.focus, challenge: [{ code: "5.8", text: "addition and subtraction facts to 20 (extending computational fluency)", grade: 5 as const }] } };
+    expect(workbookPreview(withFindings(later))).toBe("Workbook 1 focuses on addition and subtraction to 10 000. We will challenge Maya on grade 5 addition and subtraction facts to 20.");
+    const waitlist = view(knowsUpTo(3), { province: "ON" });
+    expect(waitlist.model.callToAction).toBe("waitlist");
+    expect(workbookPreview(withFindings(FINDINGS, waitlist))).toBeNull();
   });
 });

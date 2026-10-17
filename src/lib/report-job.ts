@@ -34,8 +34,8 @@ import { aiReport, aiReviewer, type AiOutcome, type WorkReviewer } from "@/lib/w
 //      report-loading module (#163): the same view that the report page and the admin report view show.
 //   5. Email Savar an alert, with what the AI did, and whether the parent email was sent, refused or unknown.
 //   6. Last, only when OPENROUTER_API_KEY is set and the facts were stored: the AI writes the profile's parts (#197),
-//      and the profile is stored again with the parts that pass the checks, unless a later build replaced it. Only
-//      admins read them, so the emails never wait for them. This stops after at most PROFILE_AI_MS (60 s), so the job
+//      and the profile is stored again with the parts that pass the checks, unless a later build replaced it. The
+//      account report can show them later; the emails never wait for them. This stops after at most PROFILE_AI_MS (60 s), so the job
 //      stays under 300 s. A failure is logged; the facts stay stored.
 // Safe to run twice: the report is stored once, and each email is sent at most once through the delivery module
 // (src/lib/email-delivery.ts, #151), which claims it on the report row (src/lib/report-row-ledger.ts) before it is
@@ -111,7 +111,13 @@ export async function runReportJob(assessmentId: string, origin: string, options
 
     // The view of the email and the alert, from the report-loading module with the secret key (#163): the same view
     // that the report page and the admin report view show. The secret key signs nothing: the email has no drawings.
-    const [parent, loaded] = await Promise.all([store.parent(assessment.parentId), loadReportView(db.reader, report.id)]);
+    // #198: use this run's facts snapshot. A concurrent learning-card rebuild can already have stored AI parts, and
+    // a failed facts save can leave an older profile behind. Neither may put profile AI into this email.
+    const emailReader: ReportReader = {
+      ...db.reader,
+      profile: async (id) => id === assessment.id ? (profile?.profile ?? null) : null,
+    };
+    const [parent, loaded] = await Promise.all([store.parent(assessment.parentId), loadReportView(emailReader, report.id)]);
     if (!parent) throw new Error("parent not found: no row");
     // A missing child or test: the view is not found.
     if (!loaded) throw new Error("report view not found: no child or test row");

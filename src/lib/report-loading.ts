@@ -1,6 +1,8 @@
 import "server-only";
 import {
   MISCONCEPTIONS,
+  reportFindings,
+  storedProfile,
   type AttemptStatus,
   type ComparisonInput,
   type Grade,
@@ -96,6 +98,11 @@ export interface ReportReader {
   answers(assessmentId: string): Promise<StoredAnswer[]>;
   /** Short-lived URLs of drawings, by stored path. A path this reader cannot sign is left out. */
   sign(paths: string[]): Promise<Record<string, string>>;
+  /**
+   * #198: the stored learner profile of the test (public.learner_profiles.profile, as JSON), or null when there is none
+   * this reader may read. Only loadReportView reads it, and it passes on only the parent's part (reportFindings).
+   */
+  profile(assessmentId: string): Promise<unknown>;
 }
 
 /** A finished test, as the report job needs it. */
@@ -223,13 +230,30 @@ export interface LoadedReport {
 }
 
 /**
+ * The parent's part of the test's learner profile (#198): strengths, struggles with one wrong answer each, words or
+ * numbers and the workbook 1 preview, with the AI parts once stored. Null without a stored profile of this schema
+ * version. A failed read is logged and gives null: the report shows without these sections.
+ */
+async function findingsOf(reader: ReportReader, assessmentId: string) {
+  try {
+    const profile = storedProfile(await reader.profile(assessmentId));
+    return profile ? reportFindings(profile) : null;
+  } catch (e) {
+    console.error("[report] learner profile load failed", assessmentId, e instanceof Error ? e.message : String(e));
+    return null;
+  }
+}
+
+/**
  * The report view of one report, as this reader may see it; null ("not found") when the reader finds no such report,
- * or finds it without its test or its child. Only the drawings of the report's work are signed.
+ * or finds it without its test or its child. Only the drawings of the report's work are signed. The test's learner
+ * profile is read only for a report this reader found (#198), and only its parent's part reaches the view.
  */
 export async function loadReportView(reader: ReportReader, id: string): Promise<LoadedReport | null> {
   const row = await reader.report(id);
   if (!row?.assessment || !row.child) return null;
   const paths = (row.model.work ?? []).flatMap((w) => (w.image ? [w.image] : []));
+  const [workImages, findings] = await Promise.all([reader.sign(paths), findingsOf(reader, row.assessmentId)]);
   return {
     childId: row.childId,
     assessmentId: row.assessmentId,
@@ -241,7 +265,8 @@ export async function loadReportView(reader: ReportReader, id: string): Promise<
       questions: row.questions,
       minutes: row.minutes,
       model: row.model,
-      workImages: await reader.sign(paths),
+      workImages,
+      findings,
     },
   };
 }

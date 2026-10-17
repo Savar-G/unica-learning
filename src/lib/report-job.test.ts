@@ -7,6 +7,7 @@ import {
   BANKS,
   BC_SKILL_MAP,
   createSession,
+  MISCONCEPTIONS,
   PROFILE_AI_SCHEMA,
   PROFILE_SCHEMA_VERSION,
   REPORT_TEXT_NAME,
@@ -14,6 +15,7 @@ import {
   storedTest,
   type ComparisonTest,
   type LearnerProfile,
+  type MisconceptionId,
   type ProfileLearning,
 } from "@/lib/assessment";
 import type { AiClient, AiJsonRequest } from "@/lib/ai-client";
@@ -172,6 +174,7 @@ describe("the stored report", () => {
     // stored report's view (#163; one request, with the test and the child), for the emails; then the ledger's check
     // that the parent email has not gone (src/lib/report-row-ledger.ts), and the unsubscribe check. The learner profile
     // (#196) is built from the same inputs: it reads only the parent's answers on the learning card (children).
+    // The email uses this run's facts snapshot (#198), so it makes no stored profile read.
     expect(db.readers.reads).toEqual({ assessments: 1, answers: 1, reports: 3, comparison: 1, work_reviews: 1, parents: 1, email_log: 1, children: 1 });
     expect(db.comparison.mock.calls).toEqual([[TEST]]);
 
@@ -918,5 +921,82 @@ describe("the learner profile's AI parts", () => {
     await runWith(db, null);
     expect(db.profiles.rows()).toHaveLength(1);
     expect("ai" in (db.profiles.rows()[0].profile as object)).toBe(false);
+  });
+
+  it("do not enter a retried email when the new facts save fails and the stored profile still has AI (#198)", async () => {
+    const db = struggling();
+    await runWith(db, fakeAiClient({ model: MODEL, answer: good }));
+    const cause = stored(db).ai!.likelyCauses!.value[WEAK];
+    const mail = memoryTransport();
+    await runReportJob(TEST, ORIGIN, {
+      reader: db.readers.key(), comparison: db.comparison, store: db.job.store,
+      profiles: { ...db.profiles.store, save: async () => { throw new Error("profile save unavailable"); } },
+      reviewer: null, profileAi: null, transport: mail.transport, ledger: memoryReportLedger().ledger,
+    });
+    const [email] = mail.delivered;
+    expect(email.to).toBe(PRIYA.email);
+    for (const body of [email.text, email.html!]) expect(words(body)).not.toContain(cause);
+    expect((await reportPage(db)).text).toContain(cause);
+    expect(network).toEqual([]);
+  });
+
+  it("do not enter the email when a learning-card rebuild completes while the job reads the parent (#198)", async () => {
+    const db = struggling();
+    const mail = memoryTransport();
+    let parentRead!: () => void;
+    const readingParent = new Promise<void>((resolve) => { parentRead = resolve; });
+    let rebuilt!: () => void;
+    const rebuiltProfile = new Promise<void>((resolve) => { rebuilt = resolve; });
+    const store = { ...db.job.store, parent: async (id: string) => {
+      parentRead();
+      await rebuiltProfile;
+      return db.job.store.parent(id);
+    } };
+    const reader = db.readers.key();
+    await Promise.all([
+      runReportJob(TEST, ORIGIN, {
+        reader: { ...reader, profile: async (id) => { await rebuiltProfile; return reader.profile(id); } },
+        comparison: db.comparison, store, profiles: db.profiles.store,
+        reviewer: null, profileAi: null, transport: mail.transport, ledger: memoryReportLedger().ledger,
+      }),
+      (async () => {
+        await readingParent;
+        await answerCard(db, fakeAiClient({ model: MODEL, answer: good }));
+        rebuilt();
+      })(),
+    ]);
+    const cause = stored(db).ai!.likelyCauses!.value[WEAK];
+    const [email] = mail.delivered;
+    for (const body of [email.text, email.html!]) expect(words(body)).not.toContain(cause);
+    expect((await reportPage(db)).text).toContain(cause);
+    const struggle = stored(db).struggles[0];
+    const shown = struggle.wrong.find((w) => w.misconception)!;
+    expect(words(email.text)).toContain(MISCONCEPTIONS[shown.misconception as MisconceptionId].description.toLowerCase());
+  });
+
+  it("reach the report page once stored; the report email, sent before they exist, shows the facts only (#198)", async () => {
+    const db = struggling();
+    const mail = memoryTransport();
+    await runWith(db, fakeAiClient({ model: MODEL, answer: good }), mail);
+    const [email] = mail.delivered;
+    const page = await reportPage(db);
+    const { struggles, strengths } = stored(db);
+    const shown = struggles[0].wrong.find((w) => w.misconception)!;
+    const mistake = MISCONCEPTIONS[shown.misconception as MisconceptionId].description.toLowerCase();
+
+    // Both: a strength, the struggle with Asha's own wrong answer to one question, and the right answer.
+    expect(strengths.length).toBeGreaterThan(0);
+    expectEverywhere(places(email, page), [words(shown.prompt), shown.response, shown.rightAnswer]);
+    // The email: the likely cause from the known mistake, and no workbook 1 preview: the AI wrote after it went.
+    expect(words(email.text)).toContain(mistake);
+    for (const body of [email.text, email.html]) expect(body).not.toContain("Workbook 1 focuses on");
+    // The page, opened after the AI parts were stored: the AI's likely cause, and the preview.
+    expect(page.text).toContain("The wrong answers match a known mistake, and a skill this builds on may not be secure yet.");
+    expect(page.text).not.toContain(mistake);
+    expect(page.text).toContain("Workbook 1 focuses on");
+    // Never how to help, the model id or the build id: admin only.
+    for (const body of [email.text, email.html, page.html]) {
+      for (const secret of ["short daily sets", MODEL, "buildId"]) expect(body).not.toContain(secret);
+    }
   });
 });

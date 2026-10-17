@@ -21,13 +21,22 @@ import {
   levelName,
   levelNotes,
   levelSentence,
+  moreCount,
   nextStep,
   questionsAndMinutes,
   reliabilityNote,
   sharePercent,
+  STRENGTHS_SHOWN,
+  STRUGGLES_SHOWN,
+  strengthsNote,
+  strengthsView,
+  strugglesNote,
+  strugglesView,
   summaryText,
   thresholdsLine,
   verdictSentence,
+  wordsOrNumbersLines,
+  WORDS_OR_NUMBERS_NOTE,
   type FactsView,
   type NextStepKey,
   type ReportView,
@@ -124,8 +133,9 @@ function meterHtml(share: number): string {
   return `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="table-layout:fixed"><tr style="height:18px">${cells.join("")}</tr></table>`;
 }
 
-/** Accuracy beside speed in one line, or what happened when nothing was answered. */
-const factsLine = (f: FactsView) => (f.accuracy && f.speed ? `${f.accuracy.value} (${f.accuracy.label}), ${f.speed.value} (${f.speed.label})` : (f.note ?? ""));
+/** Accuracy beside speed in one line (accuracy alone in grades 1-4, D-120), or what happened when nothing was answered. */
+const factsLine = (f: FactsView) =>
+  f.accuracy ? `${f.accuracy.value} (${f.accuracy.label})${f.speed ? `, ${f.speed.value} (${f.speed.label})` : ""}` : (f.note ?? "");
 
 /** The facts chips: Secure and Quick in leaf, Needs practice in sunflower (never the tangerine of "Needs attention"). */
 const factsChip = (label: string) => chip(label === "Needs practice" ? STATUS_CHIP.developing : STATUS_CHIP.secure, label);
@@ -169,6 +179,15 @@ export function reportEmail({ view: v, parentName, url, unsubscribeUrl, offer = 
   // #190: the results include the extra round the child took.
   const extraLine = extraRoundLine(v);
   const sure = (s: ReportView["model"]["strands"][number]) => certaintyText(v, s.certainty);
+  // #198: strengths, struggles and words or numbers, from the learner profile's facts. The workbook 1 preview needs the
+  // AI parts, which the job writes after this email (D-117), so the email has none; the account report shows it.
+  const strengths = strengthsView(v);
+  const struggles = strugglesView(v);
+  const wordsLines = wordsOrNumbersLines(v);
+  const shownStrengths = strengths?.slice(0, STRENGTHS_SHOWN) ?? [];
+  const shownStruggles = struggles?.slice(0, STRUGGLES_SHOWN) ?? [];
+  const moreStruggles = (struggles?.length ?? 0) - shownStruggles.length;
+  const moreStrengths = (strengths?.length ?? 0) - shownStrengths.length;
   const step = offer ? nextStep(v) : null;
   const stepUrl = step ? withStep(url, step.email.step) : null;
   const areas = v.model.strands.map((s) => `${s.name}: ${STATUS_LABEL[s.status]}, ${s.correct} of ${s.total} right${sure(s) ? ` (${sure(s)})` : ""}`);
@@ -190,6 +209,14 @@ export function reportEmail({ view: v, parentName, url, unsubscribeUrl, offer = 
     ...(comparison ? [`${comparison.title}\n${comparison.text}\n${comparison.note}`] : []),
     ...(warning ? [`${warning.title}\n${warning.text}\n${warning.retake}`] : []),
     ["By area", ...areas, thresholdsLine(v), ...(leftOut ? [leftOut] : []), ...(extraLine ? [extraLine] : [])].join("\n"),
+    ...(strengths ? [["Strengths", strengthsNote(v), ...shownStrengths.map((t) => `- ${t.title} (${t.grade}, ${t.count}, ${t.sure})`), ...(moreStrengths > 0 ? [`And ${moreCount(moreStrengths)} in the full report.`] : [])].join("\n")] : []),
+    ...(struggles ? [[`To work on\n${strugglesNote(v)}`, ...shownStruggles.map((t) => [
+      `${t.title} (${t.grade}): ${STATUS_LABEL[t.status]}, ${t.count} (${t.sure})`,
+      `Question: ${t.question}`,
+      `${name}'s answer: ${t.answer}. Right answer: ${t.rightAnswer}.`,
+      ...(t.cause ? [`Likely cause: ${t.cause}`] : []),
+    ].join("\n")), ...(moreStruggles > 0 ? [`The full report shows ${moreCount(moreStruggles)}.`] : [])].join("\n\n")] : []),
+    ...(wordsLines.length ? [["Word problems", WORDS_OR_NUMBERS_NOTE, ...wordsLines].join("\n")] : []),
     ...(facts ? [[`Number facts: ${factsLine(facts)}`, ...(facts.accuracy && facts.note ? [facts.note] : []), `${facts.scope} ${facts.round}`].join("\n")] : []),
     ...(work ? [work] : []),
     ...(offer ? [`How we help: ${help.title}\n${help.text}`] : []),
@@ -286,20 +313,50 @@ ${p(esc(thresholdsLine(v)), `margin:0;font-size:13px;color:${INK_2}`)}
 ${leftOut ? p(esc(leftOut), `margin:6px 0 0;font-size:13px;color:${INK_2}`) : ""}
 ${extraLine ? p(esc(extraLine), `margin:6px 0 0;font-size:13px;color:${INK_2}`) : ""}
 </td></tr>
+${strengths ? `<tr><td style="padding:30px 20px 0">
+${heading("Strengths")}
+${p(esc(strengthsNote(v)), `margin:0 0 10px;font-size:13px;color:${INK_2}`)}
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">${shownStrengths.map((t) => `<tr>
+<td valign="top" width="14" style="padding:10px 0 8px;border-top:1px solid ${LINE}"><span style="display:inline-block;width:8px;height:8px;margin-top:6px;border-radius:2px;background:${STATUS_CHIP.secure.fg}"></span></td>
+<td style="padding:8px 0;border-top:1px solid ${LINE};font-size:15px;line-height:1.4">${esc(t.title)}<br><span style="font-family:${MONO};font-size:12px;color:${INK_2}">${esc(`${t.grade} · ${t.count} · ${t.sure}`)}</span></td>
+</tr>`).join("")}</table>
+${moreStrengths > 0 ? p(`And ${esc(moreCount(moreStrengths))} in the <a href="${esc(url)}" style="color:${INK}">full report</a>.`, `margin:8px 0 0;font-size:13px;color:${INK_2}`) : ""}
+</td></tr>` : ""}
+${struggles ? `<tr><td style="padding:30px 20px 0">
+${heading("To work on")}
+${p(esc(strugglesNote(v)), `margin:0 0 12px;font-size:13px;color:${INK_2}`)}
+${shownStruggles.map((t) => `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:0 0 12px"><tr><td style="background:${CARD};border-radius:10px;padding:14px 16px">
+<p style="margin:0 0 4px;font-size:16px;line-height:1.35;font-weight:600">${esc(t.title)}</p>
+<p style="margin:0 0 10px">${chip(STATUS_CHIP[t.status], STATUS_LABEL[t.status])} <span style="font-family:${MONO};font-size:12px;color:${INK_2}">${esc(`${t.grade} · ${t.count} · ${t.sure}`)}</span></p>
+<p style="margin:0 0 4px;font-family:${MONO};font-size:11px;letter-spacing:0.05em;text-transform:uppercase;color:${INK_2}">Question</p>
+${p(esc(t.question), "margin:0 0 8px;font-size:15px")}
+<table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:0 0 4px"><tr>
+<td style="padding:0 24px 0 0"><p style="margin:0;font-family:${MONO};font-size:11px;letter-spacing:0.05em;text-transform:uppercase;color:${INK_2}">${esc(name)}&#39;s answer</p><p style="margin:2px 0 0;font-size:17px;color:${STATUS_CHIP["needs-attention"].fg}">${esc(t.answer)}</p></td>
+<td><p style="margin:0;font-family:${MONO};font-size:11px;letter-spacing:0.05em;text-transform:uppercase;color:${INK_2}">Right answer</p><p style="margin:2px 0 0;font-size:17px;color:${STATUS_CHIP.secure.fg}">${esc(t.rightAnswer)}</p></td>
+</tr></table>
+${t.cause ? `<p style="margin:10px 0 2px;font-family:${MONO};font-size:11px;letter-spacing:0.05em;text-transform:uppercase;color:${INK_2}">Likely cause</p>${p(esc(t.cause), "margin:0;font-size:15px")}` : ""}
+</td></tr></table>`).join("\n")}
+${moreStruggles > 0 ? p(`The <a href="${esc(url)}" style="color:${INK}">full report</a> shows ${esc(moreCount(moreStruggles))}.`, `margin:0;font-size:14px;color:${INK_2}`) : ""}
+</td></tr>` : ""}
+${wordsLines.length ? `<tr><td style="padding:30px 20px 0">
+${heading("Word problems")}
+${p(esc(WORDS_OR_NUMBERS_NOTE), `margin:0 0 10px;font-size:13px;color:${INK_2}`)}
+${wordsLines.map((line) => p(esc(line), "margin:0 0 8px;font-size:15px")).join("\n")}
+</td></tr>` : ""}
 ${facts ? `<tr><td style="padding:30px 20px 0">
 ${heading("Number facts")}
-${facts.accuracy && facts.speed
+${facts.accuracy
     ? `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"><tr>
-<td width="50%" valign="top" style="padding:14px 16px;background:${CARD};border-radius:10px 0 0 10px;border-right:2px solid #ffffff">
+<td width="50%" valign="top" style="padding:14px 16px;background:${CARD};border-radius:${facts.speed ? "10px 0 0 10px" : "10px"};border-right:2px solid #ffffff">
 <p style="margin:0 0 4px;font-family:${MONO};font-size:12px;color:${INK_2}">Accuracy</p>
 <p style="margin:0 0 8px;font-size:18px;line-height:1.3">${esc(facts.accuracy.value)}</p>
 ${factsChip(facts.accuracy.label)}
 </td>
-<td width="50%" valign="top" style="padding:14px 16px;background:${CARD};border-radius:0 10px 10px 0">
+${facts.speed ? `<td width="50%" valign="top" style="padding:14px 16px;background:${CARD};border-radius:0 10px 10px 0">
 <p style="margin:0 0 4px;font-family:${MONO};font-size:12px;color:${INK_2}">Speed</p>
 <p style="margin:0 0 8px;font-size:18px;line-height:1.3">${esc(facts.speed.value)}</p>
 ${factsChip(facts.speed.label)}
-</td>
+</td>` : `<td width="50%"></td>`}
 </tr></table>`
     : ""}
 ${facts.note ? p(esc(facts.note), "margin:12px 0 0;font-size:15px") : ""}
@@ -398,7 +455,8 @@ export function reportAlert({
   ai?: AiOutcome;
 }) {
   const m = v.model;
-  const facts = factsView(v);
+  // Savar sees the speed at every grade; the parent's report shows it from grade 5 (D-120).
+  const facts = factsView(v, { speed: true });
   const comparison = comparisonView(v);
   const measuredCount = m.comparison.stage === "scale" || comparison ? m.comparison.n : undefined;
   const subject = `Test finished: ${v.childName}, grade ${m.level.grade}, working at ${levelName(m.level.working)}`;

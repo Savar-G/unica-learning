@@ -7,19 +7,12 @@
 import { randomUUID } from "node:crypto";
 import type { ProfileLearning } from "@/lib/assessment";
 import type { LearnerProfileStore } from "@/lib/learner-profile";
-import { countRead, type MemoryReportTables } from "@/lib/report-loading-memory";
+import { countRead, type MemoryProfileRow, type MemoryReportTables } from "@/lib/report-loading-memory";
+
+export type { MemoryProfileRow };
 
 /** A value as the database stores JSON. */
 const json = (value: unknown): unknown => JSON.parse(JSON.stringify(value));
-
-/** A row of public.learner_profiles. `profile` is the stored JSON. */
-export interface MemoryProfileRow {
-  assessmentId: string;
-  parentId: string;
-  childId: string;
-  schemaVersion: number;
-  profile: unknown;
-}
 
 /**
  * The store over the tables. `reads`: the read counter (memoryReportReaders().reads). `learning`: each child's answers
@@ -29,7 +22,8 @@ export function memoryLearnerProfileStore(
   tables: MemoryReportTables,
   { reads = {}, learning = {} }: { reads?: Record<string, number>; learning?: Record<string, ProfileLearning> } = {},
 ) {
-  const rows: MemoryProfileRow[] = [];
+  // The same table the report-loading module's readers read (#198).
+  const rows = (tables.profiles ??= []);
   const store: LearnerProfileStore = {
     async learning(childId) {
       countRead(reads, "children");
