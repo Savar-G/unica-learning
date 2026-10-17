@@ -38,10 +38,6 @@ export interface WhiteboardProps {
   onChange: (board: BoardState) => void;
   /** Grades 3-7: Draw and Type. Grades 1-2: drawing only (#67). */
   typing: boolean;
-  /** A show-your-work question: the label asks for work. */
-  required: boolean;
-  /** The child answered a show-your-work question with an empty board: a tangerine outline (D-088). */
-  nudge: boolean;
   /** Called with the board's size whenever it changes. */
   onSize?: (size: BoardSize) => void;
 }
@@ -131,7 +127,7 @@ export function clearDrafts(drop: (key: string) => boolean): void {
   }
 }
 
-export function Whiteboard({ board, onChange, typing, required, nudge, onSize }: WhiteboardProps) {
+export function Whiteboard({ board, onChange, typing, onSize }: WhiteboardProps) {
   const surface = useRef<HTMLDivElement>(null);
   const canvas = useRef<HTMLCanvasElement>(null);
   const size = useRef<BoardSize>({ width: 0, height: 0 });
@@ -244,13 +240,13 @@ export function Whiteboard({ board, onChange, typing, required, nudge, onSize }:
 
   const empty = board.strokes.length === 0;
   const typingNow = typing && mode === "type";
-  const hint = required ? "Show how you got your answer" : typing ? "Draw or write here" : "Draw here";
+  const hint = typing ? "Draw or write here" : "Draw here";
 
   return (
-    <section className={`wb${nudge ? " is-nudge" : ""}`} data-mode={typingNow ? "type" : "draw"} aria-label="Whiteboard">
+    <section className="wb" data-mode={typingNow ? "type" : "draw"} aria-label="Whiteboard">
       <div className="wb-head">
         <h2>My work</h2>
-        <p className={required ? "is-required" : undefined}>{required ? "Show your work for this one" : "Use it if it helps"}</p>
+        <p>Use it if it helps</p>
       </div>
       <div className="wb-body">
         <div className={`wb-surface${tool === "eraser" && !typingNow ? " is-eraser" : ""}`} ref={surface}>
