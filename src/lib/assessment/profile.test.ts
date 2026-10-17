@@ -5,9 +5,7 @@ import {
   LATE_DROP_POINTS,
   LATE_THIRD_MIN,
   PROFILE_SCHEMA_VERSION,
-  WORDS_MIN_ANSWERS,
   createSession,
-  fillTemplate,
   finish,
   learnerProfile,
   nextQuestion,
@@ -275,95 +273,24 @@ describe("the parent's questionnaire", () => {
   });
 });
 
-describe("words or numbers", () => {
-  // The same skill, 4.5-multiply-1-digit, as a bare-number question (g35-4-multiply) and as a word problem
-  // (g35-4-story-multiply, also tagged 4.5-word-problems, which no bare-number question shares). Both grade 4.
-  // A second skill asked both ways: 4.5-divide-1-digit (g35-4-divide, and the word problem g35-4-share).
-  const BARE = "g35-4-multiply";
-  const WORDS = "g35-4-story-multiply";
-  const BARE_DIVIDE = "g35-4-divide";
-  const WORDS_DIVIDE = "g35-4-share";
-  const ADD = "g35-4-add";
-  const MULTIPLY = "4.5-multiply-1-digit";
-  const DIVIDE = "4.5-divide-1-digit";
-  let n = 0;
-  /** An answer to a question drawn from the template, right or not. */
-  function answer(templateId: string, right: boolean): ProfileAnswer {
-    const template = BANKS["3-5"].find((t) => t.id === templateId)!;
-    const question = fillTemplate(template, 7, "BC", `q-${n++}`);
-    return {
-      question, response: right ? question.answer : "no idea", correct: right, misconception: null, timeMs: 20_000,
-      work: { required: false, drawing: false, typed: false }, readAloud: null, away: null,
-    };
-  }
-  const many = (templateId: string, right: number, wrong: number) => [
-    ...Array.from({ length: right }, () => answer(templateId, true)),
-    ...Array.from({ length: wrong }, () => answer(templateId, false)),
-  ];
-  const grade4 = taken({ grade: 4, province: "BC" }, 101, knows(4)).placement;
-  const finding = (answers: ProfileAnswer[], placement = grade4) => learnerProfile({ placement, answers, help: null, learning: null })!.wordsOrNumbers;
+describe("the words-or-numbers finding is gone (D-121)", () => {
+  // The test does not test reading, so the profile has no words-or-numbers finding. Each template keeps its wording flag.
+  const { placement, answers } = taken({ grade: 4, province: "BC" }, 101, knows(4));
+  const profile = learnerProfile({ placement, answers, help: "no", learning: null })!;
 
-  it("needs 3 answers of each kind on the same skill: 3 and 3 is enough; 2 word problems are not", () => {
-    expect(WORDS_MIN_ANSWERS).toBe(3);
-    expect(finding([...many(BARE, 3, 0), ...many(WORDS, 1, 2)])).toEqual({
-      finding: "gap",
-      skills: [{ id: MULTIPLY, finding: "words-harder", words: { correct: 1, total: 3 }, numbers: { correct: 3, total: 3 } }],
-    });
-    expect(finding([...many(BARE, 3, 0), ...many(WORDS, 0, 2)])).toEqual({
-      finding: "not-enough-evidence",
-      skills: [{ id: MULTIPLY, finding: "not-enough-evidence", words: { correct: 0, total: 2 }, numbers: { correct: 3, total: 3 } }],
-    });
+  it("is not in a new profile, and the bank keeps the wording flag on every template", () => {
+    expect(profile).not.toHaveProperty("wordsOrNumbers");
+    const wordings = new Set(Object.values(BANKS).flat().map((t) => t.wording));
+    expect(wordings).toEqual(new Set(["word-problem", "bare-number"]));
   });
 
-  it("finds a gap only from secure with numbers to needs attention in words, or the reverse", () => {
-    // 3 of 3 with numbers and 2 of 3 in words: words are developing, not needs attention.
-    expect(finding([...many(BARE, 3, 0), ...many(WORDS, 2, 1)]).finding).toBe("no-gap");
-    // 3 of 4 with numbers (75%) is not secure.
-    expect(finding([...many(BARE, 3, 1), ...many(WORDS, 0, 3)]).finding).toBe("no-gap");
-    expect(finding([...many(BARE, 1, 2), ...many(WORDS, 3, 0)])).toMatchObject({ finding: "gap", skills: [{ id: MULTIPLY, finding: "numbers-harder" }] });
-  });
-
-  it("compares word problems and bare numbers within one skill, never across skills", () => {
-    // Multiplication: every word problem wrong, too few bare-number questions. Division: every bare-number question
-    // right, too few word problems. Pooled, words 1 of 4 and numbers 5 of 6 would look like a gap; per skill there is
-    // not enough evidence.
-    expect(finding([...many(WORDS, 0, 3), ...many(BARE, 0, 1), ...many(BARE_DIVIDE, 5, 0), ...many(WORDS_DIVIDE, 1, 0)])).toEqual({
-      finding: "not-enough-evidence",
-      skills: [
-        { id: MULTIPLY, finding: "not-enough-evidence", words: { correct: 0, total: 3 }, numbers: { correct: 0, total: 1 } },
-        { id: DIVIDE, finding: "not-enough-evidence", words: { correct: 1, total: 1 }, numbers: { correct: 5, total: 5 } },
-      ],
-    });
-    // Enough of each kind on both skills, and no gap within either, though words 2 of 7 and numbers 11 of 13 pooled.
-    expect(finding([...many(WORDS, 0, 4), ...many(BARE, 1, 2), ...many(BARE_DIVIDE, 10, 0), ...many(WORDS_DIVIDE, 2, 1)])).toMatchObject({
-      finding: "no-gap",
-      skills: [{ id: MULTIPLY, finding: "no-gap" }, { id: DIVIDE, finding: "no-gap" }],
-    });
-    // One skill where words fail and numbers pass is a gap, whatever the other skill shows.
-    expect(finding([...many(WORDS, 0, 3), ...many(BARE, 3, 0), ...many(BARE_DIVIDE, 2, 1), ...many(WORDS_DIVIDE, 3, 0)])).toEqual({
-      finding: "gap",
-      skills: [
-        { id: MULTIPLY, finding: "words-harder", words: { correct: 0, total: 3 }, numbers: { correct: 3, total: 3 } },
-        { id: DIVIDE, finding: "no-gap", words: { correct: 3, total: 3 }, numbers: { correct: 2, total: 3 } },
-      ],
-    });
-  });
-
-  it("compares only skills that have both kinds, at or below the school grade, from scored answers", () => {
-    // Bare-number addition shares no skill with the word problems: it is not in the comparison.
-    expect(finding([...many(BARE, 3, 0), ...many(WORDS, 1, 2), ...many(ADD, 0, 5)])).toEqual({
-      finding: "gap",
-      skills: [{ id: MULTIPLY, finding: "words-harder", words: { correct: 1, total: 3 }, numbers: { correct: 3, total: 3 } }],
-    });
-    // For a grade 3 child, grade 4 questions are above the school grade.
-    const grade3 = taken({ grade: 3, province: "BC" }, 101, knows(3)).placement;
-    expect(finding([...many(BARE, 3, 0), ...many(WORDS, 1, 2)], grade3)).toEqual({ finding: "not-enough-evidence", skills: [] });
-    // Rushed wrong answers left out of the score do not count.
-    const words = many(WORDS, 1, 2);
-    const rushed = { ...grade4, pace: { veryFast: 3, answers: 6, leftOut: [words[1].question.id], unreliable: false } };
-    expect(finding([...many(BARE, 3, 0), ...words], rushed)).toMatchObject({
-      finding: "not-enough-evidence", skills: [{ id: MULTIPLY, words: { correct: 1, total: 2 } }],
-    });
+  it("is dropped when a profile stored before D-121 is read back: the rest of the profile reads as before", () => {
+    const old = { ...JSON.parse(JSON.stringify(profile)), wordsOrNumbers: { finding: "gap", skills: [{ id: "4.5-multiply-1-digit", finding: "words-harder", words: { correct: 1, total: 3 }, numbers: { correct: 3, total: 3 } }] } };
+    const read = storedProfile(old)!;
+    expect(read).not.toHaveProperty("wordsOrNumbers");
+    expect(read).toEqual(profile);
+    // The stored value is not changed.
+    expect(old).toHaveProperty("wordsOrNumbers");
   });
 });
 

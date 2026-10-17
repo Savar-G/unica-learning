@@ -22,7 +22,6 @@ import {
   verdictSentence,
   strengthsView,
   strugglesView,
-  wordsOrNumbersLines,
   workbookPreview,
   type ReportView,
 } from "@/lib/report-view";
@@ -398,7 +397,7 @@ describe("rushed wrong answers left out", () => {
   });
 });
 
-describe("strengths, struggles, words or numbers and the workbook 1 preview (#198)", () => {
+describe("strengths, struggles and the workbook 1 preview (#198)", () => {
   // The parent's part of a learner profile (reportFindings), as the loaded report carries it.
   const FINDINGS: ReportFindings = {
     strengths: [{ code: "4.5", text: "multiplication and division to two digits (single-digit multiplier)", grade: 4, aboveGrade: false, correct: 6, total: 6, certainty: "clear" }],
@@ -414,7 +413,6 @@ describe("strengths, struggles, words or numbers and the workbook 1 preview (#19
         cause: { source: "ai", text: "{name} may read each digit as ones." },
       },
     ],
-    wordsOrNumbers: [{ skill: "Multiply a two- or three-digit number by a one-digit number", harder: "words", words: { correct: 1, total: 3 }, numbers: { correct: 3, total: 3 } }],
     preview: { focus: [{ code: "4.4", text: "addition and subtraction to 10 000", grade: 4 }], challenge: [{ code: "4.9", text: "increasing and decreasing patterns, using tables and charts", grade: 4 }] },
   };
   const withFindings = (findings: ReportFindings | null, v = view(knowsUpTo(3))): ReportView => ({ ...v, findings });
@@ -423,7 +421,6 @@ describe("strengths, struggles, words or numbers and the workbook 1 preview (#19
     for (const v of [view(knowsUpTo(3)), withFindings(null)]) {
       expect(strengthsView(v)).toBeNull();
       expect(strugglesView(v)).toBeNull();
-      expect(wordsOrNumbersLines(v)).toEqual([]);
       expect(workbookPreview(v)).toBeNull();
     }
   });
@@ -442,13 +439,6 @@ describe("strengths, struggles, words or numbers and the workbook 1 preview (#19
     expect(struggles[1].cause).toBe("Maya may read each digit as ones.");
     const noCause = withFindings({ ...FINDINGS, struggles: [{ ...FINDINGS.struggles[0], cause: null }] });
     expect(strugglesView(noCause)![0].cause).toBeNull();
-  });
-
-  it("says the words-or-numbers finding with both counts, one line per skill with a gap", () => {
-    const [line] = wordsOrNumbersLines(withFindings(FINDINGS));
-    expect(line).toContain("3 of 3");
-    expect(line).toContain("1 of 3");
-    expect(wordsOrNumbersLines(withFindings({ ...FINDINGS, wordsOrNumbers: [] }))).toEqual([]);
   });
 
   it("previews workbook 1 for a family that can start the books, and never for the waitlist, which has no workbook yet", () => {

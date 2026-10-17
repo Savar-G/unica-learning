@@ -11,7 +11,6 @@ import {
   REPORTED_STRAND_NAMES,
   REPORT_TEXT_NAME,
   TOO_FAST_MS,
-  WORDS_MIN_ANSWERS,
   type Certainty,
   type LearnerProfile,
   type MisconceptionId,
@@ -19,8 +18,6 @@ import {
   type ProfileAi,
   storedProfile,
   type Tally,
-  type WordsOrNumbers,
-  type WordsOrNumbersFinding,
 } from "@/lib/assessment";
 import type { ProfileDetail } from "@/lib/admin-store";
 import { adminTestPath, duration, flagText, helpAnswerText, levelText, when } from "@/lib/admin-view";
@@ -31,22 +28,8 @@ import { RecordFacts, childPath } from "@/components/admin-records";
 
 const CERTAINTY: Record<Certainty, string> = { clear: "Clear", "early-sign": "Early sign" };
 const right = (t: Tally) => `${t.correct} of ${t.total}`;
-const rate = (t: Tally) => (t.total ? `${right(t)} (${Math.round((100 * t.correct) / t.total)}%)` : "None");
 const misconception = (id: string | null) => (id ? MISCONCEPTIONS[id as MisconceptionId]?.description ?? id : "-");
 const yesNo = (value: boolean) => (value ? "Yes" : "No");
-
-const WORDS_FINDING: Record<WordsOrNumbers["finding"], string> = {
-  gap: "A gap between word problems and bare numbers on at least one skill: see the skills below.",
-  "no-gap": "No gap between word problems and bare numbers on any skill with enough answers.",
-  "not-enough-evidence": `Not enough evidence: no skill had ${WORDS_MIN_ANSWERS} answers of each kind.`,
-};
-
-const SKILL_FINDING: Record<WordsOrNumbersFinding, string> = {
-  "words-harder": "Word problems harder",
-  "numbers-harder": "Bare numbers harder",
-  "no-gap": "No gap",
-  "not-enough-evidence": "Not enough evidence",
-};
 
 const AI_PARTS: Record<keyof ProfileAi, string> = {
   likelyCauses: "Likely cause of each struggle",
@@ -80,7 +63,7 @@ export function AdminProfile({ email, detail }: { email: string; detail: Profile
 }
 
 function ProfileFacts({ profile, numbers, name }: { profile: LearnerProfile; numbers: ReadonlyMap<string, number>; name: string }) {
-  const { level, behaviour: b, wordsOrNumbers: w, unknowns: u, facts } = profile;
+  const { level, behaviour: b, unknowns: u, facts } = profile;
   return <>
     <p className="adm-note">Written by code from the test unless marked AI. Only answers at or below the school grade make a struggle; rushed wrong answers left out of the score are not counted.</p>
 
@@ -105,19 +88,13 @@ function ProfileFacts({ profile, numbers, name }: { profile: LearnerProfile; num
       </Table>
     </section>)}
 
-    <h2>4. Words or numbers</h2>
-    <p>{WORDS_FINDING[w.finding]} Decided skill by skill: {WORDS_MIN_ANSWERS} or more answers of each kind on the skill, and secure in one kind with needs attention in the other.</p>
-    <Table label="Skills asked both ways" head={["Skill", "Word problems", "Bare numbers", "Finding"]} empty="No skill was asked both as a word problem and with bare numbers at or below the school grade.">
-      {w.skills.map((s) => <tr key={s.id}><td className="adm-mono">{s.id}</td><td>{rate(s.words)}</td><td>{rate(s.numbers)}</td><td>{s.finding === "words-harder" || s.finding === "numbers-harder" ? <Chip tone="warn">{SKILL_FINDING[s.finding]}</Chip> : SKILL_FINDING[s.finding]}</td></tr>)}
-    </Table>
-
-    <h2>5. Fact fluency</h2>
+    <h2>4. Fact fluency</h2>
     {facts ? <RecordFacts facts={[
       ["Answered", `${facts.correct} of ${facts.answered} right, ${facts.skipped} skipped`], ["Accuracy", facts.accuracy ?? "-"],
       ["Median time", facts.medianMs === null ? "-" : duration(facts.medianMs)], ["Speed", facts.speed ?? "-"],
     ]} /> : <p className="adm-note">No quick facts section.</p>}
 
-    <h2>6. Test behaviour</h2>
+    <h2>5. Test behaviour</h2>
     <RecordFacts facts={[
       ["Median thinking time", b.medianMs === null ? "-" : duration(b.medianMs)],
       [`Under ${TOO_FAST_MS / 1000} s`, `${b.veryFast} of ${profile.test.answered}${b.unreliable ? " (reliability note)" : ""}`],
@@ -131,20 +108,20 @@ function ProfileFacts({ profile, numbers, name }: { profile: LearnerProfile; num
     ]} />
     {b.help.flags.length > 0 && <ul className="adm-list">{b.help.flags.map((f, i) => <li key={i}>{flagText(f, numbers)}</li>)}</ul>}
 
-    <h2>7. Learning preferences and interests</h2>
+    <h2>6. Learning preferences and interests</h2>
     <RecordFacts facts={[
       ["Learns best from", profile.preferences.styles.length ? profile.preferences.styles.map(styleLabel).join("; ") : "No answer"],
       ["Interests", profile.preferences.interests.length ? profile.preferences.interests.map(interestLabel).join(", ") : "No answer"],
     ]} />
 
-    <h2>8. What we do not know</h2>
+    <h2>7. What we do not know</h2>
     <p>Early signs: {[u.earlySigns.level && "the working level", ...u.earlySigns.strands.map((s) => REPORTED_STRAND_NAMES[s])].filter(Boolean).join(", ") || "none"}.</p>
     <h3>Check next</h3>
     {u.checkNext.length ? <ul className="adm-list">{u.checkNext.map((s) => <li key={`${s.reason}-${s.code}`}><span className="adm-mono">{s.code}</span> {s.text} <span className="adm-sub">{s.reason === "confirm-struggle" ? "Confirm the struggle: one more answer could change it" : "Not tested, in an early-sign area"}</span></li>)}</ul> : <p className="adm-note">Nothing to check next.</p>}
     <h3>Standards of grade {profile.test.grade} not tested</h3>
     {u.untested.length ? <ul className="adm-list">{u.untested.map((s) => <li key={s.code}><span className="adm-mono">{s.code}</span> {s.text}</li>)}</ul> : <p className="adm-note">Every standard of the grade was tested.</p>}
 
-    <h2>9. The parent&apos;s answers</h2>
+    <h2>8. The parent&apos;s answers</h2>
     <RecordFacts facts={[
       ["Main goal", profile.parent.goal ? goalLabel(profile.parent.goal) : "No answer"],
       ["Feeling about math", profile.parent.feeling ? feelingLabel(profile.parent.feeling) : "No answer"],

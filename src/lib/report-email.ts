@@ -35,8 +35,6 @@ import {
   summaryText,
   thresholdsLine,
   verdictSentence,
-  wordsOrNumbersLines,
-  WORDS_OR_NUMBERS_NOTE,
   type FactsView,
   type NextStepKey,
   type ReportView,
@@ -179,11 +177,10 @@ export function reportEmail({ view: v, parentName, url, unsubscribeUrl, offer = 
   // #190: the results include the extra round the child took.
   const extraLine = extraRoundLine(v);
   const sure = (s: ReportView["model"]["strands"][number]) => certaintyText(v, s.certainty);
-  // #198: strengths, struggles and words or numbers, from the learner profile's facts. The workbook 1 preview needs the
+  // #198: strengths and struggles, from the learner profile's facts. The workbook 1 preview needs the
   // AI parts, which the job writes after this email (D-117), so the email has none; the account report shows it.
   const strengths = strengthsView(v);
   const struggles = strugglesView(v);
-  const wordsLines = wordsOrNumbersLines(v);
   const shownStrengths = strengths?.slice(0, STRENGTHS_SHOWN) ?? [];
   const shownStruggles = struggles?.slice(0, STRUGGLES_SHOWN) ?? [];
   const moreStruggles = (struggles?.length ?? 0) - shownStruggles.length;
@@ -216,7 +213,6 @@ export function reportEmail({ view: v, parentName, url, unsubscribeUrl, offer = 
       `${name}'s answer: ${t.answer}. Right answer: ${t.rightAnswer}.`,
       ...(t.cause ? [`Likely cause: ${t.cause}`] : []),
     ].join("\n")), ...(moreStruggles > 0 ? [`The full report shows ${moreCount(moreStruggles)}.`] : [])].join("\n\n")] : []),
-    ...(wordsLines.length ? [["Word problems", WORDS_OR_NUMBERS_NOTE, ...wordsLines].join("\n")] : []),
     ...(facts ? [[`Number facts: ${factsLine(facts)}`, ...(facts.accuracy && facts.note ? [facts.note] : []), `${facts.scope} ${facts.round}`].join("\n")] : []),
     ...(work ? [work] : []),
     ...(offer ? [`How we help: ${help.title}\n${help.text}`] : []),
@@ -337,11 +333,6 @@ ${p(esc(t.question), "margin:0 0 8px;font-size:15px")}
 ${t.cause ? `<p style="margin:10px 0 2px;font-family:${MONO};font-size:11px;letter-spacing:0.05em;text-transform:uppercase;color:${INK_2}">Likely cause</p>${p(esc(t.cause), "margin:0;font-size:15px")}` : ""}
 </td></tr></table>`).join("\n")}
 ${moreStruggles > 0 ? p(`The <a href="${esc(url)}" style="color:${INK}">full report</a> shows ${esc(moreCount(moreStruggles))}.`, `margin:0;font-size:14px;color:${INK_2}`) : ""}
-</td></tr>` : ""}
-${wordsLines.length ? `<tr><td style="padding:30px 20px 0">
-${heading("Word problems")}
-${p(esc(WORDS_OR_NUMBERS_NOTE), `margin:0 0 10px;font-size:13px;color:${INK_2}`)}
-${wordsLines.map((line) => p(esc(line), "margin:0 0 8px;font-size:15px")).join("\n")}
 </td></tr>` : ""}
 ${facts ? `<tr><td style="padding:30px 20px 0">
 ${heading("Number facts")}

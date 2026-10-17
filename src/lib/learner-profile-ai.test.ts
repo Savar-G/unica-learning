@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { BANKS, learnerProfile, type LearnerProfile } from "@/lib/assessment";
 import { takeTest } from "@/lib/assessment/scripted-child";
+import { fakeAiClient } from "@/lib/ai-client-fake";
 import { profileAiClient, writeProfileAi } from "@/lib/learner-profile-ai";
 
 // The switch of the learner profile's AI parts (#197) and the development fake behind AI_REVIEW_FAKE, through the
@@ -43,6 +44,16 @@ describe("the switch", () => {
   it("gives the fake for AI_REVIEW_FAKE in development only, never in a production build", () => {
     expect(profileAiClient({ NODE_ENV: "development", AI_REVIEW_FAKE: "sure" })?.model).toBe("fake");
     expect(profileAiClient({ NODE_ENV: "production", AI_REVIEW_FAKE: "sure" })).toBeNull();
+  });
+});
+
+describe("the request", () => {
+  it("neither sends nor asks for a words-or-numbers finding (D-121)", async () => {
+    const client = fakeAiClient({ answer: () => ({}) });
+    await expect(writeProfileAi(client, struggling())).rejects.toThrow();
+    const [request] = client.requests;
+    const sent = JSON.stringify(request).toLowerCase();
+    for (const gone of ["words or numbers", "wordsornumbers", "words-or-numbers"]) expect(sent).not.toContain(gone);
   });
 });
 
