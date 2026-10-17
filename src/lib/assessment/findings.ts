@@ -1,5 +1,5 @@
-// What the parent's report shows from the learner profile (#198, spec #181 stories 5-9, D-120): strengths; struggles,
-// each with one real wrong answer and the likely cause; the words-or-numbers gaps; and the workbook 1 preview. One pure
+// What the parent's report shows from the learner profile (#198, spec #181 stories 5, 6 and 9, D-120, D-121):
+// strengths; struggles, each with one real wrong answer and the likely cause; and the workbook 1 preview. One pure
 // function over the stored profile, with or without its AI parts (#197), so the account report, the report email, the
 // admin report view and the sample report show the same thing. It keeps only what a parent sees: never the test
 // behaviour, the full error list, how to help or the model ids (admin only, spec #181).
@@ -41,18 +41,6 @@ export interface StruggleFinding extends FindingStandard {
   cause: LikelyCause | null;
 }
 
-/**
- * A skill the child did well on in one kind of question and not in the other (spec story 7, D-115): `harder` "words"
- * when the bare-number questions were secure and the word problems need attention; "numbers" for the reverse.
- */
-export interface WordsOrNumbersGap {
-  /** The skill's text, from the BC skill map. */
-  skill: string;
-  harder: "words" | "numbers";
-  words: Tally;
-  numbers: Tally;
-}
-
 /** The most standards the preview names for the focus, and for the challenge: a sentence, not a list. */
 export const PREVIEW_TOPICS_MAX = 3;
 
@@ -71,14 +59,11 @@ export interface WorkbookPreview {
 export interface ReportFindings {
   strengths: StrengthFinding[];
   struggles: StruggleFinding[];
-  /** Each skill with a gap, in test order; none when no skill showed one. */
-  wordsOrNumbers: WordsOrNumbersGap[];
   /** Null without the AI's workbook plan (the AI is off or failed, or the report email went before it wrote), or when it names nothing. */
   preview: WorkbookPreview | null;
 }
 
 const STANDARDS = new Map(BC_SKILL_MAP.standards.map((s) => [s.code, s]));
-const SKILL_TEXT = new Map(BC_SKILL_MAP.standards.flatMap((s) => s.skills.map((k) => [k.id, k.text] as const)));
 const SURE: Record<Certainty, number> = { clear: 0, "early-sign": 1 };
 const known = (id: string | null) => (id ? MISCONCEPTIONS[id as MisconceptionId] : undefined);
 
@@ -128,11 +113,6 @@ export function reportFindings(profile: LearnerProfile): ReportFindings {
       .filter((s) => s.wrong.length > 0)
       .sort((a, b) => SURE[a.certainty] - SURE[b.certainty])
       .map((s) => struggleFinding(s, profile.ai)),
-    wordsOrNumbers: profile.wordsOrNumbers.skills.flatMap((k): WordsOrNumbersGap[] => {
-      const harder = k.finding === "words-harder" ? "words" : k.finding === "numbers-harder" ? "numbers" : null;
-      const skill = SKILL_TEXT.get(k.id);
-      return harder && skill ? [{ skill, harder, words: k.words, numbers: k.numbers }] : [];
-    }),
     preview: previewOf(profile.ai),
   };
 }

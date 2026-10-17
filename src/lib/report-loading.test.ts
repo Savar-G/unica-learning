@@ -1,5 +1,9 @@
+import { createElement } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
-import { BANKS, createSession, learnerProfile, reportModel, storedTest, type LearnerProfile, type ProfileAi, type ShownWork } from "@/lib/assessment";
+import { ReportCard } from "@/components/report";
+import { reportEmail } from "@/lib/report-email";
+import { BANKS, BC_SKILL_MAP, createSession, learnerProfile, reportModel, storedTest, type LearnerProfile, type ProfileAi, type ShownWork } from "@/lib/assessment";
 import { knowsUpTo, takeTest } from "@/lib/assessment/scripted-child";
 import { loadReportInputs, loadReportView, type ComparisonRead } from "@/lib/report-loading";
 import { memoryReportReaders, type MemoryAnswer, type MemoryAssessment, type MemoryReportTables } from "@/lib/report-loading-memory";
@@ -160,6 +164,24 @@ describe("the parent's part of the learner profile on the report view (#198)", (
     const shown = (await loadReportView(readers.parent("parent-1"), "report-1"))!.view.findings!.struggles.find((s) => s.code === missed)!;
     for (const secret of ["build-1", "vendor/model-x", "ADMIN-ONLY", "behaviour", "medianMs", "unknowns", "misconceptions"]) expect(view).not.toContain(secret);
     for (const w of struggle.wrong.filter((x) => x.response !== shown.answer.response)) expect(view).not.toContain(`"${w.response}"`);
+  });
+
+  it("ignores the words-or-numbers finding of a profile stored before D-121: the page, the email and the view do not show it", async () => {
+    // Profiles stored before #238 carry the finding, here with a gap on a real skill.
+    const skill = BC_SKILL_MAP.standards.find((s) => s.code === "4.5")!.skills[0];
+    const wordsOrNumbers = { finding: "gap", skills: [{ id: skill.id, finding: "words-harder", words: { correct: 1, total: 3 }, numbers: { correct: 3, total: 3 } }] };
+    const loaded = await loadReportView(memoryReportReaders(stored({ ...facts, ai: AI, wordsOrNumbers })).parent("parent-1"), "report-1");
+    const { view } = loaded!;
+    expect(view.findings!.struggles.map((s) => s.code)).toContain(missed);
+    expect(view.findings).not.toHaveProperty("wordsOrNumbers");
+    expect(JSON.stringify(view)).not.toContain(skill.text);
+    const page = renderToStaticMarkup(createElement(ReportCard, { view, readOnly: true }));
+    const email = reportEmail({ view, parentName: "Priya Shah", url: "https://unicalearning.com/account/report/report-1", unsubscribeUrl: "https://unicalearning.com/unsubscribe" });
+    for (const place of [page, email.text, email.html]) {
+      expect(place).toContain("To work on");
+      expect(place).not.toContain("Word problems");
+      expect(place).not.toContain("1 of 3");
+    }
   });
 
   it("has no findings without a stored profile, or with one at another schema version", async () => {

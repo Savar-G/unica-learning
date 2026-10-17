@@ -16,8 +16,8 @@ import {
   type ProfileAnswer,
 } from "@/lib/assessment";
 
-// What the parent's report shows from the learner profile (#198, spec #181 stories 5-9): strengths; struggles, each with
-// one real wrong answer and the likely cause; the words-or-numbers gaps; and the workbook 1 preview. Through the
+// What the parent's report shows from the learner profile (#198, spec #181 stories 5, 6 and 9, D-121): strengths;
+// struggles, each with one real wrong answer and the likely cause; and the workbook 1 preview. Through the
 // assessment core's public interface: a profile built from answers as the report job builds it, with or without the
 // AI parts (#197).
 
@@ -115,28 +115,12 @@ describe("strengths and struggles", () => {
   });
 });
 
-describe("words or numbers", () => {
-  // The skill 4.5-multiply-1-digit, with bare numbers (g35-4-multiply) and in word problems (g35-4-story-multiply).
-  const MULTIPLY_SKILL = BC_SKILL_MAP.standards.find((s) => s.code === "4.5")!.skills.find((k) => k.id === "4.5-multiply-1-digit")!;
-
-  it("shows each skill the child can do with numbers but not in word problems, with both counts", () => {
-    const bare = times(3, () => answer("g35-4-multiply", "right"));
-    const words = [answer("g35-4-story-multiply", "right"), ...times(2, () => answer("g35-4-story-multiply", "no idea"))];
-    expect(reportFindings(profileOf([...bare, ...words])).wordsOrNumbers).toEqual([
-      { skill: MULTIPLY_SKILL.text, harder: "words", words: { correct: 1, total: 3 }, numbers: { correct: 3, total: 3 } },
-    ]);
-  });
-
-  it("shows the reverse too: word problems right, bare numbers not", () => {
-    const bare = [answer("g35-4-multiply", "right"), ...times(2, () => answer("g35-4-multiply", "no idea"))];
-    const words = times(3, () => answer("g35-4-story-multiply", "right"));
-    expect(reportFindings(profileOf([...bare, ...words])).wordsOrNumbers).toMatchObject([{ skill: MULTIPLY_SKILL.text, harder: "numbers" }]);
-  });
-
-  it("shows nothing without a gap: no gap, or too few answers of a kind", () => {
-    const bare = times(3, () => answer("g35-4-multiply", "right"));
-    expect(reportFindings(profileOf([...bare, ...times(3, () => answer("g35-4-story-multiply", "right"))])).wordsOrNumbers).toEqual([]);
-    expect(reportFindings(profileOf([...bare, ...times(2, () => answer("g35-4-story-multiply", "no idea"))])).wordsOrNumbers).toEqual([]);
+describe("no words-or-numbers finding (D-121)", () => {
+  it("has none, also for a profile stored before D-121 with a gap", () => {
+    const profile = profileOf(MULTIPLY);
+    expect(reportFindings(profile)).not.toHaveProperty("wordsOrNumbers");
+    const old = { ...profile, wordsOrNumbers: { finding: "gap", skills: [{ id: "4.5-multiply-1-digit", finding: "words-harder", words: { correct: 1, total: 3 }, numbers: { correct: 3, total: 3 } }] } };
+    expect(reportFindings(old as LearnerProfile)).toEqual(reportFindings(profile));
   });
 });
 

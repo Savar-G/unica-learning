@@ -248,6 +248,14 @@ describe("the copy without names", () => {
     expect(anonymousTestCopy({ ...s, profile: null, learning: null })).toMatchObject({ profile: null, questionnaire: null });
   });
 
+  it("leaves out the words-or-numbers finding of a profile stored before D-121, and keeps each question's wording", () => {
+    const s = source();
+    const copy = anonymousTestCopy({ ...s, profile: { ...s.profile, wordsOrNumbers: { finding: "gap", skills: [{ id: "4.5-multiply-1-digit", finding: "words-harder", words: { correct: 1, total: 3 }, numbers: { correct: 3, total: 3 } }] } } });
+    expect(copy.profile).not.toHaveProperty("wordsOrNumbers");
+    expect(copy.profile).toEqual(anonymousTestCopy(s).profile);
+    for (const q of copy.questions) expect(["word-problem", "bare-number"]).toContain(q.wording);
+  });
+
   it("never keeps free text that reached a response, an answer change or a choice from a changed screen", () => {
     const s = source();
     const choice = s.answers.findIndex((a) => s.stored.stage1.concat(...Object.values(s.stored.stage2)).find((q) => q.id === a.questionId)?.format === "choice");

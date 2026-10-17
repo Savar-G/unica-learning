@@ -28,7 +28,7 @@ export const PROFILE_AI_MS = 60_000;
 const SYSTEM = `You interpret the result of a math placement test for one child in grades 1 to 7 in British Columbia, Canada. Your reader plans the child's first workbook, and parts may later be shown to the child's parent. Use only the facts in the JSON you get.
 
 The JSON holds:
-- profile: the measured facts. Each BC standard tested, with its result. Strengths: the secure standards. Struggles: standards at or below the school grade that are not secure, with the child's real wrong answers and the ids of the known mistakes they match. Words or numbers, number facts, how the child took the test, and the parent's answers: how the child feels about math, the main goal and the time each week.
+- profile: the measured facts. Each BC standard tested, with its result. Strengths: the secure standards. Struggles: standards at or below the school grade that are not secure, with the child's real wrong answers and the ids of the known mistakes they match. Number facts, how the child took the test, and the parent's answers: how the child feels about math, the main goal and the time each week.
 - misconceptions: each known mistake id in plain words. A wrong answer can match a known mistake by chance: treat it as a likely cause, not as certain.
 - struggle_skills: for each struggle, its skills, the skills each one needs first, and the child's result on the standard of each needed skill ("not tested" when the test did not ask it).
 - next_challenge_candidates: the standards the child is ready for: not yet secure, not a struggle, and every standard they build on is secure. There may be none.

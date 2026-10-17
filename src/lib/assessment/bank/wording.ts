@@ -1,6 +1,6 @@
-// Word problem or bare-number question, for every template in the banks (#187). The learner profile compares a
-// child's correct rate on the two kinds for the same skill: a child who can do a skill with numbers but not in a
-// story may have a reading problem.
+// Word problem or bare-number question, for every template in the banks (#187). Raw data about each question: the
+// admin export and the copy without names keep it with each answer. The learner profile no longer compares the two
+// kinds (D-121: the test does not test reading).
 //
 // A word problem sets the math in a real-world situation told in sentences (people, objects, money, events, a
 // spinner or a bag to draw from), so the child must read it and decide what math to do. A bare-number question gives

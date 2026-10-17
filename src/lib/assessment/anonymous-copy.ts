@@ -41,7 +41,7 @@ const PLACEMENT_FIELDS = [
 
 /** The profile's facts (#196): every field but `ai`. The copy keeps a profile only at the schema version it knows. */
 const PROFILE_FIELDS = [
-  "schemaVersion", "test", "level", "strands", "standards", "strengths", "struggles", "wordsOrNumbers", "facts",
+  "schemaVersion", "test", "level", "strands", "standards", "strengths", "struggles", "facts",
   "behaviour", "preferences", "parent", "unknowns",
 ] as const;
 const PROFILE_VERSION = 1;

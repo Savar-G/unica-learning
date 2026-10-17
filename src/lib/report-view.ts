@@ -498,7 +498,6 @@ export const STRUGGLES_SHOWN = 3;
 export const strengthsNote = (v: ReportView) => `BC topics where ${v.childName} got ${STRAND_SECURE_PERCENT}% or more right.`;
 export const strugglesNote = (v: ReportView) =>
   `BC topics up to ${levelName(v.model.level.grade)} where ${v.childName} got under ${STRAND_SECURE_PERCENT}% right, with one of ${v.childName}'s answers for each.`;
-export const WORDS_OR_NUMBERS_NOTE = "The same skill, asked as a word problem and with numbers only.";
 /** "and 4 more", after the shown ones. */
 export const moreCount = (n: number) => `${n} more`;
 
@@ -536,21 +535,6 @@ export function strugglesView(v: ReportView): StruggleView[] | null {
       : s.cause.source === "ai" ? s.cause.text.replaceAll(REPORT_TEXT_NAME, v.childName)
       : `This answer matches a common mistake, where a child ${lowerFirst(s.cause.text)}.`,
   }));
-}
-
-/**
- * #198 (spec story 7): one line for each skill the child did with numbers only but not in word problems, or the
- * reverse, with both counts. None when no skill showed a gap.
- */
-export function wordsOrNumbersLines(v: ReportView): string[] {
-  const name = v.childName;
-  return (v.findings?.wordsOrNumbers ?? []).map((g) => {
-    const words = `${g.words.correct} of ${g.words.total}`;
-    const numbers = `${g.numbers.correct} of ${g.numbers.total}`;
-    return g.harder === "words"
-      ? `${capital(g.skill)}: ${name} got ${numbers} right with numbers only, and ${words} as word problems. Reading the question may be part of what makes it hard.`
-      : `${capital(g.skill)}: ${name} got ${words} right as word problems, and ${numbers} with numbers only.`;
-  });
 }
 
 /**

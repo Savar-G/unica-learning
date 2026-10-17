@@ -70,3 +70,14 @@ describe("the admin profile page's AI parts", () => {
     expect(written).not.toContain("AI: ");
   });
 });
+
+describe("the admin profile page of a profile stored before D-121", () => {
+  it("shows the profile without its words-or-numbers finding, also in the stored JSON", () => {
+    const profile = facts();
+    const old = { ...profile, wordsOrNumbers: { finding: "gap", skills: [{ id: "4.5-multiply-1-digit", finding: "words-harder", words: { correct: 1, total: 3 }, numbers: { correct: 3, total: 3 } }] } };
+    const html = page(old as LearnerProfile);
+    expect(html).toContain("3. Struggles");
+    expect(html).toContain("Stored JSON");
+    for (const gone of ["Words or numbers", "wordsOrNumbers", "Word problems harder", "4.5-multiply-1-digit"]) expect(html).not.toContain(gone);
+  });
+});

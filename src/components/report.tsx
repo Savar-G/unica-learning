@@ -2,7 +2,7 @@
 // the nav width; the header table; the level and the verdict in a grainy colour band with the big K-8 ruler; the
 // context (FSA line, comparison, help warning); then rows with the title on the left and the content on the right.
 // #198 (D-120, round r198, option A): under the areas, the strengths, the struggles (each with one of the child's
-// answers and the likely cause) and the words-or-numbers finding; the workbook 1 preview in "How we help".
+// answers and the likely cause); the workbook 1 preview in "How we help".
 // A server component: only the next step needs JavaScript in the browser (report-next.tsx).
 // The words come from src/lib/report-view.ts, which the report email uses too.
 import type { CSSProperties, ReactNode } from "react";
@@ -46,13 +46,11 @@ import {
   type TopicResult,
   STRENGTHS_SHOWN,
   STRUGGLES_SHOWN,
-  WORDS_OR_NUMBERS_NOTE,
   moreCount,
   strengthsNote,
   strengthsView,
   strugglesNote,
   strugglesView,
-  wordsOrNumbersLines,
   workbookPreview,
 } from "@/lib/report-view";
 import "./report.css";
@@ -89,7 +87,6 @@ export function ReportCard({ view, next = NO_NEXT, readOnly = false, nextSlot, n
       <ReportAreas view={view} extraRound={extraRound} />
       <ReportStrengths view={view} />
       <ReportStruggles view={view} />
-      <ReportWordsOrNumbers view={view} />
       <ReportNumberFacts view={view} />
       <ReportWork view={view} />
       <ReportHelp view={view} />
@@ -352,17 +349,6 @@ function ReportStruggles({ view }: { view: ReportView }) {
   return (
     <Row id="rpt-struggles" title="To work on" note={strugglesNote(view)}>
       <Folded items={struggles} shown={STRUGGLES_SHOWN} className="rpt-struggles" render={(s) => <Struggle key={s.code} view={view} s={s} />} />
-    </Row>
-  );
-}
-
-// #198 (spec story 7): a skill done with numbers only but not in word problems, or the reverse. Nothing without a gap.
-function ReportWordsOrNumbers({ view }: { view: ReportView }) {
-  const lines = wordsOrNumbersLines(view);
-  if (lines.length === 0) return null;
-  return (
-    <Row id="rpt-words" title="Word problems" note={WORDS_OR_NUMBERS_NOTE}>
-      {lines.map((line) => <p key={line} className="rpt-words">{line}</p>)}
     </Row>
   );
 }

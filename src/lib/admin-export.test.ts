@@ -294,6 +294,13 @@ describe("the learner profiles", () => {
     expect(JSON.parse(rows[0]["profile.other"])).toEqual({ newPart: { a: 1 } });
     expect(rows[0]["profile.schemaVersion"]).toBe("2");
   });
+
+  it("keep the words-or-numbers finding of a profile stored before D-121 as raw data, in the last profile column", async () => {
+    const old = { ...profile, wordsOrNumbers: { finding: "gap", skills: [{ id: "4.5-multiply-1-digit", finding: "words-harder", words: { correct: 1, total: 3 }, numbers: { correct: 3, total: 3 } }] } };
+    const rows = await csv({ ...data, learner_profiles: [stored(1, old)] }, { dataset: "profiles", withTests: false });
+    expect(Object.keys(rows[0])).not.toContain("profile.wordsOrNumbers");
+    expect(JSON.parse(rows[0]["profile.other"])).toEqual({ wordsOrNumbers: old.wordsOrNumbers });
+  });
 });
 
 describe("the questions as drawn", () => {

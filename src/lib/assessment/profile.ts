@@ -10,18 +10,10 @@ import { TOO_FAST_MS, helpLikely, type Flag, type HelpAnswer } from "./flags";
 import { RUSH_RUN, paceOf } from "./rushing";
 import type { Interest, LearningGoal, LearningStyle, MathFeeling, WeeklyTime } from "@/lib/learning-style";
 import { BC_SKILL_MAP } from "./skill-map";
-import { templateSkills } from "./skill-tags";
 import type { Grade, Level, LevelResult, Placement, Province, Question, ReportedStrand, Route, StrandStatus } from "./types";
 
 /** The version of the profile's JSON. A change that a reader of stored profiles must know about adds one. */
 export const PROFILE_SCHEMA_VERSION = 1;
-
-/**
- * Words or numbers, the minimum evidence: at least this many scored answers of each kind (word problem, bare number)
- * on one skill. Below it, that skill's finding is "not-enough-evidence". A starting value;
- * Savar tunes it from the first real results. Never inline it.
- */
-export const WORDS_MIN_ANSWERS = 3;
 
 /** The late-test drop: the last third's correct rate this many whole percentage points or more below the first third's. */
 export const LATE_DROP_POINTS = 30;
@@ -128,25 +120,6 @@ export interface ProfileStruggle extends ProfileStandard {
   misconceptions: string[];
 }
 
-/** A skill's words-or-numbers finding: the gap rule (WordsOrNumbers) on its own answers. */
-export type WordsOrNumbersFinding = "words-harder" | "numbers-harder" | "no-gap" | "not-enough-evidence";
-
-/**
- * Words or numbers (spec story 7): the correct rate on word problems beside the correct rate on bare-number questions
- * for the same skill, decided skill by skill. Only scored answers at or below the school grade count, and only on a
- * skill the test asked in both kinds (a skill a template is tagged with, #193). For each skill, with WORDS_MIN_ANSWERS
- * of each kind or more: "words-harder" when its bare-number answers are secure (STRAND_SECURE_PERCENT) and its word
- * problems need attention (below STRAND_DEVELOPING_PERCENT); "numbers-harder" for the reverse; else "no-gap". With
- * fewer, "not-enough-evidence". Never word problems on one skill beside bare numbers on another.
- * The finding of the test: "gap" when a skill shows one; else "no-gap" when a skill had enough evidence; else
- * "not-enough-evidence".
- */
-export interface WordsOrNumbers {
-  finding: "gap" | "no-gap" | "not-enough-evidence";
-  /** Each skill asked in both kinds, in test order, with its tallies and its own finding. */
-  skills: { id: string; finding: WordsOrNumbersFinding; words: Tally; numbers: Tally }[];
-}
-
 /**
  * Accuracy late in the test (spec #181): the first third of the answers beside the last third, by place in the test.
  * Only the questions at the school grade count, so a route up or down does not look like a drop or a rise; every
@@ -251,7 +224,6 @@ export interface LearnerProfile {
   strengths: ProfileStrength[];
   /** Needs attention first, then developing; each in curriculum order. */
   struggles: ProfileStruggle[];
-  wordsOrNumbers: WordsOrNumbers;
   /** Fact fluency (#70): accuracy and speed, as the placement stored them. Null when the child had no facts section. */
   facts: FactsResult | null;
   behaviour: ProfileBehaviour;
@@ -264,7 +236,7 @@ export interface LearnerProfile {
   ai?: ProfileAi;
 }
 
-/** Every bank template, by id: its BC standard and its wording. */
+/** Every bank template, by id: its BC standard. */
 const TEMPLATES = new Map(Object.values(BANKS).flat().map((t) => [t.id, t]));
 const STANDARDS = new Map(BC_SKILL_MAP.standards.map((s) => [s.code, s]));
 const standardOf = (a: ProfileAnswer) => TEMPLATES.get(a.question.templateId)?.standard;
@@ -303,36 +275,6 @@ function standardsOf(counted: readonly ProfileAnswer[], grade: Grade): ProfileSt
       certainty: strandCertainty(correct, total),
     };
   }).sort(curriculumOrder);
-}
-
-/** The words-or-numbers comparison (WordsOrNumbers) of the scored answers. */
-function wordsOrNumbersOf(counted: readonly ProfileAnswer[], grade: Grade): WordsOrNumbers {
-  const bySkill = new Map<string, { words: ProfileAnswer[]; numbers: ProfileAnswer[] }>();
-  for (const a of counted) {
-    const wording = TEMPLATES.get(a.question.templateId)?.wording;
-    if (!wording || a.question.level > grade) continue;
-    for (const skill of templateSkills(a.question.templateId)) {
-      const kinds = bySkill.get(skill.id) ?? { words: [], numbers: [] };
-      (wording === "word-problem" ? kinds.words : kinds.numbers).push(a);
-      bySkill.set(skill.id, kinds);
-    }
-  }
-  const status = (t: Tally) => strandStatus(t.correct, t.total);
-  const skills = [...bySkill].filter(([, k]) => k.words.length > 0 && k.numbers.length > 0).map(([id, k]) => {
-    const words = tally(k.words);
-    const numbers = tally(k.numbers);
-    const finding: WordsOrNumbersFinding =
-      words.total < WORDS_MIN_ANSWERS || numbers.total < WORDS_MIN_ANSWERS ? "not-enough-evidence"
-      : status(numbers) === "secure" && status(words) === "needs-attention" ? "words-harder"
-      : status(words) === "secure" && status(numbers) === "needs-attention" ? "numbers-harder"
-      : "no-gap";
-    return { id, finding, words, numbers };
-  });
-  const finding: WordsOrNumbers["finding"] =
-    skills.some((s) => s.finding === "words-harder" || s.finding === "numbers-harder") ? "gap"
-    : skills.some((s) => s.finding === "no-gap") ? "no-gap"
-    : "not-enough-evidence";
-  return { finding, skills };
 }
 
 /** The first and the last third of the answers at the school grade (Thirds). */
@@ -463,7 +405,6 @@ export function learnerProfile(input: ProfileInput): LearnerProfile | null {
     standards,
     strengths,
     struggles,
-    wordsOrNumbers: wordsOrNumbersOf(counted, placement.grade),
     facts: placement.facts,
     behaviour: behaviourOf(input),
     // Field by field, so the free text never comes along.
@@ -481,11 +422,20 @@ export function learnerProfile(input: ProfileInput): LearnerProfile | null {
 }
 
 /**
- * A stored profile (public.learner_profiles.profile) as this version's profile; null when it is not a profile or was
- * written at another schema version. A reader never guesses at another version's shape: an older profile is built
- * again from the test.
+ * The parts a profile of this schema version had once and no longer has. Readers drop them from a stored profile; the
+ * stored rows are not rewritten. `wordsOrNumbers`: the words-or-numbers finding, removed by D-121 (#238).
+ */
+const RETIRED_PARTS = ["wordsOrNumbers"] as const;
+
+/**
+ * A stored profile (public.learner_profiles.profile) as this version's profile, without its retired parts; null when
+ * it is not a profile or was written at another schema version. A reader never guesses at another version's shape: an
+ * older profile is built again from the test.
  */
 export function storedProfile(value: unknown): LearnerProfile | null {
   if (typeof value !== "object" || value === null || Array.isArray(value)) return null;
-  return (value as { schemaVersion?: unknown }).schemaVersion === PROFILE_SCHEMA_VERSION ? (value as LearnerProfile) : null;
+  if ((value as { schemaVersion?: unknown }).schemaVersion !== PROFILE_SCHEMA_VERSION) return null;
+  const profile: Record<string, unknown> = { ...value };
+  for (const part of RETIRED_PARTS) delete profile[part];
+  return profile as unknown as LearnerProfile;
 }

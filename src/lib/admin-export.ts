@@ -100,7 +100,7 @@ function drawnQuestions(test: ExportRow): ExportRow[] {
 
 /** The learner profile's parts (#196), in the profile's order. */
 const PROFILE_PARTS = [
-  "schemaVersion", "test", "level", "strands", "standards", "strengths", "struggles", "wordsOrNumbers", "facts", "behaviour",
+  "schemaVersion", "test", "level", "strands", "standards", "strengths", "struggles", "facts", "behaviour",
   "preferences", "parent", "unknowns", "ai",
 ] as const satisfies readonly (keyof LearnerProfile)[];
 
