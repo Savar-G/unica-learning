@@ -12,7 +12,6 @@ import {
   NEXT_STEP_ANCHOR,
   STATUS_LABEL,
   certaintyText,
-  levelCertaintyText,
   comparisonView,
   factsView,
   helpWarning,
@@ -173,7 +172,7 @@ export function reportEmail({ view: v, parentName, url, unsubscribeUrl, offer = 
   const warning = helpWarning(v);
   // #189: how sure each result is, the reliability note (its new test opens from the report), and left-out answers.
   const reliability = reliabilityNote(v);
-  const levelSure = levelCertaintyText(v);
+  const levelSure = certaintyText(v, v.model.level.certainty);
   const leftOut = leftOutLine(v);
   // #190: the results include the extra round the child took.
   const extraLine = extraRoundLine(v);

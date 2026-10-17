@@ -10,7 +10,7 @@
 //   - the plan's three percents add up to 100, and it names only standards the AI read in the facts.
 // Pure, like the profile: the server module (src/lib/learner-profile-ai.ts) sends the request through the AI client.
 import { REPORT_TEXT_NAME, checkAiText, parentTextProblem, type ReportTextProblem } from "./ai-checks";
-import { FACT_SPEED_FROM_GRADE, factsStandards, type FactsResult } from "./facts";
+import { FACT_SPEED_FROM_GRADE, factsSkills, factsStandards } from "./facts";
 import { MISCONCEPTIONS, type MisconceptionId } from "./misconceptions";
 import type { LearnerProfile, PlanPart, ProfileAi, WorkbookPlan } from "./profile";
 import { BC_SKILL_MAP } from "./skill-map";
@@ -105,6 +105,8 @@ function schemaProblem(schema: JsonSchema, value: unknown, at: string): string |
 }
 
 const STANDARDS = new Map(BC_SKILL_MAP.standards.map((s) => [s.code, s]));
+/** The result of a skill or a standard that only the quick facts round asked (#242). */
+const FACTS_TESTED = "tested in the quick facts round";
 const OWNER = new Map(BC_SKILL_MAP.standards.flatMap((s) => s.skills.map((k) => [k.id, s] as const)));
 
 /** The BC standards whose skills the standard's skills need directly, other than itself, in the map's order of need. */
@@ -132,16 +134,28 @@ function challengeProblem(code: string, profile: LearnerProfile): ChallengeProbl
  * struggles' misconceptions; the skill-map neighbours of each struggle (its skills, the skills they need, and the
  * child's result on each needed skill's standard); and the next challenge candidates (every standard that passes the
  * challenge rule). Never a name, an id of the family, a drawing or typed working: the profile holds none.
- * The AI text checks take their numbers from all of it. #242: a standard the quick facts round tested reads as tested
- * there, and below FACT_SPEED_FROM_GRADE the facts carry no speed, as the parent's report shows none (D-120).
+ * The AI text checks take their numbers from all of it. #242: below FACT_SPEED_FROM_GRADE the facts carry no timing, as
+ * the parent's report shows no speed (D-120). A needed skill that no question measured reads as tested in the quick
+ * facts round only when the round asked that skill (factsSkills: a round of multiplication facts asks no division);
+ * a next challenge candidate, when the round asked every skill of it, else partly when it asked some of it.
  */
 export function profileAiFacts(profile: LearnerProfile) {
   const rest: Omit<LearnerProfile, "ai"> & { ai?: unknown } = { ...profile };
   delete rest.ai;
-  const facts = { ...rest, facts: profile.test.grade < FACT_SPEED_FROM_GRADE ? withoutSpeed(profile.facts) : profile.facts };
+  const facts = { ...rest, facts: profile.test.grade < FACT_SPEED_FROM_GRADE ? withoutTiming(profile.facts) : profile.facts };
   const results = new Map(profile.standards.map((s) => [s.code, s.status as string]));
-  const inFacts = new Set(factsStandards(profile.facts?.families ?? []));
-  const result = (code: string) => results.get(code) ?? (inFacts.has(code) ? "tested in the quick facts round" : "not tested");
+  const families = profile.facts?.families ?? [];
+  const askedSkills = new Set(factsSkills(families));
+  const askedStandards = new Set(factsStandards(families));
+  const skillResult = (id: string, code: string) => results.get(code) ?? (askedSkills.has(id) ? FACTS_TESTED : "not tested");
+  const result = (code: string) => {
+    const measured = results.get(code);
+    if (measured) return measured;
+    const skills = STANDARDS.get(code)?.skills ?? [];
+    const asked = skills.filter((k) => askedSkills.has(k.id)).length;
+    if (asked > 0 && asked === skills.length) return FACTS_TESTED;
+    return asked > 0 || askedStandards.has(code) ? "partly tested in the quick facts round" : "not tested";
+  };
   const misconceptions = [...new Set(profile.struggles.flatMap((s) => s.misconceptions))];
   return {
     child: REPORT_TEXT_NAME,
@@ -155,7 +169,7 @@ export function profileAiFacts(profile: LearnerProfile) {
         requires: k.requires.flatMap((id) => {
           const owner = OWNER.get(id);
           const needed = owner?.skills.find((x) => x.id === id);
-          return owner && needed ? [{ id, text: needed.text, standard: owner.code, result: result(owner.code) }] : [];
+          return owner && needed ? [{ id, text: needed.text, standard: owner.code, result: skillResult(id, owner.code) }] : [];
         }),
       })),
     })),
@@ -165,13 +179,11 @@ export function profileAiFacts(profile: LearnerProfile) {
   };
 }
 
-/** The facts result without its speed: the median time and the speed label. */
-function withoutSpeed(facts: LearnerProfile["facts"]): Omit<FactsResult, "medianMs" | "speed"> | null {
+/** The facts result without its timing: the round's length, the median time and the speed label. */
+function withoutTiming(facts: LearnerProfile["facts"]) {
   if (!facts) return null;
-  const accuracy: Partial<FactsResult> = { ...facts };
-  delete accuracy.medianMs;
-  delete accuracy.speed;
-  return accuracy as Omit<FactsResult, "medianMs" | "speed">;
+  const { families, answered, correct, skipped, accuracy } = facts;
+  return { families, answered, correct, skipped, accuracy };
 }
 
 /** Something the checks dropped from valid output: which part, which standard, and why. */
@@ -215,8 +227,8 @@ export function checkProfileAi(profile: LearnerProfile, output: unknown, model: 
       else if (seen.has(s.code)) dropped.push({ part, code: s.code, problem: "repeated" });
       else {
         const check = checkAiText(text, facts, PROFILE_AI_TEXT_MAX);
-        // The likely cause is on the parent's report (D-120): it also follows the parent's rules (#242).
-        const parent = check.ok && part === "likelyCauses" ? parentTextProblem(check.text, profile.test.grade, "cause") : null;
+        // What an AI text about the child may not say (#242): the likely cause is on the parent's report (D-120).
+        const parent = check.ok ? parentTextProblem(check.text, profile.test.grade) : null;
         if (!check.ok) dropped.push({ part, code: s.code, problem: check.problem, detail: check.detail });
         else if (parent) dropped.push({ part, code: s.code, ...parent });
         else into[s.code] = check.text;

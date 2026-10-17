@@ -12,6 +12,7 @@ export { comparisonFor, type ComparisonInput, type ComparisonTest } from "./comp
 export { MISCONCEPTIONS, type Misconception, type MisconceptionId } from "./misconceptions";
 export {
   reportModel,
+  storedReportModel,
   type Comparison,
   type FsaLine,
   type ReportContext,

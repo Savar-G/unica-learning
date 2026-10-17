@@ -9,6 +9,7 @@ import {
   learnerProfile,
   nextQuestion,
   reportFindings,
+  storedProfile,
   submitAnswer,
   type LearnerProfile,
   type MisconceptionId,
@@ -94,10 +95,11 @@ describe("strengths and struggles", () => {
   });
 
   it("does not show a stored AI cause that says something was not tested, or that states the facts speed below grade 5 (#242)", () => {
-    // The grade 4 child's struggles: 4.4 matches the known mistake O1; 4.1 matches none.
+    // The grade 4 child's struggles: 4.4 matches the known mistake O1; 4.1 matches none. Read back as the report reads it.
     for (const written of ["The multiplication facts were not tested.", "{name} is quick on the facts but not here."]) {
       const ai: ProfileAi = { likelyCauses: { model: "test/model", value: { "4.4": written, "4.1": written } } };
-      expect(reportFindings(profileOf(ANSWERS, ai)).struggles.map((s) => s.cause), written).toEqual([
+      const stored = storedProfile(JSON.parse(JSON.stringify(profileOf(ANSWERS, ai))))!;
+      expect(reportFindings(stored).struggles.map((s) => s.cause), written).toEqual([
         { source: "misconception", text: MISCONCEPTIONS.O1.description },
         null,
       ]);

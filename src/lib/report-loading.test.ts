@@ -116,6 +116,38 @@ describe("the report view (#161)", () => {
   });
 });
 
+describe("a stored report reads with the rules of today (#242)", () => {
+  /** The report page, and the email in text and HTML, of one stored report model, read through the loader. */
+  async function shown(stored: typeof model) {
+    const t = tables();
+    const readers = memoryReportReaders({ ...t, reports: t.reports?.map((r) => ({ ...r, model: stored })) });
+    const { view } = (await loadReportView(readers.parent("parent-1"), "report-1"))!;
+    const email = reportEmail({ view, parentName: "Priya Shah", url: "https://unicalearning.com/account/report/report-1", unsubscribeUrl: "https://unicalearning.com/unsubscribe" });
+    return { view, places: [renderToStaticMarkup(createElement(ReportCard, { view, readOnly: true })), email.text, email.html] };
+  }
+
+  it("leaves out a stored AI summary that states the facts timing (grade 4) or says something was not tested", async () => {
+    for (const summary of ["{name} took 2 seconds to answer each fact.", "{name} recalled the facts instantly.", "The multiplication facts were not tested."]) {
+      const { view, places } = await shown({ ...model, summary });
+      expect(view.model, summary).not.toHaveProperty("summary");
+      const words = summary.replace("{name} ", "");
+      for (const place of places) expect(place, summary).not.toContain(words);
+    }
+    // A summary that breaks no rule still shows.
+    const { places } = await shown({ ...model, summary: "{name} is secure in every area." });
+    for (const place of places) expect(place).toContain("Asha is secure in every area.");
+  });
+
+  it("never says How sure: Clear for a stored estimate that was labelled clear", async () => {
+    // Grade 4, knows up to grade 2: no level reaches 70%, so the working level is an estimate.
+    const estimate = reportModel(takeTest({ grade: 4, province: "BC" }, 1, knowsUpTo(2)).placement, { workReviews: [] });
+    expect(estimate.level.confidence).toBe("low");
+    const { view, places } = await shown({ ...estimate, level: { ...estimate.level, certainty: "clear" } });
+    expect(view.model.level.certainty).toBe("early-sign");
+    for (const place of places) expect(place).not.toMatch(/How sure:(<[^>]*>|\s)*Clear/);
+  });
+});
+
 describe("the parent's part of the learner profile on the report view (#198)", () => {
   // Asha's stored learner profile, built from her answers with every answer on one grade 4 standard wrong, so that
   // standard is a struggle with more than one wrong answer. The stored JSON also has the admin-only parts: her test

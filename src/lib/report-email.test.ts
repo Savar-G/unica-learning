@@ -59,22 +59,14 @@ describe("the report email to the parent", () => {
     expect(email.html).toContain("Maya is working at a grade 3 level.");
     expect(email.html).toContain("That is one grade below Maya&#39;s school grade (grade 4).");
   });
-  it("never says How sure: Clear beside an estimated level, also from a report stored when it did (#242)", () => {
+  it("never says How sure: Clear beside an estimated level (#242; a stored report: report-loading.test.ts)", () => {
     // Grade 4, knows up to grade 2: under 70% at every level, so grade 2 is an estimate.
-    const v = view(knowsUpTo(2));
-    const stored: ReportView = { ...v, model: { ...v.model, level: { ...v.model.level, certainty: "clear" } } };
-    const rendered = reportEmail({ unsubscribeUrl: UNSUB, view: stored, parentName: "Priya", url: URL });
+    const rendered = reportEmail({ unsubscribeUrl: UNSUB, view: view(knowsUpTo(2)), parentName: "Priya", url: URL });
     for (const body of [rendered.text, rendered.html]) {
       expect(body).toContain("so grade 2 is an estimate.");
       expect(body).toContain("How sure: Early sign: workbook 1 checks this");
       expect(body).not.toContain("How sure: Clear");
     }
-  });
-  it("for grades 1-4, leaves out an AI summary that states the facts speed, also one stored before the check (#242, D-120)", () => {
-    const v = view(knowsUpTo(3), { grade: 3 });
-    const summary = "{name} is secure in every area. Addition and subtraction facts were accurate and quick, with 27 right in 60 seconds.";
-    const rendered = reportEmail({ unsubscribeUrl: UNSUB, view: { ...v, model: { ...v.model, summary } }, parentName: "Priya", url: URL });
-    for (const body of [rendered.text, rendered.html]) expect(body).not.toMatch(/quick/i);
   });
   it("lists each area with its status and question count", () => {
     // Grade 4, knows grade 3 only: stage 1 (18 at grade 4) all wrong, stage 2 (18 at grade 3) all right, 4 areas in turn.

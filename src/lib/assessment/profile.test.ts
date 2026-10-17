@@ -17,6 +17,7 @@ import {
   type FactsSession,
   type Grade,
   type HelpAnswer,
+  type ProfileAi,
   type ProfileAnswer,
   type Question,
 } from "@/lib/assessment";
@@ -299,6 +300,46 @@ describe("the parent's questionnaire", () => {
     const profile = learnerProfile({ placement: t.placement, answers: t.answers, help: "no", learning: null })!;
     expect(profile.preferences).toEqual({ styles: [], interests: [] });
     expect(profile.parent).toEqual({ feeling: null, goal: null, weeklyTime: null });
+  });
+});
+
+describe("a stored profile reads with the rules of today (#242)", () => {
+  // Every answer wrong: no level reaches 70%, so the working level is an estimate. Stored when an estimate could be clear.
+  const estimate = (grade: Grade) => {
+    const { placement, answers } = taken({ grade, province: "BC" }, 101, () => "no idea");
+    return learnerProfile({ placement, answers, help: "no", learning: null })!;
+  };
+
+  it("calls a stored estimate an early sign, also when it was stored as clear, for every reader of the profile", () => {
+    const profile = estimate(5);
+    expect(profile.level.confidence).toBe("low");
+    const old = JSON.parse(JSON.stringify({ ...profile, level: { ...profile.level, certainty: "clear" }, unknowns: { ...profile.unknowns, earlySigns: { ...profile.unknowns.earlySigns, level: false } } }));
+    const read = storedProfile(old)!;
+    expect(read.level.certainty).toBe("early-sign");
+    expect(read.unknowns.earlySigns.level).toBe(true);
+    expect(read).toEqual(profile);
+    // The stored value is not changed.
+    expect(old.level.certainty).toBe("clear");
+  });
+
+  it("leaves out a stored AI text that says something was not tested, or that states the facts timing below grade 5", () => {
+    for (const grade of [3, 5] as const) {
+      const profile = estimate(grade);
+      const [a, b, c] = profile.struggles.map((s) => s.code);
+      const speedy = "{name} took 2 seconds to answer each fact.";
+      const ai: ProfileAi = {
+        likelyCauses: { model: "m", value: { [a]: "The multiplication facts were not tested.", [b]: speedy, [c]: "{name} mixed up the steps." } },
+        howToHelp: { model: "m", value: { [a]: "Ask the facts that were not tested.", [b]: speedy, [c]: "Practise one step at a time." } },
+      };
+      const read = storedProfile(JSON.parse(JSON.stringify({ ...profile, ai })))!;
+      const kept = grade < 5 ? { [c]: "{name} mixed up the steps." } : { [b]: speedy, [c]: "{name} mixed up the steps." };
+      expect(read.ai?.likelyCauses?.value, `grade ${grade}`).toEqual(kept);
+      expect(read.ai?.howToHelp?.value, `grade ${grade}`).toEqual(grade < 5 ? { [c]: "Practise one step at a time." } : { [b]: speedy, [c]: "Practise one step at a time." });
+    }
+    // A part with nothing left is absent.
+    const profile = estimate(3);
+    const ai: ProfileAi = { howToHelp: { model: "m", value: { [profile.struggles[0].code]: "{name} answered the facts instantly." } } };
+    expect(storedProfile(JSON.parse(JSON.stringify({ ...profile, ai })))).not.toHaveProperty("ai");
   });
 });
 

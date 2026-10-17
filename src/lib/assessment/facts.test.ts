@@ -1,8 +1,11 @@
 import { describe, expect, it } from "vitest";
 import {
+  BC_SKILL_MAP,
+  FACTS_BY_GRADE,
   FACTS_SECONDS,
   createFacts,
   createSession,
+  factsSkills,
   factsStep,
   finish,
   nextQuestion,
@@ -13,6 +16,7 @@ import {
   submitFact,
   type ChildProfile,
   type Fact,
+  type FactFamilyId,
   type FactsSession,
   type Grade,
 } from "@/lib/assessment";
@@ -174,5 +178,35 @@ describe("facts section: speed beside accuracy in the placement and the report",
       const ctx = { completedTestsInGrade: 0, workReviews: [] };
       expect(reportModel(withFacts, ctx).howWeHelp).toBe(reportModel(without, ctx).howWeHelp);
     }
+  });
+});
+
+describe("the skills a facts round tests (#242)", () => {
+  // The ops a family's facts use, over many rounds of every grade.
+  const ops = new Map<string, Set<string>>();
+  for (const grade of [1, 2, 3, 4, 5, 6, 7] as const) {
+    for (let seed = 1; seed <= 20; seed++) {
+      for (const f of createFacts({ grade, province: "BC" }, seed).facts) ops.set(f.family, (ops.get(f.family) ?? new Set()).add(f.op));
+    }
+  }
+  const skillIds = new Set(BC_SKILL_MAP.standards.flatMap((s) => s.skills.map((k) => k.id)));
+
+  it("tags each family with skills of the map; a multiplication or division skill only on a family whose facts use it", () => {
+    for (const [family, used] of ops) {
+      const skills = factsSkills([family as FactFamilyId]);
+      expect(skills.length, family).toBeGreaterThan(0);
+      for (const id of skills) {
+        expect(skillIds.has(id), `${family}: ${id}`).toBe(true);
+        if (/divi/.test(id)) expect(used.has("÷"), `${family}: ${id}`).toBe(true);
+        if (/multipl|recall-facts/.test(id)) expect(used.has("×"), `${family}: ${id}`).toBe(true);
+      }
+    }
+  });
+
+  it("a round with no division facts does not test the division facts", () => {
+    expect([...ops.get("mul234510")!]).toEqual(["×"]);
+    expect(factsSkills(FACTS_BY_GRADE[5])).toContain("4.8-multiplication-facts");
+    expect(factsSkills(FACTS_BY_GRADE[5])).not.toContain("4.8-division-facts");
+    expect(factsSkills(FACTS_BY_GRADE[6])).toContain("4.8-division-facts");
   });
 });
