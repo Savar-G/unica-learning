@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { adConfig, adsBlockedPath, CARD_VALUE, createAdTags, type AdConfig } from "@/lib/ad-tags";
+import { adConfig, adsBlockedPath, CARD_VALUE, createAdTags, metaCleanAddress, type AdConfig } from "@/lib/ad-tags";
 import type { ConsentState } from "@/lib/consent";
 
 // Meta Pixel and the Google tag: off without their IDs, loaded only after consent, never loaded or sending on a page a
@@ -14,19 +14,20 @@ const ENV = {
 };
 
 function page({ config = adConfig(ENV), consent = "unset" as ConsentState, path = "/" } = {}) {
-  const state = { consent, path, idle: [] as (() => void)[], listeners: [] as (() => void)[], installs: 0, cleared: 0 };
+  const state = { consent, path, idle: [] as (() => void)[], listeners: [] as (() => void)[], installs: 0, installed: [] as string[], cleared: 0 };
   const meta: unknown[][] = [];
   const google: unknown[][] = [];
   const tags = createAdTags({
     config,
     getConsent: () => state.consent,
     subscribe: (fn) => { state.listeners.push(fn); return () => {}; },
-    path: () => state.path,
-    location: () => `https://unicalearning.com${state.path}`,
+    address: () => state.path,
+    location: () => `https://unicalearning.com${state.path.split(/[?#]/)[0]}`,
     whenIdle: (run) => { state.idle.push(run); },
-    install: (c: AdConfig) => {
+    install: (_c: AdConfig, tag: "meta" | "google") => {
       state.installs += 1;
-      return { ...(c.metaPixelId ? { meta: (...a: unknown[]) => void meta.push(a) } : {}), ...(c.googleAdsId ? { google: (...a: unknown[]) => void google.push(a) } : {}) };
+      state.installed.push(tag);
+      return tag === "meta" ? (...a: unknown[]) => void meta.push(a) : (...a: unknown[]) => void google.push(a);
     },
     clearCookies: () => { state.cleared += 1; },
   });
@@ -67,7 +68,7 @@ describe("ad tags and consent", () => {
     const p = page();
     p.tags.begin();
     p.choose("granted");
-    expect(p.state.installs).toBe(1);
+    expect(p.state.installed).toEqual(["google", "meta"]);
     expect(p.meta).toEqual([["track", "PageView"]]);
     expect(p.google).toEqual([]); // no page_view hits to Google
   });
@@ -80,7 +81,7 @@ describe("ad tags and consent", () => {
     p.idle();
     p.go("/our-story");
     p.go("/our-story");
-    expect(p.state.installs).toBe(1);
+    expect(p.state.installs).toBe(2);
     expect(p.meta).toEqual([["track", "PageView"], ["track", "PageView"]]);
   });
 
@@ -142,57 +143,111 @@ describe("ad tags on a child's pages", () => {
   });
 });
 
+describe("Meta's clean addresses", () => {
+  it("are fixed marketing and parent pages with only ad tags in the query", () => {
+    for (const a of ["/", "/our-story", "/compare", "/rewards", "/resources", "/resources/bc-grade-1-math-and-reading", "/sample-report", "/start", "/start?utm_source=meta&utm_content=photo-led&fbclid=IwAR1", "/?gclid=Cj0K&utm_campaign=oct", "/account", "/account/finish", "/our-story/", "/#how-it-works"]) {
+      expect(metaCleanAddress(a), a).toBe(true);
+    }
+  });
+
+  it("are never an address that holds an id, a token or any other query", () => {
+    for (const a of [
+      "/thank-you?session_id=cs_test_abc123&from=report",
+      "/thank-you",
+      "/account/report/3f2b8c1e-9d4a-4f6b-8e2c-1a2b3c4d5e6f",
+      "/account/report/3f2b8c1e-9d4a-4f6b-8e2c-1a2b3c4d5e6f?src=email",
+      "/account/finish?code=4f1c2b",
+      "/account?sent=1",
+      "/?card=cancelled",
+      "/start?next=/account",
+      "/auth/callback?code=abc",
+      "/sign-in/reset?token_hash=abc&type=recovery",
+      "/account/learning/3f2b8c1e-9d4a-4f6b-8e2c-1a2b3c4d5e6f",
+      "/account/start/abc",
+      "/resources/3f2b8c1e-9d4a-4f6b-8e2c-1a2b3c4d5e6f-x/y",
+      "/#access_token=eyJhbGciOi.x.y&type=recovery",
+      "//evil.example/",
+    ]) {
+      expect(metaCleanAddress(a), a).toBe(false);
+    }
+  });
+
+  it("keep Meta silent and unloaded on an address that is not clean, while Google loads", () => {
+    const p = page({ consent: "granted", path: "/thank-you?session_id=cs_test_abc123" });
+    p.tags.begin();
+    p.idle();
+    p.tags.conversion("card_saved");
+    expect(p.state.installed).toEqual(["google"]);
+    expect(p.meta).toEqual([]);
+    expect(p.google).toEqual([["event", "conversion", { send_to: "AW-1234567890/cardLbl", page_location: "https://unicalearning.com/thank-you", value: 69.3, currency: "CAD" }]]);
+  });
+
+  it("pause Meta, with no page view, when the visitor moves on to an address that is not clean", () => {
+    const p = page({ consent: "granted", path: "/account" });
+    p.tags.begin();
+    p.idle();
+    p.go("/account/report/3f2b8c1e-9d4a-4f6b-8e2c-1a2b3c4d5e6f");
+    p.tags.conversion("report_open");
+    expect(p.meta).toEqual([["track", "PageView"], ["consent", "revoke"]]);
+    expect(p.google.at(-1)).toEqual(["event", "conversion", { send_to: "AW-1234567890/reportLbl", page_location: "https://unicalearning.com/account/report/3f2b8c1e-9d4a-4f6b-8e2c-1a2b3c4d5e6f" }]);
+  });
+});
+
 describe("ad conversions", () => {
-  function sent(event: string) {
-    const p = page({ consent: "granted", path: "/start" });
+  function sent(event: string, path: string) {
+    const p = page({ consent: "granted", path });
     p.tags.begin();
     p.idle();
     p.meta.length = 0;
     p.tags.conversion(event);
     return p;
   }
+  const REPORT = "/account/report/3f2b8c1e-9d4a-4f6b-8e2c-1a2b3c4d5e6f?src=email";
+  const THANKS = "/thank-you?session_id=cs_test_abc123&from=report";
 
-  it("map account_created to Meta Lead and Google's lead conversion", () => {
-    const p = sent("account_created");
-    expect(p.meta).toEqual([["track", "Lead"]]);
-    expect(p.google).toEqual([["event", "conversion", { send_to: "AW-1234567890/leadLbl", page_location: "https://unicalearning.com/start" }]]);
+  it("map account_created to Meta Lead and Google's lead conversion, on /start and on /account/finish", () => {
+    for (const path of ["/start?utm_source=meta", "/account/finish"]) {
+      const p = sent("account_created", path);
+      expect(p.meta).toEqual([["track", "Lead"]]);
+      expect(p.google).toEqual([["event", "conversion", { send_to: "AW-1234567890/leadLbl", page_location: `https://unicalearning.com${path.split("?")[0]}` }]]);
+    }
   });
 
-  it("map report_open to Meta ReportOpen and Google's report conversion", () => {
-    const p = sent("report_open");
-    expect(p.meta).toEqual([["trackCustom", "ReportOpen"]]);
+  it("send report_open to Google only: the report's address holds its id", () => {
+    const p = sent("report_open", REPORT);
+    expect(p.meta).toEqual([]);
     expect(p.google[0][2]).toMatchObject({ send_to: "AW-1234567890/reportLbl" });
   });
 
-  it("map card_saved to Meta AddPaymentInfo worth the first month, CAD 69.30, and Google's card conversion", () => {
+  it("send card_saved to Google only, worth the first month (CAD 69.30): the thank-you address holds a Stripe reference", () => {
     expect(CARD_VALUE).toBe(69.3);
-    const p = sent("card_saved");
-    expect(p.meta).toEqual([["track", "AddPaymentInfo", { value: 69.3, currency: "CAD" }]]);
+    const p = sent("card_saved", THANKS);
+    expect(p.meta).toEqual([]);
     expect(p.google[0][2]).toMatchObject({ send_to: "AW-1234567890/cardLbl", value: 69.3, currency: "CAD" });
+    expect(JSON.stringify(p.google)).not.toContain("cs_test");
   });
 
   it("send nothing for other events, and no personal data with any conversion", () => {
-    expect(sent("cta_click").meta).toEqual([]);
-    expect(sent("test_finish").google).toEqual([]);
-    const all = ["account_created", "report_open", "card_saved"].map((e) => sent(e)).flatMap((p) => [...p.meta, ...p.google]);
+    expect(sent("cta_click", "/").meta).toEqual([]);
+    expect(sent("test_finish", "/").google).toEqual([]);
+    const all = [sent("account_created", "/start"), sent("report_open", REPORT), sent("card_saved", THANKS)].flatMap((p) => [...p.meta, ...p.google]);
     const keys = new Set(all.flatMap((c) => c.flatMap((a) => (a && typeof a === "object" ? Object.keys(a) : []))));
     expect([...keys].sort()).toEqual(["currency", "page_location", "send_to", "value"]);
   });
 
-  it("skip Google for an event whose label is not set, and still send Meta", () => {
-    const p = page({ config: adConfig({ ...ENV, NEXT_PUBLIC_GOOGLE_ADS_REPORT_LABEL: undefined }), consent: "granted", path: "/account/report/x" });
+  it("skip Google for an event whose label is not set", () => {
+    const p = page({ config: adConfig({ ...ENV, NEXT_PUBLIC_GOOGLE_ADS_REPORT_LABEL: undefined }), consent: "granted", path: REPORT });
     p.tags.begin();
     p.idle();
     p.tags.conversion("report_open");
     expect(p.google).toEqual([]);
-    expect(p.meta.at(-1)).toEqual(["trackCustom", "ReportOpen"]);
   });
 
   it("load the tags for a conversion that comes before the page is idle", () => {
     const p = page({ consent: "granted", path: "/start" });
     p.tags.begin();
     p.tags.conversion("account_created");
-    expect(p.state.installs).toBe(1);
+    expect(p.state.installs).toBe(2);
     expect(p.meta).toEqual([["track", "PageView"], ["track", "Lead"]]);
   });
 });

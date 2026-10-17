@@ -5,11 +5,15 @@
 //   page is idle for a returning visitor, at once after a click on Accept.
 // - Never on a page a child uses (adsBlockedPath). The scripts never load there; when they are loaded from an earlier
 //   page of the same visit, they are paused on arrival (Meta consent revoke, Google consent denied) and get no call
-//   until the visitor is back on an allowed page. Meta's own history tracking and automatic events are off, so every
-//   page view is ours and only goes out on an allowed page.
+//   until the visitor is back on an allowed page.
+// - Meta Pixel reads the page address itself, so it is stricter: it loads, sends a PageView and sends an event only
+//   on a clean address (metaCleanAddress: a fixed marketing or parent page from an allowlist, with no id, and a query
+//   that holds only utm_*, gclid or fbclid). Anywhere else it is paused and silent. So Meta gets PageView and Lead
+//   (account_created fires on /start or /account/finish), never ReportOpen or AddPaymentInfo (their pages hold a
+//   report id or a Stripe session reference). Meta's own history tracking and automatic events are off.
 // - A conversion goes out with the existing track() call (track.ts is the one place call sites use) and carries no
 //   personal data: no email, name, child data, grade or ids. Google gets the page address with ids replaced and only
-//   the ad tags (utm_*, gclid) kept in its query. Meta Pixel reads the page address itself (docs/ad-tracking.md).
+//   the ad tags (utm_*, gclid) kept in its query, so Google gets all three conversions.
 // Pure apart from getAdTags and its browser helpers: createAdTags takes its browser parts, so tests use fakes.
 import { getConsent, subscribeConsent, type ConsentState } from "@/lib/consent";
 import { firstMonth, PLANS } from "@/lib/site";
@@ -61,87 +65,114 @@ export function adsBlockedPath(path: string): boolean {
   return CHILD_PAGES.test(p) || PRIVATE_PAGES.test(p);
 }
 
+// The only pages where Meta Pixel may run: fixed marketing and parent pages whose address holds no id. A resources guide
+// has a fixed slug of lowercase words.
+const META_PAGES = /^\/(?:|our-story|compare|rewards|sample-report|privacy|terms|resources|resources\/[a-z0-9]+(?:-[a-z0-9]+)*|start|account|account\/finish)$/;
+const META_QUERY_KEY = /^(?:utm_[a-z]{1,20}|gclid|fbclid)$/;
+
+/**
+ * True when Meta Pixel may run on this address (path, query and hash, as in location): an allowlisted page, a query of
+ * only utm_*, gclid or fbclid, and no hash beyond a short plain anchor. Anything else may hold an id or a token.
+ */
+export function metaCleanAddress(address: string): boolean {
+  let url: URL;
+  try { url = new URL(address, "https://unicalearning.com"); } catch { return false; }
+  if (url.origin !== "https://unicalearning.com") return false;
+  const path = url.pathname.length > 1 ? url.pathname.replace(/\/$/, "") : url.pathname;
+  if (!META_PAGES.test(path)) return false;
+  for (const key of url.searchParams.keys()) if (!META_QUERY_KEY.test(key)) return false;
+  return url.hash === "" || /^#[A-Za-z][A-Za-z0-9_-]{0,40}$/.test(url.hash);
+}
+
 /** The value of a saved card, the first month's price (D-091). */
 export const CARD_VALUE = firstMonth(PLANS.one.price);
 
 type Call = (...args: unknown[]) => void;
-/** The two tags' call functions, after their scripts are added. */
-export interface Senders {
-  meta?: Call;
-  google?: Call;
-}
+type Tag = "meta" | "google";
 
 export interface AdDeps {
   config: AdConfig;
   getConsent: () => ConsentState;
   subscribe: (onChange: () => void) => () => void;
-  /** The current page's path. */
-  path: () => string;
+  /** The current page's address: path, query and hash. */
+  address: () => string;
   /** The current page's address with ids replaced and only its ad tags kept in the query, for Google's page_location. */
   location: () => string;
   whenIdle: (run: () => void) => void;
-  /** Adds the scripts (once) and returns their call functions. */
-  install: (config: AdConfig) => Senders;
+  /** Adds one tag's script (once) and returns its call function. */
+  install: (config: AdConfig, tag: Tag) => Call;
   /** Deletes the tags' cookies after the visitor turns optional cookies off. */
   clearCookies: () => void;
 }
 
 export function createAdTags(deps: AdDeps) {
   const { config } = deps;
-  const on = Boolean(config.metaPixelId || config.googleAdsId);
-  let senders: Senders | null = null;
-  let paused = false;
+  const tags: Record<Tag, { on: boolean; send: Call | null; paused: boolean }> = {
+    meta: { on: Boolean(config.metaPixelId), send: null, paused: false },
+    google: { on: Boolean(config.googleAdsId), send: null, paused: false },
+  };
   let ready = false;
   let started = false;
   let lastViewed: string | null = null;
   let lastConsent: ConsentState = "unset";
 
-  function pause() {
-    if (!senders || paused) return;
-    paused = true;
-    senders.meta?.("consent", "revoke");
-    senders.google?.("consent", "update", { ad_storage: "denied", ad_user_data: "denied" });
+  function pause(tag: Tag) {
+    const t = tags[tag];
+    if (!t.send || t.paused) return;
+    t.paused = true;
+    if (tag === "meta") t.send("consent", "revoke");
+    else t.send("consent", "update", { ad_storage: "denied", ad_user_data: "denied" });
   }
 
-  function resume() {
-    if (!senders || !paused) return;
-    paused = false;
-    senders.meta?.("consent", "grant");
-    senders.google?.("consent", "update", { ad_storage: "granted", ad_user_data: "granted" });
+  function resume(tag: Tag) {
+    const t = tags[tag];
+    if (!t.send || !t.paused) return;
+    t.paused = false;
+    if (tag === "meta") t.send("consent", "grant");
+    else t.send("consent", "update", { ad_storage: "granted", ad_user_data: "granted" });
+  }
+
+  /** May this tag run on this address (consent aside)? */
+  function allowedHere(tag: Tag, address: string): boolean {
+    const path = address.split(/[?#]/)[0];
+    if (adsBlockedPath(path)) return false;
+    return tag === "google" || metaCleanAddress(address);
   }
 
   /**
-   * Brings the tags in line with the consent and the page. True when they may send now. `now`: load without waiting
-   * for the page to be idle (a conversion, or the visitor just accepted).
+   * Brings each tag in line with the consent and the address. Returns the call functions of the tags that may send
+   * now. `now`: load without waiting for the page to be idle (a conversion, or the visitor just accepted).
    */
-  function sync(now = false): boolean {
-    if (!on) return false;
+  function sync(now = false): Partial<Record<Tag, Call>> {
+    const live: Partial<Record<Tag, Call>> = {};
+    if (!tags.meta.on && !tags.google.on) return live;
     const consent = deps.getConsent();
     const wasGranted = lastConsent === "granted";
     lastConsent = consent;
-    if (consent !== "granted") {
-      pause();
-      lastViewed = null;
-      if (wasGranted) deps.clearCookies();
-      return false;
+    const address = deps.address();
+    for (const tag of ["google", "meta"] as const) {
+      const t = tags[tag];
+      if (!t.on) continue;
+      if (consent !== "granted" || !allowedHere(tag, address)) {
+        pause(tag);
+        continue;
+      }
+      if (!t.send) {
+        if (!ready && !now) continue;
+        t.send = deps.install(config, tag);
+      }
+      resume(tag);
+      live[tag] = t.send;
     }
-    const here = deps.path();
-    if (adsBlockedPath(here)) {
-      pause();
-      lastViewed = null;
-      return false;
+    if (consent !== "granted" && wasGranted) deps.clearCookies();
+    const path = address.split(/[?#]/)[0];
+    if (!live.meta) lastViewed = null;
+    // Meta's history tracking is off, so this is the only page view: one per clean page.
+    else if (lastViewed !== path) {
+      lastViewed = path;
+      live.meta("track", "PageView");
     }
-    if (!senders) {
-      if (!ready && !now) return false;
-      senders = deps.install(config);
-    }
-    resume();
-    // Meta's history tracking is off, so this is the only page view: one per allowed page.
-    if (lastViewed !== here) {
-      lastViewed = here;
-      senders.meta?.("track", "PageView");
-    }
-    return true;
+    return live;
   }
 
   function begin() {
@@ -160,23 +191,21 @@ export function createAdTags(deps: AdDeps) {
     if (started) sync();
   }
 
-  function google(label: string | null, extra: Record<string, unknown> = {}) {
-    if (!config.googleAdsId || !label) return;
-    senders?.google?.("event", "conversion", { send_to: `${config.googleAdsId}/${label}`, page_location: deps.location(), ...extra });
-  }
-
   /** A funnel event from track(). Only three map to a conversion; the rest send nothing. No props travel. */
   function conversion(event: string) {
     if (event !== "account_created" && event !== "report_open" && event !== "card_saved") return;
-    if (!sync(true) || !senders) return;
+    const live = sync(true);
+    const google = (label: string | null, extra: Record<string, unknown> = {}) => {
+      if (live.google && label) live.google("event", "conversion", { send_to: `${config.googleAdsId}/${label}`, page_location: deps.location(), ...extra });
+    };
     if (event === "account_created") {
-      senders.meta?.("track", "Lead");
+      live.meta?.("track", "Lead");
       google(config.googleLabels.lead);
     } else if (event === "report_open") {
-      senders.meta?.("trackCustom", "ReportOpen");
+      live.meta?.("trackCustom", "ReportOpen");
       google(config.googleLabels.report);
     } else {
-      senders.meta?.("track", "AddPaymentInfo", { value: CARD_VALUE, currency: "CAD" });
+      live.meta?.("track", "AddPaymentInfo", { value: CARD_VALUE, currency: "CAD" });
       google(config.googleLabels.card, { value: CARD_VALUE, currency: "CAD" });
     }
   }
@@ -189,58 +218,75 @@ export function createAdTags(deps: AdDeps) {
 type Queue = Call & { queue?: unknown[]; callMethod?: Call; push?: Call; loaded?: boolean; version?: string; disablePushState?: boolean; allowDuplicatePageViews?: boolean };
 type AdWindow = Window & { fbq?: Queue; _fbq?: Queue; dataLayer?: unknown[]; gtag?: Call };
 
-function addScript(src: string) {
+function addScript(src: string, onload?: () => void) {
   const s = document.createElement("script");
   s.async = true;
   s.src = src;
+  if (onload) s.addEventListener("load", onload);
   document.head.appendChild(s);
 }
 
-function installTags(config: AdConfig): Senders {
+const currentAddress = () => window.location.pathname + window.location.search + window.location.hash;
+
+function installMeta(id: string): Call {
   const w = window as AdWindow;
-  const out: Senders = {};
-  if (config.metaPixelId) {
-    if (!w.fbq) {
-      // Meta's own loader, written out: calls queue until fbevents.js arrives.
-      const fbq: Queue = function (...args: unknown[]) {
-        if (fbq.callMethod) fbq.callMethod(...args);
-        else fbq.queue!.push(args);
-      };
-      fbq.push = fbq;
-      fbq.loaded = true;
-      fbq.version = "2.0";
-      fbq.queue = [];
-      // Our page views only: Meta must not send one by itself after a client-side move (it could be a child page).
-      fbq.disablePushState = true;
-      fbq.allowDuplicatePageViews = true;
-      w.fbq = fbq;
-      w._fbq ??= fbq;
-      addScript("https://connect.facebook.net/en_US/fbevents.js");
-    }
-    const fbq = w.fbq;
+  // Our calls wait here until fbevents.js runs, and go out then only if the address is still clean: Meta reads the
+  // address when it sends, and the visitor may have moved on to a page with an id meanwhile.
+  let pending: unknown[][] | null = [];
+  const flush = () => {
+    const calls = pending ?? [];
+    pending = null;
+    const clean = metaCleanAddress(currentAddress());
+    for (const args of calls) if (clean || args[0] === "consent") w.fbq?.(...args);
+  };
+  if (!w.fbq) {
+    // Meta's own loader, written out: calls queue until fbevents.js arrives.
+    const fbq: Queue = function (...args: unknown[]) {
+      if (fbq.callMethod) fbq.callMethod(...args);
+      else fbq.queue!.push(args);
+    };
+    fbq.push = fbq;
+    fbq.loaded = true;
+    fbq.version = "2.0";
+    fbq.queue = [];
+    // Our page views only: Meta must not send one by itself after a client-side move.
+    fbq.disablePushState = true;
+    fbq.allowDuplicatePageViews = true;
+    w.fbq = fbq;
+    w._fbq ??= fbq;
     // No automatic events (button clicks, page data): only the events this file sends.
-    fbq("set", "autoConfig", false, config.metaPixelId);
-    fbq("init", config.metaPixelId);
-    out.meta = (...args) => w.fbq?.(...args);
-  }
-  if (config.googleAdsId) {
-    if (!w.gtag) {
-      w.dataLayer = w.dataLayer || [];
-      // The Google tag reads its commands as `arguments` objects, as in Google's own snippet.
-      w.gtag = function () {
-        // eslint-disable-next-line prefer-rest-params
-        w.dataLayer!.push(arguments);
-      };
-      // Measurement only: no ad personalization, no Google Analytics storage.
-      w.gtag("consent", "default", { ad_storage: "granted", ad_user_data: "granted", ad_personalization: "denied", analytics_storage: "denied" });
-      w.gtag("js", new Date());
-      addScript(`https://www.googletagmanager.com/gtag/js?id=${encodeURIComponent(config.googleAdsId)}`);
-    }
+    fbq("set", "autoConfig", false, id);
+    fbq("init", id);
+    addScript("https://connect.facebook.net/en_US/fbevents.js", flush);
+  } else pending = null;
+  // Consent commands (pause and resume) send nothing to Meta, so they pass on any address.
+  return (...args) => {
+    if (pending) pending.push(args);
+    else if (args[0] === "consent" || metaCleanAddress(currentAddress())) w.fbq?.(...args);
+  };
+}
+
+function installGoogle(id: string): Call {
+  const w = window as AdWindow;
+  if (!w.gtag) {
+    w.dataLayer = w.dataLayer || [];
+    // The Google tag reads its commands as `arguments` objects, as in Google's own snippet.
+    w.gtag = function () {
+      // eslint-disable-next-line prefer-rest-params
+      w.dataLayer!.push(arguments);
+    };
+    // Measurement only: no ad personalization, no Google Analytics storage.
+    w.gtag("consent", "default", { ad_storage: "granted", ad_user_data: "granted", ad_personalization: "denied", analytics_storage: "denied" });
+    w.gtag("js", new Date());
+    addScript(`https://www.googletagmanager.com/gtag/js?id=${encodeURIComponent(id)}`);
     // No page_view hits: Google gets the visit (and the gclid in the address) from this call, then only conversions.
-    w.gtag("config", config.googleAdsId, { send_page_view: false, allow_ad_personalization_signals: false, page_location: cleanLocation() });
-    out.google = (...args) => w.gtag?.(...args);
+    w.gtag("config", id, { send_page_view: false, allow_ad_personalization_signals: false, page_location: cleanLocation() });
   }
-  return out;
+  return (...args) => w.gtag?.(...args);
+}
+
+function installTag(config: AdConfig, tag: Tag): Call {
+  return tag === "meta" ? installMeta(config.metaPixelId!) : installGoogle(config.googleAdsId!);
 }
 
 const AD_COOKIE = /^(_fbp|_fbc|_gcl_|_gac_)/;
@@ -289,10 +335,10 @@ export function getAdTags() {
     config: adConfig(),
     getConsent,
     subscribe: subscribeConsent,
-    path: () => window.location.pathname,
+    address: currentAddress,
     location: cleanLocation,
     whenIdle,
-    install: installTags,
+    install: installTag,
     clearCookies: clearAdCookies,
   });
   return holder.__unicaAdTags;
