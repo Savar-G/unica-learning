@@ -88,6 +88,14 @@ describe("the sign-in link email", () => {
       expect(body).toMatch(/once/);
     }
   });
+  it("has the brand, team signature and address without a marketing unsubscribe link", () => {
+    for (const body of [email.text, email.html]) {
+      expect(body).toContain("The Unica Learning team");
+      expect(body).toContain("16557 87A Ave");
+      expect(body).not.toMatch(/unsubscribe/i);
+    }
+    expect(email.html).toContain("background:#ff6a3d");
+  });
   it("escapes names in the HTML", () => {
     const html = linkEmail({ parentName: "<b>A</b>", childName: "Jo & <i>", url: "https://x.test/?t=1&a=2" }).html;
     expect(html).not.toMatch(/<b>A<\/b>|<i>/);

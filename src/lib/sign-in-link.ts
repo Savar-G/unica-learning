@@ -2,7 +2,7 @@
 // the laptop or tablet and opens one child's start screen. The link works once and only for 24 hours.
 // Server only (node:crypto). The database keeps only the token's hash, so a database leak cannot sign anyone in.
 import { createHash, randomBytes } from "node:crypto";
-import { BUSINESS_NAME } from "@/lib/contact";
+import { emailDocument, emailFooterText, emailSignatureText } from "@/lib/email-brand";
 
 export const LINK_TTL_MS = 24 * 60 * 60 * 1000;
 /** Links one parent can ask for in an hour. Stops a script from filling a parent's inbox. */
@@ -54,20 +54,21 @@ const esc = (s: string) => s.replace(/[&<>"']/g, (c) => ENTITY[c]);
 export function linkEmail({ parentName, childName, url }: { parentName: string; childName: string; url: string }) {
   const first = parentName.trim().split(/\s+/)[0] || parentName;
   const subject = `Open this on a laptop or tablet so ${childName} can start`;
+  const footer = { why: "You get this email because you asked for a sign-in link." };
   const lines = [
     `Hi ${first},`,
     `Open this link on the laptop or tablet that ${childName} will use for the math assessment. It signs you in and opens ${childName}'s start screen.`,
     url,
     "The link works once and only for 24 hours. If it does not work, the page lets you send a new link.",
     "If you did not ask for this email, you can ignore it.",
-    BUSINESS_NAME,
+    emailSignatureText(),
+    emailFooterText(footer),
   ];
-  const html = `<div style="font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;font-size:16px;line-height:1.5;color:#1d1d1b;max-width:520px">
-<p>Hi ${esc(first)},</p>
+  const html = emailDocument({ title: subject, preview: `Open this email on the laptop or tablet that ${childName} will use.`, footer, body: `<tr><td style="padding:0 24px">
+<p style="margin:0 0 20px">Hi ${esc(first)},</p>
 <p>Open this link on the laptop or tablet that ${esc(childName)} will use for the math assessment. It signs you in and opens ${esc(childName)}'s start screen.</p>
-<p><a href="${esc(url)}" style="display:inline-block;background:#1d1d1b;color:#ffffff;text-decoration:none;padding:12px 20px;border-radius:8px;font-weight:600">Sign in and start</a></p>
+<p><a href="${esc(url)}" style="display:inline-block;background:#2b2622;color:#ffffff;text-decoration:none;padding:14px 22px;border-radius:6px;font-weight:600">Sign in and start</a></p>
 <p style="font-size:14px;color:#555">The link works once and only for 24 hours. If it does not work, the page lets you send a new link.<br>If you did not ask for this email, you can ignore it.</p>
-<p style="font-size:14px;color:#555">${esc(BUSINESS_NAME)}</p>
-</div>`;
+</td></tr>` });
   return { subject, text: lines.join("\n\n"), html };
 }

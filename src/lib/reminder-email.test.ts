@@ -81,10 +81,20 @@ describe("every reminder", () => {
     for (const e of all) {
       for (const body of [e.text, e.html]) {
         expect(body).toContain("Unica Learning");
-        expect(body).toContain("16557 87A Ave, Surrey, BC V4N 5B2");
+        expect(body.replace(/<br>/g, ", ")).toContain("16557 87A Ave, Surrey, BC V4N 5B2");
         expect(body).toContain("unicalearning.com");
       }
       expect(e.text).toContain("You get this reminder because you signed up for Maya's free math placement test.");
+    }
+  });
+  it("uses the chosen logo and team signature for all four reminders", () => {
+    for (const e of all) {
+      expect(e.html).toContain("background:#ff6a3d");
+      for (const body of [e.text, e.html]) {
+        expect(body).toContain("The Unica Learning team");
+        expect(body).toContain("Questions? Reply to this email.");
+      }
+      expect(e.html.indexOf("The Unica Learning team")).toBeLessThan(e.html.indexOf("16557 87A Ave"));
     }
   });
   it("escapes names and links in the HTML", () => {

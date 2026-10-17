@@ -49,21 +49,19 @@ What remains:
 - GoTrue can load another session before the first password change and let its already-running `PUT /user` commit after this route's password changes. It does not check that session again inside the password-change transaction. That request can replace the password and end the parent's session. This race also existed before the #119 hotfix. The new session check detects a conflicting change that has already ended the parent's session. It shortens the window, but a conflicting change can still commit after that check. Auth and the family write do not share a transaction.
 - An access token issued before the sign-out keeps working until it expires (1 hour by default), because the database checks the token, not the session. Its holder could read the new family's rows in that time. Lower the JWT expiry, or add a session check to row-level security, to shorten this. The route's new session check does not change row-level security.
 
-Confirm signup, subject: `Your Unica Learning code`
+The complete, branded email bodies are in `supabase/templates/`. Do not replace them with an unbranded code fragment.
 
-```html
-<p>Here is your code to confirm your email for Unica Learning:</p>
-<p style="font-size:28px;letter-spacing:4px"><b>{{ .Token }}</b></p>
-<p>Enter it on the signup page. If you did not ask for this code, you can ignore this email.</p>
-```
+| Dashboard template | Subject | Body file |
+|---|---|---|
+| Confirm signup | Your Unica Learning code | `supabase/templates/confirmation.html` |
+| Magic link | Your Unica Learning sign-in code | `supabase/templates/magic_link.html` |
+| Reset password | Reset your Unica Learning password | `supabase/templates/recovery.html` |
 
-Magic link, subject: `Your Unica Learning sign-in code`
+These files are generated from `src/lib/auth-email.ts` and the shared email design in `src/lib/email-brand.ts`. To regenerate them, run `node scripts/render-emails.mjs /tmp/unica-emails`, then copy only `confirmation.html`, `magic_link.html`, and `recovery.html` from that directory into `supabase/templates/`. The tests fail if these committed files differ from the source.
 
-```html
-<p>Here is your code to sign in to Unica Learning:</p>
-<p style="font-size:28px;letter-spacing:4px"><b>{{ .Token }}</b></p>
-<p>Enter it on the page where you asked for it. If you did not ask for this code, you can ignore this email.</p>
-```
+Merging a site PR does not install hosted Auth templates. After the email design PR is approved, install these three bodies and subjects in Authentication > Email Templates for project `cdjobwsyzndtltzfpyqa`. Read the saved values back. Keep confirmation and magic link code-only. Keep the reset URL `{{ .RedirectTo }}&token_hash={{ .TokenHash }}&type=recovery`; its ampersands are HTML-escaped in the file. Do not change the redirect allow list or other Auth settings as part of the design change. This is the hosted template procedure in the [Supabase email template guide](https://supabase.com/docs/guides/auth/auth-email-templates).
+
+Send each type to a team-controlled QA inbox after installation. Check the logo, signature, and address. Confirm that the code completes signup in the original tab. Confirm that the reset button opens the password form. Browser screenshots and source tests do not prove inbox rendering or hosted token substitution.
 
 ## Hosted checks after the deploy
 
