@@ -13,8 +13,8 @@
 // test continued, or one with every answer in opened to finish). test_start is now only a new test (status new, or
 // restart after one expired). test_start_click status: new, retake, in_progress, finish, round (#225: left part way through the extra round), expired.
 // The report (#65): report_open (src = email when the parent came from the report email, else account).
-// Whiteboard (#67): test_work (an answer stored with work; status required or optional, channel draw, type or both),
-// test_work_nudge (a show-your-work question was answered with an empty board, once per question).
+// Whiteboard (#67): test_work (an answer stored with work; status required or optional, channel draw, type or both).
+// test_work_nudge (a show-your-work question answered with an empty board) stopped when the whiteboard became optional (D-125).
 // The report's next step (#66): card_start (the plan click toward the payment page: plan, price, src = email or
 // account, status = stripe, later (no Stripe key or Stripe failed), saved (a card was saved before) or error);
 // waitlist_join (src, curriculum, status = joined or already; the reserve form's waitlist_join has no src);

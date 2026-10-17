@@ -81,7 +81,7 @@ export function ExtraIntro({ name, entry, busy, onStart, problem }: { name: stri
         <ul className="test-rules">
           <li><b>No calculator.</b> Work the answers out yourself.</li>
           <li><b>No help from a parent.</b> Do the questions on your own. Grown-ups, please let your child work alone.</li>
-          <li><b>Use the whiteboard for your working.</b> Do not use scrap paper.</li>
+          <li><b>Scrap paper is fine.</b> Work things out on paper or on the whiteboard, if it helps. We only need your answers.</li>
         </ul>
         <p className="test-intro-note">
           {again ? "Your answers are saved. You go on from the question where you stopped." : "Answer one question at a time. You cannot go back, so check each answer before you press Next."}

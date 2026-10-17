@@ -18,7 +18,8 @@ import {
 } from "@/lib/assessment";
 import { allRight, allWrong, type Script } from "./scripted-child";
 
-// Shown work on the whiteboard (#67, D-083): required on 5 / 7 / 10 questions by grade band, optional on the rest.
+// Shown work on the whiteboard (#67, D-083): 5 / 7 / 10 questions by grade band are marked show-your-work. Since D-125
+// the mark only ranks the work the report shows; the whiteboard is optional on every question.
 
 /** Takes a whole test through the public API and returns the questions as the browser saw them. */
 function walk(profile: ChildProfile, seed: number, isRight: Script, bank?: readonly Template[]) {
@@ -132,12 +133,10 @@ describe("shown work: what may go with an answer", () => {
   const typed = { drawn: false, text: "48 + 20 = 68" };
   const empty = { drawn: false, text: "" };
 
-  it("a show-your-work question with an empty board is refused", () => {
-    expect(workProblem(at({ grade: 4, province: "BC" }, true), empty)).toBe("work_required");
-  });
-
-  it("only spaces and line breaks are not work", () => {
-    expect(workProblem(at({ grade: 4, province: "BC" }, true), { drawn: false, text: " \n\t " })).toBe("work_required");
+  it("a show-your-work question takes an empty board: the whiteboard is optional (D-125)", () => {
+    const session = at({ grade: 4, province: "BC" }, true);
+    expect(workProblem(session, empty)).toBeNull();
+    expect(workProblem(session, { drawn: false, text: " \n\t " })).toBeNull();
   });
 
   it("a drawing, typed working, or both count as work", () => {

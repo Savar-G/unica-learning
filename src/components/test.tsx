@@ -9,7 +9,7 @@ import "./test-base.css";
 import { useCallback, useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
 import Link from "next/link";
 import { Button } from "@/ds";
-import { breakDue, hasWork, readAloudText, spokenChoices, type ExtraRoundOffer, type HelpAnswer, type PublicQuestion, type TestStep } from "@/lib/assessment";
+import { breakDue, readAloudText, spokenChoices, type ExtraRoundOffer, type HelpAnswer, type PublicQuestion, type TestStep } from "@/lib/assessment";
 import { ANSWER_MAX, type FinishResult, type StartResult, type StepResult, type TestError, type WorkPayload } from "@/lib/test-api";
 import { answerRecorder, type AnswerEvents } from "@/lib/answer-events";
 import { deviceOf, type BreakEvent, type BreakResume, type ContextResult, type TestDevice } from "@/lib/test-context";
@@ -377,7 +377,6 @@ function Problem({ error }: { error: TestError | null }) {
     : error === "not_ready" ? "The test for this grade is not ready yet."
     : error === "expired" ? "The last test was not finished within 24 hours, so it closed."
     : error === "retake_closed" ? <>A new test opens 30 days after the last one. <Link href="/account">Your account</Link> shows the date.</>
-    : error === "work_required" ? "Show your work on the whiteboard, then press Next."
     : error === "work_too_big" ? "Your work is too big to save. Clear some of it, then press Next again."
     : <>Something went wrong. Check the internet connection and try again. If this keeps happening, email <a href={SUPPORT_HREF}>{SUPPORT_EMAIL}</a>.</>;
   return <p ref={line} role="alert" className="test-alert">{text}</p>;
@@ -412,7 +411,7 @@ function Intro({ name, ready, busy, onStart, failure, mode }: { name: string; re
       <ul className="test-rules">
         <li><b>No calculator.</b> Work the answers out yourself.</li>
         <li><b>No help from a parent.</b> Do the test on your own. Grown-ups, please let your child work alone.</li>
-        <li><b>Use the whiteboard for your working.</b> Do not use scrap paper. Some questions ask you to show your work there.</li>
+        <li><b>Scrap paper is fine.</b> Work things out on paper or on the whiteboard, if it helps. We only need your answers.</li>
       </ul>
       {mode === "resume"
         ? <p className="test-intro-note">Your answers are saved. You go on from the question where you stopped. You cannot go back, so check each answer before you press Next.</p>
@@ -501,15 +500,6 @@ function Question({ testId, typing, question, last, takeYourTime, onAnswer, fail
   const [erased, setErased] = useState<BoardState["strokes"] | null>(null);
   const drawn = hasDrawing(board.strokes) && erased !== board.strokes;
   const text = typing ? board.text : "";
-  // On a show-your-work question, Next stays off until there is an answer and the board has work (D-088).
-  const needsWork = question.showWork && !hasWork({ drawn, text });
-  const nudge = !!value && needsWork;
-  const nudged = useRef(false);
-  useEffect(() => {
-    if (!nudge || nudged.current) return;
-    nudged.current = true;
-    track("test_work_nudge");
-  }, [nudge]);
 
   const press = useCallback((key: string) => {
     setValue((v) => {
@@ -521,7 +511,7 @@ function Question({ testId, typing, question, last, takeYourTime, onAnswer, fail
 
   const submit = async (e?: FormEvent) => {
     e?.preventDefault();
-    if (!value || sending || stopping || needsWork) return;
+    if (!value || sending || stopping) return;
     setSending(true);
     const timeMs = performance.now() - shownAt.current;
     let image: string | null = null;
@@ -530,15 +520,10 @@ function Question({ testId, typing, question, last, takeYourTime, onAnswer, fail
       image = await boardImage(board.strokes, boardSize.current);
       blank = drawn && image === null;
     } catch {
-      // The browser could not make the picture: the answer goes without it, and the server says if work is missing.
+      // The browser could not make the picture: the answer goes without it.
     }
     const typed = text.trim();
     if (blank) setErased(board.strokes);
-    // Everything was erased on a show-your-work question: the board is empty, so the nudge comes back instead of Next.
-    if (question.showWork && blank && !typed) {
-      setSending(false);
-      return;
-    }
     // #186: every stroke, undo and clear, for the admin's replay, thinned to the size limit (or none when it cannot fit).
     const recorded = recordStrokes(board.log, board.shownAt ?? shownAt.current, boardSize.current);
     const strokes = recorded && fitStrokes(recorded);
@@ -620,13 +605,12 @@ function Question({ testId, typing, question, last, takeYourTime, onAnswer, fail
           <div className="test-next">
             {/* #190: at the far end from Next, so it is not pressed by mistake. */}
             {onStop && <Button variant="ghost" onClick={stop} disabled={sending || stopping} aria-busy={stopping}>Stop here</Button>}
-            <p className="test-why" aria-live="polite">{nudge ? "Now show your work on the board" : ""}</p>
-            <Button type="submit" disabled={!value || sending || stopping || needsWork} aria-busy={sending}>{last ? "Finish" : "Next"}</Button>
+            <Button type="submit" disabled={!value || sending || stopping} aria-busy={sending}>{last ? "Finish" : "Next"}</Button>
           </div>
         </div>
       </div>
       <div className="test-pane test-pane-r">
-        <Whiteboard board={board} onChange={changeBoard} typing={typing} required={question.showWork} nudge={nudge} onSize={onBoardSize} />
+        <Whiteboard board={board} onChange={changeBoard} typing={typing} onSize={onBoardSize} />
       </div>
     </form>
   );

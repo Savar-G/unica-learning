@@ -300,12 +300,15 @@ describe("the work on the whiteboard (#67)", () => {
     expect(memory.tests[0].answers).toMatchObject([{ questionId: first.id, workRequired: true, workPath: path, workText: "carry the 1" }]);
   });
 
-  it("refuses a show-your-work question answered with an empty board as work required, and stores nothing", async () => {
+  it("takes a show-your-work question answered with an empty board: the whiteboard is optional (D-125)", async () => {
     const memory = family(stored(open("a1", T0)));
-    expect(await answerQuestion(memory.store, P1, "a1", sent(memory.tests[0]), T0 + HOUR)).toEqual({ ok: false, error: "work_required" });
-    expect(memory.tests[0]).toMatchObject({ resumeUntil: T0 + DAY, lastAnswerAt: null });
-    expect(memory.tests[0].answers).toEqual([]);
-    // Typed working is work too, from grade 3.
+    expect(await answerQuestion(memory.store, P1, "a1", sent(memory.tests[0]), T0 + HOUR)).toMatchObject({ ok: true });
+    expect(memory.tests[0].answers).toMatchObject([{ workRequired: true, workPath: null, workText: null }]);
+    expect(memory.drawings.size).toBe(0);
+  });
+
+  it("stores typed working from grade 3", async () => {
+    const memory = family(stored(open("a1", T0)));
     expect(await answerQuestion(memory.store, P1, "a1", sent(memory.tests[0], { text: "7 x 6 = 42" }), T0 + HOUR)).toMatchObject({ ok: true });
     expect(memory.tests[0].answers).toMatchObject([{ workRequired: true, workPath: null, workText: "7 x 6 = 42" }]);
     expect(memory.drawings.size).toBe(0);
