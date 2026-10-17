@@ -25,7 +25,7 @@ Funnel events: `cta_click`, `form_start`, `plan_selected`, `details_done`, `wait
 
 ## Supporting pages
 
-- `/privacy` and `/terms` use plain language and identify Unica Learning. Public support is `savar.gupta1922@gmail.com`, defined in `src/lib/contact.ts`. The 30-day money-back guarantee starts on the day of the first payment. These pages remain noindex.
+- `/privacy` and `/terms` use plain language and identify Unica Learning. Public support is `contact@unicalearning.com`, defined in `src/lib/contact.ts`. The 30-day money-back guarantee starts on the day of the first payment. These pages remain noindex.
 - `/thank-you` shows a reservation or waitlist receipt after a successful save. A direct visit does not confirm a booking. Stripe returns with a Checkout session ID; the server confirms a saved card only for a completed setup session with a successful SetupIntent and a matching Unica Learning reference. This page never charges a card.
 - A missing route returns the custom 404 page. `robots.txt` and `sitemap.xml` follow the indexing switch. The sitemap includes only the home page when indexing is enabled. Support and receipt pages stay noindex.
 - Cookie settings in the footer allow a visitor to change the optional analytics choice. The mobile assessment button hides while the banner or booking dialog is open.
