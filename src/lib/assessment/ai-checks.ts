@@ -115,16 +115,22 @@ const MAIN_UNTESTED = new RegExp([
  */
 const ABOVE_LEVEL = new RegExp(
   String.raw`\bwork(?:s|ing)?\s+(?:above|beyond|higher\s+than)\s+(?:this|that|the|their|his|her|\{name\}'s)\s+(?:(?:tested|top|highest|current|working)\s+)?level\b`,
-  "i",
+  "gi",
 );
-/** A negation anywhere in a sentence: the sentence does not make the claim ("is not yet working above this level"). */
-const NEGATION = /\b(?:not|never|no|nor|cannot|without|neither)\b|n['\u2019]t\b/i;
+/** A negation word: the claim in front of which it stands ("is not yet working above this level") is not made. */
+const NEGATION = /^(?:not|never|no|nor|cannot|without|neither)$|n['\u2019]t$/i;
+/**
+ * How many words before the verb a negation still negates the claim (D-133). Punctuation does not count, so a period in
+ * "Gr." or in an initial cannot separate a negation from its claim, as a sentence split would. Ten words reach "is not
+ * yet ready, at the current Gr. 3 placement, to work above this level".
+ */
+const NEGATION_WINDOW = 10;
 
-/** The repeated claim in the first sentence that makes it, or null. A sentence with a negation word never counts. */
+/** The repeated claim, or null: a match of ABOVE_LEVEL with no negation word among the words just before its verb. */
 function repeatedClaim(text: string): string | null {
-  for (const sentence of text.split(/(?<=[.!?;])\s+/)) {
-    const claim = sentence.match(ABOVE_LEVEL);
-    if (claim && !NEGATION.test(sentence)) return claim[0];
+  for (const claim of text.matchAll(ABOVE_LEVEL)) {
+    const before = text.slice(0, claim.index).match(/[\p{L}\p{N}'\u2019]+/gu) ?? [];
+    if (!before.slice(-NEGATION_WINDOW).some((word) => NEGATION.test(word))) return claim[0];
   }
   return null;
 }
