@@ -9,12 +9,8 @@ import { resendConfigProblem, resendSender, resendTransport } from "@/lib/email-
 // Two seams: the mail transport (Resend in production, src/lib/email-resend.ts) and the send ledger (where the claims
 // live). Tests use the in-memory adapters in src/lib/email-delivery-memory.ts.
 
-/** Who the email goes to decides its sender address. */
-export type Sender =
-  /** A parent: EMAIL_FROM. When it is not set, the email is refused. */
-  | { to: "parent" }
-  /** Savar: EMAIL_FROM, else Resend's test sender with this display name (the free plan delivers it only to the account owner). */
-  | { to: "savar"; testSenderName: string };
+/** Who the email goes to. The sender address is EMAIL_FROM for both; when it is not set, the email is refused (D-133). */
+export type Sender = { to: "parent" } | { to: "savar" };
 
 /** A finished email. The caller decides its content; the module only sends it. */
 export interface EmailMessage {
@@ -105,7 +101,7 @@ export async function sendEmailOnce<K, H>(
   if (ledger.keepCopy) {
     // A copy that is not kept never changes the email's outcome.
     try {
-      await ledger.keepCopy(handle, key, { from: resendSender(message), message, outcome: result.status, emailId: result.status === "sent" ? result.emailId : null });
+      await ledger.keepCopy(handle, key, { from: resendSender(), message, outcome: result.status, emailId: result.status === "sent" ? result.emailId : null });
     } catch (e) {
       console.error("[email] copy not kept", result.status, e instanceof Error ? e.message : e);
     }

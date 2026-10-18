@@ -217,13 +217,13 @@ function cardAlert(setup: ReportCardSetup, report: ReportRow, option: PlanOption
 }
 
 /**
- * Emails Savar. Uses EMAIL_FROM when it is set, else Resend's test sender (delivered only to the account owner). Sent
+ * Emails Savar from EMAIL_FROM (refused when it is not set). Sent
  * without a send key (spec #143): a second click on a plan can alert again, as before.
  */
 async function alertSavar(email: { subject: string; text: string; replyTo: string }) {
   const to = process.env.SIGNUP_NOTIFY_EMAIL;
   if (!to) return;
-  const outcome = await sendEmail({ sender: { to: "savar", testSenderName: "Unica Learning signups" }, to, replyTo: email.replyTo, subject: email.subject, text: email.text });
+  const outcome = await sendEmail({ sender: { to: "savar" }, to, replyTo: email.replyTo, subject: email.subject, text: email.text });
   if (outcome.status === "sent") console.info("[next-step] alert sent:", email.subject.split(":")[0]);
   else console.error("[next-step] alert failed", outcome.status, outcome.error);
 }

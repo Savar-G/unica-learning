@@ -208,6 +208,93 @@ describe("report model", () => {
     const withText = (reportText: string | null, placement = grade4(knowsUpTo(4))) =>
       reportModel(placement, { completedTestsInGrade: 0, workReviews: [], reportText });
 
+    describe("the level claim the page already shows (D-133)", () => {
+      const ceiling = () => grade4(allRight);
+      const REPEATS = [
+        "{name} may work above this level.",
+        "{name} is working at a grade 5 level and may work above that level.",
+        "{name} might work beyond their level.",
+        "{name} could work higher than this level.",
+        "Because {name} got the top level right, {name} may be working higher than this level.",
+      ];
+
+      it("is a child routed up who cleared the top level, and the model says so once", () => {
+        expect(withText(null, ceiling()).level.atCeiling).toBe(true);
+      });
+
+      it("does not tell the AI that the child may work higher: the verdict block says it", () => {
+        const model = withText(null, ceiling());
+        expect(reportFacts(model)).not.toHaveProperty("may_work_higher");
+        expect(JSON.stringify(reportFacts(model))).not.toMatch(/higher|above this/i);
+      });
+
+      it("rejects text that repeats it, new and stored, so the page says it once", () => {
+        for (const text of REPEATS) {
+          expect(checkReportText(withText(null, ceiling()), text), text).toMatchObject({ ok: false, problem: "repeat" });
+          expect(parentTextProblem(text, 4, "summary"), text).toMatchObject({ problem: "repeat" });
+          expect(withText(text, ceiling()), text).not.toHaveProperty("summary");
+          expect(storedReportModel({ ...withText(null, ceiling()), summary: text }), text).not.toHaveProperty("summary");
+        }
+      });
+
+      it("catches the exact repeated claim: work(s) above, beyond or higher than the level, with or without a modal", () => {
+        for (const text of [
+          "{name} may work above this level.",
+          "{name} might work above their level.",
+          "{name} could work above this level.",
+          "{name} can work beyond this level.",
+          "{name} works above this level.",
+          "{name} is working above this level.",
+          "{name} may be working above {name}'s level.",
+          "{name} may work higher than this level.",
+          "{name} is working at a grade 5 level and may work above that level.",
+          "{name} did not miss any of the many questions in Number, Algebra or Shapes, and {name} may work above this level.",
+        ]) expect(parentTextProblem(text, 4, "summary"), text).toMatchObject({ problem: "repeat" });
+      });
+
+      it("keeps a negated claim, a sentence that only mentions a level, the school grade or the areas", () => {
+        for (const text of [
+          "{name} does not work above this level.",
+          "{name} doesn't work above this level.",
+          "{name} cannot work above this level.",
+          "{name} could not work above this level.",
+          "{name} may not be working above this level.",
+          "{name} does not yet work above this level.",
+          "{name} is not yet working above this level.",
+          "{name} cannot yet work above this level.",
+          "{name} should not be working above this level.",
+          "{name} is not currently working above this level.",
+          "{name} does not need to work above this level.",
+          "{name} isn't working above this level yet.",
+          "{name} never works above this level.",
+          "{name} is working at a grade 5 level but is not working above that level.",
+          // A period inside the sentence ("Gr.", initials) does not separate a negation from its claim.
+          "The results do not suggest that this Gr. 3 child works above this level.",
+          "{name} is not yet ready, at the current Gr. 3 placement, to work above this level.",
+          "The results do not suggest that A. J. works above this level.",
+          "{name} did not miss a question. {name} may work above this level.",
+          "{name} finds questions at the higher level difficult.",
+          "{name} found the higher-level questions hard.",
+          "{name} is not ready for a higher level.",
+          "{name} could not handle harder questions.",
+          "{name} is not yet ready for the next level.",
+          "{name} is working at a grade 5 level, above the school grade of grade 4.",
+          "{name} works above grade level in Number and fractions.",
+          "{name} is working at a grade 5 level. Practise Fractions and decimals.",
+          "{name} handled the Number questions well and could practise fractions.",
+          "Harder fractions questions are the area to practise.",
+          // Allowed by decision (D-133): a rare reworded repeat costs less than a dropped summary.
+          "{name} may be ready for more challenging work.",
+          "{name} is ready to progress to a higher level.",
+          "{name} could handle harder work.",
+          "{name} is ready for the next level.",
+        ]) {
+          expect(parentTextProblem(text, 4, "summary"), text).toBeNull();
+          if (!/Gr\. 3/.test(text)) expect(checkReportText(withText(null, ceiling()), text).ok, text).toBe(true);
+        }
+      });
+    });
+
     it("no text: the report has no summary, only its plain sentences", () => {
       expect(withText(null)).not.toHaveProperty("summary");
       expect(report(grade4())).not.toHaveProperty("summary");

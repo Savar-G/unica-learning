@@ -17,8 +17,9 @@ export const REPORT_TEXT_MAX = 600;
  * "voice": first person, or the AI named (D-085: AI is named only in the privacy page and the terms). "pronoun": he or
  * she (the report does not know the child's gender). "number": a number that is not among the report's facts.
  * "speed" and "untested": what a parent's AI text about the child may not say (parentTextProblem, #242, #245).
+ * "repeat": the summary says the child may work above the level, which the verdict block already says (D-133).
  */
-export type ReportTextProblem = "length" | "format" | "voice" | "pronoun" | "number" | "speed" | "untested";
+export type ReportTextProblem = "length" | "format" | "voice" | "pronoun" | "number" | "speed" | "untested" | "repeat";
 
 export type ReportTextCheck = { ok: true; text: string } | { ok: false; problem: ReportTextProblem; detail: string };
 
@@ -106,6 +107,34 @@ const MAIN_UNTESTED = new RegExp([
   String.raw`\b(?:did\s+not|didn['’]t|does\s+not|doesn['’]t)\s+(?:test|check|measure|assess|ask|cover|include)\b`,
 ].join("|"), "i");
 
+/**
+ * The exact claim the level block already makes when the child cleared the top level (D-133): the child "works" (or may,
+ * might, could, can work, or is working) above, beyond or higher than this, that, the, their or the child's level. Only
+ * this claim, so the summary does not say it twice. Not other wordings of "ready for more" (a dropped summary costs more
+ * than a rare reworded repeat, D-133).
+ */
+const ABOVE_LEVEL = new RegExp(
+  String.raw`\bwork(?:s|ing)?\s+(?:above|beyond|higher\s+than)\s+(?:this|that|the|their|his|her|\{name\}'s)\s+(?:(?:tested|top|highest|current|working)\s+)?level\b`,
+  "gi",
+);
+/** A negation word: the claim in front of which it stands ("is not yet working above this level") is not made. */
+const NEGATION = /^(?:not|never|no|nor|cannot|without|neither)$|n['\u2019]t$/i;
+/**
+ * How many words before the verb a negation still negates the claim (D-133). Punctuation does not count, so a period in
+ * "Gr." or in an initial cannot separate a negation from its claim, as a sentence split would. Ten words reach "is not
+ * yet ready, at the current Gr. 3 placement, to work above this level".
+ */
+const NEGATION_WINDOW = 10;
+
+/** The repeated claim, or null: a match of ABOVE_LEVEL with no negation word among the words just before its verb. */
+function repeatedClaim(text: string): string | null {
+  for (const claim of text.matchAll(ABOVE_LEVEL)) {
+    const before = text.slice(0, claim.index).match(/[\p{L}\p{N}'\u2019]+/gu) ?? [];
+    if (!before.slice(-NEGATION_WINDOW).some((word) => NEGATION.test(word))) return claim[0];
+  }
+  return null;
+}
+
 /** Which parent's AI text is checked: the report summary, or a likely cause on the report. */
 export type ParentText = "summary" | "likely-cause";
 
@@ -117,9 +146,10 @@ export type ParentText = "summary" | "likely-cause";
  * (D-120: grades 1-4 see accuracy only): in the summary, any timing word (TIMING), as its facts have no timing of any
  * kind; in a likely cause, a sentence about the facts that states their timing, as the main test's pace is in its facts.
  * "untested": that something was not tested (UNTESTED or MAIN_UNTESTED), at every grade; what the test did not ask is
- * code's to say. Null when the text may show. Also for stored text when it is read (storedReportModel, storedProfile).
+ * code's to say. "repeat", in the summary only: that the child works or may work above the level (ABOVE_LEVEL, D-133);
+ * the level block says it, and the AI is not told it (reportFacts). Null when the text may show. Also for stored text when it is read (storedReportModel, storedProfile).
  */
-export function parentTextProblem(text: string, grade: Grade, kind: ParentText = "likely-cause"): { problem: "speed" | "untested"; detail: string } | null {
+export function parentTextProblem(text: string, grade: Grade, kind: ParentText = "likely-cause"): { problem: "speed" | "untested" | "repeat"; detail: string } | null {
   const anySpeed = grade < FACT_SPEED_FROM_GRADE && kind === "summary" ? text.match(TIMING) : null;
   if (anySpeed) return { problem: "speed", detail: anySpeed[0] };
   if (grade < FACT_SPEED_FROM_GRADE) {
@@ -133,6 +163,8 @@ export function parentTextProblem(text: string, grade: Grade, kind: ParentText =
   }
   const untested = text.match(UNTESTED) ?? text.match(MAIN_UNTESTED);
   if (untested) return { problem: "untested", detail: untested[0] };
+  const repeat = kind === "summary" ? repeatedClaim(text) : null;
+  if (repeat) return { problem: "repeat", detail: repeat };
   return null;
 }
 
@@ -183,7 +215,6 @@ export function reportFacts(m: ReportModel) {
     working_level: LEVEL(m.level.working),
     working_level_against_school_grade: m.howWeHelp === "on-grade" ? "the same" : m.howWeHelp === "behind" ? "below" : "above",
     level_is_estimate: m.level.confidence === "low",
-    may_work_higher: m.level.atCeiling,
     help_warning: m.helpWarning === true,
     areas: m.strands.map((s) => ({ area: s.name, result: STATUS[s.status], right: s.correct, questions: s.total })),
     number_facts:

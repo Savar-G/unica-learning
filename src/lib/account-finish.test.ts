@@ -415,7 +415,7 @@ describe("what the database decides (#82, #78)", () => {
 describe("finishing on a phone (#63)", () => {
   it("emails the sign-in link for the new child", async () => {
     vi.stubEnv("RESEND_API_KEY", "re_synthetic");
-    vi.stubEnv("EMAIL_FROM", "Unica Learning <hello@unicalearning.com>");
+    vi.stubEnv("EMAIL_FROM", "Unica Learning <contact@unicalearning.com>");
     const sent: string[] = [];
     vi.stubGlobal("fetch", async (input: unknown) => {
       sent.push(String(input));
@@ -432,7 +432,7 @@ describe("finishing on a phone (#63)", () => {
 
   it("does not hang when Resend never answers: after 15 seconds the family is made and no link was sent (#149)", async () => {
     vi.stubEnv("RESEND_API_KEY", "re_synthetic");
-    vi.stubEnv("EMAIL_FROM", "Unica Learning <hello@unicalearning.com>");
+    vi.stubEnv("EMAIL_FROM", "Unica Learning <contact@unicalearning.com>");
     let asked = false;
     vi.stubGlobal("fetch", (_input: unknown, init?: RequestInit) => {
       asked = true;

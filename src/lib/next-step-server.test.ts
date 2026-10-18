@@ -69,15 +69,15 @@ afterEach(() => {
 });
 
 describe("the card-link alert to Savar", () => {
-  it("goes to Savar from Resend's test sender, as 'Unica Learning signups', when EMAIL_FROM is not set", async () => {
-    vi.stubEnv("EMAIL_FROM", "");
+  it("goes to Savar from EMAIL_FROM, the sender of every email (D-133)", async () => {
+    vi.stubEnv("EMAIL_FROM", "Unica Learning <contact@unicalearning.com>");
     resendAnswers(200, { id: "re_alert" });
     const info = vi.spyOn(console, "info").mockImplementation(() => {});
     expect(await chooseThePlan()).toEqual({ ok: true, state: "later" });
     expect(resend).toHaveLength(1);
     expect(resend[0].url).toBe("https://api.resend.com/emails");
     expect(resend[0].body).toMatchObject({
-      from: "Unica Learning signups <onboarding@resend.dev>",
+      from: "Unica Learning <contact@unicalearning.com>",
       to: ["savar@unicalearning.com"],
       reply_to: "priya@family.ca",
       subject: "Card link needed: Priya Shah (Math, grade 4)",
@@ -86,16 +86,25 @@ describe("the card-link alert to Savar", () => {
     expect(info).toHaveBeenCalledWith("[next-step] alert sent:", "Card link needed");
   });
 
+  it("is refused, and Resend is never asked, when EMAIL_FROM is not set", async () => {
+    vi.stubEnv("EMAIL_FROM", "");
+    resendAnswers(200, { id: "re_alert" });
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    vi.spyOn(console, "info").mockImplementation(() => {});
+    await chooseThePlan();
+    expect(resend).toHaveLength(0);
+  });
+
   it("goes from EMAIL_FROM when it is set", async () => {
-    vi.stubEnv("EMAIL_FROM", "Unica Learning <hello@unicalearning.com>");
+    vi.stubEnv("EMAIL_FROM", "Unica Learning <contact@unicalearning.com>");
     resendAnswers(200, { id: "re_alert" });
     vi.spyOn(console, "info").mockImplementation(() => {});
     await chooseThePlan();
-    expect(resend[0].body.from).toBe("Unica Learning <hello@unicalearning.com>");
+    expect(resend[0].body.from).toBe("Unica Learning <contact@unicalearning.com>");
   });
 
   it("is logged with the caller's prefix when Resend does not take it; the parent's answer does not change", async () => {
-    vi.stubEnv("EMAIL_FROM", "");
+    vi.stubEnv("EMAIL_FROM", "Unica Learning <contact@unicalearning.com>");
     resendAnswers(503, { message: "down" });
     const error = vi.spyOn(console, "error").mockImplementation(() => {});
     expect(await chooseThePlan()).toEqual({ ok: true, state: "later" });

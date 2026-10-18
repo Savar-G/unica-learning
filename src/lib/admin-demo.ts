@@ -136,5 +136,5 @@ export function demoEmailCopy(e: EmailEvent, f: Family | undefined): EmailCopyVi
   const mail = e.kind === "continue"
     ? reminderEmail({ ...common, kind: "continue", answered: 12, resumeUntil: Date.parse(e.at) + 23 * 3_600_000 })
     : reminderEmail({ ...common, kind: e.kind });
-  return { outcome: e.status === "failed" ? "refused" : "sent", from: "Unica Learning <hello@unicalearning.com>", to: f.email, replyTo: SUPPORT_EMAIL, subject: mail.subject, text: mail.text, html: mail.html, keptAt: e.at, events: e.delivery ? [e.delivery] : [] };
+  return { outcome: e.status === "failed" ? "refused" : "sent", from: "Unica Learning <contact@unicalearning.com>", to: f.email, replyTo: SUPPORT_EMAIL, subject: mail.subject, text: mail.text, html: mail.html, keptAt: e.at, events: e.delivery ? [e.delivery] : [] };
 }

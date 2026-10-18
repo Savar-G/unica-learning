@@ -134,7 +134,7 @@ beforeEach(() => {
     return new Response(JSON.stringify({ id: "re_network" }), { status: 200 });
   });
   vi.stubEnv("RESEND_API_KEY", "re_synthetic");
-  vi.stubEnv("EMAIL_FROM", "Unica Learning <hello@unicalearning.com>");
+  vi.stubEnv("EMAIL_FROM", "Unica Learning <contact@unicalearning.com>");
   vi.stubEnv("SIGNUP_NOTIFY_EMAIL", "savar@unicalearning.com");
   vi.spyOn(console, "info").mockImplementation(() => {});
   vi.spyOn(console, "error").mockImplementation(() => {});
@@ -232,7 +232,7 @@ describe("the report emails", () => {
     const [report, alert] = mail.delivered;
     expect(report).toMatchObject({ sender: { to: "parent" }, replyTo: "contact@unicalearning.com", subject: "Asha's math report is ready" });
     expect(report.text).toContain(`See Asha's full report: ${ORIGIN}/account/report/report-1?src=email`);
-    expect(alert).toMatchObject({ sender: { to: "savar", testSenderName: "Unica Learning reports" }, replyTo: "priya@family.ca" });
+    expect(alert).toMatchObject({ sender: { to: "savar" }, replyTo: "priya@family.ca" });
     expect(alert.text).toContain("Parent email: sent to priya@family.ca");
     expect(alert.text).toContain(`Report: ${ORIGIN}/admin/assessments/${TEST}`);
 
@@ -497,7 +497,7 @@ describe("a report step that fails", () => {
     await run(db, mail, book);
     expect(mail.delivered).toHaveLength(2);
     for (const alert of mail.delivered) {
-      expect(alert).toMatchObject({ sender: { to: "savar", testSenderName: "Unica Learning reports" }, to: "savar@unicalearning.com", subject: `Report FAILED for assessment ${TEST}` });
+      expect(alert).toMatchObject({ sender: { to: "savar" }, to: "savar@unicalearning.com", subject: `Report FAILED for assessment ${TEST}` });
       expect(alert.text).toContain("The report step failed: parent not found");
     }
     expect(book.entry(PARENT_EMAIL)).toBeUndefined();
