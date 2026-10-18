@@ -87,11 +87,11 @@ describe("the card-link alert to Savar", () => {
   });
 
   it("goes from EMAIL_FROM when it is set", async () => {
-    vi.stubEnv("EMAIL_FROM", "Unica Learning <hello@unicalearning.com>");
+    vi.stubEnv("EMAIL_FROM", "Unica Learning <contact@unicalearning.com>");
     resendAnswers(200, { id: "re_alert" });
     vi.spyOn(console, "info").mockImplementation(() => {});
     await chooseThePlan();
-    expect(resend[0].body.from).toBe("Unica Learning <hello@unicalearning.com>");
+    expect(resend[0].body.from).toBe("Unica Learning <contact@unicalearning.com>");
   });
 
   it("is logged with the caller's prefix when Resend does not take it; the parent's answer does not change", async () => {

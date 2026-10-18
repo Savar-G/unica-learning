@@ -474,7 +474,7 @@ describe("the reminder job", () => {
   describe("with Resend answering", () => {
     function resend(status: number, body: string) {
       vi.stubEnv("RESEND_API_KEY", "re_synthetic");
-      vi.stubEnv("EMAIL_FROM", "Unica Learning <hello@unicalearning.com>");
+      vi.stubEnv("EMAIL_FROM", "Unica Learning <contact@unicalearning.com>");
       const requests: string[] = [];
       const fetch = (async (url: RequestInfo | URL) => (requests.push(String(url)), new Response(body, { status }))) as typeof globalThis.fetch;
       return { requests, transport: resendTransport({ fetch }) };

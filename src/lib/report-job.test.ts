@@ -134,7 +134,7 @@ beforeEach(() => {
     return new Response(JSON.stringify({ id: "re_network" }), { status: 200 });
   });
   vi.stubEnv("RESEND_API_KEY", "re_synthetic");
-  vi.stubEnv("EMAIL_FROM", "Unica Learning <hello@unicalearning.com>");
+  vi.stubEnv("EMAIL_FROM", "Unica Learning <contact@unicalearning.com>");
   vi.stubEnv("SIGNUP_NOTIFY_EMAIL", "savar@unicalearning.com");
   vi.spyOn(console, "info").mockImplementation(() => {});
   vi.spyOn(console, "error").mockImplementation(() => {});

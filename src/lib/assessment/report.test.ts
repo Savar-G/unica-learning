@@ -208,6 +208,46 @@ describe("report model", () => {
     const withText = (reportText: string | null, placement = grade4(knowsUpTo(4))) =>
       reportModel(placement, { completedTestsInGrade: 0, workReviews: [], reportText });
 
+    describe("the level claim the page already shows (D-132)", () => {
+      const ceiling = () => grade4(allRight);
+      const REPEATS = [
+        "{name} may work above this level.",
+        "{name} is working at a grade 5 level and may work above that level.",
+        "{name} might be ready for a higher level.",
+        "{name} could do work beyond this level.",
+        "Because {name} got the top level right, {name} may be working higher than this level.",
+      ];
+
+      it("is a child routed up who cleared the top level, and the model says so once", () => {
+        expect(withText(null, ceiling()).level.atCeiling).toBe(true);
+      });
+
+      it("does not tell the AI that the child may work higher: the verdict block says it", () => {
+        const model = withText(null, ceiling());
+        expect(reportFacts(model)).not.toHaveProperty("may_work_higher");
+        expect(JSON.stringify(reportFacts(model))).not.toMatch(/higher|above this/i);
+      });
+
+      it("rejects text that repeats it, new and stored, so the page says it once", () => {
+        for (const text of REPEATS) {
+          expect(checkReportText(withText(null, ceiling()), text), text).toMatchObject({ ok: false, problem: "repeat" });
+          expect(parentTextProblem(text, 4, "summary"), text).toMatchObject({ problem: "repeat" });
+          expect(withText(text, ceiling()), text).not.toHaveProperty("summary");
+          expect(storedReportModel({ ...withText(null, ceiling()), summary: text }), text).not.toHaveProperty("summary");
+        }
+      });
+
+      it("keeps text about the school grade, the level and the areas", () => {
+        for (const text of [
+          "{name} is working at a grade 5 level, above the school grade of grade 4.",
+          "{name} works above grade level in Number and fractions.",
+          "{name} is working at a grade 5 level. Practise Fractions and decimals.",
+        ]) {
+          expect(checkReportText(withText(null, ceiling()), text).ok, text).toBe(true);
+        }
+      });
+    });
+
     it("no text: the report has no summary, only its plain sentences", () => {
       expect(withText(null)).not.toHaveProperty("summary");
       expect(report(grade4())).not.toHaveProperty("summary");

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { reportModel, type Grade, type Province, type ReportFacts } from "@/lib/assessment";
-import { knowsUpTo, takeTest, type Script } from "@/lib/assessment/scripted-child";
+import { reportModel, storedReportModel, type Grade, type Province, type ReportFacts } from "@/lib/assessment";
+import { allRight, knowsUpTo, takeTest, type Script } from "@/lib/assessment/scripted-child";
 import { reportAlert, reportEmail } from "@/lib/report-email";
 import type { ReportView } from "@/lib/report-view";
 
@@ -179,6 +179,15 @@ describe("the report email to the parent", () => {
       const email = reportEmail({ unsubscribeUrl: UNSUB, view: withSummary("{name} is working at a grade 3 level & {name}'s best area is Patterns and algebra."), parentName: "Priya", url: URL });
       expect(email.text).toContain("That is one grade below Maya's school grade (grade 4).\nHow sure: Clear\nMaya is working at a grade 3 level & Maya's best area is Patterns and algebra.");
       expect(email.html).toContain("Maya is working at a grade 3 level &amp; Maya&#39;s best area is Patterns and algebra.");
+    });
+
+    it("says a child may work above the level once: the level note stays and a summary that repeats it is dropped (D-132)", () => {
+      const v = view(allRight);
+      const repeated = storedReportModel({ ...v.model, summary: "{name} is working at a grade 5 level and may work above this level." });
+      const email = reportEmail({ unsubscribeUrl: UNSUB, view: { ...v, model: repeated }, parentName: "Priya", url: URL });
+      expect(email.text.match(/may work above this level/g)).toHaveLength(1);
+      expect(email.html.match(/may work above this level/g)).toHaveLength(1);
+      expect(email.text).toContain("Maya may work above this level.");
     });
 
     it("is absent without AI text", () => {

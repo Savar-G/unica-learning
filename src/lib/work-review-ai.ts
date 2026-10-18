@@ -48,7 +48,7 @@ Rules:
 - Write ${REPORT_TEXT_NAME} where the child's name goes. Never use he, she, him, her, his or hers: repeat ${REPORT_TEXT_NAME} or rephrase.
 - Write every number as digits, and use only numbers that are in the facts. Do not calculate new numbers: no percentages, differences or totals. Do not write numbers as words, and do not use the words "one" or "half".
 - The report already says the working level and how it compares with the school grade, just above your paragraph. Do not start by repeating it. Say what the result means: the strongest area, and the areas to practise. Call an area a weakness only when its result is "Developing" or "Needs attention". Never invent a strength or a weakness.
-- If level_is_estimate is true, say that the level is an estimate. If may_work_higher is true, say that the child may work above this level.
+- If level_is_estimate is true, say that the level is an estimate. Never say that the child may work above or higher than the level: the report says it.
 - If help_warning is true, do not praise the level: say that the level may be too high.
 - Number facts speed is never a reason to call a child behind. When number_facts has no speed, say nothing about time or speed: no seconds, pace, quick, fast, slow or time per fact.
 - Write only about what the facts show. Say nothing about what the test asked or left out.

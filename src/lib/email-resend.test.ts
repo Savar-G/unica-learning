@@ -12,7 +12,7 @@ const toParent: EmailMessage = {
   subject: "Open this on a laptop",
   text: "Hi Priya",
   html: "<p>Hi Priya</p>",
-  replyTo: "hello@unicalearning.com",
+  replyTo: "contact@unicalearning.com",
   headers: { "List-Unsubscribe": "<https://unicalearning.com/api/unsubscribe?t=x>", "List-Unsubscribe-Post": "List-Unsubscribe=One-Click" },
 };
 const toSavar: EmailMessage = { sender: { to: "savar", testSenderName: "Unica Learning signups" }, to: "savar@unicalearning.com", subject: "Card link needed", text: "Plan chosen", replyTo: "priya@family.ca" };
@@ -31,7 +31,7 @@ const answer = (status: number, body: unknown) => async () => new Response(typeo
 
 beforeEach(() => {
   vi.stubEnv("RESEND_API_KEY", "re_synthetic");
-  vi.stubEnv("EMAIL_FROM", "Unica Learning <hello@unicalearning.com>");
+  vi.stubEnv("EMAIL_FROM", "Unica Learning <contact@unicalearning.com>");
 });
 afterEach(() => {
   vi.unstubAllEnvs();
@@ -52,12 +52,12 @@ describe("a 2xx answer", () => {
     expect(net.seen[0].init.method).toBe("POST");
     expect(new Headers(net.seen[0].init.headers).get("authorization")).toBe("Bearer re_synthetic");
     expect(net.body()).toEqual({
-      from: "Unica Learning <hello@unicalearning.com>",
+      from: "Unica Learning <contact@unicalearning.com>",
       to: ["priya@family.ca"],
       subject: "Open this on a laptop",
       text: "Hi Priya",
       html: "<p>Hi Priya</p>",
-      reply_to: "hello@unicalearning.com",
+      reply_to: "contact@unicalearning.com",
       headers: { "List-Unsubscribe": "<https://unicalearning.com/api/unsubscribe?t=x>", "List-Unsubscribe-Post": "List-Unsubscribe=One-Click" },
     });
   });
@@ -117,7 +117,7 @@ describe("the sender", () => {
   it("of an email to Savar is EMAIL_FROM when it is set", async () => {
     const net = network(answer(200, { id: "e1" }));
     await resendTransport({ fetch: net.fetch }).send(toSavar);
-    expect(net.body()).toMatchObject({ from: "Unica Learning <hello@unicalearning.com>", to: ["savar@unicalearning.com"], reply_to: "priya@family.ca" });
+    expect(net.body()).toMatchObject({ from: "Unica Learning <contact@unicalearning.com>", to: ["savar@unicalearning.com"], reply_to: "priya@family.ca" });
   });
 
   it("of an email to Savar is Resend's test sender, with the caller's display name, when EMAIL_FROM is not set", async () => {

@@ -13,7 +13,7 @@ const report: EmailMessage = {
   subject: "Asha's math report",
   text: "Hi Priya, Asha's report is ready.",
   html: "<p>Hi Priya, Asha's report is ready.</p>",
-  replyTo: "hello@unicalearning.com",
+  replyTo: "contact@unicalearning.com",
 };
 
 describe("a send once", () => {
@@ -213,7 +213,7 @@ describe("missing configuration", () => {
     expect(book.entry("report-email:r1")).toMatchObject({ state: "refused", error: "EMAIL_FROM is not set" });
     expect(calls).toEqual([]);
 
-    vi.stubEnv("EMAIL_FROM", "Unica Learning <hello@unicalearning.com>");
+    vi.stubEnv("EMAIL_FROM", "Unica Learning <contact@unicalearning.com>");
     expect(emailConfigProblem()).toBeNull();
     expect(await sendEmailOnce(book.ledger, "report-email:r1", report)).toEqual({ status: "sent", emailId: "re_1" });
     expect(calls).toEqual(["https://api.resend.com/emails"]);
@@ -266,14 +266,14 @@ describe("a transport that throws", () => {
 
 // The admin's email view (D-103): the ledger keeps a copy of the email after each attempt.
 describe("the copy of a sent email", () => {
-  beforeEach(() => vi.stubEnv("EMAIL_FROM", "Unica Learning <hello@unicalearning.com>"));
+  beforeEach(() => vi.stubEnv("EMAIL_FROM", "Unica Learning <contact@unicalearning.com>"));
   afterEach(() => vi.unstubAllEnvs());
 
   it("is the message as it was handed to the transport, with its sender and outcome", async () => {
     const mail = memoryTransport();
     const book = memoryLedger<string>();
     await sendEmailOnce(book.ledger, "k", report, { transport: mail.transport });
-    expect(book.keptCopy("k")).toEqual({ from: "Unica Learning <hello@unicalearning.com>", message: report, outcome: "sent", emailId: "email-1" });
+    expect(book.keptCopy("k")).toEqual({ from: "Unica Learning <contact@unicalearning.com>", message: report, outcome: "sent", emailId: "email-1" });
   });
 
   it("is kept for a refused and an unknown send too, and a retry keeps the last attempt's", async () => {

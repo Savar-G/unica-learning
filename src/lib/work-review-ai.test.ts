@@ -87,7 +87,7 @@ describe("the AI work reviewer (#68, #183)", () => {
       // The data: the report's own facts and nothing else, so no key or value about what the test did not ask.
       expect(sent, `grade ${grade}`).toEqual(reportFacts(model));
       expect(Object.keys(sent).sort(), `grade ${grade}`).toEqual(
-        ["areas", "child", "help_warning", "level_is_estimate", "may_work_higher", "number_facts", "school_grade", "work", "working_level", "working_level_against_school_grade"],
+        ["areas", "child", "help_warning", "level_is_estimate", "number_facts", "school_grade", "work", "working_level", "working_level_against_school_grade"],
       );
       expect(sent.number_facts, `grade ${grade}`).toMatchObject({ what: model.facts!.scope, right: 18, answered: 20 });
       expect(JSON.stringify(sent), `grade ${grade}`).not.toMatch(/tested|untested|division|unknown|not asked/i);

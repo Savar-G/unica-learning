@@ -17,8 +17,9 @@ export const REPORT_TEXT_MAX = 600;
  * "voice": first person, or the AI named (D-085: AI is named only in the privacy page and the terms). "pronoun": he or
  * she (the report does not know the child's gender). "number": a number that is not among the report's facts.
  * "speed" and "untested": what a parent's AI text about the child may not say (parentTextProblem, #242, #245).
+ * "repeat": the summary says the child may work above the level, which the verdict block already says (D-132).
  */
-export type ReportTextProblem = "length" | "format" | "voice" | "pronoun" | "number" | "speed" | "untested";
+export type ReportTextProblem = "length" | "format" | "voice" | "pronoun" | "number" | "speed" | "untested" | "repeat";
 
 export type ReportTextCheck = { ok: true; text: string } | { ok: false; problem: ReportTextProblem; detail: string };
 
@@ -106,6 +107,17 @@ const MAIN_UNTESTED = new RegExp([
   String.raw`\b(?:did\s+not|didn['’]t|does\s+not|doesn['’]t)\s+(?:test|check|measure|assess|ask|cover|include)\b`,
 ].join("|"), "i");
 
+/**
+ * A claim that the child works or may work above the level the test reached (D-132): the report's level block says it
+ * already when the child cleared the top level, so the summary may not say it again. "above grade level" and "above the
+ * school grade" are about the school grade, which the report says elsewhere in other words, so they are kept.
+ */
+const ABOVE_LEVEL = new RegExp([
+  String.raw`\b(?:above|beyond|past|higher\s+than)\s+(?:this|that|the|their|\{name\}'s)\s+(?:(?:tested|top|highest|current|working)\s+)?level\b`,
+  String.raw`\b(?:higher|upper)\s+level\b`,
+  String.raw`\b(?:above|beyond)\s+(?:what|where)\s+the\s+test\b`,
+].join("|"), "i");
+
 /** Which parent's AI text is checked: the report summary, or a likely cause on the report. */
 export type ParentText = "summary" | "likely-cause";
 
@@ -117,9 +129,10 @@ export type ParentText = "summary" | "likely-cause";
  * (D-120: grades 1-4 see accuracy only): in the summary, any timing word (TIMING), as its facts have no timing of any
  * kind; in a likely cause, a sentence about the facts that states their timing, as the main test's pace is in its facts.
  * "untested": that something was not tested (UNTESTED or MAIN_UNTESTED), at every grade; what the test did not ask is
- * code's to say. Null when the text may show. Also for stored text when it is read (storedReportModel, storedProfile).
+ * code's to say. "repeat", in the summary only: that the child may work above the level (ABOVE_LEVEL, D-132); the
+ * level block says it, and the AI is not told it (reportFacts). Null when the text may show. Also for stored text when it is read (storedReportModel, storedProfile).
  */
-export function parentTextProblem(text: string, grade: Grade, kind: ParentText = "likely-cause"): { problem: "speed" | "untested"; detail: string } | null {
+export function parentTextProblem(text: string, grade: Grade, kind: ParentText = "likely-cause"): { problem: "speed" | "untested" | "repeat"; detail: string } | null {
   const anySpeed = grade < FACT_SPEED_FROM_GRADE && kind === "summary" ? text.match(TIMING) : null;
   if (anySpeed) return { problem: "speed", detail: anySpeed[0] };
   if (grade < FACT_SPEED_FROM_GRADE) {
@@ -133,6 +146,8 @@ export function parentTextProblem(text: string, grade: Grade, kind: ParentText =
   }
   const untested = text.match(UNTESTED) ?? text.match(MAIN_UNTESTED);
   if (untested) return { problem: "untested", detail: untested[0] };
+  const repeat = kind === "summary" ? text.match(ABOVE_LEVEL) : null;
+  if (repeat) return { problem: "repeat", detail: repeat[0] };
   return null;
 }
 
@@ -183,7 +198,6 @@ export function reportFacts(m: ReportModel) {
     working_level: LEVEL(m.level.working),
     working_level_against_school_grade: m.howWeHelp === "on-grade" ? "the same" : m.howWeHelp === "behind" ? "below" : "above",
     level_is_estimate: m.level.confidence === "low",
-    may_work_higher: m.level.atCeiling,
     help_warning: m.helpWarning === true,
     areas: m.strands.map((s) => ({ area: s.name, result: STATUS[s.status], right: s.correct, questions: s.total })),
     number_facts:

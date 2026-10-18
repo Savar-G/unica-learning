@@ -13,11 +13,11 @@ describe("the copy of a reminder", () => {
   const links = reminderLinks("https://unicalearning.com", r, token);
   const mail = reminderEmail({ kind: "start_followup", parentName: "Priya Shah", childName: "Maya", url: links.url, unsubscribeUrl: links.unsubscribeUrl, postal: "V3S 1A1", total: 30 });
   const message = { sender: { to: "parent" as const }, to: "priya@family.ca", replyTo: "help@unicalearning.com", ...mail, headers: { "List-Unsubscribe": `<${links.oneClickUrl}>` } };
-  const row = copyRow({ emailLogId: "l1" }, "p1", { from: "Unica Learning <hello@unicalearning.com>", message, outcome: "sent", emailId: "re_123" });
+  const row = copyRow({ emailLogId: "l1" }, "p1", { from: "Unica Learning <contact@unicalearning.com>", message, outcome: "sent", emailId: "re_123" });
 
   it("keeps the email as it was sent: sender, recipient, subject and both bodies", () => {
     expect(row).toMatchObject({
-      parent_id: "p1", email_log_id: "l1", outcome: "sent", email_id: "re_123", from_address: "Unica Learning <hello@unicalearning.com>",
+      parent_id: "p1", email_log_id: "l1", outcome: "sent", email_id: "re_123", from_address: "Unica Learning <contact@unicalearning.com>",
       to_address: "priya@family.ca", reply_to: "help@unicalearning.com", subject: "Last reminder: Maya's free math test",
     });
     expect(row.text_body).toContain("Maya has not started the free math placement test yet.");

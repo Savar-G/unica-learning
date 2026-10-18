@@ -16,7 +16,7 @@ const DELIVERY_MEANS: Record<Delivery["type"], string> = {
   suppressed: "Resend did not send it, because this address bounced or marked an email as spam before.",
 };
 
-/** "Unica Learning <hello@unicalearning.com>" as a name and an address. */
+/** "Unica Learning <contact@unicalearning.com>" as a name and an address. */
 function splitAddress(from: string): { name: string; address: string | null } {
   const m = from.match(/^\s*"?([^"<]*?)"?\s*<([^>]+)>\s*$/);
   return m ? { name: m[1] || m[2], address: m[2] } : { name: from, address: null };
