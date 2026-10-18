@@ -40,7 +40,9 @@ export const hasDrawing = (strokes: readonly Stroke[]) => strokes.some((s) => !s
 
 /**
  * #252: the mode the board of an answered question opens in, so the child sees their own work at once: Type when it
- * has typed working and no drawing (and the board can type, grades 3-7); Draw otherwise.
+ * has typed working and nothing drawable on the board (and the board can type, grades 3-7); Draw otherwise. A drawing
+ * stored with no strokes (before #186, a failed strokes upload, or strokes that could not be read) is not on the board,
+ * so with typed working it opens in Type too: in Draw the board would be empty (Savar, 2026-10-18).
  */
 export const openMode = (board: Pick<BoardState, "strokes" | "text">, typing: boolean): "draw" | "type" =>
   typing && board.text !== "" && !hasDrawing(board.strokes) ? "type" : "draw";

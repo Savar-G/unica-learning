@@ -141,6 +141,8 @@ export function Whiteboard({ board, onChange, typing, onSize, startMode = "draw"
   const [tool, setTool] = useState<"pencil" | "eraser">("pencil");
   const [mode, setMode] = useState<"draw" | "type">(startMode);
   const [chose, setChose] = useState(false);
+  // The text box, so Type on a board already in Type focuses it (autoFocus works only when it mounts).
+  const textBox = useRef<HTMLTextAreaElement>(null);
   const sizeListener = useRef(onSize);
   useEffect(() => {
     sizeListener.current = onSize;
@@ -269,6 +271,7 @@ export function Whiteboard({ board, onChange, typing, onSize, startMode = "draw"
           {empty && !typingNow && <p className="wb-hint" aria-hidden>{hint}</p>}
           {typingNow && (
             <textarea
+              ref={textBox}
               className="wb-text"
               value={board.text}
               maxLength={WORK_TEXT_MAX}
@@ -284,7 +287,7 @@ export function Whiteboard({ board, onChange, typing, onSize, startMode = "draw"
           {typing && (
             <div className="wb-modes" role="group" aria-label="Draw or type">
               <button type="button" aria-pressed={!typingNow} onClick={() => setMode("draw")}><PencilIcon /> Draw</button>
-              <button type="button" aria-pressed={typingNow} onClick={() => { setChose(true); setMode("type"); }}><span aria-hidden className="wb-aa">Aa</span> Type</button>
+              <button type="button" aria-pressed={typingNow} onClick={() => { setChose(true); setMode("type"); textBox.current?.focus(); }}><span aria-hidden className="wb-aa">Aa</span> Type</button>
             </div>
           )}
           {!typingNow && (

@@ -15,6 +15,8 @@ import { ANSWER_CHANGES_MAX, type AnswerEvents } from "@/lib/answer-events";
 import { answerQuestion, changeAnswer, finishTest, nextStep, StoreError, takeExtraRound, type AnswerInput, type AttemptStore, type ChangeInput } from "@/lib/test-attempt";
 import { memoryAttemptStore, type MemoryAnswer, type MemoryTest } from "@/lib/test-attempt-memory";
 import { answerLines, type AnswerRecord } from "@/lib/admin-view";
+import { storedBoard } from "@/lib/strokes";
+import { openMode } from "@/lib/whiteboard";
 
 // Back and change an answer (#249, #250) through the test attempt module, against the in-memory store with the clock
 // passed in. The child can change an answered question of the open section (stage 1 until its last answer routes the
@@ -293,6 +295,19 @@ describe("the step carries the work of the open section's answered questions, so
   it("a drawing stored with no strokes (before #186) carries no strokes: its board opens empty", async () => {
     const { memory } = await answered({ png: DRAWING, text: "" });
     expect((await stepAt(memory, T0 + 2 * HOUR)).answered?.[2].work).toBeUndefined();
+  });
+
+  it("board mode (Savar, 2026-10-18): Type when the work has typed working and nothing drawable on the board, also with a drawing stored with no strokes; else Draw", async () => {
+    const modeOf = async (work: AnswerInput["work"]) => {
+      const { memory } = await answered(work);
+      const stored = (await stepAt(memory, T0 + 2 * HOUR)).answered?.[2].work;
+      return openMode(storedBoard(stored ?? {}, 0), true);
+    };
+    // A drawing with no strokes cannot be shown, so its board would be empty in Draw: Type shows the typed working.
+    expect(await modeOf({ png: DRAWING, text: "3 + 4" })).toBe("type");
+    expect(await modeOf({ png: null, text: "3 + 4" })).toBe("type");
+    expect(await modeOf({ png: DRAWING, text: "3 + 4", strokes: JSON.stringify(recording) })).toBe("draw");
+    expect(await modeOf({ png: DRAWING, text: "" })).toBe("draw");
   });
 
   it("when the work cannot be read, the step still goes, with the answers and no work", async () => {
