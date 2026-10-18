@@ -15,7 +15,7 @@ import { answerRecorder, mergeEvents, type AnswerEvents } from "@/lib/answer-eve
 import { deviceOf, type BreakEvent, type BreakResume, type ContextResult, type TestDevice } from "@/lib/test-context";
 import { track } from "@/lib/track";
 import { SUPPORT_EMAIL, SUPPORT_HREF } from "@/lib/contact";
-import { draftKey, draftPrefix, emptyBoard, hasDrawing, type BoardState } from "@/lib/whiteboard";
+import { draftKey, draftPrefix, emptyBoard, hasDrawing, openMode, type BoardState } from "@/lib/whiteboard";
 import { fitStrokes, recordStrokes, storedBoard, type StoredWork } from "@/lib/strokes";
 import { FactsSection } from "./facts";
 import { breakSeen, loadBreak, markBreakSeen, saveBreak, TestBreak } from "./test-break";
@@ -683,6 +683,8 @@ function Question({ testId, typing, question, initial, initialBoard, storedWork,
     const restored = (drafts ? loadDraft(draft) : null) ?? initialBoard ?? (storedWork ? storedBoard(storedWork, performance.now()) : emptyBoard());
     return { ...restored, shownAt: restored.shownAt ?? performance.now() };
   });
+  // #252: a revisit opens the board in the mode of the work on it (Type for typed working with no drawing).
+  const [startMode] = useState(() => (revisit ? openMode(board, typing) : "draw"));
   const stored = useRef(false);
   // Save each completed action before a reload can discard it, including an undo or clear to an empty board.
   // #249: any edit of the board or the typed working in this visit, Clear and Undo too, is changed work.
@@ -842,7 +844,7 @@ function Question({ testId, typing, question, initial, initialBoard, storedWork,
         </div>
       </div>
       <div className="test-pane test-pane-r">
-        <Whiteboard board={board} onChange={changeBoard} typing={typing} onSize={onBoardSize} />
+        <Whiteboard board={board} onChange={changeBoard} typing={typing} onSize={onBoardSize} startMode={startMode} />
       </div>
     </form>
   );

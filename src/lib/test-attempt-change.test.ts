@@ -13,7 +13,8 @@ import {
 } from "@/lib/assessment";
 import { ANSWER_CHANGES_MAX, type AnswerEvents } from "@/lib/answer-events";
 import { answerQuestion, changeAnswer, finishTest, nextStep, StoreError, takeExtraRound, type AnswerInput, type AttemptStore, type ChangeInput } from "@/lib/test-attempt";
-import { memoryAttemptStore, type MemoryTest } from "@/lib/test-attempt-memory";
+import { memoryAttemptStore, type MemoryAnswer, type MemoryTest } from "@/lib/test-attempt-memory";
+import { answerLines, type AnswerRecord } from "@/lib/admin-view";
 
 // Back and change an answer (#249, #250) through the test attempt module, against the in-memory store with the clock
 // passed in. The child can change an answered question of the open section (stage 1 until its last answer routes the
@@ -284,7 +285,8 @@ describe("the step carries the work of the open section's answered questions, so
     expect(await changeAnswer(memory.store, P1, "a1", revisit(memory.tests[0], 2, q.answer, { work, workChanged: true }), T0 + 2 * HOUR))
       .toMatchObject({ ok: true, step: { answered: [{}, {}, { work: { strokes: other, text: "4 + 3" } }] } });
     expect((await stepAt(memory, T0 + 2 * HOUR + MINUTE)).answered?.[2].work).toEqual({ strokes: other, text: "4 + 3" });
-    await changeAnswer(memory.store, P1, "a1", revisit(memory.tests[0], 2, q.answer, { workChanged: true }), T0 + 3 * HOUR);
+    const erased = { png: null, text: "", strokes: JSON.stringify(other) };
+    await changeAnswer(memory.store, P1, "a1", revisit(memory.tests[0], 2, q.answer, { work: erased, workChanged: true }), T0 + 3 * HOUR);
     expect((await stepAt(memory, T0 + 3 * HOUR + MINUTE)).answered?.[2].work).toBeUndefined();
   });
 
@@ -314,6 +316,52 @@ describe("a typed-only change on a board that opened empty keeps the stored draw
     expect([...memory.drawings.keys()]).toEqual([workPath]);
   });
 
+  it("a failed update keeps the stored drawing and its file", async () => {
+    logs();
+    const memory = family(openTest(2));
+    const q = current(memory.tests[0]);
+    await answerQuestion(memory.store, P1, "a1", { questionId: q.id, response: q.answer, timeMs: 20_000, work: { png: DRAWING, text: "" } }, T0 + HOUR + MINUTE);
+    const { workPath } = memory.tests[0].answers[2];
+    memory.fail.changeAnswer = new StoreError("answer change failed", "boom");
+    const typed = revisit(memory.tests[0], 2, q.answer, { work: { png: null, text: "3 + 4" }, workChanged: true });
+    expect(await changeAnswer(memory.store, P1, "a1", typed, T0 + 2 * HOUR)).toEqual({ ok: false, error: "store_failed" });
+    expect(memory.tests[0].answers[2].workPath).toBe(workPath);
+    expect([...memory.drawings.keys()]).toEqual([workPath]);
+  });
+
+  it("a drawing with strokes stays too when the child drew nothing (the strokes could not be read, so the board opened empty)", async () => {
+    const memory = family(openTest(2));
+    const q = current(memory.tests[0]);
+    await answerQuestion(memory.store, P1, "a1", { questionId: q.id, response: q.answer, timeMs: 20_000, work: { png: DRAWING, text: "", strokes: STROKES } }, T0 + HOUR + MINUTE);
+    const { workPath, strokesPath } = memory.tests[0].answers[2];
+    const typed = revisit(memory.tests[0], 2, q.answer, { work: { png: null, text: "3 + 4" }, workChanged: true });
+    expect(await changeAnswer(memory.store, P1, "a1", typed, T0 + 2 * HOUR)).toMatchObject({ ok: true });
+    expect(memory.tests[0].answers[2]).toMatchObject({ workPath, strokesPath, workText: "3 + 4" });
+    expect([...memory.drawings.keys()]).toEqual([workPath]);
+    expect([...memory.strokes.keys()]).toEqual([strokesPath]);
+  });
+
+  it("a typed-only change and a new drawing at once: the final row points to files that exist, with the typed working", async () => {
+    const memory = family(openTest(2));
+    const q = current(memory.tests[0]);
+    await answerQuestion(memory.store, P1, "a1", { questionId: q.id, response: q.answer, timeMs: 20_000, work: { png: DRAWING, text: "" } }, T0 + HOUR + MINUTE);
+    // The typed-only change waits at its guarded update while the other tab stores a new drawing and removes the old one.
+    let reached!: () => void;
+    const atWrite = new Promise<void>((r) => { reached = r; });
+    let release!: () => void;
+    const gate = new Promise<void>((r) => { release = r; });
+    const paused: AttemptStore = { ...memory.store, changeAnswer: async (...args) => { reached(); await gate; return memory.store.changeAnswer(...args); } };
+    const typing = changeAnswer(paused, P1, "a1", revisit(memory.tests[0], 2, q.answer, { work: { png: null, text: "typed" }, workChanged: true }), T0 + 2 * HOUR);
+    await atWrite;
+    const drawing = await changeAnswer(memory.store, P1, "a1", revisit(memory.tests[0], 2, q.answer, { work: { png: OTHER_DRAWING, text: "drawn", strokes: STROKES }, workChanged: true }), T0 + 2 * HOUR);
+    release();
+    expect([drawing, await typing]).toMatchObject([{ ok: true }, { ok: true }]);
+    const final = memory.tests[0].answers[2];
+    expect(final.workText).toBe("typed");
+    expect([...memory.drawings]).toEqual([[final.workPath, OTHER_DRAWING]]);
+    expect([...memory.strokes.keys()]).toEqual([final.strokesPath]);
+  });
+
   it("a drawing the child draws over replaces it", async () => {
     const memory = family(openTest(2));
     const q = current(memory.tests[0]);
@@ -321,6 +369,35 @@ describe("a typed-only change on a board that opened empty keeps the stored draw
     const drawn = revisit(memory.tests[0], 2, q.answer, { work: { png: OTHER_DRAWING, text: "" }, workChanged: true });
     expect(await changeAnswer(memory.store, P1, "a1", drawn, T0 + 2 * HOUR)).toMatchObject({ ok: true });
     expect([...memory.drawings]).toEqual([[memory.tests[0].answers[2].workPath, OTHER_DRAWING]]);
+  });
+});
+
+describe("the admin test page shows the final work of a changed answer (#252)", () => {
+  /** An answer as the admin page reads its row of public.answers: the columns the Supabase adapter writes. */
+  const record = (a: MemoryAnswer, position: number): AnswerRecord => ({
+    position, question_id: a.questionId, response: a.response, correct: a.correct ?? false, misconception: a.misconception ?? null,
+    time_ms: a.timeMs, work_required: a.workRequired ?? false, work_path: a.workPath ?? null, work_text: a.workText ?? null,
+  });
+  /** The answer lines the admin test page shows (src/app/(product)/admin/assessments/[id]/page.tsx). */
+  const adminLines = (row: MemoryTest) => answerLines(row.test, row.answers.map(record), []);
+
+  it("a change with new work shows the new drawing and typed working; an erase shows none", async () => {
+    const memory = family(openTest(2));
+    const q = current(memory.tests[0]);
+    await answerQuestion(memory.store, P1, "a1", { questionId: q.id, response: q.answer, timeMs: 20_000, work: { png: DRAWING, text: "3 + 4", strokes: STROKES } }, T0 + HOUR + MINUTE);
+    const first = memory.tests[0].answers[2].workPath!;
+    expect(adminLines(memory.tests[0])[2].work).toMatchObject({ image: first, text: "3 + 4" });
+
+    const work = { png: OTHER_DRAWING, text: "4 + 3", strokes: STROKES };
+    await changeAnswer(memory.store, P1, "a1", revisit(memory.tests[0], 2, wrongTo(q), { work, workChanged: true }), T0 + 2 * HOUR);
+    const line = adminLines(memory.tests[0])[2];
+    expect(line).toMatchObject({ number: 3, response: wrongTo(q), correct: false, work: { text: "4 + 3" } });
+    expect(line.work.image).not.toBe(first);
+    expect(memory.drawings.get(line.work.image!)).toEqual(OTHER_DRAWING);
+
+    const erased = { png: null, text: "", strokes: STROKES };
+    await changeAnswer(memory.store, P1, "a1", revisit(memory.tests[0], 2, wrongTo(q), { work: erased, workChanged: true }), T0 + 3 * HOUR);
+    expect(adminLines(memory.tests[0])[2].work).toMatchObject({ image: null, text: null });
   });
 });
 
@@ -412,7 +489,9 @@ describe("the work on a revisit", () => {
 
   it("an erased board is changed work with no drawing: the row's work is empty and the old files are removed", async () => {
     const { memory, q } = await withWork();
-    expect(await changeAnswer(memory.store, P1, "a1", revisit(memory.tests[0], 2, q.answer, { workChanged: true }), T0 + 2 * HOUR)).toMatchObject({ ok: true });
+    // #252: the board opens with the stored strokes, so an erased board sends them (with the erase) and no drawing.
+    const erased = revisit(memory.tests[0], 2, q.answer, { work: { png: null, text: "", strokes: STROKES }, workChanged: true });
+    expect(await changeAnswer(memory.store, P1, "a1", erased, T0 + 2 * HOUR)).toMatchObject({ ok: true });
     expect(memory.tests[0].answers[2]).toMatchObject({ workPath: null, workText: null });
     expect(memory.tests[0].answers[2].strokesPath ?? null).toBeNull();
     expect(memory.drawings.size).toBe(0);

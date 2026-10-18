@@ -40,6 +40,8 @@ export interface WhiteboardProps {
   typing: boolean;
   /** Called with the board's size whenever it changes. */
   onSize?: (size: BoardSize) => void;
+  /** #252: the mode the board opens in (Draw when left out). */
+  startMode?: "draw" | "type";
 }
 
 /** True when any pixel of the layer has ink. */
@@ -127,7 +129,7 @@ export function clearDrafts(drop: (key: string) => boolean): void {
   }
 }
 
-export function Whiteboard({ board, onChange, typing, onSize }: WhiteboardProps) {
+export function Whiteboard({ board, onChange, typing, onSize, startMode = "draw" }: WhiteboardProps) {
   const surface = useRef<HTMLDivElement>(null);
   const canvas = useRef<HTMLCanvasElement>(null);
   const size = useRef<BoardSize>({ width: 0, height: 0 });
@@ -137,7 +139,8 @@ export function Whiteboard({ board, onChange, typing, onSize }: WhiteboardProps)
   const current = useRef<{ id: number; stroke: Stroke; times: number[] } | null>(null);
   const guard = useRef(newPalmGuard());
   const [tool, setTool] = useState<"pencil" | "eraser">("pencil");
-  const [mode, setMode] = useState<"draw" | "type">("draw");
+  const [mode, setMode] = useState<"draw" | "type">(startMode);
+  const [chose, setChose] = useState(false);
   const sizeListener = useRef(onSize);
   useEffect(() => {
     sizeListener.current = onSize;
@@ -272,7 +275,8 @@ export function Whiteboard({ board, onChange, typing, onSize }: WhiteboardProps)
               onChange={(e) => onChange({ ...board, text: e.target.value })}
               placeholder="Type how you worked it out"
               aria-label="Type your work"
-              autoFocus
+              // #252: focus only when the child presses Type, not when the board opens in Type (no keyboard pops up).
+              autoFocus={chose}
             />
           )}
         </div>
@@ -280,7 +284,7 @@ export function Whiteboard({ board, onChange, typing, onSize }: WhiteboardProps)
           {typing && (
             <div className="wb-modes" role="group" aria-label="Draw or type">
               <button type="button" aria-pressed={!typingNow} onClick={() => setMode("draw")}><PencilIcon /> Draw</button>
-              <button type="button" aria-pressed={typingNow} onClick={() => setMode("type")}><span aria-hidden className="wb-aa">Aa</span> Type</button>
+              <button type="button" aria-pressed={typingNow} onClick={() => { setChose(true); setMode("type"); }}><span aria-hidden className="wb-aa">Aa</span> Type</button>
             </div>
           )}
           {!typingNow && (

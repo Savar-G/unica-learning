@@ -183,7 +183,7 @@ export function attemptStore(admin: SupabaseClient): AttemptStore {
     // one transaction, and returns the work it replaced; null when a guard failed.
     async changeAnswer(id, { position, questionId, response, correct, misconception, timeMs, answeredAt, events, work }, unansweredFrom) {
       const { answered_at, answer_changes, read_aloud_count, read_aloud_at_ms, away_count, away_ms } = timelineColumns({ shownAt: null, answeredAt, events });
-      const { data, error } = await admin.rpc("change_answer", {
+      const answer = {
         p_assessment: id,
         p_position: position,
         p_question_id: questionId,
@@ -198,11 +198,18 @@ export function attemptStore(admin: SupabaseClient): AttemptStore {
         p_read_aloud_at_ms: read_aloud_at_ms,
         p_away_count: away_count,
         p_away_ms: away_ms,
-        p_work_changed: work !== undefined,
-        p_work_path: work?.workPath ?? null,
-        p_work_text: work?.workText ?? null,
-        p_strokes_path: work?.strokesPath ?? null,
-      });
+      };
+      // #252: typed working alone (migration change_answer_keep_drawing): the drawing and strokes paths are read under
+      // the test's row lock and kept, then change_answer runs with its guards.
+      const { data, error } = work?.keepDrawing
+        ? await admin.rpc("change_answer_keep_drawing", { ...answer, p_work_text: work.workText })
+        : await admin.rpc("change_answer", {
+          ...answer,
+          p_work_changed: work !== undefined,
+          p_work_path: work?.workPath ?? null,
+          p_work_text: work?.workText ?? null,
+          p_strokes_path: work?.strokesPath ?? null,
+        });
       if (error) throw new StoreError("answer change failed", error.message);
       const replaced = data as { work_path: string | null; strokes_path: string | null } | null;
       return replaced ? { workPath: replaced.work_path, strokesPath: replaced.strokes_path } : "closed";

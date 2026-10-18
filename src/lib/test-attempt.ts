@@ -110,8 +110,12 @@ export interface ChangedAnswer extends Answer {
   position: number;
   answeredAt: number;
   events: AnswerEvents | null;
-  /** The new work, when the child drew or typed in this visit. Absent: the stored drawing, strokes and typed working stay. */
-  work?: { workPath: string | null; workText: string | null; strokesPath: string | null };
+  /**
+   * The new work, when the child drew or typed in this visit. Absent: the stored drawing, strokes and typed working stay.
+   * #252 `keepDrawing`: the child drew nothing in the visit (no drawing, no strokes), so only the typed working changes;
+   * the drawing and strokes stay as the store has them at the update (`workPath` and `strokesPath` are null).
+   */
+  work?: { workPath: string | null; workText: string | null; strokesPath: string | null; keepDrawing?: boolean };
 }
 
 /** #249: the work a change replaced: where its drawing and strokes are stored (null where there were none). */
@@ -629,9 +633,14 @@ export async function changeAnswer(store: AttemptStore, parent: string, id: stri
 
   // Changed work goes up first, under new names, so the answer can point to it. If the answer is not changed, it goes.
   let work: ChangedAnswer["work"];
-  if (input.workChanged) {
-    // An erased board is changed work with no drawing: the row's drawing and strokes become empty, so the strokes of a
-    // drawing the child erased are not kept.
+  if (input.workChanged && !input.work.png && !input.work.strokes) {
+    // #252: the child drew nothing in the visit: the board opened empty (a drawing stored with no strokes, before #186,
+    // or strokes that could not be read) and stayed so. Only the typed working changes. The drawing and strokes stay as
+    // the database has them at the update, so no file of the row is ever removed or pointed to again here.
+    work = { workPath: null, workText: input.work.text || null, strokesPath: null, keepDrawing: true };
+  } else if (input.workChanged) {
+    // An erased board is changed work with no drawing (its strokes come with it, as the board opened with the stored
+    // strokes): the row's drawing and strokes become empty, so the strokes of a drawing the child erased are not kept.
     const strokesUpload = storeStrokes(store, parent, id, q.id, input.work.png ? input.work.strokes : null);
     let workPath: string | null = null;
     if (input.work.png) {
@@ -644,19 +653,8 @@ export async function changeAnswer(store: AttemptStore, parent: string, id: stri
       }
     }
     work = { workPath, workText: input.work.text || null, strokesPath: (await strokesUpload) ?? null };
-    if (!input.work.png && !input.work.strokes) {
-      // #252: a drawing stored with no strokes (before #186, or their upload failed) is not on the board when the
-      // question opens again. The child drew nothing on it, so the drawing stays; only the typed working changes.
-      let stored: AnswerWorkRow | undefined;
-      try {
-        [stored] = await store.answerWork(id, [at.position]);
-      } catch (e) {
-        logFailure("[test] answer work load failed", e);
-        return failed();
-      }
-      if (stored?.workPath && !stored.strokesPath) work = { ...work, workPath: stored.workPath };
-    }
   }
+  // The files this request uploaded (none for typed working alone), removed when the answer does not point to them.
   const discard = () => Promise.all([removeDrawing(store, work?.workPath ?? null), removeStrokes(store, work?.strokesPath ?? undefined)]);
 
   let replaced: ReplacedWork | "closed";
@@ -679,8 +677,8 @@ export async function changeAnswer(store: AttemptStore, parent: string, id: stri
     if (until !== null) await bestEffort("[test] deadline undo failed", () => store.undoAnswerWindow(id, until, attempt.resumeUntil));
     return freshConflict(store, parent, id, now);
   }
-  // The old work goes only once the answer points to the new work.
-  if (work) {
+  // The old work goes only once the answer points to the new work. With keepDrawing the row keeps its files.
+  if (work && !work.keepDrawing) {
     const { workPath, strokesPath } = replaced;
     await Promise.all([
       workPath !== work.workPath ? removeDrawing(store, workPath) : null,

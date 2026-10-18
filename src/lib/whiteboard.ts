@@ -38,6 +38,13 @@ export const emptyBoard = (): BoardState => ({ strokes: [], text: "", log: [] })
 /** True when at least one pencil stroke is on the board. Eraser strokes alone are not a drawing. */
 export const hasDrawing = (strokes: readonly Stroke[]) => strokes.some((s) => !s.erase && s.pts.length > 0);
 
+/**
+ * #252: the mode the board of an answered question opens in, so the child sees their own work at once: Type when it
+ * has typed working and no drawing (and the board can type, grades 3-7); Draw otherwise.
+ */
+export const openMode = (board: Pick<BoardState, "strokes" | "text">, typing: boolean): "draw" | "type" =>
+  typing && board.text !== "" && !hasDrawing(board.strokes) ? "type" : "draw";
+
 // ---------- palm rejection ----------
 
 /** After the pen lifts, touches are ignored this long: a hand resting on the screen is not a finger drawing. */
