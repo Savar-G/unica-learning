@@ -2,7 +2,7 @@ import Link from "next/link";
 import type { ReactNode } from "react";
 import { BRAND } from "@/lib/site";
 import { CookieSettingsButton } from "@/components/cookie-consent";
-import { BUSINESS_NAME, SUPPORT_HREF } from "@/lib/contact";
+import { BUSINESS_NAME } from "@/lib/contact";
 
 /** `wide` uses the full nav width, for the assessment report (D-087); a page with no `label` shows no eyebrow. */
 export function SupportPage({ label, title, wide = false, children }: { label: string; title: string; wide?: boolean; children: ReactNode }) {
@@ -21,7 +21,7 @@ export function SupportPage({ label, title, wide = false, children }: { label: s
         <Link href="/resources">Resources</Link>
         <Link href="/privacy">Privacy</Link>
         <Link href="/terms">Terms</Link>
-        <a href={SUPPORT_HREF}>Contact us</a>
+        <Link href="/contact">Contact us</Link>
         <CookieSettingsButton />
         <span>© 2026 {BUSINESS_NAME}</span>
       </footer>

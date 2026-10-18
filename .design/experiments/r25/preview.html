@@ -1,0 +1,211 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@300;400;500;600&family=Geist+Mono:wght@400&display=swap" rel="stylesheet">
+<style>
+:root{--ink:#0c0c0e;--ink-2:#44444c;--ink-3:#8a8a93;--line:#e4e4e7;--line-soft:#ececef;--card:#f5f4f2;--accent:#ff6a3d;--sun:#ffc93c;--btn:#2b2622;--sky:#5b8def;--leaf:#2fb37a}
+*{box-sizing:border-box}
+body{margin:0;font-family:Geist,system-ui,sans-serif}
+.rd{color:var(--foreground,#111);font:14px/1.5 var(--font-sans,system-ui)}
+.rd h2{font:600 15px/1.3 var(--font-sans,system-ui);margin:34px 0 4px}
+.rd h2:first-child{margin-top:0}
+.rd .sub{margin:0 0 14px;color:var(--muted-foreground,#666);font-size:13px}
+.tag{display:inline-block;font:500 11px/1 var(--font-mono,monospace);padding:4px 6px;border-radius:4px;background:var(--accent-surface,#fde8df);color:var(--accent-surface-foreground,#9a3412);margin-right:6px;vertical-align:1px}
+.rec{background:#2fb37a;color:#fff}
+.cap{margin:8px 0 0;color:var(--muted-foreground,#666);font-size:12.5px}
+.cap b{color:var(--foreground,#111);font-weight:600}
+
+/* site screen */
+.scr{background:#fff;color:var(--ink);border-radius:var(--radius,10px);border:1px solid rgba(0,0,0,.08);overflow:hidden;font-family:Geist,system-ui,sans-serif;font-size:15px;line-height:1.5}
+.nav{display:flex;align-items:center;padding:14px 22px;border-bottom:1px solid var(--line)}
+.logo{font:600 17px/1 Geist;letter-spacing:-.03em;display:flex;align-items:baseline;gap:3px}
+.logo b{display:inline-block;width:.36em;height:.36em;background:var(--accent)}
+.back{margin-left:auto;font-size:13px;text-decoration:underline;text-underline-offset:3px}
+.eyebrow{font:400 11.5px/1.2 "Geist Mono",monospace;display:inline-flex;align-items:center;gap:8px;margin:0}
+.eyebrow::before{content:"";width:8px;height:8px;background:var(--accent)}
+.h1{font:300 40px/1.06 Geist;letter-spacing:-.035em;margin:14px 0 0}
+.lead{color:var(--ink-2);margin:14px 0 0;max-width:34em}
+.pg{padding:34px 28px 30px}
+.foot{display:flex;flex-wrap:wrap;justify-content:center;gap:8px 18px;border-top:1px solid var(--line-soft);padding:16px;font-size:12px;color:var(--ink)}
+.foot span{text-decoration:underline;text-underline-offset:2px}
+.foot span:last-child{text-decoration:none}
+
+.form{display:grid;gap:16px;margin-top:24px;max-width:440px}
+.fld{display:grid;gap:6px}
+.fld label{font:500 13.5px/1 Geist}
+.fld .opt{color:var(--ink-3);font-weight:400}
+.in{font:400 15px/1.2 Geist;padding:12px 13px;border:1px solid #d4d4d8;border-radius:6px;background:#fff;color:var(--ink-3);min-height:44px}
+.in.ta{min-height:112px}
+.in.f{color:var(--ink)}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:9px;background:var(--btn);color:#fff;border-radius:6px;padding:13px 20px;font:500 14.5px/1 Geist;border:0;width:max-content}
+.btn.ghost{background:#fff;color:var(--ink);border:1px solid #d4d4d8}
+.note{font-size:12.5px;color:var(--ink-2);margin:0}
+.note a,.lnk{color:var(--ink);text-decoration:underline;text-underline-offset:3px}
+
+/* faq strip */
+.faqw{padding:22px 28px 26px}
+.faqw .h2{font:300 30px/1.06 Geist;letter-spacing:-.035em;margin:10px 0 18px}
+.faq{border-top:1px solid var(--line)}
+.row{display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid var(--line);padding:13px 2px;font:400 16px/1.25 Geist}
+.pm{width:22px;height:22px;border:1px solid var(--line);border-radius:5px;position:relative;flex:none}
+.pm::before,.pm::after{content:"";position:absolute;left:50%;top:50%;width:9px;height:1.5px;background:var(--ink);transform:translate(-50%,-50%)}
+.pm::after{transform:translate(-50%,-50%) rotate(90deg)}
+.more1{margin:18px 0 0;font-size:15px;color:var(--ink-2)}
+.more1 a{color:var(--ink);text-decoration:underline;text-underline-offset:3px}
+.more2{margin-top:18px;display:flex;align-items:center;gap:16px;justify-content:space-between;background:var(--card);border-radius:8px;padding:16px 18px;position:relative}
+.more2 .t{font:500 15.5px/1.3 Geist;letter-spacing:-.01em}
+.more2 .s{font-size:13px;color:var(--ink-2);margin-top:2px}
+.sq{position:absolute;top:0;left:0;width:8px;height:8px;background:var(--sky);border-radius:2px 0 0 0}
+.row.go{font-weight:400}
+.arrbox{width:22px;height:22px;border:1px solid var(--line);border-radius:5px;display:grid;place-items:center;font-size:12px;flex:none}
+
+/* split */
+.split{display:grid;grid-template-columns:1fr 1.15fr;gap:28px;align-items:start}
+.side{display:grid;gap:14px;margin-top:22px}
+.side .k{font:400 10.5px/1 "Geist Mono",monospace;letter-spacing:.04em;text-transform:uppercase;color:var(--ink-3);margin-bottom:5px}
+.side .v{font-size:14px}
+.cardf{background:var(--card);border-radius:8px;padding:20px}
+.cardf .form{margin-top:0}
+.chips{display:flex;flex-wrap:wrap;gap:6px}
+.chip{border:1px solid var(--line);border-radius:6px;background:#fff;padding:9px 12px;font:500 13.5px/1 Geist}
+.chip.on{background:var(--ink);color:#fff;border-color:var(--ink)}
+
+/* phone */
+.phones{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}
+.ph{background:#fff;border-radius:18px;border:1px solid rgba(0,0,0,.1);overflow:hidden;font-size:12px}
+.ph .nav{padding:10px 12px}.ph .logo{font-size:13px}.ph .back{font-size:10.5px}
+.ph .pg{padding:18px 14px}
+.ph .h1{font-size:26px;margin-top:8px}
+.ph .lead{font-size:12px;margin-top:8px}
+.ph .form{gap:10px;margin-top:14px}
+.ph .fld label{font-size:11px}
+.ph .in{font-size:12px;padding:8px 9px;min-height:32px}
+.ph .in.ta{min-height:70px}
+.ph .btn{font-size:12px;padding:10px 14px;width:100%}
+.ph .note{font-size:10.5px}
+.ph .eyebrow{font-size:9.5px}
+.ph .chip{font-size:11px;padding:7px 9px}
+.ph .cardf{padding:12px}
+.ph .side{margin-top:12px;gap:9px}.ph .side .v{font-size:12px}
+
+/* success */
+.ok{display:flex;gap:14px;align-items:flex-start;margin-top:24px;padding:18px 20px;border-radius:8px;background:color-mix(in srgb,var(--leaf) 12%,#fff);max-width:470px}
+.ok .c{width:26px;height:26px;border-radius:50%;background:var(--leaf);color:#fff;display:grid;place-items:center;font-size:14px;flex:none}
+.ok .t{font:500 16px/1.3 Geist}
+.ok p{margin:4px 0 0;color:var(--ink-2);font-size:14px}
+.err{color:#c2410c;font-size:12.5px}
+.in.bad{border-color:#c2410c}
+</style></head>
+<body><div class="rd">
+
+<h2>1. The line under the FAQ</h2>
+<p class="sub">Sits after the last question (and after the phone "More questions" button). Links to <code>/contact</code>.</p>
+
+<div class="scr"><div class="faqw">
+  <p class="eyebrow">FAQ</p><div class="h2">Questions, answered.</div>
+  <div class="faq"><div class="row">How is the work checked?<span class="pm"></span></div><div class="row">What if it is not right for my child?<span class="pm"></span></div></div>
+  <p class="more1"><span class="tag rec">1A</span>Have another question? <a>Contact us</a> and we will write back.</p>
+</div></div>
+<p class="cap"><b>1A Plain sentence.</b> Closest to what you described. Quiet, and it doesn't compete with "Take free assessment".</p>
+
+<div class="scr" style="margin-top:14px"><div class="faqw">
+  <div class="faq"><div class="row">What if it is not right for my child?<span class="pm"></span></div></div>
+  <div class="more2"><span class="sq"></span><div><div class="t"><span class="tag">1B</span>Still have a question?</div><div class="s">Send us a message. A person on our team reads every one.</div></div><span class="btn ghost">Contact us <span>→</span></span></div>
+</div></div>
+<p class="cap"><b>1B Soft grey card with a button.</b> Uses the site's grey card with a coloured corner square. Easier to spot, but it's one more box on a long page.</p>
+
+<div class="scr" style="margin-top:14px"><div class="faqw">
+  <div class="faq"><div class="row">What if it is not right for my child?<span class="pm"></span></div><div class="row go"><span><span class="tag">1C</span>My question isn't here</span><span class="arrbox">→</span></div></div>
+</div></div>
+<p class="cap"><b>1C A last row.</b> Looks like a question, with an arrow in place of the plus. It fits the list, but people may expect it to open like the others.</p>
+
+<h2>2. The contact page</h2>
+<p class="sub">All three use the same page frame as Privacy, Terms and Unsubscribe. Name, email and message are required. Nothing else is.</p>
+
+<div class="scr">
+  <div class="nav"><span class="logo">Unica Learning<b></b></span><span class="back">Back to home</span></div>
+  <div class="pg">
+    <p class="eyebrow">Contact</p>
+    <div class="h1">Get in touch.</div>
+    <p class="lead">Questions about the free test, plans or your account? Send us a message and we will reply by email.</p>
+    <div class="form">
+      <div class="fld"><label>Your name</label><div class="in">&nbsp;</div></div>
+      <div class="fld"><label>Email</label><div class="in">&nbsp;</div></div>
+      <div class="fld"><label>Message</label><div class="in ta">&nbsp;</div></div>
+      <span class="btn">Send message <span>→</span></span>
+      <p class="note">We only use your email to reply. You can also write to <a>contact@unicalearning.com</a>.</p>
+    </div>
+  </div>
+  <div class="foot"><span>Resources</span><span>Privacy</span><span>Terms</span><span>Contact us</span><span>Cookie settings</span><span>© 2026 Unica Learning</span></div>
+</div>
+<p class="cap"><span class="tag rec">2A</span><b>Simple, one column.</b> The common pattern for a small business: heading, one line, three fields, one button, with the email address as a fallback. Lowest effort for the parent.</p>
+
+<div class="scr" style="margin-top:14px">
+  <div class="nav"><span class="logo">Unica Learning<b></b></span><span class="back">Back to home</span></div>
+  <div class="pg" style="padding-right:22px">
+    <div class="split">
+      <div>
+        <p class="eyebrow">Contact</p>
+        <div class="h1" style="font-size:36px">Get in touch.</div>
+        <p class="lead" style="font-size:14px">Send us a message and we will reply by email.</p>
+        <div class="side">
+          <div><div class="k">Email</div><div class="v lnk">contact@unicalearning.com</div></div>
+          <div><div class="k">Before you write</div><div class="v">Many answers are in the <span class="lnk">FAQ</span>.</div></div>
+          <div><div class="k">Have an account?</div><div class="v"><span class="lnk">Sign in</span> to see your child's report.</div></div>
+        </div>
+      </div>
+      <div class="cardf"><div class="form">
+        <div class="fld"><label>Your name</label><div class="in">&nbsp;</div></div>
+        <div class="fld"><label>Email</label><div class="in">&nbsp;</div></div>
+        <div class="fld"><label>Message</label><div class="in ta">&nbsp;</div></div>
+        <span class="btn" style="width:100%">Send message <span>→</span></span>
+      </div></div>
+    </div>
+  </div>
+</div>
+<p class="cap"><span class="tag">2B</span><b>Two columns: info and form.</b> The common SaaS layout. The left side gives other ways to get help. It stacks on phones. It needs the wider page frame.</p>
+
+<div class="scr" style="margin-top:14px">
+  <div class="nav"><span class="logo">Unica Learning<b></b></span><span class="back">Back to home</span></div>
+  <div class="pg">
+    <p class="eyebrow">Contact</p>
+    <div class="h1">Get in touch.</div>
+    <p class="lead">Send us a message and we will reply by email.</p>
+    <div class="form">
+      <div class="fld"><label>What is it about? <span class="opt">(optional)</span></label>
+        <div class="chips"><span class="chip on">The free test</span><span class="chip">Plans and pricing</span><span class="chip">My account</span><span class="chip">Something else</span></div></div>
+      <div class="fld"><label>Your name</label><div class="in">&nbsp;</div></div>
+      <div class="fld"><label>Email</label><div class="in">&nbsp;</div></div>
+      <div class="fld"><label>Message</label><div class="in ta">&nbsp;</div></div>
+      <span class="btn">Send message <span>→</span></span>
+    </div>
+  </div>
+</div>
+<p class="cap"><span class="tag">2C</span><b>2A plus a topic.</b> The chips use the same style as "How did you hear about us?". The topic goes in the email subject, so you can sort messages. One more choice for the parent.</p>
+
+<h2>3. On a phone (390 px)</h2>
+<div class="phones">
+  <div class="ph"><div class="nav"><span class="logo">Unica Learning<b></b></span><span class="back">Back to home</span></div><div class="pg">
+    <p class="eyebrow">Contact</p><div class="h1">Get in touch.</div><p class="lead">Questions about the free test, plans or your account? Send us a message and we will reply by email.</p>
+    <div class="form"><div class="fld"><label>Your name</label><div class="in">&nbsp;</div></div><div class="fld"><label>Email</label><div class="in">&nbsp;</div></div><div class="fld"><label>Message</label><div class="in ta">&nbsp;</div></div><span class="btn">Send message →</span><p class="note">We only use your email to reply.</p></div></div></div>
+  <div class="ph"><div class="nav"><span class="logo">Unica Learning<b></b></span><span class="back">Back to home</span></div><div class="pg">
+    <p class="eyebrow">Contact</p><div class="h1">Get in touch.</div><p class="lead">Send us a message and we will reply by email.</p>
+    <div class="cardf" style="margin-top:12px"><div class="form" style="margin-top:0"><div class="fld"><label>Your name</label><div class="in">&nbsp;</div></div><div class="fld"><label>Email</label><div class="in">&nbsp;</div></div><div class="fld"><label>Message</label><div class="in ta">&nbsp;</div></div><span class="btn">Send message →</span></div></div>
+    <div class="side"><div><div class="k">Email</div><div class="v lnk">contact@unicalearning.com</div></div></div></div></div>
+  <div class="ph"><div class="nav"><span class="logo">Unica Learning<b></b></span><span class="back">Back to home</span></div><div class="pg">
+    <p class="eyebrow">Contact</p><div class="h1">Get in touch.</div><p class="lead">Send us a message and we will reply by email.</p>
+    <div class="form"><div class="fld"><label>What is it about? <span class="opt">(optional)</span></label><div class="chips"><span class="chip on">The free test</span><span class="chip">Plans and pricing</span><span class="chip">My account</span><span class="chip">Something else</span></div></div><div class="fld"><label>Your name</label><div class="in">&nbsp;</div></div><div class="fld"><label>Email</label><div class="in">&nbsp;</div></div><div class="fld"><label>Message</label><div class="in ta">&nbsp;</div></div><span class="btn">Send message →</span></div></div></div>
+</div>
+<p class="cap"><b>2A · 2B · 2C.</b> On a phone, 2B puts the form first and the info below it.</p>
+
+<h2>4. States (same for every option)</h2>
+<div class="scr"><div class="pg" style="padding-top:22px">
+  <div class="form" style="margin-top:0">
+    <div class="fld"><label>Email</label><div class="in f bad">sarah@gmail</div><span class="err">Enter an email like name@example.com.</span></div>
+    <div class="fld"><label>Message</label><div class="in ta bad">&nbsp;</div><span class="err">Write a message.</span></div>
+  </div>
+  <div class="ok"><span class="c">✓</span><div><div class="t">Thanks, Sarah. Your message is sent.</div><p>We will reply to sarah@gmail.com. <span class="lnk">Back to home</span></p></div></div>
+</div></div>
+<p class="cap"><b>Errors</b> under each field, and focus goes to the first one. After sending, the form is replaced by a green note. If sending fails: "We could not send your message. Email us at contact@unicalearning.com." and the text stays in the box.</p>
+
+</div></body></html>

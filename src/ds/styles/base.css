@@ -253,6 +253,8 @@ main > *{position:relative;z-index:1}
 
 /* FAQ */
 .faq{border-top:1px solid var(--line);max-width:900px}
+/* The contact line under the FAQ title (D-130): 20px above and below, the spacing of "Read why we built it" in Our promise. */
+.faq-head{margin-bottom:0}.faq-head .lead{margin:2px 0 20px}
 .faq details{border-bottom:1px solid var(--line)}
 .faq summary{list-style:none;cursor:pointer;display:flex;justify-content:space-between;gap:20px;padding:20px 2px;font:400 clamp(20px, 1.8vw, 24px)/1.25 var(--serif)}
 .faq summary::-webkit-details-marker{display:none}
@@ -319,12 +321,13 @@ dialog.rsv[open]{animation:pop .45s var(--spring)}
 .sub2{display:flex;gap:8px;margin-top:2px}
 .fld{display:grid;gap:6px}
 .fld label{font:500 14px/1 var(--sans)}
-.fld input,.fld select{font:400 16px/1.2 var(--sans);padding:13px 14px;border:1px solid #bbb;border-radius:12px;background:#fff;color:var(--ink)}
+.fld input,.fld select,.fld textarea{font:400 16px/1.2 var(--sans);padding:13px 14px;border:1px solid #bbb;border-radius:12px;background:#fff;color:var(--ink)}
 .fld select{appearance:none;padding-right:38px;background:#fff url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1.5l5 5 5-5' fill='none' stroke='%23111' stroke-width='1.5'/%3E%3C/svg%3E") no-repeat right 14px center}
+.fld textarea{resize:vertical;min-height:140px;line-height:1.5}
 .fld .hint{color:var(--ink-2);font-size:13.5px}
-.fld input:focus,.fld select:focus{border-color:var(--ink);outline:none;box-shadow:0 0 0 3px rgba(51,102,240,.25)}
+.fld input:focus,.fld select:focus,.fld textarea:focus{border-color:var(--ink);outline:none;box-shadow:0 0 0 3px rgba(51,102,240,.25)}
 .fld .err{color:var(--red);font-size:13.5px;display:none}
-.fld.bad input{border-color:var(--red)}.fld.bad .err{display:block}
+.fld.bad input,.fld.bad textarea{border-color:var(--red)}.fld.bad .err{display:block}
 .sum{border:1px solid var(--line);border-radius:14px;padding:14px 16px;display:grid;gap:6px;font-size:15px}
 .sum div{display:flex;justify-content:space-between}
 .state{text-align:center;display:grid;gap:12px;justify-items:center;padding:12px 0 4px}

@@ -1,0 +1,61 @@
+{
+  "round": 25,
+  "route": "focused",
+  "decision": "Choose the FAQ contact line and the /contact page layout",
+  "primary_axis": "How prominent the contact path is, and how much the form asks",
+  "invariants": [
+    "SupportPage frame (nav, Back to home, support footer)",
+    "Required fields: name, email, message",
+    "Dark button, 6 px corners, Geist and the mono eyebrow with the orange square",
+    "contact@unicalearning.com as the fallback (D-123, PR #243)"
+  ],
+  "reference": "User attachment 301b401b-a9c3-47a8-83f5-bd83e47e1732 (FAQ section)",
+  "artifact": "preview.html",
+  "options": [
+    {
+      "id": "1A",
+      "bet": "Plain sentence under the FAQ",
+      "benefit": "Quiet, matches the request",
+      "cost": "Easy to miss",
+      "risk": "Low"
+    },
+    {
+      "id": "1B",
+      "bet": "Grey card with a ghost button",
+      "benefit": "Easy to find",
+      "cost": "Another box on a long page",
+      "risk": "Competes with the assessment button"
+    },
+    {
+      "id": "1C",
+      "bet": "Last FAQ row with an arrow",
+      "benefit": "Fits the list",
+      "cost": "Behaves differently from the rows above",
+      "risk": "People expect it to expand"
+    },
+    {
+      "id": "2A",
+      "bet": "One column: heading, three fields, button",
+      "benefit": "Least effort for the parent",
+      "cost": "No other help routes shown",
+      "risk": "Low"
+    },
+    {
+      "id": "2B",
+      "bet": "Two columns: help routes beside the form",
+      "benefit": "Points to FAQ and sign-in",
+      "cost": "Wider frame, more to read",
+      "risk": "SaaS look on a family site"
+    },
+    {
+      "id": "2C",
+      "bet": "2A plus an optional topic",
+      "benefit": "Sorts messages in the inbox",
+      "cost": "One more choice",
+      "risk": "Low"
+    }
+  ],
+  "recommendation": "1A + 2A",
+  "selection": "1A (moved under the FAQ title) + 2A",
+  "implementation_changed": true
+}
