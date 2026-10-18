@@ -266,7 +266,7 @@ export function Faq() {
     <Section id="faq" aria-labelledby="faqT">
       <Knot />
       <Rise>
-        <SectionHeader eyebrow="FAQ" title="Questions, answered." titleId="faqT" lead={<>Have another question? <Link href="/contact">Contact us</Link> and we will write back.</>} />
+        <SectionHeader className="faq-head" eyebrow="FAQ" title="Questions, answered." titleId="faqT" lead={<>Have another question? <Link href="/contact">Contact us</Link> and we will write back.</>} />
       </Rise>
       <FaqList items={FAQ} />
       <FaqMore />
