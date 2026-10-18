@@ -33,8 +33,8 @@ export type FinishResult = { ok: true } | { ok: false; error: TestError };
 
 /** The longest typed answer the number pad allows. */
 export const ANSWER_MAX = 12;
-/** Time on one question is capped here, so a tab left open overnight does not skew the speed data. */
-export const QUESTION_TIME_CAP_MS = 60 * 60_000;
+/** Time on one question is capped here, so a tab left open overnight does not skew the speed data. The core holds it (#249). */
+export { QUESTION_TIME_CAP_MS } from "@/lib/assessment";
 
 /**
  * The whiteboard work sent with an answer (#67): the drawing as a base64 PNG, the typed working, and the strokes for

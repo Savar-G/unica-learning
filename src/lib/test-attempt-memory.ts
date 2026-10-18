@@ -276,6 +276,28 @@ export function memoryAttemptStore({ children: kids = [], tests: initial = [] }:
       row.answers.push({ ...answer });
       return "stored";
     },
+    async answerEvents(id, position) {
+      await begin("answerEvents");
+      return structuredClone(tests.find((t) => t.id === id)?.answers[position]?.timeline?.events ?? null);
+    },
+    // #249: the guards of the change, checked together with the write, as in the database function change_answer.
+    async changeAnswer(id, { position, answeredAt, events, work, ...marked }, unansweredFrom) {
+      await begin("changeAnswer");
+      const row = tests.find((t) => t.id === id && t.status === "in_progress");
+      const round = row?.extraRound ?? NO_ROUND;
+      if (!row || round.offeredAt !== null || round.skippedAt !== null || round.startedAt !== null) return "closed";
+      const old = row.answers[position];
+      if (row.answers.length > unansweredFrom || !old || old.questionId !== marked.questionId) return "closed";
+      const timeline = { shownAt: old.timeline?.shownAt ?? null, answeredAt, events: structuredClone(events) };
+      const { strokesPath: oldStrokes, ...kept } = old;
+      row.answers[position] = {
+        ...(work ? kept : old),
+        ...marked,
+        timeline,
+        ...(work && { workPath: work.workPath, workText: work.workText, ...(work.strokesPath ? { strokesPath: work.strokesPath } : {}) }),
+      };
+      return { workPath: old.workPath ?? null, strokesPath: oldStrokes ?? null };
+    },
     async recordRoute(id, route) {
       await begin("recordRoute");
       const row = tests.find((t) => t.id === id);

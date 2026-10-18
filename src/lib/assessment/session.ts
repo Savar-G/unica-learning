@@ -1,6 +1,7 @@
 // The assessment session: pure functions over plain data.
 // No network, database, clock or Math.random: the caller passes the seed and every time value.
 import {
+  QUESTION_TIME_CAP_MS,
   REPORTED_STRAND,
   ROUTE_DOWN_BELOW_PERCENT,
   ROUTE_UP_PERCENT,
@@ -311,29 +312,81 @@ export interface Submission {
   timeMs: number;
 }
 
+/** The response marked against its question: right or wrong, and the misconception of a coded wrong answer. */
+function marked(q: Question, response: string, timeMs: number): Answer {
+  if (!Number.isFinite(timeMs) || timeMs < 0) throw new Error("timeMs must be a time in milliseconds");
+  const correct = isSameAnswer(q, response, q.answer);
+  const misconception = correct ? null : (q.wrong.find((w) => isSameAnswer(q, response, w.value))?.misconception ?? null);
+  return {
+    questionId: q.id,
+    response,
+    timeMs,
+    correct,
+    // Tests started before this ID was shortened must also satisfy the answer table's 20-character limit.
+    misconception: misconception === "compensation-direction" ? "compensation-dir" : misconception,
+  };
+}
+
 /** Marks the answer to the current question and returns the updated session. */
 export function submitAnswer(session: Session, submission: Submission): Session {
   const q = nextQuestion(session);
   if (!q) throw new Error("The test is already complete");
   if (submission.questionId !== q.id) throw new Error(`Expected an answer to ${q.id}, got ${submission.questionId}`);
-  if (!Number.isFinite(submission.timeMs) || submission.timeMs < 0) throw new Error("timeMs must be a time in milliseconds");
-
-  const correct = isSameAnswer(q, submission.response, q.answer);
-  const misconception = correct ? null : (q.wrong.find((w) => isSameAnswer(q, submission.response, w.value))?.misconception ?? null);
-  const answer: Answer = {
-    questionId: q.id,
-    response: submission.response,
-    timeMs: submission.timeMs,
-    correct,
-    // Tests started before this ID was shortened must also satisfy the answer table's 20-character limit.
-    misconception: misconception === "compensation-direction" ? "compensation-dir" : misconception,
-  };
+  const answer = marked(q, submission.response, submission.timeMs);
   const answers = [...session.answers, answer];
   let route = session.route;
   if (answers.length === session.stage1.length) {
     route = routeFor(answers.filter((a) => a.correct).length, answers.length);
   }
   return { ...session, answers, route };
+}
+
+/** #249: the parts of a test the child can go back in: stage 1, stage 2 (the routed form), and the extra round (#190). */
+export type SectionName = "stage1" | "stage2" | "extra";
+
+/** #249: an answered question of a section: its place in the test (from 0), the question and the child's answer. */
+export interface SectionAnswer {
+  position: number;
+  question: Question;
+  answer: Answer;
+}
+
+/**
+ * #249: the section the child works in now, from `first` to `end` (places in the test, `end` not included), with its
+ * answered questions in order. Stage 1 until the test is routed (the route is set by the last stage 1 answer), then
+ * stage 2, then the extra round once the child took one. The test attempt module closes a section that the test moved
+ * past by its own records (the round's offer, the finish).
+ */
+export interface OpenSection {
+  name: SectionName;
+  first: number;
+  end: number;
+  answered: SectionAnswer[];
+}
+
+export function openSection(session: Session): OpenSection {
+  const questions = questionsOnRoute(session);
+  const main = session.route ? session.stage1.length + session.stage2[session.route].length : session.stage1.length;
+  const [name, first, end]: [SectionName, number, number] = !session.route
+    ? ["stage1", 0, session.stage1.length]
+    : session.extra
+      ? ["extra", main, questions.length]
+      : ["stage2", session.stage1.length, main];
+  const answered = session.answers.slice(first, end).map((answer, i) => ({ position: first + i, question: questions[first + i], answer }));
+  return { name, first, end, answered };
+}
+
+/**
+ * #249: changes the child's answer to an answered question of the open section, marks it again, and returns the
+ * updated session. `timeMs` is the time of this visit: the answer's time becomes the total of every visit, up to
+ * QUESTION_TIME_CAP_MS. Throws for a question that is not answered or not in the open section.
+ */
+export function changeAnswer(session: Session, change: Submission): Session {
+  const at = openSection(session).answered.find((a) => a.question.id === change.questionId);
+  if (!at) throw new Error(`${change.questionId} is not an answered question of the open section`);
+  if (!Number.isFinite(change.timeMs) || change.timeMs < 0) throw new Error("timeMs must be a time in milliseconds");
+  const answer = marked(at.question, change.response, Math.min(at.answer.timeMs + change.timeMs, QUESTION_TIME_CAP_MS));
+  return { ...session, answers: session.answers.map((a, i) => (i === at.position ? answer : a)) };
 }
 
 /** The part of a session the server stores when the test starts. The answers are stored one row at a time. */

@@ -81,18 +81,43 @@ export function parseAnswerEvents(raw: unknown): AnswerEvents | null {
 }
 
 /**
- * Records the events of one question in the browser, bounded as the server bounds them. Every `at` is milliseconds since
- * the question appeared, by the caller's clock.
+ * #249: the events of one question over two visits: the earlier ones, then the later visit's, each later time counted
+ * from the start of the first visit (`earlierMs`, the time of the visits before, plus the time in this visit). Changes
+ * and read-aloud times keep the first ones up to their caps; every time stays within the time cap of one question;
+ * counts and time away add up within their caps. Null when neither visit has events; the earlier events alone when
+ * the later visit sent none.
  */
-export function answerRecorder() {
+export function mergeEvents(earlier: AnswerEvents | null, earlierMs: number, later: AnswerEvents | null): AnswerEvents | null {
+  if (!later) return earlier;
+  const shift = (atMs: number) => Math.min(Math.max(0, Math.round(earlierMs + atMs)), QUESTION_TIME_CAP_MS);
+  const before = earlier ?? { changes: [], readAloud: { count: 0, atMs: [] }, away: { count: 0, ms: 0 } };
+  return {
+    changes: [...before.changes, ...later.changes.map((c) => ({ value: c.value, atMs: shift(c.atMs) }))].slice(0, ANSWER_CHANGES_MAX),
+    readAloud: {
+      count: Math.min(before.readAloud.count + later.readAloud.count, EVENT_COUNT_MAX),
+      atMs: [...before.readAloud.atMs, ...later.readAloud.atMs.map(shift)].slice(0, READ_ALOUD_TIMES_MAX),
+    },
+    away: { count: Math.min(before.away.count + later.away.count, EVENT_COUNT_MAX), ms: Math.min(before.away.ms + later.away.ms, QUESTION_TIME_CAP_MS) },
+  };
+}
+
+/**
+ * Records the events of one question in the browser, bounded as the server bounds them. Every `at` is milliseconds since
+ * the question appeared, by the caller's clock. `shown` is the answer already on the screen when the question appears
+ * (#249: an answered question the child went back to): it is not a change, and nor is any value equal to the last one.
+ */
+export function answerRecorder(shown = "") {
   const changes: AnswerChange[] = [];
   const readAloud = { count: 0, atMs: [] as number[] };
   const away = { count: 0, ms: 0 };
   let hiddenAt: number | null = null;
+  let last = shown;
   const ms = (at: number) => Math.min(Math.max(0, Math.round(at)), QUESTION_TIME_CAP_MS);
   return {
-    /** The answer changed to `value` (a choice tapped, a key pressed on the number pad). */
+    /** The answer changed to `value` (a choice tapped, a key pressed on the number pad). The same value again is no change. */
     change(value: string, at: number) {
+      if (value === last) return;
+      last = value;
       if (changes.length < ANSWER_CHANGES_MAX) changes.push({ value, atMs: ms(at) });
     },
     /** "Read it to me" started. */

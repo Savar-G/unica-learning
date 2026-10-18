@@ -12,6 +12,7 @@
 import {
   attemptState,
   breakDue,
+  changeAnswer as remark,
   createSession,
   decideStart,
   extraRoundOffer,
@@ -19,6 +20,7 @@ import {
   finish,
   mainAnswered,
   nextQuestion,
+  openSection,
   recordAnswer,
   restoreSession,
   startAttempt,
@@ -27,10 +29,12 @@ import {
   storedTest,
   submitAnswer,
   testStep,
+  toPublicQuestion,
   withoutRound,
   workProblem,
   type Answer,
   type Attempt,
+  type OpenSection,
   type ExtraRoundOffer,
   type Grade,
   type HelpAnswer,
@@ -45,7 +49,7 @@ import {
 } from "@/lib/assessment";
 import { FACTS_SECONDS, createFacts, factsStep, restoreFacts, storedFacts, submitFact, type FactAnswer, type FactsSession, type FactsStep, type FactsTest, type FactSubmission } from "@/lib/assessment";
 import { ANSWER_MAX, QUESTION_TIME_CAP_MS } from "@/lib/test-api";
-import type { AnswerEvents } from "@/lib/answer-events";
+import { mergeEvents, type AnswerEvents } from "@/lib/answer-events";
 import type { BreakRecord, BreakResume, TestDevice } from "@/lib/test-context";
 
 /** One of the parent's children, as a new test needs them. */
@@ -97,6 +101,24 @@ export interface NewAnswer extends Answer {
   round: AnswerRound;
 }
 
+/**
+ * #249: a changed answer, stored over the answer at its place: the final response marked again, the total time of every
+ * visit, the time of this save, and the events of every visit merged (null when no visit sent any).
+ */
+export interface ChangedAnswer extends Answer {
+  position: number;
+  answeredAt: number;
+  events: AnswerEvents | null;
+  /** The new work, when the child drew or typed in this visit. Absent: the stored drawing, strokes and typed working stay. */
+  work?: { workPath: string | null; workText: string | null; strokesPath: string | null };
+}
+
+/** #249: the work a change replaced: where its drawing and strokes are stored (null where there were none). */
+export interface ReplacedWork {
+  workPath: string | null;
+  strokesPath: string | null;
+}
+
 /** #190: which part of the test an answer is for: the main test, or the optional extra round after it. */
 export type AnswerRound = "main" | "extra";
 
@@ -145,6 +167,16 @@ export interface AttemptStore extends FactsStore, ShownStore, ContextStore, Extr
   removeStrokes(path: string): Promise<void>;
   /** Stores one answer. "taken": the test already has an answer in this place (another tab answered first). */
   insertAnswer(id: string, answer: NewAnswer): Promise<"stored" | "taken">;
+  /** #249: what the child did on the answer at `position` before it was stored (#184); null when it has none. */
+  answerEvents(id: string, position: number): Promise<AnswerEvents | null>;
+  /**
+   * #249: overwrites the answer at `change.position` with the changed answer, whole, only while its section is open:
+   * the test is in progress, the extra round was neither offered, skipped nor started (the test has not moved past stage
+   * 2), the test has no answer at `unansweredFrom` or after it (the section is not over), and the answer there is for
+   * the same question. The serve time stays. Returns the work it replaced, or "closed" when a guard failed and nothing
+   * changed. Two changes at once: the last one wins, whole.
+   */
+  changeAnswer(id: string, change: ChangedAnswer, unansweredFrom: number): Promise<ReplacedWork | "closed">;
   /** Records the stage 2 route the child was given when stage 1 ended, for the admin view. */
   recordRoute(id: string, route: Route): Promise<void>;
   /**
@@ -491,6 +523,137 @@ export async function answerQuestion(store: AttemptStore, parent: string, id: st
     shown(store, id, next, step, now),
   ]);
   return { ok: true, step };
+}
+
+// Back and change an answer (#249, #250). The child can go back to an answered question of the open section and change
+// the answer: the change overwrites the stored answer, so the report, the admin page and the export read the final one.
+// A visit that keeps the answer adds its time and events. Until the "Check your answers" grid (#253), stage 1 closes
+// with its last answer, which routes the test; stage 2 closes when the test moves on (the extra round's offer, skip or
+// start) or is finished. The extra round takes no change yet (#254).
+
+/** #249: a change of an answered question, as the route read it: the answer, and whether the work changed in this visit. */
+export interface ChangeInput extends AnswerInput {
+  /**
+   * True when the child drew or typed in this visit: `work` replaces the stored work, and an empty board clears it.
+   * False: the stored drawing, strokes and typed working stay, also when the response changes.
+   */
+  workChanged: boolean;
+}
+
+/**
+ * #249: the section of the test that takes changes now, or null: only while the test is in progress; stage 1 until
+ * its last answer routes the test, stage 2 until the test moves on to the extra round. The extra round takes none yet.
+ */
+function changeable({ attempt, session, round }: ReadTest): OpenSection | null {
+  if (attempt.status !== "in_progress") return null;
+  const open = openSection(session);
+  if (open.name === "extra") return null;
+  if (open.name === "stage2" && (round.offeredAt !== null || round.skippedAt !== null || round.startedAt !== null)) return null;
+  return open;
+}
+
+/** #249: the place where the store's guard closes a section: stage 1 at its last question (that answer routes the test), stage 2 at its end. */
+const closesAt = (open: OpenSection) => (open.name === "stage1" ? open.end - 1 : open.end);
+
+/**
+ * #249: changes the child's answer to an answered question of the open section of the parent's test at `now`: marks
+ * it again with the assessment core and stores it over the old one, with the total time of every visit and the events
+ * merged (#184). Like an answer, it moves the deadline (#72) while main answers remain; once every main answer is in,
+ * the test never expires, and the change moves nothing. "conflict" with the step for a question that is not answered or
+ * not in the open section, and on a finished test. Sends the step the test is at, with the changed answer.
+ */
+export async function changeAnswer(store: AttemptStore, parent: string, id: string, input: ChangeInput, now: number): Promise<StepOutcome> {
+  const open = await openTest(store, parent, id, now);
+  if (!open.ok) return open;
+  const { attempt, session } = open;
+  const section = changeable(open);
+  const at = section?.answered.find((a) => a.question.id === input.questionId);
+  if (!section || !at) return { ok: false, error: "conflict", step: stepOf(open) };
+  const q = at.question;
+  const response = input.response.trim();
+  const valid = q.format === "choice" ? (q.choices ?? []).includes(response) : response.length > 0 && response.length <= ANSWER_MAX;
+  if (!valid || !Number.isFinite(input.timeMs) || input.timeMs < 0) return { ok: false, error: "invalid" };
+  if (input.workChanged) {
+    const problem = workProblem(session, { drawn: input.work.png !== null, text: input.work.text });
+    if (problem) return { ok: false, error: problem };
+  }
+  const next = remark(session, { questionId: q.id, response, timeMs: Math.min(Math.round(input.timeMs), QUESTION_TIME_CAP_MS) });
+
+  // The stored events, read beside the deadline move: they merge with this visit's. A failed read stores nothing.
+  const eventsRead = store.answerEvents(id, at.position).then((events) => ({ ok: true as const, events }), (e: unknown) => ({ ok: false as const, e }));
+  const until = mainAnswered(session) ? null : recordAnswer(attempt, now).resumeUntil;
+  const failed = async (): Promise<Refusal> => {
+    if (until !== null) await bestEffort("[test] deadline undo failed", () => store.undoAnswerWindow(id, until, attempt.resumeUntil));
+    return { ok: false, error: "store_failed" };
+  };
+  if (until !== null) {
+    let opened: boolean;
+    try {
+      opened = await store.openAnswerWindow(id, now, until);
+    } catch (e) {
+      await eventsRead;
+      console.error("[test]", messageOf(e));
+      return { ok: false, error: "store_failed" };
+    }
+    if (!opened) {
+      await eventsRead;
+      return freshConflict(store, parent, id, now);
+    }
+  }
+  const stored = await eventsRead;
+  if (!stored.ok) {
+    logFailure("[test] answer events load failed", stored.e);
+    return failed();
+  }
+
+  // Changed work goes up first, under new names, so the answer can point to it. If the answer is not changed, it goes.
+  let work: ChangedAnswer["work"];
+  if (input.workChanged) {
+    const strokesUpload = storeStrokes(store, parent, id, q.id, input.work.strokes);
+    let workPath: string | null = null;
+    if (input.work.png) {
+      try {
+        workPath = await store.storeDrawing(parent, id, q.id, input.work.png);
+      } catch (e) {
+        logFailure("[work] upload failed", e);
+        await removeStrokes(store, await strokesUpload);
+        return failed();
+      }
+    }
+    work = { workPath, workText: input.work.text || null, strokesPath: (await strokesUpload) ?? null };
+  }
+  const discard = () => Promise.all([removeDrawing(store, work?.workPath ?? null), removeStrokes(store, work?.strokesPath ?? undefined)]);
+
+  let replaced: ReplacedWork | "closed";
+  try {
+    replaced = await store.changeAnswer(id, {
+      ...next.answers[at.position],
+      position: at.position,
+      answeredAt: now,
+      events: mergeEvents(stored.events, at.answer.timeMs, input.events ?? null),
+      ...(work && { work }),
+    }, closesAt(section));
+  } catch (e) {
+    await discard();
+    logFailure("[test] answer change failed", e);
+    return failed();
+  }
+  if (replaced === "closed") {
+    // The test moved on in between (another tab answered the section's last question, or the round was offered).
+    await discard();
+    if (until !== null) await bestEffort("[test] deadline undo failed", () => store.undoAnswerWindow(id, until, attempt.resumeUntil));
+    return freshConflict(store, parent, id, now);
+  }
+  // The old work goes only once the answer points to the new work.
+  if (work) {
+    const { workPath, strokesPath } = replaced;
+    await Promise.all([
+      workPath !== work.workPath ? removeDrawing(store, workPath) : null,
+      strokesPath !== work.strokesPath ? removeStrokes(store, strokesPath ?? undefined) : null,
+    ]);
+  }
+  await bestEffort("[test] answer time save failed", () => store.recordAnswerTime(id, now));
+  return { ok: true, step: stepOf({ ...open, session: next }) };
 }
 
 /** Logs a failed store write the way the answer route logged it before the module (#147): the line, then the cause. */
@@ -1003,9 +1166,19 @@ const takesAnswers = ({ attempt, session, round }: ReadTest): boolean =>
 /**
  * The step the screen shows next. When every answer of an open test is in and the child neither skipped nor took the
  * round, the step offers the round if an area is an early sign. After a stop, the step goes on to "Did anyone help?"
- * with the main test's total, as after a skip.
+ * with the main test's total, as after a skip. #249: a question comes with the answered questions of the open section,
+ * when they can change, so Back shows them at once (also after a resume on another device).
  */
-function stepOf({ attempt, session, round }: ReadTest): TestStep {
+function stepOf(read: ReadTest): TestStep {
+  const step = roundStep(read);
+  if (step.status !== "question") return step;
+  const answered = changeable(read)?.answered ?? [];
+  if (!answered.length) return step;
+  return { ...step, answered: answered.map((a) => ({ number: a.position + 1, question: toPublicQuestion(a.question), response: a.answer.response })) };
+}
+
+/** The step, with the extra round's offer when one is due (stepOf without the answered questions). */
+function roundStep({ attempt, session, round }: ReadTest): TestStep {
   if (attempt.status === "in_progress" && stopped(round)) return testStep(withoutRound(session));
   const step = testStep(session);
   if (step.status !== "complete" || attempt.status !== "in_progress" || round.skippedAt !== null) return step;
