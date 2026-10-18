@@ -62,14 +62,23 @@ export function recordAnswer(attempt: Attempt, now: number): Attempt {
 export type StartState =
   /** "Start test": no test yet, or the last completed one is 30 days old or may not be reliable (`retake`). */
   | { kind: "start"; retake: boolean }
-  /** "Continue test": the open test, until `resumeUntil`. */
-  | { kind: "resume"; attemptId: string; resumeUntil: number }
+  /**
+   * "Continue test": the open test, until `resumeUntil`. `afterBreak` (#253): stage 1 is locked, so the child can go back
+   * until the end of the test; the test attempt module adds it from the test's read. Absent when unknown.
+   */
+  | { kind: "resume"; attemptId: string; resumeUntil: number; afterBreak?: boolean }
   /**
    * "Finish test": every main answer is in, but the test was not scored (the scoring call failed, or the child left part
    * way through the extra round, #190: `round`, the round's questions answered and asked). Opening it scores it, or,
    * for a round left part way, shows Keep going / Stop here.
    */
-  | { kind: "finish"; attemptId: string; round?: { answered: number; questions: number } }
+  | {
+      kind: "finish";
+      attemptId: string;
+      round?: { answered: number; questions: number };
+      /** #253: the next step is the part 2 "Check your answers" grid; the test attempt module adds it. */
+      checkGrid?: boolean;
+    }
   /** "Start again": the last test ran out of time; a new one has new questions. */
   | { kind: "expired"; attemptId: string }
   /** No new test yet: it opens 30 days after the last completed one. */

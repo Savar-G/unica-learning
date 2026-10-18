@@ -11,6 +11,7 @@ import {
   fillTemplate,
   finish,
   learnerProfile,
+  lockStage1,
   nextQuestion,
   profileAiFacts,
   reportFindings,
@@ -149,6 +150,8 @@ export function sampleReportView(): ReportView {
     const wrong = q.wrong.find((w) => REGROUPING.has(w.misconception)) ?? q.wrong[0];
     const timeMs = 45_000 + (count % 5) * 9_000;
     session = submitAnswer(session, { questionId: q.id, response: right ? q.answer : (wrong?.value ?? "0"), timeMs });
+    // #253: the child presses "Done checking" on the stage 1 grid at once.
+    if (!session.route && session.answers.length === session.stage1.length) session = lockStage1(session);
     count++;
     ms += timeMs;
   }

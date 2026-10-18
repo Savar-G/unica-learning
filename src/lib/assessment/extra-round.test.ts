@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { checked } from "@/lib/assessment/scripted-child";
 import {
   REPORTED_STRAND,
   bankFor,
@@ -26,7 +27,7 @@ type Script = (q: Question, index: number) => boolean;
 function mainTest(profile: ChildProfile, seed: number, script: Script): Session {
   let session = createSession(profile, seed);
   for (let q = nextQuestion(session); q; q = nextQuestion(session)) {
-    session = submitAnswer(session, { questionId: q.id, response: script(q, session.answers.length) ? q.answer : "no idea", timeMs: 20_000 });
+    session = checked(submitAnswer(session, { questionId: q.id, response: script(q, session.answers.length) ? q.answer : "no idea", timeMs: 20_000 }));
   }
   return session;
 }
@@ -92,7 +93,7 @@ describe("scoring a test with an extra round", () => {
   /** Asha's one-wrong test with the extra round taken, and its 8 answers right. */
   const withRoundRight = () => {
     let session = startExtraRound(oneWrong());
-    for (let q = nextQuestion(session); q; q = nextQuestion(session)) session = submitAnswer(session, { questionId: q.id, response: q.answer, timeMs: 20_000 });
+    for (let q = nextQuestion(session); q; q = nextQuestion(session)) session = checked(submitAnswer(session, { questionId: q.id, response: q.answer, timeMs: 20_000 }));
     return session;
   };
 

@@ -27,6 +27,8 @@
 // Extra round (#190): test_extra (status offered, taken, skipped, stopped (Stop here part way) or finished; src = test
 // when the offer came after the last main question, report when the parent opened it from the report). No area, count
 // or score.
+// Check your answers (#253): test_check (status stage1 or stage2: "Done checking" locked that part). test_error has
+// status check when it failed.
 // Reminders (#73): reminder_open (status = continue, come_back, start or start_followup: the parent opened the start screen from that
 // reminder email), unsubscribe (status done or failed: the unsubscribe page turned reminders off), unsubscribe_page
 // (status unsubscribed = already off, unknown = a link that does not work, failed).

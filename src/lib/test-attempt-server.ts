@@ -1,7 +1,7 @@
 import "server-only";
 import { randomBytes } from "node:crypto";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import type { Grade, HelpAnswer, StartState, StoredTest } from "@/lib/assessment";
+import type { Grade, HelpAnswer, Route, StartState, StoredTest } from "@/lib/assessment";
 import type { Child } from "@/lib/account";
 import { isUuid, toAttempt, type AttemptRow } from "@/lib/assessment-store";
 import { retakeState, startStates, StoreError, type AttemptStore, type RetakeState } from "@/lib/test-attempt";
@@ -58,9 +58,9 @@ export function attemptStore(admin: SupabaseClient): AttemptStore {
     },
 
     async load(parent, id) {
-      const { data: row, error } = await admin.from("assessments").select(`${ATTEMPT_COLUMNS}, test, break_started_at, break_ended_at, help, ${ROUND_COLUMNS}`)
+      const { data: row, error } = await admin.from("assessments").select(`${ATTEMPT_COLUMNS}, test, route, break_started_at, break_ended_at, help, ${ROUND_COLUMNS}`)
         .eq("id", id).eq("parent_id", parent)
-        .maybeSingle<AttemptRow & { test: StoredTest; break_started_at: string | null; break_ended_at: string | null; help: HelpAnswer | null } & RoundRow>();
+        .maybeSingle<AttemptRow & { test: StoredTest; route: Route | null; break_started_at: string | null; break_ended_at: string | null; help: HelpAnswer | null } & RoundRow>();
       if (error) throw new StoreError("load failed", error.message);
       if (!row) return null;
       const { data: answers, error: answersError } = await admin.from("answers")
@@ -74,6 +74,8 @@ export function attemptStore(admin: SupabaseClient): AttemptStore {
         ...(row.break_started_at && { break: { startedAt: Date.parse(row.break_started_at), ended: row.break_ended_at != null } }),
         help: row.help,
         extraRound: roundRecord(row),
+        // #253: the stored route is the stage 1 lock record.
+        route: row.route,
       };
     },
 
@@ -161,7 +163,8 @@ export function attemptStore(admin: SupabaseClient): AttemptStore {
     },
 
     // #249: one database function (migration add_answer_change) checks the section's guards and overwrites the row in
-    // one transaction, and returns the work it replaced; null when a guard failed.
+    // one transaction, and returns the work it replaced; null when a guard failed. #253: it also refuses a stage 1
+    // answer once a route is stored (migration add_stage1_lock).
     async changeAnswer(id, { position, questionId, response, correct, misconception, timeMs, answeredAt, events, work }, unansweredFrom) {
       const { answered_at, answer_changes, read_aloud_count, read_aloud_at_ms, away_count, away_ms } = timelineColumns({ shownAt: null, answeredAt, events });
       const { data, error } = await admin.rpc("change_answer", {
@@ -189,9 +192,17 @@ export function attemptStore(admin: SupabaseClient): AttemptStore {
       return replaced ? { workPath: replaced.work_path, strokesPath: replaced.strokes_path } : "closed";
     },
 
-    async recordRoute(id, route) {
-      const { error } = await admin.from("assessments").update({ route }).eq("id", id);
+    // #253: one database function (migration add_stage1_lock) takes the test's row lock, as change_answer does, checks
+    // that no route is stored and that the stage 1 answers are the ones the route was set from, and stores the route.
+    async lockStage1(id, { route, answers }) {
+      const { data, error } = await admin.rpc("lock_stage1", {
+        p_assessment: id,
+        p_route: route,
+        p_answers: answers.map((a) => [a.questionId, a.response]),
+      });
       if (error) throw new StoreError("route save failed", error.message);
+      if (data === "changed" || data === "closed" || data === "up" || data === "stay" || data === "down") return data;
+      throw new StoreError("route save failed", `unexpected answer ${JSON.stringify(data)}`);
     },
 
     // #249: one database function (migration add_guarded_finish) takes the test's row lock, as change_answer does,
@@ -425,9 +436,17 @@ const roundRecord = (row: RoundRow): ExtraRoundRecord => ({
  */
 function extraRoundStore(admin: SupabaseClient): ExtraRoundStore {
   return {
-    async recordExtraOffer(id, at) {
-      const { error } = await admin.from("assessments").update({ extra_offered_at: iso(at) }).eq("id", id).is("extra_offered_at", null);
+    // #253: one database function (migration add_guarded_offer) takes the test's row lock, as change_answer does,
+    // checks that the stored answers are the ones the offer was computed from, and records the offer.
+    async recordExtraOffer(id, at, answers) {
+      const { data, error } = await admin.rpc("record_extra_offer", {
+        p_assessment: id,
+        p_at: iso(at),
+        p_answers: answers.map((a) => [a.questionId, a.response, a.timeMs]),
+      });
       if (error) throw new StoreError("extra round offer save failed", error.message);
+      if (data === "offered" || data === "already" || data === "changed" || data === "closed") return data;
+      throw new StoreError("extra round offer save failed", `unexpected answer ${JSON.stringify(data)}`);
     },
 
     async skipExtraRound(id, at) {

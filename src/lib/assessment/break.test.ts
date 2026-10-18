@@ -1,11 +1,16 @@
 import { describe, expect, it } from "vitest";
-import { breakDue, createSession, nextQuestion, submitAnswer, testStep, type Session, type TestStep } from "@/lib/assessment";
+import { breakDue, createSession, lockStage1, nextQuestion, submitAnswer, testStep, type Session, type TestStep } from "@/lib/assessment";
 
 // The halfway break and the progress display (#69): the browser learns both from the step it receives.
 function steps(session: Session): TestStep[] {
   const seen: TestStep[] = [];
   for (let step = testStep(session); ; step = testStep(session)) {
     seen.push(step);
+    // #253: the stage 1 grid comes before the break; the child presses "Done checking" at once.
+    if (step.status === "check") {
+      session = lockStage1(session);
+      continue;
+    }
     if (step.status !== "question") return seen;
     session = submitAnswer(session, { questionId: step.question.id, response: nextQuestion(session)!.answer, timeMs: 5_000 });
   }

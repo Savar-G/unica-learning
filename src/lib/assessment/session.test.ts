@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { checked } from "@/lib/assessment/scripted-child";
 import { BANKS, REPORTED_STRAND, SAMPLE_BANK, createSession, finish, nextQuestion, submitAnswer, type Session } from "@/lib/assessment";
 import { allRight, allWrong, firstRight, knowsUpTo, takeTest, type Script } from "./scripted-child";
 
@@ -88,7 +89,7 @@ describe("area status: only questions at or below the school grade", () => {
     const asked = [];
     for (let q = nextQuestion(session); q; q = nextQuestion(session)) {
       asked.push(q);
-      session = submitAnswer(session, { questionId: q.id, response: q.level <= 4 ? q.answer : "no idea", timeMs: 20000 });
+      session = checked(submitAnswer(session, { questionId: q.id, response: q.level <= 4 ? q.answer : "no idea", timeMs: 20000 }));
     }
     const placement = finish(session);
     expect(asked.some((q) => REPORTED_STRAND[q.strand] === "shapes")).toBe(true);

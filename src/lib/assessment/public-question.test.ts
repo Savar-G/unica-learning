@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, expect, it } from "vitest";
+import { checked } from "@/lib/assessment/scripted-child";
 import {
   BANKS, createSession, fillTemplate, nextQuestion, readAloudText, spokenChoices, submitAnswer, testStep,
   toPublicQuestion, type Grade, type Province, type PublicQuestion, type Question,
@@ -34,7 +35,7 @@ describe("public question speech does not disclose server choice order", () => {
       expect(step.status).toBe("question");
       expect(step.question).toEqual(checkPublicSpeech(q));
       if (q.say && q.choices?.every(stringKey)) nonIntegerChoices++;
-      session = submitAnswer(session, { questionId: q.id, response: q.answer, timeMs: 1000 });
+      session = checked(submitAnswer(session, { questionId: q.id, response: q.answer, timeMs: 1000 }));
       expect(session.answers.at(-1)?.correct).toBe(true);
     }
     expect(session.answers).toHaveLength(province === "BC" ? 45 : 42);

@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { checked } from "@/lib/assessment/scripted-child";
 import {
   bankFor,
   bandFor,
@@ -29,7 +30,7 @@ function walk(profile: ChildProfile, seed: number, isRight: Script, bank?: reado
     const step = testStep(session);
     if (step.status !== "question") throw new Error("expected a question");
     seen.push({ ...step.question, templateId: q.templateId });
-    session = submitAnswer(session, { questionId: q.id, response: isRight(q, seen.length - 1) ? q.answer : "no idea", timeMs: 20_000 });
+    session = checked(submitAnswer(session, { questionId: q.id, response: isRight(q, seen.length - 1) ? q.answer : "no idea", timeMs: 20_000 }));
   }
   return { seen, route: session.route as Route };
 }
@@ -121,7 +122,7 @@ function at(profile: ChildProfile, showWork: boolean, bank?: readonly Template[]
   let session = createSession(profile, 1, { bank });
   for (let q = nextQuestion(session); q; q = nextQuestion(session)) {
     if ((q.showWork ?? false) === showWork) return session;
-    session = submitAnswer(session, { questionId: q.id, response: q.answer, timeMs: 20_000 });
+    session = checked(submitAnswer(session, { questionId: q.id, response: q.answer, timeMs: 20_000 }));
   }
   throw new Error("no such question");
 }
@@ -169,7 +170,7 @@ describe("shown work: what may go with an answer", () => {
 
   it("a finished test takes no work", () => {
     let session = createSession({ grade: 4, province: "BC" }, 1);
-    for (let q = nextQuestion(session); q; q = nextQuestion(session)) session = submitAnswer(session, { questionId: q.id, response: q.answer, timeMs: 1 });
+    for (let q = nextQuestion(session); q; q = nextQuestion(session)) session = checked(submitAnswer(session, { questionId: q.id, response: q.answer, timeMs: 1 }));
     expect(() => workProblem(session, drawing)).toThrow(/complete/);
   });
 });

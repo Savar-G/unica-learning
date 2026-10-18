@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { checked } from "@/lib/assessment/scripted-child";
 import {
   BANKS,
   BC_SKILL_MAP,
@@ -26,7 +27,7 @@ import {
 function grade4Placement() {
   let session = createSession({ grade: 4, province: "BC" }, 101);
   for (let q = nextQuestion(session); q; q = nextQuestion(session)) {
-    session = submitAnswer(session, { questionId: q.id, response: q.level <= 4 ? q.answer : "no idea", timeMs: 20_000 });
+    session = checked(submitAnswer(session, { questionId: q.id, response: q.level <= 4 ? q.answer : "no idea", timeMs: 20_000 }));
   }
   return finish(session);
 }

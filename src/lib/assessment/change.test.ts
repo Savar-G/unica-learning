@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { checked } from "@/lib/assessment/scripted-child";
 import {
   QUESTION_TIME_CAP_MS,
   TOO_FAST_MS,
@@ -24,7 +25,7 @@ function answered(count: number): Session {
   let session = createSession(ASHA, 7);
   for (let i = 0; i < count; i++) {
     const q = nextQuestion(session)!;
-    session = submitAnswer(session, { questionId: q.id, response: q.answer, timeMs: 20_000 });
+    session = checked(submitAnswer(session, { questionId: q.id, response: q.answer, timeMs: 20_000 }));
   }
   return session;
 }
@@ -137,7 +138,7 @@ describe("the score reads the final answers and the total time (#249)", () => {
   /** Asha's whole test, every answer right in 20 seconds. */
   const whole = () => {
     let session = createSession(ASHA, 7);
-    for (let q = nextQuestion(session); q; q = nextQuestion(session)) session = submitAnswer(session, { questionId: q.id, response: q.answer, timeMs: 20_000 });
+    for (let q = nextQuestion(session); q; q = nextQuestion(session)) session = checked(submitAnswer(session, { questionId: q.id, response: q.answer, timeMs: 20_000 }));
     return session;
   };
 
