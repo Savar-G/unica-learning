@@ -162,10 +162,19 @@ export function memoryAttemptStore({ children: kids = [], tests: initial = [] }:
    */
   const roundOf = (row: MemoryTest) => (row.extraRound ??= { ...NO_ROUND });
   const roundOps: ExtraRoundStore = {
-    async recordExtraOffer(id, at) {
+    // #253: the guards of the offer, checked together with the write, as in the database function record_extra_offer.
+    async recordExtraOffer(id, at, answers) {
       await begin("recordExtraOffer");
-      const row = tests.find((t) => t.id === id);
-      if (row) roundOf(row).offeredAt ??= at;
+      const row = tests.find((t) => t.id === id && t.status === "in_progress");
+      if (!row) return "closed";
+      const round = roundOf(row);
+      if (round.offeredAt !== null) return "already";
+      if (round.skippedAt !== null || round.startedAt !== null) return "closed";
+      const same = row.answers.length === answers.length
+        && row.answers.every((a, i) => a.questionId === answers[i].questionId && a.response === answers[i].response && a.timeMs === answers[i].timeMs);
+      if (!same) return "changed";
+      round.offeredAt = at;
+      return "offered";
     },
     async skipExtraRound(id, at) {
       await begin("skipExtraRound");

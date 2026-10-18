@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   breakDue,
   createSession,
+  extraRoundOffer,
   nextQuestion,
   restoreSession,
   startAttempt,
@@ -13,7 +14,7 @@ import {
   type Submission,
 } from "@/lib/assessment";
 import { checked } from "@/lib/assessment/scripted-child";
-import { answerQuestion, changeAnswer, doneChecking, finishTest, nextStep, startStates, StoreError, type ChangeInput } from "@/lib/test-attempt";
+import { answerQuestion, changeAnswer, doneChecking, finishTest, nextStep, startStates, StoreError, takeExtraRound, type AttemptStore, type ChangeInput } from "@/lib/test-attempt";
 import { memoryAttemptStore, type MemoryTest } from "@/lib/test-attempt-memory";
 
 // "Check your answers" and the locks (#249, #253) through the test attempt module, against the in-memory store with the
@@ -271,6 +272,64 @@ describe("the stage 2 grid and Done checking", () => {
     expect(await doneChecking(memory.store, P1, "a1", "stage2", T0 + 3 * HOUR)).toEqual({ ok: false, error: "store_failed" });
     expect(memory.tests[0].extraRound?.offeredAt ?? null).toBeNull();
     expect(await nextStep(memory.store, P1, "a1", T0 + 3 * HOUR)).toMatchObject({ ok: true, step: { status: "check", section: "stage2" } });
+  });
+
+  /**
+   * Asha's test (seed 7) with every main answer right except the stage 2 answer at `wrong`, the first place where one
+   * wrong answer makes an extra round due (an area becomes an early sign).
+   */
+  const oneWrongInStage2 = () => {
+    const right = openTest(42);
+    const questions = onRoute(right, "up");
+    const wrong = questions.findIndex((q, i) => i >= STAGE1 && extraRoundOffer(restoreSession(right.test, right.answers.map((a, j) => (j === i ? { ...a, response: wrongTo(q) } : a)), "up")) !== null);
+    if (wrong < 0) throw new Error("no stage 2 answer makes a round due");
+    return { row: openTest(42, { script: (_, i) => i !== wrong, route: "up" }), q: questions[wrong], wrong };
+  };
+
+  /** The family's store, where "Done checking" on stage 2 waits before its offer write until `release`. */
+  const heldOffer = (memory: ReturnType<typeof family>) => {
+    let release = () => {};
+    let waiting = () => {};
+    const released = new Promise<void>((r) => (release = r));
+    const reached = new Promise<void>((r) => (waiting = r));
+    const store: AttemptStore = { ...memory.store, recordExtraOffer: async (...args: Parameters<AttemptStore["recordExtraOffer"]>) => {
+      waiting();
+      await released;
+      return memory.store.recordExtraOffer(...args);
+    } };
+    return { store, reached, release };
+  };
+
+  it("a change that lands before the offer write: no round is offered when the final answers need none (review of #253)", async () => {
+    const { row, q, wrong } = oneWrongInStage2();
+    const memory = family(row);
+    const { store, reached, release } = heldOffer(memory);
+    const pressed = doneChecking(store, P1, "a1", "stage2", T0 + 2 * HOUR);
+    await reached;
+    // The child fixes the wrong answer in another tab before the offer is written.
+    expect(await changeAnswer(store, P1, "a1", revisit(q, q.answer), T0 + 2 * HOUR)).toMatchObject({ ok: true });
+    release();
+    const result = await pressed;
+    expect(memory.tests[0].answers[wrong]).toMatchObject({ response: q.answer, correct: true });
+    expect(extraRoundOffer(restoreSession(memory.tests[0].test, memory.tests[0].answers, "up"))).toBeNull();
+    // The step matches the final answers: "Did anyone help?", and no offer is recorded.
+    expect(result).toEqual({ ok: true, step: { status: "complete", total: 42 } });
+    expect(memory.tests[0].extraRound?.offeredAt ?? null).toBeNull();
+  });
+
+  it("a change that lands before the offer write but keeps the round due: the offer is recorded from the final answers", async () => {
+    const { row, wrong } = oneWrongInStage2();
+    const memory = family(row);
+    const { store, reached, release } = heldOffer(memory);
+    const pressed = doneChecking(store, P1, "a1", "stage2", T0 + 2 * HOUR);
+    await reached;
+    // Another tab looks at a different answer again: the same answer, with time added.
+    const other = onRoute(memory.tests[0], "up")[wrong === STAGE1 ? STAGE1 + 1 : STAGE1];
+    expect(await changeAnswer(store, P1, "a1", revisit(other, other.answer), T0 + 2 * HOUR)).toMatchObject({ ok: true });
+    release();
+    expect(await pressed).toMatchObject({ ok: true, step: { status: "complete", extraRound: { questions: expect.any(Number) } } });
+    expect(memory.tests[0].extraRound?.offeredAt).toBe(T0 + 2 * HOUR);
+    expect(await takeExtraRound(store, P1, "a1", T0 + 2 * HOUR + MINUTE)).toMatchObject({ ok: true, step: { status: "question", extra: { number: 1 } } });
   });
 
   it("Done checking for a section that is not on its grid is a conflict with the step", async () => {

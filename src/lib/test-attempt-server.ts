@@ -436,9 +436,17 @@ const roundRecord = (row: RoundRow): ExtraRoundRecord => ({
  */
 function extraRoundStore(admin: SupabaseClient): ExtraRoundStore {
   return {
-    async recordExtraOffer(id, at) {
-      const { error } = await admin.from("assessments").update({ extra_offered_at: iso(at) }).eq("id", id).is("extra_offered_at", null);
+    // #253: one database function (migration add_guarded_offer) takes the test's row lock, as change_answer does,
+    // checks that the stored answers are the ones the offer was computed from, and records the offer.
+    async recordExtraOffer(id, at, answers) {
+      const { data, error } = await admin.rpc("record_extra_offer", {
+        p_assessment: id,
+        p_at: iso(at),
+        p_answers: answers.map((a) => [a.questionId, a.response, a.timeMs]),
+      });
       if (error) throw new StoreError("extra round offer save failed", error.message);
+      if (data === "offered" || data === "already" || data === "changed" || data === "closed") return data;
+      throw new StoreError("extra round offer save failed", `unexpected answer ${JSON.stringify(data)}`);
     },
 
     async skipExtraRound(id, at) {

@@ -701,9 +701,8 @@ export async function doneChecking(store: AttemptStore, parent: string, id: stri
       }
       return carryOn(store, id, open, now);
     }
-    if (section === "stage2") return lockStage2(store, id, open, now);
-    const outcome = await lockFirstStage(store, parent, id, open, now);
-    // A stage 1 answer changed between the read and the lock: read again, and lock from the final answers.
+    const outcome = section === "stage2" ? await lockStage2(store, parent, id, open, now) : await lockFirstStage(store, parent, id, open, now);
+    // An answer changed between the read and the lock: read again, and lock from the final answers.
     if (outcome !== "changed") return outcome;
   }
   return { ok: false, error: "busy" };
@@ -757,16 +756,23 @@ async function lockFirstStage(store: AttemptStore, parent: string, id: string, o
   return carryOn(store, id, { ...open, session: { ...session, route: stored } }, now);
 }
 
-/** #253: the stage 2 lock: the extra round's offer is recorded when one is due; with none due nothing is written. */
-async function lockStage2(store: AttemptStore, id: string, open: ReadTest, now: number): Promise<StepOutcome> {
+/**
+ * #253: the stage 2 lock: the extra round's offer is recorded when one is due; with none due nothing is written.
+ * "changed" (review of #253): an answer changed since the read, so the offer may no longer match the answers, or
+ * another request recorded the offer first; nothing is written, and the caller reads the test again.
+ */
+async function lockStage2(store: AttemptStore, parent: string, id: string, open: ReadTest, now: number): Promise<StepOutcome | "changed"> {
   const step = roundStep(open);
-  if (step.status === "complete" && step.extraRound) {
-    try {
-      await store.recordExtraOffer(id, now);
-    } catch (e) {
-      return storeFailed(e);
-    }
+  if (step.status !== "complete" || !step.extraRound) return { ok: true, step };
+  const answers = open.session.answers.map(({ questionId, response, timeMs }) => ({ questionId, response, timeMs }));
+  let recorded: Awaited<ReturnType<AttemptStore["recordExtraOffer"]>>;
+  try {
+    recorded = await store.recordExtraOffer(id, now, answers);
+  } catch (e) {
+    return storeFailed(e);
   }
+  if (recorded === "changed" || recorded === "already") return "changed";
+  if (recorded === "closed") return freshConflict(store, parent, id, now);
   return { ok: true, step };
 }
 
@@ -1263,8 +1269,15 @@ const stopped = ({ skippedAt, startedAt }: ExtraRoundRecord): boolean => started
  * a test that `load` returned for the parent, so they take the test's id alone. `load` returns the round's record.
  */
 export interface ExtraRoundStore {
-  /** Records when the round was first offered. A later offer changes nothing. */
-  recordExtraOffer(id: string, at: number): Promise<void>;
+  /**
+   * #253: records when the round was offered ("Done checking" on stage 2, the stage 2 lock), only while the test is in
+   * progress, the round was neither skipped nor started, and the stored answers are still `answers` (the question,
+   * response and time at each place, the ones the offer was computed from). "offered": this call recorded it.
+   * "already": an offer was recorded before; nothing changes. "changed": an answer changed since it was read; nothing
+   * is written. "closed": the test is not in progress, or the round was skipped or started. A change and this write
+   * never both win (the Supabase function takes the same row lock as change_answer).
+   */
+  recordExtraOffer(id: string, at: number, answers: readonly Submission[]): Promise<"offered" | "already" | "changed" | "closed">;
   /** Records the child's skip, only while the test is in progress and the round was neither skipped nor started. */
   skipExtraRound(id: string, at: number): Promise<void>;
   /**
