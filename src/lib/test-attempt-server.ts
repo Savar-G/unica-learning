@@ -11,6 +11,7 @@ import type { FactsStore } from "@/lib/test-attempt";
 import type { AnswerTimeline, ShownStore } from "@/lib/test-attempt";
 import type { ContextStore } from "@/lib/test-attempt";
 import { extraRoundState, type ExtraRoundRecord, type ExtraRoundState, type ExtraRoundStore } from "@/lib/test-attempt";
+import type { AnswerEvents } from "@/lib/answer-events";
 import { strokesPath, workPath } from "@/lib/work-payload";
 import { WORK_BUCKET } from "@/lib/work-store";
 
@@ -152,17 +153,61 @@ export function attemptStore(admin: SupabaseClient): AttemptStore {
       return "stored";
     },
 
+    async answerEvents(id, position) {
+      const { data, error } = await admin.from("answers").select("answer_changes, read_aloud_count, read_aloud_at_ms, away_count, away_ms")
+        .eq("assessment_id", id).eq("position", position).maybeSingle<EventColumns>();
+      if (error) throw new StoreError("answer events load failed", error.message);
+      return data ? eventsOf(data) : null;
+    },
+
+    // #249: one database function (migration add_answer_change) checks the section's guards and overwrites the row in
+    // one transaction, and returns the work it replaced; null when a guard failed.
+    async changeAnswer(id, { position, questionId, response, correct, misconception, timeMs, answeredAt, events, work }, unansweredFrom) {
+      const { answered_at, answer_changes, read_aloud_count, read_aloud_at_ms, away_count, away_ms } = timelineColumns({ shownAt: null, answeredAt, events });
+      const { data, error } = await admin.rpc("change_answer", {
+        p_assessment: id,
+        p_position: position,
+        p_question_id: questionId,
+        p_unanswered_from: unansweredFrom,
+        p_response: response,
+        p_correct: correct,
+        p_misconception: misconception,
+        p_time_ms: timeMs,
+        p_answered_at: answered_at,
+        p_answer_changes: answer_changes,
+        p_read_aloud_count: read_aloud_count,
+        p_read_aloud_at_ms: read_aloud_at_ms,
+        p_away_count: away_count,
+        p_away_ms: away_ms,
+        p_work_changed: work !== undefined,
+        p_work_path: work?.workPath ?? null,
+        p_work_text: work?.workText ?? null,
+        p_strokes_path: work?.strokesPath ?? null,
+      });
+      if (error) throw new StoreError("answer change failed", error.message);
+      const replaced = data as { work_path: string | null; strokes_path: string | null } | null;
+      return replaced ? { workPath: replaced.work_path, strokesPath: replaced.strokes_path } : "closed";
+    },
+
     async recordRoute(id, route) {
       const { error } = await admin.from("assessments").update({ route }).eq("id", id);
       if (error) throw new StoreError("route save failed", error.message);
     },
 
-    async complete(id, { at, placement, help }) {
-      const { error } = await admin.from("assessments")
+    // #249: one database function (migration add_guarded_finish) takes the test's row lock, as change_answer does,
+    // checks that the stored answers are the scored ones, and completes the test; "changed" when an answer changed.
+    async complete(id, { at, placement, help, answers }) {
+      const { data, error } = await admin.rpc("complete_test", {
+        p_assessment: id,
+        p_completed_at: iso(at),
+        p_placement: placement,
+        p_help: help,
         // #190: a round taken during the test finishes with it.
-        .update({ status: "completed", completed_at: iso(at), route: placement.route, placement, help, ...(placement.extraRound ? { extra_finished_at: iso(at) } : {}) })
-        .eq("id", id).eq("status", "in_progress");
+        p_extra_finished: !!placement.extraRound,
+        p_answers: answers.map((a) => [a.questionId, a.response, a.timeMs]),
+      });
       if (error) throw new StoreError("finish failed", error.message);
+      return data === "changed" ? "changed" : "done";
     },
 
     async create(parent, child, { attempt, seed, test }) {
@@ -275,6 +320,22 @@ function timelineColumns({ shownAt, answeredAt, events }: AnswerTimeline) {
     away_count: events?.away.count ?? null,
     away_ms: events?.away.ms ?? null,
   };
+}
+
+/** The answer timeline's event columns of public.answers (#184), as stored. */
+interface EventColumns {
+  answer_changes: AnswerEvents["changes"] | null;
+  read_aloud_count: number | null;
+  read_aloud_at_ms: number[] | null;
+  away_count: number | null;
+  away_ms: number | null;
+}
+
+/** #249: the events of a stored answer; null when it has none (an answer stored before #184, or sent without them). */
+function eventsOf(row: EventColumns): AnswerEvents | null {
+  const { answer_changes, read_aloud_count, read_aloud_at_ms, away_count, away_ms } = row;
+  if (answer_changes === null || read_aloud_count === null || read_aloud_at_ms === null || away_count === null || away_ms === null) return null;
+  return { changes: answer_changes, readAloud: { count: read_aloud_count, atMs: read_aloud_at_ms }, away: { count: away_count, ms: away_ms } };
 }
 
 /**

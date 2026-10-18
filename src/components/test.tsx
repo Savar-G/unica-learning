@@ -9,9 +9,9 @@ import "./test-base.css";
 import { useCallback, useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
 import Link from "next/link";
 import { Button } from "@/ds";
-import { breakDue, readAloudText, spokenChoices, type ExtraRoundOffer, type HelpAnswer, type PublicQuestion, type TestStep } from "@/lib/assessment";
+import { breakDue, readAloudText, spokenChoices, type AnsweredQuestion, type ExtraRoundOffer, type HelpAnswer, type PublicQuestion, type TestStep } from "@/lib/assessment";
 import { ANSWER_MAX, type FinishResult, type StartResult, type StepResult, type TestError, type WorkPayload } from "@/lib/test-api";
-import { answerRecorder, type AnswerEvents } from "@/lib/answer-events";
+import { answerRecorder, mergeEvents, type AnswerEvents } from "@/lib/answer-events";
 import { deviceOf, type BreakEvent, type BreakResume, type ContextResult, type TestDevice } from "@/lib/test-context";
 import { track } from "@/lib/track";
 import { SUPPORT_EMAIL, SUPPORT_HREF } from "@/lib/contact";
@@ -53,6 +53,30 @@ async function call<T>(url: string, init?: RequestInit): Promise<T | { ok: false
 }
 
 const post = (body: unknown): RequestInit => ({ method: "POST", body: JSON.stringify(body) });
+
+/**
+ * #249: one visit of a question, as the question hands it over when the child leaves it: the answer on the screen ("" when
+ * none), the time and events of the visit, the work, and whether the child drew or typed in this visit.
+ */
+interface Visit {
+  questionId: string;
+  response: string;
+  timeMs: number;
+  events: AnswerEvents;
+  work?: WorkPayload;
+  workChanged: boolean;
+  /** The whiteboard as the child left it, on an answered question: a failed save puts it back on the board. */
+  board?: BoardState;
+}
+
+/** #249: where the child goes: Back, Next, or (a save failed) back to the question whose save failed. */
+type Target = "back" | "next" | { reopen: number };
+
+/** #249: what leaving did: "saved" (the answer went to the server, or is on its way), "kept" (nothing to save: the visit stays in this browser), or false (the child stays). */
+type Left = "saved" | "kept" | false;
+
+/** Time and events of visits that are not saved yet: they go with the question's next save. */
+type Carry = { ms: number; events: AnswerEvents };
 
 /** #185: one record of the test context (the device, or a break event). The screen never waits for it. */
 const sendContext = (testId: string, body: { device: TestDevice } | { break: "shown" } | { break: Exclude<BreakEvent, "shown">; lengthMs: number }) =>
@@ -97,6 +121,59 @@ export function TakeTest({ childId, name, breakAfter, ready, done, mode: firstMo
   // #185: when the break screen showed (performance.now()), for the break's length. The end goes at once with it, and
   // never waits on the "shown" request: a slow save must not make the break longer.
   const breakShownAt = useRef<number | null>(null);
+  // #249: Back. The open section's answered questions, as the step brought them and the child changed them since, and
+  // the one on the screen (null: the newest question, `screen.question`). Each visit mounts the question again.
+  const [answered, setAnswered] = useState<AnsweredQuestion[]>([]);
+  const answeredRef = useRef<AnsweredQuestion[]>([]);
+  const [viewing, setViewing] = useState<number | null>(null);
+  const viewingRef = useRef<number | null>(null);
+  const [visit, setVisit] = useState(0);
+  // Time and events of visits not saved yet, and the newest question's answer when a failed save moved the screen.
+  const carry = useRef(new Map<string, Carry>());
+  const [held, setHeld] = useState<Readonly<Record<string, string>>>({});
+  // The new work of an answered question whose save failed: it goes back on the board when the question opens again.
+  const [unsaved, setUnsaved] = useState<Readonly<Record<string, BoardState>>>({});
+  const setUnsavedWork = (questionId: string, board: BoardState | null) =>
+    setUnsaved((all) => {
+      const rest = Object.fromEntries(Object.entries(all).filter(([id]) => id !== questionId));
+      return board ? { ...rest, [questionId]: board } : rest;
+    });
+  // The saves of answered questions: in the background, one at a time, in order.
+  const saves = useRef<Promise<void>>(Promise.resolve());
+  // A save failed: the question to open again, with the child's answer on it.
+  const reopen = useRef<number | null>(null);
+  // The question on the screen leaves through this, when a failed save opens another question.
+  const leaveScreen = useRef<((to: Target) => Promise<unknown>) | null>(null);
+  const onShown = useCallback((leave: ((to: Target) => Promise<unknown>) | null) => {
+    leaveScreen.current = leave;
+    // A save failed before this question could take it (the error came while the question before it was still leaving):
+    // this question leaves now, to the question whose save failed.
+    if (leave && reopen.current !== null) void leave({ reopen: reopen.current });
+  }, []);
+
+  const setList = (list: AnsweredQuestion[]) => {
+    answeredRef.current = list;
+    setAnswered(list);
+  };
+  /** Opens an answered question (by its number), or the newest question (null, also for a number no longer open). */
+  const open = (number: number | null) => {
+    const shown = number !== null && answeredRef.current.some((a) => a.number === number) ? number : null;
+    viewingRef.current = shown;
+    setViewing(shown);
+    setVisit((v) => v + 1);
+  };
+  /** Keeps a visit that saves nothing in this browser: its time and events go with the question's next save. */
+  const keep = (v: Visit, value?: string) => {
+    const before = carry.current.get(v.questionId);
+    carry.current.set(v.questionId, before ? { ms: before.ms + v.timeMs, events: mergeEvents(before.events, before.ms, v.events)! } : { ms: v.timeMs, events: v.events });
+    if (value !== undefined) setHeld((h) => ({ ...h, [v.questionId]: value }));
+  };
+  /** The visit with the time and events of the visits before it that were not saved. */
+  const withCarry = (v: Visit) => {
+    const before = carry.current.get(v.questionId);
+    carry.current.delete(v.questionId);
+    return before ? { ...v, timeMs: before.ms + v.timeMs, events: mergeEvents(before.events, before.ms, v.events)! } : v;
+  };
 
   // The voices for "read it to me" load while the child reads the start screen, so the button is there with question 1.
   useEffect(() => warmUpVoices(), []);
@@ -171,6 +248,11 @@ export function TakeTest({ childId, name, breakAfter, ready, done, mode: firstMo
       return true;
     }
     const id = testId.current ?? "";
+    // #249: the newest question shows, with the open section's answered questions for Back.
+    answeredRef.current = step.answered ?? [];
+    setAnswered(answeredRef.current);
+    viewingRef.current = null;
+    setViewing(null);
     // #190: a question of the extra round. The round has no break and no quick facts.
     if (step.extra) {
       setScreen({ name: "question", question: step.question, number: step.number, total: step.total, breakAfter: step.breakAfter, testId: id, takeYourTime: step.takeYourTime === true, extra: step.extra });
@@ -305,6 +387,99 @@ export function TakeTest({ childId, name, breakAfter, ready, done, mode: firstMo
     return false;
   };
 
+  /**
+   * #249: saves the change of an answered question in the background, after the saves before it. A failed save opens
+   * that question again, with the child's answer on it and the "could not save" message; its time and events go with
+   * the next save. When the test moved on (another tab), the screen goes where the server is.
+   */
+  const saveChange = (number: number, v: Visit) => {
+    saves.current = saves.current.then(async () => {
+      const res = await call<StepResult>(`/api/account/assessments/${testId.current}/answers`, {
+        method: "PUT",
+        body: JSON.stringify({ questionId: v.questionId, response: v.response, timeMs: v.timeMs, work: v.work, events: v.events, workChanged: v.workChanged }),
+      });
+      if (res.ok) return;
+      track("test_error", { code: res.error, status: "change" });
+      if (res.error === "expired") return void expire();
+      if (res.error === "conflict" && "step" in res && res.step) return void show(res.step);
+      const before = carry.current.get(v.questionId);
+      carry.current.set(v.questionId, before ? { ms: v.timeMs + before.ms, events: mergeEvents(v.events, v.timeMs, before.events)! } : { ms: v.timeMs, events: v.events });
+      // The new work stays on the board, and goes as changed work with the next save.
+      if (v.workChanged && v.board) setUnsavedWork(v.questionId, v.board);
+      reopen.current = number;
+      await leaveScreen.current?.({ reopen: number });
+      setFailure(res.error);
+    });
+  };
+
+  /**
+   * #249: the child leaves the question on the screen: Back, Next, or a failed save opens another question. Leaving an
+   * answered question saves it in the background (a change, or the same answer with its time), and the screen moves at
+   * once. Leaving the newest question with an answer is the answer request, as Next was before: the screen waits for it.
+   * Leaving it with no answer saves nothing: its time and events wait in this browser for its first save.
+   */
+  const leave = async (v: Visit, to: Target): Promise<Left> => {
+    if (screen.name !== "question") return false;
+    // A save failed while this question was busy: it goes to the question whose save failed.
+    if (reopen.current !== null) to = { reopen: reopen.current };
+    if (typeof to !== "object") setFailure(null);
+    const from = viewingRef.current;
+    const here = from ?? screen.number;
+    const numbers = answeredRef.current.map((a) => a.number);
+    const target = typeof to === "object" ? to.reopen : to === "back" ? numbers.filter((n) => n < here).at(-1) : numbers.find((n) => n > here) ?? null;
+    if (target === undefined) return false;
+
+    if (from === null) {
+      if (to === "back" && v.response) {
+        // The answer request first, then the question before it, if the answer did not close its section.
+        if (!(await sendAnswer(v))) return false;
+        if (reopen.current === null && answeredRef.current.some((a) => a.number === target)) open(target);
+        return "saved";
+      }
+      if (to === "next") return (await sendAnswer(v)) ? "saved" : false;
+      keep(v, v.response);
+      if (typeof to === "object") reopen.current = null;
+      open(target);
+      return "kept";
+    }
+
+    // An answered question: a change must be an answer; a child cannot clear one.
+    if (!v.response) {
+      if (typeof to !== "object") return false;
+      keep(v);
+    } else {
+      setList(answeredRef.current.map((a) => (a.number === from ? { ...a, response: v.response } : a)));
+      setUnsavedWork(v.questionId, null);
+      saveChange(from, withCarry(v));
+    }
+    if (typeof to === "object") reopen.current = null;
+    open(target);
+    return v.response ? "saved" : "kept";
+  };
+
+  /** The answer request for the newest question, after the saves before it, so a change lands before the answer that closes its section. */
+  const sendAnswer = async (v: Visit): Promise<boolean> => {
+    await saves.current;
+    const failed = reopen.current;
+    if (failed !== null) {
+      // A save failed meanwhile: keep this answer in the browser and open the question whose save failed.
+      keep(v, v.response);
+      reopen.current = null;
+      open(failed);
+      return false;
+    }
+    const before = carry.current.get(v.questionId);
+    const sent = withCarry(v);
+    const ok = await answer(sent.questionId, sent.response, sent.timeMs, sent.work, sent.events);
+    if (ok) setHeld((h) => Object.fromEntries(Object.entries(h).filter(([id]) => id !== v.questionId)));
+    // The child stays on the question, whose own time and events go on: only the earlier visits wait again.
+    else if (before) carry.current.set(v.questionId, before);
+    return ok;
+  };
+
+  // #249: the question on the screen: an answered one the child went back to, or the newest one.
+  const viewed = screen.name === "question" && viewing !== null ? answered.find((a) => a.number === viewing) ?? null : null;
+
   return (
     <div className="look-root test-root" data-look="warm">
       <header className="test-top">
@@ -312,7 +487,7 @@ export function TakeTest({ childId, name, breakAfter, ready, done, mode: firstMo
         {screen.name === "question" && (screen.extra
           // #190: the extra round's own progress, after the main test (the ring before it).
           ? <TestProgress answered={screen.extra.number - 1} total={screen.extra.total} breakAfter={0} at="question" />
-          : <TestProgress answered={screen.number - 1} total={screen.total} breakAfter={screen.breakAfter} at="question" />)}
+          : <TestProgress answered={screen.number - 1} total={screen.total} breakAfter={screen.breakAfter} at="question" current={(viewed?.number ?? screen.number) - 1} />)}
         {screen.name === "offer" && progress && <TestProgress answered={progress.total} total={progress.total} breakAfter={progress.breakAfter} at="help" />}
         {screen.name === "break" && <TestProgress answered={screen.next.breakAfter} total={screen.next.total} breakAfter={screen.next.breakAfter} at="halfway" />}
         {screen.name === "facts" && <TestProgress answered={screen.next.number - 1} total={screen.next.total} breakAfter={screen.next.breakAfter} at="facts" />}
@@ -326,7 +501,11 @@ export function TakeTest({ childId, name, breakAfter, ready, done, mode: firstMo
             : <Intro name={name} ready={ready} busy={busy} onStart={() => start()} failure={failure} mode={mode} />)}
         {screen.name === "offer" && <ExtraOffer name={name} offer={screen.offer} problem={<Problem error={failure} />} onChoose={(take) => chooseRound(take ? "take" : "skip", "test")} />}
         {screen.name === "question" && (
-          <Question key={screen.question.id} testId={screen.testId} typing={typing} question={screen.question} last={screen.number === screen.total} takeYourTime={screen.takeYourTime} onAnswer={answer} failure={failure}
+          <Question key={`${(viewed?.question ?? screen.question).id}:${visit}`} testId={screen.testId} typing={typing}
+            question={viewed?.question ?? screen.question} initial={viewed ? viewed.response : held[screen.question.id] ?? ""} revisit={viewed !== null}
+            initialBoard={viewed ? unsaved[viewed.question.id] : undefined}
+            canBack={answered.some((a) => a.number < (viewed?.number ?? screen.number))}
+            last={!viewed && screen.number === screen.total} takeYourTime={!viewed && screen.takeYourTime} onLeave={leave} onShown={onShown} failure={failure}
             onStop={screen.extra ? () => stopRound(screen.extra!.number - 1) : undefined} />
         )}
         {screen.name === "break" && (
@@ -414,8 +593,8 @@ function Intro({ name, ready, busy, onStart, failure, mode }: { name: string; re
         <li><b>Scrap paper is fine.</b> Work things out on paper or on the whiteboard, if it helps. We only need your answers.</li>
       </ul>
       {mode === "resume"
-        ? <p className="test-intro-note">Your answers are saved. You go on from the question where you stopped. You cannot go back, so check each answer before you press Next.</p>
-        : <p className="test-intro-note">Answer one question at a time. You cannot go back, so check each answer before you press Next. If you do not know an answer, make your best guess.</p>}
+        ? <p className="test-intro-note">Your answers are saved. You go on from the question where you stopped.</p>
+        : <p className="test-intro-note">Answer one question at a time. If you do not know an answer, make your best guess.</p>}
       <Problem error={failure} />
       {mode === "restart" && <p className="test-intro-note">This is a new test, with new questions.</p>}
       <Button onClick={onStart} disabled={busy} aria-busy={busy}>{busy ? "Starting…" : mode === "resume" ? "Continue the test" : "Start the test"}</Button>
@@ -440,18 +619,29 @@ interface QuestionProps {
   /** Grades 3-7 can type on the whiteboard; grades 1-2 draw only (#67). */
   typing: boolean;
   question: PublicQuestion;
+  /** #249: the answer on the screen when the question opens: the child's answer to a question they went back to. */
+  initial: string;
+  /** #249: the board an answered question opens with: the child's new work when its save failed. Else it opens empty. */
+  initialBoard?: BoardState;
+  /** #249: an answered question the child went back to. Its whiteboard opens empty (#252 brings the work back). */
+  revisit: boolean;
+  /** #249: an answered question of the section comes before this one, so Back shows. */
+  canBack: boolean;
   last: boolean;
   /** #189: show "Take your time" above the question: the last three answers were very fast. */
   takeYourTime: boolean;
-  onAnswer: (id: string, response: string, timeMs: number, work?: WorkPayload, events?: AnswerEvents) => Promise<boolean>;
+  /** #249: the child leaves the question (Next, Back, or a failed save opens another question). Resolves false when the child stays. */
+  onLeave: (visit: Visit, to: Target) => Promise<Left>;
+  /** #249: gets this question's leave while it is on the screen (null once it goes), so a failed save can move the screen. */
+  onShown: (leave: ((to: Target) => Promise<unknown>) | null) => void;
   failure: TestError | null;
   /** #190: Stop here, on a question of the extra round. Resolves false when it failed and the child can go on. */
   onStop?: () => Promise<boolean>;
 }
 
 // One question in the split desk (D-088): the question and the answer on the left, the whiteboard on the right.
-function Question({ testId, typing, question, last, takeYourTime, onAnswer, failure, onStop }: QuestionProps) {
-  const [value, setValue] = useState("");
+function Question({ testId, typing, question, initial, initialBoard, revisit, canBack, last, takeYourTime, onLeave, onShown, failure, onStop }: QuestionProps) {
+  const [value, setValue] = useState(initial);
   const [sending, setSending] = useState(false);
   const [stopping, setStopping] = useState(false);
   // Time on the question runs from when it appears to when the child presses Next.
@@ -463,12 +653,10 @@ function Question({ testId, typing, question, last, takeYourTime, onAnswer, fail
   }, []);
 
   // #184: what the child does before Next, from when the question appears: each answer change, each "Read it to me",
-  // and each time the tab is hidden (another tab or app in front) with how long.
-  const [recorder] = useState(answerRecorder);
-  const recordedValue = useRef("");
+  // and each time the tab is hidden (another tab or app in front) with how long. #249: the answer already on the screen
+  // when the question opens is not a change.
+  const [recorder] = useState(() => answerRecorder(initial));
   useEffect(() => {
-    if (value === recordedValue.current) return;
-    recordedValue.current = value;
     recorder.change(value, performance.now() - shownAt.current);
   }, [value, recorder]);
   useEffect(() => {
@@ -481,15 +669,21 @@ function Question({ testId, typing, question, last, takeYourTime, onAnswer, fail
   const onRead = useCallback(() => recorder.readAloud(performance.now() - shownAt.current), [recorder]);
 
   // #67: the whiteboard. A resume of this question on this device brings back the work from before the stop (#72).
+  // #249: an answered question the child went back to keeps no draft: its board opens empty.
   const draft = draftKey(testId, question.id);
+  const drafts = !!testId && !revisit;
   const [board, setBoard] = useState<BoardState>(() => {
-    const restored = (testId ? loadDraft(draft) : null) ?? emptyBoard();
+    const restored = (drafts ? loadDraft(draft) : null) ?? initialBoard ?? emptyBoard();
     return { ...restored, shownAt: restored.shownAt ?? performance.now() };
   });
   const stored = useRef(false);
   // Save each completed action before a reload can discard it, including an undo or clear to an empty board.
+  // #249: any edit of the board or the typed working in this visit, Clear and Undo too, is changed work.
+  const edited = useRef(false);
+  const busy = useRef(false);
   const changeBoard = (next: BoardState) => {
-    if (testId && !stored.current) saveDraft(draft, next);
+    edited.current = true;
+    if (drafts && !stored.current) saveDraft(draft, next);
     setBoard(next);
   };
   const boardSize = useRef<BoardSize>({ width: 0, height: 0 });
@@ -509,9 +703,16 @@ function Question({ testId, typing, question, last, takeYourTime, onAnswer, fail
     });
   }, []);
 
-  const submit = async (e?: FormEvent) => {
-    e?.preventDefault();
-    if (!value || sending || stopping) return;
+  /**
+   * #249: leaves the question: Next, Back, or a failed save that opens another question. It sends the visit with the
+   * whiteboard work (#67) and what the child did (#184). Resolves false when the child stays on the question.
+   */
+  const leave = async (to: Target): Promise<Left> => {
+    // A ref, not the state: a failed save can call this before the screen shows that the question is leaving.
+    if (busy.current || stopping) return false;
+    // Next needs an answer; on an answered question Back does too (a child cannot clear an answer).
+    if (typeof to !== "object" && !value && (to === "next" || revisit)) return false;
+    busy.current = true;
     setSending(true);
     const timeMs = performance.now() - shownAt.current;
     let image: string | null = null;
@@ -530,16 +731,38 @@ function Question({ testId, typing, question, last, takeYourTime, onAnswer, fail
     const work: WorkPayload | undefined = image || typed || strokes
       ? { ...(image ? { image } : {}), ...(typed ? { text: typed } : {}), ...(strokes ? { strokes } : {}) }
       : undefined;
-    const ok = await onAnswer(question.id, value, timeMs, work, recorder.events(timeMs));
+    // #249: on a question the child went back to, the work changed when the child edited the board or the typed working
+    // in this visit (a cleared board is changed work with no drawing), or when it holds new work whose save failed.
+    const workChanged = !revisit || edited.current || initialBoard !== undefined;
+    const left = await onLeave({ questionId: question.id, response: value, timeMs, events: recorder.events(timeMs), work, workChanged, ...(revisit && { board }) }, to);
     // On success this question unmounts; on failure the child keeps the answer and the work, and can press Next again.
-    if (!ok) {
+    if (!left) {
+      busy.current = false;
       setSending(false);
-      return;
+      return false;
     }
-    stored.current = true;
-    saveDraft(draft, emptyBoard());
-    if (image || typed) track("test_work", { status: question.showWork ? "required" : "optional", channel: image && typed ? "both" : image ? "draw" : "type" });
+    if (left === "saved" && !revisit) {
+      stored.current = true;
+      saveDraft(draft, emptyBoard());
+    }
+    if (left === "saved" && (image || typed)) track("test_work", { status: question.showWork ? "required" : "optional", channel: image && typed ? "both" : image ? "draw" : "type" });
+    return left;
   };
+
+  const submit = async (e?: FormEvent) => {
+    e?.preventDefault();
+    await leave("next");
+  };
+
+  // #249: a failed save elsewhere moves the screen through this question's leave.
+  const leaveRef = useRef(leave);
+  useEffect(() => {
+    leaveRef.current = leave;
+  });
+  useEffect(() => {
+    onShown((to) => leaveRef.current(to));
+    return () => onShown(null);
+  }, [onShown]);
 
   // #190: Stop here. On success the next screen replaces this question; on failure the child can answer or stop again.
   const stop = async () => {
@@ -605,6 +828,8 @@ function Question({ testId, typing, question, last, takeYourTime, onAnswer, fail
           <div className="test-next">
             {/* #190: at the far end from Next, so it is not pressed by mistake. */}
             {onStop && <Button variant="ghost" onClick={stop} disabled={sending || stopping} aria-busy={stopping}>Stop here</Button>}
+            {/* #249: Back to the answered question before this one; hidden on the first question of a section. */}
+            {canBack && <Button variant="ghost" onClick={() => void leave("back")} disabled={sending || stopping || (revisit && !value)}>Back</Button>}
             <Button type="submit" disabled={!value || sending || stopping} aria-busy={sending}>{last ? "Finish" : "Next"}</Button>
           </div>
         </div>

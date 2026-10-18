@@ -1,7 +1,7 @@
 import { isUuid } from "@/lib/assessment-store";
 import { adminClient, parentId, sessionClient } from "@/lib/supabase-auth";
 import { ANSWER_BODY_MAX, refusalResponse, testFail, type StepResult } from "@/lib/test-api";
-import { answerQuestion } from "@/lib/test-attempt";
+import { answerQuestion, changeAnswer, type AnswerInput, type AttemptStore, type StepOutcome } from "@/lib/test-attempt";
 import { attemptStore } from "@/lib/test-attempt-server";
 import { parseWork } from "@/lib/work-payload";
 import { parseAnswerEvents } from "@/lib/answer-events";
@@ -11,6 +11,24 @@ import { parseAnswerEvents } from "@/lib/answer-events";
 // #147) runs the rules and stores the answer; this route reads the request (the size cap, the JSON and the work
 // payload) and only translates the result.
 export async function POST(request: Request, ctx: RouteContext<"/api/account/assessments/[id]/answers">) {
+  return handle(request, ctx, (store, parent, id, input) => answerQuestion(store, parent, id, input, Date.now()));
+}
+
+// #249: changes the answer to a question the child answered and went back to, in the open section. The same body as an
+// answer, with `workChanged`: true when the child drew or typed in this visit (the work replaces the stored work);
+// otherwise the stored work stays. The screen sends it in the background.
+export async function PUT(request: Request, ctx: RouteContext<"/api/account/assessments/[id]/answers">) {
+  return handle(request, ctx, (store, parent, id, input, body) => changeAnswer(store, parent, id, { ...input, workChanged: body.workChanged === true }, Date.now()));
+}
+
+type Body = { questionId?: unknown; response?: unknown; timeMs?: unknown; work?: unknown; events?: unknown; workChanged?: unknown };
+
+/** Reads an answer request (the size cap, the JSON and the work payload), runs it, and translates the result. */
+async function handle(
+  request: Request,
+  ctx: RouteContext<"/api/account/assessments/[id]/answers">,
+  run: (store: AttemptStore, parent: string, id: string, input: AnswerInput, body: Body) => Promise<StepOutcome>,
+) {
   const parent = await parentId(await sessionClient());
   if (!parent) return testFail("signed_out", 401);
   const admin = adminClient();
@@ -21,7 +39,7 @@ export async function POST(request: Request, ctx: RouteContext<"/api/account/ass
   if (Number(request.headers.get("content-length") ?? 0) > ANSWER_BODY_MAX) return tooBig();
   const raw = await readCapped(request, ANSWER_BODY_MAX);
   if (raw === null) return tooBig();
-  let body: { questionId?: unknown; response?: unknown; timeMs?: unknown; work?: unknown; events?: unknown };
+  let body: Body;
   try {
     body = JSON.parse(raw);
   } catch {
@@ -35,14 +53,14 @@ export async function POST(request: Request, ctx: RouteContext<"/api/account/ass
   const { id } = await ctx.params;
   if (!isUuid(id)) return testFail("not_found", 404);
   // One clock reading for the whole request: the expiry check and the guarded write use the same time (#72).
-  const result = await answerQuestion(attemptStore(admin), parent, id, {
+  const result = await run(attemptStore(admin), parent, id, {
     questionId: typeof body.questionId === "string" ? body.questionId : "",
     response: typeof body.response === "string" ? body.response : "",
     timeMs: Number(body.timeMs),
     work: { png: work.png, text: work.text, strokes: work.strokes },
     // #184: what the child did before Next, bounded. Events that cannot be used never stop the answer.
     events: parseAnswerEvents(body.events),
-  }, Date.now());
+  }, body);
   if (!result.ok) return refusalResponse(result);
   return Response.json({ ok: true, step: result.step } satisfies StepResult);
 }
