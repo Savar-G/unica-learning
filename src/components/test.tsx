@@ -17,6 +17,7 @@ import { track } from "@/lib/track";
 import { SUPPORT_EMAIL, SUPPORT_HREF } from "@/lib/contact";
 import { draftKey, draftPrefix, emptyBoard, hasDrawing, openMode, type BoardState } from "@/lib/whiteboard";
 import { fitStrokes, recordStrokes, storedBoard, type StoredWork } from "@/lib/strokes";
+import { leaveDestination, questionButtons, type LeaveAction, type QuestionButtons } from "@/lib/test-review";
 import { FactsSection } from "./facts";
 import { breakSeen, loadBreak, markBreakSeen, saveBreak, TestBreak } from "./test-break";
 import { Choices } from "./test-choices";
@@ -72,11 +73,8 @@ interface Visit {
   board?: BoardState;
 }
 
-/**
- * #249: where the child goes: Back, Next, a tap on a step (#253: an answered question by its number, or the newest
- * question, null), or (a save failed) back to the question whose save failed.
- */
-type Target = "back" | "next" | { go: number | null } | { reopen: number };
+/** #249: how the child leaves a question; `leaveDestination` (src/lib/test-review.ts) says where it goes. */
+type Target = LeaveAction;
 
 /** #249: a failed save moves the screen; every other way of leaving is the child's. */
 const reopening = (to: Target): to is { reopen: number } => typeof to === "object" && "reopen" in to;
@@ -443,14 +441,17 @@ export function TakeTest({ childId, name, breakAfter, ready, done, mode: firstMo
     if (reopen.current !== null) to = { reopen: reopen.current };
     if (!reopening(to)) setFailure(null);
     const from = viewingRef.current;
-    // #253: on the grid, the question on the screen is always an answered one.
-    const here = from ?? (screen.name === "question" ? screen.number : 0);
-    const numbers = answeredRef.current.map((a) => a.number);
-    // Next after the last answered question: the newest question, or (#253) the grid when the part is all answered.
-    // D-132: on the grid's questions (the child is reviewing) the main button is "Back to my answers": always the grid.
-    const target = reopening(to) ? to.reopen : typeof to === "object" ? to.go : to === "back" ? numbers.filter((n) => n < here).at(-1)
-      : screen.name === "check" ? null : numbers.find((n) => n > here) ?? null;
-    if (target === undefined || (from === null && target === null && !reopening(to) && to !== "next")) return false;
+    // #253: on the grid, the question on the screen is always an answered one. D-132: the grid's questions are in review.
+    const destination = leaveDestination({
+      reviewing: screen.name === "check",
+      answered: answeredRef.current.map((a) => a.number),
+      viewing: from,
+      newest: screen.name === "question" ? screen.number : 0,
+      failed: reopening(to) ? to.reopen : null,
+    }, to);
+    if (destination.to === "stay") return false;
+    // open(null) shows the newest question, or on the grid's questions the grid itself.
+    const target = destination.to === "question" ? destination.number : null;
 
     if (from === null) {
       if (to !== "next" && !reopening(to) && v.response) {
@@ -545,6 +546,9 @@ export function TakeTest({ childId, name, breakAfter, ready, done, mode: firstMo
         ? { part: screen.section === "stage1" ? 1 as const : screen.section === "stage2" ? 2 as const : "extra" as const, first: screen.numbers[0], last: screen.numbers.at(-1)!, current: viewed.number, newest: null }
         : null;
 
+  // D-132: the question's main button ("Back to my answers" in review) and whether "Stop here" shows (D-131).
+  const buttons = questionButtons({ reviewing: screen.name === "check", viewing, extraRound: screen.name === "question" && !!screen.extra });
+
   return (
     <div className="look-root test-root" data-look="warm">
       <header className="test-top">
@@ -580,16 +584,16 @@ export function TakeTest({ childId, name, breakAfter, ready, done, mode: firstMo
             initialBoard={viewed ? unsaved[viewed.question.id] : undefined} storedWork={viewed?.work}
             canBack={answered.some((a) => a.number < (viewed?.number ?? screen.number))}
             // #253: Next after the last question of a part goes to its grid; #254: so does the extra round's.
-            review={false} takeYourTime={!viewed && screen.takeYourTime} onLeave={leave} onShown={onShown} failure={failure}
+            main={buttons.main} takeYourTime={!viewed && screen.takeYourTime} onLeave={leave} onShown={onShown} failure={failure}
             // #190: Stop here on the round's newest question; a question the child went back to saves on leaving instead.
-            onStop={screen.extra && !viewed ? () => stopRound(screen.extra!.number - 1) : undefined} />
+            onStop={buttons.stopHere && screen.extra ? () => stopRound(screen.extra!.number - 1) : undefined} />
         )}
         {screen.name === "check" && (viewed
           // #253: an answered question opened from the grid. D-132: the child is reviewing, so "Back to my answers"
           // (in place of Next) saves it and comes back to the grid at once; Back and the step row still go to a question.
           ? <Question key={`${viewed.question.id}:${visit}`} testId={screen.testId} typing={typing}
               question={viewed.question} initial={viewed.response} revisit initialBoard={unsaved[viewed.question.id]} storedWork={viewed.work}
-              canBack={answered.some((a) => a.number < viewed.number)} review takeYourTime={false} onLeave={leave} onShown={onShown} failure={failure} />
+              canBack={answered.some((a) => a.number < viewed.number)} main={buttons.main} takeYourTime={false} onLeave={leave} onShown={onShown} failure={failure} />
           : <TestCheck name={name} part={screen.section === "stage1" ? 1 : screen.section === "stage2" ? 2 : "extra"} numbers={screen.numbers} offset={roundOffset} problem={<Problem error={failure} />}
               onOpen={(n) => {
                 setFailure(null);
@@ -721,10 +725,10 @@ interface QuestionProps {
   /** #249: an answered question of the section comes before this one, so Back shows. */
   canBack: boolean;
   /**
-   * #249 (D-132): the child is reviewing: the section's grid was reached (complete, not locked). The main button is
-   * "Back to my answers" in place of Next: it saves the answer as Next does and goes back to the grid at once.
+   * D-132: the main button's words: "Next", or "Back to my answers" once the section's grid was reached (complete, not
+   * locked), which saves the answer as Next does and goes back to the grid at once (`questionButtons`).
    */
-  review: boolean;
+  main: QuestionButtons["main"];
   /** #189: show "Take your time" above the question: the last three answers were very fast. */
   takeYourTime: boolean;
   /** #249: the child leaves the question (Next, Back, or a failed save opens another question). Resolves false when the child stays. */
@@ -737,7 +741,7 @@ interface QuestionProps {
 }
 
 // One question in the split desk (D-088): the question and the answer on the left, the whiteboard on the right.
-function Question({ testId, typing, question, initial, initialBoard, storedWork, revisit, canBack, review, takeYourTime, onLeave, onShown, failure, onStop }: QuestionProps) {
+function Question({ testId, typing, question, initial, initialBoard, storedWork, revisit, canBack, main, takeYourTime, onLeave, onShown, failure, onStop }: QuestionProps) {
   const [value, setValue] = useState(initial);
   const [sending, setSending] = useState(false);
   const [stopping, setStopping] = useState(false);
@@ -930,7 +934,7 @@ function Question({ testId, typing, question, initial, initialBoard, storedWork,
             {onStop && <Button variant="ghost" onClick={stop} disabled={sending || stopping} aria-busy={stopping}>Stop here</Button>}
             {/* #249: Back to the answered question before this one; hidden on the first question of a section. */}
             {canBack && <Button variant="ghost" className="test-back" onClick={() => void leave("back")} disabled={sending || stopping || (revisit && !value)}><BackLabel /></Button>}
-            <Button type="submit" className="test-go" arrow={false} disabled={!value || sending || stopping} aria-busy={sending}>{review ? <span>Back to my answers</span> : <NextLabel />}</Button>
+            <Button type="submit" className="test-go" arrow={false} disabled={!value || sending || stopping} aria-busy={sending}>{main === "Next" ? <NextLabel /> : <span>{main}</span>}</Button>
           </div>
         </div>
       </div>
