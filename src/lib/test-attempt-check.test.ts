@@ -125,12 +125,13 @@ describe("Done checking on stage 1", () => {
     expect(await changeAnswer(memory.store, P1, "a1", revisit(first, wrongTo(first)), T0 + 4 * HOUR)).toMatchObject({ ok: true });
   });
 
-  it("a failed lock write keeps the child on the grid with store_failed and the deadline back; pressing again locks it", async () => {
+  it("a failed lock write keeps the child on the grid with store_failed; pressing again locks it", async () => {
     logs();
     const memory = family(openTest(STAGE1));
     memory.fail.lockStage1 = new StoreError("route save failed", "timeout");
     expect(await doneChecking(memory.store, P1, "a1", "stage1", T0 + 2 * HOUR)).toEqual({ ok: false, error: "store_failed" });
-    expect(memory.tests[0]).toMatchObject({ resumeUntil: T0 + HOUR + DAY });
+    // The press keeps its 24 hours: the server cannot tell a failed write from a stored lock whose answer was lost.
+    expect(memory.tests[0]).toMatchObject({ resumeUntil: T0 + 2 * HOUR + DAY });
     expect(memory.tests[0].route ?? null).toBeNull();
     expect(await nextStep(memory.store, P1, "a1", T0 + 2 * HOUR)).toMatchObject({ ok: true, step: { status: "check", section: "stage1" } });
     delete memory.fail.lockStage1;
@@ -144,6 +145,45 @@ describe("Done checking on stage 1", () => {
     const again = await doneChecking(memory.store, P1, "a1", "stage1", T0 + 2 * HOUR + MINUTE);
     expect(again).toEqual(first);
     expect(memory.tests[0].route).toBe("up");
+  });
+
+  /** The family's store, where the first stage 1 lock is stored and then its answer is lost (the call throws after the write). */
+  const lostAnswer = (memory: ReturnType<typeof family>) => {
+    let lost = false;
+    const store = { ...memory.store };
+    store.lockStage1 = async (id, lock) => {
+      const stored = await memory.store.lockStage1(id, lock);
+      if (lost) return stored;
+      lost = true;
+      throw new StoreError("route save failed", "the response was lost");
+    };
+    return store;
+  };
+
+  it("a lock stored whose response was lost: the retry goes on, with the 24-hour window from Done checking (review of #253)", async () => {
+    logs();
+    const memory = family(openTest(STAGE1));
+    const store = lostAnswer(memory);
+    // 20 hours after the last answer: without a new window the test would close 5 hours later.
+    const pressed = T0 + 20 * HOUR;
+    expect(await doneChecking(store, P1, "a1", "stage1", pressed)).toEqual({ ok: false, error: "store_failed" });
+    expect(memory.tests[0].route).toBe("up");
+    const retried = pressed + MINUTE;
+    expect(await doneChecking(store, P1, "a1", "stage1", retried)).toMatchObject({ ok: true, step: { status: "question", number: STAGE1 + 1 } });
+    expect(memory.tests[0]).toMatchObject({ resumeUntil: retried + DAY, lastAnswerAt: retried });
+    expect(await nextStep(store, P1, "a1", pressed + 6 * HOUR)).toMatchObject({ ok: true, step: { number: STAGE1 + 1 } });
+    expect(await nextStep(store, P1, "a1", pressed + DAY)).toMatchObject({ ok: true });
+  });
+
+  it("two presses at once, one of them with its lock response lost: the 24-hour window from Done checking stays (review of #253)", async () => {
+    logs();
+    const memory = family(openTest(STAGE1));
+    const store = lostAnswer(memory);
+    const pressed = T0 + 20 * HOUR;
+    const results = await Promise.all([doneChecking(store, P1, "a1", "stage1", pressed), doneChecking(store, P1, "a1", "stage1", pressed)]);
+    expect(results.map((r) => r.ok).sort()).toEqual([false, true]);
+    expect(memory.tests[0]).toMatchObject({ route: "up", resumeUntil: pressed + DAY, lastAnswerAt: pressed });
+    expect(await nextStep(store, P1, "a1", pressed + 6 * HOUR)).toMatchObject({ ok: true, step: { number: STAGE1 + 1 } });
   });
 
   it("two presses at once store one route, and both go on to the same question", async () => {

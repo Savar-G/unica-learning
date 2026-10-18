@@ -682,8 +682,9 @@ export type CheckSection = "stage1" | "stage2";
  * moves the deadline like an answer (#72). The next step is the first question after halfway (the break and quick facts
  * come first). Stage 2: records the extra round's offer when one is due (that write is the lock, and must succeed) and
  * sends the offer; with none due it writes nothing, and the step goes on to "Did anyone help?". A section that is
- * already locked (a retry after a lost response, another tab) sends the step the test is at. "conflict" with the step
- * when the test is not on that grid and has not passed it.
+ * already locked (a retry after a lost response, another tab) sends the step the test is at; for stage 1 it also opens
+ * the answer window from `now` again, while main answers remain. "conflict" with the step when the test is not on that
+ * grid and has not passed it.
  */
 export async function doneChecking(store: AttemptStore, parent: string, id: string, section: CheckSection, now: number): Promise<StepOutcome> {
   for (let round = 0; round < ROUNDS; round++) {
@@ -691,7 +692,14 @@ export async function doneChecking(store: AttemptStore, parent: string, id: stri
     if (!open.ok) return open;
     const step = stepOf(open);
     if (step.status !== "check" || step.section !== section) {
-      return passed(open, section) ? carryOn(store, id, open, now) : { ok: false, error: "conflict", step };
+      if (!passed(open, section)) return { ok: false, error: "conflict", step };
+      // Review of #253: the press that stored the stage 1 lock may have lost its answer (or another tab pressed at the
+      // same moment). This press opens the answer window as that one did, so the 24 hours run from "Done checking".
+      if (section === "stage1" && open.attempt.status === "in_progress" && !mainAnswered(open.session)) {
+        const opened = await openWindow(store, parent, id, open.attempt, now);
+        if (opened !== true) return opened;
+      }
+      return carryOn(store, id, open, now);
     }
     if (section === "stage2") return lockStage2(store, id, open, now);
     const outcome = await lockFirstStage(store, parent, id, open, now);
@@ -708,21 +716,32 @@ function passed({ attempt, session, round }: ReadTest, section: CheckSection): b
   return round.offeredAt !== null || round.skippedAt !== null || round.startedAt !== null;
 }
 
-/** #253: the stage 1 lock of a test on its stage 1 grid. "changed": a stage 1 answer changed since the read; nothing is stored. */
-async function lockFirstStage(store: AttemptStore, parent: string, id: string, open: ReadTest, now: number): Promise<StepOutcome | "changed"> {
-  const { attempt, session } = open;
-  const route = lockStage1(session).route!;
-  // #72: "Done checking" opens the answer window like an answer: the deadline moves to 24 hours from now.
-  const until = recordAnswer(attempt, now).resumeUntil;
+/**
+ * #253: "Done checking" on stage 1 opens the answer window like an answer (#72): the deadline moves to 24 hours from
+ * `now`, and the last answer time is recorded. True when it opened; else why not (the test ran out of time or closed
+ * in between: a conflict with the fresh step).
+ */
+async function openWindow(store: AttemptStore, parent: string, id: string, attempt: Attempt, now: number): Promise<true | Refusal> {
   let opened: boolean;
   try {
-    opened = await store.openAnswerWindow(id, now, until);
+    opened = await store.openAnswerWindow(id, now, recordAnswer(attempt, now).resumeUntil);
   } catch (e) {
     console.error("[test]", messageOf(e));
     return { ok: false, error: "store_failed" };
   }
   if (!opened) return freshConflict(store, parent, id, now);
-  const undo = () => bestEffort("[test] deadline undo failed", () => store.undoAnswerWindow(id, until, attempt.resumeUntil));
+  await bestEffort("[test] answer time save failed", () => store.recordAnswerTime(id, now));
+  return true;
+}
+
+/** #253: the stage 1 lock of a test on its stage 1 grid. "changed": a stage 1 answer changed since the read; nothing is stored. */
+async function lockFirstStage(store: AttemptStore, parent: string, id: string, open: ReadTest, now: number): Promise<StepOutcome | "changed"> {
+  const { attempt, session } = open;
+  const route = lockStage1(session).route!;
+  // The window stays open whatever the lock's outcome (review of #253): a failed call may have stored the lock and
+  // lost only its answer, and an undo could also take back the window of another press at the same moment.
+  const opened = await openWindow(store, parent, id, attempt, now);
+  if (opened !== true) return opened;
   const answers = session.answers.slice(0, session.stage1.length).map(({ questionId, response }) => ({ questionId, response }));
   let stored: Route | "changed" | "closed";
   try {
@@ -730,14 +749,10 @@ async function lockFirstStage(store: AttemptStore, parent: string, id: string, o
   } catch (e) {
     // The child stays on the grid with "could not save", and can press "Done checking" again.
     logFailure("[test] route save failed", e);
-    await undo();
     return { ok: false, error: "store_failed" };
   }
-  if (stored === "changed" || stored === "closed") {
-    await undo();
-    return stored === "changed" ? "changed" : freshConflict(store, parent, id, now);
-  }
-  await bestEffort("[test] answer time save failed", () => store.recordAnswerTime(id, now));
+  if (stored === "changed") return "changed";
+  if (stored === "closed") return freshConflict(store, parent, id, now);
   // The stored route wins: a retry after a lost response, or another tab, may have stored it first.
   return carryOn(store, id, { ...open, session: { ...session, route: stored } }, now);
 }
