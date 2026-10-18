@@ -15,7 +15,7 @@ const toParent: EmailMessage = {
   replyTo: "contact@unicalearning.com",
   headers: { "List-Unsubscribe": "<https://unicalearning.com/api/unsubscribe?t=x>", "List-Unsubscribe-Post": "List-Unsubscribe=One-Click" },
 };
-const toSavar: EmailMessage = { sender: { to: "savar", testSenderName: "Unica Learning signups" }, to: "savar@unicalearning.com", subject: "Card link needed", text: "Plan chosen", replyTo: "priya@family.ca" };
+const toSavar: EmailMessage = { sender: { to: "savar" }, to: "savar@unicalearning.com", subject: "Card link needed", text: "Plan chosen", replyTo: "priya@family.ca" };
 
 type Seen = { url: string; init: RequestInit };
 function network(answer: (seen: Seen) => Promise<Response>) {

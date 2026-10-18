@@ -48,8 +48,8 @@ import { aiReport, aiReviewer, type AiOutcome, type WorkReviewer } from "@/lib/w
 /** What the alert says about the parent email: sent, refused (not sent), or unknown (uncertain). */
 type ParentEmail = Parameters<typeof reportAlert>[0]["parentEmail"];
 
-/** Alerts to Savar: EMAIL_FROM, else Resend's test sender as "Unica Learning reports". */
-const TO_SAVAR: Sender = { to: "savar", testSenderName: "Unica Learning reports" };
+/** Alerts to Savar, from EMAIL_FROM. */
+const TO_SAVAR: Sender = { to: "savar" };
 
 const message = (e: unknown) => (e instanceof Error ? e.message : String(e));
 

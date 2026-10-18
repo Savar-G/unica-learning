@@ -91,7 +91,7 @@ describe("a send once", () => {
   it("keeps different keys apart", async () => {
     const mail = memoryTransport();
     const book = memoryLedger<{ report: string; email: "parent" | "alert" }>();
-    const alert: EmailMessage = { sender: { to: "savar", testSenderName: "Unica Learning reports" }, to: "savar@unicalearning.com", subject: "Report: Priya", text: "A report went out." };
+    const alert: EmailMessage = { sender: { to: "savar" }, to: "savar@unicalearning.com", subject: "Report: Priya", text: "A report went out." };
     const outcomes = await Promise.all([
       sendEmailOnce(book.ledger, { report: "r1", email: "parent" }, report, { transport: mail.transport }),
       sendEmailOnce(book.ledger, { report: "r1", email: "alert" }, alert, { transport: mail.transport }),

@@ -108,20 +108,16 @@ const MAIN_UNTESTED = new RegExp([
 ].join("|"), "i");
 
 /**
- * A claim that the child works or may work above the level the test reached (D-132): the report's level block says it
- * already when the child cleared the top level, so the summary may not say it again. Only a claim about what the child
- * can do counts: working above, beyond or higher than the level, handling harder work, being ready for the next or a
- * higher level. "above grade level", "above the school grade", "found the higher level difficult" and "not ready for a
- * higher level" are not that claim, so they are kept.
+ * The exact claim the level block already makes when the child cleared the top level (D-132): the child "works" (or may,
+ * might, could, can work, or is working) above, beyond or higher than this, that, the, their or the child's level. Only
+ * this claim, so the summary does not say it twice. Not other wordings of "ready for more" (a dropped summary costs more
+ * than a rare reworded repeat, D-132), and not a negated claim ("does not", "cannot", "could not", "may not be working
+ * above this level").
  */
-const ABOVE_LEVEL = new RegExp([
-  String.raw`\b(?:above|beyond|past|higher\s+than)\s+(?:this|that|the|their|\{name\}'s)\s+(?:(?:tested|top|highest|current|working)\s+)?level\b`,
-  String.raw`\b(?:above|beyond)\s+(?:what|where)\s+the\s+test\b`,
-  // "can", "could", "may" or "might" handle harder work.
-  String.raw`\b(?:can|could|may|might|capable\s+of)\b[^.!?]{0,30}\b(?:handle|manage|cope\s+with|do|tackle|take\s+on|try)\s+(?:harder|tougher|more\s+(?:difficult|advanced|challenging))\b`,
-  // "ready for the next level", "ready for a higher level", "ready for harder work" (not "not ready").
-  String.raw`(?<!\bnot\s)(?<!n['’]t\s)\bready\s+(?:for|to\s+(?:move\s+(?:up|on)\s+to|start|try))\s+(?:(?:the\s+next|a\s+higher|a\s+harder)\s+level|(?:harder|more\s+advanced|more\s+difficult)\s+(?:work|questions|material))`,
-].join("|"), "i");
+const ABOVE_LEVEL = new RegExp(
+  String.raw`(?<!\b(?:not|never|cannot)\s+(?:be\s+)?)(?<!n['’]t\s+(?:be\s+)?)\bwork(?:s|ing)?\s+(?:above|beyond|higher\s+than)\s+(?:this|that|the|their|his|her|\{name\}'s)\s+(?:(?:tested|top|highest|current|working)\s+)?level\b`,
+  "i",
+);
 
 /** Which parent's AI text is checked: the report summary, or a likely cause on the report. */
 export type ParentText = "summary" | "likely-cause";
@@ -134,8 +130,8 @@ export type ParentText = "summary" | "likely-cause";
  * (D-120: grades 1-4 see accuracy only): in the summary, any timing word (TIMING), as its facts have no timing of any
  * kind; in a likely cause, a sentence about the facts that states their timing, as the main test's pace is in its facts.
  * "untested": that something was not tested (UNTESTED or MAIN_UNTESTED), at every grade; what the test did not ask is
- * code's to say. "repeat", in the summary only: that the child may work above the level (ABOVE_LEVEL, D-132); the
- * level block says it, and the AI is not told it (reportFacts). Null when the text may show. Also for stored text when it is read (storedReportModel, storedProfile).
+ * code's to say. "repeat", in the summary only: that the child works or may work above the level (ABOVE_LEVEL, D-132);
+ * the level block says it, and the AI is not told it (reportFacts). Null when the text may show. Also for stored text when it is read (storedReportModel, storedProfile).
  */
 export function parentTextProblem(text: string, grade: Grade, kind: ParentText = "likely-cause"): { problem: "speed" | "untested" | "repeat"; detail: string } | null {
   const anySpeed = grade < FACT_SPEED_FROM_GRADE && kind === "summary" ? text.match(TIMING) : null;

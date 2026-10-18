@@ -39,7 +39,7 @@ describe("the copy of a reminder", () => {
 
 describe("the copy of a report email", () => {
   it("names the report and which of its emails it is", () => {
-    const message = { sender: { to: "savar" as const, testSenderName: "Unica" }, to: "savar@x.ca", subject: "Test finished", text: "Done." };
+    const message = { sender: { to: "savar" as const }, to: "savar@x.ca", subject: "Test finished", text: "Done." };
     expect(copyRow({ reportId: "r1", reportEmail: "alert" }, "p1", { from: null, message, outcome: "refused", emailId: null })).toMatchObject({
       report_id: "r1", report_email: "alert", email_id: null, from_address: null, reply_to: null, html_body: null, outcome: "refused",
     });
