@@ -336,8 +336,11 @@ describe("stopping the round part way, during the test", () => {
     // Stopped: the test finishes as if the round had been skipped, so the card has nothing to say about a round.
     await stopExtraRound(memory.store, P1, "a1", at + MINUTE);
     expect((await states()).get(C1)).toEqual(FINISH);
-    // The round is offered, not started: the card says only that the answers are in.
-    expect((await startStates(family(mainDone(firstWrong)).store, P1, at)).get(C1)).toEqual(FINISH);
+    // The round is offered ("Done checking" on the part 2 grid, #253), not started: the card says only that the answers are in.
+    const offered = family(mainDone(firstWrong));
+    expect((await startStates(offered.store, P1, at)).get(C1)).toEqual({ ...FINISH, checkGrid: true });
+    await doneChecking(offered.store, P1, "a1", "stage2", at);
+    expect((await startStates(offered.store, P1, at)).get(C1)).toEqual(FINISH);
     // Every round answer is in.
     const done = await takenAndAnswered(0);
     await answerRound(done.memory, TAKEN);
