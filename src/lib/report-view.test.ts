@@ -350,6 +350,12 @@ describe("certainty labels", () => {
     expect(clear).not.toBe(early);
     expect(certaintyText(v, undefined)).toBeNull();
   });
+  it("never says Clear for a working level that is an estimate (#242; a stored report: report-loading.test.ts)", () => {
+    // Grade 4, knows up to grade 2: no level reaches 70%, so grade 2 is an estimate.
+    const estimate = view(knowsUpTo(2));
+    expect(estimate.model.level.confidence).toBe("low");
+    expect(estimate.model.level.certainty).toBe("early-sign");
+  });
   it("promises no workbook to a family on the waitlist, who has none yet", () => {
     const waitlist = certaintyText(view(allRight, { province: "ON" }), "early-sign");
     expect(waitlist).toBeTruthy();

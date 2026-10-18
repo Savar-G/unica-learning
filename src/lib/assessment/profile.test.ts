@@ -15,10 +15,13 @@ import {
   submitFact,
   type ChildProfile,
   type FactsSession,
+  type Grade,
   type HelpAnswer,
+  type ProfileAi,
   type ProfileAnswer,
   type Question,
 } from "@/lib/assessment";
+import { MAIN_REJECTED_UNTESTED } from "./untested-wordings";
 
 // The learner profile's facts (#196, spec #181), through the assessment core's public interface. A child takes a whole
 // test through the session, and the profile is built from the stored placement and the answers, as the report job does.
@@ -233,6 +236,34 @@ describe("what we do not know", () => {
     expect(profile.unknowns.checkNext).toEqual([]);
   });
 
+  it("does not list a standard the quick facts round tested (#242): the round asks the facts standards of the grade", () => {
+    // Grade 3 asks addition and subtraction facts to 20 (3.4); grade 5 also asks multiplication facts (5.8 and 5.9).
+    const factsOf = (grade: Grade) => {
+      let facts = createFacts({ grade, province: "BC" }, 5);
+      facts.facts.slice(0, 10).forEach((f, i) => { facts = submitFact(facts, { factId: f.id, response: String(f.answer), atMs: (i + 1) * 2000, browserMs: 2000 }); });
+      return facts;
+    };
+    const untestedOf = (t: ReturnType<typeof taken>) => learnerProfile({ placement: t.placement, answers: t.answers, help: "no", learning: null })!.unknowns.untested.map((s) => s.code);
+    for (const [grade, factCodes] of [[3, ["3.4"]], [5, ["5.8", "5.9"]]] as const) {
+      const questionsOnly = untestedOf(taken({ grade, province: "BC" }, 101, knows(grade)));
+      const withFacts = untestedOf(taken({ grade, province: "BC" }, 101, knows(grade), undefined, { facts: factsOf(grade) }));
+      // The questions alone leave a facts standard untested; the facts round tests it, and nothing else changes.
+      expect(questionsOnly.filter((c) => (factCodes as readonly string[]).includes(c)).length, `grade ${grade}`).toBeGreaterThan(0);
+      expect(withFacts, `grade ${grade}`).toEqual(questionsOnly.filter((c) => !(factCodes as readonly string[]).includes(c)));
+    }
+  });
+
+  it("calls an estimated working level an early sign, also from a placement stored when it said clear (#242)", () => {
+    // Every answer wrong: no level reaches 70%, so the working level is one under the lowest level asked, an estimate.
+    const { placement, answers } = taken({ grade: 5, province: "BC" }, 101, () => "no idea");
+    expect(placement.confidence).toBe("low");
+    const profile = learnerProfile({ placement, answers, help: "no", learning: null })!;
+    expect(profile.level.certainty).toBe("early-sign");
+    expect(profile.unknowns.earlySigns.level).toBe(true);
+    const stored = learnerProfile({ placement: { ...placement, levelCertainty: "clear" }, answers, help: "no", learning: null })!;
+    expect(stored.level.certainty).toBe("early-sign");
+  });
+
   it("names what to check next: struggles that one more answer could change, then untested standards in uncertain areas", () => {
     // One wrong answer on one grade 4 question: its standard is an early-sign struggle, and its area may become uncertain.
     const first = taken({ grade: 4, province: "BC" }, 101, knows(4)).questions;
@@ -270,6 +301,57 @@ describe("the parent's questionnaire", () => {
     const profile = learnerProfile({ placement: t.placement, answers: t.answers, help: "no", learning: null })!;
     expect(profile.preferences).toEqual({ styles: [], interests: [] });
     expect(profile.parent).toEqual({ feeling: null, goal: null, weeklyTime: null });
+  });
+});
+
+describe("a stored profile reads with the rules of today (#242)", () => {
+  // Every answer wrong: no level reaches 70%, so the working level is an estimate. Stored when an estimate could be clear.
+  const estimate = (grade: Grade) => {
+    const { placement, answers } = taken({ grade, province: "BC" }, 101, () => "no idea");
+    return learnerProfile({ placement, answers, help: "no", learning: null })!;
+  };
+
+  it("calls a stored estimate an early sign, also when it was stored as clear, for every reader of the profile", () => {
+    const profile = estimate(5);
+    expect(profile.level.confidence).toBe("low");
+    const old = JSON.parse(JSON.stringify({ ...profile, level: { ...profile.level, certainty: "clear" }, unknowns: { ...profile.unknowns, earlySigns: { ...profile.unknowns.earlySigns, level: false } } }));
+    const read = storedProfile(old)!;
+    expect(read.level.certainty).toBe("early-sign");
+    expect(read.unknowns.earlySigns.level).toBe(true);
+    expect(read).toEqual(profile);
+    // The stored value is not changed.
+    expect(old.level.certainty).toBe("clear");
+  });
+
+  it("leaves out a stored likely cause that says something was not tested, or that states the facts timing below grade 5; keeps the admin's ways to help (#245)", () => {
+    for (const grade of [3, 5] as const) {
+      const profile = estimate(grade);
+      const [a, b, c] = profile.struggles.map((s) => s.code);
+      const speedy = "{name} took 2 seconds to answer each fact.";
+      const ai: ProfileAi = {
+        likelyCauses: { model: "m", value: { [a]: "The multiplication facts were not tested.", [b]: speedy, [c]: "{name} mixed up the steps." } },
+        howToHelp: { model: "m", value: { [a]: "Ask the facts that were not tested.", [b]: speedy, [c]: "Practise one step at a time." } },
+      };
+      const read = storedProfile(JSON.parse(JSON.stringify({ ...profile, ai })))!;
+      const kept = grade < 5 ? { [c]: "{name} mixed up the steps." } : { [b]: speedy, [c]: "{name} mixed up the steps." };
+      expect(read.ai?.likelyCauses?.value, `grade ${grade}`).toEqual(kept);
+      // How to help is admin-only (spec #181): the parent text filters do not apply.
+      expect(read.ai?.howToHelp?.value, `grade ${grade}`).toEqual(ai.howToHelp?.value);
+    }
+    // A part with nothing left is absent.
+    const profile = estimate(3);
+    const ai: ProfileAi = { likelyCauses: { model: "m", value: { [profile.struggles[0].code]: "{name} answered the facts instantly." } } };
+    expect(storedProfile(JSON.parse(JSON.stringify({ ...profile, ai })))).not.toHaveProperty("ai");
+  });
+  it("leaves out a stored likely cause with any wording main's \"not tested\" check rejected in the review probes (#245 r3)", () => {
+    for (const grade of [3, 5] as const) {
+      const profile = estimate(grade);
+      expect(profile.struggles.length, `grade ${grade}`).toBeGreaterThan(0);
+      for (const text of MAIN_REJECTED_UNTESTED) {
+        const ai: ProfileAi = { likelyCauses: { model: "m", value: Object.fromEntries(profile.struggles.map((s) => [s.code, text])) } };
+        expect(storedProfile(JSON.parse(JSON.stringify({ ...profile, ai }))), `grade ${grade}: ${text}`).not.toHaveProperty("ai");
+      }
+    }
   });
 });
 

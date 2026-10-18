@@ -55,6 +55,17 @@ describe("the request", () => {
     const sent = JSON.stringify(request).toLowerCase();
     for (const gone of ["words or numbers", "wordsornumbers", "words-or-numbers"]) expect(sent).not.toContain(gone);
   });
+
+  it("sends no \"not tested\" label and no untested list, in the facts or the instructions (#245)", async () => {
+    const profile = struggling();
+    expect(profile.unknowns.untested.length).toBeGreaterThan(0);
+    const client = fakeAiClient({ answer: () => ({}) });
+    await expect(writeProfileAi(client, profile)).rejects.toThrow();
+    const [request] = client.requests;
+    expect(JSON.stringify(request)).not.toMatch(/not tested|untested|partly tested/i);
+    const facts = JSON.parse(request.content[0].type === "text" ? request.content[0].text : "");
+    expect(facts.profile.unknowns).not.toHaveProperty("untested");
+  });
 });
 
 describe("the development fake", () => {

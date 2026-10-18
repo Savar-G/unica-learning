@@ -3,6 +3,7 @@ import {
   MISCONCEPTIONS,
   reportFindings,
   storedProfile,
+  storedReportModel,
   type AttemptStatus,
   type ComparisonInput,
   type Grade,
@@ -247,7 +248,8 @@ async function findingsOf(reader: ReportReader, assessmentId: string) {
 /**
  * The report view of one report, as this reader may see it; null ("not found") when the reader finds no such report,
  * or finds it without its test or its child. Only the drawings of the report's work are signed. The test's learner
- * profile is read only for a report this reader found (#198), and only its parent's part reaches the view.
+ * profile is read only for a report this reader found (#198), and only its parent's part reaches the view. The stored
+ * model reads with the rules of today (storedReportModel, #242).
  */
 export async function loadReportView(reader: ReportReader, id: string): Promise<LoadedReport | null> {
   const row = await reader.report(id);
@@ -264,7 +266,7 @@ export async function loadReportView(reader: ReportReader, id: string): Promise<
       completedAt: row.assessment.completedAt,
       questions: row.questions,
       minutes: row.minutes,
-      model: row.model,
+      model: storedReportModel(row.model),
       workImages,
       findings,
     },

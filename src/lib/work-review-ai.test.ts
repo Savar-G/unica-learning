@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { reportModel } from "@/lib/assessment";
+import { FACTS_BY_GRADE, reportFacts, reportModel, type FactsResult } from "@/lib/assessment";
 import { knowsUpTo, takeTest } from "@/lib/assessment/scripted-child";
 import { fakeAiClient } from "@/lib/ai-client-fake";
 import { aiWorkReviewer } from "@/lib/work-review-ai";
@@ -73,6 +73,27 @@ describe("the AI work reviewer (#68, #183)", () => {
     const facts = JSON.parse(req.content[0].type === "text" ? req.content[0].text : "");
     expect(facts).toMatchObject({ child: "{name}", school_grade: "grade 4", working_level: "grade 4", working_level_against_school_grade: "the same", help_warning: false });
     expect(facts.areas).toEqual(model.strands.map((s) => expect.objectContaining({ area: s.name, right: s.correct, questions: s.total })));
+  });
+
+  it("sends only what the report measured for the report text: no \"not tested\" label and no untested list (#245)", async () => {
+    // Grade 5, after a facts round of multiplication (no division), and grade 3 with addition and subtraction facts.
+    for (const grade of [3, 5] as const) {
+      const facts: FactsResult = { families: [...FACTS_BY_GRADE[grade]], seconds: 60, answered: 20, correct: 18, skipped: 0, medianMs: 2500, accuracy: "secure", speed: "quick" };
+      const model = reportModel({ ...takeTest({ grade, province: "BC" }, 1, knowsUpTo(grade - 1)).placement, facts }, { completedTestsInGrade: 0, workReviews: [] });
+      const client = fakeAiClient({ answer: () => ({ text: "{name} is working at a grade 4 level." }) });
+      await aiWorkReviewer(client).reportText(model, signal());
+      const [req] = client.requests;
+      const sent = JSON.parse(req.content[0].type === "text" ? req.content[0].text : "");
+      // The data: the report's own facts and nothing else, so no key or value about what the test did not ask.
+      expect(sent, `grade ${grade}`).toEqual(reportFacts(model));
+      expect(Object.keys(sent).sort(), `grade ${grade}`).toEqual(
+        ["areas", "child", "help_warning", "level_is_estimate", "may_work_higher", "number_facts", "school_grade", "work", "working_level", "working_level_against_school_grade"],
+      );
+      expect(sent.number_facts, `grade ${grade}`).toMatchObject({ what: model.facts!.scope, right: 18, answered: 20 });
+      expect(JSON.stringify(sent), `grade ${grade}`).not.toMatch(/tested|untested|division|unknown|not asked/i);
+      // And the instructions.
+      expect(JSON.stringify(req), `grade ${grade}`).not.toMatch(/not tested|untested|partly tested/i);
+    }
   });
 
   it("report text output without a text string is an error", async () => {

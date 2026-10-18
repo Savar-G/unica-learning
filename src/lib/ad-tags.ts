@@ -1,4 +1,4 @@
-// Meta Pixel and the Google tag (Google Ads) for the ad test (D-123, docs/ad-tracking.md). Rules:
+// Meta Pixel and the Google tag (Google Ads) for the ad test (D-126, docs/ad-tracking.md). Rules:
 // - Off unless their IDs are set (NEXT_PUBLIC_META_PIXEL_ID, NEXT_PUBLIC_GOOGLE_ADS_ID); each conversion label is
 //   optional (NEXT_PUBLIC_GOOGLE_ADS_LEAD_LABEL, _REPORT_LABEL, _CARD_LABEL).
 // - Loaded only after the visitor accepts optional cookies (consent.ts), at the same moment as PostHog: after the

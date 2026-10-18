@@ -10,7 +10,7 @@ export interface GradeBand {
   length: number;
   /** Stage 1 questions, all at the school grade. */
   stage1: number;
-  /** Questions that require shown work on the whiteboard (#67). */
+  /** Questions marked show-your-work (#67). Since D-125 the mark is not enforced: it only ranks the work the report shows. */
   whiteboardRequired: number;
   /** True when the whiteboard has a text box beside the drawing. Grades 1-2 draw only (#67). */
   whiteboardTyping: boolean;

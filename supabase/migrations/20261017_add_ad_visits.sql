@@ -1,4 +1,4 @@
--- Ad test (D-123): Meta and Google Search ads link to the home page with UTM tags (utm_source=meta or google).
+-- Ad test (D-126): Meta and Google Search ads link to the home page with UTM tags (utm_source=meta or google).
 -- When a visit lands from an ad or a tagged link (a utm_source other than flyer, or a gclid or fbclid in the address),
 -- the browser makes one random visit ID for the tab and posts it once to /api/visit (src/app/api/visit/route.ts), which
 -- writes one row here after the response. The same visit ID goes into parents.source (key visit_id) when the visitor

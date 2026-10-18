@@ -1,6 +1,6 @@
 # Ad test tracking (Meta and Google Search)
 
-A CAD 100 ad test (D-123): two Meta ads and two Google Search ads, each linking to the home page with UTM tags. The measure that decides the test is **cost per finished assessment**. A saved card is a customer.
+A CAD 100 ad test (D-126): two Meta ads and two Google Search ads, each linking to the home page with UTM tags. The measure that decides the test is **cost per finished assessment**. A saved card is a customer.
 
 | Channel | Tags on the ad's link |
 |---|---|

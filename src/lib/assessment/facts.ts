@@ -26,6 +26,15 @@ interface FactFamily {
   bcGrade: Grade;
   /** BC learning standard, for example "4.8". */
   standard: string;
+  /**
+   * #242, #245: what the family's facts ask, the one source for both the standards and the skills a round tests: each
+   * BC standard whose facts it asks, with the skill map skills of that standard its facts ask (skill-map.ts). A standard
+   * whose BC title is these facts counts in every grade BC repeats them ("addition and subtraction facts to 20" in grades
+   * 2-5, the facts to 100 in grades 4-7), also when its skills go past the facts (5.8 extends the facts to 20 to larger
+   * numbers, 6.2 and 7.1 use strategies with larger numbers): then it lists no skill. A family of multiplication facts
+   * lists no division skill.
+   */
+  asks: Readonly<Record<string, readonly string[]>>;
   draw(rng: Rng): Pick<Fact, "a" | "op" | "b" | "answer">;
 }
 
@@ -35,20 +44,27 @@ const mul = (a: number, b: number) => ({ a, op: "×" as const, b, answer: a * b 
 /** Either order: 7 × 5 and 5 × 7 are the same fact. */
 const either = (rng: Rng, a: number, b: number) => (rng.int(0, 1) ? mul(a, b) : mul(b, a));
 
+/** Addition and subtraction facts to 20, in each grade BC lists them, with the skills an addition or a subtraction fact asks. */
+const ADD_20 = { "1.3": ["1.3-add-within-20"], "2.3": ["2.3-fact-strategies-20"], "3.4": ["3.4-recall-addition-20"], "4.7": ["4.7-addition-facts-fluency"], "5.8": [] };
+const SUB_20 = { "1.3": ["1.3-subtract-within-20"], "2.3": ["2.3-fact-strategies-20"], "3.4": ["3.4-subtraction-facts-20"], "4.7": ["4.7-addition-facts-fluency"], "5.8": [] };
+/** Multiplication and division facts to 100, in each grade BC lists them: 10 × 10 holds the 2s, 5s and 10s of grade 4. */
+const MUL_100 = { "4.8": ["4.8-multiplication-facts"], "5.9": ["5.9-recall-facts"], "6.2": [], "7.1": [] };
+const DIV_100 = { "4.8": ["4.8-division-facts"], "5.9": [], "6.2": [], "7.1": [] };
+
 const FAMILIES: Record<FactFamilyId, FactFamily> = {
   // 1.3 addition and subtraction to 20 (understanding); facts to 10 come first (K-1, "ways to make 10").
-  add10: { bcGrade: 1, standard: "1.3", draw: (rng) => { const a = rng.int(1, 9); return add(a, rng.int(1, 10 - a)); } },
-  sub10: { bcGrade: 1, standard: "1.3", draw: (rng) => { const a = rng.int(2, 10); return sub(a, rng.int(1, a)); } },
+  add10: { bcGrade: 1, standard: "1.3", asks: { "1.3": ["1.3-add-within-20"] }, draw: (rng) => { const a = rng.int(1, 9); return add(a, rng.int(1, 10 - a)); } },
+  sub10: { bcGrade: 1, standard: "1.3", asks: { "1.3": ["1.3-subtract-within-20"] }, draw: (rng) => { const a = rng.int(2, 10); return sub(a, rng.int(1, a)); } },
   // 2.3 addition and subtraction facts to 20.
-  add20: { bcGrade: 2, standard: "2.3", draw: (rng) => add(rng.int(2, 10), rng.int(2, 10)) },
-  sub20: { bcGrade: 2, standard: "2.3", draw: (rng) => { const b = rng.int(2, 10); return sub(b + rng.int(2, 10), b); } },
+  add20: { bcGrade: 2, standard: "2.3", asks: ADD_20, draw: (rng) => add(rng.int(2, 10), rng.int(2, 10)) },
+  sub20: { bcGrade: 2, standard: "2.3", asks: SUB_20, draw: (rng) => { const b = rng.int(2, 10); return sub(b + rng.int(2, 10), b); } },
   // 4.8: recall 2s, 5s and 10s by the end of grade 4. 3.5 says memorizing multiplication facts is not intended in grade 3.
-  mul2510: { bcGrade: 4, standard: "4.8", draw: (rng) => either(rng, rng.pick([2, 5, 10]), rng.int(2, 10)) },
+  mul2510: { bcGrade: 4, standard: "4.8", asks: { "4.8": ["4.8-multiplication-facts"] }, draw: (rng) => either(rng, rng.pick([2, 5, 10]), rng.int(2, 10)) },
   // 5.9: recall many facts (2s, 3s, 4s, 5s, 10s) by the end of grade 5.
-  mul234510: { bcGrade: 5, standard: "5.9", draw: (rng) => either(rng, rng.pick([2, 3, 4, 5, 10]), rng.int(2, 10)) },
+  mul234510: { bcGrade: 5, standard: "5.9", asks: { "4.8": ["4.8-multiplication-facts"], "5.9": ["5.9-recall-facts"] }, draw: (rng) => either(rng, rng.pick([2, 3, 4, 5, 10]), rng.int(2, 10)) },
   // 6.2 and 7.1: multiplication and division facts to 100 (10 × 10, never 12 × 12).
-  mul100: { bcGrade: 6, standard: "6.2", draw: (rng) => mul(rng.int(2, 10), rng.int(2, 10)) },
-  div100: { bcGrade: 6, standard: "6.2", draw: (rng) => { const b = rng.int(2, 10); const q = rng.int(2, 10); return { a: b * q, op: "÷" as const, b, answer: q }; } },
+  mul100: { bcGrade: 6, standard: "6.2", asks: MUL_100, draw: (rng) => mul(rng.int(2, 10), rng.int(2, 10)) },
+  div100: { bcGrade: 6, standard: "6.2", asks: DIV_100, draw: (rng) => { const b = rng.int(2, 10); const q = rng.int(2, 10); return { a: b * q, op: "÷" as const, b, answer: q }; } },
 };
 
 /** The fact families for each school grade: what BC expects at that grade, never above it. */
@@ -61,6 +77,22 @@ export const FACTS_BY_GRADE: Record<Grade, readonly FactFamilyId[]> = {
   6: ["mul100", "div100"],
   7: ["mul100", "div100"],
 };
+
+/**
+ * #245: what a facts section with these families asked (FactFamily.asks): each BC standard it tested, with the skill map
+ * skills of that standard it asked, each once. factsStandards and factsSkills read it, so the two always agree.
+ */
+export function factsCoverage(families: readonly FactFamilyId[]): Record<string, string[]> {
+  const coverage: Record<string, string[]> = {};
+  for (const [code, skills] of families.flatMap((f) => Object.entries(FAMILIES[f].asks))) {
+    coverage[code] = [...new Set([...(coverage[code] ?? []), ...skills])];
+  }
+  return coverage;
+}
+/** #242: the BC standards a facts section with these families tested, so the profile does not call them untested. */
+export const factsStandards = (families: readonly FactFamilyId[]): string[] => Object.keys(factsCoverage(families));
+/** #242: the skill map skills a facts section with these families asked, each once. */
+export const factsSkills = (families: readonly FactFamilyId[]): string[] => [...new Set(Object.values(factsCoverage(families)).flat())];
 
 /** How long the section lasts (spec: 60-90 seconds; DESIGN.md: 60). */
 export const FACTS_SECONDS = 60;
