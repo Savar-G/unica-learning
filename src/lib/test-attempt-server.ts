@@ -160,6 +160,25 @@ export function attemptStore(admin: SupabaseClient): AttemptStore {
       return data ? eventsOf(data) : null;
     },
 
+    // #252: the rows' work columns, then each strokes file from the bucket, at the same time. A strokes file that cannot
+    // be read is left out (logged): its board opens empty, and its stored work stays unless the child changes it.
+    async answerWork(id, positions) {
+      if (!positions.length) return [];
+      const { data, error } = await admin.from("answers").select("position, work_path, work_text, strokes_path")
+        .eq("assessment_id", id).in("position", [...positions])
+        .returns<{ position: number; work_path: string | null; work_text: string | null; strokes_path: string | null }[]>();
+      if (error) throw new StoreError("answer work load failed", error.message);
+      return Promise.all((data ?? []).map(async (row) => {
+        let strokes: string | null = null;
+        if (row.strokes_path) {
+          const { data: file, error: fileError } = await admin.storage.from(WORK_BUCKET).download(row.strokes_path);
+          if (fileError || !file) console.error("[strokes] download failed", fileError?.message ?? "no file");
+          else strokes = await file.text();
+        }
+        return { position: row.position, workPath: row.work_path, workText: row.work_text, strokesPath: row.strokes_path, strokes };
+      }));
+    },
+
     // #249: one database function (migration add_answer_change) checks the section's guards and overwrites the row in
     // one transaction, and returns the work it replaced; null when a guard failed.
     async changeAnswer(id, { position, questionId, response, correct, misconception, timeMs, answeredAt, events, work }, unansweredFrom) {

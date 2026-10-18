@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { boardAt, encodeStrokes, fitStrokes, recordStrokes, replayLength, type StrokeEvent, type StrokeRecording, type TimedPoint } from "@/lib/strokes";
+import { boardAt, encodeStrokes, fitStrokes, storedBoard, recordStrokes, replayLength, type StrokeEvent, type StrokeRecording, type TimedPoint } from "@/lib/strokes";
 import type { BoardEvent } from "@/lib/whiteboard";
 
 // The whiteboard strokes (#186): what the child drew, in order, with times since the question was shown, so an admin
@@ -117,6 +117,47 @@ describe("the admin's replay", () => {
   it("lasts until the last thing the child did", () => {
     expect(replayLength(work)).toBe(3500);
     expect(replayLength(recording(line([[0.1, 0.1, 0]])))).toBe(0);
+  });
+});
+
+describe("the stored work back on the board on a revisit (#252)", () => {
+  // A stroke, an eraser stroke, an undo (the eraser goes), a stroke, a clear, a stroke: only the last stroke stays.
+  const stored: StrokeRecording = {
+    v: 1,
+    width: 812,
+    height: 640,
+    events: [
+      { kind: "stroke", erase: false, w: 3.2, pts: [[0.1, 0.2, 400], [0.15, 0.25, 480]] },
+      { kind: "stroke", erase: true, w: 26, pts: [[0.12, 0.22, 1000]] },
+      { kind: "undo", t: 1500 },
+      { kind: "stroke", erase: false, w: 3.2, pts: [[0.3, 0.3, 1600]] },
+      { kind: "clear", t: 2000 },
+      { kind: "stroke", erase: false, w: 3.2, pts: [[0.5, 0.5, 3000], [0.6, 0.6, 3100]] },
+    ],
+  };
+  /** performance.now() when the question opens again. */
+  const NOW = 50_000;
+
+  it("shows what was on the board when the child left it, with the typed working", () => {
+    const board = storedBoard({ strokes: stored, text: "3 + 4" }, NOW);
+    expect(board.strokes).toEqual([{ erase: false, w: 3.2, pts: [[0.5, 0.5], [0.6, 0.6]] }]);
+    expect(board.text).toBe("3 + 4");
+  });
+
+  it("keeps every earlier stroke, undo and clear, so new work records after them and the replay loses nothing", () => {
+    const board = storedBoard({ strokes: stored }, NOW);
+    expect(board.text).toBe("");
+    // The child draws one more stroke 2 seconds after the question opens again.
+    const log: BoardEvent[] = [...board.log, { kind: "stroke", stroke: { erase: false, w: 3.2, pts: [[0.7, 0.7]] }, times: [NOW + 2000] }];
+    expect(recordStrokes(log, board.shownAt!, { width: 812, height: 640 })).toEqual({
+      ...stored,
+      events: [...stored.events, { kind: "stroke", erase: false, w: 3.2, pts: [[0.7, 0.7, 5100]] }],
+    });
+  });
+
+  it("with typed working only, or no work: the board has no strokes", () => {
+    expect(storedBoard({ text: "12" }, NOW)).toMatchObject({ strokes: [], text: "12", log: [] });
+    expect(storedBoard({}, NOW)).toMatchObject({ strokes: [], text: "", log: [] });
   });
 });
 

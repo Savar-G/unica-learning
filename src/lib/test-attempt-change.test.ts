@@ -248,6 +248,82 @@ describe("the step carries the open section's answered questions, for Back (#249
   });
 });
 
+describe("the step carries the work of the open section's answered questions, so the board shows it at once (#252)", () => {
+  const recording = { v: 1, width: 812, height: 640, events: [{ kind: "stroke", erase: false, w: 3.2, pts: [[0.1, 0.2, 400], [0.15, 0.25, 480]] }] };
+  const other = { v: 1, width: 600, height: 400, events: [{ kind: "stroke", erase: false, w: 3.2, pts: [[0.5, 0.5, 100]] }] };
+
+  /** Asha's test with 2 answers in, then question 3 answered with `work`. */
+  async function answered(work: AnswerInput["work"]) {
+    const memory = family(openTest(2));
+    const q = current(memory.tests[0]);
+    expect(await answerQuestion(memory.store, P1, "a1", { questionId: q.id, response: q.answer, timeMs: 20_000, work }, T0 + HOUR + MINUTE)).toMatchObject({ ok: true });
+    return { memory, q };
+  }
+  const stepAt = async (memory: ReturnType<typeof family>, now: number) => {
+    const result = await nextStep(memory.store, P1, "a1", now);
+    if (!result.ok || result.step.status !== "question") throw new Error("expected a question");
+    return result.step;
+  };
+
+  it("the strokes and the typed working, as stored; an answer with no work carries none", async () => {
+    const { memory } = await answered({ png: DRAWING, text: "3 + 4", strokes: JSON.stringify(recording) });
+    const step = await stepAt(memory, T0 + 2 * HOUR);
+    expect(step.answered?.map((a) => a.work)).toEqual([undefined, undefined, { strokes: recording, text: "3 + 4" }]);
+  });
+
+  it("the answer request's step carries the work of the answer it just stored", async () => {
+    const memory = family(openTest(2));
+    const q = current(memory.tests[0]);
+    const result = await answerQuestion(memory.store, P1, "a1", { questionId: q.id, response: q.answer, timeMs: 20_000, work: { png: null, text: "7", strokes: JSON.stringify(recording) } }, T0 + HOUR + MINUTE);
+    expect(result).toMatchObject({ ok: true, step: { answered: [{ number: 1 }, { number: 2 }, { number: 3, work: { strokes: recording, text: "7" } }] } });
+  });
+
+  it("after a change with new work, the new work; after an erased board, none", async () => {
+    const { memory, q } = await answered({ png: DRAWING, text: "3 + 4", strokes: JSON.stringify(recording) });
+    const work = { png: OTHER_DRAWING, text: "4 + 3", strokes: JSON.stringify(other) };
+    expect(await changeAnswer(memory.store, P1, "a1", revisit(memory.tests[0], 2, q.answer, { work, workChanged: true }), T0 + 2 * HOUR))
+      .toMatchObject({ ok: true, step: { answered: [{}, {}, { work: { strokes: other, text: "4 + 3" } }] } });
+    expect((await stepAt(memory, T0 + 2 * HOUR + MINUTE)).answered?.[2].work).toEqual({ strokes: other, text: "4 + 3" });
+    await changeAnswer(memory.store, P1, "a1", revisit(memory.tests[0], 2, q.answer, { workChanged: true }), T0 + 3 * HOUR);
+    expect((await stepAt(memory, T0 + 3 * HOUR + MINUTE)).answered?.[2].work).toBeUndefined();
+  });
+
+  it("a drawing stored with no strokes (before #186) carries no strokes: its board opens empty", async () => {
+    const { memory } = await answered({ png: DRAWING, text: "" });
+    expect((await stepAt(memory, T0 + 2 * HOUR)).answered?.[2].work).toBeUndefined();
+  });
+
+  it("when the work cannot be read, the step still goes, with the answers and no work", async () => {
+    logs();
+    const { memory, q } = await answered({ png: DRAWING, text: "3 + 4", strokes: JSON.stringify(recording) });
+    memory.fail.answerWork = new StoreError("answer work load failed", "boom");
+    const step = await stepAt(memory, T0 + 2 * HOUR);
+    expect(step.answered?.map((a) => [a.response, a.work])).toEqual([[at(memory.tests[0], 0).answer, undefined], [at(memory.tests[0], 1).answer, undefined], [q.answer, undefined]]);
+  });
+});
+
+describe("a typed-only change on a board that opened empty keeps the stored drawing (#252)", () => {
+  it("a drawing stored with no strokes (before #186) stays when the child only types; the typed working changes", async () => {
+    const memory = family(openTest(2));
+    const q = current(memory.tests[0]);
+    await answerQuestion(memory.store, P1, "a1", { questionId: q.id, response: q.answer, timeMs: 20_000, work: { png: DRAWING, text: "" } }, T0 + HOUR + MINUTE);
+    const { workPath } = memory.tests[0].answers[2];
+    const typed = revisit(memory.tests[0], 2, q.answer, { work: { png: null, text: "3 + 4" }, workChanged: true });
+    expect(await changeAnswer(memory.store, P1, "a1", typed, T0 + 2 * HOUR)).toMatchObject({ ok: true });
+    expect(memory.tests[0].answers[2]).toMatchObject({ workPath, workText: "3 + 4" });
+    expect([...memory.drawings.keys()]).toEqual([workPath]);
+  });
+
+  it("a drawing the child draws over replaces it", async () => {
+    const memory = family(openTest(2));
+    const q = current(memory.tests[0]);
+    await answerQuestion(memory.store, P1, "a1", { questionId: q.id, response: q.answer, timeMs: 20_000, work: { png: DRAWING, text: "" } }, T0 + HOUR + MINUTE);
+    const drawn = revisit(memory.tests[0], 2, q.answer, { work: { png: OTHER_DRAWING, text: "" }, workChanged: true });
+    expect(await changeAnswer(memory.store, P1, "a1", drawn, T0 + 2 * HOUR)).toMatchObject({ ok: true });
+    expect([...memory.drawings]).toEqual([[memory.tests[0].answers[2].workPath, OTHER_DRAWING]]);
+  });
+});
+
 describe("the timeline of a changed answer (#184)", () => {
   /** Asha's test with 2 answers in, then question 3 answered through the module with `first` as its events. */
   async function withThird(first: AnswerEvents, timeMs = 20_000) {

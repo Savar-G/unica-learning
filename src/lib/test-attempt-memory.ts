@@ -280,6 +280,14 @@ export function memoryAttemptStore({ children: kids = [], tests: initial = [] }:
       await begin("answerEvents");
       return structuredClone(tests.find((t) => t.id === id)?.answers[position]?.timeline?.events ?? null);
     },
+    async answerWork(id, positions) {
+      await begin("answerWork");
+      const answers = tests.find((t) => t.id === id)?.answers ?? [];
+      return positions.filter((p) => answers[p]).map((position) => {
+        const { workPath = null, workText = null, strokesPath = null } = answers[position];
+        return { position, workPath, workText, strokesPath, strokes: (strokesPath && strokes.get(strokesPath)) ?? null };
+      });
+    },
     // #249: the guards of the change, checked together with the write, as in the database function change_answer.
     async changeAnswer(id, { position, answeredAt, events, work, ...marked }, unansweredFrom) {
       await begin("changeAnswer");

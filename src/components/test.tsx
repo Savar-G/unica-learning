@@ -16,7 +16,7 @@ import { deviceOf, type BreakEvent, type BreakResume, type ContextResult, type T
 import { track } from "@/lib/track";
 import { SUPPORT_EMAIL, SUPPORT_HREF } from "@/lib/contact";
 import { draftKey, draftPrefix, emptyBoard, hasDrawing, type BoardState } from "@/lib/whiteboard";
-import { fitStrokes, recordStrokes } from "@/lib/strokes";
+import { fitStrokes, recordStrokes, storedBoard, type StoredWork } from "@/lib/strokes";
 import { FactsSection } from "./facts";
 import { breakSeen, loadBreak, markBreakSeen, saveBreak, TestBreak } from "./test-break";
 import { Choices } from "./test-choices";
@@ -448,7 +448,11 @@ export function TakeTest({ childId, name, breakAfter, ready, done, mode: firstMo
       if (typeof to !== "object") return false;
       keep(v);
     } else {
-      setList(answeredRef.current.map((a) => (a.number === from ? { ...a, response: v.response } : a)));
+      // #252: changed work is what the server stores (strokes only with a drawing), so the next visit shows it at once.
+      const work = (a: AnsweredQuestion): StoredWork | undefined => (v.workChanged
+        ? { ...(v.work?.image && v.work.strokes && { strokes: v.work.strokes }), ...(v.work?.text && { text: v.work.text }) }
+        : a.work);
+      setList(answeredRef.current.map((a) => (a.number === from ? { ...a, response: v.response, work: work(a) } : a)));
       setUnsavedWork(v.questionId, null);
       saveChange(from, withCarry(v));
     }
@@ -503,7 +507,7 @@ export function TakeTest({ childId, name, breakAfter, ready, done, mode: firstMo
         {screen.name === "question" && (
           <Question key={`${(viewed?.question ?? screen.question).id}:${visit}`} testId={screen.testId} typing={typing}
             question={viewed?.question ?? screen.question} initial={viewed ? viewed.response : held[screen.question.id] ?? ""} revisit={viewed !== null}
-            initialBoard={viewed ? unsaved[viewed.question.id] : undefined}
+            initialBoard={viewed ? unsaved[viewed.question.id] : undefined} storedWork={viewed?.work}
             canBack={answered.some((a) => a.number < (viewed?.number ?? screen.number))}
             last={!viewed && screen.number === screen.total} takeYourTime={!viewed && screen.takeYourTime} onLeave={leave} onShown={onShown} failure={failure}
             onStop={screen.extra ? () => stopRound(screen.extra!.number - 1) : undefined} />
@@ -621,9 +625,11 @@ interface QuestionProps {
   question: PublicQuestion;
   /** #249: the answer on the screen when the question opens: the child's answer to a question they went back to. */
   initial: string;
-  /** #249: the board an answered question opens with: the child's new work when its save failed. Else it opens empty. */
+  /** #249: the board an answered question opens with: the child's new work when its save failed. Else `storedWork`. */
   initialBoard?: BoardState;
-  /** #249: an answered question the child went back to. Its whiteboard opens empty (#252 brings the work back). */
+  /** #252: the stored strokes and typed working of an answered question, on its board at once; it opens empty without them. */
+  storedWork?: StoredWork;
+  /** #249: an answered question the child went back to. */
   revisit: boolean;
   /** #249: an answered question of the section comes before this one, so Back shows. */
   canBack: boolean;
@@ -640,7 +646,7 @@ interface QuestionProps {
 }
 
 // One question in the split desk (D-088): the question and the answer on the left, the whiteboard on the right.
-function Question({ testId, typing, question, initial, initialBoard, revisit, canBack, last, takeYourTime, onLeave, onShown, failure, onStop }: QuestionProps) {
+function Question({ testId, typing, question, initial, initialBoard, storedWork, revisit, canBack, last, takeYourTime, onLeave, onShown, failure, onStop }: QuestionProps) {
   const [value, setValue] = useState(initial);
   const [sending, setSending] = useState(false);
   const [stopping, setStopping] = useState(false);
@@ -669,11 +675,12 @@ function Question({ testId, typing, question, initial, initialBoard, revisit, ca
   const onRead = useCallback(() => recorder.readAloud(performance.now() - shownAt.current), [recorder]);
 
   // #67: the whiteboard. A resume of this question on this device brings back the work from before the stop (#72).
-  // #249: an answered question the child went back to keeps no draft: its board opens empty.
+  // #249: an answered question the child went back to keeps no draft. #252: its board opens with the stored work, which
+  // the step brought, so it is on the board in the first frame; the server copy is the truth.
   const draft = draftKey(testId, question.id);
   const drafts = !!testId && !revisit;
   const [board, setBoard] = useState<BoardState>(() => {
-    const restored = (drafts ? loadDraft(draft) : null) ?? initialBoard ?? emptyBoard();
+    const restored = (drafts ? loadDraft(draft) : null) ?? initialBoard ?? (storedWork ? storedBoard(storedWork, performance.now()) : emptyBoard());
     return { ...restored, shownAt: restored.shownAt ?? performance.now() };
   });
   const stored = useRef(false);
