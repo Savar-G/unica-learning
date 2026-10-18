@@ -120,7 +120,7 @@ describe("the sender", () => {
     expect(net.body()).toMatchObject({ from: "Unica Learning <contact@unicalearning.com>", to: ["savar@unicalearning.com"], reply_to: "priya@family.ca" });
   });
 
-  it("of an email to Savar must be EMAIL_FROM too: without it the email is refused, and Resend is never asked (D-132)", async () => {
+  it("of an email to Savar must be EMAIL_FROM too: without it the email is refused, and Resend is never asked (D-133)", async () => {
     vi.stubEnv("EMAIL_FROM", "");
     const net = network(answer(200, { id: "e1" }));
     expect(await resendTransport({ fetch: net.fetch }).send(toSavar)).toEqual({ status: "refused", error: "EMAIL_FROM is not set" });

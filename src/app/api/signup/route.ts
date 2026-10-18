@@ -100,7 +100,7 @@ async function notify(
   const key = process.env.RESEND_API_KEY;
   const to = process.env.SIGNUP_NOTIFY_EMAIL;
   if (!key || !to) return;
-  // Every email goes from EMAIL_FROM (contact@unicalearning.com, D-132).
+  // Every email goes from EMAIL_FROM (contact@unicalearning.com, D-133).
   const from = process.env.EMAIL_FROM;
   if (!from) {
     console.error("[signup] notify skipped: EMAIL_FROM is not set");

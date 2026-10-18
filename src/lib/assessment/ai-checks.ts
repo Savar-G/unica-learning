@@ -17,7 +17,7 @@ export const REPORT_TEXT_MAX = 600;
  * "voice": first person, or the AI named (D-085: AI is named only in the privacy page and the terms). "pronoun": he or
  * she (the report does not know the child's gender). "number": a number that is not among the report's facts.
  * "speed" and "untested": what a parent's AI text about the child may not say (parentTextProblem, #242, #245).
- * "repeat": the summary says the child may work above the level, which the verdict block already says (D-132).
+ * "repeat": the summary says the child may work above the level, which the verdict block already says (D-133).
  */
 export type ReportTextProblem = "length" | "format" | "voice" | "pronoun" | "number" | "speed" | "untested" | "repeat";
 
@@ -108,10 +108,10 @@ const MAIN_UNTESTED = new RegExp([
 ].join("|"), "i");
 
 /**
- * The exact claim the level block already makes when the child cleared the top level (D-132): the child "works" (or may,
+ * The exact claim the level block already makes when the child cleared the top level (D-133): the child "works" (or may,
  * might, could, can work, or is working) above, beyond or higher than this, that, the, their or the child's level. Only
  * this claim, so the summary does not say it twice. Not other wordings of "ready for more" (a dropped summary costs more
- * than a rare reworded repeat, D-132).
+ * than a rare reworded repeat, D-133).
  */
 const ABOVE_LEVEL = new RegExp(
   String.raw`\bwork(?:s|ing)?\s+(?:above|beyond|higher\s+than)\s+(?:this|that|the|their|his|her|\{name\}'s)\s+(?:(?:tested|top|highest|current|working)\s+)?level\b`,
@@ -140,7 +140,7 @@ export type ParentText = "summary" | "likely-cause";
  * (D-120: grades 1-4 see accuracy only): in the summary, any timing word (TIMING), as its facts have no timing of any
  * kind; in a likely cause, a sentence about the facts that states their timing, as the main test's pace is in its facts.
  * "untested": that something was not tested (UNTESTED or MAIN_UNTESTED), at every grade; what the test did not ask is
- * code's to say. "repeat", in the summary only: that the child works or may work above the level (ABOVE_LEVEL, D-132);
+ * code's to say. "repeat", in the summary only: that the child works or may work above the level (ABOVE_LEVEL, D-133);
  * the level block says it, and the AI is not told it (reportFacts). Null when the text may show. Also for stored text when it is read (storedReportModel, storedProfile).
  */
 export function parentTextProblem(text: string, grade: Grade, kind: ParentText = "likely-cause"): { problem: "speed" | "untested" | "repeat"; detail: string } | null {

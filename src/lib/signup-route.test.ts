@@ -112,7 +112,7 @@ it.each([{}, { website: "bot" }, { grade: 9 }])("keeps validation and the bot co
   else expect(response.status).toBe(200);
 });
 
-it("sends the signup alert to Savar from EMAIL_FROM, never from Resend's test sender (D-132)", async () => {
+it("sends the signup alert to Savar from EMAIL_FROM, never from Resend's test sender (D-133)", async () => {
   vi.stubEnv("RESEND_API_KEY", "re_synthetic");
   vi.stubEnv("SIGNUP_NOTIFY_EMAIL", "savar@unicalearning.com");
   vi.stubEnv("EMAIL_FROM", "Unica Learning <contact@unicalearning.com>");

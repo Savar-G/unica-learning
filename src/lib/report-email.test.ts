@@ -181,7 +181,7 @@ describe("the report email to the parent", () => {
       expect(email.html).toContain("Maya is working at a grade 3 level &amp; Maya&#39;s best area is Patterns and algebra.");
     });
 
-    it("says a child may work above the level once: the level note stays and a summary that repeats it is dropped (D-132)", () => {
+    it("says a child may work above the level once: the level note stays and a summary that repeats it is dropped (D-133)", () => {
       const v = view(allRight);
       const repeated = storedReportModel({ ...v.model, summary: "{name} is working at a grade 5 level and may work above this level." });
       const email = reportEmail({ unsubscribeUrl: UNSUB, view: { ...v, model: repeated }, parentName: "Priya", url: URL });

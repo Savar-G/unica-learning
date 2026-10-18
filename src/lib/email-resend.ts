@@ -18,7 +18,7 @@ export function resendConfigProblem(): string | null {
   return null;
 }
 
-/** The sender address: EMAIL_FROM for every email, to a parent or to Savar (D-132), or null when it is not set. */
+/** The sender address: EMAIL_FROM for every email, to a parent or to Savar (D-133), or null when it is not set. */
 export function resendSender(): string | null {
   return process.env.EMAIL_FROM || null;
 }

@@ -208,7 +208,7 @@ describe("report model", () => {
     const withText = (reportText: string | null, placement = grade4(knowsUpTo(4))) =>
       reportModel(placement, { completedTestsInGrade: 0, workReviews: [], reportText });
 
-    describe("the level claim the page already shows (D-132)", () => {
+    describe("the level claim the page already shows (D-133)", () => {
       const ceiling = () => grade4(allRight);
       const REPEATS = [
         "{name} may work above this level.",
@@ -278,7 +278,7 @@ describe("report model", () => {
           "{name} is working at a grade 5 level. Practise Fractions and decimals.",
           "{name} handled the Number questions well and could practise fractions.",
           "Harder fractions questions are the area to practise.",
-          // Allowed by decision (D-132): a rare reworded repeat costs less than a dropped summary.
+          // Allowed by decision (D-133): a rare reworded repeat costs less than a dropped summary.
           "{name} may be ready for more challenging work.",
           "{name} is ready to progress to a higher level.",
           "{name} could handle harder work.",
