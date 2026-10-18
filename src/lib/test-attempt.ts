@@ -562,7 +562,8 @@ export async function answerQuestion(store: AttemptStore, parent: string, id: st
 // the answer: the change overwrites the stored answer, so the report, the admin page and the export read the final one.
 // A visit that keeps the answer adds its time and events. Stage 1 closes at its lock ("Done checking" on its grid,
 // #253), which stores the route; stage 2 closes when the test moves on (the extra round's offer, skip or start) or is
-// finished. The extra round takes no change yet (#254).
+// finished. #254: the extra round closes when it is stopped during the test, or finished (with the test, or from the
+// report).
 
 /** #249: a change of an answered question, as the route read it: the answer, and whether the work changed in this visit. */
 export interface ChangeInput extends AnswerInput {
@@ -575,13 +576,15 @@ export interface ChangeInput extends AnswerInput {
 
 /**
  * #249: the section of the test that takes changes now, or null: only while the test is in progress; stage 1 until
- * it is locked (#253: the stored route), stage 2 until the test moves on to the extra round. The extra round takes none
- * yet.
+ * it is locked (#253: the stored route), stage 2 until the test moves on to the extra round. #254: the extra round
+ * while it takes answers: during the test until it is stopped or the test is finished, and from the report until it is
+ * finished.
  */
-function changeable({ attempt, session, round }: ReadTest): OpenSection | null {
-  if (attempt.status !== "in_progress") return null;
+function changeable(read: ReadTest): OpenSection | null {
+  const { attempt, session, round } = read;
   const open = openSection(session);
-  if (open.name === "extra") return null;
+  if (open.name === "extra") return takesAnswers(read) ? open : null;
+  if (attempt.status !== "in_progress") return null;
   if (open.name === "stage2" && (round.offeredAt !== null || round.skippedAt !== null || round.startedAt !== null)) return null;
   return open;
 }
@@ -703,8 +706,8 @@ export async function changeAnswer(store: AttemptStore, parent: string, id: stri
 // (status "check"). "Done checking" locks the section, and the test goes on: stage 1 to the halfway break, quick facts
 // and stage 2; stage 2 to the extra round's offer or to "Did anyone help?".
 
-/** #253: a section of the test that ends on a "Check your answers" grid. */
-export type CheckSection = "stage1" | "stage2";
+/** #253: a section of the test that ends on a "Check your answers" grid. #254: also the extra round. */
+export type CheckSection = "stage1" | "stage2" | "extra";
 
 /**
  * #253: "Done checking" on the grid of `section` of the parent's test at `now`: locks the section and sends the next
@@ -731,6 +734,10 @@ export async function doneChecking(store: AttemptStore, parent: string, id: stri
       }
       return carryOn(store, id, open, now);
     }
+    // #254: the round's grid during the test writes nothing: the round locks with the finish (or a stop), so "Done
+    // checking" leads to "Did anyone help?", and a resume shows the grid again. A round from the report finishes with
+    // the finish request, which its screen sends on "Done checking"; here it gets the step without the grid.
+    if (section === "extra") return { ok: true, step: roundStep(open) };
     const outcome = section === "stage2" ? await lockStage2(store, parent, id, open, now) : await lockFirstStage(store, parent, id, open, now);
     // An answer changed between the read and the lock: read again, and lock from the final answers.
     if (outcome !== "changed") return outcome;
@@ -738,8 +745,14 @@ export async function doneChecking(store: AttemptStore, parent: string, id: stri
   return { ok: false, error: "busy" };
 }
 
-/** #253: true when the test moved past `section`: stage 1 is locked (a route is stored), or stage 2 is locked (the round was offered, skipped or started, or the test is finished). */
-function passed({ attempt, session, round }: ReadTest, section: CheckSection): boolean {
+/**
+ * #253: true when the test moved past `section`: stage 1 is locked (a route is stored), or stage 2 is locked (the round
+ * was offered, skipped or started, or the test is finished). #254: the extra round is locked once it takes no answers
+ * (stopped, or finished).
+ */
+function passed(read: ReadTest, section: CheckSection): boolean {
+  const { attempt, session, round } = read;
+  if (section === "extra") return !!session.extra && !takesAnswers(read);
   if (attempt.status === "completed") return true;
   if (section === "stage1") return session.route !== null;
   return round.offeredAt !== null || round.skippedAt !== null || round.startedAt !== null;
@@ -1322,9 +1335,12 @@ export interface ExtraRoundStore {
   startExtraRound(id: string, round: { at: number; test: StoredTest }): Promise<"stored" | "taken">;
   /**
    * A round taken from the report: stores the placement scored again with the round's answers, and the finish time,
-   * only while the test is completed and its round started and not finished. False: another request finished it first.
+   * only while the test is completed and its round started and not finished ("already": another request finished it
+   * first), and (#254) only while the stored answers are still `answers` (the question, response and time at each
+   * place that the placement scored): "changed" when an answer changed since they were read, and then nothing is
+   * stored. A change and this write never both win (the Supabase function takes the same row lock as change_answer).
    */
-  finishExtraRound(id: string, finished: { at: number; placement: Placement }): Promise<boolean>;
+  finishExtraRound(id: string, finished: { at: number; placement: Placement; answers: readonly Submission[] }): Promise<"finished" | "already" | "changed">;
 }
 
 /**
@@ -1345,8 +1361,9 @@ const takesAnswers = ({ attempt, session, round }: ReadTest): boolean =>
 function stepOf(read: ReadTest): TestStep {
   const main = roundStep(read);
   const section = changeable(read);
-  const step: TestStep = main.status === "complete" && section?.name === "stage2"
-    ? { status: "check", section: "stage2", numbers: section.answered.map((a) => a.position + 1), total: main.total, breakAfter: read.session.stage1.length }
+  // #254: the extra round's grid too, while the round takes answers (not after a stop, not once it is finished).
+  const step: TestStep = main.status === "complete" && (section?.name === "stage2" || section?.name === "extra")
+    ? { status: "check", section: section.name, numbers: section.answered.map((a) => a.position + 1), total: main.total, breakAfter: read.session.stage1.length }
     : main;
   if (step.status === "complete") return step;
   const answered = section?.answered ?? [];
@@ -1510,20 +1527,23 @@ async function latestTest(store: AttemptStore, parent: string, id: string): Prom
 
 /**
  * Finishes a round taken from the report on the completed test at `now`: scores the test again with the round's
- * answers, the facts section and the stored help answer, and stores the new placement once.
+ * answers, the facts section and the stored help answer, and stores the new placement once. #254: "changed" when a
+ * round answer changed while the test was scored: nothing is stored, and the finish reads the test again.
  */
-async function finishRound(store: AttemptStore, id: string, read: ReadTest, now: number): Promise<FinishOutcome> {
+async function finishRound(store: AttemptStore, id: string, read: ReadTest, now: number): Promise<FinishOutcome | "changed"> {
   if (testStep(read.session).status !== "complete") return { ok: false, error: "incomplete" };
   const facts = await readSection(store, id);
   if (!facts.ok) return facts;
   const placement = finish(read.session, facts.section?.session ?? null, read.help);
-  let won: boolean;
+  const answers = read.session.answers.map(({ questionId, response, timeMs }) => ({ questionId, response, timeMs }));
+  let outcome: "finished" | "already" | "changed";
   try {
-    won = await store.finishExtraRound(id, { at: now, placement });
+    outcome = await store.finishExtraRound(id, { at: now, placement, answers });
   } catch (e) {
     return storeFailed(e);
   }
-  return { ok: true, id: read.attempt.id, finished: won ? "now" : "already" };
+  if (outcome === "changed") return "changed";
+  return { ok: true, id: read.attempt.id, finished: outcome === "finished" ? "now" : "already" };
 }
 
 /**

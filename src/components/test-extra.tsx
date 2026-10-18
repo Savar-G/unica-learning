@@ -82,9 +82,11 @@ export function ExtraIntro({ name, entry, busy, onStart, problem }: { name: stri
           <li><b>No calculator.</b> Work the answers out yourself.</li>
           <li><b>No help from a parent.</b> Do the questions on your own. Grown-ups, please let your child work alone.</li>
           <li><b>Scrap paper is fine.</b> Work things out on paper or on the whiteboard, if it helps. We only need your answers.</li>
+          {/* #254 (D-127): Back and the steps at the top, until the child finishes the extra questions. */}
+          <li><b>You can go back.</b> Press Back, or tap a number at the top, to change an answer. You can do this until you finish.</li>
         </ul>
         <p className="test-intro-note">
-          {again ? "Your answers are saved. You go on from the question where you stopped." : "Answer one question at a time. You cannot go back, so check each answer before you press Next."}
+          {again ? "Your answers are saved. You go on from the question where you stopped." : "Answer one question at a time."}
         </p>
         {problem}
         <Button onClick={onStart} disabled={busy} aria-busy={busy}>{busy ? "Opening…" : again ? "Continue" : "Start"}</Button>

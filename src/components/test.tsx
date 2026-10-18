@@ -33,8 +33,8 @@ type Screen =
   | { name: "intro" }
   /** `testId` keys the saved whiteboard of the question (#67). */
   | { name: "question"; question: PublicQuestion; number: number; total: number; breakAfter: number; testId: string; takeYourTime: boolean; extra?: { number: number; total: number } }
-  /** #253: "Check your answers" at the end of a part: its question numbers; "Done checking" locks it. */
-  | { name: "check"; section: "stage1" | "stage2"; numbers: number[]; total: number; breakAfter: number; testId: string }
+  /** #253: "Check your answers" at the end of a part: its question numbers; "Done checking" locks it. #254: also the extra round. */
+  | { name: "check"; section: "stage1" | "stage2" | "extra"; numbers: number[]; total: number; breakAfter: number; testId: string }
   | { name: "break"; next: Extract<TestStep, { status: "question" }> }
   /** The timed facts section (#70), after the halfway break; then the test carries on with `next`. */
   | { name: "facts"; testId: string; next: Extract<TestStep, { status: "question" }> }
@@ -251,7 +251,7 @@ export function TakeTest({ childId, name, breakAfter, ready, done, mode: firstMo
         setScreen({ name: "offer", offer: step.extraRound });
         return true;
       }
-      // A round the report offered again has no help question: its last answer sends it.
+      // A round the report offered again has no help question: its finish goes on "Done checking" (#254).
       if (extra) return finish(null);
       setScreen({ name: "help" });
       return true;
@@ -486,11 +486,16 @@ export function TakeTest({ childId, name, breakAfter, ready, done, mode: firstMo
    * #253: "Done checking" on the grid, after the saves before it. It locks the part, and the test goes on: after part 1
    * to the break, after part 2 to the extra round's offer or "Did anyone help?". Resolves false when it failed: the child
    * stays on the grid with the error and can press it again, or (a save failed) on the question whose save failed.
+   * #254: after the extra round during the test, "Did anyone help?"; a round the report offered again sends its finish.
    */
-  const doneChecking = async (section: "stage1" | "stage2"): Promise<boolean> => {
+  const doneChecking = async (section: "stage1" | "stage2" | "extra"): Promise<boolean> => {
     setFailure(null);
     await saves.current;
     if (viewingRef.current !== null) return false;
+    if (section === "extra" && extra) {
+      track("test_check", { status: section });
+      return finish(null);
+    }
     const res = await call<StepResult>(`/api/account/assessments/${testId.current}/check`, post({ section }));
     if (res.ok) {
       track("test_check", { status: section });
@@ -526,12 +531,17 @@ export function TakeTest({ childId, name, breakAfter, ready, done, mode: firstMo
 
   // #249: the question on the screen: an answered one the child went back to, or the newest one.
   const viewed = (screen.name === "question" || screen.name === "check") && viewing !== null ? answered.find((a) => a.number === viewing) ?? null : null;
-  // #253: the step row of the open part, on a question of the main test (not on the grid itself, nor in the extra round).
-  const steps = screen.name === "question" && !screen.extra
-    ? { part: screen.number <= screen.breakAfter ? 1 as const : 2 as const, first: screen.number <= screen.breakAfter ? 1 : screen.breakAfter + 1, last: screen.number <= screen.breakAfter ? screen.breakAfter : screen.total, current: viewed?.number ?? screen.number, newest: screen.number }
-    : screen.name === "check" && viewed
-      ? { part: screen.section === "stage1" ? 1 as const : 2 as const, first: screen.numbers[0], last: screen.numbers.at(-1)!, current: viewed.number, newest: null }
-      : null;
+  // #254: in the extra round the child sees the round's own numbers: the main test's length comes off each number.
+  const roundOffset = screen.name === "question" && screen.extra ? screen.number - screen.extra.number
+    : screen.name === "check" && screen.section === "extra" ? screen.numbers[0] - 1 : 0;
+  // #253: the step row of the open part, on a question (not on the grid itself). #254: also in the extra round.
+  const steps = screen.name === "question" && screen.extra
+    ? { part: "extra" as const, first: roundOffset + 1, last: screen.total, current: viewed?.number ?? screen.number, newest: screen.number }
+    : screen.name === "question"
+      ? { part: screen.number <= screen.breakAfter ? 1 as const : 2 as const, first: screen.number <= screen.breakAfter ? 1 : screen.breakAfter + 1, last: screen.number <= screen.breakAfter ? screen.breakAfter : screen.total, current: viewed?.number ?? screen.number, newest: screen.number }
+      : screen.name === "check" && viewed
+        ? { part: screen.section === "stage1" ? 1 as const : screen.section === "stage2" ? 2 as const : "extra" as const, first: screen.numbers[0], last: screen.numbers.at(-1)!, current: viewed.number, newest: null }
+        : null;
 
   return (
     <div className="look-root test-root" data-look="warm">
@@ -539,16 +549,19 @@ export function TakeTest({ childId, name, breakAfter, ready, done, mode: firstMo
         <span className="logo">Unica Learning<b /></span>
         {screen.name === "question" && (screen.extra
           // #190: the extra round's own progress, after the main test (the ring before it).
-          ? <TestProgress answered={screen.extra.number - 1} total={screen.extra.total} breakAfter={0} at="question" />
+          ? <TestProgress answered={screen.extra.number - 1} total={screen.extra.total} breakAfter={0} at="question" current={(viewed?.number ?? screen.number) - roundOffset - 1} />
           : <TestProgress answered={screen.number - 1} total={screen.total} breakAfter={screen.breakAfter} at="question" current={(viewed?.number ?? screen.number) - 1} />)}
-        {screen.name === "check" && <TestProgress answered={screen.numbers.at(-1)!} total={screen.total} breakAfter={screen.breakAfter} at="check" current={viewed ? viewed.number - 1 : undefined} />}
+        {screen.name === "check" && (screen.section === "extra"
+          // #254: the extra round's own progress, as on its questions.
+          ? <TestProgress answered={screen.numbers.length} total={screen.numbers.length} breakAfter={0} at="check" current={viewed ? viewed.number - roundOffset - 1 : undefined} />
+          : <TestProgress answered={screen.numbers.at(-1)!} total={screen.total} breakAfter={screen.breakAfter} at="check" current={viewed ? viewed.number - 1 : undefined} />)}
         {screen.name === "offer" && progress && <TestProgress answered={progress.total} total={progress.total} breakAfter={progress.breakAfter} at="help" />}
         {screen.name === "break" && <TestProgress answered={screen.next.breakAfter} total={screen.next.total} breakAfter={screen.next.breakAfter} at="halfway" />}
         {screen.name === "facts" && <TestProgress answered={screen.next.number - 1} total={screen.next.total} breakAfter={screen.next.breakAfter} at="facts" />}
         {(screen.name === "help" || screen.name === "done") && progress && <TestProgress answered={progress.total} total={progress.total} breakAfter={progress.breakAfter} at={screen.name === "help" ? "help" : "end"} />}
       </header>
       {steps && (
-        <TestSteps part={steps.part} numbers={Array.from({ length: steps.last - steps.first + 1 }, (_, i) => steps.first + i)}
+        <TestSteps part={steps.part} offset={roundOffset} numbers={Array.from({ length: steps.last - steps.first + 1 }, (_, i) => steps.first + i)}
           answered={new Set(answered.map((a) => a.number))} current={steps.current} newest={steps.newest}
           onGo={(n) => void leaveScreen.current?.({ go: n })} />
       )}
@@ -564,16 +577,17 @@ export function TakeTest({ childId, name, breakAfter, ready, done, mode: firstMo
             question={viewed?.question ?? screen.question} initial={viewed ? viewed.response : held[screen.question.id] ?? ""} revisit={viewed !== null}
             initialBoard={viewed ? unsaved[viewed.question.id] : undefined} storedWork={viewed?.work}
             canBack={answered.some((a) => a.number < (viewed?.number ?? screen.number))}
-            // #253: Next after the last question of a part goes to its grid; only the extra round's last question finishes.
-            last={!viewed && !!screen.extra && screen.number === screen.total} takeYourTime={!viewed && screen.takeYourTime} onLeave={leave} onShown={onShown} failure={failure}
-            onStop={screen.extra ? () => stopRound(screen.extra!.number - 1) : undefined} />
+            // #253: Next after the last question of a part goes to its grid; #254: so does the extra round's.
+            last={false} takeYourTime={!viewed && screen.takeYourTime} onLeave={leave} onShown={onShown} failure={failure}
+            // #190: Stop here on the round's newest question; a question the child went back to saves on leaving instead.
+            onStop={screen.extra && !viewed ? () => stopRound(screen.extra!.number - 1) : undefined} />
         )}
         {screen.name === "check" && (viewed
           // #253: an answered question opened from the grid; Next after the part's last question comes back to the grid.
           ? <Question key={`${viewed.question.id}:${visit}`} testId={screen.testId} typing={typing}
               question={viewed.question} initial={viewed.response} revisit initialBoard={unsaved[viewed.question.id]} storedWork={viewed.work}
               canBack={answered.some((a) => a.number < viewed.number)} last={false} takeYourTime={false} onLeave={leave} onShown={onShown} failure={failure} />
-          : <TestCheck name={name} part={screen.section === "stage1" ? 1 : 2} numbers={screen.numbers} problem={<Problem error={failure} />}
+          : <TestCheck name={name} part={screen.section === "stage1" ? 1 : screen.section === "stage2" ? 2 : "extra"} numbers={screen.numbers} offset={roundOffset} problem={<Problem error={failure} />}
               onOpen={(n) => {
                 setFailure(null);
                 open(n);

@@ -2,7 +2,8 @@
 
 // Back, the tappable progress steps and "Check your answers" (#249, #253), option B of design round r251 (D-127):
 // under today's thin bar (read only), one row of round number steps for the open part only; at the end of a part, a
-// full-width page of large ink number tiles. A step or a tile never shows right or wrong.
+// full-width page of large ink number tiles. A step or a tile never shows right or wrong. #254: the extra round has
+// the same row and grid, with the round's own numbers (1 to 8) and the label "Extra".
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { Button } from "@/ds";
 import "./test-base.css";
@@ -22,11 +23,18 @@ export const BackLabel = () => <>{ICON.left}<span>Back</span></>;
 /** "Next →" (D-127). */
 export const NextLabel = ({ text = "Next" }: { text?: string }) => <><span>{text}</span>{ICON.right}</>;
 
+/** #253: the part of the test a row or a grid is for: 1 before the halfway break, 2 after it; #254: the extra round. */
+export type TestPart = 1 | 2 | "extra";
+
+/** The number the child sees for a question: its number in the test, or in the extra round its number in the round. */
+const shownNumber = (n: number, offset: number) => n - offset;
+
 export interface TestStepsProps {
-  /** 1 before the halfway break, 2 after it. */
-  part: 1 | 2;
+  part: TestPart;
   /** The part's question numbers in the test, in order. */
   numbers: readonly number[];
+  /** #254: subtracted from a number to show it: the main test's length in the extra round, else 0. */
+  offset?: number;
   /** The answered questions of the part: tappable. */
   answered: ReadonlySet<number>;
   /** The question on the screen. */
@@ -42,7 +50,7 @@ export interface TestStepsProps {
  * newest question, not answered yet = white with a grey ring; not reached = a small light grey dot, not tappable. When
  * the row is wider than the screen it scrolls sideways and keeps the step on screen in view.
  */
-export function TestSteps({ part, numbers, answered, current, newest, onGo }: TestStepsProps) {
+export function TestSteps({ part, numbers, offset = 0, answered, current, newest, onGo }: TestStepsProps) {
   const row = useRef<HTMLElement>(null);
   const [cut, setCut] = useState(false);
   useLayoutEffect(() => {
@@ -60,15 +68,16 @@ export function TestSteps({ part, numbers, answered, current, newest, onGo }: Te
   }, [current, numbers.length]);
 
   const step = (n: number) => {
-    if (n === current) return <button key={n} type="button" className="test-step is-now" aria-current="step" aria-label={`Question ${n}, on screen now`}>{n}</button>;
-    if (answered.has(n)) return <button key={n} type="button" className="test-step is-done" aria-label={`Question ${n}, answered. Tap to look again.`} onClick={() => onGo(n)}>{n}</button>;
-    if (n === newest) return <button key={n} type="button" className="test-step is-next" aria-label={`Question ${n}, not answered yet`} onClick={() => onGo(null)}>{n}</button>;
+    const shown = shownNumber(n, offset);
+    if (n === current) return <button key={n} type="button" className="test-step is-now" aria-current="step" aria-label={`Question ${shown}, on screen now`}>{shown}</button>;
+    if (answered.has(n)) return <button key={n} type="button" className="test-step is-done" aria-label={`Question ${shown}, answered. Tap to look again.`} onClick={() => onGo(n)}>{shown}</button>;
+    if (n === newest) return <button key={n} type="button" className="test-step is-next" aria-label={`Question ${shown}, not answered yet`} onClick={() => onGo(null)}>{shown}</button>;
     return <span key={n} className="test-step is-later" aria-hidden />;
   };
   return (
-    <nav ref={row} className={`test-steps${cut ? " is-cut" : ""}`} aria-label={`Questions in part ${part}`}>
+    <nav ref={row} className={`test-steps${cut ? " is-cut" : ""}`} aria-label={part === "extra" ? "Extra questions" : `Questions in part ${part}`}>
       <div className="test-steps-in">
-        <span className="test-steps-part">Part {part}</span>
+        <span className="test-steps-part">{part === "extra" ? "Extra" : `Part ${part}`}</span>
         {numbers.map(step)}
       </div>
     </nav>
@@ -77,9 +86,11 @@ export function TestSteps({ part, numbers, answered, current, newest, onGo }: Te
 
 export interface TestCheckProps {
   name: string;
-  part: 1 | 2;
+  part: TestPart;
   /** The part's question numbers in the test: every one is answered. */
   numbers: readonly number[];
+  /** #254: subtracted from a number to show it: the main test's length in the extra round, else 0. */
+  offset?: number;
   /** Opens the question with this number. */
   onOpen: (number: number) => void;
   /** "Done checking": locks the part. Resolves false when it failed and the child can press it again. */
@@ -89,7 +100,7 @@ export interface TestCheckProps {
 }
 
 /** "Check your answers": the part's questions as large number tiles (answered only, never right or wrong), and "Done checking". */
-export function TestCheck({ name, part, numbers, onOpen, onDone, problem }: TestCheckProps) {
+export function TestCheck({ name, part, numbers, offset = 0, onOpen, onDone, problem }: TestCheckProps) {
   const heading = useRef<HTMLHeadingElement>(null);
   useEffect(() => heading.current?.focus(), []);
   const [sending, setSending] = useState(false);
@@ -102,17 +113,17 @@ export function TestCheck({ name, part, numbers, onOpen, onDone, problem }: Test
   return (
     <section className="test-check" aria-labelledby="test-check-title">
       <div className="test-check-in">
-        <p className="test-kicker">Part {part} · {numbers.length} questions</p>
+        <p className="test-kicker">{part === "extra" ? "Extra questions" : `Part ${part}`} · {numbers.length} questions</p>
         <h1 id="test-check-title" ref={heading} tabIndex={-1} className="test-title">Check your answers, {name}.</h1>
         <p className="test-lead">Tap a number to look at that question again. You can change your answer.</p>
         <div className={`test-tiles${numbers.length > 12 ? " is-many" : ""}`}>
           {numbers.map((n) => (
-            <button key={n} type="button" className="test-tile" aria-label={`Question ${n}, answered`} onClick={() => onOpen(n)} disabled={sending}>{n}</button>
+            <button key={n} type="button" className="test-tile" aria-label={`Question ${shownNumber(n, offset)}, answered`} onClick={() => onOpen(n)} disabled={sending}>{shownNumber(n, offset)}</button>
           ))}
         </div>
         {problem}
         <div className="test-check-foot">
-          <p className="test-intro-note">{part === 1 ? "When you press Done checking, part 1 is finished. Then you get a break." : "When you press Done checking, part 2 is finished."}</p>
+          <p className="test-intro-note">{part === 1 ? "When you press Done checking, part 1 is finished. Then you get a break." : part === 2 ? "When you press Done checking, part 2 is finished." : "When you press Done checking, the extra questions are finished."}</p>
           <Button onClick={done} disabled={sending} aria-busy={sending} arrow={false}>{sending ? "Saving…" : "Done checking"}</Button>
         </div>
       </div>
