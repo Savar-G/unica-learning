@@ -65,6 +65,8 @@ interface Visit {
   events: AnswerEvents;
   work?: WorkPayload;
   workChanged: boolean;
+  /** The whiteboard as the child left it, on an answered question: a failed save puts it back on the board. */
+  board?: BoardState;
 }
 
 /** #249: where the child goes: Back, Next, or (a save failed) back to the question whose save failed. */
@@ -129,6 +131,13 @@ export function TakeTest({ childId, name, breakAfter, ready, done, mode: firstMo
   // Time and events of visits not saved yet, and the newest question's answer when a failed save moved the screen.
   const carry = useRef(new Map<string, Carry>());
   const [held, setHeld] = useState<Readonly<Record<string, string>>>({});
+  // The new work of an answered question whose save failed: it goes back on the board when the question opens again.
+  const [unsaved, setUnsaved] = useState<Readonly<Record<string, BoardState>>>({});
+  const setUnsavedWork = (questionId: string, board: BoardState | null) =>
+    setUnsaved((all) => {
+      const rest = Object.fromEntries(Object.entries(all).filter(([id]) => id !== questionId));
+      return board ? { ...rest, [questionId]: board } : rest;
+    });
   // The saves of answered questions: in the background, one at a time, in order.
   const saves = useRef<Promise<void>>(Promise.resolve());
   // A save failed: the question to open again, with the child's answer on it.
@@ -392,6 +401,8 @@ export function TakeTest({ childId, name, breakAfter, ready, done, mode: firstMo
       if (res.error === "conflict" && "step" in res && res.step) return void show(res.step);
       const before = carry.current.get(v.questionId);
       carry.current.set(v.questionId, before ? { ms: v.timeMs + before.ms, events: mergeEvents(v.events, v.timeMs, before.events)! } : { ms: v.timeMs, events: v.events });
+      // The new work stays on the board, and goes as changed work with the next save.
+      if (v.workChanged && v.board) setUnsavedWork(v.questionId, v.board);
       reopen.current = number;
       await leaveScreen.current?.({ reopen: number });
       setFailure(res.error);
@@ -435,6 +446,7 @@ export function TakeTest({ childId, name, breakAfter, ready, done, mode: firstMo
       keep(v);
     } else {
       setList(answeredRef.current.map((a) => (a.number === from ? { ...a, response: v.response } : a)));
+      setUnsavedWork(v.questionId, null);
       saveChange(from, withCarry(v));
     }
     if (typeof to === "object") reopen.current = null;
@@ -488,6 +500,7 @@ export function TakeTest({ childId, name, breakAfter, ready, done, mode: firstMo
         {screen.name === "question" && (
           <Question key={`${(viewed?.question ?? screen.question).id}:${visit}`} testId={screen.testId} typing={typing}
             question={viewed?.question ?? screen.question} initial={viewed ? viewed.response : held[screen.question.id] ?? ""} revisit={viewed !== null}
+            initialBoard={viewed ? unsaved[viewed.question.id] : undefined}
             canBack={answered.some((a) => a.number < (viewed?.number ?? screen.number))}
             last={!viewed && screen.number === screen.total} takeYourTime={!viewed && screen.takeYourTime} onLeave={leave} onShown={onShown} failure={failure}
             onStop={screen.extra ? () => stopRound(screen.extra!.number - 1) : undefined} />
@@ -605,6 +618,8 @@ interface QuestionProps {
   question: PublicQuestion;
   /** #249: the answer on the screen when the question opens: the child's answer to a question they went back to. */
   initial: string;
+  /** #249: the board an answered question opens with: the child's new work when its save failed. Else it opens empty. */
+  initialBoard?: BoardState;
   /** #249: an answered question the child went back to. Its whiteboard opens empty (#252 brings the work back). */
   revisit: boolean;
   /** #249: an answered question of the section comes before this one, so Back shows. */
@@ -622,7 +637,7 @@ interface QuestionProps {
 }
 
 // One question in the split desk (D-088): the question and the answer on the left, the whiteboard on the right.
-function Question({ testId, typing, question, initial, revisit, canBack, last, takeYourTime, onLeave, onShown, failure, onStop }: QuestionProps) {
+function Question({ testId, typing, question, initial, initialBoard, revisit, canBack, last, takeYourTime, onLeave, onShown, failure, onStop }: QuestionProps) {
   const [value, setValue] = useState(initial);
   const [sending, setSending] = useState(false);
   const [stopping, setStopping] = useState(false);
@@ -655,7 +670,7 @@ function Question({ testId, typing, question, initial, revisit, canBack, last, t
   const draft = draftKey(testId, question.id);
   const drafts = !!testId && !revisit;
   const [board, setBoard] = useState<BoardState>(() => {
-    const restored = (drafts ? loadDraft(draft) : null) ?? emptyBoard();
+    const restored = (drafts ? loadDraft(draft) : null) ?? initialBoard ?? emptyBoard();
     return { ...restored, shownAt: restored.shownAt ?? performance.now() };
   });
   const stored = useRef(false);
@@ -709,7 +724,7 @@ function Question({ testId, typing, question, initial, revisit, canBack, last, t
       : undefined;
     // #249: on a question the child went back to, the board opens empty: the work changed only when there is some now.
     const workChanged = !revisit || !!(image || typed);
-    const left = await onLeave({ questionId: question.id, response: value, timeMs, events: recorder.events(timeMs), work, workChanged }, to);
+    const left = await onLeave({ questionId: question.id, response: value, timeMs, events: recorder.events(timeMs), work, workChanged, ...(revisit && { board }) }, to);
     // On success this question unmounts; on failure the child keeps the answer and the work, and can press Next again.
     if (!left) {
       setSending(false);

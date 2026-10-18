@@ -29,6 +29,9 @@ function answered(count: number): Session {
   return session;
 }
 
+/** The refusal of a change to a question that is not answered, or not in the open section. */
+const NOT_OPEN = /is not an answered question of the open section/;
+
 /** A wrong response to a question: another choice, or another number. */
 const wrongFor = (q: Question) => (q.format === "choice" ? q.choices!.find((c) => c !== q.answer)! : String(Number(q.answer) + 1));
 
@@ -77,18 +80,18 @@ describe("changing an answer (#249)", () => {
 
   it("refuses a change to the question the child has not answered yet", () => {
     const session = answered(3);
-    expect(() => changeAnswer(session, { questionId: at(session, 3).id, response: at(session, 3).answer, timeMs: 1_000 })).toThrow();
+    expect(() => changeAnswer(session, { questionId: at(session, 3).id, response: at(session, 3).answer, timeMs: 1_000 })).toThrow(NOT_OPEN);
   });
 
   it("refuses a change to a question that is not in the test", () => {
-    expect(() => changeAnswer(answered(3), { questionId: "s1-99", response: "1", timeMs: 1_000 })).toThrow();
+    expect(() => changeAnswer(answered(3), { questionId: "s1-99", response: "1", timeMs: 1_000 })).toThrow(NOT_OPEN);
   });
 
   it("refuses a change to stage 1 once the test is routed: stage 1 is closed", () => {
     const session = answered(19);
     expect(session.route).not.toBeNull();
     const q = at(session, 4);
-    expect(() => changeAnswer(session, { questionId: q.id, response: q.wrong[0].value, timeMs: 1_000 })).toThrow();
+    expect(() => changeAnswer(session, { questionId: q.id, response: q.wrong[0].value, timeMs: 1_000 })).toThrow(NOT_OPEN);
     // Stage 2 is the open section now: its first answer can change.
     const s2 = at(session, 18);
     expect(changeAnswer(session, { questionId: s2.id, response: wrongFor(s2), timeMs: 1_000 }).answers[18].correct).toBe(false);
@@ -98,7 +101,7 @@ describe("changing an answer (#249)", () => {
     const session = answered(2);
     const q = at(session, 0);
     for (const timeMs of [-1, Number.NaN, Number.POSITIVE_INFINITY]) {
-      expect(() => changeAnswer(session, { questionId: q.id, response: q.answer, timeMs })).toThrow();
+      expect(() => changeAnswer(session, { questionId: q.id, response: q.answer, timeMs })).toThrow("timeMs must be a time in milliseconds");
     }
   });
 });

@@ -182,8 +182,11 @@ export interface AttemptStore extends FactsStore, ShownStore, ContextStore, Extr
   /**
    * Completes the scored test at `at`: stores the completion time, the placement with its route, and the child's answer
    * to "Did anyone help?". Only while the test is in progress: a second finish at the same moment changes nothing.
+   * #249: only while the stored answers are still `answers` (the question, response and time at each place that the
+   * placement scored): "changed" when an answer changed since they were read, and then nothing is stored. A change and
+   * this write never both win (the Supabase function takes the same row lock as change_answer).
    */
-  complete(id: string, finished: { at: number; placement: Placement; help: HelpAnswer | null }): Promise<void>;
+  complete(id: string, finished: { at: number; placement: Placement; help: HelpAnswer | null; answers: readonly Submission[] }): Promise<"done" | "changed">;
   /** Stores a new test for the parent's child. "taken": the child already has a test in progress (one open test per child). */
   create(parent: string, child: AttemptChild, test: NewAttempt): Promise<{ id: string } | "taken">;
 }
@@ -574,7 +577,8 @@ export async function changeAnswer(store: AttemptStore, parent: string, id: stri
   const valid = q.format === "choice" ? (q.choices ?? []).includes(response) : response.length > 0 && response.length <= ANSWER_MAX;
   if (!valid || !Number.isFinite(input.timeMs) || input.timeMs < 0) return { ok: false, error: "invalid" };
   if (input.workChanged) {
-    const problem = workProblem(session, { drawn: input.work.png !== null, text: input.work.text });
+    // The work rules (D-125) for the question being changed: after the last main answer there is no next question.
+    const problem = workProblem(session, { drawn: input.work.png !== null, text: input.work.text }, q);
     if (problem) return { ok: false, error: problem };
   }
   const next = remark(session, { questionId: q.id, response, timeMs: Math.min(Math.round(input.timeMs), QUESTION_TIME_CAP_MS) });
@@ -946,9 +950,19 @@ export type FinishOutcome = { ok: true; id: string; finished: "now" | "already" 
  * Finishes the parent's test at `now`: scores it once with the assessment core, together with its timed facts section
  * and the child's help answer, and stores it as completed. A test scored before is "already" finished, so a second
  * finish answers ok again and its report job can complete a report step that failed before. `id` in the outcome is
- * the test's id as the store holds it.
+ * the test's id as the store holds it. #249: the store completes the test only while its answers are the ones scored;
+ * when a change landed while the test was scored, the finish reads the test again and scores the final answers.
  */
 export async function finishTest(store: AttemptStore, parent: string, id: string, help: HelpInput, now: number): Promise<FinishOutcome> {
+  for (let round = 0; round < ROUNDS; round++) {
+    const outcome = await finishOnce(store, parent, id, help, now);
+    if (outcome !== "changed") return outcome;
+  }
+  return { ok: false, error: "busy" };
+}
+
+/** One try of finishTest: "changed" when an answer changed between the read and the store's write. */
+async function finishOnce(store: AttemptStore, parent: string, id: string, help: HelpInput, now: number): Promise<FinishOutcome | "changed"> {
   const open = await openTest(store, parent, id, now);
   if (!open.ok) return open;
   const { attempt } = open;
@@ -969,12 +983,15 @@ export async function finishTest(store: AttemptStore, parent: string, id: string
   const facts = await readSection(store, id);
   if (!facts.ok) return facts;
   const placement = finish(session, facts.section?.session ?? null, help);
+  // Every stored answer, as read (a stopped round's answers too): the store checks them in its write.
+  const answers = open.session.answers.map(({ questionId, response, timeMs }) => ({ questionId, response, timeMs }));
+  let completed: "done" | "changed";
   try {
-    await store.complete(id, { at: now, placement, help });
+    completed = await store.complete(id, { at: now, placement, help, answers });
   } catch (e) {
     return storeFailed(e);
   }
-  return { ok: true, id: attempt.id, finished: "now" };
+  return completed === "changed" ? "changed" : { ok: true, id: attempt.id, finished: "now" };
 }
 
 // The answer timeline (#184): the server records when it serves each question and when it receives each answer. The

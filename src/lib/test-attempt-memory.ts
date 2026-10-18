@@ -303,13 +303,18 @@ export function memoryAttemptStore({ children: kids = [], tests: initial = [] }:
       const row = tests.find((t) => t.id === id);
       if (row) row.route = route;
     },
-    async complete(id, { at, placement, help }) {
+    async complete(id, { at, placement, help, answers }) {
       await begin("complete");
       const row = tests.find((t) => t.id === id && t.status === "in_progress");
-      if (!row) return;
+      if (!row) return "done";
+      // #249: the answers scored are still the stored ones (as the database function complete_test checks under its lock).
+      const same = row.answers.length === answers.length
+        && row.answers.every((a, i) => a.questionId === answers[i].questionId && a.response === answers[i].response && a.timeMs === answers[i].timeMs);
+      if (!same) return "changed";
       Object.assign(row, { status: "completed", completedAt: at, route: placement.route, placement, help });
       // #190: a round taken during the test finishes with it.
       if (placement.extraRound) roundOf(row).finishedAt = at;
+      return "done";
     },
     async create(parent, child, { attempt, seed, test }) {
       await begin("create");

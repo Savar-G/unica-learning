@@ -194,12 +194,20 @@ export function attemptStore(admin: SupabaseClient): AttemptStore {
       if (error) throw new StoreError("route save failed", error.message);
     },
 
-    async complete(id, { at, placement, help }) {
-      const { error } = await admin.from("assessments")
+    // #249: one database function (migration add_guarded_finish) takes the test's row lock, as change_answer does,
+    // checks that the stored answers are the scored ones, and completes the test; "changed" when an answer changed.
+    async complete(id, { at, placement, help, answers }) {
+      const { data, error } = await admin.rpc("complete_test", {
+        p_assessment: id,
+        p_completed_at: iso(at),
+        p_placement: placement,
+        p_help: help,
         // #190: a round taken during the test finishes with it.
-        .update({ status: "completed", completed_at: iso(at), route: placement.route, placement, help, ...(placement.extraRound ? { extra_finished_at: iso(at) } : {}) })
-        .eq("id", id).eq("status", "in_progress");
+        p_extra_finished: !!placement.extraRound,
+        p_answers: answers.map((a) => [a.questionId, a.response, a.timeMs]),
+      });
       if (error) throw new StoreError("finish failed", error.message);
+      return data === "changed" ? "changed" : "done";
     },
 
     async create(parent, child, { attempt, seed, test }) {

@@ -12,7 +12,7 @@ import {
   type Submission,
 } from "@/lib/assessment";
 import { ANSWER_CHANGES_MAX, type AnswerEvents } from "@/lib/answer-events";
-import { answerQuestion, changeAnswer, finishTest, nextStep, StoreError, takeExtraRound, type AnswerInput, type ChangeInput } from "@/lib/test-attempt";
+import { answerQuestion, changeAnswer, finishTest, nextStep, StoreError, takeExtraRound, type AnswerInput, type AttemptStore, type ChangeInput } from "@/lib/test-attempt";
 import { memoryAttemptStore, type MemoryTest } from "@/lib/test-attempt-memory";
 
 // Back and change an answer (#249, #250) through the test attempt module, against the in-memory store with the clock
@@ -343,6 +343,28 @@ describe("the work on a revisit", () => {
     expect(memory.strokes.size).toBe(0);
   });
 
+  it("changed work after every main answer is in is stored: the work rules read the question being changed", async () => {
+    const row = openTest(42);
+    const memory = family(row);
+    const q = at(row, 30);
+    const result = await changeAnswer(memory.store, P1, "a1", revisit(row, 30, q.answer, { work: { png: DRAWING, text: "4 + 3" }, workChanged: true }), T0 + 2 * HOUR);
+    expect(result).toMatchObject({ ok: true });
+    expect(memory.tests[0].answers[30]).toMatchObject({ workText: "4 + 3", workPath: [...memory.drawings.keys()][0] });
+  });
+
+  it("refuses typed working in grades 1 and 2 on a change too, and changes nothing", async () => {
+    const ben = { grade: 2, province: "BC" } as const;
+    const test = storedTest(createSession(ben, 7));
+    const memory = memoryAttemptStore({
+      children: [{ id: C1, parentId: P1, ...ben }],
+      tests: [{ ...startAttempt("a1", T0), lastAnswerAt: T0 + HOUR, resumeUntil: T0 + HOUR + DAY, parentId: P1, childId: C1, seed: 7, test, answers: answersOf(test, 3) }],
+    });
+    const q = at(memory.tests[0], 1);
+    const result = await changeAnswer(memory.store, P1, "a1", revisit(memory.tests[0], 1, q.answer, { work: { png: null, text: "5" }, workChanged: true }), T0 + 2 * HOUR);
+    expect(result).toEqual({ ok: false, error: "typing_off" });
+    expect(memory.tests[0]).toMatchObject({ resumeUntil: T0 + HOUR + DAY });
+  });
+
   it("a failed update keeps the old work, and the new files are removed", async () => {
     logs();
     const { memory, q, workPath, strokesPath } = await withWork();
@@ -372,6 +394,47 @@ describe("two requests at once", () => {
     expect(whole).toContainEqual({ response: answer.response, correct: answer.correct, workText: answer.workText, timeMs: answer.timeMs });
     expect([...memory.drawings.keys()]).toEqual([answer.workPath]);
     expect(memory.drawings.get(answer.workPath!)).toEqual(answer.workText === "tab one" ? OTHER_DRAWING : DRAWING);
+  });
+
+  it("a change that lands while the finish scores the test: the placement scores the answer stored at the finish's write", async () => {
+    const row = openTest(42);
+    const memory = family(row);
+    // The finish stops just before its write, until the change is stored.
+    let reached!: () => void;
+    const atWrite = new Promise<void>((resolve) => (reached = resolve));
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => (release = resolve));
+    const paused: AttemptStore = {
+      ...memory.store,
+      complete: async (...args: Parameters<AttemptStore["complete"]>) => {
+        reached();
+        await gate;
+        return memory.store.complete(...args);
+      },
+    };
+    const finishing = finishTest(paused, P1, "a1", "no", T0 + 2 * HOUR);
+    await atWrite;
+    const q = at(row, 30);
+    expect(await changeAnswer(memory.store, P1, "a1", revisit(row, 30, wrongTo(q)), T0 + 2 * HOUR)).toMatchObject({ ok: true });
+    release();
+    expect(await finishing).toMatchObject({ ok: true, finished: "now" });
+    expect(memory.tests[0]).toMatchObject({ status: "completed" });
+    expect(memory.tests[0].answers[30]).toMatchObject({ response: wrongTo(q), correct: false });
+    expect(memory.tests[0].placement!.levels.reduce((n, l) => n + l.correct, 0)).toBe(41);
+  });
+
+  it("a change and the finish at once: whichever wins, the placement scores the stored answers", async () => {
+    const row = openTest(42);
+    const memory = family(row);
+    const q = at(row, 30);
+    const [changed, finished] = await Promise.all([
+      changeAnswer(memory.store, P1, "a1", revisit(row, 30, wrongTo(q)), T0 + 2 * HOUR),
+      finishTest(memory.store, P1, "a1", "no", T0 + 2 * HOUR),
+    ]);
+    expect(finished).toMatchObject({ ok: true });
+    const stored = restoreSession(memory.tests[0].test, memory.tests[0].answers as Submission[]);
+    expect(changed.ok).toBe(memory.tests[0].answers[30].response === wrongTo(q));
+    expect(memory.tests[0].placement!.levels.reduce((n, l) => n + l.correct, 0)).toBe(stored.answers.filter((a) => a.correct).length);
   });
 
   it("a change and the last stage 1 answer at once: the test stays whole and goes on", async () => {
