@@ -571,7 +571,7 @@ export function TakeTest({ childId, name, breakAfter, ready, done, mode: firstMo
         {screen.name === "check" && (viewed
           // #253: an answered question opened from the grid; Next after the part's last question comes back to the grid.
           ? <Question key={`${viewed.question.id}:${visit}`} testId={screen.testId} typing={typing}
-              question={viewed.question} initial={viewed.response} revisit initialBoard={unsaved[viewed.question.id]}
+              question={viewed.question} initial={viewed.response} revisit initialBoard={unsaved[viewed.question.id]} storedWork={viewed.work}
               canBack={answered.some((a) => a.number < viewed.number)} last={false} takeYourTime={false} onLeave={leave} onShown={onShown} failure={failure} />
           : <TestCheck name={name} part={screen.section === "stage1" ? 1 : 2} numbers={screen.numbers} problem={<Problem error={failure} />}
               onOpen={(n) => {
