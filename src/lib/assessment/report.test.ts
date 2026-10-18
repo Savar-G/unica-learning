@@ -237,12 +237,33 @@ describe("report model", () => {
         }
       });
 
-      it("keeps text about the school grade, the level and the areas", () => {
+      it("catches the claim in its other wordings (review of D-132)", () => {
         for (const text of [
+          "{name} could handle harder work.",
+          "{name} can handle harder work than this.",
+          "{name} may be able to handle more difficult work.",
+          "{name} might handle harder questions.",
+          "{name} is ready for the next level.",
+          "{name} is ready for a higher level.",
+          "{name} seems ready to move up to the next level.",
+          "{name} works above this level.",
+          "{name} is working beyond the level of this test.",
+          "{name} may work higher than this level.",
+        ]) expect(parentTextProblem(text, 4, "summary"), text).toMatchObject({ problem: "repeat" });
+      });
+
+      it("keeps text that only mentions a level, the school grade or the areas", () => {
+        for (const text of [
+          "{name} finds questions at the higher level difficult.",
+          "{name} found the higher-level questions hard.",
+          "{name} is not ready for a higher level.",
           "{name} is working at a grade 5 level, above the school grade of grade 4.",
           "{name} works above grade level in Number and fractions.",
           "{name} is working at a grade 5 level. Practise Fractions and decimals.",
+          "{name} handled the Number questions well and could practise fractions.",
+          "Harder fractions questions are the area to practise.",
         ]) {
+          expect(parentTextProblem(text, 4, "summary"), text).toBeNull();
           expect(checkReportText(withText(null, ceiling()), text).ok, text).toBe(true);
         }
       });

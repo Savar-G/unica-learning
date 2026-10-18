@@ -1,7 +1,8 @@
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 
 vi.mock("server-only", () => ({}));
-vi.mock("next/server", () => ({ after: () => {} }));
+const afterTasks = vi.hoisted(() => [] as (() => unknown)[]);
+vi.mock("next/server", () => ({ after: (task: () => unknown) => { afterTasks.push(task); } }));
 vi.mock("stripe", async (original) => {
   const { default: Stripe } = await original<typeof import("stripe")>();
   return { default: class extends Stripe {
@@ -13,8 +14,11 @@ let events: string[];
 let admission: "ok" | "frozen" | "missing" | "lost";
 let failure: "none" | "customer" | "checkout" | "finish" | "abort";
 let completed: unknown[];
+let alerts: { url: string; body: Record<string, unknown> }[];
 beforeEach(() => {
   vi.resetModules();
+  afterTasks.length = 0;
+  alerts = [];
   events = [];
   admission = "ok";
   failure = "none";
@@ -24,6 +28,10 @@ beforeEach(() => {
   vi.stubEnv("SUPABASE_SECRET_KEY", "sb_secret_synthetic");
   vi.stubEnv("STRIPE_SECRET_KEY", "rk_test_synthetic");
   vi.stubGlobal("fetch", async (input: RequestInfo | URL, init?: RequestInit) => {
+    if (String(input) === "https://api.resend.com/emails") {
+      alerts.push({ url: String(input), body: JSON.parse(String(init?.body)) });
+      return new Response(JSON.stringify({ id: "re_alert" }), { status: 200, headers: { "content-type": "application/json" } });
+    }
     const path = new URL(String(input)).pathname;
     events.push(path);
     const json = (value: unknown, status = 200) => new Response(JSON.stringify(value), { status, headers: { "content-type": "application/json" } });
@@ -102,4 +110,26 @@ it.each([{}, { website: "bot" }, { grade: 9 }])("keeps validation and the bot co
   const response = await book(over);
   if (Object.keys(over).length) expect(events).toEqual([]);
   else expect(response.status).toBe(200);
+});
+
+it("sends the signup alert to Savar from EMAIL_FROM, never from Resend's test sender (D-132)", async () => {
+  vi.stubEnv("RESEND_API_KEY", "re_synthetic");
+  vi.stubEnv("SIGNUP_NOTIFY_EMAIL", "savar@unicalearning.com");
+  vi.stubEnv("EMAIL_FROM", "Unica Learning <contact@unicalearning.com>");
+  await book();
+  await Promise.all(afterTasks.map((task) => task()));
+  expect(alerts).toHaveLength(1);
+  expect(alerts[0].body).toMatchObject({ from: "Unica Learning <contact@unicalearning.com>", to: ["savar@unicalearning.com"], reply_to: "test@example.invalid" });
+});
+
+it("sends no signup alert when EMAIL_FROM is not set, and says so", async () => {
+  vi.stubEnv("RESEND_API_KEY", "re_synthetic");
+  vi.stubEnv("SIGNUP_NOTIFY_EMAIL", "savar@unicalearning.com");
+  vi.stubEnv("EMAIL_FROM", "");
+  const error = vi.spyOn(console, "error").mockImplementation(() => {});
+  await book();
+  await Promise.all(afterTasks.map((task) => task()));
+  expect(alerts).toEqual([]);
+  expect(error).toHaveBeenCalledWith("[signup] notify skipped: EMAIL_FROM is not set");
+  error.mockRestore();
 });

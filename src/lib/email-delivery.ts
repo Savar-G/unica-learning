@@ -105,7 +105,7 @@ export async function sendEmailOnce<K, H>(
   if (ledger.keepCopy) {
     // A copy that is not kept never changes the email's outcome.
     try {
-      await ledger.keepCopy(handle, key, { from: resendSender(message), message, outcome: result.status, emailId: result.status === "sent" ? result.emailId : null });
+      await ledger.keepCopy(handle, key, { from: resendSender(), message, outcome: result.status, emailId: result.status === "sent" ? result.emailId : null });
     } catch (e) {
       console.error("[email] copy not kept", result.status, e instanceof Error ? e.message : e);
     }

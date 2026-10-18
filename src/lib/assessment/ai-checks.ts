@@ -109,13 +109,18 @@ const MAIN_UNTESTED = new RegExp([
 
 /**
  * A claim that the child works or may work above the level the test reached (D-132): the report's level block says it
- * already when the child cleared the top level, so the summary may not say it again. "above grade level" and "above the
- * school grade" are about the school grade, which the report says elsewhere in other words, so they are kept.
+ * already when the child cleared the top level, so the summary may not say it again. Only a claim about what the child
+ * can do counts: working above, beyond or higher than the level, handling harder work, being ready for the next or a
+ * higher level. "above grade level", "above the school grade", "found the higher level difficult" and "not ready for a
+ * higher level" are not that claim, so they are kept.
  */
 const ABOVE_LEVEL = new RegExp([
   String.raw`\b(?:above|beyond|past|higher\s+than)\s+(?:this|that|the|their|\{name\}'s)\s+(?:(?:tested|top|highest|current|working)\s+)?level\b`,
-  String.raw`\b(?:higher|upper)\s+level\b`,
   String.raw`\b(?:above|beyond)\s+(?:what|where)\s+the\s+test\b`,
+  // "can", "could", "may" or "might" handle harder work.
+  String.raw`\b(?:can|could|may|might|capable\s+of)\b[^.!?]{0,30}\b(?:handle|manage|cope\s+with|do|tackle|take\s+on|try)\s+(?:harder|tougher|more\s+(?:difficult|advanced|challenging))\b`,
+  // "ready for the next level", "ready for a higher level", "ready for harder work" (not "not ready").
+  String.raw`(?<!\bnot\s)(?<!n['’]t\s)\bready\s+(?:for|to\s+(?:move\s+(?:up|on)\s+to|start|try))\s+(?:(?:the\s+next|a\s+higher|a\s+harder)\s+level|(?:harder|more\s+advanced|more\s+difficult)\s+(?:work|questions|material))`,
 ].join("|"), "i");
 
 /** Which parent's AI text is checked: the report summary, or a likely cause on the report. */

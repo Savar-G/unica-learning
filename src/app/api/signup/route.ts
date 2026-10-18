@@ -92,8 +92,7 @@ export async function POST(request: Request) {
   return Response.json({ ok: true, status, ref, ...(cardUrl && { cardUrl }) } satisfies SignupResult);
 }
 
-// Email Savar about each new signup. Resend's free plan only delivers to the account's own address,
-// which is all an alert needs.
+// Email Savar about each new signup, from EMAIL_FROM.
 async function notify(
   row: { status: string; ref: string; name: string; email: string; postal: string; subject: string; grade: number; curriculum: CurriculumId | null; price: number; source: Record<string, string> },
   stripeState: "sent" | "off" | "failed",
@@ -101,6 +100,12 @@ async function notify(
   const key = process.env.RESEND_API_KEY;
   const to = process.env.SIGNUP_NOTIFY_EMAIL;
   if (!key || !to) return;
+  // Every email goes from EMAIL_FROM (contact@unicalearning.com, D-132), never from Resend's test sender.
+  const from = process.env.EMAIL_FROM;
+  if (!from) {
+    console.error("[signup] notify skipped: EMAIL_FROM is not set");
+    return;
+  }
   const curriculum = row.curriculum ? CURRICULA[row.curriculum] : "unknown";
   const label =
     row.status === "waitlist"
@@ -122,7 +127,7 @@ async function notify(
       method: "POST",
       headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
       body: JSON.stringify({
-        from: "Unica Learning signups <onboarding@resend.dev>",
+        from,
         to: [to],
         reply_to: row.email,
         subject: `${row.status === "waitlist" ? "Waitlist" : "New signup"}: ${row.name} (${row.subject}, grade ${row.grade})`,

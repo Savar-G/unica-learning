@@ -1,5 +1,5 @@
 import "server-only";
-import type { EmailMessage, MailTransport, SendResult } from "@/lib/email-delivery";
+import type { MailTransport, SendResult } from "@/lib/email-delivery";
 
 // The Resend adapter of the mail transport (#149). The one place that reads the Resend key, the sender address and the
 // request time limit, and the one place that decides what an answer from Resend means:
@@ -10,8 +10,6 @@ import type { EmailMessage, MailTransport, SendResult } from "@/lib/email-delive
 const ENDPOINT = "https://api.resend.com/emails";
 /** A slow Resend never holds a request open longer than this. */
 const TIME_LIMIT_MS = 15_000;
-/** Resend's test sender. The free plan delivers its emails only to the account owner, so it serves alerts to Savar. */
-const TEST_SENDER = "onboarding@resend.dev";
 
 /** Why a parent email cannot go now (the key or EMAIL_FROM is not set), or null. */
 export function resendConfigProblem(): string | null {
@@ -20,11 +18,9 @@ export function resendConfigProblem(): string | null {
   return null;
 }
 
-/** The sender address of the message, or null when a parent email has no EMAIL_FROM. */
-export function resendSender(message: EmailMessage): string | null {
-  const from = process.env.EMAIL_FROM;
-  if (from) return from;
-  return message.sender.to === "savar" ? `${message.sender.testSenderName} <${TEST_SENDER}>` : null;
+/** The sender address: EMAIL_FROM for every email, to a parent or to Savar (D-132), or null when it is not set. */
+export function resendSender(): string | null {
+  return process.env.EMAIL_FROM || null;
 }
 
 const refusal = (status: number) => status >= 400 && status < 500 && status !== 408;
@@ -36,7 +32,7 @@ export function resendTransport({ fetch: request = (input, init) => fetch(input,
     async send(message): Promise<SendResult> {
       const key = process.env.RESEND_API_KEY;
       if (!key) return { status: "refused", error: "RESEND_API_KEY is not set" };
-      const from = resendSender(message);
+      const from = resendSender();
       if (!from) return { status: "refused", error: "EMAIL_FROM is not set" };
 
       // The time limit covers the answer's body too.
