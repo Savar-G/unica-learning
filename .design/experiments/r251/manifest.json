@@ -1,0 +1,76 @@
+{
+  "round": 251,
+  "ticket": "#251 (spec #249): Back, tappable progress steps and the 'Check your answers' grid",
+  "decision": "open (Savar picks; record the next D-number in .design/decisions.md after the pick)",
+  "decision_question": "Where do the tappable steps live, and how big are they, so that a 6-year-old on a tablet can go back to one question, and what do the grid, Back and the intro copy look like with them?",
+  "primary_axis": "where the tappable steps live (in the top bar, in a row under it, or in the question pane) and so how large they can be",
+  "note": "Round named after the ticket, like r190. Savar could not be reached: the round was made from the ticket, the spec and DESIGN.md with no interview. Static mockups (mock.html?v=A|B|C&s=intro|resume|extra|question|stress|grid|gridstress) that copy the real TakeTest markup and link the real CSS (src/ds/styles, src/components/test-*.css, whiteboard.css), so tokens, panes and buttons are the production ones. Render: zsh shoot.sh <out-dir> [variants] [screens] [name:w,h]. Target sizes: zsh measure.sh. The full set of 48 screenshots is in /tmp/build-spec-249/251/; this folder keeps 30.",
+  "invariants": [
+    "Same content in every variant: Maya, grade 1 (24 questions, 12 + 12), part 1 locked, on screen question 16 opened again with '57' chosen and her work back on the board, newest question 19; stress case Leo, grade 6 (42 questions, 21 + 21), part 1 open, on screen 9, newest 15, a number-pad question",
+    "Step states in every variant: answered = ink with a white number (today's 'done in ink'); on screen = tangerine with an ink ring (today's 'current in tangerine'); newest, not answered = white with a grey ring; not reached = light grey, no number, not tappable; locked part = not tappable",
+    "Never right or wrong: no ticks, crosses, green or red on any step, tile or card; grid tiles say only that the question is answered",
+    "Grid copy: 'Part 1 · 12 questions', 'Check your answers, Maya.', 'Tap a number to look at that question again. You can change your answer.', 'When you press Done checking, part 1 is finished. Then you get a break.', button 'Done checking'",
+    "Real tokens and components: the split desk (D-088), dark Next with white text, ghost buttons, Geist and Geist Mono, the grainy colour field",
+    "Viewports 1280 x 800 (laptop) and 820 x 1180 (tablet in portrait); question screens also at 1024 x 768 (tablet in landscape, the DESIGN.md no-scroll check)"
+  ],
+  "options": [
+    {
+      "id": "A",
+      "name": "Steps in the bar",
+      "artifact": "mock.html?v=A",
+      "screenshots": ["a-question-laptop.png", "a-question-tablet.png", "a-stress-tablet.png", "a-grid-laptop.png", "a-grid-tablet.png", "a-gridstress-laptop.png", "a-intro-laptop.png", "a-resume-tablet.png", "a-extra-tablet.png"],
+      "bet": "The top bar itself is tappable, as the spec words it: the open part grows into numbered steps 52 px high; locked and later parts shrink to thin bars (locked ones faded). Back is today's ghost button beside Next. The grid is the break screen's split desk: words and 'Done checking' on the left, white number tiles with a filled dot and 'Answered' on the colour field. Copy: one plain sentence in the intro note.",
+      "copy": {
+        "start": "Answer one question at a time. Until the break, you can go back and change an answer. If you do not know an answer, make your best guess.",
+        "resume": "Your answers are saved. You go on from the question where you stopped. You can go back and change an answer until the end of the test.",
+        "extra": "Answer one question at a time. You can go back and change an answer until you finish the extra questions."
+      },
+      "measured_targets": "Smallest step: laptop 72 x 52 (grade 1), 38 x 52 (grade 6); tablet in portrait 37 x 48 (grade 1), 9 x 48 (grade 6). Grid tiles 112 x 112 (laptop), 104 x 92 (tablet).",
+      "benefit": "No new row, no height lost; matches the spec text literally; the grid reads as the calm break screen the child already knows",
+      "cost": "The bar shares its width with the logo and the count, so the steps are narrow",
+      "risk": "High on tablets: under the 44 px rule even for grade 1 in portrait (37 px wide), and unusable for 42-question tests (9 px; numbers hidden). Fails the ticket's touch-target rule."
+    },
+    {
+      "id": "B",
+      "name": "Step row under the bar",
+      "artifact": "mock.html?v=B",
+      "screenshots": ["b-question-laptop.png", "b-question-tablet.png", "b-stress-tablet.png", "b-stress-tablet-landscape.png", "b-grid-laptop.png", "b-grid-tablet.png", "b-gridstress-laptop.png", "b-intro-laptop.png", "b-resume-tablet.png", "b-extra-tablet.png"],
+      "bet": "Today's thin bar stays as the whole-test view (read only). Under it, one row of round number steps (52 px, 50 px on a tablet in portrait) for the open part only, labelled 'Part 2'. Back and Next are equal-width buttons with arrows ('← Back', 'Next →'). The grid is a full-width page of large ink tiles, the same look as the steps; the row is hidden there. Copy: a fourth rule card that names the controls.",
+      "copy": {
+        "start_rule": "You can go back. Press Back, or tap a number at the top, to change an answer. You can do this until the break.",
+        "start_note": "Answer one question at a time. If you do not know an answer, make your best guess.",
+        "resume_rule": "You can go back. Press Back, or tap a number at the top, to change an answer. You can do this until the end of the test.",
+        "extra_rule": "You can go back. Press Back, or tap a number at the top, to change an answer. You can do this until you finish."
+      },
+      "measured_targets": "Every step 52 x 52 (laptop) or 50 x 50 (tablet), at every test length. Grid tiles 145 x 112 (laptop), 185 x 112 (tablet), 126 x 88 for 21 tiles.",
+      "benefit": "Big, round, numbered targets in one fixed place for every grade; the whole-test bar is unchanged; the rule card says how to go back in words a 6-year-old can follow (with read-aloud on the rules, a later step)",
+      "cost": "68 px of height on every question screen; the bar is not itself tappable (the row is), a small change to the spec's wording",
+      "risk": "Low. The row scrolls sideways only for 21-step parts on a tablet (ages 11-12), and the step on screen is kept in view; at 1024 x 768 the number-pad question still fits with no page scroll"
+    },
+    {
+      "id": "C",
+      "name": "Number tiles above Back and Next",
+      "artifact": "mock.html?v=C",
+      "screenshots": ["c-question-laptop.png", "c-question-tablet.png", "c-stress-tablet.png", "c-stress-tablet-landscape.png", "c-grid-laptop.png", "c-grid-tablet.png", "c-gridstress-laptop.png", "c-intro-laptop.png", "c-resume-tablet.png", "c-extra-tablet.png"],
+      "bet": "Today's bar stays read only. A block of 48 px number tiles for the open part sits in the question pane, above Back and Next, where the child's hand already is ('Part 2: tap a number to look again'). Back is a round arrow button. The grid is a full-width page of cards: each shows its number and the start of the question (never the answer), so a child finds 'the clock one' without opening each tile. Copy: 'Made a mistake? Press Back to fix it.'",
+      "copy": {
+        "start": "Made a mistake? Press Back to fix it. You can change your answers until the break. If you do not know an answer, make your best guess.",
+        "resume": "Your answers are saved. You go on from the question where you stopped. Made a mistake? Press Back to fix it. You can change your answers until the end of the test.",
+        "extra": "Made a mistake? Press Back to fix it. You can change your answers until you finish the extra questions."
+      },
+      "measured_targets": "Every tile 48 x 48. Grid cards 340 x 64 (laptop), 385 x 58 (tablet).",
+      "benefit": "All steps visible at once with no scroll; the grid cards help a child find a question by its words",
+      "cost": "The tile block takes 100-160 px of the question pane on every question; the round Back has no word on it",
+      "risk": "High on short screens: at 1024 x 768 a number-pad question overflows and the tiles slide under the sticky Next (c-stress-tablet-landscape.png); the tiles compete with the question for a young child's attention; the grid cards ask a 6-year-old to read 12 snippets"
+    }
+  ],
+  "recommendation": {
+    "pick": "B",
+    "reason": "B is the only option that keeps every step at 50 px or more on a tablet for every grade (A drops to 37 px for grade 1 and 9 px for grade 6; C overflows at 1024 x 768), it leaves the question pane exactly as it is today, and its rule card tells the child in plain words that Back and the numbers exist. Its cost is 68 px of height, and the 1024 x 768 render shows the desk still fits.",
+    "optional_mix": "If Savar wants the grid to feel like the break screen, B's steps and copy with A's grid (white tiles on the colour field, 'Answered' with the filled dot) is a clean mix: the two parts are independent."
+  },
+  "open_questions": [
+    "While the child looks at an earlier question, can she tap the newest question (19) to jump back to it? The spec makes only answered questions and the current question tappable; every variant here shows the newest one as tappable (white with a grey ring), because pressing Next many times to return is slow. Confirm or remove.",
+    "The extra round's grid uses the same layout with the round's own numbers 1-8 and the line 'When you press Done checking, these answers are final.'; not rendered here."
+  ]
+}

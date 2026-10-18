@@ -1,0 +1,112 @@
+/* r251 mockup styles only. Everything else comes from the real test CSS (mock.html links it).
+   States of a step: is-done (answered, tappable), is-now (on screen), is-next (the newest question, not answered yet,
+   tappable), is-later (not reached, not tappable), locked parts (not tappable). No step or tile ever shows right or
+   wrong: no ticks, no crosses, no green or red. */
+
+.mk-tag { position: fixed; left: 8px; bottom: 6px; z-index: 10; padding: 2px 6px; border-radius: 4px; background: rgba(255, 255, 255, 0.9); font: 500 11px/1.3 var(--mono); color: var(--ink-3); pointer-events: none; }
+
+/* The child's work, back on the board (strokes are restored at once on a revisit). */
+.mk-ink { position: absolute; inset: 0; width: 100%; height: 100%; }
+.mk-ink text { font: 400 54px/1 var(--kid); fill: #1d1d22; }
+.mk-ink text.sm { font-size: 34px; }
+.mk-ink path { fill: none; stroke: #1d1d22; stroke-width: 3; stroke-linecap: round; stroke-linejoin: round; }
+
+/* ---------- shared step colours (A, B and C) ---------- */
+:is(.za-step, .zb-step, .zc-step) { padding: 0; border: 0; display: grid; place-items: center; font: 500 18px/1 var(--sans); color: var(--ink); cursor: pointer; transition: transform 0.12s; }
+:is(.za-step, .zb-step, .zc-step).is-done { background: var(--ink); color: #fff; }
+:is(.za-step, .zb-step, .zc-step).is-now { background: var(--accent); color: var(--ink); box-shadow: 0 0 0 3px #fff, 0 0 0 5px var(--ink); }
+:is(.za-step, .zb-step, .zc-step).is-next { background: #fff; box-shadow: inset 0 0 0 2px var(--ink-3); }
+:is(.za-step, .zb-step, .zc-step).is-later { background: var(--line-soft); cursor: default; }
+:is(.za-step, .zb-step, .zc-step):active { transform: scale(0.96); }
+
+/* ---------- A: steps in the bar ---------- */
+.v-A { --test-bar-h: 80px; }
+.v-A .test-top { grid-template-columns: auto minmax(0, 1fr) auto; gap: 28px; }
+.za-bar { display: flex; align-items: center; gap: 12px; min-width: 0; }
+.za-open { flex: 1; display: flex; align-items: center; gap: 4px; min-width: 0; }
+.za-step { flex: 1 1 0; min-width: 0; max-width: 72px; height: 52px; border-radius: 8px; }
+.za-step.is-now { margin-inline: 4px; }
+.za-step.is-later { flex: 0 1 22px; height: 10px; border-radius: 3px; }
+/* Parts that are not open shrink to a thin bar: locked ones fade (put away), later ones stay light grey. */
+.za-thin { flex: none; display: flex; gap: 2px; }
+.za-thin span { width: 6px; height: 8px; border-radius: 2px; background: var(--line-soft); }
+.za-thin.is-locked span { background: var(--ink-3); opacity: 0.5; }
+/* A's grid: the break screen's split desk, with white tiles on the colour field. */
+.za-check .test-pane-r { display: grid; place-items: center; }
+.za-tiles { position: relative; z-index: 1; display: grid; grid-template-columns: repeat(4, 112px); gap: 14px; }
+.za-tiles.is-many { grid-template-columns: repeat(7, 84px); gap: 10px; }
+.za-tile { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; height: 112px; padding: 0; border: 0; border-radius: 14px; background: rgba(255, 255, 255, 0.92); color: var(--ink); cursor: pointer; box-shadow: 0 1px 2px rgba(0, 0, 0, 0.06); }
+.is-many .za-tile { height: 92px; gap: 6px; }
+.za-tile b { font: 300 46px/1 var(--sans); letter-spacing: -0.03em; }
+.is-many .za-tile b { font-size: 36px; }
+/* "Answered" with the filled dot of a chosen answer row (test-dot), never a tick. */
+.za-tick { display: inline-flex; align-items: center; gap: 6px; font: 500 12px/1 var(--mono); color: var(--ink-2); }
+.za-tick::before { content: ""; width: 10px; height: 10px; border-radius: 50%; background: var(--ink); }
+.is-many .za-tick { font-size: 0; }
+
+/* ---------- B: a row of round steps under the bar ---------- */
+.zb-row { flex: none; border-bottom: 1px solid var(--line); overflow-x: auto; scrollbar-width: none; }
+.zb-in { display: flex; align-items: center; gap: 8px; width: max-content; margin: 0 auto; padding: 8px 24px; }
+.zb-part { margin-right: 10px; font: 500 14px/1 var(--mono); color: var(--ink-2); }
+.zb-step { flex: none; width: 52px; height: 52px; border-radius: 50%; font-size: 19px; }
+.zb-step.is-now { margin-inline: 3px; }
+.zb-step.is-later { width: 14px; height: 14px; margin-inline: 4px; }
+.test-next .btn.zb-back, .test-next .btn.zb-next { min-width: 150px; gap: 10px; }
+/* B's grid: a full-width page with large ink tiles, the same look as the steps. */
+.zb-check { flex: 1; min-height: 0; overflow: auto; display: grid; place-items: center; padding: 28px 32px; }
+.zb-check-in { width: min(940px, 100%); display: grid; gap: 18px; }
+.zb-check .test-lead { max-width: none; }
+.zb-tiles { display: grid; grid-template-columns: repeat(6, 1fr); gap: 14px; margin-top: 8px; }
+.zb-tiles.is-many { grid-template-columns: repeat(7, 1fr); gap: 10px; }
+.zb-tile { height: 112px; padding: 0; border: 0; border-radius: 14px; background: var(--ink); color: #fff; font: 300 46px/1 var(--sans); letter-spacing: -0.03em; cursor: pointer; }
+.is-many .zb-tile { height: 88px; font-size: 36px; }
+.zb-check-foot { display: flex; align-items: center; justify-content: space-between; gap: 20px; margin-top: 8px; }
+.zb-check-foot .btn { min-height: 58px; padding: 0 32px; flex: none; }
+
+/* ---------- C: a block of tiles above Back and Next ---------- */
+.zc-map { display: grid; gap: 8px; margin-top: 4px; }
+.zc-map-label { margin: 0; font: 500 13px/1.2 var(--mono); color: var(--ink-2); }
+.zc-tiles { display: flex; flex-wrap: wrap; gap: 6px; }
+.zc-step { width: 48px; height: 48px; border-radius: 8px; }
+.zc-step.is-now { margin-inline: 3px; }
+.test-next .btn.zc-back { width: 58px; min-width: 58px; padding: 0; border-radius: 50%; }
+/* C's grid: a full-width page of cards; each card shows the start of the question (never the answer). */
+.test-root .test-split.zc-check { flex: 1; min-height: 0; overflow: auto; display: grid; grid-template-columns: 1fr; grid-template-rows: auto; place-items: center; padding: 28px 32px; }
+.zc-check > .test-pane-l { width: min(1040px, 100%); background: none; border: 0; padding: 0; overflow: visible; gap: 16px; }
+.zc-check > .test-pane-r { display: none; }
+.zc-check .test-lead { max-width: none; }
+.zc-cards { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-top: 6px; }
+.zc-cards.is-many { grid-template-columns: repeat(4, 1fr); gap: 8px; }
+.zc-card { display: flex; align-items: center; gap: 14px; min-height: 64px; padding: 8px 14px; border: 1.5px solid var(--line); border-radius: 12px; background: #fff; color: var(--ink); text-align: left; font: 400 17px/1.25 var(--sans); cursor: pointer; }
+.zc-card b { flex: none; display: grid; place-items: center; width: 40px; height: 40px; border-radius: 8px; background: var(--ink); color: #fff; font: 500 17px/1 var(--sans); }
+.zc-check-foot { display: flex; align-items: center; justify-content: space-between; gap: 20px; margin-top: 8px; }
+.zc-check-foot .btn { min-height: 58px; padding: 0 32px; flex: none; }
+
+/* ---------- tablet in portrait ---------- */
+@media (max-width: 900px), (orientation: portrait) {
+  .v-A .test-top { gap: 16px; }
+  .za-step { height: 48px; font-size: 17px; }
+  /* A's grid: the field below the words needs room for the tiles (three classes, so it wins over test-base.css). */
+  .test-root .test-split.za-check { --test-low: 430px; }
+  .za-tiles { grid-template-columns: repeat(4, 104px); }
+  .za-tile { height: 92px; }
+  .za-tiles.is-many { grid-template-columns: repeat(7, 84px); }
+  /* Narrow steps on a 42-question test (21 in a part): only the step on screen keeps its number. */
+  .za-open.is-many .za-step:not(.is-now) { font-size: 0; }
+  .zb-in { gap: 6px; padding-inline: 20px; }
+  .zb-part { margin-right: 4px; }
+  .zb-step { width: 50px; height: 50px; }
+  .zb-row.is-cut { mask-image: linear-gradient(to right, transparent, #000 6%, #000 90%, transparent); }
+  .zb-row.is-cut .zb-in { margin: 0; }
+  .zb-tiles { grid-template-columns: repeat(4, 1fr); }
+  .zb-tiles.is-many { grid-template-columns: repeat(5, 1fr); }
+  .zc-cards { grid-template-columns: repeat(2, 1fr); }
+  .zc-cards.is-many { grid-template-columns: repeat(2, 1fr); }
+  .zc-card { min-height: 58px; }
+  .zb-check, .test-root .test-split.zc-check { padding: 24px 20px; place-items: start center; grid-template-rows: auto; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :is(.za-step, .zb-step, .zc-step) { transition: none; }
+  :is(.za-step, .zb-step, .zc-step):active { transform: none; }
+}
