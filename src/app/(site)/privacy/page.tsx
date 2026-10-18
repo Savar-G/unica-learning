@@ -10,11 +10,12 @@ export const metadata = pageMetadata({
 });
 
 export default function Privacy() {
-  return <SupportPage label="Updated 17 October 2026" title="Privacy policy">
+  return <SupportPage label="Updated 18 October 2026" title="Privacy policy">
     <p className="lead">{BUSINESS_NAME} is responsible for the information you share through this website. This policy explains what we collect, why we use it, and the choices you have.</p>
     <h2>What you share with us</h2>
     <p>Before the online assessment, families booked through a reservation form. For those bookings, we keep the name, email address, Canadian postal code, chosen plan and subject, the child&apos;s grade, and their school curriculum.</p>
     <p>For an online assessment account, we ask for your name, email address, postal code, and each child&apos;s first name, grade, and school curriculum. To confirm your email address, we email you a one-time code. We keep the child&apos;s test answers, answer times, typed working, drawings and the pen strokes that made them, results, work reviews, and reports. We also keep account sign-in records, card setup or waitlist records, and records of assessment emails and unsubscribe requests. We do not ask for a child&apos;s date of birth.</p>
+    <p>When you send us a message through our contact form, we get your name, email address and message by email. We use them only to reply to you, and we do not add them to your account or to any list.</p>
     <p>After the assessment, you can tell us how your child likes to learn, what they are interested in, and anything else about how they learn. These answers are optional. We keep them with the child&apos;s account and use them only to plan your child&apos;s books. You can change or clear them from your account.</p>
     <p>We also keep information about how you found us, such as a link or advertisement, and the page you came from. After a booking through the old reservation form, we asked how you heard about us. That answer was optional and is kept with the booking.</p>
     <p>Some links to our website, such as the links in our ads, have tags that tell us where the link was. A link from a Meta or Google ad can also hold a click reference from that company. When you arrive from an ad or from a link with tags, we count the visit. For this count, we keep the tags and the time. We keep only whether a click reference was there, not the reference itself. We do not keep your IP address, and we do not use a cookie for this count. Your browser keeps the tags and a random visit number until you close the tab. If you then create an account, we keep the tags, the click reference and the visit number with your account, so we know which ad or link brought you.</p>

@@ -43,6 +43,13 @@
 .acct-form .pw { position: relative; display: grid; }
 .acct-form .pw input { padding-right: 72px; }
 .acct-form .pw button { position: absolute; right: 8px; top: 50%; transform: translateY(-50%); background: none; border: 0; padding: 8px; font: 500 14px/1 var(--sans); color: var(--ink); text-decoration: underline; cursor: pointer; }
+/* Contact page (D-130). */
+.contact-form .btn { justify-self: start; }
+.contact-sent { display: flex; gap: 14px; align-items: flex-start; max-width: 520px; margin-top: 28px; padding: 18px 20px; border-radius: 8px; background: color-mix(in srgb, var(--leaf, #2fb37a) 12%, #fff); }
+.contact-sent:focus { outline: none; }
+.contact-sent .tick { flex: none; display: grid; place-items: center; width: 26px; height: 26px; border-radius: 50%; background: var(--leaf, #2fb37a); color: #fff; font-size: 14px; }
+.support-page .contact-sent p { margin: 4px 0 0; color: var(--ink-2); }
+.support-page .contact-sent .t { margin: 0; font-weight: 500; color: var(--ink); }
 .acct-alert { margin: 0; padding: 12px 14px; border-radius: 6px; background: var(--card, #f6f4ef); }
 .acct-card { padding: 22px; border: 1px solid var(--line); border-radius: 10px; }
 .support-page .acct-card h2 { margin: 0 0 8px; font-size: 21px; }

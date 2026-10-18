@@ -240,7 +240,7 @@
 [data-look="warm"] .opt .p { font: 300 22px/1 var(--sans); }
 [data-look="warm"] .seg { border-radius: 6px; border-color: var(--line); }
 [data-look="warm"] .seg label { border-left-color: var(--line); }
-[data-look="warm"] .fld input, [data-look="warm"] .fld select { border-radius: 6px; border-color: #d4d4d8; }
+[data-look="warm"] .fld input, [data-look="warm"] .fld select, [data-look="warm"] .fld textarea { border-radius: 6px; border-color: #d4d4d8; }
 [data-look="warm"] .sum { border-radius: 6px; border-color: var(--line); }
 [data-look="warm"] .rsv .x { border-radius: 6px; border-color: var(--line); }
 

@@ -9,7 +9,6 @@ import { FaqMore } from "@/components/faq-more";
 import { StartLink } from "@/components/start-link";
 import { BRAND, FIRST_MONTH_OFF, HERO, PLANS, cad, firstMonth } from "@/lib/site";
 import { FAQ } from "@/lib/faq";
-import { SUPPORT_HREF } from "@/lib/contact";
 import {
   BeliefList,
   Eyebrow,
@@ -267,7 +266,7 @@ export function Faq() {
     <Section id="faq" aria-labelledby="faqT">
       <Knot />
       <Rise>
-        <SectionHeader eyebrow="FAQ" title="Questions, answered." titleId="faqT" />
+        <SectionHeader eyebrow="FAQ" title="Questions, answered." titleId="faqT" lead={<>Have another question? <Link href="/contact">Contact us</Link> and we will write back.</>} />
       </Rise>
       <FaqList items={FAQ} />
       <FaqMore />
@@ -309,7 +308,7 @@ export function ThreadEnd() {
 const FOOTER_GROUPS: { title: string; links: { label: string; href: string }[] }[] = [
   { title: "Learn", links: [{ label: "How it works", href: "/#how" }, { label: "What you get", href: "/#inc" }, { label: "Pricing", href: "/#price" }, { label: "FAQ", href: "/#faq" }, { label: "How we compare", href: "/compare" }] },
   { title: "Company", links: [{ label: "Our story", href: "/our-story" }, { label: "Rewards", href: "/rewards" }, { label: "Resources", href: "/resources" }] },
-  { title: "Help", links: [{ label: "Contact us", href: SUPPORT_HREF }, { label: "Privacy", href: "/privacy" }, { label: "Terms", href: "/terms" }] },
+  { title: "Help", links: [{ label: "Contact us", href: "/contact" }, { label: "Privacy", href: "/privacy" }, { label: "Terms", href: "/terms" }] },
 ];
 
 /** Site footer (D-080): a white link card inside a grainy colour field. The home page passes <Closing /> as children. */
