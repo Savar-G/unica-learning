@@ -46,5 +46,7 @@ export default async function TestPage(props: PageProps<"/account/test/[childId]
   const band = bandFor(grade);
   // #253: a resume past the break (stage 1 locked) says the child can go back until the end of the test.
   const afterBreak = state.kind === "resume" && state.afterBreak === true;
-  return <TakeTest childId={child.id} name={child.first_name} breakAfter={band.stage1} ready={ready} done={state.kind === "wait"} mode={mode} typing={band.whiteboardTyping} afterBreak={afterBreak} />;
+  // #253: every main answer is in and the next step is the part 2 grid: "Check your answers, then press Done checking."
+  const checkGrid = state.kind === "finish" && state.checkGrid === true;
+  return <TakeTest childId={child.id} name={child.first_name} breakAfter={band.stage1} ready={ready} done={state.kind === "wait"} mode={mode} typing={band.whiteboardTyping} afterBreak={afterBreak} checkGrid={checkGrid} />;
 }

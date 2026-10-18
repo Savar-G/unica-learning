@@ -268,4 +268,12 @@ describe("the start screen on a resume (#253)", () => {
       expect((await startStates(memory.store, P1, T0 + 2 * HOUR)).get(C1)).toMatchObject({ kind: "resume", afterBreak });
     }
   });
+
+  it("says when the next step is the part 2 grid, and not once Done checking moved the test on", async () => {
+    // Seed 1, first answer wrong: a round is due, so "Done checking" records the offer and the next step is the offer.
+    const memory = family(openTest(42, { seed: 1, script: (_, i) => i !== 0 }));
+    expect((await startStates(memory.store, P1, T0 + 2 * HOUR)).get(C1)).toEqual({ kind: "finish", attemptId: "a1", checkGrid: true });
+    await doneChecking(memory.store, P1, "a1", "stage2", T0 + 2 * HOUR);
+    expect((await startStates(memory.store, P1, T0 + 3 * HOUR)).get(C1)).toEqual({ kind: "finish", attemptId: "a1" });
+  });
 });

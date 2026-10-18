@@ -116,7 +116,7 @@ export type StartMode = "new" | "resume" | "finish" | "restart" | "round";
  * halfway ring, for the progress on the help and end screens (the band's stage 1). `extra` (#190): the screen runs only
  * the extra round of a completed test, which the report offers again; it has its own start and end, and no help question.
  */
-export function TakeTest({ childId, name, breakAfter, ready, done, mode: firstMode = "new", typing = true, extra, afterBreak = false }: { childId: string; name: string; breakAfter: number; ready: boolean; done: boolean; mode?: StartMode; typing?: boolean; extra?: ExtraEntry; afterBreak?: boolean }) {
+export function TakeTest({ childId, name, breakAfter, ready, done, mode: firstMode = "new", typing = true, extra, afterBreak = false, checkGrid = false }: { childId: string; name: string; breakAfter: number; ready: boolean; done: boolean; mode?: StartMode; typing?: boolean; extra?: ExtraEntry; afterBreak?: boolean; checkGrid?: boolean }) {
   const [screen, setScreen] = useState<Screen>(done ? { name: "done" } : { name: "intro" });
   const [progress, setProgress] = useState<{ total: number; breakAfter: number } | null>(null);
   const [busy, setBusy] = useState(false);
@@ -553,7 +553,7 @@ export function TakeTest({ childId, name, breakAfter, ready, done, mode: firstMo
           ? <ExtraIntro name={name} entry={extra} busy={busy} onStart={() => start()} problem={<Problem error={failure} />} />
           : mode === "round"
             ? <ExtraReturn name={name} busy={busy} onGo={() => start()} onStop={() => start(true)} problem={<Problem error={failure} />} />
-            : <Intro name={name} ready={ready} busy={busy} onStart={() => start()} failure={failure} mode={mode} afterBreak={afterBreak} />)}
+            : <Intro name={name} ready={ready} busy={busy} onStart={() => start()} failure={failure} mode={mode} afterBreak={afterBreak} checkGrid={checkGrid} />)}
         {screen.name === "offer" && <ExtraOffer name={name} offer={screen.offer} problem={<Problem error={failure} />} onChoose={(take) => chooseRound(take ? "take" : "skip", "test")} />}
         {screen.name === "question" && (
           <Question key={`${(viewed?.question ?? screen.question).id}:${visit}`} testId={screen.testId} typing={typing}
@@ -628,7 +628,7 @@ function Problem({ error }: { error: TestError | null }) {
   return <p ref={line} role="alert" className="test-alert">{text}</p>;
 }
 
-function Intro({ name, ready, busy, onStart, failure, mode, afterBreak }: { name: string; ready: boolean; busy: boolean; onStart: () => void; failure: TestError | null; mode: StartMode; afterBreak: boolean }) {
+function Intro({ name, ready, busy, onStart, failure, mode, afterBreak, checkGrid }: { name: string; ready: boolean; busy: boolean; onStart: () => void; failure: TestError | null; mode: StartMode; afterBreak: boolean; checkGrid: boolean }) {
   if (!ready) {
     return (
       <MessageScreen>
@@ -640,11 +640,12 @@ function Intro({ name, ready, busy, onStart, failure, mode, afterBreak }: { name
     );
   }
   if (mode === "finish") {
+    // #253: the next step is the part 2 grid (Savar, 2026-10-18); Continue opens it.
     return (
       <MessageScreen>
         <p className="test-kicker">Math test</p>
-        <h1 className="test-title">All your answers are in, {name}!</h1>
-        <p className="test-lead">The test was not sent yet. Press Continue to finish it.</p>
+        <h1 className="test-title">{checkGrid ? `Welcome back, ${name}!` : `All your answers are in, ${name}!`}</h1>
+        <p className="test-lead">{checkGrid ? "Check your answers, then press Done checking." : "The test was not sent yet. Press Continue to finish it."}</p>
         <Problem error={failure} />
         <Button onClick={onStart} disabled={busy} aria-busy={busy}>{busy ? "Opening…" : "Continue"}</Button>
       </MessageScreen>

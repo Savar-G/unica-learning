@@ -72,7 +72,13 @@ export type StartState =
    * way through the extra round, #190: `round`, the round's questions answered and asked). Opening it scores it, or,
    * for a round left part way, shows Keep going / Stop here.
    */
-  | { kind: "finish"; attemptId: string; round?: { answered: number; questions: number } }
+  | {
+      kind: "finish";
+      attemptId: string;
+      round?: { answered: number; questions: number };
+      /** #253: the next step is the part 2 "Check your answers" grid; the test attempt module adds it. */
+      checkGrid?: boolean;
+    }
   /** "Start again": the last test ran out of time; a new one has new questions. */
   | { kind: "expired"; attemptId: string }
   /** No new test yet: it opens 30 days after the last completed one. */

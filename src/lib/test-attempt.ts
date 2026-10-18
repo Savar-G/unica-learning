@@ -369,7 +369,9 @@ export async function startStates(store: AttemptStore, parent: string, now: numb
     // "Keep going / Stop here". Read from the test's answers already read above.
     const read = loaded.reads.get(state.attemptId);
     const round = read && roundTaken(read);
-    return [id, round ? { ...state, round } : state];
+    if (round) return [id, { ...state, round }];
+    // #253: the next step is the part 2 "Check your answers" grid: the start screen says to check, then press Done checking.
+    return [id, read && stepOf(read).status === "check" ? { ...state, checkGrid: true } : state];
   }));
 }
 

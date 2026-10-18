@@ -657,7 +657,7 @@ describe("what each child's start screen offers", () => {
     expect(states).toEqual(new Map<string, StartState>([
       ["child-1", { kind: "resume", attemptId: "a1", resumeUntil: T0 + HOUR + DAY, afterBreak: false }],
       ["child-2", { kind: "wait", completedAt: T0 - 3 * DAY + HOUR, opensAt: T0 - 3 * DAY + HOUR + 30 * DAY }],
-      ["child-3", { kind: "finish", attemptId: "a3" }],
+      ["child-3", { kind: "finish", attemptId: "a3", checkGrid: true }],
       ["child-4", { kind: "expired", attemptId: "a4" }],
     ]));
     // A child with no test starts one.
@@ -666,7 +666,7 @@ describe("what each child's start screen offers", () => {
   });
 
   it("is read for one child", async () => {
-    expect(await startStates(families().store, P1, at, "child-3")).toEqual(new Map([["child-3", { kind: "finish", attemptId: "a3" }]]));
+    expect(await startStates(families().store, P1, at, "child-3")).toEqual(new Map([["child-3", { kind: "finish", attemptId: "a3", checkGrid: true }]]));
   });
 
   it("agrees with the start request for each child", async () => {
