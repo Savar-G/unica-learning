@@ -162,12 +162,31 @@ export function attemptStore(admin: SupabaseClient): AttemptStore {
       return data ? eventsOf(data) : null;
     },
 
+    // #252: the rows' work columns, then each strokes file from the bucket, at the same time. A strokes file that cannot
+    // be read is left out (logged): its board opens empty, and its stored work stays unless the child changes it.
+    async answerWork(id, positions) {
+      if (!positions.length) return [];
+      const { data, error } = await admin.from("answers").select("position, work_path, work_text, strokes_path")
+        .eq("assessment_id", id).in("position", [...positions])
+        .returns<{ position: number; work_path: string | null; work_text: string | null; strokes_path: string | null }[]>();
+      if (error) throw new StoreError("answer work load failed", error.message);
+      return Promise.all((data ?? []).map(async (row) => {
+        let strokes: string | null = null;
+        if (row.strokes_path) {
+          const { data: file, error: fileError } = await admin.storage.from(WORK_BUCKET).download(row.strokes_path);
+          if (fileError || !file) console.error("[strokes] download failed", fileError?.message ?? "no file");
+          else strokes = await file.text();
+        }
+        return { position: row.position, workPath: row.work_path, workText: row.work_text, strokesPath: row.strokes_path, strokes };
+      }));
+    },
+
     // #249: one database function (migration add_answer_change) checks the section's guards and overwrites the row in
     // one transaction, and returns the work it replaced; null when a guard failed. #253: it also refuses a stage 1
     // answer once a route is stored (migration add_stage1_lock).
     async changeAnswer(id, { position, questionId, response, correct, misconception, timeMs, answeredAt, events, work }, unansweredFrom) {
       const { answered_at, answer_changes, read_aloud_count, read_aloud_at_ms, away_count, away_ms } = timelineColumns({ shownAt: null, answeredAt, events });
-      const { data, error } = await admin.rpc("change_answer", {
+      const answer = {
         p_assessment: id,
         p_position: position,
         p_question_id: questionId,
@@ -182,11 +201,18 @@ export function attemptStore(admin: SupabaseClient): AttemptStore {
         p_read_aloud_at_ms: read_aloud_at_ms,
         p_away_count: away_count,
         p_away_ms: away_ms,
-        p_work_changed: work !== undefined,
-        p_work_path: work?.workPath ?? null,
-        p_work_text: work?.workText ?? null,
-        p_strokes_path: work?.strokesPath ?? null,
-      });
+      };
+      // #252: typed working alone (migration change_answer_keep_drawing): the drawing and strokes paths are read under
+      // the test's row lock and kept, then change_answer runs with its guards.
+      const { data, error } = work?.keepDrawing
+        ? await admin.rpc("change_answer_keep_drawing", { ...answer, p_work_text: work.workText })
+        : await admin.rpc("change_answer", {
+          ...answer,
+          p_work_changed: work !== undefined,
+          p_work_path: work?.workPath ?? null,
+          p_work_text: work?.workText ?? null,
+          p_strokes_path: work?.strokesPath ?? null,
+        });
       if (error) throw new StoreError("answer change failed", error.message);
       const replaced = data as { work_path: string | null; strokes_path: string | null } | null;
       return replaced ? { workPath: replaced.work_path, strokesPath: replaced.strokes_path } : "closed";

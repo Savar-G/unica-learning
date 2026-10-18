@@ -5,7 +5,7 @@
 // (#79) can move it as one piece. The rules (palm rejection, image size, the draft) are in src/lib/whiteboard.ts.
 // Strokes are stored as fractions of the board's width, so the drawing keeps its shape when the board changes size.
 // #186: the board also keeps a log of every stroke (with the time of each point), undo and clear, for the admin's replay.
-import { useCallback, useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
 import { WORK_IMAGE_MAX_BYTES, WORK_TEXT_MAX } from "@/lib/test-api";
 import {
   DRAFT_ROOT,
@@ -40,6 +40,8 @@ export interface WhiteboardProps {
   typing: boolean;
   /** Called with the board's size whenever it changes. */
   onSize?: (size: BoardSize) => void;
+  /** #252: the mode the board opens in (Draw when left out). */
+  startMode?: "draw" | "type";
 }
 
 /** True when any pixel of the layer has ink. */
@@ -127,7 +129,7 @@ export function clearDrafts(drop: (key: string) => boolean): void {
   }
 }
 
-export function Whiteboard({ board, onChange, typing, onSize }: WhiteboardProps) {
+export function Whiteboard({ board, onChange, typing, onSize, startMode = "draw" }: WhiteboardProps) {
   const surface = useRef<HTMLDivElement>(null);
   const canvas = useRef<HTMLCanvasElement>(null);
   const size = useRef<BoardSize>({ width: 0, height: 0 });
@@ -137,7 +139,10 @@ export function Whiteboard({ board, onChange, typing, onSize }: WhiteboardProps)
   const current = useRef<{ id: number; stroke: Stroke; times: number[] } | null>(null);
   const guard = useRef(newPalmGuard());
   const [tool, setTool] = useState<"pencil" | "eraser">("pencil");
-  const [mode, setMode] = useState<"draw" | "type">("draw");
+  const [mode, setMode] = useState<"draw" | "type">(startMode);
+  const [chose, setChose] = useState(false);
+  // The text box, so Type on a board already in Type focuses it (autoFocus works only when it mounts).
+  const textBox = useRef<HTMLTextAreaElement>(null);
   const sizeListener = useRef(onSize);
   useEffect(() => {
     sizeListener.current = onSize;
@@ -156,11 +161,13 @@ export function Whiteboard({ board, onChange, typing, onSize }: WhiteboardProps)
   }, []);
 
   // The canvas follows the board's size (a resize, a rotated tablet), drawn sharp for the screen's pixel density.
-  useEffect(() => {
+  // #252: sized and drawn once before the first paint too, so work the board opens with (an answered question the
+  // child went back to) is there in the first frame, never an empty board first.
+  useLayoutEffect(() => {
     const el = surface.current;
     const c = canvas.current;
     if (!el || !c) return;
-    const ro = new ResizeObserver(() => {
+    const fit = () => {
       const r = el.getBoundingClientRect();
       if (!r.width || !r.height) return;
       const dpr = window.devicePixelRatio || 1;
@@ -171,7 +178,9 @@ export function Whiteboard({ board, onChange, typing, onSize }: WhiteboardProps)
       c.style.height = `${r.height}px`;
       redraw();
       sizeListener.current?.(size.current);
-    });
+    };
+    fit();
+    const ro = new ResizeObserver(fit);
     ro.observe(el);
     return () => ro.disconnect();
   }, [redraw]);
@@ -262,13 +271,15 @@ export function Whiteboard({ board, onChange, typing, onSize }: WhiteboardProps)
           {empty && !typingNow && <p className="wb-hint" aria-hidden>{hint}</p>}
           {typingNow && (
             <textarea
+              ref={textBox}
               className="wb-text"
               value={board.text}
               maxLength={WORK_TEXT_MAX}
               onChange={(e) => onChange({ ...board, text: e.target.value })}
               placeholder="Type how you worked it out"
               aria-label="Type your work"
-              autoFocus
+              // #252: focus only when the child presses Type, not when the board opens in Type (no keyboard pops up).
+              autoFocus={chose}
             />
           )}
         </div>
@@ -276,7 +287,7 @@ export function Whiteboard({ board, onChange, typing, onSize }: WhiteboardProps)
           {typing && (
             <div className="wb-modes" role="group" aria-label="Draw or type">
               <button type="button" aria-pressed={!typingNow} onClick={() => setMode("draw")}><PencilIcon /> Draw</button>
-              <button type="button" aria-pressed={typingNow} onClick={() => setMode("type")}><span aria-hidden className="wb-aa">Aa</span> Type</button>
+              <button type="button" aria-pressed={typingNow} onClick={() => { setChose(true); setMode("type"); textBox.current?.focus(); }}><span aria-hidden className="wb-aa">Aa</span> Type</button>
             </div>
           )}
           {!typingNow && (

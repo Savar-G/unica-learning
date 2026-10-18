@@ -2,10 +2,11 @@
 // vectors with times since the question was shown, so an admin can replay how the child worked. The drawing (PNG)
 // stays the record for the parent report and the AI review. Strokes are for admins only: the answer route stores them
 // as a JSON file in the private bucket (src/lib/test-attempt.ts), never in the report or the copy without names.
+// #252: the test step also sends them back to the child's own test, so a revisit shows the board as the child left it.
 // Pure: no DOM, network or clock. The browser builds the recording when the child presses Next (src/components/test.tsx),
 // the server checks it (src/lib/work-payload.ts), and the admin replay reads it (src/components/stroke-replay.tsx).
 import { STROKES_MAX_BYTES } from "@/lib/test-api";
-import type { BoardEvent } from "@/lib/whiteboard";
+import type { BoardEvent, BoardState } from "@/lib/whiteboard";
 
 /** One point: x and y in board widths from the top-left corner (as the board keeps them), t in ms since the question was shown. */
 export type TimedPoint = [x: number, y: number, t: number];
@@ -158,6 +159,28 @@ export function replayLength(recording: StrokeRecording): number {
   let end = 0;
   for (const e of recording.events) end = Math.max(end, e.kind === "stroke" ? e.pts[e.pts.length - 1][2] : e.t);
   return end;
+}
+
+/** #252: the stored work of an answered question, as the test step carries it: the strokes and the typed working. */
+export interface StoredWork {
+  strokes?: StrokeRecording;
+  text?: string;
+}
+
+/**
+ * #252: the board an answered question opens with on a revisit (`now` on the clock of performance.now()): what was on
+ * it when the child left it, with the typed working. The log keeps every earlier stroke, undo and clear, timed so the
+ * question was shown the replay's length ago: new work records after them, and the replay keeps the earlier work.
+ */
+export function storedBoard(work: StoredWork, now: number): BoardState {
+  const text = work.text ?? "";
+  if (!work.strokes) return { strokes: [], text, log: [], shownAt: now };
+  const shownAt = now - replayLength(work.strokes);
+  const strokes = boardAt(work.strokes, Infinity).map(({ erase, w, pts }) => ({ erase, w, pts: pts.map(([x, y]): [number, number] => [x, y]) }));
+  const log: BoardEvent[] = work.strokes.events.map((e) => e.kind === "stroke"
+    ? { kind: "stroke", stroke: { erase: e.erase, w: e.w, pts: e.pts.map(([x, y]): [number, number] => [x, y]) }, times: e.pts.map(([, , t]) => shownAt + t) }
+    : { kind: e.kind, at: shownAt + e.t });
+  return { strokes, text, log, shownAt };
 }
 
 function thin(pts: TimedPoint[], step: number): TimedPoint[] {

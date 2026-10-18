@@ -291,6 +291,14 @@ export function memoryAttemptStore({ children: kids = [], tests: initial = [] }:
       await begin("answerEvents");
       return structuredClone(tests.find((t) => t.id === id)?.answers[position]?.timeline?.events ?? null);
     },
+    async answerWork(id, positions) {
+      await begin("answerWork");
+      const answers = tests.find((t) => t.id === id)?.answers ?? [];
+      return positions.filter((p) => answers[p]).map((position) => {
+        const { workPath = null, workText = null, strokesPath = null } = answers[position];
+        return { position, workPath, workText, strokesPath, strokes: (strokesPath && strokes.get(strokesPath)) ?? null };
+      });
+    },
     // #249: the guards of the change, checked together with the write, as in the database function change_answer.
     async changeAnswer(id, { position, answeredAt, events, work, ...marked }, unansweredFrom) {
       await begin("changeAnswer");
@@ -303,11 +311,14 @@ export function memoryAttemptStore({ children: kids = [], tests: initial = [] }:
       if (row.answers.length > unansweredFrom || !old || old.questionId !== marked.questionId) return "closed";
       const timeline = { shownAt: old.timeline?.shownAt ?? null, answeredAt, events: structuredClone(events) };
       const { strokesPath: oldStrokes, ...kept } = old;
+      // #252: keepDrawing changes only the typed working; the drawing and strokes stay as the row has them now.
+      const drawing = work && !work.keepDrawing;
       row.answers[position] = {
-        ...(work ? kept : old),
+        ...(drawing ? kept : old),
         ...marked,
         timeline,
-        ...(work && { workPath: work.workPath, workText: work.workText, ...(work.strokesPath ? { strokesPath: work.strokesPath } : {}) }),
+        ...(work && { workText: work.workText }),
+        ...(drawing && { workPath: work.workPath, ...(work.strokesPath ? { strokesPath: work.strokesPath } : {}) }),
       };
       return { workPath: old.workPath ?? null, strokesPath: oldStrokes ?? null };
     },

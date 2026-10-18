@@ -1,4 +1,5 @@
 import type { CurriculumId } from "@/lib/signup";
+import type { StoredWork } from "@/lib/strokes";
 import type { Certainty } from "./certainty";
 import type { Pace } from "./rushing";
 import type { FactsResult } from "./facts";
@@ -172,6 +173,8 @@ export interface AnsweredQuestion {
   number: number;
   question: PublicQuestion;
   response: string;
+  /** #252: the stored whiteboard strokes and typed working, so the board shows them at once; absent when none can be read. */
+  work?: StoredWork;
 }
 
 export interface ChildProfile {

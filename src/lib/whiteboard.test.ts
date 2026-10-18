@@ -8,6 +8,7 @@ import {
   exportFrame,
   hasDrawing,
   newPalmGuard,
+  openMode,
   pointerDown,
   pointerUp,
   type PalmGuard,
@@ -175,5 +176,23 @@ describe("the saved draft, for a resume of the same question (#72)", () => {
     for (const raw of [null, "", "{", "[]", '{"strokes":"x","text":""}', '{"strokes":[{"pts":[["a",1]]}],"text":""}', JSON.stringify({ strokes: [], text: "x".repeat(WORK_TEXT_MAX + 1) })]) {
       expect(decodeDraft(raw), String(raw)).toBeNull();
     }
+  });
+});
+
+describe("the mode a revisited board opens in (#252)", () => {
+  const line = { erase: false, w: 3.2, pts: [[0.1, 0.1], [0.2, 0.2]] as [number, number][] };
+  const eraser = { erase: true, w: 26, pts: [[0.1, 0.1]] as [number, number][] };
+
+  it("Type, when the answer has typed working and no drawing, so the child sees the typed working at once", () => {
+    expect(openMode({ strokes: [], text: "3 + 4" }, true)).toBe("type");
+    // Eraser strokes alone are not a drawing.
+    expect(openMode({ strokes: [eraser], text: "3 + 4" }, true)).toBe("type");
+  });
+
+  it("Draw otherwise: a drawing (with or without typed working), no work, or a board that cannot type (grades 1 and 2)", () => {
+    expect(openMode({ strokes: [line], text: "3 + 4" }, true)).toBe("draw");
+    expect(openMode({ strokes: [line], text: "" }, true)).toBe("draw");
+    expect(openMode({ strokes: [], text: "" }, true)).toBe("draw");
+    expect(openMode({ strokes: [], text: "3 + 4" }, false)).toBe("draw");
   });
 });

@@ -51,6 +51,7 @@ import {
 import { FACTS_SECONDS, createFacts, factsStep, restoreFacts, storedFacts, submitFact, type FactAnswer, type FactsSession, type FactsStep, type FactsTest, type FactSubmission } from "@/lib/assessment";
 import { ANSWER_MAX, QUESTION_TIME_CAP_MS } from "@/lib/test-api";
 import { mergeEvents, type AnswerEvents } from "@/lib/answer-events";
+import { readStrokes, type StoredWork, type StrokeRecording } from "@/lib/strokes";
 import type { BreakRecord, BreakResume, TestDevice } from "@/lib/test-context";
 
 /** One of the parent's children, as a new test needs them. */
@@ -112,14 +113,30 @@ export interface ChangedAnswer extends Answer {
   position: number;
   answeredAt: number;
   events: AnswerEvents | null;
-  /** The new work, when the child drew or typed in this visit. Absent: the stored drawing, strokes and typed working stay. */
-  work?: { workPath: string | null; workText: string | null; strokesPath: string | null };
+  /**
+   * The new work, when the child drew or typed in this visit. Absent: the stored drawing, strokes and typed working stay.
+   * #252 `keepDrawing`: the child drew nothing in the visit (no drawing, no strokes), so only the typed working changes;
+   * the drawing and strokes stay as the store has them at the update (`workPath` and `strokesPath` are null).
+   */
+  work?: { workPath: string | null; workText: string | null; strokesPath: string | null; keepDrawing?: boolean };
 }
 
 /** #249: the work a change replaced: where its drawing and strokes are stored (null where there were none). */
 export interface ReplacedWork {
   workPath: string | null;
   strokesPath: string | null;
+}
+
+/**
+ * #252: the stored work of one answer: where its drawing and strokes are (null where there are none), the typed
+ * working, and the strokes JSON (null when there are none, or their file could not be read).
+ */
+export interface AnswerWorkRow {
+  position: number;
+  workPath: string | null;
+  workText: string | null;
+  strokesPath: string | null;
+  strokes: string | null;
 }
 
 /** #190: which part of the test an answer is for: the main test, or the optional extra round after it. */
@@ -172,6 +189,8 @@ export interface AttemptStore extends FactsStore, ShownStore, ContextStore, Extr
   insertAnswer(id: string, answer: NewAnswer): Promise<"stored" | "taken">;
   /** #249: what the child did on the answer at `position` before it was stored (#184); null when it has none. */
   answerEvents(id: string, position: number): Promise<AnswerEvents | null>;
+  /** #252: the stored work of the answers at `positions` (one row per stored answer there, any order). */
+  answerWork(id: string, positions: readonly number[]): Promise<AnswerWorkRow[]>;
   /**
    * #249: overwrites the answer at `change.position` with the changed answer, whole, only while its section is open:
    * the test is in progress, the extra round was neither offered, skipped nor started (the test has not moved past stage
@@ -408,7 +427,7 @@ export type StepOutcome = { ok: true; step: TestStep; break?: BreakResume } | Re
 export async function nextStep(store: AttemptStore, parent: string, id: string, now: number): Promise<StepOutcome> {
   const open = await openTest(store, parent, id, now);
   if (!open.ok) return open;
-  const step = stepOf(open);
+  const step = await sendStep(store, id, open);
   await shown(store, id, open.session, step, now);
   return { ok: true, step, ...(open.break && { break: open.break }) };
 }
@@ -450,7 +469,7 @@ export async function answerQuestion(store: AttemptStore, parent: string, id: st
   // The test is complete or no longer in progress, or a second tab (or a retried request) answered this question already.
   if (!takesAnswers(open) || !q || input.questionId !== q.id) {
     // The screen shows the step that comes with the conflict (#184).
-    const step = stepOf(open);
+    const step = await sendStep(store, id, open);
     if (takesAnswers(open)) await shown(store, id, session, step, now);
     return { ok: false, error: "conflict", step };
   }
@@ -527,12 +546,14 @@ export async function answerQuestion(store: AttemptStore, parent: string, id: st
     await removeStrokes(store, strokesPath);
     return freshConflict(store, parent, id, now);
   }
-  const step = stepOf({ ...open, session: next });
-  await Promise.all([
+  const plain = stepOf({ ...open, session: next });
+  // #252: the work of the open section's answers is read beside the writes.
+  const [step] = await Promise.all([
+    withWork(store, id, { ...open, session: next }, plain),
     // The answer time is written only once the answer is stored: the reminder emails (#73) count from it.
     bestEffort("[test] answer time save failed", () => store.recordAnswerTime(id, now)),
     // #184: the next question goes out in this response.
-    shown(store, id, next, step, now),
+    shown(store, id, next, plain, now),
   ]);
   return { ok: true, step };
 }
@@ -578,7 +599,7 @@ export async function changeAnswer(store: AttemptStore, parent: string, id: stri
   const { attempt, session } = open;
   const section = changeable(open);
   const at = section?.answered.find((a) => a.question.id === input.questionId);
-  if (!section || !at) return { ok: false, error: "conflict", step: stepOf(open) };
+  if (!section || !at) return { ok: false, error: "conflict", step: await sendStep(store, id, open) };
   const q = at.question;
   const response = input.response.trim();
   const valid = q.format === "choice" ? (q.choices ?? []).includes(response) : response.length > 0 && response.length <= ANSWER_MAX;
@@ -619,9 +640,14 @@ export async function changeAnswer(store: AttemptStore, parent: string, id: stri
 
   // Changed work goes up first, under new names, so the answer can point to it. If the answer is not changed, it goes.
   let work: ChangedAnswer["work"];
-  if (input.workChanged) {
-    // An erased board is changed work with no drawing: the row's drawing and strokes become empty, so the strokes of a
-    // drawing the child erased are not kept.
+  if (input.workChanged && !input.work.png && !input.work.strokes) {
+    // #252: the child drew nothing in the visit: the board opened empty (a drawing stored with no strokes, before #186,
+    // or strokes that could not be read) and stayed so. Only the typed working changes. The drawing and strokes stay as
+    // the database has them at the update, so no file of the row is ever removed or pointed to again here.
+    work = { workPath: null, workText: input.work.text || null, strokesPath: null, keepDrawing: true };
+  } else if (input.workChanged) {
+    // An erased board is changed work with no drawing (its strokes come with it, as the board opened with the stored
+    // strokes): the row's drawing and strokes become empty, so the strokes of a drawing the child erased are not kept.
     const strokesUpload = storeStrokes(store, parent, id, q.id, input.work.png ? input.work.strokes : null);
     let workPath: string | null = null;
     if (input.work.png) {
@@ -635,6 +661,7 @@ export async function changeAnswer(store: AttemptStore, parent: string, id: stri
     }
     work = { workPath, workText: input.work.text || null, strokesPath: (await strokesUpload) ?? null };
   }
+  // The files this request uploaded (none for typed working alone), removed when the answer does not point to them.
   const discard = () => Promise.all([removeDrawing(store, work?.workPath ?? null), removeStrokes(store, work?.strokesPath ?? undefined)]);
 
   let replaced: ReplacedWork | "closed";
@@ -657,16 +684,19 @@ export async function changeAnswer(store: AttemptStore, parent: string, id: stri
     if (until !== null) await bestEffort("[test] deadline undo failed", () => store.undoAnswerWindow(id, until, attempt.resumeUntil));
     return freshConflict(store, parent, id, now);
   }
-  // The old work goes only once the answer points to the new work.
-  if (work) {
+  // The old work goes only once the answer points to the new work. With keepDrawing the row keeps its files.
+  if (work && !work.keepDrawing) {
     const { workPath, strokesPath } = replaced;
     await Promise.all([
       workPath !== work.workPath ? removeDrawing(store, workPath) : null,
       strokesPath !== work.strokesPath ? removeStrokes(store, strokesPath ?? undefined) : null,
     ]);
   }
-  await bestEffort("[test] answer time save failed", () => store.recordAnswerTime(id, now));
-  return { ok: true, step: stepOf({ ...open, session: next }) };
+  const [step] = await Promise.all([
+    sendStep(store, id, { ...open, session: next }),
+    bestEffort("[test] answer time save failed", () => store.recordAnswerTime(id, now)),
+  ]);
+  return { ok: true, step };
 }
 
 // "Check your answers" (#249, #253). After the last question of stage 1 and of stage 2, the step is the section's grid
@@ -692,7 +722,7 @@ export async function doneChecking(store: AttemptStore, parent: string, id: stri
     if (!open.ok) return open;
     const step = stepOf(open);
     if (step.status !== "check" || step.section !== section) {
-      if (!passed(open, section)) return { ok: false, error: "conflict", step };
+      if (!passed(open, section)) return { ok: false, error: "conflict", step: await withWork(store, id, open, step) };
       // Review of #253: the press that stored the stage 1 lock may have lost its answer (or another tab pressed at the
       // same moment). This press opens the answer window as that one did, so the 24 hours run from "Done checking".
       if (section === "stage1" && open.attempt.status === "in_progress" && !mainAnswered(open.session)) {
@@ -817,7 +847,7 @@ async function freshConflict(store: AttemptStore, parent: string, id: string, no
   const fresh = await openTest(store, parent, id, now);
   if (!fresh.ok) return fresh;
   // The screen shows the step that comes with the conflict (#184).
-  const step = stepOf(fresh);
+  const step = await sendStep(store, id, fresh);
   if (takesAnswers(fresh)) await shown(store, id, fresh.session, step, now);
   return { ok: false, error: "conflict", step };
 }
@@ -1324,6 +1354,49 @@ function stepOf(read: ReadTest): TestStep {
   return { ...step, answered: answered.map((a) => ({ number: a.position + 1, question: toPublicQuestion(a.question), response: a.answer.response })) };
 }
 
+/** #252: stepOf with the stored work of the answered questions (withWork). */
+const sendStep = async (store: AttemptStore, id: string, read: ReadTest): Promise<TestStep> => withWork(store, id, read, stepOf(read));
+
+/**
+ * #252: the step with the stored work of its answered questions (the strokes and the typed working), so a revisit
+ * shows the board at once, also after a resume on another device. A failed read sends the step without work: the
+ * board opens empty, and the stored work stays unless the child changes it.
+ */
+async function withWork(store: AttemptStore, id: string, read: ReadTest, step: TestStep): Promise<TestStep> {
+  // A question and the "Check your answers" grid (#253) both carry the answered questions: a tap opens one at once.
+  if (step.status === "complete" || !step.answered?.length) return step;
+  const places = new Map((changeable(read)?.answered ?? []).map((a) => [a.question.id, a.position]));
+  let rows: AnswerWorkRow[];
+  try {
+    rows = await store.answerWork(id, [...places.values()]);
+  } catch (e) {
+    logFailure("[test] answer work load failed", e);
+    return step;
+  }
+  const byPlace = new Map(rows.map((r) => [r.position, r]));
+  return {
+    ...step,
+    answered: step.answered.map((a) => {
+      const work = workOf(byPlace.get(places.get(a.question.id) ?? -1));
+      return work ? { ...a, work } : a;
+    }),
+  };
+}
+
+/** #252: the work the browser gets for a stored answer: its strokes (when their file is a recording) and typed working; null for none. */
+function workOf(row: AnswerWorkRow | undefined): StoredWork | null {
+  if (!row) return null;
+  let strokes: StrokeRecording | null = null;
+  try {
+    strokes = row.strokes ? readStrokes(JSON.parse(row.strokes)) : null;
+  } catch {
+    // Not JSON: the board opens without the strokes.
+  }
+  const text = row.workText ?? "";
+  if (!strokes && !text) return null;
+  return { ...(strokes && { strokes }), ...(text && { text }) };
+}
+
 /** The step, with the extra round's offer when one is due (stepOf without the answered questions). */
 function roundStep({ attempt, session, round }: ReadTest): TestStep {
   if (attempt.status === "in_progress" && stopped(round)) return testStep(withoutRound(session));
@@ -1483,7 +1556,7 @@ export async function extraRoundState(store: AttemptStore, parent: string, id: s
 
 /** Sends the step of a test that takes answers, and records it as shown. */
 async function carryOn(store: AttemptStore, id: string, read: ReadTest, now: number): Promise<StepOutcome> {
-  const step = stepOf(read);
+  const step = await sendStep(store, id, read);
   await shown(store, id, read.session, step, now);
   return { ok: true, step };
 }
