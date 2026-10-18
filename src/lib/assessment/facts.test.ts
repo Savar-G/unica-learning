@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { checked } from "@/lib/assessment/scripted-child";
 import {
   BC_SKILL_MAP,
   FACTS_BY_GRADE,
@@ -112,7 +113,7 @@ describe("facts section: timed by the server", () => {
 function placementWith(profile: ChildProfile, isRight: Script, facts: FactsSession | null) {
   let session = createSession(profile, 5);
   for (let q = nextQuestion(session), i = 0; q; q = nextQuestion(session), i++) {
-    session = submitAnswer(session, { questionId: q.id, response: isRight(q, i) ? q.answer : "no idea", timeMs: 20_000 });
+    session = checked(submitAnswer(session, { questionId: q.id, response: isRight(q, i) ? q.answer : "no idea", timeMs: 20_000 }));
   }
   return finish(session, facts);
 }

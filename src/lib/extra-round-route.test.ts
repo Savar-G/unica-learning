@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { checked } from "@/lib/assessment/scripted-child";
 import { createSession, nextQuestion, restoreSession, startAttempt, storedTest, submitAnswer, type Question, type Submission } from "@/lib/assessment";
 import { memoryAttemptStore, type MemoryTest } from "@/lib/test-attempt-memory";
 
@@ -39,7 +40,7 @@ function mainDone(): MemoryTest {
   const answers: Submission[] = [];
   for (let q = nextQuestion(session); q; q = nextQuestion(session)) {
     answers.push({ questionId: q.id, response: answers.length === 0 ? wrongTo(q) : q.answer, timeMs: 20_000 });
-    session = submitAnswer(session, answers.at(-1)!);
+    session = checked(submitAnswer(session, answers.at(-1)!));
   }
   return { ...startAttempt(TEST, T0), parentId: P1, childId: CHILD, seed: 1, test, answers };
 }
@@ -94,7 +95,8 @@ describe("POST /api/account/assessments/[id]/extra", () => {
   });
 
   it("refuses a stop before the round started: 409 with where the test is", async () => {
-    expect(await sent(await choose({ stop: true }))).toMatchObject({ status: 409, body: { ok: false, error: "conflict", step: { status: "complete", extraRound: { questions: 8 } } } });
+    // #253: before "Done checking" the test is on the stage 2 grid.
+    expect(await sent(await choose({ stop: true }))).toMatchObject({ status: 409, body: { ok: false, error: "conflict", step: { status: "check", section: "stage2" } } });
   });
 
   it("refuses a body without a yes or no as invalid, and bad JSON as bad_json; nothing is stored", async () => {

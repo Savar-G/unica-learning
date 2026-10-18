@@ -7,6 +7,7 @@ import {
   createSession,
   finish,
   learnerProfile,
+  lockStage1,
   nextQuestion,
   storedFacts,
   storedTest,
@@ -66,6 +67,8 @@ export function demoExportData(families = 24): ExportData {
       const response = right ? q.answer : (q.wrong[0]?.value ?? String(Math.floor(r() * 100)));
       const timeMs = Math.round(r() < 0.08 ? 900 + r() * 1500 : 5000 + r() * 40_000);
       session = submitAnswer(session, { questionId: q.id, response, timeMs });
+      // #253: the child presses "Done checking" on the stage 1 grid at once.
+      if (!session.route && session.answers.length === session.stage1.length) session = lockStage1(session);
       clock += timeMs + 400;
       const a = session.answers[position];
       const drawn = q.showWork === true || (q.whiteboard && r() < 0.3);

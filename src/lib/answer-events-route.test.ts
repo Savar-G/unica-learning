@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { checked } from "@/lib/assessment/scripted-child";
 import { createSession, nextQuestion, restoreSession, startAttempt, storedTest, submitAnswer, type Submission } from "@/lib/assessment";
 import { memoryAttemptStore } from "@/lib/test-attempt-memory";
 
@@ -27,7 +28,7 @@ beforeEach(() => {
   const answers: Submission[] = [];
   for (let q = nextQuestion(session); q && answers.length < 2; q = nextQuestion(session)) {
     answers.push({ questionId: q.id, response: q.answer, timeMs: 20_000 });
-    session = submitAnswer(session, answers.at(-1)!);
+    session = checked(submitAnswer(session, answers.at(-1)!));
   }
   memory = memoryAttemptStore({ children: [{ id: CHILD, parentId: P1, ...ASHA }], tests: [{ ...startAttempt(TEST, T0), parentId: P1, childId: CHILD, seed: 7, test, answers }] });
   vi.useFakeTimers({ toFake: ["Date"] });
@@ -38,7 +39,7 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-const third = () => nextQuestion(restoreSession(memory.tests[0].test, memory.tests[0].answers))!;
+const third = () => nextQuestion(restoreSession(memory.tests[0].test, memory.tests[0].answers, memory.tests[0].route ?? null))!;
 /** Sends the right answer to question 3 with `events` (left out when undefined). */
 const answer = (events?: unknown) =>
   answerRoute(new Request(`https://unica.test/api/account/assessments/${TEST}/answers`, {

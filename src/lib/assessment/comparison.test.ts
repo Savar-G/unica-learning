@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { checked } from "@/lib/assessment/scripted-child";
 import { comparisonFor, createSession, finish, nextQuestion, restoreSession, storedTest, submitAnswer, type ComparisonTest, type Placement, type Submission } from "@/lib/assessment";
 import { knowsUpTo, takeTest } from "./scripted-child";
 
@@ -16,7 +17,7 @@ describe("comparison among children who took this test", () => {
     for (let q = nextQuestion(session); q; q = nextQuestion(session)) {
       const answer = { questionId: q.id, response: q.level <= 4 ? q.answer : "not known", timeMs: 20_000 };
       submissions.push(answer);
-      session = submitAnswer(session, answer);
+      session = checked(submitAnswer(session, answer));
     }
     const rebuilt = restoreSession(JSON.parse(JSON.stringify(source)), submissions);
     expect(finish(rebuilt)).toEqual(finish(session));

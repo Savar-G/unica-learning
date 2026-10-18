@@ -1,5 +1,6 @@
 import { readdirSync, readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
+import { checked } from "@/lib/assessment/scripted-child";
 import { createSession, finish, learnerProfile, nextQuestion, startExtraRound, storedTest, submitAnswer, type ProfileAnswer, type Session } from "@/lib/assessment";
 import { EXPORT_DATASETS, exportChunks, type ExportReader, type ExportRequest } from "@/lib/admin-export";
 import { memoryExportReader, type ExportData } from "@/lib/admin-export-memory";
@@ -248,7 +249,7 @@ describe("the serve times and the quick facts", () => {
 function wrongAll(): { session: Session; profile: NonNullable<ReturnType<typeof learnerProfile>> } {
   let session = createSession({ grade: 7, province: "BC" }, 7);
   for (let q = nextQuestion(session); q; q = nextQuestion(session)) {
-    session = submitAnswer(session, { questionId: q.id, response: q.wrong[0]?.value ?? "no idea", timeMs: 9000 });
+    session = checked(submitAnswer(session, { questionId: q.id, response: q.wrong[0]?.value ?? "no idea", timeMs: 9000 }));
   }
   const questions = [...session.stage1, ...session.stage2[session.route!]];
   const answers: ProfileAnswer[] = session.answers.map((a, i) => ({
@@ -346,7 +347,7 @@ describe("the extra round (#190)", () => {
   function withRound(): Session {
     let session = createSession({ grade: 4, province: "BC" }, 1);
     for (let q = nextQuestion(session); q; q = nextQuestion(session)) {
-      session = submitAnswer(session, { questionId: q.id, response: session.answers.length === 0 ? "no idea" : q.answer, timeMs: 20_000 });
+      session = checked(submitAnswer(session, { questionId: q.id, response: session.answers.length === 0 ? "no idea" : q.answer, timeMs: 20_000 }));
     }
     return startExtraRound(session);
   }

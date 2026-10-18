@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { checked } from "@/lib/assessment/scripted-child";
 import { REPORTED_STRAND, REPORTED_STRAND_NAMES, createSession, nextQuestion, startExtraRound, storedTest, submitAnswer, type Session } from "@/lib/assessment";
 import { answerLines, extraRoundFacts, shownWithoutAnswer, type AnswerRecord, type ExtraRoundColumns } from "@/lib/admin-view";
 
@@ -8,7 +9,7 @@ describe("the admin's answer lines for a test with an extra round", () => {
   const roundTaken = () => {
     let session: Session = createSession({ grade: 4, province: "BC" }, 1);
     for (let q = nextQuestion(session); q; q = nextQuestion(session)) {
-      session = submitAnswer(session, { questionId: q.id, response: session.answers.length === 0 ? "no idea" : q.answer, timeMs: 20_000 });
+      session = checked(submitAnswer(session, { questionId: q.id, response: session.answers.length === 0 ? "no idea" : q.answer, timeMs: 20_000 }));
     }
     session = startExtraRound(session);
     return session;
@@ -41,7 +42,7 @@ describe("the extra round of one test on the admin page", () => {
   const roundTest = () => {
     let session: Session = createSession({ grade: 4, province: "BC" }, 1);
     for (let q = nextQuestion(session); q; q = nextQuestion(session)) {
-      session = submitAnswer(session, { questionId: q.id, response: session.answers.length === 0 ? "no idea" : q.answer, timeMs: 20_000 });
+      session = checked(submitAnswer(session, { questionId: q.id, response: session.answers.length === 0 ? "no idea" : q.answer, timeMs: 20_000 }));
     }
     return storedTest(startExtraRound(session));
   };

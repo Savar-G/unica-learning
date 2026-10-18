@@ -2,7 +2,7 @@
 // is a real session of the assessment core, taken by a seeded child who knows up to a level, sometimes picks a coded
 // wrong answer and sometimes types something else. Seeded, so every reload shows the same numbers. Nothing here reads
 // or writes the database.
-import { createSession, nextQuestion, submitAnswer, type Grade, type Province } from "@/lib/assessment";
+import { createSession, lockStage1, nextQuestion, submitAnswer, type Grade, type Province } from "@/lib/assessment";
 import type { AnswerFact } from "@/lib/admin-templates";
 
 // mulberry32: a small seeded generator
@@ -39,6 +39,8 @@ export function demoAnswers(tests = 42): AnswerFact[] {
       const response = right ? q.answer : coded ? q.wrong[Math.floor(r() * q.wrong.length)].value : q.format === "choice" ? (q.choices?.find((c) => c !== q.answer) ?? "") : String(Math.floor(r() * 100));
       const timeMs = Math.round(r() < 0.06 ? 900 + r() * 2000 : 4000 + r() * r() * 70_000);
       session = submitAnswer(session, { questionId: q.id, response, timeMs });
+      // #253: the child presses "Done checking" on the stage 1 grid at once.
+      if (!session.route && session.answers.length === session.stage1.length) session = lockStage1(session);
       const a = session.answers[session.answers.length - 1];
       out.push({ templateId: q.templateId, correct: a.correct, timeMs, response, misconception: a.misconception, grade, province, testFamily: i < 2 });
     }

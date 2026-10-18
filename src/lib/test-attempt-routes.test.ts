@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { checked } from "@/lib/assessment/scripted-child";
 import { createSession, nextQuestion, recordAnswer, restoreSession, startAttempt, storedTest, submitAnswer, type Attempt, type Grade, type Submission } from "@/lib/assessment";
 import { StoreError } from "@/lib/test-attempt";
 import { memoryAttemptStore, type MemoryTest } from "@/lib/test-attempt-memory";
@@ -48,7 +49,7 @@ function stored(attempt: Attempt, { parent = P1, answered = 0 } = {}): MemoryTes
   const answers: Submission[] = [];
   for (let q = nextQuestion(session); q && answers.length < answered; q = nextQuestion(session)) {
     answers.push({ questionId: q.id, response: q.answer, timeMs: 20_000 });
-    session = submitAnswer(session, answers.at(-1)!);
+    session = checked(submitAnswer(session, answers.at(-1)!));
   }
   return { ...attempt, parentId: parent, childId: CHILD, seed: 7, test, answers };
 }
@@ -155,7 +156,7 @@ describe("POST /api/account/assessments (start or continue)", () => {
 
 describe("POST /api/account/assessments/[id]/answers (answer a question)", () => {
   // Asha's test drawn from seed 7: questions 1 and 2 need shown work; question 3 (a choice question) does not.
-  const current = () => nextQuestion(restoreSession(memory.tests[0].test, memory.tests[0].answers))!;
+  const current = () => nextQuestion(restoreSession(memory.tests[0].test, memory.tests[0].answers, memory.tests[0].route ?? null))!;
   /** A small PNG drawing in base64: the PNG signature and one byte. */
   const DRAWING = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x01]).toString("base64");
   const answer = (body: unknown, { id = TEST, headers = {} }: { id?: string; headers?: Record<string, string> } = {}) =>
@@ -191,7 +192,7 @@ describe("POST /api/account/assessments/[id]/answers (answer a question)", () =>
     expect(await sent(await answer(third))).toMatchObject({ status: 409, body: { ok: false, error: "conflict", step: { status: "question", number: 4 } } });
     expect(await sent(await answer({ ...right(), questionId: 42 }))).toMatchObject({ status: 409, body: { ok: false, error: "conflict", step: { number: 4 } } });
     family(stored(startAttempt(TEST, T0), { answered: 42 }));
-    expect(await sent(await answer({ questionId: "s2-1", response: "1", timeMs: 1 }))).toEqual({ status: 409, body: { ok: false, error: "conflict", step: { status: "complete", total: 42 } } });
+    expect(await sent(await answer({ questionId: "s2-1", response: "1", timeMs: 1 }))).toMatchObject({ status: 409, body: { ok: false, error: "conflict", step: { status: "check", section: "stage2", total: 42 } } });
   });
 
   it("answers 410 expired after the deadline, and stores nothing", async () => {
@@ -315,12 +316,12 @@ describe("GET /api/account/assessments/[id] (the next step)", () => {
     expect(body.step.question).not.toHaveProperty("answer");
   });
 
-  it("sends complete when every answer is in, even past the deadline", async () => {
+  it("sends the stage 2 grid when every answer is in, even past the deadline (#253)", async () => {
     family(stored(recordAnswer(startAttempt(TEST, T0), T0 + HOUR), { answered: 42 }));
     vi.setSystemTime(T0 + 3 * DAY);
     const res = await step(TEST);
     expect(res.headers.get("cache-control")).toBe("no-store");
-    expect(await sent(res)).toEqual({ status: 200, body: { ok: true, step: { status: "complete", total: 42 } } });
+    expect(await sent(res)).toMatchObject({ status: 200, body: { ok: true, step: { status: "check", section: "stage2", total: 42 } } });
   });
 
   it("answers 410 expired when the test ran out of time, and the test is then expired", async () => {

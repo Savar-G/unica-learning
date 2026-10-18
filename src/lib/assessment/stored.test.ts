@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { checked } from "@/lib/assessment/scripted-child";
 import { createSession, nextQuestion, restoreSession, storedTest, submitAnswer, testStep, type Session, type Submission } from "@/lib/assessment";
 
 // The server keeps the drawn test and the answers in the database, then rebuilds the session on every request (#64).
@@ -9,7 +10,7 @@ function answerAll(session: Session) {
     const q = nextQuestion(session)!;
     const sub = { questionId: step.question.id, response: submissions.length % 2 ? q.answer : "0", timeMs: 9_000 };
     submissions.push(sub);
-    session = submitAnswer(session, sub);
+    session = checked(submitAnswer(session, sub));
   }
   return { session, submissions };
 }
@@ -31,7 +32,7 @@ describe("a session rebuilt from what the server stores", () => {
       if (step.status !== "question") throw new Error("ended early");
       const sub = { questionId: step.question.id, response: "1", timeMs: 4_000 };
       subs.push(sub);
-      live = submitAnswer(live, sub);
+      live = checked(submitAnswer(live, sub));
     }
     expect(testStep(restoreSession(storedTest(live), subs))).toEqual(testStep(live));
   });
@@ -47,7 +48,7 @@ describe("the step the browser receives", () => {
         const step = testStep(s);
         const json = JSON.stringify(step);
         expect(json).not.toMatch(/"answer"|"wrong"|"misconception"|"values"|"templateId"/);
-        s = submitAnswer(s, { questionId: a.questionId, response: a.response, timeMs: a.timeMs });
+        s = checked(submitAnswer(s, { questionId: a.questionId, response: a.response, timeMs: a.timeMs }));
       }
     }
   });
@@ -67,7 +68,7 @@ describe("the step the browser receives", () => {
       const step = testStep(s);
       if (step.status !== "question") throw new Error("ended early");
       expect(Array.isArray(step.question.choices)).toBe(step.question.format === "choice");
-      s = submitAnswer(s, a);
+      s = checked(submitAnswer(s, a));
     }
   });
 });

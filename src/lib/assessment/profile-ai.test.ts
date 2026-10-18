@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { checked } from "@/lib/assessment/scripted-child";
 import {
   BANKS,
   BC_SKILL_MAP,
@@ -33,7 +34,7 @@ import { MAIN_REJECTED_UNTESTED } from "./untested-wordings";
 function profileOf(respond: (q: Question) => string, grade: Grade = 4, facts: FactsSession | null = null): LearnerProfile {
   let session = createSession({ grade, province: "BC" }, 101);
   for (let q = nextQuestion(session); q; q = nextQuestion(session)) {
-    session = submitAnswer(session, { questionId: q.id, response: respond(q), timeMs: 20_000 });
+    session = checked(submitAnswer(session, { questionId: q.id, response: respond(q), timeMs: 20_000 }));
   }
   const questions = [...session.stage1, ...session.stage2[session.route!]];
   const answers: ProfileAnswer[] = session.answers.map((a, i) => ({

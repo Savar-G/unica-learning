@@ -18,6 +18,7 @@ import {
   extraRoundOffer,
   extraRoundTaken,
   finish,
+  lockStage1,
   mainAnswered,
   nextQuestion,
   openSection,
@@ -72,6 +73,8 @@ export interface LoadedAttempt {
   help?: HelpAnswer | null;
   /** #190: the extra round's record; absent on tests stored before #190 (read as nothing recorded). */
   extraRound?: ExtraRoundRecord;
+  /** #253: the stored route, the stage 1 lock record: null or absent while stage 1 is not locked. */
+  route?: Route | null;
 }
 
 /** A new test to store: its times, the seed, and the questions drawn from it. */
@@ -172,13 +175,20 @@ export interface AttemptStore extends FactsStore, ShownStore, ContextStore, Extr
   /**
    * #249: overwrites the answer at `change.position` with the changed answer, whole, only while its section is open:
    * the test is in progress, the extra round was neither offered, skipped nor started (the test has not moved past stage
-   * 2), the test has no answer at `unansweredFrom` or after it (the section is not over), and the answer there is for
-   * the same question. The serve time stays. Returns the work it replaced, or "closed" when a guard failed and nothing
-   * changed. Two changes at once: the last one wins, whole.
+   * 2), a stage 1 answer only while no route is stored (stage 1 is not locked, #253), the test has no answer at
+   * `unansweredFrom` or after it (the section is not over), and the answer there is for the same question. The serve
+   * time stays. Returns the work it replaced, or "closed" when a guard failed and nothing changed. Two changes at once:
+   * the last one wins, whole. A change and the stage 1 lock never both win (the same row lock).
    */
   changeAnswer(id: string, change: ChangedAnswer, unansweredFrom: number): Promise<ReplacedWork | "closed">;
-  /** Records the stage 2 route the child was given when stage 1 ended, for the admin view. */
-  recordRoute(id: string, route: Route): Promise<void>;
+  /**
+   * #253: locks stage 1: stores `route`, the stage 1 lock record (also the route the admin view shows), only while the
+   * test is in progress, no route is stored, and the stored stage 1 answers are still `answers` (the question and the
+   * response at each place, the ones the route was set from). Returns the stored route: this one, or the one stored
+   * before (a retry after a lost response). "changed" when a stage 1 answer changed since it was read: nothing is
+   * stored. "closed" when the test is not in progress.
+   */
+  lockStage1(id: string, lock: { route: Route; answers: readonly Pick<Submission, "questionId" | "response">[] }): Promise<Route | "changed" | "closed">;
   /**
    * Completes the scored test at `at`: stores the completion time, the placement with its route, and the child's answer
    * to "Did anyone help?". Only while the test is in progress: a second finish at the same moment changes nothing.
@@ -352,6 +362,8 @@ export async function startStates(store: AttemptStore, parent: string, now: numb
   for (const a of loaded.attempts) byChild.set(a.childId, [...(byChild.get(a.childId) ?? []), a]);
   return new Map([...byChild].map(([id, list]): [string, StartState] => {
     const state = startState(list, now);
+    // #253: a resume past the break (stage 1 locked): the start screen says Back works until the end of the test.
+    if (state.kind === "resume") return [id, { ...state, afterBreak: loaded.reads.get(state.attemptId)?.session.route != null }];
     if (state.kind !== "finish") return [id, state];
     // #190 (#225): a test with every main answer in may wait on a round the child left part way: the start screen's
     // "Keep going / Stop here". Read from the test's answers already read above.
@@ -513,16 +525,11 @@ export async function answerQuestion(store: AttemptStore, parent: string, id: st
     await removeStrokes(store, strokesPath);
     return freshConflict(store, parent, id, now);
   }
-  const route = next.route;
   const step = stepOf({ ...open, session: next });
   await Promise.all([
-    (async () => {
-      // The answer time is written only once the answer is stored: the reminder emails (#73) count from it.
-      await bestEffort("[test] answer time save failed", () => store.recordAnswerTime(id, now));
-      // Stage 1 just ended: record the route for the admin view.
-      if (!session.route && route) await bestEffort("[test] route save failed", () => store.recordRoute(id, route));
-    })(),
-    // #184: the next question goes out in this response; #190: or the offer of the extra round.
+    // The answer time is written only once the answer is stored: the reminder emails (#73) count from it.
+    bestEffort("[test] answer time save failed", () => store.recordAnswerTime(id, now)),
+    // #184: the next question goes out in this response.
     shown(store, id, next, step, now),
   ]);
   return { ok: true, step };
@@ -530,9 +537,9 @@ export async function answerQuestion(store: AttemptStore, parent: string, id: st
 
 // Back and change an answer (#249, #250). The child can go back to an answered question of the open section and change
 // the answer: the change overwrites the stored answer, so the report, the admin page and the export read the final one.
-// A visit that keeps the answer adds its time and events. Until the "Check your answers" grid (#253), stage 1 closes
-// with its last answer, which routes the test; stage 2 closes when the test moves on (the extra round's offer, skip or
-// start) or is finished. The extra round takes no change yet (#254).
+// A visit that keeps the answer adds its time and events. Stage 1 closes at its lock ("Done checking" on its grid,
+// #253), which stores the route; stage 2 closes when the test moves on (the extra round's offer, skip or start) or is
+// finished. The extra round takes no change yet (#254).
 
 /** #249: a change of an answered question, as the route read it: the answer, and whether the work changed in this visit. */
 export interface ChangeInput extends AnswerInput {
@@ -545,7 +552,8 @@ export interface ChangeInput extends AnswerInput {
 
 /**
  * #249: the section of the test that takes changes now, or null: only while the test is in progress; stage 1 until
- * its last answer routes the test, stage 2 until the test moves on to the extra round. The extra round takes none yet.
+ * it is locked (#253: the stored route), stage 2 until the test moves on to the extra round. The extra round takes none
+ * yet.
  */
 function changeable({ attempt, session, round }: ReadTest): OpenSection | null {
   if (attempt.status !== "in_progress") return null;
@@ -554,9 +562,6 @@ function changeable({ attempt, session, round }: ReadTest): OpenSection | null {
   if (open.name === "stage2" && (round.offeredAt !== null || round.skippedAt !== null || round.startedAt !== null)) return null;
   return open;
 }
-
-/** #249: the place where the store's guard closes a section: stage 1 at its last question (that answer routes the test), stage 2 at its end. */
-const closesAt = (open: OpenSection) => (open.name === "stage1" ? open.end - 1 : open.end);
 
 /**
  * #249: changes the child's answer to an answered question of the open section of the parent's test at `now`: marks
@@ -638,7 +643,7 @@ export async function changeAnswer(store: AttemptStore, parent: string, id: stri
       answeredAt: now,
       events: mergeEvents(stored.events, at.answer.timeMs, input.events ?? null),
       ...(work && { work }),
-    }, closesAt(section));
+    }, section.end);
   } catch (e) {
     await discard();
     logFailure("[test] answer change failed", e);
@@ -660,6 +665,92 @@ export async function changeAnswer(store: AttemptStore, parent: string, id: stri
   }
   await bestEffort("[test] answer time save failed", () => store.recordAnswerTime(id, now));
   return { ok: true, step: stepOf({ ...open, session: next }) };
+}
+
+// "Check your answers" (#249, #253). After the last question of stage 1 and of stage 2, the step is the section's grid
+// (status "check"). "Done checking" locks the section, and the test goes on: stage 1 to the halfway break, quick facts
+// and stage 2; stage 2 to the extra round's offer or to "Did anyone help?".
+
+/** #253: a section of the test that ends on a "Check your answers" grid. */
+export type CheckSection = "stage1" | "stage2";
+
+/**
+ * #253: "Done checking" on the grid of `section` of the parent's test at `now`: locks the section and sends the next
+ * step. Stage 1: sets the route from the final stage 1 answers and stores it, the lock record, which must succeed; it
+ * moves the deadline like an answer (#72). The next step is the first question after halfway (the break and quick facts
+ * come first). Stage 2: records the extra round's offer when one is due (that write is the lock, and must succeed) and
+ * sends the offer; with none due it writes nothing, and the step goes on to "Did anyone help?". A section that is
+ * already locked (a retry after a lost response, another tab) sends the step the test is at. "conflict" with the step
+ * when the test is not on that grid and has not passed it.
+ */
+export async function doneChecking(store: AttemptStore, parent: string, id: string, section: CheckSection, now: number): Promise<StepOutcome> {
+  for (let round = 0; round < ROUNDS; round++) {
+    const open = await openTest(store, parent, id, now);
+    if (!open.ok) return open;
+    const step = stepOf(open);
+    if (step.status !== "check" || step.section !== section) {
+      return passed(open, section) ? carryOn(store, id, open, now) : { ok: false, error: "conflict", step };
+    }
+    if (section === "stage2") return lockStage2(store, id, open, now);
+    const outcome = await lockFirstStage(store, parent, id, open, now);
+    // A stage 1 answer changed between the read and the lock: read again, and lock from the final answers.
+    if (outcome !== "changed") return outcome;
+  }
+  return { ok: false, error: "busy" };
+}
+
+/** #253: true when the test moved past `section`: stage 1 is locked (a route is stored), or stage 2 is locked (the round was offered, skipped or started, or the test is finished). */
+function passed({ attempt, session, round }: ReadTest, section: CheckSection): boolean {
+  if (attempt.status === "completed") return true;
+  if (section === "stage1") return session.route !== null;
+  return round.offeredAt !== null || round.skippedAt !== null || round.startedAt !== null;
+}
+
+/** #253: the stage 1 lock of a test on its stage 1 grid. "changed": a stage 1 answer changed since the read; nothing is stored. */
+async function lockFirstStage(store: AttemptStore, parent: string, id: string, open: ReadTest, now: number): Promise<StepOutcome | "changed"> {
+  const { attempt, session } = open;
+  const route = lockStage1(session).route!;
+  // #72: "Done checking" opens the answer window like an answer: the deadline moves to 24 hours from now.
+  const until = recordAnswer(attempt, now).resumeUntil;
+  let opened: boolean;
+  try {
+    opened = await store.openAnswerWindow(id, now, until);
+  } catch (e) {
+    console.error("[test]", messageOf(e));
+    return { ok: false, error: "store_failed" };
+  }
+  if (!opened) return freshConflict(store, parent, id, now);
+  const undo = () => bestEffort("[test] deadline undo failed", () => store.undoAnswerWindow(id, until, attempt.resumeUntil));
+  const answers = session.answers.slice(0, session.stage1.length).map(({ questionId, response }) => ({ questionId, response }));
+  let stored: Route | "changed" | "closed";
+  try {
+    stored = await store.lockStage1(id, { route, answers });
+  } catch (e) {
+    // The child stays on the grid with "could not save", and can press "Done checking" again.
+    logFailure("[test] route save failed", e);
+    await undo();
+    return { ok: false, error: "store_failed" };
+  }
+  if (stored === "changed" || stored === "closed") {
+    await undo();
+    return stored === "changed" ? "changed" : freshConflict(store, parent, id, now);
+  }
+  await bestEffort("[test] answer time save failed", () => store.recordAnswerTime(id, now));
+  // The stored route wins: a retry after a lost response, or another tab, may have stored it first.
+  return carryOn(store, id, { ...open, session: { ...session, route: stored } }, now);
+}
+
+/** #253: the stage 2 lock: the extra round's offer is recorded when one is due; with none due nothing is written. */
+async function lockStage2(store: AttemptStore, id: string, open: ReadTest, now: number): Promise<StepOutcome> {
+  const step = roundStep(open);
+  if (step.status === "complete" && step.extraRound) {
+    try {
+      await store.recordExtraOffer(id, now);
+    } catch (e) {
+      return storeFailed(e);
+    }
+  }
+  return { ok: true, step };
 }
 
 /** Logs a failed store write the way the answer route logged it before the module (#147): the line, then the cause. */
@@ -747,7 +838,8 @@ async function readTest(store: AttemptStore, parent: string, id: string): Promis
   if (!loaded) return { ok: false, error: "not_found" };
   let session: Session;
   try {
-    session = restoreSession(loaded.test, loaded.answers);
+    // #253: the stored route is the stage 1 lock record.
+    session = restoreSession(loaded.test, loaded.answers, loaded.route ?? null);
   } catch (e) {
     console.error("[test] restore failed", id, messageOf(e));
     return { ok: false, error: "store_failed", unreadable: true };
@@ -1186,12 +1278,18 @@ const takesAnswers = ({ attempt, session, round }: ReadTest): boolean =>
  * The step the screen shows next. When every answer of an open test is in and the child neither skipped nor took the
  * round, the step offers the round if an area is an early sign. After a stop, the step goes on to "Did anyone help?"
  * with the main test's total, as after a skip. #249: a question comes with the answered questions of the open section,
- * when they can change, so Back shows them at once (also after a resume on another device).
+ * when they can change, so Back shows them at once (also after a resume on another device). #253: while stage 2 is
+ * complete and not locked (no offer, skip or start recorded, not finished), the step is its "Check your answers" grid;
+ * a grid comes with its answered questions too, so a tap opens one at once.
  */
 function stepOf(read: ReadTest): TestStep {
-  const step = roundStep(read);
-  if (step.status !== "question") return step;
-  const answered = changeable(read)?.answered ?? [];
+  const main = roundStep(read);
+  const section = changeable(read);
+  const step: TestStep = main.status === "complete" && section?.name === "stage2"
+    ? { status: "check", section: "stage2", numbers: section.answered.map((a) => a.position + 1), total: main.total, breakAfter: read.session.stage1.length }
+    : main;
+  if (step.status === "complete") return step;
+  const answered = section?.answered ?? [];
   if (!answered.length) return step;
   return { ...step, answered: answered.map((a) => ({ number: a.position + 1, question: toPublicQuestion(a.question), response: a.answer.response })) };
 }
@@ -1360,11 +1458,10 @@ async function carryOn(store: AttemptStore, id: string, read: ReadTest, now: num
   return { ok: true, step };
 }
 
-/** Records what the screen shows now: the serve of a question (#184), or the offer of the extra round. Failures are logged. */
+/**
+ * Records what the screen shows now: the serve of a question (#184). Failures are logged. #253: the extra round's offer
+ * is recorded by "Done checking" on the stage 2 grid (doneChecking), not when a step is served.
+ */
 async function shown(store: AttemptStore, id: string, session: Session, step: TestStep, now: number): Promise<void> {
-  if (step.status === "complete") {
-    if (step.extraRound) await bestEffort("[test] extra round offer save failed", () => store.recordExtraOffer(id, now));
-    return;
-  }
-  await served(store, id, session, now);
+  if (step.status === "question") await served(store, id, session, now);
 }

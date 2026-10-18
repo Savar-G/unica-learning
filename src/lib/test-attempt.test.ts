@@ -13,8 +13,8 @@ import {
   type StoredTest,
   type Submission,
 } from "@/lib/assessment";
-import { allRight, knowsUpTo, takeTest, type Script } from "@/lib/assessment/scripted-child";
-import { answerQuestion, finishTest, nextStep, retakeState, startStates, startTest, stateFor, StoreError, type AnswerInput, type AttemptStore, type HelpInput } from "@/lib/test-attempt";
+import { allRight, knowsUpTo, takeTest, type Script, checked } from "@/lib/assessment/scripted-child";
+import { answerQuestion, doneChecking, finishTest, nextStep, retakeState, startStates, startTest, stateFor, StoreError, type AnswerInput, type AttemptStore, type HelpInput } from "@/lib/test-attempt";
 import { memoryAttemptStore, type MemoryTest } from "@/lib/test-attempt-memory";
 import { answerFact, readFacts, startFacts } from "@/lib/test-attempt";
 import { createFacts } from "@/lib/assessment";
@@ -39,7 +39,7 @@ function answersOf(test: StoredTest, count: number, script: Script = allRight): 
   const answers: Submission[] = [];
   for (let q = nextQuestion(session); q && answers.length < count; q = nextQuestion(session)) {
     const answer = { questionId: q.id, response: script(q, answers.length) ? q.answer : "no idea", timeMs: 20_000 };
-    session = submitAnswer(session, answer);
+    session = checked(submitAnswer(session, answer));
     answers.push(answer);
   }
   return answers;
@@ -195,9 +195,9 @@ describe("the next step of a test", () => {
     expect(result).toMatchObject({ ok: true, step: { status: "question", number: 6, question: { id: sixth.id } } });
   });
 
-  it("is complete when every answer is in", async () => {
+  it("is the stage 2 grid when every answer is in (#253)", async () => {
     const memory = memoryAttemptStore({ tests: [stored(startAttempt("a1", T0), { answered: 42 })] });
-    expect(await nextStep(memory.store, P1, "a1", T0 + HOUR)).toEqual({ ok: true, step: { status: "complete", total: 42 } });
+    expect(await nextStep(memory.store, P1, "a1", T0 + HOUR)).toMatchObject({ ok: true, step: { status: "check", section: "stage2", total: 42 } });
   });
 
   it("is expired 24 hours after the last answer, and the store then holds the test as expired", async () => {
@@ -210,7 +210,7 @@ describe("the next step of a test", () => {
 
   it("never expires a test with every answer in: it only waits to be scored", async () => {
     const memory = memoryAttemptStore({ tests: [stored(recordAnswer(startAttempt("a1", T0), T0 + HOUR), { answered: 42 })] });
-    expect(await nextStep(memory.store, P1, "a1", T0 + 3 * DAY)).toEqual({ ok: true, step: { status: "complete", total: 42 } });
+    expect(await nextStep(memory.store, P1, "a1", T0 + 3 * DAY)).toMatchObject({ ok: true, step: { status: "check", section: "stage2", total: 42 } });
     expect(memory.tests).toMatchObject([{ id: "a1", status: "in_progress" }]);
   });
 
@@ -226,7 +226,7 @@ describe("the next step of a test", () => {
 // Asha's test drawn from seed 7 (grade 4): questions 1 and 2 need shown work; question 3 is a choice question that
 // does not, and question 4 a number question that does not.
 /** The question the scripted child answers next on a stored test. */
-const current = (row: MemoryTest) => nextQuestion(restoreSession(row.test, row.answers))!;
+const current = (row: MemoryTest) => nextQuestion(restoreSession(row.test, row.answers, row.route ?? null))!;
 /** The answer a child sends: the right response in 20 seconds, with an empty board unless `work` is given. */
 const sent = (row: MemoryTest, work: Partial<AnswerInput["work"]> = {}): AnswerInput =>
   ({ questionId: current(row).id, response: current(row).answer, timeMs: 20_000, work: { png: null, text: "", ...work } });
@@ -382,41 +382,34 @@ describe("the whiteboard strokes (#186)", () => {
 });
 
 describe("a child who answers every question", () => {
-  it("is routed once, when stage 1 ends, and each stored answer moves the deadline and the last answer time", async () => {
+  it("is routed once, at the stage 1 lock, and each stored answer moves the deadline and the last answer time", async () => {
     const memory = family(stored(open("a1", T0)));
     const routes: string[] = [];
-    const store: AttemptStore = { ...memory.store, recordRoute: (id, route) => (routes.push(route), memory.store.recordRoute(id, route)) };
+    const store: AttemptStore = { ...memory.store, lockStage1: (id, lock) => (routes.push(lock.route), memory.store.lockStage1(id, lock)) };
     const routeAfter: (string | null | undefined)[] = [];
     const first = await nextStep(store, P1, "a1", T0);
     if (!first.ok) throw new Error(first.error);
     let step = first.step;
-    for (let n = 1; step.status === "question"; n++) {
-      const q = current(memory.tests[0]);
+    for (let n = 1; step.status === "question" || (step.status === "check" && step.section === "stage1"); n++) {
       const at = T0 + n * 60_000;
-      const result = await answerQuestion(store, P1, "a1", sent(memory.tests[0], q.showWork ? { png: DRAWING } : {}), at);
-      if (!result.ok) throw new Error(`answer ${n}: ${result.error}`);
+      // #253: the stage 1 grid; the child presses "Done checking" at once.
+      const result = step.status === "check"
+        ? await doneChecking(store, P1, "a1", "stage1", at)
+        : await answerQuestion(store, P1, "a1", sent(memory.tests[0], current(memory.tests[0]).showWork ? { png: DRAWING } : {}), at);
+      if (!result.ok) throw new Error(`step ${n}: ${result.error}`);
       step = result.step;
       routeAfter.push(memory.tests[0].route);
       expect(memory.tests[0]).toMatchObject({ resumeUntil: at + DAY, lastAnswerAt: at });
     }
-    expect(step).toEqual({ status: "complete", total: 42 });
+    expect(step).toMatchObject({ status: "check", section: "stage2", total: 42 });
     expect(memory.tests[0].answers).toHaveLength(42);
-    // A child with every answer right goes up after the 18 questions of stage 1.
-    expect(routeAfter.slice(0, 17).every((r) => r == null)).toBe(true);
-    expect(routeAfter.slice(17)).toEqual(Array(25).fill("up"));
+    // A child with every answer right goes up when stage 1 is locked, after its 18 questions: not at the last answer.
+    expect(routeAfter.slice(0, 18).every((r) => r == null)).toBe(true);
+    expect(routeAfter.slice(18)).toEqual(Array(25).fill("up"));
     expect(routes).toEqual(["up"]);
     // Seven questions needed shown work; each drawing is stored with its answer.
     expect(memory.tests[0].answers.filter((a) => a.workRequired).map((a) => a.workPath)).toEqual([...memory.drawings.keys()]);
     expect(memory.drawings.size).toBe(7);
-  });
-
-  it("logs a route that cannot be saved, as before, and the answer still moves on", async () => {
-    const log = logs();
-    const memory = family(stored(open("a1", T0), { answered: 17 }));
-    memory.fail.recordRoute = new StoreError("route save failed", "timeout");
-    expect(await answerQuestion(memory.store, P1, "a1", sent(memory.tests[0], { png: DRAWING }), T0 + HOUR)).toMatchObject({ ok: true, step: { number: 19 } });
-    expect(memory.tests[0].answers).toHaveLength(18);
-    expect(log.mock.calls).toEqual([["[test] route save failed", "timeout"]]);
   });
 
   it("never moves the last answer time back: another server stored a later one first", async () => {
@@ -555,7 +548,7 @@ describe("one answer per question", () => {
     const complete = family(stored(open("a1", T0), { answered: 42 }));
     const last = complete.tests[0].answers[35];
     const answer = { questionId: last.questionId, response: last.response, timeMs: 20_000, work: { png: null, text: "" } };
-    expect(await answerQuestion(complete.store, P1, "a1", answer, T0 + HOUR)).toEqual({ ok: false, error: "conflict", step: { status: "complete", total: 42 } });
+    expect(await answerQuestion(complete.store, P1, "a1", answer, T0 + HOUR)).toMatchObject({ ok: false, error: "conflict", step: { status: "check", section: "stage2", total: 42 } });
     const scored = family(stored(done("a1", T0), { answered: 2 }));
     expect(await answerQuestion(scored.store, P1, "a1", sent(scored.tests[0]), T0 + 2 * HOUR))
       .toMatchObject({ ok: false, error: "conflict", step: { status: "question", number: 3 } });
@@ -662,7 +655,7 @@ describe("what each child's start screen offers", () => {
     const memory = families();
     const states = await startStates(memory.store, P1, at);
     expect(states).toEqual(new Map<string, StartState>([
-      ["child-1", { kind: "resume", attemptId: "a1", resumeUntil: T0 + HOUR + DAY }],
+      ["child-1", { kind: "resume", attemptId: "a1", resumeUntil: T0 + HOUR + DAY, afterBreak: false }],
       ["child-2", { kind: "wait", completedAt: T0 - 3 * DAY + HOUR, opensAt: T0 - 3 * DAY + HOUR + 30 * DAY }],
       ["child-3", { kind: "finish", attemptId: "a3" }],
       ["child-4", { kind: "expired", attemptId: "a4" }],
@@ -1030,10 +1023,18 @@ describe("when the facts store fails", () => {
  */
 async function takeWholeTest(memory: ReturnType<typeof family>, script: Script, { facts = false, timeMs = () => 20_000 }: { facts?: boolean; timeMs?: (n: number) => number } = {}): Promise<number> {
   let at = T0;
-  for (let n = 0; ; n++) {
+  for (;;) {
     const row = memory.tests[0];
-    const q = nextQuestion(restoreSession(row.test, row.answers));
-    if (!q) return at;
+    const n = row.answers.length;
+    const session = restoreSession(row.test, row.answers, row.route ?? null);
+    const q = nextQuestion(session);
+    if (!q && session.route) return at;
+    if (!q) {
+      // #253: the stage 1 grid; the child presses "Done checking" at once.
+      const locked = await doneChecking(memory.store, P1, row.id, "stage1", (at += 60_000));
+      if (!locked.ok) throw new Error(`stage 1 lock: ${locked.error}`);
+      continue;
+    }
     if (facts && n === row.test.stage1.length) await quickFacts(memory, (at += 60_000));
     const wrong = q.format === "choice" ? q.choices!.find((c) => c !== q.answer)! : "no idea";
     const input = { questionId: q.id, response: script(q, n) ? q.answer : wrong, timeMs: timeMs(n), work: { png: q.showWork ? DRAWING : null, text: "" } };
@@ -1241,6 +1242,8 @@ describe("selection changes preserve stored tests (#188)", () => {
     row.test.stage2.up = row.test.stage2.up.slice(0, 18);
     row.test.stage2.up[0] = { ...row.test.stage2.up[0], prompt: "A question saved before the selection change" };
     row.answers = answersOf(row.test, 16);
+    // #253: stage 1 was locked before the stop: the stored route is its lock record.
+    row.route = "up";
     const original = structuredClone(row.test);
     const { store } = family(row);
     expect(await start(store, T0 + HOUR, { restart: false, newSeed: () => { throw new Error("A resume must not draw a seed"); } })).toEqual({ ok: true, id: "legacy", resumed: true });
@@ -1253,6 +1256,6 @@ describe("selection changes preserve stored tests (#188)", () => {
       }, T0 + HOUR);
       expect(result.ok).toBe(true);
     }
-    expect(await nextStep(store, P1, "legacy", T0 + HOUR)).toEqual({ ok: true, step: { status: "complete", total: 34 } });
+    expect(await nextStep(store, P1, "legacy", T0 + HOUR)).toMatchObject({ ok: true, step: { status: "check", section: "stage2", total: 34, numbers: Array.from({ length: 18 }, (_, i) => 17 + i) } });
   });
 });

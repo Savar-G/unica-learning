@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { checked } from "@/lib/assessment/scripted-child";
 import { REPORTED_STRAND, bankFor, bandFor, createSession, nextQuestion, submitAnswer, testStep, type Grade } from "@/lib/assessment";
 
 const GRADES: Grade[] = [1, 2, 3, 4, 5, 6, 7];
@@ -65,7 +66,7 @@ describe("BC route lengths sent to the child", () => {
         const expected = session.route ? lengths[route] : lengths.up;
         expect(testStep(session)).toMatchObject({ status: "question", number: answered + 1, total: expected, breakAfter: grade <= 2 ? 12 : grade <= 5 ? 18 : 21 });
         const right = route === "up" || (route === "stay" && answered % 2 === 0);
-        session = submitAnswer(session, { questionId: q.id, response: right ? q.answer : "no idea", timeMs: 20000 });
+        session = checked(submitAnswer(session, { questionId: q.id, response: right ? q.answer : "no idea", timeMs: 20000 }));
         answered++;
       }
       expect(session.route).toBe(route);

@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { checked } from "@/lib/assessment/scripted-child";
 import { createSession, finish, helpLikely, isHelpAnswer, nextQuestion, submitAnswer, type ChildProfile, type HelpAnswer, type Question } from "@/lib/assessment";
 
 /** One answer of a scripted child: right or wrong, and the seconds it took. */
@@ -12,7 +13,7 @@ function takeTest(script: Script, help: HelpAnswer | null = null) {
   let session = createSession(GRADE_4, 1);
   for (let q = nextQuestion(session); q; q = nextQuestion(session)) {
     const { right, seconds } = script(q, session.answers.length);
-    session = submitAnswer(session, { questionId: q.id, response: right ? q.answer : "no idea", timeMs: seconds * 1000 });
+    session = checked(submitAnswer(session, { questionId: q.id, response: right ? q.answer : "no idea", timeMs: seconds * 1000 }));
   }
   return finish(session, null, help);
 }

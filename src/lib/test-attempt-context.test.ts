@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { checked } from "@/lib/assessment/scripted-child";
 import { createFacts, createSession, nextQuestion, restoreSession, startAttempt, storedTest, submitAnswer, type Attempt, type Submission } from "@/lib/assessment";
 import { answerFact, answerQuestion, nextStep, finishTest, recordBreak, recordDevice, startFacts, StoreError } from "@/lib/test-attempt";
 import { memoryAttemptStore, type MemoryTest } from "@/lib/test-attempt-memory";
@@ -19,9 +20,10 @@ function stored(attempt: Attempt, { parent = P1, answered = 0 }: { parent?: stri
   const answers: Submission[] = [];
   for (let q = nextQuestion(session); q && answers.length < answered; q = nextQuestion(session)) {
     answers.push({ questionId: q.id, response: q.answer, timeMs: 20_000 });
-    session = submitAnswer(session, answers.at(-1)!);
+    session = checked(submitAnswer(session, answers.at(-1)!));
   }
-  return { ...attempt, parentId: parent, childId: "child-1", seed: 7, test, answers };
+  // #253: past stage 1, its lock record (the route) is stored: 18 answers is the halfway break.
+  return { ...attempt, parentId: parent, childId: "child-1", seed: 7, test, answers, ...(session.route && { route: session.route }) };
 }
 
 const open = (id: string, at: number) => startAttempt(id, at);
@@ -111,7 +113,7 @@ describe("the halfway break", () => {
     await recordBreak(memory.store, P1, "a1", SHOWN, T0 + HOUR);
     const step = await nextStep(memory.store, P1, "a1", T0 + HOUR + 2_000);
     if (!step.ok || step.step.status !== "question") throw new Error("missing question");
-    const question = nextQuestion(restoreSession(memory.tests[0].test, memory.tests[0].answers))!;
+    const question = nextQuestion(restoreSession(memory.tests[0].test, memory.tests[0].answers, memory.tests[0].route ?? null))!;
     expect(await answerQuestion(memory.store, P1, "a1", { questionId: question.id, response: question.answer, timeMs: 5_000, work: { png: null, text: "5 + 1" } }, T0 + HOUR + 5_000)).toMatchObject({ ok: true });
     expect(await recordBreak(memory.store, P1, "a1", rested(1_500), T0 + HOUR + 8_000)).toEqual({ ok: true });
     expect(breakOf(memory.tests[0])).toEqual({ startedAt: T0 + HOUR, endedAt: T0 + HOUR + 8_000, skipped: false, lengthMs: 1_500 });

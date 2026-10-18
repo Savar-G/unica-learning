@@ -1,7 +1,8 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { checked } from "@/lib/assessment/scripted-child";
 import { createFacts, createSession, nextQuestion, restoreSession, startAttempt, storedFacts, storedTest, submitAnswer, type StoredTest, type Submission } from "@/lib/assessment";
 import type { AnswerEvents } from "@/lib/answer-events";
-import { answerQuestion, nextStep, startFacts, StoreError, type AnswerInput } from "@/lib/test-attempt";
+import { answerQuestion, doneChecking, nextStep, startFacts, StoreError, type AnswerInput } from "@/lib/test-attempt";
 import { memoryAttemptStore, type MemoryTest } from "@/lib/test-attempt-memory";
 
 // The answer timeline (#184) through the test attempt module, against the in-memory store with the clock passed in:
@@ -20,7 +21,7 @@ function answersOf(test: StoredTest, count: number): Submission[] {
   const answers: Submission[] = [];
   for (let q = nextQuestion(session); q && answers.length < count; q = nextQuestion(session)) {
     const answer = { questionId: q.id, response: q.answer, timeMs: 20_000 };
-    session = submitAnswer(session, answer);
+    session = checked(submitAnswer(session, answer));
     answers.push(answer);
   }
   return answers;
@@ -33,7 +34,7 @@ function openTest(answered = 0): MemoryTest {
 }
 
 /** The question the child answers next on a stored test. */
-const current = (row: MemoryTest) => nextQuestion(restoreSession(row.test, row.answers))!;
+const current = (row: MemoryTest) => nextQuestion(restoreSession(row.test, row.answers, row.route ?? null))!;
 /** The right answer to the current question in 20 seconds, with an empty board, and `events` when given. */
 const sent = (row: MemoryTest, events?: AnswerEvents | null): AnswerInput =>
   ({ questionId: current(row).id, response: current(row).answer, timeMs: 20_000, work: { png: null, text: "" }, ...(events === undefined ? {} : { events }) });
@@ -84,7 +85,10 @@ describe("the first question after halfway (#184)", () => {
     const memory = family(openTest(17));
     const last = current(memory.tests[0]);
     const A = T0 + HOUR;
-    const answered = await answerQuestion(memory.store, P1, "a1", { questionId: last.id, response: last.answer, timeMs: 20_000, work: { png: DRAWING, text: "" } }, A);
+    const grid = await answerQuestion(memory.store, P1, "a1", { questionId: last.id, response: last.answer, timeMs: 20_000, work: { png: DRAWING, text: "" } }, A);
+    // #253: the stage 1 grid first; "Done checking" sends the first question after halfway.
+    expect(grid).toMatchObject({ ok: true, step: { status: "check", section: "stage1" } });
+    const answered = await doneChecking(memory.store, P1, "a1", "stage1", A);
     expect(answered).toMatchObject({ ok: true, step: { status: "question", number: 19, breakAfter: 18 } });
     const first = answered.ok && answered.step.status === "question" ? answered.step.question.id : "";
     // The break screen, then the facts: a reload asks for the step before the facts start, and while they run.
@@ -99,7 +103,8 @@ describe("the first question after halfway (#184)", () => {
   });
 
   it("is served at once on a resume after the facts were done", async () => {
-    const memory = family(openTest(18));
+    // #253: stage 1 is locked (its route is stored) before the break and the facts.
+    const memory = family({ ...openTest(18), route: "up" });
     memory.facts.push({ assessmentId: "a1", startedAt: T0 + HOUR, test: storedFacts(createFacts(ASHA, 7)), answers: [] });
     await nextStep(memory.store, P1, "a1", T0 + 3 * HOUR);
     expect(memory.shows).toMatchObject([{ position: 18, at: T0 + 3 * HOUR }]);
