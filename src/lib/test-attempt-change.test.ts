@@ -343,6 +343,16 @@ describe("the work on a revisit", () => {
     expect(memory.strokes.size).toBe(0);
   });
 
+  it("a board cleared in the visit sends its strokes (the stroke, then Clear): the row's drawing and strokes still become empty", async () => {
+    const { memory, q } = await withWork();
+    const cleared = revisit(memory.tests[0], 2, q.answer, { work: { png: null, text: "", strokes: STROKES }, workChanged: true });
+    expect(await changeAnswer(memory.store, P1, "a1", cleared, T0 + 2 * HOUR)).toMatchObject({ ok: true });
+    expect(memory.tests[0].answers[2]).toMatchObject({ workPath: null, workText: null });
+    expect(memory.tests[0].answers[2].strokesPath ?? null).toBeNull();
+    expect(memory.drawings.size).toBe(0);
+    expect(memory.strokes.size).toBe(0);
+  });
+
   it("changed work after every main answer is in is stored: the work rules read the question being changed", async () => {
     const row = openTest(42);
     const memory = family(row);

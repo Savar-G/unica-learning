@@ -146,6 +146,9 @@ export function TakeTest({ childId, name, breakAfter, ready, done, mode: firstMo
   const leaveScreen = useRef<((to: Target) => Promise<unknown>) | null>(null);
   const onShown = useCallback((leave: ((to: Target) => Promise<unknown>) | null) => {
     leaveScreen.current = leave;
+    // A save failed before this question could take it (the error came while the question before it was still leaving):
+    // this question leaves now, to the question whose save failed.
+    if (leave && reopen.current !== null) void leave({ reopen: reopen.current });
   }, []);
 
   const setList = (list: AnsweredQuestion[]) => {
@@ -675,7 +678,11 @@ function Question({ testId, typing, question, initial, initialBoard, revisit, ca
   });
   const stored = useRef(false);
   // Save each completed action before a reload can discard it, including an undo or clear to an empty board.
+  // #249: any edit of the board or the typed working in this visit, Clear and Undo too, is changed work.
+  const edited = useRef(false);
+  const busy = useRef(false);
   const changeBoard = (next: BoardState) => {
+    edited.current = true;
     if (drafts && !stored.current) saveDraft(draft, next);
     setBoard(next);
   };
@@ -701,9 +708,11 @@ function Question({ testId, typing, question, initial, initialBoard, revisit, ca
    * whiteboard work (#67) and what the child did (#184). Resolves false when the child stays on the question.
    */
   const leave = async (to: Target): Promise<Left> => {
-    if (sending || stopping) return false;
+    // A ref, not the state: a failed save can call this before the screen shows that the question is leaving.
+    if (busy.current || stopping) return false;
     // Next needs an answer; on an answered question Back does too (a child cannot clear an answer).
     if (typeof to !== "object" && !value && (to === "next" || revisit)) return false;
+    busy.current = true;
     setSending(true);
     const timeMs = performance.now() - shownAt.current;
     let image: string | null = null;
@@ -722,11 +731,13 @@ function Question({ testId, typing, question, initial, initialBoard, revisit, ca
     const work: WorkPayload | undefined = image || typed || strokes
       ? { ...(image ? { image } : {}), ...(typed ? { text: typed } : {}), ...(strokes ? { strokes } : {}) }
       : undefined;
-    // #249: on a question the child went back to, the board opens empty: the work changed only when there is some now.
-    const workChanged = !revisit || !!(image || typed);
+    // #249: on a question the child went back to, the work changed when the child edited the board or the typed working
+    // in this visit (a cleared board is changed work with no drawing), or when it holds new work whose save failed.
+    const workChanged = !revisit || edited.current || initialBoard !== undefined;
     const left = await onLeave({ questionId: question.id, response: value, timeMs, events: recorder.events(timeMs), work, workChanged, ...(revisit && { board }) }, to);
     // On success this question unmounts; on failure the child keeps the answer and the work, and can press Next again.
     if (!left) {
+      busy.current = false;
       setSending(false);
       return false;
     }

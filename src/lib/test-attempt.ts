@@ -613,7 +613,9 @@ export async function changeAnswer(store: AttemptStore, parent: string, id: stri
   // Changed work goes up first, under new names, so the answer can point to it. If the answer is not changed, it goes.
   let work: ChangedAnswer["work"];
   if (input.workChanged) {
-    const strokesUpload = storeStrokes(store, parent, id, q.id, input.work.strokes);
+    // An erased board is changed work with no drawing: the row's drawing and strokes become empty, so the strokes of a
+    // drawing the child erased are not kept.
+    const strokesUpload = storeStrokes(store, parent, id, q.id, input.work.png ? input.work.strokes : null);
     let workPath: string | null = null;
     if (input.work.png) {
       try {
