@@ -61,9 +61,10 @@ describe("PUT /api/account/assessments/[id]/answers (#249)", () => {
     expect(stored).toBeTruthy();
     expect((await changeRoute(request("PUT", { questionId: third.id, response: wrongTo(third), timeMs: 1_000, work: { text: "ignored" } }), params)).status).toBe(200);
     expect(memory.tests[0].answers[2]).toMatchObject({ workPath: stored, workText: "3 + 4" });
+    // #252: the drawing has no strokes, so its board opened empty; typed working alone changes only the typed working.
     expect((await changeRoute(request("PUT", { questionId: third.id, response: wrongTo(third), timeMs: 1_000, work: { text: "4 + 3" }, workChanged: true }), params)).status).toBe(200);
-    expect(memory.tests[0].answers[2]).toMatchObject({ workPath: null, workText: "4 + 3" });
-    expect(memory.drawings.size).toBe(0);
+    expect(memory.tests[0].answers[2]).toMatchObject({ workPath: stored, workText: "4 + 3" });
+    expect([...memory.drawings.keys()]).toEqual([stored]);
   });
 
   it("answers 409 with the step for a question that is not answered", async () => {
