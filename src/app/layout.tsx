@@ -4,6 +4,7 @@ import { Caveat, Geist, Geist_Mono, Gochi_Hand } from "next/font/google";
 import { Analytics } from "@vercel/analytics/next";
 import { rootMetadata } from "@/lib/metadata";
 import { CookieConsent } from "@/components/cookie-consent";
+import { VisitTags } from "@/components/visit-tags";
 import "@/ds/styles/base.css";
 import "@/ds/styles/warm.css";
 import "@/ds/styles/support.css";
@@ -39,6 +40,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
       </head>
       <body>
         <CookieConsent />
+        <VisitTags />
         {children}
         <Analytics />
       </body>

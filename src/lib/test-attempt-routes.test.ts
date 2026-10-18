@@ -211,10 +211,13 @@ describe("POST /api/account/assessments/[id]/answers (answer a question)", () =>
     expect(memory.tests[0].answers).toHaveLength(2);
   });
 
-  it("answers 400 with the message for a show-your-work question with an empty board, and for typed working in grade 2", async () => {
+  it("answers 200 for a show-your-work question with an empty board: the whiteboard is optional (D-125)", async () => {
     family(stored(startAttempt(TEST, T0)));
-    expect(await sent(await answer(right()))).toEqual({ status: 400, body: { ok: false, error: "work_required", message: "This question needs work on the whiteboard." } });
-    expect(await sent(await answer(right({ text: "   " })))).toEqual({ status: 400, body: { ok: false, error: "work_required", message: "This question needs work on the whiteboard." } });
+    expect((await sent(await answer(right({ text: "   " })))).status).toBe(200);
+    expect(memory.tests[0].answers).toHaveLength(1);
+  });
+
+  it("answers 400 with the message for typed working in grade 2", async () => {
     const ben = { grade: 2, province: "BC" } as const;
     memory = memoryAttemptStore({
       children: [{ id: CHILD, parentId: P1, ...ben }],

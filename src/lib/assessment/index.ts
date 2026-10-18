@@ -12,6 +12,7 @@ export { comparisonFor, type ComparisonInput, type ComparisonTest } from "./comp
 export { MISCONCEPTIONS, type Misconception, type MisconceptionId } from "./misconceptions";
 export {
   reportModel,
+  storedReportModel,
   type Comparison,
   type FsaLine,
   type ReportContext,
@@ -28,8 +29,10 @@ export {
   REVIEW_SURE_SCORE,
   checkAiText,
   checkReportText,
+  parentTextProblem,
   reportFacts,
   workReview,
+  type ParentText,
   type ReportTextCheck,
   type ReportTextProblem,
   type ReviewResult,
@@ -40,11 +43,13 @@ export { BANKS, GRADE_1_2_BANK, bankFor, wordingOf, type BankTemplate } from "./
 export type { TaggedTemplate } from "./bank/kit";
 export {
   breakDue,
+  changeAnswer,
   createSession,
   fillTemplate,
   finish,
   levelFor,
   nextQuestion,
+  openSection,
   restoreSession,
   scoredAgainst,
   storedTest,
@@ -52,6 +57,9 @@ export {
   testLength,
   testStep,
   toPublicQuestion,
+  type OpenSection,
+  type SectionAnswer,
+  type SectionName,
   type SessionOptions,
   type Submission,
 } from "./session";

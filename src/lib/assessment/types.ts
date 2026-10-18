@@ -96,9 +96,9 @@ export interface Question {
   format: AnswerFormat;
   whiteboard: boolean;
   /**
-   * True when the child must show work on the whiteboard before Next (#67). The session picks the band's count
-   * (GradeBand.whiteboardRequired) on every route, from the templates that suit it first. Absent on tests stored
-   * before #67: nothing is required there.
+   * A show-your-work question (#67). The session picks the band's count (GradeBand.whiteboardRequired) on every
+   * route, from the templates that suit it first. Absent on tests stored before #67. Since D-125 the whiteboard is
+   * optional: the mark only ranks the work the report shows first, and the child is never asked for work.
    */
   showWork?: boolean;
   prompt: string;
@@ -116,7 +116,7 @@ export interface Question {
 
 /** A question as the browser receives it: no answer, no coded wrong answers, no drawn numbers. */
 export type PublicQuestion = Pick<Question, "id" | "level" | "strand" | "format" | "whiteboard" | "prompt" | "readAloud" | "choices" | "say" | "figure"> & {
-  /** True when the child must show work on the whiteboard before Next (#67). */
+  /** A show-your-work question (#67). Since D-125 the screen asks for no work: the whiteboard is optional. */
   showWork: boolean;
 };
 
@@ -135,6 +135,11 @@ export type TestStep =
       takeYourTime: boolean;
       /** #190: a question of the extra round: its place in the round, from 1, and the round's length. Absent on main questions. */
       extra?: { number: number; total: number };
+      /**
+       * #249: the answered questions of the open section, in order, so Back shows them at once. Only the test attempt
+       * module adds it (it knows when the test moved past a section); absent when no answer can change.
+       */
+      answered?: AnsweredQuestion[];
     }
   | {
       status: "complete";
@@ -145,6 +150,13 @@ export type TestStep =
        */
       extraRound?: ExtraRoundOffer;
     };
+
+/** #249: an answered question the child can go back to: its number in the test, the question without its answer, and the child's response. */
+export interface AnsweredQuestion {
+  number: number;
+  question: PublicQuestion;
+  response: string;
+}
 
 export interface ChildProfile {
   grade: Grade;

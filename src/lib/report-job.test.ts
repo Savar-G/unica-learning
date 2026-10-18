@@ -715,8 +715,11 @@ describe("the learner profile's AI parts", () => {
     const read = factsOf(request);
     const profile = stored(db);
     const { ai: parts, ...facts } = profile;
-    // The AI read the stored facts, without the store's build id.
-    expect({ ...read.profile, buildId: expect.any(String) }).toEqual(facts);
+    // The AI read the stored facts, without the store's build id, and without the untested standards (#245).
+    const { earlySigns, checkNext } = facts.unknowns;
+    const measured = { earlySigns, checkNext: checkNext.filter((s) => s.reason === "confirm-struggle") };
+    expect({ ...read.profile, buildId: expect.any(String) }).toEqual({ ...facts, unknowns: measured });
+    expect(facts.unknowns.untested.length).toBeGreaterThan(0);
     expect(read.child).toBe(REPORT_TEXT_NAME);
     expect(read.profile.parent).toEqual({ feeling: "avoids", goal: "catch_up", weeklyTime: "1_to_2h" });
     expect(Object.keys(read.misconceptions).length).toBeGreaterThan(0);

@@ -276,18 +276,45 @@ export function memoryAttemptStore({ children: kids = [], tests: initial = [] }:
       row.answers.push({ ...answer });
       return "stored";
     },
+    async answerEvents(id, position) {
+      await begin("answerEvents");
+      return structuredClone(tests.find((t) => t.id === id)?.answers[position]?.timeline?.events ?? null);
+    },
+    // #249: the guards of the change, checked together with the write, as in the database function change_answer.
+    async changeAnswer(id, { position, answeredAt, events, work, ...marked }, unansweredFrom) {
+      await begin("changeAnswer");
+      const row = tests.find((t) => t.id === id && t.status === "in_progress");
+      const round = row?.extraRound ?? NO_ROUND;
+      if (!row || round.offeredAt !== null || round.skippedAt !== null || round.startedAt !== null) return "closed";
+      const old = row.answers[position];
+      if (row.answers.length > unansweredFrom || !old || old.questionId !== marked.questionId) return "closed";
+      const timeline = { shownAt: old.timeline?.shownAt ?? null, answeredAt, events: structuredClone(events) };
+      const { strokesPath: oldStrokes, ...kept } = old;
+      row.answers[position] = {
+        ...(work ? kept : old),
+        ...marked,
+        timeline,
+        ...(work && { workPath: work.workPath, workText: work.workText, ...(work.strokesPath ? { strokesPath: work.strokesPath } : {}) }),
+      };
+      return { workPath: old.workPath ?? null, strokesPath: oldStrokes ?? null };
+    },
     async recordRoute(id, route) {
       await begin("recordRoute");
       const row = tests.find((t) => t.id === id);
       if (row) row.route = route;
     },
-    async complete(id, { at, placement, help }) {
+    async complete(id, { at, placement, help, answers }) {
       await begin("complete");
       const row = tests.find((t) => t.id === id && t.status === "in_progress");
-      if (!row) return;
+      if (!row) return "done";
+      // #249: the answers scored are still the stored ones (as the database function complete_test checks under its lock).
+      const same = row.answers.length === answers.length
+        && row.answers.every((a, i) => a.questionId === answers[i].questionId && a.response === answers[i].response && a.timeMs === answers[i].timeMs);
+      if (!same) return "changed";
       Object.assign(row, { status: "completed", completedAt: at, route: placement.route, placement, help });
       // #190: a round taken during the test finishes with it.
       if (placement.extraRound) roundOf(row).finishedAt = at;
+      return "done";
     },
     async create(parent, child, { attempt, seed, test }) {
       await begin("create");

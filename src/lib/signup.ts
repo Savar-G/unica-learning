@@ -1,13 +1,26 @@
 // Shared by the reserve form (client) and /api/signup (server).
+import { SOURCE_KEYS } from "@/lib/visit-source";
+
 export const POSTAL = /^[ABCEGHJ-NPRSTVXY]\d[A-Z] ?\d[A-Z]\d$/i;
 export const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 /** A trimmed string of at most n characters; anything else becomes "". */
 export const clip = (v: unknown, n: number) => (typeof v === "string" ? v.trim().slice(0, n) : "");
 
-/** CTA, referrer and UTM tags from the browser, capped in count and size. */
+/** The keys a signup's source may hold: the visit's tags and click IDs (visit-source.ts), the referrer and the ad visit ID. */
+const SOURCE_FIELDS = new Set<string>([...SOURCE_KEYS, "referrer", "visit_id"]);
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/** Referrer, UTM tags, click IDs and ad visit ID from the browser: known keys only, each capped in size. */
 export const cleanSource = (source: Record<string, string> | undefined) =>
-  Object.fromEntries(Object.entries(source ?? {}).slice(0, 12).map(([k, v]) => [k.slice(0, 40), clip(v, 300)]));
+  Object.fromEntries(
+    Object.entries(source && typeof source === "object" ? source : {}).flatMap(([k, v]) => {
+      if (!SOURCE_FIELDS.has(k)) return [];
+      const value = clip(v, 300);
+      if (!value || (k === "visit_id" && !UUID.test(value))) return [];
+      return [[k, k === "visit_id" ? value.toLowerCase() : value]];
+    }),
+  );
 
 // reserved = on an open curriculum, sent to Stripe to add a card; waitlist = books for their curriculum are not ready.
 export type SignupStatus = "reserved" | "waitlist";

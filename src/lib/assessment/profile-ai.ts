@@ -9,7 +9,8 @@
 //     that does not is dropped;
 //   - the plan's three percents add up to 100, and it names only standards the AI read in the facts.
 // Pure, like the profile: the server module (src/lib/learner-profile-ai.ts) sends the request through the AI client.
-import { REPORT_TEXT_NAME, checkAiText, type ReportTextProblem } from "./ai-checks";
+import { REPORT_TEXT_NAME, checkAiText, parentTextProblem, type ReportTextProblem } from "./ai-checks";
+import { FACT_SPEED_FROM_GRADE, factsSkills } from "./facts";
 import { MISCONCEPTIONS, type MisconceptionId } from "./misconceptions";
 import type { LearnerProfile, PlanPart, ProfileAi, WorkbookPlan } from "./profile";
 import { BC_SKILL_MAP } from "./skill-map";
@@ -104,6 +105,8 @@ function schemaProblem(schema: JsonSchema, value: unknown, at: string): string |
 }
 
 const STANDARDS = new Map(BC_SKILL_MAP.standards.map((s) => [s.code, s]));
+/** The result of a skill or a standard that only the quick facts round asked (#242). */
+const FACTS_TESTED = "tested in the quick facts round";
 const OWNER = new Map(BC_SKILL_MAP.standards.flatMap((s) => s.skills.map((k) => [k.id, s] as const)));
 
 /** The BC standards whose skills the standard's skills need directly, other than itself, in the map's order of need. */
@@ -131,17 +134,31 @@ function challengeProblem(code: string, profile: LearnerProfile): ChallengeProbl
  * struggles' misconceptions; the skill-map neighbours of each struggle (its skills, the skills they need, and the
  * child's result on each needed skill's standard); and the next challenge candidates (every standard that passes the
  * challenge rule). Never a name, an id of the family, a drawing or typed working: the profile holds none.
- * The AI text checks take their numbers from all of it.
+ * The AI text checks take their numbers from all of it. #242: below FACT_SPEED_FROM_GRADE the facts carry no timing, as
+ * the parent's report shows no speed (D-120). #245: only what the test measured, never what it did not: no untested
+ * list and no "not tested" label, as what the test did not ask is code's to say. A needed skill has a result when its
+ * standard's questions measured it, or "tested in the quick facts round" when the round asked that skill (factsSkills:
+ * a round of multiplication facts asks no division); else none. A candidate has a result when questions measured it,
+ * and names the skills of it the quick facts round asked, when it asked any. And every standard of the school grade, by
+ * code and words, that the workbook plan may name (D-124).
  */
 export function profileAiFacts(profile: LearnerProfile) {
-  const facts: Omit<LearnerProfile, "ai"> & { ai?: unknown } = { ...profile };
-  delete facts.ai;
+  const rest: Omit<LearnerProfile, "ai"> & { ai?: unknown } = { ...profile };
+  delete rest.ai;
+  const { earlySigns, checkNext } = profile.unknowns;
+  const facts = {
+    ...rest,
+    facts: profile.test.grade < FACT_SPEED_FROM_GRADE ? withoutTiming(profile.facts) : profile.facts,
+    // The early signs, and the struggles to confirm; never the untested standards.
+    unknowns: { earlySigns, checkNext: checkNext.filter((s) => s.reason === "confirm-struggle") },
+  };
   const results = new Map(profile.standards.map((s) => [s.code, s.status as string]));
-  const result = (code: string) => results.get(code) ?? "not tested";
+  const askedSkills = new Set(factsSkills(profile.facts?.families ?? []));
+  const skillResult = (id: string, code: string) => results.get(code) ?? (askedSkills.has(id) ? FACTS_TESTED : undefined);
   const misconceptions = [...new Set(profile.struggles.flatMap((s) => s.misconceptions))];
   return {
     child: REPORT_TEXT_NAME,
-    profile: facts as Omit<LearnerProfile, "ai">,
+    profile: facts,
     misconceptions: Object.fromEntries(misconceptions.map((id) => [id, MISCONCEPTIONS[id as MisconceptionId]?.description ?? "unknown"])),
     struggle_skills: profile.struggles.map((s) => ({
       code: s.code,
@@ -151,14 +168,32 @@ export function profileAiFacts(profile: LearnerProfile) {
         requires: k.requires.flatMap((id) => {
           const owner = OWNER.get(id);
           const needed = owner?.skills.find((x) => x.id === id);
-          return owner && needed ? [{ id, text: needed.text, standard: owner.code, result: result(owner.code) }] : [];
+          const result = owner && skillResult(id, owner.code);
+          return owner && needed ? [{ id, text: needed.text, standard: owner.code, ...(result ? { result } : {}) }] : [];
         }),
       })),
     })),
     next_challenge_candidates: BC_SKILL_MAP.standards
       .filter((s) => challengeProblem(s.code, profile) === null)
-      .map((s) => ({ code: s.code, text: s.text, grade: s.grade, result: result(s.code), prerequisites: prerequisiteStandards(s.code) })),
+      .map((s) => {
+        const result = results.get(s.code);
+        const asked = s.skills.filter((k) => askedSkills.has(k.id)).map((k) => k.id);
+        return {
+          code: s.code, text: s.text, grade: s.grade, ...(result ? { result } : {}),
+          ...(asked.length ? { quick_facts_round_skills: asked } : {}), prerequisites: prerequisiteStandards(s.code),
+        };
+      }),
+    // The plan may name any standard of the school grade, as before #245: all of them, with no result, so the list
+    // says nothing about which the test measured.
+    school_grade_standards: BC_SKILL_MAP.standards.filter((s) => s.grade === profile.test.grade).map((s) => ({ code: s.code, text: s.text })),
   };
+}
+
+/** The facts result without its timing: the round's length, the median time and the speed label. */
+function withoutTiming(facts: LearnerProfile["facts"]) {
+  if (!facts) return null;
+  const { families, answered, correct, skipped, accuracy } = facts;
+  return { families, answered, correct, skipped, accuracy };
 }
 
 /** Something the checks dropped from valid output: which part, which standard, and why. */
@@ -202,8 +237,12 @@ export function checkProfileAi(profile: LearnerProfile, output: unknown, model: 
       else if (seen.has(s.code)) dropped.push({ part, code: s.code, problem: "repeated" });
       else {
         const check = checkAiText(text, facts, PROFILE_AI_TEXT_MAX);
-        if (check.ok) into[s.code] = check.text;
-        else dropped.push({ part, code: s.code, problem: check.problem, detail: check.detail });
+        // What a parent's AI text may not say (#242): the likely cause is on the parent's report (D-120). How to help is
+        // the admin's only (#245).
+        const parent = check.ok && part === "likelyCauses" ? parentTextProblem(check.text, profile.test.grade) : null;
+        if (!check.ok) dropped.push({ part, code: s.code, problem: check.problem, detail: check.detail });
+        else if (parent) dropped.push({ part, code: s.code, ...parent });
+        else into[s.code] = check.text;
       }
     }
     seen.add(s.code);
@@ -234,9 +273,9 @@ export function checkProfileAi(profile: LearnerProfile, output: unknown, model: 
   } else {
     const read = new Set([
       ...profile.standards.map((s) => s.code),
-      ...profile.unknowns.untested.map((s) => s.code),
       ...facts.struggle_skills.flatMap((s) => s.skills.flatMap((k) => k.requires.map((r) => r.standard))),
       ...facts.next_challenge_candidates.map((c) => c.code),
+      ...facts.school_grade_standards.map((s) => s.code),
     ]);
     const known = (code: string) => (read.has(code) ? null : "unknown-standard" as const);
     const part = (p: PlanPart, rule: typeof known | typeof challenge): PlanPart => ({ percent: p.percent, standards: keep("workbookPlan", p.standards, rule) });

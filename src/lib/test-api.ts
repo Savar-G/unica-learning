@@ -23,8 +23,6 @@ export type TestError =
   | "expired"
   /** A new test opens 30 days after the last completed one (#72). The start request sends `opensAt` with it. */
   | "retake_closed"
-  /** A show-your-work question was answered with an empty whiteboard (#67). */
-  | "work_required"
   /** The drawing or the typed working is over its size limit (#67). A `message` says which. */
   | "work_too_big"
   | "store_failed";
@@ -35,8 +33,8 @@ export type FinishResult = { ok: true } | { ok: false; error: TestError };
 
 /** The longest typed answer the number pad allows. */
 export const ANSWER_MAX = 12;
-/** Time on one question is capped here, so a tab left open overnight does not skew the speed data. */
-export const QUESTION_TIME_CAP_MS = 60 * 60_000;
+/** Time on one question is capped here, so a tab left open overnight does not skew the speed data. The core holds it (#249). */
+export { QUESTION_TIME_CAP_MS } from "@/lib/assessment";
 
 /**
  * The whiteboard work sent with an answer (#67): the drawing as a base64 PNG, the typed working, and the strokes for
@@ -73,8 +71,6 @@ export function refusalResponse(refusal: Refusal | FactsRefusal): Response {
       return testFail("conflict", 409, refusal.step ? { step: refusal.step } : {});
     case "invalid":
       return testFail("invalid", 400, refusal.message ? { message: refusal.message } : {});
-    case "work_required":
-      return testFail("work_required", 400, { message: "This question needs work on the whiteboard." });
     case "typing_off":
       return testFail("invalid", 400, { message: "Grades 1 and 2 draw their work. Typed working is not taken." });
     case "work_too_big":

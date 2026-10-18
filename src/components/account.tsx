@@ -11,20 +11,20 @@ import { GRADES, PASSWORD_MAX, PASSWORD_MIN, signInFailure, validPassword, type 
 import { browserClient } from "@/lib/supabase-browser";
 import { track } from "@/lib/track";
 import { SUPPORT_EMAIL, SUPPORT_HREF } from "@/lib/contact";
-import { SOURCE_STORAGE_KEY, sourceTags, visitSource } from "@/lib/visit-source";
+import { SOURCE_STORAGE_KEY, VISIT_STORAGE_KEY, visitSource } from "@/lib/visit-source";
 
-/** Keeps this page's UTM tags for the tab, so a parent who signs up with Google (and finishes on /account/finish) keeps them. */
-function rememberSource() {
-  const tags = sourceTags(window.location.search);
-  if (!Object.keys(tags).length) return;
-  try { sessionStorage.setItem(SOURCE_STORAGE_KEY, JSON.stringify(tags)); } catch { /* storage off: the tags stay on this page only */ }
-}
+// The tags are kept for the tab on whichever page the visitor lands (VisitTags in the root layout), so a parent who
+// browses first, or signs up with Google (and finishes on /account/finish), keeps them.
 
-/** Referrer and UTM tags of this visit, so we know which channel brought each parent. */
+/** Referrer, UTM tags, click IDs and ad visit ID of this visit, so we know which channel brought each parent. */
 function collectSource() {
   let stored: string | null = null;
-  try { stored = sessionStorage.getItem(SOURCE_STORAGE_KEY); } catch { /* storage off */ }
-  return visitSource({ search: window.location.search, referrer: document.referrer, stored });
+  let visitId: string | null = null;
+  try {
+    stored = sessionStorage.getItem(SOURCE_STORAGE_KEY);
+    visitId = sessionStorage.getItem(VISIT_STORAGE_KEY);
+  } catch { /* storage off */ }
+  return visitSource({ search: window.location.search, referrer: document.referrer, stored, visitId });
 }
 
 async function post(url: string, body: unknown): Promise<AccountResult> {
@@ -183,8 +183,6 @@ export function AccountSignup() {
   const [proved, setProved] = useState<string | null>(null);
   const started = useRef(false);
   const cleanEmail = email.trim().toLowerCase();
-
-  useEffect(rememberSource, []);
 
   useEffect(() => {
     if (step === "code") codeInput.current?.focus();

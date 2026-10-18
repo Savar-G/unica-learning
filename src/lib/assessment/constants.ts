@@ -10,7 +10,7 @@ export interface GradeBand {
   length: number;
   /** Stage 1 questions, all at the school grade. */
   stage1: number;
-  /** Questions that require shown work on the whiteboard (#67). */
+  /** Questions marked show-your-work (#67). Since D-125 the mark is not enforced: it only ranks the work the report shows. */
   whiteboardRequired: number;
   /** True when the whiteboard has a text box beside the drawing. Grades 1-2 draw only (#67). */
   whiteboardTyping: boolean;
@@ -82,3 +82,9 @@ export const REPORT_WORK_MAX = 3;
  * A choice answer is stored as the choice text, so every choice in the bank must fit (#165).
  */
 export const RESPONSE_MAX = 80;
+
+/**
+ * Time on one question is capped here, so a tab left open overnight does not skew the speed data. A changed answer's
+ * time (#249), the total of every visit, has the same cap.
+ */
+export const QUESTION_TIME_CAP_MS = 60 * 60_000;
