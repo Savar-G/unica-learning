@@ -248,6 +248,7 @@ describe("report model", () => {
           "{name} may be working above {name}'s level.",
           "{name} may work higher than this level.",
           "{name} is working at a grade 5 level and may work above that level.",
+          "{name} did not miss a question. {name} may work above this level.",
         ]) expect(parentTextProblem(text, 4, "summary"), text).toMatchObject({ problem: "repeat" });
       });
 
@@ -258,6 +259,15 @@ describe("report model", () => {
           "{name} cannot work above this level.",
           "{name} could not work above this level.",
           "{name} may not be working above this level.",
+          "{name} does not yet work above this level.",
+          "{name} is not yet working above this level.",
+          "{name} cannot yet work above this level.",
+          "{name} should not be working above this level.",
+          "{name} is not currently working above this level.",
+          "{name} does not need to work above this level.",
+          "{name} isn't working above this level yet.",
+          "{name} never works above this level.",
+          "{name} is working at a grade 5 level but is not working above that level.",
           "{name} finds questions at the higher level difficult.",
           "{name} found the higher-level questions hard.",
           "{name} is not ready for a higher level.",

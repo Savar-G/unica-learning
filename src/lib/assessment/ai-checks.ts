@@ -111,13 +111,23 @@ const MAIN_UNTESTED = new RegExp([
  * The exact claim the level block already makes when the child cleared the top level (D-132): the child "works" (or may,
  * might, could, can work, or is working) above, beyond or higher than this, that, the, their or the child's level. Only
  * this claim, so the summary does not say it twice. Not other wordings of "ready for more" (a dropped summary costs more
- * than a rare reworded repeat, D-132), and not a negated claim ("does not", "cannot", "could not", "may not be working
- * above this level").
+ * than a rare reworded repeat, D-132).
  */
 const ABOVE_LEVEL = new RegExp(
-  String.raw`(?<!\b(?:not|never|cannot)\s+(?:be\s+)?)(?<!n['’]t\s+(?:be\s+)?)\bwork(?:s|ing)?\s+(?:above|beyond|higher\s+than)\s+(?:this|that|the|their|his|her|\{name\}'s)\s+(?:(?:tested|top|highest|current|working)\s+)?level\b`,
+  String.raw`\bwork(?:s|ing)?\s+(?:above|beyond|higher\s+than)\s+(?:this|that|the|their|his|her|\{name\}'s)\s+(?:(?:tested|top|highest|current|working)\s+)?level\b`,
   "i",
 );
+/** A negation anywhere in a sentence: the sentence does not make the claim ("is not yet working above this level"). */
+const NEGATION = /\b(?:not|never|no|nor|cannot|without|neither)\b|n['\u2019]t\b/i;
+
+/** The repeated claim in the first sentence that makes it, or null. A sentence with a negation word never counts. */
+function repeatedClaim(text: string): string | null {
+  for (const sentence of text.split(/(?<=[.!?;])\s+/)) {
+    const claim = sentence.match(ABOVE_LEVEL);
+    if (claim && !NEGATION.test(sentence)) return claim[0];
+  }
+  return null;
+}
 
 /** Which parent's AI text is checked: the report summary, or a likely cause on the report. */
 export type ParentText = "summary" | "likely-cause";
@@ -147,8 +157,8 @@ export function parentTextProblem(text: string, grade: Grade, kind: ParentText =
   }
   const untested = text.match(UNTESTED) ?? text.match(MAIN_UNTESTED);
   if (untested) return { problem: "untested", detail: untested[0] };
-  const repeat = kind === "summary" ? text.match(ABOVE_LEVEL) : null;
-  if (repeat) return { problem: "repeat", detail: repeat[0] };
+  const repeat = kind === "summary" ? repeatedClaim(text) : null;
+  if (repeat) return { problem: "repeat", detail: repeat };
   return null;
 }
 
