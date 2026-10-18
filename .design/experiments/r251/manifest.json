@@ -1,7 +1,9 @@
 {
   "round": 251,
   "ticket": "#251 (spec #249): Back, tappable progress steps and the 'Check your answers' grid",
-  "decision": "open (Savar picks; record the next D-number in .design/decisions.md after the pick)",
+  "decision": "D-127",
+  "picked": "B",
+  "picked_by": "Savar, 2026-10-17",
   "decision_question": "Where do the tappable steps live, and how big are they, so that a 6-year-old on a tablet can go back to one question, and what do the grid, Back and the intro copy look like with them?",
   "primary_axis": "where the tappable steps live (in the top bar, in a row under it, or in the question pane) and so how large they can be",
   "note": "Round named after the ticket, like r190. Savar could not be reached: the round was made from the ticket, the spec and DESIGN.md with no interview. Static mockups (mock.html?v=A|B|C&s=intro|resume|extra|question|stress|grid|gridstress) that copy the real TakeTest markup and link the real CSS (src/ds/styles, src/components/test-*.css, whiteboard.css), so tokens, panes and buttons are the production ones. Render: zsh shoot.sh <out-dir> [variants] [screens] [name:w,h]. Target sizes: zsh measure.sh. The full set of 48 screenshots is in /tmp/build-spec-249/251/; this folder keeps 30.",
@@ -69,8 +71,13 @@
     "reason": "B is the only option that keeps every step at 50 px or more on a tablet for every grade (A drops to 37 px for grade 1 and 9 px for grade 6; C overflows at 1024 x 768), it leaves the question pane exactly as it is today, and its rule card tells the child in plain words that Back and the numbers exist. Its cost is 68 px of height, and the 1024 x 768 render shows the desk still fits.",
     "optional_mix": "If Savar wants the grid to feel like the break screen, B's steps and copy with A's grid (white tiles on the colour field, 'Answered' with the filled dot) is a clean mix: the two parts are independent."
   },
+  "resolved_questions": [
+    {
+      "question": "While the child looks at an earlier question, can she tap the newest question (19) to jump back to it?",
+      "answer": "Yes (Savar, 2026-10-17, D-127): on an earlier question, the step of the newest unanswered question stays tappable (white with a grey ring), so the child can jump back to where they were."
+    }
+  ],
   "open_questions": [
-    "While the child looks at an earlier question, can she tap the newest question (19) to jump back to it? The spec makes only answered questions and the current question tappable; every variant here shows the newest one as tappable (white with a grey ring), because pressing Next many times to return is slow. Confirm or remove.",
     "The extra round's grid uses the same layout with the round's own numbers 1-8 and the line 'When you press Done checking, these answers are final.'; not rendered here."
   ]
 }
