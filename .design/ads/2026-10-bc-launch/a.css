@@ -1,0 +1,20 @@
+.photo { background: url(hero-home-1.jpg) 56% 42% / cover; position: relative; }
+.photo .logo { gap: 10px; position: absolute; left: 46px; background: #fff; padding: 22px 28px; border-radius: 14px; font-size: 44px; }
+.photo .tag { position: absolute; right: 46px; background: var(--sun); padding: 18px 26px; border-radius: 14px; font: 500 26px/1 "Geist Mono"; letter-spacing: .08em; text-transform: uppercase; }
+.body { padding: 0 56px; }
+.mono { font-size: 26px; }
+.mono::before { width: 20px; height: 20px; margin-right: 6px; }
+.mono .dot { margin: 0 14px; }
+h1 { font-size: 80px; line-height: 1.06; }
+.hl { background: none; padding: 0; margin: 0; position: relative; z-index: 0; }
+.hl::after { content: ""; position: absolute; z-index: -1; left: -10px; right: -6px; bottom: -0.02em; height: .36em; background: var(--sun); border-radius: 6px; transform: rotate(-.6deg); }
+.row { display: flex; justify-content: space-between; align-items: center; }
+.price-box { display: flex; flex-direction: column; gap: 18px; }
+.old { font-size: 76px; }
+.new { font-size: 136px; }
+.note { font-size: 50px; margin-top: 6px; }
+.then { font-size: 30px; margin-top: 4px; }
+.cta { display: flex; flex-direction: column; align-items: center; gap: 18px; }
+.btn { font-size: 34px; padding: 30px 36px; border-radius: 14px; }
+.url { font-size: 32px; }
+.foot-row { display: flex; justify-content: space-between; border-top: 2px solid #e6e5e2; padding-top: 26px; font: 500 22px/1 "Geist Mono"; letter-spacing: .06em; text-transform: uppercase; color: var(--ink-2); }
