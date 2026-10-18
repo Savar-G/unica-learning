@@ -5,7 +5,7 @@
 // (#79) can move it as one piece. The rules (palm rejection, image size, the draft) are in src/lib/whiteboard.ts.
 // Strokes are stored as fractions of the board's width, so the drawing keeps its shape when the board changes size.
 // #186: the board also keeps a log of every stroke (with the time of each point), undo and clear, for the admin's replay.
-import { useCallback, useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
 import { WORK_IMAGE_MAX_BYTES, WORK_TEXT_MAX } from "@/lib/test-api";
 import {
   DRAFT_ROOT,
@@ -156,11 +156,13 @@ export function Whiteboard({ board, onChange, typing, onSize }: WhiteboardProps)
   }, []);
 
   // The canvas follows the board's size (a resize, a rotated tablet), drawn sharp for the screen's pixel density.
-  useEffect(() => {
+  // #252: sized and drawn once before the first paint too, so work the board opens with (an answered question the
+  // child went back to) is there in the first frame, never an empty board first.
+  useLayoutEffect(() => {
     const el = surface.current;
     const c = canvas.current;
     if (!el || !c) return;
-    const ro = new ResizeObserver(() => {
+    const fit = () => {
       const r = el.getBoundingClientRect();
       if (!r.width || !r.height) return;
       const dpr = window.devicePixelRatio || 1;
@@ -171,7 +173,9 @@ export function Whiteboard({ board, onChange, typing, onSize }: WhiteboardProps)
       c.style.height = `${r.height}px`;
       redraw();
       sizeListener.current?.(size.current);
-    });
+    };
+    fit();
+    const ro = new ResizeObserver(fit);
     ro.observe(el);
     return () => ro.disconnect();
   }, [redraw]);
