@@ -8,7 +8,7 @@ import { runReportJob } from "@/lib/report-job";
 import { memoryReportJobStore } from "@/lib/report-job-memory";
 import { memoryReportReaders, type MemoryReportTables } from "@/lib/report-loading-memory";
 import { memoryReportLedger } from "@/lib/report-row-ledger-memory";
-import { answerQuestion, extraRoundState, finishTest, skipExtraRound, stopExtraRound, takeExtraRound } from "@/lib/test-attempt";
+import { answerQuestion, extraRoundState, finishTest, skipExtraRound, stopExtraRound, takeExtraRound, doneChecking } from "@/lib/test-attempt";
 import { memoryAttemptStore, type MemoryTest } from "@/lib/test-attempt-memory";
 
 // #190 (spec #181): a finished extra round builds the report again. The child's test runs through the test attempt
@@ -46,10 +46,18 @@ async function finishedAfterSkip() {
 
 /** Answers every question the test asks now, through the module: right when `right(n)` says so. */
 async function answerAll(memory: ReturnType<typeof memoryAttemptStore>, right: (n: number) => boolean, clock: () => number) {
-  for (let n = 0; ; n++) {
+  for (;;) {
     const row = memory.tests[0];
-    const q = nextQuestion(restoreSession(row.test, row.answers));
-    if (!q) return;
+    const n = row.answers.length;
+    const session = restoreSession(row.test, row.answers, row.route ?? null);
+    const q = nextQuestion(session);
+    if (!q && session.route) return;
+    if (!q) {
+      // #253: the stage 1 grid; the child presses "Done checking" at once.
+      const locked = await doneChecking(memory.store, "parent-1", "a1", "stage1", clock());
+      if (!locked.ok) throw new Error(`stage 1 lock: ${locked.error}`);
+      continue;
+    }
     const input = { questionId: q.id, response: right(n) ? q.answer : wrongTo(q), timeMs: 20_000, work: { png: null, text: q.showWork ? "My working" : "" } };
     const result = await answerQuestion(memory.store, "parent-1", "a1", input, clock());
     if (!result.ok) throw new Error(`answer ${n + 1}: ${result.error}`);
@@ -136,7 +144,7 @@ describe("a finished extra round", () => {
     await takeExtraRound(memory.store, "parent-1", "a1", (at += MINUTE));
     // Three round answers, each with typed work, then the stop.
     for (let n = 0; n < 3; n++) {
-      const q = nextQuestion(restoreSession(memory.tests[0].test, memory.tests[0].answers))!;
+      const q = nextQuestion(restoreSession(memory.tests[0].test, memory.tests[0].answers, memory.tests[0].route ?? null))!;
       const input = { questionId: q.id, response: q.answer, timeMs: 20_000, work: { png: null, text: "Round working" } };
       expect(await answerQuestion(memory.store, "parent-1", "a1", input, (at += MINUTE))).toMatchObject({ ok: true });
     }
@@ -279,7 +287,7 @@ describe("the learner profile after an extra round", () => {
     await takeExtraRound(memory.store, "parent-1", "a1", (at += MINUTE));
     // Three round answers, all wrong: were they counted, the area would be 5 of 9.
     for (let i = 0; i < 3; i++) {
-      const q = nextQuestion(restoreSession(memory.tests[0].test, memory.tests[0].answers))!;
+      const q = nextQuestion(restoreSession(memory.tests[0].test, memory.tests[0].answers, memory.tests[0].route ?? null))!;
       expect(await answerQuestion(memory.store, "parent-1", "a1", { questionId: q.id, response: wrongTo(q), timeMs: 20_000, work: { png: null, text: q.showWork ? "My working" : "" } }, (at += MINUTE))).toMatchObject({ ok: true });
     }
     await stopExtraRound(memory.store, "parent-1", "a1", (at += MINUTE));

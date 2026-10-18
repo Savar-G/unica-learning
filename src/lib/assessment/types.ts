@@ -143,6 +143,22 @@ export type TestStep =
       answered?: AnsweredQuestion[];
     }
   | {
+      /**
+       * #253: "Check your answers": every question of the section is answered and the section is not locked. The core
+       * gives the stage 1 grid (stage 1 is not locked until lockStage1); the test attempt module gives the stage 2 grid
+       * (it knows the lock records). "Done checking" locks the section.
+       */
+      status: "check";
+      /** The section to check: stage 1 (before the halfway break) or stage 2 (the routed form). */
+      section: "stage1" | "stage2";
+      /** The section's question numbers in the test, from 1, in order. Every one is answered. */
+      numbers: number[];
+      total: number;
+      breakAfter: number;
+      /** The section's answered questions (as on a question step), so a tap opens one at once. Only the test attempt module adds it. */
+      answered?: AnsweredQuestion[];
+    }
+  | {
       status: "complete";
       total: number;
       /**

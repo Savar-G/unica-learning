@@ -18,7 +18,8 @@ import { strokesPath, workPath } from "@/lib/work-payload";
 /** A row of public.answers. A test can give only what the module reads back (a Submission); the module stores all of it. */
 export type MemoryAnswer = Submission & Partial<NewAnswer>;
 /**
- * A stored test: one row of public.assessments with its answers, in their places. `route`: none until stage 1 ends.
+ * A stored test: one row of public.assessments with its answers, in their places. `route`: none until stage 1 is locked
+ * (#253: the stage 1 lock record).
  * `placement` and `help` (the answer to "Did anyone help?"): none until the test is finished.
  */
 export type MemoryTest = Attempt & {
@@ -161,10 +162,19 @@ export function memoryAttemptStore({ children: kids = [], tests: initial = [] }:
    */
   const roundOf = (row: MemoryTest) => (row.extraRound ??= { ...NO_ROUND });
   const roundOps: ExtraRoundStore = {
-    async recordExtraOffer(id, at) {
+    // #253: the guards of the offer, checked together with the write, as in the database function record_extra_offer.
+    async recordExtraOffer(id, at, answers) {
       await begin("recordExtraOffer");
-      const row = tests.find((t) => t.id === id);
-      if (row) roundOf(row).offeredAt ??= at;
+      const row = tests.find((t) => t.id === id && t.status === "in_progress");
+      if (!row) return "closed";
+      const round = roundOf(row);
+      if (round.offeredAt !== null) return "already";
+      if (round.skippedAt !== null || round.startedAt !== null) return "closed";
+      const same = row.answers.length === answers.length
+        && row.answers.every((a, i) => a.questionId === answers[i].questionId && a.response === answers[i].response && a.timeMs === answers[i].timeMs);
+      if (!same) return "changed";
+      round.offeredAt = at;
+      return "offered";
     },
     async skipExtraRound(id, at) {
       await begin("skipExtraRound");
@@ -224,6 +234,7 @@ export function memoryAttemptStore({ children: kids = [], tests: initial = [] }:
         ...(row.breakStartedAt != null && { break: { startedAt: row.breakStartedAt, ended: row.breakEndedAt != null } }),
         help: row.help ?? null,
         extraRound: { ...(row.extraRound ?? NO_ROUND) },
+        route: row.route ?? null,
       };
     },
     async expire(id, now) {
@@ -294,6 +305,8 @@ export function memoryAttemptStore({ children: kids = [], tests: initial = [] }:
       const row = tests.find((t) => t.id === id && t.status === "in_progress");
       const round = row?.extraRound ?? NO_ROUND;
       if (!row || round.offeredAt !== null || round.skippedAt !== null || round.startedAt !== null) return "closed";
+      // #253: a stage 1 answer changes only while stage 1 is not locked (no route stored).
+      if (position < row.test.stage1.length && row.route != null) return "closed";
       const old = row.answers[position];
       if (row.answers.length > unansweredFrom || !old || old.questionId !== marked.questionId) return "closed";
       const timeline = { shownAt: old.timeline?.shownAt ?? null, answeredAt, events: structuredClone(events) };
@@ -309,10 +322,17 @@ export function memoryAttemptStore({ children: kids = [], tests: initial = [] }:
       };
       return { workPath: old.workPath ?? null, strokesPath: oldStrokes ?? null };
     },
-    async recordRoute(id, route) {
-      await begin("recordRoute");
-      const row = tests.find((t) => t.id === id);
-      if (row) row.route = route;
+    // #253: the stage 1 lock, with its guards checked together with the write, as in the database function lock_stage1.
+    async lockStage1(id, { route, answers }) {
+      await begin("lockStage1");
+      const row = tests.find((t) => t.id === id && t.status === "in_progress");
+      if (!row) return "closed";
+      if (row.route != null) return row.route;
+      const stored = row.answers.slice(0, row.test.stage1.length);
+      const same = stored.length === answers.length && stored.every((a, i) => a.questionId === answers[i].questionId && a.response === answers[i].response);
+      if (!same) return "changed";
+      row.route = route;
+      return route;
     },
     async complete(id, { at, placement, help, answers }) {
       await begin("complete");

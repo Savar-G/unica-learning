@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { checked } from "@/lib/assessment/scripted-child";
 import {
   BANKS,
   BC_SKILL_MAP,
@@ -40,7 +41,7 @@ function taken(
   let session = createSession(child, seed);
   for (let q = nextQuestion(session); q; q = nextQuestion(session)) {
     const i = session.answers.length;
-    session = submitAnswer(session, { questionId: q.id, response: respond(q, i), timeMs: timeFor(i) });
+    session = checked(submitAnswer(session, { questionId: q.id, response: respond(q, i), timeMs: timeFor(i) }));
   }
   const questions = [...session.stage1, ...session.stage2[session.route!]];
   const answers: ProfileAnswer[] = session.answers.map((a, i) => ({

@@ -327,18 +327,26 @@ function marked(q: Question, response: string, timeMs: number): Answer {
   };
 }
 
-/** Marks the answer to the current question and returns the updated session. */
+/**
+ * Marks the answer to the current question and returns the updated session. #253: the last stage 1 answer sets no
+ * route: the child checks stage 1 on its grid, and lockStage1 routes the test.
+ */
 export function submitAnswer(session: Session, submission: Submission): Session {
   const q = nextQuestion(session);
-  if (!q) throw new Error("The test is already complete");
+  if (!q) throw new Error("No question takes an answer now: the test is complete, or stage 1 waits on its lock");
   if (submission.questionId !== q.id) throw new Error(`Expected an answer to ${q.id}, got ${submission.questionId}`);
-  const answer = marked(q, submission.response, submission.timeMs);
-  const answers = [...session.answers, answer];
-  let route = session.route;
-  if (answers.length === session.stage1.length) {
-    route = routeFor(answers.filter((a) => a.correct).length, answers.length);
-  }
-  return { ...session, answers, route };
+  return { ...session, answers: [...session.answers, marked(q, submission.response, submission.timeMs)] };
+}
+
+/**
+ * #253: "Done checking" on the stage 1 grid locks stage 1: the route is set from the final stage 1 answers, and stage 1
+ * never opens again. Throws before every stage 1 question is answered, and when stage 1 is already locked.
+ */
+export function lockStage1(session: Session): Session {
+  if (session.route) throw new Error("Stage 1 is already locked");
+  if (session.answers.length < session.stage1.length) throw new Error("Stage 1 locks only once every stage 1 question is answered");
+  const stage1 = session.answers.slice(0, session.stage1.length);
+  return { ...session, route: routeFor(stage1.filter((a) => a.correct).length, stage1.length) };
 }
 
 /** #249: the parts of a test the child can go back in: stage 1, stage 2 (the routed form), and the extra round (#190). */
@@ -353,9 +361,9 @@ export interface SectionAnswer {
 
 /**
  * #249: the section the child works in now, from `first` to `end` (places in the test, `end` not included), with its
- * answered questions in order. Stage 1 until the test is routed (the route is set by the last stage 1 answer), then
- * stage 2, then the extra round once the child took one. The test attempt module closes a section that the test moved
- * past by its own records (the round's offer, the finish).
+ * answered questions in order. Stage 1 until it is locked (lockStage1 routes the test, #253), then stage 2, then the
+ * extra round once the child took one. The test attempt module closes a section that the test moved past by its own
+ * records (the round's offer, the finish).
  */
 export interface OpenSection {
   name: SectionName;
@@ -395,10 +403,24 @@ export function storedTest(session: Session): StoredTest {
   return { profile, seed, stage1, stage2, ...(extra ? { extra } : {}) };
 }
 
-/** Rebuilds a session from the stored test and the answers in the order given, marking each one again. */
-export function restoreSession(stored: StoredTest, submissions: readonly Submission[]): Session {
-  const start: Session = { ...stored, route: null, answers: [] };
-  return submissions.reduce((session, { questionId, response, timeMs }) => submitAnswer(session, { questionId, response, timeMs }), start);
+/**
+ * Rebuilds a session from the stored test and the answers in the order given, marking each one again. #253: `route` is
+ * the stored route, the stage 1 lock record: stage 1 is locked when it is stored. A test with answers past stage 1 and
+ * no stored route (one from before the lock, whose route save failed) is past stage 1, routed by its stage 1 answers.
+ * With every stage 1 answer and no stored route, stage 1 is open on its grid. Throws for a route without every stage 1
+ * answer.
+ */
+export function restoreSession(stored: StoredTest, submissions: readonly Submission[], route: Route | null = null): Session {
+  let session: Session = { ...stored, route: null, answers: [] };
+  for (const [i, { questionId, response, timeMs }] of submissions.entries()) {
+    if (i === session.stage1.length) session = route ? { ...session, route } : lockStage1(session);
+    session = submitAnswer(session, { questionId, response, timeMs });
+  }
+  if (route && !session.route) {
+    if (session.answers.length < session.stage1.length) throw new Error("A stored route needs every stage 1 answer");
+    session = { ...session, route };
+  }
+  return session;
 }
 
 /**
@@ -409,7 +431,7 @@ export function testLength(test: StoredTest, route: Route | null): number {
   return route ? test.stage1.length + test.stage2[route].length : bandFor(test.profile.grade).length;
 }
 
-/** What the browser gets next: the current question without its answer, or "complete". */
+/** What the browser gets next: the current question without its answer, the stage 1 grid (#253), or "complete". */
 export function testStep(session: Session): TestStep {
   const breakAfter = session.stage1.length;
   // Before routing, use the longest stored form. Once routed, the exact stored form is authoritative.
@@ -419,6 +441,10 @@ export function testStep(session: Session): TestStep {
   // #190: the extra round, when the child took one, comes after the main test and counts in its total.
   const extra = session.extra?.length ?? 0;
   const total = main + extra;
+  // #253: every stage 1 question is answered and stage 1 is not locked: the child checks it on the grid.
+  if (!session.route && session.answers.length === breakAfter) {
+    return { status: "check", section: "stage1", numbers: Array.from({ length: breakAfter }, (_, i) => i + 1), total, breakAfter };
+  }
   const q = nextQuestion(session);
   if (!q) return { status: "complete", total };
   const number = session.answers.length + 1;

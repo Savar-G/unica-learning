@@ -22,7 +22,7 @@ describe("hosted account email templates", () => {
       const email = authEmail(kind);
       expect(email.html).toContain("The Unica Learning team");
       expect(email.html).toContain("16557 87A Ave");
-      expect(email.html).toContain('href="mailto:savar.gupta1922@gmail.com"');
+      expect(email.html).toContain('href="mailto:contact@unicalearning.com"');
       expect(email.html).not.toMatch(/Reply to this email|unsubscribe/i);
       expect(email.html).not.toMatch(/<script|<form|<link|<img/);
       expect(readFileSync(`supabase/templates/${kind}.html`, "utf8")).toBe(email.html);

@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { checked } from "@/lib/assessment/scripted-child";
 import { createFacts, createSession, nextQuestion, restoreSession, startAttempt, storedTest, submitAnswer, type Attempt, type Submission } from "@/lib/assessment";
 import { StoreError } from "@/lib/test-attempt";
 import { memoryAttemptStore, type MemoryTest } from "@/lib/test-attempt-memory";
@@ -43,9 +44,10 @@ function stored(attempt: Attempt, { parent = P1, answered = 0 } = {}): MemoryTes
   const answers: Submission[] = [];
   for (let q = nextQuestion(session); q && answers.length < answered; q = nextQuestion(session)) {
     answers.push({ questionId: q.id, response: q.answer, timeMs: 20_000 });
-    session = submitAnswer(session, answers.at(-1)!);
+    session = checked(submitAnswer(session, answers.at(-1)!));
   }
-  return { ...attempt, parentId: parent, childId: "c41d0000-0000-4000-8000-000000000001", seed: 7, test, answers };
+  // #253: past stage 1, its lock record (the route) is stored: 18 answers is the halfway break.
+  return { ...attempt, parentId: parent, childId: "c41d0000-0000-4000-8000-000000000001", seed: 7, test, answers, ...(session.route && { route: session.route }) };
 }
 
 /** Asha's test with `answered` answers in (18: the halfway break), of parent `parent`, in status `status`. */
@@ -92,7 +94,7 @@ describe("POST /api/account/assessments/[id]/context (the halfway break and the 
 
   it("accepts an end after a later answer, and concurrent duplicate ends keep the first context", async () => {
     await context(TEST, { break: "shown" });
-    const q = nextQuestion(restoreSession(memory.tests[0].test, memory.tests[0].answers))!;
+    const q = nextQuestion(restoreSession(memory.tests[0].test, memory.tests[0].answers, memory.tests[0].route ?? null))!;
     const response = await answerRoute(postJson(`https://unica.test/api/account/assessments/${TEST}/answers`, { questionId: q.id, response: q.answer, timeMs: 5_000, work: { text: "5 + 1" } }), ctxOf(TEST));
     expect(response.status).toBe(200);
     vi.setSystemTime(T0 + HOUR + 8_000);

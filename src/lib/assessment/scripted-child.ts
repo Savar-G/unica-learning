@@ -1,5 +1,5 @@
 // Scripted children for the tests: they take a whole test through the public session API.
-import { createSession, finish, nextQuestion, submitAnswer, type ChildProfile, type Question, type Template } from "@/lib/assessment";
+import { createSession, finish, lockStage1, nextQuestion, submitAnswer, type ChildProfile, type Question, type Session, type Template } from "@/lib/assessment";
 
 export type Script = (q: Question, index: number) => boolean;
 
@@ -13,10 +13,17 @@ export function takeTest(profile: ChildProfile, seed: number, isRight: Script, b
   for (let q = nextQuestion(session); q; q = nextQuestion(session)) {
     const response = isRight(q, asked.length) ? q.answer : "no idea";
     asked.push(q);
-    session = submitAnswer(session, { questionId: q.id, response, timeMs: timeFor(q, asked.length - 1) });
+    session = checked(submitAnswer(session, { questionId: q.id, response, timeMs: timeFor(q, asked.length - 1) }));
   }
   return { asked, placement: finish(session) };
 }
+
+/**
+ * #253: a child who presses "Done checking" at once on the stage 1 grid: the session with stage 1 locked when it waits
+ * on its grid, else as it is. A scripted child walks a whole test with it.
+ */
+export const checked = (session: Session): Session =>
+  !session.route && session.answers.length === session.stage1.length ? lockStage1(session) : session;
 
 export const allRight: Script = () => true;
 export const allWrong: Script = () => false;

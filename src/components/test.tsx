@@ -24,6 +24,7 @@ import { BarGraph, ChoiceFace, PromptText } from "./test-figures";
 import { TestHelp } from "./test-help";
 import { ExtraEnd, ExtraIntro, ExtraOffer, ExtraReturn, type ExtraEntry } from "./test-extra";
 import { TestProgress } from "./test-progress";
+import { BackLabel, NextLabel, TestCheck, TestSteps } from "./test-steps";
 import { ReadAloud, warmUpVoices } from "./test-read-aloud";
 import { Whiteboard, boardImage, clearDrafts, loadDraft, saveDraft, type BoardSize } from "./whiteboard";
 import "./test.css";
@@ -32,6 +33,8 @@ type Screen =
   | { name: "intro" }
   /** `testId` keys the saved whiteboard of the question (#67). */
   | { name: "question"; question: PublicQuestion; number: number; total: number; breakAfter: number; testId: string; takeYourTime: boolean; extra?: { number: number; total: number } }
+  /** #253: "Check your answers" at the end of a part: its question numbers; "Done checking" locks it. */
+  | { name: "check"; section: "stage1" | "stage2"; numbers: number[]; total: number; breakAfter: number; testId: string }
   | { name: "break"; next: Extract<TestStep, { status: "question" }> }
   /** The timed facts section (#70), after the halfway break; then the test carries on with `next`. */
   | { name: "facts"; testId: string; next: Extract<TestStep, { status: "question" }> }
@@ -69,8 +72,14 @@ interface Visit {
   board?: BoardState;
 }
 
-/** #249: where the child goes: Back, Next, or (a save failed) back to the question whose save failed. */
-type Target = "back" | "next" | { reopen: number };
+/**
+ * #249: where the child goes: Back, Next, a tap on a step (#253: an answered question by its number, or the newest
+ * question, null), or (a save failed) back to the question whose save failed.
+ */
+type Target = "back" | "next" | { go: number | null } | { reopen: number };
+
+/** #249: a failed save moves the screen; every other way of leaving is the child's. */
+const reopening = (to: Target): to is { reopen: number } => typeof to === "object" && "reopen" in to;
 
 /** #249: what leaving did: "saved" (the answer went to the server, or is on its way), "kept" (nothing to save: the visit stays in this browser), or false (the child stays). */
 type Left = "saved" | "kept" | false;
@@ -107,7 +116,7 @@ export type StartMode = "new" | "resume" | "finish" | "restart" | "round";
  * halfway ring, for the progress on the help and end screens (the band's stage 1). `extra` (#190): the screen runs only
  * the extra round of a completed test, which the report offers again; it has its own start and end, and no help question.
  */
-export function TakeTest({ childId, name, breakAfter, ready, done, mode: firstMode = "new", typing = true, extra }: { childId: string; name: string; breakAfter: number; ready: boolean; done: boolean; mode?: StartMode; typing?: boolean; extra?: ExtraEntry }) {
+export function TakeTest({ childId, name, breakAfter, ready, done, mode: firstMode = "new", typing = true, extra, afterBreak = false, checkGrid = false }: { childId: string; name: string; breakAfter: number; ready: boolean; done: boolean; mode?: StartMode; typing?: boolean; extra?: ExtraEntry; afterBreak?: boolean; checkGrid?: boolean }) {
   const [screen, setScreen] = useState<Screen>(done ? { name: "done" } : { name: "intro" });
   const [progress, setProgress] = useState<{ total: number; breakAfter: number } | null>(null);
   const [busy, setBusy] = useState(false);
@@ -195,7 +204,7 @@ export function TakeTest({ childId, name, breakAfter, ready, done, mode: firstMo
   }, []);
 
   // A stop (#72): the tab closes or the connection drops during a question, the break or quick facts. The answers so far are saved on the server.
-  const asking = screen.name === "question" || screen.name === "break" || screen.name === "facts" || screen.name === "help" || screen.name === "offer";
+  const asking = screen.name === "question" || screen.name === "check" || screen.name === "break" || screen.name === "facts" || screen.name === "help" || screen.name === "offer";
   useEffect(() => {
     if (!asking) return;
     // The page is going away: a beacon still goes out. Offline: PostHog queues the event and retries once back online.
@@ -232,7 +241,7 @@ export function TakeTest({ childId, name, breakAfter, ready, done, mode: firstMo
   const show = useCallback(async (step: TestStep, resume?: BreakResume) => {
     setProgress((previous) => ({
       total: step.total,
-      breakAfter: step.status === "question" ? step.breakAfter : previous?.breakAfter ?? breakAfter,
+      breakAfter: step.status === "complete" ? previous?.breakAfter ?? breakAfter : step.breakAfter,
     }));
     // Every answer is in: "Did anyone help?" (#71) comes last, and its Finish sends the test.
     if (step.status === "complete") {
@@ -253,6 +262,11 @@ export function TakeTest({ childId, name, breakAfter, ready, done, mode: firstMo
     setAnswered(answeredRef.current);
     viewingRef.current = null;
     setViewing(null);
+    // #253: every question of the part is answered: "Check your answers" (also on a resume).
+    if (step.status === "check") {
+      setScreen({ name: "check", section: step.section, numbers: step.numbers, total: step.total, breakAfter: step.breakAfter, testId: id });
+      return true;
+    }
     // #190: a question of the extra round. The round has no break and no quick facts.
     if (step.extra) {
       setScreen({ name: "question", question: step.question, number: step.number, total: step.total, breakAfter: step.breakAfter, testId: id, takeYourTime: step.takeYourTime === true, extra: step.extra });
@@ -407,7 +421,12 @@ export function TakeTest({ childId, name, breakAfter, ready, done, mode: firstMo
       // The new work stays on the board, and goes as changed work with the next save.
       if (v.workChanged && v.board) setUnsavedWork(v.questionId, v.board);
       reopen.current = number;
-      await leaveScreen.current?.({ reopen: number });
+      // #253: on the grid no question is on the screen: the question whose save failed opens at once.
+      if (leaveScreen.current) await leaveScreen.current({ reopen: number });
+      else {
+        reopen.current = null;
+        open(number);
+      }
       setFailure(res.error);
     });
   };
@@ -419,33 +438,35 @@ export function TakeTest({ childId, name, breakAfter, ready, done, mode: firstMo
    * Leaving it with no answer saves nothing: its time and events wait in this browser for its first save.
    */
   const leave = async (v: Visit, to: Target): Promise<Left> => {
-    if (screen.name !== "question") return false;
+    if (screen.name !== "question" && screen.name !== "check") return false;
     // A save failed while this question was busy: it goes to the question whose save failed.
     if (reopen.current !== null) to = { reopen: reopen.current };
-    if (typeof to !== "object") setFailure(null);
+    if (!reopening(to)) setFailure(null);
     const from = viewingRef.current;
-    const here = from ?? screen.number;
+    // #253: on the grid, the question on the screen is always an answered one.
+    const here = from ?? (screen.name === "question" ? screen.number : 0);
     const numbers = answeredRef.current.map((a) => a.number);
-    const target = typeof to === "object" ? to.reopen : to === "back" ? numbers.filter((n) => n < here).at(-1) : numbers.find((n) => n > here) ?? null;
-    if (target === undefined) return false;
+    // Next after the last answered question: the newest question, or (#253) the grid when the part is all answered.
+    const target = reopening(to) ? to.reopen : typeof to === "object" ? to.go : to === "back" ? numbers.filter((n) => n < here).at(-1) : numbers.find((n) => n > here) ?? null;
+    if (target === undefined || (from === null && target === null && !reopening(to) && to !== "next")) return false;
 
     if (from === null) {
-      if (to === "back" && v.response) {
-        // The answer request first, then the question before it, if the answer did not close its section.
+      if (to !== "next" && !reopening(to) && v.response) {
+        // Back or a tap on a step: the answer request first, then that question, if the answer did not close its section.
         if (!(await sendAnswer(v))) return false;
         if (reopen.current === null && answeredRef.current.some((a) => a.number === target)) open(target);
         return "saved";
       }
       if (to === "next") return (await sendAnswer(v)) ? "saved" : false;
       keep(v, v.response);
-      if (typeof to === "object") reopen.current = null;
+      if (reopening(to)) reopen.current = null;
       open(target);
       return "kept";
     }
 
     // An answered question: a change must be an answer; a child cannot clear one.
     if (!v.response) {
-      if (typeof to !== "object") return false;
+      if (!reopening(to)) return false;
       keep(v);
     } else {
       // #252: changed work is what the server stores (strokes only with a drawing), so the next visit shows it at once.
@@ -456,9 +477,31 @@ export function TakeTest({ childId, name, breakAfter, ready, done, mode: firstMo
       setUnsavedWork(v.questionId, null);
       saveChange(from, withCarry(v));
     }
-    if (typeof to === "object") reopen.current = null;
+    if (reopening(to)) reopen.current = null;
     open(target);
     return v.response ? "saved" : "kept";
+  };
+
+  /**
+   * #253: "Done checking" on the grid, after the saves before it. It locks the part, and the test goes on: after part 1
+   * to the break, after part 2 to the extra round's offer or "Did anyone help?". Resolves false when it failed: the child
+   * stays on the grid with the error and can press it again, or (a save failed) on the question whose save failed.
+   */
+  const doneChecking = async (section: "stage1" | "stage2"): Promise<boolean> => {
+    setFailure(null);
+    await saves.current;
+    if (viewingRef.current !== null) return false;
+    const res = await call<StepResult>(`/api/account/assessments/${testId.current}/check`, post({ section }));
+    if (res.ok) {
+      track("test_check", { status: section });
+      return show(res.step);
+    }
+    // Another tab or a retry went on first: carry on from where the server is.
+    if (res.error === "conflict" && "step" in res && res.step) return show(res.step);
+    track("test_error", { code: res.error, status: "check" });
+    if (res.error === "expired") return expire();
+    setFailure(res.error);
+    return false;
   };
 
   /** The answer request for the newest question, after the saves before it, so a change lands before the answer that closes its section. */
@@ -482,7 +525,13 @@ export function TakeTest({ childId, name, breakAfter, ready, done, mode: firstMo
   };
 
   // #249: the question on the screen: an answered one the child went back to, or the newest one.
-  const viewed = screen.name === "question" && viewing !== null ? answered.find((a) => a.number === viewing) ?? null : null;
+  const viewed = (screen.name === "question" || screen.name === "check") && viewing !== null ? answered.find((a) => a.number === viewing) ?? null : null;
+  // #253: the step row of the open part, on a question of the main test (not on the grid itself, nor in the extra round).
+  const steps = screen.name === "question" && !screen.extra
+    ? { part: screen.number <= screen.breakAfter ? 1 as const : 2 as const, first: screen.number <= screen.breakAfter ? 1 : screen.breakAfter + 1, last: screen.number <= screen.breakAfter ? screen.breakAfter : screen.total, current: viewed?.number ?? screen.number, newest: screen.number }
+    : screen.name === "check" && viewed
+      ? { part: screen.section === "stage1" ? 1 as const : 2 as const, first: screen.numbers[0], last: screen.numbers.at(-1)!, current: viewed.number, newest: null }
+      : null;
 
   return (
     <div className="look-root test-root" data-look="warm">
@@ -492,26 +541,44 @@ export function TakeTest({ childId, name, breakAfter, ready, done, mode: firstMo
           // #190: the extra round's own progress, after the main test (the ring before it).
           ? <TestProgress answered={screen.extra.number - 1} total={screen.extra.total} breakAfter={0} at="question" />
           : <TestProgress answered={screen.number - 1} total={screen.total} breakAfter={screen.breakAfter} at="question" current={(viewed?.number ?? screen.number) - 1} />)}
+        {screen.name === "check" && <TestProgress answered={screen.numbers.at(-1)!} total={screen.total} breakAfter={screen.breakAfter} at="check" current={viewed ? viewed.number - 1 : undefined} />}
         {screen.name === "offer" && progress && <TestProgress answered={progress.total} total={progress.total} breakAfter={progress.breakAfter} at="help" />}
         {screen.name === "break" && <TestProgress answered={screen.next.breakAfter} total={screen.next.total} breakAfter={screen.next.breakAfter} at="halfway" />}
         {screen.name === "facts" && <TestProgress answered={screen.next.number - 1} total={screen.next.total} breakAfter={screen.next.breakAfter} at="facts" />}
         {(screen.name === "help" || screen.name === "done") && progress && <TestProgress answered={progress.total} total={progress.total} breakAfter={progress.breakAfter} at={screen.name === "help" ? "help" : "end"} />}
       </header>
+      {steps && (
+        <TestSteps part={steps.part} numbers={Array.from({ length: steps.last - steps.first + 1 }, (_, i) => steps.first + i)}
+          answered={new Set(answered.map((a) => a.number))} current={steps.current} newest={steps.newest}
+          onGo={(n) => void leaveScreen.current?.({ go: n })} />
+      )}
       <main id="main" className="test-main">
         {screen.name === "intro" && (extra
           ? <ExtraIntro name={name} entry={extra} busy={busy} onStart={() => start()} problem={<Problem error={failure} />} />
           : mode === "round"
             ? <ExtraReturn name={name} busy={busy} onGo={() => start()} onStop={() => start(true)} problem={<Problem error={failure} />} />
-            : <Intro name={name} ready={ready} busy={busy} onStart={() => start()} failure={failure} mode={mode} />)}
+            : <Intro name={name} ready={ready} busy={busy} onStart={() => start()} failure={failure} mode={mode} afterBreak={afterBreak} checkGrid={checkGrid} />)}
         {screen.name === "offer" && <ExtraOffer name={name} offer={screen.offer} problem={<Problem error={failure} />} onChoose={(take) => chooseRound(take ? "take" : "skip", "test")} />}
         {screen.name === "question" && (
           <Question key={`${(viewed?.question ?? screen.question).id}:${visit}`} testId={screen.testId} typing={typing}
             question={viewed?.question ?? screen.question} initial={viewed ? viewed.response : held[screen.question.id] ?? ""} revisit={viewed !== null}
             initialBoard={viewed ? unsaved[viewed.question.id] : undefined} storedWork={viewed?.work}
             canBack={answered.some((a) => a.number < (viewed?.number ?? screen.number))}
-            last={!viewed && screen.number === screen.total} takeYourTime={!viewed && screen.takeYourTime} onLeave={leave} onShown={onShown} failure={failure}
+            // #253: Next after the last question of a part goes to its grid; only the extra round's last question finishes.
+            last={!viewed && !!screen.extra && screen.number === screen.total} takeYourTime={!viewed && screen.takeYourTime} onLeave={leave} onShown={onShown} failure={failure}
             onStop={screen.extra ? () => stopRound(screen.extra!.number - 1) : undefined} />
         )}
+        {screen.name === "check" && (viewed
+          // #253: an answered question opened from the grid; Next after the part's last question comes back to the grid.
+          ? <Question key={`${viewed.question.id}:${visit}`} testId={screen.testId} typing={typing}
+              question={viewed.question} initial={viewed.response} revisit initialBoard={unsaved[viewed.question.id]}
+              canBack={answered.some((a) => a.number < viewed.number)} last={false} takeYourTime={false} onLeave={leave} onShown={onShown} failure={failure} />
+          : <TestCheck name={name} part={screen.section === "stage1" ? 1 : 2} numbers={screen.numbers} problem={<Problem error={failure} />}
+              onOpen={(n) => {
+                setFailure(null);
+                open(n);
+              }}
+              onDone={() => doneChecking(screen.section)} />)}
         {screen.name === "break" && (
           <TestBreak name={name} answered={screen.next.breakAfter} total={screen.next.total} onDone={(how) => {
             track("test_break", { status: how });
@@ -565,7 +632,7 @@ function Problem({ error }: { error: TestError | null }) {
   return <p ref={line} role="alert" className="test-alert">{text}</p>;
 }
 
-function Intro({ name, ready, busy, onStart, failure, mode }: { name: string; ready: boolean; busy: boolean; onStart: () => void; failure: TestError | null; mode: StartMode }) {
+function Intro({ name, ready, busy, onStart, failure, mode, afterBreak, checkGrid }: { name: string; ready: boolean; busy: boolean; onStart: () => void; failure: TestError | null; mode: StartMode; afterBreak: boolean; checkGrid: boolean }) {
   if (!ready) {
     return (
       <MessageScreen>
@@ -577,11 +644,12 @@ function Intro({ name, ready, busy, onStart, failure, mode }: { name: string; re
     );
   }
   if (mode === "finish") {
+    // #253: the next step is the part 2 grid (Savar, 2026-10-18); Continue opens it.
     return (
       <MessageScreen>
         <p className="test-kicker">Math test</p>
-        <h1 className="test-title">All your answers are in, {name}!</h1>
-        <p className="test-lead">The test was not sent yet. Press Continue to finish it.</p>
+        <h1 className="test-title">{checkGrid ? `Welcome back, ${name}!` : `All your answers are in, ${name}!`}</h1>
+        <p className="test-lead">{checkGrid ? "Check your answers, then press Done checking." : "The test was not sent yet. Press Continue to finish it."}</p>
         <Problem error={failure} />
         <Button onClick={onStart} disabled={busy} aria-busy={busy}>{busy ? "Opening…" : "Continue"}</Button>
       </MessageScreen>
@@ -595,6 +663,8 @@ function Intro({ name, ready, busy, onStart, failure, mode }: { name: string; re
         <li><b>No calculator.</b> Work the answers out yourself.</li>
         <li><b>No help from a parent.</b> Do the test on your own. Grown-ups, please let your child work alone.</li>
         <li><b>Scrap paper is fine.</b> Work things out on paper or on the whiteboard, if it helps. We only need your answers.</li>
+        {/* #253 (D-127): Back and the steps at the top; until the break, or on a resume after it until the end of the test. */}
+        <li><b>You can go back.</b> Press Back, or tap a number at the top, to change an answer. {mode === "resume" && afterBreak ? "You can do this until the end of the test." : "You can do this until the break."}</li>
       </ul>
       {mode === "resume"
         ? <p className="test-intro-note">Your answers are saved. You go on from the question where you stopped.</p>
@@ -719,8 +789,8 @@ function Question({ testId, typing, question, initial, initialBoard, storedWork,
   const leave = async (to: Target): Promise<Left> => {
     // A ref, not the state: a failed save can call this before the screen shows that the question is leaving.
     if (busy.current || stopping) return false;
-    // Next needs an answer; on an answered question Back does too (a child cannot clear an answer).
-    if (typeof to !== "object" && !value && (to === "next" || revisit)) return false;
+    // Next needs an answer; on an answered question Back and a step do too (a child cannot clear an answer).
+    if (!reopening(to) && !value && (to === "next" || revisit)) return false;
     busy.current = true;
     setSending(true);
     const timeMs = performance.now() - shownAt.current;
@@ -838,8 +908,8 @@ function Question({ testId, typing, question, initial, initialBoard, storedWork,
             {/* #190: at the far end from Next, so it is not pressed by mistake. */}
             {onStop && <Button variant="ghost" onClick={stop} disabled={sending || stopping} aria-busy={stopping}>Stop here</Button>}
             {/* #249: Back to the answered question before this one; hidden on the first question of a section. */}
-            {canBack && <Button variant="ghost" onClick={() => void leave("back")} disabled={sending || stopping || (revisit && !value)}>Back</Button>}
-            <Button type="submit" disabled={!value || sending || stopping} aria-busy={sending}>{last ? "Finish" : "Next"}</Button>
+            {canBack && <Button variant="ghost" className="test-back" onClick={() => void leave("back")} disabled={sending || stopping || (revisit && !value)}><BackLabel /></Button>}
+            <Button type="submit" className="test-go" arrow={false} disabled={!value || sending || stopping} aria-busy={sending}><NextLabel text={last ? "Finish" : "Next"} /></Button>
           </div>
         </div>
       </div>

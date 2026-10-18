@@ -1,0 +1,50 @@
+/* Back, the step row and "Check your answers" (#249, #253): option B of design round r251 (D-127). Loads after
+   test-base.css. Steps are 52 px round (50 px on a tablet in portrait) at every test length; grid tiles are 88 px high
+   or more. No step or tile ever shows right or wrong: no ticks, no crosses, no green or red. */
+
+/* ---------- the step row, under the top bar ---------- */
+.test-steps { flex: none; border-bottom: 1px solid var(--line); overflow-x: auto; scrollbar-width: none; }
+.test-steps::-webkit-scrollbar { display: none; }
+.test-steps-in { display: flex; align-items: center; gap: 8px; width: max-content; margin: 0 auto; padding: 8px 24px; }
+.test-steps-part { margin-right: 10px; font: 500 14px/1 var(--mono); color: var(--ink-2); }
+.test-step { flex: none; display: grid; place-items: center; width: 52px; height: 52px; padding: 0; border: 0; border-radius: 50%; font: 500 19px/1 var(--sans); color: var(--ink); cursor: pointer; transition: transform 0.12s; }
+.test-step.is-done { background: var(--ink); color: #fff; }
+.test-step.is-now { margin-inline: 3px; background: var(--accent); color: var(--ink); box-shadow: 0 0 0 3px #fff, 0 0 0 5px var(--ink); cursor: default; }
+.test-step.is-next { background: #fff; box-shadow: inset 0 0 0 2px var(--ink-3); }
+.test-step.is-later { width: 14px; height: 14px; margin-inline: 4px; background: var(--line-soft); cursor: default; }
+.test-step:active:not(.is-now, .is-later) { transform: scale(0.96); }
+
+/* ---------- Back and Next: buttons of equal width, with arrows ---------- */
+.test-next .btn.test-back, .test-next .btn.test-go { min-width: 150px; gap: 10px; }
+
+/* ---------- Check your answers: a full-width page of large ink tiles ---------- */
+.test-check { flex: 1; min-height: 0; overflow: auto; display: grid; place-items: center; padding: 28px 32px; }
+.test-check-in { width: min(940px, 100%); display: grid; gap: 18px; }
+.test-check .test-title { outline: none; }
+.test-check .test-lead { max-width: none; }
+.test-tiles { display: grid; grid-template-columns: repeat(6, 1fr); gap: 14px; margin-top: 8px; }
+.test-tiles.is-many { grid-template-columns: repeat(7, 1fr); gap: 10px; }
+.test-tile { height: 112px; padding: 0; border: 0; border-radius: 14px; background: var(--ink); color: #fff; font: 300 46px/1 var(--sans); letter-spacing: -0.03em; cursor: pointer; transition: transform 0.12s; }
+.is-many .test-tile { height: 88px; font-size: 36px; }
+.test-tile:active { transform: scale(0.98); }
+.test-tile:disabled { opacity: 0.6; cursor: default; }
+.test-check-foot { display: flex; align-items: center; justify-content: space-between; gap: 20px; margin-top: 8px; }
+.test-check-foot .btn { min-height: 58px; padding: 0 32px; flex: none; }
+
+/* ---------- tablet in portrait, and narrow windows ---------- */
+@media (max-width: 900px), (orientation: portrait) {
+  .test-steps-in { gap: 6px; padding-inline: 20px; }
+  .test-steps-part { margin-right: 4px; }
+  .test-step { width: 50px; height: 50px; }
+  .test-step.is-later { width: 14px; height: 14px; }
+  .test-steps.is-cut { mask-image: linear-gradient(to right, transparent, #000 6%, #000 90%, transparent); }
+  .test-steps.is-cut .test-steps-in { margin: 0; }
+  .test-tiles { grid-template-columns: repeat(4, 1fr); }
+  .test-tiles.is-many { grid-template-columns: repeat(5, 1fr); }
+  .test-check { padding: 24px 20px; place-items: start center; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .test-step, .test-tile { transition: none; }
+  .test-step:active, .test-tile:active { transform: none; }
+}

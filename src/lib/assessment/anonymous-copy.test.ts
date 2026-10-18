@@ -1,5 +1,6 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
+import { checked } from "@/lib/assessment/scripted-child";
 import {
   COPY_FIELDS,
   COPY_VERSION,
@@ -52,7 +53,7 @@ function source() {
     // is one the screen offers: another choice, or a number.
     const wrong = q.wrong[0]?.value ?? (q.answer === "0" ? "1" : "0");
     const response = i < 3 || i % 2 === 0 ? wrong : q.answer;
-    session = submitAnswer(session, { questionId: q.id, response, timeMs: i < 3 ? 1_000 : 20_000 });
+    session = checked(submitAnswer(session, { questionId: q.id, response, timeMs: i < 3 ? 1_000 : 20_000 }));
   }
   let facts = createFacts({ grade: 3, province: "BC" }, 123456789);
   for (let i = 0; i < 5; i++) {
@@ -119,13 +120,13 @@ function roundSource(
 ) {
   let session = createSession({ grade: 4, province: "BC" }, 1);
   for (let q = nextQuestion(session); q; q = nextQuestion(session)) {
-    session = submitAnswer(session, { questionId: q.id, response: session.answers.length === 0 ? wrongOf(q) : q.answer, timeMs: 20_000 });
+    session = checked(submitAnswer(session, { questionId: q.id, response: session.answers.length === 0 ? wrongOf(q) : q.answer, timeMs: 20_000 }));
   }
   const main = session.answers.length;
   if (times.started !== undefined) session = startExtraRound(session);
   for (let i = 0; i < answered; i++) {
     const q = nextQuestion(session)!;
-    session = submitAnswer(session, { questionId: q.id, response: i === 0 ? wrongOf(q) : q.answer, timeMs: 15_000 });
+    session = checked(submitAnswer(session, { questionId: q.id, response: i === 0 ? wrongOf(q) : q.answer, timeMs: 15_000 }));
   }
   const questions: Question[] = [...session.stage1, ...session.stage2[session.route!], ...(session.extra ?? [])];
   const shownAt = (i: number) => (i < main ? 10_000 + 30_000 * i : times.started! + 20_000 * (i - main));

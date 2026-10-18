@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { checked } from "@/lib/assessment/scripted-child";
 import {
   QUESTION_TIME_CAP_MS,
   createSession,
@@ -12,15 +13,15 @@ import {
   type Submission,
 } from "@/lib/assessment";
 import { ANSWER_CHANGES_MAX, type AnswerEvents } from "@/lib/answer-events";
-import { answerQuestion, changeAnswer, finishTest, nextStep, StoreError, takeExtraRound, type AnswerInput, type AttemptStore, type ChangeInput } from "@/lib/test-attempt";
+import { answerQuestion, changeAnswer, doneChecking, finishTest, nextStep, StoreError, takeExtraRound, type AnswerInput, type AttemptStore, type ChangeInput } from "@/lib/test-attempt";
 import { memoryAttemptStore, type MemoryAnswer, type MemoryTest } from "@/lib/test-attempt-memory";
 import { answerLines, type AnswerRecord } from "@/lib/admin-view";
 import { storedBoard } from "@/lib/strokes";
 import { openMode } from "@/lib/whiteboard";
 
 // Back and change an answer (#249, #250) through the test attempt module, against the in-memory store with the clock
-// passed in. The child can change an answered question of the open section (stage 1 until its last answer routes the
-// test, then stage 2 until the test moves on). The change overwrites the answer: the report scores the final answer.
+// passed in. The child can change an answered question of the open section (stage 1 until its lock routes the test,
+// #253, then stage 2 until the test moves on). The change overwrites the answer: the report scores the final answer.
 // Asha, grade 4 in BC: stage 1 has 18 questions, and seed 7 gives a test of 42 questions when every answer is right.
 const SECOND = 1000;
 const MINUTE = 60 * SECOND;
@@ -43,7 +44,7 @@ function answersOf(test: StoredTest, count: number, script: Script = allRight): 
   const answers: Submission[] = [];
   for (let q = nextQuestion(session); q && answers.length < count; q = nextQuestion(session)) {
     const answer = { questionId: q.id, response: script(q, answers.length) ? q.answer : wrongTo(q), timeMs: 20_000 };
-    session = submitAnswer(session, answer);
+    session = checked(submitAnswer(session, answer));
     answers.push(answer);
   }
   return answers;
@@ -60,11 +61,11 @@ const family = (test: MemoryTest) => memoryAttemptStore({ children: [{ id: C1, p
 
 /** The question at a place of the stored test, on its route. */
 const at = (row: MemoryTest, position: number): Question => {
-  const session = restoreSession(row.test, row.answers);
+  const session = restoreSession(row.test, row.answers, row.route ?? null);
   return [...session.stage1, ...(session.route ? session.stage2[session.route] : [])][position];
 };
 /** The question the child answers next. */
-const current = (row: MemoryTest) => nextQuestion(restoreSession(row.test, row.answers))!;
+const current = (row: MemoryTest) => nextQuestion(restoreSession(row.test, row.answers, row.route ?? null))!;
 
 /** A revisit of the question at `position` that sends `response` after `timeMs`, with an unchanged board. */
 const revisit = (row: MemoryTest, position: number, response: string, more: Partial<ChangeInput> = {}): ChangeInput =>
@@ -101,7 +102,7 @@ describe("changing an answer in the open section", () => {
     const memory = family(row);
     const q = at(row, 41);
     expect(memory.tests[0].answers[41]).toMatchObject({ response: wrongTo(q) });
-    expect(await changeAnswer(memory.store, P1, "a1", revisit(row, 41, q.answer), T0 + 2 * HOUR)).toMatchObject({ ok: true, step: { status: "complete" } });
+    expect(await changeAnswer(memory.store, P1, "a1", revisit(row, 41, q.answer), T0 + 2 * HOUR)).toMatchObject({ ok: true, step: { status: "check", section: "stage2" } });
     expect(memory.tests[0].answers[41]).toMatchObject({ response: q.answer, correct: true, misconception: null });
     expect(await finishTest(memory.store, P1, "a1", "no", T0 + 3 * HOUR)).toMatchObject({ ok: true, finished: "now" });
     const placement = memory.tests[0].placement!;
@@ -162,7 +163,7 @@ describe("a change the module refuses", () => {
     expect(memory.tests[0]).toMatchObject({ resumeUntil: T0 + HOUR + DAY });
   });
 
-  it("for a stage 1 question once the last stage 1 answer routed the test: stage 1 is closed", async () => {
+  it("for a stage 1 question once the test is past stage 1: stage 1 is closed", async () => {
     const memory = family(openTest(20));
     const q = at(memory.tests[0], 4);
     expect(await changeAnswer(memory.store, P1, "a1", revisit(memory.tests[0], 4, wrongTo(q)), T0 + 2 * HOUR)).toMatchObject({ ok: false, error: "conflict" });
@@ -172,10 +173,10 @@ describe("a change the module refuses", () => {
   });
 
   it("for a stage 2 question once the extra round was offered: the test moved on", async () => {
-    // Seed 1, first answer wrong: an area is an early sign, so the step after the last main answer offers the round.
+    // Seed 1, first answer wrong: an area is an early sign, so "Done checking" on the stage 2 grid offers the round.
     const row = openTest(42, { seed: 1, script: (_, i) => i !== 0 });
     const memory = family(row);
-    expect(await nextStep(memory.store, P1, "a1", T0 + 2 * HOUR)).toMatchObject({ ok: true, step: { status: "complete", extraRound: {} } });
+    expect(await doneChecking(memory.store, P1, "a1", "stage2", T0 + 2 * HOUR)).toMatchObject({ ok: true, step: { status: "complete", extraRound: {} } });
     const q = at(row, 30);
     expect(await changeAnswer(memory.store, P1, "a1", revisit(row, 30, wrongTo(q)), T0 + 3 * HOUR)).toMatchObject({ ok: false, error: "conflict" });
     expect(memory.tests[0].answers[30]).toMatchObject({ response: q.answer });
@@ -235,7 +236,8 @@ describe("the step carries the open section's answered questions, for Back (#249
     const routed = family(openTest(20));
     expect(await nextStep(routed.store, P1, "a1", T0 + 2 * HOUR)).toMatchObject({ ok: true, step: { number: 21, answered: [{ number: 19 }, { number: 20 }] } });
     for (const answered of [0, 18]) {
-      const memory = family(openTest(answered));
+      // #253: with 18 answers, stage 1 is locked (its route is stored): the first question of stage 2.
+      const memory = family({ ...openTest(answered), ...(answered && { route: "up" as const }) });
       const result = await nextStep(memory.store, P1, "a1", T0 + 2 * HOUR);
       expect(result.ok && result.step.status === "question" && result.step.answered).toBeFalsy();
     }
@@ -290,6 +292,20 @@ describe("the step carries the work of the open section's answered questions, so
     const erased = { png: null, text: "", strokes: JSON.stringify(other) };
     await changeAnswer(memory.store, P1, "a1", revisit(memory.tests[0], 2, q.answer, { work: erased, workChanged: true }), T0 + 3 * HOUR);
     expect((await stepAt(memory, T0 + 3 * HOUR + MINUTE)).answered?.[2].work).toBeUndefined();
+  });
+
+  it("the \"Check your answers\" grid (#253) carries the work too, so a grid tap opens the board at once", async () => {
+    // Asha's last stage 1 answer (question 18) comes with work: the step is the stage 1 grid.
+    const memory = family(openTest(17));
+    const q = current(memory.tests[0]);
+    const input: AnswerInput = { questionId: q.id, response: q.answer, timeMs: 20_000, work: { png: DRAWING, text: "9 + 9", strokes: JSON.stringify(recording) } };
+    const work = { strokes: recording, text: "9 + 9" };
+    const result = await answerQuestion(memory.store, P1, "a1", input, T0 + HOUR + MINUTE);
+    if (!result.ok || result.step.status !== "check") throw new Error("expected the grid");
+    expect(result.step.answered?.[17]).toMatchObject({ number: 18, work });
+    const again = await nextStep(memory.store, P1, "a1", T0 + 2 * HOUR);
+    expect(again).toMatchObject({ ok: true, step: { status: "check", section: "stage1" } });
+    expect(again.ok && again.step.status === "check" && again.step.answered?.[17].work).toEqual(work);
   });
 
   it("a drawing stored with no strokes (before #186) carries no strokes: its board opens empty", async () => {
@@ -617,7 +633,7 @@ describe("two requests at once", () => {
     expect(memory.tests[0].placement!.levels.reduce((n, l) => n + l.correct, 0)).toBe(stored.answers.filter((a) => a.correct).length);
   });
 
-  it("a change and the last stage 1 answer at once: the test stays whole and goes on", async () => {
+  it("a change and the last stage 1 answer at once: the test stays whole and goes on to the stage 1 grid", async () => {
     const memory = family(openTest(17));
     const last = current(memory.tests[0]);
     const results = await Promise.all([
@@ -626,6 +642,6 @@ describe("two requests at once", () => {
     ]);
     expect(results[1]).toMatchObject({ ok: true });
     expect(memory.tests[0].answers).toHaveLength(18);
-    expect(await nextStep(memory.store, P1, "a1", T0 + 3 * HOUR)).toMatchObject({ ok: true, step: { status: "question", number: 19 } });
+    expect(await nextStep(memory.store, P1, "a1", T0 + 3 * HOUR)).toMatchObject({ ok: true, step: { status: "check", section: "stage1" } });
   });
 });

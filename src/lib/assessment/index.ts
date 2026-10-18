@@ -48,6 +48,7 @@ export {
   fillTemplate,
   finish,
   levelFor,
+  lockStage1,
   nextQuestion,
   openSection,
   restoreSession,

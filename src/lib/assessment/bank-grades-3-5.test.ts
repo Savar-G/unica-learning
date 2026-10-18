@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { checked } from "@/lib/assessment/scripted-child";
 import { allRight, allWrong, knowsUpTo, takeTest } from "./scripted-child";
 import {
   BANKS,
@@ -117,7 +118,7 @@ describe("current provincial curriculum corrections through the public interface
     expect(dividend).toBeGreaterThanOrEqual(100);
     expect(question.level).toBe(4);
     for (const q of session.stage1) {
-      session = submitAnswer(session, { questionId: q.id, response: q === question ? String(dividend / divisor) : q.answer, timeMs: 10000 });
+      session = checked(submitAnswer(session, { questionId: q.id, response: q === question ? String(dividend / divisor) : q.answer, timeMs: 10000 }));
     }
     expect(session.answers.find((a) => a.questionId === question.id)?.correct).toBe(true);
     expect(session.route).toBe("up");
@@ -130,7 +131,7 @@ describe("current provincial curriculum corrections through the public interface
     const [total, part] = question.prompt.match(/^There are (\d+) .*?\. (\d+) of them/)!.slice(1);
     expect(question.level).toBe(3);
     for (const q of session.stage1) {
-      session = submitAnswer(session, { questionId: q.id, response: q === question ? `${part}/${total}` : q.answer, timeMs: 10000 });
+      session = checked(submitAnswer(session, { questionId: q.id, response: q === question ? `${part}/${total}` : q.answer, timeMs: 10000 }));
     }
     expect(session.answers.find((a) => a.questionId === question?.id)?.correct).toBe(true);
     expect(session.route).toBe("up");
@@ -163,7 +164,7 @@ describe("grade 3-5 speech and figures through the public interface", () => {
     while (nextQuestion(session)?.id !== target.id) {
       const q = nextQuestion(session)!;
       expect(q).not.toBeNull();
-      session = submitAnswer(session, { questionId: q.id, response: "no idea", timeMs: 1000 });
+      session = checked(submitAnswer(session, { questionId: q.id, response: "no idea", timeMs: 1000 }));
     }
     const isCompensation = (w: { misconception: string }) => w.misconception === "compensation-dir";
     if (legacy) {
