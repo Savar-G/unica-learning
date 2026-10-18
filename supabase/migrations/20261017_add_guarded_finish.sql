@@ -1,5 +1,5 @@
 -- Applied to project "pagewise" (cdjobwsyzndtltzfpyqa) as migration add_guarded_finish, 2026-10-17.
--- Back and change an answer (#249, #250, D-126): the finish must score the answers that are stored when it writes, so
+-- Back and change an answer (#249, #250, D-128): the finish must score the answers that are stored when it writes, so
 -- a change and a finish never both win on stale answers. Additive: one new function. The code on main completes a test
 -- with its own guarded update and does not call it, so it keeps working before and after this change.
 --

@@ -33,11 +33,15 @@
 // Analytics run only after the visitor accepts (see consent.ts). Without consent an event is dropped, not queued.
 // Only src, plan, subject, curriculum, price, status, code, card and channel travel with an event (see analytics.ts).
 // posthog-js is imported on demand so it stays out of the first-load bundle.
+// Ad conversions (D-126, src/lib/ad-tags.ts): account_created, report_open and card_saved also go to Meta Pixel and the
+// Google tag when they are set up, after consent and never on a child's page. No props travel to them.
+import { getAdTags } from "@/lib/ad-tags";
 import { getAnalytics } from "@/lib/analytics";
 import { getConsent } from "@/lib/consent";
 
 /** `beacon`: the page is going away (pagehide), so the event goes out at once with sendBeacon. */
 export function track(event: string, props: Record<string, unknown> = {}, options: { beacon?: boolean } = {}) {
+  getAdTags()?.conversion(event);
   if (!process.env.NEXT_PUBLIC_POSTHOG_KEY) {
     if (process.env.NODE_ENV !== "production") console.info("[track]", getConsent() === "granted" ? "sent" : "dropped (no consent)", event, props, options.beacon ? "(beacon)" : "");
     return;

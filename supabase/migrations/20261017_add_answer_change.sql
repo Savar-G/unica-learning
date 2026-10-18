@@ -1,5 +1,5 @@
 -- Applied to project "pagewise" (cdjobwsyzndtltzfpyqa) as migration add_answer_change, 2026-10-17.
--- Back and change an answer (#249, #250, D-126). The child can go back to an answered question of the open section and
+-- Back and change an answer (#249, #250, D-128). The child can go back to an answered question of the open section and
 -- change the answer. The change overwrites the answer's row (no new table, no new column), so the report, the admin
 -- page, the export and the copy without names read the final answer in the columns they read today.
 -- Additive: one new function. The code on main does not call it, so it keeps working before and after this change.
