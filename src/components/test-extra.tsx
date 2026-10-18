@@ -55,6 +55,10 @@ export function ExtraOffer({ name, offer, onChoose, problem }: ExtraOfferProps) 
           <h1 id="test-extra-title" ref={heading} tabIndex={-1} className="test-title">{title}</h1>
         </div>
         <p className="test-lead">{lead}</p>
+        <ul className="test-rules">
+          {/* #249 gap (D-127, D-131): the same card as the start screen of the round from the report. */}
+          <li><b>You can go back.</b> Press Back, or tap a number at the top, to change an answer. You can do this until you finish.</li>
+        </ul>
         {problem}
         <div className="test-btns">
           <Button onClick={() => choose(true)} disabled={sending !== null} aria-busy={sending === true}>{sending === true ? "Starting…" : `Yes, ${n} more`}</Button>
@@ -110,6 +114,10 @@ export function ExtraReturn({ name, busy, onGo, onStop, problem }: { name: strin
         <p className="test-kicker">Extra questions</p>
         <h1 id="test-extra-return-title" ref={heading} tabIndex={-1} className="test-title">Welcome back, {name}!</h1>
         <p className="test-lead">You were doing the extra questions. Your answers are saved. You can keep going, or stop here. It is fine to stop.</p>
+        <ul className="test-rules">
+          {/* #249 gap (D-127, D-131): the same card as the start screen of the round from the report. */}
+          <li><b>You can go back.</b> Press Back, or tap a number at the top, to change an answer. You can do this until you finish.</li>
+        </ul>
         {problem}
         <div className="test-btns">
           <Button onClick={() => { setStopping(false); onGo(); }} disabled={busy} aria-busy={busy && !stopping}>{busy && !stopping ? "Opening…" : "Keep going"}</Button>
