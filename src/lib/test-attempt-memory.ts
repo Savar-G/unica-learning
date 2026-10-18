@@ -60,6 +60,10 @@ export type MemoryShown = QuestionShown & { assessmentId: string };
 
 const tick = () => new Promise((resolve) => setTimeout(resolve, 0));
 
+/** True when the stored answers are `answers`: the question, response and time at each place. */
+const sameAnswers = (stored: readonly Submission[], answers: readonly Submission[]) =>
+  stored.length === answers.length && stored.every((a, i) => a.questionId === answers[i].questionId && a.response === answers[i].response && a.timeMs === answers[i].timeMs);
+
 /** The attempt columns of a stored test, as the database returns them: never `answeredAll`. */
 const attemptOf = ({ id, status, startedAt, lastAnswerAt, resumeUntil, completedAt }: MemoryTest): Attempt =>
   ({ id, status, startedAt, lastAnswerAt, resumeUntil, completedAt });
@@ -194,13 +198,15 @@ export function memoryAttemptStore({ children: kids = [], tests: initial = [] }:
       roundOf(row).startedAt = at;
       return "stored";
     },
-    async finishExtraRound(id, { at, placement }) {
+    async finishExtraRound(id, { at, placement, answers }) {
       await begin("finishExtraRound");
       const row = tests.find((t) => t.id === id && t.status === "completed");
-      if (!row || roundOf(row).startedAt === null || roundOf(row).finishedAt !== null) return false;
+      if (!row || roundOf(row).startedAt === null || roundOf(row).finishedAt !== null) return "already";
+      // #254: the answers scored are still the stored ones (as the database function finish_extra_round checks under its lock).
+      if (!sameAnswers(row.answers, answers)) return "changed";
       row.placement = placement;
       roundOf(row).finishedAt = at;
-      return true;
+      return "finished";
     },
   };
 
@@ -302,11 +308,20 @@ export function memoryAttemptStore({ children: kids = [], tests: initial = [] }:
     // #249: the guards of the change, checked together with the write, as in the database function change_answer.
     async changeAnswer(id, { position, answeredAt, events, work, ...marked }, unansweredFrom) {
       await begin("changeAnswer");
-      const row = tests.find((t) => t.id === id && t.status === "in_progress");
+      const row = tests.find((t) => t.id === id);
       const round = row?.extraRound ?? NO_ROUND;
-      if (!row || round.offeredAt !== null || round.skippedAt !== null || round.startedAt !== null) return "closed";
-      // #253: a stage 1 answer changes only while stage 1 is not locked (no route stored).
-      if (position < row.test.stage1.length && row.route != null) return "closed";
+      if (!row) return "closed";
+      if (row.answers[position]?.round === "extra") {
+        // #254: a round answer changes while the round takes answers: started and not finished, and during the test
+        // not stopped (a skip after the start); a round from the report runs on the completed test.
+        const stopped = round.startedAt !== null && round.skippedAt !== null && round.skippedAt >= round.startedAt;
+        const open = row.status === "in_progress" ? !stopped : row.status === "completed";
+        if (!open || round.startedAt === null || round.finishedAt !== null) return "closed";
+      } else {
+        if (row.status !== "in_progress" || round.offeredAt !== null || round.skippedAt !== null || round.startedAt !== null) return "closed";
+        // #253: a stage 1 answer changes only while stage 1 is not locked (no route stored).
+        if (position < row.test.stage1.length && row.route != null) return "closed";
+      }
       const old = row.answers[position];
       if (row.answers.length > unansweredFrom || !old || old.questionId !== marked.questionId) return "closed";
       const timeline = { shownAt: old.timeline?.shownAt ?? null, answeredAt, events: structuredClone(events) };
@@ -339,9 +354,7 @@ export function memoryAttemptStore({ children: kids = [], tests: initial = [] }:
       const row = tests.find((t) => t.id === id && t.status === "in_progress");
       if (!row) return "done";
       // #249: the answers scored are still the stored ones (as the database function complete_test checks under its lock).
-      const same = row.answers.length === answers.length
-        && row.answers.every((a, i) => a.questionId === answers[i].questionId && a.response === answers[i].response && a.timeMs === answers[i].timeMs);
-      if (!same) return "changed";
+      if (!sameAnswers(row.answers, answers)) return "changed";
       Object.assign(row, { status: "completed", completedAt: at, route: placement.route, placement, help });
       // #190: a round taken during the test finishes with it.
       if (placement.extraRound) roundOf(row).finishedAt = at;

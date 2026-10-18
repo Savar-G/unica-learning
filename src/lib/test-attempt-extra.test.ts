@@ -140,11 +140,13 @@ describe("taking the round during the test", () => {
     expect(memory.tests[0]).toMatchObject({ status: "in_progress", resumeUntil: T0 + HOUR + DAY, lastAnswerAt: at });
   });
 
-  it("goes on to Did anyone help? after its last question, and the finish scores the main test and the round together", async () => {
+  it("goes on to Did anyone help? after its grid, and the finish scores the main test and the round together", async () => {
     const memory = family(mainDone(firstWrong));
     await takeExtraRound(memory.store, P1, "a1", T0 + 2 * HOUR);
     const last = await answerRound(memory, T0 + 2 * HOUR);
-    expect(await nextStep(memory.store, P1, "a1", last)).toEqual({ ok: true, step: { status: "complete", total: 50 } });
+    // #254: first the round's "Check your answers" grid; "Done checking" leads to "Did anyone help?".
+    expect(await nextStep(memory.store, P1, "a1", last)).toMatchObject({ ok: true, step: { status: "check", section: "extra", total: 50 } });
+    expect(await doneChecking(memory.store, P1, "a1", "extra", last)).toEqual({ ok: true, step: { status: "complete", total: 50 } });
     expect(await finishTest(memory.store, P1, "a1", "no", last + MINUTE)).toEqual({ ok: true, id: "a1", finished: "now" });
     const early = earlyArea(memory.tests[0]);
     expect(memory.tests[0]).toMatchObject({ status: "completed", completedAt: last + MINUTE, help: "no", extraRound: { startedAt: T0 + 2 * HOUR, finishedAt: last + MINUTE } });
@@ -301,7 +303,8 @@ describe("stopping the round part way, during the test", () => {
 
     const { memory } = await takenAndAnswered(0);
     const last = await answerRound(memory, TAKEN);
-    expect(await stopExtraRound(memory.store, P1, "a1", last + MINUTE)).toEqual({ ok: false, error: "conflict", step: { status: "complete", total: 50 } });
+    // #254: after its last answer the round is on its grid.
+    expect(await stopExtraRound(memory.store, P1, "a1", last + MINUTE)).toMatchObject({ ok: false, error: "conflict", step: { status: "check", section: "extra", total: 50 } });
     expect(memory.tests[0].extraRound?.skippedAt).toBeNull();
 
     // From the report: the answers so far are saved, and the report offers the rest. There is nothing to stop.
@@ -341,10 +344,10 @@ describe("stopping the round part way, during the test", () => {
     expect((await startStates(offered.store, P1, at)).get(C1)).toEqual({ ...FINISH, checkGrid: true });
     await doneChecking(offered.store, P1, "a1", "stage2", at);
     expect((await startStates(offered.store, P1, at)).get(C1)).toEqual(FINISH);
-    // Every round answer is in.
+    // Every round answer is in: #254, the next step is the round's grid, so the card says to check.
     const done = await takenAndAnswered(0);
     await answerRound(done.memory, TAKEN);
-    expect((await startStates(done.memory.store, P1, at)).get(C1)).toEqual(FINISH);
+    expect((await startStates(done.memory.store, P1, at)).get(C1)).toEqual({ ...FINISH, checkGrid: true });
   });
 });
 
@@ -380,7 +383,8 @@ describe("the round from the report", () => {
     const before = structuredClone(memory.tests[0].placement!);
     await takeExtraRound(memory.store, P1, "a1", LATER);
     const last = await answerRound(memory, LATER);
-    expect(await nextStep(memory.store, P1, "a1", last)).toEqual({ ok: true, step: { status: "complete", total: 50 } });
+    // #254: the round's grid; its "Done checking" sends the finish.
+    expect(await nextStep(memory.store, P1, "a1", last)).toMatchObject({ ok: true, step: { status: "check", section: "extra", total: 50 } });
     expect(await finishTest(memory.store, P1, "a1", null, last + MINUTE)).toEqual({ ok: true, id: "a1", finished: "now" });
     const early = earlyArea(memory.tests[0]);
     const placement = memory.tests[0].placement!;

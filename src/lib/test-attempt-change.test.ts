@@ -182,14 +182,16 @@ describe("a change the module refuses", () => {
     expect(memory.tests[0].answers[30]).toMatchObject({ response: q.answer });
   });
 
-  it("in the extra round, which takes no change yet (#254)", async () => {
+  it("for a stage 2 question once the child is in the extra round; round answers change (#254, test-attempt-extra-back.test.ts)", async () => {
     const row = openTest(42, { seed: 1, script: (_, i) => i !== 0 });
     const memory = family(row);
     await takeExtraRound(memory.store, P1, "a1", T0 + 2 * HOUR);
     const first = current(memory.tests[0]);
     await answerQuestion(memory.store, P1, "a1", { questionId: first.id, response: first.answer, timeMs: 20_000, work: { png: null, text: "" } }, T0 + 2 * HOUR + MINUTE);
+    expect(await changeAnswer(memory.store, P1, "a1", revisit(row, 30, wrongTo(at(row, 30))), T0 + 2 * HOUR + 2 * MINUTE)).toMatchObject({ ok: false, error: "conflict" });
+    expect(memory.tests[0].answers[30]).toMatchObject({ response: at(row, 30).answer });
     const result = await changeAnswer(memory.store, P1, "a1", { ...revisit(row, 0, wrongTo(first)), questionId: first.id }, T0 + 2 * HOUR + 2 * MINUTE);
-    expect(result).toMatchObject({ ok: false, error: "conflict" });
+    expect(result).toMatchObject({ ok: true });
   });
 
   it("a response that does not fit the question is invalid, and stores nothing", async () => {

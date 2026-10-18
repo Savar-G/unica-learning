@@ -149,8 +149,11 @@ export type TestStep =
        * (it knows the lock records). "Done checking" locks the section.
        */
       status: "check";
-      /** The section to check: stage 1 (before the halfway break) or stage 2 (the routed form). */
-      section: "stage1" | "stage2";
+      /**
+       * The section to check: stage 1 (before the halfway break), stage 2 (the routed form), or (#254) the extra round
+       * (#190), whose grid the screen numbers with the round's own numbers.
+       */
+      section: "stage1" | "stage2" | "extra";
       /** The section's question numbers in the test, from 1, in order. Every one is answered. */
       numbers: number[];
       total: number;

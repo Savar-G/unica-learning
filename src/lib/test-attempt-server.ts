@@ -183,7 +183,8 @@ export function attemptStore(admin: SupabaseClient): AttemptStore {
 
     // #249: one database function (migration add_answer_change) checks the section's guards and overwrites the row in
     // one transaction, and returns the work it replaced; null when a guard failed. #253: it also refuses a stage 1
-    // answer once a route is stored (migration add_stage1_lock).
+    // answer once a route is stored (migration add_stage1_lock). #254: a round answer changes while the round takes
+    // answers (migration extra_round_back).
     async changeAnswer(id, { position, questionId, response, correct, misconception, timeMs, answeredAt, events, work }, unansweredFrom) {
       const { answered_at, answer_changes, read_aloud_count, read_aloud_at_ms, away_count, away_ms } = timelineColumns({ shownAt: null, answeredAt, events });
       const answer = {
@@ -495,11 +496,19 @@ function extraRoundStore(admin: SupabaseClient): ExtraRoundStore {
       return (data ?? []).length === 1 ? "stored" : "taken";
     },
 
-    async finishExtraRound(id, { at, placement }) {
-      const { data, error } = await admin.from("assessments").update({ placement, extra_finished_at: iso(at) })
-        .eq("id", id).eq("status", "completed").not("extra_started_at", "is", null).is("extra_finished_at", null).select("id");
+    // #254: one database function (migration extra_round_back) takes the test's row lock, as change_answer does, checks
+    // that the stored answers are the scored ones, and stores the placement and the finish time; "changed" when an
+    // answer changed.
+    async finishExtraRound(id, { at, placement, answers }) {
+      const { data, error } = await admin.rpc("finish_extra_round", {
+        p_assessment: id,
+        p_finished_at: iso(at),
+        p_placement: placement,
+        p_answers: answers.map((a) => [a.questionId, a.response, a.timeMs]),
+      });
       if (error) throw new StoreError("extra round finish failed", error.message);
-      return (data ?? []).length === 1;
+      if (data === "finished" || data === "already" || data === "changed") return data;
+      throw new StoreError("extra round finish failed", `unexpected answer ${JSON.stringify(data)}`);
     },
   };
 }
