@@ -46,3 +46,10 @@ export function StartLink({ src, className = "btn", children }: { src: string; c
     </Suspense>
   );
 }
+
+/** The line under an assessment button (D-134): the test needs a laptop or tablet, so a parent on a phone knows first. */
+export const START_NOTE = "Your child takes the test on a laptop or tablet.";
+
+export function StartNote() {
+  return <p className="start-note">{START_NOTE}</p>;
+}

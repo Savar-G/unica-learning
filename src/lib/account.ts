@@ -20,7 +20,8 @@ export interface ChildInput {
  */
 export interface FinishPayload {
   name: string;
-  postal: string;
+  /** Left out by the short phone signup (D-134); when given, it must be a Canadian postal code. */
+  postal?: string;
   child: ChildInput;
   /** Referrer and UTM tags, so we know which channel brought each parent. */
   source: Record<string, string>;
@@ -72,10 +73,14 @@ export function cleanChild(raw: unknown): ChildInput | null {
   return { firstName, grade, province };
 }
 
-/** Name, postal code and source, cleaned, or null when one is not valid. Google gives the email, so this is all a Google parent sends. */
+/**
+ * Name, postal code and source, cleaned, or null when one is not valid. Google gives the email, so this is all a Google
+ * parent sends. No postal code (the short phone signup, D-134) is null; a postal code that is given must be Canadian.
+ */
 export function cleanDetails(raw: Partial<FinishPayload>) {
-  const details = { name: clip(raw.name, 120), postal: clip(raw.postal, 7).toUpperCase(), source: cleanSource(raw.source) };
-  return details.name.length >= 2 && POSTAL.test(details.postal) ? details : null;
+  const postal = clip(raw.postal, 7).toUpperCase();
+  const details = { name: clip(raw.name, 120), postal: postal || null, source: cleanSource(raw.source) };
+  return details.name.length >= 2 && (!postal || POSTAL.test(postal)) ? details : null;
 }
 
 /** Supabase Auth hashes at most 72 bytes of a password. */

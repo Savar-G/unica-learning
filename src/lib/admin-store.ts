@@ -106,7 +106,7 @@ export interface ParentRow {
   created_at: string;
   name: string;
   email: string;
-  postal: string;
+  postal: string | null;
   source: Record<string, string>;
 }
 

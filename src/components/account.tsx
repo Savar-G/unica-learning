@@ -155,8 +155,11 @@ async function sendCode(email: string): Promise<"sent" | "wait" | "failed"> {
  * /api/account/finish sets the password from the form and writes the parent and the first child. The answer is the same
  * whether or not the email already has an account: the owner of an existing account gets a code too, the code signs
  * them in, and their account stays as it was.
+ *
+ * `phone` (D-134): the short phone signup. No postal code and no password: the test happens later on a laptop or tablet,
+ * and the sign-in link that /api/account/finish emails to a phone opens it there.
  */
-export function AccountSignup() {
+export function AccountSignup({ phone = false }: { phone?: boolean }) {
   const router = useRouter();
   const form = useRef<HTMLFormElement>(null);
   const codeInput = useRef<HTMLInputElement>(null);
@@ -200,7 +203,8 @@ export function AccountSignup() {
   const finish = async () => {
     setBusy(true);
     const res = await post("/api/account/finish", {
-      name: name.trim(), postal: postal.trim().toUpperCase(), password, child: { ...child, firstName: child.firstName.trim() }, source: collectSource(),
+      name: name.trim(), child: { ...child, firstName: child.firstName.trim() }, source: collectSource(),
+      ...(phone ? {} : { postal: postal.trim().toUpperCase(), password }),
     });
     if (!res.ok) {
       track("account_signup_failed", { code: res.error ?? "unknown" });
@@ -241,8 +245,8 @@ export function AccountSignup() {
     const next: SignupErrors = {
       name: name.trim().length < 2,
       email: !EMAIL.test(email.trim()),
-      postal: !POSTAL.test(postal.trim()),
-      password: !validPassword(password),
+      postal: !phone && !POSTAL.test(postal.trim()),
+      password: !phone && !validPassword(password),
       child: !child.firstName.trim(),
     };
     setErrors(next);
@@ -373,22 +377,24 @@ export function AccountSignup() {
         <Field id="a-name" label="Your name" bad={errors.name} error="Enter your name.">
           <input id="a-name" autoComplete="name" value={name} onChange={(e) => setName(e.target.value)} aria-invalid={!!errors.name} aria-describedby={described("a-name", errors.name)} />
         </Field>
-        <Field id="a-email" label="Email" bad={errors.email} error="Enter a valid email." hint="We email you a code to confirm it.">
+        <Field id="a-email" label="Email" bad={errors.email} error="Enter a valid email." hint={phone ? "We email you a code to confirm it, then the link for the laptop or tablet." : "We email you a code to confirm it."}>
           <input id="a-email" type="email" autoComplete="email" value={email} onChange={(e) => setEmail(e.target.value)} aria-invalid={!!errors.email} aria-describedby={described("a-email", errors.email, true)} />
         </Field>
-        <Field id="a-postal" label="Postal code" bad={errors.postal} error="Enter a Canadian postal code, like V6B 1A1.">
-          <input id="a-postal" autoComplete="postal-code" placeholder="V6B 1A1" value={postal} onChange={(e) => {
-            setPostal(e.target.value);
-            const guess = curriculumFromPostal(e.target.value);
-            if (guess && !pickedProvince) setChild((c) => ({ ...c, province: guess }));
-          }} aria-invalid={!!errors.postal} aria-describedby={described("a-postal", errors.postal)} />
-        </Field>
-        <Field id="a-password" label="Password" bad={errors.password} error={failure === "weak_password" ? "Choose a different password." : `Use ${PASSWORD_MIN} to ${PASSWORD_MAX} characters.`} hint={`At least ${PASSWORD_MIN} characters.`}>
-          <span className="pw">
-            <input id="a-password" type={showPassword ? "text" : "password"} autoComplete="new-password" value={password} onChange={(e) => setPassword(e.target.value)} aria-invalid={!!errors.password} aria-describedby={described("a-password", errors.password, true)} />
-            <button type="button" onClick={() => setShowPassword((s) => !s)} aria-controls="a-password" aria-pressed={showPassword}>{showPassword ? "Hide" : "Show"}</button>
-          </span>
-        </Field>
+        {!phone && <>
+          <Field id="a-postal" label="Postal code" bad={errors.postal} error="Enter a Canadian postal code, like V6B 1A1.">
+            <input id="a-postal" autoComplete="postal-code" placeholder="V6B 1A1" value={postal} onChange={(e) => {
+              setPostal(e.target.value);
+              const guess = curriculumFromPostal(e.target.value);
+              if (guess && !pickedProvince) setChild((c) => ({ ...c, province: guess }));
+            }} aria-invalid={!!errors.postal} aria-describedby={described("a-postal", errors.postal)} />
+          </Field>
+          <Field id="a-password" label="Password" bad={errors.password} error={failure === "weak_password" ? "Choose a different password." : `Use ${PASSWORD_MIN} to ${PASSWORD_MAX} characters.`} hint={`At least ${PASSWORD_MIN} characters.`}>
+            <span className="pw">
+              <input id="a-password" type={showPassword ? "text" : "password"} autoComplete="new-password" value={password} onChange={(e) => setPassword(e.target.value)} aria-invalid={!!errors.password} aria-describedby={described("a-password", errors.password, true)} />
+              <button type="button" onClick={() => setShowPassword((s) => !s)} aria-controls="a-password" aria-pressed={showPassword}>{showPassword ? "Hide" : "Show"}</button>
+            </span>
+          </Field>
+        </>}
       </fieldset>
       <fieldset>
         <legend>Your child</legend>

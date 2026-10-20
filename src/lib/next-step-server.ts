@@ -34,7 +34,8 @@ interface ReportRow {
 interface ParentRow {
   name: string;
   email: string;
-  postal: string;
+  /** Null when the parent signed up on a phone (D-134). */
+  postal: string | null;
 }
 
 async function load(admin: SupabaseClient, parentId: string, reportId: string, cta: "card" | "waitlist"): Promise<{ report: ReportRow; parent: ParentRow } | Fail> {
@@ -192,7 +193,7 @@ export async function joinWaitlist(parentId: string, reportId: string, origin: s
     text: [
       `Waitlist (${CURRICULA[province]} curriculum), joined from the report: ${parent.name} <${parent.email}>`,
       `Child: ${report.child!.first_name}, school grade ${report.assessment!.grade}`,
-      `Postal code: ${parent.postal}`,
+      `Postal code: ${parent.postal ?? "not given"}`,
       `Report: ${origin}${reportPath(report.id)}`,
     ].join("\n"),
   }));
@@ -208,7 +209,7 @@ function cardAlert(setup: ReportCardSetup, report: ReportRow, option: PlanOption
       `Parent: ${setup.name} <${setup.email}>`,
       `Plan: ${option.subject}, ${priceWithOffer(option.price)}`,
       `Child: ${report.child!.first_name}, school grade ${setup.grade}`,
-      `Postal code: ${setup.postal}`,
+      `Postal code: ${setup.postal ?? "not given"}`,
       `Opened from: ${src === "email" ? "the report email" : "the account"}`,
       `Ref (card_setups.id; Stripe metadata ref): ${setup.ref}`,
       `Report: ${origin}${reportPath(report.id)}`,

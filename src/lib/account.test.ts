@@ -24,6 +24,13 @@ describe("cleanDetails: finishing an account made with Google", () => {
     expect(cleanDetails({ ...details, name: "P" })).toBeNull();
     expect(cleanDetails({ ...details, postal: "90210" })).toBeNull();
   });
+  it("takes no postal code from the short phone signup (D-134), but still checks one that is given", () => {
+    const { postal: _, ...noPostal } = details;
+    void _;
+    expect(cleanDetails(noPostal)).toEqual({ name: "Priya Shah", postal: null, source: { utm_source: "flyer" } });
+    expect(cleanDetails({ ...details, postal: "  " })?.postal).toBeNull();
+    expect(cleanDetails({ ...details, postal: "V6B" })).toBeNull();
+  });
 });
 
 describe("signInFailure: what the sign-in form tells the parent", () => {

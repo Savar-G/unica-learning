@@ -26,7 +26,7 @@ import { hashToken, startPath } from "@/lib/sign-in-link";
 
 export interface LoadedParent extends ReminderParent {
   name: string;
-  postal: string;
+  postal: string | null;
 }
 export interface LoadedChild extends ReminderChild {
   firstName: string;
@@ -100,7 +100,7 @@ export function reminderStore(admin: SupabaseClient): ReminderStore<LoadedState>
       const parentIds = [...new Set(childRows.map((c) => c.parent_id))];
       const [parentRows, logRows, tests] = await Promise.all([
         inChunks(parentIds, (ids) => admin.from("parents").select("id, name, email, postal").in("id", ids)
-          .returns<{ id: string; name: string; email: string; postal: string }[]>()),
+          .returns<{ id: string; name: string; email: string; postal: string | null }[]>()),
         inChunks(parentIds, (ids) => admin.from("email_log").select("id, created_at, kind, parent_id, child_id, assessment_id, status, attempts").in("parent_id", ids)
           .returns<LogRow[]>()),
         Promise.all(testRows.map((row) => withAnswers(admin, row))),

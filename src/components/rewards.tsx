@@ -4,7 +4,7 @@ import { BRAND } from "@/lib/site";
 import { EARN, POINTS_PER_MONTH, PRIZES, REWARDS_FAQ, points } from "@/lib/rewards";
 import { Eyebrow, Faq, Nav as NavBar } from "@/ds";
 import { Motion } from "@/components/motion";
-import { StartLink } from "@/components/start-link";
+import { StartLink, StartNote } from "@/components/start-link";
 import { Footer, START_LABEL } from "@/components/sections";
 import { Rise } from "./drawn";
 import "./rewards.css";
@@ -76,6 +76,7 @@ export function Rewards() {
 
           <Rise className="rewards-end">
             <StartLink src="rewards">{START_LABEL} <span className="arr">→</span></StartLink>
+            <StartNote />
           </Rise>
         </main>
         <Footer />

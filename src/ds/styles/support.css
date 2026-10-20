@@ -14,7 +14,7 @@
 .form-notice { margin: 0; padding: 0 22px 24px; font-size: 13px; color: var(--ink-2); }
 .mobile-assessment { display: none; }
 @media (max-width: 699px) {
-  .landing-with-mobile-cta { padding-bottom: calc(84px + env(safe-area-inset-bottom)); }
+  .landing-with-mobile-cta { padding-bottom: calc(110px + env(safe-area-inset-bottom)); }
   .mobile-assessment { position: fixed; z-index: 45; bottom: 0; left: 0; right: 0; display: block; padding: 12px 16px calc(12px + env(safe-area-inset-bottom)); background: #fff; border-top: 1px solid var(--line-soft); }
   .mobile-assessment .btn { width: 100%; justify-content: center; }
   body:has(dialog[open]) .mobile-assessment, body:has([data-cookie-banner]) .mobile-assessment { display: none; }
@@ -75,3 +75,32 @@
 .acct-begin .acct-start .small { text-align: left; }
 /* #72: on a phone the row wraps, so the wait note sits under the name, left-aligned like the link button. */
 @media (max-width: 699px) { .acct-kid .acct-done { text-align: left; } }
+/* /start (D-134): the three steps, then the form beside a piece of the sample report. */
+.support-page .start-steps { list-style: none; padding: 0; margin: 28px 0 0; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; counter-reset: none; }
+.support-page .start-steps li { margin: 0; display: flex; gap: 12px; align-items: flex-start; padding: 16px 18px; border-radius: 10px; background: var(--card, #f6f4ef); font-size: 15px; line-height: 1.45; color: var(--ink-2); }
+.start-steps b { display: block; margin-bottom: 2px; font-weight: 600; color: var(--ink); }
+.start-n { flex: none; display: grid; place-items: center; width: 26px; height: 26px; border-radius: 50%; background: var(--ink); color: #fff; font: 500 13px/1 var(--mono); }
+.start-layout { display: grid; grid-template-columns: minmax(0, 520px) minmax(0, 1fr); gap: 32px clamp(32px, 6vw, 80px); align-items: start; }
+.start-sample { position: sticky; top: 24px; margin-top: 28px; }
+.support-page .start-sample .small { margin: 10px 0 0; }
+.start-sample .rpt-preview { margin-top: 0; padding: 22px 22px 20px; border-radius: 12px; }
+.support-page .rpt-preview .rpt-preview-level { margin: 10px 0 0; font-size: 24px; font-weight: 400; line-height: 1.15; letter-spacing: -0.02em; color: var(--ink); }
+.support-page .rpt-preview .rpt-verdict { margin: 6px 0 0; font-size: 15px; color: var(--ink-2); }
+.rpt-preview .rpt-scale { margin-top: 16px; }
+.rpt-preview .rpt-ruler-track { height: 48px; border-radius: 8px; box-shadow: 0 12px 24px -16px rgba(0, 0, 0, 0.35); }
+.rpt-preview .rpt-tick { font-size: 13px; }
+.rpt-preview .rpt-legend { margin-top: 10px !important; font-size: 12px; gap: 6px 14px; }
+@media (max-width: 899px) {
+  .start-layout { grid-template-columns: minmax(0, 1fr); }
+  .start-sample { position: static; max-width: 520px; margin-top: 8px; }
+}
+@media (max-width: 699px) {
+  .support-page .start-steps { grid-template-columns: 1fr; gap: 0; margin-top: 20px; border-radius: 10px; background: var(--card, #f6f4ef); }
+  .support-page .start-steps li { background: none; padding: 12px 16px; }
+  .support-page .start-steps li + li { border-top: 1px solid var(--line-soft); }
+}
+/* Under an assessment button: the device the test needs (D-134). */
+.start-note { margin: 10px 0 0; font-size: 14px; line-height: 1.4; color: var(--ink-2); }
+.mobile-assessment .start-note { margin: 0 0 8px; font-size: 13px; text-align: center; }
+.ctas .start-note { flex-basis: 100%; margin: 2px 0 0; }
+.close .ctas .start-note { text-align: center; }

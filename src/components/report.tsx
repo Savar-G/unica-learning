@@ -174,6 +174,21 @@ function ReportOverall({ view }: { view: ReportView }) {
   );
 }
 
+/**
+ * The top of a report, small: the level, the verdict and the ruler, without the certainty, notes or summary. /start shows
+ * it for the sample child, as a preview of what the parent gets (D-134).
+ */
+export function ReportLevelPreview({ view }: { view: ReportView }) {
+  return (
+    <section className={`rpt-overall rpt-preview is-${view.model.howWeHelp}`} aria-label="Sample report">
+      <p className="eyebrow">Sample report</p>
+      <p className="rpt-preview-level">{levelSentence(view)}</p>
+      <p className="rpt-verdict">{verdictSentence(view)}</p>
+      <LevelScale view={view} />
+    </section>
+  );
+}
+
 // Below the band, side by side: the FSA line (BC, grades 4 and 7), the comparison for the data stage, and the help
 // warning (#71). Below 100 eligible children the ruler above is the whole comparison (#101, D-084).
 function ReportContext({ view, newTest }: { view: ReportView; newTest: NewTestOffer | null }) {
