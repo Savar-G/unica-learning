@@ -21,7 +21,7 @@ export function FamilyDrawer({ ctx, d, id, progress }: { ctx: Ctx; d: Dashboard;
           <div>
             <p className="dash-kicker">Family</p>
             <h2>{f.name}<TestMark test={f.test} /></h2>
-            <p className="dash-muted">{f.email} · {f.postal}{f.source ? ` · came from ${f.source}` : ""}</p>
+            <p className="dash-muted">{f.email} · {f.postal ?? "no postal code"}{f.source ? ` · came from ${f.source}` : ""}</p>
           </div>
           <Link href={close} className="dash-x" aria-label="Close">×</Link>
         </header>

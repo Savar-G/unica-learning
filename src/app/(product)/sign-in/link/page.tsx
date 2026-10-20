@@ -48,14 +48,14 @@ export default async function SignInLink({ searchParams }: PageProps<"/sign-in/l
     used: { title: "This link was already used.", lead: "Each sign-in link works once. Send a new link to your email." },
     expired: { title: "This link has expired.", lead: "Each sign-in link works for 24 hours. Send a new link to your email." },
     failed: { title: "We could not sign you in.", lead: "Something went wrong on our side. Send a new link to your email and try again." },
-    unknown: { title: "This link does not work.", lead: "Check that you opened the full link from the email. You can also sign in with your email and password, or with Google." },
+    unknown: { title: "This link does not work.", lead: "Check that you opened the full link from the email. You can also sign in with your email and password, or with Google. No password yet? Get a link by email on the sign-in page." },
   };
   // After 7 days an old link cannot ask for a new one; the parent signs in instead.
   const resend = state !== "unknown" && !!row && canResend(row.created_at);
   return (
     <SupportPage label="Your account" title={text[state].title}>
       {track}
-      <p className="lead">{resend || state === "unknown" ? text[state].lead : "This link is too old to send a new one. Sign in with your email and password, or with Google."}</p>
+      <p className="lead">{resend || state === "unknown" ? text[state].lead : "This link is too old to send a new one. Sign in with your email and password, or with Google. No password yet? Get a link by email on the sign-in page."}</p>
       {resend ? <ResendLink token={token} /> : <p><Link className="btn" href="/sign-in">Sign in <span className="arr">→</span></Link></p>}
       {signedInAs && <p className="small acct-out">You are signed in on this device. <Link href="/account">Go to your account</Link></p>}
     </SupportPage>

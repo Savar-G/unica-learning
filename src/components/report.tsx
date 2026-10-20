@@ -180,9 +180,9 @@ function ReportOverall({ view }: { view: ReportView }) {
  */
 export function ReportLevelPreview({ view }: { view: ReportView }) {
   return (
-    <section className={`rpt-overall rpt-preview is-${view.model.howWeHelp}`} aria-label="Sample report">
+    <section className={`rpt-overall rpt-level-preview is-${view.model.howWeHelp}`} aria-label="Sample report">
       <p className="eyebrow">Sample report</p>
-      <p className="rpt-preview-level">{levelSentence(view)}</p>
+      <p className="rpt-level-preview-h">{levelSentence(view)}</p>
       <p className="rpt-verdict">{verdictSentence(view)}</p>
       <LevelScale view={view} />
     </section>

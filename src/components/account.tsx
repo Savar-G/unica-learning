@@ -73,8 +73,11 @@ function Field({ id, label, bad, error, hint, children }: { id: string; label: s
 const described = (id: string, bad: boolean | undefined, hint = false) =>
   [hint && `h-${id}`, bad && `e-${id}`].filter(Boolean).join(" ") || undefined;
 
-/** First name, grade and province of one child. `onPickProvince` runs when the parent chooses a province. */
-function ChildFields({ prefix, value, onChange, bad, onPickProvince }: { prefix: string; value: ChildInput; onChange: (c: ChildInput) => void; bad?: boolean; onPickProvince?: () => void }) {
+/**
+ * First name, grade and province of one child. `onPickProvince` runs when the parent chooses a province. An empty
+ * province (the short phone signup, D-134: no postal code to guess it from) shows "Choose a province" until one is picked.
+ */
+function ChildFields({ prefix, value, onChange, bad, badProvince, onPickProvince }: { prefix: string; value: ChildInput; onChange: (c: ChildInput) => void; bad?: boolean; badProvince?: boolean; onPickProvince?: () => void }) {
   return (
     <>
       <Field id={`${prefix}-first`} label="Child's first name" bad={bad} error="Enter your child's first name.">
@@ -88,7 +91,7 @@ function ChildFields({ prefix, value, onChange, bad, onPickProvince }: { prefix:
           ))}
         </div>
       </div>
-      <Field id={`${prefix}-province`} label="Province" hint="We match the test to what your child learns at school.">
+      <Field id={`${prefix}-province`} label="Province" bad={badProvince} error="Choose your province." hint="We match the test to what your child learns at school.">
         <select
           id={`${prefix}-province`}
           value={value.province}
@@ -96,8 +99,10 @@ function ChildFields({ prefix, value, onChange, bad, onPickProvince }: { prefix:
             onPickProvince?.();
             onChange({ ...value, province: e.target.value as CurriculumId });
           }}
-          aria-describedby={`h-${prefix}-province`}
+          aria-invalid={!!badProvince}
+          aria-describedby={described(`${prefix}-province`, badProvince, true)}
         >
+          {!value.province && <option value="" disabled>Choose a province</option>}
           {(Object.keys(CURRICULA) as CurriculumId[]).map((k) => <option key={k} value={k}>{CURRICULA[k]}</option>)}
         </select>
       </Field>
@@ -113,7 +118,7 @@ function Submit({ busy, children }: { busy: boolean; children: ReactNode }) {
   );
 }
 
-type SignupErrors = Partial<Record<"name" | "email" | "postal" | "password" | "child", boolean>>;
+type SignupErrors = Partial<Record<"name" | "email" | "postal" | "password" | "child" | "province", boolean>>;
 
 /** What the email-code step shows under the button (#82). */
 type CodeNote = null | "sent_again" | "wait" | "bad" | "expired" | "too_many" | "check_failed" | "send_failed";
@@ -168,7 +173,8 @@ export function AccountSignup({ phone = false }: { phone?: boolean }) {
   const [postal, setPostal] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
-  const [child, setChild] = useState<ChildInput>({ firstName: "", grade: 4, province: "BC" });
+  // On a phone there is no postal code to guess the province from, so the parent chooses it (D-134).
+  const [child, setChild] = useState<ChildInput>({ firstName: "", grade: 4, province: phone ? ("" as CurriculumId) : "BC" });
   // Until the parent picks a province, follow the one in their postal code.
   const [pickedProvince, setPickedProvince] = useState(false);
   const [website, setWebsite] = useState("");
@@ -248,12 +254,14 @@ export function AccountSignup({ phone = false }: { phone?: boolean }) {
       postal: !phone && !POSTAL.test(postal.trim()),
       password: !phone && !validPassword(password),
       child: !child.firstName.trim(),
+      province: !child.province,
     };
     setErrors(next);
     setFailure(null);
-    const firstBad = (["name", "email", "postal", "password", "child"] as const).find((k) => next[k]);
+    const firstBad = (["name", "email", "postal", "password", "child", "province"] as const).find((k) => next[k]);
     if (firstBad) {
-      form.current?.querySelector<HTMLInputElement>(`#a-${firstBad === "child" ? "c-first" : firstBad}`)?.focus();
+      const at = firstBad === "child" ? "c-first" : firstBad === "province" ? "c-province" : firstBad;
+      form.current?.querySelector<HTMLElement>(`#a-${at}`)?.focus();
       return;
     }
     if (proved === cleanEmail) {
@@ -398,7 +406,7 @@ export function AccountSignup({ phone = false }: { phone?: boolean }) {
       </fieldset>
       <fieldset>
         <legend>Your child</legend>
-        <ChildFields prefix="a-c" value={child} onChange={setChild} bad={errors.child} onPickProvince={() => setPickedProvince(true)} />
+        <ChildFields prefix="a-c" value={child} onChange={setChild} bad={errors.child} badProvince={errors.province} onPickProvince={() => setPickedProvince(true)} />
       </fieldset>
       <input className="hp" type="text" name="website" tabIndex={-1} autoComplete="off" aria-hidden="true" value={website} onChange={(e) => setWebsite(e.target.value)} />
       <Submit busy={busy}>Create account <span className="arr">→</span></Submit>
@@ -459,7 +467,7 @@ export function SignIn({ googleFailed, next = "/account" }: { googleFailed: bool
         <input id="s-password" type="password" autoComplete="current-password" required value={password} onChange={(e) => setPassword(e.target.value)} />
       </Field>
       <Submit busy={busy}>Sign in <span className="arr">→</span></Submit>
-      <p className="small"><Link href="/sign-in/reset">Forgot your password?</Link></p>
+      <p className="small"><Link href="/sign-in/reset">Forgot your password?</Link> Made your account on a phone? You have no password yet: <Link href="/sign-in/reset">get a link by email</Link> to choose one.</p>
       <p className="small">New here? <Link href="/start">Create an account</Link></p>
     </form>
   );
