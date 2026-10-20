@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { isUuid } from "@/lib/assessment-store";
 import { dashboardRows, getParent, requireAdmin, testAccountState } from "@/lib/admin-store";
 import { ADMIN_PATH, when } from "@/lib/admin-view";
 import { STAGE_ACTION, at, buildFamilies, nextReminderText, paymentText, since } from "@/lib/admin-dashboard";
@@ -12,11 +13,15 @@ import { TestAccount } from "@/components/test-account";
 export default async function ParentPage({ params }: PageProps<"/admin/parents/[id]">) {
   const admin = await requireAdmin();
   const id = (await params).id;
+  // the family's stage and payment, the same way the dashboard works them out (D-099). All three reads run at once,
+  // but the family decides first: an unknown family is a 404 even when another read failed.
+  if (!isUuid(id)) notFound();
+  const others = Promise.all([dashboardRows(admin), testAccountState(admin, id)]);
+  others.catch(() => {});
   const family = await getParent(admin, id);
   if (!family) notFound();
+  const [rows, test] = await others;
   const p = family.parent;
-  // the family's stage and payment, the same way the dashboard works them out (D-099)
-  const [rows, test] = await Promise.all([dashboardRows(admin), testAccountState(admin, p.id)]);
   const f = buildFamilies(rows).find((x) => x.id === p.id);
   const now = new Date().toISOString();
   return <AdminFrame email={admin.email} section="parents" title={p.name}>
