@@ -32,6 +32,9 @@ export interface ProgressInput {
   factsStartedAt: string | null;
   /** Quick facts answered, skips not counted. */
   factsAnswered: number;
+  /** Quick facts with a response, skips counted, and the facts drawn: the section ends early once all are tried. */
+  factsTried: number;
+  factsDrawn: number;
   extraOfferedAt: string | null;
   extraSkippedAt: string | null;
   extraStartedAt: string | null;
@@ -106,8 +109,11 @@ export function testProgress(t: ProgressInput, now: number): TestProgress {
   const n = Math.min(t.answered, total);
   // Every main answer is in: the test never expires (test-attempt.ts).
   const mainDone = t.route !== null && t.answered >= main;
+  // The facts end when the time is up, or earlier when every drawn fact has a response (factsStep).
   const factsEnd = t.factsStartedAt ? ms(t.factsStartedAt) + FACTS_SECONDS * 1000 : null;
-  const facts = factsEnd === null ? null : { answered: t.factsAnswered, done: now >= factsEnd };
+  const factsEarly = t.factsDrawn > 0 && t.factsTried >= t.factsDrawn;
+  const factsDone = factsEnd !== null && (factsEarly || now >= factsEnd);
+  const facts = factsEnd === null ? null : { answered: t.factsAnswered, done: factsDone };
   const lastActivityAt = newest(t.startedAt, t.lastAnswerAt, t.lastShown?.at ?? null, t.breakStartedAt, t.breakEndedAt, t.factsStartedAt, t.extraOfferedAt, t.extraSkippedAt, t.extraStartedAt, t.extraFinishedAt, t.completedAt)!;
 
   const next = n < total && (n < part1 || t.route) ? {
@@ -138,10 +144,10 @@ export function testProgress(t: ProgressInput, now: number): TestProgress {
   if (!t.route) return { ...base, phase: "check", text: "Checking the Part 1 answers", short: "Checking Part 1", ...lastAnswer };
   // Halfway: the break, then the quick facts, then the first Part 2 question (its serve is recorded after the facts).
   if (n === part1 && !shownNow) {
-    if (factsEnd !== null && now < factsEnd) return { ...base, phase: "facts", text: `Doing the quick facts: ${t.factsAnswered} answered`, short: "Quick facts", since: t.factsStartedAt!, sinceText: "started" };
+    if (factsEnd !== null && !factsDone) return { ...base, phase: "facts", text: `Doing the quick facts: ${t.factsAnswered} answered`, short: "Quick facts", since: t.factsStartedAt!, sinceText: "started" };
     // After the facts the serve of the next question may be missing (a lost write), so it is named as next, not on screen.
     if (factsEnd !== null) {
-      return { ...base, phase: "facts", current: next, text: `Quick facts done (${t.factsAnswered} answered). Next question: ${of(n + 1)}`, short: `Facts done, next Q ${n + 1}`, since: new Date(factsEnd).toISOString(), sinceText: "facts ended" };
+      return { ...base, phase: "facts", current: next, text: `Quick facts done (${t.factsAnswered} answered). Next question: ${of(n + 1)}`, short: `Facts done, next Q ${n + 1}`, ...(now >= factsEnd ? { since: new Date(factsEnd).toISOString(), sinceText: "facts ended" } : { since: t.factsStartedAt!, sinceText: "facts started" }) };
     }
     if (t.breakStartedAt && !t.breakEndedAt) return { ...base, phase: "break", text: "On the halfway break", short: "On the break", since: t.breakStartedAt, sinceText: "break started" };
     if (t.breakEndedAt) return { ...base, phase: "facts", text: "On the quick facts start screen", short: "Quick facts next", since: t.breakEndedAt, sinceText: "break ended" };

@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { checked } from "@/lib/assessment/scripted-child";
 import { createSession, nextQuestion, startExtraRound, submitAnswer, type Route, type Session } from "@/lib/assessment";
 import { progressSnapshot, testProgress, type ProgressInput } from "@/lib/admin-progress";
+import { progressTestIds, type Family } from "@/lib/admin-dashboard";
 
 // The admin's live view of a test: the next question to answer, of how many, in which part, and since when.
 const T0 = Date.parse("2026-10-20T00:53:00Z");
@@ -26,7 +27,7 @@ function input(answered: number, over: Partial<ProgressInput> = {}): ProgressInp
   return {
     status: "in_progress", route, answered, ...stored(grade7, route, answered),
     lastShown: { position: answered, at: iso(27) }, startedAt: iso(0), lastAnswerAt: iso(27), completedAt: null,
-    resumeUntil: iso(27 + 24 * 60), breakStartedAt: null, breakEndedAt: null, factsStartedAt: null, factsAnswered: 0,
+    resumeUntil: iso(27 + 24 * 60), breakStartedAt: null, breakEndedAt: null, factsStartedAt: null, factsAnswered: 0, factsTried: 0, factsDrawn: 90,
     extraOfferedAt: null, extraSkippedAt: null, extraStartedAt: null, extraFinishedAt: null, ...over,
   };
 }
@@ -69,6 +70,14 @@ describe("testProgress", () => {
   it("names the first Part 2 question as next after the quick facts, as its serve record can be missing", () => {
     expect(testProgress(input(21, { route: "stay", lastShown: { position: 20, at: iso(25) }, breakEndedAt: iso(32), factsStartedAt: iso(33), factsAnswered: 30 }), NOW))
       .toMatchObject({ phase: "facts", text: "Quick facts done (30 answered). Next question: 22 of 42", since: iso(34), current: { number: 22, part: "Part 2", prompt: grade7.stage2.stay[0].prompt } });
+  });
+
+  it("ends the quick facts early once every drawn fact has a response, skips included", () => {
+    const early = (tried: number) => testProgress(input(21, {
+      route: "stay", lastShown: { position: 20, at: iso(25) }, breakEndedAt: iso(32), factsStartedAt: new Date(NOW - 20_000).toISOString(), factsAnswered: 0, factsTried: tried,
+    }), NOW);
+    expect(early(89)).toMatchObject({ text: "Doing the quick facts: 0 answered", facts: { done: false }, current: null });
+    expect(early(90)).toMatchObject({ text: "Quick facts done (0 answered). Next question: 22 of 42", facts: { answered: 0, done: true }, sinceText: "facts started", current: { number: 22 } });
   });
 
   it("does not claim the Part 2 grid when the child may be on the last step, then shows the extra round offer", () => {
@@ -132,5 +141,17 @@ describe("progressSnapshot", () => {
   it("gives each test's progress by id at the server's time", () => {
     const now = new Date(NOW);
     expect(progressSnapshot(new Map([["a", input(3)]]), now)).toEqual({ now: now.toISOString(), tests: { a: testProgress(input(3), NOW) } });
+  });
+});
+
+describe("progressTestIds", () => {
+  const test = (id: string, status: "in_progress" | "completed" | "expired", lastAnswerAt: string | null) =>
+    ({ id, childId: "c", childName: "C", status, startedAt: iso(0), completedAt: null, lastAnswerAt, answered: 1, reportId: null });
+  const family = (tests: ReturnType<typeof test>[]) => ({ tests }) as unknown as Family;
+
+  it("takes the shown families' tests still in progress, the most recently active first, up to the limit", () => {
+    const families = [family([test("old", "in_progress", iso(1)), test("done", "completed", iso(9))]), family([test("new", "in_progress", iso(5)), test("gone", "expired", iso(8))]), family([test("none", "in_progress", null)])];
+    expect(progressTestIds(families, 5)).toEqual(["new", "old", "none"]);
+    expect(progressTestIds(families, 1)).toEqual(["new"]);
   });
 });

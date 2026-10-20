@@ -157,7 +157,7 @@ export function demoProgress(rows: DashboardRows, now: Date): ProgressSnapshot {
       lengths: { stage1: band.stage1, up: rest + 3, stay: rest, down: rest, extra: 0 },
       lastShown: { position: answered, at: new Date(shownMs).toISOString() },
       startedAt: t.started_at, lastAnswerAt: new Date(shownMs).toISOString(), completedAt: null, resumeUntil: new Date(shownMs + 24 * 3_600_000).toISOString(),
-      breakStartedAt: null, breakEndedAt: null, factsStartedAt: null, factsAnswered: 0, extraOfferedAt: null, extraSkippedAt: null, extraStartedAt: null, extraFinishedAt: null,
+      breakStartedAt: null, breakEndedAt: null, factsStartedAt: null, factsAnswered: 0, factsTried: 0, factsDrawn: 0, extraOfferedAt: null, extraSkippedAt: null, extraStartedAt: null, extraFinishedAt: null,
     });
   }
   return progressSnapshot(inputs, now);

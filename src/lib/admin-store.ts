@@ -744,7 +744,7 @@ export async function anonymousTestRows(a: AdminSession): Promise<AnonymousTestR
 /** At most this many tests per progress read: the dashboard's open tests, or the ids a page asks for. */
 export const PROGRESS_MAX = 50;
 
-/** One row of public.admin_test_progress() (migration add_admin_test_progress). */
+/** One row of public.admin_test_progress_for() (migration add_admin_test_progress_for). */
 type ProgressQueryRow = {
   id: string; status: AssessmentStatus; route: Route | null;
   started_at: string; last_answer_at: string | null; completed_at: string | null; resume_until: string;
@@ -752,25 +752,25 @@ type ProgressQueryRow = {
   extra_offered_at: string | null; extra_skipped_at: string | null; extra_started_at: string | null; extra_finished_at: string | null;
   stage1: number; up: number; stay: number; down: number; extra: number; answered: number;
   last_shown_position: number | null; last_shown_at: string | null;
-  facts_started_at: string | null; facts_answered: number; next_prompt: string | null;
+  facts_started_at: string | null; facts_answered: number; facts_tried: number; facts_drawn: number; next_prompt: string | null;
 };
 
 /**
- * How far each test got, by test id (admin-progress.ts). With `ids`, those tests (any status); without, every test a
- * child can still go on with now. One small row per test from the database: counts, lengths and the next prompt, never
- * the stored test, so a poll every few seconds stays cheap.
+ * How far each of these tests got, by test id (admin-progress.ts). The page names the tests (the families it shows),
+ * so hidden test families never take the place of real ones. One small row per test from the database: counts, lengths
+ * and the next prompt, never the stored test, so a poll every few seconds stays cheap.
  */
-export async function progressRows(a: AdminSession, ids?: readonly string[]): Promise<Map<string, ProgressInput>> {
-  const wanted = ids ? [...new Set(ids.filter(isUuid))].slice(0, PROGRESS_MAX) : null;
-  if (wanted && wanted.length === 0) return new Map();
-  const rows = must<ProgressQueryRow[]>(await a.db.rpc("admin_test_progress", wanted ? { ids: wanted } : {}), "test progress");
+export async function progressRows(a: AdminSession, ids: readonly string[]): Promise<Map<string, ProgressInput>> {
+  const wanted = [...new Set(ids.filter(isUuid))].slice(0, PROGRESS_MAX);
+  if (wanted.length === 0) return new Map();
+  const rows = must<ProgressQueryRow[]>(await a.db.rpc("admin_test_progress_for", { ids: wanted }), "test progress");
   return new Map(rows.map((r) => [r.id, {
     status: r.status, route: r.route, answered: r.answered, nextPrompt: r.next_prompt,
     lengths: { stage1: r.stage1, up: r.up, stay: r.stay, down: r.down, extra: r.extra },
     lastShown: r.last_shown_position === null || !r.last_shown_at ? null : { position: r.last_shown_position, at: r.last_shown_at },
     startedAt: r.started_at, lastAnswerAt: r.last_answer_at, completedAt: r.completed_at, resumeUntil: r.resume_until,
     breakStartedAt: r.break_started_at, breakEndedAt: r.break_ended_at,
-    factsStartedAt: r.facts_started_at, factsAnswered: r.facts_answered,
+    factsStartedAt: r.facts_started_at, factsAnswered: r.facts_answered, factsTried: r.facts_tried, factsDrawn: r.facts_drawn,
     extraOfferedAt: r.extra_offered_at, extraSkippedAt: r.extra_skipped_at, extraStartedAt: r.extra_started_at, extraFinishedAt: r.extra_finished_at,
   }]));
 }
@@ -790,6 +790,7 @@ export function detailProgress(d: TestDetail): ProgressInput {
     startedAt: d.test.started_at, lastAnswerAt: d.test.last_answer_at, completedAt: d.test.completed_at, resumeUntil: d.test.resume_until,
     breakStartedAt: d.context.break_started_at, breakEndedAt: d.context.break_ended_at,
     factsStartedAt: d.facts?.started_at ?? null, factsAnswered: d.facts?.answers.filter((f) => f.response !== "").length ?? 0,
+    factsTried: d.facts?.answers.length ?? 0, factsDrawn: d.facts?.test.facts.length ?? 0,
     extraOfferedAt: d.extraRound.extra_offered_at, extraSkippedAt: d.extraRound.extra_skipped_at, extraStartedAt: d.extraRound.extra_started_at, extraFinishedAt: d.extraRound.extra_finished_at,
   };
 }
