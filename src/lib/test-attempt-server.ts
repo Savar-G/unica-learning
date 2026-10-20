@@ -2,12 +2,10 @@ import "server-only";
 import { randomBytes } from "node:crypto";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { toJson, type Database } from "@/lib/database";
-import type { Grade, HelpAnswer, Province, Route, StartState, StoredTest } from "@/lib/assessment";
+import type { Grade, StartState } from "@/lib/assessment";
 import { isUuid, toAttempt } from "@/lib/assessment-store";
-import type { AssessmentStatus } from "@/lib/test-api";
 import { retakeState, startStates, StoreError, type AttemptStore, type RetakeState } from "@/lib/test-attempt";
 import { adminClient } from "@/lib/supabase-auth";
-import type { FactsTest } from "@/lib/assessment";
 import type { FactsStore } from "@/lib/test-attempt";
 import type { AnswerTimeline, ShownStore } from "@/lib/test-attempt";
 import type { ContextStore } from "@/lib/test-attempt";
@@ -39,8 +37,7 @@ export function attemptStore(admin: SupabaseClient<Database>): AttemptStore {
     ...extraRoundStore(admin),
     async child(parent, childId) {
       const { data, error } = await admin.from("children").select("id, grade, province")
-        // A check constraint limits province to the curriculum ids.
-        .eq("id", childId).eq("parent_id", parent).maybeSingle().overrideTypes<{ province: Province }>();
+        .eq("id", childId).eq("parent_id", parent).maybeSingle();
       if (error) throw new StoreError("child load failed", error.message);
       return data ? { id: data.id, grade: data.grade as Grade, province: data.province } : null;
     },
@@ -49,8 +46,7 @@ export function attemptStore(admin: SupabaseClient<Database>): AttemptStore {
       // #189: placement->pace->unreliable is true when the completed test's result may not be reliable (a new test opens at once).
       let query = admin.from("assessments").select(`child_id, seed, ${ATTEMPT_COLUMNS}, unreliable:placement->pace->unreliable`).eq("parent_id", parent);
       if (childId !== undefined) query = query.eq("child_id", childId);
-      // A check constraint limits status to the three states.
-      const { data, error } = await query.overrideTypes<{ status: AssessmentStatus }[]>();
+      const { data, error } = await query;
       if (error) throw new StoreError("attempts load failed", error.message);
       return (data ?? []).map((row) => ({
         ...toAttempt(row),
@@ -63,8 +59,7 @@ export function attemptStore(admin: SupabaseClient<Database>): AttemptStore {
     async load(parent, id) {
       const { data: row, error } = await admin.from("assessments").select(`${ATTEMPT_COLUMNS}, test, route, break_started_at, break_ended_at, help, ${ROUND_COLUMNS}`)
         .eq("id", id).eq("parent_id", parent)
-        // test is jsonb, written as a StoredTest; check constraints limit status, route and help.
-        .maybeSingle().overrideTypes<{ status: AssessmentStatus; test: StoredTest; route: Route | null; help: HelpAnswer | null }>();
+        .maybeSingle();
       if (error) throw new StoreError("load failed", error.message);
       if (!row) return null;
       const { data: answers, error: answersError } = await admin.from("answers")
@@ -160,8 +155,7 @@ export function attemptStore(admin: SupabaseClient<Database>): AttemptStore {
 
     async answerEvents(id, position) {
       const { data, error } = await admin.from("answers").select("answer_changes, read_aloud_count, read_aloud_at_ms, away_count, away_ms")
-        // answer_changes is jsonb, written as the events' changes.
-        .eq("assessment_id", id).eq("position", position).maybeSingle().overrideTypes<{ answer_changes: AnswerEvents["changes"] | null }>();
+        .eq("assessment_id", id).eq("position", position).maybeSingle();
       if (error) throw new StoreError("answer events load failed", error.message);
       return data ? eventsOf(data) : null;
     },
@@ -200,7 +194,7 @@ export function attemptStore(admin: SupabaseClient<Database>): AttemptStore {
         p_misconception: misconception,
         p_time_ms: timeMs,
         p_answered_at: answered_at,
-        p_answer_changes: answer_changes,
+        p_answer_changes: toJson(answer_changes),
         p_read_aloud_count: read_aloud_count,
         p_read_aloud_at_ms: read_aloud_at_ms,
         p_away_count: away_count,
@@ -259,7 +253,7 @@ export function attemptStore(admin: SupabaseClient<Database>): AttemptStore {
           seed,
           grade: child.grade,
           province: child.province,
-          test: toJson(test),
+          test,
           started_at: iso(attempt.startedAt),
           resume_until: iso(attempt.resumeUntil),
         })
@@ -293,8 +287,7 @@ function factsStore(admin: SupabaseClient<Database>): FactsStore {
   return {
     async loadFacts(id) {
       const { data: row, error } = await admin.from("assessment_facts").select("started_at, test").eq("assessment_id", id)
-        // test is jsonb, written as a FactsTest.
-        .maybeSingle().overrideTypes<{ test: FactsTest }>();
+        .maybeSingle();
       if (error) throw new StoreError("load failed", error.message);
       if (!row) return null;
       const { data: answers, error: answersError } = await admin.from("fact_answers").select("fact_id, response, at_ms, browser_ms")
@@ -308,7 +301,7 @@ function factsStore(admin: SupabaseClient<Database>): FactsStore {
     },
 
     async insertFacts(id, { startedAt, test }) {
-      const { error } = await admin.from("assessment_facts").insert({ assessment_id: id, started_at: iso(startedAt), test: toJson(test) });
+      const { error } = await admin.from("assessment_facts").insert({ assessment_id: id, started_at: iso(startedAt), test });
       // One facts section per test (the primary key): another request started it first.
       if (error?.code === "23505") return "taken";
       if (error) throw new StoreError("start failed", error.message);
@@ -356,7 +349,7 @@ function timelineColumns({ shownAt, answeredAt, events }: AnswerTimeline) {
   return {
     shown_at: shownAt === null ? null : iso(shownAt),
     answered_at: iso(answeredAt),
-    answer_changes: toJson(events?.changes ?? null),
+    answer_changes: events?.changes ?? null,
     read_aloud_count: events?.readAloud.count ?? null,
     read_aloud_at_ms: events?.readAloud.atMs ?? null,
     away_count: events?.away.count ?? null,
@@ -388,7 +381,7 @@ function eventsOf(row: EventColumns): AnswerEvents | null {
 function contextStore(admin: SupabaseClient<Database>): ContextStore {
   return {
     async recordDevice(id, device) {
-      const { error } = await admin.from("assessments").update({ device: toJson(device) })
+      const { error } = await admin.from("assessments").update({ device })
         .eq("id", id).eq("status", "in_progress").is("device", null);
       if (error) throw new StoreError("device save failed", error.message);
     },
@@ -494,7 +487,7 @@ function extraRoundStore(admin: SupabaseClient<Database>): ExtraRoundStore {
     },
 
     async startExtraRound(id, { at, test }) {
-      const { data, error } = await admin.from("assessments").update({ test: toJson(test), extra_started_at: iso(at) })
+      const { data, error } = await admin.from("assessments").update({ test, extra_started_at: iso(at) })
         .eq("id", id).is("extra_started_at", null).neq("status", "expired").select("id");
       if (error) throw new StoreError("extra round start failed", error.message);
       return (data ?? []).length === 1 ? "stored" : "taken";

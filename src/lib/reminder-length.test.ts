@@ -24,7 +24,6 @@ function fakeAdmin(tables: Tables): SupabaseClient {
     let rows = tables[table] ?? [];
     let columns: string[] = [];
     let count = false;
-    let single = false;
     const query = {
       select(cols: string, opts?: { count?: string; head?: boolean }) {
         columns = cols.split(",").map((c) => c.trim());
@@ -37,12 +36,14 @@ function fakeAdmin(tables: Tables): SupabaseClient {
       lte(column: string, value: string) { rows = rows.filter((r) => String(r[column]) <= value); return query; },
       order() { return query; },
       range(a: number, b: number) { rows = rows.slice(a, b + 1); return query; },
-      overrideTypes() { return query; },
-      maybeSingle() { single = true; return query; },
+      returns() { return query; },
+      maybeSingle() {
+        const pick = (r: Row) => Object.fromEntries(columns.map((c) => [c, r[c]]));
+        return Promise.resolve({ data: rows[0] ? pick(rows[0]) : null, error: null });
+      },
       then(resolve: (v: unknown) => unknown) {
         if (count) return resolve({ count: rows.length, data: null, error: null });
         const pick = (r: Row) => Object.fromEntries(columns.map((c) => [c, r[c]]));
-        if (single) return resolve({ data: rows[0] ? pick(rows[0]) : null, error: null });
         return resolve({ data: rows.map(pick), error: null });
       },
     };

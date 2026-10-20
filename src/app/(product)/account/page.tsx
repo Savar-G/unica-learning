@@ -3,7 +3,6 @@ import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { pageMetadata } from "@/lib/metadata";
 import { CURRICULA } from "@/lib/signup";
-import type { Child } from "@/lib/account";
 import type { StartState } from "@/lib/assessment";
 import { stateFor } from "@/lib/test-attempt";
 import { parentStartStates } from "@/lib/test-attempt-server";
@@ -30,8 +29,7 @@ export default async function Account({ searchParams }: PageProps<"/account">) {
   if (!parentUser) redirect("/sign-in");
   const [{ data: parent }, { data: kids }, states, { data: reports }] = await Promise.all([
     db.from("parents").select("name, email").maybeSingle(),
-    // A check constraint limits province to the curriculum ids.
-    db.from("children").select(`id, first_name, grade, province, ${LEARNING_COLUMNS}`).order("created_at").overrideTypes<Pick<Child, "province">[]>(),
+    db.from("children").select(`id, first_name, grade, province, ${LEARNING_COLUMNS}`).order("created_at"),
     // Start, continue, start again after 24 hours, or wait 30 days after a completed test (#72).
     parentStartStates(parentUser),
     // Reports (#65), oldest first, each with the time its test finished.

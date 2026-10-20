@@ -1,7 +1,7 @@
 import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/lib/database";
-import type { ReviewStore, StoredReview } from "@/lib/work-review";
+import type { ReviewStore } from "@/lib/work-review";
 import { WORK_BUCKET } from "@/lib/work-store";
 
 // The AI work review's data in Supabase (#68), read and written with the secret key by the report job (through its
@@ -15,9 +15,7 @@ const COLUMNS = "question_id, error_type, kind, comment, score, confidence, mode
 export function reviewStore(admin: SupabaseClient<Database>, assessment: { id: string; parent_id: string }): ReviewStore {
   return {
     async stored() {
-      const { data, error } = await admin.from("work_reviews").select(COLUMNS).eq("assessment_id", assessment.id)
-        // Check constraints limit kind and confidence.
-        .overrideTypes<Pick<StoredReview, "kind" | "confidence">[]>();
+      const { data, error } = await admin.from("work_reviews").select(COLUMNS).eq("assessment_id", assessment.id);
       if (error) throw new Error(`reviews load: ${error.message}`);
       return (data ?? []).map((r) => ({
         questionId: r.question_id,

@@ -43,8 +43,7 @@ async function load(admin: SupabaseClient<Database>, parentId: string, reportId:
   const [{ data: report, error }, { data: parent, error: parentError }] = await Promise.all([
     admin.from("reports")
       .select("id, child_id, assessment_id, cta:model->>callToAction, assessment:assessments(province, grade), child:children(first_name)")
-      // A check constraint limits province to the curriculum ids.
-      .eq("id", reportId).eq("parent_id", parentId).maybeSingle().overrideTypes<{ assessment: { province: Province } | null }>(),
+      .eq("id", reportId).eq("parent_id", parentId).maybeSingle(),
     admin.from("parents").select("name, email, postal").eq("id", parentId).maybeSingle(),
   ]);
   if (error || parentError) {

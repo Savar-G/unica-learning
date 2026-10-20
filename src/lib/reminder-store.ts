@@ -1,9 +1,8 @@
 import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/lib/database";
-import { bandFor, testLength, type Grade, type Route, type StoredTest } from "@/lib/assessment";
+import { bandFor, testLength, type Grade, type Route } from "@/lib/assessment";
 import { toAttempt, type AttemptRow } from "@/lib/assessment-store";
-import type { AssessmentStatus } from "@/lib/test-api";
 import { SUPPORT_EMAIL } from "@/lib/contact";
 import { saveEmailCopy } from "@/lib/email-copies";
 import type { EmailMessage, SendLedger } from "@/lib/email-delivery";
@@ -14,7 +13,6 @@ import {
   START_AFTER_MS,
   START_WINDOW_MS,
   type DueReminder,
-  type LogEntry,
   type ReminderChild,
   type ReminderParent,
   type ReminderState,
@@ -93,24 +91,19 @@ export function reminderStore(admin: SupabaseClient<Database>): ReminderStore<Lo
 
       // Every test of those children: the start screen's rules read all of them.
       const [childRows, testRows] = await Promise.all([
-        inChunks(childIds, (ids) => admin.from("children").select("id, parent_id, first_name, grade, created_at").in("id", ids)
-          // A check constraint limits grade to 1-7.
-          .overrideTypes<{ grade: Grade }[]>()),
-        inChunks(childIds, (ids) => admin.from("assessments").select("id, child_id, grade, route, status, started_at, last_answer_at, resume_until, completed_at").in("child_id", ids)
-          // Check constraints limit status and route.
-          .overrideTypes<{ status: AssessmentStatus; route: Route | null }[]>()),
+        inChunks(childIds, (ids) => admin.from("children").select("id, parent_id, first_name, grade, created_at").in("id", ids)),
+        inChunks(childIds, (ids) => admin.from("assessments").select("id, child_id, grade, route, status, started_at, last_answer_at, resume_until, completed_at").in("child_id", ids)),
       ]);
       const parentIds = [...new Set(childRows.map((c) => c.parent_id))];
       const [parentRows, logRows, tests] = await Promise.all([
         inChunks(parentIds, (ids) => admin.from("parents").select("id, name, email, postal").in("id", ids)),
-        inChunks(parentIds, (ids) => admin.from("email_log").select("id, created_at, kind, parent_id, child_id, assessment_id, status, attempts").in("parent_id", ids)
-          // Check constraints limit kind and status.
-          .overrideTypes<{ kind: LogEntry["kind"]; status: LogEntry["status"] }[]>()),
+        inChunks(parentIds, (ids) => admin.from("email_log").select("id, created_at, kind, parent_id, child_id, assessment_id, status, attempts").in("parent_id", ids)),
         Promise.all(testRows.map((row) => withAnswers(admin, row))),
       ]);
       return {
         parents: parentRows.map((p) => ({ id: p.id, name: p.name, email: p.email, postal: p.postal })),
-        children: childRows.map((c) => ({ id: c.id, parentId: c.parent_id, firstName: c.first_name, grade: c.grade, createdAt: Date.parse(c.created_at) })),
+        // A check constraint limits grade to 1-7.
+        children: childRows.map((c) => ({ id: c.id, parentId: c.parent_id, firstName: c.first_name, grade: c.grade as Grade, createdAt: Date.parse(c.created_at) })),
         tests,
         log: logRows.map((e) => ({ id: e.id, kind: e.kind, parentId: e.parent_id, childId: e.child_id, assessmentId: e.assessment_id, status: e.status, attempts: e.attempts, at: Date.parse(e.created_at) })),
       };
@@ -174,8 +167,7 @@ async function lengthOf(admin: SupabaseClient<Database>, row: TestRow): Promise<
   const band = bandFor(row.grade as Grade).length;
   // A test the child can no longer continue is never named in an email, so its (large) stored test is not read.
   if (!row.route || (row.status !== "in_progress" && row.status !== "expired")) return band;
-  // test is jsonb, written as a StoredTest.
-  const { data, error } = await admin.from("assessments").select("test").eq("id", row.id).maybeSingle().overrideTypes<{ test: StoredTest }>();
+  const { data, error } = await admin.from("assessments").select("test").eq("id", row.id).maybeSingle();
   if (error) throw new Error(`test load: ${error.message}`);
   return data?.test ? testLength(data.test, row.route) : band;
 }

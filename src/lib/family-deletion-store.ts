@@ -27,18 +27,21 @@ export async function endCardOperation(db: SupabaseClient<Database>, token: stri
 }
 
 type Fns = Database["public"]["Functions"];
-/** A database function's name with its arguments, as the schema has them. */
-type Call = { [N in keyof Fns]: [Fns[N]["Args"]] extends [never] ? [name: N] : [name: N, args: Fns[N]["Args"]] }[keyof Fns];
-/** A call of a function that takes the family and the job's token (`p`, `token`): the other arguments. */
-type GuardedCall = { [N in keyof Fns]: [Fns[N]["Args"]] extends [never] ? never
-  : Fns[N]["Args"] extends { p: string; token: string } ? [name: N, values: Omit<Fns[N]["Args"], "p" | "token">] : never }[keyof Fns];
+type FnName = keyof Fns;
+/** A function's arguments, as the schema has them: none for a function without arguments. */
+type ArgsOf<N extends FnName> = [Fns[N]["Args"]] extends [never] ? [] : [args: Fns[N]["Args"]];
+/** The functions that take the family and the job's token (`p`, `token`). */
+type GuardedName = { [N in FnName]: [Fns[N]["Args"]] extends [never] ? never : Fns[N]["Args"] extends { p: string; token: string } ? N : never }[FnName];
 
-/** `T` is the answer's shape: the generated types cannot say when a function answers null. */
-async function rpc<T>(db: SupabaseClient<Database>, ...[name, args]: Call): Promise<T> {
-  // The schema checked the name and arguments at the call (Call); this one call cannot carry that pairing.
-  const { data, error } = await db.rpc(name, (args ?? {}) as never);
+/**
+ * Calls a database function; an error throws. The answer has the schema's type. The generated types never say that a
+ * function can answer null, so a caller that can get null says so.
+ */
+async function rpc<N extends FnName>(db: SupabaseClient<Database>, name: N, ...args: ArgsOf<N>): Promise<Fns[N]["Returns"]> {
+  // The schema checked the name and the arguments at the call; this one call cannot carry that pairing.
+  const { data, error } = await db.rpc(name, (args[0] ?? {}) as never);
   if (error) throw new Error(`Deletion dependency: ${name} (${error.code})`);
-  return data as T;
+  return data as Fns[N]["Returns"];
 }
 
 export async function deletionCursor(db: SupabaseClient<Database>): Promise<string | null> {
@@ -110,10 +113,10 @@ export async function retentionCandidates(db: SupabaseClient<Database>): Promise
 /** The database half of the retention facts for a frozen family. The fence keeps both parts from changing. */
 async function frozenFamily(db: SupabaseClient<Database>, parent: string, deadline: number, execution?: FamilyDeletionExecution): Promise<RetentionFamily | null> {
   paymentOptions(deadline, execution);
-  const cards = await rpc<unknown>(db, "family_retention_cards", { p: parent });
+  const cards: unknown = await rpc(db, "family_retention_cards", { p: parent });
   if (!Array.isArray(cards) || !cards.every(isFamilyCard)) return null;
   paymentOptions(deadline, execution);
-  const lastTestAt = await rpc<string | null>(db, "family_last_activity", { p: parent });
+  const lastTestAt: string | null = await rpc(db, "family_last_activity", { p: parent });
   return { cards, lastTestAt };
 }
 
@@ -122,14 +125,18 @@ async function frozenFamily(db: SupabaseClient<Database>, parent: string, deadli
 function paymentStore(db: SupabaseClient<Database>, parent: string, token: string, deadline: number, control: SupabaseClient<Database>, execution?: FamilyDeletionExecution): FamilyPaymentStore {
   const s = execution?.payments ?? stripe();
   const args = { p: parent, token };
-  const guarded = <T>(...[name, values]: GuardedCall) => { paymentOptions(deadline, execution); return rpc<T>(db, ...([name, { ...args, ...values }] as Call)); };
+  const guarded = <N extends GuardedName>(name: N, values: Omit<Fns[N]["Args"], "p" | "token">) => {
+    paymentOptions(deadline, execution);
+    return rpc(db, name, ...([{ ...args, ...values }] as ArgsOf<N>));
+  };
   const pending = async () => {
     const operations: PaymentOperation[] = [];
     let after: string | null = null;
     for (;;) {
-      const page: { kind: "session" | "intent"; object_id: string; customer_id: string }[] = await guarded("pending_family_payment_operations", { after_id: after, page_size: 100 });
+      const page = await guarded("pending_family_payment_operations", { after_id: after, page_size: 100 });
       if (!page.length) return operations;
-      operations.push(...page.map(r => ({ kind: r.kind, id: r.object_id, customer: r.customer_id })));
+      // A check constraint limits kind to session and intent.
+      operations.push(...page.map(r => ({ kind: r.kind as PaymentOperation["kind"], id: r.object_id, customer: r.customer_id })));
       const next: string = `${page.at(-1)!.kind}:${page.at(-1)!.object_id}`;
       if (next === after) throw new Error("Payment operation pagination did not advance");
       after = next;
@@ -156,7 +163,7 @@ function paymentStore(db: SupabaseClient<Database>, parent: string, token: strin
     const abandon = () => rpc(control, "abandon_family_payment_operation", { ...args, ...resource });
     let fresh: boolean;
     try {
-      fresh = await guarded<boolean>("begin_family_payment_operation", { ...resource, customer: operation.customer });
+      fresh = await guarded("begin_family_payment_operation", { ...resource, customer: operation.customer });
     } catch {
       // No remote method was invoked. The control deadline and origin token allow only this record to be removed.
       await abandon();
@@ -194,7 +201,8 @@ function paymentStore(db: SupabaseClient<Database>, parent: string, token: strin
       if (!s) throw new Error("Payment provider unavailable");
       return readCustomerPayments(s, customer, () => paymentOptions(deadline, execution));
     },
-    progress: customer => guarded<PaymentProgress | null>("read_family_payment_progress", { customer }),
+    // jsonb: the progress object the function stores, or null.
+    progress: customer => guarded("read_family_payment_progress", { customer }).then((p) => p as PaymentProgress | null),
     async intents(customer, after) {
       if (!s) throw new Error("Payment provider unavailable");
       const page = await s.setupIntents.list({ customer, limit: 100, starting_after: after ?? undefined }, paymentOptions(deadline, execution));
@@ -213,7 +221,7 @@ function paymentStore(db: SupabaseClient<Database>, parent: string, token: strin
  * migration is not applied) throws, so no deletion runs without its copy.
  */
 export async function familyCopySources(db: SupabaseClient<Database>, parent: string): Promise<unknown[]> {
-  const sources = await rpc<unknown>(db, "family_copy_sources", { p: parent.toLowerCase() });
+  const sources: unknown = await rpc(db, "family_copy_sources", { p: parent.toLowerCase() });
   if (!Array.isArray(sources)) throw new Error("Copy source unreadable");
   return sources;
 }
@@ -230,15 +238,15 @@ function deletionStore(db: SupabaseClient<Database>, parent: string, token: stri
     async saveCopy(test, copy) {
       timeRemaining(deadline, execution);
       // The copy's profile is the stored jsonb profile, passed on unread (unknown), so toJson cannot check its shape.
-      return rpc<boolean>(db, "save_family_test_copy", { ...args, test_id: test, test_copy: copy as unknown as Json });
+      return rpc(db, "save_family_test_copy", { ...args, test_id: test, test_copy: copy as unknown as Json });
     },
     async confirmCopies() {
       timeRemaining(deadline, execution);
-      return rpc<boolean>(db, "confirm_family_copies", args);
+      return rpc(db, "confirm_family_copies", args);
     },
     async renew() {
       timeRemaining(deadline, execution);
-      if (!await rpc<boolean>(db, "renew_family_deletion", args)) throw new Error("Deletion lease lost");
+      if (!await rpc(db, "renew_family_deletion", args)) throw new Error("Deletion lease lost");
     },
     async listImages(prefix, offset, limit) {
       timeRemaining(deadline, execution);
@@ -258,7 +266,7 @@ function deletionStore(db: SupabaseClient<Database>, parent: string, token: stri
     },
     async complete() {
       timeRemaining(deadline, execution);
-      if (!await rpc<boolean>(db, "complete_family_deletion", args)) throw new Error("Deletion verification failed");
+      if (!await rpc(db, "complete_family_deletion", args)) throw new Error("Deletion verification failed");
     },
   };
 }
@@ -275,9 +283,10 @@ export async function runFamilyDeletion(db: SupabaseClient<Database>, parent: st
   const token = randomUUID();
   const args = { p: parent, token };
   type Claim = { state: "ready" | "busy" | "excluded"; reason?: "request" | "retention"; phase?: "checking" | "deleting" };
-  const claim = retention
-    ? await rpc<Claim>(db, "claim_family_retention", { ...args, subscription_ended_at: retention.endedAt })
-    : await rpc<Claim>(db, "claim_family_deletion", args);
+  // jsonb: the claim object the function builds.
+  const claim = (retention
+    ? await rpc(db, "claim_family_retention", { ...args, subscription_ended_at: retention.endedAt })
+    : await rpc(db, "claim_family_deletion", args)) as Claim;
   if (claim.state !== "ready") return { state: claim.state };
   const action = async (): Promise<FamilyDeletionResult> => {
     if (claim.phase === "checking") {
@@ -292,7 +301,7 @@ export async function runFamilyDeletion(db: SupabaseClient<Database>, parent: st
         keep = decision.action === "keep";
       } else if (await settlePaymentOperations(payments) === "unknown") throw new Error("Payment check incomplete");
       timeRemaining(deadline, execution);
-      if (!await rpc<boolean>(db, "decide_family_deletion", { ...args, keep_family: keep })) throw new Error("Deletion decision lost");
+      if (!await rpc(db, "decide_family_deletion", { ...args, keep_family: keep })) throw new Error("Deletion decision lost");
       if (keep) return { state: "excluded" };
     }
     timeRemaining(deadline, execution);
@@ -302,7 +311,7 @@ export async function runFamilyDeletion(db: SupabaseClient<Database>, parent: st
     if (!execution) return await action();
     return await withDeletionHeartbeat({
       wait: signal => wait(execution.renewEveryMs, undefined, { signal }),
-      renew: () => rpc<boolean>(control, "renew_family_deletion_work", args),
+      renew: () => rpc(control, "renew_family_deletion_work", args),
       abort: () => execution.abortWork(),
     }, action);
   } finally {

@@ -2,7 +2,6 @@ import { headers } from "next/headers";
 import { notFound, redirect } from "next/navigation";
 import { userAgent } from "next/server";
 import { bandFor, createSession, type Grade } from "@/lib/assessment";
-import type { Child } from "@/lib/account";
 import { stateFor } from "@/lib/test-attempt";
 import { parentStartStates } from "@/lib/test-attempt-server";
 import { pageMetadata } from "@/lib/metadata";
@@ -26,8 +25,7 @@ export default async function TestPage(props: PageProps<"/account/test/[childId]
 
   const { childId } = await props.params;
   const [{ data: child }, states] = await Promise.all([
-    // A check constraint limits province to the curriculum ids.
-    db.from("children").select("id, first_name, grade, province").eq("id", childId).maybeSingle().overrideTypes<Pick<Child, "province">>(),
+    db.from("children").select("id, first_name, grade, province").eq("id", childId).maybeSingle(),
     parentStartStates(parent, childId),
   ]);
   if (!child) notFound();

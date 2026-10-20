@@ -2,7 +2,7 @@ import "server-only";
 import { connection } from "next/server";
 import { notFound } from "next/navigation";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import type { Database, Json } from "@/lib/database";
+import type { Database } from "@/lib/database";
 import type { FactsTest, HelpAnswer, Placement, Province, Route, StoredTest } from "@/lib/assessment";
 import type { ProgressInput } from "@/lib/admin-progress";
 import { isUuid } from "@/lib/assessment-store";
@@ -66,12 +66,13 @@ export const LIST_MAX = 500;
 type Result<T> = { data: T; error: null } | { data: unknown; error: { message: string } };
 
 /**
- * What the schema can say about a row type T: check constraints keep text in a union of values, and a jsonb column or
- * an embedded row is Json to it, so those parts widen. Each column's name, null and base type are still checked.
+ * What the schema can say about a row type T: a check constraint keeps text in a union of values, and the shape of a
+ * jsonb column or an embedded row is not checked here, so those parts widen. Each column's name, null and base type
+ * are still checked.
  */
 type Stored<T> = T extends null ? null
   : T extends string ? string : T extends number ? number : T extends boolean ? boolean
-  : Json;
+  : unknown;
 type StoredRows<T> = T extends null ? null
   : T extends string | number | boolean ? Stored<T>
   : T extends readonly (infer E)[] ? StoredRows<E>[]

@@ -42,7 +42,7 @@ interface AssessmentRow {
   parent_id: string;
   child_id: string;
   status: AttemptStatus;
-  grade: Grade;
+  grade: number;
   province: Province;
   completed_at: string | null;
   placement: Placement | null;
@@ -65,11 +65,6 @@ interface AnswerRow {
   away_ms: number | null;
 }
 
-// The narrow types a read takes from these rows: model, placement and test are jsonb, written as those types; check
-// constraints limit status, grade, province and help.
-type ReportTypes = Pick<ReportRow, "model">;
-type AssessmentTypes = Pick<AssessmentRow, "status" | "grade" | "province" | "placement" | "help" | "test">;
-
 const record = (row: ReportRow, assessment: ReportAssessmentRow | null, child: ChildRow | null): ReportRecord => ({
   id: row.id,
   assessmentId: row.assessment_id,
@@ -87,7 +82,8 @@ const assessmentRecord = (row: AssessmentRow): AssessmentRecord => ({
   parentId: row.parent_id,
   childId: row.child_id,
   status: row.status,
-  grade: row.grade,
+  // A check constraint limits grade to 1-7.
+  grade: row.grade as Grade,
   province: row.province,
   completedAt: row.completed_at,
   placement: row.placement,
@@ -121,7 +117,7 @@ async function embeddedReport(db: SupabaseClient<Database>, id: string, what: st
   if (!isUuid(id)) return null;
   const row = must(await db.from("reports")
     .select(`${REPORT_COLUMNS}, assessment:assessments(completed_at, province), child:children(first_name)`)
-    .eq("id", id).maybeSingle().overrideTypes<ReportTypes & { assessment: Pick<ReportAssessmentRow, "province"> | null }>(), what);
+    .eq("id", id).maybeSingle(), what);
   return row ? record(row, row.assessment, row.child) : null;
 }
 
@@ -160,10 +156,10 @@ export function adminReportReader({ db }: AdminSession): ReportReader {
   return {
     async report(id) {
       if (!isUuid(id)) return null;
-      const row = must(await db.rpc("admin_reports").select(REPORT_COLUMNS).eq("id", id).maybeSingle().overrideTypes<ReportTypes>(), "admin report load");
+      const row = must(await db.rpc("admin_reports").select(REPORT_COLUMNS).eq("id", id).maybeSingle(), "admin report load");
       if (!row) return null;
       const [assessment, child] = await Promise.all([
-        db.rpc("admin_assessments").select("completed_at, province").eq("id", row.assessment_id).maybeSingle().overrideTypes<Pick<ReportAssessmentRow, "province">>()
+        db.rpc("admin_assessments").select("completed_at, province").eq("id", row.assessment_id).maybeSingle()
           .then((r) => must(r, "admin report test load")),
         db.rpc("admin_children").select("first_name").eq("id", row.child_id).maybeSingle()
           .then((r) => must(r, "admin report child load")),
@@ -172,7 +168,7 @@ export function adminReportReader({ db }: AdminSession): ReportReader {
     },
     async assessment(id) {
       if (!isUuid(id)) return null;
-      const row = must(await db.rpc("admin_assessments").select(ASSESSMENT_COLUMNS).eq("id", id).maybeSingle().overrideTypes<AssessmentTypes>(), "admin test load");
+      const row = must(await db.rpc("admin_assessments").select(ASSESSMENT_COLUMNS).eq("id", id).maybeSingle(), "admin test load");
       return row ? assessmentRecord(row) : null;
     },
     answers: (assessmentId) => answerRows(db, assessmentId, "admin answers load"),
@@ -187,7 +183,7 @@ export function secretKeyReportReader(admin: SupabaseClient<Database>): ReportRe
     report: (id) => embeddedReport(admin, id, "report load"),
     async assessment(id) {
       if (!isUuid(id)) return null;
-      const row = must(await admin.from("assessments").select(ASSESSMENT_COLUMNS).eq("id", id).maybeSingle().overrideTypes<AssessmentTypes>(), "test load");
+      const row = must(await admin.from("assessments").select(ASSESSMENT_COLUMNS).eq("id", id).maybeSingle(), "test load");
       return row ? assessmentRecord(row) : null;
     },
     answers: (assessmentId) => answerRows(admin, assessmentId, "answers load"),

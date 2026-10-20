@@ -1,6 +1,6 @@
 import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { toJson, type Database } from "@/lib/database";
+import type { Database } from "@/lib/database";
 import type { ReportModel } from "@/lib/assessment";
 import type { ParentContact } from "@/lib/report-email";
 import { parentUnsubscribed } from "@/lib/reminder-store";
@@ -50,27 +50,25 @@ export interface ReportJobStore {
   unsubscribed(parentId: string): Promise<boolean>;
 }
 
-// model is jsonb, written as a ReportModel.
 const REPORT_COLUMNS = "id, model, questions, minutes";
-type ModelColumn = { model: ReportModel };
 
 /** The job's store in Supabase, with the secret key. */
 export function reportJobStore(admin: SupabaseClient<Database>): ReportJobStore {
   return {
     async report(assessmentId) {
-      const { data, error } = await admin.from("reports").select(REPORT_COLUMNS).eq("assessment_id", assessmentId).maybeSingle().overrideTypes<ModelColumn>();
+      const { data, error } = await admin.from("reports").select(REPORT_COLUMNS).eq("assessment_id", assessmentId).maybeSingle();
       if (error) throw new Error(`report load: ${error.message}`);
       return data;
     },
     async insertReport(r) {
-      const row = { assessment_id: r.assessmentId, parent_id: r.parentId, child_id: r.childId, model: toJson(r.model), questions: r.questions, minutes: r.minutes };
+      const row = { assessment_id: r.assessmentId, parent_id: r.parentId, child_id: r.childId, model: r.model, questions: r.questions, minutes: r.minutes };
       // One report per assessment: a second insert adds nothing and returns no row.
-      const { data, error } = await admin.from("reports").upsert(row, { onConflict: "assessment_id", ignoreDuplicates: true }).select(REPORT_COLUMNS).overrideTypes<ModelColumn[]>();
+      const { data, error } = await admin.from("reports").upsert(row, { onConflict: "assessment_id", ignoreDuplicates: true }).select(REPORT_COLUMNS);
       if (error) throw new Error(`report insert: ${error.message}`);
       return data?.[0] ?? null;
     },
     async updateReport(id, { model, questions, minutes }) {
-      const { data, error } = await admin.from("reports").update({ model: toJson(model), questions, minutes }).eq("id", id).select(REPORT_COLUMNS).single().overrideTypes<ModelColumn>();
+      const { data, error } = await admin.from("reports").update({ model, questions, minutes }).eq("id", id).select(REPORT_COLUMNS).single();
       if (error) throw new Error(`report update: ${error.message}`);
       return data;
     },

@@ -7,7 +7,6 @@ import { pageMetadata } from "@/lib/metadata";
 import { loadReportView } from "@/lib/report-loading";
 import { parentReportReader } from "@/lib/report-loading-server";
 import { extraRoundPath, reportReturnPath } from "@/lib/report-view";
-import type { PlanId } from "@/lib/site";
 import { adminClient, parentId, sessionClient } from "@/lib/supabase-auth";
 import { recordReportEmailClick } from "@/lib/email-clicks";
 import { TrackOnce } from "@/components/account";
@@ -113,8 +112,7 @@ async function learningStart(db: Awaited<ReturnType<typeof sessionClient>>, chil
 /** A card saved or a waitlist join for this child, read with the parent's session (#66). */
 async function nextStepStart(db: Awaited<ReturnType<typeof sessionClient>>, childId: string): Promise<Omit<NextStepStart, "cancelled">> {
   const [card, wait] = await Promise.all([
-    // A check constraint limits plan to the plan ids.
-    db.from("card_setups").select("plan, card_saved_at").eq("child_id", childId).maybeSingle().overrideTypes<{ plan: PlanId }>(),
+    db.from("card_setups").select("plan, card_saved_at").eq("child_id", childId).maybeSingle(),
     db.from("waitlist_joins").select("child_id").eq("child_id", childId).maybeSingle(),
   ]);
   return { saved: card.data?.card_saved_at ? card.data.plan : null, joined: !!wait.data };

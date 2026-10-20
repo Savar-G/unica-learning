@@ -1,7 +1,7 @@
 import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/lib/database";
-import type { ComparisonInput, Placement } from "@/lib/assessment";
+import type { ComparisonInput } from "@/lib/assessment";
 
 /**
  * Server-only completed-test source for #101. Read across grades: a child's later test in another grade must replace
@@ -21,8 +21,7 @@ export async function loadComparisonInput(admin: SupabaseClient<Database>, asses
       .select("id, child_id, status, completed_at, placement, parent:parents(email)", cursor === null ? { count: "exact" } : {})
       .eq("status", "completed").lte("completed_at", cutoff).order("id", { ascending: true }).limit(500).abortSignal(signal);
     if (cursor !== null) query = query.gt("id", cursor);
-    // placement is jsonb, written as a Placement.
-    const { data, error, count } = await query.overrideTypes<{ placement: Placement | null }[]>();
+    const { data, error, count } = await query;
     if (error || !data) throw new Error(`comparison source: ${error?.message ?? "missing rows"}`);
     if (cursor === null) {
       if (count === null) throw new Error("comparison source: missing exact count");
@@ -30,10 +29,12 @@ export async function loadComparisonInput(admin: SupabaseClient<Database>, asses
     }
     if (data.length === 0) break;
     for (const row of data) {
-      if (cursor !== null && row.id <= cursor) throw new Error("comparison source: page did not advance");
+      // Typed here, so the cursor's type does not depend on the read that the cursor itself shapes.
+      const id: string = row.id;
+      if (cursor !== null && id <= cursor) throw new Error("comparison source: page did not advance");
       if (!row.parent || !row.placement || !row.completed_at || !Number.isFinite(Date.parse(row.completed_at))) throw new Error("comparison source: incomplete test");
-      tests.push({ id: row.id, childId: row.child_id, status: row.status, completedAt: row.completed_at, email: row.parent.email, placement: row.placement });
-      cursor = row.id;
+      tests.push({ id, childId: row.child_id, status: row.status, completedAt: row.completed_at, email: row.parent.email, placement: row.placement });
+      cursor = id;
     }
   }
   if (tests.length !== expected) throw new Error("comparison source: completed set changed during read");
