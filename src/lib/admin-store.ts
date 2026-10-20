@@ -741,8 +741,10 @@ export async function anonymousTestRows(a: AdminSession): Promise<AnonymousTestR
 
 // Live test progress
 
-/** At most this many tests per progress read: the dashboard's open tests, or the ids a page asks for. */
-export const PROGRESS_MAX = 50;
+/** At most this many tests per progress read (the dashboard's open tests, or a poll's ids), asked PROGRESS_CHUNK at a time. */
+export const PROGRESS_MAX = 500;
+/** Ids per database call: public.admin_test_progress_for() returns at most 50 rows. */
+const PROGRESS_CHUNK = 50;
 
 /** One row of public.admin_test_progress_for() (migration add_admin_test_progress_for). */
 type ProgressQueryRow = {
@@ -762,8 +764,9 @@ type ProgressQueryRow = {
  */
 export async function progressRows(a: AdminSession, ids: readonly string[]): Promise<Map<string, ProgressInput>> {
   const wanted = [...new Set(ids.filter(isUuid))].slice(0, PROGRESS_MAX);
-  if (wanted.length === 0) return new Map();
-  const rows = must<ProgressQueryRow[]>(await a.db.rpc("admin_test_progress_for", { ids: wanted }), "test progress");
+  const chunks = Array.from({ length: Math.ceil(wanted.length / PROGRESS_CHUNK) }, (_, i) => wanted.slice(i * PROGRESS_CHUNK, (i + 1) * PROGRESS_CHUNK));
+  const rows = (await Promise.all(chunks.map(async (chunk) =>
+    must<ProgressQueryRow[]>(await a.db.rpc("admin_test_progress_for", { ids: chunk }), "test progress")))).flat();
   return new Map(rows.map((r) => [r.id, {
     status: r.status, route: r.route, answered: r.answered, nextPrompt: r.next_prompt,
     lengths: { stage1: r.stage1, up: r.up, stay: r.stay, down: r.down, extra: r.extra },

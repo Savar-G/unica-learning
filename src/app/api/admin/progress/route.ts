@@ -1,7 +1,7 @@
 import { progressSnapshot } from "@/lib/admin-progress";
 import { adminSession, progressRows } from "@/lib/admin-store";
 
-// Live test progress for the admin pages (admin-progress.ts): GET ?ids=a,b gives those tests, up to PROGRESS_MAX. Admins
+// Live test progress for the admin pages (admin-progress.ts): GET ?ids=a,b gives those tests (up to PROGRESS_MAX). Admins
 // only, as the other admin routes: everyone else gets 404 and nothing is read. The admin's browser asks every few
 // seconds while the page is open, so the answer is small: one short row per test (public.admin_test_progress_for).
 export async function GET(request: Request) {

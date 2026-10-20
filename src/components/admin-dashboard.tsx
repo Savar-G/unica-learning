@@ -88,8 +88,8 @@ export function DashboardView({ d, ctx, progress }: { d: Dashboard; ctx: Ctx; pr
                   <td><Link href={familyHref(ctx, f.id)}><b>{f.name}</b></Link><TestMark test={f.test} /><span className="dash-sub">{f.email}</span></td>
                   <td>{kidsText(f)}</td>
                   <td><StageChip stage={f.stage} />{f.expired && f.stage === "started" && <span className="dash-sub">test expired</span>}
-                    {/* The newest test a child can still go on with: how far they got, live. */}
-                    {(() => { const t = f.tests.find((x) => x.id in progress.tests); return t && <ProgressCell id={t.id} initial={progress} live={!ctx.demo} />; })()}
+                    {/* The newest test a child can still go on with (else the newest one with progress): how far they got, live. */}
+                    {(() => { const t = f.tests.find((x) => progress.tests[x.id]?.open) ?? f.tests.find((x) => x.id in progress.tests); return t && <ProgressCell id={t.id} initial={progress} live={!ctx.demo} />; })()}
                   </td>
                   <td className="dash-nowrap">{since(f.stageAt, d.now)}</td>
                   <td>

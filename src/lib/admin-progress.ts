@@ -107,8 +107,11 @@ export function testProgress(t: ProgressInput, now: number): TestProgress {
   const extra = !tookExtra ? 0 : stopped ? Math.max(0, t.answered - main) : l.extra;
   const total = main + extra;
   const n = Math.min(t.answered, total);
+  // A test from before the stage 1 lock can have Part 2 answers and no stored route (restoreSession routes it by its
+  // Part 1 answers). Its route is not known here: it counts as Part 2, without a prompt, and never as closed too early.
+  const legacy = !t.route && t.answered > part1;
   // Every main answer is in: the test never expires (test-attempt.ts).
-  const mainDone = t.route !== null && t.answered >= main;
+  const mainDone = t.route ? t.answered >= main : legacy && t.answered >= part1 + Math.min(l.up, l.stay, l.down);
   // The facts end when the time is up, or earlier when every drawn fact has a response (factsStep).
   const factsEnd = t.factsStartedAt ? ms(t.factsStartedAt) + FACTS_SECONDS * 1000 : null;
   const factsEarly = t.factsDrawn > 0 && t.factsTried >= t.factsDrawn;
@@ -116,7 +119,7 @@ export function testProgress(t: ProgressInput, now: number): TestProgress {
   const facts = factsEnd === null ? null : { answered: t.factsAnswered, done: factsDone };
   const lastActivityAt = newest(t.startedAt, t.lastAnswerAt, t.lastShown?.at ?? null, t.breakStartedAt, t.breakEndedAt, t.factsStartedAt, t.extraOfferedAt, t.extraSkippedAt, t.extraStartedAt, t.extraFinishedAt, t.completedAt)!;
 
-  const next = n < total && (n < part1 || t.route) ? {
+  const next = n < total && (n < part1 || t.route || legacy) ? {
     number: n + 1,
     part: (n < part1 ? "Part 1" : n < main ? "Part 2" : "Extra round") as ProgressPart,
     prompt: t.nextPrompt,
@@ -141,7 +144,7 @@ export function testProgress(t: ProgressInput, now: number): TestProgress {
 
   // Part 1
   if (n < part1) return onQuestion();
-  if (!t.route) return { ...base, phase: "check", text: "Checking the Part 1 answers", short: "Checking Part 1", ...lastAnswer };
+  if (!t.route && !legacy) return { ...base, phase: "check", text: "Checking the Part 1 answers", short: "Checking Part 1", ...lastAnswer };
   // Halfway: the break, then the quick facts, then the first Part 2 question (its serve is recorded after the facts).
   if (n === part1 && !shownNow) {
     if (factsEnd !== null && !factsDone) return { ...base, phase: "facts", text: `Doing the quick facts: ${t.factsAnswered} answered`, short: "Quick facts", since: t.factsStartedAt!, sinceText: "started" };

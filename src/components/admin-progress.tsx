@@ -42,7 +42,8 @@ async function poll() {
   if (busy || watched.size === 0 || document.visibilityState !== "visible" || !anyOpen()) return;
   busy = true;
   try {
-    const ids = [...watched.keys()];
+    // Only tests that can still change: a finished or closed test stays as it is.
+    const ids = [...watched.keys()].filter((id) => !(id in snapshot.tests) || snapshot.tests[id]?.open === true);
     const res = await fetch(`/api/admin/progress?ids=${ids.join(",")}`, { cache: "no-store" });
     if (res.ok) {
       const next = (await res.json()) as ProgressSnapshot;

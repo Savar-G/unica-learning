@@ -52,6 +52,14 @@ describe("testProgress", () => {
     expect(testProgress(input(5, { lastShown: { position: 4, at: iso(20) } }), NOW)).toMatchObject({ since: iso(27), sinceText: "last answer" });
   });
 
+  it("counts a test from before the stage 1 lock, with Part 2 answers and no stored route, as Part 2", () => {
+    const p = testProgress(input(25, { route: null }), NOW);
+    expect(p).toMatchObject({ phase: "question", text: `Next question: 26 of ${p.main}`, current: { number: 26, part: "Part 2", prompt: null }, open: true });
+    // With enough answers for the shortest form, it may have every main answer in: it is not closed at the deadline.
+    expect(testProgress(input(42, { route: null }), Date.parse(iso(27 + 25 * 60))).open).toBe(true);
+    expect(testProgress(input(25, { route: null }), Date.parse(iso(27 + 25 * 60))).phase).toBe("closed");
+  });
+
   it("shows the Part 1 check grid once every Part 1 question has an answer and the test is not routed", () => {
     expect(testProgress(input(21, { route: null }), NOW)).toMatchObject({ phase: "check", text: "Checking the Part 1 answers", current: null });
   });
