@@ -66,17 +66,15 @@ export const LIST_MAX = 500;
 type Result<T> = { data: T; error: null } | { data: unknown; error: { message: string } };
 
 /**
- * What the schema can say about a row type T: a check constraint keeps text in a union of values, and the shape of a
- * jsonb column or an embedded row is not checked here, so those parts widen. Each column's name, null and base type
- * are still checked.
+ * What the schema can say about a type T that a page states for its rows: text in a union of values widens to text
+ * (a value the page knows, such as a function's text column, that the schema types as text). Every column's name, null
+ * and base type is checked, in embedded rows too. `unknown` stays unchecked.
  */
-type Stored<T> = T extends null ? null
+type StoredRows<T> = unknown extends T ? unknown
+  : T extends null ? null
   : T extends string ? string : T extends number ? number : T extends boolean ? boolean
-  : unknown;
-type StoredRows<T> = T extends null ? null
-  : T extends string | number | boolean ? Stored<T>
   : T extends readonly (infer E)[] ? StoredRows<E>[]
-  : { [K in keyof T]: Stored<T[K]> };
+  : { [K in keyof T]: StoredRows<T[K]> };
 
 /** The rows of a read as T, or a thrown error (the page then shows the error page). The read's own type, from the
  * schema, must fit T (StoredRows). */
@@ -516,11 +514,13 @@ export interface EmailRow {
 }
 
 const EMAIL_COLUMNS = "id, created_at, parent_id, child_id, assessment_id, kind, status, attempts, sent_at, error";
-type EmailQuery = ReturnType<ReturnType<SupabaseClient<Database>["from"]>["select"]>;
+const emailQuery = (db: SupabaseClient<Database>) => db.from("email_log").select(EMAIL_COLUMNS);
+/** The email log read with its own row type, so a filter added to it keeps the columns checked. */
+type EmailQuery = ReturnType<typeof emailQuery>;
 
 /** Reminder emails and unsubscribes (#73), newest first, with who they were for. */
 export async function emailRows(a: AdminSession, narrow: (q: EmailQuery) => EmailQuery = (q) => q, offset = 0): Promise<Page<EmailRow>> {
-  const query = narrow(a.db.from("email_log").select(EMAIL_COLUMNS)).order("created_at", { ascending: false }).order("id", { ascending: false }).range(offset, offset + LIST_MAX);
+  const query = narrow(emailQuery(a.db)).order("created_at", { ascending: false }).order("id", { ascending: false }).range(offset, offset + LIST_MAX);
   const { rows, more } = page(must<Omit<EmailRow, "parent" | "child">[]>(await query, "email log"));
   const [parents, children] = await Promise.all([
     parentsById(a, rows.map((r) => r.parent_id)),
@@ -542,7 +542,9 @@ async function familyEmails(a: AdminSession, id: string): Promise<EmailRow[]> {
 
 // Question templates (#199)
 
-type TemplateStatRow = Omit<TemplateStat, "wrong"> & { wrong: { response: string; misconception: string | null; count: number | string }[] };
+type TemplateStatRow = Omit<TemplateStat, "wrong"> & { wrong: unknown };
+/** One item of `wrong`, the jsonb list the function builds (jsonb_agg), so the schema cannot type it. */
+type WrongCount = { response: string; misconception: string | null; count: number | string };
 
 /**
  * The counts per question template across children (admin_template_stats_v2): the database
@@ -558,7 +560,7 @@ export async function templateStats(a: AdminSession, f: TemplateFilters, templat
     answered: Number(r.answered),
     correct: Number(r.correct),
     median_ms: r.median_ms === null ? null : Number(r.median_ms),
-    wrong: r.wrong.map((w) => ({ response: w.response, misconception: w.misconception, count: Number(w.count) })),
+    wrong: (r.wrong as WrongCount[]).map((w) => ({ response: w.response, misconception: w.misconception, count: Number(w.count) })),
   }));
 }
 

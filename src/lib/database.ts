@@ -1,6 +1,6 @@
 import type { Database as Generated, Json } from "@/lib/database.types";
 import type { AnswerChange } from "@/lib/answer-events";
-import type { AttemptStatus, FactsTest, HelpAnswer, Placement, Province, ReportModel, Route, StoredTest } from "@/lib/assessment";
+import type { AnonymousTestCopy, AttemptStatus, FactsTest, HelpAnswer, Placement, Province, ReportModel, Route, StoredTest } from "@/lib/assessment";
 import type { LogKind, LogStatus } from "@/lib/reminders";
 import type { PlanId } from "@/lib/site";
 import type { TestDevice } from "@/lib/test-context";
@@ -16,22 +16,29 @@ export type { Json };
 // can only narrow. Reads, inserts and updates of these columns take these types.
 type Tbls = Generated["public"]["Tables"];
 type ColumnTypes = KnownColumns<{
+  anonymous_tests: { copy: AnonymousTestCopy };
   answers: { answer_changes: AnswerChange[] | null };
   assessment_facts: { test: FactsTest };
   assessments: { status: AttemptStatus; province: Province; route: Route | null; help: HelpAnswer | null; test: StoredTest; placement: Placement | null; device: TestDevice | null };
   card_setups: { plan: PlanId };
   children: { province: Province };
   email_log: { kind: LogKind; status: LogStatus | null };
+  parents: { source: Record<string, string> };
   reports: { model: ReportModel };
   work_reviews: { kind: StoredReview["kind"]; confidence: StoredReview["confidence"] };
 }>;
 type Fits<T, Column> = Json extends Column ? T
   : (null extends T ? 1 : 0) extends (null extends Column ? 1 : 0) ? (NonNullable<T> extends NonNullable<Column> ? T : never) : never;
 type KnownColumns<T extends { [N in keyof T]: N extends keyof Tbls ? { [C in keyof T[N]]: C extends keyof Tbls[N]["Row"] ? Fits<T[N][C], Tbls[N]["Row"][C]> : never } : never }> = T;
-type Narrow<T, C> = { [K in keyof T]: K extends keyof C ? C[K] : T[K] };
+type ApplyColumnTypes<T, C> = { [K in keyof T]: K extends keyof C ? C[K] : T[K] };
 type DbTables = {
   [N in keyof Tbls]: N extends keyof ColumnTypes
-    ? { Row: Narrow<Tbls[N]["Row"], ColumnTypes[N]>; Insert: Narrow<Tbls[N]["Insert"], ColumnTypes[N]>; Update: Narrow<Tbls[N]["Update"], ColumnTypes[N]>; Relationships: Tbls[N]["Relationships"] }
+    ? {
+      Row: ApplyColumnTypes<Tbls[N]["Row"], ColumnTypes[N]>;
+      Insert: ApplyColumnTypes<Tbls[N]["Insert"], ColumnTypes[N]>;
+      Update: ApplyColumnTypes<Tbls[N]["Update"], ColumnTypes[N]>;
+      Relationships: Tbls[N]["Relationships"];
+    }
     : Tbls[N];
 };
 

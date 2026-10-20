@@ -246,7 +246,8 @@ function deletionStore(db: SupabaseClient<Database>, parent: string, token: stri
     },
     async renew() {
       timeRemaining(deadline, execution);
-      if (!await rpc(db, "renew_family_deletion", args)) throw new Error("Deletion lease lost");
+      const renewed: boolean = await rpc(db, "renew_family_deletion", args);
+      if (!renewed) throw new Error("Deletion lease lost");
     },
     async listImages(prefix, offset, limit) {
       timeRemaining(deadline, execution);
@@ -266,7 +267,8 @@ function deletionStore(db: SupabaseClient<Database>, parent: string, token: stri
     },
     async complete() {
       timeRemaining(deadline, execution);
-      if (!await rpc(db, "complete_family_deletion", args)) throw new Error("Deletion verification failed");
+      const completed: boolean = await rpc(db, "complete_family_deletion", args);
+      if (!completed) throw new Error("Deletion verification failed");
     },
   };
 }
@@ -301,7 +303,8 @@ export async function runFamilyDeletion(db: SupabaseClient<Database>, parent: st
         keep = decision.action === "keep";
       } else if (await settlePaymentOperations(payments) === "unknown") throw new Error("Payment check incomplete");
       timeRemaining(deadline, execution);
-      if (!await rpc(db, "decide_family_deletion", { ...args, keep_family: keep })) throw new Error("Deletion decision lost");
+      const decided: boolean = await rpc(db, "decide_family_deletion", { ...args, keep_family: keep });
+      if (!decided) throw new Error("Deletion decision lost");
       if (keep) return { state: "excluded" };
     }
     timeRemaining(deadline, execution);
