@@ -2,7 +2,8 @@ import "server-only";
 import { connection } from "next/server";
 import { notFound } from "next/navigation";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import type { FactsTest, HelpAnswer, Placement, Province, StoredTest } from "@/lib/assessment";
+import type { FactsTest, HelpAnswer, Placement, Province, Route, StoredTest } from "@/lib/assessment";
+import type { ProgressInput } from "@/lib/admin-progress";
 import { isUuid } from "@/lib/assessment-store";
 import { LEARNING_COLUMNS, type LearningRow } from "@/lib/learning-style";
 import { filterTests, questionNumbers, type AdminFilters, type AnswerRecord, type FactAnswerRecord, type ReviewRecord, type ShownRecord } from "@/lib/admin-view";
@@ -736,4 +737,55 @@ async function deliveryRows(a: AdminSession): Promise<RawDelivery[]> {
  */
 export async function anonymousTestRows(a: AdminSession): Promise<AnonymousTestRow[]> {
   return allRows<AnonymousTestRow>(a.db.from("anonymous_tests").select("id, copy").order("id"), "anonymous tests");
+}
+
+// Live test progress
+
+/** At most this many tests per progress read: the dashboard's open tests, or the ids a page asks for. */
+export const PROGRESS_MAX = 50;
+
+type ProgressQueryRow = {
+  id: string; status: AssessmentStatus; route: Route | null; test: StoredTest; started_at: string; last_answer_at: string | null;
+  completed_at: string | null; resume_until: string; break_started_at: string | null; break_ended_at: string | null;
+  extra_offered_at: string | null; extra_skipped_at: string | null; extra_started_at: string | null; extra_finished_at: string | null;
+  answers: { count: number }[];
+  question_shows: { position: number; shown_at: string }[];
+  assessment_facts: { started_at: string; fact_answers: { count: number }[] } | null;
+};
+
+/**
+ * How far each test got, by test id (admin-progress.ts). With `ids`, those tests (any status); without, every test a
+ * child can still go on with now (in progress, deadline not passed). One read: the counts and the newest serve come
+ * embedded, so a poll stays one request to the database.
+ */
+export async function progressRows(a: AdminSession, now: Date, ids?: readonly string[]): Promise<Map<string, ProgressInput>> {
+  const wanted = ids?.filter(isUuid).slice(0, PROGRESS_MAX);
+  if (wanted && wanted.length === 0) return new Map();
+  let q = a.db.rpc("admin_assessments").select(
+    `id, status, route, test, started_at, last_answer_at, completed_at, resume_until, break_started_at, break_ended_at, ${EXTRA_ROUND_COLUMNS}, ` +
+    "answers(count), question_shows(position, shown_at), assessment_facts(started_at, fact_answers(count))",
+  ).order("position", { referencedTable: "question_shows", ascending: false }).limit(1, { referencedTable: "question_shows" });
+  q = wanted ? q.in("id", wanted) : q.eq("status", "in_progress").gt("resume_until", now.toISOString());
+  const rows = must<ProgressQueryRow[]>(await q.order("last_answer_at", { ascending: false, nullsFirst: false }).limit(PROGRESS_MAX), "test progress");
+  return new Map(rows.map((r) => [r.id, {
+    status: r.status, stored: r.test, route: r.route, answered: r.answers[0]?.count ?? 0,
+    lastShown: r.question_shows[0] ? { position: r.question_shows[0].position, at: r.question_shows[0].shown_at } : null,
+    startedAt: r.started_at, lastAnswerAt: r.last_answer_at, completedAt: r.completed_at, resumeUntil: r.resume_until,
+    breakStartedAt: r.break_started_at, breakEndedAt: r.break_ended_at,
+    factsStartedAt: r.assessment_facts?.started_at ?? null, factsAnswered: r.assessment_facts?.fact_answers[0]?.count ?? 0,
+    extraOfferedAt: r.extra_offered_at, extraSkippedAt: r.extra_skipped_at, extraStartedAt: r.extra_started_at, extraFinishedAt: r.extra_finished_at,
+  }]));
+}
+
+/** One test's progress records from its full detail, so the test page needs no second read for its first render. */
+export function detailProgress(d: TestDetail): ProgressInput {
+  const shown = d.shows.reduce<ShownRecord | null>((a, s) => (!a || s.position > a.position ? s : a), null);
+  return {
+    status: d.test.status, stored: d.test.stored, route: d.test.route as Route | null, answered: d.answers.length,
+    lastShown: shown ? { position: shown.position, at: shown.shown_at } : null,
+    startedAt: d.test.started_at, lastAnswerAt: d.test.last_answer_at, completedAt: d.test.completed_at, resumeUntil: d.test.resume_until,
+    breakStartedAt: d.context.break_started_at, breakEndedAt: d.context.break_ended_at,
+    factsStartedAt: d.facts?.started_at ?? null, factsAnswered: d.facts?.answers.length ?? 0,
+    extraOfferedAt: d.extraRound.extra_offered_at, extraSkippedAt: d.extraRound.extra_skipped_at, extraStartedAt: d.extraRound.extra_started_at, extraFinishedAt: d.extraRound.extra_finished_at,
+  };
 }

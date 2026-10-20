@@ -5,11 +5,13 @@ import { DailyBars, Funnel, Spark } from "@/components/admin-charts";
 import { Card, Delta, Notes, RangeTabs, StageChip, TestMark, familyHref, href, type Ctx } from "@/components/admin-dashboard-parts";
 import { ALL_STAGES, EMAIL_LABEL, RANGES, deliveryLine, emailDot, STAGE_SHORT, ago, at, kidsText, since, type Dashboard } from "@/lib/admin-dashboard";
 import { ADMIN_PATH } from "@/lib/admin-view";
+import type { ProgressSnapshot } from "@/lib/admin-progress";
+import { ProgressCell } from "@/components/admin-progress";
 
 /** Families per page of the table; the stage pills and search narrow it. */
 const ROWS_MAX = 200;
 
-export function DashboardView({ d, ctx }: { d: Dashboard; ctx: Ctx }) {
+export function DashboardView({ d, ctx, progress }: { d: Dashboard; ctx: Ctx; progress: ProgressSnapshot }) {
   const stage = ALL_STAGES.find((s) => s === ctx.query.stage) ?? null;
   const q = (ctx.query.q ?? "").trim().toLowerCase();
   const rows = d.families.filter((f) => (!stage || f.stage === stage) && (!q || `${f.name} ${f.email} ${kidsText(f)}`.toLowerCase().includes(q)));
@@ -85,7 +87,10 @@ export function DashboardView({ d, ctx }: { d: Dashboard; ctx: Ctx }) {
                 <tr key={f.id}>
                   <td><Link href={familyHref(ctx, f.id)}><b>{f.name}</b></Link><TestMark test={f.test} /><span className="dash-sub">{f.email}</span></td>
                   <td>{kidsText(f)}</td>
-                  <td><StageChip stage={f.stage} />{f.expired && f.stage === "started" && <span className="dash-sub">test expired</span>}</td>
+                  <td><StageChip stage={f.stage} />{f.expired && f.stage === "started" && <span className="dash-sub">test expired</span>}
+                    {/* The newest test a child can still go on with: how far they got, live. */}
+                    {(() => { const t = f.tests.find((x) => x.id in progress.tests); return t && <ProgressCell id={t.id} initial={progress} live={!ctx.demo} />; })()}
+                  </td>
                   <td className="dash-nowrap">{since(f.stageAt, d.now)}</td>
                   <td>
                     {f.lastEmail ? <>{EMAIL_LABEL[f.lastEmail.kind]}{f.lastEmail.status === "failed" && <b className="dash-bad-text"> failed</b>}<span className="dash-sub">{ago(f.lastEmail.at, d.now)}</span></> : <span className="dash-muted">None</span>}

@@ -4,8 +4,10 @@ import { adminEmailPath, adminParentPath, adminReportPath, adminTestPath } from 
 import { EMAIL_LABEL, STAGES, clicksText, deliveryLine, emailDot, STAGE_ACTION, STAGE_TEXT, ago, at, nextReminderText, paymentText, type Dashboard, type Stage } from "@/lib/admin-dashboard";
 import { stripeCustomerUrl as stripeUrl } from "@/lib/stripe";
 import { StageChip, TestMark, href, type Ctx } from "@/components/admin-dashboard-parts";
+import { ProgressPanel } from "@/components/admin-progress";
+import type { ProgressSnapshot } from "@/lib/admin-progress";
 
-export function FamilyDrawer({ ctx, d, id }: { ctx: Ctx; d: Dashboard; id: string }) {
+export function FamilyDrawer({ ctx, d, id, progress }: { ctx: Ctx; d: Dashboard; id: string; progress: ProgressSnapshot }) {
   const f = d.families.find((x) => x.id === id);
   if (!f) return null;
   const close = href(ctx, { family: null });
@@ -44,6 +46,7 @@ export function FamilyDrawer({ ctx, d, id }: { ctx: Ctx; d: Dashboard; id: strin
                   <li key={t.id}>
                     {t.status === "completed" ? "Finished" : t.status === "expired" ? "Expired" : "In progress"} · {t.answered} answers · started {at(t.startedAt)}{t.completedAt ? `, finished ${at(t.completedAt)}` : ""}
                     {!ctx.demo && <> · <Link href={adminTestPath(t.id)}>Test</Link>{t.reportId && <> · <Link href={adminReportPath(t.reportId)}>Report</Link></>}</>}
+                    {t.id in progress.tests && <ProgressPanel id={t.id} initial={progress} live={!ctx.demo} />}
                   </li>
                 ))}</ul>
               )}
