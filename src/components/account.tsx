@@ -433,7 +433,9 @@ function signInFailureText(failure: SignInFailure): ReactNode {
 
 /**
  * Sends a sign-in code to an existing account (D-134). It never makes an account. Supabase answers an unknown email with
- * an error; the screen says the same thing for both, so it does not tell anyone which emails have an account.
+ * an error, but the screen says the same thing for both. A new code is not asked for within a minute of the last one, so
+ * Supabase's one-email-a-minute answer (which only an existing account gets) does not show on the screen either. Supabase
+ * itself still answers the two cases differently, as it does for the reset form.
  */
 async function sendSignInCode(email: string): Promise<"sent" | "no_account" | "wait" | "failed"> {
   const { error } = await browserClient().auth.signInWithOtp({ email, options: { shouldCreateUser: false } });
@@ -460,6 +462,9 @@ export function SignIn({ googleFailed, next = "/account" }: { googleFailed: bool
   const [code, setCode] = useState("");
   const [note, setNote] = useState<CodeNote>(null);
   const [resending, setResending] = useState(false);
+  const [emailBad, setEmailBad] = useState(false);
+  // When this tab last asked for a code. Supabase sends one email a minute for each address.
+  const lastSent = useRef(0);
   const cleanEmail = email.trim().toLowerCase();
 
   useEffect(() => {
@@ -486,13 +491,15 @@ export function SignIn({ googleFailed, next = "/account" }: { googleFailed: bool
   const askCode = async (e: FormEvent) => {
     e.preventDefault();
     if (busy) return;
+    setNote(null);
     if (!EMAIL.test(email.trim())) {
-      setNote(null);
+      setEmailBad(true);
       document.getElementById("s-email")?.focus();
       return;
     }
+    setEmailBad(false);
     setBusy(true);
-    setNote(null);
+    lastSent.current = Date.now();
     const sent = await sendSignInCode(cleanEmail);
     setBusy(false);
     track(sent === "failed" ? "sign_in_code_failed" : "sign_in_code_sent", sent === "failed" ? { code: "send" } : { status: sent });
@@ -507,7 +514,12 @@ export function SignIn({ googleFailed, next = "/account" }: { googleFailed: bool
 
   const resend = async () => {
     if (resending || busy) return;
+    if (Date.now() - lastSent.current < 60_000) {
+      setNote("wait");
+      return;
+    }
     setResending(true);
+    lastSent.current = Date.now();
     const sent = await sendSignInCode(cleanEmail);
     setResending(false);
     track(sent === "failed" ? "sign_in_code_failed" : "sign_in_code_sent", sent === "failed" ? { code: "send" } : { status: sent === "sent" ? "again" : sent });
@@ -549,7 +561,11 @@ export function SignIn({ googleFailed, next = "/account" }: { googleFailed: bool
     const bad = note === "bad" || note === "expired";
     return (
       <form className="acct-form" onSubmit={confirm} noValidate>
-        <p role="status" className="acct-alert">If <b>{cleanEmail}</b> has an account, we sent a code to it. Enter the code here to sign in.</p>
+        <p role="status" className="acct-alert">
+          {note === "wait"
+            ? <>To sign in as <b>{cleanEmail}</b>, enter the code from our email here.</>
+            : <>If <b>{cleanEmail}</b> has an account, we sent a code to it. Enter the code here to sign in.</>}
+        </p>
         <Field id="s-code" label="Code from the email" bad={bad}>
           <input
             ref={codeInput}
@@ -567,7 +583,7 @@ export function SignIn({ googleFailed, next = "/account" }: { googleFailed: bool
         <Submit busy={busy}>Sign in <span className="arr">→</span></Submit>
         <p className="small">
           No email? Check your spam folder, or{" "}
-          <button className="acct-link" type="button" onClick={resend} disabled={resending} aria-busy={resending}>send a new code</button>.{" "}
+          <button className="acct-link" type="button" onClick={resend} disabled={resending || busy} aria-busy={resending}>send a new code</button>.{" "}
           <button className="acct-link" type="button" disabled={busy} onClick={() => { setMode("code"); setNote(null); }}>Use a different email</button>
         </p>
         <p className="small">New here? <Link href="/start">Create an account</Link></p>
@@ -580,8 +596,8 @@ export function SignIn({ googleFailed, next = "/account" }: { googleFailed: bool
       <form className="acct-form" onSubmit={askCode} noValidate>
         <GoogleButton next={next === "/account" ? undefined : next} />
         {note && <p role="alert" className="acct-alert">{codeNoteText(note)}</p>}
-        <Field id="s-email" label="Email" hint="We email you a code. Enter it here to sign in. No password needed.">
-          <input id="s-email" type="email" autoComplete="email" required value={email} onChange={(e) => setEmail(e.target.value)} aria-describedby="h-s-email" />
+        <Field id="s-email" label="Email" bad={emailBad} error="Enter a valid email." hint="We email you a code. Enter it here to sign in. No password needed.">
+          <input id="s-email" type="email" autoComplete="email" required value={email} onChange={(e) => setEmail(e.target.value)} aria-invalid={emailBad} aria-describedby={described("s-email", emailBad, true)} />
         </Field>
         <Submit busy={busy}>Email me a code <span className="arr">→</span></Submit>
         <p className="small"><button className="acct-link" type="button" onClick={toPassword}>Sign in with your password instead</button></p>
@@ -1002,7 +1018,8 @@ export function NewPassword() {
       track("password_change_failed", { code: updateError.code ?? "unknown" });
       setError(updateError.code === "same_password" ? "This is your current password. Choose a different one."
         : updateError.code === "weak_password" ? errorText("weak_password")
-        : updateError.status === 401 ? errorText("signed_out")
+        : updateError.status === 401 || updateError.code === "reauthentication_needed" ? errorText("signed_out")
+        : updateError.code === "current_password_required" ? errorText("password_change_blocked")
         : errorText("store_failed"));
       setBusy(false);
       return;
