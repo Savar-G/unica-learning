@@ -2,6 +2,7 @@ import "server-only";
 import { connection } from "next/server";
 import { notFound } from "next/navigation";
 import type { SupabaseClient } from "@supabase/supabase-js";
+import type { Database, Json } from "@/lib/database";
 import type { FactsTest, HelpAnswer, Placement, Province, Route, StoredTest } from "@/lib/assessment";
 import type { ProgressInput } from "@/lib/admin-progress";
 import { isUuid } from "@/lib/assessment-store";
@@ -28,7 +29,7 @@ import type { AnonymousTestRow } from "@/lib/anonymous-copy-export";
 
 export interface AdminSession {
   /** The admin's own session client: row-level security and the admin_* functions apply to it. */
-  db: SupabaseClient;
+  db: SupabaseClient<Database>;
   userId: string;
   email: string;
 }
@@ -62,22 +63,40 @@ export async function requireAdmin(): Promise<AdminSession> {
 /** Rows per list, newest first. A longer list says so. */
 export const LIST_MAX = 500;
 
-type Result = { data: unknown; error: { message: string } | null };
+type Result<T> = { data: T; error: null } | { data: unknown; error: { message: string } };
 
-/** The rows of a read, as T, or a thrown error (the page then shows the error page). The admin_* functions are not in
- * the client's types, so each call names the type of what it selected. */
-function must<T>({ data, error }: Result, what: string): T {
-  if (error) throw new Error(`[admin] ${what}: ${error.message}`);
-  return data as T;
+/**
+ * What the schema can say about a row type T: check constraints keep text in a union of values, and a jsonb column or
+ * an embedded row is Json to it, so those parts widen. Each column's name, null and base type are still checked.
+ */
+type Stored<T> = T extends null ? null
+  : T extends string ? string : T extends number ? number : T extends boolean ? boolean
+  : Json;
+type StoredRows<T> = T extends null ? null
+  : T extends string | number | boolean ? Stored<T>
+  : T extends readonly (infer E)[] ? StoredRows<E>[]
+  : { [K in keyof T]: Stored<T[K]> };
+
+/** The rows of a read as T, or a thrown error (the page then shows the error page). The read's own type, from the
+ * schema, must fit T (StoredRows). */
+function must<T>(result: Result<StoredRows<T>>, what: string): T {
+  if (result.error) throw new Error(`[admin] ${what}: ${result.error.message}`);
+  return result.data as T;
+}
+
+/** For a read whose columns are named at run time (the export): the schema cannot type its rows. */
+function mustUntyped<T>(result: Result<unknown>, what: string): T {
+  if (result.error) throw new Error(`[admin] ${what}: ${result.error.message}`);
+  return result.data as T;
 }
 
 /** Ids per `in` filter, so a request URL stays short. */
 const CHUNK = 100;
 
-type RangeRead = { range: (from: number, to: number) => PromiseLike<Result>; order: (column: string) => RangeRead };
+type RangeRead<T> = { range: (from: number, to: number) => PromiseLike<Result<StoredRows<T[]>>>; order: (column: "id") => RangeRead<T> };
 
 /** PostgREST caps each response. Page related rows too, so family details and totals are complete. */
-async function allRows<T>(query: RangeRead, what: string): Promise<T[]> {
+async function allRows<T>(query: RangeRead<T>, what: string): Promise<T[]> {
   const out: T[] = [];
   for (let from = 0; ; from += LIST_MAX) {
     const rows = must<T[]>(await query.range(from, from + LIST_MAX - 1), what);
@@ -86,8 +105,8 @@ async function allRows<T>(query: RangeRead, what: string): Promise<T[]> {
   }
 }
 
-/** Rows of T for the ids, read CHUNK ids at a time. The rows' type comes from the caller: the query does not know it. */
-async function byIds<T>(ids: Iterable<string>, what: string, read: (chunk: string[]) => RangeRead): Promise<T[]> {
+/** Rows of T for the ids, read CHUNK ids at a time. */
+async function byIds<T>(ids: Iterable<string>, what: string, read: (chunk: string[]) => RangeRead<T>): Promise<T[]> {
   const list = [...new Set(ids)];
   const out: T[] = [];
   for (let i = 0; i < list.length; i += CHUNK) out.push(...await allRows<T>(read(list.slice(i, i + CHUNK)).order("id"), what));
@@ -263,8 +282,8 @@ export async function getTest(a: AdminSession, id: string): Promise<TestDetail |
   ]);
   // a failed read with no test row behind it must not become an unhandled rejection
   related.catch(() => {});
-  const row = must<(TestQueryRow & { seed: number; resume_until: string; test: StoredTest } & TestContextRecord & ExtraRoundColumns) | null>(
-    await a.db.rpc("admin_assessments").select(`${TEST_COLUMNS}, seed, resume_until, test, ${CONTEXT_COLUMNS}, ${EXTRA_ROUND_COLUMNS}`).eq("id", id).maybeSingle(), "test");
+  const row = await a.db.rpc("admin_assessments").select(`${TEST_COLUMNS}, seed, resume_until, test, ${CONTEXT_COLUMNS}, ${EXTRA_ROUND_COLUMNS}`).eq("id", id).maybeSingle()
+    .then((r) => must<(TestQueryRow & { seed: number; resume_until: string; test: StoredTest } & TestContextRecord & ExtraRoundColumns) | null>(r, "test"));
   if (!row) return null;
   const { device, break_started_at, break_ended_at, break_skipped, break_ms, extra_offered_at, extra_skipped_at, extra_started_at, extra_finished_at, ...withoutContext } = row;
   const context: TestContextRecord = { device, break_started_at, break_ended_at, break_skipped, break_ms };
@@ -312,8 +331,8 @@ export interface ProfileDetail {
 /** The learner profile of one test, or null when there is no such test. */
 export async function getProfile(a: AdminSession, id: string): Promise<ProfileDetail | null> {
   if (!isUuid(id)) return null;
-  const test = must<Omit<ProfileDetail["test"], "child" | "parent"> | null>(
-    await a.db.rpc("admin_assessments").select("id, child_id, parent_id, grade, province, status, completed_at").eq("id", id).maybeSingle(), "profile test");
+  const test = await a.db.rpc("admin_assessments").select("id, child_id, parent_id, grade, province, status, completed_at").eq("id", id).maybeSingle()
+    .then((r) => must<Omit<ProfileDetail["test"], "child" | "parent"> | null>(r, "profile test"));
   if (!test) return null;
   const [[child], [parent], stored, answers] = await Promise.all([
     childrenById(a, [test.child_id]),
@@ -394,7 +413,7 @@ export async function getParent(a: AdminSession, id: string): Promise<ParentDeta
     familyEmails(a, id),
   ]);
   related.catch(() => {});
-  const parent = must<ParentRow | null>(await a.db.rpc("admin_parents").select(PARENT_COLUMNS).eq("id", id).maybeSingle(), "parent");
+  const parent = await a.db.rpc("admin_parents").select(PARENT_COLUMNS).eq("id", id).maybeSingle().then((r) => must<ParentRow | null>(r, "parent"));
   if (!parent) return null;
   const [children, tests, cards, waitlist, emails] = await related;
   return { parent, children, tests, cards, waitlist, emails };
@@ -432,7 +451,8 @@ export type ChildDetail = ChildRow & LearningRow & { learning_updated_at: string
 /** One child and their family records. #78 can use the parent id for the future deletion action. */
 export async function getChild(a: AdminSession, id: string): Promise<{ child: ChildDetail; family: ParentDetail } | null> {
   if (!isUuid(id)) return null;
-  const child = must<ChildDetail | null>(await a.db.rpc("admin_children").select(`${CHILD_COLUMNS}, ${LEARNING_COLUMNS}, learning_updated_at`).eq("id", id).maybeSingle(), "child");
+  const child = await a.db.rpc("admin_children").select(`${CHILD_COLUMNS}, ${LEARNING_COLUMNS}, learning_updated_at`).eq("id", id).maybeSingle()
+    .then((r) => must<ChildDetail | null>(r, "child"));
   if (!child) return null;
   const family = await getParent(a, child.parent_id);
   return family ? { child, family: { ...family, tests: family.tests.filter((t) => t.child_id === id) } } : null;
@@ -495,7 +515,7 @@ export interface EmailRow {
 }
 
 const EMAIL_COLUMNS = "id, created_at, parent_id, child_id, assessment_id, kind, status, attempts, sent_at, error";
-type EmailQuery = ReturnType<ReturnType<SupabaseClient["from"]>["select"]>;
+type EmailQuery = ReturnType<ReturnType<SupabaseClient<Database>["from"]>["select"]>;
 
 /** Reminder emails and unsubscribes (#73), newest first, with who they were for. */
 export async function emailRows(a: AdminSession, narrow: (q: EmailQuery) => EmailQuery = (q) => q, offset = 0): Promise<Page<EmailRow>> {
@@ -563,7 +583,7 @@ export function exportReader(a: AdminSession): ExportReader {
     testFamilies: () => testAccountIds(a),
     page: async (table, columns, after, limit) => {
       const q = paged(table, columns.join(", "));
-      return must<ExportRow[]>(await (after === null ? q : q.gt("id", after)).order("id").limit(limit), `export ${table}`);
+      return mustUntyped<ExportRow[]>(await (after === null ? q : q.gt("id", after)).order("id").limit(limit), `export ${table}`);
     },
     ofTests: async (table, columns, order, testIds) => {
       const keys = ["assessment_id", ...order];
@@ -572,7 +592,7 @@ export function exportReader(a: AdminSession): ExportReader {
         let q = a.db.from(table).select([...new Set([...keys, ...columns])].join(", ")).in("assessment_id", testIds);
         if (last) q = q.or(afterRow(keys, last));
         for (const k of keys) q = q.order(k);
-        const rows = must<ExportRow[]>(await q.limit(EXPORT_READ), `export ${table}`);
+        const rows = mustUntyped<ExportRow[]>(await q.limit(EXPORT_READ), `export ${table}`);
         if (rows.length === 0) return out;
         out.push(...rows);
         last = rows[rows.length - 1];
@@ -717,10 +737,8 @@ export async function getEmailCopy(a: AdminSession, emailId: string): Promise<Em
   const [id, which, ...rest] = emailId.split(":");
   if (!isUuid(id) || rest.length > 0 || (which !== undefined && which !== "report" && which !== "alert")) return null;
   const query = a.db.from("email_copies").select("outcome, email_id, from_address, to_address, reply_to, subject, text_body, html_body, updated_at");
-  const row = must<EmailCopyRow | null>(
-    await (which ? query.eq("report_id", id).eq("report_email", which === "report" ? "parent" : "alert") : query.eq("email_log_id", id)).maybeSingle(),
-    "email copy",
-  );
+  const row = await (which ? query.eq("report_id", id).eq("report_email", which === "report" ? "parent" : "alert") : query.eq("email_log_id", id)).maybeSingle()
+    .then((r) => must<EmailCopyRow | null>(r, "email copy"));
   if (!row) return null;
   const events = row.email_id
     ? must<{ type: Delivery["type"]; occurred_at: string; detail: string | null }[]>(

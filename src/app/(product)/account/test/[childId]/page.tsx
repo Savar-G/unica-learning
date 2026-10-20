@@ -26,7 +26,8 @@ export default async function TestPage(props: PageProps<"/account/test/[childId]
 
   const { childId } = await props.params;
   const [{ data: child }, states] = await Promise.all([
-    db.from("children").select("id, first_name, grade, province").eq("id", childId).maybeSingle<Child>(),
+    // A check constraint limits province to the curriculum ids.
+    db.from("children").select("id, first_name, grade, province").eq("id", childId).maybeSingle().overrideTypes<Pick<Child, "province">>(),
     parentStartStates(parent, childId),
   ]);
   if (!child) notFound();

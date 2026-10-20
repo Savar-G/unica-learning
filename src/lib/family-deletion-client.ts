@@ -1,5 +1,6 @@
 import "server-only";
 import { createClient } from "@supabase/supabase-js";
+import type { Database } from "@/lib/database";
 import Stripe from "stripe";
 
 /** Both SDKs use this fetch boundary. Work aborts never cancel the separate control client. */
@@ -12,7 +13,7 @@ export function deletionFetch(signal: AbortSignal, requestMs: number): typeof fe
 }
 
 export function deletionClient(url: string, key: string, signal: AbortSignal, requestMs: number) {
-  return createClient(url, key, {
+  return createClient<Database>(url, key, {
     auth: { persistSession: false, autoRefreshToken: false },
     global: { fetch: deletionFetch(signal, requestMs) },
   });

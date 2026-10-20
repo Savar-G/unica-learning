@@ -3,6 +3,7 @@ import { randomUUID } from "node:crypto";
 import { setTimeout as wait } from "node:timers/promises";
 import type Stripe from "stripe";
 import type { SupabaseClient } from "@supabase/supabase-js";
+import type { Database, Json } from "@/lib/database";
 import {
   checkFamilyPayments, deleteFamily, settlePaymentOperations, withDeletionHeartbeat,
   type FamilyCard, type FamilyDeletionResult, type FamilyDeletionStore, type FamilyPaymentStore, type PaymentOperation, type PaymentProgress,
@@ -13,29 +14,38 @@ import { stripe } from "@/lib/stripe";
 import { WORK_BUCKET } from "@/lib/work-store";
 
 /** Missing migration permits the existing card path, but no other failure does. Deletion itself never falls back. */
-export async function beginCardOperation(db: SupabaseClient, parent: string, token: string): Promise<boolean> {
+export async function beginCardOperation(db: SupabaseClient<Database>, parent: string, token: string): Promise<boolean> {
   const { error } = await db.rpc("begin_family_card_operation", { p: parent, token });
   if (error?.code === "PGRST202") return false;
   if (error) throw new Error("Card operation unavailable");
   return true;
 }
 
-export async function endCardOperation(db: SupabaseClient, token: string): Promise<void> {
+export async function endCardOperation(db: SupabaseClient<Database>, token: string): Promise<void> {
   const { error } = await db.rpc("end_family_card_operation", { token });
   if (error) console.error("[deletion] card hold release failed", error.code);
 }
 
-async function rpc<T>(db: SupabaseClient, name: string, args: Record<string, unknown>): Promise<T> {
-  const { data, error } = await db.rpc(name, args);
+type Fns = Database["public"]["Functions"];
+/** A database function's name with its arguments, as the schema has them. */
+type Call = { [N in keyof Fns]: [Fns[N]["Args"]] extends [never] ? [name: N] : [name: N, args: Fns[N]["Args"]] }[keyof Fns];
+/** A call of a function that takes the family and the job's token (`p`, `token`): the other arguments. */
+type GuardedCall = { [N in keyof Fns]: [Fns[N]["Args"]] extends [never] ? never
+  : Fns[N]["Args"] extends { p: string; token: string } ? [name: N, values: Omit<Fns[N]["Args"], "p" | "token">] : never }[keyof Fns];
+
+/** `T` is the answer's shape: the generated types cannot say when a function answers null. */
+async function rpc<T>(db: SupabaseClient<Database>, ...[name, args]: Call): Promise<T> {
+  // The schema checked the name and arguments at the call (Call); this one call cannot carry that pairing.
+  const { data, error } = await db.rpc(name, (args ?? {}) as never);
   if (error) throw new Error(`Deletion dependency: ${name} (${error.code})`);
   return data as T;
 }
 
-export async function deletionCursor(db: SupabaseClient): Promise<string | null> {
-  return rpc(db, "family_deletion_cursor", {});
+export async function deletionCursor(db: SupabaseClient<Database>): Promise<string | null> {
+  return rpc(db, "family_deletion_cursor");
 }
 
-export async function advanceDeletionCursor(db: SupabaseClient, parent: string): Promise<void> {
+export async function advanceDeletionCursor(db: SupabaseClient<Database>, parent: string): Promise<void> {
   await rpc(db, "advance_family_deletion_cursor", { p: parent });
 }
 
@@ -59,7 +69,7 @@ function paymentOptions(deadline: number, execution?: FamilyDeletionExecution) {
 }
 
 /** Stable keyset RPC paging, including jobs whose Auth deletion succeeded before the worker stopped. */
-export async function deletionCandidates(db: SupabaseClient): Promise<string[]> {
+export async function deletionCandidates(db: SupabaseClient<Database>): Promise<string[]> {
   const ids: string[] = [];
   let after: string | null = null;
   for (;;) {
@@ -79,7 +89,7 @@ const isFamilyCard = (c: unknown): c is FamilyCard => typeof c === "object" && c
       && typeof (c as FamilyCard).booking?.ref === "string" && !!(c as FamilyCard).booking?.ref));
 
 /** Every family the worker decides (#191): the queue, due free-test families, and every family with Stripe history. */
-export async function retentionCandidates(db: SupabaseClient): Promise<RetentionCandidate[]> {
+export async function retentionCandidates(db: SupabaseClient<Database>): Promise<RetentionCandidate[]> {
   const families: RetentionCandidate[] = [];
   let after: string | null = null;
   for (;;) {
@@ -98,7 +108,7 @@ export async function retentionCandidates(db: SupabaseClient): Promise<Retention
 }
 
 /** The database half of the retention facts for a frozen family. The fence keeps both parts from changing. */
-async function frozenFamily(db: SupabaseClient, parent: string, deadline: number, execution?: FamilyDeletionExecution): Promise<RetentionFamily | null> {
+async function frozenFamily(db: SupabaseClient<Database>, parent: string, deadline: number, execution?: FamilyDeletionExecution): Promise<RetentionFamily | null> {
   paymentOptions(deadline, execution);
   const cards = await rpc<unknown>(db, "family_retention_cards", { p: parent });
   if (!Array.isArray(cards) || !cards.every(isFamilyCard)) return null;
@@ -109,10 +119,10 @@ async function frozenFamily(db: SupabaseClient, parent: string, deadline: number
 
 /** Run after freezing and settling app card operations. Remote journal and canceled-intent traversal are durable.
  * Fresh current-state reads remain mandatory; unknown results keep the checking job and its fence. */
-function paymentStore(db: SupabaseClient, parent: string, token: string, deadline: number, control: SupabaseClient, execution?: FamilyDeletionExecution): FamilyPaymentStore {
+function paymentStore(db: SupabaseClient<Database>, parent: string, token: string, deadline: number, control: SupabaseClient<Database>, execution?: FamilyDeletionExecution): FamilyPaymentStore {
   const s = execution?.payments ?? stripe();
   const args = { p: parent, token };
-  const guarded = <T>(name: string, values: Record<string, unknown>) => { paymentOptions(deadline, execution); return rpc<T>(db, name, { ...args, ...values }); };
+  const guarded = <T>(...[name, values]: GuardedCall) => { paymentOptions(deadline, execution); return rpc<T>(db, ...([name, { ...args, ...values }] as Call)); };
   const pending = async () => {
     const operations: PaymentOperation[] = [];
     let after: string | null = null;
@@ -202,13 +212,13 @@ function paymentStore(db: SupabaseClient, parent: string, token: string, deadlin
  * working or free text; the assessment core's allowlist then picks the copy's fields. A missing function (the
  * migration is not applied) throws, so no deletion runs without its copy.
  */
-export async function familyCopySources(db: SupabaseClient, parent: string): Promise<unknown[]> {
+export async function familyCopySources(db: SupabaseClient<Database>, parent: string): Promise<unknown[]> {
   const sources = await rpc<unknown>(db, "family_copy_sources", { p: parent.toLowerCase() });
   if (!Array.isArray(sources)) throw new Error("Copy source unreadable");
   return sources;
 }
 
-function deletionStore(db: SupabaseClient, parent: string, token: string, deadline: number, execution?: FamilyDeletionExecution): FamilyDeletionStore {
+function deletionStore(db: SupabaseClient<Database>, parent: string, token: string, deadline: number, execution?: FamilyDeletionExecution): FamilyDeletionStore {
   const args = { p: parent, token };
   return {
     // #201: under the deleting lease. The save writes the copy and its link to the test in one transaction, so a lost
@@ -219,7 +229,8 @@ function deletionStore(db: SupabaseClient, parent: string, token: string, deadli
     },
     async saveCopy(test, copy) {
       timeRemaining(deadline, execution);
-      return rpc<boolean>(db, "save_family_test_copy", { ...args, test_id: test, test_copy: copy });
+      // The copy's profile is the stored jsonb profile, passed on unread (unknown), so toJson cannot check its shape.
+      return rpc<boolean>(db, "save_family_test_copy", { ...args, test_id: test, test_copy: copy as unknown as Json });
     },
     async confirmCopies() {
       timeRemaining(deadline, execution);
@@ -256,7 +267,7 @@ function deletionStore(db: SupabaseClient, parent: string, token: string, deadli
  * An explicit request and the scheduled job share the same durable, retryable process. No analytics or email.
  * `retention`: the Node worker's claim (#191). Without it, the claim is the #78 one (queue or free-test rule).
  */
-export async function runFamilyDeletion(db: SupabaseClient, parent: string, control: SupabaseClient = db, deadline = Date.now() + 45_000, execution?: FamilyDeletionExecution, retention?: RetentionClaim): Promise<FamilyDeletionResult> {
+export async function runFamilyDeletion(db: SupabaseClient<Database>, parent: string, control: SupabaseClient<Database> = db, deadline = Date.now() + 45_000, execution?: FamilyDeletionExecution, retention?: RetentionClaim): Promise<FamilyDeletionResult> {
   if (execution && (!Number.isFinite(execution.renewEveryMs) || execution.renewEveryMs <= 0
     || !Number.isFinite(execution.paymentRequestTimeoutMs) || execution.paymentRequestTimeoutMs <= 0)) throw Error("Invalid execution policy");
   timeRemaining(deadline, execution);

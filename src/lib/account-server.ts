@@ -1,6 +1,7 @@
 import "server-only";
 import { userAgent } from "next/server";
 import type { SupabaseClient } from "@supabase/supabase-js";
+import type { Database } from "@/lib/database";
 import type { ChildInput } from "@/lib/account";
 import { SITE_URL } from "@/lib/metadata";
 import { SUPPORT_EMAIL } from "@/lib/contact";
@@ -21,7 +22,7 @@ export type Admission = { status: "created"; child: string } | { status: "exists
  * inserts run under one lock, so parallel requests cannot all pass the cap, and a failed insert leaves no half family.
  */
 export async function createFamily(
-  admin: SupabaseClient,
+  admin: SupabaseClient<Database>,
   id: string,
   parent: { name: string; email: string; postal: string | null; source: Record<string, string> },
   child: ChildInput,
@@ -58,15 +59,15 @@ export function linkOrigin(request: Request): string {
 export type SendLinkResult = "sent" | "not_found" | "too_many" | "failed";
 
 /** Emails the parent a one-time sign-in link (24 hours) that opens this child's start screen. */
-export async function sendSignInLink(admin: SupabaseClient, parentId: string, childId: string, origin: string): Promise<SendLinkResult> {
+export async function sendSignInLink(admin: SupabaseClient<Database>, parentId: string, childId: string, origin: string): Promise<SendLinkResult> {
   // Stop before a token row is written: without the configuration the email cannot go.
   if (emailConfigProblem()) {
     console.error("[account] RESEND_API_KEY or EMAIL_FROM is not set");
     return "failed";
   }
   const [{ data: parent }, { data: child }, { count, error: countError }] = await Promise.all([
-    admin.from("parents").select("name, email").eq("id", parentId).maybeSingle<{ name: string; email: string }>(),
-    admin.from("children").select("first_name").eq("id", childId).eq("parent_id", parentId).maybeSingle<{ first_name: string }>(),
+    admin.from("parents").select("name, email").eq("id", parentId).maybeSingle(),
+    admin.from("children").select("first_name").eq("id", childId).eq("parent_id", parentId).maybeSingle(),
     admin.from("sign_in_links").select("id", { count: "exact", head: true })
       .eq("parent_id", parentId).gt("created_at", new Date(Date.now() - 60 * 60_000).toISOString()),
   ]);

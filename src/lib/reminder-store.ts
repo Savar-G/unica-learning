@@ -1,7 +1,9 @@
 import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
+import type { Database } from "@/lib/database";
 import { bandFor, testLength, type Grade, type Route, type StoredTest } from "@/lib/assessment";
 import { toAttempt, type AttemptRow } from "@/lib/assessment-store";
+import type { AssessmentStatus } from "@/lib/test-api";
 import { SUPPORT_EMAIL } from "@/lib/contact";
 import { saveEmailCopy } from "@/lib/email-copies";
 import type { EmailMessage, SendLedger } from "@/lib/email-delivery";
@@ -71,9 +73,8 @@ async function allRows<T>(page: (from: number, to: number) => PromiseLike<{ data
 }
 
 type TestRow = AttemptRow & { child_id: string; grade: number; route: Route | null };
-type LogRow = { id: string; created_at: string; kind: LogEntry["kind"]; parent_id: string; child_id: string | null; assessment_id: string | null; status: LogEntry["status"]; attempts: number };
 
-export function reminderStore(admin: SupabaseClient): ReminderStore<LoadedState> {
+export function reminderStore(admin: SupabaseClient<Database>): ReminderStore<LoadedState> {
   return {
     async load(now) {
       // Children who could be due: those with an unfinished test whose deadline is ahead or ended inside the late limit
@@ -82,27 +83,29 @@ export function reminderStore(admin: SupabaseClient): ReminderStore<LoadedState>
       const [open, fresh] = await Promise.all([
         allRows((from, to) => admin.from("assessments").select("child_id")
           .in("status", ["in_progress", "expired"]).gte("resume_until", iso(now - LATE_LIMIT_MS - SLACK_MS))
-          .order("id").range(from, to).returns<{ child_id: string }[]>()),
+          .order("id").range(from, to)),
         allRows((from, to) => admin.from("children").select("id")
           .lte("created_at", iso(now - START_AFTER_MS + SLACK_MS))
           .gte("created_at", iso(now - START_WINDOW_MS - SLACK_MS))
-          .order("id").range(from, to).returns<{ id: string }[]>()),
+          .order("id").range(from, to)),
       ]);
       const childIds = [...new Set([...open.map((r) => r.child_id), ...fresh.map((r) => r.id)])];
 
       // Every test of those children: the start screen's rules read all of them.
       const [childRows, testRows] = await Promise.all([
         inChunks(childIds, (ids) => admin.from("children").select("id, parent_id, first_name, grade, created_at").in("id", ids)
-          .returns<{ id: string; parent_id: string; first_name: string; grade: Grade; created_at: string }[]>()),
+          // A check constraint limits grade to 1-7.
+          .overrideTypes<{ grade: Grade }[]>()),
         inChunks(childIds, (ids) => admin.from("assessments").select("id, child_id, grade, route, status, started_at, last_answer_at, resume_until, completed_at").in("child_id", ids)
-          .returns<TestRow[]>()),
+          // Check constraints limit status and route.
+          .overrideTypes<{ status: AssessmentStatus; route: Route | null }[]>()),
       ]);
       const parentIds = [...new Set(childRows.map((c) => c.parent_id))];
       const [parentRows, logRows, tests] = await Promise.all([
-        inChunks(parentIds, (ids) => admin.from("parents").select("id, name, email, postal").in("id", ids)
-          .returns<{ id: string; name: string; email: string; postal: string | null }[]>()),
+        inChunks(parentIds, (ids) => admin.from("parents").select("id, name, email, postal").in("id", ids)),
         inChunks(parentIds, (ids) => admin.from("email_log").select("id, created_at, kind, parent_id, child_id, assessment_id, status, attempts").in("parent_id", ids)
-          .returns<LogRow[]>()),
+          // Check constraints limit kind and status.
+          .overrideTypes<{ kind: LogEntry["kind"]; status: LogEntry["status"] }[]>()),
         Promise.all(testRows.map((row) => withAnswers(admin, row))),
       ]);
       return {
@@ -124,7 +127,7 @@ export function reminderStore(admin: SupabaseClient): ReminderStore<LoadedState>
  * failed, so a later run tries again; unknown keeps it claimed, so no run sends it again. The writes after a claim
  * never throw: a write that fails leaves the row claimed, so the email is never sent twice.
  */
-export function emailLogLedger(admin: SupabaseClient): SendLedger<DueReminder, string> {
+export function emailLogLedger(admin: SupabaseClient<Database>): SendLedger<DueReminder, string> {
   return {
     // The unsubscribe token hash goes in the claim's own write, so the link in an email that may have gone works.
     async claim(r, { unsubscribe_hash }) {
@@ -132,13 +135,13 @@ export function emailLogLedger(admin: SupabaseClient): SendLedger<DueReminder, s
         const { data, error } = await admin.from("email_log")
           .update({ status: "claimed", attempts: r.retry.attempts + 1, unsubscribe_hash, error: null })
           .eq("id", r.retry.logId).eq("status", "failed").eq("attempts", r.retry.attempts).lt("attempts", MAX_SEND_ATTEMPTS)
-          .select("id").returns<{ id: string }[]>();
+          .select("id");
         if (error) throw new Error(`claim retry: ${error.message}`);
         return data?.[0]?.id ?? null;
       }
       const { data, error } = await admin.from("email_log")
         .insert({ parent_id: r.parentId, child_id: r.childId, assessment_id: r.assessmentId, kind: r.kind, status: "claimed", attempts: 1, unsubscribe_hash })
-        .select("id").single<{ id: string }>();
+        .select("id").single();
       // One row per reminder (unique index): another run claimed it first.
       if (error?.code === "23505") return null;
       if (error) throw new Error(`claim: ${error.message}`);
@@ -167,17 +170,18 @@ export function emailLogLedger(admin: SupabaseClient): SendLedger<DueReminder, s
 }
 
 /** The test's length as stored: stage 1 plus the stored route's form (#214). The band's length only while the route is not chosen. */
-async function lengthOf(admin: SupabaseClient, row: TestRow): Promise<number> {
+async function lengthOf(admin: SupabaseClient<Database>, row: TestRow): Promise<number> {
   const band = bandFor(row.grade as Grade).length;
   // A test the child can no longer continue is never named in an email, so its (large) stored test is not read.
   if (!row.route || (row.status !== "in_progress" && row.status !== "expired")) return band;
-  const { data, error } = await admin.from("assessments").select("test").eq("id", row.id).maybeSingle<{ test: StoredTest | null }>();
+  // test is jsonb, written as a StoredTest.
+  const { data, error } = await admin.from("assessments").select("test").eq("id", row.id).maybeSingle().overrideTypes<{ test: StoredTest }>();
   if (error) throw new Error(`test load: ${error.message}`);
   return data?.test ? testLength(data.test, row.route) : band;
 }
 
 /** A test row in the rules' terms. One in progress counts its answers: with every answer in, it waits to be scored. */
-async function withAnswers(admin: SupabaseClient, row: TestRow): Promise<LoadedTest> {
+async function withAnswers(admin: SupabaseClient<Database>, row: TestRow): Promise<LoadedTest> {
   const total = await lengthOf(admin, row);
   if (row.status !== "in_progress") return { ...toAttempt(row), childId: row.child_id, answered: 0, total };
   const { count, error } = await admin.from("answers").select("id", { count: "exact", head: true }).eq("assessment_id", row.id);
@@ -235,33 +239,33 @@ export type UnsubscribeState = "subscribed" | "unsubscribed" | "unknown";
  * The parent an unsubscribe token belongs to, or null: a reminder's token (email_log), or a report email's (reports,
  * #80). Both stop the same thing: reminders and emails about our plans.
  */
-async function tokenParent(admin: SupabaseClient, token: unknown): Promise<string | null> {
+async function tokenParent(admin: SupabaseClient<Database>, token: unknown): Promise<string | null> {
   const hash = hashToken(token);
   if (!hash) return null;
-  const { data, error } = await admin.from("email_log").select("parent_id").eq("unsubscribe_hash", hash).maybeSingle<{ parent_id: string }>();
+  const { data, error } = await admin.from("email_log").select("parent_id").eq("unsubscribe_hash", hash).maybeSingle();
   if (error) throw new Error(`unsubscribe lookup: ${error.message}`);
   if (data) return data.parent_id;
-  const report = await admin.from("reports").select("parent_id").eq("unsubscribe_hash", hash).maybeSingle<{ parent_id: string }>();
+  const report = await admin.from("reports").select("parent_id").eq("unsubscribe_hash", hash).maybeSingle();
   if (report.error) throw new Error(`unsubscribe lookup: ${report.error.message}`);
   return report.data?.parent_id ?? null;
 }
 
 /** Whether this parent unsubscribed from reminders and emails about our plans. */
-export async function parentUnsubscribed(admin: SupabaseClient, parentId: string): Promise<boolean> {
+export async function parentUnsubscribed(admin: SupabaseClient<Database>, parentId: string): Promise<boolean> {
   const { count, error } = await admin.from("email_log").select("id", { count: "exact", head: true }).eq("parent_id", parentId).eq("kind", "unsubscribe");
   if (error) throw new Error(`unsubscribe state: ${error.message}`);
   return (count ?? 0) > 0;
 }
 
 /** Whether the parent behind this token still gets reminders. */
-export async function unsubscribeState(admin: SupabaseClient, token: unknown): Promise<UnsubscribeState> {
+export async function unsubscribeState(admin: SupabaseClient<Database>, token: unknown): Promise<UnsubscribeState> {
   const parent = await tokenParent(admin, token);
   if (!parent) return "unknown";
   return (await parentUnsubscribed(admin, parent)) ? "unsubscribed" : "subscribed";
 }
 
 /** Stops every reminder to the parent behind this token. Doing it twice is fine. */
-export async function unsubscribe(admin: SupabaseClient, token: unknown): Promise<"unsubscribed" | "unknown"> {
+export async function unsubscribe(admin: SupabaseClient<Database>, token: unknown): Promise<"unsubscribed" | "unknown"> {
   const parent = await tokenParent(admin, token);
   if (!parent) return "unknown";
   const { error } = await admin.from("email_log").insert({ parent_id: parent, kind: "unsubscribe" });

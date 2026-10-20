@@ -2,7 +2,7 @@ import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { after } from "next/server";
 import { isUuid } from "@/lib/assessment-store";
-import { fromRow, LEARNING_COLUMNS, type LearningAnswers, type LearningRow } from "@/lib/learning-style";
+import { fromRow, LEARNING_COLUMNS, type LearningAnswers } from "@/lib/learning-style";
 import { pageMetadata } from "@/lib/metadata";
 import { loadReportView } from "@/lib/report-loading";
 import { parentReportReader } from "@/lib/report-loading-server";
@@ -106,14 +106,15 @@ async function newTestOffer(parent: string, childId: string): Promise<NewTestOff
 
 /** The parent's answers about how this child learns (#126), read with the parent's session; null when none. */
 async function learningStart(db: Awaited<ReturnType<typeof sessionClient>>, childId: string): Promise<LearningAnswers | null> {
-  const { data } = await db.from("children").select(LEARNING_COLUMNS).eq("id", childId).maybeSingle<LearningRow>();
+  const { data } = await db.from("children").select(LEARNING_COLUMNS).eq("id", childId).maybeSingle();
   return data ? fromRow(data) : null;
 }
 
 /** A card saved or a waitlist join for this child, read with the parent's session (#66). */
 async function nextStepStart(db: Awaited<ReturnType<typeof sessionClient>>, childId: string): Promise<Omit<NextStepStart, "cancelled">> {
   const [card, wait] = await Promise.all([
-    db.from("card_setups").select("plan, card_saved_at").eq("child_id", childId).maybeSingle<{ plan: PlanId; card_saved_at: string | null }>(),
+    // A check constraint limits plan to the plan ids.
+    db.from("card_setups").select("plan, card_saved_at").eq("child_id", childId).maybeSingle().overrideTypes<{ plan: PlanId }>(),
     db.from("waitlist_joins").select("child_id").eq("child_id", childId).maybeSingle(),
   ]);
   return { saved: card.data?.card_saved_at ? card.data.plan : null, joined: !!wait.data };

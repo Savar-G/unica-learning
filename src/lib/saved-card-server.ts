@@ -1,14 +1,18 @@
 import "server-only";
 import type Stripe from "stripe";
 import type { SupabaseClient } from "@supabase/supabase-js";
+import type { Database } from "@/lib/database";
 import { REPORT_PLANS } from "@/lib/report-view";
-import type { CardEvidence, CardProvider, CardRecord, CardStore, SavedCards } from "@/lib/saved-card";
+import type { CardEvidence, CardProvider, CardStore, SavedCards } from "@/lib/saved-card";
 import { keepSavedPlan } from "@/lib/stripe";
+import type { PlanId } from "@/lib/site";
 
 // The saved-card module's seams (src/lib/saved-card.ts) for the live site: card_setups in Supabase, read and written
 // with the secret key, and Stripe's Checkout Sessions.
 
 const CARD_COLUMNS = "id, plan, price, stripe_customer_id, card_saved_at";
+/** A check constraint limits plan to the plan ids. */
+type PlanColumn = { plan: PlanId };
 
 /** Stripe reads stop here: far more Checkout Sessions than one child's card ever needs. */
 const PAGES = 5;
@@ -84,10 +88,10 @@ export function stripeCardProvider(client: Stripe | null): CardProvider {
 }
 
 /** card_setups as the card store. Every read and write filters by the parent and the child, or by the ref and customer. */
-export function supabaseCardStore(db: SupabaseClient): CardStore {
+export function supabaseCardStore(db: SupabaseClient<Database>): CardStore {
   const table = () => db.from("card_setups");
   const load: CardStore["load"] = async ({ parentId, childId }) => {
-    const { data, error } = await table().select(CARD_COLUMNS).eq("child_id", childId).eq("parent_id", parentId).maybeSingle<CardRecord>();
+    const { data, error } = await table().select(CARD_COLUMNS).eq("child_id", childId).eq("parent_id", parentId).maybeSingle().overrideTypes<PlanColumn>();
     if (error) throw new Error(`Card row read failed: ${error.message}`);
     return data;
   };
@@ -96,11 +100,11 @@ export function supabaseCardStore(db: SupabaseClient): CardStore {
     async choose(key, { reportId, plan, price }) {
       // One row per child: the insert does nothing when the row is there, and then only an unsaved row takes the choice.
       const added = await table().upsert({ parent_id: key.parentId, child_id: key.childId, report_id: reportId, plan, price }, { onConflict: "child_id", ignoreDuplicates: true })
-        .select(CARD_COLUMNS).returns<CardRecord[]>();
+        .select(CARD_COLUMNS).overrideTypes<PlanColumn[]>();
       if (added.error) throw new Error(`Card row insert failed: ${added.error.message}`);
       if (added.data.length) return added.data[0];
       const changed = await table().update({ report_id: reportId, plan, price, updated_at: new Date().toISOString() })
-        .eq("child_id", key.childId).eq("parent_id", key.parentId).is("card_saved_at", null).select(CARD_COLUMNS).returns<CardRecord[]>();
+        .eq("child_id", key.childId).eq("parent_id", key.parentId).is("card_saved_at", null).select(CARD_COLUMNS).overrideTypes<PlanColumn[]>();
       if (changed.error) throw new Error(`Card row update failed: ${changed.error.message}`);
       if (changed.data.length) return changed.data[0];
       // Saved since the check: the saved row, as it is.
@@ -112,10 +116,10 @@ export function supabaseCardStore(db: SupabaseClient): CardStore {
       const marked = await table()
         .update({ card_saved_at: evidence.savedAt, ...evidence.savedFor, updated_at: new Date().toISOString() })
         .eq("id", evidence.ref).eq("stripe_customer_id", evidence.customer).is("card_saved_at", null)
-        .select(CARD_COLUMNS).returns<CardRecord[]>();
+        .select(CARD_COLUMNS).overrideTypes<PlanColumn[]>();
       if (marked.error) throw new Error(`Card saved mark failed: ${marked.error.message}`);
       if (marked.data.length) return { row: marked.data[0], recorded: true };
-      const { data, error } = await table().select(CARD_COLUMNS).eq("id", evidence.ref).eq("stripe_customer_id", evidence.customer).maybeSingle<CardRecord>();
+      const { data, error } = await table().select(CARD_COLUMNS).eq("id", evidence.ref).eq("stripe_customer_id", evidence.customer).maybeSingle().overrideTypes<PlanColumn>();
       if (error) throw new Error(`Card row read failed: ${error.message}`);
       return data ? { row: data, recorded: false } : null;
     },
@@ -123,4 +127,4 @@ export function supabaseCardStore(db: SupabaseClient): CardStore {
 }
 
 /** The module's seams on the live site. */
-export const savedCards = (db: SupabaseClient, client: Stripe | null): SavedCards => ({ store: supabaseCardStore(db), provider: stripeCardProvider(client) });
+export const savedCards = (db: SupabaseClient<Database>, client: Stripe | null): SavedCards => ({ store: supabaseCardStore(db), provider: stripeCardProvider(client) });

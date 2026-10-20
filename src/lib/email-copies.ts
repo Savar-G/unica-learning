@@ -1,5 +1,6 @@
 import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
+import type { Database, TablesInsert } from "@/lib/database";
 import type { EmailCopy } from "@/lib/email-delivery";
 
 // The email copies (D-103): what each logged email looked like when the site sent it, in public.email_copies, for the
@@ -15,7 +16,7 @@ const TOKEN = /((?:\?|&amp;|&)(?:t|token|token_hash)=)[^&"'\s<>]+/g;
 export const hideTokens = (s: string) => s.replace(TOKEN, "$1hidden");
 
 /** The public.email_copies row of a copy. */
-export function copyRow(target: CopyTarget, parentId: string, copy: EmailCopy): Record<string, string | null> {
+export function copyRow(target: CopyTarget, parentId: string, copy: EmailCopy): TablesInsert<"email_copies"> {
   const { message: m } = copy;
   return {
     parent_id: parentId,
@@ -34,7 +35,7 @@ export function copyRow(target: CopyTarget, parentId: string, copy: EmailCopy): 
 }
 
 /** Keeps the copy, over the copy of an attempt before. Never throws: the email itself already went or failed. */
-export async function saveEmailCopy(admin: SupabaseClient, target: CopyTarget, parentId: string, copy: EmailCopy): Promise<void> {
+export async function saveEmailCopy(admin: SupabaseClient<Database>, target: CopyTarget, parentId: string, copy: EmailCopy): Promise<void> {
   try {
     const onConflict = "emailLogId" in target ? "email_log_id" : "report_id,report_email";
     const { error } = await admin.from("email_copies").upsert(copyRow(target, parentId, copy), { onConflict });

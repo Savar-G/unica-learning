@@ -1,12 +1,13 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { createServerClient } from "@supabase/ssr";
+import type { Database } from "@/lib/database";
 import { SUPABASE_PUBLISHABLE_KEY, SUPABASE_URL } from "@/lib/supabase-public";
 
 // Refreshes an expired Supabase session before account pages render, because Server Components cannot set cookies.
 // Runs only on the account paths, so the public site is untouched.
 export async function proxy(request: NextRequest) {
   let response = NextResponse.next({ request });
-  const supabase = createServerClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
+  const supabase = createServerClient<Database>(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
     cookies: {
       getAll: () => request.cookies.getAll(),
       setAll: (list, headers) => {

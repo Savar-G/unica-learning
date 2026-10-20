@@ -12,8 +12,6 @@ export const metadata = pageMetadata({
   index: false,
 });
 
-type LinkRow = { parent_id: string; created_at: string; expires_at: string; used_at: string | null; children: { first_name: string } | null };
-
 // The page the emailed link opens (#63). Opening it changes nothing; the button signs the parent in, so a mail
 // scanner that opens links cannot use up the link. A used or expired link offers a new one for the same parent.
 export default async function SignInLink({ searchParams }: PageProps<"/sign-in/link">) {
@@ -22,7 +20,7 @@ export default async function SignInLink({ searchParams }: PageProps<"/sign-in/l
   const hash = hashToken(token);
   const admin = adminClient();
   const { data: row } = hash && admin
-    ? await admin.from("sign_in_links").select("parent_id, created_at, expires_at, used_at, children(first_name)").eq("token_hash", hash).maybeSingle<LinkRow>()
+    ? await admin.from("sign_in_links").select("parent_id, created_at, expires_at, used_at, children(first_name)").eq("token_hash", hash).maybeSingle()
     : { data: null };
   // A failed sign-in has already used the link; offer a new one.
   const state: LinkState | "failed" = error === "1" && row ? "failed" : linkState(row);

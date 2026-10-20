@@ -1,5 +1,6 @@
 import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
+import type { Database } from "@/lib/database";
 
 // The child's whiteboard drawings (#67) in Supabase Storage. The bucket is private (migration add_shown_work): the
 // server writes with the secret key; a signed-in parent can read only the files in their own folder, so the report page
@@ -16,7 +17,7 @@ export const WORK_URL_SECONDS = 10 * 60;
  * Short-lived URLs for drawings, by path. Sign with the parent's own session client: storage then checks that each
  * file is in their folder. A path that cannot be signed is left out (the report shows the typed work, or nothing).
  */
-export async function signWork(client: SupabaseClient, paths: string[]): Promise<Record<string, string>> {
+export async function signWork(client: SupabaseClient<Database>, paths: string[]): Promise<Record<string, string>> {
   if (paths.length === 0) return {};
   const { data, error } = await client.storage.from(WORK_BUCKET).createSignedUrls(paths, WORK_URL_SECONDS);
   if (error) {

@@ -38,7 +38,8 @@ export default async function StartScreen({ params, searchParams }: PageProps<"/
   if (!parent) redirect(`/sign-in?next=${encodeURIComponent(`${startPath(id)}${fromReminder ? `?reminder=${fromReminder}${reminderTest ? `&a=${reminderTest}` : ""}` : ""}`)}`);
   // Row-level security returns only this parent's children; an id that is not a uuid finds nothing.
   const [{ data: child }, states] = await Promise.all([
-    db.from("children").select("id, first_name, grade, province").eq("id", id).maybeSingle<Child>(),
+    // A check constraint limits province to the curriculum ids.
+    db.from("children").select("id, first_name, grade, province").eq("id", id).maybeSingle().overrideTypes<Pick<Child, "province">>(),
     parentStartStates(parent, id),
   ]);
   if (!child) notFound();
