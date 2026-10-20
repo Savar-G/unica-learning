@@ -35,13 +35,13 @@ export interface AdminSession {
 /**
  * The signed-in admin, or null: there is no session, the token does not verify (getUser checks
  * its identity with Auth), or the user has no admin_users row (is_admin, run by the database with the same token).
+ * Both checks run at the same time and both must pass, so the gate costs one round trip, not two.
  * #78: a route calls this and answers 404 when it is null.
  */
 export async function adminSession(): Promise<AdminSession | null> {
   const db = await sessionClient();
-  const { data, error: userError } = await db.auth.getUser();
+  const [{ data, error: userError }, { data: admin, error }] = await Promise.all([db.auth.getUser(), db.rpc("is_admin")]);
   if (userError || !data.user) return null;
-  const { data: admin, error } = await db.rpc("is_admin");
   if (error) {
     console.error("[admin] is_admin failed", error.message);
     return null;
@@ -243,16 +243,11 @@ const FACT_ANSWER_COLUMNS = "position, fact_id, response, correct, at_ms, server
 /** Everything about one test, or null when there is no such test. */
 export async function getTest(a: AdminSession, id: string): Promise<TestDetail | null> {
   if (!isUuid(id)) return null;
-  const row = must<(TestQueryRow & { seed: number; resume_until: string; test: StoredTest } & TestContextRecord & ExtraRoundColumns) | null>(
-    await a.db.rpc("admin_assessments").select(`${TEST_COLUMNS}, seed, resume_until, test, ${CONTEXT_COLUMNS}, ${EXTRA_ROUND_COLUMNS}`).eq("id", id).maybeSingle(), "test");
-  if (!row) return null;
-  const { device, break_started_at, break_ended_at, break_skipped, break_ms, extra_offered_at, extra_skipped_at, extra_started_at, extra_finished_at, ...withoutContext } = row;
-  const context: TestContextRecord = { device, break_started_at, break_ended_at, break_skipped, break_ms };
-  const extraRound: ExtraRoundColumns = { extra_offered_at, extra_skipped_at, extra_started_at, extra_finished_at };
-  const { test: stored, seed, resume_until, ...listRow } = withoutContext;
-  const [[test], answers, reviews, report, facts, factAnswers, emails, shows] = await Promise.all([
-    withPeople(a, [listRow]),
-    a.db.from("answers").select(`${ANSWER_COLUMNS}, ${TIMELINE_COLUMNS}`).eq("assessment_id", id).order("position").then((r) => must<AnswerRecord[]>(r, "answers")),
+  // Everything keyed by the test id is read with the test row, not after it; the drawings are signed as soon as the
+  // answers arrive. With no such test the other reads are thrown away.
+  const answersRead = a.db.from("answers").select(`${ANSWER_COLUMNS}, ${TIMELINE_COLUMNS}`).eq("assessment_id", id).order("position").then((r) => must<AnswerRecord[]>(r, "answers"));
+  const related = Promise.all([
+    answersRead,
     a.db.from("work_reviews").select(REVIEW_COLUMNS).eq("assessment_id", id).then((r) => must<ReviewRecord[]>(r, "reviews")),
     a.db.rpc("admin_reports").select("id, created_at, questions, minutes, emailed_at, email_error, alerted_at, alert_error").eq("assessment_id", id)
       .maybeSingle().then((r) => must<TestDetail["report"]>(r, "report")),
@@ -263,8 +258,18 @@ export async function getTest(a: AdminSession, id: string): Promise<TestDetail |
     emailRows(a, (q) => q.eq("assessment_id", id)),
     a.db.from("question_shows").select("position, question_id, shown_at").eq("assessment_id", id).order("position")
       .then((r) => must<ShownRecord[]>(r, "question shows")),
+    answersRead.then((answers) => signWork(a.db, answers.flatMap((x) => (x.work_path ? [x.work_path] : [])))),
   ]);
-  const paths = answers.flatMap((x) => (x.work_path ? [x.work_path] : []));
+  // a failed read with no test row behind it must not become an unhandled rejection
+  related.catch(() => {});
+  const row = must<(TestQueryRow & { seed: number; resume_until: string; test: StoredTest } & TestContextRecord & ExtraRoundColumns) | null>(
+    await a.db.rpc("admin_assessments").select(`${TEST_COLUMNS}, seed, resume_until, test, ${CONTEXT_COLUMNS}, ${EXTRA_ROUND_COLUMNS}`).eq("id", id).maybeSingle(), "test");
+  if (!row) return null;
+  const { device, break_started_at, break_ended_at, break_skipped, break_ms, extra_offered_at, extra_skipped_at, extra_started_at, extra_finished_at, ...withoutContext } = row;
+  const context: TestContextRecord = { device, break_started_at, break_ended_at, break_skipped, break_ms };
+  const extraRound: ExtraRoundColumns = { extra_offered_at, extra_skipped_at, extra_started_at, extra_finished_at };
+  const { test: stored, seed, resume_until, ...listRow } = withoutContext;
+  const [[test], [answers, reviews, report, facts, factAnswers, emails, shows, images]] = await Promise.all([withPeople(a, [listRow]), related]);
   return {
     test: { ...test, seed, resume_until, stored },
     context,
@@ -275,7 +280,7 @@ export async function getTest(a: AdminSession, id: string): Promise<TestDetail |
     facts: facts ? { ...facts, answers: factAnswers } : null,
     shows,
     emails: emails.rows,
-    images: await signWork(a.db, paths),
+    images,
   };
 }
 
@@ -377,9 +382,9 @@ export interface ParentDetail {
 /** One family: the parent, their children and tests, the next steps they took, and the emails sent to them. */
 export async function getParent(a: AdminSession, id: string): Promise<ParentDetail | null> {
   if (!isUuid(id)) return null;
-  const parent = must<ParentRow | null>(await a.db.rpc("admin_parents").select(PARENT_COLUMNS).eq("id", id).maybeSingle(), "parent");
-  if (!parent) return null;
-  const [children, tests, cards, waitlist, emails] = await Promise.all([
+  // the family's records are read with the parent row, not after it; with no such parent they are thrown away
+  const [parent, children, tests, cards, waitlist, emails] = await Promise.all([
+    a.db.rpc("admin_parents").select(PARENT_COLUMNS).eq("id", id).maybeSingle().then((r) => must<ParentRow | null>(r, "parent")),
     allRows<ChildRow>(a.db.rpc("admin_children").select(CHILD_COLUMNS).eq("parent_id", id).order("id"), "children"),
     allRows<TestQueryRow>(a.db.rpc("admin_assessments").select(TEST_COLUMNS).eq("parent_id", id).order("created_at", { ascending: false }).order("id"), "tests")
       .then((rows) => withPeople(a, rows)),
@@ -387,7 +392,7 @@ export async function getParent(a: AdminSession, id: string): Promise<ParentDeta
     allRows<WaitlistRow>(a.db.rpc("admin_waitlist_joins").select("*").eq("parent_id", id).order("id"), "waitlist"),
     familyEmails(a, id),
   ]);
-  return { parent, children, tests, cards, waitlist, emails };
+  return parent && { parent, children, tests, cards, waitlist, emails };
 }
 
 export interface ChildListRow extends ChildRow {
@@ -576,19 +581,24 @@ export function exportReader(a: AdminSession): ExportReader {
 /**
  * Every row the dashboard needs, all of them: the model counts families, tests and emails over any range. Fine at
  * today's size (hundreds of families); move the counts into SQL when a page load gets slow. Payment status comes from
- * Stripe, read only: the subscriptions of the customers that saved a card.
+ * Stripe, read only: the subscriptions of the customers that saved a card. Every read starts at once: the Stripe reads
+ * wait only for the card setups, so a page load is about as long as its slowest read, not the sum of two rounds.
  */
 export async function dashboardRows(a: AdminSession): Promise<DashboardRows> {
-  const [parents, children, tests, reports, cards, waitlist, emails] = await Promise.all([
+  const cardRows = allRows<RawCard>(a.db.rpc("admin_card_setups").select("id, created_at, updated_at, parent_id, child_id, plan, price, stripe_customer_id, card_saved_at").order("id"), "card setups");
+  const [parents, children, tests, reports, cards, waitlist, emails, stripeRead, testIds, deliveries] = await Promise.all([
     allRows<RawParent>(a.db.rpc("admin_parents").select(PARENT_COLUMNS).order("id"), "parents"),
     allRows<RawChild>(a.db.rpc("admin_children").select(CHILD_COLUMNS).order("id"), "children"),
     allRows<Omit<RawTest, "answered"> & { answers: { count: number }[] }>(a.db.rpc("admin_assessments").select("id, created_at, status, parent_id, child_id, grade, province, started_at, completed_at, last_answer_at, answers(count)").order("id"), "tests"),
     allRows<RawReport>(a.db.rpc("admin_reports").select("id, created_at, assessment_id, parent_id, child_id, emailed_at, email_error, alerted_at, alert_error, email_clicks, email_first_clicked_at").order("id"), "reports"),
-    allRows<RawCard>(a.db.rpc("admin_card_setups").select("id, created_at, updated_at, parent_id, child_id, plan, price, stripe_customer_id, card_saved_at").order("id"), "card setups"),
+    // the cards come back once Stripe has filled in the saved cards the site never recorded
+    cardRows.then(async (rows) => (await confirmCardsInStripe(rows), rows)),
     allRows<RawWaitlist>(a.db.rpc("admin_waitlist_joins").select("id, created_at, parent_id, child_id, province").order("id"), "waitlist"),
     allRows<RawEmail>(a.db.from("email_log").select("id, created_at, parent_id, child_id, assessment_id, kind, status, attempts, sent_at, error, clicks, first_clicked_at").order("id"), "email log"),
+    cardSubscriptions(cardRows),
+    testAccountIds(a),
+    deliveryRows(a),
   ]);
-  const [stripeRead, testIds, deliveries] = await Promise.all([cardSubscriptions(cards), testAccountIds(a), deliveryRows(a), confirmCardsInStripe(cards)]);
   return {
     parents, children, reports, cards, waitlist, emails, deliveries, testIds, ...stripeRead,
     tests: tests.map(({ answers, ...t }) => ({ ...t, answered: answers[0]?.count ?? 0 })),
@@ -605,15 +615,20 @@ type StripeRead = Pick<DashboardRows, "subscriptions" | "stripeNote" | "stripeMo
 /**
  * The Stripe subscriptions of the customers that saved a card. Read only: Savar starts each subscription himself.
  * Stripe is always asked, even with no saved cards, so the dashboard shows whether the key can read subscriptions.
+ * Stripe is asked while the card setups are still being read; a failed card read fails the page, as before.
  */
-async function cardSubscriptions(cards: RawCard[]): Promise<StripeRead> {
+async function cardSubscriptions(cardRows: Promise<RawCard[]>): Promise<StripeRead> {
   const s = stripe();
   if (!s) return { subscriptions: [], stripeMode: null, stripeNote: "No Stripe key here, so the page cannot tell who is paying." };
   const key = process.env.STRIPE_SECRET_KEY ?? "";
   const stripeMode = key.startsWith("sk_live_") || key.startsWith("rk_live_") ? "live" : "test";
-  const customers = new Set(cards.flatMap((c) => (c.stripe_customer_id ? [c.stripe_customer_id] : [])));
+  const listed = s.subscriptions.list({ status: "all", limit: 100 }).autoPagingToArray({ limit: SUBSCRIPTIONS_MAX })
+    .then((all) => ({ all }), (e: unknown) => ({ failed: e }));
+  const customers = new Set((await cardRows).flatMap((c) => (c.stripe_customer_id ? [c.stripe_customer_id] : [])));
   try {
-    const all = await s.subscriptions.list({ status: "all", limit: 100 }).autoPagingToArray({ limit: SUBSCRIPTIONS_MAX });
+    const read = await listed;
+    if ("failed" in read) throw read.failed;
+    const { all } = read;
     return {
       stripeMode,
       stripeNote: all.length >= SUBSCRIPTIONS_MAX ? `Stripe has more than ${SUBSCRIPTIONS_MAX} subscriptions; only the newest ${SUBSCRIPTIONS_MAX} were read.` : null,

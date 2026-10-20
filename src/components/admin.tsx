@@ -1,7 +1,8 @@
 // The admin area's frame and shared parts (#77): plain, dense tables in the warm look. Server components only: the
-// pages need no JavaScript, and the filters are a plain GET form.
+// pages need no JavaScript (the loading bar, admin-pending.tsx, only adds feedback), and the filters are a plain GET form.
 import Link from "next/link";
-import type { ReactNode } from "react";
+import { Suspense, type ReactNode } from "react";
+import { AdminPending } from "@/components/admin-pending";
 import { helpLikely } from "@/lib/assessment";
 import {
   ADMIN_PATH,
@@ -59,6 +60,7 @@ export function AdminFrame({ email, section, title, children, wide = false }: { 
           </ul>
         </nav>
         <span className="adm-who">{email}</span>
+        <Suspense fallback={null}><AdminPending /></Suspense>
       </header>
       {wide ? <main id="main">{children}</main> : (
         <main id="main" className="adm-main">
