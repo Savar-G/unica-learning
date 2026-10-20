@@ -5,6 +5,8 @@
 // Email code (#82): account_code_sent (status sent, wait or again), account_code_failed (code send, expired, too_many or
 // check_failed), sign_in (channel "code": the email already had an account, and the code signed the parent in).
 // Sign-in (#63): google_start, google_failed, sign_in_link_sent, sign_in_link_failed, sign_in_link_page, sign_in (channel "link", on the start screen), password_reset_request, password_changed, password_change_failed.
+// Sign-in code (D-134): sign_in_code_sent (status sent, no_account, wait or again), sign_in_code_failed (code send, expired,
+// too_many or check_failed), sign_in (channel "code": the code from the sign-in page signed the parent in).
 // The test (#64): test_start (status new or resumed), test_finish, test_error (code, status = the step that failed).
 // Read-aloud, break, progress (#69): read_aloud (the child started the voice), test_break (status shown, rested or skipped).
 // Quick facts (#70): test_facts_done (status time_up or all_answered). No grade and no score.

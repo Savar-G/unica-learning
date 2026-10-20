@@ -49,7 +49,7 @@ export default async function Account({ searchParams }: PageProps<"/account">) {
   const children = kids ?? [];
   return (
     <SupportPage label="Your account" title={`Hi, ${parent.name.split(" ")[0]}.`}>
-      {password === "1" && <p role="status" className="acct-alert acct-saved">Your new password is saved.</p>}
+      {password === "1" && <p role="status" className="acct-alert acct-saved">Your password is saved.</p>}
       {existing === "1" && <p role="status" className="acct-alert acct-saved">This email already has an account, so the code signed you in. Nothing in your account changed. To add a child, use Add another child.</p>}
       {phone ? (
         <div className="acct-card acct-phone">
@@ -79,7 +79,7 @@ export default async function Account({ searchParams }: PageProps<"/account">) {
         ))}
       </ul>
       <AddChild province={children.at(-1)?.province ?? "BC"} />
-      <p className="small acct-out">Signed in. <SignOut /></p>
+      <p className="small acct-out">Signed in. <Link href="/account/password">Add or change your password</Link>. <SignOut /></p>
     </SupportPage>
   );
 }

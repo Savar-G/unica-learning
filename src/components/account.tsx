@@ -427,23 +427,52 @@ function signInFailureText(failure: SignInFailure): ReactNode {
     case "unavailable":
       return <>We could not sign you in right now. Try again in a moment. If this keeps happening, email <a href={SUPPORT_HREF}>{SUPPORT_EMAIL}</a>.</>;
     case "no_match":
-      return <>This email and password do not match an account. If you made your account with Google, use Continue with Google. If you forgot your password, <Link href="/sign-in/reset">get a reset link by email</Link>. If you are new, <Link href="/start">create an account</Link>.</>;
+      return <>This email and password do not match an account. If you made your account with Google, use Continue with Google. If you made it on a phone, or forgot your password, use a sign-in code from your email instead. If you are new, <Link href="/start">create an account</Link>.</>;
   }
 }
 
+/**
+ * Sends a sign-in code to an existing account (D-134). It never makes an account. Supabase answers an unknown email with
+ * an error; the screen says the same thing for both, so it does not tell anyone which emails have an account.
+ */
+async function sendSignInCode(email: string): Promise<"sent" | "no_account" | "wait" | "failed"> {
+  const { error } = await browserClient().auth.signInWithOtp({ email, options: { shouldCreateUser: false } });
+  if (!error) return "sent";
+  if (error.status === 429) return "wait";
+  if (error.code === "otp_disabled" || error.code === "signup_disabled" || error.code === "user_not_found") return "no_account";
+  console.error("[account] sign-in code send failed", error.code);
+  return "failed";
+}
+
+/**
+ * Sign-in (#63): Google, email and password, or a code from the email (D-134). The code is for a parent with no password
+ * (the short phone signup) and for anyone who prefers it; it also opens the page that a reminder or report link asked for.
+ */
 export function SignIn({ googleFailed, next = "/account" }: { googleFailed: boolean; next?: string }) {
   const router = useRouter();
+  const codeInput = useRef<HTMLInputElement>(null);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [failed, setFailed] = useState<SignInFailure | null>(null);
   const [busy, setBusy] = useState(false);
+  // "password", or the code: "code" asks for the email, "enter" asks for the code from the email.
+  const [mode, setMode] = useState<"password" | "code" | "enter">("password");
+  const [code, setCode] = useState("");
+  const [note, setNote] = useState<CodeNote>(null);
+  const [resending, setResending] = useState(false);
+  const cleanEmail = email.trim().toLowerCase();
+
+  useEffect(() => {
+    if (mode === "enter") codeInput.current?.focus();
+    else if (mode === "code") document.getElementById("s-email")?.focus();
+  }, [mode]);
 
   const submit = async (e: FormEvent) => {
     e.preventDefault();
     if (busy) return;
     setBusy(true);
     setFailed(null);
-    const { error } = await browserClient().auth.signInWithPassword({ email: email.trim().toLowerCase(), password });
+    const { error } = await browserClient().auth.signInWithPassword({ email: cleanEmail, password });
     if (error) {
       track("sign_in_failed", { code: error.code ?? "unknown" });
       setFailed(signInFailure(error));
@@ -453,6 +482,113 @@ export function SignIn({ googleFailed, next = "/account" }: { googleFailed: bool
     track("sign_in");
     router.replace(next);
   };
+
+  const askCode = async (e: FormEvent) => {
+    e.preventDefault();
+    if (busy) return;
+    if (!EMAIL.test(email.trim())) {
+      setNote(null);
+      document.getElementById("s-email")?.focus();
+      return;
+    }
+    setBusy(true);
+    setNote(null);
+    const sent = await sendSignInCode(cleanEmail);
+    setBusy(false);
+    track(sent === "failed" ? "sign_in_code_failed" : "sign_in_code_sent", sent === "failed" ? { code: "send" } : { status: sent });
+    if (sent === "failed") {
+      setNote("send_failed");
+      return;
+    }
+    if (sent === "wait") setNote("wait");
+    setCode("");
+    setMode("enter");
+  };
+
+  const resend = async () => {
+    if (resending || busy) return;
+    setResending(true);
+    const sent = await sendSignInCode(cleanEmail);
+    setResending(false);
+    track(sent === "failed" ? "sign_in_code_failed" : "sign_in_code_sent", sent === "failed" ? { code: "send" } : { status: sent === "sent" ? "again" : sent });
+    setNote(sent === "failed" ? "send_failed" : sent === "wait" ? "wait" : "sent_again");
+  };
+
+  const confirm = async (e: FormEvent) => {
+    e.preventDefault();
+    if (busy) return;
+    const token = code.replace(/\s/g, "");
+    if (!/^\d{6,10}$/.test(token)) {
+      setNote("bad");
+      codeInput.current?.focus();
+      return;
+    }
+    setBusy(true);
+    setNote(null);
+    const { error } = await browserClient().auth.verifyOtp({ email: cleanEmail, token, type: "email" });
+    if (error) {
+      setBusy(false);
+      const why: CodeNote = error.status === 429 ? "too_many" : error.code === "otp_expired" || error.status === 403 ? "expired" : "check_failed";
+      track("sign_in_code_failed", { code: why });
+      setNote(why);
+      codeInput.current?.focus();
+      return;
+    }
+    track("sign_in", { channel: "code" });
+    router.replace(next);
+    router.refresh();
+  };
+
+  const toPassword = () => {
+    setMode("password");
+    setNote(null);
+    setCode("");
+  };
+
+  if (mode === "enter") {
+    const bad = note === "bad" || note === "expired";
+    return (
+      <form className="acct-form" onSubmit={confirm} noValidate>
+        <p role="status" className="acct-alert">If <b>{cleanEmail}</b> has an account, we sent a code to it. Enter the code here to sign in.</p>
+        <Field id="s-code" label="Code from the email" bad={bad}>
+          <input
+            ref={codeInput}
+            id="s-code"
+            inputMode="numeric"
+            autoComplete="one-time-code"
+            maxLength={12}
+            value={code}
+            onChange={(e) => setCode(e.target.value)}
+            aria-invalid={bad}
+            aria-describedby={note ? "s-code-note" : undefined}
+          />
+        </Field>
+        {note && <p id="s-code-note" role={note === "sent_again" ? "status" : "alert"} className="acct-alert">{codeNoteText(note)}</p>}
+        <Submit busy={busy}>Sign in <span className="arr">→</span></Submit>
+        <p className="small">
+          No email? Check your spam folder, or{" "}
+          <button className="acct-link" type="button" onClick={resend} disabled={resending} aria-busy={resending}>send a new code</button>.{" "}
+          <button className="acct-link" type="button" disabled={busy} onClick={() => { setMode("code"); setNote(null); }}>Use a different email</button>
+        </p>
+        <p className="small">New here? <Link href="/start">Create an account</Link></p>
+      </form>
+    );
+  }
+
+  if (mode === "code") {
+    return (
+      <form className="acct-form" onSubmit={askCode} noValidate>
+        <GoogleButton next={next === "/account" ? undefined : next} />
+        {note && <p role="alert" className="acct-alert">{codeNoteText(note)}</p>}
+        <Field id="s-email" label="Email" hint="We email you a code. Enter it here to sign in. No password needed.">
+          <input id="s-email" type="email" autoComplete="email" required value={email} onChange={(e) => setEmail(e.target.value)} aria-describedby="h-s-email" />
+        </Field>
+        <Submit busy={busy}>Email me a code <span className="arr">→</span></Submit>
+        <p className="small"><button className="acct-link" type="button" onClick={toPassword}>Sign in with your password instead</button></p>
+        <p className="small">New here? <Link href="/start">Create an account</Link></p>
+      </form>
+    );
+  }
 
   return (
     <form className="acct-form" onSubmit={submit}>
@@ -467,7 +603,8 @@ export function SignIn({ googleFailed, next = "/account" }: { googleFailed: bool
         <input id="s-password" type="password" autoComplete="current-password" required value={password} onChange={(e) => setPassword(e.target.value)} />
       </Field>
       <Submit busy={busy}>Sign in <span className="arr">→</span></Submit>
-      <p className="small"><Link href="/sign-in/reset">Forgot your password?</Link> Made your account on a phone? You have no password yet: <Link href="/sign-in/reset">get a link by email</Link> to choose one.</p>
+      <button className="btn ghost" type="button" onClick={() => { setFailed(null); setMode("code"); }}>Email me a sign-in code instead</button>
+      <p className="small">No password, or made your account on a phone? Use a sign-in code. <Link href="/sign-in/reset">Forgot your password?</Link></p>
       <p className="small">New here? <Link href="/start">Create an account</Link></p>
     </form>
   );

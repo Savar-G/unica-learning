@@ -72,4 +72,5 @@ Use two QA inboxes that the team controls. Do not use a Stripe test card with th
 3. Sign up again with the address from step 1. The page shows the same message; the code opens `/account` with "This email already has an account"; the old password still works and the new one does not.
 4. Set a password for a fresh QA address through Supabase's public signup (not our page). Then sign up for that address on `/start` with a different password and enter the code. The first password must fail on `/sign-in`, and the second must work.
 5. On a phone, sign up. The form has no postal code and no password (D-134). `/account` shows the phone screen, and the sign-in link email arrives.
-6. Google sign-in with a new Gmail address still reaches `/account/finish`, then `/account`.
+6. Signed out on a laptop, open `/sign-in`, choose "Email me a sign-in code instead", and sign in with the code from the email. On `/account`, "Add or change your password" opens `/account/password`.
+7. Google sign-in with a new Gmail address still reaches `/account/finish`, then `/account`.
