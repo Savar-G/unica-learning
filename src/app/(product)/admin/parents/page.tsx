@@ -19,7 +19,7 @@ export default async function ParentsPage({ searchParams }: PageProps<"/admin/pa
       {rows.map((f) => <tr key={f.id}>
         <td className="adm-nowrap">{when(f.createdAt)}</td>
         <td><Link href={adminParentPath(f.id)}>{f.name}</Link><TestMark test={f.test} /></td>
-        <td>{f.email}</td><td>{f.postal}</td>
+        <td>{f.email}</td><td>{f.postal ?? "-"}</td>
         <td>{f.children.map((c) => `${c.name} (gr ${c.grade}, ${c.province})`).join(", ") || "-"}</td>
         <td className="adm-num">{f.tests.length}</td><td className="adm-num">{f.tests.filter((t) => t.status === "completed").length}</td>
         <td><StageChip stage={f.stage} /><span className="adm-sub">{since(f.stageAt, d.now)}</span></td>

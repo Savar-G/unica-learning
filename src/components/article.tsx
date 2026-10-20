@@ -6,7 +6,7 @@ import type { ReactNode } from "react";
 import { BRAND } from "@/lib/site";
 import { Eyebrow, Faq, Nav as NavBar } from "@/ds";
 import { Motion } from "@/components/motion";
-import { StartLink } from "@/components/start-link";
+import { StartLink, StartNote } from "@/components/start-link";
 import { Footer, START_LABEL } from "@/components/sections";
 import type { ResourceMeta } from "@/lib/resources";
 import { formatResourceDate, resourcePath } from "@/lib/resource-format";
@@ -196,7 +196,10 @@ export function AssessmentCta({ slug, children }: { slug: string; children?: Rea
   return (
     <div className="res-cta">
       <p>{children ?? "Not sure where your child is? The free online math assessment shows their math level and gaps."}</p>
-      <StartLink src={`resource-${slug}`}>{START_LABEL} <span className="arr">→</span></StartLink>
+      <div>
+        <StartLink src={`resource-${slug}`}>{START_LABEL} <span className="arr">→</span></StartLink>
+        <StartNote />
+      </div>
     </div>
   );
 }

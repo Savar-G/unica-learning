@@ -2,7 +2,7 @@
 // working at a Grade 2 level. Its next step is a "Take free assessment" button.
 // Every number is computed by the real session and report model (src/lib/sample-children.ts).
 import { ReportCard } from "@/components/report";
-import { StartLink } from "@/components/start-link";
+import { StartLink, StartNote } from "@/components/start-link";
 import { START_LABEL } from "@/components/sections";
 import { SupportPage } from "@/components/support-page";
 import { pageMetadata } from "@/lib/metadata";
@@ -28,12 +28,15 @@ export default function SampleReportPage() {
             Your report uses your own child&apos;s answers.
           </p>
         </div>
-        <StartLink src="sample-report">{START_LABEL} <span className="arr" aria-hidden="true">→</span></StartLink>
+        <div>
+          <StartLink src="sample-report">{START_LABEL} <span className="arr" aria-hidden="true">→</span></StartLink>
+          <StartNote />
+        </div>
       </aside>
       <ReportCard
         view={view}
         readOnly
-        nextSlot={<StartLink src="sample-report-end">{START_LABEL} <span className="arr" aria-hidden="true">→</span></StartLink>}
+        nextSlot={<div><StartLink src="sample-report-end">{START_LABEL} <span className="arr" aria-hidden="true">→</span></StartLink><StartNote /></div>}
       />
     </SupportPage>
   );

@@ -26,7 +26,7 @@ export default async function ParentPage({ params }: PageProps<"/admin/parents/[
   const now = new Date().toISOString();
   return <AdminFrame email={admin.email} section="parents" title={p.name}>
     <RecordFacts facts={[
-      ["Email", <a key="email" href={`mailto:${p.email}`}>{p.email}</a>], ["Postal code", p.postal], ["Joined (Pacific)", when(p.created_at)],
+      ["Email", <a key="email" href={`mailto:${p.email}`}>{p.email}</a>], ["Postal code", p.postal ?? "-"], ["Joined (Pacific)", when(p.created_at)],
       ["Stage", f ? <span key="stage"><StageChip stage={f.stage} /> <span className="adm-sub">{since(f.stageAt, now)}, since {at(f.stageAt)}</span></span> : "-"],
       ["Next", f ? STAGE_ACTION[f.stage] : "-"],
       ["Payment", f ? paymentText(f) : "-"],

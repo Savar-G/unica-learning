@@ -22,7 +22,8 @@ export interface CardSetup {
   grade: number;
   price: number;
   curriculum: string;
-  postal: string;
+  /** Null when the parent signed up on a phone (D-134): the metadata then has no postal key. */
+  postal: string | null;
   /** Site origin for the return URLs, e.g. https://unicalearning.com */
   origin: string;
 }
@@ -53,7 +54,7 @@ export async function cardSetupUrl(s: Stripe, p: CardSetup): Promise<{ customer:
 /** The metadata keys every card setup carries; the report path adds its own (D-053). */
 const cardMetadata = (p: CardSetup): Record<string, string> => ({
   ref: p.ref, plan: p.plan, subject: p.subject, grade: String(p.grade), price: String(p.price),
-  first_month_price: cad(firstMonth(p.price)), curriculum: p.curriculum, postal: p.postal,
+  first_month_price: cad(firstMonth(p.price)), curriculum: p.curriculum, ...(p.postal ? { postal: p.postal } : {}),
 });
 const cardDescription = (p: CardSetup) => `${p.subject}, grade ${p.grade}, ${priceWithOffer(p.price)} from the first workbook`;
 

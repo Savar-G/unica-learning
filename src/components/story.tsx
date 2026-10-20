@@ -3,7 +3,7 @@
 import { BRAND } from "@/lib/site";
 import { BeliefList, Eyebrow, Nav as NavBar } from "@/ds";
 import { Motion } from "@/components/motion";
-import { StartLink } from "@/components/start-link";
+import { StartLink, StartNote } from "@/components/start-link";
 import { Footer, PromiseCards, START_LABEL } from "@/components/sections";
 import { Rise } from "./drawn";
 import "./story.css";
@@ -55,7 +55,10 @@ export function Story() {
 
           <Rise className="story-end">
             <p className="story-sign">Savar and Cedric</p>
-            <StartLink src="story">{START_LABEL} <span className="arr">→</span></StartLink>
+            <div>
+              <StartLink src="story">{START_LABEL} <span className="arr">→</span></StartLink>
+              <StartNote />
+            </div>
           </Rise>
         </main>
         <Footer />

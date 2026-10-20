@@ -5,7 +5,7 @@ import { BRAND } from "@/lib/site";
 import { COMPARE_FAQ, ONE_BY_ONE } from "@/lib/compare";
 import { Eyebrow, Faq as FaqList, Nav as NavBar } from "@/ds";
 import { Motion } from "@/components/motion";
-import { StartLink } from "@/components/start-link";
+import { StartLink, StartNote } from "@/components/start-link";
 import { Footer, START_LABEL } from "@/components/sections";
 import { CompareLegend } from "./compare";
 import { CompareSwitch } from "./compare-switch";
@@ -69,7 +69,10 @@ export function ComparePage() {
           <Rise className="cmpp-end">
             <h2>See where your child is, before you choose anything.</h2>
             <p>The math assessment and report are free. Choose a plan after you read it. 30-day money-back guarantee.</p>
-            <StartLink src="compare">{START_LABEL} <span className="arr">→</span></StartLink>
+            <div>
+              <StartLink src="compare">{START_LABEL} <span className="arr">→</span></StartLink>
+              <StartNote />
+            </div>
           </Rise>
         </main>
         <Footer />

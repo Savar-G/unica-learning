@@ -6,7 +6,7 @@ import Image, { type StaticImageData } from "next/image";
 import Link from "next/link";
 import { CookieSettingsButton } from "@/components/cookie-consent";
 import { FaqMore } from "@/components/faq-more";
-import { StartLink } from "@/components/start-link";
+import { StartLink, StartNote } from "@/components/start-link";
 import { BRAND, FIRST_MONTH_OFF, HERO, PLANS, cad, firstMonth } from "@/lib/site";
 import { FAQ } from "@/lib/faq";
 import {
@@ -81,7 +81,7 @@ export function Hero() {
             Unica gives your child a workbook built for where they are.
           </>
         }
-        meta={["Free assessment and report", "30-day money-back guarantee", "Cancel anytime"]}
+        meta={["Free assessment on a laptop or tablet", "30-day money-back guarantee", "Cancel anytime"]}
         page={null}
         report={null}
         animate
@@ -253,7 +253,7 @@ export function Pricing() {
           offer={{ price: cad(firstMonth(PLANS.one.price)), note: `first month, ${FIRST_MONTH_OFF}% off!`, then: `Then CAD ${PLANS.one.price} a month.` }}
           features={["Free online math assessment and report, before you choose a plan", "A learning plan built from your child's level and gaps", "Progress reports after every check-in", "Personalized math workbooks matched to your child's level and gaps, mailed home", "Your next book arrives before the current one runs out", "Delivery included. Cancel anytime"]}
           ctaLabel={START_LABEL}
-          cta={<GetStarted src="price" />}
+          cta={<div className="plan-cta"><GetStarted src="price" /><StartNote /></div>}
         />
       </PlanGrid>
       <CompareTable />
@@ -291,6 +291,7 @@ export function Closing() {
       <Rise className="ctas">
         <GetStarted src="close" />
         <a className="btn ghost" href="#price">See pricing</a>
+        <StartNote />
       </Rise>
     </section>
   );

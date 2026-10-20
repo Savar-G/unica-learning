@@ -413,6 +413,23 @@ describe("what the database decides (#82, #78)", () => {
 });
 
 describe("finishing on a phone (#63)", () => {
+  it("makes the family from the short phone signup: no postal code and no password (D-134), then emails the link", async () => {
+    vi.stubEnv("RESEND_API_KEY", "re_synthetic");
+    vi.stubEnv("EMAIL_FROM", "Unica Learning <contact@unicalearning.com>");
+    vi.stubGlobal("fetch", async () => new Response(JSON.stringify({ id: "email-1" }), { status: 200 }));
+    supabase({ earlierPassword: "strangers-password", admission: { status: "created", child: "child-42" } });
+    const { postal: _, ...short } = details;
+    void _;
+    const res = await finish(short, PHONE);
+    vi.unstubAllGlobals();
+    expect(await res.json()).toEqual({ ok: true, linkSent: true });
+    expect(calls.find((c) => c.path === "/rest/v1/rpc/create_family")?.body).toMatchObject({ p_postal: null, p_child_name: "Asha" });
+    // Only the password that nobody knows was set: the stranger's is gone and the parent stays signed in.
+    expect(passwordsSet()).toHaveLength(1);
+    expect(auth.password).not.toBe("strangers-password");
+    expect(parentSignedIn()).toBe(true);
+  });
+
   it("emails the sign-in link for the new child", async () => {
     vi.stubEnv("RESEND_API_KEY", "re_synthetic");
     vi.stubEnv("EMAIL_FROM", "Unica Learning <contact@unicalearning.com>");

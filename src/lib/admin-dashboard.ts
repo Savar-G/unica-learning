@@ -8,7 +8,7 @@ import type { DeliveryType } from "@/lib/resend-webhook";
 
 // Rows, as admin-store reads them
 
-export interface RawParent { id: string; created_at: string; name: string; email: string; postal: string; source: Record<string, string> | null }
+export interface RawParent { id: string; created_at: string; name: string; email: string; postal: string | null; source: Record<string, string> | null }
 export interface RawChild { id: string; created_at: string; parent_id: string; first_name: string; grade: number; province: Province }
 export interface RawTest { id: string; created_at: string; status: AssessmentStatus; parent_id: string; child_id: string; grade: number; province: Province; started_at: string; completed_at: string | null; last_answer_at: string | null; answered: number }
 export interface RawReport { id: string; created_at: string; assessment_id: string; parent_id: string; child_id: string; emailed_at: string | null; email_error: string | null; alerted_at: string | null; alert_error: string | null; email_clicks: number; email_first_clicked_at: string | null }
@@ -182,7 +182,8 @@ export interface Family {
   id: string;
   name: string;
   email: string;
-  postal: string;
+  /** Null when the parent signed up on a phone (D-134). */
+  postal: string | null;
   createdAt: string;
   /** utm_source, else the referrer's host; null when the signup did not say. */
   source: string | null;

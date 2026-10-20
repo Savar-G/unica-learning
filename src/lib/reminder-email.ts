@@ -12,8 +12,8 @@ interface Common {
   /** Opens the child's start screen, through sign-in when the parent is signed out. */
   url: string;
   unsubscribeUrl: string;
-  /** The parent's postal code: it picks the time zone for the deadline. */
-  postal: string;
+  /** The parent's postal code: it picks the time zone for the deadline. Null (the short phone signup, D-134): Pacific. */
+  postal: string | null;
   /** Questions in the test for the child's grade. */
   total: number;
 }
@@ -50,10 +50,10 @@ const ZONE: Record<string, string> = {
   X: "America/Yellowknife",
   Y: "America/Whitehorse",
 };
-const zoneFor = (postal: string) => ZONE[postal.trim().charAt(0).toUpperCase()] ?? "America/Vancouver";
+const zoneFor = (postal: string | null) => ZONE[(postal ?? "").trim().charAt(0).toUpperCase()] ?? "America/Vancouver";
 
 /** "4:15 p.m. PDT on Monday, October 12" in the family's time zone. */
-function deadline(at: number, postal: string): string {
+function deadline(at: number, postal: string | null): string {
   const timeZone = zoneFor(postal);
   const time = new Intl.DateTimeFormat("en-CA", { hour: "numeric", minute: "2-digit", timeZone, timeZoneName: "short" }).format(at);
   const day = new Intl.DateTimeFormat("en-CA", { weekday: "long", month: "long", day: "numeric", timeZone }).format(at);
