@@ -13,10 +13,14 @@ import { TestAccount } from "@/components/test-account";
 export default async function ParentPage({ params }: PageProps<"/admin/parents/[id]">) {
   const admin = await requireAdmin();
   const id = (await params).id;
-  // the family's stage and payment, the same way the dashboard works them out (D-099); all three reads run at once
+  // the family's stage and payment, the same way the dashboard works them out (D-099). All three reads run at once,
+  // but the family decides first: an unknown family is a 404 even when another read failed.
   if (!isUuid(id)) notFound();
-  const [family, rows, test] = await Promise.all([getParent(admin, id), dashboardRows(admin), testAccountState(admin, id)]);
+  const others = Promise.all([dashboardRows(admin), testAccountState(admin, id)]);
+  others.catch(() => {});
+  const family = await getParent(admin, id);
   if (!family) notFound();
+  const [rows, test] = await others;
   const p = family.parent;
   const f = buildFamilies(rows).find((x) => x.id === p.id);
   const now = new Date().toISOString();

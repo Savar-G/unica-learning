@@ -382,9 +382,9 @@ export interface ParentDetail {
 /** One family: the parent, their children and tests, the next steps they took, and the emails sent to them. */
 export async function getParent(a: AdminSession, id: string): Promise<ParentDetail | null> {
   if (!isUuid(id)) return null;
-  // the family's records are read with the parent row, not after it; with no such parent they are thrown away
-  const [parent, children, tests, cards, waitlist, emails] = await Promise.all([
-    a.db.rpc("admin_parents").select(PARENT_COLUMNS).eq("id", id).maybeSingle().then((r) => must<ParentRow | null>(r, "parent")),
+  // the family's records are read with the parent row, not after it. The parent decides first: with no such parent
+  // the answer is null (a 404), even when another read failed; their errors count only for a family that exists.
+  const related = Promise.all([
     allRows<ChildRow>(a.db.rpc("admin_children").select(CHILD_COLUMNS).eq("parent_id", id).order("id"), "children"),
     allRows<TestQueryRow>(a.db.rpc("admin_assessments").select(TEST_COLUMNS).eq("parent_id", id).order("created_at", { ascending: false }).order("id"), "tests")
       .then((rows) => withPeople(a, rows)),
@@ -392,7 +392,11 @@ export async function getParent(a: AdminSession, id: string): Promise<ParentDeta
     allRows<WaitlistRow>(a.db.rpc("admin_waitlist_joins").select("*").eq("parent_id", id).order("id"), "waitlist"),
     familyEmails(a, id),
   ]);
-  return parent && { parent, children, tests, cards, waitlist, emails };
+  related.catch(() => {});
+  const parent = must<ParentRow | null>(await a.db.rpc("admin_parents").select(PARENT_COLUMNS).eq("id", id).maybeSingle(), "parent");
+  if (!parent) return null;
+  const [children, tests, cards, waitlist, emails] = await related;
+  return { parent, children, tests, cards, waitlist, emails };
 }
 
 export interface ChildListRow extends ChildRow {

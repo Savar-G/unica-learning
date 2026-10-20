@@ -21,6 +21,12 @@ export function AdminPending() {
   const here = `${usePathname()}?${useSearchParams()}`;
   // the address a click left from: the bar shows until the address is a different one
   const [from, setFrom] = useState<string | null>(null);
+  // a new address forgets the click, so going Back to the page it left from does not show the bar again
+  const [seen, setSeen] = useState(here);
+  if (seen !== here) {
+    setSeen(here);
+    setFrom(null);
+  }
   const pending = from === here;
 
   useEffect(() => {
