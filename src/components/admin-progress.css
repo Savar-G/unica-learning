@@ -1,0 +1,17 @@
+/* Live test progress (admin-progress.tsx) */
+.dash-prog-cell { display: block; margin-top: 6px; min-width: 120px; }
+.dash-prog-head { display: flex; align-items: center; gap: 6px; font: 500 12.5px/1.3 var(--sans); white-space: nowrap; }
+.dash-prog-bar { position: relative; display: block; height: 5px; margin: 4px 0 2px; border-radius: 999px; background: var(--card); overflow: hidden; }
+.dash-prog-fill { position: absolute; inset: 0 auto 0 0; border-radius: 999px; background: var(--sky); transition: width 0.4s ease; }
+.dash-prog-mark { position: absolute; top: 0; bottom: 0; width: 2px; margin-left: -1px; background: #fff; }
+.dash-live-dot { flex: none; width: 7px; height: 7px; border-radius: 50%; background: var(--ink-3); opacity: 0.5; }
+.dash-live-dot.is-on { background: var(--leaf); opacity: 1; box-shadow: 0 0 0 0 color-mix(in srgb, var(--leaf) 50%, transparent); animation: dash-live 2s ease-out infinite; }
+@keyframes dash-live { to { box-shadow: 0 0 0 6px transparent; } }
+@media (prefers-reduced-motion: reduce) { .dash-live-dot.is-on { animation: none; } .dash-prog-fill { transition: none; } }
+.dash-prog { margin: 8px 0 4px; padding: 12px 14px; border: 1px solid var(--card); border-radius: 10px; background: #fff; font-size: 14px; }
+.dash-prog-status { display: flex; align-items: center; gap: 7px; margin: 0 0 4px; }
+.dash-prog-text { margin: 0 0 8px; font-size: 16px; }
+.dash-prog .dash-prog-bar { height: 8px; }
+.dash-prog-legend { margin: 6px 0 0; font-size: 12.5px; }
+.dash-prog-q { margin: 10px 0 0; padding: 8px 10px; border-radius: 8px; background: var(--soft); }
+.dash-prog-q .dash-kicker { display: block; }

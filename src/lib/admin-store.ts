@@ -2,7 +2,8 @@ import "server-only";
 import { connection } from "next/server";
 import { notFound } from "next/navigation";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import type { FactsTest, HelpAnswer, Placement, Province, StoredTest } from "@/lib/assessment";
+import type { FactsTest, HelpAnswer, Placement, Province, Route, StoredTest } from "@/lib/assessment";
+import type { ProgressInput } from "@/lib/admin-progress";
 import { isUuid } from "@/lib/assessment-store";
 import { LEARNING_COLUMNS, type LearningRow } from "@/lib/learning-style";
 import { filterTests, questionNumbers, type AdminFilters, type AnswerRecord, type FactAnswerRecord, type ReviewRecord, type ShownRecord } from "@/lib/admin-view";
@@ -755,4 +756,63 @@ async function deliveryRows(a: AdminSession): Promise<RawDelivery[]> {
  */
 export async function anonymousTestRows(a: AdminSession): Promise<AnonymousTestRow[]> {
   return allRows<AnonymousTestRow>(a.db.from("anonymous_tests").select("id, copy").order("id"), "anonymous tests");
+}
+
+// Live test progress
+
+/** At most this many tests per progress read (the dashboard's open tests, or a poll's ids), asked PROGRESS_CHUNK at a time. */
+export const PROGRESS_MAX = 500;
+/** Ids per database call: public.admin_test_progress_for() returns at most 50 rows. */
+const PROGRESS_CHUNK = 50;
+
+/** One row of public.admin_test_progress_for() (migration add_admin_test_progress_for). */
+type ProgressQueryRow = {
+  id: string; status: AssessmentStatus; route: Route | null;
+  started_at: string; last_answer_at: string | null; completed_at: string | null; resume_until: string;
+  break_started_at: string | null; break_ended_at: string | null;
+  extra_offered_at: string | null; extra_skipped_at: string | null; extra_started_at: string | null; extra_finished_at: string | null;
+  stage1: number; up: number; stay: number; down: number; extra: number; answered: number;
+  last_shown_position: number | null; last_shown_at: string | null;
+  facts_started_at: string | null; facts_answered: number; facts_tried: number; facts_drawn: number; next_prompt: string | null;
+};
+
+/**
+ * How far each of these tests got, by test id (admin-progress.ts). The page names the tests (the families it shows),
+ * so hidden test families never take the place of real ones. One small row per test from the database: counts, lengths
+ * and the next prompt, never the stored test, so a poll every few seconds stays cheap.
+ */
+export async function progressRows(a: AdminSession, ids: readonly string[]): Promise<Map<string, ProgressInput>> {
+  const wanted = [...new Set(ids.filter(isUuid))].slice(0, PROGRESS_MAX);
+  const chunks = Array.from({ length: Math.ceil(wanted.length / PROGRESS_CHUNK) }, (_, i) => wanted.slice(i * PROGRESS_CHUNK, (i + 1) * PROGRESS_CHUNK));
+  const rows = (await Promise.all(chunks.map(async (chunk) =>
+    must<ProgressQueryRow[]>(await a.db.rpc("admin_test_progress_for", { ids: chunk }), "test progress")))).flat();
+  return new Map(rows.map((r) => [r.id, {
+    status: r.status, route: r.route, answered: r.answered, nextPrompt: r.next_prompt,
+    lengths: { stage1: r.stage1, up: r.up, stay: r.stay, down: r.down, extra: r.extra },
+    lastShown: r.last_shown_position === null || !r.last_shown_at ? null : { position: r.last_shown_position, at: r.last_shown_at },
+    startedAt: r.started_at, lastAnswerAt: r.last_answer_at, completedAt: r.completed_at, resumeUntil: r.resume_until,
+    breakStartedAt: r.break_started_at, breakEndedAt: r.break_ended_at,
+    factsStartedAt: r.facts_started_at, factsAnswered: r.facts_answered, factsTried: r.facts_tried, factsDrawn: r.facts_drawn,
+    extraOfferedAt: r.extra_offered_at, extraSkippedAt: r.extra_skipped_at, extraStartedAt: r.extra_started_at, extraFinishedAt: r.extra_finished_at,
+  }]));
+}
+
+/** One test's progress records from its full detail, so the test page needs no second read for its first render. */
+export function detailProgress(d: TestDetail): ProgressInput {
+  const { stored } = d.test;
+  const route = d.test.route as Route | null;
+  const shown = d.shows.reduce<ShownRecord | null>((a, s) => (!a || s.position > a.position ? s : a), null);
+  const n = d.answers.length;
+  const onRoute = [...stored.stage1, ...(route ? stored.stage2[route] : []), ...(route ? (stored.extra ?? []) : [])];
+  return {
+    status: d.test.status, route, answered: n,
+    nextPrompt: n < stored.stage1.length || route ? (onRoute[n]?.prompt ?? null) : null,
+    lengths: { stage1: stored.stage1.length, up: stored.stage2.up.length, stay: stored.stage2.stay.length, down: stored.stage2.down.length, extra: stored.extra?.length ?? 0 },
+    lastShown: shown ? { position: shown.position, at: shown.shown_at } : null,
+    startedAt: d.test.started_at, lastAnswerAt: d.test.last_answer_at, completedAt: d.test.completed_at, resumeUntil: d.test.resume_until,
+    breakStartedAt: d.context.break_started_at, breakEndedAt: d.context.break_ended_at,
+    factsStartedAt: d.facts?.started_at ?? null, factsAnswered: d.facts?.answers.filter((f) => f.response !== "").length ?? 0,
+    factsTried: d.facts?.answers.length ?? 0, factsDrawn: d.facts?.test.facts.length ?? 0,
+    extraOfferedAt: d.extraRound.extra_offered_at, extraSkippedAt: d.extraRound.extra_skipped_at, extraStartedAt: d.extraRound.extra_started_at, extraFinishedAt: d.extraRound.extra_finished_at,
+  };
 }

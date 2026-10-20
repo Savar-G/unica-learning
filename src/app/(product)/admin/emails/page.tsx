@@ -14,7 +14,7 @@ export const metadata = pageMetadata({ path: PATH, title: "Admin: emails", descr
 // Every email the site logs (D-099): reminders, report emails, report alerts and unsubscribes, with a filter per kind.
 // The same log as Activity, Emails. Admins only (loadDashboard runs requireAdmin).
 export default async function EmailsPage({ searchParams }: PageProps<"/admin/emails">) {
-  const { who, d, query, demo } = await loadDashboard(await searchParams);
+  const { who, d, progress, query, demo } = await loadDashboard(await searchParams);
   const ctx = { path: PATH, query, demo };
   const filter: EmailKind | "failed" | null = query.kind === "failed" ? "failed" : (EMAIL_KINDS.find((k) => k.kind === query.kind)?.kind ?? null);
   const count = (k: EmailKind | "failed") => d.emails.filter((e) => (k === "failed" ? emailFailed(e) : e.kind === k)).length;
@@ -31,7 +31,7 @@ export default async function EmailsPage({ searchParams }: PageProps<"/admin/ema
         <Notes ctx={ctx} d={d} />
         <EmailLog d={d} ctx={ctx} filter={filter} nav={nav} />
       </div>
-      {query.family && <FamilyDrawer ctx={ctx} d={d} id={query.family} />}
+      {query.family && <FamilyDrawer ctx={ctx} d={d} id={query.family} progress={progress} />}
     </AdminFrame>
   );
 }

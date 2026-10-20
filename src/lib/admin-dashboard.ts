@@ -536,6 +536,15 @@ export function ago(iso: string | null | undefined, now: string): string {
   return `${d} day${d === 1 ? "" : "s"} ago`;
 }
 /** How long, without "ago": "3 h", "2 days". */
+/**
+ * The tests whose live progress the page shows (admin-progress.ts): every test still marked in progress of the families
+ * shown, the most recently active first, up to `max`. Taken from the shown families, so the hidden test families never
+ * crowd out a real one.
+ */
+export function progressTestIds(families: readonly Family[], max: number): string[] {
+  return families.flatMap((f) => f.tests).filter((t) => t.status === "in_progress")
+    .sort((a, b) => (b.lastAnswerAt ?? b.startedAt).localeCompare(a.lastAnswerAt ?? a.startedAt)).slice(0, max).map((t) => t.id);
+}
 export const since = (iso: string | null | undefined, now: string) => ago(iso, now).replace(/ ago$/, "");
 /** "Oct 12" for a YYYY-MM-DD day. */
 export const dayLabel = (day: string) => new Date(`${day}T12:00:00Z`).toLocaleDateString("en-CA", { month: "short", day: "numeric", timeZone: "UTC" });

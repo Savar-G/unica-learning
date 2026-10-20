@@ -1,6 +1,8 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { getStrokes, getTest, requireAdmin } from "@/lib/admin-store";
+import { detailProgress, getStrokes, getTest, requireAdmin } from "@/lib/admin-store";
+import { progressSnapshot } from "@/lib/admin-progress";
+import { ProgressPanel } from "@/components/admin-progress";
 import { adminParentPath, adminProfilePath, adminReportPath, answerLines, duration, factLines, flagText, helpAnswerText, levelText, questionNumbers, shownWithoutAnswer, when } from "@/lib/admin-view";
 import { contextFacts, extraRoundFacts } from "@/lib/admin-view";
 import { QuestionTimeline, ShownWithoutAnswer, awayCount, changeCount, readAloudCount } from "@/components/admin-timeline";
@@ -21,6 +23,7 @@ export default async function TestDetailPage({ params }: PageProps<"/admin/asses
   const numbers = questionNumbers(detail.answers);
   const work = lines.filter((a) => a.work.required || a.work.image || a.work.text || a.review || a.questionId in strokes);
   const quick = facts ? factLines(facts.test, facts.answers) : [];
+  const progress = progressSnapshot(new Map([[t.id, detailProgress(detail)]]), new Date());
   return <AdminFrame email={admin.email} section="tests" title={`${t.child?.first_name ?? "Child"}'s test`}>
     <RecordFacts facts={[
       ["Parent", <Link key="parent" href={adminParentPath(t.parent_id)}>{t.parent?.name ?? "Family"}</Link>],
@@ -31,6 +34,9 @@ export default async function TestDetailPage({ params }: PageProps<"/admin/asses
       ["Did anyone help?", helpAnswerText(t.help)], ["Seed", t.seed], ["Test id", t.id],
       ["Learner profile", t.status === "completed" ? <Link key="profile" href={adminProfilePath(t.id)}>Open the profile</Link> : "-"],
     ]} />
+    <h2>Where the child is</h2>
+    <ProgressPanel id={t.id} initial={progress} live />
+    {progress.tests[t.id]?.open && <p className="adm-note">This box updates by itself. The tables below show the page as it loaded: reload for new answers.</p>}
     <h2>Break and device</h2>
     <RecordFacts facts={contextFacts(detail.context)} />
     <h2>Extra round</h2>
