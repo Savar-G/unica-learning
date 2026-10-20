@@ -10,32 +10,43 @@ const POLL_MS = 5000;
 /** A child the server saw within this time counts as active now. */
 const ACTIVE_MS = 3 * 60_000;
 
-// One store per page: the tests on screen, the newest answer, and one timer.
+// One store per page: the tests on screen, the newest answer, and one timer. A test the server no longer returns (a
+// deleted family) is kept as null, so the page drops it and stops asking.
+type Snapshot = { now: string; tests: Record<string, TestProgress | null> };
 const watched = new Map<string, number>();
 const listeners = new Set<() => void>();
-let snapshot: ProgressSnapshot = { now: new Date(0).toISOString(), tests: {} };
+let snapshot: Snapshot = { now: new Date(0).toISOString(), tests: {} };
 let timer: ReturnType<typeof setTimeout> | null = null;
 let busy = false;
 
 const emit = () => listeners.forEach((l) => l());
-const anyOpen = () => [...watched.keys()].some((id) => snapshot.tests[id]?.open ?? true);
+const anyOpen = () => [...watched.keys()].some((id) => (id in snapshot.tests ? snapshot.tests[id]?.open === true : true));
 
-/** Takes the server's first answer, rendered with the page, unless a poll already has a newer one. */
+/** Takes the server's first answer, rendered with the page: all of it when newer, else only the tests the store lacks. */
 function seed(s: ProgressSnapshot) {
-  if (Date.parse(s.now) <= Date.parse(snapshot.now)) return;
-  snapshot = { now: s.now, tests: { ...snapshot.tests, ...s.tests } };
+  const newer = Date.parse(s.now) > Date.parse(snapshot.now);
+  const missing = Object.entries(s.tests).filter(([id]) => !(id in snapshot.tests));
+  if (!newer && missing.length === 0) return;
+  snapshot = newer ? { now: s.now, tests: { ...snapshot.tests, ...s.tests } } : { now: snapshot.now, tests: { ...snapshot.tests, ...Object.fromEntries(missing) } };
   emit();
 }
 
-async function poll() {
+function stop() {
+  if (timer) clearTimeout(timer);
   timer = null;
+}
+
+/** Asks now. Any pending timer is cancelled first, so there is only ever one chain of polls. */
+async function poll() {
+  stop();
   if (busy || watched.size === 0 || document.visibilityState !== "visible" || !anyOpen()) return;
   busy = true;
   try {
-    const res = await fetch(`/api/admin/progress?ids=${[...watched.keys()].join(",")}`, { cache: "no-store" });
+    const ids = [...watched.keys()];
+    const res = await fetch(`/api/admin/progress?ids=${ids.join(",")}`, { cache: "no-store" });
     if (res.ok) {
       const next = (await res.json()) as ProgressSnapshot;
-      snapshot = { now: next.now, tests: { ...snapshot.tests, ...next.tests } };
+      snapshot = { now: next.now, tests: { ...snapshot.tests, ...Object.fromEntries(ids.map((id) => [id, next.tests[id] ?? null])) } };
       emit();
     }
   } catch {
@@ -47,7 +58,7 @@ async function poll() {
 }
 
 function schedule() {
-  if (timer || watched.size === 0 || !anyOpen()) return;
+  if (timer || busy || watched.size === 0 || !anyOpen()) return;
   timer = setTimeout(poll, POLL_MS);
 }
 
@@ -65,8 +76,7 @@ function watch(id: string): () => void {
     else watched.delete(id);
     if (watched.size === 0) {
       document.removeEventListener("visibilitychange", onVisible);
-      if (timer) clearTimeout(timer);
-      timer = null;
+      stop();
     }
   };
 }
@@ -77,14 +87,14 @@ const subscribe = (l: () => void) => {
 };
 
 /** The test's newest progress and the server's time of it. `live` false (demo data) shows the first answer only. */
-function useProgress(id: string, initial: ProgressSnapshot, live: boolean): { p: TestProgress | undefined; now: string } {
-  const s = useSyncExternalStore(subscribe, () => snapshot, () => initial);
+function useProgress(id: string, initial: ProgressSnapshot, live: boolean): { p: TestProgress | null | undefined; now: string } {
+  const s = useSyncExternalStore<Snapshot>(subscribe, () => snapshot, () => initial);
   useEffect(() => {
     seed(initial);
   }, [initial]);
   useEffect(() => (live ? watch(id) : undefined), [id, live]);
-  const fresh = Date.parse(s.now) >= Date.parse(initial.now) ? s : initial;
-  return { p: fresh.tests[id] ?? initial.tests[id], now: fresh.now };
+  // The store, once it is newer than the page and knows the test (null: the server no longer has it); else the page's.
+  return Date.parse(s.now) >= Date.parse(initial.now) && id in s.tests ? { p: s.tests[id], now: s.now } : { p: initial.tests[id], now: initial.now };
 }
 
 /** "4 min", "2 h", "35 s". */
@@ -120,7 +130,7 @@ export function ProgressCell({ id, initial, live }: { id: string; initial: Progr
   const on = activeNow(p, now);
   const head = p.short;
   return (
-    <span className="dash-prog-cell" title={`${p.text}, for ${span(p.since, now)}. ${p.answered} of ${p.total} answered.`}>
+    <span className="dash-prog-cell" title={`${p.text}. ${p.sinceText[0].toUpperCase()}${p.sinceText.slice(1)} ${span(p.since, now)} ago. ${p.answered} of ${p.total} answered.`}>
       <span className="dash-prog-head"><Dot on={on} />{head}</span>
       <Bar p={p} />
       {p.open && <span className="dash-sub">{on ? "active now" : `quiet ${span(p.lastActivityAt, now)}`}</span>}
@@ -140,7 +150,7 @@ export function ProgressPanel({ id, initial, live }: { id: string; initial: Prog
         <b>{p.open ? (on ? "Active now" : `Quiet for ${span(p.lastActivityAt, now)}`) : p.phase === "finished" ? "Finished" : "Closed"}</b>
         {p.open && live && <span className="dash-muted"> · updates every {POLL_MS / 1000} s</span>}
       </p>
-      <p className="dash-prog-text">{p.text}{p.open && <span className="dash-muted"> for {span(p.since, now)}</span>}</p>
+      <p className="dash-prog-text">{p.text}{p.open && <span className="dash-muted"> · {p.sinceText} {span(p.since, now)} ago</span>}</p>
       <Bar p={p} />
       <p className="dash-prog-legend dash-muted">
         {p.answered} of {p.total} answered · Part 1: {Math.min(p.answered, p.part1)} of {p.part1} · Part 2: {Math.max(0, Math.min(p.answered, p.main) - p.part1)} of {p.main - p.part1}
@@ -149,10 +159,11 @@ export function ProgressPanel({ id, initial, live }: { id: string; initial: Prog
       </p>
       {p.current && (
         <p className="dash-prog-q">
-          <span className="dash-kicker">{p.open ? "On screen" : "Stopped at"}: question {p.current.number}, {p.current.part}</span>
+          <span className="dash-kicker">{p.open ? "Next question to answer" : "Stopped before"}: question {p.current.number}, {p.current.part}</span>
           {p.current.prompt ?? "-"}
         </p>
       )}
+      {p.open && p.phase === "question" && <p className="dash-sub">The site counts answers, not screens: the child may be looking back at an earlier question.</p>}
     </div>
   );
 }

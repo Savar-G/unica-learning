@@ -30,6 +30,6 @@ export async function loadDashboard(raw: Record<string, string | string[] | unde
     return { who: "demo data", d: buildDashboard(rows, pickRange(query.range), now, options), progress: demoProgress(rows, now), query, demo };
   }
   const admin = await requireAdmin();
-  const [rows, progress] = await Promise.all([dashboardRows(admin), progressRows(admin, now)]);
+  const [rows, progress] = await Promise.all([dashboardRows(admin), progressRows(admin)]);
   return { who: admin.email, d: buildDashboard(rows, pickRange(query.range), now, options), progress: progressSnapshot(progress, now), query, demo };
 }

@@ -1,7 +1,7 @@
 // Made-up families for the admin dashboard in local development only (?demo=1, D-099), so the layout can be checked
 // with more than a handful of rows and without an admin sign-in. Seeded, so every reload shows the same numbers. No
 // real person is in here, and nothing here reads the database.
-import { bandFor, type Grade, type Province, type Question, type StoredTest } from "@/lib/assessment";
+import { bandFor, type Grade, type Province } from "@/lib/assessment";
 import { progressSnapshot, type ProgressInput, type ProgressSnapshot } from "@/lib/admin-progress";
 import type { DashboardRows, EmailCopyView, EmailEvent, Family, RawCard, RawDelivery, RawChild, RawEmail, RawParent, RawReport, RawSubscription, RawTest, RawWaitlist } from "@/lib/admin-dashboard";
 import { SUPPORT_EMAIL } from "@/lib/contact";
@@ -141,22 +141,21 @@ export function demoEmailCopy(e: EmailEvent, f: Family | undefined): EmailCopyVi
 }
 
 /**
- * Made-up live progress for the demo's open tests (admin-progress.ts): a stored test of placeholder questions, and the
- * child on a question served a few minutes ago, so the table cell and the panel show in local development.
+ * Made-up live progress for the demo's open tests (admin-progress.ts): the grade band's lengths, and the child on a
+ * question served a few minutes ago, so the table cell and the panel show in local development.
  */
 export function demoProgress(rows: DashboardRows, now: Date): ProgressSnapshot {
   const r = rng(11);
   const inputs = new Map<string, ProgressInput>();
-  const q = (id: string, i: number) => ({ id: `${id}-${i}`, prompt: `What is ${3 + (i % 7)} × ${4 + (i % 5)}?` }) as unknown as Question;
-  const list = (id: string, n: number) => Array.from({ length: n }, (_, i) => q(id, i));
   for (const t of rows.tests.filter((x) => x.status === "in_progress")) {
     const band = bandFor(t.grade as Grade);
     const rest = band.length - band.stage1;
-    const stored = { profile: { grade: t.grade }, seed: 1, stage1: list("s1", band.stage1), stage2: { up: list("up", rest + 3), stay: list("stay", rest), down: list("down", rest) } } as unknown as StoredTest;
     const answered = Math.min(t.answered, band.length - 1);
     const shownMs = now.getTime() - Math.floor(r() * 25) * 60_000;
     inputs.set(t.id, {
-      status: "in_progress", stored, route: answered > band.stage1 ? "stay" : null, answered, lastShown: { position: answered, at: new Date(shownMs).toISOString() },
+      status: "in_progress", route: answered > band.stage1 ? "stay" : null, answered, nextPrompt: `What is ${3 + (answered % 7)} × ${4 + (answered % 5)}?`,
+      lengths: { stage1: band.stage1, up: rest + 3, stay: rest, down: rest, extra: 0 },
+      lastShown: { position: answered, at: new Date(shownMs).toISOString() },
       startedAt: t.started_at, lastAnswerAt: new Date(shownMs).toISOString(), completedAt: null, resumeUntil: new Date(shownMs + 24 * 3_600_000).toISOString(),
       breakStartedAt: null, breakEndedAt: null, factsStartedAt: null, factsAnswered: 0, extraOfferedAt: null, extraSkippedAt: null, extraStartedAt: null, extraFinishedAt: null,
     });
