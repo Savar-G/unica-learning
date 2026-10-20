@@ -285,10 +285,10 @@ export async function runFamilyDeletion(db: SupabaseClient<Database>, parent: st
   const token = randomUUID();
   const args = { p: parent, token };
   type Claim = { state: "ready" | "busy" | "excluded"; reason?: "request" | "retention"; phase?: "checking" | "deleting" };
-  // jsonb: the claim object the function builds.
-  const claim = (retention
-    ? await rpc(db, "claim_family_retention", { ...args, subscription_ended_at: retention.endedAt })
-    : await rpc(db, "claim_family_deletion", args)) as Claim;
+  // jsonb: the claim object each function builds, read on its own, so a change of either answer type fails the build.
+  const claim = retention
+    ? (await rpc(db, "claim_family_retention", { ...args, subscription_ended_at: retention.endedAt })) as Claim
+    : (await rpc(db, "claim_family_deletion", args)) as Claim;
   if (claim.state !== "ready") return { state: claim.state };
   const action = async (): Promise<FamilyDeletionResult> => {
     if (claim.phase === "checking") {

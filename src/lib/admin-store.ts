@@ -48,7 +48,8 @@ export async function adminSession(): Promise<AdminSession | null> {
     console.error("[admin] is_admin failed", error.message);
     return null;
   }
-  return admin === true ? { db, userId: data.user.id, email: data.user.email ?? "" } : null;
+  const isAdmin: boolean | null = admin;
+  return isAdmin === true ? { db, userId: data.user.id, email: data.user.email ?? "" } : null;
 }
 
 /** For admin pages: the admin, or the site's 404 for everyone else (a parent, a visitor, a forged cookie). */
@@ -94,14 +95,21 @@ const CHUNK = 100;
 
 type RangeRead<T> = { range: (from: number, to: number) => PromiseLike<Result<StoredRows<T[]>>>; order: (column: "id") => RangeRead<T> };
 
-/** PostgREST caps each response. Page related rows too, so family details and totals are complete. */
-async function allRows<T>(query: RangeRead<T>, what: string): Promise<T[]> {
-  const out: T[] = [];
+/** Every row of a read, page by page, with the read's own type from the schema. PostgREST caps each response, so
+ * related rows are paged too, and family details and totals are complete. */
+async function allRead<R>(query: { range: (from: number, to: number) => PromiseLike<Result<R[]>> }, what: string): Promise<R[]> {
+  const out: R[] = [];
   for (let from = 0; ; from += LIST_MAX) {
-    const rows = must<T[]>(await query.range(from, from + LIST_MAX - 1), what);
-    out.push(...rows);
-    if (rows.length < LIST_MAX) return out;
+    const result = await query.range(from, from + LIST_MAX - 1);
+    if (result.error) throw new Error(`[admin] ${what}: ${result.error.message}`);
+    out.push(...result.data);
+    if (result.data.length < LIST_MAX) return out;
   }
+}
+
+/** Every row of a read, as T; the read's own type must fit T (StoredRows). */
+async function allRows<T>(query: RangeRead<T>, what: string): Promise<T[]> {
+  return (await allRead(query, what)) as T[];
 }
 
 /** Rows of T for the ids, read CHUNK ids at a time. */
@@ -542,7 +550,6 @@ async function familyEmails(a: AdminSession, id: string): Promise<EmailRow[]> {
 
 // Question templates (#199)
 
-type TemplateStatRow = Omit<TemplateStat, "wrong"> & { wrong: unknown };
 /** One item of `wrong`, the jsonb list the function builds (jsonb_agg), so the schema cannot type it. */
 type WrongCount = { response: string; misconception: string | null; count: number | string };
 
@@ -553,7 +560,7 @@ type WrongCount = { response: string; misconception: string | null; count: numbe
 export async function templateStats(a: AdminSession, f: TemplateFilters, templateId?: string): Promise<TemplateStat[]> {
   const args = { with_tests: f.withTests, school_grade: f.grade, curriculum: f.province };
   const q = a.db.rpc("admin_template_stats_v2", args).select("*");
-  const rows = await allRows<TemplateStatRow>((templateId === undefined ? q : q.eq("template_id", templateId)).order("template_id"), "template stats");
+  const rows = await allRead((templateId === undefined ? q : q.eq("template_id", templateId)).order("template_id"), "template stats");
   return rows.map((r) => ({
     template_id: r.template_id,
     shown: Number(r.shown),

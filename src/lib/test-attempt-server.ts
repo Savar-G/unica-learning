@@ -202,17 +202,25 @@ export function attemptStore(admin: SupabaseClient<Database>): AttemptStore {
       };
       // #252: typed working alone (migration change_answer_keep_drawing): the drawing and strokes paths are read under
       // the test's row lock and kept, then change_answer runs with its guards.
-      const { data, error } = work?.keepDrawing
-        ? await admin.rpc("change_answer_keep_drawing", { ...answer, p_work_text: work.workText })
-        : await admin.rpc("change_answer", {
+      // Each function answers jsonb: the work it replaced, or null when a guard failed. Each answer is read on its own,
+      // so a change of either function's answer type fails the build.
+      type Replaced = { work_path: string | null; strokes_path: string | null } | null;
+      let replaced: Replaced;
+      if (work?.keepDrawing) {
+        const { data, error } = await admin.rpc("change_answer_keep_drawing", { ...answer, p_work_text: work.workText });
+        if (error) throw new StoreError("answer change failed", error.message);
+        replaced = data as Replaced;
+      } else {
+        const { data, error } = await admin.rpc("change_answer", {
           ...answer,
           p_work_changed: work !== undefined,
           p_work_path: work?.workPath ?? null,
           p_work_text: work?.workText ?? null,
           p_strokes_path: work?.strokesPath ?? null,
         });
-      if (error) throw new StoreError("answer change failed", error.message);
-      const replaced = data as { work_path: string | null; strokes_path: string | null } | null;
+        if (error) throw new StoreError("answer change failed", error.message);
+        replaced = data as Replaced;
+      }
       return replaced ? { workPath: replaced.work_path, strokesPath: replaced.strokes_path } : "closed";
     },
 
@@ -225,8 +233,9 @@ export function attemptStore(admin: SupabaseClient<Database>): AttemptStore {
         p_answers: answers.map((a) => [a.questionId, a.response]),
       });
       if (error) throw new StoreError("route save failed", error.message);
-      if (data === "changed" || data === "closed" || data === "up" || data === "stay" || data === "down") return data;
-      throw new StoreError("route save failed", `unexpected answer ${JSON.stringify(data)}`);
+      const answer: string = data;
+      if (answer === "changed" || answer === "closed" || answer === "up" || answer === "stay" || answer === "down") return answer;
+      throw new StoreError("route save failed", `unexpected answer ${JSON.stringify(answer)}`);
     },
 
     // #249: one database function (migration add_guarded_finish) takes the test's row lock, as change_answer does,
@@ -242,7 +251,8 @@ export function attemptStore(admin: SupabaseClient<Database>): AttemptStore {
         p_answers: answers.map((a) => [a.questionId, a.response, a.timeMs]),
       });
       if (error) throw new StoreError("finish failed", error.message);
-      return data === "changed" ? "changed" : "done";
+      const answer: string = data;
+      return answer === "changed" ? "changed" : "done";
     },
 
     async create(parent, child, { attempt, seed, test }) {
@@ -469,8 +479,9 @@ function extraRoundStore(admin: SupabaseClient<Database>): ExtraRoundStore {
         p_answers: answers.map((a) => [a.questionId, a.response, a.timeMs]),
       });
       if (error) throw new StoreError("extra round offer save failed", error.message);
-      if (data === "offered" || data === "already" || data === "changed" || data === "closed") return data;
-      throw new StoreError("extra round offer save failed", `unexpected answer ${JSON.stringify(data)}`);
+      const answer: string = data;
+      if (answer === "offered" || answer === "already" || answer === "changed" || answer === "closed") return answer;
+      throw new StoreError("extra round offer save failed", `unexpected answer ${JSON.stringify(answer)}`);
     },
 
     async skipExtraRound(id, at) {
@@ -504,8 +515,9 @@ function extraRoundStore(admin: SupabaseClient<Database>): ExtraRoundStore {
         p_answers: answers.map((a) => [a.questionId, a.response, a.timeMs]),
       });
       if (error) throw new StoreError("extra round finish failed", error.message);
-      if (data === "finished" || data === "already" || data === "changed") return data;
-      throw new StoreError("extra round finish failed", `unexpected answer ${JSON.stringify(data)}`);
+      const answer: string = data;
+      if (answer === "finished" || answer === "already" || answer === "changed") return answer;
+      throw new StoreError("extra round finish failed", `unexpected answer ${JSON.stringify(answer)}`);
     },
   };
 }
