@@ -17,7 +17,7 @@ Prices are in Canadian dollars. Delivery across Canada is included. There is one
 ## ${PLANS.one.name} (${PLANS.one.note})
 - Price: CAD ${PLANS.one.price} per month
 - First month: ${FIRST_MONTH_OFF}% off, CAD ${cad(firstMonth(PLANS.one.price))}
-- Includes: 1 personalized math workbook a month, about 20-25 pages; the parent app (step-by-step help when your child is stuck, instant answer check, progress reports and worked solutions); delivery
+- Includes: 2 personalized math workbooks a month, one every two weeks; the parent app (step-by-step help when your child is stuck, instant answer check, progress reports and worked solutions); delivery
 
 ## Terms
 - The online math assessment is free and comes before any plan or card. Every family in Canada can take the free online math assessment. Start at ${url("/start")}

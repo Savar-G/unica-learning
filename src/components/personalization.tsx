@@ -67,7 +67,7 @@ function Who({ child }: { child: SampleChild }) {
   );
 }
 
-// Fork: one shared start, then the pencil line splits to the two children, each with the first page of their next book.
+// Fork: one shared start, then the pencil line splits to the two children, each with sample sheets from their program.
 function Fork() {
   return (
     <div className="pz-fork">
@@ -99,70 +99,70 @@ interface Sheet { head: string; job: string; title: string; ins: string; items: 
 const PAGES: Record<SampleChildId, Sheet[]> = {
   a: [
     {
-      head: "Leah · Next book · Page 1 of 6",
+      head: "Leah's program",
       job: "Practice",
       title: "Regrouping in stories",
       ins: "Read the story. Line up the tens and ones. When the ones make 10 or more, carry 1 ten.",
       items: leahPage,
-      alt: "First page of Leah's next book: one worked story problem with the carried 1 marked, then three story problems that need regrouping.",
+      alt: "A sample sheet from Leah's program: one worked story problem with the carried 1 marked, then three story problems that need regrouping.",
     },
     {
-      head: "Leah · Next book · Page 2 of 6",
+      head: "Leah's program",
       job: "Practice",
       title: "Borrowing in stories",
       ins: "Read the story. Line up the tens and ones. If the top ones are too small, borrow 1 ten.",
       items: leahPage2,
-      alt: "Second page of Leah's next book: four take-away story problems that need borrowing.",
+      alt: "A sample sheet from Leah's program: four take-away story problems that need borrowing.",
     },
     {
-      head: "Leah · Next book · Page 3 of 6",
+      head: "Leah's program",
       job: "Step up",
       title: "Adding hundreds in stories",
       ins: "Read the story. Add the ones, then the tens, then the hundreds. Carry when a column makes 10.",
       items: leahPage3,
-      alt: "Third page of Leah's next book: four story problems that add three-digit numbers.",
+      alt: "A sample sheet from Leah's program: four story problems that add three-digit numbers.",
     },
     {
-      head: "Leah · Next book · Page 4 of 6",
+      head: "Leah's program",
       job: "Review",
       title: "Mixed review",
       ins: "Read each problem. Decide what to do, then solve it.",
       items: leahPage4,
-      alt: "Fourth page of Leah's next book: a mix of add, take-away and equal-groups problems, one with a picture.",
+      alt: "A sample sheet from Leah's program: a mix of add, take-away and equal-groups problems, one with a picture.",
     },
   ],
   b: [
     {
-      head: "Kai · Next book · Page 1",
+      head: "Kai's program",
       job: "New",
       title: "Multiplication with rows and groups",
       ins: "Use the picture. Count the rows, then the number in each row.",
       items: kaiPage,
-      alt: "First page of Kai's next book: three multiplication problems, each with a picture: an array of chairs, groups of cookies on plates, and rows of books.",
+      alt: "A sample sheet from Kai's program: three multiplication problems, each with a picture: an array of chairs, groups of cookies on plates, and rows of books.",
     },
     {
-      head: "Kai · Next book · Page 2",
+      head: "Kai's program",
       job: "New",
       title: "Sharing equally",
       ins: "Use the picture. Share the items into equal groups, then count how many are in each group.",
       items: kaiPage2,
-      alt: "Second page of Kai's next book: three sharing and grouping problems, each with a picture of equal groups.",
+      alt: "A sample sheet from Kai's program: three sharing and grouping problems, each with a picture of equal groups.",
     },
     {
-      head: "Kai · Next book · Page 3",
+      head: "Kai's program",
       job: "Practice",
       title: "More rows and groups",
       ins: "Use the picture. Count the rows, then the number in each row.",
       items: kaiPage3,
-      alt: "Third page of Kai's next book: three more multiplication problems with arrays and equal groups.",
+      alt: "A sample sheet from Kai's program: three more multiplication problems with arrays and equal groups.",
     },
     {
-      head: "Kai · Next book · Page 4",
+      head: "Kai's program",
       job: "Grade 4",
       title: "Bigger numbers",
       ins: "Use the picture to help. Multiply or share the bigger numbers.",
       items: kaiPage4,
-      alt: "Fourth page of Kai's next book: Grade 4 multiplication and sharing problems with bigger numbers.",
+      alt: "A sample sheet from Kai's program: Grade 4 multiplication and sharing problems with bigger numbers.",
     },
   ],
 };

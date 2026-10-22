@@ -137,7 +137,7 @@ const INCLUDED: [IconName, string, ReactNode, number][][] = [
   [
     ["cam", "Instant answer check", "Take a photo of a finished page in our app and see what's right in seconds. Stuck on a problem? Photograph it to see every step explained.", 0.04],
     ["chart", "Progress reports", "A report and worked solutions in the app after every scan.", 0.12],
-    ["book", "Workbooks mailed home", "1 math workbook a month, about 20-25 pages, delivered before the current book ends.", 0.2],
+    ["book", "Workbooks mailed home", "2 math workbooks a month, delivered before the current workbook ends.", 0.2],
   ],
 ];
 
