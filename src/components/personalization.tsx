@@ -2,14 +2,11 @@
 // get two different learning programs. The section sits after How it works. The pages are built from the real
 // question bank (src/lib/sample-children.ts): the words, numbers and answers are the templates' own; the pictures are
 // drawn from the filled values. A tap on a page opens it full size (PageDeck).
-import Link from "next/link";
 import type { ReactNode } from "react";
 import { Section, SectionHeader } from "@/ds";
-import { ReportCard } from "@/components/report";
-import { SAMPLE_CHILDREN, kaiPage, kaiPage2, kaiPage3, kaiPage4, leahPage, leahPage2, leahPage3, leahPage4, sampleReportView, type PageItem, type SampleChild, type SampleChildId } from "@/lib/sample-children";
+import { SAMPLE_CHILDREN, kaiPage, kaiPage2, kaiPage3, kaiPage4, leahPage, leahPage2, leahPage3, leahPage4, type PageItem, type SampleChild, type SampleChildId } from "@/lib/sample-children";
 import { Knot, Rise } from "./drawn";
 import { PageDeck } from "./page-deck";
-import { ReportPeek } from "./report-peek";
 import "@/ds/styles/personalization.css";
 
 const TITLE = "Same grade. Different program.";
@@ -22,22 +19,7 @@ export function Personalization() {
         <SectionHeader eyebrow="Personalized for your child" title={TITLE} titleId="personalT" />
       </Rise>
       <Fork />
-      <Footnote />
     </Section>
-  );
-}
-
-// The real sample report in a small scrollable window, with a link to the full page under it.
-function Footnote() {
-  return (
-    <div className="pz-foot">
-      <div className="pz-peek">
-        <ReportPeek>
-          <ReportCard view={sampleReportView()} readOnly />
-        </ReportPeek>
-        <Link className="btn pz-peek-btn" href="/sample-report">See a sample report <span aria-hidden="true">→</span></Link>
-      </div>
-    </div>
   );
 }
 
