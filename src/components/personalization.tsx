@@ -6,9 +6,9 @@ import Link from "next/link";
 import type { ReactNode } from "react";
 import { Section, SectionHeader } from "@/ds";
 import { ReportCard } from "@/components/report";
-import { SAMPLE_CHILDREN, kaiPage, leahPage, sampleReportView, type PageItem, type SampleChild, type SampleChildId } from "@/lib/sample-children";
+import { SAMPLE_CHILDREN, kaiPage, kaiPage2, kaiPage3, kaiPage4, leahPage, leahPage2, leahPage3, leahPage4, sampleReportView, type PageItem, type SampleChild, type SampleChildId } from "@/lib/sample-children";
 import { Knot, Rise } from "./drawn";
-import { PageZoom } from "./page-zoom";
+import { PageDeck } from "./page-deck";
 import { ReportPeek } from "./report-peek";
 import "@/ds/styles/personalization.css";
 
@@ -82,7 +82,7 @@ function Fork() {
       <div className="pz-forks">
         {(["a", "b"] as const).map((id, i) => (
           <Rise key={id} d={i * 0.08} className="pz-row">
-            <div className="pz-thumb"><PageZoom id={id} name={SAMPLE_CHILDREN[id].name}><BankPage id={id} /></PageZoom></div>
+            <div className="pz-thumb"><PageDeck id={id} name={SAMPLE_CHILDREN[id].name} pages={PAGES[id].map((_, n) => <BankPage key={n} id={id} n={n} />)} /></div>
             <div>
               <Who child={SAMPLE_CHILDREN[id]} />
               <Lines child={SAMPLE_CHILDREN[id]} />
@@ -95,25 +95,73 @@ function Fork() {
 }
 
 // ---------- The bank pages ----------
-const PAGES: Record<SampleChildId, { head: string; title: string; ins: string; items: () => PageItem[]; alt: string }> = {
-  a: {
-    head: "Leah · Next book · Page 1 of 6",
-    title: "Regrouping in stories",
-    ins: "Read the story. Line up the tens and ones. When the ones make 10 or more, carry 1 ten.",
-    items: leahPage,
-    alt: "First page of Leah's next book: one worked story problem with the carried 1 marked, then three story problems that need regrouping.",
-  },
-  b: {
-    head: "Kai · Next book · Page 1",
-    title: "Multiplication with rows and groups",
-    ins: "Use the picture. Count the rows, then the number in each row.",
-    items: kaiPage,
-    alt: "First page of Kai's next book: three multiplication problems, each with a picture: an array of chairs, groups of cookies on plates, and rows of books.",
-  },
+interface Sheet { head: string; title: string; ins: string; items: () => PageItem[]; alt: string }
+
+const PAGES: Record<SampleChildId, Sheet[]> = {
+  a: [
+    {
+      head: "Leah · Next book · Page 1 of 6",
+      title: "Regrouping in stories",
+      ins: "Read the story. Line up the tens and ones. When the ones make 10 or more, carry 1 ten.",
+      items: leahPage,
+      alt: "First page of Leah's next book: one worked story problem with the carried 1 marked, then three story problems that need regrouping.",
+    },
+    {
+      head: "Leah · Next book · Page 2 of 6",
+      title: "Borrowing in stories",
+      ins: "Read the story. Line up the tens and ones. If the top ones are too small, borrow 1 ten.",
+      items: leahPage2,
+      alt: "Second page of Leah's next book: four take-away story problems that need borrowing.",
+    },
+    {
+      head: "Leah · Next book · Page 3 of 6",
+      title: "Adding hundreds in stories",
+      ins: "Read the story. Add the ones, then the tens, then the hundreds. Carry when a column makes 10.",
+      items: leahPage3,
+      alt: "Third page of Leah's next book: four story problems that add three-digit numbers.",
+    },
+    {
+      head: "Leah · Next book · Page 4 of 6",
+      title: "Add or take away?",
+      ins: "Read each story. Decide if you add or take away, then solve it.",
+      items: leahPage4,
+      alt: "Fourth page of Leah's next book: four story problems, some to add and some to take away.",
+    },
+  ],
+  b: [
+    {
+      head: "Kai · Next book · Page 1",
+      title: "Multiplication with rows and groups",
+      ins: "Use the picture. Count the rows, then the number in each row.",
+      items: kaiPage,
+      alt: "First page of Kai's next book: three multiplication problems, each with a picture: an array of chairs, groups of cookies on plates, and rows of books.",
+    },
+    {
+      head: "Kai · Next book · Page 2",
+      title: "Sharing equally",
+      ins: "Use the picture. Share the items into equal groups, then count how many are in each group.",
+      items: kaiPage2,
+      alt: "Second page of Kai's next book: three sharing and grouping problems, each with a picture of equal groups.",
+    },
+    {
+      head: "Kai · Next book · Page 3",
+      title: "More rows and groups",
+      ins: "Use the picture. Count the rows, then the number in each row.",
+      items: kaiPage3,
+      alt: "Third page of Kai's next book: three more multiplication problems with arrays and equal groups.",
+    },
+    {
+      head: "Kai · Next book · Page 4",
+      title: "Bigger numbers",
+      ins: "Use the picture to help. Multiply or share the bigger numbers.",
+      items: kaiPage4,
+      alt: "Fourth page of Kai's next book: Grade 4 multiplication and sharing problems with bigger numbers.",
+    },
+  ],
 };
 
-export function BankPage({ id }: { id: SampleChildId }) {
-  const p = PAGES[id];
+export function BankPage({ id, n = 0 }: { id: SampleChildId; n?: number }) {
+  const p = PAGES[id][n];
   const items = p.items();
   return (
     <div className="bpage" role="img" aria-label={p.alt}>
@@ -127,7 +175,7 @@ export function BankPage({ id }: { id: SampleChildId }) {
           <p>{it.prompt}</p>
           {it.worked && <Column {...it.worked} />}
           {it.picture && <Picture p={it.picture} />}
-          {!it.worked && !it.picture && <ColumnBlank a={it.values.a} b={it.values.b} op={/left/.test(it.prompt) ? "−" : "+"} />}
+          {!it.worked && !it.picture && it.values.a != null && it.values.b != null && <ColumnBlank a={it.values.a} b={it.values.b} op={it.op ?? (/left/.test(it.prompt) ? "−" : "+")} />}
           {!it.worked && <span className="bp-line" />}
         </div>
       ))}
