@@ -9,6 +9,7 @@ import { ReportCard } from "@/components/report";
 import { SAMPLE_CHILDREN, kaiPage, leahPage, sampleReportView, type PageItem, type SampleChild, type SampleChildId } from "@/lib/sample-children";
 import { Knot, Rise } from "./drawn";
 import { PageZoom } from "./page-zoom";
+import { ReportPeek } from "./report-peek";
 import "@/ds/styles/personalization.css";
 
 const TITLE = "Every child learns differently. So each one gets their own program.";
@@ -30,17 +31,16 @@ export function Personalization() {
   );
 }
 
-// The top of the real sample report, cropped and faded, as one link to the full report. It is a picture of the report:
-// inert and hidden from assistive tech, so the link's own label is what a screen reader hears.
+// The real sample report in a small scrollable window, with a link to the full page under it.
 function Footnote() {
   return (
     <div className="pz-foot">
-      <Link className="pz-peek" href="/sample-report" aria-label="See a sample report">
-        <div className="pz-peek-card" aria-hidden="true" inert>
+      <div className="pz-peek">
+        <ReportPeek>
           <ReportCard view={sampleReportView()} readOnly />
-        </div>
-        <span className="btn pz-peek-btn">See a sample report <span aria-hidden="true">→</span></span>
-      </Link>
+        </ReportPeek>
+        <Link className="btn pz-peek-btn" href="/sample-report">See a sample report <span aria-hidden="true">→</span></Link>
+      </div>
     </div>
   );
 }
