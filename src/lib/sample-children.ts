@@ -29,9 +29,9 @@ export type SampleChildId = "a" | "b";
 export interface SampleChild {
   id: SampleChildId;
   name: string;
-  /** The two lines a parent reads: assessment result and learning style. */
+  /** The two lines a parent reads: the assessment result and what their next book does about it. */
   result: string;
-  style: string;
+  book: string;
   /** One short tag for compact layouts. */
   tag: string;
 }
@@ -43,14 +43,14 @@ export const SAMPLE_CHILDREN: Record<SampleChildId, SampleChild> = {
     id: "a",
     name: "Leah",
     result: "Struggles with carrying and borrowing, so addition and subtraction are hard for her.",
-    style: "Learns best through stories.",
+    book: "Mostly practice on carrying and borrowing, with some review and one step ahead.",
     tag: "More practice",
   },
   b: {
     id: "b",
     name: "Kai",
     result: "Has mastered addition and subtraction, and is ready to get ahead of Grade 3 with multiplication and division.",
-    style: "Learns best visually, from pictures and diagrams.",
+    book: "Mostly multiplication and division, a grade ahead, with some review.",
     tag: "New challenges",
   },
 };
@@ -113,13 +113,14 @@ export function leahPage3(): PageItem[] {
   return [1, 3, 5, 6].map((seed) => item(fill("g35-3-story-add", seed), { op: "+" }));
 }
 
-/** Leah's next book, page 4: a mix, so she chooses whether to add or take away. */
+/** Leah's next book, page 4: a mix, so she chooses what to do; one problem has a picture. */
 export function leahPage4(): PageItem[] {
+  const groups = fill("3-equal-groups", 5);
   return [
     item(fill("2-story-add-2-digit", 5), { op: "+" }),
     item(fill("2-story-subtract-2-digit", 1), { op: "−" }),
     item(fill("3-story-subtract", 3), { op: "−" }),
-    item(fill("g35-3-story-add", 2), { op: "+" }),
+    item(groups, { picture: { kind: "groups", groups: groups.values.groups, each: groups.values.each } }),
   ];
 }
 
@@ -147,15 +148,14 @@ export function kaiPage2(): PageItem[] {
   ];
 }
 
-/** Kai's next book, page 3: more arrays and equal groups. */
+/** Kai's next book, page 3: more arrays, then one problem with no picture. */
 export function kaiPage3(): PageItem[] {
   const a1 = fill("g35-3-array", 5);
   const a2 = fill("g35-3-array", 3);
-  const g = fill("3-equal-groups", 3);
   return [
     item(a1, { picture: { kind: "array", rows: a1.values.rows, each: a1.values.each } }),
     item(a2, { picture: { kind: "array", rows: a2.values.rows, each: a2.values.each } }),
-    item(g, { picture: { kind: "groups", groups: g.values.groups, each: g.values.each } }),
+    item(fill("3-equal-groups", 3)),
   ];
 }
 

@@ -13,9 +13,9 @@ import { ReportPeek } from "./report-peek";
 import "@/ds/styles/personalization.css";
 
 const TITLE = "Every child learns differently. So each one gets their own program.";
-const LINES: [keyof Pick<SampleChild, "result" | "style">, string][] = [
+const LINES: [keyof Pick<SampleChild, "result" | "book">, string][] = [
   ["result", "Assessment"],
-  ["style", "Learning style"],
+  ["book", "Next book"],
 ];
 
 export function Personalization() {
@@ -95,12 +95,13 @@ function Fork() {
 }
 
 // ---------- The bank pages ----------
-interface Sheet { head: string; title: string; ins: string; items: () => PageItem[]; alt: string }
+interface Sheet { head: string; job: string; title: string; ins: string; items: () => PageItem[]; alt: string }
 
 const PAGES: Record<SampleChildId, Sheet[]> = {
   a: [
     {
       head: "Leah · Next book · Page 1 of 6",
+      job: "Practice",
       title: "Regrouping in stories",
       ins: "Read the story. Line up the tens and ones. When the ones make 10 or more, carry 1 ten.",
       items: leahPage,
@@ -108,6 +109,7 @@ const PAGES: Record<SampleChildId, Sheet[]> = {
     },
     {
       head: "Leah · Next book · Page 2 of 6",
+      job: "Practice",
       title: "Borrowing in stories",
       ins: "Read the story. Line up the tens and ones. If the top ones are too small, borrow 1 ten.",
       items: leahPage2,
@@ -115,6 +117,7 @@ const PAGES: Record<SampleChildId, Sheet[]> = {
     },
     {
       head: "Leah · Next book · Page 3 of 6",
+      job: "Step up",
       title: "Adding hundreds in stories",
       ins: "Read the story. Add the ones, then the tens, then the hundreds. Carry when a column makes 10.",
       items: leahPage3,
@@ -122,15 +125,17 @@ const PAGES: Record<SampleChildId, Sheet[]> = {
     },
     {
       head: "Leah · Next book · Page 4 of 6",
-      title: "Add or take away?",
-      ins: "Read each story. Decide if you add or take away, then solve it.",
+      job: "Review",
+      title: "Mixed review",
+      ins: "Read each problem. Decide what to do, then solve it.",
       items: leahPage4,
-      alt: "Fourth page of Leah's next book: four story problems, some to add and some to take away.",
+      alt: "Fourth page of Leah's next book: a mix of add, take-away and equal-groups problems, one with a picture.",
     },
   ],
   b: [
     {
       head: "Kai · Next book · Page 1",
+      job: "New",
       title: "Multiplication with rows and groups",
       ins: "Use the picture. Count the rows, then the number in each row.",
       items: kaiPage,
@@ -138,6 +143,7 @@ const PAGES: Record<SampleChildId, Sheet[]> = {
     },
     {
       head: "Kai · Next book · Page 2",
+      job: "New",
       title: "Sharing equally",
       ins: "Use the picture. Share the items into equal groups, then count how many are in each group.",
       items: kaiPage2,
@@ -145,6 +151,7 @@ const PAGES: Record<SampleChildId, Sheet[]> = {
     },
     {
       head: "Kai · Next book · Page 3",
+      job: "Practice",
       title: "More rows and groups",
       ins: "Use the picture. Count the rows, then the number in each row.",
       items: kaiPage3,
@@ -152,6 +159,7 @@ const PAGES: Record<SampleChildId, Sheet[]> = {
     },
     {
       head: "Kai · Next book · Page 4",
+      job: "Grade 4",
       title: "Bigger numbers",
       ins: "Use the picture to help. Multiply or share the bigger numbers.",
       items: kaiPage4,
@@ -165,7 +173,7 @@ export function BankPage({ id, n = 0 }: { id: SampleChildId; n?: number }) {
   const items = p.items();
   return (
     <div className="bpage" role="img" aria-label={p.alt}>
-      <div className="bp-hd"><span>{p.head}</span><span>Math</span></div>
+      <div className="bp-hd"><span>{p.head}</span><span>{p.job}</span></div>
       <div className="bp-tt">{p.title}</div>
       <p className="bp-ins">{p.ins}</p>
       {items.map((it, i) => (
