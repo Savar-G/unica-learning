@@ -1,5 +1,5 @@
 "use client";
-// A stack of sample sheets: one shows at a time, with a row of dots and one small next arrow under it. Tapping the sheet opens
+// A stack of sample sheets: one shows at a time, with a row of dots and a small arrow on each side. Tapping the sheet opens
 // it full size (round r18, a native <dialog>: Esc closes it, focus returns to the thumbnail). The full-size view has the
 // same dots, and the Left and Right arrow keys step through the sheets there. The sheets are server-rendered and passed
 // in; the arrow and the arrow keys wrap around from the last sheet to the first. The page scales with its box (container units).
@@ -16,6 +16,9 @@ export function PageDeck({ id, name, pages }: { id: string; name: string; pages:
   };
   const nav = (
     <div className="pz-deck-nav">
+      <button type="button" className="pz-deck-next" onClick={() => go(-1)} aria-label={`Previous sheet of ${name}'s book`}>
+        <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.25" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M8 2L4 6l4 4" /></svg>
+      </button>
       <div className="pz-deck-dots" role="group" aria-label={`${name}'s sheets`}>
         {pages.map((_, n) => (
           <button key={n} type="button" className="pz-deck-dot" aria-label={`Sheet ${n + 1} of ${pages.length}`} aria-current={n === i} onClick={() => setI(n)} />
