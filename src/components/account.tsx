@@ -11,6 +11,7 @@ import { GRADES, PASSWORD_MAX, PASSWORD_MIN, signInFailure, validPassword, type 
 import { browserClient } from "@/lib/supabase-browser";
 import { track } from "@/lib/track";
 import { SUPPORT_EMAIL, SUPPORT_HREF } from "@/lib/contact";
+import { markAdStep } from "@/lib/ad-visit-steps";
 import { SOURCE_STORAGE_KEY, VISIT_STORAGE_KEY, visitSource } from "@/lib/visit-source";
 
 // The tags are kept for the tab on whichever page the visitor lands (VisitTags in the root layout), so a parent who
@@ -203,6 +204,7 @@ export function AccountSignup({ phone = false }: { phone?: boolean }) {
     if (started.current) return;
     started.current = true;
     track("account_form_start");
+    markAdStep("form_start");
   };
 
   /** Writes the family for the proved email: the password from the form, the parent and the first child. */
@@ -283,6 +285,7 @@ export function AccountSignup({ phone = false }: { phone?: boolean }) {
       return;
     }
     track("account_code_sent", { status: sent });
+    markAdStep("code_sent");
     setNote(sent === "wait" ? "wait" : null);
     setSentNow(sent === "sent");
     setStep("code");
@@ -785,6 +788,8 @@ export function GoogleButton({ next }: { next?: string }) {
     setBusy(true);
     setFailed(false);
     track("google_start");
+    // An ad test step only on the signup page, not when a parent signs in with Google.
+    if (window.location.pathname === "/start") markAdStep("google_start");
     const callback = `${window.location.origin}/auth/callback${next ? `?next=${encodeURIComponent(next)}` : ""}`;
     const { error } = await browserClient().auth.signInWithOAuth({ provider: "google", options: { redirectTo: callback } });
     if (error) {

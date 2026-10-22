@@ -1,4 +1,5 @@
 import type { Database as Generated, Json } from "@/lib/database.types";
+import type { AdStep } from "@/lib/ad-visit-steps";
 import type { AnswerChange } from "@/lib/answer-events";
 import type { AnonymousTestCopy, AttemptStatus, FactsTest, HelpAnswer, Placement, Province, ReportModel, Route, StoredTest } from "@/lib/assessment";
 import type { LogKind, LogStatus } from "@/lib/reminders";
@@ -16,6 +17,7 @@ export type { Json };
 // can only narrow. Reads, inserts and updates of these columns take these types.
 type Tbls = Generated["public"]["Tables"];
 type ColumnTypes = KnownColumns<{
+  ad_visit_steps: { step: AdStep };
   anonymous_tests: { copy: AnonymousTestCopy };
   answers: { answer_changes: AnswerChange[] | null };
   assessment_facts: { test: FactsTest };
