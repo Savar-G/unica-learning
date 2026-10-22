@@ -5,7 +5,8 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
 import { Section, SectionHeader } from "@/ds";
-import { SAMPLE_CHILDREN, kaiPage, leahPage, type PageItem, type SampleChild, type SampleChildId } from "@/lib/sample-children";
+import { ReportCard } from "@/components/report";
+import { SAMPLE_CHILDREN, kaiPage, leahPage, sampleReportView, type PageItem, type SampleChild, type SampleChildId } from "@/lib/sample-children";
 import { Knot, Rise } from "./drawn";
 import { PageZoom } from "./page-zoom";
 import "@/ds/styles/personalization.css";
@@ -29,10 +30,17 @@ export function Personalization() {
   );
 }
 
+// The top of the real sample report, cropped and faded, as one link to the full report. It is a picture of the report:
+// inert and hidden from assistive tech, so the link's own label is what a screen reader hears.
 function Footnote() {
   return (
     <div className="pz-foot">
-      <Link className="btn" href="/sample-report">See a sample report <span aria-hidden="true">→</span></Link>
+      <Link className="pz-peek" href="/sample-report" aria-label="See a sample report">
+        <div className="pz-peek-card" aria-hidden="true" inert>
+          <ReportCard view={sampleReportView()} readOnly />
+        </div>
+        <span className="btn pz-peek-btn">See a sample report <span aria-hidden="true">→</span></span>
+      </Link>
     </div>
   );
 }

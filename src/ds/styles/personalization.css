@@ -11,7 +11,14 @@
 .pz-lines > div { display: grid; grid-template-columns: 128px 1fr; gap: 12px; padding-top: 12px; border-top: 1px solid var(--line); }
 .pz-lines dt { font: 400 12.5px/1.5 var(--mono); color: var(--ink-3); padding-top: 2px; }
 .pz-lines dd { margin: 0; font-size: 16px; line-height: 1.5; color: var(--ink); }
-.pz-foot { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 10px 24px; margin-top: 32px; }
+.pz-foot { display: flex; justify-content: center; margin-top: 48px; }
+/* The report preview: the top of the real report, cropped and faded, with the button over the fade. */
+.pz-peek { position: relative; display: block; width: 100%; max-width: 1040px; color: inherit; text-decoration: none; }
+.pz-peek-card { max-height: 720px; overflow: hidden; padding: 28px clamp(18px, 3vw, 40px) 0; background: #fff; border: 1px solid var(--line); border-radius: 10px 10px 0 0; box-shadow: 0 18px 40px -22px rgba(0, 0, 0, 0.3); pointer-events: none; }
+.pz-peek-card .rpt { --row-pad: 28px; }
+.pz-peek::after { content: ""; position: absolute; inset: auto 0 0 0; height: 280px; background: linear-gradient(to bottom, rgba(255, 255, 255, 0), #fff 78%); pointer-events: none; border-radius: 0 0 10px 10px; }
+.pz-peek-btn { position: absolute; left: 50%; bottom: 24px; z-index: 1; transform: translateX(-50%); }
+.pz-peek:hover .pz-peek-btn { background: var(--ink-2); }
 
 /* ---------- the bank page ---------- */
 .bpage { position: relative; background: #fff; border-radius: 6px; padding: 6cqw 6cqw 4cqw; container-type: inline-size; color: #18181b;
