@@ -13,9 +13,11 @@
 .pz-lines dd { margin: 0; font-size: 16px; line-height: 1.5; color: var(--ink); }
 .pz-foot { display: flex; justify-content: center; margin-top: 48px; }
 /* The report preview: the top of the real report, cropped and faded, with the button over the fade. */
-.pz-peek { width: 100%; max-width: 280px; }
+.pz-peek { width: 100%; max-width: 680px; }
 .pz-peek-wrap { position: relative; }
-.pz-peek-card { height: 400px; overflow-x: hidden; overflow-y: auto; overscroll-behavior: contain; padding: 14px 14px 20px; background: #fff; border: 1px solid var(--line); border-radius: 10px; box-shadow: 0 18px 40px -22px rgba(0, 0, 0, 0.3); scrollbar-width: thin; scrollbar-color: #b9b9c0 transparent; }
+/* The real report, laid out as on /sample-report and scaled down on wide screens, in a window that scrolls on its own. */
+.pz-peek-card { height: 440px; overflow-x: hidden; overflow-y: auto; overscroll-behavior: contain; padding: 22px 26px 28px; background: #fff; border: 1px solid var(--line); border-radius: 10px; box-shadow: 0 18px 40px -22px rgba(0, 0, 0, 0.3); scrollbar-width: thin; scrollbar-color: #b9b9c0 transparent; }
+@media (min-width: 900px) { .pz-peek-card .rpt { zoom: 0.58; } }
 .pz-peek-card:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
 .pz-peek-card::-webkit-scrollbar { width: 8px; }
 .pz-peek-card::-webkit-scrollbar-thumb { background: #b9b9c0; border-radius: 8px; }
@@ -27,33 +29,6 @@
 @keyframes pz-nudge { 50% { transform: translateY(3px); } }
 @media (prefers-reduced-motion: reduce) { .pz-peek-hint span { animation: none; } }
 .pz-peek-btn { white-space: nowrap; display: flex; width: max-content; margin: 14px auto 0; }
-.pz-peek-card .rpt { --row-pad: 28px; }
-/* The report's phone rules (report.css, max-width 599px), applied to the narrow card at any screen width. */
-.pz-peek-card .rpt-areas { width: 100%; }
-.pz-peek-card .rpt-areas .rpt-count { display: none; }
-.pz-peek-card .rpt-areas th, .pz-peek-card .rpt-areas td { padding: 16px 8px 16px 0; }
-.pz-peek-card .rpt-areas .rpt-m { display: none; }
-.pz-peek-card .rpt-areas thead .rpt-count { white-space: normal; }
-.pz-peek-card .rpt-areas tbody th { font-size: 15px; }
-.pz-peek-card .rpt-nf, .support-page .pz-peek-card .rpt-work, .support-page .pz-peek-card .rpt-strengths { grid-template-columns: 1fr; }
-.pz-peek-card .rpt-struggle { padding: 18px 16px; }
-.pz-peek-card .rpt-answer { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
-.pz-peek-card .rpt-answer .is-q { grid-column: 1 / -1; }
-.pz-peek-card .rpt-plans .btn { min-width: 0; flex: 1 1 100%; }
-.pz-peek-card .rpt-row { grid-template-columns: minmax(0, 1fr); gap: 12px; padding: 24px 0; }
-.pz-peek-card .rpt-row-h h2 { font-size: 20px; }
-.pz-peek-card .rpt-head { grid-template-columns: 1fr; gap: 12px; padding-bottom: 14px; }
-.pz-peek-card .rpt-word { font-size: 16px; }
-.pz-peek-card .rpt-facts { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px 14px; }
-.pz-peek-card .rpt-facts > div:nth-child(n+3) { display: none; }
-.pz-peek-card .rpt-facts dd { font-size: 14px; }
-.pz-peek-card .rpt-overall { margin-top: 18px; padding: 22px 18px 20px; border-radius: 12px; }
-[data-look="warm"] .pz-peek-card .rpt .rpt-overall h2 { font-size: 26px; margin-top: 10px; }
-.support-page .pz-peek-card .rpt .rpt-verdict, .pz-peek-card .rpt .rpt-verdict { font-size: 13px; margin-top: 8px; }
-.pz-peek-card .rpt-scale { margin-top: 18px; }
-.pz-peek-card .rpt-ruler-track { height: 44px; }
-.pz-peek-card .rpt-tick { font-size: 12px; }
-.pz-peek-card .rpt-legend { font-size: 11px; gap: 6px 14px; }
 
 /* ---------- the bank page ---------- */
 .bpage { position: relative; background: #fff; border-radius: 6px; padding: 6cqw 6cqw 4cqw; container-type: inline-size; color: #18181b;
