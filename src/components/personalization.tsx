@@ -12,11 +12,7 @@ import { PageDeck } from "./page-deck";
 import { ReportPeek } from "./report-peek";
 import "@/ds/styles/personalization.css";
 
-const TITLE = "Every child learns differently. So each one gets their own program.";
-const LINES: [keyof Pick<SampleChild, "result" | "book">, string][] = [
-  ["result", "Assessment"],
-  ["book", "Next book"],
-];
+const TITLE = "Same grade. Different program.";
 
 export function Personalization() {
   return (
@@ -46,12 +42,16 @@ function Footnote() {
 }
 
 function Lines({ child }: { child: SampleChild }) {
+  const lines: [string, string][] = [
+    ["Gap", child.gap],
+    [child.programLabel, child.program],
+  ];
   return (
     <dl className="pz-lines">
-      {LINES.map(([key, label]) => (
-        <div key={key}>
+      {lines.map(([label, text]) => (
+        <div key={label}>
           <dt>{label}</dt>
-          <dd>{child[key]}</dd>
+          <dd>{text}</dd>
         </div>
       ))}
     </dl>
@@ -74,7 +74,7 @@ function Fork() {
     <div className="pz-fork">
       <Rise className="pz-start">
         <span className="eyebrow">Meet Leah and Kai</span>
-        <p>Leah and Kai are both in Grade 3. Leah needs more practice, and Kai is ready for more.</p>
+        <p>Leah and Kai are both in Grade 3. The assessment found different gaps, so their programs are different.</p>
       </Rise>
       <svg className="pz-branch" viewBox="0 0 400 60" preserveAspectRatio="none" aria-hidden="true">
         <path d="M200 0 C200 30 100 30 100 60 M200 0 C200 30 300 30 300 60" />

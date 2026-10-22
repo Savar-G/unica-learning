@@ -105,7 +105,7 @@ const STEPS = [
   { n: "03", t: "Practice", d: "Your child works on paper for 15-30 minutes a day, 5 days a week.",
     v: <Image src={practice6} alt="A girl works through an arithmetic page in pencil" sizes={STEP_SIZES} placeholder="blur" />, tone: "photo" as const },
   { n: "04", t: "Scan", d: "Take a photo of the finished pages. We mark the work, show you the gaps, and give the solutions.", v: <Image src={scanPhoto} alt="A phone camera frames a page to photograph it" sizes={STEP_SIZES} placeholder="blur" />, tone: "photo" as const },
-  { n: "05", t: "Adapt", d: "We shape the next workbook from how they did: more practice where they struggle, new topics where they're ready.", v: <Image src={adaptPhoto} alt="A girl shows her finished work to her parents" sizes={STEP_SIZES} placeholder="blur" />, tone: "photo" as const },
+  { n: "05", t: "Adapt", d: "Each scan updates the program. Missed carrying? You get more of it. Got it? It moves on.", v: <Image src={adaptPhoto} alt="A girl shows her finished work to her parents" sizes={STEP_SIZES} placeholder="blur" />, tone: "photo" as const },
   { n: "06", t: "Repeat", d: <>The next book arrives before this one runs out. <em>Struggling with fractions? Your next book focuses on fractions.</em></>, v: <Image src={repeatPhoto} alt="A girl starts on her next book at the dining table" sizes={STEP_SIZES} placeholder="blur" />, tone: "photo" as const },
 ];
 
@@ -187,7 +187,7 @@ export function Feel() {
       ))}
       <Rise className="msg">
         <h2 id="feelT">A program made for one child: yours.</h2>
-        <p className="lead">No two {BRAND} programs are the same. Each one starts where your child is, and moves on when they&apos;re ready.</p>
+        <p className="lead">Your child&apos;s program starts from the assessment. After that, it&apos;s shaped by their scanned pages.</p>
       </Rise>
     </Section>
   );

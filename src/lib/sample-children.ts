@@ -29,9 +29,11 @@ export type SampleChildId = "a" | "b";
 export interface SampleChild {
   id: SampleChildId;
   name: string;
-  /** The two lines a parent reads: the assessment result and what their next book does about it. */
-  result: string;
-  book: string;
+  /** The two lines a parent reads: the gap the assessment found, and what their program does about it. */
+  gap: string;
+  /** "Her program" or "His program". */
+  programLabel: string;
+  program: string;
   /** One short tag for compact layouts. */
   tag: string;
 }
@@ -42,15 +44,17 @@ export const SAMPLE_CHILDREN: Record<SampleChildId, SampleChild> = {
   a: {
     id: "a",
     name: "Leah",
-    result: "Struggles with carrying and borrowing, so addition and subtraction are hard for her.",
-    book: "Mostly practice on carrying and borrowing, with some review and one step ahead.",
+    gap: "Carrying and borrowing.",
+    programLabel: "Her program",
+    program: "Mostly practice on that, a little review, one step ahead.",
     tag: "More practice",
   },
   b: {
     id: "b",
     name: "Kai",
-    result: "Has mastered addition and subtraction, and is ready to get ahead of Grade 3 with multiplication and division.",
-    book: "Mostly multiplication and division, a grade ahead, with some review.",
+    gap: "None in Grade 3 basics.",
+    programLabel: "His program",
+    program: "Multiplication and division, a grade ahead.",
     tag: "New challenges",
   },
 };
