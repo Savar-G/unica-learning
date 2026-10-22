@@ -187,7 +187,7 @@ export function Feel() {
       ))}
       <Rise className="msg">
         <h2 id="feelT">A program made for one child: yours.</h2>
-        <p className="lead">Your child&apos;s program starts from the assessment. After that, it&apos;s shaped by their scanned pages.</p>
+        <p className="lead">Your child&apos;s program starts from the assessment. After that, it&apos;s shaped by their progress.</p>
       </Rise>
     </Section>
   );

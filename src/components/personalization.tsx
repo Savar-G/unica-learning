@@ -63,7 +63,6 @@ function Who({ child }: { child: SampleChild }) {
     <div className="pz-who">
       <span className={`pz-dot pz-dot-${child.id}`} aria-hidden="true" />
       <h3>{child.name}</h3>
-      <span className="chip">{child.tag}</span>
     </div>
   );
 }

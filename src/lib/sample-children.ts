@@ -34,8 +34,6 @@ export interface SampleChild {
   /** "Her program" or "His program". */
   programLabel: string;
   program: string;
-  /** One short tag for compact layouts. */
-  tag: string;
 }
 
 export const SAMPLE_GRADE = 3;
@@ -47,7 +45,6 @@ export const SAMPLE_CHILDREN: Record<SampleChildId, SampleChild> = {
     gap: "Carrying and borrowing.",
     programLabel: "Her program",
     program: "Mostly practice on that, a little review, one step ahead.",
-    tag: "More practice",
   },
   b: {
     id: "b",
@@ -55,7 +52,6 @@ export const SAMPLE_CHILDREN: Record<SampleChildId, SampleChild> = {
     gap: "None in Grade 3 basics.",
     programLabel: "His program",
     program: "Multiplication and division, a grade ahead.",
-    tag: "New challenges",
   },
 };
 
