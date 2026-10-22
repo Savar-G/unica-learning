@@ -1,8 +1,8 @@
 "use client";
-// A stack of sample sheets: one shows at a time, with a small arrow on each side of a row of dots. Tapping the sheet opens
-// it full size (round r18, a native <dialog>: Esc closes it, focus returns to the thumbnail), and the full-size view has
-// its own arrows, so a parent can keep going through the sheets there too. The sheets are server-rendered and passed
-// in; the arrows wrap around from the last sheet to the first. The page scales with its box (container units).
+// A stack of sample sheets: one shows at a time, with a row of dots under it. Tapping the sheet opens
+// it full size (round r18, a native <dialog>: Esc closes it, focus returns to the thumbnail). The full-size view has the
+// same dots, and the Left and Right arrow keys step through the sheets there. The sheets are server-rendered and passed
+// in; the arrow keys wrap around from the last sheet to the first. The page scales with its box (container units).
 import { useRef, useState, type ReactNode } from "react";
 import { track } from "@/lib/track";
 
@@ -16,13 +16,11 @@ export function PageDeck({ id, name, pages }: { id: string; name: string; pages:
   };
   const nav = (
     <div className="pz-deck-nav">
-      <button type="button" className="pz-deck-btn" onClick={() => go(-1)} aria-label={`Previous sheet of ${name}'s book`}><Chevron flip /></button>
       <div className="pz-deck-dots" role="group" aria-label={`${name}'s sheets`}>
         {pages.map((_, n) => (
           <button key={n} type="button" className="pz-deck-dot" aria-label={`Sheet ${n + 1} of ${pages.length}`} aria-current={n === i} onClick={() => setI(n)} />
         ))}
       </div>
-      <button type="button" className="pz-deck-btn" onClick={() => go(1)} aria-label={`Next sheet of ${name}'s book`}><Chevron /></button>
     </div>
   );
   return (
@@ -55,13 +53,5 @@ export function PageDeck({ id, name, pages }: { id: string; name: string; pages:
         <div className="pz-dialog-page" key={i}>{pages[i]}</div>
       </dialog>
     </div>
-  );
-}
-
-function Chevron({ flip = false }: { flip?: boolean }) {
-  return (
-    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" style={flip ? { transform: "scaleX(-1)" } : undefined}>
-      <path d="M6 3l5 5-5 5" />
-    </svg>
   );
 }

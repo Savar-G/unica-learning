@@ -44,9 +44,6 @@
 .pz-deck-dot:hover::before { background: var(--ink-3); }
 .pz-deck-dot[aria-current="true"]::before { background: var(--ink); transform: scale(1.25); }
 .pz-deck-dot:focus-visible { outline: 2px solid var(--ink); outline-offset: -2px; border-radius: 6px; }
-.pz-deck-btn { display: grid; place-items: center; width: 28px; height: 28px; padding: 0; border: 0; border-radius: 50%; background: none; color: var(--ink-2); cursor: pointer; transition: background 0.15s, color 0.15s; }
-.pz-deck-btn:hover { background: rgba(0, 0, 0, 0.07); color: var(--ink); }
-.pz-deck-btn:focus-visible { outline: 2px solid var(--ink); outline-offset: 1px; }
 @media (prefers-reduced-motion: reduce) { .pz-deck-stage { animation: none; } }
 .bp-hd { display: flex; justify-content: space-between; font: 600 2.6cqw/1 var(--sans); letter-spacing: 0.1em; text-transform: uppercase; color: #666; padding-bottom: 2.6cqw; border-bottom: 1px solid #ddd; }
 .bp-tt { font: 400 6.4cqw/1.08 var(--sans); letter-spacing: -0.02em; margin: 4cqw 0 1.4cqw; }
