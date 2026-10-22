@@ -32,7 +32,7 @@ export function Personalization() {
 function Footnote() {
   return (
     <div className="pz-foot">
-      <Link className="more-link" href="/sample-report">See a sample report <span aria-hidden="true">→</span></Link>
+      <Link className="btn" href="/sample-report">See a sample report <span aria-hidden="true">→</span></Link>
     </div>
   );
 }

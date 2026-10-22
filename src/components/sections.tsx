@@ -88,7 +88,7 @@ export function Hero() {
         actions={
           <>
             <GetStarted src="hero" />
-            <a className="btn ghost" href="#how">See how it works</a>
+            <Link className="btn ghost" href="/sample-report">See a sample report</Link>
           </>
         }
         media={<Image src={heroHome1} alt="A boy writes in his workbook at a desk at home" sizes="(min-width: 1200px) 1120px, 100vw" placeholder="blur" loading="eager" fetchPriority="high" />}
