@@ -14,6 +14,32 @@ export type Database = {
   }
   public: {
     Tables: {
+      ad_visit_steps: {
+        Row: {
+          step: string
+          stepped_at: string
+          visit_id: string
+        }
+        Insert: {
+          step: string
+          stepped_at?: string
+          visit_id: string
+        }
+        Update: {
+          step?: string
+          stepped_at?: string
+          visit_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ad_visit_steps_visit_id_fkey"
+            columns: ["visit_id"]
+            isOneToOne: false
+            referencedRelation: "ad_visits"
+            referencedColumns: ["visit_id"]
+          },
+        ]
+      }
       ad_visits: {
         Row: {
           has_fbclid: boolean
