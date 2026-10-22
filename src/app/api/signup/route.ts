@@ -55,7 +55,8 @@ export async function POST(request: Request) {
   try {
     if (db) {
       const { data, error } = await db.rpc("begin_booking_signup", { payload: row });
-      admitted = !error && data === true;
+      const answer: boolean | null = error ? null : data;
+      admitted = answer === true;
     }
   } catch { /* A lost admission reply never permits a Stripe call. */ }
   if (!admitted) {
@@ -74,13 +75,15 @@ export async function POST(request: Request) {
         invoked = true;
         const setup = await cardSetupUrl(s, { ...row, ref, plan, curriculum: row.curriculum, origin: new URL(request.url).origin });
         const { data, error } = await db!.rpc("finish_booking_signup", { booking_ref: ref, customer: setup.customer });
-        if (error || data !== true) throw Error("Booking completion unavailable");
+        const finished: boolean | null = error ? null : data;
+        if (finished !== true) throw Error("Booking completion unavailable");
         cardUrl = setup.url;
         stripeState = cardUrl ? "sent" : "failed";
       } else {
         // No remote request started. This is the only path that can release a hold without a customer.
         const { data, error } = await db!.rpc("finish_booking_signup", { booking_ref: ref, customer: null });
-        if (error || data !== true) throw Error("Booking completion unavailable");
+        const finished: boolean | null = error ? null : data;
+        if (finished !== true) throw Error("Booking completion unavailable");
       }
     } catch {
       // Timeout, abort and lost responses can still complete remotely. Keep the durable pending hold.

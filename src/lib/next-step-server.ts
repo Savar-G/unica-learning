@@ -2,6 +2,7 @@ import "server-only";
 import { after } from "next/server";
 import { randomUUID } from "node:crypto";
 import type { SupabaseClient } from "@supabase/supabase-js";
+import type { Database } from "@/lib/database";
 import { withFamilyCardOperation, type Province } from "@/lib/assessment";
 import { sendEmail } from "@/lib/email-delivery";
 import type { CardCheckResult, CardResult, NextStepError, ReportSrc, WaitlistResult } from "@/lib/next-step";
@@ -38,12 +39,12 @@ interface ParentRow {
   postal: string | null;
 }
 
-async function load(admin: SupabaseClient, parentId: string, reportId: string, cta: "card" | "waitlist"): Promise<{ report: ReportRow; parent: ParentRow } | Fail> {
+async function load(admin: SupabaseClient<Database>, parentId: string, reportId: string, cta: "card" | "waitlist"): Promise<{ report: ReportRow; parent: ParentRow } | Fail> {
   const [{ data: report, error }, { data: parent, error: parentError }] = await Promise.all([
     admin.from("reports")
       .select("id, child_id, assessment_id, cta:model->>callToAction, assessment:assessments(province, grade), child:children(first_name)")
-      .eq("id", reportId).eq("parent_id", parentId).maybeSingle<ReportRow>(),
-    admin.from("parents").select("name, email, postal").eq("id", parentId).maybeSingle<ParentRow>(),
+      .eq("id", reportId).eq("parent_id", parentId).maybeSingle(),
+    admin.from("parents").select("name, email, postal").eq("id", parentId).maybeSingle(),
   ]);
   if (error || parentError) {
     console.error("[next-step] load failed", error?.message ?? parentError?.message);

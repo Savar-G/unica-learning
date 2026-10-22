@@ -1,5 +1,6 @@
 import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
+import type { Database, TablesUpdate } from "@/lib/database";
 import type { SendLedger } from "@/lib/email-delivery";
 import { saveEmailCopy } from "@/lib/email-copies";
 
@@ -54,15 +55,17 @@ export interface ReportClaim extends ReportEmailKey {
 const COLUMNS = {
   parent: { at: "emailed_at", error: "email_error" },
   alert: { at: "alerted_at", error: "alert_error" },
-} as const;
+} as const satisfies Record<string, { at: keyof ReportUpdate; error: keyof ReportUpdate }>;
+
+type ReportUpdate = TablesUpdate<"reports">;
 
 /** The production report row ledger, on public.reports with the secret key. */
-export function reportRowLedger(admin: SupabaseClient): ReportLedger<ReportClaim> {
+export function reportRowLedger(admin: SupabaseClient<Database>): ReportLedger<ReportClaim> {
   return {
     async claim(key, fields) {
       const { at } = COLUMNS[key.email];
       const claimedAt = new Date().toISOString();
-      const write: Record<string, string> = { [at]: claimedAt };
+      const write: ReportUpdate = { [at]: claimedAt };
       for (const [name, value] of Object.entries(fields)) {
         if (key.email !== "parent" || name !== "unsubscribe_hash") throw new Error(`claim ${at}: the report row has no claim field ${name}`);
         write.unsubscribe_hash = value;
@@ -90,12 +93,12 @@ export function reportRowLedger(admin: SupabaseClient): ReportLedger<ReportClaim
     },
     // The admin's email view (D-103): the report email or alert as it was sent, beside the report row.
     async keepCopy(claim, key, copy) {
-      const { data, error } = await admin.from("reports").select("parent_id").eq("id", key.report).maybeSingle<{ parent_id: string }>();
+      const { data, error } = await admin.from("reports").select("parent_id").eq("id", key.report).maybeSingle();
       if (error || !data) return console.error("[report] copy not kept: no report row", key.report, error?.message ?? "");
       await saveEmailCopy(admin, { reportId: key.report, reportEmail: key.email }, data.parent_id, copy);
     },
     async parentEmailSent(report) {
-      const { data, error } = await admin.from("reports").select("email_id").eq("id", report).maybeSingle<{ email_id: string | null }>();
+      const { data, error } = await admin.from("reports").select("email_id").eq("id", report).maybeSingle();
       if (error) throw new Error(`report email state: ${error.message}`);
       return Boolean(data?.email_id);
     },
@@ -107,7 +110,7 @@ export function reportRowLedger(admin: SupabaseClient): ReportLedger<ReportClaim
  * this claim still holds the row (its column keeps the claim's time), so a late write from a run whose claim another
  * run took over cannot release or change the other run's claim.
  */
-async function write(admin: SupabaseClient, claim: ReportClaim, fields: Record<string, string | null>, guarded: boolean) {
+async function write(admin: SupabaseClient<Database>, claim: ReportClaim, fields: ReportUpdate, guarded: boolean) {
   const columns = Object.keys(fields).join(",");
   try {
     let query = admin.from("reports").update(fields).eq("id", claim.report);

@@ -1,5 +1,6 @@
 import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
+import type { Database } from "@/lib/database";
 import type { ReportModel } from "@/lib/assessment";
 import type { ParentContact } from "@/lib/report-email";
 import { parentUnsubscribed } from "@/lib/reminder-store";
@@ -52,28 +53,28 @@ export interface ReportJobStore {
 const REPORT_COLUMNS = "id, model, questions, minutes";
 
 /** The job's store in Supabase, with the secret key. */
-export function reportJobStore(admin: SupabaseClient): ReportJobStore {
+export function reportJobStore(admin: SupabaseClient<Database>): ReportJobStore {
   return {
     async report(assessmentId) {
-      const { data, error } = await admin.from("reports").select(REPORT_COLUMNS).eq("assessment_id", assessmentId).maybeSingle<StoredReport>();
+      const { data, error } = await admin.from("reports").select(REPORT_COLUMNS).eq("assessment_id", assessmentId).maybeSingle();
       if (error) throw new Error(`report load: ${error.message}`);
       return data;
     },
     async insertReport(r) {
       const row = { assessment_id: r.assessmentId, parent_id: r.parentId, child_id: r.childId, model: r.model, questions: r.questions, minutes: r.minutes };
       // One report per assessment: a second insert adds nothing and returns no row.
-      const { data, error } = await admin.from("reports").upsert(row, { onConflict: "assessment_id", ignoreDuplicates: true }).select(REPORT_COLUMNS).returns<StoredReport[]>();
+      const { data, error } = await admin.from("reports").upsert(row, { onConflict: "assessment_id", ignoreDuplicates: true }).select(REPORT_COLUMNS);
       if (error) throw new Error(`report insert: ${error.message}`);
       return data?.[0] ?? null;
     },
     async updateReport(id, { model, questions, minutes }) {
-      const { data, error } = await admin.from("reports").update({ model, questions, minutes }).eq("id", id).select(REPORT_COLUMNS).single<StoredReport>();
+      const { data, error } = await admin.from("reports").update({ model, questions, minutes }).eq("id", id).select(REPORT_COLUMNS).single();
       if (error) throw new Error(`report update: ${error.message}`);
       return data;
     },
     reviews: (assessment) => reviewStore(admin, { id: assessment.id, parent_id: assessment.parentId }),
     async parent(parentId) {
-      const { data, error } = await admin.from("parents").select("name, email").eq("id", parentId).maybeSingle<ParentContact>();
+      const { data, error } = await admin.from("parents").select("name, email").eq("id", parentId).maybeSingle();
       if (error) throw new Error(`parent load: ${error.message}`);
       return data;
     },

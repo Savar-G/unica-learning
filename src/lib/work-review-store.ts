@@ -1,6 +1,7 @@
 import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import type { ReviewStore, StoredReview } from "@/lib/work-review";
+import type { Database } from "@/lib/database";
+import type { ReviewStore } from "@/lib/work-review";
 import { WORK_BUCKET } from "@/lib/work-store";
 
 // The AI work review's data in Supabase (#68), read and written with the secret key by the report job (through its
@@ -9,21 +10,12 @@ import { WORK_BUCKET } from "@/lib/work-store";
 // #162). Parents cannot read work_reviews: the report model carries the comments they see.
 
 const COLUMNS = "question_id, error_type, kind, comment, score, confidence, model";
-interface Row {
-  question_id: string;
-  error_type: string;
-  kind: StoredReview["kind"];
-  comment: string;
-  score: number | string;
-  confidence: StoredReview["confidence"];
-  model: string;
-}
 
 /** The reviews of one test in work_reviews, and its drawings in the private bucket. */
-export function reviewStore(admin: SupabaseClient, assessment: { id: string; parent_id: string }): ReviewStore {
+export function reviewStore(admin: SupabaseClient<Database>, assessment: { id: string; parent_id: string }): ReviewStore {
   return {
     async stored() {
-      const { data, error } = await admin.from("work_reviews").select(COLUMNS).eq("assessment_id", assessment.id).returns<Row[]>();
+      const { data, error } = await admin.from("work_reviews").select(COLUMNS).eq("assessment_id", assessment.id);
       if (error) throw new Error(`reviews load: ${error.message}`);
       return (data ?? []).map((r) => ({
         questionId: r.question_id,

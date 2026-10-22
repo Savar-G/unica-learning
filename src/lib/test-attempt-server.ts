@@ -1,12 +1,11 @@
 import "server-only";
 import { randomBytes } from "node:crypto";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import type { Grade, HelpAnswer, Route, StartState, StoredTest } from "@/lib/assessment";
-import type { Child } from "@/lib/account";
-import { isUuid, toAttempt, type AttemptRow } from "@/lib/assessment-store";
+import { toJson, type Database } from "@/lib/database";
+import type { Grade, StartState } from "@/lib/assessment";
+import { isUuid, toAttempt } from "@/lib/assessment-store";
 import { retakeState, startStates, StoreError, type AttemptStore, type RetakeState } from "@/lib/test-attempt";
 import { adminClient } from "@/lib/supabase-auth";
-import type { FactsTest } from "@/lib/assessment";
 import type { FactsStore } from "@/lib/test-attempt";
 import type { AnswerTimeline, ShownStore } from "@/lib/test-attempt";
 import type { ContextStore } from "@/lib/test-attempt";
@@ -30,7 +29,7 @@ const iso = (ms: number) => new Date(ms).toISOString();
 /** The assessment columns the resume and retake rules read: an AttemptRow. */
 const ATTEMPT_COLUMNS = "id, status, started_at, last_answer_at, resume_until, completed_at";
 
-export function attemptStore(admin: SupabaseClient): AttemptStore {
+export function attemptStore(admin: SupabaseClient<Database>): AttemptStore {
   return {
     ...factsStore(admin),
     ...shownStore(admin),
@@ -38,7 +37,7 @@ export function attemptStore(admin: SupabaseClient): AttemptStore {
     ...extraRoundStore(admin),
     async child(parent, childId) {
       const { data, error } = await admin.from("children").select("id, grade, province")
-        .eq("id", childId).eq("parent_id", parent).maybeSingle<Pick<Child, "id" | "grade" | "province">>();
+        .eq("id", childId).eq("parent_id", parent).maybeSingle();
       if (error) throw new StoreError("child load failed", error.message);
       return data ? { id: data.id, grade: data.grade as Grade, province: data.province } : null;
     },
@@ -47,7 +46,7 @@ export function attemptStore(admin: SupabaseClient): AttemptStore {
       // #189: placement->pace->unreliable is true when the completed test's result may not be reliable (a new test opens at once).
       let query = admin.from("assessments").select(`child_id, seed, ${ATTEMPT_COLUMNS}, unreliable:placement->pace->unreliable`).eq("parent_id", parent);
       if (childId !== undefined) query = query.eq("child_id", childId);
-      const { data, error } = await query.returns<(AttemptRow & { child_id: string; seed: number; unreliable: boolean | null })[]>();
+      const { data, error } = await query;
       if (error) throw new StoreError("attempts load failed", error.message);
       return (data ?? []).map((row) => ({
         ...toAttempt(row),
@@ -60,12 +59,11 @@ export function attemptStore(admin: SupabaseClient): AttemptStore {
     async load(parent, id) {
       const { data: row, error } = await admin.from("assessments").select(`${ATTEMPT_COLUMNS}, test, route, break_started_at, break_ended_at, help, ${ROUND_COLUMNS}`)
         .eq("id", id).eq("parent_id", parent)
-        .maybeSingle<AttemptRow & { test: StoredTest; route: Route | null; break_started_at: string | null; break_ended_at: string | null; help: HelpAnswer | null } & RoundRow>();
+        .maybeSingle();
       if (error) throw new StoreError("load failed", error.message);
       if (!row) return null;
       const { data: answers, error: answersError } = await admin.from("answers")
-        .select("question_id, response, time_ms").eq("assessment_id", id).order("position")
-        .returns<{ question_id: string; response: string; time_ms: number }[]>();
+        .select("question_id, response, time_ms").eq("assessment_id", id).order("position");
       if (answersError) throw new StoreError("answers load failed", answersError.message);
       return {
         attempt: toAttempt(row),
@@ -157,7 +155,7 @@ export function attemptStore(admin: SupabaseClient): AttemptStore {
 
     async answerEvents(id, position) {
       const { data, error } = await admin.from("answers").select("answer_changes, read_aloud_count, read_aloud_at_ms, away_count, away_ms")
-        .eq("assessment_id", id).eq("position", position).maybeSingle<EventColumns>();
+        .eq("assessment_id", id).eq("position", position).maybeSingle();
       if (error) throw new StoreError("answer events load failed", error.message);
       return data ? eventsOf(data) : null;
     },
@@ -167,8 +165,7 @@ export function attemptStore(admin: SupabaseClient): AttemptStore {
     async answerWork(id, positions) {
       if (!positions.length) return [];
       const { data, error } = await admin.from("answers").select("position, work_path, work_text, strokes_path")
-        .eq("assessment_id", id).in("position", [...positions])
-        .returns<{ position: number; work_path: string | null; work_text: string | null; strokes_path: string | null }[]>();
+        .eq("assessment_id", id).in("position", [...positions]);
       if (error) throw new StoreError("answer work load failed", error.message);
       return Promise.all((data ?? []).map(async (row) => {
         let strokes: string | null = null;
@@ -197,7 +194,7 @@ export function attemptStore(admin: SupabaseClient): AttemptStore {
         p_misconception: misconception,
         p_time_ms: timeMs,
         p_answered_at: answered_at,
-        p_answer_changes: answer_changes,
+        p_answer_changes: toJson(answer_changes),
         p_read_aloud_count: read_aloud_count,
         p_read_aloud_at_ms: read_aloud_at_ms,
         p_away_count: away_count,
@@ -205,17 +202,25 @@ export function attemptStore(admin: SupabaseClient): AttemptStore {
       };
       // #252: typed working alone (migration change_answer_keep_drawing): the drawing and strokes paths are read under
       // the test's row lock and kept, then change_answer runs with its guards.
-      const { data, error } = work?.keepDrawing
-        ? await admin.rpc("change_answer_keep_drawing", { ...answer, p_work_text: work.workText })
-        : await admin.rpc("change_answer", {
+      // Each function answers jsonb: the work it replaced, or null when a guard failed. Each answer is read on its own,
+      // so a change of either function's answer type fails the build.
+      type Replaced = { work_path: string | null; strokes_path: string | null } | null;
+      let replaced: Replaced;
+      if (work?.keepDrawing) {
+        const { data, error } = await admin.rpc("change_answer_keep_drawing", { ...answer, p_work_text: work.workText });
+        if (error) throw new StoreError("answer change failed", error.message);
+        replaced = data as Replaced;
+      } else {
+        const { data, error } = await admin.rpc("change_answer", {
           ...answer,
           p_work_changed: work !== undefined,
           p_work_path: work?.workPath ?? null,
           p_work_text: work?.workText ?? null,
           p_strokes_path: work?.strokesPath ?? null,
         });
-      if (error) throw new StoreError("answer change failed", error.message);
-      const replaced = data as { work_path: string | null; strokes_path: string | null } | null;
+        if (error) throw new StoreError("answer change failed", error.message);
+        replaced = data as Replaced;
+      }
       return replaced ? { workPath: replaced.work_path, strokesPath: replaced.strokes_path } : "closed";
     },
 
@@ -228,8 +233,9 @@ export function attemptStore(admin: SupabaseClient): AttemptStore {
         p_answers: answers.map((a) => [a.questionId, a.response]),
       });
       if (error) throw new StoreError("route save failed", error.message);
-      if (data === "changed" || data === "closed" || data === "up" || data === "stay" || data === "down") return data;
-      throw new StoreError("route save failed", `unexpected answer ${JSON.stringify(data)}`);
+      const answer: string = data;
+      if (answer === "changed" || answer === "closed" || answer === "up" || answer === "stay" || answer === "down") return answer;
+      throw new StoreError("route save failed", `unexpected answer ${JSON.stringify(answer)}`);
     },
 
     // #249: one database function (migration add_guarded_finish) takes the test's row lock, as change_answer does,
@@ -238,14 +244,15 @@ export function attemptStore(admin: SupabaseClient): AttemptStore {
       const { data, error } = await admin.rpc("complete_test", {
         p_assessment: id,
         p_completed_at: iso(at),
-        p_placement: placement,
+        p_placement: toJson(placement),
         p_help: help,
         // #190: a round taken during the test finishes with it.
         p_extra_finished: !!placement.extraRound,
         p_answers: answers.map((a) => [a.questionId, a.response, a.timeMs]),
       });
       if (error) throw new StoreError("finish failed", error.message);
-      return data === "changed" ? "changed" : "done";
+      const answer: string = data;
+      return answer === "changed" ? "changed" : "done";
     },
 
     async create(parent, child, { attempt, seed, test }) {
@@ -260,7 +267,7 @@ export function attemptStore(admin: SupabaseClient): AttemptStore {
           started_at: iso(attempt.startedAt),
           resume_until: iso(attempt.resumeUntil),
         })
-        .select("id").single<{ id: string }>();
+        .select("id").single();
       // One open test per child (unique index): another request opened one first.
       if (error?.code === "23505") return "taken";
       if (error) throw new StoreError("start failed", error.message);
@@ -286,15 +293,15 @@ export async function parentStartStates(parent: string, childId?: string): Promi
  * rows have no parent column: the module calls these operations only for a test that `load` found for the parent, so
  * they filter by the test's id.
  */
-function factsStore(admin: SupabaseClient): FactsStore {
+function factsStore(admin: SupabaseClient<Database>): FactsStore {
   return {
     async loadFacts(id) {
       const { data: row, error } = await admin.from("assessment_facts").select("started_at, test").eq("assessment_id", id)
-        .maybeSingle<{ started_at: string; test: FactsTest }>();
+        .maybeSingle();
       if (error) throw new StoreError("load failed", error.message);
       if (!row) return null;
       const { data: answers, error: answersError } = await admin.from("fact_answers").select("fact_id, response, at_ms, browser_ms")
-        .eq("assessment_id", id).order("position").returns<{ fact_id: string; response: string; at_ms: number; browser_ms: number | null }[]>();
+        .eq("assessment_id", id).order("position");
       if (answersError) throw new StoreError("answers load failed", answersError.message);
       return {
         startedAt: Date.parse(row.started_at),
@@ -329,7 +336,7 @@ function factsStore(admin: SupabaseClient): FactsStore {
  * in a test (the primary key). Only the server writes it. Like the facts rows, these rows have no parent column: the
  * module calls these operations only for a test that `load` found for the parent.
  */
-function shownStore(admin: SupabaseClient): ShownStore {
+function shownStore(admin: SupabaseClient<Database>): ShownStore {
   return {
     async recordShown(id, { position, questionId, at }) {
       // The first serve wins: a later serve of the same place is ignored (on conflict do nothing).
@@ -340,7 +347,7 @@ function shownStore(admin: SupabaseClient): ShownStore {
 
     async shownAt(id, position) {
       const { data, error } = await admin.from("question_shows").select("question_id, shown_at")
-        .eq("assessment_id", id).eq("position", position).maybeSingle<{ question_id: string; shown_at: string }>();
+        .eq("assessment_id", id).eq("position", position).maybeSingle();
       if (error) throw new StoreError("shown time load failed", error.message);
       return data ? { position, questionId: data.question_id, at: Date.parse(data.shown_at) } : null;
     },
@@ -381,7 +388,7 @@ function eventsOf(row: EventColumns): AnswerEvents | null {
  * update itself: only an eligible status/deadline, and only fields still empty, so two requests at once (or a resume on another
  * device) cannot overwrite the first record. The module calls them only for a test that `load` found for the parent.
  */
-function contextStore(admin: SupabaseClient): ContextStore {
+function contextStore(admin: SupabaseClient<Database>): ContextStore {
   return {
     async recordDevice(id, device) {
       const { error } = await admin.from("assessments").update({ device })
@@ -461,7 +468,7 @@ const roundRecord = (row: RoundRow): ExtraRoundRecord => ({
  * in the update itself, so two requests at once cannot both win. The round's questions go into the stored test
  * (`test.extra`) in the same update as its start time.
  */
-function extraRoundStore(admin: SupabaseClient): ExtraRoundStore {
+function extraRoundStore(admin: SupabaseClient<Database>): ExtraRoundStore {
   return {
     // #253: one database function (migration add_guarded_offer) takes the test's row lock, as change_answer does,
     // checks that the stored answers are the ones the offer was computed from, and records the offer.
@@ -472,8 +479,9 @@ function extraRoundStore(admin: SupabaseClient): ExtraRoundStore {
         p_answers: answers.map((a) => [a.questionId, a.response, a.timeMs]),
       });
       if (error) throw new StoreError("extra round offer save failed", error.message);
-      if (data === "offered" || data === "already" || data === "changed" || data === "closed") return data;
-      throw new StoreError("extra round offer save failed", `unexpected answer ${JSON.stringify(data)}`);
+      const answer: string = data;
+      if (answer === "offered" || answer === "already" || answer === "changed" || answer === "closed") return answer;
+      throw new StoreError("extra round offer save failed", `unexpected answer ${JSON.stringify(answer)}`);
     },
 
     async skipExtraRound(id, at) {
@@ -503,12 +511,13 @@ function extraRoundStore(admin: SupabaseClient): ExtraRoundStore {
       const { data, error } = await admin.rpc("finish_extra_round", {
         p_assessment: id,
         p_finished_at: iso(at),
-        p_placement: placement,
+        p_placement: toJson(placement),
         p_answers: answers.map((a) => [a.questionId, a.response, a.timeMs]),
       });
       if (error) throw new StoreError("extra round finish failed", error.message);
-      if (data === "finished" || data === "already" || data === "changed") return data;
-      throw new StoreError("extra round finish failed", `unexpected answer ${JSON.stringify(data)}`);
+      const answer: string = data;
+      if (answer === "finished" || answer === "already" || answer === "changed") return answer;
+      throw new StoreError("extra round finish failed", `unexpected answer ${JSON.stringify(answer)}`);
     },
   };
 }

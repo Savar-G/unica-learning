@@ -6,6 +6,7 @@
 // One more dataset: add its id, its entry in DATASETS and, for a new table, its read in both readers.
 import type { LearnerProfile, Question, Route } from "@/lib/assessment";
 import { ADMIN_PATH } from "@/lib/admin-view";
+import type { TableName, Tables } from "@/lib/database";
 
 /** The export page, and the route that sends each file. */
 export const ADMIN_EXPORT_PATH = `${ADMIN_PATH}/export`;
@@ -104,20 +105,23 @@ const PROFILE_PARTS = [
   "preferences", "parent", "unknowns", "ai",
 ] as const satisfies readonly (keyof LearnerProfile)[];
 
+/** Stored column names of a table, checked against the schema (src/lib/database.ts), so a renamed column fails the build. */
+const stored = <T extends TableName>(columns: readonly (keyof Tables<T> & string)[]) => columns;
+
 /** Every dataset, in the export page's order. Column names are the stored ones, so a row joins back to its table. */
 const DATASETS: readonly Dataset[] = [
   {
     id: "tests",
     label: "Tests",
     row: "a test: the child, the school grade and curriculum, the status and times, the route, the placement, the help answer, the device, the break and the extra round.",
-    columns: [
+    columns: stored<"assessments">([
       "id", "created_at", "parent_id", "child_id", "grade", "province", "status", "seed", "started_at", "last_answer_at",
       "completed_at", "resume_until", "route", "help", "placement",
       // The test context (#185).
       "device", "break_started_at", "break_ended_at", "break_skipped", "break_ms",
       // The extra round (#190, D-116): a skip time after the start time is a round stopped part way.
       "extra_offered_at", "extra_skipped_at", "extra_started_at", "extra_finished_at",
-    ],
+    ]),
     read: { from: "tests" },
   },
   {
@@ -126,13 +130,13 @@ const DATASETS: readonly Dataset[] = [
     row: "a question drawn for a test, with its round (main or extra), template, values, choices in their order, figure and answer. Position matches the answers; empty for a route the test did not take.",
     // The stored test is longer than a spreadsheet cell, so its questions are rows of their own.
     columns: ["assessment_id", "round", "stage", "route", "index", "position", "question_id", "template_id", "level", "strand", "format", "question"],
-    read: { from: "tests", select: ["route", "test"], rows: drawnQuestions },
+    read: { from: "tests", select: stored<"assessments">(["route", "test"]), rows: drawnQuestions },
   },
   {
     id: "answers",
     label: "Answers",
     row: "an answer: its round (main or extra), right or wrong, the misconception, the times, the answer changes, read-aloud, time away, the typed working, and the paths of the drawing and the strokes.",
-    columns: [
+    columns: stored<"answers">([
       "id", "created_at", "assessment_id", "position", "question_id", "template_id", "values", "response", "correct",
       "misconception", "time_ms",
       // The answer timeline (#184): the server's times and what the child did before Next.
@@ -141,35 +145,35 @@ const DATASETS: readonly Dataset[] = [
       "work_required", "work_path", "work_text", "strokes_path",
       // The extra round (#190): "main" or "extra".
       "round",
-    ],
-    read: { from: "test rows", table: "answers", order: ["position"] },
+    ]),
+    read: { from: "test rows", table: "answers", order: stored<"answers">(["position"]) },
   },
   {
     id: "question_shows",
     label: "Serve times",
     row: "a place in a test the server served, with when it first served it.",
-    columns: ["assessment_id", "position", "question_id", "shown_at", "created_at"],
-    read: { from: "test rows", table: "question_shows", order: ["position"] },
+    columns: stored<"question_shows">(["assessment_id", "position", "question_id", "shown_at", "created_at"]),
+    read: { from: "test rows", table: "question_shows", order: stored<"question_shows">(["position"]) },
   },
   {
     id: "facts",
     label: "Quick facts",
     row: "a test's quick facts section: when it started and the facts drawn.",
-    columns: ["assessment_id", "created_at", "started_at", "test"],
+    columns: stored<"assessment_facts">(["assessment_id", "created_at", "started_at", "test"]),
     read: { from: "test rows", table: "assessment_facts", order: [] },
   },
   {
     id: "fact_answers",
     label: "Quick fact answers",
     row: "a fact answered: the answer, right or wrong, and the time on it by the server and by the browser.",
-    columns: ["id", "created_at", "assessment_id", "position", "fact_id", "response", "correct", "at_ms", "server_ms", "browser_ms"],
-    read: { from: "test rows", table: "fact_answers", order: ["position"] },
+    columns: stored<"fact_answers">(["id", "created_at", "assessment_id", "position", "fact_id", "response", "correct", "at_ms", "server_ms", "browser_ms"]),
+    read: { from: "test rows", table: "fact_answers", order: stored<"fact_answers">(["position"]) },
   },
   {
     id: "profiles",
     label: "Learner profiles",
     row: "a finished test's learner profile, as versioned JSON. The CSV has one column per part of the profile.",
-    columns: ["id", "created_at", "built_at", "assessment_id", "parent_id", "child_id", "schema_version", "profile"],
+    columns: stored<"learner_profiles">(["id", "created_at", "built_at", "assessment_id", "parent_id", "child_id", "schema_version", "profile"]),
     read: { from: "test rows", table: "learner_profiles", order: [] },
     csvParts: { column: "profile", parts: PROFILE_PARTS },
   },
@@ -177,10 +181,10 @@ const DATASETS: readonly Dataset[] = [
     id: "questionnaire",
     label: "Questionnaire answers",
     row: "a child (id is the child's id): the school grade and curriculum, and the parent's answers on the learning card. Empty is no answer.",
-    columns: [
+    columns: stored<"children">([
       "id", "created_at", "parent_id", "grade", "province", "learning_styles", "interests", "learning_note", "math_feeling",
       "learning_goal", "weekly_time", "learning_updated_at",
-    ],
+    ]),
     read: { from: "table", table: "children" },
   },
 ];

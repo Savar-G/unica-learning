@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { isUuid } from "@/lib/assessment-store";
-import { fromRow, LEARNING_COLUMNS, learningPath, type LearningRow } from "@/lib/learning-style";
+import { fromRow, LEARNING_COLUMNS, learningPath } from "@/lib/learning-style";
 import { pageMetadata } from "@/lib/metadata";
 import { parentId, sessionClient } from "@/lib/supabase-auth";
 import { LearningStep } from "@/components/learning";
@@ -22,8 +22,7 @@ export default async function LearningPage({ params }: PageProps<"/account/learn
   if (!isUuid(id)) notFound();
   const db = await sessionClient();
   if (!(await parentId(db))) redirect(`/sign-in?next=${encodeURIComponent(learningPath(id))}`);
-  const { data: child } = await db.from("children").select(`id, first_name, ${LEARNING_COLUMNS}`).eq("id", id)
-    .maybeSingle<{ id: string; first_name: string } & LearningRow>();
+  const { data: child } = await db.from("children").select(`id, first_name, ${LEARNING_COLUMNS}`).eq("id", id).maybeSingle();
   if (!child) notFound();
   return (
     <SupportPage label="Your account" title={`How ${child.first_name} learns.`}>

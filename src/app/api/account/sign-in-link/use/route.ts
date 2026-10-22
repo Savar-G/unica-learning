@@ -22,7 +22,7 @@ export async function POST(request: Request) {
   const { data: link } = await admin.from("sign_in_links")
     .update({ used_at: now })
     .eq("token_hash", hash).is("used_at", null).gt("expires_at", now)
-    .select("parent_id, child_id").maybeSingle<{ parent_id: string; child_id: string }>();
+    .select("parent_id, child_id").maybeSingle();
   if (!link) return back(false);
 
   // A magic link made here and verified at once: it starts a normal Supabase session in this browser's cookies.

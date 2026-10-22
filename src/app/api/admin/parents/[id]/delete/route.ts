@@ -21,8 +21,9 @@ export async function POST(request: Request, ctx: RouteContext<"/api/admin/paren
   const db = adminClient(AbortSignal.timeout(55_000));
   if (!db) return Response.json({ ok: false, error: "unavailable" }, { status: 503 });
 
-  const { data: state, error } = await admin.db.rpc("request_family_deletion", { p: parent, confirmation });
+  const { data, error } = await admin.db.rpc("request_family_deletion", { p: parent, confirmation });
   if (error) return Response.json({ ok: false, error: "unavailable" }, { status: 503 });
+  const state: string = data;
   if (state === "missing") return new Response("Not found", { status: 404 });
   if (state !== "requested") return Response.json({ ok: false, error: state }, { status: state === "confirmation" ? 400 : 409 });
   try {

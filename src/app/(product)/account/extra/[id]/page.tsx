@@ -30,14 +30,14 @@ export default async function ExtraRoundPage({ params }: PageProps<"/account/ext
   if (userAgent({ headers: await headers() }).device.type === "mobile") redirect("/account");
 
   const [{ data: test }, { data: report }, state] = await Promise.all([
-    db.from("assessments").select("id, child_id, grade").eq("id", id).maybeSingle<{ id: string; child_id: string; grade: number }>(),
-    db.from("reports").select("id").eq("assessment_id", id).maybeSingle<{ id: string }>(),
+    db.from("assessments").select("id, child_id, grade").eq("id", id).maybeSingle(),
+    db.from("reports").select("id").eq("assessment_id", id).maybeSingle(),
     parentExtraRound(parent, id),
   ]);
   if (!test) notFound();
   const reportHref = report ? reportPath(report.id) : null;
   if (!state) redirect(reportHref ?? "/account");
-  const { data: child } = await db.from("children").select("first_name").eq("id", test.child_id).maybeSingle<{ first_name: string }>();
+  const { data: child } = await db.from("children").select("first_name").eq("id", test.child_id).maybeSingle();
   if (!child) notFound();
 
   const band = bandFor(test.grade as Grade);

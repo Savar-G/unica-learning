@@ -21,8 +21,7 @@ export async function POST(request: Request) {
   if (body.token !== undefined) {
     const hash = hashToken(body.token);
     const { data } = hash
-      ? await admin.from("sign_in_links").select("parent_id, child_id, created_at").eq("token_hash", hash)
-        .maybeSingle<{ parent_id: string; child_id: string; created_at: string }>()
+      ? await admin.from("sign_in_links").select("parent_id, child_id, created_at").eq("token_hash", hash).maybeSingle()
       : { data: null };
     if (!data || !canResend(data.created_at)) return fail("invalid", 400);
     target = { parent: data.parent_id, child: data.child_id };

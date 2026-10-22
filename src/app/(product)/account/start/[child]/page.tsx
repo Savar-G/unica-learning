@@ -4,7 +4,6 @@ import { after } from "next/server";
 import { notFound, redirect } from "next/navigation";
 import { pageMetadata } from "@/lib/metadata";
 import { CURRICULA } from "@/lib/signup";
-import type { Child } from "@/lib/account";
 import { stateFor } from "@/lib/test-attempt";
 import { parentStartStates } from "@/lib/test-attempt-server";
 import { adminClient, parentId, sessionClient } from "@/lib/supabase-auth";
@@ -38,7 +37,7 @@ export default async function StartScreen({ params, searchParams }: PageProps<"/
   if (!parent) redirect(`/sign-in?next=${encodeURIComponent(`${startPath(id)}${fromReminder ? `?reminder=${fromReminder}${reminderTest ? `&a=${reminderTest}` : ""}` : ""}`)}`);
   // Row-level security returns only this parent's children; an id that is not a uuid finds nothing.
   const [{ data: child }, states] = await Promise.all([
-    db.from("children").select("id, first_name, grade, province").eq("id", id).maybeSingle<Child>(),
+    db.from("children").select("id, first_name, grade, province").eq("id", id).maybeSingle(),
     parentStartStates(parent, id),
   ]);
   if (!child) notFound();

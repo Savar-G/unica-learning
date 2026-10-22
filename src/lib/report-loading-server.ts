@@ -1,5 +1,6 @@
 import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
+import type { Database } from "@/lib/database";
 import type { AttemptStatus, Grade, HelpAnswer, Placement, Province, ReportModel, StoredTest } from "@/lib/assessment";
 import type { AdminSession } from "@/lib/admin-store";
 import { isUuid } from "@/lib/assessment-store";
@@ -34,14 +35,14 @@ interface ReportRow {
   questions: number;
   minutes: number;
 }
-type ReportAssessmentRow = { completed_at: string; province: Province };
+type ReportAssessmentRow = { completed_at: string | null; province: Province };
 type ChildRow = { first_name: string };
 interface AssessmentRow {
   id: string;
   parent_id: string;
   child_id: string;
   status: AttemptStatus;
-  grade: Grade;
+  grade: number;
   province: Province;
   completed_at: string | null;
   placement: Placement | null;
@@ -71,7 +72,8 @@ const record = (row: ReportRow, assessment: ReportAssessmentRow | null, child: C
   model: row.model,
   questions: row.questions,
   minutes: row.minutes,
-  assessment: assessment ? { completedAt: assessment.completed_at, province: assessment.province } : null,
+  // A report is only for a finished test, which always has its finish time (assessments_check).
+  assessment: assessment?.completed_at ? { completedAt: assessment.completed_at, province: assessment.province } : null,
   child: child ? { firstName: child.first_name } : null,
 });
 
@@ -80,7 +82,8 @@ const assessmentRecord = (row: AssessmentRow): AssessmentRecord => ({
   parentId: row.parent_id,
   childId: row.child_id,
   status: row.status,
-  grade: row.grade,
+  // A check constraint limits grade to 1-7.
+  grade: row.grade as Grade,
   province: row.province,
   completedAt: row.completed_at,
   placement: row.placement,
@@ -110,26 +113,26 @@ function must<T>({ data, error }: Result<T>, what: string): T {
 }
 
 /** The report with its test and its child in one read, as this client may see them. */
-async function embeddedReport(db: SupabaseClient, id: string, what: string): Promise<ReportRecord | null> {
+async function embeddedReport(db: SupabaseClient<Database>, id: string, what: string): Promise<ReportRecord | null> {
   if (!isUuid(id)) return null;
   const row = must(await db.from("reports")
     .select(`${REPORT_COLUMNS}, assessment:assessments(completed_at, province), child:children(first_name)`)
-    .eq("id", id).maybeSingle<ReportRow & { assessment: ReportAssessmentRow | null; child: ChildRow | null }>(), what);
+    .eq("id", id).maybeSingle(), what);
   return row ? record(row, row.assessment, row.child) : null;
 }
 
 /** The stored learner profile JSON of a test, as this client may see it, filtered on its parent when given; null when none. */
-async function profileRow(db: SupabaseClient, assessmentId: string, what: string, parentId?: string): Promise<unknown> {
+async function profileRow(db: SupabaseClient<Database>, assessmentId: string, what: string, parentId?: string): Promise<unknown> {
   if (!isUuid(assessmentId)) return null;
   let query = db.from("learner_profiles").select("profile").eq("assessment_id", assessmentId);
   if (parentId !== undefined) query = query.eq("parent_id", parentId);
-  const row = must(await query.maybeSingle<{ profile: unknown }>(), what);
+  const row = must(await query.maybeSingle(), what);
   return row?.profile ?? null;
 }
 
 /** The test's answers in test order, from the answers table as this client may see it. */
-async function answerRows(db: SupabaseClient, assessmentId: string, what: string): Promise<StoredAnswer[]> {
-  const rows = must(await db.from("answers").select(ANSWER_COLUMNS).eq("assessment_id", assessmentId).order("position").returns<AnswerRow[]>(), what);
+async function answerRows(db: SupabaseClient<Database>, assessmentId: string, what: string): Promise<StoredAnswer[]> {
+  const rows = must(await db.from("answers").select(ANSWER_COLUMNS).eq("assessment_id", assessmentId).order("position"), what);
   return (rows ?? []).map(storedAnswer);
 }
 
@@ -137,7 +140,7 @@ async function answerRows(db: SupabaseClient, assessmentId: string, what: string
  * The signed-in parent, with their own session client (sessionClient). `profiles` (#198): the secret key's client
  * (adminClient) and the signed-in parent's id, for the learner profile of their own test; without it, no profile.
  */
-export function parentReportReader(db: SupabaseClient, profiles?: { admin: SupabaseClient | null; parentId: string }): ReportReader {
+export function parentReportReader(db: SupabaseClient<Database>, profiles?: { admin: SupabaseClient<Database> | null; parentId: string }): ReportReader {
   return {
     report: (id) => embeddedReport(db, id, "parent report load"),
     // A parent may not read the stored test (its right answers) or the answers: there is no grant, so nothing is read.
@@ -153,19 +156,19 @@ export function adminReportReader({ db }: AdminSession): ReportReader {
   return {
     async report(id) {
       if (!isUuid(id)) return null;
-      const row = must(await db.rpc("admin_reports").select(REPORT_COLUMNS).eq("id", id).maybeSingle<ReportRow>(), "admin report load");
+      const row = must(await db.rpc("admin_reports").select(REPORT_COLUMNS).eq("id", id).maybeSingle(), "admin report load");
       if (!row) return null;
       const [assessment, child] = await Promise.all([
-        db.rpc("admin_assessments").select("completed_at, province").eq("id", row.assessment_id).maybeSingle<ReportAssessmentRow>()
+        db.rpc("admin_assessments").select("completed_at, province").eq("id", row.assessment_id).maybeSingle()
           .then((r) => must(r, "admin report test load")),
-        db.rpc("admin_children").select("first_name").eq("id", row.child_id).maybeSingle<ChildRow>()
+        db.rpc("admin_children").select("first_name").eq("id", row.child_id).maybeSingle()
           .then((r) => must(r, "admin report child load")),
       ]);
       return record(row, assessment, child);
     },
     async assessment(id) {
       if (!isUuid(id)) return null;
-      const row = must(await db.rpc("admin_assessments").select(ASSESSMENT_COLUMNS).eq("id", id).maybeSingle<AssessmentRow>(), "admin test load");
+      const row = must(await db.rpc("admin_assessments").select(ASSESSMENT_COLUMNS).eq("id", id).maybeSingle(), "admin test load");
       return row ? assessmentRecord(row) : null;
     },
     answers: (assessmentId) => answerRows(db, assessmentId, "admin answers load"),
@@ -175,12 +178,12 @@ export function adminReportReader({ db }: AdminSession): ReportReader {
 }
 
 /** The report job, with the secret key (adminClient). It signs nothing: the report email has no drawings. */
-export function secretKeyReportReader(admin: SupabaseClient): ReportReader {
+export function secretKeyReportReader(admin: SupabaseClient<Database>): ReportReader {
   return {
     report: (id) => embeddedReport(admin, id, "report load"),
     async assessment(id) {
       if (!isUuid(id)) return null;
-      const row = must(await admin.from("assessments").select(ASSESSMENT_COLUMNS).eq("id", id).maybeSingle<AssessmentRow>(), "test load");
+      const row = must(await admin.from("assessments").select(ASSESSMENT_COLUMNS).eq("id", id).maybeSingle(), "test load");
       return row ? assessmentRecord(row) : null;
     },
     answers: (assessmentId) => answerRows(admin, assessmentId, "answers load"),

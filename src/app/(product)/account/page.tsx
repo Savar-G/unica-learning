@@ -3,14 +3,13 @@ import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { pageMetadata } from "@/lib/metadata";
 import { CURRICULA } from "@/lib/signup";
-import type { Child } from "@/lib/account";
 import type { StartState } from "@/lib/assessment";
 import { stateFor } from "@/lib/test-attempt";
 import { parentStartStates } from "@/lib/test-attempt-server";
 import { parentId, sessionClient } from "@/lib/supabase-auth";
 import { isPhone } from "@/lib/account-server";
 import { reportPath } from "@/lib/report-view";
-import { fromRow, LEARNING_COLUMNS, learningPath, type LearningRow } from "@/lib/learning-style";
+import { fromRow, LEARNING_COLUMNS, learningPath } from "@/lib/learning-style";
 import { AddChild, SendLink, SignOut, StartTest, TrackOnce } from "@/components/account";
 import { SupportPage } from "@/components/support-page";
 
@@ -29,13 +28,12 @@ export default async function Account({ searchParams }: PageProps<"/account">) {
   const parentUser = await parentId(db);
   if (!parentUser) redirect("/sign-in");
   const [{ data: parent }, { data: kids }, states, { data: reports }] = await Promise.all([
-    db.from("parents").select("name, email").maybeSingle<{ name: string; email: string }>(),
-    db.from("children").select(`id, first_name, grade, province, ${LEARNING_COLUMNS}`).order("created_at").returns<(Child & LearningRow)[]>(),
+    db.from("parents").select("name, email").maybeSingle(),
+    db.from("children").select(`id, first_name, grade, province, ${LEARNING_COLUMNS}`).order("created_at"),
     // Start, continue, start again after 24 hours, or wait 30 days after a completed test (#72).
     parentStartStates(parentUser),
     // Reports (#65), oldest first, each with the time its test finished.
-    db.from("reports").select("id, child_id, assessment:assessments(completed_at)").order("created_at")
-      .returns<{ id: string; child_id: string; assessment: { completed_at: string } | null }[]>(),
+    db.from("reports").select("id, child_id, assessment:assessments(completed_at)").order("created_at"),
   ]);
   if (!parent) redirect("/account/finish");
   // While a child waits for the next test, the link opens the report of the test just done (none while it is built).
