@@ -1,7 +1,7 @@
 // "Personalized for your child" (D-096, option D "Fork" of round r18): two sample Grade 3 children, Leah and Kai,
 // get two different learning programs. The section sits after How it works. The pages are built from the real
 // question bank (src/lib/sample-children.ts): the words, numbers and answers are the templates' own; the pictures are
-// drawn from the filled values. A tap on a page opens it full size (PageZoom).
+// drawn from the filled values. A tap on a page opens it full size (PageDeck).
 import Link from "next/link";
 import type { ReactNode } from "react";
 import { Section, SectionHeader } from "@/ds";

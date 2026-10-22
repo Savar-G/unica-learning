@@ -38,7 +38,12 @@
 .pz-deck-stage { animation: pz-in 0.25s ease; }
 @keyframes pz-in { from { opacity: 0; transform: translateX(8px); } }
 .pz-deck-nav { display: flex; align-items: center; justify-content: center; gap: 6px; margin-top: 10px; }
-.pz-deck-count { min-width: 44px; text-align: center; font: 400 12px/1 var(--mono); color: var(--ink-3); }
+.pz-deck-dots { display: flex; align-items: center; }
+.pz-deck-dot { position: relative; width: 16px; height: 28px; padding: 0; border: 0; background: none; cursor: pointer; }
+.pz-deck-dot::before { content: ""; position: absolute; inset: 0; margin: auto; width: 6px; height: 6px; border-radius: 50%; background: #c4c4cb; transition: background 0.15s, transform 0.15s; }
+.pz-deck-dot:hover::before { background: var(--ink-3); }
+.pz-deck-dot[aria-current="true"]::before { background: var(--ink); transform: scale(1.25); }
+.pz-deck-dot:focus-visible { outline: 2px solid var(--ink); outline-offset: -2px; border-radius: 6px; }
 .pz-deck-btn { display: grid; place-items: center; width: 28px; height: 28px; padding: 0; border: 0; border-radius: 50%; background: none; color: var(--ink-2); cursor: pointer; transition: background 0.15s, color 0.15s; }
 .pz-deck-btn:hover { background: rgba(0, 0, 0, 0.07); color: var(--ink); }
 .pz-deck-btn:focus-visible { outline: 2px solid var(--ink); outline-offset: 1px; }
@@ -94,7 +99,7 @@
 .sample-note > div { display: grid; gap: 8px; max-width: 64ch; }
 .sample-note p { margin: 0; }
 
-/* Tap a page to read it full size (PageZoom). */
+/* Tap a page to read it full size (PageDeck). */
 .pz-zoom { display: block; width: 100%; padding: 0; border: 0; background: none; color: inherit; font: inherit; text-align: left; cursor: zoom-in; position: relative; border-radius: 6px; }
 .pz-zoom:focus-visible { outline: 2px solid var(--ink, #18181b); outline-offset: 4px; }
 .pz-zoom .bpage { transition: transform 0.2s ease; }
@@ -104,6 +109,8 @@
 .pz-dialog-bar { position: sticky; top: 0; z-index: 1; display: flex; align-items: center; justify-content: space-between; padding: 10px 12px 10px 18px; background: #f4f3f1; font: 400 13px/1.4 var(--mono); }
 .pz-dialog-close { width: 36px; height: 36px; border: 1px solid rgba(0, 0, 0, 0.15); border-radius: 999px; background: #fff; font: 400 22px/1 var(--sans); cursor: pointer; }
 .pz-dialog-page { container-type: inline-size; padding: 0 18px 18px; }
+.pz-dialog-bar .pz-deck-nav { margin-top: 0; }
+@media (max-width: 420px) { .pz-dialog-bar > span { display: none; } }
 @media (prefers-reduced-motion: reduce) { .pz-zoom .bpage { transition: none; } }
 /* Both sample pages show at one height, like two sheets of the same book; the shorter page keeps white space at the bottom. */
 .pz-thumb .bpage { aspect-ratio: 5 / 9; }
