@@ -38,6 +38,10 @@
 .pz-deck-stage { animation: pz-in 0.25s ease; }
 @keyframes pz-in { from { opacity: 0; transform: translateX(8px); } }
 .pz-deck-nav { display: flex; align-items: center; justify-content: center; gap: 6px; margin-top: 10px; }
+.pz-deck-nav::before { content: ""; width: 20px; }
+.pz-deck-next { display: grid; place-items: center; width: 20px; height: 28px; padding: 0; border: 0; background: none; color: var(--ink-3); cursor: pointer; transition: color 0.15s, transform 0.15s; }
+.pz-deck-next:hover { color: var(--ink); transform: translateX(1px); }
+.pz-deck-next:focus-visible { outline: 2px solid var(--ink); outline-offset: -2px; border-radius: 6px; }
 .pz-deck-dots { display: flex; align-items: center; }
 .pz-deck-dot { position: relative; width: 16px; height: 28px; padding: 0; border: 0; background: none; cursor: pointer; }
 .pz-deck-dot::before { content: ""; position: absolute; inset: 0; margin: auto; width: 6px; height: 6px; border-radius: 50%; background: #c4c4cb; transition: background 0.15s, transform 0.15s; }
