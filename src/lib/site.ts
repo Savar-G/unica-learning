@@ -28,11 +28,9 @@ export const cad = (n: number) => (Number.isInteger(n) ? String(n) : n.toFixed(2
 export const priceWithOffer = (price: number) => `CAD ${price}/month, first month CAD ${cad(firstMonth(price))} (${FIRST_MONTH_OFF}% off)`;
 
 // Plain words first (Oct 2026): a parent reading in her second language took the "same box" headline for an online
-// program, so the hero says the problem, what Unica is, and how it arrives, without a metaphor.
+// program. The headline names the struggle (the topic rotates, sections.tsx) and what Unica does; the lead says how.
 export const HERO = {
-  kicker: "Miss one math topic, and every lesson after it gets harder.",
-  title: "A math program",
-  highlight: "built around your child.",
-  after: "On paper, mailed home.",
-  lead: "A free online test finds what your child knows and what they're missing. Every two weeks, a new workbook arrives, built from how they did on the last one.",
+  title: "Unica builds a math program",
+  highlight: "around your child.",
+  lead: "A free online test finds where they're stuck. Every two weeks, a new paper workbook arrives, built from how they did.",
 };

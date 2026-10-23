@@ -89,6 +89,11 @@
 [data-look="warm"] .hero-c .kicker { margin: 0 0 -6px; max-width: 34em; font: 300 clamp(22px, 2.2vw, 30px)/1.25 var(--font-geist, var(--sans)); letter-spacing: -.01em; color: var(--ink-2); }
 [data-look="warm"] .hero-c .lead { margin: 0; max-width: 34em; }
 [data-look="warm"] .hero-c .lead .nowrap { white-space: nowrap; }
+/* The hero's topic chip keeps its "?"; the chip is as wide as its longest topic, so a short one sits at its right edge,
+   next to the "?", and the spare room falls before it. */
+[data-look="warm"] .hero-c h1 .nowrap { white-space: nowrap; }
+[data-look="warm"] .hero-c h1 .swap { margin-right: 0.02em; }
+[data-look="warm"] .hero-c h1 .swap > span { justify-self: end; }
 /* Problem headline (D-070): longer than the old two-part hero line, so it runs wider and smaller, all in ink. */
 [data-look="warm"] .hero-c.hero-ink h1 { font-size: clamp(38px, 5.2vw, 72px); max-width: 21ch; }
 [data-look="warm"] .hero-c.hero-ink h1 .pre { color: var(--ink); }
@@ -96,8 +101,9 @@
 @media (min-width: 980px) {
   [data-look="warm"] .hero-c .txt { grid-template-columns: minmax(0, 1fr) auto; column-gap: 40px; }
   [data-look="warm"] .hero-c .txt > * { grid-column: 1 / -1; }
-  [data-look="warm"] .hero-c.enter .txt > :nth-child(3) { grid-column: 1; }
-  [data-look="warm"] .hero-c.enter .txt > :nth-child(4) { grid-column: 2; grid-row: 3; align-self: end; }
+  /* The lead and the buttons share a row (auto-placed), with or without a kicker above the headline. */
+  [data-look="warm"] .hero-c.enter .txt > .lead { grid-column: 1; }
+  [data-look="warm"] .hero-c.enter .txt > .ctas { grid-column: 2; align-self: end; }
 }
 [data-look="warm"] .hero-c .stage {
   max-width: none; padding: clamp(18px, 4.6vw, 68px); border-radius: 4px;

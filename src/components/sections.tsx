@@ -23,6 +23,7 @@ import {
   SectionHeader,
   StepCard,
   StepGrid,
+  SwapWord,
   type IconName,
 } from "@/ds";
 import { CompareTable } from "./compare";
@@ -58,16 +59,21 @@ export function Nav() {
   return <NavBar brand={BRAND} cta={<StartLink className="btn sm" src="nav">Free assessment</StartLink>} />;
 }
 
+// 8-9 characters only: the chip is as wide as its longest word, so a long topic
+// leaves a gap after every short one.
+const TOPICS = [
+  "fractions", "rounding", "decimals", "perimeter", "division", "equations", "percents", "multiples",
+  "patterns", "symmetry", "geometry", "carrying", "integers", "addition", "graphing", "measuring",
+];
+
 export function Hero() {
   return (
     <HeroBlock
         id="top"
         className="hero-ink"
         eyebrow=""
-        kicker={HERO.kicker}
-        title={HERO.title}
+        title={<>Struggling with <span className="nowrap"><SwapWord words={TOPICS} />?</span><br />{HERO.title}</>}
         highlight={HERO.highlight}
-        after={HERO.after}
         lead={HERO.lead}
         meta={["For ages 6-12", "Free assessment on a laptop or tablet", "30-day money-back guarantee", "Cancel anytime"]}
         page={null}
