@@ -32,6 +32,6 @@ export const priceWithOffer = (price: number) => `CAD ${price}/month, first mont
 export const HERO = {
   title: "Math gets harder when practice doesn't fit. Unica builds a program",
   highlight: "around your child.",
-  // The lead opens with the rotating topic in sections.tsx: "Whether it's [topic] or long division, ..."
-  lead: "a free online test finds where your child needs help. Every two weeks, a new paper workbook arrives, built from how they did.",
+  // The lead opens with the rotating topic in sections.tsx: "From [topic] to long division, ..."
+  lead: "a free online test finds the gaps. A new paper workbook follows every two weeks.",
 };

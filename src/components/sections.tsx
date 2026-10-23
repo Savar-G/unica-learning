@@ -74,7 +74,7 @@ export function Hero() {
         eyebrow=""
         title={HERO.title}
         highlight={HERO.highlight}
-        lead={<>Whether it&apos;s <SwapWord words={TOPICS} /> or long division, {HERO.lead}</>}
+        lead={<>From <SwapWord words={TOPICS} /> to long division, {HERO.lead}</>}
         meta={["For ages 6-12", "Free assessment on a laptop or tablet", "30-day money-back guarantee", "Cancel anytime"]}
         page={null}
         report={null}
