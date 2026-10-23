@@ -36,7 +36,6 @@ import deliverPhoto from "@/assets/img/loop-deliver.jpg";
 import scanPhoto from "@/assets/img/loop-scan.jpg";
 import adaptPhoto from "@/assets/img/loop-adapt.jpg";
 import repeatPhoto from "@/assets/img/loop-repeat.jpg";
-import emo1 from "@/assets/img/emotion-1.jpg";
 import adapt4 from "@/assets/img/loop-adapt-4.jpg";
 import heroHome2 from "@/assets/img/hero-home-2.jpg";
 import emo4 from "@/assets/img/emotion-4.jpg";
@@ -96,9 +95,9 @@ const STEPS = [
   { n: "01", t: "Assess", d: "Your child takes the free online assessment. The report shows their level and gaps. You choose a plan after.",
     v: <Image src={assessPhoto} alt="A girl and her mother sit at a laptop, with a workbook open on the table" sizes={STEP_SIZES} placeholder="blur" />, tone: "photo" as const },
   { n: "02", t: "Deliver", d: "We mail a workbook matched to their level and gaps. It follows your school curriculum.", v: <Image src={deliverPhoto} alt="Two mailers waiting on a front step" sizes={STEP_SIZES} placeholder="blur" />, tone: "photo" as const },
-  { n: "03", t: "Practice", d: "Your child works on paper for 15-30 minutes a day, 5 days a week.",
+  { n: "03", t: "Practice", d: <>Your child works on paper for 15-30 minutes a day, 5 days a week, with rewards for every page. <Link href="/rewards" className="more-link">See the rewards <span aria-hidden="true">→</span></Link></>,
     v: <Image src={practice6} alt="A girl works through an arithmetic page in pencil" sizes={STEP_SIZES} placeholder="blur" />, tone: "photo" as const },
-  { n: "04", t: "Scan", d: "Take a photo of the finished pages. We mark the work, show you the gaps, and give the solutions.", v: <Image src={scanPhoto} alt="A phone camera frames a page to photograph it" sizes={STEP_SIZES} placeholder="blur" />, tone: "photo" as const },
+  { n: "04", t: "Scan", d: "Take a photo of the finished pages in the Unica app. We mark the work, show you the gaps, and give the solutions.", v: <Image src={scanPhoto} alt="A phone camera frames a page to photograph it" sizes={STEP_SIZES} placeholder="blur" />, tone: "photo" as const },
   { n: "05", t: "Adapt", d: "Each scan updates the program. Missed carrying? You get more of it. Got it? It moves on.", v: <Image src={adaptPhoto} alt="A girl shows her finished work to her parents" sizes={STEP_SIZES} placeholder="blur" />, tone: "photo" as const },
   { n: "06", t: "Repeat", d: <>The next book arrives before this one runs out. <em>Struggling with fractions? Your next book focuses on fractions.</em></>, v: <Image src={repeatPhoto} alt="A girl starts on her next book at the dining table" sizes={STEP_SIZES} placeholder="blur" />, tone: "photo" as const },
 ];
@@ -122,48 +121,6 @@ export function How() {
 }
 
 // Program parts first, the workbook last (D-095). The left column reads first, then the photo, then the right column.
-const INCLUDED: [IconName, string, ReactNode, number][][] = [
-  [
-    ["layers", "A plan built for your child", "The free assessment finds your child's level and gaps. It sets what each book covers.", 0],
-    ["calendar", "Daily practice, rewarded", <>15-30 minutes a day, 5 days a week, with rewards for every page and every week. <Link href="/rewards" className="more-link">See the rewards <span aria-hidden="true">→</span></Link></>, 0.08],
-    ["pencil", "Real paper. Real pencil.", "Daily practice happens away from screens. The app is for you, not them.", 0.16],
-  ],
-  [
-    ["cam", "Instant answer check", "Take a photo of a finished page in our app and see what's right in seconds. Stuck on a problem? Photograph it to see every step explained.", 0.04],
-    ["voice", "The Unica companion", <>Stuck on a question? Your child starts a voice call, and the Unica companion explains it out loud, step by step, on a shared board. <Link href="#guidance" className="more-link">See it in action <span aria-hidden="true">→</span></Link></>, 0.1],
-    ["chart", "Progress reports", "A report and worked solutions in the app after every scan.", 0.16],
-    ["book", "Workbooks mailed home", "2 math workbooks a month, delivered before the current workbook ends.", 0.22],
-  ],
-];
-
-export function Included() {
-  const col = (items: [IconName, string, ReactNode, number][], first?: ReactNode) => (
-    <div className="col">
-      {first}
-      {items.map(([icon, title, text, delay]) => (
-        <IncludedCard key={title} icon={icon} title={title} className="rise" style={d(delay)}>
-          {text}
-        </IncludedCard>
-      ))}
-    </div>
-  );
-  return (
-    <Section id="inc" aria-labelledby="incT">
-      <Knot />
-      <Rise>
-        <SectionHeader eyebrow="What you get each month" title="Everything your child needs. Nothing they don't." titleId="incT" />
-      </Rise>
-      <div className="inc">
-        {col(INCLUDED[0])}
-        <Rise>
-          <div className="ph" style={{ aspectRatio: "3 / 4", borderRadius: 4 }}><Image src={emo1} alt="A boy works on a paper page at his desk" sizes="(min-width: 980px) 300px, 92vw" placeholder="blur" /></div>
-        </Rise>
-        {col(INCLUDED[1])}
-      </div>
-    </Section>
-  );
-}
-
 const DRIFT: [StaticImageData, number, number, number, number, number, number, boolean][] = [
   [adapt4, 3, 7, 15, 21, 0.14, -4, false], [emo9, 23, 8, 12, 17, -0.1, 3, true],
   [emo5, 79, 5, 17, 22, 0.18, 4, false], [heroHome2, 62, 7, 12, 16, -0.14, -3, true],
@@ -246,7 +203,15 @@ export function Pricing() {
           note={PLANS.one.note}
           price={PLANS.one.price}
           offer={{ price: cad(firstMonth(PLANS.one.price)), note: `first month, ${FIRST_MONTH_OFF}% off!`, then: `Then CAD ${PLANS.one.price} a month.` }}
-          features={["Free online math assessment and report, before you choose a plan", "A learning plan built from your child's level and gaps", "Progress reports after every check-in", "Personalized math workbooks matched to your child's level and gaps, mailed home", "Your next book arrives before the current one runs out", "Delivery included. Cancel anytime"]}
+          features={[
+            "Free online math assessment and report, before you choose a plan",
+            "A program built from your child's level and gaps",
+            "2 paper workbooks a month, mailed home",
+            "The Unica companion: help out loud when they're stuck",
+            "The parent app: instant answer checks, solutions and progress reports",
+            "Rewards for every page and every week",
+            "Delivery included. Cancel anytime",
+          ]}
           ctaLabel={START_LABEL}
           cta={<div className="plan-cta"><GetStarted src="price" /><StartNote /></div>}
         />
@@ -302,7 +267,7 @@ export function ThreadEnd() {
 }
 
 const FOOTER_GROUPS: { title: string; links: { label: string; href: string }[] }[] = [
-  { title: "Learn", links: [{ label: "How it works", href: "/#how" }, { label: "What you get", href: "/#inc" }, { label: "Pricing", href: "/#price" }, { label: "FAQ", href: "/#faq" }, { label: "How we compare", href: "/compare" }] },
+  { title: "Learn", links: [{ label: "How it works", href: "/#how" }, { label: "Pricing", href: "/#price" }, { label: "FAQ", href: "/#faq" }, { label: "How we compare", href: "/compare" }] },
   { title: "Company", links: [{ label: "Our story", href: "/our-story" }, { label: "Rewards", href: "/rewards" }, { label: "Resources", href: "/resources" }] },
   { title: "Help", links: [{ label: "Contact us", href: "/contact" }, { label: "Privacy", href: "/privacy" }, { label: "Terms", href: "/terms" }] },
 ];

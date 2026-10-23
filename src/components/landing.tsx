@@ -4,7 +4,7 @@ import { Motion } from "@/components/motion";
 import { Parent } from "@/components/parent";
 import { Personalization } from "@/components/personalization";
 import { StartLink, StartNote } from "@/components/start-link";
-import { Closing, Faq, Feel, Footer, Hero, How, Included, Nav, OurPromise, Pricing, START_LABEL, ThreadEnd } from "@/components/sections";
+import { Closing, Faq, Feel, Footer, Hero, How, Nav, OurPromise, Pricing, START_LABEL, ThreadEnd } from "@/components/sections";
 import type { Look } from "@/lib/look";
 
 export function Landing({ look = "primer" }: { look?: Look }) {
@@ -17,7 +17,6 @@ export function Landing({ look = "primer" }: { look?: Look }) {
           <How />
           <Personalization />
           <Guidance />
-          <Included />
           <Feel />
           <OurPromise />
           <Pricing />

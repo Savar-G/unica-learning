@@ -335,7 +335,6 @@ export function Nav({
   home = "#top",
   links = [
     { label: "How it works", href: "#how" },
-    { label: "What's included", href: "#inc" },
     { label: "Pricing", href: "#price" },
     { label: "FAQ", href: "#faq" },
   ],
