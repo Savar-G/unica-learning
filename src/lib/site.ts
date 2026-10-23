@@ -31,6 +31,6 @@ export const HERO = {
   kicker: "A personalized math program for ages 6-12.",
   title: "Every child gets put in",
   highlight: "the same box.",
-  after: "Unica doesn't.",
+  after: "Unica builds a program around yours.",
   // The lead is JSX in sections.tsx: it carries the rotating topic word.
 };

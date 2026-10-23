@@ -79,7 +79,7 @@ export function Hero() {
         lead={
           <>
             <span className="nowrap">Miss <SwapWord words={TOPICS} /></span> once and every lesson after it gets harder.
-            Unica starts with a free assessment and builds your child&apos;s program from where they are.
+            A free assessment finds where your child is, and their program starts there.
           </>
         }
         meta={["Free assessment on a laptop or tablet", "30-day money-back guarantee", "Cancel anytime"]}

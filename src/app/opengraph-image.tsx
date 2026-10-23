@@ -3,7 +3,7 @@ import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { BRAND } from "@/lib/site";
 
-export const alt = `${BRAND}: Every child gets put in the same box. Unica doesn't.`;
+export const alt = `${BRAND}: Every child gets put in the same box. Unica builds a program around yours.`;
 export const size = { width: 1200, height: 630 };
 export const contentType = "image/png";
 
@@ -28,7 +28,8 @@ export default async function Image() {
               <div style={{ display: "flex" }}>
                 <span style={{ background: "#FFD23F", padding: "0 8px", marginLeft: -8 }}>the same box.</span>
               </div>
-              <span>{BRAND} doesn&apos;t.</span>
+              <span>Unica builds a program</span>
+              <span>around yours.</span>
             </div>
           </div>
           <div style={{ fontSize: 24, color: "#4b4b4b" }}>Made for one child. Adapted after every book.</div>
