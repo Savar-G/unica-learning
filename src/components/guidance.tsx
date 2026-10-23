@@ -23,21 +23,21 @@ export function Guidance() {
       <Rise>
         <SectionHeader eyebrow="Help when they're stuck" title="Stuck on a question? Talk it through." titleId="guidanceT" />
       </Rise>
-      <div className="gd-grid">
-        <Rise className="gd-text">
-          <p className="gd-lead">Your child starts a voice call about the question. The Unica companion walks them through it step by step, out loud and on a shared board.</p>
-          <ul className="gd-points">
-            {POINTS.map(([title, text]) => (
-              <li key={title}><b>{title}</b><span>{text}</span></li>
-            ))}
-          </ul>
-        </Rise>
-        <Rise className="gd-media">
-          <DemoVideo className="gd-wide" src="/video/guidance-demo.mp4" poster="/video/guidance-demo-poster.jpg" label={LABEL} />
-          <DemoVideo className="gd-board" src="/video/guidance-demo-board.mp4" poster="/video/guidance-demo-board-poster.jpg" label={LABEL} />
-          <p className="gd-cap">Shown without sound. The captions show what is said on the call.</p>
-        </Rise>
-      </div>
+      <Rise>
+        <p className="gd-lead">Your child starts a voice call about the question. The Unica companion walks them through it step by step, out loud and on a shared board.</p>
+      </Rise>
+      <Rise className="gd-media">
+        <DemoVideo className="gd-wide" src="/video/guidance-demo.mp4" poster="/video/guidance-demo-poster.jpg" label={LABEL} />
+        <DemoVideo className="gd-board" src="/video/guidance-demo-board.mp4" poster="/video/guidance-demo-board-poster.jpg" label={LABEL} />
+        <p className="gd-cap">Shown without sound. The captions show what is said on the call.</p>
+      </Rise>
+      <Rise>
+        <ul className="gd-points">
+          {POINTS.map(([title, text]) => (
+            <li key={title}><b>{title}</b><span>{text}</span></li>
+          ))}
+        </ul>
+      </Rise>
     </Section>
   );
 }
