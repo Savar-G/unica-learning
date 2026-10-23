@@ -22,7 +22,7 @@ import {
 } from "@/lib/assessment";
 import type { ReportSrc } from "@/lib/next-step";
 import { CURRICULA } from "@/lib/signup";
-import { FIRST_MONTH_OFF, PLANS, cad, firstMonth, type PlanId } from "@/lib/site";
+import { PLANS, cad, firstMonth, type PlanId } from "@/lib/site";
 
 /** One stored report, ready to show. */
 export interface ReportView {
@@ -369,7 +369,7 @@ export interface PlanOption {
 
 /** The plans offered from a math report: math only, for now (Savar, 2026-10-11). */
 export const REPORT_PLANS: readonly PlanOption[] = [
-  { plan: "one", subject: "Math", price: PLANS.one.price, label: `Math, CAD ${PLANS.one.price} a month` },
+  { plan: "one", subject: "Math", price: PLANS.one.price, label: `Math, CAD ${cad(PLANS.one.price)} a month` },
 ];
 
 export interface NextStep {
@@ -389,7 +389,7 @@ export function nextStep(v: ReportView): NextStep {
     return {
       kind: "card",
       title: `Start ${name}'s books`,
-      text: `Math is CAD ${PLANS.one.price} a month, with ${FIRST_MONTH_OFF}% off the first month (CAD ${cad(firstMonth(PLANS.one.price))}) and delivery included. We charge nothing until the first workbook ships. 30-day money-back guarantee from the first payment. Cancel anytime.`,
+      text: `Math is CAD ${cad(PLANS.one.price)} a month, with the first month at CAD ${cad(firstMonth(PLANS.one.price))} and delivery included. We charge nothing until the first workbook ships. 30-day money-back guarantee from the first payment. Cancel anytime.`,
       plans: REPORT_PLANS,
       email: { label: `Choose a plan for ${name}`, step: "plan" },
     };

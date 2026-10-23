@@ -37,7 +37,7 @@ export function checkoutEvidence(session: Stripe.Checkout.Session, savedAt = new
   return {
     ref: metadata.ref,
     customer,
-    savedFor: option ? { plan: option.plan, price: Number.isInteger(price) && price > 0 ? price : option.price } : null,
+    savedFor: option ? { plan: option.plan, price: Number.isFinite(price) && price > 0 ? price : option.price } : null,
     savedAt: savedAt.toISOString(),
     metadata,
   };

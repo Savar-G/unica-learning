@@ -89,6 +89,6 @@ describe("a space follows every full stop and colon in public copy", () => {
 describe("page metadata", () => {
   it("the site description names the free online math assessment and keeps the price", () => {
     expect(SITE_DESCRIPTION).toMatch(/Free online math assessment\./);
-    expect(SITE_DESCRIPTION).toMatch(/CAD 99\/month/);
+    expect(SITE_DESCRIPTION).toMatch(/CAD 79\.99\/month/);
   });
 });

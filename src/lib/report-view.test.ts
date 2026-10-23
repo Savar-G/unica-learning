@@ -268,8 +268,8 @@ describe("the next step", () => {
   it("BC families add a card, and see the math price and when the charge starts", () => {
     const step = nextStep(view(knowsUpTo(4)));
     expect(step).toMatchObject({ kind: "card", title: "Start Maya's books" });
-    expect(step.text).toContain("Math is CAD 99 a month");
-    expect(step.text).toContain("30% off the first month (CAD 69.30)");
+    expect(step.text).toContain("Math is CAD 79.99 a month");
+    expect(step.text).toContain("the first month at CAD 50");
     expect(step.text).not.toContain("reading");
     expect(step.text).toContain("We charge nothing until the first workbook ships.");
   });
@@ -282,9 +282,9 @@ describe("the next step", () => {
   it("a family in another province, or not sure, joins the waitlist without a province name", () => {
     expect(nextStep(view(knowsUpTo(4), { province: "other" }))).toMatchObject({ kind: "waitlist", title: "Books for more provinces are coming" });
   });
-  it("BC families get the one plan, math at CAD 99, the price of the site's plan", () => {
+  it("BC families get the one plan, math at CAD 79.99, the price of the site's plan", () => {
     expect(nextStep(view(knowsUpTo(4))).plans).toEqual([
-      { plan: "one", subject: "Math", price: 99, label: "Math, CAD 99 a month" },
+      { plan: "one", subject: "Math", price: 79.99, label: "Math, CAD 79.99 a month" },
     ]);
   });
   it("waitlist families get no plans to choose", () => {

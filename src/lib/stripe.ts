@@ -1,6 +1,6 @@
 import "server-only";
 import Stripe from "stripe";
-import { FIRST_MONTH_OFF, cad, firstMonth, priceWithOffer } from "@/lib/site";
+import { cad, firstMonth, priceWithOffer } from "@/lib/site";
 
 // Created on first use, so a build without STRIPE_SECRET_KEY still works. Without the key, BC parents
 // see "we'll email you a link to add your card" and Savar sends one by hand.
@@ -30,12 +30,12 @@ export interface CardSetup {
 
 /** What the parent agrees to on Stripe's page. Stripe requires the amount, timing and how to cancel. */
 export const cardTerms = (price: number) =>
-  `Nothing is charged today. When your first workbook ships, we charge CAD ${cad(firstMonth(price))} for your first month (${FIRST_MONTH_OFF}% off), then CAD ${price} every month until you cancel. Cancel before it ships and you pay nothing. Your 30-day money-back guarantee starts on the day of your first payment.`;
+  `Nothing is charged today. When your first workbook ships, we charge CAD ${cad(firstMonth(price))} for your first month, then CAD ${cad(price)} every month until you cancel. Cancel before it ships and you pay nothing. Your 30-day money-back guarantee starts on the day of your first payment.`;
 
 /**
  * Creates the Stripe customer and a hosted Checkout page in setup mode: it saves the card and charges nothing.
- * When the first workbook ships, start a CAD `price` monthly subscription on this customer, with 30% off the first
- * month (metadata first_month_price; D-053, D-091).
+ * When the first workbook ships, start a CAD `price` monthly subscription on this customer, with the first month at
+ * metadata first_month_price (CAD 50: a coupon for the difference, duration "once"; D-053).
  * Returns the customer and Checkout page URL so the booking can durably release its hold.
  */
 export async function cardSetupUrl(s: Stripe, p: CardSetup): Promise<{ customer: string; url: string | null }> {

@@ -1,6 +1,6 @@
 import { pageMetadata } from "@/lib/metadata";
 import { SupportPage } from "@/components/support-page";
-import { FIRST_MONTH_OFF, PLANS, cad, firstMonth } from "@/lib/site";
+import { PLANS, cad, firstMonth } from "@/lib/site";
 import { BUSINESS_NAME, SUPPORT_EMAIL, SUPPORT_HREF } from "@/lib/contact";
 
 export const metadata = pageMetadata({
@@ -14,7 +14,7 @@ export default function Terms() {
   return <SupportPage label="Updated 17 October 2026" title="Terms">
     <p className="lead">These terms apply to the free math assessment and the learning program offered by {BUSINESS_NAME}. A parent or guardian must create the account and choose the plan.</p>
     <h2>The offer</h2>
-    <p>{BUSINESS_NAME} offers a personalized math learning program for ages 6-12, grades 1-7. The program includes paper workbooks made for your child. Math is CAD {PLANS.one.price} per month. Your first month is {FIRST_MONTH_OFF}% off: CAD {cad(firstMonth(PLANS.one.price))}. Prices are in Canadian dollars. Delivery across Canada is included.</p>
+    <p>{BUSINESS_NAME} offers a personalized math learning program for ages 6-12, grades 1-7. The program includes paper workbooks made for your child. Math is CAD {cad(PLANS.one.price)} per month. Your first month is CAD {cad(firstMonth(PLANS.one.price))}. Prices are in Canadian dollars. Delivery across Canada is included.</p>
     <h2>Assessment and availability</h2>
     <p>The online math assessment is free, and every family in Canada can take it. You do not need a card for the assessment. Workbooks follow the British Columbia school curriculum today. After the report, families on that curriculum can choose a plan. For other curricula, you can join the workbook waitlist after the report. We will email you when those books are ready. Joining the waitlist does not require a card, and you will not be charged.</p>
     <h2>Online assessment accounts</h2>

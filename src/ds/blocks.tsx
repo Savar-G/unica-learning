@@ -142,7 +142,7 @@ export interface PlanCardProps {
   cta?: ReactNode;
   /**
    * A first-month offer, marked like a teacher's correction: the price crossed out in red pen with the offer price
-   * written beside it, and a line for the price after. E.g. { price: "69.30", note: "first month, 30% off!", then: "Then CAD 99 a month." }
+   * written beside it, and a line for the price after. E.g. { price: "50", note: "your first month!", then: "Then CAD 79.99 a month." }
    */
   offer?: { price: string; note: string; then: string };
   className?: string;

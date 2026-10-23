@@ -7,7 +7,7 @@ import Link from "next/link";
 import { CookieSettingsButton } from "@/components/cookie-consent";
 import { FaqMore } from "@/components/faq-more";
 import { StartLink, StartNote } from "@/components/start-link";
-import { BRAND, FIRST_MONTH_OFF, HERO, PLANS, cad, firstMonth } from "@/lib/site";
+import { BRAND, HERO, PLANS, cad, firstMonth } from "@/lib/site";
 import { FAQ } from "@/lib/faq";
 import {
   BeliefList,
@@ -204,7 +204,7 @@ export function Pricing() {
           name={PLANS.one.name}
           note={PLANS.one.note}
           price={PLANS.one.price}
-          offer={{ price: cad(firstMonth(PLANS.one.price)), note: `first month, ${FIRST_MONTH_OFF}% off!`, then: `Then CAD ${PLANS.one.price} a month.` }}
+          offer={{ price: cad(firstMonth(PLANS.one.price)), note: "your first month!", then: `Then CAD ${cad(PLANS.one.price)} a month.` }}
           features={[
             "Free online math assessment and report, before you choose a plan",
             "A program built from your child's level and gaps",

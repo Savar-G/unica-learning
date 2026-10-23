@@ -10,7 +10,7 @@ create table public.signups (
   plan text not null check (plan in ('one', 'both')),
   subject text not null check (subject in ('Math', 'Reading', 'Math + Reading')),
   age smallint not null check (age between 6 and 12),
-  price smallint not null check (price between 1 and 500),
+  price numeric(6,2) not null check (price between 1 and 500),
   source jsonb not null default '{}'::jsonb check (pg_column_size(source) < 4000)
 );
 create index signups_created_at_idx on public.signups (created_at desc);

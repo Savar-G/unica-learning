@@ -63,7 +63,7 @@ describe("a Checkout Session as proof of a saved card", () => {
 
   it("has no plan when the metadata has no plan from the site, and the plan's price when the price is unreadable", () => {
     expect(checkoutEvidence(session({ metadata: { ref: "card-a", plan: "both", price: "229" } }))?.savedFor).toBeNull();
-    expect(checkoutEvidence(session({ metadata: { ref: "card-a", plan: "one", price: "?" } }))?.savedFor).toEqual({ plan: "one", price: 99 });
+    expect(checkoutEvidence(session({ metadata: { ref: "card-a", plan: "one", price: "?" } }))?.savedFor).toEqual({ plan: "one", price: 79.99 });
   });
 });
 
