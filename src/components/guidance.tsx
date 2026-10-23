@@ -9,7 +9,7 @@ import { Knot, Rise } from "./drawn";
 import "@/ds/styles/guidance.css";
 
 const POINTS: [string, string][] = [
-  ["A real conversation", "Your child talks, listens and asks questions. The words show beside the board."],
+  ["A real conversation", "Your child talks, listens and can ask why at any step."],
   ["See each step", "Every step is drawn on the board as it is explained."],
   ["On their exact question", "It knows the workbook page and question your child is on."],
 ];
