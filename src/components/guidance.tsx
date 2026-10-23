@@ -9,10 +9,9 @@ import { Knot, Rise } from "./drawn";
 import "@/ds/styles/guidance.css";
 
 const POINTS: [string, string][] = [
-  ["Talked through out loud", "It is a voice call: your child talks and listens. What is said shows beside the board, so they can read it back."],
-  ["Explained step by step", "It explains the idea behind the question out loud and draws each step on a shared board."],
-  ["On the exact question", "It knows the workbook page and the question your child is on."],
-  ["You hear about it", "After each call, you get a short note on what they worked on."],
+  ["A real conversation", "Your child talks, listens and asks questions. The words show beside the board."],
+  ["See each step", "Every step is drawn on the board as it is explained."],
+  ["On their exact question", "It knows the workbook page and question your child is on."],
 ];
 
 const LABEL = "Demo of a voice call: the Unica companion explains 27 + 39 out loud and draws it on a shared board, showing how to carry the 1 to get 66. Captions show what is said.";
@@ -22,11 +21,11 @@ export function Guidance() {
     <Section id="guidance" aria-labelledby="guidanceT" className="gd">
       <Knot />
       <Rise>
-        <SectionHeader eyebrow="Help when they're stuck" title="Stuck on a question? Hear it explained." titleId="guidanceT" />
+        <SectionHeader eyebrow="Help when they're stuck" title="Stuck on a question? Talk it through." titleId="guidanceT" />
       </Rise>
       <div className="gd-grid">
         <Rise className="gd-text">
-          <p className="gd-lead">When your child gets stuck, they can start a voice call about that question. The Unica companion explains it out loud, one step at a time, and draws it on a board as it talks.</p>
+          <p className="gd-lead">Your child starts a voice call about the question. The Unica companion walks them through it step by step, out loud and on a shared board.</p>
           <ul className="gd-points">
             {POINTS.map(([title, text]) => (
               <li key={title}><b>{title}</b><span>{text}</span></li>
