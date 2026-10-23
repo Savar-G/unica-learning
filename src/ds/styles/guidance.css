@@ -10,12 +10,9 @@
 .gd-media { position: relative; }
 .gd-video { display: block; width: 100%; aspect-ratio: 8 / 5; object-fit: cover; border-radius: 14px; background: #f6f1ea;
   box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.06), 0 30px 60px -32px rgba(30, 40, 80, 0.45); }
-.gd-board { display: none; aspect-ratio: 45 / 38; }
 
 @media (max-width: 899px) {
   .gd-grid { grid-template-columns: 1fr; }
   .gd-media { order: -1; }
-  .gd-wide { display: none; }
-  .gd-board { display: block; }
   .gd-lead { font-size: 17px; }
 }

@@ -1,5 +1,5 @@
 // "Help when they're stuck" (Oct 23, 2026): a short silent demo of personalized guidance on the shared board, from the
-// tutor mockup (Mockups/AI tutor web app - human tutor.html, Call + board). It is a voice call that explains, not a
+// tutor mockup (Mockups/AI tutor web app - human tutor.html, Call + board, board and call only; the tutor writes). It is a voice call that explains, not a
 // chat, and the child does not take over the board yet; no "AI tutor" wording (meeting, Oct 22). The video loops
 // muted and starts when it scrolls into view, so the copy says the captions show what is said.
 import { Section, SectionHeader } from "@/ds";
@@ -33,9 +33,7 @@ export function Guidance() {
           </ul>
         </Rise>
         <Rise className="gd-media">
-          {/* The whole screen on wide screens; on phones, the board alone, so the writing stays readable. */}
-          <DemoVideo className="gd-wide" src="/video/guidance-demo.mp4" poster="/video/guidance-demo-poster.jpg" label={LABEL} />
-          <DemoVideo className="gd-board" src="/video/guidance-demo-board.mp4" poster="/video/guidance-demo-board-poster.jpg" label={LABEL} />
+          <DemoVideo src="/video/guidance-demo.mp4" poster="/video/guidance-demo-poster.jpg" label={LABEL} />
           <p className="gd-cap">Shown without sound. The captions show what is said on the call.</p>
         </Rise>
       </div>

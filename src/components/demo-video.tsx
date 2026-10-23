@@ -1,7 +1,6 @@
 "use client";
 
-// A silent looping demo: plays while it is on screen and pauses off screen (a copy hidden by CSS never plays). With
-// reduced motion it waits for Play.
+// A silent looping demo: plays while it is on screen and pauses off screen. With reduced motion it waits for Play.
 import { useEffect, useRef } from "react";
 
 export function DemoVideo({ src, poster, label, className = "" }: { src: string; poster: string; label: string; className?: string }) {
