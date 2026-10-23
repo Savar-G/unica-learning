@@ -237,3 +237,6 @@
   .rpt-answer .is-q { grid-column: 1 / -1; }
   .rpt-plans .btn { min-width: 0; flex: 1 1 100%; }
 }
+
+/* The free results call (BookCall): a quieter card under the plan choice. */
+.rpt-next.rpt-call { margin-top: 16px; background: #fff; border: 1px solid var(--line); }
