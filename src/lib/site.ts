@@ -30,7 +30,8 @@ export const priceWithOffer = (price: number) => `CAD ${price}/month, first mont
 // Plain words first (Oct 2026): a parent reading in her second language took the "same box" headline for an online
 // program. The headline names the struggle (the topic rotates, sections.tsx) and what Unica does; the lead says how.
 export const HERO = {
-  title: "Unica builds a math program",
+  title: "Math gets harder when practice doesn't fit. Unica builds a program",
   highlight: "around your child.",
-  lead: "A free online test finds where they're stuck. Every two weeks, a new paper workbook arrives, built from how they did.",
+  // The lead opens with the rotating topic in sections.tsx: "Whether it's [topic] or long division, ..."
+  lead: "a free online test finds where your child needs help. Every two weeks, a new paper workbook arrives, built from how they did.",
 };

@@ -89,11 +89,10 @@
 [data-look="warm"] .hero-c .kicker { margin: 0 0 -6px; max-width: 34em; font: 300 clamp(22px, 2.2vw, 30px)/1.25 var(--font-geist, var(--sans)); letter-spacing: -.01em; color: var(--ink-2); }
 [data-look="warm"] .hero-c .lead { margin: 0; max-width: 34em; }
 [data-look="warm"] .hero-c .lead .nowrap { white-space: nowrap; }
-/* The hero's topic chip keeps its "?"; the chip is as wide as its longest topic, so a short one sits at its right edge,
-   next to the "?", and the spare room falls before it. */
-[data-look="warm"] .hero-c h1 .nowrap { white-space: nowrap; }
-[data-look="warm"] .hero-c h1 .swap { margin-right: 0.02em; }
-[data-look="warm"] .hero-c h1 .swap > span { justify-self: end; }
+/* The hero's topic chip is as wide as the topic on show, so no gap opens beside a short one: only the shown word takes
+   space, and the others fade over it from the left. */
+[data-look="warm"] .hero-c .lead .swap { position: relative; }
+[data-look="warm"] .hero-c .lead .swap > span:not(.on) { position: absolute; left: 0; top: 0; }
 /* Problem headline (D-070): longer than the old two-part hero line, so it runs wider and smaller, all in ink. */
 [data-look="warm"] .hero-c.hero-ink h1 { font-size: clamp(38px, 5.2vw, 72px); max-width: 21ch; }
 [data-look="warm"] .hero-c.hero-ink h1 .pre { color: var(--ink); }

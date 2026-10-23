@@ -3,7 +3,7 @@ import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { BRAND } from "@/lib/site";
 
-export const alt = `${BRAND}: Struggling with fractions? Unica builds a math program around your child.`;
+export const alt = `${BRAND}: Math gets harder when practice doesn't fit. Unica builds a program around your child.`;
 export const size = { width: 1200, height: 630 };
 export const contentType = "image/png";
 
@@ -24,11 +24,11 @@ export default async function Image() {
           <div style={{ display: "flex", flexDirection: "column" }}>
             <div style={{ fontSize: 22, letterSpacing: 3, textTransform: "uppercase", marginBottom: 22 }}>Math learning program, ages 6-12</div>
             <div style={{ display: "flex", flexDirection: "column", fontFamily: "Zodiak", fontSize: 64, lineHeight: 1.05, letterSpacing: -1.5 }}>
-              <span>Struggling with fractions?</span>
-              <span>Unica builds a math</span>
+              <span>Math gets harder when</span>
+              <span>practice doesn&apos;t fit.</span>
+              <span>Unica builds a program</span>
               <div style={{ display: "flex" }}>
-                <span>program&nbsp;</span>
-                <span style={{ background: "#FFD23F", padding: "0 8px" }}>around your child.</span>
+                <span style={{ background: "#FFD23F", padding: "0 8px", marginLeft: -8 }}>around your child.</span>
               </div>
             </div>
           </div>
