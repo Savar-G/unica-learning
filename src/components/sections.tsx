@@ -101,7 +101,7 @@ const STEPS = [
     v: <Image src={practice6} alt="A girl works through an arithmetic page in pencil" sizes={STEP_SIZES} placeholder="blur" />, tone: "photo" as const },
   { n: "04", t: "Scan", d: "Take a photo of the finished pages in the Unica app. We mark the work, show you the gaps, and give the solutions.", v: <Image src={scanPhoto} alt="A phone camera frames a page to photograph it" sizes={STEP_SIZES} placeholder="blur" />, tone: "photo" as const },
   { n: "05", t: "Adapt", d: "Each scan updates the program. Missed carrying? You get more of it. Got it? It moves on.", v: <Image src={adaptPhoto} alt="A girl shows her finished work to her parents" sizes={STEP_SIZES} placeholder="blur" />, tone: "photo" as const },
-  { n: "06", t: "Repeat", d: <>The next book arrives before this one runs out. <em>Struggling with fractions? Your next book focuses on fractions.</em></>, v: <Image src={repeatPhoto} alt="A girl starts on her next book at the dining table" sizes={STEP_SIZES} placeholder="blur" />, tone: "photo" as const },
+  { n: "06", t: "Track and repeat", d: <>Your child&apos;s progress report updates after every scan. The next workbook arrives before this one runs out, built from that progress. <Link href="/sample-report" className="more-link">See a sample report <span aria-hidden="true">→</span></Link></>, v: <Image src={repeatPhoto} alt="A girl starts on her next workbook at the dining table" sizes={STEP_SIZES} placeholder="blur" />, tone: "photo" as const },
 ];
 
 export function How() {
