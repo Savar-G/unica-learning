@@ -71,11 +71,11 @@ export function Hero() {
         id="top"
         className="hero-ink"
         eyebrow=""
-        kicker={HERO.kicker}
         title={HERO.title}
         highlight={HERO.highlight}
+        after={HERO.after}
         lead={<><span className="nowrap">Miss <SwapWord words={TOPICS} /></span> {HERO.lead}</>}
-        meta={["Free assessment on a laptop or tablet", "30-day money-back guarantee", "Cancel anytime"]}
+        meta={["For ages 6-12", "Free assessment on a laptop or tablet", "30-day money-back guarantee", "Cancel anytime"]}
         page={null}
         report={null}
         animate

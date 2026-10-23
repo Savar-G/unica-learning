@@ -3,7 +3,7 @@ import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { BRAND } from "@/lib/site";
 
-export const alt = `${BRAND}: Math gets harder when practice doesn't meet your child where they are.`;
+export const alt = `${BRAND}: A personalized learning program that meets your child where they are, and takes them further.`;
 export const size = { width: 1200, height: 630 };
 export const contentType = "image/png";
 
@@ -24,12 +24,12 @@ export default async function Image() {
           <div style={{ display: "flex", flexDirection: "column" }}>
             <div style={{ fontSize: 22, letterSpacing: 3, textTransform: "uppercase", marginBottom: 22 }}>Math learning program, ages 6-12</div>
             <div style={{ display: "flex", flexDirection: "column", fontFamily: "Zodiak", fontSize: 64, lineHeight: 1.05, letterSpacing: -1.5 }}>
-              <span>Math gets harder when</span>
-              <span>practice doesn&apos;t meet</span>
-              <span>your child</span>
+              <span>A personalized learning</span>
+              <span>program that meets your child</span>
               <div style={{ display: "flex" }}>
-                <span style={{ background: "#FFD23F", padding: "0 8px", marginLeft: -8 }}>where they are.</span>
+                <span style={{ background: "#FFD23F", padding: "0 8px", marginLeft: -8 }}>where they are,</span>
               </div>
+              <span>and takes them further.</span>
             </div>
           </div>
           <div style={{ fontSize: 24, color: "#4b4b4b" }}>Made for one child. Adapted after every book.</div>
