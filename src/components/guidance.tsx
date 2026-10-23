@@ -1,5 +1,6 @@
 // "Help when they're stuck" (Oct 23, 2026): a short silent demo of personalized guidance on the shared board, from the
-// tutor mockup (Mockups/AI tutor web app - human tutor.html, Call + board, board and call only; the tutor writes). It is a voice call that explains, not a
+// tutor mockup (Mockups/AI tutor web app - human tutor.html, Call + board; the tutor writes every step). Wide screens
+// show the whole screen with the call's transcript; phones show the board alone, so the writing stays readable. It is a voice call that explains, not a
 // chat, and the child does not take over the board yet; no "AI tutor" wording (meeting, Oct 22). The video loops
 // muted and starts when it scrolls into view, so the copy says the captions show what is said.
 import { Section, SectionHeader } from "@/ds";
@@ -8,7 +9,7 @@ import { Knot, Rise } from "./drawn";
 import "@/ds/styles/guidance.css";
 
 const POINTS: [string, string][] = [
-  ["A voice call, not a chat", "Your child talks and listens. There is nothing to type and no long messages to read."],
+  ["Talked through out loud", "It is a voice call: your child talks and listens. What is said shows beside the board, so they can read it back."],
   ["Explained step by step", "Their tutor explains the idea behind the question out loud and draws each step on a shared board."],
   ["On the exact question", "It knows the workbook page and the question your child is on."],
   ["You hear about it", "After each call, you get a short note on what they worked on."],
@@ -33,7 +34,8 @@ export function Guidance() {
           </ul>
         </Rise>
         <Rise className="gd-media">
-          <DemoVideo src="/video/guidance-demo.mp4" poster="/video/guidance-demo-poster.jpg" label={LABEL} />
+          <DemoVideo className="gd-wide" src="/video/guidance-demo.mp4" poster="/video/guidance-demo-poster.jpg" label={LABEL} />
+          <DemoVideo className="gd-board" src="/video/guidance-demo-board.mp4" poster="/video/guidance-demo-board-poster.jpg" label={LABEL} />
           <p className="gd-cap">Shown without sound. The captions show what is said on the call.</p>
         </Rise>
       </div>
