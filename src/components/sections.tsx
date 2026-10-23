@@ -61,7 +61,7 @@ export function Nav() {
 // 8-9 characters only: the chip is as wide as its longest word, so a long topic
 // leaves a gap after every short one.
 const TOPICS = [
-  "fractions", "rounding", "decimals", "perimeter", "equations", "percents", "multiples",
+  "fractions", "rounding", "decimals", "perimeter", "division", "equations", "percents", "multiples",
   "patterns", "symmetry", "geometry", "carrying", "integers", "addition", "graphing", "measuring",
 ];
 
@@ -71,10 +71,11 @@ export function Hero() {
         id="top"
         className="hero-ink"
         eyebrow=""
+        kicker={HERO.kicker}
         title={HERO.title}
         highlight={HERO.highlight}
-        lead={<>From <SwapWord words={TOPICS} /> to long division, {HERO.lead}</>}
-        meta={["For ages 6-12", "Free assessment on a laptop or tablet", "30-day money-back guarantee", "Cancel anytime"]}
+        lead={<><span className="nowrap">Miss <SwapWord words={TOPICS} /></span> {HERO.lead}</>}
+        meta={["Free assessment on a laptop or tablet", "30-day money-back guarantee", "Cancel anytime"]}
         page={null}
         report={null}
         animate
