@@ -382,14 +382,14 @@ export interface NextStep {
   email: { label: string; step: NextStepKey };
 }
 
-/** Card for BC families (charged when the first workbook ships, D-053); the waitlist for every other province (D-082). */
+/** Card for BC families (charged on day 14 of the free trial, which starts when the first workbook ships, D-139); the waitlist for every other province (D-082). */
 export function nextStep(v: ReportView): NextStep {
   const name = v.childName;
   if (v.model.callToAction === "card") {
     return {
       kind: "card",
       title: `Start ${name}'s books`,
-      text: `Math is CAD ${cad(PLANS.one.price)} a month, with the first month at CAD ${cad(firstMonth(PLANS.one.price))} and delivery included. We charge nothing until the first workbook ships. 30-day money-back guarantee from the first payment. Cancel anytime.`,
+      text: `Math is CAD ${cad(PLANS.one.price)} a month, with the first month at CAD ${cad(firstMonth(PLANS.one.price))} and delivery included. The first 2 weeks are free, starting when the first workbook ships. Cancel anytime.`,
       plans: REPORT_PLANS,
       email: { label: `Choose a plan for ${name}`, step: "plan" },
     };

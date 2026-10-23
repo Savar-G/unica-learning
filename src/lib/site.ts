@@ -15,6 +15,12 @@ export type PlanId = keyof typeof PLANS;
  */
 export const EXTRA_ROUND_OFFERED = false;
 
+/**
+ * Free trial (2026-10-23): the first 14 days, counted from when the first workbook ships, are free; the card is charged
+ * on day 14, after a reminder email a few days before. It replaces the 30-day money-back guarantee.
+ */
+export const TRIAL_DAYS = 14;
+
 /** First-month offer: CAD 50 for the first month, then the full price (Cedric and Savar, 2026-10-23; was 30% off, D-091). */
 export const FIRST_MONTH_PRICE = 50;
 

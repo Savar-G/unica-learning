@@ -271,10 +271,10 @@ describe("the next step", () => {
     expect(step.text).toContain("Math is CAD 79.99 a month");
     expect(step.text).toContain("the first month at CAD 50");
     expect(step.text).not.toContain("reading");
-    expect(step.text).toContain("We charge nothing until the first workbook ships.");
+    expect(step.text).toContain("The first 2 weeks are free, starting when the first workbook ships.");
   });
-  it("says the money-back guarantee starts with the first payment (D-055)", () => {
-    expect(nextStep(view(knowsUpTo(4))).text).toContain("30-day money-back guarantee from the first payment.");
+  it("offers the first 2 weeks free in place of the money-back guarantee (D-139)", () => {
+    expect(nextStep(view(knowsUpTo(4))).text).not.toMatch(/money-back/);
   });
   it("a family in another tagged province joins the waitlist for that curriculum", () => {
     expect(nextStep(view(knowsUpTo(4), { province: "ON" }))).toMatchObject({ kind: "waitlist", title: "Books for the Ontario curriculum are coming" });

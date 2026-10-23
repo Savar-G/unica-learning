@@ -84,7 +84,7 @@ export const STAGE_ACTION: Record<Stage, string> = {
   started: "The continue reminder goes out automatically.",
   finished: "Report sent. Waiting for the parent to choose a plan.",
   card_started: "The parent left the payment page. Consider a personal email.",
-  card_saved: "Start the Stripe subscription when the first workbook ships.",
+  card_saved: "Start the Stripe subscription, with the 14-day free trial, when the first workbook ships.",
   paying: "Nothing to do.",
   cancelled: "The Stripe subscription ended. Consider asking the parent why.",
   waitlist: "Not BC. Waiting for their curriculum.",

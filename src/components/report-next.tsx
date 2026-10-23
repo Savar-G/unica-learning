@@ -173,7 +173,7 @@ export function ReportNextActions({ reportId, step, childName, province, src, as
     <div className={`rpt-next is-card${asked ? " is-asked" : ""}`}>
       {card === "saved" ? <>
         <h3>Card saved</h3>
-        <p>{savedOption ? `Plan: ${savedOption.label}. ` : ""}We charge nothing until the first workbook ships. To change the plan, email <a href={SUPPORT_HREF}>{SUPPORT_EMAIL}</a>.</p>
+        <p>{savedOption ? `Plan: ${savedOption.label}. ` : ""}Your first 2 weeks are free, starting when the first workbook ships. We email you before the first charge. To change the plan, email <a href={SUPPORT_HREF}>{SUPPORT_EMAIL}</a>.</p>
       </> : card === "later" ? <>
         <h3>We received your plan choice.</h3>
         <p>We will email you a link to add your card. You have not been charged.</p>

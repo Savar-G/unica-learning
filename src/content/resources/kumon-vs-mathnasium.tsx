@@ -165,8 +165,8 @@ export default function Body() {
         <p>
           Workbooks at home are another route. Unica mails personalized math workbooks for ages 6 to 12 that follow
           the BC curriculum at your child&apos;s level, with a free online math assessment first and about 15-30 minutes a day, 5
-          days a week. Math costs CAD 79.99 a month, delivery included, with a 30-day
-          money-back guarantee and cancel anytime. More options are in our{" "}
+          days a week. Math costs CAD 79.99 a month, delivery included, with the first 2 weeks
+          free and cancel anytime. More options are in our{" "}
           <Link href="/resources/kumon-alternatives">guide to Kumon alternatives</Link>.
         </p>
       </Section>

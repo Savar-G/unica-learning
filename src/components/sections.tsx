@@ -76,7 +76,7 @@ export function Hero() {
         highlight={HERO.highlight}
         after={HERO.after}
         lead={<><span className="nowrap">Miss <SwapWord words={TOPICS} /></span> {HERO.lead}</>}
-        meta={["Free assessment on a laptop or tablet", "30-day money-back guarantee", "Cancel anytime"]}
+        meta={["Free assessment on a laptop or tablet", "First 2 weeks free", "Cancel anytime"]}
         page={null}
         report={null}
         animate
@@ -149,9 +149,9 @@ export function Feel() {
 
 // One list for the home page and /our-story, so the promise text cannot drift apart.
 export const PROMISE: [IconName, string, string][] = [
-  ["shield", "30-day money-back guarantee", "If it is not working for your child within 30 days of your first payment, we refund your payment in full."],
+  ["shield", "First 2 weeks free", "Your first workbook is free. Cancel before day 14 and you pay nothing. We email you a few days before the first charge."],
   ["calendar", "Fits your family's schedule", "Kids are busy. Take a week or a month off, and pick up where your child left off."],
-  ["test", "Free assessment, nothing to pay today", "Your child takes the free online math assessment before you choose a plan. We charge nothing until your first workbook ships."],
+  ["test", "Free assessment, nothing to pay today", "Your child takes the free online math assessment before you choose a plan. Adding a card charges nothing."],
   ["undo", "Cancel anytime", "No contract. Stop whenever you want."],
 ];
 
@@ -195,7 +195,7 @@ export function Pricing() {
       <Knot />
       <Rise>
         <SectionHeader eyebrow="Pricing" title="A learning centre's structure. A plan built for your child. A fraction of the price." titleId="priceT" />
-        <p className="g-line">Try it with a <Highlight>30-day money-back guarantee.</Highlight></p>
+        <p className="g-line">Try it <Highlight>free for 2 weeks.</Highlight></p>
       </Rise>
       <PlanGrid>
         <PlanCard
@@ -204,7 +204,7 @@ export function Pricing() {
           name={PLANS.one.name}
           note={PLANS.one.note}
           price={PLANS.one.price}
-          offer={{ price: cad(firstMonth(PLANS.one.price)), note: "your first month!", then: `Then CAD ${cad(PLANS.one.price)} a month.` }}
+          offer={{ price: "Free", note: "for your first 2 weeks!", then: `Then CAD ${cad(firstMonth(PLANS.one.price))} for your first month, and CAD ${cad(PLANS.one.price)} a month after.` }}
           features={[
             "Free online math assessment and report, before you choose a plan",
             "A program built from your child's level and gaps",
@@ -298,7 +298,7 @@ export function Footer({ children }: { children?: ReactNode }) {
           <div className="foot-fine">
             <span>© 2026 {BRAND}</span>
             <span>Made in Vancouver, BC</span>
-            <span>30-day money-back guarantee</span>
+            <span>First 2 weeks free</span>
             <span>Cancel anytime</span>
             <CookieSettingsButton />
           </div>

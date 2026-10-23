@@ -25,10 +25,9 @@ export default function Terms() {
     <p>To request deletion at any time, email <a href={SUPPORT_HREF}>{SUPPORT_EMAIL}</a> from the account email address. We confirm that the request is yours. We then remove the parent account, children, tests, answers, typed working, drawings, reviews, reports, account links, card setup and waitlist records, and assessment email records. If deletion is interrupted, we keep the request and retry. Account deletion does not cancel a workbook subscription or remove historical reservation and payment records. Ask us about those separately. The <a href="/privacy">privacy policy</a> explains retention and copies outside account storage.</p>
     <h2>Adding your card and payments</h2>
     <p>After the report, a family on the British Columbia curriculum can choose the plan and add a card on a secure payment page. We charge nothing when you add it. If you cannot add your card, email <a href={SUPPORT_HREF}>{SUPPORT_EMAIL}</a> for help.</p>
-    <p>The first month is charged when the first workbook ships. The plan then renews each month until you cancel. If you cancel before the first workbook ships, you pay nothing.</p>
+    <p>Your first 2 weeks are free. They start when your first workbook ships. On day 14 we charge CAD {cad(firstMonth(PLANS.one.price))} for your first month, then CAD {cad(PLANS.one.price)} each month until you cancel. We email you a reminder a few days before the first charge. If you cancel before day 14, you pay nothing.</p>
     <h2>Cancellation, pauses, and refunds</h2>
     <p>You can cancel at any time or pause without a penalty. To cancel or pause, email <a href={SUPPORT_HREF}>{SUPPORT_EMAIL}</a> using the email address of your account or booking. We will confirm the change and when it takes effect.</p>
-    <p>Every plan has a 30-day money-back guarantee, starting on the day of your first payment. If the plan is not right for your child within those 30 days, email us to request a full refund of your payment.</p>
     <h2>Questions or help</h2>
     <p>Contact {BUSINESS_NAME} at <a href={SUPPORT_HREF}>{SUPPORT_EMAIL}</a> for help with an assessment, delivery, payment, cancellation, or refund.</p>
   </SupportPage>;
