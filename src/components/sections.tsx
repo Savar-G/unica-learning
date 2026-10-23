@@ -130,8 +130,9 @@ const INCLUDED: [IconName, string, ReactNode, number][][] = [
   ],
   [
     ["cam", "Instant answer check", "Take a photo of a finished page in our app and see what's right in seconds. Stuck on a problem? Photograph it to see every step explained.", 0.04],
-    ["chart", "Progress reports", "A report and worked solutions in the app after every scan.", 0.12],
-    ["book", "Workbooks mailed home", "2 math workbooks a month, delivered before the current workbook ends.", 0.2],
+    ["voice", "The Unica companion", <>Stuck on a question? Your child starts a voice call, and the Unica companion explains it out loud, step by step, on a shared board. <Link href="#guidance" className="more-link">See it in action <span aria-hidden="true">→</span></Link></>, 0.1],
+    ["chart", "Progress reports", "A report and worked solutions in the app after every scan.", 0.16],
+    ["book", "Workbooks mailed home", "2 math workbooks a month, delivered before the current workbook ends.", 0.22],
   ],
 ];
 
