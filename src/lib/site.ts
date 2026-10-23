@@ -27,10 +27,12 @@ export const cad = (n: number) => (Number.isInteger(n) ? String(n) : n.toFixed(2
 /** The price with the offer, for alerts and Stripe descriptions: "CAD 99/month, first month CAD 69.30 (30% off)". */
 export const priceWithOffer = (price: number) => `CAD ${price}/month, first month CAD ${cad(firstMonth(price))} (${FIRST_MONTH_OFF}% off)`;
 
+// Plain words first (Oct 2026): a parent reading in her second language took the "same box" headline for an online
+// program, so the hero says the problem, what Unica is, and how it arrives, without a metaphor.
 export const HERO = {
-  kicker: "A personalized math program for ages 6-12.",
-  title: "Every child gets put in",
-  highlight: "the same box.",
-  after: "Unica builds a program around yours.",
-  // The lead is JSX in sections.tsx: it carries the rotating topic word.
+  kicker: "Miss one math topic, and every lesson after it gets harder.",
+  title: "A math program",
+  highlight: "built around your child.",
+  after: "On paper, mailed home.",
+  lead: "A free online test finds what your child knows and what they're missing. Every two weeks, a new workbook arrives, built from how they did on the last one.",
 };

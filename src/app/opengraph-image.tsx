@@ -3,7 +3,7 @@ import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { BRAND } from "@/lib/site";
 
-export const alt = `${BRAND}: Every child gets put in the same box. Unica builds a program around yours.`;
+export const alt = `${BRAND}: A math program built around your child. On paper, mailed home.`;
 export const size = { width: 1200, height: 630 };
 export const contentType = "image/png";
 
@@ -24,12 +24,11 @@ export default async function Image() {
           <div style={{ display: "flex", flexDirection: "column" }}>
             <div style={{ fontSize: 22, letterSpacing: 3, textTransform: "uppercase", marginBottom: 22 }}>Math learning program, ages 6-12</div>
             <div style={{ display: "flex", flexDirection: "column", fontFamily: "Zodiak", fontSize: 64, lineHeight: 1.05, letterSpacing: -1.5 }}>
-              <span>Every child gets put in</span>
+              <span>A math program</span>
               <div style={{ display: "flex" }}>
-                <span style={{ background: "#FFD23F", padding: "0 8px", marginLeft: -8 }}>the same box.</span>
+                <span style={{ background: "#FFD23F", padding: "0 8px", marginLeft: -8 }}>built around your child.</span>
               </div>
-              <span>Unica builds a program</span>
-              <span>around yours.</span>
+              <span>On paper, mailed home.</span>
             </div>
           </div>
           <div style={{ fontSize: 24, color: "#4b4b4b" }}>Made for one child. Adapted after every book.</div>
