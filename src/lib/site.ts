@@ -8,6 +8,13 @@ export const PLANS = {
 
 export type PlanId = keyof typeof PLANS;
 
+/**
+ * #190 (D-116) switch: whether the child is offered the optional extra round, during the test and again from the report.
+ * Off (Cedric, 2026-10-22): an optional "8 more questions?" made the test feel unsure of its own result, so every child
+ * gets one set length. The round's code and data stay, so turning this back on restores it.
+ */
+export const EXTRA_ROUND_OFFERED = false;
+
 /** First-month offer: 30% off the first month, then the full price (Savar, 2026-10-11, D-091). */
 export const FIRST_MONTH_OFF = 30;
 
@@ -22,7 +29,8 @@ export const priceWithOffer = (price: number) => `CAD ${price}/month, first mont
 
 export const HERO = {
   kicker: "A personalized math program for ages 6-12.",
-  title: "Schools and tutoring put every child in",
+  title: "Every child gets put in",
   highlight: "the same box.",
+  after: "Unica doesn't.",
   // The lead is JSX in sections.tsx: it carries the rotating topic word.
 };

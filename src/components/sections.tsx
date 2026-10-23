@@ -75,10 +75,11 @@ export function Hero() {
         kicker={HERO.kicker}
         title={HERO.title}
         highlight={HERO.highlight}
+        after={HERO.after}
         lead={
           <>
             <span className="nowrap">Miss <SwapWord words={TOPICS} /></span> once and every lesson after it gets harder.
-            Unica gives your child a workbook built for where they are.
+            Unica starts with a free assessment and builds your child&apos;s program from where they are.
           </>
         }
         meta={["Free assessment on a laptop or tablet", "30-day money-back guarantee", "Cancel anytime"]}
@@ -240,7 +241,7 @@ export function Pricing() {
     <Section id="price" aria-labelledby="priceT">
       <Knot />
       <Rise>
-        <SectionHeader eyebrow="Pricing" title="Personal like a tutor. Structured like a learning centre. Priced like neither." titleId="priceT" />
+        <SectionHeader eyebrow="Pricing" title="A learning centre's structure. A plan built for your child. A fraction of the price." titleId="priceT" />
         <p className="g-line">Try it with a <Highlight>30-day money-back guarantee.</Highlight></p>
       </Rise>
       <PlanGrid>

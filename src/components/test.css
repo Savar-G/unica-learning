@@ -9,6 +9,14 @@
 /* ---------- the question desk ---------- */
 /* The whiteboard pane: the board at full height (whiteboard.css). */
 .test-desk .test-pane-r { padding-top: 14px; }
+/* The whiteboard opens on request (Use the whiteboard), so a question without work has the whole screen. */
+.test-desk.is-board-closed { grid-template-columns: 1fr; }
+.test-desk.is-board-closed .test-pane-l { border-right: 0; padding-inline: max(clamp(20px, 3vw, 40px), calc((100% - 760px) / 2)); }
+.test-board-open, .test-board-hide, .test-mark { appearance: none; display: inline-flex; align-items: center; gap: 8px; min-height: 44px; padding: 0 16px; border: 1px solid var(--line); border-radius: 999px; background: #fff; color: var(--ink); font: 400 16px/1 var(--sans); cursor: pointer; }
+.test-board-open { align-self: flex-start; }
+.test-board-hide { align-self: flex-end; margin-bottom: 10px; min-height: 40px; font-size: 15px; }
+.test-mark { align-self: flex-start; margin-top: 4px; }
+.test-mark[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); }
 /* Keep each control's full height when the question pane needs to scroll. */
 .test-desk .test-pane-l > * { flex-shrink: 0; }
 .test-response { flex: 1 0 auto; display: flex; flex-direction: column; gap: inherit; }
@@ -32,4 +40,13 @@
   .test-response:has(.test-num) > .test-alert { grid-column: 1; grid-row: 2; }
   .test-response:has(.test-num) > .test-next { grid-column: 1; grid-row: 3; flex-wrap: wrap; }
   .test-end { margin: 16px 20px 20px; }
+  .test-root .test-split.test-desk.is-board-closed { grid-template-rows: 1fr; }
 }
+
+/* The report wait on the end screen: three calm dots. */
+.test-wait { display: inline-flex; gap: 8px; margin-top: 6px; }
+.test-wait i { width: 10px; height: 10px; border-radius: 50%; background: var(--ink); opacity: 0.25; animation: test-wait 1.2s infinite ease-in-out; }
+.test-wait i:nth-child(2) { animation-delay: 0.2s; }
+.test-wait i:nth-child(3) { animation-delay: 0.4s; }
+@keyframes test-wait { 50% { opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { .test-wait i { animation: none; opacity: 0.6; } }

@@ -371,6 +371,8 @@ export interface HeroProps {
   title?: ReactNode;
   /** Ink part of the headline, drawn with the yellow highlighter. */
   highlight?: ReactNode;
+  /** Words after the highlight, styled like `title`. */
+  after?: ReactNode;
   /** Problem line directly above the headline (a paragraph, not a heading). Empty by default. */
   kicker?: ReactNode;
   lead?: ReactNode;
@@ -397,6 +399,7 @@ export function Hero({
   eyebrow = "The future of learning is on paper.",
   title = "Personalized. Delivered.",
   highlight = "Mastered.",
+  after,
   kicker = "",
   lead = "Math workbooks made for your child, mailed home, and adapted after every book.",
   actions,
@@ -419,6 +422,7 @@ export function Hero({
         {kicker && <p className="kicker">{kicker}</p>}
         <h1>
           {title && <span className="pre">{title}</span>} {highlight && <span className={animate ? "mark" : "mark is-in"}>{highlight}</span>}
+          {after && <> <span className="pre">{after}</span></>}
         </h1>
         {lead && <p className="lead">{lead}</p>}
         {actions && <div className="ctas">{actions}</div>}

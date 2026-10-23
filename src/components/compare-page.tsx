@@ -1,4 +1,4 @@
-// /compare (D-114, round r24): Unica beside school, private tutors, learning centres and online learning platforms.
+// /compare (D-114, round r24): Unica beside private tutors, learning centres and online learning platforms.
 // Categories only, never a competitor name (D-064). Facts live in src/lib/compare.ts with their sources.
 // Uses the site nav and footer, like /our-story.
 import { BRAND } from "@/lib/site";
@@ -27,8 +27,9 @@ export function ComparePage() {
         <main id="main" className="cmpp">
           <Rise className="cmpp-head">
             <Eyebrow>How we compare</Eyebrow>
-            <h1><span className="cmpp-hl">How {BRAND} compares</span> to school, tutors, learning centres and online learning platforms.</h1>
+            <h1><span className="cmpp-hl">How {BRAND} compares</span> to tutors, learning centres and online learning platforms.</h1>
             <p className="lead">Side by side: how personal each one is, whether there is a plan, what you see about your child&apos;s gaps, how much is on a screen, and what it costs.</p>
+            <p className="lead">{BRAND} works alongside school. It follows your child&apos;s curriculum, so practice at home matches class.</p>
             <nav className="cmpp-jump" aria-label="Jump to a comparison">
               {ONE_BY_ONE.map((o) => <a key={o.id} href={`#${o.id}`}>{o.tag}</a>)}
             </nav>

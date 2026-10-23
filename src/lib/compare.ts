@@ -5,14 +5,13 @@
 import { BRAND, PLANS } from "@/lib/site";
 
 export type Mark = "yes" | "part" | "no";
-export type OptionId = "school" | "tutor" | "centre" | "online" | "us";
+export type OptionId = "tutor" | "centre" | "online" | "us";
 export type RowId = "personal" | "pace" | "plan" | "gaps" | "paper" | "home";
 
 export const MARK_LABEL: Record<Mark, string> = { yes: "Yes", part: "Partly", no: "No" };
 
 /** Column order on /compare. `short` is the phone switch label. */
 export const OPTIONS: { id: OptionId; name: string; short: string }[] = [
-  { id: "school", name: "School", short: "School" },
   { id: "tutor", name: "Private tutor", short: "Tutor" },
   { id: "centre", name: "Learning centre", short: "Centre" },
   { id: "online", name: "Online platform", short: "Online" },
@@ -24,7 +23,6 @@ export const ROWS: { id: RowId; label: string; cells: Record<OptionId, [Mark, st
     id: "personal",
     label: "Personal to your child",
     cells: {
-      school: ["part", "One teacher for the whole class"],
       tutor: ["yes", "The tutor adjusts each session"],
       centre: ["part", "Own pace, on a set path"],
       online: ["yes", "Adapts to their answers on screen"],
@@ -35,7 +33,6 @@ export const ROWS: { id: RowId; label: string; cells: Record<OptionId, [Mark, st
     id: "pace",
     label: "Moves at their pace",
     cells: {
-      school: ["part", "The class moves on together"],
       tutor: ["yes", "Set by the tutor"],
       centre: ["yes", "Moves up when they're ready"],
       online: ["yes", "Moves up when they're ready"],
@@ -46,7 +43,6 @@ export const ROWS: { id: RowId; label: string; cells: Record<OptionId, [Mark, st
     id: "plan",
     label: "A structured plan",
     cells: {
-      school: ["yes", "The provincial curriculum, grade by grade"],
       tutor: ["part", "Depends on the tutor"],
       centre: ["yes", "A set program at the centre"],
       online: ["part", "Suggested skills; your child often picks"],
@@ -57,7 +53,6 @@ export const ROWS: { id: RowId; label: string; cells: Record<OptionId, [Mark, st
     id: "gaps",
     label: "Gaps shown to you",
     cells: {
-      school: ["part", "Written report cards 3 times a year"],
       tutor: ["part", "When the tutor reports them"],
       centre: ["part", "Depends on the centre"],
       online: ["yes", "Reports on the platform"],
@@ -68,7 +63,6 @@ export const ROWS: { id: RowId; label: string; cells: Record<OptionId, [Mark, st
     id: "paper",
     label: "Pencil and paper",
     cells: {
-      school: ["part", "Paper and screens; varies by class"],
       tutor: ["part", "Depends on the tutor"],
       centre: ["part", "Depends on the centre"],
       online: ["no", "On a screen"],
@@ -79,7 +73,6 @@ export const ROWS: { id: RowId; label: string; cells: Record<OptionId, [Mark, st
     id: "home",
     label: "No driving",
     cells: {
-      school: ["no", "At school"],
       tutor: ["part", "Online, at home, or at the tutor's"],
       centre: ["no", "At the centre, often twice a week"],
       online: ["yes", "At home"],
@@ -90,7 +83,6 @@ export const ROWS: { id: RowId; label: string; cells: Record<OptionId, [Mark, st
 
 /** Big number, then its unit. Learning centres: BC centre pages list about $170-$220 per subject a month (2026-10-16). */
 export const COST: Record<OptionId, [string, string]> = {
-  school: ["Free", "public school"],
   tutor: ["$40-$100", "an hour"],
   centre: ["About $200", "per subject, a month"],
   online: ["$0-$25", "a month"],
@@ -99,17 +91,6 @@ export const COST: Record<OptionId, [string, string]> = {
 
 /** One block per option on /compare: what it does well, what is harder, and what Unica does instead. */
 export const ONE_BY_ONE: { id: Exclude<OptionId, "us">; tag: string; title: string; summary: string; goodTitle: string; good: string[]; hardTitle: string; hard: string[]; us: string[] }[] = [
-  {
-    id: "school",
-    tag: "vs School",
-    title: `${BRAND} works alongside school, not instead of it.`,
-    summary: `School teaches the whole class. ${BRAND} gives your child practice at home that is made for them alone.`,
-    goodTitle: "School is good at",
-    good: ["A trained teacher, every school day", "Friends, group work and every subject", "Free at public schools"],
-    hardTitle: "Harder at school",
-    hard: ["One teacher for up to 24 children in grades 1-3 and up to 30 in grades 4-7, so the class moves on together", "Written report cards come 3 times a year"],
-    us: ["Books follow your school's curriculum, so home practice matches class", "More practice on the gaps, and new topics before the class gets there", "You see the gaps after every scan"],
-  },
   {
     id: "tutor",
     tag: "vs Tutor programs",
@@ -146,7 +127,7 @@ export const ONE_BY_ONE: { id: Exclude<OptionId, "us">; tag: string; title: stri
 ];
 
 export const COMPARE_FAQ: { question: string; answer: string }[] = [
-  { question: `Does ${BRAND} replace school?`, answer: "No. It works alongside school. Books follow your school's curriculum and move ahead when your child is ready." },
+  { question: `Does ${BRAND} replace school?`, answer: `No. ${BRAND} works alongside school. It follows your child's curriculum, so practice at home matches class, and moves ahead when your child is ready.` },
   { question: "Can we keep our tutor?", answer: `Yes. A tutor can explain live, and ${BRAND} gives your child daily practice between sessions.` },
   { question: "Is there any screen time?", answer: "Daily practice is on paper. The free math assessment is online. The app is for you: scan a page to check answers or see every step." },
   { question: "Where do these prices come from?", answer: "Public price lists and rate pages, checked October 2026. Prices vary by tutor, centre and plan." },

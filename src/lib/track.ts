@@ -29,6 +29,8 @@
 // Extra round (#190): test_extra (status offered, taken, skipped, stopped (Stop here part way) or finished; src = test
 // when the offer came after the last main question, report when the parent opened it from the report). No area, count
 // or score.
+// Report wait: test_report_wait (status opened: the end screen opened the built report; slow: it was not built within 3
+// minutes and the screen points to the email). No time or score.
 // Check your answers (#253): test_check (status stage1 or stage2: "Done checking" locked that part). test_error has
 // status check when it failed.
 // Reminders (#73): reminder_open (status = continue, come_back, start or start_followup: the parent opened the start screen from that
