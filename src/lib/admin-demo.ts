@@ -115,7 +115,7 @@ export function demoRows(now: Date): DashboardRows {
       const payMs = savedMs + (2 + r() * 6) * 24 * H;
       if (payMs < now.getTime()) out.subscriptions.push({
         id: `sub_demo${i}`, customer: card.stripe_customer_id!, status: r() < 0.85 ? "active" : "canceled", created: iso(payMs),
-        endedAt: null, amount: card.price * 100, quantity: 1, interval: "month", intervalCount: 1, currency: "cad",
+        endedAt: null, trialEnd: null, amount: card.price * 100, quantity: 1, interval: "month", intervalCount: 1, currency: "cad",
       } satisfies RawSubscription);
       const sub = out.subscriptions.at(-1)!;
       if (sub.status === "canceled") sub.endedAt = iso(payMs + 5 * 24 * H);

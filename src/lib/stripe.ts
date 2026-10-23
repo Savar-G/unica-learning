@@ -1,6 +1,7 @@
 import "server-only";
 import Stripe from "stripe";
 import { cad, firstMonth, priceWithOffer } from "@/lib/site";
+import { PLAN_PRODUCT, firstChargeAt, planTerms } from "@/lib/subscription-plan";
 
 // Created on first use, so a build without STRIPE_SECRET_KEY still works. Without the key, BC parents
 // see "we'll email you a link to add your card" and Savar sends one by hand.
@@ -157,4 +158,62 @@ export function stripeCustomerUrl(customer: string): string | null {
   if (!key) return null;
   const live = key.startsWith("sk_live_") || key.startsWith("rk_live_");
   return `https://dashboard.stripe.com/${live ? "" : "test/"}customers/${encodeURIComponent(customer)}`;
+}
+
+export type StartPlanOutcome =
+  | { ok: true; subscription: string; firstChargeAt: string }
+  | { ok: false; error: "no_card" | "already" };
+
+/** True when Stripe has no object with this id (a 404), so the caller creates it. */
+const missing = (e: unknown) => e instanceof Stripe.errors.StripeError && e.statusCode === 404;
+
+/** The plan's product, created once with a fixed id. */
+async function planProduct(s: Stripe) {
+  try {
+    await s.products.retrieve(PLAN_PRODUCT.id);
+  } catch (e) {
+    if (!missing(e)) throw e;
+    await s.products.create({ id: PLAN_PRODUCT.id, name: PLAN_PRODUCT.name }, { idempotencyKey: `product-${PLAN_PRODUCT.id}` });
+  }
+}
+
+/** The first-month coupon for this price, created once with a fixed id. */
+async function firstMonthCoupon(s: Stripe, id: string, amountOff: number) {
+  try {
+    await s.coupons.retrieve(id);
+  } catch (e) {
+    if (!missing(e)) throw e;
+    await s.coupons.create(
+      { id, name: "First month offer", amount_off: amountOff, currency: "cad", duration: "repeating", duration_in_months: 1 },
+      { idempotencyKey: `coupon-${id}` },
+    );
+  }
+}
+
+/**
+ * D-139: starts the paid plan of a saved card when the first workbook ships. A monthly subscription at the card's
+ * price on the child's customer, charged to the saved card: the 14-day trial first (nothing charged), then the first
+ * month at the offer price on day 14, then the full price each month until the parent cancels. Refuses when the
+ * customer already has a subscription that is not over, or no saved card. The card setup's id keys the create, so a
+ * double click starts one subscription.
+ */
+export async function startPlan(s: Stripe, p: { cardSetup: string; customer: string; price: number }, now = new Date()): Promise<StartPlanOutcome> {
+  const current = await s.subscriptions.list({ customer: p.customer, status: "all", limit: 20 });
+  if (current.data.some((x) => x.status !== "canceled" && x.status !== "incomplete_expired")) return { ok: false, error: "already" };
+  const cards = await s.paymentMethods.list({ customer: p.customer, type: "card", limit: 1 });
+  const card = cards.data[0]?.id;
+  if (!card) return { ok: false, error: "no_card" };
+  const terms = planTerms(p.price);
+  await planProduct(s);
+  if (terms.couponId) await firstMonthCoupon(s, terms.couponId, terms.firstMonthOffCents);
+  const created = await s.subscriptions.create({
+    customer: p.customer,
+    items: [{ price_data: { currency: "cad", product: PLAN_PRODUCT.id, unit_amount: terms.monthlyCents, recurring: { interval: "month" } } }],
+    trial_period_days: terms.trialDays,
+    default_payment_method: card,
+    ...(terms.couponId ? { discounts: [{ coupon: terms.couponId }] } : {}),
+    metadata: { card_setup: p.cardSetup, price: cad(p.price), first_month_price: cad(firstMonth(p.price)) },
+  }, { idempotencyKey: `start-plan-${p.cardSetup}` });
+  const end = created.trial_end ? new Date(created.trial_end * 1000) : firstChargeAt(now, terms.trialDays);
+  return { ok: true, subscription: created.id, firstChargeAt: end.toISOString() };
 }

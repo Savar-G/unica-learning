@@ -676,6 +676,7 @@ async function cardSubscriptions(cardRows: Promise<RawCard[]>): Promise<StripeRe
           id: sub.id, customer, status: sub.status,
           created: new Date((sub.start_date ?? sub.created) * 1000).toISOString(),
           endedAt: ended ? new Date(ended * 1000).toISOString() : null,
+          trialEnd: sub.trial_end ? new Date(sub.trial_end * 1000).toISOString() : null,
           amount: item?.price.unit_amount ?? null, quantity: item?.quantity ?? 1,
           interval: INTERVALS.find((i) => i === item?.price.recurring?.interval) ?? null, intervalCount: item?.price.recurring?.interval_count ?? 1,
           currency: item?.price.currency ?? null,

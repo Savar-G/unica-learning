@@ -28,6 +28,8 @@ export interface RawSubscription {
   created: string;
   /** When it ended or was cancelled; null while it runs. */
   endedAt: string | null;
+  /** When its free trial ends (D-139): the first charge. Null when it had no trial. */
+  trialEnd: string | null;
   amount: number | null;
   quantity: number;
   interval: "day" | "week" | "month" | "year" | null;
@@ -61,22 +63,22 @@ export interface DashboardRows {
 // Stages
 
 /** The funnel, in order. A family's stage is the furthest one it reached. */
-export const STAGES = ["account", "started", "finished", "card_started", "card_saved", "paying"] as const;
+export const STAGES = ["account", "started", "finished", "card_started", "card_saved", "trial", "paying"] as const;
 export type FunnelStage = (typeof STAGES)[number];
 /**
  * Waitlist sits beside "finished": a non-BC family finished the test and joined the waitlist instead of a plan.
- * Cancelled sits beside "paying": the family had a subscription, and none is paying now.
+ * Cancelled sits beside "paying": the family had a subscription, and none is paying or in its free trial now.
  */
 export type Stage = FunnelStage | "waitlist" | "cancelled";
 export const ALL_STAGES: readonly Stage[] = [...STAGES, "cancelled", "waitlist"];
 
 export const STAGE_TEXT: Record<Stage, string> = {
   account: "Signed up, no test", started: "Test started", finished: "Test finished", card_started: "Opened payment page",
-  card_saved: "Card saved", paying: "Paying", cancelled: "Cancelled", waitlist: "Waitlist",
+  card_saved: "Card saved", trial: "In free trial", paying: "Paying", cancelled: "Cancelled", waitlist: "Waitlist",
 };
 export const STAGE_SHORT: Record<Stage, string> = {
   account: "Signed up", started: "Started test", finished: "Finished test", card_started: "Payment page",
-  card_saved: "Card saved", paying: "Paying", cancelled: "Cancelled", waitlist: "Waitlist",
+  card_saved: "Card saved", trial: "Free trial", paying: "Paying", cancelled: "Cancelled", waitlist: "Waitlist",
 };
 /** What happens next for a family in this stage, or what Savar can do. */
 export const STAGE_ACTION: Record<Stage, string> = {
@@ -84,14 +86,18 @@ export const STAGE_ACTION: Record<Stage, string> = {
   started: "The continue reminder goes out automatically.",
   finished: "Report sent. Waiting for the parent to choose a plan.",
   card_started: "The parent left the payment page. Consider a personal email.",
-  card_saved: "Start the Stripe subscription, with the 14-day free trial, when the first workbook ships.",
+  card_saved: "When the first workbook ships, press \"Workbook shipped: start plan\" under Cards and waitlist.",
+  trial: "In the 2 free weeks. Email the parent a reminder a few days before the first charge on day 14.",
   paying: "Nothing to do.",
   cancelled: "The Stripe subscription ended. Consider asking the parent why.",
   waitlist: "Not BC. Waiting for their curriculum.",
 };
-const RANK: Record<Stage, number> = { account: 0, started: 1, finished: 2, waitlist: 2, card_started: 3, card_saved: 4, paying: 5, cancelled: 5 };
-/** Stripe statuses that count as paying. past_due is still a subscriber whose last charge failed (shown in Needs you). */
-const PAYING = new Set(["active", "trialing", "past_due"]);
+const RANK: Record<Stage, number> = { account: 0, started: 1, finished: 2, waitlist: 2, card_started: 3, card_saved: 4, trial: 5, paying: 6, cancelled: 6 };
+/**
+ * Stripe statuses that count as paying. past_due is still a subscriber whose last charge failed (shown in Needs you).
+ * D-139: trialing is not paying: the free trial is its own stage, since paying after it is the test of the price.
+ */
+const PAYING = new Set(["active", "past_due"]);
 /** Stripe statuses of a subscription that never started (the first payment did not go through): not counted at all. */
 const NEVER_STARTED = new Set(["incomplete", "incomplete_expired"]);
 /** A subscription's amount per month, in dollars: the price times the quantity, spread over its billing period. */
@@ -265,7 +271,8 @@ export function buildFamilies(rows: DashboardRows, now = new Date()): Family[] {
     const customers = new Set(cards.flatMap((c) => (c.stripe_customer_id ? [c.stripe_customer_id] : [])));
     const subs = [...customers].flatMap((c) => subsOf.get(c) ?? []).sort((a, b) => a.created.localeCompare(b.created));
     const paying = subs.filter((s) => PAYING.has(s.status));
-    const shown = paying.at(-1) ?? subs.at(-1) ?? null;
+    const trialing = subs.filter((s) => s.status === "trialing");
+    const shown = paying.at(-1) ?? trialing.at(-1) ?? subs.at(-1) ?? null;
 
     const emails: EmailEvent[] = mine(rows.emails).map((e) => {
       const child = e.child_id ? (childName.get(e.child_id) ?? null) : null;
@@ -295,8 +302,11 @@ export function buildFamilies(rows: DashboardRows, now = new Date()): Family[] {
       waitlist: earliest(waits.map((w) => w.created_at)),
       card_started: earliest(cards.map((c) => c.created_at)),
       card_saved: earliest(cards.map((c) => c.card_saved_at)),
-      paying: subs[0]?.created ?? null,
-      cancelled: subs.length > 0 && paying.length === 0 ? latest(subs.map((s) => s.endedAt ?? s.created)) : null,
+      trial: subs[0]?.created ?? null,
+      // the first charge: the end of the trial (or the start, without one) of a subscription that is paying, or one
+      // that ended after its trial (or had none)
+      paying: earliest(subs.filter((s) => PAYING.has(s.status) || (s.endedAt && (!s.trialEnd || s.endedAt > s.trialEnd))).map((s) => s.trialEnd ?? s.created)),
+      cancelled: subs.length > 0 && paying.length === 0 && trialing.length === 0 ? latest(subs.map((s) => s.endedAt ?? s.created)) : null,
     };
     for (const [s, when] of Object.entries(at)) if (when) reached[s as Stage] = when;
     // the furthest stage; waitlist beats finished and cancelled beats paying (same ranks), since each came after
@@ -320,7 +330,7 @@ export function buildFamilies(rows: DashboardRows, now = new Date()): Family[] {
       expired: tests.length > 0 && tests.every((t) => t.status === "expired"),
       card: card ? { plan: card.plan === "one" ? "Math" : "Math and reading", price: card.price, savedAt: card.card_saved_at, updatedAt: card.updated_at, customerId: card.stripe_customer_id } : null,
       cards: [...cards].reverse().map((c) => ({ childId: c.child_id, savedAt: c.card_saved_at, createdAt: c.created_at, customerId: c.stripe_customer_id })),
-      subscription: shown ? { status: shown.status, since: shown.created, endedAt: shown.endedAt, monthly: paying.reduce((n, s) => n + monthlyAmount(s), 0) } : null,
+      subscription: shown ? { status: shown.status, since: shown.created, endedAt: shown.endedAt, monthly: (paying.length > 0 ? paying : trialing).reduce((n, s) => n + monthlyAmount(s), 0) } : null,
       subscriptions: subs,
       emails,
       lastEmail: emails.find((e) => e.kind !== "alert" && e.kind !== "unsubscribe") ?? null,
@@ -478,7 +488,8 @@ export function buildDashboard(rows: DashboardRows, range: RangeKey, now: Date, 
     },
     kpi("saved", "Cards saved", PICK.cards, "Cards saved in Stripe, one per child. Nothing is charged."),
     kpi("subscribed", "Subscriptions started", pickSubscriptions, "Stripe subscriptions you started on a saved card"),
-    { key: "paying", label: "Paying now", hint: "Families with a Stripe subscription that is active, trialing or past due, right now", value: payingFamilies.length, prev: null, spark: [] },
+    { key: "trial", label: "In free trial", hint: "Families in their 2 free weeks, before the first charge on day 14", value: families.filter((f) => f.stage === "trial").length, prev: null, spark: [] },
+    { key: "paying", label: "Paying now", hint: "Families with a Stripe subscription that is active or past due, right now (not in the free trial)", value: payingFamilies.length, prev: null, spark: [] },
     { key: "mrr", label: "Monthly revenue", format: "cad", hint: "The monthly price of every paying subscription, before any discount on the first month", value: mrr, prev: null, spark: [] },
     kpi("emails", "Emails to parents", PICK.emails, "Reminder and report emails sent"),
   ];
