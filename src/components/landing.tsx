@@ -1,4 +1,5 @@
 import { CardReturn } from "@/components/card-return";
+import { Guidance } from "@/components/guidance";
 import { Motion } from "@/components/motion";
 import { Parent } from "@/components/parent";
 import { Personalization } from "@/components/personalization";
@@ -15,6 +16,7 @@ export function Landing({ look = "primer" }: { look?: Look }) {
           <Hero />
           <How />
           <Personalization />
+          <Guidance />
           <Included />
           <Feel />
           <OurPromise />
