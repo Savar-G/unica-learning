@@ -1706,28 +1706,16 @@ export type Database = {
         Args: { p: string; token: string }
         Returns: boolean
       }
-      complete_test:
-        | {
-            Args: {
-              p_answers: Json
-              p_assessment: string
-              p_completed_at: string
-              p_help: string
-              p_placement: Json
-            }
-            Returns: string
-          }
-        | {
-            Args: {
-              p_answers: Json
-              p_assessment: string
-              p_completed_at: string
-              p_extra_finished: boolean
-              p_help: string
-              p_placement: Json
-            }
-            Returns: string
-          }
+      complete_test: {
+        Args: {
+          p_answers: Json
+          p_assessment: string
+          p_completed_at: string
+          p_help: string
+          p_placement: Json
+        }
+        Returns: string
+      }
       confirm_family_copies: {
         Args: { p: string; token: string }
         Returns: boolean
