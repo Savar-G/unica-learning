@@ -3,7 +3,6 @@ export * from "./attempt";
 export * from "./certainty";
 export * from "./constants";
 export * from "./deletion";
-export { extraRoundOffer, extraRoundTaken, mainAnswered, startExtraRound, withoutRound } from "./extra-round";
 export * from "./retention";
 export * from "./facts";
 export * from "./flags";
@@ -42,11 +41,13 @@ export { SAMPLE_BANK } from "./sample-bank";
 export { BANKS, GRADE_1_2_BANK, bankFor, wordingOf, type BankTemplate } from "./bank";
 export type { TaggedTemplate } from "./bank/kit";
 export {
+  allAnswered,
   breakDue,
   changeAnswer,
   createSession,
   fillTemplate,
   finish,
+  fromRemovedRound,
   levelFor,
   lockStage1,
   nextQuestion,

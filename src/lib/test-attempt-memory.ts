@@ -11,7 +11,6 @@ import { StoreError, type AttemptChild, type AttemptStore, type NewAnswer } from
 import type { FactsStore, NewFactAnswer } from "@/lib/test-attempt";
 import type { QuestionShown, ShownStore } from "@/lib/test-attempt";
 import type { ContextStore } from "@/lib/test-attempt";
-import { NO_ROUND, type ExtraRoundRecord, type ExtraRoundStore } from "@/lib/test-attempt";
 import type { TestDevice } from "@/lib/test-context";
 import { strokesPath, workPath } from "@/lib/work-payload";
 
@@ -31,8 +30,6 @@ export type MemoryTest = Attempt & {
   route?: Route | null;
   placement?: Placement | null;
   help?: HelpAnswer | null;
-  /** #190: the extra round's record; absent means nothing recorded. */
-  extraRound?: ExtraRoundRecord;
 } & MemoryContext;
 /**
  * The test context of a stored test (#185): its device, and its halfway break (when it was shown, when it ended,
@@ -158,63 +155,10 @@ export function memoryAttemptStore({ children: kids = [], tests: initial = [] }:
     },
   };
 
-  /**
-   * The extra round (#190): the columns of public.assessments that record it. They keep the database's guards: an
-   * offer is recorded once, a skip only while the test is in progress and the round not skipped or started, a stop (as
-   * the skip time) only while the test is in progress and the round started and not skipped or finished, a round
-   * starts once and not on an expired test, and a round from the report finishes once, on a completed test.
-   */
-  const roundOf = (row: MemoryTest) => (row.extraRound ??= { ...NO_ROUND });
-  const roundOps: ExtraRoundStore = {
-    // #253: the guards of the offer, checked together with the write, as in the database function record_extra_offer.
-    async recordExtraOffer(id, at, answers) {
-      await begin("recordExtraOffer");
-      const row = tests.find((t) => t.id === id && t.status === "in_progress");
-      if (!row) return "closed";
-      const round = roundOf(row);
-      if (round.offeredAt !== null) return "already";
-      if (round.skippedAt !== null || round.startedAt !== null) return "closed";
-      const same = row.answers.length === answers.length
-        && row.answers.every((a, i) => a.questionId === answers[i].questionId && a.response === answers[i].response && a.timeMs === answers[i].timeMs);
-      if (!same) return "changed";
-      round.offeredAt = at;
-      return "offered";
-    },
-    async skipExtraRound(id, at) {
-      await begin("skipExtraRound");
-      const row = tests.find((t) => t.id === id && t.status === "in_progress");
-      if (row && roundOf(row).startedAt === null && roundOf(row).skippedAt === null) roundOf(row).skippedAt = at;
-    },
-    async stopExtraRound(id, at) {
-      await begin("stopExtraRound");
-      const row = tests.find((t) => t.id === id && t.status === "in_progress");
-      if (row && roundOf(row).startedAt !== null && roundOf(row).skippedAt === null && roundOf(row).finishedAt === null) roundOf(row).skippedAt = at;
-    },
-    async startExtraRound(id, { at, test }) {
-      await begin("startExtraRound");
-      const row = tests.find((t) => t.id === id && t.status !== "expired");
-      if (!row || roundOf(row).startedAt !== null) return "taken";
-      row.test = test;
-      roundOf(row).startedAt = at;
-      return "stored";
-    },
-    async finishExtraRound(id, { at, placement, answers }) {
-      await begin("finishExtraRound");
-      const row = tests.find((t) => t.id === id && t.status === "completed");
-      if (!row || roundOf(row).startedAt === null || roundOf(row).finishedAt !== null) return "already";
-      // #254: the answers scored are still the stored ones (as the database function finish_extra_round checks under its lock).
-      if (!sameAnswers(row.answers, answers)) return "changed";
-      row.placement = placement;
-      roundOf(row).finishedAt = at;
-      return "finished";
-    },
-  };
-
   const store: AttemptStore = {
     ...factsOps,
     ...showsOps,
     ...contextOps,
-    ...roundOps,
     async child(parent, childId) {
       await begin("child");
       const row = children.find((c) => c.id === childId && c.parentId === parent);
@@ -239,7 +183,6 @@ export function memoryAttemptStore({ children: kids = [], tests: initial = [] }:
         answers,
         ...(row.breakStartedAt != null && { break: { startedAt: row.breakStartedAt, ended: row.breakEndedAt != null } }),
         help: row.help ?? null,
-        extraRound: { ...(row.extraRound ?? NO_ROUND) },
         route: row.route ?? null,
       };
     },
@@ -309,19 +252,9 @@ export function memoryAttemptStore({ children: kids = [], tests: initial = [] }:
     async changeAnswer(id, { position, answeredAt, events, work, ...marked }, unansweredFrom) {
       await begin("changeAnswer");
       const row = tests.find((t) => t.id === id);
-      const round = row?.extraRound ?? NO_ROUND;
-      if (!row) return "closed";
-      if (row.answers[position]?.round === "extra") {
-        // #254: a round answer changes while the round takes answers: started and not finished, and during the test
-        // not stopped (a skip after the start); a round from the report runs on the completed test.
-        const stopped = round.startedAt !== null && round.skippedAt !== null && round.skippedAt >= round.startedAt;
-        const open = row.status === "in_progress" ? !stopped : row.status === "completed";
-        if (!open || round.startedAt === null || round.finishedAt !== null) return "closed";
-      } else {
-        if (row.status !== "in_progress" || round.offeredAt !== null || round.skippedAt !== null || round.startedAt !== null) return "closed";
-        // #253: a stage 1 answer changes only while stage 1 is not locked (no route stored).
-        if (position < row.test.stage1.length && row.route != null) return "closed";
-      }
+      if (!row || row.status !== "in_progress") return "closed";
+      // #253: a stage 1 answer changes only while stage 1 is not locked (no route stored).
+      if (position < row.test.stage1.length && row.route != null) return "closed";
       const old = row.answers[position];
       if (row.answers.length > unansweredFrom || !old || old.questionId !== marked.questionId) return "closed";
       const timeline = { shownAt: old.timeline?.shownAt ?? null, answeredAt, events: structuredClone(events) };
@@ -356,8 +289,6 @@ export function memoryAttemptStore({ children: kids = [], tests: initial = [] }:
       // #249: the answers scored are still the stored ones (as the database function complete_test checks under its lock).
       if (!sameAnswers(row.answers, answers)) return "changed";
       Object.assign(row, { status: "completed", completedAt: at, route: placement.route, placement, help });
-      // #190: a round taken during the test finishes with it.
-      if (placement.extraRound) roundOf(row).finishedAt = at;
       return "done";
     },
     async create(parent, child, { attempt, seed, test }) {

@@ -134,8 +134,6 @@ export type TestStep =
       breakAfter: number;
       /** #189: the last RUSH_RUN answers were all very fast, so the screen says "Take your time". */
       takeYourTime: boolean;
-      /** #190: a question of the extra round: its place in the round, from 1, and the round's length. Absent on main questions. */
-      extra?: { number: number; total: number };
       /**
        * #249: the answered questions of the open section, in order, so Back shows them at once. Only the test attempt
        * module adds it (it knows when the test moved past a section); absent when no answer can change.
@@ -149,11 +147,8 @@ export type TestStep =
        * (it knows the lock records). "Done checking" locks the section.
        */
       status: "check";
-      /**
-       * The section to check: stage 1 (before the halfway break), stage 2 (the routed form), or (#254) the extra round
-       * (#190), whose grid the screen numbers with the round's own numbers.
-       */
-      section: "stage1" | "stage2" | "extra";
+      /** The section to check: stage 1 (before the halfway break) or stage 2 (the routed form). */
+      section: "stage1" | "stage2";
       /** The section's question numbers in the test, from 1, in order. Every one is answered. */
       numbers: number[];
       total: number;
@@ -161,15 +156,7 @@ export type TestStep =
       /** The section's answered questions (as on a question step), so a tap opens one at once. Only the test attempt module adds it. */
       answered?: AnsweredQuestion[];
     }
-  | {
-      status: "complete";
-      total: number;
-      /**
-       * #190: the extra round the child can take or skip now, before "Did anyone help?". Only the test attempt module
-       * adds it (it knows whether the child skipped); absent when none is due.
-       */
-      extraRound?: ExtraRoundOffer;
-    };
+  | { status: "complete"; total: number };
 
 /** #249: an answered question the child can go back to: its number in the test, the question without its answer, and the child's response. */
 export interface AnsweredQuestion {
@@ -206,24 +193,13 @@ export interface Session {
   stage2: Record<Route, Question[]>;
   route: Route | null;
   answers: Answer[];
-  /**
-   * #190: the optional extra round, after the last main question: drawn when the child takes it (startExtraRound), and
-   * asked after the routed form. Absent when the child did not take one, and on tests stored before #190.
-   */
-  extra?: Question[];
 }
 
 /**
- * What the server stores when a test starts. Never sent to the browser: it holds the answers. `extra` (#190) is added
- * when the child takes the extra round.
+ * What the server stores when a test starts. Never sent to the browser: it holds the answers. D-145: two tests from
+ * before the extra round was removed (#190) also hold that round's questions under `extra`; no code reads them.
  */
-export type StoredTest = Pick<Session, "profile" | "seed" | "stage1" | "stage2" | "extra">;
-
-/** #190: the extra round a child can take now: how many questions, and the early-sign areas they cover, in band order. */
-export interface ExtraRoundOffer {
-  questions: number;
-  strands: ReportedStrand[];
-}
+export type StoredTest = Pick<Session, "profile" | "seed" | "stage1" | "stage2">;
 
 export type StrandStatus = "secure" | "developing" | "needs-attention";
 
@@ -264,9 +240,4 @@ export interface Placement {
   flags: Flag[];
   /** #189: very fast answers, the ones left out of the score, and whether the result may not be reliable. Absent before #189. */
   pace?: Pace;
-  /**
-   * #190: the extra round the child took, whose answers count in the levels and areas above: how many questions, and
-   * the early-sign areas they covered. Absent when the child took none.
-   */
-  extraRound?: ExtraRoundOffer;
 }

@@ -699,8 +699,6 @@ function startView(state: Exclude<StartState, { kind: "wait" }>, name: string): 
     case "resume":
       return { label: "Continue test", note: <>The answers are saved. {name} can continue until <When at={state.resumeUntil} />.</>, status: "in_progress" };
     case "finish":
-      // #225: the child left part way through the extra round (#190), the screen they get back to.
-      if (state.round) return { label: "Continue test", note: <>{name} was doing the extra questions. The answers are saved. Open the test to keep going, or to stop here. The report then comes by email.</>, status: "round" };
       return { label: "Finish test", note: <>All of {name}&apos;s answers are in, but the test was not sent. Open it to finish. The report then comes by email.</>, status: "finish" };
     case "expired":
       return { label: "Start again", note: "The last test was not finished within 24 hours, so it closed. The new test has new questions.", status: "expired" };

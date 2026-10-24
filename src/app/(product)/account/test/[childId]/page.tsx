@@ -31,8 +31,7 @@ export default async function TestPage(props: PageProps<"/account/test/[childId]
   if (!child) notFound();
   // #72: an open test continues where it stopped; after one ran out of time the next has new questions.
   const state = stateFor(states, child.id);
-  // #190: every main answer is in, but the child left part way through the extra round: Keep going or Stop here.
-  const mode = state.kind === "finish" && state.round ? "round" : state.kind === "resume" || state.kind === "finish" ? state.kind : state.kind === "expired" ? "restart" : "new";
+  const mode = state.kind === "resume" || state.kind === "finish" ? state.kind : state.kind === "expired" ? "restart" : "new";
 
   const grade = child.grade as Grade;
   // Grades 1-5 have a bank (grades 3-5 still on the sample bank); grades 6-7 open with theirs (#76).
@@ -45,7 +44,7 @@ export default async function TestPage(props: PageProps<"/account/test/[childId]
   const band = bandFor(grade);
   // #253: a resume past the break (stage 1 locked) says the child can go back until the end of the test.
   const afterBreak = state.kind === "resume" && state.afterBreak === true;
-  // #253: every main answer is in and the next step is the part 2 grid: "Check your answers, then press Done checking."
+  // #253: every answer is in and the next step is the part 2 grid: "Check your answers, then press Done checking."
   const checkGrid = state.kind === "finish" && state.checkGrid === true;
   return <TakeTest childId={child.id} name={child.first_name} breakAfter={band.stage1} ready={ready} done={state.kind === "wait"} mode={mode} typing={band.whiteboardTyping} afterBreak={afterBreak} checkGrid={checkGrid} />;
 }

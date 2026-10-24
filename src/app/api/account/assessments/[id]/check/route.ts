@@ -4,10 +4,9 @@ import { refusalResponse, testFail, type StepResult } from "@/lib/test-api";
 import { doneChecking } from "@/lib/test-attempt";
 import { attemptStore } from "@/lib/test-attempt-server";
 
-// "Done checking" on a "Check your answers" grid (#249, #253): `{ section: "stage1" }`, `{ section: "stage2" }` or
-// (#254) `{ section: "extra" }`. It locks the section and returns the next step: after stage 1, the first question
-// after halfway (the break and quick facts come first); after stage 2, the extra round's offer or "Did anyone help?";
-// after the extra round during the test, "Did anyone help?" (the round locks with the finish). The test attempt module
+// "Done checking" on a "Check your answers" grid (#249, #253): `{ section: "stage1" }` or `{ section: "stage2" }`. It
+// returns the next step: after stage 1 (which it locks), the first question after halfway (the break and quick facts
+// come first); after stage 2, "Did anyone help?" (stage 2 locks with the finish). The test attempt module
 // (src/lib/test-attempt.ts) runs the rules and the store writes the lock; this route only translates.
 export async function POST(request: Request, ctx: RouteContext<"/api/account/assessments/[id]/check">) {
   const parent = await parentId(await sessionClient());
@@ -23,7 +22,7 @@ export async function POST(request: Request, ctx: RouteContext<"/api/account/ass
   } catch {
     return testFail("bad_json", 400);
   }
-  if (body.section !== "stage1" && body.section !== "stage2" && body.section !== "extra") return testFail("invalid", 400);
+  if (body.section !== "stage1" && body.section !== "stage2") return testFail("invalid", 400);
 
   // One clock reading for the whole request, as the other test steps (#72).
   const result = await doneChecking(attemptStore(admin), parent, id, body.section, Date.now());

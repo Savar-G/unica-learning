@@ -107,8 +107,8 @@ describe("ad tags and consent", () => {
 });
 
 describe("ad tags on a child's pages", () => {
-  it("block the test, the extra round, the start screen, and token or admin pages", () => {
-    for (const path of ["/account/test/abc", "/account/extra/3f2b8c1e-9d4a-4f6b-8e2c-1a2b3c4d5e6f", "/account/start/abc", "/account/start", "/account/Test/x", "/account/%74est/x", "//account/test/x", "/admin", "/sign-in/reset", "/unsubscribe", "/%E0%A4%A"]) {
+  it("block the test, the start screen, and token or admin pages", () => {
+    for (const path of ["/account/test/abc", "/account/start/abc", "/account/start", "/account/Test/x", "/account/%74est/x", "//account/test/x", "/admin", "/sign-in/reset", "/unsubscribe", "/%E0%A4%A"]) {
       expect(adsBlockedPath(path), path).toBe(true);
     }
     for (const path of ["/", "/our-story", "/start", "/account", "/account/report/abc", "/account/finish", "/thank-you", "/account/testing"]) {

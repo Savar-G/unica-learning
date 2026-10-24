@@ -53,9 +53,9 @@ export function adConfig(
   };
 }
 
-// The pages a child uses: the start screen the parent hands over (/account/start/<child>), the test
-// (/account/test/<child>) and the extra round (/account/extra/<test>).
-const CHILD_PAGES = /^\/account\/(?:start|test|extra)(?:\/|$)/i;
+// The pages a child uses: the start screen the parent hands over (/account/start/<child>) and the test
+// (/account/test/<child>).
+const CHILD_PAGES = /^\/account\/(?:start|test)(?:\/|$)/i;
 // Pages whose address can hold a sign-in or unsubscribe token, and the admin area: no ad tags there either.
 const PRIVATE_PAGES = /^\/(?:admin|api|auth|sign-in|unsubscribe)(?:\/|$)/i;
 
