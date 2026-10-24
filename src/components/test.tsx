@@ -1079,8 +1079,12 @@ function End({ name, total, testId }: { name: string; total?: number; testId: st
   );
 }
 
-/** How often the wait asks whether the report is ready, the least time it shows, and when it stops asking. */
+/**
+ * How often the wait asks whether the report is ready, how long one ask may take, the least time the wait shows, and
+ * when it stops asking.
+ */
 const REPORT_POLL_MS = 4_000;
+const REPORT_ASK_MS = 15_000;
 const REPORT_MIN_WAIT_MS = 2_500;
 const REPORT_GIVE_UP_MS = 3 * 60_000;
 
@@ -1093,19 +1097,28 @@ function ReportWait({ name, testId, heading }: { name: string; testId: string | 
     if (!testId) return;
     const startedAt = Date.now();
     let stopped = false;
-    let timer: ReturnType<typeof setTimeout>;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    let asking: AbortController | undefined;
+    // The 3-minute limit runs on its own timer, so an ask that never answers cannot keep the wait on the screen.
+    const giveUp = setTimeout(() => {
+      stopped = true;
+      clearTimeout(timer);
+      asking?.abort();
+      track("test_report_wait", { status: "slow" });
+      setSlow(true);
+    }, REPORT_GIVE_UP_MS);
     const ask = async () => {
-      const res = await call<{ ok: true; href: string | null }>(`/api/account/assessments/${testId}/report`);
+      const controller = new AbortController();
+      asking = controller;
+      const cut = setTimeout(() => controller.abort(), REPORT_ASK_MS);
+      const res = await call<{ ok: true; href: string | null }>(`/api/account/assessments/${testId}/report`, { signal: controller.signal });
+      clearTimeout(cut);
       if (stopped) return;
       if (res.ok && res.href) {
         const href = res.href;
+        clearTimeout(giveUp);
         track("test_report_wait", { status: "opened" });
         timer = setTimeout(() => router.push(href), Math.max(0, REPORT_MIN_WAIT_MS - (Date.now() - startedAt)));
-        return;
-      }
-      if (Date.now() - startedAt > REPORT_GIVE_UP_MS) {
-        track("test_report_wait", { status: "slow" });
-        setSlow(true);
         return;
       }
       timer = setTimeout(ask, REPORT_POLL_MS);
@@ -1114,6 +1127,8 @@ function ReportWait({ name, testId, heading }: { name: string; testId: string | 
     return () => {
       stopped = true;
       clearTimeout(timer);
+      clearTimeout(giveUp);
+      asking?.abort();
     };
   }, [testId, router]);
   if (slow) {
