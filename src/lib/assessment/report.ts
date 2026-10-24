@@ -8,7 +8,8 @@ import { factsReport, type ReportFacts } from "./facts";
 import { helpLikely } from "./flags";
 import { checkReportText, parentTextProblem } from "./ai-checks";
 import { storedLevelCertainty, type Certainty } from "./certainty";
-import type { ExtraRoundOffer, Grade, Level, Placement, Province, StrandResult } from "./types";
+import { fromRemovedRound } from "./session";
+import type { Grade, Level, Placement, Province, StrandResult } from "./types";
 
 /** One AI review of a child's shown work (#68). Built by workReview, which decides the confidence. */
 export interface WorkReview {
@@ -90,11 +91,6 @@ export interface ReportModel {
   /** #189: very fast wrong answers in a run, left out of the score. Absent when there were none, and before #189. */
   leftOut?: number;
   /**
-   * #190: the result includes the extra round the child took: how many questions, on which areas. Absent when the child
-   * took none. A report built before a round from the report finished lacks it, so the report job builds it again.
-   */
-  extraRound?: ExtraRoundOffer;
-  /**
    * #68: a short paragraph the AI wrote from this model, shown under the verdict. "{name}" stands for the child's first
    * name (REPORT_TEXT_NAME), so neither the stored model nor the AI holds the name. Absent when the AI is off or failed,
    * or when its text broke a rule of checkReportText: then the report has only its plain sentences.
@@ -156,7 +152,6 @@ export function reportModel(placement: Placement, context: ReportContext): Repor
     helpWarning: helpLikely(placement.flags),
     ...(placement.pace?.unreliable ? { reliability: { veryFast: placement.pace.veryFast, answers: placement.pace.answers } } : {}),
     ...(placement.pace?.leftOut.length ? { leftOut: placement.pace.leftOut.length } : {}),
-    ...(placement.extraRound ? { extraRound: placement.extraRound } : {}),
   };
   if (!context.reportText) return model;
   const check = checkReportText(model, context.reportText);
@@ -166,12 +161,14 @@ export function reportModel(placement: Placement, context: ReportContext): Repor
 /**
  * A stored report model (public.reports.model) as a report shows it today (#242): an estimated working level is an
  * early sign, also when it was stored as clear, and an AI summary that breaks a rule of today (parentTextProblem) is
- * left out, so the plain sentences stand alone. The stored row is not changed. Every report is read through it
- * (loadReportView): the parent's report, the admin's report view and the report email.
+ * left out, so the plain sentences stand alone. D-145: work for a question of the removed extra round (#190) is left
+ * out too. The stored row is not changed. Every report is read through it (loadReportView): the parent's report, the
+ * admin's report view and the report email.
  */
 export function storedReportModel(model: ReportModel): ReportModel {
   const { summary, ...rest } = model;
   const certainty = storedLevelCertainty(model.level);
   const keep = summary !== undefined && !parentTextProblem(summary, model.level.grade, "summary");
-  return { ...rest, level: { ...model.level, ...(certainty ? { certainty } : {}) }, ...(keep ? { summary } : {}) };
+  const work = model.work?.filter((w) => !fromRemovedRound(w.questionId));
+  return { ...rest, ...(work ? { work } : {}), level: { ...model.level, ...(certainty ? { certainty } : {}) }, ...(keep ? { summary } : {}) };
 }

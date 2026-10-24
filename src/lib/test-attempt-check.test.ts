@@ -2,7 +2,6 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   breakDue,
   createSession,
-  extraRoundOffer,
   nextQuestion,
   restoreSession,
   startAttempt,
@@ -14,14 +13,14 @@ import {
   type Submission,
 } from "@/lib/assessment";
 import { checked } from "@/lib/assessment/scripted-child";
-import { answerQuestion, changeAnswer, doneChecking, finishTest, nextStep, startStates, StoreError, takeExtraRound, type AttemptStore, type ChangeInput } from "@/lib/test-attempt";
+import { answerQuestion, changeAnswer, doneChecking, finishTest, nextStep, startStates, StoreError, type ChangeInput } from "@/lib/test-attempt";
 import { memoryAttemptStore, type MemoryTest } from "@/lib/test-attempt-memory";
 
 // "Check your answers" and the locks (#249, #253) through the test attempt module, against the in-memory store with the
 // clock passed in. Stage 1 waits on its grid after its last answer; "Done checking" locks it: the stored route is the
 // lock record, set from the final stage 1 answers. Stage 2 waits on its grid after its last answer; "Done checking"
-// records the extra round's offer when one is due (that is its lock), else leads to "Did anyone help?".
-// Asha, grade 4 in BC: stage 1 has 18 questions; seed 7 gives 42 questions when every answer is right (no round due).
+// writes nothing and leads to "Did anyone help?"; stage 2 locks with the finish (D-145: no extra round is offered).
+// Asha, grade 4 in BC: stage 1 has 18 questions; seed 7 gives 42 questions when every answer is right.
 const SECOND = 1000;
 const MINUTE = 60 * SECOND;
 const HOUR = 60 * MINUTE;
@@ -229,7 +228,7 @@ describe("Done checking on stage 1", () => {
 });
 
 describe("the stage 2 grid and Done checking", () => {
-  it("with no extra round due: the grid after the last answer; Done checking writes nothing and leads to Did anyone help?", async () => {
+  it("the grid after the last answer; Done checking writes nothing and leads to Did anyone help?", async () => {
     const memory = family(openTest(41));
     const last = current(memory.tests[0]);
     const grid = await answerQuestion(memory.store, P1, "a1", { questionId: last.id, response: last.answer, timeMs: 20_000, work: { png: null, text: "" } }, T0 + 2 * HOUR);
@@ -246,90 +245,21 @@ describe("the stage 2 grid and Done checking", () => {
     expect(await finishTest(memory.store, P1, "a1", "no", T0 + 5 * HOUR)).toMatchObject({ ok: true, finished: "now" });
   });
 
-  it("with an extra round due: Done checking records the offer (the lock) and offers the round; stage 2 then takes no change", async () => {
-    // Seed 1, first answer wrong: an area is an early sign, so a round is due after the main test.
+  it("with an area that is an early sign: the same, with no extra round offered and nothing written (D-145)", async () => {
+    // Seed 1, first answer wrong: an area is an early sign, which offered the removed extra round (#190).
     const row = openTest(42, { seed: 1, script: (_, i) => i !== 0 });
     const memory = family(row);
     expect(await nextStep(memory.store, P1, "a1", T0 + 2 * HOUR)).toMatchObject({ ok: true, step: { status: "check", section: "stage2" } });
-    // Serving the grid records nothing: the offer is recorded at "Done checking".
-    expect(memory.tests[0].extraRound?.offeredAt ?? null).toBeNull();
+    const before = structuredClone(memory.tests[0]);
     const result = await doneChecking(memory.store, P1, "a1", "stage2", T0 + 3 * HOUR);
-    expect(result).toMatchObject({ ok: true, step: { status: "complete", extraRound: { questions: expect.any(Number) } } });
-    expect(memory.tests[0].extraRound?.offeredAt).toBe(T0 + 3 * HOUR);
-    // The deadline does not move: every main answer is in.
-    expect(memory.tests[0].resumeUntil).toBe(T0 + HOUR + DAY);
-    const q = onRoute(memory.tests[0], restoreSession(row.test, row.answers, row.route ?? null).route)[30];
-    expect(await changeAnswer(memory.store, P1, "a1", revisit(q, wrongTo(q)), T0 + 4 * HOUR)).toMatchObject({ ok: false, error: "conflict" });
-    // A retry after a lost response, and a resume, show the offer.
-    expect(await doneChecking(memory.store, P1, "a1", "stage2", T0 + 4 * HOUR)).toEqual(result);
-    expect(await nextStep(memory.store, P1, "a1", T0 + 4 * HOUR)).toMatchObject({ ok: true, step: { status: "complete", extraRound: {} } });
-  });
-
-  it("a failed offer write keeps the child on the grid with store_failed", async () => {
-    logs();
-    const memory = family(openTest(42, { seed: 1, script: (_, i) => i !== 0 }));
-    memory.fail.recordExtraOffer = new StoreError("extra round offer save failed", "timeout");
-    expect(await doneChecking(memory.store, P1, "a1", "stage2", T0 + 3 * HOUR)).toEqual({ ok: false, error: "store_failed" });
-    expect(memory.tests[0].extraRound?.offeredAt ?? null).toBeNull();
-    expect(await nextStep(memory.store, P1, "a1", T0 + 3 * HOUR)).toMatchObject({ ok: true, step: { status: "check", section: "stage2" } });
-  });
-
-  /**
-   * Asha's test (seed 7) with every main answer right except the stage 2 answer at `wrong`, the first place where one
-   * wrong answer makes an extra round due (an area becomes an early sign).
-   */
-  const oneWrongInStage2 = () => {
-    const right = openTest(42);
-    const questions = onRoute(right, "up");
-    const wrong = questions.findIndex((q, i) => i >= STAGE1 && extraRoundOffer(restoreSession(right.test, right.answers.map((a, j) => (j === i ? { ...a, response: wrongTo(q) } : a)), "up")) !== null);
-    if (wrong < 0) throw new Error("no stage 2 answer makes a round due");
-    return { row: openTest(42, { script: (_, i) => i !== wrong, route: "up" }), q: questions[wrong], wrong };
-  };
-
-  /** The family's store, where "Done checking" on stage 2 waits before its offer write until `release`. */
-  const heldOffer = (memory: ReturnType<typeof family>) => {
-    let release = () => {};
-    let waiting = () => {};
-    const released = new Promise<void>((r) => (release = r));
-    const reached = new Promise<void>((r) => (waiting = r));
-    const store: AttemptStore = { ...memory.store, recordExtraOffer: async (...args: Parameters<AttemptStore["recordExtraOffer"]>) => {
-      waiting();
-      await released;
-      return memory.store.recordExtraOffer(...args);
-    } };
-    return { store, reached, release };
-  };
-
-  it("a change that lands before the offer write: no round is offered when the final answers need none (review of #253)", async () => {
-    const { row, q, wrong } = oneWrongInStage2();
-    const memory = family(row);
-    const { store, reached, release } = heldOffer(memory);
-    const pressed = doneChecking(store, P1, "a1", "stage2", T0 + 2 * HOUR);
-    await reached;
-    // The child fixes the wrong answer in another tab before the offer is written.
-    expect(await changeAnswer(store, P1, "a1", revisit(q, q.answer), T0 + 2 * HOUR)).toMatchObject({ ok: true });
-    release();
-    const result = await pressed;
-    expect(memory.tests[0].answers[wrong]).toMatchObject({ response: q.answer, correct: true });
-    expect(extraRoundOffer(restoreSession(memory.tests[0].test, memory.tests[0].answers, "up"))).toBeNull();
-    // The step matches the final answers: "Did anyone help?", and no offer is recorded.
     expect(result).toEqual({ ok: true, step: { status: "complete", total: 42 } });
-    expect(memory.tests[0].extraRound?.offeredAt ?? null).toBeNull();
-  });
-
-  it("a change that lands before the offer write but keeps the round due: the offer is recorded from the final answers", async () => {
-    const { row, wrong } = oneWrongInStage2();
-    const memory = family(row);
-    const { store, reached, release } = heldOffer(memory);
-    const pressed = doneChecking(store, P1, "a1", "stage2", T0 + 2 * HOUR);
-    await reached;
-    // Another tab looks at a different answer again: the same answer, with time added.
-    const other = onRoute(memory.tests[0], "up")[wrong === STAGE1 ? STAGE1 + 1 : STAGE1];
-    expect(await changeAnswer(store, P1, "a1", revisit(other, other.answer), T0 + 2 * HOUR)).toMatchObject({ ok: true });
-    release();
-    expect(await pressed).toMatchObject({ ok: true, step: { status: "complete", extraRound: { questions: expect.any(Number) } } });
-    expect(memory.tests[0].extraRound?.offeredAt).toBe(T0 + 2 * HOUR);
-    expect(await takeExtraRound(store, P1, "a1", T0 + 2 * HOUR + MINUTE)).toMatchObject({ ok: true, step: { status: "question", extra: { number: 1 } } });
+    expect(memory.tests[0]).toEqual(before);
+    // A retry after a lost response gets the same; stage 2 still takes a change until the finish.
+    expect(await doneChecking(memory.store, P1, "a1", "stage2", T0 + 4 * HOUR)).toEqual(result);
+    const q = onRoute(memory.tests[0], restoreSession(row.test, row.answers, row.route ?? null).route)[30];
+    expect(await changeAnswer(memory.store, P1, "a1", revisit(q, wrongTo(q)), T0 + 4 * HOUR)).toMatchObject({ ok: true });
+    expect(await finishTest(memory.store, P1, "a1", "no", T0 + 5 * HOUR)).toMatchObject({ ok: true, finished: "now" });
+    expect(memory.tests[0].placement).not.toHaveProperty("extraRound");
   });
 
   it("Done checking for a section that is not on its grid is a conflict with the step", async () => {
@@ -368,11 +298,11 @@ describe("the start screen on a resume (#253)", () => {
     }
   });
 
-  it("says when the next step is the part 2 grid, and not once Done checking moved the test on", async () => {
-    // Seed 1, first answer wrong: a round is due, so "Done checking" records the offer and the next step is the offer.
+  it("says when the next step is the part 2 grid, also after Done checking: stage 2 locks only with the finish", async () => {
+    // Seed 1, first answer wrong: an area is an early sign; D-145: no extra round comes between the grid and the finish.
     const memory = family(openTest(42, { seed: 1, script: (_, i) => i !== 0 }));
     expect((await startStates(memory.store, P1, T0 + 2 * HOUR)).get(C1)).toEqual({ kind: "finish", attemptId: "a1", checkGrid: true });
     await doneChecking(memory.store, P1, "a1", "stage2", T0 + 2 * HOUR);
-    expect((await startStates(memory.store, P1, T0 + 3 * HOUR)).get(C1)).toEqual({ kind: "finish", attemptId: "a1" });
+    expect((await startStates(memory.store, P1, T0 + 3 * HOUR)).get(C1)).toEqual({ kind: "finish", attemptId: "a1", checkGrid: true });
   });
 });

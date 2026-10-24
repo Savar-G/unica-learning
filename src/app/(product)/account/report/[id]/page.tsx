@@ -6,13 +6,13 @@ import { fromRow, LEARNING_COLUMNS, type LearningAnswers } from "@/lib/learning-
 import { pageMetadata } from "@/lib/metadata";
 import { loadReportView } from "@/lib/report-loading";
 import { parentReportReader } from "@/lib/report-loading-server";
-import { extraRoundPath, reportReturnPath } from "@/lib/report-view";
+import { reportReturnPath } from "@/lib/report-view";
 import { adminClient, parentId, sessionClient } from "@/lib/supabase-auth";
 import { recordReportEmailClick } from "@/lib/email-clicks";
 import { TrackOnce } from "@/components/account";
-import { ReportCard, type ExtraRoundOffer, type NewTestOffer, type ReportNextContext } from "@/components/report";
+import { ReportCard, type NewTestOffer, type ReportNextContext } from "@/components/report";
 import { startPath } from "@/lib/sign-in-link";
-import { parentExtraRound, parentRetakeState } from "@/lib/test-attempt-server";
+import { parentRetakeState } from "@/lib/test-attempt-server";
 import type { NextStepStart } from "@/components/report-next";
 import { SupportPage } from "@/components/support-page";
 
@@ -44,13 +44,12 @@ export default async function ReportPage({ params, searchParams }: PageProps<"/a
   // (strengths, struggles, the workbook 1 preview) reaches the page.
   const report = await loadReportView(parentReportReader(db, { admin: adminClient(), parentId: parent }), id);
   if (!report) notFound();
-  const { view, childId, assessmentId } = report;
+  const { view, childId } = report;
 
-  const [start, learning, newTest, extraRound] = await Promise.all([
+  const [start, learning, newTest] = await Promise.all([
     nextStepStart(db, childId),
     learningStart(db, childId),
     view.model.reliability ? newTestOffer(parent, childId) : null,
-    extraRoundOffer(parent, assessmentId),
   ]);
   // Back from the payment page without a card: not a new report open.
   const cancelled = query.card === "cancelled";
@@ -72,22 +71,9 @@ export default async function ReportPage({ params, searchParams }: PageProps<"/a
     <SupportPage label="" title="" wide>
       {!cancelled && <TrackOnce event="report_open" props={{ src }} />}
       <p className="small rpt-back"><Link href="/account">← Your account</Link></p>
-      <ReportCard view={view} next={next} newTest={newTest} extraRound={extraRound} />
+      <ReportCard view={view} next={next} newTest={newTest} />
     </SupportPage>
   );
-}
-
-/**
- * #190: the extra round this report offers while its test is the child's latest: the round the child skipped, or the
- * rest of one the child started. Null when there is none, or it cannot be read.
- */
-async function extraRoundOffer(parent: string, assessmentId: string): Promise<ExtraRoundOffer | null> {
-  const state = await parentExtraRound(parent, assessmentId);
-  if (!state) return null;
-  const card = state.kind === "continue"
-    ? { kind: "continue" as const, questions: state.offer.questions, answered: state.answered }
-    : { kind: "offer" as const, questions: state.offer.questions };
-  return { card, href: extraRoundPath(assessmentId) };
 }
 
 /**

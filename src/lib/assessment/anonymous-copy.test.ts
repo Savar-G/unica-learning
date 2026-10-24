@@ -14,11 +14,9 @@ import {
   finish,
   learnerProfile,
   nextQuestion,
-  startExtraRound,
   storedTest,
   submitAnswer,
   submitFact,
-  withoutRound,
   type AnonymousTestCopy,
   type FamilyCopyStore,
   type ProfileAnswer,
@@ -104,41 +102,37 @@ function source() {
 /** A wrong answer the screen offers: another choice, or a number. */
 const wrongOf = (q: Question) => q.wrong[0]?.value ?? (q.answer === "0" ? "1" : "0");
 
-/** The extra round's times, as ms since the test started (the database stores dates and times). */
-interface RoundTimes { offered?: number; skipped?: number; started?: number; finished?: number }
+/** The removed extra round's whole time line (#190): offered after the last main answer (42 x 30 s), started 3 s later. */
+const OFFERED = 1_262_000, STARTED = OFFERED + 3_000, FINISHED = STARTED + 8 * 20_000 + 30_000;
 
 /**
- * #190: Asha's test (grade 4, BC, seed 1) as the database hands it to the copy. Her first answer is wrong, so one area
- * is an early sign and an 8-question extra round is due (D-116). Main question i is shown at 10 s + 30 s i. When the
- * round started, `answered` of its questions have an answer (the first wrong) and `served` were shown, 20 s apart from
- * the start. `completed`: when the test was completed (null: in progress); `counted`: the placement was scored with
- * the round (taken and finished), else without it (D-116: a stopped round does not count).
+ * D-145: a test from before the extra round (#190, D-116) was removed, as the database still hands it to the copy:
+ * Asha's test (grade 4, BC, seed 1, her first answer wrong), then an 8-question round stored under `extra` (ids x-0 to
+ * x-7), of which `answered` have an answer and `served` were shown, the round's four times, and (`counted`) a placement
+ * that records the round, as a round finished during the test did.
  */
-function roundSource(
-  times: RoundTimes,
-  { answered = 0, served = answered, completed = null, counted = false }: { answered?: number; served?: number; completed?: number | null; counted?: boolean } = {},
-) {
+function legacySource({ answered = 8, served = answered, counted = true }: { answered?: number; served?: number; counted?: boolean } = {}) {
   let session = createSession({ grade: 4, province: "BC" }, 1);
   for (let q = nextQuestion(session); q; q = nextQuestion(session)) {
     session = checked(submitAnswer(session, { questionId: q.id, response: session.answers.length === 0 ? wrongOf(q) : q.answer, timeMs: 20_000 }));
   }
   const main = session.answers.length;
-  if (times.started !== undefined) session = startExtraRound(session);
-  for (let i = 0; i < answered; i++) {
-    const q = nextQuestion(session)!;
-    session = checked(submitAnswer(session, { questionId: q.id, response: i === 0 ? wrongOf(q) : q.answer, timeMs: 15_000 }));
-  }
-  const questions: Question[] = [...session.stage1, ...session.stage2[session.route!], ...(session.extra ?? [])];
-  const shownAt = (i: number) => (i < main ? 10_000 + 30_000 * i : times.started! + 20_000 * (i - main));
-  const when = (ms: number | undefined | null) => (ms === undefined || ms === null ? null : at(ms));
+  const other = (["up", "stay", "down"] as const).find((r) => r !== session.route)!;
+  const extra = session.stage2[other].slice(0, 8).map((q, i) => ({ ...q, id: `x-${i}`, showWork: false }));
+  const questions: Question[] = [...session.stage1, ...session.stage2[session.route!], ...extra];
+  const answers = [
+    ...session.answers,
+    ...extra.slice(0, answered).map((q, i) => ({ questionId: q.id, response: i === 0 ? wrongOf(q) : q.answer, timeMs: 15_000, correct: i !== 0, misconception: null })),
+  ];
+  const shownAt = (i: number) => (i < main ? 10_000 + 30_000 * i : STARTED + 20_000 * (i - main));
+  const placement = finish(session, null, "no");
   return {
-    id: TEST, copied: false, testFamily: false, grade: 4, province: "BC", status: completed === null ? "in_progress" : "completed",
-    route: session.route, help: completed === null ? null : "no", startedAt: START, completedAt: when(completed),
-    breakStartedAt: null, breakEndedAt: null, breakSkipped: null, breakMs: null, device: null,
-    stored: storedTest(session),
-    placement: completed === null ? null : finish(counted ? session : withoutRound(session), null, "no"),
-    extraOfferedAt: when(times.offered), extraSkippedAt: when(times.skipped), extraStartedAt: when(times.started), extraFinishedAt: when(times.finished),
-    answers: session.answers.map((a, i) => ({
+    id: TEST, copied: false, testFamily: false, grade: 4, province: "BC", status: "completed", route: session.route, help: "no",
+    startedAt: START, completedAt: at(FINISHED), breakStartedAt: null, breakEndedAt: null, breakSkipped: null, breakMs: null, device: null,
+    stored: { ...storedTest(session), extra },
+    placement: counted ? { ...placement, extraRound: { questions: 8, strands: ["number"] } } : placement,
+    extraOfferedAt: at(OFFERED), extraSkippedAt: null, extraStartedAt: at(STARTED), extraFinishedAt: counted ? at(FINISHED) : null,
+    answers: answers.map((a, i) => ({
       position: i, questionId: a.questionId, round: i < main ? "main" : "extra", templateId: questions[i].templateId, values: questions[i].values,
       response: a.response, correct: a.correct, misconception: a.misconception, timeMs: a.timeMs,
       workRequired: questions[i].showWork === true, drawing: false, typed: false, strokes: false,
@@ -149,9 +143,6 @@ function roundSource(
     facts: null, profile: null, learning: null,
   };
 }
-
-/** The extra round's whole time line: offered after the last main answer (42 x 30 s), started 3 s later. */
-const OFFERED = 1_262_000, STARTED = OFFERED + 3_000, DAY = 86_400_000;
 
 /** Every key at every depth. */
 const keysOf = (value: unknown): string[] => typeof value !== "object" || value === null ? []
@@ -172,7 +163,6 @@ describe("the copy without names", () => {
     expect(copyFieldNames()).toEqual([
       ...COPY_FIELDS.test,
       ...COPY_FIELDS.question.map((k) => `questions.${k}`),
-      ...COPY_FIELDS.extraRound.map((k) => `extraRound.${k}`),
       ...COPY_FIELDS.fact.map((k) => `facts.answers.${k}`),
     ]);
   });
@@ -188,10 +178,9 @@ describe("the copy without names", () => {
     const copy = anonymousTestCopy(s);
     expect(copy).toMatchObject({
       copyVersion: COPY_VERSION, grade: 3, province: "BC", testMonth: "2026-03", testFamily: false, status: "completed",
-      route: s.route, help: "a-little", extraRound: null,
+      route: s.route, help: "a-little",
     });
     expect(copy.questions).toHaveLength(s.answers.length);
-    expect(copy.questions.every((q) => q.round === "main")).toBe(true);
     const questions: Question[] = [...s.stored.stage1, ...s.stored.stage2[s.route!]];
     copy.questions.forEach((q, i) => {
       const shown = questions[i];
@@ -305,116 +294,35 @@ describe("the copy without names", () => {
   });
 });
 
-// #190, D-116: the optional extra round. The copy keeps the round's questions as shown, marked as round questions, each
-// round answer like a main answer, and the round's state as times since the test started: never a date and time.
-describe("the extra round in the copy", () => {
-  it("keeps the round's questions as shown, marked as round questions, with each response, mark, misconception and time", () => {
-    const finished = STARTED + 8 * 20_000 + 30_000;
-    const s = roundSource({ offered: OFFERED, started: STARTED, finished }, { answered: 8, completed: finished, counted: true });
-    const copy = anonymousTestCopy(s);
-    expect(copy.questions).toHaveLength(42 + 8);
-    for (const q of copy.questions) expect(Object.keys(q)).toEqual([...COPY_FIELDS.question]);
-    expect(copy.questions.slice(0, 42).every((q) => q.round === "main")).toBe(true);
-    const round = copy.questions.slice(42);
-    s.stored.extra!.forEach((shown, i) => {
-      const a = s.answers[42 + i];
-      expect(round[i]).toMatchObject({
-        position: 42 + i, questionId: `x-${i}`, round: "extra", templateId: shown.templateId, level: shown.level, strand: shown.strand,
-        format: shown.format, prompt: shown.prompt, choices: shown.choices ?? null, values: shown.values, answer: shown.answer, showWork: false,
-        response: a.response, correct: a.correct, misconception: a.misconception, timeMs: 15_000,
-        shownAtMs: STARTED + 20_000 * i, answeredAtMs: STARTED + 20_000 * i + 15_000,
-      });
-    });
-    expect(round[0]).toMatchObject({ correct: false });
-    expect(round[0].misconception).toBe(s.answers[42].misconception);
-    expect(copy.extraRound).toEqual({
-      takenFrom: "test", offeredAtMs: OFFERED, skippedAtMs: null, startedAtMs: STARTED, stoppedAtMs: null, finishedAtMs: finished,
-      questions: 8, counted: true,
-    });
-    // The placement scored with the round records it.
-    expect(copy.placement?.extraRound).toEqual(s.placement!.extraRound);
-    expect(copy.placement!.extraRound!.questions).toBe(8);
-    expect(JSON.stringify(copy)).not.toMatch(/\d{4}-\d{2}-\d{2}T/);
-  });
-
-  const COMPLETED = 1_300_000;
+// D-145: the optional extra round (#190, D-116) is removed. The copy of a test from before keeps the main test alone: not
+// the round's questions (answered or only shown), not its record, not the placement's note of it.
+describe("a test from before the extra round was removed", () => {
   it.each([
-    {
-      state: "offered, no choice yet", times: { offered: OFFERED }, test: {},
-      round: { takenFrom: null, offeredAtMs: OFFERED, skippedAtMs: null, startedAtMs: null, stoppedAtMs: null, finishedAtMs: null, questions: 0, counted: false },
-      shown: [],
-    },
-    {
-      state: "skipped during the test", times: { offered: OFFERED, skipped: OFFERED + 2_000 }, test: { completed: COMPLETED },
-      round: { takenFrom: null, offeredAtMs: OFFERED, skippedAtMs: OFFERED + 2_000, startedAtMs: null, stoppedAtMs: null, finishedAtMs: null, questions: 0, counted: false },
-      shown: [],
-    },
-    {
-      // A stop is stored as a skip after the start (D-116). Its answers stay, but the result is the main test alone.
-      state: "stopped part way during the test", times: { offered: OFFERED, started: STARTED, skipped: STARTED + 70_000 },
-      test: { answered: 3, served: 4, completed: STARTED + 90_000 },
-      round: { takenFrom: "test", offeredAtMs: OFFERED, skippedAtMs: null, startedAtMs: STARTED, stoppedAtMs: STARTED + 70_000, finishedAtMs: null, questions: 8, counted: false },
-      shown: [true, true, true, false],
-    },
-    {
-      state: "skipped, then taken from the report two days later and finished",
-      times: { offered: OFFERED, skipped: OFFERED + 2_000, started: COMPLETED + 2 * DAY, finished: COMPLETED + 2 * DAY + 200_000 },
-      test: { answered: 8, completed: COMPLETED, counted: true },
-      round: { takenFrom: "report", offeredAtMs: OFFERED, skippedAtMs: OFFERED + 2_000, startedAtMs: COMPLETED + 2 * DAY, stoppedAtMs: null, finishedAtMs: COMPLETED + 2 * DAY + 200_000, questions: 8, counted: true },
-      shown: Array(8).fill(true),
-    },
-    {
-      state: "stopped part way during the test, then finished from the report",
-      times: { offered: OFFERED, started: STARTED, skipped: STARTED + 70_000, finished: COMPLETED + DAY },
-      test: { answered: 8, completed: STARTED + 90_000, counted: true },
-      round: { takenFrom: "test", offeredAtMs: OFFERED, skippedAtMs: null, startedAtMs: STARTED, stoppedAtMs: STARTED + 70_000, finishedAtMs: COMPLETED + DAY, questions: 8, counted: true },
-      shown: Array(8).fill(true),
-    },
-  ])("keeps the round's state as times since the start: $state", ({ times, test, round, shown }) => {
-    const s = roundSource(times, test);
+    { state: "taken and finished during the test", options: {} },
+    { state: "stopped part way, one more question shown", options: { answered: 3, served: 4, counted: false } },
+  ])("keeps the main test alone: $state", ({ options }) => {
+    const s = legacySource(options);
     const copy = anonymousTestCopy(s);
-    expect(Object.keys(copy.extraRound!)).toEqual([...COPY_FIELDS.extraRound]);
-    expect(copy.extraRound).toEqual(round);
-    expect(copy.questions.filter((q) => q.round === "extra").map((q) => q.response !== null)).toEqual(shown);
-    expect(copy.placement?.extraRound ?? null).toEqual(round.counted ? { questions: 8, strands: expect.any(Array) } : null);
+    expect(Object.keys(copy)).toEqual([...COPY_FIELDS.test]);
+    expect(copy.questions).toHaveLength(42);
+    for (const q of copy.questions) expect(Object.keys(q)).toEqual([...COPY_FIELDS.question]);
+    expect(copy.questions.map((q) => q.questionId)).toEqual(s.answers.slice(0, 42).map((a) => a.questionId));
+    expect(copy.placement).not.toHaveProperty("extraRound");
+    for (const key of ["extraRound", "round", "extraOfferedAt", "extraSkippedAt", "extraStartedAt", "extraFinishedAt"]) expect(keysOf(copy)).not.toContain(key);
+    expect(JSON.stringify(copy)).not.toContain("x-0");
     expect(JSON.stringify(copy)).not.toMatch(/\d{4}-\d{2}-\d{2}T/);
   });
 
-  it("has no round record for a test whose round was never offered, also from before the round existed", () => {
-    expect(anonymousTestCopy(roundSource({})).extraRound).toBeNull();
-    const { extraOfferedAt, extraSkippedAt, extraStartedAt, extraFinishedAt, ...before } = roundSource({});
-    expect([extraOfferedAt, extraSkippedAt, extraStartedAt, extraFinishedAt]).toEqual([null, null, null, null]);
-    expect(anonymousTestCopy({ ...before, answers: before.answers.map((a) => Object.fromEntries(Object.entries(a).filter(([k]) => k !== "round"))) }).extraRound).toBeNull();
-  });
-
-  it("adds no identifying field or free text: the round's record and questions are allowlists too", () => {
-    const finished = STARTED + 8 * 20_000 + 30_000;
-    const s = roundSource({ offered: OFFERED, started: STARTED, finished }, { answered: 8, completed: finished, counted: true });
-    // A database row with more than the copy may take: a note about the round, a round name that is free text, typed
-    // working and paths on round answers, and a name stored with a round question.
-    const tampered = {
-      ...s,
-      extraNote: "Maya asked to stop, call 604-555-0199", extraBy: FAMILY,
-      stored: { ...s.stored, extra: s.stored.extra!.map((q, i) => (i === 0 ? { ...q, childName: "Maya", parentId: FAMILY } : q)) },
-      answers: s.answers.map((a, i) => (i < 42 ? a : {
-        ...a, round: i === 42 ? "Maya Rivera" : a.round, workText: "I counted on my fingers", workPath: `${FAMILY}/${TEST}/x-0-abc.png`,
-        response: i === 43 ? "Maya" : a.response,
-      })),
-    };
-    const copy = anonymousTestCopy(tampered);
-    expect(Object.keys(copy)).toEqual([...COPY_FIELDS.test]);
-    expect(Object.keys(copy.extraRound!)).toEqual([...COPY_FIELDS.extraRound]);
-    for (const q of copy.questions) expect(Object.keys(q)).toEqual([...COPY_FIELDS.question]);
-    expect(new Set(copy.questions.map((q) => q.round))).toEqual(new Set(["main", "extra"]));
-    // The round is the stored round's, whatever a row says.
-    expect(copy.questions[42].round).toBe("extra");
-    expect(copy.questions[43].response).toBeNull();
-    const text = JSON.stringify(copy);
-    for (const value of [...IDENTIFYING, "Maya", "604-555-0199"]) expect(text).not.toContain(value);
-    for (const key of ["extraNote", "extraBy", "childName", "parentId", "workText", "workPath", "extraOfferedAt", "extraStartedAt"]) {
-      expect(keysOf(copy)).not.toContain(key);
-    }
-    expect(text).not.toMatch(/\d{4}-\d{2}-\d{2}T/);
+  it("leaves the round's wrong answers out of the profile's struggles, with a misconception only they had", () => {
+    const s = source();
+    const [first] = s.profile.struggles;
+    const roundWrong = { questionId: "x-0", templateId: first.wrong[0].templateId, prompt: "ROUND PROMPT", response: "5", rightAnswer: "ROUND ANSWER", misconception: "ROUND-ONLY" };
+    const withRound = { ...s.profile, struggles: s.profile.struggles.map((x, i) => (i === 0 ? { ...x, wrong: [roundWrong, ...x.wrong], misconceptions: ["ROUND-ONLY", ...x.misconceptions] } : x)) };
+    const copy = anonymousTestCopy({ ...s, profile: withRound });
+    const struggles = copy.profile!.struggles as typeof s.profile.struggles;
+    expect(struggles[0].wrong.map((w) => w.questionId)).toEqual(first.wrong.map((w) => w.questionId));
+    expect(struggles[0].misconceptions).toEqual(first.misconceptions);
+    expect(JSON.stringify(copy)).not.toMatch(/x-0|ROUND PROMPT|ROUND ANSWER|ROUND-ONLY/);
   });
 });
 
@@ -457,9 +365,9 @@ describe("copying a family's tests before the deletion", () => {
   it("the dry run's preview counts what a deletion would copy, with no value from the family", () => {
     const s = source();
     const preview = copyPreview([s, { ...s, id: "44444444-4444-4444-8444-444444444444", copied: true }, { ...s, profile: null, learning: null, facts: null }]);
-    expect(preview).toEqual({ tests: 2, copied: 1, questions: 2 * s.answers.length, extraRounds: 0, facts: 5, profiles: 1, questionnaires: 1 });
-    const round = roundSource({ offered: 1_000, started: 4_000, finished: 300_000 }, { answered: 8, completed: 300_000, counted: true });
-    expect(copyPreview([round])).toMatchObject({ tests: 1, questions: 42 + 8, extraRounds: 1 });
+    expect(preview).toEqual({ tests: 2, copied: 1, questions: 2 * s.answers.length, facts: 5, profiles: 1, questionnaires: 1 });
+    // D-145: a test from before the extra round's removal counts its main questions alone.
+    expect(copyPreview([legacySource()])).toEqual({ tests: 1, copied: 0, questions: 42, facts: 0, profiles: 0, questionnaires: 0 });
     expect(() => copyPreview([{ ...s, grade: 0 }])).toThrow("Copy source unreadable");
   });
 });
@@ -467,14 +375,22 @@ describe("copying a family's tests before the deletion", () => {
 describe("the database's check of the copy", () => {
   const migration = () => readFileSync(new URL("../../../supabase/migrations/20261016_test_copies_without_names.sql", import.meta.url), "utf8");
 
-  it("takes the same fields as the core's allowlist, so a copy the core builds is never refused", () => {
-    // save_family_test_copy refuses any other field at the top, in the extra round's record and in a question. A change
-    // to COPY_FIELDS needs a migration that replaces the function; point this test at it.
+  it("takes every field of the core's allowlist, so a copy the core builds is never refused", () => {
+    // save_family_test_copy refuses any other field at the top, in the extra round's record and in a question. A new
+    // field in COPY_FIELDS needs a migration that replaces the function; point this test at it. D-145: until the
+    // follow-up migration, the function still allows the removed round's fields; the copy sends none of them.
     const lists = [...migration().matchAll(/k <> all\(array\[([^\]]+)\]\)/g)].map((m) => m[1].match(/'([^']+)'/g)!.map((x) => x.slice(1, -1)));
-    expect(lists).toEqual([[...COPY_FIELDS.test], [...COPY_FIELDS.extraRound], [...COPY_FIELDS.question]]);
+    expect(lists).toHaveLength(3);
+    const [test, record, question] = lists;
+    const core = { test: COPY_FIELDS.test as readonly string[], question: COPY_FIELDS.question as readonly string[] };
+    expect(core.test.filter((k) => !test.includes(k))).toEqual([]);
+    expect(core.question.filter((k) => !question.includes(k))).toEqual([]);
+    expect(test.filter((k) => !core.test.includes(k))).toEqual(["extraRound"]);
+    expect(question.filter((k) => !core.question.includes(k))).toEqual(["round"]);
+    expect(record).toEqual(["takenFrom", "offeredAtMs", "skippedAtMs", "startedAtMs", "stoppedAtMs", "finishedAtMs", "questions", "counted"]);
   });
 
-  it("family_copy_sources selects exactly the fields the copy reads: the round's included, nothing identifying", () => {
+  it("family_copy_sources selects exactly the fields of a source, nothing identifying", () => {
     // The sources in these tests are what the database hands the copy, plus values the database never selects (names,
     // ids, paths, typed working, notes), which prove the copy picks its fields. Without those, the keys are the same.
     const sql = migration();
@@ -482,12 +398,13 @@ describe("the database's check of the copy", () => {
     const selected = new Set([...body.matchAll(/'([a-zA-Z]+)', /g)].map((m) => m[1]));
     const NOT_SELECTED = ["parentId", "childId", "firstName", "name", "email", "postal", "seed", "lastAnswerAt", "workPath", "workText", "strokesPath", "note"];
     const keys = new Set<string>();
-    for (const s of [source(), roundSource({ offered: 1_000, skipped: 2_000, started: 4_000, finished: 300_000 }, { answered: 8, completed: 300_000, counted: true })]) {
+    for (const s of [source(), legacySource()]) {
       for (const level of [s, s.answers[0], s.shows[0], s.facts, s.facts?.answers[0], s.learning]) {
         for (const k of Object.keys(level ?? {})) if (!NOT_SELECTED.includes(k)) keys.add(k);
       }
     }
     expect([...selected].sort()).toEqual([...keys].sort());
+    // D-145: it still selects the removed extra round's fields (#190) until the follow-up migration; the copy reads none.
     for (const k of ["round", "extraOfferedAt", "extraSkippedAt", "extraStartedAt", "extraFinishedAt"]) expect(selected).toContain(k);
     for (const k of NOT_SELECTED) expect(selected).not.toContain(k);
   });

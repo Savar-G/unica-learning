@@ -13,7 +13,7 @@
 // Stop and resume (#72): test_stop (status closed = the tab closed or left, sent with a beacon; offline = the connection
 // dropped, retried by PostHog when it comes back), during a question, the break or quick facts; test_resume (an open
 // test continued, or one with every answer in opened to finish). test_start is now only a new test (status new, or
-// restart after one expired). test_start_click status: new, retake, in_progress, finish, round (#225: left part way through the extra round), expired.
+// restart after one expired). test_start_click status: new, retake, in_progress, finish or expired.
 // The report (#65): report_open (src = email when the parent came from the report email, else account).
 // Whiteboard (#67): test_work (an answer stored with work; status required or optional, channel draw, type or both).
 // test_work_nudge (a show-your-work question answered with an empty board) stopped when the whiteboard became optional (D-125).
@@ -26,9 +26,6 @@
 // analytics.
 // Help flags (#71): test_help (status yes, a-little or no: the answer to "Did anyone help?", sent once the test is stored).
 // Rushing (#189): test_pace (status shown: "Take your time" showed after three very fast answers in a row). No time or score.
-// Extra round (#190): test_extra (status offered, taken, skipped, stopped (Stop here part way) or finished; src = test
-// when the offer came after the last main question, report when the parent opened it from the report). No area, count
-// or score.
 // Results call: book_call (src report: the parent opened the Calendly booking page from the report). No child data.
 // Report wait: test_report_wait (status opened: the end screen opened the built report; slow: it was not built within 3
 // minutes and the screen points to the email). No time or score.

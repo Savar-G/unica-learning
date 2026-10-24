@@ -44,7 +44,7 @@ export function QuestionTimeline({ lines }: { lines: AnswerLine[] }) {
     return <li key={a.number} id={`question-${a.number}`}>
       <h3>Question {a.number}</h3>
       <p className="adm-sub">
-        {a.stage === "extra" ? "Extra round" : a.stage ? `Stage ${a.stage}` : "Stage -"} · {a.level === null ? "level -" : `level ${levelText(a.level)} / ${a.strand}`} ·{" "}
+        {a.stage ? `Stage ${a.stage}` : "Stage -"} · {a.level === null ? "level -" : `level ${levelText(a.level)} / ${a.strand}`} ·{" "}
         <span className="adm-mono">{a.templateId ?? "no template"}</span> · BC {a.standard ?? "-"}
       </p>
       <div className="adm-timeline-q">{a.prompt === null ? <p className="adm-note">The question is not in the stored test ({a.questionId}).</p> : <p><PromptText text={a.prompt} /></p>}

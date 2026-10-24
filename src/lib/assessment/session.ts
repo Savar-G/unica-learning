@@ -19,7 +19,6 @@ import { rngFor } from "./rng";
 import type {
   Answer,
   ChildProfile,
-  ExtraRoundOffer,
   Level,
   LevelResult,
   Placement,
@@ -274,14 +273,25 @@ export function createSession(profile: ChildProfile, seed: number, options: Sess
   };
 }
 
-/** Stage 1, then the stage 2 form the child was routed to, then the extra round when the child took one (#190). */
+/** Stage 1, then the stage 2 form the child was routed to. */
 const questionsOnRoute = (session: Session): Question[] =>
-  session.route ? [...session.stage1, ...session.stage2[session.route], ...(session.extra ?? [])] : session.stage1;
+  session.route ? [...session.stage1, ...session.stage2[session.route]] : session.stage1;
 
 /** The next question to show, or null when the test is complete. */
 export function nextQuestion(session: Session): Question | null {
   return questionsOnRoute(session)[session.answers.length] ?? null;
 }
+
+/** True when every question of the routed test has an answer: the test only waits to be scored. */
+export const allAnswered = (session: Session): boolean => session.route !== null && session.answers.length >= questionsOnRoute(session).length;
+
+/**
+ * D-145: the optional extra round (#190, D-116) is removed. Two tests from before keep answers, serves and work reviews
+ * for its questions, whose ids are x-0, x-1 and so on (the main test's are s1-, up-, stay- and down-). Every read that
+ * rebuilds, scores, shows, exports or copies a test leaves them out with this rule. Once the follow-up migration
+ * removes those rows, this rule can go.
+ */
+export const fromRemovedRound = (questionId: string): boolean => questionId.startsWith("x-");
 
 const MINUS = /[−–]/g;
 // Commas only as thousands separators: "1,200" is 1200, "1,2,0,0" is not a number.
@@ -349,8 +359,8 @@ export function lockStage1(session: Session): Session {
   return { ...session, route: routeFor(stage1.filter((a) => a.correct).length, stage1.length) };
 }
 
-/** #249: the parts of a test the child can go back in: stage 1, stage 2 (the routed form), and the extra round (#190). */
-export type SectionName = "stage1" | "stage2" | "extra";
+/** #249: the parts of a test the child can go back in: stage 1 and stage 2 (the routed form). */
+export type SectionName = "stage1" | "stage2";
 
 /** #249: an answered question of a section: its place in the test (from 0), the question and the child's answer. */
 export interface SectionAnswer {
@@ -361,9 +371,8 @@ export interface SectionAnswer {
 
 /**
  * #249: the section the child works in now, from `first` to `end` (places in the test, `end` not included), with its
- * answered questions in order. Stage 1 until it is locked (lockStage1 routes the test, #253), then stage 2, then the
- * extra round once the child took one. The test attempt module closes a section that the test moved past by its own
- * records (the round's offer, the finish).
+ * answered questions in order. Stage 1 until it is locked (lockStage1 routes the test, #253), then stage 2. The test
+ * attempt module closes stage 2 when the test is finished.
  */
 export interface OpenSection {
   name: SectionName;
@@ -374,12 +383,9 @@ export interface OpenSection {
 
 export function openSection(session: Session): OpenSection {
   const questions = questionsOnRoute(session);
-  const main = session.route ? session.stage1.length + session.stage2[session.route].length : session.stage1.length;
   const [name, first, end]: [SectionName, number, number] = !session.route
     ? ["stage1", 0, session.stage1.length]
-    : session.extra
-      ? ["extra", main, questions.length]
-      : ["stage2", session.stage1.length, main];
+    : ["stage2", session.stage1.length, questions.length];
   const answered = session.answers.slice(first, end).map((answer, i) => ({ position: first + i, question: questions[first + i], answer }));
   return { name, first, end, answered };
 }
@@ -399,8 +405,8 @@ export function changeAnswer(session: Session, change: Submission): Session {
 
 /** The part of a session the server stores when the test starts. The answers are stored one row at a time. */
 export function storedTest(session: Session): StoredTest {
-  const { profile, seed, stage1, stage2, extra } = session;
-  return { profile, seed, stage1, stage2, ...(extra ? { extra } : {}) };
+  const { profile, seed, stage1, stage2 } = session;
+  return { profile, seed, stage1, stage2 };
 }
 
 /**
@@ -408,10 +414,11 @@ export function storedTest(session: Session): StoredTest {
  * the stored route, the stage 1 lock record: stage 1 is locked when it is stored. A test with answers past stage 1 and
  * no stored route (one from before the lock, whose route save failed) is past stage 1, routed by its stage 1 answers.
  * With every stage 1 answer and no stored route, stage 1 is open on its grid. Throws for a route without every stage 1
- * answer.
+ * answer. D-145: only the main test's fields are read; a stored `extra` (the removed round, #190) is left behind.
  */
 export function restoreSession(stored: StoredTest, submissions: readonly Submission[], route: Route | null = null): Session {
-  let session: Session = { ...stored, route: null, answers: [] };
+  const { profile, seed, stage1, stage2 } = stored;
+  let session: Session = { profile, seed, stage1, stage2, route: null, answers: [] };
   for (const [i, { questionId, response, timeMs }] of submissions.entries()) {
     if (i === session.stage1.length) session = route ? { ...session, route } : lockStage1(session);
     session = submitAnswer(session, { questionId, response, timeMs });
@@ -438,9 +445,7 @@ export function testStep(session: Session): TestStep {
   const main = session.route
     ? testLength(session, session.route)
     : breakAfter + Math.max(...Object.values(session.stage2).map((form) => form.length));
-  // #190: the extra round, when the child took one, comes after the main test and counts in its total.
-  const extra = session.extra?.length ?? 0;
-  const total = main + extra;
+  const total = main;
   // #253: every stage 1 question is answered and stage 1 is not locked: the child checks it on the grid.
   if (!session.route && session.answers.length === breakAfter) {
     return { status: "check", section: "stage1", numbers: Array.from({ length: breakAfter }, (_, i) => i + 1), total, breakAfter };
@@ -455,7 +460,6 @@ export function testStep(session: Session): TestStep {
     total,
     breakAfter,
     takeYourTime: takeYourTime(session.answers),
-    ...(number > main ? { extra: { number: number - main, total: extra } } : {}),
   };
 }
 
@@ -509,13 +513,5 @@ export function finish(session: Session, facts: FactsSession | null = null, help
     facts: facts ? factsResult(facts) : null,
     flags: flagsFor(session.answers, help),
     pace: paceOf(session.answers),
-    // #190: the round's answers count above like main answers; this records that the result includes them.
-    ...(session.extra?.length ? { extraRound: extraRoundRecord(session.profile.grade, session.extra) } : {}),
   };
-}
-
-/** #190: the extra round as the placement records it: its size and its areas, in band order. */
-export function extraRoundRecord(grade: Session["profile"]["grade"], extra: readonly Question[]): ExtraRoundOffer {
-  const covered = new Set(extra.map((q) => REPORTED_STRAND[q.strand]));
-  return { questions: extra.length, strands: bandFor(grade).strands.filter((s) => covered.has(s)) };
 }

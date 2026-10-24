@@ -9,8 +9,6 @@ import { adminClient } from "@/lib/supabase-auth";
 import type { FactsStore } from "@/lib/test-attempt";
 import type { AnswerTimeline, ShownStore } from "@/lib/test-attempt";
 import type { ContextStore } from "@/lib/test-attempt";
-import { EXTRA_ROUND_OFFERED } from "@/lib/site";
-import { extraRoundState, type ExtraRoundRecord, type ExtraRoundState, type ExtraRoundStore } from "@/lib/test-attempt";
 import type { AnswerEvents } from "@/lib/answer-events";
 import { strokesPath, workPath } from "@/lib/work-payload";
 import { WORK_BUCKET } from "@/lib/work-store";
@@ -35,7 +33,6 @@ export function attemptStore(admin: SupabaseClient<Database>): AttemptStore {
     ...factsStore(admin),
     ...shownStore(admin),
     ...contextStore(admin),
-    ...extraRoundStore(admin),
     async child(parent, childId) {
       const { data, error } = await admin.from("children").select("id, grade, province")
         .eq("id", childId).eq("parent_id", parent).maybeSingle();
@@ -58,11 +55,12 @@ export function attemptStore(admin: SupabaseClient<Database>): AttemptStore {
     },
 
     async load(parent, id) {
-      const { data: row, error } = await admin.from("assessments").select(`${ATTEMPT_COLUMNS}, test, route, break_started_at, break_ended_at, help, ${ROUND_COLUMNS}`)
+      const { data: row, error } = await admin.from("assessments").select(`${ATTEMPT_COLUMNS}, test, route, break_started_at, break_ended_at, help, extra_offered_at, extra_skipped_at, extra_started_at`)
         .eq("id", id).eq("parent_id", parent)
         .maybeSingle();
       if (error) throw new StoreError("load failed", error.message);
       if (!row) return null;
+      // Every answer in place order. The module leaves out the removed extra round's answers (D-145, fromRemovedRound).
       const { data: answers, error: answersError } = await admin.from("answers")
         .select("question_id, response, time_ms").eq("assessment_id", id).order("position");
       if (answersError) throw new StoreError("answers load failed", answersError.message);
@@ -72,7 +70,9 @@ export function attemptStore(admin: SupabaseClient<Database>): AttemptStore {
         answers: (answers ?? []).map((a) => ({ questionId: a.question_id, response: a.response, timeMs: a.time_ms })),
         ...(row.break_started_at && { break: { startedAt: Date.parse(row.break_started_at), ended: row.break_ended_at != null } }),
         help: row.help,
-        extraRound: roundRecord(row),
+        // D-145: change_answer still refuses part 2 changes once the removed extra round's offer, skip or start was
+        // stored; the module mirrors it. The follow-up migration removes the guard, this read and the columns.
+        ...(row.extra_offered_at != null || row.extra_skipped_at != null || row.extra_started_at != null ? { roundRecorded: true } : {}),
         // #253: the stored route is the stage 1 lock record.
         route: row.route,
       };
@@ -145,8 +145,7 @@ export function attemptStore(admin: SupabaseClient<Database>): AttemptStore {
         work_text: answer.workText,
         strokes_path: answer.strokesPath ?? null,
         ...timelineColumns(answer.timeline),
-        // #190: "extra" for an answer to the extra round (migration add_extra_round).
-        round: answer.round,
+        // answers.round keeps its default, 'main' (D-145: the extra round is removed).
       });
       // One answer per place (unique index on assessment_id and position): another request stored it first.
       if (error?.code === "23505") return "taken";
@@ -181,8 +180,9 @@ export function attemptStore(admin: SupabaseClient<Database>): AttemptStore {
 
     // #249: one database function (migration add_answer_change) checks the section's guards and overwrites the row in
     // one transaction, and returns the work it replaced; null when a guard failed. #253: it also refuses a stage 1
-    // answer once a route is stored (migration add_stage1_lock). #254: a round answer changes while the round takes
-    // answers (migration extra_round_back).
+    // answer once a route is stored (migration add_stage1_lock). D-145: its guard on the removed extra round's columns
+    // (migration extra_round_back) never fires for a test started since; only a test in progress at the removal with an
+    // offer recorded gets "closed" on a stage 2 change, and its finish still works.
     async changeAnswer(id, { position, questionId, response, correct, misconception, timeMs, answeredAt, events, work }, unansweredFrom) {
       const { answered_at, answer_changes, read_aloud_count, read_aloud_at_ms, away_count, away_ms } = timelineColumns({ shownAt: null, answeredAt, events });
       const answer = {
@@ -247,8 +247,9 @@ export function attemptStore(admin: SupabaseClient<Database>): AttemptStore {
         p_completed_at: iso(at),
         p_placement: toJson(placement),
         p_help: help,
-        // #190: a round taken during the test finishes with it.
-        p_extra_finished: !!placement.extraRound,
+        // D-145: the extra round is removed, so no round finishes with the test. The argument stays until the follow-up
+        // migration gives complete_test a signature without it.
+        p_extra_finished: false,
         p_answers: answers.map((a) => [a.questionId, a.response, a.timeMs]),
       });
       if (error) throw new StoreError("finish failed", error.message);
@@ -432,93 +433,4 @@ export async function parentRetakeState(parent: string, childId: string): Promis
   const admin = adminClient();
   if (!admin) return null;
   return retakeState(attemptStore(admin), parent, childId, Date.now());
-}
-
-/**
- * #190: what the report offers about the extra round of this test: the round, or the rest of a round the child started.
- * Null when there is none, or it cannot be known (no secret key, an id that is not a uuid, a failed read).
- */
-export async function parentExtraRound(parent: string, assessmentId: string): Promise<ExtraRoundState | null> {
-  if (!EXTRA_ROUND_OFFERED || !isUuid(assessmentId)) return null;
-  const admin = adminClient();
-  if (!admin) return null;
-  return extraRoundState(attemptStore(admin), parent, assessmentId);
-}
-
-/** #190: the columns of public.assessments that record the extra round (migration add_extra_round). */
-const ROUND_COLUMNS = "extra_offered_at, extra_skipped_at, extra_started_at, extra_finished_at";
-
-interface RoundRow {
-  extra_offered_at: string | null;
-  extra_skipped_at: string | null;
-  extra_started_at: string | null;
-  extra_finished_at: string | null;
-}
-
-const msOrNull = (time: string | null) => (time ? Date.parse(time) : null);
-
-const roundRecord = (row: RoundRow): ExtraRoundRecord => ({
-  offeredAt: msOrNull(row.extra_offered_at),
-  skippedAt: msOrNull(row.extra_skipped_at),
-  startedAt: msOrNull(row.extra_started_at),
-  finishedAt: msOrNull(row.extra_finished_at),
-});
-
-/**
- * The store's operations for the extra round (#190): columns of public.assessments, each written by an update guarded
- * in the update itself, so two requests at once cannot both win. The round's questions go into the stored test
- * (`test.extra`) in the same update as its start time.
- */
-function extraRoundStore(admin: SupabaseClient<Database>): ExtraRoundStore {
-  return {
-    // #253: one database function (migration add_guarded_offer) takes the test's row lock, as change_answer does,
-    // checks that the stored answers are the ones the offer was computed from, and records the offer.
-    async recordExtraOffer(id, at, answers) {
-      const { data, error } = await admin.rpc("record_extra_offer", {
-        p_assessment: id,
-        p_at: iso(at),
-        p_answers: answers.map((a) => [a.questionId, a.response, a.timeMs]),
-      });
-      if (error) throw new StoreError("extra round offer save failed", error.message);
-      const answer: string = data;
-      if (answer === "offered" || answer === "already" || answer === "changed" || answer === "closed") return answer;
-      throw new StoreError("extra round offer save failed", `unexpected answer ${JSON.stringify(answer)}`);
-    },
-
-    async skipExtraRound(id, at) {
-      const { error } = await admin.from("assessments").update({ extra_skipped_at: iso(at) })
-        .eq("id", id).eq("status", "in_progress").is("extra_started_at", null).is("extra_skipped_at", null);
-      if (error) throw new StoreError("extra round skip failed", error.message);
-    },
-
-    // A stop part way during the test is recorded as the skip time, after the start (no new column).
-    async stopExtraRound(id, at) {
-      const { error } = await admin.from("assessments").update({ extra_skipped_at: iso(at) })
-        .eq("id", id).eq("status", "in_progress").not("extra_started_at", "is", null).is("extra_skipped_at", null).is("extra_finished_at", null);
-      if (error) throw new StoreError("extra round stop failed", error.message);
-    },
-
-    async startExtraRound(id, { at, test }) {
-      const { data, error } = await admin.from("assessments").update({ test, extra_started_at: iso(at) })
-        .eq("id", id).is("extra_started_at", null).neq("status", "expired").select("id");
-      if (error) throw new StoreError("extra round start failed", error.message);
-      return (data ?? []).length === 1 ? "stored" : "taken";
-    },
-
-    // #254: one database function (migration extra_round_back) takes the test's row lock, as change_answer does, checks
-    // that the stored answers are the scored ones, and stores the placement and the finish time; "changed" when an
-    // answer changed.
-    async finishExtraRound(id, { at, placement, answers }) {
-      const { data, error } = await admin.rpc("finish_extra_round", {
-        p_assessment: id,
-        p_finished_at: iso(at),
-        p_placement: toJson(placement),
-        p_answers: answers.map((a) => [a.questionId, a.response, a.timeMs]),
-      });
-      if (error) throw new StoreError("extra round finish failed", error.message);
-      const answer: string = data;
-      if (answer === "finished" || answer === "already" || answer === "changed") return answer;
-      throw new StoreError("extra round finish failed", `unexpected answer ${JSON.stringify(answer)}`);
-    },
-  };
 }

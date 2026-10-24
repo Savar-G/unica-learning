@@ -11,7 +11,7 @@ import { learnerProfileStore } from "@/lib/learner-profile-store";
 // src/lib/assessment/profile.ts); this module gives it the finished test and the parent's answers on the learning
 // card, and stores the profile: one per test, in public.learner_profiles (server only; admins read). Built:
 //   - by the report job after finish, from the report's own inputs (the facts before the report's emails, the AI parts
-//     after them), and again on each later run of the job: an extra round (#190) runs the job again when it finishes;
+//     after them), and again on each later run of the job;
 //   - on its own for one test (rebuildLearnerProfile), for a step that changes the test without the job;
 //   - for the child's latest finished test when the parent answers the learning card (rebuildLatestProfile): the card
 //     is on the report, so it is answered after the first build.
@@ -139,7 +139,7 @@ function seams({ reader, store, ai, aiMs }: RebuildOptions) {
 const noComparison = () => Promise.reject(new Error("the learner profile reads no comparison"));
 
 /**
- * Builds the profile of one test again, from the stored test as it is now (#190 can call it after an extra round).
+ * Builds the profile of one test again, from the stored test as it is now.
  * Null when the test is not finished, not scored against BC, or there is no secret key. A database error throws.
  */
 export async function rebuildLearnerProfile(assessmentId: string, options: RebuildOptions = {}): Promise<LearnerProfile | null> {

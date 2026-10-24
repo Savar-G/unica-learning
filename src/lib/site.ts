@@ -9,13 +9,6 @@ export const PLANS = {
 export type PlanId = keyof typeof PLANS;
 
 /**
- * #190 (D-116) switch: whether the child is offered the optional extra round, during the test and again from the report.
- * Off (Cedric, 2026-10-22): an optional "8 more questions?" made the test feel unsure of its own result, so every child
- * gets one set length. The round's code and data stay, so turning this back on restores it.
- */
-export const EXTRA_ROUND_OFFERED = false;
-
-/**
  * Free first month (Cedric, 2026-10-24; was 2 free weeks then CAD 50 for the first month, 2026-10-23): the first 30 days,
  * counted from when the first workbook ships, are free; the card is charged the full price on day 30, after Stripe's reminder
  * email 7 days before, then every month. It replaces the 30-day money-back guarantee.

@@ -9,6 +9,7 @@ import { levelCertainty, storedLevelCertainty, strandCertainty, strandStatus, wo
 import { factsStandards, type FactsResult } from "./facts";
 import { TOO_FAST_MS, helpLikely, type Flag, type HelpAnswer } from "./flags";
 import { RUSH_RUN, paceOf } from "./rushing";
+import { fromRemovedRound } from "./session";
 import type { Interest, LearningGoal, LearningStyle, MathFeeling, WeeklyTime } from "@/lib/learning-style";
 import { BC_SKILL_MAP } from "./skill-map";
 import type { Grade, Level, LevelResult, Placement, Province, Question, ReportedStrand, Route, StrandStatus } from "./types";
@@ -437,7 +438,9 @@ const RETIRED_PARTS = ["wordsOrNumbers"] as const;
  *   - its retired parts are dropped;
  *   - #242: an estimated working level is an early sign, also when it was stored as clear;
  *   - #242: an AI likely cause that breaks a rule of today (parentTextProblem) is dropped, and a part with nothing
- *     left is absent. How to help is the admin's only and is kept as written (#245).
+ *     left is absent. How to help is the admin's only and is kept as written (#245);
+ *   - D-145: a struggle's wrong answer to a question of the removed extra round (#190) is dropped, with its
+ *     misconception when no other wrong answer has it. The counts stay as stored.
  */
 export function storedProfile(value: unknown): LearnerProfile | null {
   if (typeof value !== "object" || value === null || Array.isArray(value)) return null;
@@ -450,10 +453,18 @@ export function storedProfile(value: unknown): LearnerProfile | null {
   const ai = written && storedAi(written, profile.test.grade);
   return {
     ...facts,
+    struggles: profile.struggles.map(withoutRoundAnswers),
     level: { ...profile.level, certainty },
     unknowns: { ...profile.unknowns, earlySigns: { ...profile.unknowns.earlySigns, level: certainty === "early-sign" } },
     ...(ai ? { ai } : {}),
   };
+}
+
+/** D-145: a stored struggle without its wrong answers to the removed extra round's questions (#190). */
+function withoutRoundAnswers(struggle: ProfileStruggle): ProfileStruggle {
+  const wrong = struggle.wrong.filter((w) => !fromRemovedRound(w.questionId));
+  if (wrong.length === struggle.wrong.length) return struggle;
+  return { ...struggle, wrong, misconceptions: [...new Set(wrong.flatMap((w) => (w.misconception ? [w.misconception] : [])))] };
 }
 
 /**

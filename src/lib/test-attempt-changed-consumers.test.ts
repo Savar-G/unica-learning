@@ -156,7 +156,7 @@ describe("the admin export (D-118) of a changed answer", () => {
       answer_changes: x.timeline?.events?.changes ?? null, read_aloud_count: x.timeline?.events?.readAloud.count ?? null,
       read_aloud_at_ms: x.timeline?.events?.readAloud.atMs ?? null, away_count: x.timeline?.events?.away.count ?? null,
       away_ms: x.timeline?.events?.away.ms ?? null, work_required: x.workRequired ?? false, work_path: x.workPath ?? null,
-      work_text: x.workText ?? null, strokes_path: x.strokesPath ?? null, round: x.round ?? "main",
+      work_text: x.workText ?? null, strokes_path: x.strokesPath ?? null, round: "main",
     })),
   });
 

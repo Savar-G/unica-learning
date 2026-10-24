@@ -1,34 +1,23 @@
 import { describe, expect, it } from "vitest";
 import { leaveDestination, questionButtons, type QuestionPlace } from "@/lib/test-review";
 
-// Back, Next, the step row and "Check your answers" (#249, #253, #254), and review (D-132): once a section's grid is
+// Back, Next, the step row and "Check your answers" (#249, #253), and review (D-132): once a section's grid is
 // reached, every question of that section has "Back to my answers", which goes back to the grid at once.
 
 /** Stage 1 of a grade 1 test (12 questions), on the newest question 6: questions 1 to 5 are answered. */
 const before: QuestionPlace = { reviewing: false, answered: [1, 2, 3, 4, 5], viewing: null, newest: 6, failed: null };
 /** The stage 1 grid was reached: all 12 answered, the child opened tile 5. */
 const review: QuestionPlace = { reviewing: true, answered: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12], viewing: 5, newest: 0, failed: null };
-/** The extra round (questions 25 to 32 of the test, shown as 1 to 8), its grid reached, tile 5 (question 29) open. */
-const roundReview: QuestionPlace = { reviewing: true, answered: [25, 26, 27, 28, 29, 30, 31, 32], viewing: 29, newest: 0, failed: null };
+/** Stage 2 (questions 13 to 24 of the test), its grid reached, tile 17 open. */
+const stage2Review: QuestionPlace = { reviewing: true, answered: [13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24], viewing: 17, newest: 0, failed: null };
 
 describe("the main button", () => {
   it("is Next before the grid, on the newest question and on a question the child went back to", () => {
-    expect(questionButtons({ reviewing: false, viewing: null, extraRound: false }).main).toBe("Next");
-    expect(questionButtons({ reviewing: false, viewing: 3, extraRound: false }).main).toBe("Next");
+    expect(questionButtons({ reviewing: false })).toEqual({ main: "Next" });
   });
 
-  it("is Back to my answers on every question of a section whose grid was reached, the extra round too", () => {
-    expect(questionButtons({ reviewing: true, viewing: 5, extraRound: false }).main).toBe("Back to my answers");
-    expect(questionButtons({ reviewing: true, viewing: 29, extraRound: true }).main).toBe("Back to my answers");
-  });
-});
-
-describe("Stop here (D-131, unchanged)", () => {
-  it("shows only on the extra round's newest question", () => {
-    expect(questionButtons({ reviewing: false, viewing: null, extraRound: true }).stopHere).toBe(true);
-    expect(questionButtons({ reviewing: false, viewing: 26, extraRound: true }).stopHere).toBe(false);
-    expect(questionButtons({ reviewing: true, viewing: 29, extraRound: true }).stopHere).toBe(false);
-    expect(questionButtons({ reviewing: false, viewing: null, extraRound: false }).stopHere).toBe(false);
+  it("is Back to my answers on every question of a section whose grid was reached", () => {
+    expect(questionButtons({ reviewing: true })).toEqual({ main: "Back to my answers" });
   });
 });
 
@@ -54,10 +43,11 @@ describe("before the grid", () => {
     expect(leaveDestination(before, { go: null })).toEqual({ to: "stay" });
   });
 
-  it("the extra round during the test works the same way", () => {
-    const round: QuestionPlace = { reviewing: false, answered: [25, 26, 27], viewing: 26, newest: 28, failed: null };
-    expect(leaveDestination(round, "next")).toEqual({ to: "question", number: 27 });
-    expect(leaveDestination(round, "back")).toEqual({ to: "question", number: 25 });
+  it("stage 2 works the same way, with its own numbers in the test", () => {
+    const stage2: QuestionPlace = { reviewing: false, answered: [13, 14, 15], viewing: 14, newest: 16, failed: null };
+    expect(leaveDestination(stage2, "next")).toEqual({ to: "question", number: 15 });
+    expect(leaveDestination(stage2, "back")).toEqual({ to: "question", number: 13 });
+    expect(leaveDestination({ ...stage2, viewing: 13 }, "back")).toEqual({ to: "stay" });
   });
 });
 
@@ -77,10 +67,10 @@ describe("in review (D-132)", () => {
     expect(leaveDestination(review, { go: 12 })).toEqual({ to: "question", number: 12 });
   });
 
-  it("the extra round's grid, during the test or from the report, works the same way", () => {
-    expect(leaveDestination(roundReview, "next")).toEqual({ to: "grid" });
-    expect(leaveDestination(roundReview, "back")).toEqual({ to: "question", number: 28 });
-    expect(leaveDestination(roundReview, { go: 32 })).toEqual({ to: "question", number: 32 });
+  it("the stage 2 grid works the same way", () => {
+    expect(leaveDestination(stage2Review, "next")).toEqual({ to: "grid" });
+    expect(leaveDestination(stage2Review, "back")).toEqual({ to: "question", number: 16 });
+    expect(leaveDestination(stage2Review, { go: 24 })).toEqual({ to: "question", number: 24 });
   });
 });
 

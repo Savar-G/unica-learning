@@ -576,13 +576,13 @@ describe("the learner profile", () => {
     for (const secret of ["Asha", "Priya", DRAWING, "6 x 4 = 24"]) expect(json).not.toContain(secret);
   });
 
-  it("is built again in place on a later run, as when an extra round (#190) finishes: the new placement and answers count", async () => {
+  it("is built again in place on a later run: the new placement and answers count", async () => {
     const db = database();
     await run(db, memoryTransport(), memoryReportLedger());
     expect(storedProfile(db.profiles.rows()[0].profile)!.test.answered).toBe(42);
 
-    // The extra round's stand-in: 8 more right answers to questions of the stored test that the route did not ask, and
-    // the placement scored again. Meanwhile Priya answered the learning card on the report.
+    // A stand-in for a test that changed after the first run: 8 more right answers to questions of the stored test that
+    // the route did not ask, and the placement scored again. Meanwhile Priya answered the learning card on the report.
     const [test] = db.tables.assessments!;
     const more = test.test.stage2.stay.slice(0, 8);
     db.tables.answers!.push(...more.map((q, n) => ({
@@ -601,7 +601,7 @@ describe("the learner profile", () => {
     expect(profile.parent).toEqual({ feeling: "okay", goal: "keep_up", weeklyTime: "1_to_2h" });
   });
 
-  it("can be built again on its own: for one test (#190), and for the child's latest finished test when the parent answers the card", async () => {
+  it("can be built again on its own: for one test, and for the child's latest finished test when the parent answers the card", async () => {
     const db = database();
     // An older finished test of Asha's, from September.
     db.tables.assessments!.push({ ...structuredClone(db.tables.assessments![0]), id: "test-0", completedAt: "2026-09-01T12:00:00Z" });

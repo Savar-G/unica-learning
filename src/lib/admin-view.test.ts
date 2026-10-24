@@ -9,6 +9,7 @@ import {
   filterTests,
   flagText,
   helpAnswerText,
+  mainOnly,
   parseFilters,
   questionNumbers,
   when,
@@ -296,5 +297,12 @@ describe("flags and times in plain words (#77)", () => {
 
   it("writes a time in seconds below a minute, else in minutes and seconds", () => {
     expect([0, 2_540, 59_400, 60_000, 250_000, 3_600_000].map(duration)).toEqual(["0.0 s", "2.5 s", "59.4 s", "1 min 0 s", "4 min 10 s", "60 min 0 s"]);
+  });
+});
+
+describe("the rows of a test from before the extra round was removed (#190, D-145)", () => {
+  it("leave out the answers, serves and reviews of the round's questions (x-0, x-1, ...)", () => {
+    const rows = ["s1-0", "up-3", "stay-11", "down-2", "x-0", "x-7", "x-0.1"].map((question_id, position) => ({ position, question_id }));
+    expect(mainOnly(rows).map((r) => r.question_id)).toEqual(["s1-0", "up-3", "stay-11", "down-2"]);
   });
 });

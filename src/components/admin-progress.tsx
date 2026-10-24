@@ -110,14 +110,13 @@ function span(fromIso: string, nowIso: string): string {
 
 const activeNow = (p: TestProgress, now: string) => p.open && Date.parse(now) - Date.parse(p.lastActivityAt) < ACTIVE_MS;
 
-/** The bar: answered questions, with marks where Part 2 and the extra round start. */
+/** The bar: answered questions, with a mark where Part 2 starts. */
 function Bar({ p }: { p: TestProgress }) {
   const pct = (n: number) => `${(100 * n) / Math.max(1, p.total)}%`;
   return (
     <span className="dash-prog-bar" role="img" aria-label={`${p.answered} of ${p.total} questions answered`}>
       <span className="dash-prog-fill" style={{ width: pct(p.answered) }} />
       {p.part1 < p.total && <span className="dash-prog-mark" style={{ left: pct(p.part1) }} />}
-      {p.main < p.total && <span className="dash-prog-mark" style={{ left: pct(p.main) }} />}
     </span>
   );
 }
@@ -154,8 +153,7 @@ export function ProgressPanel({ id, initial, live }: { id: string; initial: Prog
       <p className="dash-prog-text">{p.text}{p.open && <span className="dash-muted"> · {p.sinceText} {span(p.since, now)} ago</span>}</p>
       <Bar p={p} />
       <p className="dash-prog-legend dash-muted">
-        {p.answered} of {p.total} answered · Part 1: {Math.min(p.answered, p.part1)} of {p.part1} · Part 2: {Math.max(0, Math.min(p.answered, p.main) - p.part1)} of {p.main - p.part1}
-        {p.main < p.total && <> · Extra: {Math.max(0, p.answered - p.main)} of {p.total - p.main}</>}
+        {p.answered} of {p.total} answered · Part 1: {Math.min(p.answered, p.part1)} of {p.part1} · Part 2: {Math.max(0, p.answered - p.part1)} of {p.total - p.part1}
         {p.facts && <> · Quick facts: {p.facts.answered}{p.facts.done ? "" : " so far"}</>}
       </p>
       {p.current && (

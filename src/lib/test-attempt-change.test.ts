@@ -13,7 +13,7 @@ import {
   type Submission,
 } from "@/lib/assessment";
 import { ANSWER_CHANGES_MAX, type AnswerEvents } from "@/lib/answer-events";
-import { answerQuestion, changeAnswer, doneChecking, finishTest, nextStep, StoreError, takeExtraRound, type AnswerInput, type AttemptStore, type ChangeInput } from "@/lib/test-attempt";
+import { answerQuestion, changeAnswer, doneChecking, finishTest, nextStep, StoreError, type AnswerInput, type AttemptStore, type ChangeInput } from "@/lib/test-attempt";
 import { memoryAttemptStore, type MemoryAnswer, type MemoryTest } from "@/lib/test-attempt-memory";
 import { answerLines, type AnswerRecord } from "@/lib/admin-view";
 import { storedBoard } from "@/lib/strokes";
@@ -96,8 +96,7 @@ describe("changing an answer in the open section", () => {
   });
 
   it("a wrong answer changed to the right one is right; the finish scores the final answers", async () => {
-    // Every main answer right except stage 2's last one: no area is an early sign, so no extra round is offered and
-    // stage 2 stays open until the finish.
+    // Every answer right except stage 2's last one: stage 2 stays open until the finish.
     const row = openTest(42, { script: (_, i) => i !== 41 });
     const memory = family(row);
     const q = at(row, 41);
@@ -172,26 +171,17 @@ describe("a change the module refuses", () => {
     expect(await changeAnswer(memory.store, P1, "a1", revisit(memory.tests[0], 19, wrongTo(at(memory.tests[0], 19))), T0 + 2 * HOUR)).toMatchObject({ ok: true });
   });
 
-  it("for a stage 2 question once the extra round was offered: the test moved on", async () => {
-    // Seed 1, first answer wrong: an area is an early sign, so "Done checking" on the stage 2 grid offers the round.
+  it("for a stage 2 question once the test is finished, also when an area was an early sign", async () => {
+    // Seed 1, first answer wrong: an area is an early sign. D-145: "Done checking" on the stage 2 grid offers nothing
+    // and writes nothing; stage 2 stays open until the finish, which closes it.
     const row = openTest(42, { seed: 1, script: (_, i) => i !== 0 });
     const memory = family(row);
-    expect(await doneChecking(memory.store, P1, "a1", "stage2", T0 + 2 * HOUR)).toMatchObject({ ok: true, step: { status: "complete", extraRound: {} } });
+    expect(await doneChecking(memory.store, P1, "a1", "stage2", T0 + 2 * HOUR)).toEqual({ ok: true, step: { status: "complete", total: 42 } });
     const q = at(row, 30);
-    expect(await changeAnswer(memory.store, P1, "a1", revisit(row, 30, wrongTo(q)), T0 + 3 * HOUR)).toMatchObject({ ok: false, error: "conflict" });
-    expect(memory.tests[0].answers[30]).toMatchObject({ response: q.answer });
-  });
-
-  it("for a stage 2 question once the child is in the extra round; round answers change (#254, test-attempt-extra-back.test.ts)", async () => {
-    const row = openTest(42, { seed: 1, script: (_, i) => i !== 0 });
-    const memory = family(row);
-    await takeExtraRound(memory.store, P1, "a1", T0 + 2 * HOUR);
-    const first = current(memory.tests[0]);
-    await answerQuestion(memory.store, P1, "a1", { questionId: first.id, response: first.answer, timeMs: 20_000, work: { png: null, text: "" } }, T0 + 2 * HOUR + MINUTE);
-    expect(await changeAnswer(memory.store, P1, "a1", revisit(row, 30, wrongTo(at(row, 30))), T0 + 2 * HOUR + 2 * MINUTE)).toMatchObject({ ok: false, error: "conflict" });
-    expect(memory.tests[0].answers[30]).toMatchObject({ response: at(row, 30).answer });
-    const result = await changeAnswer(memory.store, P1, "a1", { ...revisit(row, 0, wrongTo(first)), questionId: first.id }, T0 + 2 * HOUR + 2 * MINUTE);
-    expect(result).toMatchObject({ ok: true });
+    expect(await changeAnswer(memory.store, P1, "a1", revisit(row, 30, wrongTo(q)), T0 + 2 * HOUR + MINUTE)).toMatchObject({ ok: true });
+    expect(await finishTest(memory.store, P1, "a1", "no", T0 + 3 * HOUR)).toMatchObject({ ok: true, finished: "now" });
+    expect(await changeAnswer(memory.store, P1, "a1", revisit(row, 30, q.answer), T0 + 4 * HOUR)).toMatchObject({ ok: false, error: "conflict" });
+    expect(memory.tests[0].answers[30]).toMatchObject({ response: wrongTo(q) });
   });
 
   it("a response that does not fit the question is invalid, and stores nothing", async () => {
@@ -645,5 +635,68 @@ describe("two requests at once", () => {
     expect(results[1]).toMatchObject({ ok: true });
     expect(memory.tests[0].answers).toHaveLength(18);
     expect(await nextStep(memory.store, P1, "a1", T0 + 3 * HOUR)).toMatchObject({ ok: true, step: { status: "check", section: "stage1" } });
+  });
+});
+
+describe("a test from before the extra round was removed (#190, D-145)", () => {
+  /** Asha's finished test (42 answers), with 3 answers to the removed round's questions after it, as two old tests store them. */
+  function legacy(): MemoryTest {
+    const row = openTest(42);
+    const extra = row.test.stage2.stay.slice(0, 3).map((q, i) => ({ ...q, id: `x-${i}` }));
+    return {
+      ...row, status: "completed", completedAt: T0 + 2 * HOUR,
+      test: { ...row.test, extra } as StoredTest,
+      answers: [...row.answers, ...extra.map((q) => ({ questionId: q.id, response: q.answer, timeMs: 15_000 }))],
+    };
+  }
+
+  it("reads as the main test alone: complete, already finished, and the round's answers neither count nor change", async () => {
+    const row = legacy();
+    const memory = family(row);
+    expect(await nextStep(memory.store, P1, "a1", T0 + DAY)).toEqual({ ok: true, step: { status: "complete", total: 42 } });
+    expect(await finishTest(memory.store, P1, "a1", "no", T0 + DAY)).toEqual({ ok: true, id: "a1", finished: "already" });
+    const change: ChangeInput = { questionId: "x-0", response: "1", timeMs: 4 * SECOND, work: { png: null, text: "" }, workChanged: false };
+    expect(await changeAnswer(memory.store, P1, "a1", change, T0 + DAY)).toMatchObject({ ok: false, error: "conflict", step: { status: "complete", total: 42 } });
+    expect(memory.tests[0].answers).toHaveLength(45);
+  });
+
+  /** Asha's open test with every main answer in (the last at T0 + 1 hour), and the removed round's record and answers as the old code left them. */
+  function open(round: MemoryTest["removedRound"], answered = 0): MemoryTest {
+    const row = openTest(42);
+    const extra = row.test.stage2.stay.slice(0, 3).map((q, i) => ({ ...q, id: `x-${i}` }));
+    return {
+      ...row, removedRound: round,
+      test: { ...row.test, extra } as StoredTest,
+      answers: [...row.answers, ...extra.slice(0, answered).map((q) => ({ questionId: q.id, response: q.answer, timeMs: 15_000 }))],
+    };
+  }
+
+  it("a test left part way through the round finishes: the round's answers go to the store's check unchanged, but not into the result", async () => {
+    const memory = family(open({ offeredAt: T0 + HOUR, skippedAt: null, startedAt: T0 + HOUR + MINUTE }, 2));
+    expect(await finishTest(memory.store, P1, "a1", "no", T0 + 2 * HOUR)).toEqual({ ok: true, id: "a1", finished: "now" });
+    expect(memory.tests[0]).toMatchObject({ status: "completed" });
+    expect(memory.tests[0].placement!.levels.reduce((n, l) => n + l.total, 0)).toBe(42);
+    expect(memory.tests[0].answers).toHaveLength(44);
+  });
+
+  it("part 2 takes no change once the round's offer, skip or start was recorded, as the database's change_answer refuses it", async () => {
+    // PR #271 skips every offer at once: an offer and a skip are recorded, and the next step is "Did anyone help?".
+    for (const round of [{ offeredAt: T0 + HOUR, skippedAt: T0 + HOUR + 1, startedAt: null }, { offeredAt: T0 + HOUR, skippedAt: null, startedAt: null }]) {
+      const row = open(round);
+      const memory = family(row);
+      expect(await nextStep(memory.store, P1, "a1", T0 + 2 * HOUR)).toEqual({ ok: true, step: { status: "complete", total: 42 } });
+      expect(await doneChecking(memory.store, P1, "a1", "stage2", T0 + 2 * HOUR)).toEqual({ ok: true, step: { status: "complete", total: 42 } });
+      const q = at(row, 30);
+      expect(await changeAnswer(memory.store, P1, "a1", revisit(row, 30, wrongTo(q)), T0 + 2 * HOUR)).toMatchObject({ ok: false, error: "conflict" });
+      expect(memory.tests[0].answers[30]).toMatchObject({ response: q.answer });
+      expect(await finishTest(memory.store, P1, "a1", "no", T0 + 3 * HOUR)).toMatchObject({ ok: true, finished: "now" });
+    }
+  });
+
+  it("with no round record, part 2 stays open on its grid until the finish", async () => {
+    const row = open(undefined);
+    const memory = family(row);
+    expect(await nextStep(memory.store, P1, "a1", T0 + 2 * HOUR)).toMatchObject({ ok: true, step: { status: "check", section: "stage2" } });
+    expect(await changeAnswer(memory.store, P1, "a1", revisit(row, 30, wrongTo(at(row, 30))), T0 + 2 * HOUR)).toMatchObject({ ok: true });
   });
 });

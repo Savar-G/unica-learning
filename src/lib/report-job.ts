@@ -28,8 +28,7 @@ import { aiReport, aiReviewer, type AiOutcome, type WorkReviewer } from "@/lib/w
 //      timed out: the report has no AI comments and no AI text.
 //   3. Build the report model with the assessment core, and store it: one report per assessment.
 //   3b. Build the learner profile's facts (#196, src/lib/learner-profile.ts) from the same inputs and store them: one
-//      profile per test, built again on each run, so a run after an extra round (#190) or a later answer on the
-//      learning card counts. A failure is logged, and the report and its emails go on.
+//      profile per test, built again on each run, so a later answer on the learning card counts. A failure is logged, and the report and its emails go on.
 //   4. Email the report to the parent. The email and the alert show the report view of the stored report, from the
 //      report-loading module (#163): the same view that the report page and the admin report view show.
 //   5. Email Savar an alert, with what the AI did, and whether the parent email was sent, refused or unknown.
@@ -140,15 +139,12 @@ export async function runReportJob(assessmentId: string, origin: string, options
 
 /**
  * The stored report for the assessment, built now if there is none yet. `ai` says what the AI step did; absent when an
- * earlier run built the report. #190: a report built before an extra round finished from the report is built again,
- * in place; the AI reviews only the new work (the stored reviews are kept). Its emails went with the first report, so
- * the ledger sends none again: no second email.
+ * earlier run built the report.
  */
 async function storeReport(store: ReportJobStore, inputs: ReportInputs, reviewer: WorkReviewer | null): Promise<{ report: StoredReport; ai?: AiOutcome }> {
   const { assessment: a, shownWork } = inputs;
   const existing = await store.report(a.id);
-  const rebuild = existing !== null && !!a.placement.extraRound && !existing.model.extraRound;
-  if (existing && !rebuild) return { report: existing };
+  if (existing) return { report: existing };
 
   const comparison = await inputs.comparison();
   // #67: the child's whiteboard work; the model picks what the report shows. #68: the AI reviews it first, when on.
@@ -158,7 +154,6 @@ async function storeReport(store: ReportJobStore, inputs: ReportInputs, reviewer
     store: store.reviews(a),
     build: (workReviews, reportText) => reportModel(a.placement, { comparison, workReviews, shownWork, reportText }),
   });
-  if (existing) return { report: await store.updateReport(existing.id, { model, questions: inputs.questions, minutes: inputs.minutes }), ai };
   const report = await store.insertReport({ assessmentId: a.id, parentId: a.parentId, childId: a.childId, model, questions: inputs.questions, minutes: inputs.minutes });
   if (report) return { report, ai };
   // A second run that got here at the same time inserted nothing: it reads the first run's report.

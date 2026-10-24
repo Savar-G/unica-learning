@@ -1,4 +1,4 @@
-// Where the child goes from a question of the test (#249, #253, #254), and its buttons (D-132). Pure: no React, no
+// Where the child goes from a question of the test (#249, #253), and its main button (D-132). Pure: no React, no
 // network, no clock. The test screen (src/components/test.tsx) asks this module on every Back, Next, step tap and
 // failed save.
 
@@ -15,7 +15,7 @@ export type Destination = { to: "question"; number: number } | { to: "newest" } 
 export interface QuestionPlace {
   /**
    * The child is reviewing (D-132): the section's "Check your answers" grid was reached (the step is "check": complete
-   * and not locked), during the test, from the report, or after a resume that landed on the grid.
+   * and not locked), during the test or after a resume that landed on the grid.
    */
   reviewing: boolean;
   /** The open section's answered question numbers, in order. */
@@ -28,19 +28,14 @@ export interface QuestionPlace {
   failed: number | null;
 }
 
-/** The buttons of a question: the main button's words, and whether "Stop here" (D-131) shows. */
+/** The buttons of a question: the main button's words. */
 export interface QuestionButtons {
   main: "Next" | "Back to my answers";
-  stopHere: boolean;
 }
 
-/** The buttons of the question on the screen. `extraRound`: a question of the extra round (#190). */
-export function questionButtons(place: Pick<QuestionPlace, "reviewing" | "viewing"> & { extraRound: boolean }): QuestionButtons {
-  return {
-    main: place.reviewing ? "Back to my answers" : "Next",
-    // D-131: only on the round's newest question: a question the child went back to saves when the child leaves it.
-    stopHere: place.extraRound && !place.reviewing && place.viewing === null,
-  };
+/** The buttons of the question on the screen. */
+export function questionButtons(place: Pick<QuestionPlace, "reviewing">): QuestionButtons {
+  return { main: place.reviewing ? "Back to my answers" : "Next" };
 }
 
 /**

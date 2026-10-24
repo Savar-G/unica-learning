@@ -4,7 +4,7 @@
 // so a download of thousands of tests streams within the function's time limit and never holds the whole table.
 // Drawings and strokes are their storage paths only. No names, emails or postal codes: the ids link to the admin pages.
 // One more dataset: add its id, its entry in DATASETS and, for a new table, its read in both readers.
-import type { LearnerProfile, Question, Route } from "@/lib/assessment";
+import { fromRemovedRound, type LearnerProfile, type Question, type Route } from "@/lib/assessment";
 import { ADMIN_PATH } from "@/lib/admin-view";
 import type { TableName, Tables } from "@/lib/database";
 
@@ -46,12 +46,12 @@ export interface ExportRequest {
 
 /**
  * Where a dataset's rows come from: the exported tests themselves (`select`: the test columns `rows` reads, when the
- * rows are made from each test), the rows of a table that belong to them, or a table of its own, read by id (a row with
- * a parent_id of a test family is left out).
+ * rows are made from each test), the rows of a table that belong to them (`keep`: only the rows it keeps), or a table
+ * of its own, read by id (a row with a parent_id of a test family is left out).
  */
 type Read =
   | { from: "tests"; select?: readonly string[]; rows?: (test: ExportRow) => ExportRow[] }
-  | { from: "test rows"; table: TestTable; order: readonly string[] }
+  | { from: "test rows"; table: TestTable; order: readonly string[]; keep?: (row: ExportRow) => boolean }
   | { from: "table"; table: PagedTable };
 
 interface Dataset {
@@ -75,11 +75,10 @@ const isObject = (v: unknown): v is Record<string, unknown> => typeof v === "obj
 const ROUTES: readonly Route[] = ["up", "stay", "down"];
 
 /**
- * Every question of a stored test (assessments.test), as drawn: stage 1, stage 2 of each route, then the extra round
- * (#190, `test.extra`) when the child took one. `round`: "main" or "extra", as answers.round marks the answers.
- * `position`: the question's place in the test, as answers.position numbers it, for the questions of stage 1, of the
- * route the test took and of the extra round (numbered on after the main test); null for the other routes' questions,
- * which the child never got. An extra round question has no stage or route.
+ * Every question of a stored test (assessments.test), as drawn: stage 1, then stage 2 of each route. `position`: the
+ * question's place in the test, as answers.position numbers it, for the questions of stage 1 and of the route the test
+ * took; null for the other routes' questions, which the child never got. D-145: not the questions of the removed extra
+ * round (#190), which two stored tests still hold under `extra`.
  */
 function drawnQuestions(test: ExportRow): ExportRow[] {
   const stored = isObject(test.test) ? test.test : {};
@@ -87,17 +86,18 @@ function drawnQuestions(test: ExportRow): ExportRow[] {
   const stage1 = list(stored.stage1);
   const stage2 = isObject(stored.stage2) ? stored.stage2 : {};
   const taken = ROUTES.find((r) => r === test.route);
-  const main = taken ? stage1.length + list(stage2[taken]).length : null;
-  const row = (q: Question, round: "main" | "extra", stage: 1 | 2 | null, route: Route | null, index: number, position: number | null): ExportRow => ({
-    assessment_id: test.id, round, stage, route, index, position,
+  const row = (q: Question, stage: 1 | 2, route: Route | null, index: number, position: number | null): ExportRow => ({
+    assessment_id: test.id, stage, route, index, position,
     question_id: q.id, template_id: q.templateId, level: q.level, strand: q.strand, format: q.format, question: q,
   });
   return [
-    ...stage1.map((q, i) => row(q, "main", 1, null, i, i)),
-    ...ROUTES.flatMap((r) => list(stage2[r]).map((q, i) => row(q, "main", 2, r, i, taken === r ? stage1.length + i : null))),
-    ...list(stored.extra).map((q, i) => row(q, "extra", null, null, i, main === null ? null : main + i)),
+    ...stage1.map((q, i) => row(q, 1, null, i, i)),
+    ...ROUTES.flatMap((r) => list(stage2[r]).map((q, i) => row(q, 2, r, i, taken === r ? stage1.length + i : null))),
   ];
 }
+
+/** D-145: a row of a test's answers or serves that is not for a question of the removed extra round (#190). */
+const mainRow = (row: ExportRow): boolean => !fromRemovedRound(String(row.question_id));
 
 /** The learner profile's parts (#196), in the profile's order. */
 const PROFILE_PARTS = [
@@ -113,29 +113,27 @@ const DATASETS: readonly Dataset[] = [
   {
     id: "tests",
     label: "Tests",
-    row: "a test: the child, the school grade and curriculum, the status and times, the route, the placement, the help answer, the device, the break and the extra round.",
+    row: "a test: the child, the school grade and curriculum, the status and times, the route, the placement, the help answer, the device and the break.",
     columns: stored<"assessments">([
       "id", "created_at", "parent_id", "child_id", "grade", "province", "status", "seed", "started_at", "last_answer_at",
       "completed_at", "resume_until", "route", "help", "placement",
       // The test context (#185).
       "device", "break_started_at", "break_ended_at", "break_skipped", "break_ms",
-      // The extra round (#190, D-116): a skip time after the start time is a round stopped part way.
-      "extra_offered_at", "extra_skipped_at", "extra_started_at", "extra_finished_at",
     ]),
     read: { from: "tests" },
   },
   {
     id: "questions",
     label: "Questions as drawn",
-    row: "a question drawn for a test, with its round (main or extra), template, values, choices in their order, figure and answer. Position matches the answers; empty for a route the test did not take.",
+    row: "a question drawn for a test, with its template, values, choices in their order, figure and answer. Position matches the answers; empty for a route the test did not take.",
     // The stored test is longer than a spreadsheet cell, so its questions are rows of their own.
-    columns: ["assessment_id", "round", "stage", "route", "index", "position", "question_id", "template_id", "level", "strand", "format", "question"],
+    columns: ["assessment_id", "stage", "route", "index", "position", "question_id", "template_id", "level", "strand", "format", "question"],
     read: { from: "tests", select: stored<"assessments">(["route", "test"]), rows: drawnQuestions },
   },
   {
     id: "answers",
     label: "Answers",
-    row: "an answer: its round (main or extra), right or wrong, the misconception, the times, the answer changes, read-aloud, time away, the typed working, and the paths of the drawing and the strokes.",
+    row: "an answer: right or wrong, the misconception, the times, the answer changes, read-aloud, time away, the typed working, and the paths of the drawing and the strokes.",
     columns: stored<"answers">([
       "id", "created_at", "assessment_id", "position", "question_id", "template_id", "values", "response", "correct",
       "misconception", "time_ms",
@@ -143,17 +141,15 @@ const DATASETS: readonly Dataset[] = [
       "shown_at", "answered_at", "answer_changes", "read_aloud_count", "read_aloud_at_ms", "away_count", "away_ms",
       // Shown work (#67, #186): paths in the private bucket, never the drawing or the strokes themselves.
       "work_required", "work_path", "work_text", "strokes_path",
-      // The extra round (#190): "main" or "extra".
-      "round",
     ]),
-    read: { from: "test rows", table: "answers", order: stored<"answers">(["position"]) },
+    read: { from: "test rows", table: "answers", order: stored<"answers">(["position"]), keep: mainRow },
   },
   {
     id: "question_shows",
     label: "Serve times",
     row: "a place in a test the server served, with when it first served it.",
     columns: stored<"question_shows">(["assessment_id", "position", "question_id", "shown_at", "created_at"]),
-    read: { from: "test rows", table: "question_shows", order: stored<"question_shows">(["position"]) },
+    read: { from: "test rows", table: "question_shows", order: stored<"question_shows">(["position"]), keep: mainRow },
   },
   {
     id: "facts",
@@ -245,7 +241,10 @@ async function* pages(reader: ExportReader, d: Dataset, withTests: boolean): Asy
   for await (const page of byId(reader, "assessments", columns, TEST_PAGE)) {
     const tests = kept(page);
     if (read.from === "tests") yield read.rows ? tests.flatMap(read.rows) : tests;
-    else if (tests.length > 0) yield await reader.ofTests(read.table, d.columns, read.order, tests.map((t) => String(t.id)));
+    else if (tests.length > 0) {
+      const rows = await reader.ofTests(read.table, d.columns, read.order, tests.map((t) => String(t.id)));
+      yield read.keep ? rows.filter(read.keep) : rows;
+    }
   }
 }
 

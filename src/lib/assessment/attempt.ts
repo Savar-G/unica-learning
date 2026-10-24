@@ -67,15 +67,10 @@ export type StartState =
    * until the end of the test; the test attempt module adds it from the test's read. Absent when unknown.
    */
   | { kind: "resume"; attemptId: string; resumeUntil: number; afterBreak?: boolean }
-  /**
-   * "Finish test": every main answer is in, but the test was not scored (the scoring call failed, or the child left part
-   * way through the extra round, #190: `round`, the round's questions answered and asked). Opening it scores it, or,
-   * for a round left part way, shows Keep going / Stop here.
-   */
+  /** "Finish test": every answer is in, but the test was not scored (the scoring call failed). Opening it scores it. */
   | {
       kind: "finish";
       attemptId: string;
-      round?: { answered: number; questions: number };
       /** #253: the next step is the part 2 "Check your answers" grid; the test attempt module adds it. */
       checkGrid?: boolean;
     }
