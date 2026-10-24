@@ -255,7 +255,9 @@ async function findingsOf(reader: ReportReader, assessmentId: string) {
 export async function loadReportView(reader: ReportReader, id: string): Promise<LoadedReport | null> {
   const row = await reader.report(id);
   if (!row?.assessment || !row.child) return null;
-  const paths = (row.model.work ?? []).flatMap((w) => (w.image ? [w.image] : []));
+  // Only the work the stored model shows today is signed (D-145: not the removed extra round's).
+  const model = storedReportModel(row.model);
+  const paths = (model.work ?? []).flatMap((w) => (w.image ? [w.image] : []));
   const [workImages, findings] = await Promise.all([reader.sign(paths), findingsOf(reader, row.assessmentId)]);
   return {
     childId: row.childId,
@@ -267,7 +269,7 @@ export async function loadReportView(reader: ReportReader, id: string): Promise<
       completedAt: row.assessment.completedAt,
       questions: row.questions,
       minutes: row.minutes,
-      model: storedReportModel(row.model),
+      model,
       workImages,
       findings,
     },

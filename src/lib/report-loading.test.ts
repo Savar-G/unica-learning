@@ -3,7 +3,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
 import { ReportCard } from "@/components/report";
 import { reportEmail } from "@/lib/report-email";
-import { BANKS, BC_SKILL_MAP, createSession, learnerProfile, reportModel, storedTest, type LearnerProfile, type Placement, type ProfileAi, type ShownWork, type StoredTest } from "@/lib/assessment";
+import { BANKS, BC_SKILL_MAP, createSession, learnerProfile, reportModel, storedProfile, storedTest, type LearnerProfile, type Placement, type ProfileAi, type ShownWork, type StoredTest } from "@/lib/assessment";
 import { knowsUpTo, takeTest } from "@/lib/assessment/scripted-child";
 import { loadReportInputs, loadReportView, type ComparisonRead } from "@/lib/report-loading";
 import { memoryReportReaders, type MemoryAnswer, type MemoryAssessment, type MemoryReportTables } from "@/lib/report-loading-memory";
@@ -114,6 +114,20 @@ describe("the report view (#161)", () => {
     const onReport = [drawing("parent-1", 0), drawing("parent-1", 2)];
     expect(readers.signed).toEqual([{ reader: "parent-1", paths: onReport }, { reader: "admin", paths: onReport }]);
   });
+
+  it("leaves out stored work for a question of the removed extra round (#190, D-145): not shown, not signed", async () => {
+    const t = tables();
+    const roundWork = { questionId: "x-0", prompt: "ROUND QUESTION", correct: true, image: "parent-1/test-1/x-0-x.png", text: "ROUND WORKING", comment: null };
+    const readers = memoryReportReaders({ ...t, reports: t.reports?.map((r) => ({ ...r, model: { ...r.model, work: [roundWork, ...(r.model.work ?? [])] } })) });
+    for (const reader of [readers.parent("parent-1"), readers.admin()]) {
+      const { view } = (await loadReportView(reader, "report-1"))!;
+      expect(view.model.work?.map((w) => w.questionId)).toEqual(model.work.map((w) => w.questionId));
+      const page = renderToStaticMarkup(createElement(ReportCard, { view, readOnly: true }));
+      const email = reportEmail({ view, parentName: "Priya Shah", url: "https://unicalearning.com/account/report/report-1", unsubscribeUrl: "https://unicalearning.com/unsubscribe" });
+      for (const place of [page, email.text, email.html]) expect(place).not.toMatch(/ROUND QUESTION|ROUND WORKING|x-0-x\.png/);
+    }
+    expect(readers.signed.flatMap((x) => x.paths)).not.toContain("parent-1/test-1/x-0-x.png");
+  });
 });
 
 describe("a stored report reads with the rules of today (#242)", () => {
@@ -197,6 +211,21 @@ describe("the parent's part of the learner profile on the report view (#198)", (
       expect(shown.cause).toEqual({ source: "ai", text: "{name} may need this step first." });
       expect(findings.preview?.focus.map((t) => t.code)).toEqual([missed]);
     }
+  });
+
+  it("leaves out a stored wrong answer to the removed extra round (#190, D-145): the parent's example and the admin's list", async () => {
+    // Two stored profiles were built with the round's answers: here a round answer comes first in the struggle's list.
+    const roundWrong = { questionId: "x-0", templateId: struggle.wrong[0].templateId, prompt: "ROUND PROMPT", response: "round-answer", rightAnswer: "9", misconception: "ROUND-ONLY" };
+    const withRound = { ...facts, struggles: facts.struggles.map((s) => (s.code === missed ? { ...s, wrong: [roundWrong, ...s.wrong], misconceptions: ["ROUND-ONLY", ...s.misconceptions] } : s)) };
+    for (const reader of [memoryReportReaders(stored(withRound)).parent("parent-1"), memoryReportReaders(stored(withRound)).admin()]) {
+      const { view } = (await loadReportView(reader, "report-1"))!;
+      expect(view.findings!.struggles.find((s) => s.code === missed)!.answer.response).not.toBe("round-answer");
+      expect(JSON.stringify(view)).not.toMatch(/ROUND PROMPT|round-answer/);
+    }
+    // The admin's profile page reads the stored profile through storedProfile.
+    const admin = storedProfile(withRound)!.struggles.find((s) => s.code === missed)!;
+    expect(admin.wrong).toEqual(struggle.wrong);
+    expect(admin.misconceptions).toEqual(struggle.misconceptions);
   });
 
   it("never carries the profile's admin-only parts: test behaviour, the full error list, how to help, model ids or the build id", async () => {
