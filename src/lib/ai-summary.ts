@@ -23,7 +23,7 @@ Prices are in Canadian dollars. Delivery across Canada is included. There is one
 - The online math assessment is free and comes before any plan or card. Every family in Canada can take the free online math assessment. Start at ${url("/start")}
 - After the report, BC families can choose the plan and add a card. Nothing is charged when the card is added. The first month is free, starting when the first workbook ships; the monthly price is charged on day 30, then monthly until you cancel.
 - Families on another provincial curriculum (Alberta, Saskatchewan, Manitoba, Ontario) can join the workbook waitlist after the report, with no card.
-- Cancel before day 30 and you pay nothing. A reminder email comes a few days before the first charge.
+- Cancel before day 30 and you pay nothing. A reminder email comes 7 days before the first charge, with a link to manage or cancel the plan.
 - Cancel anytime. Pause for a week, a month or longer.
 
 More: ${url("/#price")}

@@ -17,8 +17,8 @@ export const EXTRA_ROUND_OFFERED = false;
 
 /**
  * Free first month (Cedric, 2026-10-24; was 2 free weeks then CAD 50 for the first month, 2026-10-23): the first 30 days,
- * counted from when the first workbook ships, are free; the card is charged the full price on day 30, after a reminder
- * email a few days before, then every month. It replaces the 30-day money-back guarantee.
+ * counted from when the first workbook ships, are free; the card is charged the full price on day 30, after Stripe's reminder
+ * email 7 days before, then every month. It replaces the 30-day money-back guarantee.
  */
 export const TRIAL_DAYS = 30;
 

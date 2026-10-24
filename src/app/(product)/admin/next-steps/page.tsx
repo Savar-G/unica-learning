@@ -8,7 +8,7 @@ export default async function NextStepsPage({ searchParams }: PageProps<"/admin/
   const offset = listOffset(await searchParams, LIST_MAX);
   const { cards, waitlist } = await listNextSteps(admin, offset);
   return <AdminFrame email={admin.email} section="next-steps" title="Cards and waitlist">
-    <p className="adm-note">A saved card is not a payment. When a child&apos;s first workbook ships, press &quot;Workbook shipped: start plan&quot;: the free first month begins, and Stripe charges the monthly price on day 30, then every month. Email the parent a reminder a few days before day 30. The dashboard shows who is paying.</p>
+    <p className="adm-note">A saved card is not a payment. When a child&apos;s first workbook ships, press &quot;Workbook shipped: start plan&quot;: the free first month begins, and Stripe charges the monthly price on day 30, then every month. Stripe emails the parent a reminder 7 days before day 30, with a link to manage or cancel the plan. The dashboard shows who is paying.</p>
     <h2>Card setups</h2><CardsTable cards={cards.rows} />
     <h2>Waitlist</h2><WaitlistTable waitlist={waitlist.rows} />
     <More more={cards.more || waitlist.more} max={LIST_MAX} offset={offset} action="/admin/next-steps" />

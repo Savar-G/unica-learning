@@ -149,7 +149,7 @@ export function Feel() {
 
 // One list for the home page and /our-story, so the promise text cannot drift apart.
 export const PROMISE: [IconName, string, string][] = [
-  ["shield", "First month free", "Your first month of workbooks is free. Cancel before day 30 and you pay nothing. We email you a few days before the first charge."],
+  ["shield", "First month free", "Your first month of workbooks is free. Cancel before day 30 and you pay nothing. We email you 7 days before the first charge."],
   ["calendar", "Fits your family's schedule", "Kids are busy. Take a week or a month off, and pick up where your child left off."],
   ["test", "Free assessment, nothing to pay today", "Your child takes the free online math assessment before you choose a plan. Adding a card charges nothing."],
   ["undo", "Cancel anytime", "No contract. Stop whenever you want."],

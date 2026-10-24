@@ -31,12 +31,12 @@ export interface CardSetup {
 
 /** What the parent agrees to on Stripe's page. Stripe requires the amount, timing and how to cancel. */
 export const cardTerms = (price: number) =>
-  `Nothing is charged today. Your first month is free, starting when your first workbook ships. On day 30 we charge CAD ${cad(price)}, then CAD ${cad(price)} every month until you cancel. We email you a reminder a few days before the first charge. Cancel before day 30 and you pay nothing.`;
+  `Nothing is charged today. Your first month is free, starting when your first workbook ships. On day 30 we charge CAD ${cad(price)}, then CAD ${cad(price)} every month until you cancel. We email you a reminder 7 days before the first charge, with a link to manage or cancel your plan. Cancel before day 30 and you pay nothing.`;
 
 /**
  * Creates the Stripe customer and a hosted Checkout page in setup mode: it saves the card and charges nothing.
  * When the first workbook ships, start a CAD `price` monthly subscription on this customer with the free first month
- * (a 30-day trial, TRIAL_DAYS; D-053, D-139). Email the reminder a few days before the trial ends.
+ * (a 30-day trial, TRIAL_DAYS; D-053, D-139). Stripe emails the reminder 7 days before the trial ends, with the link to manage or cancel the plan (Billing settings, 2026-10-24).
  * Returns the customer and Checkout page URL so the booking can durably release its hold.
  */
 export async function cardSetupUrl(s: Stripe, p: CardSetup): Promise<{ customer: string; url: string | null }> {
