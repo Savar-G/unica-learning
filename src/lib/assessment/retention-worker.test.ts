@@ -123,7 +123,8 @@ describe("retention run", () => {
   };
   /**
    * One test as the database lists it for the copy (#201): 2 questions shown, one answered, a 3-fact section. With
-   * `round`, the child also took the extra round (#190) and answered its first question.
+   * `round`, the child also took the removed extra round (#190) and answered its first question; D-145: the copy leaves
+   * that answer out.
    */
   const test = (id: string, copied = false, round = false) => ({
     id, copied, testFamily: false, grade: 4, province: "BC", status: "in_progress", route: null, help: null,
@@ -159,7 +160,7 @@ describe("retention run", () => {
   }
   const decisions = { queued: 1, delete_free_test: 1, delete_former_customer: 1, keep_customer: 2, keep_former_customer: 1, keep_free_test: 0, keep_no_test: 1, unknown: 1 };
 
-  const copy = { families: 3, tests: 2, copied: 1, questions: 5, extraRounds: 1, facts: 6, profiles: 0, questionnaires: 2, failed: 0, fields: copyFieldNames() };
+  const copy = { families: 3, tests: 2, copied: 1, questions: 4, facts: 6, profiles: 0, questionnaires: 2, failed: 0, fields: copyFieldNames() };
 
   it("dry mode shows the decision for every family, reads Stripe only, and claims nothing", async () => {
     const s = store();
