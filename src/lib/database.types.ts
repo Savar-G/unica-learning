@@ -173,7 +173,6 @@ export type Database = {
           read_aloud_at_ms: number[] | null
           read_aloud_count: number | null
           response: string
-          round: string
           shown_at: string | null
           strokes_path: string | null
           template_id: string
@@ -198,7 +197,6 @@ export type Database = {
           read_aloud_at_ms?: number[] | null
           read_aloud_count?: number | null
           response: string
-          round?: string
           shown_at?: string | null
           strokes_path?: string | null
           template_id: string
@@ -223,7 +221,6 @@ export type Database = {
           read_aloud_at_ms?: number[] | null
           read_aloud_count?: number | null
           response?: string
-          round?: string
           shown_at?: string | null
           strokes_path?: string | null
           template_id?: string
@@ -282,10 +279,6 @@ export type Database = {
           completed_at: string | null
           created_at: string
           device: Json | null
-          extra_finished_at: string | null
-          extra_offered_at: string | null
-          extra_skipped_at: string | null
-          extra_started_at: string | null
           grade: number
           help: string | null
           id: string
@@ -309,10 +302,6 @@ export type Database = {
           completed_at?: string | null
           created_at?: string
           device?: Json | null
-          extra_finished_at?: string | null
-          extra_offered_at?: string | null
-          extra_skipped_at?: string | null
-          extra_started_at?: string | null
           grade: number
           help?: string | null
           id?: string
@@ -336,10 +325,6 @@ export type Database = {
           completed_at?: string | null
           created_at?: string
           device?: Json | null
-          extra_finished_at?: string | null
-          extra_offered_at?: string | null
-          extra_skipped_at?: string | null
-          extra_started_at?: string | null
           grade?: number
           help?: string | null
           id?: string
@@ -1414,10 +1399,6 @@ export type Database = {
           completed_at: string | null
           created_at: string
           device: Json | null
-          extra_finished_at: string | null
-          extra_offered_at: string | null
-          extra_skipped_at: string | null
-          extra_started_at: string | null
           grade: number
           help: string | null
           id: string
