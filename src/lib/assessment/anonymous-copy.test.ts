@@ -312,6 +312,18 @@ describe("a test from before the extra round was removed", () => {
     expect(JSON.stringify(copy)).not.toContain("x-0");
     expect(JSON.stringify(copy)).not.toMatch(/\d{4}-\d{2}-\d{2}T/);
   });
+
+  it("leaves the round's wrong answers out of the profile's struggles, with a misconception only they had", () => {
+    const s = source();
+    const [first] = s.profile.struggles;
+    const roundWrong = { questionId: "x-0", templateId: first.wrong[0].templateId, prompt: "ROUND PROMPT", response: "5", rightAnswer: "ROUND ANSWER", misconception: "ROUND-ONLY" };
+    const withRound = { ...s.profile, struggles: s.profile.struggles.map((x, i) => (i === 0 ? { ...x, wrong: [roundWrong, ...x.wrong], misconceptions: ["ROUND-ONLY", ...x.misconceptions] } : x)) };
+    const copy = anonymousTestCopy({ ...s, profile: withRound });
+    const struggles = copy.profile!.struggles as typeof s.profile.struggles;
+    expect(struggles[0].wrong.map((w) => w.questionId)).toEqual(first.wrong.map((w) => w.questionId));
+    expect(struggles[0].misconceptions).toEqual(first.misconceptions);
+    expect(JSON.stringify(copy)).not.toMatch(/x-0|ROUND PROMPT|ROUND ANSWER|ROUND-ONLY/);
+  });
 });
 
 describe("copying a family's tests before the deletion", () => {

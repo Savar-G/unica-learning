@@ -313,7 +313,14 @@ function profileOf(v: unknown, questions: readonly QuestionCopy[]): Raw | null {
   const responses = new Map(questions.map((q) => [q.questionId, q.response]));
   profile.struggles = list(profile.struggles).map((raw) => {
     const struggle = record(raw);
-    return struggle && { ...struggle, wrong: list(struggle.wrong).map((w) => {
+    if (!struggle) return struggle;
+    // D-145: a wrong answer to a question of the removed extra round (#190) is left out, as its question is, with a
+    // misconception only such answers had. Two stored profiles hold such answers.
+    const all = list(struggle.wrong);
+    const kept = all.filter((w) => !fromRemovedRound(str(record(w)?.questionId) ?? ""));
+    const misconceptions = kept.length === all.length ? struggle.misconceptions
+      : [...new Set(kept.flatMap((w) => str(record(w)?.misconception) ?? []))];
+    return { ...struggle, misconceptions, wrong: kept.map((w) => {
       const wrong = record(w);
       return wrong && { ...wrong, response: responses.get(str(wrong.questionId) ?? "") ?? null };
     }) };
