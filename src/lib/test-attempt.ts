@@ -70,6 +70,11 @@ export interface LoadedAttempt {
   help?: HelpAnswer | null;
   /** #253: the stored route, the stage 1 lock record: null or absent while stage 1 is not locked. */
   route?: Route | null;
+  /**
+   * D-145: the test has a record of the removed extra round (#190): its offer, skip or start was stored by the code
+   * before the removal. The database's change_answer still refuses part 2 changes for such a test. Absent: none.
+   */
+  roundRecorded?: boolean;
 }
 
 /** A new test to store: its times, the seed, and the questions drawn from it. */
@@ -549,10 +554,15 @@ export interface ChangeInput extends AnswerInput {
 
 /**
  * #249: the section of the test that takes changes now, or null: only while the test is in progress; stage 1 until
- * it is locked (#253: the stored route), then stage 2 until the test is finished.
+ * it is locked (#253: the stored route), then stage 2 until the test is finished. D-145: stage 2 of a test with a
+ * record of the removed extra round (an offer, skip or start, stored before the removal) takes no change, as the
+ * database's change_answer still refuses it (migration add_stage1_lock). The follow-up migration of D-145 removes that
+ * guard; then this rule goes too.
  */
 function changeable(read: ReadTest): OpenSection | null {
-  return takesAnswers(read) ? openSection(read.session) : null;
+  if (!takesAnswers(read)) return null;
+  const open = openSection(read.session);
+  return open.name === "stage2" && read.roundRecorded ? null : open;
 }
 
 /**
@@ -708,9 +718,10 @@ export async function doneChecking(store: AttemptStore, parent: string, id: stri
 }
 
 /** #253: true when the test moved past `section`: stage 1 is locked (a route is stored), or the test is finished. */
-function passed({ attempt, session }: ReadTest, section: CheckSection): boolean {
+function passed({ attempt, session, roundRecorded }: ReadTest, section: CheckSection): boolean {
   if (attempt.status === "completed") return true;
-  return section === "stage1" && session.route !== null;
+  // D-145: stage 2 of a test with a record of the removed extra round is closed (changeable).
+  return section === "stage1" ? session.route !== null : roundRecorded;
 }
 
 /**
@@ -808,6 +819,13 @@ interface ReadTest {
   /** #185: the halfway break as stored, for a resume. */
   break?: BreakResume;
   help: HelpAnswer | null;
+  /**
+   * D-145: the stored answers to the removed extra round's questions (#190), in order, after the main answers. They
+   * never count; the finish passes them to the store's check unchanged, which compares every stored answer.
+   */
+  roundAnswers: Submission[];
+  /** D-145: the test has a record of the removed extra round (LoadedAttempt.roundRecorded). */
+  roundRecorded: boolean;
 }
 
 /** The parent's test at `now`, or "expired" when it ran out of time: then it is marked expired if still in progress. */
@@ -834,9 +852,11 @@ async function readTest(store: AttemptStore, parent: string, id: string): Promis
   }
   if (!loaded) return { ok: false, error: "not_found" };
   let session: Session;
+  // D-145: the answers to the removed extra round's questions (#190), which tests from before the removal store after
+  // their main answers, are left out of the session (fromRemovedRound).
+  const roundAnswers = loaded.answers.filter((a) => fromRemovedRound(a.questionId));
   try {
-    // #253: the stored route is the stage 1 lock record. D-145: the answers to the removed extra round's questions
-    // (#190), which two completed tests still store after their main answers, are left out (fromRemovedRound).
+    // #253: the stored route is the stage 1 lock record.
     session = restoreSession(loaded.test, loaded.answers.filter((a) => !fromRemovedRound(a.questionId)), loaded.route ?? null);
   } catch (e) {
     console.error("[test] restore failed", id, messageOf(e));
@@ -849,6 +869,8 @@ async function readTest(store: AttemptStore, parent: string, id: string): Promis
     session,
     ...(loaded.break && { break: loaded.break }),
     help: loaded.help ?? null,
+    roundAnswers,
+    roundRecorded: loaded.roundRecorded === true,
   };
 }
 
@@ -1064,9 +1086,9 @@ async function finishOnce(store: AttemptStore, parent: string, id: string, help:
   const facts = await readSection(store, id);
   if (!facts.ok) return facts;
   const placement = finish(session, facts.section?.session ?? null, help);
-  // Every stored answer, as read: the store checks them in its write. (A test in progress has no answer to the removed
-  // extra round: only two completed tests have those.)
-  const answers = session.answers.map(({ questionId, response, timeMs }) => ({ questionId, response, timeMs }));
+  // Every stored answer, as read: the store checks them in its write. D-145: a test left part way through the removed
+  // extra round still has the round's answers after the main ones; they go to the check unchanged, never to the score.
+  const answers = [...session.answers, ...open.roundAnswers].map(({ questionId, response, timeMs }) => ({ questionId, response, timeMs }));
   let completed: "done" | "changed";
   try {
     completed = await store.complete(id, { at: now, placement, help, answers });

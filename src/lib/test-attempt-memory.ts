@@ -30,6 +30,11 @@ export type MemoryTest = Attempt & {
   route?: Route | null;
   placement?: Placement | null;
   help?: HelpAnswer | null;
+  /**
+   * D-145: the removed extra round's record (#190) as the old code stored it (assessments.extra_offered_at,
+   * extra_skipped_at, extra_started_at). Absent: none.
+   */
+  removedRound?: { offeredAt: number | null; skippedAt: number | null; startedAt: number | null };
 } & MemoryContext;
 /**
  * The test context of a stored test (#185): its device, and its halfway break (when it was shown, when it ended,
@@ -60,6 +65,9 @@ const tick = () => new Promise((resolve) => setTimeout(resolve, 0));
 /** True when the stored answers are `answers`: the question, response and time at each place. */
 const sameAnswers = (stored: readonly Submission[], answers: readonly Submission[]) =>
   stored.length === answers.length && stored.every((a, i) => a.questionId === answers[i].questionId && a.response === answers[i].response && a.timeMs === answers[i].timeMs);
+
+/** D-145: the test has a record of the removed extra round: its offer, skip or start. */
+const roundRecorded = ({ removedRound: r }: MemoryTest): boolean => !!r && (r.offeredAt !== null || r.skippedAt !== null || r.startedAt !== null);
 
 /** The attempt columns of a stored test, as the database returns them: never `answeredAll`. */
 const attemptOf = ({ id, status, startedAt, lastAnswerAt, resumeUntil, completedAt }: MemoryTest): Attempt =>
@@ -184,6 +192,7 @@ export function memoryAttemptStore({ children: kids = [], tests: initial = [] }:
         ...(row.breakStartedAt != null && { break: { startedAt: row.breakStartedAt, ended: row.breakEndedAt != null } }),
         help: row.help ?? null,
         route: row.route ?? null,
+        ...(roundRecorded(row) && { roundRecorded: true }),
       };
     },
     async expire(id, now) {
@@ -253,6 +262,8 @@ export function memoryAttemptStore({ children: kids = [], tests: initial = [] }:
       await begin("changeAnswer");
       const row = tests.find((t) => t.id === id);
       if (!row || row.status !== "in_progress") return "closed";
+      // D-145: as change_answer still does, no change once the removed extra round's offer, skip or start is recorded.
+      if (roundRecorded(row)) return "closed";
       // #253: a stage 1 answer changes only while stage 1 is not locked (no route stored).
       if (position < row.test.stage1.length && row.route != null) return "closed";
       const old = row.answers[position];

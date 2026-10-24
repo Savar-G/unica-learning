@@ -55,7 +55,7 @@ export function attemptStore(admin: SupabaseClient<Database>): AttemptStore {
     },
 
     async load(parent, id) {
-      const { data: row, error } = await admin.from("assessments").select(`${ATTEMPT_COLUMNS}, test, route, break_started_at, break_ended_at, help`)
+      const { data: row, error } = await admin.from("assessments").select(`${ATTEMPT_COLUMNS}, test, route, break_started_at, break_ended_at, help, extra_offered_at, extra_skipped_at, extra_started_at`)
         .eq("id", id).eq("parent_id", parent)
         .maybeSingle();
       if (error) throw new StoreError("load failed", error.message);
@@ -70,6 +70,9 @@ export function attemptStore(admin: SupabaseClient<Database>): AttemptStore {
         answers: (answers ?? []).map((a) => ({ questionId: a.question_id, response: a.response, timeMs: a.time_ms })),
         ...(row.break_started_at && { break: { startedAt: Date.parse(row.break_started_at), ended: row.break_ended_at != null } }),
         help: row.help,
+        // D-145: change_answer still refuses part 2 changes once the removed extra round's offer, skip or start was
+        // stored; the module mirrors it. The follow-up migration removes the guard, this read and the columns.
+        ...(row.extra_offered_at != null || row.extra_skipped_at != null || row.extra_started_at != null ? { roundRecorded: true } : {}),
         // #253: the stored route is the stage 1 lock record.
         route: row.route,
       };
