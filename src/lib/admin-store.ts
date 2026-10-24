@@ -7,8 +7,8 @@ import type { FactsTest, HelpAnswer, Placement, Province, Route, StoredTest } fr
 import type { ProgressInput } from "@/lib/admin-progress";
 import { isUuid } from "@/lib/assessment-store";
 import { LEARNING_COLUMNS, type LearningRow } from "@/lib/learning-style";
-import { filterTests, questionNumbers, type AdminFilters, type AnswerRecord, type FactAnswerRecord, type ReviewRecord, type ShownRecord } from "@/lib/admin-view";
-import type { ExtraRoundColumns, TestContextRecord } from "@/lib/admin-view";
+import { filterTests, mainOnly, questionNumbers, type AdminFilters, type AnswerRecord, type FactAnswerRecord, type ReviewRecord, type ShownRecord } from "@/lib/admin-view";
+import type { TestContextRecord } from "@/lib/admin-view";
 import { sessionClient } from "@/lib/supabase-auth";
 import type { AssessmentStatus } from "@/lib/test-api";
 import { signWork } from "@/lib/work-store";
@@ -243,13 +243,12 @@ export interface TestDetail {
   test: TestRow & { seed: number; resume_until: string; stored: StoredTest };
   /** The test context (#185): the device and the halfway break. */
   context: TestContextRecord;
-  /** The extra round (#190): when it was offered, skipped, started and finished. */
-  extraRound: ExtraRoundColumns;
+  /** The answers in test order. D-145: not those to the removed extra round's questions (#190, fromRemovedRound). */
   answers: AnswerRecord[];
   reviews: ReviewRecord[];
   report: { id: string; created_at: string; questions: number; minutes: number; emailed_at: string | null; email_error: string | null; alerted_at: string | null; alert_error: string | null } | null;
   facts: { started_at: string; test: FactsTest; answers: FactAnswerRecord[] } | null;
-  /** When the server first served each question (#184). */
+  /** When the server first served each question (#184). D-145: not the removed extra round's questions. */
   shows: ShownRecord[];
   emails: EmailRow[];
   /** Short-lived signed URLs of the drawings, by stored path. */
@@ -262,8 +261,6 @@ const TIMELINE_COLUMNS = "template_id, shown_at, answered_at, answer_changes, re
 const REVIEW_COLUMNS = "question_id, error_type, kind, comment, score, confidence, model";
 /** The test context columns (#185). */
 const CONTEXT_COLUMNS = "device, break_started_at, break_ended_at, break_skipped, break_ms";
-/** The extra round columns (#190, migration add_extra_round). */
-const EXTRA_ROUND_COLUMNS = "extra_offered_at, extra_skipped_at, extra_started_at, extra_finished_at";
 /** The quick facts answer columns, with the time for each fact by the server and the browser (#185). */
 const FACT_ANSWER_COLUMNS = "position, fact_id, response, correct, at_ms, server_ms, browser_ms";
 
@@ -272,10 +269,13 @@ export async function getTest(a: AdminSession, id: string): Promise<TestDetail |
   if (!isUuid(id)) return null;
   // Everything keyed by the test id is read with the test row, not after it; the drawings are signed as soon as the
   // answers arrive. With no such test the other reads are thrown away.
-  const answersRead = a.db.from("answers").select(`${ANSWER_COLUMNS}, ${TIMELINE_COLUMNS}`).eq("assessment_id", id).order("position").then((r) => must<AnswerRecord[]>(r, "answers"));
+  // D-145: the answers, serves and work reviews of the removed extra round's questions (#190), which two tests still
+  // store, are left out here, so no part of the test page, its progress or its drawings shows them.
+  const answersRead = a.db.from("answers").select(`${ANSWER_COLUMNS}, ${TIMELINE_COLUMNS}`).eq("assessment_id", id).order("position")
+    .then((r) => mainOnly(must<AnswerRecord[]>(r, "answers")));
   const related = Promise.all([
     answersRead,
-    a.db.from("work_reviews").select(REVIEW_COLUMNS).eq("assessment_id", id).then((r) => must<ReviewRecord[]>(r, "reviews")),
+    a.db.from("work_reviews").select(REVIEW_COLUMNS).eq("assessment_id", id).then((r) => mainOnly(must<ReviewRecord[]>(r, "reviews"))),
     a.db.rpc("admin_reports").select("id, created_at, questions, minutes, emailed_at, email_error, alerted_at, alert_error").eq("assessment_id", id)
       .maybeSingle().then((r) => must<TestDetail["report"]>(r, "report")),
     a.db.from("assessment_facts").select("started_at, test").eq("assessment_id", id).maybeSingle()
@@ -284,23 +284,21 @@ export async function getTest(a: AdminSession, id: string): Promise<TestDetail |
       .then((r) => must<FactAnswerRecord[]>(r, "fact answers")),
     emailRows(a, (q) => q.eq("assessment_id", id)),
     a.db.from("question_shows").select("position, question_id, shown_at").eq("assessment_id", id).order("position")
-      .then((r) => must<ShownRecord[]>(r, "question shows")),
+      .then((r) => mainOnly(must<ShownRecord[]>(r, "question shows"))),
     answersRead.then((answers) => signWork(a.db, answers.flatMap((x) => (x.work_path ? [x.work_path] : [])))),
   ]);
   // a failed read with no test row behind it must not become an unhandled rejection
   related.catch(() => {});
-  const row = await a.db.rpc("admin_assessments").select(`${TEST_COLUMNS}, seed, resume_until, test, ${CONTEXT_COLUMNS}, ${EXTRA_ROUND_COLUMNS}`).eq("id", id).maybeSingle()
-    .then((r) => must<(TestQueryRow & { seed: number; resume_until: string; test: StoredTest } & TestContextRecord & ExtraRoundColumns) | null>(r, "test"));
+  const row = await a.db.rpc("admin_assessments").select(`${TEST_COLUMNS}, seed, resume_until, test, ${CONTEXT_COLUMNS}`).eq("id", id).maybeSingle()
+    .then((r) => must<(TestQueryRow & { seed: number; resume_until: string; test: StoredTest } & TestContextRecord) | null>(r, "test"));
   if (!row) return null;
-  const { device, break_started_at, break_ended_at, break_skipped, break_ms, extra_offered_at, extra_skipped_at, extra_started_at, extra_finished_at, ...withoutContext } = row;
+  const { device, break_started_at, break_ended_at, break_skipped, break_ms, ...withoutContext } = row;
   const context: TestContextRecord = { device, break_started_at, break_ended_at, break_skipped, break_ms };
-  const extraRound: ExtraRoundColumns = { extra_offered_at, extra_skipped_at, extra_started_at, extra_finished_at };
   const { test: stored, seed, resume_until, ...listRow } = withoutContext;
   const [[test], [answers, reviews, report, facts, factAnswers, emails, shows, images]] = await Promise.all([withPeople(a, [listRow]), related]);
   return {
     test: { ...test, seed, resume_until, stored },
     context,
-    extraRound,
     answers,
     reviews,
     report,
@@ -318,8 +316,8 @@ export async function getTest(a: AdminSession, id: string): Promise<TestDetail |
  */
 export async function getStrokes(a: AdminSession, id: string): Promise<Record<string, string | null>> {
   if (!isUuid(id)) return {};
-  const rows = must<{ question_id: string; strokes_path: string }[]>(
-    await a.db.from("answers").select("question_id, strokes_path").eq("assessment_id", id).not("strokes_path", "is", null), "strokes");
+  const rows = mainOnly(must<{ question_id: string; strokes_path: string }[]>(
+    await a.db.from("answers").select("question_id, strokes_path").eq("assessment_id", id).not("strokes_path", "is", null), "strokes"));
   const urls = await signWork(a.db, rows.map((r) => r.strokes_path));
   return Object.fromEntries(rows.map((r) => [r.question_id, urls[r.strokes_path] ?? null]));
 }
@@ -347,7 +345,7 @@ export async function getProfile(a: AdminSession, id: string): Promise<ProfileDe
     a.db.from("learner_profiles").select("created_at, built_at, schema_version, profile").eq("assessment_id", id).maybeSingle()
       .then((r) => must<ProfileDetail["stored"]>(r, "learner profile")),
     a.db.from("answers").select("position, question_id").eq("assessment_id", id)
-      .then((r) => must<Pick<AnswerRecord, "position" | "question_id">[]>(r, "answers")),
+      .then((r) => mainOnly(must<Pick<AnswerRecord, "position" | "question_id">[]>(r, "answers"))),
   ]);
   return { test: { ...test, child: child ?? null, parent: parent ?? null }, stored, numbers: questionNumbers(answers) };
 }
@@ -799,8 +797,7 @@ type ProgressQueryRow = {
   id: string; status: AssessmentStatus; route: Route | null;
   started_at: string; last_answer_at: string | null; completed_at: string | null; resume_until: string;
   break_started_at: string | null; break_ended_at: string | null;
-  extra_offered_at: string | null; extra_skipped_at: string | null; extra_started_at: string | null; extra_finished_at: string | null;
-  stage1: number; up: number; stay: number; down: number; extra: number; answered: number;
+  stage1: number; up: number; stay: number; down: number; answered: number;
   last_shown_position: number | null; last_shown_at: string | null;
   facts_started_at: string | null; facts_answered: number; facts_tried: number; facts_drawn: number; next_prompt: string | null;
 };
@@ -817,12 +814,11 @@ export async function progressRows(a: AdminSession, ids: readonly string[]): Pro
     must<ProgressQueryRow[]>(await a.db.rpc("admin_test_progress_for", { ids: chunk }), "test progress")))).flat();
   return new Map(rows.map((r) => [r.id, {
     status: r.status, route: r.route, answered: r.answered, nextPrompt: r.next_prompt,
-    lengths: { stage1: r.stage1, up: r.up, stay: r.stay, down: r.down, extra: r.extra },
+    lengths: { stage1: r.stage1, up: r.up, stay: r.stay, down: r.down },
     lastShown: r.last_shown_position === null || !r.last_shown_at ? null : { position: r.last_shown_position, at: r.last_shown_at },
     startedAt: r.started_at, lastAnswerAt: r.last_answer_at, completedAt: r.completed_at, resumeUntil: r.resume_until,
     breakStartedAt: r.break_started_at, breakEndedAt: r.break_ended_at,
     factsStartedAt: r.facts_started_at, factsAnswered: r.facts_answered, factsTried: r.facts_tried, factsDrawn: r.facts_drawn,
-    extraOfferedAt: r.extra_offered_at, extraSkippedAt: r.extra_skipped_at, extraStartedAt: r.extra_started_at, extraFinishedAt: r.extra_finished_at,
   }]));
 }
 
@@ -832,16 +828,15 @@ export function detailProgress(d: TestDetail): ProgressInput {
   const route = d.test.route as Route | null;
   const shown = d.shows.reduce<ShownRecord | null>((a, s) => (!a || s.position > a.position ? s : a), null);
   const n = d.answers.length;
-  const onRoute = [...stored.stage1, ...(route ? stored.stage2[route] : []), ...(route ? (stored.extra ?? []) : [])];
+  const onRoute = [...stored.stage1, ...(route ? stored.stage2[route] : [])];
   return {
     status: d.test.status, route, answered: n,
     nextPrompt: n < stored.stage1.length || route ? (onRoute[n]?.prompt ?? null) : null,
-    lengths: { stage1: stored.stage1.length, up: stored.stage2.up.length, stay: stored.stage2.stay.length, down: stored.stage2.down.length, extra: stored.extra?.length ?? 0 },
+    lengths: { stage1: stored.stage1.length, up: stored.stage2.up.length, stay: stored.stage2.stay.length, down: stored.stage2.down.length },
     lastShown: shown ? { position: shown.position, at: shown.shown_at } : null,
     startedAt: d.test.started_at, lastAnswerAt: d.test.last_answer_at, completedAt: d.test.completed_at, resumeUntil: d.test.resume_until,
     breakStartedAt: d.context.break_started_at, breakEndedAt: d.context.break_ended_at,
     factsStartedAt: d.facts?.started_at ?? null, factsAnswered: d.facts?.answers.filter((f) => f.response !== "").length ?? 0,
     factsTried: d.facts?.answers.length ?? 0, factsDrawn: d.facts?.test.facts.length ?? 0,
-    extraOfferedAt: d.extraRound.extra_offered_at, extraSkippedAt: d.extraRound.extra_skipped_at, extraStartedAt: d.extraRound.extra_started_at, extraFinishedAt: d.extraRound.extra_finished_at,
   };
 }

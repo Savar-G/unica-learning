@@ -1,7 +1,7 @@
 import { readdirSync, readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { checked } from "@/lib/assessment/scripted-child";
-import { createSession, finish, learnerProfile, nextQuestion, startExtraRound, storedTest, submitAnswer, type ProfileAnswer, type Session } from "@/lib/assessment";
+import { createSession, finish, learnerProfile, nextQuestion, storedTest, submitAnswer, type ProfileAnswer, type Session } from "@/lib/assessment";
 import { EXPORT_DATASETS, exportChunks, type ExportReader, type ExportRequest } from "@/lib/admin-export";
 import { memoryExportReader, type ExportData } from "@/lib/admin-export-memory";
 
@@ -342,52 +342,45 @@ describe("the questions as drawn", () => {
   });
 });
 
-describe("the extra round (#190)", () => {
-  /** A grade 4 test from seed 1 with the first answer wrong (an early sign), then the extra round drawn and taken. */
-  function withRound(): Session {
+describe("a test from before the extra round was removed (#190, D-145)", () => {
+  /** A finished grade 4 test from seed 1, whose stored test also holds one question of the removed round, as two old tests do. */
+  function finished(): Session {
     let session = createSession({ grade: 4, province: "BC" }, 1);
     for (let q = nextQuestion(session); q; q = nextQuestion(session)) {
       session = checked(submitAnswer(session, { questionId: q.id, response: session.answers.length === 0 ? "no idea" : q.answer, timeMs: 20_000 }));
     }
-    return startExtraRound(session);
+    return session;
   }
-  const session = withRound();
-  const stored = storedTest(session);
+  const session = finished();
   const route = session.route!;
-  const main = stored.stage1.length + stored.stage2[route].length;
-  const times = {
-    // A round stopped part way: skipped after it started (D-116).
-    stopped: { extra_offered_at: "2026-10-16T10:20:00+00:00", extra_started_at: "2026-10-16T10:20:05+00:00", extra_skipped_at: "2026-10-16T10:24:00+00:00" },
-    finished: { extra_offered_at: "2026-10-16T10:20:00+00:00", extra_started_at: "2026-10-16T10:20:05+00:00", extra_finished_at: "2026-10-16T10:30:00+00:00" },
-  };
+  const main = session.stage1.length + session.stage2[route].length;
+  const stored = { ...storedTest(session), extra: [{ ...session.stage2[route][0], id: "x-0" }] };
+  const round = { extra_offered_at: "2026-10-16T10:20:00+00:00", extra_started_at: "2026-10-16T10:20:05+00:00", extra_finished_at: "2026-10-16T10:30:00+00:00" };
+  const shown = (position: number, question_id: string) => ({ assessment_id: uuid(1), position, question_id, shown_at: "2026-10-16T10:20:10+00:00", created_at: "2026-10-16T10:20:10+00:00" });
   const data = {
-    assessments: [test(1, { route, test: stored, ...times.finished }), test(2, { route, test: stored, ...times.stopped })],
+    assessments: [test(1, { route, test: stored, ...round })],
     answers: [answer(1, main - 1), answer(1, main, { question_id: "x-0", round: "extra" })],
+    question_shows: [shown(main - 1, `q${main - 1}`), shown(main, "x-0")],
   };
 
-  it("has its times on each test: offered, skipped (a stop when after the start), started and finished", async () => {
-    const rows = await csv(data, { dataset: "tests", withTests: true });
-    expect(rows[0]).toMatchObject({ ...times.finished, extra_skipped_at: "" });
-    expect(rows[1]).toMatchObject({ ...times.stopped, extra_finished_at: "" });
-    const json = JSON.parse(await download(data, { dataset: "tests", format: "json", withTests: true }));
-    expect(json[0]).toMatchObject({ ...times.finished, extra_skipped_at: null });
+  it("has no column for the round on a test or an answer", async () => {
+    const tests = await download(data, { dataset: "tests", format: "csv", withTests: true });
+    const answers = await download(data, { dataset: "answers", format: "csv", withTests: true });
+    expect(tests).not.toContain("extra_");
+    expect(answers.split("\n")[0]).not.toContain("round");
   });
 
-  it("marks each answer with its round", async () => {
-    const rows = await csv(data, { dataset: "answers", withTests: true });
-    expect(rows.map((r) => [r.position, r.question_id, r.round])).toEqual([[String(main - 1), `q${main - 1}`, "main"], [String(main), "x-0", "extra"]]);
+  it("leaves out the round's answers and serves", async () => {
+    expect((await csv(data, { dataset: "answers", withTests: true })).map((r) => r.question_id)).toEqual([`q${main - 1}`]);
+    expect((await csv(data, { dataset: "question_shows", withTests: true })).map((r) => r.question_id)).toEqual([`q${main - 1}`]);
+    expect(JSON.parse(await download(data, { dataset: "answers", format: "json", withTests: true }))).toHaveLength(1);
   });
 
-  it("has its questions as drawn, marked extra and numbered on after the main test, as the answers number them", async () => {
-    const rows = (await csv(data, { dataset: "questions", withTests: true })).filter((r) => r.assessment_id === uuid(1));
-    const extra = rows.filter((r) => r.round === "extra");
-    expect(stored.extra?.length).toBe(8);
-    expect(extra.map((r) => r.question_id)).toEqual(stored.extra!.map((q) => q.id));
-    expect(extra.map((r) => r.position)).toEqual(stored.extra!.map((_, i) => String(main + i)));
-    expect(extra.map((r) => r.index)).toEqual(stored.extra!.map((_, i) => String(i)));
-    expect(extra[0]).toMatchObject({ question_id: "x-0", stage: "", route: "", template_id: stored.extra![0].templateId });
-    expect(JSON.parse(extra[0].question)).toEqual(stored.extra![0]);
-    expect(new Set(rows.filter((r) => r.round !== "extra").map((r) => r.round))).toEqual(new Set(["main"]));
+  it("lists the questions as drawn for the main test only", async () => {
+    const rows = await csv(data, { dataset: "questions", withTests: true });
+    expect(rows.map((r) => r.question_id)).not.toContain("x-0");
+    expect(rows).toHaveLength(stored.stage1.length + stored.stage2.up.length + stored.stage2.stay.length + stored.stage2.down.length);
+    expect(Object.keys(rows[0])).not.toContain("round");
   });
 });
 
@@ -458,10 +451,10 @@ describe("the columns the export reads", () => {
     const missing = asked.flatMap(({ table, columns }) => columns.filter((c) => !tables.get(table)?.has(c)).map((c) => `${table}.${c}`));
     expect(new Set(asked.map((a) => a.table))).toEqual(new Set(["assessments", "children", "answers", "question_shows", "assessment_facts", "fact_answers", "learner_profiles"]));
     expect([...new Set(missing)]).toEqual([]);
-    // The extra round (#190): its times on the test and its marker on each answer.
+    // D-145: no read asks for the removed extra round's columns (#190), so the migration that drops them breaks no export.
     const read = new Set(asked.flatMap(({ table, columns }) => columns.map((c) => `${table}.${c}`)));
     for (const c of ["assessments.extra_offered_at", "assessments.extra_skipped_at", "assessments.extra_started_at", "assessments.extra_finished_at", "answers.round"]) {
-      expect(read).toContain(c);
+      expect(read).not.toContain(c);
     }
   });
 });

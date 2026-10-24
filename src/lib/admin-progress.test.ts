@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { checked } from "@/lib/assessment/scripted-child";
-import { createSession, nextQuestion, startExtraRound, submitAnswer, type Route, type Session } from "@/lib/assessment";
+import { createSession, type Route, type Session } from "@/lib/assessment";
 import { progressSnapshot, testProgress, type ProgressInput } from "@/lib/admin-progress";
 import { progressTestIds, type Family } from "@/lib/admin-dashboard";
 
@@ -14,9 +13,9 @@ const grade7 = createSession({ grade: 7, province: "BC" }, 1);
 
 /** The lengths and the next prompt of a stored test, as public.admin_test_progress() returns them. */
 function stored(s: Session, route: Route | null, answered: number): Pick<ProgressInput, "lengths" | "nextPrompt"> {
-  const onRoute = [...s.stage1, ...(route ? s.stage2[route] : []), ...(route ? (s.extra ?? []) : [])];
+  const onRoute = [...s.stage1, ...(route ? s.stage2[route] : [])];
   return {
-    lengths: { stage1: s.stage1.length, up: s.stage2.up.length, stay: s.stage2.stay.length, down: s.stage2.down.length, extra: s.extra?.length ?? 0 },
+    lengths: { stage1: s.stage1.length, up: s.stage2.up.length, stay: s.stage2.stay.length, down: s.stage2.down.length },
     nextPrompt: answered < s.stage1.length || route ? (onRoute[answered]?.prompt ?? null) : null,
   };
 }
@@ -27,15 +26,14 @@ function input(answered: number, over: Partial<ProgressInput> = {}): ProgressInp
   return {
     status: "in_progress", route, answered, ...stored(grade7, route, answered),
     lastShown: { position: answered, at: iso(27) }, startedAt: iso(0), lastAnswerAt: iso(27), completedAt: null,
-    resumeUntil: iso(27 + 24 * 60), breakStartedAt: null, breakEndedAt: null, factsStartedAt: null, factsAnswered: 0, factsTried: 0, factsDrawn: 90,
-    extraOfferedAt: null, extraSkippedAt: null, extraStartedAt: null, extraFinishedAt: null, ...over,
+    resumeUntil: iso(27 + 24 * 60), breakStartedAt: null, breakEndedAt: null, factsStartedAt: null, factsAnswered: 0, factsTried: 0, factsDrawn: 90, ...over,
   };
 }
 
 describe("testProgress", () => {
   it("names the next question to answer, its part and prompt, and when it was shown", () => {
     const p = testProgress(input(25, { breakStartedAt: iso(16), breakEndedAt: iso(20), factsStartedAt: iso(21), factsAnswered: 37 }), NOW);
-    expect(p).toMatchObject({ phase: "question", text: "Next question: 26 of 42", short: "Next: Q 26 of 42", answered: 25, total: 42, part1: 21, main: 42, open: true, since: iso(27), sinceText: "shown" });
+    expect(p).toMatchObject({ phase: "question", text: "Next question: 26 of 42", short: "Next: Q 26 of 42", answered: 25, total: 42, part1: 21, open: true, since: iso(27), sinceText: "shown" });
     expect(p.current).toEqual({ number: 26, part: "Part 2", prompt: grade7.stage2.stay[4].prompt });
     expect(p.facts).toEqual({ answered: 37, done: true });
   });
@@ -54,7 +52,7 @@ describe("testProgress", () => {
 
   it("counts a test from before the stage 1 lock, with Part 2 answers and no stored route, as Part 2", () => {
     const p = testProgress(input(25, { route: null }), NOW);
-    expect(p).toMatchObject({ phase: "question", text: `Next question: 26 of ${p.main}`, current: { number: 26, part: "Part 2", prompt: null }, open: true });
+    expect(p).toMatchObject({ phase: "question", text: `Next question: 26 of ${p.total}`, current: { number: 26, part: "Part 2", prompt: null }, open: true });
     // With enough answers for the shortest form, it may have every main answer in: it is not closed at the deadline.
     expect(testProgress(input(42, { route: null }), Date.parse(iso(27 + 25 * 60))).open).toBe(true);
     expect(testProgress(input(25, { route: null }), Date.parse(iso(27 + 25 * 60))).phase).toBe("closed");
@@ -88,46 +86,19 @@ describe("testProgress", () => {
     expect(early(90)).toMatchObject({ text: "Quick facts done (0 answered). Next question: 22 of 42", facts: { answered: 0, done: true }, sinceText: "facts started", current: { number: 22 } });
   });
 
-  it("does not claim the Part 2 grid when the child may be on the last step, then shows the extra round offer", () => {
-    expect(testProgress(input(42), NOW)).toMatchObject({ phase: "check", text: "Checking the Part 2 answers, or on the last step", short: "Checking or finishing" });
-    expect(testProgress(input(42, { extraOfferedAt: iso(30) }), NOW)).toMatchObject({ phase: "offer", since: iso(30) });
-    expect(testProgress(input(42, { extraOfferedAt: iso(30), extraSkippedAt: iso(31) }), NOW)).toMatchObject({ phase: "finishing", total: 42 });
+  it("does not claim the Part 2 grid when the child may be on the last step", () => {
+    expect(testProgress(input(42), NOW)).toMatchObject({ phase: "check", text: "Checking the Part 2 answers, or on the last step", short: "Checking or finishing", total: 42 });
   });
 
-  it("keeps a test with every main answer open after its deadline, as such a test never expires", () => {
+  it("keeps a test with every answer open after its deadline, as such a test never expires", () => {
     const late = Date.parse(iso(27 + 25 * 60));
     expect(testProgress(input(42), late)).toMatchObject({ phase: "check", open: true });
     expect(testProgress(input(25), late)).toMatchObject({ phase: "closed", open: false });
   });
 
-  describe("with the extra round taken", () => {
-    let full: Session = grade7;
-    for (let q = nextQuestion(full); q; q = nextQuestion(full)) {
-      full = checked(submitAnswer(full, { questionId: q.id, response: full.answers.length === 0 ? "no idea" : q.answer, timeMs: 20_000 }));
-    }
-    const route = full.route!;
-    const main = 21 + full.stage2[route].length;
-    const round = startExtraRound(full);
-    const extra = round.extra!.length;
-    const taken = (answered: number, over: Partial<ProgressInput> = {}) =>
-      testProgress(input(answered, { route, ...stored(round, route, answered), extraOfferedAt: iso(20), extraStartedAt: iso(21), ...over }), NOW);
-
-    it("counts the round's questions in the total and names the round's next question", () => {
-      expect(taken(main + 1)).toMatchObject({ phase: "question", total: main + extra, current: { number: main + 2, part: "Extra round", prompt: round.extra![1].prompt } });
-    });
-
-    it("shows the round's check grid or the last step, then the last step", () => {
-      expect(taken(main + extra)).toMatchObject({ phase: "check", text: "Checking the extra round answers, or on the last step" });
-      expect(taken(main + extra, { extraFinishedAt: iso(30) })).toMatchObject({ phase: "finishing", since: iso(30) });
-    });
-
-    it("ends a round the child stopped part way at its last answer", () => {
-      expect(taken(main + 1, { extraSkippedAt: iso(26) })).toMatchObject({ phase: "finishing", total: main + 1 });
-    });
-
-    it("leaves out a round taken from the report after the test was completed", () => {
-      expect(taken(main, { status: "completed", completedAt: iso(15), extraStartedAt: iso(60) })).toMatchObject({ phase: "finished", total: main, open: false });
-    });
+  it("counts a finished test from before the removal of the extra round (#190, D-145) without the round's answers", () => {
+    // 42 main answers and 8 round answers stored: the count stops at the test's length.
+    expect(testProgress(input(50, { route: "stay", status: "completed", completedAt: iso(39) }), NOW)).toMatchObject({ phase: "finished", text: "Finished: 42 of 42 answered", answered: 42, total: 42 });
   });
 
   it("closes a test whose deadline passed, before the next question", () => {

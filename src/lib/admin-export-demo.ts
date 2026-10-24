@@ -80,7 +80,6 @@ export function demoExportData(families = 24): ExportData {
         read_aloud_count: r() < 0.15 ? 1 : 0, read_aloud_at_ms: [], away_count: 0, away_ms: 0,
         work_required: q.showWork === true, work_path: drawn ? `${parent}/${test}/${q.id}-demo.png` : null,
         work_text: drawn && r() < 0.4 ? "I added the tens, then the ones" : null, strokes_path: drawn ? `${parent}/${test}/${q.id}-demo.strokes.json` : null,
-        round: "main",
       });
     }
     const done = nextQuestion(session) === null;
@@ -104,7 +103,6 @@ export function demoExportData(families = 24): ExportData {
       route: session.route, help: done ? "no" : null, placement, test: storedTest(session),
       device: { deviceClass: i % 2 ? "tablet" : "laptop", input: i % 2 ? "touch" : "mouse", screenWidth: i % 2 ? 820 : 1440, screenHeight: i % 2 ? 1180 : 900, browser: "safari" },
       break_started_at: null, break_ended_at: null, break_skipped: null, break_ms: null,
-      extra_offered_at: null, extra_skipped_at: null, extra_started_at: null, extra_finished_at: null,
     };
     out.assessments.push(row);
     if (placement && province === "BC") {
