@@ -30,7 +30,7 @@ export function ScanShot({ sizes }: { sizes: string }) {
               </div>
             ))}
           </div>
-          <p className="scan-fix">Borrow a ten: 14 − 7 = 7, 4 − 3 = 1. <b>54 − 37 = 17</b></p>
+          <p className="scan-fix">Borrow a ten: 14 − 7 = 7, 4 − 3 = 1, <b>so 17</b></p>
         </div>
       </div>
     </div>
