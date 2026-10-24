@@ -286,10 +286,9 @@ export function nextQuestion(session: Session): Question | null {
 export const allAnswered = (session: Session): boolean => session.route !== null && session.answers.length >= questionsOnRoute(session).length;
 
 /**
- * D-145: the optional extra round (#190, D-116) is removed. Two tests from before keep answers, serves and work reviews
- * for its questions, whose ids are x-0, x-1 and so on (the main test's are s1-, up-, stay- and down-). Every read that
- * rebuilds, scores, shows, exports or copies a test leaves them out with this rule, and so do the database functions
- * (migration remove_extra_round_functions). If those rows are ever deleted, this rule can go.
+ * D-145: the optional extra round (#190, D-116) is removed, and migration drop_extra_round_data deleted its answers,
+ * serves and stored parts. Its question ids were x-0, x-1 and so on (the main test's are s1-, up-, stay- and down-).
+ * Two stored learner profiles still name such questions, so every read keeps leaving them out with this rule.
  */
 export const fromRemovedRound = (questionId: string): boolean => questionId.startsWith("x-");
 
