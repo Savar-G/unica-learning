@@ -6,7 +6,7 @@ import { BRAND, PLANS } from "@/lib/site";
 
 export type Mark = "yes" | "part" | "no";
 export type OptionId = "tutor" | "centre" | "online" | "us";
-export type RowId = "personal" | "pace" | "plan" | "gaps" | "paper" | "home";
+export type RowId = "personal" | "pace" | "plan" | "help" | "gaps" | "paper" | "home";
 
 export const MARK_LABEL: Record<Mark, string> = { yes: "Yes", part: "Partly", no: "No" };
 
@@ -47,6 +47,16 @@ export const ROWS: { id: RowId; label: string; cells: Record<OptionId, [Mark, st
       centre: ["yes", "A set program at the centre"],
       online: ["part", "Suggested skills; your child often picks"],
       us: ["yes", "A new book before the last one runs out"],
+    },
+  },
+  {
+    id: "help",
+    label: "Help when they're stuck",
+    cells: {
+      tutor: ["yes", "Explains live"],
+      centre: ["part", "Ask the instructor at the centre"],
+      online: ["part", "Hints and videos, varies by platform"],
+      us: ["yes", "The companion explains it out loud, step by step"],
     },
   },
   {
