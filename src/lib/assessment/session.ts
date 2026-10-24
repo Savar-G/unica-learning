@@ -288,8 +288,8 @@ export const allAnswered = (session: Session): boolean => session.route !== null
 /**
  * D-145: the optional extra round (#190, D-116) is removed. Two tests from before keep answers, serves and work reviews
  * for its questions, whose ids are x-0, x-1 and so on (the main test's are s1-, up-, stay- and down-). Every read that
- * rebuilds, scores, shows, exports or copies a test leaves them out with this rule. Once the follow-up migration
- * removes those rows, this rule can go.
+ * rebuilds, scores, shows, exports or copies a test leaves them out with this rule, and so do the database functions
+ * (migration remove_extra_round_functions). If those rows are ever deleted, this rule can go.
  */
 export const fromRemovedRound = (questionId: string): boolean => questionId.startsWith("x-");
 

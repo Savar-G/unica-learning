@@ -21,8 +21,7 @@ export const COPY_VERSION = 2;
 /**
  * The copy's fields, in order: the test, each question and each fact answer. The database refuses a copy with a field
  * at the top or in a question that its allowlist does not have (save_family_test_copy), so a new field here needs a
- * migration too. Its allowlist still has the removed round's fields (`extraRound` and its record, a question's `round`)
- * until the follow-up migration of D-145; the copy never sends them.
+ * migration too (the allowlist matches this list since migration remove_extra_round_functions, D-145).
  */
 export const COPY_FIELDS = {
   test: [
