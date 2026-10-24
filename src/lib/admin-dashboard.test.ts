@@ -251,6 +251,24 @@ describe("accuracy rules", () => {
     expect(d.kpis.find((k) => k.key === "mrr")?.value).toBe(79.99);
   });
 
+  it("shows a family in a new free trial as in the trial, not paying, after an older paid plan ended", () => {
+    const r = rows({
+      parents: [parent("a", ago(120))],
+      cards: [card("a", "a", ago(110), ago(110))],
+      subscriptions: [
+        sub("cus_a", "canceled", ago(100), { endedAt: ago(40), amount: 9900 }),
+        sub("cus_a", "trialing", ago(5), { trialEnd: ago(-25), amount: 7999 }),
+      ],
+    });
+    const d = buildDashboard(r, "all", NOW);
+    const a = d.families.find((f) => f.id === "a")!;
+    expect(a.stage).toBe("trial");
+    expect(a.stageAt).toBe(ago(5));
+    expect(d.kpis.find((k) => k.key === "trial")?.value).toBe(1);
+    expect(d.kpis.find((k) => k.key === "paying")?.value).toBe(0);
+    expect(d.kpis.find((k) => k.key === "mrr")?.value).toBe(0);
+  });
+
   it("adds monthly revenue from paying subscriptions only, spread over their billing period", () => {
     expect(monthlyAmount(sub("x", "active", ago(1), { amount: 9900, quantity: 2 }))).toBe(198);
     expect(monthlyAmount(sub("x", "active", ago(1), { amount: 120000, interval: "year" }))).toBe(100);

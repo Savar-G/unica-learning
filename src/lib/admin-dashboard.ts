@@ -302,10 +302,13 @@ export function buildFamilies(rows: DashboardRows, now = new Date()): Family[] {
       waitlist: earliest(waits.map((w) => w.created_at)),
       card_started: earliest(cards.map((c) => c.created_at)),
       card_saved: earliest(cards.map((c) => c.card_saved_at)),
-      trial: subs[0]?.created ?? null,
+      // the start of the free trial running now, else of the first subscription
+      trial: trialing.at(-1)?.created ?? subs[0]?.created ?? null,
       // the first charge: the end of the trial (or the start, without one) of a subscription that is paying, or one
-      // that ended after its trial (or had none)
-      paying: earliest(subs.filter((s) => PAYING.has(s.status) || (s.endedAt && (!s.trialEnd || s.endedAt > s.trialEnd))).map((s) => s.trialEnd ?? s.created)),
+      // that ended after its trial (or had none). A family in a free trial with nothing paying now is in the trial,
+      // even when an older paid subscription ended.
+      paying: paying.length === 0 && trialing.length > 0 ? null
+        : earliest(subs.filter((s) => PAYING.has(s.status) || (s.endedAt && (!s.trialEnd || s.endedAt > s.trialEnd))).map((s) => s.trialEnd ?? s.created)),
       cancelled: subs.length > 0 && paying.length === 0 && trialing.length === 0 ? latest(subs.map((s) => s.endedAt ?? s.created)) : null,
     };
     for (const [s, when] of Object.entries(at)) if (when) reached[s as Stage] = when;
