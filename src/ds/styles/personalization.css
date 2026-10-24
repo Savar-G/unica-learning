@@ -77,6 +77,8 @@
 .sample-note { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 16px 32px; margin: 0 0 32px; padding: 20px 24px; border-radius: 4px; background: var(--card); border-left: 4px solid var(--g1); }
 .sample-note > div { display: grid; gap: 8px; max-width: 64ch; }
 .sample-note p { margin: 0; }
+/* The button keeps its own width; the note under it is wider. */
+.sample-note .btn { justify-self: start; }
 
 /* Tap a page to read it full size (PageDeck). */
 .pz-zoom { display: block; width: 100%; padding: 0; border: 0; background: none; color: inherit; font: inherit; text-align: left; cursor: zoom-in; position: relative; border-radius: 6px; }
