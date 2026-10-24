@@ -104,13 +104,13 @@ export const ONE_BY_ONE: { id: Exclude<OptionId, "us">; tag: string; title: stri
   {
     id: "tutor",
     tag: "vs Tutor programs",
-    title: `A tutor explains. ${BRAND} keeps them practising every day.`,
+    title: `A tutor teaches live. ${BRAND} explains when they're stuck, and keeps them practising every day.`,
     summary: `Tutoring is time with a person. ${BRAND} is a plan your child works through at home, 15-30 minutes a day.`,
     goodTitle: "A tutor is good at",
     good: ["Explaining live and answering questions", "Adjusting to your child each session", "Help with homework and tests"],
     hardTitle: "Harder with a tutor",
     hard: ["Often an hour or two a week; the other days are up to you", "$40-$100 an hour, every week", "How much you hear about gaps depends on the tutor"],
-    us: ["Practice 5 days a week, built from their last book", "A report and worked solutions after every scan", `CAD ${PLANS.one.price} a month. You can keep a tutor too.`],
+    us: ["Practice 5 days a week, built from their last book", "The companion explains any step out loud, plus a report and worked solutions after every scan", `CAD ${PLANS.one.price} a month. You can keep a tutor too.`],
   },
   {
     id: "centre",
@@ -121,7 +121,7 @@ export const ONE_BY_ONE: { id: Exclude<OptionId, "us">; tag: string; title: stri
     good: ["A set program and a daily habit", "A placement test to start", "Instructors at the centre"],
     hardTitle: "Harder with a centre",
     hard: ["You drive there, often twice a week, and wait", "Your child moves along a set path", "About $200 per subject a month, often plus an enrolment fee"],
-    us: ["Every book is built from their own work", "It comes to your door", `CAD ${PLANS.one.price} a month, no enrolment fee`],
+    us: ["Every book is built from their own work", "It comes to your door, and the companion explains any step when they're stuck", `CAD ${PLANS.one.price} a month, no enrolment fee`],
   },
   {
     id: "online",
