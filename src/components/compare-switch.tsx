@@ -19,7 +19,7 @@ export function CompareSwitch({ labelledBy }: { labelledBy: string }) {
           <button type="button" key={o.id} aria-pressed={pick === o.id} onClick={() => setPick(o.id)}>{o.short}</button>
         ))}
       </div>
-      <CompareGrid className="cmp-all" columns={OPTIONS.map((o) => o.id)} rows={["personal", "pace", "plan", "help", "gaps", "paper", "home"]} labelledBy={labelledBy} />
+      <CompareGrid className="cmp-all" columns={OPTIONS.map((o) => o.id)} rows={["personal", "plan", "help", "person", "gaps", "paper", "home"]} labelledBy={labelledBy} />
     </div>
   );
 }

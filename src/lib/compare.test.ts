@@ -21,7 +21,7 @@ describe("the comparison (home table and /compare)", () => {
   });
 
   it("shows our live plan price", () => {
-    expect(COST.us[0]).toBe(`CAD ${PLANS.one.price}`);
+    expect(COST.us[0]).toBe(`$${PLANS.one.price}`);
   });
 
   it("has one block per other option", () => {

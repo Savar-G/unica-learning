@@ -6,7 +6,7 @@ import { BRAND, PLANS } from "@/lib/site";
 
 export type Mark = "yes" | "part" | "no";
 export type OptionId = "tutor" | "centre" | "online" | "us";
-export type RowId = "personal" | "pace" | "plan" | "help" | "gaps" | "paper" | "home";
+export type RowId = "personal" | "plan" | "help" | "person" | "gaps" | "paper" | "home";
 
 export const MARK_LABEL: Record<Mark, string> = { yes: "Yes", part: "Partly", no: "No" };
 
@@ -26,17 +26,7 @@ export const ROWS: { id: RowId; label: string; cells: Record<OptionId, [Mark, st
       tutor: ["yes", "The tutor adjusts each session"],
       centre: ["part", "Own pace, on a set path"],
       online: ["yes", "Adapts to their answers on screen"],
-      us: ["yes", "Every book matched to their level and gaps"],
-    },
-  },
-  {
-    id: "pace",
-    label: "Moves at their pace",
-    cells: {
-      tutor: ["yes", "Set by the tutor"],
-      centre: ["yes", "Moves up when they're ready"],
-      online: ["yes", "Moves up when they're ready"],
-      us: ["yes", "More practice where they need it, new topics when they're ready"],
+      us: ["yes", "Every page matched to their level and gaps"],
     },
   },
   {
@@ -46,7 +36,7 @@ export const ROWS: { id: RowId; label: string; cells: Record<OptionId, [Mark, st
       tutor: ["part", "Depends on the tutor"],
       centre: ["yes", "A set program at the centre"],
       online: ["part", "Suggested skills; your child often picks"],
-      us: ["yes", "A new book before the last one runs out"],
+      us: ["yes", "The next pages arrive before they run out"],
     },
   },
   {
@@ -55,8 +45,18 @@ export const ROWS: { id: RowId; label: string; cells: Record<OptionId, [Mark, st
     cells: {
       tutor: ["yes", "Explains live"],
       centre: ["part", "Ask the instructor at the centre"],
-      online: ["part", "Hints and videos, varies by platform"],
+      online: ["part", "Hints, videos or worked answers on screen"],
       us: ["yes", "The companion explains it out loud, step by step"],
+    },
+  },
+  {
+    id: "person",
+    label: "A person they can ask",
+    cells: {
+      tutor: ["yes", "The tutor, live"],
+      centre: ["yes", "Instructors at the centre"],
+      online: ["no", "Help is on the screen"],
+      us: ["no", "No live teacher; the companion explains each step"],
     },
   },
   {
@@ -76,7 +76,7 @@ export const ROWS: { id: RowId; label: string; cells: Record<OptionId, [Mark, st
       tutor: ["part", "Depends on the tutor"],
       centre: ["part", "Depends on the centre"],
       online: ["no", "On a screen"],
-      us: ["yes", "Every day; the screen stays with you"],
+      us: ["yes", "5 days a week; the screen stays with you"],
     },
   },
   {
@@ -91,37 +91,38 @@ export const ROWS: { id: RowId; label: string; cells: Record<OptionId, [Mark, st
   },
 ];
 
-/** Big number, then its unit. Learning centres: BC centre pages list about $170-$220 per subject a month (2026-10-16). */
+/** Big number, then its unit, all a month so they compare. Tutors: 1 hour a week at $40-$100 is about $173-$433 a month
+ *  (x 4.33). Learning centres: BC centre pages list about $170-$220 per subject a month (2026-10-16). */
 export const COST: Record<OptionId, [string, string]> = {
-  tutor: ["$40-$100", "an hour"],
-  centre: ["About $200", "per subject, a month"],
+  tutor: ["About $170-$430", "a month, for 1 hour a week"],
+  centre: ["About $200", "a month, per subject"],
   online: ["$0-$25", "a month"],
-  us: [`CAD ${PLANS.one.price}`, "a month, delivery included"],
+  us: [`$${PLANS.one.price}`, "a month, delivery included"],
 };
 
 /** One block per option on /compare: what it does well, what is harder, and what Unica does instead. */
 export const ONE_BY_ONE: { id: Exclude<OptionId, "us">; tag: string; title: string; summary: string; goodTitle: string; good: string[]; hardTitle: string; hard: string[]; us: string[] }[] = [
   {
     id: "tutor",
-    tag: "vs Tutor programs",
+    tag: "vs Private tutors",
     title: `A tutor teaches live. ${BRAND} explains when they're stuck, and keeps them practising every day.`,
     summary: `Tutoring is time with a person. ${BRAND} is a plan your child works through at home, 15-30 minutes a day.`,
     goodTitle: "A tutor is good at",
     good: ["Explaining live and answering questions", "Adjusting to your child each session", "Help with homework and tests"],
     hardTitle: "Harder with a tutor",
-    hard: ["Often an hour or two a week; the other days are up to you", "$40-$100 an hour, every week", "How much you hear about gaps depends on the tutor"],
-    us: ["Practice 5 days a week, built from their last book", "The companion explains any step out loud, plus a report and worked solutions after every scan", `CAD ${PLANS.one.price} a month. You can keep a tutor too.`],
+    hard: ["Often an hour or two a week; the other days are up to you", "$40-$100 an hour: about $170-$430 a month for 1 hour a week", "How much you hear about gaps depends on the tutor"],
+    us: ["Practice 5 days a week, built from their recent work", "The companion explains any step out loud, plus a report and worked solutions after every scan", `$${PLANS.one.price} a month. You can keep a tutor too.`],
   },
   {
     id: "centre",
     tag: "vs Learning centres",
     title: "Structured like a learning centre, without the drive.",
-    summary: `A centre gives your child a program and a routine. ${BRAND} does too, and builds each book from how they did on the last one.`,
+    summary: `A centre gives your child a program and a routine. ${BRAND} does too, and builds each set of pages from how they did on the last.`,
     goodTitle: "A centre is good at",
     good: ["A set program and a daily habit", "A placement test to start", "Instructors at the centre"],
     hardTitle: "Harder with a centre",
     hard: ["You drive there, often twice a week, and wait", "Your child moves along a set path", "About $200 per subject a month, often plus an enrolment fee"],
-    us: ["Every book is built from their own work", "It comes to your door, and the companion explains any step when they're stuck", `CAD ${PLANS.one.price} a month, no enrolment fee`],
+    us: ["Every page is built from their own work", "It comes to your door, and the companion explains any step when they're stuck", `$${PLANS.one.price} a month, no enrolment fee`],
   },
   {
     id: "online",
@@ -131,14 +132,17 @@ export const ONE_BY_ONE: { id: Exclude<OptionId, "us">; tag: string; title: stri
     goodTitle: "An online platform is good at",
     good: ["Adapting to answers right away", "Low cost, and some are free", "Practice anywhere, any time"],
     hardTitle: "Harder with an online platform",
-    hard: ["Practice happens on a screen", "Answers are tapped or typed, so the working on paper is never marked"],
-    us: ["Your child works with pencil and paper", "You take a photo; we mark the work and show you the gaps", "The screen stays with you"],
+    hard: ["Practice happens on a screen", "Answers are tapped or typed, so the working on paper is never marked", "Help explains the question, without seeing how your child worked it"],
+    us: ["Your child works with pencil and paper; the screen stays with you", "You take a photo; we mark the work and show you the gaps", "The companion explains any step they got wrong, out loud"],
   },
 ];
 
 export const COMPARE_FAQ: { question: string; answer: string }[] = [
+  { question: "Is this as good as a tutor?", answer: `They do different things. A tutor is a person who explains live, usually an hour or two a week. ${BRAND} is practice 5 days a week, built from your child's own work, with the companion to explain a step when they're stuck. You can use both.` },
+  { question: "How much of my time does it take?", answer: "Your child works on paper, 15-30 minutes a day. You scan finished pages with your phone and read the report. The companion explains steps, so you don't have to." },
+  { question: "What if my child is ahead or behind?", answer: "The free assessment finds their level, whatever their grade. Their pages start there: more practice on the gaps, and new topics when they're ready." },
   { question: `Does ${BRAND} replace school?`, answer: `No. ${BRAND} works alongside school. It follows your child's curriculum, so practice at home matches class, and moves ahead when your child is ready.` },
   { question: "Can we keep our tutor?", answer: `Yes. A tutor can explain live, and ${BRAND} gives your child daily practice between sessions.` },
   { question: "Is there any screen time?", answer: "Daily practice is on paper. The free math assessment is online. The app is for you: scan a page to check answers or see every step." },
-  { question: "Where do these prices come from?", answer: "Public price lists and rate pages, checked October 2026. Prices vary by tutor, centre and plan." },
+  { question: "Where do these prices come from?", answer: "Public price lists and rate pages, checked October 2026. Tutor prices are for 1 hour a week. Prices are in Canadian dollars, except some online platforms that list US prices. They vary by tutor, centre and plan." },
 ];
