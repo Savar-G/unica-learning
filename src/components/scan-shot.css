@@ -1,0 +1,21 @@
+/* How it works, step 4: Leah's marked page on the phone in the scan photo (scan-shot.tsx). The frame is the whole
+   portrait photo (2:3), centred in the card like object-fit: cover, so the screen keeps its place in the photo. */
+.scan-frame { position: absolute; left: 0; top: 50%; width: 100%; aspect-ratio: 2 / 3; transform: translateY(-50%); container-type: inline-size; }
+.step .vis .scan-frame img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+.step:hover .vis .scan-frame img { transform: none; }
+
+/* The camera view of the phone: left 31%, top 34.5%, 34.5% wide, 30.5% high of the photo. */
+.scan-screen { position: absolute; left: 31%; top: 34.4%; width: 34.6%; height: 30.6%; overflow: hidden; display: flex; flex-direction: column; background: #f1efe9; font: 400 2.1cqw/1.25 var(--sans); color: #1d1d1b; }
+.scan-screen .scan-bar { margin: 0; display: flex; justify-content: space-between; align-items: center; gap: 1cqw; padding: 1.1cqw 1.6cqw; background: #1d1d1b; color: #fff; font-size: 1.9cqw; }
+.scan-screen .scan-bar span { color: #ffcf9e; }
+.scan-screen .scan-sheet { flex: 1; margin: 1.4cqw; padding: 1.6cqw 1.8cqw; background: #fff; box-shadow: 0 0.3cqw 1cqw rgba(0, 0, 0, 0.12); display: flex; flex-direction: column; gap: 1.6cqw; }
+.scan-screen .scan-tt { margin: 0; font-size: 2.5cqw; font-weight: 500; }
+.scan-screen .scan-sums { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1cqw; }
+.scan-screen .scan-sum { position: relative; display: grid; justify-items: end; padding-right: 2.6cqw; font: 400 2.9cqw/1.3 var(--sans); white-space: nowrap; }
+.scan-screen .scan-sum > span:nth-child(2) { border-bottom: 0.25cqw solid #1d1d1b; padding-left: 0.6cqw; }
+.scan-screen .scan-wrote { font: 600 4.4cqw/1.1 var(--pen); color: #2a2a8a; }
+.scan-screen .scan-sum i { position: absolute; right: -0.4cqw; bottom: 0.2cqw; font: 700 3cqw/1 var(--sans); font-style: normal; color: #16a06a; }
+.scan-screen .scan-sum.is-wrong i { color: #d23b2a; }
+.scan-screen .scan-sum.is-wrong .scan-wrote { text-decoration: line-through; text-decoration-color: #d23b2a; text-decoration-thickness: 0.3cqw; }
+.scan-screen .scan-fix { margin: auto 0 0; padding: 1cqw 1.4cqw; border-left: 0.5cqw solid #d23b2a; background: #fdf0ee; font: 600 3cqw/1.15 var(--pen); color: #b2301f; }
+.scan-screen .scan-fix b { font-weight: 700; }

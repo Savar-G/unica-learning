@@ -57,7 +57,7 @@ Personalized, mailed math and reading workbooks for ages 6-12 (grades 1-7). The 
 | `OPENROUTER_API_KEY` | Server only. Turns on the AI work review, AI report text (#68, #183) and the learner profile's AI parts (#197, `src/lib/learner-profile-ai.ts`; with no key the profile keeps its facts only); unset means off. An OpenRouter API key. |
 | `AI_MODEL` | The OpenRouter model id for every AI feature; default `anthropic/claude-sonnet-5.5`. |
 | `AI_REVIEW_FAKE` | Development only (ignored in production): `sure` or `unsure` runs the report job with a fake reviewer (and fake profile AI parts), for screenshots. |
-| `NEXT_PUBLIC_BOOKING_URL` | The Calendly page for the free 15-minute results call (`src/lib/contact.ts`): a card on the report and a line in the report email. Optional; unset hides both. Calendly sends booking alerts to its account email (contact@unicalearning.com). |
+| `NEXT_PUBLIC_BOOKING_URL` | The Calendly page for the free 15-minute results call (`src/lib/contact.ts`): a card on the report and a line in the report email. Optional: unset uses `https://calendly.com/contact-unicalearning/15min`; an empty value hides both. Calendly sends booking alerts to its account email (contact@unicalearning.com). |
 | `NEXT_PUBLIC_META_PIXEL_ID`, `NEXT_PUBLIC_GOOGLE_ADS_ID`, `NEXT_PUBLIC_GOOGLE_ADS_LEAD_LABEL`, `NEXT_PUBLIC_GOOGLE_ADS_REPORT_LABEL`, `NEXT_PUBLIC_GOOGLE_ADS_CARD_LABEL` | Ad tags (D-126, `src/lib/ad-tags.ts`). Optional; each tag is off when its ID is unset. They load only after cookie consent, never on the child's test pages, and Meta only on clean addresses. See `docs/ad-tracking.md`. |
 
 ## Agent skills

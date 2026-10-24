@@ -5,6 +5,7 @@ import type { ReactNode } from "react";
 import Image, { type StaticImageData } from "next/image";
 import Link from "next/link";
 import { CookieSettingsButton } from "@/components/cookie-consent";
+import { ScanShot } from "@/components/scan-shot";
 import { FaqMore } from "@/components/faq-more";
 import { StartLink, StartNote } from "@/components/start-link";
 import { BRAND, HERO, PLANS, cad, firstMonth } from "@/lib/site";
@@ -33,7 +34,6 @@ import heroHome1 from "@/assets/img/hero-home-1.jpg";
 import assessPhoto from "@/assets/img/loop-assess-1.jpg";
 import practice6 from "@/assets/img/loop-practice-6.jpg";
 import deliverPhoto from "@/assets/img/loop-deliver.jpg";
-import scanPhoto from "@/assets/img/loop-scan.jpg";
 import adaptPhoto from "@/assets/img/loop-adapt.jpg";
 import repeatPhoto from "@/assets/img/loop-repeat.jpg";
 import adapt4 from "@/assets/img/loop-adapt-4.jpg";
@@ -99,7 +99,7 @@ const STEPS = [
   { n: "02", t: "Deliver", d: "We mail a workbook matched to their level and gaps. It follows your school curriculum.", v: <Image src={deliverPhoto} alt="Two mailers waiting on a front step" sizes={STEP_SIZES} placeholder="blur" />, tone: "photo" as const },
   { n: "03", t: "Practice", d: <>Your child works on paper for 15-30 minutes a day, 5 days a week, with rewards for every page. <Link href="/rewards" className="more-link">See the rewards <span aria-hidden="true">→</span></Link></>,
     v: <Image src={practice6} alt="A girl works through an arithmetic page in pencil" sizes={STEP_SIZES} placeholder="blur" />, tone: "photo" as const },
-  { n: "04", t: "Scan", d: "Take a photo of the finished pages in the Unica app. We mark the work, show you the gaps, and give the solutions.", v: <Image src={scanPhoto} alt="A phone camera frames a page to photograph it" sizes={STEP_SIZES} placeholder="blur" />, tone: "photo" as const },
+  { n: "04", t: "Scan", d: "Take a photo of the finished pages in the Unica app. We mark the work, show you the gaps, and give the solutions.", v: <ScanShot sizes={STEP_SIZES} />, tone: "photo" as const },
   { n: "05", t: "Adapt", d: "Each scan updates the program. Missed carrying? You get more of it. Got it? It moves on.", v: <Image src={adaptPhoto} alt="A girl shows her finished work to her parents" sizes={STEP_SIZES} placeholder="blur" />, tone: "photo" as const },
   { n: "06", t: "Track and repeat", d: <>Your child&apos;s progress report updates after every scan. The next workbook arrives before this one runs out, built from that progress. <Link href="/sample-report" className="more-link">See a sample report <span aria-hidden="true">→</span></Link></>, v: <Image src={repeatPhoto} alt="A girl starts on her next workbook at the dining table" sizes={STEP_SIZES} placeholder="blur" />, tone: "photo" as const },
 ];
