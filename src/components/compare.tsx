@@ -47,7 +47,7 @@ export function CompareTable() {
   return (
     <Rise className="cmp">
       <p className="cmp-kicker" id="cmpT">How we compare</p>
-      <CompareGrid columns={["tutor", "centre", "us"]} rows={["personal", "plan", "gaps"]} labelledBy="cmpT" />
+      <CompareGrid columns={["tutor", "centre", "us"]} rows={["personal", "help", "plan", "gaps"]} labelledBy="cmpT" />
       <CompareLegend marks={["yes", "part"]} />
       <p className="cmp-more"><Link href="/compare">See the full comparison →</Link></p>
     </Rise>

@@ -1,6 +1,7 @@
-// /compare (D-114, round r24): Unica beside school, private tutors, learning centres and online learning platforms.
+// /compare (D-114, round r24): Unica beside private tutors, learning centres and online learning platforms.
 // Categories only, never a competitor name (D-064). Facts live in src/lib/compare.ts with their sources.
 // Uses the site nav and footer, like /our-story.
+import Link from "next/link";
 import { BRAND } from "@/lib/site";
 import { COMPARE_FAQ, ONE_BY_ONE } from "@/lib/compare";
 import { Eyebrow, Faq as FaqList, Nav as NavBar } from "@/ds";
@@ -14,7 +15,6 @@ import "./compare-page.css";
 
 const LINKS = [
   { label: "How it works", href: "/#how" },
-  { label: "What's included", href: "/#inc" },
   { label: "Pricing", href: "/#price" },
   { label: "FAQ", href: "/#faq" },
 ];
@@ -27,8 +27,8 @@ export function ComparePage() {
         <main id="main" className="cmpp">
           <Rise className="cmpp-head">
             <Eyebrow>How we compare</Eyebrow>
-            <h1><span className="cmpp-hl">How {BRAND} compares</span> to school, tutors, learning centres and online learning platforms.</h1>
-            <p className="lead">Side by side: how personal each one is, whether there is a plan, what you see about your child&apos;s gaps, how much is on a screen, and what it costs.</p>
+            <h1><span className="cmpp-hl">How {BRAND} compares</span> to tutors, learning centres and online learning platforms.</h1>
+            <p className="lead">Side by side: how personal each one is, whether there is a plan, who helps when your child is stuck, what you see about their gaps, how much is on a screen, and what it costs.</p>
             <nav className="cmpp-jump" aria-label="Jump to a comparison">
               {ONE_BY_ONE.map((o) => <a key={o.id} href={`#${o.id}`}>{o.tag}</a>)}
             </nav>
@@ -39,8 +39,12 @@ export function ComparePage() {
             <Rise>
               <CompareSwitch labelledBy="glanceT" />
               <CompareLegend marks={["yes", "part", "no"]} />
-              <p className="cmpp-src">Prices from public sources, checked October 2026. They vary by tutor, centre and plan.</p>
+              <p className="cmpp-src">Prices from public sources, checked October 2026, in Canadian dollars except some online platforms. They vary by tutor, centre and plan.</p>
             </Rise>
+            <div className="cmpp-next">
+              <StartLink className="btn sm" src="compare-table">{START_LABEL} <span className="arr">→</span></StartLink>
+              <Link href="/sample-report">See a sample report</Link>
+            </div>
           </section>
 
           <section className="cmpp-part" aria-labelledby="oneT">
@@ -68,7 +72,7 @@ export function ComparePage() {
 
           <Rise className="cmpp-end">
             <h2>See where your child is, before you choose anything.</h2>
-            <p>The math assessment and report are free. Choose a plan after you read it. 30-day money-back guarantee.</p>
+            <p>The math assessment and report are free. Choose a plan after you read it. The first month is free.</p>
             <div>
               <StartLink src="compare">{START_LABEL} <span className="arr">→</span></StartLink>
               <StartNote />

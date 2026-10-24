@@ -5,6 +5,7 @@ import { EMAIL_LABEL } from "@/lib/admin-dashboard";
 import { stripeCustomerUrl } from "@/lib/stripe";
 import { adminParentPath, adminReportPath, adminTestPath, when, type AnswerLine } from "@/lib/admin-view";
 import { Chip, Table, TestsTable, gradeAndPlace } from "@/components/admin";
+import { StartPlan } from "@/components/start-plan";
 
 export const childPath = (id: string) => `/admin/children/${id}`;
 
@@ -29,10 +30,10 @@ export function EmailTable({ emails }: { emails: EmailRow[] }) {
 type People = { parent?: ParentRow | null; child?: ChildRow | null };
 
 export function CardsTable({ cards }: { cards: (CardSetupRow & People)[] }) {
-  return <Table label="Cards" head={["Updated (Pacific)", "Family", "Child", "Plan", "Monthly price", "Card saved (Pacific)", "Stripe", "Report"]} empty="No card setups.">
+  return <Table label="Cards" head={["Updated (Pacific)", "Family", "Child", "Plan", "Monthly price", "Card saved (Pacific)", "Stripe", "Report", "Plan start"]} empty="No card setups.">
     {cards.map((c) => {
       const stripe = c.stripe_customer_id ? stripeCustomerUrl(c.stripe_customer_id) : null;
-      return <tr key={c.id}><td className="adm-nowrap">{when(c.updated_at)}</td><td><Link href={adminParentPath(c.parent_id)}>{c.parent?.name ?? "Family"}</Link></td><td><Link href={childPath(c.child_id)}>{c.child?.first_name ?? "Child"}</Link></td><td>{c.plan === "one" ? "Math" : "Math and reading"}</td><td>CAD {c.price}</td><td>{c.card_saved_at ? when(c.card_saved_at) : <Chip tone="warn">Not saved</Chip>}</td><td>{stripe ? <a href={stripe} target="_blank" rel="noopener noreferrer">Open in Stripe</a> : "-"}</td><td>{c.report_id ? <Link href={adminReportPath(c.report_id)}>Report</Link> : "-"}</td></tr>;
+      return <tr key={c.id}><td className="adm-nowrap">{when(c.updated_at)}</td><td><Link href={adminParentPath(c.parent_id)}>{c.parent?.name ?? "Family"}</Link></td><td><Link href={childPath(c.child_id)}>{c.child?.first_name ?? "Child"}</Link></td><td>{c.plan === "one" ? "Math" : "Math and reading"}</td><td>CAD {c.price}</td><td>{c.card_saved_at ? when(c.card_saved_at) : <Chip tone="warn">Not saved</Chip>}</td><td>{stripe ? <a href={stripe} target="_blank" rel="noopener noreferrer">Open in Stripe</a> : "-"}</td><td>{c.report_id ? <Link href={adminReportPath(c.report_id)}>Report</Link> : "-"}</td><td>{c.card_saved_at && c.stripe_customer_id ? <StartPlan cardId={c.id} child={c.child?.first_name ?? "this child"} /> : "-"}</td></tr>;
     })}
   </Table>;
 }

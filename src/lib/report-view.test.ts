@@ -268,13 +268,12 @@ describe("the next step", () => {
   it("BC families add a card, and see the math price and when the charge starts", () => {
     const step = nextStep(view(knowsUpTo(4)));
     expect(step).toMatchObject({ kind: "card", title: "Start Maya's books" });
-    expect(step.text).toContain("Math is CAD 99 a month");
-    expect(step.text).toContain("30% off the first month (CAD 69.30)");
+    expect(step.text).toContain("Math is CAD 79.99 a month");
     expect(step.text).not.toContain("reading");
-    expect(step.text).toContain("We charge nothing until the first workbook ships.");
+    expect(step.text).toContain("The first month is free, starting when the first workbook ships.");
   });
-  it("says the money-back guarantee starts with the first payment (D-055)", () => {
-    expect(nextStep(view(knowsUpTo(4))).text).toContain("30-day money-back guarantee from the first payment.");
+  it("offers the first month free in place of the money-back guarantee (D-139)", () => {
+    expect(nextStep(view(knowsUpTo(4))).text).not.toMatch(/money-back/);
   });
   it("a family in another tagged province joins the waitlist for that curriculum", () => {
     expect(nextStep(view(knowsUpTo(4), { province: "ON" }))).toMatchObject({ kind: "waitlist", title: "Books for the Ontario curriculum are coming" });
@@ -282,9 +281,9 @@ describe("the next step", () => {
   it("a family in another province, or not sure, joins the waitlist without a province name", () => {
     expect(nextStep(view(knowsUpTo(4), { province: "other" }))).toMatchObject({ kind: "waitlist", title: "Books for more provinces are coming" });
   });
-  it("BC families get the one plan, math at CAD 99, the price of the site's plan", () => {
+  it("BC families get the one plan, math at CAD 79.99, the price of the site's plan", () => {
     expect(nextStep(view(knowsUpTo(4))).plans).toEqual([
-      { plan: "one", subject: "Math", price: 99, label: "Math, CAD 99 a month" },
+      { plan: "one", subject: "Math", price: 79.99, label: "Math, CAD 79.99 a month" },
     ]);
   });
   it("waitlist families get no plans to choose", () => {

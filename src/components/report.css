@@ -13,6 +13,8 @@
   --row-pad: clamp(40px, 5vw, 64px);
 }
 .support-page .rpt p { margin: 0; }
+/* The note under an assessment button (the sample report's next step) keeps its gap from the button. */
+.support-page .rpt .start-note { margin-top: 12px; }
 .rpt-k { font: 400 12px/1.3 var(--mono); letter-spacing: 0.05em; text-transform: uppercase; color: var(--ink); }
 
 /* header table */
@@ -237,3 +239,6 @@
   .rpt-answer .is-q { grid-column: 1 / -1; }
   .rpt-plans .btn { min-width: 0; flex: 1 1 100%; }
 }
+
+/* The free results call (BookCall): a quieter card under the plan choice. */
+.rpt-next.rpt-call { margin-top: 16px; background: #fff; border: 1px solid var(--line); }

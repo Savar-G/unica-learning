@@ -18,7 +18,7 @@
 //   Google gets all three conversions.
 // Pure apart from getAdTags and its browser helpers: createAdTags takes its browser parts, so tests use fakes.
 import { getConsent, subscribeConsent, type ConsentState } from "@/lib/consent";
-import { firstMonth, PLANS } from "@/lib/site";
+import { PLANS } from "@/lib/site";
 
 export interface AdConfig {
   metaPixelId: string | null;
@@ -100,8 +100,8 @@ export function metaCleanReferrer(referrer: string, origin: string): boolean {
   return metaCleanAddress(url.pathname + url.search + url.hash);
 }
 
-/** The value of a saved card, the first month's price (D-091). */
-export const CARD_VALUE = firstMonth(PLANS.one.price);
+/** The value of a saved card: the first charge, the monthly price after the free first month (2026-10-24). */
+export const CARD_VALUE = PLANS.one.price;
 
 type Call = (...args: unknown[]) => void;
 type Tag = "meta" | "google";

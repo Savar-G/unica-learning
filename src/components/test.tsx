@@ -6,8 +6,9 @@
 // The server marks every answer; the browser gets only the next question and never learns what was right.
 // Shared CSS first, so each screen's own CSS comes later and wins (test-base.css).
 import "./test-base.css";
-import { useCallback, useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
+import { useCallback, useEffect, useRef, useState, type FormEvent, type ReactNode, type RefObject } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { Button } from "@/ds";
 import { breakDue, readAloudText, spokenChoices, type AnsweredQuestion, type ExtraRoundOffer, type HelpAnswer, type PublicQuestion, type TestStep } from "@/lib/assessment";
 import { ANSWER_MAX, type FinishResult, type StartResult, type StepResult, type TestError, type WorkPayload } from "@/lib/test-api";
@@ -15,6 +16,7 @@ import { answerRecorder, mergeEvents, type AnswerEvents } from "@/lib/answer-eve
 import { deviceOf, type BreakEvent, type BreakResume, type ContextResult, type TestDevice } from "@/lib/test-context";
 import { track } from "@/lib/track";
 import { SUPPORT_EMAIL, SUPPORT_HREF } from "@/lib/contact";
+import { EXTRA_ROUND_OFFERED } from "@/lib/site";
 import { draftKey, draftPrefix, emptyBoard, hasDrawing, openMode, type BoardState } from "@/lib/whiteboard";
 import { fitStrokes, recordStrokes, storedBoard, type StoredWork } from "@/lib/strokes";
 import { leaveDestination, questionButtons, type LeaveAction, type QuestionButtons } from "@/lib/test-review";
@@ -45,7 +47,7 @@ type Screen =
   | { name: "offer"; offer: ExtraRoundOffer }
   /** #190: the child stopped a round the report offered again: its answers so far are saved, and the report offers the rest. */
   | { name: "stopped"; answered: number }
-  | { name: "done" };
+  | { name: "done"; testId?: string };
 
 async function call<T>(url: string, init?: RequestInit): Promise<T | { ok: false; error: TestError }> {
   try {
@@ -133,6 +135,17 @@ export function TakeTest({ childId, name, breakAfter, ready, done, mode: firstMo
   const [answered, setAnswered] = useState<AnsweredQuestion[]>([]);
   const answeredRef = useRef<AnsweredQuestion[]>([]);
   const [viewing, setViewing] = useState<number | null>(null);
+  // The questions the child marked to check again, by number. Kept in this browser tab only: never sent or scored.
+  const [marks, setMarks] = useState<ReadonlySet<number>>(() => new Set());
+  const toggleMark = (n: number) => {
+    const id = testId.current;
+    setMarks((prev) => {
+      const next = new Set(prev);
+      if (!next.delete(n)) next.add(n);
+      if (id) saveMarks(id, next);
+      return next;
+    });
+  };
   const viewingRef = useRef<number | null>(null);
   const [visit, setVisit] = useState(0);
   // Time and events of visits not saved yet, and the newest question's answer when a failed save moved the screen.
@@ -231,7 +244,7 @@ export function TakeTest({ childId, name, breakAfter, ready, done, mode: firstMo
     // #67: no saved whiteboard of this test is needed any more.
     const finished = testId.current;
     if (finished) clearDrafts((key) => key.startsWith(draftPrefix(finished)));
-    setScreen({ name: "done" });
+    setScreen({ name: "done", ...(finished && { testId: finished }) });
     return true;
   }, [expire]);
 
@@ -347,6 +360,7 @@ export function TakeTest({ childId, name, breakAfter, ready, done, mode: firstMo
     setFailure(null);
     if (extra) {
       testId.current = extra.testId;
+      setMarks(loadMarks(extra.testId));
       await chooseRound("take", "report");
       setBusy(false);
       return;
@@ -360,6 +374,7 @@ export function TakeTest({ childId, name, breakAfter, ready, done, mode: firstMo
       return;
     }
     testId.current = started.id;
+    setMarks(loadMarks(started.id));
     // #185: the device, once per test (the server keeps the first), with the pointer that pressed Start.
     void sendContext(started.id, { device: browserDevice(pointers.current) });
     // #67: saved whiteboards of older tests (one that ran out of time) go; this test's stay for a resume.
@@ -568,7 +583,7 @@ export function TakeTest({ childId, name, breakAfter, ready, done, mode: firstMo
       </header>
       {steps && (
         <TestSteps part={steps.part} offset={roundOffset} numbers={Array.from({ length: steps.last - steps.first + 1 }, (_, i) => steps.first + i)}
-          answered={new Set(answered.map((a) => a.number))} current={steps.current} newest={steps.newest}
+          answered={new Set(answered.map((a) => a.number))} marked={marks} current={steps.current} newest={steps.newest}
           onGo={(n) => void leaveScreen.current?.({ go: n })} />
       )}
       <main id="main" className="test-main">
@@ -577,12 +592,15 @@ export function TakeTest({ childId, name, breakAfter, ready, done, mode: firstMo
           : mode === "round"
             ? <ExtraReturn name={name} busy={busy} onGo={() => start()} onStop={() => start(true)} problem={<Problem error={failure} />} />
             : <Intro name={name} ready={ready} busy={busy} onStart={() => start()} failure={failure} mode={mode} afterBreak={afterBreak} checkGrid={checkGrid} />)}
-        {screen.name === "offer" && <ExtraOffer name={name} offer={screen.offer} problem={<Problem error={failure} />} onChoose={(take) => chooseRound(take ? "take" : "skip", "test")} />}
+        {screen.name === "offer" && (EXTRA_ROUND_OFFERED
+          ? <ExtraOffer name={name} offer={screen.offer} problem={<Problem error={failure} />} onChoose={(take) => chooseRound(take ? "take" : "skip", "test")} />
+          : <SkipRound onSkip={() => chooseRound("skip", "test")} problem={<Problem error={failure} />} />)}
         {screen.name === "question" && (
           <Question key={`${(viewed?.question ?? screen.question).id}:${visit}`} testId={screen.testId} typing={typing}
             question={viewed?.question ?? screen.question} initial={viewed ? viewed.response : held[screen.question.id] ?? ""} revisit={viewed !== null}
             initialBoard={viewed ? unsaved[viewed.question.id] : undefined} storedWork={viewed?.work}
             canBack={answered.some((a) => a.number < (viewed?.number ?? screen.number))}
+            marked={marks.has(viewed?.number ?? screen.number)} onMark={() => toggleMark(viewed?.number ?? screen.number)}
             // #253: Next after the last question of a part goes to its grid; #254: so does the extra round's.
             main={buttons.main} takeYourTime={!viewed && screen.takeYourTime} onLeave={leave} onShown={onShown} failure={failure}
             // #190: Stop here on the round's newest question; a question the child went back to saves on leaving instead.
@@ -593,8 +611,8 @@ export function TakeTest({ childId, name, breakAfter, ready, done, mode: firstMo
           // (in place of Next) saves it and comes back to the grid at once; Back and the step row still go to a question.
           ? <Question key={`${viewed.question.id}:${visit}`} testId={screen.testId} typing={typing}
               question={viewed.question} initial={viewed.response} revisit initialBoard={unsaved[viewed.question.id]} storedWork={viewed.work}
-              canBack={answered.some((a) => a.number < viewed.number)} main={buttons.main} takeYourTime={false} onLeave={leave} onShown={onShown} failure={failure} />
-          : <TestCheck name={name} part={screen.section === "stage1" ? 1 : screen.section === "stage2" ? 2 : "extra"} numbers={screen.numbers} offset={roundOffset} problem={<Problem error={failure} />}
+              canBack={answered.some((a) => a.number < viewed.number)} marked={marks.has(viewed.number)} onMark={() => toggleMark(viewed.number)} main={buttons.main} takeYourTime={false} onLeave={leave} onShown={onShown} failure={failure} />
+          : <TestCheck name={name} part={screen.section === "stage1" ? 1 : screen.section === "stage2" ? 2 : "extra"} numbers={screen.numbers} offset={roundOffset} marked={marks} problem={<Problem error={failure} />}
               onOpen={(n) => {
                 setFailure(null);
                 open(n);
@@ -628,7 +646,7 @@ export function TakeTest({ childId, name, breakAfter, ready, done, mode: firstMo
         )}
         {screen.name === "done" && (extra
           ? <ExtraEnd name={name} questions={extra.questions} reportHref={extra.reportHref} />
-          : <End name={name} total={progress?.total} />)}
+          : <End name={name} total={progress?.total} testId={screen.testId ?? null} />)}
         {screen.name === "stopped" && extra && <ExtraEnd name={name} questions={extra.questions} reportHref={extra.reportHref} stoppedAfter={screen.answered} />}
       </main>
     </div>
@@ -707,6 +725,67 @@ function MessageScreen({ children, className = "" }: { children: ReactNode; clas
   );
 }
 
+const PENCIL = (
+  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M12 20h9" /><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z" /></svg>
+);
+const FLAG = (
+  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M4 22V4" /><path d="M4 4h13l-2 4 2 4H4" /></svg>
+);
+
+const marksKey = (testId: string) => `unica.marks.${testId}`;
+
+/** The question numbers marked to check again in this test, from this tab; none when storage is off. */
+function loadMarks(testId: string): Set<number> {
+  try {
+    const raw = JSON.parse(sessionStorage.getItem(marksKey(testId)) ?? "[]");
+    return new Set(Array.isArray(raw) ? raw.filter((n): n is number => Number.isInteger(n)) : []);
+  } catch {
+    return new Set();
+  }
+}
+
+function saveMarks(testId: string, marks: ReadonlySet<number>) {
+  try {
+    sessionStorage.setItem(marksKey(testId), JSON.stringify([...marks]));
+  } catch {
+    // Storage is off: the marks last until the page closes.
+  }
+}
+
+/**
+ * The extra round is not offered (EXTRA_ROUND_OFFERED): the offer the server sends is skipped at once, and "Did anyone
+ * help?" comes next. A failed skip shows the error and Try again.
+ */
+function SkipRound({ onSkip, problem }: { onSkip: () => Promise<boolean>; problem: ReactNode }) {
+  const [failed, setFailed] = useState(false);
+  const sent = useRef(false);
+  const skip = useRef(onSkip);
+  useEffect(() => {
+    skip.current = onSkip;
+  });
+  const go = useCallback(async () => {
+    setFailed(false);
+    if (!(await skip.current())) setFailed(true);
+  }, []);
+  useEffect(() => {
+    if (sent.current) return;
+    sent.current = true;
+    void go();
+  }, [go]);
+  return (
+    <MessageScreen>
+      <p className="test-kicker">All questions done</p>
+      <h1 className="test-title">Saving your answers…</h1>
+      {failed && (
+        <>
+          {problem}
+          <Button onClick={() => void go()}>Try again</Button>
+        </>
+      )}
+    </MessageScreen>
+  );
+}
+
 const PAD_KEYS = ["1", "2", "3", "4", "5", "6", "7", "8", "9", ".", "0"];
 
 interface QuestionProps {
@@ -724,6 +803,9 @@ interface QuestionProps {
   revisit: boolean;
   /** #249: an answered question of the section comes before this one, so Back shows. */
   canBack: boolean;
+  /** The child marked this question to check again; shown on the step row and the "Check your answers" grid. */
+  marked: boolean;
+  onMark: () => void;
   /**
    * D-132: the main button's words: "Next", or "Back to my answers" once the section's grid was reached (complete, not
    * locked), which saves the answer as Next does and goes back to the grid at once (`questionButtons`).
@@ -741,7 +823,7 @@ interface QuestionProps {
 }
 
 // One question in the split desk (D-088): the question and the answer on the left, the whiteboard on the right.
-function Question({ testId, typing, question, initial, initialBoard, storedWork, revisit, canBack, main, takeYourTime, onLeave, onShown, failure, onStop }: QuestionProps) {
+function Question({ testId, typing, question, initial, initialBoard, storedWork, revisit, canBack, marked, onMark, main, takeYourTime, onLeave, onShown, failure, onStop }: QuestionProps) {
   const [value, setValue] = useState(initial);
   const [sending, setSending] = useState(false);
   const [stopping, setStopping] = useState(false);
@@ -780,6 +862,10 @@ function Question({ testId, typing, question, initial, initialBoard, storedWork,
   });
   // #252: a revisit opens the board in the mode of the work on it (Type for typed working with no drawing).
   const [startMode] = useState(() => (revisit ? openMode(board, typing) : "draw"));
+  // The whiteboard opens when the child asks for it, so the question has the screen. It is always open when the
+  // question needs shown work (#67), and opens with the question when work is already on it.
+  const [boardOpen, setBoardOpen] = useState(() => question.showWork || hasDrawing(board.strokes) || (typing && board.text.trim() !== ""));
+  const boardFixed = question.showWork;
   const stored = useRef(false);
   // Save each completed action before a reload can discard it, including an undo or clear to an empty board.
   // #249: any edit of the board or the typed working in this visit, Clear and Undo too, is changed work.
@@ -906,7 +992,7 @@ function Question({ testId, typing, question, initial, initialBoard, storedWork,
   const names = spokenChoices(question, shown);
 
   return (
-    <form className="test-split test-desk" onSubmit={submit}>
+    <form className={`test-split test-desk${boardOpen ? "" : " is-board-closed"}`} onSubmit={submit}>
       <div className="test-pane test-pane-l">
         {takeYourTime && <TakeYourTime />}
         <div className="test-qrow">
@@ -914,6 +1000,9 @@ function Question({ testId, typing, question, initial, initialBoard, storedWork,
           <h1 id="test-q-title" ref={heading} tabIndex={-1} className="test-prompt"><PromptText text={question.prompt} /></h1>
         </div>
         {question.figure?.kind === "bars" && <BarGraph figure={question.figure} />}
+        {!boardOpen && (
+          <button type="button" className="test-board-open" onClick={() => setBoardOpen(true)}>{PENCIL}<span>Use the whiteboard</span></button>
+        )}
         <div className="test-response">
           {question.format === "choice" ? (
             <Choices options={shown.map((c, i) => ({ value: c, label: <ChoiceFace text={c} />, name: names[i] }))} value={value || null} onChange={setValue} labelledBy="test-q-title" />
@@ -928,6 +1017,9 @@ function Question({ testId, typing, question, initial, initialBoard, storedWork,
               </div>
             </div>
           )}
+          <button type="button" className="test-mark" aria-pressed={marked} onClick={onMark}>
+            {FLAG}<span>{marked ? "Marked to check again" : "Mark to check again"}</span>
+          </button>
           <Problem error={failure} />
           <div className="test-next">
             {/* #190: at the far end from Next, so it is not pressed by mistake. */}
@@ -938,9 +1030,12 @@ function Question({ testId, typing, question, initial, initialBoard, storedWork,
           </div>
         </div>
       </div>
-      <div className="test-pane test-pane-r">
-        <Whiteboard board={board} onChange={changeBoard} typing={typing} onSize={onBoardSize} startMode={startMode} />
-      </div>
+      {boardOpen && (
+        <div className="test-pane test-pane-r">
+          {!boardFixed && <button type="button" className="test-board-hide" onClick={() => setBoardOpen(false)}>Hide whiteboard</button>}
+          <Whiteboard board={board} onChange={changeBoard} typing={typing} onSize={onBoardSize} startMode={startMode} />
+        </div>
+      )}
     </form>
   );
 }
@@ -958,18 +1053,100 @@ function TakeYourTime() {
   );
 }
 
-/** The end (D-088): a full colour field. */
-function End({ name, total }: { name: string; total?: number }) {
+/**
+ * The end (D-088): a full colour field. The child is thanked and hands the device back; "I'm the grown-up" turns the
+ * screen into the wait for the report, which opens here when the report job has built it.
+ */
+function End({ name, total, testId }: { name: string; total?: number; testId: string | null }) {
   const heading = useRef<HTMLHeadingElement>(null);
-  useEffect(() => heading.current?.focus(), []);
+  const [who, setWho] = useState<"child" | "parent">("child");
+  useEffect(() => heading.current?.focus(), [who]);
   return (
     <section className="test-end test-field" aria-labelledby="test-end-title">
       <div>
-        <p className="test-kicker">{total === undefined ? "All done" : `All ${total} done`}</p>
-        <h1 id="test-end-title" ref={heading} tabIndex={-1} className="test-title">You did it, {name}!</h1>
-        <p className="test-lead">Thank you for working so hard. Your report will be emailed to your grown-up shortly.</p>
-        <p className="test-end-link"><Link href="/account">Back to the account</Link></p>
+        {who === "child" ? (
+          <>
+            <p className="test-kicker">{total === undefined ? "All done" : `All ${total} done`}</p>
+            <h1 id="test-end-title" ref={heading} tabIndex={-1} className="test-title">You did it, {name}!</h1>
+            <p className="test-lead">Thank you for working so hard. Please pass the device back to your grown-up.</p>
+            <Button onClick={() => setWho("parent")}>I&apos;m the grown-up</Button>
+          </>
+        ) : (
+          <ReportWait name={name} testId={testId} heading={heading} />
+        )}
       </div>
     </section>
+  );
+}
+
+/**
+ * How often the wait asks whether the report is ready, how long one ask may take, the least time the wait shows, and
+ * when it stops asking.
+ */
+const REPORT_POLL_MS = 4_000;
+const REPORT_ASK_MS = 15_000;
+const REPORT_MIN_WAIT_MS = 2_500;
+const REPORT_GIVE_UP_MS = 3 * 60_000;
+
+/** The grown-up's wait: asks whether the report is built, then opens it. After 3 minutes it says the email will bring it. */
+function ReportWait({ name, testId, heading }: { name: string; testId: string | null; heading: RefObject<HTMLHeadingElement | null> }) {
+  const router = useRouter();
+  // No test id (the page opened on a finished test): nothing to wait for, so the email and the account bring it.
+  const [slow, setSlow] = useState(!testId);
+  useEffect(() => {
+    if (!testId) return;
+    const startedAt = Date.now();
+    let stopped = false;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    let asking: AbortController | undefined;
+    // The 3-minute limit runs on its own timer, so an ask that never answers cannot keep the wait on the screen.
+    const giveUp = setTimeout(() => {
+      stopped = true;
+      clearTimeout(timer);
+      asking?.abort();
+      track("test_report_wait", { status: "slow" });
+      setSlow(true);
+    }, REPORT_GIVE_UP_MS);
+    const ask = async () => {
+      const controller = new AbortController();
+      asking = controller;
+      const cut = setTimeout(() => controller.abort(), REPORT_ASK_MS);
+      const res = await call<{ ok: true; href: string | null }>(`/api/account/assessments/${testId}/report`, { signal: controller.signal });
+      clearTimeout(cut);
+      if (stopped) return;
+      if (res.ok && res.href) {
+        const href = res.href;
+        clearTimeout(giveUp);
+        track("test_report_wait", { status: "opened" });
+        timer = setTimeout(() => router.push(href), Math.max(0, REPORT_MIN_WAIT_MS - (Date.now() - startedAt)));
+        return;
+      }
+      timer = setTimeout(ask, REPORT_POLL_MS);
+    };
+    void ask();
+    return () => {
+      stopped = true;
+      clearTimeout(timer);
+      clearTimeout(giveUp);
+      asking?.abort();
+    };
+  }, [testId, router]);
+  if (slow) {
+    return (
+      <>
+        <p className="test-kicker">Report</p>
+        <h1 id="test-end-title" ref={heading} tabIndex={-1} className="test-title">{name}&apos;s report is on its way.</h1>
+        <p className="test-lead">{testId ? "It is taking a little longer than usual. " : ""}We will email it to you, and it will be in your account.</p>
+        <p className="test-end-link"><Link href="/account">Go to your account</Link></p>
+      </>
+    );
+  }
+  return (
+    <>
+      <p className="test-kicker">Report</p>
+      <h1 id="test-end-title" ref={heading} tabIndex={-1} className="test-title">Building {name}&apos;s report…</h1>
+      <p className="test-lead" role="status">This usually takes about a minute. It opens here when it is ready, and we email you a copy.</p>
+      <span className="test-wait" aria-hidden><i /><i /><i /></span>
+    </>
   );
 }

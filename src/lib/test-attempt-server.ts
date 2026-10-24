@@ -9,6 +9,7 @@ import { adminClient } from "@/lib/supabase-auth";
 import type { FactsStore } from "@/lib/test-attempt";
 import type { AnswerTimeline, ShownStore } from "@/lib/test-attempt";
 import type { ContextStore } from "@/lib/test-attempt";
+import { EXTRA_ROUND_OFFERED } from "@/lib/site";
 import { extraRoundState, type ExtraRoundRecord, type ExtraRoundState, type ExtraRoundStore } from "@/lib/test-attempt";
 import type { AnswerEvents } from "@/lib/answer-events";
 import { strokesPath, workPath } from "@/lib/work-payload";
@@ -438,7 +439,7 @@ export async function parentRetakeState(parent: string, childId: string): Promis
  * Null when there is none, or it cannot be known (no secret key, an id that is not a uuid, a failed read).
  */
 export async function parentExtraRound(parent: string, assessmentId: string): Promise<ExtraRoundState | null> {
-  if (!isUuid(assessmentId)) return null;
+  if (!EXTRA_ROUND_OFFERED || !isUuid(assessmentId)) return null;
   const admin = adminClient();
   if (!admin) return null;
   return extraRoundState(attemptStore(admin), parent, assessmentId);

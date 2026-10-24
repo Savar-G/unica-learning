@@ -22,7 +22,7 @@ const email = (id: string, parentId: string, kind: RawEmail["kind"], at: string,
 });
 
 const sub = (customer: string, status: string, created: string, over: Partial<RawSubscription> = {}): RawSubscription => ({
-  id: `sub_${customer}_${status}`, customer, status, created, endedAt: null, amount: 9900, quantity: 1, interval: "month", intervalCount: 1, currency: "cad", ...over,
+  id: `sub_${customer}_${status}`, customer, status, created, endedAt: null, trialEnd: null, amount: 9900, quantity: 1, interval: "month", intervalCount: 1, currency: "cad", ...over,
 });
 
 describe("family stage", () => {
@@ -174,8 +174,8 @@ describe("dashboard numbers", () => {
 
   it("builds the funnel from families that got at least that far", () => {
     const d = buildDashboard(r, "all", NOW);
-    expect(d.funnel.map((s) => s.ever)).toEqual([4, 3, 2, 1, 1, 0]);
-    expect(buildDashboard(r, "7d", NOW).funnel.map((s) => s.inRange)).toEqual([2, 2, 1, 0, 0, 0]);
+    expect(d.funnel.map((s) => s.ever)).toEqual([4, 3, 2, 1, 1, 0, 0]);
+    expect(buildDashboard(r, "7d", NOW).funnel.map((s) => s.inRange)).toEqual([2, 2, 1, 0, 0, 0, 0]);
     expect(d.stageCounts).toMatchObject({ account: 1, started: 1, finished: 1, card_saved: 1, paying: 0 });
     expect(d.needs.find((n) => n.title === "Start a subscription")?.families.map((f) => f.id)).toEqual(["c"]);
   });
@@ -230,6 +230,43 @@ describe("accuracy rules", () => {
     expect(d.needs.find((n) => n.title === "Start a subscription")?.families.map((f) => f.id)).toEqual(["b"]);
     expect(d.funnel.find((s) => s.stage === "paying")?.ever).toBe(1);
     expect(d.kpis.find((k) => k.key === "paying")?.value).toBe(0);
+  });
+
+  it("shows the free trial as its own stage, and paying only after the first charge (D-139)", () => {
+    const r = rows({
+      parents: [parent("a", ago(20)), parent("b", ago(30))],
+      cards: [card("a", "a", ago(15), ago(15)), card("b", "b", ago(25), ago(25))],
+      subscriptions: [
+        sub("cus_a", "trialing", ago(5), { trialEnd: ago(-9) }),
+        sub("cus_b", "active", ago(20), { trialEnd: ago(6), amount: 7999 }),
+      ],
+    });
+    const d = buildDashboard(r, "all", NOW);
+    expect(d.families.find((f) => f.id === "a")?.stage).toBe("trial");
+    const b = d.families.find((f) => f.id === "b")!;
+    expect(b.stage).toBe("paying");
+    expect(b.stageAt).toBe(ago(6));
+    expect(d.kpis.find((k) => k.key === "trial")?.value).toBe(1);
+    expect(d.kpis.find((k) => k.key === "paying")?.value).toBe(1);
+    expect(d.kpis.find((k) => k.key === "mrr")?.value).toBe(79.99);
+  });
+
+  it("shows a family in a new free trial as in the trial, not paying, after an older paid plan ended", () => {
+    const r = rows({
+      parents: [parent("a", ago(120))],
+      cards: [card("a", "a", ago(110), ago(110))],
+      subscriptions: [
+        sub("cus_a", "canceled", ago(100), { endedAt: ago(40), amount: 9900 }),
+        sub("cus_a", "trialing", ago(5), { trialEnd: ago(-25), amount: 7999 }),
+      ],
+    });
+    const d = buildDashboard(r, "all", NOW);
+    const a = d.families.find((f) => f.id === "a")!;
+    expect(a.stage).toBe("trial");
+    expect(a.stageAt).toBe(ago(5));
+    expect(d.kpis.find((k) => k.key === "trial")?.value).toBe(1);
+    expect(d.kpis.find((k) => k.key === "paying")?.value).toBe(0);
+    expect(d.kpis.find((k) => k.key === "mrr")?.value).toBe(0);
   });
 
   it("adds monthly revenue from paying subscriptions only, spread over their billing period", () => {

@@ -29,11 +29,11 @@ export type SampleChildId = "a" | "b";
 export interface SampleChild {
   id: SampleChildId;
   name: string;
-  /** The two lines a parent reads: assessment result and learning style. */
-  result: string;
-  style: string;
-  /** One short tag for compact layouts. */
-  tag: string;
+  /** The two lines a parent reads: the gap the assessment found, and what their program does about it. */
+  gap: string;
+  /** "Her program" or "His program". */
+  programLabel: string;
+  program: string;
 }
 
 export const SAMPLE_GRADE = 3;
@@ -42,16 +42,16 @@ export const SAMPLE_CHILDREN: Record<SampleChildId, SampleChild> = {
   a: {
     id: "a",
     name: "Leah",
-    result: "Struggles with carrying and borrowing, so addition and subtraction are hard for her.",
-    style: "Learns best through stories.",
-    tag: "More practice",
+    gap: "Carrying and borrowing.",
+    programLabel: "Her program",
+    program: "Mostly practice on that, a little review, one step ahead.",
   },
   b: {
     id: "b",
     name: "Kai",
-    result: "Has mastered addition and subtraction, and is ready to get ahead of Grade 3 with multiplication and division.",
-    style: "Learns best visually, from pictures and diagrams.",
-    tag: "New challenges",
+    gap: "None in Grade 3 basics.",
+    programLabel: "His program",
+    program: "Multiplication and division, a grade ahead.",
   },
 };
 
@@ -65,6 +65,8 @@ export interface PageItem {
   values: Record<string, number>;
   /** A picture drawn from the values: an array (rows x each) or equal groups. */
   picture?: { kind: "array"; rows: number; each: number } | { kind: "groups"; groups: number; each: number };
+  /** The operation for the blank column work; without it the prompt's wording decides. */
+  op?: "+" | "−";
   /** Column work for a worked example: the two numbers, the operation and the carried digit. */
   worked?: { a: number; b: number; op: "+"; carry: number; answer: number };
 }
@@ -96,6 +98,32 @@ export function leahPage(): PageItem[] {
   ];
 }
 
+/** Leah's next book, page 2: borrowing in stories. */
+export function leahPage2(): PageItem[] {
+  return [
+    item(fill("2-story-subtract-2-digit", 2), { op: "−" }),
+    item(fill("2-story-subtract-2-digit", 5), { op: "−" }),
+    item(fill("2-story-subtract-2-digit", 6), { op: "−" }),
+    item(fill("3-story-subtract", 2), { op: "−" }),
+  ];
+}
+
+/** Leah's next book, page 3: adding three-digit numbers in stories. */
+export function leahPage3(): PageItem[] {
+  return [1, 3, 5, 6].map((seed) => item(fill("g35-3-story-add", seed), { op: "+" }));
+}
+
+/** Leah's next book, page 4: a mix, so she chooses what to do; one problem has a picture. */
+export function leahPage4(): PageItem[] {
+  const groups = fill("3-equal-groups", 5);
+  return [
+    item(fill("2-story-add-2-digit", 5), { op: "+" }),
+    item(fill("2-story-subtract-2-digit", 1), { op: "−" }),
+    item(fill("3-story-subtract", 3), { op: "−" }),
+    item(groups, { picture: { kind: "groups", groups: groups.values.groups, each: groups.values.each } }),
+  ];
+}
+
 /** Kai's next book, page 1: multiplication with arrays and groups, then one grade 4 question. */
 export function kaiPage(): PageItem[] {
   const arr = fill("g35-3-array", 1);
@@ -105,6 +133,40 @@ export function kaiPage(): PageItem[] {
     item(arr, { picture: { kind: "array", rows: arr.values.rows, each: arr.values.each } }),
     item(grp, { picture: { kind: "groups", groups: grp.values.groups, each: grp.values.each } }),
     item(big, { picture: { kind: "array", rows: big.values.b, each: big.values.a } }),
+  ];
+}
+
+/** Kai's next book, page 2: sharing and grouping, the start of division. */
+export function kaiPage2(): PageItem[] {
+  const share = fill("3-share-equally", 1);
+  const groupsOf = fill("g35-3-groups-of", 6);
+  const share2 = fill("3-share-equally", 6);
+  return [
+    item(share, { picture: { kind: "groups", groups: share.values.friends, each: share.values.each } }),
+    item(groupsOf, { picture: { kind: "groups", groups: groupsOf.values.groups, each: groupsOf.values.size } }),
+    item(share2, { picture: { kind: "groups", groups: share2.values.friends, each: share2.values.each } }),
+  ];
+}
+
+/** Kai's next book, page 3: more arrays, then one problem with no picture. */
+export function kaiPage3(): PageItem[] {
+  const a1 = fill("g35-3-array", 5);
+  const a2 = fill("g35-3-array", 3);
+  return [
+    item(a1, { picture: { kind: "array", rows: a1.values.rows, each: a1.values.each } }),
+    item(a2, { picture: { kind: "array", rows: a2.values.rows, each: a2.values.each } }),
+    item(fill("3-equal-groups", 3)),
+  ];
+}
+
+/** Kai's next book, page 4: Grade 4 multiplication and sharing with bigger numbers. */
+export function kaiPage4(): PageItem[] {
+  const m1 = fill("g35-4-story-multiply", 1);
+  const m2 = fill("g35-4-story-multiply", 6);
+  return [
+    item(m1, { picture: { kind: "array", rows: m1.values.b, each: m1.values.a } }),
+    item(m2, { picture: { kind: "array", rows: m2.values.b, each: m2.values.a } }),
+    item(fill("g35-4-share", 3)),
   ];
 }
 

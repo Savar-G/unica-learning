@@ -6,7 +6,7 @@ import { ComparePage } from "@/components/compare-page";
 export const metadata = pageMetadata({
   path: "/compare",
   title: `How ${BRAND} compares`,
-  description: `${BRAND} side by side with school, private tutors, learning centres and online learning platforms: how personal each one is, the plan, the gaps you see, screen time and cost.`,
+  description: `${BRAND} side by side with private tutors, learning centres and online learning platforms: how personal each one is, the plan, help when they're stuck, the gaps you see, screen time and cost.`,
 });
 
 export default function Compare() {

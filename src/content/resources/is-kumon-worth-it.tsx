@@ -190,8 +190,8 @@ export default function Body() {
         <p>
           Unica is one of these options: personalized math workbooks for ages 6-12, mailed home. The books
           follow the BC curriculum at your child&apos;s level, and your child works on paper for 15-30 minutes a day, 5
-          days a week. Math is CAD 99 a month, delivery included, with a
-          30-day money-back guarantee.
+          days a week. Math is CAD 79.99 a month, delivery included, and the
+          first month is free.
         </p>
       </Section>
 

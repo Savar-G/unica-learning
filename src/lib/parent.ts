@@ -8,7 +8,7 @@ export const PARENT_NOT_YOURS: [string, string][] = [
   ["Mark every page", "We mark it from your photo."],
   ["Find the right level", "The free assessment places them."],
   ["Plan what comes next", "The next book is built from their work."],
-  ["Remember how to teach it", "Scan a problem to see every step."],
+  ["Remember how to teach it", "The Unica companion explains it on a voice call, or scan a problem to see every step."],
 ];
 
 // What the parent still does.

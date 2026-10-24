@@ -10,7 +10,7 @@ import { STRAND_DEVELOPING_PERCENT, STRAND_SECURE_PERCENT, type Certainty as Cer
 import { CURRICULA } from "@/lib/signup";
 import { BRAND } from "@/lib/site";
 import type { ReportSrc } from "@/lib/next-step";
-import { ReportNextActions, type NextStepStart } from "@/components/report-next";
+import { BookCall, ReportNextActions, type NextStepStart } from "@/components/report-next";
 import { LearningStep } from "@/components/learning";
 import type { LearningAnswers } from "@/lib/learning-style";
 import Link from "next/link";
@@ -474,6 +474,7 @@ function ReportNextStep({ view, next }: { view: ReportView; next: ReportNextCont
     <Row id={NEXT_STEP_ANCHOR} title="Next step">
       {learning && <LearningStep childId={learning.childId} name={view.childName} start={learning.start} place="report" />}
       <ReportNextActions reportId={view.id} step={step} childName={view.childName} province={view.province} {...actions} />
+      <BookCall childName={view.childName} />
     </Row>
   );
 }

@@ -1,6 +1,7 @@
 import "server-only";
 import Stripe from "stripe";
-import { FIRST_MONTH_OFF, cad, firstMonth, priceWithOffer } from "@/lib/site";
+import { cad, priceWithOffer } from "@/lib/site";
+import { PLAN_PRODUCT, firstChargeAt, planTerms } from "@/lib/subscription-plan";
 
 // Created on first use, so a build without STRIPE_SECRET_KEY still works. Without the key, BC parents
 // see "we'll email you a link to add your card" and Savar sends one by hand.
@@ -30,12 +31,12 @@ export interface CardSetup {
 
 /** What the parent agrees to on Stripe's page. Stripe requires the amount, timing and how to cancel. */
 export const cardTerms = (price: number) =>
-  `Nothing is charged today. When your first workbook ships, we charge CAD ${cad(firstMonth(price))} for your first month (${FIRST_MONTH_OFF}% off), then CAD ${price} every month until you cancel. Cancel before it ships and you pay nothing. Your 30-day money-back guarantee starts on the day of your first payment.`;
+  `Nothing is charged today. Your first month is free, starting when your first workbook ships. On day 30 we charge CAD ${cad(price)}, then CAD ${cad(price)} every month until you cancel. We email you a reminder 7 days before the first charge, with a link to manage or cancel your plan. Cancel before day 30 and you pay nothing.`;
 
 /**
  * Creates the Stripe customer and a hosted Checkout page in setup mode: it saves the card and charges nothing.
- * When the first workbook ships, start a CAD `price` monthly subscription on this customer, with 30% off the first
- * month (metadata first_month_price; D-053, D-091).
+ * When the first workbook ships, start a CAD `price` monthly subscription on this customer with the free first month
+ * (a 30-day trial, TRIAL_DAYS; D-053, D-139). Stripe emails the reminder 7 days before the trial ends, with the link to manage or cancel the plan (Billing settings, 2026-10-24).
  * Returns the customer and Checkout page URL so the booking can durably release its hold.
  */
 export async function cardSetupUrl(s: Stripe, p: CardSetup): Promise<{ customer: string; url: string | null }> {
@@ -54,7 +55,7 @@ export async function cardSetupUrl(s: Stripe, p: CardSetup): Promise<{ customer:
 /** The metadata keys every card setup carries; the report path adds its own (D-053). */
 const cardMetadata = (p: CardSetup): Record<string, string> => ({
   ref: p.ref, plan: p.plan, subject: p.subject, grade: String(p.grade), price: String(p.price),
-  first_month_price: cad(firstMonth(p.price)), curriculum: p.curriculum, ...(p.postal ? { postal: p.postal } : {}),
+  curriculum: p.curriculum, ...(p.postal ? { postal: p.postal } : {}),
 });
 const cardDescription = (p: CardSetup) => `${p.subject}, grade ${p.grade}, ${priceWithOffer(p.price)} from the first workbook`;
 
@@ -135,7 +136,7 @@ export async function reportCardCustomer(s: Stripe, p: ReportCardSetup): Promise
 export async function keepSavedPlan(s: Stripe, customer: string, metadata: Record<string, string>) {
   if (!metadata.plan || !metadata.price) return;
   const keys = ["plan", "price", "first_month_price", "subject", "grade", "report_id", "assessment_id"].filter((k) => metadata[k]);
-  const price = metadata.first_month_price ? priceWithOffer(Number(metadata.price)) : `CAD ${metadata.price}/month`;
+  const price = priceWithOffer(Number(metadata.price));
   await s.customers.update(customer, {
     description: `${metadata.subject}, grade ${metadata.grade}, ${price} from the first workbook`,
     metadata: Object.fromEntries(keys.map((k) => [k, metadata[k]])),
@@ -156,4 +157,47 @@ export function stripeCustomerUrl(customer: string): string | null {
   if (!key) return null;
   const live = key.startsWith("sk_live_") || key.startsWith("rk_live_");
   return `https://dashboard.stripe.com/${live ? "" : "test/"}customers/${encodeURIComponent(customer)}`;
+}
+
+export type StartPlanOutcome =
+  | { ok: true; subscription: string; firstChargeAt: string }
+  | { ok: false; error: "no_card" | "already" };
+
+/** True when Stripe has no object with this id (a 404), so the caller creates it. */
+const missing = (e: unknown) => e instanceof Stripe.errors.StripeError && e.statusCode === 404;
+
+/** The plan's product, created once with a fixed id. */
+async function planProduct(s: Stripe) {
+  try {
+    await s.products.retrieve(PLAN_PRODUCT.id);
+  } catch (e) {
+    if (!missing(e)) throw e;
+    await s.products.create({ id: PLAN_PRODUCT.id, name: PLAN_PRODUCT.name }, { idempotencyKey: `product-${PLAN_PRODUCT.id}` });
+  }
+}
+
+/**
+ * D-139: starts the paid plan of a saved card when the first workbook ships. A monthly subscription at the card's
+ * price on the child's customer, charged to the saved card: the free first month first (a 30-day trial, nothing
+ * charged), then the full price on day 30 and each month after until the parent cancels. Refuses when the
+ * customer already has a subscription that is not over, or no saved card. The card setup's id keys the create, so a
+ * double click starts one subscription.
+ */
+export async function startPlan(s: Stripe, p: { cardSetup: string; customer: string; price: number }, now = new Date()): Promise<StartPlanOutcome> {
+  const current = await s.subscriptions.list({ customer: p.customer, status: "all", limit: 20 });
+  if (current.data.some((x) => x.status !== "canceled" && x.status !== "incomplete_expired")) return { ok: false, error: "already" };
+  const cards = await s.paymentMethods.list({ customer: p.customer, type: "card", limit: 1 });
+  const card = cards.data[0]?.id;
+  if (!card) return { ok: false, error: "no_card" };
+  const terms = planTerms(p.price);
+  await planProduct(s);
+  const created = await s.subscriptions.create({
+    customer: p.customer,
+    items: [{ price_data: { currency: "cad", product: PLAN_PRODUCT.id, unit_amount: terms.monthlyCents, recurring: { interval: "month" } } }],
+    trial_period_days: terms.trialDays,
+    default_payment_method: card,
+    metadata: { card_setup: p.cardSetup, price: cad(p.price) },
+  }, { idempotencyKey: `start-plan-${p.cardSetup}` });
+  const end = created.trial_end ? new Date(created.trial_end * 1000) : firstChargeAt(now, terms.trialDays);
+  return { ok: true, subscription: created.id, firstChargeAt: end.toISOString() };
 }

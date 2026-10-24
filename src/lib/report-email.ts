@@ -6,6 +6,7 @@
 // Email-safe: tables and inline styles only, no web fonts, no forms; the band's one image is an absolute URL, with the
 // band's base colour behind it for mail apps that block images.
 import { PAUSE_WINDOW, STRAND_DEVELOPING_PERCENT, STRAND_SECURE_PERCENT, TOO_FAST_MS, type Flag, type HelpAnswer, type StrandStatus } from "@/lib/assessment";
+import { BOOKING_URL } from "@/lib/contact";
 import { emailEndHtml, emailFooterText, emailHeaderHtml, emailSignatureText } from "@/lib/email-brand";
 import type { AiOutcome } from "@/lib/work-review";
 import {
@@ -218,6 +219,7 @@ export function reportEmail({ view: v, parentName, url, unsubscribeUrl, offer = 
     ...(offer ? [`How we help: ${help.title}\n${help.text}`] : []),
     ...(step && stepUrl ? [`${step.title}\n${step.text}\n${step.email.label}: ${stepUrl}`] : []),
     `See ${name}'s full report: ${url}`,
+    ...(BOOKING_URL ? [`Want to talk through the results? Book a free 15-minute call with one of our founders: ${BOOKING_URL}`] : []),
     emailSignatureText(),
     emailFooterText(footer),
   ].join("\n\n");
@@ -371,6 +373,9 @@ ${button(stepUrl, step.email.label)}
 </td></tr>` : `<tr><td style="padding:30px 20px 4px">
 ${button(url, `See ${name}'s full report`)}
 </td></tr>`}
+${BOOKING_URL ? `<tr><td style="padding:22px 20px 4px">
+${p(`Want to talk through the results? <a href="${esc(BOOKING_URL)}" style="color:${INK};text-decoration:underline">Book a free 15-minute call</a> with one of our founders.`, "margin:0;font-size:15px")}
+</td></tr>` : ""}
 ${emailEndHtml(footer, 20)}
 </table>
 </div>

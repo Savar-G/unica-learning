@@ -25,6 +25,7 @@ For the /compare page (round r24): school, tutor programs, learning centres, onl
 - Prodigy: free content; Core $9.95, Plus $14.95, Ultra $19.95 a month in USD (converted on Canadian cards); parent progress tracking. https://www.prodigygame.com/Memberships/math/ (direct)
 - Khan Academy Kids free (ages 2-8); Khan Academy free. https://www.khanacademy.org/kids (direct)
 - Mathletics Canada: $99/yr one student; weekly emailed parent report. https://www.mathletics.com/ca/?p=155 (direct)
+- Help when stuck (added 2026-10-23): IXL shows a step-by-step explanation after a wrong answer on every question, plus lessons and video tutorials. https://blog.ixl.com/2021/12/02/ixls-instructional-resources-tools-to-power-learning-at-home/ (snippet). Khan Academy offers hints and recommended videos. https://support.khanacademy.org/hc/en-us/community/posts/360072222631-Hint-Option-is-Gone (snippet, user post). Supports "hints, videos or worked answers on screen"; it does not show what a platform sees of the child's own working.
 - Live online tutoring (Cuemath CA$17-$32.50 per class plus platform fee; Thinkster from $22.50-$45 per session, likely USD) is closer to tutor programs than platforms.
 - Canadian Paediatric Society (2019, reaffirmed 2025-07-04): no daily hour limit for ages 5-12; "4 Ms"; avoid screens 1 hour before bed. https://cps.ca/en/documents/position/digital-media (direct)
 

@@ -5,7 +5,7 @@
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import type { Province } from "@/lib/assessment";
-import { SUPPORT_EMAIL, SUPPORT_HREF } from "@/lib/contact";
+import { BOOKING_URL, SUPPORT_EMAIL, SUPPORT_HREF } from "@/lib/contact";
 import { CARD_CHECK_ROUTE, CARD_ROUTE, WAITLIST_ROUTE, type CardCheckResult, type CardRequest, type CardResult, type ReportSrc, type WaitlistRequest, type WaitlistResult } from "@/lib/next-step";
 import type { NextStep, PlanOption } from "@/lib/report-view";
 import { CURRICULA } from "@/lib/signup";
@@ -173,7 +173,7 @@ export function ReportNextActions({ reportId, step, childName, province, src, as
     <div className={`rpt-next is-card${asked ? " is-asked" : ""}`}>
       {card === "saved" ? <>
         <h3>Card saved</h3>
-        <p>{savedOption ? `Plan: ${savedOption.label}. ` : ""}We charge nothing until the first workbook ships. To change the plan, email <a href={SUPPORT_HREF}>{SUPPORT_EMAIL}</a>.</p>
+        <p>{savedOption ? `Plan: ${savedOption.label}. ` : ""}Your first month is free, starting when the first workbook ships. We email you before the first charge. To change the plan, email <a href={SUPPORT_HREF}>{SUPPORT_EMAIL}</a>.</p>
       </> : card === "later" ? <>
         <h3>We received your plan choice.</h3>
         <p>We will email you a link to add your card. You have not been charged.</p>
@@ -197,6 +197,23 @@ export function ReportNextActions({ reportId, step, childName, province, src, as
         <p className="rpt-small">You add your card on a secure payment page.</p>
       </>}
       <p className="sr-only" role="status">{announce}</p>
+    </div>
+  );
+}
+
+/**
+ * A free 15-minute call with a founder about the results, next to the plan choice and quieter than it. Opens Calendly
+ * in a new tab; nothing about the child goes in the link. Hidden when no booking page is set (BOOKING_URL).
+ */
+export function BookCall({ childName }: { childName: string }) {
+  if (!BOOKING_URL) return null;
+  return (
+    <div className="rpt-next rpt-call">
+      <h3>Questions about {childName}&apos;s results?</h3>
+      <p>Book a free 15-minute call with Cedric or Savar, Unica&apos;s founders. We go through the report with you, explain where {childName} starts, and answer your questions.</p>
+      <a className="btn ghost" href={BOOKING_URL} target="_blank" rel="noopener" onClick={() => track("book_call", { src: "report" })}>
+        Book a call <span className="arr">→</span>
+      </a>
     </div>
   );
 }

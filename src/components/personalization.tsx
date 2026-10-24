@@ -1,20 +1,15 @@
 // "Personalized for your child" (D-096, option D "Fork" of round r18): two sample Grade 3 children, Leah and Kai,
 // get two different learning programs. The section sits after How it works. The pages are built from the real
 // question bank (src/lib/sample-children.ts): the words, numbers and answers are the templates' own; the pictures are
-// drawn from the filled values. A tap on a page opens it full size (PageZoom).
-import Link from "next/link";
+// drawn from the filled values. A tap on a page opens it full size (PageDeck).
 import type { ReactNode } from "react";
 import { Section, SectionHeader } from "@/ds";
-import { SAMPLE_CHILDREN, kaiPage, leahPage, type PageItem, type SampleChild, type SampleChildId } from "@/lib/sample-children";
+import { SAMPLE_CHILDREN, kaiPage, kaiPage2, kaiPage3, kaiPage4, leahPage, leahPage2, leahPage3, leahPage4, type PageItem, type SampleChild, type SampleChildId } from "@/lib/sample-children";
 import { Knot, Rise } from "./drawn";
-import { PageZoom } from "./page-zoom";
+import { PageDeck } from "./page-deck";
 import "@/ds/styles/personalization.css";
 
-const TITLE = "Every child learns differently. So each one gets their own program.";
-const LINES: [keyof Pick<SampleChild, "result" | "style">, string][] = [
-  ["result", "Assessment"],
-  ["style", "Learning style"],
-];
+const TITLE = "Same grade. Different program.";
 
 export function Personalization() {
   return (
@@ -24,26 +19,21 @@ export function Personalization() {
         <SectionHeader eyebrow="Personalized for your child" title={TITLE} titleId="personalT" />
       </Rise>
       <Fork />
-      <Footnote />
     </Section>
   );
 }
 
-function Footnote() {
-  return (
-    <div className="pz-foot">
-      <Link className="more-link" href="/sample-report">See a sample report <span aria-hidden="true">→</span></Link>
-    </div>
-  );
-}
-
 function Lines({ child }: { child: SampleChild }) {
+  const lines: [string, string][] = [
+    ["Gap", child.gap],
+    [child.programLabel, child.program],
+  ];
   return (
     <dl className="pz-lines">
-      {LINES.map(([key, label]) => (
-        <div key={key}>
+      {lines.map(([label, text]) => (
+        <div key={label}>
           <dt>{label}</dt>
-          <dd>{child[key]}</dd>
+          <dd>{text}</dd>
         </div>
       ))}
     </dl>
@@ -55,18 +45,17 @@ function Who({ child }: { child: SampleChild }) {
     <div className="pz-who">
       <span className={`pz-dot pz-dot-${child.id}`} aria-hidden="true" />
       <h3>{child.name}</h3>
-      <span className="chip">{child.tag}</span>
     </div>
   );
 }
 
-// Fork: one shared start, then the pencil line splits to the two children, each with the first page of their next book.
+// Fork: one shared start, then the pencil line splits to the two children, each with sample sheets from their program.
 function Fork() {
   return (
     <div className="pz-fork">
       <Rise className="pz-start">
         <span className="eyebrow">Meet Leah and Kai</span>
-        <p>Leah and Kai are both in Grade 3. Leah needs more practice, and Kai is ready for more.</p>
+        <p>Leah and Kai are both in Grade 3. The assessment found different gaps, so their programs are different.</p>
       </Rise>
       <svg className="pz-branch" viewBox="0 0 400 60" preserveAspectRatio="none" aria-hidden="true">
         <path d="M200 0 C200 30 100 30 100 60 M200 0 C200 30 300 30 300 60" />
@@ -74,7 +63,7 @@ function Fork() {
       <div className="pz-forks">
         {(["a", "b"] as const).map((id, i) => (
           <Rise key={id} d={i * 0.08} className="pz-row">
-            <div className="pz-thumb"><PageZoom id={id} name={SAMPLE_CHILDREN[id].name}><BankPage id={id} /></PageZoom></div>
+            <div className="pz-thumb"><PageDeck id={id} name={SAMPLE_CHILDREN[id].name} pages={PAGES[id].map((_, n) => <BankPage key={n} id={id} n={n} />)} /></div>
             <div>
               <Who child={SAMPLE_CHILDREN[id]} />
               <Lines child={SAMPLE_CHILDREN[id]} />
@@ -87,29 +76,85 @@ function Fork() {
 }
 
 // ---------- The bank pages ----------
-const PAGES: Record<SampleChildId, { head: string; title: string; ins: string; items: () => PageItem[]; alt: string }> = {
-  a: {
-    head: "Leah · Next book · Page 1 of 6",
-    title: "Regrouping in stories",
-    ins: "Read the story. Line up the tens and ones. When the ones make 10 or more, carry 1 ten.",
-    items: leahPage,
-    alt: "First page of Leah's next book: one worked story problem with the carried 1 marked, then three story problems that need regrouping.",
-  },
-  b: {
-    head: "Kai · Next book · Page 1",
-    title: "Multiplication with rows and groups",
-    ins: "Use the picture. Count the rows, then the number in each row.",
-    items: kaiPage,
-    alt: "First page of Kai's next book: three multiplication problems, each with a picture: an array of chairs, groups of cookies on plates, and rows of books.",
-  },
+interface Sheet { head: string; job: string; title: string; ins: string; items: () => PageItem[]; alt: string }
+
+const PAGES: Record<SampleChildId, Sheet[]> = {
+  a: [
+    {
+      head: "Leah's program",
+      job: "Practice",
+      title: "Regrouping in stories",
+      ins: "Read the story. Line up the tens and ones. When the ones make 10 or more, carry 1 ten.",
+      items: leahPage,
+      alt: "A sample sheet from Leah's program: one worked story problem with the carried 1 marked, then three story problems that need regrouping.",
+    },
+    {
+      head: "Leah's program",
+      job: "Practice",
+      title: "Borrowing in stories",
+      ins: "Read the story. Line up the tens and ones. If the top ones are too small, borrow 1 ten.",
+      items: leahPage2,
+      alt: "A sample sheet from Leah's program: four take-away story problems that need borrowing.",
+    },
+    {
+      head: "Leah's program",
+      job: "Step up",
+      title: "Adding hundreds in stories",
+      ins: "Read the story. Add the ones, then the tens, then the hundreds. Carry when a column makes 10.",
+      items: leahPage3,
+      alt: "A sample sheet from Leah's program: four story problems that add three-digit numbers.",
+    },
+    {
+      head: "Leah's program",
+      job: "Review",
+      title: "Mixed review",
+      ins: "Read each problem. Decide what to do, then solve it.",
+      items: leahPage4,
+      alt: "A sample sheet from Leah's program: a mix of add, take-away and equal-groups problems, one with a picture.",
+    },
+  ],
+  b: [
+    {
+      head: "Kai's program",
+      job: "New",
+      title: "Multiplication with rows and groups",
+      ins: "Use the picture. Count the rows, then the number in each row.",
+      items: kaiPage,
+      alt: "A sample sheet from Kai's program: three multiplication problems, each with a picture: an array of chairs, groups of cookies on plates, and rows of books.",
+    },
+    {
+      head: "Kai's program",
+      job: "New",
+      title: "Sharing equally",
+      ins: "Use the picture. Share the items into equal groups, then count how many are in each group.",
+      items: kaiPage2,
+      alt: "A sample sheet from Kai's program: three sharing and grouping problems, each with a picture of equal groups.",
+    },
+    {
+      head: "Kai's program",
+      job: "Practice",
+      title: "More rows and groups",
+      ins: "Use the picture. Count the rows, then the number in each row.",
+      items: kaiPage3,
+      alt: "A sample sheet from Kai's program: three more multiplication problems with arrays and equal groups.",
+    },
+    {
+      head: "Kai's program",
+      job: "Grade 4",
+      title: "Bigger numbers",
+      ins: "Use the picture to help. Multiply or share the bigger numbers.",
+      items: kaiPage4,
+      alt: "A sample sheet from Kai's program: Grade 4 multiplication and sharing problems with bigger numbers.",
+    },
+  ],
 };
 
-export function BankPage({ id }: { id: SampleChildId }) {
-  const p = PAGES[id];
+export function BankPage({ id, n = 0 }: { id: SampleChildId; n?: number }) {
+  const p = PAGES[id][n];
   const items = p.items();
   return (
     <div className="bpage" role="img" aria-label={p.alt}>
-      <div className="bp-hd"><span>{p.head}</span><span>Math</span></div>
+      <div className="bp-hd"><span>{p.head}</span><span>{p.job}</span></div>
       <div className="bp-tt">{p.title}</div>
       <p className="bp-ins">{p.ins}</p>
       {items.map((it, i) => (
@@ -119,7 +164,7 @@ export function BankPage({ id }: { id: SampleChildId }) {
           <p>{it.prompt}</p>
           {it.worked && <Column {...it.worked} />}
           {it.picture && <Picture p={it.picture} />}
-          {!it.worked && !it.picture && <ColumnBlank a={it.values.a} b={it.values.b} op={/left/.test(it.prompt) ? "−" : "+"} />}
+          {!it.worked && !it.picture && it.values.a != null && it.values.b != null && <ColumnBlank a={it.values.a} b={it.values.b} op={it.op ?? (/left/.test(it.prompt) ? "−" : "+")} />}
           {!it.worked && <span className="bp-line" />}
         </div>
       ))}

@@ -184,7 +184,7 @@ describe("Meta's clean addresses", () => {
     p.tags.conversion("card_saved");
     expect(p.state.installed).toEqual(["google"]);
     expect(p.meta).toEqual([]);
-    expect(p.google).toEqual([["event", "conversion", { send_to: "AW-1234567890/cardLbl", page_location: "https://unicalearning.com/thank-you", page_referrer: "", value: 69.3, currency: "CAD" }]]);
+    expect(p.google).toEqual([["event", "conversion", { send_to: "AW-1234567890/cardLbl", page_location: "https://unicalearning.com/thank-you", page_referrer: "", value: 79.99, currency: "CAD" }]]);
   });
 
   it("pause Meta, with no page view, when the visitor moves on to an address that is not clean", () => {
@@ -256,11 +256,11 @@ describe("ad conversions", () => {
     expect(p.google[0][2]).toMatchObject({ send_to: "AW-1234567890/reportLbl" });
   });
 
-  it("send card_saved to Google only, worth the first month (CAD 69.30): the thank-you address holds a Stripe reference", () => {
-    expect(CARD_VALUE).toBe(69.3);
+  it("send card_saved to Google only, worth the first charge (CAD 79.99): the thank-you address holds a Stripe reference", () => {
+    expect(CARD_VALUE).toBe(79.99);
     const p = sent("card_saved", THANKS);
     expect(p.meta).toEqual([]);
-    expect(p.google[0][2]).toMatchObject({ send_to: "AW-1234567890/cardLbl", value: 69.3, currency: "CAD" });
+    expect(p.google[0][2]).toMatchObject({ send_to: "AW-1234567890/cardLbl", value: 79.99, currency: "CAD" });
     expect(JSON.stringify(p.google)).not.toContain("cs_test");
   });
 

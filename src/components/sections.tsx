@@ -5,9 +5,10 @@ import type { ReactNode } from "react";
 import Image, { type StaticImageData } from "next/image";
 import Link from "next/link";
 import { CookieSettingsButton } from "@/components/cookie-consent";
+import { ScanShot } from "@/components/scan-shot";
 import { FaqMore } from "@/components/faq-more";
 import { StartLink, StartNote } from "@/components/start-link";
-import { BRAND, FIRST_MONTH_OFF, HERO, PLANS, cad, firstMonth } from "@/lib/site";
+import { BRAND, HERO, PLANS, cad } from "@/lib/site";
 import { FAQ } from "@/lib/faq";
 import {
   BeliefList,
@@ -33,10 +34,8 @@ import heroHome1 from "@/assets/img/hero-home-1.jpg";
 import assessPhoto from "@/assets/img/loop-assess-1.jpg";
 import practice6 from "@/assets/img/loop-practice-6.jpg";
 import deliverPhoto from "@/assets/img/loop-deliver.jpg";
-import scanPhoto from "@/assets/img/loop-scan.jpg";
 import adaptPhoto from "@/assets/img/loop-adapt.jpg";
 import repeatPhoto from "@/assets/img/loop-repeat.jpg";
-import emo1 from "@/assets/img/emotion-1.jpg";
 import adapt4 from "@/assets/img/loop-adapt-4.jpg";
 import heroHome2 from "@/assets/img/hero-home-2.jpg";
 import emo4 from "@/assets/img/emotion-4.jpg";
@@ -75,20 +74,16 @@ export function Hero() {
         kicker={HERO.kicker}
         title={HERO.title}
         highlight={HERO.highlight}
-        lead={
-          <>
-            <span className="nowrap">Miss <SwapWord words={TOPICS} /></span> once and every lesson after it gets harder.
-            Unica gives your child a workbook built for where they are.
-          </>
-        }
-        meta={["Free assessment on a laptop or tablet", "30-day money-back guarantee", "Cancel anytime"]}
+        after={HERO.after}
+        lead={<><span className="nowrap">Miss <SwapWord words={TOPICS} /></span> {HERO.lead}</>}
+        meta={["Free assessment on a laptop or tablet", "First month free", "Cancel anytime"]}
         page={null}
         report={null}
         animate
         actions={
           <>
             <GetStarted src="hero" />
-            <a className="btn ghost" href="#how">See how it works</a>
+            <Link className="btn ghost" href="/sample-report">See a sample report</Link>
           </>
         }
         media={<Image src={heroHome1} alt="A boy writes in his workbook at a desk at home" sizes="(min-width: 1200px) 1120px, 100vw" placeholder="blur" loading="eager" fetchPriority="high" />}
@@ -102,11 +97,11 @@ const STEPS = [
   { n: "01", t: "Assess", d: "Your child takes the free online assessment. The report shows their level and gaps. You choose a plan after.",
     v: <Image src={assessPhoto} alt="A girl and her mother sit at a laptop, with a workbook open on the table" sizes={STEP_SIZES} placeholder="blur" />, tone: "photo" as const },
   { n: "02", t: "Deliver", d: "We mail a workbook matched to their level and gaps. It follows your school curriculum.", v: <Image src={deliverPhoto} alt="Two mailers waiting on a front step" sizes={STEP_SIZES} placeholder="blur" />, tone: "photo" as const },
-  { n: "03", t: "Practice", d: "Your child works on paper for 15-30 minutes a day, 5 days a week.",
+  { n: "03", t: "Practice", d: <>Your child works on paper for 15-30 minutes a day, 5 days a week, with rewards for every page. <Link href="/rewards" className="more-link">See the rewards <span aria-hidden="true">→</span></Link></>,
     v: <Image src={practice6} alt="A girl works through an arithmetic page in pencil" sizes={STEP_SIZES} placeholder="blur" />, tone: "photo" as const },
-  { n: "04", t: "Scan", d: "Take a photo of the finished pages. We mark the work, show you the gaps, and give the solutions.", v: <Image src={scanPhoto} alt="A phone camera frames a page to photograph it" sizes={STEP_SIZES} placeholder="blur" />, tone: "photo" as const },
-  { n: "05", t: "Adapt", d: "We shape the next workbook from how they did: more practice where they struggle, new topics where they're ready.", v: <Image src={adaptPhoto} alt="A girl shows her finished work to her parents" sizes={STEP_SIZES} placeholder="blur" />, tone: "photo" as const },
-  { n: "06", t: "Repeat", d: <>The next book arrives before this one runs out. <em>Struggling with fractions? Your next book focuses on fractions.</em></>, v: <Image src={repeatPhoto} alt="A girl starts on her next book at the dining table" sizes={STEP_SIZES} placeholder="blur" />, tone: "photo" as const },
+  { n: "04", t: "Scan", d: "Take a photo of the finished pages in the Unica app. We mark the work, show you the gaps, and give the solutions.", v: <ScanShot sizes={STEP_SIZES} />, tone: "photo" as const },
+  { n: "05", t: "Adapt", d: "Each scan updates the program. Missed carrying? You get more of it. Got it? It moves on.", v: <Image src={adaptPhoto} alt="A girl shows her finished work to her parents" sizes={STEP_SIZES} placeholder="blur" />, tone: "photo" as const },
+  { n: "06", t: "Track and repeat", d: <>Your child&apos;s progress report updates after every scan. The next workbook arrives before this one runs out, built from that progress. <Link href="/sample-report" className="more-link">See a sample report <span aria-hidden="true">→</span></Link></>, v: <Image src={repeatPhoto} alt="A girl starts on her next workbook at the dining table" sizes={STEP_SIZES} placeholder="blur" />, tone: "photo" as const },
 ];
 
 export function How() {
@@ -114,7 +109,7 @@ export function How() {
     <Section id="how" aria-labelledby="howT">
       <Knot />
       <Rise>
-        <SectionHeader eyebrow="How it works" title="Start easily. Repeat easily." titleId="howT" lead="Every book is built from the last one." />
+        <SectionHeader eyebrow="How it works" title="Start easily. Repeat easily." titleId="howT" lead="Every workbook is built from the last one." />
       </Rise>
       <StepGrid>
         {STEPS.map((s, i) => (
@@ -128,47 +123,6 @@ export function How() {
 }
 
 // Program parts first, the workbook last (D-095). The left column reads first, then the photo, then the right column.
-const INCLUDED: [IconName, string, ReactNode, number][][] = [
-  [
-    ["layers", "A plan built for your child", "The free assessment finds your child's level and gaps. It sets what each book covers.", 0],
-    ["calendar", "Daily practice, rewarded", <>15-30 minutes a day, 5 days a week, with rewards for every page and every week. <Link href="/rewards" className="more-link">See the rewards <span aria-hidden="true">→</span></Link></>, 0.08],
-    ["pencil", "Real paper. Real pencil.", "Daily practice happens away from screens. The app is for you, not them.", 0.16],
-  ],
-  [
-    ["cam", "Instant answer check", "Take a photo of a finished page in our app and see what's right in seconds. Stuck on a problem? Photograph it to see every step explained.", 0.04],
-    ["chart", "Progress reports", "A report and worked solutions in the app after every scan.", 0.12],
-    ["book", "Workbooks mailed home", "1 math workbook a month, about 20-25 pages, delivered before the current book ends.", 0.2],
-  ],
-];
-
-export function Included() {
-  const col = (items: [IconName, string, ReactNode, number][], first?: ReactNode) => (
-    <div className="col">
-      {first}
-      {items.map(([icon, title, text, delay]) => (
-        <IncludedCard key={title} icon={icon} title={title} className="rise" style={d(delay)}>
-          {text}
-        </IncludedCard>
-      ))}
-    </div>
-  );
-  return (
-    <Section id="inc" aria-labelledby="incT">
-      <Knot />
-      <Rise>
-        <SectionHeader eyebrow="What you get each month" title="Everything your child needs. Nothing they don't." titleId="incT" />
-      </Rise>
-      <div className="inc">
-        {col(INCLUDED[0])}
-        <Rise>
-          <div className="ph" style={{ aspectRatio: "3 / 4", borderRadius: 4 }}><Image src={emo1} alt="A boy works on a paper page at his desk" sizes="(min-width: 980px) 300px, 92vw" placeholder="blur" /></div>
-        </Rise>
-        {col(INCLUDED[1])}
-      </div>
-    </Section>
-  );
-}
-
 const DRIFT: [StaticImageData, number, number, number, number, number, number, boolean][] = [
   [adapt4, 3, 7, 15, 21, 0.14, -4, false], [emo9, 23, 8, 12, 17, -0.1, 3, true],
   [emo5, 79, 5, 17, 22, 0.18, 4, false], [heroHome2, 62, 7, 12, 16, -0.14, -3, true],
@@ -187,7 +141,7 @@ export function Feel() {
       ))}
       <Rise className="msg">
         <h2 id="feelT">A program made for one child: yours.</h2>
-        <p className="lead">No two {BRAND} programs are the same. Each one starts where your child is, and moves on when they&apos;re ready.</p>
+        <p className="lead">Your child&apos;s program starts from the assessment. After that, it&apos;s shaped by their progress.</p>
       </Rise>
     </Section>
   );
@@ -195,9 +149,9 @@ export function Feel() {
 
 // One list for the home page and /our-story, so the promise text cannot drift apart.
 export const PROMISE: [IconName, string, string][] = [
-  ["shield", "30-day money-back guarantee", "If it is not working for your child within 30 days of your first payment, we refund your payment in full."],
+  ["shield", "First month free", "Your first month of workbooks is free. Cancel before day 30 and you pay nothing. We email you 7 days before the first charge."],
   ["calendar", "Fits your family's schedule", "Kids are busy. Take a week or a month off, and pick up where your child left off."],
-  ["test", "Free assessment, nothing to pay today", "Your child takes the free online math assessment before you choose a plan. We charge nothing until your first workbook ships."],
+  ["test", "Free assessment, nothing to pay today", "Your child takes the free online math assessment before you choose a plan. Adding a card charges nothing."],
   ["undo", "Cancel anytime", "No contract. Stop whenever you want."],
 ];
 
@@ -240,8 +194,8 @@ export function Pricing() {
     <Section id="price" aria-labelledby="priceT">
       <Knot />
       <Rise>
-        <SectionHeader eyebrow="Pricing" title="Personal like a tutor. Structured like a learning centre. Priced like neither." titleId="priceT" />
-        <p className="g-line">Try it with a <Highlight>30-day money-back guarantee.</Highlight></p>
+        <SectionHeader eyebrow="Pricing" title="A learning centre's structure. A plan built for your child. A fraction of the price." titleId="priceT" />
+        <p className="g-line">Try it <Highlight>free for a month.</Highlight></p>
       </Rise>
       <PlanGrid>
         <PlanCard
@@ -250,8 +204,16 @@ export function Pricing() {
           name={PLANS.one.name}
           note={PLANS.one.note}
           price={PLANS.one.price}
-          offer={{ price: cad(firstMonth(PLANS.one.price)), note: `first month, ${FIRST_MONTH_OFF}% off!`, then: `Then CAD ${PLANS.one.price} a month.` }}
-          features={["Free online math assessment and report, before you choose a plan", "A learning plan built from your child's level and gaps", "Progress reports after every check-in", "Personalized math workbooks matched to your child's level and gaps, mailed home", "Your next book arrives before the current one runs out", "Delivery included. Cancel anytime"]}
+          offer={{ price: "Free", note: "your first month!", then: `Then CAD ${cad(PLANS.one.price)} a month.` }}
+          features={[
+            "Free online math assessment and report, before you choose a plan",
+            "A program built from your child's level and gaps",
+            "2 paper workbooks a month, mailed home",
+            "The Unica companion: help out loud when they're stuck",
+            "The parent app: instant answer checks, solutions and progress reports",
+            "Rewards for every page and every week",
+            "Delivery included. Cancel anytime",
+          ]}
           ctaLabel={START_LABEL}
           cta={<div className="plan-cta"><GetStarted src="price" /><StartNote /></div>}
         />
@@ -307,7 +269,7 @@ export function ThreadEnd() {
 }
 
 const FOOTER_GROUPS: { title: string; links: { label: string; href: string }[] }[] = [
-  { title: "Learn", links: [{ label: "How it works", href: "/#how" }, { label: "What you get", href: "/#inc" }, { label: "Pricing", href: "/#price" }, { label: "FAQ", href: "/#faq" }, { label: "How we compare", href: "/compare" }] },
+  { title: "Learn", links: [{ label: "How it works", href: "/#how" }, { label: "Pricing", href: "/#price" }, { label: "FAQ", href: "/#faq" }, { label: "How we compare", href: "/compare" }] },
   { title: "Company", links: [{ label: "Our story", href: "/our-story" }, { label: "Rewards", href: "/rewards" }, { label: "Resources", href: "/resources" }] },
   { title: "Help", links: [{ label: "Contact us", href: "/contact" }, { label: "Privacy", href: "/privacy" }, { label: "Terms", href: "/terms" }] },
 ];
@@ -336,7 +298,7 @@ export function Footer({ children }: { children?: ReactNode }) {
           <div className="foot-fine">
             <span>© 2026 {BRAND}</span>
             <span>Made in Vancouver, BC</span>
-            <span>30-day money-back guarantee</span>
+            <span>First month free</span>
             <span>Cancel anytime</span>
             <CookieSettingsButton />
           </div>

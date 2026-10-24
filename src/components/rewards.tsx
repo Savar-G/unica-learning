@@ -12,7 +12,6 @@ import "./rewards.css";
 // Home-page section links, made absolute so they work from this page.
 const LINKS = [
   { label: "How it works", href: "/#how" },
-  { label: "What's included", href: "/#inc" },
   { label: "Pricing", href: "/#price" },
   { label: "FAQ", href: "/#faq" },
 ];

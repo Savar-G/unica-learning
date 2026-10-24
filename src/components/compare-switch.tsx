@@ -1,6 +1,6 @@
 "use client";
 
-// The /compare at-a-glance table (D-114). Five columns on wide screens; under 900px it shows one option beside ours,
+// The /compare at-a-glance table (D-114). Four columns on wide screens; under 900px it shows one option beside ours,
 // picked with the switch. Without JavaScript the phone table shows the private tutor.
 import { useState } from "react";
 import { OPTIONS, type OptionId } from "@/lib/compare";
@@ -19,7 +19,7 @@ export function CompareSwitch({ labelledBy }: { labelledBy: string }) {
           <button type="button" key={o.id} aria-pressed={pick === o.id} onClick={() => setPick(o.id)}>{o.short}</button>
         ))}
       </div>
-      <CompareGrid className="cmp-all" columns={OPTIONS.map((o) => o.id)} rows={["personal", "pace", "plan", "gaps", "paper", "home"]} labelledBy={labelledBy} />
+      <CompareGrid className="cmp-all" columns={OPTIONS.map((o) => o.id)} rows={["personal", "plan", "help", "gaps", "paper", "home"]} labelledBy={labelledBy} />
     </div>
   );
 }

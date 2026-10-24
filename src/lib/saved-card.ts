@@ -72,7 +72,7 @@ export interface CardProvider {
    * when it cannot tell: a failed or unfinished read, or a finished setup that it cannot match to the row.
    */
   find(row: { id: string; customer: string }): Promise<CardEvidence | null>;
-  /** The customer's plan in Stripe follows the card it saved, for the charge when the first workbook ships. */
+  /** The customer's plan in Stripe follows the card it saved, for the subscription that starts when the first workbook ships. */
   keepPlan(evidence: CardEvidence): Promise<void>;
 }
 

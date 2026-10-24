@@ -33,7 +33,7 @@ export function RangeTabs({ ctx, range }: { ctx: Ctx; range: RangeKey }) {
   );
 }
 
-const STAGE_TONE: Record<Stage, string> = { account: "muted", started: "info", finished: "sun", card_started: "warn", card_saved: "ok", paying: "deep", cancelled: "bad", waitlist: "muted" };
+const STAGE_TONE: Record<Stage, string> = { account: "muted", started: "info", finished: "sun", card_started: "warn", card_saved: "ok", trial: "info", paying: "deep", cancelled: "bad", waitlist: "muted" };
 export const StageChip = ({ stage }: { stage: Stage }) => <span className={`dash-stage is-${STAGE_TONE[stage]}`}>{STAGE_SHORT[stage]}</span>;
 
 export function Delta({ value, prev, unit }: { value: number; prev: number | null; unit?: string }) {
