@@ -1,6 +1,6 @@
 import "server-only";
 import Stripe from "stripe";
-import { cad, firstMonth, priceWithOffer } from "@/lib/site";
+import { cad, priceWithOffer } from "@/lib/site";
 import { PLAN_PRODUCT, firstChargeAt, planTerms } from "@/lib/subscription-plan";
 
 // Created on first use, so a build without STRIPE_SECRET_KEY still works. Without the key, BC parents
@@ -31,13 +31,12 @@ export interface CardSetup {
 
 /** What the parent agrees to on Stripe's page. Stripe requires the amount, timing and how to cancel. */
 export const cardTerms = (price: number) =>
-  `Nothing is charged today. Your first 2 weeks are free, starting when your first workbook ships. On day 14 we charge CAD ${cad(firstMonth(price))} for your first month, then CAD ${cad(price)} every month until you cancel. We email you a reminder a few days before the first charge. Cancel before day 14 and you pay nothing.`;
+  `Nothing is charged today. Your first month is free, starting when your first workbook ships. On day 30 we charge CAD ${cad(price)}, then CAD ${cad(price)} every month until you cancel. We email you a reminder a few days before the first charge. Cancel before day 30 and you pay nothing.`;
 
 /**
  * Creates the Stripe customer and a hosted Checkout page in setup mode: it saves the card and charges nothing.
- * When the first workbook ships, start a CAD `price` monthly subscription on this customer with a 14-day free trial
- * (TRIAL_DAYS) and the first paid month at metadata first_month_price (CAD 50: a coupon for the difference, duration
- * "once"; D-053, D-139). Email the reminder a few days before the trial ends.
+ * When the first workbook ships, start a CAD `price` monthly subscription on this customer with the free first month
+ * (a 30-day trial, TRIAL_DAYS; D-053, D-139). Email the reminder a few days before the trial ends.
  * Returns the customer and Checkout page URL so the booking can durably release its hold.
  */
 export async function cardSetupUrl(s: Stripe, p: CardSetup): Promise<{ customer: string; url: string | null }> {
@@ -56,7 +55,7 @@ export async function cardSetupUrl(s: Stripe, p: CardSetup): Promise<{ customer:
 /** The metadata keys every card setup carries; the report path adds its own (D-053). */
 const cardMetadata = (p: CardSetup): Record<string, string> => ({
   ref: p.ref, plan: p.plan, subject: p.subject, grade: String(p.grade), price: String(p.price),
-  first_month_price: cad(firstMonth(p.price)), curriculum: p.curriculum, ...(p.postal ? { postal: p.postal } : {}),
+  curriculum: p.curriculum, ...(p.postal ? { postal: p.postal } : {}),
 });
 const cardDescription = (p: CardSetup) => `${p.subject}, grade ${p.grade}, ${priceWithOffer(p.price)} from the first workbook`;
 
@@ -137,7 +136,7 @@ export async function reportCardCustomer(s: Stripe, p: ReportCardSetup): Promise
 export async function keepSavedPlan(s: Stripe, customer: string, metadata: Record<string, string>) {
   if (!metadata.plan || !metadata.price) return;
   const keys = ["plan", "price", "first_month_price", "subject", "grade", "report_id", "assessment_id"].filter((k) => metadata[k]);
-  const price = metadata.first_month_price ? priceWithOffer(Number(metadata.price)) : `CAD ${metadata.price}/month`;
+  const price = priceWithOffer(Number(metadata.price));
   await s.customers.update(customer, {
     description: `${metadata.subject}, grade ${metadata.grade}, ${price} from the first workbook`,
     metadata: Object.fromEntries(keys.map((k) => [k, metadata[k]])),
@@ -177,23 +176,10 @@ async function planProduct(s: Stripe) {
   }
 }
 
-/** The first-month coupon for this price, created once with a fixed id. */
-async function firstMonthCoupon(s: Stripe, id: string, amountOff: number) {
-  try {
-    await s.coupons.retrieve(id);
-  } catch (e) {
-    if (!missing(e)) throw e;
-    await s.coupons.create(
-      { id, name: "First month offer", amount_off: amountOff, currency: "cad", duration: "repeating", duration_in_months: 1 },
-      { idempotencyKey: `coupon-${id}` },
-    );
-  }
-}
-
 /**
  * D-139: starts the paid plan of a saved card when the first workbook ships. A monthly subscription at the card's
- * price on the child's customer, charged to the saved card: the 14-day trial first (nothing charged), then the first
- * month at the offer price on day 14, then the full price each month until the parent cancels. Refuses when the
+ * price on the child's customer, charged to the saved card: the free first month first (a 30-day trial, nothing
+ * charged), then the full price on day 30 and each month after until the parent cancels. Refuses when the
  * customer already has a subscription that is not over, or no saved card. The card setup's id keys the create, so a
  * double click starts one subscription.
  */
@@ -205,14 +191,12 @@ export async function startPlan(s: Stripe, p: { cardSetup: string; customer: str
   if (!card) return { ok: false, error: "no_card" };
   const terms = planTerms(p.price);
   await planProduct(s);
-  if (terms.couponId) await firstMonthCoupon(s, terms.couponId, terms.firstMonthOffCents);
   const created = await s.subscriptions.create({
     customer: p.customer,
     items: [{ price_data: { currency: "cad", product: PLAN_PRODUCT.id, unit_amount: terms.monthlyCents, recurring: { interval: "month" } } }],
     trial_period_days: terms.trialDays,
     default_payment_method: card,
-    ...(terms.couponId ? { discounts: [{ coupon: terms.couponId }] } : {}),
-    metadata: { card_setup: p.cardSetup, price: cad(p.price), first_month_price: cad(firstMonth(p.price)) },
+    metadata: { card_setup: p.cardSetup, price: cad(p.price) },
   }, { idempotencyKey: `start-plan-${p.cardSetup}` });
   const end = created.trial_end ? new Date(created.trial_end * 1000) : firstChargeAt(now, terms.trialDays);
   return { ok: true, subscription: created.id, firstChargeAt: end.toISOString() };

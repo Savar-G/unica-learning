@@ -30,8 +30,8 @@ export function resultCopy({ card, fromReport, receipt }: ResultState): ResultCo
     : receipt === "waitlist" ? "You are on the waitlist."
     : receipt === "reserved" ? "We received your request."
     : "Thank you for your interest.";
-  const lead = card === "saved" && fromReport ? "You have not been charged. Your first 2 weeks are free, starting when your first workbook ships. Your child's report stays in your account."
-    : card === "saved" ? "You have not been charged. Your first 2 weeks are free, starting when your first workbook ships. Your child can take the free online math assessment now, on a laptop or tablet."
+  const lead = card === "saved" && fromReport ? "You have not been charged. Your first month is free, starting when your first workbook ships. Your child's report stays in your account."
+    : card === "saved" ? "You have not been charged. Your first month is free, starting when your first workbook ships. Your child can take the free online math assessment now, on a laptop or tablet."
     : card === "unconfirmed" ? "If you finished adding your card, contact us before you try again. We can check for you."
     : card === "cancelled" ? "Nothing was charged. Your child can take the free online math assessment first, on a laptop or tablet."
     : receipt === "waitlist" ? "We will email you when books for your selected curriculum are ready. You did not add a card and nothing was charged. Your child can take the free online math assessment now."

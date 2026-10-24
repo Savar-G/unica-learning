@@ -4,7 +4,7 @@ import { FAQ } from "@/lib/faq";
 import { PARENT_NOT_YOURS, PARENT_NOTE, PARENT_YOURS } from "@/lib/parent";
 import { SITE_URL } from "@/lib/metadata";
 import { resourcePath, RESOURCES } from "@/lib/resources";
-import { BRAND, PLANS, cad, firstMonth } from "@/lib/site";
+import { BRAND, PLANS, cad } from "@/lib/site";
 import { SUPPORT_EMAIL } from "@/lib/contact";
 
 const url = (path: string) => `${SITE_URL}${path}`;
@@ -16,14 +16,14 @@ Prices are in Canadian dollars. Delivery across Canada is included. There is one
 
 ## ${PLANS.one.name} (${PLANS.one.note})
 - Price: CAD ${cad(PLANS.one.price)} per month
-- First month: CAD ${cad(firstMonth(PLANS.one.price))}
+- First month: free
 - Includes: 2 personalized math workbooks a month, one every two weeks; the parent app (step-by-step help when your child is stuck, instant answer check, progress reports and worked solutions); delivery
 
 ## Terms
 - The online math assessment is free and comes before any plan or card. Every family in Canada can take the free online math assessment. Start at ${url("/start")}
-- After the report, BC families can choose the plan and add a card. Nothing is charged when the card is added. The first 2 weeks are free, starting when the first workbook ships; the first month is charged on day 14, then monthly until you cancel.
+- After the report, BC families can choose the plan and add a card. Nothing is charged when the card is added. The first month is free, starting when the first workbook ships; the monthly price is charged on day 30, then monthly until you cancel.
 - Families on another provincial curriculum (Alberta, Saskatchewan, Manitoba, Ontario) can join the workbook waitlist after the report, with no card.
-- Cancel before day 14 and you pay nothing. A reminder email comes a few days before the first charge.
+- Cancel before day 30 and you pay nothing. A reminder email comes a few days before the first charge.
 - Cancel anytime. Pause for a week, a month or longer.
 
 More: ${url("/#price")}
@@ -35,7 +35,7 @@ export function llmsTxt(): string {
   const guides = RESOURCES.map(({ meta }) => `- [${meta.title}](${url(resourcePath(meta.slug))})`).join("\n");
   return `# ${BRAND}
 
-> A personalized math learning program for children aged 6-12 (grades 1-7) in Canada. Each child gets paper workbooks made for them and adapted after every book. Math is CAD ${cad(PLANS.one.price)} a month, with the first month at CAD ${cad(firstMonth(PLANS.one.price))}, delivery included.
+> A personalized math learning program for children aged 6-12 (grades 1-7) in Canada. Each child gets paper workbooks made for them and adapted after every book. Math is CAD ${cad(PLANS.one.price)} a month after a free first month, delivery included.
 
 ${BRAND} is made in Vancouver, BC. A free online math assessment, taken on a laptop or tablet, finds each child's math level and gaps; the parent reads the report before choosing a plan. The child then works on paper workbooks for 15-30 minutes a day, 5 days a week; the parent uses a phone app to check answers, get step-by-step help when the child is stuck, and see progress. Every family in Canada can take the free math assessment. Books follow the BC curriculum today; Alberta, Saskatchewan, Manitoba and Ontario are next.
 
@@ -60,8 +60,8 @@ ${PARENT_NOTE}
 Parents in Canada with a child aged 6-12 who want math practice on paper, at the child's own level and pace, with little screen time for the child.
 
 ## Pricing
-- ${PLANS.one.name} (${PLANS.one.note}): CAD ${cad(PLANS.one.price)} per month; first month CAD ${cad(firstMonth(PLANS.one.price))}
-- Free online math assessment before you choose a plan. Delivery across Canada included. First 2 weeks free. Cancel anytime.
+- ${PLANS.one.name} (${PLANS.one.note}): CAD ${cad(PLANS.one.price)} per month; first month free
+- Free online math assessment before you choose a plan. Delivery across Canada included. First month free. Cancel anytime.
 - Details: ${url("/pricing.md")}
 
 ## Pages

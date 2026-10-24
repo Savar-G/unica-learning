@@ -4,7 +4,7 @@ import { BRAND, PLANS } from "@/lib/site";
 export const FAQ = [
   ["How is the work checked?", "You take a photo of the finished pages with your phone. We mark the work, show you what your child got right and where the gaps are, and give the solutions so they can understand any mistakes."],
   ["What if my child copies answers or uses AI?", `Each new workbook is built from your child's own work, so copied answers only mean they miss practice they need. Answers and solutions appear only once the pages are marked. Steps are written on paper, so we see how they got there, not just the answer. The ${BRAND.split(" ")[0]} companion explains step by step and asks your child to try the next step. Practice is screen-free: keeping phones, tablets and calculators away during practice time makes AI shortcuts hard.`],
-  ["What if it is not right for my child?", "Try the first 2 weeks free. If it is not right for your child, cancel before day 14 and you pay nothing."],
+  ["What if it is not right for my child?", "Try the first month free. If it is not right for your child, cancel before day 30 and you pay nothing."],
   ["How is this different from a learning centre?", `Learning centres usually follow a set program, where each child moves along the same path at their own pace, and cost about $200 per subject a month. ${BRAND} starts at your child's level, builds every book from how they did, and costs less: CAD ${PLANS.one.price} a month for math.`],
   ["Already have a tutor?", `${BRAND} covers practice between sessions. The report shows exactly where your child's gaps are, so a tutor can start on them right away.`],
   ["What if my child is struggling a lot?", "The next book focuses on the gap with extra practice, and you'll see exactly where they're stuck so you can help right away."],
@@ -18,7 +18,7 @@ export const FAQ = [
   ["What if we miss a few days?", "The next book picks up where your child is. Nothing is lost."],
   ["What if we forget to send photos?", "We send a reminder. Until new pages arrive, the next book reviews what your child last worked on."],
   ["What happens to my child's work?", "We use it to plan your child's next book and show their progress. We do not sell it, and you can ask us to delete it at any time."],
-  ["Why do you ask for my card?", "You do not need a card for the assessment. After the report, BC families can choose a plan and add a card. The card lets your first workbook ship as soon as it is ready. Your first 2 weeks are free, starting when the first workbook ships. On day 14 we charge your first month, then every month until you cancel. We email you before the first charge. Cancel before day 14 and you pay nothing. Families on the waitlist do not add a card."],
-  ["Can we cancel?", "Yes, anytime. Contact us to cancel. If you cancel within your first 2 free weeks, you pay nothing."],
+  ["Why do you ask for my card?", "You do not need a card for the assessment. After the report, BC families can choose a plan and add a card. The card lets your first workbook ship as soon as it is ready. Your first month is free, starting when the first workbook ships. On day 30 we charge the monthly price, then every month until you cancel. We email you before the first charge. Cancel before day 30 and you pay nothing. Families on the waitlist do not add a card."],
+  ["Can we cancel?", "Yes, anytime. Contact us to cancel. If you cancel within your free first month, you pay nothing."],
   ["Where do you deliver?", "We deliver across Canada. Delivery is included in every plan."],
 ].map(([question, answer]) => ({ question, answer }));

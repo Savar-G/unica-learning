@@ -16,22 +16,17 @@ export type PlanId = keyof typeof PLANS;
 export const EXTRA_ROUND_OFFERED = false;
 
 /**
- * Free trial (2026-10-23): the first 14 days, counted from when the first workbook ships, are free; the card is charged
- * on day 14, after a reminder email a few days before. It replaces the 30-day money-back guarantee.
+ * Free first month (Cedric, 2026-10-24; was 2 free weeks then CAD 50 for the first month, 2026-10-23): the first 30 days,
+ * counted from when the first workbook ships, are free; the card is charged the full price on day 30, after a reminder
+ * email a few days before, then every month. It replaces the 30-day money-back guarantee.
  */
-export const TRIAL_DAYS = 14;
+export const TRIAL_DAYS = 30;
 
-/** First-month offer: CAD 50 for the first month, then the full price (Cedric and Savar, 2026-10-23; was 30% off, D-091). */
-export const FIRST_MONTH_PRICE = 50;
-
-/** The first month's price for a monthly price: the offer, never more than the price itself. */
-export const firstMonth = (price: number) => Math.min(price, FIRST_MONTH_PRICE);
-
-/** A CAD amount as the site writes it: whole dollars without cents ("50"), otherwise two decimals ("79.99"). */
+/** A CAD amount as the site writes it: whole dollars without cents ("99"), otherwise two decimals ("79.99"). */
 export const cad = (n: number) => (Number.isInteger(n) ? String(n) : n.toFixed(2));
 
-/** The price with the offer, for alerts and Stripe descriptions: "CAD 79.99/month, first month CAD 50". */
-export const priceWithOffer = (price: number) => `CAD ${cad(price)}/month, first month CAD ${cad(firstMonth(price))}`;
+/** The price with the offer, for alerts and Stripe descriptions: "CAD 79.99/month, first month free". */
+export const priceWithOffer = (price: number) => `CAD ${cad(price)}/month, first month free`;
 
 // Plain words first (Oct 2026): a parent reading in her second language took the "same box" headline for an online
 // program. The headline names the struggle (the topic rotates, sections.tsx) and what Unica does; the lead says how.

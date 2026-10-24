@@ -72,7 +72,7 @@ export function ComparePage() {
 
           <Rise className="cmpp-end">
             <h2>See where your child is, before you choose anything.</h2>
-            <p>The math assessment and report are free. Choose a plan after you read it. The first 2 weeks are free.</p>
+            <p>The math assessment and report are free. Choose a plan after you read it. The first month is free.</p>
             <div>
               <StartLink src="compare">{START_LABEL} <span className="arr">→</span></StartLink>
               <StartNote />

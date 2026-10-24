@@ -18,7 +18,7 @@ export function StartPlan({ cardId, child }: { cardId: string; child: string }) 
   const [done, setDone] = useState<string | null>(null);
   const [error, setError] = useState("");
   async function start() {
-    if (busy || !window.confirm(`Start ${child}'s plan? The 2 free weeks begin now. Stripe charges the saved card on day 14.`)) return;
+    if (busy || !window.confirm(`Start ${child}'s plan? The free first month begins now. Stripe charges the saved card on day 30.`)) return;
     setBusy(true);
     setError("");
     try {
