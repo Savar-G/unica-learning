@@ -1568,11 +1568,6 @@ export type Database = {
           break_started_at: string
           completed_at: string
           down: number
-          extra: number
-          extra_finished_at: string
-          extra_offered_at: string
-          extra_skipped_at: string
-          extra_started_at: string
           facts_answered: number
           facts_started_at: string
           id: string
@@ -1597,11 +1592,6 @@ export type Database = {
           break_started_at: string
           completed_at: string
           down: number
-          extra: number
-          extra_finished_at: string
-          extra_offered_at: string
-          extra_skipped_at: string
-          extra_started_at: string
           facts_answered: number
           facts_drawn: number
           facts_started_at: string
@@ -1716,17 +1706,28 @@ export type Database = {
         Args: { p: string; token: string }
         Returns: boolean
       }
-      complete_test: {
-        Args: {
-          p_answers: Json
-          p_assessment: string
-          p_completed_at: string
-          p_extra_finished: boolean
-          p_help: string
-          p_placement: Json
-        }
-        Returns: string
-      }
+      complete_test:
+        | {
+            Args: {
+              p_answers: Json
+              p_assessment: string
+              p_completed_at: string
+              p_help: string
+              p_placement: Json
+            }
+            Returns: string
+          }
+        | {
+            Args: {
+              p_answers: Json
+              p_assessment: string
+              p_completed_at: string
+              p_extra_finished: boolean
+              p_help: string
+              p_placement: Json
+            }
+            Returns: string
+          }
       confirm_family_copies: {
         Args: { p: string; token: string }
         Returns: boolean
@@ -1773,15 +1774,6 @@ export type Database = {
         Args: { booking_ref: string; customer: string }
         Returns: boolean
       }
-      finish_extra_round: {
-        Args: {
-          p_answers: Json
-          p_assessment: string
-          p_finished_at: string
-          p_placement: Json
-        }
-        Returns: string
-      }
       finish_family_payment_operation: {
         Args: {
           p: string
@@ -1814,10 +1806,6 @@ export type Database = {
       read_family_payment_progress: {
         Args: { customer: string; p: string; token: string }
         Returns: Json
-      }
-      record_extra_offer: {
-        Args: { p_answers: Json; p_assessment: string; p_at: string }
-        Returns: string
       }
       record_reminder_click: {
         Args: {

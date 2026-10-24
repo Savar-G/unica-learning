@@ -131,9 +131,8 @@ function legacySource({ answered = 8, served = answered, counted = true }: { ans
     startedAt: START, completedAt: at(FINISHED), breakStartedAt: null, breakEndedAt: null, breakSkipped: null, breakMs: null, device: null,
     stored: { ...storedTest(session), extra },
     placement: counted ? { ...placement, extraRound: { questions: 8, strands: ["number"] } } : placement,
-    extraOfferedAt: at(OFFERED), extraSkippedAt: null, extraStartedAt: at(STARTED), extraFinishedAt: counted ? at(FINISHED) : null,
     answers: answers.map((a, i) => ({
-      position: i, questionId: a.questionId, round: i < main ? "main" : "extra", templateId: questions[i].templateId, values: questions[i].values,
+      position: i, questionId: a.questionId, templateId: questions[i].templateId, values: questions[i].values,
       response: a.response, correct: a.correct, misconception: a.misconception, timeMs: a.timeMs,
       workRequired: questions[i].showWork === true, drawing: false, typed: false, strokes: false,
       shownAt: at(shownAt(i)), answeredAt: at(shownAt(i) + a.timeMs),
@@ -373,28 +372,23 @@ describe("copying a family's tests before the deletion", () => {
 });
 
 describe("the database's check of the copy", () => {
-  const migration = () => readFileSync(new URL("../../../supabase/migrations/20261016_test_copies_without_names.sql", import.meta.url), "utf8");
+  const migration = () => readFileSync(new URL("../../../supabase/migrations/20261024_remove_extra_round_functions.sql", import.meta.url), "utf8");
 
   it("takes every field of the core's allowlist, so a copy the core builds is never refused", () => {
-    // save_family_test_copy refuses any other field at the top, in the extra round's record and in a question. A new
-    // field in COPY_FIELDS needs a migration that replaces the function; point this test at it. D-145: until the
-    // follow-up migration, the function still allows the removed round's fields; the copy sends none of them.
+    // save_family_test_copy refuses any other field at the top and in a question. A new field in COPY_FIELDS needs a
+    // migration that replaces the function; point this test at it. D-145: the removed round's fields are gone from both.
     const lists = [...migration().matchAll(/k <> all\(array\[([^\]]+)\]\)/g)].map((m) => m[1].match(/'([^']+)'/g)!.map((x) => x.slice(1, -1)));
-    expect(lists).toHaveLength(3);
-    const [test, record, question] = lists;
-    const core = { test: COPY_FIELDS.test as readonly string[], question: COPY_FIELDS.question as readonly string[] };
-    expect(core.test.filter((k) => !test.includes(k))).toEqual([]);
-    expect(core.question.filter((k) => !question.includes(k))).toEqual([]);
-    expect(test.filter((k) => !core.test.includes(k))).toEqual(["extraRound"]);
-    expect(question.filter((k) => !core.question.includes(k))).toEqual(["round"]);
-    expect(record).toEqual(["takenFrom", "offeredAtMs", "skippedAtMs", "startedAtMs", "stoppedAtMs", "finishedAtMs", "questions", "counted"]);
+    expect(lists).toHaveLength(2);
+    const [test, question] = lists;
+    expect([...test].sort()).toEqual([...COPY_FIELDS.test].sort());
+    expect([...question].sort()).toEqual([...COPY_FIELDS.question].sort());
   });
 
   it("family_copy_sources selects exactly the fields of a source, nothing identifying", () => {
     // The sources in these tests are what the database hands the copy, plus values the database never selects (names,
     // ids, paths, typed working, notes), which prove the copy picks its fields. Without those, the keys are the same.
     const sql = migration();
-    const body = sql.slice(sql.indexOf("create function public.family_copy_sources"), sql.indexOf("create function public.save_family_test_copy"));
+    const body = sql.slice(sql.indexOf("create or replace function public.family_copy_sources"), sql.indexOf("create or replace function public.save_family_test_copy"));
     const selected = new Set([...body.matchAll(/'([a-zA-Z]+)', /g)].map((m) => m[1]));
     const NOT_SELECTED = ["parentId", "childId", "firstName", "name", "email", "postal", "seed", "lastAnswerAt", "workPath", "workText", "strokesPath", "note"];
     const keys = new Set<string>();
@@ -404,8 +398,8 @@ describe("the database's check of the copy", () => {
       }
     }
     expect([...selected].sort()).toEqual([...keys].sort());
-    // D-145: it still selects the removed extra round's fields (#190) until the follow-up migration; the copy reads none.
-    for (const k of ["round", "extraOfferedAt", "extraSkippedAt", "extraStartedAt", "extraFinishedAt"]) expect(selected).toContain(k);
+    // D-145: none of the removed extra round's fields (#190).
+    for (const k of ["round", "extraOfferedAt", "extraSkippedAt", "extraStartedAt", "extraFinishedAt"]) expect(selected).not.toContain(k);
     for (const k of NOT_SELECTED) expect(selected).not.toContain(k);
   });
 });
