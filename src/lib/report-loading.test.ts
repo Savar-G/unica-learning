@@ -3,7 +3,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
 import { ReportCard } from "@/components/report";
 import { reportEmail } from "@/lib/report-email";
-import { BANKS, BC_SKILL_MAP, createSession, learnerProfile, reportModel, storedTest, type LearnerProfile, type ProfileAi, type ShownWork } from "@/lib/assessment";
+import { BANKS, BC_SKILL_MAP, createSession, learnerProfile, reportModel, storedTest, type LearnerProfile, type Placement, type ProfileAi, type ShownWork, type StoredTest } from "@/lib/assessment";
 import { knowsUpTo, takeTest } from "@/lib/assessment/scripted-child";
 import { loadReportInputs, loadReportView, type ComparisonRead } from "@/lib/report-loading";
 import { memoryReportReaders, type MemoryAnswer, type MemoryAssessment, type MemoryReportTables } from "@/lib/report-loading-memory";
@@ -125,6 +125,15 @@ describe("a stored report reads with the rules of today (#242)", () => {
     const email = reportEmail({ view, parentName: "Priya Shah", url: "https://unicalearning.com/account/report/report-1", unsubscribeUrl: "https://unicalearning.com/unsubscribe" });
     return { view, places: [renderToStaticMarkup(createElement(ReportCard, { view, readOnly: true })), email.text, email.html] };
   }
+
+  it("shows a report stored with the removed extra round (#190, D-145) without any word about it", async () => {
+    const { view, places } = await shown({ ...model, extraRound: { questions: 8, strands: ["number"] } } as typeof model);
+    expect(view.model.strands).toEqual(model.strands);
+    for (const place of places) {
+      expect(place).toContain("By area");
+      expect(place).not.toMatch(/extra question/i);
+    }
+  });
 
   it("leaves out a stored AI summary that states the facts timing (grade 4) or says something was not tested", async () => {
     for (const summary of ["{name} took 2 seconds to answer each fact.", "{name} recalled the facts instantly.", "The multiplication facts were not tested."]) {
@@ -306,27 +315,25 @@ describe("the report inputs (#162)", () => {
     expect(inputs?.questions).toBe(42);
   });
 
-  it("leaves out the answers of an extra round the result does not include: started from the report or stopped, and not finished (#190)", async () => {
-    // Two round questions after the main test, both answered in 20 seconds, the first with a drawing.
+  it("leaves out the answers of the removed extra round (#190, D-145), also when the stored result counted them", async () => {
+    // A test from before the round was removed: two round questions after the main test, stored under `extra`, both
+    // answered in 20 seconds, the first with a drawing. The stored result may or may not record the round.
     const extra = [{ ...asked[0], id: "x-0" }, { ...asked[1], id: "x-1" }];
     const round = (position: number, questionId: string, workPath: string | null): MemoryAnswer => ({
       assessmentId: "test-1", position, questionId, response: "1", correct: true, misconception: null, timeMs: 20_000, workRequired: false, workPath, workText: null,
     });
     const rows = [...answers(), round(42, "x-0", drawing("parent-1", 0)), round(43, "x-1", null)];
-    const load = (result: typeof placement) => loadReportInputs(
-      memoryReportReaders({ ...tables(), assessments: [{ ...ASSESSMENT, placement: result, test: { ...test, extra } }], answers: rows }).key(), "test-1", noComparison,
-    );
-
-    // The result has no round: the main test's 42 answers and 14 minutes, and its shown work alone.
-    const without = await load(placement);
-    expect(without).toMatchObject({ questions: 42, minutes: 14 });
-    expect(without?.shownWork.map((w) => w.questionId)).toEqual(["s1-3", "s1-4", "s1-6", "up-8"]);
-    expect(without?.reviewPieces().map((p) => p.questionId)).toEqual(["s1-3", "s1-4", "s1-6", "up-8"]);
-
-    // Once the round is finished, the result includes it, and so do the inputs.
-    const scored = await load({ ...placement, extraRound: { questions: 2, strands: ["number"] } });
-    expect(scored).toMatchObject({ questions: 44, minutes: 15 });
-    expect(scored?.shownWork.map((w) => w.questionId)).toEqual(["s1-3", "s1-4", "s1-6", "up-8", "x-0"]);
+    const counted = { ...placement, extraRound: { questions: 2, strands: ["number"] } } as Placement;
+    for (const result of [placement, counted]) {
+      const inputs = await loadReportInputs(
+        memoryReportReaders({ ...tables(), assessments: [{ ...ASSESSMENT, placement: result, test: { ...test, extra } as StoredTest }], answers: rows }).key(), "test-1", noComparison,
+      );
+      // The main test's 42 answers and 14 minutes, its shown work, review pieces and profile answers alone.
+      expect(inputs).toMatchObject({ questions: 42, minutes: 14 });
+      expect(inputs?.shownWork.map((w) => w.questionId)).toEqual(["s1-3", "s1-4", "s1-6", "up-8"]);
+      expect(inputs?.reviewPieces().map((p) => p.questionId)).toEqual(["s1-3", "s1-4", "s1-6", "up-8"]);
+      expect(inputs?.profileAnswers().map((a) => a.question.id)).toEqual(asked.map((q) => q.id));
+    }
   });
 
   it("is null for a test that is not completed or has no placement, and then the answers are not read", async () => {

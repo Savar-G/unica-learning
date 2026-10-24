@@ -20,8 +20,6 @@ import {
   STATUS_LABEL,
   certaintyText,
   comparisonView,
-  extraRoundLine,
-  extraRoundOfferText,
   factsView,
   helpWarning,
   howWeHelp,
@@ -39,7 +37,6 @@ import {
   thresholdsLine,
   verdictSentence,
   workResult,
-  type ExtraRoundCard,
   type FactsMeasure,
   type ReportView,
   type StruggleView,
@@ -67,24 +64,17 @@ export interface NewTestOffer {
   label: string;
 }
 
-/** #190: the extra round the report page offers (from the test attempt module), and the link to its screen. */
-export interface ExtraRoundOffer {
-  card: ExtraRoundCard;
-  href: string;
-}
-
 /**
  * `nextSlot` replaces the next-step row: the public sample report shows its own button there. `newTest` (#189): when the
  * next test opens, and the button under the reliability note; without it the note names no time (the admin's copy).
- * `extraRound` (#190): the extra round the parent's report offers; the email and the admin's copy have none.
  */
-export function ReportCard({ view, next = NO_NEXT, readOnly = false, nextSlot, newTest = null, extraRound = null }: { view: ReportView; next?: ReportNextContext; readOnly?: boolean; nextSlot?: ReactNode; newTest?: NewTestOffer | null; extraRound?: ExtraRoundOffer | null }) {
+export function ReportCard({ view, next = NO_NEXT, readOnly = false, nextSlot, newTest = null }: { view: ReportView; next?: ReportNextContext; readOnly?: boolean; nextSlot?: ReactNode; newTest?: NewTestOffer | null }) {
   return (
     <article className="rpt" aria-labelledby="rpt-title">
       <ReportHeader view={view} />
       <ReportOverall view={view} />
       <ReportContext view={view} newTest={newTest} />
-      <ReportAreas view={view} extraRound={extraRound} />
+      <ReportAreas view={view} />
       <ReportStrengths view={view} />
       <ReportStruggles view={view} />
       <ReportNumberFacts view={view} />
@@ -238,7 +228,7 @@ const ZONES = {
   gridTemplateColumns: `${STRAND_DEVELOPING_PERCENT}fr ${STRAND_SECURE_PERCENT - STRAND_DEVELOPING_PERCENT}fr ${100 - STRAND_SECURE_PERCENT}fr`,
 };
 
-function ReportAreas({ view, extraRound }: { view: ReportView; extraRound: ExtraRoundOffer | null }) {
+function ReportAreas({ view }: { view: ReportView }) {
   return (
     <Row id="rpt-areas" title="By area" note="The marker shows the share right. The zones show where Developing and Secure start.">
       <table className="rpt-areas">
@@ -268,22 +258,7 @@ function ReportAreas({ view, extraRound }: { view: ReportView; extraRound: Extra
       </p>
       <p className="rpt-small">{thresholdsLine(view)}</p>
       {leftOutLine(view) && <p className="rpt-small">{leftOutLine(view)}</p>}
-      {extraRoundLine(view) && <p className="rpt-small">{extraRoundLine(view)}</p>}
-      {extraRound && <ExtraRound view={view} offer={extraRound} />}
     </Row>
-  );
-}
-
-/** #190: the extra round, right under the early-sign labels it checks (option A of round r190). */
-function ExtraRound({ view, offer }: { view: ReportView; offer: ExtraRoundOffer }) {
-  const text = extraRoundOfferText(view, offer.card);
-  return (
-    <aside className="rpt-extra" aria-labelledby="rpt-extra">
-      <p className="rpt-k">Extra questions</p>
-      <h3 id="rpt-extra">{text.title}</h3>
-      <p>{text.text}</p>
-      <p className="rpt-extra-go"><Link className="btn" href={offer.href}>{text.label}</Link></p>
-    </aside>
   );
 }
 

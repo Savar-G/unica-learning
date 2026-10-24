@@ -37,11 +37,6 @@ export interface ReportJobStore {
   report(assessmentId: string): Promise<StoredReport | null>;
   /** Stores the report. Null when the test has a report already: a run at the same time stored it first. */
   insertReport(report: NewReport): Promise<StoredReport | null>;
-  /**
-   * #190: stores the report built again after an extra round finished from the report, in place: the same row, so the
-   * report link and the email ledger stay. Two runs at once write the same result.
-   */
-  updateReport(id: string, rebuilt: Pick<NewReport, "model" | "questions" | "minutes">): Promise<StoredReport>;
   /** The test's stored AI reviews, and its drawings (#68). */
   reviews(assessment: { id: string; parentId: string }): ReviewStore;
   /** The parent's name and email; null when there is no parent row. */
@@ -66,11 +61,6 @@ export function reportJobStore(admin: SupabaseClient<Database>): ReportJobStore 
       const { data, error } = await admin.from("reports").upsert(row, { onConflict: "assessment_id", ignoreDuplicates: true }).select(REPORT_COLUMNS);
       if (error) throw new Error(`report insert: ${error.message}`);
       return data?.[0] ?? null;
-    },
-    async updateReport(id, { model, questions, minutes }) {
-      const { data, error } = await admin.from("reports").update({ model, questions, minutes }).eq("id", id).select(REPORT_COLUMNS).single();
-      if (error) throw new Error(`report update: ${error.message}`);
-      return data;
     },
     reviews: (assessment) => reviewStore(admin, { id: assessment.id, parent_id: assessment.parentId }),
     async parent(parentId) {

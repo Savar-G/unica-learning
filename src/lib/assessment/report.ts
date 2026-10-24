@@ -8,7 +8,7 @@ import { factsReport, type ReportFacts } from "./facts";
 import { helpLikely } from "./flags";
 import { checkReportText, parentTextProblem } from "./ai-checks";
 import { storedLevelCertainty, type Certainty } from "./certainty";
-import type { ExtraRoundOffer, Grade, Level, Placement, Province, StrandResult } from "./types";
+import type { Grade, Level, Placement, Province, StrandResult } from "./types";
 
 /** One AI review of a child's shown work (#68). Built by workReview, which decides the confidence. */
 export interface WorkReview {
@@ -90,11 +90,6 @@ export interface ReportModel {
   /** #189: very fast wrong answers in a run, left out of the score. Absent when there were none, and before #189. */
   leftOut?: number;
   /**
-   * #190: the result includes the extra round the child took: how many questions, on which areas. Absent when the child
-   * took none. A report built before a round from the report finished lacks it, so the report job builds it again.
-   */
-  extraRound?: ExtraRoundOffer;
-  /**
    * #68: a short paragraph the AI wrote from this model, shown under the verdict. "{name}" stands for the child's first
    * name (REPORT_TEXT_NAME), so neither the stored model nor the AI holds the name. Absent when the AI is off or failed,
    * or when its text broke a rule of checkReportText: then the report has only its plain sentences.
@@ -156,7 +151,6 @@ export function reportModel(placement: Placement, context: ReportContext): Repor
     helpWarning: helpLikely(placement.flags),
     ...(placement.pace?.unreliable ? { reliability: { veryFast: placement.pace.veryFast, answers: placement.pace.answers } } : {}),
     ...(placement.pace?.leftOut.length ? { leftOut: placement.pace.leftOut.length } : {}),
-    ...(placement.extraRound ? { extraRound: placement.extraRound } : {}),
   };
   if (!context.reportText) return model;
   const check = checkReportText(model, context.reportText);
