@@ -17,6 +17,14 @@ const answer = (question: RegExp) => {
 };
 
 describe("the FAQ describes the online math assessment", () => {
+  it("states the sibling price and what each child receives", () => {
+    const a = answer(/sibling discount/);
+    expect(a).toMatch(/first child is CAD 79\.99 a month/);
+    expect(a).toMatch(/additional child is CAD 59\.99 a month/);
+    expect(a).toMatch(/own assessment/);
+    expect(a).toMatch(/own progress report/);
+  });
+
   it("says how the assessment works: online, on a laptop or tablet, math, then the report", () => {
     const a = answer(/free assessment work/);
     expect(a).toMatch(/online/);

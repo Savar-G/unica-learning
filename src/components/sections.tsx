@@ -8,7 +8,7 @@ import { CookieSettingsButton } from "@/components/cookie-consent";
 import { ScanShot } from "@/components/scan-shot";
 import { FaqMore } from "@/components/faq-more";
 import { StartLink, StartNote } from "@/components/start-link";
-import { BRAND, HERO, OFFER_ENDS, PLANS, cad } from "@/lib/site";
+import { ADDITIONAL_CHILD_PRICE, BRAND, HERO, OFFER_ENDS, PLANS, cad } from "@/lib/site";
 import { FAQ } from "@/lib/faq";
 import {
   BeliefList,
@@ -208,6 +208,7 @@ export function Pricing() {
           note={PLANS.one.note}
           price={PLANS.one.price}
           offer={{ price: "Free", note: "your first month!", then: `Then CAD ${cad(PLANS.one.price)} a month.` }}
+          priceNote={<>Additional children: CAD {cad(ADDITIONAL_CHILD_PRICE)}/month each</>}
           features={[
             "Free online math assessment and report, before you choose a plan",
             "A program built from your child's level and gaps",

@@ -1,6 +1,6 @@
 // Unica Learning design system: cards, lists and page-level blocks.
 import type * as React from "react";
-import type { CSSProperties, ReactNode } from "react";
+import type { ReactNode } from "react";
 import { Button, Logo, type Tone, type Vars } from "./basics";
 import { ProgressReport, WorkbookPage } from "./product";
 
@@ -145,12 +145,14 @@ export interface PlanCardProps {
    * written beside it, and a line for the price after. E.g. { price: "Free", note: "your first month!", then: "Then CAD 79.99 a month." }
    */
   offer?: { price: string; note: string; then: string };
+  /** A visually secondary line directly below the regular or post-offer price. */
+  priceNote?: ReactNode;
   className?: string;
   style?: React.CSSProperties;
 }
 
 /** White pricing card: name, note, big light price, checklist, full-width button. */
-export function PlanCard({ name, note, price, currency = "CAD", period = "/ month", features, ctaLabel, featured = false, onSelect, cta, offer, className = "", style }: PlanCardProps) {
+export function PlanCard({ name, note, price, currency = "CAD", period = "/ month", features, ctaLabel, featured = false, onSelect, cta, offer, priceNote, className = "", style }: PlanCardProps) {
   return (
     <div className={`plan${featured ? " hl" : ""} ${className}`.trim()} style={style}>
       <div className="plan-head">
@@ -180,6 +182,7 @@ export function PlanCard({ name, note, price, currency = "CAD", period = "/ mont
             <small> {period}</small>
           </div>
         )}
+        {priceNote && <p className="plan-price-note">{priceNote}</p>}
       </div>
       <ul>
         {features.map((f) => (

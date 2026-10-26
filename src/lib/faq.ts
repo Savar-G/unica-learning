@@ -1,11 +1,12 @@
 // FAQ copy, shared by the FAQ section (sections.tsx), the FAQPage structured data and /llms.txt.
-import { BRAND, PLANS } from "@/lib/site";
+import { ADDITIONAL_CHILD_PRICE, BRAND, PLANS, cad } from "@/lib/site";
 
 export const FAQ = [
   ["How is the work checked?", "You take a photo of the finished pages with your phone. We mark the work, show you what your child got right and where the gaps are, and give the solutions so they can understand any mistakes."],
   ["What if my child copies answers or uses AI?", `Each new workbook is built from your child's own work, so copied answers only mean they miss practice they need. Answers and solutions appear only once the pages are marked. Steps are written on paper, so we see how they got there, not just the answer. The AI teaching assistant explains step by step and asks your child to try the next step. Practice is screen-free: keeping phones, tablets and calculators away during practice time makes AI shortcuts hard.`],
   ["What if it is not right for my child?", "Try the first month free. If it is not right for your child, cancel before day 30 and you pay nothing."],
   ["How is this different from a learning centre?", `Learning centres usually follow a set program, where each child moves along the same path at their own pace, and cost about $200 per subject a month. ${BRAND} starts at your child's level, builds every book from how they did, and costs less: CAD ${PLANS.one.price} a month for math.`],
+  ["Do you offer a sibling discount?", `Yes. Your first child is CAD ${cad(PLANS.one.price)} a month, and each additional child is CAD ${cad(ADDITIONAL_CHILD_PRICE)} a month. Each child takes their own assessment and receives workbooks built for their level and gaps, with their own progress report.`],
   ["Already have a tutor?", `${BRAND} covers practice between sessions. The report shows exactly where your child's gaps are, so a tutor can start on them right away.`],
   ["How does the AI teaching assistant work?", "When your child is stuck on a question, they start a voice call from the Unica app. The AI teaching assistant knows the page and question they're on, and your child talks with it like a real conversation. It explains the idea out loud, draws each step on a shared board, and answers when your child asks why or says they're still stuck. It helps them understand the step, then they finish the question on paper."],
   ["What if my child is struggling a lot?", "The next book focuses on the gap with extra practice, and you'll see exactly where they're stuck so you can help right away."],
