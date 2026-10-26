@@ -8,7 +8,7 @@ import { CookieSettingsButton } from "@/components/cookie-consent";
 import { ScanShot } from "@/components/scan-shot";
 import { FaqMore } from "@/components/faq-more";
 import { StartLink, StartNote } from "@/components/start-link";
-import { BRAND, HERO, PLANS, cad } from "@/lib/site";
+import { BRAND, HERO, OFFER_ENDS, PLANS, cad } from "@/lib/site";
 import { FAQ } from "@/lib/faq";
 import {
   BeliefList,
@@ -195,7 +195,10 @@ export function Pricing() {
       <Knot />
       <Rise>
         <SectionHeader eyebrow="Pricing" title="A learning centre's structure. A plan built for your child. A fraction of the price." titleId="priceT" />
-        <p className="g-line">Try it <Highlight>free for a month.</Highlight></p>
+        <p className="g-line">
+          <span className="offer-flag">Limited-time offer</span>
+          Try it <Highlight>free for a month.</Highlight> Offer ends {OFFER_ENDS}.
+        </p>
       </Rise>
       <PlanGrid>
         <PlanCard

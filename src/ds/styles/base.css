@@ -430,3 +430,5 @@ main{position:relative;display:block}
 
 /* Guarantee line under the pricing title */
 .g-line{font-size:clamp(20px,2vw,26px);line-height:1.35;color:var(--ink);margin:-16px 0 40px}
+.offer-flag{display:block;width:fit-content;margin:0 0 12px;font:500 13px/1 var(--mono, ui-monospace, monospace);letter-spacing:.08em;text-transform:uppercase;color:var(--red)}
+.offer-flag::before{content:"";display:inline-block;width:9px;height:9px;margin-right:8px;background:var(--red);vertical-align:1px}
