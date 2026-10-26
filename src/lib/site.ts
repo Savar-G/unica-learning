@@ -15,6 +15,12 @@ export type PlanId = keyof typeof PLANS;
  */
 export const TRIAL_DAYS = 30;
 
+/**
+ * End of the free-month offer (Cedric, 2026-10-26), shown in pricing as a limited-time offer. Keep it true: end the
+ * free month on this date, or change the date here (and on the ads) before it passes.
+ */
+export const OFFER_ENDS = "Nov 30";
+
 /** A CAD amount as the site writes it: whole dollars without cents ("99"), otherwise two decimals ("79.99"). */
 export const cad = (n: number) => (Number.isInteger(n) ? String(n) : n.toFixed(2));
 
