@@ -212,7 +212,7 @@ export function Pricing() {
             "Free online math assessment and report, before you choose a plan",
             "A program built from your child's level and gaps",
             "2 paper workbooks a month, mailed home",
-            "The Unica companion: help out loud when they're stuck",
+            "The Unica Teaching Assistant: help out loud when they're stuck",
             "The parent app: instant answer checks, solutions and progress reports",
             "Rewards for every page and every week",
             "Delivery included. Cancel anytime",

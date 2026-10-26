@@ -46,7 +46,7 @@ export const ROWS: { id: RowId; label: string; cells: Record<OptionId, [Mark, st
       tutor: ["yes", "Explains live"],
       centre: ["part", "Ask the instructor at the centre"],
       online: ["part", "Hints, videos or worked answers on screen"],
-      us: ["yes", "The companion explains it out loud, step by step"],
+      us: ["yes", "The Teaching Assistant explains it out loud, step by step"],
     },
   },
   {
@@ -101,7 +101,7 @@ export const ONE_BY_ONE: { id: Exclude<OptionId, "us">; tag: string; title: stri
     good: ["Explaining live and answering questions", "Adjusting to your child each session", "Help with homework and tests"],
     hardTitle: "Harder with a tutor",
     hard: ["Often an hour or two a week; the other days are up to you", "$40-$100 an hour: about $170-$430 a month for 1 hour a week", "How much you hear about gaps depends on the tutor"],
-    us: ["Practice 5 days a week, built from their recent work", "The companion explains any step out loud, plus a report and worked solutions after every scan", `$${PLANS.one.price} a month. You can keep a tutor too.`],
+    us: ["Practice 5 days a week, built from their recent work", "The Teaching Assistant explains any step out loud, plus a report and worked solutions after every scan", `$${PLANS.one.price} a month. You can keep a tutor too.`],
   },
   {
     id: "centre",
@@ -112,7 +112,7 @@ export const ONE_BY_ONE: { id: Exclude<OptionId, "us">; tag: string; title: stri
     good: ["A set program and a daily habit", "A placement test to start", "Instructors at the centre"],
     hardTitle: "Harder with a centre",
     hard: ["You drive there, often twice a week, and wait", "Your child moves along a set path", "About $200 per subject a month, often plus an enrolment fee"],
-    us: ["Every page is built from their own work", "It comes to your door, and the companion explains any step when they're stuck", `$${PLANS.one.price} a month, no enrolment fee`],
+    us: ["Every page is built from their own work", "It comes to your door, and the Teaching Assistant explains any step when they're stuck", `$${PLANS.one.price} a month, no enrolment fee`],
   },
   {
     id: "online",
@@ -123,13 +123,13 @@ export const ONE_BY_ONE: { id: Exclude<OptionId, "us">; tag: string; title: stri
     good: ["Adapting to answers right away", "Low cost, and some are free", "Practice anywhere, any time"],
     hardTitle: "Harder with an online platform",
     hard: ["Practice happens on a screen", "Answers are tapped or typed, so the working on paper is never marked", "Help explains the question, without seeing how your child worked it"],
-    us: ["Your child works with pencil and paper; the screen stays with you", "You take a photo; we mark the work and show you the gaps", "The companion explains any step they got wrong, out loud"],
+    us: ["Your child works with pencil and paper; the screen stays with you", "You take a photo; we mark the work and show you the gaps", "The Teaching Assistant explains any step they got wrong, out loud"],
   },
 ];
 
 export const COMPARE_FAQ: { question: string; answer: string }[] = [
-  { question: "Is this as good as a tutor?", answer: `They do different things. A tutor is a person who explains live, usually an hour or two a week. ${BRAND} is practice 5 days a week, built from your child's own work, with the companion to explain a step when they're stuck. You can use both.` },
-  { question: "How much of my time does it take?", answer: "Your child works on paper, 15-30 minutes a day. You scan finished pages with your phone and read the report. The companion explains steps, so you don't have to." },
+  { question: "Is this as good as a tutor?", answer: `They do different things. A tutor is a person who explains live, usually an hour or two a week. ${BRAND} is practice 5 days a week, built from your child's own work, with the Teaching Assistant to explain a step when they're stuck. You can use both.` },
+  { question: "How much of my time does it take?", answer: "Your child works on paper, 15-30 minutes a day. You scan finished pages with your phone and read the report. The Teaching Assistant explains steps, so you don't have to." },
   { question: "What if my child is ahead or behind?", answer: "The free assessment finds their level, whatever their grade. Their pages start there: more practice on the gaps, and new topics when they're ready." },
   { question: `Does ${BRAND} replace school?`, answer: `No. ${BRAND} works alongside school. It follows your child's curriculum, so practice at home matches class, and moves ahead when your child is ready.` },
   { question: "Can we keep our tutor?", answer: `Yes. A tutor can explain live, and ${BRAND} gives your child daily practice between sessions.` },
