@@ -26,8 +26,8 @@ describe("the FAQ describes the online math assessment", () => {
   });
 
   it("answers the AI accuracy question beside the Teaching Assistant explanation", () => {
-    const how = FAQ.findIndex((item) => /How does the AI teaching assistant work\?/.test(item.question));
-    const accuracy = FAQ.findIndex((item) => /What if the Teaching Assistant gets something wrong\?/.test(item.question));
+    const how = FAQ.findIndex((item) => /How does the AI Teaching Assistant work\?/.test(item.question));
+    const accuracy = FAQ.findIndex((item) => /What if the AI Teaching Assistant gets something wrong\?/.test(item.question));
     expect(accuracy).toBe(how + 1);
     const a = FAQ[accuracy].answer;
     expect(a).toMatch(/answer key/);
