@@ -1,7 +1,7 @@
 // "For parents": what we take off a busy parent's list (struck out), then what stays with them. After Pricing (D-095).
 // D-098 (round r20 C, card C1 of r21) replaces the four question cards of D-075, after Mom's review (2026-10-12):
 // busy parents pay a learning centre so they do not have to be involved.
-// No parent-minute number: we have no data yet.
+// Parent and child roles are explicit here; How it works keeps the sequence of steps.
 import { Section, SectionHeader } from "@/ds";
 import { PARENT_LEAD, PARENT_NOT_YOURS, PARENT_NOTE, PARENT_TITLE, PARENT_YOURS } from "@/lib/parent";
 import { Knot, Rise } from "./drawn";
@@ -24,7 +24,7 @@ export function Parent() {
           ))}
         </ul>
         <Rise className="duty-yours">
-          <h3>What stays with you</h3>
+          <h3>Your part takes about two minutes.</h3>
           <ul>
             {PARENT_YOURS.map((t) => (
               <li key={t}>{t}</li>

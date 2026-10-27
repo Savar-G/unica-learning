@@ -24,7 +24,7 @@ export function Guidance() {
         <SectionHeader eyebrow="Help when they're stuck" title="Stuck on a question? Talk it through." titleId="guidanceT" />
       </Rise>
       <Rise>
-        <p className="gd-lead">Your child starts a voice call about the question. The Unica Teaching Assistant walks them through it step by step, out loud and on a shared board.</p>
+        <p className="gd-lead">Stuck? Hand them your phone. They start a voice call about the question, and the Unica Teaching Assistant talks them through it step by step, out loud and on a shared board. You don&apos;t need to know the answer.</p>
       </Rise>
       <Rise className="gd-media">
         <DemoVideo className="gd-wide" src="/video/guidance-demo.mp4" poster="/video/guidance-demo-poster.jpg" label={LABEL} />

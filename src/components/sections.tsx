@@ -8,7 +8,7 @@ import { CookieSettingsButton } from "@/components/cookie-consent";
 import { ScanShot } from "@/components/scan-shot";
 import { FaqMore } from "@/components/faq-more";
 import { StartLink, StartNote } from "@/components/start-link";
-import { BRAND, HERO, OFFER_ENDS, PLANS, cad } from "@/lib/site";
+import { ADDITIONAL_CHILD_PRICE, BRAND, HERO, OFFER_ENDS, PLANS, cad } from "@/lib/site";
 import { FAQ } from "@/lib/faq";
 import {
   BeliefList,
@@ -76,7 +76,7 @@ export function Hero() {
         highlight={HERO.highlight}
         after={HERO.after}
         lead={<><span className="nowrap">Miss <SwapWord words={TOPICS} /></span> {HERO.lead}</>}
-        meta={["Free assessment on a laptop or tablet", "First month free", "Cancel anytime"]}
+        meta={["Free assessment on a laptop or tablet", "First month free", "Workbooks available across Canada"]}
         page={null}
         report={null}
         animate
@@ -96,10 +96,10 @@ const STEP_SIZES = "(min-width: 1080px) 380px, (min-width: 700px) 45vw, 92vw";
 const STEPS = [
   { n: "01", t: "Assess", d: "Your child takes the free online assessment. The report shows their level and gaps. You choose a plan after.",
     v: <Image src={assessPhoto} alt="A girl and her mother sit at a laptop, with a workbook open on the table" sizes={STEP_SIZES} placeholder="blur" />, tone: "photo" as const },
-  { n: "02", t: "Deliver", d: "We mail a workbook matched to their level and gaps. It follows your school curriculum.", v: <Image src={deliverPhoto} alt="Two mailers waiting on a front step" sizes={STEP_SIZES} placeholder="blur" />, tone: "photo" as const },
+  { n: "02", t: "Deliver", d: "We mail a workbook matched to their level and gaps, with practice built around the math skills they learn at school.", v: <Image src={deliverPhoto} alt="Two mailers waiting on a front step" sizes={STEP_SIZES} placeholder="blur" />, tone: "photo" as const },
   { n: "03", t: "Practice", d: <>Your child works on paper for 15-30 minutes a day, 5 days a week, with rewards for every page. <Link href="/rewards" className="more-link">See the rewards <span aria-hidden="true">→</span></Link></>,
     v: <Image src={practice6} alt="A girl works through an arithmetic page in pencil" sizes={STEP_SIZES} placeholder="blur" />, tone: "photo" as const },
-  { n: "04", t: "Scan", d: "Take a photo of the finished pages in the Unica app. We mark the work, show you the gaps, and give the solutions.", v: <ScanShot sizes={STEP_SIZES} />, tone: "photo" as const },
+  { n: "04", t: "Scan", d: "Scan the finished pages in the Unica app. We mark the work, show you the gaps, and give the solutions.", v: <ScanShot sizes={STEP_SIZES} />, tone: "photo" as const },
   { n: "05", t: "Adapt", d: "Each scan updates the program. Missed carrying? You get more of it. Got it? It moves on.", v: <Image src={adaptPhoto} alt="A girl shows her finished work to her parents" sizes={STEP_SIZES} placeholder="blur" />, tone: "photo" as const },
   { n: "06", t: "Track and repeat", d: <>Your child&apos;s progress report updates after every scan. The next workbook arrives before this one runs out, built from that progress. <Link href="/sample-report" className="more-link">See a sample report <span aria-hidden="true">→</span></Link></>, v: <Image src={repeatPhoto} alt="A girl starts on her next workbook at the dining table" sizes={STEP_SIZES} placeholder="blur" />, tone: "photo" as const },
 ];
@@ -208,6 +208,7 @@ export function Pricing() {
           note={PLANS.one.note}
           price={PLANS.one.price}
           offer={{ price: "Free", note: "your first month!", then: `Then CAD ${cad(PLANS.one.price)} a month.` }}
+          priceNote={<>Additional children: CAD {cad(ADDITIONAL_CHILD_PRICE)}/month each</>}
           features={[
             "Free online math assessment and report, before you choose a plan",
             "A program built from your child's level and gaps",

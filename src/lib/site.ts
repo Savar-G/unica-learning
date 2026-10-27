@@ -6,6 +6,9 @@ export const PLANS = {
   one: { id: "one", name: "Math", price: 79.99, note: "Grades 1-7, ages 6-12" },
 } as const;
 
+/** Monthly price for every child after the first on the same family plan. */
+export const ADDITIONAL_CHILD_PRICE = 59.99;
+
 export type PlanId = keyof typeof PLANS;
 
 /**
