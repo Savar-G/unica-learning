@@ -4,6 +4,7 @@
 // Writers edit only their own content file. To add, remove or rename an article, edit the import
 // list and RESOURCE_MODULES below (the file name must match meta.slug).
 import type { ComponentType } from "react";
+import { resourcePath, type ArticleFaq, type ArticleSource, type CardItem } from "@/lib/resource-format";
 
 import * as grade1 from "@/content/resources/bc-grade-1-math-and-reading";
 import * as grade2 from "@/content/resources/bc-grade-2-math-and-reading";
@@ -24,8 +25,8 @@ import * as kumonVsMathnasium from "@/content/resources/kumon-vs-mathnasium";
 export const RESOURCE_CATEGORIES = ["BC curriculum", "BC school guides", "Comparing options"] as const;
 export type ResourceCategory = (typeof RESOURCE_CATEGORIES)[number];
 
-export type ResourceFaq = { q: string; a: string };
-export type ResourceSource = { label: string; url: string; /** ISO date, e.g. "2026-10-09". */ accessed: string };
+export type ResourceFaq = ArticleFaq;
+export type ResourceSource = ArticleSource;
 
 export type ResourceMeta = {
   /** URL segment: /resources/<slug>. Must match the content file name. */
@@ -71,6 +72,9 @@ for (const { meta } of RESOURCES) {
 }
 
 export { formatResourceDate, resourcePath } from "@/lib/resource-format";
+
+/** A guide as a hub or related-reading card. */
+export const resourceCard = (m: ResourceMeta): CardItem => ({ href: resourcePath(m.slug), title: m.title, lead: m.lead });
 
 export function getResource(slug: string): Resource | undefined {
   return RESOURCES.find((r) => r.meta.slug === slug);

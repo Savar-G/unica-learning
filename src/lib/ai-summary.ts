@@ -4,6 +4,7 @@ import { FAQ } from "@/lib/faq";
 import { PARENT_NOT_YOURS, PARENT_NOTE, PARENT_YOURS } from "@/lib/parent";
 import { SITE_URL } from "@/lib/metadata";
 import { resourcePath, RESOURCES } from "@/lib/resources";
+import { blogPath, BLOG_POSTS } from "@/lib/blog";
 import { BRAND, PLANS, cad } from "@/lib/site";
 import { SUPPORT_EMAIL } from "@/lib/contact";
 
@@ -32,6 +33,7 @@ More: ${url("/#price")}
 export function llmsTxt(): string {
   const faq = FAQ.map(({ question, answer }) => `### ${question}\n${answer}`).join("\n\n");
   const guides = RESOURCES.map(({ meta }) => `- [${meta.title}](${url(resourcePath(meta.slug))})`).join("\n");
+  const posts = BLOG_POSTS.map(({ meta }) => `- [${meta.title}](${url(blogPath(meta.slug))}): ${meta.published}`).join("\n");
   return `# ${BRAND}
 
 > A personalized math learning program for children aged 6-12 (grades 1-7) in Canada. Each child gets paper workbooks made for them and adapted after every book. Math is CAD ${cad(PLANS.one.price)} a month after a free first month, delivery included.
@@ -77,6 +79,10 @@ Parents in Canada with a child aged 6-12 who want math practice on paper, at the
 ## Guides
 - [Guides for BC parents](${url("/resources")}): all guides by topic
 ${guides}
+
+## Blog
+- [Blog](${url("/blog")}): posts for parents, newest first
+${posts}
 
 ## FAQ
 

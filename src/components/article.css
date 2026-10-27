@@ -123,6 +123,7 @@
 .res .res-card a { display: flex; flex-direction: column; gap: 10px; height: 100%; padding: 22px 26px 20px 22px; text-decoration: none; border-radius: 4px; }
 .res-card h3 { margin: 0; font: 500 19px/1.3 var(--sans); letter-spacing: -0.015em; }
 .res-card p { margin: 0; font-size: 15.5px; line-height: 1.5; color: var(--ink-2); }
+.res-card .res-card-meta { margin: 0; font: 400 12.5px/1.4 var(--mono); color: var(--ink-2); }
 .res-more { margin-top: auto; padding-top: 6px; font: 500 14px/1 var(--sans); }
 .res-more .arr { display: inline-block; transition: transform 0.25s var(--ease); }
 .res-card a:hover .arr { transform: translateX(3px); }

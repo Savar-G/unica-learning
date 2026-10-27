@@ -1,7 +1,7 @@
 import { notFound } from "next/navigation";
 import { ArticleLayout } from "@/components/article";
 import { pageMetadata } from "@/lib/metadata";
-import { getResource, relatedResources, resourcePath, RESOURCES } from "@/lib/resources";
+import { getResource, relatedResources, resourceCard, resourcePath, RESOURCES } from "@/lib/resources";
 
 // One static page per article in the registry (src/lib/resources.ts). Unknown slugs 404.
 export const dynamicParams = false;
@@ -23,7 +23,7 @@ export default async function ResourceArticle({ params }: PageProps<"/resources/
   if (!r) notFound();
   const { meta, Body } = r;
   return (
-    <ArticleLayout meta={meta} related={relatedResources(meta)}>
+    <ArticleLayout meta={meta} section="resources" related={relatedResources(meta).map(resourceCard)}>
       <Body />
     </ArticleLayout>
   );

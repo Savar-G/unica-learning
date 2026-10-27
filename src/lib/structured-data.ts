@@ -4,6 +4,7 @@ import { FAQ } from "@/lib/faq";
 import { SITE_DESCRIPTION, SITE_URL } from "@/lib/metadata";
 import { BRAND, PLANS } from "@/lib/site";
 import { BUSINESS_NAME, SUPPORT_EMAIL } from "@/lib/contact";
+import { ARTICLE_SECTIONS, type ArticleSection } from "@/lib/resource-format";
 
 export const ORG_ID = `${SITE_URL}/#organization`;
 
@@ -53,7 +54,7 @@ export function homeJsonLd() {
   };
 }
 
-// Resources section (/resources and /resources/<slug>). Facts come from each article's meta.
+// Resources and Blog sections (/resources, /blog and their articles). Facts come from each article's meta.
 type Crumb = { name: string; path: string };
 
 function breadcrumbs(items: Crumb[]) {
@@ -63,35 +64,44 @@ function breadcrumbs(items: Crumb[]) {
   };
 }
 
-export function resourcesHubJsonLd(articles: { title: string; path: string }[]) {
+/** A section hub (/resources or /blog): a CollectionPage that lists its articles. */
+export function hubJsonLd(section: ArticleSection, name: string, articles: { title: string; path: string; published?: string }[]) {
+  const sec = ARTICLE_SECTIONS[section];
   return {
     "@context": "https://schema.org",
     "@graph": [
       ORGANIZATION,
-      breadcrumbs([{ name: "Home", path: "/" }, { name: "Resources", path: "/resources" }]),
+      breadcrumbs([{ name: "Home", path: "/" }, { name: sec.name, path: sec.path }]),
       {
         "@type": "CollectionPage",
-        name: "Guides for BC parents",
-        url: `${SITE_URL}/resources`,
+        name,
+        url: `${SITE_URL}${sec.path}`,
         inLanguage: "en-CA",
         publisher: { "@id": ORG_ID },
-        hasPart: articles.map((a) => ({ "@type": "Article", headline: a.title, url: `${SITE_URL}${a.path}` })),
+        hasPart: articles.map((a) => ({
+          "@type": sec.schemaType,
+          headline: a.title,
+          url: `${SITE_URL}${a.path}`,
+          ...(a.published ? { datePublished: a.published } : {}),
+        })),
       },
     ],
   };
 }
 
-export function resourceJsonLd(a: { path: string; title: string; description: string; updated: string; faqs?: { q: string; a: string }[] }) {
+export function articleJsonLd(a: { section: ArticleSection; path: string; title: string; description: string; published?: string; updated: string; faqs?: { q: string; a: string }[] }) {
+  const sec = ARTICLE_SECTIONS[a.section];
   const url = `${SITE_URL}${a.path}`;
   return {
     "@context": "https://schema.org",
     "@graph": [
       ORGANIZATION,
-      breadcrumbs([{ name: "Home", path: "/" }, { name: "Resources", path: "/resources" }, { name: a.title, path: a.path }]),
+      breadcrumbs([{ name: "Home", path: "/" }, { name: sec.name, path: sec.path }, { name: a.title, path: a.path }]),
       {
-        "@type": "Article",
+        "@type": sec.schemaType,
         headline: a.title,
         description: a.description,
+        ...(a.published ? { datePublished: a.published } : {}),
         dateModified: a.updated,
         url,
         mainEntityOfPage: url,

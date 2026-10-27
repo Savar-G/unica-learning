@@ -1,0 +1,58 @@
+name: Blog publish
+
+# The weekly blog routine (docs/blog-automation.md) pushes one post on a claude/blog-<slug> branch.
+# This job checks that the branch only adds or fixes a post, merges it into main, runs the done gate
+# on the merged result, and pushes main (Vercel then deploys production). A branch whose name ends
+# in -dryrun runs every step except the push.
+
+on:
+  push:
+    branches: ['claude/blog-**']
+
+permissions:
+  contents: write
+
+concurrency:
+  group: blog-publish
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      BRANCH: ${{ github.ref_name }}
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        timeout-minutes: 2
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38
+        timeout-minutes: 1
+        with:
+          node-version: '22.23.1'
+          package-manager-cache: false
+      - name: Only blog files changed
+        # Runs main's copy of the guard, so a branch cannot loosen the guard it is checked by.
+        run: |
+          git show origin/main:scripts/blog-publish-guard.mjs > "$RUNNER_TEMP/blog-publish-guard.mjs"
+          node "$RUNNER_TEMP/blog-publish-guard.mjs" origin/main "$GITHUB_SHA"
+      - name: Merge into main
+        run: |
+          git config user.name "unica-blog-bot"
+          git config user.email "unica-blog-bot@users.noreply.github.com"
+          git checkout -B publish origin/main
+          git merge --no-ff --no-edit -m "Blog: publish $BRANCH" "$GITHUB_SHA"
+      - run: npm ci
+        timeout-minutes: 5
+      - run: npm test
+        timeout-minutes: 5
+      - run: npx eslint src
+        timeout-minutes: 5
+      - run: npm run build
+        timeout-minutes: 10
+      - name: Push main
+        if: ${{ !endsWith(github.ref_name, '-dryrun') }}
+        run: |
+          git push origin HEAD:main
+          git push origin --delete "$BRANCH"
