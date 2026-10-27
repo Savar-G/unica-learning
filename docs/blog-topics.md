@@ -21,7 +21,7 @@ The weekly routine (`docs/blog-automation.md`) takes the first `todo` row from t
 |---|---|---|---|---|---|---|
 | 1 | done 2026-10-27 `/blog/mathnasium-cost-bc` | mathnasium cost canada | How much does Mathnasium cost in BC? | Comparing options | any | kumon-vs-mathnasium, tutor-cost-bc |
 | 2 | done 2026-10-27 `/blog/sylvan-vs-kumon` | sylvan learning vs kumon | Sylvan vs Kumon in BC | Comparing options | any | kumon-cost-bc, kumon-alternatives |
-| 3 | todo | what does emerging mean on report card | My child got "Emerging" in math: what to do before the next report card | School in BC | Oct, Nov, Dec, Jan, Feb, Mar, May, Jun | bc-proficiency-scale, grade guides |
+| 3 | done 2026-10-27 `/blog/emerging-in-math-report-card` | what does emerging mean on report card | My child got "Emerging" in math: what to do before the next report card | School in BC | Oct, Nov, Dec, Jan, Feb, Mar, May, Jun | bc-proficiency-scale, grade guides |
 | 4 | todo | is spirit of math worth it | Is Spirit of Math worth it? A guide for BC parents | Comparing options | any | kumon-alternatives, /compare |
 | 5 | todo | oxford learning cost per month | Oxford Learning cost per month in BC | Comparing options | any | tutor-cost-bc, kumon-alternatives |
 | 6 | todo | is mathnasium worth it | Is Mathnasium worth it? What to check first | Comparing options | any | /blog/mathnasium-cost-bc, kumon-vs-mathnasium |
