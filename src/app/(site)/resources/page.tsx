@@ -1,11 +1,12 @@
 import Link from "next/link";
-import { AssessmentCta, ResourceCard, ResourcesShell } from "@/components/article";
+import { ArticleCard, AssessmentCta, ResourcesShell } from "@/components/article";
 import { Eyebrow } from "@/ds";
 import { pageMetadata } from "@/lib/metadata";
-import { resourcePath, resourcesByCategory, RESOURCES } from "@/lib/resources";
-import { resourcesHubJsonLd } from "@/lib/structured-data";
+import { resourceCard, resourcePath, resourcesByCategory, RESOURCES } from "@/lib/resources";
+import { hubJsonLd } from "@/lib/structured-data";
 
 // Indexable; listed in sitemap.ts. Linked only from the footer (not from the home page body).
+// Timely posts live in the blog (/blog); guides here are kept up to date and have no publish date.
 export const metadata = pageMetadata({
   path: "/resources",
   title: "Guides for BC parents",
@@ -15,7 +16,7 @@ export const metadata = pageMetadata({
 const slugify = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
 
 export default function ResourcesHub() {
-  const jsonLd = resourcesHubJsonLd(RESOURCES.map((r) => ({ title: r.meta.title, path: resourcePath(r.meta.slug) })));
+  const jsonLd = hubJsonLd("resources", "Guides for BC parents", RESOURCES.map((r) => ({ title: r.meta.title, path: resourcePath(r.meta.slug) })));
   return (
     <ResourcesShell jsonLd={jsonLd} navSrc="resources-nav">
       <main id="main" className="res res-hub">
@@ -42,7 +43,7 @@ export default function ResourcesHub() {
               </ul>
             ) : (
               <ul className="res-cards">
-                {g.items.map((m, i) => <ResourceCard key={m.slug} meta={m} index={i} />)}
+                {g.items.map((m, i) => <ArticleCard key={m.slug} item={resourceCard(m)} index={i} />)}
               </ul>
             )}
           </section>

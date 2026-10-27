@@ -85,6 +85,10 @@ export default function Body() {
           ]}
           note="From each company's own pages, October 2026. Prices and schedules vary by centre; confirm with your local centre."
         />
+        <p>
+          For an estimate of a month at Mathnasium from its own per-session range, read{" "}
+          <Link href="/blog/mathnasium-cost-bc">how much Mathnasium costs in BC</Link>.
+        </p>
       </Section>
 
       <Section title="Method: how each one teaches" id="method">

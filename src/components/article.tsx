@@ -1,6 +1,6 @@
-// Resources section: the page shell, the article layout and the blocks that content files use.
+// Resources and Blog sections: the page shell, the article layout and the blocks that content files use.
 // Writers import blocks from "@/components/article": Section, KeyFacts, DataTable, Callout,
-// AssessmentCta, Cite. ArticleLayout and ResourcesShell are used by the routes only.
+// AssessmentCta, Cite. ArticleLayout, ArticleCard and ResourcesShell are used by the routes only.
 import Link from "next/link";
 import type { ReactNode } from "react";
 import { BRAND } from "@/lib/site";
@@ -8,9 +8,8 @@ import { Eyebrow, Faq, Nav as NavBar } from "@/ds";
 import { Motion } from "@/components/motion";
 import { StartLink, StartNote } from "@/components/start-link";
 import { Footer, START_LABEL } from "@/components/sections";
-import type { ResourceMeta } from "@/lib/resources";
-import { formatResourceDate, resourcePath } from "@/lib/resource-format";
-import { jsonLdHtml, resourceJsonLd } from "@/lib/structured-data";
+import { ARTICLE_SECTIONS, articlePath, formatResourceDate, type ArticleBase, type ArticleSection, type CardItem } from "@/lib/resource-format";
+import { articleJsonLd, jsonLdHtml } from "@/lib/structured-data";
 import { Rise } from "./drawn";
 import "./article.css";
 
@@ -25,7 +24,7 @@ type Tone = "sun" | "peach" | "sky" | "mint";
 
 /* ------------------------------------------------------------- page shell */
 
-/** Site nav, frame, footer and motion. Used by /resources and every article. */
+/** Site nav, frame, footer and motion. Used by /resources, /blog and every article. */
 export function ResourcesShell({ jsonLd, navSrc, children }: { jsonLd: unknown; navSrc: string; children: ReactNode }) {
   return (
     <div className="look-root" data-look="warm" id="top">
@@ -42,17 +41,28 @@ export function ResourcesShell({ jsonLd, navSrc, children }: { jsonLd: unknown; 
 
 /* --------------------------------------------------------- article layout */
 
-/** One article: breadcrumb, header, body, FAQ, closing CTA, related guides and sources. */
-export function ArticleLayout({ meta, related, children }: { meta: ResourceMeta; related: ResourceMeta[]; children: ReactNode }) {
-  const path = resourcePath(meta.slug);
-  const jsonLd = resourceJsonLd({ path, title: meta.title, description: meta.description, updated: meta.updated, faqs: meta.faqs });
+/** One article: breadcrumb, header, body, FAQ, closing CTA, related reading and sources. */
+export function ArticleLayout({ meta, section, related, children }: { meta: ArticleBase; section: ArticleSection; related: CardItem[]; children: ReactNode }) {
+  const sec = ARTICLE_SECTIONS[section];
+  const path = articlePath(section, meta.slug);
+  const src = `${sec.src}-${meta.slug}`;
+  const jsonLd = articleJsonLd({ section, path, title: meta.title, description: meta.description, published: meta.published, updated: meta.updated, faqs: meta.faqs });
+  // A blog post shows its publish date, plus the update date once it changes. A guide shows the update date only.
+  const dates = meta.published ? (
+    <>
+      Published <time dateTime={meta.published}>{formatResourceDate(meta.published)}</time>
+      {meta.updated !== meta.published ? <> · Updated <time dateTime={meta.updated}>{formatResourceDate(meta.updated)}</time></> : null}
+    </>
+  ) : (
+    <>Updated <time dateTime={meta.updated}>{formatResourceDate(meta.updated)}</time></>
+  );
   return (
-    <ResourcesShell jsonLd={jsonLd} navSrc={`resource-${meta.slug}-nav`}>
+    <ResourcesShell jsonLd={jsonLd} navSrc={`${src}-nav`}>
       <main id="main" className="res res-article">
         <nav className="res-crumbs" aria-label="Breadcrumb">
           <ol>
             <li><Link href="/">Home</Link></li>
-            <li><Link href="/resources">Resources</Link></li>
+            <li><Link href={sec.path}>{sec.name}</Link></li>
             <li><span aria-current="page">{meta.title}</span></li>
           </ol>
         </nav>
@@ -61,7 +71,7 @@ export function ArticleLayout({ meta, related, children }: { meta: ResourceMeta;
           <Eyebrow>{meta.category}</Eyebrow>
           <h1>{meta.title}</h1>
           <p className="res-lead">{meta.lead}</p>
-          <p className="res-updated">Updated <time dateTime={meta.updated}>{formatResourceDate(meta.updated)}</time></p>
+          <p className="res-updated">{dates}</p>
         </header>
 
         <article className="res-body">{children}</article>
@@ -76,14 +86,14 @@ export function ArticleLayout({ meta, related, children }: { meta: ResourceMeta;
         <Rise className="res-part res-close">
           <h2>See where your child is.</h2>
           <p>Take the free online math assessment on a laptop or tablet. Read the report before you choose a plan. Then each workbook is made for your child and mailed home.</p>
-          <StartLink src={`resource-${meta.slug}-close`}>{START_LABEL} <span className="arr">→</span></StartLink>
+          <StartLink src={`${src}-close`}>{START_LABEL} <span className="arr">→</span></StartLink>
         </Rise>
 
         {related.length ? (
           <section className="res-part" aria-labelledby="res-related-t">
-            <h2 id="res-related-t">Related guides</h2>
+            <h2 id="res-related-t">{sec.relatedTitle}</h2>
             <ul className="res-cards">
-              {related.map((r, i) => <ResourceCard key={r.slug} meta={r} index={i} />)}
+              {related.map((r, i) => <ArticleCard key={r.href} item={r} index={i} />)}
             </ul>
           </section>
         ) : null}
@@ -108,14 +118,20 @@ export function ArticleLayout({ meta, related, children }: { meta: ResourceMeta;
 
 const TONES: Tone[] = ["sun", "sky", "peach", "mint"];
 
-/** Hub and related-guides card: the whole card is one link. */
-export function ResourceCard({ meta, index = 0 }: { meta: ResourceMeta; index?: number }) {
+/** Hub, blog and related-reading card: the whole card is one link. A blog card shows its date and topic above the title. */
+export function ArticleCard({ item, index = 0 }: { item: CardItem; index?: number }) {
   return (
     <li className="res-card" data-tone={TONES[index % TONES.length]}>
-      <Link href={resourcePath(meta.slug)}>
-        <h3>{meta.title}</h3>
-        <p>{meta.lead}</p>
-        <span className="res-more" aria-hidden="true">Read guide <span className="arr">→</span></span>
+      <Link href={item.href}>
+        {item.date ? (
+          <p className="res-card-meta">
+            <time dateTime={item.date}>{formatResourceDate(item.date)}</time>
+            {item.category ? <> · {item.category}</> : null}
+          </p>
+        ) : null}
+        <h3>{item.title}</h3>
+        <p>{item.lead}</p>
+        <span className="res-more" aria-hidden="true">{item.href.startsWith("/blog/") ? "Read post" : "Read guide"} <span className="arr">→</span></span>
       </Link>
     </li>
   );
