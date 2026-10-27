@@ -76,7 +76,7 @@ export function Hero() {
         highlight={HERO.highlight}
         after={HERO.after}
         lead={<><span className="nowrap">Miss <SwapWord words={TOPICS} /></span> {HERO.lead}</>}
-        meta={["Free assessment on a laptop or tablet", "First month free", "Workbooks available across Canada"]}
+        meta={["Free assessment", "First month free", "Available across Canada", "Cancel anytime"]}
         page={null}
         report={null}
         animate
