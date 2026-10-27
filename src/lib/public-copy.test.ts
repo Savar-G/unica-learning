@@ -49,15 +49,16 @@ describe("the FAQ describes the online math assessment", () => {
   it("says no card is needed for the assessment, and the card comes after the report", () => {
     const a = answer(/card/);
     expect(a).toMatch(/You do not need a card for the assessment\./);
-    expect(a).toMatch(/After the report, BC families can choose a plan and add a card\./);
+    expect(a).toMatch(/After the report, you can choose a plan and add a card\./);
     expect(a).toMatch(/first workbook ships/);
     expect(a).not.toMatch(/when you sign up/);
   });
 
-  it("opens the assessment to every family in Canada; other curricula join the workbook waitlist after the report", () => {
+  it("states Canada-wide workbook availability without promising complete provincial alignment", () => {
     const a = answer(/curriculum/);
-    expect(a).toMatch(/Every family in Canada can take the free math assessment\./);
-    expect(a).toMatch(/waitlist after the report/);
+    expect(a).toMatch(/Workbooks are available to families across Canada\./);
+    expect(a).toMatch(/province-specific curriculum alignment/);
+    expect(answer(/Where do you deliver/)).toMatch(/deliver workbooks across Canada/);
   });
 
   it("separates the online assessment from daily practice on paper", () => {
@@ -78,13 +79,15 @@ describe("the plain-text summaries for AI assistants", () => {
     expect(text).toMatch(/\/start\)/);
     expect(text).toMatch(/Assess: your child takes the free math assessment online, on a laptop or tablet\./);
     expect(text).not.toMatch(/assessment on paper|card at signup/);
+    expect(text).toMatch(/Families across Canada can sign up for workbooks\./);
   });
 
   it("/pricing.md: no card at signup; plan and card after the report", () => {
     const text = pricingMarkdown();
     expect(text).not.toMatch(/at signup/);
-    expect(text).toMatch(/after the report/);
+    expect(text).toMatch(/after the report/i);
     expect(text).toMatch(/Every family in Canada can take the free online math assessment\./);
+    expect(text).toMatch(/After the report, families across Canada can choose the plan and add a card\./);
   });
 });
 

@@ -36,6 +36,7 @@ export default async function Start() {
   ];
   return (
     <SupportPage label="Free math assessment" title="Start the free assessment." wide>
+      <p className="lead">Families across Canada can sign up for personalized math workbooks. Start with the free assessment, then choose a plan after the report.</p>
       <ol className="start-steps" aria-label="How it works">
         {steps.map((s, i) => (
           <li key={s.title}>
