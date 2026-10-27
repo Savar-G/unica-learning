@@ -25,6 +25,18 @@ describe("the FAQ describes the online math assessment", () => {
     expect(a).toMatch(/own progress report/);
   });
 
+  it("answers the AI accuracy question beside the Teaching Assistant explanation", () => {
+    const how = FAQ.findIndex((item) => /How does the AI teaching assistant work\?/.test(item.question));
+    const accuracy = FAQ.findIndex((item) => /What if the Teaching Assistant gets something wrong\?/.test(item.question));
+    expect(accuracy).toBe(how + 1);
+    const a = FAQ[accuracy].answer;
+    expect(a).toMatch(/answer key/);
+    expect(a).toMatch(/common wrong-answer patterns/);
+    expect(a).toMatch(/AI can still make a mistake/);
+    expect(a).toMatch(/After the page is marked.*worked solution/);
+    expect(a).toMatch(/send us the page and question.*investigate/);
+  });
+
   it("says how the assessment works: online, on a laptop or tablet, math, then the report", () => {
     const a = answer(/free assessment work/);
     expect(a).toMatch(/online/);
