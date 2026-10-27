@@ -53,8 +53,9 @@ jobs:
           git merge --no-ff --no-edit -m "Blog: publish $BRANCH" "$GITHUB_SHA"
       - run: npm ci
         timeout-minutes: 5
-      - run: npm test
-        timeout-minutes: 5
+      # The 2-core runner is slower than a laptop: the assessment bank tests pass the 5 s default locally but not here.
+      - run: npm test -- --testTimeout=60000
+        timeout-minutes: 10
       - run: npx eslint src
         timeout-minutes: 5
       - run: npm run build
