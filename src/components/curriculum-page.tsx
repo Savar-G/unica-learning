@@ -40,7 +40,7 @@ export function CurriculumPage() {
             <p className="lead">From counting to 10 to graphing equations, Kindergarten to Grade 9. Your child starts at the level the free assessment finds, not a level set by age, and moves up when they&apos;re ready.</p>
           </Rise>
 
-          <Rise className="curp-path" aria-label="Levels 1 to 30">
+          <Rise className="curp-path" aria-label="Levels U1 to U30">
             <CurriculumPath groups={CURRICULUM_GROUPS} />
           </Rise>
 
@@ -66,7 +66,7 @@ export function CurriculumPage() {
                 <div className="curp-levels">
                   {g.levels.map((l) => (
                     <article key={l.n} id={`level-${l.n}`} className="curp-level">
-                      <p className="curp-num">Level {l.n}</p>
+                      <p className="curp-num">Level U{l.n}</p>
                       <h3>{l.title}</h3>
                       <ul>{l.points.map((p) => <li key={p}>{p}</li>)}</ul>
                     </article>

@@ -19,7 +19,7 @@ export function CurriculumPath({ groups }: { groups: CurriculumGroup[] }) {
     <>
       <ol className="curp-steps">
         {groups.flatMap((g, gi) => g.levels.map((l) => (
-          <li key={l.n} className={`g${gi + 1}`}><a href={`#level-${l.n}`} aria-label={`Level ${l.n}: ${l.title}`} onClick={(e) => go(e, l.n)}>{l.n}</a></li>
+          <li key={l.n} className={`g${gi + 1}`}><a href={`#level-${l.n}`} aria-label={`Level U${l.n}: ${l.title}`} onClick={(e) => go(e, l.n)}>U{l.n}</a></li>
         )))}
       </ol>
       <div className="curp-legend">

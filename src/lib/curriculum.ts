@@ -8,7 +8,7 @@ export interface CurriculumGroup { name: string; about: string; levels: Curricul
 
 export const CURRICULUM_GROUPS: CurriculumGroup[] = [
   {
-    "name": "Levels 1–9",
+    "name": "Levels U1–U9",
     "about": "About Kindergarten to Grade 2",
     "levels": [
       {
@@ -104,7 +104,7 @@ export const CURRICULUM_GROUPS: CurriculumGroup[] = [
     ]
   },
   {
-    "name": "Levels 10–18",
+    "name": "Levels U10–U18",
     "about": "About Grades 3 to 5",
     "levels": [
       {
@@ -200,7 +200,7 @@ export const CURRICULUM_GROUPS: CurriculumGroup[] = [
     ]
   },
   {
-    "name": "Levels 19–30",
+    "name": "Levels U19–U30",
     "about": "About Grades 6 to 9",
     "levels": [
       {
