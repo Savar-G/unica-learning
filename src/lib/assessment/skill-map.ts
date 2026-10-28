@@ -24,6 +24,11 @@ export type LevelStandard = BcStandard & { grade: Level };
  * The map's standards on the K-8 Level scale: what the assessment core reads (the learner profile, the AI's next
  * challenges and workbook plan, the report's findings). Grade 9 is in the map for the workbooks only: no template or test
  * level is 9, so a grade 9 standard is never a next challenge or a report topic.
+ *
+ * Rule (D-153): keep this guard. A strong grade 7 or 8 child reaches grade 9 content only through the workbook level
+ * progression, after passing the level test for the grade 8 skills that the grade 9 skill requires (its prerequisite
+ * edges), never as a next challenge from one placement test. BC grade 9 is the first year of high school, and one test
+ * is too thin evidence for that jump. Do not widen this filter to grade 9 without a new decision.
  */
 export const BC_LEVEL_STANDARDS: readonly LevelStandard[] = BC_SKILL_MAP.standards.filter((s): s is LevelStandard => s.grade !== 9);
 

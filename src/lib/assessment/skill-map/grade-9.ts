@@ -2,6 +2,13 @@
 // (https://curriculum.gov.bc.ca/curriculum/mathematics/9/core, read 2026-10-27); as in the other grades, the em dash of
 // the financial literacy heading is written " - ". The assessment does not test grade 9: these standards extend the map
 // for the workbooks (K-9). Skills and prerequisites: AI draft, for review (#194). Powers are written n^2.
+//
+// Who gets grade 9 work (D-153): BC Mathematics 9 is the first year of high school. A grade 7 or 8 child may get a
+// grade 9 skill as stretch work only through the workbook level progression: after passing the level test for the
+// grade 8 skills that the grade 9 skill requires (its prerequisite edges here). Never from the assessment: one
+// placement test is too thin evidence to start high-school algebra, so the assessment's next challenges, workbook plan
+// and report stay K-8 (BC_LEVEL_STANDARDS in ../skill-map.ts leaves grade 9 out). Equations with brackets are here, in
+// 9.5-distribute, not in grade 8.
 import { skill, type BcStandard } from "./kit";
 
 export const BC_GRADE_9: readonly BcStandard[] = [
@@ -40,7 +47,7 @@ export const BC_GRADE_9: readonly BcStandard[] = [
   ] },
   { code: "9.5", grade: 9, strand: "A", text: "multi-step one-variable linear equations", skills: [
     skill("9.5-model-pictorially", "Model and solve an equation with a drawing of a balance or algebra tiles", "6.10-preserve-equality", "9.3-algebra-tiles", "8.8-model-balance"),
-    skill("9.5-distribute", "Solve an equation with brackets by distributing first, for example 3(n - 4) = 15", "8.8-solve-two-step-integers", "9.3-multiply-monomial", "8.8-bracket-form"),
+    skill("9.5-distribute", "Solve an equation with brackets by distributing first, for example 2(x + 3) = -8 or 3(n - 4) = 15", "8.8-solve-two-step-integers", "9.3-multiply-monomial"),
     skill("9.5-collect-like-terms", "Collect like terms, then solve, for example 4n - 7 + 2n = 23", "8.8-solve-two-step-integers", "8.7-combine-terms"),
     skill("9.5-variables-both-sides", "Solve an equation with the variable on both sides, for example 5n + 3 = 2n - 9", "9.5-collect-like-terms", "6.10-preserve-equality"),
     skill("9.5-rational-coefficients", "Solve an equation with fraction or decimal coefficients, constants or solutions, for example n/3 + 2 = 5/6", "8.8-solve-two-step-integers", "9.1-add-subtract", "9.1-multiply-divide"),

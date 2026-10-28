@@ -141,4 +141,12 @@ describe("the BC skill map", () => {
     expect(BC_LEVEL_STANDARDS.filter((s) => s.grade > 8)).toEqual([]);
     expect(BC_LEVEL_STANDARDS).toEqual(BC_SKILL_MAP.standards.filter((s) => s.grade <= 8));
   });
+
+  // D-153: BC Mathematics 8 shows two-step equations like 3x - 4 = -12; BC Mathematics 9 (9.5) "includes distribution".
+  it("leaves equations with brackets to grade 9: no grade 8.8 skill has brackets, and 9.5-distribute builds on 8.8", () => {
+    const skills = BC_SKILL_MAP.standards.flatMap((s) => s.skills);
+    expect(skills.filter((k) => k.id.startsWith("8.8-") && /\d\(/.test(k.text))).toEqual([]);
+    const distribute = skills.find((k) => k.id === "9.5-distribute");
+    expect(distribute?.requires).toEqual(["8.8-solve-two-step-integers", "9.3-multiply-monomial"]);
+  });
 });

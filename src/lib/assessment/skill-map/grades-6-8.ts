@@ -2,6 +2,9 @@
 // .design/research/assessment-audit-2026-10-15/bc-math-standards.csv, grade 8 from
 // .design/research/online-assessment/bc-math-curriculum-map.md, checked on 2026-10-27 against the 14 Content items
 // of https://curriculum.gov.bc.ca/curriculum/mathematics/8/core (grade 8 skills follow its elaborations).
+// 8.8 has no equations with brackets (D-153): the BC elaboration shows only forms like 3x - 4 = -12, and BC puts
+// distribution in grade 9 (9.5 "includes distribution", skill 9.5-distribute). Brackets in grade 8 came from the older
+// WNCP course, not BC.
 // Skills and prerequisites: AI draft, for review (#194).
 import { skill, type BcStandard } from "./kit";
 
@@ -242,7 +245,6 @@ export const BC_GRADES_6_8: readonly BcStandard[] = [
     skill("8.8-solve-two-step-integers", "Solve a two-step equation with integer coefficients, constants and solutions", "7.6-solve-two-step", "7.2-multiply-divide-integers", "8.8-one-step-integers", "8.8-model-balance"),
     skill("8.8-verify", "Check a solution by substituting it into the equation, for example 3x - 4 = -12", "8.8-solve-two-step-integers", "8.7-evaluate"),
     skill("8.8-divide-form", "Solve a two-step equation with a division, for example x/3 + 5 = -1", "8.8-solve-two-step-integers"),
-    skill("8.8-bracket-form", "Solve a two-step equation with brackets, for example 2(x + 3) = -8", "8.8-solve-two-step-integers"),
     skill("8.8-word-problems", "Write and solve a two-step equation with integers for a word problem", "8.8-solve-two-step-integers", "7.6-model-problem", "8.7-write-expression"),
   ] },
   { code: "8.9", grade: 8, strand: "MG", text: "surface area and volume of regular solids, including triangular and other right prisms and cylinders", skills: [
