@@ -5,7 +5,7 @@
 // behaviour, the full error list, how to help or the model ids (admin only, spec #181).
 import { MISCONCEPTIONS, type MisconceptionId } from "./misconceptions";
 import type { LearnerProfile, PlanPart, ProfileAi, ProfileStruggle, Tally } from "./profile";
-import { BC_SKILL_MAP } from "./skill-map";
+import { BC_LEVEL_STANDARDS } from "./skill-map";
 import type { Certainty } from "./certainty";
 import type { Level, StrandStatus } from "./types";
 
@@ -63,7 +63,7 @@ export interface ReportFindings {
   preview: WorkbookPreview | null;
 }
 
-const STANDARDS = new Map(BC_SKILL_MAP.standards.map((s) => [s.code, s]));
+const STANDARDS = new Map(BC_LEVEL_STANDARDS.map((s) => [s.code, s]));
 const SURE: Record<Certainty, number> = { clear: 0, "early-sign": 1 };
 const known = (id: string | null) => (id ? MISCONCEPTIONS[id as MisconceptionId] : undefined);
 

@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { BANKS, BC_SKILL_MAP, skillMapProblems, type BcStandard, type SkillMap } from "@/lib/assessment";
+import { BANKS, BC_LEVEL_STANDARDS, BC_SKILL_MAP, skillMapProblems, type BcStandard, type SkillMap } from "@/lib/assessment";
 
 /** A small map for the checker: standards as [code, grade, skills as [id, ...requires]]. */
 const tiny = (...standards: [string, number, [string, ...string[]][]][]): SkillMap => ({
@@ -109,5 +109,36 @@ describe("the BC skill map", () => {
     expect(expected).toHaveLength(25);
     const actual = BC_SKILL_MAP.standards.filter((s) => s.grade === 0 || s.grade === 8).map(({ code, grade, text }) => ({ code, grade, text }));
     expect(actual).toEqual(expected);
+  });
+
+  // BC Mathematics 9, Content (https://curriculum.gov.bc.ca/curriculum/mathematics/9/core, read 2026-10-27). The em
+  // dash of the financial literacy heading is " - ", as in the other grades.
+  it("holds the grade 9 standards with the exact text of BC Mathematics 9", () => {
+    const expected = [
+      "operations with rational numbers (addition, subtraction, multiplication, division, and order of operations)",
+      "exponents and exponent laws with whole-number exponents",
+      "operations with polynomials, of degree less than or equal to 2",
+      "two-variable linear relations, using graphing, interpolation, and extrapolation",
+      "multi-step one-variable linear equations",
+      "spatial proportional reasoning",
+      "statistics in society",
+      "financial literacy - simple budgets and transactions",
+    ].map((text, i) => ({ code: `9.${i + 1}`, grade: 9, text }));
+    const actual = BC_SKILL_MAP.standards.filter((s) => s.grade === 9).map(({ code, grade, text }) => ({ code, grade, text }));
+    expect(actual).toEqual(expected);
+  });
+
+  it("builds each grade 9 standard on earlier grades: some skill of it needs a skill taught before grade 9", () => {
+    const grade = new Map(BC_SKILL_MAP.standards.flatMap((s) => s.skills.map((k) => [k.id, s.grade] as const)));
+    const unlinked = BC_SKILL_MAP.standards
+      .filter((s) => s.grade === 9 && !s.skills.some((k) => k.requires.some((r) => grade.get(r)! < 9)))
+      .map((s) => s.code);
+    expect(unlinked).toEqual([]);
+  });
+
+  it("keeps grade 9 off the assessment's K-8 level scale: no template asks it, and the profile and report never read it", () => {
+    expect(Object.values(BANKS).flat().filter((t) => t.standard.startsWith("9."))).toEqual([]);
+    expect(BC_LEVEL_STANDARDS.filter((s) => s.grade > 8)).toEqual([]);
+    expect(BC_LEVEL_STANDARDS).toEqual(BC_SKILL_MAP.standards.filter((s) => s.grade <= 8));
   });
 });

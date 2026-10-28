@@ -1,19 +1,31 @@
-// The BC skill map (#192, spec #181): every BC Mathematics content standard that the bank uses, divided into smaller
-// skills, with prerequisite edges between the skills. Pure data and pure checks: no network, database or clock.
-import type { Strand } from "./types";
-import type { BcSkill, BcStandard, SkillMap } from "./skill-map/kit";
+// The BC skill map (#192, spec #181): the BC Mathematics content standards from Kindergarten to grade 9 (every one the
+// bank uses, and grade 9 for the workbooks), divided into smaller skills, with prerequisite edges between the skills.
+// Pure data and pure checks: no network, database or clock.
+import type { Level, Strand } from "./types";
+import type { BcSkill, BcStandard, SkillMap, SkillMapGrade } from "./skill-map/kit";
 import { BC_GRADES_K_2 } from "./skill-map/grades-k-2";
 import { BC_GRADES_3_5 } from "./skill-map/grades-3-5";
 import { BC_GRADES_6_8 } from "./skill-map/grades-6-8";
+import { BC_GRADE_9 } from "./skill-map/grade-9";
 
-export type { BcSkill, BcStandard, SkillMap };
+export type { BcSkill, BcStandard, SkillMap, SkillMapGrade };
 
 /** The BC skill map. The skills and the edges are an AI draft until reviewers check them (#194). */
 export const BC_SKILL_MAP: SkillMap = {
   status: "draft",
-  drafted: "AI first draft (2026-10-16), from the BC elaborations in .design/research/assessment-audit-2026-10-15/",
-  standards: [...BC_GRADES_K_2, ...BC_GRADES_3_5, ...BC_GRADES_6_8],
+  drafted: "AI first draft (2026-10-16), from the BC elaborations in .design/research/assessment-audit-2026-10-15/; grade 9 (2026-10-27) from the BC Mathematics 9 elaborations on curriculum.gov.bc.ca",
+  standards: [...BC_GRADES_K_2, ...BC_GRADES_3_5, ...BC_GRADES_6_8, ...BC_GRADE_9],
 };
+
+/** A standard of the map on the assessment's K-8 Level scale. */
+export type LevelStandard = BcStandard & { grade: Level };
+
+/**
+ * The map's standards on the K-8 Level scale: what the assessment core reads (the learner profile, the AI's next
+ * challenges and workbook plan, the report's findings). Grade 9 is in the map for the workbooks only: no template or test
+ * level is 9, so a grade 9 standard is never a next challenge or a report topic.
+ */
+export const BC_LEVEL_STANDARDS: readonly LevelStandard[] = BC_SKILL_MAP.standards.filter((s): s is LevelStandard => s.grade !== 9);
 
 /**
  * What is wrong with a skill map's structure, one line per problem; empty when it is sound.

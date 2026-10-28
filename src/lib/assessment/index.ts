@@ -70,7 +70,7 @@ export { hasWork, workProblem, type BoardWork, type WorkProblem } from "./work";
 export { isLineChoice, namesChoice, readAloudText, sayChoice, spokenChoices } from "./read-aloud";
 export * from "./payments";
 export * from "./retention-worker";
-export { BC_SKILL_MAP, STRAND_NAMES, skillMapProblems, type BcSkill, type BcStandard, type SkillMap } from "./skill-map";
+export { BC_LEVEL_STANDARDS, BC_SKILL_MAP, STRAND_NAMES, skillMapProblems, type BcSkill, type BcStandard, type LevelStandard, type SkillMap, type SkillMapGrade } from "./skill-map";
 export { SKILL_TAGS, skillTagProblems, tagSkills, templateSkills, type SkillTag, type TemplateSkill } from "./skill-tags";
 // The learner profile (#196): the facts code writes about one finished test.
 export * from "./profile";
