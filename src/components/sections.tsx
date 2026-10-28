@@ -287,7 +287,7 @@ export function Footer({ children }: { children?: ReactNode }) {
         <footer className="foot">
           <div className="foot-brand">
             <a className="logo" href="#top">{BRAND}<b /></a>
-            <p>A personalized math learning program for ages 6-12.</p>
+            <p>A personalized math learning program for ages 5 to 14.</p>
           </div>
           {FOOTER_GROUPS.map((g) => (
             <nav className="foot-col" key={g.title} aria-label={g.title}>

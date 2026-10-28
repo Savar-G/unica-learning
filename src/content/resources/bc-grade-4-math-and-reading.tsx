@@ -152,7 +152,7 @@ export default function Body() {
           If your child is behind, go back to the last topic they felt sure about and build up from there. Place value and multiplication facts are good places to check first. If your child is ahead, keep them curious with problems that ask for reasoning and explanation, not only more of the same.
         </p>
         <p>
-          Unica Learning makes personalized math workbooks for ages 6-12 and mails them home. The books follow the BC curriculum at your child’s level, not just their grade.
+          Unica Learning makes personalized math workbooks for ages 5 to 14 and mails them home. The books follow the BC curriculum at your child’s level, not just their grade.
         </p>
         <AssessmentCta slug={meta.slug}>
           The free online math assessment shows your child’s math level and gaps, on a laptop or tablet.

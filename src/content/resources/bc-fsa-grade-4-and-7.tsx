@@ -147,7 +147,7 @@ export default function Body() {
           For what your child studies in each grade, read our guides to <Link href="/resources/bc-grade-4-math-and-reading">Grade 4 math and reading</Link> and <Link href="/resources/bc-grade-7-math-and-reading">Grade 7 math and reading</Link>.
         </p>
         <p>
-          If you want steady practice at home, Unica Learning mails personalized math workbooks for ages 6 to 12 that follow the BC curriculum at your child&apos;s level. Our free online math assessment is not an FSA practice test and does not predict FSA results.
+          If you want steady practice at home, Unica Learning mails personalized math workbooks for ages 5 to 14 that follow the BC curriculum at your child&apos;s level. Our free online math assessment is not an FSA practice test and does not predict FSA results.
         </p>
       </Section>
 

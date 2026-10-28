@@ -10,7 +10,7 @@ import { hubJsonLd } from "@/lib/structured-data";
 export const metadata = pageMetadata({
   path: "/resources",
   title: "Guides for BC parents",
-  description: "Plain guides for BC parents of children in grades 1-7: the BC curriculum, report cards, the FSA, and how tutoring options compare.",
+  description: "Plain guides for BC parents of children from Kindergarten to Grade 9: the BC curriculum, report cards, the FSA, and how tutoring options compare.",
 });
 
 const slugify = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");

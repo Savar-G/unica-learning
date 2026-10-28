@@ -9,7 +9,7 @@ import { hubJsonLd } from "@/lib/structured-data";
 export const metadata = pageMetadata({
   path: "/blog",
   title: "Blog: math help for parents",
-  description: "Posts for parents of children in grades 1-7: how to help with math at home, how tutors and learning programs compare, and school in BC.",
+  description: "Posts for parents of children from Kindergarten to Grade 9: how to help with math at home, how tutors and learning programs compare, and school in BC.",
 });
 
 export default function BlogHub() {

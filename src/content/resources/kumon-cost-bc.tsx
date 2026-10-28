@@ -213,7 +213,7 @@ export default function Body() {
           the centre for its total so you can compare the same months.
         </p>
         <p>
-          Unica is a different format: personalized math workbooks for ages 6-12, mailed home. The books
+          Unica is a different format: personalized math workbooks for ages 5 to 14, mailed home. The books
           follow the BC curriculum at your child&apos;s level, and your child works on paper for 15-30 minutes a day, 5
           days a week. There is a free online math assessment, the first month free, and you can
           cancel anytime. For a wider look, read <Link href="/resources/tutor-cost-bc">how much a tutor costs in BC</Link>{" "}

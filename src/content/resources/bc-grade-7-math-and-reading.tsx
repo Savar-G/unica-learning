@@ -149,7 +149,7 @@ export default function Body() {
           If your child is behind, check fractions, decimals and percents first, because many Grade 7 topics build on them. If your child is ahead, look for problems that need several steps and an explanation. Wide reading and writing about it keep them stretched.
         </p>
         <p>
-          Unica Learning makes personalized math workbooks for ages 6-12 and mails them home. The books follow the BC curriculum at your child’s level, not just their grade.
+          Unica Learning makes personalized math workbooks for ages 5 to 14 and mails them home. The books follow the BC curriculum at your child’s level, not just their grade.
         </p>
         <AssessmentCta slug={meta.slug}>
           The free online math assessment shows your child’s math level and gaps, on a laptop or tablet.

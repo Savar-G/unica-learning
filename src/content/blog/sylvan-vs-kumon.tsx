@@ -8,7 +8,7 @@ export const meta: BlogMeta = {
   slug: "sylvan-vs-kumon",
   title: "Sylvan vs Kumon in BC: cost, method and which fits your child",
   description:
-    "Sylvan vs Kumon for BC families: how each one teaches, what BC centres list as prices in October 2026, and how to choose for a child in grades 1-7.",
+    "Sylvan vs Kumon: how each one teaches, what BC centres list as prices in October 2026, and how to choose for a child from Kindergarten to Grade 9.",
   category: "Comparing options",
   lead: "Kumon is daily worksheet practice, mostly at home. Sylvan is teacher-led sessions at a centre. Here is how they differ, and what each costs in BC.",
   published: "2026-10-27",
