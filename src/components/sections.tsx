@@ -55,7 +55,7 @@ function GetStarted({ src }: { src: string }) {
 const d = (s: number) => ({ "--d": `${s}s` }) as Vars;
 
 export function Nav() {
-  return <NavBar brand={BRAND} cta={<StartLink className="btn sm" src="nav">Free assessment</StartLink>} />;
+  return <NavBar brand={BRAND} links={[{ label: "How it works", href: "#how" }, { label: "Curriculum", href: "/curriculum" }, { label: "Pricing", href: "#price" }, { label: "FAQ", href: "#faq" }]} cta={<StartLink className="btn sm" src="nav">Free assessment</StartLink>} />;
 }
 
 // 8-9 characters only: the chip is as wide as its longest word, so a long topic
@@ -273,7 +273,7 @@ export function ThreadEnd() {
 }
 
 const FOOTER_GROUPS: { title: string; links: { label: string; href: string }[] }[] = [
-  { title: "Learn", links: [{ label: "How it works", href: "/#how" }, { label: "Pricing", href: "/#price" }, { label: "FAQ", href: "/#faq" }, { label: "How we compare", href: "/compare" }] },
+  { title: "Learn", links: [{ label: "How it works", href: "/#how" }, { label: "Pricing", href: "/#price" }, { label: "FAQ", href: "/#faq" }, { label: "How we compare", href: "/compare" }, { label: "Curriculum", href: "/curriculum" }] },
   { title: "Company", links: [{ label: "Our story", href: "/our-story" }, { label: "Rewards", href: "/rewards" }, { label: "Resources", href: "/resources" }, { label: "Blog", href: "/blog" }] },
   { title: "Help", links: [{ label: "Contact us", href: "/contact" }, { label: "Privacy", href: "/privacy" }, { label: "Terms", href: "/terms" }] },
 ];
