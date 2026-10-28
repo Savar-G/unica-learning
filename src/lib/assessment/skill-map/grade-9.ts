@@ -14,7 +14,7 @@ import { skill, type BcStandard } from "./kit";
 export const BC_GRADE_9: readonly BcStandard[] = [
   { code: "9.1", grade: 9, strand: "O", text: "operations with rational numbers (addition, subtraction, multiplication, division, and order of operations)", skills: [
     skill("9.1-compare-order", "Compare and order rational numbers, such as -3/4, -0.7 and 2/3, on a number line", "7.2-compare-integers", "7.4-compare-forms"),
-    skill("9.1-add-subtract", "Add and subtract rational numbers, as fractions or decimals, also negative ones", "9.1-compare-order", "7.2-subtract-integers", "8.5-add-subtract-fractions"),
+    skill("9.1-add-subtract", "Add and subtract rational numbers, as fractions or decimals, also negative ones", "9.1-compare-order", "7.2-subtract-integers", "8.5-add-subtract-unlike"),
     skill("9.1-multiply-divide", "Multiply and divide rational numbers with the sign rules, for example (-3/4) / (1/5)", "7.2-multiply-divide-integers", "8.5-divide-fractions", "7.3-divide-decimals"),
     skill("9.1-order-of-operations", "Use the order of operations with rational numbers, brackets and powers, for example 1 - 2 x (4/5)^2", "9.1-add-subtract", "9.1-multiply-divide", "9.2-evaluate-power", "8.5-fraction-order-of-operations"),
     skill("9.1-word-problems", "Solve a word problem with rational numbers, for example a temperature that drops 2.5 degrees an hour", "9.1-add-subtract", "9.1-multiply-divide"),
@@ -64,7 +64,7 @@ export const BC_GRADE_9: readonly BcStandard[] = [
     skill("9.6-indirect-measurement", "Use similar triangles to find a length you cannot measure, for example a tree's height from its shadow", "9.6-similar-missing-side"),
   ] },
   { code: "9.7", grade: 9, strand: "DP", text: "statistics in society", skills: [
-    skill("9.7-population-sample", "Tell a population from a sample, and say when to use a sample"),
+    skill("9.7-population-sample", "Tell a population from a sample, and say when to use a sample", "5.17-double-bar-graph"),
     skill("9.7-sampling-methods", "Choose a sampling method that gives a fair sample, for example random rather than only friends", "9.7-population-sample"),
     skill("9.7-bias", "Find bias in a survey question or a sample, such as a leading question", "9.7-population-sample"),
     skill("9.7-collection-issues", "Name problems in collecting data: ethics, cost, time and timing, privacy and cultural sensitivity", "9.7-population-sample"),

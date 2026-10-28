@@ -225,9 +225,9 @@ export const BC_GRADES_3_5: readonly BcStandard[] = [
     skill("5.15-quadrilaterals", "Describe and sort quadrilaterals", "4.13-name-polygons"),
   ] },
   { code: "5.16", grade: 5, strand: "MG", text: "single transformations", skills: [
-    skill("5.16-translation", "Translate a shape by a given slide"),
+    skill("5.16-translation", "Translate a shape by a given slide", "2.9-name-2d-shapes"),
     skill("5.16-reflection", "Reflect a shape or a point in a mirror line", "4.15-line-symmetry"),
-    skill("5.16-rotation", "Rotate a shape by a quarter turn or a half turn"),
+    skill("5.16-rotation", "Rotate a shape by a quarter turn or a half turn", "2.9-name-2d-shapes"),
   ] },
   { code: "5.17", grade: 5, strand: "DP", text: "one-to-one correspondence and many-to-one correspondence, using double bar graphs", skills: [
     skill("5.17-double-bar-graph", "Read and compare two sets of data in a double bar graph", "4.16-compare-data"),

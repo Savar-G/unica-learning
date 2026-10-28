@@ -73,7 +73,7 @@ export const BC_GRADES_6_8: readonly BcStandard[] = [
     skill("6.12-missing-dimension", "Find a base or a height from the area", "6.12-triangle-area", "6.12-parallelogram-area"),
   ] },
   { code: "6.13", grade: 6, strand: "MG", text: "angle measurement and classification", skills: [
-    skill("6.13-classify-angles", "Classify an angle as acute, right, obtuse, straight or reflex"),
+    skill("6.13-classify-angles", "Classify an angle as acute, right, obtuse, straight or reflex", "2.9-compare-2d"),
     skill("6.13-measure-angles", "Measure and estimate an angle with the 45, 90 and 180 degree references", "6.13-classify-angles"),
     skill("6.13-angle-sums", "Find a missing angle on a straight line, in a right angle or in a triangle", "6.13-measure-angles"),
   ] },
@@ -87,7 +87,7 @@ export const BC_GRADES_6_8: readonly BcStandard[] = [
     skill("6.15-classify-by-angles", "Classify a triangle as right, acute or obtuse", "6.13-classify-angles"),
   ] },
   { code: "6.16", grade: 6, strand: "MG", text: "combinations of transformations", skills: [
-    skill("6.16-plot-points", "Plot and read ordered pairs of whole numbers in the first quadrant"),
+    skill("6.16-plot-points", "Plot and read ordered pairs of whole numbers in the first quadrant", "2.1-number-line-100"),
     skill("6.16-translate-point", "Translate a point or a shape on a grid", "5.16-translation", "6.16-plot-points"),
     skill("6.16-combine-transformations", "Combine translations, rotations and reflections on one shape", "5.16-translation", "5.16-reflection", "5.16-rotation"),
   ] },
@@ -160,7 +160,7 @@ export const BC_GRADES_6_8: readonly BcStandard[] = [
     skill("7.6-model-problem", "Write and solve a two-step equation for a word problem", "7.6-solve-two-step"),
   ] },
   { code: "7.7", grade: 7, strand: "MG", text: "circumference and area of circles", skills: [
-    skill("7.7-radius-diameter", "Relate the radius and the diameter of a circle"),
+    skill("7.7-radius-diameter", "Relate the radius and the diameter of a circle", "2.9-name-2d-shapes", "3.9-metric-units"),
     skill("7.7-circumference", "Find the circumference of a circle with C = pi x d, using about 3.14 for pi", "7.7-radius-diameter", "7.3-multiply-decimals"),
     skill("7.7-diameter-from-circumference", "Find the diameter or the radius of a circle from its circumference", "7.7-circumference", "7.3-divide-decimals"),
     skill("7.7-area", "Find the area of a circle with A = pi x r x r", "7.7-radius-diameter", "7.3-multiply-decimals"),
@@ -197,11 +197,13 @@ export const BC_GRADES_6_8: readonly BcStandard[] = [
   ] },
   // Grade 8: the 14 Content items of Mathematics 8, checked against curriculum.gov.bc.ca on 2026-10-27. Rebalanced on
   // 2026-10-27: closely related small skills merged into one teachable skill each; every id that the bank tags,
-  // grade-9.ts or a test names is kept.
+  // grade-9.ts or a test names is kept. A few merges went too far (a child learns the parts on different days), so
+  // those are split again: the old id keeps the first part, and the bank tags stay on it.
   { code: "8.1", grade: 8, strand: "N", text: "perfect squares and cubes", skills: [
     skill("8.1-squares-cubes", "Find the square and the cube of a whole number, also written as 7 squared (7^2) or 4 cubed (4^3), and show it as a square of tiles or a cube of blocks", "5.9-recall-facts", "5.12-area-rectangle", "6.14-volume-cubes"),
     skill("8.1-identify-perfect", "Recall the perfect squares to 225 and the perfect cubes to 1000, and tell if a number is a perfect square or a perfect cube", "8.1-squares-cubes", "6.4-factors"),
-    skill("8.1-prime-factorization", "Write a number as a product of prime factors with a factor tree, and use them to tell if it is a perfect square or cube, for example 144 = (2 x 2 x 3) x (2 x 2 x 3)", "6.4-prime-composite", "6.4-factors", "8.1-identify-perfect"),
+    skill("8.1-prime-factorization", "Write a number as a product of prime factors with a factor tree", "6.4-prime-composite", "6.4-factors"),
+    skill("8.1-perfect-by-factors", "Use the prime factors of a number to tell if it is a perfect square or a perfect cube, for example 144 = (2 x 2 x 3) x (2 x 2 x 3)", "8.1-prime-factorization", "8.1-identify-perfect"),
   ] },
   { code: "8.2", grade: 8, strand: "N", text: "square and cube roots", skills: [
     skill("8.2-square-root", "Find the square root of a perfect square or of a fraction such as 16/169, and the side of a square from its area", "8.1-identify-perfect"),
@@ -209,7 +211,8 @@ export const BC_GRADES_6_8: readonly BcStandard[] = [
     skill("8.2-estimate-root", "Estimate a square root between two whole numbers and to one decimal place, for example the square root of 30, and check by squaring", "8.2-square-root", "7.3-multiply-decimals"),
   ] },
   { code: "8.3", grade: 8, strand: "F", text: "percents less than 1 and greater than 100 (decimal and fractional percents)", skills: [
-    skill("8.3-convert-percents", "Write a percent less than 1 or greater than 100 as a decimal and a fraction, for example 1/2% = 0.005 and 125% = 1.25, and find what percent one number is of another", "7.4-fraction-decimal-percent"),
+    skill("8.3-convert-percents", "Write a percent less than 1 or greater than 100 as a decimal and a fraction, for example 1/2% = 0.005 and 125% = 1.25", "7.4-fraction-decimal-percent"),
+    skill("8.3-percent-of-another", "Find what percent one number is of another, for example 15 is what percent of 12", "7.4-fraction-decimal-percent", "6.7-missing-whole"),
     skill("8.3-percent-over-100", "Find a percent greater than 100 of a quantity", "6.7-percent-of", "8.3-convert-percents"),
     skill("8.3-percent-under-1", "Find a percent less than 1 of a quantity", "6.7-percent-of", "7.3-multiply-decimals", "8.3-convert-percents"),
     skill("8.3-decimal-percent-of", "Find a decimal or fractional percent of a quantity, for example 3.25% or 12 1/2%", "8.3-convert-percents", "7.3-multiply-decimals"),
@@ -218,17 +221,19 @@ export const BC_GRADES_6_8: readonly BcStandard[] = [
   ] },
   { code: "8.4", grade: 8, strand: "F", text: "numerical proportional reasoning (rates, ratio, proportions, and percent)", skills: [
     skill("8.4-rates", "Tell a rate from a ratio, find a unit rate with its units, and compare two rates through their unit rates, for example 120 km in 2 h", "6.6-write-ratio", "6.8-divide-decimal"),
-    skill("8.4-ratio-share", "Write and simplify a three-term ratio, for example 12:18:30 = 2:3:5, and share a quantity in a ratio of two or three terms", "6.6-equivalent-ratios", "6.4-gcf"),
+    skill("8.4-three-term-ratio", "Write and simplify a three-term ratio, for example 12:18:30 = 2:3:5", "6.6-equivalent-ratios", "6.4-gcf"),
+    skill("8.4-ratio-share", "Share a quantity in a ratio of two or three terms, for example a 90 m rope cut in the ratio 3:5:10", "8.4-three-term-ratio", "6.6-equivalent-ratios"),
     skill("8.4-solve-proportion", "Find the missing term of a proportion, for example 3/5 = x/40", "6.6-equivalent-ratios", "5.3-missing-term"),
     skill("8.4-proportion-problems", "Set up and solve a proportion for a word problem, such as a recipe, a map scale or a percent (15 is 30% of what number)", "8.4-solve-proportion", "8.4-rates", "6.7-missing-whole"),
   ] },
   { code: "8.5", grade: 8, strand: "O", text: "operations with fractions (addition, subtraction, multiplication, division, and order of operations)", skills: [
-    skill("8.5-add-subtract-fractions", "Add and subtract fractions and mixed numbers with like or unlike denominators, through a common denominator, and estimate with 0, 1/2 and 1 first", "4.3-benchmarks", "4.3-same-denominator", "5.3-equivalent-fractions", "6.4-lcm", "6.5-mixed-to-improper", "6.5-improper-to-mixed"),
-    skill("8.5-subtract-regroup", "Subtract mixed numbers by regrouping a whole, for example 3 1/4 - 1 3/4", "8.5-add-subtract-fractions"),
+    skill("8.5-add-subtract-fractions", "Add and subtract fractions and mixed numbers with like denominators, and estimate with 0, 1/2 and 1 first", "4.3-benchmarks", "4.3-same-denominator", "6.5-mixed-to-improper", "6.5-improper-to-mixed"),
+    skill("8.5-add-subtract-unlike", "Add and subtract fractions and mixed numbers with unlike denominators, through a common denominator", "8.5-add-subtract-fractions", "5.3-equivalent-fractions", "6.4-lcm"),
+    skill("8.5-subtract-regroup", "Subtract mixed numbers by regrouping a whole, for example 3 1/4 - 1 3/4", "8.5-add-subtract-unlike"),
     skill("8.5-multiply-fractions", "Multiply fractions, whole numbers and mixed numbers, for example 3/4 x 12 or 1 1/2 x 2/3, and simplify the product", "3.2-fraction-of-set", "6.5-mixed-to-improper", "7.4-lowest-terms"),
     skill("8.5-divide-fractions", "Divide fractions, whole numbers and mixed numbers by multiplying by the reciprocal, for example 2 1/2 divided by 3/4", "8.5-multiply-fractions"),
-    skill("8.5-fraction-order-of-operations", "Use the order of operations with fractions and brackets, no exponents, for example 1/2 divided by 9/6 x (7 - 4/5)", "8.5-add-subtract-fractions", "8.5-divide-fractions", "6.3-order-of-operations"),
-    skill("8.5-fraction-word-problems", "Choose the operation and solve a fraction word problem, for example sharing 3/4 of a harvest among 6 families", "8.5-add-subtract-fractions", "8.5-multiply-fractions", "8.5-divide-fractions"),
+    skill("8.5-fraction-order-of-operations", "Use the order of operations with fractions and brackets, no exponents, for example 1/2 divided by 9/6 x (7 - 4/5)", "8.5-add-subtract-unlike", "8.5-divide-fractions", "6.3-order-of-operations"),
+    skill("8.5-fraction-word-problems", "Choose the operation and solve a fraction word problem, for example sharing 3/4 of a harvest among 6 families", "8.5-add-subtract-unlike", "8.5-multiply-fractions", "8.5-divide-fractions"),
   ] },
   { code: "8.6", grade: 8, strand: "A", text: "discrete linear relations (extended to larger numbers, limited to integers)", skills: [
     skill("8.6-evaluate-relation", "Find the value of a linear relation with integers", "7.5-evaluate-relation"),
@@ -237,7 +242,8 @@ export const BC_GRADES_6_8: readonly BcStandard[] = [
     skill("8.6-scale-axes", "Choose and read a scale on each axis, for example each tick mark is 5 units", "6.17-read-line-graph", "7.9-plot-integer-points"),
     skill("8.6-graph-relation", "Graph a linear relation from its table of values in four quadrants", "8.6-table-of-values", "8.6-scale-axes", "7.5-graph-relation"),
     skill("8.6-discrete-points", "Tell when the points of a graph stay separate (discrete) and when they can be joined", "8.6-graph-relation"),
-    skill("8.6-read-graph", "Read an input or an output from the graph of a linear relation, tell if a point is on it, and write the relation it shows", "8.6-graph-relation", "8.6-table-to-relation", "7.5-relation-from-graph"),
+    skill("8.6-read-graph", "Read an input or an output from the graph of a linear relation, and tell if a point is on it", "8.6-graph-relation"),
+    skill("8.6-relation-from-graph", "Write the linear relation that the points of a graph show", "8.6-read-graph", "8.6-table-to-relation", "7.5-relation-from-graph"),
     skill("8.6-relation-in-context", "Write and use a linear relation for a situation, for example a cost of 4 dollars a ticket plus a 10 dollar fee", "8.6-table-to-relation", "8.7-write-expression", "7.5-relation-in-context"),
     skill("8.6-solve-for-input", "Find the input of a relation from its output", "8.6-evaluate-relation", "8.8-solve-two-step-integers"),
   ] },
@@ -273,8 +279,10 @@ export const BC_GRADES_6_8: readonly BcStandard[] = [
     skill("8.11-nets", "Match a net to its 3D object, tell if a net folds into a cube or a prism, and draw the net of a right prism or a cylinder", "3.11-nets", "5.15-classify-prisms-pyramids"),
   ] },
   { code: "8.12", grade: 8, strand: "DP", text: "central tendency", skills: [
-    skill("8.12-mean", "Find the mean of a set of data, also from a table, a tally or a graph, and a missing value from the mean, for example the score needed on the last test", "6.8-divide-decimal", "3.12-read-bar-graph", "7.6-solve-two-step"),
-    skill("8.12-median", "Find the median and the range of a set of data with an odd or an even number of values", "6.1-compare-order"),
+    skill("8.12-mean", "Find the mean of a set of data from a list, a table, a tally or a graph", "6.8-divide-decimal", "3.12-read-bar-graph"),
+    skill("8.12-missing-value-from-mean", "Find a missing value from a known mean, for example the score needed on the last test", "8.12-mean", "7.6-solve-two-step"),
+    skill("8.12-median", "Find the median of a set of data with an odd or an even number of values", "6.1-compare-order"),
+    skill("8.12-range", "Find the range of a set of data, the greatest value less the least", "6.1-compare-order"),
     skill("8.12-mode", "Find the mode of a set of data", "3.12-tally"),
     skill("8.12-outlier", "Tell how an outlier changes the mean and the median", "8.12-mean", "8.12-median"),
     skill("8.12-choose-measure", "Choose the mean, median or mode that best describes a set of data, and say why", "8.12-outlier", "8.12-mode"),
@@ -285,7 +293,8 @@ export const BC_GRADES_6_8: readonly BcStandard[] = [
     skill("8.13-compare-experimental", "Compare the theoretical probability of two events with the results of an experiment, and decide whether a game with two spinners or dice is fair", "8.13-theoretical-two-events", "7.12-experimental-two-events"),
   ] },
   { code: "8.14", grade: 8, strand: "F", text: "financial literacy - best buys", skills: [
-    skill("8.14-unit-price", "Find a unit price and choose the best buy, also for bulk or \"buy 2, get 1 free\" offers and prices such as 3 for $4 or 6 for $7.50, with more than the price in mind, such as need, quality or waste", "8.4-rates", "8.4-solve-proportion", "6.19-consumer-choice"),
+    skill("8.14-unit-price", "Find a unit price and choose the best buy between two plain prices", "8.4-rates", "8.4-solve-proportion", "6.19-consumer-choice"),
+    skill("8.14-multi-buy-offers", "Compare offers such as 3 for $4, 6 for $7.50, \"buy 2, get 1 free\" and bulk, with more than the price in mind, such as need, quality or waste", "8.14-unit-price"),
     skill("8.14-coupons", "Compare offers with coupons and percent discounts, and find the final price when a coupon, a percent discount and sales tax apply one after the other", "7.13-sale-price", "7.13-total-cost"),
     skill("8.14-compare-services", "Compare the cost of two services or plans, such as phone plans, for a given use", "8.4-rates", "8.6-relation-in-context"),
   ] },
