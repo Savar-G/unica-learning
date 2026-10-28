@@ -21,7 +21,7 @@ const LINKS = [
 
 const HOW: [string, string][] = [
   ["A workbook every two weeks", "A new paper workbook arrives in the mail every two weeks, built from your child's last one."],
-  ["About 15 to 40 minutes a day*", "Five days a week. Younger children do shorter days."],
+  ["About 15 to 30 minutes a day*", "Five days a week. Younger children do shorter days."],
   ["Shown first, then small steps", "Each new idea starts with a worked example. Practice then builds from easy to harder, one small change at a time."],
   ["Remember these?", "Every day brings back something learned earlier, so old skills stay fresh."],
   ["A check-in and a Fix it box", "Each day ends with a quick check-in. Every question marked wrong comes back the next day in a Fix it box."],
