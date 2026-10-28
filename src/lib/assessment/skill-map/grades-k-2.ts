@@ -2,7 +2,10 @@
 // .design/research/assessment-audit-2026-10-15/bc-math-standards.csv, K and grade 8 from
 // .design/research/online-assessment/bc-math-curriculum-map.md. The 11 K standards were checked on 2026-10-27 against
 // the official BC page (https://curriculum.gov.bc.ca/curriculum/mathematics/k/core, Content and elaborations); BC
-// writes an em dash in K11, the map keeps the hyphen used for every grade. Skills and prerequisites: AI draft, for review (#194).
+// writes an em dash in K11, the map keeps the hyphen used for every grade. The 23 grade 1 and 2 standards were checked
+// on 2026-10-27 against https://curriculum.gov.bc.ca/curriculum/mathematics/1/core and .../2/core (Content and
+// elaborations) and split into smaller skills, most of them in counting, place value and addition and subtraction;
+// every earlier skill id is kept. Skills and prerequisites: AI draft, for review (#194).
 import { skill, type BcStandard } from "./kit";
 
 export const BC_GRADES_K_2: readonly BcStandard[] = [
@@ -90,44 +93,73 @@ export const BC_GRADES_K_2: readonly BcStandard[] = [
   ] },
   { code: "1.1", grade: 1, strand: "N", text: "number concepts to 20", skills: [
     skill("1.1-count-to-20", "Count forward and back to 20, and say the number before or after a number", "K1-number-sequence"),
+    skill("1.1-read-write-20", "Read and write the numerals to 20", "K1-write-numerals", "1.1-count-to-20"),
+    skill("1.1-count-objects-20", "Count a set of up to 20 objects, keeping track of the ones already counted", "K1-count-scattered", "1.1-count-to-20"),
+    skill("1.1-subitize-to-10", "Recognize quantities to 10 at a glance on dot cards, dice, fingers and ten-frames, as two smaller groups", "K2-subitize-parts", "K3-ten-frame"),
+    skill("1.1-count-on-back", "Count on or back from any number within 20, not only from 1 or 20", "1.1-count-to-20"),
+    skill("1.1-one-more-less-20", "Find 1 or 2 more and 1 or 2 less than a number to 20", "K5-two-more-less", "1.1-count-on-back"),
     skill("1.1-skip-count-2-5", "Skip-count by 2s and 5s", "1.1-count-to-20"),
-    skill("1.1-compare-order-20", "Compare and order numbers to 20", "1.1-count-to-20", "K2-compare-quantities"),
     skill("1.1-ten-and-ones", "Show a number from 11 to 20 as 10 and some more", "1.1-count-to-20", "K3-make-10"),
+    skill("1.1-number-line-20", "Find and place numbers to 20 on a number line", "1.1-count-on-back", "1.1-read-write-20"),
+    skill("1.1-compare-order-20", "Compare and order numbers to 20", "1.1-count-to-20", "K2-compare-quantities"),
   ] },
   { code: "1.2", grade: 1, strand: "N", text: "ways to make 10", skills: [
-    skill("1.2-ways-to-make-10", "Find the ways to make 10 with two parts", "K3-make-10"),
+    skill("1.2-decompose-within-10", "Break a number to 10 into two parts in different ways and write each way, for example 7 is 5 and 2, 4 and 3", "K3-decompose-to-10", "K3-part-part-whole"),
+    skill("1.2-ways-to-make-10", "Find the ways to make 10 with two parts", "K3-make-10", "1.2-decompose-within-10"),
+    skill("1.2-partners-of-10", "Name the number that makes 10 with a given number without counting, for example 6 and 4", "1.2-ways-to-make-10"),
     skill("1.2-benchmarks-10-20", "Use 10 and 20 as benchmarks for the size of a number", "1.2-ways-to-make-10", "1.1-compare-order-20"),
   ] },
   { code: "1.3", grade: 1, strand: "O", text: "addition and subtraction to 20 (understanding of operation and process)", skills: [
-    skill("1.3-add-within-20", "Add within 20 by counting on, making 10 or using doubles", "K5-add-on-change", "1.2-ways-to-make-10"),
-    skill("1.3-subtract-within-20", "Subtract within 20 by counting back or with the related addition", "K5-take-away-change", "1.3-add-within-20"),
-    skill("1.3-word-problems-20", "Solve join, take-away and compare word problems within 20", "1.3-add-within-20", "1.3-subtract-within-20"),
+    skill("1.3-meaning-of-addition", "Know that adding puts two parts together to make a whole, and write it with + and =", "K5-add-on-change", "1.2-decompose-within-10"),
+    skill("1.3-meaning-of-subtraction", "Know that subtracting takes a part away from a whole or finds the missing part, and write it with - and =", "K5-take-away-change", "1.2-decompose-within-10"),
+    skill("1.3-add-within-10", "Add two numbers with a sum to 10", "1.3-meaning-of-addition"),
+    skill("1.3-subtract-within-10", "Subtract within 10", "1.3-meaning-of-subtraction", "1.3-add-within-10"),
+    skill("1.3-count-on-back", "Add by counting on from the larger number (8 + 3: 9, 10, 11), and subtract a small number by counting back", "1.1-count-on-back", "1.3-add-within-10", "1.3-subtract-within-10"),
+    skill("1.3-doubles", "Know the doubles from 1 + 1 to 10 + 10", "1.3-add-within-10", "1.1-skip-count-2-5"),
+    skill("1.3-teen-add-subtract", "Add or subtract within a teen number without crossing 10, for example 10 + 6, 13 + 4 and 17 - 5", "1.1-ten-and-ones", "1.3-add-within-10", "1.3-subtract-within-10"),
+    skill("1.3-make-10-to-add", "Add across 10 by making 10 first, with a ten-frame, for example 8 + 5 = 8 + 2 + 3", "1.2-partners-of-10", "1.3-teen-add-subtract"),
+    skill("1.3-add-within-20", "Add within 20 by counting on, making 10 or using doubles", "1.3-count-on-back", "1.3-doubles", "1.3-make-10-to-add"),
+    skill("1.3-fact-families", "Use a related addition fact to subtract, and write the four facts of a fact family, for example 3 + 5, 5 + 3, 8 - 5, 8 - 3", "1.3-add-within-10", "1.3-subtract-within-10"),
+    skill("1.3-subtract-within-20", "Subtract within 20 by counting back or with the related addition", "K5-take-away-change", "1.3-add-within-20", "1.3-fact-families"),
+    skill("1.3-word-problems-10", "Solve join and take-away story problems within 10, from pictures or objects", "1.3-add-within-10", "1.3-subtract-within-10"),
+    skill("1.3-word-problems-20", "Solve join, take-away and compare word problems within 20", "1.3-add-within-20", "1.3-subtract-within-20", "1.3-word-problems-10"),
   ] },
   { code: "1.4", grade: 1, strand: "A", text: "repeating patterns with multiple elements and attributes", skills: [
+    skill("1.4-sorting-rule", "Find the rule of a sorting, and the one object that does not belong", "K4-sort-one-attribute"),
     skill("1.4-extend-repeating", "Continue a repeating pattern with several elements or attributes", "K4-extend-repeating"),
     skill("1.4-describe-core", "Name the core of a pattern, also with letters such as A A B", "K4-identify-core", "1.4-extend-repeating"),
+    skill("1.4-translate-pattern", "Show the same pattern with other objects, sounds or letters, for example orange-blue as circle-square", "K4-represent-pattern", "1.4-describe-core"),
     skill("1.4-predict-element", "Predict a later element of a repeating pattern, for example the 8th shape", "1.4-describe-core"),
   ] },
   { code: "1.5", grade: 1, strand: "A", text: "change in quantity to 20, concretely and verbally", skills: [
     skill("1.5-describe-change", "Describe a change in quantity in words, for example \"build 7, add 3 to make 10\"", "K5-add-on-change", "K5-take-away-change"),
-    skill("1.5-change-unknown", "Find how many to add or take away to change one quantity to another within 20", "1.5-describe-change", "1.3-subtract-within-20"),
+    skill("1.5-change-to-make-10", "Tell how many to add to a number to make 10, or how many to take away from 10 to make a number", "1.5-describe-change", "1.2-partners-of-10"),
+    skill("1.5-change-unknown", "Find how many to add or take away to change one quantity to another within 20", "1.5-change-to-make-10", "1.3-subtract-within-20"),
   ] },
   { code: "1.6", grade: 1, strand: "A", text: "meaning of equality and inequality", skills: [
     skill("1.6-equal-or-not", "Tell if two quantities or two sums are equal or not equal", "K6-balance", "1.3-add-within-20"),
+    skill("1.6-record-equal-not-equal", "Record an equality with = and an inequality with ≠, for example 4 + 3 = 7 and 5 ≠ 6", "1.6-equal-or-not"),
+    skill("1.6-equal-sums", "Show that two different sums can be equal, for example 6 + 4 and 7 + 3", "1.6-equal-or-not", "1.2-ways-to-make-10"),
     skill("1.6-balance-sides", "Find what makes the two sides of a balance equal", "1.6-equal-or-not"),
   ] },
   { code: "1.7", grade: 1, strand: "MG", text: "direct measurement with non-standard units (non-uniform and uniform)", skills: [
-    skill("1.7-non-standard-units", "Measure a length by repeating one non-standard unit with no gaps or overlaps", "K7-compare-length"),
+    skill("1.7-non-standard-units", "Measure a length with copies of one non-standard unit laid end to end from a baseline, with no gaps or overlaps", "K7-compare-length"),
+    skill("1.7-iterate-one-unit", "Measure a length by moving one unit along again and again, marking where each one ends", "1.7-non-standard-units"),
+    skill("1.7-uniform-units", "Tell why uniform units (cubes, paper clips) give a fairer measure than non-uniform ones (hands, steps)", "1.7-non-standard-units"),
     skill("1.7-unit-size", "Explain why a smaller unit gives a larger count", "1.7-non-standard-units"),
     skill("1.7-order-by-measure", "Order three objects by length or mass from two comparisons", "K7-compare-length", "K7-compare-mass-capacity"),
     // Added with the skill tags (#193): no skill above covers comparing surfaces.
     skill("1.7-compare-by-covering", "Compare the size of two surfaces by covering each with same-size units and comparing the counts", "1.7-non-standard-units"),
   ] },
   { code: "1.8", grade: 1, strand: "MG", text: "comparison of 2D shapes and 3D objects", skills: [
+    skill("1.8-name-shapes", "Name circles, triangles, squares and rectangles, and cubes, cones, cylinders and spheres (balls), also in the world around us", "K8-same-shape", "K8-describe-3d"),
     skill("1.8-sort-shapes", "Sort 2D shapes and 3D objects by one attribute and explain the sorting rule", "K8-shape-attributes"),
     skill("1.8-count-sides", "Count the sides and corners of 2D shapes", "K8-shape-attributes", "1.1-count-to-20"),
+    skill("1.8-positional-words", "Use up and down, in and out, above and below to tell where an object is", "K8-positional-words"),
+    skill("1.8-composite-shapes", "Make or copy a shape from smaller shapes, for example two triangles make a square", "K8-create-2d", "1.8-name-shapes"),
   ] },
   { code: "1.9", grade: 1, strand: "DP", text: "concrete graphs, using one-to-one correspondence", skills: [
+    skill("1.9-make-concrete-graph", "Make a concrete graph from sorted objects, one object for each item in rows from a starting line, with labels", "K9-make-graph", "1.1-count-objects-20"),
     skill("1.9-read-concrete-graph", "Read a concrete graph with one-to-one correspondence and compare the groups", "K9-read-concrete-graph", "1.3-subtract-within-20"),
   ] },
   { code: "1.10", grade: 1, strand: "DP", text: "likelihood of familiar life events, using comparative language", skills: [
@@ -138,47 +170,75 @@ export const BC_GRADES_K_2: readonly BcStandard[] = [
     skill("1.11-count-one-coin-type", "Find the value of a set of coins of one type", "1.11-coin-values", "1.1-skip-count-2-5"),
   ] },
   { code: "2.1", grade: 2, strand: "N", text: "number concepts to 100", skills: [
-    skill("2.1-count-to-100", "Count forward and back to 100, and skip-count by 2s, 5s and 10s from any number", "1.1-skip-count-2-5"),
-    skill("2.1-place-value-tens-ones", "Tell the value of each digit in a two-digit number", "1.1-ten-and-ones"),
-    skill("2.1-compare-order-100", "Compare and order numbers to 100", "2.1-place-value-tens-ones", "1.1-compare-order-20"),
+    skill("2.1-count-by-ones-100", "Count forward and back by 1s to 100 from any number, also across a ten (38, 39, 40, 41)", "1.1-count-on-back"),
+    skill("2.1-read-write-100", "Read and write numbers to 100", "1.1-read-write-20", "2.1-count-by-ones-100"),
+    skill("2.1-count-to-100", "Count forward and back to 100, and skip-count by 2s, 5s and 10s from any number", "1.1-skip-count-2-5", "2.1-count-by-ones-100"),
+    skill("2.1-count-tens-ones", "Count a collection to 100 by making groups of 10 and counting the tens and the leftover ones", "1.1-ten-and-ones", "1.1-count-objects-20"),
+    skill("2.1-place-value-tens-ones", "Tell the value of each digit in a two-digit number", "1.1-ten-and-ones", "2.1-count-tens-ones"),
+    skill("2.1-decompose-tens-ones", "Break a two-digit number into 10s and 1s in more than one way, for example 34 is 3 tens and 4 ones or 2 tens and 14 ones", "2.1-place-value-tens-ones"),
     skill("2.1-ten-more-less", "Find 10 more or 10 less than a number to 100", "2.1-place-value-tens-ones"),
+    skill("2.1-number-line-100", "Find and place numbers to 100 on a number line or a hundred chart", "1.1-number-line-20", "2.1-place-value-tens-ones"),
+    skill("2.1-compare-order-100", "Compare and order numbers to 100", "2.1-place-value-tens-ones", "1.1-compare-order-20"),
     skill("2.1-even-odd", "Tell if a number is even or odd", "1.1-skip-count-2-5"),
   ] },
   { code: "2.2", grade: 2, strand: "N", text: "benchmarks of 25, 50, and 100 and personal referents", skills: [
     skill("2.2-benchmarks-25-50-100", "Use 25, 50 and 100 as benchmarks to estimate and compare quantities", "2.1-compare-order-100", "1.2-benchmarks-10-20"),
+    skill("2.2-personal-referents", "Estimate a quantity to 100 from a known amount, for example a handful of beans is about 25, and check by counting", "2.2-benchmarks-25-50-100", "2.1-count-tens-ones"),
   ] },
   { code: "2.3", grade: 2, strand: "O", text: "addition and subtraction facts to 20 (introduction of computational strategies)", skills: [
-    skill("2.3-fact-strategies-20", "Find addition and subtraction facts to 20 by making 10, using doubles or decomposing", "1.3-add-within-20", "1.3-subtract-within-20"),
+    skill("2.3-facts-to-10", "Know the addition and subtraction facts to 10 without counting", "1.3-add-within-10", "1.3-subtract-within-10", "1.3-fact-families"),
+    skill("2.3-near-doubles", "Use a related double to add, for example 6 + 7 = 6 + 6 + 1", "1.3-doubles", "2.3-facts-to-10"),
+    skill("2.3-bridge-10-add", "Add across 10 by bridging, for example 8 + 5 = 8 + 2 + 3 and 9 + 6 = 10 + 5", "1.3-make-10-to-add", "2.3-facts-to-10"),
+    skill("2.3-bridge-10-subtract", "Subtract across 10 by going back to 10 first, for example 13 - 5 = 13 - 3 - 2", "1.3-teen-add-subtract", "1.3-subtract-within-20", "2.3-facts-to-10"),
+    skill("2.3-fact-strategies-20", "Find addition and subtraction facts to 20 by making 10, using doubles or decomposing", "1.3-add-within-20", "1.3-subtract-within-20", "2.3-near-doubles", "2.3-bridge-10-add", "2.3-bridge-10-subtract"),
     skill("2.3-think-addition", "Find a difference by adding on", "2.3-fact-strategies-20"),
+    skill("2.3-three-addends", "Add three one-digit numbers by looking for 10s or doubles, for example 7 + 6 + 3", "2.3-fact-strategies-20", "1.2-partners-of-10"),
   ] },
   { code: "2.4", grade: 2, strand: "O", text: "addition and subtraction to 100", skills: [
-    skill("2.4-add-within-100", "Add two-digit numbers within 100, with and without regrouping", "2.1-place-value-tens-ones", "2.3-fact-strategies-20"),
-    skill("2.4-subtract-within-100", "Subtract two-digit numbers within 100, with and without regrouping", "2.1-place-value-tens-ones", "2.3-think-addition"),
-    skill("2.4-estimate-100", "Estimate a sum or a difference with friendly numbers", "2.1-ten-more-less"),
+    skill("2.4-add-subtract-tens", "Add and subtract multiples of 10, for example 40 + 30 and 70 - 20", "2.1-place-value-tens-ones", "2.3-facts-to-10"),
+    skill("2.4-add-tens-to-number", "Add or subtract tens to a two-digit number, for example 47 + 30 and 85 - 40", "2.4-add-subtract-tens", "2.1-ten-more-less"),
+    skill("2.4-ones-to-two-digit", "Add or subtract a one-digit number to a two-digit number, also across a ten, for example 34 + 5 and 42 - 7", "2.1-place-value-tens-ones", "2.3-bridge-10-add", "2.3-bridge-10-subtract"),
+    skill("2.4-next-ten", "Find how much to the next ten, for example 47 + ? = 50", "1.2-partners-of-10", "2.1-place-value-tens-ones"),
+    skill("2.4-split-tens-ones", "Add two-digit numbers by adding the 10s and the 1s and recombining, for example 48 + 37: 70 + 15 = 85", "2.1-decompose-tens-ones", "2.4-add-subtract-tens", "2.3-fact-strategies-20"),
+    skill("2.4-friendly-numbers", "Add with friendly numbers or by compensating, for example 48 + 37 = 50 + 35", "2.4-next-ten", "2.4-add-tens-to-number"),
+    skill("2.4-add-within-100", "Add two-digit numbers within 100, with and without regrouping", "2.1-place-value-tens-ones", "2.3-fact-strategies-20", "2.4-ones-to-two-digit", "2.4-split-tens-ones"),
+    skill("2.4-add-up-difference", "Find a difference within 100 by adding up on an open number line, for example 83 - 46: 46 to 50 to 80 to 83", "2.3-think-addition", "2.4-next-ten", "2.4-add-tens-to-number"),
+    skill("2.4-subtract-within-100", "Subtract two-digit numbers within 100, with and without regrouping", "2.1-place-value-tens-ones", "2.3-think-addition", "2.4-ones-to-two-digit", "2.4-add-tens-to-number"),
+    skill("2.4-estimate-100", "Estimate a sum or a difference with friendly numbers", "2.1-ten-more-less", "2.2-benchmarks-25-50-100"),
+    skill("2.4-compare-problems-100", "Solve compare word problems within 100: how many more, how many fewer", "2.4-subtract-within-100", "2.4-add-up-difference", "1.3-word-problems-20"),
     skill("2.4-word-problems-100", "Solve one- and two-step word problems within 100", "2.4-add-within-100", "2.4-subtract-within-100", "1.3-word-problems-20"),
   ] },
   { code: "2.5", grade: 2, strand: "A", text: "repeating and increasing patterns", skills: [
     skill("2.5-repeating-core", "Find the core of a repeating pattern and predict a later element", "1.4-predict-element"),
+    skill("2.5-complex-repeating", "Continue a repeating pattern whose elements change position or go around a circle", "1.4-extend-repeating", "2.5-repeating-core"),
     skill("2.5-increasing-pattern", "Continue an increasing pattern and find a missing term", "2.1-count-to-100"),
+    skill("2.5-make-increasing", "Make an increasing pattern with objects, actions or numbers to 100, and tell how it grows", "2.5-increasing-pattern"),
   ] },
   { code: "2.6", grade: 2, strand: "A", text: "change in quantity, using pictorial and symbolic representation", skills: [
-    skill("2.6-missing-addend", "Find the unknown in a change shown with symbols, for example 6 + n = 10", "1.5-change-unknown", "2.3-think-addition"),
+    skill("2.6-write-change", "Write a number sentence for a change shown with pictures or ten-frames, for example 6 and some more make 10: 6 + n = 10", "1.5-describe-change", "1.6-record-equal-not-equal"),
+    skill("2.6-missing-addend", "Find the unknown in a change shown with symbols, for example 6 + n = 10", "1.5-change-unknown", "2.3-think-addition", "2.6-write-change"),
+    skill("2.6-change-to-100", "Find the change between two numbers to 100 on a hundred chart or number line, for example 34 to 54 is 20 more", "2.6-missing-addend", "2.1-number-line-100", "2.1-ten-more-less"),
   ] },
   { code: "2.7", grade: 2, strand: "A", text: "symbolic representation of equality and inequality", skills: [
-    skill("2.7-equal-sign", "Read = as \"the same amount as\" and complete an equation such as 5 + 4 = ? + 2", "1.6-balance-sides"),
-    skill("2.7-true-false-equations", "Tell if an equation or an inequality is true", "2.7-equal-sign"),
+    skill("2.7-equal-sign", "Read = as \"the same amount as\" and complete an equation such as 5 + 4 = ? + 2", "1.6-balance-sides", "1.6-equal-sums"),
+    skill("2.7-greater-less-symbols", "Use < and > to compare two numbers or two sums to 100", "2.1-compare-order-100", "1.6-record-equal-not-equal"),
+    skill("2.7-true-false-equations", "Tell if an equation or an inequality is true", "2.7-equal-sign", "2.7-greater-less-symbols"),
   ] },
   { code: "2.8", grade: 2, strand: "MG", text: "direct linear measurement, introducing standard metric units", skills: [
-    skill("2.8-measure-cm-m", "Measure and record a length in centimetres or metres, from any start on a ruler", "1.7-non-standard-units"),
-    skill("2.8-choose-unit", "Choose centimetres or metres for a length, and estimate a length", "2.8-measure-cm-m"),
+    skill("2.8-ruler-from-zero", "Measure a length in centimetres with a ruler, lining the object up with the 0 mark", "1.7-non-standard-units", "1.7-iterate-one-unit"),
+    skill("2.8-measure-cm-m", "Measure and record a length in centimetres or metres, from any start on a ruler", "1.7-non-standard-units", "2.8-ruler-from-zero"),
+    skill("2.8-choose-unit", "Choose centimetres or metres for measuring a length", "2.8-measure-cm-m"),
+    skill("2.8-estimate-length", "Estimate a length, height or width in centimetres or metres with a referent such as a finger width or a big step, and check by measuring", "2.8-choose-unit", "1.7-unit-size"),
     skill("2.8-compare-lengths", "Find how much longer one length is than another", "2.8-measure-cm-m", "2.4-subtract-within-100"),
   ] },
   { code: "2.9", grade: 2, strand: "MG", text: "multiple attributes of 2D shapes and 3D objects", skills: [
+    skill("2.9-name-2d-shapes", "Name and describe triangles, squares, rectangles and circles in any position", "1.8-count-sides", "1.8-name-shapes"),
+    skill("2.9-compare-2d", "Compare 2D shapes by their sides and corners, for example a square is a rectangle with 4 equal sides, and draw them", "2.9-name-2d-shapes"),
     skill("2.9-two-attributes", "Sort 2D shapes and 3D objects by two attributes", "1.8-sort-shapes"),
-    skill("2.9-name-2d-shapes", "Name and describe triangles, squares, rectangles and circles in any position", "1.8-count-sides"),
     skill("2.9-faces-of-3d", "Find 2D shapes as the faces of 3D objects", "2.9-name-2d-shapes"),
   ] },
   { code: "2.10", grade: 2, strand: "DP", text: "pictorial representation of concrete graphs, using one-to-one correspondence", skills: [
+    skill("2.10-make-pictograph", "Collect data with a question, and show it as a picture graph on a grid, one stamp or drawing for each item", "1.9-make-concrete-graph"),
     skill("2.10-read-pictograph", "Read a pictorial graph where one symbol is one item, and compare the groups", "1.9-read-concrete-graph"),
   ] },
   { code: "2.11", grade: 2, strand: "DP", text: "likelihood of familiar life events, using comparative language", skills: [
