@@ -24,6 +24,8 @@ const HOW: [string, string][] = [
   ["About 15 to 40 minutes a day*", "Five days a week. Younger children do shorter days."],
   ["Shown first, then small steps", "Each new idea starts with a worked example. Practice then builds from easy to harder, one small change at a time."],
   ["Remember these?", "Every day brings back something learned earlier, so old skills stay fresh."],
+  ["A check-in and a Fix it box", "Each day ends with a quick check-in. Every question marked wrong comes back the next day in a Fix it box."],
+  ["Stuck? Talk it through", "Your child scans the page and talks it through with the Unica Teaching Assistant, out loud, right then."],
   ["Adjusts as they go", "We look at the pages you scan. The next workbook adds practice where it's needed and new ideas when they're ready."],
   ["A test to move up", "A test at the end of each level, done in one sitting, shows when your child is ready for the next one."],
 ];
@@ -57,6 +59,7 @@ export function CurriculumPage() {
           <section className="curp-part" aria-labelledby="curpLevelsT">
             <h2 className="curp-kicker" id="curpLevelsT">What each level covers</h2>
             <p className="curp-intro">Your child starts at the level the free assessment finds. Many children start below or above their school grade, and that&apos;s normal.</p>
+            <p className="curp-intro">The first levels are done together with a parent, on short pages, and children take over as they go.</p>
             {CURRICULUM_GROUPS.map((g, gi) => (
               <details key={g.name} className={`curp-group g${gi + 1}`} open={gi === 0}>
                 <summary>

@@ -23,7 +23,7 @@
 .curp h2.curp-kicker { margin: 0 0 18px; font: 400 12.5px/1.3 var(--mono); letter-spacing: 0.04em; text-transform: uppercase; color: var(--ink-2); }
 
 /* How a level works */
-.curp-how { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; margin: 0; padding: 0; list-style: none; }
+.curp-how { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; margin: 0; padding: 0; list-style: none; }
 .curp-how li { display: grid; align-content: start; gap: 8px; border-radius: 8px; padding: 20px; background: var(--soft); }
 .curp-how b { font-weight: 500; font-size: 17px; color: var(--ink); }
 .curp-how span { font-size: 15px; line-height: 1.5; color: var(--ink-2); }
@@ -57,8 +57,11 @@
 .curp-end p { margin: 0 0 8px; max-width: 46ch; color: var(--ink-2); }
 .curp-more { font-weight: 500; color: var(--ink); text-underline-offset: 4px; }
 
-@media (max-width: 899px) {
+/* Eight cards: four across, then two across, so no row is left with a single card. */
+@media (max-width: 1099px) {
   .curp-how { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 899px) {
   .curp-levels { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .curp-steps { grid-template-columns: repeat(10, minmax(0, 1fr)); }
   /* Stacked, not hidden: on a phone the legend is the only thing that says what the three colours mean. */
