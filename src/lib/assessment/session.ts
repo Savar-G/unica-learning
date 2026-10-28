@@ -12,6 +12,7 @@ import {
 } from "./constants";
 import { levelCertainty, strandCertainty, strandStatus, workingLevelOf } from "./certainty";
 import { bankFor } from "./bank";
+import { TOP_LEVEL, downLevel, startLevel, upLevel } from "./grades";
 import { factsResult, type FactsSession } from "./facts";
 import { flagsFor, type HelpAnswer } from "./flags";
 import { leftOutOfScore, paceOf, takeYourTime } from "./rushing";
@@ -98,9 +99,10 @@ function buildStage(
   label: string,
   seen: Set<string>,
   previous: readonly Question[] = [],
+  fallDown = false,
 ): Question[] {
   if (scoredAgainst(profile.province) === "BC") {
-    return buildBcStage(bank, profile, strands, level, count, seed, label, seen, previous);
+    return buildBcStage(bank, profile, strands, level, count, seed, label, seen, previous, fallDown);
   }
   const rng = rngFor(seed, `stage:${label}`);
   const pools = strands
@@ -133,9 +135,13 @@ function buildStage(
 
 // A route keeps one template history and one standard tally across both stages. Exhausted
 // standards leave the rotation; another available standard must take its turn before a repeat.
+// `fallDown` (D-156): when a strand has no unused template left at `level`, its slot takes an unused template of the
+// same strand from the nearest level below. Only the level 8 forms of a Grade 8 or 9 test use it: the bank has no level
+// above 8 (D-153) and too few level 8 templates for stage 1 and a second stage at level 8 without a repeat.
 function buildBcStage(
   bank: readonly Template[], profile: ChildProfile, strands: readonly ReportedStrand[],
   level: Level, count: number, seed: number, label: string, seen: Set<string>, previous: readonly Question[],
+  fallDown = false,
 ): Question[] {
   const rng = rngFor(seed, `stage:${label}`);
   const used = new Set(previous.map((q) => q.templateId));
@@ -146,15 +152,27 @@ function buildBcStage(
     const t = byId.get(q.templateId);
     if (t) standardUses.set(key(t), (standardUses.get(key(t)) ?? 0) + 1);
   }
-  const pools = strands.map((strand) => ({
-    strand,
-    templates: rng.shuffle(bank.filter((t) => REPORTED_STRAND[t.strand] === strand && levelFor(t, profile.province) === level)),
-  })).filter((p) => p.templates.length > 0);
+  const poolAt = (strand: ReportedStrand, at: Level) =>
+    rng.shuffle(bank.filter((t) => REPORTED_STRAND[t.strand] === strand && levelFor(t, profile.province) === at));
+  const pools = strands.map((strand) => ({ strand, templates: poolAt(strand, level) })).filter((p) => p.templates.length > 0);
   if (!pools.length) throw new Error(`The question bank has no level ${level} questions for grade ${profile.grade} (${strands.join(", ")})`);
+  // The lower pools for fallDown, each drawn once, when first needed.
+  const lower = new Map<string, Template[]>();
+  const unusedFor = (pool: (typeof pools)[number]): Template[] => {
+    const here = pool.templates.filter((t) => !used.has(t.id));
+    if (here.length || !fallDown) return here;
+    for (let at = level - 1; at >= 0; at--) {
+      const id = `${pool.strand}:${at}`;
+      if (!lower.has(id)) lower.set(id, poolAt(pool.strand, at as Level));
+      const below = lower.get(id)!.filter((t) => !used.has(t.id));
+      if (below.length) return below;
+    }
+    return [];
+  };
   const questions: Question[] = [];
   for (let i = 0; i < count; i++) {
     const pool = pools[i % pools.length];
-    const available = pool.templates.filter((t) => !used.has(t.id));
+    const available = unusedFor(pool);
     const least = Math.min(...available.map((t) => standardUses.get(key(t)) ?? 0));
     const template = available.find((t) => (standardUses.get(key(t)) ?? 0) === least);
     if (!template) throw new Error(`The BC question bank has too few unused templates at level ${level} for ${pool.strand}`);
@@ -172,13 +190,15 @@ function buildBcStage(
 }
 
 // BC strand evidence is at or below school grade. Up adds those questions; down replaces a routed
-// slot when that level has no strand pool (for example, fractions start at grade 3).
+// slot when that level has no strand pool (for example, fractions start at grade 3). The school grade here is the start
+// level (D-156): a Grade 9 child's evidence is at or below grade 8, the highest level the bank has.
 function withStrandMinimum(
   bank: readonly Template[], profile: ChildProfile, strands: readonly ReportedStrand[],
   stage1: readonly Question[], form: Question[], route: Route, seed: number,
 ): Question[] {
+  const top = startLevel(profile.grade);
   const questions = [...stage1, ...form];
-  const counts = new Map(strands.map((strand) => [strand, questions.filter((q) => q.level <= profile.grade && REPORTED_STRAND[q.strand] === strand).length]));
+  const counts = new Map(strands.map((strand) => [strand, questions.filter((q) => q.level <= top && REPORTED_STRAND[q.strand] === strand).length]));
   const seen = new Set(questions.map(sameQuestion));
   const result = [...form];
   for (const strand of strands) {
@@ -188,14 +208,14 @@ function withStrandMinimum(
     const pools = new Map<Level, Set<string>>();
     for (const template of bank) {
       const level = levelFor(template, profile.province);
-      if (REPORTED_STRAND[template.strand] !== strand || level > profile.grade || used.has(template.id)) continue;
+      if (REPORTED_STRAND[template.strand] !== strand || level > top || used.has(template.id)) continue;
       const pool = pools.get(level) ?? new Set<string>();
       pool.add(template.id);
       pools.set(level, pool);
     }
-    const level = route === "up" ? profile.grade as Level
+    const level = route === "up" ? top
       : [...pools.keys()].sort((a, b) => a - b).find((level) => pools.get(level)!.size >= missing);
-    if (level === undefined) throw new Error(`The BC question bank has too few unused templates at or below grade ${profile.grade} for ${strand}`);
+    if (level === undefined) throw new Error(`The BC question bank has too few unused templates at or below grade ${top} for ${strand}`);
     const added = buildStage(bank, profile, [strand], level, missing, seed, `${route}-${strand}`, seen, [...stage1, ...result]);
     for (const q of added) {
       if (route === "up") result.push(q);
@@ -242,23 +262,29 @@ function shownWorkInStage1(total: number, stage1: readonly Question[], forms: re
   return Math.min(Math.max(count, 0), total, stage1.length);
 }
 
-/** Starts a test. Every stage 2 form is drawn now, so the session needs no bank after this. */
+/**
+ * Starts a test. Every stage 2 form is drawn now, so the session needs no bank after this.
+ * D-156: stage 1 is at the start level (startLevel: the school grade, and grade 8 for Grade 9). The routed forms stay
+ * on the K-8 scale: a Kindergarten child's down form is at level K, like stay, and a Grade 8 or 9 child's up form is at
+ * level 8, like stay. Those level 8 forms take level 7 questions where the level 8 templates run out (fallDown).
+ */
 export function createSession(profile: ChildProfile, seed: number, options: SessionOptions = {}): Session {
   if (!Number.isInteger(seed)) throw new Error("The seed must be a whole number");
   const bank = options.bank ?? bankFor(profile.grade);
   const band = bandFor(profile.grade);
-  const grade = profile.grade as Level;
+  const start = startLevel(profile.grade);
   const seen = new Set<string>();
-  const stage1 = buildStage(bank, profile, band.strands, grade, band.stage1, seed, "s1", seen);
+  const stage1 = buildStage(bank, profile, band.strands, start, band.stage1, seed, "s1", seen);
   const rest = band.length - band.stage1;
   // Each form only needs to differ from stage 1, not from the forms the child never sees.
-  const stage2Form = (route: Route, level: number) => {
-    const form = buildStage(bank, profile, band.strands, level as Level, rest, seed, route, new Set(seen), stage1);
+  const stage2Form = (route: Route, level: Level) => {
+    const fallDown = level === TOP_LEVEL && start === TOP_LEVEL;
+    const form = buildStage(bank, profile, band.strands, level, rest, seed, route, new Set(seen), stage1, fallDown);
     return scoredAgainst(profile.province) === "BC"
       ? withStrandMinimum(bank, profile, band.strands, stage1, form, route, seed)
       : form;
   };
-  const stage2 = { up: stage2Form("up", grade + 1), stay: stage2Form("stay", grade), down: stage2Form("down", grade - 1) };
+  const stage2 = { up: stage2Form("up", upLevel(profile.grade)), stay: stage2Form("stay", start), down: stage2Form("down", downLevel(profile.grade)) };
 
   // #67: exactly band.whiteboardRequired show-your-work questions on every route.
   const inStage1 = shownWorkInStage1(band.whiteboardRequired, stage1, Object.values(stage2));
@@ -503,8 +529,9 @@ export function finish(session: Session, facts: FactsSession | null = null, help
     workingLevel,
     confidence: levels.some((l) => atLeast(l.correct, l.total, WORKING_LEVEL_PERCENT)) ? "normal" : "low",
     levelCertainty: levelCertainty(levels),
-    // Only a child routed up who clears the higher level may work above what the test could show.
-    atCeiling: session.route === "up" && workingLevel === session.profile.grade + 1,
+    // Only a child routed up who clears the higher level may work above what the test could show. For Grades 8 and 9
+    // the up form is at level 8, the top of the bank (D-156), so clearing level 8 there is the ceiling.
+    atCeiling: session.route === "up" && workingLevel === upLevel(session.profile.grade),
     route: session.route,
     stage1: tally(marked.slice(0, session.stage1.length)),
     levels,

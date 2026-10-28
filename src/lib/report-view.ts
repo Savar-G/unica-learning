@@ -10,6 +10,7 @@ import {
   STRAND_DEVELOPING_PERCENT,
   TOO_FAST_MS,
   STRAND_SECURE_PERCENT,
+  TOP_LEVEL,
   WORKING_LEVEL_PERCENT,
   type Certainty,
   type FindingTopic,
@@ -59,9 +60,25 @@ export const levelSentence = (v: ReportView) => `${v.childName} is working at a 
 
 const COUNT = ["zero", "one", "two", "three", "four", "five", "six", "seven", "eight"];
 
+/** True for a Grade 9 child: the test checks skills up to grade 8 only (D-153, D-156). */
+export const aboveTestedGrades = (v: Pick<ReportView, "model">) => v.model.level.grade > TOP_LEVEL;
+
+/**
+ * D-156: for a Grade 9 child, what the test checks and how grade 9 work starts, in plain words. The report says it
+ * under the level, and the signup form says it when Grade 9 is chosen.
+ */
+export const gradeNineNote = (name: string) =>
+  `This test checks math skills up to grade 8, so it does not show grade 9 work. In the program, ${name} starts grade 9 topics by passing level tests on the grade 8 skills each one builds on.`;
+
 /** One plain sentence against the school grade: below, matches, or above (D-084: say it plainly, never to sell). */
 export function verdictSentence(v: ReportView): string {
   const { working, grade } = v.model.level;
+  // D-156: a Grade 9 child is compared with grade 8, the highest level the test checks: it cannot show grade 9 work.
+  if (aboveTestedGrades(v)) {
+    if (working >= TOP_LEVEL) return `Grade 8 is the highest level this test checks, so that is as high as it can show.`;
+    const gap = TOP_LEVEL - working;
+    return `That is ${COUNT[gap] ?? gap} grade${gap === 1 ? "" : "s"} below grade 8, the highest level this test checks.`;
+  }
   if (working === grade) return `That matches ${v.childName}'s school grade.`;
   const gap = Math.abs(working - grade);
   const grades = `${COUNT[gap] ?? gap} grade${gap === 1 ? "" : "s"}`;
@@ -82,7 +99,7 @@ export function comparisonView(v: ReportView): { title: string; text: string; no
   const c = v.model.comparison;
   if (v.model.helpWarning || c.stage === "scale") return null;
   const title = "Among children who took this test";
-  const scope = `${c.n} grade ${v.model.level.grade} children who took this test`;
+  const scope = `${c.n} ${levelName(v.model.level.grade)} children who took this test`;
   const source = "Each child counts once, using their latest completed test when this report was made. Tests with signs of help and test accounts are left out.";
   if (c.stage === "bands" && c.band) return {
     title,
@@ -107,6 +124,7 @@ export function levelNotes(v: ReportView): string[] {
     notes.push(`The test went up to ${levelName(working)}, and ${name} got ${WORKING_LEVEL_PERCENT}% or more of those questions right. ${name} may work above this level.`);
   }
   if (confidence === "low") notes.push(`${name} got under ${WORKING_LEVEL_PERCENT}% right at every level in this test, so ${levelName(working)} is an estimate.`);
+  if (aboveTestedGrades(v)) notes.push(gradeNineNote(name));
   return notes;
 }
 
@@ -398,6 +416,18 @@ export function howWeHelp(v: ReportView): { title: string; text: string } {
   const name = v.childName;
   const practice = v.model.strands.some((s) => s.status !== "secure") ? ", with extra practice in the areas marked Developing or Needs attention" : "";
   const title = HELP_TITLE[v.model.howWeHelp];
+  // D-153, D-156: grade 9 topics come only through the level tests, never straight from this test.
+  const gradeNine = `grade 9 topics one level at a time, each after ${name} passes the level test on the grade 8 skills it builds on`;
+  if (grade >= TOP_LEVEL) {
+    switch (v.model.howWeHelp) {
+      case "behind":
+        return { title, text: `${name}'s first book starts at ${levelName(working)} work${practice}. After each photo check-in, we see what is secure and move the next book on: to grade 8 work, then to ${gradeNine}.` };
+      case "on-grade":
+        return { title, text: `${name}'s books keep grade 8 work steady${practice}, and bring in ${gradeNine}.` };
+      case "ahead":
+        break;
+    }
+  }
   switch (v.model.howWeHelp) {
     case "behind":
       return { title, text: `${name}'s first book starts at ${levelName(working)} work${practice}. After each photo check-in, we see what is secure and move the next book on: to ${levelName(grade)} work, then past it when ${name} is ready.` };
@@ -425,7 +455,7 @@ export const topicName = (text: string) =>
  * "a", "a and b", "a, b and c"; with semicolons when a topic has a comma of its own. A topic of another grade than
  * `grade` names its grade ("grade 5 addition and subtraction facts to 20"): BC repeats some topics from grade to grade.
  */
-function topicList(topics: readonly FindingTopic[], grade: Level): string {
+function topicList(topics: readonly FindingTopic[], grade: number): string {
   const names = topics.map((t) => `${t.grade === grade ? "" : `${levelName(t.grade)} `}${topicName(t.text)}`);
   if (names.length < 2) return names.join("");
   const comma = names.some((n) => n.includes(",")) ? "; " : ", ";

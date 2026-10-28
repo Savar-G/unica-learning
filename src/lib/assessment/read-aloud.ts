@@ -1,7 +1,13 @@
 // "Read it to me" (#69, #79): the words the browser voice says for a question. The core shuffles the answer choices,
 // so a template's read-aloud text never lists them: the screen passes the choices in the order its rows show them,
 // and they are read last, after the question: "Choose one." and then one choice per sentence.
-import type { PublicQuestion } from "./types";
+import type { Grade, PublicQuestion } from "./types";
+
+/**
+ * D-156: for a Kindergarten child the voice reads each question as it opens, with no tap: most cannot read it yet. The
+ * "Read it to me" button stays, to hear it again or to stop it. Older children tap the button, as before (#69).
+ */
+export const readsAloudFirst = (grade: Grade): boolean => grade === 0;
 
 /** The shape glyphs of the banks (#74), as words. */
 const GLYPH_WORDS: Record<string, string> = { "●": "circle", "■": "square", "▲": "triangle", "★": "star", "▬": "rectangle", "▮": "rectangle", "◆": "diamond", "▼": "triangle" };

@@ -8,6 +8,7 @@
 // the family. Pure: the source is what the database function family_copy_sources returns for one test
 // (supabase/migrations/20261016_test_copies_without_names.sql).
 import { BANKS } from "./bank";
+import { isGrade } from "./grades";
 import { fromRemovedRound } from "./session";
 import { INTERESTS, LEARNING_GOALS, LEARNING_STYLES, MATH_FEELINGS, WEEKLY_TIMES } from "@/lib/learning-style";
 import type { Placement, Province, Route } from "./types";
@@ -339,7 +340,7 @@ export function anonymousTestCopy(source: unknown): AnonymousTestCopy {
   const s = record(source) ?? unreadable();
   const grade = num(s.grade), province = oneOf(s.province, PROVINCES), status = oneOf(s.status, STATUSES);
   const start = typeof s.startedAt === "string" ? Date.parse(s.startedAt) : NaN;
-  if (typeof s.id !== "string" || grade === null || !Number.isInteger(grade) || grade < 1 || grade > 7 || !province || !status
+  if (typeof s.id !== "string" || !isGrade(grade) || !province || !status
     || !Number.isFinite(start)) unreadable();
   const breakStarted = since(start, s.breakStartedAt), breakEnded = since(start, s.breakEndedAt);
   const questions = questionsOf(s, start);

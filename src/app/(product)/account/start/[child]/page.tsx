@@ -7,6 +7,8 @@ import { CURRICULA } from "@/lib/signup";
 import { stateFor } from "@/lib/test-attempt";
 import { parentStartStates } from "@/lib/test-attempt-server";
 import { adminClient, parentId, sessionClient } from "@/lib/supabase-auth";
+import { gradeTestNote } from "@/lib/account";
+import { gradeLabel } from "@/lib/assessment/grades";
 import { isUuid } from "@/lib/assessment-store";
 import { recordReminderClick } from "@/lib/email-clicks";
 import { isPhone } from "@/lib/account-server";
@@ -56,7 +58,9 @@ export default async function StartScreen({ params, searchParams }: PageProps<"/
     <SupportPage label="Free math assessment" title={`${child.first_name}'s math test.`}>
       {via === "link" && <TrackOnce event="sign_in" props={{ channel: "link" }} />}
       {fromReminder && <TrackOnce event="reminder_open" props={{ status: fromReminder }} />}
-      <p className="small">Grade {child.grade} · {CURRICULA[child.province]}</p>
+      <p className="small">{gradeLabel(child.grade)} · {CURRICULA[child.province]}</p>
+      {/* D-156: Kindergarten hears the questions; Grade 9 is tested up to grade 8 (D-153). */}
+      {gradeTestNote(child.grade, child.first_name) && <p className="small">{gradeTestNote(child.grade, child.first_name)}</p>}
       {/* Inside the 30 days after a test there is nothing to start, on any device (#72): the screen gives the date. */}
       {phone && state.kind !== "wait" ? (
         <div className="acct-card acct-phone">

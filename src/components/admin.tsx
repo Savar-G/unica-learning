@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { Suspense, type ReactNode } from "react";
 import { AdminPending } from "@/components/admin-pending";
-import { helpLikely } from "@/lib/assessment";
+import { gradeLabel, helpLikely } from "@/lib/assessment";
 import {
   ADMIN_PATH,
   ADMIN_TESTS_PATH,
@@ -126,7 +126,7 @@ export function FilterForm({ action, filters, fields }: { action: string; filter
         <label>Grade
           <select name="grade" defaultValue={filters.grade ?? ""}>
             <option value="">Any</option>
-            {GRADES.map((g) => <option key={g} value={g}>{g}</option>)}
+            {GRADES.map((g) => <option key={g} value={g}>{gradeLabel(g)}</option>)}
           </select>
         </label>
       )}
@@ -147,7 +147,7 @@ export function FilterForm({ action, filters, fields }: { action: string; filter
 }
 
 /** "Grade 3, BC" for a child or a test. */
-export const gradeAndPlace = (grade: number, province: keyof typeof CURRICULA) => `Grade ${grade}, ${province === "other" ? "other" : province}`;
+export const gradeAndPlace = (grade: number, province: keyof typeof CURRICULA) => `${gradeLabel(grade)}, ${province === "other" ? "other" : province}`;
 
 /** The tests table of the main list and of a family. `family`: leave out the parent column. */
 export function TestsTable({ tests, family = false }: { tests: TestRow[]; family?: boolean }) {

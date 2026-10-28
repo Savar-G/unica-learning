@@ -2,7 +2,8 @@ import { describe, expect, it } from "vitest";
 import { checked } from "@/lib/assessment/scripted-child";
 import { REPORTED_STRAND, bankFor, bandFor, createSession, nextQuestion, submitAnswer, testStep, type Grade } from "@/lib/assessment";
 
-const GRADES: Grade[] = [1, 2, 3, 4, 5, 6, 7];
+// D-156: Kindergarten (0) to Grade 9. Grades 8 and 9 start at level 8, the top of the bank.
+const GRADES: Grade[] = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9];
 const ROUTES = ["up", "stay", "down"] as const;
 
 describe("BC selection through the public assessment interface", () => {
@@ -57,7 +58,8 @@ it("never repeats a BC template on any seeded route", () => {
 
 describe("BC route lengths sent to the child", () => {
   it.each(GRADES)("grade %i reports the stored length at every step and on completion", (grade) => {
-    const lengths = grade <= 2 ? { up: 30, stay: 24, down: 24 } : grade <= 5 ? { up: 42, stay: 36, down: 36 } : { up: 45, stay: 42, down: 42 };
+    // Grades 8 and 9 route up to level 8, their start level, so the up route adds no school-grade questions (D-156).
+    const lengths = grade <= 2 ? { up: 30, stay: 24, down: 24 } : grade <= 5 ? { up: 42, stay: 36, down: 36 } : grade <= 7 ? { up: 45, stay: 42, down: 42 } : { up: 42, stay: 42, down: 42 };
     for (const route of ROUTES) {
       let session = createSession({ grade, province: "BC" }, 123);
       let answered = 0;

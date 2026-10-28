@@ -8,6 +8,7 @@ import { factsReport, type ReportFacts } from "./facts";
 import { helpLikely } from "./flags";
 import { checkReportText, parentTextProblem } from "./ai-checks";
 import { storedLevelCertainty, type Certainty } from "./certainty";
+import { startLevel } from "./grades";
 import { fromRemovedRound } from "./session";
 import type { Grade, Level, Placement, Province, StrandResult } from "./types";
 
@@ -69,6 +70,7 @@ export interface ReportModel {
   strands: (StrandResult & { name: string })[];
   comparison: Comparison;
   fsa: FsaLine | null;
+  /** Against the school grade; for a Grade 9 child against grade 8, the highest level the test checks (D-156). */
   howWeHelp: "behind" | "on-grade" | "ahead";
   callToAction: "card" | "waitlist";
   /**
@@ -132,6 +134,7 @@ function workFor({ shownWork = [], workReviews }: ReportContext): ReportWork[] {
 
 export function reportModel(placement: Placement, context: ReportContext): ReportModel {
   const { workingLevel, grade } = placement;
+  const tested = startLevel(grade);
   const model: ReportModel = {
     level: {
       working: workingLevel,
@@ -143,7 +146,7 @@ export function reportModel(placement: Placement, context: ReportContext): Repor
     strands: placement.strands.map((s) => ({ ...s, name: REPORTED_STRAND_NAMES[s.strand] })),
     comparison: context.comparison ? comparisonFor(context.comparison) : { stage: "scale" },
     fsa: fsaLine(grade, placement.province),
-    howWeHelp: workingLevel === grade ? "on-grade" : workingLevel < grade ? "behind" : "ahead",
+    howWeHelp: workingLevel === tested ? "on-grade" : workingLevel < tested ? "behind" : "ahead",
     // Card for the curricula we make books for today (D-053); every other province joins the waitlist.
     callToAction: statusFor(placement.province) === "reserved" ? "card" : "waitlist",
     work: workFor(context),

@@ -1,5 +1,6 @@
 // One family's whole story in a side panel (?family=<id>) on the dashboard and activity pages (D-099).
 import Link from "next/link";
+import { gradeLabel } from "@/lib/assessment/grades";
 import { adminEmailPath, adminParentPath, adminReportPath, adminTestPath } from "@/lib/admin-view";
 import { EMAIL_LABEL, STAGES, clicksText, deliveryLine, emailDot, STAGE_ACTION, STAGE_TEXT, ago, at, nextReminderText, paymentText, type Dashboard, type Stage } from "@/lib/admin-dashboard";
 import { stripeCustomerUrl as stripeUrl } from "@/lib/stripe";
@@ -40,7 +41,7 @@ export function FamilyDrawer({ ctx, d, id, progress }: { ctx: Ctx; d: Dashboard;
           const tests = f.tests.filter((t) => t.childId === c.id);
           return (
             <div key={c.id} className="dash-kid">
-              <b>{c.name}</b> <span className="dash-muted">grade {c.grade}, {c.province}</span>
+              <b>{c.name}</b> <span className="dash-muted">{gradeLabel(c.grade)}, {c.province}</span>
               {tests.length === 0 ? <p className="dash-muted">No test yet.</p> : (
                 <ul>{tests.map((t) => (
                   <li key={t.id}>

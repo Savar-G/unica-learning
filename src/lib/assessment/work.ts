@@ -13,7 +13,7 @@ export interface BoardWork {
   text: string;
 }
 
-/** "typing_off": typed working in grades 1-2, which draw only. */
+/** "typing_off": typed working in Kindergarten to grade 2, which draw only. */
 export type WorkProblem = "typing_off";
 
 /** True when the board has a drawing or typed working. Only spaces and line breaks are not work. */

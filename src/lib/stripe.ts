@@ -1,5 +1,6 @@
 import "server-only";
 import Stripe from "stripe";
+import { gradeName } from "@/lib/assessment/grades";
 import { cad, priceWithOffer } from "@/lib/site";
 import { PLAN_PRODUCT, firstChargeAt, planTerms } from "@/lib/subscription-plan";
 
@@ -57,7 +58,7 @@ const cardMetadata = (p: CardSetup): Record<string, string> => ({
   ref: p.ref, plan: p.plan, subject: p.subject, grade: String(p.grade), price: String(p.price),
   curriculum: p.curriculum, ...(p.postal ? { postal: p.postal } : {}),
 });
-const cardDescription = (p: CardSetup) => `${p.subject}, grade ${p.grade}, ${priceWithOffer(p.price)} from the first workbook`;
+const cardDescription = (p: CardSetup) => `${p.subject}, ${gradeName(p.grade)}, ${priceWithOffer(p.price)} from the first workbook`;
 
 /** A hosted Checkout page in setup mode for this customer. The parent sees cardTerms above the button. */
 async function checkoutUrl(s: Stripe, customer: string, p: CardSetup, metadata: Record<string, string>, description: string, urls: { success: string; cancel: string }, options?: Stripe.RequestOptions) {
@@ -138,7 +139,7 @@ export async function keepSavedPlan(s: Stripe, customer: string, metadata: Recor
   const keys = ["plan", "price", "first_month_price", "subject", "grade", "report_id", "assessment_id"].filter((k) => metadata[k]);
   const price = priceWithOffer(Number(metadata.price));
   await s.customers.update(customer, {
-    description: `${metadata.subject}, grade ${metadata.grade}, ${price} from the first workbook`,
+    description: `${metadata.subject}, ${gradeName(Number(metadata.grade))}, ${price} from the first workbook`,
     metadata: Object.fromEntries(keys.map((k) => [k, metadata[k]])),
   });
 }

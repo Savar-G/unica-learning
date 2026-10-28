@@ -8,6 +8,7 @@ import { REPORTED_STRAND, REPORTED_STRAND_NAMES, bandFor } from "./constants";
 import { levelCertainty, storedLevelCertainty, strandCertainty, strandStatus, workingLevelOf, type Certainty } from "./certainty";
 import { factsStandards, type FactsResult } from "./facts";
 import { TOO_FAST_MS, helpLikely, type Flag, type HelpAnswer } from "./flags";
+import { startLevel } from "./grades";
 import { RUSH_RUN, paceOf } from "./rushing";
 import { fromRemovedRound } from "./session";
 import type { Interest, LearningGoal, LearningStyle, MathFeeling, WeeklyTime } from "@/lib/learning-style";
@@ -279,10 +280,11 @@ function standardsOf(counted: readonly ProfileAnswer[], grade: Grade): ProfileSt
   }).sort(curriculumOrder);
 }
 
-/** The first and the last third of the answers at the school grade (Thirds). */
+/** The first and the last third of the answers at the school grade (Thirds): at grade 8 for a Grade 9 child (D-156). */
 function thirdsOf(answers: readonly ProfileAnswer[], grade: Grade): Thirds {
   const size = Math.floor(answers.length / 3);
-  const atGrade = (part: readonly ProfileAnswer[]) => tally(part.filter((a) => a.question.level === grade));
+  const start = startLevel(grade);
+  const atGrade = (part: readonly ProfileAnswer[]) => tally(part.filter((a) => a.question.level === start));
   const first = atGrade(answers.slice(0, size));
   const last = atGrade(answers.slice(answers.length - size));
   if (first.total < LATE_THIRD_MIN || last.total < LATE_THIRD_MIN) return { first, last, drop: null };
@@ -386,11 +388,13 @@ export function learnerProfile(input: ProfileInput): LearnerProfile | null {
     });
 
   // A quick facts round that ran tested its facts standards too (#242).
+  // D-156: the standards of the test's start level, grade 8 for a Grade 9 child: the test never asks grade 9 (D-153).
   const tested = new Set([...standards.map((s) => s.code), ...factsStandards(placement.facts?.families ?? [])]);
+  const start = startLevel(placement.grade);
   const untested = BC_SKILL_MAP.standards
-    .filter((s) => s.grade === placement.grade && !tested.has(s.code))
+    .filter((s) => s.grade === start && !tested.has(s.code))
     .map((s): StandardRef => ({ code: s.code, text: s.text, strand: REPORTED_STRAND[s.strand] }))
-    .sort((a, b) => curriculumOrder({ ...a, grade: placement.grade }, { ...b, grade: placement.grade }));
+    .sort((a, b) => curriculumOrder({ ...a, grade: start }, { ...b, grade: start }));
   const uncertain = strands.filter((s) => s.certainty === "early-sign").map((s) => s.strand);
   const levelSure = storedLevelCertainty({ confidence: placement.confidence, certainty: placement.levelCertainty }) ?? levelCertainty(placement.levels);
   const ref = ({ code, text, strand }: StandardRef): StandardRef => ({ code, text, strand });

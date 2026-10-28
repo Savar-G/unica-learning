@@ -196,7 +196,7 @@ describe("what the AI reads about the quick facts (#242)", () => {
 
   it("never reads a \"not tested\" label or the untested list, at any grade, with or without the facts round (#245)", () => {
     let untested = 0;
-    for (const grade of [1, 2, 3, 4, 5, 6, 7] as const) {
+    for (const grade of [0, 1, 2, 3, 4, 5, 6, 7, 8, 9] as const) {
       for (const facts of [null, factsOf(grade)]) {
         const profile = profileOf((q) => (q.level < grade ? q.answer : q.level === grade ? q.wrong[0]?.value ?? "no idea" : "no idea"), grade, facts);
         untested += profile.unknowns.untested.length;

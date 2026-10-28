@@ -9,8 +9,11 @@ import type { Rng } from "./rng";
 
 /** A level on the K-8 scale. 0 is Kindergarten. */
 export type Level = 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8;
-/** School grades the assessment serves. */
-export type Grade = 1 | 2 | 3 | 4 | 5 | 6 | 7;
+/**
+ * School grades the assessment serves (D-156): 0 is Kindergarten, then grades 1 to 9. Rows stored before D-156 hold 1-7.
+ * A Grade 9 child is tested up to level 8: the bank has no grade 9 content (D-153; grades.ts).
+ */
+export type Grade = 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9;
 
 /** The parent's province. "other" = another province, or not sure; it is scored against BC (D-083). */
 export type Province = CurriculumId;

@@ -11,6 +11,7 @@
 // Pure, like the profile: the server module (src/lib/learner-profile-ai.ts) sends the request through the AI client.
 import { REPORT_TEXT_NAME, checkAiText, parentTextProblem, type ReportTextProblem } from "./ai-checks";
 import { FACT_SPEED_FROM_GRADE, factsSkills } from "./facts";
+import { startLevel } from "./grades";
 import { MISCONCEPTIONS, type MisconceptionId } from "./misconceptions";
 import type { LearnerProfile, PlanPart, ProfileAi, WorkbookPlan } from "./profile";
 import { BC_LEVEL_STANDARDS, BC_SKILL_MAP } from "./skill-map";
@@ -186,7 +187,8 @@ export function profileAiFacts(profile: LearnerProfile) {
       }),
     // The plan may name any standard of the school grade, as before #245: all of them, with no result, so the list
     // says nothing about which the test measured.
-    school_grade_standards: BC_SKILL_MAP.standards.filter((s) => s.grade === profile.test.grade).map((s) => ({ code: s.code, text: s.text })),
+    // D-156: a Grade 9 child's are grade 8's, the highest the test checks: the plan never names grade 9 (D-153).
+    school_grade_standards: BC_SKILL_MAP.standards.filter((s) => s.grade === startLevel(profile.test.grade)).map((s) => ({ code: s.code, text: s.text })),
   };
 }
 

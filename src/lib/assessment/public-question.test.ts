@@ -72,7 +72,7 @@ describe("public question speech does not disclose server choice order", () => {
 
   it("keeps canonical speech keys and positive lookups on every province and adaptive route", () => {
     let nonIntegerChoices = 0;
-    for (const grade of [1, 2, 3, 4, 5, 6, 7] as Grade[]) for (const province of ["BC", "AB", "SK", "MB", "ON", "other"] as Province[]) for (let i = 0; i < 20; i++) {
+    for (const grade of [0, 1, 2, 3, 4, 5, 6, 7, 8, 9] as Grade[]) for (const province of ["BC", "AB", "SK", "MB", "ON", "other"] as Province[]) for (let i = 0; i < 20; i++) {
       const session = createSession({ grade, province }, i * 7919 + 3);
       for (const route of ["up", "stay", "down"] as const) for (const q of [...session.stage1, ...session.stage2[route]]) {
         checkPublicSpeech(q);

@@ -1,7 +1,7 @@
 import { headers } from "next/headers";
 import { notFound, redirect } from "next/navigation";
 import { userAgent } from "next/server";
-import { bandFor, createSession, type Grade } from "@/lib/assessment";
+import { bandFor, createSession, readsAloudFirst, type Grade } from "@/lib/assessment";
 import { stateFor } from "@/lib/test-attempt";
 import { parentStartStates } from "@/lib/test-attempt-server";
 import { pageMetadata } from "@/lib/metadata";
@@ -33,8 +33,9 @@ export default async function TestPage(props: PageProps<"/account/test/[childId]
   const state = stateFor(states, child.id);
   const mode = state.kind === "resume" || state.kind === "finish" ? state.kind : state.kind === "expired" ? "restart" : "new";
 
+  // A check constraint limits grade to 0-9 (0 is Kindergarten, D-156).
   const grade = child.grade as Grade;
-  // Grades 1-5 have a bank (grades 3-5 still on the sample bank); grades 6-7 open with theirs (#76).
+  // Every grade has a bank (D-156); a test that cannot be built shows "not ready".
   let ready = true;
   try {
     createSession({ grade, province: child.province }, 0);
@@ -46,5 +47,5 @@ export default async function TestPage(props: PageProps<"/account/test/[childId]
   const afterBreak = state.kind === "resume" && state.afterBreak === true;
   // #253: every answer is in and the next step is the part 2 grid: "Check your answers, then press Done checking."
   const checkGrid = state.kind === "finish" && state.checkGrid === true;
-  return <TakeTest childId={child.id} name={child.first_name} breakAfter={band.stage1} ready={ready} done={state.kind === "wait"} mode={mode} typing={band.whiteboardTyping} afterBreak={afterBreak} checkGrid={checkGrid} />;
+  return <TakeTest childId={child.id} name={child.first_name} breakAfter={band.stage1} ready={ready} done={state.kind === "wait"} mode={mode} typing={band.whiteboardTyping} afterBreak={afterBreak} checkGrid={checkGrid} readFirst={readsAloudFirst(grade)} />;
 }

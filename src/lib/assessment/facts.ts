@@ -9,7 +9,7 @@ import type { ChildProfile, Grade } from "./types";
 export type FactOp = "+" | "-" | "×" | "÷";
 
 /** One fact family, with the BC grade that expects it (bc-math-curriculum-map.md, section 1). */
-export type FactFamilyId = "add10" | "sub10" | "add20" | "sub20" | "mul2510" | "mul234510" | "mul100" | "div100";
+export type FactFamilyId = "add5" | "sub5" | "add10" | "sub10" | "add20" | "sub20" | "mul2510" | "mul234510" | "mul100" | "div100";
 
 /** One fact as the server holds it. */
 export interface Fact {
@@ -52,6 +52,10 @@ const MUL_100 = { "4.8": ["4.8-multiplication-facts"], "5.9": ["5.9-recall-facts
 const DIV_100 = { "4.8": ["4.8-division-facts"], "5.9": [], "6.2": [], "7.1": [] };
 
 const FAMILIES: Record<FactFamilyId, FactFamily> = {
+  // D-156: Kindergarten. BC asks no fact recall in K; K5 "change in quantity to 10" and K2 "ways to make 5" are the
+  // nearest standards, so a Kindergarten round adds and takes away within 5. The report shows accuracy only (D-120).
+  add5: { bcGrade: 0, standard: "K5", asks: { K5: ["K5-add-on-change"] }, draw: (rng) => { const a = rng.int(1, 4); return add(a, rng.int(1, 5 - a)); } },
+  sub5: { bcGrade: 0, standard: "K5", asks: { K5: ["K5-take-away-change"] }, draw: (rng) => { const a = rng.int(2, 5); return sub(a, rng.int(1, a - 1)); } },
   // 1.3 addition and subtraction to 20 (understanding); facts to 10 come first (K-1, "ways to make 10").
   add10: { bcGrade: 1, standard: "1.3", asks: { "1.3": ["1.3-add-within-20"] }, draw: (rng) => { const a = rng.int(1, 9); return add(a, rng.int(1, 10 - a)); } },
   sub10: { bcGrade: 1, standard: "1.3", asks: { "1.3": ["1.3-subtract-within-20"] }, draw: (rng) => { const a = rng.int(2, 10); return sub(a, rng.int(1, a)); } },
@@ -69,6 +73,7 @@ const FAMILIES: Record<FactFamilyId, FactFamily> = {
 
 /** The fact families for each school grade: what BC expects at that grade, never above it. */
 export const FACTS_BY_GRADE: Record<Grade, readonly FactFamilyId[]> = {
+  0: ["add5", "sub5"],
   1: ["add10", "sub10"],
   2: ["add20", "sub20"],
   3: ["add20", "sub20"],
@@ -76,6 +81,9 @@ export const FACTS_BY_GRADE: Record<Grade, readonly FactFamilyId[]> = {
   5: ["add20", "sub20", "mul234510"],
   6: ["mul100", "div100"],
   7: ["mul100", "div100"],
+  // D-156: BC grades 8 and 9 list no new facts; 7.1 is the last fact standard, so they keep grade 7's facts.
+  8: ["mul100", "div100"],
+  9: ["mul100", "div100"],
 };
 
 /**
@@ -272,6 +280,8 @@ export function factsResult(session: FactsSession): FactsResult {
 }
 
 const SCOPE: Record<FactFamilyId, string> = {
+  add5: "adding and taking away within 5",
+  sub5: "adding and taking away within 5",
   add10: "addition and subtraction facts to 10",
   sub10: "addition and subtraction facts to 10",
   add20: "addition and subtraction facts to 20",

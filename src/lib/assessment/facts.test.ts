@@ -25,12 +25,12 @@ import {
 } from "@/lib/assessment";
 import { knowsUpTo, type Script } from "./scripted-child";
 
-const GRADES: Grade[] = [1, 2, 3, 4, 5, 6, 7];
+const GRADES: Grade[] = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9];
 const SEEDS = Array.from({ length: 40 }, (_, i) => i * 7919 + 3);
 const drawn = (grade: Grade) => SEEDS.flatMap((seed) => createFacts({ grade, province: "BC" }, seed).facts);
 
 // The BC expectation for each grade, written out from the curriculum map (bc-math-curriculum-map.md, section 1 and
-// the "Multiplication facts come late" note): add and subtract to 10 in grade 1, facts to 20 from grade 2,
+// the "Multiplication facts come late" note): add and take away within 5 in Kindergarten (D-156), add and subtract to 10 in grade 1, facts to 20 from grade 2,
 // no multiplication facts before grade 4, then 2s, 5s and 10s (grade 4), 2s, 3s, 4s, 5s and 10s (grade 5),
 // and multiplication and division facts to 100 in grades 6 and 7. Never 12 x 12.
 function withinBc(grade: Grade, f: Fact): boolean {
@@ -38,9 +38,9 @@ function withinBc(grade: Grade, f: Fact): boolean {
   if (![f.a, f.b, f.answer].every(small)) return false;
   switch (f.op) {
     case "+":
-      return f.a + f.b === f.answer && f.answer <= (grade === 1 ? 10 : 20);
+      return f.a + f.b === f.answer && f.answer <= (grade === 0 ? 5 : grade === 1 ? 10 : 20);
     case "-":
-      return f.a - f.b === f.answer && f.a <= (grade === 1 ? 10 : 20);
+      return f.a - f.b === f.answer && f.a <= (grade === 0 ? 5 : grade === 1 ? 10 : 20);
     case "×": {
       if (f.a * f.b !== f.answer || f.a > 10 || f.b > 10) return false;
       if (grade <= 3) return false;
@@ -187,7 +187,7 @@ describe("facts section: speed beside accuracy in the placement and the report",
 describe("the skills a facts round tests (#242)", () => {
   // The ops a family's facts use, over many rounds of every grade.
   const ops = new Map<string, Set<string>>();
-  for (const grade of [1, 2, 3, 4, 5, 6, 7] as const) {
+  for (const grade of [0, 1, 2, 3, 4, 5, 6, 7, 8, 9] as const) {
     for (let seed = 1; seed <= 20; seed++) {
       for (const f of createFacts({ grade, province: "BC" }, seed).facts) ops.set(f.family, (ops.get(f.family) ?? new Set()).add(f.op));
     }

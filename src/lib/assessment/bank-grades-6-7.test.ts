@@ -41,7 +41,8 @@ describe("grade 6-7 tests from the default bank", () => {
     }
   });
 
-  it.each([6, 7] as Grade[])("grade %i: every route has 10 suitable required-work questions and four report areas", (grade) => {
+  // D-156: Grades 8 and 9 take this band (both start at level 8), so their routes keep the same counts.
+  it.each([6, 7, 8, 9] as Grade[])("grade %i: every route has 10 suitable required-work questions and four report areas", (grade) => {
     for (const province of PROVINCES) {
       for (const seed of SEEDS.slice(0, 60)) {
         const session = createSession({ grade, province }, seed);

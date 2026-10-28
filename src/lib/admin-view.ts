@@ -21,6 +21,7 @@ import {
   type StoredTest,
   type Strand,
 } from "@/lib/assessment";
+import { GRADES } from "@/lib/assessment/grades";
 import { CURRICULA } from "@/lib/signup";
 import type { AssessmentStatus } from "@/lib/test-api";
 import type { AnswerChange, AnswerEvents } from "@/lib/answer-events";
@@ -44,7 +45,8 @@ export const STATUS_TEXT: Record<AssessmentStatus, string> = { in_progress: "In 
 
 /** A level K-8 in a table cell: "K" or the grade number. */
 export const levelText = (level: number) => (level === 0 ? "K" : String(level));
-export const GRADES: readonly Grade[] = [1, 2, 3, 4, 5, 6, 7];
+/** The school grades an admin filters by: Kindergarten (0) to Grade 9 (D-156). */
+export { GRADES };
 export const PROVINCES = Object.keys(CURRICULA) as Province[];
 
 /** The filters of the admin lists. Every one is optional; together they all apply. */
@@ -94,7 +96,7 @@ export interface AdminTestRow {
 export function filterTests<T extends AdminTestRow>(tests: readonly T[], f: AdminFilters, lowAi: ReadonlySet<string>): T[] {
   return tests.filter((t) =>
     (!f.status || t.status === f.status)
-    && (!f.grade || t.grade === f.grade)
+    && (f.grade === null || t.grade === f.grade)
     && (!f.province || t.province === f.province)
     && (!f.help || (t.flags !== null && helpLikely(t.flags)))
     && (!f.flagged || (t.flags !== null && t.flags.length > 0))
@@ -439,7 +441,7 @@ export function flagText(flag: Flag, numbers: ReadonlyMap<string, number>): stri
 export function filterQuery(f: AdminFilters): string {
   const q = new URLSearchParams();
   if (f.status) q.set("status", f.status);
-  if (f.grade) q.set("grade", String(f.grade));
+  if (f.grade !== null) q.set("grade", String(f.grade));
   if (f.province) q.set("province", f.province);
   if (f.help) q.set("flag", "help");
   else if (f.flagged) q.set("flag", "any");

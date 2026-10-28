@@ -6,7 +6,7 @@
 // A server component: only the next step needs JavaScript in the browser (report-next.tsx).
 // The words come from src/lib/report-view.ts, which the report email uses too.
 import type { CSSProperties, ReactNode } from "react";
-import { STRAND_DEVELOPING_PERCENT, STRAND_SECURE_PERCENT, type Certainty as CertaintyValue } from "@/lib/assessment";
+import { STRAND_DEVELOPING_PERCENT, STRAND_SECURE_PERCENT, TOP_LEVEL, gradeLabel, type Certainty as CertaintyValue } from "@/lib/assessment";
 import { CURRICULA } from "@/lib/signup";
 import { BRAND } from "@/lib/site";
 import type { ReportSrc } from "@/lib/next-step";
@@ -108,7 +108,7 @@ function ReportHeader({ view }: { view: ReportView }) {
       </div>
       <dl className="rpt-facts">
         <div><dt>Child</dt><dd>{view.childName}</dd></div>
-        <div><dt>School grade</dt><dd>{view.model.level.grade}</dd></div>
+        <div><dt>School grade</dt><dd>{view.model.level.grade === 0 ? gradeLabel(0) : view.model.level.grade}</dd></div>
         <div><dt>Date</dt><dd>{reportDate(view)}</dd></div>
         <div><dt>Curriculum</dt><dd>{CURRICULA[view.province]}</dd></div>
       </dl>
@@ -120,28 +120,32 @@ const LEVELS = [0, 1, 2, 3, 4, 5, 6, 7, 8] as const;
 
 /**
  * The big K-8 ruler: the working level a filled circle in the verdict colour, the school grade a dashed ring, and the
- * span between them tinted. The circles sit behind the numbers, so each number stays readable.
+ * span between them tinted. The circles sit behind the numbers, so each number stays readable. D-156: grade 9 is past
+ * the ruler's end, so a Grade 9 child's ruler has no ring and no span, and the legend says where the scale stops.
  */
 function LevelScale({ view }: { view: ReportView }) {
   const { working, grade } = view.model.level;
-  const [lo, hi] = [Math.min(working, grade), Math.max(working, grade)];
-  const at = { "--work": working, "--grade": grade, "--lo": lo, "--hi": hi } as CSSProperties;
+  const onScale = grade <= TOP_LEVEL;
+  const mark = onScale ? grade : working;
+  const [lo, hi] = [Math.min(working, mark), Math.max(working, mark)];
+  const at = { "--work": working, "--grade": mark, "--lo": lo, "--hi": hi } as CSSProperties;
+  const gradeText = `School grade: ${levelName(grade)}${onScale ? "" : " (the scale stops at grade 8)"}`;
   return (
     <div className="rpt-scale">
-      <div className="rpt-ruler" role="img" aria-label={`Scale from kindergarten to grade 8. Working level: ${levelName(working)}. School grade: ${levelName(grade)}.`}>
+      <div className="rpt-ruler" role="img" aria-label={`Scale from kindergarten to grade 8. Working level: ${levelName(working)}. ${gradeText}.`}>
         <div className="rpt-ruler-track" style={at}>
           {lo !== hi && <span className="rpt-ruler-gap" />}
           <span className="rpt-pin is-work" />
-          <span className="rpt-pin is-grade" />
+          {onScale && <span className="rpt-pin is-grade" />}
           {LEVELS.map((l) => {
-            const cls = ["rpt-tick", lo !== hi && l > lo && l <= hi && "is-inside", l === working && "is-work", l === grade && "is-grade"];
+            const cls = ["rpt-tick", lo !== hi && l > lo && l <= hi && "is-inside", l === working && "is-work", onScale && l === grade && "is-grade"];
             return <span key={l} className={cls.filter(Boolean).join(" ")}>{l === 0 ? "K" : l}</span>;
           })}
         </div>
       </div>
       <p className="rpt-legend">
         <span className="is-work">Working level: {levelName(working)}</span>
-        <span className="is-grade">School grade: {levelName(grade)}</span>
+        <span className="is-grade">{gradeText}</span>
       </p>
     </div>
   );

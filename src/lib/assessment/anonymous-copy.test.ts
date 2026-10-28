@@ -287,7 +287,7 @@ describe("the copy without names", () => {
 
   it("refuses a source it cannot read, so the deletion stops", () => {
     const s = source();
-    for (const bad of [null, [], "test", { ...s, id: 7 }, { ...s, grade: 9 }, { ...s, province: "QC" }, { ...s, startedAt: "not a date" }, { ...s, answers: "none" }]) {
+    for (const bad of [null, [], "test", { ...s, id: 7 }, { ...s, grade: 10 }, { ...s, grade: -1 }, { ...s, grade: 2.5 }, { ...s, province: "QC" }, { ...s, startedAt: "not a date" }, { ...s, answers: "none" }]) {
       expect(() => anonymousTestCopy(bad)).toThrow("Copy source unreadable");
     }
   });
@@ -367,7 +367,7 @@ describe("copying a family's tests before the deletion", () => {
     expect(preview).toEqual({ tests: 2, copied: 1, questions: 2 * s.answers.length, facts: 5, profiles: 1, questionnaires: 1 });
     // D-145: a test from before the extra round's removal counts its main questions alone.
     expect(copyPreview([legacySource()])).toEqual({ tests: 1, copied: 0, questions: 42, facts: 0, profiles: 0, questionnaires: 0 });
-    expect(() => copyPreview([{ ...s, grade: 0 }])).toThrow("Copy source unreadable");
+    expect(() => copyPreview([{ ...s, grade: 10 }])).toThrow("Copy source unreadable");
   });
 });
 

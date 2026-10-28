@@ -75,7 +75,7 @@ describe("admin list filters (#77)", () => {
   });
 
   it("ignores values that are not real choices, so a typed URL cannot reach the query", () => {
-    expect(parseFilters({ status: "deleted", grade: "9", province: "QC", flag: "yes", ai: "high" })).toEqual(NO_FILTERS);
+    expect(parseFilters({ status: "deleted", grade: "10", province: "QC", flag: "yes", ai: "high" })).toEqual(NO_FILTERS);
     expect(parseFilters({ grade: "3.5" })).toEqual(NO_FILTERS);
     expect(parseFilters({ grade: ["3", "4"] })).toEqual(NO_FILTERS);
     expect(parseFilters({})).toEqual(NO_FILTERS);

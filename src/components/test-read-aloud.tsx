@@ -43,8 +43,12 @@ function onVoicesChanged(notify: () => void) {
   return () => synth.removeEventListener?.("voiceschanged", notify);
 }
 
-/** Give it a `key` per question, so a new question starts silent. `onRead`: called each time the voice starts (#184). */
-export function ReadAloud({ text, onRead }: { text: string; onRead?: () => void }) {
+/**
+ * Give it a `key` per question, so a new question starts silent. `onRead`: called each time the child starts the voice
+ * (#184). `auto` (D-156, Kindergarten): the voice also reads the text once as soon as it can, without a tap; that read is
+ * not the child's, so it calls no `onRead` and sends no event.
+ */
+export function ReadAloud({ text, onRead, auto = false }: { text: string; onRead?: () => void; auto?: boolean }) {
   // False on the server and in the first render, so the button never flashes on a browser without speech.
   const supported = useSyncExternalStore(onVoicesChanged, hasVoices, () => false);
   const [speaking, setSpeaking] = useState(false);
@@ -66,7 +70,7 @@ export function ReadAloud({ text, onRead }: { text: string; onRead?: () => void 
     setSpeaking(false);
   }, []);
 
-  const speak = useCallback(() => {
+  const say = useCallback(() => {
     const synth = window.speechSynthesis;
     // Chrome can drop a new utterance right after cancel() when nothing was playing.
     if (synth.speaking || synth.pending) synth.cancel();
@@ -87,9 +91,21 @@ export function ReadAloud({ text, onRead }: { text: string; onRead?: () => void 
     current.current = u;
     setSpeaking(true);
     synth.speak(u);
+  }, [text]);
+
+  const speak = useCallback(() => {
+    say();
     track("read_aloud");
     onRead?.();
-  }, [text, onRead]);
+  }, [say, onRead]);
+
+  // D-156: read once, as soon as the voices are there. The child tapped Start or Next just before, so the browser allows it.
+  const autoRead = useRef(auto);
+  useEffect(() => {
+    if (!supported || !autoRead.current) return;
+    autoRead.current = false;
+    say();
+  }, [supported, say]);
 
   if (!supported) return null;
   return (
