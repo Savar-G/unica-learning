@@ -1,5 +1,5 @@
 // /curriculum (draft, Oct 27, 2026): how the program is built, for parents. 30 levels from the BC curriculum,
-// Kindergarten to Grade 9; the grade appears once, in the lead, and never next to a level (levels, not grades).
+// Kindergarten to Grade 9. Grades appear only as a rough range per group of levels, never next to a single level.
 // Level content lives in src/lib/curriculum.ts. Uses the site nav and footer, like /compare.
 import Link from "next/link";
 import { BRAND } from "@/lib/site";
@@ -57,11 +57,12 @@ export function CurriculumPage() {
 
           <section className="curp-part" aria-labelledby="curpLevelsT">
             <h2 className="curp-kicker" id="curpLevelsT">What each level covers</h2>
+            <p className="curp-intro">Your child starts at the level the free assessment finds. Many children start below or above their school grade, and that&apos;s normal.</p>
             {CURRICULUM_GROUPS.map((g, gi) => (
               <details key={g.name} className={`curp-group g${gi + 1}`} open={gi === 0}>
                 <summary>
                   <span className="curp-group-name">{g.name}</span>
-                  <span className="curp-group-sub">{g.levels[0].title} → {g.levels[g.levels.length - 1].title}</span>
+                  <span className="curp-group-sub"><b>{g.about}</b> · {g.levels[0].title} → {g.levels[g.levels.length - 1].title}</span>
                 </summary>
                 <div className="curp-levels">
                   {g.levels.map((l) => (

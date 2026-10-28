@@ -38,6 +38,8 @@
 .curp-group[open] summary::after { content: "−"; }
 .curp-group-name { font-size: clamp(24px, 2.6vw, 32px); font-weight: 400; letter-spacing: -0.03em; }
 .curp-group-sub { font-size: 15px; color: var(--ink-2); }
+.curp-group-sub b { font-weight: 500; color: var(--ink); }
+.curp-intro { margin: 0 0 8px; max-width: 60ch; color: var(--ink-2); }
 .curp-levels { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; padding-bottom: 32px; }
 .curp-level { position: relative; overflow: hidden; border-radius: 8px; padding: 20px 20px 22px; background: #fff; box-shadow: 0 0 0 1px var(--line); scroll-margin-top: 96px; }
 .curp-level::before { content: ""; position: absolute; inset: 0 0 auto; height: 4px; }

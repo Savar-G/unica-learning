@@ -23,7 +23,7 @@ export function CurriculumPath({ groups }: { groups: CurriculumGroup[] }) {
         )))}
       </ol>
       <div className="curp-legend">
-        {groups.map((g, gi) => <span key={g.name} className={`g${gi + 1}`}>{g.name}</span>)}
+        {groups.map((g, gi) => <span key={g.name} className={`g${gi + 1}`}>{g.name} · {g.about.replace("About ", "about ")}</span>)}
       </div>
     </>
   );

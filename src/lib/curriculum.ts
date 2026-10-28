@@ -1,13 +1,15 @@
 // The curriculum, for parents (/curriculum). 30 levels from the BC curriculum, Kindergarten to Grade 9. Grades are
-// internal: never map a level to a grade on this page or on a workbook. Source: the curriculum skeleton
+// internal: never map a single level to a grade, on this page or on a workbook. Each group shows a rough range only. Source: the curriculum skeleton
 // (Unica Learning - Curriculum Skeleton.xlsx), built from the skill map in src/lib/assessment/skill-map.
 
 export interface CurriculumLevel { n: number; title: string; points: string[] }
-export interface CurriculumGroup { name: string; levels: CurriculumLevel[] }
+/** `about`: the rough school-grade range of the whole group, for parents. Never shown per level. */
+export interface CurriculumGroup { name: string; about: string; levels: CurriculumLevel[] }
 
 export const CURRICULUM_GROUPS: CurriculumGroup[] = [
   {
     "name": "Levels 1–9",
+    "about": "About Kindergarten to Grade 2",
     "levels": [
       {
         "n": 1,
@@ -103,6 +105,7 @@ export const CURRICULUM_GROUPS: CurriculumGroup[] = [
   },
   {
     "name": "Levels 10–18",
+    "about": "About Grades 3 to 5",
     "levels": [
       {
         "n": 10,
@@ -198,6 +201,7 @@ export const CURRICULUM_GROUPS: CurriculumGroup[] = [
   },
   {
     "name": "Levels 19–30",
+    "about": "About Grades 6 to 9",
     "levels": [
       {
         "n": 19,
