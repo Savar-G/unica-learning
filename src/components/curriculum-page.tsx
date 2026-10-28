@@ -24,7 +24,7 @@ const HOW: [string, string][] = [
   ["About 15 to 30 minutes a day*", "Five days a week. Younger children do shorter days."],
   ["Shown first, then small steps", "Each new idea starts with a worked example. Practice then builds from easy to harder, one small change at a time."],
   ["Remember these?", "Every day brings back something learned earlier, so old skills stay fresh."],
-  ["A check-in and a Fix it box", "Each day ends with a quick check-in. Every question marked wrong comes back the next day in a Fix it box."],
+  ["A Fix it box", "Every question marked wrong comes back the next day in a Fix it box."],
   ["Stuck? Talk it through", "Your child scans the page and talks it through with the Unica Teaching Assistant, out loud, right then."],
   ["Adjusts as they go", "We look at the pages you scan. The next workbook adds practice where it's needed and new ideas when they're ready."],
   ["A test to move up", "A test at the end of each level, done in one sitting, shows when your child is ready for the next one."],
