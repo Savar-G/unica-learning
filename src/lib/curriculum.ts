@@ -114,7 +114,7 @@ export const CURRICULUM_GROUPS: CurriculumGroup[] = [
           "Hundreds, tens and ones",
           "Adding and subtracting three-digit numbers",
           "Quick recall of facts to 20",
-          "Patterns that grow and shrink"
+          "Growing patterns, and chance with coins and spinners"
         ]
       },
       {
@@ -304,20 +304,22 @@ export const CURRICULUM_GROUPS: CurriculumGroup[] = [
       },
       {
         "n": 29,
-        "title": "Polynomials and statistics",
+        "title": "Polynomials, statistics and budgets",
         "points": [
           "Working with polynomials and algebra tiles",
           "Fair samples and biased questions",
-          "Spotting misleading graphs and statistics"
+          "Spotting misleading graphs and statistics",
+          "Budgets, bank records and simple interest"
         ]
       },
       {
         "n": 30,
-        "title": "Linear graphs, equations and budgets",
+        "title": "Linear graphs and equations",
         "points": [
-          "Graphing lines and reading between points",
+          "Graphing lines and reading between and beyond the points",
+          "What a line's start and steepness mean",
           "Solving multi-step equations, including brackets",
-          "Budgets, bank records and simple interest"
+          "Writing an equation for a word problem"
         ]
       }
     ]

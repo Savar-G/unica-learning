@@ -22,11 +22,10 @@ const LINKS = [
 const HOW: [string, string][] = [
   ["A workbook every two weeks", "A new paper workbook arrives in the mail every two weeks, built from your child's last one."],
   ["About 15 to 40 minutes a day*", "Five days a week. Younger children do shorter days."],
-  ["Shown first", "Each new idea starts with a worked example, so your child sees how it's done."],
-  ["Small steps", "Practice builds from easy to harder, one small change at a time."],
+  ["Shown first, then small steps", "Each new idea starts with a worked example. Practice then builds from easy to harder, one small change at a time."],
   ["Remember these?", "Every day brings back something learned earlier, so old skills stay fresh."],
   ["Adjusts as they go", "We look at the pages you scan. The next workbook adds practice where it's needed and new ideas when they're ready."],
-  ["A test to move up", "A short test at the end of each level shows when your child is ready for the next one."],
+  ["A test to move up", "A test at the end of each level, done in one sitting, shows when your child is ready for the next one."],
 ];
 
 export function CurriculumPage() {
