@@ -1,6 +1,6 @@
 # Unica Learning landing page
 
-Landing page for personalized, mailed math and reading workbooks (ages 6-12, grades 1-7, delivery across Canada).
+Landing page for personalized, mailed math and reading workbooks (ages 5 to 14, Kindergarten to Grade 9, delivery across Canada).
 Design truth: `DESIGN.md`. History: `.design/decisions.md`. Mockups: `.design/experiments/` (option A is parked in `drafts/`).
 
 ## Run

@@ -4,7 +4,7 @@ Every post on `/blog` follows this guide, whether a person or the weekly routine
 
 ## Who reads it
 
-A parent of a child in kindergarten to grade 7, in Canada, most often in BC. Many read English as a second language. They searched a question, for example "my child is struggling with math", "sylvan vs kumon" or "how to teach multiplication". They want the answer, not a sales page.
+A parent of a child in Kindergarten to Grade 9, in Canada, most often in BC. Many read English as a second language. They searched a question, for example "my child is struggling with math", "sylvan vs kumon" or "how to teach multiplication". They want the answer, not a sales page.
 
 ## What a post is for
 
@@ -43,7 +43,7 @@ The post is not an ad. Mention Unica only where it is the honest next step, at m
 - No performance claims for Unica ("improves grades", "proven"). Research claims about learning in general need a cited source and must say what the source found, not more.
 - Competitors may be named in blog posts under the `/resources` rule (D-074, extended to `/blog` by D-152): facts from the provider's own pages, cited and dated; prices "as listed in <Month Year>" and "varies by centre"; no disparagement, no claims about anyone's outcomes, no logos or testimonial quotes. When a provider does not publish a price, say so and tell the parent to ask.
 - In headlines and kickers, Unica is "a personalized math learning program", not "workbooks". In the body, "workbook" can name what arrives in the mail.
-- Facts about Unica come from the site itself (`src/lib/site.ts`, `src/lib/faq.ts`, `/llms.txt`): ages 6-12, grades 1-7, a free online math assessment on a laptop or tablet, paper workbooks mailed home, the price and offer on the home page. Never invent a feature.
+- Facts about Unica come from the site itself (`src/lib/site.ts`, `src/lib/faq.ts`, `/llms.txt`): ages 5 to 14, Kindergarten to Grade 9, a free online math assessment on a laptop or tablet, paper workbooks mailed home, the price and offer on the home page. Never invent a feature.
 - Never write "Pagewise".
 
 ## Topic choice

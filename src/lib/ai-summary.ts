@@ -36,7 +36,7 @@ export function llmsTxt(): string {
   const posts = BLOG_POSTS.map(({ meta }) => `- [${meta.title}](${url(blogPath(meta.slug))}): ${meta.published}`).join("\n");
   return `# ${BRAND}
 
-> A personalized math learning program for children aged 6-12 (grades 1-7) in Canada. Each child gets paper workbooks made for them and adapted after every book. Math is CAD ${cad(PLANS.one.price)} a month after a free first month, delivery included.
+> A personalized math learning program for children aged 5 to 14 (Kindergarten to Grade 9) in Canada. Each child gets paper workbooks made for them and adapted after every book. Math is CAD ${cad(PLANS.one.price)} a month after a free first month, delivery included.
 
 ${BRAND} is made in Vancouver, BC. A free online math assessment, taken on a laptop or tablet, finds each child's math level and gaps; the parent reads the report before choosing a plan. The child then works on paper workbooks on their own for 15-30 minutes a day, 5 days a week. The parent uses the app to scan finished pages and see progress. When the child is stuck, they can use the parent's phone to talk with the Teaching Assistant. Families across Canada can sign up for workbooks. Each book is matched to the child's level and gaps; province-specific curriculum alignment is expanding.
 
@@ -58,7 +58,7 @@ ${PARENT_YOURS.map((t) => `- ${t}`).join("\n")}
 ${PARENT_NOTE}
 
 ## Who it is for
-Parents in Canada with a child aged 6-12 who want math practice on paper, at the child's own level and pace, with little screen time for the child.
+Parents in Canada with a child aged 5 to 14 who want math practice on paper, at the child's own level and pace, with little screen time for the child.
 
 ## Pricing
 - ${PLANS.one.name} (${PLANS.one.note}): CAD ${cad(PLANS.one.price)} per month; first month free

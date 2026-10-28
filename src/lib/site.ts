@@ -3,7 +3,7 @@ export const BRAND = "Unica Learning";
 
 // One plan for now: math only (Savar, 2026-10-11). Reading comes back later. Stored rows can still say "both".
 export const PLANS = {
-  one: { id: "one", name: "Math", price: 79.99, note: "Grades 1-7, ages 6-12" },
+  one: { id: "one", name: "Math", price: 79.99, note: "K to Grade 9, ages 5 to 14" },
 } as const;
 
 /** Monthly price for every child after the first on the same family plan. */
@@ -33,7 +33,7 @@ export const priceWithOffer = (price: number) => `CAD ${cad(price)}/month, first
 // Plain words first (Oct 2026): a parent reading in her second language took the "same box" headline for an online
 // program. The headline names the struggle (the topic rotates, sections.tsx) and what Unica does; the lead says how.
 export const HERO = {
-  kicker: "A personalized math program for ages 6-12.",
+  kicker: "A personalized math program for ages 5 to 14.",
   title: "Unica meets your child",
   highlight: "at their level,",
   after: "and takes them further.",

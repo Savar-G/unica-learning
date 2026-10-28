@@ -128,7 +128,7 @@ export function PlanGrid({ children }: PlanGridProps) {
 
 export interface PlanCardProps {
   name: string;
-  /** One line under the name, e.g. "Grades 1-7, ages 6-12". */
+  /** One line under the name, e.g. "K to Grade 9, ages 5 to 14". */
   note?: string;
   price: number;
   currency?: string;
