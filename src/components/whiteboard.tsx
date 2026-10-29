@@ -42,7 +42,7 @@ export interface WhiteboardProps {
   onSize?: (size: BoardSize) => void;
   /** #252: the mode the board opens in (Draw when left out). */
   startMode?: "draw" | "type";
-  /** Collapsible board: folds the board away. Its "Hide" control shows only while the board is empty. */
+  /** Collapsible board: folds the board away. Its "Hide board" control is always in the top bar. */
   onHide?: () => void;
 }
 
@@ -258,8 +258,8 @@ export function Whiteboard({ board, onChange, typing, onSize, startMode = "draw"
       <div className="wb-head">
         <h2>My work</h2>
         <p>Use it if it helps</p>
-        {onHide && empty && board.text.trim() === "" && (
-          <button type="button" className="wb-hide" aria-expanded="true" aria-controls="test-board" onClick={onHide}>Hide</button>
+        {onHide && (
+          <button type="button" className="wb-hide" aria-expanded="true" aria-controls="test-board" onClick={onHide}>Hide board</button>
         )}
       </div>
       <div className="wb-body">

@@ -146,6 +146,8 @@ export function TakeTest({ childId, name, breakAfter, ready, done, mode: firstMo
   const [held, setHeld] = useState<Readonly<Record<string, string>>>({});
   // The new work of an answered question whose save failed: it goes back on the board when the question opens again.
   const [unsaved, setUnsaved] = useState<Readonly<Record<string, BoardState>>>({});
+  // The child's choice to hide the board sticks for the rest of the test session.
+  const [boardHidden, setBoardHidden] = useBoardHidden();
   const setUnsavedWork = (questionId: string, board: BoardState | null) =>
     setUnsaved((all) => {
       const rest = Object.fromEntries(Object.entries(all).filter(([id]) => id !== questionId));
@@ -514,14 +516,14 @@ export function TakeTest({ childId, name, breakAfter, ready, done, mode: firstMo
             canBack={answered.some((a) => a.number < (viewed?.number ?? screen.number))}
             marked={marks.has(viewed?.number ?? screen.number)} onMark={() => toggleMark(viewed?.number ?? screen.number)}
             // #253: Next after the last question of a part goes to its grid.
-            main={buttons.main} takeYourTime={!viewed && screen.takeYourTime} onLeave={leave} onShown={onShown} failure={failure} />
+            main={buttons.main} takeYourTime={!viewed && screen.takeYourTime} onLeave={leave} onShown={onShown} failure={failure} boardHidden={boardHidden} onBoardHidden={setBoardHidden} />
         )}
         {screen.name === "check" && (viewed
           // #253: an answered question opened from the grid. D-132: the child is reviewing, so "Back to my answers"
           // (in place of Next) saves it and comes back to the grid at once; Back and the step row still go to a question.
           ? <Question key={`${viewed.question.id}:${visit}`} testId={screen.testId} typing={typing}
               question={viewed.question} initial={viewed.response} revisit initialBoard={unsaved[viewed.question.id]} storedWork={viewed.work}
-              canBack={answered.some((a) => a.number < viewed.number)} marked={marks.has(viewed.number)} onMark={() => toggleMark(viewed.number)} main={buttons.main} takeYourTime={false} onLeave={leave} onShown={onShown} failure={failure} />
+              canBack={answered.some((a) => a.number < viewed.number)} marked={marks.has(viewed.number)} onMark={() => toggleMark(viewed.number)} main={buttons.main} takeYourTime={false} onLeave={leave} onShown={onShown} failure={failure} boardHidden={boardHidden} onBoardHidden={setBoardHidden} />
           : <TestCheck name={name} part={screen.section === "stage1" ? 1 : 2} numbers={screen.numbers} marked={marks} problem={<Problem error={failure} />}
               onOpen={(n) => {
                 setFailure(null);
@@ -693,10 +695,33 @@ interface QuestionProps {
   /** #249: gets this question's leave while it is on the screen (null once it goes), so a failed save can move the screen. */
   onShown: (leave: ((to: Target) => Promise<unknown>) | null) => void;
   failure: TestError | null;
+  /** The board is hidden by the child's choice, kept for the whole test session (open by default on every question). */
+  boardHidden: boolean;
+  onBoardHidden: (hidden: boolean) => void;
+}
+
+const BOARD_KEY = "unica.test.boardHidden";
+
+/** Whether the child hid the board: React state for the test session, kept in sessionStorage so a reload keeps it. */
+export function useBoardHidden(): [boolean, (hidden: boolean) => void] {
+  const [hidden, setHidden] = useState(() => {
+    try {
+      return window.sessionStorage.getItem(BOARD_KEY) === "1";
+    } catch {
+      return false;
+    }
+  });
+  const set = useCallback((next: boolean) => {
+    setHidden(next);
+    try {
+      window.sessionStorage.setItem(BOARD_KEY, next ? "1" : "0");
+    } catch {}
+  }, []);
+  return [hidden, set];
 }
 
 // One question in the split desk (D-088): the question and the answer on the left, the whiteboard on the right.
-export function Question({ testId, typing, readFirst = false, question, initial, initialBoard, storedWork, revisit, canBack, marked, onMark, main, takeYourTime, onLeave, onShown, failure }: QuestionProps) {
+export function Question({ testId, typing, readFirst = false, question, initial, initialBoard, storedWork, revisit, canBack, marked, onMark, main, takeYourTime, onLeave, onShown, failure, boardHidden, onBoardHidden }: QuestionProps) {
   const [value, setValue] = useState(initial);
   const [sending, setSending] = useState(false);
   // Time on the question runs from when it appears to when the child presses Next.
@@ -734,11 +759,13 @@ export function Question({ testId, typing, readFirst = false, question, initial,
   });
   // #252: a revisit opens the board in the mode of the work on it (Type for typed working with no drawing).
   const [startMode] = useState(() => (revisit ? openMode(board, typing) : "draw"));
-  // The whiteboard starts collapsed on a quick question, so the question has the screen; a slim tab on the right edge
-  // opens it. It starts open on a show-your-work question (#67), and opens with the question when work is already on it
-  // (a revisit, a restored draft). Once opened it stays open for this question; "Hide" in its top bar folds it away
-  // again, only while the board is empty.
-  const [boardOpen, setBoardOpen] = useState(() => question.showWork || hasDrawing(board.strokes) || (typing && board.text.trim() !== ""));
+  // The board is open on every question. The child's Hide board choice sticks for the session (boardHidden), unless
+  // work is already on this question (a revisit, a restored draft): then it opens visible. Hiding never deletes work.
+  const [boardOpen, setBoardOpenNow] = useState(() => hasDrawing(board.strokes) || (typing && board.text.trim() !== "") || !boardHidden);
+  const setBoardOpen = (open: boolean) => {
+    setBoardOpenNow(open);
+    onBoardHidden(!open);
+  };
   const stored = useRef(false);
   // Save each completed action before a reload can discard it, including an undo or clear to an empty board.
   // #249: any edit of the board or the typed working in this visit, Clear and Undo too, is changed work.
