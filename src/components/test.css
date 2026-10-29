@@ -9,12 +9,17 @@
 /* ---------- the question desk ---------- */
 /* The whiteboard pane: the board at full height (whiteboard.css). */
 .test-desk .test-pane-r { padding-top: 14px; }
-/* The whiteboard opens on request (Use the whiteboard), so a question without work has the whole screen. */
-.test-desk.is-board-closed { grid-template-columns: 1fr; }
-.test-desk.is-board-closed .test-pane-l { border-right: 0; padding-inline: max(clamp(20px, 3vw, 40px), calc((100% - 760px) / 2)); }
-.test-board-open, .test-board-hide, .test-mark { appearance: none; display: inline-flex; align-items: center; gap: 8px; min-height: 44px; padding: 0 16px; border: 1px solid var(--line); border-radius: 999px; background: #fff; color: var(--ink); font: 400 16px/1 var(--sans); cursor: pointer; }
-.test-board-open { align-self: flex-start; }
-.test-board-hide { align-self: flex-end; margin-bottom: 10px; min-height: 40px; font-size: 15px; }
+/* A quick question starts with the board folded into a slim tab on the right edge; the question gets the width. */
+.test-desk { transition: grid-template-columns 180ms ease; }
+.test-desk.is-board-closed { grid-template-columns: minmax(0, 1fr) minmax(56px, 0fr); }
+.test-desk.is-board-closed .test-pane-l { padding-inline: max(clamp(20px, 3vw, 40px), calc((100% - 760px) / 2)); }
+.test-desk .test-board-rail { padding: 0; background: #fff; border-left: 1px solid var(--line); }
+.test-board-tab { appearance: none; flex: 1; min-width: 56px; min-height: 56px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px; padding: 12px 0; border: 0; background: #fff; color: var(--ink); font: 500 16px/1 var(--sans); cursor: pointer; transition: background 150ms; }
+.test-board-tab span { writing-mode: vertical-rl; letter-spacing: 0.01em; }
+.test-board-tab:hover { background: var(--soft); }
+.test-board-tab:focus-visible { outline-offset: -4px; }
+.wb-hide { appearance: none; min-height: 44px; margin: -2px 0 -6px; padding: 0 14px; border: 1px solid var(--line); border-radius: 999px; background: #fff; color: var(--ink); font: 400 15px/1 var(--sans); cursor: pointer; }
+.test-mark { appearance: none; display: inline-flex; align-items: center; gap: 8px; min-height: 44px; padding: 0 16px; border: 1px solid var(--line); border-radius: 999px; background: #fff; color: var(--ink); font: 400 16px/1 var(--sans); cursor: pointer; }
 .test-mark { align-self: flex-start; margin-top: 4px; }
 .test-mark[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); }
 /* Keep each control's full height when the question pane needs to scroll. */
@@ -40,8 +45,14 @@
   .test-response:has(.test-num) > .test-alert { grid-column: 1; grid-row: 2; }
   .test-response:has(.test-num) > .test-next { grid-column: 1; grid-row: 3; flex-wrap: wrap; }
   .test-end { margin: 16px 20px 20px; }
-  .test-root .test-split.test-desk.is-board-closed { grid-template-rows: 1fr; }
+  /* Stacked: the folded board is a 56 px bar under the question. */
+  .test-root .test-split.test-desk.is-board-closed { grid-template-columns: 1fr; grid-template-rows: minmax(0, 1fr) 56px; }
+  .test-desk.is-board-closed .test-pane-l { border-bottom: 0; }
+  .test-desk .test-board-rail { border-left: 0; border-top: 1px solid var(--line); }
+  .test-board-tab { flex-direction: row; padding: 0 12px; }
+  .test-board-tab span { writing-mode: horizontal-tb; }
 }
+@media (prefers-reduced-motion: reduce) { .test-desk, .test-board-tab { transition: none; } }
 
 /* The report wait on the end screen: three calm dots. */
 .test-wait { display: inline-flex; gap: 8px; margin-top: 6px; }

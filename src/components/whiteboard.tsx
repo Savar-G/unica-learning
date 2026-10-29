@@ -42,6 +42,8 @@ export interface WhiteboardProps {
   onSize?: (size: BoardSize) => void;
   /** #252: the mode the board opens in (Draw when left out). */
   startMode?: "draw" | "type";
+  /** Collapsible board: folds the board away. Its "Hide board" control is always in the top bar. */
+  onHide?: () => void;
 }
 
 /** True when any pixel of the layer has ink. */
@@ -129,7 +131,7 @@ export function clearDrafts(drop: (key: string) => boolean): void {
   }
 }
 
-export function Whiteboard({ board, onChange, typing, onSize, startMode = "draw" }: WhiteboardProps) {
+export function Whiteboard({ board, onChange, typing, onSize, startMode = "draw", onHide }: WhiteboardProps) {
   const surface = useRef<HTMLDivElement>(null);
   const canvas = useRef<HTMLCanvasElement>(null);
   const size = useRef<BoardSize>({ width: 0, height: 0 });
@@ -256,6 +258,9 @@ export function Whiteboard({ board, onChange, typing, onSize, startMode = "draw"
       <div className="wb-head">
         <h2>My work</h2>
         <p>Use it if it helps</p>
+        {onHide && (
+          <button type="button" className="wb-hide" aria-expanded="true" aria-controls="test-board" onClick={onHide}>Hide board</button>
+        )}
       </div>
       <div className="wb-body">
         <div className={`wb-surface${tool === "eraser" && !typingNow ? " is-eraser" : ""}`} ref={surface}>
