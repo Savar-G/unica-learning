@@ -4,9 +4,9 @@ A CAD 100 ad test (D-126): two Meta ads and two Google Search ads, each linking 
 
 | Channel | Tags on the ad's link |
 |---|---|
-| Meta, ad 1 | `utm_source=meta&utm_content=photo-led` |
-| Meta, ad 2 | `utm_source=meta&utm_content=program-for-one` |
-| Google Search, 2 ads | `utm_source=google` and a `utm_content` per ad; Google adds `gclid` itself (auto-tagging) |
+| Meta, ad 1 | `utm_source=meta&utm_content=offer-first` (from 2026-10-24; was `photo-led`) |
+| Meta, ad 2 | `utm_source=meta&utm_content=program-first` (from 2026-10-24; was `program-for-one`) |
+| Google Search, 2 ads | `utm_source=google` and a `utm_content` per ad (`made-for-your-child-free`, `starts-where-free` from 2026-10-24; without `-free` before); Google adds `gclid` itself (auto-tagging) |
 
 Meta adds `fbclid` to the link by itself.
 
@@ -23,7 +23,7 @@ Meta adds `fbclid` to the link by itself.
    |---|---|---|---|
    | `account_created` | `/start` (password) or `/account/finish` (Google; the OAuth code lands on `/auth/callback`, which redirects) | `Lead` | conversion, lead label |
    | `report_open` | `/account/report/<id>` | nothing (the address holds the report id) | conversion, report label |
-   | `card_saved` | `/thank-you?session_id=...` | nothing (the address holds the Stripe session reference) | conversion, card label, value 69.30 CAD |
+   | `card_saved` | `/thank-you?session_id=...` | nothing (the address holds the Stripe session reference) | conversion, card label, value 79.99 CAD |
 
    So Meta gets `PageView` and `Lead`; it optimizes for landing page views and signups, and our database is the measure. `account_created` on a `/start` address with another query key (for example `?next=`) also stays off Meta. No email, name, child data, grade or id travels with any conversion. Google gets the page address and the referrer (`page_referrer`) with ids replaced and only the ad tags (`utm_*`, `gclid`) kept in the query, also on its first call when it loads; another site's referrer is cut to its origin.
 7. **Never on a child's pages.** `adsBlockedPath` blocks the start screen the parent hands over (`/account/start/<child>`), and the test (`/account/test/<child>`), and also `/admin`, `/api`, `/auth`, `/sign-in` and `/unsubscribe` (addresses that can hold a token). The scripts never load there. When they are already loaded from an earlier page of the same visit, they are paused on arrival (Meta `consent revoke`, Google consent denied), get no page view and no conversion, and resume on the next allowed page.
