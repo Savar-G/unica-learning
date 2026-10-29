@@ -80,7 +80,7 @@ const NAMES = { a: "leah", b: "kai" } as const;
 const PAGES: Record<"a" | "b", string[]> = {
   a: [
     "A page from Leah's workbook: a worked example of borrowing across a zero, 403 − 168 = 235, with a spot-the-error box.",
-    "A practice page from Leah's workbook: one worked subtraction across a zero, then six for her to finish.",
+    "A practice page from Leah's workbook: one worked subtraction across a zero, then four for her to finish.",
     "A word-problems page from Leah's workbook: three take-away stories with space to show her work.",
     "A review page from Leah's workbook: eight quick questions from earlier days and four mixed stories.",
   ],
