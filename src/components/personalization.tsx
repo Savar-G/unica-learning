@@ -62,7 +62,7 @@ function Fork() {
       <div className="pz-forks">
         {(["a", "b"] as const).map((id, i) => (
           <Rise key={id} d={i * 0.08} className="pz-row">
-            <div className="pz-thumb"><PageDeck id={id} name={SAMPLE_CHILDREN[id].name} pages={PAGES[id].map((alt, n) => <SheetImage key={n} src={`/samples/${FILES[id][n]}.webp`} alt={alt} />)} /></div>
+            <div className="pz-thumb"><PageDeck id={id} name={SAMPLE_CHILDREN[id].name} pages={PAGES[id].map((alt, n) => <SheetImage key={n} src={`/samples/${FILES[id][n]}-sheet.webp`} alt={alt} />)} /></div>
             <div>
               <Who child={SAMPLE_CHILDREN[id]} />
               <Lines child={SAMPLE_CHILDREN[id]} />
@@ -82,20 +82,20 @@ const FILES = {
 
 const PAGES: Record<"a" | "b", string[]> = {
   a: [
-    "A word-problems page from Leah's workbook: three take-away stories with space to show her work.",
-    "A page from Leah's workbook: a worked example of borrowing across a zero, 403 − 168 = 235, with a spot-the-error box.",
-    "A practice page from Leah's workbook: one worked subtraction across a zero, then four for her to finish.",
-    "A review page from Leah's workbook: eight quick questions from earlier days and four mixed stories.",
+    "A word-problems page from Leah's workbook: three take-away stories, 403 − 168, 605 − 278 and 302 − 145, with space to show her work.",
+    "A new-idea page from Leah's workbook: a worked subtraction, 403 − 168 = 235, with the trades marked, and a spot-the-error box.",
+    "A practice page from Leah's workbook: one worked subtraction across a zero, one half done, and two for her to finish.",
+    "A review page from Leah's workbook: three quick questions from earlier days and a mixed story where she picks add or take away.",
   ],
   b: [
-    "A page from Kai's workbook introducing multiplication with equal groups and dot arrays.",
-    "A practice page from Kai's workbook: dot arrays and groups to turn into multiplication facts.",
-    "A word-problems page from Kai's workbook: four stories about equal groups and sharing.",
-    "A step-up page from Kai's workbook: missing factors, sharing 28 cookies, and a fact family.",
+    "A new-idea page from Kai's workbook: equal groups and a 3 by 6 dot array show what multiplication means.",
+    "A practice page from Kai's workbook: one worked dot array, then three arrays to turn into multiplication facts.",
+    "A word-problems page from Kai's workbook: rows of seats, packs of pencils, and 20 marbles shared between 4 friends.",
+    "A step-up page from Kai's workbook: a missing factor, 28 cookies shared by 4, and the fact family of 3, 8 and 24.",
   ],
 };
 
 // Serves both the ~340px thumb and the ~644px dialog, so sizes is set for the larger of the two.
 function SheetImage({ src, alt }: { src: string; alt: string }) {
-  return <Image className="pz-sheet" src={src} alt={alt} width={816} height={1056} sizes="(max-width: 699px) 92vw, 644px" />;
+  return <Image className="pz-sheet" src={src} alt={alt} width={900} height={1620} sizes="(max-width: 699px) 92vw, 644px" />;
 }

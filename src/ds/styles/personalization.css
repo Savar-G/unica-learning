@@ -12,7 +12,7 @@
 .pz-lines dd { margin: 0; font-size: 16px; line-height: 1.5; color: var(--ink); }
 
 /* ---------- the workbook page (a real exported image) ---------- */
-.pz-sheet { display: block; width: 100%; height: auto; aspect-ratio: 816 / 1056; background: #fff; border-radius: 6px;
+.pz-sheet { display: block; width: 100%; height: auto; aspect-ratio: 900 / 1620; background: #fff; border-radius: 6px;
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.06), 0 18px 40px -18px rgba(0, 0, 0, 0.3), inset 0 0 0 1px rgba(0, 0, 0, 0.06); }
 .pz-thumb { container-type: inline-size; }
 .pz-deck-stage { animation: pz-in 0.25s ease; }
@@ -75,6 +75,3 @@
 @media (max-width: 420px) { .pz-dialog-bar > span { display: none; } }
 @media (prefers-reduced-motion: reduce) { .pz-zoom .pz-sheet { transition: none; } }
 
-/* In the card the whole page shows, a little narrower than the column so it reads as a sheet of paper; the full-size view is unchanged. */
-.pz-thumb .pz-deck-stage { display: grid; justify-items: center; }
-.pz-thumb .pz-zoom { width: 80%; }
