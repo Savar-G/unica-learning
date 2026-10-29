@@ -18,6 +18,7 @@ import { track } from "@/lib/track";
 import { SUPPORT_EMAIL, SUPPORT_HREF } from "@/lib/contact";
 import { draftKey, draftPrefix, emptyBoard, hasDrawing, openMode, type BoardState } from "@/lib/whiteboard";
 import { fitStrokes, recordStrokes, storedBoard, type StoredWork } from "@/lib/strokes";
+import { boardStartsOpen, readBoardHidden, writeBoardHidden } from "@/lib/board-hidden";
 import { leaveDestination, questionButtons, type LeaveAction, type QuestionButtons } from "@/lib/test-review";
 import { FactsSection } from "./facts";
 import { breakSeen, loadBreak, markBreakSeen, saveBreak, TestBreak } from "./test-break";
@@ -700,28 +701,18 @@ interface QuestionProps {
   onBoardHidden: (hidden: boolean) => void;
 }
 
-const BOARD_KEY = "unica.test.boardHidden";
-
 /** Whether the child hid the board: React state for the test session, kept in sessionStorage so a reload keeps it. */
-export function useBoardHidden(): [boolean, (hidden: boolean) => void] {
-  const [hidden, setHidden] = useState(() => {
-    try {
-      return window.sessionStorage.getItem(BOARD_KEY) === "1";
-    } catch {
-      return false;
-    }
-  });
+function useBoardHidden(): [boolean, (hidden: boolean) => void] {
+  const [hidden, setHidden] = useState(() => readBoardHidden(() => window.sessionStorage));
   const set = useCallback((next: boolean) => {
     setHidden(next);
-    try {
-      window.sessionStorage.setItem(BOARD_KEY, next ? "1" : "0");
-    } catch {}
+    writeBoardHidden(() => window.sessionStorage, next);
   }, []);
   return [hidden, set];
 }
 
 // One question in the split desk (D-088): the question and the answer on the left, the whiteboard on the right.
-export function Question({ testId, typing, readFirst = false, question, initial, initialBoard, storedWork, revisit, canBack, marked, onMark, main, takeYourTime, onLeave, onShown, failure, boardHidden, onBoardHidden }: QuestionProps) {
+function Question({ testId, typing, readFirst = false, question, initial, initialBoard, storedWork, revisit, canBack, marked, onMark, main, takeYourTime, onLeave, onShown, failure, boardHidden, onBoardHidden }: QuestionProps) {
   const [value, setValue] = useState(initial);
   const [sending, setSending] = useState(false);
   // Time on the question runs from when it appears to when the child presses Next.
@@ -761,11 +752,19 @@ export function Question({ testId, typing, readFirst = false, question, initial,
   const [startMode] = useState(() => (revisit ? openMode(board, typing) : "draw"));
   // The board is open on every question. The child's Hide board choice sticks for the session (boardHidden), unless
   // work is already on this question (a revisit, a restored draft): then it opens visible. Hiding never deletes work.
-  const [boardOpen, setBoardOpenNow] = useState(() => hasDrawing(board.strokes) || (typing && board.text.trim() !== "") || !boardHidden);
+  const [boardOpen, setBoardOpenNow] = useState(() => boardStartsOpen(hasDrawing(board.strokes) || (typing && board.text.trim() !== ""), boardHidden));
+  // The control that was pressed goes away, so keyboard focus moves to its counterpart (Hide board <-> the tab).
+  const moveFocus = useRef(false);
   const setBoardOpen = (open: boolean) => {
+    moveFocus.current = true;
     setBoardOpenNow(open);
     onBoardHidden(!open);
   };
+  useEffect(() => {
+    if (!moveFocus.current) return;
+    moveFocus.current = false;
+    document.querySelector<HTMLElement>(boardOpen ? ".wb-hide" : ".test-board-tab")?.focus();
+  }, [boardOpen]);
   const stored = useRef(false);
   // Save each completed action before a reload can discard it, including an undo or clear to an empty board.
   // #249: any edit of the board or the typed working in this visit, Clear and Undo too, is changed work.
