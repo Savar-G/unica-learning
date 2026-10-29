@@ -1,0 +1,74 @@
+/* /curriculum (draft) on the warm look: head, a path of 30 level squares in three colours, "How a level works" cards,
+   then three groups of level cards that open and close. Follows /compare's spacing and kickers. */
+.curp { padding: clamp(48px, 8vw, 104px) var(--pad-x) clamp(56px, 8vw, 112px); }
+.curp-head h1 { margin: 18px 0 22px; max-width: 18ch; font-size: clamp(38px, 5.4vw, 68px); line-height: 1.04; }
+.curp-hl { background: linear-gradient(transparent 58%, var(--sun) 58%, var(--sun) 92%, transparent 92%); -webkit-box-decoration-break: clone; box-decoration-break: clone; }
+.curp-head .lead { margin: 0; max-width: 60ch; font-size: clamp(17px, 1.4vw, 20px); }
+
+/* The path: one square per level, coloured by group. */
+.curp-path { margin-top: clamp(36px, 5vw, 56px); }
+.curp-steps { display: grid; grid-template-columns: repeat(30, minmax(0, 1fr)); gap: 4px; margin: 0; padding: 0; list-style: none; }
+.curp-steps a { display: grid; place-items: center; aspect-ratio: 1; border-radius: 4px; font: 500 12px/1 var(--mono); color: var(--ink); text-decoration: none; transition: transform 0.15s; }
+.curp-steps a:hover { transform: translateY(-2px); }
+.curp-steps .g1 a { background: color-mix(in srgb, var(--g1) 55%, #fff); }
+.curp-steps .g2 a { background: color-mix(in srgb, var(--g2) 55%, #fff); }
+.curp-steps .g3 a { background: color-mix(in srgb, var(--g3) 55%, #fff); }
+.curp-legend { display: grid; grid-template-columns: 9fr 9fr 12fr; gap: 4px; margin-top: 8px; font: 400 12px/1.3 var(--mono); color: var(--ink-2); }
+.curp-legend span { padding-top: 6px; border-top: 2px solid var(--line); }
+.curp-legend .g1 { border-color: var(--g1); }
+.curp-legend .g2 { border-color: var(--g2); }
+.curp-legend .g3 { border-color: var(--g3); }
+
+.curp-part { margin-top: clamp(56px, 8vw, 96px); }
+.curp h2.curp-kicker { margin: 0 0 18px; font: 400 12.5px/1.3 var(--mono); letter-spacing: 0.04em; text-transform: uppercase; color: var(--ink-2); }
+
+/* How a level works */
+.curp-how { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; margin: 0; padding: 0; list-style: none; }
+.curp-how li { display: grid; align-content: start; gap: 8px; border-radius: 8px; padding: 20px; background: var(--soft); }
+.curp-how b { font-weight: 500; font-size: 17px; color: var(--ink); }
+.curp-how span { font-size: 15px; line-height: 1.5; color: var(--ink-2); }
+.curp-note { margin: 14px 0 0; font: 400 12px/1.5 var(--mono); color: var(--ink-2); }
+
+/* Level groups */
+.curp-group { border-top: 1px solid var(--line); }
+.curp-group:last-of-type { border-bottom: 1px solid var(--line); }
+.curp-group summary { display: grid; grid-template-columns: auto 1fr auto; align-items: baseline; gap: 6px 20px; padding: 24px 0; cursor: pointer; list-style: none; }
+.curp-group summary::-webkit-details-marker { display: none; }
+.curp-group summary::after { content: "+"; font: 300 28px/1 var(--sans); color: var(--ink-2); }
+.curp-group[open] summary::after { content: "−"; }
+.curp-group-name { font-size: clamp(24px, 2.6vw, 32px); font-weight: 400; letter-spacing: -0.03em; }
+.curp-group-sub { font-size: 15px; color: var(--ink-2); }
+.curp-group-sub b { font-weight: 500; color: var(--ink); }
+.curp-intro { margin: 0 0 8px; max-width: 60ch; color: var(--ink-2); }
+.curp-levels { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; padding-bottom: 32px; }
+.curp-level { position: relative; overflow: hidden; border-radius: 8px; padding: 20px 20px 22px; background: #fff; box-shadow: 0 0 0 1px var(--line); scroll-margin-top: 96px; }
+.curp-level::before { content: ""; position: absolute; inset: 0 0 auto; height: 4px; }
+.g1 .curp-level::before { background: var(--g1); }
+.g2 .curp-level::before { background: var(--g2); }
+.g3 .curp-level::before { background: var(--g3); }
+.curp-num { margin: 0; font: 400 12.5px/1 var(--mono); letter-spacing: 0.04em; text-transform: uppercase; color: var(--ink-2); }
+.curp-level h3 { margin: 10px 0 12px; font-size: 19px; font-weight: 500; line-height: 1.25; letter-spacing: -0.01em; }
+.curp-level ul { display: grid; gap: 7px; margin: 0; padding: 0; list-style: none; font-size: 14.5px; line-height: 1.45; color: var(--ink-2); }
+.curp-level li { position: relative; padding-left: 14px; }
+.curp-level li::before { content: ""; position: absolute; left: 0; top: 0.6em; width: 5px; height: 5px; border-radius: 50%; background: var(--ink-3); }
+
+.curp-end { margin-top: clamp(56px, 8vw, 96px); display: grid; justify-items: start; gap: 18px; }
+.curp-end h2 { margin: 0; max-width: 22ch; font-size: clamp(28px, 3.6vw, 44px); }
+.curp-end p { margin: 0 0 8px; max-width: 46ch; color: var(--ink-2); }
+.curp-more { font-weight: 500; color: var(--ink); text-underline-offset: 4px; }
+
+/* Eight cards: four across, then two across, so no row is left with a single card. */
+@media (max-width: 1099px) {
+  .curp-how { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 899px) {
+  .curp-levels { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .curp-steps { grid-template-columns: repeat(10, minmax(0, 1fr)); }
+  /* Stacked, not hidden: on a phone the legend is the only thing that says what the three colours mean. */
+  .curp-legend { grid-template-columns: 1fr; gap: 6px; }
+  .curp-group summary { grid-template-columns: 1fr auto; }
+  .curp-group-sub { grid-column: 1; }
+}
+@media (max-width: 560px) {
+  .curp-how, .curp-levels { grid-template-columns: 1fr; }
+}

@@ -17,7 +17,7 @@ export const FAQ = [
   ["How does the free assessment work?", "Your child takes the free math assessment online, on a laptop or tablet, alone and in one sitting. The questions adapt to how your child does. The report shows their math level and gaps. We email it to you, and it stays in your account. You choose a plan after the report."],
   ["What do the books cover?", "Numbers, math facts, fractions and decimals, measurement and word problems. The free math assessment shows where your child starts, which can be behind, at or ahead of their grade."],
   ["Does it follow our school curriculum?", "Workbooks are available to families across Canada. Each book is matched to your child's level and gaps, not just their grade. We are expanding province-specific curriculum alignment, so a workbook may not yet mirror every topic in your local curriculum."],
-  ["Can we take a break?", "Yes. Pause for a week, a month or longer. Contact us to arrange a pause. The next book starts where your child left off."],
+  ["Can we take a break?", "Yes. Contact us to arrange a pause of up to two months a year. Workbooks pause only when you ask. The next book starts where your child left off."],
   ["What if we miss a few days?", "The next book picks up where your child is. Nothing is lost."],
   ["What if we forget to send photos?", "We send a reminder. Until new pages arrive, the next book reviews what your child last worked on."],
   ["What happens to my child's work?", "We use it to plan your child's next book and show their progress. We do not sell it, and you can ask us to delete it at any time."],

@@ -55,7 +55,7 @@ function GetStarted({ src }: { src: string }) {
 const d = (s: number) => ({ "--d": `${s}s` }) as Vars;
 
 export function Nav() {
-  return <NavBar brand={BRAND} cta={<StartLink className="btn sm" src="nav">Free assessment</StartLink>} />;
+  return <NavBar brand={BRAND} links={[{ label: "How it works", href: "#how" }, { label: "Curriculum", href: "/curriculum" }, { label: "Pricing", href: "#price" }, { label: "FAQ", href: "#faq" }]} cta={<StartLink className="btn sm" src="nav">Free assessment</StartLink>} />;
 }
 
 // 8-9 characters only: the chip is as wide as its longest word, so a long topic
@@ -97,7 +97,7 @@ const STEPS = [
   { n: "01", t: "Assess", d: "Your child takes the free online assessment. The report shows their level and gaps. You choose a plan after.",
     v: <Image src={assessPhoto} alt="A girl and her mother sit at a laptop, with a workbook open on the table" sizes={STEP_SIZES} placeholder="blur" />, tone: "photo" as const },
   { n: "02", t: "Deliver", d: "We mail a workbook matched to their level and gaps, with practice built around the math skills they learn at school.", v: <Image src={deliverPhoto} alt="Two mailers waiting on a front step" sizes={STEP_SIZES} placeholder="blur" />, tone: "photo" as const },
-  { n: "03", t: "Practice", d: <>Your child works on paper for 15-30 minutes a day, 5 days a week, with rewards for every page. <Link href="/rewards" className="more-link">See the rewards <span aria-hidden="true">→</span></Link></>,
+  { n: "03", t: "Practice", d: <>Your child works on paper for 15 to 30 minutes a day, 5 days a week, with rewards for every page. <Link href="/rewards" className="more-link">See the rewards <span aria-hidden="true">→</span></Link></>,
     v: <Image src={practice6} alt="A girl works through an arithmetic page in pencil" sizes={STEP_SIZES} placeholder="blur" />, tone: "photo" as const },
   { n: "04", t: "Scan", d: "Scan the finished pages in the Unica app. We mark the work, show you the gaps, and give the solutions.", v: <ScanShot sizes={STEP_SIZES} />, tone: "photo" as const },
   { n: "05", t: "Adapt", d: "Each scan updates the program. Missed carrying? You get more of it. Got it? It moves on.", v: <Image src={adaptPhoto} alt="A girl shows her finished work to her parents" sizes={STEP_SIZES} placeholder="blur" />, tone: "photo" as const },
@@ -273,7 +273,7 @@ export function ThreadEnd() {
 }
 
 const FOOTER_GROUPS: { title: string; links: { label: string; href: string }[] }[] = [
-  { title: "Learn", links: [{ label: "How it works", href: "/#how" }, { label: "Pricing", href: "/#price" }, { label: "FAQ", href: "/#faq" }, { label: "How we compare", href: "/compare" }] },
+  { title: "Learn", links: [{ label: "How it works", href: "/#how" }, { label: "Pricing", href: "/#price" }, { label: "FAQ", href: "/#faq" }, { label: "How we compare", href: "/compare" }, { label: "Curriculum", href: "/curriculum" }] },
   { title: "Company", links: [{ label: "Our story", href: "/our-story" }, { label: "Rewards", href: "/rewards" }, { label: "Resources", href: "/resources" }, { label: "Blog", href: "/blog" }] },
   { title: "Help", links: [{ label: "Contact us", href: "/contact" }, { label: "Privacy", href: "/privacy" }, { label: "Terms", href: "/terms" }] },
 ];
