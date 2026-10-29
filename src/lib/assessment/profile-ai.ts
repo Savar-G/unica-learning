@@ -13,7 +13,7 @@ import { REPORT_TEXT_NAME, checkAiText, parentTextProblem, type ReportTextProble
 import { FACT_SPEED_FROM_GRADE, factsSkills } from "./facts";
 import { MISCONCEPTIONS, type MisconceptionId } from "./misconceptions";
 import type { LearnerProfile, PlanPart, ProfileAi, WorkbookPlan } from "./profile";
-import { BC_SKILL_MAP } from "./skill-map";
+import { BC_LEVEL_STANDARDS, BC_SKILL_MAP } from "./skill-map";
 
 /** The longest likely cause or way to help kept, in characters: one or two short sentences. */
 export const PROFILE_AI_TEXT_MAX = 300;
@@ -104,7 +104,8 @@ function schemaProblem(schema: JsonSchema, value: unknown, at: string): string |
   }
 }
 
-const STANDARDS = new Map(BC_SKILL_MAP.standards.map((s) => [s.code, s]));
+// K-8 only: a grade 9 standard (workbooks only) is an unknown standard here, so never a next challenge.
+const STANDARDS = new Map(BC_LEVEL_STANDARDS.map((s) => [s.code, s]));
 /** The result of a skill or a standard that only the quick facts round asked (#242). */
 const FACTS_TESTED = "tested in the quick facts round";
 const OWNER = new Map(BC_SKILL_MAP.standards.flatMap((s) => s.skills.map((k) => [k.id, s] as const)));
@@ -173,7 +174,7 @@ export function profileAiFacts(profile: LearnerProfile) {
         }),
       })),
     })),
-    next_challenge_candidates: BC_SKILL_MAP.standards
+    next_challenge_candidates: BC_LEVEL_STANDARDS
       .filter((s) => challengeProblem(s.code, profile) === null)
       .map((s) => {
         const result = results.get(s.code);

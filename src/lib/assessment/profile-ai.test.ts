@@ -129,6 +129,33 @@ describe("what the AI reads", () => {
     }
     expect(profileAiFacts(onGrade).next_challenge_candidates.map((c) => c.code)).not.toContain(notReady(onGrade));
   });
+
+  it("keeps grade 9 out of assessment challenges and plans even when its prerequisites are secure", () => {
+    const p = profileOf((q) => q.answer, 7);
+    const ready = { ...p, strengths: prerequisitesOf("9.8").map((code) => ({ ...p.strengths[0], code })) };
+    expect(prerequisitesOf("9.8").every((code) => secure(ready).has(code))).toBe(true);
+    expect(profileAiFacts(ready).next_challenge_candidates.map((c) => c.grade)).not.toContain(9);
+    const out = goodOutput(ready);
+    const check = checkProfileAi(ready, {
+      ...out,
+      next_challenge: ["9.8"],
+      workbook_plan: {
+        review: { percent: 20, standards: ["9.8"] },
+        practise: { percent: 60, standards: ["9.8"] },
+        stretch: { percent: 20, standards: ["9.8"] },
+      },
+    }, "m");
+    expect(check.ok).toBe(true);
+    if (!check.ok) return;
+    expect(check.ai.nextChallenge).toBeUndefined();
+    expect(check.ai.workbookPlan?.value).toEqual({
+      review: { percent: 20, standards: [] },
+      practise: { percent: 60, standards: [] },
+      stretch: { percent: 20, standards: [] },
+    });
+    expect(check.dropped).toHaveLength(4);
+    expect(check.dropped.every((d) => d.code === "9.8" && d.problem === "unknown-standard")).toBe(true);
+  });
 });
 
 describe("what the AI reads about the quick facts (#242)", () => {

@@ -11,7 +11,7 @@ import { TOO_FAST_MS, helpLikely, type Flag, type HelpAnswer } from "./flags";
 import { RUSH_RUN, paceOf } from "./rushing";
 import { fromRemovedRound } from "./session";
 import type { Interest, LearningGoal, LearningStyle, MathFeeling, WeeklyTime } from "@/lib/learning-style";
-import { BC_SKILL_MAP } from "./skill-map";
+import { BC_LEVEL_STANDARDS, BC_SKILL_MAP } from "./skill-map";
 import type { Grade, Level, LevelResult, Placement, Province, Question, ReportedStrand, Route, StrandStatus } from "./types";
 
 /** The version of the profile's JSON. A change that a reader of stored profiles must know about adds one. */
@@ -240,7 +240,7 @@ export interface LearnerProfile {
 
 /** Every bank template, by id: its BC standard. */
 const TEMPLATES = new Map(Object.values(BANKS).flat().map((t) => [t.id, t]));
-const STANDARDS = new Map(BC_SKILL_MAP.standards.map((s) => [s.code, s]));
+const STANDARDS = new Map(BC_LEVEL_STANDARDS.map((s) => [s.code, s]));
 const standardOf = (a: ProfileAnswer) => TEMPLATES.get(a.question.templateId)?.standard;
 
 /** Curriculum order: by grade, then by the standard's number ("4.9" before "4.10"). */

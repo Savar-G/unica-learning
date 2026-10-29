@@ -84,4 +84,11 @@ describe("the bank's skill tags", () => {
     const ids = new Set(templates.map((t) => t.id));
     expect(Object.keys(SKILL_TAGS).filter((id) => !ids.has(id))).toEqual([]);
   });
+
+  it.each(["g67-8-add-fractions", "g67-8-add-mixed-numbers", "g67-8-subtract-fractions"])(
+    "tags %s with the skill for unlike denominators",
+    (id) => {
+      expect(templateSkills(id).map((skill) => skill.id)).toEqual(["8.5-add-subtract-unlike"]);
+    },
+  );
 });
