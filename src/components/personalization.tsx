@@ -1,10 +1,9 @@
 // "Personalized for your child" (D-096, option D "Fork" of round r18): two sample Grade 3 children, Leah and Kai,
-// get two different learning programs. The section sits after How it works. The pages are built from the real
-// question bank (src/lib/sample-children.ts): the words, numbers and answers are the templates' own; the pictures are
-// drawn from the filled values. A tap on a page opens it full size (PageDeck).
-import type { ReactNode } from "react";
+// get two different learning programs. The section sits after How it works. The sheets are real workbook pages exported
+// from Figma (V7 Leah, and Kai sample pages) as WebP in public/samples/. A tap on a page opens it full size (PageDeck).
+import Image from "next/image";
 import { Section, SectionHeader } from "@/ds";
-import { SAMPLE_CHILDREN, kaiPage, kaiPage2, kaiPage3, kaiPage4, leahPage, leahPage2, leahPage3, leahPage4, type PageItem, type SampleChild, type SampleChildId } from "@/lib/sample-children";
+import { SAMPLE_CHILDREN, type SampleChild } from "@/lib/sample-children";
 import { Knot, Rise } from "./drawn";
 import { PageDeck } from "./page-deck";
 import "@/ds/styles/personalization.css";
@@ -63,7 +62,7 @@ function Fork() {
       <div className="pz-forks">
         {(["a", "b"] as const).map((id, i) => (
           <Rise key={id} d={i * 0.08} className="pz-row">
-            <div className="pz-thumb"><PageDeck id={id} name={SAMPLE_CHILDREN[id].name} pages={PAGES[id].map((_, n) => <BankPage key={n} id={id} n={n} />)} /></div>
+            <div className="pz-thumb"><PageDeck id={id} name={SAMPLE_CHILDREN[id].name} pages={PAGES[id].map((alt, n) => <SheetImage key={n} src={`/samples/${FILES[id][n]}-v2.webp`} alt={alt} />)} /></div>
             <div>
               <Who child={SAMPLE_CHILDREN[id]} />
               <Lines child={SAMPLE_CHILDREN[id]} />
@@ -75,148 +74,28 @@ function Fork() {
   );
 }
 
-// ---------- The bank pages ----------
-interface Sheet { head: string; job: string; title: string; ins: string; items: () => PageItem[]; alt: string }
+// ---------- The workbook pages ----------
+const FILES = {
+  a: ["leah-stories", "leah-new-idea", "leah-practice", "leah-review"],
+  b: ["kai-new-idea", "kai-practice", "kai-stories", "kai-step-up"],
+} as const;
 
-const PAGES: Record<SampleChildId, Sheet[]> = {
+const PAGES: Record<"a" | "b", string[]> = {
   a: [
-    {
-      head: "Leah's program",
-      job: "Practice",
-      title: "Regrouping in stories",
-      ins: "Read the story. Line up the tens and ones. When the ones make 10 or more, carry 1 ten.",
-      items: leahPage,
-      alt: "A sample sheet from Leah's program: one worked story problem with the carried 1 marked, then three story problems that need regrouping.",
-    },
-    {
-      head: "Leah's program",
-      job: "Practice",
-      title: "Borrowing in stories",
-      ins: "Read the story. Line up the tens and ones. If the top ones are too small, borrow 1 ten.",
-      items: leahPage2,
-      alt: "A sample sheet from Leah's program: four take-away story problems that need borrowing.",
-    },
-    {
-      head: "Leah's program",
-      job: "Step up",
-      title: "Adding hundreds in stories",
-      ins: "Read the story. Add the ones, then the tens, then the hundreds. Carry when a column makes 10.",
-      items: leahPage3,
-      alt: "A sample sheet from Leah's program: four story problems that add three-digit numbers.",
-    },
-    {
-      head: "Leah's program",
-      job: "Review",
-      title: "Mixed review",
-      ins: "Read each problem. Decide what to do, then solve it.",
-      items: leahPage4,
-      alt: "A sample sheet from Leah's program: a mix of add, take-away and equal-groups problems, one with a picture.",
-    },
+    "A word-problems page from Leah's workbook: three take-away stories, 403 − 168, 605 − 278 and 302 − 145, with space to show her work.",
+    "A new-idea page from Leah's workbook: a worked subtraction, 403 − 168 = 235, with the trades marked, and a spot-the-error box.",
+    "A practice page from Leah's workbook: one worked subtraction across a zero, one half done, and two for her to finish.",
+    "A review page from Leah's workbook: three quick questions from earlier days and a mixed story where she picks add or take away.",
   ],
   b: [
-    {
-      head: "Kai's program",
-      job: "New",
-      title: "Multiplication with rows and groups",
-      ins: "Use the picture. Count the rows, then the number in each row.",
-      items: kaiPage,
-      alt: "A sample sheet from Kai's program: three multiplication problems, each with a picture: an array of chairs, groups of cookies on plates, and rows of books.",
-    },
-    {
-      head: "Kai's program",
-      job: "New",
-      title: "Sharing equally",
-      ins: "Use the picture. Share the items into equal groups, then count how many are in each group.",
-      items: kaiPage2,
-      alt: "A sample sheet from Kai's program: three sharing and grouping problems, each with a picture of equal groups.",
-    },
-    {
-      head: "Kai's program",
-      job: "Practice",
-      title: "More rows and groups",
-      ins: "Use the picture. Count the rows, then the number in each row.",
-      items: kaiPage3,
-      alt: "A sample sheet from Kai's program: three more multiplication problems with arrays and equal groups.",
-    },
-    {
-      head: "Kai's program",
-      job: "Grade 4",
-      title: "Bigger numbers",
-      ins: "Use the picture to help. Multiply or share the bigger numbers.",
-      items: kaiPage4,
-      alt: "A sample sheet from Kai's program: Grade 4 multiplication and sharing problems with bigger numbers.",
-    },
+    "A new-idea page from Kai's workbook: equal groups and a 3 by 6 dot array show what multiplication means.",
+    "A practice page from Kai's workbook: one worked dot array, then three arrays to turn into multiplication facts.",
+    "A word-problems page from Kai's workbook: rows of seats, packs of pencils, and 20 marbles shared between 4 friends.",
+    "A step-up page from Kai's workbook: a missing factor, 28 cookies shared by 4, and the fact family of 3, 8 and 24.",
   ],
 };
 
-export function BankPage({ id, n = 0 }: { id: SampleChildId; n?: number }) {
-  const p = PAGES[id][n];
-  const items = p.items();
-  return (
-    <div className="bpage" role="img" aria-label={p.alt}>
-      <div className="bp-hd"><span>{p.head}</span><span>{p.job}</span></div>
-      <div className="bp-tt">{p.title}</div>
-      <p className="bp-ins">{p.ins}</p>
-      {items.map((it, i) => (
-        <div className={it.worked ? "bp-q bp-eg" : "bp-q"} key={it.templateId + i}>
-          {it.worked ? <b className="bp-tag">Example</b> : <span className="bp-n">{i + (items[0].worked ? 0 : 1)}.</span>}
-          {it.level > 3 && <b className="bp-tag bp-up">Grade 4</b>}
-          <p>{it.prompt}</p>
-          {it.worked && <Column {...it.worked} />}
-          {it.picture && <Picture p={it.picture} />}
-          {!it.worked && !it.picture && it.values.a != null && it.values.b != null && <ColumnBlank a={it.values.a} b={it.values.b} op={it.op ?? (/left/.test(it.prompt) ? "−" : "+")} />}
-          {!it.worked && <span className="bp-line" />}
-        </div>
-      ))}
-    </div>
-  );
-}
-
-function Column({ a, b, carry, answer }: { a: number; b: number; carry: number; answer: number }) {
-  return (
-    <div className="bp-col">
-      <span className="bp-carry">{carry || ""}</span>
-      <span>{a}</span>
-      <span>+ {b}</span>
-      <span className="bp-ans">{answer}</span>
-    </div>
-  );
-}
-
-function ColumnBlank({ a, b, op }: { a: number; b: number; op: string }) {
-  return (
-    <div className="bp-col bp-blank">
-      <span>{a}</span>
-      <span>{op} {b}</span>
-      <span className="bp-box" />
-    </div>
-  );
-}
-
-function Picture({ p }: { p: NonNullable<PageItem["picture"]> }): ReactNode {
-  if (p.kind === "array") {
-    const r = 6, gap = 16;
-    const w = p.each * gap, h = p.rows * gap;
-    return (
-      <svg className="bp-pic" viewBox={`0 0 ${w} ${h}`} style={{ width: `${Math.min(100, p.each * 7)}%` }} aria-hidden="true">
-        {Array.from({ length: p.rows }, (_, y) =>
-          Array.from({ length: p.each }, (_, x) => <circle key={`${x}-${y}`} cx={x * gap + gap / 2} cy={y * gap + gap / 2} r={r / 1.4} />),
-        )}
-      </svg>
-    );
-  }
-  const plate = 46;
-  return (
-    <svg className="bp-pic" viewBox={`0 0 ${p.groups * (plate + 8)} ${plate}`} style={{ width: `${p.groups * 16}%` }} aria-hidden="true">
-      {Array.from({ length: p.groups }, (_, g) => (
-        <g key={g} transform={`translate(${g * (plate + 8) + plate / 2} ${plate / 2})`}>
-          <circle r={plate / 2 - 1} className="bp-plate" />
-          {Array.from({ length: p.each }, (_, k) => {
-            const a = (k / p.each) * Math.PI * 2 - Math.PI / 2;
-            return <circle key={k} cx={Math.cos(a) * 12} cy={Math.sin(a) * 12} r={4.5} />;
-          })}
-        </g>
-      ))}
-    </svg>
-  );
+// Serves both the ~340px thumb and the ~644px dialog, so sizes is set for the larger of the two.
+function SheetImage({ src, alt }: { src: string; alt: string }) {
+  return <Image className="pz-sheet" src={src} alt={alt} width={900} height={1620} sizes="(max-width: 699px) 92vw, 644px" />;
 }
