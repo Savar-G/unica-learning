@@ -213,7 +213,7 @@ async function withPeople(a: AdminSession, tests: TestQueryRow[]): Promise<TestR
 export async function listTests(a: AdminSession, f: AdminFilters, offset = 0): Promise<Page<TestRow>> {
   let q = a.db.rpc("admin_assessments").select(TEST_COLUMNS);
   if (f.status) q = q.eq("status", f.status);
-  if (f.grade) q = q.eq("grade", f.grade);
+  if (f.grade !== null) q = q.eq("grade", f.grade);
   if (f.province) q = q.eq("province", f.province);
   q = q.order("created_at", { ascending: false }).order("id", { ascending: false });
   if (!f.help && !f.flagged && !f.lowAi) {
@@ -431,7 +431,7 @@ export interface ChildListRow extends ChildRow {
 
 export async function listChildren(a: AdminSession, f: Pick<AdminFilters, "grade" | "province">, offset = 0): Promise<Page<ChildListRow>> {
   let q = a.db.rpc("admin_children").select(CHILD_COLUMNS);
-  if (f.grade) q = q.eq("grade", f.grade);
+  if (f.grade !== null) q = q.eq("grade", f.grade);
   if (f.province) q = q.eq("province", f.province);
   const { rows, more } = page(must<ChildRow[]>(await q.order("created_at", { ascending: false }).order("id", { ascending: false }).range(offset, offset + LIST_MAX), "children"));
   const [parents, tests] = await Promise.all([

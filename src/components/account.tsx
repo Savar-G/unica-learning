@@ -7,7 +7,8 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { CURRICULA, EMAIL, POSTAL, curriculumFromPostal, type CurriculumId } from "@/lib/signup";
 import type { StartState } from "@/lib/assessment";
-import { GRADES, PASSWORD_MAX, PASSWORD_MIN, signInFailure, validPassword, type AccountError, type SignInFailure, type AccountResult, type ChildInput } from "@/lib/account";
+import { gradeLabel, gradeShort } from "@/lib/assessment/grades";
+import { GRADES, gradeHint, PASSWORD_MAX, PASSWORD_MIN, signInFailure, validPassword, type AccountError, type SignInFailure, type AccountResult, type ChildInput } from "@/lib/account";
 import { browserClient } from "@/lib/supabase-browser";
 import { track } from "@/lib/track";
 import { SUPPORT_EMAIL, SUPPORT_HREF } from "@/lib/contact";
@@ -86,11 +87,12 @@ function ChildFields({ prefix, value, onChange, bad, badProvince, onPickProvince
       </Field>
       <div className="fld">
         <span className="lbl" id={`${prefix}-grade`}>School grade</span>
-        <div className="seg" role="radiogroup" aria-labelledby={`${prefix}-grade`}>
+        <div className="seg" role="radiogroup" aria-labelledby={`${prefix}-grade`} aria-describedby={`h-${prefix}-grade`}>
           {GRADES.map((g) => (
-            <label key={g}><input type="radio" name={`${prefix}-grade`} checked={value.grade === g} onChange={() => onChange({ ...value, grade: g })} aria-label={`Grade ${g}`} />{g}</label>
+            <label key={g} title={gradeLabel(g)}><input type="radio" name={`${prefix}-grade`} checked={value.grade === g} onChange={() => onChange({ ...value, grade: g })} aria-label={gradeLabel(g)} />{gradeShort(g)}</label>
           ))}
         </div>
+        <span className="hint" id={`h-${prefix}-grade`}>{gradeHint(value.grade)}</span>
       </div>
       <Field id={`${prefix}-province`} label="Province" bad={badProvince} error="Choose your province." hint="We match the test to what your child learns at school.">
         <select

@@ -3,7 +3,7 @@ import { after } from "next/server";
 import { randomUUID } from "node:crypto";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/lib/database";
-import { withFamilyCardOperation, type Province } from "@/lib/assessment";
+import { gradeName, withFamilyCardOperation, type Province } from "@/lib/assessment";
 import { sendEmail } from "@/lib/email-delivery";
 import type { CardCheckResult, CardResult, NextStepError, ReportSrc, WaitlistResult } from "@/lib/next-step";
 import { REPORT_PLANS, reportPath, type PlanOption } from "@/lib/report-view";
@@ -193,7 +193,7 @@ export async function joinWaitlist(parentId: string, reportId: string, origin: s
     replyTo: parent.email,
     text: [
       `Waitlist (${CURRICULA[province]} curriculum), joined from the report: ${parent.name} <${parent.email}>`,
-      `Child: ${report.child!.first_name}, school grade ${report.assessment!.grade}`,
+      `Child: ${report.child!.first_name}, school ${gradeName(report.assessment!.grade)}`,
       `Postal code: ${parent.postal ?? "not given"}`,
       `Report: ${origin}${reportPath(report.id)}`,
     ].join("\n"),
@@ -203,13 +203,13 @@ export async function joinWaitlist(parentId: string, reportId: string, origin: s
 
 function cardAlert(setup: ReportCardSetup, report: ReportRow, option: PlanOption, src: ReportSrc, reason: string, origin: string) {
   return {
-    subject: `Card link needed: ${setup.name} (${option.subject}, grade ${setup.grade})`,
+    subject: `Card link needed: ${setup.name} (${option.subject}, ${gradeName(setup.grade)})`,
     replyTo: setup.email,
     text: [
       `Plan chosen from the report, but ${reason}: email them a link to add a card.`,
       `Parent: ${setup.name} <${setup.email}>`,
       `Plan: ${option.subject}, ${priceWithOffer(option.price)}`,
-      `Child: ${report.child!.first_name}, school grade ${setup.grade}`,
+      `Child: ${report.child!.first_name}, school ${gradeName(setup.grade)}`,
       `Postal code: ${setup.postal ?? "not given"}`,
       `Opened from: ${src === "email" ? "the report email" : "the account"}`,
       `Ref (card_setups.id; Stripe metadata ref): ${setup.ref}`,

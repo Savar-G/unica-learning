@@ -4,6 +4,7 @@
 // report keeps only its plain sentences. A comment with a number that is not in its question, the answers or the typed
 // working is not sure, so the report shows the work without it.
 import { FACT_SPEED_FROM_GRADE } from "./facts";
+import { TOP_LEVEL } from "./grades";
 import type { ReportModel, WorkReview } from "./report";
 import type { Grade } from "./types";
 
@@ -213,7 +214,10 @@ export function reportFacts(m: ReportModel) {
     child: REPORT_TEXT_NAME,
     school_grade: LEVEL(m.level.grade),
     working_level: LEVEL(m.level.working),
-    working_level_against_school_grade: m.howWeHelp === "on-grade" ? "the same" : m.howWeHelp === "behind" ? "below" : "above",
+    // D-156: a Grade 9 child's test checks up to grade 8 (D-153), so the level is compared with grade 8, never grade 9.
+    ...(m.level.grade > TOP_LEVEL
+      ? { highest_level_the_test_checks: LEVEL(TOP_LEVEL), working_level_against_highest_level_tested: m.howWeHelp === "on-grade" ? "the same" : "below" }
+      : { working_level_against_school_grade: m.howWeHelp === "on-grade" ? "the same" : m.howWeHelp === "behind" ? "below" : "above" }),
     level_is_estimate: m.level.confidence === "low",
     help_warning: m.helpWarning === true,
     areas: m.strands.map((s) => ({ area: s.name, result: STATUS[s.status], right: s.correct, questions: s.total })),

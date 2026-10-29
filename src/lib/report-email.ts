@@ -5,7 +5,7 @@
 // module (src/lib/email-delivery.ts).
 // Email-safe: tables and inline styles only, no web fonts, no forms; the band's one image is an absolute URL, with the
 // band's base colour behind it for mail apps that block images.
-import { PAUSE_WINDOW, STRAND_DEVELOPING_PERCENT, STRAND_SECURE_PERCENT, TOO_FAST_MS, type Flag, type HelpAnswer, type StrandStatus } from "@/lib/assessment";
+import { PAUSE_WINDOW, STRAND_DEVELOPING_PERCENT, STRAND_SECURE_PERCENT, TOO_FAST_MS, TOP_LEVEL, type Flag, type HelpAnswer, type StrandStatus } from "@/lib/assessment";
 import { BOOKING_URL } from "@/lib/contact";
 import { emailEndHtml, emailFooterText, emailHeaderHtml, emailSignatureText } from "@/lib/email-brand";
 import type { AiOutcome } from "@/lib/work-review";
@@ -83,10 +83,15 @@ const firstName = (name: string) => name.trim().split(/\s+/)[0] || name;
 const chip = ({ bg, fg }: { bg: string; fg: string }, label: string) =>
   `<span style="display:inline-block;padding:3px 9px;border-radius:999px;background:${bg};color:${fg};font-family:${MONO};font-size:12px;line-height:1.3;white-space:nowrap">${esc(label)}</span>`;
 
-/** The K-8 ruler on white: the working level filled in the verdict colour, the school grade in a dashed ring, the span tinted. */
+/**
+ * The K-8 ruler on white: the working level filled in the verdict colour, the school grade in a dashed ring, the span
+ * tinted. D-156: grade 9 is past the end of the ruler: no ring and no span, and the legend says where the scale stops.
+ */
 function rulerHtml(v: ReportView): string {
   const { working, grade } = v.model.level;
-  const [lo, hi] = [Math.min(working, grade), Math.max(working, grade)];
+  const onScale = grade <= TOP_LEVEL;
+  const mark = onScale ? grade : working;
+  const [lo, hi] = [Math.min(working, mark), Math.max(working, mark)];
   const verdict = v.model.howWeHelp;
   const cells = [0, 1, 2, 3, 4, 5, 6, 7, 8].map((level) => {
     const label = level === 0 ? "K" : String(level);
@@ -98,14 +103,14 @@ function rulerHtml(v: ReportView): string {
       inSpan && level === hi ? "border-radius:0 6px 6px 0" : "",
       level > 0 && !inSpan && !(level === hi + 1 && lo !== hi) ? `border-left:1px solid ${LINE_SOFT}` : "",
     ].filter(Boolean).join(";");
-    const fill = level === working ? `background:${VERDICT_COLOUR[verdict]};font-weight:600;color:${INK};` : `color:${level === grade ? INK : "#6b6b74"};`;
-    const ring = level === grade ? `border:2px dashed ${INK};` : "border:2px solid transparent;";
+    const fill = level === working ? `background:${VERDICT_COLOUR[verdict]};font-weight:600;color:${INK};` : `color:${onScale && level === grade ? INK : "#6b6b74"};`;
+    const ring = onScale && level === grade ? `border:2px dashed ${INK};` : "border:2px solid transparent;";
     return `<td align="center" width="11%" style="${cell}"><span style="display:inline-block;width:24px;height:24px;line-height:24px;border-radius:50%;${fill}${ring}font-size:14px">${label}</span></td>`;
   });
   return `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#ffffff" style="background:#ffffff;border-radius:10px">
 <tr><td style="padding:8px 6px"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="table-layout:fixed"><tr>${cells.join("")}</tr></table></td></tr>
 </table>
-<p style="margin:10px 0 0;font-family:${MONO};font-size:12px;line-height:1.5;color:${INK}"><span style="white-space:nowrap"><span style="color:${VERDICT_COLOUR[verdict]}">&#9679;</span>&nbsp;Working level: ${esc(levelName(working))}</span> &nbsp;&nbsp; <span style="white-space:nowrap">&#9676;&nbsp;School grade: ${esc(levelName(grade))}</span></p>`;
+<p style="margin:10px 0 0;font-family:${MONO};font-size:12px;line-height:1.5;color:${INK}"><span style="white-space:nowrap"><span style="color:${VERDICT_COLOUR[verdict]}">&#9679;</span>&nbsp;Working level: ${esc(levelName(working))}</span> &nbsp;&nbsp; <span style="white-space:nowrap">&#9676;&nbsp;School grade: ${esc(levelName(grade))}${onScale ? "" : " (the scale stops at grade 8)"}</span></p>`;
 }
 
 /**
@@ -447,10 +452,10 @@ export function reportAlert({
   const facts = factsView(v, { speed: true });
   const comparison = comparisonView(v);
   const measuredCount = m.comparison.stage === "scale" || comparison ? m.comparison.n : undefined;
-  const subject = `Test finished: ${v.childName}, grade ${m.level.grade}, working at ${levelName(m.level.working)}`;
+  const subject = `Test finished: ${v.childName}, ${levelName(m.level.grade)}, working at ${levelName(m.level.working)}`;
   const lines = [
     `Child: ${v.childName}`,
-    `School grade: ${m.level.grade} (${v.province})`,
+    `School grade: ${m.level.grade === 0 ? "Kindergarten" : m.level.grade} (${v.province})${m.level.grade > TOP_LEVEL ? ", tested up to grade 8" : ""}`,
     `Working level: ${levelName(m.level.working)} (${m.howWeHelp})${m.level.atCeiling ? ", at the top of what the test reached" : ""}${m.level.confidence === "low" ? ", low confidence: no level cleared" : ""}${m.level.certainty ? `, ${m.level.certainty}` : ""}`,
     `Did anyone help?: ${help ? `"${HELP_LABEL[help]}"` : "not asked"}`,
     `Flags: ${flags.length ? flags.map(flagText).join("; ") : "none"}`,
@@ -462,7 +467,7 @@ export function reportAlert({
     `Facts: ${facts ? factsLine(facts) : "none"}`,
     ...(ai ? [aiLine(ai)] : []),
     `Questions: ${questionsAndMinutes(v)}`,
-    `Comparison: ${COMPARISON_LABEL[m.comparison.stage]} (${measuredCount === undefined ? "no measured cohort stored" : `${measuredCount} eligible children in grade ${m.level.grade}`})`,
+    `Comparison: ${COMPARISON_LABEL[m.comparison.stage]} (${measuredCount === undefined ? "no measured cohort stored" : `${measuredCount} eligible children in ${levelName(m.level.grade)}`})`,
     ...(comparison ? [`Comparison result: ${comparison.text}`] : []),
     `FSA line: ${m.fsa ? "shown" : "not shown"}`,
     `Next step: ${m.callToAction}`,

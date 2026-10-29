@@ -232,7 +232,7 @@ export type Refusal =
   | { ok: false; error: "conflict"; step?: TestStep }
   /** The request does not fit the test. `message` says why, when the child can fix it. */
   | { ok: false; error: "invalid"; message?: string }
-  /** Typed working in grades 1 and 2, which draw only (#67). */
+  /** Typed working in Kindergarten to grade 2, which draw only (#67). */
   | { ok: false; error: "typing_off" }
   /** The drawing or the typed working is over its size limit (#67). `message` says which. */
   | { ok: false; error: "work_too_big"; message: string }
@@ -458,7 +458,7 @@ export async function answerQuestion(store: AttemptStore, parent: string, id: st
   const response = input.response.trim();
   const valid = q.format === "choice" ? (q.choices ?? []).includes(response) : response.length > 0 && response.length <= ANSWER_MAX;
   if (!valid || !Number.isFinite(input.timeMs) || input.timeMs < 0) return { ok: false, error: "invalid" };
-  // #67: grades 1 and 2 draw only. The whiteboard is optional (D-125).
+  // #67: Kindergarten to grade 2 draw only. The whiteboard is optional (D-125).
   const problem = workProblem(session, { drawn: input.work.png !== null, text: input.work.text });
   if (problem) return { ok: false, error: problem };
   const next = submitAnswer(session, { questionId: q.id, response, timeMs: Math.min(Math.round(input.timeMs), QUESTION_TIME_CAP_MS) });

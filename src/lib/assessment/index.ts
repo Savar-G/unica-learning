@@ -2,6 +2,7 @@
 export * from "./attempt";
 export * from "./certainty";
 export * from "./constants";
+export * from "./grades";
 export * from "./deletion";
 export * from "./retention";
 export * from "./facts";
@@ -67,7 +68,7 @@ export {
 } from "./session";
 export type * from "./types";
 export { hasWork, workProblem, type BoardWork, type WorkProblem } from "./work";
-export { isLineChoice, namesChoice, readAloudText, sayChoice, spokenChoices } from "./read-aloud";
+export { isLineChoice, namesChoice, readAloudText, readsAloudFirst, sayChoice, spokenChoices } from "./read-aloud";
 export * from "./payments";
 export * from "./retention-worker";
 export { BC_LEVEL_STANDARDS, BC_SKILL_MAP, STRAND_NAMES, skillMapProblems, type BcSkill, type BcStandard, type LevelStandard, type SkillMap, type SkillMapGrade } from "./skill-map";

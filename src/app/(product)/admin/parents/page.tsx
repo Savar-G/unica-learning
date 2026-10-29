@@ -4,6 +4,7 @@ import { StageChip, TestMark } from "@/components/admin-dashboard-parts";
 import { ago, since } from "@/lib/admin-dashboard";
 import { loadDashboard } from "@/lib/admin-dashboard-load";
 import { LIST_MAX } from "@/lib/admin-store";
+import { gradeShort } from "@/lib/assessment/grades";
 import { adminParentPath, listOffset, when } from "@/lib/admin-view";
 
 // Every family, newest signup first, with its stage (D-099). Team and test families are listed too, marked Test.
@@ -20,7 +21,7 @@ export default async function ParentsPage({ searchParams }: PageProps<"/admin/pa
         <td className="adm-nowrap">{when(f.createdAt)}</td>
         <td><Link href={adminParentPath(f.id)}>{f.name}</Link><TestMark test={f.test} /></td>
         <td>{f.email}</td><td>{f.postal ?? "-"}</td>
-        <td>{f.children.map((c) => `${c.name} (gr ${c.grade}, ${c.province})`).join(", ") || "-"}</td>
+        <td>{f.children.map((c) => `${c.name} (gr ${gradeShort(c.grade)}, ${c.province})`).join(", ") || "-"}</td>
         <td className="adm-num">{f.tests.length}</td><td className="adm-num">{f.tests.filter((t) => t.status === "completed").length}</td>
         <td><StageChip stage={f.stage} /><span className="adm-sub">{since(f.stageAt, d.now)}</span></td>
         <td className="adm-nowrap">{ago(f.lastActivityAt, d.now)}</td>

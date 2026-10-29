@@ -112,7 +112,7 @@ describe("POST /api/account/assessments (start or continue)", () => {
 
   it("answers 409 not_ready for a grade the question bank cannot cover", async () => {
     vi.spyOn(console, "error").mockImplementation(() => {});
-    memory = memoryAttemptStore({ children: [{ id: CHILD, parentId: P1, grade: 9 as Grade, province: "BC" }] });
+    memory = memoryAttemptStore({ children: [{ id: CHILD, parentId: P1, grade: 10 as Grade, province: "BC" }] });
     expect(await sent(await start({ childId: CHILD }))).toEqual({ status: 409, body: { ok: false, error: "not_ready" } });
   });
 

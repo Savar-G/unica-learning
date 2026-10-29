@@ -127,6 +127,6 @@ describe("parseTemplateFilters", () => {
   it("reads the grade, the curriculum and the test families choice, and ignores anything else", () => {
     expect(parseTemplateFilters({})).toEqual({ withTests: false, grade: null, province: null });
     expect(parseTemplateFilters({ grade: "3", province: "BC", tests: "1" })).toEqual({ withTests: true, grade: 3, province: "BC" });
-    expect(parseTemplateFilters({ grade: "9", province: "XX", tests: "yes" })).toEqual({ withTests: false, grade: null, province: null });
+    expect(parseTemplateFilters({ grade: "10", province: "XX", tests: "yes" })).toEqual({ withTests: false, grade: null, province: null });
   });
 });

@@ -102,7 +102,7 @@ export function reminderStore(admin: SupabaseClient<Database>): ReminderStore<Lo
       ]);
       return {
         parents: parentRows.map((p) => ({ id: p.id, name: p.name, email: p.email, postal: p.postal })),
-        // A check constraint limits grade to 1-7.
+        // A check constraint limits grade to 0-9 (0 is Kindergarten, D-156; rows from before hold 1-7).
         children: childRows.map((c) => ({ id: c.id, parentId: c.parent_id, firstName: c.first_name, grade: c.grade as Grade, createdAt: Date.parse(c.created_at) })),
         tests,
         log: logRows.map((e) => ({ id: e.id, kind: e.kind, parentId: e.parent_id, childId: e.child_id, assessmentId: e.assessment_id, status: e.status, attempts: e.attempts, at: Date.parse(e.created_at) })),

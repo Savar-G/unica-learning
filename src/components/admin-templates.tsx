@@ -1,7 +1,7 @@
 // The admin table per question template (#199): every template by BC grade, with the times shown, the percent correct,
 // the median time and the wrong answers chosen. A server component with no JavaScript; the filters are a GET form.
 import Link from "next/link";
-import { STRAND_NAMES, type Level } from "@/lib/assessment";
+import { STRAND_NAMES, gradeLabel, type Level } from "@/lib/assessment";
 import { ADMIN_TEMPLATES_PATH, type TemplateFilters, type TemplateLine, type TemplateTable, type WrongLine } from "@/lib/admin-templates";
 import { GRADES, PROVINCES, duration } from "@/lib/admin-view";
 import { CURRICULA } from "@/lib/signup";
@@ -20,7 +20,7 @@ export function demoHref(href: string, demo: boolean): string {
 /** The filters of the table as a query string ("" when none is set). */
 export function templateQuery(f: TemplateFilters, demo: boolean): string {
   const q = new URLSearchParams();
-  if (f.grade) q.set("grade", String(f.grade));
+  if (f.grade !== null) q.set("grade", String(f.grade));
   if (f.province) q.set("province", f.province);
   if (f.withTests) q.set("tests", "1");
   if (demo) q.set("demo", "1");
@@ -35,7 +35,7 @@ export function TemplateFilterForm({ action, filters, demo }: { action: string; 
       <label>School grade
         <select name="grade" defaultValue={filters.grade ?? ""}>
           <option value="">Any</option>
-          {GRADES.map((g) => <option key={g} value={g}>{g}</option>)}
+          {GRADES.map((g) => <option key={g} value={g}>{gradeLabel(g)}</option>)}
         </select>
       </label>
       <label>Curriculum
@@ -54,7 +54,7 @@ export function TemplateFilterForm({ action, filters, demo }: { action: string; 
 /** What the numbers count, in one line. */
 export function CountedNote({ filters }: { filters: TemplateFilters }) {
   const who = filters.withTests ? "every family, with the team and test families" : "real families only: the team and test families are left out";
-  const which = [filters.grade ? `school grade ${filters.grade}` : null, filters.province ? CURRICULA[filters.province] : null].filter(Boolean).join(", ");
+  const which = [filters.grade !== null ? `school grade ${gradeLabel(filters.grade)}` : null, filters.province ? CURRICULA[filters.province] : null].filter(Boolean).join(", ");
   return <p className="adm-note">Counts {who}{which ? `; ${which}` : ""}. Shown includes served questions without an answer. Correct and median time use answered questions only. Time: the thinking time the browser measured. Older answers count as shown when no serve record exists.</p>;
 }
 

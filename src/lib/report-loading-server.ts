@@ -82,7 +82,7 @@ const assessmentRecord = (row: AssessmentRow): AssessmentRecord => ({
   parentId: row.parent_id,
   childId: row.child_id,
   status: row.status,
-  // A check constraint limits grade to 1-7.
+  // A check constraint limits grade to 0-9 (0 is Kindergarten, D-156; rows from before hold 1-7).
   grade: row.grade as Grade,
   province: row.province,
   completedAt: row.completed_at,

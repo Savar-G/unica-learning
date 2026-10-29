@@ -25,14 +25,14 @@ import { fakeProfileAi } from "@/lib/learner-profile-ai-fake";
  */
 export const PROFILE_AI_MS = 60_000;
 
-const SYSTEM = `You interpret the result of a math placement test for one child in grades 1 to 7 in British Columbia, Canada. Your reader plans the child's first workbook, and parts may later be shown to the child's parent. Use only the facts in the JSON you get.
+const SYSTEM = `You interpret the result of a math placement test for one child from kindergarten to grade 9 in British Columbia, Canada. The test checks skills up to grade 8 only. Your reader plans the child's first workbook, and parts may later be shown to the child's parent. Use only the facts in the JSON you get.
 
 The JSON holds:
 - profile: the measured facts. Each BC standard tested, with its result. Strengths: the secure standards. Struggles: standards at or below the school grade that are not secure, with the child's real wrong answers and the ids of the known mistakes they match. Number facts, how the child took the test, and the parent's answers: how the child feels about math, the main goal and the time each week.
 - misconceptions: each known mistake id in plain words. A wrong answer can match a known mistake by chance: treat it as a likely cause, not as certain.
 - struggle_skills: for each struggle, its skills, the skills each one needs first, and the child's result on each needed skill when the test measured it: its standard's result, or "tested in the quick facts round" when only the facts round asked that skill.
 - next_challenge_candidates: the standards the child is ready for: not yet secure, not a struggle, and every standard they build on is secure. There may be none. A candidate has a result when questions measured it, and quick_facts_round_skills lists its skills that the facts round asked.
-- school_grade_standards: every BC standard of the child's school grade, by code and words.
+- school_grade_standards: every BC standard of the child's school grade, by code and words; for a grade 9 child, grade 8's.
 
 Return:
 - struggles: one entry for each struggle, with its code.

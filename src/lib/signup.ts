@@ -60,7 +60,7 @@ export interface SignupPayload {
   postal: string;
   plan: "one";
   subject: string;
-  /** School grade, 1-7 (BC ages 6-12). */
+  /** School grade, 1-7: the old booking form (no longer offered) and its signups table. The assessment takes K-9 (account.ts, D-156). */
   grade: number;
   curriculum: CurriculumId;
   /** CTA that opened the form, referrer and UTM tags, so we know which channel brought each parent. */

@@ -105,10 +105,11 @@ function browserDevice(pointers: readonly string[]): TestDevice {
 export type StartMode = "new" | "resume" | "finish" | "restart";
 
 /**
- * `typing`: the whiteboard has a text box (grades 3-7); grades 1-2 draw only (#67). `breakAfter`: questions before the
- * halfway ring, for the progress on the help and end screens (the band's stage 1).
+ * `typing`: the whiteboard has a text box (grades 3-9); Kindergarten to grade 2 draw only (#67). `breakAfter`: questions
+ * before the halfway ring, for the progress on the help and end screens (the band's stage 1). `readFirst` (D-156,
+ * Kindergarten): the voice reads each new question as it opens (readsAloudFirst).
  */
-export function TakeTest({ childId, name, breakAfter, ready, done, mode: firstMode = "new", typing = true, afterBreak = false, checkGrid = false }: { childId: string; name: string; breakAfter: number; ready: boolean; done: boolean; mode?: StartMode; typing?: boolean; afterBreak?: boolean; checkGrid?: boolean }) {
+export function TakeTest({ childId, name, breakAfter, ready, done, mode: firstMode = "new", typing = true, afterBreak = false, checkGrid = false, readFirst = false }: { childId: string; name: string; breakAfter: number; ready: boolean; done: boolean; mode?: StartMode; typing?: boolean; afterBreak?: boolean; checkGrid?: boolean; readFirst?: boolean }) {
   const [screen, setScreen] = useState<Screen>(done ? { name: "done" } : { name: "intro" });
   const [progress, setProgress] = useState<{ total: number; breakAfter: number } | null>(null);
   const [busy, setBusy] = useState(false);
@@ -508,7 +509,7 @@ export function TakeTest({ childId, name, breakAfter, ready, done, mode: firstMo
         {screen.name === "intro" && <Intro name={name} ready={ready} busy={busy} onStart={() => start()} failure={failure} mode={mode} afterBreak={afterBreak} checkGrid={checkGrid} />}
         {screen.name === "question" && (
           <Question key={`${(viewed?.question ?? screen.question).id}:${visit}`} testId={screen.testId} typing={typing}
-            question={viewed?.question ?? screen.question} initial={viewed ? viewed.response : held[screen.question.id] ?? ""} revisit={viewed !== null}
+            readFirst={readFirst && viewed === null} question={viewed?.question ?? screen.question} initial={viewed ? viewed.response : held[screen.question.id] ?? ""} revisit={viewed !== null}
             initialBoard={viewed ? unsaved[viewed.question.id] : undefined} storedWork={viewed?.work}
             canBack={answered.some((a) => a.number < (viewed?.number ?? screen.number))}
             marked={marks.has(viewed?.number ?? screen.number)} onMark={() => toggleMark(viewed?.number ?? screen.number)}
@@ -583,7 +584,7 @@ function Intro({ name, ready, busy, onStart, failure, mode, afterBreak, checkGri
       <MessageScreen>
         <p className="test-kicker">Math test</p>
         <h1 className="test-title">The test for {name}&apos;s grade is not ready yet.</h1>
-        <p className="test-lead">The test is open for grades 1 to 5 now. We are writing the questions for the other grades.</p>
+        <p className="test-lead">The test is open for Kindergarten to Grade 9, but this one could not be built. Please try again later.</p>
         <Link className="btn ghost" href="/account">Back to your account</Link>
       </MessageScreen>
     );
@@ -662,8 +663,10 @@ const PAD_KEYS = ["1", "2", "3", "4", "5", "6", "7", "8", "9", ".", "0"];
 
 interface QuestionProps {
   testId: string;
-  /** Grades 3-7 can type on the whiteboard; grades 1-2 draw only (#67). */
+  /** Grades 3-9 can type on the whiteboard; Kindergarten to grade 2 draw only (#67). */
   typing: boolean;
+  /** D-156: the voice reads the question as it opens (Kindergarten, a question not seen before). */
+  readFirst?: boolean;
   question: PublicQuestion;
   /** #249: the answer on the screen when the question opens: the child's answer to a question they went back to. */
   initial: string;
@@ -693,7 +696,7 @@ interface QuestionProps {
 }
 
 // One question in the split desk (D-088): the question and the answer on the left, the whiteboard on the right.
-function Question({ testId, typing, question, initial, initialBoard, storedWork, revisit, canBack, marked, onMark, main, takeYourTime, onLeave, onShown, failure }: QuestionProps) {
+function Question({ testId, typing, readFirst = false, question, initial, initialBoard, storedWork, revisit, canBack, marked, onMark, main, takeYourTime, onLeave, onShown, failure }: QuestionProps) {
   const [value, setValue] = useState(initial);
   const [sending, setSending] = useState(false);
   // Time on the question runs from when it appears to when the child presses Next.
@@ -858,7 +861,7 @@ function Question({ testId, typing, question, initial, initialBoard, storedWork,
       <div className="test-pane test-pane-l">
         {takeYourTime && <TakeYourTime />}
         <div className="test-qrow">
-          <ReadAloud key={question.id} text={spoken} onRead={onRead} />
+          <ReadAloud key={question.id} text={spoken} onRead={onRead} auto={readFirst} />
           <h1 id="test-q-title" ref={heading} tabIndex={-1} className="test-prompt"><PromptText text={question.prompt} /></h1>
         </div>
         {question.figure?.kind === "bars" && <BarGraph figure={question.figure} />}

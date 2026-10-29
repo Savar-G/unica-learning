@@ -41,7 +41,8 @@ describe("a grade 1-2 test, every route, every province", () => {
   const sessions = (grade: Grade, province: Province, count: number) =>
     Array.from({ length: count }, (_, i) => createSession({ grade, province }, i * 7919 + 11));
 
-  it.each([1, 2] as Grade[])("grade %i: each route offers at least 5 drawing questions, so the core can require 5", (grade) => {
+  // D-156: Kindergarten takes this band, so its routes keep the same counts.
+  it.each([0, 1, 2] as Grade[])("grade %i: each route offers at least 5 drawing questions, so the core can require 5", (grade) => {
     expect(band.whiteboardRequired).toBe(5);
     for (const province of PROVINCES) {
       for (const s of sessions(grade, province, 400)) {
@@ -53,7 +54,7 @@ describe("a grade 1-2 test, every route, every province", () => {
     }
   });
 
-  it.each([1, 2] as Grade[])("grade %i: each route requires exactly 5 shown-work questions, all drawn from drawing-suited templates", (grade) => {
+  it.each([0, 1, 2] as Grade[])("grade %i: each route requires exactly 5 shown-work questions, all drawn from drawing-suited templates", (grade) => {
     for (const province of PROVINCES) {
       for (const s of sessions(grade, province, 200)) {
         for (const route of ["up", "stay", "down"] as const) {
@@ -67,7 +68,7 @@ describe("a grade 1-2 test, every route, every province", () => {
   });
 
   it("no question repeats within a test", () => {
-    for (const grade of [1, 2] as Grade[]) {
+    for (const grade of [0, 1, 2] as Grade[]) {
       for (const s of sessions(grade, "BC", 60)) {
         for (const route of ["up", "stay", "down"] as const) {
           const asked = [...s.stage1, ...s.stage2[route]].map((q) => `${q.prompt} ${[...(q.choices ?? [])].sort()}`);

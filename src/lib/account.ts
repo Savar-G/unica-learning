@@ -1,14 +1,29 @@
 // Parent accounts for the online assessment (#62, D-082). Shared by the account forms (client) and /api/account (server).
+import { isGrade } from "@/lib/assessment/grades";
 import { CURRICULA, POSTAL, clip, cleanSource, type CurriculumId } from "@/lib/signup";
 
 export const PASSWORD_MIN = 8;
 /** Stops a script from adding children without end. No family needs more. */
 export const MAX_CHILDREN = 8;
-export const GRADES = [1, 2, 3, 4, 5, 6, 7] as const;
+/** The grades the picker offers: Kindergarten (0) to Grade 9 (D-156). Labels: gradeLabel, never "Grade 0". */
+export { GRADES } from "@/lib/assessment/grades";
+
+/**
+ * D-156: what the test is for this grade, where it differs, in plain words; null for grades 1-8. Kindergarten: the voice
+ * reads the questions. Grade 9: the test stops at grade 8 (D-153), and grade 9 work starts with the level tests.
+ */
+export function gradeTestNote(grade: number, name: string): string | null {
+  if (grade === 9) return `The test checks math up to Grade 8. In the program, Grade 9 topics open as ${name} passes level tests on the Grade 8 skills they build on.`;
+  if (grade === 0) return "The test reads each question aloud.";
+  return null;
+}
+
+/** D-156: what the grade picker says under it. "K" alone is not a label, so it always says what K is, then gradeTestNote. */
+export const gradeHint = (grade: number): string => ["K is Kindergarten.", gradeTestNote(grade, "your child")].filter(Boolean).join(" ");
 
 export interface ChildInput {
   firstName: string;
-  /** School grade, 1-7. */
+  /** School grade, 0-9: 0 is Kindergarten (D-156). Children added before D-156 hold 1-7. */
   grade: number;
   /** The curriculum the child is measured against; "other" scores against BC (D-083). */
   province: CurriculumId;
@@ -67,9 +82,10 @@ export interface Child {
 export function cleanChild(raw: unknown): ChildInput | null {
   const c = (raw ?? {}) as Partial<Record<keyof ChildInput, unknown>>;
   const firstName = clip(c.firstName, 60);
-  const grade = Number(c.grade);
+  // 0 is Kindergarten, so a missing or empty grade must not become 0 the way Number(null) and Number("") do.
+  const grade = typeof c.grade === "number" ? c.grade : typeof c.grade === "string" && c.grade.trim() !== "" ? Number(c.grade) : NaN;
   const province = typeof c.province === "string" && Object.hasOwn(CURRICULA, c.province) ? (c.province as CurriculumId) : null;
-  if (!firstName || !(GRADES as readonly number[]).includes(grade) || !province) return null;
+  if (!firstName || !isGrade(grade) || !province) return null;
   return { firstName, grade, province };
 }
 

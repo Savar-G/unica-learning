@@ -3,6 +3,7 @@ import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { pageMetadata } from "@/lib/metadata";
 import { CURRICULA } from "@/lib/signup";
+import { gradeLabel } from "@/lib/assessment/grades";
 import type { StartState } from "@/lib/assessment";
 import { stateFor } from "@/lib/test-attempt";
 import { parentStartStates } from "@/lib/test-attempt-server";
@@ -63,7 +64,7 @@ export default async function Account({ searchParams }: PageProps<"/account">) {
         {children.map((c, i) => (
           <li key={c.id} className="acct-kid">
             <span>
-              <b>{c.first_name}</b><span className="small">Grade {c.grade} · {CURRICULA[c.province]}</span>
+              <b>{c.first_name}</b><span className="small">{gradeLabel(c.grade)} · {CURRICULA[c.province]}</span>
               {/* #126: after the first report, the parent can answer or change how the child learns. */}
               {newestReport.has(c.id) && <Link className="small acct-learn" href={learningPath(c.id)}>
                 {fromRow(c) ? `How ${c.first_name} learns: change answers` : `Tell us how ${c.first_name} learns`}
