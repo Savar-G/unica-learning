@@ -62,7 +62,7 @@ function Fork() {
       <div className="pz-forks">
         {(["a", "b"] as const).map((id, i) => (
           <Rise key={id} d={i * 0.08} className="pz-row">
-            <div className="pz-thumb"><PageDeck id={id} name={SAMPLE_CHILDREN[id].name} pages={PAGES[id].map((alt, n) => <SheetImage key={n} src={`/samples/${NAMES[id]}-${n + 1}.webp`} alt={alt} />)} /></div>
+            <div className="pz-thumb"><PageDeck id={id} name={SAMPLE_CHILDREN[id].name} pages={PAGES[id].map((alt, n) => <SheetImage key={n} src={`/samples/${FILES[id][n]}.webp`} alt={alt} />)} /></div>
             <div>
               <Who child={SAMPLE_CHILDREN[id]} />
               <Lines child={SAMPLE_CHILDREN[id]} />
@@ -75,13 +75,16 @@ function Fork() {
 }
 
 // ---------- The workbook pages ----------
-const NAMES = { a: "leah", b: "kai" } as const;
+const FILES = {
+  a: ["leah-stories", "leah-new-idea", "leah-practice", "leah-review"],
+  b: ["kai-new-idea", "kai-practice", "kai-stories", "kai-step-up"],
+} as const;
 
 const PAGES: Record<"a" | "b", string[]> = {
   a: [
+    "A word-problems page from Leah's workbook: three take-away stories with space to show her work.",
     "A page from Leah's workbook: a worked example of borrowing across a zero, 403 − 168 = 235, with a spot-the-error box.",
     "A practice page from Leah's workbook: one worked subtraction across a zero, then four for her to finish.",
-    "A word-problems page from Leah's workbook: three take-away stories with space to show her work.",
     "A review page from Leah's workbook: eight quick questions from earlier days and four mixed stories.",
   ],
   b: [
