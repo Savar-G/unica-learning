@@ -8,11 +8,11 @@ import { REPORTED_STRAND, REPORTED_STRAND_NAMES, bandFor } from "./constants";
 import { levelCertainty, storedLevelCertainty, strandCertainty, strandStatus, workingLevelOf, type Certainty } from "./certainty";
 import { factsStandards, type FactsResult } from "./facts";
 import { TOO_FAST_MS, helpLikely, type Flag, type HelpAnswer } from "./flags";
-import { startLevel } from "./grades";
+import { testedGrade } from "./grades";
 import { RUSH_RUN, paceOf } from "./rushing";
 import { fromRemovedRound } from "./session";
 import type { Interest, LearningGoal, LearningStyle, MathFeeling, WeeklyTime } from "@/lib/learning-style";
-import { BC_LEVEL_STANDARDS, BC_SKILL_MAP } from "./skill-map";
+import { BC_SKILL_MAP } from "./skill-map";
 import type { Grade, Level, LevelResult, Placement, Province, Question, ReportedStrand, Route, StrandStatus } from "./types";
 
 /** The version of the profile's JSON. A change that a reader of stored profiles must know about adds one. */
@@ -217,7 +217,8 @@ export interface ProfileAi {
 export interface LearnerProfile {
   schemaVersion: typeof PROFILE_SCHEMA_VERSION;
   /** The test the facts come from. `answered`: every answered question, also the rushed ones left out of the score. */
-  test: { grade: Grade; province: Province; route: Route; answered: number };
+  /** `testedTo` (D-158): the grade the test measured up to (testedGrade); absent in profiles built before D-158. */
+  test: { grade: Grade; testedTo?: Level; province: Province; route: Route; answered: number };
   level: { working: Level; certainty: Certainty; confidence: Placement["confidence"]; atCeiling: boolean };
   /** Each reported area the placement scored. */
   strands: ProfileStrand[];
@@ -241,7 +242,8 @@ export interface LearnerProfile {
 
 /** Every bank template, by id: its BC standard. */
 const TEMPLATES = new Map(Object.values(BANKS).flat().map((t) => [t.id, t]));
-const STANDARDS = new Map(BC_LEVEL_STANDARDS.map((s) => [s.code, s]));
+// Every standard of the map, grade 9 too: a Grade 9 test asks level 9 questions (D-158).
+const STANDARDS = new Map(BC_SKILL_MAP.standards.map((s) => [s.code, s]));
 const standardOf = (a: ProfileAnswer) => TEMPLATES.get(a.question.templateId)?.standard;
 
 /** Curriculum order: by grade, then by the standard's number ("4.9" before "4.10"). */
@@ -280,10 +282,12 @@ function standardsOf(counted: readonly ProfileAnswer[], grade: Grade): ProfileSt
   }).sort(curriculumOrder);
 }
 
-/** The first and the last third of the answers at the school grade (Thirds): at grade 8 for a Grade 9 child (D-156). */
-function thirdsOf(answers: readonly ProfileAnswer[], grade: Grade): Thirds {
+/**
+ * The first and the last third of the answers at the school grade (Thirds): at `start`, the grade the test measured up
+ * to (testedGrade: grade 8 for a Grade 9 test from before D-158).
+ */
+function thirdsOf(answers: readonly ProfileAnswer[], start: Level): Thirds {
   const size = Math.floor(answers.length / 3);
-  const start = startLevel(grade);
   const atGrade = (part: readonly ProfileAnswer[]) => tally(part.filter((a) => a.question.level === start));
   const first = atGrade(answers.slice(0, size));
   const last = atGrade(answers.slice(answers.length - size));
@@ -322,7 +326,7 @@ function behaviourOf(input: ProfileInput): ProfileBehaviour {
     unreliable: pace.unreliable,
     rushRuns,
     leftOut: placement.pace?.leftOut.length ?? 0,
-    thirds: thirdsOf(answers, placement.grade),
+    thirds: thirdsOf(answers, testedGrade(placement.grade, placement.levels)),
     whiteboard: {
       required: answers.filter((a) => a.work.required).length,
       requiredWithWork: answers.filter((a) => a.work.required && withWork(a)).length,
@@ -388,9 +392,9 @@ export function learnerProfile(input: ProfileInput): LearnerProfile | null {
     });
 
   // A quick facts round that ran tested its facts standards too (#242).
-  // D-156: the standards of the test's start level, grade 8 for a Grade 9 child: the test never asks grade 9 (D-153).
+  // The standards of the grade the test measured up to: the school grade (grade 8 for a Grade 9 test before D-158).
   const tested = new Set([...standards.map((s) => s.code), ...factsStandards(placement.facts?.families ?? [])]);
-  const start = startLevel(placement.grade);
+  const start = testedGrade(placement.grade, placement.levels);
   const untested = BC_SKILL_MAP.standards
     .filter((s) => s.grade === start && !tested.has(s.code))
     .map((s): StandardRef => ({ code: s.code, text: s.text, strand: REPORTED_STRAND[s.strand] }))
@@ -401,7 +405,7 @@ export function learnerProfile(input: ProfileInput): LearnerProfile | null {
 
   return {
     schemaVersion: PROFILE_SCHEMA_VERSION,
-    test: { grade: placement.grade, province: placement.province, route: placement.route, answered: answers.length },
+    test: { grade: placement.grade, testedTo: testedGrade(placement.grade, placement.levels), province: placement.province, route: placement.route, answered: answers.length },
     level: {
       working: placement.workingLevel,
       certainty: levelSure,

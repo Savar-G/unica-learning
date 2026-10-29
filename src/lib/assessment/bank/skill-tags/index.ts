@@ -7,8 +7,9 @@ import { TAGS_GRADES_3_5_LEVELS_3_4 } from "./grades-3-5-levels-3-4";
 import { TAGS_GRADES_3_5_LEVELS_5_6 } from "./grades-3-5-levels-5-6";
 import { TAGS_GRADES_6_7_LEVELS_5_6 } from "./grades-6-7-levels-5-6";
 import { TAGS_GRADES_6_7_LEVELS_7_8 } from "./grades-6-7-levels-7-8";
+import { TAGS_GRADES_6_7_LEVEL_9 } from "./grades-6-7-level-9";
 
-const PARTS = [TAGS_GRADES_1_2, TAGS_GRADES_3_5_LEVELS_3_4, TAGS_GRADES_3_5_LEVELS_5_6, TAGS_GRADES_6_7_LEVELS_5_6, TAGS_GRADES_6_7_LEVELS_7_8];
+const PARTS = [TAGS_GRADES_1_2, TAGS_GRADES_3_5_LEVELS_3_4, TAGS_GRADES_3_5_LEVELS_5_6, TAGS_GRADES_6_7_LEVELS_5_6, TAGS_GRADES_6_7_LEVELS_7_8, TAGS_GRADES_6_7_LEVEL_9];
 
 /** Every template's skill tag. A template id tagged in two files is an error, not a silent override. */
 export const SKILL_TAGS: Readonly<Record<string, SkillTag>> = Object.fromEntries(

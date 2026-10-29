@@ -11,7 +11,7 @@
 // Pure, like the profile: the server module (src/lib/learner-profile-ai.ts) sends the request through the AI client.
 import { REPORT_TEXT_NAME, checkAiText, parentTextProblem, type ReportTextProblem } from "./ai-checks";
 import { FACT_SPEED_FROM_GRADE, factsSkills } from "./facts";
-import { startLevel } from "./grades";
+import { comparedGrade } from "./grades";
 import { MISCONCEPTIONS, type MisconceptionId } from "./misconceptions";
 import type { LearnerProfile, PlanPart, ProfileAi, WorkbookPlan } from "./profile";
 import { BC_LEVEL_STANDARDS, BC_SKILL_MAP } from "./skill-map";
@@ -105,8 +105,11 @@ function schemaProblem(schema: JsonSchema, value: unknown, at: string): string |
   }
 }
 
-// K-8 only: a grade 9 standard (workbooks only) is an unknown standard here, so never a next challenge.
+// K-8 only: a grade 9 standard is an unknown standard here, so never a next challenge (D-153 rule 2). A Grade 9
+// child's grade 9 standards are school-grade standards instead (school_grade_standards).
 const STANDARDS = new Map(BC_LEVEL_STANDARDS.map((s) => [s.code, s]));
+// Every standard of the map, for the skills of a struggle: a Grade 9 child's struggle can be a grade 9 standard (D-158).
+const ALL_STANDARDS = new Map(BC_SKILL_MAP.standards.map((s) => [s.code, s]));
 /** The result of a skill or a standard that only the quick facts round asked (#242). */
 const FACTS_TESTED = "tested in the quick facts round";
 const OWNER = new Map(BC_SKILL_MAP.standards.flatMap((s) => s.skills.map((k) => [k.id, s] as const)));
@@ -164,7 +167,7 @@ export function profileAiFacts(profile: LearnerProfile) {
     misconceptions: Object.fromEntries(misconceptions.map((id) => [id, MISCONCEPTIONS[id as MisconceptionId]?.description ?? "unknown"])),
     struggle_skills: profile.struggles.map((s) => ({
       code: s.code,
-      skills: (STANDARDS.get(s.code)?.skills ?? []).map((k) => ({
+      skills: (ALL_STANDARDS.get(s.code)?.skills ?? []).map((k) => ({
         id: k.id,
         text: k.text,
         requires: k.requires.flatMap((id) => {
@@ -187,8 +190,9 @@ export function profileAiFacts(profile: LearnerProfile) {
       }),
     // The plan may name any standard of the school grade, as before #245: all of them, with no result, so the list
     // says nothing about which the test measured.
-    // D-156: a Grade 9 child's are grade 8's, the highest the test checks: the plan never names grade 9 (D-153).
-    school_grade_standards: BC_SKILL_MAP.standards.filter((s) => s.grade === startLevel(profile.test.grade)).map((s) => ({ code: s.code, text: s.text })),
+    // The grade the test measured up to (D-158): grade 9's for a Grade 9 child, grade 8's for a Grade 9 test from before
+    // D-158. A Grade 7 or 8 child's plan never names grade 9 (D-153 rule 2).
+    school_grade_standards: BC_SKILL_MAP.standards.filter((s) => s.grade === comparedGrade(profile.test)).map((s) => ({ code: s.code, text: s.text })),
   };
 }
 

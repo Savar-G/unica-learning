@@ -27,7 +27,7 @@ export const GRADE_BANDS: Record<GradeBandId, GradeBand> = {
   // its bank starts at level K, the child draws and does not type, and the test is the shortest.
   "1-2": { id: "1-2", grades: [0, 1, 2], length: 24, stage1: 12, whiteboardRequired: 5, whiteboardTyping: false, strands: ["number", "algebra", "shapes"] },
   "3-5": { id: "3-5", grades: [3, 4, 5], length: 36, stage1: 18, whiteboardRequired: 7, whiteboardTyping: true, strands: ["number", "fractions", "algebra", "shapes"] },
-  // Grades 8 and 9 (D-156) take this band: its bank holds levels 5-8, and both start at level 8 (grades.ts, D-153).
+  // Grades 8 and 9 (D-156) take this band: its bank holds levels 5-9; each starts at its school grade (grades.ts, D-158).
   "6-7": { id: "6-7", grades: [6, 7, 8, 9], length: 42, stage1: 21, whiteboardRequired: 10, whiteboardTyping: true, strands: ["number", "fractions", "algebra", "shapes"] },
 };
 

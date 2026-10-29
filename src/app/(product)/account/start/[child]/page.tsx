@@ -59,8 +59,8 @@ export default async function StartScreen({ params, searchParams }: PageProps<"/
       {via === "link" && <TrackOnce event="sign_in" props={{ channel: "link" }} />}
       {fromReminder && <TrackOnce event="reminder_open" props={{ status: fromReminder }} />}
       <p className="small">{gradeLabel(child.grade)} · {CURRICULA[child.province]}</p>
-      {/* D-156: Kindergarten hears the questions; Grade 9 is tested up to grade 8 (D-153). */}
-      {gradeTestNote(child.grade, child.first_name) && <p className="small">{gradeTestNote(child.grade, child.first_name)}</p>}
+      {/* D-156: Kindergarten hears the questions. */}
+      {gradeTestNote(child.grade) && <p className="small">{gradeTestNote(child.grade)}</p>}
       {/* Inside the 30 days after a test there is nothing to start, on any device (#72): the screen gives the date. */}
       {phone && state.kind !== "wait" ? (
         <div className="acct-card acct-phone">

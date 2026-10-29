@@ -41,7 +41,8 @@ describe("grade 6-7 tests from the default bank", () => {
     }
   });
 
-  // D-156: Grades 8 and 9 take this band (both start at level 8), so their routes keep the same counts.
+  // D-156: Grades 8 and 9 take this band (D-158: Grade 8 starts at level 8, Grade 9 at level 9), so their routes keep the
+  // same counts.
   it.each([6, 7, 8, 9] as Grade[])("grade %i: every route has 10 suitable required-work questions and four report areas", (grade) => {
     for (const province of PROVINCES) {
       for (const seed of SEEDS.slice(0, 60)) {
@@ -73,6 +74,19 @@ describe("siblings and retakes in grades 6-7", () => {
     grade === 7 && province === "AB" ? { templates: 0.85, questions: 0.15 }
       : grade === 7 && province === "ON" ? { templates: 0.6, questions: 0.15 }
         : { templates: 0.6, questions: 0.12 };
+  it.each([8, 9] as Grade[])("grade %i: BC siblings share few templates and few questions (D-158)", (grade) => {
+    let sharedTemplates = 0, templates = 0, sharedQuestions = 0, questions = 0;
+    for (let i = 0; i < 200; i++) {
+      const [a, b] = [createSession({ grade, province: "BC" }, 2 * i + 1), createSession({ grade, province: "BC" }, 2 * i + 2)];
+      const bTemplates = new Set(b.stage1.map((q) => q.templateId));
+      for (const t of new Set(a.stage1.map((q) => q.templateId))) { templates++; if (bTemplates.has(t)) sharedTemplates++; }
+      const bPrompts = new Set([...b.stage1, ...b.stage2.stay].map((q) => q.prompt));
+      for (const q of [...a.stage1, ...a.stage2.stay]) { questions++; if (bPrompts.has(q.prompt)) sharedQuestions++; }
+    }
+    expect(sharedTemplates / templates, `grade ${grade} templates`).toBeLessThan(0.6);
+    expect(sharedQuestions / questions, `grade ${grade} questions`).toBeLessThan(0.12);
+   }, 30_000);
+
   it.each([6, 7] as Grade[])("grade %i: siblings share few templates and few questions, in every province", (grade) => {
     for (const province of TAGGED) {
       let sharedTemplates = 0, templates = 0, sharedQuestions = 0, questions = 0;
@@ -86,7 +100,7 @@ describe("siblings and retakes in grades 6-7", () => {
       expect(sharedTemplates / templates, `grade ${grade} ${province} templates`).toBeLessThan(limit(grade, province).templates);
       expect(sharedQuestions / questions, `grade ${grade} ${province} questions`).toBeLessThan(limit(grade, province).questions);
     }
-  });
+   }, 30_000);
 });
 
 /**
@@ -121,7 +135,7 @@ describe("the grades 6-7 bank", () => {
         }
       }
     }
-  });
+   }, 30_000);
 
   it("distinguishes adding an implicit product from joining its digits", () => {
     const q = fillTemplate(BANK.find((t) => t.id === "g67-6-evaluate")!, 3);
@@ -435,21 +449,38 @@ describe("the grades 6-7 bank", () => {
     ["g67-8-negative-equation", "6x + 12 = −18. What is x?", "−5"],
     ["g67-8-hypotenuse", "The two sides that meet at the right angle of a right triangle are 18 cm and 24 cm. How long is the longest side, in centimetres?", "30"],
     ["g67-8-mean", "Find the mean of these five values: 3, 13, 11, 5, 5.", "7.4"],
+    ["g67-8-cube", "What is 8³?", "512"],
+    ["g67-9-zero-exponent", "What is 12⁰ + 10¹?", "11"],
   ])("marks the worked example %s", (id, prompt, answer) => {
     const q = fillTemplate(BANK.find((t) => t.id === id)!, 3);
     expect(q.prompt).toBe(prompt);
     expect(q.answer).toBe(answer);
   });
 
-  it("covers BC levels 5-8 with all five province tags", () => {
+  it("covers BC levels 5-9 with all five province tags; level 9 is grade 9 in every province (D-158)", () => {
     for (const t of BANK) {
       expect(Object.keys(t.grades).sort(), t.id).toEqual([...TAGGED].sort());
       expect(t.grades.BC, t.id).toBeGreaterThanOrEqual(5);
-      expect(t.grades.BC, t.id).toBeLessThanOrEqual(8);
+      expect(t.grades.BC, t.id).toBeLessThanOrEqual(9);
       for (const p of TAGGED) {
         const level = t.grades[p as keyof typeof t.grades] as number;
         expect(level, `${t.id} ${p}`).toBeGreaterThanOrEqual(0);
-        expect(level, `${t.id} ${p}`).toBeLessThanOrEqual(8);
+        expect(level, `${t.id} ${p}`).toBeLessThanOrEqual(9);
+        // A BC level 9 template is grade 9 in every province: no one meets it before their grade 9 test.
+        if (t.grades.BC === 9) expect(level, `${t.id} ${p}`).toBe(9);
+      }
+      expect(t.grades.BC === 9, t.id).toBe(t.id.startsWith("g67-9-"));
+      expect(t.grades.BC === 9, t.id).toBe(t.standard.startsWith("9."));
+    }
+  });
+
+  it("holds enough BC templates for 42 places at level 8 and at level 9 in every report area, without repeats (D-158)", () => {
+    // Stage 1 and one form: 21 + 21 places, number first in the rotation (6 + 6), the other areas 5 + 5.
+    const need = { number: 12, fractions: 10, algebra: 10, shapes: 10 } as const;
+    for (const level of [8, 9]) {
+      for (const [strand, n] of Object.entries(need)) {
+        const pool = BANK.filter((t) => t.grades.BC === level && REPORTED_STRAND[t.strand] === strand);
+        expect(pool.length, `level ${level} ${strand}`).toBeGreaterThanOrEqual(n);
       }
     }
   });
@@ -753,6 +784,22 @@ describe("primary-source corrections from the #76 checker run", () => {
       const best = Math.max(...rises);
       expect(rises.filter((r) => r === best)).toHaveLength(1);
       expect(q.choices).toHaveLength(4);
+    }
+  });
+  it("never offers a distractor equal to the power in the power-meaning question (2^4 is 4 x 4)", () => {
+    for (const seed of SEEDS) {
+      const q = fillTemplate(byId("g67-9-power-meaning"), seed), { b, e } = q.values;
+      for (const w of q.wrong) {
+        const parts = w.value.replace(/[\s\u00a0\u202f]/g, "").split(w.value.includes("+") ? "+" : "×").map(Number);
+        const total = w.value.includes("+") ? parts.reduce((x, y) => x + y, 0) : parts.reduce((x, y) => x * y, 1);
+        expect(total, `${q.prompt} vs ${w.value}`).not.toBe(b ** e);
+      }
+    }
+  });
+  it("reads one degree in the singular", () => {
+    for (const seed of SEEDS) {
+      const q = fillTemplate(byId("g67-9-temperature-drop"), seed);
+      expect(q.readAloud).not.toMatch(/\b1 degrees\b/);
     }
   });
 });

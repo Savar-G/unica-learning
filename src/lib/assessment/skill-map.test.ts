@@ -136,8 +136,10 @@ describe("the BC skill map", () => {
     expect(unlinked).toEqual([]);
   });
 
-  it("keeps grade 9 off the assessment's K-8 level scale: no template asks it, and the profile and report never read it", () => {
-    expect(Object.values(BANKS).flat().filter((t) => t.standard.startsWith("9."))).toEqual([]);
+  it("asks grade 9 only in level 9 templates, and never offers it as a next challenge (D-153 rule 2, D-158)", () => {
+    const nine = Object.values(BANKS).flat().filter((t) => t.standard.startsWith("9."));
+    expect(nine.length).toBeGreaterThan(40);
+    expect(nine.filter((t) => Object.values(t.grades).some((g) => g !== 9)).map((t) => t.id)).toEqual([]);
     expect(BC_LEVEL_STANDARDS.filter((s) => s.grade > 8)).toEqual([]);
     expect(BC_LEVEL_STANDARDS).toEqual(BC_SKILL_MAP.standards.filter((s) => s.grade <= 8));
   });
