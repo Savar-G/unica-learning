@@ -62,7 +62,7 @@ function Fork() {
       <div className="pz-forks">
         {(["a", "b"] as const).map((id, i) => (
           <Rise key={id} d={i * 0.08} className="pz-row">
-            <div className="pz-thumb"><PageDeck id={id} name={SAMPLE_CHILDREN[id].name} pages={PAGES[id].map((alt, n) => <SheetImage key={n} src={`/samples/${FILES[id][n]}-sheet.webp`} alt={alt} />)} /></div>
+            <div className="pz-thumb"><PageDeck id={id} name={SAMPLE_CHILDREN[id].name} pages={PAGES[id].map((alt, n) => <SheetImage key={n} src={`/samples/${FILES[id][n]}-v2.webp`} alt={alt} />)} /></div>
             <div>
               <Who child={SAMPLE_CHILDREN[id]} />
               <Lines child={SAMPLE_CHILDREN[id]} />
