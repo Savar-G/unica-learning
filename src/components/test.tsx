@@ -696,7 +696,7 @@ interface QuestionProps {
 }
 
 // One question in the split desk (D-088): the question and the answer on the left, the whiteboard on the right.
-function Question({ testId, typing, readFirst = false, question, initial, initialBoard, storedWork, revisit, canBack, marked, onMark, main, takeYourTime, onLeave, onShown, failure }: QuestionProps) {
+export function Question({ testId, typing, readFirst = false, question, initial, initialBoard, storedWork, revisit, canBack, marked, onMark, main, takeYourTime, onLeave, onShown, failure }: QuestionProps) {
   const [value, setValue] = useState(initial);
   const [sending, setSending] = useState(false);
   // Time on the question runs from when it appears to when the child presses Next.
@@ -734,10 +734,11 @@ function Question({ testId, typing, readFirst = false, question, initial, initia
   });
   // #252: a revisit opens the board in the mode of the work on it (Type for typed working with no drawing).
   const [startMode] = useState(() => (revisit ? openMode(board, typing) : "draw"));
-  // The whiteboard opens when the child asks for it, so the question has the screen. It is always open when the
-  // question needs shown work (#67), and opens with the question when work is already on it.
+  // The whiteboard starts collapsed on a quick question, so the question has the screen; a slim tab on the right edge
+  // opens it. It starts open on a show-your-work question (#67), and opens with the question when work is already on it
+  // (a revisit, a restored draft). Once opened it stays open for this question; "Hide" in its top bar folds it away
+  // again, only while the board is empty.
   const [boardOpen, setBoardOpen] = useState(() => question.showWork || hasDrawing(board.strokes) || (typing && board.text.trim() !== ""));
-  const boardFixed = question.showWork;
   const stored = useRef(false);
   // Save each completed action before a reload can discard it, including an undo or clear to an empty board.
   // #249: any edit of the board or the typed working in this visit, Clear and Undo too, is changed work.
@@ -865,9 +866,6 @@ function Question({ testId, typing, readFirst = false, question, initial, initia
           <h1 id="test-q-title" ref={heading} tabIndex={-1} className="test-prompt"><PromptText text={question.prompt} /></h1>
         </div>
         {question.figure?.kind === "bars" && <BarGraph figure={question.figure} />}
-        {!boardOpen && (
-          <button type="button" className="test-board-open" onClick={() => setBoardOpen(true)}>{PENCIL}<span>Use the whiteboard</span></button>
-        )}
         <div className="test-response">
           {question.format === "choice" ? (
             <Choices options={shown.map((c, i) => ({ value: c, label: <ChoiceFace text={c} />, name: names[i] }))} value={value || null} onChange={setValue} labelledBy="test-q-title" />
@@ -893,10 +891,15 @@ function Question({ testId, typing, readFirst = false, question, initial, initia
           </div>
         </div>
       </div>
-      {boardOpen && (
-        <div className="test-pane test-pane-r">
-          {!boardFixed && <button type="button" className="test-board-hide" onClick={() => setBoardOpen(false)}>Hide whiteboard</button>}
-          <Whiteboard board={board} onChange={changeBoard} typing={typing} onSize={onBoardSize} startMode={startMode} />
+      {boardOpen ? (
+        <div className="test-pane test-pane-r" id="test-board">
+          <Whiteboard board={board} onChange={changeBoard} typing={typing} onSize={onBoardSize} startMode={startMode} onHide={() => setBoardOpen(false)} />
+        </div>
+      ) : (
+        <div className="test-pane test-pane-r test-board-rail">
+          <button type="button" className="test-board-tab" aria-expanded="false" aria-controls="test-board" onClick={() => setBoardOpen(true)}>
+            {PENCIL}<span>Work it out here</span>
+          </button>
         </div>
       )}
     </form>
