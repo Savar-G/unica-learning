@@ -36,7 +36,7 @@
 .pz-branch { width: 50%; height: 48px; justify-self: center; }
 .pz-branch path { fill: none; stroke: var(--accent); stroke-width: 1.5; opacity: 0.6; vector-effect: non-scaling-stroke; }
 .pz-forks { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
-.pz-row { display: grid; grid-template-columns: minmax(0, 0.7fr) minmax(0, 1.3fr); gap: 24px; align-items: start; background: var(--card); border-radius: 4px; padding: 24px; }
+.pz-row { display: grid; grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr); gap: 24px; align-items: start; background: var(--card); border-radius: 4px; padding: 24px; }
 .pz-row .pz-lines > div { grid-template-columns: 1fr; gap: 2px; }
 
 /* ---------- phones (D-072: short blocks, both children visible without a tap where possible) ---------- */
@@ -74,3 +74,6 @@
 .pz-dialog-bar .pz-deck-nav { margin-top: 0; }
 @media (max-width: 420px) { .pz-dialog-bar > span { display: none; } }
 @media (prefers-reduced-motion: reduce) { .pz-zoom .pz-sheet { transition: none; } }
+
+/* In the card, trim the page's side margins so the sheet reads tall like a workbook page; the full-size view shows the whole page. */
+.pz-thumb .pz-sheet { aspect-ratio: 688 / 1056; object-fit: cover; object-position: center top; }
