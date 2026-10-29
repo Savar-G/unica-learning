@@ -1,6 +1,13 @@
 // Single source for brand and offer facts. The brand name is decided: "Unica Learning" (Savar, 2026-10-08).
 export const BRAND = "Unica Learning";
 
+// Social profiles: the footer icons and the Organization `sameAs` read from here. Order is display order.
+export const SOCIAL_LINKS = [
+  { id: "instagram", label: "Instagram", href: "https://www.instagram.com/unicalearning/" },
+  { id: "facebook", label: "Facebook", href: "https://www.facebook.com/profile.php?id=61595239304716" },
+  { id: "linkedin", label: "LinkedIn", href: "https://www.linkedin.com/company/unica-learning/" },
+] as const;
+
 // One plan for now: math only (Savar, 2026-10-11). Reading comes back later. Stored rows can still say "both".
 export const PLANS = {
   one: { id: "one", name: "Math", price: 79.99, note: "K to Grade 9, ages 5 to 14" },

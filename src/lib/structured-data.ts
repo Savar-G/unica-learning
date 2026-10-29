@@ -2,7 +2,7 @@
 // Only facts the page states: no ratings, reviews or counts (DESIGN.md: no proof we do not have).
 import { FAQ } from "@/lib/faq";
 import { SITE_DESCRIPTION, SITE_URL } from "@/lib/metadata";
-import { BRAND, PLANS } from "@/lib/site";
+import { BRAND, PLANS, SOCIAL_LINKS } from "@/lib/site";
 import { BUSINESS_NAME, SUPPORT_EMAIL } from "@/lib/contact";
 import { ARTICLE_SECTIONS, type ArticleSection } from "@/lib/resource-format";
 
@@ -26,6 +26,7 @@ const ORGANIZATION = {
   url: SITE_URL,
   logo: `${SITE_URL}/apple-icon.png`,
   email: SUPPORT_EMAIL,
+  sameAs: SOCIAL_LINKS.map((l) => l.href),
   areaServed: { "@type": "Country", name: "Canada" },
   address: { "@type": "PostalAddress", addressLocality: "Vancouver", addressRegion: "BC", addressCountry: "CA" },
 };
