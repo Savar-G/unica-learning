@@ -8,7 +8,7 @@ import { CookieSettingsButton } from "@/components/cookie-consent";
 import { ScanShot } from "@/components/scan-shot";
 import { FaqMore } from "@/components/faq-more";
 import { StartLink, StartNote } from "@/components/start-link";
-import { ADDITIONAL_CHILD_PRICE, BRAND, HERO, OFFER_ENDS, PLANS, cad } from "@/lib/site";
+import { ADDITIONAL_CHILD_PRICE, BRAND, HERO, OFFER_ENDS, PLANS, SOCIAL_LINKS, cad } from "@/lib/site";
 import { FAQ } from "@/lib/faq";
 import {
   BeliefList,
@@ -278,6 +278,26 @@ const FOOTER_GROUPS: { title: string; links: { label: string; href: string }[] }
   { title: "Help", links: [{ label: "Contact us", href: "/contact" }, { label: "Privacy", href: "/privacy" }, { label: "Terms", href: "/terms" }] },
 ];
 
+const SOCIAL_ICONS: Record<(typeof SOCIAL_LINKS)[number]["id"], ReactNode> = {
+  instagram: (
+    <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" strokeWidth="1.8">
+      <rect x="3.5" y="3.5" width="17" height="17" rx="5" />
+      <circle cx="12" cy="12" r="4" />
+      <circle cx="17.2" cy="6.8" r="1" fill="currentColor" stroke="none" />
+    </svg>
+  ),
+  facebook: (
+    <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false" fill="currentColor">
+      <path d="M13.5 21v-7.6h2.6l.4-3h-3V8.5c0-.9.3-1.5 1.5-1.5h1.6V4.3c-.3 0-1.2-.1-2.3-.1-2.3 0-3.9 1.4-3.9 4v2.2H7.8v3h2.6V21h3.1z" />
+    </svg>
+  ),
+  linkedin: (
+    <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false" fill="currentColor">
+      <path d="M5.4 9.4h3.1V19H5.4V9.4zM6.9 4.7a1.8 1.8 0 110 3.6 1.8 1.8 0 010-3.6zM10.4 9.4h3v1.3c.4-.8 1.4-1.6 3-1.6 3.1 0 3.7 2 3.7 4.7V19H17v-4.6c0-1.1 0-2.5-1.5-2.5s-1.8 1.2-1.8 2.4V19h-3.1V9.4z" />
+    </svg>
+  ),
+};
+
 /** Site footer (D-080): a white link card inside a grainy colour field. The home page passes <Closing /> as children. */
 export function Footer({ children }: { children?: ReactNode }) {
   return (
@@ -288,6 +308,13 @@ export function Footer({ children }: { children?: ReactNode }) {
           <div className="foot-brand">
             <a className="logo" href="#top">{BRAND}<b /></a>
             <p>A personalized math learning program for ages 5 to 14.</p>
+            <ul className="foot-social" aria-label="Social media">
+              {SOCIAL_LINKS.map((l) => (
+                <li key={l.id}>
+                  <a href={l.href} target="_blank" rel="noopener noreferrer" aria-label={`${BRAND} on ${l.label}`}>{SOCIAL_ICONS[l.id]}</a>
+                </li>
+              ))}
+            </ul>
           </div>
           {FOOTER_GROUPS.map((g) => (
             <nav className="foot-col" key={g.title} aria-label={g.title}>
