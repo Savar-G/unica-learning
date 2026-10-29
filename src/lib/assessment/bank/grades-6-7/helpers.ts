@@ -79,6 +79,11 @@ export function words(n: number): string {
 /** Keeps a sum or an equation on one line: the spaces around + − × ÷ and = do not break. */
 const keepTogether = (text: string) => text.replace(/ ([+−×÷=<>]) /g, " $1 ");
 
+/** The superscript digits 0-9, for powers on screen. */
+export const SUPERSCRIPT = "⁰¹²³⁴⁵⁶⁷⁸⁹";
+/** An exponent on screen: sup(12) is "¹²". */
+export const sup = (n: number) => [...String(n)].map((d) => SUPERSCRIPT[Number(d)]).join("");
+
 /** Choice speech for this bank, including ratios, signed coordinates and algebra. */
 function speakMath(text: string): string {
   const clean = text.replace(/ /g, " ");
@@ -91,6 +96,8 @@ function speakMath(text: string): string {
     .replace(/(\d+)\(/g, "$1 times (")
     .replace(/ − /g, " minus ")
     .replace(/−(?=\d)/g, "negative ")
+    // A negative term with no number before its letter, such as −x squared (D-158).
+    .replace(/−(?=[a-z])/g, "negative ")
     .replace(/\+/g, " plus ")
     .replace(/×/g, " times ")
     .replace(/÷/g, " divided by ")
@@ -98,6 +105,8 @@ function speakMath(text: string): string {
     .replace(/</g, " less than ")
     .replace(/>/g, " greater than ")
     .replace(/%/g, " percent")
+    // A power other than a square or a cube (D-158): "n⁸" is "n to the power of 8".
+    .replace(/[⁰¹²³⁴⁵⁶⁷⁸⁹]{2,}|[⁰¹⁴⁵⁶⁷⁸⁹]/g, (s) => ` to the power of ${[...s].map((c) => SUPERSCRIPT.indexOf(c)).join("")}`)
     .replace(/²/g, " squared")
     .replace(/³/g, " cubed")
     .replace(/\bcm\b/g, "centimetres")

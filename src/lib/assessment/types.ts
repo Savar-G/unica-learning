@@ -7,11 +7,11 @@ import type { Flag } from "./flags";
 import type { MisconceptionId } from "./misconceptions";
 import type { Rng } from "./rng";
 
-/** A level on the K-8 scale. 0 is Kindergarten. */
-export type Level = 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8;
+/** A level on the K-9 scale. 0 is Kindergarten. Only a Grade 9 child's test reaches level 9 (D-158). */
+export type Level = 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9;
 /**
  * School grades the assessment serves (D-156): 0 is Kindergarten, then grades 1 to 9. Rows stored before D-156 hold 1-7.
- * A Grade 9 child is tested up to level 8: the bank has no grade 9 content (D-153; grades.ts).
+ * A Grade 9 child is tested at level 9 (D-158; grades.ts). Grade 9 tests from before D-158 stopped at level 8.
  */
 export type Grade = 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9;
 

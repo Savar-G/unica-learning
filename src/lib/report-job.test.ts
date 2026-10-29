@@ -558,7 +558,7 @@ describe("the learner profile", () => {
     const profile = storedProfile(row.profile)!;
     expect(profile.schemaVersion).toBe(PROFILE_SCHEMA_VERSION);
     // Asha's test: every grade 4 question right, so no struggle, and each standard at her school grade is a strength.
-    expect(profile.test).toEqual({ grade: 4, province: "BC", route: "up", answered: 42 });
+    expect(profile.test).toEqual({ grade: 4, testedTo: 4, province: "BC", route: "up", answered: 42 });
     expect(profile.level).toMatchObject({ working: 4, certainty: "clear" });
     expect(profile.struggles).toEqual([]);
     expect(profile.strengths.length).toBeGreaterThan(0);

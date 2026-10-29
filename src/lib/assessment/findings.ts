@@ -5,7 +5,7 @@
 // behaviour, the full error list, how to help or the model ids (admin only, spec #181).
 import { MISCONCEPTIONS, type MisconceptionId } from "./misconceptions";
 import type { LearnerProfile, PlanPart, ProfileAi, ProfileStruggle, Tally } from "./profile";
-import { BC_LEVEL_STANDARDS } from "./skill-map";
+import { BC_SKILL_MAP } from "./skill-map";
 import type { Certainty } from "./certainty";
 import type { Level, StrandStatus } from "./types";
 
@@ -63,7 +63,9 @@ export interface ReportFindings {
   preview: WorkbookPreview | null;
 }
 
-const STANDARDS = new Map(BC_LEVEL_STANDARDS.map((s) => [s.code, s]));
+// Every standard of the map: a Grade 9 child's plan names grade 9 standards (D-158). A Grade 7 or 8 child's plan cannot
+// (D-153 rule 2): the plan keeps only standards the AI read, and none of those is grade 9 for them (profile-ai.ts).
+const STANDARDS = new Map(BC_SKILL_MAP.standards.map((s) => [s.code, s]));
 const SURE: Record<Certainty, number> = { clear: 0, "early-sign": 1 };
 const known = (id: string | null) => (id ? MISCONCEPTIONS[id as MisconceptionId] : undefined);
 

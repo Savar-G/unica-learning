@@ -1,14 +1,15 @@
 // BC skill map, Grade 9. Standard text is exact, from the Content of BC Mathematics 9
 // (https://curriculum.gov.bc.ca/curriculum/mathematics/9/core, read 2026-10-27); as in the other grades, the em dash of
-// the financial literacy heading is written " - ". The assessment does not test grade 9: these standards extend the map
-// for the workbooks (K-9). Skills and prerequisites: AI draft, for review (#194). Powers are written n^2.
+// the financial literacy heading is written " - ". Since D-158 the assessment tests grade 9 for Grade 9 children only
+// (bank/grades-6-7/level-9.ts); for every other child these standards are for the workbooks (K-9). Skills and
+// prerequisites: AI draft, for review (#194). Powers are written n^2.
 //
 // Who gets grade 9 work (D-153): BC Mathematics 9 is the first year of high school. A grade 7 or 8 child may get a
 // grade 9 skill as stretch work only through the workbook level progression: after passing the level test for the
 // grade 8 skills that the grade 9 skill requires (its prerequisite edges here). Never from the assessment: one
-// placement test is too thin evidence to start high-school algebra, so the assessment's next challenges, workbook plan
-// and report stay K-8 (BC_LEVEL_STANDARDS in ../skill-map.ts leaves grade 9 out). Equations with brackets are here, in
-// 9.5-distribute, not in grade 8.
+// placement test is too thin evidence to start high-school algebra, so a Grade 7 or 8 child's test, next challenges,
+// workbook plan and report stay K-8 (BC_LEVEL_STANDARDS in ../skill-map.ts leaves grade 9 out of the next
+// challenges). Equations with brackets are here, in 9.5-distribute, not in grade 8.
 import { skill, type BcStandard } from "./kit";
 
 export const BC_GRADE_9: readonly BcStandard[] = [

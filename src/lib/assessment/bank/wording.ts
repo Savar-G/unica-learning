@@ -8,7 +8,7 @@
 // object whose named measure is asked ("A rectangular patio is 14 m long and 4 m wide. What is its perimeter?").
 // A template has one wording for every seed: a template that mixed the two was split (g67-6-lcm, g67-6-lcm-story).
 //
-// 153 word problems and 380 bare-number questions. A test in bank-coverage.test.ts fails when a template has no entry.
+// 185 word problems and 443 bare-number questions. A test in bank-coverage.test.ts fails when a template has no entry.
 import type { Wording } from "../types";
 
 const WORD_PROBLEMS = [
@@ -48,6 +48,14 @@ const WORD_PROBLEMS = [
   "g67-7-story-equation", "g67-7-draining-pool", "g67-7-balance-boxes", "g67-7-circle-graph-amount",
   "g67-7-circle-graph-percent", "g67-7-count-outcomes", "g67-7-experimental", "g67-7-dice-sum", "g67-8-square-tile",
   "g67-8-unit-rate", "g67-8-three-part-ratio", "g67-8-expression-story", "g67-8-independent-probability",
+  // Bank gaps K, 8 and 9 (D-158): 32
+  "k-shop-total", "k-one-more-less", "k-add-or-take", "k-make-balance", "k-who-taller", "k-holds-more", "k-which-word",
+  "k-where-is", "k-graph-fewer", "k-season-likely", "g67-8-percent-change", "g67-8-best-buy", "g67-8-equation-story",
+  "g67-8-relation-story", "g67-8-missing-from-mean", "g67-9-temperature-drop", "g67-9-water-level",
+  "g67-9-budget-left", "g67-9-bank-balance", "g67-9-simple-interest", "g67-9-interest-total", "g67-9-savings-weeks",
+  "g67-9-pay-over-time", "g67-9-extrapolate", "g67-9-plans-equal", "g67-9-scale-factor", "g67-9-map-scale",
+  "g67-9-shadow-height", "g67-9-population-sample", "g67-9-fair-sample", "g67-9-sample-estimate",
+  "g67-9-misleading-graph",
 ];
 
 const BARE_NUMBERS = [
@@ -137,6 +145,22 @@ const BARE_NUMBERS = [
   "g67-8-negative-equation", "g67-8-negative-coefficient", "g67-8-substitute-signed", "g67-8-combine-expression",
   "g67-8-large-relation", "g67-8-integer-table", "g67-8-inverse-input", "g67-8-prism-surface", "g67-8-cube-surface",
   "g67-8-hypotenuse", "g67-8-missing-leg", "g67-8-mean", "g67-8-median", "g67-8-mode",
+  // Bank gaps K, 8 and 9 (D-158): 63
+  "k-count-one-kind", "k-numeral-match", "k-biggest-number", "k-five-frame", "k-ten-frame-count", "k-ten-frame-fill",
+  "k-coin-picture", "k-pattern-missing", "k-pattern-core", "k-two-more-less", "k-equal-groups", "k-same-shape-turned",
+  "g67-8-cube", "g67-8-perfect-cube", "g67-8-prime-factors", "g67-8-root-by-factors", "g67-8-cube-root",
+  "g67-8-cube-edge", "g67-8-root-tenth", "g67-8-percent-of-another", "g67-8-solve-proportion", "g67-8-divide-equation",
+  "g67-8-table-pair", "g67-8-write-expression", "g67-8-triangular-prism", "g67-8-cylinder-volume",
+  "g67-8-right-triangle-check", "g67-8-range", "g67-9-order-rationals", "g67-9-subtract-signed-decimals",
+  "g67-9-multiply-signed-decimals", "g67-9-order-of-operations", "g67-9-power-meaning", "g67-9-evaluate-power",
+  "g67-9-negative-base", "g67-9-zero-exponent", "g67-9-product-law", "g67-9-quotient-law", "g67-9-power-of-power",
+  "g67-9-power-of-product", "g67-9-simplify-evaluate", "g67-9-add-negative-fractions",
+  "g67-9-subtract-negative-fraction", "g67-9-multiply-negative-fractions", "g67-9-divide-negative-fractions",
+  "g67-9-fraction-order-of-operations", "g67-9-polynomial-degree", "g67-9-like-terms", "g67-9-add-polynomials",
+  "g67-9-subtract-polynomials", "g67-9-multiply-monomial", "g67-9-divide-monomial", "g67-9-decimal-relation-table",
+  "g67-9-horizontal-vertical", "g67-9-interpolate", "g67-9-distribute-equation", "g67-9-collect-terms-equation",
+  "g67-9-variables-both-sides", "g67-9-decimal-equation", "g67-9-metric-convert", "g67-9-similar-side",
+  "g67-9-similar-rectangles", "g67-9-biased-question",
 ];
 
 /** Every template id, with its wording. */

@@ -23,6 +23,7 @@ import {
   storedTest,
   submitAnswer,
   testLength,
+  testedGrade,
   upLevel,
   type Grade,
   type ProfileAnswer,
@@ -34,8 +35,8 @@ import {
 } from "@/lib/assessment";
 import { allRight, allWrong, checked, knowsUpTo, takeTest } from "@/lib/assessment/scripted-child";
 
-// D-156: the assessment takes Kindergarten (stored as 0) to Grade 9. Kindergarten starts at level K; Grades 8 and 9
-// start at level 8, the top of the bank, and nothing above grade 8 is ever asked (D-153).
+// D-156: the assessment takes Kindergarten (stored as 0) to Grade 9. Kindergarten starts at level K. D-158: Grade 9 starts
+// at level 9, the top of the bank; a Grade 7 or 8 child is never asked above grade 8 (D-153 rule 2).
 const PROVINCES: Province[] = ["BC", "AB", "SK", "MB", "ON", "other"];
 const TAGGED: TaggedProvince[] = ["BC", "AB", "SK", "MB", "ON"];
 const ROUTES: Route[] = ["up", "stay", "down"];
@@ -65,10 +66,10 @@ describe("the school grades (D-156)", () => {
     for (const bad of [-1, 10, 2.5, NaN, "3", null, undefined]) expect(isGrade(bad), String(bad)).toBe(false);
   });
 
-  it("start at the school grade, and Grade 9 at level 8; routes stay on the K-8 scale", () => {
-    expect(GRADES.map(startLevel)).toEqual([0, 1, 2, 3, 4, 5, 6, 7, 8, 8]);
-    expect(GRADES.map(upLevel)).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 8, 8]);
-    expect(GRADES.map(downLevel)).toEqual([0, 0, 1, 2, 3, 4, 5, 6, 7, 7]);
+  it("start at the school grade; only Grade 9 routes reach level 9 (D-158, D-153 rule 2)", () => {
+    expect(GRADES.map(startLevel)).toEqual([0, 1, 2, 3, 4, 5, 6, 7, 8, 9]);
+    expect(GRADES.map(upLevel)).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 8, 9]);
+    expect(GRADES.map(downLevel)).toEqual([0, 0, 1, 2, 3, 4, 5, 6, 7, 8]);
   });
 
   it("each have a band and a bank: Kindergarten the grades 1-2 band, Grades 8 and 9 the grades 6-7 band", () => {
@@ -87,7 +88,7 @@ describe("the school grades (D-156)", () => {
 
   it("have template pools at the start levels in every strand of the band, in every province", () => {
     for (const province of TAGGED) {
-      for (const [band, level] of [["1-2", 0], ["6-7", 8]] as const) {
+      for (const [band, level] of [["1-2", 0], ["6-7", 8], ["6-7", 9]] as const) {
         for (const strand of bandFor(band === "1-2" ? 0 : 8).strands) {
           const pool = BANKS[band].filter((t) => t.grades[province] === level && REPORTED_STRAND[t.strand] === strand);
           expect(pool.length, `${province} level ${level} ${strand}`).toBeGreaterThan(0);
@@ -143,7 +144,7 @@ describe("a Kindergarten test", () => {
 });
 
 describe("a Grade 8 test", () => {
-  it("starts on level 8 questions, routes down to level 7, and never asks above level 8", () => {
+  it("starts on level 8 questions, routes down to level 7, and never asks above level 8 (D-153 rule 2)", () => {
     for (const province of PROVINCES) {
       for (const seed of SEEDS) {
         const s = createSession({ grade: 8, province }, seed);
@@ -156,23 +157,23 @@ describe("a Grade 8 test", () => {
     }
   });
 
-  it("fills a BC level 8 form with level 7 questions where the level 8 templates run out, and repeats no template", () => {
+  it("never routes a Grade 7 child above level 8 either", () => {
+    for (const province of PROVINCES) {
+      for (const seed of SEEDS) {
+        const s = createSession({ grade: 7, province }, seed);
+        for (const route of ROUTES) expect(Math.max(...onRoute(s, route).map((q) => q.level)), `${province} ${seed} ${route}`).toBeLessThanOrEqual(8);
+      }
+    }
+  });
+
+  it("fills a BC level 8 form with level 8 templates only: 42 level 8 places, no template repeats (D-158)", () => {
     for (const seed of SEEDS) {
       const s = createSession({ grade: 8, province: "BC" }, seed);
       for (const route of ["up", "stay"] as const) {
-        const form = s.stage2[route];
         const label = `seed ${seed} ${route}`;
-        expect(form, label).toHaveLength(21);
-        expect(levels(form), label).toEqual([7, 8]);
-        // Level 8 questions first in each strand's turns: a level 7 one only once its strand has no unused level 8 template.
-        for (const q of form.filter((q) => q.level === 7)) {
-          const strand = REPORTED_STRAND[q.strand];
-          const usedHere = new Set(onRoute(s, route).map((x) => x.templateId));
-          const unused8 = BANKS["6-7"].filter((t) => t.grades.BC === 8 && REPORTED_STRAND[t.strand] === strand && !usedHere.has(t.id));
-          expect(unused8, `${label} ${strand}`).toEqual([]);
-        }
-        const questions = onRoute(s, route);
-        expect(new Set(questions.map((q) => q.templateId)).size, label).toBe(42);
+        expect(s.stage2[route], label).toHaveLength(21);
+        expect(levels(s.stage2[route]), label).toEqual([8]);
+        expect(new Set(onRoute(s, route).map((q) => q.templateId)).size, label).toBe(42);
       }
     }
   });
@@ -190,44 +191,71 @@ describe("a Grade 8 test", () => {
   });
 });
 
-describe("a Grade 9 test", () => {
-  it("is the Grade 8 test: the same questions from the same seed, up to level 8 only (D-153)", () => {
+describe("a Grade 9 test (D-158)", () => {
+  it("starts on level 9 questions, routes down to level 8, and up to a second level 9 form, in every province", () => {
     for (const province of PROVINCES) {
-      for (const seed of SEEDS.slice(0, 10)) {
-        const [eight, nine] = [createSession({ grade: 8, province }, seed), createSession({ grade: 9, province }, seed)];
-        expect(storedTest(nine).stage1, `${province} ${seed}`).toEqual(storedTest(eight).stage1);
-        expect(nine.stage2, `${province} ${seed}`).toEqual(eight.stage2);
-        expect(levels(nine.stage1)).toEqual([8]);
-        expect(levels(nine.stage2.down)).toEqual([7]);
+      for (const seed of SEEDS) {
+        const s = createSession({ grade: 9, province }, seed);
+        const label = `${province} seed ${seed}`;
+        expect(s.stage1, label).toHaveLength(21);
+        expect(levels(s.stage1), label).toEqual([9]);
+        expect(levels(s.stage2.stay), label).toEqual([9]);
+        expect(levels(s.stage2.up), label).toEqual([9]);
+        expect(levels(s.stage2.down), label).toEqual([8]);
       }
     }
   });
 
-  it("is compared with grade 8, never called behind grade 9 for clearing all it can test", () => {
+  it("fills both BC level 9 forms with level 9 templates only, and repeats no template", () => {
+    for (const seed of SEEDS) {
+      const s = createSession({ grade: 9, province: "BC" }, seed);
+      for (const route of ROUTES) {
+        expect(new Set(onRoute(s, route).map((q) => q.templateId)).size, `seed ${seed} ${route}`).toBe(42);
+      }
+    }
+  });
+
+  it("is compared with grade 9: clearing level 9 is the ceiling; a child who knows grade 8 is one grade behind", () => {
+    expect(routedAfter(9, () => true).route).toBe("up");
+    expect(routedAfter(9, () => false).route).toBe("down");
     const top = takeTest({ grade: 9, province: "BC" }, 7, allRight).placement;
-    expect(top).toMatchObject({ grade: 9, route: "up", workingLevel: 8, atCeiling: true });
-    // Every question is at or below the school grade, so every area has a status.
+    expect(top).toMatchObject({ grade: 9, route: "up", workingLevel: 9, atCeiling: true });
     expect(top.strands.map((s) => s.strand)).toEqual(["number", "fractions", "algebra", "shapes"]);
     const model = reportModel(top, { workReviews: [] });
     expect(model.howWeHelp).toBe("on-grade");
+    expect(model.level.testedTo).toBe(9);
     const facts = reportFacts(model);
-    expect(facts).toMatchObject({ school_grade: "grade 9", working_level: "grade 8", highest_level_the_test_checks: "grade 8", working_level_against_highest_level_tested: "the same" });
-    expect(facts).not.toHaveProperty("working_level_against_school_grade");
-    const seven = reportModel(takeTest({ grade: 9, province: "BC" }, 7, knowsUpTo(7)).placement, { workReviews: [] });
-    expect(seven.howWeHelp).toBe("behind");
-    expect(reportFacts(seven)).toMatchObject({ working_level_against_highest_level_tested: "below" });
+    expect(facts).toMatchObject({ school_grade: "grade 9", working_level: "grade 9", working_level_against_school_grade: "the same" });
+    expect(facts).not.toHaveProperty("highest_level_the_test_checks");
+    const eight = takeTest({ grade: 9, province: "BC" }, 7, knowsUpTo(8)).placement;
+    expect(eight).toMatchObject({ route: "down", workingLevel: 8, atCeiling: false });
+    expect(reportFacts(reportModel(eight, { workReviews: [] }))).toMatchObject({ working_level_against_school_grade: "below" });
   });
 
-  it("lists grade 8 standards as the school grade's in the learner profile, never grade 9", () => {
-    const { asked, placement } = takeTest({ grade: 9, province: "BC" }, 7, knowsUpTo(7));
+  it("lists grade 9 standards as the school grade's in the learner profile, with their words", () => {
+    const { asked, placement } = takeTest({ grade: 9, province: "BC" }, 7, knowsUpTo(8));
     const answers: ProfileAnswer[] = asked.map((q) => ({
-      question: q, response: q.level <= 7 ? q.answer : "no idea", correct: q.level <= 7, misconception: null, timeMs: 20_000,
+      question: q, response: q.level <= 8 ? q.answer : "no idea", correct: q.level <= 8, misconception: null, timeMs: 20_000,
       work: { required: false, drawing: false, typed: false }, readAloud: null, away: null,
     }));
     const profile = learnerProfile({ placement, answers, help: null, learning: null })!;
-    expect(profile.test.grade).toBe(9);
-    expect(profile.unknowns.untested.length).toBeGreaterThan(0);
-    expect(profile.unknowns.untested.every((s) => s.code.startsWith("8."))).toBe(true);
+    expect(profile.test).toMatchObject({ grade: 9, testedTo: 9 });
+    const nine = profile.standards.filter((s) => s.code.startsWith("9."));
+    expect(nine.length).toBeGreaterThan(0);
+    expect(nine.every((s) => s.text.length > 0 && s.grade === 9)).toBe(true);
+    expect(profile.unknowns.untested.every((s) => s.code.startsWith("9."))).toBe(true);
+  });
+
+  it("keeps a Grade 9 report from before D-158 compared with grade 8, the highest level that test checked", () => {
+    // Its questions stopped at level 8, and its stored model has no testedTo.
+    expect(testedGrade(9, [{ level: 7 }, { level: 8 }])).toBe(8);
+    expect(testedGrade(9, [{ level: 8 }, { level: 9 }])).toBe(9);
+    expect(testedGrade(4, [{ level: 4 }, { level: 5 }])).toBe(4);
+    const model = reportModel(takeTest({ grade: 9, province: "BC" }, 7, allRight).placement, { workReviews: [] });
+    const { testedTo, ...old } = model.level;
+    expect(testedTo).toBe(9);
+    const facts = reportFacts({ ...model, level: { ...old, working: 8 } });
+    expect(facts).toMatchObject({ highest_level_the_test_checks: "grade 8", working_level_against_highest_level_tested: "the same" });
   });
 
   it("has the grade 7 facts round: multiplication and division to 100", () => {

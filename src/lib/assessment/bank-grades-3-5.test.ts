@@ -554,7 +554,7 @@ describe("a grade 3-5 test, every route, every province", () => {
         expect(sharedQuestions / questions, `grade ${grade} ${province} questions`).toBeLessThan(0.1);
       }
     }
-  });
+  }, 30_000);
 });
 
 describe("scripted children, grades 3-5, on the real bank", () => {

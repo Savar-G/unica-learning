@@ -3,9 +3,9 @@ import { reportModel, type Grade } from "@/lib/assessment";
 import { allRight, allWrong, knowsUpTo, takeTest, type Script } from "@/lib/assessment/scripted-child";
 import { GRADES, cleanChild, gradeHint } from "@/lib/account";
 import { reportAlert, reportEmail } from "@/lib/report-email";
-import { comparisonView, howWeHelp, levelNotes, levelSentence, verdictSentence, type ReportView } from "@/lib/report-view";
+import { comparisonView, howWeHelp, levelNotes, levelSentence, rulerLevels, verdictSentence, type ReportView } from "@/lib/report-view";
 
-// D-156: what a parent reads for a Kindergarten, Grade 8 and Grade 9 child: the picker, the report and the emails.
+// D-156, D-158: what a parent reads for a Kindergarten, Grade 8 and Grade 9 child: the picker, the report and the emails.
 function view(grade: Grade, isRight: Script): ReportView {
   const { placement } = takeTest({ grade, province: "BC" }, 7, isRight);
   return { id: "r-1", childName: "Ava", province: "BC", completedAt: "2026-10-28T19:30:00Z", questions: 42, minutes: 40, model: reportModel(placement, { workReviews: [] }) };
@@ -20,8 +20,8 @@ describe("the grade picker (D-156)", () => {
     expect(gradeHint(0)).toContain("reads each question aloud");
   });
 
-  it("says plainly for Grade 9 that the test stops at Grade 8 and how Grade 9 work starts", () => {
-    expect(gradeHint(9)).toBe("K is Kindergarten. The test checks math up to Grade 8. In the program, Grade 9 topics open as your child passes level tests on the Grade 8 skills they build on.");
+  it("adds no note for Grade 9, now that its test checks grade 9 math (D-158)", () => {
+    expect(gradeHint(9)).toBe("K is Kindergarten.");
     expect(gradeHint(8)).not.toMatch(/Grade 9/);
   });
 
@@ -64,22 +64,36 @@ describe("the report for a Grade 8 child", () => {
   });
 });
 
-describe("the report for a Grade 9 child", () => {
-  it("compares the level with grade 8, the highest the test checks, and says how grade 9 work starts", () => {
+describe("the report for a Grade 9 child (D-158)", () => {
+  it("compares the level with grade 9 and shows the ruler to grade 9", () => {
     const v = view(9, allRight);
-    expect(levelSentence(v)).toBe("Ava is working at a grade 8 level.");
-    expect(verdictSentence(v)).toBe("Grade 8 is the highest level this test checks, so that is as high as it can show.");
-    expect(levelNotes(v)).toContain("This test checks math skills up to grade 8, so it does not show grade 9 work. In the program, Ava starts grade 9 topics by passing level tests on the grade 8 skills each one builds on.");
-    expect(v.model.howWeHelp).toBe("on-grade");
-    expect(howWeHelp(v).text).toMatch(/grade 9 topics one level at a time, each after Ava passes the level test/);
-    expect(emailText(v)).not.toMatch(/below Ava's school grade|matches Ava's school grade/);
+    expect(levelSentence(v)).toBe("Ava is working at a grade 9 level.");
+    expect(verdictSentence(v)).toBe("That matches Ava's school grade.");
+    expect(levelNotes(v).join(" ")).not.toMatch(/up to grade 8/);
+    expect(rulerLevels(v)).toEqual([0, 1, 2, 3, 4, 5, 6, 7, 8, 9]);
+    expect(howWeHelp(v).text).toBe("Ava's books keep grade 9 work steady, and add harder grade 9 problems when Ava is ready.");
+    expect(emailText(v)).not.toMatch(/highest level this test checks|grade 10/i);
   });
 
-  it("says how far below grade 8 a child is, never \"below grade 9\" for what the test cannot show", () => {
-    const v = view(9, knowsUpTo(7));
-    expect(levelSentence(v)).toBe("Ava is working at a grade 7 level.");
-    expect(verdictSentence(v)).toBe("That is one grade below grade 8, the highest level this test checks.");
-    expect(howWeHelp(v).text).toMatch(/^Ava's first book starts at grade 7 work.*to grade 8 work, then to grade 9 topics one level at a time/);
+  it("says how far below grade 9 a child is, and moves the books up to grade 9 work", () => {
+    const v = view(9, knowsUpTo(8));
+    expect(levelSentence(v)).toBe("Ava is working at a grade 8 level.");
+    expect(verdictSentence(v)).toBe("That is one grade below Ava's school grade (grade 9).");
+    expect(howWeHelp(v).text).toMatch(/^Ava's first book starts at grade 8 work.*up to grade 9 work\.$/);
+    const alert = reportAlert({ view: v, parent: { name: "Sam Lee", email: "sam@example.com" }, url: URL, flags: [], parentEmail: { sent: true } });
+    expect(alert.text).toContain("School grade: 9 (BC)");
+    expect(alert.text).not.toContain("tested up to grade 8");
+  });
+
+  it("keeps a Grade 9 report from before D-158 compared with grade 8, the highest level that test checked", () => {
+    const fresh = view(9, allRight);
+    const { testedTo, ...level } = fresh.model.level;
+    expect(testedTo).toBe(9);
+    const v: ReportView = { ...fresh, model: { ...fresh.model, level: { ...level, working: 8 } } };
+    expect(verdictSentence(v)).toBe("Grade 8 is the highest level this test checks, so that is as high as it can show.");
+    expect(levelNotes(v)).toContain("This test checks math skills up to grade 8, so it does not show grade 9 work. In the program, Ava starts grade 9 topics by passing level tests on the grade 8 skills each one builds on.");
+    expect(rulerLevels(v)).toEqual([0, 1, 2, 3, 4, 5, 6, 7, 8]);
+    expect(howWeHelp(v).text).toMatch(/grade 9 topics one level at a time, each after Ava passes the level test/);
     const alert = reportAlert({ view: v, parent: { name: "Sam Lee", email: "sam@example.com" }, url: URL, flags: [], parentEmail: { sent: true } });
     expect(alert.text).toContain("School grade: 9 (BC), tested up to grade 8");
   });

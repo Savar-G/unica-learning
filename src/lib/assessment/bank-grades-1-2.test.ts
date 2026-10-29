@@ -78,8 +78,9 @@ describe("a grade 1-2 test, every route, every province", () => {
     }
   });
 
+  // D-158: Kindergarten too, now that level K has enough templates for a 24-question test without a repeat.
   it("siblings and retakes in the same grade share few templates and almost no questions", () => {
-    for (const grade of [1, 2] as Grade[]) {
+    for (const grade of [0, 1, 2] as Grade[]) {
       let sharedTemplates = 0, templates = 0, sharedQuestions = 0, questions = 0;
       for (let i = 0; i < 200; i++) {
         const [a, b] = [createSession({ grade, province: "BC" }, 2 * i + 1), createSession({ grade, province: "BC" }, 2 * i + 2)];
@@ -140,6 +141,20 @@ describe("scripted children, grades 1-2, on the real bank", () => {
 });
 
 describe("the grades 1-2 bank", () => {
+  it("BC has at least 8 level K templates in each strand, so a Kindergarten test's 24 places repeat none (D-158)", () => {
+    for (const strand of ["number", "algebra", "shapes"]) {
+      const pool = GRADE_1_2_BANK.filter((t) => t.grades.BC === 0 && REPORTED_STRAND[t.strand] === strand);
+      expect(pool.length, strand).toBeGreaterThanOrEqual(8);
+    }
+    for (const seed of SEEDS.slice(0, 100)) {
+      const s = createSession({ grade: 0, province: "BC" }, seed);
+      for (const route of ["up", "stay", "down"] as const) {
+        const questions = [...s.stage1, ...s.stage2[route]];
+        expect(new Set(questions.map((q) => q.templateId)).size, `seed ${seed} ${route}`).toBe(questions.length);
+      }
+    }
+  });
+
   it("every province has at least 4 templates for each level K-3 and each strand, so a stage never repeats one", () => {
     for (const province of TAGGED) {
       for (const level of [0, 1, 2, 3]) {
