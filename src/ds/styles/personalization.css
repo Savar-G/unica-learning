@@ -75,5 +75,6 @@
 @media (max-width: 420px) { .pz-dialog-bar > span { display: none; } }
 @media (prefers-reduced-motion: reduce) { .pz-zoom .pz-sheet { transition: none; } }
 
-/* In the card, trim the page's side margins so the sheet reads tall like a workbook page; the full-size view shows the whole page. */
-.pz-thumb .pz-sheet { aspect-ratio: 688 / 1056; object-fit: cover; object-position: center top; }
+/* In the card the whole page shows, a little narrower than the column so it reads as a sheet of paper; the full-size view is unchanged. */
+.pz-thumb .pz-deck-stage { display: grid; justify-items: center; }
+.pz-thumb .pz-zoom { width: 80%; }
