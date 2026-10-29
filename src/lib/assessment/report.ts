@@ -8,7 +8,7 @@ import { factsReport, type ReportFacts } from "./facts";
 import { helpLikely } from "./flags";
 import { checkReportText, parentTextProblem } from "./ai-checks";
 import { storedLevelCertainty, type Certainty } from "./certainty";
-import { startLevel } from "./grades";
+import { testedGrade } from "./grades";
 import { fromRemovedRound } from "./session";
 import type { Grade, Level, Placement, Province, StrandResult } from "./types";
 
@@ -65,12 +65,16 @@ export interface FsaLine {
 
 export interface ReportModel {
   /** `certainty` (#189): how sure the working level is. Absent in reports from placements stored before #189. */
-  level: { working: Level; grade: Grade; atCeiling: boolean; confidence: Placement["confidence"]; certainty?: Certainty };
+  /**
+   * `testedTo` (D-158): the grade the test measured up to, which the level is compared with: the school grade, or grade
+   * 8 for a Grade 9 test from before D-158. Absent in reports made before D-158 (comparedGrade in grades.ts).
+   */
+  level: { working: Level; grade: Grade; testedTo?: Level; atCeiling: boolean; confidence: Placement["confidence"]; certainty?: Certainty };
   /** Each area; its `certainty` (#189) is absent in reports from placements stored before #189. */
   strands: (StrandResult & { name: string })[];
   comparison: Comparison;
   fsa: FsaLine | null;
-  /** Against the school grade; for a Grade 9 child against grade 8, the highest level the test checks (D-156). */
+  /** Against the school grade; for a Grade 9 test from before D-158, against grade 8, the highest level it checked. */
   howWeHelp: "behind" | "on-grade" | "ahead";
   callToAction: "card" | "waitlist";
   /**
@@ -134,11 +138,12 @@ function workFor({ shownWork = [], workReviews }: ReportContext): ReportWork[] {
 
 export function reportModel(placement: Placement, context: ReportContext): ReportModel {
   const { workingLevel, grade } = placement;
-  const tested = startLevel(grade);
+  const tested = testedGrade(grade, placement.levels);
   const model: ReportModel = {
     level: {
       working: workingLevel,
       grade,
+      testedTo: tested,
       atCeiling: placement.atCeiling,
       confidence: placement.confidence,
       ...(placement.levelCertainty ? { certainty: storedLevelCertainty({ confidence: placement.confidence, certainty: placement.levelCertainty }) } : {}),

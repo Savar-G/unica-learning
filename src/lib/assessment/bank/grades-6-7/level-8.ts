@@ -1,9 +1,17 @@
 // Level 8 for the grade 7 up route. Standards: the BC curriculum map, section 1.
 // Conservative tags: use grade 8 for the other provinces where earlier coverage is uncertain.
 import { draw, wrong, type TaggedTemplate } from "../kit";
-import { distinctNumbers, frac, fracText, gcd, mixed, num, sayFrac, sayMixed, sayNum, simplest, typed } from "./helpers";
+import { distinct, distinctNumbers, frac, fracText, gcd, mixed, money, num, sayFrac, sayMixed, sayMoney, sayNum, simplest, typed } from "./helpers";
 
 const GRADES = { BC: 8, AB: 8, SK: 8, MB: 8, ON: 8 } as const;
+
+// D-158: more level 8 templates, so a Grade 8 test's 42 level 8 places (stage 1 and a level 8 form) need no level 7
+// template. Cubes, cube roots and prime factors: AB, SK and MB teach them after grade 8 (WNCP grade 8 has squares
+// only), and no Ontario grade 8 outcome was checked for them, so those provinces see them only from level 9.
+const AFTER_8 = { BC: 8, AB: 9, SK: 9, MB: 9, ON: 9 } as const;
+
+/** "2 × 2 × 3": a product of factors on screen. */
+const product = (factors: readonly number[]) => factors.join(" × ");
 
 export const LEVEL_8: readonly TaggedTemplate[] = [
   // Number and operations. Fraction computation belongs to F, as in the report's fraction area.
@@ -271,6 +279,249 @@ export const LEVEL_8: readonly TaggedTemplate[] = [
       const n = rng.int(3, 10), face = rng.int(1, n);
       const prompt = `A fair spinner has ${n} equal sections numbered 1 to ${n}. You spin it once and toss a fair coin once. What is the probability of spinning ${face} and getting heads?`;
       return { values: { n, face }, prompt, readAloud: prompt, answer: frac(1, 2 * n), wrong: [wrong(fracText(n + 2, 2 * n), "probability-add"), wrong(frac(1, n), "one-part")] };
+    },
+  },
+  // D-158 additions, by strand.
+  // Number and operations.
+  {
+    id: "g67-8-cube", strand: "N", grades: AFTER_8, standard: "8.1", format: "number", whiteboard: true,
+    fill(rng) {
+      // Not 3: 3 cubed would make the two slips (3 x 3 and 3 squared) the same number.
+      const n = rng.pick([2, 4, 5, 6, 7, 8, 9, 10]);
+      return { values: { n }, prompt: `What is ${n}³?`, readAloud: `What is ${n} cubed?`, answer: String(n ** 3), wrong: [wrong(3 * n, "power-multiply"), wrong(n * n, "cube-as-square")] };
+    },
+  },
+  {
+    id: "g67-8-perfect-cube", strand: "N", grades: AFTER_8, standard: "8.1", format: "choice", whiteboard: true,
+    fill(rng) {
+      // Not 8: 8 squared is 64, also a cube.
+      const n = rng.pick([2, 3, 4, 5, 6, 7, 9, 10]);
+      // By its name or by its meaning (#187: the ask varies).
+      const byName = rng.int(0, 1) === 1;
+      const ask = byName ? "Which number is a perfect cube?" : "Which number is a whole number multiplied by itself three times?";
+      return { values: { n, byName: byName ? 1 : 0 }, prompt: ask, readAloud: ask, answer: String(n ** 3),
+        wrong: [wrong(n ** 3 - 1, "cube-neighbour"), wrong(n ** 3 + 1, "cube-neighbour"), wrong(n * n, "cube-as-square")] };
+    },
+  },
+  {
+    id: "g67-8-prime-factors", strand: "N", grades: AFTER_8, standard: "8.1", format: "choice", whiteboard: true,
+    fill(rng) {
+      // Three or four primes, one of them repeated, with a product up to 400.
+      const factors = draw(rng, (r) => Array.from({ length: r.int(3, 4) }, () => r.pick([2, 3, 5, 7])).sort((a, b) => a - b),
+        (f) => f.reduce((a, b) => a * b, 1) <= 400 && new Set(f).size < f.length);
+      const n = factors.reduce((a, b) => a * b, 1);
+      const ask = `What is the prime factorization of ${n}?`;
+      return { values: { n, size: factors.length }, prompt: ask, readAloud: ask, answer: product(factors),
+        wrong: [
+          // The first two factors joined into a composite number: a product of the right value, not of primes.
+          wrong(product([factors[0] * factors[1], ...factors.slice(2)]), "prime-composite"),
+          wrong(product(factors.slice(0, -1)), "factor-incomplete"),
+        ] };
+    },
+  },
+  {
+    id: "g67-8-root-by-factors", strand: "N", grades: AFTER_8, standard: "8.1", format: "number", whiteboard: true,
+    fill(rng) {
+      // A perfect square written as pairs of primes: its root takes one prime of each pair.
+      const root = draw(rng, (r) => Array.from({ length: r.int(2, 3) }, () => r.pick([2, 3, 5, 7])).sort((a, b) => a - b),
+        (f) => f.reduce((a, b) => a * b, 1) <= 60);
+      const r = root.reduce((a, b) => a * b, 1), n = r * r;
+      const pairs = root.flatMap((p) => [p, p]);
+      return { values: { r }, prompt: `The prime factorization of ${n} is ${product(pairs)}. What is the positive square root of ${n}?`,
+        readAloud: `The prime factors of ${n} are ${pairs.slice(0, -1).join(", ")} and ${pairs[pairs.length - 1]}. What is the positive square root of ${n}?`,
+        answer: String(r), wrong: [wrong(typed(n / 2), "root-half")] };
+    },
+  },
+  {
+    id: "g67-8-cube-root", strand: "N", grades: AFTER_8, standard: "8.2", format: "number", whiteboard: true,
+    fill(rng) {
+      const n = rng.int(2, 10);
+      const ask = `What is the cube root of ${n ** 3}?`;
+      return { values: { n }, prompt: ask, readAloud: ask, answer: String(n), wrong: [wrong(typed(n ** 3 / 2), "root-half")] };
+    },
+  },
+  {
+    id: "g67-8-cube-edge", strand: "N", grades: AFTER_8, standard: "8.2", format: "number", whiteboard: true,
+    fill(rng) {
+      const n = rng.int(2, 12);
+      const prompt = `A cube has a volume of ${n ** 3} cubic centimetres. How long is each edge, in centimetres?`;
+      return { values: { n }, prompt, readAloud: prompt, answer: String(n), wrong: [wrong(typed(n ** 3 / 2), "root-half")] };
+    },
+  },
+  {
+    // WNCP 8.N.2 estimates the square root of a number that is not a perfect square.
+    id: "g67-8-root-tenth", strand: "N", grades: GRADES, standard: "8.2", format: "choice", whiteboard: true,
+    fill(rng) {
+      // The root rounds clearly to a tenth that is not a whole number.
+      const [n, k] = draw(rng, (r) => { const n = r.int(3, 12); return [n, r.int(1, 2 * n)]; }, ([n, k]) => {
+        const root = Math.sqrt(n * n + k), tenth = Math.round(root * 10) / 10;
+        return !Number.isInteger(tenth) && Math.abs(root - tenth) < 0.035 && distinctNumbers([tenth, tenth + 1, (n * n + k) / 2]);
+      });
+      const value = n * n + k, answer = Math.round(Math.sqrt(value) * 10) / 10;
+      const ask = `Which number is closest to the positive square root of ${value}?`;
+      return { values: { n, k }, prompt: ask, readAloud: ask, answer: typed(answer),
+        wrong: [wrong(typed(answer + 1), "root-estimate"), wrong(typed(value / 2), "root-half")] };
+    },
+  },
+  // Fractions, rates and percent.
+  {
+    id: "g67-8-percent-change", strand: "F", grades: GRADES, standard: "8.3", format: "number", whiteboard: true,
+    fill(rng) {
+      const price = rng.int(2, 25) * 40, p = rng.pick([0.5, 2.5, 3.25, 7.5, 12.5]), up = rng.int(0, 1) === 1;
+      const change = (price * p) / 100;
+      const [thing, verb] = rng.pick([["A bike", "costs"], ["A tablet", "costs"], ["A guitar", "costs"]] as const);
+      const prompt = `${thing} ${verb} $${price}. Its price goes ${up ? "up" : "down"} by ${p}%. What is the new price, in dollars?`;
+      return { values: { price, p100: p * 100, up: up ? 1 : 0 }, prompt,
+        readAloud: `${thing} ${verb} ${price} dollars. Its price goes ${up ? "up" : "down"} by ${p} percent. What is the new price, in dollars?`,
+        answer: typed(up ? price + change : price - change),
+        wrong: [wrong(typed(change), up ? "amount-not-total" : "discount-amount"), wrong(typed(up ? price - change : price + change), "operation")] };
+    },
+  },
+  {
+    id: "g67-8-percent-of-another", strand: "F", grades: GRADES, standard: "8.3", format: "number", whiteboard: true,
+    fill(rng) {
+      const p = rng.pick([125, 200, 250, 400]), whole = rng.int(2, 12) * 4, part = (whole * p) / 100;
+      const ask = `${part} is what percent of ${whole}?`;
+      return { values: { p, whole }, prompt: ask, readAloud: ask, answer: String(p),
+        wrong: [wrong(typed((whole / part) * 100), "percent-inverse"), wrong(p - 100, "amount-not-total")] };
+    },
+  },
+  {
+    id: "g67-8-solve-proportion", strand: "F", grades: GRADES, standard: "8.4", format: "number", whiteboard: true,
+    fill(rng) {
+      const [a, b] = draw(rng, (r) => [r.int(1, 8), r.int(3, 12)], ([a, b]) => a < b && gcd(a, b) === 1);
+      const k = rng.int(2, 9), c = b * k;
+      return { values: { a, b, k }, prompt: `${frac(a, b)} = x/${c}. What is x?`, readAloud: `${sayFrac(a, b)} equals x over ${c}. What is x?`,
+        answer: String(a * k), wrong: [wrong(a + c - b, "F9")] };
+    },
+  },
+  {
+    id: "g67-8-best-buy", strand: "F", grades: GRADES, standard: "8.14", format: "choice", whiteboard: true,
+    fill(rng) {
+      // The bigger pack costs more in all but less for each can, so comparing the totals picks the wrong pack.
+      const [big, small, cheap, dear] = draw(rng, (r) => [r.pick([10, 12, 15, 20]), r.pick([4, 5, 6]), r.int(10, 20) * 5, r.int(10, 20) * 5],
+        ([big, small, cheap, dear]) => cheap < dear && big * cheap > small * dear);
+      const bigFirst = rng.int(0, 1) === 1;
+      const [a, b] = bigFirst ? [[big, cheap], [small, dear]] : [[small, dear], [big, cheap]];
+      const cost = (cans: number, cents: number) => (cans * cents) / 100;
+      const prompt = `Pack A has ${a[0]} cans of juice for ${money(cost(a[0], a[1]))}. Pack B has ${b[0]} cans for ${money(cost(b[0], b[1]))}. Which pack costs less for each can?`;
+      const best = bigFirst ? "Pack A" : "Pack B", other = bigFirst ? "Pack B" : "Pack A";
+      return { values: { big, small, cheap, dear, bigFirst: bigFirst ? 1 : 0 }, prompt,
+        readAloud: `Pack A has ${a[0]} cans of juice for ${sayMoney(cost(a[0], a[1]))}. Pack B has ${b[0]} cans for ${sayMoney(cost(b[0], b[1]))}. Which pack costs less for each can?`,
+        answer: best, wrong: [wrong(other, "total-not-unit"), wrong("They cost the same for each can", "same-size")] };
+    },
+  },
+  // Patterns and algebra.
+  {
+    id: "g67-8-divide-equation", strand: "A", grades: GRADES, standard: "8.8", format: "choice", whiteboard: true,
+    fill(rng) {
+      const [a, b, m] = draw(rng, (r) => [r.int(2, 6), r.int(2, 9), -r.int(1, 8)], ([a, b, m]) => distinctNumbers([a * m, m, -a * m, (m + 2 * b) * a]));
+      const c = m + b, x = a * m;
+      return { values: { a, b, m }, prompt: `x/${a} + ${b} = ${num(c)}. What is x?`, readAloud: `x over ${a} plus ${b} equals ${sayNum(c)}. What is x?`,
+        answer: num(x), wrong: [wrong(num(m), "A6"), wrong(num((c + b) * a), "inverse-op"), wrong(num(-x), "opposite-sign")] };
+    },
+  },
+  {
+    id: "g67-8-equation-story", strand: "A", grades: GRADES, standard: "8.8", format: "number", whiteboard: true,
+    fill(rng) {
+      const [s, r, h] = draw(rng, (g) => [g.int(2, 12), g.pick([2, 4, 5]), g.int(3, 9)], ([s, r, h]) => r * h > s + 1 && distinctNumbers([h, (r * h - s) / r]));
+      const f = r * h - s;
+      return { values: { s, r, h }, prompt: `At midnight the temperature was −${s}°C. It rose ${r}°C every hour. Now it is ${f}°C. How many hours have passed?`,
+        readAloud: `At midnight the temperature was negative ${s} degrees Celsius. It rose ${r} degrees every hour. Now it is ${f} degrees Celsius. How many hours have passed?`,
+        answer: String(h), wrong: [wrong(typed(f / r), "O9")] };
+    },
+  },
+  {
+    id: "g67-8-relation-story", strand: "A", grades: GRADES, standard: "8.6", format: "choice", whiteboard: true,
+    fill(rng) {
+      const [c, r] = draw(rng, (g) => [g.int(3, 12) * 5, g.int(2, 15)], ([c, r]) => c !== r);
+      const [story, spoken, v, unit] = rng.pick([
+        [`A gym charges a $${c} sign-up fee plus $${r} for each month.`, `A gym charges a ${c} dollar sign-up fee plus ${r} dollars for each month.`, "m", "months"],
+        [`A taxi ride costs $${c} to start plus $${r} for each kilometre.`, `A taxi ride costs ${c} dollars to start plus ${r} dollars for each kilometre.`, "k", "kilometres"],
+        [`A bike rental costs $${c} for a helmet plus $${r} for each hour.`, `A bike rental costs ${c} dollars for a helmet plus ${r} dollars for each hour.`, "h", "hours"],
+      ] as const);
+      const ask = `Which rule gives the total cost C, in dollars, for ${v} ${unit}?`;
+      return { values: { c, r, kind: ["m", "k", "h"].indexOf(v) }, prompt: `${story} ${ask}`, readAloud: `${spoken} ${ask}`,
+        answer: `C = ${r}${v} + ${c}`,
+        wrong: [wrong(`C = ${c}${v} + ${r}`, "rule-swap"), wrong(`C = ${r}${v}`, "A5"), wrong(`C = ${r}${v} − ${c}`, "constant-sign")] };
+    },
+  },
+  {
+    id: "g67-8-table-pair", strand: "A", grades: GRADES, standard: "8.6", format: "choice", whiteboard: true,
+    fill(rng) {
+      const [a, b, x] = draw(rng, (g) => [g.int(2, 6), g.int(1, 9), -g.int(1, 5)], ([a, b, x]) => {
+        const y = a * x - b;
+        return distinct([`${x},${y}`, `${x},${-a * x - b}`, `${x},${a * x + b}`, `${y},${x}`]);
+      });
+      const pair = (p: number, q: number) => `(${num(p)}, ${num(q)})`;
+      const y = a * x - b;
+      return { values: { a, b, x }, prompt: `y = ${a}x − ${b}. Which pair (x, y) is in its table of values?`,
+        readAloud: `y equals ${a} times x minus ${b}. Which pair of x and y values is in its table of values?`,
+        answer: pair(x, y), wrong: [wrong(pair(x, -a * x - b), "sign-rule"), wrong(pair(x, a * x + b), "constant-sign"), wrong(pair(y, x), "coordinate-swap")] };
+    },
+  },
+  {
+    id: "g67-8-write-expression", strand: "A", grades: GRADES, standard: "8.7", format: "choice", whiteboard: false,
+    fill(rng) {
+      const [a, c] = draw(rng, (g) => [g.int(2, 9), g.int(2, 30)], ([a, c]) => a !== c);
+      const more = rng.int(0, 1) === 1;
+      const ask = `Which expression means ${c} ${more ? "more" : "less"} than ${a} times a number n?`;
+      return { values: { a, c, more: more ? 1 : 0 }, prompt: ask, readAloud: ask,
+        answer: more ? `${a}n + ${c}` : `${a}n − ${c}`,
+        wrong: more
+          ? [wrong(`${c}n + ${a}`, "equation-roles"), wrong(`${a}(n + ${c})`, "group-translation"), wrong(`${a}n − ${c}`, "operation")]
+          : [wrong(`${c} − ${a}n`, "equation-roles"), wrong(`${a}(n − ${c})`, "group-translation"), wrong(`${a}n + ${c}`, "operation")] };
+    },
+  },
+  // Shapes, measurement and data.
+  {
+    id: "g67-8-triangular-prism", strand: "MG", grades: GRADES, standard: "8.9", format: "number", whiteboard: true,
+    fill(rng) {
+      const [b, h, l] = draw(rng, (g) => [g.int(3, 12), g.int(2, 10), g.int(4, 15)], ([b, h, l]) => (b * h) % 2 === 0 && distinctNumbers([b * h * l / 2, b * h * l, b * h / 2]));
+      const prompt = `A triangular prism is ${l} cm long. Each triangle end has a base of ${b} cm and a height of ${h} cm. What is the volume of the prism, in cubic centimetres?`;
+      return { values: { b, h, l }, prompt, readAloud: prompt.replace(/cm/g, "centimetres"), answer: String((b * h * l) / 2),
+        wrong: [wrong(b * h * l, "half-area"), wrong((b * h) / 2, "one-part")] };
+    },
+  },
+  {
+    id: "g67-8-cylinder-volume", strand: "MG", grades: GRADES, standard: "8.9", format: "number", whiteboard: true,
+    fill(rng) {
+      const [r, h] = draw(rng, (g) => [g.int(3, 7), g.int(3, 12)], ([r, h]) => r !== 2 * h);
+      const prompt = `A can is a cylinder with a radius of ${r} cm and a height of ${h} cm. Use 3.14 for pi. What is its volume, in cubic centimetres?`;
+      return { values: { r, h }, prompt, readAloud: prompt.replace(/cm/g, "centimetres"), answer: typed(3.14 * r * r * h),
+        wrong: [wrong(typed(3.14 * 2 * r * h), "power-multiply"), wrong(typed(3.14 * r * r), "one-part")] };
+    },
+  },
+  {
+    id: "g67-8-right-triangle-check", strand: "MG", grades: GRADES, standard: "8.10", format: "choice", whiteboard: true,
+    fill(rng) {
+      const k = rng.int(1, 4), [a, b, c] = rng.pick([[3, 4, 5], [5, 12, 13], [8, 15, 17]] as const);
+      const sides = (x: number, y: number, z: number) => `${x} cm, ${y} cm, ${z} cm`;
+      // Asked by the name or by the Pythagorean check (#187: the ask varies).
+      const byName = rng.int(0, 1) === 1;
+      const ask = byName ? "Which side lengths make a right triangle?" : "Which triangle has a right angle, from its side lengths?";
+      return { values: { a, k, byName: byName ? 1 : 0 }, prompt: ask, readAloud: ask, answer: sides(a * k, b * k, c * k),
+        wrong: [wrong(sides(a * k, b * k, c * k + 1), "pythagoras-near"), wrong(sides(a * k + 1, b * k, c * k), "pythagoras-near"), wrong(sides(a * k, b * k, (a + b) * k), "pythagoras-add")] };
+    },
+  },
+  {
+    // WNCP 7.SP.1 finds the range of a set of data.
+    id: "g67-8-range", strand: "DP", grades: { BC: 8, AB: 7, SK: 7, MB: 7, ON: 8 }, standard: "8.12", format: "number", whiteboard: false,
+    fill(rng) {
+      const low = rng.int(5, 30), spread = rng.int(8, 40);
+      const values = rng.shuffle([low, low + spread, low + rng.int(1, spread - 1), low + rng.int(1, spread - 1), low + rng.int(1, spread - 1), low + rng.int(1, spread - 1)]);
+      const prompt = `Find the range of these six values: ${values.join(", ")}.`;
+      return { values: { low, spread }, prompt, readAloud: prompt, answer: String(spread), wrong: [wrong(low + spread, "range-kind")] };
+    },
+  },
+  {
+    id: "g67-8-missing-from-mean", strand: "DP", grades: GRADES, standard: "8.12", format: "number", whiteboard: true,
+    fill(rng) {
+      const [scores, last] = draw(rng, (g) => [Array.from({ length: 4 }, () => g.int(60, 95)), g.int(55, 100)] as const,
+        ([scores, last]) => (scores.reduce((a, b) => a + b, 0) + last) % 5 === 0 && distinctNumbers([last, (scores.reduce((a, b) => a + b, 0) + last) / 5]));
+      const mean = (scores.reduce((a, b) => a + b, 0) + last) / 5;
+      const prompt = `The mean of Ravi's five test scores is ${mean}. Four of the scores are ${scores.join(", ")}. What is the fifth score?`;
+      return { values: { last, mean }, prompt, readAloud: prompt, answer: String(last), wrong: [wrong(mean, "average-kind")] };
     },
   },
 ];

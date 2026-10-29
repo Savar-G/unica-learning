@@ -1,6 +1,6 @@
 # Grades 6-7 bank
 
-Ticket #76 implements the grade 6-7 band from spec #54. The bank includes BC levels 5-8. Each province's tag controls the level used by the session. Each stage contains 21 questions. Each complete route contains 42 questions and exactly 10 required work questions.
+Ticket #76 implements the grade 6-7 band from spec #54. The bank includes BC levels 5-9: level 9 (`level-9.ts`, D-158) is for Grade 9 children only, and a Grade 7 or 8 child never routes into it (D-153 rule 2). Each province's tag controls the level used by the session. Each stage contains 21 questions. Each complete route contains 42 questions and exactly 10 required work questions.
 
 The bank uses `TaggedTemplate` and `bank/kit.ts`. Tests use the public assessment interface. `helpers.ts` supplies speech for the displayed choices through the public `say` field. The question speech does not include the choices. Negative answers use choices because the number pad has no minus key. Figures are described in words. No figure is made from glyphs.
 
@@ -27,3 +27,7 @@ The integrated source also uses Ontario grade 2 for simple missing addition/subt
 ## Verification
 
 The public-interface tests check 400 seeds per template, 100 speech samples per template, known worked examples, and 60 session seeds for each grade and province. Route checks require suitable work questions, exact required-work counts, all four reported areas, and 42 distinct visible questions. The offline checker is a separate required gate. Use its documented Codex provider. Review flags and failures remain separate from structural test results. Product AI stays off.
+
+## Level 9 and the level 8 additions (D-158)
+
+Level 9 follows BC Mathematics 9 (https://curriculum.gov.bc.ca/curriculum/mathematics/9/core) through the grade 9 standards of the skill map (`skill-map/grade-9.ts`). Every level 9 template is tagged grade 9 in every province: the other provinces' grade 9 courses were not checked outcome by outcome, so the later grade stays. The level 8 additions for cubes, cube roots and prime factors are tagged grade 9 for AB, SK, MB and ON: WNCP grade 8 has squares and square roots only, and no Ontario grade 8 outcome was checked for them. The offline template checker has not been run on the D-158 templates yet.

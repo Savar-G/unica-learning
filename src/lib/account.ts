@@ -9,17 +9,16 @@ export const MAX_CHILDREN = 8;
 export { GRADES } from "@/lib/assessment/grades";
 
 /**
- * D-156: what the test is for this grade, where it differs, in plain words; null for grades 1-8. Kindergarten: the voice
- * reads the questions. Grade 9: the test stops at grade 8 (D-153), and grade 9 work starts with the level tests.
+ * D-156: what the test is for this grade, where it differs, in plain words; null for grades 1-9. Kindergarten: the voice
+ * reads the questions. Since D-158 a Grade 9 test checks grade 9 math like every other grade, so it needs no note.
  */
-export function gradeTestNote(grade: number, name: string): string | null {
-  if (grade === 9) return `The test checks math up to Grade 8. In the program, Grade 9 topics open as ${name} passes level tests on the Grade 8 skills they build on.`;
+export function gradeTestNote(grade: number): string | null {
   if (grade === 0) return "The test reads each question aloud.";
   return null;
 }
 
 /** D-156: what the grade picker says under it. "K" alone is not a label, so it always says what K is, then gradeTestNote. */
-export const gradeHint = (grade: number): string => ["K is Kindergarten.", gradeTestNote(grade, "your child")].filter(Boolean).join(" ");
+export const gradeHint = (grade: number): string => ["K is Kindergarten.", gradeTestNote(grade)].filter(Boolean).join(" ");
 
 export interface ChildInput {
   firstName: string;

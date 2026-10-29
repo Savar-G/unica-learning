@@ -11,7 +11,9 @@ import {
   TOO_FAST_MS,
   STRAND_SECURE_PERCENT,
   TOP_LEVEL,
+  UP_ROUTE_TOP,
   WORKING_LEVEL_PERCENT,
+  comparedGrade,
   type Certainty,
   type FindingTopic,
   type Level,
@@ -58,14 +60,24 @@ export const levelName = (level: Level | number) => (level === 0 ? "kindergarten
 
 export const levelSentence = (v: ReportView) => `${v.childName} is working at a ${levelName(v.model.level.working)} level.`;
 
-const COUNT = ["zero", "one", "two", "three", "four", "five", "six", "seven", "eight"];
-
-/** True for a Grade 9 child: the test checks skills up to grade 8 only (D-153, D-156). */
-export const aboveTestedGrades = (v: Pick<ReportView, "model">) => v.model.level.grade > TOP_LEVEL;
+const COUNT = ["zero", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine"];
 
 /**
- * D-156: for a Grade 9 child, what the test checks and how grade 9 work starts, in plain words. The report says it
- * under the level, and the signup form says it when Grade 9 is chosen.
+ * True for a Grade 9 child whose test checked skills up to grade 8 only: a test from before D-158 (D-156). Since D-158
+ * a Grade 9 test asks grade 9 questions and is compared with grade 9, like every other grade.
+ */
+export const aboveTestedGrades = (v: Pick<ReportView, "model">) => v.model.level.grade > comparedGrade(v.model.level);
+
+/**
+ * The levels on the report's ruler: K to grade 8, and K to grade 9 when the test asked grade 9 (a Grade 9 child since
+ * D-158). A Grade 7 or 8 child's ruler never shows grade 9 (D-153 rule 2).
+ */
+export const rulerLevels = (v: Pick<ReportView, "model">): Level[] =>
+  Array.from({ length: Math.max(comparedGrade(v.model.level), UP_ROUTE_TOP) + 1 }, (_, i) => i as Level);
+
+/**
+ * D-156: for a Grade 9 child tested before D-158, what the test checked and how grade 9 work starts, in plain words.
+ * The report says it under the level.
  */
 export const gradeNineNote = (name: string) =>
   `This test checks math skills up to grade 8, so it does not show grade 9 work. In the program, ${name} starts grade 9 topics by passing level tests on the grade 8 skills each one builds on.`;
@@ -73,10 +85,11 @@ export const gradeNineNote = (name: string) =>
 /** One plain sentence against the school grade: below, matches, or above (D-084: say it plainly, never to sell). */
 export function verdictSentence(v: ReportView): string {
   const { working, grade } = v.model.level;
-  // D-156: a Grade 9 child is compared with grade 8, the highest level the test checks: it cannot show grade 9 work.
+  // D-156: a Grade 9 child tested before D-158 is compared with grade 8, the highest level that test checked.
   if (aboveTestedGrades(v)) {
-    if (working >= TOP_LEVEL) return `Grade 8 is the highest level this test checks, so that is as high as it can show.`;
-    const gap = TOP_LEVEL - working;
+    const top = comparedGrade(v.model.level);
+    if (working >= top) return `Grade 8 is the highest level this test checks, so that is as high as it can show.`;
+    const gap = top - working;
     return `That is ${COUNT[gap] ?? gap} grade${gap === 1 ? "" : "s"} below grade 8, the highest level this test checks.`;
   }
   if (working === grade) return `That matches ${v.childName}'s school grade.`;
@@ -416,9 +429,22 @@ export function howWeHelp(v: ReportView): { title: string; text: string } {
   const name = v.childName;
   const practice = v.model.strands.some((s) => s.status !== "secure") ? ", with extra practice in the areas marked Developing or Needs attention" : "";
   const title = HELP_TITLE[v.model.howWeHelp];
-  // D-153, D-156: grade 9 topics come only through the level tests, never straight from this test.
+  // D-153, D-156: a Grade 8 child (and a Grade 9 child tested before D-158) gets grade 9 topics only through the level
+  // tests, never straight from this test.
+  const compared = comparedGrade(v.model.level);
   const gradeNine = `grade 9 topics one level at a time, each after ${name} passes the level test on the grade 8 skills it builds on`;
-  if (grade >= TOP_LEVEL) {
+  // D-158: a Grade 9 child tested at grade 9. Grade 9 is the program's last grade, so the books go deeper, not past it.
+  if (compared === TOP_LEVEL) {
+    switch (v.model.howWeHelp) {
+      case "behind":
+        return { title, text: `${name}'s first book starts at ${levelName(working)} work${practice}. After each photo check-in, we see what is secure and move the next book on, up to grade 9 work.` };
+      case "on-grade":
+        return { title, text: `${name}'s books keep grade 9 work steady${practice}, and add harder grade 9 problems when ${name} is ready.` };
+      case "ahead":
+        break;
+    }
+  }
+  if (grade >= UP_ROUTE_TOP && compared === UP_ROUTE_TOP) {
     switch (v.model.howWeHelp) {
       case "behind":
         return { title, text: `${name}'s first book starts at ${levelName(working)} work${practice}. After each photo check-in, we see what is secure and move the next book on: to grade 8 work, then to ${gradeNine}.` };

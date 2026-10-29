@@ -1,5 +1,6 @@
-// The grades 6-7 bank (#76): levels 5-8 in the 4 strands the report shows (number, fractions and decimals, patterns
-// and algebra, shapes, measurement and data). A grade 6 test reaches levels 5-7 and a grade 7 test reaches 6-8.
+// The grades 6-7 bank (#76): levels 5-9 in the 4 strands the report shows (number, fractions and decimals, patterns
+// and algebra, shapes, measurement and data). A grade 6 test reaches levels 5-7, a grade 7 test 6-8, a grade 8 test 7-8
+// and a grade 9 test 8-9 (D-158; level 9 is for Grade 9 children only, D-153 rule 2).
 //
 // Content: the curriculum map (.design/research/online-assessment/bc-math-curriculum-map.md), section 1 for the BC
 // standards, section 3 for example items and section 4 for misconceptions. Formats follow the research for grades
@@ -30,5 +31,6 @@ import { LEVEL_5 } from "./level-5";
 import { LEVEL_6 } from "./level-6";
 import { LEVEL_7 } from "./level-7";
 import { LEVEL_8 } from "./level-8";
+import { LEVEL_9 } from "./level-9";
 
-export const GRADE_6_7_BANK: readonly TaggedTemplate[] = [...LEVEL_5, ...LEVEL_6, ...LEVEL_7, ...LEVEL_8].map(keepMathTogether);
+export const GRADE_6_7_BANK: readonly TaggedTemplate[] = [...LEVEL_5, ...LEVEL_6, ...LEVEL_7, ...LEVEL_8, ...LEVEL_9].map(keepMathTogether);

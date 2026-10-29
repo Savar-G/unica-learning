@@ -1,11 +1,11 @@
 // The report emails (#65): the report to the parent, and an alert to Savar for each finished test.
 // The parent email has the look of the chosen report design (D-087, #80): one 600 px column, the level and the verdict
-// in the grainy colour band with the K-8 ruler, a meter per area. It says what the report page says
+// in the grainy colour band with the level ruler, a meter per area. It says what the report page says
 // (src/lib/report-view.ts). Pure: the background job (src/lib/report-job.ts) sends them through the email delivery
 // module (src/lib/email-delivery.ts).
 // Email-safe: tables and inline styles only, no web fonts, no forms; the band's one image is an absolute URL, with the
 // band's base colour behind it for mail apps that block images.
-import { PAUSE_WINDOW, STRAND_DEVELOPING_PERCENT, STRAND_SECURE_PERCENT, TOO_FAST_MS, TOP_LEVEL, type Flag, type HelpAnswer, type StrandStatus } from "@/lib/assessment";
+import { PAUSE_WINDOW, STRAND_DEVELOPING_PERCENT, STRAND_SECURE_PERCENT, TOO_FAST_MS, comparedGrade, type Flag, type HelpAnswer, type StrandStatus } from "@/lib/assessment";
 import { BOOKING_URL } from "@/lib/contact";
 import { emailEndHtml, emailFooterText, emailHeaderHtml, emailSignatureText } from "@/lib/email-brand";
 import type { AiOutcome } from "@/lib/work-review";
@@ -32,6 +32,7 @@ import {
   strengthsView,
   strugglesNote,
   strugglesView,
+  rulerLevels,
   summaryText,
   thresholdsLine,
   verdictSentence,
@@ -84,16 +85,19 @@ const chip = ({ bg, fg }: { bg: string; fg: string }, label: string) =>
   `<span style="display:inline-block;padding:3px 9px;border-radius:999px;background:${bg};color:${fg};font-family:${MONO};font-size:12px;line-height:1.3;white-space:nowrap">${esc(label)}</span>`;
 
 /**
- * The K-8 ruler on white: the working level filled in the verdict colour, the school grade in a dashed ring, the span
- * tinted. D-156: grade 9 is past the end of the ruler: no ring and no span, and the legend says where the scale stops.
+ * The ruler on white, K-8 (K-9 for a Grade 9 child tested at grade 9, D-158): the working level filled in the verdict
+ * colour, the school grade in a dashed ring, the span tinted. D-156: for a Grade 9 child tested before D-158, grade 9 is
+ * past the end of the ruler: no ring and no span, and the legend says where the scale stops.
  */
 function rulerHtml(v: ReportView): string {
   const { working, grade } = v.model.level;
-  const onScale = grade <= TOP_LEVEL;
+  const levels = rulerLevels(v);
+  const last = levels[levels.length - 1];
+  const onScale = grade <= last;
   const mark = onScale ? grade : working;
   const [lo, hi] = [Math.min(working, mark), Math.max(working, mark)];
   const verdict = v.model.howWeHelp;
-  const cells = [0, 1, 2, 3, 4, 5, 6, 7, 8].map((level) => {
+  const cells = levels.map((level) => {
     const label = level === 0 ? "K" : String(level);
     const inSpan = lo !== hi && level >= lo && level <= hi;
     const cell = [
@@ -105,12 +109,12 @@ function rulerHtml(v: ReportView): string {
     ].filter(Boolean).join(";");
     const fill = level === working ? `background:${VERDICT_COLOUR[verdict]};font-weight:600;color:${INK};` : `color:${onScale && level === grade ? INK : "#6b6b74"};`;
     const ring = onScale && level === grade ? `border:2px dashed ${INK};` : "border:2px solid transparent;";
-    return `<td align="center" width="11%" style="${cell}"><span style="display:inline-block;width:24px;height:24px;line-height:24px;border-radius:50%;${fill}${ring}font-size:14px">${label}</span></td>`;
+    return `<td align="center" width="${Math.floor(100 / levels.length)}%" style="${cell}"><span style="display:inline-block;width:24px;height:24px;line-height:24px;border-radius:50%;${fill}${ring}font-size:14px">${label}</span></td>`;
   });
   return `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#ffffff" style="background:#ffffff;border-radius:10px">
 <tr><td style="padding:8px 6px"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="table-layout:fixed"><tr>${cells.join("")}</tr></table></td></tr>
 </table>
-<p style="margin:10px 0 0;font-family:${MONO};font-size:12px;line-height:1.5;color:${INK}"><span style="white-space:nowrap"><span style="color:${VERDICT_COLOUR[verdict]}">&#9679;</span>&nbsp;Working level: ${esc(levelName(working))}</span> &nbsp;&nbsp; <span style="white-space:nowrap">&#9676;&nbsp;School grade: ${esc(levelName(grade))}${onScale ? "" : " (the scale stops at grade 8)"}</span></p>`;
+<p style="margin:10px 0 0;font-family:${MONO};font-size:12px;line-height:1.5;color:${INK}"><span style="white-space:nowrap"><span style="color:${VERDICT_COLOUR[verdict]}">&#9679;</span>&nbsp;Working level: ${esc(levelName(working))}</span> &nbsp;&nbsp; <span style="white-space:nowrap">&#9676;&nbsp;School grade: ${esc(levelName(grade))}${onScale ? "" : ` (the scale stops at ${esc(levelName(last))})`}</span></p>`;
 }
 
 /**
@@ -455,7 +459,7 @@ export function reportAlert({
   const subject = `Test finished: ${v.childName}, ${levelName(m.level.grade)}, working at ${levelName(m.level.working)}`;
   const lines = [
     `Child: ${v.childName}`,
-    `School grade: ${m.level.grade === 0 ? "Kindergarten" : m.level.grade} (${v.province})${m.level.grade > TOP_LEVEL ? ", tested up to grade 8" : ""}`,
+    `School grade: ${m.level.grade === 0 ? "Kindergarten" : m.level.grade} (${v.province})${m.level.grade > comparedGrade(m.level) ? `, tested up to grade ${comparedGrade(m.level)}` : ""}`,
     `Working level: ${levelName(m.level.working)} (${m.howWeHelp})${m.level.atCeiling ? ", at the top of what the test reached" : ""}${m.level.confidence === "low" ? ", low confidence: no level cleared" : ""}${m.level.certainty ? `, ${m.level.certainty}` : ""}`,
     `Did anyone help?: ${help ? `"${HELP_LABEL[help]}"` : "not asked"}`,
     `Flags: ${flags.length ? flags.map(flagText).join("; ") : "none"}`,

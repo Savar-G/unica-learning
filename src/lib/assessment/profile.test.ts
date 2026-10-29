@@ -65,7 +65,7 @@ describe("the learner profile", () => {
 
     expect(profile.schemaVersion).toBe(1);
     expect(PROFILE_SCHEMA_VERSION).toBe(1);
-    expect(profile.test).toEqual({ grade: 4, province: "BC", route: "up", answered: 42 });
+    expect(profile.test).toEqual({ grade: 4, testedTo: 4, province: "BC", route: "up", answered: 42 });
     expect(profile.level).toEqual({ working: 4, certainty: "clear", confidence: "normal", atCeiling: false });
     // Each area: grade 4 all right and grade 5 all wrong, so the area's own level is 4. Its status counts only the
     // questions at or below the school grade, as on the report.

@@ -12,7 +12,7 @@ import {
 } from "./constants";
 import { levelCertainty, strandCertainty, strandStatus, workingLevelOf } from "./certainty";
 import { bankFor } from "./bank";
-import { TOP_LEVEL, downLevel, startLevel, upLevel } from "./grades";
+import { downLevel, startLevel, upLevel } from "./grades";
 import { factsResult, type FactsSession } from "./facts";
 import { flagsFor, type HelpAnswer } from "./flags";
 import { leftOutOfScore, paceOf, takeYourTime } from "./rushing";
@@ -136,8 +136,9 @@ function buildStage(
 // A route keeps one template history and one standard tally across both stages. Exhausted
 // standards leave the rotation; another available standard must take its turn before a repeat.
 // `fallDown` (D-156): when a strand has no unused template left at `level`, its slot takes an unused template of the
-// same strand from the nearest level below. Only the level 8 forms of a Grade 8 or 9 test use it: the bank has no level
-// above 8 (D-153) and too few level 8 templates for stage 1 and a second stage at level 8 without a repeat.
+// same strand from the nearest level below. Only the second same-level form of a Grade 8 test (level 8, D-153 rule 2) or
+// a Grade 9 test (level 9) may use it. Since D-158 the bank has enough level 8 and level 9 templates that a BC test never
+// needs it; it stays as a guard so a later retag cannot break a test.
 function buildBcStage(
   bank: readonly Template[], profile: ChildProfile, strands: readonly ReportedStrand[],
   level: Level, count: number, seed: number, label: string, seen: Set<string>, previous: readonly Question[],
@@ -191,7 +192,7 @@ function buildBcStage(
 
 // BC strand evidence is at or below school grade. Up adds those questions; down replaces a routed
 // slot when that level has no strand pool (for example, fractions start at grade 3). The school grade here is the start
-// level (D-156): a Grade 9 child's evidence is at or below grade 8, the highest level the bank has.
+// level, the school grade itself (D-158).
 function withStrandMinimum(
   bank: readonly Template[], profile: ChildProfile, strands: readonly ReportedStrand[],
   stage1: readonly Question[], form: Question[], route: Route, seed: number,
@@ -264,9 +265,9 @@ function shownWorkInStage1(total: number, stage1: readonly Question[], forms: re
 
 /**
  * Starts a test. Every stage 2 form is drawn now, so the session needs no bank after this.
- * D-156: stage 1 is at the start level (startLevel: the school grade, and grade 8 for Grade 9). The routed forms stay
- * on the K-8 scale: a Kindergarten child's down form is at level K, like stay, and a Grade 8 or 9 child's up form is at
- * level 8, like stay. Those level 8 forms take level 7 questions where the level 8 templates run out (fallDown).
+ * Stage 1 is at the school grade (D-158). The routed forms stay inside the bank: a Kindergarten child's down form is at
+ * level K, like stay; a Grade 8 child's up form is at level 8, like stay (D-153 rule 2: never grade 9); and a Grade 9
+ * child's up form is at level 9, like stay, with level 8 for down.
  */
 export function createSession(profile: ChildProfile, seed: number, options: SessionOptions = {}): Session {
   if (!Number.isInteger(seed)) throw new Error("The seed must be a whole number");
@@ -278,7 +279,7 @@ export function createSession(profile: ChildProfile, seed: number, options: Sess
   const rest = band.length - band.stage1;
   // Each form only needs to differ from stage 1, not from the forms the child never sees.
   const stage2Form = (route: Route, level: Level) => {
-    const fallDown = level === TOP_LEVEL && start === TOP_LEVEL;
+    const fallDown = level === start && upLevel(profile.grade) === start;
     const form = buildStage(bank, profile, band.strands, level, rest, seed, route, new Set(seen), stage1, fallDown);
     return scoredAgainst(profile.province) === "BC"
       ? withStrandMinimum(bank, profile, band.strands, stage1, form, route, seed)
@@ -529,8 +530,8 @@ export function finish(session: Session, facts: FactsSession | null = null, help
     workingLevel,
     confidence: levels.some((l) => atLeast(l.correct, l.total, WORKING_LEVEL_PERCENT)) ? "normal" : "low",
     levelCertainty: levelCertainty(levels),
-    // Only a child routed up who clears the higher level may work above what the test could show. For Grades 8 and 9
-    // the up form is at level 8, the top of the bank (D-156), so clearing level 8 there is the ceiling.
+    // Only a child routed up who clears the higher level may work above what the test could show. For Grade 8 the up
+    // form is at level 8 (D-153 rule 2) and for Grade 9 at level 9, the top of the bank, so clearing it is the ceiling.
     atCeiling: session.route === "up" && workingLevel === upLevel(session.profile.grade),
     route: session.route,
     stage1: tally(marked.slice(0, session.stage1.length)),
