@@ -100,12 +100,12 @@ export function ReadAloud({ text, onRead, auto = false }: { text: string; onRead
   }, [say, onRead]);
 
   // D-156: read once, as soon as the voices are there. The child tapped Start or Next just before, so the browser allows it.
-  const autoRead = useRef(auto);
   useEffect(() => {
-    if (!supported || !autoRead.current) return;
-    autoRead.current = false;
-    say();
-  }, [supported, say]);
+    if (!supported || !auto) return;
+    // Let the effect cleanup cancel a pending read before it starts, including React's development check.
+    const pending = window.setTimeout(say, 0);
+    return () => window.clearTimeout(pending);
+  }, [supported, auto, say]);
 
   if (!supported) return null;
   return (
