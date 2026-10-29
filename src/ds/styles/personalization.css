@@ -11,8 +11,8 @@
 .pz-lines dt { font: 400 12.5px/1.5 var(--mono); color: var(--ink-3); padding-top: 2px; }
 .pz-lines dd { margin: 0; font-size: 16px; line-height: 1.5; color: var(--ink); }
 
-/* ---------- the bank page ---------- */
-.bpage { position: relative; background: #fff; border-radius: 6px; padding: 6cqw 6cqw 4cqw; container-type: inline-size; color: #18181b;
+/* ---------- the workbook page (a real exported image) ---------- */
+.pz-sheet { display: block; width: 100%; height: auto; aspect-ratio: 816 / 1056; background: #fff; border-radius: 6px;
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.06), 0 18px 40px -18px rgba(0, 0, 0, 0.3), inset 0 0 0 1px rgba(0, 0, 0, 0.06); }
 .pz-thumb { container-type: inline-size; }
 .pz-deck-stage { animation: pz-in 0.25s ease; }
@@ -28,25 +28,6 @@
 .pz-deck-dot[aria-current="true"]::before { background: var(--ink); transform: scale(1.25); }
 .pz-deck-dot:focus-visible { outline: 2px solid var(--ink); outline-offset: -2px; border-radius: 6px; }
 @media (prefers-reduced-motion: reduce) { .pz-deck-stage { animation: none; } }
-.bp-hd { display: flex; justify-content: space-between; font: 600 2.6cqw/1 var(--sans); letter-spacing: 0.1em; text-transform: uppercase; color: #666; padding-bottom: 2.6cqw; border-bottom: 1px solid #ddd; }
-.bp-tt { font: 400 6.4cqw/1.08 var(--sans); letter-spacing: -0.02em; margin: 4cqw 0 1.4cqw; }
-.bp-ins { font: 400 3.2cqw/1.4 var(--sans); color: #555; margin: 0 0 2.4cqw; }
-.bp-q { position: relative; display: grid; grid-template-columns: 6cqw 1fr auto; column-gap: 2cqw; align-items: start; padding: 3cqw 0; border-top: 1px solid #eee; }
-.bp-q p { grid-column: 2; margin: 0; font: 400 3.5cqw/1.4 var(--sans); }
-.bp-q > .bp-col, .bp-q > .bp-pic { grid-column: 2; margin-top: 2cqw; }
-.bp-n { font: 500 3.2cqw/1.4 var(--sans); color: #888; }
-.bp-tag { grid-column: 1 / -1; justify-self: start; font: 600 2.4cqw/1 var(--sans); letter-spacing: 0.1em; text-transform: uppercase; color: #fff; background: var(--ink); padding: 1cqw 1.6cqw; border-radius: 1cqw; margin-bottom: 1.6cqw; }
-.bp-up { background: var(--sky); grid-column: 2; }
-.bp-eg { background: #faf8f4; border: 1px solid #e8e2d6; border-radius: 2cqw; padding: 3cqw; margin-bottom: 1cqw; grid-template-columns: 0 1fr auto; column-gap: 0; }
-.bp-col { display: inline-grid; justify-items: end; font: 400 4.4cqw/1.25 var(--sans); font-variant-numeric: tabular-nums; justify-self: start; min-width: 16cqw; }
-.bp-col > span:nth-last-child(2) { border-bottom: 0.4cqw solid #18181b; width: 100%; text-align: right; }
-.bp-carry { font: 600 4cqw/1 var(--pen); color: var(--red, #d63a2f); height: 3.4cqw; }
-.bp-ans { font: 400 5cqw/1.2 var(--kid); color: #555; }
-.bp-blank .bp-box { display: block; width: 100%; height: 5.6cqw; }
-.bp-line { grid-column: 3; grid-row: 1 / span 4; align-self: end; width: 14cqw; border-bottom: 1px solid #bbb; height: 5cqw; }
-.bp-pic { display: block; max-width: 100%; height: auto; }
-.bp-pic circle { fill: #18181b; }
-.bp-pic .bp-plate { fill: none; stroke: #999; stroke-width: 1.5; }
 
 /* ---------- D: Fork ---------- */
 .pz-fork { display: grid; }
@@ -83,15 +64,13 @@
 /* Tap a page to read it full size (PageDeck). */
 .pz-zoom { display: block; width: 100%; padding: 0; border: 0; background: none; color: inherit; font: inherit; text-align: left; cursor: zoom-in; position: relative; border-radius: 6px; }
 .pz-zoom:focus-visible { outline: 2px solid var(--ink, #18181b); outline-offset: 4px; }
-.pz-zoom .bpage { transition: transform 0.2s ease; }
-.pz-zoom:hover .bpage { transform: translateY(-2px); }
+.pz-zoom .pz-sheet { transition: transform 0.2s ease; }
+.pz-zoom:hover .pz-sheet { transform: translateY(-2px); }
 .pz-dialog { width: min(680px, 94vw); max-height: 92vh; padding: 0; border: 0; border-radius: 10px; background: #f4f3f1; overflow: auto; }
 .pz-dialog::backdrop { background: rgba(18, 18, 18, 0.6); }
 .pz-dialog-bar { position: sticky; top: 0; z-index: 1; display: flex; align-items: center; justify-content: space-between; padding: 10px 12px 10px 18px; background: #f4f3f1; font: 400 13px/1.4 var(--mono); }
 .pz-dialog-close { width: 36px; height: 36px; border: 1px solid rgba(0, 0, 0, 0.15); border-radius: 999px; background: #fff; font: 400 22px/1 var(--sans); cursor: pointer; }
-.pz-dialog-page { container-type: inline-size; padding: 0 18px 18px; }
+.pz-dialog-page { padding: 0 18px 18px; }
 .pz-dialog-bar .pz-deck-nav { margin-top: 0; }
 @media (max-width: 420px) { .pz-dialog-bar > span { display: none; } }
-@media (prefers-reduced-motion: reduce) { .pz-zoom .bpage { transition: none; } }
-/* Both sample pages show at one height, like two sheets of the same book; the shorter page keeps white space at the bottom. */
-.pz-thumb .bpage { aspect-ratio: 5 / 9; }
+@media (prefers-reduced-motion: reduce) { .pz-zoom .pz-sheet { transition: none; } }
