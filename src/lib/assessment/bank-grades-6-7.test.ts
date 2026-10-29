@@ -786,4 +786,20 @@ describe("primary-source corrections from the #76 checker run", () => {
       expect(q.choices).toHaveLength(4);
     }
   });
+  it("never offers a distractor equal to the power in the power-meaning question (2^4 is 4 x 4)", () => {
+    for (const seed of SEEDS) {
+      const q = fillTemplate(byId("g67-9-power-meaning"), seed), { b, e } = q.values;
+      for (const w of q.wrong) {
+        const parts = w.value.replace(/[\s\u00a0\u202f]/g, "").split(w.value.includes("+") ? "+" : "×").map(Number);
+        const total = w.value.includes("+") ? parts.reduce((x, y) => x + y, 0) : parts.reduce((x, y) => x * y, 1);
+        expect(total, `${q.prompt} vs ${w.value}`).not.toBe(b ** e);
+      }
+    }
+  });
+  it("reads one degree in the singular", () => {
+    for (const seed of SEEDS) {
+      const q = fillTemplate(byId("g67-9-temperature-drop"), seed);
+      expect(q.readAloud).not.toMatch(/\b1 degrees\b/);
+    }
+  });
 });

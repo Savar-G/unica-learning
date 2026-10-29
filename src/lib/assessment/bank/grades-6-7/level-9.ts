@@ -119,7 +119,7 @@ export const LEVEL_9: readonly TaggedTemplate[] = [
       return {
         values: { s2: start * 2, d2: drop * 2, hours },
         prompt: `The temperature is ${num(start)}°C. It drops ${num(drop)}°C every hour for ${hours} hours. What is the temperature then, in °C?`,
-        readAloud: `The temperature is ${num(start)} degrees Celsius. It drops ${num(drop)} degrees every hour for ${hours} hours. What is the temperature then, in degrees Celsius?`,
+        readAloud: `The temperature is ${num(start)} ${start === 1 ? "degree" : "degrees"} Celsius. It drops ${num(drop)} degrees every hour for ${hours} hours. What is the temperature then, in degrees Celsius?`,
         answer: num(end),
         wrong: [wrong(num(start + drop * hours), "operation"), wrong(num(-end), "opposite-sign"), wrong(num(start - drop), "one-part")],
       };
@@ -128,7 +128,7 @@ export const LEVEL_9: readonly TaggedTemplate[] = [
   {
     id: "g67-9-power-meaning", strand: "N", grades: GRADES, standard: "9.2", format: "choice", whiteboard: false,
     fill(rng) {
-      const [b, e] = draw(rng, (r) => [r.int(2, 9), r.int(3, 5)], ([b, e]) => b !== e);
+      const [b, e] = draw(rng, (r) => [r.int(2, 9), r.int(3, 5)], ([b, e]) => b !== e && b ** e !== e ** b);
       const repeat = (x: number, times: number, op: string) => Array.from({ length: times }, () => x).join(` ${op} `);
       return {
         values: { b, e },
