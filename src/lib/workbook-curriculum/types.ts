@@ -1,6 +1,5 @@
 // Types of the workbook curriculum (#361): levels, units, skills and steps, per curriculum. Pure data.
-import type { Strand } from "../assessment/types";
-import type { SkillMapGrade } from "../assessment/skill-map";
+import type { SkillMapGrade, Strand } from "@/lib/assessment";
 
 /** The curricula with a map. Only BC today; other provinces come later as their own maps, never mixed into BC's. */
 export type CurriculumKey = "bc";
@@ -54,19 +53,26 @@ export interface CurriculumUnit {
 }
 
 export type Importance = "core" | "standard" | "minor";
-export type Delivery = "new-step" | "warm-up" | "activity" | "parent-checked";
-export type ResponseType =
-  | "write-number"
-  | "circle"
-  | "match"
-  | "colour-or-shade"
-  | "draw"
-  | "number-line"
-  | "fill-table"
-  | "show-work"
-  | "write-words"
-  | "hands-on";
-export type Scorable = "yes" | "partly" | "no";
+/** How a skill is taught: a worked example then practice, daily fact practice, hands-on with a parent, or on paper with a parent ticking it. */
+export const DELIVERIES = ["new-step", "warm-up", "activity", "parent-checked"] as const;
+export type Delivery = (typeof DELIVERIES)[number];
+/** How the child answers. */
+export const RESPONSE_TYPES = [
+  "write-number",
+  "circle",
+  "match",
+  "colour-or-shade",
+  "draw",
+  "number-line",
+  "fill-table",
+  "show-work",
+  "write-words",
+  "hands-on",
+] as const;
+export type ResponseType = (typeof RESPONSE_TYPES)[number];
+/** Whether the app can mark it from a scan. */
+export const SCORABLE = ["yes", "partly", "no"] as const;
+export type Scorable = (typeof SCORABLE)[number];
 
 export interface CurriculumSkill {
   curriculum: CurriculumKey;

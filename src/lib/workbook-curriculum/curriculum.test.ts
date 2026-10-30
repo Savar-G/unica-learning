@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { BC_SKILL_MAP } from "../assessment/skill-map";
+import { BC_SKILL_MAP } from "@/lib/assessment";
 import { BC_CURRICULUM, curriculumFor, curriculumProblems, type CurriculumData, type CurriculumSkill } from "./index";
 
 const bc = curriculumFor("bc")!;
@@ -254,6 +254,18 @@ describe("data checks", () => {
     const problems = curriculumProblems({ ...BC_CURRICULUM, units }, BC_SKILL_MAP);
     expect(problems).toContain('Unit 3.3 text "adding to 1000" differs from the skill map: "addition and subtraction to 1000"');
     expect(problems).toContain("Unit 3.3 strand N differs from the skill map: O");
+  });
+
+  it("lists a skill in no known level, and a level whose skill order is not 1 to n", () => {
+    expect(curriculumProblems(withSkill("K1-count-objects", { level: "U31" }), BC_SKILL_MAP)).toContain("K1-count-objects is in U31, which is not a level");
+    expect(curriculumProblems(withSkill("3.1-count-1000", { order: 2 }), BC_SKILL_MAP)).toContain(
+      "U10 skill order runs 1, 2, 2, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, not 1 to 14",
+    );
+  });
+
+  it("lists a skill whose steps are not numbered 1 to n", () => {
+    const steps = BC_CURRICULUM.steps.map((s) => (s.skill === "3.3-add-within-1000" && s.number === 2 ? { ...s, number: 3 } : s));
+    expect(curriculumProblems({ ...BC_CURRICULUM, steps }, BC_SKILL_MAP)).toEqual(["3.3-add-within-1000 step numbering runs 1, 3, 3, 4, not 1 to 4"]);
   });
 
   it("lists prerequisites that differ from the skill map", () => {

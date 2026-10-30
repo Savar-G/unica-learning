@@ -25,9 +25,6 @@ const STRANDS = {
 };
 const IMPORTANCE = { Core: "core", Standard: "standard", Minor: "minor" };
 const LEADS = { "Parent-led": "parent-led", "Parent-supported": "parent-supported", "Child-led": "child-led" };
-const DELIVERIES = ["new-step", "warm-up", "activity", "parent-checked"];
-const RESPONSES = ["write-number", "circle", "match", "colour-or-shade", "draw", "number-line", "fill-table", "show-work", "write-words", "hands-on"];
-const SCORABLE = ["yes", "partly", "no"];
 const ARITHMETIC = { "Verified by code": "checked", "No arithmetic (picture or judgement)": "none" };
 
 const problems = [];
@@ -56,12 +53,12 @@ function fail(where, message) {
 
 function oneOf(where, value, allowed) {
   if (Array.isArray(allowed)) return allowed.includes(value) ? value : fail(where, `"${value}" is not one of ${allowed.join(", ")}`);
-  return value in allowed ? allowed[value] : fail(where, `"${value}" is not one of ${Object.keys(allowed).join(", ")}`);
+  return Object.hasOwn(allowed, value) ? allowed[value] : fail(where, `"${value}" is not one of ${Object.keys(allowed).join(", ")}`);
 }
 
-/** "4-6", "8 (capped)", "15-20 min" -> { min, max }. */
+/** "4-6", "8", "15-20 min" -> { min, max }. */
 function range(where, value) {
-  const m = String(value).match(/^(\d+(?:\.\d+)?)(?:-(\d+(?:\.\d+)?))?\b/);
+  const m = String(value).match(/^(\d+(?:\.\d+)?)(?:-(\d+(?:\.\d+)?))?(?: min)?$/);
   if (!m) return fail(where, `"${value}" is not a number or a range`);
   return { min: Number(m[1]), max: Number(m[2] ?? m[1]) };
 }
@@ -145,7 +142,7 @@ function parseLevels(sheets) {
   });
 }
 
-function parseSkills(sheets) {
+function parseSkills(sheets, { DELIVERIES, RESPONSE_TYPES, SCORABLE }) {
   const rows = table(sheets, "Units & skills", {
     level: "Level", grade: "Grade", strand: "Strand", unit: "Unit code", unitText: "Unit (official", id: "Skill id",
     text: "Skill", requires: "Requires", order: "Order within level", importance: "Importance",
@@ -171,7 +168,7 @@ function parseSkills(sheets) {
       importance: oneOf(at, r.importance, IMPORTANCE),
       difficulty: oneOf(at, r.difficulty, [1, 2, 3]),
       delivery: oneOf(at, r.delivery, DELIVERIES),
-      response: oneOf(at, r.response, RESPONSES),
+      response: oneOf(at, r.response, RESPONSE_TYPES),
       scorable: oneOf(at, r.scorable, SCORABLE),
       pages: whole(at, r.pages),
       requires: String(r.requires ?? "").split(",").map((s) => s.trim()).filter(Boolean),
@@ -215,20 +212,24 @@ function parseSteps(sheets) {
       example: example && { problem: example[0], answer: example[1] },
       pages: r.pages === "warm-up slot" ? 0 : whole(at, r.pages),
       representation: text(at, r.representation),
-      mistakes: String(r.mistakes ?? "").split("\n").filter(Boolean).map((l) => mistake(at, l.trim())),
+      mistakes: String(r.mistakes ?? "").split("\n").map((l) => l.trim()).filter(Boolean).map((l) => mistake(at, l)),
       spotTheError: spot && { wrong: spot[0], fix: spot[1] },
       arithmetic: oneOf(at, r.arithmetic, ARITHMETIC),
     };
   });
 }
 
-/** The data checks of the module and the BC skill map, bundled from TypeScript. */
-async function loadChecks() {
+/** The module's data checks and value lists, and the BC skill map, bundled from TypeScript. */
+async function loadModule() {
   const outdir = mkdtempSync(join(tmpdir(), "unica-curriculum-import-"));
   try {
     await build({
       stdin: {
-        contents: `export { curriculumProblems } from "./src/lib/workbook-curriculum/check";\nexport { BC_SKILL_MAP } from "./src/lib/assessment/skill-map";\n`,
+        contents: [
+          'export { curriculumProblems } from "./src/lib/workbook-curriculum/check";',
+          'export { DELIVERIES, RESPONSE_TYPES, SCORABLE } from "./src/lib/workbook-curriculum/types";',
+          'export { BC_SKILL_MAP } from "./src/lib/assessment";',
+        ].join("\n"),
         resolveDir: root,
         loader: "ts",
       },
@@ -271,18 +272,16 @@ ${lines(data.grades)}
 
 const path = process.argv[2] ?? SKELETON;
 const sheets = await readXlsxFile(path);
+const curriculum = await loadModule();
 const levelRows = parseLevels(sheets);
-const { units, skills } = parseSkills(sheets);
+const { units, skills } = parseSkills(sheets, curriculum);
 const data = { key: "bc", levels: levelRows.map((l) => l.level), units, skills, steps: parseSteps(sheets), grades: parseGrades(sheets) };
 for (const { level, skillCount } of levelRows) {
   const count = skills.filter((s) => s.level === level.id).length;
   if (count !== skillCount) fail(`Levels, ${level.id}`, `skill count says ${skillCount}, but the level has ${count} skills`);
 }
 
-if (problems.length === 0) {
-  const { curriculumProblems, BC_SKILL_MAP } = await loadChecks();
-  problems.push(...curriculumProblems(data, BC_SKILL_MAP));
-}
+if (problems.length === 0) problems.push(...curriculum.curriculumProblems(data, curriculum.BC_SKILL_MAP));
 if (problems.length > 0) {
   console.error(`The skeleton has ${problems.length} problem(s); nothing was written:\n${problems.map((p) => `- ${p}`).join("\n")}`);
   process.exit(1);

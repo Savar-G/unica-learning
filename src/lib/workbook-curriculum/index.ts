@@ -37,8 +37,8 @@ function curriculum(data: CurriculumData): Curriculum {
   const skillsOf = new Map<string, CurriculumSkill[]>(levels.map((l) => [l.id, []]));
   for (const s of data.skills) skillsOf.get(s.level)?.push(s);
   for (const list of skillsOf.values()) list.sort((a, b) => a.order - b.order);
-  const stepsOf = new Map<string, CurriculumStep[]>();
-  for (const s of data.steps) stepsOf.set(s.skill, [...(stepsOf.get(s.skill) ?? []), s]);
+  const stepsOf = new Map<string, CurriculumStep[]>(data.skills.map((s) => [s.id, []]));
+  for (const s of data.steps) stepsOf.get(s.skill)?.push(s);
   for (const list of stepsOf.values()) list.sort(byNumber);
 
   const level = (id: string) => levelById.get(id) ?? null;
@@ -55,7 +55,7 @@ function curriculum(data: CurriculumData): Curriculum {
     },
     skill,
     levelOfSkill: (id) => level(skill(id)?.level ?? ""),
-    skillSteps: (id) => (skillById.has(id) ? (stepsOf.get(id) ?? []) : null),
+    skillSteps: (id) => stepsOf.get(id) ?? null,
   };
 }
 
