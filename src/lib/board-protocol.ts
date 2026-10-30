@@ -9,7 +9,11 @@
 // - Accepted is not shown: the receiver stages a batch, shows it on release (when Maya's speech reaches it) and logs it
 //   presented when the child has seen it drawn. Unshown batches are cancelled on an interruption.
 // - A connect starts a new epoch: the receiver drops what it staged, refuses anything from an older epoch, and rebuilds
-//   the board from the sender's copy of the board log. The log only grows: a connect never takes back what was shown.
+//   the board from the sender's copy of the board log. The log only grows: a connect never takes back what was shown,
+//   and a copy that differs from the receiver's log in any event it already holds is refused.
+// - A connect claims the epoch it read: a newer claim by another sender in between makes it fail, and the sender stops.
+//   After its reset the sender reads the whole log again before it plans: the child may have written in between.
+// - Every answer fits in one RPC answer: a log event too large for one answer travels in ordered parts.
 import { addChildInk, applyBatch, createScene, type ApplyResult, type Batch, type GlyphSet, type Notice, type PageSize, type Refusal, type Scene, type TimedPath } from "@/lib/board";
 import type { Stroke } from "@/lib/whiteboard";
 
@@ -31,7 +35,7 @@ export type BoardEvent =
   | { kind: "batch"; batchId: string; commands: unknown[] }
   | ({ kind: "ink" } & Ink)
   | { kind: "presented"; batchId: string }
-  | { kind: "cancelled"; batchIds: string[] };
+  | { kind: "cancelled"; batchIds: string[]; cancelId?: string };
 
 /** The board log. Replaying it on an empty board gives the same board: the core is deterministic. */
 export interface BoardSnapshot {
@@ -46,9 +50,18 @@ export type PenHolder = "maya" | "child";
 
 export type BoardRequest =
   | { type: "apply"; sessionId: string; epoch: number; sequence: number; baseRevision: number; batchId: string; utteranceId?: string; commands: unknown[] }
-  | { type: "cancel"; sessionId: string; epoch: number }
-  | { type: "status"; sessionId: string; since: number }
-  | { type: "reset"; sessionId: string; senderId: string; epoch: number; snapshot: BoardSnapshot };
+  /**
+   * Cancels the staged batches numbered up to `through` in this epoch. The id makes it safe to deliver twice: the receiver
+   * keeps what each cancel did, and a cancel it has seen changes nothing and gets the same answer.
+   */
+  | { type: "cancel"; sessionId: string; epoch: number; cancelId: string; through: number }
+  /** The log from event `since`. `part`: the next part of the event at `since`, when it travels in parts. */
+  | { type: "status"; sessionId: string; since: number; part?: number }
+  /**
+   * Starts `epoch`, when the board is still on `observedEpoch`, the epoch the sender read before it claimed: a claim by
+   * another sender in between makes this one stale. Large snapshots in parts are #329.
+   */
+  | { type: "reset"; sessionId: string; senderId: string; epoch: number; observedEpoch: number; snapshot: BoardSnapshot };
 
 /** The receiver's state, carried by every answer. */
 export interface ReceiverStatus {
@@ -67,6 +80,7 @@ export interface ReceiverStatus {
  * Why a request was not carried out. Only `refused` (the board core refused the batch) is a decision about the batch:
  * the receiver keeps it, and a retry gets the same answer. The others leave the batch id free to send again.
  * `behind`: the reset's log is shorter than the receiver's; the sender reads the rest and tries again.
+ * `conflict`: the reset's log differs from the receiver's in an event the receiver holds; nothing changes.
  */
 export type ProtocolCode =
   | "invalid_request"
@@ -78,12 +92,23 @@ export type ProtocolCode =
   | "pen_with_child"
   | "wrong_session"
   | "too_large"
-  | "behind";
+  | "behind"
+  | "conflict";
+
+/** One part of a log event too large for one answer: its JSON text, cut in `count` parts, with a digest of the text. */
+export interface EventPart {
+  index: number;
+  count: number;
+  digest: string;
+  data: string;
+}
 
 export type BoardResponse =
   | ({ ok: true; type: "apply"; batchId: string; state: BatchState } & ReceiverStatus)
-  | ({ ok: true; type: "cancel"; cancelled: string[] } & ReceiverStatus)
-  | ({ ok: true; type: "status"; log: BoardEvent[] } & ReceiverStatus)
+  /** `at`: where this cancel's `cancelled` event is in the log, or null when it found nothing to cancel. */
+  | ({ ok: true; type: "cancel"; cancelId: string; at: number | null } & ReceiverStatus)
+  /** Whole events from `since`, or one part of the event at `since`. */
+  | ({ ok: true; type: "status"; log: BoardEvent[]; part?: EventPart } & ReceiverStatus)
   | ({ ok: true; type: "reset" } & ReceiverStatus)
   | ({ ok: false; code: ProtocolCode; reason: string; batchId?: string; refusal?: Refusal } & ReceiverStatus);
 
@@ -92,7 +117,7 @@ export interface BoardTransport {
   call(request: BoardRequest): Promise<BoardResponse>;
 }
 
-/** The most UTF-8 bytes an apply request, or the log in one status answer, may take: well under LiveKit's 15 KiB. */
+/** The most UTF-8 bytes an apply request, or any answer, may take: well under LiveKit's 15 KiB. */
 export const MAX_BATCH_BYTES = 8192;
 
 function byteSize(value: unknown): number {
@@ -101,6 +126,62 @@ function byteSize(value: unknown): number {
   } catch {
     return Infinity;
   }
+}
+
+/** The event's encoding with the keys of every object sorted: two encoders of the same event give the same text. */
+function canonical(value: unknown): string {
+  if (Array.isArray(value)) return `[${value.map(canonical).join(",")}]`;
+  if (isObject(value))
+    return `{${Object.keys(value)
+      .filter((k) => value[k] !== undefined)
+      .sort()
+      .map((k) => `${JSON.stringify(k)}:${canonical(value[k])}`)
+      .join(",")}}`;
+  return JSON.stringify(value);
+}
+
+/** FNV-1a over the UTF-16 code units: a check that the parts of an event come from one event. */
+function digest(text: string): string {
+  let h = 0x811c9dc5;
+  for (let i = 0; i < text.length; i++) h = Math.imul(h ^ text.charCodeAt(i), 0x01000193) >>> 0;
+  return h.toString(16).padStart(8, "0");
+}
+
+// The largest status answer frame, with every number at its widest: the bounds below hold whatever the state is.
+const WIDEST = Number.MAX_SAFE_INTEGER;
+const WIDEST_STATUS: ReceiverStatus = { epoch: WIDEST, revision: WIDEST, pen: "child", logLength: WIDEST };
+/** An event of at most this many bytes travels whole; a larger one always travels in parts. */
+const WHOLE_EVENT_BYTES = MAX_BATCH_BYTES - byteSize({ ok: true, type: "status", log: [], ...WIDEST_STATUS });
+/** The most bytes of one part's data, escaped as a JSON string. */
+const PART_BYTES = MAX_BATCH_BYTES - byteSize({ ok: true, type: "status", log: [], part: { index: WIDEST, count: WIDEST, digest: "ffffffff", data: "" }, ...WIDEST_STATUS });
+/** The longest reason an answer carries: a refusal may quote the batch. */
+const MAX_REASON = 300;
+
+/** The UTF-8 bytes one character takes inside a JSON string. */
+function escapedSize(ch: string): number {
+  const escaped = JSON.stringify(ch).slice(1, -1);
+  if (escaped.length > 1 || escaped.length === 0) return escaped.length;
+  const code = ch.codePointAt(0)!;
+  return code < 0x80 ? 1 : code < 0x800 ? 2 : code < 0x10000 ? 3 : 4;
+}
+
+/** Cuts an event's JSON text into parts that each fit in one answer, never inside a character. */
+function eventParts(text: string): string[] {
+  const parts: string[] = [];
+  let part = "";
+  let bytes = 0;
+  for (const ch of text) {
+    const size = escapedSize(ch);
+    if (bytes + size > PART_BYTES) {
+      parts.push(part);
+      part = "";
+      bytes = 0;
+    }
+    part += ch;
+    bytes += size;
+  }
+  parts.push(part);
+  return parts;
 }
 
 // ---------- request checks ----------
@@ -121,7 +202,7 @@ function isEvent(v: unknown): v is BoardEvent {
     case "presented":
       return isId(v.batchId);
     case "cancelled":
-      return Array.isArray(v.batchIds) && v.batchIds.every(isId);
+      return Array.isArray(v.batchIds) && v.batchIds.every(isId) && (v.cancelId === undefined || isId(v.cancelId));
     default:
       return false;
   }
@@ -136,11 +217,13 @@ function parseRequest(v: unknown): BoardRequest | null {
         ? (v as BoardRequest)
         : null;
     case "cancel":
-      return isCount(v.epoch, 1) ? (v as BoardRequest) : null;
+      return isCount(v.epoch, 1) && isId(v.cancelId) && isCount(v.through) ? (v as BoardRequest) : null;
     case "status":
-      return isCount(v.since) ? (v as BoardRequest) : null;
+      return isCount(v.since) && (v.part === undefined || isCount(v.part)) ? (v as BoardRequest) : null;
     case "reset":
-      return isId(v.senderId) && isCount(v.epoch, 1) && isObject(v.snapshot) && Array.isArray(v.snapshot.events) && v.snapshot.events.every(isEvent) ? (v as BoardRequest) : null;
+      return isId(v.senderId) && isCount(v.epoch, 1) && isCount(v.observedEpoch) && isObject(v.snapshot) && Array.isArray(v.snapshot.events) && v.snapshot.events.every(isEvent)
+        ? (v as BoardRequest)
+        : null;
     default:
       return null;
   }
@@ -158,6 +241,7 @@ export interface Released {
 
 interface Staged {
   batchId: string;
+  sequence: number;
   utteranceId?: string;
   commands: unknown[];
   /** The core's answer on the board as planned: shown, plus the batches staged before this one. */
@@ -195,12 +279,24 @@ export function createBoardReceiver(options: { sessionId: string } & SceneOption
   let states = new Map<string, BatchState>();
   /** Every batch id this epoch decided, with its sequence and the core's refusal when it refused it. */
   let decided = new Map<string, { sequence: number; refusal?: Refusal }>();
+  /** Every cancel this epoch carried out, with where its event is in the log (null: it found nothing to cancel). */
+  let cancels = new Map<string, { through: number; at: number | null }>();
   let nextSequence = 1;
   let pen: PenHolder = "maya";
+  /** The parts of each large log event, cut once: an event in the log never changes. */
+  const partsOf = new WeakMap<BoardEvent, { parts: string[]; digest: string }>();
 
   const status = (): ReceiverStatus => ({ epoch, revision, pen, logLength: log.length });
   const planned = () => staged.at(-1)?.result.scene ?? shown;
-  const fail = (code: ProtocolCode, reason: string, extra: { batchId?: string; refusal?: Refusal } = {}): BoardResponse => ({ ok: false, code, reason, ...extra, ...status() });
+  const clip = (text: string) => (text.length > MAX_REASON ? `${text.slice(0, MAX_REASON - 1)}…` : text);
+  const fail = (code: ProtocolCode, reason: string, extra: { batchId?: string; refusal?: Refusal } = {}): BoardResponse => ({
+    ok: false,
+    code,
+    reason: clip(reason),
+    ...extra,
+    ...(extra.refusal ? { refusal: { ...extra.refusal, reason: clip(extra.refusal.reason) } } : {}),
+    ...status(),
+  });
 
   function apply(req: Extract<BoardRequest, { type: "apply" }>): BoardResponse {
     if (req.epoch !== epoch) return fail("stale_epoch", `This batch is from epoch ${req.epoch}; the board is on epoch ${epoch}.`, { batchId: req.batchId });
@@ -222,28 +318,49 @@ export function createBoardReceiver(options: { sessionId: string } & SceneOption
       return fail("refused", result.refusal.reason, { batchId: req.batchId, refusal: result.refusal });
     }
     decided.set(req.batchId, { sequence: req.sequence });
-    staged.push({ batchId: req.batchId, utteranceId: req.utteranceId, commands: req.commands, result });
+    staged.push({ batchId: req.batchId, sequence: req.sequence, utteranceId: req.utteranceId, commands: req.commands, result });
     states.set(req.batchId, "accepted");
     revision++;
     return { ok: true, type: "apply", batchId: req.batchId, state: "accepted", ...status() };
   }
 
-  /** Drops every staged batch: the child never sees them. A retry of one gets "cancelled" and changes nothing. */
-  function cancelStaged(): string[] {
-    const cancelled = staged.map((s) => s.batchId);
-    if (cancelled.length === 0) return cancelled;
+  /**
+   * Drops the staged batches numbered up to `through` (all of them by default): the child never sees them. A retry of
+   * one gets "cancelled" and changes nothing. Returns where the `cancelled` event is in the log, or null.
+   */
+  function cancelStaged(through = Infinity, cancelId?: string): number | null {
+    const cancelled = staged.filter((s) => s.sequence <= through).map((s) => s.batchId);
+    if (cancelled.length === 0) return null;
     for (const id of cancelled) states.set(id, "cancelled");
-    staged = [];
-    log.push({ kind: "cancelled", batchIds: cancelled });
+    staged = staged.filter((s) => s.sequence > through);
+    log.push(cancelId === undefined ? { kind: "cancelled", batchIds: cancelled } : { kind: "cancelled", batchIds: cancelled, cancelId });
     revision++;
-    return cancelled;
+    return log.length - 1;
+  }
+
+  function cancel(req: Extract<BoardRequest, { type: "cancel" }>): BoardResponse {
+    if (req.epoch !== epoch) return fail("stale_epoch", `This cancel is from epoch ${req.epoch}; the board is on epoch ${epoch}.`);
+    let done = cancels.get(req.cancelId);
+    if (done && done.through !== req.through) return fail("invalid_request", `Cancel "${req.cancelId}" was already sent for batches up to ${done.through}.`);
+    // A cancel seen before (a retry, or a late copy): the same answer, and nothing changes.
+    if (!done) {
+      done = { through: req.through, at: cancelStaged(req.through, req.cancelId) };
+      cancels.set(req.cancelId, done);
+    }
+    return { ok: true, type: "cancel", cancelId: req.cancelId, at: done.at, ...status() };
   }
 
   function reset(req: Extract<BoardRequest, { type: "reset" }>): BoardResponse {
     // The same sender again on this epoch: a retry of the reset that started it, after a lost answer.
     if (req.epoch === epoch && req.senderId === epochSender) return { ok: true, type: "reset", ...status() };
     if (req.epoch <= epoch) return fail("stale_epoch", `The board is already on epoch ${epoch}.`);
-    if (req.snapshot.events.length < log.length) return fail("behind", `The board log has ${log.length} events; this reset has ${req.snapshot.events.length}.`);
+    // Another sender claimed the board after this one read it.
+    if (req.observedEpoch !== epoch) return fail("stale_epoch", `The board moved to epoch ${epoch} after epoch ${req.observedEpoch} was read.`);
+    const events = req.snapshot.events;
+    if (events.length < log.length) return fail("behind", `The board log has ${log.length} events; this reset has ${events.length}.`);
+    // The reset may only add to the log: every event the receiver holds must be in it, unchanged and in its place.
+    const differs = log.findIndex((e, i) => canonical(e) !== canonical(events[i]));
+    if (differs >= 0) return fail("conflict", `Event ${differs} of this reset differs from the board log.`);
     const scene = restoreScene(req.snapshot, options);
     if (!scene) return fail("invalid_request", "The snapshot does not replay on an empty board.");
     epoch = req.epoch;
@@ -251,24 +368,38 @@ export function createBoardReceiver(options: { sessionId: string } & SceneOption
     revision = 0;
     shown = scene;
     staged = [];
-    log = [...req.snapshot.events];
+    log = [...log, ...events.slice(log.length)];
     states = new Map();
     decided = new Map();
+    cancels = new Map();
     nextSequence = 1;
     // The pen stays where it is: the child may be writing through a blip on the line.
     return { ok: true, type: "reset", ...status() };
   }
 
-  /** Log events from `since`, as many as fit in one answer (always one at least): the sender reads on to `logLength`. */
-  function logPage(since: number): BoardEvent[] {
+  /**
+   * Log events from `since`, as many whole ones as fit in one answer; when the event at `since` is too large for one
+   * answer, its part number `part` instead. The sender reads on to `logLength`.
+   */
+  function logPage(since: number, part: number): BoardResponse {
     const out: BoardEvent[] = [];
-    let bytes = 0;
+    let bytes = byteSize({ ok: true, type: "status", log: [], ...WIDEST_STATUS });
     for (const e of log.slice(since)) {
-      bytes += byteSize(e);
-      if (out.length > 0 && bytes > MAX_BATCH_BYTES) break;
+      const size = byteSize(e);
+      bytes += size + (out.length > 0 ? 1 : 0);
+      if (size > WHOLE_EVENT_BYTES || bytes > MAX_BATCH_BYTES) break;
       out.push(e);
     }
-    return out;
+    if (out.length > 0 || since >= log.length) return part === 0 ? { ok: true, type: "status", log: out, ...status() } : fail("invalid_request", `Event ${since} does not travel in parts.`);
+    const event = log[since];
+    let cut = partsOf.get(event);
+    if (!cut) {
+      const text = JSON.stringify(event);
+      cut = { parts: eventParts(text), digest: digest(text) };
+      partsOf.set(event, cut);
+    }
+    if (part >= cut.parts.length) return fail("invalid_request", `Event ${since} has ${cut.parts.length} parts.`);
+    return { ok: true, type: "status", log: [], part: { index: part, count: cut.parts.length, digest: cut.digest, data: cut.parts[part] }, ...status() };
   }
 
   return {
@@ -282,10 +413,9 @@ export function createBoardReceiver(options: { sessionId: string } & SceneOption
         case "reset":
           return reset(req);
         case "cancel":
-          if (req.epoch !== epoch) return fail("stale_epoch", `This cancel is from epoch ${req.epoch}; the board is on epoch ${epoch}.`);
-          return { ok: true, type: "cancel", cancelled: cancelStaged(), ...status() };
+          return cancel(req);
         case "status":
-          return { ok: true, type: "status", log: logPage(req.since), ...status() };
+          return logPage(req.since, req.part ?? 0);
       }
     },
     scene: () => shown,
@@ -309,10 +439,11 @@ export function createBoardReceiver(options: { sessionId: string } & SceneOption
     },
     takePen() {
       if (pen === "child") return { cancelled: [] };
-      const cancelled = cancelStaged();
+      const at = cancelStaged();
       pen = "child";
       revision++;
-      return { cancelled };
+      const event = at === null ? undefined : log[at];
+      return { cancelled: event?.kind === "cancelled" ? event.batchIds : [] };
     },
     givePen() {
       if (pen === "maya") return;
@@ -365,8 +496,9 @@ export type SendResult = { ok: true; batchId: string; state: BatchState } | Send
 export interface BoardSender {
   /**
    * Starts a new epoch on the receiver with the board log: first, then after every lost line. It reads what the
-   * receiver logged since the last sync, when the receiver still answers, so nothing the child saw is lost. Batches
-   * staged and not shown are dropped: the speech they belonged to is over.
+   * receiver logged since the last sync, when the receiver still answers, so nothing the child saw is lost, claims the
+   * epoch after the one it read, and reads the whole log again before Maya plans. Batches staged and not shown are
+   * dropped: the speech they belonged to is over. `superseded`: another sender claimed the board; this one stops.
    */
   connect(): Promise<{ ok: true } | SenderFailure>;
   /** Talks through another line from now on, for a reconnect. Call `connect` next. */
@@ -390,20 +522,30 @@ export interface BoardSender {
 }
 
 const UNREACHABLE = { ok: false, code: "unreachable", reason: "The child's board did not answer." } as const;
+const SUPERSEDED = { ok: false, code: "superseded", reason: "Another sender has the board now." } as const;
 const WRONG_ANSWER = { ok: false, code: "invalid_request", reason: "The receiver answered another request." } as const;
 /** How often a connect reads on and tries again when the board log grew while it was under way. */
 const MAX_CONNECT_TRIES = 5;
+
+type StatusAnswer = Extract<BoardResponse, { ok: true; type: "status" }>;
 
 export function createBoardSender(options: { sessionId: string; senderId: string; transport: BoardTransport; retries?: number; snapshot?: BoardSnapshot }): BoardSender {
   const { sessionId, senderId } = options;
   let transport = options.transport;
   const retries = options.retries ?? 2;
+  /** The epoch this sender has the board on. */
   let epoch = 0;
-  let everConnected = false;
+  /** The newest epoch this sender has claimed, with or without an answer: a newer one on the board is another sender's. */
+  let claimed = 0;
+  /** The reset sent and not answered yet: the epoch it claims and the epoch it read. A later connect sends it again. */
+  let pending: { epoch: number; observedEpoch: number } | null = null;
   let connected = false;
+  /** Another sender took the board: this one never acts again. */
+  let stopped = false;
   /** The sequence number of the next new batch. */
   let sequence = 1;
-  /** The revision of the board Maya plans on. Only reads and her own accepted batches move it. */
+  let cancels = 0;
+  /** The revision of the board Maya plans on. Only complete reads and her own accepted batches move it. */
   let revision = 0;
   let pen: PenHolder = "maya";
   const log: BoardEvent[] = [];
@@ -435,54 +577,102 @@ export function createBoardSender(options: { sessionId: string; senderId: string
         pen = r.pen;
         return r;
       } catch {
-        // Lost or timed out: the receiver may have acted. The same request again is safe.
+        // Lost or timed out: the receiver may have acted, or may still get it later. The same request again is safe.
       }
     }
     connected = false;
     return null;
   }
 
-  /** Reads the receiver's log from where the sender's ends, page by page. */
-  async function pull(): Promise<boolean> {
+  function supersede() {
+    connected = false;
+    stopped = true;
+    return SUPERSEDED;
+  }
+
+  /**
+   * Reads the receiver's log from where the sender's ends, page by page, and puts the parts of a large event together.
+   * Returns the last answer when the sender has read the whole log, else null. Only a complete read of the epoch the
+   * sender has moves the revision Maya plans on.
+   */
+  async function pull(): Promise<StatusAnswer | null> {
+    let parts: string[] = [];
+    let partDigest = "";
     for (;;) {
-      const r = await request({ type: "status", sessionId, since: log.length });
-      if (!r || !r.ok || r.type !== "status") return false;
-      record(r.log);
-      if (r.epoch === epoch) revision = r.revision;
-      if (r.log.length === 0 || log.length >= r.logLength) return true;
+      const r = await request(parts.length > 0 ? { type: "status", sessionId, since: log.length, part: parts.length } : { type: "status", sessionId, since: log.length });
+      if (!r || !r.ok || r.type !== "status") return null;
+      if (r.part) {
+        const p = r.part;
+        if (p.index !== parts.length || p.index >= p.count || (parts.length > 0 && p.digest !== partDigest)) return null;
+        partDigest = p.digest;
+        parts.push(p.data);
+        if (parts.length < p.count) continue;
+        const text = parts.join("");
+        parts = [];
+        if (digest(text) !== partDigest) return null;
+        let event: unknown;
+        try {
+          event = JSON.parse(text);
+        } catch {
+          return null;
+        }
+        if (!isEvent(event)) return null;
+        record([event]);
+      } else {
+        if (parts.length > 0 || !r.log.every(isEvent)) return null;
+        // No progress on a log that is longer than the sender's: never loop.
+        if (r.log.length === 0 && log.length < r.logLength) return null;
+        record(r.log);
+      }
+      if (log.length >= r.logLength) {
+        if (r.epoch === epoch) revision = r.revision;
+        return r;
+      }
     }
   }
 
   async function connect(): Promise<{ ok: true } | SenderFailure> {
-    let next = epoch + 1;
+    if (stopped) return SUPERSEDED;
+    connected = false;
     for (let tries = 0; tries < MAX_CONNECT_TRIES; tries++) {
       // A receiver that still answers holds the log from where the sender's ends; a fresh one answers with nothing.
-      await pull();
-      const r = await request({ type: "reset", sessionId, senderId, epoch: next, snapshot: { events: [...log] } });
+      const read = await pull();
+      if (!read) return UNREACHABLE;
+      const seen = read.epoch;
+      // The reset sent before still fits what the board shows: send it again. Else claim the epoch after the one read.
+      if (!pending || (seen !== pending.epoch && seen !== pending.observedEpoch)) {
+        // A sender that has claimed the board and finds a newer epoch was replaced: it never takes the board back.
+        if (claimed > 0 && seen > claimed) return supersede();
+        pending = { epoch: Math.max(claimed, seen) + 1, observedEpoch: seen };
+        claimed = pending.epoch;
+      }
+      const r = await request({ type: "reset", sessionId, senderId, epoch: pending.epoch, observedEpoch: pending.observedEpoch, snapshot: { events: [...log] } });
       if (!r) return UNREACHABLE;
-      if (r.ok) {
-        for (const [id, state] of states) if (state === "accepted") states.set(id, "cancelled");
-        epoch = r.epoch;
-        revision = r.revision;
-        sequence = 1;
-        connected = everConnected = true;
-        return { ok: true };
+      if (!r.ok) {
+        if (r.code === "behind") continue;
+        // Another sender claimed the board after this one read it, or before its retry.
+        if (r.code === "stale_epoch") return supersede();
+        return { ok: false, code: r.code, reason: r.reason };
       }
-      if (r.code === "behind") continue;
-      // A new process (this sender never connected) moves past the epoch it finds. A sender that had the board and
-      // finds a newer epoch was replaced: it never takes the board back.
-      if (r.code === "stale_epoch" && !everConnected) {
-        next = r.epoch + 1;
-        continue;
-      }
-      connected = false;
-      if (r.code === "stale_epoch") return { ok: false, code: "superseded", reason: "Another sender has the board now." };
-      return { ok: false, code: r.code, reason: r.reason };
+      if (r.type !== "reset") return WRONG_ANSWER;
+      pending = null;
+      for (const [id, state] of states) if (state === "accepted") states.set(id, "cancelled");
+      epoch = r.epoch;
+      sequence = 1;
+      // The child may have written after the reset acted (its answer may have come on a retry): Maya plans only on a
+      // board she has read to the end.
+      const synced = await pull();
+      if (!synced) return UNREACHABLE;
+      if (synced.epoch > epoch) return supersede();
+      if (synced.epoch !== epoch) continue;
+      connected = true;
+      return { ok: true };
     }
     return { ok: false, code: "behind", reason: "The board kept changing while the connect was under way." };
   }
 
   async function send(batch: Batch, opts: { utteranceId?: string }): Promise<SendResult> {
+    if (stopped) return SUPERSEDED;
     if (!connected) return UNREACHABLE;
     const req: BoardRequest = { type: "apply", sessionId, epoch, sequence, baseRevision: revision, batchId: batch.transactionId, utteranceId: opts.utteranceId, commands: [...batch.commands] };
     if (byteSize(req) > MAX_BATCH_BYTES) return { ok: false, code: "too_large", reason: `A batch takes at most ${MAX_BATCH_BYTES} bytes: split it.` };
@@ -501,21 +691,27 @@ export function createBoardSender(options: { sessionId: string; senderId: string
   }
 
   async function cancel(): Promise<{ ok: true; cancelled: string[] } | SenderFailure> {
+    if (stopped) return SUPERSEDED;
     if (!connected) return UNREACHABLE;
-    const r = await request({ type: "cancel", sessionId, epoch });
+    // The batches sent so far, under one id: a late copy of this cancel never touches a batch sent after it.
+    const cancelId = `cancel-${++cancels}`;
+    const r = await request({ type: "cancel", sessionId, epoch, cancelId, through: sequence - 1 });
     if (!r) return UNREACHABLE;
     if (!r.ok) return { ok: false, code: r.code, reason: r.reason };
-    if (r.type !== "cancel") return WRONG_ANSWER;
-    // Maya plans the next step on what the child saw: read it now.
-    await pull();
-    return { ok: true, cancelled: r.cancelled };
+    if (r.type !== "cancel" || r.cancelId !== cancelId) return WRONG_ANSWER;
+    // Maya plans the next step on what the child saw: read it now. The log holds what this cancel dropped.
+    if (!(await pull())) return UNREACHABLE;
+    if (r.at === null) return { ok: true, cancelled: [] };
+    const event = log[r.at];
+    if (event?.kind !== "cancelled" || event.cancelId !== cancelId) return WRONG_ANSWER;
+    return { ok: true, cancelled: [...event.batchIds] };
   }
 
   return {
     connect: () => serial(connect),
     send: (batch, opts = {}) => serial(() => send(batch, opts)),
     cancel: () => serial(cancel),
-    sync: () => serial(pull),
+    sync: () => serial(async () => (await pull()) !== null),
     useTransport(next) {
       transport = next;
     },

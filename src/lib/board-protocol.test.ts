@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { applyBatch, boardPaths, childInk, createScene, type Batch, type Scene } from "@/lib/board";
-import { createBoardReceiver, createBoardSender } from "@/lib/board-protocol";
-import { createMemoryTransport } from "@/lib/board-protocol-memory";
+import { MAX_BATCH_BYTES, createBoardReceiver, createBoardSender, restoreScene, type BoardRequest, type BoardSender } from "@/lib/board-protocol";
+import { createMemoryTransport, type MemoryTransport } from "@/lib/board-protocol-memory";
 
 // The board batch protocol (#328, spec #297): Maya's side sends board batches one at a time; the child's browser checks,
 // stages, shows and acknowledges them. These tests drive both sides only through their public interface, over the
@@ -135,7 +135,7 @@ describe("order", () => {
   it("refuses a batch out of order or under a used id, and keeps the board as it was", async () => {
     const receiver = createBoardReceiver({ sessionId: SESSION });
     const base = { sessionId: SESSION, epoch: 1, baseRevision: 0 };
-    expect(receiver.handle({ type: "reset", sessionId: SESSION, senderId: "agent-1", epoch: 1, snapshot: { events: [] } })).toMatchObject({ ok: true });
+    expect(receiver.handle({ type: "reset", sessionId: SESSION, senderId: "agent-1", epoch: 1, observedEpoch: 0, snapshot: { events: [] } })).toMatchObject({ ok: true });
     expect(receiver.handle({ type: "apply", ...base, sequence: 2, ...sum("a", "1", "2"), batchId: "a" })).toMatchObject({ ok: false, code: "out_of_order" });
     expect(receiver.handle({ type: "apply", ...base, sequence: 1, batchId: "a", commands: sum("a", "1", "2").commands })).toMatchObject({ ok: true, revision: 1 });
     expect(receiver.handle({ type: "apply", ...base, baseRevision: 1, sequence: 2, batchId: "a", commands: sum("a", "1", "2").commands })).toMatchObject({ ok: false, code: "duplicate_batch" });
@@ -144,7 +144,7 @@ describe("order", () => {
 
   it("refuses a batch planned on an older revision of the board", async () => {
     const receiver = createBoardReceiver({ sessionId: SESSION });
-    receiver.handle({ type: "reset", sessionId: SESSION, senderId: "agent-1", epoch: 1, snapshot: { events: [] } });
+    receiver.handle({ type: "reset", sessionId: SESSION, senderId: "agent-1", epoch: 1, observedEpoch: 0, snapshot: { events: [] } });
     receiver.handle({ type: "apply", sessionId: SESSION, epoch: 1, sequence: 1, baseRevision: 0, batchId: "a", commands: sum("a", "1", "2").commands });
     const stale = receiver.handle({ type: "apply", sessionId: SESSION, epoch: 1, sequence: 2, baseRevision: 0, batchId: "b", commands: put("b", "a", "ones", "3").commands });
     expect(stale).toMatchObject({ ok: false, code: "stale_revision", revision: 1 });
@@ -253,15 +253,17 @@ describe("reconnect", () => {
 
   it("never goes back to an older epoch", () => {
     const receiver = createBoardReceiver({ sessionId: SESSION });
-    const reset = (epoch: number, senderId = "agent-1") => receiver.handle({ type: "reset", sessionId: SESSION, senderId, epoch, snapshot: { events: [] } });
-    expect(reset(2)).toMatchObject({ ok: true, epoch: 2 });
-    expect(reset(1)).toMatchObject({ ok: false, code: "stale_epoch", epoch: 2 });
-    expect(reset(2, "agent-2")).toMatchObject({ ok: false, code: "stale_epoch", epoch: 2 });
+    const reset = (epoch: number, observedEpoch: number, senderId = "agent-1") => receiver.handle({ type: "reset", sessionId: SESSION, senderId, epoch, observedEpoch, snapshot: { events: [] } });
+    expect(reset(2, 0)).toMatchObject({ ok: true, epoch: 2 });
+    expect(reset(1, 0)).toMatchObject({ ok: false, code: "stale_epoch", epoch: 2 });
+    expect(reset(2, 0, "agent-2")).toMatchObject({ ok: false, code: "stale_epoch", epoch: 2 });
+    // A claim made on an epoch the board has left: another sender claimed it in between.
+    expect(reset(3, 1, "agent-2")).toMatchObject({ ok: false, code: "stale_epoch", epoch: 2 });
     // The same sender's reset again (its answer was lost) changes nothing.
-    expect(reset(2)).toMatchObject({ ok: true, epoch: 2 });
+    expect(reset(2, 0)).toMatchObject({ ok: true, epoch: 2 });
     const old = { type: "apply", sessionId: SESSION, epoch: 1, sequence: 1, baseRevision: 0, batchId: "a", commands: sum("a", "1", "2").commands };
     expect(receiver.handle(old)).toMatchObject({ ok: false, code: "stale_epoch" });
-    expect(receiver.handle({ type: "cancel", sessionId: SESSION, epoch: 1 })).toMatchObject({ ok: false, code: "stale_epoch" });
+    expect(receiver.handle({ type: "cancel", sessionId: SESSION, epoch: 1, cancelId: "c", through: 1 })).toMatchObject({ ok: false, code: "stale_epoch" });
   });
 
   it("drops staged batches the child never saw, and the sender counts them as cancelled", async () => {
@@ -281,7 +283,9 @@ describe("reconnect", () => {
     const { receiver, sender } = await setup();
     await sender.send(sum("a", "27", "39"));
     receiver.release("a");
-    const bad = { type: "reset", sessionId: SESSION, senderId: "agent-1", epoch: 9, snapshot: { events: [{ kind: "batch", batchId: "x", commands: [{ op: "remove", objectId: "nothing" }] }] } };
+    await sender.sync();
+    const events = [...sender.snapshot().events, { kind: "batch", batchId: "x", commands: [{ op: "remove", objectId: "nothing" }] }];
+    const bad = { type: "reset", sessionId: SESSION, senderId: "agent-1", epoch: 9, observedEpoch: 1, snapshot: { events } };
     expect(receiver.handle(bad)).toMatchObject({ ok: false, code: "invalid_request", epoch: 1 });
     expect(ids(receiver.scene())).toEqual(ids(direct(sum("a", "27", "39"))));
   });
@@ -475,4 +479,420 @@ describe("a lost acknowledgement while the child writes", () => {
     await sender.sync();
     expect(await sender.send(put("c", "a", "tens", "6"))).toMatchObject({ ok: true });
   });
+});
+
+// ---------- review findings on #359 ----------
+
+const shortStroke = { page: 1, boardWidth: 800, stroke: { erase: false, w: 3, pts: [[0.85, 0.55], [0.9, 0.58]] as [number, number][] } };
+const focus = (id: string): Batch => ({ transactionId: id, commands: [{ op: "focus", target: { objectId: "a", part: "whole" } }] });
+
+describe("a reset", () => {
+  it("never replaces the receiver's log: a snapshot that differs in an existing event is refused and the child's ink stays", async () => {
+    const { receiver, sender } = await setup();
+    await sender.send(sum("a", "27", "39"));
+    receiver.release("a");
+    receiver.takePen();
+    receiver.addInk(shortStroke);
+    receiver.givePen();
+    await sender.sync();
+    const log = sender.snapshot().events;
+    expect(log.map((e) => e.kind)).toEqual(["batch", "ink"]);
+    const reset = (events: unknown[]) => receiver.handle({ type: "reset", sessionId: SESSION, senderId: "other", epoch: 2, observedEpoch: 1, snapshot: { events } });
+
+    // The same length, the ink replaced; longer, the ink replaced; the shown batch left out.
+    for (const events of [[log[0], { kind: "presented", batchId: "a" }], [log[0], { kind: "presented", batchId: "a" }, { kind: "presented", batchId: "a" }], [log[1], log[1]]])
+      expect(reset(events)).toMatchObject({ ok: false, code: "conflict", epoch: 1, logLength: 2 });
+    expect(childInk(receiver.scene())).toHaveLength(1);
+    expect(ids(receiver.scene())).toEqual(ids(direct(sum("a", "27", "39"))));
+
+    // The same events (in another key order, as another encoder writes them) and one more: accepted, the ink kept.
+    const ink = log[1] as Extract<(typeof log)[number], { kind: "ink" }>;
+    const reordered = { stroke: { pts: ink.stroke.pts, w: ink.stroke.w, erase: ink.stroke.erase }, boardWidth: ink.boardWidth, page: ink.page, kind: "ink" };
+    expect(reset([log[0], reordered, { kind: "presented", batchId: "a" }])).toMatchObject({ ok: true, epoch: 2, logLength: 3 });
+    expect(childInk(receiver.scene())).toHaveLength(1);
+  });
+});
+
+describe("a cancel", () => {
+  it("delivered late, after its retry and the next plan, changes nothing", async () => {
+    const { receiver, transport, sender } = await setup();
+    await sender.send(sum("a", "27", "39"));
+    receiver.release("a");
+    await sender.send(focus("old-plan"));
+
+    // The first cancel times out before it reaches the board; its retry gets through.
+    transport.delayNext("cancel");
+    expect(await sender.cancel()).toEqual({ ok: true, cancelled: ["old-plan"] });
+    expect(await sender.send(focus("new-plan"))).toMatchObject({ ok: true, state: "accepted" });
+    // The first cancel arrives now: the board keeps the new plan.
+    expect(transport.deliverDelayed()).toMatchObject([{ ok: true, type: "cancel" }]);
+    expect(receiver.staged().map((s) => s.batchId)).toEqual(["new-plan"]);
+    expect(sender.batchState("new-plan")).toBe("accepted");
+  });
+
+  it("answers its retry after a lost answer with what it cancelled the first time", async () => {
+    const { receiver, transport, sender } = await setup();
+    await sender.send(sum("a", "27", "39"));
+    receiver.release("a");
+    await sender.send(focus("old-plan"));
+    transport.loseNextAnswer("cancel");
+    expect(await sender.cancel()).toEqual({ ok: true, cancelled: ["old-plan"] });
+    expect(transport.delivered.filter((r) => r.type === "cancel")).toHaveLength(2);
+  });
+
+  it("cancels only the batches sent before it", async () => {
+    const { receiver, sender } = await setup();
+    await sender.send(sum("a", "27", "39"));
+    receiver.release("a");
+    await sender.send(focus("b"));
+    await sender.send(focus("c"));
+    // A cancel that names batches 1 and 2 of this epoch: "c" (number 3) stays.
+    expect(receiver.handle({ type: "cancel", sessionId: SESSION, epoch: 1, cancelId: "x", through: 2 })).toMatchObject({ ok: true, type: "cancel" });
+    expect(receiver.staged().map((s) => s.batchId)).toEqual(["c"]);
+    await sender.sync();
+    expect([sender.batchState("b"), sender.batchState("c")]).toEqual(["cancelled", "accepted"]);
+  });
+});
+
+describe("answers", () => {
+  it("stay under the size limit when one stroke of the child's is larger than an answer", async () => {
+    const { receiver, transport, sender } = await setup();
+    receiver.takePen();
+    const stroke = { erase: false, w: 3, pts: Array.from({ length: 1200 }, (_, i) => [0.5 + i / 10000, 0.6 + Math.sin(i) / 100] as [number, number]) };
+    expect(receiver.addInk({ page: 1, boardWidth: 800, stroke })).toMatchObject({ ok: true });
+    receiver.addInk(shortStroke);
+    expect(await sender.sync()).toBe(true);
+    const events = sender.snapshot().events;
+    expect(events.map((e) => e.kind)).toEqual(["ink", "ink"]);
+    expect(events[0]).toEqual({ kind: "ink", page: 1, boardWidth: 800, stroke });
+    expect(transport.largestAnswerBytes).toBeLessThanOrEqual(MAX_BATCH_BYTES);
+
+    // The read log restores the same board on a reloaded browser.
+    const reloaded = createBoardReceiver({ sessionId: SESSION });
+    sender.useTransport(createMemoryTransport(reloaded));
+    expect(await sender.connect()).toMatchObject({ ok: true });
+    expect(childInk(reloaded.scene())).toEqual(childInk(receiver.scene()));
+  });
+
+  it("stay under the size limit for a large cancellation and a refusal", async () => {
+    const { receiver, transport, sender } = await setup();
+    await sender.send(sum("a", "27", "39"));
+    receiver.release("a");
+    const long = (i: number) => `${String(i).padStart(3, "0")}-${"x".repeat(60)}`;
+    for (let i = 0; i < 150; i++) expect(await sender.send(focus(long(i)))).toMatchObject({ ok: true });
+    const cancelled = await sender.cancel();
+    expect(cancelled).toMatchObject({ ok: true });
+    expect(cancelled.ok && cancelled.cancelled).toHaveLength(150);
+    expect(sender.batchState(long(149))).toBe("cancelled");
+    const refused = await sender.send({ transactionId: "w", commands: [{ op: "remove", objectId: "y".repeat(7800) }] });
+    expect(refused).toMatchObject({ ok: false, code: "refused" });
+    expect(transport.largestAnswerBytes).toBeLessThanOrEqual(MAX_BATCH_BYTES);
+  });
+});
+
+describe("ownership", () => {
+  it("an old sender whose first reset answer was lost does not take the board back from its replacement", async () => {
+    const receiver = createBoardReceiver({ sessionId: SESSION });
+    const line = createMemoryTransport(receiver);
+    let replacement: ReturnType<typeof createBoardSender> | undefined;
+    const original = createBoardSender({
+      sessionId: SESSION,
+      senderId: "original",
+      transport: {
+        async call(req) {
+          const r = await line.call(req);
+          if (req.type === "reset" && r.ok && !replacement) {
+            // The reset acted; before its answer comes back, a replacement process takes the board.
+            replacement = createBoardSender({ sessionId: SESSION, senderId: "replacement", transport: createMemoryTransport(receiver) });
+            expect(await replacement.connect()).toMatchObject({ ok: true });
+            throw new Error("The answer was lost.");
+          }
+          return r;
+        },
+      },
+    });
+    expect(await original.connect()).toMatchObject({ ok: false, code: "superseded" });
+    expect(await original.send(sum("o", "1", "2"))).toMatchObject({ ok: false });
+    expect(await replacement!.send(sum("a", "27", "39"))).toMatchObject({ ok: true, state: "accepted" });
+    expect(receiver.staged().map((s) => s.batchId)).toEqual(["a"]);
+  });
+
+  it("an old sender that gave up on its first reset does not take the board back on its next connect", async () => {
+    const receiver = createBoardReceiver({ sessionId: SESSION });
+    const line = createMemoryTransport(receiver);
+    const original = createBoardSender({ sessionId: SESSION, senderId: "original", transport: line, retries: 0 });
+    // The reset acts, and its answer is lost: the original does not know it had the board.
+    line.loseNextAnswer("reset");
+    expect(await original.connect()).toMatchObject({ ok: false, code: "unreachable" });
+    const replacement = createBoardSender({ sessionId: SESSION, senderId: "replacement", transport: createMemoryTransport(receiver) });
+    expect(await replacement.connect()).toMatchObject({ ok: true });
+    expect(await original.connect()).toMatchObject({ ok: false, code: "superseded" });
+    expect(await replacement.send(sum("a", "27", "39"))).toMatchObject({ ok: true, state: "accepted" });
+  });
+});
+
+describe("a reconnect with a lost reset answer", () => {
+  it("reads the child's ink written before the retry before Maya plans again", async () => {
+    const { receiver, transport, sender } = await setup();
+    await sender.send(sum("a", "27", "39"));
+    receiver.release("a");
+    await sender.sync();
+    let lost = false;
+    sender.useTransport({
+      async call(req) {
+        const r = await transport.call(req);
+        if (req.type === "reset" && r.ok && !lost) {
+          lost = true;
+          // The reset acted; the child takes the pen, writes and gives it back before the retry.
+          receiver.takePen();
+          receiver.addInk(shortStroke);
+          receiver.givePen();
+          throw new Error("The answer was lost.");
+        }
+        return r;
+      },
+    });
+    expect(await sender.connect()).toMatchObject({ ok: true });
+    expect(sender.snapshot().events.map((e) => e.kind)).toEqual(["batch", "ink"]);
+    expect(await sender.send(focus("next"))).toMatchObject({ ok: true, state: "accepted" });
+  });
+});
+
+describe("random interleavings", () => {
+  /** A seeded pseudo-random source (mulberry32): the same seed gives the same run. */
+  function random(seed: number) {
+    let t = seed >>> 0;
+    return () => {
+      t = (t + 0x6d2b79f5) >>> 0;
+      let x = Math.imul(t ^ (t >>> 15), t | 1);
+      x ^= x + Math.imul(x ^ (x >>> 7), x | 61);
+      return ((x ^ (x >>> 14)) >>> 0) / 4294967296;
+    };
+  }
+  const TYPES: BoardRequest["type"][] = ["apply", "cancel", "status", "reset"];
+
+  async function run(seed: number, steps: number) {
+    const rand = random(seed);
+    const pick = <T>(items: T[]): T => items[Math.floor(rand() * items.length)];
+    const receiver = createBoardReceiver({ sessionId: SESSION });
+    /**
+     * `replaced`: another sender connected after this one had a reset on the board, so this one must never act again.
+     * The test decides it from what was delivered, not from what the sender says.
+     */
+    type Agent = { name: string; sender: BoardSender; line: MemoryTransport; replaced: boolean };
+    const agents: Agent[] = [];
+    const spawn = (from?: Agent) => {
+      const line = createMemoryTransport(receiver);
+      const name = `s${agents.length}`;
+      // When the receiver acted and the answer is lost, something may happen before the retry: the child acts, or a new
+      // process takes over.
+      const transport = {
+        async call(req: BoardRequest) {
+          const before = line.delivered.length;
+          try {
+            return await line.call(req);
+          } catch (e) {
+            if (line.delivered.length > before && rand() < 0.6) {
+              const r = rand();
+              if (r < 0.5) childTurn();
+              else if (r < 0.75) child();
+              else await takeOver();
+            }
+            throw e;
+          }
+        },
+      };
+      const agent: Agent = { name, line, replaced: false, sender: createBoardSender({ sessionId: SESSION, senderId: name, transport, snapshot: from?.sender.snapshot() }) };
+      agents.push(agent);
+      return agent;
+    };
+    const connected = (agent: Agent) => {
+      expect(agent.replaced, `${agent.name} took the board back after it was replaced`).toBe(false);
+      for (const a of agents) if (a !== agent && a.line.delivered.some((r) => r.type === "reset")) a.replaced = true;
+      // Maya plans on the whole board: the connect read every stroke of the child's.
+      expect(agent.sender.snapshot().events.filter((e) => e.kind === "ink")).toHaveLength(inkAdded);
+    };
+    const takeOver = async () => {
+      const next = spawn(pick(agents));
+      const c = await next.sender.connect();
+      trace.push(`${next.name} takes over: ${c.ok ? `epoch ${next.sender.epoch()}` : c.code}`);
+      if (c.ok) connected(next);
+    };
+    // Reads the receiver's log as it grows and never reads an event twice: a log that changes behind it shows up below.
+    const auditor = createBoardSender({ sessionId: SESSION, senderId: "auditor", transport: createMemoryTransport(receiver) });
+    let inkAdded = 0;
+    let batches = 0;
+    const released = new Set<string>();
+    const trace: string[] = [];
+
+    /** The child takes the pen, writes and gives it back. */
+    const childTurn = () => {
+      receiver.takePen();
+      if (receiver.addInk({ page: 1, boardWidth: 800, stroke: { erase: false, w: 3, pts: [[0.85, 0.6], [0.9, 0.62]] } }).ok) inkAdded++;
+      receiver.givePen();
+    };
+    const child = () => {
+      const r = rand();
+      if (r < 0.15) receiver.takePen();
+      else if (r < 0.4) receiver.givePen();
+      else if (r < 0.6) {
+        const long = rand() < 0.15;
+        const n = long ? 1200 : 2 + Math.floor(rand() * 20);
+        const pts = Array.from({ length: n }, (_, i) => [0.8 + (i / n) * 0.15, 0.5 + rand() * 0.1] as [number, number]);
+        if (receiver.addInk({ page: 1, boardWidth: 800, stroke: { erase: false, w: 3, pts } }).ok) inkAdded++;
+      } else {
+        const staged = receiver.staged();
+        if (staged.length > 0)
+          for (const out of receiver.release(pick(staged).batchId)) {
+            expect(released.has(out.batchId), `${out.batchId} released twice`).toBe(false);
+            released.add(out.batchId);
+          }
+        else if (released.size > 0) receiver.presented(pick([...released]));
+      }
+    };
+
+    const act = async (agent: Agent) => {
+      const wasReplaced = agent.replaced;
+      const ok = await actOnce(agent);
+      // A replaced sender never acts again.
+      if (wasReplaced) expect(ok, `${agent.name} acted after it was replaced`).toBe(false);
+      return ok;
+    };
+    const actOnce = async (agent: Agent) => {
+      const { sender } = agent;
+      const r = rand();
+      if (r < 0.45) {
+        const id = `${agent.name}.${batches++}`;
+        const batch: Batch = rand() < 0.3 ? { ...sum("a", "27", "39"), transactionId: id } : { transactionId: id, commands: [{ op: "focus", target: { objectId: "a", part: "whole" } }] };
+        const sent = await sender.send(batch);
+        trace.push(`${agent.name} send ${id}: ${sent.ok ? sent.state : sent.code}`);
+        if (sent.ok && sent.state === "accepted") {
+          // Planned on the whole board: Maya had read every stroke of the child's when the batch was taken.
+          const inkRead = sender.snapshot().events.filter((e) => e.kind === "ink").length;
+          expect(inkRead, `${id} planned past the child's ink`).toBe(inkAdded);
+        }
+        return sent.ok;
+      }
+      if (r < 0.7) {
+        const mine = receiver.staged().flatMap((b) => (b.batchId.startsWith(`${agent.name}.`) ? [b.batchId] : []));
+        // A cancel's answer is often lost, or the request is late: its retry must answer as the first one did.
+        const wire = rand();
+        if (wire < 0.25) agent.line.loseNextAnswer("cancel");
+        else if (wire < 0.4) agent.line.delayNext("cancel");
+        const c = await sender.cancel();
+        trace.push(`${agent.name} cancel: ${c.ok ? c.cancelled.join(",") : c.code}`);
+        if (c.ok) {
+          // The answer names every batch of this sender's a cancel dropped, even when it came on a retry; a batch the
+          // child's pen dropped first is not in it.
+          await auditor.sync();
+          const dropped = new Map(auditor.snapshot().events.flatMap((e) => (e.kind === "cancelled" ? e.batchIds.map((id) => [id, e.cancelId] as const) : [])));
+          for (const id of mine) if (dropped.get(id) !== undefined) expect(c.cancelled, trace.slice(-10).join("\n")).toContain(id);
+          for (const id of c.cancelled) expect(dropped.get(id), `${id} reported cancelled`).toBeDefined();
+        }
+        return c.ok;
+      }
+      if (r < 0.82) {
+        const ok = await sender.sync();
+        trace.push(`${agent.name} sync: ${ok}`);
+        return false;
+      }
+      const c = await sender.connect();
+      trace.push(`${agent.name} connect: ${c.ok ? `epoch ${sender.epoch()}` : c.code}`);
+      if (c.ok) connected(agent);
+      return c.ok;
+    };
+
+    const first = spawn();
+    expect(await first.sender.connect()).toMatchObject({ ok: true });
+    connected(first);
+
+    for (let step = 0; step < steps; step++) {
+      const r = rand();
+      const agent = rand() < 0.75 ? agents.at(-1)! : pick(agents);
+      if (r < 0.3) child();
+      else if (r < 0.36) agent.line.loseNextAnswer(pick(TYPES));
+      else if (r < 0.42) agent.line.delayNext(pick(TYPES));
+      else if (r < 0.47) {
+        const late = agent.line.deliverDelayed();
+        trace.push(`${agent.name} late: ${late.length}`);
+      } else if (r < 0.52) {
+        // A duplicate: a copy of an earlier request arrives again.
+        const all = agents.flatMap((a) => a.line.delivered);
+        if (all.length > 0) receiver.handle(pick(all));
+      } else if (r < 0.54) {
+        // A new process takes over, from what some sender stored.
+        await takeOver();
+      } else if (r < 0.56) {
+        // A reset with a corrupt copy of the log: a stroke of the child's left out, the length kept. It changes nothing.
+        await auditor.sync();
+        const events = auditor.snapshot().events;
+        const ink = events.findIndex((e) => e.kind === "ink");
+        if (ink >= 0) {
+          const corrupt = [...events.slice(0, ink), ...events.slice(ink + 1), { kind: "presented", batchId: "none" }];
+          const at = receiver.handle({ type: "status", sessionId: SESSION, since: Number.MAX_SAFE_INTEGER }).epoch;
+          expect(receiver.handle({ type: "reset", sessionId: SESSION, senderId: "forger", epoch: at + 1, observedEpoch: at, snapshot: { events: corrupt } })).toMatchObject({ ok: false });
+        }
+      } else if (r < 0.7) {
+        // The child acts while the request is on the wire.
+        agent.line.hold();
+        const running = act(agent);
+        await settle();
+        if (rand() < 0.5) child();
+        else childTurn();
+        agent.line.flush();
+        await running;
+      } else await act(agent);
+
+      // No child ink lost, and the board is its log replayed: nothing applied twice, nothing taken out of the log.
+      expect(childInk(receiver.scene()), trace.join("\n")).toHaveLength(inkAdded);
+      expect(await auditor.sync()).toBe(true);
+      const log = auditor.snapshot();
+      const replayed = restoreScene(log);
+      expect(replayed && boardPaths(replayed)).toEqual(boardPaths(receiver.scene()));
+      expect(replayed && childInk(replayed)).toEqual(childInk(receiver.scene()));
+      const shownIds = log.events.flatMap((e) => (e.kind === "batch" ? [e.batchId] : []));
+      expect(new Set(shownIds).size).toBe(shownIds.length);
+      // A cancel drops only the batches sent before it, however late a copy of it arrives.
+      for (const e of log.events) {
+        if (e.kind !== "cancelled" || e.cancelId === undefined) continue;
+        for (const batchId of e.batchIds) {
+          const owner = agents.find((a) => batchId.startsWith(`${a.name}.`))!;
+          const sent = owner.line.delivered.find((q) => q.type === "apply" && q.batchId === batchId);
+          const cancel = owner.line.delivered.find((q) => q.type === "cancel" && q.cancelId === e.cancelId);
+          expect(sent?.type === "apply" && cancel?.type === "cancel" && sent.sequence <= cancel.through, `${e.cancelId} dropped ${batchId}, sent after it`).toBe(true);
+        }
+      }
+      // Only the sender that holds the board's epoch has batches staged on it.
+      const now = receiver.handle({ type: "status", sessionId: SESSION, since: Number.MAX_SAFE_INTEGER });
+      for (const { batchId } of receiver.staged()) {
+        const owner = agents.find((a) => batchId.startsWith(`${a.name}.`))!;
+        expect(owner.sender.epoch(), `${batchId} staged by a sender off the board's epoch`).toBe(now.epoch);
+        expect(owner.replaced).toBe(false);
+      }
+      for (const a of agents) expect(a.line.largestAnswerBytes).toBeLessThanOrEqual(MAX_BATCH_BYTES);
+    }
+    return { agents: agents.length, ink: inkAdded, shown: released.size, trace };
+  }
+
+  it("with lost requests and answers, duplicates, late cancels, resets and pen changes keep every invariant", async () => {
+    const totals = { agents: 0, ink: 0, shown: 0, superseded: 0, cancelled: 0, accepted: 0, late: 0 };
+    for (const seed of [1, 2, 3, 5, 8, 13, 21, 34, 55, 89, 144, 233, 377, 610, 987, 1597]) {
+      const r = await run(seed, 200);
+      totals.agents += r.agents;
+      totals.ink += r.ink;
+      totals.shown += r.shown;
+      totals.superseded += r.trace.filter((t) => t.endsWith("superseded")).length;
+      totals.cancelled += r.trace.filter((t) => /cancel: \S/.test(t) && !/cancel: (unreachable|superseded|stale)/.test(t)).length;
+      totals.accepted += r.trace.filter((t) => t.endsWith(": accepted")).length;
+      totals.late += r.trace.filter((t) => /late: [1-9]/.test(t)).length;
+    }
+    // The runs reached every path the invariants are about.
+    expect(totals.agents).toBeGreaterThan(24);
+    expect(totals.ink).toBeGreaterThan(20);
+    expect(totals.shown).toBeGreaterThan(20);
+    expect(totals.superseded).toBeGreaterThan(0);
+    expect(totals.cancelled).toBeGreaterThan(0);
+    expect(totals.accepted).toBeGreaterThan(20);
+    expect(totals.late).toBeGreaterThan(5);
+  }, 60_000);
 });
