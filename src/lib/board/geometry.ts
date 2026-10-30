@@ -79,6 +79,13 @@ function segmentGap(a: Point, b: Point, c: Point, d: Point): number {
   return Math.min(pointToSegment(a, c, d), pointToSegment(b, c, d), pointToSegment(c, a, b), pointToSegment(d, a, b));
 }
 
+/** True when two polylines cross: a segment of each passes through the other. Touching, or sharing an end, does not count. */
+export function polylinesCross(a: readonly Point[], b: readonly Point[]): boolean {
+  const strict = (p: Point, q: Point, r: Point, s: Point) => cross(p, q, r) * cross(p, q, s) < 0 && cross(r, s, p) * cross(r, s, q) < 0;
+  for (let i = 1; i < a.length; i++) for (let j = 1; j < b.length; j++) if (strict(a[i - 1], a[i], b[j - 1], b[j])) return true;
+  return false;
+}
+
 /** The closest two polylines come. A polyline of one point is a dot. */
 export function polylineGap(a: readonly Point[], b: readonly Point[]): number {
   const segs = (pts: readonly Point[]): [Point, Point][] => (pts.length === 1 ? [[pts[0], pts[0]]] : pts.slice(1).map((p, i) => [pts[i], p]));

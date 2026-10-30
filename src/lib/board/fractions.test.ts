@@ -450,6 +450,51 @@ describe("review R4: jumps never cross", () => {
     expect(refusedCount).toBeGreaterThan(0);
   });
 
+  it("lets jumps that share one tick meet only at that tick", () => {
+    const COLS = 24;
+    /** Where two segments cross, or null. */
+    const crossing = (a: Pt, b: Pt, c: Pt, d: Pt): Pt | null => {
+      const [ux, uy, vx, vy] = [b[0] - a[0], b[1] - a[1], d[0] - c[0], d[1] - c[1]];
+      const det = ux * vy - uy * vx;
+      if (Math.abs(det) < 1e-14) return null;
+      const [dx, dy] = [c[0] - a[0], c[1] - a[1]];
+      const t = (dx * vy - dy * vx) / det;
+      const u = (dx * uy - dy * ux) / det;
+      return t > 0 && t < 1 && u > 0 && u < 1 ? [a[0] + t * ux, a[1] + t * uy] : null;
+    };
+    const cases: [string, string, string, string[]][] = [
+      ["0", "3", "1", ["0", "1", "2", "3"]],
+      ["-1.5", "1.5", "1", ["-1.5", "-0.5", "0.5", "1.5"]],
+      ["0", "1", "1/3", ["0", "1/3", "2/3", "1"]],
+    ];
+    let accepted = 0;
+    for (const [min, max, tick, values] of cases) {
+      const made = ok(createScene({ page: { cols: COLS, rows: 16 } }), line("n", min, max, tick));
+      const tickAt = (v: string) => boardPaths(made).find((p) => p.kind === "rule" && p.target !== null && sameTarget(p.target, value("n", v)))!.pts[0][0];
+      for (const a of values)
+        for (const b of values)
+          for (const c of values)
+            for (const d of values) {
+              const ends = [a, b, c, d];
+              if (a === b || c === d || new Set(ends).size !== 3) continue;
+              const shared = ends.find((v, i) => ends.indexOf(v) !== i)!;
+              const r = applyBatch(ok(made, jump("a", a, b)), { transactionId: `f${++tx}`, commands: [jump("b", c, d)] });
+              if (!r.ok) continue;
+              accepted++;
+              const arcs = (id: string) => boardPaths(r.scene).filter((p) => p.objectId === id && p.kind === "arrow");
+              for (const p of arcs("a"))
+                for (const q of arcs("b"))
+                  for (let i = 1; i < p.pts.length; i++)
+                    for (let j = 1; j < q.pts.length; j++) {
+                      const hit = crossing(p.pts[i - 1], p.pts[i], q.pts[j - 1], q.pts[j]);
+                      // Arcs start just above the line: a crossing is allowed only within half a cell of the shared tick there.
+                      if (hit) expect(Math.hypot(hit[0] - tickAt(shared), hit[1] - p.pts[0][1]) * COLS, `${a}->${b}, then ${c}->${d}`).toBeLessThan(0.5);
+                    }
+            }
+    }
+    expect(accepted).toBeGreaterThan(0);
+  });
+
   it("still lets jumps meet at a shared tick", () => {
     let scene = ok(createScene(), line("n", "0", "3", "1"));
     scene = ok(scene, jump("a", "0", "1"), jump("b", "1", "2"), jump("c", "2", "3"), jump("d", "0", "2"), jump("e", "3", "2"));
@@ -475,18 +520,20 @@ describe("review R5: an arrow keeps clear of the labels a line still writes", ()
     ok(setup(), { op: "arrow", id: "a", from: part("f", "numerator"), to: value("n", "3/2") }, { op: "put", target: value("n", "3/2"), value: "1.5" });
   });
 
-  it("leaves every writable tick writable after any arrow it accepts", () => {
+  it("leaves every writable tick writable after any arrow it accepts, to a tick or from one", () => {
     const base = setup();
     let accepted = 0;
     for (const from of ["numerator", "bar", "denominator", "whole"])
       for (const t of ticks(base)) {
-        const r = applyBatch(base, { transactionId: `f${++tx}`, commands: [{ op: "arrow", id: "a", from: part("f", from), to: t.target }] });
-        if (!r.ok) {
-          expect(r.refusal.code).toBe("no_room");
-          continue;
+        for (const ends of [{ from: part("f", from), to: t.target }, { from: t.target, to: part("f", from) }]) {
+          const r = applyBatch(base, { transactionId: `f${++tx}`, commands: [{ op: "arrow", id: "a", ...ends }] });
+          if (!r.ok) {
+            expect(r.refusal.code).toBe("no_room");
+            continue;
+          }
+          accepted++;
+          for (const w of ticks(r.scene).filter((x) => x.writable)) ok(r.scene, { op: "put", target: w.target });
         }
-        accepted++;
-        for (const w of ticks(r.scene).filter((x) => x.writable)) ok(r.scene, { op: "put", target: w.target });
       }
     expect(accepted).toBeGreaterThan(0);
   });

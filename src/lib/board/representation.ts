@@ -1,4 +1,4 @@
-// A representation is one kind of math object on the board (columns and division now; fractions, number lines and
+// A representation is one kind of math object on the board (columns, division, fractions and number lines now;
 // models later). Each one owns its layout in grid cells, its named targets, its math checks and its strokes. The scene
 // places it on a page, routes the common commands to it, and turns its strokes into board paths. To add a representation,
 // add its create command to `CreateCommand` and its fields to `parse.ts`, write a module with this interface, and
@@ -76,7 +76,8 @@ export interface Representation<S, C extends CreateCommand> {
   /** Removes an annotation the object owns (a regroup, a jump); the scene knows them from `targets`. */
   removeOwned?(state: S, id: string): S | RefusalBody;
   /**
-   * What later commands may still write (empty answer and work-row digits, carries, borrows), in grid cells from the
+   * What later commands may still write (empty answer and work-row digits, carries, borrows,
+   * tick labels and jump lanes), in grid cells from the
    * object's top-left corner: the strokes when they are known now, else boxes. An arrow keeps clear of both, so the math
    * written there later never meets it.
    */
