@@ -1,0 +1,65 @@
+{
+  "round": 160,
+  "note": "Built on r159 option B. build.py imports the r159 parts (../r159/build.py) and writes b2.html (full page) and parts.html (the changed sections, shown in chat). Option switches with a dashed yellow border are mockup controls, not page parts. S-B photo: .design/assets/stock/loop-scan-4.jpg (cottonbro studio, Pexels License); scene.js prints Leah's plan and warm-up pages, out of focus, onto the blank book and the phone screen is replaced with the Unica app in HTML. Leah's answers and the app's marks are drawn by script on the Figma page 228:1248. The Workbook 04 cover in N-B and N-C is made in HTML in the style of the Figma cover; it is not in Figma.",
+  "decision": "Which visuals should the 'Scan the pages' and 'The next workbook' steps use, inside the B layout?",
+  "primary_axis": "the visual for each of the two weakest steps",
+  "invariants": [
+    "B layout from r159 (rows, a full-width band for the workbook)",
+    "Workbook open on load at Plan and Day 1 page 1, arrows to turn pages, level switch Leah U10 / Mateo U19",
+    "Same words as r159 for every step",
+    "Leah's Day 1 warm-up page (Figma 228:1248) with 28 of 30 right; slips on questions 14 (16 - 9, wrote 13) and 19 (20 - 8, wrote 18)"
+  ],
+  "options": [
+    {
+      "id": "S-A",
+      "artifact": "b2.html#scan-a",
+      "bet": "Before and after: Leah's page in pencil; drag a line to see the app's red marks, with the app's summary card",
+      "benefit": "Shows the value (the marking) on the real page; one simple interaction",
+      "cost": "No phone in view; the scan step itself is not shown",
+      "risk": "A parent may not see that the marks come from a phone app"
+    },
+    {
+      "id": "S-B",
+      "artifact": "b2.html#scan-b",
+      "bet": "A real photo of a parent's phone over the workbook; the phone screen plays camera, marking, marked",
+      "benefit": "Shows the act and the result in one picture; the most real",
+      "cost": "Depends on one stock photo; the screen text is small",
+      "risk": "A stock photo can feel staged; it needs a clean licence and a matching phone for production"
+    },
+    {
+      "id": "S-C",
+      "artifact": "b2.html#scan-c",
+      "bet": "The marked page with the worked steps for one slip (question 19)",
+      "benefit": "Shows the teaching, not only the marking",
+      "cost": "The most text in the visual",
+      "risk": "Reads like a worksheet answer key"
+    },
+    {
+      "id": "N-A",
+      "artifact": "b2.html#next-a",
+      "bet": "Text only: three large lines (more practice, less practice, a step ahead)",
+      "benefit": "Quiet break before the closing cards; easy to read",
+      "cost": "No picture of the next workbook",
+      "risk": "Can feel thin next to the image-heavy steps above"
+    },
+    {
+      "id": "N-B",
+      "artifact": "b2.html#next-b",
+      "bet": "This workbook, then the next one: two covers with an arrow",
+      "benefit": "Makes 'a new book each time' concrete",
+      "cost": "Needs a real Workbook 04 cover design",
+      "risk": "Repeats the workbook band"
+    },
+    {
+      "id": "N-C",
+      "artifact": "b2.html#next-c",
+      "bet": "Built from: the scans, the session with Maya and the assessment feed into the next cover",
+      "benefit": "Shows 'builds on all of it' literally",
+      "cost": "The busiest visual on the page",
+      "risk": "Repeats what the closing cards say"
+    }
+  ],
+  "band": "Workbook band colour: dark (r159 B) or paper (Savar's screenshot); toggle in the mockup",
+  "picked": "band: paper; scan: S-B direction, made real (r161); next: N-C, with clearer sources (r161)",
+  "outcome": "Savar, 2026-10-29: paper band. Scan: S-B is closest, but use our real workbook and our app on the phone, as real as possible. Next workbook: N-C, but explain each source better (marked pages, sessions with Maya, the first assessment). Dashboard must be clickable. Put the next version on the Figma board for the team."
+}
