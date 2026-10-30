@@ -53,12 +53,20 @@ export function deskGate(pathname: string, cookie: string | undefined, sessionPa
   return "to-desk";
 }
 
+/** A question that the board writes in columns: two whole numbers and the operation between them. */
+export interface ColumnsQuestion {
+  kind: "add" | "subtract" | "multiply";
+  operands: [number, number];
+}
+
 /** A question on the desk: its number, its box and its text. Never its answer, steps or wrong answers. */
 export interface DeskQuestion {
   number: number;
   box: QuestionBox;
   /** The question as printed, or null when its stored content cannot be trusted. */
   text: string | null;
+  /** The question for the board in columns, or null when it is not two whole numbers added, taken away or multiplied. */
+  columns: ColumnsQuestion | null;
 }
 
 export interface DeskPage {
@@ -81,18 +89,35 @@ export type DeskView =
       page: DeskPage;
       /** `not-this-child`: the workbook asked for is not one of this child's shipped workbooks, so the newest opened. */
       notice: "not-this-child" | null;
+      /** The question asked for, when it is on this page; else null. */
+      picked: number | null;
     };
+
+const wholeNumber = (n: number) => Number.isSafeInteger(n) && n >= 0;
+
+function columnsOf(q: WorkbookPage["questions"][number]): ColumnsQuestion | null {
+  if (q.content.status !== "found") return null;
+  const { kind, operands } = q.content.package.operation;
+  if (kind !== "add" && kind !== "subtract" && kind !== "multiply") return null;
+  const [a, b] = operands;
+  return wholeNumber(a) && wholeNumber(b) ? { kind, operands: [a, b] } : null;
+}
 
 const deskPage = (p: WorkbookPage): DeskPage => ({
   number: p.number, dayLabel: p.dayLabel, type: p.type, image: p.image,
-  questions: p.questions.map((q) => ({ number: q.number, box: q.box, text: q.content.status === "found" ? q.content.package.text : null })),
+  questions: p.questions.map((q) => ({
+    number: q.number, box: q.box, text: q.content.status === "found" ? q.content.package.text : null, columns: columnsOf(q),
+  })),
 });
 
 /**
  * The desk for one child: their shipped workbooks, the one asked for (else the newest), and the page asked for (else
  * the first page with questions, else the first page).
  */
-export async function deskView(store: WorkbookStore, o: { parentId: string; childId: string; workbookId?: string; page?: number }): Promise<DeskView> {
+export async function deskView(
+  store: WorkbookStore,
+  o: { parentId: string; childId: string; workbookId?: string; page?: number; question?: number },
+): Promise<DeskView> {
   const workbooks = (await store.childWorkbooks(o.childId)).filter((w) => w.parentId === o.parentId && w.childId === o.childId && w.status === "shipped");
   if (workbooks.length === 0) return { status: "no-workbook" };
   const asked = o.workbookId === undefined ? undefined : workbooks.find((w) => w.id === o.workbookId);
@@ -107,6 +132,7 @@ export async function deskView(store: WorkbookStore, o: { parentId: string; chil
     pages: book.pages.map((p) => p.number),
     page: deskPage(page),
     notice: o.workbookId !== undefined && !asked ? "not-this-child" : null,
+    picked: page.questions.some((q) => q.number === o.question) ? (o.question ?? null) : null,
   };
 }
 
@@ -131,6 +157,33 @@ export function tapAreas(page: DeskPage): TapArea[] {
     width: percent(q.box.width, image.width),
     height: percent(q.box.height, image.height),
   }));
+}
+
+/**
+ * The question card (D-184): the part of the page image around one question, as a crop. `box` is the crop in image
+ * pixels: the question's box with `margin` pixels around it, kept inside the image. The image is shown `imageWidth`
+ * percent of the crop's width, moved `left` percent of the crop's width and `top` percent of its height (3 decimals).
+ */
+export interface QuestionCrop {
+  question: number;
+  box: QuestionBox;
+  imageWidth: number;
+  left: number;
+  top: number;
+}
+
+export function questionCrop(page: DeskPage, question: number, margin = 16): QuestionCrop | null {
+  const q = page.questions.find((x) => x.number === question);
+  const image = page.image;
+  if (!q || !image) return null;
+  const x = Math.max(0, q.box.x - margin);
+  const y = Math.max(0, q.box.y - margin);
+  const box = {
+    x, y,
+    width: Math.min(image.width, q.box.x + q.box.width + margin) - x,
+    height: Math.min(image.height, q.box.y + q.box.height + margin) - y,
+  };
+  return { question, box, imageWidth: percent(image.width, box.width), left: -percent(box.x, box.width), top: -percent(box.y, box.height) };
 }
 
 /** What leaving the desk gets back, from src/app/api/desk/leave/route.ts. */

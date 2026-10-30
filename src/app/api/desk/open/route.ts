@@ -7,7 +7,7 @@ import { parentId, sessionClient } from "@/lib/supabase-auth";
 import { isUuid } from "@/lib/workbook-content";
 
 // Opens the child's desk on this device (#301): a form POST from Parent home (`child`) or from a page QR code (`child`,
-// `w` the workbook, `p` the page). The child is read with the parent's own session, so only their own child opens. The
+// `w` the workbook, `p` the page, `from` "qr"). The child is read with the parent's own session, so only their own child opens. The
 // desk needs the parent's PIN to leave, so a parent with no PIN sets one first. A desk open for another child stays: it
 // switches only after the PIN closes it.
 export async function POST(request: Request) {
@@ -32,6 +32,8 @@ export async function POST(request: Request) {
   const page = Number(form?.get("p"));
   if (isUuid(workbook)) at.set("w", workbook);
   if (Number.isInteger(page) && page > 0) at.set("p", String(page));
+  // A page QR code: the desk opens "Pick from my page" on that page and says how it opened.
+  if (at.has("p") && form?.get("from") === "qr") at.set("from", "qr");
   const response = to(at.size ? `${DESK_HOME}?${at}` : DESK_HOME);
   openDesk(response, parent, child.id);
   return response;

@@ -1,13 +1,12 @@
-import Link from "next/link";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { pageMetadata } from "@/lib/metadata";
-import { DESK_COOKIE, DESK_HOME, deskView, readLock, tapAreas, type DeskView } from "@/lib/desk";
+import { DESK_COOKIE, DESK_HOME, deskView, questionCrop, readLock, tapAreas, type DeskView } from "@/lib/desk";
+import { questionBoard } from "@/lib/desk-board";
 import { parentId, sessionClient } from "@/lib/supabase-auth";
 import { WORKBOOK_FILES_BUCKET, type WorkbookSummary } from "@/lib/workbook-content";
 import { workbookStore } from "@/lib/workbook-store";
-import { DeskBoard, LeaveDesk } from "@/components/desk";
-import { AnnounceDesk } from "@/components/desk-guard";
+import { Desk, type DeskBook } from "@/components/desk";
 
 export const metadata = pageMetadata({
   path: DESK_HOME,
@@ -19,66 +18,42 @@ export const metadata = pageMetadata({
 /** How long the link to a page image works. A new page view makes a new one. */
 const PAGE_URL_SECONDS = 15 * 60;
 
-const deskHref = (workbookId: string, page?: number) => `${DESK_HOME}?w=${workbookId}${page === undefined ? "" : `&p=${page}`}`;
 const sentOn = (w: WorkbookSummary) =>
-  w.shippedAt ? `Sent ${new Date(w.shippedAt).toLocaleDateString("en-CA", { month: "long", day: "numeric", timeZone: "America/Vancouver" })}` : "Workbook";
+  w.shippedAt ? `Sent ${new Date(w.shippedAt).toLocaleDateString("en-CA", { month: "long", day: "numeric", timeZone: "America/Vancouver" })}` : null;
+const book = (w: WorkbookSummary): DeskBook => ({ id: w.id, number: w.number, sent: sentOn(w) });
+const whole = (v: string | string[] | undefined) => (typeof v === "string" && /^\d{1,4}$/.test(v) ? Number(v) : undefined);
 
-// The child's desk (#301): open on this device for one child (the desk cookie, src/lib/desk.ts), read with the
+// The child's desk (#301, D-184): open on this device for one child (the desk cookie, src/lib/desk.ts), read with the
 // parent's own session, so row-level security gives only the family's shipped workbooks and their page images. `w`
-// picks a workbook, `p` a page. Without an open desk, the parent opens one from the account page.
-export default async function Desk({ searchParams }: PageProps<"/tutor">) {
+// picks a workbook, `p` a page, `q` the question; `pick=1` opens "Pick from my page", `from=qr` says a page QR code
+// opened it. Without an open desk, the parent opens one from the account page.
+export default async function DeskPage({ searchParams }: PageProps<"/tutor">) {
   const db = await sessionClient();
   const parent = await parentId(db);
   if (!parent) redirect(`/sign-in?next=${DESK_HOME}`);
   const lock = readLock((await cookies()).get(DESK_COOKIE)?.value);
   if (!lock || lock.parentId !== parent) redirect("/account");
 
-  const { w, p } = await searchParams;
+  const { w, p, q, pick, from } = await searchParams;
   const [{ data: child }, view] = await Promise.all([
     db.from("children").select("id, first_name").eq("id", lock.childId).maybeSingle(),
     // A failed read still shows the desk, with Leave, and says the workbook cannot be shown.
     deskView(workbookStore(db), {
-      parentId: parent, childId: lock.childId,
-      workbookId: typeof w === "string" ? w : undefined,
-      page: typeof p === "string" && /^\d{1,4}$/.test(p) ? Number(p) : undefined,
+      parentId: parent, childId: lock.childId, workbookId: typeof w === "string" ? w : undefined, page: whole(p), question: whole(q),
     }).catch((error: unknown): DeskView | null => {
       console.error("[desk] workbook load failed", error instanceof Error ? error.message : error);
       return null;
     }),
   ]);
-  const name = child?.first_name ?? "there";
-
-  const top = (books: WorkbookSummary[], open: string | null) => (
-    <header className="desk-top">
-      <span className="logo">Unica Learning<b /></span>
-      <nav className="desk-books" aria-label="Your workbooks">
-        {books.map((b) => (
-          <Link key={b.id} className="desk-cover" href={deskHref(b.id)} aria-current={b.id === open ? "page" : undefined}>
-            <b>Workbook {b.number}</b><span>{sentOn(b)}</span>
-          </Link>
-        ))}
-      </nav>
-      <LeaveDesk />
-      <AnnounceDesk />
-    </header>
-  );
+  const name = child?.first_name ?? null;
 
   if (!child || !view || view.status === "no-workbook") {
     return (
-      <div className="look-root desk-root" data-look="warm">
-        {top([], null)}
-        <main id="main" className="desk-main">
-          <section className="desk-pane desk-pane-page"><div className="desk-stage">
-            <p className="desk-missing">{view ? `There is no workbook here yet. When ${child ? `${name}'s` : "your"} workbook arrives, its pages show here.`
-              : "Your workbook cannot be shown right now. Try again in a moment."}</p>
-          </div></section>
-          <section className="desk-pane desk-pane-maya" aria-label="Maya">
-            <p className="desk-kicker">Maya · Unica Teaching Assistant</p>
-            <h1 className="desk-hello">Hi, {name}.</h1>
-            <div className="desk-soon"><h2>Maya is coming soon.</h2><p>Soon you can ask Maya for help with a question in your workbook.</p></div>
-          </section>
-        </main>
-      </div>
+      <Desk
+        name={name}
+        problem={view ? `There is no workbook here yet. When ${name ? `${name}'s` : "your"} workbook arrives, its pages show here.`
+          : "Your workbook cannot be shown right now. Try again in a moment."}
+      />
     );
   }
 
@@ -89,32 +64,26 @@ export default async function Desk({ searchParams }: PageProps<"/tutor">) {
     if (error) console.error("[desk] page image link failed", error.message);
     if (data) image = { url: data.signedUrl, width: page.image.width, height: page.image.height };
   }
-  const at = pages.indexOf(page.number);
-  const prev = pages[at - 1];
-  const next = pages[at + 1];
-  const pageNav = (
-    <nav className="desk-pagebar" aria-label="Pages">
-      {prev === undefined ? <span /> : <Link className="prev" href={deskHref(workbook.id, prev)}>← Page {prev}</Link>}
-      <h2>Page {page.number} of {pages.length}{page.dayLabel ? ` · ${page.dayLabel}` : ""}</h2>
-      {next === undefined ? <span /> : <Link className="next" href={deskHref(workbook.id, next)}>Page {next} →</Link>}
-    </nav>
-  );
   return (
-    <div className="look-root desk-root" data-look="warm">
-      {top(view.workbooks, workbook.id)}
-      {view.notice === "not-this-child" && (
-        <p role="status" className="desk-notice">That workbook is not on {name}&apos;s desk, so {name}&apos;s newest workbook is open.</p>
-      )}
-      <DeskBoard
-        key={`${workbook.id}-${page.number}`}
-        name={name}
-        pageNumber={page.number}
-        dayLabel={page.dayLabel}
-        image={image}
-        areas={tapAreas(page)}
-        questions={page.questions.map((q) => ({ number: q.number, text: q.text }))}
-        pageNav={pageNav}
-      />
-    </div>
+    <Desk
+      // A new workbook or page starts the desk again, with the question asked for.
+      key={`${workbook.id}-${page.number}`}
+      name={name}
+      notice={view.notice === "not-this-child" ? `That workbook is not on ${name}'s desk, so ${name}'s newest workbook is open.` : null}
+      books={view.workbooks.map(book)}
+      book={book(workbook)}
+      page={{ number: page.number, dayLabel: page.dayLabel, pages }}
+      image={image}
+      areas={tapAreas(page)}
+      questions={page.questions.map((x) => ({
+        number: x.number,
+        text: x.text,
+        crop: image ? questionCrop(page, x.number) : null,
+        board: questionBoard(x.columns),
+      }))}
+      picked={view.picked}
+      openPicker={pick === "1" || from === "qr"}
+      fromQr={from === "qr"}
+    />
   );
 }

@@ -48,7 +48,7 @@ export default async function PageCode(props: PageProps<"/tutor/p/[token]">) {
       </DeskShell>
     );
   }
-  const target = `${DESK_HOME}?w=${found.workbookId}&p=${found.page}`;
+  const target = `${DESK_HOME}?w=${found.workbookId}&p=${found.page}&from=qr`;
   if (open?.childId === found.childId) redirect(target);
 
   const { data: child } = await db.from("children").select("first_name").eq("id", found.childId).maybeSingle();
@@ -73,6 +73,7 @@ export default async function PageCode(props: PageProps<"/tutor/p/[token]">) {
           <input type="hidden" name="child" value={found.childId} />
           <input type="hidden" name="w" value={found.workbookId} />
           <input type="hidden" name="p" value={found.page} />
+          <input type="hidden" name="from" value="qr" />
           <button type="submit" className="btn">Open the desk</button>
         </form>
       )}

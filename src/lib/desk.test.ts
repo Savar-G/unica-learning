@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { DESK_HOME, deskGate, deskView, lockCookie, openPageToken, readLock, tapAreas } from "@/lib/desk";
+import { DESK_HOME, deskGate, deskView, lockCookie, openPageToken, questionCrop, readLock, tapAreas } from "@/lib/desk";
 import { sampleWorkbook } from "@/lib/workbook-sample";
 import { memoryWorkbookStore } from "@/lib/workbook-store-memory";
 
@@ -99,6 +99,56 @@ describe("the desk view", () => {
     const view = await deskView(await family(), { parentId: PARENT, childId: CHILD });
     if (view.status !== "ready") throw new Error(view.status);
     expect(JSON.stringify(view)).not.toContain("612");
+  });
+});
+
+describe("the picked question", () => {
+  it("picks the question the child asked for when it is on the page shown", async () => {
+    const view = await deskView(await family(), { parentId: PARENT, childId: CHILD, page: 2, question: 3 });
+    if (view.status !== "ready") throw new Error(view.status);
+    expect(view.picked).toBe(3);
+  });
+
+  it("picks nothing when no question is asked for, or the question is not on the page", async () => {
+    const store = await family();
+    for (const question of [undefined, 9, 0]) {
+      const view = await deskView(store, { parentId: PARENT, childId: CHILD, page: 2, question });
+      if (view.status !== "ready") throw new Error(view.status);
+      expect(view.picked, String(question)).toBeNull();
+    }
+  });
+
+  it("gives the board the question's two whole numbers and its operation, never its answer", async () => {
+    const view = await deskView(await family(), { parentId: PARENT, childId: CHILD, workbookId: FIRST, page: 3 });
+    if (view.status !== "ready") throw new Error(view.status);
+    expect(view.page.questions.map((q) => q.columns)).toEqual([
+      { kind: "subtract", operands: [532, 178] },
+      { kind: "subtract", operands: [704, 256] },
+      { kind: "subtract", operands: [615, 349] },
+      { kind: "subtract", operands: [823, 467] },
+    ]);
+  });
+});
+
+describe("the question card", () => {
+  it("crops the page image to the question's box with a margin, in percent of the crop", async () => {
+    const view = await deskView(await family(), { parentId: PARENT, childId: CHILD });
+    if (view.status !== "ready") throw new Error(view.status);
+    // Question 2: the box at x 440, y 230, 350 by 360, on an 850 by 1100 image; with 16 px around it, 382 by 392 at 424, 214.
+    expect(questionCrop(view.page, 2)).toEqual({ question: 2, box: { x: 424, y: 214, width: 382, height: 392 }, imageWidth: 222.513, left: -110.995, top: -54.592 });
+  });
+
+  it("keeps the margin inside the image at its edges", () => {
+    const page = { number: 1, dayLabel: null, type: "practice", image: { path: "p.png", width: 200, height: 100 },
+      questions: [{ number: 1, box: { x: 4, y: 90, width: 100, height: 10 }, text: null, columns: null }] };
+    expect(questionCrop(page, 1)?.box).toEqual({ x: 0, y: 74, width: 120, height: 26 });
+  });
+
+  it("has no card for a question that is not on the page, or a page without an image", async () => {
+    const view = await deskView(await family(), { parentId: PARENT, childId: CHILD });
+    if (view.status !== "ready") throw new Error(view.status);
+    expect(questionCrop(view.page, 9)).toBeNull();
+    expect(questionCrop({ ...view.page, image: null }, 2)).toBeNull();
   });
 });
 
