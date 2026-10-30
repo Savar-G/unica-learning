@@ -1,5 +1,6 @@
 import { after } from "next/server";
 import { isUuid } from "@/lib/assessment-store";
+import { rebuildChildProfileNow } from "@/lib/child-profile-server";
 import { rebuildLatestProfile } from "@/lib/learner-profile";
 import { parseLearning, toRow, type LearningError, type LearningResult } from "@/lib/learning-style";
 import { parentId, sessionClient } from "@/lib/supabase-auth";
@@ -11,6 +12,7 @@ const fail = (error: LearningError, status: number) => Response.json({ ok: false
 // family's child id updates nothing. Empty answers clear what was stored. JSON only: a form on another site cannot
 // send it with the parent's cookies. #196: the answers are part of the learner profile, and the card is answered after
 // the report job built it, so the profile of the child's latest finished test is built again after the response.
+// #303: then the child's profile, which reads that test profile and the card answers. Neither rebuild throws.
 export async function POST(request: Request) {
   if (!request.headers.get("content-type")?.startsWith("application/json")) return fail("bad_json", 415);
   const db = await sessionClient();
@@ -31,6 +33,9 @@ export async function POST(request: Request) {
     .eq("id", child).select("id");
   if (error) return fail("store_failed", 500);
   if (!data?.length) return fail("not_found", 404);
-  after(() => rebuildLatestProfile(child));
+  after(async () => {
+    await rebuildLatestProfile(child);
+    await rebuildChildProfileNow(child);
+  });
   return Response.json({ ok: true } satisfies LearningResult);
 }
