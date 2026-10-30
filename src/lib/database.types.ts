@@ -964,6 +964,41 @@ export type Database = {
           },
         ]
       }
+      parent_pins: {
+        Row: {
+          created_at: string
+          failed_attempts: number
+          locked_until: string | null
+          parent_id: string
+          pin_hash: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          failed_attempts?: number
+          locked_until?: string | null
+          parent_id: string
+          pin_hash: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          failed_attempts?: number
+          locked_until?: string | null
+          parent_id?: string
+          pin_hash?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "parent_pins_parent_id_fkey"
+            columns: ["parent_id"]
+            isOneToOne: true
+            referencedRelation: "parents"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       parents: {
         Row: {
           created_at: string
@@ -1682,6 +1717,20 @@ export type Database = {
       claim_family_retention: {
         Args: { p: string; subscription_ended_at: string; token: string }
         Returns: Json
+      }
+      claim_pin_attempt: {
+        Args: {
+          p_lock_seconds: number
+          p_max: number
+          p_now: string
+          p_parent: string
+        }
+        Returns: {
+          out_attempts_left: number
+          out_hash: string
+          out_locked_until: string
+          out_status: string
+        }[]
       }
       complete_family_deletion: {
         Args: { p: string; token: string }

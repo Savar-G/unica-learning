@@ -163,3 +163,7 @@ Run on 13 October 2026 against production, with four new named QA families (`qa1
 Not covered: renewal beyond five minutes, signals and hard runner loss, live Stripe cancellation and expiration, and Checkout-owned intents. These need a QA family with Stripe history, and the rules above do not allow a customer fixture. Only the isolated tests in this document cover them. A family with Stripe history keeps its fence when a payment read is unknown, so these paths fail closed.
 
 Open defect: #138. A family with mixed-case sibling folders in Storage stops at every run. On 13 October 2026, no non-QA object had a mixed-case path.
+
+## Parent PIN (#300)
+
+`public.parent_pins` holds one row per parent (the PIN's salted hash and the attempt count). Its `parent_id` references `public.parents` with `on delete cascade`, so the existing family deletion removes the row when it deletes the parent's Auth user. The worker needs no code change and no table list. Checked on the live database (29 October 2026): the foreign key delete rule is cascade; the table has the family write fence trigger; no role except the secret key can read or write the table or call `claim_pin_attempt`. Row-level security is on with no policy, so a signed-in parent reads no row, theirs or another family's.
