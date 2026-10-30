@@ -190,7 +190,7 @@ export function WhatsIncluded() {
           </Section>
 
           <Section className="wi-band" aria-labelledby="wiWb">
-            <StepHead id="wiWb" eyebrow="Personalized workbook" title="Then your child's workbook arrives." lead="Made from the free assessment, for your child only, and mailed home. Two workbooks a month, 15 to 30 minutes a day." />
+            <StepHead id="wiWb" eyebrow="Personalized workbook" title="Then your child's workbook arrives." lead="Made from the free assessment, personalized for your child, and mailed home." />
             <WorkbookReader />
           </Section>
 
