@@ -1,0 +1,330 @@
+<!doctype html><html><head><meta charset="utf-8"><title>r159 A - Open page</title><style>
+@import url('https://fonts.googleapis.com/css2?family=Geist:wght@300;400;500;600&family=Geist+Mono:wght@400;500&family=Caveat:wght@500;700&display=swap');
+.scroll{margin:0 auto}
+.tabsbar{display:flex;gap:6px;margin:0 0 10px}.tabsbar button{font:500 13px var(--font-sans,system-ui);border:1px solid var(--border,#ddd);background:transparent;color:var(--foreground,#111);border-radius:999px;padding:7px 14px;cursor:pointer}.tabsbar button.on{background:var(--foreground,#111);color:var(--background,#fff)}
+@media (max-width:1100px){.board .scroll{height:1940px}.scroll{height:1990px;overflow-y:auto;overflow-x:hidden;border-radius:14px}.mock{zoom:.6}}
+.mock{width:1200px;background:#fff;color:#0c0c0e;font-family:Geist,system-ui,sans-serif;overflow:hidden;margin:0 auto;padding-bottom:40px}
+.mock *{box-sizing:border-box}
+.mock img{display:block}
+.nav{display:flex;align-items:center;justify-content:space-between;padding:22px 48px;border-bottom:1px solid #ececef;font-size:15px}
+.wm{font-weight:600;font-size:20px;letter-spacing:-.02em}.wm i{display:inline-block;width:7px;height:7px;background:#ff6a3d;margin-left:2px}
+.nav .links{display:flex;gap:28px;color:#44444c}.nav .links b{color:#0c0c0e;font-weight:500}
+.btn{display:inline-block;background:#0c0c0e;color:#fff;border-radius:6px;padding:13px 20px;font-size:15px;font-weight:500;cursor:pointer;border:0;font-family:inherit}
+.btn.g{background:#fff;color:#0c0c0e;border:1px solid #d4d4d8}
+.btn.s{padding:9px 14px;font-size:13px}
+.k{font-family:'Geist Mono',monospace;font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:#44444c;display:inline-flex;align-items:center;gap:8px}
+.k:before{content:'';width:7px;height:7px;background:#ff6a3d}
+h1{font-weight:300;font-size:64px;line-height:1.06;letter-spacing:-.035em;margin:18px auto 20px;max-width:900px}
+h2{font-weight:300;font-size:46px;line-height:1.08;letter-spacing:-.03em;margin:14px 0 16px}
+h3{font-weight:500;font-size:17px;margin:0 0 6px;letter-spacing:-.01em}
+p{font-size:17px;line-height:1.5;color:#44444c;margin:0 0 14px}
+.lead{font-size:19px}
+.lnk{font-size:15px;font-weight:500;border-bottom:1.5px solid #0c0c0e;padding-bottom:1px;color:#0c0c0e}
+.hint{font-family:'Geist Mono',monospace;font-size:12px;letter-spacing:.04em;color:#8a8a93}
+.note{position:absolute;z-index:50;background:#fff8c5;border:1px dashed #c9a400;color:#5c4a00;font-family:'Geist Mono',monospace;font-size:11px;line-height:1.4;letter-spacing:.02em;padding:7px 9px;border-radius:4px;max-width:240px;text-align:left}
+.hero{text-align:center;padding:84px 48px 36px}
+.hero .lead{max-width:640px;margin:0 auto 28px}
+.hero .cta{display:flex;gap:10px;justify-content:center}
+
+/* browser and phone frames */
+.browser{border-radius:12px;overflow:hidden;background:#fff;box-shadow:0 0 0 1px rgba(0,0,0,.08),0 40px 80px -36px rgba(20,30,60,.45)}
+.browser .bar{height:34px;background:#f4f4f5;display:flex;align-items:center;gap:6px;padding:0 12px;border-bottom:1px solid #e9e9ec}
+.browser .bar i{width:10px;height:10px;border-radius:50%;background:#dcdce0}
+.browser .bar span{margin-left:14px;font-family:'Geist Mono',monospace;font-size:11px;color:#8a8a93;background:#fff;border-radius:6px;padding:4px 10px}
+.browser img{width:100%}
+.ph{width:300px;height:632px;border-radius:48px;background:#0b0b0c;padding:9px;box-shadow:0 0 0 1px #2a2a2e,0 40px 80px -30px rgba(20,30,60,.55);position:relative;flex:none}
+.ph .scr{position:relative;width:100%;height:100%;border-radius:40px;overflow:hidden;background:#f6f6f7}
+.ph .scr>.sc{position:absolute;inset:0;opacity:0;transition:opacity .45s}
+.ph .scr>.sc.on{opacity:1}
+.ph .scr>.sc>img.fig{position:absolute;width:108%;max-width:none;left:-4%;top:-1.9%}
+.ph.still .scr img{position:absolute;width:108%;max-width:none;left:-4%;top:-1.9%}
+.sample{font-family:'Geist Mono',monospace;font-size:10.5px;letter-spacing:.06em;text-transform:uppercase;background:#fff;border:1px solid #e4e4e7;border-radius:999px;padding:5px 10px;color:#44444c}
+
+/* assessment */
+.as{position:relative}
+.as .rep{position:absolute;width:440px;border-radius:14px;overflow:hidden;box-shadow:0 0 0 1px rgba(0,0,0,.06),0 30px 60px -24px rgba(20,30,60,.45);background:#fff}
+.as .rep img{width:100%}
+.as .rep span{position:absolute;left:12px;top:10px;font-family:'Geist Mono',monospace;font-size:10px;letter-spacing:.06em;text-transform:uppercase;background:#0c0c0e;color:#fff;border-radius:4px;padding:3px 7px}
+
+/* ---------- 3D workbook reader ---------- */
+.rd{position:relative;width:100%;height:var(--rdh,700px);pointer-events:none}
+.rd-body{pointer-events:none}.lf,.rd-nav,.backshelf.on{pointer-events:auto}.rd-body.hid .lf{pointer-events:none}
+.rd-stage{position:absolute;left:50%;top:50%;width:880px;height:570px;margin:-285px 0 0 -440px;perspective:2400px}
+.rd-body{position:absolute;inset:0;transform-style:preserve-3d;transform-origin:660px 285px;transition:transform 1.05s cubic-bezier(.3,.7,.2,1),opacity .6s}
+.rd-body.hid{opacity:0;pointer-events:none}
+.lf{position:absolute;left:440px;top:0;width:440px;height:570px;transform-origin:0 50%;transform-style:preserve-3d;transform:rotateY(0deg) translateZ(var(--z));cursor:pointer}
+.lf.flipped{transform:rotateY(-180deg) translateZ(var(--z))}
+.lf.fwd{animation:lfturn .95s cubic-bezier(.42,.05,.28,1) both}
+.lf.bwd{animation:lfturn .95s cubic-bezier(.42,.05,.28,1) reverse both}
+@keyframes lfturn{from{transform:rotateY(0deg) translateZ(var(--z))}to{transform:rotateY(-180deg) translateZ(var(--z))}}
+.hf{position:absolute;top:0;width:220px;height:570px;transform-style:preserve-3d;transform-origin:0 50%}
+.hf.in{left:0}.hf.out{left:220px}
+.lf.fwd .out{animation:curl .95s cubic-bezier(.42,.05,.28,1) both}
+.lf.bwd .out{animation:curl .95s cubic-bezier(.42,.05,.28,1) reverse both}
+@keyframes curl{0%{transform:rotateY(0)}30%{transform:rotateY(-30deg)}66%{transform:rotateY(17deg)}100%{transform:rotateY(0)}}
+.fc{position:absolute;inset:0;backface-visibility:hidden;-webkit-backface-visibility:hidden;background-color:#fff;background-size:440px 570px;background-repeat:no-repeat}
+.fc.bk{transform:rotateY(180deg)}
+.in>.fc.fr:after{content:'';position:absolute;inset:0;background:linear-gradient(90deg,rgba(40,30,20,.22),rgba(40,30,20,.06) 22px,rgba(0,0,0,0) 54px)}
+.in>.fc.bk:after{content:'';position:absolute;inset:0;background:linear-gradient(270deg,rgba(40,30,20,.22),rgba(40,30,20,.06) 22px,rgba(0,0,0,0) 54px)}
+.lf.cover .in>.fc.fr:after{background:linear-gradient(90deg,rgba(0,0,0,.10),rgba(0,0,0,0) 10px)}
+.out>.fc:before{content:'';position:absolute;inset:0;opacity:0;background:linear-gradient(90deg,rgba(0,0,0,0) 30%,rgba(0,0,0,.22))}
+.lf.fwd .fc:before,.lf.bwd .fc:before{content:'';position:absolute;inset:0;background:linear-gradient(90deg,rgba(0,0,0,.02),rgba(0,0,0,.24));animation:shade .95s both;z-index:1}
+@keyframes shade{0%,100%{opacity:0}50%{opacity:1}}
+.rd-sp{position:absolute;left:418px;top:0;width:22px;height:570px;transform-origin:100% 50%;transform:rotateY(-90deg);background:linear-gradient(90deg,#e9e5dc,#fbfaf6 40%,#efebe2);display:flex;flex-direction:column;align-items:center;padding:14px 0;gap:10px;transition:opacity .4s}
+.rd-sp b{writing-mode:vertical-rl;font:500 10px/1 Geist,sans-serif;letter-spacing:.04em;color:#26262b;white-space:nowrap}
+.rd-sp .mk{width:12px;height:12px;flex:none}
+.rd-bt{position:absolute;left:440px;top:570px;width:440px;height:22px;transform-origin:50% 0;transform:rotateX(-90deg);background:linear-gradient(#e6e1d6 0 1.5px,transparent 1.5px),repeating-linear-gradient(0deg,#f7f4ec 0 1px,#e2ddd1 1px 2px);transition:opacity .4s}
+.rd-re{position:absolute;left:880px;top:0;width:22px;height:570px;transform-origin:0 50%;transform:rotateY(90deg);background:repeating-linear-gradient(90deg,#f7f4ec 0 1px,#e2ddd1 1px 2px);transition:opacity .4s}
+.rd-sh{position:absolute;left:440px;top:0;width:440px;height:570px;transform:translateZ(-23px);background:#d8d3c8;box-shadow:0 34px 60px -10px rgba(0,0,0,.42),0 10px 18px rgba(0,0,0,.18);transition:opacity .5s}
+.rd-end{position:absolute;left:440px;top:0;width:440px;height:570px;transform:translateZ(-7px);background:#fbfaf6;display:flex;align-items:center;justify-content:center;text-align:center;padding:60px;font-size:15px;line-height:1.5;color:#8a8a93;opacity:0;transition:opacity .4s}
+.rd-end:after{content:'';position:absolute;inset:0;background:linear-gradient(90deg,rgba(40,30,20,.18),rgba(0,0,0,0) 50px)}
+.rd-board{position:absolute;left:-7px;top:-7px;width:894px;height:584px;border-radius:5px;transform:translateZ(-9px);background:#e4dfd4;box-shadow:0 50px 90px -30px rgba(0,0,0,.5),0 12px 24px -8px rgba(0,0,0,.2);opacity:0;transition:opacity .5s}
+.rd.is-open .rd-board,.rd.is-open .rd-end{opacity:1}
+.rd.is-open .rd-sp,.rd.is-open .rd-bt,.rd.is-open .rd-re,.rd.is-open .rd-sh{opacity:0}
+.rd-nav{position:absolute;top:50%;width:54px;height:54px;margin-top:-27px;border-radius:50%;border:0;background:#fff;box-shadow:0 0 0 1px rgba(0,0,0,.08),0 10px 24px -8px rgba(0,0,0,.35);cursor:pointer;display:grid;place-items:center;opacity:0;pointer-events:none;transition:opacity .4s,transform .2s;z-index:20}
+.rd-nav:hover{transform:scale(1.06)}
+.rd-nav svg{width:22px;height:22px}
+.rd-nav.p{left:calc(50% - 440px - 86px)}.rd-nav.n{left:calc(50% + 440px + 32px)}
+.rd.is-open .rd-nav{opacity:1;pointer-events:auto}
+.rd-nav[disabled]{opacity:.35!important}
+.rd-cap{position:absolute;left:0;right:0;bottom:6px;text-align:center;font-family:'Geist Mono',monospace;font-size:12px;letter-spacing:.04em;color:#8a8a93;transition:opacity .3s}
+.dark .rd-cap{color:#a8a39a}
+.mk{display:grid;grid-template-columns:repeat(3,1fr);gap:0}
+.mk i{display:block;aspect-ratio:1;border:.5px solid #26262b}
+.mk i:nth-child(1){background:#f5c518}.mk i:nth-child(3){background:#2f5be8}.mk i:nth-child(5){background:#ff6a3d}.mk i:nth-child(7){background:#1f9d55}
+
+/* bookshelf (B) */
+.shelf{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:26px;transition:opacity .5s,transform .6s}
+.shelf.hid{opacity:0;transform:translateY(30px);pointer-events:none}
+.spine{position:relative;width:820px;height:96px;cursor:pointer;transition:transform .35s cubic-bezier(.3,.7,.2,1);transform-style:preserve-3d}
+.spine:nth-child(1){transform:translateX(-26px) rotate(-1.2deg)}.spine:nth-child(2){transform:translateX(34px) rotate(.8deg)}
+.spine:nth-child(1):hover{transform:translateX(10px) rotate(-1.2deg)}.spine:nth-child(2):hover{transform:translateX(70px) rotate(.8deg)}
+.spine .top{position:absolute;left:0;right:0;top:-14px;height:14px;background:linear-gradient(#f3f0e8,#e6e1d6);transform-origin:bottom;transform:skewX(-34deg);transform-origin:0 100%;border-radius:2px 2px 0 0}
+.spine .face{position:absolute;inset:0;border-radius:2px;background:linear-gradient(#fdfcf9,#efebe2 70%,#dcd6ca);box-shadow:0 18px 30px -12px rgba(0,0,0,.6);display:flex;align-items:center;padding:0 34px;gap:28px;color:#26262b}
+.spine .face .who{font-family:'Geist Mono',monospace;font-size:12px;letter-spacing:.06em;text-transform:uppercase;width:210px}
+.spine .face .t{font-size:28px;font-weight:400;letter-spacing:-.02em;flex:1}
+.spine .face .mk{width:32px;height:32px}
+.backshelf{position:absolute;left:24px;top:18px;z-index:30;background:transparent;border:1px solid rgba(255,255,255,.3);color:#f4f1ea;border-radius:999px;padding:8px 14px;font:500 13px Geist,sans-serif;cursor:pointer;opacity:0;pointer-events:none;transition:opacity .4s}
+.backshelf.on{opacity:1;pointer-events:auto}
+.dark .backshelf{color:#f4f1ea}
+.light-back{border-color:#d4d4d8;color:#0c0c0e}
+
+/* level switch */
+.lvl{display:inline-flex;gap:4px;background:rgba(255,255,255,.18);border-radius:999px;padding:4px}
+.lvl button{border:0;background:transparent;color:inherit;font:500 14px Geist,sans-serif;border-radius:999px;padding:9px 16px;cursor:pointer}
+.lvl button.on{background:#fff;color:#0c0c0e;box-shadow:0 2px 8px rgba(0,0,0,.12)}
+
+/* Maya (same layout as the home page Guidance section) */
+.gd .lead{max-width:680px}
+.gd video{display:block;width:100%;aspect-ratio:8/5;object-fit:cover;border-radius:14px;background:#f6f1ea;box-shadow:0 0 0 1px rgba(0,0,0,.06),0 30px 60px -32px rgba(30,40,80,.45);margin-top:30px}
+.gd .cap{margin:10px 0 0;font:400 12.5px/1.5 'Geist Mono',monospace;color:#8a8a93}
+.gd ul{list-style:none;margin:32px 0 0;padding:0;display:grid;grid-template-columns:repeat(3,1fr);gap:32px;text-align:left}
+.gd li{display:grid;gap:4px;padding-top:14px;border-top:1px solid #e4e4e7}
+.gd li b{font-weight:500;font-size:16px}.gd li span{font-size:15px;line-height:1.5;color:#55555e}
+
+/* app scan */
+.scanwrap{display:flex;flex-direction:column;align-items:center;gap:16px}
+.pcap{font-size:16px;color:#0c0c0e;min-height:48px;max-width:380px;text-align:center;line-height:1.45}
+.dots{display:flex;gap:7px}.dots i{width:7px;height:7px;border-radius:50%;background:#d4d4d8;transition:all .3s}.dots i.on{background:#0c0c0e;width:22px;border-radius:4px}
+.steps-list{list-style:none;margin:28px 0 0;padding:0;display:grid;gap:4px}
+.steps-list li{display:flex;gap:12px;align-items:baseline;padding:11px 14px;border-radius:10px;font-size:16px;color:#8a8a93;cursor:pointer;transition:all .3s}
+.steps-list li b{font-family:'Geist Mono',monospace;font-size:11px;font-weight:500;color:inherit;letter-spacing:.06em;width:16px}
+.steps-list li.on{background:#f4f4f5;color:#0c0c0e}
+/* recreated camera screen */
+.cam{background:#0e0e10}
+.cam .stat{position:absolute;left:26px;right:22px;top:16px;display:flex;justify-content:space-between;color:#fff;font:600 14px Geist,sans-serif}
+.cam .tb{position:absolute;left:18px;right:18px;top:52px;display:flex;justify-content:space-between;align-items:center;color:#fff;font:500 13px Geist,sans-serif}
+.cam .vf{position:absolute;left:12px;right:12px;top:86px;height:388px;border-radius:18px;overflow:hidden;background:
+  radial-gradient(120% 80% at 30% 20%,rgba(255,236,200,.35),transparent 60%),
+  repeating-linear-gradient(97deg,rgba(90,52,24,.0) 0 18px,rgba(90,52,24,.18) 18px 19px,rgba(90,52,24,0) 19px 41px),
+  linear-gradient(160deg,#b98a5c,#9c6c42 55%,#7b5232)}
+.cam .paper{position:absolute;left:50%;top:50%;width:178px;height:232px;margin:-122px 0 0 -89px;transform:perspective(520px) rotateX(24deg) rotateZ(-6deg) scale(1.02);box-shadow:0 22px 26px -10px rgba(40,20,5,.55);transition:transform 1.2s cubic-bezier(.3,.7,.2,1)}
+.cam.on .paper{transform:perspective(520px) rotateX(14deg) rotateZ(-2.5deg) scale(1.06);transition-delay:.3s}
+.cam .pencil{position:absolute;left:196px;top:300px;width:120px;height:9px;transform:rotate(-58deg);background:linear-gradient(90deg,#f0c2c9 0 12px,#c9c9c9 12px 18px,#f4c430 18px 100px,#e8c79a 100px);clip-path:polygon(0 0,100px 0,120px 50%,100px 100%,0 100%);box-shadow:0 6px 8px rgba(0,0,0,.3)}
+.cam .br{position:absolute;width:26px;height:26px;border:3px solid #ff6a3d;transition:all 1s cubic-bezier(.3,.7,.2,1) .9s}
+.cam .br.a{left:20px;top:22px;border-right:0;border-bottom:0}.cam .br.b{right:20px;top:22px;border-left:0;border-bottom:0}
+.cam .br.c{left:20px;bottom:22px;border-right:0;border-top:0}.cam .br.d{right:20px;bottom:22px;border-left:0;border-top:0}
+.cam.on .br.a{left:52px;top:62px}.cam.on .br.b{right:46px;top:58px}.cam.on .br.c{left:48px;bottom:56px}.cam.on .br.d{right:50px;bottom:62px}
+.cam .pill{position:absolute;left:50%;top:490px;transform:translateX(-50%);background:#fff;border-radius:999px;padding:8px 14px;font:500 12.5px Geist,sans-serif;white-space:nowrap}
+.cam .pill span{transition:opacity .3s}.cam .pill .p2{position:absolute;left:0;right:0;text-align:center;opacity:0;color:#1f9d55}
+.cam.on .pill .p1{opacity:0;transition-delay:2.2s}.cam.on .pill .p2{opacity:1;transition-delay:2.2s}
+.cam .bot{position:absolute;left:18px;right:18px;bottom:28px;display:flex;align-items:center;justify-content:space-between}
+.cam .thumbs{display:flex;gap:5px}.cam .thumbs i{width:22px;height:28px;border-radius:3px;background:#3a3a3f}.cam .thumbs i:first-child{background:#fff}
+.cam .shut{width:62px;height:62px;border-radius:50%;border:4px solid #fff;display:grid;place-items:center}.cam .shut i{width:48px;height:48px;border-radius:50%;background:#fff;transition:transform .15s}
+.cam.on .shut i{animation:press .3s 3.05s}
+@keyframes press{50%{transform:scale(.85)}}
+.cam .up{color:#fff;font:500 13px Geist,sans-serif}
+.cam .flash{position:absolute;inset:0;background:#fff;opacity:0;pointer-events:none}
+.cam.on .flash{animation:flash .6s 3.15s}
+@keyframes flash{0%{opacity:0}20%{opacity:.9}100%{opacity:0}}
+.wpage{background:#fff;padding:14px 13px;font-family:Geist,sans-serif;color:#1d1d22;width:100%;height:100%}
+.wpage .d{font-family:'Geist Mono',monospace;font-size:6px;letter-spacing:.08em}
+.wpage .t{font-size:10px;margin:5px 0 10px}
+.wpage .g{display:grid;grid-template-columns:repeat(3,1fr);row-gap:12px;column-gap:6px}
+.wpage .q{font-size:10px;line-height:1.25;text-align:right;padding-right:6px;position:relative}
+.wpage .q u{display:block;text-decoration:none;border-bottom:1px solid #1d1d22}
+.wpage .q em{display:block;font-style:normal;font-family:Caveat,'Bradley Hand',cursive;font-size:14px;color:#2747c9;line-height:1.05}
+.mkg{background:#f6f6f7}
+.mkg .tb2{position:absolute;left:0;right:0;top:44px;text-align:center;font:500 13px Geist,sans-serif}
+.mkg .pg{position:absolute;left:30px;right:30px;top:96px;height:300px;box-shadow:0 0 0 1px #e4e4e7}
+.mkg .scan{position:absolute;left:24px;right:24px;height:3px;background:#ff6a3d;box-shadow:0 0 18px 6px rgba(255,106,61,.35);top:96px;opacity:0}
+.mkg.on .scan{animation:sweep 1.9s .2s ease-in-out both}
+@keyframes sweep{0%{top:96px;opacity:0}8%{opacity:1}92%{opacity:1}100%{top:396px;opacity:0}}
+.mkg .pill{position:absolute;left:50%;top:430px;transform:translateX(-50%);background:#0c0c0e;color:#fff;border-radius:999px;padding:9px 16px;font:500 13px Geist,sans-serif;white-space:nowrap}
+
+/* dashboard */
+.dash{position:relative}
+.dash .tabs{display:flex;gap:6px;padding:10px 14px;border-bottom:1px solid #ececef;background:#fff}
+.dash .tabs span{font-size:13px;padding:7px 12px;border-radius:999px;color:#55555e}
+.dash .tabs span.on{background:#0c0c0e;color:#fff}
+.dash .crop{height:600px;overflow:hidden}
+.dash .sample{position:absolute;right:14px;top:48px}
+
+/* closing cards */
+.closing{padding:120px 48px 40px;text-align:center}
+.closing h2{max-width:760px;margin:14px auto 0}
+.cards6{display:grid;grid-template-columns:repeat(6,1fr);gap:14px;margin:40px 0 34px;text-align:left}
+.cards6 .im{height:176px;border-radius:14px;overflow:hidden;position:relative;margin-bottom:14px}
+.cards6 h3{font-size:16px}.cards6 p{font-size:13.5px;margin:0;line-height:1.45}
+.t1{background:linear-gradient(160deg,#fde7d6,#f7d0b8)}.t2{background:linear-gradient(160deg,#ecebdc,#d8d6b8)}.t3{background:linear-gradient(160deg,#e8eaf8,#d3d8f3)}
+.t4{background:linear-gradient(160deg,#e2f1e7,#c9e5d3)}.t5{background:linear-gradient(160deg,#e6eef8,#cfdff2)}.t6{background:linear-gradient(160deg,#f6efd6,#ecdfb2)}
+.mini-br{position:absolute;left:16px;top:22px;width:250px;border-radius:7px;overflow:hidden;background:#fff;box-shadow:0 14px 28px -12px rgba(20,30,60,.45)}
+.mini-br .bar{height:12px;background:#f4f4f5;border-bottom:1px solid #e9e9ec}
+.mini-br img{width:100%}
+.mini-ph{position:absolute;left:50%;top:22px;width:120px;margin-left:-60px;height:240px;border-radius:22px;background:#0b0b0c;padding:4px;box-shadow:0 14px 28px -10px rgba(20,30,60,.5)}
+.mini-ph div{width:100%;height:100%;border-radius:18px;overflow:hidden;position:relative;background:#fff}
+.mini-ph img{position:absolute;width:108%;max-width:none;left:-4%;top:-1.9%}
+.mini-bk{position:absolute;left:50%;top:26px;width:104px;height:135px;margin-left:-52px;transform-style:preserve-3d;transform:perspective(700px) rotateX(14deg) rotateY(26deg) rotateZ(-5deg)}
+.mini-bk img{width:100%;height:100%;object-fit:cover;box-shadow:10px 18px 24px -8px rgba(0,0,0,.35)}
+.mini-bk .s{position:absolute;left:-6px;top:0;width:6px;height:100%;background:#e9e5dc;transform-origin:100% 50%;transform:rotateY(-90deg)}
+
+/* ===== direction A: open page ===== */
+.A .sec{padding:130px 48px 0;text-align:center}
+.A .st{max-width:720px;margin:0 auto 52px}
+.A .st .lead{max-width:640px;margin:0 auto 12px}
+.A .as{width:900px;margin:0 auto}
+.A .as .rep{right:-120px;bottom:-56px;width:420px}
+.A .table{position:relative;margin:0 auto;width:1104px;border-radius:28px;background:radial-gradient(90% 70% at 50% 18%,#fbf8f2,#efe8dc 70%,#e6ddcd);padding:20px 0 44px}
+.A .gd{text-align:center}.A .gd .lead{margin:0 auto}
+.A .gd .media{max-width:1000px;margin:0 auto}
+.A .dash{width:1000px;margin:0 auto}
+.table .hint{transition:opacity .3s}.table.opened .hint{opacity:0}
+
+/* ===== direction B: rows and a dark bookshelf ===== */
+.B .row{display:grid;grid-template-columns:400px 1fr;gap:72px;align-items:center;padding:130px 48px 0}
+.B .row.rev{grid-template-columns:1fr 400px}
+.B .row.rev .st{order:2}
+.B .as .rep{left:-70px;bottom:-60px;width:380px}
+.B .shelfband{margin-top:130px;background:radial-gradient(80% 60% at 50% 30%,#2a2724,#191716 70%);color:#f4f1ea;padding:96px 0 40px;text-align:center;position:relative}
+.B .shelfband .k{color:#bdb6aa}
+.B .shelfband p{color:#c8c2b6;max-width:640px;margin:0 auto}
+.B .gd{padding:130px 48px 0}
+.B .phonebox{background:#f4f2ee;border-radius:24px;height:720px;display:flex;align-items:center;justify-content:center}
+
+/* ===== direction C: colour panels ===== */
+.C .pn{margin:24px 24px 0;border-radius:32px;padding:72px 72px 0;position:relative;overflow:hidden}
+.C .pn .st{max-width:620px}
+.C .p1{background:#f3e2d2}.C .p2{background:#8a8a5c;color:#f7f5ec;padding-bottom:44px}.C .p3{background:#eceef8;padding-bottom:64px}
+.C .p4{background:#dcebe1;padding-bottom:64px}.C .p5{background:#e2ebf5}.C .p6{background:#f1ead2;padding-bottom:64px}
+.C .p2 .k,.C .p2 p{color:#efeedf}.C .p2 .k:before{background:#ffd23f}
+.C .as{width:940px;margin:56px auto 0;height:440px}
+.C .as .browser{border-radius:12px 12px 0 0}
+.C .as .rep{right:-60px;top:250px;width:400px}
+.C .p2 .lvlrow{text-align:center;margin-top:6px}
+.C .p2 .rd-cap{color:#e4e2cf}.pn .hint,.shelfband .hint{transition:opacity .3s}.pn.opened .hint,.shelfband.opened .hint{opacity:0}
+.C .grid2{display:grid;grid-template-columns:1fr 340px;gap:40px;align-items:center}
+.C .dash{width:960px;margin:56px auto 0}
+.C .dash .crop{height:520px}
+</style></head>
+<body><div class="scroll"><div class="mock A"><div class="nav"><span class="wm">Unica<i></i></span><span class="links"><span>How it works</span><b>What's included</b><span>Pricing</span><span>FAQ</span></span><span class="btn s">Free assessment</span></div><header class="hero"><span class="k">What's included</span><h1>Everything your child gets, in the order it happens.</h1>
+<p class="lead">Follow Leah through her first month of Unica: from the free assessment to the workbook made from her own work.</p>
+<div class="cta"><span class="btn">Take free assessment</span><span class="btn g">See a sample report</span></div></header>
+<section class="sec"><div class="st"><span class="k">Free assessment</span><h2>It starts with a free assessment.</h2><p class="lead">Your child takes a short test online, on a laptop or tablet. Then you get a report: the level your child works at, and the skills to work on next.</p><span class="lnk">See a sample report &rarr;</span></div><div class="as"><div class="browser"><div class="bar"><i></i><i></i><i></i><span>unicalearning.com</span></div><img src="assets/test-question.jpg" alt="The free assessment: a question with a whiteboard for working"></div>
+<div class="rep"><span>Leah's report</span><img src="assets/report-level.png" alt="Report: Leah is working at a grade 2 level"></div></div></section>
+<section class="sec"><div class="st"><span class="k">Workbook</span><h2>Then the workbook arrives.</h2><p class="lead">Made from the report, for your child only, and mailed home. Two workbooks a month, 15 to 30 minutes a day.</p></div><div class="table"><div class="rd " id="rdA1" data-book="leah" style="--rdh:680px"><div class="rd-stage"><div class="rd-body">
+<div class="rd-board"></div><div class="rd-sh"></div><div class="rd-end"></div><div class="rd-sp"><div class="mk"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div><b></b></div><div class="rd-bt"></div><div class="rd-re"></div>
+</div></div><button class="rd-nav p" aria-label="Previous page"><svg viewBox="0 0 24 24" fill="none" stroke="#0c0c0e" stroke-width="2"><path d="M15 5l-7 7 7 7"/></svg></button><button class="rd-nav n" aria-label="Next page"><svg viewBox="0 0 24 24" fill="none" stroke="#0c0c0e" stroke-width="2"><path d="M9 5l7 7-7 7"/></svg></button><div class="rd-cap"></div></div><div style="position:absolute;inset:20px 0 44px"><div class="rd " id="rdA2" data-book="mateo" style="--rdh:680px"><div class="rd-stage"><div class="rd-body">
+<div class="rd-board"></div><div class="rd-sh"></div><div class="rd-end"></div><div class="rd-sp"><div class="mk"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div><b></b></div><div class="rd-bt"></div><div class="rd-re"></div>
+</div></div><button class="rd-nav p" aria-label="Previous page"><svg viewBox="0 0 24 24" fill="none" stroke="#0c0c0e" stroke-width="2"><path d="M15 5l-7 7 7 7"/></svg></button><button class="rd-nav n" aria-label="Next page"><svg viewBox="0 0 24 24" fill="none" stroke="#0c0c0e" stroke-width="2"><path d="M9 5l7 7-7 7"/></svg></button><div class="rd-cap"></div></div></div>
+<button class="backshelf light-back" id="backA">&larr; Both workbooks</button><div class="hint" style="position:absolute;left:0;right:0;bottom:18px">Leah, Level U10 &nbsp;&middot;&nbsp; Mateo, Level U19 &nbsp;&middot;&nbsp; Click a workbook to open it</div></div></section>
+<section class="sec"><section class="gd"><span class="k">AI Teaching Assistant</span><h2>Stuck? Work it out with Maya.</h2><p class="lead">Maya, the AI Teaching Assistant, opens your child's question on a whiteboard they both see. Maya explains each step out loud and draws it. Your child answers, asks why, or picks up the pen.</p>
+<div class="media"><video src="https://unicalearning.com/video/guidance-demo.mp4" poster="assets/maya-poster.jpg" muted loop playsinline autoplay></video>
+<p class="cap">Shown without sound. The captions show what Maya says.</p>
+<ul><li><b>On their exact question</b><span>Maya knows the workbook page and the question your child is on.</span></li>
+<li><b>Every step on the board</b><span>Each step is drawn on the whiteboard while Maya explains it.</span></li>
+<li><b>Your child does the thinking</b><span>Maya asks, your child answers, then finishes the question on paper.</span></li></ul></div></section></section>
+<section class="sec"><div class="st"><span class="k">Unica app</span><h2>Scan the pages. The app marks them.</h2><p class="lead">When your child finishes a day, take a photo of each page in the Unica app. Each page comes back marked, with the steps for anything wrong.</p></div><div class="scanwrap" data-phone="phA"><div class="ph" id="phA"><div class="scr">
+<div class="sc on"><img class="fig" src="assets/app-today.png" alt=""></div>
+<div class="sc cam"><div class="stat"><span>9:41</span><span>&#9679;&#9679;&#9679;</span></div><div class="tb"><span>&#10005;</span><span>Day 4 &middot; page 1 of 4</span><span>&#9889;</span></div>
+<div class="vf"><div class="paper"><div class="wpage"><div class="d">DAY 4 OF 10</div><div class="t">Subtracting with borrowing</div><div class="g"><div class="q">84<u>&minus; 59</u><em>25</em></div><div class="q">92<u>&minus; 48</u><em>44</em></div><div class="q">55<u>&minus; 37</u><em>18</em></div><div class="q">73<u>&minus; 26</u><em>47</em></div><div class="q">60<u>&minus; 25</u><em>45</em></div><div class="q">81<u>&minus; 46</u><em>35</em></div><div class="q">94<u>&minus; 67</u><em>27</em></div><div class="q">52<u>&minus; 19</u><em>33</em></div><div class="q">43<u>&minus; 18</u><em>25</em></div></div></div></div><div class="pencil"></div><i class="br a"></i><i class="br b"></i><i class="br c"></i><i class="br d"></i></div>
+<div class="pill"><span class="p1">Hold still. Almost straight&hellip;</span><span class="p2">Got it</span></div>
+<div class="bot"><div class="thumbs"><i></i><i></i><i></i><i></i></div><div class="shut"><i></i></div><span class="up">Upload</span></div><div class="flash"></div></div>
+<div class="sc mkg"><div class="tb2">Day 4 &middot; page 1</div><div class="pg"><div class="wpage"><div class="d">DAY 4 OF 10</div><div class="t">Subtracting with borrowing</div><div class="g"><div class="q">84<u>&minus; 59</u><em>25</em></div><div class="q">92<u>&minus; 48</u><em>44</em></div><div class="q">55<u>&minus; 37</u><em>18</em></div><div class="q">73<u>&minus; 26</u><em>47</em></div><div class="q">60<u>&minus; 25</u><em>45</em></div><div class="q">81<u>&minus; 46</u><em>35</em></div><div class="q">94<u>&minus; 67</u><em>27</em></div><div class="q">52<u>&minus; 19</u><em>33</em></div><div class="q">43<u>&minus; 18</u><em>25</em></div></div></div></div><div class="scan"></div><div class="pill">Marking page 1&hellip;</div></div>
+<div class="sc"><img class="fig" src="assets/app-marked.png" alt=""></div>
+<div class="sc"><img class="fig" src="assets/app-steps.png" alt=""></div>
+</div></div><div class="pcap" id="phA-cap"></div><div class="dots"><i></i><i></i><i></i><i></i><i></i></div></div></section>
+<section class="sec"><div class="st"><span class="k">Parent dashboard</span><h2>See the progress on your dashboard.</h2><p class="lead">Level, skills, past work and every session with Maya, on the website or in the app. One account for both.</p></div><div class="dash browser"><div class="bar"><i></i><i></i><i></i><span>unicalearning.com/account</span></div>
+<div class="crop"><img src="assets/dash.jpg" alt="Parent dashboard, Overview tab (sample data)"></div></div></section>
+<section class="sec"><div class="st"><span class="k">Next workbook</span><h2>The next workbook builds on all of it.</h2><p class="lead">It is made from this workbook's scans and sessions with Maya: more practice where your child slipped, less where they are strong. It arrives before this one runs out.</p></div><div style="display:flex;justify-content:center"><div class="ph still"><div class="scr"><img src="assets/app-next.png" alt=""></div></div></div></section><section class="closing"><span class="k">All of it, together</span><h2>From a free assessment to the next workbook.</h2>
+<div class="cards6"><div><div class="im t1"><div class="mini-br"><div class="bar"></div><img src="assets/test-question-crop.jpg" alt=""></div></div><h3>Free assessment</h3><p>A short test online. A report shows the level and what to work on.</p></div><div><div class="im t2"><div class="mini-bk"><img src="assets/wb/leah-01-cover.jpg" alt=""><i class="s"></i></div></div><h3>Workbook</h3><p>Made from the report. Mailed home, two a month.</p></div><div><div class="im t3"><div class="mini-br" style="width:300px;left:-30px"><div class="bar"></div><img src="assets/maya-poster.jpg" alt=""></div></div><h3>AI Teaching Assistant</h3><p>Maya works through a stuck question on a shared whiteboard.</p></div><div><div class="im t4"><div class="mini-ph"><div><img src="assets/app-marked.png" alt=""></div></div></div><h3>Unica app</h3><p>Scan the pages. They come back marked, with the steps.</p></div><div><div class="im t5"><div class="mini-br" style="width:300px;left:16px"><div class="bar"></div><img src="assets/dash.jpg" alt=""></div></div><h3>Parent dashboard</h3><p>Level, skills, past work and sessions with Maya.</p></div><div><div class="im t6"><div class="mini-ph"><div><img src="assets/app-next.png" alt=""></div></div></div><h3>Next workbook</h3><p>Built on everything before it. Arrives before this one ends.</p></div></div><span class="btn">Take free assessment</span></section></div></div><div hidden><img data-k="leah-0" src="assets/wb/leah-01-cover.jpg"><img data-k="leah-1" src="assets/wb/leah-02-plan.jpg"><img data-k="leah-2" src="assets/wb/leah-03-d1p1.jpg"><img data-k="leah-3" src="assets/wb/leah-04-d1p2.jpg"><img data-k="leah-4" src="assets/wb/leah-05-d1p3.jpg"><img data-k="leah-5" src="assets/wb/leah-06-d1p4.jpg"><img data-k="leah-6" src="assets/wb/leah-07-d1p5.jpg"><img data-k="leah-7" src="assets/wb/leah-08-d1p6.jpg"><img data-k="leah-8" src="assets/wb/leah-09-d1p7.jpg"><img data-k="leah-9" src="assets/wb/leah-10-d1p8.jpg"><img data-k="mateo-0" src="assets/wb/mateo-01-cover.jpg"><img data-k="mateo-1" src="assets/wb/mateo-02-plan.jpg"><img data-k="mateo-2" src="assets/wb/mateo-03-d1p1.jpg"><img data-k="mateo-3" src="assets/wb/mateo-04-d1p2.jpg"><img data-k="mateo-4" src="assets/wb/mateo-05-d1p3.jpg"><img data-k="mateo-5" src="assets/wb/mateo-06-d1p4.jpg"><img data-k="mateo-6" src="assets/wb/mateo-07-d1p5.jpg"><img data-k="mateo-7" src="assets/wb/mateo-08-d1p6.jpg"><img data-k="mateo-8" src="assets/wb/mateo-09-d1p7.jpg"><img data-k="mateo-9" src="assets/wb/mateo-10-d1p8.jpg"></div><script>
+const SRC={};document.querySelectorAll('img[data-k]').forEach(i=>SRC[i.dataset.k]=i.src);
+const META={leah:{name:'Leah',level:'Level U10',title:'Carrying and borrowing'},mateo:{name:'Mateo',level:'Level U19',title:'Factors and multiples'}};
+const SPREADS=['Cover','Plan · Day 1, page 1','Day 1, pages 2 and 3','Day 1, pages 4 and 5','Day 1, pages 6 and 7','Day 1, page 8'];
+const W=440;
+class Reader{
+  constructor(el,poses){this.el=el;this.body=el.querySelector('.rd-body');this.poses=poses;this.f=0;this.open=false;this.cap=el.querySelector('.rd-cap');
+    el.querySelector('.rd-nav.n').onclick=e=>{e.stopPropagation();this.next()};el.querySelector('.rd-nav.p').onclick=e=>{e.stopPropagation();this.prev()};
+    this.body.addEventListener('click',e=>{if(!this.open){this.onPick?this.onPick(this):this.next();return}
+      const r=this.body.getBoundingClientRect();(e.clientX>r.left+r.width/2)?this.next():this.prev()});
+    this.load(el.dataset.book);}
+  load(key){this.key=key;const m=META[key];this.body.querySelectorAll('.lf').forEach(x=>x.remove());
+    const p=[...Array(10).keys()].map(i=>SRC[key+'-'+i]);this.leaves=[];
+    for(let i=0;i<5;i++){const fr=p[2*i],bk=p[2*i+1];const lf=document.createElement('div');lf.className='lf'+(i===0?' cover':'');lf.style.setProperty('--z',(-i)+'px');
+      lf.innerHTML=`<div class="hf in"><div class="fc fr" style="background-image:url('${fr}');background-position:0 0"></div><div class="fc bk" style="background-image:url('${bk}');background-position:-${W/2}px 0"></div><div class="hf out"><div class="fc fr" style="background-image:url('${fr}');background-position:-${W/2}px 0"></div><div class="fc bk" style="background-image:url('${bk}');background-position:0 0"></div></div></div>`;
+      lf.addEventListener('animationend',e=>{if(e.target===lf&&e.animationName==='lfturn')lf.classList.remove('fwd','bwd')});
+      this.body.appendChild(lf);this.leaves.push(lf)}
+    this.body.querySelector('.rd-sp b').textContent=`${m.name.toUpperCase()} · ${m.level.toUpperCase()} · ${m.title.toUpperCase()}`;
+    this.body.querySelector('.rd-end').textContent=`${m.name}'s workbook goes on: Days 2 to 10.`;
+    this.f=0;this.open=false;this.el.classList.remove('is-open');this.pose('closed');this.label()}
+  pose(n){this.body.style.transform=this.poses[n]||'';this.body.classList.toggle('hid',n==='hidden')}
+  label(){const m=META[this.key];this.cap.textContent=this.open?`${m.name} · ${m.level} · ${SPREADS[this.f]}`:'';
+    this.el.querySelector('.rd-nav.n').disabled=this.f>=5;}
+  turn(i,dir){const lf=this.leaves[i];if(lf.classList.contains('fwd')||lf.classList.contains('bwd'))return false;
+    lf.classList.toggle('flipped',dir>0);lf.classList.add(dir>0?'fwd':'bwd');return true}
+  next(){if(!this.open){if(!this.turn(0,1))return;this.f=1;this.open=true;this.el.classList.add('is-open');this.pose('open');this.label();this.onOpen&&this.onOpen(this);return}
+    if(this.f>=5)return;if(this.turn(this.f,1)){this.f++;this.label()}}
+  prev(){if(!this.open)return;if(this.f===1){this.shut();return}if(this.turn(this.f-1,-1)){this.f--;this.label()}}
+  shut(){for(let i=this.f-1;i>=1;i--){this.leaves[i].classList.remove('flipped','fwd','bwd')}this.f=1;this.turn(0,-1);this.f=0;this.open=false;
+    this.el.classList.remove('is-open');this.pose('closed');this.label();this.onClose&&this.onClose(this)}
+}
+const P={open:'translateX(0px) scale(1)'};
+// Direction A: two books on a table; pick one, it comes forward and opens.
+const ra=document.getElementById('rdA1');
+if(ra){const rb=document.getElementById('rdA2');
+  const pa={closed:'translateX(-480px) translateY(10px) rotateX(18deg) rotateY(32deg) rotateZ(-7deg) scale(.68)',open:P.open,hidden:'translateX(-640px) translateY(40px) rotateX(20deg) rotateY(24deg) rotateZ(-7deg) scale(.6)'};
+  const pb={closed:'translateX(40px) translateY(10px) rotateX(18deg) rotateY(32deg) rotateZ(3deg) scale(.68)',open:P.open,hidden:'translateX(260px) translateY(40px) rotateX(20deg) rotateY(24deg) rotateZ(3deg) scale(.6)'};
+  const A1=new Reader(ra,pa),A2=new Reader(rb,pb);const back=document.getElementById('backA');
+  [[A1,A2],[A2,A1]].forEach(([me,other])=>{me.onPick=()=>{me.el.closest('.table').classList.add('opened');other.pose('hidden');other.el.style.pointerEvents='none';me.el.style.zIndex=2;me.next();back.classList.add('on')};
+    me.onClose=()=>{me.el.closest('.table').classList.remove('opened');other.pose('closed');other.el.style.pointerEvents='';back.classList.remove('on')}});
+  back.onclick=()=>{[A1,A2].forEach(r=>{if(r.open)r.shut()})};}
+// Direction B: a pile of spines; pick one, the pile clears, the book opens.
+const rbk=document.getElementById('rdB');
+if(rbk){const shelf=document.getElementById('shelfB'),back=document.getElementById('backB');
+  const B=new Reader(rbk,{closed:'translateX(-220px) translateY(80px) rotateX(58deg) rotateZ(-4deg) scale(.7)',open:P.open});B.body.classList.add('hid');
+  B.onOpen=()=>rbk.closest('.shelfband').classList.add('opened');B.onClose=()=>{rbk.closest('.shelfband').classList.remove('opened');setTimeout(()=>{B.body.classList.add('hid');shelf.classList.remove('hid');back.classList.remove('on')},700)};
+  shelf.querySelectorAll('.spine').forEach(s=>s.onclick=()=>{shelf.classList.add('hid');B.load(s.dataset.book);B.body.classList.remove('hid');back.classList.add('on');setTimeout(()=>B.next(),380)});
+  back.onclick=()=>{if(B.open)B.shut()};}
+// Direction C: one book on a colour panel, with a level switch.
+const rc=document.getElementById('rdC');
+if(rc){const C=new Reader(rc,{closed:'translateX(-220px) rotateX(16deg) rotateY(30deg) rotateZ(-6deg) scale(.84)',open:P.open});C.onOpen=()=>rc.closest('.pn').classList.add('opened');C.onClose=()=>rc.closest('.pn').classList.remove('opened');
+  document.querySelectorAll('#lvlC button').forEach(b=>b.onclick=()=>{document.querySelectorAll('#lvlC button').forEach(x=>x.classList.toggle('on',x===b));
+    if(C.open){C.shut();setTimeout(()=>C.load(b.dataset.book),700)}else C.load(b.dataset.book)});}
+// The app scan phone: five screens on a loop; click to pause.
+const DUR=[2600,3900,2300,3800,3000],CAPS=["Leah finishes today's pages. You open the Unica app.", "Hold your phone over each page. The app finds the page and takes the photo.", "The app marks the page.", "Each answer is marked, with a note on what went wrong.", "Tap See the steps for the worked steps."];
+document.querySelectorAll('.ph[id]').forEach(ph=>{const sc=[...ph.querySelectorAll('.scr>.sc')];const id=ph.id;let i=0,t=null,paused=false;
+  const cap=document.getElementById(id+'-cap');const dots=[...document.querySelectorAll(`[data-phone="${id}"] .dots i`)];const list=[...document.querySelectorAll(`.steps-list[data-phone="${id}"] li`)];
+  function show(n){i=n;sc.forEach((s,k)=>{s.classList.remove('on');void s.offsetWidth;if(k===n)s.classList.add('on')});
+    if(cap)cap.textContent=CAPS[n];dots.forEach((d,k)=>d.classList.toggle('on',k===n));list.forEach((d,k)=>d.classList.toggle('on',k===n));
+    clearTimeout(t);if(!paused)t=setTimeout(()=>show((i+1)%sc.length),DUR[n])}
+  ph.onclick=()=>{paused=!paused;if(!paused)show(i);else clearTimeout(t)};list.forEach((li,k)=>li.onclick=()=>{paused=false;show(k)});show(0)});
+</script></body></html>
