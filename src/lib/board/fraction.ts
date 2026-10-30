@@ -2,7 +2,7 @@
 // the whole number of a mixed number to the left, centred on the bar. Each part is a target. The stacked layout here
 // also writes the labels of a number line, at a smaller size.
 import type { GlyphSet, Point } from "@/lib/board/glyphs";
-import { readNumber } from "@/lib/board/rational";
+import { add, ceil, mul, rational, readNumber, sub, times, toNumber, type Rational } from "@/lib/board/rational";
 import { glyphStrokes, isRefusal, missingGlyphs, refuse, type LocalStroke, type LocalTarget, type RefusalBody, type Representation } from "@/lib/board/representation";
 import type { FractionCommand, FractionPart, Ink, Rect, Target } from "@/lib/board/types";
 
@@ -15,6 +15,8 @@ export interface NumberParts {
 
 /** Where each part of a written number goes, from its top-left corner, at a size. */
 export interface NumberLayout {
+  /** The width and height, exactly: what layout and room decisions use. */
+  exact: { w: Rational; h: Rational };
   w: number;
   h: number;
   sign: Rect | null;
@@ -24,24 +26,33 @@ export interface NumberLayout {
   bar: [Point, Point] | null;
 }
 
-/** Character width and height, and the gaps, at size 1 (a fraction object). Labels use a smaller size. */
-const CHAR_W = 0.8;
-const CHAR_H = 0.85;
-const GAP = 0.2;
+/** Character width and height, and the gaps, at size 1 (a fraction object), exactly. Labels use a smaller size. */
+const CHAR_W = rational(4, 5);
+const CHAR_H = rational(17, 20);
+const GAP = rational(1, 5);
 /** How far the bar reaches past the wider of the numerator and the denominator, each side. */
-const BAR_OVERHANG = 0.2;
+const BAR_OVERHANG = rational(1, 5);
 
-/** Lays out a written number at `size` (1 is a fraction object's digits). */
-export function layoutNumber(parts: NumberParts, size: number): NumberLayout {
-  const cw = CHAR_W * size;
-  const ch = CHAR_H * size;
-  const gap = GAP * size;
+/**
+ * Lays out a written number at `size` (1 is a fraction object's digits). The width and height are exact; the boxes
+ * inside are for drawing.
+ */
+export function layoutNumber(parts: NumberParts, size: Rational): NumberLayout {
   const stacked = parts.fraction !== null;
-  const h = stacked ? 2 * ch + 3 * gap : ch;
+  const barChars = parts.fraction ? Math.max(parts.fraction.numerator.length, parts.fraction.denominator.length) : 0;
+  const chars = parts.sign.length + (parts.whole?.length ?? 0) + barChars;
+  const gaps = stacked && parts.whole !== null ? GAP : rational(0);
+  const overhang = stacked ? times(BAR_OVERHANG, 2) : rational(0);
+  const exact = {
+    w: mul(size, add(add(times(CHAR_W, chars), gaps), overhang)),
+    h: mul(size, stacked ? add(times(CHAR_H, 2), times(GAP, 3)) : CHAR_H),
+  };
+  const [cw, ch, gap] = [CHAR_W, CHAR_H, GAP].map((r) => toNumber(mul(size, r)));
+  const h = toNumber(exact.h);
   const mid = h / 2;
   let x = 0;
   const box = (chars: number, y: number): Rect => ({ x, y, w: chars * cw, h: ch });
-  const out: NumberLayout = { w: 0, h, sign: null, whole: null, numerator: null, denominator: null, bar: null };
+  const out: NumberLayout = { exact, w: toNumber(exact.w), h, sign: null, whole: null, numerator: null, denominator: null, bar: null };
   if (parts.sign) {
     out.sign = box(1, mid - ch / 2);
     x += cw;
@@ -52,7 +63,7 @@ export function layoutNumber(parts: NumberParts, size: number): NumberLayout {
   }
   if (parts.fraction) {
     const { numerator, denominator } = parts.fraction;
-    const barW = Math.max(numerator.length, denominator.length) * cw + 2 * BAR_OVERHANG * size;
+    const barW = barChars * cw + toNumber(mul(size, overhang));
     const left = x;
     const centred = (chars: number, y: number): Rect => ({ x: left + (barW - chars * cw) / 2, y, w: chars * cw, h: ch });
     out.numerator = centred(numerator.length, gap / 2);
@@ -63,7 +74,6 @@ export function layoutNumber(parts: NumberParts, size: number): NumberLayout {
     out.denominator = centred(denominator.length, h - ch - gap / 2);
     x += barW;
   }
-  out.w = x;
   return out;
 }
 
@@ -117,10 +127,11 @@ export interface FractionState {
 const DIGIT_WIDTH = 0.07;
 
 function layoutOf(state: FractionState) {
-  const layout = layoutNumber(state.parts, 1);
+  const layout = layoutNumber(state.parts, rational(1));
   // Centred in whole cells, so the object's box sits on the grid.
-  const size = { w: Math.ceil(layout.w), h: Math.ceil(layout.h) };
-  return { layout, size, dx: (size.w - layout.w) / 2, dy: (size.h - layout.h) / 2 };
+  const size = { w: ceil(layout.exact.w), h: ceil(layout.exact.h) };
+  const half = (cells: number, r: Rational) => toNumber(sub(rational(cells), r)) / 2;
+  return { layout, size, dx: half(size.w, layout.exact.w), dy: half(size.h, layout.exact.h) };
 }
 
 export const fraction: Representation<FractionState, FractionCommand> = {

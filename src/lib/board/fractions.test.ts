@@ -271,3 +271,115 @@ describe("stable tick names", () => {
     expect(refused(scene, { op: "jump", id: "j1", lineId: "n1", fromValue: "0", toValue: "1/4", x: 3 }).code).toBe("invalid_command");
   });
 });
+
+describe("review R1: every tick name the board returns works in every command", () => {
+  const wide = () => createScene({ page: { cols: 200, rows: 16 } });
+  const gcd = (a: number, b: number): number => (b === 0 ? Math.abs(a) : gcd(b, a % b));
+  /** min + count * tick as a fraction in lowest terms, computed here with whole numbers only. */
+  const end = (min: [number, number], tick: [number, number], count: number) => {
+    const n = min[0] * tick[1] + count * tick[0] * min[1];
+    const d = min[1] * tick[1];
+    const g = gcd(n, d);
+    return d / g === 1 ? `${n / g}` : `${n / g}/${d / g}`;
+  };
+  const MINS: [string, [number, number]][] = [
+    ["0", [0, 1]],
+    ["-1", [-1, 1]],
+    ["-9999.999", [-9999999, 1000]],
+    ["9998", [9998, 1]],
+    ["-3/4", [-3, 4]],
+    ["1 1/2", [3, 2]],
+    ["-10000", [-10000, 1]],
+  ];
+  const TICKS: [string, [number, number]][] = [
+    ["0.001", [1, 1000]],
+    ["0.1", [1, 10]],
+    ["0.25", [1, 4]],
+    ["1/3", [1, 3]],
+    ["1/8", [1, 8]],
+    ["1/100", [1, 100]],
+    ["5/6", [5, 6]],
+    ["2", [2, 1]],
+  ];
+
+  it("names from thousandths, large decimals, negatives and fractions read back as the same tick", () => {
+    let accepted = 0;
+    let names = 0;
+    for (const [minText, min] of MINS)
+      for (const [tickText, tick] of TICKS)
+        for (const count of [1, 3, 24]) {
+          const made = applyBatch(wide(), { transactionId: "line", commands: [line("n1", minText, end(min, tick, count), tickText, { labels: "none" })] });
+          if (!made.ok) continue;
+          accepted++;
+          const scene = made.scene;
+          const ticks = boardTargets(scene).filter((t) => t.target.part === "value").map((t) => t.target as Target & { value: string });
+          expect(ticks).toHaveLength(count + 1);
+          names += ticks.length;
+          const where = `line ${minText} by ${tickText}, ${count} steps`;
+          const batch = (commands: unknown[]) => {
+            const r = applyBatch(scene, { transactionId: "use", commands });
+            expect(r.ok ? null : `${where}: ${r.refusal.code} ${r.refusal.reason} at ${JSON.stringify(commands[r.refusal.index])}`).toBeNull();
+            return r;
+          };
+          batch(ticks.map((t) => ({ op: "focus", target: t })));
+          const marked = batch(ticks.map((t, i) => ({ op: "mark", id: `m${i}`, target: t, style: "highlight" })));
+          if (marked.ok) for (const t of ticks) expect(boardTargets(marked.scene).filter((x) => sameTarget(x.target, t))).toHaveLength(1);
+          const labelled = batch(ticks.map((t) => ({ op: "put", target: t, value: t.value })));
+          if (labelled.ok) expect(boardTargets(labelled.scene).filter((x) => x.target.part === "value" && x.value === null)).toEqual([]);
+          batch(ticks.slice(1).map((t, i) => ({ op: "jump", id: `j${i}`, lineId: "n1", fromValue: ticks[i].value, toValue: t.value })));
+        }
+    // The matrix is not empty: most lines are accepted, with thousands of names.
+    expect(accepted).toBeGreaterThan(100);
+    expect(names).toBeGreaterThan(1500);
+  });
+
+  it("refuses a line past the bounds the names are made for", () => {
+    expect(refused(createScene(), line("n1", "10000/1", "10002/1", "1")).reason).toMatch(/from -10000 to 10000/);
+    expect(refused(createScene(), line("n1", "0", "1", "1/1001")).reason).toMatch(/denominators up to 1000/);
+  });
+});
+
+describe("review R2: the longest labels and values", () => {
+  const line995 = () => ok(createScene(), line("n1", "-999.995", "-999.99", "0.005", { labels: "none" }));
+
+  it("labels a tick with its longest spellings, and refuses a wrong value of the same length", () => {
+    expect(info(line995(), value("n1", "-199999/200"))).toMatchObject({ writable: true });
+    for (const spelling of ["-999.995", "-199999/200", "-999 199/200", "−999 199/200"]) {
+      const labelled = ok(line995(), { op: "put", target: value("n1", "-999.995"), value: spelling });
+      expect(info(labelled, value("n1", "-199999/200")).value).toBe("−999.995");
+    }
+    expect(refused(line995(), { op: "put", target: value("n1", "-999.995"), value: "-999.990" }).code).toBe("wrong_value");
+    expect(refused(line995(), { op: "put", target: value("n1", "-999.995"), value: "-999 198/200" }).code).toBe("wrong_value");
+  });
+
+  it("reads the longest number text there is: a jump of +19999 998/1000 across the widest line", () => {
+    const scene = ok(createScene(), line("n1", "-9999.999", "9999.999", "9999.999"));
+    const r = ok(scene, { op: "jump", id: "j1", lineId: "n1", fromValue: "-9999.999", toValue: "9999.999", label: "+19999 998/1000" });
+    expect(info(r, part("j1", "whole")).value).toBe("+19999 998/1000");
+    expect(refused(scene, { op: "jump", id: "j1", lineId: "n1", fromValue: "-9999.999", toValue: "9999.999", label: "+19999 997/1000" }).code).toBe("wrong_value");
+  });
+});
+
+describe("review R3: exact layout", () => {
+  /** The x of each tick mark, in board widths, in order. */
+  const tickXs = (scene: Scene) =>
+    boardTargets(scene)
+      .filter((t) => t.target.part === "value")
+      .map((t) => boardPaths(scene).find((p) => p.kind === "rule" && p.target !== null && sameTarget(p.target, t.target))!.pts[0][0]);
+
+  it("fits a line that needs exactly 40 cells on a page with 40 free, with every tick where exact math puts it", () => {
+    // -2 to 6 in thirds: 25 ticks, the widest label 6/5 cells, so a spacing of 8/5, an end room of 4/5 and 40 cells.
+    const scene = ok(createScene({ page: { cols: 42, rows: 16 } }), line("n1", "-2", "6", "1/3"));
+    const xs = tickXs(scene);
+    expect(xs).toHaveLength(25);
+    // The line starts one margin cell in: tick i is at 1 + 4/5 + 8i/5 cells, of 42.
+    xs.forEach((x, i) => expect(x).toBeCloseTo((9 + 8 * i) / 5 / 42, 4));
+    const rule = boardPaths(scene).find((p) => p.kind === "rule" && p.target !== null && sameTarget(p.target, part("n1", "whole")))!;
+    expect((rule.pts[1][0] - rule.pts[0][0]) * 42).toBeCloseTo(39.8, 2);
+  });
+
+  it("puts the first tick of that line at 1.8 cells on a wide page", () => {
+    const scene = ok(createScene({ page: { cols: 200, rows: 16 } }), line("n1", "-2", "6", "1/3"));
+    expect(tickXs(scene)[0]).toBeCloseTo(0.009, 4);
+  });
+});

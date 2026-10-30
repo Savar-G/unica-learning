@@ -10,7 +10,7 @@ import { curvedArrow, overlaps, polylineHitsRect, traceTouches } from "@/lib/boa
 import type { Point } from "@/lib/board/glyphs";
 import { layoutNumber, numberChars, numberStrokes, numberText, refuseMissing, type NumberLayout, type NumberParts } from "@/lib/board/fraction";
 import { lcm } from "@/lib/question-package-math";
-import { add, compare, div, equal, isWhole, rational, readNumber, sub, toDecimal, valueKey, type Rational, type ReadNumber } from "@/lib/board/rational";
+import { add, ceil, compare, div, equal, isWhole, LINE_LIMIT, max, rational, readNumber, sub, times, toDecimal, toNumber, valueKey, type Rational, type ReadNumber } from "@/lib/board/rational";
 import { isRefusal, refuse, type Ctx, type LocalStroke, type LocalTarget, type RefusalBody, type Representation, type Reserved } from "@/lib/board/representation";
 import type { Ink, JumpCommand, LineLabels, NumberForm, NumberLineCommand, Rect, Target } from "@/lib/board/types";
 
@@ -19,16 +19,31 @@ const MAX_UNIT = 100;
 /** Jump lanes above the line. */
 const LANES = 3;
 /** The size of label digits, against a fraction object's. */
-const LABEL_SIZE = 0.6;
+const LABEL_SIZE = rational(3, 5);
 const LINE_WIDTH = 0.06;
 const LABEL_WIDTH = 0.05;
 const ARC_WIDTH = 0.05;
-/** How far the lowest arc rises above the line, in cells. */
-const FIRST_RISE = 0.7;
-/** The gap between an arc and its tick, and around labels, in cells. */
-const INSET = 0.1;
+// Layout distances in cells, exact: sizes and positions are worked out with them before anything is drawn.
+/** How far the lowest arc rises above the line. */
+const RISE = rational(7, 10);
+/** The gap between an arc and its tick, and around labels. */
+const GAP = rational(1, 10);
 /** Half the height of a tick mark. */
-const TICK_HALF = 0.25;
+const HALF_TICK = rational(1, 4);
+/** Room above the top lane's label, and below the tick labels. */
+const TOP = rational(1, 5);
+const BOTTOM = rational(1, 10);
+/** Room between ticks beside the widest label, and the narrowest tick spacing. */
+const LABEL_ROOM = rational(2, 5);
+const MIN_SPACING = rational(1);
+/** The narrowest room from the line's end to its end tick. */
+const MIN_END = rational(3, 5);
+/** A lane is a label high and this much more. */
+const LANE_ROOM = rational(1, 2);
+// The same distances as floats, for drawing.
+const FIRST_RISE = toNumber(RISE);
+const INSET = toNumber(GAP);
+const TICK_HALF = toNumber(HALF_TICK);
 
 interface Jump {
   id: string;
@@ -40,10 +55,11 @@ interface Jump {
   seq: number;
 }
 
+/** Where the line's parts go, in cells from the object's top-left corner. Tick positions stay exact. */
 interface Geometry {
-  spacing: number;
-  /** x of tick 0, from the object's left edge. */
-  x0: number;
+  spacing: Rational;
+  /** x of tick 0. */
+  x0: Rational;
   lineY: number;
   labelH: number;
   laneH: number;
@@ -71,7 +87,6 @@ export interface NumberLineState extends LabelStyle {
   geo: Geometry;
 }
 
-const times = (r: Rational, k: number) => rational(r.num * k, r.den);
 const valueAt = (state: Pick<NumberLineState, "min" | "tick">, i: number) => add(state.min, times(state.tick, i));
 
 /** A value's tick on the line, or null when no tick shows it. */
@@ -107,7 +122,7 @@ function writtenParts(read: ReadNumber, text: string): NumberParts {
 }
 
 const labelText = (state: NumberLineState, i: number) => numberText(labelOf(state, valueAt(state, i)));
-const tickX = (geo: Geometry, i: number) => geo.x0 + i * geo.spacing;
+const tickX = (geo: Geometry, i: number) => toNumber(add(geo.x0, times(geo.spacing, i)));
 const isShown = (state: NumberLineState, i: number) => state.shown[i] || i in state.put;
 
 function labelBox(state: NumberLineState, i: number): { layout: NumberLayout; rect: Rect } {
@@ -130,10 +145,11 @@ function create(cmd: NumberLineCommand, ctx: Ctx): { state: NumberLineState; siz
     values.push(r.value);
     decimals.push(r.form === "decimal");
   }
-  const [min, max, tick] = values;
+  const [min, top, tick] = values;
+  if (values.slice(0, 2).some((v) => Math.abs(v.num) > LINE_LIMIT * v.den)) return refuse("not_allowed", `A number line goes from -${LINE_LIMIT} to ${LINE_LIMIT}.`);
   if (compare(tick, rational(0)) <= 0) return refuse("not_allowed", "The tick must be more than 0.");
-  if (compare(max, min) <= 0) return refuse("not_allowed", "The max must be more than the min.");
-  const steps = div(sub(max, min), tick);
+  if (compare(top, min) <= 0) return refuse("not_allowed", "The max must be more than the min.");
+  const steps = div(sub(top, min), tick);
   if (!isWhole(steps)) return refuse("not_allowed", `Ticks every ${cmd.tick} from ${cmd.min} do not land on ${cmd.max}: pick a max that is a whole number of ticks away.`);
   const count = steps.num + 1;
   if (count > MAX_TICKS) return refuse("no_room", `That is ${count} ticks: a number line has at most ${MAX_TICKS}. Use a bigger tick or a shorter range.`);
@@ -153,17 +169,19 @@ function create(cmd: NumberLineCommand, ctx: Ctx): { state: NumberLineState; siz
   const cannot = refuseMissing(ctx.glyphs, Array.from({ length: count }, (_, i) => numberChars(labelOf(style, valueAt(base, i)))).join("") + "+−");
   if (cannot) return cannot;
 
-  // Room for the widest label under each tick, and for the end labels inside the line's box.
-  const widest = Math.max(...layouts.map((l) => l.w));
-  const labelH = Math.max(...layouts.map((l) => l.h));
-  const spacing = Math.max(1, widest + 0.4);
-  const x0 = Math.max(0.6, widest / 2 + 0.2);
-  const laneH = labelH + 0.5;
-  const lineY = 0.2 + labelH + INSET + FIRST_RISE + (LANES - 1) * laneH;
-  const rawW = 2 * x0 + (count - 1) * spacing;
-  const w = Math.ceil(rawW);
-  const h = Math.ceil(lineY + TICK_HALF + INSET + labelH + 0.1);
-  const geo: Geometry = { spacing, x0: x0 + (w - rawW) / 2, lineY, labelH, laneH, w, h };
+  // Room for the widest label under each tick, and for the end labels inside the line's box. Exact, so a line that
+  // needs 40 cells takes 40, and its ticks sit where the math puts them.
+  const widest = layouts.map((l) => l.exact.w).reduce(max);
+  const labelH = layouts.map((l) => l.exact.h).reduce(max);
+  const spacing = max(MIN_SPACING, add(widest, LABEL_ROOM));
+  const x0 = max(MIN_END, add(div(widest, rational(2)), div(LABEL_ROOM, rational(2))));
+  const laneH = add(labelH, LANE_ROOM);
+  const lineY = [TOP, labelH, GAP, RISE, times(laneH, LANES - 1)].reduce(add);
+  const rawW = add(times(x0, 2), times(spacing, count - 1));
+  const w = ceil(rawW);
+  const h = ceil([lineY, HALF_TICK, GAP, labelH, BOTTOM].reduce(add));
+  const centred = add(x0, div(sub(rational(w), rawW), rational(2)));
+  const geo: Geometry = { spacing, x0: centred, lineY: toNumber(lineY), labelH: toNumber(labelH), laneH: toNumber(laneH), w, h };
   const state: NumberLineState = { min, tick, count, form, unit, shown, put: {}, jumps: [], ink: "blue", seq: ctx.seq, geo };
   return { state, size: { w, h } };
 }
@@ -248,7 +266,7 @@ function targets(state: NumberLineState, objectId: string): LocalTarget[] {
   ];
   for (let i = 0; i < state.count; i++) {
     const { rect } = labelBox(state, i);
-    const half = Math.min(geo.spacing / 2 - 0.05, Math.max(0.3, rect.w / 2 + INSET));
+    const half = Math.min(toNumber(geo.spacing) / 2 - 0.05, Math.max(0.3, rect.w / 2 + INSET));
     out.push({
       target: { objectId, part: "value", value: valueKey(valueAt(state, i)) },
       label: `${objectId} at ${labelText(state, i)}`,
