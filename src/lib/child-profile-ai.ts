@@ -37,13 +37,13 @@ import { fakeChildProfileAi } from "@/lib/child-profile-ai-fake";
 import type { ChildLearnerProfile, ChildProfileFinding } from "@/lib/child-profile";
 import type { LearningEvent } from "@/lib/learning-events";
 import {
+  hasOperation,
   operationResult,
   operationText,
   stepText,
   valueText,
   workedSteps,
   type AnswerValue,
-  type Operation,
   type QuestionLookup,
   type QuestionPackage,
   type QuestionRef,
@@ -156,11 +156,14 @@ function codeOwned(value: unknown): boolean {
 /** A typed amount as code writes it; null for free text or a unit outside code's list. */
 const amountText = (v: AnswerValue): string | null => (AMOUNTS.has(v.type) && codeOwned(v) ? valueText(v) : null);
 
-/** The question as code writes and computes it, with its steps; null when its operation holds a string code did not write. */
+/**
+ * The question as code writes and computes it, with its steps; null when it has no operation (an item such as a
+ * drawing) or its operation holds a string code did not write.
+ */
 function codeQuestion(p: QuestionPackage) {
-  if (!codeOwned(p.operation)) return null;
+  if (!hasOperation(p) || !codeOwned(p.operation)) return null;
   try {
-    const operation = p.operation as Operation;
+    const operation = p.operation;
     const answer = amountText(operationResult(operation));
     if (answer === null) return null;
     const unit = typeof p.answer.unit === "string" && UNITS.has(p.answer.unit) ? p.answer.unit : null;
