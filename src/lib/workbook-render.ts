@@ -47,7 +47,7 @@ export interface WorkbookDraft extends Omit<WorkbookInput, "pdfPath" | "pages"> 
  * The `data-measure` attribute of each element the renderer measures. A template marks the page number (the element's
  * text is the number alone), each question (its box on the page image), inside each question its content (the text and
  * numbers the child reads, all of which must print) and its answer space (where the child writes, at least half an inch
- * each way), and each slot with a size limit. The QR code comes marked from the renderer (PageParts.qr).
+ * each way; it may lie inside the content), and each slot with a size limit. The QR code comes marked from the renderer (PageParts.qr).
  */
 export const mark = {
   pageNumber: `data-measure="page-number"`,
@@ -101,8 +101,9 @@ export interface MeasuredElement {
   /** Whether it shows: laid out, not hidden by CSS (display, visibility, content-visibility or opacity 0). */
   visible: boolean;
   /**
-   * Whether its text prints: it has text, and every piece of it shows (not hidden by CSS, not transparent, inside the
-   * element) and leaves ink on its page image, so text hidden inside a visible element does not pass.
+   * Whether its text prints: it has text, and every line of it shows by CSS, is big enough, is not clipped and leaves its
+   * own ink on the page image, so text hidden inside a visible element does not pass (see the Chromium engine). False
+   * for an element with no text; the renderer reads it for the page number and each question's content.
    */
   textPrinted: boolean;
   x: number;
@@ -341,6 +342,7 @@ export async function replaceRendering(
   try {
     result = await o.store.saveRendering(rendering);
   } catch (e) {
+    // Unless a read shows the swap happened, every file stays: the swap may still commit (a failed read shows nothing).
     if ((await o.store.workbook(w.id).catch(() => null))?.pdfPath !== rendering.pdfPath) throw e;
     await o.files.remove(old);
     return { status: "written", workbookId: w.id };

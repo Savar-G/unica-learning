@@ -109,6 +109,31 @@ describe.skipIf(!chromium)("renderWorkbook with Chromium", () => {
     });
   }, 60_000);
 
+  // Page 2's operands made unreadable in ways a box check misses: each must fail every question on the page.
+  const unreadable: [string, string][] = [
+    ["too small", `.sum{font-size:3px}`],
+    ["shrunk", `.sum>div:not(.rule){transform:scale(.06)}`],
+    ["partly clipped", `.sum>div:first-child{clip-path:inset(0 0 0 70%)}`],
+    ["cut by an inner box", `.sum>div:not(.rule){height:26px;overflow:hidden}`],
+    ["covered", `.sum{position:relative}.sum::after{content:"";position:absolute;inset:0;background:#eee}`],
+    ["blurred", `.sum{filter:blur(5px)}`],
+  ];
+  it.each(unreadable)("fails question content that is %s", async (_name, css) => {
+    const result = await render(draft(), (page, html) => (page === 2 ? `<style>[data-sheet="1"] ${css.replace(/}(?=.)/g, `}[data-sheet="1"] `)}</style>${html}` : html));
+    expect(result).toEqual({
+      status: "failed",
+      problems: [1, 2, 3, 4].map((q) => ({ page: 2, question: q, reason: `question ${q}'s content is not printed` })),
+    });
+  }, 60_000);
+
+  it("prints content set tighter than its font's line box, and a word problem at line-height 1.2", async () => {
+    const book = draft();
+    const q = book.pages[2].questions[0];
+    q.package = { ...q.package, text: "Mia has 12 bags of 3 apples. How many apples does she have?", operation: { kind: "multiply", operands: [12, 3] } };
+    const result = await render(book, (_page, html) => `<style>.sum{line-height:54px}.text{line-height:1.2}</style>${html}`);
+    expect(result.status).toBe("rendered");
+  }, 60_000);
+
   it("fails a question with no answer space", async () => {
     const result = await render(draft(), (page, html) => (page === 2 ? `<style>[data-sheet="1"] .rule{display:none}</style>${html}` : html));
     expect(result).toEqual({

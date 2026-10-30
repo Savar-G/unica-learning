@@ -13,8 +13,8 @@ and a template, and returns:
 - each page's QR link, `https://unicalearning.com/tutor/p/<token>` (the desk route, #301).
 
 The template writes each page as HTML and marks what the renderer measures (`mark` in the module): the page number,
-each question, inside each question its content (the text and numbers the child reads) and its answer space, and each
-slot with a size limit. The renderer makes each page's QR code itself, already marked, and the
+each question, inside each question its content (the text and numbers the child reads) and its answer space (which
+may lie inside the content), and each slot with a size limit. The renderer makes each page's QR code itself, already marked, and the
 template only places it. The render fails, naming the page and question, when:
 
 - the template has no layout for a page's type,
@@ -28,10 +28,18 @@ template only places it. The render fails, naming the page and question, when:
 - the template marks a part twice, or the PDF does not have one page per page.
 
 "Hidden" means not laid out or hidden by CSS: `display`, `visibility`, `content-visibility` or opacity 0. "Printed"
-is checked on the text itself, not only on its outer box: each piece of the page number's and each question content's
-text must show by CSS, have a colour that is not transparent, lie inside its marked element, and leave ink on the page
-image (its lightest and darkest pixels at least 64 of 255 apart). So text that is hidden, transparent, white on white,
-clipped or covered inside a visible box fails. Nothing is clipped silently.
+is checked on the text itself, line by line, not only on its outer box. Each line of the page number and of each
+question's content must:
+
+- show by CSS: visible, a colour that is not transparent, and no `filter`, `clip-path` or mask up to its marked element,
+- be at least 6 points (8 CSS pixels) high,
+- lie at least 85% inside every box that clips it, up to the page,
+- leave its own ink: the engine takes each page image again with the glyphs of marked elements made transparent, and
+  at least 2% of the line's pixels must change by 64 of 255 or more.
+
+So text that is hidden, transparent, tiny, shrunk, clipped, blurred, white on white or covered inside a visible box
+fails. Very light text (less than 64 of 255 from its background) fails too. Text partly covered by a pattern can still
+pass. Nothing is clipped silently.
 
 Storing:
 
@@ -70,8 +78,9 @@ check, so the Aside rule does not apply. Which Chromium:
 
 Tests use the fake engine (`src/lib/print-engine-fake.ts`). `src/lib/print-engine-chromium.test.ts` renders the sample
 with real Chromium wherever one is found: it decodes each page's QR code from the image, counts the PDF pages, and
-checks that a hidden page number, a hidden question, a blank QR code, question content hidden or white inside a
-visible box, a transparent page number and a missing answer space fail. Set `RENDER_OUT=<folder>` to keep the
+checks that a hidden page number, a hidden question, a blank QR code, a transparent page number, a missing answer space,
+and question content that is hidden, white, tiny, shrunk, clipped, covered or blurred inside a visible box fail, while
+content set at a tight line height prints. Set `RENDER_OUT=<folder>` to keep the
 files and look at them.
 
 The engine reads each page's QR code with jsQR from the page image, cropped to the QR element and a quarter inch around
@@ -97,7 +106,9 @@ is 67 MB of it), under Vercel's 250 MB limit. The check route allows 60 s (`maxD
 Storage, so Vercel's 4.5 MB response limit does not apply. A two-week workbook (about 10 to 30 pages) renders in under
 10 seconds.
 
-On a Mac (Chrome 155, Apple silicon), the sample renders in 0.6 to 1.2 s and 30 pages in 3.0 s.
+On a Mac (Chrome 155, Apple silicon), the sample renders in 0.6 to 1.2 s and 30 pages in 3.0 s. The check that each line of text
+leaves its own ink (a second image of each page, added after the second review on 2026-10-30) adds about 0.06 s a page
+there (the sample's engine time went from about 0.37 s to 0.54 s); it has not been measured on Vercel yet.
 
 ### When to move it to a worker
 

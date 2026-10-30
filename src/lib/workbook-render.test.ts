@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { createClient } from "@supabase/supabase-js";
 import { fakePrintEngine } from "@/lib/print-engine-fake";
 import { workbookProblem, type WorkbookFiles } from "@/lib/workbook-content";
-import { renderWorkbook, replaceRendering, saveRenderedWorkbook } from "@/lib/workbook-render";
+import { mark, renderWorkbook, replaceRendering, saveRenderedWorkbook } from "@/lib/workbook-render";
 import { sampleDraft } from "@/lib/workbook-sample";
 import { workbookFiles } from "@/lib/workbook-store";
 import { memoryWorkbookFiles, memoryWorkbookStore } from "@/lib/workbook-store-memory";
@@ -126,7 +126,7 @@ describe("renderWorkbook", () => {
 
   it("fails a question whose content does not print or lies outside it, or whose answer space is missing or too small", async () => {
     const template = fixedTemplate();
-    const noAnswer = { ...template, page: (...a: Parameters<typeof template.page>) => template.page(...a)?.replace(`data-measure="question-4-answer"`, "") ?? null };
+    const noAnswer = { ...template, page: (...a: Parameters<typeof template.page>) => template.page(...a)?.replace(mark.answerSpace(4), "") ?? null };
     const question = { x: 56, y: 240, width: 340, height: 320 };
     const engine = fakePrintEngine({
       blank: ["1 page-number", "2 question-1-content"],
