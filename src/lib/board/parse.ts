@@ -1,11 +1,12 @@
 // Checks one command from the model before anything changes. The model's output is untrusted: a command with an unknown
 // op, a missing or extra field, a coordinate, or a value out of bounds is refused with a reason, never repaired.
+import { parseModel } from "@/lib/board/model";
 import { refuse, type RefusalBody } from "@/lib/board/representation";
 import { CLEAR_SCOPES, INKS, MARK_STYLES, OPERATIONS, PLACE_NAMES, REGROUP_KINDS, type Command, type Place, type Target } from "@/lib/board/types";
 
 const ID = /^[A-Za-z][A-Za-z0-9_-]{0,63}$/;
-const OPS = ["columns", "write", "put", "regroup", "mark", "arrow", "remove", "undo", "clear", "focus"] as const;
-const LATER = ["division", "fraction", "number_line", "model", "jump"];
+const OPS = ["columns", "write", "model", "put", "regroup", "mark", "arrow", "remove", "undo", "clear", "focus"] as const;
+const LATER = ["division", "fraction", "number_line", "jump"];
 
 class Invalid extends Error {}
 const fail = (reason: string): never => {
@@ -33,7 +34,7 @@ const ink = (v: unknown) => (v === undefined ? undefined : oneOf(v, INKS, "ink")
 const place = (v: unknown) => oneOf(v, PLACE_NAMES, "column");
 
 function target(v: unknown, what = "target"): Target {
-  const base = object(v, what, ["objectId", "part"], ["rowId", "column", "index"]);
+  const base = object(v, what, ["objectId", "part"], ["rowId", "column", "index", "piece"]);
   const objectId = id(base.objectId, `${what}.objectId`);
   switch (base.part) {
     case "whole":
@@ -52,8 +53,12 @@ function target(v: unknown, what = "target"): Target {
       object(v, what, ["objectId", "part", "index"]);
       if (!Number.isInteger(base.index) || (base.index as number) < 0 || (base.index as number) > 50) fail(`${what}.index must be a word number from 0.`);
       return { objectId, part: "word", index: base.index as number };
+    case "piece":
+      object(v, what, ["objectId", "part", "piece"]);
+      if (typeof base.piece !== "string" || !/^[A-Za-z0-9][A-Za-z0-9_-]{0,31}$/.test(base.piece)) fail(`${what}.piece must be a part name the board gave.`);
+      return { objectId, part: "piece", piece: base.piece as string };
     default:
-      return fail(`${what}.part must be one of whole, column, row, cell, word.`);
+      return fail(`${what}.part must be one of whole, column, row, cell, word, piece.`);
   }
 }
 
@@ -76,7 +81,7 @@ function text(v: unknown, what: string, max: number): string {
 }
 
 function parse(raw: unknown): Command {
-  const head = object(raw, "A command", ["op"], ["id", "operation", "operands", "place", "text", "ink", "target", "value", "objectId", "rowId", "kind", "from", "to", "style", "transactionId", "page", "scope"]);
+  const head = object(raw, "A command", ["op"], ["id", "operation", "operands", "model", "place", "text", "ink", "target", "value", "objectId", "rowId", "kind", "from", "to", "style", "transactionId", "page", "scope"]);
   if (LATER.includes(head.op as string)) return fail(`The board cannot draw "${head.op}" yet.`);
   const op = oneOf(head.op, OPS, "op");
   switch (op) {
@@ -95,6 +100,12 @@ function parse(raw: unknown): Command {
     case "write": {
       const c = object(raw, "write", ["op", "id", "text", "place"], ["ink"]);
       return { op, id: id(c.id, "write.id"), text: text(c.text, "write.text", 24), place: placement(c.place), ink: ink(c.ink) };
+    }
+    case "model": {
+      const c = object(raw, "model", ["op", "id", "model", "place"], ["ink"]);
+      const spec = parseModel(c.model);
+      if (typeof spec === "string") return fail(spec);
+      return { op, id: id(c.id, "model.id"), model: spec, place: placement(c.place), ink: ink(c.ink) };
     }
     case "put": {
       const c = object(raw, "put", ["op", "target", "value"], ["ink"]);

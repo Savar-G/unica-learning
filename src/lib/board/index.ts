@@ -20,3 +20,21 @@ export {
 } from "./scene";
 export { PLACEHOLDER_GLYPHS, type GlyphSet, type Point } from "./glyphs";
 export * from "./types";
+export {
+  ARRAY_LIMITS,
+  BASE_TEN_LIMITS,
+  FRACTION_STRIP_LIMITS,
+  GEOMETRY_LIMITS,
+  GRID_LIMITS,
+  LABEL_SHOWS,
+  MODEL_KINDS,
+  SHAPES,
+  type ArraySpec,
+  type BaseTenSpec,
+  type CoordinateGridSpec,
+  type FractionStripSpec,
+  type GeometrySpec,
+  type LabelShow,
+  type ModelSpec,
+  type Shape,
+} from "./model";

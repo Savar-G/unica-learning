@@ -7,6 +7,7 @@ import { columns } from "@/lib/board/columns";
 import { annotationStrokes, arrowLines, MARK_INK, routeArrow, type ArrowObject, type ArrowObstacles, type ArrowRoute, type MarkObject } from "@/lib/board/annotations";
 import { contains, overlaps, polylineHitsRect, polylineLength, traceTouches, type Trace } from "@/lib/board/geometry";
 import { PLACEHOLDER_GLYPHS, type GlyphSet } from "@/lib/board/glyphs";
+import { model } from "@/lib/board/model";
 import { note } from "@/lib/board/note";
 import { parseCommand } from "@/lib/board/parse";
 import { isRefusal, refuse, type Ctx, type LocalStroke, type LocalTarget, type RefusalBody, type Representation } from "@/lib/board/representation";
@@ -14,7 +15,7 @@ import type { Batch, BoardPath, Command, CreateCommand, Notice, PageSize, PathKi
 import type { Stroke } from "@/lib/whiteboard";
 
 /** The representations the board can create, by their create command. Later ones are added here. */
-const REPRESENTATIONS = { columns, write: note } satisfies Record<CreateCommand["op"], unknown>;
+const REPRESENTATIONS = { columns, write: note, model } satisfies Record<CreateCommand["op"], unknown>;
 const representation = (op: CreateCommand["op"]) => REPRESENTATIONS[op] as unknown as Representation<unknown, CreateCommand>;
 const isCreate = (c: Command): c is CreateCommand => c.op in REPRESENTATIONS;
 
@@ -103,7 +104,7 @@ export function createScene(options: { page?: PageSize; glyphs?: GlyphSet } = {}
 
 // ---------- targets ----------
 
-const targetKey = (t: Target) => [t.objectId, t.part, "rowId" in t ? t.rowId : "", "column" in t ? t.column : "", "index" in t ? t.index : ""].join("|");
+const targetKey = (t: Target) => [t.objectId, t.part, "rowId" in t ? t.rowId : "", "column" in t ? t.column : "", "index" in t ? t.index : "", "piece" in t ? t.piece : ""].join("|");
 export const sameTarget = (a: Target, b: Target) => targetKey(a) === targetKey(b);
 
 const reps = (s: SceneState) => s.objects.filter((o): o is RepObject => o.kind === "rep");
