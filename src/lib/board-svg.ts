@@ -31,8 +31,9 @@ export function fitView(paths: readonly BoardPath[], pad: number): string {
 
 /**
  * One applied batch, as `applyBatch` returns it: the strokes it drew (times from the batch's start) and the ids it
- * erased, with the board's view after it (`boardView`), which says the page to show: a new page when the work
- * overflowed, or an earlier one Maya points back at. Without a view, the page is the one the batch last drew on.
+ * erased, with the board's view after it (`boardView`). While the batch draws, the board shows the page of the stroke
+ * being written; once its last stroke is done, it turns to the view's page (an earlier page Maya points back at). A
+ * batch that only changes the view turns the page at its start.
  */
 export interface PlayStep {
   drawn: readonly TimedPath[];
@@ -51,7 +52,7 @@ interface Scheduled {
 /** Batches laid end to end on one clock: what a frame at any time is read from. */
 export interface Timeline {
   readonly strokes: readonly Scheduled[];
-  /** The page in view from each time on, earliest first; the board starts on page 1. */
+  /** The page in view from each time on, earliest first: the board starts on page 1, follows the pen, then the view. */
   readonly pages: readonly { fromMs: number; page: number }[];
   /** When the last stroke is finished. */
   readonly durationMs: number;
@@ -68,23 +69,26 @@ export function timeline(steps: readonly PlayStep[], options: { gapMs?: number }
   let end = 0;
   steps.forEach((step, i) => {
     const offset = i === 0 ? 0 : end + gap;
-    const page = step.view?.page ?? step.drawn.at(-1)?.page;
-    if (page !== undefined && page !== pages.at(-1)!.page) pages.push({ fromMs: offset, page });
+    const turn = (fromMs: number, page: number) => {
+      if (page !== pages.at(-1)!.page) pages.push({ fromMs, page });
+    };
     const erased = new Set(step.erased ?? []);
     for (const s of strokes) if (erased.has(s.path.id) && s.erasedMs === null) s.erasedMs = offset;
     end = offset;
-    for (const p of step.drawn) {
+    for (const p of [...step.drawn].sort((a, b) => a.startMs - b.startMs)) {
       const { startMs, ...path } = p;
+      turn(offset + startMs, p.page);
       strokes.push({ path, startMs: offset + startMs, endMs: offset + startMs + p.durationMs, erasedMs: null });
       end = Math.max(end, offset + startMs + p.durationMs);
     }
+    if (step.view) turn(end, step.view.page);
   });
   return { strokes, pages, durationMs: end };
 }
 
-/** The page the board shows `elapsedMs` after playing started. */
+/** The page the board shows `elapsedMs` after playing started; before the start, the first page. */
 export function pageAt(t: Timeline, elapsedMs: number): number {
-  return t.pages.findLast((p) => p.fromMs <= elapsedMs)!.page;
+  return (t.pages.findLast((p) => p.fromMs <= elapsedMs) ?? t.pages[0]).page;
 }
 
 /** A stroke to paint now, and how much of it: from just started (above 0) to whole (1). */
@@ -96,8 +100,9 @@ export interface FrameStroke {
 const LAYERS: Record<BoardPath["layer"], number> = { behind: 0, math: 1, annotation: 2 };
 
 /**
- * What the board shows `elapsedMs` after playing started: the strokes on the page in view (`pageAt`), in paint order: highlights under the math, carries and marks
- * over it, and the core's paint order within a layer (a stroke an undo brings back goes where it was, not on top). Infinity gives the finished board at once (a replay's end, a reload).
+ * What the board shows `elapsedMs` after playing started: the strokes on the page in view (`pageAt`), in paint order.
+ * Highlights go under the math and carries and marks over it; within a layer, the core's paint order (a stroke an undo
+ * brings back goes where it was, not on top). Infinity gives the finished board at once (a replay's end, a reload).
  */
 export function frameAt(t: Timeline, elapsedMs: number): FrameStroke[] {
   const out: (FrameStroke & { order: number })[] = [];

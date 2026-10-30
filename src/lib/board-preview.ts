@@ -1,5 +1,5 @@
-// The admin board preview (#319): 27 + 39 as Maya would work it, and the digits, in each font Savar chooses from. Built
-// on the server through the board core, so the page sends only the strokes to the browser.
+// The admin board preview (#319): 27 + 39 and 157 ÷ 6 as Maya would work them, and the digits, in each font Savar
+// chooses from. Built on the server through the board core, so the page sends only the strokes to the browser.
 import { applyBatch, BOARD_FONTS, boardView, createScene, type BoardFont, type GlyphSet, type PageSize } from "@/lib/board";
 import { fitView, type PlayStep } from "@/lib/board-svg";
 
@@ -17,6 +17,17 @@ const SUM: unknown[][] = [
   [{ op: "mark", id: "done", target: { objectId: "sum1", part: "row", rowId: "answer" }, style: "check" }],
 ];
 
+const div = (rowId: string) => ({ objectId: "div", part: "row", rowId });
+const quotient = (column: string) => ({ objectId: "div", part: "cell", rowId: "quotient", column });
+
+/** 157 ÷ 6 = 26 R 1 as long division: the core works out and checks each digit, product, difference and bring-down. */
+const DIVISION: unknown[][] = [
+  [{ op: "division", id: "div", dividend: "157", divisor: "6", place: { region: "main" } }],
+  [{ op: "put", target: quotient("tens") }, { op: "put", target: div("product1") }, { op: "put", target: div("difference1") }],
+  [{ op: "put", target: div("bring2") }, { op: "put", target: quotient("ones") }, { op: "put", target: div("product2") }, { op: "put", target: div("difference2") }],
+  [{ op: "put", target: div("remainder") }],
+];
+
 /** The digits, then the signs: the font's + × ÷ = and the board's own minus and check mark. */
 const SPECIMEN: unknown[][] = [
   [{ op: "write", id: "digits", text: "0123456789", place: { region: "main" } }],
@@ -31,6 +42,7 @@ export interface PreviewBoard {
 
 export interface FontPreview extends Omit<BoardFont, "glyphs"> {
   sum: PreviewBoard;
+  division: PreviewBoard;
   specimen: PreviewBoard;
 }
 
@@ -50,6 +62,7 @@ export function fontPreviews(): FontPreview[] {
   return BOARD_FONTS.map(({ glyphs, ...font }) => ({
     ...font,
     sum: play(glyphs, SUM),
+    division: play(glyphs, DIVISION),
     specimen: play(glyphs, SPECIMEN, { cols: 13, rows: 5 }),
   }));
 }

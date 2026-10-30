@@ -1,8 +1,8 @@
 "use client";
 
-// The admin board preview (#319): 27 + 39 drawn stroke by stroke, and the digits, in the two fonts Savar chooses from,
-// side by side. One Replay restarts every board; "Show finished" shows the end at once. With reduced motion on, the
-// boards show the finished work (DESIGN.md motion rules).
+// The admin board preview (#319): 27 + 39 and 157 ÷ 6 drawn stroke by stroke, and the digits, in the two fonts Savar
+// chooses from, side by side. One Replay restarts every board; "Show finished" shows the end at once. With reduced
+// motion on, the boards show the finished work (DESIGN.md motion rules).
 import { useState, useSyncExternalStore } from "react";
 import { MayaBoard } from "@/components/maya-board";
 import type { FontPreview } from "@/lib/board-preview";
@@ -30,8 +30,8 @@ export function BoardPreview({ fonts }: { fonts: FontPreview[] }) {
   return (
     <>
       <p className="adm-lead">
-        Maya, the Unica Teaching Assistant, writes each step on a shared board, one pen stroke at a time. Here is the same sum
-        in the two fonts we can use for her writing. Savar picks one (decision D-182); until then the board uses simple
+        Maya, the Unica Teaching Assistant, writes each step on a shared board, one pen stroke at a time. Here are the same
+        sums in the two fonts we can use for her writing. Savar picks one (decision D-182); until then the board uses simple
         placeholder digits.
       </p>
       <div className="adm-board-controls">
@@ -59,6 +59,10 @@ export function BoardPreview({ fonts }: { fonts: FontPreview[] }) {
             <figure>
               <MayaBoard key={`sum-${run}`} steps={f.sum.steps} viewBox={f.sum.viewBox} instant={instant} label={`27 plus 39 equals 66, worked in columns with a carried 1, in ${f.name}`} />
               <figcaption>27 + 39, stroke by stroke</figcaption>
+            </figure>
+            <figure>
+              <MayaBoard key={`division-${run}`} steps={f.division.steps} viewBox={f.division.viewBox} instant={instant} label={`157 divided by 6 equals 26 remainder 1, worked as long division, in ${f.name}`} />
+              <figcaption>157 ÷ 6, long division</figcaption>
             </figure>
             <figure>
               <MayaBoard key={`specimen-${run}`} steps={f.specimen.steps} viewBox={f.specimen.viewBox} instant={instant} label={`The digits 0 to 9 and the signs plus, minus, times, divide, equals and a check mark, in ${f.name}`} />

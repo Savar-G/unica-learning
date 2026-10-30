@@ -60,6 +60,12 @@ describe("playback", () => {
     expect(shown(frameAt(t, 190))).toEqual([["a", 1], ["b", 0.5]]);
   });
 
+  it("shows an empty first page for a time before playing starts (an animation frame can be stamped early)", () => {
+    const t = timeline(steps, { gapMs: 300 });
+    expect(pageAt(t, -5)).toBe(1);
+    expect(frameAt(t, -5)).toEqual([]);
+  });
+
   it("shows the finished board at once from any time after the end", () => {
     const t = timeline(steps);
     expect(shown(frameAt(t, Infinity))).toEqual([["a", 1], ["b", 1], ["c", 1]]);
@@ -213,6 +219,51 @@ describe("board pages", () => {
     expect(frameAt(t, pageTwoStarts - 1)).toHaveLength(finishedFrame(play(3).steps.flatMap((s) => s.drawn), 1).length);
     expect(pageAt(t, pageTwoStarts)).toBe(2);
     expect(pages(frameAt(t, pageTwoStarts + 1))).toEqual([2]);
+  });
+
+  /** Applies batches, each with the board's view after it, as the preview and the call screen give them to playback. */
+  function apply(batches: unknown[][]): { scene: Scene; steps: PlayStep[] } {
+    let scene = createScene();
+    const steps: PlayStep[] = [];
+    batches.forEach((commands, i) => {
+      const r = applyBatch(scene, { transactionId: `q${i}`, commands });
+      if (!r.ok) throw new Error(r.refusal.reason);
+      scene = r.scene;
+      steps.push({ ...r, view: boardView(r.scene) });
+    });
+    return { scene, steps };
+  }
+  /** The middle of a stroke's drawing time. */
+  const midway = (t: ReturnType<typeof timeline>, match: (p: BoardPath) => boolean) => {
+    const s = t.strokes.find((x) => match(x.path))!;
+    return (s.startMs + s.endMs) / 2;
+  };
+  const visible = (t: ReturnType<typeof timeline>, ms: number, match: (p: BoardPath) => boolean) => frameAt(t, ms).some((f) => match(f.path));
+
+  it("follows the pen across pages within one batch: page 1 while it writes there, then page 2", () => {
+    const { scene, steps } = apply([[...BATCHES[0], ...BATCHES[1], ...BATCHES[2], ...BATCHES[3]]]);
+    expect(steps).toHaveLength(1);
+    const t = timeline(steps);
+    const firstOnOne = (p: BoardPath) => p.page === 1 && p.objectId === "a";
+    const firstOnTwo = (p: BoardPath) => p.page === 2 && p.objectId === "d";
+    expect(pageAt(t, midway(t, firstOnOne))).toBe(1);
+    expect(visible(t, midway(t, firstOnOne), firstOnOne)).toBe(true);
+    expect(pageAt(t, midway(t, firstOnTwo))).toBe(2);
+    expect(visible(t, midway(t, firstOnTwo), firstOnTwo)).toBe(true);
+    expect(frameAt(t, t.durationMs).map((f) => f.path.id)).toEqual(finishedFrame(boardPaths(scene), boardView(scene).page).map((f) => f.path.id));
+  });
+
+  it("shows new work on page 2 while it is drawn, and turns back to page 1 for a focus only after the drawing", () => {
+    const { scene, steps } = apply([BATCHES[0], BATCHES[1], BATCHES[2], [...BATCHES[3], ...BATCHES[4]]]);
+    expect(boardView(scene).page).toBe(1);
+    const t = timeline(steps);
+    const onTwo = (p: BoardPath) => p.objectId === "d";
+    expect(pageAt(t, midway(t, onTwo))).toBe(2);
+    expect(visible(t, midway(t, onTwo), onTwo)).toBe(true);
+    const lastOnTwo = Math.max(...t.strokes.filter((x) => onTwo(x.path)).map((x) => x.endMs));
+    expect(pageAt(t, lastOnTwo - 1)).toBe(2);
+    expect(pageAt(t, t.durationMs)).toBe(1);
+    expect(frameAt(t, t.durationMs).map((f) => f.path.id)).toEqual(finishedFrame(boardPaths(scene), 1).map((f) => f.path.id));
   });
 
   it("goes back to page 1 when Maya points at work there, as a reload of the board would", () => {

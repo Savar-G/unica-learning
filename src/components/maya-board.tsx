@@ -31,7 +31,8 @@ export function MayaBoard({ steps, viewBox, label, instant = false }: { steps: r
     let frame = 0;
     const start = performance.now();
     const tick = (now: number) => {
-      setElapsed(now - start);
+      // A frame's time stamp can come slightly before `start`.
+      setElapsed(Math.max(0, now - start));
       if (now - start < t.durationMs) frame = requestAnimationFrame(tick);
     };
     frame = requestAnimationFrame(tick);
