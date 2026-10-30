@@ -75,7 +75,7 @@ export async function backfillAssessmentEvents(events: LearningEvents, test: Ass
     }
     const appended = await events.append(event);
     if (appended.ok) done[appended.created ? "appended" : "alreadyStored"] += 1;
-    else done.skipped.push({ answerId: answer.id, reason: appended.error === "invalid" ? appended.reason : "a different event is stored under its key" });
+    else done.skipped.push({ answerId: answer.id, reason: appended.error === "key_conflict" ? "a different event is stored under its key" : appended.reason });
   }
   return done;
 }

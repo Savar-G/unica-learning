@@ -53,8 +53,9 @@ const UUID_COLUMNS = ["parent_id", "child_id", "workbook_id", "assessment_id"];
  * and lt filters, the order and the offset and limit. Ids and times come back as Postgres writes them (lower case,
  * "+00:00"), not as they were sent; uuid filters ignore case, as a uuid column does. Other tables are read only.
  */
-function fakeDb(tables: Record<string, Record<string, unknown>[]> = {}) {
+function fakeDb(tables: Record<string, Record<string, unknown>[]> = {}, { beforeRead }: { beforeRead?: (read: number) => Promise<void> } = {}) {
   const rows: Record<string, unknown>[] = [];
+  let reads = 0;
   let next = 0;
   const pg = (iso: unknown) => (typeof iso === "string" ? new Date(iso).toISOString().replace(".000Z", "+00:00").replace("Z", "+00:00") : iso);
   const db = createClient("https://fixture.invalid", "synthetic-key", { auth: { persistSession: false }, global: { fetch: async (input, init) => {
@@ -81,6 +82,7 @@ function fakeDb(tables: Record<string, Record<string, unknown>[]> = {}) {
       return answer([stored]);
     }
     if (init?.method === "GET") {
+      if (table === "learning_events" && beforeRead) await beforeRead(++reads);
       let found = table === "learning_events" ? [...rows] : [...tables[table]];
       for (const [column, test] of url.searchParams) {
         if (["select", "order", "offset", "limit"].includes(column)) continue;
@@ -107,6 +109,24 @@ function fakeDb(tables: Record<string, Record<string, unknown>[]> = {}) {
 }
 
 const fakePostgrest = (pageSize: number) => learningEvents(learningEventStore(fakeDb(), { pageSize }));
+
+describe("a range read in the Supabase store while events are added", () => {
+  it("still gives the events in time order", async () => {
+    let addDuringRead: () => Promise<void> = async () => {};
+    const db = fakeDb({}, { beforeRead: async (read) => { if (read === 2) await addDuringRead(); } });
+    const events = learningEvents(learningEventStore(db, { pageSize: 2 }));
+    const at = (second: number) => `2026-10-29T16:05:${String(second).padStart(2, "0")}.000Z`;
+    for (const second of [20, 40, 50]) await events.append(callEvent({ key: `call:${second}`, occurredAt: at(second) }));
+    addDuringRead = async () => {
+      addDuringRead = async () => {};
+      for (const second of [10, 30]) await events.append(callEvent({ key: `call:${second}`, occurredAt: at(second) }));
+    };
+    const read = await events.read(CHILD, DAY);
+    const times = read.map((e) => e.occurredAt);
+    expect(times).toEqual([...times].sort());
+    expect(times).toEqual(expect.arrayContaining([at(20), at(40), at(50)]));
+  });
+});
 
 function memory() {
   return learningEvents(memoryLearningEventStore(FAMILIES));

@@ -92,7 +92,8 @@ export function learningEventStore(admin: SupabaseClient<Database>, { pageSize =
           .order("occurred_at", { ascending: true }).order("id", { ascending: true })
           .range(offset, offset + pageSize - 1);
         if (error) throw new Error(`learning events load: ${error.message}`);
-        if (data.length === 0) return [...events.values()];
+        // Offset pages can shift when events are added during the read, so the result is sorted again here.
+        if (data.length === 0) return [...events.values()].sort((x, y) => x.occurredAt.localeCompare(y.occurredAt) || x.id.localeCompare(y.id));
         for (const row of data) events.set(row.id, fromRow(row));
         offset += data.length;
       }
