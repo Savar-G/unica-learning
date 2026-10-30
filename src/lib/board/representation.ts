@@ -1,7 +1,8 @@
-// A representation is one kind of math object on the board (columns now; division, fractions, number lines and models
-// later). Each one owns its layout in grid cells, its named targets, its math checks and its strokes. The scene places
-// it on a page, routes the common commands to it, and turns its strokes into board paths. To add a representation,
-// add its create command to `CreateCommand`, write a module with this interface, and register it in `scene.ts`.
+// A representation is one kind of math object on the board (columns and division now; fractions, number lines and
+// models later). Each one owns its layout in grid cells, its named targets, its math checks and its strokes. The scene
+// places it on a page, routes the common commands to it, and turns its strokes into board paths. To add a representation,
+// add its create command to `CreateCommand` and its fields to `parse.ts`, write a module with this interface, and
+// register it in `scene.ts`.
 import type { GlyphSet, Point } from "@/lib/board/glyphs";
 import type { CreateCommand, Ink, MarkStyle, PathKind, Rect, Refusal, RegroupCommand, Target, TargetInfo } from "@/lib/board/types";
 
@@ -38,6 +39,17 @@ export interface Reserved {
   boxes: Rect[];
 }
 
+/** A digit a command wrote in a work row, with the command that wrote it and its pen. */
+export interface WrittenDigit {
+  digit: number;
+  seq: number;
+  ink: Ink;
+}
+
+/** Line widths in cells: a digit, and a small lane value or arrow. */
+export const DIGIT_WIDTH = 0.07;
+export const SMALL_WIDTH = 0.05;
+
 export interface Ctx {
   seq: number;
   glyphs: GlyphSet;
@@ -53,8 +65,11 @@ export interface Representation<S, C extends CreateCommand> {
   create(cmd: C, ctx: Ctx): { state: S; size: { w: number; h: number } } | RefusalBody;
   /** Every named target, including the annotations the object owns. */
   targets(state: S, objectId: string): LocalTarget[];
-  /** Reveals a value in a writable target, after checking it. */
-  put?(state: S, target: Target, value: string, ink: Ink | undefined, ctx: Ctx): S | RefusalBody;
+  /**
+   * Reveals a value in a writable target, after checking it. With no value, a representation that works the value out
+   * itself (division) writes its own; one that does not refuses.
+   */
+  put?(state: S, target: Target, value: string | undefined, ink: Ink | undefined, ctx: Ctx): S | RefusalBody;
   regroup?(state: S, req: RegroupCommand, ctx: Ctx): S | RefusalBody;
   /** Removes an annotation the object owns (a regroup); the scene knows them from `targets`. */
   removeOwned?(state: S, id: string): S | RefusalBody;
