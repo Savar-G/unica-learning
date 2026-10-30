@@ -46,5 +46,25 @@ export function pinStore(admin: SupabaseClient<Database>): PinStore {
         .eq("parent_id", parentId).eq("pin_hash", hash).or("failed_attempts.gt.0,locked_until.not.is.null");
       if (error) throw new Error(`pin clear: ${error.message}`);
     },
+    async claimReset(parentId, now, policy) {
+      const { data, error } = await admin.rpc("claim_pin_reset_attempt", {
+        p_parent: parentId, p_now: new Date(now).toISOString(), p_max: policy.maxAttempts, p_lock_seconds: Math.ceil(policy.lockMs / 1000),
+      });
+      if (error) throw new Error(`pin reset claim: ${error.message}`);
+      const row = data[0];
+      if (!row || row.out_status === "none") return { kind: "none" };
+      const lockedUntil = row.out_locked_until ? Date.parse(row.out_locked_until) : null;
+      if (row.out_status === "locked" && lockedUntil !== null) return { kind: "locked", until: lockedUntil };
+      if (row.out_status === "open") return { kind: "open", attemptsLeft: row.out_attempts_left, lockedUntil };
+      throw new Error(`pin reset claim: unexpected answer ${row.out_status}`);
+    },
+    async reset(parentId, hash) {
+      // One upsert on the primary key: a new PIN and fresh counts for the PIN and the resets, whether or not a row exists.
+      const { error } = await admin.from("parent_pins").upsert({
+        parent_id: parentId, pin_hash: hash, failed_attempts: 0, locked_until: null, reset_failed_attempts: 0, reset_locked_until: null,
+        updated_at: new Date().toISOString(),
+      }, { onConflict: "parent_id" });
+      if (error) throw new Error(`pin reset: ${error.message}`);
+    },
   };
 }

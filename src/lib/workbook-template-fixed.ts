@@ -70,19 +70,19 @@ const MIXED = { title: "Practice", instruction: "Solve. Show your work." };
 
 /**
  * A question's content and answer space: whole-number addition and subtraction in columns, with the rule under them to
- * write on; any other question as its text, with a blank space under it.
+ * write on; any other question, or one with no operation, as its text, with a blank space under it.
  */
 function body(p: QuestionPackage, n: number): string {
   const op = p.operation;
-  if (op.kind !== "add" && op.kind !== "subtract") return `<p class="text" ${mark.questionContent(n)}>${escape(p.text)}</p><div class="space" ${mark.answerSpace(n)}></div>`;
+  if (!op || (op.kind !== "add" && op.kind !== "subtract")) return `<p class="text" ${mark.questionContent(n)}>${escape(p.text)}</p><div class="space" ${mark.answerSpace(n)}></div>`;
   const [a, b] = op.operands;
   return `<div class="sum" ${mark.questionContent(n)}><div>${a}</div><div><span class="sign">${op.kind === "add" ? "+" : "−"}</span>${b}</div>`
     + `<div class="rule" ${mark.answerSpace(n)}></div></div>`;
 }
 
 function practice(page: DraftPage, parts: PageParts, book: WorkbookDraft): string {
-  const kinds = [...new Set(page.questions.map((q) => q.package.operation.kind))];
-  const { title, instruction } = (kinds.length === 1 && HEADINGS[kinds[0]]) || MIXED;
+  const kinds = [...new Set(page.questions.map((q) => q.package.operation?.kind))];
+  const { title, instruction } = (kinds.length === 1 && kinds[0] && HEADINGS[kinds[0]]) || MIXED;
   const questions = page.questions.map((q) => `<div class="question" ${mark.question(q.number)}><div class="qnum">${q.number}.</div>${body(q.package, q.number)}</div>`).join("");
   return `<div class="page"><div class="label" ${mark.slot("label")}>${escape(page.dayLabel ?? "")}</div>`
     + `<h1 class="title" ${mark.slot("title")}>${title}</h1>`

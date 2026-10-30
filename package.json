@@ -10,7 +10,8 @@
     "test": "vitest run",
     "build:ds": "node scripts/build-ds.mjs",
     "check:templates": "node scripts/check-templates.mjs",
-    "db:types": "node scripts/db-types.mjs"
+    "db:types": "node scripts/db-types.mjs",
+    "import:curriculum": "node scripts/import-curriculum.mjs"
   },
   "dependencies": {
     "@sparticuz/chromium": "^153.0.0",
@@ -36,6 +37,7 @@
     "esbuild": "^0.28.2",
     "eslint": "^9",
     "eslint-config-next": "16.3.8",
+    "read-excel-file": "^9.3.14",
     "typescript": "^5",
     "vitest": "^4.1.11"
   },

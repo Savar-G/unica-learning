@@ -25,10 +25,19 @@
 // for display). A rebuild reads the stored build first, then its inputs, and stores only while the stored build token
 // is the one it read. A rebuild that lost the race reads again and builds again, so a build from older inputs never
 // replaces one from newer inputs. The token, not the revision: a test deletion deletes the profile built on it, and
-// the next build starts again at revision 1, but never with an older token (review R345-2). #304 adds AI
-// findings with the same rule. The seams: the profile store (ChildProfileStore: Supabase in
-// src/lib/child-profile-store.ts, in memory in src/lib/child-profile-memory.ts) and the events' store.
-// Pure TypeScript: no Next.js, React, network, database or clock.
+// the next build starts again at revision 1, but never with an older token (review R345-2).
+//
+// AI findings (#304, src/lib/child-profile-ai.ts): after the facts are stored, and when the AI client is on and the
+// child has events, the AI reads the facts and the events and writes findings: hypotheses about a standard for the
+// planner and Maya, each linked to the events that show it. The checks keep only findings whose events this build
+// read for this child. The findings are stored with the same compare and set, over the facts' own build token, so a
+// late AI result never replaces a build from newer inputs; the facts stay as stored. A build stores its facts with no
+// findings (`ai: null`): an earlier build's findings were written from other facts. AI off, failing (an error, a time
+// out, output that does not match the schema) or late leaves the facts-only profile, and never fails the rebuild.
+// Schema version 2 adds `ai`; a stored version 1 profile reads as version 2 with no findings.
+// The seams: the profile store (ChildProfileStore: Supabase in src/lib/child-profile-store.ts, in memory in
+// src/lib/child-profile-memory.ts), the events' store and the AI client (the fake in src/lib/ai-client-fake.ts).
+// Pure TypeScript: no Next.js, React, database or clock; the network only through the AI client.
 import {
   BC_SKILL_MAP,
   REPORTED_STRAND,
@@ -36,6 +45,7 @@ import {
   storedProfile,
   strandCertainty,
   strandStatus,
+  worstFirst,
   type Certainty,
   type Grade,
   type LearnerProfile,
@@ -44,11 +54,13 @@ import {
   type ReportedStrand,
   type StrandStatus,
 } from "@/lib/assessment";
+import { withTimeLimit, type AiClient } from "@/lib/ai-client";
+import { CHILD_PROFILE_AI_MS, writeChildProfileFindings, type FindingDrop, type QuestionReader } from "@/lib/child-profile-ai";
 import { learningEvents, type EventSource, type LearningEvent, type LearningEventStore } from "@/lib/learning-events";
 import type { Interest, LearningGoal, LearningStyle, MathFeeling, WeeklyTime } from "@/lib/learning-style";
 
 /** The version of the child profile's JSON. A change that a reader of stored profiles must know about adds one. */
-export const CHILD_PROFILE_SCHEMA_VERSION = 1;
+export const CHILD_PROFILE_SCHEMA_VERSION = 2;
 
 /** What the counted events say about one standard. */
 export interface StandardEvents {
@@ -90,6 +102,16 @@ export interface ChildStandard {
   evidence: { assessmentId: string | null; events: string[] };
 }
 
+/** An AI finding: a hypothesis about one standard, for the planner and Maya; never a fact, and never counted. */
+export interface ChildProfileFinding {
+  /** The BC standard it is about, one of the profile's standards. */
+  standard: string;
+  /** One or two short sentences, worded as a hypothesis. */
+  hypothesis: string;
+  /** The ids of the child's events that show it, at least one. */
+  events: string[];
+}
+
 /** The child's current profile. Never the child's name, the family or free text. */
 export interface ChildLearnerProfile {
   schemaVersion: typeof CHILD_PROFILE_SCHEMA_VERSION;
@@ -109,6 +131,8 @@ export interface ChildLearnerProfile {
   parent: { feeling: MathFeeling | null; goal: LearningGoal | null; weeklyTime: WeeklyTime | null };
   /** The child's events: those counted, and those left out because the assessment profile already counts them. */
   events: { counted: number; inAssessmentProfile: number; lastAt: string | null };
+  /** The AI findings written from these facts, with the model's id; null when there are none (AI off, failed, or late). */
+  ai: { model: string; findings: ChildProfileFinding[] } | null;
 }
 
 /** The stored assessment profile the build starts from: public.learner_profiles, as stored. */
@@ -135,7 +159,6 @@ export interface ChildProfileInput {
 }
 
 const STANDARDS = new Map(BC_SKILL_MAP.standards.map((s) => [s.code, s]));
-const SEVERITY: Record<StrandStatus, number> = { "needs-attention": 0, developing: 1, secure: 2 };
 
 const newest = (times: readonly string[]) => times.reduce<string | null>((last, t) => (last === null || t > last ? t : last), null);
 
@@ -202,12 +225,13 @@ function buildFacts(input: ChildProfileInput): ChildLearnerProfile {
     secure: standards.filter((s) => s.status === "secure").map((s) => s.code),
     notYetSecure: standards
       .filter((s) => !s.aboveGrade && s.status !== "secure")
-      .sort((a, b) => SEVERITY[a.status] - SEVERITY[b.status] || curriculumOrder(a, b))
+      .sort(worstFirst)
       .map((s) => s.code),
     // Field by field, so the free text never comes along.
     preferences: { styles: [...(learning?.styles ?? [])], interests: [...(learning?.interests ?? [])] },
     parent: { feeling: learning?.feeling ?? null, goal: learning?.goal ?? null, weeklyTime: learning?.weeklyTime ?? null },
     events: { counted: counted.length, inAssessmentProfile: input.events.length - counted.length, lastAt: newest(counted.map((e) => e.occurredAt)) },
+    ai: null,
   };
 }
 
@@ -255,19 +279,39 @@ export interface ChildProfileStore {
    * Stores the profile with a new build token and the next revision, only while the stored build is `expected` (its
    * build token; null: none stored): compare and set. "changed" when another build is stored, or the profile's test no
    * longer exists (the next try builds from what is left); `refused` when the family's deletion is requested, the test
-   * is another family's, or the child is not under that parent (nothing is stored).
+   * is another family's, or the child is not under that parent (nothing is stored). `signal` aborts the write: the
+   * findings' deadline.
    */
-  save(profile: NewChildProfile, expected: ExpectedBuild): Promise<{ revision: number } | "changed" | { refused: string }>;
+  save(profile: NewChildProfile, expected: ExpectedBuild, signal?: AbortSignal): Promise<{ revision: number; buildToken: string } | "changed" | { refused: string }>;
 }
 
-/** The seams of a rebuild: the profile store and the learning events' store. */
+/** The seams of a rebuild: the profile store, the learning events' store, and the AI client and question reader of the findings. */
 export interface ChildProfileSeams {
   profiles: ChildProfileStore;
   events: LearningEventStore;
+  /** The AI client; null or left out: the AI is off, and the profile has the facts only. */
+  ai?: AiClient | null;
+  /** The trusted question data the AI reads about each event; null or left out: none (no question, step or mistake is sent). */
+  questions?: QuestionReader | null;
+  /** The findings step's one time limit: the question reads, the AI request and the findings save (CHILD_PROFILE_AI_MS). */
+  aiMs?: number;
 }
 
+/**
+ * What the AI step of a rebuild did. off: no AI client. no_events: no event to link, so no request. failed: the request failed, took too long,
+ * its output did not match the schema, or the store failed. none: no finding passed the checks. stored: the findings
+ * are stored. late: a newer build was stored while the AI wrote (or the family's deletion was requested), so the
+ * findings were not stored.
+ */
+export type FindingsOutcome =
+  | { outcome: "off" | "no_events" }
+  | { outcome: "failed"; problem: string }
+  | { outcome: "none" | "late"; dropped: FindingDrop[] }
+  | { outcome: "stored"; kept: number; dropped: FindingDrop[] };
+
 export type RebuildResult =
-  | { built: true; revision: number; profile: ChildLearnerProfile }
+  /** The revision and the profile this rebuild stored last: with the findings when they were stored, else the facts. */
+  | { built: true; revision: number; profile: ChildLearnerProfile; findings: FindingsOutcome }
   /**
    * no_child: no such child. nothing_to_build: no assessment profile, no event and no stored profile (a stored one is
    * replaced by an empty build). refused: the family write fence. busy: other builds stored first, every try.
@@ -282,10 +326,15 @@ const ALL_TIME = { from: "2000-01-01T00:00:00.000Z", to: "9999-01-01T00:00:00.00
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-/** The stored JSON as this version's profile; null when it was written at another schema version. */
+/**
+ * The stored JSON as this version's profile: version 1 (before the findings) as version 2 with no findings. Null when it
+ * was written at another schema version.
+ */
 export function storedChildProfile(value: unknown): ChildLearnerProfile | null {
   if (typeof value !== "object" || value === null || Array.isArray(value)) return null;
-  return (value as { schemaVersion?: unknown }).schemaVersion === CHILD_PROFILE_SCHEMA_VERSION ? (value as ChildLearnerProfile) : null;
+  const version = (value as { schemaVersion?: unknown }).schemaVersion;
+  if (version === 1) return { ...(value as Omit<ChildLearnerProfile, "schemaVersion" | "ai">), schemaVersion: CHILD_PROFILE_SCHEMA_VERSION, ai: null };
+  return version === CHILD_PROFILE_SCHEMA_VERSION ? (value as ChildLearnerProfile) : null;
 }
 
 /**
@@ -304,7 +353,8 @@ export async function readChildProfile(store: ChildProfileStore, childId: string
  * (compare and set; see the header). Called after a finished test's report job and after a learning card change; later
  * after calls and marked pages. A database error throws.
  */
-export async function rebuildChildProfile(childId: string, { profiles, events }: ChildProfileSeams): Promise<RebuildResult> {
+export async function rebuildChildProfile(childId: string, seams: ChildProfileSeams): Promise<RebuildResult> {
+  const { profiles, events, ai = null } = seams;
   if (!UUID.test(childId)) return { built: false, reason: "no_child" };
   const id = childId.toLowerCase();
   for (let tries = 0; tries < REBUILD_TRIES; tries++) {
@@ -313,13 +363,48 @@ export async function rebuildChildProfile(childId: string, { profiles, events }:
     const expected: ExpectedBuild = stored && { revision: stored.revision, buildToken: stored.buildToken };
     const source = await profiles.inputs(id);
     if (!source) return { built: false, reason: "no_child" };
-    const profile = buildFacts({ ...source, events: await learningEvents(events).read(id, ALL_TIME) });
+    const read = await learningEvents(events).read(id, ALL_TIME);
+    const profile = buildFacts({ ...source, events: read });
     // With nothing to build from, a stored profile is still replaced: its inputs are gone (a test or events deleted).
     if (!profile.assessment && profile.events.counted === 0 && !expected) return { built: false, reason: "nothing_to_build" };
-    const saved = await profiles.save({ childId: id, parentId: source.parentId, assessmentId: profile.assessment?.assessmentId ?? null, profile }, expected);
+    const row = { childId: id, parentId: source.parentId, assessmentId: profile.assessment?.assessmentId ?? null };
+    const saved = await profiles.save({ ...row, profile }, expected);
     if (saved === "changed") continue;
     if ("refused" in saved) return { built: false, reason: "refused", detail: saved.refused };
-    return { built: true, revision: saved.revision, profile };
+    const facts = { built: true as const, revision: saved.revision, profile };
+    if (!ai) return { ...facts, findings: { outcome: "off" } };
+    if (read.length === 0) return { ...facts, findings: { outcome: "no_events" } };
+    return addFindings({ ...seams, ai }, { ...row, profile }, saved, read);
   }
   return { built: false, reason: "busy" };
+}
+
+const problemOf = (e: unknown) => (e instanceof Error ? e.message : String(e));
+
+/**
+ * The AI step of a rebuild whose facts are stored as `stored`: writes the findings from the facts and the events the
+ * build read, and stores the profile again with them, only while the stored build is still this one. One time limit
+ * covers the question reads, the request and the save (review R355-2); at the limit the save is aborted and the facts
+ * stay. Never throws.
+ */
+async function addFindings(
+  { profiles, ai, questions = null, aiMs = CHILD_PROFILE_AI_MS }: ChildProfileSeams & { ai: AiClient },
+  built: NewChildProfile,
+  stored: { revision: number; buildToken: string },
+  read: readonly LearningEvent[],
+): Promise<RebuildResult> {
+  const factsOnly = (findings: FindingsOutcome): RebuildResult => ({ built: true, revision: stored.revision, profile: built.profile, findings });
+  try {
+    return await withTimeLimit(aiMs, async (signal): Promise<RebuildResult> => {
+      const { findings, dropped } = await writeChildProfileFindings(ai, questions, built.profile, read, signal);
+      if (findings.length === 0) return factsOnly({ outcome: "none", dropped });
+      const profile: ChildLearnerProfile = { ...built.profile, ai: { model: ai.model, findings } };
+      const saved = await profiles.save({ ...built, profile }, stored, signal);
+      // A newer build holds newer facts: the findings, written from these, are not stored over it.
+      if (saved === "changed" || "refused" in saved) return factsOnly({ outcome: "late", dropped });
+      return { built: true, revision: saved.revision, profile, findings: { outcome: "stored", kept: findings.length, dropped } };
+    });
+  } catch (e) {
+    return factsOnly({ outcome: "failed", problem: problemOf(e) });
+  }
 }

@@ -13,7 +13,7 @@ import {
   operationText,
   workedSteps,
   type Operation,
-  type QuestionPackage,
+  type OperationPackage,
   type WrongAnswer,
 } from "@/lib/question-package";
 import type { QuestionBox, WorkbookInput } from "@/lib/workbook-content";
@@ -91,7 +91,7 @@ function wrongAnswers({ kind, operands: [a, b] }: SampleOperation): WrongAnswer[
 }
 
 /** A question's package, with its answer, steps and the easier example's answer and steps computed from the operations. */
-function samplePackage(workbookId: string, page: number, question: number, key: number, q: SampleQuestion): QuestionPackage {
+function samplePackage(workbookId: string, page: number, question: number, key: number, q: SampleQuestion): OperationPackage {
   return {
     id: `${workbookId}:q${key}`,
     ref: { source: "workbook", workbookId, page, question },

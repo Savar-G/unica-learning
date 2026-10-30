@@ -8,7 +8,7 @@ import {
   type AnswerValue,
   type ClockTime,
   type Operation,
-  type QuestionPackage,
+  type OperationPackage,
   type Unit,
 } from "@/lib/question-package";
 
@@ -392,7 +392,7 @@ const MIN_EQUALITIES: Record<string, number> = { "money-round": 0, "time-add": 0
 const clean = (op: Operation): Operation =>
   Object.fromEntries(Object.entries(op).filter(([key]) => !["tree", "x", "name"].includes(key))) as unknown as Operation;
 
-function packageFor(operation: Operation, easier: Operation): QuestionPackage {
+function packageFor(operation: Operation, easier: Operation): OperationPackage {
   return {
     id: "gen-1",
     ref: { source: "workbook", workbookId: "wb-gen", page: 1, question: 1 },
