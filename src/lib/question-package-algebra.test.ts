@@ -278,3 +278,21 @@ describe("a broken algebra package", () => {
     }
   });
 });
+
+describe("an exact result with no finite decimal (#354 review)", () => {
+  const solve = (equation: string): Operation => ({ kind: "solve", operands: [equation] });
+  const ENDLESS = "code checks expressions only where each division gives a whole number or a decimal";
+
+  it.each([
+    ["an expression whose value is 1/3", evaluate("1 ÷ 3"), ENDLESS],
+    ["an expression with a 1/3 on the way, even when it ends whole", evaluate("1 ÷ 3 × 3"), ENDLESS],
+    ["an expression with given values that gives 2/3", evaluate("a ÷ b", { a: 2, b: 3 }), ENDLESS],
+    ["an equation whose solution is 1/3", solve("3x + 1 = 2"), ENDLESS],
+    ["an equation with 7/3 on the way", solve("(x + 1) ÷ 3 = 7 ÷ 3"), "code solves only equations with one number on one side"],
+    ["an equation whose division step gives 5/6", solve("6x = 5"), ENDLESS],
+  ])("returns unsupported, not failed, for %s", (_name, operation, reason) => {
+    const p = packageOf(evaluate("2 + 3 × 4"), 14, evaluate("2 × 3"), 6, "6.3") as unknown as { operation: unknown };
+    p.operation = operation;
+    expect(checkQuestionPackage(p)).toEqual(unsupported(reason));
+  });
+});

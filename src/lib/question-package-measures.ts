@@ -244,7 +244,8 @@ function convertProblem(q: Quantity, to: Unit): OperationProblem | null {
   if (q.unit === to) return fail(`the amount is already in ${to}`);
   if (UNITS[q.unit].dimension !== UNITS[to].dimension) return fail(`${q.unit} and ${to} do not measure the same thing`);
   const size = sizeIn(q, to);
-  if (decimalPlaces(size) === null) return fail(`${amountText(q)} is not a whole number or a decimal in ${to}`);
+  // A right amount code cannot write exactly (100 min is 1.666... h) is beyond code, never a failure.
+  if (decimalPlaces(size) === null) return beyond(`code cannot write ${amountText(q)} in ${to} exactly: its decimal does not end`);
   const value = decimalOf(size, allowedPlaces(to));
   return value !== null && Math.floor(value) <= MAX_AMOUNT ? null : BIG_AMOUNT;
 }

@@ -116,7 +116,6 @@ describe("unit conversion", () => {
   it.each([
     ["metres to kilograms", { kind: "convert", operands: [qty(2, "m")], unit: "kg" }, "m and kg do not measure the same thing"],
     ["a unit to itself", { kind: "convert", operands: [qty(2, "m")], unit: "m" }, "the amount is already in m"],
-    ["minutes that are not a whole or decimal number of hours", { kind: "convert", operands: [qty(100, "min")], unit: "h" }, "100 min is not a whole number or a decimal in h"],
     ["cents that are not whole", { kind: "convert", operands: [qty(2.5, "¢")], unit: "$" }, "an amount in ¢ is a whole number"],
     ["dollars with three decimal places", { kind: "convert", operands: [qty(2.505, "$")], unit: "¢" }, "an amount in $ has at most 2 decimal places"],
     ["a negative length", { kind: "convert", operands: [qty(-2, "m")], unit: "cm" }, "the operation needs an amount from 0 in a unit"],
@@ -440,7 +439,6 @@ describe("clock times and durations", () => {
     ["the same time twice", elapsed(pm(3, 0), pm(3, 0)), "the two times are the same"],
     ["two clocks", elapsed(pm(3, 0), h24(16, 0)), "the two times are not on the same clock"],
     ["13 p.m.", elapsed(pm(13, 0), pm(2, 0)), "the operation needs two clock times"],
-    ["minutes that are not a decimal of an hour", elapsed(pm(2, 0), pm(3, 20), "h"), "80 min is not a whole number or a decimal in h"],
     ["a unit that is not of time", { kind: "elapsed-time", operands: [pm(2, 0), pm(3, 0)], unit: "m" } as unknown as Operation, "the time between two clock times is not in m"],
   ])("fails %s", (_name, operation, reason) => {
     const p = packageOf(elapsed(pm(2, 15), pm(3, 45)), hm(1, 30), elapsed(pm(2, 0), pm(2, 30)), qty(30, "min"), "5.14") as unknown as { operation: unknown };
@@ -544,5 +542,32 @@ describe("a broken measure package", () => {
         }
       }
     }
+  });
+});
+
+describe("an exact result with no finite decimal (#354 review)", () => {
+  const time = (hours: number, minutes: number): ClockTime => ({ type: "time", hours, minutes, period: "p.m." });
+  const base = () => packageOf({ kind: "convert", operands: [qty(2.5, "km")], unit: "m" }, qty(2500, "m"), { kind: "convert", operands: [qty(3, "km")], unit: "m" }, qty(3000, "m"), "3.9") as unknown as { operation: unknown };
+
+  it.each([
+    ["a conversion: 100 min in h is 1.666...", { kind: "convert", operands: [qty(100, "min")], unit: "h" }, "code cannot write 100 min in h exactly: its decimal does not end"],
+    ["a conversion: 10 s in min is 0.1666...", { kind: "convert", operands: [qty(10, "s")], unit: "min" }, "code cannot write 10 s in min exactly: its decimal does not end"],
+    ["an elapsed time in decimal hours: 80 min", { kind: "elapsed-time", operands: [time(2, 0), time(3, 20)], unit: "h" }, "code cannot write 80 min in h exactly: its decimal does not end"],
+    ["a sum asked in hours: 10 min + 10 min", { kind: "quantity-add", operands: [qty(10, "min"), qty(10, "min")], unit: "h" }, "code cannot write 20 min in h exactly: its decimal does not end"],
+    ["a difference asked in hours: 1 h − 40 min", { kind: "quantity-subtract", operands: [qty(1, "h"), qty(40, "min")], unit: "h" }, "code cannot write 20 min in h exactly: its decimal does not end"],
+    ["a product asked in hours: 10 min × 2", { kind: "quantity-multiply", operands: [qty(10, "min"), 2], unit: "h" }, "code cannot write 20 min in h exactly: its decimal does not end"],
+    ["a time later by decimal hours that are not whole minutes: 0.333 h", { kind: "time-add", operands: [time(2, 0), qty(0.333, "h")] }, "code adds only whole minutes, less than 24 h, to a clock time"],
+  ])("returns unsupported, not failed, for %s", (_name, operation, reason) => {
+    const p = base();
+    p.operation = operation;
+    expect(checkQuestionPackage(p)).toEqual(unsupported(reason));
+  });
+
+  it("writes every cash amount exactly: cents and dollars change by 100, and rounding goes to 5 cents", () => {
+    expect(operationResult({ kind: "convert", operands: [qty(1, "¢")], unit: "$" })).toEqual(qty(0.01, "$"));
+    expect(operationResult({ kind: "convert", operands: [qty(0.07, "$")], unit: "¢" })).toEqual(qty(7, "¢"));
+    expect(operationResult({ kind: "quantity-add", operands: [qty(1, "¢"), qty(0.99, "$")], unit: "$" })).toEqual(qty(1, "$"));
+    expect(operationResult({ kind: "quantity-multiply", operands: [qty(0.33, "$"), 3] })).toEqual(qty(0.99, "$"));
+    expect(operationResult({ kind: "money-round", operands: [qty(0.03, "$")] })).toEqual(qty(0.05, "$"));
   });
 });
