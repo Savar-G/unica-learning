@@ -579,12 +579,13 @@ describe("the two-week curriculum plan: input", () => {
 
 describe("the two-week curriculum plan: placement checks (CONTEXT 2)", () => {
   it("R356-13: checks each unit with no assessment evidence with 4 items in the first workbook, before it counts as secure", () => {
+    // 2.4 is a unit of an earlier level: the placement checks cover the starting level only.
     const p = plan(input({ unassessedUnits: ["3.6", "3.13", "2.4"] }));
     expect(p.checks).toEqual([
-      { unit: "2.4", kind: "unit-check", day: 1 },
-      { unit: "3.6", kind: "unit-check", day: 2 },
-      { unit: "3.13", kind: "unit-check", day: 3 },
+      { unit: "3.6", kind: "unit-check", day: 1 },
+      { unit: "3.13", kind: "unit-check", day: 2 },
     ]);
+    expect(p.checksSkipped).toEqual(["2.4"]);
     for (const c of p.checks) {
       const found = parts(p).filter((x) => x.kind === "unit-check" && x.check?.unit === c.unit);
       expect(found).toHaveLength(1);
@@ -645,6 +646,44 @@ describe("the two-week curriculum plan: placement checks (CONTEXT 2)", () => {
         }
         // Unit B starts its steps on the check days too.
         expect(p.newSteps.some((s) => s.track === "B" && s.day === 1), id).toBe(true);
+      }
+    }
+  });
+
+  it("R356-14: keeps picture stories on every U1 to U3 teaching day, with or without a pause and checks", () => {
+    let days = 0;
+    for (const id of ["U1", "U2", "U3"]) {
+      const l = level(id);
+      for (const over of [{}, { pausedWeeks: 2 }, { unassessedUnits: [l.units[0].code] }, { workbook: { number: 3, inLevel: 2 } }, { workbook: { number: 3, inLevel: 2 }, pausedWeeks: 3 }]) {
+        const p = plan(at(l, over));
+        for (const day of p.days.filter((d) => d.kind === "teach" || d.kind === "remember")) {
+          days++;
+          const stories = day.pages.flatMap((x) => x.parts).filter((x) => x.kind === "picture-stories");
+          expect(stories.length, `${id} ${JSON.stringify(over)} day ${day.day}`).toBeGreaterThan(0);
+          for (const page of day.pages) {
+            expect(items(page)).toBeGreaterThanOrEqual(6);
+            expect(items(page)).toBeLessThanOrEqual(10);
+          }
+        }
+      }
+    }
+    expect(days).toBeGreaterThan(140);
+    // The reviewer's case: U3 Day 5 checks a unit, starts a step of A and has the Friday 5.
+    const day5 = plan(at(level("U3"))).days[4];
+    expect(day5.pages.flatMap((x) => x.parts).map((x) => x.kind)).toEqual(expect.arrayContaining(["already-know-it", "new-idea", "picture-stories", "friday-5", "challenge"]));
+  });
+
+  it("checks only the starting level's units: a cross-level list leaves every day's A to B in range", () => {
+    for (const l of ALL.filter((x) => x.number >= 4)) {
+      const earlier = BC.levels.filter((x) => x.number < l.number).flatMap((x) => x.units);
+      const p = plan(at(l, { unassessedUnits: [...earlier, l.units[0].code] }));
+      expect(p.checksSkipped, `U${l.number}`).toEqual([...new Set(earlier)]);
+      expect(p.checks.map((c) => c.unit)).toEqual([l.units[0].code]);
+      for (const day of p.days.filter((d) => d.kind === "teach")) {
+        const { A, B } = aToB(day.pages);
+        if (B === 0) continue;
+        expect(A / B, `U${l.number} day ${day.day}`).toBeGreaterThanOrEqual(A_TO_B.min);
+        expect(A / B, `U${l.number} day ${day.day}`).toBeLessThanOrEqual(A_TO_B.max);
       }
     }
   });

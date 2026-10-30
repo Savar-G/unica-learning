@@ -42,8 +42,9 @@
 //   unit, no hints, a context question; Day 8 light; Days 9 and 10 mixed practice across the level. No new step after
 //   Day 6.
 // - Placement (CONTEXT 2): in the first workbook, a unit of the level the profile finds secure is not taught; it is
-//   reviewed. A unit the assessment had no questions for (`unassessedUnits`) gets a 4-item unit check on the
-//   Remember these? page, one a day from Day 1, and is not placed as secure before it. In Kindergarten (U1 to U3) every
+//   reviewed. A unit of the level the assessment had no questions for (`unassessedUnits`; units of other levels are
+//   left out, in checksSkipped) gets a 4-item unit check on the Remember these? page, one a day from Day 1, and is not
+//   placed as secure before it. In Kindergarten (U1 to U3) every
 //   unit gets a 2-page parent-led Already know it? check (pages 1 and 2 of a teaching day, one unit a day from Day 1).
 //   A passed check comes back through the next snapshot (the unit's steps passed, or its standard secure).
 //   Remember these? reaches back to what the level builds on; with nothing behind the child (U1), to the level's units.
@@ -262,6 +263,8 @@ export interface WorkbookPlan {
    * when its check comes back passed through the next snapshot.
    */
   checks: { unit: string; kind: "unit-check" | "already-know-it"; day: number }[];
+  /** Units of `unassessedUnits` that are not in this level: the placement checks cover the starting level only. */
+  checksSkipped: string[];
   days: PlannedDay[];
 }
 
@@ -448,7 +451,10 @@ export function planWorkbook(input: PlanInput): PlanResult {
 
   // Placement (CONTEXT 2): in the first workbook, a unit the profile finds secure goes to review, not teaching; a unit
   // with no assessment evidence counts as secure only after its check. In Kindergarten every unit is checked.
-  const unassessed = new Set(input.unassessedUnits);
+  // Only the starting level's units are checked (the placement rule covers the level the child starts in); others are
+  // left out and listed in checksSkipped.
+  const unassessed = new Set(input.unassessedUnits.filter((code) => level.units.some((u) => u.code === code)));
+  const checksSkipped = [...new Set(input.unassessedUnits.filter((code) => !unassessed.has(code)))];
   const secureUnits = firstWorkbook ? level.units.filter((u) => status.get(u.code) === "secure" && !unassessed.has(u.code) && !parentLed).map((u) => u.code) : [];
 
   // The steps still to teach, by unit, in the level's order.
@@ -515,7 +521,7 @@ export function planWorkbook(input: PlanInput): PlanResult {
   // parent-led pages a unit); the 4-item check covers units of levels the assessment tests. Both would check every
   // Kindergarten unit twice, so a Kindergarten first workbook has exactly one check a unit.
   const unitChecks = firstWorkbook && !parentLed
-    ? [...unassessed].filter((code) => STANDARDS.get(code)!.grade <= levelGrade).sort((a, b) => curriculumOrder(STANDARDS.get(a)!, STANDARDS.get(b)!))
+    ? level.units.map((u) => u.code).filter((code) => unassessed.has(code))
     : [];
   const teachDays = kinds.flatMap((k, i) => (k === "teach" ? [i + 1] : []));
   const knowItOn = (day: number) => knowItUnits[teachDays.indexOf(day)] ?? null;
@@ -574,7 +580,9 @@ export function planWorkbook(input: PlanInput): PlanResult {
     const knowIt = knowItOn(day);
     if (knowIt) {
       const check = (page: number): Shape => ({ type: "parent-led", role: `check-${page}`, parts: [T("already-know-it")] });
-      const teachA = startsA && second ? [second, practice] : [practice, story];
+      // On a step day, A's practice page shares its room with the day's picture stories (CONTEXT 4.7: every day).
+      const shared: Shape = { ...practice, parts: [...practice.parts, T("picture-stories", "A")] };
+      const teachA = startsA && second ? [second, shared] : [practice, story];
       return [check(1), check(2), ...teachA, slot, reviewPage(day)]
         .map((s) => (extras.has(`${day}:${s.role}`) ? { ...s, parts: [...s.parts, T("remember-these")] } : s));
     }
@@ -756,15 +764,16 @@ export function planWorkbook(input: PlanInput): PlanResult {
           case "spot-the-error": return unitPart(k, t, 1);
           case "practice": {
             if (shape.role === "practice-2") return unitPart(k, t, 12);
-            // A parent-led Unit B page that opens a new step keeps the page within 6 to 10 items.
-            const items = parentLed && shape.role === "slot" && shape.parts.length > 1 ? 3 : 8;
+            // A parent-led page shared with a New idea or with picture stories keeps the page within 6 to 10 items.
+            const items = parentLed && shape.role === "slot" && shape.parts.length > 1 ? 3
+              : parentLed && shape.parts.some((x) => x.kind === "picture-stories") ? 4 : 8;
             return unitPart(k, t, items, { faded: { watch: 1, finish: 2 } });
           }
           case "solve-it-two-ways": return unitPart(k, "A", 1, { methods: ["Method 1", "Method 2"] });
           case "word-problems": return unitPart(k, "A", 3);
           case "picture-stories":
             // On a story page, A's step; beside Remember these?, the latest steps.
-            return track ? unitPart(k, "A", parentLed ? 6 : 3) : part(k, 3, { skills: [...new Set([...stepsBefore(day + 1), ...passedSkills, ...earlier])].slice(0, 3) });
+            return track ? unitPart(k, "A", parentLed ? (shape.role === "practice" ? 4 : 6) : 3) : part(k, 3, { skills: [...new Set([...stepsBefore(day + 1), ...passedSkills, ...earlier])].slice(0, 3) });
           case "math-in-the-world": return unitPart(k, "A", 1);
           case "mixed-set": return part(k, sixPages ? 3 : 4, { skills: [...new Set([...stepsBefore(day + 1), ...passedSkills, ...earlier])] });
           case "friday-5": {
@@ -834,6 +843,7 @@ export function planWorkbook(input: PlanInput): PlanResult {
       fixItLater,
       reviewsAfter: reviewsAfter.sort(byDue),
       reviewsSkipped,
+      checksSkipped,
       checks: [
         ...knowItUnits.flatMap((unit, i) => (teachDays[i] ? [{ unit, kind: "already-know-it" as const, day: teachDays[i] }] : [])),
         ...unitChecks.map((unit, i) => ({ unit, kind: "unit-check" as const, day: checkDays[i % checkDays.length] })),
