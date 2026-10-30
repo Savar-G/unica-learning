@@ -32,6 +32,12 @@ export interface LocalStroke {
   seq: number;
 }
 
+/** What later commands will write in an object: the strokes when they are known now, else the boxes they will fill. */
+export interface Reserved {
+  strokes: LocalStroke[];
+  boxes: Rect[];
+}
+
 export interface Ctx {
   seq: number;
   glyphs: GlyphSet;
@@ -57,7 +63,7 @@ export interface Representation<S, C extends CreateCommand> {
    * object's top-left corner: the strokes when they are known now, else boxes. An arrow keeps clear of both, so the math
    * written there later never meets it.
    */
-  reserved?(state: S, objectId: string, ctx: Ctx): { strokes: LocalStroke[]; boxes: Rect[] };
+  reserved?(state: S, objectId: string, ctx: Ctx): Reserved;
   /** A reason to refuse a mark on a target (a check on an unfinished answer), or null. */
   refuseMark?(state: S, target: Target, style: MarkStyle): RefusalBody | null;
   draw(state: S, objectId: string, ctx: Ctx): LocalStroke[];

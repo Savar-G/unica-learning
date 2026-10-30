@@ -4,8 +4,8 @@
 // History is a log of committed transactions. The visible state is the replay of the transactions that are not undone,
 // with each object's page and position recorded on its first placement, so an undo never moves anything else.
 import { columns } from "@/lib/board/columns";
-import { annotationStrokes, MARK_INK, routeArrow, type ArrowObject, type ArrowObstacles, type ArrowRoute, type MarkObject } from "@/lib/board/annotations";
-import { curvedArrow, overlaps, polylineHitsRect, polylineLength, traceTouches, type Trace } from "@/lib/board/geometry";
+import { annotationStrokes, arrowLines, MARK_INK, routeArrow, type ArrowObject, type ArrowObstacles, type ArrowRoute, type MarkObject } from "@/lib/board/annotations";
+import { contains, overlaps, polylineHitsRect, polylineLength, traceTouches, type Trace } from "@/lib/board/geometry";
 import { PLACEHOLDER_GLYPHS, type GlyphSet } from "@/lib/board/glyphs";
 import { note } from "@/lib/board/note";
 import { parseCommand } from "@/lib/board/parse";
@@ -164,7 +164,7 @@ function fits(scene: Scene, s: SceneState, page: number, r: Rect): boolean {
   if (reps(s).some((o) => o.page === page && overlaps(around, o.rect))) return false;
   // An arrow's route is fixed: new work goes past it, never under it.
   const clear: Rect = { x: r.x - ARROW_GAP, y: r.y - ARROW_GAP, w: r.w + 2 * ARROW_GAP, h: r.h + 2 * ARROW_GAP };
-  if (s.objects.some((o) => o.kind === "arrow" && o.page === page && curvedArrow(o.route.from, o.route.control, o.route.to).some((pts) => polylineHitsRect(pts, clear)))) return false;
+  if (s.objects.some((o) => o.kind === "arrow" && o.page === page && arrowLines(o.route).some((pts) => polylineHitsRect(pts, clear)))) return false;
   return !scene.child.some((c) => {
     const cr = c.page === page ? childRect(scene, c) : null;
     return cr !== null && overlaps(r, cr);
@@ -508,7 +508,7 @@ function arrowCrossing(scene: Scene, paths: (BoardPath & { seq: number })[], isN
     });
     const onEnd = marksOnEnds(s, arrow.page, ends);
     const own = paths.filter((p) => p.objectId === arrow.id);
-    const others = paths.filter((p) => p.page === arrow.page && p.objectId !== arrow.id && !ROUTE_ACROSS.has(p.kind) && !onEnd.has(p.objectId));
+    const others = paths.filter((p) => p.page === arrow.page && p.objectId !== arrow.id && blocksArrows(p.kind) && !onEnd.has(p.objectId));
     for (const a of own)
       for (const o of others) {
         if (!isNew(a) && !isNew(o)) continue;
@@ -588,29 +588,33 @@ function placedStrokes(scene: Pick<Scene, "glyphs">, s: SceneState): PlacedStrok
  * highlights, which lie under everything.
  */
 const ROUTE_ACROSS = new Set<PathKind>(["rule", "highlight"]);
+const blocksArrows = (kind: PathKind) => !ROUTE_ACROSS.has(kind);
 
 /**
  * What a new arrow on a page must keep clear of, in page cells: Maya's writing, arrows and marks, the child's ink, the
- * boxes of the objects it does not join, and the math later commands will write. A mark on or around either end is left out: the arrow has to reach that end.
+ * boxes of the objects it does not join, and the math later commands will write. A mark on or around either end is left
+ * out: the arrow has to reach that end.
  */
 function obstacles(scene: Scene, s: SceneState, page: number, ends: { rep: RepObject; rect: Rect }[]): ArrowObstacles {
   const markOnEnd = marksOnEnds(s, page, ends.map((e) => e.rect));
   const trace = ({ stroke, dx, dy }: { stroke: LocalStroke; dx: number; dy: number }): Trace => ({ pts: stroke.pts.map(([x, y]) => [x + dx, y + dy]), width: stroke.width });
   const maya = placedStrokes(scene, s)
-    .filter((p) => p.page === page && !ROUTE_ACROSS.has(p.stroke.kind) && !markOnEnd.has(p.owner))
+    .filter((p) => p.page === page && blocksArrows(p.stroke.kind) && !markOnEnd.has(p.owner))
     .map(trace);
   const child = scene.child.filter((c) => c.page === page).flatMap((c) => childTrace(scene, c) ?? []);
   const boxes = reps(s)
     .filter((o) => o.page === page && !ends.some((e) => e.rep.id === o.id))
     .map((o) => o.rect);
-  // What later math writes, in every object on the page (the joined ones too); a reserved box at an end does not count.
+  // What later math writes, in every object on the page (the joined ones too). A reserved box inside an end does not
+  // count (a strike across the digit the arrow points at); a box that reaches past the end does, so the arrow comes in
+  // from a side that later work leaves free.
   const later = reps(s)
     .filter((o) => o.page === page)
     .map((o) => ({ o, r: representation(o.op).reserved?.(o.state, o.id, ctxOf(scene)) ?? { strokes: [], boxes: [] } }));
-  const laterStrokes = later.flatMap(({ o, r }) => r.strokes.filter((st) => !ROUTE_ACROSS.has(st.kind)).map((stroke) => trace({ stroke, dx: o.rect.x, dy: o.rect.y })));
+  const laterStrokes = later.flatMap(({ o, r }) => r.strokes.filter((st) => blocksArrows(st.kind)).map((stroke) => trace({ stroke, dx: o.rect.x, dy: o.rect.y })));
   const laterBoxes = later
     .flatMap(({ o, r }) => r.boxes.map((b) => ({ ...b, x: b.x + o.rect.x, y: b.y + o.rect.y })))
-    .filter((b) => !ends.some((e) => overlaps(b, e.rect)));
+    .filter((b) => !ends.some((e) => contains(e.rect, b)));
   return { strokes: [...maya, ...laterStrokes, ...child], boxes: [...boxes, ...laterBoxes] };
 }
 

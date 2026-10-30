@@ -12,6 +12,7 @@ import {
   type LocalTarget,
   type RefusalBody,
   type Representation,
+  type Reserved,
 } from "@/lib/board/representation";
 import { PLACE_NAMES, type ColumnsCommand, type Ink, type PlaceName, type Rect, type RegroupCommand, type Target } from "@/lib/board/types";
 
@@ -358,7 +359,7 @@ function removeOwned(state: ColumnsState, id: string): ColumnsState | RefusalBod
  * finished problem's strokes that are not drawn yet. A borrow's new values depend on the order the borrows are made, so
  * the lanes above the places that still borrow, and the top digits they cross out, are kept as boxes.
  */
-function reserved(state: ColumnsState, objectId: string, ctx: Ctx): { strokes: LocalStroke[]; boxes: Rect[] } {
+function reserved(state: ColumnsState, objectId: string, ctx: Ctx): Reserved {
   const now = new Set(draw(state, objectId, ctx).map((s) => s.key));
   const written = Object.fromEntries(
     state.calc.map((row) => [row.id, { ...Object.fromEntries([...row.value].map((_, c) => [c, { digit: digitAt(row.value, c), seq: state.seq, ink: "blue" as Ink }])), ...state.written[row.id] }]),

@@ -34,6 +34,9 @@ export interface ArrowRoute {
   to: Point;
 }
 
+/** The polylines of an arrow on a route: the shaft, then the two strokes of the head. */
+export const arrowLines = (route: ArrowRoute): Point[][] => curvedArrow(route.from, route.control, route.to);
+
 const ARROW_WIDTH = 0.05;
 /** How far outside its target an arrow starts or ends, in cells. */
 const END_GAP = 0.05;
@@ -89,7 +92,7 @@ export function routeArrow(a: Rect, b: Rect, obstacles: ArrowObstacles, page: Pa
 }
 
 function routeIsClear(route: ArrowRoute, a: Rect, b: Rect, obstacles: ArrowObstacles, page: PageSize): boolean {
-  const strokes = curvedArrow(route.from, route.control, route.to);
+  const strokes = arrowLines(route);
   if (strokes.some((pts) => pts.some(([x, y]) => x < 0 || y < 0 || x > page.cols || y > page.rows))) return false;
   // The shaft does not run through either target on its way.
   const within = (r: Rect, [x, y]: Point) => x > r.x && x < r.x + r.w && y > r.y && y < r.y + r.h;
@@ -105,7 +108,7 @@ export const MARK_INK: Record<MarkStyle, Ink> = { highlight: "yellow", circle: "
 export function annotationStrokes(glyphs: GlyphSet, o: MarkObject | ArrowObject, rectOf: (t: Target) => Rect): LocalStroke[] {
   const base = { objectId: o.id, target: { objectId: o.id, part: "whole" } as Target, ink: o.ink, seq: o.seq };
   if (o.kind === "arrow")
-    return curvedArrow(o.route.from, o.route.control, o.route.to).map((pts, i) => ({ ...base, key: `${i}`, kind: "arrow", layer: "annotation", width: ARROW_WIDTH, pts }));
+    return arrowLines(o.route).map((pts, i) => ({ ...base, key: `${i}`, kind: "arrow", layer: "annotation", width: ARROW_WIDTH, pts }));
   const r = rectOf(o.target);
   const [cx, cy] = centre(r);
   switch (o.style) {

@@ -55,6 +55,10 @@ export function polylineLength(pts: readonly Point[]): number {
 /** True when two rectangles overlap (touching edges do not count). */
 export const overlaps = (a: Rect, b: Rect) => a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h;
 
+/** True when rectangle `inner` lies inside rectangle `outer` (edges may touch). */
+export const contains = (outer: Rect, inner: Rect) =>
+  inner.x >= outer.x && inner.y >= outer.y && inner.x + inner.w <= outer.x + outer.w && inner.y + inner.h <= outer.y + outer.h;
+
 /** The distance from a point to a segment. */
 function pointToSegment(p: Point, a: Point, b: Point): number {
   const [dx, dy] = [b[0] - a[0], b[1] - a[1]];

@@ -761,24 +761,27 @@ describe("second review fixes", () => {
     const put66 = { op: "put", target: { objectId: "m", part: "row", rowId: "answer" }, value: "66" };
 
     it("an arrow between the digits of 39 never runs through the answer 66 written later", () => {
-      const r = applyBatch(sum27(), { transactionId: `a${++tx}`, commands: [link] });
-      if (!r.ok) {
-        expect(r.refusal.code).toBe("no_room");
-        return;
-      }
-      const after = ok(r.scene, put66);
+      const after = ok(ok(sum27(), link), put66);
       expect(arrowCollisions(after, "link")).toEqual([]);
+      // The same in one batch, and with the answer written first.
+      expect(arrowCollisions(ok(sum27(), link, put66), "link")).toEqual([]);
+      expect(arrowCollisions(ok(ok(sum27(), put66), link), "link")).toEqual([]);
     });
 
-    it("an undo that would bring back an arrow through the answer written since is refused, or brings back a clear arrow", () => {
-      const r = applyBatch(sum27(), { transactionId: `a${++tx}`, commands: [link] });
-      if (!r.ok) return expect(r.refusal.code).toBe("no_room");
-      let scene = ok(r.scene, { op: "remove", objectId: "link" });
+    it("an undo that brings back the arrow after the answer is written brings it back clear of the answer", () => {
+      let scene = ok(ok(sum27(), link), { op: "remove", objectId: "link" });
       const removal = `t${tx}`;
-      scene = ok(scene, put66);
-      const back = applyBatch(scene, { transactionId: `u${++tx}`, commands: [{ op: "undo", transactionId: removal }] });
-      if (!back.ok) return expect(back.refusal.code).toBe("unsafe_undo");
-      expect(arrowCollisions(back.scene, "link")).toEqual([]);
+      scene = ok(ok(scene, put66), { op: "undo", transactionId: removal });
+      expect(boardPaths(scene).filter((p) => p.objectId === "link").length).toBe(3);
+      expect(arrowCollisions(scene, "link")).toEqual([]);
+    });
+
+    it("an arrow to a borrowed value leaves room for the next borrow, which crosses that value out", () => {
+      let scene = ok(createScene(), { op: "columns", id: "m", operation: "subtract", operands: [{ id: "top", value: "300" }, { id: "by", value: "128" }], place: { region: "main" } });
+      scene = ok(scene, { op: "regroup", id: "b1", objectId: "m", rowId: "top", kind: "borrow", from: "hundreds", to: "tens" });
+      scene = ok(scene, { op: "arrow", id: "link", from: { objectId: "m", part: "row", rowId: "answer" }, to: { objectId: "b1", part: "whole" } });
+      scene = ok(scene, { op: "regroup", id: "b2", objectId: "m", rowId: "top", kind: "borrow", from: "tens", to: "ones" }, { op: "put", target: { objectId: "m", part: "row", rowId: "answer" }, value: "172" });
+      expect(arrowCollisions(scene, "link")).toEqual([]);
     });
 
     /** Notes a and c, with the arrow between them run straight through the cell where note b was. */
