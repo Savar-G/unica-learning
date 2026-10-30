@@ -290,4 +290,85 @@ describe("data checks", () => {
     const steps = BC_CURRICULUM.steps.map((s) => (s.skill === "3.3-add-within-1000" && s.number === 1 ? { ...s, pages: 6 } : s));
     expect(curriculumProblems({ ...BC_CURRICULUM, steps }, BC_SKILL_MAP)).toContain("3.3-add-within-1000 step pages add up to 26, but the skill has 25");
   });
+
+  it("lists a Grade 3 skill whose whole step group is missing (review R364-01)", () => {
+    const steps = BC_CURRICULUM.steps.filter((s) => s.skill !== "3.1-count-1000");
+    expect(curriculumProblems({ ...BC_CURRICULUM, steps }, BC_SKILL_MAP)).toEqual([
+      "3.1-count-1000 (U10) has no steps; every skill in U10 to U12 needs them",
+      "3.1-count-1000 step pages add up to 0, but the skill has 17",
+    ]);
+  });
+
+  it("lists an activity or warm-up skill in U10 to U12 whose steps are missing", () => {
+    const activity = BC_CURRICULUM.steps.filter((s) => s.skill !== "3.9-area-square-units");
+    expect(curriculumProblems({ ...BC_CURRICULUM, steps: activity }, BC_SKILL_MAP)).toEqual([
+      "3.9-area-square-units (U12) has no steps; every skill in U10 to U12 needs them",
+      "3.9-area-square-units step pages add up to 0, but the skill has 1",
+    ]);
+    const warmUp = BC_CURRICULUM.steps.filter((s) => s.skill !== "3.4-recall-addition-20");
+    expect(curriculumProblems({ ...BC_CURRICULUM, steps: warmUp }, BC_SKILL_MAP)).toEqual([
+      "3.4-recall-addition-20 (U10) has no steps; every skill in U10 to U12 needs them",
+    ]);
+  });
+
+  it("lists a level that appears twice", () => {
+    const levels = [...BC_CURRICULUM.levels, BC_CURRICULUM.levels[0]];
+    expect(curriculumProblems({ ...BC_CURRICULUM, levels }, BC_SKILL_MAP)).toEqual(
+      expect.arrayContaining(["Level numbering runs 1, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, not 1 to 31", "Level U1 appears 2 times"]),
+    );
+  });
+
+  it("allows 0-page steps only on warm-up skills, and on an activity skill before the step with its one page", () => {
+    const newStep = BC_CURRICULUM.steps.map((s) =>
+      s.skill === "3.3-add-within-1000" && s.number <= 2 ? { ...s, pages: s.number === 1 ? 0 : 12 } : s,
+    );
+    expect(curriculumProblems({ ...BC_CURRICULUM, steps: newStep }, BC_SKILL_MAP)).toEqual([
+      "3.3-add-within-1000 step 1 has 0 pages; only warm-up and activity skills have 0-page steps",
+    ]);
+    const activity = BC_CURRICULUM.steps.map((s) => (s.skill === "3.9-area-square-units" ? { ...s, pages: s.number === 1 ? 1 : 0 } : s));
+    expect(curriculumProblems({ ...BC_CURRICULUM, steps: activity }, BC_SKILL_MAP)).toEqual([
+      "3.9-area-square-units step pages run 1, 0, 0, 0; an activity skill's one page is on its last step",
+    ]);
+  });
+
+  it("lists pages that do not fit a skill's delivery: warm-up 0, activity 1, others at least 2", () => {
+    const skills = BC_CURRICULUM.skills.map((s) =>
+      s.id === "3.4-recall-addition-20" ? { ...s, pages: 1 } : s.id === "3.3-add-within-1000" ? { ...s, pages: 24 } : s,
+    );
+    const steps = BC_CURRICULUM.steps.map((s) =>
+      s.skill === "3.4-recall-addition-20" && s.number === 1 ? { ...s, pages: 1 } : s.skill === "3.3-add-within-1000" && s.number === 1 ? { ...s, pages: 4 } : s,
+    );
+    expect(curriculumProblems({ ...BC_CURRICULUM, skills, steps }, BC_SKILL_MAP)).toEqual(["3.4-recall-addition-20 is a warm-up skill with 1 pages; warm-up skills have 0"]);
+  });
 });
+
+/** The BC data with one level's unit list changed. */
+function withUnits(levelId: string, units: string[]): CurriculumData {
+  return { ...BC_CURRICULUM, levels: BC_CURRICULUM.levels.map((l) => (l.id === levelId ? { ...l, units } : l)) };
+}
+
+describe("unit list checks", () => {
+  it("lists a unit left out of its level's unit list (review R364-02)", () => {
+    expect(curriculumProblems(withUnits("U10", ["3.1", "3.4", "3.6", "3.13"]), BC_SKILL_MAP)).toEqual([
+      "Unit 3.3 is in U10, but U10 does not list it",
+    ]);
+  });
+
+  it("lists a unit a level lists but does not hold, and a unit listed in two levels or twice", () => {
+    expect(curriculumProblems(withUnits("U11", [...bc.level("U11")!.units, "3.3"]), BC_SKILL_MAP)).toEqual([
+      "Unit 3.3 is listed 2 times (U10, U11)",
+      "U11 lists unit 3.3, which is in U10",
+    ]);
+    expect(curriculumProblems(withUnits("U10", ["3.1", "3.3", "3.3", "3.4", "3.6", "3.13"]), BC_SKILL_MAP)).toEqual([
+      "Unit 3.3 is listed 2 times (U10, U10)",
+    ]);
+  });
+
+  it("lists a unit listed before a unit it requires, and a list that does not follow the skill order (review R364-02)", () => {
+    expect(curriculumProblems(withUnits("U10", ["3.13", "3.6", "3.4", "3.3", "3.1"]), BC_SKILL_MAP)).toEqual([
+      "U10 lists unit 3.3 before unit 3.1, which it requires (3.3-add-within-1000 requires 3.1-place-value-1000)",
+      "U10 lists units 3.13, 3.6, 3.4, 3.3, 3.1, but its skills run through 3.1, 3.3, 3.4, 3.6, 3.13",
+    ]);
+  });
+});
+
