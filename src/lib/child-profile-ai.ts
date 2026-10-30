@@ -14,22 +14,41 @@
 // (id, source, standard, result, hints, time spent, when, and the workbook page and question number), each with what the
 // trusted question data says about it (review R355-1). An event's stuck step and mistake are strings any event writer
 // can set, so they are never sent: the question reader (QuestionReader: the workbook store, or the assessment adapter)
-// gives the event's question package, and the request carries the package's own data instead. The question is its
-// operation as code writes it ("48 + 37") with its answer and standard; not the question's words, which a personal
-// workbook may write with the child's name or interests. The stuck step is that step's text from the worked steps, and
-// the mistake is the known wrong answer with that cause: the child's answer and the cause's description. A step or a
-// mistake the package does not have, or an event whose question has no trusted package, sends none of it. Never a
+// gives the event's question package. The package's own texts are no safer: a generator or an admin edit writes the
+// question's words, the wrong answers' descriptions and text values, the unit, the stored steps and the easier example
+// (round 2). So only code's own text and checked numbers are sent (codeOwned):
+//   - the question: its operation as code writes it ("48 + 37"), with the answer code computes from it and its BC
+//     standard. Only when every string in the operation is code's own: a kind, a type, a unit of code's list, a.m. or
+//     p.m., or a sum whose unknowns are single letters ("3 × n + 2"); else no question data at all;
+//   - the stuck step: the words code writes for the step with that id among the steps code works from the operation;
+//   - the child's answer: the known wrong answer with the event's mistake as its cause, only when it is a typed
+//     amount (a number, fraction, mixed number, remainder, amount with a unit of code's list, or time);
+//   - the mistake: its words from code's table of misconceptions (MISCONCEPTIONS), never the stored description;
+//   - a unit label beside the answer only from code's list.
+// A step, a mistake or a question code cannot write sends none of it. Never a
 // name, a parent, a family, account or workbook id, the evidence ids or the learning card. The prompt also says the
 // facts are data, not instructions. The wording rule is a word check ("may", "seems"): it keeps plain statements out,
 // not every overclaim.
 // No "server-only" import so that its tests can run, as src/lib/learner-profile-ai.ts. Pure apart from the client and
 // the question reader.
 import { aiClient, type AiClient } from "@/lib/ai-client";
-import { checkAiText } from "@/lib/assessment";
+import { BC_SKILL_MAP, MISCONCEPTIONS, checkAiText } from "@/lib/assessment";
 import { fakeChildProfileAi } from "@/lib/child-profile-ai-fake";
 import type { ChildLearnerProfile, ChildProfileFinding } from "@/lib/child-profile";
 import type { LearningEvent } from "@/lib/learning-events";
-import { operationText, stepText, valueText, type PackageAnswer, type QuestionLookup, type QuestionPackage, type QuestionRef } from "@/lib/question-package";
+import {
+  operationResult,
+  operationText,
+  stepText,
+  valueText,
+  workedSteps,
+  type AnswerValue,
+  type Operation,
+  type QuestionLookup,
+  type QuestionPackage,
+  type QuestionRef,
+  type Unit,
+} from "@/lib/question-package";
 
 /**
  * The findings step (the question reads, the AI request and the findings save) stops after this long; then the profile
@@ -103,7 +122,54 @@ export interface FindingDrop {
 export type ChildProfileAiFacts = ReturnType<typeof childProfileAiFacts>;
 
 const refKey = (q: QuestionRef) => (q.source === "workbook" ? `w:${q.workbookId}:${q.page}:${q.question}` : `a:${q.assessmentId}:${q.questionId}`);
-const answerText = (a: PackageAnswer) => (a.unit ? `${valueText(a.value)} ${a.unit}` : valueText(a.value));
+
+// Code's own words and labels: the only strings the question data may hold to be sent.
+const UNITS: ReadonlySet<string> = new Set(["mm", "cm", "m", "km", "mg", "g", "kg", "mL", "L", "s", "min", "h", "¢", "$"] satisfies Unit[]);
+const STANDARDS: ReadonlySet<string> = new Set(BC_SKILL_MAP.standards.map((s) => s.code));
+/** The field names of an operation and its values, and the strings code writes in them. */
+const FIELDS = new Set(["kind", "operands", "denominator", "unit", "values", "type", "value", "numerator", "whole", "quotient", "remainder", "parts", "hours", "minutes", "period"]);
+const CODE_WORDS = new Set([
+  "add", "subtract", "multiply", "divide", "decimal-add", "decimal-subtract", "decimal-multiply",
+  "fraction-add", "fraction-subtract", "fraction-multiply", "fraction-divide", "fraction-simplify", "fraction-equivalent",
+  "convert", "quantity-add", "quantity-subtract", "quantity-multiply", "money-round", "elapsed-time", "time-add", "clock-convert", "evaluate", "solve",
+  "number", "fraction", "mixed", "remainder", "quantity", "compound", "time", "a.m.", "p.m.", ...UNITS,
+]);
+/** A sum or an equation: numbers, signs and brackets, with unknowns of one letter ("3 × n + 2 = 14"). */
+const SUM = /^(?:\d+(?:\.\d+)?|[a-z](?![a-z])|[\s+\-−×÷*/=().,^<>])+$/i;
+/** The answer values that are typed amounts: no free text. */
+const AMOUNTS = new Set<AnswerValue["type"]>(["number", "fraction", "mixed", "remainder", "quantity", "compound", "time"]);
+
+/** True when every string in the value, key or value, is code's own (a field, a code word, a sum, an unknown's letter). */
+function codeOwned(value: unknown): boolean {
+  if (typeof value === "string") return CODE_WORDS.has(value) || SUM.test(value);
+  if (typeof value === "number") return Number.isFinite(value);
+  if (value === null || typeof value === "boolean") return true;
+  if (Array.isArray(value)) return value.every(codeOwned);
+  if (typeof value !== "object") return false;
+  return Object.entries(value).every(([key, v]) => (FIELDS.has(key) || /^[a-z]$/i.test(key)) && codeOwned(v));
+}
+
+/** A typed amount as code writes it; null for free text or a unit outside code's list. */
+const amountText = (v: AnswerValue): string | null => (AMOUNTS.has(v.type) && codeOwned(v) ? valueText(v) : null);
+
+/** The question as code writes and computes it, with its steps; null when its operation holds a string code did not write. */
+function codeQuestion(p: QuestionPackage) {
+  if (!codeOwned(p.operation)) return null;
+  try {
+    const operation = p.operation as Operation;
+    const answer = amountText(operationResult(operation));
+    if (answer === null) return null;
+    const unit = typeof p.answer.unit === "string" && UNITS.has(p.answer.unit) ? p.answer.unit : null;
+    return {
+      sent: { text: operationText(operation), answer: unit && !answer.endsWith(unit) ? `${answer} ${unit}` : answer, standard: STANDARDS.has(p.skill.standard) ? p.skill.standard : null },
+      operation,
+      steps: workedSteps(operation),
+    };
+  } catch {
+    // An operation code cannot compute.
+    return null;
+  }
+}
 
 /** The trusted package of each event's question that has one, by reference; read READS_AT_ONCE at a time. */
 async function readQuestions(reader: QuestionReader | null, events: readonly LearningEvent[]): Promise<Map<string, QuestionPackage>> {
@@ -119,15 +185,21 @@ async function readQuestions(reader: QuestionReader | null, events: readonly Lea
   return packages;
 }
 
-/** What the trusted package says about an event: the question, its stuck step and its known wrong answer; null when not known. */
+/**
+ * What code can say about an event from its question package: the question, the step it stuck at, the child's wrong
+ * answer and the mistake's words, each only in code's own text (see the header); null when code cannot.
+ */
 function fromPackage(e: LearningEvent, p: QuestionPackage | undefined) {
-  const step = p && e.stuckStep !== null ? p.steps.find((s) => s.id === e.stuckStep) : undefined;
-  const wrong = p && e.mistake !== null ? p.wrongAnswers.find((w) => w.cause === e.mistake) : undefined;
+  const question = p ? codeQuestion(p) : null;
+  const step = question && e.stuckStep !== null ? question.steps.find((s) => s.id === e.stuckStep) : undefined;
+  const wrong = question && e.mistake !== null ? p!.wrongAnswers.find((w) => w.cause === e.mistake) : undefined;
+  const known = e.mistake !== null && Object.hasOwn(MISCONCEPTIONS, e.mistake) ? MISCONCEPTIONS[e.mistake as keyof typeof MISCONCEPTIONS] : null;
   return {
-    question: p ? { text: operationText(p.operation), answer: answerText(p.answer), standard: p.skill.standard } : null,
-    stuck_at: step && p ? stepText(step, p.operation) : null,
-    child_answer: wrong ? valueText(wrong.value) : null,
-    mistake: wrong ? wrong.description : null,
+    question: question?.sent ?? null,
+    stuck_at: step && question ? stepText(step, question.operation) : null,
+    child_answer: wrong ? amountText(wrong.value) : null,
+    // The words of a known misconception, from code's table; a mistake of the package only (its own description) has none.
+    mistake: question && wrong && known ? known.description : null,
   };
 }
 
