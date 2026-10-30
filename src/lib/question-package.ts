@@ -8,11 +8,24 @@
 // The worked steps are data that code builds from the operation (workedSteps): numbers only, so a package is trusted
 // only when its answer and steps are what the operation gives (checkQuestionPackage), and a change of wording never
 // makes a stored package invalid. stepText gives each step's words for a board or a voice. There is no parser of
-// question text: the operation is stored beside the text. Every operation kind has its computation in OPERATIONS; a
-// later ticket adds a kind (for example decimals or fractions, #306) there with its steps, never a kind code cannot
-// check.
+// question text: the operation is stored beside the text. Every operation kind has its computation in
+// question-package-math.ts (#306 added long multiplication and division, decimals and fractions); a kind code cannot
+// compute, or steps of a version it cannot read, are "unsupported", never a pass.
 // Pure TypeScript: no Next.js, React, network, database or clock.
 import { BC_SKILL_MAP } from "@/lib/assessment";
+import {
+  computation,
+  gcd,
+  operationCheck,
+  operationProblem,
+  operationResult,
+  operationText,
+  valueText,
+  workedSteps,
+  type SameNumberWrongRule,
+} from "@/lib/question-package-math";
+
+export { operationProblem, operationResult, operationText, stepText, valueText, workedSteps } from "@/lib/question-package-math";
 
 /**
  * The version of the QuestionPackage shape. The workbook store keeps it beside each stored package (#299), so a reader
@@ -38,17 +51,22 @@ export interface AssessmentQuestionRef {
 /** Where a question comes from. */
 export type QuestionRef = WorkbookQuestionRef | AssessmentQuestionRef;
 
-/** A typed answer value. "number" is a whole number or a decimal; a fraction keeps its written parts. */
+/**
+ * A typed answer value. "number" is a whole number or a decimal; a fraction and a mixed number keep their written parts;
+ * "remainder" is a division answer with a remainder ("26 R 1").
+ */
 export type AnswerValue =
   | { type: "number"; value: number }
   | { type: "fraction"; numerator: number; denominator: number }
+  | { type: "mixed"; whole: number; numerator: number; denominator: number }
+  | { type: "remainder"; quotient: number; remainder: number }
   | { type: "expression"; value: string }
   | { type: "choice"; value: string }
   | { type: "text"; value: string };
 
 /**
  * The answer: its value, other written forms of the same number that also count as right (for example 2/4 or 0.5 for
- * 1/2; only number and fraction forms, as code can check them), and its unit.
+ * 1/2; only number, fraction and mixed number forms, as code can check them), and its unit.
  */
 export interface PackageAnswer {
   value: AnswerValue;
@@ -56,21 +74,45 @@ export interface PackageAnswer {
   unit: string | null;
 }
 
-/** A computable operation on whole numbers from 0 to 9999. Subtraction never goes below zero. */
-export interface Operation {
-  kind: OperationKind;
-  operands: [number, number];
+/** A number in a fraction operation: a fraction, a mixed number or a whole number. */
+export type FractionOperand = Extract<AnswerValue, { type: "number" | "fraction" | "mixed" }>;
+
+/** The two parts of a fraction inside a worked step. */
+export interface FractionParts {
+  numerator: number;
+  denominator: number;
 }
 
-/** The operations code can compute (OPERATIONS). */
-export type OperationKind = "add" | "subtract";
+/**
+ * A computable operation (question-package-math.ts has the limits of each kind):
+ * - add, subtract: whole numbers from 0 to 9999; subtraction never goes below zero.
+ * - multiply: a whole number to 9999 times a whole number to 999 (long multiplication).
+ * - divide: a whole number to 9999 divided by a whole number from 1 to 99 (long division, with a remainder).
+ * - decimal-add, decimal-subtract, decimal-multiply: numbers to 9999.999 with at most 3 decimal places.
+ * - fraction-add, fraction-subtract, fraction-multiply, fraction-divide: fractions, mixed numbers or whole numbers.
+ * - fraction-simplify: one fraction to write in simplest form.
+ * - fraction-equivalent: one fraction to write with a new denominator ("3/4 = ?/12").
+ */
+export type Operation =
+  | KindsOf<"add" | "subtract" | "multiply" | "divide" | "decimal-add" | "decimal-subtract" | "decimal-multiply", [number, number]>
+  | KindsOf<"fraction-add" | "fraction-subtract" | "fraction-multiply" | "fraction-divide", [FractionOperand, FractionOperand]>
+  | { kind: "fraction-simplify"; operands: [Extract<AnswerValue, { type: "fraction" }>] }
+  | { kind: "fraction-equivalent"; operands: [Extract<AnswerValue, { type: "fraction" }>]; denominator: number };
 
-/** A column of the written method, from the right. */
-export type Place = "ones" | "tens" | "hundreds" | "thousands" | "ten thousands";
+/** One operation shape for each kind, so a kind picks its shape. */
+type KindsOf<K extends string, O> = K extends string ? { kind: K; operands: O } : never;
+
+/** The operations code can compute. */
+export type OperationKind = Operation["kind"];
+
+/** A column of the written method. */
+export type Place =
+  | "thousandths" | "hundredths" | "tenths"
+  | "ones" | "tens" | "hundreds" | "thousands" | "ten thousands" | "hundred thousands" | "millions";
 
 /**
- * One worked step of the column method, with the numbers a board shows. `id` is the column's place ("ones"), or
- * "result"; a wrong answer names the step where its mistake happens by this id.
+ * One worked step, with the numbers a board shows. `id` names the step (a column's place, "r2-tens", "common");
+ * a wrong answer names the step where its mistake happens by this id. The shapes are version 1 (STEPS_VERSIONS).
  */
 export type WorkedStep =
   | {
@@ -89,7 +131,7 @@ export type WorkedStep =
       id: string;
       kind: "subtract-column";
       place: Place;
-      /** The top digit as written. */
+      /** The top digit as written, or 0 when the top number has no digit in this column (addedZero). */
       top: number;
       /** The bottom digit, or null when the bottom number has no digit in this column. */
       bottom: number | null;
@@ -99,7 +141,70 @@ export type WorkedStep =
       regrouped: boolean;
       /** The digit written, or null for a 0 on the left of the result, which is not written (105 - 98 is 7). */
       write: number | null;
+      /** Only when true: the top decimal has fewer places, so a 0 is written in (5.2 - 1.75 works 5.20). */
+      addedZero?: true;
     }
+  | {
+      /**
+       * "r<row>-<place>": row 1 is the multiplier's ones digit. A decimal multiplication works its numbers without the
+       * points (2.5 x 1.3 as 25 x 13), so its places are those of the whole numbers; "place-point" then puts the point.
+       */
+      id: string;
+      kind: "multiply-digit";
+      /** The place of the multiplier's digit; its row is written that many places to the left. */
+      row: Place;
+      /** The place of the top digit in the top number. */
+      place: Place;
+      /** The top digit, or null for the last carry of the row, which is written as it is. */
+      top: number | null;
+      multiplier: number;
+      carryIn: number;
+      total: number;
+      /** The digit written, or null for a 0 on the left of a row of 0s. */
+      write: number | null;
+      carryOut: number;
+    }
+  | {
+      /** "r<row>": a row of a multiplier with more than one digit. */
+      id: string;
+      kind: "partial-product";
+      row: Place;
+      multiplier: number;
+      /** The 0s written on the right of the row first. */
+      zeros: number;
+      /** The row's value, with its 0s. */
+      value: number;
+    }
+  | {
+      /** "point": a decimal multiplication puts the point in the whole-number product. */
+      id: string;
+      kind: "place-point";
+      product: number;
+      decimals: number;
+      value: number;
+    }
+  | {
+      /** The place of the dividend digit brought down; the quotient digit is written above it. */
+      id: string;
+      kind: "divide-digit";
+      place: Place;
+      digit: number;
+      /** The number divided at this step: the last remainder and the digit brought down. */
+      current: number;
+      quotient: number;
+      /** The quotient digit written, or null for a 0 on the left of the quotient. */
+      write: number | null;
+      product: number;
+      remainder: number;
+    }
+  | { id: string; kind: "to-improper"; from: FractionOperand[]; to: FractionParts[] }
+  | { id: string; kind: "common-denominator"; from: FractionParts[]; denominator: number; factors: number[]; to: FractionParts[] }
+  | { id: string; kind: "combine-numerators"; op: "add" | "subtract"; numerators: number[]; denominator: number; numerator: number }
+  | { id: string; kind: "flip"; from: FractionParts; to: FractionParts }
+  | { id: string; kind: "multiply-fractions"; numerators: number[]; denominators: number[]; numerator: number; denominator: number }
+  | { id: string; kind: "simplify"; from: FractionParts; divisor: number; to: FractionParts }
+  | { id: string; kind: "to-mixed"; from: FractionParts; whole: number; rest: FractionParts }
+  | { id: string; kind: "scale-fraction"; from: FractionParts; by: "multiply" | "divide"; factor: number; to: FractionParts }
   | { id: "result"; kind: "result"; value: AnswerValue };
 
 /** An expected wrong answer and its cause: a misconception id ("O3") and its plain description. */
@@ -138,6 +243,11 @@ export interface QuestionPackage {
   text: string;
   answer: PackageAnswer;
   operation: Operation;
+  /**
+   * The shape version of the worked steps here and in the easier example; absent means 1. Code checks only the
+   * versions in STEPS_VERSIONS; any other is "unsupported", never a pass.
+   */
+  stepsVersion?: number;
   steps: WorkedStep[];
   /** A BC standard code ("2.4") and the ids of its smaller skills in the BC skill map. */
   skill: { standard: string; skills: string[] };
@@ -160,121 +270,18 @@ export type QuestionLookup =
   | { status: "not-found" }
   | { status: "unavailable"; reason: UnavailableReason; detail: string };
 
-export type PackageCheck = { ok: true; package: QuestionPackage } | { ok: false; reason: string };
+/**
+ * A package check: "checked" (code recomputed the answer, every step and the easier example), "failed" with the first
+ * reason, or "unsupported": code cannot compute the operation or read its steps, so the question is not checked by
+ * code. Only "checked" is ok.
+ */
+export type PackageCheck =
+  | { ok: true; status: "checked"; package: QuestionPackage }
+  | { ok: false; status: "failed"; reason: string }
+  | { ok: false; status: "unsupported"; reason: string };
 
-const PLACES: readonly Place[] = ["ones", "tens", "hundreds", "thousands", "ten thousands"];
-/** A place's unit name, for "carry 1 ten". */
-const UNIT: Record<Place, string> = { ones: "one", tens: "ten", hundreds: "hundred", thousands: "thousand", "ten thousands": "ten thousand" };
-const MAX_OPERAND = 9999;
-const MINUS = "−";
-
-const digitAt = (n: number, i: number) => Math.floor(n / 10 ** i) % 10;
-const digitCount = (n: number) => String(n).length;
-
-interface Computation {
-  symbol: string;
-  result(a: number, b: number): number;
-  /** Why the operands do not suit this operation, or null. */
-  problem(a: number, b: number): string | null;
-  columns(a: number, b: number): WorkedStep[];
-}
-
-/** What code computes for each operation kind. */
-const OPERATIONS: Record<OperationKind, Computation> = {
-  add: { symbol: "+", result: (a, b) => a + b, problem: () => null, columns: addColumns },
-  subtract: { symbol: MINUS, result: (a, b) => a - b, problem: (a, b) => (a < b ? "the subtraction goes below zero" : null), columns: subtractColumns },
-};
-
-/** The value an operation gives. The operation must be valid (operationProblem). */
-export function operationResult({ kind, operands: [a, b] }: Operation): AnswerValue {
-  return { type: "number", value: OPERATIONS[kind].result(a, b) };
-}
-
-/** The operation as the child reads it, without the answer: "48 + 37". */
-export function operationText({ kind, operands: [a, b] }: Operation): string {
-  return `${a} ${OPERATIONS[kind].symbol} ${b}`;
-}
-
-/** The worked steps of the column method for an operation, right to left, then the result. The operation must be valid. */
-export function workedSteps(operation: Operation): WorkedStep[] {
-  const [a, b] = operation.operands;
-  return [...OPERATIONS[operation.kind].columns(a, b), { id: "result", kind: "result", value: operationResult(operation) }];
-}
-
-function addColumns(a: number, b: number): WorkedStep[] {
-  const steps: WorkedStep[] = [];
-  let carry = 0;
-  for (let i = 0; i < Math.max(digitCount(a), digitCount(b)) || carry > 0; i++) {
-    const digits = [a, b].filter((n) => i < digitCount(n)).map((n) => digitAt(n, i));
-    const total = digits.reduce((s, d) => s + d, 0) + carry;
-    steps.push({ id: PLACES[i], kind: "add-column", place: PLACES[i], digits, carryIn: carry, total, write: total % 10, carryOut: Math.floor(total / 10) });
-    carry = Math.floor(total / 10);
-  }
-  return steps;
-}
-
-function subtractColumns(a: number, b: number): WorkedStep[] {
-  const steps: WorkedStep[] = [];
-  let lent = false;
-  for (let i = 0; i < digitCount(a); i++) {
-    const top = digitAt(a, i);
-    const bottom = i < digitCount(b) ? digitAt(b, i) : null;
-    const regrouped: boolean = top - (lent ? 1 : 0) < (bottom ?? 0);
-    const write = top - (lent ? 1 : 0) + (regrouped ? 10 : 0) - (bottom ?? 0);
-    // The left columns of the result that are 0 are not written.
-    const leading = i > 0 && Math.floor((a - b) / 10 ** i) === 0;
-    steps.push({ id: PLACES[i], kind: "subtract-column", place: PLACES[i], top, bottom, lent, regrouped, write: leading ? null : write });
-    lent = regrouped;
-  }
-  return steps;
-}
-
-/** "1 one", "3 ones". */
-const count = (n: number, place: Place) => `${n} ${n === 1 ? UNIT[place] : place}`;
-const left = (place: Place) => PLACES[PLACES.indexOf(place) + 1];
-const right = (place: Place) => PLACES[PLACES.indexOf(place) - 1];
-
-/** A worked step in words, for a board or a voice: "Add the ones: 8 + 7 = 15. Write 5 and carry 1 ten." */
-export function stepText(step: WorkedStep, operation: Operation): string {
-  switch (step.kind) {
-    case "add-column": {
-      const { place, digits, carryIn, total, write, carryOut } = step;
-      const terms = [...digits, ...(carryIn > 0 ? [carryIn] : [])];
-      if (terms.length === 1) return `Bring down the ${place}: write ${write}.`;
-      const carried = carryOut > 0 ? ` and carry ${carryOut} ${UNIT[left(place)]}` : "";
-      return `Add the ${place}: ${terms.join(" + ")} = ${total}. Write ${write}${carried}.`;
-    }
-    case "subtract-column": {
-      const { place, top, bottom, lent, regrouped, write } = step;
-      const have = top - (lent ? 1 : 0);
-      const from = have + (regrouped ? 10 : 0);
-      // A column of 0 that must give 1 to its right first takes 1 from its left: say it in that order.
-      const regroup = have < 0
-        ? `There were 0 ${place}, so regroup 1 ${UNIT[left(place)]} as 10 ${place}; after the 1 ${UNIT[place]} given to the ${right(place)}, ${from} ${place} are left.`
-        : [
-          lent ? `The ${place} are now ${have}.` : "",
-          regrouped ? `Regroup 1 ${UNIT[left(place)]} as 10 ${place}, so ${count(have, place)} ${have === 1 ? "becomes" : "become"} ${from}.` : "",
-        ].filter(Boolean).join(" ");
-      const difference = from - (bottom ?? 0);
-      const written = write === null ? "Write nothing: a number does not start with 0." : `Write ${write}.`;
-      const work = bottom === null ? written : `Subtract the ${place}: ${from} ${MINUS} ${bottom} = ${difference}. ${written}`;
-      return [regroup, work].filter(Boolean).join(" ");
-    }
-    case "result":
-      return `${operationText(operation)} = ${valueText(step.value)}`;
-  }
-}
-
-function valueText(value: AnswerValue): string {
-  switch (value.type) {
-    case "number":
-      return String(value.value);
-    case "fraction":
-      return `${value.numerator}/${value.denominator}`;
-    default:
-      return value.value;
-  }
-}
+/** The worked-step shape versions code can check. Version 1 is the shapes of WorkedStep. */
+export const STEPS_VERSIONS: readonly number[] = [1];
 
 // ---------- Validation ----------
 
@@ -284,9 +291,16 @@ const isWhole = (v: unknown, min: number, max = Number.MAX_SAFE_INTEGER): v is n
 
 /** Two answer values are the same written value. Equivalent forms (2/4 and 1/2) are not the same here. */
 export function sameValue(a: AnswerValue, b: AnswerValue): boolean {
-  if (a.type !== b.type) return false;
-  if (a.type === "fraction" && b.type === "fraction") return a.numerator === b.numerator && a.denominator === b.denominator;
-  return (a as { value: unknown }).value === (b as { value: unknown }).value;
+  switch (a.type) {
+    case "fraction":
+      return b.type === "fraction" && a.numerator === b.numerator && a.denominator === b.denominator;
+    case "mixed":
+      return b.type === "mixed" && a.whole === b.whole && a.numerator === b.numerator && a.denominator === b.denominator;
+    case "remainder":
+      return b.type === "remainder" && a.quotient === b.quotient && a.remainder === b.remainder;
+    default:
+      return a.type === b.type && a.value === (b as { value: unknown }).value;
+  }
 }
 
 /** Same data, deeply, in any key order (jsonb does not keep it): for the stored steps against the computed ones. */
@@ -302,12 +316,16 @@ function sameData(a: unknown, b: unknown): boolean {
 }
 
 /**
- * A number or fraction as an exact rational [numerator, denominator] (BigInt, denominator above 0), or null for a value
- * that is not a number. A decimal is read from its written digits, so 85.0000000001 is not 85.
+ * A number, fraction, mixed number or a remainder answer with no remainder as an exact rational [numerator, denominator] (BigInt, denominator above 0), or
+ * null for a value that is not one of them. A decimal is read from its written digits, so 85.0000000001 is not 85.
  */
 function rational(v: AnswerValue): [bigint, bigint] | null {
-  if (v.type === "fraction") {
-    return Number.isInteger(v.numerator) && Number.isInteger(v.denominator) && v.denominator > 0 ? [BigInt(v.numerator), BigInt(v.denominator)] : null;
+  // "26 R 0" is the number 26; any other remainder answer is a form of its own.
+  if (v.type === "remainder") return v.remainder === 0 && Number.isSafeInteger(v.quotient) ? [BigInt(v.quotient), BigInt(1)] : null;
+  if (v.type === "fraction" || v.type === "mixed") {
+    const whole = v.type === "mixed" ? v.whole : 0;
+    if (![whole, v.numerator, v.denominator].every(Number.isInteger) || v.denominator <= 0) return null;
+    return [BigInt(whole) * BigInt(v.denominator) + BigInt(v.numerator), BigInt(v.denominator)];
   }
   if (v.type !== "number" || !Number.isFinite(v.value)) return null;
   // String() writes very small and very large numbers with an exponent (1e-7, 1e+21), so read it too.
@@ -320,7 +338,7 @@ function rational(v: AnswerValue): [bigint, bigint] | null {
   return exponent >= 0 ? [digits * ten ** BigInt(exponent), BigInt(1)] : [digits, ten ** BigInt(-exponent)];
 }
 
-/** Two values are the same number, exactly, in any number form (85, 85.0 and 170/2 are one number). */
+/** Two values are the same number, exactly, in any number form (85, 85.0, 170/2 and 84 2/2 are one number). */
 function sameNumber(a: AnswerValue, b: AnswerValue): boolean {
   const x = rational(a);
   const y = rational(b);
@@ -329,6 +347,23 @@ function sameNumber(a: AnswerValue, b: AnswerValue): boolean {
 
 /** The same written value, or the same number in another form. */
 const equivalent = (a: AnswerValue, b: AnswerValue) => sameValue(a, b) || sameNumber(a, b);
+
+/**
+ * A simplest form: a whole number, a fraction in lowest terms with a denominator from 2, or a mixed number in lowest
+ * terms (5/4 and 1 1/4 are both simplest; 10/8, 4/4 and 1 2/8 are not).
+ */
+function isSimplest(v: AnswerValue): boolean {
+  switch (v.type) {
+    case "number":
+      return Number.isInteger(v.value) && v.value >= 0;
+    case "fraction":
+      return v.denominator >= 2 && v.numerator >= 0 && gcd(v.numerator, v.denominator) === 1;
+    case "mixed":
+      return v.whole >= 1 && v.numerator >= 1 && v.numerator < v.denominator && gcd(v.numerator, v.denominator) === 1;
+    default:
+      return false;
+  }
+}
 
 function refProblem(ref: unknown): string | null {
   if (!isObject(ref)) return "the reference is missing";
@@ -346,6 +381,9 @@ function refProblem(ref: unknown): string | null {
   return "the reference's source is not workbook or assessment";
 }
 
+/** A whole number in the safe range from 0. */
+const isCount = (v: unknown) => Number.isSafeInteger(v) && (v as number) >= 0;
+
 function valueProblem(value: unknown, what: string): string | null {
   if (!isObject(value)) return `${what} is missing`;
   switch (value.type) {
@@ -355,6 +393,11 @@ function valueProblem(value: unknown, what: string): string | null {
         ? null : `${what} is not a finite number in the safe range`;
     case "fraction":
       return Number.isSafeInteger(value.numerator) && isWhole(value.denominator, 1) ? null : `${what} is not a fraction with a whole numerator and a denominator from 1`;
+    case "mixed":
+      return isWhole(value.whole, 1) && isWhole(value.numerator, 1) && isWhole(value.denominator, 2) && value.numerator < value.denominator
+        ? null : `${what} is not a mixed number: a whole number from 1 and a fraction below 1`;
+    case "remainder":
+      return isCount(value.quotient) && isCount(value.remainder) ? null : `${what} is not a quotient and a remainder of whole numbers`;
     case "expression":
     case "choice":
     case "text":
@@ -364,54 +407,94 @@ function valueProblem(value: unknown, what: string): string | null {
   }
 }
 
-/** What is wrong with an operation, or null. */
-export function operationProblem(operation: unknown): string | null {
-  if (!isObject(operation)) return "the operation is missing";
-  if (typeof operation.kind !== "string" || !Object.hasOwn(OPERATIONS, operation.kind)) return "the operation's kind is not one code can compute";
-  const operands = operation.operands;
-  if (!Array.isArray(operands) || operands.length !== 2 || !operands.every((n) => isWhole(n, 0, MAX_OPERAND))) {
-    return `the operation needs two whole numbers from 0 to ${MAX_OPERAND}`;
-  }
-  return OPERATIONS[operation.kind as OperationKind].problem(operands[0], operands[1]);
-}
-
 /** A part (the question or its easier example): its operation is valid, and its answer and steps are what it gives. */
 function partProblem(operation: unknown, answer: unknown, steps: unknown, what: string): string | null {
   const problem = operationProblem(operation);
   if (problem) return what === "the question" ? problem : `${what}: ${problem}`;
   const value = valueProblem(answer, `${what}'s answer`);
   if (value) return value;
-  if (!sameValue(answer as AnswerValue, operationResult(operation as Operation))) return `${what}'s answer is not what its operation gives`;
-  if (!sameData(steps, workedSteps(operation as Operation))) return `${what}'s worked steps are not the steps of its operation`;
+  const op = operation as Operation;
+  const rules = computation(op);
+  const right = rules.answer === "result"
+    ? sameValue(answer as AnswerValue, operationResult(op))
+    : isSimplest(answer as AnswerValue) && sameNumber(answer as AnswerValue, rules.exact(op));
+  if (!right) return `${what}'s answer is not what its operation gives`;
+  if (!sameData(steps, workedSteps(op))) return `${what}'s worked steps are not the steps of its operation`;
   return null;
 }
 
-/** Total digits in the operands: an easier example has fewer. */
-const size = (operation: Operation) => operation.operands.reduce((s, n) => s + digitCount(n), 0);
+/** How big an operation is: the digits it is written with, then its count of worked steps. */
+interface Size {
+  digits: number;
+  steps: number;
+}
+const size = (operation: Operation): Size => ({ digits: (operationText(operation).match(/\d/g) ?? []).length, steps: workedSteps(operation).length });
+/** An easier example has fewer digits, or as many digits and fewer steps (1/5 + 2/5 is easier than 2/3 + 3/4). */
+const smaller = (a: Size, b: Size) => a.digits < b.digits || (a.digits === b.digits && a.steps < b.steps);
 
-function packageProblem(p: unknown): string | null {
-  if (!isObject(p)) return "the package is not an object";
-  if (!isText(p.id)) return "the package has no id";
+type Problem = { status: "failed" | "unsupported"; reason: string };
+const failed = (reason: string | null): Problem | null => (reason ? { status: "failed", reason } : null);
+
+function packageProblem(p: unknown): Problem | null {
+  if (!isObject(p)) return failed("the package is not an object");
+  if (!isText(p.id)) return failed("the package has no id");
   const ref = refProblem(p.ref);
-  if (ref) return ref;
-  if (p.templateId !== null && !isText(p.templateId)) return "the template id is not text or null";
-  if (!isText(p.text)) return "the question has no text";
+  if (ref) return failed(ref);
+  if (p.templateId !== null && !isText(p.templateId)) return failed("the template id is not text or null");
+  if (!isText(p.text)) return failed("the question has no text");
+  if (p.stepsVersion !== undefined) {
+    if (!isWhole(p.stepsVersion, 1)) return failed("the steps version is not a whole number from 1");
+    if (!STEPS_VERSIONS.includes(p.stepsVersion)) return { status: "unsupported", reason: `code cannot read worked steps of version ${p.stepsVersion}` };
+  }
+  const operation = operationCheck(p.operation);
+  if (operation?.status === "unsupported") return operation;
+  const form = unknownForm(p);
+  if (form) return { status: "unsupported", reason: `code cannot check answers of type ${form}` };
+  // Only an easier example of the question's (valid) operation kind can be beyond code; another kind fails later.
+  const easier = operation === null && isObject(p.easierExample) && isObject(p.easierExample.operation)
+    && p.easierExample.operation.kind === (p.operation as Operation).kind ? operationCheck(p.easierExample.operation) : null;
+  if (easier?.status === "unsupported") return { status: "unsupported", reason: `the easier example: ${easier.reason}` };
+  return failed(contentProblem(p));
+}
 
+const ANSWER_TYPES: readonly string[] = ["number", "fraction", "mixed", "remainder", "expression", "choice", "text"];
+
+/** The first answer type in the package that code does not know, or null. */
+function unknownForm(p: Record<string, unknown>): string | null {
+  const answer = isObject(p.answer) ? p.answer : {};
+  const easier = isObject(p.easierExample) ? p.easierExample : {};
+  const values = [
+    answer.value,
+    ...(Array.isArray(answer.accepted) ? answer.accepted : []),
+    ...(Array.isArray(p.wrongAnswers) ? p.wrongAnswers.map((w) => (isObject(w) ? w.value : null)) : []),
+    easier.answer,
+  ];
+  const unknown = values.find((v) => isObject(v) && typeof v.type === "string" && !ANSWER_TYPES.includes(v.type));
+  return unknown ? String((unknown as { type: string }).type) : null;
+}
+
+/** The answer, the steps and everything after them, for a package whose operation code can compute. */
+function contentProblem(p: Record<string, unknown>): string | null {
   const answer = p.answer;
   if (!isObject(answer)) return "the answer is missing";
   const work = partProblem(p.operation, answer.value, p.steps, "the question");
   if (work) return work;
+  const target = p.operation as Operation;
+  const rules = computation(target);
+  const exact = rules.exact(target);
   const value = answer.value as AnswerValue;
   if (!Array.isArray(answer.accepted)) return "the accepted forms are not a list";
+  if (rules.accepted === "none" && answer.accepted.length > 0) return "this question takes only its answer, with no other forms";
   for (const form of answer.accepted) {
     const problem = valueProblem(form, "an accepted form");
     if (problem) return problem;
     if (rational(form as AnswerValue) === null) return "an accepted form is not a number or a fraction, so code cannot check it";
     if (sameValue(form as AnswerValue, value)) return "an accepted form repeats the answer";
-    if (!sameNumber(form as AnswerValue, value)) return `the accepted form ${valueText(form as AnswerValue)} is not the answer's number`;
+    if (!sameNumber(form as AnswerValue, exact)) return `the accepted form ${valueText(form as AnswerValue)} is not the answer's number`;
+    if (rules.accepted === "simplest" && !isSimplest(form as AnswerValue)) return `the accepted form ${valueText(form as AnswerValue)} is not in simplest form`;
   }
   if (answer.unit !== null && !isText(answer.unit)) return "the unit is not text or null";
-  const right = [value, ...answer.accepted] as AnswerValue[];
+  const rightForms = [value, ...answer.accepted] as AnswerValue[];
 
   if (!isObject(p.skill) || !isText(p.skill.standard) || !Array.isArray(p.skill.skills)) return "the skill needs a standard and a list of skills";
   const code = p.skill.standard;
@@ -432,7 +515,7 @@ function packageProblem(p: unknown): string | null {
     const problem = valueProblem(w.value, "a wrong answer");
     if (problem) return problem;
     const wrongValue = w.value as AnswerValue;
-    if (right.some((r) => equivalent(r, wrongValue))) return `the wrong answer ${valueText(wrongValue)} is a right answer`;
+    if (isRight(wrongValue, rightForms, exact, rules.sameNumberWrong)) return `the wrong answer ${valueText(wrongValue)} is a right answer`;
     if (seen.some((s) => equivalent(s, wrongValue))) return `the wrong answer ${valueText(wrongValue)} is listed twice`;
     seen.push(wrongValue);
     if (!isText(w.cause) || !isText(w.description)) return "a wrong answer needs a cause and its description";
@@ -442,17 +525,31 @@ function packageProblem(p: unknown): string | null {
   const easier = p.easierExample;
   if (!isObject(easier)) return "the package has no easier example";
   if (!isText(easier.text)) return "the easier example has no text";
+  if (!isObject(easier.operation) || easier.operation.kind !== target.kind) return "the easier example is not the same operation";
   const easierWork = partProblem(easier.operation, easier.answer, easier.steps, "the easier example");
   if (easierWork) return easierWork;
-  const target = p.operation as Operation;
-  const example = easier.operation as Operation;
-  if (example.kind !== target.kind) return "the easier example is not the same operation";
-  if (size(example) >= size(target)) return "the easier example is not smaller than the question";
+  if (!smaller(size(easier.operation as Operation), size(target))) return "the easier example is not smaller than the question";
   return null;
 }
 
-/** Checks a package, for example one read from the database: the package, or the first reason it is refused. */
+/**
+ * A wrong answer that is really right: the answer or an accepted form, or the answer's number in a form the rules do not
+ * let stay wrong (a fraction that is not simplified may stay wrong; for "3/4 = ?/12", 3/4 is wrong).
+ */
+function isRight(wrong: AnswerValue, rightForms: AnswerValue[], exact: AnswerValue, rule: SameNumberWrongRule): boolean {
+  if (rightForms.some((r) => sameValue(r, wrong))) return true;
+  if (!sameNumber(wrong, exact)) return false;
+  if (rule === "any") return false;
+  if (rule === "unsimplified") return (wrong.type === "fraction" || wrong.type === "mixed") ? isSimplest(wrong) : true;
+  return true;
+}
+
+/**
+ * Checks a package, for example one read from the database: "checked" with the package, "failed" with the first reason,
+ * or "unsupported" when code cannot compute its operation or read its steps.
+ */
 export function checkQuestionPackage(candidate: unknown): PackageCheck {
-  const reason = packageProblem(candidate);
-  return reason ? { ok: false, reason } : { ok: true, package: candidate as QuestionPackage };
+  const problem = packageProblem(candidate);
+  if (!problem) return { ok: true, status: "checked", package: candidate as QuestionPackage };
+  return { ok: false, status: problem.status, reason: problem.reason };
 }
