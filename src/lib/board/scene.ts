@@ -6,7 +6,8 @@
 import { columns } from "@/lib/board/columns";
 import { annotationStrokes, arrowLines, MARK_INK, routeArrow, type ArrowObject, type ArrowObstacles, type ArrowRoute, type MarkObject } from "@/lib/board/annotations";
 import { contains, overlaps, polylineHitsRect, polylineLength, traceTouches, type Trace } from "@/lib/board/geometry";
-import { PLACEHOLDER_GLYPHS, type GlyphSet } from "@/lib/board/glyphs";
+import { BOARD_GLYPHS } from "@/lib/board/fonts";
+import type { GlyphSet } from "@/lib/board/glyphs";
 import { note } from "@/lib/board/note";
 import { parseCommand } from "@/lib/board/parse";
 import { isRefusal, refuse, type Ctx, type LocalStroke, type LocalTarget, type RefusalBody, type Representation } from "@/lib/board/representation";
@@ -98,7 +99,7 @@ export type ApplyResult =
 const emptyState = (): SceneState => ({ objects: [], owners: new Map(), view: { page: 1, target: null }, lastPage: 1 });
 
 export function createScene(options: { page?: PageSize; glyphs?: GlyphSet } = {}): Scene {
-  return { page: options.page ?? DEFAULT_PAGE, glyphs: options.glyphs ?? PLACEHOLDER_GLYPHS, log: [], child: [], nextSeq: 1, state: emptyState() };
+  return { page: options.page ?? DEFAULT_PAGE, glyphs: options.glyphs ?? BOARD_GLYPHS, log: [], child: [], nextSeq: 1, state: emptyState() };
 }
 
 // ---------- targets ----------

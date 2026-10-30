@@ -1,0 +1,60 @@
+"use client";
+
+// Maya's board on the web (#319, spec #297): her strokes as SVG open paths, drawn one after another as a pen would, or
+// the finished board at once (a replay's end, a reload). Every frame comes from the pure playback in
+// src/lib/board-svg.ts; this component only keeps the clock and paints. The child's ink is a separate layer (M6).
+import { useEffect, useMemo, useState } from "react";
+import type { Ink } from "@/lib/board";
+import { frameAt, pathData, reveal, SVG_UNITS, timeline, type PlayStep } from "@/lib/board-svg";
+import "./maya-board.css";
+
+const INK: Record<Ink, string> = {
+  blue: "var(--board-blue)",
+  red: "var(--board-red)",
+  green: "var(--board-green)",
+  yellow: "var(--board-yellow)",
+  black: "var(--board-black)",
+};
+
+/**
+ * Plays `steps` (batches as the board core applied them) from the start when mounted; give it a new `key` to replay.
+ * `instant`: show the finished board, with no drawing.
+ */
+export function MayaBoard({ steps, view, label, instant = false }: { steps: readonly PlayStep[]; view: string; label: string; instant?: boolean }) {
+  const t = useMemo(() => timeline(steps), [steps]);
+  const [elapsed, setElapsed] = useState(0);
+  useEffect(() => {
+    if (instant) return;
+    let frame = 0;
+    const start = performance.now();
+    const tick = (now: number) => {
+      setElapsed(now - start);
+      if (now - start < t.durationMs) frame = requestAnimationFrame(tick);
+    };
+    frame = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(frame);
+  }, [t, instant]);
+
+  const strokes = frameAt(t, instant ? Infinity : elapsed);
+  return (
+    <svg className="maya-board" viewBox={view} role="img" aria-label={label}>
+      {strokes.map(({ path, progress }) => {
+        const dash = reveal(path, progress);
+        return (
+          <path
+            key={path.id}
+            d={pathData(path.pts)}
+            fill="none"
+            stroke={INK[path.ink]}
+            strokeOpacity={path.opacity}
+            strokeWidth={path.width * SVG_UNITS}
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            strokeDasharray={dash?.dasharray}
+            strokeDashoffset={dash?.dashoffset}
+          />
+        );
+      })}
+    </svg>
+  );
+}
