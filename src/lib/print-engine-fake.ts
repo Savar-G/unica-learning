@@ -2,8 +2,9 @@ import type { MeasuredElement, PrintEngine, PrintJob } from "@/lib/workbook-rend
 
 // A print engine for tests (#309): it reads the document as Chromium would only as far as the renderer needs. It finds
 // each sheet and each element marked with data-measure, in document order, with the element's own text, and gives
-// every marked element a rect: a sheet fills its page; any other element is at (48, 48), 200 by 100 CSS pixels, unless
-// the test gives a rect. An element fits its space and shows unless the test names it as overflowing or hidden.
+// every marked element a rect: a sheet fills its page; a question's content and answer space fill the question; any
+// other element is at (48, 48), 200 by 100 CSS pixels, unless the test gives a rect. An element fits its space and shows unless the test names it as overflowing or hidden, and
+// its text prints unless the test names it as blank.
 // Elements are named "<sheet from 1> <data-measure>", so "2 question-3" is question 3 on the second sheet. A page's QR
 // code reads as the link the renderer drew (the fake reads data-qr-link instead of the image), unless `qrText` gives
 // another text or null. It records the jobs it prints.
@@ -15,7 +16,7 @@ const drawnLink = (sheet: string) => /data-measure="qr" data-qr-link="([^"]+)"><
 type Rect = Pick<MeasuredElement, "x" | "y" | "width" | "height">;
 
 export function fakePrintEngine(o: {
-  rects?: Record<string, Rect>; overflow?: string[]; hidden?: string[]; qrText?: Record<number, string | null>; pdfPages?: number;
+  rects?: Record<string, Rect>; overflow?: string[]; hidden?: string[]; blank?: string[]; qrText?: Record<number, string | null>; pdfPages?: number;
 } = {}): PrintEngine & { jobs: PrintJob[] } {
   const jobs: PrintJob[] = [];
   return {
@@ -29,10 +30,12 @@ export function fakePrintEngine(o: {
         const marks = [...html.matchAll(/data-measure="([^"]+)"[^>]*>([^<]*)/g)];
         return marks.map(([, name, text]): MeasuredElement => {
           const key = `${sheet + 1} ${name}`;
-          const rect = o.rects?.[key] ?? (name === "sheet" ? { x: 0, y: 0, ...job.page } : { x: 48, y: 48, width: 200, height: 100 });
+          const question = /^(question-\d+)-(content|answer)$/.exec(name)?.[1];
+          const rect = o.rects?.[key] ?? (question && o.rects?.[`${sheet + 1} ${question}`])
+            ?? (name === "sheet" ? { x: 0, y: 0, ...job.page } : { x: 48, y: 48, width: 200, height: 100 });
           const over = o.overflow?.includes(key) ? 40 : 0;
           return {
-            sheet, name, text: text.trim(), visible: !o.hidden?.includes(key), ...rect,
+            sheet, name, text: text.trim(), visible: !o.hidden?.includes(key), textPrinted: !o.blank?.includes(key), ...rect,
             clientWidth: rect.width, clientHeight: rect.height, scrollWidth: rect.width, scrollHeight: rect.height + over,
           };
         });

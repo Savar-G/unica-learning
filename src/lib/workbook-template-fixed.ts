@@ -33,6 +33,7 @@ const CSS = `
 .sum .rule{border-top:3px solid #1d1d1f;margin-top:6px;height:72px}
 .sign{float:left}
 .text{font-size:28px;line-height:38px;margin:16px 0 0}
+.space{height:64px;margin-top:12px}
 .footer{margin-top:auto;display:flex;align-items:flex-end;justify-content:space-between;gap:24px}
 .brand{font-size:14px;line-height:20px;color:#6e6e73}
 .qr{display:flex;align-items:flex-end;gap:16px}
@@ -67,18 +68,22 @@ const HEADINGS: Partial<Record<OperationKind, { title: string; instruction: stri
 };
 const MIXED = { title: "Practice", instruction: "Solve. Show your work." };
 
-/** A question's working space: whole-number addition and subtraction in columns, any other question as its text. */
-function body(p: QuestionPackage): string {
+/**
+ * A question's content and answer space: whole-number addition and subtraction in columns, with the rule under them to
+ * write on; any other question as its text, with a blank space under it.
+ */
+function body(p: QuestionPackage, n: number): string {
   const op = p.operation;
-  if (op.kind !== "add" && op.kind !== "subtract") return `<p class="text">${escape(p.text)}</p>`;
+  if (op.kind !== "add" && op.kind !== "subtract") return `<p class="text" ${mark.questionContent(n)}>${escape(p.text)}</p><div class="space" ${mark.answerSpace(n)}></div>`;
   const [a, b] = op.operands;
-  return `<div class="sum"><div>${a}</div><div><span class="sign">${op.kind === "add" ? "+" : "−"}</span>${b}</div><div class="rule"></div></div>`;
+  return `<div class="sum" ${mark.questionContent(n)}><div>${a}</div><div><span class="sign">${op.kind === "add" ? "+" : "−"}</span>${b}</div>`
+    + `<div class="rule" ${mark.answerSpace(n)}></div></div>`;
 }
 
 function practice(page: DraftPage, parts: PageParts, book: WorkbookDraft): string {
   const kinds = [...new Set(page.questions.map((q) => q.package.operation.kind))];
   const { title, instruction } = (kinds.length === 1 && HEADINGS[kinds[0]]) || MIXED;
-  const questions = page.questions.map((q) => `<div class="question" ${mark.question(q.number)}><div class="qnum">${q.number}.</div>${body(q.package)}</div>`).join("");
+  const questions = page.questions.map((q) => `<div class="question" ${mark.question(q.number)}><div class="qnum">${q.number}.</div>${body(q.package, q.number)}</div>`).join("");
   return `<div class="page"><div class="label" ${mark.slot("label")}>${escape(page.dayLabel ?? "")}</div>`
     + `<h1 class="title" ${mark.slot("title")}>${title}</h1>`
     + `<p class="instruction" ${mark.slot("instruction")}>${instruction}</p>`

@@ -13,19 +13,25 @@ and a template, and returns:
 - each page's QR link, `https://unicalearning.com/tutor/p/<token>` (the desk route, #301).
 
 The template writes each page as HTML and marks what the renderer measures (`mark` in the module): the page number,
-each question and each slot with a size limit. The renderer makes each page's QR code itself, already marked, and the
+each question, inside each question its content (the text and numbers the child reads) and its answer space, and each
+slot with a size limit. The renderer makes each page's QR code itself, already marked, and the
 template only places it. The render fails, naming the page and question, when:
 
 - the template has no layout for a page's type,
 - content overflows a slot, a question box or the page,
 - a question is missing from the page, lies outside it or is hidden,
-- the page number is not shown on the page as the page's number,
+- a question's content does not print in full, or lies outside the question,
+- a question has no answer space inside it of at least half an inch each way,
+- the page number is not printed on the page as the page's number,
 - the QR code is missing, hidden, smaller than 0.6 inches or off the page,
 - the QR code read back from the page image is not the page's link (a blank, covered or wrong code),
 - the template marks a part twice, or the PDF does not have one page per page.
 
-"Hidden" means not laid out or hidden by CSS: `display`, `visibility`, `content-visibility` or opacity 0. Nothing is
-clipped silently.
+"Hidden" means not laid out or hidden by CSS: `display`, `visibility`, `content-visibility` or opacity 0. "Printed"
+is checked on the text itself, not only on its outer box: each piece of the page number's and each question content's
+text must show by CSS, have a colour that is not transparent, lie inside its marked element, and leave ink on the page
+image (its lightest and darkest pixels at least 64 of 255 apart). So text that is hidden, transparent, white on white,
+clipped or covered inside a visible box fails. Nothing is clipped silently.
 
 Storing:
 
@@ -35,10 +41,13 @@ Storing:
   files stay, because the workbook may be stored: read the workbook to know.
 - `replaceRendering` (a stored workbook rendered again) stores the new files, then swaps the workbook to them in one
   database transaction (`save_workbook_rendering`: the workbook row, its page tokens, content, status and learning
-  events stay), then removes the old files. If anything fails before the swap, the new files go and the old rendering
-  stays. If the swap's answer is lost, it reads the workbook and keeps whichever rendering it names.
+  events stay), then removes the old files. If an upload fails or the store refuses the swap, the new files go and the
+  old rendering stays. If the swap's answer is lost, it reads the workbook. When the read names the new rendering, the
+  swap happened and the old files go. Otherwise every file stays and it throws: the swap may still be pending in the
+  database and commit later, so a read of the old rendering does not prove the new files are unused. It never removes
+  a file the stored workbook can still name.
 - Each stored render gets a random key in its file names (`page-2-<key>.png`), so a retry never meets the files of a
-  failed attempt. A file no workbook names (for example when even the read after a lost answer fails) stays in the
+  failed attempt. A file no workbook names (for example the unused rendering after a lost answer) stays in the
   family's folder and is deleted with the family.
 
 The template today is the fixed test template (`src/lib/workbook-template-fixed.ts`: cover and practice pages, Geist
@@ -61,7 +70,8 @@ check, so the Aside rule does not apply. Which Chromium:
 
 Tests use the fake engine (`src/lib/print-engine-fake.ts`). `src/lib/print-engine-chromium.test.ts` renders the sample
 with real Chromium wherever one is found: it decodes each page's QR code from the image, counts the PDF pages, and
-checks that a hidden page number, a hidden question and a blank QR code fail. Set `RENDER_OUT=<folder>` to keep the
+checks that a hidden page number, a hidden question, a blank QR code, question content hidden or white inside a
+visible box, a transparent page number and a missing answer space fail. Set `RENDER_OUT=<folder>` to keep the
 files and look at them.
 
 The engine reads each page's QR code with jsQR from the page image, cropped to the QR element and a quarter inch around

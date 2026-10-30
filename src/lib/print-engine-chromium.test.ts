@@ -92,4 +92,28 @@ describe.skipIf(!chromium)("renderWorkbook with Chromium", () => {
       ],
     });
   }, 60_000);
+
+  it("fails a question whose text and numbers are hidden while its box shows, and a page number that leaves no ink", async () => {
+    // Page 1: a transparent page number. Page 2: every operand hidden inside visible question boxes. Page 3: the
+    // operands white on white, so only the page image shows they are missing.
+    const style: Record<number, string> = {
+      1: `[data-sheet="0"] [data-measure="page-number"]{color:transparent}`,
+      2: `[data-sheet="1"] .sum>div:not(.rule){visibility:hidden}`,
+      3: `[data-sheet="2"] .sum{color:#fff}`,
+    };
+    const result = await render(draft(), (page, html) => `<style>${style[page]}</style>${html}`);
+    const notPrinted = (page: number) => [1, 2, 3, 4].map((q) => ({ page, question: q, reason: `question ${q}'s content is not printed` }));
+    expect(result).toEqual({
+      status: "failed",
+      problems: [{ page: 1, question: null, reason: "the page number is not printed" }, ...notPrinted(2), ...notPrinted(3)],
+    });
+  }, 60_000);
+
+  it("fails a question with no answer space", async () => {
+    const result = await render(draft(), (page, html) => (page === 2 ? `<style>[data-sheet="1"] .rule{display:none}</style>${html}` : html));
+    expect(result).toEqual({
+      status: "failed",
+      problems: [1, 2, 3, 4].map((q) => ({ page: 2, question: q, reason: `question ${q} has no answer space` })),
+    });
+  }, 60_000);
 });

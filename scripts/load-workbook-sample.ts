@@ -7,7 +7,8 @@
 // --rerender <workbook id> renders a stored workbook of a test family again with replaceRendering
 // (src/lib/workbook-render.ts): it stores the new files under new names, swaps the workbook to them in one database
 // transaction (save_workbook_rendering: the workbook row, its page tokens, content, status and learning events stay),
-// then removes the old files. If anything fails before the swap, the old rendering stays as it was.
+// then removes the old files. If an upload fails or the store refuses, the new files go and the old rendering stays.
+// If the swap's answer is lost and a read does not show it happened, every file stays (the swap may still commit).
 //
 // Every render's files get a new random key in their names, so a retry never meets the files of a failed attempt.
 //

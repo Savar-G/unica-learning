@@ -3,8 +3,10 @@
 // template writes each page as HTML and marks what the renderer measures (see `mark`); a print engine (headless
 // Chromium, src/lib/print-engine-chromium.ts, or the fake for tests, src/lib/print-engine-fake.ts) lays the pages out,
 // prints the PDF, takes one image per page, measures every marked element and reads each page's QR code back from its
-// image. From those it takes each question's box and checks the page: its number and every question visible on it, its
-// QR code visible and reading as the page's link, and nothing overflowing its space.
+// image. From those it takes each question's box and checks the page: its number printed, every question on it with its
+// content (text and numbers) printed and an answer space, its QR code visible and reading as the page's link, and
+// nothing overflowing its space. "Printed" means each piece of text shows and leaves ink on the page image, not only
+// that its outer box shows.
 // A page that fails a check fails the render, with the page and question named; nothing is clipped silently.
 //
 // Pages are US Letter. Page numbers run through the whole workbook; question numbers restart on each page (the
@@ -43,12 +45,15 @@ export interface WorkbookDraft extends Omit<WorkbookInput, "pdfPath" | "pages"> 
 
 /**
  * The `data-measure` attribute of each element the renderer measures. A template marks the page number (the element's
- * text is the number alone), each question (its box on the page image) and each slot with a size limit. The QR code
- * comes marked from the renderer (PageParts.qr).
+ * text is the number alone), each question (its box on the page image), inside each question its content (the text and
+ * numbers the child reads, all of which must print) and its answer space (where the child writes, at least half an inch
+ * each way), and each slot with a size limit. The QR code comes marked from the renderer (PageParts.qr).
  */
 export const mark = {
   pageNumber: `data-measure="page-number"`,
   question: (n: number) => `data-measure="question-${n}"`,
+  questionContent: (n: number) => `data-measure="question-${n}-content"`,
+  answerSpace: (n: number) => `data-measure="question-${n}-answer"`,
   /** A named space with a size limit: "title", "instruction". Its content must fit it. */
   slot: (name: string) => `data-measure="slot-${name}"`,
 } as const;
@@ -95,6 +100,11 @@ export interface MeasuredElement {
   text: string;
   /** Whether it shows: laid out, not hidden by CSS (display, visibility, content-visibility or opacity 0). */
   visible: boolean;
+  /**
+   * Whether its text prints: it has text, and every piece of it shows (not hidden by CSS, not transparent, inside the
+   * element) and leaves ink on its page image, so text hidden inside a visible element does not pass.
+   */
+  textPrinted: boolean;
   x: number;
   y: number;
   width: number;
@@ -177,6 +187,13 @@ const QR_MIN = 0.6 * 96;
 /** Whether an element's content is larger than its box: it would be clipped or spill out. */
 const overflows = (m: MeasuredElement | undefined) => !!m && (m.scrollHeight > m.clientHeight + 1 || m.scrollWidth > m.clientWidth + 1);
 
+/** The smallest answer space: half an inch each way. */
+const ANSWER_MIN = 0.5 * 96;
+
+/** Whether a rect lies inside another, allowing for sub-pixel layout. */
+const within = (m: MeasuredElement, box: MeasuredElement) =>
+  m.x >= box.x - 0.5 && m.y >= box.y - 0.5 && m.x + m.width <= box.x + box.width + 0.5 && m.y + m.height <= box.y + box.height + 0.5;
+
 /** Whether a rect lies on its page, allowing for sub-pixel layout. */
 const insidePage = (m: MeasuredElement) =>
   m.width > 0 && m.height > 0 && m.x >= -0.5 && m.y >= -0.5 && m.x + m.width <= PRINT_PAGE.width + 0.5 && m.y + m.height <= PRINT_PAGE.height + 0.5;
@@ -231,7 +248,7 @@ export async function renderWorkbook(o: {
       if (m.name.startsWith("slot-") && overflows(m)) fail(null, `the ${m.name.slice(5)} does not fit its space`);
     }
     const number = measured.get("page-number");
-    if (number?.text !== String(page.number) || !number.visible || !insidePage(number)) fail(null, "the page number is not printed");
+    if (number?.text !== String(page.number) || !number.visible || !number.textPrinted || !insidePage(number)) fail(null, "the page number is not printed");
     const qr = measured.get("qr");
     if (!qr?.visible) fail(null, "the QR code is not printed");
     else if (qr.width < QR_MIN || qr.height < QR_MIN || !insidePage(qr)) fail(null, "the QR code is smaller than 0.6 inches or not inside the page");
@@ -239,11 +256,16 @@ export async function renderWorkbook(o: {
     const questions: QuestionInput[] = [];
     for (const q of page.questions) {
       const m = measured.get(`question-${q.number}`);
+      const content = measured.get(`question-${q.number}-content`);
+      const answer = measured.get(`question-${q.number}-answer`);
       if (!m) fail(q.number, `question ${q.number} is not on the page`);
       else if (!insidePage(m)) fail(q.number, `question ${q.number} is not inside the page`);
       else if (!m.visible) fail(q.number, `question ${q.number} is hidden`);
       else if (overflows(m)) fail(q.number, `question ${q.number} does not fit its space`);
-      else questions.push({ ...q, box: pixelBox(m, image) });
+      else if (!content?.visible || !content.textPrinted || !within(content, m)) fail(q.number, `question ${q.number}'s content is not printed`);
+      else if (!answer?.visible || !within(answer, m) || answer.width < ANSWER_MIN || answer.height < ANSWER_MIN) {
+        fail(q.number, `question ${q.number} has no answer space`);
+      } else questions.push({ ...q, box: pixelBox(m, image) });
     }
     pages.push({ ...page, image: { path, width: image.width, height: image.height }, questions });
   });
@@ -298,8 +320,10 @@ const filesOf = (w: Pick<Workbook, "pdfPath" | "pages">) =>
  * Stores a new rendering of a stored workbook (`previous`, as read before rendering; render it with a new file key).
  * It stores the new files, then swaps the workbook to them in one step through the store (its id, page tokens, content
  * and status stay), then removes the old files. When an upload fails or the store refuses, it removes the new files and
- * the old rendering stays. When the swap's answer is lost, it reads the workbook: if the swap happened, it removes the
- * old files and answers written; if not, it removes the new files and throws. If that read fails too, every file stays.
+ * the old rendering stays. When the swap's answer is lost, it reads the workbook: if the read names the new rendering,
+ * the swap happened, so it removes the old files and answers written. Otherwise it removes nothing and throws: the swap
+ * may still be pending in the database and commit later, so a read that names the old rendering does not prove the new
+ * files are unused. Files no workbook names stay in the family's folder and go with the family.
  */
 export async function replaceRendering(
   rendered: Extract<RenderResult, { status: "rendered" }>, o: { files: WorkbookFiles; store: WorkbookStore; previous: Workbook },
@@ -317,13 +341,9 @@ export async function replaceRendering(
   try {
     result = await o.store.saveRendering(rendering);
   } catch (e) {
-    const now = await o.store.workbook(w.id);
-    if (now?.pdfPath === rendering.pdfPath) {
-      await o.files.remove(old);
-      return { status: "written", workbookId: w.id };
-    }
-    await o.files.remove(fresh);
-    throw e;
+    if ((await o.store.workbook(w.id).catch(() => null))?.pdfPath !== rendering.pdfPath) throw e;
+    await o.files.remove(old);
+    return { status: "written", workbookId: w.id };
   }
   await o.files.remove(result.status === "written" ? old : fresh);
   return result;

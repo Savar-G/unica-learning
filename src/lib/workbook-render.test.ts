@@ -124,6 +124,32 @@ describe("renderWorkbook", () => {
     });
   });
 
+  it("fails a question whose content does not print or lies outside it, or whose answer space is missing or too small", async () => {
+    const template = fixedTemplate();
+    const noAnswer = { ...template, page: (...a: Parameters<typeof template.page>) => template.page(...a)?.replace(`data-measure="question-4-answer"`, "") ?? null };
+    const question = { x: 56, y: 240, width: 340, height: 320 };
+    const engine = fakePrintEngine({
+      blank: ["1 page-number", "2 question-1-content"],
+      hidden: ["3 question-1-answer"],
+      rects: {
+        "2 question-2": question, "2 question-2-content": { ...question, y: 500, height: 100 },
+        "3 question-2": question, "3 question-2-answer": { x: 80, y: 400, width: 200, height: 40 },
+      },
+    });
+    expect(await render(engine, noAnswer)).toEqual({
+      status: "failed",
+      problems: [
+        { page: 1, question: null, reason: "the page number is not printed" },
+        { page: 2, question: 1, reason: "question 1's content is not printed" },
+        { page: 2, question: 2, reason: "question 2's content is not printed" },
+        { page: 2, question: 4, reason: "question 4 has no answer space" },
+        { page: 3, question: 1, reason: "question 1 has no answer space" },
+        { page: 3, question: 2, reason: "question 2 has no answer space" },
+        { page: 3, question: 4, reason: "question 4 has no answer space" },
+      ],
+    });
+  });
+
   it("prints each page's QR code itself, so a template's own empty QR mark does not pass", async () => {
     const template = fixedTemplate();
     const ownMark = {
@@ -157,7 +183,7 @@ describe("renderWorkbook", () => {
     const q = book.pages[2].questions[0];
     q.package = { ...q.package, text: "12 × 3 = ?", operation: { kind: "multiply", operands: [12, 3] } };
     expect((await renderWorkbook({ draft: book, parentId: PARENT, template: fixedTemplate(), engine })).status).toBe("rendered");
-    expect(engine.jobs[0].html).toContain(`<p class="text">12 × 3 = ?</p>`);
+    expect(engine.jobs[0].html).toContain(`<p class="text" data-measure="question-1-content">12 × 3 = ?</p><div class="space" data-measure="question-1-answer"></div>`);
   });
 
   it("fails a page whose type the template has no layout for, before printing", async () => {
@@ -306,11 +332,27 @@ describe("replaceRendering", () => {
     expect(kept()).toEqual(paths("r2"));
   });
 
-  it("reads the workbook when the swap's answer is lost: a swap that did not happen removes the new files and throws", async () => {
+  it("keeps both renderings when the swap's answer is lost and the read still names the old one, since the swap may yet commit", async () => {
     const { files, kept, store, second, previous } = await setup();
-    const lost = { ...store, saveRendering: async () => { throw new Error("fetch failed"); } };
+    // The swap request is still pending in the database (on a row lock, say) when the client's answer is lost: the
+    // read sees the old rendering, then the swap commits.
+    let commit!: () => void;
+    const held = new Promise<void>((resolve) => { commit = resolve; });
+    let pending: Promise<unknown> | undefined;
+    const lost = {
+      ...store,
+      saveRendering: async (r: Parameters<typeof store.saveRendering>[0]) => {
+        pending = held.then(() => store.saveRendering(r));
+        throw new Error("fetch failed");
+      },
+    };
     await expect(replaceRendering(second, { files, store: lost, previous })).rejects.toThrow("fetch failed");
-    expect(kept()).toEqual(paths("r1"));
-    expect(await store.workbook(WORKBOOK)).toEqual(previous);
+    expect(kept()).toEqual([...paths("r1"), ...paths("r2")].sort());
+    commit();
+    expect(await pending).toEqual({ status: "written", workbookId: WORKBOOK });
+    const after = (await store.workbook(WORKBOOK))!;
+    const named = [after.pdfPath!, ...after.pages.map((p) => p.image!.path)].sort();
+    expect(named).toEqual(paths("r2"));
+    expect(named.filter((p) => !kept().includes(p))).toEqual([]);
   });
 });
