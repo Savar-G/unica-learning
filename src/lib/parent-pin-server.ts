@@ -24,10 +24,10 @@ export async function checkParentPin(parentId: string, pin: string, pins: Parent
   }
 }
 
-/** What the account page's PIN form gets back. `status` is the HTTP status of the answer. */
+/** What the account page's PIN form gets back, from the route (src/app/api/account/pin/route.ts). */
 export type PinFormResult =
   | { ok: true }
-  | { ok: false; error: "invalid" | "current_required" | "unavailable" }
+  | { ok: false; error: "invalid" | "current_required" | "unavailable" | "signed_out" | "bad_json" }
   | { ok: false; error: "wrong"; attemptsLeft: number }
   | { ok: false; error: "locked"; retryAt: number };
 

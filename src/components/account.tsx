@@ -10,6 +10,7 @@ import type { StartState } from "@/lib/assessment";
 import { gradeLabel, gradeShort } from "@/lib/assessment/grades";
 import { GRADES, gradeHint, PASSWORD_MAX, PASSWORD_MIN, signInFailure, validPassword, type AccountError, type SignInFailure, type AccountResult, type ChildInput } from "@/lib/account";
 import { browserClient } from "@/lib/supabase-browser";
+import type { PinFormResult } from "@/lib/parent-pin-server";
 import { track } from "@/lib/track";
 import { SUPPORT_EMAIL, SUPPORT_HREF } from "@/lib/contact";
 import { markAdStep } from "@/lib/ad-visit-steps";
@@ -1048,13 +1049,6 @@ export function NewPassword() {
   );
 }
 
-/** What /api/account/pin answers (src/lib/parent-pin-server.ts, PinFormResult), or the route's own errors. */
-type PinAnswer =
-  | { ok: true }
-  | { ok: false; error: "invalid" | "current_required" | "unavailable" | "signed_out" | "bad_json" }
-  | { ok: false; error: "wrong"; attemptsLeft: number }
-  | { ok: false; error: "locked"; retryAt: number };
-
 /**
  * Sets or changes the parent's 4-digit PIN (#300). The child's desk asks for it before the child can leave. When a PIN
  * is set (`isSet`), the current one is asked first. The server checks and hashes it; a wrong current PIN counts against
@@ -1077,10 +1071,10 @@ export function PinForm({ isSet }: { isSet: boolean }) {
     }
     setBusy(true);
     setError(null);
-    let answer: PinAnswer;
+    let answer: PinFormResult;
     try {
       const res = await fetch("/api/account/pin", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(isSet ? { pin, current } : { pin }) });
-      answer = (await res.json()) as PinAnswer;
+      answer = (await res.json()) as PinFormResult;
     } catch {
       answer = { ok: false, error: "unavailable" };
     }

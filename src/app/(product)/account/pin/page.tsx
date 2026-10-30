@@ -17,7 +17,20 @@ export const metadata = pageMetadata({
 export default async function Pin() {
   const id = await parentId(await sessionClient());
   if (!id) redirect("/sign-in");
-  const isSet = await serverPins()?.isSet(id).catch(() => false) ?? false;
+  // When the read fails, the page must not offer a first PIN: a parent who has one would see no current-PIN field.
+  let isSet: boolean | null = null;
+  try {
+    isSet = (await serverPins()?.isSet(id)) ?? null;
+  } catch (error) {
+    console.error("[pin] load failed", error instanceof Error ? error.message : error);
+  }
+  if (isSet === null) {
+    return (
+      <SupportPage label="Your account" title="Your PIN.">
+        <p className="lead">We cannot load your PIN settings right now. Try again in a moment.</p>
+      </SupportPage>
+    );
+  }
   return (
     <SupportPage label="Your account" title={isSet ? "Change your PIN." : "Set your PIN."}>
       <p className="lead">The PIN is 4 digits. Your child needs it to leave their desk. We keep it as a scrambled code, never as the digits.</p>

@@ -60,191 +60,188 @@ function setupWith(open: (database: ReturnType<typeof memoryPinStore>) => PinSto
 describe.each(stores)("the PIN module over the %s store", (_, open) => {
   const setup = (): ReturnType<typeof setupWith> => setupWith(open);
 
-describe("setting a PIN", () => {
-  it("has no PIN until the parent sets one, and then accepts it", async () => {
-    const { pins } = setup();
-    expect(await pins.isSet(PARENT)).toBe(false);
-    expect(await pins.set(PARENT, "4821")).toEqual({ ok: true });
-    expect(await pins.isSet(PARENT)).toBe(true);
-    expect(await pins.check(PARENT, "4821")).toEqual({ ok: true });
+  describe("setting a PIN", () => {
+    it("has no PIN until the parent sets one, and then accepts it", async () => {
+      const { pins } = setup();
+      expect(await pins.isSet(PARENT)).toBe(false);
+      expect(await pins.set(PARENT, "4821")).toEqual({ ok: true });
+      expect(await pins.isSet(PARENT)).toBe(true);
+      expect(await pins.check(PARENT, "4821")).toEqual({ ok: true });
+    });
+
+    it("refuses a wrong PIN", async () => {
+      const { pins } = setup();
+      await pins.set(PARENT, "4821");
+      expect(await pins.check(PARENT, "1234")).toMatchObject({ ok: false, error: "wrong" });
+    });
+
+    it("refuses a PIN that is not exactly 4 digits, and stores nothing", async () => {
+      const { pins } = setup();
+      for (const bad of ["", "123", "12345", "12a4", "١٢٣٤", " 123", "12.4"]) {
+        expect(await pins.set(PARENT, bad), JSON.stringify(bad)).toEqual({ ok: false, error: "invalid" });
+      }
+      expect(await pins.isSet(PARENT)).toBe(false);
+    });
+
+    it("says a PIN that is not set is not set, and does not accept any PIN", async () => {
+      const { pins } = setup();
+      expect(await pins.check(PARENT, "0000")).toEqual({ ok: false, error: "not_set" });
+    });
+
+    it("keeps each parent's PIN apart", async () => {
+      const { pins } = setup();
+      await pins.set(PARENT, "4821");
+      await pins.set(OTHER, "9090");
+      expect(await pins.check(PARENT, "9090")).toMatchObject({ ok: false, error: "wrong" });
+      expect(await pins.check(OTHER, "9090")).toEqual({ ok: true });
+    });
   });
 
-  it("refuses a wrong PIN", async () => {
-    const { pins } = setup();
-    await pins.set(PARENT, "4821");
-    expect(await pins.check(PARENT, "1234")).toMatchObject({ ok: false, error: "wrong" });
+  describe("what is stored", () => {
+    it("is a salted hash: not the PIN, and different for two parents with the same PIN", async () => {
+      const { pins, store } = setup();
+      await pins.set(PARENT, "4821");
+      await pins.set(OTHER, "4821");
+      const [a, b] = store.rows().map((r) => r.hash);
+      expect(a).not.toContain("4821");
+      expect(b).not.toContain("4821");
+      expect(a).not.toBe(b);
+      expect(JSON.stringify(store.rows())).not.toContain("4821");
+    });
+
+    it("gives a new salt each time the same parent sets the same PIN", async () => {
+      const { pins, store } = setup();
+      await pins.set(PARENT, "4821");
+      const first = store.rows()[0].hash;
+      await pins.set(PARENT, "4821", "4821");
+      expect(store.rows()[0].hash).not.toBe(first);
+    });
   });
 
-  it("refuses a PIN that is not exactly 4 digits, and stores nothing", async () => {
-    const { pins } = setup();
-    for (const bad of ["", "123", "12345", "12a4", "١٢٣٤", " 123", "12.4"]) {
-      expect(await pins.set(PARENT, bad), JSON.stringify(bad)).toEqual({ ok: false, error: "invalid" });
-    }
-    expect(await pins.isSet(PARENT)).toBe(false);
+  describe("changing a PIN", () => {
+    it("needs the current PIN when one is set", async () => {
+      const { pins } = setup();
+      await pins.set(PARENT, "4821");
+      expect(await pins.set(PARENT, "1111")).toEqual({ ok: false, error: "current_required" });
+      expect(await pins.set(PARENT, "1111", "0000")).toMatchObject({ ok: false, error: "wrong" });
+      expect(await pins.check(PARENT, "4821")).toEqual({ ok: true });
+    });
+
+    it("replaces the PIN when the current one is right: the new one works and the old one does not", async () => {
+      const { pins } = setup();
+      await pins.set(PARENT, "4821");
+      expect(await pins.set(PARENT, "1111", "4821")).toEqual({ ok: true });
+      expect(await pins.check(PARENT, "1111")).toEqual({ ok: true });
+      expect(await pins.check(PARENT, "4821")).toMatchObject({ ok: false, error: "wrong" });
+    });
+
+    it("refuses a malformed new PIN and keeps the old one", async () => {
+      const { pins } = setup();
+      await pins.set(PARENT, "4821");
+      expect(await pins.set(PARENT, "12", "4821")).toEqual({ ok: false, error: "invalid" });
+      expect(await pins.check(PARENT, "4821")).toEqual({ ok: true });
+    });
   });
 
-  it("says a PIN that is not set is not set, and does not accept any PIN", async () => {
-    const { pins } = setup();
-    expect(await pins.check(PARENT, "0000")).toEqual({ ok: false, error: "not_set" });
-  });
+  describe("the attempt limit", () => {
+    const WRONG = "0000";
 
-  it("keeps each parent's PIN apart", async () => {
-    const { pins } = setup();
-    await pins.set(PARENT, "4821");
-    await pins.set(OTHER, "9090");
-    expect(await pins.check(PARENT, "9090")).toMatchObject({ ok: false, error: "wrong" });
-    expect(await pins.check(OTHER, "9090")).toEqual({ ok: true });
-  });
-});
+    it("counts down the attempts left on each wrong PIN", async () => {
+      const { pins } = setup();
+      await pins.set(PARENT, "4821");
+      const lefts = [];
+      for (let i = 0; i < PIN_POLICY.maxAttempts - 1; i++) {
+        const r = await pins.check(PARENT, WRONG);
+        expect(r).toMatchObject({ ok: false, error: "wrong" });
+        if (!r.ok && r.error === "wrong") lefts.push(r.attemptsLeft);
+      }
+      expect(lefts).toEqual([4, 3, 2, 1]);
+    });
 
-describe("what is stored", () => {
-  it("is a salted hash: not the PIN, and different for two parents with the same PIN", async () => {
-    const { pins, store } = setup();
-    await pins.set(PARENT, "4821");
-    await pins.set(OTHER, "4821");
-    const [a, b] = store.rows().map((r) => r.hash);
-    expect(a).not.toContain("4821");
-    expect(b).not.toContain("4821");
-    expect(a).not.toBe(b);
-    expect(JSON.stringify(store.rows())).not.toContain("4821");
-  });
+    it("refuses for a period after the last wrong attempt, even for the right PIN", async () => {
+      const { pins, advance, now } = setup();
+      await pins.set(PARENT, "4821");
+      const start = now();
+      for (let i = 0; i < PIN_POLICY.maxAttempts - 1; i++) await pins.check(PARENT, WRONG);
+      expect(await pins.check(PARENT, WRONG)).toEqual({ ok: false, error: "locked", retryAt: start + PIN_POLICY.lockMs });
+      advance(PIN_POLICY.lockMs - MINUTE);
+      expect(await pins.check(PARENT, "4821")).toMatchObject({ ok: false, error: "locked" });
+      advance(MINUTE);
+      expect(await pins.check(PARENT, "4821")).toEqual({ ok: true });
+    });
 
-  it("gives a new salt each time the same parent sets the same PIN", async () => {
-    const { pins, store } = setup();
-    await pins.set(PARENT, "4821");
-    const first = store.rows()[0].hash;
-    await pins.set(PARENT, "4821", "4821");
-    expect(store.rows()[0].hash).not.toBe(first);
-  });
-});
+    it("does not let a wrong PIN extend the lock", async () => {
+      const { pins, advance, now } = setup();
+      await pins.set(PARENT, "4821");
+      const start = now();
+      for (let i = 0; i < PIN_POLICY.maxAttempts; i++) await pins.check(PARENT, WRONG);
+      advance(5 * MINUTE);
+      expect(await pins.check(PARENT, WRONG)).toEqual({ ok: false, error: "locked", retryAt: start + PIN_POLICY.lockMs });
+    });
 
-describe("changing a PIN", () => {
-  it("needs the current PIN when one is set", async () => {
-    const { pins } = setup();
-    await pins.set(PARENT, "4821");
-    expect(await pins.set(PARENT, "1111")).toEqual({ ok: false, error: "current_required" });
-    expect(await pins.set(PARENT, "1111", "0000")).toMatchObject({ ok: false, error: "wrong" });
-    expect(await pins.check(PARENT, "4821")).toEqual({ ok: true });
-  });
+    it("gives a fresh set of attempts after the lock ends", async () => {
+      const { pins, advance } = setup();
+      await pins.set(PARENT, "4821");
+      for (let i = 0; i < PIN_POLICY.maxAttempts; i++) await pins.check(PARENT, WRONG);
+      advance(PIN_POLICY.lockMs);
+      expect(await pins.check(PARENT, WRONG)).toMatchObject({ ok: false, error: "wrong", attemptsLeft: PIN_POLICY.maxAttempts - 1 });
+    });
 
-  it("replaces the PIN when the current one is right: the new one works and the old one does not", async () => {
-    const { pins } = setup();
-    await pins.set(PARENT, "4821");
-    expect(await pins.set(PARENT, "1111", "4821")).toEqual({ ok: true });
-    expect(await pins.check(PARENT, "1111")).toEqual({ ok: true });
-    expect(await pins.check(PARENT, "4821")).toMatchObject({ ok: false, error: "wrong" });
-  });
+    it("resets the count after the right PIN", async () => {
+      const { pins } = setup();
+      await pins.set(PARENT, "4821");
+      for (let i = 0; i < PIN_POLICY.maxAttempts - 1; i++) await pins.check(PARENT, WRONG);
+      expect(await pins.check(PARENT, "4821")).toEqual({ ok: true });
+      expect(await pins.check(PARENT, WRONG)).toMatchObject({ ok: false, error: "wrong", attemptsLeft: PIN_POLICY.maxAttempts - 1 });
+    });
 
-  it("refuses a malformed new PIN and keeps the old one", async () => {
-    const { pins } = setup();
-    await pins.set(PARENT, "4821");
-    expect(await pins.set(PARENT, "12", "4821")).toEqual({ ok: false, error: "invalid" });
-    expect(await pins.check(PARENT, "4821")).toEqual({ ok: true });
-  });
-});
+    it("limits each parent apart", async () => {
+      const { pins } = setup();
+      await pins.set(PARENT, "4821");
+      await pins.set(OTHER, "9090");
+      for (let i = 0; i < PIN_POLICY.maxAttempts; i++) await pins.check(PARENT, WRONG);
+      expect(await pins.check(PARENT, "4821")).toMatchObject({ ok: false, error: "locked" });
+      expect(await pins.check(OTHER, "9090")).toEqual({ ok: true });
+    });
 
-describe("the attempt limit", () => {
-  const WRONG = "0000";
+    it("allows only the attempts in the limit when guesses arrive at the same time", async () => {
+      const { pins } = setup();
+      await pins.set(PARENT, "4821");
+      // 40 guesses together, with the right PIN last: only the first few are checked.
+      const guesses = Array.from({ length: 40 }, (_, i) => (i === 39 ? "4821" : String(1000 + i)));
+      const results = await Promise.all(guesses.map((g) => pins.check(PARENT, g)));
+      const checked = results.filter((r) => r.ok || r.error === "wrong");
+      expect(checked.length).toBeLessThanOrEqual(PIN_POLICY.maxAttempts);
+      expect(results.at(-1)).toMatchObject({ ok: false, error: "locked" });
+    });
 
-  it("counts down the attempts left on each wrong PIN", async () => {
-    const { pins } = setup();
-    await pins.set(PARENT, "4821");
-    const lefts = [];
-    for (let i = 0; i < PIN_POLICY.maxAttempts - 1; i++) {
-      const r = await pins.check(PARENT, WRONG);
-      expect(r).toMatchObject({ ok: false, error: "wrong" });
-      if (!r.ok && r.error === "wrong") lefts.push(r.attemptsLeft);
-    }
-    expect(lefts).toEqual([4, 3, 2, 1]);
-  });
+    it("applies the limit to the current PIN when changing a PIN", async () => {
+      const { pins } = setup();
+      await pins.set(PARENT, "4821");
+      for (let i = 0; i < PIN_POLICY.maxAttempts; i++) await pins.set(PARENT, "1111", WRONG);
+      expect(await pins.set(PARENT, "1111", "4821")).toMatchObject({ ok: false, error: "locked" });
+      expect(await pins.check(PARENT, "4821")).toMatchObject({ ok: false, error: "locked" });
+    });
 
-  it("refuses for a period after the last wrong attempt, even for the right PIN", async () => {
-    const { pins, advance, now } = setup();
-    await pins.set(PARENT, "4821");
-    const start = now();
-    for (let i = 0; i < PIN_POLICY.maxAttempts - 1; i++) await pins.check(PARENT, WRONG);
-    expect(await pins.check(PARENT, WRONG)).toEqual({ ok: false, error: "locked", retryAt: start + PIN_POLICY.lockMs });
-    advance(PIN_POLICY.lockMs - MINUTE);
-    expect(await pins.check(PARENT, "4821")).toMatchObject({ ok: false, error: "locked" });
-    advance(MINUTE);
-    expect(await pins.check(PARENT, "4821")).toEqual({ ok: true });
-  });
+    it("clears the lock when the parent sets a new PIN after a right current PIN", async () => {
+      const { pins } = setup();
+      await pins.set(PARENT, "4821");
+      for (let i = 0; i < PIN_POLICY.maxAttempts - 1; i++) await pins.check(PARENT, WRONG);
+      expect(await pins.set(PARENT, "1111", "4821")).toEqual({ ok: true });
+      expect(await pins.check(PARENT, "1111")).toEqual({ ok: true });
+    });
 
-  it("does not let a wrong PIN extend the lock", async () => {
-    const { pins, advance, now } = setup();
-    await pins.set(PARENT, "4821");
-    const start = now();
-    for (let i = 0; i < PIN_POLICY.maxAttempts; i++) await pins.check(PARENT, WRONG);
-    advance(5 * MINUTE);
-    expect(await pins.check(PARENT, WRONG)).toEqual({ ok: false, error: "locked", retryAt: start + PIN_POLICY.lockMs });
+    it("does not count a malformed PIN as an attempt", async () => {
+      const { pins } = setup();
+      await pins.set(PARENT, "4821");
+      for (let i = 0; i < 10; i++) expect(await pins.check(PARENT, "12")).toEqual({ ok: false, error: "invalid" });
+      expect(await pins.check(PARENT, "4821")).toEqual({ ok: true });
+    });
   });
-
-  it("gives a fresh set of attempts after the lock ends", async () => {
-    const { pins, advance } = setup();
-    await pins.set(PARENT, "4821");
-    for (let i = 0; i < PIN_POLICY.maxAttempts; i++) await pins.check(PARENT, WRONG);
-    advance(PIN_POLICY.lockMs);
-    expect(await pins.check(PARENT, WRONG)).toMatchObject({ ok: false, error: "wrong", attemptsLeft: PIN_POLICY.maxAttempts - 1 });
-  });
-
-  it("resets the count after the right PIN", async () => {
-    const { pins } = setup();
-    await pins.set(PARENT, "4821");
-    for (let i = 0; i < PIN_POLICY.maxAttempts - 1; i++) await pins.check(PARENT, WRONG);
-    expect(await pins.check(PARENT, "4821")).toEqual({ ok: true });
-    expect(await pins.check(PARENT, WRONG)).toMatchObject({ ok: false, error: "wrong", attemptsLeft: PIN_POLICY.maxAttempts - 1 });
-  });
-
-  it("limits each parent apart", async () => {
-    const { pins } = setup();
-    await pins.set(PARENT, "4821");
-    await pins.set(OTHER, "9090");
-    for (let i = 0; i < PIN_POLICY.maxAttempts; i++) await pins.check(PARENT, WRONG);
-    expect(await pins.check(PARENT, "4821")).toMatchObject({ ok: false, error: "locked" });
-    expect(await pins.check(OTHER, "9090")).toEqual({ ok: true });
-  });
-
-  it("allows only the attempts in the limit when guesses arrive at the same time", async () => {
-    const { pins } = setup();
-    await pins.set(PARENT, "4821");
-    // 40 guesses together, with the right PIN last: only the first few are checked.
-    const guesses = Array.from({ length: 40 }, (_, i) => (i === 39 ? "4821" : String(1000 + i)));
-    const results = await Promise.all(guesses.map((g) => pins.check(PARENT, g)));
-    const checked = results.filter((r) => r.ok || r.error === "wrong");
-    expect(checked.length).toBeLessThanOrEqual(PIN_POLICY.maxAttempts);
-    expect(results.at(-1)).toMatchObject({ ok: false, error: "locked" });
-  });
-
-  it("applies the limit to the current PIN when changing a PIN", async () => {
-    const { pins } = setup();
-    await pins.set(PARENT, "4821");
-    for (let i = 0; i < PIN_POLICY.maxAttempts; i++) await pins.set(PARENT, "1111", WRONG);
-    expect(await pins.set(PARENT, "1111", "4821")).toMatchObject({ ok: false, error: "locked" });
-    expect(await pins.check(PARENT, "4821")).toMatchObject({ ok: false, error: "locked" });
-  });
-
-  it("clears the lock when the parent sets a new PIN after a right current PIN", async () => {
-    const { pins } = setup();
-    await pins.set(PARENT, "4821");
-    for (let i = 0; i < PIN_POLICY.maxAttempts - 1; i++) await pins.check(PARENT, WRONG);
-    expect(await pins.set(PARENT, "1111", "4821")).toEqual({ ok: true });
-    expect(await pins.check(PARENT, "1111")).toEqual({ ok: true });
-  });
-
-  it("does not count a malformed PIN as an attempt", async () => {
-    const { pins } = setup();
-    await pins.set(PARENT, "4821");
-    for (let i = 0; i < 10; i++) expect(await pins.check(PARENT, "12")).toEqual({ ok: false, error: "invalid" });
-    expect(await pins.check(PARENT, "4821")).toEqual({ ok: true });
-  });
-});
 });
 
 describe("the server functions", () => {
-  const withPins = () => {
-    const pins = parentPins(memoryPinStore());
-    return pins;
-  };
+  const withPins = () => parentPins(memoryPinStore());
 
   it("checkParentPin: the desk's exit check accepts the right PIN and refuses a wrong one", async () => {
     const pins = withPins();

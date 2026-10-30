@@ -45,7 +45,8 @@ export type CheckResult =
 export type SetResult =
   | { ok: true }
   | { ok: false; error: "invalid" | "current_required" }
-  | Exclude<CheckResult, { ok: true } | { error: "invalid" | "not_set" }>;
+  | { ok: false; error: "wrong"; attemptsLeft: number }
+  | { ok: false; error: "locked"; retryAt: number };
 
 export interface ParentPins {
   isSet(parentId: string): Promise<boolean>;
