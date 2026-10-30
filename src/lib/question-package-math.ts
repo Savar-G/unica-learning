@@ -16,20 +16,36 @@ import type {
   Operation,
   OperationKind,
   Place,
+  Unit,
   WorkedStep,
 } from "@/lib/question-package";
+import {
+  PLACE_ORDER,
+  addColumns,
+  beyond,
+  digitAt,
+  digitCount,
+  fail,
+  fromWritten,
+  isCount,
+  isOne,
+  isTwo,
+  multiplyRows,
+  placeAt,
+  subtractColumns,
+  whole,
+  written,
+  type OperationProblem,
+  type Written,
+} from "@/lib/question-package-columns";
+import { ALGEBRA_KINDS, algebraStepText } from "@/lib/question-package-algebra";
+import { MEASURE_KINDS, amountText, measureStepText } from "@/lib/question-package-measures";
 
-/** The columns of the written method, from the smallest place. */
-const PLACE_ORDER: readonly Place[] = [
-  "thousandths", "hundredths", "tenths", "ones", "tens", "hundreds", "thousands", "ten thousands", "hundred thousands", "millions",
-];
 /** A place's unit name, for "carry 1 ten". */
 const UNIT: Record<Place, string> = {
   thousandths: "thousandth", hundredths: "hundredth", tenths: "tenth", ones: "one", tens: "ten", hundreds: "hundred",
   thousands: "thousand", "ten thousands": "ten thousand", "hundred thousands": "hundred thousand", millions: "million",
 };
-/** The place of a column: 0 is the ones, 1 the tens, -1 the tenths. */
-const placeAt = (column: number): Place => PLACE_ORDER[column + 3];
 const left = (place: Place) => PLACE_ORDER[PLACE_ORDER.indexOf(place) + 1];
 const right = (place: Place) => PLACE_ORDER[PLACE_ORDER.indexOf(place) - 1];
 
@@ -37,110 +53,8 @@ const MINUS = "−";
 const TIMES = "×";
 const DIVIDE = "÷";
 
-const digitAt = (n: number, i: number) => Math.floor(n / 10 ** i) % 10;
-const digitCount = (n: number) => String(n).length;
-
 export const gcd = (a: number, b: number): number => (b === 0 ? Math.abs(a) : gcd(b, a % b));
 export const lcm = (a: number, b: number) => (a / gcd(a, b)) * b;
-
-// ---------- Written numbers ----------
-
-/** A number as written in a column: its digits without the point, and its count of decimal places (3.45 is 345, 2). */
-interface Written {
-  scaled: number;
-  places: number;
-}
-
-/** A whole or decimal number as written, or null when it has more than `maxPlaces` decimal places or is negative. */
-function written(x: unknown, maxPlaces: number): Written | null {
-  if (typeof x !== "number" || !Number.isFinite(x) || x < 0) return null;
-  // String() gives the shortest digits that read back as the same number: the number as written.
-  const m = /^(\d+)(?:\.(\d+))?$/.exec(String(x));
-  if (!m) return null;
-  const decimals = m[2] ?? "";
-  if (decimals.length > maxPlaces) return null;
-  return { scaled: Number(m[1] + decimals), places: decimals.length };
-}
-
-/** The number written by digits and a count of decimal places: (325, 2) is 3.25. */
-function fromWritten(scaled: number, places: number): number {
-  if (places === 0) return scaled;
-  const digits = String(scaled).padStart(places + 1, "0");
-  return Number(`${digits.slice(0, -places)}.${digits.slice(-places)}`);
-}
-
-const whole = (n: number): Written => ({ scaled: n, places: 0 });
-/** Digits left of the point; 0.5 has one, its 0. */
-const wholeDigits = (w: Written) => digitCount(Math.floor(w.scaled / 10 ** w.places));
-const hasDigit = (w: Written, column: number) => column >= -w.places && column < wholeDigits(w);
-const digitOf = (w: Written, column: number) => digitAt(w.scaled, column + w.places);
-
-// ---------- Column methods ----------
-
-/** Column addition, lined up on the point, from the smallest place; `prefix` names the steps ("sum-"). */
-function addColumns(numbers: Written[], prefix = ""): WorkedStep[] {
-  const steps: WorkedStep[] = [];
-  const top = Math.max(...numbers.map(wholeDigits));
-  let carry = 0;
-  for (let column = -Math.max(...numbers.map((n) => n.places)); column < top || carry > 0; column++) {
-    const digits = numbers.filter((n) => hasDigit(n, column)).map((n) => digitOf(n, column));
-    const total = digits.reduce((s, d) => s + d, 0) + carry;
-    const place = placeAt(column);
-    steps.push({ id: prefix + place, kind: "add-column", place, digits, carryIn: carry, total, write: total % 10, carryOut: Math.floor(total / 10) });
-    carry = Math.floor(total / 10);
-  }
-  return steps;
-}
-
-/** Column subtraction, lined up on the point. A top number with fewer decimal places gets a 0 written in. */
-function subtractColumns(a: Written, b: Written): WorkedStep[] {
-  const places = Math.max(a.places, b.places);
-  const difference = a.scaled * 10 ** (places - a.places) - b.scaled * 10 ** (places - b.places);
-  const steps: WorkedStep[] = [];
-  let lent = false;
-  for (let column = -places; column < wholeDigits(a); column++) {
-    const addedZero = !hasDigit(a, column);
-    const top = addedZero ? 0 : digitOf(a, column);
-    const bottom = hasDigit(b, column) ? digitOf(b, column) : null;
-    const regrouped: boolean = top - (lent ? 1 : 0) < (bottom ?? 0);
-    const write = top - (lent ? 1 : 0) + (regrouped ? 10 : 0) - (bottom ?? 0);
-    // The columns left of the ones that are 0 on the left of the result are not written.
-    const leading = column > 0 && Math.floor(difference / 10 ** (column + places)) === 0;
-    const place = placeAt(column);
-    steps.push({ id: place, kind: "subtract-column", place, top, bottom, lent, regrouped, write: leading ? null : write, ...(addedZero ? { addedZero: true as const } : {}) });
-    lent = regrouped;
-  }
-  return steps;
-}
-
-/**
- * Long multiplication of whole numbers: one row for each digit of the multiplier (a 0 digit of a longer multiplier
- * has no row), each row digit by digit with its carries, then the rows added in columns.
- */
-function multiplyRows(a: number, b: number): WorkedStep[] {
-  const steps: WorkedStep[] = [];
-  const rows: number[] = [];
-  const multiplierDigits = digitCount(b);
-  for (let j = 0; j < multiplierDigits; j++) {
-    const multiplier = digitAt(b, j);
-    if (multiplier === 0 && multiplierDigits > 1) continue;
-    const row = placeAt(j);
-    const value = a * multiplier;
-    let carry = 0;
-    for (let i = 0; i < digitCount(a) || carry > 0; i++) {
-      const top = i < digitCount(a) ? digitAt(a, i) : null;
-      const total = (top ?? 0) * multiplier + carry;
-      // A row of 0s from a 0 multiplier writes one 0, not one for each digit.
-      const leading = i > 0 && Math.floor(value / 10 ** i) === 0;
-      steps.push({ id: `r${j + 1}-${placeAt(i)}`, kind: "multiply-digit", row, place: placeAt(i), top, multiplier, carryIn: carry, total, write: leading ? null : total % 10, carryOut: Math.floor(total / 10) });
-      carry = Math.floor(total / 10);
-    }
-    rows.push(value * 10 ** j);
-    if (multiplierDigits > 1) steps.push({ id: `r${j + 1}`, kind: "partial-product", row, multiplier, zeros: j, value: value * 10 ** j });
-  }
-  if (rows.length > 1) steps.push(...addColumns(rows.map(whole), "sum-"));
-  return steps;
-}
 
 /** Long division, one digit of the dividend at a time, from the left. */
 function divideDigits(dividend: number, divisor: number): WorkedStep[] {
@@ -278,22 +192,6 @@ function equivalentTo(op: EquivalentOperation): FractionParts {
 
 type Fields = Record<string, unknown>;
 
-/**
- * Why code does not trust an operation: "failed" when the operation is wrong (a fraction over 0, a subtraction below
- * zero), "unsupported" when it is well formed but beyond what code computes (a multiplier of 1000).
- */
-export interface OperationProblem {
-  status: "failed" | "unsupported";
-  reason: string;
-}
-const fail = (reason: string): OperationProblem => ({ status: "failed", reason });
-const beyond = (reason: string): OperationProblem => ({ status: "unsupported", reason });
-
-const isCount = (v: unknown): v is number => Number.isSafeInteger(v) && (v as number) >= 0;
-// Every position must be present: Array.every skips a missing one ([, 1]), so the operand checks would pass it.
-const isTwo = (operands: unknown): operands is [unknown, unknown] => Array.isArray(operands) && operands.length === 2 && 0 in operands && 1 in operands;
-const isOne = (operands: unknown): operands is [unknown] => Array.isArray(operands) && operands.length === 1 && 0 in operands;
-
 const MAX_WHOLE = 9999;
 const MAX_MULTIPLIER = 999;
 const MAX_DIVISOR = 99;
@@ -369,18 +267,21 @@ function oneFractionProblem(op: Fields): OperationProblem | null {
 
 // ---------- The operation kinds ----------
 
-type Of<K extends OperationKind> = Extract<Operation, { kind: K }>;
+export type Of<K extends OperationKind> = Extract<Operation, { kind: K }>;
 type FractionPairOperation = Of<"fraction-add" | "fraction-subtract" | "fraction-multiply" | "fraction-divide">;
 type EquivalentOperation = Of<"fraction-equivalent">;
 
-/** What counts as the answer: exactly the value the operation gives, or that value in any simplest form. */
-export type AnswerRule = "result" | "simplest";
-/** Which other forms may be accepted: any form of the same number, only simplest forms, or none. */
-export type AcceptedRule = "same-number" | "simplest" | "none";
+/**
+ * What counts as the answer: exactly the value the operation gives, that value in any simplest form, or the same amount
+ * in any unit of its measure (only in the unit the question asks for, when it asks for one).
+ */
+export type AnswerRule = "result" | "simplest" | "amount";
+/** Which other forms may be accepted: any form of the same number, only simplest forms, none, or the same amount. */
+export type AcceptedRule = "same-number" | "simplest" | "none" | "amount";
 /** Which forms of the answer's number may still be listed as wrong: none, fractions not simplified, or any other form. */
 export type SameNumberWrongRule = "never" | "unsimplified" | "any";
 
-interface KindRules<O extends Operation> {
+export interface KindRules<O extends Operation> {
   /** What is wrong with the operation's operands, or null. The operation has this kind. */
   problem(op: Fields): OperationProblem | null;
   /** The operation as the child reads it, without the answer: "48 + 37", "Simplify 6/8", "3/4 = ?/12". */
@@ -393,6 +294,12 @@ interface KindRules<O extends Operation> {
   result(op: O): AnswerValue;
   /** The exact number, when the result is not a number or a fraction: 17 ÷ 4 is 17/4. */
   exact?(op: O): AnswerValue;
+  /** The unit the question asks the answer in, for an amount; none means any unit of the measure. */
+  unit?(op: O): Unit | null;
+  /** The result step in words, when it is not "<statement> = <value>". */
+  say?(op: O, value: AnswerValue): string;
+  /** The top number of the columns as worked, when it is not the first operand (an amount changed to a smaller unit). */
+  top?(op: O): { scaled: number; text: string };
   answer: AnswerRule;
   accepted: AcceptedRule;
   sameNumberWrong: SameNumberWrongRule;
@@ -402,6 +309,7 @@ interface KindRules<O extends Operation> {
 export interface Computation<O extends Operation = Operation> extends KindRules<O> {
   statement(op: O): string;
   exact(op: O): AnswerValue;
+  unit(op: O): Unit | null;
 }
 
 const text = (v: unknown) => (typeof v === "number" ? String(v) : valueText(v as FractionOperand));
@@ -522,6 +430,8 @@ const KINDS: { [K in OperationKind]: KindRules<Of<K>> } = {
     steps: scaleSteps,
     result: (op) => ({ type: "fraction", ...equivalentTo(op) }),
   },
+  ...MEASURE_KINDS,
+  ...ALGEBRA_KINDS,
 };
 
 function decimalResult(op: { operands: [number, number] }, how: "add" | "subtract" | "multiply"): AnswerValue {
@@ -539,7 +449,7 @@ export const isOperationKind = (kind: unknown): kind is OperationKind => typeof 
 /** The computation of an operation whose kind is known. */
 export function computation(op: Operation): Computation {
   const rules = KINDS[op.kind] as unknown as KindRules<Operation>;
-  return { ...rules, statement: rules.statement ?? rules.text, exact: rules.exact ?? rules.result };
+  return { ...rules, statement: rules.statement ?? rules.text, exact: rules.exact ?? rules.result, unit: rules.unit ?? (() => null) };
 }
 
 /** What is wrong with an operation, or null: "failed" for a wrong operation, "unsupported" for one beyond code. */
@@ -570,13 +480,17 @@ export function workedSteps(operation: Operation): WorkedStep[] {
 export function valueText(value: AnswerValue): string {
   switch (value.type) {
     case "number":
-      return String(value.value);
+      return String(value.value).replace(/^-/, MINUS);
     case "fraction":
       return `${value.numerator}/${value.denominator}`;
     case "mixed":
       return `${value.whole} ${value.numerator}/${value.denominator}`;
     case "remainder":
       return `${value.quotient} R ${value.remainder}`;
+    case "quantity":
+    case "compound":
+    case "time":
+      return amountText(value);
     default:
       return value.value;
   }
@@ -601,7 +515,7 @@ export function stepText(step: WorkedStep, operation: Operation): string {
       const { place, top, bottom, lent, regrouped, write } = step;
       const have = top - (lent ? 1 : 0);
       const from = have + (regrouped ? 10 : 0);
-      const zero = step.addedZero ? `Write a 0 in the ${place} of ${text(operation.operands[0])}.` : "";
+      const zero = step.addedZero ? `Write a 0 in the ${place} of ${computation(operation).top?.(operation).text ?? text(operation.operands[0])}.` : "";
       // A column of 0 that must give 1 to its right first takes 1 from its left: say it in that order.
       const regroup = have < 0
         ? `There were 0 ${place}, so regroup 1 ${UNIT[left(place)]} as 10 ${place}; after the 1 ${UNIT[place]} given to the ${right(place)}, ${from} ${place} are left.`
@@ -623,7 +537,7 @@ export function stepText(step: WorkedStep, operation: Operation): string {
     }
     case "partial-product": {
       const { row, multiplier, zeros, value } = step;
-      const top = written(operation.operands[0], MAX_PLACES)?.scaled ?? 0;
+      const top = computation(operation).top?.(operation).scaled ?? written(operation.operands[0], MAX_PLACES)?.scaled ?? 0;
       const line = `The ${row} row: ${top} ${TIMES} ${multiplier * 10 ** zeros} = ${value}.`;
       return zeros === 0 ? line : `${line} It starts with ${zeros} ${zeros === 1 ? "zero" : "zeros"} because the ${multiplier} is in the ${row}.`;
     }
@@ -661,7 +575,20 @@ export function stepText(step: WorkedStep, operation: Operation): string {
       return `${partsText(step.from)} is ${step.whole} ${step.whole === 1 ? "whole" : "wholes"} and ${partsText(step.rest)} more: ${step.whole} ${partsText(step.rest)}.`;
     case "scale-fraction":
       return `${capital(step.by)} the numerator and the denominator by ${step.factor}: ${partsText(step.from)} = ${partsText(step.to)}.`;
-    case "result":
-      return `${computation(operation).statement(operation)} = ${valueText(step.value)}`;
+    case "convert-unit":
+    case "round-cash":
+    case "count-on":
+    case "add-durations":
+    case "clock-change":
+      return measureStepText(step, operation.kind, computation(operation).unit(operation));
+    case "substitute":
+    case "operate":
+    case "inverse":
+    case "check":
+      return algebraStepText(step);
+    case "result": {
+      const rules = computation(operation);
+      return rules.say ? rules.say(operation, step.value) : `${rules.statement(operation)} = ${valueText(step.value)}`;
+    }
   }
 }
