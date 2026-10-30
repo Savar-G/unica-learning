@@ -121,7 +121,7 @@ describe("assessmentQuestionPackage", () => {
         const result = assessmentQuestionPackage({ source: "assessment", assessmentId: TEST, questionId: question.id }, question);
         if (result.status !== "found") throw new Error(`${templateId} seed ${seed}: ${JSON.stringify(result)}`);
         expect(String((result.package.answer.value as { value: number }).value)).toBe(question.answer);
-        expect(checkQuestionPackage(result.package)).toEqual({ ok: true, package: result.package });
+        expect(checkQuestionPackage(result.package)).toEqual({ ok: true, status: "checked", package: result.package });
       }
     }
   });
