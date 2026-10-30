@@ -2228,6 +2228,7 @@ export type Database = {
         Args: { p: string; test_copy: Json; test_id: string; token: string }
         Returns: boolean
       }
+      save_workbook_rendering: { Args: { p_rendering: Json }; Returns: Json }
       write_workbook: {
         Args: { p_schema_version: number; p_workbook: Json }
         Returns: Json
