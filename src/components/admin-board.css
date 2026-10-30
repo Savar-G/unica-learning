@@ -1,0 +1,18 @@
+/* The admin board preview (#319): two fonts side by side from 700 px (tablet and laptop), stacked on a phone. */
+.adm-board-controls { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 12px; margin: 18px 0 8px; }
+.adm-board-controls .adm-btn { min-height: 44px; }
+.adm-board-controls .adm-note { margin: 0; }
+.adm-board-controls :focus-visible, .adm-board-licence a:focus-visible { outline: 2px solid var(--sky); outline-offset: 2px; }
+
+.adm-board-compare { display: grid; gap: 28px; }
+@media (min-width: 700px) {
+  .adm-board-compare { grid-template-columns: 1fr 1fr; gap: 24px; }
+}
+.adm-board-font { min-width: 0; padding: 18px; border-radius: 8px; background: var(--card); }
+[data-look="warm"] .adm-main .adm-board-font h2 { margin: 0 0 4px; }
+.adm-board-font figure { margin: 14px 0 0; }
+.adm-board-font figcaption { margin-top: 6px; font: 400 12px/1.3 var(--mono); letter-spacing: 0.03em; text-transform: uppercase; color: var(--ink-2); }
+.adm-board-licence { margin: 14px 0 0; font-size: 13px; color: var(--ink-2); }
+.adm-board-licence a { color: var(--ink); }
+/* The sum at a size a child would see on a tablet, not stretched across a wide card. */
+.adm-board-font .maya-board { max-height: 380px; }

@@ -180,6 +180,11 @@ export interface BoardPath {
   /** The polyline's length in board widths. */
   length: number;
   durationMs: number;
+  /**
+   * Where the stroke is painted among Maya's strokes in its layer (lower first): the command that revealed it, then its
+   * place among that command's strokes. Stable: a stroke an undo brings back keeps it.
+   */
+  order: number;
 }
 
 /** A newly drawn stroke, with when it starts, in ms from the start of the batch. */

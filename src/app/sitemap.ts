@@ -4,13 +4,14 @@ import { resourcePath, RESOURCES } from "@/lib/resources";
 import { blogPath, BLOG_POSTS } from "@/lib/blog";
 
 // Only public, indexable pages. /thank-you and the 404 page stay out.
-// Supporting pages (privacy, terms) stay out of search. The home page, /our-story, /compare, /rewards, /curriculum, /sample-report, /contact and the
+// Supporting pages (privacy, terms) stay out of search. The home page, /our-story, /compare, /rewards, /whats-included, /curriculum, /sample-report, /contact and the
 // Resources section (hub plus every article in src/lib/resources.ts) and the Blog (hub plus every post in src/lib/blog.ts) are indexable.
 const PATHS: { path: string; updated?: string }[] = [
   { path: "/" },
   { path: "/our-story" },
   { path: "/compare" },
   { path: "/rewards" },
+  { path: "/whats-included" },
   { path: "/curriculum" },
   { path: "/sample-report" },
   { path: "/contact" },

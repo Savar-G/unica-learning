@@ -406,9 +406,12 @@ describe("layout and pages", () => {
     expect(boardPaths(scene).filter((p) => p.objectId === "link").map((p) => p.kind)).toEqual(["arrow", "arrow", "arrow"]);
     scene = ok(scene, { op: "focus", target: { objectId: "eq", part: "whole" } });
     expect(boardView(scene)).toEqual({ page: 1, target: { objectId: "eq", part: "whole" } });
+    // Relief SingleLine (D-182) has letters, so Maya can write words; a sign outside the font is still refused.
     const letters = applyBatch(scene, { transactionId: "abc", commands: [{ op: "write", id: "w", text: "carry", place: { region: "main" } }] });
-    expect(letters.ok).toBe(false);
-    if (!letters.ok) expect(letters.refusal.code).toBe("unsupported");
+    expect(letters.ok).toBe(true);
+    const unknown = applyBatch(scene, { transactionId: "abd", commands: [{ op: "write", id: "u", text: "\u2603", place: { region: "main" } }] });
+    expect(unknown.ok).toBe(false);
+    if (!unknown.ok) expect(unknown.refusal.code).toBe("unsupported");
   });
 });
 

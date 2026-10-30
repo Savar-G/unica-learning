@@ -15,6 +15,8 @@ import { track } from "@/lib/track";
 import { SUPPORT_EMAIL, SUPPORT_HREF } from "@/lib/contact";
 import { markAdStep } from "@/lib/ad-visit-steps";
 import { SOURCE_STORAGE_KEY, VISIT_STORAGE_KEY, visitSource } from "@/lib/visit-source";
+import { mayActAsParent } from "@/components/desk-guard";
+import { DESK_HOME } from "@/lib/desk";
 
 // The tags are kept for the tab on whichever page the visitor lands (VisitTags in the root layout), so a parent who
 // browses first, or signs up with Google (and finishes on /account/finish), keeps them.
@@ -33,6 +35,8 @@ function collectSource() {
 async function post(url: string, body: unknown): Promise<AccountResult> {
   try {
     const res = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+    // 423: the child's desk is open on this device (#301); an old page goes to the desk.
+    if (res.status === 423) window.location.replace(DESK_HOME);
     return (await res.json()) as AccountResult;
   } catch {
     return { ok: false, error: "store_failed" };
@@ -750,7 +754,12 @@ export function StartTest({ childId, name, state, report }: { childId: string; n
 export function SignOut() {
   const router = useRouter();
   return (
-    <button className="acct-link" type="button" onClick={async () => { await browserClient().auth.signOut(); router.replace("/sign-in"); }}>
+    <button className="acct-link" type="button" onClick={async () => {
+      // The desk (#301): a restored or old page must not sign the parent out while the child's desk is open.
+      if (!(await mayActAsParent())) return;
+      await browserClient().auth.signOut();
+      router.replace("/sign-in");
+    }}>
       Sign out
     </button>
   );
@@ -1019,6 +1028,8 @@ export function NewPassword() {
     }
     setBusy(true);
     setError(null);
+    // The desk (#301): the password change goes straight to Supabase, so it asks first whether the desk is open.
+    if (!(await mayActAsParent())) return;
     const { error: updateError } = await browserClient().auth.updateUser({ password });
     if (updateError) {
       track("password_change_failed", { code: updateError.code ?? "unknown" });
@@ -1074,6 +1085,7 @@ export function PinForm({ isSet }: { isSet: boolean }) {
     let answer: PinFormResult;
     try {
       const res = await fetch("/api/account/pin", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(isSet ? { pin, current } : { pin }) });
+      if (res.status === 423) window.location.replace(DESK_HOME);
       answer = (await res.json()) as PinFormResult;
     } catch {
       answer = { ok: false, error: "unavailable" };

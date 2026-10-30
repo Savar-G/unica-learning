@@ -235,7 +235,9 @@ describe("geometry shapes", () => {
     // A is the bottom-left corner: its name sits below and left of it.
     expect(a.top).toBeGreaterThan(ab.bottom - 0.01);
     expect(a.right).toBeLessThan(da.left + 0.01);
-    const plain = ok(createScene(), model("sq", spec));
+    // The board's own font (Relief SingleLine) has letters, so a plain scene writes the names too.
+    expect(boardPaths(ok(createScene(), model("sq", spec))).some((p) => p.glyph === "A")).toBe(true);
+    const plain = ok(createScene({ glyphs: PLACEHOLDER_GLYPHS }), model("sq", spec));
     expect(boardPaths(plain).some((p) => p.glyph === "A")).toBe(false);
     // The summary says the letter is not on the board, so Maya does not ask the child to look for it.
     expect(info(plain, piece("sq", "vertex-A")).label).toMatch(/name A is not written/);
@@ -298,7 +300,7 @@ describe("coordinate grids", () => {
     expect(name.left).toBeGreaterThan(p.left);
     expect(name.bottom).toBeLessThan(p.bottom);
     expect(info(scene, piece("g", "point-P")).label).not.toMatch(/not written/);
-    const plain = ok(createScene(), model("g", { kind: "coordinate_grid", xMin: 0, xMax: 4, yMin: 0, yMax: 4, points: [{ name: "P", x: 1, y: 1 }] }));
+    const plain = ok(createScene({ glyphs: PLACEHOLDER_GLYPHS }), model("g", { kind: "coordinate_grid", xMin: 0, xMax: 4, yMin: 0, yMax: 4, points: [{ name: "P", x: 1, y: 1 }] }));
     expect(info(plain, piece("g", "point-P")).label).toMatch(/name P is not written/);
   });
 });
