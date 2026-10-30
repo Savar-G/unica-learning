@@ -1,13 +1,15 @@
 // Loads the sample workbook (#299, src/lib/workbook-sample.ts) for a child of a test family, rendered by the workbook
 // renderer (#309) with the fixed test template and Chromium: it stores the PDF and the page images in the private
 // bucket "workbook-pages", then writes the whole workbook with its measured question boxes through the workbook store.
-// It refuses a family that is not marked as a test family (public.test_accounts). If an upload or the write fails, it
-// removes the files it stored.
+// It refuses a family that is not marked as a test family (public.test_accounts). If an upload fails or the store
+// refuses, it removes the files it stored; if the write's answer is lost, the files stay (the workbook may be stored).
 //
-// --rerender <workbook id> renders a stored workbook of a test family again, keeping its id, page tokens, content and
-// status: it renders first, then deletes the old rows and files and writes the workbook again through the store (the
-// store has no update yet), then puts back its status and dates. It refuses a workbook with learning events, which the
-// delete would remove with it. If the write fails after the delete, the workbook is gone: load a new sample.
+// --rerender <workbook id> renders a stored workbook of a test family again with replaceRendering
+// (src/lib/workbook-render.ts): it stores the new files under new names, swaps the workbook to them in one database
+// transaction (save_workbook_rendering: the workbook row, its page tokens, content, status and learning events stay),
+// then removes the old files. If anything fails before the swap, the old rendering stays as it was.
+//
+// Every render's files get a new random key in their names, so a retry never meets the files of a failed attempt.
 //
 // Usage: node scripts/load-workbook-sample.mjs --child <child id> [--number <n>]
 //        node scripts/load-workbook-sample.mjs --rerender <workbook id>
@@ -20,8 +22,7 @@ import { parseArgs } from "node:util";
 import { createClient } from "@supabase/supabase-js";
 import type { Database } from "@/lib/database";
 import { chromiumPrintEngine } from "@/lib/print-engine-chromium";
-import { WORKBOOK_FILES_BUCKET } from "@/lib/workbook-content";
-import { renderWorkbook, saveRenderedWorkbook, type WorkbookDraft } from "@/lib/workbook-render";
+import { renderWorkbook, replaceRendering, saveRenderedWorkbook, type WorkbookDraft } from "@/lib/workbook-render";
 import { sampleDraft } from "@/lib/workbook-sample";
 import { workbookFiles, workbookStore } from "@/lib/workbook-store";
 import { fixedTemplate } from "@/lib/workbook-template-fixed";
@@ -90,31 +91,16 @@ if (values.rerender) {
 await testFamily(parentId);
 
 const started = performance.now();
-const rendered = await renderWorkbook({ draft, parentId, template: fixedTemplate(await fixedTemplateFonts()), engine: chromiumPrintEngine() });
+const rendered = await renderWorkbook({
+  draft, parentId, template: fixedTemplate(await fixedTemplateFonts()), engine: chromiumPrintEngine(), fileKey: randomBytes(6).toString("base64url"),
+});
 const renderMs = Math.round(performance.now() - started);
 if (rendered.status !== "rendered") throw new Error(`render failed: ${JSON.stringify(rendered.problems)}`);
 
-if (old) {
-  const events = await db.from("learning_events").select("id", { count: "exact", head: true }).eq("workbook_id", old.id);
-  if (events.error) throw new Error(`learning events count: ${events.error.message}`);
-  if (events.count) throw new Error(`the workbook has ${events.count} learning events; a re-render would delete them`);
-  const { data: row, error } = await db.from("workbooks").select("status, created_at, approved_at, printed_at, shipped_at").eq("id", old.id).single();
-  if (error) throw new Error(`workbook load: ${error.message}`);
-  const oldFiles = [old.pdfPath, ...old.pages.map((p) => p.image?.path ?? null)].filter((p): p is string => p !== null);
-  const deleted = await db.from("workbooks").delete().eq("id", old.id);
-  if (deleted.error) throw new Error(`workbook delete: ${deleted.error.message}`);
-  if (oldFiles.length) {
-    const removed = await db.storage.from(WORKBOOK_FILES_BUCKET).remove(oldFiles);
-    if (removed.error) throw new Error(`old files removal: ${removed.error.message}`);
-  }
-  const result = await saveRenderedWorkbook(rendered, { files: workbookFiles(db), store });
-  if (result.status !== "written") throw new Error(`refused: ${result.reason}`);
-  const restored = await db.from("workbooks").update(row).eq("id", old.id);
-  if (restored.error) throw new Error(`status restore: ${restored.error.message}`);
-} else {
-  const result = await saveRenderedWorkbook(rendered, { files: workbookFiles(db), store });
-  if (result.status !== "written") throw new Error(`refused: ${result.reason}`);
-}
+const result = old
+  ? await replaceRendering(rendered, { files: workbookFiles(db), store, previous: old })
+  : await saveRenderedWorkbook(rendered, { files: workbookFiles(db), store });
+if (result.status !== "written") throw new Error(`refused: ${result.reason}`);
 
 const bytes = (type: string) => rendered.files.filter((f) => f.contentType === type).reduce((n, f) => n + f.bytes.length, 0);
 console.log(JSON.stringify({

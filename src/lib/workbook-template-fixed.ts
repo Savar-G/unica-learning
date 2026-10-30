@@ -36,6 +36,7 @@ const CSS = `
 .footer{margin-top:auto;display:flex;align-items:flex-end;justify-content:space-between;gap:24px}
 .brand{font-size:14px;line-height:20px;color:#6e6e73}
 .qr{display:flex;align-items:flex-end;gap:16px}
+.qr [data-measure="qr"]{width:84px;height:84px}
 .qr svg{width:84px;height:84px;display:block}
 .number{font-size:14px;color:#6e6e73;text-align:right}
 .number span{display:block;font-size:30px;line-height:38px;font-weight:600;color:#1d1d1f}
@@ -49,7 +50,7 @@ const levelText = (levels: number[]) => `${levels.length > 1 ? "Levels" : "Level
 
 function footer(page: DraftPage, parts: PageParts, book: WorkbookDraft): string {
   return `<div class="footer"><div class="brand">Unica Learning<br>Workbook ${book.number} · ${levelText(book.levels)}</div>`
-    + `<div class="qr"><div class="number">Page<span ${mark.pageNumber}>${page.number}</span></div><div ${mark.qr}>${parts.qr}</div></div></div>`;
+    + `<div class="qr"><div class="number">Page<span ${mark.pageNumber}>${page.number}</span></div>${parts.qr}</div></div>`;
 }
 
 function cover(page: DraftPage, parts: PageParts, book: WorkbookDraft): string {

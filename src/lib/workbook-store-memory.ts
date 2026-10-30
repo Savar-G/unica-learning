@@ -1,6 +1,7 @@
 import { QUESTION_PACKAGE_VERSION } from "@/lib/question-package";
 import {
   isUuid,
+  renderingProblem,
   storedQuestion,
   workbookProblem,
   type PageInput,
@@ -16,7 +17,8 @@ import {
 // The workbook store (#299) in memory, for tests: it keeps the database's behaviour. A write is checked whole before
 // anything is kept, so a refused write keeps nothing; the conflicts the database refuses (an unknown child, a file
 // outside the family's folder, a workbook number, id or QR token already used) are refused with the same reasons;
-// what is kept is a copy, as the database keeps JSON. `children`: the children the store knows, with their parent.
+// what is kept is a copy, as the database keeps JSON. A new rendering (saveRendering) is checked whole the same way.
+// `children`: the children the store knows, with their parent.
 
 interface Kept {
   summary: WorkbookSummary;
@@ -60,6 +62,32 @@ export function memoryWorkbookStore(o: { children: readonly { id: string; parent
         })),
       });
       return { status: "written", workbookId: w.id };
+    },
+
+    async saveRendering(input) {
+      const problem = renderingProblem(input);
+      if (problem) return { status: "refused", reason: problem };
+      const r = structuredClone(input);
+      const book = books.get(r.workbookId);
+      if (!book) return { status: "refused", reason: "the workbook is not known" };
+      const numbers = (list: { number: number }[]) => list.map((x) => x.number).sort((a, b) => a - b).join(",");
+      if (numbers(r.pages) !== numbers(book.pages)) return { status: "refused", reason: "the pages are not the workbook's pages" };
+      for (const p of r.pages) {
+        if (numbers(p.questions) !== numbers(book.pages.find((x) => x.number === p.number)!.questions)) {
+          return { status: "refused", reason: `page ${p.number}: the questions are not the page's questions` };
+        }
+      }
+      const folder = `${book.summary.parentId}/${r.workbookId}/`;
+      if (![r.pdfPath, ...r.pages.map((p) => p.image.path)].every((path) => path.startsWith(folder))) {
+        return { status: "refused", reason: "a file is not in the family's folder" };
+      }
+      book.summary.pdfPath = r.pdfPath;
+      for (const p of r.pages) {
+        const kept = book.pages.find((x) => x.number === p.number)!;
+        kept.image = p.image;
+        for (const q of p.questions) kept.questions.find((x) => x.number === q.number)!.box = q.box;
+      }
+      return { status: "written", workbookId: r.workbookId };
     },
 
     async workbook(id) {

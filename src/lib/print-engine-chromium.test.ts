@@ -20,8 +20,11 @@ const TOKENS = ["Xq3vR8kLm2NpT7wYzA4bCd", "Ht6sJ9uEo1GiK5lMnB8vFr", "Wp2cQ7xZa4D
 
 const chromium = await findChromium();
 const draft = () => sampleDraft({ workbookId: WORKBOOK, childId: CHILD, qrTokens: TOKENS });
-const render = async (book: WorkbookDraft) =>
-  renderWorkbook({ draft: book, parentId: PARENT, template: fixedTemplate(await fixedTemplateFonts()), engine: chromiumPrintEngine() });
+const render = async (book: WorkbookDraft, change?: (page: number, html: string) => string) => {
+  const template = fixedTemplate(await fixedTemplateFonts());
+  const changed = change ? { ...template, page: (...a: Parameters<typeof template.page>) => change(a[0].number, template.page(...a)!) } : template;
+  return renderWorkbook({ draft: book, parentId: PARENT, template: changed, engine: chromiumPrintEngine() });
+};
 
 /** The text of the QR code in a PNG, or null. */
 async function readQr(png: Uint8Array): Promise<string | null> {
@@ -69,6 +72,23 @@ describe.skipIf(!chromium)("renderWorkbook with Chromium", () => {
         { page: 2, question: 5, reason: "question 5 is not inside the page" },
         { page: 2, question: 6, reason: "question 6 is not inside the page" },
         { page: 3, question: 3, reason: "question 3 does not fit its space" },
+      ],
+    });
+  }, 60_000);
+
+  it("fails a hidden page number, a hidden question and a blank QR code", async () => {
+    const hide = `style="visibility:hidden" `;
+    const result = await render(draft(), (page, html) => {
+      if (page === 1) return html.replace(`<span data-measure="page-number">`, `<span ${hide}data-measure="page-number">`);
+      if (page === 2) return html.replace(`<div class="question" data-measure="question-2">`, `<div class="question" ${hide}data-measure="question-2">`);
+      return html.replace("<svg ", `<svg ${hide}`);
+    });
+    expect(result).toEqual({
+      status: "failed",
+      problems: [
+        { page: 1, question: null, reason: "the page number is not printed" },
+        { page: 2, question: 2, reason: "question 2 is hidden" },
+        { page: 3, question: null, reason: "the QR code does not read as the page's link" },
       ],
     });
   }, 60_000);

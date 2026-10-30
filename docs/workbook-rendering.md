@@ -13,17 +13,33 @@ and a template, and returns:
 - each page's QR link, `https://unicalearning.com/tutor/p/<token>` (the desk route, #301).
 
 The template writes each page as HTML and marks what the renderer measures (`mark` in the module): the page number,
-the QR code, each question and each slot with a size limit. The render fails, naming the page and question, when:
+each question and each slot with a size limit. The renderer makes each page's QR code itself, already marked, and the
+template only places it. The render fails, naming the page and question, when:
 
 - the template has no layout for a page's type,
 - content overflows a slot, a question box or the page,
-- a question is missing from the page or lies outside it,
-- the page number is not printed as the page's number,
-- the QR code is missing, smaller than 0.6 inches or off the page.
+- a question is missing from the page, lies outside it or is hidden,
+- the page number is not shown on the page as the page's number,
+- the QR code is missing, hidden, smaller than 0.6 inches or off the page,
+- the QR code read back from the page image is not the page's link (a blank, covered or wrong code),
+- the template marks a part twice, or the PDF does not have one page per page.
 
-Nothing is clipped silently. `saveRenderedWorkbook` stores the PDF and the images in the private bucket
-`workbook-pages`, then writes the workbook through the workbook store; if an upload or the write fails, it removes the
-files it stored.
+"Hidden" means not laid out or hidden by CSS: `display`, `visibility`, `content-visibility` or opacity 0. Nothing is
+clipped silently.
+
+Storing:
+
+- `saveRenderedWorkbook` (a new workbook) stores the PDF and the images in the private bucket `workbook-pages`, then
+  writes the workbook through the workbook store. If an upload fails or the store refuses, it removes every file of the
+  render, the failed upload too (Storage may have kept it after its answer was lost). If the write's answer is lost, the
+  files stay, because the workbook may be stored: read the workbook to know.
+- `replaceRendering` (a stored workbook rendered again) stores the new files, then swaps the workbook to them in one
+  database transaction (`save_workbook_rendering`: the workbook row, its page tokens, content, status and learning
+  events stay), then removes the old files. If anything fails before the swap, the new files go and the old rendering
+  stays. If the swap's answer is lost, it reads the workbook and keeps whichever rendering it names.
+- Each stored render gets a random key in its file names (`page-2-<key>.png`), so a retry never meets the files of a
+  failed attempt. A file no workbook names (for example when even the read after a lost answer fails) stays in the
+  family's folder and is deleted with the family.
 
 The template today is the fixed test template (`src/lib/workbook-template-fixed.ts`: cover and practice pages, Geist
 and Geist Mono embedded). The real templates come from the workbook DESIGN.md (#305, #310).
@@ -44,8 +60,14 @@ check, so the Aside rule does not apply. Which Chromium:
 - on a Mac, the installed Google Chrome or Chromium.
 
 Tests use the fake engine (`src/lib/print-engine-fake.ts`). `src/lib/print-engine-chromium.test.ts` renders the sample
-with real Chromium wherever one is found: it decodes each page's QR code from the image and counts the PDF pages. Set
-`RENDER_OUT=<folder>` to keep the files and look at them.
+with real Chromium wherever one is found: it decodes each page's QR code from the image, counts the PDF pages, and
+checks that a hidden page number, a hidden question and a blank QR code fail. Set `RENDER_OUT=<folder>` to keep the
+files and look at them.
+
+The engine reads each page's QR code with jsQR from the page image, cropped to the QR element and a quarter inch around
+it, so the check costs little.
+
+Licences of the engine's parts and of the embedded fonts: `THIRD_PARTY_NOTICES.md`.
 
 ## Where it runs: a Vercel function
 
@@ -76,10 +98,12 @@ Move rendering to a worker (a GitHub Actions job, like the retention worker, or 
 
 Check with `/api/workbook-render-check?pages=<3 to 60>` and `Authorization: Bearer <CRON_SECRET>` (on a preview, use
 `npx vercel@latest curl`). It renders the sample with placeholder ids, stores nothing and answers with the time and
-sizes.
+sizes. It is off in production unless the variable `RENDER_CHECK` is `on`, and each function instance runs one check
+at a time (a second call while one runs gets 429).
 
 ## The sample workbook
 
 `node scripts/load-workbook-sample.mjs --child <id>` renders and stores a new sample for a test family.
-`node scripts/load-workbook-sample.mjs --rerender <workbook id>` renders a stored workbook of a test family again,
-keeping its id, page tokens, content and status. Both stored samples were rendered this way on 2026-10-29.
+`node scripts/load-workbook-sample.mjs --rerender <workbook id>` renders a stored workbook of a test family again with
+`replaceRendering`, keeping its id, page tokens, content, status and learning events. Both stored samples were last
+rendered on 2026-10-29; the renderer's output for them has not changed since.

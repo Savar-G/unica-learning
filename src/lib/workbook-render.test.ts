@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { createClient } from "@supabase/supabase-js";
 import { fakePrintEngine } from "@/lib/print-engine-fake";
 import { workbookProblem, type WorkbookFiles } from "@/lib/workbook-content";
-import { renderWorkbook, saveRenderedWorkbook } from "@/lib/workbook-render";
+import { renderWorkbook, replaceRendering, saveRenderedWorkbook } from "@/lib/workbook-render";
 import { sampleDraft } from "@/lib/workbook-sample";
 import { workbookFiles } from "@/lib/workbook-store";
 import { memoryWorkbookFiles, memoryWorkbookStore } from "@/lib/workbook-store-memory";
@@ -19,7 +19,8 @@ const WORKBOOK = "55555555-5555-4555-8555-555555555555";
 const TOKENS = ["first-page-token-1xx", "first-page-token-2xx", "first-page-token-3xx"];
 
 const draft = () => sampleDraft({ workbookId: WORKBOOK, childId: CHILD, qrTokens: TOKENS });
-const render = (engine = fakePrintEngine(), template = fixedTemplate()) => renderWorkbook({ draft: draft(), parentId: PARENT, template, engine });
+const render = (engine = fakePrintEngine(), template = fixedTemplate(), fileKey?: string) =>
+  renderWorkbook({ draft: draft(), parentId: PARENT, template, engine, fileKey });
 
 describe("renderWorkbook", () => {
   it("renders the sample book to one PDF and one image per page, each page with its QR link", async () => {
@@ -106,6 +107,36 @@ describe("renderWorkbook", () => {
     });
   });
 
+  it("fails a page whose number, QR code or question is hidden, or whose QR code does not read as the page's link", async () => {
+    const engine = fakePrintEngine({
+      hidden: ["1 page-number", "1 qr", "2 question-2"],
+      qrText: { 2: null, 3: "https://unicalearning.com/tutor/p/another-page-token" },
+    });
+    expect(await render(engine)).toEqual({
+      status: "failed",
+      problems: [
+        { page: 1, question: null, reason: "the page number is not printed" },
+        { page: 1, question: null, reason: "the QR code is not printed" },
+        { page: 2, question: null, reason: "the QR code does not read as the page's link" },
+        { page: 2, question: 2, reason: "question 2 is hidden" },
+        { page: 3, question: null, reason: "the QR code does not read as the page's link" },
+      ],
+    });
+  });
+
+  it("prints each page's QR code itself, so a template's own empty QR mark does not pass", async () => {
+    const template = fixedTemplate();
+    const ownMark = {
+      ...template,
+      page: (...a: Parameters<typeof template.page>) => template.page(a[0], { ...a[1], qr: `<div data-measure="qr"></div>` }, a[2]),
+    };
+    const engine = fakePrintEngine();
+    expect(await render(engine, ownMark)).toEqual({
+      status: "failed",
+      problems: [1, 2, 3].map((page) => ({ page, question: null, reason: "the QR code does not read as the page's link" })),
+    });
+  });
+
   it("fails a page whose template marks the same part twice, so no mark goes unchecked", async () => {
     const template = fixedTemplate();
     const twice = { ...template, page: (...a: Parameters<typeof template.page>) => template.page(...a)!.replace(`<div class="pill">`, `<div class="pill" data-measure="slot-title">`) };
@@ -168,7 +199,12 @@ const fileStores: [string, (failOn?: string) => WorkbookFiles & { paths(): strin
   ["Supabase", supabaseFiles],
   ["in memory", (failOn) => {
     const files = memoryWorkbookFiles();
-    return { ...files, put: (f) => (f.path === failOn ? Promise.reject(new Error("upload failed")) : files.put(f)), paths: () => [...files.files.keys()].sort() };
+    // A failing upload here is stored but its answer is lost, the hardest case to clean up.
+    const put = async (f: Parameters<typeof files.put>[0]) => {
+      await files.put(f);
+      if (f.path === failOn) throw new Error("upload answer lost");
+    };
+    return { ...files, put, paths: () => [...files.files.keys()].sort() };
   }],
 ];
 
@@ -215,5 +251,66 @@ describe.each(fileStores)("saveRenderedWorkbook with the %s file store", (_name,
     await expect(saveRenderedWorkbook(await rendered(), { files, store: workbooks })).rejects.toThrow();
     expect(files.paths()).toEqual([]);
     expect(await workbooks.workbook(WORKBOOK)).toBeNull();
+  });
+});
+
+describe("replaceRendering", () => {
+  const paths = (key: string) => [`${PARENT}/${WORKBOOK}/page-1-${key}.png`, `${PARENT}/${WORKBOOK}/page-2-${key}.png`, `${PARENT}/${WORKBOOK}/page-3-${key}.png`, `${PARENT}/${WORKBOOK}/workbook-${key}.pdf`];
+  const moved = { "2 question-1": { x: 60, y: 300, width: 340, height: 320 } };
+
+  /** A stored workbook rendered with key r1, and the same workbook rendered again with key r2 and a moved question. */
+  async function setup(failOn?: string) {
+    const files = memoryWorkbookFiles();
+    const store = memoryWorkbookStore({ children: [{ id: CHILD, parentId: PARENT }], now: () => new Date("2026-10-29T18:00:00.000Z") });
+    const first = await render(fakePrintEngine(), fixedTemplate(), "r1");
+    if (first.status !== "rendered") throw new Error("first render failed");
+    await saveRenderedWorkbook(first, { files, store });
+    const second = await render(fakePrintEngine({ rects: moved }), fixedTemplate(), "r2");
+    if (second.status !== "rendered") throw new Error("second render failed");
+    const previous = (await store.workbook(WORKBOOK))!;
+    const put = async (f: Parameters<typeof files.put>[0]) => {
+      await files.put(f);
+      if (f.path === failOn) throw new Error("upload answer lost");
+    };
+    return { files: { ...files, put }, kept: () => [...files.files.keys()].sort(), store, second, previous };
+  }
+
+  it("stores the new files, swaps the workbook to them in one step, then removes the old files", async () => {
+    const { files, kept, store, second, previous } = await setup();
+    expect(await replaceRendering(second, { files, store, previous })).toEqual({ status: "written", workbookId: WORKBOOK });
+    expect(kept()).toEqual(paths("r2"));
+    const after = await store.workbook(WORKBOOK);
+    expect(after?.pdfPath).toBe(`${PARENT}/${WORKBOOK}/workbook-r2.pdf`);
+    expect(after?.pages[1].questions[0].box).toEqual({ x: 93, y: 468, width: 532, height: 501 });
+    expect(after?.pages.map((p) => p.qrToken)).toEqual(TOKENS);
+  });
+
+  it("keeps the old rendering and removes every new file when an upload fails, even one whose answer was lost", async () => {
+    const { files, kept, store, second, previous } = await setup(`${PARENT}/${WORKBOOK}/page-2-r2.png`);
+    await expect(replaceRendering(second, { files, store, previous })).rejects.toThrow("upload answer lost");
+    expect(kept()).toEqual(paths("r1"));
+    expect(await store.workbook(WORKBOOK)).toEqual(previous);
+  });
+
+  it("keeps the old rendering and removes the new files when the store refuses the swap", async () => {
+    const { files, kept, store, second, previous } = await setup();
+    const refusing = { ...store, saveRendering: async () => ({ status: "refused" as const, reason: "the workbook is not known" }) };
+    expect(await replaceRendering(second, { files, store: refusing, previous })).toEqual({ status: "refused", reason: "the workbook is not known" });
+    expect(kept()).toEqual(paths("r1"));
+  });
+
+  it("reads the workbook when the swap's answer is lost: a swap that happened keeps the new files and removes the old", async () => {
+    const { files, kept, store, second, previous } = await setup();
+    const lost = { ...store, saveRendering: async (r: Parameters<typeof store.saveRendering>[0]) => { await store.saveRendering(r); throw new Error("fetch failed"); } };
+    expect(await replaceRendering(second, { files, store: lost, previous })).toEqual({ status: "written", workbookId: WORKBOOK });
+    expect(kept()).toEqual(paths("r2"));
+  });
+
+  it("reads the workbook when the swap's answer is lost: a swap that did not happen removes the new files and throws", async () => {
+    const { files, kept, store, second, previous } = await setup();
+    const lost = { ...store, saveRendering: async () => { throw new Error("fetch failed"); } };
+    await expect(replaceRendering(second, { files, store: lost, previous })).rejects.toThrow("fetch failed");
+    expect(kept()).toEqual(paths("r1"));
+    expect(await store.workbook(WORKBOOK)).toEqual(previous);
   });
 });

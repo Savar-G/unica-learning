@@ -2,15 +2,27 @@
 // each question's box on its page image and each page's QR link out, ready for the workbook store (#299). The
 // template writes each page as HTML and marks what the renderer measures (see `mark`); a print engine (headless
 // Chromium, src/lib/print-engine-chromium.ts, or the fake for tests, src/lib/print-engine-fake.ts) lays the pages out,
-// prints the PDF, takes one image per page and measures every marked element. From those measures the renderer takes
-// each question's box and checks the page: its number printed, its QR code printed, and nothing overflowing its space.
+// prints the PDF, takes one image per page, measures every marked element and reads each page's QR code back from its
+// image. From those it takes each question's box and checks the page: its number and every question visible on it, its
+// QR code visible and reading as the page's link, and nothing overflowing its space.
 // A page that fails a check fails the render, with the page and question named; nothing is clipped silently.
 //
 // Pages are US Letter. Page numbers run through the whole workbook; question numbers restart on each page (the
 // template prints both); the QR code holds the page's desk link, https://unicalearning.com/tutor/p/<token> (#301).
 // Pure TypeScript: no Next.js, React, network, database or clock.
 import QRCode from "qrcode";
-import type { PageInput, QuestionBox, QuestionInput, WorkbookFile, WorkbookFiles, WorkbookInput, WorkbookStore, WorkbookWrite } from "@/lib/workbook-content";
+import type {
+  PageInput,
+  QuestionBox,
+  QuestionInput,
+  Workbook,
+  WorkbookFile,
+  WorkbookFiles,
+  WorkbookInput,
+  WorkbookRendering,
+  WorkbookStore,
+  WorkbookWrite,
+} from "@/lib/workbook-content";
 
 // ---------- Content in ----------
 
@@ -31,18 +43,21 @@ export interface WorkbookDraft extends Omit<WorkbookInput, "pdfPath" | "pages"> 
 
 /**
  * The `data-measure` attribute of each element the renderer measures. A template marks the page number (the element's
- * text is the number alone), the QR code, each question (its box on the page image) and each slot with a size limit.
+ * text is the number alone), each question (its box on the page image) and each slot with a size limit. The QR code
+ * comes marked from the renderer (PageParts.qr).
  */
 export const mark = {
   pageNumber: `data-measure="page-number"`,
-  qr: `data-measure="qr"`,
   question: (n: number) => `data-measure="question-${n}"`,
   /** A named space with a size limit: "title", "instruction". Its content must fit it. */
   slot: (name: string) => `data-measure="slot-${name}"`,
 } as const;
 
 export interface PageParts {
-  /** The page's QR code as an SVG element, to place at any size of at least 0.6 inches. */
+  /**
+   * The page's QR code, made and marked by the renderer: an element holding an SVG, to place as it is and size with the
+   * template's CSS (at least 0.6 inches).
+   */
   qr: string;
   /** The link in the QR code. */
   qrUrl: string;
@@ -78,6 +93,8 @@ export interface MeasuredElement {
   name: string;
   /** Its text, trimmed. */
   text: string;
+  /** Whether it shows: laid out, not hidden by CSS (display, visibility, content-visibility or opacity 0). */
+  visible: boolean;
   x: number;
   y: number;
   width: number;
@@ -92,8 +109,8 @@ export interface PrintOutput {
   pdf: Uint8Array;
   /** The PDF's page count. */
   pdfPages: number;
-  /** One PNG per sheet, in order. */
-  images: { png: Uint8Array; width: number; height: number }[];
+  /** One PNG per sheet, in order, with the text of the QR code read back from it (null when none reads). */
+  images: { png: Uint8Array; width: number; height: number; qrText: string | null }[];
   /** Every `[data-measure]` element; each sheet itself is measured with the name "sheet". */
   measured: MeasuredElement[];
 }
@@ -125,8 +142,9 @@ export type RenderResult =
 /** The desk link a page's QR code holds (#301). */
 export const pageUrl = (token: string) => `https://unicalearning.com/tutor/p/${token}`;
 
-const PDF_NAME = "workbook.pdf";
-const pageImageName = (n: number) => `page-${n}.png`;
+/** File names in the workbook's folder; a file key makes them new for each render, so a new render never meets old files. */
+const pdfName = (key?: string) => (key ? `workbook-${key}.pdf` : "workbook.pdf");
+const pageImageName = (n: number, key?: string) => (key ? `page-${n}-${key}.png` : `page-${n}.png`);
 
 /** A link as a QR code: an SVG of black modules on white, with the four-module quiet zone. */
 export function qrSvg(url: string): string {
@@ -138,6 +156,12 @@ export function qrSvg(url: string): string {
   }
   return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${size} ${size}" shape-rendering="crispEdges"><rect width="${size}" height="${size}" fill="#fff"/><path d="${path}" fill="#000"/></svg>`;
 }
+
+/**
+ * The page's QR code as the renderer marks it; the engine reads it back from the page image. data-qr-link names the
+ * link drawn, for a reader of the document (the fake engine); it prints nothing.
+ */
+const qrElement = (url: string) => `<div data-measure="qr" data-qr-link="${url}">${qrSvg(url)}</div>`;
 
 /** The whole document: the renderer's page frame, the template's style sheet, then one sheet per page. */
 function documentHtml(css: string, sheets: string[]): string {
@@ -166,13 +190,19 @@ function pixelBox(m: MeasuredElement, image: { width: number; height: number }):
   return { x, y, width: Math.min(Math.ceil((m.x + m.width) * sx), image.width) - x, height: Math.min(Math.ceil((m.y + m.height) * sy), image.height) - y };
 }
 
-export async function renderWorkbook(o: { draft: WorkbookDraft; parentId: string; template: WorkbookTemplate; engine: PrintEngine }): Promise<RenderResult> {
+/**
+ * Renders a workbook. `fileKey` (letters, digits, - and _), when given, goes into every file name ("page-2-<key>.png"),
+ * so each render's files are new: pass a random one for each render that is stored.
+ */
+export async function renderWorkbook(o: {
+  draft: WorkbookDraft; parentId: string; template: WorkbookTemplate; engine: PrintEngine; fileKey?: string;
+}): Promise<RenderResult> {
   const { draft, template } = o;
   const problems: RenderProblem[] = [];
   const sheets: string[] = [];
   for (const page of draft.pages) {
     const qrUrl = pageUrl(page.qrToken);
-    const html = template.page(page, { qr: qrSvg(qrUrl), qrUrl }, draft);
+    const html = template.page(page, { qr: qrElement(qrUrl), qrUrl }, draft);
     if (html === null) problems.push({ page: page.number, question: null, reason: `the template has no layout for a ${page.type} page` });
     sheets.push(html ?? "");
   }
@@ -183,12 +213,12 @@ export async function renderWorkbook(o: { draft: WorkbookDraft; parentId: string
   if (out.pdfPages !== draft.pages.length) throw new Error(`print engine: the PDF has ${out.pdfPages} pages for ${draft.pages.length}`);
 
   const folder = `${o.parentId}/${draft.id}`;
-  const pdfPath = `${folder}/${PDF_NAME}`;
+  const pdfPath = `${folder}/${pdfName(o.fileKey)}`;
   const files: WorkbookFile[] = [{ path: pdfPath, contentType: "application/pdf", bytes: out.pdf }];
   const pages: PageInput[] = [];
   draft.pages.forEach((page, i) => {
     const image = out.images[i];
-    const path = `${folder}/${pageImageName(page.number)}`;
+    const path = `${folder}/${pageImageName(page.number, o.fileKey)}`;
     files.push({ path, contentType: "image/png", bytes: image.png });
     const fail = (question: number | null, reason: string) => problems.push({ page: page.number, question, reason });
     const measured = new Map<string, MeasuredElement>();
@@ -201,15 +231,17 @@ export async function renderWorkbook(o: { draft: WorkbookDraft; parentId: string
       if (m.name.startsWith("slot-") && overflows(m)) fail(null, `the ${m.name.slice(5)} does not fit its space`);
     }
     const number = measured.get("page-number");
-    if (number?.text !== String(page.number) || !insidePage(number)) fail(null, "the page number is not printed");
+    if (number?.text !== String(page.number) || !number.visible || !insidePage(number)) fail(null, "the page number is not printed");
     const qr = measured.get("qr");
-    if (!qr) fail(null, "the QR code is not printed");
+    if (!qr?.visible) fail(null, "the QR code is not printed");
     else if (qr.width < QR_MIN || qr.height < QR_MIN || !insidePage(qr)) fail(null, "the QR code is smaller than 0.6 inches or not inside the page");
+    else if (image.qrText !== pageUrl(page.qrToken)) fail(null, "the QR code does not read as the page's link");
     const questions: QuestionInput[] = [];
     for (const q of page.questions) {
       const m = measured.get(`question-${q.number}`);
       if (!m) fail(q.number, `question ${q.number} is not on the page`);
       else if (!insidePage(m)) fail(q.number, `question ${q.number} is not inside the page`);
+      else if (!m.visible) fail(q.number, `question ${q.number} is hidden`);
       else if (overflows(m)) fail(q.number, `question ${q.number} does not fit its space`);
       else questions.push({ ...q, box: pixelBox(m, image) });
     }
@@ -227,6 +259,23 @@ export async function renderWorkbook(o: { draft: WorkbookDraft; parentId: string
 }
 
 /**
+ * Stores every file; when an upload fails, removes them all, the failed one too (its answer may be lost after Storage
+ * kept it), and throws.
+ */
+async function putAll(files: WorkbookFile[], store: WorkbookFiles): Promise<void> {
+  const tried: string[] = [];
+  try {
+    for (const file of files) {
+      tried.push(file.path);
+      await store.put(file);
+    }
+  } catch (e) {
+    await store.remove(tried);
+    throw e;
+  }
+}
+
+/**
  * Stores a rendered workbook: every file in the workbook bucket, then the workbook through the store. When an upload
  * fails or the store refuses the workbook, it removes the files it stored, so no file is left that no workbook names.
  * When the write's answer is unknown (it throws, as on a lost response), the workbook may be stored, so the files stay:
@@ -235,17 +284,47 @@ export async function renderWorkbook(o: { draft: WorkbookDraft; parentId: string
 export async function saveRenderedWorkbook(
   rendered: Extract<RenderResult, { status: "rendered" }>, o: { files: WorkbookFiles; store: WorkbookStore },
 ): Promise<WorkbookWrite> {
-  const stored: string[] = [];
+  await putAll(rendered.files, o.files);
+  const result = await o.store.write(rendered.workbook);
+  if (result.status === "refused") await o.files.remove(rendered.files.map((f) => f.path));
+  return result;
+}
+
+/** A stored workbook's files: its PDF and page images. */
+const filesOf = (w: Pick<Workbook, "pdfPath" | "pages">) =>
+  [w.pdfPath, ...w.pages.map((p) => p.image?.path ?? null)].filter((p): p is string => p !== null);
+
+/**
+ * Stores a new rendering of a stored workbook (`previous`, as read before rendering; render it with a new file key).
+ * It stores the new files, then swaps the workbook to them in one step through the store (its id, page tokens, content
+ * and status stay), then removes the old files. When an upload fails or the store refuses, it removes the new files and
+ * the old rendering stays. When the swap's answer is lost, it reads the workbook: if the swap happened, it removes the
+ * old files and answers written; if not, it removes the new files and throws. If that read fails too, every file stays.
+ */
+export async function replaceRendering(
+  rendered: Extract<RenderResult, { status: "rendered" }>, o: { files: WorkbookFiles; store: WorkbookStore; previous: Workbook },
+): Promise<WorkbookWrite> {
+  const w = rendered.workbook;
+  const fresh = rendered.files.map((f) => f.path);
+  const old = filesOf(o.previous).filter((p) => !fresh.includes(p));
+  const rendering: WorkbookRendering = {
+    workbookId: w.id,
+    pdfPath: w.pdfPath!,
+    pages: w.pages.map((p) => ({ number: p.number, image: p.image!, questions: p.questions.map((q) => ({ number: q.number, box: q.box })) })),
+  };
+  await putAll(rendered.files, o.files);
+  let result: WorkbookWrite;
   try {
-    for (const file of rendered.files) {
-      await o.files.put(file);
-      stored.push(file.path);
-    }
+    result = await o.store.saveRendering(rendering);
   } catch (e) {
-    await o.files.remove(stored);
+    const now = await o.store.workbook(w.id);
+    if (now?.pdfPath === rendering.pdfPath) {
+      await o.files.remove(old);
+      return { status: "written", workbookId: w.id };
+    }
+    await o.files.remove(fresh);
     throw e;
   }
-  const result = await o.store.write(rendered.workbook);
-  if (result.status === "refused") await o.files.remove(stored);
+  await o.files.remove(result.status === "written" ? old : fresh);
   return result;
 }

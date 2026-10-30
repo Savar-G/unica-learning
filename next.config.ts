@@ -17,9 +17,13 @@ const nextConfig: NextConfig = {
   },
   skipTrailingSlashRedirect: true,
   // The workbook renderer (#309) runs the serverless Chromium build, whose compressed browser files the trace does not
-  // find, and embeds the template's fonts.
+  // find, embeds the template's fonts, and carries the licence notices of what it runs and embeds.
   outputFileTracingIncludes: {
-    "/api/workbook-render-check": ["./node_modules/@sparticuz/chromium/bin/**", "./src/ds/fonts/Geist.woff2", "./src/ds/fonts/GeistMono.woff2"],
+    "/api/workbook-render-check": [
+      "./node_modules/@sparticuz/chromium/bin/**", "./src/ds/fonts/Geist.woff2", "./src/ds/fonts/GeistMono.woff2",
+      "./THIRD_PARTY_NOTICES.md", "./node_modules/@sparticuz/chromium/LICENSE", "./node_modules/qrcode/license",
+      "./node_modules/jsqr/LICENSE", "./node_modules/sharp/LICENSE",
+    ],
   },
   // Pages whose address can hold an id or a token (a Stripe session, a report id, a sign-in or unsubscribe token) send
   // only the origin as the referrer, so the next page, and any tag on it, never sees the full address (D-126).

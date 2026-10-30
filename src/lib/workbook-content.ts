@@ -91,6 +91,16 @@ export interface WorkbookInput {
   pages: PageInput[];
 }
 
+/**
+ * A new rendering of a stored workbook (#309): its PDF, each page's image and each question's box. Saving it changes
+ * only those, in one step: the workbook's id, page tokens, content and status stay, so its learning events stay too.
+ */
+export interface WorkbookRendering {
+  workbookId: string;
+  pdfPath: string;
+  pages: { number: number; image: PageImage; questions: { number: number; box: QuestionBox }[] }[];
+}
+
 export type WorkbookWrite = { status: "written"; workbookId: string } | { status: "refused"; reason: string };
 
 /** A stored question: its package, or "content unavailable" when the stored package cannot be trusted. */
@@ -131,6 +141,11 @@ export interface Workbook extends WorkbookSummary {
 export interface WorkbookStore {
   /** Writes a whole workbook as one unit: every page and question, or nothing. */
   write(workbook: WorkbookInput): Promise<WorkbookWrite>;
+  /**
+   * Replaces a stored workbook's PDF, page images and question boxes as one unit, or nothing. The rendering must name
+   * every page and question of the workbook and no other.
+   */
+  saveRendering(rendering: WorkbookRendering): Promise<WorkbookWrite>;
   /** A workbook with its pages and questions, in page and question order, or null. */
   workbook(id: string): Promise<Workbook | null>;
   /** A child's workbooks, newest (highest number) first. */
@@ -226,6 +241,31 @@ export function workbookProblem(w: WorkbookInput): string | null {
       if (check.package.id.length > 200) return `${where}: the package id is longer than 200 characters`;
       if (keys.has(check.package.id)) return `a question id is used twice (${check.package.id})`;
       keys.add(check.package.id);
+    }
+  }
+  return null;
+}
+
+/** What is wrong with a rendering to save, or null. The store checks it against the stored workbook and the family. */
+export function renderingProblem(r: WorkbookRendering): string | null {
+  if (!isUuid(r.workbookId)) return "the workbook id is not a UUID";
+  const pdf = pathProblem(r.pdfPath, r.workbookId);
+  if (pdf) return pdf;
+  if (!Array.isArray(r.pages) || r.pages.length === 0 || r.pages.length > 500) return "the rendering does not have 1 to 500 pages";
+  const pageNumbers = new Set<number>();
+  for (const p of r.pages) {
+    if (!isWhole(p.number, 1, 1000) || pageNumbers.has(p.number)) return "a page number is not from 1 to 1000 or is used twice";
+    pageNumbers.add(p.number);
+    const at = `page ${p.number}`;
+    const image = pathProblem(p.image?.path, r.workbookId);
+    if (image) return image;
+    if (!isWhole(p.image.width, 1, 10000) || !isWhole(p.image.height, 1, 10000)) return `${at}: the image size is not 1 to 10000 pixels`;
+    if (!Array.isArray(p.questions) || p.questions.length > MAX_QUESTIONS) return `${at}: the questions are not a list`;
+    const questionNumbers = new Set<number>();
+    for (const q of p.questions) {
+      if (!isWhole(q.number, 1, 1000) || questionNumbers.has(q.number)) return `${at}: a question number is not from 1 to 1000 or is used twice`;
+      questionNumbers.add(q.number);
+      if (!q.box || !boxInside(q.box, p.image)) return `${at}, question ${q.number}: the box is not inside the page image`;
     }
   }
   return null;

@@ -1140,6 +1140,8 @@ export type Database = {
           locked_until: string | null
           parent_id: string
           pin_hash: string
+          reset_failed_attempts: number
+          reset_locked_until: string | null
           updated_at: string
         }
         Insert: {
@@ -1148,6 +1150,8 @@ export type Database = {
           locked_until?: string | null
           parent_id: string
           pin_hash: string
+          reset_failed_attempts?: number
+          reset_locked_until?: string | null
           updated_at?: string
         }
         Update: {
@@ -1156,6 +1160,8 @@ export type Database = {
           locked_until?: string | null
           parent_id?: string
           pin_hash?: string
+          reset_failed_attempts?: number
+          reset_locked_until?: string | null
           updated_at?: string
         }
         Relationships: [
@@ -2067,6 +2073,19 @@ export type Database = {
           out_status: string
         }[]
       }
+      claim_pin_reset_attempt: {
+        Args: {
+          p_lock_seconds: number
+          p_max: number
+          p_now: string
+          p_parent: string
+        }
+        Returns: {
+          out_attempts_left: number
+          out_locked_until: string
+          out_status: string
+        }[]
+      }
       complete_family_deletion: {
         Args: { p: string; token: string }
         Returns: boolean
@@ -2209,6 +2228,7 @@ export type Database = {
         Args: { p: string; test_copy: Json; test_id: string; token: string }
         Returns: boolean
       }
+      save_workbook_rendering: { Args: { p_rendering: Json }; Returns: Json }
       write_workbook: {
         Args: { p_schema_version: number; p_workbook: Json }
         Returns: Json

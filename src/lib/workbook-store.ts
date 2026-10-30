@@ -3,6 +3,7 @@ import { toJson, type Database, type Tables } from "@/lib/database";
 import { QUESTION_PACKAGE_VERSION } from "@/lib/question-package";
 import {
   isUuid,
+  renderingProblem,
   storedQuestion,
   workbookProblem,
   WORKBOOK_FILES_BUCKET,
@@ -71,6 +72,14 @@ export function workbookStore(db: SupabaseClient<Database>): WorkbookStore {
       if (problem) return { status: "refused", reason: problem };
       const { data, error } = await db.rpc("write_workbook", { p_workbook: toJson(input), p_schema_version: QUESTION_PACKAGE_VERSION });
       if (error) throw new Error(`workbook write: ${error.message}`);
+      return writeAnswer(data);
+    },
+
+    async saveRendering(rendering) {
+      const problem = renderingProblem(rendering);
+      if (problem) return { status: "refused", reason: problem };
+      const { data, error } = await db.rpc("save_workbook_rendering", { p_rendering: toJson(rendering) });
+      if (error) throw new Error(`workbook rendering save: ${error.message}`);
       return writeAnswer(data);
     },
 
