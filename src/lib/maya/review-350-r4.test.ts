@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { createSession, mathClaims, step, type Proposal, type Session, type SessionEvent } from "@/lib/maya";
 import { checkQuestionPackage, workedSteps, type QuestionPackage } from "@/lib/question-package";
 
-// Reproductions of the fourth to eighth reviews of PR #350 (R350-4-1 to R350-8-2), each through the public interface.
+// Reproductions of the fourth to ninth reviews of PR #350 (R350-4-1 to R350-9-1), each through the public interface.
 // Round 6 took money out of the talk counts: only steps, tries and time are talk. Round 8 made a restatement an
 // unchanged clause of the question, and bound every amount of money to the money the question states.
 
@@ -229,7 +229,7 @@ describe("R350-7-1: a restatement of the question is no claim; an added or chang
     ["buys", story("Sam buys a toy for 27 dollars and a book for 39 dollars. How much does he spend?"), "Sam buys a toy for 27 dollars and a book for 39 dollars."],
     ["more than", story("Mia has 27 stickers. Leo has 39 more than Mia. How many does Leo have?"), "Leo has 39 more than Mia."],
     ["gives away", story("Sam has 52 stickers and gives away 17. How many are left?", [52, 17], "subtract"), "Sam has 52 stickers and gives away 17."],
-    ["is left", story("There were 52 apples. 17 are eaten. How many are left?", [52, 17], "subtract"), "There were 52 apples, and 17 are eaten."],
+    ["is left", story("There were 52 apples. 17 are eaten. How many are left?", [52, 17], "subtract"), "17 are eaten."],
   ])("accepts a restatement with %s", (_, pkg, say) => {
     expect(call(pkg).refusal(show(say))).toBeNull();
   });
@@ -241,6 +241,8 @@ describe("R350-7-1: a restatement of the question is no claim; an added or chang
     [story("Mia has 27 stickers. Leo has 39 more than Mia. How many does Leo have?"), "Leo has 38 more than Mia."],
     [story("Sam has 52 stickers and gives away 17. How many are left?", [52, 17], "subtract"), "Sam has 52 stickers and gives away 18."],
     [story("There were 52 apples. 17 are eaten. How many are left?", [52, 17], "subtract"), "There were 52 apples, and 18 are eaten."],
+    // Round 9: a restatement never joins two sentences of the question.
+    [story("There were 52 apples. 17 are eaten. How many are left?", [52, 17], "subtract"), "There were 52 apples, and 17 are eaten."],
     [story("There were 52 apples. 17 are eaten. How many are left?", [52, 17], "subtract"), "There were 52 apples, and 17 are eaten, so 34 are left."],
   ])("refuses a changed restatement: %#", (pkg, say) => {
     expect(call(pkg).refusal(show(say))).toMatchObject({ code: "wrong_math" });
@@ -304,5 +306,61 @@ describe("R350-8: a restatement is an unchanged clause; money is only the questi
     s = step(s, { type: "child_turn", at: 0, text: "66" }).session;
     const r = step(s, { type: "proposal", at: 0, proposal: { act: "accept_answer", say: "Yes! Sam has 66 dollars.", reading: { answers: [{ value: num(66), step: "result", verdict: "right" }] } } });
     expect(r.refusal).toBeNull();
+  });
+});
+
+describe("R350-9-1: every operation word is the operation of the problem it is about", () => {
+  const MONEY: QuestionPackage = { ...PKG, id: "wbq-review-r9-money", text: "Sam has 27 dollars and gets 39 dollars. How many dollars altogether?" };
+  const SUB: QuestionPackage = {
+    ...PKG,
+    id: "wbq-review-r9-sub",
+    text: "Sam has 52 stickers and gives away 17. How many are left?",
+    answer: { value: num(35), accepted: [], unit: null },
+    operation: { kind: "subtract", operands: [52, 17] },
+    steps: workedSteps({ kind: "subtract", operands: [52, 17] }),
+    wrongAnswers: [{ value: num(45), cause: "S1", description: "Subtracts the smaller digit", step: "ones" }],
+    easierExample: { text: "32 - 5 = ?", operation: { kind: "subtract", operands: [32, 5] }, answer: num(27), steps: workedSteps({ kind: "subtract", operands: [32, 5] }) },
+  };
+
+  it.each<[string, string, QuestionPackage]>([
+    ["money addition", "Now subtract the 39 dollars.", MONEY],
+    ["27 + 39", "Take away 5.", PKG],
+    ["27 + 39", "Take away the 7.", PKG],
+    ["27 + 39", "Find the difference.", PKG],
+    ["27 + 39", "Multiply the ones.", PKG],
+    ["27 + 39", "Share the ones.", PKG],
+    ["27 + 39", "Seven minus nine is negative two.", PKG],
+    ["52 - 17", "Now add the 7.", SUB],
+    ["52 - 17", "What is the sum?", SUB],
+    ["52 - 17", "Twelve plus seven is nineteen.", SUB],
+  ])("refuses a wrong operation word in %s: %s", (_, say, pkg) => {
+    expect(call(pkg).refusal(show(say))).toMatchObject({ code: "wrong_math" });
+  });
+
+  it.each<[string, string, QuestionPackage]>([
+    ["money addition", "Now add the 39 dollars.", MONEY],
+    ["27 + 39", "Take your time.", PKG],
+    ["27 + 39", "Add the ones: seven plus nine is sixteen.", PKG],
+    ["27 + 39", "Look at each column, one more time.", PKG],
+    ["27 + 39", "Less work if you start with the ones.", PKG],
+    ["52 - 17", "Take away 7 from the 12.", SUB],
+    ["52 - 17", "Twelve minus seven is five.", SUB],
+    ["52 - 17", "Sam has 52 stickers and gives away 17.", SUB],
+    ["52 - 17", "Take a break if you need one.", SUB],
+  ])("accepts in %s: %s", (_, say, pkg) => {
+    expect(call(pkg).refusal(show(say))).toBeNull();
+  });
+
+  it("checks a sentence that names the easier example against the example's operation", () => {
+    // An example of another operation is held by the package checker, so the named problem here is the same kind.
+    expect(call().refusal(show("In 18 + 5, add the ones."))).toBeNull();
+    expect(call().refusal(show("In 18 + 5, take away the ones."))).toMatchObject({ code: "wrong_math" });
+  });
+
+  it("repairs a wrong operation word Maya actually said", () => {
+    const c = call(MONEY);
+    c.send({ type: "proposal", at: 0, proposal: show("Seven plus nine is sixteen.") });
+    c.send({ type: "maya_said", at: 0, text: "Now subtract the 39 dollars." });
+    expect(c.s.state).toBe("REPAIR_MAYA");
   });
 });

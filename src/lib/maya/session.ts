@@ -498,7 +498,8 @@ function turnNumbers(s: Session, p: Proposal | null): StepNumbers | undefined {
     write: [...new Set(facts.flatMap((f) => f.write))],
     units: [...new Set(units)],
     money: { text: about === "target" ? pkg.text : pkg.easierExample.text, operands: operandsOf(operation), results },
-    questions: [pkg.text, pkg.easierExample.text],
+    questions: [about === "target" ? pkg.text : pkg.easierExample.text],
+    operation: SYMBOL[operation.kind],
   };
 }
 

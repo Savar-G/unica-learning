@@ -303,10 +303,22 @@ describe("Round 3 code review: the binding and the take-back stay narrow", () =>
     expect(noCarryCall()("Carry the one.")).toMatchObject({ code: "wrong_math" });
   });
 
-  it("reads a spoken take away as an operation, not a sign", () => {
-    const c = call();
-    c.child("56");
-    expect(c.propose(guide({ say: "Look at the 9, then take away 7 from it." })).refusal).toBeNull();
+  it("reads a spoken take away as an operation, not a sign (in a subtraction, round 9)", () => {
+    const sub: QuestionPackage = {
+      ...PKG,
+      id: "wbq-review-r3-take-away",
+      text: "52 - 17 = ?",
+      answer: { value: num(35), accepted: [], unit: null },
+      operation: { kind: "subtract", operands: [52, 17] },
+      steps: workedSteps({ kind: "subtract", operands: [52, 17] }),
+      wrongAnswers: [{ value: num(45), cause: "S1", description: "Subtracts the smaller digit", step: "ones" }],
+      easierExample: { text: "32 - 5 = ?", operation: { kind: "subtract", operands: [32, 5] }, answer: num(27), steps: workedSteps({ kind: "subtract", operands: [32, 5] }) },
+    };
+    let s = createSession({ callId: "review-r3-take-away", package: sub });
+    s = step(s, { type: "start", at: 0 }).session;
+    s = step(s, { type: "proposal", at: 0, proposal: OPEN }).session;
+    s = step(s, { type: "child_turn", at: 0, text: "45" }).session;
+    expect(step(s, { type: "proposal", at: 0, proposal: guide({ say: "Look at the 12, then take away 7 from it." }) }).refusal).toBeNull();
   });
 
   it("checks a carry even when a count follows it, and counts only across commas", () => {

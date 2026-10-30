@@ -43,8 +43,16 @@ export interface StepNumbers {
    * answers. Absent: no amount of money is supported.
    */
   money?: { text: string; operands: readonly number[]; results: readonly number[] };
-  /** The question texts: a sentence that is an unchanged clause of one of them is not a claim (see restated). */
+  /**
+   * The question text of the problem the turn is about: a sentence that is an unchanged clause of it is not a claim
+   * (see restated).
+   */
   questions?: readonly string[];
+  /**
+   * The operation of the problem the turn is about: every operation word Maya says must be one of its words, or of the
+   * problem a sentence names ("In 18 + 5, add the ones."). See operationClaims.
+   */
+  operation?: MathOp;
 }
 
 /** An exact rational [numerator, denominator], denominator above 0. */
@@ -376,6 +384,8 @@ export function mathClaims(text: string, problems: readonly NamedProblem[] = [],
     if (toks[k].t === "num") seen = true;
   }
   const claims: MathClaim[] = [];
+  /** The problem each sentence names, by the index of its end: "In 18 + 5, ..." is about the easier example. */
+  const names = new Map<number, number>();
   // The tokens of a claim: its numbers are checked by the claim itself, not by the step.
   const claimed: boolean[] = new Array(toks.length).fill(false);
   // A number that counts something outside the math ("two steps", "2 seconds") is talk, not part of a claim; a
@@ -402,6 +412,7 @@ export function mathClaims(text: string, problems: readonly NamedProblem[] = [],
     }
     const read = sides.filter((s): s is Read => s.k === "value" || s.k === "rem");
     const found = sides.map((s) => problemOf(s, problems)).find((p) => p !== null) ?? null;
+    if (found !== null) names.set(sentenceEnd[j], found);
     const claim = (status: MathClaim["status"]) => {
       claimed.fill(true, start, j + 1);
       claims.push({ text: text.slice(run[0].from, run[run.length - 1].to).trim(), status, problem: found, result: read.length >= 2 });
@@ -433,7 +444,59 @@ export function mathClaims(text: string, problems: readonly NamedProblem[] = [],
     claim(holds === null ? "unsupported" : holds ? "true" : "false");
   }
   if (step) claims.push(...stepClaims(text, toks, claimed, step));
+  if (step?.operation) claims.push(...operationClaims(text, toks, restates, step.operation, (end) => {
+    const named = names.get(end);
+    return named === undefined ? undefined : problems[named]?.symbol;
+  }));
   return claims;
+}
+
+/** The words of each operation: Maya says only those of the problem she talks about. */
+const OPERATION_WORDS: readonly [MathOp, RegExp][] = [
+  ["+", /^(?:add|adds|added|adding|addition|plus|sum|sums|altogether|in all|more)$/],
+  ["-", /^(?:subtract|subtracts|subtracted|subtracting|subtraction|minus|take away|takes away|taking away|took away|difference|less|fewer)$/],
+  ["×", /^(?:times|multiply|multiplies|multiplied|multiplying|multiplication|groups of)$/],
+  ["÷", /^(?:divide|divides|divided|dividing|division|share|shares|shared|sharing|split|splits|splitting|each)$/],
+];
+/**
+ * Phrases with an operation word that say nothing about the problem's operation ("take your time", "one more try",
+ * "look at each column"). The list is short on purpose: any other use of an operation word is checked.
+ */
+const NOT_OPERATIONS: readonly string[][] = [
+  ["take", "your", "time"], ["take", "a", "break"], ["less", "work"], ["more", "time"], ["one", "more"], ["once", "more"],
+  ["tell", "me", "more"], ["more", "help"], ["each", "step"], ["each", "time"], ["each", "column"], ["each", "digit"],
+  ["each", "number"], ["each", "row"], ["each", "place"], ["each", "one"],
+];
+
+/**
+ * Every operation word in a sentence that is not the operation of the problem it is about: the problem the sentence
+ * names ("In 18 + 5, add the ones"), else the turn's own. "Now subtract the 39 dollars." is false for 27 + 39. A
+ * restatement keeps the question's own words, and a phrase in NOT_OPERATIONS is no operation.
+ */
+function operationClaims(text: string, toks: Spanned[], restates: boolean[], own: MathOp, named: (end: number) => MathOp | undefined): MathClaim[] {
+  const out: MathClaim[] = [];
+  for (let a = 0; a < toks.length; ) {
+    let b = a;
+    while (b < toks.length && toks[b].t !== "end") b++;
+    if (b > a && !restates[a]) {
+      const op = named(b) ?? own;
+      const words = [...text.slice(toks[a].from, toks[b - 1].to).toLowerCase().matchAll(/[a-z]+/g)].map((m) => m[0]);
+      const skip = new Set<number>();
+      words.forEach((_, n) => NOT_OPERATIONS.forEach((p) => {
+        if (p.every((w, m) => words[n + m] === w)) p.forEach((__, m) => skip.add(n + m));
+      }));
+      words.forEach((w, n) => {
+        if (skip.has(n)) return;
+        const two = n + 1 < words.length ? `${w} ${words[n + 1]}` : "";
+        for (const [symbol, group] of OPERATION_WORDS) {
+          const said = group.test(two) ? two : group.test(w) ? w : null;
+          if (said && symbol !== op) out.push({ text: said, status: "false", problem: null, result: false });
+        }
+      });
+    }
+    a = b + 1;
+  }
+  return out;
 }
 
 /** Words that may lead into a restatement without changing it ("So, Sam has 27 dollars."). */
@@ -451,32 +514,39 @@ function canonical(text: string, toks: Spanned[]): string[] {
 }
 
 /**
- * The clauses of a question, in order: it splits at sentence ends, at commas and colons, and before an "and" that
- * starts a clause ("and gets 39 dollars", not "and a book"). That "and" stays at the start of its clause.
+ * The clauses of each sentence of a question, in order: it splits at sentence ends (a "?" too), at commas and colons,
+ * and before an "and" that starts a clause ("and gets 39 dollars", not "and a book"). That "and" stays at the start of
+ * its clause. A restatement never joins clauses of two sentences.
  */
-function clausesOf(q: string): string[][] {
+function clausesOf(q: string): string[][][] {
   const qt = tokenize(q);
-  const clauses: string[][] = [];
+  const sentences: string[][][] = [[]];
   let part: Spanned[] = [];
   const cut = () => {
     const c = canonical(q, part);
-    if (c.length > 0) clauses.push(c);
+    if (c.length > 0) sentences[sentences.length - 1].push(c);
     part = [];
   };
   qt.forEach((t, k) => {
-    if (t.t === "end" || t.t === "soft") return cut();
+    if (t.t === "end") {
+      cut();
+      sentences.push([]);
+      return;
+    }
+    if (t.t === "soft") return cut();
     const next = qt[k + 1];
     // A verb ("gets", "is") or another word starts a clause; a number, a sign or an article goes on the one before.
     if (t.t === "word" && t.w === "and" && (next?.t === "eq" || (next?.t === "word" && !NOT_A_CLAUSE.has(next.w)))) cut();
     part.push(t);
   });
   cut();
-  return clauses;
+  return sentences.filter((c) => c.length > 0);
 }
 
 /**
  * For each token, whether its sentence restates a question: after an optional lead-in ("So,", "Remember,", "The
- * question says"), it is one or more clauses of that question in a row, unchanged but for case, spaces and punctuation;
+ * question says"), it is one or more clauses of one sentence of that question in a row, unchanged but for case, spaces
+ * and punctuation;
  * an "and" may join two of them or be left off the start of one. Nothing else is a restatement: a changed, added or
  * moved word or number ("Sam has 27 dollars altogether.", "Sam has 39 dollars.") goes through the usual checks.
  */
@@ -497,7 +567,7 @@ function restated(text: string, toks: Spanned[], questions: readonly string[]): 
     while (b < toks.length && toks[b].t !== "end") b++;
     let s = canonical(text, toks.slice(a, b));
     for (let lead = LEAD_INS.find((l) => eq(s.slice(0, l.length), l)); lead; lead = LEAD_INS.find((l) => eq(s.slice(0, l.length), l))) s = s.slice(lead.length);
-    if (s.length > 0 && asked.some((clauses) => clauses.some((_, c) => rest(s, 0, clauses, c, true)))) out.fill(true, a, b);
+    if (s.length > 0 && asked.some((sentences) => sentences.some((clauses) => clauses.some((_, c) => rest(s, 0, clauses, c, true))))) out.fill(true, a, b);
     a = b + 1;
   }
   return out;
