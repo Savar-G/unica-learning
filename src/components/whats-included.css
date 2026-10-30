@@ -47,6 +47,10 @@
 .wi-lf, .wi-rd-nav { pointer-events: auto; }
 .wi-lf { position: absolute; left: 440px; top: 0; width: 440px; height: 570px; transform-origin: 0 50%; transform-style: preserve-3d; transform: rotateY(0deg) translateZ(var(--z)); cursor: pointer; }
 .wi-lf.flipped { transform: rotateY(-180deg) translateZ(var(--z)); }
+/* At rest: no depth, and only the open spread shows (depth makes the browser resample the pages, so they blur). */
+.wi-rd-body:not(.turning) .wi-lf { transform: none; }
+.wi-rd-body:not(.turning) .wi-lf.flipped { transform: rotateY(-180deg); }
+.wi-rd-body:not(.turning) .wi-lf:not(.shown) { visibility: hidden; }
 .wi-lf.fwd { animation: wi-lfturn .95s cubic-bezier(.42,.05,.28,1) both; }
 .wi-lf.bwd { animation: wi-lfturn .95s cubic-bezier(.42,.05,.28,1) reverse both; }
 @keyframes wi-lfturn { from { transform: rotateY(0deg) translateZ(var(--z)); } to { transform: rotateY(-180deg) translateZ(var(--z)); } }

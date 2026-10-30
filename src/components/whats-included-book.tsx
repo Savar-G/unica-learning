@@ -49,7 +49,7 @@ export function WorkbookReader() {
         <div className="wi-rd is-open">
           <div className="wi-rd-stage">
             <div
-              className="wi-rd-body"
+              className={`wi-rd-body${Object.keys(anim).length ? " turning" : ""}`}
               onClick={(e) => {
                 const b = e.currentTarget.getBoundingClientRect();
                 turn(e.clientX > b.left + b.width / 2 ? 1 : -1);
@@ -63,7 +63,8 @@ export function WorkbookReader() {
               <div className="wi-rd-re" />
               {Array.from({ length: LEAVES }, (_, i) => {
                 const fr = book.pages[2 * i], bk = book.pages[2 * i + 1];
-                const cls = ["wi-lf", i === 0 && "is-cover", i < f && "flipped", anim[i]].filter(Boolean).join(" ");
+                // Only the open spread shows at rest, flat, so the browser draws the pages at full sharpness.
+                const cls = ["wi-lf", i === 0 && "is-cover", i < f && "flipped", (i === f - 1 || i === f) && "shown", anim[i]].filter(Boolean).join(" ");
                 return (
                   <div key={`${key}-${i}`} className={cls} style={{ "--z": `${-i}px` } as CSSProperties} onAnimationEnd={done(i)}>
                     <div className="wi-hf in">
