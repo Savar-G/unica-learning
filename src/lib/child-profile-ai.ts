@@ -134,8 +134,12 @@ const CODE_WORDS = new Set([
   "convert", "quantity-add", "quantity-subtract", "quantity-multiply", "money-round", "elapsed-time", "time-add", "clock-convert", "evaluate", "solve",
   "number", "fraction", "mixed", "remainder", "quantity", "compound", "time", "a.m.", "p.m.", ...UNITS,
 ]);
-/** A sum or an equation: numbers, signs and brackets, with unknowns of one letter ("3 × n + 2 = 14"). */
-const SUM = /^(?:\d+(?:\.\d+)?|[a-z](?![a-z])|[\s+\-−×÷*/=().,^<>])+$/i;
+/**
+ * A sum or an equation: digits, signs and brackets, with unknowns of one letter ("3 × n + 2 = 14"). One character per
+ * step, and the three kinds never overlap, so the check is linear on any string (review R355-3: a repeated group of
+ * digits backtracked for seconds on "111...1Alice Smith", past the findings deadline).
+ */
+const SUM = /^(?:\d|[a-z](?![a-z])|[\s+\-−×÷*/=().,^<>])+$/i;
 /** The answer values that are typed amounts: no free text. */
 const AMOUNTS = new Set<AnswerValue["type"]>(["number", "fraction", "mixed", "remainder", "quantity", "compound", "time"]);
 

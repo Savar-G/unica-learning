@@ -293,6 +293,22 @@ describe("what the AI reads", () => {
     expect(events[3]).toMatchObject({ question: null, stuck_at: null, child_answer: null, mistake: null });
   });
 
+  it("checks a long stored string quickly and sends none of it (review R355-3)", async () => {
+    const found = assessmentQuestionPackage({ source: "assessment", assessmentId: TEST, questionId: "s1-3" }, ADDITION);
+    if (found.status !== "found") throw new Error("expected the 48 + 37 package");
+    // An unused operation field: the package is still valid, and the string is digits, then a name.
+    const long: QuestionPackage = { ...found.package, operation: { ...found.package.operation, values: { n: `${"1".repeat(40)}Alice Smith` } } as never };
+    const f = family();
+    await f.add(call({ ...onAddition, result: "wrong", stuckStep: "tens", mistake: "O3" }));
+    const ai = fakeAiClient({ answer: () => ({ findings: [] }) });
+    const started = Date.now();
+    await rebuildChildProfile(CHILD, { ...f, ai, questions: { question: async () => ({ status: "found", package: long }) } });
+    expect(Date.now() - started).toBeLessThan(1000);
+    const content = ai.requests[0].content[0].type === "text" ? ai.requests[0].content[0].text : "";
+    expect(content).not.toContain("Alice");
+    expect(JSON.parse(content).events[0]).toMatchObject({ question: null });
+  });
+
   it("sends the trusted question data of an event: the question, the step it stuck at, and its known wrong answer", async () => {
     const f = family();
     const e = await f.add(call({ ...onAddition, result: "wrong", stuckStep: "tens", mistake: "O3" }));
