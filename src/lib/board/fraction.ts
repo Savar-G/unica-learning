@@ -1,8 +1,9 @@
 // A fraction or mixed number on the board (#317): the numerator and denominator centred over a bar wider than both, and
 // the whole number of a mixed number to the left, centred on the bar. Each part is a target. The stacked layout here
 // also writes the labels of a number line, at a smaller size.
-import type { Point } from "@/lib/board/glyphs";
-import { glyphStrokes, missingGlyphs, refuse, type LocalStroke, type LocalTarget, type Representation } from "@/lib/board/representation";
+import type { GlyphSet, Point } from "@/lib/board/glyphs";
+import { readNumber } from "@/lib/board/rational";
+import { glyphStrokes, isRefusal, missingGlyphs, refuse, type LocalStroke, type LocalTarget, type RefusalBody, type Representation } from "@/lib/board/representation";
 import type { FractionCommand, FractionPart, Ink, Rect, Target } from "@/lib/board/types";
 
 /** A number as the board writes it: a sign, a whole part (digits, or a decimal), and a stacked fraction part. */
@@ -75,9 +76,15 @@ export function numberText(parts: NumberParts): string {
 /** The characters a written number needs from the pen. */
 export const numberChars = (parts: NumberParts) => parts.sign + (parts.whole ?? "") + (parts.fraction ? parts.fraction.numerator + parts.fraction.denominator : "");
 
+/** Why the pen cannot write the characters, or null when it can. */
+export function refuseMissing(glyphs: GlyphSet, chars: string): RefusalBody | null {
+  const missing = missingGlyphs(glyphs, chars);
+  return missing.length > 0 ? refuse("unsupported", `The board pen cannot write ${missing.join(" ")} yet.`) : null;
+}
+
 /** The strokes of a laid-out number placed at (dx, dy). The target of each part comes from `targetOf`. */
 export function numberStrokes(
-  ctx: { glyphs: Parameters<typeof glyphStrokes>[0] },
+  ctx: { glyphs: GlyphSet },
   parts: NumberParts,
   layout: NumberLayout,
   at: { dx: number; dy: number },
@@ -120,15 +127,13 @@ export const fraction: Representation<FractionState, FractionCommand> = {
   op: "fraction",
   create(cmd, ctx) {
     const whole = cmd.whole ?? null;
-    if (cmd.denominator === "0") return refuse("not_allowed", `${cmd.numerator}/0 has 0 as its denominator: a whole cannot be cut into 0 equal parts.`);
-    if (whole !== null) {
-      if (whole === "0") return refuse("not_allowed", `A mixed number has a whole number of at least 1: write ${cmd.numerator}/${cmd.denominator} as a fraction.`);
-      if (Number(cmd.numerator) === 0 || Number(cmd.numerator) >= Number(cmd.denominator))
-        return refuse("not_allowed", `In the mixed number ${whole} ${cmd.numerator}/${cmd.denominator} the fraction part must be more than 0 and less than 1.`);
-    }
+    if (whole === "0") return refuse("not_allowed", `A mixed number has a whole number of at least 1: write ${cmd.numerator}/${cmd.denominator} as a fraction.`);
     const parts: FractionState["parts"] = { sign: "", whole, fraction: { numerator: cmd.numerator, denominator: cmd.denominator } };
-    const missing = missingGlyphs(ctx.glyphs, numberChars(parts));
-    if (missing.length > 0) return refuse("unsupported", `The board pen cannot write ${missing.join(" ")} yet.`);
+    // The same checks as any number: a 0 denominator, a mixed number's fraction part between 0 and 1.
+    const read = readNumber(numberText(parts));
+    if (isRefusal(read)) return read;
+    const cannot = refuseMissing(ctx.glyphs, numberChars(parts));
+    if (cannot) return cannot;
     const state: FractionState = { parts, ink: cmd.ink ?? "blue", seq: ctx.seq };
     return { state, size: layoutOf(state).size };
   },

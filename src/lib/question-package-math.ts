@@ -41,7 +41,7 @@ const digitAt = (n: number, i: number) => Math.floor(n / 10 ** i) % 10;
 const digitCount = (n: number) => String(n).length;
 
 export const gcd = (a: number, b: number): number => (b === 0 ? Math.abs(a) : gcd(b, a % b));
-const lcm = (a: number, b: number) => (a / gcd(a, b)) * b;
+export const lcm = (a: number, b: number) => (a / gcd(a, b)) * b;
 
 // ---------- Written numbers ----------
 

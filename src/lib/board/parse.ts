@@ -1,7 +1,7 @@
 // Checks one command from the model before anything changes. The model's output is untrusted: a command with an unknown
 // op, a missing or extra field, a coordinate, or a value out of bounds is refused with a reason, never repaired.
 import { refuse, type RefusalBody } from "@/lib/board/representation";
-import { readNumber, valueKey } from "@/lib/board/rational";
+import { valueName } from "@/lib/board/rational";
 import { CLEAR_SCOPES, FRACTION_PARTS, INKS, LINE_LABELS, MARK_STYLES, NUMBER_FORMS, OPERATIONS, PLACE_NAMES, REGROUP_KINDS, type Command, type Place, type Target } from "@/lib/board/types";
 
 const ID = /^[A-Za-z][A-Za-z0-9_-]{0,63}$/;
@@ -91,8 +91,8 @@ function digits(v: unknown, what: string): string {
 }
 /** An exact number as text ("-2", "0.25", "2/6", "1 1/2"), in its lowest-terms key ("1/3" for "2/6"). */
 function exactValue(v: unknown, what: string): string {
-  const read = readNumber(text(v, what, 12));
-  return "reason" in read ? fail(`${what}: ${read.reason}`) : valueKey(read.value);
+  const name = valueName(text(v, what, 12));
+  return typeof name === "string" ? name : fail(`${what}: ${name.reason}`);
 }
 
 function parse(raw: unknown): Command {

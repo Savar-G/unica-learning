@@ -8,10 +8,10 @@
 // anything.
 import { curvedArrow, overlaps, polylineHitsRect, traceTouches } from "@/lib/board/geometry";
 import type { Point } from "@/lib/board/glyphs";
-import { layoutNumber, numberChars, numberStrokes, numberText, type NumberLayout, type NumberParts } from "@/lib/board/fraction";
-import { gcd } from "@/lib/question-package-math";
+import { layoutNumber, numberChars, numberStrokes, numberText, refuseMissing, type NumberLayout, type NumberParts } from "@/lib/board/fraction";
+import { lcm } from "@/lib/question-package-math";
 import { add, compare, div, equal, isWhole, rational, readNumber, sub, toDecimal, valueKey, type Rational, type ReadNumber } from "@/lib/board/rational";
-import { missingGlyphs, refuse, type Ctx, type LocalStroke, type LocalTarget, type RefusalBody, type Representation, type Reserved } from "@/lib/board/representation";
+import { isRefusal, refuse, type Ctx, type LocalStroke, type LocalTarget, type RefusalBody, type Representation, type Reserved } from "@/lib/board/representation";
 import type { Ink, JumpCommand, LineLabels, NumberForm, NumberLineCommand, Rect, Target } from "@/lib/board/types";
 
 const MAX_TICKS = 25;
@@ -51,13 +51,17 @@ interface Geometry {
   h: number;
 }
 
-export interface NumberLineState {
+/** How a line writes its values: the form, and the denominator every fraction label uses. */
+interface LabelStyle {
+  form: NumberForm;
+  /** The line counts in these parts: "2/6" on a line in sixths. */
+  unit: number;
+}
+
+export interface NumberLineState extends LabelStyle {
   min: Rational;
   tick: Rational;
   count: number;
-  form: NumberForm;
-  /** Every label's denominator: the line counts in these parts ("2/6" on a line in sixths). */
-  unit: number;
   /** Ticks labelled when the line was drawn; `put` labels the others. */
   shown: boolean[];
   put: Record<number, { seq: number; ink: Ink }>;
@@ -69,7 +73,6 @@ export interface NumberLineState {
 
 const times = (r: Rational, k: number) => rational(r.num * k, r.den);
 const valueAt = (state: Pick<NumberLineState, "min" | "tick">, i: number) => add(state.min, times(state.tick, i));
-const lcm = (a: number, b: number) => (a / gcd(a, b)) * b;
 
 /** A value's tick on the line, or null when no tick shows it. */
 function tickOf(state: NumberLineState, v: Rational): number | null {
@@ -78,8 +81,8 @@ function tickOf(state: NumberLineState, v: Rational): number | null {
 }
 
 /** How the line writes a value: whole numbers plainly, others as a decimal, an improper fraction or a mixed number in the line's unit. */
-function labelOf(v: Rational, form: NumberForm, unit: number, signed = false): NumberParts {
-  const sign = v.num < 0 ? "−" : signed ? "+" : "";
+function labelOf({ form, unit }: LabelStyle, v: Rational): NumberParts {
+  const sign = v.num < 0 ? "−" : "";
   const a = rational(Math.abs(v.num), v.den);
   if (isWhole(a)) return { sign, whole: String(a.num), fraction: null };
   if (form === "decimal") return { sign, whole: toDecimal(a), fraction: null };
@@ -90,7 +93,10 @@ function labelOf(v: Rational, form: NumberForm, unit: number, signed = false): N
   return { sign, whole: null, fraction: { numerator: String(a.num * scale), denominator: String(unit) } };
 }
 
-/** A number as the model wrote it, for a jump label: "+1/3" stays "+1/3". */
+/** A jump's size as the line writes it, with its direction: "+2/6", "−1.5". */
+const stepOf = (style: LabelStyle, size: Rational): NumberParts => ({ ...labelOf(style, size), sign: size.num < 0 ? "−" : "+" });
+
+/** A jump label as the model wrote it, with its direction sign: "1/3" and "+1/3" are both drawn "+1/3". */
 function writtenParts(read: ReadNumber, text: string): NumberParts {
   const body = text.replace(/^[+\-−]/, "");
   const sign = read.value.num < 0 ? "−" : "+";
@@ -100,26 +106,27 @@ function writtenParts(read: ReadNumber, text: string): NumberParts {
   return { sign, whole, fraction: { numerator, denominator } };
 }
 
-const labelText = (state: NumberLineState, i: number) => numberText(labelOf(valueAt(state, i), state.form, state.unit));
+const labelText = (state: NumberLineState, i: number) => numberText(labelOf(state, valueAt(state, i)));
 const tickX = (geo: Geometry, i: number) => geo.x0 + i * geo.spacing;
 const isShown = (state: NumberLineState, i: number) => state.shown[i] || i in state.put;
 
 function labelBox(state: NumberLineState, i: number): { layout: NumberLayout; rect: Rect } {
-  const layout = layoutNumber(labelOf(valueAt(state, i), state.form, state.unit), LABEL_SIZE);
+  const layout = layoutNumber(labelOf(state, valueAt(state, i)), LABEL_SIZE);
   return { layout, rect: { x: tickX(state.geo, i) - layout.w / 2, y: state.geo.lineY + TICK_HALF + INSET, w: layout.w, h: layout.h } };
 }
 
-function read(text: string, what: string): Rational | RefusalBody {
+/** A number the model wrote, or why it cannot be read: unreadable text is an invalid command, a 0 denominator is not allowed. */
+function readValue(text: string, what: string): ReadNumber | RefusalBody {
   const r = readNumber(text);
-  return "reason" in r ? refuse("not_allowed", `${what}: ${r.reason}`) : r.value;
+  return isRefusal(r) ? { ...r, reason: `${what}: ${r.reason}` } : r;
 }
 
 function create(cmd: NumberLineCommand, ctx: Ctx): { state: NumberLineState; size: { w: number; h: number } } | RefusalBody {
   const values: Rational[] = [];
   const decimals: boolean[] = [];
   for (const [what, text] of [["min", cmd.min], ["max", cmd.max], ["tick", cmd.tick]] as const) {
-    const r = readNumber(text);
-    if ("reason" in r) return refuse("not_allowed", `The ${what}: ${r.reason}`);
+    const r = readValue(text, `The ${what}`);
+    if (isRefusal(r)) return r;
     values.push(r.value);
     decimals.push(r.form === "decimal");
   }
@@ -131,18 +138,20 @@ function create(cmd: NumberLineCommand, ctx: Ctx): { state: NumberLineState; siz
   const count = steps.num + 1;
   if (count > MAX_TICKS) return refuse("no_room", `That is ${count} ticks: a number line has at most ${MAX_TICKS}. Use a bigger tick or a shorter range.`);
   const unit = lcm(min.den, tick.den);
-  if (unit > MAX_UNIT) return refuse("unsupported", `The ticks need a denominator of ${unit}: the board writes up to ${MAX_UNIT}.`);
   const form: NumberForm = cmd.form ?? (decimals.some(Boolean) ? "decimal" : "fraction");
+  if (form !== "decimal" && unit > MAX_UNIT) return refuse("unsupported", `The ticks need a denominator of ${unit}: the board writes fractions up to ${MAX_UNIT}.`);
   const base = { min, tick };
+  const style: LabelStyle = { form, unit };
   if (form === "decimal") {
     const bad = Array.from({ length: count }, (_, i) => valueAt(base, i)).find((v) => toDecimal(v) === null);
     if (bad) return refuse("not_allowed", `${valueKey(bad)} has no exact decimal: use the fraction form for this line.`);
   }
   const labels: LineLabels = cmd.labels ?? "all";
   const shown = Array.from({ length: count }, (_, i) => labels === "all" || (labels === "ends" && (i === 0 || i === count - 1)) || (labels === "wholes" && isWhole(valueAt(base, i))));
-  const layouts = Array.from({ length: count }, (_, i) => layoutNumber(labelOf(valueAt(base, i), form, unit), LABEL_SIZE));
-  const missing = missingGlyphs(ctx.glyphs, Array.from({ length: count }, (_, i) => numberChars(labelOf(valueAt(base, i), form, unit, true))).join("") + "−");
-  if (missing.length > 0) return refuse("unsupported", `The board pen cannot write ${missing.join(" ")} yet.`);
+  const layouts = Array.from({ length: count }, (_, i) => layoutNumber(labelOf(style, valueAt(base, i)), LABEL_SIZE));
+  // The labels, and the signs of jump labels.
+  const cannot = refuseMissing(ctx.glyphs, Array.from({ length: count }, (_, i) => numberChars(labelOf(style, valueAt(base, i)))).join("") + "+−");
+  if (cannot) return cannot;
 
   // Room for the widest label under each tick, and for the end labels inside the line's box.
   const widest = Math.max(...layouts.map((l) => l.w));
@@ -193,11 +202,11 @@ function jumpsMeet(a: ReturnType<typeof jumpShape>, b: ReturnType<typeof jumpSha
 function jump(state: NumberLineState, cmd: JumpCommand, ctx: Ctx): NumberLineState | RefusalBody {
   const ends: number[] = [];
   for (const [what, text] of [["fromValue", cmd.fromValue], ["toValue", cmd.toValue]] as const) {
-    const v = read(text, `The jump's ${what}`);
-    if ("code" in v) return v;
-    const i = tickOf(state, v);
+    const v = readValue(text, `The jump's ${what}`);
+    if (isRefusal(v)) return v;
+    const i = tickOf(state, v.value);
     if (i === null)
-      return refuse("not_allowed", `${text} is not on a tick of this line: its ticks go from ${labelText(state, 0)} to ${labelText(state, state.count - 1)} in steps of ${numberText(labelOf(state.tick, state.form, state.unit))}.`);
+      return refuse("not_allowed", `${text} is not on a tick of this line: its ticks go from ${labelText(state, 0)} to ${labelText(state, state.count - 1)} in steps of ${numberText(labelOf(state, state.tick))}.`);
     ends.push(i);
   }
   const [from, to] = ends;
@@ -205,14 +214,13 @@ function jump(state: NumberLineState, cmd: JumpCommand, ctx: Ctx): NumberLineSta
   const size = sub(valueAt(state, to), valueAt(state, from));
   let label: NumberParts | null = null;
   if (cmd.label !== undefined) {
-    const r = readNumber(cmd.label);
-    if ("reason" in r) return refuse("invalid_command", `The jump's label: ${r.reason}`);
-    const right = numberText(labelOf(size, state.form, state.unit, true));
-    if (!equal(r.value, size) || (size.num < 0 && r.sign !== "-") || (size.num > 0 && r.sign === "-"))
-      return refuse("wrong_value", `This jump goes ${size.num < 0 ? "back" : "forward"} ${numberText(labelOf(rational(Math.abs(size.num), size.den), state.form, state.unit))}: its label is ${right}, not ${cmd.label}.`);
+    const r = readValue(cmd.label, "The jump's label");
+    if (isRefusal(r)) return r;
+    if (!equal(r.value, size))
+      return refuse("wrong_value", `This jump goes ${size.num < 0 ? "back" : "forward"} ${numberText(labelOf(state, rational(Math.abs(size.num), size.den)))}: its label is ${numberText(stepOf(state, size))}, not ${cmd.label}.`);
     label = writtenParts(r, cmd.label);
-    const missing = missingGlyphs(ctx.glyphs, numberChars(label));
-    if (missing.length > 0) return refuse("unsupported", `The board pen cannot write ${missing.join(" ")} yet.`);
+    const cannot = refuseMissing(ctx.glyphs, numberChars(label));
+    if (cannot) return cannot;
   }
   const others = state.jumps.map((j) => jumpShape(state, j));
   for (let lane = 0; lane < LANES; lane++) {
@@ -232,7 +240,7 @@ function targets(state: NumberLineState, objectId: string): LocalTarget[] {
   const out: LocalTarget[] = [
     {
       target: { objectId, part: "whole" },
-      label: `${objectId}: a number line from ${ends}, a tick every ${numberText(labelOf(state.tick, state.form, state.unit))}`,
+      label: `${objectId}: a number line from ${ends}, a tick every ${numberText(labelOf(state, state.tick))}`,
       writable: false,
       value: null,
       rect: { x: 0, y: 0, w: geo.w, h: geo.h },
@@ -266,12 +274,12 @@ function targets(state: NumberLineState, objectId: string): LocalTarget[] {
 
 function put(state: NumberLineState, target: Target, value: string, ink: Ink | undefined, ctx: Ctx): NumberLineState | RefusalBody {
   if (target.part !== "value") return refuse("not_writable", "Put writes a label under a tick: name the tick by its value.");
-  const at = readNumber(target.value);
-  const i = "reason" in at ? null : tickOf(state, at.value);
-  if (i === null) return refuse("unknown_target", `${target.value} is not on a tick of this line.`);
+  // The target's value is already a name in lowest terms (the parser and the summary give it so).
+  const i = Array.from({ length: state.count }, (_, k) => valueKey(valueAt(state, k))).indexOf(target.value);
+  if (i < 0) return refuse("unknown_target", `${target.value} is not on a tick of this line.`);
   if (isShown(state, i)) return refuse("already_written", `The tick at ${labelText(state, i)} is already labelled.`);
-  const v = readNumber(value);
-  if ("reason" in v) return refuse("invalid_command", `The label: ${v.reason}`);
+  const v = readValue(value, "The label");
+  if (isRefusal(v)) return v;
   if (!equal(v.value, valueAt(state, i))) return refuse("wrong_value", `That tick is ${labelText(state, i)}, not ${value}.`);
   return { ...state, put: { ...state.put, [i]: { seq: ctx.seq, ink: ink ?? "green" } } };
 }
@@ -293,7 +301,7 @@ function draw(state: NumberLineState, objectId: string, ctx: Ctx): LocalStroke[]
     const { layout, rect } = labelBox(state, i);
     const pen = state.put[i] ?? { seq: state.seq, ink: state.ink };
     const base = { objectId, layer: "math" as const, ink: pen.ink, width: LABEL_WIDTH, seq: pen.seq };
-    out.push(...numberStrokes(ctx, labelOf(valueAt(state, i), state.form, state.unit), layout, { dx: rect.x, dy: rect.y }, base, () => target, `label/${i}`));
+    out.push(...numberStrokes(ctx, labelOf(state, valueAt(state, i)), layout, { dx: rect.x, dy: rect.y }, base, () => target, `label/${i}`));
   }
   for (const j of state.jumps) {
     const shape = jumpShape(state, j);

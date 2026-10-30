@@ -239,3 +239,35 @@ describe("the common commands", () => {
     expect(refused(scene, { op: "fraction", id: "f3", whole: "1", numerator: "5", denominator: "4", place: { region: "main" } }).reason).toMatch(/less than 1/);
   });
 });
+
+describe("stable tick names", () => {
+  const names = (scene: Scene, id: string) => boardTargets(scene).filter((t) => t.target.objectId === id && t.target.part === "value").map((t) => t.target);
+
+  it("keeps each tick's name as the board changes around the line", () => {
+    let scene = ok(createScene(), line("n1", "-1", "1", "1/4", { labels: "ends" }));
+    const before = names(scene, "n1");
+    expect(before).toContainEqual(value("n1", "-3/4"));
+    scene = ok(scene, { op: "jump", id: "j1", lineId: "n1", fromValue: "-1", toValue: "1/2" }, { op: "put", target: value("n1", "2/4"), value: "1/2" });
+    scene = ok(scene, { op: "fraction", id: "f1", numerator: "1", denominator: "2", place: { below: "n1" } });
+    expect(names(scene, "n1")).toEqual(before);
+    scene = ok(scene, { op: "clear", scope: "maya_objects" });
+    scene = ok(scene, { op: "undo", transactionId: `f${tx}` });
+    expect(names(scene, "n1")).toEqual(before);
+  });
+
+  it("labels a tick whose name is a long fraction: 1000.5 is 2001/2", () => {
+    const scene = ok(createScene(), line("n1", "1000", "1002", "0.5", { labels: "ends" }));
+    expect(info(scene, value("n1", "2001/2"))).toMatchObject({ value: null, writable: true });
+    const labelled = ok(scene, { op: "put", target: value("n1", "1000.5"), value: "1000.5" });
+    expect(info(labelled, value("n1", "2001/2")).value).toBe("1000.5");
+  });
+
+  it("refuses a value it cannot read as an invalid command, and a 0 denominator as not allowed", () => {
+    const scene = ok(createScene(), line("n1", "0", "1", "1/4"));
+    expect(refused(scene, { op: "jump", id: "j1", lineId: "n1", fromValue: "0", toValue: "half" }).code).toBe("invalid_command");
+    expect(refused(scene, { op: "jump", id: "j1", lineId: "n1", fromValue: "0", toValue: "1/0" }).code).toBe("not_allowed");
+    expect(refused(scene, { op: "mark", id: "m1", target: value("n1", "x"), style: "circle" }).code).toBe("invalid_command");
+    // A coordinate is never a value.
+    expect(refused(scene, { op: "jump", id: "j1", lineId: "n1", fromValue: "0", toValue: "1/4", x: 3 }).code).toBe("invalid_command");
+  });
+});

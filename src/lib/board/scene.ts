@@ -11,7 +11,7 @@ import { PLACEHOLDER_GLYPHS, type GlyphSet } from "@/lib/board/glyphs";
 import { note } from "@/lib/board/note";
 import { numberLine } from "@/lib/board/number-line";
 import { parseCommand } from "@/lib/board/parse";
-import { readNumber, valueKey } from "@/lib/board/rational";
+import { valueName } from "@/lib/board/rational";
 import { isRefusal, refuse, type Ctx, type LocalStroke, type LocalTarget, type RefusalBody, type Representation } from "@/lib/board/representation";
 import type { Batch, BoardPath, Command, CreateCommand, Notice, PageSize, PathKind, Place, Rect, Refusal, Target, TargetInfo, TimedPath, View } from "@/lib/board/types";
 import type { Stroke } from "@/lib/whiteboard";
@@ -106,11 +106,11 @@ export function createScene(options: { page?: PageSize; glyphs?: GlyphSet } = {}
 
 // ---------- targets ----------
 
-const targetKey = (t: Target) => [t.objectId, t.part, "rowId" in t ? t.rowId : "", "column" in t ? t.column : "", "index" in t ? t.index : "", "value" in t ? valueName(t.value) : ""].join("|");
+const targetKey = (t: Target) => [t.objectId, t.part, "rowId" in t ? t.rowId : "", "column" in t ? t.column : "", "index" in t ? t.index : "", "value" in t ? valueKeyOf(t.value) : ""].join("|");
 /** A number line value's one name, so "2/6" and "1/3" are the same target. */
-function valueName(text: string): string {
-  const read = readNumber(text);
-  return "reason" in read ? text : valueKey(read.value);
+function valueKeyOf(text: string): string {
+  const name = valueName(text);
+  return typeof name === "string" ? name : text;
 }
 export const sameTarget = (a: Target, b: Target) => targetKey(a) === targetKey(b);
 
