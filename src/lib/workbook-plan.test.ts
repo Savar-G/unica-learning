@@ -39,6 +39,7 @@ const input = (over: Partial<PlanInput> = {}): PlanInput => ({
   misses: [],
   pausedWeeks: 0,
   support: null,
+  unassessedUnits: [],
   ...over,
 });
 /** The first workbook of a level, for a child at its grade with no profile. */
@@ -65,6 +66,7 @@ const aToB = (list: PlannedPage[]) => {
 const allPassed = (l: PlanLevel) =>
   Object.fromEntries(l.units.flatMap((u) => u.skills.filter((s) => s.delivery !== "warm-up").map((s) => [s.id, s.delivery === "activity" ? 1 : s.steps.length || DEFAULT_STEPS])));
 
+const unitSkills = (code: string) => BC_SKILL_MAP.standards.find((s) => s.code === code)!.skills.map((k) => k.id);
 const miss = (skill: string, n: number, over: Partial<UnresolvedMiss> = {}): UnresolvedMiss => ({
   skill,
   question: { source: "workbook", workbookId: "00000000-0000-4000-8000-0000000000b1", page: 10 + n, question: n },
@@ -100,9 +102,8 @@ describe("the curriculum adapter", () => {
     for (const l of ALL) {
       for (const x of parts(plan(at(l)))) if (x.items > 0) expect(x.skills.length, `U${l.number} day ${x.day} ${x.kind}`).toBeGreaterThan(0);
     }
-    // U1, first workbook, nothing behind the child: Remember these? checks the level's units.
-    const first = parts(plan(at(U1))).find((x) => x.kind === "remember-these" && x.day === 1)!;
-    expect(first.alreadyKnowIt).toBe(true);
+    // U1, nothing behind the child: Remember these? comes back to the level's units.
+    const first = parts(plan(at(U1, { workbook: { number: 2, inLevel: 1 } }))).find((x) => x.kind === "remember-these" && x.day === 1)!;
     expect(first.skills.every((id) => U1.units.some((u) => u.skills.some((s) => s.id === id)))).toBe(true);
     // A level with no fluency skill: the warm-up has nothing to aim at, and the plan is refused.
     expect(planWorkbook(input({ level: { ...U10, fluency: [] } }))).toEqual({ ok: false, reason: "day 1 page 1: warm-up has no skill to aim at" });
@@ -376,6 +377,25 @@ describe("the two-week curriculum plan: review", () => {
     expect(p.reviewsSkipped).toEqual([fraction]);
     expect(parts(p).flatMap((x) => x.reviews ?? []).map((r) => r.skill)).toContain("3.5-equal-groups");
   });
+
+  it("R356-04: applies the school-grade rule to the child's own level too: no remedial review or Fix it above the grade", () => {
+    // A Grade 2 child working ahead in U10 (Grade 3): 3.1 is developing. A carried review and a miss on its skill.
+    const review = { skill: "3.1-place-value-1000", step: 1, interval: 1, due: 1 };
+    const ahead = (status: StrandStatus) => input({
+      grade: 2, profile: { standards: [standard("3.1", status)] }, passed: { "3.1-place-value-1000": 1 },
+      reviews: [review], misses: [miss("3.1-place-value-1000", 1)], workbook: { number: 6, inLevel: 1 },
+    });
+    const p = plan(ahead("developing"));
+    expect(parts(p).some((x) => x.kind === "fix-it")).toBe(false);
+    expect(parts(p).flatMap((x) => x.reviews ?? [])).not.toContainEqual({ skill: review.skill, step: 1, interval: 1 });
+    expect(p.reviewsSkipped).toEqual([review]);
+    // The child still learns the level: teaching ahead of the grade is not a weakness.
+    expect(p.newSteps[0]).toMatchObject({ skill: "3.1-place-value-1000", step: 2 });
+    // Once 3.1 is secure, the review and the Fix it come back.
+    const secure = plan(ahead("secure"));
+    expect(parts(secure).find((x) => x.kind === "fix-it")?.fixIt?.map((f) => f.skill)).toEqual(["3.1-place-value-1000"]);
+    expect(secure.reviewsSkipped).toEqual([]);
+  });
 });
 
 describe("the two-week curriculum plan: Fix it, pauses and support", () => {
@@ -439,6 +459,16 @@ describe("the two-week curriculum plan: Fix it, pauses and support", () => {
     const second = plan(input({ support: "2.4", workbook: { number: 7, inLevel: 1 } }));
     expect(parts(second).filter((x) => x.kind === "mini-test").map((x) => [x.day, x.items, x.hints])).toEqual([[6, 5, false]]);
     expect(parts(second).find((x) => x.kind === "mini-test")!.skills.every((id) => id.startsWith("2.4-"))).toBe(true);
+
+    // R356-06: after a pause, the support unit keeps its page on both Remember these? days.
+    for (const inLevel of [0, 1]) {
+      const paused = plan(input({ support: "2.4", pausedWeeks: 2, workbook: { number: 6 + inLevel, inLevel } }));
+      expect(paused.days.slice(0, 2).map((d) => d.kind)).toEqual(["remember", "remember"]);
+      for (const day of paused.days) {
+        const supportPages = day.pages.filter((x) => x.parts.length === 1 && x.parts[0].kind === "remember-these" && x.parts[0].skills.join() === unitSkills("2.4").join());
+        expect(supportPages, `workbook ${inLevel + 1} day ${day.day}`).toHaveLength(day.day === 6 && inLevel === 1 ? 0 : 1);
+      }
+    }
 
     // From the third workbook, unit B is back.
     expect(plan(input({ support: "2.4", workbook: { number: 8, inLevel: 2 } })).units).toMatchObject({ B: "3.6", support: null });
@@ -543,5 +573,54 @@ describe("the two-week curriculum plan: input", () => {
     expect(planWorkbook(input({ pausedWeeks: 1.5 }))).toEqual({ ok: false, reason: "the weeks paused is not a whole number" });
     expect(planWorkbook(input({ support: "3.99" }))).toEqual({ ok: false, reason: "3.99 is not a BC standard" });
     expect(planWorkbook(input({ misses: [miss("3.3-juggling", 1)] }))).toEqual({ ok: false, reason: "3.3-juggling is not a skill of the BC skill map" });
+    expect(planWorkbook(input({ unassessedUnits: ["3.99"] }))).toEqual({ ok: false, reason: "3.99 is not a BC standard" });
   });
 });
+
+describe("the two-week curriculum plan: placement checks (CONTEXT 2)", () => {
+  it("R356-13: checks each unit with no assessment evidence with 4 items in the first workbook, before it counts as secure", () => {
+    const p = plan(input({ unassessedUnits: ["3.6", "3.13", "2.4"] }));
+    expect(p.checks).toEqual([
+      { unit: "2.4", kind: "unit-check", day: 1 },
+      { unit: "3.6", kind: "unit-check", day: 2 },
+      { unit: "3.13", kind: "unit-check", day: 3 },
+    ]);
+    for (const c of p.checks) {
+      const found = parts(p).filter((x) => x.kind === "unit-check" && x.check?.unit === c.unit);
+      expect(found).toHaveLength(1);
+      expect(found[0]).toMatchObject({ day: c.day, items: 4, hints: false, skills: unitSkills(c.unit) });
+      // On the day's Remember these? page.
+      expect(found[0].type).toBe("remember-these-mixed-set");
+    }
+    // A unit the profile calls secure but the assessment never asked is not placed as secure: it is checked and taught.
+    const unproven = plan(input({ profile: { standards: [standard("3.1", "secure")] }, unassessedUnits: ["3.1"] }));
+    expect(unproven.units.A[0]).toBe("3.1");
+    expect(unproven.checks).toEqual([{ unit: "3.1", kind: "unit-check", day: 1 }]);
+    // Only the first workbook checks.
+    expect(plan(input({ unassessedUnits: ["3.6"], workbook: { number: 2, inLevel: 1 } })).checks).toEqual([]);
+  });
+
+  it("R356-13: gives each Kindergarten unit a 2-page parent-led Already know it? check in the first workbook", () => {
+    for (const id of ["U1", "U2", "U3"]) {
+      const l = level(id);
+      const p = plan(at(l));
+      const units = l.units.map((u) => u.code);
+      expect(p.checks).toEqual(units.map((unit, i) => ({ unit, kind: "already-know-it", day: i + 1 })));
+      for (const [i, unit] of units.entries()) {
+        const day = p.days[i];
+        expect(day.pages.slice(0, 2).map((x) => [x.type, x.parts[0].kind, x.parts[0].check])).toEqual([
+          ["parent-led", "already-know-it", { unit, page: 1 }],
+          ["parent-led", "already-know-it", { unit, page: 2 }],
+        ]);
+        const checked = day.pages.slice(0, 2).flatMap((x) => x.parts[0].skills);
+        expect(new Set(checked)).toEqual(new Set(l.units[i].skills.map((s) => s.id)));
+        expect(day.pages.slice(0, 2).every((x) => x.parts[0].hints === false && x.instructions === "icons")).toBe(true);
+      }
+      // No 4-item unit check in Kindergarten: Already know it? covers every unit.
+      expect(plan(at(l, { unassessedUnits: [units[0]] })).checks.every((c) => c.kind === "already-know-it")).toBe(true);
+      // Only the first workbook checks.
+      expect(plan(at(l, { workbook: { number: 2, inLevel: 1 } })).checks).toEqual([]);
+    }
+  });
+});
+

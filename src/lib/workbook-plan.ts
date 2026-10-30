@@ -33,7 +33,8 @@
 //   app, up to the day-7 snapshot (`misses`, built by the caller from learning events), and last time's missed spaced
 //   reviews (`missedReviews`); one new question a skill, up to 3 a box, on page 1 of Days 1 to 5; never the same
 //   question again (the box names the questions and events to avoid). Those with no room are in fixItLater.
-// - After a pause of 2 weeks or more (4.8): Days 1 and 2 are Remember these? days, with no new step.
+// - After a pause of 2 weeks or more (4.8): Days 1 and 2 are Remember these? days, with no new step (a support unit
+//   keeps its page).
 // - Pass with support (4.9): the weak unit takes the daily Review slot (the Unit B page) in the first 2 workbooks of the
 //   new level, with a 5-item mini-test on Day 6 of the second.
 // - The test workbook (4.9): when every step of the level is passed, or after the level's workbooks plus 2. Days 1 to 6
@@ -41,10 +42,14 @@
 //   unit, no hints, a context question; Day 8 light; Days 9 and 10 mixed practice across the level. No new step after
 //   Day 6.
 // - Placement (CONTEXT 2): in the first workbook, a unit of the level the profile finds secure is not taught; it is
-//   reviewed. Remember these? reaches back to what the level builds on; with nothing behind the child (U1), it is an
-//   "Already know it?" check on the level's units.
-// - Never a weakness above the school grade (D-084): a standard above the school grade is never in a Fix it box or a
-//   review unless it is secure or a skill of the child's own level; reviews it leaves out are in reviewsSkipped.
+//   reviewed. A unit the assessment had no questions for (`unassessedUnits`) gets a 4-item unit check on the
+//   Remember these? page, one a day from Day 1, and is not placed as secure before it. In Kindergarten (U1 to U3) every
+//   unit gets a 2-page parent-led Already know it? check (pages 1 and 2 of a teaching day, one unit a day from Day 1).
+//   A passed check comes back through the next snapshot (the unit's steps passed, or its standard secure).
+//   Remember these? reaches back to what the level builds on; with nothing behind the child (U1), to the level's units.
+// - Never a weakness above the school grade (D-084): a carried review, a miss or a missed review on a standard above
+//   the school grade is left out unless the standard is secure, also in the child's own level (teaching ahead is fine,
+//   remedial work above the grade is not); reviews left out are in reviewsSkipped.
 // - Every part with items has a skill to aim at, or the plan is refused. Deterministic: the same input gives the same
 //   plan; ties go by the level's order, then curriculum order.
 // Pure TypeScript: no Next.js, React, network, database, clock or randomness.
@@ -68,7 +73,7 @@ export type PageType = (typeof PAGE_TYPES)[number];
 export const PART_KINDS = [
   "warm-up", "in-your-head", "fix-it", "remember-these", "try-first", "new-idea", "spot-the-error", "practice",
   "solve-it-two-ways", "word-problems", "picture-stories", "math-in-the-world", "mixed-set", "friday-5", "challenge",
-  "show-what-you-know", "level-test", "mini-test",
+  "show-what-you-know", "level-test", "mini-test", "unit-check", "already-know-it",
 ] as const;
 export type PartKind = (typeof PART_KINDS)[number];
 
@@ -201,8 +206,8 @@ export interface PlannedPart {
   faded?: { watch: number; finish: number };
   /** Remember these?: the spaced reviews placed here, 2 items each, before the rest of its skills. */
   reviews?: { skill: string; step: number; interval: number }[];
-  /** Remember these? with nothing behind the child: an "Already know it?" check on the level's units (CONTEXT 2). */
-  alreadyKnowIt?: true;
+  /** A placement check (CONTEXT 2): the unit it checks, and for Already know it? its page (1 or 2). */
+  check?: { unit: string; page?: 1 | 2 };
   /** The level test: its units, context questions and sittings. */
   test?: { units: string[]; contextQuestions: number; sittings: 1 | 2 };
   fixIt?: FixItem[];
@@ -251,6 +256,12 @@ export interface WorkbookPlan {
   reviewsAfter: SpacedReview[];
   /** Carried reviews left out: a standard above the school grade that is not secure (D-084). */
   reviewsSkipped: SpacedReview[];
+  /**
+   * The placement checks of the first workbook (CONTEXT 2): a 4-item unit check for each unit with no assessment
+   * evidence, and in Kindergarten (U1 to U3) a 2-page Already know it? check for each unit. A unit counts as secure only
+   * when its check comes back passed through the next snapshot.
+   */
+  checks: { unit: string; kind: "unit-check" | "already-know-it"; day: number }[];
   days: PlannedDay[];
 }
 
@@ -278,6 +289,8 @@ export interface PlanInput {
   pausedWeeks: number;
   /** The unit the last level test passed with support (4.9), or null. */
   support: string | null;
+  /** The units (BC standard codes) the assessment had no questions for: checked in the first workbook (CONTEXT 2). */
+  unassessedUnits: readonly string[];
 }
 
 export type PlanResult = { ok: true; plan: WorkbookPlan } | { ok: false; reason: string };
@@ -303,6 +316,9 @@ const PAUSE_DAYS = 2;
 const SUPPORT_WORKBOOKS = 2;
 const MINI_TEST_DAY = 6;
 const MINI_TEST_ITEMS = 5;
+/** The placement checks (CONTEXT 2): a 4-item unit check; Already know it? pages of 6 items (parent-led: 6 to 10). */
+const UNIT_CHECK_ITEMS = 4;
+const ALREADY_KNOW_IT_ITEMS = 6;
 /** The test workbook's days (4.9). */
 const TEST_DAY = 7;
 const LIGHT_DAY = 8;
@@ -322,7 +338,9 @@ const MIXED_SET_FROM = 10;
 const UPPER_FROM = 19;
 
 /** The parts that count toward the review share (4.3). */
-const REVIEW_PARTS = new Set<PartKind>(["warm-up", "in-your-head", "fix-it", "remember-these", "friday-5", "show-what-you-know", "level-test", "mini-test"]);
+const REVIEW_PARTS = new Set<PartKind>([
+  "warm-up", "in-your-head", "fix-it", "remember-these", "friday-5", "show-what-you-know", "level-test", "mini-test", "unit-check", "already-know-it",
+]);
 
 const STANDARDS = new Map(BC_SKILL_MAP.standards.map((s) => [s.code, s]));
 const MAP_SKILLS = new Map(BC_SKILL_MAP.standards.flatMap((s) => s.skills.map((k, i) => [k.id, { skill: k, standard: s, position: i }] as const)));
@@ -399,6 +417,8 @@ export function planWorkbook(input: PlanInput): PlanResult {
   if (!isCount(input.workbook.inLevel)) return { ok: false, reason: "the workbooks before in the level is not a whole number" };
   if (!isCount(input.pausedWeeks)) return { ok: false, reason: "the weeks paused is not a whole number" };
   if (input.support !== null && !STANDARDS.has(input.support)) return { ok: false, reason: `${input.support} is not a BC standard` };
+  const notUnit = input.unassessedUnits.find((code) => !STANDARDS.has(code));
+  if (notUnit) return { ok: false, reason: `${notUnit} is not a BC standard` };
 
   const n = level.number;
   const parentLed = n <= PARENT_LED_TO;
@@ -413,8 +433,11 @@ export function planWorkbook(input: PlanInput): PlanResult {
   // its own level.
   const status = new Map(input.profile.standards.map((s) => [s.code, s.status]));
   const standardOf = (skill: string) => MAP_SKILLS.get(skill)!.standard;
-  /** A skill the plan may bring back: of this level, at or below the school grade, or of a secure standard. */
-  const eligible = (skill: string) => levelIds.has(skill) || standardOf(skill).grade <= input.grade || status.get(standardOf(skill).code) === "secure";
+  /**
+   * A skill the plan may bring back as review or Fix it: at or below the school grade, or of a secure standard. The
+   * current level is no exception: teaching ahead of the grade is fine, remedial work above it is not.
+   */
+  const eligible = (skill: string) => standardOf(skill).grade <= input.grade || status.get(standardOf(skill).code) === "secure";
   const standards = input.profile.standards
     .flatMap((s) => {
       const known = STANDARDS.get(s.code);
@@ -423,8 +446,10 @@ export function planWorkbook(input: PlanInput): PlanResult {
     .filter((s) => (s.status === "secure" || s.grade <= input.grade) && s.grade <= levelGrade)
     .sort(worstFirst);
 
-  // Placement (CONTEXT 2): in the first workbook, a unit the profile finds secure goes to review, not teaching.
-  const secureUnits = firstWorkbook ? level.units.filter((u) => status.get(u.code) === "secure").map((u) => u.code) : [];
+  // Placement (CONTEXT 2): in the first workbook, a unit the profile finds secure goes to review, not teaching; a unit
+  // with no assessment evidence counts as secure only after its check. In Kindergarten every unit is checked.
+  const unassessed = new Set(input.unassessedUnits);
+  const secureUnits = firstWorkbook ? level.units.filter((u) => status.get(u.code) === "secure" && !unassessed.has(u.code) && !parentLed).map((u) => u.code) : [];
 
   // The steps still to teach, by unit, in the level's order.
   const taught = levelSkills.filter((s) => s.delivery !== "warm-up");
@@ -481,6 +506,17 @@ export function planWorkbook(input: PlanInput): PlanResult {
     return paused && day <= PAUSE_DAYS ? "remember" : "teach";
   });
 
+  // The placement checks: in Kindergarten, two Already know it? pages a unit, one unit a day from Day 1; elsewhere a
+  // 4-item unit check on the day's Remember these? page, one unit a day from Day 1.
+  const checkDays = kinds.flatMap((k, i) => (k === "teach" || k === "remember" ? [i + 1] : []));
+  const knowItUnits = firstWorkbook && parentLed ? level.units.map((u) => u.code) : [];
+  const unitChecks = firstWorkbook && !parentLed
+    ? [...unassessed].filter((code) => STANDARDS.get(code)!.grade <= levelGrade).sort((a, b) => curriculumOrder(STANDARDS.get(a)!, STANDARDS.get(b)!))
+    : [];
+  const teachDays = kinds.flatMap((k, i) => (k === "teach" ? [i + 1] : []));
+  const knowItOn = (day: number) => knowItUnits[teachDays.indexOf(day)] ?? null;
+  const checksOn = (day: number) => unitChecks.filter((_, i) => checkDays[i % checkDays.length] === day);
+
   // The day's shape: page types, roles and parts, before any content.
   const T = (kind: PartKind, track: Track | null = null) => ({ kind, track });
   const bOn = unitB !== null;
@@ -490,14 +526,17 @@ export function planWorkbook(input: PlanInput): PlanResult {
       ? { type: "warm-up", role: "first", parts: [T("warm-up"), ...fixIt, T("in-your-head")] }
       : { type: pageType("remember-these"), role: "first", parts: [T("remember-these"), ...fixIt] };
   };
-  const challengeTrack = (day: number): Track => (bOn && kinds[day - 1] === "teach" ? "B" : "A");
+  /** Unit B has a page that day: a teaching day, not a Kindergarten check day (its checks take the slot). */
+  const bDay = (day: number) => bOn && kinds[day - 1] === "teach" && !knowItOn(day);
+  const challengeTrack = (day: number): Track => (bDay(day) ? "B" : "A");
   const reviewPage = (day: number): Shape => {
     const friday = FRIDAY_5_DAYS.includes(day);
     const second: PartKind = friday ? "friday-5" : n >= MIXED_SET_FROM ? "mixed-set" : "picture-stories";
     const type: PageType = friday ? "friday-5" : n >= MIXED_SET_FROM ? "remember-these-mixed-set" : "remember-these";
     // The 6-page and parent-led days set the challenge on this page (DESIGN 7.2).
     const challenge = sixPages || parentLed ? [T("challenge", challengeTrack(day))] : [];
-    return { type: pageType(type), role: "review", parts: [T("remember-these"), T(second), ...challenge] };
+    const checks = checksOn(day).map(() => T("unit-check"));
+    return { type: pageType(type), role: "review", parts: [T("remember-these"), T(second), ...challenge, ...checks] };
   };
   const challengePage = (day: number): Shape => ({ type: pageType("challenge"), role: "challenge", parts: [T("challenge", challengeTrack(day))] });
   const reviewOnly = (role: string): Shape => ({ type: pageType("remember-these"), role, parts: [T("remember-these")] });
@@ -525,16 +564,25 @@ export function planWorkbook(input: PlanInput): PlanResult {
         : reviewOnly("slot")
       : bOn ? { type: pageType("unit-b"), role: "slot", parts: [...(startsB ? newIdea("B") : []), T("practice", "B")] }
       : reviewOnly("slot");
+    // A Kindergarten check day: the unit's two Already know it? pages take page 1 and the slot.
+    const knowIt = knowItOn(day);
+    if (knowIt) {
+      const check = (page: number): Shape => ({ type: "parent-led", role: `check-${page}`, parts: [T("already-know-it")] });
+      return [check(1), check(2), second, practice, story, reviewPage(day)].filter((s): s is Shape => s !== null)
+        .map((s) => (extras.has(`${day}:${s.role}`) ? { ...s, parts: [...s.parts, T("remember-these")] } : s));
+    }
     const pages: (Shape | null)[] = parentLed || sixPages
       ? [firstPage(day), second, practice, story, slot, reviewPage(day)]
       : [firstPage(day), second, practice, { type: "practice-2", role: "practice-2", parts: [T("practice", "A"), ...twoWays] }, story, slot, reviewPage(day), challengePage(day)];
     return pages.filter((s): s is Shape => s !== null).map((s) => (extras.has(`${day}:${s.role}`) ? { ...s, parts: [...s.parts, T("remember-these")] } : s));
   };
-  /** A Remember these? day after a pause: the day's pages, review and a challenge. */
+  /** A Remember these? day after a pause: the day's pages, review (the support unit keeps its page) and a challenge. */
   const rememberDay = (day: number): Shape[] => {
     const tail = sixPages || parentLed ? [reviewPage(day)] : [reviewPage(day), challengePage(day)];
     const count = parentLed ? level.pagesPerDay.min + 1 : level.pagesPerDay.max;
-    return [firstPage(day), ...Array.from({ length: count - 1 - tail.length }, (_, i) => reviewOnly(`review-${i}`)), ...tail];
+    const reviews = Array.from({ length: count - 1 - tail.length }, (_, i) => reviewOnly(`review-${i}`));
+    if (support) reviews[reviews.length - 1] = reviewOnly("slot");
+    return [firstPage(day), ...reviews, ...tail];
   };
   const levelTestDay = (): Shape[] =>
     Array.from({ length: parentLed ? level.pagesPerDay.min : level.pagesPerDay.max }, (_, i): Shape => ({ type: pageType("level-test"), role: `test-${i}`, parts: [T("level-test")] }));
@@ -568,7 +616,7 @@ export function planWorkbook(input: PlanInput): PlanResult {
       for (const track of ["A", "B"] as const) {
         const cur = current[track];
         const canStart = teaching && day <= lastStart && starts.length < NEW_STEPS_MAX && next[track] < queue[track].length;
-        if (canStart && (cur === null || cur.left <= 0)) {
+        if (canStart && (cur === null || cur.left <= 0) && (track === "A" || bDay(day))) {
           const step = queue[track][next[track]++];
           current[track] = { step, left: step.pages };
           starts.push({ ...stepRef(step), day, track });
@@ -645,8 +693,8 @@ export function planWorkbook(input: PlanInput): PlanResult {
     ...passedSkills,
     ...buildsOn,
   ])];
-  const alreadyKnowIt = filler.length === 0;
-  const earlier = alreadyKnowIt ? level.units.map((u) => u.skills[0]?.id).filter((x): x is string => !!x) : filler;
+  // With nothing behind the child (U1), review comes back to the first skill of each of the level's units.
+  const earlier = filler.length > 0 ? filler : level.units.map((u) => u.skills[0]?.id).filter((x): x is string => !!x);
   const stepsBefore = (day: number) => sim.starts.filter((s) => s.day < day).map((s) => s.skill);
   const supportSkills = support ? STANDARDS.get(support)!.skills.map((k) => k.id) : [];
 
@@ -672,7 +720,7 @@ export function planWorkbook(input: PlanInput): PlanResult {
     let used = 0;
     let fillAt = 0;
     const pagesOut = dayShapes.map((shape, p): PlannedPage => {
-      const out = shape.parts.map(({ kind: k, track }): PlannedPart => {
+      const out = shape.parts.map(({ kind: k, track }, idx): PlannedPart => {
         const t = track ?? "A";
         switch (k) {
           case "warm-up": {
@@ -694,7 +742,6 @@ export function planWorkbook(input: PlanInput): PlanResult {
             return part(k, items, {
               skills: [...new Set([...reviews.map((r) => r.skill), ...fill])],
               reviews: reviews.map((r) => ({ skill: r.skill, step: r.step, interval: r.interval })),
-              ...(alreadyKnowIt && reviews.length === 0 ? { alreadyKnowIt: true as const } : {}),
             });
           }
           case "try-first": return unitPart(k, t, 1);
@@ -727,6 +774,19 @@ export function planWorkbook(input: PlanInput): PlanResult {
             return part(k, parentLed ? clamp(items, PARENT_ITEMS) : items, { skills });
           }
           case "mini-test": return part(k, MINI_TEST_ITEMS, { hints: false, skills: supportSkills });
+          case "unit-check": {
+            const unit = checksOn(day)[idx - shape.parts.findIndex((x) => x.kind === "unit-check")];
+            return part(k, UNIT_CHECK_ITEMS, { hints: false, skills: STANDARDS.get(unit)!.skills.map((x) => x.id), check: { unit } });
+          }
+          case "already-know-it": {
+            // The unit's skills over its two pages: the first half, then the rest.
+            const unit = knowItOn(day)!;
+            const skills = level.units.find((u) => u.code === unit)!.skills.map((x) => x.id);
+            const page = shape.role === "check-1" ? 1 : 2;
+            const half = Math.ceil(skills.length / 2);
+            const mine = page === 1 ? skills.slice(0, half) : skills.slice(half);
+            return part(k, ALREADY_KNOW_IT_ITEMS, { hints: false, skills: mine.length > 0 ? mine : skills, check: { unit, page } });
+          }
           case "level-test": {
             // Every skill of the level, fluency too, dealt over the test's pages, so together they sample every unit.
             const mine = levelSkills.filter((_, s) => s % dayShapes.length === p);
@@ -767,6 +827,10 @@ export function planWorkbook(input: PlanInput): PlanResult {
       fixItLater,
       reviewsAfter: reviewsAfter.sort(byDue),
       reviewsSkipped,
+      checks: [
+        ...knowItUnits.flatMap((unit, i) => (teachDays[i] ? [{ unit, kind: "already-know-it" as const, day: teachDays[i] }] : [])),
+        ...unitChecks.map((unit, i) => ({ unit, kind: "unit-check" as const, day: checkDays[i % checkDays.length] })),
+      ],
       days,
     },
   };
