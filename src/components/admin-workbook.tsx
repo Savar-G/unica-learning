@@ -5,7 +5,7 @@ import Link from "next/link";
 import type { ReactNode } from "react";
 import type { WorkbookDetail } from "@/lib/admin-store";
 import { when } from "@/lib/admin-view";
-import { stepText, valueText, type QuestionPackage } from "@/lib/question-package";
+import { hasOperation, stepText, valueText, type QuestionPackage } from "@/lib/question-package";
 import type { WorkbookPage, WorkbookQuestion, WorkbookStatus } from "@/lib/workbook-content";
 import { AdminFrame, Chip, Table, type Tone } from "@/components/admin";
 import { RecordFacts, childPath } from "@/components/admin-records";
@@ -42,14 +42,14 @@ function PageImage({ page, url }: { page: WorkbookPage; url: string | undefined 
 function PackageCells({ p }: { p: QuestionPackage }): ReactNode {
   return <>
     <td><span className="adm-wb-text">{p.text}</span><span className="adm-sub adm-mono">{p.id}</span></td>
-    <td className="adm-num">{valueText(p.answer.value)}{p.answer.accepted.length > 0 && <span className="adm-sub">also {p.answer.accepted.map(valueText).join(", ")}</span>}</td>
-    <td><ol className="adm-wb-steps">{p.steps.map((s) => <li key={s.id}>{stepText(s, p.operation)}</li>)}</ol></td>
+    <td className="adm-num">{p.answer ? <>{valueText(p.answer.value)}{p.answer.accepted.length > 0 && <span className="adm-sub">also {p.answer.accepted.map(valueText).join(", ")}</span>}</> : "None"}</td>
+    <td><ol className="adm-wb-steps">{hasOperation(p) && p.steps.map((s) => <li key={s.id}>{stepText(s, p.operation)}</li>)}</ol></td>
     <td className="adm-nowrap">{p.skill.standard}<span className="adm-sub adm-mono">{p.skill.skills.join(", ")}</span></td>
     <td className="adm-nowrap">U{p.level} · {p.difficulty}</td>
     <td><ul className="adm-wb-list">{p.wrongAnswers.map((w, i) => (
       <li key={i}><b>{valueText(w.value)}</b> {w.cause}: {w.description}{w.step && <span className="adm-sub">at the {w.step} step</span>}</li>
     ))}</ul></td>
-    <td className="adm-nowrap">{p.easierExample.text.replace("?", valueText(p.easierExample.answer))}</td>
+    <td className="adm-nowrap">{p.easierExample ? p.easierExample.text.replace("?", valueText(p.easierExample.answer)) : "None"}</td>
   </>;
 }
 

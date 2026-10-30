@@ -1,11 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { checkQuestionPackage, stepText, workedSteps, type Operation, type QuestionPackage } from "@/lib/question-package";
+import { checkQuestionPackage, stepText, workedSteps, type Operation, type OperationPackage } from "@/lib/question-package";
 
 // The question package contract (#298): a package is trusted only when its parts are well formed and its answer and
 // worked steps are what its operation gives. Each refusal names its reason.
 
 /** 48 + 37 on page 23, question 4 of a workbook, worked by hand. */
-const PACKAGE: QuestionPackage = {
+const PACKAGE: OperationPackage = {
   id: "wbq-0423",
   ref: { source: "workbook", workbookId: "wb-1", page: 23, question: 4 },
   templateId: null,
@@ -34,7 +34,7 @@ const PACKAGE: QuestionPackage = {
 };
 
 /** The package with one change. */
-const changed = (change: (p: QuestionPackage) => void): unknown => {
+const changed = (change: (p: OperationPackage) => void): unknown => {
   const p = structuredClone(PACKAGE);
   change(p);
   return p;
@@ -128,7 +128,7 @@ describe("checkQuestionPackage", () => {
     ["a wrong answer twice", "the wrong answer 75 is listed twice", () => changed((p) => { p.wrongAnswers.push(structuredClone(p.wrongAnswers[0])); })],
     ["a wrong answer with no cause", "a wrong answer needs a cause and its description", () => changed((p) => { p.wrongAnswers[0].cause = ""; })],
     ["a wrong answer at a step that is not there", "the wrong answer 75 names a step the question does not have", () => changed((p) => { p.wrongAnswers[0].step = "hundreds"; })],
-    ["no easier example", "the package has no easier example", () => changed((p) => { delete (p as Partial<QuestionPackage>).easierExample; })],
+    ["no easier example", "the package has no easier example", () => changed((p) => { delete (p as Partial<OperationPackage>).easierExample; })],
     ["a wrong easier answer", "the easier example's answer is not what its operation gives", () => changed((p) => { p.easierExample.answer = { type: "number", value: 32 }; })],
     ["a wrong easier step", "the easier example's worked steps are not the steps of its operation", () => changed((p) => { p.easierExample.steps = workedSteps({ kind: "add", operands: [26, 8] }); })],
     ["an easier example of another operation", "the easier example is not the same operation", () => changed((p) => {

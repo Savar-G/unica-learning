@@ -10,7 +10,6 @@
 // Pure TypeScript: no Next.js, React, network, database or clock.
 import {
   checkQuestionPackage,
-  QUESTION_PACKAGE_VERSION,
   type QuestionLookup,
   type QuestionPackage,
   type WorkbookQuestionRef,
@@ -236,15 +235,12 @@ export interface StoredQuestion {
 }
 
 /**
- * A stored question's content: its package when it is the current version, passes the check and names the place it
- * was read from; else "content unavailable". A product never teaches or marks from an unavailable question.
+ * A stored question's content: its package when it passes the check of its stored version and names the place it was
+ * read from; else "content unavailable". A product never teaches or marks from an unavailable question.
  */
 export function storedContent(stored: StoredQuestion, at: WorkbookQuestionRef): WorkbookQuestion["content"] {
   const unavailable = (detail: string) => ({ status: "unavailable" as const, reason: "invalid-package" as const, detail });
-  if (stored.schemaVersion !== QUESTION_PACKAGE_VERSION) {
-    return unavailable(`the stored package is schema version ${stored.schemaVersion}, not ${QUESTION_PACKAGE_VERSION}`);
-  }
-  const check = checkQuestionPackage(stored.package);
+  const check = checkQuestionPackage(stored.package, stored.schemaVersion);
   if (!check.ok) return unavailable(check.reason);
   const ref = check.package.ref;
   if (ref.source !== "workbook" || ref.workbookId !== at.workbookId || ref.page !== at.page || ref.question !== at.question) {

@@ -1,3 +1,4 @@
+import { hasOperation } from "@/lib/question-package";
 import { operationText } from "@/lib/question-package-math";
 import { isUuid, type PageImage, type QuestionBox, type WorkbookPage, type WorkbookStore, type WorkbookSummary } from "@/lib/workbook-content";
 
@@ -102,7 +103,7 @@ const bare = (s: string) => s.replace(/\s+/g, "");
  * the method to the child, so the board never shows it first.
  */
 function columnsOf(q: WorkbookPage["questions"][number]): ColumnsQuestion | null {
-  if (q.content.status !== "found") return null;
+  if (q.content.status !== "found" || !hasOperation(q.content.package)) return null;
   const { text, operation } = q.content.package;
   const { kind, operands } = operation;
   if (kind !== "add" && kind !== "subtract" && kind !== "multiply") return null;
