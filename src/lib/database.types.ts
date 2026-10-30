@@ -1066,6 +1066,13 @@ export type Database = {
             referencedRelation: "parents"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "learning_events_workbook_fkey"
+            columns: ["workbook_id", "child_id"]
+            isOneToOne: false
+            referencedRelation: "workbooks"
+            referencedColumns: ["id", "child_id"]
+          },
         ]
       }
       parent_pins: {
@@ -2083,6 +2090,10 @@ export type Database = {
         Returns: string
       }
       parent_reads_workbook: { Args: { p_workbook: string }; Returns: boolean }
+      parent_reads_workbook_folder: {
+        Args: { p_folder: string }
+        Returns: boolean
+      }
       pending_family_payment_operations: {
         Args: { after_id: string; p: string; page_size?: number; token: string }
         Returns: {
