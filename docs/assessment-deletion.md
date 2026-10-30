@@ -163,3 +163,69 @@ Run on 13 October 2026 against production, with four new named QA families (`qa1
 Not covered: renewal beyond five minutes, signals and hard runner loss, live Stripe cancellation and expiration, and Checkout-owned intents. These need a QA family with Stripe history, and the rules above do not allow a customer fixture. Only the isolated tests in this document cover them. A family with Stripe history keeps its fence when a payment read is unknown, so these paths fail closed.
 
 Open defect: #138. A family with mixed-case sibling folders in Storage stops at every run. On 13 October 2026, no non-QA object had a mixed-case path.
+
+## Parent PIN (#300)
+
+`public.parent_pins` holds one row per parent (the PIN's salted hash and the attempt count). Its `parent_id` references `public.parents` with `on delete cascade`, so the existing family deletion removes the row when it deletes the parent's Auth user. The worker needs no code change and no table list. Checked on the live database (29 October 2026): the foreign key delete rule is cascade; the table has the family write fence trigger; no role except the secret key can read or write the table or call `claim_pin_attempt`. Row-level security is on with no policy, so a signed-in parent reads no row, theirs or another family's.
+
+## Workbooks (#299)
+
+`public.workbooks`, `public.workbook_pages` and `public.workbook_questions` (migration `add_workbooks`) hold each workbook, its pages and its questions. Each row carries the family's `parent_id`. The workbook references the child and the parent with `on delete cascade`, and the pages and questions reference their workbook and page the same way, so the existing family deletion removes every row when it deletes the parent's Auth user. The three tables have the family write fence trigger.
+
+The page images and workbook PDFs are in the private Storage bucket `workbook-pages`, at `<parent id>/<workbook id>/<name>`. The worker empties the family's folder in both family buckets (`shown-work` and `workbook-pages`, `FAMILY_BUCKETS` in `src/lib/assessment/deletion.ts`) before it deletes Auth. `complete_family_deletion` refuses to finish while either folder has a file, and the Storage fence trigger refuses new files in either bucket for a family that is being deleted. The retention worker runs the same deletion, so it needs no other change.
+
+Checked on the live database (29 October 2026), in transactions that were rolled back: with a deletion request, a new file in `workbook-pages` failed with `family_unavailable`; deleting the test family's Auth user left 0 workbook, page and question rows; `complete_family_deletion` answered false while the family's 3 page images were still in the bucket.
+
+The migration went live on 29 October 2026, before the worker code of #299 merged. In that time the worker on `main` did not empty `workbook-pages`, so a deletion of the one test family with the sample workbook would stop before it completed and keep its request for a later run.
+
+## Learning events (#302)
+
+`public.learning_events` (migration `add_learning_events`) holds the append-only learning events of each child: from calls, marked pages and assessment answers (`src/lib/learning-events.ts`). Every row has `parent_id` (references `public.parents`), `child_id` with `parent_id` (references `public.children (id, parent_id)`), and for an assessment question `assessment_id` with `child_id` (references `public.assessments (id, child_id)`), all `on delete cascade`. The existing family deletion removes every row when it deletes the parent's Auth user, and a test deletion removes that test's events. The worker needs no code change and no table list. The retention rules need no change: a free-test family has events only from its tests, so its last test is still its last activity; a family with calls is a customer, and the worker keeps it.
+
+The service role may only insert and read: it has no update, delete or truncate grant, and a trigger refuses every update, from any role. The foreign key cascades run as the table owner, so they still delete the rows. The table has the family write fence trigger. Row-level security is on; the one policy lets admins read. A signed-in parent reads no row, theirs or another family's.
+
+Checked on the live database (29 October 2026), in one transaction that was rolled back, for a test family (`test_accounts`) and one other family:
+
+| Check | Result |
+|---|---|
+| Server insert (service role) of an assessment event and a call event | 2 rows |
+| Retry with the same idempotency key | refused (23505); 1 row for the key |
+| Update or delete by the service role | refused (42501) |
+| Update by the table owner | refused (55000, "learning events are append only") |
+| A child under another family's parent id | refused (23503, foreign key) |
+| Another family's child on this family's test | refused (55000, `family_scope`) |
+| A signed-in parent reads: own family, another family | 0 rows, 0 rows |
+| A signed-in parent inserts; anon reads | refused (42501), refused (42501) |
+| An admin reads | 2 rows |
+| Insert after the family's deletion request | refused (55000, `family_unavailable`) |
+| The service role deletes the child | 0 events left |
+| The Auth user is deleted (the deletion's last step) | 0 events left, 0 parent rows |
+
+The backfill (`backfillAssessment` in `src/lib/learning-events-assessment-store.ts`) ran once on the hosted database with the secret key for the test family's finished test: 42 events from 42 answers (34 right, 8 wrong), a second run 0 new and 42 already stored, a range read 42. The owner then removed those rows; the table held 0 rows after.
+
+## Child profiles (#303)
+
+`public.child_profiles` (migration `add_child_profiles`) holds one current profile per child, built by code from the child's latest test profile and every learning event of the child (`src/lib/child-profile.ts`). `parent_id` references `public.parents`, `child_id` with `parent_id` references `public.children (id, parent_id)`, and `assessment_id` with `child_id` references `public.assessments (id, child_id)`, all `on delete cascade`. The existing family deletion removes the row when it deletes the parent's Auth user. A test deletion removes the profile built on that test. The site has no single-test deletion: a test deleted by hand should be followed by a rebuild of the child's profile (`rebuildChildProfile`), which builds it again from what is left, or replaces it with an empty profile when nothing is left (it also drops an older test's events from the facts). The worker needs no code change and no table list. The retention rules need no change: the profile is built from the tests and the events, so it adds no activity of its own.
+
+The service role may only read, insert and update: it has no delete grant. The table has the family write fence trigger. Each stored build has a random `build_token` (migration `child_profile_build_token`); a rebuild stores only over the token it read, so after a test deletion removes the row and a new first build starts again at revision 1, a rebuild that read the deleted row stores nothing over the new one. A save that names a test deleted since the rebuild read it fails in the fence trigger (55000 `family_scope`, before the foreign key); the store then checks that the test is gone and builds again from what is left. Row-level security is on; the one policy lets admins read. A signed-in parent reads no row, theirs or another family's.
+
+Checked on the live database (29 October 2026), in one transaction that was rolled back, for a test family (`test_accounts`) and one other family:
+
+| Check | Result |
+|---|---|
+| Server insert (service role), one profile in each family | 2 rows |
+| Update that expects revision 1, then the same update again (compare and set) | 1 row, then 0 rows |
+| A second first save for the same child | refused (23505) |
+| Delete by the service role | refused (42501) |
+| A child under another family's parent id | refused (23503, foreign key) |
+| A profile on another family's test | refused (55000, `family_scope`) |
+| `schema_version` that does not match the JSON | refused (23514) |
+| A signed-in parent reads: any, own child, another family | 0 rows, 0 rows, 0 rows |
+| A signed-in parent updates, inserts; anon reads | refused (42501), refused (42501), refused (42501) |
+| An admin reads | 2 rows |
+| The profile's test is deleted | 0 rows left for the child |
+| Update after the family's deletion request | refused (55000, `family_unavailable`) |
+| The Auth user is deleted (the deletion's last step) | 0 rows left for the family; the other family's row kept |
+| After `child_profile_build_token` (29 October 2026): the base test is deleted, a new first build is stored | 0 rows, then revision 1 with a new token |
+| An update with the deleted row's token; with the new token | 0 rows; 1 row |
+| A save naming the deleted test; naming another family's test | refused (55000 `family_scope`) both, in the trigger before the foreign key |

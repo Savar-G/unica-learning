@@ -19,6 +19,8 @@ import type { DashboardRows, Delivery, EmailCopyView, RawCard, RawDelivery, RawC
 import type { TemplateFilters, TemplateStat } from "@/lib/admin-templates";
 import type { ExportReader, ExportRow, PagedTable } from "@/lib/admin-export";
 import type { AnonymousTestRow } from "@/lib/anonymous-copy-export";
+import { WORKBOOK_FILES_BUCKET, type Workbook, type WorkbookSummary } from "@/lib/workbook-content";
+import { workbookStore } from "@/lib/workbook-store";
 
 // The admin area's data (#77). The gate and every read are here, so no admin page reads the database on its own; the
 // report view is read by the report-loading module with the admin's session (src/lib/report-loading-server.ts, #161).
@@ -350,6 +352,51 @@ export async function getProfile(a: AdminSession, id: string): Promise<ProfileDe
   return { test: { ...test, child: child ?? null, parent: parent ?? null }, stored, numbers: questionNumbers(answers) };
 }
 
+// The child's profile (#303)
+
+/** One learning event as the admin page lists it (public.learning_events: admins read it). */
+export interface LearningEventRow {
+  id: string;
+  occurred_at: string;
+  source: Database["public"]["Tables"]["learning_events"]["Row"]["source"];
+  question_source: Database["public"]["Tables"]["learning_events"]["Row"]["question_source"];
+  workbook_id: string | null;
+  workbook_page: number | null;
+  workbook_question: number | null;
+  assessment_id: string | null;
+  assessment_question_id: string | null;
+  skill_standard: string;
+  result: Database["public"]["Tables"]["learning_events"]["Row"]["result"];
+  stuck_step: string | null;
+  mistake: string | null;
+  hints: number;
+  time_ms: number | null;
+  evidence_kind: Database["public"]["Tables"]["learning_events"]["Row"]["evidence_kind"];
+  evidence_id: string | null;
+}
+
+const EVENT_COLUMNS = "id, occurred_at, source, question_source, workbook_id, workbook_page, workbook_question, assessment_id, assessment_question_id, skill_standard, result, stuck_step, mistake, hints, time_ms, evidence_kind, evidence_id";
+
+/** One child's current profile (public.child_profiles: admins read it), with the child and every event of the child, oldest first. */
+export interface ChildProfileDetail {
+  child: ChildRow;
+  /** The stored profile; null when none is stored. `profile` is the stored JSON, at any schema version. */
+  stored: { created_at: string; built_at: string; revision: number; schema_version: number; assessment_id: string | null; profile: unknown } | null;
+  events: LearningEventRow[];
+}
+
+/** The current profile of one child and its evidence, or null when there is no such child. */
+export async function getChildProfile(a: AdminSession, id: string): Promise<ChildProfileDetail | null> {
+  if (!isUuid(id)) return null;
+  const [[child], stored, events] = await Promise.all([
+    childrenById(a, [id]),
+    a.db.from("child_profiles").select("created_at, built_at, revision, schema_version, assessment_id, profile").eq("child_id", id).maybeSingle()
+      .then((r) => must<ChildProfileDetail["stored"]>(r, "child profile")),
+    allRows<LearningEventRow>(a.db.from("learning_events").select(EVENT_COLUMNS).eq("child_id", id).order("occurred_at").order("id"), "learning events"),
+  ]);
+  return child ? { child, stored, events } : null;
+}
+
 // Parents and children
 
 export interface ParentListRow extends ParentRow {
@@ -461,6 +508,38 @@ export async function getChild(a: AdminSession, id: string): Promise<{ child: Ch
   if (!child) return null;
   const family = await getParent(a, child.parent_id);
   return family ? { child, family: { ...family, tests: family.tests.filter((t) => t.child_id === id) } } : null;
+}
+
+// Workbooks (#299)
+
+/** A signed page image URL works this long; the page signs new ones each time it loads. */
+const WORKBOOK_URL_SECONDS = 10 * 60;
+
+/** A child's workbooks, newest first, read through the workbook store with the admin's session. */
+export async function getChildWorkbooks(a: AdminSession, childId: string): Promise<WorkbookSummary[]> {
+  return workbookStore(a.db).childWorkbooks(childId);
+}
+
+export interface WorkbookDetail {
+  workbook: Workbook;
+  child: ChildRow | null;
+  /** Short-lived URLs of the page images, by path, signed with the admin's session under the bucket's admin policy. */
+  images: Record<string, string>;
+}
+
+/** One workbook with its pages, questions and page images, or null. */
+export async function getWorkbook(a: AdminSession, id: string): Promise<WorkbookDetail | null> {
+  const workbook = await workbookStore(a.db).workbook(id);
+  if (!workbook) return null;
+  const paths = workbook.pages.flatMap((p) => (p.image ? [p.image.path] : []));
+  const [children, signed] = await Promise.all([
+    childrenById(a, [workbook.childId]),
+    paths.length ? a.db.storage.from(WORKBOOK_FILES_BUCKET).createSignedUrls(paths, WORKBOOK_URL_SECONDS) : Promise.resolve({ data: [], error: null }),
+  ]);
+  if (signed.error) console.error("[admin] workbook images sign failed", signed.error.message);
+  const images: Record<string, string> = {};
+  for (const item of signed.data ?? []) if (item.path && item.signedUrl && !item.error) images[item.path] = item.signedUrl;
+  return { workbook, child: children[0] ?? null, images };
 }
 
 // AI reviews

@@ -1,11 +1,14 @@
 import type { Database as Generated, Json } from "@/lib/database.types";
 import type { AdStep } from "@/lib/ad-visit-steps";
 import type { AnswerChange } from "@/lib/answer-events";
+import type { EventResult, EventSource, EvidenceKind } from "@/lib/learning-events";
+import type { QuestionRef } from "@/lib/question-package";
 import type { AnonymousTestCopy, AttemptStatus, FactsTest, HelpAnswer, Placement, Province, ReportModel, Route, StoredTest } from "@/lib/assessment";
 import type { LogKind, LogStatus } from "@/lib/reminders";
 import type { PlanId } from "@/lib/site";
 import type { TestDevice } from "@/lib/test-context";
 import type { StoredReview } from "@/lib/work-review";
+import type { WorkbookStatus } from "@/lib/workbook-content";
 
 export type { Json };
 
@@ -25,9 +28,11 @@ type ColumnTypes = KnownColumns<{
   card_setups: { plan: PlanId };
   children: { province: Province };
   email_log: { kind: LogKind; status: LogStatus | null };
+  learning_events: { source: EventSource; question_source: QuestionRef["source"]; result: EventResult; evidence_kind: EvidenceKind | null };
   parents: { source: Record<string, string> };
   reports: { model: ReportModel };
   work_reviews: { kind: StoredReview["kind"]; confidence: StoredReview["confidence"] };
+  workbooks: { status: WorkbookStatus };
 }>;
 type Fits<T, Column> = Json extends Column ? T
   : (null extends T ? 1 : 0) extends (null extends Column ? 1 : 0) ? (NonNullable<T> extends NonNullable<Column> ? T : never) : never;

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
-  createSession, deleteFamily, runRetentionBatch, storedTest, withFamilyCardOperation,
+  createSession, deleteFamily, FAMILY_BUCKETS, runRetentionBatch, storedTest, withFamilyCardOperation,
   type AnonymousTestCopy, type FamilyCopyStore, type FamilyDeletionStore, type ImageEntry,
 } from "@/lib/assessment";
 
@@ -235,6 +235,36 @@ describe("delete a frozen family", () => {
     expect(removed.slice().sort()).toEqual(original.slice().sort());
     expect(new Set(removed).size).toBe(1007);
   });
+  it("removes the family's files from every family bucket (drawings and workbook pages, #299) before Auth", async () => {
+    const files = new Set([
+      "shown-work/family/test/q1.png", "workbook-pages/family/book/page-1.png", "workbook-pages/family/book/page-2.png",
+      "workbook-pages/family/book/workbook.pdf", "workbook-pages/foreign/book/page-1.png",
+    ]);
+    const buckets: string[] = [];
+    let authRemoved = false;
+    const store: FamilyDeletionStore = {
+      ...noTests,
+      async renew() {},
+      async listImages(prefix, offset, limit, bucket) {
+        buckets.push(bucket);
+        const names = new Map<string, boolean>();
+        for (const path of files) {
+          if (!path.startsWith(`${bucket}/${prefix}/`)) continue;
+          const rest = path.slice(bucket.length + prefix.length + 2).split("/");
+          names.set(rest[0], rest.length > 1);
+        }
+        return [...names].sort().slice(offset, offset + limit).map(([name, folder]) => ({ name, folder }));
+      },
+      async removeImages(paths, bucket) { paths.forEach((p) => expect(files.delete(`${bucket}/${p}`)).toBe(true)); },
+      async removeAuth() { expect([...files]).toEqual(["workbook-pages/foreign/book/page-1.png"]); authRemoved = true; },
+      async complete() {},
+    };
+    expect(await deleteFamily(store, "family")).toEqual({ images: 4, copies: 0 });
+    expect(new Set(buckets)).toEqual(new Set(FAMILY_BUCKETS));
+    expect(FAMILY_BUCKETS).toEqual(["shown-work", "workbook-pages"]);
+    expect(authRemoved).toBe(true);
+  });
+
   it("removes the lowercase Storage folder for an uppercase UUID before deleting Auth", async () => {
     const id = "abcdefab-0000-4000-8000-abcdefabcdef";
     const images = new Set([`${id}/work.png`]);
