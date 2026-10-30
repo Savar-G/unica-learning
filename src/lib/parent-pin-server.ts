@@ -46,26 +46,32 @@ export async function savePin(parentId: string, body: unknown, pins: ParentPins 
   }
 }
 
+/** Whether the parent has a PIN; null when the server cannot tell (no secret key, or the read failed). */
+export async function pinIsSet(parentId: string, pins: ParentPins | null = serverPins()): Promise<boolean | null> {
+  if (!pins) return null;
+  try {
+    return await pins.isSet(parentId);
+  } catch (error) {
+    console.error("[pin] load failed", error instanceof Error ? error.message : error);
+    return null;
+  }
+}
+
 /** What the desk's "Forgot PIN?" form gets back, from src/app/api/desk/forgot-pin/route.ts. */
 export type ForgotPinResult =
   | { ok: true }
-  | { ok: false; error: "invalid" | "wrong_password" | "unavailable" | "signed_out" | "bad_json" };
-
-/** Whether `password` is the signed-in parent's account password: `unavailable` when the server cannot tell. */
-export type ProvePassword = (password: string) => Promise<"ok" | "wrong" | "unavailable">;
+  | { ok: false; error: "invalid" | "password_needed" | "unavailable" | "signed_out" | "bad_json" };
 
 /**
- * Forgot PIN (#301): body `{ password, pin }`. The parent proves their account password, then the new PIN replaces the
- * old one and ends any lock. The new PIN is checked first, so a malformed form spends no password attempt.
+ * Forgot PIN (#301): body `{ pin }`. `passwordProved`: the session signed in with the account password in the last few
+ * minutes (passwordIsFresh in src/lib/desk.ts). Then the new PIN replaces the old one and ends any lock.
  */
-export async function resetForgottenPin(parentId: string, body: unknown, provePassword: ProvePassword, pins: ParentPins | null = serverPins()): Promise<{ status: number; result: ForgotPinResult }> {
-  const { password, pin } = (body ?? {}) as { password?: unknown; pin?: unknown };
-  if (typeof password !== "string" || password === "" || password.length > 200 || !validPin(pin)) return { status: 400, result: { ok: false, error: "invalid" } };
+export async function resetForgottenPin(parentId: string, body: unknown, passwordProved: boolean, pins: ParentPins | null = serverPins()): Promise<{ status: number; result: ForgotPinResult }> {
+  const { pin } = (body ?? {}) as { pin?: unknown };
+  if (!validPin(pin)) return { status: 400, result: { ok: false, error: "invalid" } };
+  if (!passwordProved) return { status: 403, result: { ok: false, error: "password_needed" } };
   if (!pins) return { status: 503, result: { ok: false, error: "unavailable" } };
   try {
-    const proof = await provePassword(password);
-    if (proof === "wrong") return { status: 403, result: { ok: false, error: "wrong_password" } };
-    if (proof === "unavailable") return { status: 503, result: { ok: false, error: "unavailable" } };
     await pins.reset(parentId, pin);
     return { status: 200, result: { ok: true } };
   } catch (error) {

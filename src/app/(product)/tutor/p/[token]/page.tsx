@@ -2,8 +2,8 @@ import Link from "next/link";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { pageMetadata } from "@/lib/metadata";
-import { DESK_COOKIE, DESK_HOME, openPageToken, readLock } from "@/lib/desk";
-import { serverPins } from "@/lib/parent-pin-server";
+import { DESK_COOKIE, DESK_HOME, openPageToken, readLock, type PageTokenResult } from "@/lib/desk";
+import { pinIsSet } from "@/lib/parent-pin-server";
 import { parentId, sessionClient } from "@/lib/supabase-auth";
 import { workbookStore } from "@/lib/workbook-store";
 import { DeskShell } from "@/components/desk-shell";
@@ -28,11 +28,23 @@ export default async function PageCode(props: PageProps<"/tutor/p/[token]">) {
   const open = lock?.parentId === parent ? lock : null;
   const back = open ? { href: DESK_HOME, label: "Back to the desk" } : { href: "/account", label: "Your account" };
 
-  const found = await openPageToken(workbookStore(db), parent, token);
+  let found: PageTokenResult | null = null;
+  try {
+    found = await openPageToken(workbookStore(db), parent, token);
+  } catch (error) {
+    console.error("[desk] page code load failed", error instanceof Error ? error.message : error);
+  }
+  if (!found) {
+    return (
+      <DeskShell back={back} title="We cannot open this page right now.">
+        <p className="lead">Try again in a moment.</p>
+      </DeskShell>
+    );
+  }
   if (found.status === "refused") {
     return (
-      <DeskShell back={back} title="This page is not in your account.">
-        <p className="lead">The code on this page belongs to a workbook in another Unica account. Sign in to the account of the child who owns the workbook, then scan the code again.</p>
+      <DeskShell back={back} title="We cannot open this page.">
+        <p className="lead">This page is not in this account, or its workbook is not ready on the desk yet. Check that you are signed in to the account of the child who has this workbook, then scan the code again.</p>
       </DeskShell>
     );
   }
@@ -48,12 +60,7 @@ export default async function PageCode(props: PageProps<"/tutor/p/[token]">) {
       </DeskShell>
     );
   }
-  let pinSet: boolean | null = null;
-  try {
-    pinSet = (await serverPins()?.isSet(parent)) ?? null;
-  } catch (error) {
-    console.error("[desk] pin load failed", error instanceof Error ? error.message : error);
-  }
+  const pinSet = await pinIsSet(parent);
   return (
     <DeskShell back={back} title={`Open ${name}'s desk at page ${found.page}?`}>
       <p className="lead">{name} sees this workbook page and can ask Maya for help. Leaving the desk needs your PIN.</p>

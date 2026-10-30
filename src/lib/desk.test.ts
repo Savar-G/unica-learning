@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { DESK_HOME, deskGate, deskView, lockCookie, openPageToken, readLock, tapAreas } from "@/lib/desk";
+import { DESK_HOME, PASSWORD_FRESH_SECONDS, deskGate, deskView, lockCookie, openPageToken, passwordIsFresh, readLock, tapAreas } from "@/lib/desk";
 import { sampleWorkbook } from "@/lib/workbook-sample";
 import { memoryWorkbookStore } from "@/lib/workbook-store-memory";
 
@@ -156,10 +156,32 @@ describe("the desk lock", () => {
     }
   });
 
+  it("keeps the desk closed to account pages when the session cannot be read, but lets sign-in through", () => {
+    expect(deskGate("/account", lock, null, false)).toBe("to-desk");
+    expect(deskGate("/api/account/pin", lock, null, false)).toBe("refuse");
+    for (const path of ["/sign-in", "/sign-in/reset", "/start", "/tutor"]) expect(deskGate(path, lock, null, false), path).toBe("pass");
+  });
+
   it("does nothing when no desk is open, nobody is signed in, or another parent is signed in", () => {
     expect(deskGate("/account", undefined, PARENT)).toBe("pass");
     expect(deskGate("/account", lock, null)).toBe("pass");
     expect(deskGate("/account", lock, OTHER_PARENT)).toBe("pass");
     expect(deskGate("/account", "not a lock", PARENT)).toBe("pass");
+  });
+});
+
+describe("a fresh password sign-in (Forgot PIN)", () => {
+  const now = 1_800_000_000;
+  it("is fresh when the session's password sign-in is recent", () => {
+    expect(passwordIsFresh({ amr: [{ method: "password", timestamp: now - 30 }] }, now)).toBe(true);
+    expect(passwordIsFresh({ amr: [{ method: "otp", timestamp: now - 5000 }, { method: "password", timestamp: now - PASSWORD_FRESH_SECONDS }] }, now)).toBe(true);
+  });
+
+  it("is not fresh for an old password sign-in, another method, or no record", () => {
+    expect(passwordIsFresh({ amr: [{ method: "password", timestamp: now - PASSWORD_FRESH_SECONDS - 1 }] }, now)).toBe(false);
+    expect(passwordIsFresh({ amr: [{ method: "otp", timestamp: now }] }, now)).toBe(false);
+    expect(passwordIsFresh({ amr: [{ method: "oauth", timestamp: now }] }, now)).toBe(false);
+    expect(passwordIsFresh({ amr: [{ method: "password", timestamp: now + 600 }] }, now)).toBe(false);
+    for (const claims of [{}, { amr: "password" }, { amr: [null] }, null]) expect(passwordIsFresh(claims, now), JSON.stringify(claims)).toBe(false);
   });
 });

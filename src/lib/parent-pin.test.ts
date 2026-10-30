@@ -5,7 +5,7 @@ import { memoryPinStore } from "@/lib/parent-pin-memory";
 
 vi.mock("server-only", () => ({}));
 const { pinStore } = await import("@/lib/parent-pin-store");
-const { checkParentPin, resetForgottenPin, savePin } = await import("@/lib/parent-pin-server");
+const { checkParentPin, pinIsSet, resetForgottenPin, savePin } = await import("@/lib/parent-pin-server");
 
 // The parent PIN module (#300, spec #295), through its interface: set, change, check, the attempt limit. The desk (P4)
 // calls `check` to leave desk mode. Tests use a clock they move, and run against both stores: the in-memory one, and the
@@ -395,30 +395,32 @@ describe("the server functions", () => {
     expect(await checkParentPin(PARENT, "1111", pins)).toEqual({ ok: true });
   });
 
-  it("resetForgottenPin: sets a new PIN only after the account password is right, and ends a lock", async () => {
+  it("resetForgottenPin: sets a new PIN only after a fresh password sign-in, and ends a lock", async () => {
     const pins = withPins();
     await savePin(PARENT, { pin: "4821" }, pins);
     for (let i = 0; i < PIN_POLICY.maxAttempts; i++) await checkParentPin(PARENT, "0000", pins);
-    const tried: string[] = [];
-    const password = (answer: "ok" | "wrong" | "unavailable") => async (p: string) => { tried.push(p); return answer; };
-    expect(await resetForgottenPin(PARENT, { password: "guess", pin: "1111" }, password("wrong"), pins)).toEqual({ status: 403, result: { ok: false, error: "wrong_password" } });
-    expect(await resetForgottenPin(PARENT, { password: "right", pin: "1111" }, password("unavailable"), pins)).toEqual({ status: 503, result: { ok: false, error: "unavailable" } });
+    expect(await resetForgottenPin(PARENT, { pin: "1111" }, false, pins)).toEqual({ status: 403, result: { ok: false, error: "password_needed" } });
     expect(await checkParentPin(PARENT, "1111", pins)).toMatchObject({ ok: false, error: "locked" });
-    expect(await resetForgottenPin(PARENT, { password: "right", pin: "1111" }, password("ok"), pins)).toEqual({ status: 200, result: { ok: true } });
+    expect(await resetForgottenPin(PARENT, { pin: "1111" }, true, pins)).toEqual({ status: 200, result: { ok: true } });
     expect(await checkParentPin(PARENT, "1111", pins)).toEqual({ ok: true });
-    expect(tried).toEqual(["guess", "right", "right"]);
   });
 
-  it("resetForgottenPin: checks the new PIN before the password, and refuses a malformed body", async () => {
+  it("resetForgottenPin: refuses a malformed body, and stays closed without the store", async () => {
     const pins = withPins();
-    let asked = 0;
-    const password = async () => { asked += 1; return "ok" as const; };
-    expect(await resetForgottenPin(PARENT, { password: "right", pin: "12" }, password, pins)).toEqual({ status: 400, result: { ok: false, error: "invalid" } });
-    for (const body of [null, {}, { password: "right" }, { password: "", pin: "1111" }, { password: 1, pin: "1111" }]) {
-      expect((await resetForgottenPin(PARENT, body, password, pins)).status, JSON.stringify(body)).toBe(400);
+    for (const body of [null, {}, { pin: "12" }, { pin: 1111 }, "1111"]) {
+      expect(await resetForgottenPin(PARENT, body, true, pins), JSON.stringify(body)).toEqual({ status: 400, result: { ok: false, error: "invalid" } });
     }
-    expect(asked).toBe(0);
-    expect(await resetForgottenPin(PARENT, { password: "right", pin: "1111" }, password, null)).toMatchObject({ status: 503 });
+    expect(await resetForgottenPin(PARENT, { pin: "1111" }, true, null)).toMatchObject({ status: 503 });
+    expect(await resetForgottenPin(PARENT, { pin: "1111" }, true, parentPins({ ...memoryPinStore(), reset: async () => { throw new Error("down"); } }))).toMatchObject({ status: 502 });
+  });
+
+  it("pinIsSet: says whether a PIN is set, and null when the server cannot tell", async () => {
+    const pins = withPins();
+    expect(await pinIsSet(PARENT, pins)).toBe(false);
+    await savePin(PARENT, { pin: "4821" }, pins);
+    expect(await pinIsSet(PARENT, pins)).toBe(true);
+    expect(await pinIsSet(PARENT, null)).toBeNull();
+    expect(await pinIsSet(PARENT, parentPins({ ...memoryPinStore(), has: async () => { throw new Error("down"); } }))).toBeNull();
   });
 
   it("savePin: answers 429 once the attempts are used, and 400 for a malformed body", async () => {

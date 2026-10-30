@@ -1,7 +1,7 @@
 import { redirect } from "next/navigation";
 import { pageMetadata } from "@/lib/metadata";
 import { DESK_HOME } from "@/lib/desk";
-import { parentId, sessionClient } from "@/lib/supabase-auth";
+import { sessionClient } from "@/lib/supabase-auth";
 import { ForgotPinForm } from "@/components/desk";
 import { DeskShell } from "@/components/desk-shell";
 
@@ -15,11 +15,12 @@ export const metadata = pageMetadata({
 // Forgot PIN (#301): the parent enters their account password and a new PIN; the desk then closes on this device. It is
 // under the desk's address, so it opens while the desk is open.
 export default async function ForgotPin() {
-  if (!(await parentId(await sessionClient()))) redirect(`/sign-in?next=${DESK_HOME}/forgot-pin`);
+  const { data } = await (await sessionClient()).auth.getUser();
+  if (!data.user?.email) redirect(`/sign-in?next=${DESK_HOME}/forgot-pin`);
   return (
     <DeskShell back={{ href: DESK_HOME, label: "Back to the desk" }} title="Forgot your PIN?">
       <p className="lead">Enter the password of your Unica account, then choose a new 4-digit PIN. The desk closes on this device.</p>
-      <ForgotPinForm />
+      <ForgotPinForm email={data.user.email} />
       <p className="small">No password on your account? On another device, sign in to Unica, then choose Add or change your password. Then come back to this page.</p>
     </DeskShell>
   );

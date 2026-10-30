@@ -36,11 +36,18 @@ export function readLock(value: string | undefined): DeskLock | null {
 /**
  * What the proxy does with a request while a desk may be open. `pass`: let it through. `to-desk`: send the page back to
  * the desk. `refuse`: answer an API call with an error. Only a desk opened by the parent who is signed in counts.
+ * `sessionKnown` false: the session could not be read (an Auth error), so the gate stays closed to account pages and
+ * APIs, and lets only sign-in through (a signed-out device must be able to sign in again).
  */
-export function deskGate(pathname: string, cookie: string | undefined, sessionParent: string | null): "pass" | "to-desk" | "refuse" {
+export function deskGate(pathname: string, cookie: string | undefined, sessionParent: string | null, sessionKnown = true): "pass" | "to-desk" | "refuse" {
   const lock = readLock(cookie);
-  if (!lock || !sessionParent || lock.parentId !== sessionParent) return "pass";
+  if (!lock) return "pass";
   const under = (base: string) => pathname === base || pathname.startsWith(`${base}/`);
+  if (!sessionKnown) {
+    if (under("/sign-in") || under("/start")) return "pass";
+  } else if (!sessionParent || lock.parentId !== sessionParent) {
+    return "pass";
+  }
   if (under(DESK_HOME) || under("/api/desk") || under("/auth")) return "pass";
   if (under("/api")) return "refuse";
   return "to-desk";
@@ -124,6 +131,23 @@ export function tapAreas(page: DeskPage): TapArea[] {
     width: percent(q.box.width, image.width),
     height: percent(q.box.height, image.height),
   }));
+}
+
+/** How recent a password sign-in must be for Forgot PIN: 5 minutes. */
+export const PASSWORD_FRESH_SECONDS = 5 * 60;
+
+/**
+ * Forgot PIN (#301): the browser signs in again with the account password (Supabase Auth limits those tries per
+ * device), and the server then accepts only a session whose password sign-in is recent. `claims`: the session's JWT
+ * claims; `amr` lists how and when (seconds) the session was proved. `now` in seconds.
+ */
+export function passwordIsFresh(claims: unknown, now: number): boolean {
+  const amr = (claims as { amr?: unknown } | null)?.amr;
+  if (!Array.isArray(amr)) return false;
+  return amr.some((a: unknown) => {
+    const { method, timestamp } = (a ?? {}) as { method?: unknown; timestamp?: unknown };
+    return method === "password" && typeof timestamp === "number" && timestamp <= now + 60 && now - timestamp <= PASSWORD_FRESH_SECONDS;
+  });
 }
 
 /** What leaving the desk gets back, from src/app/api/desk/leave/route.ts. */

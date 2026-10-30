@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useRef, useState, useSyncExternalStore, type FormEvent, type ReactNode } from "react";
 import type { LeaveResult, TapArea } from "@/lib/desk";
 import type { ForgotPinResult } from "@/lib/parent-pin-server";
+import { browserClient } from "@/lib/supabase-browser";
 import { track } from "@/lib/track";
 import "./desk.css";
 
@@ -88,7 +89,8 @@ export function DeskBoard({ name, pageNumber, dayLabel, image, areas, questions,
         ) : (
           <>
             <h1 className="desk-hello">Hi, {name}.</h1>
-            <p className="desk-lead">{areas.length ? "Which question are you on? Tap it on your page." : "This page has no questions. Go to a page with questions."}</p>
+            <p className="desk-lead">{!image ? "Your page cannot be shown right now. Try again in a moment."
+              : areas.length ? "Which question are you on? Tap it on your page." : "This page has no questions. Go to a page with questions."}</p>
             <div className="desk-soon">
               <h2>Maya is coming soon.</h2>
               <p>Soon you can ask Maya for help with a question on your page.</p>
@@ -181,13 +183,22 @@ export function LeaveDesk() {
   );
 }
 
-/** Forgot PIN: the account password and a new PIN. The new PIN is saved and the desk closes on this device. */
-export function ForgotPinForm() {
+/**
+ * Forgot PIN: the account password and a new PIN. The browser signs in again with the password (Supabase Auth limits
+ * those tries per device), then the server accepts the new PIN from that fresh sign-in and closes the desk.
+ */
+export function ForgotPinForm({ email }: { email: string }) {
   const router = useRouter();
   const [password, setPassword] = useState("");
   const [pin, setPin] = useState("");
   const [error, setError] = useState<ReactNode>(null);
   const [busy, setBusy] = useState(false);
+
+  const fail = (message: ReactNode) => {
+    setBusy(false);
+    setPassword("");
+    setError(message);
+  };
 
   const submit = async (e: FormEvent) => {
     e.preventDefault();
@@ -198,9 +209,16 @@ export function ForgotPinForm() {
     }
     setBusy(true);
     setError(null);
+    const signIn = await browserClient().auth.signInWithPassword({ email, password }).catch(() => null);
+    if (!signIn || signIn.error) {
+      const code = signIn?.error?.code;
+      if (code === "invalid_credentials") return fail("That password is not right. Try again.");
+      if (code === "over_request_rate_limit" || signIn?.error?.status === 429) return fail("Too many tries. Wait a few minutes, then try again.");
+      return fail("We cannot check the password right now. Try again in a moment.");
+    }
     let answer: ForgotPinResult;
     try {
-      const res = await fetch("/api/desk/forgot-pin", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ password, pin }) });
+      const res = await fetch("/api/desk/forgot-pin", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ pin }) });
       answer = (await res.json()) as ForgotPinResult;
     } catch {
       answer = { ok: false, error: "unavailable" };
@@ -211,20 +229,15 @@ export function ForgotPinForm() {
       router.refresh();
       return;
     }
-    setBusy(false);
-    setPassword("");
     switch (answer.error) {
-      case "wrong_password":
-        setError("That password is not right. Try again.");
-        break;
       case "invalid":
-        setError("Use a new PIN of exactly 4 digits.");
-        break;
+        return fail("Use a new PIN of exactly 4 digits.");
+      case "password_needed":
+        return fail("Enter your account password again.");
       case "signed_out":
-        setError(<>The account is signed out. <Link href="/sign-in">Sign in</Link> again.</>);
-        break;
+        return fail(<>The account is signed out. <Link href="/sign-in">Sign in</Link> again.</>);
       default:
-        setError("We cannot save a new PIN right now. Wait a few minutes, then try again.");
+        return fail("We cannot save a new PIN right now. Wait a few minutes, then try again.");
     }
   };
 

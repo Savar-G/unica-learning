@@ -2,7 +2,7 @@ import Link from "next/link";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { pageMetadata } from "@/lib/metadata";
-import { DESK_COOKIE, DESK_HOME, deskView, readLock, tapAreas } from "@/lib/desk";
+import { DESK_COOKIE, DESK_HOME, deskView, readLock, tapAreas, type DeskView } from "@/lib/desk";
 import { parentId, sessionClient } from "@/lib/supabase-auth";
 import { WORKBOOK_FILES_BUCKET, type WorkbookSummary } from "@/lib/workbook-content";
 import { workbookStore } from "@/lib/workbook-store";
@@ -35,10 +35,14 @@ export default async function Desk({ searchParams }: PageProps<"/tutor">) {
   const { w, p } = await searchParams;
   const [{ data: child }, view] = await Promise.all([
     db.from("children").select("id, first_name").eq("id", lock.childId).maybeSingle(),
+    // A failed read still shows the desk, with Leave, and says the workbook cannot be shown.
     deskView(workbookStore(db), {
       parentId: parent, childId: lock.childId,
       workbookId: typeof w === "string" ? w : undefined,
       page: typeof p === "string" && /^\d{1,4}$/.test(p) ? Number(p) : undefined,
+    }).catch((error: unknown): DeskView | null => {
+      console.error("[desk] workbook load failed", error instanceof Error ? error.message : error);
+      return null;
     }),
   ]);
   const name = child?.first_name ?? "there";
@@ -57,13 +61,14 @@ export default async function Desk({ searchParams }: PageProps<"/tutor">) {
     </header>
   );
 
-  if (!child || view.status === "no-workbook") {
+  if (!child || !view || view.status === "no-workbook") {
     return (
       <div className="look-root desk-root" data-look="warm">
         {top([], null)}
         <main id="main" className="desk-main">
           <section className="desk-pane desk-pane-page"><div className="desk-stage">
-            <p className="desk-missing">There is no workbook here yet. When {child ? `${name}'s` : "your"} workbook arrives, its pages show here.</p>
+            <p className="desk-missing">{view ? `There is no workbook here yet. When ${child ? `${name}'s` : "your"} workbook arrives, its pages show here.`
+              : "Your workbook cannot be shown right now. Try again in a moment."}</p>
           </div></section>
           <section className="desk-pane desk-pane-maya" aria-label="Maya">
             <p className="desk-kicker">Maya · Unica Teaching Assistant</p>

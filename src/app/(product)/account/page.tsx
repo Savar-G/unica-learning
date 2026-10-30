@@ -11,7 +11,7 @@ import { parentId, sessionClient } from "@/lib/supabase-auth";
 import { isPhone } from "@/lib/account-server";
 import { reportPath } from "@/lib/report-view";
 import { fromRow, LEARNING_COLUMNS, learningPath } from "@/lib/learning-style";
-import { serverPins } from "@/lib/parent-pin-server";
+import { pinIsSet } from "@/lib/parent-pin-server";
 import { workbookStore } from "@/lib/workbook-store";
 import type { WorkbookSummary } from "@/lib/workbook-content";
 import { AddChild, SendLink, SignOut, StartTest, TrackOnce } from "@/components/account";
@@ -100,16 +100,6 @@ async function currentWorkbooks(db: Awaited<ReturnType<typeof sessionClient>>, c
   } catch (error) {
     console.error("[account] workbooks load failed", error instanceof Error ? error.message : error);
     return new Map();
-  }
-}
-
-/** Whether the parent has a PIN; null when the server cannot tell. */
-async function pinIsSet(parent: string): Promise<boolean | null> {
-  try {
-    return (await serverPins()?.isSet(parent)) ?? null;
-  } catch (error) {
-    console.error("[account] pin load failed", error instanceof Error ? error.message : error);
-    return null;
   }
 }
 

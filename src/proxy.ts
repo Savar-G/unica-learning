@@ -20,8 +20,10 @@ export async function proxy(request: NextRequest) {
       },
     },
   });
-  const { data } = await supabase.auth.getClaims();
-  const gate = deskGate(request.nextUrl.pathname, request.cookies.get(DESK_COOKIE)?.value, data?.claims.sub ?? null);
+  const { data, error } = await supabase.auth.getClaims();
+  // An Auth error (not a signed-out visitor) keeps an open desk closed to the account.
+  const known = !error || error.name === "AuthSessionMissingError";
+  const gate = deskGate(request.nextUrl.pathname, request.cookies.get(DESK_COOKIE)?.value, data?.claims.sub ?? null, known);
   if (gate === "pass") return response;
   // Keep a refreshed session on the answer that replaces the page.
   const answer = gate === "to-desk"
