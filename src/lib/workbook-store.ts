@@ -4,9 +4,12 @@ import { QUESTION_PACKAGE_VERSION } from "@/lib/question-package";
 import {
   isQrToken,
   isUuid,
+  renderingProblem,
   storedQuestion,
   workbookProblem,
+  WORKBOOK_FILES_BUCKET,
   type StoredQuestion,
+  type WorkbookFiles,
   type WorkbookPage,
   type WorkbookStore,
   type WorkbookSummary,
@@ -73,6 +76,14 @@ export function workbookStore(db: SupabaseClient<Database>): WorkbookStore {
       return writeAnswer(data);
     },
 
+    async saveRendering(rendering) {
+      const problem = renderingProblem(rendering);
+      if (problem) return { status: "refused", reason: problem };
+      const { data, error } = await db.rpc("save_workbook_rendering", { p_rendering: toJson(rendering) });
+      if (error) throw new Error(`workbook rendering save: ${error.message}`);
+      return writeAnswer(data);
+    },
+
     async workbook(id) {
       if (!isUuid(id)) return null;
       const [book, pages, questions] = await Promise.all([
@@ -126,6 +137,22 @@ export function workbookStore(db: SupabaseClient<Database>): WorkbookStore {
       const { data: book, error: bookError } = await db.from("workbooks").select(BOOK_COLUMNS).eq("id", p.workbook_id).maybeSingle();
       if (bookError) throw new Error(`workbook page token load: ${bookError.message}`);
       return book ? { workbook: summary(book), page: p.page_number } : null;
+    },
+  };
+}
+
+/** The workbook bucket in Supabase Storage. Pass a client with the secret key: parents and admins cannot write it. */
+export function workbookFiles(db: SupabaseClient<Database>): WorkbookFiles {
+  const bucket = () => db.storage.from(WORKBOOK_FILES_BUCKET);
+  return {
+    async put(file) {
+      const { error } = await bucket().upload(file.path, file.bytes, { contentType: file.contentType, upsert: false });
+      if (error) throw new Error(`workbook file upload: ${error.message}`);
+    },
+    async remove(paths) {
+      if (paths.length === 0) return;
+      const { error } = await bucket().remove(paths);
+      if (error) throw new Error(`workbook file removal: ${error.message}`);
     },
   };
 }
