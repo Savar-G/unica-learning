@@ -964,6 +964,110 @@ export type Database = {
           },
         ]
       }
+      learning_events: {
+        Row: {
+          assessment_id: string | null
+          assessment_question_id: string | null
+          child_id: string
+          created_at: string
+          evidence_id: string | null
+          evidence_kind: string | null
+          hints: number
+          id: string
+          idempotency_key: string
+          mistake: string | null
+          occurred_at: string
+          parent_id: string
+          question_source: string
+          result: string
+          skill_standard: string
+          skills: string[]
+          source: string
+          stuck_step: string | null
+          time_ms: number | null
+          workbook_id: string | null
+          workbook_page: number | null
+          workbook_question: number | null
+        }
+        Insert: {
+          assessment_id?: string | null
+          assessment_question_id?: string | null
+          child_id: string
+          created_at?: string
+          evidence_id?: string | null
+          evidence_kind?: string | null
+          hints?: number
+          id?: string
+          idempotency_key: string
+          mistake?: string | null
+          occurred_at: string
+          parent_id: string
+          question_source: string
+          result: string
+          skill_standard: string
+          skills?: string[]
+          source: string
+          stuck_step?: string | null
+          time_ms?: number | null
+          workbook_id?: string | null
+          workbook_page?: number | null
+          workbook_question?: number | null
+        }
+        Update: {
+          assessment_id?: string | null
+          assessment_question_id?: string | null
+          child_id?: string
+          created_at?: string
+          evidence_id?: string | null
+          evidence_kind?: string | null
+          hints?: number
+          id?: string
+          idempotency_key?: string
+          mistake?: string | null
+          occurred_at?: string
+          parent_id?: string
+          question_source?: string
+          result?: string
+          skill_standard?: string
+          skills?: string[]
+          source?: string
+          stuck_step?: string | null
+          time_ms?: number | null
+          workbook_id?: string | null
+          workbook_page?: number | null
+          workbook_question?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "learning_events_assessment_id_child_id_fkey"
+            columns: ["assessment_id", "child_id"]
+            isOneToOne: false
+            referencedRelation: "assessments"
+            referencedColumns: ["id", "child_id"]
+          },
+          {
+            foreignKeyName: "learning_events_assessment_id_fkey"
+            columns: ["assessment_id"]
+            isOneToOne: false
+            referencedRelation: "assessments"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "learning_events_child_id_parent_id_fkey"
+            columns: ["child_id", "parent_id"]
+            isOneToOne: false
+            referencedRelation: "children"
+            referencedColumns: ["id", "parent_id"]
+          },
+          {
+            foreignKeyName: "learning_events_parent_id_fkey"
+            columns: ["parent_id"]
+            isOneToOne: false
+            referencedRelation: "parents"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       parent_pins: {
         Row: {
           created_at: string
