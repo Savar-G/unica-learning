@@ -280,7 +280,7 @@ describe("the child's ink is protected", () => {
 
   it("cannot be removed, undone or cleared by Maya", () => {
     let scene = ok(createScene(), sum());
-    const drawn = addChildInk(scene, { page: 1, stroke: scribble(0.6, 0.3) });
+    const drawn = addChildInk(scene, { page: 1, stroke: scribble(0.6, 0.3), boardWidth: 800 });
     scene = drawn.scene;
     const r = applyBatch(scene, { transactionId: "rm", commands: [{ op: "remove", objectId: drawn.id }] });
     expect(r.ok).toBe(false);
@@ -294,12 +294,12 @@ describe("the child's ink is protected", () => {
     scene = ok(scene, { op: "clear", scope: "maya_objects" });
     expect(boardPaths(scene)).toEqual([]);
     expect(boardTargets(scene)).toEqual([]);
-    expect(childInk(scene)).toEqual([{ id: drawn.id, page: 1, stroke: scribble(0.6, 0.3) }]);
+    expect(childInk(scene)).toEqual([{ id: drawn.id, page: 1, stroke: scribble(0.6, 0.3), boardWidth: 800 }]);
   });
 
   it("is never covered: new work goes around it, and an undo that would cover it is refused", () => {
     // The child writes in the top-left corner, where the first object would go.
-    const inked = addChildInk(createScene(), { page: 1, stroke: scribble(0.06, 0.06) }).scene;
+    const inked = addChildInk(createScene(), { page: 1, stroke: scribble(0.06, 0.06), boardWidth: 800 }).scene;
     const scene = ok(inked, sum());
     const pts = boardPaths(scene).flatMap((p) => p.pts);
     const box = { left: Math.min(...pts.map(([x]) => x)), right: Math.max(...pts.map(([x]) => x)), top: Math.min(...pts.map(([, y]) => y)), bottom: Math.max(...pts.map(([, y]) => y)) };
@@ -313,7 +313,7 @@ describe("the child's ink is protected", () => {
     let board = ok(createScene(), sum());
     board = ok(board, { op: "clear", scope: "maya_objects" });
     const cleared = `t${tx}`;
-    board = addChildInk(board, { page: 1, stroke: scribble(0.1, 0.1) }).scene;
+    board = addChildInk(board, { page: 1, stroke: scribble(0.1, 0.1), boardWidth: 800 }).scene;
     const r = applyBatch(board, { transactionId: "back", commands: [{ op: "undo", transactionId: cleared }] });
     expect(r.ok).toBe(false);
     if (!r.ok) expect(r.refusal.code).toBe("unsafe_undo");
@@ -482,5 +482,227 @@ describe("review fixes", () => {
     const sumXs = xs(sumPts.filter((p) => p.objectId === "sum1"));
     expect(Math.min(...noteXs)).toBeGreaterThan(Math.max(...sumXs));
     expect(boardPages(scene)).toBe(1);
+  });
+});
+
+describe("second review fixes", () => {
+  const refusal = (scene: Scene, ...commands: unknown[]) => {
+    const r = applyBatch(scene, { transactionId: `r${++tx}`, commands });
+    if (r.ok) throw new Error("expected a refusal");
+    return r.refusal;
+  };
+  /** Applies a batch that must succeed and returns the whole result. */
+  const applied = (scene: Scene, ...commands: unknown[]) => {
+    const r = applyBatch(scene, { transactionId: `t${++tx}`, commands });
+    if (!r.ok) throw new Error(`refused: ${r.refusal.code}: ${r.refusal.reason}`);
+    return r;
+  };
+  /** The child draws along the points, on an 800-pixel board. */
+  const childStroke = (scene: Scene, pts: [number, number][], w = 3) => addChildInk(scene, { page: 1, stroke: { erase: false, w, pts }, boardWidth: 800 }).scene;
+
+  /** Distance from a point to a segment. */
+  function toSegment(p: [number, number], a: [number, number], b: [number, number]) {
+    const [dx, dy] = [b[0] - a[0], b[1] - a[1]];
+    const d = dx * dx + dy * dy;
+    const t = d === 0 ? 0 : Math.max(0, Math.min(1, ((p[0] - a[0]) * dx + (p[1] - a[1]) * dy) / d));
+    return Math.hypot(p[0] - a[0] - dx * t, p[1] - a[1] - dy * t);
+  }
+  /** The closest two polylines come, checked at their points and at a few points along each segment. */
+  function gap(a: [number, number][], b: [number, number][]) {
+    const dense = (pts: [number, number][]) =>
+      pts.flatMap((p, i) => (i === 0 ? [p] : [0.25, 0.5, 0.75, 1].map((t): [number, number] => [pts[i - 1][0] + (p[0] - pts[i - 1][0]) * t, pts[i - 1][1] + (p[1] - pts[i - 1][1]) * t])));
+    const one = (pts: [number, number][], line: [number, number][]) =>
+      Math.min(...dense(pts).map((p) => (line.length === 1 ? Math.hypot(p[0] - line[0][0], p[1] - line[0][1]) : Math.min(...line.slice(1).map((end, i) => toSegment(p, line[i], end))))));
+    return Math.min(one(a, b), one(b, a));
+  }
+  /** True when the two strokes touch, counting their widths. */
+  const touch = (a: BoardPath, b: BoardPath) => gap(a.pts, b.pts) < (a.width + b.width) / 2;
+
+  describe("R4: ids that are names of object properties", () => {
+    it("refuses an unknown id such as constructor with a typed refusal", () => {
+      const scene = ok(createScene(), sum());
+      for (const id of ["constructor", "toString", "hasOwnProperty", "valueOf"]) {
+        expect(refusal(scene, { op: "remove", objectId: id }).code).toBe("unknown_target");
+        expect(refusal(scene, { op: "put", target: cell(id, "answer", "ones"), value: "6" }).code).toBe("unknown_target");
+        expect(refusal(scene, { op: "mark", id: "m", target: { objectId: id, part: "whole" }, style: "circle" }).code).toBe("unknown_target");
+      }
+    });
+
+    it("creates, removes and undoes objects and carries with those ids", () => {
+      let scene = ok(createScene(), { op: "write", id: "constructor", text: "1", place: { region: "main" } });
+      scene = ok(scene, { op: "remove", objectId: "constructor" });
+      expect(boardPaths(scene)).toEqual([]);
+      scene = ok(scene, sum());
+      scene = ok(scene, { op: "regroup", id: "toString", objectId: "sum1", rowId: "answer", kind: "carry", from: "ones", to: "tens" });
+      const carried = `t${tx}`;
+      expect(info(scene, { objectId: "toString", part: "whole" }).value).toBe("1");
+      const removed = ok(scene, { op: "remove", objectId: "toString" });
+      expect(boardPaths(removed).some((p) => p.objectId === "toString")).toBe(false);
+      const undone = ok(scene, { op: "undo", transactionId: carried });
+      expect(boardPaths(undone).some((p) => p.objectId === "toString")).toBe(false);
+    });
+  });
+
+  describe("R2: clearing annotations", () => {
+    it("erases carries with the marks, and an undo brings back exactly the same strokes", () => {
+      let scene = ok(createScene(), sum());
+      scene = ok(scene, { op: "regroup", id: "carry1", objectId: "sum1", rowId: "answer", kind: "carry", from: "ones", to: "tens" }, { op: "mark", id: "ring", target: cell("sum1", "top", "ones"), style: "circle" });
+      const before = boardPaths(scene);
+      const r = applied(scene, { op: "clear", scope: "maya_annotations" });
+      expect(boardPaths(r.scene).filter((p) => p.objectId === "carry1" || p.objectId === "ring")).toEqual([]);
+      expect(boardTargets(r.scene).some((t) => t.target.objectId === "carry1")).toBe(false);
+      expect(r.erased).toHaveLength(before.filter((p) => p.objectId === "carry1" || p.objectId === "ring").length);
+      // The math stays.
+      expect(info(r.scene, cell("sum1", "top", "ones")).value).toBe("7");
+      const back = ok(r.scene, { op: "undo", transactionId: `t${tx}` });
+      expect(boardPaths(back)).toEqual(before);
+    });
+
+    it("erases a borrow chain and shows the original top number again", () => {
+      let scene = ok(createScene(), { op: "columns", id: "diff", operation: "subtract", operands: [{ id: "top", value: "300" }, { id: "bottom", value: "128" }], place: { region: "main" } });
+      const plain = boardPaths(scene);
+      scene = ok(
+        scene,
+        { op: "regroup", id: "b1", objectId: "diff", rowId: "top", kind: "borrow", from: "hundreds", to: "tens" },
+        { op: "regroup", id: "b2", objectId: "diff", rowId: "top", kind: "borrow", from: "tens", to: "ones" },
+      );
+      expect(info(scene, cell("diff", "top", "tens")).crossedOut).toEqual(["0", "10"]);
+      const borrowed = boardPaths(scene);
+      scene = ok(scene, { op: "clear", scope: "maya_annotations" });
+      expect(info(scene, cell("diff", "top", "hundreds"))).toMatchObject({ value: "3" });
+      expect(info(scene, cell("diff", "top", "tens")).crossedOut).toBeUndefined();
+      expect(info(scene, cell("diff", "top", "ones")).value).toBe("0");
+      expect(boardPaths(scene)).toEqual(plain);
+      // The borrows can be shown again, and an undo of the clear restores them.
+      expect(boardPaths(ok(scene, { op: "undo", transactionId: `t${tx}` }))).toEqual(borrowed);
+      ok(scene, { op: "regroup", id: "b3", objectId: "diff", rowId: "top", kind: "borrow", from: "hundreds", to: "tens" });
+    });
+
+    it("clears only the page it names", () => {
+      let scene = ok(createScene(), sum("a"), { op: "regroup", id: "ca", objectId: "a", rowId: "answer", kind: "carry", from: "ones", to: "tens" });
+      scene = ok(scene, sum("b", { below: "a" }), sum("c", { below: "b" }), sum("d", { below: "c" }));
+      scene = ok(scene, { op: "regroup", id: "cd", objectId: "d", rowId: "answer", kind: "carry", from: "ones", to: "tens" });
+      expect(boardView(scene).page).toBe(2);
+      scene = ok(scene, { op: "clear", page: 1, scope: "maya_annotations" });
+      const ids = boardPaths(scene).map((p) => p.objectId);
+      expect(ids).not.toContain("ca");
+      expect(ids).toContain("cd");
+    });
+  });
+
+  describe("R1: Maya never draws over the child's ink", () => {
+    const ring = { op: "mark", id: "ring", target: cell("sum1", "top", "ones"), style: "circle" };
+
+    it("refuses a put, a mark and a regroup whose strokes would cross the child's ink", () => {
+      const scene = ok(createScene(), sum());
+      const cases: unknown[] = [
+        { op: "put", target: cell("sum1", "answer", "ones"), value: "6" },
+        ring,
+        { op: "regroup", id: "carry1", objectId: "sum1", rowId: "answer", kind: "carry", from: "ones", to: "tens" },
+      ];
+      for (const cmd of cases) {
+        const proposed = applied(scene, cmd);
+        const inked = childStroke(scene, proposed.drawn[0].pts);
+        expect(refusal(inked, cmd).code).toBe("protected_ink");
+        // Ink somewhere else does not get in the way.
+        ok(childStroke(scene, [[0.9, 0.6], [0.95, 0.62]]), cmd);
+      }
+    });
+
+    it("routes an arrow around the child's ink, or refuses it when no route is clear", () => {
+      const scene = ok(createScene(), sum());
+      const link = { op: "arrow", id: "link", from: cell("sum1", "top", "ones"), to: cell("sum1", "top", "tens") };
+      const shaft = applied(scene, link).drawn[0].pts;
+      const r = applied(childStroke(scene, shaft), link);
+      const child: BoardPath = { ...r.drawn[0], pts: shaft, width: 3 / 800 };
+      expect(r.drawn.length).toBe(3);
+      for (const p of r.drawn) expect(touch(p, child)).toBe(false);
+      // The child scribbles over the whole problem: no arrow between its digits is clear.
+      const covered = childStroke(scene, [[0, 0], [0.4, 0], [0.4, 0.3], [0, 0.3], [0, 0]], 400);
+      expect(refusal(covered, link).code).toBe("no_room");
+    });
+
+    it("refuses an undo that would bring back a mark or a carry over the child's ink", () => {
+      let scene = ok(createScene(), sum());
+      const made = applied(scene, ring);
+      scene = ok(made.scene, { op: "remove", objectId: "ring" });
+      const removed = `t${tx}`;
+      expect(refusal(childStroke(scene, made.drawn[0].pts), { op: "undo", transactionId: removed }).code).toBe("unsafe_undo");
+
+      let carried = ok(createScene(), sum());
+      const carry = applied(carried, { op: "regroup", id: "carry1", objectId: "sum1", rowId: "answer", kind: "carry", from: "ones", to: "tens" });
+      carried = ok(carry.scene, { op: "remove", objectId: "carry1" });
+      const dropped = `t${tx}`;
+      expect(refusal(childStroke(carried, carry.drawn[0].pts), { op: "undo", transactionId: dropped }).code).toBe("unsafe_undo");
+    });
+
+    it("keeps new work clear of a thick child stroke, counting its width", () => {
+      // A 200-pixel stroke on an 800-pixel board reaches 1/8 of the board width around its points.
+      const scene = ok(childStroke(createScene(), [[0.02, 0.02], [0.022, 0.02]], 200), sum());
+      const reach = 200 / 2 / 800;
+      for (const p of boardPaths(scene)) expect(gap(p.pts, [[0.02, 0.02], [0.022, 0.02]])).toBeGreaterThanOrEqual(reach + p.width / 2);
+    });
+
+    it("needs the board width to read the child's stroke width", () => {
+      expect(() => addChildInk(createScene(), { page: 1, stroke: { erase: false, w: 3, pts: [[0.1, 0.1]] }, boardWidth: 0 })).toThrow(RangeError);
+    });
+  });
+
+  describe("R3: arrows go around unrelated work", () => {
+    it("routes each multiplication carry arrow clear of the other carries", () => {
+      let scene = ok(createScene(), { op: "columns", id: "m", operation: "multiply", operands: [{ id: "top", value: "99" }, { id: "by", value: "99" }], place: { region: "main" } });
+      scene = ok(
+        scene,
+        { op: "regroup", id: "c0", objectId: "m", rowId: "p0", kind: "carry", from: "ones", to: "tens" },
+        { op: "regroup", id: "c1", objectId: "m", rowId: "p0", kind: "carry", from: "tens", to: "hundreds" },
+        { op: "regroup", id: "d0", objectId: "m", rowId: "p1", kind: "carry", from: "tens", to: "hundreds" },
+        { op: "regroup", id: "d1", objectId: "m", rowId: "p1", kind: "carry", from: "hundreds", to: "thousands" },
+        { op: "regroup", id: "a0", objectId: "m", rowId: "answer", kind: "carry", from: "tens", to: "hundreds" },
+      );
+      const paths = boardPaths(scene);
+      const ids = ["c0", "c1", "d0", "d1", "a0"];
+      for (const id of ids) {
+        const arrows = paths.filter((p) => p.objectId === id && p.kind === "arrow");
+        expect(arrows.length).toBe(3);
+        // Clear of every other carry and of the digits of the problem.
+        const others = paths.filter((p) => p.objectId !== id && (ids.includes(p.objectId) || p.kind === "glyph"));
+        for (const a of arrows) for (const o of others) expect(touch(a, o), `${id} arrow touches ${o.id}`).toBe(false);
+      }
+    });
+
+    it("routes an addition carry arrow clear of the digits", () => {
+      let scene = ok(createScene(), { ...sum(), operands: [{ id: "top", value: "999" }, { id: "bottom", value: "1" }] });
+      scene = ok(
+        scene,
+        { op: "regroup", id: "k0", objectId: "sum1", rowId: "answer", kind: "carry", from: "ones", to: "tens" },
+        { op: "regroup", id: "k1", objectId: "sum1", rowId: "answer", kind: "carry", from: "tens", to: "hundreds" },
+        { op: "regroup", id: "k2", objectId: "sum1", rowId: "answer", kind: "carry", from: "hundreds", to: "thousands" },
+      );
+      const paths = boardPaths(scene);
+      for (const a of paths.filter((p) => p.kind === "arrow"))
+        for (const o of paths.filter((p) => p.objectId !== a.objectId && (p.kind === "glyph" || p.objectId.startsWith("k")))) expect(touch(a, o), `${a.id} touches ${o.id}`).toBe(false);
+    });
+
+    it("routes a common arrow around an object between its ends", () => {
+      const note = (id: string, place: unknown) => ({ op: "write", id, text: "1", place });
+      let scene = ok(createScene(), note("a", { region: "main" }), note("b", { below: "a" }), note("c", { below: "b" }));
+      scene = ok(scene, { op: "arrow", id: "link", from: { objectId: "a", part: "whole" }, to: { objectId: "c", part: "whole" } });
+      const paths = boardPaths(scene);
+      const arrow = paths.filter((p) => p.objectId === "link");
+      expect(arrow.length).toBe(3);
+      for (const a of arrow) for (const o of paths.filter((p) => p.objectId === "b")) expect(touch(a, o)).toBe(false);
+      // It goes around b's whole cell, not through its blank part.
+      const bCell = Math.floor(Math.min(...xs(paths.filter((p) => p.objectId === "b"))) * 24) / 24;
+      const bTop = Math.floor(top(paths.filter((p) => p.objectId === "b")) * 24) / 24;
+      const inB = ([x, y]: [number, number]) => x > bCell && x < bCell + 1 / 24 && y > bTop && y < bTop + 1 / 24;
+      expect(arrow.flatMap((p) => p.pts).some(inB)).toBe(false);
+    });
+
+    it("keeps the arrow's route when the board changes later", () => {
+      let scene = ok(createScene(), sum());
+      const r = applied(scene, { op: "arrow", id: "link", from: cell("sum1", "top", "ones"), to: cell("sum1", "bottom", "tens") });
+      scene = ok(r.scene, { op: "write", id: "n", text: "6", place: { rightOf: "sum1" } });
+      expect(boardPaths(scene).filter((p) => p.objectId === "link")).toEqual(boardPaths(r.scene).filter((p) => p.objectId === "link"));
+    });
   });
 });

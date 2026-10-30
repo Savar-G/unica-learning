@@ -65,6 +65,8 @@ export interface ColumnsState {
 const OPERATOR = { add: "+", subtract: "−", multiply: "×" } as const;
 const DIGIT_WIDTH = 0.07;
 const SMALL_WIDTH = 0.05;
+/** Where a carry arrow runs in its lane, in cells from the lane's top: above the lane's digits (from 0.32 down). */
+const CARRY_ARROW_Y = 0.26;
 
 const digitAt = (value: string, place: number) => (place < value.length ? Number(value[value.length - 1 - place]) : 0);
 const placeName = (place: number) => PLACE_NAMES[place];
@@ -392,9 +394,12 @@ function draw(state: ColumnsState, objectId: string, ctx: Ctx): LocalStroke[] {
       const lane = state.calc.find((c) => c.id === r.rowId)!.laneY;
       const box = laneBox(state, r.to, lane, String(r.value));
       out.push(...glyphStrokes(ctx.glyphs, String(r.value), box, base, `${r.id}/value`));
-      const start: Point = [colX(state, r.from) + 0.5, state.operands[0].y - 0.05];
-      const end: Point = [box.x + box.w + 0.08, box.y + box.h * 0.6];
-      arrowStrokes(start, end, 0.4).forEach((pts, i) => out.push({ ...base, key: `${r.id}/arrow/${i}`, kind: "arrow", pts }));
+      // The arrow stays in its own lane, in the strip above the lane's small digits: from over the place the carry
+      // leaves to just right of the carry digit. It never reaches the next lane up or the top number below.
+      const y = lane + CARRY_ARROW_Y;
+      const start: Point = [colX(state, r.from) + 0.5, y];
+      const end: Point = [box.x + box.w + 0.05, y];
+      arrowStrokes(start, end, 0.12).forEach((pts, i) => out.push({ ...base, key: `${r.id}/arrow/${i}`, kind: "arrow", pts }));
       continue;
     }
     // A borrow: cross out what each place shows, write its new value in the next lane up, with an arrow between.

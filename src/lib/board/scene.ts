@@ -4,13 +4,13 @@
 // History is a log of committed transactions. The visible state is the replay of the transactions that are not undone,
 // with each object's page and position recorded on its first placement, so an undo never moves anything else.
 import { columns } from "@/lib/board/columns";
-import { annotationStrokes, MARK_INK, type ArrowObject, type MarkObject } from "@/lib/board/annotations";
-import { overlaps, polylineLength } from "@/lib/board/geometry";
+import { annotationStrokes, MARK_INK, routeArrow, type ArrowObject, type ArrowObstacles, type ArrowRoute, type MarkObject } from "@/lib/board/annotations";
+import { overlaps, polylineLength, traceTouches, type Trace } from "@/lib/board/geometry";
 import { PLACEHOLDER_GLYPHS, type GlyphSet } from "@/lib/board/glyphs";
 import { note } from "@/lib/board/note";
 import { parseCommand } from "@/lib/board/parse";
 import { isRefusal, refuse, type Ctx, type LocalStroke, type LocalTarget, type RefusalBody, type Representation } from "@/lib/board/representation";
-import type { Batch, BoardPath, Command, CreateCommand, Notice, Place, Rect, Refusal, Target, TargetInfo, TimedPath, View } from "@/lib/board/types";
+import type { Batch, BoardPath, Command, CreateCommand, Notice, PathKind, Place, Rect, Refusal, Target, TargetInfo, TimedPath, View } from "@/lib/board/types";
 import type { Stroke } from "@/lib/whiteboard";
 
 /** The representations the board can create, by their create command. Later ones are added here. */
@@ -44,8 +44,9 @@ type BoardObject = RepObject | MarkObject | ArrowObject;
 
 interface SceneState {
   objects: BoardObject[];
-  /** Annotations a representation owns (regroups), to their object. */
-  owners: Record<string, string>;
+  /** Annotations a representation owns (regroups), to their object, in the order they were made. A Map, so an id such as
+   * "constructor" is never mistaken for an inherited property. */
+  owners: Map<string, string>;
   view: View;
   /** The page the last object went on: "main" places there. */
   lastPage: number;
@@ -58,6 +59,8 @@ interface Step {
   at?: { page: number; x: number; y: number };
   /** The page a clear cleared, recorded on its first run, so a replay clears the same page. */
   page?: number;
+  /** An arrow's route, chosen on its first run, so a replay draws the same arrow. */
+  route?: ArrowRoute;
   /** Ids this step created, changed or removed, and only looked at: what an undo depends on. */
   creates: string[];
   writes: string[];
@@ -72,11 +75,13 @@ interface Transaction {
   undone: boolean;
 }
 
-/** One stroke of the child's, as the test whiteboard records it. Maya never changes or removes it. */
+/** One stroke of the child's, as the test whiteboard records it. Maya never changes, removes or covers it. */
 export interface ChildInk {
   id: string;
   page: number;
   stroke: Stroke;
+  /** The board's width in CSS pixels when the child drew it: `stroke.w` is in CSS pixels, its points in board widths. */
+  boardWidth: number;
 }
 
 /** The board: an immutable value. Read it only through the functions of this module. */
@@ -93,7 +98,7 @@ export type ApplyResult =
   | { ok: true; scene: Scene; drawn: TimedPath[]; erased: string[]; notices: Notice[] }
   | { ok: false; refusal: Refusal };
 
-const emptyState = (): SceneState => ({ objects: [], owners: {}, view: { page: 1, target: null }, lastPage: 1 });
+const emptyState = (): SceneState => ({ objects: [], owners: new Map(), view: { page: 1, target: null }, lastPage: 1 });
 
 export function createScene(options: { page?: PageSize; glyphs?: GlyphSet } = {}): Scene {
   return { page: options.page ?? DEFAULT_PAGE, glyphs: options.glyphs ?? PLACEHOLDER_GLYPHS, log: [], child: [], nextSeq: 1, state: emptyState() };
@@ -122,7 +127,8 @@ function publicInfo(t: LocalTarget & { page: number }): TargetInfo {
 
 /** A target's page and rectangle on the page, or why it cannot be used. */
 function resolve(s: SceneState, target: Target): { rep: RepObject; page: number; rect: Rect } | RefusalBody {
-  const rep = findRep(s, target.objectId) ?? findRep(s, s.owners[target.objectId] ?? "");
+  const owner = s.owners.get(target.objectId);
+  const rep = findRep(s, target.objectId) ?? (owner === undefined ? undefined : findRep(s, owner));
   if (!rep) {
     const r = refuse("unknown_target", `There is no object "${target.objectId}" on the board.`);
     return { ...r, valid: reps(s).map((o) => publicInfo(repTargets(o)[0])) };
@@ -135,12 +141,20 @@ function resolve(s: SceneState, target: Target): { rep: RepObject; page: number;
 
 // ---------- placement ----------
 
+/** The child's stroke in grid cells, with its line width, or null for an eraser stroke or an empty one. */
+function childTrace(scene: Pick<Scene, "page">, ink: ChildInk): Trace | null {
+  if (ink.stroke.erase || ink.stroke.pts.length === 0) return null;
+  const { cols } = scene.page;
+  return { pts: ink.stroke.pts.map(([x, y]) => [x * cols, y * cols]), width: (ink.stroke.w / ink.boardWidth) * cols };
+}
+
+/** The rectangle around a child's stroke in grid cells: its points, its line width and a small gap. */
 function childRect(scene: Pick<Scene, "page">, ink: ChildInk): Rect | null {
-  const pts = ink.stroke.pts;
-  if (ink.stroke.erase || pts.length === 0) return null;
-  const xs = pts.map(([x]) => x * scene.page.cols);
-  const ys = pts.map(([, y]) => y * scene.page.cols);
-  const pad = 0.25;
+  const trace = childTrace(scene, ink);
+  if (!trace) return null;
+  const xs = trace.pts.map(([x]) => x);
+  const ys = trace.pts.map(([, y]) => y);
+  const pad = 0.25 + trace.width / 2;
   return { x: Math.min(...xs) - pad, y: Math.min(...ys) - pad, w: Math.max(...xs) - Math.min(...xs) + 2 * pad, h: Math.max(...ys) - Math.min(...ys) + 2 * pad };
 }
 
@@ -197,7 +211,7 @@ function place(scene: Scene, s: SceneState, where: Place, size: { w: number; h: 
 
 // ---------- commands ----------
 
-const takenIds = (scene: Scene, s: SceneState) => new Set([...s.objects.map((o) => o.id), ...Object.keys(s.owners), ...scene.child.map((c) => c.id)]);
+const takenIds = (scene: Scene, s: SceneState) => new Set([...s.objects.map((o) => o.id), ...s.owners.keys(), ...scene.child.map((c) => c.id)]);
 
 /** Applies one command to a draft state. Records the step's placement, cleared page and ids on its first run. */
 function exec(scene: Scene, s: SceneState, step: Step, notices: Notice[]): RefusalBody | null {
@@ -228,7 +242,7 @@ function exec(scene: Scene, s: SceneState, step: Step, notices: Notice[]): Refus
     step.creates = [cmd.id];
     if ("below" in cmd.place) read(cmd.place.below);
     if ("rightOf" in cmd.place) read(cmd.place.rightOf);
-    if ("near" in cmd.place) read(cmd.place.near.objectId, s.owners[cmd.place.near.objectId] ?? cmd.place.near.objectId);
+    if ("near" in cmd.place) read(cmd.place.near.objectId, s.owners.get(cmd.place.near.objectId) ?? cmd.place.near.objectId);
     return null;
   }
 
@@ -238,7 +252,7 @@ function exec(scene: Scene, s: SceneState, step: Step, notices: Notice[]): Refus
       const objectId = cmd.op === "put" ? cmd.target.objectId : cmd.objectId;
       const rep = findRep(s, objectId);
       if (!rep) {
-        if (s.owners[objectId] || s.objects.some((o) => o.id === objectId)) return refuse("not_writable", `"${objectId}" is an annotation: ${cmd.op} works on a math object.`);
+        if (s.owners.has(objectId) || s.objects.some((o) => o.id === objectId)) return refuse("not_writable", `"${objectId}" is an annotation: ${cmd.op} works on a math object.`);
         return resolve(s, { objectId, part: "whole" }) as RefusalBody;
       }
       if (cmd.op === "regroup") {
@@ -254,7 +268,7 @@ function exec(scene: Scene, s: SceneState, step: Step, notices: Notice[]): Refus
       rep.state = next;
       write(rep.id);
       if (cmd.op === "regroup") {
-        s.owners[cmd.id] = rep.id;
+        s.owners.set(cmd.id, rep.id);
         step.creates = [cmd.id];
       }
       return null;
@@ -280,7 +294,12 @@ function exec(scene: Scene, s: SceneState, step: Step, notices: Notice[]): Refus
       if (isRefusal(b)) return b;
       if (sameTarget(cmd.from, cmd.to)) return refuse("not_allowed", "An arrow joins two different things.");
       if (a.page !== b.page) return refuse("not_allowed", "An arrow joins two things on the same page.");
-      s.objects.push({ kind: "arrow", id: cmd.id, from: cmd.from, to: cmd.to, ink: cmd.ink ?? "red", page: a.page, seq: step.seq });
+      if (!step.route) {
+        const route = routeArrow(a.rect, b.rect, obstacles(scene, s, a.page, [a.rep.id, b.rep.id]), scene.page);
+        if (!route) return refuse("no_room", "There is no clear way to draw this arrow without crossing other work: point it at other targets.");
+        step.route = route;
+      }
+      s.objects.push({ kind: "arrow", id: cmd.id, from: cmd.from, to: cmd.to, route: step.route, ink: cmd.ink ?? "red", page: a.page, seq: step.seq });
       step.creates = [cmd.id];
       read(cmd.from.objectId, cmd.to.objectId, a.rep.id, b.rep.id);
       return null;
@@ -288,13 +307,10 @@ function exec(scene: Scene, s: SceneState, step: Step, notices: Notice[]): Refus
     case "remove": {
       const id = cmd.objectId;
       if (scene.child.some((c) => c.id === id) || id.startsWith("child-")) return refuse("protected_ink", "That is the child's writing: Maya never removes it.");
-      if (s.owners[id]) {
-        const rep = findRep(s, s.owners[id])!;
-        const next = representation(rep.op).removeOwned?.(rep.state, id) ?? refuse("not_allowed", `"${id}" cannot be removed on its own.`);
-        if (isRefusal(next)) return next;
-        rep.state = next;
-        delete s.owners[id];
-        write(id, rep.id, ...dropAnnotationsOn(s, [id]));
+      if (s.owners.has(id)) {
+        const removed = removeOwned(s, id);
+        if (isRefusal(removed)) return removed;
+        write(...removed);
         return null;
       }
       const obj = s.objects.find((o) => o.id === id);
@@ -311,6 +327,16 @@ function exec(scene: Scene, s: SceneState, step: Step, notices: Notice[]): Refus
       }
       const onPage = s.objects.filter((o) => o.page === step.page && (cmd.scope === "maya_objects" || o.kind !== "rep"));
       for (const o of onPage) if (s.objects.includes(o)) write(...removeObject(s, o));
+      if (cmd.scope === "maya_annotations") {
+        // The annotations the math objects own (carries, borrows) go too, newest first: a borrow chain unwinds in order
+        // and the top number shows its first digits again.
+        const owned = [...s.owners].filter(([, owner]) => findRep(s, owner)?.page === step.page).map(([id]) => id);
+        for (const id of owned.reverse()) {
+          const removed = removeOwned(s, id);
+          if (isRefusal(removed)) return removed;
+          write(...removed);
+        }
+      }
       return null;
     }
     case "focus": {
@@ -322,6 +348,17 @@ function exec(scene: Scene, s: SceneState, step: Step, notices: Notice[]): Refus
     case "undo":
       return refuse("not_allowed", "Send undo on its own.");
   }
+}
+
+/** Removes an annotation a math object owns, with the marks and arrows on it. Returns the changed and removed ids. */
+function removeOwned(s: SceneState, id: string): string[] | RefusalBody {
+  const rep = findRep(s, s.owners.get(id) ?? "");
+  if (!rep) return refuse("unknown_target", `There is no object "${id}" on the board.`);
+  const next = representation(rep.op).removeOwned?.(rep.state, id) ?? refuse("not_allowed", `"${id}" cannot be removed on its own.`);
+  if (isRefusal(next)) return next;
+  rep.state = next;
+  s.owners.delete(id);
+  return [id, rep.id, ...dropAnnotationsOn(s, [id])];
 }
 
 /** Removes marks and arrows that point at any of the ids. Returns the removed ids. */
@@ -336,8 +373,8 @@ function dropAnnotationsOn(s: SceneState, ids: string[]): string[] {
 function removeObject(s: SceneState, obj: BoardObject): string[] {
   s.objects = s.objects.filter((o) => o !== obj);
   if (obj.kind !== "rep") return [obj.id];
-  const owned = Object.keys(s.owners).filter((k) => s.owners[k] === obj.id);
-  for (const k of owned) delete s.owners[k];
+  const owned = [...s.owners].filter(([, owner]) => owner === obj.id).map(([k]) => k);
+  for (const k of owned) s.owners.delete(k);
   return [obj.id, ...owned, ...dropAnnotationsOn(s, [obj.id, ...owned])];
 }
 
@@ -427,15 +464,38 @@ export function applyBatch(scene: Scene, batch: Batch): ApplyResult {
   const before = new Set(sequencedPaths(scene).map((p) => p.id));
   const after = sequencedPaths(next);
   const kept = new Set(after.map((p) => p.id));
-  return { ok: true, scene: next, drawn: schedule(after.filter((p) => !before.has(p.id))), erased: [...before].filter((id) => !kept.has(id)), notices };
+  const drawn = after.filter((p) => !before.has(p.id));
+  // Every stroke this batch makes visible, from any command or an undo, keeps clear of the child's ink.
+  const covering = drawn.find((p) => coversChild(next, p));
+  if (covering) {
+    if (next.log.at(-1)?.undid) return refused(0, refuse("unsafe_undo", "The child has written where this would come back: undoing would cover their work."));
+    return refused(covering.seq - scene.nextSeq, refuse("protected_ink", "The child has written there: Maya never draws over their work."));
+  }
+  return { ok: true, scene: next, drawn: schedule(drawn), erased: [...before].filter((id) => !kept.has(id)), notices };
 }
 
-/** Adds a stroke the child drew. Child ink is never removed, undone or cleared by Maya's commands. */
-export function addChildInk(scene: Scene, ink: { page: number; stroke: Stroke }): { scene: Scene; id: string } {
+/**
+ * Adds a stroke the child drew. Child ink is never removed, undone, cleared or covered by Maya's commands. `boardWidth`
+ * is the board's width in CSS pixels when the child drew it, to read the stroke's width (`stroke.w`, CSS pixels).
+ */
+export function addChildInk(scene: Scene, ink: { page: number; stroke: Stroke; boardWidth: number }): { scene: Scene; id: string } {
   const pages = pageCount(scene, scene.state);
   if (!Number.isInteger(ink.page) || ink.page < 1 || ink.page > pages) throw new RangeError(`The board has pages 1 to ${pages}.`);
+  if (!Number.isFinite(ink.boardWidth) || ink.boardWidth <= 0) throw new RangeError("The board width must be a positive number of CSS pixels.");
   const id = `child-${scene.child.length + 1}`;
-  return { scene: { ...scene, child: [...scene.child, { id, page: ink.page, stroke: ink.stroke }] }, id };
+  return { scene: { ...scene, child: [...scene.child, { id, page: ink.page, stroke: ink.stroke, boardWidth: ink.boardWidth }] }, id };
+}
+
+/**
+ * True when a stroke of Maya's would cover a stroke of the child's on its page, counting both line widths. Highlights
+ * are exempt: they are see-through and drawn under every ink, so they never hide the child's writing.
+ */
+function coversChild(scene: Scene, p: BoardPath): boolean {
+  if (p.layer === "behind") return false;
+  return scene.child.some((c) => {
+    if (c.page !== p.page || c.stroke.erase || c.stroke.pts.length === 0) return false;
+    return traceTouches({ pts: p.pts, width: p.width }, { pts: c.stroke.pts, width: c.stroke.w / c.boardWidth });
+  });
 }
 
 /** The child's strokes, in the order drawn, for the child-ink layer. */
@@ -455,10 +515,18 @@ export const boardPaths = (scene: Scene): BoardPath[] =>
     return path as BoardPath;
   });
 
-/** The strokes with the command that revealed each one. */
-function sequencedPaths(scene: Scene): (BoardPath & { seq: number })[] {
-  const s = scene.state;
-  const local: { stroke: LocalStroke; owner: string; page: number; dx: number; dy: number }[] = [];
+interface PlacedStroke {
+  stroke: LocalStroke;
+  owner: string;
+  page: number;
+  /** Where the stroke's object sits on the page: add to the stroke's points for page cells. */
+  dx: number;
+  dy: number;
+}
+
+/** Every stroke of Maya's in a state, with where it sits, in the order of the objects. */
+function placedStrokes(scene: Pick<Scene, "glyphs">, s: SceneState): PlacedStroke[] {
+  const local: PlacedStroke[] = [];
   for (const o of s.objects) {
     if (o.kind === "rep") {
       for (const stroke of representation(o.op).draw(o.state, o.id, ctxOf(scene))) local.push({ stroke, owner: o.id, page: o.page, dx: o.rect.x, dy: o.rect.y });
@@ -471,6 +539,30 @@ function sequencedPaths(scene: Scene): (BoardPath & { seq: number })[] {
     };
     for (const stroke of annotationStrokes(scene.glyphs, o, rectOf)) local.push({ stroke, owner: o.id, page: o.page, dx: 0, dy: 0 });
   }
+  return local;
+}
+
+/** The kinds of stroke an arrow goes around: writing, rules and other arrows. Marks sit on their targets and may be crossed. */
+const ROUTE_AROUND = new Set<PathKind>(["glyph", "rule", "arrow"]);
+
+/**
+ * What a new arrow on a page must keep clear of, in page cells: Maya's writing, rules and arrows, the child's ink, and the
+ * boxes of the objects it does not join.
+ */
+function obstacles(scene: Scene, s: SceneState, page: number, joined: string[]): ArrowObstacles {
+  const maya = placedStrokes(scene, s)
+    .filter((p) => p.page === page && ROUTE_AROUND.has(p.stroke.kind))
+    .map(({ stroke, dx, dy }): Trace => ({ pts: stroke.pts.map(([x, y]) => [x + dx, y + dy]), width: stroke.width }));
+  const child = scene.child.filter((c) => c.page === page).flatMap((c) => childTrace(scene, c) ?? []);
+  const boxes = reps(s)
+    .filter((o) => o.page === page && !joined.includes(o.id))
+    .map((o) => o.rect);
+  return { strokes: [...maya, ...child], boxes };
+}
+
+/** The strokes with the command that revealed each one. */
+function sequencedPaths(scene: Scene): (BoardPath & { seq: number })[] {
+  const local = placedStrokes(scene, scene.state);
   local.sort((a, b) => a.stroke.seq - b.stroke.seq);
   const unit = 1 / scene.page.cols;
   const r4 = (n: number) => Math.round(n * 10_000) / 10_000;

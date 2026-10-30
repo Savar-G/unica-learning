@@ -143,7 +143,10 @@ export interface BoardPath {
   /** The character this stroke is part of, for glyph strokes. */
   glyph?: string;
   page: number;
-  /** behind: under the math (highlights); math: digits and rules; annotation: carries, marks and arrows. */
+  /**
+   * behind: under the math and the child's ink (highlights, see-through); math: digits and rules; annotation: carries,
+   * marks and arrows.
+   */
   layer: "behind" | "math" | "annotation";
   ink: Ink;
   opacity: number;
