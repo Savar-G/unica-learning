@@ -150,8 +150,10 @@ function digest(text: string): string {
 // The largest status answer frame, with every number at its widest: the bounds below hold whatever the state is.
 const WIDEST = Number.MAX_SAFE_INTEGER;
 const WIDEST_STATUS: ReceiverStatus = { epoch: WIDEST, revision: WIDEST, pen: "child", logLength: WIDEST };
+/** A status answer with no events. */
+const STATUS_FRAME_BYTES = byteSize({ ok: true, type: "status", log: [], ...WIDEST_STATUS });
 /** An event of at most this many bytes travels whole; a larger one always travels in parts. */
-const WHOLE_EVENT_BYTES = MAX_BATCH_BYTES - byteSize({ ok: true, type: "status", log: [], ...WIDEST_STATUS });
+const WHOLE_EVENT_BYTES = MAX_BATCH_BYTES - STATUS_FRAME_BYTES;
 /** The most bytes of one part's data, escaped as a JSON string. */
 const PART_BYTES = MAX_BATCH_BYTES - byteSize({ ok: true, type: "status", log: [], part: { index: WIDEST, count: WIDEST, digest: "ffffffff", data: "" }, ...WIDEST_STATUS });
 /** The longest reason an answer carries: a refusal may quote the batch. */
@@ -160,7 +162,7 @@ const MAX_REASON = 300;
 /** The UTF-8 bytes one character takes inside a JSON string. */
 function escapedSize(ch: string): number {
   const escaped = JSON.stringify(ch).slice(1, -1);
-  if (escaped.length > 1 || escaped.length === 0) return escaped.length;
+  if (escaped.length > 1) return escaped.length;
   const code = ch.codePointAt(0)!;
   return code < 0x80 ? 1 : code < 0x800 ? 2 : code < 0x10000 ? 3 : 4;
 }
@@ -264,12 +266,18 @@ export interface BoardReceiver {
   givePen(): void;
   /** A finished stroke of the child's. Only the child holding the pen writes. */
   addInk(ink: Ink): { ok: true; id: string } | { ok: false; reason: string };
+  /** The epoch the board is on: the page keeps it across a reload. */
+  epoch(): number;
 }
 
 type SceneOptions = { page?: PageSize; glyphs?: GlyphSet };
 
-export function createBoardReceiver(options: { sessionId: string } & SceneOptions): BoardReceiver {
-  let epoch = 0;
+/**
+ * `epoch`: the epoch the page held before a reload (kept in the page's session storage, #329). The board starts empty and
+ * is restored from the sender's log; the kept epoch keeps a sender that was replaced before the reload from taking it.
+ */
+export function createBoardReceiver(options: { sessionId: string; epoch?: number } & SceneOptions): BoardReceiver {
+  let epoch = options.epoch ?? 0;
   /** The sender whose reset started this epoch: its retry of that reset changes nothing. */
   let epochSender: string | null = null;
   let revision = 0;
@@ -289,14 +297,16 @@ export function createBoardReceiver(options: { sessionId: string } & SceneOption
   const status = (): ReceiverStatus => ({ epoch, revision, pen, logLength: log.length });
   const planned = () => staged.at(-1)?.result.scene ?? shown;
   const clip = (text: string) => (text.length > MAX_REASON ? `${text.slice(0, MAX_REASON - 1)}…` : text);
-  const fail = (code: ProtocolCode, reason: string, extra: { batchId?: string; refusal?: Refusal } = {}): BoardResponse => ({
-    ok: false,
-    code,
-    reason: clip(reason),
-    ...extra,
-    ...(extra.refusal ? { refusal: { ...extra.refusal, reason: clip(extra.refusal.reason) } } : {}),
-    ...status(),
-  });
+  const fail = (code: ProtocolCode, reason: string, extra: { batchId?: string; refusal?: Refusal } = {}): BoardResponse => {
+    const answer: BoardResponse = { ok: false, code, reason: clip(reason), ...extra, ...status() };
+    if (!extra.refusal) return answer;
+    // The targets the core offers instead may be many: the answer keeps as many as fit, in the core's order.
+    const refusal = { ...extra.refusal, reason: clip(extra.refusal.reason) };
+    const valid = [...(refusal.valid ?? [])];
+    const fits = () => byteSize({ ...answer, refusal: { ...refusal, valid } }) <= MAX_BATCH_BYTES;
+    while (valid.length > 0 && !fits()) valid.length = Math.floor(valid.length / 2);
+    return { ...answer, refusal: refusal.valid ? { ...refusal, valid } : refusal };
+  };
 
   function apply(req: Extract<BoardRequest, { type: "apply" }>): BoardResponse {
     if (req.epoch !== epoch) return fail("stale_epoch", `This batch is from epoch ${req.epoch}; the board is on epoch ${epoch}.`, { batchId: req.batchId });
@@ -383,7 +393,7 @@ export function createBoardReceiver(options: { sessionId: string } & SceneOption
    */
   function logPage(since: number, part: number): BoardResponse {
     const out: BoardEvent[] = [];
-    let bytes = byteSize({ ok: true, type: "status", log: [], ...WIDEST_STATUS });
+    let bytes = STATUS_FRAME_BYTES;
     for (const e of log.slice(since)) {
       const size = byteSize(e);
       bytes += size + (out.length > 0 ? 1 : 0);
@@ -419,6 +429,7 @@ export function createBoardReceiver(options: { sessionId: string } & SceneOption
       }
     },
     scene: () => shown,
+    epoch: () => epoch,
     staged: () => staged.map(({ batchId, utteranceId }) => ({ batchId, utteranceId })),
     release(batchId) {
       const upTo = staged.findIndex((s) => s.batchId === batchId);
@@ -452,10 +463,13 @@ export function createBoardReceiver(options: { sessionId: string } & SceneOption
     },
     addInk(ink) {
       if (pen !== "child") return { ok: false, reason: "Take the pen first." };
+      // The log carries the stroke to the sender: one it would not read back would stop every later read.
+      const event: BoardEvent = { kind: "ink", page: ink.page, stroke: ink.stroke, boardWidth: ink.boardWidth };
+      if (!isEvent(event)) return { ok: false, reason: "The stroke is not a stroke the board can keep." };
       try {
         const added = addChildInk(shown, ink);
         shown = added.scene;
-        log.push({ kind: "ink", page: ink.page, stroke: ink.stroke, boardWidth: ink.boardWidth });
+        log.push(event);
         revision++;
         return { ok: true, id: added.id };
       } catch (e) {
@@ -529,6 +543,10 @@ const MAX_CONNECT_TRIES = 5;
 
 type StatusAnswer = Extract<BoardResponse, { ok: true; type: "status" }>;
 
+/**
+ * `senderId`: unique to this sender process (a restarted process takes a new one, #329). The receiver takes a reset from
+ * the same id on its own epoch as a retry, so two processes under one id could both hold the board.
+ */
 export function createBoardSender(options: { sessionId: string; senderId: string; transport: BoardTransport; retries?: number; snapshot?: BoardSnapshot }): BoardSender {
   const { sessionId, senderId } = options;
   let transport = options.transport;

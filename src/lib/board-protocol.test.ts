@@ -588,6 +588,34 @@ describe("answers", () => {
     expect(refused).toMatchObject({ ok: false, code: "refused" });
     expect(transport.largestAnswerBytes).toBeLessThanOrEqual(MAX_BATCH_BYTES);
   });
+
+  it("stay under the size limit when a refusal lists every object on a full board", async () => {
+    const { receiver, transport, sender } = await setup();
+    const id = (i: number) => `o${String(i).padStart(2, "0")}-${"x".repeat(56)}`;
+    let placed = 0;
+    for (let i = 0; i < 80; i++) {
+      const sent = await sender.send(sum(id(i), "27", "39", i > 0 ? id(placed - 1) : undefined));
+      if (!sent.ok) break;
+      receiver.release(id(i));
+      placed++;
+    }
+    expect(placed).toBeGreaterThan(40);
+    const refused = await sender.send({ transactionId: "w", commands: [{ op: "remove", objectId: "nope" }] });
+    expect(refused).toMatchObject({ ok: false, code: "refused", refusal: { code: "unknown_target" } });
+    expect(refused.ok === false && refused.refusal?.valid?.length).toBeGreaterThan(0);
+    expect(transport.largestAnswerBytes).toBeLessThanOrEqual(MAX_BATCH_BYTES);
+  });
+});
+
+describe("the child's ink", () => {
+  it("is refused when the stroke would not travel, so the sender can always read the log", async () => {
+    const { receiver, sender } = await setup();
+    receiver.takePen();
+    expect(receiver.addInk({ page: 1, boardWidth: 800, stroke: { erase: false, w: 3, pts: [[NaN, 0.5], [0.6, 0.5]] } })).toMatchObject({ ok: false });
+    expect(receiver.addInk(shortStroke)).toMatchObject({ ok: true });
+    expect(await sender.sync()).toBe(true);
+    expect(sender.snapshot().events.map((e) => e.kind)).toEqual(["ink"]);
+  });
 });
 
 describe("ownership", () => {
@@ -628,6 +656,30 @@ describe("ownership", () => {
     expect(await replacement.connect()).toMatchObject({ ok: true });
     expect(await original.connect()).toMatchObject({ ok: false, code: "superseded" });
     expect(await replacement.send(sum("a", "27", "39"))).toMatchObject({ ok: true, state: "accepted" });
+  });
+});
+
+describe("a reloaded browser", () => {
+  it("that keeps the epoch it held does not let a replaced sender take the board back", async () => {
+    const receiver = createBoardReceiver({ sessionId: SESSION });
+    const old = createBoardSender({ sessionId: SESSION, senderId: "old", transport: createMemoryTransport(receiver) });
+    expect(await old.connect()).toMatchObject({ ok: true });
+    const replacement = createBoardSender({ sessionId: SESSION, senderId: "replacement", transport: createMemoryTransport(receiver), snapshot: old.snapshot() });
+    expect(await replacement.connect()).toMatchObject({ ok: true });
+    await replacement.send(sum("a", "27", "39"));
+    receiver.release("a");
+    receiver.takePen();
+    receiver.addInk(shortStroke);
+    receiver.givePen();
+    expect(await replacement.sync()).toBe(true);
+
+    // The page keeps the epoch across the reload; the board comes back from the sender's log.
+    const reloaded = createBoardReceiver({ sessionId: SESSION, epoch: receiver.epoch() });
+    old.useTransport(createMemoryTransport(reloaded));
+    replacement.useTransport(createMemoryTransport(reloaded));
+    expect(await old.connect()).toMatchObject({ ok: false, code: "superseded" });
+    expect(await replacement.connect()).toMatchObject({ ok: true });
+    expect(childInk(reloaded.scene())).toEqual(childInk(receiver.scene()));
   });
 });
 
