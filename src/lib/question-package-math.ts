@@ -38,6 +38,7 @@ import {
   type OperationProblem,
   type Written,
 } from "@/lib/question-package-columns";
+import { ALGEBRA_KINDS, algebraStepText } from "@/lib/question-package-algebra";
 import { MEASURE_KINDS, amountText, measureStepText } from "@/lib/question-package-measures";
 
 /** A place's unit name, for "carry 1 ten". */
@@ -430,6 +431,7 @@ const KINDS: { [K in OperationKind]: KindRules<Of<K>> } = {
     result: (op) => ({ type: "fraction", ...equivalentTo(op) }),
   },
   ...MEASURE_KINDS,
+  ...ALGEBRA_KINDS,
 };
 
 function decimalResult(op: { operands: [number, number] }, how: "add" | "subtract" | "multiply"): AnswerValue {
@@ -478,7 +480,7 @@ export function workedSteps(operation: Operation): WorkedStep[] {
 export function valueText(value: AnswerValue): string {
   switch (value.type) {
     case "number":
-      return String(value.value);
+      return String(value.value).replace(/^-/, MINUS);
     case "fraction":
       return `${value.numerator}/${value.denominator}`;
     case "mixed":
@@ -579,6 +581,11 @@ export function stepText(step: WorkedStep, operation: Operation): string {
     case "add-durations":
     case "clock-change":
       return measureStepText(step, operation.kind, computation(operation).unit(operation));
+    case "substitute":
+    case "operate":
+    case "inverse":
+    case "check":
+      return algebraStepText(step);
     case "result": {
       const rules = computation(operation);
       return rules.say ? rules.say(operation, step.value) : `${rules.statement(operation)} = ${valueText(step.value)}`;

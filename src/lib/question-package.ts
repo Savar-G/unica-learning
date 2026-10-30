@@ -122,6 +122,10 @@ export interface FractionParts {
  * - elapsed-time: the time from one clock time to a later one the same day, counted on to the next hour, the whole hours,
  *   then the minutes; `unit` as for the amounts. time-add: a clock time and an amount of time, the time it is after.
  *   clock-convert: a clock time on the other clock (3:45 p.m. is 15:45); the answer must be on that clock.
+ * - evaluate: one operand, an expression as written ("3 + 4 × (2 − 1)", "3n + 2"), with a value for each one-letter
+ *   unknown, worked in the order of operations (question-package-algebra.ts has what code reads).
+ * - solve: one operand, a one-variable equation ("3x + 5 = 20", "2(x + 1) = 10"), solved by undoing each operation on
+ *   both sides, then checked by putting the solution in.
  */
 export type Operation =
   | KindsOf<"add" | "subtract" | "multiply" | "divide" | "decimal-add" | "decimal-subtract" | "decimal-multiply", [number, number]>
@@ -134,7 +138,9 @@ export type Operation =
   | { kind: "money-round"; operands: [Quantity] }
   | { kind: "elapsed-time"; operands: [ClockTime, ClockTime]; unit?: Unit }
   | { kind: "time-add"; operands: [ClockTime, Duration] }
-  | { kind: "clock-convert"; operands: [ClockTime] };
+  | { kind: "clock-convert"; operands: [ClockTime] }
+  | { kind: "evaluate"; operands: [string]; values?: Record<string, number> }
+  | { kind: "solve"; operands: [string] };
 
 /** One operation shape for each kind, so a kind picks its shape. */
 type KindsOf<K extends string, O> = K extends string ? { kind: K; operands: O } : never;
@@ -270,6 +276,44 @@ export type WorkedStep =
     }
   | { id: "total"; kind: "add-durations"; minutes: number[]; total: number }
   | { id: "clock"; kind: "clock-change"; from: ClockTime; to: ClockTime }
+  | {
+      /** The unknowns given their values, and the expression they make (with ×, and negative values in brackets). */
+      id: "substitute";
+      kind: "substitute";
+      values: { name: string; value: number }[];
+      expression: string;
+    }
+  | {
+      /** "e<n>": one operation, the next in the order of operations, and the expression left after it. */
+      id: string;
+      kind: "operate";
+      rule: "brackets" | "multiply-divide" | "add-subtract";
+      op: "+" | "−" | "×" | "÷";
+      left: number;
+      right: number;
+      value: number;
+      rest: string;
+    }
+  | {
+      /** "s<n>": the same operation done to both sides, undoing one around the unknown; `from` and `value` are the number side. */
+      id: string;
+      kind: "inverse";
+      op: "add" | "subtract" | "multiply" | "divide";
+      by: number;
+      from: number;
+      value: number;
+      /** The equation after the step. */
+      equation: string;
+    }
+  | {
+      /** The solution put in for the unknown: the side with the unknown, as worked, gives the number side. */
+      id: "check";
+      kind: "check";
+      name: string;
+      value: number;
+      expression: string;
+      total: number;
+    }
   | { id: "result"; kind: "result"; value: AnswerValue };
 
 /** An expected wrong answer and its cause: a misconception id ("O3") and its plain description. */

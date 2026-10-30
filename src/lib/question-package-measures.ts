@@ -97,7 +97,7 @@ export function amountOf(v: AnswerValue): Size | null {
       return timeFits(v) ? { dimension: "clock", base: [big(clockMinutes(v)), ONE] } : null;
     case "compound": {
       if (!Array.isArray(v.parts) || v.parts.length === 0) return null;
-      const sizes = v.parts.map((p) => (isObject(p) ? amountOf({ type: "quantity", value: p.value as number, unit: p.unit as Unit }) : null));
+      const sizes = Array.from(v.parts as unknown[], (p) => (isObject(p) ? amountOf({ type: "quantity", value: p.value as number, unit: p.unit as Unit }) : null));
       if (sizes.some((s) => s === null || s.dimension !== sizes[0]?.dimension)) return null;
       return { dimension: sizes[0]!.dimension, base: reduce(sizes.reduce<Rational>((t, s) => [t[0] * s!.base[1] + s!.base[0] * t[1], t[1] * s!.base[1]], [ZERO, ONE])) };
     }
@@ -162,8 +162,9 @@ function quantityProblem(v: unknown): OperationProblem | null {
  */
 function compoundFits(v: Fields): boolean {
   if (!Array.isArray(v.parts) || v.parts.length < 2) return false;
-  const parts = v.parts as unknown[];
-  if (!parts.every((p, i) => i in parts && isObject(p) && isCount(p.value) && isUnit(p.unit))) return false;
+  // Array.from fills a missing position with undefined: every() and map() skip one ([, part]).
+  const parts = Array.from(v.parts as unknown[]);
+  if (!parts.every((p) => isObject(p) && isCount(p.value) && isUnit(p.unit))) return false;
   const units = parts.map((p) => UNITS[(p as { unit: Unit }).unit]);
   const values = parts.map((p) => (p as { value: number }).value);
   if (units.some((u) => u.dimension !== units[0].dimension || u.dimension === "money") || values[0] < 1) return false;

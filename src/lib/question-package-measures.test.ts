@@ -497,3 +497,40 @@ describe("clock times and durations", () => {
     expect(checkQuestionPackage(p)).toEqual(failed("the question's answer is not what its operation gives"));
   });
 });
+
+describe("a broken measure package", () => {
+  it("never throws when any field or operand is replaced by junk", () => {
+    const junk: unknown[] = [null, undefined, {}, [], "x", 5, -1, 1e21, 0.1234, [null], [, 1], { type: "quantity" }, { type: "quantity", value: 2, unit: "yd" },
+      { type: "time", hours: 25, minutes: 0, period: null }, { type: "compound", parts: [] }, { type: "compound", parts: [null, 1] }, { type: "compound", parts: [, { value: 1, unit: "h" }] }];
+    const time = (hours: number, minutes: number): ClockTime => ({ type: "time", hours, minutes, period: "p.m." });
+    const sounds = [
+      packageOf({ kind: "convert", operands: [qty(2.5, "km")], unit: "m" }, qty(2500, "m"), { kind: "convert", operands: [qty(3, "km")], unit: "m" }, qty(3000, "m"), "3.9"),
+      packageOf({ kind: "quantity-add", operands: [qty(2, "m"), qty(35, "cm")], unit: "cm" }, qty(235, "cm"), { kind: "quantity-add", operands: [qty(1, "cm"), qty(1, "cm")] }, qty(2, "cm"), "3.9"),
+      packageOf({ kind: "quantity-multiply", operands: [qty(4.25, "$"), 3] }, qty(12.75, "$"), { kind: "quantity-multiply", operands: [qty(2, "$"), 3] }, qty(6, "$"), "4.18"),
+      packageOf({ kind: "money-round", operands: [qty(4.97, "$")] }, qty(4.95, "$"), { kind: "money-round", operands: [qty(12, "¢")] }, qty(10, "¢"), "4.18"),
+      packageOf({ kind: "elapsed-time", operands: [time(2, 15), time(3, 45)] }, qty(90, "min"), { kind: "elapsed-time", operands: [time(2, 0), time(2, 5)] }, qty(5, "min"), "5.14"),
+      packageOf({ kind: "time-add", operands: [time(7, 40), qty(95, "min")] }, time(9, 15), { kind: "time-add", operands: [time(7, 0), qty(5, "min")] }, time(7, 5), "4.12"),
+      packageOf({ kind: "clock-convert", operands: [time(3, 45)] }, { type: "time", hours: 15, minutes: 45, period: null }, { kind: "clock-convert", operands: [{ type: "time", hours: 9, minutes: 5, period: "a.m." }] }, { type: "time", hours: 9, minutes: 5, period: null }, "4.12"),
+    ] as unknown as Record<string, Record<string, unknown>>[];
+    for (const sound of sounds) {
+      expect(checkQuestionPackage(sound).status, JSON.stringify(sound.operation)).toBe("checked");
+      const paths: [string, string | null, number | null][] = [
+        ...Object.keys(sound).map((key): [string, null, null] => [key, null, null]),
+        ...["operation", "answer", "easierExample"].flatMap((key) => Object.keys(sound[key]).map((sub): [string, string, null] => [key, sub, null])),
+        ["operation", "operands", 0],
+        ["operation", "operands", 1],
+        ["answer", "accepted", 0],
+      ];
+      for (const [key, sub, index] of paths) {
+        for (const value of junk) {
+          const p = structuredClone(sound);
+          if (sub === null) p[key] = value as Record<string, unknown>;
+          else if (index === null) p[key][sub] = value;
+          else p[key][sub] = Object.assign([...((p[key][sub] as unknown[]) ?? [])], { [index]: value });
+          expect(() => checkQuestionPackage(p), `${key}.${sub}.${index} = ${JSON.stringify(value)}`).not.toThrow();
+          expect(["failed", "unsupported", "checked"]).toContain(checkQuestionPackage(p).status);
+        }
+      }
+    }
+  });
+});
