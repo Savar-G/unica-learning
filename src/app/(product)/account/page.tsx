@@ -43,12 +43,13 @@ export default async function Account({ searchParams }: PageProps<"/account">) {
   const newestReport = new Map((reports ?? []).map((r) => [r.child_id, reportPath(r.id)]));
   const reportFor = (id: string, state: StartState) => (state.kind === "wait" ? testReport.get(`${id}@${state.completedAt}`) : newestReport.get(id));
   const phone = isPhone(await headers());
-  const { sent, password, existing } = await searchParams;
+  const { sent, password, existing, pin } = await searchParams;
 
   const children = kids ?? [];
   return (
     <SupportPage label="Your account" title={`Hi, ${parent.name.split(" ")[0]}.`}>
       {password === "1" && <p role="status" className="acct-alert acct-saved">Your password is saved.</p>}
+      {pin === "1" && <p role="status" className="acct-alert acct-saved">Your PIN is saved.</p>}
       {existing === "1" && <p role="status" className="acct-alert acct-saved">This email already has an account, so the code signed you in. Nothing in your account changed. To add a child, use Add another child.</p>}
       {phone ? (
         <div className="acct-card acct-phone">
@@ -78,7 +79,7 @@ export default async function Account({ searchParams }: PageProps<"/account">) {
         ))}
       </ul>
       <AddChild province={children.at(-1)?.province ?? "BC"} />
-      <p className="small acct-out">Signed in. <Link href="/account/password">Add or change your password</Link>. <SignOut /></p>
+      <p className="small acct-out">Signed in. <Link href="/account/password">Add or change your password</Link>. <Link href="/account/pin">Set or change your PIN</Link>. <SignOut /></p>
     </SupportPage>
   );
 }

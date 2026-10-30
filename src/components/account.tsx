@@ -10,6 +10,7 @@ import type { StartState } from "@/lib/assessment";
 import { gradeLabel, gradeShort } from "@/lib/assessment/grades";
 import { GRADES, gradeHint, PASSWORD_MAX, PASSWORD_MIN, signInFailure, validPassword, type AccountError, type SignInFailure, type AccountResult, type ChildInput } from "@/lib/account";
 import { browserClient } from "@/lib/supabase-browser";
+import type { PinFormResult } from "@/lib/parent-pin-server";
 import { track } from "@/lib/track";
 import { SUPPORT_EMAIL, SUPPORT_HREF } from "@/lib/contact";
 import { markAdStep } from "@/lib/ad-visit-steps";
@@ -1044,6 +1045,79 @@ export function NewPassword() {
         </span>
       </Field>
       <Submit busy={busy}>Save password <span className="arr">→</span></Submit>
+    </form>
+  );
+}
+
+/**
+ * Sets or changes the parent's 4-digit PIN (#300). The child's desk asks for it before the child can leave. When a PIN
+ * is set (`isSet`), the current one is asked first. The server checks and hashes it; a wrong current PIN counts against
+ * the attempt limit, so after five wrong tries the form is refused for 15 minutes.
+ */
+export function PinForm({ isSet }: { isSet: boolean }) {
+  const router = useRouter();
+  const [current, setCurrent] = useState("");
+  const [pin, setPin] = useState("");
+  const [error, setError] = useState<ReactNode>(null);
+  const [busy, setBusy] = useState(false);
+  const digits = (value: string) => value.replace(/\D/g, "").slice(0, 4);
+
+  const submit = async (e: FormEvent) => {
+    e.preventDefault();
+    if (busy) return;
+    if (!/^\d{4}$/.test(pin) || (isSet && !/^\d{4}$/.test(current))) {
+      setError("Use exactly 4 digits.");
+      return;
+    }
+    setBusy(true);
+    setError(null);
+    let answer: PinFormResult;
+    try {
+      const res = await fetch("/api/account/pin", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(isSet ? { pin, current } : { pin }) });
+      answer = (await res.json()) as PinFormResult;
+    } catch {
+      answer = { ok: false, error: "unavailable" };
+    }
+    if (answer.ok) {
+      track(isSet ? "pin_changed" : "pin_set");
+      router.replace("/account?pin=1");
+      router.refresh();
+      return;
+    }
+    setBusy(false);
+    switch (answer.error) {
+      case "wrong":
+        setError(`That is not your current PIN. You have ${answer.attemptsLeft} ${answer.attemptsLeft === 1 ? "try" : "tries"} left.`);
+        break;
+      case "locked":
+        setError(<>Too many wrong tries. Try again after <When at={answer.retryAt} />.</>);
+        break;
+      case "invalid":
+        setError("Use exactly 4 digits.");
+        break;
+      case "current_required":
+        setError("Enter your current PIN first.");
+        break;
+      case "signed_out":
+        setError(errorText("signed_out"));
+        break;
+      default:
+        setError(errorText("store_failed"));
+    }
+  };
+
+  return (
+    <form className="acct-form" onSubmit={submit} noValidate>
+      {error && <p role="alert" className="acct-alert">{error}</p>}
+      {isSet && (
+        <Field id="p-current" label="Current PIN">
+          <input id="p-current" type="password" inputMode="numeric" autoComplete="off" maxLength={4} value={current} onChange={(e) => setCurrent(digits(e.target.value))} />
+        </Field>
+      )}
+      <Field id="p-new" label={isSet ? "New PIN" : "PIN"} hint="4 digits. Do not share it with your child.">
+        <input id="p-new" type="password" inputMode="numeric" autoComplete="off" maxLength={4} value={pin} onChange={(e) => setPin(digits(e.target.value))} aria-describedby="h-p-new" />
+      </Field>
+      <Submit busy={busy}>{isSet ? "Change PIN" : "Save PIN"} <span className="arr">→</span></Submit>
     </form>
   );
 }
