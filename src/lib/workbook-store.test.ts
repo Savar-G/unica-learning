@@ -1,7 +1,7 @@
 import { createClient } from "@supabase/supabase-js";
 import { describe, expect, it } from "vitest";
 import { QUESTION_PACKAGE_VERSION, type Item } from "@/lib/question-package";
-import type { WorkbookInput, WorkbookStore } from "@/lib/workbook-content";
+import type { WorkbookInput, WorkbookRendering, WorkbookStore } from "@/lib/workbook-content";
 import { sampleWorkbook } from "@/lib/workbook-sample";
 import { workbookStore } from "@/lib/workbook-store";
 import { memoryWorkbookStore } from "@/lib/workbook-store-memory";
@@ -72,6 +72,36 @@ function writeWorkbook(tables: Tables, w: WorkbookInput): unknown {
   return { status: "written", workbookId: w.id };
 }
 
+/** save_workbook_rendering as the migration writes it: every file path and box of the workbook, or nothing. */
+function saveRendering(tables: Tables, r: WorkbookRendering): unknown {
+  const book = tables.workbooks.find((b) => b.id === r.workbookId);
+  if (!book) return { status: "refused", reason: "the workbook is not known" };
+  const pages = tables.workbook_pages.filter((p) => p.workbook_id === r.workbookId);
+  const numbers = (list: { number: number }[]) => list.map((x) => x.number).sort((a, b) => a - b).join(",");
+  if (numbers(r.pages) !== pages.map((p) => p.page_number as number).sort((a, b) => a - b).join(",")) {
+    return { status: "refused", reason: "the pages are not the workbook's pages" };
+  }
+  for (const p of r.pages) {
+    const row = pages.find((x) => x.page_number === p.number)!;
+    const stored = tables.workbook_questions.filter((q) => q.page_id === row.id).map((q) => q.question_number as number).sort((a, b) => a - b).join(",");
+    if (numbers(p.questions) !== stored) return { status: "refused", reason: `page ${p.number}: the questions are not the page's questions` };
+  }
+  const folder = `${book.parent_id}/${r.workbookId}/`;
+  if (![r.pdfPath, ...r.pages.map((p) => p.image.path)].every((path) => path.startsWith(folder))) {
+    return { status: "refused", reason: "a file is not in the family's folder" };
+  }
+  book.pdf_path = r.pdfPath;
+  for (const p of r.pages) {
+    const row = pages.find((x) => x.page_number === p.number)!;
+    Object.assign(row, { image_path: p.image.path, image_width: p.image.width, image_height: p.image.height });
+    for (const q of p.questions) {
+      const qRow = tables.workbook_questions.find((x) => x.page_id === row.id && x.question_number === q.number)!;
+      Object.assign(qRow, { box_x: q.box.x, box_y: q.box.y, box_width: q.box.width, box_height: q.box.height });
+    }
+  }
+  return { status: "written", workbookId: r.workbookId };
+}
+
 /** Applies a GET's eq filters, order and limit to a table, the way PostgREST does. */
 function select(rows: Row[], params: URLSearchParams): Row[] {
   let out = rows.filter((r) => [...params].every(([k, v]) => ["select", "order", "limit"].includes(k) || (v.startsWith("eq.") && String(r[k]) === v.slice(3))));
@@ -90,6 +120,9 @@ function supabase(tables: Tables = { workbooks: [], workbook_pages: [], workbook
     const method = init?.method ?? "GET";
     if (method === "POST" && url.pathname === "/rest/v1/rpc/write_workbook") {
       return Response.json(writeWorkbook(tables, JSON.parse(String(init?.body)).p_workbook));
+    }
+    if (method === "POST" && url.pathname === "/rest/v1/rpc/save_workbook_rendering") {
+      return Response.json(saveRendering(tables, JSON.parse(String(init?.body)).p_rendering));
     }
     const table = url.pathname.replace("/rest/v1/", "") as keyof Tables;
     if (method !== "GET" || !(table in tables)) throw new Error(`unexpected ${method} ${url.pathname}`);
@@ -243,6 +276,55 @@ describe.each(stores)("the %s workbook store", (_name, make) => {
     input.pages[1].questions[0].package.text = "changed";
     const read = await store.question({ source: "workbook", workbookId: WORKBOOK, page: 2, question: 1 });
     expect(read.status === "found" && read.package.text).toBe("268 + 157 = ?");
+  });
+
+  describe("saving a new rendering of a stored workbook", () => {
+    const folder = `${PARENT}/${WORKBOOK}`;
+    /** The sample rendered again: new file names and new boxes for every page and question. */
+    const rendering = (w: WorkbookInput): WorkbookRendering => ({
+      workbookId: w.id,
+      pdfPath: `${PARENT}/${w.id}/workbook-r2.pdf`,
+      pages: w.pages.map((p) => ({
+        number: p.number,
+        image: { path: `${PARENT}/${w.id}/page-${p.number}-r2.png`, width: 1275, height: 1650 },
+        questions: p.questions.map((q) => ({ number: q.number, box: { x: 10 * q.number, y: 20 * q.number, width: 500, height: 480 } })),
+      })),
+    });
+
+    it("replaces the PDF, the page images and the boxes, keeping the workbook's id, tokens, content and status", async () => {
+      const store = make();
+      const input = sample();
+      await store.write(input);
+      const before = await store.workbook(WORKBOOK);
+      expect(await store.saveRendering(rendering(input))).toEqual({ status: "written", workbookId: WORKBOOK });
+      const after = await store.workbook(WORKBOOK);
+      expect(after?.pdfPath).toBe(`${folder}/workbook-r2.pdf`);
+      expect(after?.pages.map((p) => p.image?.path)).toEqual([1, 2, 3].map((n) => `${folder}/page-${n}-r2.png`));
+      expect(after?.pages[1].questions.map((q) => q.box)).toEqual([1, 2, 3, 4].map((n) => ({ x: 10 * n, y: 20 * n, width: 500, height: 480 })));
+      const kept = (w: typeof after) => ({
+        id: w?.id, status: w?.status, createdAt: w?.createdAt, number: w?.number,
+        pages: w?.pages.map((p) => ({ number: p.number, qrToken: p.qrToken, type: p.type, content: p.questions.map((q) => q.content) })),
+      });
+      expect(kept(after)).toEqual(kept(before));
+    });
+
+    it("refuses a rendering that does not match the stored workbook, and changes nothing", async () => {
+      const store = make();
+      const input = sample();
+      await store.write(input);
+      const before = await store.workbook(WORKBOOK);
+      const good = rendering(input);
+      const cases: [WorkbookRendering, string][] = [
+        [rendering(sample({ workbookId: SECOND })), "the workbook is not known"],
+        [{ ...good, pages: good.pages.slice(1) }, "the pages are not the workbook's pages"],
+        [{ ...good, pages: good.pages.map((p) => (p.number === 2 ? { ...p, questions: p.questions.slice(1) } : p)) }, "page 2: the questions are not the page's questions"],
+        [{ ...good, pdfPath: `${OTHER_PARENT}/${WORKBOOK}/workbook-r2.pdf` }, "a file is not in the family's folder"],
+        [{ ...good, pages: good.pages.map((p) => ({ ...p, questions: p.questions.map((q) => ({ ...q, box: { ...q.box, x: 1200 } })) })) }, "page 2, question 1: the box is not inside the page image"],
+        [{ ...good, pdfPath: `${PARENT}/${SECOND}/workbook.pdf` }, "a file is not in the workbook's folder"],
+      ];
+      for (const [r, reason] of cases) expect(await store.saveRendering(r)).toEqual({ status: "refused", reason });
+      expect(await store.workbook(WORKBOOK)).toEqual(before);
+    });
   });
 });
 
