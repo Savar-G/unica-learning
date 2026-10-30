@@ -572,7 +572,7 @@ describe("an exact result with no finite decimal (#354 review)", () => {
   });
 });
 
-describe("the same amount in another unit, compared exactly (#354 review, R354-1)", () => {
+describe("the same amount in another unit, compared exactly (#354 review)", () => {
   // 0.1 mm + 0.1 mm = 0.2 mm = 0.0002 m = 0.0000002 km (String writes the last as 2e-7). Each is the right amount.
   const add: Operation = { kind: "quantity-add", operands: [qty(0.1, "mm"), qty(0.1, "mm")] };
   const sound = () => packageOf(add, qty(0.2, "mm"), { kind: "quantity-add", operands: [qty(0, "mm"), qty(0, "mm")] }, qty(0, "mm"), "3.9");
@@ -621,7 +621,7 @@ describe("the same amount in another unit, compared exactly (#354 review, R354-1
   });
 });
 
-describe("an amount String writes with an exponent (#354 review, R354-2)", () => {
+describe("an amount String writes with an exponent (#354 review)", () => {
   const base = () => packageOf({ kind: "convert", operands: [qty(2.5, "km")], unit: "m" }, qty(2500, "m"), { kind: "convert", operands: [qty(3, "km")], unit: "m" }, qty(3000, "m"), "3.9");
   const big = "code checks amounts only up to 99999.999, with at most 3 decimal places";
 
@@ -652,85 +652,38 @@ describe("an amount String writes with an exponent (#354 review, R354-2)", () =>
   });
 });
 
-describe("every pair of units of one measure, generated (#354 review)", () => {
-  // An independent exact computation: an amount is its decimal digits over a power of ten, times the unit's size in the
-  // measure's smallest unit (written out here from the SI and the Canadian dollar). A sum in one unit is written in every
-  // other unit of its measure whose decimal ends; that form must be taken as the answer and as an accepted form, and
-  // refused as a wrong answer. A failed right answer or a checked right wrong answer is the defect.
-  const SIZE: Record<Unit, [string, bigint]> = {
-    mm: ["length", BigInt(1)], cm: ["length", BigInt(10)], m: ["length", BigInt(1000)], km: ["length", BigInt(1000000)],
-    mg: ["mass", BigInt(1)], g: ["mass", BigInt(1000)], kg: ["mass", BigInt(1000000)], mL: ["capacity", BigInt(1)], L: ["capacity", BigInt(1000)],
-    s: ["time", BigInt(1)], min: ["time", BigInt(60)], h: ["time", BigInt(3600)], "¢": ["money", BigInt(1)], $: ["money", BigInt(100)],
-  };
-  const PLACES: Partial<Record<Unit, number>> = { "¢": 0, $: 2 };
-  const units = Object.keys(SIZE) as Unit[];
-  const ten = BigInt(10);
+describe("an amount beyond code beside a wrong operation (#354 review)", () => {
+  const at = (hours: number): ClockTime => ({ type: "time", hours, minutes: 0, period: "p.m." });
+  const hoursAndMinutes = (hours: number): Duration => ({ type: "compound", parts: [{ value: hours, unit: "h" }, { value: 5, unit: "min" }] });
+  const base = () => packageOf({ kind: "convert", operands: [qty(2.5, "km")], unit: "m" }, qty(2500, "m"), { kind: "convert", operands: [qty(3, "km")], unit: "m" }, qty(3000, "m"), "3.9") as unknown as { operation: unknown };
 
-  /** A count of the smallest unit over 10^places, written in `to` as a decimal string, or null when it does not end. */
-  function inUnit(count: bigint, places: number, to: Unit): string | null {
-    // count / 10^places / size(to), with the denominator cleared to a power of ten when it can be.
-    const den = ten ** BigInt(places) * SIZE[to][1];
-    let num = count;
-    let digits = 0;
-    while (num % den !== BigInt(0) && digits < 40) {
-      num *= ten;
-      digits++;
-    }
-    if (num % den !== BigInt(0)) return null;
-    const scaled = (num / den).toString().padStart(digits + 1, "0");
-    return digits === 0 ? scaled : `${scaled.slice(0, -digits)}.${scaled.slice(-digits)}`;
-  }
-
-  let seed = 354;
-  const random = (n: number) => {
-    seed = (seed * 1103515245 + 12345) % 2147483648;
-    return Math.floor((seed / 2147483648) * n);
-  };
-
-  const cases: { from: Unit; to: Unit; a: number; b: number; sum: number; other: number }[] = [];
-  for (const from of units) {
-    for (const to of units) {
-      if (from === to || SIZE[from][0] !== SIZE[to][0]) continue;
-      let made = 0;
-      for (let tries = 0; made < 25 && tries < 500; tries++) {
-        const places = random((PLACES[from] ?? 3) + 1);
-        const scaled = [100 + random(4900), 100 + random(4900)];
-        const [a, b] = scaled.map((s) => Number(inUnit(BigInt(s) * SIZE[from][1], places, from)));
-        const total = BigInt(scaled[0] + scaled[1]) * SIZE[from][1];
-        const other = inUnit(total, places, to);
-        if (other === null || (PLACES[to] !== undefined && (other.split(".")[1] ?? "").length > PLACES[to]!)) continue;
-        cases.push({ from, to, a, b, sum: Number(inUnit(total, places, from)), other: Number(other) });
-        made++;
-      }
-    }
-  }
-
-  it("generates cases for every pair of units of one measure", () => {
-    expect(new Set(cases.map((c) => `${c.from}>${c.to}`)).size).toBe(28);
-    expect(cases.length).toBeGreaterThan(500);
+  it.each([
+    ["a conversion of 1e21 m to kg", { kind: "convert", operands: [qty(1e21, "m")], unit: "kg" }, "m and kg do not measure the same thing"],
+    ["a conversion of 1.2345 m to kg", { kind: "convert", operands: [qty(1.2345, "m")], unit: "kg" }, "m and kg do not measure the same thing"],
+    ["1e21 m + 1 kg", { kind: "quantity-add", operands: [qty(1e21, "m"), qty(1, "kg")] }, "m and kg do not measure the same thing"],
+    ["1.2345 m − 1 kg", { kind: "quantity-subtract", operands: [qty(1.2345, "m"), qty(1, "kg")] }, "m and kg do not measure the same thing"],
+    ["1e21 m + a negative amount", { kind: "quantity-add", operands: [qty(1e21, "m"), qty(-1, "m")] }, "the operation needs two amounts from 0 in units"],
+    ["1e21 m × a negative number", { kind: "quantity-multiply", operands: [qty(1e21, "m"), -1] }, "the operation needs an amount and a whole number"],
+    ["rounding 1e21 m for cash", { kind: "money-round", operands: [qty(1e21, "m")] }, "only an amount of money is rounded to the nearest 5 cents"],
+    ["a mass of 1e-7 kg after a clock time", { kind: "time-add", operands: [at(2), qty(1e-7, "kg")] }, "the operation needs a clock time and an amount of time"],
+    ["a duration with 1.5 h in a compound", { kind: "time-add", operands: [at(2), hoursAndMinutes(1.5)] }, "the operation needs a clock time and an amount of time"],
+    ["a multiplier of 2.5", { kind: "quantity-multiply", operands: [qty(2, "m"), 2.5] }, "the operation needs an amount and a whole number"],
+  ])("fails %s, whatever the size of the amount", (_name, operation, reason) => {
+    const p = base();
+    p.operation = operation;
+    expect(checkQuestionPackage(p)).toEqual(failed(reason));
   });
 
-  it("takes the sum in every other unit as the answer and as an accepted form, and refuses it as a wrong answer", () => {
-    const wrongWays: string[] = [];
-    for (const c of cases) {
-      const zero = c.from === "$" ? "¢" : c.from;
-      const make = () => packageOf({ kind: "quantity-add", operands: [qty(c.a, c.from), qty(c.b, c.from)] }, qty(c.sum, c.from), { kind: "quantity-add", operands: [qty(0, zero), qty(0, zero)] }, qty(0, zero), "3.9");
-      const label = `${c.a} ${c.from} + ${c.b} ${c.from} = ${c.other} ${c.to}`;
-      const control = make();
-      if (checkQuestionPackage(control).status !== "checked") {
-        wrongWays.push(`control ${label}: ${JSON.stringify(checkQuestionPackage(control))}`);
-        continue;
-      }
-      const main = make();
-      main.answer.value = qty(c.other, c.to);
-      if (checkQuestionPackage(main).status === "failed") wrongWays.push(`answer ${label}: ${JSON.stringify(checkQuestionPackage(main))}`);
-      const accepted = make();
-      accepted.answer.accepted = [qty(c.other, c.to)];
-      if (checkQuestionPackage(accepted).status === "failed") wrongWays.push(`accepted ${label}: ${JSON.stringify(checkQuestionPackage(accepted))}`);
-      const wrong = make();
-      wrong.wrongAnswers[0].value = qty(c.other, c.to);
-      if (checkQuestionPackage(wrong).status === "checked") wrongWays.push(`wrong ${label}: checked`);
-    }
-    expect(wrongWays).toEqual([]);
+  it.each([
+    ["a multiplier of 2^53", { kind: "quantity-multiply", operands: [qty(2, "m"), 2 ** 53] }, "code checks multiplications of amounts only with up to 4 digits in the amount and a whole number up to 999"],
+    ["a multiplier of 1e21", { kind: "quantity-multiply", operands: [qty(2, "m"), 1e21] }, "code checks multiplications of amounts only with up to 4 digits in the amount and a whole number up to 999"],
+    ["2^53 h 5 min after a clock time", { kind: "time-add", operands: [at(2), hoursAndMinutes(2 ** 53)] }, "code adds only whole minutes, less than 24 h, to a clock time"],
+    ["1e21 h 5 min after a clock time", { kind: "time-add", operands: [at(2), hoursAndMinutes(1e21)] }, "code adds only whole minutes, less than 24 h, to a clock time"],
+    ["0.0001 km in m, which fits but has 4 places", { kind: "convert", operands: [qty(0.0001, "km")], unit: "m" }, "code checks amounts only up to 99999.999, with at most 3 decimal places"],
+    ["1e21 m in mm", { kind: "convert", operands: [qty(1e21, "m")], unit: "mm" }, "code checks amounts only up to 99999.999, with at most 3 decimal places"],
+  ])("returns unsupported for %s, a whole or exact number beyond code", (_name, operation, reason) => {
+    const p = base();
+    p.operation = operation;
+    expect(checkQuestionPackage(p)).toEqual(unsupported(reason));
   });
 });

@@ -69,6 +69,10 @@ const BELOW_ZERO = fail("the subtraction goes below zero");
 const MAX_SCALED = 9999;
 const MAX_MULTIPLIER = 999;
 const BIG_AMOUNT = beyond(`code checks amounts only up to ${MAX_AMOUNT}.999, with at most 3 decimal places`);
+// An operation with an amount beyond code is unsupported only when the rest of it is right: 1e21 m + 1 kg still fails.
+
+/** A whole number from 0 of any size: one beyond the safe range is beyond code, not wrong. */
+const isWhole = (v: unknown): v is number => Number.isInteger(v) && (v as number) >= 0;
 
 // ---------- Exact sizes ----------
 
@@ -87,7 +91,7 @@ export interface Size {
  * A number from 0 as an exact rational, read from its written digits (2e-7 too), or null. Any number of decimal places:
  * the limit on what code computes (quantityProblem) is not a limit on which amounts are the same.
  */
-function exact(value: unknown): Rational | null {
+function exactAmount(value: unknown): Rational | null {
   const r = decimalRational(value);
   return r !== null && r[0] >= ZERO ? r : null;
 }
@@ -96,7 +100,7 @@ function exact(value: unknown): Rational | null {
 export function amountOf(v: AnswerValue): Size | null {
   switch (v.type) {
     case "quantity": {
-      const r = isUnit(v.unit) ? exact(v.value) : null;
+      const r = isUnit(v.unit) ? exactAmount(v.value) : null;
       return r && { dimension: UNITS[v.unit].dimension, base: reduce([r[0] * big(UNITS[v.unit].base), r[1]]) };
     }
     case "time":
@@ -135,14 +139,16 @@ function decimalOf(r: Rational, maxPlaces: number): number | null {
 
 /** What is wrong with an amount in one unit: "failed" for a wrong amount, "unsupported" for one beyond code. */
 function quantityProblem(v: unknown): OperationProblem | null {
-  if (!isObject(v) || v.type !== "quantity" || typeof v.value !== "number" || !Number.isFinite(v.value) || v.value < 0) return NOT_AMOUNT;
+  if (!isObject(v) || v.type !== "quantity") return NOT_AMOUNT;
+  const size = exactAmount(v.value);
+  if (size === null) return NOT_AMOUNT;
   const unit = unitProblem(v.unit, NOT_AMOUNT);
   if (unit) return unit;
-  // Every finite number has a decimal that ends, written with an exponent or not (1e-7 has 7 places).
-  const places = decimalPlaces(exact(v.value)!)!;
+  // The decimal of a number read from its digits ends, written with an exponent or not (1e-7 has 7 places).
+  const places = decimalPlaces(size) ?? Infinity;
   if (v.unit === "¢" && places > 0) return fail("an amount in ¢ is a whole number");
   if (v.unit === "$" && places > 2) return fail("an amount in $ has at most 2 decimal places");
-  return places <= 3 && Math.floor(v.value) <= MAX_AMOUNT ? null : BIG_AMOUNT;
+  return places <= 3 && size[0] / size[1] <= big(MAX_AMOUNT) ? null : BIG_AMOUNT;
 }
 
 /**
@@ -153,7 +159,7 @@ function compoundFits(v: Fields): boolean {
   if (!Array.isArray(v.parts) || v.parts.length < 2) return false;
   // Array.from fills a missing position with undefined: every() and map() skip one ([, part]).
   const parts = Array.from(v.parts as unknown[]);
-  if (!parts.every((p) => isObject(p) && isCount(p.value) && isUnit(p.unit))) return false;
+  if (!parts.every((p) => isObject(p) && isWhole(p.value) && isUnit(p.unit))) return false;
   const units = parts.map((p) => UNITS[(p as { unit: Unit }).unit]);
   const values = parts.map((p) => (p as { value: number }).value);
   if (units.some((u) => u.dimension !== units[0].dimension || u.dimension === "money") || values[0] < 1) return false;
@@ -239,7 +245,7 @@ function factorOf(from: Unit, to: Unit): { by: "multiply" | "divide"; factor: nu
 
 /** An amount as a number of another unit of its measure, exactly: 90 min in h is 3/2. */
 function sizeIn(q: Quantity, to: Unit): Rational {
-  const [n, d] = exact(q.value)!;
+  const [n, d] = exactAmount(q.value)!;
   return rational(n * big(UNITS[q.unit].base), d * big(UNITS[to].base));
 }
 
@@ -340,12 +346,15 @@ function askedProblem(value: Quantity, unit: unknown): OperationProblem | null {
 
 function pairProblem(op: Fields): OperationProblem | null {
   if (!isTwo(op.operands)) return NOT_TWO;
+  let tooBig: OperationProblem | null = null;
   for (const q of op.operands) {
     const problem = quantityProblem(q);
-    if (problem) return problem === NOT_AMOUNT ? NOT_TWO : problem;
+    if (problem === BIG_AMOUNT) tooBig = problem;
+    else if (problem) return problem === NOT_AMOUNT ? NOT_TWO : problem;
   }
   const [a, b] = op.operands as [Quantity, Quantity];
   if (UNITS[a.unit].dimension !== UNITS[b.unit].dimension) return fail(`${a.unit} and ${b.unit} do not measure the same thing`);
+  if (tooBig) return tooBig;
   const unit = smallerUnit(a.unit, b.unit);
   for (const q of [a, b]) {
     const problem = q.unit === unit ? null : convertProblem(q, unit);
@@ -362,8 +371,9 @@ function pairProblem(op: Fields): OperationProblem | null {
 function multiplyProblem(op: Fields): OperationProblem | null {
   if (!isTwo(op.operands)) return NOT_TIMES;
   const problem = quantityProblem(op.operands[0]);
-  if (problem) return problem === NOT_AMOUNT ? NOT_TIMES : problem;
-  if (!isCount(op.operands[1])) return NOT_TIMES;
+  if (problem && problem !== BIG_AMOUNT) return problem === NOT_AMOUNT ? NOT_TIMES : problem;
+  if (!isWhole(op.operands[1])) return NOT_TIMES;
+  if (problem) return problem;
   const [q, n] = op.operands as [Quantity, number];
   if (columnsOf(q).scaled > MAX_SCALED || n > MAX_MULTIPLIER) {
     return beyond(`code checks multiplications of amounts only with up to 4 digits in the amount and a whole number up to ${MAX_MULTIPLIER}`);
@@ -514,14 +524,16 @@ function timeAddProblem(op: Fields): OperationProblem | null {
   if (!isTwo(op.operands) || !isTime(op.operands[0])) return NOT_TIME_AND_DURATION;
   const d = op.operands[1];
   if (!isObject(d)) return NOT_TIME_AND_DURATION;
+  let tooBig: OperationProblem | null = null;
   if (d.type === "quantity") {
-    const problem = quantityProblem(d);
-    if (problem) return problem === NOT_AMOUNT ? NOT_TIME_AND_DURATION : problem;
+    tooBig = quantityProblem(d);
+    if (tooBig && tooBig !== BIG_AMOUNT) return tooBig === NOT_AMOUNT ? NOT_TIME_AND_DURATION : tooBig;
   } else if (d.type !== "compound" || !compoundFits(d)) {
     return NOT_TIME_AND_DURATION;
   }
   const duration = d as Duration;
   if (amountOf(duration)?.dimension !== "time") return NOT_TIME_AND_DURATION;
+  if (tooBig) return tooBig;
   const minutes = durationMinutes(duration);
   if (minutes === 0) return fail("the time to add is 0");
   return minutes !== null && minutes < MINUTES_IN_DAY ? null : BIG_DURATION;
@@ -542,9 +554,9 @@ export const MEASURE_KINDS: { [K in MeasureKind]: KindRules<Of<K>> } = {
     problem: (op) => {
       if (!isOne(op.operands)) return NOT_AMOUNT;
       const problem = quantityProblem(op.operands[0]);
-      if (problem) return problem;
+      if (problem && problem !== BIG_AMOUNT) return problem;
       const unit = unitProblem(op.unit, fail("the conversion needs the unit to change to"));
-      return unit ?? convertProblem(op.operands[0] as Quantity, op.unit as Unit);
+      return unit ?? convertProblem(op.operands[0] as Quantity, op.unit as Unit) ?? problem;
     },
     text: ({ operands: [q], unit }) => `${amountText(q)} = ${placeholder(unit)}`,
     statement: ({ operands: [q] }) => amountText(q),
@@ -573,8 +585,8 @@ export const MEASURE_KINDS: { [K in MeasureKind]: KindRules<Of<K>> } = {
     ...AMOUNT_RULES,
     problem: (op) => {
       const problem = isOne(op.operands) ? quantityProblem(op.operands[0]) : NOT_AMOUNT;
-      if (problem) return problem;
-      return UNITS[(op.operands as [Quantity])[0].unit].dimension === "money" ? null : fail("only an amount of money is rounded to the nearest 5 cents");
+      if (problem && problem !== BIG_AMOUNT) return problem;
+      return UNITS[(op.operands as [Quantity])[0].unit].dimension === "money" ? problem : fail("only an amount of money is rounded to the nearest 5 cents");
     },
     text: ({ operands: [q] }) => `Round ${amountText(q)} to the nearest 5 cents`,
     steps: ({ operands: [q] }) => [roundStep(q)],

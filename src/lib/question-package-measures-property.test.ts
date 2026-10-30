@@ -484,3 +484,66 @@ describe("the reader of equalities", () => {
     expect(() => checkEqualities("so 3x = 14.", new Map([["x", q(big(5), big(1))]]))).toThrow(/false equality/);
   });
 });
+
+describe("the same sum in every other unit of its measure (#354 review)", () => {
+  // A sum in one unit, worked here, is written in every other unit of its measure whose decimal ends (0.2 mm is
+  // 0.0002 m, and 2e-7 km as String writes it). That form must be taken as the answer and as an accepted form, and
+  // refused as a wrong answer: a right answer marked wrong, or allowed as a wrong answer, is the defect.
+
+  /** A rational as decimal digits, or null when its decimal does not end. */
+  function decimalText([n, d]: Q): string | null {
+    let [digits, places] = [n, 0];
+    for (; digits % d !== big(0) && places < 40; places++) digits *= big(10);
+    if (digits % d !== big(0)) return null;
+    const text = (digits / d).toString().padStart(places + 1, "0");
+    return places === 0 ? text : `${text.slice(0, -places)}.${text.slice(-places)}`;
+  }
+  const unitSize = (u: Unit) => q(big(UNIT_SIZE[u][1]), big(1));
+  const g = generator(354);
+  const cases: { from: Unit; to: Unit; operands: [number, number]; other: number }[] = [];
+  for (const units of Object.values(UNITS_OF)) {
+    for (const from of units) {
+      for (const to of units) {
+        if (from === to) continue;
+        for (let made = 0, tries = 0; made < 25 && tries < 1000; tries++) {
+          const places = g.int(0, placesFor(from));
+          const [a, b] = [g.int(100, 4999), g.int(100, 4999)].map((n) => q(big(n), big(10) ** big(places)));
+          const other = decimalText(div(mul(add(a, b), unitSize(from)), unitSize(to)));
+          if (other === null || (other.split(".")[1] ?? "").length > (to === "¢" ? 0 : to === "$" ? 2 : Infinity)) continue;
+          cases.push({ from, to, operands: [Number(decimalText(a)), Number(decimalText(b))], other: Number(other) });
+          made++;
+        }
+      }
+    }
+  }
+
+  it("has cases for each of the 28 pairs of units of one measure", () => {
+    expect(new Set(cases.map((c) => `${c.from} ${c.to}`)).size).toBe(28);
+    expect(cases.length).toBe(28 * 25);
+  });
+
+  it("takes the sum in the other unit as the answer and as an accepted form, and refuses it as a wrong answer", () => {
+    const wrongWays: string[] = [];
+    for (const c of cases) {
+      const zero = c.from === "$" ? "¢" : c.from;
+      const op: Operation = { kind: "quantity-add", operands: [qty(c.operands[0], c.from), qty(c.operands[1], c.from)] };
+      const make = () => packageFor(op, { kind: "quantity-add", operands: [qty(0, zero), qty(0, zero)] });
+      const label = `${c.operands[0]} ${c.from} + ${c.operands[1]} ${c.from} = ${c.other} ${c.to}`;
+      const control = checkQuestionPackage(make());
+      if (control.status !== "checked") {
+        wrongWays.push(`${label}, control: ${JSON.stringify(control)}`);
+        continue;
+      }
+      const [main, accepted, wrong] = [make(), make(), make()];
+      main.answer.value = qty(c.other, c.to);
+      accepted.answer.accepted = [qty(c.other, c.to)];
+      wrong.wrongAnswers[0].value = qty(c.other, c.to);
+      for (const [where, p] of [["answer", main], ["accepted form", accepted]] as const) {
+        const check = checkQuestionPackage(p);
+        if (check.status === "failed") wrongWays.push(`${label}, ${where}: ${check.reason}`);
+      }
+      if (checkQuestionPackage(wrong).status === "checked") wrongWays.push(`${label}, wrong answer: checked`);
+    }
+    expect(wrongWays).toEqual([]);
+  });
+});
