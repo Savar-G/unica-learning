@@ -186,7 +186,9 @@ function create(cmd: DivisionCommand, ctx: Ctx): { state: DivisionState; size: {
   const { dividend, divisor } = cmd;
   if (Number(divisor) === 0) return refuse("not_allowed", "Nothing can be divided by 0: the divisor must be 1 or more.");
   const state: DivisionState = { dividend, divisor, seq: ctx.seq, steps: plan(dividend, divisor), written: {} };
-  const missing = missingGlyphs(ctx.glyphs, dividend + divisor + "−" + (remainder(state) > 0 ? "R" : ""));
+  // Every character the finished problem shows, the worked-out digits too: a step the pen cannot draw is refused now.
+  const work = rows(state).map((row) => row.value).join("");
+  const missing = missingGlyphs(ctx.glyphs, dividend + divisor + work + "−" + (remainder(state) > 0 ? "R" : ""));
   if (missing.length > 0) return refuse("unsupported", `The board pen cannot write ${missing.join(" ")} yet.`);
   state.written = Object.fromEntries(rows(state).map((row) => [row.id, {}]));
   return { state, size: { w: width(state), h: height(state) } };
@@ -359,7 +361,8 @@ function draw(state: DivisionState, objectId: string, ctx: Ctx): LocalStroke[] {
     if (row.kind === "bring") {
       const x = first.x + 0.5;
       const from: Point = [x, 2.02];
-      const to: Point = [x, first.y + 0.05];
+      // The tip stops just above the digit's cell, so its ink stays clear of the digit's.
+      const to: Point = [x, first.y - 0.05];
       curvedArrow(from, [x, (from[1] + to[1]) / 2], to).forEach((pts, i) => out.push({ ...pen, key: `${row.id}/arrow/${i}`, kind: "arrow", layer: "annotation", width: SMALL_WIDTH, pts }));
     }
     if (row.kind === "remainder") out.push(...glyphStrokes(ctx.glyphs, "R", { x: letterRX(state), y: 0, w: 1, h: 1 }, pen, "remainder/R"));

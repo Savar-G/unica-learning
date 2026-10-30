@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { addChildInk, applyBatch, boardPages, boardPaths, boardView, DEFAULT_PAGE, boardTargets, createScene, sameTarget, type BoardPath, type Scene, type Target } from "@/lib/board";
+import { addChildInk, applyBatch, boardPages, boardPaths, boardView, DEFAULT_PAGE, PLACEHOLDER_GLYPHS, boardTargets, createScene, sameTarget, type BoardPath, type Scene, type Target } from "@/lib/board";
 
 // Long division on Maya's board (#316, spec #297): the model names each step, and the core computes and checks every
 // quotient digit, product, difference and bring-down. These tests use only the public API.
@@ -345,5 +345,39 @@ describe("999 ÷ 100 = 9 R 99: a remainder of two digits", () => {
     expect(refusal(scene, put(cell("div", "remainder", "ones"), "8")).reason).toContain("999 ÷ 100 = 9 R 99");
     scene = ok(scene, put(cell("div", "remainder", "ones"), "9"), put(cell("div", "remainder", "tens"), "9"));
     expect(info(scene, row("div", "remainder")).value).toBe("99");
+  });
+});
+
+describe("review fixes (#346)", () => {
+  /** The placeholder pen without some characters, as a real font might be. */
+  const without = (...missing: string[]) => createScene({ glyphs: { name: "gappy", strokes: (c) => (missing.includes(c) ? null : PLACEHOLDER_GLYPHS.strokes(c)) } });
+
+  it("R1: refuses a division whose worked-out digits the pen cannot write, and changes nothing", () => {
+    // 6 ÷ 3 = 2: the 2 is only in the quotient.
+    const quotientOnly = without("2");
+    const r = applyBatch(quotientOnly, { transactionId: "g1", commands: [divide("div", "6", "3")] });
+    expect(r.ok ? null : r.refusal).toMatchObject({ code: "unsupported", reason: expect.stringContaining("2") });
+    expect(boardTargets(quotientOnly)).toEqual([]);
+    // 157 ÷ 6: the 3 is only in a difference (15 − 12 = 3), the 2 in the quotient and a product (2 × 6 = 12).
+    expect(refusal(without("3"), divide("div", "157", "6"))).toMatchObject({ code: "unsupported" });
+    expect(refusal(without("2"), divide("div", "157", "6"))).toMatchObject({ code: "unsupported" });
+    // A pen with every digit the work needs is fine.
+    ok(without("4"), divide("div", "157", "6"));
+  });
+
+  it("N1: a bring-down arrow ends clear of the digit it brings down, counting both line widths", () => {
+    let scene = ok(createScene(), divide("div", "157", "6"));
+    scene = ok(scene, put(cell("div", "quotient", "tens")), put(row("div", "product1")), put(row("div", "difference1")), put(row("div", "bring2")));
+    const arrow = pathsFor(scene, row("div", "bring2")).filter((p) => p.kind === "arrow");
+    const digit = pathsFor(scene, cell("div", "bring2", "ones"));
+    expect(arrow).toHaveLength(3);
+    const toSegment = ([px, py]: [number, number], [ax, ay]: [number, number], [bx, by]: [number, number]) => {
+      const [dx, dy] = [bx - ax, by - ay];
+      const t = Math.max(0, Math.min(1, ((px - ax) * dx + (py - ay) * dy) / (dx * dx + dy * dy || 1)));
+      return Math.hypot(px - ax - dx * t, py - ay - dy * t);
+    };
+    const gap = (a: BoardPath, b: BoardPath) =>
+      Math.min(...a.pts.flatMap((p) => b.pts.slice(1).map((q, i) => toSegment(p, b.pts[i], q))), ...b.pts.flatMap((p) => a.pts.slice(1).map((q, i) => toSegment(p, a.pts[i], q))));
+    for (const a of arrow) for (const d of digit) expect(gap(a, d)).toBeGreaterThan((a.width + d.width) / 2);
   });
 });
