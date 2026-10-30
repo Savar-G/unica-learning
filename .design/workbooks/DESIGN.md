@@ -14,7 +14,7 @@ value and says so in section 9.
 | Token | Value |
 |---|---|
 | Size | US Letter, 8.5 by 11 in. Design units are Figma px at 96 per inch: 816 by 1056 |
-| Print | Colour, 612 by 792 pt PDF. No bleed: nothing runs to the edge |
+| Print | Colour, 612 by 792 pt PDF. No bleed: nothing runs to the edge. Saddle stitch: the book is padded with blank pages at the end to a multiple of 4 (D-191; at most 84 pages) |
 | Margin | 64 px on all four sides |
 | Column | 688 px wide, one column; blocks inside it split into 2 or 3 columns |
 | Header + content | 866 px tall (header 126, gap 20, content area 720) |
@@ -46,7 +46,7 @@ Fonts: **Geist** (words) and **Geist Mono** (numbers, maths, labels, IDs). Line 
 | Given and worked numbers | Geist Mono Regular | same size as the maths | `#2453D4` | "Watch one" answers, highlighted points on a number line |
 | Item number | Geist Mono Medium | 14 / 120% | `#0C0C0E` | "9", "10" before a list item |
 | Grid item number | Geist Mono Regular | 13 / 120% | `#44444C` | Small numbers in fact grids |
-| Box label | Geist Mono Regular | 13 / 120%, letter-spacing 4% | `#44444C` | "SHOW YOUR WORK", "ANSWER", "WAY 1" |
+| Box label | Geist Mono Regular | 13 / 120%, letter-spacing 4% | `#44444C` | "SHOW YOUR WORK", "ANSWER", "METHOD 1" |
 | Choice word | Geist Regular | 16 | `#0C0C0E` | "yes", "no" beside tick boxes |
 | "Tick one" | Geist Mono Regular | 13 | `#44444C` | With a 16 px example box holding a tick |
 | Page ID | Geist Mono Regular | 11 / 120% | `#0C0C0E` | Footer |
@@ -114,10 +114,11 @@ padding 8 by 14, gap 28 between choices; tighter strips 36 to 37 tall with gap 2
 16 by 16 example box (radius 2, 1.5 px `#0C0C0E`) holding a tick. The instruction before the strip always names the
 choices.
 
-**Work box** ("SHOW YOUR WORK", "WORK IT HERE", "WAY 1"): white, 1 px `#D4D4DA` (or `#CCCCD1`), radius 8, padding 10 by 12,
+**Work box** ("SHOW YOUR WORK", "WORK IT HERE", "METHOD 1"): white, 1 px `#D4D4DA` (or `#CCCCD1`), radius 8, padding 10 by 12,
 the label at the top left. Inline height 44 (Mixed set); in cards it fills the card's free space.
 
-**Writing lines** ("How do you know?", "First I ...", "Then I ..."): 1 px `#9A9AA2`, at least 34 px apart, full column
+**Writing lines** ("How do you know?", "First I ...", "Then I ..."): 1 px `#9A9AA2`, the first at least 36 px below its prompt and each
+next one at least 34 px below the last (skeleton), full column
 or card width.
 
 **Item card** (Now finish two, On your own, word problems): white, 1 px `#D4D4DA`, radius 10, padding 16. A card holds one
@@ -127,7 +128,7 @@ item; two cards side by side are 336 wide with a 16 gap.
 set: a 20 px black circle with a white Geist Mono 13 digit (① ②).
 
 **Worked example panel**: `#EAF0FF`, radius 12, padding 18 by 22. Label "WORKED EXAMPLE · <what>"; either two white
-inner cards ("WAY 1 · ...", "WAY 2 · ...", radius 12) side by side, or the worked figure at the left and "WHAT'S GOING ON"
+inner cards ("METHOD 1 · ...", "METHOD 2 · ...", radius 12; the samples say "WAY 1", "WAY 2") side by side, or the worked figure at the left and "WHAT'S GOING ON"
 text at the right (gap 26).
 
 **Try this first card** and **Now you card**: white, 1.5 px `#3366F0`, radius 12, padding 16 20 18 20, gap 12 to 14.
@@ -183,8 +184,18 @@ yellow highlight. Then the **Made from** card: `#FFF1EA`, 1.5 px `#FF6A3D`, radi
 bullets (8 px `#FF6A3D` squares) of what this workbook does. From workbook 2 the label reads "MADE FROM <NAME>'S LAST
 WORKBOOK" and the sentence uses the snapshot.
 
+Under the card, the **parent line**: one sentence for the parent on what to ask the child to show them this fortnight
+(Geist 15, `#0C0C0E`; not in the samples, from the skeleton).
+
 Bottom: "How this works and your plan are next. 10 days, <n> pages a day, about <x> minutes a day." (Geist 15,
 `#44444C`), then the footer with the cover's page ID.
+
+## 5a. Back cover
+
+The **level map** (skeleton, "Keeping children going"): the 30 levels as squares, U1 to U30, with no grades; the
+child colours the current one. Uses the Unica mark's square style (1.2 px ink borders, 36 px squares, the brand colours
+for filled examples). The same map is in the app. No sample yet; V7's back cover (`196:734`) is the older draft. Blank
+padding pages come after it.
 
 ## 6. How + Plan page
 
@@ -192,8 +203,9 @@ Header line "How it works · <Name>'s plan" (Geist Mono Medium 12) and "Workbook
 
 **Plan table**: columns DAY, TOPIC, PAGES (Geist Mono Medium 11, `#44444C`, under a 1 px ink rule); one row a day (56
 tall, 1 px `#E0E0E5` rules; a 1 px ink rule under the column heads): "Day 1" (Geist Mono Medium 16), the Unit A topic (Geist Medium 18) over the Unit B topic
-(Geist 14, `#44444C`), and the book page range (Geist Mono 16). Day 5 and Day 10 rows name the Friday 5; Day 10 is
-"Show what you know".
+(Geist 14, `#44444C`), the book page range (Geist Mono 16), and a **done tick box** per day (20 px, as section 4;
+from the skeleton, not in the samples). Day 5 and Day 10 rows name the Friday 5; Day 10 is "Show what you know". In a
+test workbook the Day 7 row says the level test is done alone.
 
 **How it works**: four chips with two lines each (Geist 14): EVERY DAY (green: "<n> pages a day, 15 to 30 minutes."),
 SCAN (yellow: "Scan each finished page in the Unica app."), STUCK? (blue: "Call the Teaching Assistant."), FIX IT (red:
@@ -205,14 +217,17 @@ the Teaching Assistant.
 Each page is the header, a stack of blocks in the content area (gap 12 to 20), and the footer. Slot limits are maximums
 for 688 by 720; the fit check measures the real height.
 
-### 7.1 The 8-page day (U10 to U18; the reference)
+### 7.1 The 8-page day (U4 to U18; the reference)
+
+Level gates from the skeleton: the Warm-up runs from U8 and the Mixed set from U10 (below those levels, see 7.3);
+the Try this first card from U19. On Days 5 and 10 the Friday 5 replaces the Mixed set on page 7.
 
 | Page | Title, subtitle | Blocks (slots) |
 |---|---|---|
 | 1 Warm-up | "Warm-up"; "Facts to 20. Take your time: there is no timer." (from U16 "Beat your own count") | WARM-UP chip + "Do as many as you can."; fact grid, 3 columns of 213 (gap 24), up to 30 facts (10 rows) or 15 facts plus Fix it; Fix it box (workbook 2 on, Days 1 to 5, up to 3 items); spare room: In your head box |
 | 2 New idea | the step's name; "Before you ..." or "Try it first. Then see how it works." (U19 on) | NEW IDEA chip (+ "Unit A · new step"); Try this first card (U19 on); worked example panel, two ways or figure + "What's going on"; Spot the error card or Now you card (2 to 4 items) |
 | 3 Practice | "Practice: <step>"; "Watch one. Finish two. Then do the rest on your own." | PRACTICE chip + one-line rule; Watch one panel (1 worked item, answer in blue); "FINISH THESE" (2 items, partly filled in blue); "ON YOUR OWN" (3 to 8 items) |
-| 4 Practice 2 | "More practice: <step>" or "On your own"; "Each row is a little harder than the one before." | PRACTICE chip; rows of items getting harder (up to 12 column problems in a 4-column grid, labelled rows such as "TWO DIGITS", "HARDER: THREE DIGITS", "LOOK FIRST: SOME DON'T NEED A TRADE"); one Solve it two ways item (WAY 1, WAY 2 work boxes + Answer box); one Spot the error card |
+| 4 Practice 2 | "More practice: <step>" or "On your own"; "Each row is a little harder than the one before." | PRACTICE chip; rows of items getting harder (up to 12 column problems in a 4-column grid, labelled rows such as "TWO DIGITS", "HARDER: THREE DIGITS", "LOOK FIRST: SOME DON'T NEED A TRADE"); one Solve it two ways item (heading "Solve it two ways"; METHOD 1 and METHOD 2 work boxes + Answer box); one Spot the error card |
 | 5 Word problems | "<Step> in stories"; "Read it. Work it out in the box. Write the answer." | 3 stories, each: number, story (up to 3 lines), optional picture (dots, blocks), work box, ANSWER box with unit word; one "How do you know?" or "Did you need to ...? How do you know?" with 2 writing lines. Story number in Geist Light 26; stories separated by full-width 1.5 px `#FF6A3D` rules; answer boxes 80 to 96 by 40 |
 | 6 Unit B | the Unit B topic; "Unit B: <topic>. <one-line rule>." | NEW IDEA or REMEMBER chip + "Unit B · new step" or "From yesterday"; reminder panel (figure + "What's going on"); PRACTICE chip; up to 8 items, "HARDER: TWO MORE EACH" rows last |
 | 7 Remember these + Mixed set | "Remember these?"; "Things you learned before, so they stay fresh." | 8 review items in 2 columns (answer boxes at the right of each column); MIXED SET chip + "Tick + or −, then write the answer."; 3 to 4 Mixed set items |
@@ -224,24 +239,32 @@ for 688 by 720; the fit check measures the real height.
   this first first); 3 Practice (Watch one, Finish these, On your own, Solve it two ways, Spot the error); 4 Word problems,
   or **Math in the world** on Days 4 and 9; 5 Unit B (reminder + practice); 6 Remember these? (6 items) + Mixed set (2
   items) + 2 Challenge cards side by side.
-- **10 to 12-page day (U4 to U9) and 4 to 6-page parent-led day (U1 to U3):** not in the samples yet (CONTEXT.md, open
-  question 1). Until Cedric confirms, the generator does not build these levels.
-- **Friday 5 (Days 5 and 10)** and **Show what you know (Day 10):** not in the samples yet (open question 2). Their page
-  type uses the Review colours.
-- **Level test (Day 7 of a level's last workbook):** its own page type, to design with Cedric (CONTEXT.md section 4).
+- **4 to 6-page parent-led day (U1 to U3):** not in the samples yet. Skeleton rules: the parent reads every instruction
+  aloud; instructions are an icon plus a short line; the child answers by circling, matching, colouring, drawing a line
+  or writing one numeral; 6 to 10 items a page; large boxes (at least 56 px). Until Cedric's sample exists, the
+  generator does not build these levels (CONTEXT.md, open question 3).
+- **Friday 5 (Days 5 and 10):** replaces the Mixed set block on page 7: a FRIDAY 5 chip (Mixed set colours) with "5
+  from the last 3 weeks. No hints.", then 5 numbered items, each with its answer box. No sample yet.
+- **Show what you know (Day 10):** one of each of the workbook's steps, and the hardest ones again, framed as a
+  celebration (Review colours). No sample yet.
+- **Level test (Day 7 of a test workbook):** its own page type; every unit, no hints, at least one context question;
+  "Do this on your own." under the title. No sample yet.
 
-### 7.3 Early levels (U1 to U9, from Ava)
+### 7.3 Early levels (U4 to U9, from Ava)
 
 - Bigger maths (Geist Mono 30 to 34 in facts) and fewer items: warm-up 8 facts in 2 columns plus one In your head item.
 - A "For the grown-up:" line under the New idea title ("Read the blue box aloud. Show both ways with a finger ...").
 - Pictures carry the stories: dot groups beside every word problem; ten-frames and number lines in practice.
-- No Mixed set operations beyond + and −; "Tick + or −, then write the answer."
+- The skeleton starts the Warm-up at U8 and the Mixed set at U10, but Ava's U5 sample has both; what fills page 1 at U4
+  to U7 and page 7 at U4 to U9 is open (CONTEXT.md, open question 1). Where a Mixed set is used, + and − only.
+- U4 to U6 are parent-supported: icon instructions, the parent reads on request.
 
 ## 8. Rules the renderer and generator keep
 
 1. The generator fills slots with content data; the renderer owns every position, size, colour and font.
 2. Every answer item has a number, an answer region, and a stored box on the page image (D-187).
-3. Every page shows the header, the footer (QR, page ID, page number, wordmark) and the four scan marks.
+3. Every day page shows the header, the footer (QR, page ID, page number, wordmark) and the four scan marks; the cover,
+   plan and back cover show the footer and the scan marks.
 4. Nothing overflows the content area; a page that does not fit is regenerated, never shrunk.
 5. Clarity comes from instructions and structure, not bigger elements: every choice names its options; every box says
    what goes in it when it is not obvious.
@@ -263,6 +286,8 @@ for 688 by 720; the fit check measures the real height.
 | Watch one radius | 12 (Mateo, Ethan), 10 (Leah), 16 (Ava) | 12 |
 | Story wording | "Mum" | "Mom" (CONTEXT.md section 8) |
 | Footer | page ID only | page ID + page number (D-187) |
+| Two-ways labels | "WAY 1", "WAY 2" | "METHOD 1", "METHOD 2" (skeleton) |
+| Writing line spacing | 34 px apart | first line at least 36 px below the prompt (skeleton) |
 
 ## 10. Cedric's review notes on the Mateo sample (to fix in templates)
 
@@ -270,7 +295,7 @@ From the FigJam stickies beside the Mateo sample:
 
 - Remove notes that say to call the Teaching Assistant or scan the page (done: rule 6).
 - Numbers are not centred in the circles of the white spaces (centre digits in number badges and dots).
-- Not enough space on the "How do you know?" line in one place (keep lines at least 34 px apart, 2 lines minimum).
+- Not enough space on the "How do you know?" line in one place (the first line at least 36 px below the prompt, 2 lines minimum).
 - Boxes that look like they are meant to be filled in when they are not (only answer regions get ink borders; given
   values sit in plain text or tinted panels).
 - "Tick one what?": every choice strip's instruction names the choices, and Mixed set items show both steps clearly.
