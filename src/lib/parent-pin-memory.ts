@@ -25,11 +25,18 @@ export function memoryPinStore(initial: MemoryPinRow[] = []): PinStore & { rows(
       await tick();
       return !!find(parentId);
     },
-    async save(parentId, hash) {
+    async create(parentId, hash) {
+      await tick();
+      if (find(parentId)) return false;
+      rows.push({ parentId, hash, failedAttempts: 0, lockedUntil: null });
+      return true;
+    },
+    async replace(parentId, oldHash, newHash) {
       await tick();
       const row = find(parentId);
-      if (row) Object.assign(row, { hash, failedAttempts: 0, lockedUntil: null });
-      else rows.push({ parentId, hash, failedAttempts: 0, lockedUntil: null });
+      if (!row || row.hash !== oldHash) return false;
+      Object.assign(row, { hash: newHash, failedAttempts: 0, lockedUntil: null });
+      return true;
     },
     async claim(parentId, now, policy: PinPolicy): Promise<PinClaim> {
       await tick();

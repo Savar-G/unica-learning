@@ -32,9 +32,13 @@ function fakeSupabase(database: ReturnType<typeof memoryPinStore>): PinStore {
     if (url.pathname !== "/rest/v1/parent_pins") throw new Error(`unexpected request ${url.pathname}`);
     if (init?.method === "GET") return Response.json((await database.has(eq("parent_id"))) ? { parent_id: eq("parent_id") } : null);
     if (init?.method === "POST") {
-      expect(url.searchParams.get("on_conflict")).toBe("parent_id");
-      await database.save(body.parent_id, body.pin_hash);
-      return new Response(null, { status: 201 });
+      expect(url.searchParams.get("on_conflict")).toBeNull();
+      if (await database.create(body.parent_id, body.pin_hash)) return new Response(null, { status: 201 });
+      return Response.json({ code: "23505", message: "duplicate key value violates unique constraint" }, { status: 409 });
+    }
+    if (init?.method === "PATCH" && body.pin_hash) {
+      const replaced = await database.replace(eq("parent_id"), eq("pin_hash"), body.pin_hash);
+      return Response.json(replaced ? [{ parent_id: eq("parent_id") }] : []);
     }
     if (init?.method === "PATCH") {
       await database.clear(eq("parent_id"));
@@ -59,6 +63,35 @@ function setupWith(open: (database: ReturnType<typeof memoryPinStore>) => PinSto
 
 describe.each(stores)("the PIN module over the %s store", (_, open) => {
   const setup = (): ReturnType<typeof setupWith> => setupWith(open);
+
+  describe("requests at the same time", () => {
+    it("stores one of two first PINs set together; the other must give the stored PIN", async () => {
+      const { pins } = setup();
+      const results = await Promise.all([pins.set(PARENT, "1111"), pins.set(PARENT, "2222")]);
+      expect(results.filter((r) => r.ok)).toHaveLength(1);
+      expect(results.filter((r) => !r.ok)).toEqual([{ ok: false, error: "current_required" }]);
+      const kept = results[0].ok ? "1111" : "2222";
+      expect(await pins.check(PARENT, kept)).toEqual({ ok: true });
+    });
+
+    it("lets only one of two changes made with the same current PIN replace it", async () => {
+      const { pins } = setup();
+      await pins.set(PARENT, "4821");
+      const results = await Promise.all([pins.set(PARENT, "1111", "4821"), pins.set(PARENT, "2222", "4821")]);
+      expect(results.filter((r) => r.ok)).toHaveLength(1);
+      expect(results.filter((r) => !r.ok)).toEqual([{ ok: false, error: "current_required" }]);
+      expect(await pins.check(PARENT, "4821")).toMatchObject({ ok: false, error: "wrong" });
+    });
+
+    it("never replaces a PIN set at the same moment by a request without the current PIN", async () => {
+      const { pins } = setup();
+      await pins.set(PARENT, "4821");
+      const results = await Promise.all([pins.set(PARENT, "1111", "4821"), pins.set(PARENT, "9999")]);
+      expect(results[1]).toEqual({ ok: false, error: "current_required" });
+      expect(await pins.check(PARENT, "1111")).toEqual({ ok: true });
+      expect(await pins.check(PARENT, "9999")).toMatchObject({ ok: false, error: "wrong" });
+    });
+  });
 
   describe("setting a PIN", () => {
     it("has no PIN until the parent sets one, and then accepts it", async () => {

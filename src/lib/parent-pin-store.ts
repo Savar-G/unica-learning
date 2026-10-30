@@ -13,13 +13,20 @@ export function pinStore(admin: SupabaseClient<Database>): PinStore {
       if (error) throw new Error(`pin load: ${error.message}`);
       return !!data;
     },
-    async save(parentId, hash) {
-      // A new hash replaces the old one and starts a fresh count (created_at stays).
-      const { error } = await admin.from("parent_pins").upsert(
-        { parent_id: parentId, pin_hash: hash, failed_attempts: 0, locked_until: null, updated_at: new Date().toISOString() },
-        { onConflict: "parent_id" },
-      );
-      if (error) throw new Error(`pin save: ${error.message}`);
+    async create(parentId, hash) {
+      // Insert only: a parent who already has a PIN keeps it (unique violation 23505 on the primary key).
+      const { error } = await admin.from("parent_pins").insert({ parent_id: parentId, pin_hash: hash });
+      if (error?.code === "23505") return false;
+      if (error) throw new Error(`pin create: ${error.message}`);
+      return true;
+    },
+    async replace(parentId, oldHash, newHash) {
+      // Only while the stored hash is still the verified one; a fresh count (created_at stays).
+      const { data, error } = await admin.from("parent_pins")
+        .update({ pin_hash: newHash, failed_attempts: 0, locked_until: null, updated_at: new Date().toISOString() })
+        .eq("parent_id", parentId).eq("pin_hash", oldHash).select("parent_id");
+      if (error) throw new Error(`pin replace: ${error.message}`);
+      return data.length === 1;
     },
     async claim(parentId, now, policy) {
       const { data, error } = await admin.rpc("claim_pin_attempt", {
