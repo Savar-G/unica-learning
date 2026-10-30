@@ -2082,6 +2082,7 @@ export type Database = {
         Args: { p_answers: Json; p_assessment: string; p_route: string }
         Returns: string
       }
+      parent_reads_workbook: { Args: { p_workbook: string }; Returns: boolean }
       pending_family_payment_operations: {
         Args: { after_id: string; p: string; page_size?: number; token: string }
         Returns: {
