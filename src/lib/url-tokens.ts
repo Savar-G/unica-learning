@@ -14,11 +14,29 @@ export function redactPathTokens(path: string): string {
 export function redactUrlTokens(url: string): string {
   try {
     const parsed = new URL(url);
+    let changed = false;
     const path = redactPathTokens(parsed.pathname);
-    if (path === parsed.pathname) return url;
-    parsed.pathname = path;
-    return parsed.toString();
+    if (path !== parsed.pathname) { parsed.pathname = path; changed = true; }
+    // A query value can hold a QR page too, for example the sign-in page's `next=/tutor/p/<token>` (review R349-4).
+    for (const [key, value] of [...parsed.searchParams.entries()]) {
+      const clean = redactPathTokens(value);
+      if (clean !== value) { parsed.searchParams.set(key, clean); changed = true; }
+    }
+    return changed ? parsed.toString() : url;
   } catch {
     return redactPathTokens(url);
   }
+}
+
+/**
+ * True when an address could carry a QR token anywhere: a /tutor path (the desk and its QR pages), or a query value
+ * that holds one (for example the sign-in page's `next=/tutor/p/<token>`). Encoded forms are read too (review R349-5).
+ */
+export function mayCarryQrToken(url: string): boolean {
+  let parsed: URL;
+  try { parsed = new URL(url, "https://unicalearning.com"); } catch { return true; }
+  const decode = (v: string) => { let d = v; for (let i = 0; i < 3; i += 1) { try { const n = decodeURIComponent(d); if (n === d) break; d = n; } catch { break; } } return d; };
+  if (/^\/+tutor(\/|$)/i.test(decode(parsed.pathname))) return true;
+  for (const value of parsed.searchParams.values()) if (/\/+tutor\/+p\//i.test(decode(value))) return true;
+  return /\/+tutor\/+p\//i.test(decode(parsed.hash));
 }
