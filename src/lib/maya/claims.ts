@@ -36,6 +36,8 @@ export interface StepNumbers {
   known: readonly number[];
   carry: readonly number[];
   write: readonly number[];
+  /** The problem's own unit words ("dollars" in "27 dollars + 39 dollars"): a number with one stays bound to the step. */
+  units?: readonly string[];
 }
 
 /** An exact rational [numerator, denominator], denominator above 0. */
@@ -359,10 +361,13 @@ export function mathClaims(text: string, problems: readonly NamedProblem[] = [],
   const claims: MathClaim[] = [];
   // The tokens of a claim: its numbers are checked by the claim itself, not by the step.
   const claimed: boolean[] = new Array(toks.length).fill(false);
+  // A number that counts something outside the math ("two steps", "2 seconds") is talk, not part of a claim.
+  const counts = toks.map((_, k) => quantityNoun(toks, k) !== null);
+  const isMath = (k: number) => MATH.has(toks[k].t) && !counts[k];
   for (let i = 0; i < toks.length; i++) {
-    if (!MATH.has(toks[i].t)) continue;
+    if (!isMath(i)) continue;
     let j = i;
-    while (j + 1 < toks.length && MATH.has(toks[j + 1].t)) j++;
+    while (j + 1 < toks.length && isMath(j + 1)) j++;
     const run = toks.slice(i, j + 1);
     const [before, after, stop] = [toks[i - 1], toks[j + 1], toks[sentenceEnd[j]]];
     const question = stop?.t === "end" && stop.question;
@@ -408,28 +413,70 @@ export function mathClaims(text: string, problems: readonly NamedProblem[] = [],
   return claims;
 }
 
-/** Words that tell the child to carry, borrow or regroup the number after them ("carry the 1"). */
+/** Words that tell the child to carry, borrow or regroup a number ("carry the 1", "carry forward the 1"). */
 const CARRY = /^(?:carry|carries|carried|carrying|borrow|borrows|borrowed|borrowing|regroup|regroups|regrouped|regrouping|trade|trades|traded|trading)$/;
-/** Words that tell the child to write the number after them ("write the 6"). */
+/** Words that tell the child to write a number ("write the 6", "put a 6 on top"). */
 const WRITE = /^(?:write|writes|wrote|writing|written|put|puts|putting|record|records)$/;
-/** Words between such a word and its number ("carry the 1", "write down a 6"). */
+/** Words that do not change which number a word is about ("carry the 1", "write down a 6"). */
 const FILLER = new Set(["the", "a", "an", "down", "over", "up", "your", "that", "this", "just", "only"]);
+/** Words that end an instruction: the numbers after them are not what it carries or writes. */
+const BREAK = new Set(["then", "so", "but", "because", "when", "if", "which", "since", "while", "now", "after", "before"]);
+/** Words that point at where to carry or write ("write the 6 under the 7"): the number after them is a place. */
+const LOCATION = new Set(["under", "below", "beneath", "above", "beside", "next", "to", "from", "by", "in", "on", "at", "of", "near", "into", "onto", "with", "than", "between"]);
 
 /** Words before a spoken "one" that make it a pronoun ("this one", "which one"), not the number 1. */
 const PRONOUN = new Set(["this", "that", "each", "which", "another", "next", "last", "every", "no", "any", "other", "same"]);
 
 /**
- * The numbers outside every claim, each bound to the step's checked numbers. A number Maya tells the child to carry
- * or to write that the step does not carry or write is false; any other number not among the step's numbers is
- * unsupported. Counting on from one of them (three or more whole numbers in a row with only commas between them, "from
- * nine: ten, eleven, twelve") and a spoken "one" that is not a carry or a written digit ("let's do this one") say no
- * value of the step.
+ * Words that count something outside the math: the steps or tries of the work, time, and money. A number with one
+ * ("two steps", "wait 2 seconds", "it costs 2 dollars") is checked as such a count, not as a value of the step. Measures
+ * ("cm", "kg") and "times" are math, and stay bound.
+ */
+const COUNTS = new Set([
+  "step", "steps", "try", "tries", "turn", "turns", "go", "goes", "question", "questions", "page", "pages", "part", "parts", "column", "columns", "row", "rows", "number", "numbers", "digit", "digits",
+  "second", "seconds", "minute", "minutes", "hour", "hours", "day", "days",
+  "dollar", "dollars", "cent", "cents",
+]);
+/** Words between a count and its noun ("two more tries"). */
+const COUNT_FILLER = new Set(["more", "extra", "other", "whole", "short", "small", "big", "quick"]);
+/** Words that name a result: a count in their sentence is a value of the math ("the answer is 65 dollars"). */
+const RESULTS = new Set(["answer", "answers", "total", "totals", "sum", "difference", "product", "quotient", "result", "remainder"]);
+/** The largest count of steps, time or money said as talk. */
+const MAX_COUNT = BigInt(100);
+
+/** The count noun a whole number token comes before ("2 more seconds"), or null. */
+function quantityNoun(toks: Spanned[], k: number): string | null {
+  const x = toks[k];
+  if (x?.t !== "num" || !x.whole) return null;
+  let n = k + 1;
+  while (toks[n]?.t === "word" && COUNT_FILLER.has((toks[n] as { w: string }).w)) n++;
+  const noun = toks[n];
+  return noun?.t === "word" && COUNTS.has(noun.w) ? noun.w : null;
+}
+
+/**
+ * The numbers outside every claim, each bound to the step's checked numbers.
+ *
+ * An instruction to carry or to write runs from its word to the end of its clause (a sentence end, "then", or a comma
+ * or "and" before another verb). Every number in it is what it carries or writes ("carry forward the 7", "write a
+ * small 7", "put a 7 on top"), unless a place word comes before it ("write the 6 under the 7", "... and the 9"), and
+ * must be the step's carry or written digit: anything else is false.
+ *
+ * A number that counts steps, tries, time or money ("we have two steps", "wait 2 seconds", "it costs 2 dollars") is
+ * a count: a whole number up to 100, said away from any operation and any result word, with a noun that is not the
+ * problem's own unit. Any other number not among the step's numbers is unsupported. Counting on from one of them
+ * (three or more whole numbers in a row with only commas between them, "from nine: ten, eleven, twelve") and a spoken
+ * "one" that is not a carry or a written digit ("let's do this one") say no value of the step.
  */
 function stepClaims(text: string, toks: Spanned[], claimed: boolean[], step: StepNumbers): MathClaim[] {
   const ratios = (list: readonly number[]) => list.map(ratioOf).filter((r): r is Ratio => r !== null);
   const [known, carry, write] = [ratios(step.known), ratios(step.carry), ratios([...step.write, ...step.carry])];
+  const units = new Set(step.units ?? []);
   const among = (v: Ratio, list: Ratio[]) => list.some((r) => same(v, r));
+  const word = (k: number) => (toks[k]?.t === "word" ? (toks[k] as { w: string }).w : "");
   const free = (k: number): Tok | null => (toks[k]?.t === "num" && !claimed[k] ? toks[k] : null);
+
+  // Counting on.
   const counted = new Set<number>();
   for (let k = 0; k < toks.length; k++) {
     const x = free(k);
@@ -446,7 +493,34 @@ function stepClaims(text: string, toks: Spanned[], claimed: boolean[], step: Ste
     }
     if (seq.length >= 3) seq.forEach((n) => counted.add(n));
   }
-  const word = (k: number) => (toks[k]?.t === "word" ? (toks[k] as { w: string }).w : "");
+
+  // The instruction each number is in: what it may carry or write, and where the instruction starts.
+  const roles = new Map<number, { allowed: Ratio[]; from: number }>();
+  let verb: { allowed: Ratio[]; from: number } | null = null;
+  let lastIsObject = false;
+  for (let k = 0; k < toks.length; k++) {
+    const x = toks[k];
+    const w = word(k);
+    if (x.t === "end" || BREAK.has(w)) { verb = null; continue; }
+    if (CARRY.test(w) || WRITE.test(w)) { verb = { allowed: CARRY.test(w) ? carry : write, from: x.from }; lastIsObject = false; continue; }
+    if (!verb) continue;
+    if (x.t === "soft" || w === "and") {
+      // The list goes on ("write the 6 and the 1"); another verb or word starts a new clause.
+      let n = k + 1;
+      while (FILLER.has(word(n))) n++;
+      if (toks[n]?.t !== "num") verb = null;
+      continue;
+    }
+    if (x.t !== "num") continue;
+    let r = k - 1;
+    while (FILLER.has(word(r))) r--;
+    const before = toks[r];
+    const place: boolean = LOCATION.has(word(r)) || ((before?.t === "soft" || word(r) === "and") && !lastIsObject);
+    const pronoun = text.slice(x.from, x.to).toLowerCase() === "one" && PRONOUN.has(word(k - 1));
+    lastIsObject = !place && !pronoun;
+    if (lastIsObject) roles.set(k, verb);
+  }
+
   const out: MathClaim[] = [];
   for (let k = 0; k < toks.length; k++) {
     const x = toks[k];
@@ -456,15 +530,34 @@ function stepClaims(text: string, toks: Spanned[], claimed: boolean[], step: Ste
     const sign = toks[k - 1];
     const negative = sign?.t === "op" && sign.op === "-" && (sign.unaryOnly || sign.to === x.from) && !["num", "unit", "rp"].includes(toks[k - 2]?.t ?? "");
     const v: Ratio = negative ? [-x.v[0], x.v[1]] : x.v;
-    const spokenOne = text.slice(x.from, x.to).toLowerCase() === "one";
-    let r = k - 1;
-    while (FILLER.has(word(r))) r--;
-    const role = spokenOne && PRONOUN.has(word(k - 1)) ? null : CARRY.test(word(r)) ? carry : WRITE.test(word(r)) ? write : null;
-    const from = role ? toks[r].from : negative ? sign.from : x.from;
+    const role = roles.get(k);
+    const from = role ? role.from : negative ? sign.from : x.from;
     const claim = (status: MathClaim["status"]) => out.push({ text: text.slice(from, x.to).trim(), status, problem: null, result: false });
     if (role) {
-      if (!among(v, role)) claim("false");
-    } else if (!counted.has(k) && !spokenOne && !among(v, known)) claim("unsupported");
+      if (!among(v, role.allowed)) claim("false");
+      continue;
+    }
+    if (counted.has(k) || text.slice(x.from, x.to).toLowerCase() === "one" || among(v, known) || isCount(text, toks, k, units)) continue;
+    claim("unsupported");
   }
   return out;
+}
+
+/** The number at k counts steps, tries, time or money as talk (see stepClaims), away from the problem's math. */
+function isCount(text: string, toks: Spanned[], k: number, units: ReadonlySet<string>): boolean {
+  const x = toks[k];
+  const noun = quantityNoun(toks, k);
+  if (x.t !== "num" || noun === null || units.has(noun) || x.v[0] < ZERO || x.v[0] > MAX_COUNT) return false;
+  let n = k + 1;
+  while (toks[n]?.t === "word" && (toks[n] as { w: string }).w !== noun) n++;
+  const near = [toks[k - 1], toks[n + 1]];
+  if (near.some((t) => t?.t === "op" || t?.t === "lp" || t?.t === "rp" || t?.t === "sym" || t?.t === "rel")) return false;
+  // No result word in the same sentence, as a word or as an "equals" ("the total is", "it totals").
+  for (const d of [-1, 1]) {
+    for (let m = k + d; toks[m] && toks[m].t !== "end"; m += d) {
+      const words = text.slice(toks[m].from, toks[m].to).toLowerCase().split(/[^a-z]+/);
+      if ((toks[m].t === "word" || toks[m].t === "eq") && words.some((w) => RESULTS.has(w))) return false;
+    }
+  }
+  return true;
 }

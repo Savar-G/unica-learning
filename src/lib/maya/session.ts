@@ -20,13 +20,14 @@ import { MAX_HINTS, MAX_TIME_MS, type NewLearningEvent } from "@/lib/learning-ev
 import {
   checkQuestionPackage,
   equivalent,
+  hasOperation,
   isRightAnswer,
   sameValue,
   valueText,
   type AnswerValue,
   type Operation,
   type OperationKind,
-  type QuestionPackage,
+  type OperationPackage,
   type WorkedStep,
 } from "@/lib/question-package";
 import { mathClaims, type MathClaim, type MathOp, type NamedProblem, type StepNumbers } from "./claims";
@@ -263,7 +264,7 @@ export interface Session {
   state: SessionState;
   /** The teaching state an interrupt returns to. */
   resume: Teaching | null;
-  package: QuestionPackage | null;
+  package: OperationPackage | null;
   contentProblem: string | null;
   startedAt: number | null;
   now: number | null;
@@ -320,15 +321,16 @@ export interface Session {
 
 export function createSession(input: { callId: string; package: unknown }): Session {
   const check = checkQuestionPackage(input.package);
-  const teachable = check.ok && TEACHABLE_KINDS.includes(check.package.operation.kind);
-  const pkg = check.ok ? structuredClone(check.package) : null;
+  // An item with no operation (a place-value or a drawing item) has no worked steps to teach from: it is held.
+  const pkg = check.ok && hasOperation(check.package) ? structuredClone(check.package) : null;
+  const teachable = pkg !== null && TEACHABLE_KINDS.includes(pkg.operation.kind);
   return {
     version: 3,
     callId: input.callId,
     state: "READY",
     resume: null,
     package: teachable ? pkg : null,
-    contentProblem: !check.ok ? check.reason : teachable ? null : `Maya cannot teach ${pkg!.operation.kind} questions yet`,
+    contentProblem: !check.ok ? check.reason : teachable ? null : `Maya cannot teach ${pkg ? `${pkg.operation.kind} questions` : "items with no operation"} yet`,
     startedAt: null,
     now: null,
     expect: "nothing",
@@ -459,7 +461,7 @@ function checkedNumbers(step: WorkedStep): { known: number[]; carry: number[]; w
 }
 
 /** The value is the number a worked step of the child's question makes, and no known wrong final answer. */
-const answersAStep = (pkg: QuestionPackage, value: AnswerValue) =>
+const answersAStep = (pkg: OperationPackage, value: AnswerValue) =>
   workSteps(pkg.steps).some((st) => stepAnswers(st).some((v) => equivalent(v, value))) && !pkg.wrongAnswers.some((w) => equivalent(w.value, value));
 
 /** The number speech-to-text may mistake a teen or a ten for, to confirm what the child said ("fifteen or fifty?"). */
@@ -482,16 +484,24 @@ function turnNumbers(s: Session, p: Proposal | null): StepNumbers | undefined {
     ...[...s.turns.filter((t) => t.speaker === "child").flatMap((t) => [t.text, ...(t.alternatives ?? [])]), s.turn?.text ?? ""].flatMap((t) => valuesIn(t))];
   const said = values.flatMap((v) => (v.type === "number" ? [v.value] : []));
   const known = [...operandsOf(pkg.operation), ...operandsOf(pkg.easierExample.operation), ...said, ...said.flatMap(soundsLike), ...facts.flatMap((f) => [...f.known, ...f.carry])];
-  return { known: [...new Set(known)], carry: [...new Set(facts.flatMap((f) => f.carry))], write: [...new Set(facts.flatMap((f) => f.write))] };
+  // The problem's own unit words: the answer's unit and every word right after a number in either question.
+  const units = [pkg.answer.unit, ...[pkg.text, pkg.easierExample.text].flatMap((t) => [...t.matchAll(/\d\s*([a-z]+)/gi)].map((m) => m[1]))]
+    .filter((u): u is string => typeof u === "string").map((u) => u.toLowerCase());
+  return {
+    known: [...new Set(known)],
+    carry: [...new Set(facts.flatMap((f) => f.carry))],
+    write: [...new Set(facts.flatMap((f) => f.write))],
+    units: [...new Set(units.flatMap((u) => [u, u.endsWith("s") ? u.slice(0, -1) : `${u}s`]))],
+  };
 }
 
-const problemOf = (pkg: QuestionPackage, problem: Problem) =>
+const problemOf = (pkg: OperationPackage, problem: Problem) =>
   problem === "target"
     ? { operation: pkg.operation, steps: pkg.steps, answer: pkg.answer }
     : { operation: pkg.easierExample.operation, steps: pkg.easierExample.steps, answer: { value: pkg.easierExample.answer, accepted: [], unit: null } };
 
 /** The first target step the child has not done ("result" when every step is done). */
-const currentStep = (pkg: QuestionPackage, done: readonly string[]) => workSteps(pkg.steps).find((s) => !done.includes(s.id))?.id ?? "result";
+const currentStep = (pkg: OperationPackage, done: readonly string[]) => workSteps(pkg.steps).find((s) => !done.includes(s.id))?.id ?? "result";
 
 /** The operation symbol of a kind, as equations write it. */
 const SYMBOL: Partial<Record<OperationKind, MathOp>> = {
@@ -560,7 +570,7 @@ function priorityOf(raw: unknown): Pick<Reading, "safety" | "stop" | "unclear" |
 }
 
 /** The problems Maya may name in a statement: the child's question (index 0) and the easier example. */
-const namedProblems = (pkg: QuestionPackage): NamedProblem[] =>
+const namedProblems = (pkg: OperationPackage): NamedProblem[] =>
   [pkg.operation, pkg.easierExample.operation].flatMap((op) => {
     const [symbol, [a, b, ...rest]] = [SYMBOL[op.kind], operandsOf(op)];
     return symbol && a !== undefined && b !== undefined && rest.length === 0 ? [{ symbol, operands: [a, b] as const }] : [];
