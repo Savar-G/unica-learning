@@ -1,6 +1,6 @@
 import { createClient } from "@supabase/supabase-js";
 import { describe, expect, it } from "vitest";
-import { QUESTION_PACKAGE_VERSION } from "@/lib/question-package";
+import { QUESTION_PACKAGE_VERSION, type Item } from "@/lib/question-package";
 import type { WorkbookInput, WorkbookStore } from "@/lib/workbook-content";
 import { sampleWorkbook } from "@/lib/workbook-sample";
 import { workbookStore } from "@/lib/workbook-store";
@@ -134,11 +134,11 @@ describe.each(stores)("the %s workbook store", (_name, make) => {
     const result = await store.question({ source: "workbook", workbookId: WORKBOOK, page: 2, question: 3 });
     if (result.status !== "found") throw new Error(`expected a package, got ${JSON.stringify(result)}`);
     expect(result.package.text).toBe("419 + 193 = ?");
-    expect(result.package.answer.value).toEqual({ type: "number", value: 612 });
+    expect(result.package.answer?.value).toEqual({ type: "number", value: 612 });
     expect(result.package.ref).toEqual({ source: "workbook", workbookId: WORKBOOK, page: 2, question: 3 });
-    expect(result.package.easierExample.text).toBe("57 + 26 = ?");
+    expect(result.package.easierExample?.text).toBe("57 + 26 = ?");
     const subtraction = await store.question({ source: "workbook", workbookId: WORKBOOK, page: 3, question: 2 });
-    expect(subtraction.status === "found" && subtraction.package.answer.value).toEqual({ type: "number", value: 448 });
+    expect(subtraction.status === "found" && subtraction.package.answer?.value).toEqual({ type: "number", value: 448 });
   });
 
   it("does not find a question, page or workbook that is not there", async () => {
@@ -187,7 +187,7 @@ describe.each(stores)("the %s workbook store", (_name, make) => {
     ["a page number used twice", (w: WorkbookInput) => { w.pages[2].number = 2; }, /page number 2 is used twice/],
     ["a question number used twice on a page", (w: WorkbookInput) => { w.pages[1].questions[1].number = 1; }, /question number 1 is used twice on page 2/],
     ["a package that names another place", (w: WorkbookInput) => { w.pages[1].questions[0].package.ref = { source: "workbook", workbookId: WORKBOOK, page: 3, question: 1 }; }, /names page 3, question 1/],
-    ["a package with a wrong answer", (w: WorkbookInput) => { w.pages[1].questions[0].package.answer.value = { type: "number", value: 424 }; }, /page 2, question 1: the question's answer is not what its operation gives/],
+    ["a package with a wrong answer", (w: WorkbookInput) => { w.pages[1].questions[0].package.answer!.value = { type: "number", value: 424 }; }, /page 2, question 1: the question's answer is not what its operation gives/],
     ["a box outside the page image", (w: WorkbookInput) => { w.pages[1].questions[3].box.y = 900; }, /page 2, question 4: the box is not inside the page image/],
     ["a page with questions and no image", (w: WorkbookInput) => { w.pages[1].image = null; }, /page 2 has questions but no image/],
     ["a QR token used twice", (w: WorkbookInput) => { w.pages[2].qrToken = w.pages[1].qrToken; }, /a QR token is used twice/],
@@ -254,10 +254,22 @@ describe("the Supabase workbook store reading stored packages", () => {
     return store.question({ source: "workbook", workbookId: WORKBOOK, page: 2, question: 1 });
   }
 
-  it("says content unavailable for a package of another schema version", async () => {
+  it("says content unavailable for a package of a schema version code cannot read", async () => {
     expect(await stored((r) => { r.schema_version = QUESTION_PACKAGE_VERSION + 1; })).toEqual({
-      status: "unavailable", reason: "invalid-package", detail: `the stored package is schema version ${QUESTION_PACKAGE_VERSION + 1}, not ${QUESTION_PACKAGE_VERSION}`,
+      status: "unavailable", reason: "invalid-package", detail: `code cannot read question packages of version ${QUESTION_PACKAGE_VERSION + 1}`,
     });
+  });
+
+  it("reads a package stored in version 1, before items (#362)", async () => {
+    const read = await stored((r) => { r.schema_version = 1; });
+    expect(read.status === "found" && read.package.text).toBe("268 + 157 = ?");
+  });
+
+  it("says content unavailable for a version 1 package with an item", async () => {
+    expect(await stored((r) => {
+      r.schema_version = 1;
+      (r.package as { item: unknown }).item = MIXED_SET_ITEM;
+    })).toEqual({ status: "unavailable", reason: "invalid-package", detail: "a version 1 package has no item" });
   });
 
   it("says content unavailable for a stored package that does not pass the check", async () => {
@@ -269,6 +281,62 @@ describe("the Supabase workbook store reading stored packages", () => {
   it("says content unavailable for a stored package that names another place", async () => {
     expect(await stored((r) => { (r.package as { ref: { question: number } }).ref.question = 4; })).toEqual({
       status: "unavailable", reason: "invalid-package", detail: "the stored package names page 2, question 4",
+    });
+  });
+});
+
+/** Page 2, question 1 (268 + 157) as a Mixed set item: tick the operation, write the answer, show your work. */
+const MIXED_SET_ITEM: Item = {
+  format: "tick-and-number", scorable: true, parentChecked: false,
+  regions: [
+    { id: "operation", kind: "choice", mark: "tick", label: "Tick the operation:", choices: ["+", "−"], answer: "+" },
+    { id: "answer", kind: "box", label: "Write the answer:", answer: { type: "number", value: 425 } },
+    { id: "work", kind: "work", label: "SHOW YOUR WORK" },
+  ],
+  checks: [{ kind: "operation-sign", region: "operation" }, { kind: "operation", region: "answer" }],
+  error: null,
+};
+
+/** A "How do you know?" item with no operation: not scored, so code does not check it. */
+const WRITTEN_REASON = {
+  text: "Is 18 even? How do you know?",
+  answer: null, operation: null, steps: [], wrongAnswers: [], easierExample: null,
+  item: {
+    format: "written-reason", scorable: false, parentChecked: false,
+    regions: [{ id: "reason", kind: "lines", label: "How do you know?" }], checks: [], error: null,
+  } satisfies Item,
+};
+
+describe.each(stores)("the %s workbook store with item formats (#362)", (_name, make) => {
+  it("stores a question with its item and reads it back", async () => {
+    const store = make();
+    const input = sample();
+    input.pages[1].questions[0].package.item = MIXED_SET_ITEM;
+    expect(await store.write(input)).toEqual({ status: "written", workbookId: WORKBOOK });
+    const read = await store.question({ source: "workbook", workbookId: WORKBOOK, page: 2, question: 1 });
+    expect(read.status === "found" && read.package.item).toEqual(MIXED_SET_ITEM);
+  });
+
+  it("stores an item code does not mark, such as a written reason, and reads it back as found", async () => {
+    const store = make();
+    const input = sample();
+    input.pages[1].questions[0].package = { ...input.pages[1].questions[0].package, ...WRITTEN_REASON };
+    expect(await store.write(input)).toEqual({ status: "written", workbookId: WORKBOOK });
+    const read = await store.question({ source: "workbook", workbookId: WORKBOOK, page: 2, question: 1 });
+    expect(read.status === "found" && read.package.item).toEqual(WRITTEN_REASON.item);
+  });
+
+  it("refuses an unscorable item that says it is scorable", async () => {
+    const input = sample();
+    input.pages[1].questions[0].package = { ...input.pages[1].questions[0].package, ...WRITTEN_REASON, item: { ...WRITTEN_REASON.item, scorable: true } };
+    expect(await make().write(input)).toEqual({ status: "refused", reason: "page 2, question 1: a written-reason item is never scorable" });
+  });
+
+  it("refuses a question whose item has a wrong answer", async () => {
+    const input = sample();
+    input.pages[1].questions[0].package.item = { ...MIXED_SET_ITEM, regions: MIXED_SET_ITEM.regions.map((r) => (r.kind === "choice" ? { ...r, answer: "−" } : r)) };
+    expect(await make().write(input)).toEqual({
+      status: "refused", reason: "page 2, question 1: the region \"operation\" holds −, but the operation's sign is +",
     });
   });
 });

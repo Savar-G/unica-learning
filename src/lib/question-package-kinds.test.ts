@@ -7,7 +7,7 @@ import {
   workedSteps,
   type AnswerValue,
   type Operation,
-  type QuestionPackage,
+  type OperationPackage,
   type WorkedStep,
 } from "@/lib/question-package";
 
@@ -21,7 +21,7 @@ const mixed = (whole: number, numerator: number, denominator: number) => ({ type
 const parts = (numerator: number, denominator: number) => ({ numerator, denominator });
 
 /** A package for an operation, with a hand-written answer; the steps come from workedSteps, pinned below by hand. */
-function packageOf(operation: Operation, answer: AnswerValue, easier: Operation, easierAnswer: AnswerValue, standard: string): QuestionPackage {
+function packageOf(operation: Operation, answer: AnswerValue, easier: Operation, easierAnswer: AnswerValue, standard: string): OperationPackage {
   return {
     id: "wbq-1",
     ref: { source: "workbook", workbookId: "wb-1", page: 3, question: 1 },

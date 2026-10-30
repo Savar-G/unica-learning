@@ -21,3 +21,4 @@ export {
 export { OWNED_GLYPHS, PLACEHOLDER_GLYPHS, type GlyphSet, type Point } from "./glyphs";
 export * from "./types";
 export { BOARD_FONTS, BOARD_GLYPHS, svgFontGlyphs, type BoardFont, type SvgFontData } from "./fonts";
+export type { ModelSpec } from "./model";
