@@ -1,9 +1,7 @@
 import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { isUuid } from "@/lib/assessment-store";
 import type { Database } from "@/lib/database";
-import { learningEvents, type LearningEvent, type LearningEventStore, type NewLearningEvent } from "@/lib/learning-events";
-import { backfillAssessmentEvents, type BackfillResult } from "@/lib/learning-events-assessment";
+import type { LearningEvent, LearningEventStore, NewLearningEvent } from "@/lib/learning-events";
 
 // The learning events' store (src/lib/learning-events.ts, #302) in Supabase, with the secret key: the service role may
 // only insert into and read public.learning_events (migration add_learning_events); admins read it; parents read
@@ -16,7 +14,11 @@ type Row = Omit<Database["public"]["Tables"]["learning_events"]["Row"], "created
 
 const COLUMNS = "id, idempotency_key, parent_id, child_id, source, question_source, workbook_id, workbook_page, workbook_question, assessment_id, assessment_question_id, skill_standard, skills, result, stuck_step, mistake, hints, time_ms, occurred_at, evidence_kind, evidence_id";
 
-/** PostgREST answers at most 1000 rows a request (the project's max rows), so a range read pages. */
+/**
+ * PostgREST answers at most 1000 rows a request (the project's max rows), so a range read pages, until a page is empty
+ * (a lower max rows only gives shorter pages). An event stored during the read can shift a page by one row, so the read
+ * keeps each id once.
+ */
 const PAGE_SIZE = 1000;
 
 function toRow(e: NewLearningEvent): Database["public"]["Tables"]["learning_events"]["Insert"] {
@@ -73,6 +75,9 @@ export function learningEventStore(admin: SupabaseClient<Database>, { pageSize =
     async insert(event) {
       const { data, error } = await admin.from("learning_events").insert(toRow(event)).select(COLUMNS).single();
       if (!error) return { created: true, event: fromRow(data) };
+      // 23503: the child is not under that parent, or the test is another child's (foreign keys); 55000: the family
+      // write fence (family_unavailable, family_scope).
+      if (error.code === "23503" || error.code === "55000") return { refused: error.message };
       // 23505: the key is stored (a retry, or a write that won a race): give the stored event.
       if (error.code !== "23505") throw new Error(`learning event append: ${error.message}`);
       const stored = await admin.from("learning_events").select(COLUMNS).eq("idempotency_key", event.key).single();
@@ -80,37 +85,17 @@ export function learningEventStore(admin: SupabaseClient<Database>, { pageSize =
       return { created: false, event: fromRow(stored.data) };
     },
     async range(childId, { from, to }) {
-      const events: LearningEvent[] = [];
-      for (let offset = 0; ; offset += pageSize) {
+      const events = new Map<string, LearningEvent>();
+      for (let offset = 0; ; ) {
         const { data, error } = await admin.from("learning_events").select(COLUMNS)
           .eq("child_id", childId).gte("occurred_at", from).lt("occurred_at", to)
           .order("occurred_at", { ascending: true }).order("id", { ascending: true })
           .range(offset, offset + pageSize - 1);
         if (error) throw new Error(`learning events load: ${error.message}`);
-        events.push(...data.map(fromRow));
-        if (data.length < pageSize) return events;
+        if (data.length === 0) return [...events.values()];
+        for (const row of data) events.set(row.id, fromRow(row));
+        offset += data.length;
       }
     },
   };
-}
-
-/**
- * Appends the learning events of one finished test's answers (src/lib/learning-events-assessment.ts), for one family
- * at a time; there is no backfill of every test. Null when the test is not found or not finished: an unfinished test's
- * answers can still change.
- */
-export async function backfillAssessment(admin: SupabaseClient<Database>, assessmentId: string): Promise<BackfillResult | null> {
-  if (!isUuid(assessmentId)) return null;
-  const test = await admin.from("assessments").select("id, parent_id, child_id, status").eq("id", assessmentId).maybeSingle();
-  if (test.error) throw new Error(`backfill test load: ${test.error.message}`);
-  if (!test.data || test.data.status !== "completed") return null;
-  const answers = await admin.from("answers")
-    .select("id, question_id, template_id, response, correct, misconception, time_ms, answered_at, created_at")
-    .eq("assessment_id", assessmentId).order("position", { ascending: true });
-  if (answers.error) throw new Error(`backfill answers load: ${answers.error.message}`);
-  const owner = { assessmentId, parentId: test.data.parent_id, childId: test.data.child_id };
-  return backfillAssessmentEvents(learningEvents(learningEventStore(admin)), owner, answers.data.map((a) => ({
-    id: a.id, questionId: a.question_id, templateId: a.template_id, response: a.response, correct: a.correct,
-    misconception: a.misconception, timeMs: a.time_ms, answeredAt: a.answered_at, createdAt: a.created_at,
-  })));
 }

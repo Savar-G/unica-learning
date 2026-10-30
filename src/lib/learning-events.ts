@@ -24,7 +24,7 @@
 // has none, and only a wrong answer has a mistake.
 //
 // Times are ISO strings with a time zone; the record keeps them in UTC. A range is from its start (included) to its end
-// (not included). Ids are UUIDs. The store seam (LearningEventStore) has two adapters: Supabase
+// (not included). Ids are UUIDs, kept in lower case as Postgres gives them. The store seam (LearningEventStore) has two adapters: Supabase
 // (src/lib/learning-events-store.ts, the secret key) and in memory (src/lib/learning-events-memory.ts).
 // Pure TypeScript: no Next.js, React, network, database or clock.
 import { BC_SKILL_MAP } from "@/lib/assessment";
@@ -67,7 +67,9 @@ export interface LearningEvent extends NewLearningEvent {
 export type AppendResult =
   | { ok: true; created: boolean; event: LearningEvent }
   | { ok: false; error: "invalid"; reason: string }
-  | { ok: false; error: "key_conflict"; event: LearningEvent };
+  | { ok: false; error: "key_conflict"; event: LearningEvent }
+  /** The child is not under that parent, or the test is another child's, or the family's deletion is requested. */
+  | { ok: false; error: "family_refused"; reason: string };
 
 /** From (included) to (not included), ISO times with a time zone. */
 export interface TimeRange {
@@ -77,8 +79,12 @@ export interface TimeRange {
 
 /** The store seam. The module checks every event before it calls insert, and every range before range. */
 export interface LearningEventStore {
-  /** Stores the event, unless an event with its key is stored: then gives that one (created: false) and stores nothing. */
-  insert(event: NewLearningEvent): Promise<{ created: boolean; event: LearningEvent }>;
+  /**
+   * Stores the event, unless an event with its key is stored: then gives that one (created: false) and stores nothing.
+   * Refuses an event whose child is not under its parent, whose test is another child's, or whose family's deletion is
+   * requested (the family write fence).
+   */
+  insert(event: NewLearningEvent): Promise<{ created: boolean; event: LearningEvent } | { refused: string }>;
   /** One child's events in the range, by time and then id. */
   range(childId: string, range: TimeRange): Promise<LearningEvent[]>;
 }
@@ -94,14 +100,16 @@ export function learningEvents(store: LearningEventStore): LearningEvents {
     async append(input) {
       const checked = checkEvent(input);
       if (typeof checked === "string") return { ok: false, error: "invalid", reason: checked };
-      const { created, event: stored } = await store.insert(checked);
+      const inserted = await store.insert(checked);
+      if ("refused" in inserted) return { ok: false, error: "family_refused", reason: inserted.refused };
+      const { created, event: stored } = inserted;
       if (!created && !sameEvent(stored, checked)) return { ok: false, error: "key_conflict", event: stored };
       return { ok: true, created, event: stored };
     },
     async read(childId, range) {
       const [from, to] = [utc(range.from), utc(range.to)];
       if (!from || !to || from >= to) throw new RangeError(`learning events: the range ${range.from} to ${range.to} does not end after it starts`);
-      return UUID.test(childId) ? store.range(childId, { from, to }) : [];
+      return UUID.test(childId) ? store.range(childId.toLowerCase(), { from, to }) : [];
     },
   };
 }
@@ -141,6 +149,9 @@ function utc(time: unknown): string | null {
 const text = (v: unknown, max: number): v is string => typeof v === "string" && v.length >= 1 && v.length <= max && !/[\u0000-\u001f]/.test(v);
 const whole = (v: unknown, min: number, max: number): v is number => Number.isInteger(v) && (v as number) >= min && (v as number) <= max;
 
+/** The reference with its id in lower case. The reference must be valid (questionProblem). */
+const lowerRef = (q: QuestionRef): QuestionRef => (q.source === "workbook" ? { ...q, workbookId: q.workbookId.toLowerCase() } : { ...q, assessmentId: q.assessmentId.toLowerCase() });
+
 function questionProblem(q: QuestionRef): string | null {
   if (q?.source === "workbook") {
     if (!UUID.test(String(q.workbookId))) return "a workbook question needs the workbook's id";
@@ -154,7 +165,7 @@ function questionProblem(q: QuestionRef): string | null {
   return "the question reference is not a workbook or an assessment question";
 }
 
-/** The event as the record keeps it (its time in UTC), or why it cannot be kept. */
+/** The event as the record keeps it (its ids in lower case, its time in UTC), or why it cannot be kept. */
 function checkEvent(e: NewLearningEvent): NewLearningEvent | string {
   if (!text(e.key, 200)) return "the idempotency key must be 1 to 200 characters";
   if (!UUID.test(String(e.parentId)) || !UUID.test(String(e.childId))) return "the parent and the child need their ids";
@@ -172,5 +183,5 @@ function checkEvent(e: NewLearningEvent): NewLearningEvent | string {
   const occurredAt = utc(e.occurredAt);
   if (!occurredAt) return "the time it happened must be an ISO time with its time zone";
   if (e.evidence !== null && (!EVIDENCE.includes(e.evidence?.kind) || !text(e.evidence.id, 100))) return "the evidence needs its kind and its id";
-  return { ...e, occurredAt };
+  return { ...e, parentId: e.parentId.toLowerCase(), childId: e.childId.toLowerCase(), question: lowerRef(e.question), occurredAt };
 }

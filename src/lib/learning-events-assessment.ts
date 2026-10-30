@@ -9,7 +9,7 @@
 // (answers before #184). A time spent longer than the record keeps is left out (null). Answers of the removed extra
 // round (D-145) and of a template no longer in the bank are skipped and named in the result.
 // Pure TypeScript: no Next.js, React, network, database or clock. The Supabase reader of a test's answers is in
-// src/lib/learning-events-store.ts.
+// src/lib/learning-events-assessment-store.ts.
 import { BANKS, fromRemovedRound, templateSkills } from "@/lib/assessment";
 import { MAX_TIME_MS, type LearningEvents, type NewLearningEvent } from "@/lib/learning-events";
 

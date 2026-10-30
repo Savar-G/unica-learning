@@ -7,6 +7,7 @@ import { memoryLearningEventStore } from "@/lib/learning-events-memory";
 // exist, read back by child and time; a second backfill of the same test adds none.
 
 const TEST = { assessmentId: "00000000-0000-4000-8000-0000000000e1", parentId: "00000000-0000-4000-8000-0000000000a1", childId: "00000000-0000-4000-8000-0000000000c1" };
+const FAMILIES = { children: [{ id: TEST.childId, parentId: TEST.parentId }], tests: [{ id: TEST.assessmentId, childId: TEST.childId }] };
 const DAY = { from: "2026-10-29T00:00:00.000Z", to: "2026-10-30T00:00:00.000Z" };
 
 const answer = (over: Partial<AssessmentAnswer>): AssessmentAnswer => ({
@@ -44,7 +45,7 @@ const base = (questionId: string, id: string) => ({
 
 describe("events from assessment answers", () => {
   it("writes one event per answer the record can name a skill for, and reads them back by child and time", async () => {
-    const events = learningEvents(memoryLearningEventStore());
+    const events = learningEvents(memoryLearningEventStore(FAMILIES));
     const done = await backfillAssessmentEvents(events, TEST, ANSWERS);
     expect(done).toEqual({
       appended: 3,
@@ -63,7 +64,7 @@ describe("events from assessment answers", () => {
   });
 
   it("adds no event when the same test is backfilled again", async () => {
-    const events = learningEvents(memoryLearningEventStore());
+    const events = learningEvents(memoryLearningEventStore(FAMILIES));
     await backfillAssessmentEvents(events, TEST, ANSWERS);
     const again = await backfillAssessmentEvents(events, TEST, ANSWERS);
     expect(again).toEqual(expect.objectContaining({ appended: 0, alreadyStored: 3 }));
@@ -71,7 +72,7 @@ describe("events from assessment answers", () => {
   });
 
   it("keeps the event with no time spent when the stored time is longer than a day", async () => {
-    const events = learningEvents(memoryLearningEventStore());
+    const events = learningEvents(memoryLearningEventStore(FAMILIES));
     await backfillAssessmentEvents(events, TEST, [answer({ timeMs: 90_000_000 })]);
     expect(await events.read(TEST.childId, DAY)).toEqual([expect.objectContaining({ timeMs: null, result: "right" })]);
   });

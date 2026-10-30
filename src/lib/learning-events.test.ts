@@ -2,7 +2,8 @@ import { createClient } from "@supabase/supabase-js";
 import { describe, expect, it, vi } from "vitest";
 import { learningEvents, type NewLearningEvent } from "@/lib/learning-events";
 import { memoryLearningEventStore } from "@/lib/learning-events-memory";
-import { backfillAssessment, learningEventStore } from "@/lib/learning-events-store";
+import { backfillAssessment } from "@/lib/learning-events-assessment-store";
+import { learningEventStore } from "@/lib/learning-events-store";
 
 vi.mock("server-only", () => ({}));
 
@@ -14,6 +15,9 @@ const PARENT = "00000000-0000-4000-8000-0000000000a1";
 const CHILD = "00000000-0000-4000-8000-0000000000c1";
 const WORKBOOK = "00000000-0000-4000-8000-0000000000b1";
 const OTHER_CHILD = "00000000-0000-4000-8000-0000000000c2";
+const TEST = "00000000-0000-4000-8000-0000000000e1";
+const FENCED_PARENT = "00000000-0000-4000-8000-0000000000a2";
+const FENCED_CHILD = "00000000-0000-4000-8000-0000000000c3";
 const DAY = { from: "2026-10-29T00:00:00.000Z", to: "2026-10-30T00:00:00.000Z" };
 
 /** A call on page 3, question 2 of a workbook: right after one hint. */
@@ -34,12 +38,22 @@ const callEvent = (over: Partial<NewLearningEvent> = {}): NewLearningEvent => ({
   ...over,
 });
 
+/** The families both stores know: a child under its parent, and a family whose deletion is requested. */
+const FAMILIES = {
+  children: [{ id: CHILD, parentId: PARENT }, { id: OTHER_CHILD, parentId: PARENT }, { id: FENCED_CHILD, parentId: FENCED_PARENT }],
+  tests: [{ id: TEST, childId: CHILD }],
+  deleting: [FENCED_PARENT],
+};
+const UUID_COLUMNS = ["parent_id", "child_id", "workbook_id", "assessment_id"];
+
 /**
- * A fake PostgREST with one table, public.learning_events: an insert that a stored idempotency key refuses (409, code
- * 23505, as the unique constraint does), and reads that apply eq, gte and lt filters, the order and the offset and limit.
- * Times come back as Postgres writes them ("+00:00"), not as they were sent.
+ * A fake PostgREST with one table, public.learning_events, that keeps the database's rules: a stored idempotency key
+ * refuses an insert (409, code 23505, the unique constraint), a child that is not under the parent refuses it (409,
+ * 23503, the foreign key), and so does a family being deleted (400, 55000, the family write fence). Reads apply eq, gte
+ * and lt filters, the order and the offset and limit. Ids and times come back as Postgres writes them (lower case,
+ * "+00:00"), not as they were sent; uuid filters ignore case, as a uuid column does. Other tables are read only.
  */
-function fakeDb(pageSize: number, tables: Record<string, Record<string, unknown>[]> = {}) {
+function fakeDb(tables: Record<string, Record<string, unknown>[]> = {}) {
   const rows: Record<string, unknown>[] = [];
   let next = 0;
   const pg = (iso: unknown) => (typeof iso === "string" ? new Date(iso).toISOString().replace(".000Z", "+00:00").replace("Z", "+00:00") : iso);
@@ -51,6 +65,14 @@ function fakeDb(pageSize: number, tables: Record<string, Record<string, unknown>
     const answer = (found: Record<string, unknown>[]) => (accept ? Response.json(found[0]) : Response.json(found));
     if (init?.method === "POST") {
       const row = JSON.parse(String(init.body));
+      for (const column of UUID_COLUMNS) if (typeof row[column] === "string") row[column] = row[column].toLowerCase();
+      if (FAMILIES.deleting.includes(row.parent_id)) return Response.json({ code: "55000", message: "family_unavailable" }, { status: 400 });
+      if (!FAMILIES.children.some((c) => c.id === row.child_id && c.parentId === row.parent_id)) {
+        return Response.json({ code: "23503", message: "insert or update on table \"learning_events\" violates foreign key constraint" }, { status: 409 });
+      }
+      if (row.assessment_id !== null && !FAMILIES.tests.some((t) => t.id === row.assessment_id && t.childId === row.child_id)) {
+        return Response.json({ code: "23503", message: "insert or update on table \"learning_events\" violates foreign key constraint" }, { status: 409 });
+      }
       if (rows.some((r) => r.idempotency_key === row.idempotency_key)) {
         return Response.json({ code: "23505", message: "duplicate key value violates unique constraint" }, { status: 409 });
       }
@@ -65,7 +87,8 @@ function fakeDb(pageSize: number, tables: Record<string, Record<string, unknown>
         const [op, ...rest] = test.split(".");
         const value = rest.join(".");
         const at = (r: Record<string, unknown>) => Date.parse(String(r[column]));
-        if (op === "eq") found = found.filter((r) => String(r[column]) === value);
+        const same = (r: Record<string, unknown>) => (UUID_COLUMNS.includes(column) ? String(r[column]).toLowerCase() === value.toLowerCase() : String(r[column]) === value);
+        if (op === "eq") found = found.filter(same);
         else if (op === "gte") found = found.filter((r) => at(r) >= Date.parse(value));
         else if (op === "lt") found = found.filter((r) => at(r) < Date.parse(value));
         else throw new Error(`unexpected filter ${column}=${test}`);
@@ -83,10 +106,10 @@ function fakeDb(pageSize: number, tables: Record<string, Record<string, unknown>
   return db;
 }
 
-const fakePostgrest = (pageSize: number) => learningEvents(learningEventStore(fakeDb(pageSize), { pageSize }));
+const fakePostgrest = (pageSize: number) => learningEvents(learningEventStore(fakeDb(), { pageSize }));
 
 function memory() {
-  return learningEvents(memoryLearningEventStore());
+  return learningEvents(memoryLearningEventStore(FAMILIES));
 }
 
 describe.each([["Supabase", () => fakePostgrest(2)], ["in-memory", memory]] as const)("learning events in the %s store", (_, open) => {
@@ -165,6 +188,25 @@ describe.each([["Supabase", () => fakePostgrest(2)], ["in-memory", memory]] as c
     expect(await events.append(blank)).toEqual({ ok: true, created: true, event: { ...blank, id: expect.any(String) } });
   });
 
+  it("keeps ids in lower case, so a retry or a read with upper-case ids finds the same event", async () => {
+    const events = open();
+    const upper = callEvent({ parentId: PARENT.toUpperCase(), childId: CHILD.toUpperCase(), question: { source: "workbook", workbookId: WORKBOOK.toUpperCase(), page: 3, question: 2 } });
+    const first = await events.append(upper);
+    expect(first).toEqual({ ok: true, created: true, event: { ...callEvent(), id: expect.any(String) } });
+    expect(await events.append(upper)).toEqual({ ok: true, created: false, event: first.ok && first.event });
+    expect(await events.read(CHILD.toUpperCase(), DAY)).toEqual([first.ok && first.event]);
+  });
+
+  it("refuses an event for a child of another parent, on another child's test, and for a family being deleted", async () => {
+    const events = open();
+    expect(await events.append(callEvent({ childId: FENCED_CHILD }))).toEqual({ ok: false, error: "family_refused", reason: expect.any(String) });
+    expect(await events.append(callEvent({ key: "fenced", parentId: FENCED_PARENT, childId: FENCED_CHILD }))).toEqual({ ok: false, error: "family_refused", reason: expect.any(String) });
+    const otherChildsTest = callEvent({ key: "other-test", childId: OTHER_CHILD, source: "assessment", question: { source: "assessment", assessmentId: TEST, questionId: "s1-1" }, stuckStep: null, result: "right" });
+    expect(await events.append(otherChildsTest)).toEqual({ ok: false, error: "family_refused", reason: expect.any(String) });
+    expect(await events.read(FENCED_CHILD, DAY)).toEqual([]);
+    expect(await events.read(OTHER_CHILD, DAY)).toEqual([]);
+  });
+
   it("refuses a range that does not end after it starts", async () => {
     const events = open();
     await expect(events.read(CHILD, { from: DAY.to, to: DAY.from })).rejects.toThrow(RangeError);
@@ -173,7 +215,6 @@ describe.each([["Supabase", () => fakePostgrest(2)], ["in-memory", memory]] as c
 });
 
 describe("the backfill of one test from the database", () => {
-  const TEST = "00000000-0000-4000-8000-0000000000e1";
   const test = (status: string) => ({ id: TEST, parent_id: PARENT, child_id: CHILD, status });
   const answers = [
     { id: "00000000-0000-4000-8000-000000000101", assessment_id: TEST, position: 1, question_id: "s1-1", template_id: "2-add-2-digit", response: "85", correct: true, misconception: null, time_ms: 21_000, answered_at: "2026-10-29T15:00:21+00:00", created_at: "2026-10-29T15:00:22+00:00" },
@@ -181,7 +222,7 @@ describe("the backfill of one test from the database", () => {
   ];
 
   it("writes the events of a finished test's answers, and none on a second run", async () => {
-    const db = fakeDb(1000, { assessments: [test("completed")], answers });
+    const db = fakeDb({ assessments: [test("completed")], answers });
     expect(await backfillAssessment(db, TEST)).toEqual({ appended: 2, alreadyStored: 0, skipped: [] });
     expect(await backfillAssessment(db, TEST)).toEqual({ appended: 0, alreadyStored: 2, skipped: [] });
     const read = await learningEvents(learningEventStore(db)).read(CHILD, DAY);
@@ -192,7 +233,7 @@ describe("the backfill of one test from the database", () => {
   });
 
   it("writes nothing for a test that is not finished", async () => {
-    const db = fakeDb(1000, { assessments: [test("in_progress")], answers });
+    const db = fakeDb({ assessments: [test("in_progress")], answers });
     expect(await backfillAssessment(db, TEST)).toBeNull();
     expect(await learningEvents(learningEventStore(db)).read(CHILD, DAY)).toEqual([]);
   });

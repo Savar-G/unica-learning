@@ -191,4 +191,4 @@ Checked on the live database (29 October 2026), in one transaction that was roll
 | The service role deletes the child | 0 events left |
 | The Auth user is deleted (the deletion's last step) | 0 events left, 0 parent rows |
 
-The backfill (`backfillAssessment` in `src/lib/learning-events-store.ts`) ran once on the hosted database with the secret key for the test family's finished test: 42 events from 42 answers (34 right, 8 wrong), a second run 0 new and 42 already stored, a range read 42. The owner then removed those rows; the table held 0 rows after.
+The backfill (`backfillAssessment` in `src/lib/learning-events-assessment-store.ts`) ran once on the hosted database with the secret key for the test family's finished test: 42 events from 42 answers (34 right, 8 wrong), a second run 0 new and 42 already stored, a range read 42. The owner then removed those rows; the table held 0 rows after.
