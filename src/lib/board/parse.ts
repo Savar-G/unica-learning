@@ -1,7 +1,7 @@
 // Checks one command from the model before anything changes. The model's output is untrusted: a command with an unknown
 // op, a missing or extra field, a coordinate, or a value out of bounds is refused with a reason, never repaired.
 import { refuse, type RefusalBody } from "@/lib/board/representation";
-import { INKS, PLACE_NAMES, type Command, type Place, type Target } from "@/lib/board/types";
+import { CLEAR_SCOPES, INKS, MARK_STYLES, OPERATIONS, PLACE_NAMES, REGROUP_KINDS, type Command, type Place, type Target } from "@/lib/board/types";
 
 const ID = /^[A-Za-z][A-Za-z0-9_-]{0,63}$/;
 const OPS = ["columns", "write", "put", "regroup", "mark", "arrow", "remove", "undo", "clear", "focus"] as const;
@@ -58,9 +58,13 @@ function target(v: unknown, what = "target"): Target {
 }
 
 function placement(v: unknown): Place {
-  const o = object(v, "place", [], ["region", "below", "rightOf"]);
+  const o = object(v, "place", [], ["region", "below", "rightOf", "near", "side"]);
+  if (o.near !== undefined) {
+    object(v, "place", ["near", "side"]);
+    return { near: target(o.near, "place.near"), side: oneOf(o.side, ["right", "below"] as const, "place.side") };
+  }
   const keys = Object.keys(o);
-  if (keys.length !== 1) fail('place needs exactly one of "region", "below" or "rightOf".');
+  if (keys.length !== 1) fail('place needs exactly one of "region", "below", "rightOf" or "near" with "side".');
   if (keys[0] === "region") return { region: oneOf(o.region, ["main"] as const, "place.region") };
   if (keys[0] === "below") return { below: id(o.below, "place.below") };
   return { rightOf: id(o.rightOf, "place.rightOf") };
@@ -86,7 +90,7 @@ function parse(raw: unknown): Command {
         if (!/^(0|[1-9]\d*)$/.test(value)) fail(`operand ${i + 1} value must be a whole number without leading zeros.`);
         return { id: id(operand.id, `operand ${i + 1} id`), value };
       });
-      return { op, id: id(c.id, "columns.id"), operation: oneOf(c.operation, ["add", "subtract", "multiply"] as const, "columns.operation"), operands, place: placement(c.place) };
+      return { op, id: id(c.id, "columns.id"), operation: oneOf(c.operation, OPERATIONS, "columns.operation"), operands, place: placement(c.place) };
     }
     case "write": {
       const c = object(raw, "write", ["op", "id", "text", "place"], ["ink"]);
@@ -103,7 +107,7 @@ function parse(raw: unknown): Command {
         id: id(c.id, "regroup.id"),
         objectId: id(c.objectId, "regroup.objectId"),
         rowId: id(c.rowId, "regroup.rowId"),
-        kind: oneOf(c.kind, ["carry", "borrow"] as const, "regroup.kind"),
+        kind: oneOf(c.kind, REGROUP_KINDS, "regroup.kind"),
         from: place(c.from),
         to: place(c.to),
         ink: ink(c.ink),
@@ -111,7 +115,7 @@ function parse(raw: unknown): Command {
     }
     case "mark": {
       const c = object(raw, "mark", ["op", "id", "target", "style"], ["ink"]);
-      return { op, id: id(c.id, "mark.id"), target: target(c.target), style: oneOf(c.style, ["highlight", "circle", "underline", "strike", "check"] as const, "mark.style"), ink: ink(c.ink) };
+      return { op, id: id(c.id, "mark.id"), target: target(c.target), style: oneOf(c.style, MARK_STYLES, "mark.style"), ink: ink(c.ink) };
     }
     case "arrow": {
       const c = object(raw, "arrow", ["op", "id", "from", "to"], ["ink"]);
@@ -129,7 +133,7 @@ function parse(raw: unknown): Command {
     case "clear": {
       const c = object(raw, "clear", ["op", "scope"], ["page"]);
       if (c.page !== undefined && (!Number.isInteger(c.page) || (c.page as number) < 1)) fail("clear.page must be a page number from 1.");
-      return { op, scope: oneOf(c.scope, ["maya_annotations", "maya_objects"] as const, "clear.scope"), ...(c.page === undefined ? {} : { page: c.page as number }) };
+      return { op, scope: oneOf(c.scope, CLEAR_SCOPES, "clear.scope"), ...(c.page === undefined ? {} : { page: c.page as number }) };
     }
     case "focus": {
       const c = object(raw, "focus", ["op", "target"]);

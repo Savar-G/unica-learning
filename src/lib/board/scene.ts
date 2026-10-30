@@ -4,12 +4,13 @@
 // History is a log of committed transactions. The visible state is the replay of the transactions that are not undone,
 // with each object's page and position recorded on its first placement, so an undo never moves anything else.
 import { columns } from "@/lib/board/columns";
-import { arrowStrokes, centre, circleStroke, overlaps, polylineLength } from "@/lib/board/geometry";
-import { PLACEHOLDER_GLYPHS, type GlyphSet, type Point } from "@/lib/board/glyphs";
+import { annotationStrokes, MARK_INK, type ArrowObject, type MarkObject } from "@/lib/board/annotations";
+import { overlaps, polylineLength } from "@/lib/board/geometry";
+import { PLACEHOLDER_GLYPHS, type GlyphSet } from "@/lib/board/glyphs";
 import { note } from "@/lib/board/note";
 import { parseCommand } from "@/lib/board/parse";
-import { glyphStrokes, isRefusal, refuse, type Ctx, type LocalStroke, type LocalTarget, type RefusalBody, type Representation } from "@/lib/board/representation";
-import type { Batch, BoardPath, Command, CreateCommand, Ink, MarkStyle, Notice, Place, Rect, Refusal, Target, TargetInfo, TimedPath, View } from "@/lib/board/types";
+import { isRefusal, refuse, type Ctx, type LocalStroke, type LocalTarget, type RefusalBody, type Representation } from "@/lib/board/representation";
+import type { Batch, BoardPath, Command, CreateCommand, Notice, Place, Rect, Refusal, Target, TargetInfo, TimedPath, View } from "@/lib/board/types";
 import type { Stroke } from "@/lib/whiteboard";
 
 /** The representations the board can create, by their create command. Later ones are added here. */
@@ -39,24 +40,6 @@ interface RepObject {
   page: number;
   rect: Rect;
 }
-interface MarkObject {
-  kind: "mark";
-  id: string;
-  target: Target;
-  style: MarkStyle;
-  ink: Ink;
-  page: number;
-  seq: number;
-}
-interface ArrowObject {
-  kind: "arrow";
-  id: string;
-  from: Target;
-  to: Target;
-  ink: Ink;
-  page: number;
-  seq: number;
-}
 type BoardObject = RepObject | MarkObject | ArrowObject;
 
 interface SceneState {
@@ -73,8 +56,12 @@ interface Step {
   seq: number;
   /** Where a created object went, recorded on its first placement. */
   at?: { page: number; x: number; y: number };
+  /** The page a clear cleared, recorded on its first run, so a replay clears the same page. */
+  page?: number;
+  /** Ids this step created, changed or removed, and only looked at: what an undo depends on. */
   creates: string[];
-  touches: string[];
+  writes: string[];
+  reads: string[];
 }
 
 interface Transaction {
@@ -170,6 +157,18 @@ function fits(scene: Scene, s: SceneState, page: number, r: Rect): boolean {
   });
 }
 
+/** What a relative placement is relative to: an object (with a gap) or a named target (an anchor). */
+function anchorOf(s: SceneState, where: Exclude<Place, { region: "main" }>): { page: number; rect: Rect; gap: number; below: boolean } | RefusalBody {
+  if ("near" in where) {
+    const found = resolve(s, where.near);
+    return isRefusal(found) ? found : { page: found.page, rect: found.rect, gap: 0, below: where.side === "below" };
+  }
+  const refId = "below" in where ? where.below : where.rightOf;
+  const ref = findRep(s, refId);
+  if (!ref) return refuse("unknown_target", `There is no object "${refId}" to place this next to.`);
+  return { page: ref.page, rect: ref.rect, gap: MARGIN, below: "below" in where };
+}
+
 function place(scene: Scene, s: SceneState, where: Place, size: { w: number; h: number }): { page: number; x: number; y: number } | RefusalBody {
   const { cols, rows } = scene.page;
   if (size.w > cols - 2 * MARGIN || size.h > rows - 2 * MARGIN) return refuse("no_room", "This is too big for one board page.");
@@ -179,14 +178,14 @@ function place(scene: Scene, s: SceneState, where: Place, size: { w: number; h: 
     for (let y = MARGIN; !spot && y + size.h <= rows - MARGIN; y++)
       for (let x = MARGIN; !spot && x + size.w <= cols - MARGIN; x++) if (fits(scene, s, page, { x, y, ...size })) spot = { x, y };
   } else {
-    const refId = "below" in where ? where.below : where.rightOf;
-    const ref = findRep(s, refId);
-    if (!ref) return refuse("unknown_target", `There is no object "${refId}" to place this next to.`);
-    page = ref.page;
-    // Below slides down and right-of slides right, past anything in the way, before the work moves to a new page.
-    const below = "below" in where;
+    const anchor = anchorOf(s, where);
+    if (isRefusal(anchor)) return anchor;
+    page = anchor.page;
+    // Below slides down and right slides right, past anything in the way, before the work moves to a new page.
+    const { rect, gap, below } = anchor;
+    const start = below ? { x: Math.floor(rect.x), y: Math.ceil(rect.y + rect.h) + gap } : { x: Math.ceil(rect.x + rect.w) + gap, y: Math.floor(rect.y) };
     for (let step = 0; !spot && step < Math.max(cols, rows); step++) {
-      const candidate = below ? { x: ref.rect.x, y: ref.rect.y + ref.rect.h + MARGIN + step } : { x: ref.rect.x + ref.rect.w + MARGIN + step, y: ref.rect.y };
+      const candidate = below ? { x: start.x, y: start.y + step } : { x: start.x + step, y: start.y };
       if (fits(scene, s, page, { ...candidate, ...size })) spot = candidate;
     }
   }
@@ -200,14 +199,16 @@ function place(scene: Scene, s: SceneState, where: Place, size: { w: number; h: 
 
 const takenIds = (scene: Scene, s: SceneState) => new Set([...s.objects.map((o) => o.id), ...Object.keys(s.owners), ...scene.child.map((c) => c.id)]);
 
-/** Applies one command to a draft state. Fills the step's placement, creates and touches on its first run. */
+/** Applies one command to a draft state. Records the step's placement, cleared page and ids on its first run. */
 function exec(scene: Scene, s: SceneState, step: Step, notices: Notice[]): RefusalBody | null {
   const { cmd } = step;
   const ctx = ctxOf(scene, step.seq);
   const fresh = (id: string) => (takenIds(scene, s).has(id) ? refuse("duplicate_id", `The id "${id}" is already on the board.`) : null);
-  const touch = (...ids: string[]) => {
-    for (const id of ids) if (!step.touches.includes(id)) step.touches.push(id);
+  const note = (list: string[], ids: string[]) => {
+    for (const id of ids) if (!list.includes(id)) list.push(id);
   };
+  const read = (...ids: string[]) => note(step.reads, ids);
+  const write = (...ids: string[]) => note(step.writes, ids);
 
   if (isCreate(cmd)) {
     const taken = fresh(cmd.id);
@@ -225,8 +226,9 @@ function exec(scene: Scene, s: SceneState, step: Step, notices: Notice[]): Refus
     s.objects.push({ kind: "rep", id: cmd.id, op: cmd.op, state: made.state, page, rect: { x, y, ...made.size } });
     s.lastPage = page;
     step.creates = [cmd.id];
-    if ("below" in cmd.place) touch(cmd.place.below);
-    if ("rightOf" in cmd.place) touch(cmd.place.rightOf);
+    if ("below" in cmd.place) read(cmd.place.below);
+    if ("rightOf" in cmd.place) read(cmd.place.rightOf);
+    if ("near" in cmd.place) read(cmd.place.near.objectId, s.owners[cmd.place.near.objectId] ?? cmd.place.near.objectId);
     return null;
   }
 
@@ -244,10 +246,13 @@ function exec(scene: Scene, s: SceneState, step: Step, notices: Notice[]): Refus
         if (taken) return taken;
       }
       const r = representation(rep.op);
-      const next = cmd.op === "put" ? r.put(rep.state, cmd.target, cmd.value, cmd.ink, ctx) : r.regroup(rep.state, cmd, ctx);
+      const next =
+        cmd.op === "put"
+          ? (r.put?.(rep.state, cmd.target, cmd.value, cmd.ink, ctx) ?? refuse("not_writable", `Put does not write in "${rep.id}".`))
+          : (r.regroup?.(rep.state, cmd, ctx) ?? refuse("not_allowed", "Regroup works on columns."));
       if (isRefusal(next)) return next.code === "unknown_target" && cmd.op === "put" ? { ...next, valid: repTargets(rep).filter((t) => t.writable).map(publicInfo) } : next;
       rep.state = next;
-      touch(rep.id);
+      write(rep.id);
       if (cmd.op === "regroup") {
         s.owners[cmd.id] = rep.id;
         step.creates = [cmd.id];
@@ -259,11 +264,11 @@ function exec(scene: Scene, s: SceneState, step: Step, notices: Notice[]): Refus
       if (taken) return taken;
       const found = resolve(s, cmd.target);
       if (isRefusal(found)) return found;
-      const why = representation(found.rep.op).refuseMark(found.rep.state, cmd.target, cmd.style);
+      const why = representation(found.rep.op).refuseMark?.(found.rep.state, cmd.target, cmd.style);
       if (why) return why;
       s.objects.push({ kind: "mark", id: cmd.id, target: cmd.target, style: cmd.style, ink: cmd.ink ?? MARK_INK[cmd.style], page: found.page, seq: step.seq });
       step.creates = [cmd.id];
-      touch(cmd.target.objectId, found.rep.id);
+      read(cmd.target.objectId, found.rep.id);
       return null;
     }
     case "arrow": {
@@ -273,10 +278,11 @@ function exec(scene: Scene, s: SceneState, step: Step, notices: Notice[]): Refus
       if (isRefusal(a)) return a;
       const b = resolve(s, cmd.to);
       if (isRefusal(b)) return b;
+      if (sameTarget(cmd.from, cmd.to)) return refuse("not_allowed", "An arrow joins two different things.");
       if (a.page !== b.page) return refuse("not_allowed", "An arrow joins two things on the same page.");
       s.objects.push({ kind: "arrow", id: cmd.id, from: cmd.from, to: cmd.to, ink: cmd.ink ?? "red", page: a.page, seq: step.seq });
       step.creates = [cmd.id];
-      touch(cmd.from.objectId, cmd.to.objectId, a.rep.id, b.rep.id);
+      read(cmd.from.objectId, cmd.to.objectId, a.rep.id, b.rep.id);
       return null;
     }
     case "remove": {
@@ -284,22 +290,27 @@ function exec(scene: Scene, s: SceneState, step: Step, notices: Notice[]): Refus
       if (scene.child.some((c) => c.id === id) || id.startsWith("child-")) return refuse("protected_ink", "That is the child's writing: Maya never removes it.");
       if (s.owners[id]) {
         const rep = findRep(s, s.owners[id])!;
-        const next = representation(rep.op).removeOwned(rep.state, id);
+        const next = representation(rep.op).removeOwned?.(rep.state, id) ?? refuse("not_allowed", `"${id}" cannot be removed on its own.`);
         if (isRefusal(next)) return next;
         rep.state = next;
         delete s.owners[id];
-        touch(id, rep.id, ...dropAnnotationsOn(s, [id]));
+        write(id, rep.id, ...dropAnnotationsOn(s, [id]));
         return null;
       }
       const obj = s.objects.find((o) => o.id === id);
       if (!obj) return { ...refuse("unknown_target", `There is no object "${id}" on the board.`), valid: reps(s).map((o) => publicInfo(repTargets(o)[0])) };
-      touch(...removeObject(s, obj));
+      write(...removeObject(s, obj));
       return null;
     }
     case "clear": {
-      const page = cmd.page ?? s.view.page;
-      const onPage = s.objects.filter((o) => o.page === page && (cmd.scope === "maya_objects" || o.kind !== "rep"));
-      for (const o of onPage) if (s.objects.includes(o)) touch(...removeObject(s, o));
+      if (step.page === undefined) {
+        const page = cmd.page ?? s.view.page;
+        const pages = pageCount(scene, s);
+        if (page > pages) return refuse("unknown_target", `The board has pages 1 to ${pages}.`);
+        step.page = page;
+      }
+      const onPage = s.objects.filter((o) => o.page === step.page && (cmd.scope === "maya_objects" || o.kind !== "rep"));
+      for (const o of onPage) if (s.objects.includes(o)) write(...removeObject(s, o));
       return null;
     }
     case "focus": {
@@ -312,8 +323,6 @@ function exec(scene: Scene, s: SceneState, step: Step, notices: Notice[]): Refus
       return refuse("not_allowed", "Send undo on its own.");
   }
 }
-
-const MARK_INK: Record<MarkStyle, Ink> = { highlight: "yellow", circle: "red", underline: "red", strike: "red", check: "green" };
 
 /** Removes marks and arrows that point at any of the ids. Returns the removed ids. */
 function dropAnnotationsOn(s: SceneState, ids: string[]): string[] {
@@ -334,14 +343,14 @@ function removeObject(s: SceneState, obj: BoardObject): string[] {
 
 // ---------- history ----------
 
-/** The state the live transactions build, replayed from the start. */
-function replay(scene: Scene, log: readonly Transaction[]): SceneState {
+/** The state the live transactions build, replayed from the start, or why a later step no longer applies. */
+function replay(scene: Scene, log: readonly Transaction[]): SceneState | RefusalBody {
   const s = emptyState();
   for (const tx of log) {
     if (tx.undone || tx.undid) continue;
     for (const step of tx.steps) {
-      const refused = exec(scene, s, step, []);
-      if (refused) throw new Error(`board replay failed at ${tx.id}: ${refused.reason}`);
+      const refused = exec(scene, s, { ...step, creates: [], writes: [], reads: [] }, []);
+      if (refused) return refuse("unsafe_undo", `Transaction "${tx.id}" depends on it (${refused.reason}): undo that first.`);
     }
   }
   return s;
@@ -353,14 +362,20 @@ function undo(scene: Scene, transactionId: string): { log: Transaction[]; state:
   const tx = scene.log[at];
   if (tx.undid) return refuse("not_allowed", "An undo cannot be undone.");
   if (tx.undone) return refuse("not_allowed", `Transaction "${transactionId}" is already undone.`);
-  const ids = new Set(tx.steps.flatMap((s) => [...s.creates, ...s.touches]));
+  // Later work depends on this transaction when it changes or reuses what this one made or changed, or looks at what
+  // this one made. The replay catches the rest (a check on an answer this one wrote).
+  const created = new Set(tx.steps.flatMap((s) => s.creates));
+  const changed = new Set([...created, ...tx.steps.flatMap((s) => s.writes)]);
   for (const later of scene.log.slice(at + 1)) {
     if (later.undone || later.undid) continue;
-    const used = later.steps.flatMap((s) => [...s.creates, ...s.touches]).find((id) => ids.has(id));
-    if (used) return refuse("unsafe_undo", `Transaction "${later.id}" changed "${used}" later: undo it first.`);
+    for (const step of later.steps) {
+      const used = [...step.creates, ...step.writes].find((id) => changed.has(id)) ?? step.reads.find((id) => created.has(id));
+      if (used) return refuse("unsafe_undo", `Transaction "${later.id}" uses "${used}" later: undo it first.`);
+    }
   }
   const log = scene.log.map((t, i) => (i === at ? { ...t, undone: true } : t));
   const state = replay(scene, log);
+  if (isRefusal(state)) return state;
   const before = new Set(reps(scene.state).map((o) => o.id));
   for (const o of reps(state)) {
     if (before.has(o.id)) continue;
@@ -374,36 +389,36 @@ function undo(scene: Scene, transactionId: string): { log: Transaction[]; state:
 
 /** Applies a batch of commands, all or none. Refuses invalid commands, unknown targets and wrong math with a reason. */
 export function applyBatch(scene: Scene, batch: Batch): ApplyResult {
-  const no = (index: number, r: RefusalBody): ApplyResult => ({ ok: false, refusal: { index, ...r } });
+  const refused = (index: number, r: RefusalBody): ApplyResult => ({ ok: false, refusal: { index, ...r } });
   if (typeof batch.transactionId !== "string" || batch.transactionId.length === 0 || batch.transactionId.length > 64)
-    return no(-1, refuse("invalid_command", "A batch needs a transaction id of 1 to 64 characters."));
-  if (scene.log.some((t) => t.id === batch.transactionId)) return no(-1, refuse("duplicate_id", `Transaction "${batch.transactionId}" is already applied.`));
+    return refused(-1, refuse("invalid_command", "A batch needs a transaction id of 1 to 64 characters."));
+  if (scene.log.some((t) => t.id === batch.transactionId)) return refused(-1, refuse("duplicate_id", `Transaction "${batch.transactionId}" is already applied.`));
   if (!Array.isArray(batch.commands) || batch.commands.length === 0 || batch.commands.length > MAX_COMMANDS)
-    return no(-1, refuse("invalid_command", `A batch has 1 to ${MAX_COMMANDS} commands.`));
+    return refused(-1, refuse("invalid_command", `A batch has 1 to ${MAX_COMMANDS} commands.`));
 
   const commands: Command[] = [];
   for (const [i, raw] of batch.commands.entries()) {
     const parsed = parseCommand(raw);
-    if (isRefusal(parsed)) return no(i, parsed);
+    if (isRefusal(parsed)) return refused(i, parsed);
     commands.push(parsed);
   }
 
   let next: Scene;
   const notices: Notice[] = [];
   if (commands.some((c) => c.op === "undo")) {
-    if (commands.length > 1) return no(commands.findIndex((c) => c.op === "undo"), refuse("not_allowed", "Send undo on its own."));
+    if (commands.length > 1) return refused(commands.findIndex((c) => c.op === "undo"), refuse("not_allowed", "Send undo on its own."));
     const cmd = commands[0] as Extract<Command, { op: "undo" }>;
     const done = undo(scene, cmd.transactionId);
-    if (isRefusal(done)) return no(0, done);
+    if (isRefusal(done)) return refused(0, done);
     next = { ...scene, log: [...done.log, { id: batch.transactionId, steps: [], undid: cmd.transactionId, undone: false }], state: done.state };
   } else {
     const state = structuredClone(scene.state);
     let seq = scene.nextSeq;
     const steps: Step[] = [];
     for (const [i, cmd] of commands.entries()) {
-      const step: Step = { cmd, seq: seq++, creates: [], touches: [] };
-      const refused = exec(scene, state, step, notices);
-      if (refused) return no(i, refused);
+      const step: Step = { cmd, seq: seq++, creates: [], writes: [], reads: [] };
+      const why = exec(scene, state, step, notices);
+      if (why) return refused(i, why);
       steps.push(step);
     }
     next = { ...scene, log: [...scene.log, { id: batch.transactionId, steps, undid: null, undone: false }], nextSeq: seq, state };
@@ -449,7 +464,12 @@ function sequencedPaths(scene: Scene): (BoardPath & { seq: number })[] {
       for (const stroke of representation(o.op).draw(o.state, o.id, ctxOf(scene))) local.push({ stroke, owner: o.id, page: o.page, dx: o.rect.x, dy: o.rect.y });
       continue;
     }
-    for (const stroke of annotationStrokes(scene, s, o)) local.push({ stroke, owner: o.id, page: o.page, dx: 0, dy: 0 });
+    const rectOf = (t: Target) => {
+      const found = resolve(s, t);
+      if (isRefusal(found)) throw new Error(`board annotation ${o.id} points at a missing target`);
+      return found.rect;
+    };
+    for (const stroke of annotationStrokes(scene.glyphs, o, rectOf)) local.push({ stroke, owner: o.id, page: o.page, dx: 0, dy: 0 });
   }
   local.sort((a, b) => a.stroke.seq - b.stroke.seq);
   const unit = 1 / scene.page.cols;
@@ -459,7 +479,8 @@ function sequencedPaths(scene: Scene): (BoardPath & { seq: number })[] {
     const cells = polylineLength(stroke.pts);
     const ms = Math.round(Math.min(TIMING.maxMs, Math.max(stroke.kind === "highlight" ? TIMING.highlightMinMs : TIMING.minMs, cells * TIMING.msPerCell)));
     return {
-      id: `${owner}:${stroke.key}`,
+      // The command that revealed a stroke is part of its id: an id reused after a remove draws as a new stroke.
+      id: `${owner}:${stroke.key}@${stroke.seq}`,
       owner: "maya",
       objectId: stroke.objectId,
       target: stroke.target,
@@ -487,47 +508,4 @@ function schedule(paths: (BoardPath & { seq: number })[]): TimedPath[] {
     t += p.durationMs;
     return timed;
   });
-}
-
-function annotationStrokes(scene: Scene, s: SceneState, o: MarkObject | ArrowObject): LocalStroke[] {
-  const base = { objectId: o.id, target: { objectId: o.id, part: "whole" } as Target, ink: o.ink, seq: o.seq };
-  const rectOf = (t: Target) => {
-    const found = resolve(s, t);
-    if (isRefusal(found)) throw new Error(`board annotation ${o.id} points at a missing target`);
-    return found.rect;
-  };
-  if (o.kind === "arrow") {
-    const a = rectOf(o.from);
-    const b = rectOf(o.to);
-    const sameRow = Math.abs(centre(a)[1] - centre(b)[1]) < 0.5;
-    const start: Point = sameRow ? [centre(a)[0], a.y - 0.05] : edgeToward(a, centre(b));
-    const end: Point = sameRow ? [centre(b)[0], b.y - 0.05] : edgeToward(b, centre(a));
-    return arrowStrokes(start, end, sameRow ? 0.7 : 0.3).map((pts, i) => ({ ...base, key: `${i}`, kind: "arrow", layer: "annotation", width: 0.05, pts }));
-  }
-  const r = rectOf(o.target);
-  const [cx, cy] = centre(r);
-  switch (o.style) {
-    case "highlight": {
-      const tall = r.h >= r.w;
-      const pts: Point[] = tall ? [[cx, r.y + 0.1], [cx, r.y + r.h - 0.1]] : [[r.x + 0.1, cy], [r.x + r.w - 0.1, cy]];
-      return [{ ...base, key: "0", kind: "highlight", layer: "behind", width: (tall ? r.w : r.h) * 0.9, opacity: 0.35, pts }];
-    }
-    case "circle":
-      return [{ ...base, key: "0", kind: "circle", layer: "annotation", width: 0.06, pts: circleStroke(r) }];
-    case "underline":
-      return [{ ...base, key: "0", kind: "underline", layer: "annotation", width: 0.06, pts: [[r.x, r.y + r.h + 0.08], [r.x + r.w, r.y + r.h + 0.08]] }];
-    case "strike":
-      return [{ ...base, key: "0", kind: "strike", layer: "annotation", width: 0.06, pts: [[r.x + 0.1, r.y + r.h - 0.1], [r.x + r.w - 0.1, r.y + 0.1]] }];
-    case "check":
-      return glyphStrokes(scene.glyphs, "✓", { x: r.x + r.w, y: r.y, w: 1, h: 1 }, { ...base, layer: "annotation", width: 0.07 }, "check").map((p) => ({ ...p, kind: "check" }));
-  }
-}
-
-/** The middle of the side of a rectangle that faces a point. */
-function edgeToward(r: Rect, p: Point): Point {
-  const [cx, cy] = centre(r);
-  const dx = p[0] - cx;
-  const dy = p[1] - cy;
-  if (Math.abs(dx) * r.h > Math.abs(dy) * r.w) return [dx > 0 ? r.x + r.w + 0.05 : r.x - 0.05, cy];
-  return [cx, dy > 0 ? r.y + r.h + 0.05 : r.y - 0.05];
 }

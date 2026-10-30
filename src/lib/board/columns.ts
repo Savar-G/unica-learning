@@ -5,15 +5,15 @@ import type { Point } from "@/lib/board/glyphs";
 import { arrowStrokes } from "@/lib/board/geometry";
 import {
   glyphStrokes,
+  missingGlyphs,
   refuse,
   type Ctx,
   type LocalStroke,
   type LocalTarget,
   type RefusalBody,
-  type RegroupRequest,
   type Representation,
 } from "@/lib/board/representation";
-import { PLACE_NAMES, type ColumnsCommand, type Ink, type PlaceName, type Rect, type Target } from "@/lib/board/types";
+import { PLACE_NAMES, type ColumnsCommand, type Ink, type PlaceName, type Rect, type RegroupCommand, type Target } from "@/lib/board/types";
 
 interface CalcRow {
   /** "answer", or "p0", "p1"... for the work rows of a multiplication by a number with several digits. */
@@ -47,7 +47,7 @@ interface Regroup {
 export interface ColumnsState {
   operation: ColumnsCommand["operation"];
   /** How many places the grid has. */
-  n: number;
+  places: number;
   seq: number;
   operands: { id: string; value: string; y: number }[];
   calc: CalcRow[];
@@ -68,7 +68,7 @@ const SMALL_WIDTH = 0.05;
 
 const digitAt = (value: string, place: number) => (place < value.length ? Number(value[value.length - 1 - place]) : 0);
 const placeName = (place: number) => PLACE_NAMES[place];
-const placeIndex = (name: string) => PLACE_NAMES.indexOf(name as PlaceName);
+const placeIndex = (name: PlaceName) => PLACE_NAMES.indexOf(name);
 
 /** Adds rows of digits column by column: the carry out of each place. */
 function additionCarries(values: string[], places: number): number[] {
@@ -122,12 +122,14 @@ function topHistory(state: ColumnsState, upTo: Regroup[] = state.regroups): numb
   return history;
 }
 
-const x = (state: ColumnsState, place: number) => 1 + (state.n - 1 - place);
-const laneY = (state: ColumnsState, lane: number) => state.laneCount - 1 - lane;
+/** The grid column of a place: the operator sits in column 0, the highest place next to it. */
+const colX = (state: ColumnsState, place: number) => 1 + (state.places - 1 - place);
+/** The grid row of a borrow lane: lane 0 is right above the top number. */
+const borrowLaneRow = (state: ColumnsState, lane: number) => state.laneCount - 1 - lane;
 /** The box a small lane value is written in, centred over its place. */
 function laneBox(state: ColumnsState, place: number, y: number, text: string): Rect {
   const w = Math.min(0.7, 0.38 * text.length);
-  return { x: x(state, place) + 0.5 - w / 2, y: y + 0.32, w, h: 0.58 };
+  return { x: colX(state, place) + 0.5 - w / 2, y: y + 0.32, w, h: 0.58 };
 }
 const strikeAcross = (r: Rect): Point[] => [
   [r.x - 0.05, r.y + r.h],
@@ -145,13 +147,15 @@ function create(cmd: ColumnsCommand, ctx: Ctx): { state: ColumnsState; size: { w
     if (ids.has(o.id)) return refuse("duplicate_id", `Two numbers have the row id "${o.id}".`);
     ids.add(o.id);
   }
+  const missing = missingGlyphs(ctx.glyphs, values.join("") + OPERATOR[operation] + "+");
+  if (missing.length > 0) return refuse("unsupported", `The board pen cannot write ${missing.join(" ")} yet.`);
   const [a, b] = values.map(Number);
   if (operation === "subtract" && b > a) return refuse("unsupported", `${values[0]} − ${values[1]} is below zero: columns do not show negative answers.`);
 
   const opCount = operands.length;
   const calc: CalcRow[] = [];
   let laneCount: number;
-  let n: number;
+  let places: number;
   let plan: number[] = [];
   const rules: number[] = [];
   let plusY: number | null = null;
@@ -159,36 +163,36 @@ function create(cmd: ColumnsCommand, ctx: Ctx): { state: ColumnsState; size: { w
     const k = values[1].length;
     const partials = [...values[1]].reverse().map((d, i) => (a * Number(d) === 0 ? "0".repeat(i + 1) : String(a * Number(d)) + "0".repeat(i)));
     const answer = String(a * b);
-    n = Math.max(answer.length, ...values.map((v) => v.length), ...partials.map((p) => p.length));
+    places = Math.max(answer.length, ...values.map((v) => v.length), ...partials.map((p) => p.length));
     laneCount = k + 1;
     const firstWork = laneCount + opCount;
     partials.forEach((value, i) =>
-      calc.push({ id: `p${i}`, value, carries: productCarries(values[0], Number(values[1][k - 1 - i]), i, n), y: firstWork + i, laneY: k - i }),
+      calc.push({ id: `p${i}`, value, carries: productCarries(values[0], Number(values[1][k - 1 - i]), i, places), y: firstWork + i, laneY: k - i }),
     );
-    calc.push({ id: "answer", value: answer, carries: additionCarries(partials, n), y: firstWork + k, laneY: 0 });
+    calc.push({ id: "answer", value: answer, carries: additionCarries(partials, places), y: firstWork + k, laneY: 0 });
     rules.push(firstWork, firstWork + k);
     plusY = firstWork + k - 1;
   } else {
     const answer = String(operation === "add" ? values.reduce((s, v) => s + Number(v), 0) : operation === "subtract" ? a - b : a * b);
-    n = Math.max(answer.length, ...values.map((v) => v.length));
-    let carries: number[] = Array(n).fill(0);
+    places = Math.max(answer.length, ...values.map((v) => v.length));
+    let carries: number[] = Array(places).fill(0);
     if (operation === "subtract") {
       plan = borrowPlan(values[0], values[1]);
       const lanes = plan.map((p, c) => p + (plan[c + 1] ?? 0));
       laneCount = Math.max(1, ...lanes);
     } else {
       laneCount = 1;
-      carries = operation === "add" ? additionCarries(values, n) : productCarries(values[0], b, 0, n);
+      carries = operation === "add" ? additionCarries(values, places) : productCarries(values[0], b, 0, places);
     }
     calc.push({ id: "answer", value: answer, carries, y: laneCount + opCount, laneY: 0 });
     rules.push(laneCount + opCount);
   }
-  if (n > PLACE_NAMES.length) return refuse("unsupported", `Columns go up to the ${PLACE_NAMES.at(-1)}.`);
+  if (places > PLACE_NAMES.length) return refuse("unsupported", `Columns go up to the ${PLACE_NAMES.at(-1)}.`);
 
   const answerY = calc.at(-1)!.y;
   const state: ColumnsState = {
     operation,
-    n,
+    places,
     seq: ctx.seq,
     operands: operands.map((o, i) => ({ id: o.id, value: o.value, y: laneCount + i })),
     calc,
@@ -200,7 +204,7 @@ function create(cmd: ColumnsCommand, ctx: Ctx): { state: ColumnsState; size: { w
     written: Object.fromEntries(calc.map((r) => [r.id, {}])),
     regroups: [],
   };
-  return { state, size: { w: n + 2, h: state.height } };
+  return { state, size: { w: places + 2, h: state.height } };
 }
 
 const rowLabel = (id: string) => (id === "answer" ? "answer" : /^p\d+$/.test(id) ? `work row ${Number(id.slice(1)) + 1}` : id);
@@ -218,17 +222,17 @@ function rowValue(state: ColumnsState, row: CalcRow): string | null {
 
 function targets(state: ColumnsState, objectId: string): LocalTarget[] {
   const out: LocalTarget[] = [];
-  const width = state.n + 1;
+  const width = state.places + 1;
   const firstY = state.operands[0].y;
   const answerY = state.calc.at(-1)!.y;
-  out.push({ target: { objectId, part: "whole" }, label: objectId, writable: false, value: null, rect: { x: 0, y: 0, w: state.n + 2, h: state.height } });
-  for (let c = 0; c < state.n; c++)
+  out.push({ target: { objectId, part: "whole" }, label: objectId, writable: false, value: null, rect: { x: 0, y: 0, w: state.places + 2, h: state.height } });
+  for (let c = 0; c < state.places; c++)
     out.push({
       target: { objectId, part: "column", column: placeName(c) },
       label: `${objectId} ${placeName(c)} column`,
       writable: false,
       value: null,
-      rect: { x: x(state, c), y: firstY, w: 1, h: answerY + 1 - firstY },
+      rect: { x: colX(state, c), y: firstY, w: 1, h: answerY + 1 - firstY },
     });
   const history = state.operation === "subtract" ? topHistory(state) : null;
   state.operands.forEach((o, i) => {
@@ -241,7 +245,7 @@ function targets(state: ColumnsState, objectId: string): LocalTarget[] {
         writable: false,
         value: String(shown.at(-1)),
         ...(shown.length > 1 ? { crossedOut: shown.slice(0, -1).map(String) } : {}),
-        rect: { x: x(state, c), y: o.y, w: 1, h: 1 },
+        rect: { x: colX(state, c), y: o.y, w: 1, h: 1 },
       });
     }
   });
@@ -260,21 +264,21 @@ function targets(state: ColumnsState, objectId: string): LocalTarget[] {
         label: `${objectId} ${rowLabel(row.id)} ${placeName(c)}`,
         writable: !w[c],
         value: w[c] ? String(w[c].digit) : null,
-        rect: { x: x(state, c), y: row.y, w: 1, h: 1 },
+        rect: { x: colX(state, c), y: row.y, w: 1, h: 1 },
       });
   }
   const done: Regroup[] = [];
   for (const r of state.regroups) {
     done.push(r);
     const row = state.calc.find((c) => c.id === r.rowId);
-    const lane = r.kind === "carry" ? row!.laneY : laneY(state, topHistory(state, done)[r.to].length - 2);
-    const left = x(state, Math.max(r.from, r.to));
+    const lane = r.kind === "carry" ? row!.laneY : borrowLaneRow(state, topHistory(state, done)[r.to].length - 2);
+    const left = colX(state, Math.max(r.from, r.to));
     out.push({
       target: { objectId: r.id, part: "whole" },
       label: regroupLabel(r),
       writable: false,
       value: r.kind === "carry" ? String(r.value) : String(topHistory(state, done)[r.to].at(-1)),
-      rect: r.kind === "carry" ? { x: x(state, r.to), y: lane, w: 1, h: 1 } : { x: left, y: lane, w: 2, h: 1 },
+      rect: r.kind === "carry" ? { x: colX(state, r.to), y: lane, w: 1, h: 1 } : { x: left, y: lane, w: 2, h: 1 },
     });
   }
   return out;
@@ -313,10 +317,10 @@ function put(state: ColumnsState, target: Target, value: string, ink: Ink | unde
   return { ...state, written: { ...state.written, [row.id]: written } };
 }
 
-function regroup(state: ColumnsState, req: RegroupRequest, ctx: Ctx): ColumnsState | RefusalBody {
+function regroup(state: ColumnsState, req: RegroupCommand, ctx: Ctx): ColumnsState | RefusalBody {
   const from = placeIndex(req.from);
   const to = placeIndex(req.to);
-  if (from < 0 || to < 0 || from >= state.n || to >= state.n) return refuse("unknown_target", `This problem has places from the ones to the ${placeName(state.n - 1)}.`);
+  if (from < 0 || to < 0 || from >= state.places || to >= state.places) return refuse("unknown_target", `This problem has places from the ones to the ${placeName(state.places - 1)}.`);
   const add = (r: Regroup): ColumnsState => ({ ...state, regroups: [...state.regroups, r] });
   if (req.kind === "carry") {
     if (state.operation === "subtract") return refuse("not_allowed", "Subtraction borrows; it does not carry.");
@@ -347,25 +351,27 @@ function removeOwned(state: ColumnsState, id: string): ColumnsState | RefusalBod
   return { ...state, regroups: state.regroups.filter((g) => g.id !== id) };
 }
 
+/** A check means "this is right": only on a finished answer or work row, a written answer digit, or a finished problem. */
 function refuseMark(state: ColumnsState, target: Target, style: string): RefusalBody | null {
-  if (style !== "check" || (target.part !== "row" && target.part !== "cell")) return null;
-  const row = state.calc.find((r) => r.id === target.rowId);
-  if (!row) return null;
-  const done = target.part === "row" ? rowValue(state, row) !== null : !!state.written[row.id][placeIndex(target.column)];
+  if (style !== "check") return null;
+  const answer = state.calc.at(-1)!;
+  const row = target.part === "whole" ? answer : target.part === "row" || target.part === "cell" ? state.calc.find((r) => r.id === target.rowId) : undefined;
+  if (!row) return refuse("not_allowed", "A check marks a finished answer: put it on the answer, a work row or the whole problem.");
+  const done = target.part === "cell" ? !!state.written[row.id][placeIndex(target.column)] : rowValue(state, row) !== null;
   return done ? null : refuse("not_allowed", `The ${rowLabel(row.id)} is not finished: check it after it is written.`);
 }
 
 function draw(state: ColumnsState, objectId: string, ctx: Ctx): LocalStroke[] {
   const out: LocalStroke[] = [];
   const math = { objectId, layer: "math" as const, width: DIGIT_WIDTH, seq: state.seq };
-  const cellBox = (place: number, y: number): Rect => ({ x: x(state, place), y, w: 1, h: 1 });
+  const cellBox = (place: number, y: number): Rect => ({ x: colX(state, place), y, w: 1, h: 1 });
   for (const o of state.operands)
     for (let c = o.value.length - 1; c >= 0; c--)
       out.push(...glyphStrokes(ctx.glyphs, String(digitAt(o.value, c)), cellBox(c, o.y), { ...math, ink: "blue", target: { objectId, part: "cell", rowId: o.id, column: placeName(c) } }, `op/${o.id}/${c}`));
   const opRow = state.operands.at(-1)!;
   out.push(...glyphStrokes(ctx.glyphs, OPERATOR[state.operation], { x: 0, y: opRow.y, w: 1, h: 1 }, { ...math, ink: "black", target: null }, "operator"));
   state.rules.forEach((y, i) =>
-    out.push({ ...math, key: `rule/${i}`, kind: "rule", ink: "black", width: 0.06, target: null, pts: [[0.1, y], [state.n + 0.9, y]] }),
+    out.push({ ...math, key: `rule/${i}`, kind: "rule", ink: "black", width: 0.06, target: null, pts: [[0.1, y], [state.places + 0.9, y]] }),
   );
   if (state.plusY !== null) out.push(...glyphStrokes(ctx.glyphs, "+", { x: 0, y: state.plusY, w: 1, h: 1 }, { ...math, ink: "black", target: null }, "plus"));
 
@@ -386,7 +392,7 @@ function draw(state: ColumnsState, objectId: string, ctx: Ctx): LocalStroke[] {
       const lane = state.calc.find((c) => c.id === r.rowId)!.laneY;
       const box = laneBox(state, r.to, lane, String(r.value));
       out.push(...glyphStrokes(ctx.glyphs, String(r.value), box, base, `${r.id}/value`));
-      const start: Point = [x(state, r.from) + 0.5, state.operands[0].y - 0.05];
+      const start: Point = [colX(state, r.from) + 0.5, state.operands[0].y - 0.05];
       const end: Point = [box.x + box.w + 0.08, box.y + box.h * 0.6];
       arrowStrokes(start, end, 0.4).forEach((pts, i) => out.push({ ...base, key: `${r.id}/arrow/${i}`, kind: "arrow", pts }));
       continue;
@@ -394,7 +400,7 @@ function draw(state: ColumnsState, objectId: string, ctx: Ctx): LocalStroke[] {
     // A borrow: cross out what each place shows, write its new value in the next lane up, with an arrow between.
     const shownBox = (place: number, history: number[][]): Rect => {
       const len = history[place].length;
-      return len === 1 ? { x: x(state, place) + 0.15, y: state.operands[0].y + 0.12, w: 0.7, h: 0.76 } : laneBox(state, place, laneY(state, len - 2), String(history[place].at(-1)));
+      return len === 1 ? { x: colX(state, place) + 0.15, y: state.operands[0].y + 0.12, w: 0.7, h: 0.76 } : laneBox(state, place, borrowLaneRow(state, len - 2), String(history[place].at(-1)));
     };
     const side = (place: number, key: string) => {
       out.push({ ...base, key: `${r.id}/${key}/strike`, kind: "strike", pts: strikeAcross(shownBox(place, before)) });
@@ -417,7 +423,6 @@ export const columns: Representation<ColumnsState, ColumnsCommand> = {
   targets,
   put,
   regroup,
-  owned: (state) => state.regroups.map((r) => r.id),
   removeOwned,
   refuseMark,
   draw,

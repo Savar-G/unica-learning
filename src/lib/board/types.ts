@@ -19,16 +19,25 @@ export type Target =
   | { objectId: string; part: "cell"; rowId: string; column: PlaceName }
   | { objectId: string; part: "word"; index: number };
 
-/** Where a new object goes. Only the core turns this into grid positions. */
-export type Place = { region: "main" } | { below: string } | { rightOf: string };
+/**
+ * Where a new object goes: the main area, below or right of an object, or next to a named target (an anchor). Only the
+ * core turns this into grid positions.
+ */
+export type Place = { region: "main" } | { below: string } | { rightOf: string } | { near: Target; side: "right" | "below" };
 
-export type MarkStyle = "highlight" | "circle" | "underline" | "strike" | "check";
-export type ClearScope = "maya_annotations" | "maya_objects";
+export const MARK_STYLES = ["highlight", "circle", "underline", "strike", "check"] as const;
+export type MarkStyle = (typeof MARK_STYLES)[number];
+export const CLEAR_SCOPES = ["maya_annotations", "maya_objects"] as const;
+export type ClearScope = (typeof CLEAR_SCOPES)[number];
+export const OPERATIONS = ["add", "subtract", "multiply"] as const;
+export type Operation = (typeof OPERATIONS)[number];
+export const REGROUP_KINDS = ["carry", "borrow"] as const;
+export type RegroupKind = (typeof REGROUP_KINDS)[number];
 
 export interface ColumnsCommand {
   op: "columns";
   id: string;
-  operation: "add" | "subtract" | "multiply";
+  operation: Operation;
   operands: { id: string; value: string }[];
   place: Place;
 }
@@ -41,13 +50,25 @@ export interface WriteCommand {
   ink?: Ink;
 }
 
+/** Carry or borrow one unit between adjacent places. The core computes the values; the model only names the step. */
+export interface RegroupCommand {
+  op: "regroup";
+  id: string;
+  objectId: string;
+  rowId: string;
+  kind: RegroupKind;
+  from: PlaceName;
+  to: PlaceName;
+  ink?: Ink;
+}
+
 /** Commands that create a new math object with its own layout. Later representations join this union. */
 export type CreateCommand = ColumnsCommand | WriteCommand;
 
 export type Command =
   | CreateCommand
   | { op: "put"; target: Target; value: string; ink?: Ink }
-  | { op: "regroup"; id: string; objectId: string; rowId: string; kind: "carry" | "borrow"; from: PlaceName; to: PlaceName; ink?: Ink }
+  | RegroupCommand
   | { op: "mark"; id: string; target: Target; style: MarkStyle; ink?: Ink }
   | { op: "arrow"; id: string; from: Target; to: Target; ink?: Ink }
   | { op: "remove"; objectId: string }

@@ -37,11 +37,6 @@ export const note: Representation<NoteState, WriteCommand> = {
       })),
     ];
   },
-  put: () => refuse("not_writable", "A note is written once; write a new note instead."),
-  regroup: () => refuse("not_allowed", "Regroup works on columns."),
-  owned: () => [],
-  removeOwned: () => refuse("unknown_target", "A note has no parts to remove."),
-  refuseMark: () => null,
   draw(state, objectId, ctx) {
     return glyphStrokes(
       ctx.glyphs,

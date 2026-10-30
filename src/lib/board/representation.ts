@@ -3,7 +3,7 @@
 // it on a page, routes the common commands to it, and turns its strokes into board paths. To add a representation,
 // add its create command to `CreateCommand`, write a module with this interface, and register it in `scene.ts`.
 import type { GlyphSet, Point } from "@/lib/board/glyphs";
-import type { CreateCommand, Ink, MarkStyle, PathKind, Rect, Refusal, Target, TargetInfo } from "@/lib/board/types";
+import type { CreateCommand, Ink, MarkStyle, PathKind, Rect, Refusal, RegroupCommand, Target, TargetInfo } from "@/lib/board/types";
 
 export type RefusalBody = Omit<Refusal, "index">;
 
@@ -37,16 +37,10 @@ export interface Ctx {
   glyphs: GlyphSet;
 }
 
-/** The fields of a regroup command a representation needs. */
-export interface RegroupRequest {
-  id: string;
-  rowId: string;
-  kind: "carry" | "borrow";
-  from: string;
-  to: string;
-  ink?: Ink;
-}
-
+/**
+ * One kind of math object. `create`, `targets` and `draw` are required; the rest are optional, and the scene refuses
+ * the command (put, regroup) or does nothing (owned annotations, mark checks) for a representation without them.
+ */
 export interface Representation<S, C extends CreateCommand> {
   op: C["op"];
   /** Checks the command and lays the object out. `size` is in grid cells and never changes after creation. */
@@ -54,13 +48,12 @@ export interface Representation<S, C extends CreateCommand> {
   /** Every named target, including the annotations the object owns. */
   targets(state: S, objectId: string): LocalTarget[];
   /** Reveals a value in a writable target, after checking it. */
-  put(state: S, target: Target, value: string, ink: Ink | undefined, ctx: Ctx): S | RefusalBody;
-  regroup(state: S, req: RegroupRequest, ctx: Ctx): S | RefusalBody;
-  /** Ids of the annotations this object owns (regroups). */
-  owned(state: S): string[];
-  removeOwned(state: S, id: string): S | RefusalBody;
+  put?(state: S, target: Target, value: string, ink: Ink | undefined, ctx: Ctx): S | RefusalBody;
+  regroup?(state: S, req: RegroupCommand, ctx: Ctx): S | RefusalBody;
+  /** Removes an annotation the object owns (a regroup); the scene knows them from `targets`. */
+  removeOwned?(state: S, id: string): S | RefusalBody;
   /** A reason to refuse a mark on a target (a check on an unfinished answer), or null. */
-  refuseMark(state: S, target: Target, style: MarkStyle): RefusalBody | null;
+  refuseMark?(state: S, target: Target, style: MarkStyle): RefusalBody | null;
   draw(state: S, objectId: string, ctx: Ctx): LocalStroke[];
 }
 

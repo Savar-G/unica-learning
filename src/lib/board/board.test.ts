@@ -409,3 +409,78 @@ describe("layout and pages", () => {
     if (!letters.ok) expect(letters.refusal.code).toBe("unsupported");
   });
 });
+
+describe("review fixes", () => {
+  const refusal = (scene: Scene, ...commands: unknown[]) => {
+    const r = applyBatch(scene, { transactionId: `r${++tx}`, commands });
+    if (r.ok) throw new Error("expected a refusal");
+    return r.refusal;
+  };
+
+  it("an undo replays a clear on the page it cleared, not the page in view", () => {
+    let scene = ok(createScene(), sum("a"), { op: "mark", id: "M", target: { objectId: "a", part: "whole" }, style: "circle" });
+    scene = ok(scene, sum("b", { below: "a" }), sum("c", { below: "b" }), sum("d", { below: "c" }), { op: "mark", id: "P", target: { objectId: "d", part: "whole" }, style: "circle" });
+    expect(boardView(scene).page).toBe(2);
+    scene = ok(scene, { op: "focus", target: { objectId: "a", part: "whole" } });
+    const focused = `t${tx}`;
+    scene = ok(scene, { op: "clear", scope: "maya_annotations" });
+    scene = ok(scene, { op: "undo", transactionId: focused });
+    const marks = boardPaths(scene).map((p) => p.objectId);
+    expect(marks).not.toContain("M");
+    expect(marks).toContain("P");
+  });
+
+  it("gives a reused id new path ids, so a renderer redraws it", () => {
+    const scene = ok(createScene(), sum(), { op: "mark", id: "M", target: { objectId: "sum1", part: "column", column: "ones" }, style: "highlight" });
+    const r = applyBatch(scene, {
+      transactionId: "move",
+      commands: [
+        { op: "remove", objectId: "M" },
+        { op: "mark", id: "M", target: { objectId: "sum1", part: "column", column: "tens" }, style: "highlight" },
+      ],
+    });
+    if (!r.ok) throw new Error(r.refusal.reason);
+    expect(r.drawn.map((p) => p.objectId)).toEqual(["M"]);
+    expect(r.erased).toHaveLength(1);
+  });
+
+  it("refuses a check on anything but a finished answer", () => {
+    const scene = ok(createScene(), sum());
+    expect(refusal(scene, { op: "mark", id: "k", target: { objectId: "sum1", part: "whole" }, style: "check" }).code).toBe("not_allowed");
+    expect(refusal(scene, { op: "mark", id: "k", target: { objectId: "sum1", part: "column", column: "ones" }, style: "check" }).code).toBe("not_allowed");
+    expect(refusal(scene, { op: "mark", id: "k", target: cell("sum1", "top", "ones"), style: "check" }).code).toBe("not_allowed");
+    const done = ok(scene, { op: "put", target: { objectId: "sum1", part: "row", rowId: "answer" }, value: "66" });
+    ok(done, { op: "mark", id: "k", target: { objectId: "sum1", part: "whole" }, style: "check" });
+  });
+
+  it("lets an undo through when later work does not depend on it", () => {
+    let scene = ok(createScene(), sum());
+    scene = ok(scene, { op: "mark", id: "glow", target: { objectId: "sum1", part: "column", column: "ones" }, style: "highlight" });
+    const glow = `t${tx}`;
+    scene = ok(scene, { op: "put", target: cell("sum1", "answer", "ones"), value: "6" });
+    scene = ok(scene, { op: "undo", transactionId: glow });
+    expect(boardPaths(scene).some((p) => p.objectId === "glow")).toBe(false);
+    expect(info(scene, cell("sum1", "answer", "ones")).value).toBe("6");
+    // A later check depends on the answer it checks: undoing that answer is refused, not thrown.
+    scene = ok(scene, { op: "put", target: cell("sum1", "answer", "tens"), value: "6" });
+    const tens = `t${tx}`;
+    scene = ok(scene, { op: "mark", id: "k", target: { objectId: "sum1", part: "row", rowId: "answer" }, style: "check" });
+    expect(refusal(scene, { op: "undo", transactionId: tens }).code).toBe("unsafe_undo");
+  });
+
+  it("refuses a page that does not exist and an arrow to itself", () => {
+    const scene = ok(createScene(), sum());
+    expect(refusal(scene, { op: "clear", page: 9, scope: "maya_objects" }).code).toBe("unknown_target");
+    expect(refusal(scene, { op: "arrow", id: "a", from: cell("sum1", "top", "ones"), to: cell("sum1", "top", "ones") }).code).toBe("not_allowed");
+  });
+
+  it("places work near a named target", () => {
+    let scene = ok(createScene(), sum());
+    scene = ok(scene, { op: "write", id: "n", text: "6 + 9", place: { near: cell("sum1", "answer", "ones"), side: "right" } });
+    const sumPts = boardPaths(scene).filter((p) => p.objectId === "sum1" || p.objectId === "n");
+    const noteXs = xs(sumPts.filter((p) => p.objectId === "n"));
+    const sumXs = xs(sumPts.filter((p) => p.objectId === "sum1"));
+    expect(Math.min(...noteXs)).toBeGreaterThan(Math.max(...sumXs));
+    expect(boardPages(scene)).toBe(1);
+  });
+});
