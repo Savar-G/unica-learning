@@ -1,43 +1,48 @@
 import { describe, expect, it } from "vitest";
-import { BC_SKILL_MAP, type StrandStatus } from "@/lib/assessment";
-import { childProfileFacts, type ChildStandard } from "@/lib/child-profile";
-import type { LearningEvent } from "@/lib/learning-events";
-import { DEFAULT_STEPS, nextReview, planWorkbook, type PlanInput, type PlanLevel, type PlannedPage, type WorkbookPlan } from "@/lib/workbook-plan";
-import { U10, U19, U2, U5 } from "@/lib/workbook-plan-levels.test-data";
+import { BC_SKILL_MAP, type Grade, type StrandStatus } from "@/lib/assessment";
+import { childProfileFacts } from "@/lib/child-profile";
+import { curriculumFor } from "@/lib/workbook-curriculum";
+import {
+  A_TO_B,
+  DEFAULT_STEPS,
+  nextReview,
+  planLevel,
+  planWorkbook,
+  type PlanInput,
+  type PlanLevel,
+  type PlannedPage,
+  type UnresolvedMiss,
+  type WorkbookPlan,
+} from "@/lib/workbook-plan";
 
-// The two-week curriculum plan (#308, spec #296) through its public interface: fake child profiles and levels from the
-// curriculum skeleton (round 2). The rules: .design/workbooks/CONTEXT.md sections 1, 4 and 5, DESIGN.md section 7.
+// The two-week curriculum plan (#308, spec #296) through its public interface, on the BC workbook curriculum (G0) and
+// fake child profiles. The rules: .design/workbooks/CONTEXT.md sections 1, 2, 4 and 5, DESIGN.md section 7. Tests
+// named R356-nn reproduce the cases of the independent review of PR #356.
 
-type FakeStandard = Pick<ChildStandard, "code" | "status" | "assessment" | "events" | "evidence">;
+const BC = curriculumFor("bc")!;
+const level = (id: string) => planLevel(BC, id)!;
+const [U1, U2, U4, U5, U9, U10, U19, U22] = ["U1", "U2", "U4", "U5", "U9", "U10", "U19", "U22"].map(level);
+const ALL = BC.levels.map((l) => level(l.id));
+/** The BC school grade of a level (three levels a grade from Kindergarten). */
+const gradeOf = (l: PlanLevel) => Math.floor((l.number - 1) / 3) as Grade;
 
-const NO_EVENTS: ChildStandard["events"] = {
-  right: 0, rightWithHelp: 0, wrong: 0, blank: 0, hints: 0, stuckSteps: [], mistakes: [],
-  sources: { call: 0, marking: 0, assessment: 0 }, lastAt: null,
-};
-
-const TEST_ID = "00000000-0000-4000-8000-0000000000e1";
-const TEST_DONE = "2026-10-20T18:00:00.000Z";
-
-/** A standard of a fake profile: from the assessment test alone, unless events are given. */
-const standard = (code: string, status: StrandStatus, over: Partial<FakeStandard> = {}): FakeStandard => ({
-  code,
-  status,
-  assessment: { correct: status === "secure" ? 4 : 1, total: 4, status },
-  events: NO_EVENTS,
-  evidence: { assessmentId: TEST_ID, events: [] },
-  ...over,
-});
+const standard = (code: string, status: StrandStatus) => ({ code, status });
 
 const input = (over: Partial<PlanInput> = {}): PlanInput => ({
-  profile: { assessment: { completedAt: TEST_DONE }, standards: [standard("2.4", "secure"), standard("2.1", "secure")] },
+  profile: { standards: [standard("2.4", "secure"), standard("2.1", "secure")] },
   grade: 3,
   level: U10,
   passed: {},
   workbook: { number: 1, inLevel: 0 },
   reviews: [],
-  since: null,
+  missedReviews: [],
+  misses: [],
+  pausedWeeks: 0,
+  support: null,
   ...over,
 });
+/** The first workbook of a level, for a child at its grade with no profile. */
+const at = (l: PlanLevel, over: Partial<PlanInput> = {}) => input({ level: l, grade: gradeOf(l), profile: { standards: [] }, ...over });
 
 const plan = (i: PlanInput): WorkbookPlan => {
   const result = planWorkbook(i);
@@ -47,27 +52,75 @@ const plan = (i: PlanInput): WorkbookPlan => {
 
 const pages = (p: WorkbookPlan) => p.days.flatMap((d) => d.pages.map((page) => ({ day: d.day, ...page })));
 const parts = (p: WorkbookPlan) => pages(p).flatMap((page) => page.parts.map((part) => ({ day: page.day, page: page.number, type: page.type, ...part })));
-const types = (page: PlannedPage[]) => page.map((x) => x.type);
+const types = (list: PlannedPage[]) => list.map((x) => x.type);
 const kinds = (page: PlannedPage) => page.parts.map((x) => x.kind);
+const items = (page: PlannedPage) => page.parts.reduce((n, x) => n + x.items, 0);
+/** The day's A and B, each page split evenly among its parts. */
+const aToB = (list: PlannedPage[]) => {
+  const sum = (t: "A" | "B") => list.reduce((n, page) => n + page.parts.filter((x) => x.unit === t).length / page.parts.length, 0);
+  return { A: sum("A"), B: sum("B") };
+};
 
-/** Every step a level's skills have passed: the level is done, and its test workbook is due. */
-const allPassed = (level: PlanLevel) =>
-  Object.fromEntries(level.units.flatMap((u) => u.skills.map((s) => [s.id, s.delivery === "activity" ? 1 : s.steps?.length || DEFAULT_STEPS])));
+/** Every step of a level passed: the level is done, and its test workbook is due. */
+const allPassed = (l: PlanLevel) =>
+  Object.fromEntries(l.units.flatMap((u) => u.skills.filter((s) => s.delivery !== "warm-up").map((s) => [s.id, s.delivery === "activity" ? 1 : s.steps.length || DEFAULT_STEPS])));
+
+const miss = (skill: string, n: number, over: Partial<UnresolvedMiss> = {}): UnresolvedMiss => ({
+  skill,
+  question: { source: "workbook", workbookId: "00000000-0000-4000-8000-0000000000b1", page: 10 + n, question: n },
+  event: `e-${n}`,
+  result: "wrong",
+  mistake: null,
+  stuckStep: null,
+  ...over,
+});
+
+describe("the curriculum adapter", () => {
+  it("reads every level U1 to U30 from the BC workbook curriculum, and plans each", () => {
+    for (const l of BC.levels) {
+      const adapted = level(l.id);
+      expect(adapted).toMatchObject({ number: l.number, workbooks: l.workbooks, pagesPerDay: l.pagesPerDay, reviewShare: l.reviewShare, lead: l.lead });
+      expect(adapted.units.map((u) => u.code)).toEqual(l.units);
+      expect(adapted.units.flatMap((u) => u.skills.map((s) => s.id)).sort()).toEqual(BC.levelSkills(l.id)!.map((s) => s.id).sort());
+      // R356-02: a fluency skill for the warm-up at every level from U8, from the level or an earlier one.
+      if (l.number >= 8) expect(adapted.fluency.length, l.id).toBeGreaterThan(0);
+      for (const over of [{}, { workbook: { number: 4, inLevel: 2 } }, { passed: allPassed(adapted), workbook: { number: 5, inLevel: 3 } }]) {
+        const result = planWorkbook(at(adapted, over));
+        expect(result.ok ? "ok" : result.reason, l.id).toBe("ok");
+      }
+    }
+    // The drafted step pages come through (Grade 3).
+    expect(U10.units[0].skills[0].steps.map((s) => s.pages)).toEqual([7, 8, 7, 11]);
+    expect(planLevel(BC, "U31")).toBeNull();
+  });
+
+  it("R356-02: aims every part with items at a skill: warm-up from an earlier level, U1's first review an Already know it? check", () => {
+    // U9 has no fluency skill of its own: the warm-up uses U8's.
+    expect(parts(plan(at(U9))).find((x) => x.kind === "warm-up")?.skills).toEqual(["2.3-facts-to-10"]);
+    for (const l of ALL) {
+      for (const x of parts(plan(at(l)))) if (x.items > 0) expect(x.skills.length, `U${l.number} day ${x.day} ${x.kind}`).toBeGreaterThan(0);
+    }
+    // U1, first workbook, nothing behind the child: Remember these? checks the level's units.
+    const first = parts(plan(at(U1))).find((x) => x.kind === "remember-these" && x.day === 1)!;
+    expect(first.alreadyKnowIt).toBe(true);
+    expect(first.skills.every((id) => U1.units.some((u) => u.skills.some((s) => s.id === id)))).toBe(true);
+    // A level with no fluency skill: the warm-up has nothing to aim at, and the plan is refused.
+    expect(planWorkbook(input({ level: { ...U10, fluency: [] } }))).toEqual({ ok: false, reason: "day 1 page 1: warm-up has no skill to aim at" });
+  });
+});
 
 describe("the two-week curriculum plan: the day", () => {
   it("plans ten days, five a week, with the pages a day of the level's band (D-186)", () => {
-    for (const [level, grade, min, max] of [[U2, 0, 4, 6], [U5, 1, 8, 8], [U10, 3, 8, 8], [U19, 6, 6, 6]] as const) {
-      const p = plan(input({ level, grade }));
+    for (const [l, min, max] of [[U2, 4, 6], [U5, 8, 8], [U10, 8, 8], [U19, 6, 6]] as const) {
+      const p = plan(at(l));
       expect(p.days.map((d) => [d.week, d.day])).toEqual([[1, 1], [1, 2], [1, 3], [1, 4], [1, 5], [2, 6], [2, 7], [2, 8], [2, 9], [2, 10]]);
       expect(p.pagesADay).toEqual({ min, max });
       for (const day of p.days) {
-        expect(day.pages.length, `U${level.number} day ${day.day}`).toBeGreaterThanOrEqual(min);
-        expect(day.pages.length, `U${level.number} day ${day.day}`).toBeLessThanOrEqual(max);
+        expect(day.pages.length, `U${l.number} day ${day.day}`).toBeGreaterThanOrEqual(min);
+        expect(day.pages.length, `U${l.number} day ${day.day}`).toBeLessThanOrEqual(max);
         expect(day.pages.map((x) => x.number)).toEqual(day.pages.map((_, i) => i + 1));
       }
     }
-    // Levels U1 to U3 are parent-led pages.
-    expect(new Set(types(plan(input({ level: U2, grade: 0 })).days.flatMap((d) => d.pages)))).toEqual(new Set(["parent-led"]));
   });
 
   it("follows the 8-page day: warm-up, new idea, practice, practice 2, word problems, Unit B, Remember these + Mixed set, challenge", () => {
@@ -77,13 +130,11 @@ describe("the two-week curriculum plan: the day", () => {
     expect(kinds(p.days[0].pages[1])).toEqual(["new-idea", "spot-the-error"]);
     expect(kinds(p.days[0].pages[3])).toEqual(["practice", "solve-it-two-ways", "spot-the-error"]);
     expect(kinds(p.days[0].pages[6])).toEqual(["remember-these", "mixed-set"]);
-    // Faded practice: watch one, finish two, then on your own.
     expect(p.days[0].pages[2].parts[0].faded).toEqual({ watch: 1, finish: 2 });
   });
 
   it("keeps the level gates: warm-up from U8, Mixed set from U10, Try first from U19", () => {
-    // Below U8, page 1 is a Remember these? picture review; below U10, page 7 is Remember these? with picture stories.
-    const early = plan(input({ level: U5, grade: 1 }));
+    const early = plan(at(U5));
     expect(early.days[0].pages[0].type).toBe("remember-these");
     expect(kinds(early.days[0].pages[6])).toEqual(["remember-these", "picture-stories"]);
     expect(parts(early).some((x) => x.kind === "warm-up" || x.kind === "mixed-set" || x.kind === "try-first")).toBe(false);
@@ -93,37 +144,41 @@ describe("the two-week curriculum plan: the day", () => {
     expect(parts(middle).some((x) => x.kind === "mixed-set")).toBe(true);
     expect(parts(middle).some((x) => x.kind === "try-first")).toBe(false);
 
-    // U19: Try first before each new idea, on a 6-page day.
-    const upper = plan(input({ level: U19, grade: 6 }));
+    const upper = plan(at(U19));
     expect(types(upper.days[0].pages)).toEqual(["warm-up", "new-idea", "practice", "word-problems", "unit-b", "remember-these-mixed-set"]);
     expect(kinds(upper.days[0].pages[1])).toEqual(["try-first", "new-idea", "spot-the-error"]);
     expect(kinds(upper.days[0].pages[5])).toEqual(["remember-these", "mixed-set", "challenge"]);
   });
 
-  it("puts Math in the world on Days 4 and 9 from U19, in place of the word problems page (DESIGN 7.2)", () => {
-    const upper = plan(input({ level: U19, grade: 6 }));
-    expect(upper.days.filter((d) => d.pages.some((x) => x.type === "math-in-the-world")).map((d) => d.day)).toEqual([4, 9]);
-    expect(upper.days[3].pages).toHaveLength(6);
+  it("R356-01: puts Math in the world on Days 4 and 9 from U19 in place of practice page 3, keeping word problems", () => {
+    for (const l of [U19, U22]) {
+      for (const day of plan(at(l)).days) {
+        const world = day.day === 4 || day.day === 9;
+        expect(day.pages).toHaveLength(6);
+        expect(day.pages[2].type, `U${l.number} day ${day.day}`).toBe(world ? "math-in-the-world" : "practice");
+        expect(day.pages[3].type).toBe("word-problems");
+        // Solve it two ways stays every day.
+        expect(day.pages.flatMap((x) => x.parts).filter((x) => x.kind === "solve-it-two-ways"), `day ${day.day}`).toHaveLength(1);
+      }
+    }
     expect(pages(plan(input())).some((x) => x.type === "math-in-the-world")).toBe(false);
   });
 
   it("gives Days 5 and 10 a Friday 5 in place of the Mixed set: five questions, no hints", () => {
-    for (const level of [U10, U19]) {
-      const p = plan(input({ level, grade: level === U10 ? 3 : 6 }));
+    for (const l of [U10, U19]) {
+      const p = plan(at(l));
       const fridays = parts(p).filter((x) => x.kind === "friday-5");
       expect(fridays.map((x) => x.day)).toEqual([5, 10]);
       expect(fridays.every((x) => x.items === 5 && x.hints === false)).toBe(true);
       expect(parts(p).filter((x) => x.kind === "mixed-set").some((x) => x.day === 5 || x.day === 10)).toBe(false);
-      expect(pages(p).filter((x) => x.type === "friday-5").map((x) => x.day)).toEqual([5, 10]);
     }
   });
 
   it("gives 1 to 2 challenge problems every day", () => {
-    for (const [level, grade] of [[U2, 0], [U5, 1], [U10, 3], [U19, 6]] as const) {
-      const p = plan(input({ level, grade }));
-      for (const day of p.days) {
+    for (const l of [U2, U5, U10, U19]) {
+      for (const day of plan(at(l)).days) {
         const challenge = day.pages.flatMap((x) => x.parts).filter((x) => x.kind === "challenge");
-        expect(challenge, `U${level.number} day ${day.day}`).toHaveLength(1);
+        expect(challenge, `U${l.number} day ${day.day}`).toHaveLength(1);
         expect(challenge[0].items).toBeGreaterThanOrEqual(1);
         expect(challenge[0].items).toBeLessThanOrEqual(2);
       }
@@ -135,7 +190,35 @@ describe("the two-week curriculum plan: the day", () => {
     const shows = parts(p).filter((x) => x.kind === "show-what-you-know");
     expect(shows.map((x) => x.day)).toEqual([10]);
     expect(new Set(shows[0].skills)).toEqual(new Set(p.newSteps.map((s) => s.skill)));
-    expect(shows[0].items).toBeGreaterThan(p.newSteps.length);
+    expect(shows[0].items).toBe(p.newSteps.length + 3);
+  });
+
+  it("R356-12: keeps U1 to U3 pages to 6 to 10 items with icon instructions; Solve it two ways from U4", () => {
+    for (const l of ["U1", "U2", "U3"].map(level)) {
+      for (const over of [{}, { workbook: { number: 3, inLevel: 2 } }, { passed: allPassed(l), workbook: { number: 4, inLevel: 3 } }, { pausedWeeks: 3, workbook: { number: 3, inLevel: 1 } }]) {
+        const p = plan(at(l, over));
+        expect(p.lead).toBe("parent-led");
+        for (const page of pages(p)) {
+          expect(items(page), `U${l.number} day ${page.day} page ${page.number}`).toBeGreaterThanOrEqual(6);
+          expect(items(page), `U${l.number} day ${page.day} page ${page.number}`).toBeLessThanOrEqual(10);
+          expect(page.instructions).toBe("icons");
+        }
+        for (const day of p.days.filter((d) => d.kind === "teach" || d.kind === "remember")) {
+          expect(day.pages.length).toBeGreaterThanOrEqual(4);
+          expect(day.pages.length).toBeLessThanOrEqual(6);
+        }
+        // Answers are a circle, a match, a colour, a line or one numeral: no Solve it two ways below U4.
+        expect(parts(p).some((x) => x.kind === "solve-it-two-ways")).toBe(false);
+      }
+    }
+    // From U4, one Solve it two ways a teaching day.
+    for (const l of [U4, U10, U19]) {
+      for (const day of plan(at(l)).days.filter((d) => d.kind === "teach")) {
+        expect(day.pages.flatMap((x) => x.parts).filter((x) => x.kind === "solve-it-two-ways"), `U${l.number} day ${day.day}`).toHaveLength(1);
+      }
+    }
+    expect(plan(at(U4)).days[0].pages[0].instructions).toBe("icons");
+    expect(plan(input()).days[0].pages[0].instructions).toBe("text");
   });
 });
 
@@ -143,94 +226,111 @@ describe("the two-week curriculum plan: units and steps", () => {
   it("starts a New idea only on a day a step starts: worked two ways, then one spot-the-error item", () => {
     const p = plan(input());
     for (const day of p.days) {
-      const startsA = p.newSteps.some((s) => s.day === day.day && s.track === "A");
-      const ideas = day.pages.flatMap((x) => x.parts).filter((x) => x.kind === "new-idea");
-      expect(ideas.some((x) => x.unit === "A"), `day ${day.day}`).toBe(startsA);
-      for (const page of day.pages.filter((x) => x.type === "new-idea")) {
+      for (const track of ["A", "B"] as const) {
+        const starts = p.newSteps.some((s) => s.day === day.day && s.track === track);
+        expect(day.pages.flatMap((x) => x.parts).some((x) => x.kind === "new-idea" && x.unit === track), `day ${day.day} ${track}`).toBe(starts);
+      }
+      for (const page of day.pages.filter((x) => x.parts.some((y) => y.kind === "new-idea"))) {
         const k = kinds(page);
         expect(k.indexOf("spot-the-error")).toBe(k.indexOf("new-idea") + 1);
         expect(page.parts.find((x) => x.kind === "new-idea")?.methods).toEqual(["Method 1", "Method 2"]);
       }
-      // A day with no new step practises on page 2 instead (Day 10: Show what you know).
-      if (!startsA && day.day < 10) expect(day.pages[1].type).toBe("practice");
     }
-    // Each new step's New idea teaches that step.
-    for (const s of p.newSteps.filter((x) => x.track === "A")) {
-      const idea = parts(p).find((x) => x.day === s.day && x.kind === "new-idea");
+    for (const s of p.newSteps) {
+      const idea = parts(p).find((x) => x.day === s.day && x.kind === "new-idea" && x.unit === s.track);
       expect(idea?.step).toEqual({ unit: s.unit, skill: s.skill, step: s.step });
     }
   });
 
-  it("pairs unit A with the next unit of the level that does not depend on it, about 2 pages of A to 1 of B a day", () => {
-    // U10: 3.3 needs 3.1 (place value), 3.4 is warm-up only, so B is 3.6 (patterns).
-    const p = plan(input());
-    expect(p.units).toEqual({ A: ["3.1"], B: "3.6" });
-    // A: page 2 (new idea or practice), practice, practice 2, word problems; B: Unit B and the challenge.
-    const keepsB = p.days.filter((d) => d.pages.some((x) => x.type === "unit-b") && d.day < 10);
-    expect(keepsB.length).toBeGreaterThanOrEqual(5);
-    for (const day of keepsB) {
-      const a = day.pages.filter((x) => x.unit === "A").length;
-      const b = day.pages.filter((x) => x.unit === "B").length;
-      expect(a / b, `day ${day.day}`).toBe(2);
-    }
-    // A B step starts with its own New idea on the Unit B page.
-    for (const s of p.newSteps.filter((x) => x.track === "B")) {
+  it("R356-08: puts Try first before a new step of unit B too, from U19", () => {
+    const p = plan(at(U19));
+    const bStarts = p.newSteps.filter((s) => s.track === "B");
+    expect(bStarts.length).toBeGreaterThan(0);
+    for (const s of bStarts) {
       const page = p.days[s.day - 1].pages.find((x) => x.type === "unit-b")!;
-      expect(kinds(page)).toEqual(["new-idea", "spot-the-error", "practice"]);
-      expect(page.parts[0]).toMatchObject({ unit: "B", step: { unit: s.unit, skill: s.skill, step: s.step } });
+      expect(kinds(page)).toEqual(["try-first", "new-idea", "spot-the-error", "practice"]);
+      expect(page.parts[0]).toMatchObject({ unit: "B", step: { skill: s.skill, step: s.step } });
     }
-    // No B step depends on an A step of the same workbook.
+    expect(parts(plan(input())).some((x) => x.kind === "try-first")).toBe(false);
+  });
+
+  it("pairs unit A with the next unit that does not depend on it; no B step depends on an A step", () => {
+    expect(plan(input()).units).toEqual({ A: ["3.1"], B: "3.6", support: null });
     const prerequisites = (id: string, seen = new Set<string>()): Set<string> => {
       for (const r of BC_SKILL_MAP.standards.flatMap((s) => s.skills).find((k) => k.id === id)?.requires ?? []) if (!seen.has(r)) prerequisites(r, seen.add(r));
       return seen;
     };
-    const aSkills = p.newSteps.filter((s) => s.track === "A").map((s) => s.skill);
-    for (const b of p.newSteps.filter((s) => s.track === "B")) for (const a of aSkills) expect(prerequisites(b.skill).has(a), `${b.skill} needs ${a}`).toBe(false);
-
-    // U5: 1.5 needs 1.3 (subtracting within 20), so there is no unit B, and its page is spaced review.
-    const early = plan(input({ level: U5, grade: 1 }));
+    for (const l of ALL) {
+      const q = plan(at(l));
+      const aSkills = q.newSteps.filter((s) => s.track === "A").map((s) => s.skill);
+      for (const b of q.newSteps.filter((s) => s.track === "B")) for (const a of aSkills) expect(prerequisites(b.skill).has(a), `U${l.number}: ${b.skill} needs ${a}`).toBe(false);
+    }
+    // U5: 1.5 needs 1.3, so there is no unit B and its slot is Remember these?.
+    const early = plan(at(U5));
     expect(early.units.B).toBeNull();
-    expect(pages(early).some((x) => x.type === "unit-b")).toBe(false);
     expect(early.days[0].pages[5]).toMatchObject({ type: "remember-these", unit: null });
   });
 
+  it("R356-09: keeps about 2 of A to 1 of B on every teaching day, review blocks included", () => {
+    let checked = 0;
+    for (const l of ALL) {
+      for (const over of [{}, { workbook: { number: 3, inLevel: 1 } }]) {
+        for (const day of plan(at(l, over)).days.filter((d) => d.kind === "teach")) {
+          const { A, B } = aToB(day.pages);
+          if (B === 0) continue;
+          checked++;
+          expect(A / B, `U${l.number} day ${day.day}`).toBeGreaterThanOrEqual(A_TO_B.min);
+          expect(A / B, `U${l.number} day ${day.day}`).toBeLessThanOrEqual(A_TO_B.max);
+        }
+      }
+    }
+    expect(checked).toBeGreaterThan(300);
+    // U10 keeps its Unit B page every day.
+    expect(plan(input()).days.map((d) => d.pages[5].type)).toEqual(Array(10).fill("unit-b"));
+  });
+
   it("teaches each skill's steps in order from the first not passed, at most 8 new steps a workbook", () => {
-    // 3.1-place-value-1000 has passed 2 of its 4 steps: the workbook starts at step 3.
     const p = plan(input({ passed: { "3.1-place-value-1000": 2 } }));
     expect(p.newSteps[0]).toMatchObject({ skill: "3.1-place-value-1000", step: 3, day: 1, track: "A" });
     for (const track of ["A", "B"] as const) {
       const steps = p.newSteps.filter((s) => s.track === track);
       steps.slice(1).forEach((s, i) => {
-        const before = steps[i];
-        if (s.skill === before.skill) expect(s.step).toBe(before.step + 1);
+        if (s.skill === steps[i].skill) expect(s.step).toBe(steps[i].step + 1);
         else expect(s.step).toBe(1);
-        expect(s.day).toBeGreaterThan(before.day);
+        expect(s.day).toBeGreaterThan(steps[i].day);
       });
     }
-
-    // Skills with a one-page step would start a step every day on both tracks: the cap stops at 8.
-    const quick: PlanLevel = { ...U10, units: U10.units.map((u) => ({ ...u, skills: u.skills.map((s) => ({ ...s, pages: s.steps?.length ?? 1 })) })) };
+    // One-page steps would start a step every day on both tracks: the cap stops at 8.
+    const quick: PlanLevel = { ...U10, units: U10.units.map((u) => ({ ...u, skills: u.skills.map((s) => ({ ...s, steps: s.steps.map(() => ({ pages: 1 })) })) })) };
     const capped = plan(input({ level: quick }));
     expect(capped.newSteps).toHaveLength(8);
-    // The pages after the cap consolidate the last steps: no New idea.
     const lastStart = Math.max(...capped.newSteps.map((s) => s.day));
     expect(parts(capped).some((x) => x.kind === "new-idea" && x.day > lastStart)).toBe(false);
   });
 
-  it("holds the level's review share, turning Unit B pages into Remember these? when the day falls short", () => {
-    for (const [level, grade, target] of [[U2, 0, 0.1], [U5, 1, 0.15], [U10, 3, 0.25], [U19, 6, 0.3]] as const) {
-      const p = plan(input({ level, grade }));
-      expect(p.reviewShare.target).toBe(target);
-      expect(p.reviewShare.planned, `U${level.number}`).toBeGreaterThanOrEqual(target);
+  it("R356-07: reads each drafted step's pages; with none drafted, splits the skill's pages evenly", () => {
+    // U10's first skill: steps of 7, 8, 7 and 11 pages, 4 A pages a day: step 2 starts on Day 3, step 3 on Day 5.
+    expect(plan(input()).newSteps.filter((s) => s.track === "A").slice(0, 3).map((s) => [s.step, s.day])).toEqual([[1, 1], [2, 3], [3, 5]]);
+    // The same 33 pages as 30, 1, 1 and 1: step 1 takes eight days.
+    const heavy: PlanLevel = { ...U10, units: U10.units.map((u, i) => (i > 0 ? u : { ...u, skills: u.skills.map((s, j) => (j > 0 ? s : { ...s, steps: [30, 1, 1, 1].map((pages) => ({ pages })) })) })) };
+    expect(plan(input({ level: heavy })).newSteps.filter((s) => s.track === "A").map((s) => [s.step, s.day]).slice(0, 2)).toEqual([[1, 1], [2, 9]]);
+    // U19's 6.1-place-value has no drafted steps: 16 pages over 3 steps, 6, 5 and 5; 3 A pages a day.
+    expect(U19.units[0].skills[0]).toMatchObject({ id: "6.1-place-value", pages: 16, steps: [] });
+    expect(plan(at(U19)).newSteps.filter((s) => s.track === "A").slice(0, 3).map((s) => [s.step, s.day])).toEqual([[1, 1], [2, 3], [3, 5]]);
+  });
+});
+
+describe("the two-week curriculum plan: review", () => {
+  it("R356-10: holds the level's review share at every level, Show what you know counted as review", () => {
+    for (const l of ALL) {
+      const p = plan(at(l));
+      expect(p.reviewShare.target).toBe(l.reviewShare);
+      expect(p.reviewShare.planned, `U${l.number}`).toBeGreaterThanOrEqual(l.reviewShare);
     }
-    // The day templates of U10 and U19 hold less than their share (the Mixed set is not review): the Unit B pages of
-    // the last days become Remember these?.
-    const middle = plan(input());
-    expect(middle.days.map((d) => d.pages[5].type)).toEqual([...Array(7).fill("unit-b"), ...Array(3).fill("remember-these")]);
-    const upper = plan(input({ level: U19, grade: 6 }));
-    expect(upper.days.map((d) => d.pages[4].type)).toEqual([...Array(7).fill("unit-b"), ...Array(3).fill("remember-these")]);
-    // U5's day template already holds more than its 15%, with no unit B: nothing to convert.
-    expect(plan(input({ level: U5, grade: 1 })).reviewShare.planned).toBeGreaterThan(0.15);
+    // U10 at 25%: spare room on teaching pages takes Remember these? blocks, last days first; Unit B stays.
+    const blocks = parts(plan(input())).filter((x) => x.kind === "remember-these" && ["practice-2", "word-problems", "challenge"].includes(x.type));
+    expect(blocks.length).toBeGreaterThan(0);
+    expect(Math.min(...blocks.map((x) => x.day))).toBeGreaterThan(5);
   });
 
   it("brings each passed step back after 2 days, 1 week, 3 weeks and 2 months; a miss goes back to 2 days", () => {
@@ -241,109 +341,161 @@ describe("the two-week curriculum plan: units and steps", () => {
     expect(nextReview({ ...review, interval: 3 }, 63, true)).toBeNull();
     expect(nextReview({ ...review, interval: 2 }, 23, false)).toMatchObject({ interval: 0, due: 25 });
 
-    // A review due on Day 3 is in that day's Remember these?; one due after Day 10 is carried to the next workbook.
-    const later = { skill: "2.1-count-to-100", step: 1, interval: 2, due: 12 };
-    const p = plan(input({ reviews: [review, later] }));
-    const remembered = (day: number) => parts(p).filter((x) => x.day === day && x.kind === "remember-these").flatMap((x) => x.skills);
-    expect(remembered(3)).toContain("2.4-add-within-100");
-    expect(p.reviewsAfter).toContainEqual({ ...later, due: 2 });
-
-    // More reviews due on a day than its Remember these? holds (4 skills on a U10 day 2): the rest move on a day.
-    const due = ["2.1-count-to-100", "2.1-even-odd", "2.3-facts-to-10", "2.4-add-within-100", "2.4-subtract-within-100", "2.5-increasing-pattern"]
-      .map((skill) => ({ skill, step: 1, interval: 1, due: 2 }));
-    const busy = plan(input({ reviews: due }));
-    const shown = (day: number) => parts(busy).filter((x) => x.day === day && x.kind === "remember-these").flatMap((x) => x.skills);
-    expect(due.filter((r) => shown(2).includes(r.skill))).toHaveLength(4);
-    for (const r of due) expect(shown(2).includes(r.skill) || shown(3).includes(r.skill), r.skill).toBe(true);
-
-    // The workbook's own first step comes back 2 days after its last day.
+    // This workbook's first step comes back 2 days after its last day.
+    const p = plan(input());
     const first = p.newSteps[0];
     const next = p.newSteps.find((s) => s.track === first.track && s.day > first.day)!;
-    expect(remembered(next.day - 1 + 2)).toContain(first.skill);
+    const back = parts(p).filter((x) => x.kind === "remember-these").flatMap((x) => (x.reviews ?? []).map((r) => ({ ...r, day: x.day })));
+    expect(back).toContainEqual({ skill: first.skill, step: first.step, interval: 0, day: next.day - 1 + 2 });
+  });
+
+  it("R356-03: keeps each spaced review's step and interval, and loses none", () => {
+    // The four steps of 3.1-place-value-1000, all due on Day 2, and one due after Day 10.
+    const due = [1, 2, 3, 4].map((step) => ({ skill: "3.1-place-value-1000", step, interval: 1, due: 2 }));
+    const later = { skill: "2.1-count-to-100", step: 1, interval: 2, due: 12 };
+    const p = plan(input({ passed: { "3.1-place-value-1000": 4 }, reviews: [...due, later] }));
+    const placed = parts(p).filter((x) => x.kind === "remember-these").flatMap((x) => (x.reviews ?? []).map((r) => ({ ...r, day: x.day })));
+    for (const r of due) {
+      const found = placed.filter((x) => x.skill === r.skill && x.step === r.step && x.interval === r.interval);
+      const carried = p.reviewsAfter.filter((x) => x.skill === r.skill && x.step === r.step);
+      expect(found.length + carried.length, `step ${r.step}`).toBe(1);
+      if (found[0]) expect(found[0].day).toBeGreaterThanOrEqual(2);
+    }
+    expect(p.reviewsAfter).toContainEqual({ ...later, due: 2 });
+    // Each placed review holds 2 items of its part.
+    for (const x of parts(p).filter((y) => y.kind === "remember-these")) expect((x.reviews ?? []).length * 2).toBeLessThanOrEqual(x.items);
+  });
+
+  it("R356-04: leaves out a carried review above the school grade that is not secure, and keeps a secure one", () => {
+    // A Grade 2 child: 3.2 is developing (a weakness above the grade); 3.5 is secure.
+    const fraction = { skill: "3.2-name-fraction-region", step: 1, interval: 0, due: 1 };
+    const groups = { skill: "3.5-equal-groups", step: 1, interval: 0, due: 1 };
+    const p = plan(input({ grade: 2, profile: { standards: [standard("3.2", "developing"), standard("3.5", "secure")] }, reviews: [fraction, groups] }));
+    const reviewed = parts(p).flatMap((x) => [...x.skills, ...(x.reviews ?? []).map((r) => r.skill)]);
+    expect(reviewed).not.toContain("3.2-name-fraction-region");
+    expect(p.reviewsSkipped).toEqual([fraction]);
+    expect(parts(p).flatMap((x) => x.reviews ?? []).map((r) => r.skill)).toContain("3.5-equal-groups");
   });
 });
 
-describe("the two-week curriculum plan: Fix it, review and the level test", () => {
-  const LAST_WORKBOOK = "2026-11-02T00:00:00.000Z";
-  const missed = (code: string, over: Partial<ChildStandard["events"]> = {}, events: string[] = ["e-1"]) =>
-    standard(code, "developing", {
-      assessment: null,
-      events: { ...NO_EVENTS, wrong: 1, sources: { call: 0, marking: 1, assessment: 0 }, lastAt: "2026-11-05T17:00:00.000Z", ...over },
-      evidence: { assessmentId: null, events },
-    });
+describe("the two-week curriculum plan: Fix it, pauses and support", () => {
+  it("R356-05: builds Fix it from the previous workbook's unresolved misses only: none in workbook 1, never from all-time counts", () => {
+    const misses = ["2.1-count-to-100", "2.3-facts-to-10", "2.4-add-within-100", "2.4-subtract-within-100", "2.5-increasing-pattern", "2.6-missing-addend", "2.7-equal-sign"]
+      .map((skill, i) => miss(skill, i, i === 0 ? { mistake: "O3", stuckStep: "tens" } : {}));
+    expect(parts(plan(input({ misses }))).some((x) => x.kind === "fix-it")).toBe(false);
 
-  it("has no Fix it in workbook 1; from workbook 2, last time's misses on page 1 of Days 1 to 5, up to 3 a box", () => {
-    const weak = ["2.1", "2.2", "2.3", "2.4", "2.5", "2.6", "2.7"].map((code) => missed(code));
-    const profile = { assessment: { completedAt: TEST_DONE }, standards: weak };
-    expect(parts(plan(input({ profile }))).some((x) => x.kind === "fix-it")).toBe(false);
-
-    const p = plan(input({ profile, workbook: { number: 2, inLevel: 1 }, since: LAST_WORKBOOK }));
+    const p = plan(input({ misses, workbook: { number: 2, inLevel: 1 } }));
     const boxes = parts(p).filter((x) => x.kind === "fix-it");
     expect(boxes.map((x) => [x.day, x.page])).toEqual([[1, 1], [2, 1], [3, 1], [4, 1], [5, 1]]);
     expect(boxes.every((x) => x.items >= 1 && x.items <= 3)).toBe(true);
-    // Spread over the five days, worst first, each with its evidence so no question comes back.
-    expect(boxes.map((x) => x.fixIt!.map((f) => f.standard))).toEqual([["2.1", "2.6"], ["2.2", "2.7"], ["2.3"], ["2.4"], ["2.5"]]);
-    expect(boxes[0].fixIt![0]).toEqual({ standard: "2.1", mistakes: [], stuckSteps: [], avoid: { assessmentId: null, events: ["e-1"] } });
+    expect(boxes.flatMap((x) => x.fixIt!.map((f) => f.skill)).sort()).toEqual(misses.map((m) => m.skill).sort());
+    expect(boxes[0].fixIt![0]).toEqual({
+      skill: "2.1-count-to-100", standard: "2.1", mistakes: ["O3"], stuckSteps: ["tens"],
+      avoid: { questions: [misses[0].question], events: ["e-0"] }, reviews: [],
+    });
     // The warm-up makes room for the box.
     expect(parts(p).find((x) => x.day === 1 && x.kind === "warm-up")?.items).toBe(15);
+
+    // A profile full of old weak standards and no unresolved miss: no Fix it.
+    const weak = { standards: ["2.1", "2.3", "2.4", "2.5"].map((code) => standard(code, "needs-attention")) };
+    expect(parts(plan(input({ profile: weak, workbook: { number: 2, inLevel: 1 } }))).some((x) => x.kind === "fix-it")).toBe(false);
+
+    // More than 15 skills: the rest wait.
+    const many = BC_SKILL_MAP.standards.filter((s) => s.grade === 2).flatMap((s) => s.skills).slice(0, 18).map((k, i) => miss(k.id, i));
+    const full = plan(input({ misses: many, workbook: { number: 2, inLevel: 1 } }));
+    expect(parts(full).filter((x) => x.kind === "fix-it").flatMap((x) => x.fixIt!)).toHaveLength(15);
+    expect(full.fixItLater).toHaveLength(3);
   });
 
-  it("counts right with help, keeps what went wrong, and lists what it cannot fix, never dropping one", () => {
-    const helped = missed("2.4", { wrong: 0, rightWithHelp: 2, stuckSteps: ["tens"], mistakes: [] }, ["e-1", "e-2"]);
-    const wrong = missed("2.1", { mistakes: ["O3"] }, ["e-3"]);
-    // Wrong before the last workbook, and not touched since: not last time's.
-    const older = missed("2.3", { lastAt: "2026-10-25T17:00:00.000Z" });
-    // Grade 4: above this U10 level's grade; it comes with its own level.
-    const ahead = missed("4.1");
-    const many = Array.from({ length: 16 }, (_, i) => missed(["2.2", "2.5", "2.6", "2.7", "2.8", "2.9", "2.10", "2.11", "2.12", "1.1", "1.2", "1.3", "1.4", "1.5", "1.6", "1.7"][i]));
-    const p = plan(input({ grade: 4, workbook: { number: 3, inLevel: 2 }, since: LAST_WORKBOOK, profile: { assessment: { completedAt: TEST_DONE }, standards: [helped, wrong, older, ahead, ...many] } }));
-    const fixed = parts(p).filter((x) => x.kind === "fix-it").flatMap((x) => x.fixIt!);
-    expect(fixed).toHaveLength(15);
-    expect(fixed.find((f) => f.standard === "2.4")).toMatchObject({ stuckSteps: ["tens"], avoid: { events: ["e-1", "e-2"] } });
-    expect(fixed.find((f) => f.standard === "2.1")).toMatchObject({ mistakes: ["O3"] });
-    expect(fixed.some((f) => f.standard === "2.3")).toBe(false);
-    expect(p.fixItLater).toContain("4.1");
-    expect(p.fixItLater).toHaveLength(4);
+  it("R356-06: puts a missed spaced review in Fix it with its step", () => {
+    const missed = { skill: "2.4-add-within-100", step: 2, interval: 1, due: 0 };
+    const p = plan(input({ missedReviews: [missed], workbook: { number: 3, inLevel: 2 } }));
+    expect(parts(p).find((x) => x.kind === "fix-it")?.fixIt).toEqual([
+      { skill: "2.4-add-within-100", standard: "2.4", mistakes: [], stuckSteps: [], avoid: { questions: [], events: [] }, reviews: [{ step: 2, interval: 1 }] },
+    ]);
+  });
+
+  it("R356-06: opens with 2 Remember these? days after a pause of 2 weeks or more, with no new step", () => {
+    const p = plan(input({ pausedWeeks: 2, workbook: { number: 3, inLevel: 2 } }));
+    expect(p.days.map((d) => d.kind).slice(0, 3)).toEqual(["remember", "remember", "teach"]);
+    expect(Math.min(...p.newSteps.map((s) => s.day))).toBe(3);
+    for (const day of p.days.slice(0, 2)) {
+      expect(day.pages).toHaveLength(8);
+      expect(day.pages.flatMap((x) => x.parts).some((x) => x.kind === "new-idea" || (x.unit === "A" && x.kind === "practice"))).toBe(false);
+    }
+    expect(plan(input({ pausedWeeks: 1, workbook: { number: 3, inLevel: 2 } })).days[0].kind).toBe("teach");
+  });
+
+  it("R356-06: gives the support unit the daily Review slot for 2 workbooks, with a 5-item mini-test in the second", () => {
+    const first = plan(input({ support: "2.4", workbook: { number: 6, inLevel: 0 } }));
+    expect(first.units).toMatchObject({ B: null, support: "2.4" });
+    for (const day of first.days) {
+      const slot = day.pages[5];
+      expect(slot.type).toBe("remember-these");
+      expect(slot.parts[0].skills.every((id) => id.startsWith("2.4-"))).toBe(true);
+    }
+    expect(parts(first).some((x) => x.kind === "mini-test")).toBe(false);
+
+    const second = plan(input({ support: "2.4", workbook: { number: 7, inLevel: 1 } }));
+    expect(parts(second).filter((x) => x.kind === "mini-test").map((x) => [x.day, x.items, x.hints])).toEqual([[6, 5, false]]);
+    expect(parts(second).find((x) => x.kind === "mini-test")!.skills.every((id) => id.startsWith("2.4-"))).toBe(true);
+
+    // From the third workbook, unit B is back.
+    expect(plan(input({ support: "2.4", workbook: { number: 8, inLevel: 2 } })).units).toMatchObject({ B: "3.6", support: null });
   });
 
   it("never plans a standard above the child's school grade as a weakness", () => {
-    // A strong Grade 2 child working ahead in a Grade 3 level: 3.2 is not secure, but it is above the school grade.
-    const profile = { assessment: { completedAt: TEST_DONE }, standards: [missed("3.2"), standard("3.5", "secure"), missed("2.4")] };
-    const p = plan(input({ grade: 2, profile, workbook: { number: 2, inLevel: 1 }, since: LAST_WORKBOOK }));
-    const reviewed = parts(p).filter((x) => x.kind === "remember-these" || x.kind === "fix-it").flatMap((x) => x.skills);
+    // A strong Grade 2 child in a Grade 3 level: a miss on 3.2 (above the grade, not secure) is not fixed; 2.4 is.
+    const p = plan(input({
+      grade: 2,
+      profile: { standards: [standard("3.2", "developing"), standard("3.5", "secure")] },
+      misses: [miss("3.2-name-fraction-region", 1), miss("2.4-add-within-100", 2)],
+      workbook: { number: 2, inLevel: 1 },
+    }));
+    expect(parts(p).find((x) => x.kind === "fix-it")?.fixIt?.map((f) => f.skill)).toEqual(["2.4-add-within-100"]);
+    const reviewed = parts(p).filter((x) => x.kind === "remember-these").flatMap((x) => x.skills);
     expect(reviewed.some((id) => id.startsWith("3.2-"))).toBe(false);
-    expect(p.fixItLater).not.toContain("3.2");
-    // Above the school grade but secure: fine to review. At the school grade and not secure: a weakness to fix.
     expect(reviewed.some((id) => id.startsWith("3.5-"))).toBe(true);
-    expect(parts(p).find((x) => x.kind === "fix-it")?.fixIt?.map((f) => f.standard)).toEqual(["2.4"]);
   });
 
-  it("builds the test workbook when every step is passed: Day 7 the level test, Day 8 light, Days 9 and 10 mixed", () => {
+  it("puts a unit the profile finds secure in review in the first workbook, not in teaching (CONTEXT 2)", () => {
+    const p = plan(input({ profile: { standards: [standard("3.1", "secure")] } }));
+    expect(p.units.A[0]).not.toBe("3.1");
+    expect(p.newSteps.some((s) => s.unit === "3.1")).toBe(false);
+    expect(parts(p).filter((x) => x.kind === "remember-these").flatMap((x) => x.skills).some((id) => id.startsWith("3.1-"))).toBe(true);
+  });
+});
+
+describe("the two-week curriculum plan: the test workbook", () => {
+  it("R356-11: builds the test workbook when every step is passed; Day 7 tests every unit, fluency units too", () => {
     expect(plan(input()).testWorkbook).toBe(false);
     const p = plan(input({ passed: allPassed(U10), workbook: { number: 5, inLevel: 4 } }));
     expect(p.testWorkbook).toBe(true);
     expect(p.newSteps).toEqual([]);
-
-    const test = p.days[6];
-    expect(new Set(types(test.pages))).toEqual(new Set(["level-test"]));
-    expect(test.pages).toHaveLength(8);
-    const tested = test.pages.flatMap((x) => x.parts);
+    const tested = p.days[6].pages.flatMap((x) => x.parts);
+    expect(new Set(types(p.days[6].pages))).toEqual(new Set(["level-test"]));
     expect(tested.every((x) => x.hints === false && x.test?.sittings === 1)).toBe(true);
-    expect(new Set(tested.flatMap((x) => x.test!.units))).toEqual(new Set(["3.1", "3.3", "3.6", "3.13"]));
+    expect(new Set(tested.flatMap((x) => x.test!.units))).toEqual(new Set(U10.units.map((u) => u.code)));
+    expect(tested.flatMap((x) => x.skills)).toContain("3.4-recall-addition-20");
     expect(tested.reduce((n, x) => n + x.test!.contextQuestions, 0)).toBeGreaterThanOrEqual(1);
+    for (const l of ALL) {
+      const test = plan(at(l, { passed: allPassed(l), workbook: { number: 9, inLevel: 3 } }));
+      const units = new Set(test.days[6].pages.flatMap((x) => x.parts.flatMap((y) => y.test!.units)));
+      expect([...units].sort(), `U${l.number}`).toEqual([...l.units.map((u) => u.code)].sort());
+    }
 
-    // Day 8 is light: half the pages, no new idea.
+    // Day 8 light; Days 9 and 10 mixed; Day 10 still Show what you know; Days 1 to 6 review every unit.
     expect(p.days[7].pages).toHaveLength(4);
     expect(p.days[7].pages.flatMap((x) => x.parts).some((x) => x.kind === "new-idea")).toBe(false);
-    // Days 9 and 10 mix the whole level; Day 10 still ends with Show what you know.
-    for (const day of p.days.slice(8)) expect(day.pages.filter((x) => x.type === "practice").flatMap((x) => x.parts[0].skills).length).toBeGreaterThan(5);
+    expect(p.days.slice(8).map((d) => d.kind)).toEqual(["mixed", "mixed"]);
     expect(parts(p).filter((x) => x.kind === "show-what-you-know").map((x) => x.day)).toEqual([10]);
-    // Days 1 to 6 bring back every unit of the level.
     const remembered = parts(p).filter((x) => x.day <= 6 && x.kind === "remember-these").flatMap((x) => x.skills);
-    for (const unit of ["3.1", "3.3", "3.6", "3.13"]) expect(remembered.some((id) => id.startsWith(`${unit}-`)), unit).toBe(true);
+    for (const unit of U10.units.map((u) => u.code)) expect(remembered.some((id) => id.startsWith(`${unit}-`)), unit).toBe(true);
+    // With no new step, Show what you know takes one of each skill passed (12), and the hardest again.
+    expect(parts(p).find((x) => x.kind === "show-what-you-know")).toMatchObject({ items: 15 });
 
     // Parent-led levels sit the test in two parts.
-    const early = plan(input({ level: U2, grade: 0, passed: allPassed(U2), workbook: { number: 3, inLevel: 2 } }));
+    const early = plan(at(U2, { passed: allPassed(U2), workbook: { number: 3, inLevel: 2 } }));
     expect(early.days[6].pages.flatMap((x) => x.parts).every((x) => x.test?.sittings === 2)).toBe(true);
   });
 
@@ -354,61 +506,42 @@ describe("the two-week curriculum plan: Fix it, review and the level test", () =
     expect(Math.max(...p.newSteps.map((s) => s.day))).toBeLessThanOrEqual(6);
     expect(plan(input({ workbook: { number: 6, inLevel: U10.workbooks + 1 } })).testWorkbook).toBe(false);
   });
+});
 
-  it("gives the same plan for the same input, whatever order the profile's standards come in", () => {
-    const profile = { assessment: { completedAt: TEST_DONE }, standards: [missed("2.4"), standard("2.1", "needs-attention"), standard("3.1", "secure"), missed("2.3")] };
-    const one = input({ profile, passed: { "3.1-place-value-1000": 1 }, workbook: { number: 2, inLevel: 1 }, reviews: [{ skill: "2.4-add-within-100", step: 1, interval: 1, due: 2 }] });
+describe("the two-week curriculum plan: input", () => {
+  it("gives the same plan for the same input, whatever order the profile's standards and misses come in", () => {
+    const profile = { standards: [standard("2.4", "developing"), standard("2.1", "needs-attention"), standard("3.1", "secure"), standard("2.3", "needs-attention")] };
+    const one = input({
+      profile, passed: { "3.1-place-value-1000": 1 }, workbook: { number: 2, inLevel: 1 },
+      misses: [miss("2.4-add-within-100", 1), miss("2.1-count-to-100", 2)], reviews: [{ skill: "2.4-add-within-100", step: 1, interval: 1, due: 2 }],
+    });
     expect(plan(one)).toEqual(plan(one));
-    const shuffled = { ...one, profile: { ...profile, standards: [...profile.standards].reverse() } };
+    const shuffled = { ...one, profile: { standards: [...profile.standards].reverse() }, misses: [...one.misses].reverse() };
     expect(JSON.stringify(plan(shuffled))).toBe(JSON.stringify(plan(one)));
-    // Ties go by curriculum order: of two standards equally weak, the earlier first.
-    expect(parts(plan(one)).filter((x) => x.kind === "fix-it").map((x) => x.fixIt![0].standard)).toEqual(["2.1", "2.3", "2.4"]);
-  });
-
-  it("refuses a level it cannot plan", () => {
-    expect(planWorkbook(input({ level: { ...U10, number: 31 } }))).toEqual({ ok: false, reason: "the level is not U1 to U30" });
-    expect(planWorkbook(input({ level: { ...U10, units: [] } }))).toEqual({ ok: false, reason: "the level has no skills" });
-    expect(planWorkbook(input({ level: { ...U10, units: [{ code: "3.3", skills: [{ id: "3.3-juggling", delivery: "new-step", pages: 4 }] }] } }))).toEqual({ ok: false, reason: "3.3-juggling is not a skill of the BC skill map" });
-    expect(planWorkbook(input({ passed: { "3.5-equal-groups": 1 } }))).toEqual({ ok: false, reason: "3.5-equal-groups is not a skill of this level" });
-    expect(planWorkbook(input({ workbook: { number: 0, inLevel: 0 } }))).toEqual({ ok: false, reason: "the workbook number is not 1 or more" });
-    expect(planWorkbook(input({ workbook: { number: 2, inLevel: -1 } }))).toEqual({ ok: false, reason: "the workbooks before in the level is not a whole number" });
-    expect(planWorkbook(input({ passed: { "3.1-place-value-1000": 1.5 } }))).toEqual({ ok: false, reason: "the steps passed of 3.1-place-value-1000 is not a whole number" });
-    expect(planWorkbook(input({ since: "last week" }))).toEqual({ ok: false, reason: "since is not a date" });
   });
 
   it("reads the child's profile as P6 builds it", () => {
-    // Two calls where Maya helped on 2.4, after the last workbook began: back in a Fix it box with the stuck step.
-    const helped = (n: number): LearningEvent => ({
-      id: `00000000-0000-4000-8000-00000000000${n}`, key: `call:${n}`, parentId: "00000000-0000-4000-8000-0000000000a1", childId: "00000000-0000-4000-8000-0000000000c1",
-      source: "call", question: { source: "workbook", workbookId: "00000000-0000-4000-8000-0000000000b1", page: 3, question: n },
-      skill: { standard: "2.4", skills: ["2.4-add-within-100"] }, result: "right_with_help", stuckStep: "tens", mistake: null, hints: 2, timeMs: 60_000,
-      occurredAt: `2026-11-0${n}T16:00:00.000Z`, evidence: { kind: "call", id: `call-${n}` },
-    });
-    const profile = childProfileFacts({ grade: 3, learning: null, assessment: null, events: [helped(3), helped(4)] })!;
-    const p = plan(input({ profile, workbook: { number: 2, inLevel: 1 }, since: LAST_WORKBOOK }));
-    expect(parts(p).find((x) => x.kind === "fix-it")?.fixIt).toEqual([
-      { standard: "2.4", mistakes: [], stuckSteps: ["tens"], avoid: { assessmentId: null, events: [helped(3).id, helped(4).id] } },
-    ]);
+    const built = childProfileFacts({
+      grade: 3, learning: null, assessment: null,
+      events: [{
+        id: "00000000-0000-4000-8000-000000000001", key: "call:1", parentId: "00000000-0000-4000-8000-0000000000a1", childId: "00000000-0000-4000-8000-0000000000c1",
+        source: "call", question: { source: "workbook", workbookId: "00000000-0000-4000-8000-0000000000b1", page: 3, question: 1 },
+        skill: { standard: "3.5", skills: [] }, result: "right", stuckStep: null, mistake: null, hints: 0, timeMs: 1, occurredAt: "2026-11-01T16:00:00.000Z", evidence: { kind: "call", id: "c" },
+      }],
+    })!;
+    expect(planWorkbook(input({ profile: built })).ok).toBe(true);
   });
 
-  it("fills every page: the 6-page practice page, a new child's Remember these?, a small level's test, a test book's Show what you know", () => {
-    // The 6-page day's practice page also holds Solve it two ways and Spot the error (DESIGN 7.2).
-    expect(kinds(plan(input({ level: U19, grade: 6 })).days[0].pages[2])).toEqual(["practice", "solve-it-two-ways", "spot-the-error"]);
-
-    // A child with nothing met yet: Remember these? brings back what the level builds on.
-    const fresh = plan(input({ profile: { assessment: null, standards: [] } }));
-    for (const x of parts(fresh).filter((y) => y.kind === "remember-these")) expect(x.skills.length, `day ${x.day}`).toBeGreaterThan(0);
-    expect(parts(fresh).find((x) => x.kind === "remember-these")!.skills.every((id) => !id.startsWith("3."))).toBe(true);
-
-    // A level with one skill still fills every page of its test.
-    const small: PlanLevel = { number: 10, workbooks: 1, units: [U10.units[0]] };
-    const test = plan(input({ level: small, passed: allPassed(small), workbook: { number: 2, inLevel: 1 } }));
-    for (const page of test.days[6].pages) expect(page.parts[0].skills.length).toBeGreaterThan(0);
-
-    // With no new step, Show what you know takes one of each skill of the level, and the hardest again.
-    const done = plan(input({ passed: allPassed(U10), workbook: { number: 5, inLevel: 4 } }));
-    const show = parts(done).find((x) => x.kind === "show-what-you-know")!;
-    expect(show.skills).toHaveLength(12);
-    expect(show.items).toBe(15);
+  it("refuses an input it cannot plan", () => {
+    expect(planWorkbook(input({ level: { ...U10, number: 31 } }))).toEqual({ ok: false, reason: "the level is not U1 to U30" });
+    expect(planWorkbook(input({ level: { ...U10, units: [] } }))).toEqual({ ok: false, reason: "the level has no skills" });
+    expect(planWorkbook(input({ level: { ...U10, units: [{ code: "3.3", skills: [{ id: "3.3-juggling", delivery: "new-step", pages: 4, steps: [] }] }] } }))).toEqual({ ok: false, reason: "3.3-juggling is not a skill of the BC skill map" });
+    expect(planWorkbook(input({ passed: { "3.5-equal-groups": 1 } }))).toEqual({ ok: false, reason: "3.5-equal-groups is not a skill of this level" });
+    expect(planWorkbook(input({ passed: { "3.1-place-value-1000": 1.5 } }))).toEqual({ ok: false, reason: "the steps passed of 3.1-place-value-1000 is not a whole number" });
+    expect(planWorkbook(input({ workbook: { number: 0, inLevel: 0 } }))).toEqual({ ok: false, reason: "the workbook number is not 1 or more" });
+    expect(planWorkbook(input({ workbook: { number: 2, inLevel: -1 } }))).toEqual({ ok: false, reason: "the workbooks before in the level is not a whole number" });
+    expect(planWorkbook(input({ pausedWeeks: 1.5 }))).toEqual({ ok: false, reason: "the weeks paused is not a whole number" });
+    expect(planWorkbook(input({ support: "3.99" }))).toEqual({ ok: false, reason: "3.99 is not a BC standard" });
+    expect(planWorkbook(input({ misses: [miss("3.3-juggling", 1)] }))).toEqual({ ok: false, reason: "3.3-juggling is not a skill of the BC skill map" });
   });
 });
