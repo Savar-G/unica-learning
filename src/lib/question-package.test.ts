@@ -42,12 +42,12 @@ const changed = (change: (p: QuestionPackage) => void): unknown => {
 
 describe("checkQuestionPackage", () => {
   it("accepts a sound package", () => {
-    expect(checkQuestionPackage(PACKAGE)).toEqual({ ok: true, package: PACKAGE });
+    expect(checkQuestionPackage(PACKAGE)).toEqual({ ok: true, status: "checked", package: PACKAGE });
   });
 
   it("accepts other forms of the answer's number and a unit", () => {
     const p = changed((p) => { p.answer = { value: { type: "number", value: 85 }, accepted: [{ type: "fraction", numerator: 170, denominator: 2 }], unit: "cans" }; });
-    expect(checkQuestionPackage(p)).toEqual({ ok: true, package: p });
+    expect(checkQuestionPackage(p)).toEqual({ ok: true, status: "checked", package: p });
   });
 
   it("accepts stored steps with their keys in another order, as jsonb gives them back", () => {
@@ -55,7 +55,7 @@ describe("checkQuestionPackage", () => {
       : v && typeof v === "object" ? Object.fromEntries(Object.entries(v).reverse().map(([k, x]) => [k, reorder(x)])) : v;
     const p = reorder(PACKAGE);
     expect(JSON.stringify(p)).not.toBe(JSON.stringify(PACKAGE));
-    expect(checkQuestionPackage(p)).toEqual({ ok: true, package: p });
+    expect(checkQuestionPackage(p)).toEqual({ ok: true, status: "checked", package: p });
   });
 
   it.each([
@@ -102,7 +102,7 @@ describe("checkQuestionPackage", () => {
       if (ones.kind === "add-column") ones.write = 4;
     })],
     ["a step left out", "the question's worked steps are not the steps of its operation", () => changed((p) => { p.steps.splice(1, 1); })],
-    ["an operation code cannot compute", "the operation's kind is not one code can compute", () => changed((p) => { (p.operation as { kind: string }).kind = "multiply"; })],
+    ["a multiplication whose answer is a sum", "the question's answer is not what its operation gives", () => changed((p) => { (p.operation as { kind: string }).kind = "multiply"; })],
     ["a subtraction below zero", "the subtraction goes below zero", () => changed((p) => { p.operation = { kind: "subtract", operands: [37, 48] }; })],
     ["a fraction over 0", "an accepted form is not a fraction with a whole numerator and a denominator from 1", () => changed((p) => { p.answer.accepted = [{ type: "fraction", numerator: 1, denominator: 0 }]; })],
     ["an accepted form of another number", "the accepted form 99 is not the answer's number", () => changed((p) => { p.answer.accepted = [{ type: "number", value: 99 }]; })],
@@ -138,7 +138,7 @@ describe("checkQuestionPackage", () => {
       p.easierExample = { text: "38 + 45 = ?", operation: { kind: "add", operands: [38, 45] }, answer: { type: "number", value: 83 }, steps: workedSteps({ kind: "add", operands: [38, 45] }) };
     })],
   ])("refuses %s", (_name, reason, make) => {
-    expect(checkQuestionPackage(make())).toEqual({ ok: false, reason });
+    expect(checkQuestionPackage(make())).toEqual({ ok: false, status: "failed", reason });
   });
 });
 
