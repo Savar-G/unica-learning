@@ -527,7 +527,10 @@ function allLabels(spec: Record<string, unknown>, sized: boolean) {
 }
 /** The labels of `allLabels` the code can write alone: a size that is not a whole number is refused for its own reason. */
 const writable = (base: Record<string, unknown>, labels: { piece: string; show: string }[]) =>
-  labels.filter((l) => applyBatch(createScene(), { transactionId: "p", commands: [model("p", { ...base, labels: [l] })] }).ok || l.show === "unknown");
+  labels.filter((l) => {
+    const r = applyBatch(createScene(), { transactionId: "p", commands: [model("p", { ...base, labels: [l] })] });
+    return r.ok || /no clear room/.test(r.refusal.reason);
+  });
 
 describe("geometry labels stay readable (#353 R1)", () => {
   it("refuses a 1 by 10 rectangle with four angle sizes: there is no clear room for them", () => {

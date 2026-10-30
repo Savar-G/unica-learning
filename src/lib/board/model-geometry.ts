@@ -1,10 +1,13 @@
 // Named geometry shapes from a closed list, each with bounded whole-number dimensions in units. The corners are named
 // A, B, C, D counter-clockwise from the bottom left, so the parts are "vertex-A", "side-AB" and "angle-A" (a circle has
 // "centre" and "radius"). A label shows a side's length or an angle's size, which the code computes; a label the code
-// cannot write as a whole number, or a right-angle mark on an angle that is not one, is refused.
-import { glyphStrokes, missingGlyphs, refuse, type LocalStroke, type LocalTarget, type RefusalBody } from "@/lib/board/representation";
+// cannot write as a whole number, or a right-angle mark on an angle that is not one, is refused. Every label is placed
+// by a fixed rule and checked: clear of the shape's lines and the other labels, inside the model's space, and nearer its
+// own corner or side than any other. A shape too thin or small to hold its labels that way is refused with the reason.
+import { glyphStrokes, isRefusal, missingGlyphs, refuse, type LocalStroke, type LocalTarget, type RefusalBody } from "@/lib/board/representation";
+import { overlaps, polylineHitsRect } from "@/lib/board/geometry";
 import { around, choice, ellipse, fields, grow, int, invalid, list, r3, type ModelKind } from "@/lib/board/model-kind";
-import type { Point } from "@/lib/board/glyphs";
+import type { GlyphSet, Point } from "@/lib/board/glyphs";
 import type { Rect } from "@/lib/board/types";
 
 export const SHAPES = ["square", "rectangle", "right_triangle", "triangle", "parallelogram", "trapezoid", "circle"] as const;
@@ -176,7 +179,7 @@ function labelTexts(spec: GeometrySpec, f: Figure): Map<string, string> | Refusa
 
 /** The unit vector halfway between an angle's arms, into the shape. */
 const bisector = (a: Angle) => unit(add(unit(sub(a.arms[0], a.at)), unit(sub(a.arms[1], a.at))));
-/** The unit normal of a side that points away from the shape's middle. */
+/** The unit normal of a side that points away from the shape's middle (up, for a circle's radius). */
 function outward(side: Side, f: Figure): Point {
   if (side.name === "radius") return [0, -1];
   const d = unit(sub(side.to, side.from));
@@ -187,19 +190,105 @@ function outward(side: Side, f: Figure): Point {
 }
 /** A text box of `chars` characters centred on a point. */
 const textBox = ([x, y]: Point, chars: number): Rect => ({ x: x - (chars * CHAR_W) / 2, y: y - TEXT_H / 2, w: chars * CHAR_W, h: TEXT_H });
-/** Where a side's label goes: beside its middle, outside the shape, far enough that the text keeps clear of the line. */
-function sideLabelBox(side: Side, f: Figure, chars: number): Rect {
-  const mid: Point = [(side.from[0] + side.to[0]) / 2, (side.from[1] + side.to[1]) / 2];
-  const n = outward(side, f);
-  const reach = Math.abs(n[0]) * ((chars * CHAR_W) / 2) + Math.abs(n[1]) * (TEXT_H / 2) + 0.2;
-  return textBox(add(mid, n, reach), chars);
+const centreOf = (r: Rect): Point => [r.x + r.w / 2, r.y + r.h / 2];
+const distance = (a: Point, b: Point) => Math.hypot(a[0] - b[0], a[1] - b[1]);
+function toSegment(p: Point, s: Side): number {
+  const [d, q] = [sub(s.to, s.from), sub(p, s.from)];
+  const t = Math.max(0, Math.min(1, (q[0] * d[0] + q[1] * d[1]) / (d[0] * d[0] + d[1] * d[1])));
+  return distance(p, add(s.from, d, t));
 }
-/** Where an angle's size goes: inside the angle, far enough along its bisector to clear both arms. */
-function angleLabelBox(a: Angle, chars: number): Rect {
-  const half = ((a.degrees / 2) * Math.PI) / 180;
-  const radius = Math.hypot((chars * CHAR_W) / 2, TEXT_H / 2) + 0.1;
-  return textBox(add(a.at, bisector(a), Math.min(3, radius / Math.sin(half))), chars);
+/** True when a point is inside a convex polygon (the corners in order). */
+function insidePolygon(p: Point, corners: readonly Point[]): boolean {
+  const signs = corners.map((a, i) => {
+    const b = corners[(i + 1) % corners.length];
+    return Math.sign((b[0] - a[0]) * (p[1] - a[1]) - (b[1] - a[1]) * (p[0] - a[0]));
+  });
+  return signs.every((x) => x >= 0) || signs.every((x) => x <= 0);
 }
+
+/** The gap a label keeps from the shape's lines and from other labels, in cells. */
+const CLEAR = 0.1;
+/** Where an angle label may go, as distances along its two arms, nearest the bisector and the corner first. */
+const ANGLE_SPOTS: [number, number][] = [];
+for (let s = 3; s <= 30; s++) for (let t = 3; t <= 30; t++) ANGLE_SPOTS.push([s / 10, t / 10]);
+ANGLE_SPOTS.sort((a, b) => Math.hypot(...a) + Math.abs(a[0] - a[1]) - (Math.hypot(...b) + Math.abs(b[0] - b[1])));
+/** How much further out than the nearest clear distance a side label or a corner name may move, in cells. */
+const SLIDES = [0, 0.15, 0.3, 0.45, 0.6, 0.8, 1];
+/** Where along its side a side label may go: the middle first. */
+const ALONG = [0.5, 0.4, 0.6, 0.3, 0.7];
+
+/** Where every label, right-angle mark and corner name goes, in cells from the object's top-left corner. */
+interface Placement {
+  text: Map<string, { text: string; box: Rect }>;
+  marks: Map<string, Point[]>;
+  names: Map<string, Rect>;
+}
+
+/**
+ * Places the labels: right-angle marks first, then angle sizes inside their angles, side labels outside their sides,
+ * and corner names (when the pen has letters) outside their corners. Each takes the first clear spot of a fixed list,
+ * so a replay places them the same way. Refused when a label has no clear spot.
+ */
+function place(spec: GeometrySpec, f: Figure, texts: Map<string, string>, letters: boolean): Placement | RefusalBody {
+  const lines: Point[][] = f.sides.map((s) => [s.from, s.to]);
+  if (f.circle) lines.push(ellipse(f.circle.centre[0], f.circle.centre[1], f.circle.radius, f.circle.radius, 48));
+  const taken: Rect[] = f.circle ? [around(f.circle.centre, 0.3)] : [];
+  const corners = f.vertices.map((v) => v.at);
+  const clear = (box: Rect) => {
+    const room = grow(box, CLEAR);
+    if (room.x < 0 || room.y < 0 || room.x + room.w > f.w || room.y + room.h > f.h) return false;
+    return !lines.some((l) => polylineHitsRect(l, room)) && !taken.some((t) => overlaps(room, t));
+  };
+  const nearestCorner = (p: Point, own: Point) => corners.every((c) => c === own || distance(p, c) > distance(p, own));
+  const nearestSide = (p: Point, own: Side) => f.sides.every((s) => s === own || toSegment(p, s) > toSegment(p, own));
+  const noRoom = (what: string) => refuse("not_allowed", `There is no clear room for the ${what} in this ${spec.shape.replace("_", " ")}: label fewer parts, or draw a bigger or less thin shape.`);
+  const out: Placement = { text: new Map(), marks: new Map(), names: new Map() };
+
+  for (const a of f.angles) {
+    const piece = `angle-${a.name}`;
+    if (spec.labels.find((l) => l.piece === piece)?.show !== "right") continue;
+    const [u, v] = [unit(sub(a.arms[0], a.at)), unit(sub(a.arms[1], a.at))];
+    const mark = [add(a.at, u, 0.4), add(add(a.at, u, 0.4), v, 0.4), add(a.at, v, 0.4)];
+    out.marks.set(piece, mark);
+    lines.push(mark);
+  }
+  for (const a of f.angles) {
+    const piece = `angle-${a.name}`;
+    const text = texts.get(piece);
+    if (text === undefined || out.marks.has(piece)) continue;
+    const [u, v] = [unit(sub(a.arms[0], a.at)), unit(sub(a.arms[1], a.at))];
+    const box = ANGLE_SPOTS.map(([s, t]) => textBox(add(add(a.at, u, s), v, t), text.length)).find(
+      (b) => insidePolygon(centreOf(b), corners) && nearestCorner(centreOf(b), a.at) && clear(b),
+    );
+    if (!box) return noRoom(`label of ${piece}`);
+    out.text.set(piece, { text, box });
+    taken.push(box);
+  }
+  for (const side of f.sides) {
+    const text = texts.get(side.piece);
+    if (text === undefined) continue;
+    const n = outward(side, f);
+    // Far enough out that the text's nearest edge keeps clear of the line, then further if something is in the way.
+    const reach = Math.abs(n[0]) * ((text.length * CHAR_W) / 2) + Math.abs(n[1]) * (TEXT_H / 2) + 0.2;
+    const spots = ALONG.flatMap((t) => SLIDES.map((slide) => textBox(add(add(side.from, sub(side.to, side.from), t), n, reach + slide), text.length)));
+    const box = spots.find((b) => (f.circle !== undefined || nearestSide(centreOf(b), side)) && clear(b));
+    if (!box) return noRoom(`label of ${side.piece}`);
+    out.text.set(side.piece, { text, box });
+    taken.push(box);
+  }
+  if (letters)
+    for (const v of f.vertices) {
+      const angle = f.angles.find((a) => a.name === v.name)!;
+      const box = SLIDES.map((slide) => textBox(add(v.at, bisector(angle), -(0.6 + slide)), 1)).find((b) => nearestCorner(centreOf(b), v.at) && clear(b));
+      if (!box) return noRoom(`name of vertex-${v.name}`);
+      out.names.set(v.name, box);
+      taken.push(box);
+    }
+  return out;
+}
+
+/** True when the pen can write the corner names (the placeholder pen has no letters). */
+const hasLetters = (glyphs: GlyphSet, f: Figure) => f.vertices.length > 0 && missingGlyphs(glyphs, f.vertices.map((v) => v.name).join("")).length === 0;
 
 const sideRect = (s: Side): Rect => grow({ x: Math.min(s.from[0], s.to[0]), y: Math.min(s.from[1], s.to[1]), w: Math.abs(s.to[0] - s.from[0]), h: Math.abs(s.to[1] - s.from[1]) }, 0.15);
 
@@ -216,7 +305,8 @@ export const geometry: ModelKind<GeometrySpec> = {
       if (d.bottom < 2) invalid("A trapezoid's bottom must be from 2, longer than its top.");
       d.top = int(o.top, "top", 1, d.bottom - 1);
     }
-    const labels = list(o.labels ?? [], "labels", GEOMETRY_LIMITS.labels).map((l, i) => {
+    // Only an omitted list defaults to none: null or any other value is refused.
+    const labels = (o.labels === undefined ? [] : list(o.labels, "labels", GEOMETRY_LIMITS.labels)).map((l, i) => {
       const label = fields(l, `label ${i + 1}`, ["piece", "show"]);
       if (typeof label.piece !== "string" || label.piece.length > 32) invalid(`label ${i + 1} piece must be a part name.`);
       return { piece: label.piece as string, show: choice(label.show, LABEL_SHOWS, `label ${i + 1} show`) };
@@ -230,7 +320,8 @@ export const geometry: ModelKind<GeometrySpec> = {
     if (!(texts instanceof Map)) return texts;
     const missing = missingGlyphs(glyphs, [...texts.values()].join(""));
     if (missing.length > 0) return refuse("unsupported", `The board pen cannot write ${missing.join(" ")} yet.`);
-    return { w: f.w, h: f.h };
+    const placed = place(spec, f, texts, hasLetters(glyphs, f));
+    return isRefusal(placed) ? placed : { w: f.w, h: f.h };
   },
   targets(spec, objectId) {
     const f = figure(spec);
@@ -265,25 +356,12 @@ export const geometry: ModelKind<GeometrySpec> = {
       out.push({ ...base("centre"), key: "centre", kind: "circle", width: 0.08, pts: ellipse(centre[0], centre[1], 0.06, 0.06, 8) });
     }
     for (const s of f.sides) out.push({ ...base(s.piece), key: s.piece, kind: "rule", width: OUTLINE, pts: [s.from, s.to] });
-    for (const a of f.angles) {
-      const piece = `angle-${a.name}`;
-      const text = texts.get(piece);
-      if (text === undefined) continue;
-      if (spec.labels.find((l) => l.piece === piece)?.show === "right") {
-        const [u, v] = [unit(sub(a.arms[0], a.at)), unit(sub(a.arms[1], a.at))];
-        out.push({ ...base(piece), key: `${piece}/mark`, kind: "rule", width: 0.04, pts: [add(a.at, u, 0.4), add(add(a.at, u, 0.4), v, 0.4), add(a.at, v, 0.4)] });
-      } else write(piece, text, angleLabelBox(a, text.length), `${piece}/label`);
-    }
-    for (const s of f.sides) {
-      const text = texts.get(s.piece);
-      if (text !== undefined) write(s.piece, text, sideLabelBox(s, f, text.length), `${s.piece}/label`);
-    }
+    // Placed when the model was made, with the same rule: a refusal cannot happen here.
+    const placed = place(spec, f, texts, hasLetters(glyphs, f)) as Placement;
+    for (const [piece, pts] of placed.marks) out.push({ ...base(piece), key: `${piece}/mark`, kind: "rule", width: 0.04, pts });
+    for (const [piece, { text, box }] of placed.text) write(piece, text, box, `${piece}/label`);
     // Corner names need letters: the placeholder pen has none, so they appear with the real stroke font.
-    for (const v of f.vertices) {
-      if (missingGlyphs(glyphs, v.name).length > 0) continue;
-      const angle = f.angles.find((a) => a.name === v.name)!;
-      write(`vertex-${v.name}`, v.name, textBox(add(v.at, bisector(angle), -0.6), 1), `vertex-${v.name}/name`);
-    }
+    for (const [name, box] of placed.names) write(`vertex-${name}`, name, box, `vertex-${name}/name`);
     return out;
   },
 };

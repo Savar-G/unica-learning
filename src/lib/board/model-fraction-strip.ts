@@ -20,10 +20,12 @@ export const FRACTION_STRIP_LIMITS = { parts: 12 } as const;
 /** The whole's length and height in cells: 12 splits evenly into halves, thirds, quarters, sixths and twelfths. */
 const LENGTH = 12;
 const HEIGHT = 2;
+/** Room around the strip, in cells, so the pen's width stays inside the model's space. */
+const PAD = 0.5;
 /** The gap between shading lines, in cells. */
 const HATCH = 0.25;
 
-const partRect = (spec: FractionStripSpec, from: number, to: number): Rect => ({ x: (from * LENGTH) / spec.parts, y: 0, w: ((to - from) * LENGTH) / spec.parts, h: HEIGHT });
+const partRect = (spec: FractionStripSpec, from: number, to: number): Rect => ({ x: PAD + (from * LENGTH) / spec.parts, y: PAD, w: ((to - from) * LENGTH) / spec.parts, h: HEIGHT });
 
 export const fractionStrip: ModelKind<FractionStripSpec> = {
   parse(raw) {
@@ -31,7 +33,7 @@ export const fractionStrip: ModelKind<FractionStripSpec> = {
     const parts = int(o.parts, "parts", 1, FRACTION_STRIP_LIMITS.parts);
     return { kind: "fraction_strip", parts, shaded: int(o.shaded, "shaded", 0, parts) };
   },
-  layout: () => ({ w: LENGTH, h: HEIGHT }),
+  layout: () => ({ w: LENGTH + 2 * PAD, h: HEIGHT + 2 * PAD }),
   targets(spec, objectId) {
     const { parts, shaded } = spec;
     const g = gcd(shaded, parts);
