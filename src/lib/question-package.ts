@@ -349,6 +349,17 @@ function sameNumber(a: AnswerValue, b: AnswerValue): boolean {
 export const equivalent = (a: AnswerValue, b: AnswerValue) => sameValue(a, b) || sameNumber(a, b);
 
 /**
+ * A value that answers an operation by its kind's rules (the rules checkQuestionPackage holds an answer to): the answer
+ * or one of its accepted forms, or, where the kind takes any simplest form, the exact number in a simplest form (5/4 and
+ * 1 1/4 for 2/3 + 7/12). The operation must be valid.
+ */
+export function isRightAnswer(operation: Operation, answer: PackageAnswer, value: AnswerValue): boolean {
+  if ([answer.value, ...answer.accepted].some((r) => sameValue(r, value))) return true;
+  const rules = computation(operation);
+  return rules.answer === "simplest" && isSimplest(value) && sameNumber(value, rules.exact(operation));
+}
+
+/**
  * A simplest form: a whole number, a fraction in lowest terms with a denominator from 2, or a mixed number in lowest
  * terms (5/4 and 1 1/4 are both simplest; 10/8, 4/4 and 1 2/8 are not).
  */

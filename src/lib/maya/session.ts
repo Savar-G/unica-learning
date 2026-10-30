@@ -1,29 +1,35 @@
 // Maya's teaching controller (#321, spec #297): the state machine of one call about one checked question. The model
 // writes Maya's words and proposes her next act; this module decides whether that act is allowed now and refuses it
-// with a reason when it is not. Code, not the model, owns the math check of every child answer and every number Maya
-// claims, the call clock, the hint ladder, the safety flag and the outcome. Child speech and workbook text are data:
-// nothing a child says changes the answer key, the states or the safety rules.
+// with a reason when it is not. Code, not the model, owns the math check of every child answer and of every equation
+// Maya says or writes, the call clock, the hint ladder, the safety flag, the safety guidance and the outcome. Child
+// speech and workbook text are data: nothing a child says changes the answer key, the states or the safety rules.
 //
 // One call: READY -> OPEN -> ASSESS -> (MODEL_EXAMPLE -> TRY_TARGET | TRY_TARGET | GUIDE_TARGET) -> CHECK ->
-// WRITE_CLOSE -> CLOSE, or CONTENT_HOLD when the question package does not check. The interrupts SAFETY,
-// CONFIRM_HEARD, WAIT_WRITE, REDIRECT, REPAIR_MAYA and TIME_CLOSE take over in that priority: safety first, then a stop
-// and the deadline, then confirmation of what was heard, then teaching. Teaching research:
+// WRITE_CLOSE -> CLOSE, or CONTENT_HOLD when the question package does not check or is a kind Maya cannot teach yet.
+// The interrupts take over in this priority: SAFETY first, then a stop and the deadline (TIME_CLOSE), then a repair
+// Maya owes (REPAIR_MAYA), then confirmation of what was heard (CONFIRM_HEARD), then teaching with WAIT_WRITE and
+// REDIRECT. Every event is taken in that order: a safety signal, a stop request, an unclear number and the clock are
+// kept even when the model's proposal for that turn is refused, and no answer is scored before them. Teaching research:
 // `.design/research/ta-pedagogy-2026-10/maya-teaching.md`, section 5.
 //
 // Everything in and out is plain serializable data (the text adapter #322 and the board protocol #328 drive it): a
 // Session value, events with the time they happened (the clock is passed in), effects to carry out, and a refusal.
 // Pure TypeScript: no React, DOM, network, clock or randomness.
-import { MAX_COMMANDS, type Batch, type Command, type Target } from "@/lib/board";
+import { MAX_COMMANDS, PLACE_NAMES, type Batch, type Command, type Target } from "@/lib/board";
+import { MAX_HINTS, MAX_TIME_MS, type NewLearningEvent } from "@/lib/learning-events";
 import {
   checkQuestionPackage,
   equivalent,
+  isRightAnswer,
   sameValue,
+  valueText,
   type AnswerValue,
   type Operation,
+  type OperationKind,
   type QuestionPackage,
   type WorkedStep,
 } from "@/lib/question-package";
-import { committedText, offersChoice, valuesIn } from "./numbers";
+import { committedText, equationsIn, offersChoice, readNumbers, valuesIn } from "./numbers";
 
 /** Closing starts 9 minutes into the call; the call ends at 10 minutes. */
 export const TIME_LIMITS = { closingAtMs: 9 * 60_000, endAtMs: 10 * 60_000 } as const;
@@ -34,11 +40,20 @@ export const TIME_LIMITS = { closingAtMs: 9 * 60_000, endAtMs: 10 * 60_000 } as 
  */
 export const PAUSES = { thinkCheckMs: 15_000, writeCheckMs: 30_000, noResponseMs: 30_000 } as const;
 
-/** What code says itself when a safety response is still due at the end of the call (from the research, section 4). */
+/**
+ * The safety guidance (the research's proposed scripts, section 4). Code speaks it for every safety act, so guidance is
+ * given only in these words, and keeps it on screen after the call.
+ */
 export const SAFETY_GUIDANCE = {
   concern: "Thank you for telling me. You do not have to explain more. Please tell a grown-up you trust who can help keep you safe.",
   immediate: "Your safety comes first. Go to a safe grown-up now. If you are in danger, call 911.",
 } as const;
+
+/**
+ * The operation kinds Maya teaches: whole numbers and decimals, whose steps and answers code checks and children say as
+ * numbers. A fraction question is held until spoken fraction forms are read.
+ */
+export const TEACHABLE_KINDS: readonly OperationKind[] = ["add", "subtract", "multiply", "divide", "decimal-add", "decimal-subtract", "decimal-multiply"];
 
 export const MAIN_STATES = ["READY", "OPEN", "ASSESS", "MODEL_EXAMPLE", "TRY_TARGET", "GUIDE_TARGET", "CHECK", "WRITE_CLOSE", "CLOSE", "CONTENT_HOLD"] as const;
 export const INTERRUPTS = ["SAFETY", "CONFIRM_HEARD", "WAIT_WRITE", "REDIRECT", "REPAIR_MAYA", "TIME_CLOSE"] as const;
@@ -58,6 +73,8 @@ export const ACTS = [
 export type Act = (typeof ACTS)[number];
 /** Acts that may carry board commands. */
 const BOARD_ACTS: readonly Act[] = ["clarify", "example_step", "try_target", "guide", "accept_answer", "give_answer", "ask_write", "repair"];
+/** Acts whose proposal may score the child's answers. Safety, a stop, a confirmation or a wait never scores one. */
+const SCORING_ACTS: readonly Act[] = ["clarify", "example_step", "try_target", "guide", "accept_answer", "give_answer", "ask_write", "close"];
 
 /** H0 invite, H1 point, H2 give the operation, H3 demonstrate the step, H4 give the result with a short reason. */
 export type HintLevel = 0 | 1 | 2 | 3 | 4;
@@ -71,14 +88,9 @@ export type Understanding = "evidence_observed" | "uncertain";
 /** The child's question, or the easier example Maya works first. */
 export type Problem = "target" | "example";
 
-/** A number Maya claims: an equation ("7 + 9 = 16") or a problem's answer. Code computes both. */
-export type MathClaim =
-  | { kind: "equation"; operation: Operation; result: number }
-  | { kind: "answer"; problem: Problem; value: AnswerValue };
-
 /**
- * An answer the model read in the child's turn: the value, the step it answers ("ones", "tens", ... or "result"), and
- * the model's verdict. Code checks that the child said it and that the verdict is right.
+ * An answer the model read in the child's turn: the value, the step it answers (a worked step id, or "result"), and the
+ * model's verdict. Code checks that the child said it and kept it, and that the verdict is right.
  */
 export interface ChildAnswer {
   value: AnswerValue;
@@ -91,9 +103,9 @@ export interface ChildAnswer {
 export interface Reading {
   /** A possible harm or danger disclosure. Raises the safety flag even when the proposal is refused. */
   safety?: Severity;
-  /** The child asks to stop. */
+  /** The child asks to stop. Kept for this turn even when the proposal is refused. */
   stop?: boolean;
-  /** The words or a number are unclear: confirm before judging. */
+  /** The words or a number are unclear: confirm before judging. Kept for this turn even when the proposal is refused. */
   unclear?: boolean;
   /** The child is writing or asks for more time. */
   writing?: boolean;
@@ -101,7 +113,7 @@ export interface Reading {
   offTopic?: boolean;
   /** An explicit request for more help, or for Maya to show the step. */
   help?: "more" | "show";
-  /** At the opening: the child has work to show, or has not started. */
+  /** At the opening: the child has work to show, or has not started (then the easier example comes first). */
   start?: "has_work" | "no_start";
   answers?: ChildAnswer[];
   /** The child says they wrote the answer on paper, or will not. Maya never sees the paper. */
@@ -110,7 +122,11 @@ export interface Reading {
   correctsHearing?: boolean;
 }
 
-/** A model proposal: Maya's next act, her words, and what she draws. Untrusted: every field is checked. */
+/**
+ * A model proposal: Maya's next act, her words, and what she draws. Untrusted: every field is checked, and every
+ * equation in `say` and in the board's text must hold. For `safety`, code speaks the safety guidance and `say` is not
+ * used; for `give_answer`, `say` is the short reason and code adds the answer and the request to write it on paper.
+ */
 export interface Proposal {
   act: Act;
   say: string;
@@ -121,8 +137,6 @@ export interface Proposal {
   level?: HintLevel;
   /** For ask_write from CHECK: what the check showed. */
   understanding?: Understanding;
-  /** Every number claim in `say`, for code to check. */
-  claims?: MathClaim[];
   /** Board commands (the board core's vocabulary); the board core checks each one when it applies the batch. */
   board?: unknown[];
 }
@@ -137,8 +151,8 @@ export type SessionEvent =
   | { type: "writing"; at: number; status: "started" | "done" }
   /** A safety signal from outside the model (a classifier or a person). */
   | { type: "safety"; at: number; severity: Severity }
-  /** A number claim found in what Maya actually said (after output): a wrong one starts REPAIR_MAYA. */
-  | { type: "maya_claim"; at: number; claim: MathClaim }
+  /** What Maya actually said (the speech transcript): an equation in it that does not hold starts REPAIR_MAYA. */
+  | { type: "maya_said"; at: number; text: string }
   /** The question's math turned out not to be trustworthy during the call. */
   | { type: "content_problem"; at: number; detail: string }
   /** The connection or a service failed: the call ends. */
@@ -159,7 +173,7 @@ export interface Outcome {
   safetyFlag: boolean;
   safetySeverity: Severity | null;
   mishearing: { confirmations: number; corrections: number };
-  /** Seconds from the start to the end. */
+  /** Seconds from the start to the end, at most the 10-minute limit. */
   seconds: number;
 }
 
@@ -168,10 +182,10 @@ export type Effect =
   | { kind: "board"; batch: Batch }
   /** Stop speaking and drop board batches not yet shown. */
   | { kind: "cancel_output" }
-  /** Create the durable safety flag and alert (once per call, or again when the severity rises). */
+  /** Create the durable safety flag and alert (once per call, and again when the severity rises). */
   | { kind: "safety_flag"; severity: Severity; at: number }
-  /** The call ends: audio stops. `safetyHelp`: keep the safety help message on screen after the call. */
-  | { kind: "end"; at: number; outcome: Outcome; safetyHelp: boolean };
+  /** The call ends: audio stops. `safetyMessage`: the safety guidance to keep on screen after the call, or null. */
+  | { kind: "end"; at: number; outcome: Outcome; safetyMessage: string | null };
 
 export type RefusalCode =
   | "invalid_event"
@@ -193,9 +207,7 @@ export type RefusalCode =
   | "same_hint_again"
   | "wrong_math"
   | "reveals_answer"
-  | "missing_answer"
   | "missing_disclosure"
-  | "missing_emergency"
   | "board_not_allowed"
   | "board_wrong_problem";
 
@@ -226,10 +238,14 @@ export interface TranscriptTurn {
   alternatives?: string[];
 }
 
+/** The child's words Maya has not answered yet, with what code already knows about them. */
 interface ChildTurn {
   at: number;
   text: string;
+  /** Needs confirming before any answer in it is judged. */
   uncertain: boolean;
+  /** The child asked to stop. */
+  stop: boolean;
 }
 
 /** The hint ladder of the current target step. `hint` is -1 before any hint on this step. */
@@ -243,7 +259,7 @@ interface Ladder {
 
 /** One call. Plain data: store it, send it, compare it. Read it through this module. */
 export interface Session {
-  version: 1;
+  version: 2;
   callId: string;
   state: SessionState;
   /** The teaching state an interrupt returns to. */
@@ -256,24 +272,27 @@ export interface Session {
   /** When Maya started waiting for the child, for the pause policy. */
   waitingSince: number | null;
   silence: "none" | "check_due" | "checked" | "close_due";
-  /** The child's words Maya has not answered yet. */
   turn: ChildTurn | null;
   opened: boolean;
   clarified: boolean;
+  /** The child said they could not start: the easier example, then a fresh try, come before guided target work. */
+  noStart: boolean;
   /** Easier-example steps shown, in order. */
   exampleShown: number;
+  /** Maya handed the question back after the whole easier example. */
+  retried: boolean;
   /** Target steps the child has done. */
   done: string[];
   ladder: Ladder;
   highestHint: HintLevel | null;
+  /** Hints given: guide turns from H1, and a given answer. */
+  hints: number;
   /** Every kind of help given, in order. Nothing removes an entry. */
   assistance: Assistance[];
-  /**
-   * Who first gave the checked final answer: the question is solved either way (the outcome's assistance says how).
-   * `childRight` says whether the child also said it.
-   */
+  /** Who first gave the checked final answer; the question is solved either way. */
   solved: "child" | "maya" | null;
-  childRight: boolean;
+  /** The child's latest final answer, as code judged it. */
+  lastResult: "right" | "wrong" | null;
   /** The answer was given by Maya before the child said it: understanding is never evidence then. */
   answerGivenFirst: boolean;
   understanding: Understanding;
@@ -284,10 +303,10 @@ export interface Session {
   redirects: number;
   safety: { flagged: boolean; severity: Severity | null; at: number | null; guided: boolean };
   mishearing: { confirmations: number; corrections: number };
-  /** The child's wrong final answers, for the mistake type. */
-  wrongResults: AnswerValue[];
   /** The first target step where the child needed help or failed. */
   stuckStep: string | null;
+  /** Board objects Maya created, by id: the child's question or the easier example. */
+  boardRoles: Record<string, Problem>;
   batches: number;
   turns: TranscriptTurn[];
   outcome: Outcome | null;
@@ -295,14 +314,15 @@ export interface Session {
 
 export function createSession(input: { callId: string; package: unknown }): Session {
   const check = checkQuestionPackage(input.package);
+  const teachable = check.ok && TEACHABLE_KINDS.includes(check.package.operation.kind);
   const pkg = check.ok ? structuredClone(check.package) : null;
   return {
-    version: 1,
+    version: 2,
     callId: input.callId,
     state: "READY",
     resume: null,
-    package: pkg,
-    contentProblem: check.ok ? null : check.reason,
+    package: teachable ? pkg : null,
+    contentProblem: !check.ok ? check.reason : teachable ? null : `Maya cannot teach ${pkg!.operation.kind} questions yet`,
     startedAt: null,
     now: null,
     expect: "nothing",
@@ -311,13 +331,16 @@ export function createSession(input: { callId: string; package: unknown }): Sess
     turn: null,
     opened: false,
     clarified: false,
+    noStart: false,
     exampleShown: 0,
+    retried: false,
     done: [],
-    ladder: { step: pkg ? columnSteps(pkg.steps)[0]?.id ?? "result" : "result", hint: -1, unlocked: 0, failures: 0 },
+    ladder: { step: teachable ? workSteps(pkg!.steps)[0]?.id ?? "result" : "result", hint: -1, unlocked: 0, failures: 0 },
     highestHint: null,
+    hints: 0,
     assistance: [],
     solved: null,
-    childRight: false,
+    lastResult: null,
     answerGivenFirst: false,
     understanding: "uncertain",
     paper: "unknown",
@@ -327,8 +350,8 @@ export function createSession(input: { callId: string; package: unknown }): Sess
     redirects: 0,
     safety: { flagged: false, severity: null, at: null, guided: false },
     mishearing: { confirmations: 0, corrections: 0 },
-    wrongResults: [],
     stuckStep: null,
+    boardRoles: {},
     batches: 0,
     turns: [],
     outcome: null,
@@ -340,85 +363,93 @@ export function createSession(input: { callId: string; package: unknown }): Sess
 /** Whose turn it is, and the acts Maya may propose now (before any reading of the child's turn). */
 export function nextActs(session: Session): { expect: Expect; acts: Act[] } {
   if (session.expect !== "maya") return { expect: session.expect, acts: [] };
-  return { expect: "maya", acts: allowedActs(session, {}).acts };
+  return { expect: "maya", acts: (gate(session, {}) ?? teachingActs(session, {}, false)).acts };
 }
 
-export interface LearningEvent {
-  questionId: string;
-  result: "right" | "right_with_help" | "wrong" | "unfinished";
-  /** The first step where the child needed help or went wrong, or null. */
-  stuckStep: string | null;
-  /** The cause of a known wrong answer the child gave ("O3"), or null. */
-  mistake: string | null;
-  highestHint: HintLevel | null;
-  seconds: number;
-}
-
-/** The learning event of an ended call, for the learning record; null before the end or without a checked question. */
-export function learningEvent(session: Session): LearningEvent | null {
-  if (!session.outcome || !session.package) return null;
-  const { assistance, highestHint, seconds } = session.outcome;
-  const known = session.package.wrongAnswers.find((w) => session.wrongResults.some((v) => equivalent(v, w.value)));
+/**
+ * The learning event of an ended call (#302), for the learning record: null before the end or without a checked
+ * question. A call's result is right (the child's final answer right, with no help), right_with_help (right after
+ * help, even after Maya gave the answer), or blank (the call left the question unfinished, even after a wrong answer:
+ * only the final answer counts). A call never records wrong, so it has no mistake.
+ */
+export function learningEvent(session: Session, family: { parentId: string; childId: string }): NewLearningEvent | null {
+  const { outcome, package: pkg } = session;
+  if (!outcome || !pkg || session.startedAt === null) return null;
+  const right = session.lastResult === "right";
+  const result = right ? (outcome.assistance === "independent" ? "right" : "right_with_help") : "blank";
+  const first = workSteps(pkg.steps)[0]?.id ?? null;
   return {
-    questionId: session.package.id,
-    result: session.childRight
-      ? (assistance === "independent" ? "right" : "right_with_help")
-      : session.wrongResults.length > 0 ? "wrong" : "unfinished",
-    stuckStep: session.stuckStep,
-    mistake: known?.cause ?? null,
-    highestHint,
-    seconds,
+    key: `call:${session.callId}`,
+    parentId: family.parentId,
+    childId: family.childId,
+    source: "call",
+    question: pkg.ref,
+    skill: pkg.skill,
+    result,
+    stuckStep: result === "right" ? null : result === "right_with_help" ? session.stuckStep ?? first : currentStep(pkg, session.done),
+    mistake: null,
+    hints: Math.min(session.hints, MAX_HINTS),
+    timeMs: Math.min(endTime(session) - session.startedAt, MAX_TIME_MS),
+    occurredAt: isoTime(endTime(session)),
+    evidence: { kind: "call", id: session.callId },
   };
 }
 
 // ---------- Steps and math ----------
 
-const columnSteps = (steps: WorkedStep[]) => steps.filter((s) => s.kind !== "result");
+/** The worked steps a child does, without the result. */
+const workSteps = (steps: WorkedStep[]) => steps.filter((s) => s.kind !== "result");
 const rank = (a: Assistance) => ASSISTANCE.indexOf(a);
+const number = (value: number): AnswerValue => ({ type: "number", value });
 
-/** The values that answer a step: a column's total or the digit written, a result's answer and its accepted forms. */
-function stepAnswers(step: WorkedStep, pkgAnswer?: { value: AnswerValue; accepted: AnswerValue[] }): AnswerValue[] {
+/** The values that answer a worked step: the number the step makes (a column's total or the digit written). */
+function stepAnswers(step: WorkedStep): AnswerValue[] {
   switch (step.kind) {
     case "add-column":
-      return [{ type: "number", value: step.total }, { type: "number", value: step.write }];
-    case "subtract-column": {
-      const from = step.top - (step.lent ? 1 : 0) + (step.regrouped ? 10 : 0);
-      return [{ type: "number", value: from - (step.bottom ?? 0) }];
-    }
-    case "result":
-      return pkgAnswer ? [pkgAnswer.value, ...pkgAnswer.accepted] : [step.value];
+      return [number(step.total), number(step.write)];
+    case "subtract-column":
+      return [number(step.top - (step.lent ? 1 : 0) + (step.regrouped ? 10 : 0) - (step.bottom ?? 0))];
+    case "multiply-digit":
+      return [number(step.total), ...(step.write === null ? [] : [number(step.write)])];
+    case "partial-product":
+    case "place-point":
+      return [number(step.value)];
+    case "divide-digit":
+      return [number(step.quotient)];
+    default:
+      // Fraction steps: their kinds are held (TEACHABLE_KINDS); the result is checked by isRightAnswer.
+      return [];
   }
 }
 
 const problemOf = (pkg: QuestionPackage, problem: Problem) =>
   problem === "target"
     ? { operation: pkg.operation, steps: pkg.steps, answer: pkg.answer }
-    : { operation: pkg.easierExample.operation, steps: pkg.easierExample.steps, answer: { value: pkg.easierExample.answer, accepted: [] } };
+    : { operation: pkg.easierExample.operation, steps: pkg.easierExample.steps, answer: { value: pkg.easierExample.answer, accepted: [], unit: null } };
 
-/** The first target step the child has not done ("result" when every column is done). */
-function currentStep(pkg: QuestionPackage, done: readonly string[]): string {
-  return columnSteps(pkg.steps).find((s) => !done.includes(s.id))?.id ?? "result";
-}
+/** The first target step the child has not done ("result" when every step is done). */
+const currentStep = (pkg: QuestionPackage, done: readonly string[]) => workSteps(pkg.steps).find((s) => !done.includes(s.id))?.id ?? "result";
 
-function claimProblem(claim: unknown): string | null {
-  if (!isObject(claim)) return "a claim is not an object";
-  if (claim.kind === "equation") {
-    const op = claim.operation;
-    if (!isObject(op) || (op.kind !== "add" && op.kind !== "subtract") || !Array.isArray(op.operands) || op.operands.length !== 2 ||
-      !op.operands.every((n) => Number.isFinite(n)) || !Number.isFinite(claim.result)) return "an equation claim needs an add or subtract operation on two numbers and a result";
-    const [a, b] = op.operands as [number, number];
-    return (op.kind === "add" ? a + b : a - b) === claim.result ? null : `${a} ${op.kind === "add" ? "+" : "-"} ${b} is not ${String(claim.result)}`;
-  }
-  if (claim.kind === "answer") return isAnswerValue(claim.value) && (claim.problem === "target" || claim.problem === "example") ? null : "an answer claim needs a problem and a value";
-  return "a claim is an equation or an answer";
-}
+/** The operation symbol of a kind, as equations write it. */
+const SYMBOL: Partial<Record<OperationKind, string>> = {
+  add: "+", subtract: "-", multiply: "×", divide: "÷", "decimal-add": "+", "decimal-subtract": "-", "decimal-multiply": "×",
+};
+/** The board's column layout for a kind, or none (division has no board layout yet). */
+const BOARD_OPERATION: Partial<Record<OperationKind, string>> = {
+  add: "add", subtract: "subtract", multiply: "multiply", "decimal-add": "add", "decimal-subtract": "subtract", "decimal-multiply": "multiply",
+};
+
+/** The two numbers of a whole-number or decimal operation. */
+const operandsOf = (op: Operation): number[] => (op.operands as unknown[]).filter((n): n is number => typeof n === "number");
 
 // ---------- Validation of untrusted input ----------
 
 const isObject = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null && !Array.isArray(v);
+const isWholeAt = (v: unknown, min: number) => Number.isSafeInteger(v) && (v as number) >= min;
 const isAnswerValue = (v: unknown): v is AnswerValue =>
   isObject(v) && ((v.type === "number" && Number.isFinite(v.value)) ||
-    (v.type === "fraction" && Number.isInteger(v.numerator) && Number.isInteger(v.denominator) && (v.denominator as number) > 0));
+    (v.type === "fraction" && Number.isSafeInteger(v.numerator) && isWholeAt(v.denominator, 1)) ||
+    (v.type === "remainder" && isWholeAt(v.quotient, 0) && isWholeAt(v.remainder, 0)));
 const HINTS = [0, 1, 2, 3, 4];
 const SEVERITIES: Severity[] = ["concern", "immediate"];
 
@@ -429,7 +460,6 @@ function proposalProblem(p: unknown): string | null {
   if (p.step !== undefined && typeof p.step !== "string") return "the step is a step id";
   if (p.level !== undefined && !HINTS.includes(p.level as number)) return "the level is 0 to 4";
   if (p.understanding !== undefined && p.understanding !== "evidence_observed" && p.understanding !== "uncertain") return "understanding is evidence_observed or uncertain";
-  if (p.claims !== undefined && !Array.isArray(p.claims)) return "claims are a list";
   if (p.board !== undefined && (!Array.isArray(p.board) || p.board.length === 0 || p.board.length > MAX_COMMANDS || !p.board.every((c) => isObject(c) && typeof c.op === "string"))) {
     return `the board is a list of 1 to ${MAX_COMMANDS} commands, each with an op`;
   }
@@ -448,7 +478,7 @@ function proposalProblem(p: unknown): string | null {
     for (const a of r.answers) {
       if (!isObject(a) || !isAnswerValue(a.value) || typeof a.step !== "string" || (a.verdict !== "right" && a.verdict !== "wrong") ||
         (a.problem !== undefined && a.problem !== "target" && a.problem !== "example")) {
-        return "each answer needs a number or fraction value, a step and a verdict";
+        return "each answer needs a number, fraction or remainder value, a step and a verdict";
       }
     }
   }
@@ -463,31 +493,25 @@ interface Allowed {
   reason: string;
 }
 
-const MAIN_ACTS: Record<Teaching, Act[]> = {
-  OPEN: ["open"],
-  ASSESS: ["accept_answer", "clarify", "example_step", "try_target", "guide"],
-  MODEL_EXAMPLE: ["accept_answer", "example_step", "try_target"],
-  TRY_TARGET: ["accept_answer", "guide"],
-  GUIDE_TARGET: ["accept_answer", "guide", "give_answer"],
-  CHECK: ["ask_write", "guide"],
-  WRITE_CLOSE: ["ask_write", "close"],
-};
+/** An answer code has checked: the child said and kept it, and the verdict is right. */
+interface Checked {
+  answer: ChildAnswer;
+  problem: Problem;
+}
 
-/** The child's latest turn holds the right final answer to the question. */
-const saysRightResult = (s: Session, reading: Reading) =>
-  s.package !== null && (reading.answers ?? []).some((a) => (a.problem ?? "target") === "target" && a.step === "result" &&
-    stepAnswers(s.package!.steps.at(-1)!, s.package!.answer).some((v) => equivalent(v, a.value)));
-
-/** The acts Maya may propose now, in priority order: safety, a stop and the deadline, confirmation, then teaching. */
-function allowedActs(s: Session, reading: Reading): Allowed {
+/**
+ * The priority gates, in order: safety, a content hold, the child's turn, a stop, a repair, silence, and confirmation
+ * of what was heard. A gate allows only its own acts, and none of them scores an answer. Null when teaching may go on.
+ */
+function gate(s: Session, reading: Reading): Allowed | null {
   if (s.outcome) return { acts: [], code: "ended", reason: "The call has ended." };
   if (reading.safety || (s.safety.flagged && !s.safety.guided)) {
     return { acts: ["safety"], code: "safety_first", reason: "Safety comes first: give the safety guidance before anything else." };
   }
-  if (s.state === "SAFETY") return { acts: ["safety", "close"], code: "safety_first", reason: "No math after a safety concern: give guidance or close." };
-  if (s.state === "CONTENT_HOLD") return { acts: ["close"], code: "content_hold", reason: `Maya cannot check this question (${s.contentProblem}): close without teaching.` };
+  if (s.state === "SAFETY") return { acts: ["close"], code: "safety_first", reason: "No math after a safety concern: close." };
+  if (s.state === "CONTENT_HOLD") return { acts: ["close"], code: "content_hold", reason: `Maya cannot teach this question (${s.contentProblem}): close without teaching.` };
   if (s.expect !== "maya") return { acts: [], code: "not_mayas_turn", reason: "It is the child's turn: wait for them." };
-  if (reading.stop) return { acts: ["close"], code: "stop_first", reason: "The child asked to stop: close kindly, with no more questions." };
+  if (s.turn?.stop || reading.stop) return { acts: ["close"], code: "stop_first", reason: "The child asked to stop: close kindly, with no more questions." };
   if (s.state === "REPAIR_MAYA") return { acts: ["repair"], code: "repair_first", reason: "Maya said something the checked math does not support: correct it first." };
   if (s.silence === "close_due") return { acts: ["close"], code: "act_not_allowed", reason: "No answer after the check-in: close." };
   if (s.silence === "check_due" && !s.turn) return { acts: ["check_in"], code: "act_not_allowed", reason: "The child has been quiet: one short check-in, with no new help." };
@@ -499,10 +523,27 @@ function allowedActs(s: Session, reading: Reading): Allowed {
       reason: "Two confirmations did not work: offer another way to answer, or close.",
     };
   }
+  return null;
+}
+
+const MAIN_ACTS: Record<Teaching, Act[]> = {
+  OPEN: ["open"],
+  ASSESS: ["accept_answer", "clarify", "example_step", "try_target", "guide"],
+  MODEL_EXAMPLE: ["accept_answer", "example_step", "try_target"],
+  TRY_TARGET: ["accept_answer", "guide"],
+  GUIDE_TARGET: ["accept_answer", "guide", "give_answer"],
+  CHECK: ["ask_write", "guide"],
+  WRITE_CLOSE: ["ask_write", "close"],
+};
+
+/** The teaching acts allowed now. `rightResult`: the child's turn holds a checked right final answer. */
+function teachingActs(s: Session, reading: Reading, rightResult: boolean): Allowed {
+  // Maya may always check what she heard before she goes on.
+  const confirm: Act[] = s.turn ? ["confirm"] : [];
   if (s.state === "TIME_CLOSE") {
     const acts: Act[] = s.solved !== null ? (s.writeAsked ? ["close"] : ["ask_write", "close"])
-      : saysRightResult(s, reading) ? ["accept_answer", "close"] : ["give_answer", "ask_write", "close"];
-    return { acts, code: "act_not_allowed", reason: "Time is almost up: finish the question and close." };
+      : rightResult ? ["accept_answer", "close"] : ["give_answer", "ask_write", "close"];
+    return { acts: [...acts, ...confirm], code: "act_not_allowed", reason: "Time is almost up: finish the question and close." };
   }
   if (reading.writing) return { acts: ["wait"], code: "act_not_allowed", reason: "The child is writing: wait." };
   if (reading.offTopic) {
@@ -510,22 +551,42 @@ function allowedActs(s: Session, reading: Reading): Allowed {
   }
   const main = isTeaching(s.state) ? s.state : s.resume;
   if (!main) return { acts: [], code: "act_not_allowed", reason: "No act fits now." };
+  const steps = s.package!.easierExample.steps.length;
   let acts = MAIN_ACTS[main].filter((act) => {
-    if (act === "open") return !s.opened;
-    if (act === "clarify") return !s.clarified;
-    if (act === "example_step") return main === "ASSESS" || s.exampleShown < s.package!.easierExample.steps.length;
-    if (act === "try_target") return main !== "MODEL_EXAMPLE" || s.exampleShown === s.package!.easierExample.steps.length;
-    if (act === "ask_write") return main === "CHECK" || !s.writeAsked;
-    if (act === "close") return s.writeAsked && s.turn !== null;
-    return true;
+    switch (act) {
+      case "open":
+        return !s.opened;
+      case "clarify":
+        return !s.clarified;
+      case "example_step":
+        return main === "ASSESS" || s.exampleShown < steps;
+      case "try_target":
+        // A child who could not start sees the whole example first.
+        return main === "MODEL_EXAMPLE" ? s.exampleShown === steps : !s.noStart;
+      case "guide":
+      case "give_answer":
+        // ...and tries their own question again before guided work.
+        return !s.noStart || s.retried;
+      case "ask_write":
+        return main === "CHECK" || !s.writeAsked;
+      case "close":
+        return s.writeAsked && s.turn !== null;
+      default:
+        return true;
+    }
   });
-  if (saysRightResult(s, reading) && s.solved === null && acts.includes("accept_answer")) acts = ["accept_answer"];
-  return { acts, code: "act_not_allowed", reason: `In ${s.state} Maya may: ${acts.join(", ") || "nothing yet"}.` };
+  if (rightResult && s.solved === null && acts.includes("accept_answer")) acts = ["accept_answer"];
+  acts = [...acts, ...confirm.filter((a) => !acts.includes(a))];
+  const why = s.noStart && !s.retried ? " The child could not start: show the whole easier example, then hand the question back." : "";
+  return { acts, code: "act_not_allowed", reason: `In ${s.state} Maya may: ${acts.join(", ") || "nothing yet"}.${why}` };
 }
 
 // ---------- The step function ----------
 
-/** Applies one event. A refused proposal leaves the session as it was, except that a safety reading still flags. */
+/**
+ * Applies one event. A refused proposal changes nothing but what the event itself brings: the clock, a safety signal,
+ * and a stop request, an unclear number or a no-start the reading names for the child's turn.
+ */
 export function step(session: Session, event: SessionEvent): StepResult {
   if (!isObject(event) || typeof event.at !== "number" || !Number.isFinite(event.at)) {
     return refuse(session, "invalid_event", "An event needs a type and the time it happened.");
@@ -539,20 +600,25 @@ export function step(session: Session, event: SessionEvent): StepResult {
   const effects: Effect[] = [];
 
   // Safety first: a safety signal is taken before the clock and before anything else in the same event.
-  const proposed = event.type === "proposal" && isObject(event.proposal) && isObject(event.proposal.reading) ? event.proposal.reading.safety : undefined;
-  const severity = event.type === "safety" ? event.severity : SEVERITIES.includes(proposed as Severity) ? (proposed as Severity) : undefined;
+  const raw = event.type === "proposal" ? event.proposal : undefined;
+  const shape = event.type === "proposal" ? proposalProblem(raw) : null;
+  const reading: Reading = event.type === "proposal" && shape === null ? (raw as Proposal).reading ?? {} : {};
+  const proposed = isObject(raw) && isObject(raw.reading) && SEVERITIES.includes(raw.reading.safety as Severity) ? (raw.reading.safety as Severity) : undefined;
+  const severity = event.type === "safety" ? event.severity : proposed;
   if (severity) raiseSafety(s, severity, event.at, effects);
+
+  // The child's turn as the model read it: a stop, an unclear number and a no-start hold even if the proposal fails.
+  if (s.turn) {
+    if (reading.stop) s.turn.stop = true;
+    if (reading.unclear) s.turn.uncertain = true;
+  }
+  if (reading.start === "no_start" && s.state === "ASSESS") s.noStart = true;
 
   if (s.startedAt !== null) {
     const elapsed = event.at - s.startedAt;
     if (elapsed >= TIME_LIMITS.endAtMs) {
-      if (s.safety.flagged && !s.safety.guided) {
-        // Pending safety guidance is given before the call closes, in code's words.
-        sayFixed(s, SAFETY_GUIDANCE[s.safety.severity!], effects);
-        s.safety.guided = true;
-      }
       end(s, "time_limit", effects, true);
-      return { session: s, effects, refusal: null };
+      return { session: s, effects, refusal: event.type === "proposal" ? { code: "ended", reason: "The call reached its 10 minutes.", allowed: [] } : null };
     }
     // A repair Maya owes is made first; it returns to the closing minute.
     if (elapsed >= TIME_LIMITS.closingAtMs && !["TIME_CLOSE", "SAFETY", "REPAIR_MAYA", "CLOSE", "CONTENT_HOLD"].includes(s.state)) {
@@ -577,9 +643,11 @@ export function step(session: Session, event: SessionEvent): StepResult {
       }
       const alternatives = Array.isArray(event.alternatives) ? event.alternatives.filter((a) => typeof a === "string") : [];
       s.turns.push({ at: event.at, speaker: "child", text: event.text, state: s.state, ...(alternatives.length > 0 ? { alternatives } : {}) });
+      // A number form code cannot read is confirmed, never guessed.
+      const uncertain = event.uncertain === true || readNumbers(event.text).unreadable;
       s.turn = s.turn
-        ? { at: event.at, text: `${s.turn.text} ${event.text}`, uncertain: s.turn.uncertain || event.uncertain === true }
-        : { at: event.at, text: event.text, uncertain: event.uncertain === true };
+        ? { at: event.at, text: `${s.turn.text} ${event.text}`, uncertain: s.turn.uncertain || uncertain, stop: s.turn.stop }
+        : { at: event.at, text: event.text, uncertain, stop: false };
       if (s.state === "OPEN" && s.opened) s.state = "ASSESS";
       s.expect = "maya";
       s.silence = "none";
@@ -609,10 +677,10 @@ export function step(session: Session, event: SessionEvent): StepResult {
       break;
     case "safety":
       break;
-    case "maya_claim": {
+    case "maya_said":
       // No math is repaired before the opening, after a safety concern or a content hold, or twice at once.
-      if (!s.package || ["READY", "OPEN", "SAFETY", "CONTENT_HOLD", "REPAIR_MAYA"].includes(s.state)) break;
-      if (claimProblem(event.claim) ?? claimAnswerProblem(s, event.claim)) {
+      if (typeof event.text !== "string") return refuse(session, "invalid_event", "What Maya said needs its text.");
+      if (s.package && !["READY", "OPEN", "SAFETY", "CONTENT_HOLD", "REPAIR_MAYA"].includes(s.state) && equationsIn(event.text).some((e) => !e.holds)) {
         effects.push({ kind: "cancel_output" });
         // The repair returns to the teaching state (an interrupt's saved one), or to the closing minute (no resume).
         if (isTeaching(s.state)) s.resume = s.state;
@@ -621,7 +689,6 @@ export function step(session: Session, event: SessionEvent): StepResult {
         s.turn = null;
       }
       break;
-    }
     case "content_problem":
       if (s.state !== "SAFETY") {
         moveTo(s, "CONTENT_HOLD");
@@ -634,74 +701,66 @@ export function step(session: Session, event: SessionEvent): StepResult {
       end(s, "technical_issue", effects, true);
       break;
     case "proposal":
-      return propose(session, s, event.proposal, effects);
+      if (shape) return { session: s, effects, refusal: { code: "invalid_proposal", reason: shape, allowed: (gate(s, {}) ?? teachingActs(s, {}, false)).acts } };
+      return propose(s, raw as Proposal, effects);
     default:
       return refuse(session, "invalid_event", "Unknown event type.");
   }
   return { session: s, effects, refusal: null };
 }
 
-function propose(original: Session, s: Session, raw: unknown, effects: Effect[]): StepResult {
-  // A refusal keeps the session, except for a safety flag the reading raised (and its effects).
-  const flagged = s.safety.flagged && !original.safety.flagged;
-  const kept = flagged ? { ...original, safety: s.safety, state: s.state, resume: s.resume, expect: s.expect, now: s.now } : original;
-  const no = (code: RefusalCode, reason: string, allowed: Act[] = []): StepResult =>
-    ({ session: kept, effects: flagged ? effects : [], refusal: { code, reason, allowed } });
-
-  const problem = proposalProblem(raw);
-  if (problem) return no("invalid_proposal", problem, allowedActs(s, {}).acts);
-  const p = raw as Proposal;
+/** A proposal on `base` (the session with the event's own input taken). A refusal returns `base` and its effects. */
+function propose(base: Session, p: Proposal, effects: Effect[]): StepResult {
+  const no = (code: RefusalCode, reason: string, allowed: Act[]): StepResult => ({ session: base, effects, refusal: { code, reason, allowed } });
+  const s = structuredClone(base);
   const reading = p.reading ?? {};
-
-  // Safety is refused first; then a wrong verdict on the child's answers, the clearest reason; then the act itself.
-  const allowed = allowedActs(s, reading);
-  if (!allowed.acts.includes(p.act) && allowed.code === "safety_first") return no(allowed.code, allowed.reason, allowed.acts);
   const pkg = s.package;
 
-  // The child's answers: said and kept in this turn (not taken back, not offered as a choice), and judged right only
-  // when code agrees.
-  const answers = reading.answers ?? [];
-  if (answers.length > 0) {
-    if (!pkg || !s.turn) return no("answer_not_heard", "There is no child turn to read an answer from.", allowed.acts);
-    const committed = committedText(s.turn.text);
-    if (offersChoice(committed)) return no("answer_not_committed", "The child offered more than one answer: ask which one they mean.", allowed.acts);
-    const heard = valuesIn(committed);
-    for (const a of answers) {
-      const { steps, answer } = problemOf(pkg, a.problem ?? "target");
-      const at = steps.find((x) => x.id === a.step);
-      if (!at) return no("wrong_step", `The ${a.problem ?? "target"} has no step "${a.step}".`, allowed.acts);
-      if (!heard.some((v) => saidAs(v, a.value))) return no("answer_not_heard", `The child did not say ${show(a.value)}, or took it back.`, allowed.acts);
-      const right = stepAnswers(at, answer).some((v) => equivalent(v, a.value));
-      if (a.verdict === "right" && !right) return no("accepts_wrong_answer", `${show(a.value)} is not right for ${a.step}: the checked math says otherwise.`, allowed.acts);
-      if (a.verdict === "wrong" && right) return no("rejects_right_answer", `${show(a.value)} is right for ${a.step}.`, allowed.acts);
-    }
+  // 1. The priority gates, before any math: safety, content, turn, stop, repair, silence, confirmation.
+  const blocked = gate(s, reading);
+  if (blocked && !blocked.acts.includes(p.act)) return no(blocked.code, blocked.reason, blocked.acts);
+
+  // 2. Teaching: the child's answers are judged only now, and only for an act that may score them.
+  const checked: Checked[] = [];
+  if (!blocked && SCORING_ACTS.includes(p.act) && (reading.answers ?? []).length > 0) {
+    const problem = checkAnswers(s, reading.answers!, checked);
+    if (problem) return no(problem.code, problem.reason, teachingActs(s, reading, false).acts);
+  }
+  const rightResult = checked.some((c) => c.problem === "target" && c.answer.step === "result" && c.answer.verdict === "right");
+  const allowedNow = blocked ? blocked.acts : teachingActs(s, reading, rightResult).acts;
+  if (!blocked && !allowedNow.includes(p.act)) {
+    const allowed = teachingActs(s, reading, rightResult);
+    return no(allowed.code, allowed.reason, allowed.acts);
   }
 
-  if (!allowed.acts.includes(p.act)) return no(allowed.code, allowed.reason, allowed.acts);
-
-  // Maya's number claims, checked by code.
-  for (const claim of p.claims ?? []) {
-    const why = claimProblem(claim) ?? (pkg ? claimAnswerProblem(s, claim) : null);
-    if (why) return no("wrong_math", why, allowed.acts);
-  }
-
+  // 3. Maya's own words and board: every equation holds, and the answer waits its turn.
   const say = p.say.trim();
-  if (say === "" && p.act !== "wait") return no("invalid_proposal", "Maya needs words for this act.", allowed.acts);
+  const wrong = p.act === "safety" ? undefined : [say, ...boardTexts(p.board ?? [])].flatMap(equationsIn).find((e) => !e.holds);
+  if (wrong) return no("wrong_math", `"${wrong.text}" is not true.`, allowedNow);
+  if (say === "" && !["wait", "safety", "give_answer"].includes(p.act)) return no("invalid_proposal", "Maya needs words for this act.", allowedNow);
+  let roles: Record<string, Problem> = {};
+  if (p.board) {
+    if (!BOARD_ACTS.includes(p.act)) return no("board_not_allowed", `Maya does not draw during ${p.act}.`, allowedNow);
+    const board = boardRoles(s, p.act === "example_step" ? "example" : "target", p.board);
+    if (typeof board === "string") return no("board_wrong_problem", board, allowedNow);
+    roles = board;
+  }
+  const released = s.solved !== null || rightResult || p.act === "give_answer";
+  if (pkg && !released && p.act !== "safety" && revealsAnswer(s, p)) return no("reveals_answer", "Maya may not give the answer yet.", allowedNow);
 
-  // The ladder after this reading: failures and requests raise what help is allowed; right steps move on.
+  // 4. The ladder after this reading: failures and requests raise what help is allowed; right steps move on.
+  const scoring = !blocked;
   const ladder = { ...s.ladder };
   const done = [...s.done];
   let failed = false;
-  if (pkg) {
-    for (const a of answers.filter((x) => (x.problem ?? "target") === "target")) {
+  if (pkg && scoring) {
+    for (const { answer: a, problem } of checked) {
+      if (problem !== "target") continue;
       if (a.verdict === "right" && a.step !== "result" && !done.includes(a.step)) done.push(a.step);
       if (a.verdict === "wrong") failed = true;
     }
     const next = currentStep(pkg, done);
-    if (next !== ladder.step) {
-      // A step done: the next one starts with less help than the last.
-      Object.assign(ladder, { step: next, hint: -1, unlocked: Math.max(0, ladder.hint - 1), failures: 0 });
-    }
+    if (next !== ladder.step) Object.assign(ladder, { step: next, hint: -1, unlocked: Math.max(0, ladder.hint - 1), failures: 0 });
     if (failed) {
       ladder.failures += 1;
       ladder.unlocked = Math.max(ladder.unlocked, Math.min(4, ladder.hint + 1));
@@ -710,21 +769,12 @@ function propose(original: Session, s: Session, raw: unknown, effects: Effect[])
     if (reading.help === "show") ladder.unlocked = Math.max(ladder.unlocked, 3);
   }
 
-  // The final answer stays unsaid until the child says it or Maya may give it.
-  const released = s.solved !== null || saysRightResult(s, reading) || p.act === "give_answer";
-  if (pkg && !released && revealsAnswer(pkg, p)) return no("reveals_answer", "Maya may not say the answer yet.", allowed.acts);
-
-  if (p.board) {
-    if (!BOARD_ACTS.includes(p.act)) return no("board_not_allowed", `Maya does not draw during ${p.act}.`, allowed.acts);
-    const problem: Problem = p.act === "example_step" ? "example" : "target";
-    const wrong = boardProblem(pkg!, problem, p.board);
-    if (wrong) return no("board_wrong_problem", wrong, allowed.acts);
-  }
-
+  // 5. The act.
+  let text = say;
   const main = isTeaching(s.state) ? s.state : s.resume;
   switch (p.act) {
     case "open":
-      if (!/\bAI\b/.test(say)) return no("missing_disclosure", "The opening says Maya is an AI.", allowed.acts);
+      if (!/\bAI\b/.test(say)) return no("missing_disclosure", "The opening says Maya is an AI.", allowedNow);
       s.opened = true;
       break;
     case "clarify":
@@ -732,47 +782,53 @@ function propose(original: Session, s: Session, raw: unknown, effects: Effect[])
       moveTo(s, "ASSESS");
       break;
     case "example_step": {
-      const next = pkg!.easierExample.steps[main === "ASSESS" ? 0 : s.exampleShown];
-      if (p.step !== next.id) return no("wrong_step", `The next example step is "${next.id}".`, allowed.acts);
-      s.exampleShown = main === "ASSESS" ? 1 : s.exampleShown + 1;
+      const index = main === "ASSESS" ? 0 : s.exampleShown;
+      const next = pkg!.easierExample.steps[index];
+      if (p.step !== next.id) return no("wrong_step", `The next example step is "${next.id}".`, allowedNow);
+      s.exampleShown = index + 1;
       s.assistance.push("worked_example");
       moveTo(s, "MODEL_EXAMPLE");
       break;
     }
     case "try_target":
+      if (s.exampleShown === pkg!.easierExample.steps.length) s.retried = true;
       moveTo(s, "TRY_TARGET");
       break;
     case "guide": {
-      if (p.step !== ladder.step) return no("wrong_step", `Guide the first step the child has not done: "${ladder.step}".`, allowed.acts);
-      if (p.level === undefined) return no("invalid_proposal", "A guide needs a hint level.", allowed.acts);
+      if (p.step !== ladder.step) return no("wrong_step", `Guide the first step the child has not done: "${ladder.step}".`, allowedNow);
+      if (p.level === undefined) return no("invalid_proposal", "A guide needs a hint level.", allowedNow);
       // A child with a located error can start at H2 at most; otherwise help rises one level per failure or request.
       const cap = (main === "ASSESS" || main === "TRY_TARGET") && ladder.hint === -1 ? Math.max(ladder.unlocked, 2) : ladder.unlocked;
-      if (p.level > cap) return no("hint_too_high", `Help may rise to H${cap} now: more help needs a failed attempt or a request, not silence.`, allowed.acts);
-      if (ladder.failures >= 2 && p.level <= ladder.hint) return no("same_hint_again", `Two attempts failed at H${ladder.hint}: give more help or offer to stop.`, allowed.acts);
+      if (p.level > cap) return no("hint_too_high", `Help may rise to H${cap} now: more help needs a failed attempt or a request, not silence.`, allowedNow);
+      if (ladder.failures >= 2 && p.level <= ladder.hint) return no("same_hint_again", `Two attempts failed at H${ladder.hint}: give more help or offer to stop.`, allowedNow);
       if (p.level > ladder.hint) ladder.failures = 0;
       ladder.hint = p.level;
       ladder.unlocked = Math.max(ladder.unlocked, p.level);
       s.highestHint = Math.max(s.highestHint ?? 0, p.level) as HintLevel;
-      if (p.level >= 1) s.stuckStep ??= ladder.step;
-      if (p.level >= 1) s.assistance.push(p.level >= 3 ? "guided" : "hint");
+      if (p.level >= 1) {
+        s.hints += 1;
+        s.stuckStep ??= ladder.step;
+        s.assistance.push(p.level >= 3 ? "guided" : "hint");
+      }
       moveTo(s, "GUIDE_TARGET");
       break;
     }
     case "accept_answer":
-      if (!saysRightResult(s, reading)) return no("accepts_wrong_answer", "Only a right final answer the child said can be accepted.", allowed.acts);
+      if (!rightResult) return no("accepts_wrong_answer", "Only a right final answer the child said and kept can be accepted.", allowedNow);
       s.solved ??= "child";
       if (s.state !== "TIME_CLOSE") moveTo(s, "CHECK");
       break;
     case "give_answer": {
-      if (s.state !== "TIME_CLOSE" && ladder.unlocked < 4) return no("hint_too_high", `The answer comes after help up to H3 and another failed attempt or request (now H${ladder.unlocked}).`, allowed.acts);
-      if (!valuesIn(say).some((v) => equivalent(v, pkg!.answer.value)) || !/\bpaper\b/i.test(say)) {
-        return no("missing_answer", "Giving the answer means saying it and asking the child to write it on their paper.", allowed.acts);
-      }
+      if (s.state !== "TIME_CLOSE" && ladder.unlocked < 4) return no("hint_too_high", `The answer comes after help up to H3 and another failed attempt or request (now H${ladder.unlocked}).`, allowedNow);
+      // Code says the answer and asks for it on paper, so both are true.
+      const answer = valueText(pkg!.answer.value);
+      text = [say, `The answer is ${answer}. Please write ${answer} on your paper.`].filter(Boolean).join(" ");
       if (s.solved === null) {
         s.solved = "maya";
         s.answerGivenFirst = true;
       }
       s.highestHint = 4;
+      s.hints += 1;
       s.stuckStep ??= ladder.step;
       s.assistance.push("answer_given");
       s.writeAsked = true;
@@ -781,9 +837,9 @@ function propose(original: Session, s: Session, raw: unknown, effects: Effect[])
     }
     case "ask_write":
       if (main === "CHECK") {
-        if (p.understanding === undefined) return no("invalid_proposal", "Say what the check showed: evidence_observed or uncertain.", allowed.acts);
+        if (p.understanding === undefined) return no("invalid_proposal", "Say what the check showed: evidence_observed or uncertain.", allowedNow);
         if (p.understanding === "evidence_observed" && (s.answerGivenFirst || s.solved !== "child")) {
-          return no("invalid_proposal", "Maya gave the answer, so understanding stays uncertain.", allowed.acts);
+          return no("invalid_proposal", "Maya gave the answer, so understanding stays uncertain.", allowedNow);
         }
         s.understanding = p.understanding;
       }
@@ -793,7 +849,8 @@ function propose(original: Session, s: Session, raw: unknown, effects: Effect[])
     case "close":
       break;
     case "safety":
-      if (s.safety.severity === "immediate" && !say.includes("911")) return no("missing_emergency", "In immediate danger, tell the child to get a safe grown-up and call 911.", allowed.acts);
+      // The guidance is code's policy message, never the model's words.
+      text = SAFETY_GUIDANCE[s.safety.severity!];
       s.safety.guided = true;
       moveTo(s, "SAFETY");
       break;
@@ -820,26 +877,27 @@ function propose(original: Session, s: Session, raw: unknown, effects: Effect[])
       break;
   }
 
-  // Committed: the reading counts now.
+  // 6. Committed: the reading counts now (its answers only when they were judged).
   if (reading.correctsHearing) s.mishearing.corrections += 1;
   if (reading.paper) s.paper = reading.paper === "written" ? "child_confirmed" : "declined";
-  if (failed) s.stuckStep ??= ladder.step;
-  for (const a of answers) {
-    if ((a.problem ?? "target") !== "target" || a.step !== "result") continue;
-    if (a.verdict === "wrong") s.wrongResults.push(a.value);
-    else s.childRight = true;
+  if (scoring) {
+    if (failed) s.stuckStep ??= ladder.step;
+    for (const { answer: a, problem } of checked) {
+      if (problem === "target" && a.step === "result") s.lastResult = a.verdict;
+    }
+    s.done = done;
+    s.ladder = ladder;
   }
   if (p.act !== "confirm" && p.act !== "offer_other_input") {
     s.confirmTries = 0;
     s.offeredOtherInput = false;
   }
-  s.done = done;
-  s.ladder = ladder;
+  s.boardRoles = { ...s.boardRoles, ...roles };
   s.turn = null;
 
-  if (say !== "") {
-    effects.push({ kind: "say", act: p.act, text: say });
-    s.turns.push({ at: s.now!, speaker: "maya", text: say, state: p.act === "close" ? "CLOSE" : s.state, act: p.act });
+  if (text !== "") {
+    effects.push({ kind: "say", act: p.act, text });
+    s.turns.push({ at: s.now!, speaker: "maya", text, state: p.act === "close" ? "CLOSE" : s.state, act: p.act });
   }
   if (p.board) {
     s.batches += 1;
@@ -847,7 +905,7 @@ function propose(original: Session, s: Session, raw: unknown, effects: Effect[])
   }
 
   if (p.act === "close") {
-    end(s, closeCause(s, reading), effects, false);
+    end(s, closeCause(base), effects, false);
   } else if (p.act === "safety" || (p.act === "example_step" && s.exampleShown < pkg!.easierExample.steps.length)) {
     s.expect = "maya";
     s.silence = "none";
@@ -859,6 +917,34 @@ function propose(original: Session, s: Session, raw: unknown, effects: Effect[])
     waitForChild(s);
   }
   return { session: s, effects, refusal: null };
+}
+
+/**
+ * Checks the child's answers: each was said and kept in this turn (after anything taken back, not offered as a choice;
+ * a final answer is the last number kept), and each verdict is what code computes. Fills `checked`; returns the first
+ * problem.
+ */
+function checkAnswers(s: Session, answers: ChildAnswer[], checked: Checked[]): { code: RefusalCode; reason: string } | null {
+  const pkg = s.package!;
+  if (!s.turn) return { code: "answer_not_heard", reason: "There is no child turn to read an answer from." };
+  const committed = committedText(s.turn.text);
+  if (offersChoice(committed)) return { code: "answer_not_committed", reason: "The child offered more than one answer: ask which one they mean." };
+  const heard = valuesIn(committed);
+  for (const a of answers) {
+    const problem = a.problem ?? "target";
+    const { operation, steps, answer } = problemOf(pkg, problem);
+    const at = steps.find((x) => x.id === a.step);
+    if (!at) return { code: "wrong_step", reason: `The ${problem} has no step "${a.step}".` };
+    if (!heard.some((v) => saidAs(v, a.value))) return { code: "answer_not_heard", reason: `The child did not say ${valueText(a.value)}, or took it back.` };
+    if (a.step === "result" && !saidAs(heard[heard.length - 1], a.value)) {
+      return { code: "answer_not_committed", reason: `${valueText(a.value)} is not the last answer the child kept: ask which one they mean.` };
+    }
+    const right = a.step === "result" ? isRightAnswer(operation, answer, a.value) : stepAnswers(at).some((v) => equivalent(v, a.value));
+    if (a.verdict === "right" && !right) return { code: "accepts_wrong_answer", reason: `${valueText(a.value)} is not right for ${a.step}: the checked math says otherwise.` };
+    if (a.verdict === "wrong" && right) return { code: "rejects_right_answer", reason: `${valueText(a.value)} is right for ${a.step}.` };
+    checked.push({ answer: a, problem });
+  }
+  return null;
 }
 
 // ---------- Helpers ----------
@@ -896,19 +982,17 @@ function raiseSafety(s: Session, severity: Severity, at: number, effects: Effect
   effects.push({ kind: "safety_flag", severity, at });
 }
 
-function sayFixed(s: Session, text: string, effects: Effect[]) {
-  effects.push({ kind: "say", act: "safety", text });
-  s.turns.push({ at: s.now!, speaker: "maya", text, state: s.state, act: "safety" });
-}
-
-/** Why Maya closes now, before the outcome's priority (safety, a content issue, then solved). */
-function closeCause(s: Session, reading: Reading): Reason {
-  if (reading.stop) return "child_stopped";
-  if (s.silence === "close_due") return "no_response";
-  if (s.state === "TIME_CLOSE") return "time_limit";
-  if (s.state === "CONFIRM_HEARD") return "technical_issue";
+/** Why Maya closes, from the session before the close, ahead of the outcome's priority (safety, content, solved). */
+function closeCause(before: Session): Reason {
+  if (before.turn?.stop) return "child_stopped";
+  if (before.silence === "close_due") return "no_response";
+  if (before.state === "TIME_CLOSE") return "time_limit";
+  if (before.state === "CONFIRM_HEARD") return "technical_issue";
   return "child_stopped";
 }
+
+/** When the call ended, or ends now: never after the 10-minute limit. */
+const endTime = (s: Session) => Math.min(s.now!, (s.startedAt ?? s.now!) + TIME_LIMITS.endAtMs);
 
 function outcomeOf(s: Session, cause: Reason): Outcome {
   const reason: Reason = s.safety.flagged ? "safety" : s.state === "CONTENT_HOLD" ? "content_issue" : s.solved !== null ? "solved" : cause;
@@ -922,64 +1006,109 @@ function outcomeOf(s: Session, cause: Reason): Outcome {
     safetyFlag: s.safety.flagged,
     safetySeverity: s.safety.severity,
     mishearing: { ...s.mishearing },
-    seconds: s.startedAt === null || s.now === null ? 0 : Math.round((s.now - s.startedAt) / 1000),
+    seconds: s.startedAt === null || s.now === null ? 0 : Math.round((endTime(s) - s.startedAt) / 1000),
   };
 }
 
+/** Ends the call. Safety guidance still due is given first, in code's words, on every way a call ends. */
 function end(s: Session, cause: Reason, effects: Effect[], cancel: boolean) {
   if (cancel) effects.push({ kind: "cancel_output" });
+  if (s.safety.flagged && !s.safety.guided) {
+    const text = SAFETY_GUIDANCE[s.safety.severity!];
+    effects.push({ kind: "say", act: "safety", text });
+    s.turns.push({ at: s.now!, speaker: "maya", text, state: s.state, act: "safety" });
+    s.safety.guided = true;
+  }
   s.outcome = outcomeOf(s, cause);
   moveTo(s, "CLOSE");
   s.expect = "nothing";
   s.turn = null;
-  effects.push({ kind: "end", at: s.now!, outcome: s.outcome, safetyHelp: s.safety.flagged });
+  effects.push({ kind: "end", at: s.now!, outcome: s.outcome, safetyMessage: s.safety.flagged ? SAFETY_GUIDANCE[s.safety.severity!] : null });
 }
 
-/** Why an answer claim is wrong, or null: a problem's answer is what code computes, and the target's waits its turn. */
-function claimAnswerProblem(s: Session, claim: MathClaim): string | null {
-  if (claim.kind !== "answer" || !s.package) return null;
-  const { steps, answer } = problemOf(s.package, claim.problem);
-  const right = stepAnswers(steps.at(-1)!, answer).some((v) => equivalent(v, claim.value));
-  return right ? null : `${show(claim.value)} is not the ${claim.problem === "target" ? "question's" : "example's"} answer`;
-}
+/** The text a board batch writes: `write` texts and `put` values. */
+const boardTexts = (board: unknown[]) =>
+  (board as Partial<Command>[]).flatMap((c) => ("text" in c && typeof c.text === "string" ? [c.text] : "value" in c && typeof c.value === "string" ? [c.value] : []));
 
 /**
- * Maya's words, claims or board would give the final answer: she says or writes it, claims it, or fills the answer
- * row's last digit (its highest place), which completes it. During the easier example the board holds the example.
+ * Maya's words or board would give the final answer: she says it (unless it is one of the question's own numbers, as
+ * in 66 + 0), states the question's equation, or fills the answer row of the question's board in its highest place.
  */
-function revealsAnswer(pkg: QuestionPackage, p: Proposal): boolean {
+function revealsAnswer(s: Session, p: Proposal): boolean {
+  const pkg = s.package!;
   const answer = pkg.answer.value;
-  const board = (p.board ?? []) as Partial<Command>[];
-  const texts = [p.say, ...board.flatMap((c) => ("text" in c ? [c.text] : "value" in c ? [c.value] : []))];
-  if (texts.some((t) => typeof t === "string" && valuesIn(t).some((v) => equivalent(v, answer)))) return true;
-  if ((p.claims ?? []).some((c) => c.kind === "answer" && c.problem === "target")) return true;
-  if (p.act === "example_step") return false;
-  const last = [...pkg.steps].reverse().find((x) => x.kind === "add-column" || (x.kind === "subtract-column" && x.write !== null));
-  const highest = last && last.kind !== "result" ? last.place.replace(" ", "_") : null;
-  return board.some((c) => {
+  const operands = operandsOf(pkg.operation);
+  const texts = [p.say, ...boardTexts(p.board ?? [])];
+  const ownNumber = operands.some((n) => equivalent(number(n), answer));
+  if (!ownNumber && texts.some((t) => valuesIn(t).some((v) => equivalent(v, answer)))) return true;
+  const symbol = SYMBOL[pkg.operation.kind];
+  const sameTerms = (terms: number[]) => terms.length === 2 &&
+    ((terms[0] === operands[0] && terms[1] === operands[1]) || ((symbol === "+" || symbol === "×") && terms[0] === operands[1] && terms[1] === operands[0]));
+  if (texts.flatMap(equationsIn).some((e) => e.ops[0] === symbol && sameTerms(e.terms))) return true;
+  const highest = answer.type === "number" ? PLACE_NAMES[String(Math.trunc(Math.abs(answer.value))).length - 1] : undefined;
+  return (p.board ?? []).some((raw) => {
+    const c = raw as Partial<Command>;
     if (c.op !== "put" || !isObject(c.target)) return false;
     const t = c.target as Target;
+    if (s.boardRoles[t.objectId] !== "target" && !createsTarget(p, t.objectId)) return false;
     return (t.part === "row" && t.rowId === "answer") || (t.part === "cell" && t.rowId === "answer" && t.column === highest);
   });
 }
 
-/** A board `columns` command shows the problem this turn is about, with its own numbers. */
-function boardProblem(pkg: QuestionPackage, problem: Problem, board: unknown[]): string | null {
-  const { operation } = problemOf(pkg, problem);
-  for (const c of board as Record<string, unknown>[]) {
-    if (c.op !== "columns") continue;
-    const operands = Array.isArray(c.operands) ? c.operands.map((o) => (isObject(o) ? Number(o.value) : NaN)) : [];
-    const same = c.operation === operation.kind && operands.length === 2 && operands[0] === operation.operands[0] && operands[1] === operation.operands[1];
-    if (!same) return `The board shows the ${problem === "target" ? "child's question" : "easier example"} now: ${operation.operands.join(` ${operation.kind === "add" ? "+" : "-"} `)}.`;
+/** The proposal creates this object for the child's question in the same batch. */
+const createsTarget = (p: Proposal, id: string) => p.act !== "example_step" && (p.board ?? []).some((c) => isObject(c) && c.op === "columns" && c.id === id);
+
+/**
+ * The board objects a batch creates, with their role, or why the batch mixes the problems: a new `columns` object shows
+ * this turn's problem with its own numbers, and every command that writes on an object (put, regroup, remove) writes
+ * on an object of this turn's problem. Marks, arrows and focus may point at either.
+ */
+function boardRoles(s: Session, role: Problem, board: unknown[]): Record<string, Problem> | string {
+  const { operation } = problemOf(s.package!, role);
+  const name = role === "target" ? "the child's question" : "the easier example";
+  const created: Record<string, Problem> = {};
+  for (const raw of board) {
+    const c = raw as Record<string, unknown>;
+    if ((c.op === "columns" || c.op === "write") && typeof c.id === "string") {
+      if (c.op === "columns") {
+        const operands = Array.isArray(c.operands) ? c.operands.map((o) => (isObject(o) ? Number(o.value) : NaN)) : [];
+        const want = operandsOf(operation);
+        const same = c.operation === BOARD_OPERATION[operation.kind] && operands.length === want.length && operands.every((n, i) => n === want[i]);
+        if (!same) return `The board shows ${name} now: ${want.join(` ${SYMBOL[operation.kind]} `)}.`;
+      }
+      created[c.id] = role;
+      continue;
+    }
+    const writesOn = c.op === "put" ? (c.target as Target | undefined)?.objectId : c.op === "regroup" || c.op === "remove" ? c.objectId : undefined;
+    if (writesOn !== undefined) {
+      const owner = typeof writesOn === "string" ? created[writesOn] ?? s.boardRoles[writesOn] : undefined;
+      if (owner === undefined) return `Maya has no board object "${String(writesOn)}".`;
+      if (owner !== role) return `This turn is about ${name}: it does not write on the other problem's board.`;
+    }
   }
-  return null;
+  return created;
 }
 
-/** The child said this value: the same number (66 and 66.0), or a fraction written the same way (14/16 is not 7/8). */
-const saidAs = (heard: AnswerValue, value: AnswerValue) =>
-  heard.type === "fraction" || value.type === "fraction" ? sameValue(heard, value) : equivalent(heard, value);
+/** The child said this value: the same number (66 and 66.0), or a fraction or remainder written the same way. */
+const saidAs = (heard: AnswerValue | undefined, value: AnswerValue) =>
+  heard !== undefined && (heard.type === "number" && value.type === "number" ? equivalent(heard, value) : sameValue(heard, value));
 
-function show(v: AnswerValue): string {
-  if (v.type === "fraction") return `${v.numerator}/${v.denominator}`;
-  return String(v.value);
+/** A time in ms as an ISO time in UTC, without the platform clock or Date. */
+function isoTime(ms: number): string {
+  const day = 86_400_000;
+  const days = Math.floor(ms / day);
+  const rest = ms - days * day;
+  // Days since 1970-01-01 to a civil date (the proleptic Gregorian calendar).
+  const z = days + 719_468;
+  const era = Math.floor(z / 146_097);
+  const doe = z - era * 146_097;
+  const yoe = Math.floor((doe - Math.floor(doe / 1460) + Math.floor(doe / 36_524) - Math.floor(doe / 146_096)) / 365);
+  const doy = doe - (365 * yoe + Math.floor(yoe / 4) - Math.floor(yoe / 100));
+  const mp = Math.floor((5 * doy + 2) / 153);
+  const d = doy - Math.floor((153 * mp + 2) / 5) + 1;
+  const m = mp < 10 ? mp + 3 : mp - 9;
+  const y = yoe + era * 400 + (m <= 2 ? 1 : 0);
+  const pad = (n: number, w = 2) => String(n).padStart(w, "0");
+  const [h, mi, sec, milli] = [Math.floor(rest / 3_600_000), Math.floor((rest % 3_600_000) / 60_000), Math.floor((rest % 60_000) / 1000), rest % 1000];
+  return `${pad(y, 4)}-${pad(m)}-${pad(d)}T${pad(h)}:${pad(mi)}:${pad(sec)}.${pad(milli, 3)}Z`;
 }

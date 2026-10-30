@@ -11,6 +11,7 @@ export {
   MAIN_STATES,
   PAUSES,
   SAFETY_GUIDANCE,
+  TEACHABLE_KINDS,
   TIME_LIMITS,
   type Act,
   type Assistance,
@@ -19,9 +20,7 @@ export {
   type Expect,
   type HintLevel,
   type Interrupt,
-  type LearningEvent,
   type MainState,
-  type MathClaim,
   type Outcome,
   type PaperStatus,
   type Problem,
@@ -38,4 +37,4 @@ export {
   type TranscriptTurn,
   type Understanding,
 } from "./session";
-export { valuesIn } from "./numbers";
+export { equationsIn, readNumbers, valuesIn, type Equation, type NumbersRead } from "./numbers";
