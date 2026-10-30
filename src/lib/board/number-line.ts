@@ -6,7 +6,7 @@
 // Jumps are annotations the line owns, like a carry in columns. Each goes in the lowest of a fixed set of lanes where its
 // arc and label clear the jumps already there; the lanes are reserved when the line is made, so a jump never moves
 // anything.
-import { curvedArrow, overlaps, polylineHitsRect, polylinesCross, traceTouches, type Trace } from "@/lib/board/geometry";
+import { clipOutside, curvedArrow, overlaps, polylineHitsRect, polylinesCross, traceTouches, type Trace } from "@/lib/board/geometry";
 import type { Point } from "@/lib/board/glyphs";
 import { layoutNumber, numberChars, numberStrokes, numberText, refuseMissing, type NumberLayout, type NumberParts } from "@/lib/board/fraction";
 import { lcm } from "@/lib/question-package-math";
@@ -204,26 +204,27 @@ function jumpShape(state: NumberLineState, j: Pick<Jump, "from" | "to" | "lane" 
   return { lines, label: { x, y: apex - INSET - layout.h, w: layout.w, h: layout.h }, layout };
 }
 
-/** The steps of a jump's shaft next to a tick another jump shares, where the two arcs rise together. */
-const SHARED_STEPS = 2;
+/** How near a tick both jumps start or end at their arcs may touch, in cells: they rise together there, as on paper. */
+const SHARED_REACH = 0.5;
 
 /**
- * True when two jumps' arcs or labels meet. The arcs (shaft and arrowhead) never cross. They may touch only at a tick
- * both jumps start or end at, where they rise together, as on paper: there the shaft's first `SHARED_STEPS` steps from
- * that tick, and an arrowhead that points at it, are left out of the touch check.
+ * True when two jumps' arcs or labels meet. The arcs (shaft and arrowhead) never cross. They may touch only within
+ * `SHARED_REACH` of a tick both jumps start or end at, where they fan out of one point. Beyond that every part of one
+ * arc keeps off all of the other, and beyond twice that it keeps the usual clearance.
  */
 function jumpsMeet(state: NumberLineState, a: Jump, b: Jump): boolean {
   const pad = (r: Rect): Rect => ({ x: r.x - INSET, y: r.y - INSET, w: r.w + 2 * INSET, h: r.h + 2 * INSET });
-  const shared = (t: number) => [a.from, a.to].includes(t) && [b.from, b.to].includes(t);
-  const traces = (j: Jump, shape: ReturnType<typeof jumpShape>): Trace[] => {
-    const [shaft, ...head] = shape.lines;
-    const lines = [shaft.slice(shared(j.from) ? SHARED_STEPS : 0, shared(j.to) ? -SHARED_STEPS : undefined), ...(shared(j.to) ? [] : head)];
-    return lines.map((pts) => ({ pts, width: ARC_WIDTH }));
-  };
+  // Where the arcs leave the line at each shared tick.
+  const shared = [a.from, a.to].filter((t) => t === b.from || t === b.to).map((t): Point => [tickX(state.geo, t), state.geo.lineY - TICK_HALF / 2]);
+  const traces = (lines: Point[][]): Trace[] => lines.map((pts) => ({ pts, width: ARC_WIDTH }));
+  const beyond = (lines: Point[][], reach: number) => traces(lines.flatMap((pts) => clipOutside(pts, shared, reach)));
   const [sa, sb] = [jumpShape(state, a), jumpShape(state, b)];
   if (sa.lines.some((p) => sb.lines.some((q) => polylinesCross(p, q)))) return true;
-  const [ta, tb] = [traces(a, sa), traces(b, sb)];
-  if (ta.some((p) => tb.some((q) => traceTouches(p, q, INSET / 2)))) return true;
+  const touch = (reach: number, clearance: number) => {
+    const meet = (ps: Trace[], qs: Trace[]) => ps.some((p) => qs.some((q) => traceTouches(p, q, clearance)));
+    return meet(beyond(sa.lines, reach), traces(sb.lines)) || meet(traces(sa.lines), beyond(sb.lines, reach));
+  };
+  if (touch(SHARED_REACH, 0) || touch(2 * SHARED_REACH, INSET / 2)) return true;
   if (sa.label && sb.lines.some((q) => polylineHitsRect(q, pad(sa.label!)))) return true;
   if (sb.label && sa.lines.some((p) => polylineHitsRect(p, pad(sb.label!)))) return true;
   return !!sa.label && !!sb.label && overlaps(pad(sa.label), sb.label);

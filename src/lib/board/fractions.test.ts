@@ -174,18 +174,18 @@ describe("room on the board", () => {
     const jump = (id: string, from: string, to: string) => ({ op: "jump", id, lineId: "n1", fromValue: from, toValue: to });
     const apex = (s: Scene, id: string) => Math.min(...boardPaths(s).filter((p) => p.objectId === id && p.kind === "arrow").flatMap((p) => p.pts.map(([, y]) => y)));
     // Jumps end to end share the lowest lane.
-    scene = ok(scene, jump("a", "0", "1/6"), jump("b", "1/6", "1/3"));
+    scene = ok(scene, jump("a", "1/6", "1/3"), jump("b", "1/3", "1/2"));
     expect(apex(scene, "b")).toBeCloseTo(apex(scene, "a"), 6);
-    // A jump over them goes higher, and another higher still.
-    scene = ok(scene, jump("c", "0", "1/3"));
+    // A jump over them goes higher, and one back over all of them higher still.
+    scene = ok(scene, jump("c", "1/6", "1/2"));
     expect(apex(scene, "c")).toBeLessThan(apex(scene, "a"));
-    scene = ok(scene, jump("d", "1/3", "0"));
+    scene = ok(scene, jump("d", "2/3", "0"));
     expect(apex(scene, "d")).toBeLessThan(apex(scene, "c"));
     const full = refused(scene, jump("e", "0", "1/2"));
     expect(full.code).toBe("no_room");
     expect(full.reason).toMatch(/lanes/);
     // Further along the line the lowest lane is free.
-    scene = ok(scene, jump("f", "1/2", "1"));
+    scene = ok(scene, jump("f", "2/3", "1"));
     expect(apex(scene, "f")).toBeGreaterThan(apex(scene, "c"));
   });
 });
@@ -493,6 +493,85 @@ describe("review R4: jumps never cross", () => {
             }
     }
     expect(accepted).toBeGreaterThan(0);
+  });
+
+  /**
+   * How far from a shared tick the painted strokes of jumps a and b overlap, in cells: 0 when they overlap nowhere
+   * outside half a cell of a shared tick. Points along each stroke are checked against the whole of the other stroke.
+   */
+  function overlapBeyondSharedTick(scene: Scene, cols: number, line: string, shared: string[]): number {
+    const tickPoint = (v: string): Pt => {
+      const pts = boardPaths(scene).find((p) => p.kind === "rule" && p.target !== null && sameTarget(p.target, value(line, v)))!.pts;
+      // Arcs leave the line half way up the tick: that is where jumps that share the tick meet.
+      return [pts[0][0] * cols, ((pts[0][1] + pts[1][1]) / 2 - (pts[1][1] - pts[0][1]) / 4) * cols];
+    };
+    const centres = shared.map(tickPoint);
+    // Paths are rounded to a ten-thousandth of the page width, so a point may be off by this much in cells.
+    const slack = 1.5e-4 * cols + 0.002;
+    const strokes = (id: string) =>
+      boardPaths(scene)
+        .filter((p) => p.objectId === id && p.kind === "arrow")
+        .map((p) => ({ pts: p.pts.map(([x, y]): Pt => [x * cols, y * cols]), width: p.width * cols }));
+    const toPolyline = (p: Pt, pts: readonly Pt[]) => Math.min(...pts.slice(1).map((e, i) => segGap(p, p, pts[i], e)));
+    let farthest = 0;
+    for (const [x, y] of [["a", "b"], ["b", "a"]])
+      for (const p of strokes(x))
+        for (const q of strokes(y))
+          for (let i = 1; i < p.pts.length; i++)
+            for (let k = 0; k <= 8; k++) {
+              const t = k / 8;
+              const at: Pt = [p.pts[i - 1][0] + t * (p.pts[i][0] - p.pts[i - 1][0]), p.pts[i - 1][1] + t * (p.pts[i][1] - p.pts[i - 1][1])];
+              const distance = Math.min(...centres.map((c) => Math.hypot(at[0] - c[0], at[1] - c[1])));
+              if (distance > 0.5 + slack && toPolyline(at, q.pts) < (p.width + q.width) / 2 - slack) farthest = Math.max(farthest, distance);
+            }
+    return farthest;
+  }
+
+  it("refuses or lifts a long jump that would run along another from the same tick: 2 to 12, then 2 to 24", () => {
+    const cols = 60;
+    let scene = ok(createScene({ page: { cols, rows: 30 } }), line("n", "0", "24", "1", { form: "decimal", labels: "none" }));
+    scene = ok(scene, jump("a", "2", "12"));
+    const r = applyBatch(scene, { transactionId: `f${++tx}`, commands: [jump("b", "2", "24")] });
+    if (!r.ok) expect(r.refusal.code).toBe("no_room");
+    else expect(overlapBeyondSharedTick(r.scene, cols, "n", ["2"])).toBe(0);
+  });
+
+  it("never lets jumps that share a start or an end overlap more than half a cell from that tick", () => {
+    const lines: [string, string, string, object][] = [
+      ["0", "3", "1", {}],
+      ["0", "12", "1", { form: "decimal" }],
+      ["0", "24", "1", { form: "decimal" }],
+      ["-1.5", "1.5", "0.5", {}],
+      ["0", "1", "1/24", { form: "fraction" }],
+      ["0", "10000", "500", { form: "mixed" }],
+    ];
+    let accepted = 0;
+    let refusedCount = 0;
+    for (const cols of [24, 60, 200])
+      for (const [min, max, tick, extra] of lines) {
+        const made = applyBatch(createScene({ page: { cols, rows: 40 } }), { transactionId: `f${++tx}`, commands: [line("n", min, max, tick, { labels: "none", ...extra })] });
+        if (!made.ok) continue;
+        const ticks = boardTargets(made.scene).filter((t) => t.target.objectId === "n" && t.target.part === "value");
+        const n = ticks.length;
+        const values = [...new Set([0, 1, 2, Math.floor((n - 1) / 2), n - 2, n - 1])].map((i) => (ticks[i].target as { value: string }).value);
+        for (const a of values)
+          for (const b of values)
+            for (const c of values)
+              for (const d of values) {
+                const shared = [a, b].filter((v) => v === c || v === d);
+                if (a === b || c === d || shared.length === 0) continue;
+                const r = applyBatch(ok(made.scene, jump("a", a, b)), { transactionId: `f${++tx}`, commands: [jump("b", c, d)] });
+                if (!r.ok) {
+                  expect(r.refusal.code).toBe("no_room");
+                  refusedCount++;
+                  continue;
+                }
+                accepted++;
+                expect(overlapBeyondSharedTick(r.scene, cols, "n", shared), `${cols} cols, ${min}..${max} by ${tick}: ${a}->${b}, then ${c}->${d}`).toBe(0);
+              }
+      }
+    expect(accepted).toBeGreaterThan(0);
+    expect(refusedCount).toBeGreaterThan(0);
   });
 
   it("still lets jumps meet at a shared tick", () => {
