@@ -55,7 +55,7 @@ function GetStarted({ src }: { src: string }) {
 const d = (s: number) => ({ "--d": `${s}s` }) as Vars;
 
 export function Nav() {
-  return <NavBar brand={BRAND} links={[{ label: "How it works", href: "#how" }, { label: "Curriculum", href: "/curriculum" }, { label: "Pricing", href: "#price" }, { label: "FAQ", href: "#faq" }]} cta={<StartLink className="btn sm" src="nav">Free assessment</StartLink>} />;
+  return <NavBar brand={BRAND} links={[{ label: "How it works", href: "#how" }, { label: "What's included", href: "/whats-included" }, { label: "Curriculum", href: "/curriculum" }, { label: "Pricing", href: "#price" }, { label: "FAQ", href: "#faq" }]} cta={<StartLink className="btn sm" src="nav">Free assessment</StartLink>} />;
 }
 
 // 8-9 characters only: the chip is as wide as its longest word, so a long topic
@@ -109,7 +109,7 @@ export function How() {
     <Section id="how" aria-labelledby="howT">
       <Knot />
       <Rise>
-        <SectionHeader eyebrow="How it works" title="Start easily. Repeat easily." titleId="howT" lead="Every workbook is built from the last one." />
+        <SectionHeader eyebrow="How it works" title="Start easily. Repeat easily." titleId="howT" lead={<>Every workbook is built from the last one. <Link href="/whats-included" className="more-link">See what&apos;s included <span aria-hidden="true">→</span></Link></>} />
       </Rise>
       <StepGrid>
         {STEPS.map((s, i) => (
@@ -218,6 +218,7 @@ export function Pricing() {
             "Rewards for every page and every week",
             "Delivery included. Cancel anytime",
           ]}
+          more={<Link href="/whats-included" className="more-link">See everything that&apos;s included <span aria-hidden="true">→</span></Link>}
           ctaLabel={START_LABEL}
           cta={<div className="plan-cta"><GetStarted src="price" /><StartNote /></div>}
         />
