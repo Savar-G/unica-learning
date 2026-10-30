@@ -5,10 +5,12 @@
 // smaller skills), the level (U1-U30, kept as 1-30), the difficulty, the expected wrong answers with their causes, and
 // one easier example of the same operation with its answer and steps.
 //
-// The worked steps are data that code builds from the operation (workedSteps), so a package is trusted only when its
-// answer and steps are what the operation gives (checkQuestionPackage). There is no parser of question text: the
-// operation is stored beside the text. Every Operation kind has a computation here; a later ticket adds a kind (for
-// example decimals or fractions, #306) together with its steps and its computation, never a kind code cannot check.
+// The worked steps are data that code builds from the operation (workedSteps): numbers only, so a package is trusted
+// only when its answer and steps are what the operation gives (checkQuestionPackage), and a change of wording never
+// makes a stored package invalid. stepText gives each step's words for a board or a voice. There is no parser of
+// question text: the operation is stored beside the text. Every operation kind has its computation in OPERATIONS; a
+// later ticket adds a kind (for example decimals or fractions, #306) there with its steps, never a kind code cannot
+// check.
 // Pure TypeScript: no Next.js, React, network, database or clock.
 import { BC_SKILL_MAP } from "@/lib/assessment";
 
@@ -38,7 +40,10 @@ export type AnswerValue =
   | { type: "choice"; value: string }
   | { type: "text"; value: string };
 
-/** The answer: its value, other written forms that also count as right (for example 2/4 for 1/2), and its unit. */
+/**
+ * The answer: its value, other written forms of the same number that also count as right (for example 2/4 or 0.5 for
+ * 1/2; only number and fraction forms, as code can check them), and its unit.
+ */
 export interface PackageAnswer {
   value: AnswerValue;
   accepted: AnswerValue[];
@@ -46,9 +51,13 @@ export interface PackageAnswer {
 }
 
 /** A computable operation on whole numbers from 0 to 9999. Subtraction never goes below zero. */
-export type Operation =
-  | { kind: "add"; operands: [number, number] }
-  | { kind: "subtract"; operands: [number, number] };
+export interface Operation {
+  kind: OperationKind;
+  operands: [number, number];
+}
+
+/** The operations code can compute (OPERATIONS). */
+export type OperationKind = "add" | "subtract";
 
 /** A column of the written method, from the right. */
 export type Place = "ones" | "tens" | "hundreds" | "thousands" | "ten thousands";
@@ -69,7 +78,6 @@ export type WorkedStep =
       total: number;
       write: number;
       carryOut: number;
-      text: string;
     }
   | {
       id: string;
@@ -83,10 +91,10 @@ export type WorkedStep =
       lent: boolean;
       /** This column took 1 from the column to its left, so its top is 10 more. */
       regrouped: boolean;
-      write: number;
-      text: string;
+      /** The digit written, or null for a 0 on the left of the result, which is not written (105 - 98 is 7). */
+      write: number | null;
     }
-  | { id: "result"; kind: "result"; value: AnswerValue; text: string };
+  | { id: "result"; kind: "result"; value: AnswerValue };
 
 /** An expected wrong answer and its cause: a misconception id ("O3") and its plain description. */
 export interface WrongAnswer {
@@ -112,6 +120,11 @@ export interface EasierExample {
 export type Difficulty = 1 | 2 | 3;
 
 export interface QuestionPackage {
+  /**
+   * The question's stable id, kept when pages are renumbered: a workbook question's own id; for an assessment
+   * question, "<test id>:<question id>".
+   */
+  id: string;
   ref: QuestionRef;
   /** The assessment template the question came from, or null. */
   templateId: string | null;
@@ -152,79 +165,98 @@ const MINUS = "−";
 const digitAt = (n: number, i: number) => Math.floor(n / 10 ** i) % 10;
 const digitCount = (n: number) => String(n).length;
 
+interface Computation {
+  symbol: string;
+  result(a: number, b: number): number;
+  /** Why the operands do not suit this operation, or null. */
+  problem(a: number, b: number): string | null;
+  columns(a: number, b: number): WorkedStep[];
+}
+
+/** What code computes for each operation kind. */
+const OPERATIONS: Record<OperationKind, Computation> = {
+  add: { symbol: "+", result: (a, b) => a + b, problem: () => null, columns: addColumns },
+  subtract: { symbol: MINUS, result: (a, b) => a - b, problem: (a, b) => (a < b ? "the subtraction goes below zero" : null), columns: subtractColumns },
+};
+
 /** The value an operation gives. The operation must be valid (operationProblem). */
-export function operationResult(operation: Operation): AnswerValue {
-  const [a, b] = operation.operands;
-  switch (operation.kind) {
-    case "add":
-      return { type: "number", value: a + b };
-    case "subtract":
-      return { type: "number", value: a - b };
-  }
+export function operationResult({ kind, operands: [a, b] }: Operation): AnswerValue {
+  return { type: "number", value: OPERATIONS[kind].result(a, b) };
 }
 
 /** The operation as the child reads it, without the answer: "48 + 37". */
-export function operationText(operation: Operation): string {
-  const [a, b] = operation.operands;
-  switch (operation.kind) {
-    case "add":
-      return `${a} + ${b}`;
-    case "subtract":
-      return `${a} ${MINUS} ${b}`;
-  }
+export function operationText({ kind, operands: [a, b] }: Operation): string {
+  return `${a} ${OPERATIONS[kind].symbol} ${b}`;
 }
 
 /** The worked steps of the column method for an operation, right to left, then the result. The operation must be valid. */
 export function workedSteps(operation: Operation): WorkedStep[] {
-  const columns = operation.kind === "add" ? addColumns(operation.operands) : subtractColumns(operation.operands);
-  const value = operationResult(operation);
-  return [...columns, { id: "result", kind: "result", value, text: `${operationText(operation)} = ${valueText(value)}` }];
+  const [a, b] = operation.operands;
+  return [...OPERATIONS[operation.kind].columns(a, b), { id: "result", kind: "result", value: operationResult(operation) }];
 }
 
-function addColumns([a, b]: [number, number]): WorkedStep[] {
+function addColumns(a: number, b: number): WorkedStep[] {
   const steps: WorkedStep[] = [];
   let carry = 0;
   for (let i = 0; i < Math.max(digitCount(a), digitCount(b)) || carry > 0; i++) {
-    const place = PLACES[i];
     const digits = [a, b].filter((n) => i < digitCount(n)).map((n) => digitAt(n, i));
     const total = digits.reduce((s, d) => s + d, 0) + carry;
-    const write = total % 10;
-    const carryOut = Math.floor(total / 10);
-    const terms = [...digits, ...(carry > 0 ? [carry] : [])];
-    const carried = carryOut > 0 ? ` and carry ${carryOut} ${UNIT[PLACES[i + 1]]}` : "";
-    const text = terms.length > 1 ? `Add the ${place}: ${terms.join(" + ")} = ${total}. Write ${write}${carried}.` : `Bring down the ${place}: write ${write}.`;
-    steps.push({ id: place, kind: "add-column", place, digits, carryIn: carry, total, write, carryOut, text });
-    carry = carryOut;
+    steps.push({ id: PLACES[i], kind: "add-column", place: PLACES[i], digits, carryIn: carry, total, write: total % 10, carryOut: Math.floor(total / 10) });
+    carry = Math.floor(total / 10);
   }
   return steps;
 }
 
-function subtractColumns([a, b]: [number, number]): WorkedStep[] {
+function subtractColumns(a: number, b: number): WorkedStep[] {
   const steps: WorkedStep[] = [];
-  const count = digitCount(a);
-  const result = a - b;
   let lent = false;
-  for (let i = 0; i < count; i++) {
-    const place = PLACES[i];
+  for (let i = 0; i < digitCount(a); i++) {
     const top = digitAt(a, i);
     const bottom = i < digitCount(b) ? digitAt(b, i) : null;
-    const have: number = top - (lent ? 1 : 0);
-    const regrouped: boolean = have < (bottom ?? 0);
-    const from = have + (regrouped ? 10 : 0);
-    const write = from - (bottom ?? 0);
-    const next = UNIT[PLACES[i + 1]];
-    // A column of 0 that must give 1 to its right first takes 1 from its left: say it in that order.
-    const regroup = have < 0
-      ? `There were 0 ${place}, so regroup 1 ${next} as 10 ${place}; after the 1 ${UNIT[place]} given to the ${PLACES[i - 1]}, ${from} ${place} are left.`
-      : [lent ? `The ${place} are now ${have}.` : "", regrouped ? `Regroup 1 ${next} as 10 ${place}, so ${have} ${place} become ${from}.` : ""].filter(Boolean).join(" ");
-    // The left columns of the result that are 0 are not written: 105 - 98 is 7, not 007.
-    const leading = i > 0 && Math.floor(result / 10 ** i) === 0;
-    const written = leading ? "Write nothing: a number does not start with 0." : `Write ${write}.`;
-    const work = bottom === null ? written : `Subtract the ${place}: ${from} ${MINUS} ${bottom} = ${write}. ${written}`;
-    steps.push({ id: place, kind: "subtract-column", place, top, bottom, lent, regrouped, write, text: [regroup, work].filter(Boolean).join(" ") });
+    const regrouped: boolean = top - (lent ? 1 : 0) < (bottom ?? 0);
+    const write = top - (lent ? 1 : 0) + (regrouped ? 10 : 0) - (bottom ?? 0);
+    // The left columns of the result that are 0 are not written.
+    const leading = i > 0 && Math.floor((a - b) / 10 ** i) === 0;
+    steps.push({ id: PLACES[i], kind: "subtract-column", place: PLACES[i], top, bottom, lent, regrouped, write: leading ? null : write });
     lent = regrouped;
   }
   return steps;
+}
+
+/** "1 one", "3 ones". */
+const count = (n: number, place: Place) => `${n} ${n === 1 ? UNIT[place] : place}`;
+const left = (place: Place) => PLACES[PLACES.indexOf(place) + 1];
+const right = (place: Place) => PLACES[PLACES.indexOf(place) - 1];
+
+/** A worked step in words, for a board or a voice: "Add the ones: 8 + 7 = 15. Write 5 and carry 1 ten." */
+export function stepText(step: WorkedStep, operation: Operation): string {
+  switch (step.kind) {
+    case "add-column": {
+      const { place, digits, carryIn, total, write, carryOut } = step;
+      const terms = [...digits, ...(carryIn > 0 ? [carryIn] : [])];
+      if (terms.length === 1) return `Bring down the ${place}: write ${write}.`;
+      const carried = carryOut > 0 ? ` and carry ${carryOut} ${UNIT[left(place)]}` : "";
+      return `Add the ${place}: ${terms.join(" + ")} = ${total}. Write ${write}${carried}.`;
+    }
+    case "subtract-column": {
+      const { place, top, bottom, lent, regrouped, write } = step;
+      const have = top - (lent ? 1 : 0);
+      const from = have + (regrouped ? 10 : 0);
+      // A column of 0 that must give 1 to its right first takes 1 from its left: say it in that order.
+      const regroup = have < 0
+        ? `There were 0 ${place}, so regroup 1 ${UNIT[left(place)]} as 10 ${place}; after the 1 ${UNIT[place]} given to the ${right(place)}, ${from} ${place} are left.`
+        : [
+          lent ? `The ${place} are now ${have}.` : "",
+          regrouped ? `Regroup 1 ${UNIT[left(place)]} as 10 ${place}, so ${count(have, place)} ${have === 1 ? "becomes" : "become"} ${from}.` : "",
+        ].filter(Boolean).join(" ");
+      const difference = from - (bottom ?? 0);
+      const written = write === null ? "Write nothing: a number does not start with 0." : `Write ${write}.`;
+      const work = bottom === null ? written : `Subtract the ${place}: ${from} ${MINUS} ${bottom} = ${difference}. ${written}`;
+      return [regroup, work].filter(Boolean).join(" ");
+    }
+    case "result":
+      return `${operationText(operation)} = ${valueText(step.value)}`;
+  }
 }
 
 function valueText(value: AnswerValue): string {
@@ -251,8 +283,20 @@ export function sameValue(a: AnswerValue, b: AnswerValue): boolean {
   return (a as { value: unknown }).value === (b as { value: unknown }).value;
 }
 
-/** Same values, deeply: for the stored steps against the computed ones. */
-const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
+/** Same data, deeply, in any key order (jsonb does not keep it): for the stored steps against the computed ones. */
+function sameData(a: unknown, b: unknown): boolean {
+  if (Array.isArray(a) || Array.isArray(b)) {
+    return Array.isArray(a) && Array.isArray(b) && a.length === b.length && a.every((x, i) => sameData(x, b[i]));
+  }
+  if (isObject(a) && isObject(b)) {
+    const keys = Object.keys(a);
+    return keys.length === Object.keys(b).length && keys.every((k) => k in b && sameData(a[k], b[k]));
+  }
+  return a === b;
+}
+
+/** A number or fraction as a number, or null for a value that is not a number. */
+const numeric = (v: AnswerValue): number | null => (v.type === "number" ? v.value : v.type === "fraction" ? v.numerator / v.denominator : null);
 
 function refProblem(ref: unknown): string | null {
   if (!isObject(ref)) return "the reference is missing";
@@ -289,19 +333,22 @@ function valueProblem(value: unknown, what: string): string | null {
 /** What is wrong with an operation, or null. */
 export function operationProblem(operation: unknown): string | null {
   if (!isObject(operation)) return "the operation is missing";
-  if (operation.kind !== "add" && operation.kind !== "subtract") return "the operation's kind is not one code can compute";
+  if (typeof operation.kind !== "string" || !Object.hasOwn(OPERATIONS, operation.kind)) return "the operation's kind is not one code can compute";
   const operands = operation.operands;
   if (!Array.isArray(operands) || operands.length !== 2 || !operands.every((n) => isWhole(n, 0, MAX_OPERAND))) {
     return `the operation needs two whole numbers from 0 to ${MAX_OPERAND}`;
   }
-  if (operation.kind === "subtract" && operands[0] < operands[1]) return "the subtraction goes below zero";
-  return null;
+  return OPERATIONS[operation.kind as OperationKind].problem(operands[0], operands[1]);
 }
 
-/** The answer and steps a part holds must be what its operation gives. */
-function workProblem(operation: Operation, answer: AnswerValue, steps: unknown, what: string): string | null {
-  if (!sameValue(answer, operationResult(operation))) return `${what}'s answer is not what its operation gives`;
-  if (!same(steps, workedSteps(operation))) return `${what}'s worked steps are not the steps of its operation`;
+/** A part (the question or its easier example): its operation is valid, and its answer and steps are what it gives. */
+function partProblem(operation: unknown, answer: unknown, steps: unknown, what: string): string | null {
+  const problem = operationProblem(operation);
+  if (problem) return what === "the question" ? problem : `${what}: ${problem}`;
+  const value = valueProblem(answer, `${what}'s answer`);
+  if (value) return value;
+  if (!sameValue(answer as AnswerValue, operationResult(operation as Operation))) return `${what}'s answer is not what its operation gives`;
+  if (!sameData(steps, workedSteps(operation as Operation))) return `${what}'s worked steps are not the steps of its operation`;
   return null;
 }
 
@@ -310,6 +357,7 @@ const size = (operation: Operation) => operation.operands.reduce((s, n) => s + d
 
 function packageProblem(p: unknown): string | null {
   if (!isObject(p)) return "the package is not an object";
+  if (!isText(p.id)) return "the package has no id";
   const ref = refProblem(p.ref);
   if (ref) return ref;
   if (p.templateId !== null && !isText(p.templateId)) return "the template id is not text or null";
@@ -317,25 +365,26 @@ function packageProblem(p: unknown): string | null {
 
   const answer = p.answer;
   if (!isObject(answer)) return "the answer is missing";
-  const value = valueProblem(answer.value, "the answer");
-  if (value) return value;
+  const work = partProblem(p.operation, answer.value, p.steps, "the question");
+  if (work) return work;
+  const value = answer.value as AnswerValue;
   if (!Array.isArray(answer.accepted)) return "the accepted forms are not a list";
   for (const form of answer.accepted) {
     const problem = valueProblem(form, "an accepted form");
     if (problem) return problem;
+    const n = numeric(form as AnswerValue);
+    if (n === null) return "an accepted form is not a number or a fraction, so code cannot check it";
+    if (sameValue(form as AnswerValue, value)) return "an accepted form repeats the answer";
+    const answerNumber = numeric(value);
+    if (answerNumber === null || Math.abs(n - answerNumber) > 1e-9) return `the accepted form ${valueText(form as AnswerValue)} is not the answer's number`;
   }
   if (answer.unit !== null && !isText(answer.unit)) return "the unit is not text or null";
-
-  const operation = operationProblem(p.operation);
-  if (operation) return operation;
-  const work = workProblem(p.operation as Operation, answer.value as AnswerValue, p.steps, "the question");
-  if (work) return work;
-  const right = [answer.value, ...answer.accepted] as AnswerValue[];
+  const right = [value, ...answer.accepted] as AnswerValue[];
 
   if (!isObject(p.skill) || !isText(p.skill.standard) || !Array.isArray(p.skill.skills)) return "the skill needs a standard and a list of skills";
   const code = p.skill.standard;
   const standard = BC_SKILL_MAP.standards.find((s) => s.code === code);
-  if (!standard) return `the standard ${p.skill.standard} is not in the BC skill map`;
+  if (!standard) return `the standard ${code} is not in the BC skill map`;
   for (const id of p.skill.skills) {
     if (!standard.skills.some((s) => s.id === id)) return `the skill ${String(id)} is not a skill of standard ${standard.code}`;
   }
@@ -361,11 +410,7 @@ function packageProblem(p: unknown): string | null {
   const easier = p.easierExample;
   if (!isObject(easier)) return "the package has no easier example";
   if (!isText(easier.text)) return "the easier example has no text";
-  const easierOperation = operationProblem(easier.operation);
-  if (easierOperation) return `the easier example: ${easierOperation}`;
-  const easierValue = valueProblem(easier.answer, "the easier example's answer");
-  if (easierValue) return easierValue;
-  const easierWork = workProblem(easier.operation as Operation, easier.answer as AnswerValue, easier.steps, "the easier example");
+  const easierWork = partProblem(easier.operation, easier.answer, easier.steps, "the easier example");
   if (easierWork) return easierWork;
   const target = p.operation as Operation;
   const example = easier.operation as Operation;

@@ -24,15 +24,16 @@ describe("assessmentQuestionPackage", () => {
     expect(result).toEqual({
       status: "found",
       package: {
+        id: `${TEST}:s1-3`,
         ref: { source: "assessment", assessmentId: TEST, questionId: "s1-3" },
         templateId: "2-add-2-digit",
         text: "48 + 37 = ?",
         answer: { value: { type: "number", value: 85 }, accepted: [], unit: null },
         operation: { kind: "add", operands: [48, 37] },
         steps: [
-          { id: "ones", kind: "add-column", place: "ones", digits: [8, 7], carryIn: 0, total: 15, write: 5, carryOut: 1, text: "Add the ones: 8 + 7 = 15. Write 5 and carry 1 ten." },
-          { id: "tens", kind: "add-column", place: "tens", digits: [4, 3], carryIn: 1, total: 8, write: 8, carryOut: 0, text: "Add the tens: 4 + 3 + 1 = 8. Write 8." },
-          { id: "result", kind: "result", value: { type: "number", value: 85 }, text: "48 + 37 = 85" },
+          { id: "ones", kind: "add-column", place: "ones", digits: [8, 7], carryIn: 0, total: 15, write: 5, carryOut: 1 },
+          { id: "tens", kind: "add-column", place: "tens", digits: [4, 3], carryIn: 1, total: 8, write: 8, carryOut: 0 },
+          { id: "result", kind: "result", value: { type: "number", value: 85 } },
         ],
         skill: { standard: "2.4", skills: ["2.4-add-within-100"] },
         level: 9,
@@ -46,9 +47,9 @@ describe("assessmentQuestionPackage", () => {
           operation: { kind: "add", operands: [26, 7] },
           answer: { type: "number", value: 33 },
           steps: [
-            { id: "ones", kind: "add-column", place: "ones", digits: [6, 7], carryIn: 0, total: 13, write: 3, carryOut: 1, text: "Add the ones: 6 + 7 = 13. Write 3 and carry 1 ten." },
-            { id: "tens", kind: "add-column", place: "tens", digits: [2], carryIn: 1, total: 3, write: 3, carryOut: 0, text: "Add the tens: 2 + 1 = 3. Write 3." },
-            { id: "result", kind: "result", value: { type: "number", value: 33 }, text: "26 + 7 = 33" },
+            { id: "ones", kind: "add-column", place: "ones", digits: [6, 7], carryIn: 0, total: 13, write: 3, carryOut: 1 },
+            { id: "tens", kind: "add-column", place: "tens", digits: [2], carryIn: 1, total: 3, write: 3, carryOut: 0 },
+            { id: "result", kind: "result", value: { type: "number", value: 33 } },
           ],
         },
       },
@@ -64,9 +65,9 @@ describe("assessmentQuestionPackage", () => {
     const p = result.package;
     expect(p.answer.value).toEqual({ type: "number", value: 37 });
     expect(p.steps).toEqual([
-      { id: "ones", kind: "subtract-column", place: "ones", top: 3, bottom: 6, lent: false, regrouped: true, write: 7, text: "Regroup 1 ten as 10 ones, so 3 ones become 13. Subtract the ones: 13 − 6 = 7. Write 7." },
-      { id: "tens", kind: "subtract-column", place: "tens", top: 8, bottom: 4, lent: true, regrouped: false, write: 3, text: "The tens are now 7. Subtract the tens: 7 − 4 = 3. Write 3." },
-      { id: "result", kind: "result", value: { type: "number", value: 37 }, text: "83 − 46 = 37" },
+      { id: "ones", kind: "subtract-column", place: "ones", top: 3, bottom: 6, lent: false, regrouped: true, write: 7 },
+      { id: "tens", kind: "subtract-column", place: "tens", top: 8, bottom: 4, lent: true, regrouped: false, write: 3 },
+      { id: "result", kind: "result", value: { type: "number", value: 37 } },
     ]);
     expect(p.skill).toEqual({ standard: "2.4", skills: ["2.4-subtract-within-100"] });
     expect(p.wrongAnswers).toEqual([
@@ -78,9 +79,9 @@ describe("assessmentQuestionPackage", () => {
       operation: { kind: "subtract", operands: [42, 7] },
       answer: { type: "number", value: 35 },
       steps: [
-        { id: "ones", kind: "subtract-column", place: "ones", top: 2, bottom: 7, lent: false, regrouped: true, write: 5, text: "Regroup 1 ten as 10 ones, so 2 ones become 12. Subtract the ones: 12 − 7 = 5. Write 5." },
-        { id: "tens", kind: "subtract-column", place: "tens", top: 4, bottom: null, lent: true, regrouped: false, write: 3, text: "The tens are now 3. Write 3." },
-        { id: "result", kind: "result", value: { type: "number", value: 35 }, text: "42 − 7 = 35" },
+        { id: "ones", kind: "subtract-column", place: "ones", top: 2, bottom: 7, lent: false, regrouped: true, write: 5 },
+        { id: "tens", kind: "subtract-column", place: "tens", top: 4, bottom: null, lent: true, regrouped: false, write: 3 },
+        { id: "result", kind: "result", value: { type: "number", value: 35 } },
       ],
     });
   });

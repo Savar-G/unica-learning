@@ -26,6 +26,7 @@ import {
   type Operation,
   type QuestionLookup,
   type QuestionPackage,
+  type UnavailableReason,
   type WrongAnswer,
 } from "@/lib/question-package";
 
@@ -60,7 +61,7 @@ const SUPPORTED: Record<string, Supported> = {
 export const SUPPORTED_ASSESSMENT_TEMPLATES: readonly string[] = Object.keys(SUPPORTED);
 
 const ones = ([a, b]: readonly [number, number]) => `${a % 10}-${b % 10}`;
-const unavailable = (reason: "unsupported-template" | "invalid-package", detail: string): QuestionLookup => ({ status: "unavailable", reason, detail });
+const unavailable = (reason: UnavailableReason, detail: string): QuestionLookup => ({ status: "unavailable", reason, detail });
 
 /** The package for a stored assessment question, or "content unavailable" for a template that is not supported. */
 export function assessmentQuestionPackage(ref: AssessmentQuestionRef, question: Question): QuestionLookup {
@@ -85,6 +86,7 @@ export function assessmentQuestionPackage(ref: AssessmentQuestionRef, question: 
   const pair = known.easier.find((p) => ones(p) !== ones(operation.operands)) ?? known.easier[0];
   const easier = { kind: known.kind, operands: [...pair] } as Operation;
   const candidate: QuestionPackage = {
+    id: `${ref.assessmentId}:${ref.questionId}`,
     ref,
     templateId: question.templateId,
     text: question.prompt,
@@ -114,8 +116,8 @@ function givenQuestion(test: StoredTest, route: Route | null, questionId: string
   return [...test.stage1, ...(route ? test.stage2[route] : [])].find((q) => q.id === questionId);
 }
 
-/** A reader's answer for a stored test: the package of the question, or not found. */
-export function lookupGiven(ref: AssessmentQuestionRef, row: { test: StoredTest; route: Route | null } | null): QuestionLookup {
+/** A reader's answer from a stored test row: the package of a question the child was given, or not found. */
+export function lookupStoredQuestion(ref: AssessmentQuestionRef, row: { test: StoredTest; route: Route | null } | null): QuestionLookup {
   const question = row && givenQuestion(row.test, row.route, ref.questionId);
   return question ? assessmentQuestionPackage(ref, question) : { status: "not-found" };
 }

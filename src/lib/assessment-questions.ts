@@ -1,6 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/lib/database";
-import { lookupGiven, type AssessmentQuestionReader } from "@/lib/question-package-assessment";
+import { lookupStoredQuestion, type AssessmentQuestionReader } from "@/lib/question-package-assessment";
 
 // The assessment question reader (#298) in Supabase: reads the stored test and its route from public.assessments and
 // gives the question as a package through the assessment adapter (src/lib/question-package-assessment.ts). Parents
@@ -16,7 +16,7 @@ export function assessmentQuestionReader(db: SupabaseClient<Database>): Assessme
       if (!UUID.test(ref.assessmentId)) return { status: "not-found" };
       const { data, error } = await db.from("assessments").select("test, route").eq("id", ref.assessmentId).maybeSingle();
       if (error) throw new Error(`assessment question load: ${error.message}`);
-      return lookupGiven(ref, data);
+      return lookupStoredQuestion(ref, data);
     },
   };
 }

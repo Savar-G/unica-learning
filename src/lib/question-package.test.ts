@@ -1,20 +1,21 @@
 import { describe, expect, it } from "vitest";
-import { checkQuestionPackage, workedSteps, type QuestionPackage } from "@/lib/question-package";
+import { checkQuestionPackage, stepText, workedSteps, type Operation, type QuestionPackage } from "@/lib/question-package";
 
 // The question package contract (#298): a package is trusted only when its parts are well formed and its answer and
 // worked steps are what its operation gives. Each refusal names its reason.
 
 /** 48 + 37 on page 23, question 4 of a workbook, worked by hand. */
 const PACKAGE: QuestionPackage = {
+  id: "wbq-0423",
   ref: { source: "workbook", workbookId: "wb-1", page: 23, question: 4 },
   templateId: null,
   text: "48 + 37 = ?",
   answer: { value: { type: "number", value: 85 }, accepted: [], unit: null },
   operation: { kind: "add", operands: [48, 37] },
   steps: [
-    { id: "ones", kind: "add-column", place: "ones", digits: [8, 7], carryIn: 0, total: 15, write: 5, carryOut: 1, text: "Add the ones: 8 + 7 = 15. Write 5 and carry 1 ten." },
-    { id: "tens", kind: "add-column", place: "tens", digits: [4, 3], carryIn: 1, total: 8, write: 8, carryOut: 0, text: "Add the tens: 4 + 3 + 1 = 8. Write 8." },
-    { id: "result", kind: "result", value: { type: "number", value: 85 }, text: "48 + 37 = 85" },
+    { id: "ones", kind: "add-column", place: "ones", digits: [8, 7], carryIn: 0, total: 15, write: 5, carryOut: 1 },
+    { id: "tens", kind: "add-column", place: "tens", digits: [4, 3], carryIn: 1, total: 8, write: 8, carryOut: 0 },
+    { id: "result", kind: "result", value: { type: "number", value: 85 } },
   ],
   skill: { standard: "2.4", skills: ["2.4-add-within-100"] },
   level: 9,
@@ -25,9 +26,9 @@ const PACKAGE: QuestionPackage = {
     operation: { kind: "add", operands: [26, 7] },
     answer: { type: "number", value: 33 },
     steps: [
-      { id: "ones", kind: "add-column", place: "ones", digits: [6, 7], carryIn: 0, total: 13, write: 3, carryOut: 1, text: "Add the ones: 6 + 7 = 13. Write 3 and carry 1 ten." },
-      { id: "tens", kind: "add-column", place: "tens", digits: [2], carryIn: 1, total: 3, write: 3, carryOut: 0, text: "Add the tens: 2 + 1 = 3. Write 3." },
-      { id: "result", kind: "result", value: { type: "number", value: 33 }, text: "26 + 7 = 33" },
+      { id: "ones", kind: "add-column", place: "ones", digits: [6, 7], carryIn: 0, total: 13, write: 3, carryOut: 1 },
+      { id: "tens", kind: "add-column", place: "tens", digits: [2], carryIn: 1, total: 3, write: 3, carryOut: 0 },
+      { id: "result", kind: "result", value: { type: "number", value: 33 } },
     ],
   },
 };
@@ -44,13 +45,22 @@ describe("checkQuestionPackage", () => {
     expect(checkQuestionPackage(PACKAGE)).toEqual({ ok: true, package: PACKAGE });
   });
 
-  it("accepts other right forms and a unit", () => {
-    const p = changed((p) => { p.answer = { value: { type: "number", value: 85 }, accepted: [{ type: "text", value: "eighty-five" }], unit: "cans" }; });
+  it("accepts other forms of the answer's number and a unit", () => {
+    const p = changed((p) => { p.answer = { value: { type: "number", value: 85 }, accepted: [{ type: "fraction", numerator: 170, denominator: 2 }], unit: "cans" }; });
+    expect(checkQuestionPackage(p)).toEqual({ ok: true, package: p });
+  });
+
+  it("accepts stored steps with their keys in another order, as jsonb gives them back", () => {
+    const reorder = (v: unknown): unknown => Array.isArray(v) ? v.map(reorder)
+      : v && typeof v === "object" ? Object.fromEntries(Object.entries(v).reverse().map(([k, x]) => [k, reorder(x)])) : v;
+    const p = reorder(PACKAGE);
+    expect(JSON.stringify(p)).not.toBe(JSON.stringify(PACKAGE));
     expect(checkQuestionPackage(p)).toEqual({ ok: true, package: p });
   });
 
   it.each([
     ["not a package", "the package is not an object", () => null],
+    ["no id", "the package has no id", () => changed((p) => { p.id = ""; })],
     ["a page number of 0", "the workbook reference needs a page number from 1", () => changed((p) => { p.ref = { source: "workbook", workbookId: "wb-1", page: 0, question: 4 }; })],
     ["an unknown source", "the reference's source is not workbook or assessment", () => changed((p) => { (p.ref as { source: string }).source = "scan"; })],
     ["no question text", "the question has no text", () => changed((p) => { p.text = " "; })],
@@ -63,6 +73,9 @@ describe("checkQuestionPackage", () => {
     ["an operation code cannot compute", "the operation's kind is not one code can compute", () => changed((p) => { (p.operation as { kind: string }).kind = "multiply"; })],
     ["a subtraction below zero", "the subtraction goes below zero", () => changed((p) => { p.operation = { kind: "subtract", operands: [37, 48] }; })],
     ["a fraction over 0", "an accepted form is not a fraction with a whole numerator and a denominator from 1", () => changed((p) => { p.answer.accepted = [{ type: "fraction", numerator: 1, denominator: 0 }]; })],
+    ["an accepted form of another number", "the accepted form 99 is not the answer's number", () => changed((p) => { p.answer.accepted = [{ type: "number", value: 99 }]; })],
+    ["an accepted form code cannot check", "an accepted form is not a number or a fraction, so code cannot check it", () => changed((p) => { p.answer.accepted = [{ type: "text", value: "eighty-five" }]; })],
+    ["an accepted form that repeats the answer", "an accepted form repeats the answer", () => changed((p) => { p.answer.accepted = [{ type: "number", value: 85 }]; })],
     ["an unknown standard", "the standard 2.99 is not in the BC skill map", () => changed((p) => { p.skill.standard = "2.99"; })],
     ["a skill of another standard", "the skill 3.1-place-value-thousands is not a skill of standard 2.4", () => changed((p) => { p.skill.skills = ["3.1-place-value-thousands"]; })],
     ["level 31", "the level is not U1 to U30", () => changed((p) => { p.level = 31; })],
@@ -70,9 +83,9 @@ describe("checkQuestionPackage", () => {
     ["difficulty 4", "the difficulty is not 1, 2 or 3", () => changed((p) => { (p as { difficulty: number }).difficulty = 4; })],
     ["no wrong answers", "the package has no wrong answers", () => changed((p) => { p.wrongAnswers = []; })],
     ["a wrong answer that is right", "the wrong answer 85 is a right answer", () => changed((p) => { p.wrongAnswers[0].value = { type: "number", value: 85 }; })],
-    ["a wrong answer that is an accepted form", "the wrong answer eighty-five is a right answer", () => changed((p) => {
-      p.answer.accepted = [{ type: "text", value: "eighty-five" }];
-      p.wrongAnswers[0].value = { type: "text", value: "eighty-five" };
+    ["a wrong answer that is an accepted form", "the wrong answer 170/2 is a right answer", () => changed((p) => {
+      p.answer.accepted = [{ type: "fraction", numerator: 170, denominator: 2 }];
+      p.wrongAnswers[0].value = { type: "fraction", numerator: 170, denominator: 2 };
     })],
     ["a wrong answer twice", "the wrong answer 75 is listed twice", () => changed((p) => { p.wrongAnswers.push(structuredClone(p.wrongAnswers[0])); })],
     ["a wrong answer with no cause", "a wrong answer needs a cause and its description", () => changed((p) => { p.wrongAnswers[0].cause = ""; })],
@@ -91,9 +104,19 @@ describe("checkQuestionPackage", () => {
   });
 });
 
-describe("workedSteps", () => {
+describe("workedSteps and stepText", () => {
+  const words = (operation: Operation) => workedSteps(operation).map((s) => stepText(s, operation));
+
+  it("carries the ones", () => {
+    expect(words({ kind: "add", operands: [48, 37] })).toEqual([
+      "Add the ones: 8 + 7 = 15. Write 5 and carry 1 ten.",
+      "Add the tens: 4 + 3 + 1 = 8. Write 8.",
+      "48 + 37 = 85",
+    ]);
+  });
+
   it("carries into a new column", () => {
-    expect(workedSteps({ kind: "add", operands: [58, 67] }).map((s) => s.text)).toEqual([
+    expect(words({ kind: "add", operands: [58, 67] })).toEqual([
       "Add the ones: 8 + 7 = 15. Write 5 and carry 1 ten.",
       "Add the tens: 5 + 6 + 1 = 12. Write 2 and carry 1 hundred.",
       "Bring down the hundreds: write 1.",
@@ -101,8 +124,21 @@ describe("workedSteps", () => {
     ]);
   });
 
+  it("regroups a ten", () => {
+    expect(words({ kind: "subtract", operands: [83, 46] })).toEqual([
+      "Regroup 1 ten as 10 ones, so 3 ones become 13. Subtract the ones: 13 − 6 = 7. Write 7.",
+      "The tens are now 7. Subtract the tens: 7 − 4 = 3. Write 3.",
+      "83 − 46 = 37",
+    ]);
+    expect(words({ kind: "subtract", operands: [21, 9] })).toEqual([
+      "Regroup 1 ten as 10 ones, so 1 one becomes 11. Subtract the ones: 11 − 9 = 2. Write 2.",
+      "The tens are now 1. Write 1.",
+      "21 − 9 = 12",
+    ]);
+  });
+
   it("regroups across a zero", () => {
-    expect(workedSteps({ kind: "subtract", operands: [302, 47] }).map((s) => s.text)).toEqual([
+    expect(words({ kind: "subtract", operands: [302, 47] })).toEqual([
       "Regroup 1 ten as 10 ones, so 2 ones become 12. Subtract the ones: 12 − 7 = 5. Write 5.",
       "There were 0 tens, so regroup 1 hundred as 10 tens; after the 1 ten given to the ones, 9 tens are left. Subtract the tens: 9 − 4 = 5. Write 5.",
       "The hundreds are now 2. Write 2.",
@@ -111,7 +147,9 @@ describe("workedSteps", () => {
   });
 
   it("writes no leading zeros", () => {
-    expect(workedSteps({ kind: "subtract", operands: [105, 98] }).map((s) => s.text)).toEqual([
+    const operation: Operation = { kind: "subtract", operands: [105, 98] };
+    expect(workedSteps(operation).map((s) => s.kind === "subtract-column" && s.write)).toEqual([7, null, null, false]);
+    expect(words(operation)).toEqual([
       "Regroup 1 ten as 10 ones, so 5 ones become 15. Subtract the ones: 15 − 8 = 7. Write 7.",
       "There were 0 tens, so regroup 1 hundred as 10 tens; after the 1 ten given to the ones, 9 tens are left. Subtract the tens: 9 − 9 = 0. Write nothing: a number does not start with 0.",
       "The hundreds are now 0. Write nothing: a number does not start with 0.",
