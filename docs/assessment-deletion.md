@@ -167,3 +167,28 @@ Open defect: #138. A family with mixed-case sibling folders in Storage stops at 
 ## Parent PIN (#300)
 
 `public.parent_pins` holds one row per parent (the PIN's salted hash and the attempt count). Its `parent_id` references `public.parents` with `on delete cascade`, so the existing family deletion removes the row when it deletes the parent's Auth user. The worker needs no code change and no table list. Checked on the live database (29 October 2026): the foreign key delete rule is cascade; the table has the family write fence trigger; no role except the secret key can read or write the table or call `claim_pin_attempt`. Row-level security is on with no policy, so a signed-in parent reads no row, theirs or another family's.
+
+## Learning events (#302)
+
+`public.learning_events` (migration `add_learning_events`) holds the append-only learning events of each child: from calls, marked pages and assessment answers (`src/lib/learning-events.ts`). Every row has `parent_id` (references `public.parents`), `child_id` with `parent_id` (references `public.children (id, parent_id)`), and for an assessment question `assessment_id` with `child_id` (references `public.assessments (id, child_id)`), all `on delete cascade`. The existing family deletion removes every row when it deletes the parent's Auth user, and a test deletion removes that test's events. The worker needs no code change and no table list. The retention rules need no change: a free-test family has events only from its tests, so its last test is still its last activity; a family with calls is a customer, and the worker keeps it.
+
+The service role may only insert and read: it has no update, delete or truncate grant, and a trigger refuses every update, from any role. The foreign key cascades run as the table owner, so they still delete the rows. The table has the family write fence trigger. Row-level security is on; the one policy lets admins read. A signed-in parent reads no row, theirs or another family's.
+
+Checked on the live database (29 October 2026), in one transaction that was rolled back, for a test family (`test_accounts`) and one other family:
+
+| Check | Result |
+|---|---|
+| Server insert (service role) of an assessment event and a call event | 2 rows |
+| Retry with the same idempotency key | refused (23505); 1 row for the key |
+| Update or delete by the service role | refused (42501) |
+| Update by the table owner | refused (55000, "learning events are append only") |
+| A child under another family's parent id | refused (23503, foreign key) |
+| Another family's child on this family's test | refused (55000, `family_scope`) |
+| A signed-in parent reads: own family, another family | 0 rows, 0 rows |
+| A signed-in parent inserts; anon reads | refused (42501), refused (42501) |
+| An admin reads | 2 rows |
+| Insert after the family's deletion request | refused (55000, `family_unavailable`) |
+| The service role deletes the child | 0 events left |
+| The Auth user is deleted (the deletion's last step) | 0 events left, 0 parent rows |
+
+The backfill (`backfillAssessment` in `src/lib/learning-events-assessment-store.ts`) ran once on the hosted database with the secret key for the test family's finished test: 42 events from 42 answers (34 right, 8 wrong), a second run 0 new and 42 already stored, a range read 42. The owner then removed those rows; the table held 0 rows after.
