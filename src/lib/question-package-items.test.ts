@@ -697,3 +697,10 @@ describe("junk", () => {
     }
   });
 });
+
+describe("an item with no word on its shown error", () => {
+  it("fails, as every other missing field does", () => {
+    const p = changed(MIXED_SET, (q) => { delete (q.item as Partial<Item>).error; });
+    expect(checkQuestionPackage(p)).toEqual(failed("the item does not say whether it shows a wrong solution"));
+  });
+});

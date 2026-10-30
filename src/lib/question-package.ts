@@ -20,7 +20,7 @@
 // Pure TypeScript: no Next.js, React, network, database or clock.
 import { BC_SKILL_MAP } from "@/lib/assessment";
 import { decimalRational } from "@/lib/question-package-columns";
-import { defaultItem, itemProblem, type ItemContext } from "@/lib/question-package-items";
+import { defaultItem, itemProblem, type ItemContext, type ItemProblem } from "@/lib/question-package-items";
 import { amountOf, amountValueProblem, conversionProblem, dimensionName, sameSize, unknownUnit } from "@/lib/question-package-measures";
 import {
   computation,
@@ -392,8 +392,15 @@ export type OperationPackage = QuestionPackage & { answer: PackageAnswer; operat
 /** True when the package has an operation, so its answer, steps and easier example are there. */
 export const hasOperation = (p: QuestionPackage): p is OperationPackage => p.operation !== null;
 
-/** A checked package's item: its own, or for a package with none, one answer box that holds the operation's answer. */
-export const packageItem = (p: QuestionPackage): Item => p.item ?? defaultItem((p as OperationPackage).answer.value);
+/**
+ * A checked package's item: its own, or for a package with none (every version 1 package), one answer box that holds
+ * the operation's answer. A package that has neither has not passed the check.
+ */
+export function packageItem(p: QuestionPackage): Item {
+  if (p.item) return p.item;
+  if (!p.answer) throw new Error("packageItem: a package with no item and no answer has not passed the check");
+  return defaultItem(p.answer.value);
+}
 
 /**
  * How an item is answered on a workbook page (.design/workbooks/CONTEXT.md section 6, DESIGN.md section 4):
@@ -416,8 +423,10 @@ export type ItemFormat =
 
 /**
  * An answer region: one place on the page the child writes or marks in, which the renderer measures and stores as one
- * box (#309). A box or a choice holds an answer: the answer key, which code checks against the item's checks. A work
- * box, writing lines and a picture are never scored by code.
+ * box (#309). A box or a choice holds an answer: one right answer (the answer key), which code checks against the
+ * item's checks. Where a check takes more than one right answer (the equations of "two ways to make 12"), the key is
+ * one of them, and marking reads the check, not only the key. A work box, writing lines and a picture are never
+ * scored by code.
  */
 export type AnswerRegion =
   | { id: string; kind: "box"; label: string | null; answer: AnswerValue | null }
@@ -711,7 +720,7 @@ function size(operation: Operation): Size {
  */
 const smaller = (a: Size, b: Size) => a.digits < b.digits || (a.digits === b.digits && (a.steps < b.steps || (a.steps === b.steps && a.carries < b.carries)));
 
-type Problem = { status: "failed" | "unsupported" | "not-checked"; reason: string };
+type Problem = ItemProblem;
 const failed = (reason: string | null): Problem | null => (reason ? { status: "failed", reason } : null);
 
 function packageProblem(p: unknown): Problem | null {
@@ -738,13 +747,13 @@ function packageProblem(p: unknown): Problem | null {
   if (content || p.item === undefined) return content;
   const q = p as unknown as QuestionPackage & { answer: PackageAnswer; operation: Operation };
   return itemProblem(p.item, {
-    ...VALUES,
+    ...VALUE_READERS,
     computed: { operation: q.operation, answer: q.answer.value, wrongAnswers: q.wrongAnswers },
   });
 }
 
 /** The value readers the item check uses. */
-const VALUES: Omit<ItemContext, "computed"> = { valueProblem, sameValue, number: rational };
+const VALUE_READERS: Omit<ItemContext, "computed"> = { valueProblem, sameValue, number: rational };
 
 const ANSWER_TYPES: readonly string[] = ["number", "fraction", "mixed", "remainder", "quantity", "compound", "time", "expression", "choice", "text"];
 
@@ -849,7 +858,7 @@ function noOperationProblem(p: Record<string, unknown>): Problem | null {
   if (!Array.isArray(p.steps) || p.steps.length > 0 || !Array.isArray(p.wrongAnswers) || p.wrongAnswers.length > 0) {
     return failed("a package with no operation has no worked steps and no wrong answers");
   }
-  return failed(skillProblem(p)) ?? itemProblem(p.item, { ...VALUES, computed: null });
+  return failed(skillProblem(p)) ?? itemProblem(p.item, { ...VALUE_READERS, computed: null });
 }
 
 /**

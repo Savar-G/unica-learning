@@ -297,6 +297,16 @@ const MIXED_SET_ITEM: Item = {
   error: null,
 };
 
+/** A "How do you know?" item with no operation: not scored, so code does not check it. */
+const WRITTEN_REASON = {
+  text: "Is 18 even? How do you know?",
+  answer: null, operation: null, steps: [], wrongAnswers: [], easierExample: null,
+  item: {
+    format: "written-reason", scorable: false, parentChecked: false,
+    regions: [{ id: "reason", kind: "lines", label: "How do you know?" }], checks: [], error: null,
+  } satisfies Item,
+};
+
 describe.each(stores)("the %s workbook store with item formats (#362)", (_name, make) => {
   it("stores a question with its item and reads it back", async () => {
     const store = make();
@@ -305,6 +315,21 @@ describe.each(stores)("the %s workbook store with item formats (#362)", (_name, 
     expect(await store.write(input)).toEqual({ status: "written", workbookId: WORKBOOK });
     const read = await store.question({ source: "workbook", workbookId: WORKBOOK, page: 2, question: 1 });
     expect(read.status === "found" && read.package.item).toEqual(MIXED_SET_ITEM);
+  });
+
+  it("stores an item code does not mark, such as a written reason, and reads it back as found", async () => {
+    const store = make();
+    const input = sample();
+    input.pages[1].questions[0].package = { ...input.pages[1].questions[0].package, ...WRITTEN_REASON };
+    expect(await store.write(input)).toEqual({ status: "written", workbookId: WORKBOOK });
+    const read = await store.question({ source: "workbook", workbookId: WORKBOOK, page: 2, question: 1 });
+    expect(read.status === "found" && read.package.item).toEqual(WRITTEN_REASON.item);
+  });
+
+  it("refuses an unscorable item that says it is scorable", async () => {
+    const input = sample();
+    input.pages[1].questions[0].package = { ...input.pages[1].questions[0].package, ...WRITTEN_REASON, item: { ...WRITTEN_REASON.item, scorable: true } };
+    expect(await make().write(input)).toEqual({ status: "refused", reason: "page 2, question 1: a written-reason item is never scorable" });
   });
 
   it("refuses a question whose item has a wrong answer", async () => {

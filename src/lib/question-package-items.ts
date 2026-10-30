@@ -22,7 +22,18 @@ import type {
   Term,
   WrongAnswer,
 } from "@/lib/question-package";
-import { decimalDigits, decimalPlaces, isObject, PLACE_ORDER, rational, written, type Fields, type Rational } from "@/lib/question-package-columns";
+import {
+  beyond,
+  decimalDigits,
+  decimalPlaces,
+  fail,
+  isObject,
+  PLACE_ORDER,
+  rational,
+  written,
+  type Fields,
+  type Rational,
+} from "@/lib/question-package-columns";
 import { valueText } from "@/lib/question-package-math";
 
 /** What the checker gives the item check: the value readers it owns, and the package's operation once checked. */
@@ -54,13 +65,11 @@ export function defaultItem(answer: AnswerValue): Item {
   };
 }
 
-const failed = (reason: string): ItemProblem => ({ status: "failed", reason });
-const beyond = (reason: string): ItemProblem => ({ status: "unsupported", reason });
 
 const isText = (v: unknown, max: number): v is string => typeof v === "string" && v.trim() !== "" && v.length <= max;
 const ID = /^[a-z0-9][a-z0-9-]{0,39}$/;
-/** The most regions or checks an item may have. */
-const MOST = 40;
+/** The most regions (and checks) an item may have. */
+const MOST_REGIONS = 40;
 
 // ---------- Regions and formats ----------
 
@@ -82,8 +91,8 @@ const partOf = (r: AnswerRegion): Part => (r.kind === "choice" ? r.mark : r.kind
 const FORMATS: Record<ItemFormat, { parts: Partial<Record<Part, [number, number]>>; scorable: boolean }> = {
   "write-number": { parts: { box: [1, 1] }, scorable: true },
   "write-words": { parts: { box: [1, 1] }, scorable: true },
-  boxes: { parts: { box: [2, MOST] }, scorable: true },
-  "fill-table": { parts: { box: [2, MOST] }, scorable: true },
+  boxes: { parts: { box: [2, MOST_REGIONS] }, scorable: true },
+  "fill-table": { parts: { box: [2, MOST_REGIONS] }, scorable: true },
   "tick-one": { parts: { tick: [1, 1] }, scorable: true },
   circle: { parts: { circle: [1, 1] }, scorable: true },
   "tick-and-number": { parts: { tick: [1, 1], box: [1, 1], work: [0, 1] }, scorable: true },
@@ -192,7 +201,7 @@ type Box = Extract<AnswerRegion, { kind: "box" }>;
 type Choice = Extract<AnswerRegion, { kind: "choice" }>;
 
 /** What a check reads besides itself: the item's regions, the package's operation and the item's shown error. */
-interface Read {
+interface CheckInput {
   regions: Map<string, AnswerRegion>;
   ctx: ItemContext;
   error: ShownError | null;
@@ -206,18 +215,18 @@ interface CheckRule<C extends ItemCheck> {
   /** The regions it marks. */
   regions(c: C): string[];
   /** Why its regions do not hold its right answers, or null. Each region it marks has an answer. */
-  verify(c: C, read: Read): ItemProblem | null;
+  verify(c: C, read: CheckInput): ItemProblem | null;
 }
 
-const boxAnswer = (read: Read, id: string) => (read.regions.get(id) as Box).answer as AnswerValue;
-const choiceOf = (read: Read, id: string) => read.regions.get(id) as Choice;
+const boxAnswer = (read: CheckInput, id: string) => (read.regions.get(id) as Box).answer as AnswerValue;
+const choiceOf = (read: CheckInput, id: string) => read.regions.get(id) as Choice;
 const isProblem = (v: unknown): v is ItemProblem => isObject(v) && typeof v.reason === "string";
 
 /** The exact number a box holds, or a failure when it holds no number. */
-function boxNumber(read: Read, id: string): Rational | ItemProblem {
+function boxNumber(read: CheckInput, id: string): Rational | ItemProblem {
   const answer = boxAnswer(read, id);
   const n = NUMBER_TYPES.includes(answer.type) ? read.ctx.number(answer) : null;
-  return n ?? failed(`the region "${id}" holds ${valueText(answer)}, not a number`);
+  return n ?? fail(`the region "${id}" holds ${valueText(answer)}, not a number`);
 }
 
 /** The sign of an operation as a Mixed set item prints it; none for a kind with no one sign (a conversion). */
@@ -232,12 +241,12 @@ const oneRegion = (c: Fields) => (typeof c.region === "string" ? null : `the ${S
 
 /** A choice that must be one sign: it offers the sign, and holds it. */
 function signProblem(id: string, choice: Choice, sign: string, what: string): ItemProblem | null {
-  if (!choice.choices.includes(sign)) return failed(`the region "${id}" has no choice for ${what}, ${sign}`);
-  return choice.answer === sign ? null : failed(`the region "${id}" holds ${choice.answer}, but ${what} is ${sign}`);
+  if (!choice.choices.includes(sign)) return fail(`the region "${id}" has no choice for ${what}, ${sign}`);
+  return choice.answer === sign ? null : fail(`the region "${id}" holds ${choice.answer}, but ${what} is ${sign}`);
 }
 
 /** The numbers of an equation as filled in, or a failure for a box that holds no number. */
-function filled(e: Equation, read: Read): Rational[] | ItemProblem {
+function filled(e: Equation, read: CheckInput): Rational[] | ItemProblem {
   const values: Rational[] = [];
   for (const t of equationTerms(e)) {
     const v = isRegionTerm(t) ? boxNumber(read, t.region) : (read.ctx.number(t) as Rational);
@@ -248,29 +257,27 @@ function filled(e: Equation, read: Read): Rational[] | ItemProblem {
 }
 
 /** The equation as filled in: "3 + 9 = 12". */
-function equationText(e: Equation, read: Read): string {
+function equationText(e: Equation, read: CheckInput): string {
   const text = (t: Term) => valueText(isRegionTerm(t) ? boxAnswer(read, t.region) : t);
   return `${text(e.left)} ${e.op} ${text(e.right)} = ${text(e.result)}`;
 }
 
-/** Whether a filled-in equation holds, or a failure (a division by 0). */
-function holds(e: Equation, read: Read): boolean | ItemProblem {
-  const v = filled(e, read);
-  if (isProblem(v)) return v;
-  const result = apply(e.op, v[0], v[1]);
-  if (result === null) return failed(`${equationText(e, read)} divides by 0`);
-  return same(result, v[2]);
+/** Whether an equation with these numbers (left, right, result) holds, or a failure (a division by 0). */
+function holds(e: Equation, [left, right, result]: Rational[], read: CheckInput): boolean | ItemProblem {
+  const value = apply(e.op, left, right);
+  if (value === null) return fail(`${equationText(e, read)} divides by 0`);
+  return same(value, result);
 }
 
 /** A yes-or-no statement's truth, or a failure. */
-function truth(s: Statement, read: Read): boolean | ItemProblem {
+function truth(s: Statement, read: CheckInput): boolean | ItemProblem {
   switch (s.kind) {
     case "equation":
-      return holds(s.equation, read);
+      return holds(s.equation, filled(s.equation, read) as Rational[], read);
     case "factor":
       return s.of % s.factor === 0;
     case "shown-answer":
-      return read.error ? false : failed("a shown-answer statement needs the item's shown wrong solution");
+      return read.error ? false : fail("a shown-answer statement needs the item's shown wrong solution");
   }
 }
 
@@ -299,10 +306,10 @@ const RULES: { [K in ItemCheck["kind"]]: CheckRule<Extract<ItemCheck, { kind: K 
     regions: (c) => [c.region],
     verify: (c, read) => {
       const computed = read.ctx.computed;
-      if (!computed) return failed("an operation check needs the package's operation");
+      if (!computed) return fail("an operation check needs the package's operation");
       const answer = boxAnswer(read, c.region);
       if (read.ctx.sameValue(answer, computed.answer)) return null;
-      return failed(`the region "${c.region}" holds ${valueText(answer)}, but the question's answer is ${valueText(computed.answer)}`);
+      return fail(`the region "${c.region}" holds ${valueText(answer)}, but the question's answer is ${valueText(computed.answer)}`);
     },
   },
 
@@ -312,7 +319,7 @@ const RULES: { [K in ItemCheck["kind"]]: CheckRule<Extract<ItemCheck, { kind: K 
     regions: (c) => [c.region],
     verify: (c, read) => {
       const computed = read.ctx.computed;
-      if (!computed) return failed("an operation-sign check needs the package's operation");
+      if (!computed) return fail("an operation-sign check needs the package's operation");
       const sign = SIGNS[computed.operation.kind];
       if (!sign) return beyond(`code cannot name one sign for a ${computed.operation.kind} question`);
       return signProblem(c.region, choiceOf(read, c.region), sign, "the operation's sign");
@@ -339,13 +346,13 @@ const RULES: { [K in ItemCheck["kind"]]: CheckRule<Extract<ItemCheck, { kind: K 
       // Each place below the largest box with a digit other than 0 needs its own box, or the boxes cannot show the number.
       for (const place of PLACE_ORDER.slice(0, column(top))) {
         const digit = count(place) % TEN;
-        if (digit !== ZERO && !parts.some((p) => p.place === place)) return failed(`${number} has ${digit} ${place}, but the item has no box for the ${place}`);
+        if (digit !== ZERO && !parts.some((p) => p.place === place)) return fail(`${number} has ${digit} ${place}, but the item has no box for the ${place}`);
       }
       for (const p of parts) {
         const expected = p.place === top ? count(p.place) : count(p.place) % TEN;
         const v = boxNumber(read, p.region);
         if (isProblem(v)) return v;
-        if (!same(v, [expected, ONE])) return failed(`the region "${p.region}" holds ${valueText(boxAnswer(read, p.region))}, but ${number} has ${expected} ${p.place}`);
+        if (!same(v, [expected, ONE])) return fail(`the region "${p.region}" holds ${valueText(boxAnswer(read, p.region))}, but ${number} has ${expected} ${p.place}`);
       }
       return null;
     },
@@ -373,7 +380,7 @@ const RULES: { [K in ItemCheck["kind"]]: CheckRule<Extract<ItemCheck, { kind: K 
       for (const [i, id] of c.regions.entries()) {
         const v = boxNumber(read, id);
         if (isProblem(v)) return v;
-        if (!same(v, sorted[i].v)) return failed(`the region "${id}" holds ${valueText(boxAnswer(read, id))}, but from ${way} number ${i + 1} is ${valueText(sorted[i].n)}`);
+        if (!same(v, sorted[i].v)) return fail(`the region "${id}" holds ${valueText(boxAnswer(read, id))}, but from ${way} number ${i + 1} is ${valueText(sorted[i].n)}`);
       }
       return null;
     },
@@ -396,11 +403,12 @@ const RULES: { [K in ItemCheck["kind"]]: CheckRule<Extract<ItemCheck, { kind: K 
     verify: (c, read) => {
       const seen: Rational[][] = [];
       for (const e of c.equations) {
-        const ok = holds(e, read);
+        const values = filled(e, read);
+        if (isProblem(values)) return values;
+        const ok = holds(e, values, read);
         if (isProblem(ok)) return ok;
-        if (!ok) return failed(`the boxes make ${equationText(e, read)}, which is not true`);
-        const values = filled(e, read) as Rational[];
-        if (c.different && seen.some((s) => s.every((v, i) => same(v, values[i])))) return failed(`two equations are ${equationText(e, read)}: the ways must differ`);
+        if (!ok) return fail(`the boxes make ${equationText(e, read)}, which is not true`);
+        if (c.different && seen.some((s) => s.every((v, i) => same(v, values[i])))) return fail(`two equations are ${equationText(e, read)}: the ways must differ`);
         seen.push(values);
       }
       return null;
@@ -430,12 +438,12 @@ const RULES: { [K in ItemCheck["kind"]]: CheckRule<Extract<ItemCheck, { kind: K 
       for (const [i, t] of c.terms.entries()) {
         const expected = apply("+", start, apply("×", step, [BigInt(i - first), ONE])!)!;
         if (!isRegionTerm(t)) {
-          if (!same(read.ctx.number(t) as Rational, expected)) return failed(`the sequence's printed numbers do not change by ${valueText(c.step)} each time`);
+          if (!same(read.ctx.number(t) as Rational, expected)) return fail(`the sequence's printed numbers do not change by ${valueText(c.step)} each time`);
           continue;
         }
         const v = boxNumber(read, t.region);
         if (isProblem(v)) return v;
-        if (!same(v, expected)) return failed(`the region "${t.region}" holds ${valueText(boxAnswer(read, t.region))}, but the sequence has ${rationalText(expected)} there`);
+        if (!same(v, expected)) return fail(`the region "${t.region}" holds ${valueText(boxAnswer(read, t.region))}, but the sequence has ${rationalText(expected)} there`);
       }
       return null;
     },
@@ -464,12 +472,12 @@ const RULES: { [K in ItemCheck["kind"]]: CheckRule<Extract<ItemCheck, { kind: K 
     verify: (c, read) => {
       const choice = choiceOf(read, c.region);
       if (choice.choices.length !== 2 || !choice.choices.includes(c.yes) || !choice.choices.includes(c.no)) {
-        return failed(`the yes-no check's yes and no are not the two choices of the region "${c.region}"`);
+        return fail(`the yes-no check's yes and no are not the two choices of the region "${c.region}"`);
       }
       const t = truth(c.statement, read);
       if (isProblem(t)) return t;
       const right = t ? c.yes : c.no;
-      return choice.answer === right ? null : failed(`the region "${c.region}" holds ${choice.answer}, but the answer is ${right}`);
+      return choice.answer === right ? null : fail(`the region "${c.region}" holds ${choice.answer}, but the answer is ${right}`);
     },
   },
 };
@@ -499,50 +507,51 @@ function errorProblem(format: ItemFormat, error: unknown, ctx: ItemContext): str
  * Null: code checked every scored region.
  */
 export function itemProblem(item: unknown, ctx: ItemContext): ItemProblem | null {
-  if (!isObject(item)) return failed("the item is not an object");
-  if (typeof item.scorable !== "boolean" || typeof item.parentChecked !== "boolean") return failed("the item does not say whether it is scorable and whether a parent checks it");
-  if (!Array.isArray(item.regions)) return failed("the item's regions are not a list");
-  if (item.regions.length > MOST) return failed(`the item has more than ${MOST} regions`);
+  if (!isObject(item)) return fail("the item is not an object");
+  if (typeof item.scorable !== "boolean" || typeof item.parentChecked !== "boolean") return fail("the item does not say whether it is scorable and whether a parent checks it");
+  if (!Array.isArray(item.regions)) return fail("the item's regions are not a list");
+  if (item.regions.length > MOST_REGIONS) return fail(`the item has more than ${MOST_REGIONS} regions`);
   for (const r of item.regions) {
     const problem = regionProblem(r, ctx);
-    if (problem) return failed(problem);
+    if (problem) return fail(problem);
   }
   const list = item.regions as AnswerRegion[];
   const regions = new Map(list.map((r) => [r.id, r]));
-  if (regions.size !== list.length) return failed("a region id is used twice");
-  if (typeof item.format !== "string" || !Object.hasOwn(FORMATS, item.format)) return failed("the item's format is not one code knows");
+  if (regions.size !== list.length) return fail("a region id is used twice");
+  if (typeof item.format !== "string" || !Object.hasOwn(FORMATS, item.format)) return fail("the item's format is not one code knows");
   const format = item.format as ItemFormat;
   const layout = formatProblem(format, list);
-  if (layout) return failed(layout);
+  if (layout) return fail(layout);
   const marked = list.filter((r): r is Box | Choice => r.kind === "box" || r.kind === "choice");
   if (item.scorable) {
-    if (!FORMATS[format].scorable) return failed(`a ${format} item is never scorable`);
-    if (item.parentChecked) return failed("a scorable item is not checked by a parent");
-    if (marked.length === 0) return failed("a scorable item needs a box or a choice to mark");
+    if (!FORMATS[format].scorable) return fail(`a ${format} item is never scorable`);
+    if (item.parentChecked) return fail("a scorable item is not checked by a parent");
+    if (marked.length === 0) return fail("a scorable item needs a box or a choice to mark");
     const open = marked.find((r) => r.answer === null);
-    if (open) return failed(`the region "${open.id}" is scored, so it needs an answer`);
+    if (open) return fail(`the region "${open.id}" is scored, so it needs an answer`);
   }
-  const error = errorProblem(format, item.error === undefined ? null : item.error, ctx);
-  if (error) return failed(error);
+  if (item.error === undefined) return fail("the item does not say whether it shows a wrong solution");
+  const error = errorProblem(format, item.error, ctx);
+  if (error) return fail(error);
 
-  if (!Array.isArray(item.checks)) return failed("the item's checks are not a list");
-  if (item.checks.length > MOST) return failed(`the item has more than ${MOST} checks`);
+  if (!Array.isArray(item.checks)) return fail("the item's checks are not a list");
+  if (item.checks.length > MOST_REGIONS) return fail(`the item has more than ${MOST_REGIONS} checks`);
   const covered = new Set<string>();
   for (const c of item.checks) {
-    if (!isObject(c) || typeof c.kind !== "string" || !Object.hasOwn(RULES, c.kind)) return failed("a check has an unknown kind");
+    if (!isObject(c) || typeof c.kind !== "string" || !Object.hasOwn(RULES, c.kind)) return fail("a check has an unknown kind");
     const rule = ruleOf(c as ItemCheck);
     const shape = rule.shape(c, ctx);
-    if (shape) return failed(shape);
+    if (shape) return fail(shape);
     for (const id of rule.regions(c as ItemCheck)) {
       const region = regions.get(id);
-      if (!region) return failed(`the ${c.kind} check names a region the item does not have, "${id}"`);
-      if (region.kind !== rule.region) return failed(`the ${c.kind} check needs a ${rule.region} region, not "${id}"`);
-      if (region.answer === null) return failed(`the region "${id}" has no answer to check`);
-      if (covered.has(id)) return failed(`the region "${id}" is in two checks`);
+      if (!region) return fail(`the ${c.kind} check names a region the item does not have, "${id}"`);
+      if (region.kind !== rule.region) return fail(`the ${c.kind} check needs a ${rule.region} region, not "${id}"`);
+      if (region.answer === null) return fail(`the region "${id}" has no answer to check`);
+      if (covered.has(id)) return fail(`the region "${id}" is in two checks`);
       covered.add(id);
     }
   }
-  const read: Read = { regions, ctx, error: (item.error ?? null) as ShownError | null };
+  const read: CheckInput = { regions, ctx, error: item.error as ShownError | null };
   let unsupported: ItemProblem | null = null;
   for (const c of item.checks as ItemCheck[]) {
     const problem = ruleOf(c).verify(c, read);
