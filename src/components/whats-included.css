@@ -34,7 +34,7 @@
 .wi-as .rep span { position: absolute; left: 12px; top: 10px; font: 500 10px var(--ui-mono); letter-spacing: .06em; text-transform: uppercase; background: #0c0c0e; color: #fff; border-radius: 4px; padding: 3px 7px; }
 
 /* workbook band: open book on paper */
-.wi-band { background: radial-gradient(90% 70% at 50% 18%, #fbf8f2, #efe8dc 70%, #e6ddcd); text-align: center; }
+.wi-band { text-align: center; }
 .wi-band > .wi-st { justify-items: center; max-width: 680px; margin: 0 auto 8px; }
 .wi-lvl { display: inline-flex; gap: 4px; background: rgba(0,0,0,.06); border-radius: 999px; padding: 4px; margin-top: 10px; color: #44444c; }
 .wi-lvl button { border: 0; background: transparent; color: inherit; font: 500 14px var(--ui); border-radius: 999px; padding: 9px 16px; cursor: pointer; }

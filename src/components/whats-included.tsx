@@ -144,7 +144,7 @@ export function WhatsIncluded() {
           <Rise className="wi-hero">
             <Eyebrow>What&apos;s included</Eyebrow>
             <h1>Everything your child gets, in the order it happens.</h1>
-            <p className="lead">From a free assessment to a workbook made for your child, and a next workbook made from everything they did.</p>
+            <p className="lead">A free assessment, a workbook made for your child, and help when they get stuck. Then each new workbook is built from everything that came before.</p>
             <div className="wi-cta">
               <StartLink src="included-hero">{START_LABEL}</StartLink>
               <Link className="btn ghost" href="/sample-report">See a sample report</Link>
