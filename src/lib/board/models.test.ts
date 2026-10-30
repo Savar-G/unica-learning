@@ -439,3 +439,186 @@ describe("models with the common commands", () => {
     expect(boardPaths(blocks).filter((p) => p.target?.part === "piece" && p.target.piece.startsWith("one-") && p.kind === "rule").length).toBe(19);
   });
 });
+
+// ---------- review fixes (#353): labels that stay readable, strict optional fields, strokes inside their space ----------
+
+const BIG_PAGE = { cols: 60, rows: 40 };
+type Box = ReturnType<typeof box>;
+const grown = (b: Box, by: number): Box => ({ left: b.left - by, right: b.right + by, top: b.top - by, bottom: b.bottom + by });
+const boxesMeet = (a: Box, b: Box) => a.left < b.right && b.left < a.right && a.top < b.bottom && b.top < a.bottom;
+/** True when the straight segment from p to q passes inside the box (sampled finely). */
+function segmentEnters(p: [number, number], q: [number, number], b: Box): boolean {
+  for (let i = 0; i <= 400; i++) {
+    const [x, y] = [p[0] + ((q[0] - p[0]) * i) / 400, p[1] + ((q[1] - p[1]) * i) / 400];
+    if (x > b.left && x < b.right && y > b.top && y < b.bottom) return true;
+  }
+  return false;
+}
+
+/**
+ * The problems with a geometry model's labels, from its public paths: two labels that meet, a label that a line of the
+ * shape runs through, or an angle label nearer another corner than its own. Empty when every label reads clearly.
+ */
+function labelProblems(scene: Scene, id: string): string[] {
+  const unit = 1 / scene.page.cols;
+  const paths = boardPaths(scene).filter((p) => p.objectId === id);
+  const labels = new Map<string, BoardPath[]>();
+  for (const p of paths) if (p.kind === "glyph" && p.target?.part === "piece") labels.set(p.target.piece, [...(labels.get(p.target.piece) ?? []), p]);
+  const lines = paths.filter((p) => p.kind === "rule");
+  const corners = new Map<string, [number, number]>();
+  for (const p of lines)
+    if (p.target?.part === "piece" && p.target.piece.startsWith("side-")) {
+      const [a, b] = p.target.piece.slice(5).split("");
+      corners.set(a, p.pts[0]);
+      corners.set(b, p.pts.at(-1)!);
+    }
+  const problems: string[] = [];
+  const boxes = [...labels].map(([piece, ps]) => ({ piece, b: grown(box(ps), 0.06 * unit) }));
+  boxes.forEach((x, i) =>
+    boxes.slice(i + 1).forEach((y) => {
+      if (boxesMeet(x.b, y.b)) problems.push(`${x.piece} meets ${y.piece}`);
+    }),
+  );
+  for (const { piece, b } of boxes) {
+    for (const l of lines) for (let i = 1; i < l.pts.length; i++) if (segmentEnters(l.pts[i - 1], l.pts[i], b)) problems.push(`${piece} is crossed by ${l.target?.part === "piece" ? l.target.piece : "a line"}`);
+    if (piece.startsWith("angle-")) {
+      const c: [number, number] = [(b.left + b.right) / 2, (b.top + b.bottom) / 2];
+      const d = (p: [number, number]) => Math.hypot(p[0] - c[0], p[1] - c[1]);
+      const own = d(corners.get(piece.slice(6))!);
+      for (const [name, at] of corners) if (name !== piece.slice(6) && d(at) <= own) problems.push(`${piece} is nearer corner ${name}`);
+    }
+  }
+  return [...new Set(problems)];
+}
+
+/**
+ * True when every stroke of a model, with its pen width, lies inside the space the board reserved for it: on an empty
+ * page the model starts one cell in, and a note placed right of it and one placed below it start one cell past its edges.
+ */
+function strokesInsideSpace(spec: Record<string, unknown>, glyphs?: GlyphSet): boolean {
+  const scene = ok(
+    createScene({ page: BIG_PAGE, glyphs }),
+    model("m", spec),
+    { op: "write", id: "r", text: "1", place: { rightOf: "m" } },
+    { op: "write", id: "b", text: "1", place: { below: "m" } },
+  );
+  const cells = (n: number) => n * BIG_PAGE.cols;
+  const paths = boardPaths(scene);
+  // The glyph "1" starts 0.34 of a cell in from its cell's left edge and 0.1 down from its top.
+  const right = cells(box(paths.filter((p) => p.objectId === "r")).left) - 0.34 - 1;
+  const bottom = cells(box(paths.filter((p) => p.objectId === "b")).top) - 0.1 - 1;
+  const tolerance = 0.01;
+  return paths
+    .filter((p) => p.objectId === "m")
+    .every((p) =>
+      p.pts.every(([x, y]) => {
+        const [cx, cy, half] = [cells(x), cells(y), cells(p.width) / 2];
+        return cx - half >= 1 - tolerance && cy - half >= 1 - tolerance && cx + half <= right + tolerance && cy + half <= bottom + tolerance;
+      }),
+    );
+}
+
+/** Every side and angle of a geometry model, labelled with a "?", or with its size when `sized`. */
+function allLabels(spec: Record<string, unknown>, sized: boolean) {
+  const plain = ok(createScene(), model("probe", spec));
+  return boardTargets(plain)
+    .flatMap((t) => (t.target.part === "piece" && /^(side-|angle-|radius)/.test(t.target.piece) ? [t.target.piece] : []))
+    .map((p) => ({ piece: p, show: sized ? (p.startsWith("angle-") ? "measure" : "length") : "unknown" }));
+}
+/** The labels of `allLabels` the code can write alone: a size that is not a whole number is refused for its own reason. */
+const writable = (base: Record<string, unknown>, labels: { piece: string; show: string }[]) =>
+  labels.filter((l) => applyBatch(createScene(), { transactionId: "p", commands: [model("p", { ...base, labels: [l] })] }).ok || l.show === "unknown");
+
+describe("geometry labels stay readable (#353 R1)", () => {
+  it("refuses a 1 by 10 rectangle with four angle sizes: there is no clear room for them", () => {
+    const r = refusal(createScene(), model("m", { kind: "geometry", shape: "rectangle", width: 1, height: 10, labels: ["A", "B", "C", "D"].map((a) => ({ piece: `angle-${a}`, show: "measure" })) }));
+    expect(r).toMatchObject({ code: "not_allowed", reason: expect.stringMatching(/no clear room.*angle-/) });
+  });
+
+  it("labels the sides of a 1 by 10 rectangle, each clear of the shape and of the other labels", () => {
+    const spec = { kind: "geometry", shape: "rectangle", width: 1, height: 10, labels: ["AB", "BC", "CD", "DA"].map((s) => ({ piece: `side-${s}`, show: "length" })) };
+    const scene = ok(createScene({ glyphs: LETTERS }), model("m", spec));
+    expect(labelProblems(scene, "m")).toEqual([]);
+    expect(strokesInsideSpace(spec, LETTERS)).toBe(true);
+  });
+
+  const thinAndSmall: Record<string, unknown>[] = [
+    { shape: "square", side: 1 },
+    { shape: "rectangle", width: 1, height: 1 },
+    { shape: "rectangle", width: 1, height: 10 },
+    { shape: "rectangle", width: 10, height: 1 },
+    { shape: "right_triangle", base: 1, height: 1 },
+    { shape: "right_triangle", base: 1, height: 10 },
+    { shape: "right_triangle", base: 10, height: 1 },
+    { shape: "triangle", base: 1, height: 1, apex: 0 },
+    { shape: "triangle", base: 1, height: 10, apex: 1 },
+    { shape: "triangle", base: 10, height: 1, apex: 5 },
+    { shape: "triangle", base: 10, height: 10, apex: 0 },
+    { shape: "parallelogram", base: 1, height: 1, slant: 1 },
+    { shape: "parallelogram", base: 1, height: 10, slant: 5 },
+    { shape: "parallelogram", base: 10, height: 1, slant: 5 },
+    { shape: "trapezoid", bottom: 2, top: 1, height: 1 },
+    { shape: "trapezoid", bottom: 2, top: 1, height: 10 },
+    { shape: "trapezoid", bottom: 10, top: 9, height: 1 },
+    { shape: "trapezoid", bottom: 10, top: 1, height: 1 },
+    { shape: "circle", radius: 1 },
+    { shape: "circle", radius: 5 },
+  ];
+  for (const dims of thinAndSmall)
+    for (const sized of [false, true])
+      it(`${JSON.stringify(dims)} with every part labelled ${sized ? "by size" : "?"}: clear labels inside its space, or a refusal that says why`, () => {
+        const base = { kind: "geometry", ...dims };
+        const spec = { ...base, labels: writable(base, allLabels(base, sized)) };
+        const r = applyBatch(createScene({ glyphs: LETTERS }), { transactionId: "t", commands: [model("m", spec)] });
+        if (!r.ok) {
+          expect(r.refusal).toMatchObject({ code: "not_allowed", reason: expect.stringMatching(/no clear room/) });
+          return;
+        }
+        expect(labelProblems(r.scene, "m")).toEqual([]);
+        expect(strokesInsideSpace(spec, LETTERS)).toBe(true);
+      });
+
+  it("still labels every part of the smallest shapes that are not thin", () => {
+    const small = thinAndSmall.filter((d) => Object.entries(d).every(([k, v]) => k === "shape" || k === "apex" || (v as number) <= 2));
+    expect(small.length).toBeGreaterThanOrEqual(6);
+    for (const dims of small)
+      for (const sized of [false, true]) {
+        const base = { kind: "geometry", ...dims };
+        const r = applyBatch(createScene({ glyphs: LETTERS }), { transactionId: "t", commands: [model("m", { ...base, labels: writable(base, allLabels(base, sized)) })] });
+        expect(r.ok, `${JSON.stringify(dims)} ${sized}`).toBe(true);
+      }
+  });
+});
+
+describe("optional fields are strict (#353 R2)", () => {
+  it("defaults only an omitted labels field: an empty list is fine, null is refused", () => {
+    expect(applyBatch(createScene(), { transactionId: "a", commands: [model("m", { kind: "geometry", shape: "square", side: 3 })] }).ok).toBe(true);
+    expect(applyBatch(createScene(), { transactionId: "b", commands: [model("m", { kind: "geometry", shape: "square", side: 3, labels: [] })] }).ok).toBe(true);
+    expect(refusal(createScene(), model("m", { kind: "geometry", shape: "square", side: 3, labels: null }))).toMatchObject({ code: "invalid_command", reason: expect.stringMatching(/labels/) });
+    expect(refusal(createScene(), { ...model("m", { kind: "array", rows: 2, columns: 2 }), ink: null })).toMatchObject({ code: "invalid_command", reason: expect.stringMatching(/ink/) });
+    expect(refusal(createScene(), model("m", { kind: "coordinate_grid", xMin: 0, xMax: 4, yMin: 0, yMax: 4, points: null }))).toMatchObject({ code: "invalid_command", reason: expect.stringMatching(/points/) });
+  });
+});
+
+describe("every model draws inside the space it takes (#353 N2)", () => {
+  const specs: Record<string, unknown>[] = [
+    { kind: "base_ten", hundreds: 0, tens: 0, ones: 1 },
+    { kind: "base_ten", hundreds: 0, tens: 1, ones: 0 },
+    { kind: "base_ten", hundreds: 1, tens: 0, ones: 0 },
+    { kind: "base_ten", hundreds: 9, tens: 19, ones: 19 },
+    { kind: "array", rows: 1, columns: 1 },
+    { kind: "array", rows: 1, columns: 10 },
+    { kind: "array", rows: 10, columns: 1 },
+    { kind: "fraction_strip", parts: 1, shaded: 0 },
+    { kind: "fraction_strip", parts: 1, shaded: 1 },
+    { kind: "fraction_strip", parts: 12, shaded: 1 },
+    { kind: "fraction_strip", parts: 7, shaded: 7 },
+    { kind: "coordinate_grid", xMin: 0, xMax: 1, yMin: 0, yMax: 1, points: [{ name: "A", x: 1, y: 1 }] },
+    { kind: "coordinate_grid", xMin: -8, xMax: 8, yMin: 0, yMax: 1, points: [{ name: "A", x: 8, y: 1 }, { name: "B", x: -8, y: 0 }] },
+    { kind: "coordinate_grid", xMin: -10, xMax: -9, yMin: -10, yMax: 0, points: [{ name: "A", x: -9, y: 0 }] },
+  ];
+  for (const spec of specs)
+    it(JSON.stringify(spec), () => {
+      expect(strokesInsideSpace(spec, LETTERS)).toBe(true);
+    });
+});
