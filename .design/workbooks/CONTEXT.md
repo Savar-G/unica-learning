@@ -291,11 +291,15 @@ practice 2, word problems, unit B, remember these + mixed set, challenge).
    boxes.
 4. **Friday 5, Show what you know, the level test, the back cover and the certificate:** no sample page; the generator
    builds them from the skeleton's rules and DESIGN.md, and Savar reviews them in the generated books.
-5. **Markings before the app exists (Savar):** until scanning is built, how do markings reach the day-7 snapshot? A team
-   member enters right or wrong per item in admin, or the first workbooks use only the assessment and Maya.
+5. **Markings (decided, D-193):** scanning is a "Scan pages" section of the web app on the parent's phone, not a native
+   app. The AI marks each numbered item; the parent confirms the items it is unsure of; after a scan the parent picks
+   "Fix mistakes with Maya" or "Just show results". Built after the sample book for every level is reviewed (spec #368). Until
+   it ships, book 2 has no markings to read.
 6. **Pages vs minutes:** decide from real children's timing (skeleton open question 1).
 7. **First Peoples context:** who writes or checks the one-per-level context, never AI alone.
 8. **Mrs. Pedersen** (Holy Cross math head) offered to review the context and strategy pages: when?
+9. **Prerequisites (decided, D-194):** the curriculum import refuses a skeleton whose prerequisites differ from the BC
+   skill map; change both together.
 
 ## 11. What exists in code, and what changes
 
