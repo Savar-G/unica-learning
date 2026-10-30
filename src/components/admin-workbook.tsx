@@ -5,7 +5,7 @@ import Link from "next/link";
 import type { ReactNode } from "react";
 import type { WorkbookDetail } from "@/lib/admin-store";
 import { when } from "@/lib/admin-view";
-import { stepText, type AnswerValue, type QuestionPackage } from "@/lib/question-package";
+import { stepText, valueText, type QuestionPackage } from "@/lib/question-package";
 import type { WorkbookPage, WorkbookQuestion, WorkbookStatus } from "@/lib/workbook-content";
 import { AdminFrame, Chip, Table, type Tone } from "@/components/admin";
 import { RecordFacts, childPath } from "@/components/admin-records";
@@ -16,16 +16,6 @@ const STATUS: Record<WorkbookStatus, [string, Tone]> = {
 };
 
 export const WorkbookStatusChip = ({ status }: { status: WorkbookStatus }) => <Chip tone={STATUS[status][1]}>{STATUS[status][0]}</Chip>;
-
-function value(v: AnswerValue): string {
-  switch (v.type) {
-    case "number": return String(v.value);
-    case "fraction": return `${v.numerator}/${v.denominator}`;
-    case "mixed": return `${v.whole} ${v.numerator}/${v.denominator}`;
-    case "remainder": return `${v.quotient} R ${v.remainder}`;
-    default: return v.value;
-  }
-}
 
 const pageTitle = (p: WorkbookPage) => [`Page ${p.number}`, p.dayLabel, p.type].filter(Boolean).join(" · ");
 
@@ -52,14 +42,14 @@ function PageImage({ page, url }: { page: WorkbookPage; url: string | undefined 
 function PackageCells({ p }: { p: QuestionPackage }): ReactNode {
   return <>
     <td><span className="adm-wb-text">{p.text}</span><span className="adm-sub adm-mono">{p.id}</span></td>
-    <td className="adm-num">{value(p.answer.value)}{p.answer.accepted.length > 0 && <span className="adm-sub">also {p.answer.accepted.map(value).join(", ")}</span>}</td>
+    <td className="adm-num">{valueText(p.answer.value)}{p.answer.accepted.length > 0 && <span className="adm-sub">also {p.answer.accepted.map(valueText).join(", ")}</span>}</td>
     <td><ol className="adm-wb-steps">{p.steps.map((s) => <li key={s.id}>{stepText(s, p.operation)}</li>)}</ol></td>
     <td className="adm-nowrap">{p.skill.standard}<span className="adm-sub adm-mono">{p.skill.skills.join(", ")}</span></td>
     <td className="adm-nowrap">U{p.level} · {p.difficulty}</td>
     <td><ul className="adm-wb-list">{p.wrongAnswers.map((w, i) => (
-      <li key={i}><b>{value(w.value)}</b> {w.cause}: {w.description}{w.step && <span className="adm-sub">at the {w.step} step</span>}</li>
+      <li key={i}><b>{valueText(w.value)}</b> {w.cause}: {w.description}{w.step && <span className="adm-sub">at the {w.step} step</span>}</li>
     ))}</ul></td>
-    <td className="adm-nowrap">{p.easierExample.text.replace("?", value(p.easierExample.answer))}</td>
+    <td className="adm-nowrap">{p.easierExample.text.replace("?", valueText(p.easierExample.answer))}</td>
   </>;
 }
 

@@ -641,6 +641,23 @@ describe("the learner profile", () => {
     expect(mail.delivered.map((m) => m.to)).toEqual(["priya@family.ca", "savar@unicalearning.com"]);
     expect(console.error).toHaveBeenCalledWith("[profile] failed", TEST, "profile save: database down");
   });
+
+  // #303: the child's profile is built from the test's stored profile, so its rebuild runs last, after the AI parts.
+  it("is followed by the rebuild of the child's profile, last; not for a test that is not finished", async () => {
+    const db = database();
+    const mail = memoryTransport();
+    const rebuilt: { childId: string; profiles: number; emails: number }[] = [];
+    const rebuildChild = async (childId: string) => void rebuilt.push({ childId, profiles: db.profiles.rows().length, emails: mail.delivered.length });
+    const options = { reader: db.readers.key(), comparison: db.comparison, store: db.job.store, profiles: db.profiles.store, reviewer: null, transport: mail.transport, ledger: memoryReportLedger().ledger, rebuildChild };
+    await runReportJob(TEST, ORIGIN, options);
+    expect(rebuilt).toEqual([{ childId: "child-1", profiles: 1, emails: 2 }]);
+
+    const unfinished = database();
+    unfinished.tables.assessments![0] = { ...unfinished.tables.assessments![0], status: "in_progress", completedAt: null, placement: null };
+    rebuilt.length = 0;
+    await runReportJob(TEST, ORIGIN, { ...options, reader: unfinished.readers.key(), store: unfinished.job.store, profiles: unfinished.profiles.store });
+    expect(rebuilt).toEqual([]);
+  });
 });
 
 // The learner profile's AI parts (#197, spec #181): written through the AI client from the profile facts, the skill-map

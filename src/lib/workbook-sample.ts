@@ -22,7 +22,7 @@ export const SAMPLE_PAGE_SIZE = { width: 850, height: 1100 } as const;
 
 const LEVEL = 10;
 const STANDARD = "3.3";
-/** The sample has only whole-number addition and subtraction. */
+/** The sample's operations: whole-number addition and subtraction only. */
 type SampleOperation = Extract<Operation, { kind: "add" | "subtract" }>;
 
 const SKILL: Record<SampleOperation["kind"], string> = { add: "3.3-add-within-1000", subtract: "3.3-subtract-within-1000" };
