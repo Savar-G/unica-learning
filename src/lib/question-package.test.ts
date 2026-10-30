@@ -60,7 +60,6 @@ describe("checkQuestionPackage", () => {
 
   it.each([
     ["a tiny number and its fraction", { type: "number", value: 1e-7 }, { type: "fraction", numerator: 1, denominator: 10000000 }],
-    ["a large number and its fraction", { type: "number", value: 1e21 }, { type: "fraction", numerator: 1e21, denominator: 1 }],
     ["a negative decimal and its fraction", { type: "number", value: -0.5 }, { type: "fraction", numerator: -1, denominator: 2 }],
   ] as const)("refuses the same wrong answer twice in two forms: %s", (_name, first, second) => {
     const p = changed((p) => {
@@ -72,6 +71,18 @@ describe("checkQuestionPackage", () => {
     const result = checkQuestionPackage(p);
     expect(result.ok).toBe(false);
     if (!result.ok) expect(result.reason).toMatch(/listed twice/);
+  });
+
+  it.each([
+    ["an unsafe integer", { type: "number", value: 1000000000000000100 }],
+    ["its fraction", { type: "fraction", numerator: 1000000000000000100, denominator: 1 }],
+    ["a negative unsafe integer", { type: "number", value: -1000000000000000100 }],
+    ["its negative fraction", { type: "fraction", numerator: -1000000000000000100, denominator: 1 }],
+    ["1e23", { type: "number", value: 1e23 }],
+    ["1e23 as a fraction", { type: "fraction", numerator: 1e23, denominator: 1 }],
+  ] as const)("refuses a value code cannot compare exactly: %s", (_name, value) => {
+    const p = changed((p) => { p.wrongAnswers[0].value = { ...value }; });
+    expect(checkQuestionPackage(p)).toMatchObject({ ok: false });
   });
 
   it("keeps a wrong answer that is close to the answer but not the same number", () => {

@@ -344,9 +344,11 @@ function valueProblem(value: unknown, what: string): string | null {
   if (!isObject(value)) return `${what} is missing`;
   switch (value.type) {
     case "number":
-      return typeof value.value === "number" && Number.isFinite(value.value) ? null : `${what} is not a finite number`;
+      // Beyond the safe range a stored number is not the number written, so code cannot compare it exactly.
+      return typeof value.value === "number" && Number.isFinite(value.value) && Math.abs(value.value) <= Number.MAX_SAFE_INTEGER
+        ? null : `${what} is not a finite number in the safe range`;
     case "fraction":
-      return Number.isInteger(value.numerator) && isWhole(value.denominator, 1) ? null : `${what} is not a fraction with a whole numerator and a denominator from 1`;
+      return Number.isSafeInteger(value.numerator) && isWhole(value.denominator, 1) ? null : `${what} is not a fraction with a whole numerator and a denominator from 1`;
     case "expression":
     case "choice":
     case "text":
