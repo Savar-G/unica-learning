@@ -624,3 +624,57 @@ describe("review R5: an arrow keeps clear of the labels a line still writes", ()
     expect(accepted).toBeGreaterThan(0);
   });
 });
+
+describe("look review: a number is one tight word", () => {
+  // A label character's full space: three fifths of a cell's 4/5 character width.
+  const FULL = 0.48;
+  const cols = 60;
+  const decimal = () => ok(createScene({ page: { cols, rows: 30 } }), line("n", "-2", "2", "1/2", { form: "decimal" }));
+  /** Each character's ink, in cells, in writing order, for the glyph strokes on a target. A path id names its character: ".../whole/2/0@1". */
+  function chars(scene: Scene, target: Target) {
+    const ink = new Map<string, { glyph: string; x0: number; x1: number }>();
+    for (const p of boardPaths(scene).filter((q) => q.kind === "glyph" && q.target !== null && sameTarget(q.target, target))) {
+      const key = p.id.replace(/\/\d+@\d+$/, "");
+      const xs = p.pts.map(([x]) => x * cols);
+      const c = ink.get(key) ?? { glyph: p.glyph!, x0: Infinity, x1: -Infinity };
+      ink.set(key, { ...c, x0: Math.min(c.x0, ...xs), x1: Math.max(c.x1, ...xs) });
+    }
+    return [...ink.values()].map((c) => ({ ...c, mid: (c.x0 + c.x1) / 2 }));
+  }
+  const tickX = (scene: Scene, v: string) => boardPaths(scene).find((p) => p.kind === "rule" && p.target !== null && sameTarget(p.target, value("n", v)))!.pts[0][0] * cols;
+
+  it("writes −1.5 with the minus close to its digit and a narrow point between the digits", () => {
+    const scene = decimal();
+    const [minus, one, point, five] = chars(scene, value("n", "-3/2"));
+    expect([minus, one, point, five].map((c) => c.glyph)).toEqual(["−", "1", ".", "5"]);
+    // Four characters in less than three full spaces.
+    expect(five.x1 - minus.x0).toBeLessThan(3 * FULL);
+    expect(one.mid - minus.mid).toBeLessThan(0.85 * FULL);
+    // The point sits between its digits, which are closer than two full spaces apart.
+    expect(point.x0).toBeGreaterThan(one.x1);
+    expect(point.x1).toBeLessThan(five.x0);
+    expect(five.mid - one.mid).toBeLessThan(1.5 * FULL);
+  });
+
+  it("keeps each label centred under its tick", () => {
+    const scene = decimal();
+    for (const v of ["-2", "-3/2", "-1/2", "0", "1/2", "3/2", "2"]) {
+      const ink = chars(scene, value("n", v));
+      expect(Math.abs((ink[0].x0 + ink.at(-1)!.x1) / 2 - tickX(scene, v)), v).toBeLessThan(0.1);
+    }
+  });
+
+  it("writes a jump's −2 with the minus close to the 2", () => {
+    const scene = ok(decimal(), { op: "jump", id: "j", lineId: "n", fromValue: "1.5", toValue: "-0.5", label: "-2" });
+    const [minus, two] = chars(scene, part("j", "whole"));
+    expect([minus.glyph, two.glyph]).toEqual(["−", "2"]);
+    expect(two.mid - minus.mid).toBeLessThan(0.85 * FULL);
+  });
+
+  it("still lets neighbouring decimal labels and marks find room on the new widths", () => {
+    const scene = ok(createScene({ page: { cols: 24, rows: 16 } }), line("n", "-2", "2", "1/2", { form: "decimal" }));
+    const labels = ["-2", "-3/2", "-1", "-1/2", "0", "1/2", "1", "3/2", "2"].map((v) => chars(scene, value("n", v)));
+    for (let i = 1; i < labels.length; i++) expect(labels[i][0].x0).toBeGreaterThan(labels[i - 1].at(-1)!.x1);
+    ok(scene, { op: "mark", id: "m", target: value("n", "-3/2"), style: "circle" });
+  });
+});

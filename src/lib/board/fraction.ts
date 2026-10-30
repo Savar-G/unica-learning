@@ -19,6 +19,8 @@ export interface NumberLayout {
   exact: { w: Rational; h: Rational };
   w: number;
   h: number;
+  /** One character's full space; the drawn glyphs keep this width wherever they sit. */
+  charW: number;
   sign: Rect | null;
   whole: Rect | null;
   numerator: Rect | null;
@@ -32,6 +34,17 @@ const CHAR_H = rational(17, 20);
 const GAP = rational(1, 5);
 /** How far the bar reaches past the wider of the numerator and the denominator, each side. */
 const BAR_OVERHANG = rational(1, 5);
+/**
+ * The space a character takes, in character widths, so a number reads as one word, as handwriting does: a decimal point
+ * takes a narrow space with the digits close on both sides, and the sign of a number on one line sits close to its
+ * first digit. Beside a stacked fraction the sign keeps its full space, so fractions are written as before.
+ */
+const POINT_SPACE = rational(3, 10);
+const SIGN_SPACE = rational(3, 5);
+const space = (char: string, stacked: boolean): Rational =>
+  char === "." ? POINT_SPACE : (char === "−" || char === "+") && !stacked ? SIGN_SPACE : rational(1);
+/** The spaces of a text, in character widths. */
+const spaces = (text: string, stacked: boolean) => [...text].reduce((sum, c) => add(sum, space(c, stacked)), rational(0));
 
 /**
  * Lays out a written number at `size` (1 is a fraction object's digits). The width and height are exact; the boxes
@@ -40,11 +53,12 @@ const BAR_OVERHANG = rational(1, 5);
 export function layoutNumber(parts: NumberParts, size: Rational): NumberLayout {
   const stacked = parts.fraction !== null;
   const barChars = parts.fraction ? Math.max(parts.fraction.numerator.length, parts.fraction.denominator.length) : 0;
-  const chars = parts.sign.length + (parts.whole?.length ?? 0) + barChars;
+  const [signSpace, wholeSpace] = [spaces(parts.sign, stacked), spaces(parts.whole ?? "", stacked)];
+  const chars = add(add(signSpace, wholeSpace), rational(barChars));
   const gaps = stacked && parts.whole !== null ? GAP : rational(0);
   const overhang = stacked ? times(BAR_OVERHANG, 2) : rational(0);
   const exact = {
-    w: mul(size, add(add(times(CHAR_W, chars), gaps), overhang)),
+    w: mul(size, add(add(mul(CHAR_W, chars), gaps), overhang)),
     h: mul(size, stacked ? add(times(CHAR_H, 2), times(GAP, 3)) : CHAR_H),
   };
   const [cw, ch, gap] = [CHAR_W, CHAR_H, GAP].map((r) => toNumber(mul(size, r)));
@@ -52,13 +66,13 @@ export function layoutNumber(parts: NumberParts, size: Rational): NumberLayout {
   const mid = h / 2;
   let x = 0;
   const box = (chars: number, y: number): Rect => ({ x, y, w: chars * cw, h: ch });
-  const out: NumberLayout = { exact, w: toNumber(exact.w), h, sign: null, whole: null, numerator: null, denominator: null, bar: null };
+  const out: NumberLayout = { exact, w: toNumber(exact.w), h, charW: cw, sign: null, whole: null, numerator: null, denominator: null, bar: null };
   if (parts.sign) {
-    out.sign = box(1, mid - ch / 2);
-    x += cw;
+    out.sign = box(toNumber(signSpace), mid - ch / 2);
+    x += out.sign.w;
   }
   if (parts.whole !== null) {
-    out.whole = box(parts.whole.length, mid - ch / 2);
+    out.whole = box(toNumber(wholeSpace), mid - ch / 2);
     x += out.whole.w + (stacked ? gap : 0);
   }
   if (parts.fraction) {
@@ -104,8 +118,18 @@ export function numberStrokes(
 ): LocalStroke[] {
   const move = (r: Rect): Rect => ({ ...r, x: r.x + at.dx, y: r.y + at.dy });
   const out: LocalStroke[] = [];
+  const stacked = parts.fraction !== null;
+  // Each character's glyph keeps a full character width, centred in the space the character takes.
   const text = (t: string, r: Rect | null, p: FractionPart | "sign", key: string) => {
-    if (r) out.push(...glyphStrokes(ctx.glyphs, t, move(r), { ...base, target: targetOf(p) }, `${keyPrefix}/${key}`));
+    if (!r) return;
+    let x = r.x;
+    [...t].forEach((char, i) => {
+      const w = layout.charW * toNumber(space(char, stacked));
+      const at = move({ ...r, x: x + (w - layout.charW) / 2, w: layout.charW });
+      x += w;
+      const strokes = glyphStrokes(ctx.glyphs, char, at, { ...base, target: targetOf(p) }, "");
+      out.push(...strokes.map((s, j) => ({ ...s, key: `${keyPrefix}/${key}/${i}/${j}` })));
+    });
   };
   text(parts.sign, layout.sign, "sign", "sign");
   if (parts.whole !== null) text(parts.whole, layout.whole, "whole_number", "whole");
