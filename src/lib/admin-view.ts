@@ -35,6 +35,8 @@ export const adminTestPath = (id: string) => `${ADMIN_PATH}/assessments/${id}`;
 export const adminParentPath = (id: string) => `${ADMIN_PATH}/parents/${id}`;
 /** The learner profile of one test (#196). */
 export const adminProfilePath = (id: string) => `${adminTestPath(id)}/profile`;
+/** The current profile of one child, from every source (#303). */
+export const adminChildProfilePath = (childId: string) => `${ADMIN_PATH}/children/${childId}/profile`;
 /** The parent's report as the parent sees it, opened by an admin. */
 export const adminReportPath = (id: string) => `${ADMIN_PATH}/reports/${id}`;
 /** One logged email, as the parent got it (D-103). `id`: its id in the email list. */

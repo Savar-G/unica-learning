@@ -350,6 +350,51 @@ export async function getProfile(a: AdminSession, id: string): Promise<ProfileDe
   return { test: { ...test, child: child ?? null, parent: parent ?? null }, stored, numbers: questionNumbers(answers) };
 }
 
+// The child's profile (#303)
+
+/** One learning event as the admin page lists it (public.learning_events: admins read it). */
+export interface LearningEventRow {
+  id: string;
+  occurred_at: string;
+  source: Database["public"]["Tables"]["learning_events"]["Row"]["source"];
+  question_source: Database["public"]["Tables"]["learning_events"]["Row"]["question_source"];
+  workbook_id: string | null;
+  workbook_page: number | null;
+  workbook_question: number | null;
+  assessment_id: string | null;
+  assessment_question_id: string | null;
+  skill_standard: string;
+  result: Database["public"]["Tables"]["learning_events"]["Row"]["result"];
+  stuck_step: string | null;
+  mistake: string | null;
+  hints: number;
+  time_ms: number | null;
+  evidence_kind: Database["public"]["Tables"]["learning_events"]["Row"]["evidence_kind"];
+  evidence_id: string | null;
+}
+
+const EVENT_COLUMNS = "id, occurred_at, source, question_source, workbook_id, workbook_page, workbook_question, assessment_id, assessment_question_id, skill_standard, result, stuck_step, mistake, hints, time_ms, evidence_kind, evidence_id";
+
+/** One child's current profile (public.child_profiles: admins read it), with the child and every event of the child, oldest first. */
+export interface ChildProfileDetail {
+  child: ChildRow;
+  /** The stored profile; null when none is stored. `profile` is the stored JSON, at any schema version. */
+  stored: { created_at: string; built_at: string; revision: number; schema_version: number; assessment_id: string | null; profile: unknown } | null;
+  events: LearningEventRow[];
+}
+
+/** The current profile of one child and its evidence, or null when there is no such child. */
+export async function getChildProfile(a: AdminSession, id: string): Promise<ChildProfileDetail | null> {
+  if (!isUuid(id)) return null;
+  const [[child], stored, events] = await Promise.all([
+    childrenById(a, [id]),
+    a.db.from("child_profiles").select("created_at, built_at, revision, schema_version, assessment_id, profile").eq("child_id", id).maybeSingle()
+      .then((r) => must<ChildProfileDetail["stored"]>(r, "child profile")),
+    allRows<LearningEventRow>(a.db.from("learning_events").select(EVENT_COLUMNS).eq("child_id", id).order("occurred_at").order("id"), "learning events"),
+  ]);
+  return child ? { child, stored, events } : null;
+}
+
 // Parents and children
 
 export interface ParentListRow extends ParentRow {

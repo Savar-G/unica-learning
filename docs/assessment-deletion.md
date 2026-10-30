@@ -192,3 +192,27 @@ Checked on the live database (29 October 2026), in one transaction that was roll
 | The Auth user is deleted (the deletion's last step) | 0 events left, 0 parent rows |
 
 The backfill (`backfillAssessment` in `src/lib/learning-events-assessment-store.ts`) ran once on the hosted database with the secret key for the test family's finished test: 42 events from 42 answers (34 right, 8 wrong), a second run 0 new and 42 already stored, a range read 42. The owner then removed those rows; the table held 0 rows after.
+
+## Child profiles (#303)
+
+`public.child_profiles` (migration `add_child_profiles`) holds one current profile per child, built by code from the child's latest test profile and every learning event of the child (`src/lib/child-profile.ts`). `parent_id` references `public.parents`, `child_id` with `parent_id` references `public.children (id, parent_id)`, and `assessment_id` with `child_id` references `public.assessments (id, child_id)`, all `on delete cascade`. The existing family deletion removes the row when it deletes the parent's Auth user. A test deletion removes the profile built on that test; the next rebuild builds it again from what is left. The worker needs no code change and no table list. The retention rules need no change: the profile is built from the tests and the events, so it adds no activity of its own.
+
+The service role may only read, insert and update: it has no delete grant. The table has the family write fence trigger. Row-level security is on; the one policy lets admins read. A signed-in parent reads no row, theirs or another family's.
+
+Checked on the live database (29 October 2026), in one transaction that was rolled back, for a test family (`test_accounts`) and one other family:
+
+| Check | Result |
+|---|---|
+| Server insert (service role), one profile in each family | 2 rows |
+| Update that expects revision 1, then the same update again (compare and set) | 1 row, then 0 rows |
+| A second first save for the same child | refused (23505) |
+| Delete by the service role | refused (42501) |
+| A child under another family's parent id | refused (23503, foreign key) |
+| A profile on another family's test | refused (55000, `family_scope`) |
+| `schema_version` that does not match the JSON | refused (23514) |
+| A signed-in parent reads: any, own child, another family | 0 rows, 0 rows, 0 rows |
+| A signed-in parent updates, inserts; anon reads | refused (42501), refused (42501), refused (42501) |
+| An admin reads | 2 rows |
+| The profile's test is deleted | 0 rows left for the child |
+| Update after the family's deletion request | refused (55000, `family_unavailable`) |
+| The Auth user is deleted (the deletion's last step) | 0 rows left for the family; the other family's row kept |
