@@ -13,6 +13,7 @@
 // compute, or steps of a version it cannot read, are "unsupported", never a pass.
 // Pure TypeScript: no Next.js, React, network, database or clock.
 import { BC_SKILL_MAP } from "@/lib/assessment";
+import { amountOf, amountValueProblem, conversionProblem, dimensionName, sameSize, unknownUnit } from "@/lib/question-package-measures";
 import {
   computation,
   gcd,
@@ -52,21 +53,42 @@ export interface AssessmentQuestionRef {
 export type QuestionRef = WorkbookQuestionRef | AssessmentQuestionRef;
 
 /**
+ * A unit code can convert (#307): metric length, mass and capacity, time, and Canadian money ("$" is written before the
+ * amount, "¢" after it).
+ */
+export type Unit = "mm" | "cm" | "m" | "km" | "mg" | "g" | "kg" | "mL" | "L" | "s" | "min" | "h" | "¢" | "$";
+
+/**
  * A typed answer value. "number" is a whole number or a decimal; a fraction and a mixed number keep their written parts;
- * "remainder" is a division answer with a remainder ("26 R 1").
+ * "remainder" is a division answer with a remainder ("26 R 1"). An amount has its unit: "quantity" is one number and
+ * a unit ("2.5 km", "$4.75", "75¢"), "compound" is whole numbers in units of one measure, largest first ("1 h 30 min",
+ * "2 m 35 cm"), and "time" is a clock time, on the 12-hour clock with a.m. or p.m., or on the 24-hour clock with no
+ * period ("15:45").
  */
 export type AnswerValue =
   | { type: "number"; value: number }
   | { type: "fraction"; numerator: number; denominator: number }
   | { type: "mixed"; whole: number; numerator: number; denominator: number }
   | { type: "remainder"; quotient: number; remainder: number }
+  | { type: "quantity"; value: number; unit: Unit }
+  | { type: "compound"; parts: { value: number; unit: Unit }[] }
+  | { type: "time"; hours: number; minutes: number; period: "a.m." | "p.m." | null }
   | { type: "expression"; value: string }
   | { type: "choice"; value: string }
   | { type: "text"; value: string };
 
+/** An amount in one unit. */
+export type Quantity = Extract<AnswerValue, { type: "quantity" }>;
+/** A clock time. */
+export type ClockTime = Extract<AnswerValue, { type: "time" }>;
+/** An amount of time: in one unit ("90 min", "1.5 h") or in hours and minutes ("1 h 35 min"). */
+export type Duration = Quantity | Extract<AnswerValue, { type: "compound" }>;
+
 /**
  * The answer: its value, other written forms of the same number that also count as right (for example 2/4 or 0.5 for
- * 1/2; only number, fraction and mixed number forms, as code can check them), and its unit.
+ * 1/2; only number, fraction and mixed number forms, as code can check them), and its unit. An amount's other forms
+ * are the same amount in other units (1 h 30 min for 90 min), unless the question asks for one unit; an amount's unit
+ * is in its value, so `unit` is null or that unit.
  */
 export interface PackageAnswer {
   value: AnswerValue;
@@ -92,12 +114,27 @@ export interface FractionParts {
  * - fraction-add, fraction-subtract, fraction-multiply, fraction-divide: fractions, mixed numbers or whole numbers.
  * - fraction-simplify: one fraction to write in simplest form.
  * - fraction-equivalent: one fraction to write with a new denominator ("3/4 = ?/12").
+ * - convert: an amount in another unit of the same measure ("2.5 km = ? m"); the answer must be in that unit.
+ * - quantity-add, quantity-subtract: two amounts of one measure ("$4.75 + $2.50", "2 m + 35 cm"), worked in columns
+ *   in the smaller unit; quantity-multiply: an amount times a whole number to 999 ("$4.25 × 3"). `unit`, when given,
+ *   is the unit the question asks the answer in; without it, the same amount in any unit of the measure is right.
+ * - money-round: an amount of money rounded for cash to the nearest 5 cents, as in Canada since the penny ended.
+ * - elapsed-time: the time from one clock time to a later one the same day, counted on to the next hour, the whole hours,
+ *   then the minutes; `unit` as for the amounts. time-add: a clock time and an amount of time, the time it is after.
+ *   clock-convert: a clock time on the other clock (3:45 p.m. is 15:45); the answer must be on that clock.
  */
 export type Operation =
   | KindsOf<"add" | "subtract" | "multiply" | "divide" | "decimal-add" | "decimal-subtract" | "decimal-multiply", [number, number]>
   | KindsOf<"fraction-add" | "fraction-subtract" | "fraction-multiply" | "fraction-divide", [FractionOperand, FractionOperand]>
   | { kind: "fraction-simplify"; operands: [Extract<AnswerValue, { type: "fraction" }>] }
-  | { kind: "fraction-equivalent"; operands: [Extract<AnswerValue, { type: "fraction" }>]; denominator: number };
+  | { kind: "fraction-equivalent"; operands: [Extract<AnswerValue, { type: "fraction" }>]; denominator: number }
+  | { kind: "convert"; operands: [Quantity]; unit: Unit }
+  | (KindsOf<"quantity-add" | "quantity-subtract", [Quantity, Quantity]> & { unit?: Unit })
+  | { kind: "quantity-multiply"; operands: [Quantity, number]; unit?: Unit }
+  | { kind: "money-round"; operands: [Quantity] }
+  | { kind: "elapsed-time"; operands: [ClockTime, ClockTime]; unit?: Unit }
+  | { kind: "time-add"; operands: [ClockTime, Duration] }
+  | { kind: "clock-convert"; operands: [ClockTime] };
 
 /** One operation shape for each kind, so a kind picks its shape. */
 type KindsOf<K extends string, O> = K extends string ? { kind: K; operands: O } : never;
@@ -205,6 +242,34 @@ export type WorkedStep =
   | { id: string; kind: "simplify"; from: FractionParts; divisor: number; to: FractionParts }
   | { id: string; kind: "to-mixed"; from: FractionParts; whole: number; rest: FractionParts }
   | { id: string; kind: "scale-fraction"; from: FractionParts; by: "multiply" | "divide"; factor: number; to: FractionParts }
+  | {
+      /** A change of unit: multiply by the factor to a smaller unit, divide by it to a larger one (1 km = 1000 m). */
+      id: string;
+      kind: "convert-unit";
+      from: Quantity;
+      by: "multiply" | "divide";
+      factor: number;
+      to: Quantity;
+    }
+  | {
+      /** Cash rounds to the nearest 5 cents: a last cent digit of 1, 2, 6 or 7 rounds down, 3, 4, 8 or 9 up. */
+      id: "round";
+      kind: "round-cash";
+      from: Quantity;
+      /** The last digit of the cents. */
+      cents: number;
+      to: Quantity;
+    }
+  | {
+      /** "to-hour", "hours" or "minutes": a count on a clock, from one time to another. */
+      id: string;
+      kind: "count-on";
+      from: ClockTime;
+      to: ClockTime;
+      minutes: number;
+    }
+  | { id: "total"; kind: "add-durations"; minutes: number[]; total: number }
+  | { id: "clock"; kind: "clock-change"; from: ClockTime; to: ClockTime }
   | { id: "result"; kind: "result"; value: AnswerValue };
 
 /** An expected wrong answer and its cause: a misconception id ("O3") and its plain description. */
@@ -298,6 +363,12 @@ export function sameValue(a: AnswerValue, b: AnswerValue): boolean {
       return b.type === "mixed" && a.whole === b.whole && a.numerator === b.numerator && a.denominator === b.denominator;
     case "remainder":
       return b.type === "remainder" && a.quotient === b.quotient && a.remainder === b.remainder;
+    case "quantity":
+      return b.type === "quantity" && a.value === b.value && a.unit === b.unit;
+    case "compound":
+      return b.type === "compound" && sameData(a.parts, b.parts);
+    case "time":
+      return b.type === "time" && a.hours === b.hours && a.minutes === b.minutes && a.period === b.period;
     default:
       return a.type === b.type && a.value === (b as { value: unknown }).value;
   }
@@ -338,11 +409,17 @@ function rational(v: AnswerValue): [bigint, bigint] | null {
   return exponent >= 0 ? [digits * ten ** BigInt(exponent), BigInt(1)] : [digits, ten ** BigInt(-exponent)];
 }
 
-/** Two values are the same number, exactly, in any number form (85, 85.0, 170/2 and 84 2/2 are one number). */
+/**
+ * Two values are the same number, exactly, in any number form (85, 85.0, 170/2 and 84 2/2 are one number), or the same
+ * amount in any unit of one measure (90 min and 1 h 30 min).
+ */
 function sameNumber(a: AnswerValue, b: AnswerValue): boolean {
   const x = rational(a);
   const y = rational(b);
-  return x !== null && y !== null && x[0] * y[1] === y[0] * x[1];
+  if (x !== null && y !== null) return x[0] * y[1] === y[0] * x[1];
+  const p = amountOf(a);
+  const q = amountOf(b);
+  return p !== null && q !== null && sameSize(p, q);
 }
 
 /** The same written value, or the same number in another form. */
@@ -398,6 +475,12 @@ function valueProblem(value: unknown, what: string): string | null {
         ? null : `${what} is not a mixed number: a whole number from 1 and a fraction below 1`;
     case "remainder":
       return isCount(value.quotient) && isCount(value.remainder) ? null : `${what} is not a quotient and a remainder of whole numbers`;
+    case "quantity":
+    case "compound":
+    case "time": {
+      const problem = amountValueProblem(value);
+      return problem && `${what} ${problem}`;
+    }
     case "expression":
     case "choice":
     case "text":
@@ -415,22 +498,55 @@ function partProblem(operation: unknown, answer: unknown, steps: unknown, what: 
   if (value) return value;
   const op = operation as Operation;
   const rules = computation(op);
-  const right = rules.answer === "result"
-    ? sameValue(answer as AnswerValue, operationResult(op))
-    : isSimplest(answer as AnswerValue) && sameNumber(answer as AnswerValue, rules.exact(op));
-  if (!right) return `${what}'s answer is not what its operation gives`;
-  if (!sameData(steps, workedSteps(op))) return `${what}'s worked steps are not the steps of its operation`;
+  const given = answer as AnswerValue;
+  if (rules.answer === "amount") {
+    const problem = amountProblem(given, rules.exact(op), rules.unit(op));
+    if (problem) return `${what}'s answer ${problem}`;
+  } else {
+    const right = rules.answer === "result" ? sameValue(given, operationResult(op)) : isSimplest(given) && sameNumber(given, rules.exact(op));
+    if (!right) return `${what}'s answer is not what its operation gives`;
+  }
+  const computed = workedSteps(op);
+  if (!sameData(steps, computed)) {
+    const factor = conversionProblem(steps, computed);
+    return factor ? `${what}'s worked steps ${factor}` : `${what}'s worked steps are not the steps of its operation`;
+  }
   return null;
 }
 
-/** How big an operation is: the digits it is written with, then its count of worked steps. */
+/**
+ * Why a value is not the amount an operation gives, as words after "the answer" ("has no unit, ..."), or null. An
+ * amount is right in any unit of its measure, or only in the unit the question asks for.
+ */
+function amountProblem(value: AnswerValue, exact: AnswerValue, unit: Unit | null): string | null {
+  const given = amountOf(value);
+  const target = amountOf(exact) as NonNullable<ReturnType<typeof amountOf>>;
+  if (given === null) {
+    return rational(value) !== null && target.dimension !== "clock" ? `has no unit, but its operation gives ${dimensionName(target)}` : `is not ${dimensionName(target)}`;
+  }
+  if (given.dimension !== target.dimension) return `is ${dimensionName(given)}, but its operation gives ${dimensionName(target)}`;
+  if (unit !== null && !(value.type === "quantity" && value.unit === unit)) return `is not in ${unit}, the unit the question asks for`;
+  return sameSize(given, target) ? null : "is not what its operation gives";
+}
+
+/** How big an operation is: the digits it is written with, then its count of worked steps, then its carries. */
 interface Size {
   digits: number;
   steps: number;
+  carries: number;
 }
-const size = (operation: Operation): Size => ({ digits: (operationText(operation).match(/\d/g) ?? []).length, steps: workedSteps(operation).length });
-/** An easier example has fewer digits, or as many digits and fewer steps (1/5 + 2/5 is easier than 2/3 + 3/4). */
-const smaller = (a: Size, b: Size) => a.digits < b.digits || (a.digits === b.digits && a.steps < b.steps);
+/** A step that carries, regroups or changes the hours of a clock time: the harder part of a method. */
+const carries = (s: WorkedStep) => ((s.kind === "add-column" || s.kind === "multiply-digit") && s.carryOut > 0)
+  || (s.kind === "subtract-column" && s.regrouped) || (s.kind === "clock-change" && s.from.hours !== s.to.hours);
+function size(operation: Operation): Size {
+  const steps = workedSteps(operation);
+  return { digits: (operationText(operation).match(/\d/g) ?? []).length, steps: steps.length, carries: steps.filter(carries).length };
+}
+/**
+ * An easier example has fewer digits, or as many digits and fewer steps (1/5 + 2/5 is easier than 2/3 + 3/4), or as many
+ * of both and fewer carries ($1.20 + $0.30 is easier than $4.75 + $2.50: every dollar amount is written to the cent).
+ */
+const smaller = (a: Size, b: Size) => a.digits < b.digits || (a.digits === b.digits && (a.steps < b.steps || (a.steps === b.steps && a.carries < b.carries)));
 
 type Problem = { status: "failed" | "unsupported"; reason: string };
 const failed = (reason: string | null): Problem | null => (reason ? { status: "failed", reason } : null);
@@ -449,7 +565,7 @@ function packageProblem(p: unknown): Problem | null {
   const operation = operationCheck(p.operation);
   if (operation?.status === "unsupported") return operation;
   const form = unknownForm(p);
-  if (form) return { status: "unsupported", reason: `code cannot check answers of type ${form}` };
+  if (form) return { status: "unsupported", reason: form };
   // Only an easier example of the question's (valid) operation kind can be beyond code; another kind fails later.
   const easier = operation === null && isObject(p.easierExample) && isObject(p.easierExample.operation)
     && p.easierExample.operation.kind === (p.operation as Operation).kind ? operationCheck(p.easierExample.operation) : null;
@@ -457,9 +573,9 @@ function packageProblem(p: unknown): Problem | null {
   return failed(contentProblem(p));
 }
 
-const ANSWER_TYPES: readonly string[] = ["number", "fraction", "mixed", "remainder", "expression", "choice", "text"];
+const ANSWER_TYPES: readonly string[] = ["number", "fraction", "mixed", "remainder", "quantity", "compound", "time", "expression", "choice", "text"];
 
-/** The first answer type in the package that code does not know, or null. */
+/** Why code cannot check an answer form in the package (an answer type or a unit it does not know), or null. */
 function unknownForm(p: Record<string, unknown>): string | null {
   const answer = isObject(p.answer) ? p.answer : {};
   const easier = isObject(p.easierExample) ? p.easierExample : {};
@@ -470,7 +586,9 @@ function unknownForm(p: Record<string, unknown>): string | null {
     easier.answer,
   ];
   const unknown = values.find((v) => isObject(v) && typeof v.type === "string" && !ANSWER_TYPES.includes(v.type));
-  return unknown ? String((unknown as { type: string }).type) : null;
+  if (unknown) return `code cannot check answers of type ${String((unknown as { type: string }).type)}`;
+  const unit = values.map(unknownUnit).find((u) => u !== null);
+  return unit ? `code cannot check the unit ${unit}` : null;
 }
 
 /** The answer, the steps and everything after them, for a package whose operation code can compute. */
@@ -488,12 +606,21 @@ function contentProblem(p: Record<string, unknown>): string | null {
   for (const form of answer.accepted) {
     const problem = valueProblem(form, "an accepted form");
     if (problem) return problem;
+    if (rules.accepted === "amount") {
+      const amount = amountProblem(form as AnswerValue, exact, rules.unit(target));
+      if (amount) return `the accepted form ${valueText(form as AnswerValue)} ${amount === "is not what its operation gives" ? "is not the answer's amount" : amount}`;
+      if (sameValue(form as AnswerValue, value)) return "an accepted form repeats the answer";
+      continue;
+    }
     if (rational(form as AnswerValue) === null) return "an accepted form is not a number or a fraction, so code cannot check it";
     if (sameValue(form as AnswerValue, value)) return "an accepted form repeats the answer";
     if (!sameNumber(form as AnswerValue, exact)) return `the accepted form ${valueText(form as AnswerValue)} is not the answer's number`;
     if (rules.accepted === "simplest" && !isSimplest(form as AnswerValue)) return `the accepted form ${valueText(form as AnswerValue)} is not in simplest form`;
   }
   if (answer.unit !== null && !isText(answer.unit)) return "the unit is not text or null";
+  if (answer.unit !== null && amountOf(value) !== null && !(value.type === "quantity" && value.unit === answer.unit)) {
+    return `the unit ${answer.unit} is not the unit of the answer ${valueText(value)}`;
+  }
   const rightForms = [value, ...answer.accepted] as AnswerValue[];
 
   if (!isObject(p.skill) || !isText(p.skill.standard) || !Array.isArray(p.skill.skills)) return "the skill needs a standard and a list of skills";
@@ -515,7 +642,7 @@ function contentProblem(p: Record<string, unknown>): string | null {
     const problem = valueProblem(w.value, "a wrong answer");
     if (problem) return problem;
     const wrongValue = w.value as AnswerValue;
-    if (isRight(wrongValue, rightForms, exact, rules.sameNumberWrong)) return `the wrong answer ${valueText(wrongValue)} is a right answer`;
+    if (isRight(wrongValue, rightForms, exact, rules.sameNumberWrong, rules.answer === "amount" ? rules.unit(target) : undefined)) return `the wrong answer ${valueText(wrongValue)} is a right answer`;
     if (seen.some((s) => equivalent(s, wrongValue))) return `the wrong answer ${valueText(wrongValue)} is listed twice`;
     seen.push(wrongValue);
     if (!isText(w.cause) || !isText(w.description)) return "a wrong answer needs a cause and its description";
@@ -534,11 +661,13 @@ function contentProblem(p: Record<string, unknown>): string | null {
 
 /**
  * A wrong answer that is really right: the answer or an accepted form, or the answer's number in a form the rules do not
- * let stay wrong (a fraction that is not simplified may stay wrong; for "3/4 = ?/12", 3/4 is wrong).
+ * let stay wrong (a fraction that is not simplified may stay wrong; for "3/4 = ?/12", 3/4 is wrong). An amount is right
+ * in any unit, unless the question asks for one (`unit`): then the same amount in another unit may stay wrong.
  */
-function isRight(wrong: AnswerValue, rightForms: AnswerValue[], exact: AnswerValue, rule: SameNumberWrongRule): boolean {
+function isRight(wrong: AnswerValue, rightForms: AnswerValue[], exact: AnswerValue, rule: SameNumberWrongRule, unit?: Unit | null): boolean {
   if (rightForms.some((r) => sameValue(r, wrong))) return true;
   if (!sameNumber(wrong, exact)) return false;
+  if (unit !== undefined) return unit === null || (wrong.type === "quantity" && wrong.unit === unit);
   if (rule === "any") return false;
   if (rule === "unsimplified") return (wrong.type === "fraction" || wrong.type === "mixed") ? isSimplest(wrong) : true;
   return true;

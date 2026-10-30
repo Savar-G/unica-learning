@@ -16,6 +16,7 @@ import type {
   Operation,
   OperationKind,
   Place,
+  Unit,
   WorkedStep,
 } from "@/lib/question-package";
 import {
@@ -37,6 +38,7 @@ import {
   type OperationProblem,
   type Written,
 } from "@/lib/question-package-columns";
+import { MEASURE_KINDS, amountText, measureStepText } from "@/lib/question-package-measures";
 
 /** A place's unit name, for "carry 1 ten". */
 const UNIT: Record<Place, string> = {
@@ -264,18 +266,21 @@ function oneFractionProblem(op: Fields): OperationProblem | null {
 
 // ---------- The operation kinds ----------
 
-type Of<K extends OperationKind> = Extract<Operation, { kind: K }>;
+export type Of<K extends OperationKind> = Extract<Operation, { kind: K }>;
 type FractionPairOperation = Of<"fraction-add" | "fraction-subtract" | "fraction-multiply" | "fraction-divide">;
 type EquivalentOperation = Of<"fraction-equivalent">;
 
-/** What counts as the answer: exactly the value the operation gives, or that value in any simplest form. */
-export type AnswerRule = "result" | "simplest";
-/** Which other forms may be accepted: any form of the same number, only simplest forms, or none. */
-export type AcceptedRule = "same-number" | "simplest" | "none";
+/**
+ * What counts as the answer: exactly the value the operation gives, that value in any simplest form, or the same amount
+ * in any unit of its measure (only in the unit the question asks for, when it asks for one).
+ */
+export type AnswerRule = "result" | "simplest" | "amount";
+/** Which other forms may be accepted: any form of the same number, only simplest forms, none, or the same amount. */
+export type AcceptedRule = "same-number" | "simplest" | "none" | "amount";
 /** Which forms of the answer's number may still be listed as wrong: none, fractions not simplified, or any other form. */
 export type SameNumberWrongRule = "never" | "unsimplified" | "any";
 
-interface KindRules<O extends Operation> {
+export interface KindRules<O extends Operation> {
   /** What is wrong with the operation's operands, or null. The operation has this kind. */
   problem(op: Fields): OperationProblem | null;
   /** The operation as the child reads it, without the answer: "48 + 37", "Simplify 6/8", "3/4 = ?/12". */
@@ -288,6 +293,12 @@ interface KindRules<O extends Operation> {
   result(op: O): AnswerValue;
   /** The exact number, when the result is not a number or a fraction: 17 ÷ 4 is 17/4. */
   exact?(op: O): AnswerValue;
+  /** The unit the question asks the answer in, for an amount; none means any unit of the measure. */
+  unit?(op: O): Unit | null;
+  /** The result step in words, when it is not "<statement> = <value>". */
+  say?(op: O, value: AnswerValue): string;
+  /** The top number of the columns as worked, when it is not the first operand (an amount changed to a smaller unit). */
+  top?(op: O): { scaled: number; text: string };
   answer: AnswerRule;
   accepted: AcceptedRule;
   sameNumberWrong: SameNumberWrongRule;
@@ -297,6 +308,7 @@ interface KindRules<O extends Operation> {
 export interface Computation<O extends Operation = Operation> extends KindRules<O> {
   statement(op: O): string;
   exact(op: O): AnswerValue;
+  unit(op: O): Unit | null;
 }
 
 const text = (v: unknown) => (typeof v === "number" ? String(v) : valueText(v as FractionOperand));
@@ -417,6 +429,7 @@ const KINDS: { [K in OperationKind]: KindRules<Of<K>> } = {
     steps: scaleSteps,
     result: (op) => ({ type: "fraction", ...equivalentTo(op) }),
   },
+  ...MEASURE_KINDS,
 };
 
 function decimalResult(op: { operands: [number, number] }, how: "add" | "subtract" | "multiply"): AnswerValue {
@@ -434,7 +447,7 @@ export const isOperationKind = (kind: unknown): kind is OperationKind => typeof 
 /** The computation of an operation whose kind is known. */
 export function computation(op: Operation): Computation {
   const rules = KINDS[op.kind] as unknown as KindRules<Operation>;
-  return { ...rules, statement: rules.statement ?? rules.text, exact: rules.exact ?? rules.result };
+  return { ...rules, statement: rules.statement ?? rules.text, exact: rules.exact ?? rules.result, unit: rules.unit ?? (() => null) };
 }
 
 /** What is wrong with an operation, or null: "failed" for a wrong operation, "unsupported" for one beyond code. */
@@ -472,6 +485,10 @@ export function valueText(value: AnswerValue): string {
       return `${value.whole} ${value.numerator}/${value.denominator}`;
     case "remainder":
       return `${value.quotient} R ${value.remainder}`;
+    case "quantity":
+    case "compound":
+    case "time":
+      return amountText(value);
     default:
       return value.value;
   }
@@ -496,7 +513,7 @@ export function stepText(step: WorkedStep, operation: Operation): string {
       const { place, top, bottom, lent, regrouped, write } = step;
       const have = top - (lent ? 1 : 0);
       const from = have + (regrouped ? 10 : 0);
-      const zero = step.addedZero ? `Write a 0 in the ${place} of ${text(operation.operands[0])}.` : "";
+      const zero = step.addedZero ? `Write a 0 in the ${place} of ${computation(operation).top?.(operation).text ?? text(operation.operands[0])}.` : "";
       // A column of 0 that must give 1 to its right first takes 1 from its left: say it in that order.
       const regroup = have < 0
         ? `There were 0 ${place}, so regroup 1 ${UNIT[left(place)]} as 10 ${place}; after the 1 ${UNIT[place]} given to the ${right(place)}, ${from} ${place} are left.`
@@ -518,7 +535,7 @@ export function stepText(step: WorkedStep, operation: Operation): string {
     }
     case "partial-product": {
       const { row, multiplier, zeros, value } = step;
-      const top = written(operation.operands[0], MAX_PLACES)?.scaled ?? 0;
+      const top = computation(operation).top?.(operation).scaled ?? written(operation.operands[0], MAX_PLACES)?.scaled ?? 0;
       const line = `The ${row} row: ${top} ${TIMES} ${multiplier * 10 ** zeros} = ${value}.`;
       return zeros === 0 ? line : `${line} It starts with ${zeros} ${zeros === 1 ? "zero" : "zeros"} because the ${multiplier} is in the ${row}.`;
     }
@@ -556,7 +573,15 @@ export function stepText(step: WorkedStep, operation: Operation): string {
       return `${partsText(step.from)} is ${step.whole} ${step.whole === 1 ? "whole" : "wholes"} and ${partsText(step.rest)} more: ${step.whole} ${partsText(step.rest)}.`;
     case "scale-fraction":
       return `${capital(step.by)} the numerator and the denominator by ${step.factor}: ${partsText(step.from)} = ${partsText(step.to)}.`;
-    case "result":
-      return `${computation(operation).statement(operation)} = ${valueText(step.value)}`;
+    case "convert-unit":
+    case "round-cash":
+    case "count-on":
+    case "add-durations":
+    case "clock-change":
+      return measureStepText(step, operation.kind, computation(operation).unit(operation));
+    case "result": {
+      const rules = computation(operation);
+      return rules.say ? rules.say(operation, step.value) : `${rules.statement(operation)} = ${valueText(step.value)}`;
+    }
   }
 }
