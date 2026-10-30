@@ -30,11 +30,11 @@ const standard = (code: string, status: StrandStatus, over: Partial<FakeStandard
   status,
   assessment: { correct: status === "secure" ? 4 : 1, total: 4, status },
   events: NO_EVENTS,
-  evidence: { assessmentId: TEST, events: [] },
+  evidence: { assessmentId: TEST_ID, events: [] },
   ...over,
 });
 
-const TEST = "00000000-0000-4000-8000-0000000000e1";
+const TEST_ID = "00000000-0000-4000-8000-0000000000e1";
 const TEST_DONE = "2026-10-20T18:00:00.000Z";
 
 const input = (over: Partial<PlanInput> = {}): PlanInput => ({
@@ -92,6 +92,12 @@ describe("the two-week curriculum plan", () => {
       expect(ladder.at(-1)).toBe(3);
       ladder.slice(1).forEach((d, i) => expect(d - ladder[i]).toBeGreaterThanOrEqual(0));
       ladder.slice(1).forEach((d, i) => expect(d - ladder[i]).toBeLessThanOrEqual(1));
+    }
+    // Every page, also the practice days and the Fix it boxes of a child with weak standards, starts easy.
+    const weak = plan(input({ profile: { assessment: { completedAt: TEST_DONE }, standards: WEAK.map((code) => standard(code, "needs-attention")) } }));
+    for (const page of pages(weak)) {
+      page.difficulty.slice(1).forEach((d, i) => expect(d - page.difficulty[i]).toBeGreaterThanOrEqual(0));
+      page.difficulty.slice(1).forEach((d, i) => expect(d - page.difficulty[i]).toBeLessThanOrEqual(1));
     }
   });
 
@@ -151,12 +157,12 @@ describe("the two-week curriculum plan", () => {
     });
     const wrong = standard("2.4", "needs-attention", {
       events: { ...NO_EVENTS, wrong: 2, mistakes: ["O3"], sources: { call: 0, marking: 2, assessment: 0 }, lastAt: "2026-11-06T17:00:00.000Z" },
-      evidence: { assessmentId: TEST, events: ["e-5", "e-6"] },
+      evidence: { assessmentId: TEST_ID, events: ["e-5", "e-6"] },
     });
     // Wrong before the last workbook, and not touched since: not last time's.
     const older = standard("3.1", "developing", {
       events: { ...NO_EVENTS, wrong: 1, sources: { call: 1, marking: 0, assessment: 0 }, lastAt: "2026-10-25T17:00:00.000Z" },
-      evidence: { assessmentId: TEST, events: ["e-0"] },
+      evidence: { assessmentId: TEST_ID, events: ["e-0"] },
     });
     const secure = standard("2.1", "secure", { events: { ...NO_EVENTS, right: 3, wrong: 1, lastAt: "2026-11-06T17:00:00.000Z" } });
     const p = plan(input({ since: LAST_WORKBOOK, taught: [ADD, SUBTRACT, WORDS], profile: { assessment: { completedAt: TEST_DONE }, standards: [helped, wrong, older, secure] } }));
@@ -168,12 +174,13 @@ describe("the two-week curriculum plan", () => {
       day: 1,
       standards: ["2.4", "3.3"],
       fixIt: [
-        { standard: "2.4", mistakes: ["O3"], stuckSteps: [], avoid: { assessmentId: TEST, events: ["e-5", "e-6"] } },
+        { standard: "2.4", mistakes: ["O3"], stuckSteps: [], avoid: { assessmentId: TEST_ID, events: ["e-5", "e-6"] } },
         { standard: "3.3", mistakes: [], stuckSteps: ["tens"], avoid: { assessmentId: null, events: ["e-1", "e-2", "e-3", "e-4"] } },
       ],
     });
     expect(boxes[0].questions).toBe(4);
-    expect(boxes[0].fixIt!.every((item) => item.newQuestions)).toBe(true);
+    // One easier and one core question on each standard, the easier ones first.
+    expect(boxes[0].difficulty).toEqual([1, 1, 2, 2]);
     expect(boxes[0].skills).toEqual(expect.arrayContaining([ADD, SUBTRACT, WORDS, ...skillsOf("2.4")]));
 
     // The first workbook: last time is the assessment, so its standards with wrong answers that are not secure.
@@ -182,13 +189,19 @@ describe("the two-week curriculum plan", () => {
   });
 
   it("spreads a long Fix it list over the days, two standards a box, and keeps what does not fit for later", () => {
-    const weak = WEAK;
-    const p = plan(input({ taught: [ADD, SUBTRACT, WORDS], profile: { assessment: { completedAt: TEST_DONE }, standards: weak.map((code) => standard(code, "needs-attention")) } }));
+    const p = plan(input({ taught: [ADD, SUBTRACT, WORDS], profile: { assessment: { completedAt: TEST_DONE }, standards: WEAK.map((code) => standard(code, "needs-attention")) } }));
     const boxes = pages(p).filter((page) => page.type === "fix-it");
     expect(boxes.map((page) => page.day)).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9]);
     expect(boxes.every((page) => page.standards.length === 2)).toBe(true);
-    expect(boxes.flatMap((page) => page.standards)).toEqual(weak.slice(0, 18));
-    expect(p.fixItLater).toEqual(weak.slice(18));
+    expect(boxes.flatMap((page) => page.standards)).toEqual(WEAK.slice(0, 18));
+    expect(p.fixItLater).toEqual(WEAK.slice(18));
+  });
+
+  it("lists last time's standards it cannot fix in this workbook, never dropping one", () => {
+    // A Grade 5 child in a Grade 3 level: 4.3 comes with its own level; 3.3 is taught as new ideas in this workbook.
+    const p = plan(input({ grade: 5, profile: { assessment: { completedAt: TEST_DONE }, standards: [standard("4.3", "needs-attention"), standard("3.3", "developing"), standard("2.4", "developing")] } }));
+    expect(pages(p).filter((page) => page.type === "fix-it").map((page) => page.standards)).toEqual([["2.4"]]);
+    expect(p.fixItLater).toEqual(["4.3", "3.3"]);
   });
 
   it("never plans a standard above the child's school grade as a weakness", () => {

@@ -252,6 +252,10 @@ export const curriculumOrder = (a: Pick<ProfileStandard, "code" | "grade">, b: P
 
 const SEVERITY: Record<StrandStatus, number> = { "needs-attention": 0, developing: 1, secure: 2 };
 
+/** Worst first: needs attention, then developing, then secure; each in curriculum order. */
+export const worstFirst = (a: Pick<ProfileStandard, "code" | "grade" | "status">, b: Pick<ProfileStandard, "code" | "grade" | "status">) =>
+  SEVERITY[a.status] - SEVERITY[b.status] || curriculumOrder(a, b);
+
 const tally = (answers: readonly { correct: boolean }[]): Tally => ({ correct: answers.filter((a) => a.correct).length, total: answers.length });
 
 /** Tallies by level, in level order, for the levels these answers showed. */
@@ -378,7 +382,7 @@ export function learnerProfile(input: ProfileInput): LearnerProfile | null {
   // D-084: never invent a weakness. A standard above the school grade is not a struggle.
   const struggles = standards
     .filter((s) => !s.aboveGrade && s.status !== "secure")
-    .sort((a, b) => SEVERITY[a.status] - SEVERITY[b.status] || curriculumOrder(a, b))
+    .sort(worstFirst)
     .map((s): ProfileStruggle => {
       const wrong = counted.filter((a) => !a.correct && standardOf(a) === s.code).map((a) => ({
         questionId: a.question.id,
