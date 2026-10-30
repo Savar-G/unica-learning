@@ -8,8 +8,15 @@
 // It checks each marked element's text line by line (MeasuredElement.textPrinted). A line prints when CSS shows it
 // (visible, not transparent, under no filter, clip-path or mask up to its marked element), it is at least 6 points
 // high, at least 85% of it lies inside every box that clips it (up to its sheet), and its own glyphs leave ink: the
-// engine takes each sheet's PNG again with the glyphs of marked elements made transparent, and the line's pixels must
-// change. So text that is hidden, tiny, clipped, white on white or covered inside a visible element does not pass.
+// engine takes the sheet's PNG again with the glyphs of the line's piece of text gone and every glyph that could reach
+// it kept, and the line's pixels must change. So text that is hidden, tiny, clipped, white on white or covered (by a
+// box, or by another line that brings its own ink to the same place) does not pass.
+//
+// The ink check, after the PDF and page images: each piece of marked text is put in a plain span (the engine checks
+// that no line moved), and a check image hides a set of spans with opacity 0. A set holds pieces whose glyphs cannot
+// reach each other's lines: glyphs stay within one line height of their line, so pieces are kept apart by that much
+// (inkSets). On a sheet where paint can carry a glyph's ink further (a text shadow, filter, backdrop filter or
+// reflection anywhere on it), each piece gets its own image. A sample practice page takes 2 check images.
 //
 // Which Chromium: CHROMIUM_PATH when set; on Linux (a Vercel function) the serverless build @sparticuz/chromium; on a
 // Mac, the installed Google Chrome or Chromium. Server only: no Next.js.
@@ -38,7 +45,9 @@ export async function findChromium(): Promise<{ executablePath: string; args: st
 // Runs in the page: each sheet, then each marked element in it, measured from the sheet's top left corner, with each
 // line of each piece of its text (runs): whether CSS shows it, its rect, and the share of it that no box clips. A
 // string, so no build step can rename or wrap what runs in the browser.
-const MEASURE = `[...document.querySelectorAll("[data-sheet]")].flatMap((sheet, i) => {
+// Each piece of text gets a number (node), the same wherever it is measured; the pieces stay in window.__inkNodes for
+// INK_SPANS.
+const MEASURE = `(() => { const ids = new Map(); const found = [...document.querySelectorAll("[data-sheet]")].flatMap((sheet, i) => {
   const origin = sheet.getBoundingClientRect();
   const opts = { checkOpacity: true, checkVisibilityCSS: true, contentVisibilityAuto: true };
   const alpha = (c) => { const m = /^rgba\((.+)\)$/.exec(c); return m ? parseFloat(m[1].split(",")[3]) : 1; };
@@ -70,13 +79,15 @@ const MEASURE = `[...document.querySelectorAll("[data-sheet]")].flatMap((sheet, 
       const walk = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
       for (let t = walk.nextNode(); t; t = walk.nextNode()) {
         if (!t.data.trim()) continue;
+        if (!ids.has(t)) ids.set(t, ids.size);
+        const node = ids.get(t);
         const css = shows(t.parentElement, el);
         const range = document.createRange();
         range.selectNodeContents(t);
         const rects = [...range.getClientRects()].filter((q) => q.width > 0 && q.height > 0);
-        if (!rects.length) runs.push({ css: false, x: 0, y: 0, width: 0, height: 0, unclipped: 0 });
+        if (!rects.length) runs.push({ node, css: false, x: 0, y: 0, width: 0, height: 0, unclipped: 0 });
         for (const q of rects) {
-          runs.push({ css, x: q.left - origin.left, y: q.top - origin.top, width: q.width, height: q.height, unclipped: unclipped(t.parentElement, q) });
+          runs.push({ node, css, x: q.left - origin.left, y: q.top - origin.top, width: q.width, height: q.height, unclipped: unclipped(t.parentElement, q) });
         }
       }
     }
@@ -88,14 +99,52 @@ const MEASURE = `[...document.querySelectorAll("[data-sheet]")].flatMap((sheet, 
       runs,
     };
   });
+});
+window.__inkNodes = [...ids.keys()];
+return found; })()`;
+
+/** For each sheet, whether paint on it can carry a glyph's ink beyond one line height (so each piece is checked alone). */
+const SPREADS = `[...document.querySelectorAll("[data-sheet]")].map((sheet) => [sheet, ...sheet.querySelectorAll("*")].some((e) => {
+  const s = getComputedStyle(e);
+  return s.textShadow !== "none" || s.filter !== "none" || s.backdropFilter !== "none" || (s.webkitBoxReflect || "none") !== "none";
+}))`;
+
+/** Puts each measured piece of text in a plain span (data-ink = its node), and gives each line of it again, to check
+ * that nothing moved. */
+const INK_SPANS = `window.__inkNodes.map((t, node) => {
+  const span = document.createElement("span");
+  span.setAttribute("data-ink", String(node));
+  t.parentNode.insertBefore(span, t);
+  span.appendChild(t);
+  const origin = span.closest("[data-sheet]").getBoundingClientRect();
+  const range = document.createRange();
+  range.selectNodeContents(t);
+  return [...range.getClientRects()].filter((q) => q.width > 0 && q.height > 0)
+    .map((q) => ({ x: q.left - origin.left, y: q.top - origin.top, width: q.width, height: q.height }));
 })`;
 
-/** Makes the glyphs of every marked element transparent, without moving anything, for the second set of PNGs. */
-const GLYPHS_OFF = `[data-measure]:not([data-sheet]),[data-measure]:not([data-sheet]) *{-webkit-text-fill-color:transparent!important;`
-  + `-webkit-text-stroke-width:0!important;text-shadow:none!important;text-decoration-color:transparent!important}`;
+/** A line of a piece of a marked element's text, as MEASURE finds it: the piece (node), rect in CSS pixels, and the
+ * share no box clips. */
+type Run = { node: number; css: boolean; x: number; y: number; width: number; height: number; unclipped: number };
+type Rect = { x: number; y: number; width: number; height: number };
 
-/** A line of a piece of a marked element's text, as MEASURE finds it: rect in CSS pixels, and the share no box clips. */
-type Run = { css: boolean; x: number; y: number; width: number; height: number; unclipped: number };
+const overlap = (a: Rect, b: Rect, pad: number) => a.x - pad < b.x + b.width && b.x < a.x + a.width + pad
+  && a.y - pad < b.y + b.height && b.y < a.y + a.height + pad;
+
+/**
+ * The sets of pieces of text whose glyphs can go in one check image: no piece's lines, grown by their own height, reach
+ * a line of another piece in its set; with `alone`, one piece a set.
+ */
+function inkSets(pieces: ReadonlyMap<number, readonly Rect[]>, alone: boolean): number[][] {
+  const near = (a: readonly Rect[], b: readonly Rect[]) => a.some((p) => b.some((q) => overlap(p, q, p.height) || overlap(q, p, q.height)));
+  const sets: number[][] = [];
+  for (const [node, lines] of pieces) {
+    const set = alone ? undefined : sets.find((s) => s.every((other) => !near(lines, pieces.get(other)!)));
+    if (set) set.push(node);
+    else sets.push([node]);
+  }
+  return sets;
+}
 
 /** A page image in grey, one byte a pixel. */
 type Grey = { data: Uint8Array; width: number; height: number };
@@ -125,7 +174,7 @@ const INK = 64;
 const INK_MIN = 0.02;
 
 /** Whether a line's own glyphs leave ink: enough of its pixels change when they go. */
-function inked(r: Run, withText: Grey, withoutText: Grey, scale: number): boolean {
+function inked(r: Rect, withText: Grey, withoutText: Grey, scale: number): boolean {
   const c = crop(r, scale, withText);
   if (!c) return false;
   let ink = 0;
@@ -139,9 +188,12 @@ function inked(r: Run, withText: Grey, withoutText: Grey, scale: number): boolea
 }
 
 /** Whether all of an element's text prints: it has text, and every line of it shows, is big enough, is not clipped and
- * leaves its own ink on the page image. */
-const textPrinted = (runs: Run[], withText: Grey, withoutText: Grey, scale: number) => runs.length > 0
-  && runs.every((r) => r.css && r.height >= LINE_MIN && r.unclipped >= UNCLIPPED_MIN && inked(r, withText, withoutText, scale));
+ * leaves its own ink on the page image (`inkedLines`: the lines whose glyphs left ink, by node and place). */
+const textPrinted = (runs: Run[], inkedLines: ReadonlySet<string>) => runs.length > 0
+  && runs.every((r) => r.css && r.height >= LINE_MIN && r.unclipped >= UNCLIPPED_MIN && inkedLines.has(lineKey(r)));
+
+const lineKey = (r: Rect & { node: number }) => `${r.node}:${r.x}:${r.y}:${r.width}:${r.height}`;
+const sameRect = (a: Rect, b: Rect | undefined) => !!b && (["x", "y", "width", "height"] as const).every((k) => Math.abs(a[k] - b[k]) <= 0.01);
 
 /** Each sheet's top in the document, in CSS pixels. */
 const SHEET_TOPS = `[...document.querySelectorAll("[data-sheet]")].map((s) => s.getBoundingClientRect().top + window.scrollY)`;
@@ -189,17 +241,40 @@ export function chromiumPrintEngine(): PrintEngine {
           images.push({ png, ...pngSize(png), qrText: await readQr(png, qr, job.scale) });
         }
         const pdf = await page.pdf({ preferCSSPageSize: true, printBackground: true });
-        // Then the glyphs go, for the ink check: the PDF and the page images above keep them.
-        await page.addStyleTag({ content: GLYPHS_OFF });
-        const measured: MeasuredElement[] = [];
-        for (const [i, top] of tops.entries()) {
-          const onSheet = found.filter((m) => m.sheet === i);
-          const withText = onSheet.some((m) => m.runs.length) ? await grey(images[i].png) : null;
-          const withoutText = withText ? await grey(await shoot(top)) : null;
-          for (const { runs, ...m } of onSheet) {
-            measured.push({ ...m, textPrinted: !!withText && !!withoutText && textPrinted(runs, withText, withoutText, job.scale) });
+
+        // Then the ink check: the PDF and the page images above are done.
+        const spreads = await page.evaluate(SPREADS) as boolean[];
+        // Each piece's lines, once: a piece inside nested marked elements is measured once for each.
+        const lines = new Map<number, Map<string, Rect>>();
+        for (const m of found) {
+          for (const { node, x, y, width, height } of m.runs) {
+            if (!lines.has(node)) lines.set(node, new Map());
+            if (width > 0) lines.get(node)!.set(lineKey({ node, x, y, width, height }), { x, y, width, height });
           }
         }
+        const after = await page.evaluate(INK_SPANS) as Rect[][];
+        for (const [node, rs] of lines) {
+          if (![...rs.values()].every((r, i) => sameRect(r, after[node][i])) || rs.size !== after[node].length) {
+            throw new Error(`print engine: text moved when put in a span for the ink check (piece ${node})`);
+          }
+        }
+        const hide = await page.addStyleTag({ content: "/* ink check */" });
+        const inkedLines = new Set<string>();
+        for (const [i, top] of tops.entries()) {
+          const pieces = new Map([...lines]
+            .filter(([node]) => found.some((m) => m.sheet === i && m.runs.some((r) => r.node === node)))
+            .map(([node, rs]) => [node, [...rs.values()]]));
+          if (!pieces.size) continue;
+          const withText = await grey(images[i].png);
+          for (const set of inkSets(pieces, spreads[i])) {
+            await hide.evaluate((el, css) => { el.textContent = css; }, `${set.map((n) => `[data-ink="${n}"]`).join(",")}{opacity:0!important}`);
+            const withoutText = await grey(await shoot(top));
+            for (const node of set) {
+              for (const r of pieces.get(node)!) if (inked(r, withText, withoutText, job.scale)) inkedLines.add(lineKey({ ...r, node }));
+            }
+          }
+        }
+        const measured = found.map(({ runs, ...m }) => ({ ...m, textPrinted: textPrinted(runs, inkedLines) }));
         return { pdf, pdfPages: pdfPageCount(pdf), images, measured };
       } finally {
         await browser.close();

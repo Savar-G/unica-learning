@@ -34,11 +34,18 @@ question's content must:
 - show by CSS: visible, a colour that is not transparent, and no `filter`, `clip-path` or mask up to its marked element,
 - be at least 6 points (8 CSS pixels) high,
 - lie at least 85% inside every box that clips it, up to the page,
-- leave its own ink: the engine takes each page image again with the glyphs of marked elements made transparent, and
-  at least 2% of the line's pixels must change by 64 of 255 or more.
+- leave its own ink: the engine takes the page image again with the glyphs of the line's piece of text gone and every
+  other glyph that could reach the line kept, and at least 2% of the line's pixels must change by 64 of 255 or more.
 
-So text that is hidden, transparent, tiny, shrunk, clipped, blurred, white on white or covered inside a visible box
-fails. Very light text (less than 64 of 255 from its background) fails too. Text partly covered by a pattern can still
+The ink check runs after the PDF and page images. It puts each piece of marked text in a plain span (and stops with an
+error if any line moved) and hides sets of spans with opacity 0, one check image a set. A set holds pieces that are at
+least one line height apart, as far as glyphs reach, so another piece's ink cannot show in a line's place (the third
+review on 2026-10-30 found that one image with all glyphs gone let a covered operand pass on the ink of the line over
+it). On a page with a text shadow, filter, backdrop filter or reflection, which can carry ink further, each piece gets
+its own image.
+
+So text that is hidden, transparent, tiny, shrunk, clipped, blurred, white on white, covered inside a visible box or
+covered by another line fails. Very light text (less than 64 of 255 from its background) fails too. Text partly covered by a pattern can still
 pass. Nothing is clipped silently.
 
 Storing:
@@ -107,8 +114,10 @@ Storage, so Vercel's 4.5 MB response limit does not apply. A two-week workbook (
 10 seconds.
 
 On a Mac (Chrome 155, Apple silicon), the sample renders in 0.6 to 1.2 s and 30 pages in 3.0 s. The check that each line of text
-leaves its own ink (a second image of each page, added after the second review on 2026-10-30) adds about 0.06 s a page
-there (the sample's engine time went from about 0.37 s to 0.54 s); it has not been measured on Vercel yet.
+leaves its own ink adds about 0.06 s a check image there, and a sample practice page takes 2 (the cover 1). Measured
+on an 84-page book of sample pages on 2026-10-30: 6.0 s to the PDF, then the ink check takes 9.9 s with the sets (167
+images), against 5.7 s for one image a page with all glyphs gone (84 images, which let a covered line pass) and 97.5 s
+for one image a piece of text (1664 images). It has not been measured on Vercel yet.
 
 ### When to move it to a worker
 

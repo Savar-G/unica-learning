@@ -126,6 +126,29 @@ describe.skipIf(!chromium)("renderWorkbook with Chromium", () => {
     });
   }, 60_000);
 
+  it("fails an operand covered by another line of the same question, which brings its own ink to the same place", async () => {
+    // Page 2: each question's second line (sign and operand) moved up onto the first, on an opaque white background.
+    // The first operand passes every CSS, size and clipping check and its rect changes when all glyphs go, by the
+    // second line's ink; only its own glyphs show it is covered.
+    const css = `[data-sheet="1"] .sum>div:nth-child(2){position:relative;top:-60px;background:#fff}`;
+    const result = await render(draft(), (page, html) => (page === 2 ? `<style>${css}</style>${html}` : html));
+    expect(result).toEqual({
+      status: "failed",
+      problems: [1, 2, 3, 4].map((q) => ({ page: 2, question: q, reason: `question ${q}'s content is not printed` })),
+    });
+  }, 60_000);
+
+  it("checks each piece of text alone on a sheet with a text shadow: it prints, and a covered operand still fails", async () => {
+    const shadow = `[data-sheet="1"] h1{text-shadow:0 0 40px #000}`;
+    const cover = `[data-sheet="1"] .sum>div:nth-child(2){position:relative;top:-60px;background:#fff}`;
+    const withShadow = (css: string) => render(draft(), (page, html) => (page === 2 ? `<style>${css}</style>${html}` : html));
+    expect((await withShadow(shadow)).status).toBe("rendered");
+    expect(await withShadow(shadow + cover)).toEqual({
+      status: "failed",
+      problems: [1, 2, 3, 4].map((q) => ({ page: 2, question: q, reason: `question ${q}'s content is not printed` })),
+    });
+  }, 60_000);
+
   it("prints content set tighter than its font's line box, and a word problem at line-height 1.2", async () => {
     const book = draft();
     const q = book.pages[2].questions[0];
