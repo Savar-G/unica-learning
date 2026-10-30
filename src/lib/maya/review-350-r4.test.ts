@@ -143,3 +143,31 @@ describe("main's items with no operation", () => {
     expect(s).toMatchObject({ package: null, contentProblem: "Maya cannot teach items with no operation yet" });
   });
 });
+
+describe("R350-5-1: money aliases are one unit, and a money problem has no money talk", () => {
+  const story = (text: string): QuestionPackage => ({ ...PKG, id: "wbq-review-r5-money", text });
+
+  it.each([
+    "Sam has $27 and gets $39. How much now?",
+    "Sam has 27 bucks and gets 39 bucks. How much now?",
+    "Sam has 27 CAD and gets 39 CAD. How much now?",
+    "Sam has 27¢ and gets 39¢. How much now?",
+    "Sam has 27 pennies and gets 39 pennies. How many cents now?",
+    "A toy costs 27 and a book 39. What is the total price?",
+  ])("refuses a wrong amount for %s", (text) => {
+    for (const say of ["It costs 65 dollars.", "It costs $65.", "That is 65 bucks.", "It costs 65 cents.", "It costs 65 pennies.", "It costs 2 dollars."]) {
+      expect(call(story(text)).refusal(show(say))).toMatchObject({ code: "wrong_math" });
+    }
+  });
+
+  it("still lets steps, tries and time be counts in a money problem", () => {
+    const c = call(story("Sam has $27 and gets $39. How much now?"));
+    for (const say of ["We have two steps.", "Wait 2 seconds.", "Two more tries, then we stop."]) expect(c.refusal(show(say))).toBeNull();
+  });
+
+  it("keeps money as talk in a problem with no money, but never an amount with a sign", () => {
+    const c = call();
+    for (const say of ["It costs 2 dollars.", "That is 2 bucks.", "It costs 5 cents.", "We have two steps."]) expect(c.refusal(show(say))).toBeNull();
+    expect(c.refusal(show("It costs $65."))).toMatchObject({ code: "wrong_math" });
+  });
+});

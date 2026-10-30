@@ -36,7 +36,10 @@ export interface StepNumbers {
   known: readonly number[];
   carry: readonly number[];
   write: readonly number[];
-  /** The problem's own unit words ("dollars" in "27 dollars + 39 dollars"): a number with one stays bound to the step. */
+  /**
+   * The problem's own unit words ("dollars" in "27 dollars + 39 dollars", "money" when it has any money in it): a number
+   * with one, or with any of its aliases (unitOf), stays bound to the step.
+   */
   units?: readonly string[];
 }
 
@@ -435,8 +438,23 @@ const PRONOUN = new Set(["this", "that", "each", "which", "another", "next", "la
 const COUNTS = new Set([
   "step", "steps", "try", "tries", "turn", "turns", "go", "goes", "question", "questions", "page", "pages", "part", "parts", "column", "columns", "row", "rows", "number", "numbers", "digit", "digits",
   "second", "seconds", "minute", "minutes", "hour", "hours", "day", "days",
-  "dollar", "dollars", "cent", "cents",
+  "dollar", "dollars", "buck", "bucks", "cad", "cent", "cents", "penny", "pennies",
 ]);
+/** Money words, each the same unit as its aliases. */
+const MONEY = new Map<string, string>([
+  ...["dollar", "dollars", "buck", "bucks", "cad", "$"].map((w): [string, string] => [w, "dollar"]),
+  ...["cent", "cents", "penny", "pennies", "¢"].map((w): [string, string] => [w, "cent"]),
+]);
+/**
+ * The unit a word names, the same for every alias: "$", "bucks" and "CAD" are "dollar"; "¢" and "pennies" are "cent";
+ * "steps" is "step".
+ */
+const unitOf = (word: string): string => {
+  const w = word.toLowerCase();
+  return MONEY.get(w) ?? (w.endsWith("s") && w.length > 1 ? w.slice(0, -1) : w);
+};
+/** A problem's unit words as unitOf names them; "money" stands for every money unit. */
+const unitSet = (units: readonly string[]) => new Set(units.flatMap((u) => (u === "money" ? [...new Set(MONEY.values())] : [unitOf(u)])));
 /** Words between a count and its noun ("two more tries"). */
 const COUNT_FILLER = new Set(["more", "extra", "other", "whole", "short", "small", "big", "quick"]);
 /** Words that name a result: a count in their sentence is a value of the math ("the answer is 65 dollars"). */
@@ -471,7 +489,7 @@ function quantityNoun(toks: Spanned[], k: number): string | null {
 function stepClaims(text: string, toks: Spanned[], claimed: boolean[], step: StepNumbers): MathClaim[] {
   const ratios = (list: readonly number[]) => list.map(ratioOf).filter((r): r is Ratio => r !== null);
   const [known, carry, write] = [ratios(step.known), ratios(step.carry), ratios([...step.write, ...step.carry])];
-  const units = new Set(step.units ?? []);
+  const units = unitSet(step.units ?? []);
   const among = (v: Ratio, list: Ratio[]) => list.some((r) => same(v, r));
   const word = (k: number) => (toks[k]?.t === "word" ? (toks[k] as { w: string }).w : "");
   const free = (k: number): Tok | null => (toks[k]?.t === "num" && !claimed[k] ? toks[k] : null);
@@ -547,7 +565,7 @@ function stepClaims(text: string, toks: Spanned[], claimed: boolean[], step: Ste
 function isCount(text: string, toks: Spanned[], k: number, units: ReadonlySet<string>): boolean {
   const x = toks[k];
   const noun = quantityNoun(toks, k);
-  if (x.t !== "num" || noun === null || units.has(noun) || x.v[0] < ZERO || x.v[0] > MAX_COUNT) return false;
+  if (x.t !== "num" || noun === null || units.has(unitOf(noun)) || x.v[0] < ZERO || x.v[0] > MAX_COUNT) return false;
   let n = k + 1;
   while (toks[n]?.t === "word" && (toks[n] as { w: string }).w !== noun) n++;
   const near = [toks[k - 1], toks[n + 1]];
