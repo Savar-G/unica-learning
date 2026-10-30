@@ -67,8 +67,8 @@ export function childProfileStore(admin: SupabaseClient<Database>): ChildProfile
         schema_version: profile.schemaVersion, profile: toJson(profile), built_at: new Date().toISOString(),
       };
       const { data, error } = expected === null
-        ? await admin.from("child_profiles").insert({ ...row, child_id: childId }).select("revision")
-        : await admin.from("child_profiles").update(row).eq("child_id", childId).eq("build_token", expected.buildToken).select("revision");
+        ? await admin.from("child_profiles").insert({ ...row, child_id: childId }).select("revision, build_token")
+        : await admin.from("child_profiles").update(row).eq("child_id", childId).eq("build_token", expected.buildToken).select("revision, build_token");
       if (error) {
         // 23505: another build stored the first revision; 23503 on the test's key: the test was deleted since the
         // inputs were read; 23503 on the child's key: the child is not under that parent.
@@ -78,7 +78,7 @@ export function childProfileStore(admin: SupabaseClient<Database>): ChildProfile
         if (error.code === "23503" || error.code === "55000") return { refused: error.message };
         throw new Error(`child profile save: ${message(error)}`);
       }
-      return data.length > 0 ? { revision: data[0].revision } : "changed";
+      return data.length > 0 ? { revision: data[0].revision, buildToken: data[0].build_token } : "changed";
     },
   };
 }

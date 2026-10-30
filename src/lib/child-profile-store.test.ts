@@ -120,16 +120,20 @@ describe.each([["Supabase", fakePostgrest], ["in-memory", memory]] as const)("th
     const row = { childId: CHILD, parentId: PARENT, assessmentId: NEW, profile: PROFILE };
     expect(await store.current(CHILD)).toBeNull();
     expect(await store.save(row, { revision: 1, buildToken: "00000000-0000-4000-8000-000000000001" })).toBe("changed");
-    expect(await store.save(row, null)).toEqual({ revision: 1 });
+    const saved = await store.save(row, null);
+    expect(saved).toEqual({ revision: 1, buildToken: expect.stringMatching(/^[0-9a-f-]{36}$/) });
     const first = (await store.current(CHILD))!;
-    expect(first.buildToken).toMatch(/^[0-9a-f-]{36}$/);
+    // The save gives the token it stored: the findings' save of #304 expects it.
+    expect(first.buildToken).toBe(typeof saved === "object" && "buildToken" in saved && saved.buildToken);
     expect(await store.save(row, null)).toBe("changed");
-    expect(await store.save(row, first)).toEqual({ revision: 2 });
+    const again = await store.save(row, first);
+    expect(again).toEqual({ revision: 2, buildToken: expect.any(String) });
     const second = (await store.current(CHILD))!;
+    expect(second.buildToken).toBe(typeof again === "object" && "buildToken" in again && again.buildToken);
     expect(second.buildToken).not.toBe(first.buildToken);
     // The same revision with an older build token is another build: nothing is stored over it.
     expect(await store.save(row, { revision: 2, buildToken: first.buildToken })).toBe("changed");
-    expect(await store.current(CHILD)).toEqual({ revision: 2, buildToken: second.buildToken, builtAt: expect.any(String), schemaVersion: 1, profile: PROFILE });
+    expect(await store.current(CHILD)).toEqual({ revision: 2, buildToken: second.buildToken, builtAt: expect.any(String), schemaVersion: 2, profile: PROFILE });
   });
 
   it("refuses a save for a family being deleted, or a child under another parent", async () => {
@@ -147,7 +151,7 @@ describe.each([["Supabase", fakePostgrest], ["in-memory", memory]] as const)("th
     const store = open();
     expect(await store.save({ childId: CHILD, parentId: PARENT, assessmentId: GONE, profile: PROFILE }, null)).toBe("changed");
     expect(await store.current(CHILD)).toBeNull();
-    expect(await store.save({ childId: CHILD, parentId: PARENT, assessmentId: NEW, profile: PROFILE }, null)).toEqual({ revision: 1 });
+    expect(await store.save({ childId: CHILD, parentId: PARENT, assessmentId: NEW, profile: PROFILE }, null)).toEqual({ revision: 1, buildToken: expect.any(String) });
     expect(await store.save({ childId: CHILD, parentId: PARENT, assessmentId: GONE, profile: PROFILE }, (await store.current(CHILD))!)).toBe("changed");
     expect((await store.current(CHILD))?.revision).toBe(1);
   });

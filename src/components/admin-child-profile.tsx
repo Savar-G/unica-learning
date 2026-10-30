@@ -1,12 +1,13 @@
 // The current profile of one child (#303, spec #295), for admins: when it was built and from what, what is secure and
 // what is not yet secure, each BC standard with the test's tally, the events' counts and links to its evidence, then
-// every learning event of the child, then the stored JSON that the workbook planner, the generator and Maya read.
+// the AI findings (#304) with links to their events, then every learning event of the child, then the stored JSON that
+// the workbook planner, the generator and Maya read.
 // Server components over the stored profile (getChildProfile).
 import Link from "next/link";
 import { BC_SKILL_MAP } from "@/lib/assessment";
 import type { ChildProfileDetail, LearningEventRow } from "@/lib/admin-store";
 import { adminProfilePath, adminTestPath, duration, when } from "@/lib/admin-view";
-import { storedChildProfile, type ChildLearnerProfile, type ChildStandard } from "@/lib/child-profile";
+import { storedChildProfile, type ChildLearnerProfile, type ChildProfileFinding, type ChildStandard } from "@/lib/child-profile";
 import { feelingLabel, goalLabel, interestLabel, styleLabel, weeklyTimeLabel } from "@/lib/learning-style";
 import { STATUS_LABEL } from "@/lib/report-view";
 import { AdminFrame, Chip, Table, gradeAndPlace } from "@/components/admin";
@@ -66,7 +67,7 @@ export function AdminChildProfile({ email, detail }: { email: string; detail: Ch
 
     {profile && <>
       <h2>Stored JSON</h2>
-      <details><summary>Schema version {profile.schemaVersion}, revision {stored!.revision}</summary><pre className="adm-typed">{JSON.stringify(profile, null, 2)}</pre></details>
+      <details><summary>Schema version {stored!.schema_version}, revision {stored!.revision}</summary><pre className="adm-typed">{JSON.stringify(profile, null, 2)}</pre></details>
     </>}
   </AdminFrame>;
 }
@@ -88,6 +89,9 @@ function ProfileFacts({ profile, numbers }: { profile: ChildLearnerProfile; numb
     {list(profile.notYetSecure, "No standard at or below the school grade is not yet secure.")}
     <h2>Secure</h2>
     {list(profile.secure, "No secure standard.")}
+
+    <h2>AI findings</h2>
+    <Findings profile={profile} numbers={numbers} />
 
     <h2>By BC standard</h2>
     <Table label="BC standards" head={["BC", "Standard", "Status", "Right", "Test", "Events", "Evidence"]} empty="No standard.">
@@ -113,6 +117,25 @@ function ProfileFacts({ profile, numbers }: { profile: ChildLearnerProfile; numb
   </>;
 }
 
+/** The AI's hypotheses, each with its standard and links to the events that show it. They never change the counts above. */
+function Findings({ profile, numbers }: { profile: ChildLearnerProfile; numbers: ReadonlyMap<string, number> }) {
+  if (!profile.ai) return <p className="adm-note">No AI findings in this build: the AI is off, failed, found nothing that passed the checks, or a newer build is on the way.</p>;
+  return <>
+    <p className="adm-note">Hypotheses for the workbook planner and Maya, written by {profile.ai.model} from the counts and the events. They do not change what is secure; each links only events of this child.</p>
+    <Table label="AI findings" head={["BC", "Hypothesis", "Events"]} empty="No finding.">
+      {profile.ai.findings.map((f: ChildProfileFinding, i) => <tr key={i}>
+        <td className="adm-mono">{f.standard}</td>
+        <td className="adm-wide">{f.hypothesis}<span className="adm-sub">{STANDARD_TEXT.get(f.standard) ?? ""}</span></td>
+        <td><EventLinks ids={f.events} numbers={numbers} /></td>
+      </tr>)}
+    </Table>
+  </>;
+}
+
+function EventLinks({ ids, numbers }: { ids: string[]; numbers: ReadonlyMap<string, number> }) {
+  return <>{ids.map((id, i) => <span key={id}>{i > 0 && ", "}<a href={`#${eventAnchor(id)}`}>{numbers.has(id) ? `#${numbers.get(id)}` : id.slice(0, 8)}</a></span>)}</>;
+}
+
 function EventCounts({ s }: { s: ChildStandard }) {
   const e = s.events;
   if (e.right + e.rightWithHelp + e.wrong + e.blank === 0) return <>-</>;
@@ -128,7 +151,7 @@ function Evidence({ s, numbers }: { s: ChildStandard; numbers: ReadonlyMap<strin
   return <>
     {assessmentId && <Link href={adminProfilePath(assessmentId)}>Test profile</Link>}
     {assessmentId && events.length > 0 && " · "}
-    {events.length > 0 && <>Events {events.map((id, i) => <span key={id}>{i > 0 && ", "}<a href={`#${eventAnchor(id)}`}>{numbers.has(id) ? `#${numbers.get(id)}` : id.slice(0, 8)}</a></span>)}</>}
+    {events.length > 0 && <>Events <EventLinks ids={events} numbers={numbers} /></>}
     {!assessmentId && events.length === 0 && "-"}
   </>;
 }

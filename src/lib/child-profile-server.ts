@@ -1,5 +1,6 @@
 import "server-only";
 import { rebuildChildProfile, type ChildProfileSeams, type RebuildResult } from "@/lib/child-profile";
+import { childProfileAiClient } from "@/lib/child-profile-ai";
 import { childProfileStore } from "@/lib/child-profile-store";
 import { learningEventStore } from "@/lib/learning-events-store";
 import { adminClient } from "@/lib/supabase-auth";
@@ -7,6 +8,7 @@ import { adminClient } from "@/lib/supabase-auth";
 // The child profile's rebuild (src/lib/child-profile.ts, #303) on the server, with the secret key. The report job
 // calls it last, after a finished test's profile and its AI parts are stored; the learning card's route calls it after
 // the test's profile is built again with the new answers. Later, the steps that write call and marking events call it.
+// #304: with the AI client's switch on (OPENROUTER_API_KEY), the rebuild adds the AI findings after the facts.
 
 /**
  * Rebuilds the child's profile. Never throws: a failure is logged, and the next rebuild carries what this one missed.
@@ -17,11 +19,14 @@ export async function rebuildChildProfileNow(childId: string, seams?: ChildProfi
   if (!db) {
     const admin = adminClient();
     if (!admin) return null;
-    db = { profiles: childProfileStore(admin), events: learningEventStore(admin) };
+    db = { profiles: childProfileStore(admin), events: learningEventStore(admin), ai: childProfileAiClient() };
   }
   try {
     const result = await rebuildChildProfile(childId, db);
     if (!result.built && result.reason !== "nothing_to_build") console.info("[child profile] not built", childId, JSON.stringify(result));
+    // What the findings' checks dropped: index, standard and rule, never the AI's text.
+    if (result.built && result.findings.outcome !== "off" && result.findings.outcome !== "stored") console.info("[child profile] findings not stored", childId, JSON.stringify(result.findings));
+    else if (result.built && result.findings.outcome === "stored" && result.findings.dropped.length) console.info("[child profile] findings dropped", childId, JSON.stringify(result.findings.dropped));
     return result;
   } catch (e) {
     console.error("[child profile] rebuild failed", childId, e instanceof Error ? e.message : String(e));
