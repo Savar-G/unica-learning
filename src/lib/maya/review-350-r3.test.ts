@@ -274,3 +274,59 @@ describe("F1-R3: the step binding keeps ordinary teaching", () => {
     expect(say("Borrow the 2.")).toMatchObject({ code: "wrong_math" });
   });
 });
+
+describe("Round 3 code review: the binding and the take-back stay narrow", () => {
+  /** 23 + 45 carries nothing: 1 is none of its step numbers. */
+  const NO_CARRY: QuestionPackage = {
+    ...PKG,
+    id: "wbq-review-r3-no-carry",
+    text: "23 + 45 = ?",
+    answer: { value: num(68), accepted: [], unit: null },
+    operation: { kind: "add", operands: [23, 45] },
+    steps: workedSteps({ kind: "add", operands: [23, 45] }),
+    wrongAnswers: [{ value: num(22), cause: "O1", description: "Subtracts", step: null }],
+  };
+  function noCarryCall() {
+    expect(checkQuestionPackage(NO_CARRY)).toMatchObject({ ok: true });
+    let s = createSession({ callId: "review-r3-no-carry", package: NO_CARRY });
+    s = step(s, { type: "start", at: 0 }).session;
+    s = step(s, { type: "proposal", at: 0, proposal: OPEN }).session;
+    s = step(s, { type: "child_turn", at: 0, text: "I don't know." }).session;
+    return (say: string) => step(s, { type: "proposal", at: 0, proposal: guide({ say }) }).refusal;
+  }
+
+  it.each(["Let's do this one together.", "Which one is the ones digit?", "One step at a time."])("reads a spoken one as a word: %s", (say) => {
+    expect(noCarryCall()(say)).toBeNull();
+  });
+
+  it("still binds a carry of one", () => {
+    expect(noCarryCall()("Carry the one.")).toMatchObject({ code: "wrong_math" });
+  });
+
+  it("reads a spoken take away as an operation, not a sign", () => {
+    const c = call();
+    c.child("56");
+    expect(c.propose(guide({ say: "Look at the 9, then take away 7 from it." })).refusal).toBeNull();
+  });
+
+  it("checks a carry even when a count follows it, and counts only across commas", () => {
+    const c = call();
+    c.child("56");
+    expect(c.propose(guide({ say: "Carry the 7, 8, 9." })).refusal).toMatchObject({ code: "wrong_math" });
+    expect(c.propose(guide({ say: "Look at the 9. 10. 11." })).refusal).toMatchObject({ code: "wrong_math" });
+  });
+
+  it.each(["I double checked, it's 66.", "It took me half a minute, 66."])("scores a plain answer beside an ordinary word: %s", (text) => {
+    const c = call();
+    c.child(text);
+    expect(c.propose({ act: "accept_answer", say: "Yes.", reading: { answers: [right66] } }).refusal).toBeNull();
+  });
+
+  it.each(["No, I double checked, 66.", "15, no wait, 16."])("keeps the solved question after %s", (text) => {
+    const c = solvedCall();
+    c.child(text);
+    const r = c.propose({ act: "close", say: "Bye.", reading: { stop: true } });
+    expect(r.session.outcome).toMatchObject({ reason: "solved" });
+    expect(learningEvent(r.session, family)).toMatchObject({ result: "right" });
+  });
+});

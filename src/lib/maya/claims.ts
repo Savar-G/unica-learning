@@ -415,49 +415,56 @@ const WRITE = /^(?:write|writes|wrote|writing|written|put|puts|putting|record|re
 /** Words between such a word and its number ("carry the 1", "write down a 6"). */
 const FILLER = new Set(["the", "a", "an", "down", "over", "up", "your", "that", "this", "just", "only"]);
 
+/** Words before a spoken "one" that make it a pronoun ("this one", "which one"), not the number 1. */
+const PRONOUN = new Set(["this", "that", "each", "which", "another", "next", "last", "every", "no", "any", "other", "same"]);
+
 /**
  * The numbers outside every claim, each bound to the step's checked numbers. A number Maya tells the child to carry
  * or to write that the step does not carry or write is false; any other number not among the step's numbers is
- * unsupported. Counting on from one of them, three or more whole numbers in a row with only commas between them
- * ("from nine: ten, eleven, twelve"), says no value.
+ * unsupported. Counting on from one of them (three or more whole numbers in a row with only commas between them, "from
+ * nine: ten, eleven, twelve") and a spoken "one" that is not a carry or a written digit ("let's do this one") say no
+ * value of the step.
  */
 function stepClaims(text: string, toks: Spanned[], claimed: boolean[], step: StepNumbers): MathClaim[] {
-  const among = (v: Ratio, list: readonly number[]) => list.some((n) => {
-    const r = ratioOf(n);
-    return r !== null && same(v, r);
-  });
+  const ratios = (list: readonly number[]) => list.map(ratioOf).filter((r): r is Ratio => r !== null);
+  const [known, carry, write] = [ratios(step.known), ratios(step.carry), ratios([...step.write, ...step.carry])];
+  const among = (v: Ratio, list: Ratio[]) => list.some((r) => same(v, r));
+  const free = (k: number): Tok | null => (toks[k]?.t === "num" && !claimed[k] ? toks[k] : null);
   const counted = new Set<number>();
   for (let k = 0; k < toks.length; k++) {
+    const x = free(k);
+    if (x?.t !== "num" || !x.whole || !among(x.v, known)) continue;
     const seq = [k];
-    for (let n = k + 1; n < toks.length && toks[seq[0]].t === "num"; n++) {
-      const [a, b] = [toks[seq[seq.length - 1]], toks[n]];
-      if (b.t === "soft" || (b.t === "end" && !b.question)) continue;
-      if (a.t !== "num" || b.t !== "num" || !a.whole || !b.whole || claimed[n]) break;
+    let by: bigint | null = null;
+    for (let n = k + 2; toks[n - 1]?.t === "soft"; n += 2) {
+      const [a, b] = [toks[seq[seq.length - 1]], free(n)];
+      if (a.t !== "num" || b?.t !== "num" || !b.whole) break;
       const d = b.v[0] - a.v[0];
-      const first = seq.length === 1 ? null : toks[seq[1]];
-      if ((d !== ONE && d !== -ONE) || (first?.t === "num" && first.v[0] - (toks[seq[0]] as { v: Ratio }).v[0] !== d)) break;
+      if ((d !== ONE && d !== -ONE) || (by !== null && d !== by)) break;
+      by = d;
       seq.push(n);
     }
-    const start = toks[seq[0]];
-    if (seq.length >= 3 && start.t === "num" && !claimed[seq[0]] && among(start.v, step.known)) seq.forEach((n) => counted.add(n));
+    if (seq.length >= 3) seq.forEach((n) => counted.add(n));
   }
+  const word = (k: number) => (toks[k]?.t === "word" ? (toks[k] as { w: string }).w : "");
   const out: MathClaim[] = [];
   for (let k = 0; k < toks.length; k++) {
     const x = toks[k];
-    if (x.t !== "num" || claimed[k] || counted.has(k)) continue;
-    // A minus sign said before the number, with no value before it, is the number's own sign ("-66").
+    if (x.t !== "num" || claimed[k]) continue;
+    // A sign that touches the number ("-66"), or "negative", with no value before it, is the number's own sign; a
+    // spoken "minus" or "take away" is an operation.
     const sign = toks[k - 1];
-    const negative = sign?.t === "op" && sign.op === "-" && !["num", "unit", "rp"].includes(toks[k - 2]?.t ?? "");
+    const negative = sign?.t === "op" && sign.op === "-" && (sign.unaryOnly || sign.to === x.from) && !["num", "unit", "rp"].includes(toks[k - 2]?.t ?? "");
     const v: Ratio = negative ? [-x.v[0], x.v[1]] : x.v;
+    const spokenOne = text.slice(x.from, x.to).toLowerCase() === "one";
     let r = k - 1;
-    while (toks[r]?.t === "word" && FILLER.has((toks[r] as { w: string }).w)) r--;
-    const verb = toks[r]?.t === "word" ? (toks[r] as { w: string }).w : "";
-    const role = CARRY.test(verb) ? step.carry : WRITE.test(verb) ? [...step.write, ...step.carry] : null;
+    while (FILLER.has(word(r))) r--;
+    const role = spokenOne && PRONOUN.has(word(k - 1)) ? null : CARRY.test(word(r)) ? carry : WRITE.test(word(r)) ? write : null;
     const from = role ? toks[r].from : negative ? sign.from : x.from;
     const claim = (status: MathClaim["status"]) => out.push({ text: text.slice(from, x.to).trim(), status, problem: null, result: false });
     if (role) {
       if (!among(v, role)) claim("false");
-    } else if (!among(v, step.known)) claim("unsupported");
+    } else if (!counted.has(k) && !spokenOne && !among(v, known)) claim("unsupported");
   }
   return out;
 }

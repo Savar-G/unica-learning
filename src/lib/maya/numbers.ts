@@ -12,10 +12,13 @@ const WORD_VALUES = new Map<string, number>([
 ]);
 /**
  * Fraction words, scale words, and words and signs that change a number's value ("three quarters", "half of 66",
- * "66 million", "66 squared", "66%", "the square root of 66", "to the power"), anywhere in a turn: a form code does not
- * read yet, so the turn is confirmed and no number in it is scored.
+ * "66 million", "66 squared", "66%", "the square root of 66", "to the power"), next to a number or joined to one by
+ * LINK words: a form code does not read yet, so the turn is confirmed and no number in it is scored. Away from a number
+ * they are ordinary words ("I double checked, 66").
  */
 const CHANGES = /^(?:halfs?|halves|thirds?|quarters?|fourths?|fifths?|sixths?|sevenths?|eighths?|ninths?|tenths?|hundredths?|thousandths?|millions?|billions?|trillions?|zillions?|gazillions?|lakhs?|crores?|dozens?|squared?|cubed?|roots?|sqrt|factorial|percent|power|twice|double|triple|decimal|dot|%|\^|[\u00B2\u00B3\u00B9\u2070-\u2079])$/;
+/** Words that join a value-changing word to its number ("half of 66", "66 and a half", "square root of 66"). */
+const LINK = /^(?:of|a|an|the|and)$/;
 /** Place words right after a number ("66 tens"): they change its value, a form code does not read yet. */
 const PLACE = /^(?:ones|tens|hundreds|thousands)$/;
 /**
@@ -85,6 +88,13 @@ export function readNumbers(text: string): NumbersRead {
   let decimals = "";
   let negative = false;
   let afterNumber = false;
+  const isNumber = (t = "") => /^\d/.test(t) || kindOf(t) !== null;
+  // A value-changing word reaches a number across link words and other value-changing words, in either direction.
+  const linked = (i: number) => [-1, 1].some((d) => {
+    let k = i + d;
+    while (LINK.test(tokens[k] ?? "") || CHANGES.test(tokens[k] ?? "")) k += d;
+    return isNumber(tokens[k]);
+  });
   let unreadable = ORDINAL.test(text);
   const push = (n: number) => {
     operands.set(items.length, inOperation);
@@ -114,9 +124,12 @@ export function readNumbers(text: string): NumbersRead {
       continue;
     }
     const next = tokens[i + 1] ?? "";
-    const numberNext = /^\d/.test(next) || kindOf(next) !== null;
-    if (CHANGES.test(token) || (token === "to" && next === "the" && (afterNumber || last !== null)) ||
-      (PLACE.test(token) && (afterNumber || last !== null))) {
+    const numberNext = isNumber(next);
+    if (CHANGES.test(token)) {
+      if (linked(i)) unreadable = true;
+      continue;
+    }
+    if ((token === "to" && next === "the" && (afterNumber || last !== null)) || (PLACE.test(token) && (afterNumber || last !== null))) {
       unreadable = true;
       continue;
     }

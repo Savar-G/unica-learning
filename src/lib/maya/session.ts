@@ -458,6 +458,10 @@ function checkedNumbers(step: WorkedStep): { known: number[]; carry: number[]; w
   }
 }
 
+/** The value is the number a worked step of the child's question makes, and no known wrong final answer. */
+const answersAStep = (pkg: QuestionPackage, value: AnswerValue) =>
+  workSteps(pkg.steps).some((st) => stepAnswers(st).some((v) => equivalent(v, value))) && !pkg.wrongAnswers.some((w) => equivalent(w.value, value));
+
 /** The number speech-to-text may mistake a teen or a ten for, to confirm what the child said ("fifteen or fifty?"). */
 const soundsLike = (n: number): number[] => (n >= 13 && n <= 19 ? [(n - 10) * 10] : n >= 30 && n <= 90 && n % 10 === 0 ? [n / 10 + 10] : []);
 
@@ -477,11 +481,8 @@ function turnNumbers(s: Session, p: Proposal | null): StepNumbers | undefined {
   const values = [pkg.answer.value, ...pkg.answer.accepted, pkg.easierExample.answer, ...valuesIn(pkg.text), ...valuesIn(pkg.easierExample.text),
     ...[...s.turns.filter((t) => t.speaker === "child").flatMap((t) => [t.text, ...(t.alternatives ?? [])]), s.turn?.text ?? ""].flatMap((t) => valuesIn(t))];
   const said = values.flatMap((v) => (v.type === "number" ? [v.value] : []));
-  return {
-    known: [...operandsOf(pkg.operation), ...operandsOf(pkg.easierExample.operation), ...said, ...said.flatMap(soundsLike), ...facts.flatMap((f) => [...f.known, ...f.carry])],
-    carry: facts.flatMap((f) => f.carry),
-    write: facts.flatMap((f) => f.write),
-  };
+  const known = [...operandsOf(pkg.operation), ...operandsOf(pkg.easierExample.operation), ...said, ...said.flatMap(soundsLike), ...facts.flatMap((f) => [...f.known, ...f.carry])];
+  return { known: [...new Set(known)], carry: [...new Set(facts.flatMap((f) => f.carry))], write: [...new Set(facts.flatMap((f) => f.write))] };
 }
 
 const problemOf = (pkg: QuestionPackage, problem: Problem) =>
@@ -729,9 +730,11 @@ export function step(session: Session, event: SessionEvent): StepResult {
         ? { at: event.at, text: `${s.turn.text}\n${event.text}`, uncertain: s.turn.uncertain || uncertain }
         : { at: event.at, text: event.text, uncertain };
       // A checked right answer the child takes back ("Actually 56", or a new answer code cannot read) stands no longer,
-      // whatever a later reading names: the result waits for a new checked final answer. The help history stays.
+      // whatever a later reading names: the result waits for a new checked final answer. The help history stays. A
+      // corrected number of a worked step ("15, no wait, 16" for the ones) answers that step, unless it is a known
+      // wrong final answer.
       const back = s.package && s.lastResult === "right" ? takenBack(event.text) : null;
-      if (back && !(back.kept && isRightAnswer(s.package!.operation, s.package!.answer, back.kept))) {
+      if (back && !(back.kept && (isRightAnswer(s.package!.operation, s.package!.answer, back.kept) || answersAStep(s.package!, back.kept)))) {
         s.lastResult = null;
         if (s.solved === "child") s.solved = null;
       }
