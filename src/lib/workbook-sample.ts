@@ -24,18 +24,19 @@ const SAMPLE_PAGE_SIZE = { width: 850, height: 1100 } as const;
 
 const LEVEL = 10;
 const STANDARD = "3.3";
-/** The sample's operations: whole-number addition and subtraction. */
-type WholeOperation = Extract<Operation, { kind: "add" | "subtract" }>;
-const SKILL: Record<WholeOperation["kind"], string> = { add: "3.3-add-within-1000", subtract: "3.3-subtract-within-1000" };
+/** The sample's operations: whole-number addition and subtraction only. */
+type SampleOperation = Extract<Operation, { kind: "add" | "subtract" }>;
+
+const SKILL: Record<SampleOperation["kind"], string> = { add: "3.3-add-within-1000", subtract: "3.3-subtract-within-1000" };
 
 /** A question of the sample: its operation and one easier operation of the same kind with fewer digits. */
 interface SampleQuestion {
-  operation: WholeOperation;
-  easier: WholeOperation;
+  operation: SampleOperation;
+  easier: SampleOperation;
 }
 
-const add = (a: number, b: number): WholeOperation => ({ kind: "add", operands: [a, b] });
-const subtract = (a: number, b: number): WholeOperation => ({ kind: "subtract", operands: [a, b] });
+const add = (a: number, b: number): SampleOperation => ({ kind: "add", operands: [a, b] });
+const subtract = (a: number, b: number): SampleOperation => ({ kind: "subtract", operands: [a, b] });
 
 /** The sample's pages in order. Every question carries in (addition) or regroups in the ones (subtraction). */
 const PAGES: readonly { type: string; dayLabel: string | null; questions: SampleQuestion[] }[] = [
@@ -83,7 +84,7 @@ function wrong(value: number, cause: MisconceptionId, step: string | null): Wron
 }
 
 /** The expected wrong answers: the column mistake of the operation, and the other operation. */
-function wrongAnswers({ kind, operands: [a, b] }: WholeOperation): WrongAnswer[] {
+function wrongAnswers({ kind, operands: [a, b] }: SampleOperation): WrongAnswer[] {
   return kind === "add"
     ? [wrong(withoutCarry(a, b), "O3", "tens"), wrong(a - b, "operation", null)]
     : [wrong(smallerFromLarger(a, b), "O1", "ones"), wrong(a + b, "operation", null)];
