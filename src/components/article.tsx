@@ -16,6 +16,7 @@ import "./article.css";
 // Home-page section links, made absolute so they work from these pages.
 const LINKS = [
   { label: "How it works", href: "/#how" },
+  { label: "Curriculum", href: "/curriculum" },
   { label: "Pricing", href: "/#price" },
   { label: "FAQ", href: "/#faq" },
 ];

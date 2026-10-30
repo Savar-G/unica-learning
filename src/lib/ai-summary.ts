@@ -70,6 +70,7 @@ Parents in Canada with a child aged 5 to 14 who want math practice on paper, at 
 - [Free math assessment](${url("/start")}): create a parent account and start the free online math assessment
 - [Our story](${url("/our-story")}): why we built ${BRAND}
 - [How we compare](${url("/compare")}): ${BRAND} side by side with private tutors, learning centres and online learning platforms
+- [Curriculum](${url("/curriculum")}): the 30 levels from Kindergarten to Grade 9 and what a child works on at each level
 - [Rewards](${url("/rewards")}): how children earn points for finished pages and full weeks of practice, and trade them for prizes their parent approves
 - [Sample report](${url("/sample-report")}): the report a parent gets after the free online math assessment, for a sample Grade 3 child working at a Grade 2 level
 - [Pricing](${url("/pricing.md")}): plans and terms in plain text
