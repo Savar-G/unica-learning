@@ -1066,6 +1066,13 @@ export type Database = {
             referencedRelation: "parents"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "learning_events_workbook_fkey"
+            columns: ["workbook_id", "child_id"]
+            isOneToOne: false
+            referencedRelation: "workbooks"
+            referencedColumns: ["id", "child_id"]
+          },
         ]
       }
       parent_pins: {
@@ -1513,6 +1520,172 @@ export type Database = {
           },
         ]
       }
+      workbook_pages: {
+        Row: {
+          created_at: string
+          day_label: string | null
+          id: string
+          image_height: number | null
+          image_path: string | null
+          image_width: number | null
+          page_number: number
+          page_type: string
+          parent_id: string
+          qr_token: string
+          workbook_id: string
+        }
+        Insert: {
+          created_at?: string
+          day_label?: string | null
+          id?: string
+          image_height?: number | null
+          image_path?: string | null
+          image_width?: number | null
+          page_number: number
+          page_type: string
+          parent_id: string
+          qr_token: string
+          workbook_id: string
+        }
+        Update: {
+          created_at?: string
+          day_label?: string | null
+          id?: string
+          image_height?: number | null
+          image_path?: string | null
+          image_width?: number | null
+          page_number?: number
+          page_type?: string
+          parent_id?: string
+          qr_token?: string
+          workbook_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "workbook_pages_workbook_fkey"
+            columns: ["workbook_id", "parent_id"]
+            isOneToOne: false
+            referencedRelation: "workbooks"
+            referencedColumns: ["id", "parent_id"]
+          },
+        ]
+      }
+      workbook_questions: {
+        Row: {
+          box_height: number
+          box_width: number
+          box_x: number
+          box_y: number
+          created_at: string
+          id: string
+          package: Json
+          page_id: string
+          parent_id: string
+          question_key: string
+          question_number: number
+          schema_version: number
+          workbook_id: string
+        }
+        Insert: {
+          box_height: number
+          box_width: number
+          box_x: number
+          box_y: number
+          created_at?: string
+          id?: string
+          package: Json
+          page_id: string
+          parent_id: string
+          question_key: string
+          question_number: number
+          schema_version: number
+          workbook_id: string
+        }
+        Update: {
+          box_height?: number
+          box_width?: number
+          box_x?: number
+          box_y?: number
+          created_at?: string
+          id?: string
+          package?: Json
+          page_id?: string
+          parent_id?: string
+          question_key?: string
+          question_number?: number
+          schema_version?: number
+          workbook_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "workbook_questions_page_fkey"
+            columns: ["page_id", "workbook_id", "parent_id"]
+            isOneToOne: false
+            referencedRelation: "workbook_pages"
+            referencedColumns: ["id", "workbook_id", "parent_id"]
+          },
+        ]
+      }
+      workbooks: {
+        Row: {
+          approved_at: string | null
+          child_id: string
+          created_at: string
+          id: string
+          levels: number[]
+          number: number
+          parent_id: string
+          pdf_path: string | null
+          printed_at: string | null
+          profile_build: string | null
+          shipped_at: string | null
+          status: string
+        }
+        Insert: {
+          approved_at?: string | null
+          child_id: string
+          created_at?: string
+          id: string
+          levels: number[]
+          number: number
+          parent_id: string
+          pdf_path?: string | null
+          printed_at?: string | null
+          profile_build?: string | null
+          shipped_at?: string | null
+          status?: string
+        }
+        Update: {
+          approved_at?: string | null
+          child_id?: string
+          created_at?: string
+          id?: string
+          levels?: number[]
+          number?: number
+          parent_id?: string
+          pdf_path?: string | null
+          printed_at?: string | null
+          profile_build?: string | null
+          shipped_at?: string | null
+          status?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "workbooks_child_fkey"
+            columns: ["child_id", "parent_id"]
+            isOneToOne: false
+            referencedRelation: "children"
+            referencedColumns: ["id", "parent_id"]
+          },
+          {
+            foreignKeyName: "workbooks_parent_id_fkey"
+            columns: ["parent_id"]
+            isOneToOne: false
+            referencedRelation: "parents"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Views: {
       [_ in never]: never
@@ -1916,6 +2089,11 @@ export type Database = {
         Args: { p_answers: Json; p_assessment: string; p_route: string }
         Returns: string
       }
+      parent_reads_workbook: { Args: { p_workbook: string }; Returns: boolean }
+      parent_reads_workbook_folder: {
+        Args: { p_folder: string }
+        Returns: boolean
+      }
       pending_family_payment_operations: {
         Args: { after_id: string; p: string; page_size?: number; token: string }
         Returns: {
@@ -1972,6 +2150,10 @@ export type Database = {
       save_family_test_copy: {
         Args: { p: string; test_copy: Json; test_id: string; token: string }
         Returns: boolean
+      }
+      write_workbook: {
+        Args: { p_schema_version: number; p_workbook: Json }
+        Returns: Json
       }
     }
     Enums: {

@@ -8,6 +8,7 @@ import type { LogKind, LogStatus } from "@/lib/reminders";
 import type { PlanId } from "@/lib/site";
 import type { TestDevice } from "@/lib/test-context";
 import type { StoredReview } from "@/lib/work-review";
+import type { WorkbookStatus } from "@/lib/workbook-content";
 
 export type { Json };
 
@@ -31,6 +32,7 @@ type ColumnTypes = KnownColumns<{
   parents: { source: Record<string, string> };
   reports: { model: ReportModel };
   work_reviews: { kind: StoredReview["kind"]; confidence: StoredReview["confidence"] };
+  workbooks: { status: WorkbookStatus };
 }>;
 type Fits<T, Column> = Json extends Column ? T
   : (null extends T ? 1 : 0) extends (null extends Column ? 1 : 0) ? (NonNullable<T> extends NonNullable<Column> ? T : never) : never;
