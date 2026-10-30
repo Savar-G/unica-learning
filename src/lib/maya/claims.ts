@@ -1,9 +1,11 @@
 // The number claims in what Maya says or writes (#321): every equation ("7 + 9 = 16", "seven plus nine is sixteen",
 // "(7 + 9) × 2 = 32", "two tens plus three tens is five tens", "53 ÷ 2 = 26 R 1") and every other statement that gives
 // a number a value ("the ones total is fifteen", "seven plus nine comes to fifteen", "7 + 9 > 20"). Code checks each
-// claim completely, by exact rational arithmetic on the digits as written (never floating point). A claim code cannot
-// read completely is unsupported, and the session refuses it like a false one: no numeric statement passes unchecked.
-// Pure TypeScript; it never throws.
+// claim completely, by exact rational arithmetic on the digits as written (never floating point). Given the checked
+// numbers of the step a turn is about, every other number must be one of them ("Look at the 7"), and a number Maya
+// tells the child to carry or to write must be that step's carry or written digit ("carry the 1", never "carry the
+// 2"). A claim code cannot read completely is unsupported, and the session refuses it like a false one: no numeric
+// statement passes unchecked. Pure TypeScript; it never throws.
 import { kindOf, startsNewNumber, wordValue, type NumberWord } from "./numbers";
 
 export type MathOp = "+" | "-" | "×" | "÷";
@@ -23,6 +25,17 @@ export interface MathClaim {
   problem: number | null;
   /** The claim gives a value for its expression ("27 + 39 = 66"), not only names it ("It is 27 plus 39"). */
   result: boolean;
+}
+
+/**
+ * The checked numbers of the worked step a turn is about (#321): `known` are the numbers Maya may say outside a true
+ * equation (the step's digits, carries and results, the question's numbers, what the child said); `carry` are the
+ * values she may tell the child to carry, borrow or regroup; `write` the digits she may tell the child to write.
+ */
+export interface StepNumbers {
+  known: readonly number[];
+  carry: readonly number[];
+  write: readonly number[];
 }
 
 /** An exact rational [numerator, denominator], denominator above 0. */
@@ -54,20 +67,21 @@ const TEN = BigInt(10);
 const HUNDRED = BigInt(100);
 const THOUSAND = BigInt(1000);
 
+// Every word table is a Map or a Set: a word such as "constructor" must never reach an inherited property.
 /** Place-value words after a number: "two tens" is 20, "five tenths" is 1/2. */
-const PLACES: Record<string, Ratio> = {
-  ones: [ONE, ONE], tens: [TEN, ONE], hundreds: [HUNDRED, ONE], thousands: [THOUSAND, ONE],
-  tenth: [ONE, TEN], tenths: [ONE, TEN], hundredth: [ONE, HUNDRED], hundredths: [ONE, HUNDRED], thousandth: [ONE, THOUSAND], thousandths: [ONE, THOUSAND],
-};
+const PLACES = new Map<string, Ratio>([
+  ["ones", [ONE, ONE]], ["tens", [TEN, ONE]], ["hundreds", [HUNDRED, ONE]], ["thousands", [THOUSAND, ONE]],
+  ["tenth", [ONE, TEN]], ["tenths", [ONE, TEN]], ["hundredth", [ONE, HUNDRED]], ["hundredths", [ONE, HUNDRED]], ["thousandth", [ONE, THOUSAND]], ["thousandths", [ONE, THOUSAND]],
+]);
 const UNREAD = /^(?:halfs?|halves|thirds?|quarters?|fourths?|fifths?|sixths?|sevenths?|eighths?|ninths?|squared|cubed|percent|power|root|dozens?|twice|double|triple)$/;
 const EQUALS = new Set(["is", "are", "was", "were", "equals", "equal", "makes", "make", "gives", "give", "gets", "get", "totals", "total", "leaves", "leave", "that's", "it's"]);
 const RELATIONS = new Set(["isn't", "aren't", "wasn't", "weren't", "doesn't", "don't", "didn't"]);
-const OPS: Record<string, MathOp> = { plus: "+", minus: "-", times: "×" };
+const OPS = new Map<string, MathOp>([["plus", "+"], ["minus", "-"], ["times", "×"]]);
 /** Two-word operations and equals words. */
-const PAIRS: Record<string, Tok> = {
-  "multiplied by": { t: "op", op: "×" }, "divided by": { t: "op", op: "÷" }, "take away": { t: "op", op: "-" },
-  "comes to": { t: "eq" }, "come to": { t: "eq" }, "adds to": { t: "eq" }, "add to": { t: "eq" }, "sums to": { t: "eq" }, "equal to": { t: "eq" }, "equals to": { t: "eq" },
-};
+const PAIRS = new Map<string, Tok>([
+  ["multiplied by", { t: "op", op: "×" }], ["divided by", { t: "op", op: "÷" }], ["take away", { t: "op", op: "-" }],
+  ...["comes to", "come to", "adds to", "add to", "sums to", "equal to", "equals to"].map((w): [string, Tok] => [w, { t: "eq" }]),
+]);
 /** Words that may come just before a claim without changing what it says. */
 const LEAD = new Set(["so", "and", "now", "then", "yes", "sorry", "because", "since", "remember", "well", "okay", "ok", "oh", "see", "great", "good", "right", "correct", "also", "first", "next", "means", "that", "here", "look", "but", "or"]);
 /** Words that may come just after a claim without changing what it says. */
@@ -121,7 +135,7 @@ function numberWords(p: Piece[], i: number): { v: Ratio; whole: boolean; next: n
     if (k === null) {
       if (word === "and" && (last === "hundred" || last === "thousand") && ["unit", "teen", "ten"].includes(kind(j + 1) ?? "")) { j++; continue; }
       if (word === "point" && kind(j + 1) === "unit") {
-        for (j++; kind(j) === "unit"; j++) decimals += String(wordValue(p[j].w!));
+        for (j++; kind(j) === "unit"; j++) decimals += String(wordValue(p[j].w!)!);
       }
       break;
     }
@@ -129,7 +143,7 @@ function numberWords(p: Piece[], i: number): { v: Ratio; whole: boolean; next: n
     if (startsNewNumber(last, k) || (k === "hundred" && (last === "hundred" || last === "thousand")) || (k === "thousand" && last === "thousand")) break;
     if (k === "hundred") current = (last === null ? ONE : current) * HUNDRED;
     else if (k === "thousand") { total += (last === null ? ONE : current) * THOUSAND; current = ZERO; }
-    else current += BigInt(wordValue(word!));
+    else current += BigInt(wordValue(word!)!);
     last = k;
     j++;
   }
@@ -161,6 +175,9 @@ function tokenize(text: string): Spanned[] {
     }
     // A place-value "ten" right after a small number: "one ten", "carry 1 ten".
     if (w === "ten" && prev?.t === "num" && prev.whole && prev.v[0] < TEN) { add({ t: "unit", v: [TEN, ONE] }); continue; }
+    // "point" next to a number it does not join ("one point sixty-six", "66 point 0"): a form code does not read.
+    const nextIsNumber = /^\d/.test(p[i + 1]?.s ?? "") || kindOf(p[i + 1]?.w ?? "") !== null;
+    if (w === "point" && kindOf(p[i + 1]?.w ?? "") !== "unit" && (prev?.t === "num" || nextIsNumber)) { add({ t: "sym" }); continue; }
     if (kindOf(w) !== null || (w === "point" && kindOf(p[i + 1]?.w ?? "") === "unit")) {
       const { v, whole, next } = numberWords(p, i);
       add({ t: "num", v, whole }, p[next - 1].to);
@@ -169,14 +186,16 @@ function tokenize(text: string): Spanned[] {
     }
     // One "equals" for "is equal to", "equals", "adds up to".
     const equals = (end: number) => (prev?.t === "eq" ? (prev.to = end) : add({ t: "eq" }, end));
-    const pair = PAIRS[`${w} ${p[i + 1]?.w ?? ""}`];
+    const pair = PAIRS.get(`${w} ${p[i + 1]?.w ?? ""}`);
     if (pair) { if (pair.t === "eq") equals(p[i + 1].to); else add(pair, p[i + 1].to); i++; continue; }
     if (w === "adds" && p[i + 1]?.w === "up" && p[i + 2]?.w === "to") { equals(p[i + 2].to); i += 2; continue; }
     if (EQUALS.has(w)) { equals(to); continue; }
-    if (w in PLACES) add({ t: "unit", v: PLACES[w] });
+    const place = PLACES.get(w);
+    const op = OPS.get(w);
+    if (place) add({ t: "unit", v: place });
     else if (UNREAD.test(w)) add({ t: "sym" });
     else if (RELATIONS.has(w)) add({ t: "rel" });
-    else if (w in OPS) add({ t: "op", op: OPS[w] });
+    else if (op) add({ t: "op", op });
     else if (w === "negative") add({ t: "op", op: "-", unaryOnly: true });
     else add({ t: "word", w });
   }
@@ -313,12 +332,15 @@ const isNumber = (x: Tok) => x.t === "num" || x.t === "unit" || x.t === "sym";
 /**
  * Every number claim in a text, in order. A run of math with an "equals" in it ("=", "is", "makes", "comes to") must
  * read completely in a statement: every side a full expression, every side equal, and only neutral words around it.
- * A question ("What is seven plus nine?") is a claim only when two of its sides read, and then they must be equal.
- * A relation other than "equals" ("7 + 9 > 15", "isn't"), and a statement that names an operation and then a number
- * with no "equals" ("seven plus nine, then fifteen"), are unsupported. A statement may name a problem ("It is 27 plus
- * 39") only when it is one of `problems`.
+ * A question ("What is seven plus nine?") is a claim only when two of its sides read, and then they must be equal; a
+ * question that offers a value after its "equals" ("7 + 9 = bananas 15?", "Seven plus nine is, fifteen?") is
+ * unsupported. A relation other than "equals" ("7 + 9 > 15", "isn't"), a form code does not read next to a number
+ * ("one point sixty-six"), and a statement that names an operation and then a number with no "equals" ("seven plus
+ * nine, then fifteen") are unsupported. A statement may name a problem ("It is 27 plus 39") only when it is one of
+ * `problems`. With `step`, every number outside a true claim is bound to the step's checked numbers (StepNumbers): a
+ * wrong carry or written digit is false, any other number not among them is unsupported.
  */
-export function mathClaims(text: string, problems: readonly NamedProblem[] = []): MathClaim[] {
+export function mathClaims(text: string, problems: readonly NamedProblem[] = [], step?: StepNumbers): MathClaim[] {
   if (typeof text !== "string") return [];
   const toks = tokenize(text);
   // The end of the sentence each token is in (its index, or the token count when the text has no end).
@@ -335,6 +357,8 @@ export function mathClaims(text: string, problems: readonly NamedProblem[] = [])
     if (toks[k].t === "num") seen = true;
   }
   const claims: MathClaim[] = [];
+  // The tokens of a claim: its numbers are checked by the claim itself, not by the step.
+  const claimed: boolean[] = new Array(toks.length).fill(false);
   for (let i = 0; i < toks.length; i++) {
     if (!MATH.has(toks[i].t)) continue;
     let j = i;
@@ -342,6 +366,7 @@ export function mathClaims(text: string, problems: readonly NamedProblem[] = [])
     const run = toks.slice(i, j + 1);
     const [before, after, stop] = [toks[i - 1], toks[j + 1], toks[sentenceEnd[j]]];
     const question = stop?.t === "end" && stop.question;
+    const start = i;
     i = j;
     if (!run.some(isNumber)) continue;
     const sides: Side[] = [];
@@ -352,16 +377,23 @@ export function mathClaims(text: string, problems: readonly NamedProblem[] = [])
     }
     const read = sides.filter((s): s is Read => s.k === "value" || s.k === "rem");
     const found = sides.map((s) => problemOf(s, problems)).find((p) => p !== null) ?? null;
-    const claim = (status: MathClaim["status"]) => claims.push({ text: text.slice(run[0].from, run[run.length - 1].to).trim(), status, problem: found, result: read.length >= 2 });
+    const claim = (status: MathClaim["status"]) => {
+      claimed.fill(true, start, j + 1);
+      claims.push({ text: text.slice(run[0].from, run[run.length - 1].to).trim(), status, problem: found, result: read.length >= 2 });
+    };
 
     if (run.length > MAX_RUN || run.some((x) => x.t === "rel")) { claim("unsupported"); continue; }
     if (!run.some((x) => x.t === "eq")) {
       // "Seven plus nine comes to fifteen": an operation, then a number, in one statement.
       const operation = run.some((x, n) => x.t === "op" && n > 0 && ["num", "unit", "rp"].includes(run[n - 1].t));
-      if (!question && operation && found === null && numberAfter[j]) claim("unsupported");
+      if ((!question && operation && found === null && numberAfter[j]) || (run.some((x) => x.t === "sym") && run.some((x) => x.t === "num"))) claim("unsupported");
       continue;
     }
-    if (question && read.length < 2) continue;
+    if (question && read.length < 2) {
+      // "What is seven plus nine?" asks; "Seven plus nine is, fifteen?" offers a value code cannot place.
+      if (run.some((x) => x.t === "num") && (sides.some((s) => s.k === "fail") || (sides[sides.length - 1].k === "empty" && numberAfter[j]))) claim("unsupported");
+      continue;
+    }
     const leadOk = !before || before.t !== "word" || LEAD.has(before.w);
     const trailOk = !after || after.t !== "word" || (TRAIL.has(after.w) && !(after.w === "and" && toks[j + 2]?.t === "num"));
     if (!question && sides.some((s) => s.k === "fail" || s.k === "empty")) {
@@ -372,5 +404,60 @@ export function mathClaims(text: string, problems: readonly NamedProblem[] = [])
     const holds = leadOk && trailOk ? agrees(read) : null;
     claim(holds === null ? "unsupported" : holds ? "true" : "false");
   }
+  if (step) claims.push(...stepClaims(text, toks, claimed, step));
   return claims;
+}
+
+/** Words that tell the child to carry, borrow or regroup the number after them ("carry the 1"). */
+const CARRY = /^(?:carry|carries|carried|carrying|borrow|borrows|borrowed|borrowing|regroup|regroups|regrouped|regrouping|trade|trades|traded|trading)$/;
+/** Words that tell the child to write the number after them ("write the 6"). */
+const WRITE = /^(?:write|writes|wrote|writing|written|put|puts|putting|record|records)$/;
+/** Words between such a word and its number ("carry the 1", "write down a 6"). */
+const FILLER = new Set(["the", "a", "an", "down", "over", "up", "your", "that", "this", "just", "only"]);
+
+/**
+ * The numbers outside every claim, each bound to the step's checked numbers. A number Maya tells the child to carry
+ * or to write that the step does not carry or write is false; any other number not among the step's numbers is
+ * unsupported. Counting on from one of them, three or more whole numbers in a row with only commas between them
+ * ("from nine: ten, eleven, twelve"), says no value.
+ */
+function stepClaims(text: string, toks: Spanned[], claimed: boolean[], step: StepNumbers): MathClaim[] {
+  const among = (v: Ratio, list: readonly number[]) => list.some((n) => {
+    const r = ratioOf(n);
+    return r !== null && same(v, r);
+  });
+  const counted = new Set<number>();
+  for (let k = 0; k < toks.length; k++) {
+    const seq = [k];
+    for (let n = k + 1; n < toks.length && toks[seq[0]].t === "num"; n++) {
+      const [a, b] = [toks[seq[seq.length - 1]], toks[n]];
+      if (b.t === "soft" || (b.t === "end" && !b.question)) continue;
+      if (a.t !== "num" || b.t !== "num" || !a.whole || !b.whole || claimed[n]) break;
+      const d = b.v[0] - a.v[0];
+      const first = seq.length === 1 ? null : toks[seq[1]];
+      if ((d !== ONE && d !== -ONE) || (first?.t === "num" && first.v[0] - (toks[seq[0]] as { v: Ratio }).v[0] !== d)) break;
+      seq.push(n);
+    }
+    const start = toks[seq[0]];
+    if (seq.length >= 3 && start.t === "num" && !claimed[seq[0]] && among(start.v, step.known)) seq.forEach((n) => counted.add(n));
+  }
+  const out: MathClaim[] = [];
+  for (let k = 0; k < toks.length; k++) {
+    const x = toks[k];
+    if (x.t !== "num" || claimed[k] || counted.has(k)) continue;
+    // A minus sign said before the number, with no value before it, is the number's own sign ("-66").
+    const sign = toks[k - 1];
+    const negative = sign?.t === "op" && sign.op === "-" && !["num", "unit", "rp"].includes(toks[k - 2]?.t ?? "");
+    const v: Ratio = negative ? [-x.v[0], x.v[1]] : x.v;
+    let r = k - 1;
+    while (toks[r]?.t === "word" && FILLER.has((toks[r] as { w: string }).w)) r--;
+    const verb = toks[r]?.t === "word" ? (toks[r] as { w: string }).w : "";
+    const role = CARRY.test(verb) ? step.carry : WRITE.test(verb) ? [...step.write, ...step.carry] : null;
+    const from = role ? toks[r].from : negative ? sign.from : x.from;
+    const claim = (status: MathClaim["status"]) => out.push({ text: text.slice(from, x.to).trim(), status, problem: null, result: false });
+    if (role) {
+      if (!among(v, role)) claim("false");
+    } else if (!among(v, step.known)) claim("unsupported");
+  }
+  return out;
 }

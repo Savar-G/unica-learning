@@ -4,19 +4,20 @@
 // instead of guessing. Maya's own claims are checked in claims.ts. Pure TypeScript.
 import type { AnswerValue } from "@/lib/question-package";
 
-const UNITS: Record<string, number> = {
-  zero: 0, one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8, nine: 9,
-};
-const TEENS: Record<string, number> = {
-  ten: 10, eleven: 11, twelve: 12, thirteen: 13, fourteen: 14, fifteen: 15, sixteen: 16, seventeen: 17, eighteen: 18, nineteen: 19,
-};
-const TENS: Record<string, number> = {
-  twenty: 20, thirty: 30, forty: 40, fifty: 50, sixty: 60, seventy: 70, eighty: 80, ninety: 90,
-};
-/** Fraction and place words after a number ("three quarters", "six tenths"): a form code does not read yet. */
-const UNREAD = /^(?:halfs?|halves|thirds?|quarters?|fourths?|fifths?|sixths?|sevenths?|eighths?|ninths?|tenths?|hundredths?|thousandths?)$/;
-/** Words and signs that change a number's value ("66 squared", "66%", "to the power"): a form code does not read yet. */
-const CHANGES = /^(?:squared|cubed|percent|power|%|\^|[\u00B2\u00B3\u00B9\u2070-\u2079])$/;
+// Maps, not objects: a word such as "constructor" must never reach an inherited property.
+const WORD_VALUES = new Map<string, number>([
+  ["zero", 0], ["one", 1], ["two", 2], ["three", 3], ["four", 4], ["five", 5], ["six", 6], ["seven", 7], ["eight", 8], ["nine", 9],
+  ["ten", 10], ["eleven", 11], ["twelve", 12], ["thirteen", 13], ["fourteen", 14], ["fifteen", 15], ["sixteen", 16], ["seventeen", 17], ["eighteen", 18], ["nineteen", 19],
+  ["twenty", 20], ["thirty", 30], ["forty", 40], ["fifty", 50], ["sixty", 60], ["seventy", 70], ["eighty", 80], ["ninety", 90],
+]);
+/**
+ * Fraction words, scale words, and words and signs that change a number's value ("three quarters", "half of 66",
+ * "66 million", "66 squared", "66%", "the square root of 66", "to the power"), anywhere in a turn: a form code does not
+ * read yet, so the turn is confirmed and no number in it is scored.
+ */
+const CHANGES = /^(?:halfs?|halves|thirds?|quarters?|fourths?|fifths?|sixths?|sevenths?|eighths?|ninths?|tenths?|hundredths?|thousandths?|millions?|billions?|trillions?|zillions?|gazillions?|lakhs?|crores?|dozens?|squared?|cubed?|roots?|sqrt|factorial|percent|power|twice|double|triple|decimal|dot|%|\^|[\u00B2\u00B3\u00B9\u2070-\u2079])$/;
+/** Place words right after a number ("66 tens"): they change its value, a form code does not read yet. */
+const PLACE = /^(?:ones|tens|hundreds|thousands)$/;
 /**
  * Operations between two numbers ("27 minus 66", "27 + 66", "27 take away 66"): the second number is part of the
  * operation, not an answer. "minus" and "-" are read with the signs below.
@@ -30,17 +31,15 @@ const RESULT = /^(?:is|are|was|equals?|makes?|gives?|gets?|got|=)$/;
 /** The kind of a number word: it says which words can follow it in one number. */
 export type NumberWord = "unit" | "teen" | "ten" | "hundred" | "thousand";
 
-const KINDS: Record<string, NumberWord> = {
-  ...Object.fromEntries(Object.keys(UNITS).map((w) => [w, "unit"])),
-  ...Object.fromEntries(Object.keys(TEENS).map((w) => [w, "teen"])),
-  ...Object.fromEntries(Object.keys(TENS).map((w) => [w, "ten"])),
-  hundred: "hundred",
-  thousand: "thousand",
-};
+const KINDS = new Map<string, NumberWord>([
+  ...[...WORD_VALUES].map(([w, n]): [string, NumberWord] => [w, n < 10 ? "unit" : n < 20 ? "teen" : "ten"]),
+  ["hundred", "hundred"],
+  ["thousand", "thousand"],
+]);
 /** The kind of a number word ("sixty" is a ten), or null for any other word. */
-export const kindOf = (word: string): NumberWord | null => KINDS[word] ?? null;
-/** The value of a unit, teen or ten word ("sixty" is 60). */
-export const wordValue = (word: string): number => UNITS[word] ?? TEENS[word] ?? TENS[word];
+export const kindOf = (word: string): NumberWord | null => KINDS.get(word) ?? null;
+/** The value of a unit, teen or ten word ("sixty" is 60), or null for any other word. */
+export const wordValue = (word: string): number | null => WORD_VALUES.get(word) ?? null;
 /** A number word of this kind cannot continue a number whose last word was `last` ("six sixty" is 6 and 60). */
 export const startsNewNumber = (last: NumberWord | null, kind: NumberWord) =>
   kind === "unit" ? last === "unit" || last === "teen" : (kind === "teen" || kind === "ten") && (last === "unit" || last === "teen" || last === "ten");
@@ -51,6 +50,8 @@ export const startsNewNumber = (last: NumberWord | null, kind: NumberWord) =>
  */
 const TOKEN = /\d{1,3}(?:,\d{3})+(?:\.\d+)?|\d+(?:\.\d+)?|\.\d+|\/|-|[a-z]+|[+×*÷=%^\u00B2\u00B3\u00B9\u2070-\u2079]|[.!?;\n]/g;
 const BOUNDARY = /^[.!?;\n]$/;
+/** An ordinal ending on a written number ("66th"): the number is not an answer as said. */
+const ORDINAL = /\d(?:st|nd|rd|th)\b/i;
 
 /** Every minus sign as "-": the true minus and the dashes speech-to-text may write. */
 const plainMinus = (text: string) => text.replace(/[\u2212\u2012\u2013\u2014\uFE63\uFF0D]/g, "-");
@@ -84,7 +85,7 @@ export function readNumbers(text: string): NumbersRead {
   let decimals = "";
   let negative = false;
   let afterNumber = false;
-  let unreadable = false;
+  let unreadable = ORDINAL.test(text);
   const push = (n: number) => {
     operands.set(items.length, inOperation);
     items.push(negative ? -n : n);
@@ -112,7 +113,10 @@ export function readNumbers(text: string): NumbersRead {
       afterNumber = negative = inOperation = false;
       continue;
     }
-    if (CHANGES.test(token) || (token === "to" && tokens[i + 1] === "the" && (afterNumber || last !== null))) {
+    const next = tokens[i + 1] ?? "";
+    const numberNext = /^\d/.test(next) || kindOf(next) !== null;
+    if (CHANGES.test(token) || (token === "to" && next === "the" && (afterNumber || last !== null)) ||
+      (PLACE.test(token) && (afterNumber || last !== null))) {
       unreadable = true;
       continue;
     }
@@ -148,11 +152,18 @@ export function readNumbers(text: string): NumbersRead {
       mark("rem");
       continue;
     }
-    if (token === "point" && kindOf(tokens[i + 1] ?? "") === "unit") {
-      // "point eight five": the digits after the point, one word each.
+    if (token === "point" && kindOf(next) === "unit") {
+      // "point eight five": the digits after the point, one word each. A number word or a digit after them
+      // ("point six sixty") is a form code does not read.
       last ??= "unit";
-      while (kindOf(tokens[i + 1] ?? "") === "unit") decimals += String(wordValue(tokens[++i]));
+      while (kindOf(tokens[i + 1] ?? "") === "unit") decimals += String(wordValue(tokens[++i])!);
+      if (/^\d/.test(tokens[i + 1] ?? "") || kindOf(tokens[i + 1] ?? "") !== null) unreadable = true;
       flush();
+      continue;
+    }
+    // Any other "point" next to a number ("point sixty-six", "one point sixty-six", "66 point 0").
+    if (token === "point" && (numberNext || afterNumber || last !== null)) {
+      unreadable = true;
       continue;
     }
     // "two hundred and five" is one number; "27 and 66" is two numbers, and 66 is no answer on its own.
@@ -163,7 +174,6 @@ export function readNumbers(text: string): NumbersRead {
       inOperation = true;
       continue;
     }
-    if (UNREAD.test(token) && (afterNumber || last !== null || tokens[i - 1] === "a")) unreadable = true;
     const kind = kindOf(token);
     if (kind === null) {
       // Another word ends a number; a sign said before it still holds ("negative, I think, 66").
@@ -176,7 +186,7 @@ export function readNumbers(text: string): NumbersRead {
       case "unit":
       case "teen":
       case "ten":
-        current += wordValue(token);
+        current += wordValue(token)!;
         break;
       case "hundred":
         current = (last === null ? 1 : current) * 100;
@@ -224,6 +234,25 @@ const CORRECTION = /\b(?:no|wait|i mean|actually|oops)\b/i;
 export function committedText(text: string): string {
   const parts = text.split(CORRECTION);
   return parts[parts.length - 1];
+}
+
+/**
+ * What a turn takes back to, or null when it takes nothing back. A correction word takes back a number said before it
+ * ("66, no, 56"), and it puts a new answer in place when a number, or a form code cannot read, comes after it
+ * ("actually 56", "actually point sixty-six"). "No, I just knew it" takes nothing back. `kept` is the last number kept,
+ * or null when no number is kept or code cannot read it.
+ */
+export function takenBack(text: string): { kept: AnswerValue | null } | null {
+  const parts = text.split(CORRECTION);
+  if (parts.length === 1) return null;
+  const after = readNumbers(parts[parts.length - 1]);
+  const before = parts.slice(0, -1).some((p) => {
+    const read = readNumbers(p);
+    return read.values.length > 0 || read.unreadable;
+  });
+  if (!before && after.values.length === 0 && !after.unreadable) return null;
+  const readable = !after.unreadable && !after.lastInOperation && !offersChoice(parts[parts.length - 1]);
+  return { kept: readable ? after.values[after.values.length - 1] ?? null : null };
 }
 
 /** The text offers numbers as a choice ("is it 66 or 56?"): none of them is the child's answer yet. */
