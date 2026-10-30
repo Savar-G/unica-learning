@@ -174,6 +174,21 @@ describe("the question card", () => {
     expect(questionCrop(view.page, 9)).toBeNull();
     expect(questionCrop({ ...view.page, image: null }, 2)).toBeNull();
   });
+
+  it("has no card when another question's box overlaps the question's own box", async () => {
+    const view = await deskView(await family(), { parentId: PARENT, childId: CHILD });
+    if (view.status !== "ready") throw new Error(view.status);
+    // Review R349-6, round 6: no side of the crop can stop at a box that overlaps the question itself.
+    const box = (number: number, x: number, y: number) => ({ ...view.page.questions[0], number, box: { x, y, width: 100, height: 50 } });
+    const page = (others: ReturnType<typeof box>[]) =>
+      ({ ...view.page, image: { ...view.page.image!, width: 400, height: 400 }, questions: [box(1, 100, 100), ...others] });
+    for (const [x, y] of [[150, 100], [50, 100], [100, 130], [100, 70], [150, 130], [120, 110], [80, 90]]) {
+      expect(questionCrop(page([box(2, x, y)]), 1)).toBeNull();
+      expect(questionCrop(page([box(2, x, y)]), 2)).toBeNull();
+    }
+    // Touching edges do not overlap: the card stays.
+    expect(questionCrop(page([box(2, 200, 100)]), 1)?.box).toEqual({ x: 84, y: 84, width: 116, height: 82 });
+  });
 });
 
 describe("tap areas", () => {

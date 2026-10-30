@@ -180,6 +180,9 @@ export interface QuestionCrop {
   top: number;
 }
 
+const overlaps = (a: QuestionBox, b: QuestionBox) =>
+  a.x < b.x + b.width && b.x < a.x + a.width && a.y < b.y + b.height && b.y < a.y + a.height;
+
 export function questionCrop(page: DeskPage, question: number, margin = 16): QuestionCrop | null {
   const q = page.questions.find((x) => x.number === question);
   const image = page.image;
@@ -201,6 +204,8 @@ export function questionCrop(page: DeskPage, question: number, margin = 16): Que
     else if (o.y >= q.box.y + q.box.height) bottom = Math.min(bottom, o.y);
   }
   const box = { x: left, y: top, width: right - left, height: bottom - top };
+  // Boxes that overlap the question's own box cannot be trimmed apart: no card, so the desk shows the question's text.
+  if (page.questions.some((other) => other !== q && overlaps(box, other.box))) return null;
   return { question, box, imageWidth: percent(image.width, box.width), left: -percent(box.x, box.width), top: -percent(box.y, box.height) };
 }
 
