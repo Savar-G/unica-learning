@@ -9,3 +9,16 @@ export function redactPathTokens(path: string): string {
   try { decoded = decodeURIComponent(path); } catch {}
   return QR_PAGE.test(decoded) ? decoded.replace(QR_PAGE, "$1token") : path;
 }
+
+/** A full address with any QR token in its path replaced by "token" (review R349-4); a bare path works too. */
+export function redactUrlTokens(url: string): string {
+  try {
+    const parsed = new URL(url);
+    const path = redactPathTokens(parsed.pathname);
+    if (path === parsed.pathname) return url;
+    parsed.pathname = path;
+    return parsed.toString();
+  } catch {
+    return redactPathTokens(url);
+  }
+}
