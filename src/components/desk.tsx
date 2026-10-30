@@ -8,7 +8,8 @@ import type { QuestionBoard } from "@/lib/desk-board";
 import type { ForgotPinResult } from "@/lib/parent-pin-server";
 import { track } from "@/lib/track";
 import { AnnounceDesk } from "@/components/desk-guard";
-import { MayaBoard } from "@/components/maya-board";
+import { Avatar, Icon } from "@/components/desk-icons";
+import { OurBoard } from "@/components/our-board";
 import "./desk.css";
 
 // The child's desk (#301, D-184), as in the guidance demo video: a slim rail (the desk, the workbooks, progress, and the
@@ -33,41 +34,6 @@ const subscribeMotion = (change: () => void) => {
 /** True when the device asks for less motion: the board then shows the question at once. */
 // The server and the first render say false: the board starts to draw after hydration, never shows the end first.
 const useStill = () => useSyncExternalStore(subscribeMotion, () => window.matchMedia("(prefers-reduced-motion: reduce)").matches, () => false);
-
-// ---------- icons (24 px grid, drawn with a 1.8 px line) ----------
-
-const ICONS = {
-  home: <><path d="M4 11 12 4l8 7" /><path d="M6 9.5V20h12V9.5" /></>,
-  book: <><path d="M12 6.5C10 5 7 4.5 4 5v13c3-.5 6 0 8 1.5 2-1.5 5-2 8-1.5V5c-3-.5-6 0-8 1.5Z" /><path d="M12 6.5v13" /></>,
-  chart: <><path d="M5 20h14" /><path d="M8 16v-4" /><path d="M12 16V8" /><path d="M16 16v-6" /></>,
-  lock: <><rect x="5" y="10.5" width="14" height="9.5" rx="2" /><path d="M8 10.5V8a4 4 0 0 1 8 0v2.5" /></>,
-  sound: <><path d="M4 9.5h3.5L12 6v12l-4.5-3.5H4z" /><path d="M15.5 9.5a3.5 3.5 0 0 1 0 5" /><path d="M18 7a7 7 0 0 1 0 10" /></>,
-  chat: <><path d="M5 6h14v9H10l-4 3.5V15H5z" /></>,
-  phone: <><path d="M7 4h3l1.5 4-2 1.5a10 10 0 0 0 5 5l1.5-2 4 1.5v3a2 2 0 0 1-2 2A15 15 0 0 1 5 6a2 2 0 0 1 2-2Z" /></>,
-  board: <><rect x="3.5" y="5" width="17" height="11" rx="1.5" /><path d="m8 13 2.5-3 2 2 3.5-4" /><path d="M9 20h6" /><path d="M12 16v4" /></>,
-  pen: <><path d="M15.5 5.5 18.5 8.5 9 18l-4 1 1-4z" /><path d="m13.5 7.5 3 3" /></>,
-  eraser: <><path d="m9.5 19-4-4a1.5 1.5 0 0 1 0-2l7.5-7.5a1.5 1.5 0 0 1 2 0l4 4a1.5 1.5 0 0 1 0 2L12 19z" /><path d="M9.5 19H19" /><path d="m8.5 10 5.5 5.5" /></>,
-  undo: <><path d="M9 7 5 11l4 4" /><path d="M5 11h9a5 5 0 0 1 0 10h-2" /></>,
-  send: <><path d="M5 12 19 5l-4 14-3-6z" /><path d="m12 13 7-8" /></>,
-  close: <><path d="m6 6 12 12" /><path d="M18 6 6 18" /></>,
-  page: <><path d="M7 3.5h7l4 4V20a.5.5 0 0 1-.5.5h-10.5A.5.5 0 0 1 6.5 20V4a.5.5 0 0 1 .5-.5Z" /><path d="M14 3.5V8h4" /><path d="M9.5 12.5h5" /><path d="M9.5 16h5" /></>,
-  qr: <><rect x="4" y="4" width="6" height="6" rx="1" /><rect x="14" y="4" width="6" height="6" rx="1" /><rect x="4" y="14" width="6" height="6" rx="1" /><path d="M14 14h2v2h-2zM18 18h2v2h-2zM14 18h2M18 14h2" /></>,
-} as const;
-
-function Icon({ name, size = 22 }: { name: keyof typeof ICONS; size?: number }) {
-  return (
-    <svg className="desk-icon" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-      {ICONS[name]}
-    </svg>
-  );
-}
-
-/** Maya's picture, from the FigJam board (102:122). */
-function Avatar({ size }: { size: number }) {
-  // A small fixed picture; the image optimizer adds nothing here.
-  // eslint-disable-next-line @next/next/no-img-element
-  return <img className="desk-avatar" src="/desk/maya.webp" alt="" width={size} height={size} />;
-}
 
 // ---------- the desk ----------
 
@@ -206,37 +172,15 @@ export function Desk(props: DeskProps) {
           <button type="button" disabled aria-pressed="true"><Icon name="board" size={18} />Call + board</button>
         </div>
 
-        <section className="desk-board" aria-labelledby="desk-board-title">
-          <header>
-            <h2 id="desk-board-title">Our board</h2>
-            <p><Avatar size={22} />Maya draws here in a call</p>
-          </header>
-          <div className="desk-board-body">
-            <div className="desk-canvas">
-              {card?.board ? (
-                <MayaBoard key={card.number} steps={card.board.steps} viewBox={card.board.viewBox} instant={still}
-                  label={`Question ${card.number}${card.text ? `: ${card.text}` : ""}, written in columns`} />
-              ) : null}
-              <p className="desk-caption">
-                {!card ? "Pick a question from your page. It shows here."
-                  : card.board ? `Number ${card.number}, from your page.` : `Number ${card.number} is on your card.`}
-              </p>
-            </div>
-            <div className="desk-tools" role="group" aria-label="Board tools">
-              <button type="button" disabled aria-pressed="true" aria-label="Pen"><Icon name="pen" /></button>
-              <button type="button" disabled aria-label="Eraser"><Icon name="eraser" /></button>
-              <button type="button" disabled aria-label="Undo"><Icon name="undo" /></button>
-              <button type="button" disabled className="desk-clear">Clear</button>
-              <span className="desk-ink maya"><i />Maya</span>
-              <span className="desk-ink you"><i />You</span>
-            </div>
-          </div>
-        </section>
-
-        <div className="desk-pen">
-          <Avatar size={26} /><span>In a call, Maya has the pen</span>
-          <button type="button" disabled>Take the pen</button>
-        </div>
+        <OurBoard
+          key={`${ready?.book.id ?? "none"}:${ready?.page.number ?? 0}:${card?.number ?? "none"}`}
+          question={card?.board ?? null}
+          at={{ book: ready?.book.id ?? "none", page: ready?.page.number ?? 0, question: card?.number ?? null }}
+          still={still}
+          label={card ? `Question ${card.number}${card.text ? `: ${card.text}` : ""}, written in columns` : "Our board"}
+          caption={!card ? "Pick a question from your page. It shows here."
+            : card.board ? `Number ${card.number}, from your page.` : `Number ${card.number} is on your card.`}
+        />
       </div>
       </main>
 
