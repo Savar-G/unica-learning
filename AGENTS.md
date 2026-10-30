@@ -10,7 +10,7 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
 
 # Unica Learning landing page - working conventions
 
-Personalized, mailed math and reading workbooks for ages 5 to 14 (Kindergarten to Grade 9). The brand is Unica Learning (D-056). Never write "Pagewise" in new code or copy; only the Supabase project name and old design records still use it. Design truth: `DESIGN.md`. Decision history: `.design/decisions.md`.
+Personalized, mailed math and reading workbooks for ages 5 to 14 (Kindergarten to Grade 9). The brand is Unica Learning (D-056). Never write "Pagewise" in new code or copy; only the Supabase project name and old design records still use it. Design truth: `DESIGN.md`. Decision history: `.design/decisions.md`. Workbook pages: `.design/workbooks/DESIGN.md`; what goes into a workbook and when the generator runs: `.design/workbooks/CONTEXT.md` (from Cedric's samples in `.design/workbooks/samples/`).
 
 ## Agent rules
 
