@@ -309,6 +309,24 @@ describe("accepted forms and equivalent fractions", () => {
     expect(checkQuestionPackage(p)).toEqual(failed("the accepted form 4.1 is not the answer's number"));
   });
 
+  it("refuses a remainder of 0 as a wrong answer, as it is the answer", () => {
+    const p = packageOf({ kind: "divide", operands: [52, 2] }, num(26), { kind: "divide", operands: [8, 2] }, num(4), "5.6");
+    p.wrongAnswers[0].value = { type: "remainder", quotient: 26, remainder: 0 };
+    expect(checkQuestionPackage(p)).toEqual(failed("the wrong answer 26 R 0 is a right answer"));
+  });
+
+  it("keeps a remainder too big as a wrong answer", () => {
+    const p = packageOf({ kind: "divide", operands: [157, 6] }, { type: "remainder", quotient: 26, remainder: 1 }, { kind: "divide", operands: [57, 6] }, { type: "remainder", quotient: 9, remainder: 3 }, "5.6");
+    p.wrongAnswers[0].value = { type: "remainder", quotient: 25, remainder: 7 };
+    expect(checkQuestionPackage(p).status).toBe("checked");
+  });
+
+  it("refuses a mixed number with no whole or a fraction part of 1 or more", () => {
+    const p = fractionAdd();
+    p.answer.accepted = [{ type: "mixed", whole: 0, numerator: 5, denominator: 4 }];
+    expect(checkQuestionPackage(p)).toEqual(failed("an accepted form is not a mixed number: a whole number from 1 and a fraction below 1"));
+  });
+
   it("takes a simplification only in simplest form", () => {
     const p = packageOf({ kind: "fraction-simplify", operands: [frac(12, 8)] }, mixed(1, 1, 2), { kind: "fraction-simplify", operands: [frac(2, 4)] }, frac(1, 2), "5.3");
     p.answer.accepted = [frac(3, 2)];
@@ -343,17 +361,50 @@ describe("operations code cannot check, or that are wrong", () => {
     expect(checkQuestionPackage({ ...base(), stepsVersion: 1 }).status).toBe("checked");
   });
 
+  const unsupported = (reason: string) => ({ ok: false, status: "unsupported", reason });
+
   it.each([
-    ["a division by zero", { kind: "divide", operands: [12, 0] }, "the division needs a whole number from 0 to 9999 divided by a whole number from 1 to 99"],
-    ["a multiplier too big", { kind: "multiply", operands: [12, 1000] }, "the multiplication needs a whole number from 0 to 9999 times a whole number from 0 to 999"],
-    ["a decimal with four places", { kind: "decimal-add", operands: [1.2345, 1] }, "the operation needs two numbers from 0 to 9999.999 with at most 3 decimal places"],
+    ["a multiplier of 1000", { kind: "multiply", operands: [12, 1000] }, "code checks multiplications only up to 9999 × 999"],
+    ["a dividend of 10000", { kind: "divide", operands: [10000, 7] }, "code checks divisions only up to 9999 ÷ 99"],
+    ["a decimal with four places", { kind: "decimal-add", operands: [1.2345, 1] }, "code checks decimals only up to 9999.999, with at most 3 decimal places"],
+    ["a whole part above 9999", { kind: "decimal-add", operands: [9999000, 1] }, "code checks decimals only up to 9999.999, with at most 3 decimal places"],
+    ["a decimal product too long", { kind: "decimal-multiply", operands: [123.45, 1.2] }, "code checks decimal multiplications only with up to 4 digits in the first number and 3 in the second"],
+    ["a denominator of 120", { kind: "fraction-add", operands: [frac(1, 120), frac(1, 2)] }, "code checks fractions only with denominators up to 100, numerators up to 999 and whole numbers up to 99"],
+  ] as const)("returns unsupported for a well-formed operation beyond code: %s", (_name, operation, reason) => {
+    const p = base() as unknown as { operation: unknown };
+    p.operation = operation;
+    expect(checkQuestionPackage(p)).toEqual(unsupported(reason));
+  });
+
+  it("returns unsupported for an answer type code does not know", () => {
+    const p = base() as unknown as { wrongAnswers: { value: unknown }[] };
+    p.wrongAnswers[0].value = { type: "percent", value: 12 };
+    expect(checkQuestionPackage(p)).toEqual(unsupported("code cannot check answers of type percent"));
+  });
+
+  it("returns unsupported for an easier example beyond code", () => {
+    const p = base();
+    (p.easierExample.operation as { operands: number[] }).operands = [12, 1000];
+    expect(checkQuestionPackage(p)).toEqual(unsupported("the easier example: code checks multiplications only up to 9999 × 999"));
+  });
+
+  it("checks decimals up to 9999.999", () => {
+    const p = packageOf({ kind: "decimal-subtract", operands: [9999.999, 0.001] }, num(9999.998), { kind: "decimal-subtract", operands: [0.3, 0.1] }, num(0.2), "5.7");
+    expect(checkQuestionPackage(p).status).toBe("checked");
+  });
+
+  it.each([
+    ["a division by zero", { kind: "divide", operands: [12, 0] }, "the division is by zero"],
+    ["a negative number", { kind: "multiply", operands: [-3, 4] }, "the operation needs two whole numbers"],
     ["a decimal subtraction below zero", { kind: "decimal-subtract", operands: [1.5, 1.75] }, "the subtraction goes below zero"],
-    ["a decimal product too long", { kind: "decimal-multiply", operands: [123.45, 1.2] }, "the multiplication needs at most 4 digits in the first number and 3 in the second"],
-    ["a fraction over 0", { kind: "fraction-add", operands: [frac(1, 0), frac(1, 2)] }, "the operation needs fractions with denominators from 1 to 100, mixed numbers or whole numbers to 99"],
+    ["a fraction over 0", { kind: "fraction-add", operands: [frac(1, 0), frac(1, 2)] }, "the operation needs fractions, mixed numbers or whole numbers"],
+    ["a mixed number with no whole", { kind: "fraction-add", operands: [mixed(0, 1, 2), frac(1, 2)] }, "the operation needs fractions, mixed numbers or whole numbers"],
     ["a fraction subtraction below zero", { kind: "fraction-subtract", operands: [frac(1, 4), frac(1, 2)] }, "the subtraction goes below zero"],
     ["a fraction division by zero", { kind: "fraction-divide", operands: [frac(1, 4), frac(0, 2)] }, "the division is by zero"],
     ["a mixed number to simplify", { kind: "fraction-simplify", operands: [mixed(1, 2, 4)] }, "the operation needs one fraction"],
     ["a new denominator that does not fit", { kind: "fraction-equivalent", operands: [frac(2, 4)], denominator: 6 }, "the new denominator must be a multiple or a factor of the denominator, and give a whole numerator"],
+    ["no operation", undefined, "the operation is missing"],
+    ["a kind that is not text", { kind: 5, operands: [1, 2] }, "the operation has no kind"],
   ] as const)("fails %s", (_name, operation, reason) => {
     const p = base() as unknown as { operation: unknown };
     p.operation = operation;
@@ -411,5 +462,26 @@ describe("step words", () => {
       "17/12 is 1 whole and 5/12 more: 1 5/12.",
       "2/3 + 3/4 = 1 5/12",
     ]);
+  });
+});
+
+describe("a broken package", () => {
+  it("never throws when any field is replaced by junk", () => {
+    const junk: unknown[] = [null, undefined, {}, [], "x", 5, -1, { type: "fraction" }];
+    for (const k of KINDS) {
+      const sound = packageOf(k.operation, k.answer, k.easier, k.easierAnswer, k.standard) as unknown as Record<string, Record<string, unknown>>;
+      const paths: [string, string | null][] = [
+        ...Object.keys(sound).map((key): [string, null] => [key, null]),
+        ...["operation", "answer", "easierExample"].flatMap((key) => Object.keys(sound[key]).map((sub): [string, string] => [key, sub])),
+      ];
+      for (const [key, sub] of paths) {
+        for (const value of junk) {
+          const p = structuredClone(sound);
+          if (sub === null) p[key] = value as Record<string, unknown>;
+          else p[key][sub] = value;
+          expect(() => checkQuestionPackage(p), `${k.name}: ${key}.${sub} = ${JSON.stringify(value)}`).not.toThrow();
+        }
+      }
+    }
   });
 });

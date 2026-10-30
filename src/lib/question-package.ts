@@ -13,7 +13,17 @@
 // compute, or steps of a version it cannot read, are "unsupported", never a pass.
 // Pure TypeScript: no Next.js, React, network, database or clock.
 import { BC_SKILL_MAP } from "@/lib/assessment";
-import { computation, gcd, isOperationKind, operationProblem, operationResult, operationText, valueText, workedSteps } from "@/lib/question-package-math";
+import {
+  computation,
+  gcd,
+  operationCheck,
+  operationProblem,
+  operationResult,
+  operationText,
+  valueText,
+  workedSteps,
+  type SameNumberWrongRule,
+} from "@/lib/question-package-math";
 
 export { operationProblem, operationResult, operationText, stepText, workedSteps } from "@/lib/question-package-math";
 
@@ -129,7 +139,10 @@ export type WorkedStep =
       addedZero?: true;
     }
   | {
-      /** "r<row>-<place>": row 1 is the multiplier's ones digit. */
+      /**
+       * "r<row>-<place>": row 1 is the multiplier's ones digit. A decimal multiplication works its numbers without the
+       * points (2.5 x 1.3 as 25 x 13), so its places are those of the whole numbers; "place-point" then puts the point.
+       */
       id: string;
       kind: "multiply-digit";
       /** The place of the multiplier's digit; its row is written that many places to the left. */
@@ -297,10 +310,12 @@ function sameData(a: unknown, b: unknown): boolean {
 }
 
 /**
- * A number, fraction or mixed number as an exact rational [numerator, denominator] (BigInt, denominator above 0), or
+ * A number, fraction, mixed number or a remainder answer with no remainder as an exact rational [numerator, denominator] (BigInt, denominator above 0), or
  * null for a value that is not one of them. A decimal is read from its written digits, so 85.0000000001 is not 85.
  */
 function rational(v: AnswerValue): [bigint, bigint] | null {
+  // "26 R 0" is the number 26; any other remainder answer is a form of its own.
+  if (v.type === "remainder") return v.remainder === 0 && Number.isSafeInteger(v.quotient) ? [BigInt(v.quotient), BigInt(1)] : null;
   if (v.type === "fraction" || v.type === "mixed") {
     const whole = v.type === "mixed" ? v.whole : 0;
     if (![whole, v.numerator, v.denominator].every(Number.isInteger) || v.denominator <= 0) return null;
@@ -373,8 +388,8 @@ function valueProblem(value: unknown, what: string): string | null {
     case "fraction":
       return Number.isSafeInteger(value.numerator) && isWhole(value.denominator, 1) ? null : `${what} is not a fraction with a whole numerator and a denominator from 1`;
     case "mixed":
-      return isCount(value.whole) && isCount(value.numerator) && isWhole(value.denominator, 1)
-        ? null : `${what} is not a mixed number with whole parts and a denominator from 1`;
+      return isWhole(value.whole, 1) && isWhole(value.numerator, 1) && isWhole(value.denominator, 2) && value.numerator < value.denominator
+        ? null : `${what} is not a mixed number: a whole number from 1 and a fraction below 1`;
     case "remainder":
       return isCount(value.quotient) && isCount(value.remainder) ? null : `${what} is not a quotient and a remainder of whole numbers`;
     case "expression":
@@ -402,9 +417,14 @@ function partProblem(operation: unknown, answer: unknown, steps: unknown, what: 
   return null;
 }
 
-/** How big an operation is: the digits it is written with, then its count of worked steps. An easier one is smaller. */
-const size = (operation: Operation): [number, number] => [(operationText(operation).match(/\d/g) ?? []).length, workedSteps(operation).length];
-const smaller = ([d1, s1]: [number, number], [d2, s2]: [number, number]) => d1 < d2 || (d1 === d2 && s1 < s2);
+/** How big an operation is: the digits it is written with, then its count of worked steps. */
+interface Size {
+  digits: number;
+  steps: number;
+}
+const size = (operation: Operation): Size => ({ digits: (operationText(operation).match(/\d/g) ?? []).length, steps: workedSteps(operation).length });
+/** An easier example has fewer digits, or as many digits and fewer steps (1/5 + 2/5 is easier than 2/3 + 3/4). */
+const smaller = (a: Size, b: Size) => a.digits < b.digits || (a.digits === b.digits && a.steps < b.steps);
 
 type Problem = { status: "failed" | "unsupported"; reason: string };
 const failed = (reason: string | null): Problem | null => (reason ? { status: "failed", reason } : null);
@@ -420,10 +440,31 @@ function packageProblem(p: unknown): Problem | null {
     if (!isWhole(p.stepsVersion, 1)) return failed("the steps version is not a whole number from 1");
     if (!STEPS_VERSIONS.includes(p.stepsVersion)) return { status: "unsupported", reason: `code cannot read worked steps of version ${p.stepsVersion}` };
   }
-  if (isObject(p.operation) && typeof p.operation.kind === "string" && !isOperationKind(p.operation.kind)) {
-    return { status: "unsupported", reason: `code cannot check the operation ${p.operation.kind}` };
-  }
+  const operation = operationCheck(p.operation);
+  if (operation?.status === "unsupported") return operation;
+  const form = unknownForm(p);
+  if (form) return { status: "unsupported", reason: `code cannot check answers of type ${form}` };
+  // Only an easier example of the question's (valid) operation kind can be beyond code; another kind fails later.
+  const easier = operation === null && isObject(p.easierExample) && isObject(p.easierExample.operation)
+    && p.easierExample.operation.kind === (p.operation as Operation).kind ? operationCheck(p.easierExample.operation) : null;
+  if (easier?.status === "unsupported") return { status: "unsupported", reason: `the easier example: ${easier.reason}` };
   return failed(contentProblem(p));
+}
+
+const ANSWER_TYPES: readonly string[] = ["number", "fraction", "mixed", "remainder", "expression", "choice", "text"];
+
+/** The first answer type in the package that code does not know, or null. */
+function unknownForm(p: Record<string, unknown>): string | null {
+  const answer = isObject(p.answer) ? p.answer : {};
+  const easier = isObject(p.easierExample) ? p.easierExample : {};
+  const values = [
+    answer.value,
+    ...(Array.isArray(answer.accepted) ? answer.accepted : []),
+    ...(Array.isArray(p.wrongAnswers) ? p.wrongAnswers.map((w) => (isObject(w) ? w.value : null)) : []),
+    easier.answer,
+  ];
+  const unknown = values.find((v) => isObject(v) && typeof v.type === "string" && !ANSWER_TYPES.includes(v.type));
+  return unknown ? String((unknown as { type: string }).type) : null;
 }
 
 /** The answer, the steps and everything after them, for a package whose operation code can compute. */
@@ -447,7 +488,7 @@ function contentProblem(p: Record<string, unknown>): string | null {
     if (rules.accepted === "simplest" && !isSimplest(form as AnswerValue)) return `the accepted form ${valueText(form as AnswerValue)} is not in simplest form`;
   }
   if (answer.unit !== null && !isText(answer.unit)) return "the unit is not text or null";
-  const right = [value, ...answer.accepted] as AnswerValue[];
+  const rightForms = [value, ...answer.accepted] as AnswerValue[];
 
   if (!isObject(p.skill) || !isText(p.skill.standard) || !Array.isArray(p.skill.skills)) return "the skill needs a standard and a list of skills";
   const code = p.skill.standard;
@@ -468,7 +509,7 @@ function contentProblem(p: Record<string, unknown>): string | null {
     const problem = valueProblem(w.value, "a wrong answer");
     if (problem) return problem;
     const wrongValue = w.value as AnswerValue;
-    if (isRight(wrongValue, right, exact, rules.sameNumberWrong)) return `the wrong answer ${valueText(wrongValue)} is a right answer`;
+    if (isRight(wrongValue, rightForms, exact, rules.sameNumberWrong)) return `the wrong answer ${valueText(wrongValue)} is a right answer`;
     if (seen.some((s) => equivalent(s, wrongValue))) return `the wrong answer ${valueText(wrongValue)} is listed twice`;
     seen.push(wrongValue);
     if (!isText(w.cause) || !isText(w.description)) return "a wrong answer needs a cause and its description";
@@ -489,8 +530,8 @@ function contentProblem(p: Record<string, unknown>): string | null {
  * A wrong answer that is really right: the answer or an accepted form, or the answer's number in a form the rules do not
  * let stay wrong (a fraction that is not simplified may stay wrong; for "3/4 = ?/12", 3/4 is wrong).
  */
-function isRight(wrong: AnswerValue, right: AnswerValue[], exact: AnswerValue, rule: "never" | "unsimplified" | "any"): boolean {
-  if (right.some((r) => sameValue(r, wrong))) return true;
+function isRight(wrong: AnswerValue, rightForms: AnswerValue[], exact: AnswerValue, rule: SameNumberWrongRule): boolean {
+  if (rightForms.some((r) => sameValue(r, wrong))) return true;
   if (!sameNumber(wrong, exact)) return false;
   if (rule === "any") return false;
   if (rule === "unsimplified") return (wrong.type === "fraction" || wrong.type === "mixed") ? isSimplest(wrong) : true;
