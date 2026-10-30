@@ -138,6 +138,21 @@ export function decimalPlaces([, d]: Rational): number | null {
   return rest === ONE ? Math.max(twos, fives) : null;
 }
 
+/**
+ * A finite number as the exact rational of its written digits, or null for any other value. String() writes very small
+ * and very large numbers with an exponent (1e-7, 1e+21), so the exponent is read too. 85.0000000001 is not 85.
+ */
+export function decimalRational(x: unknown): Rational | null {
+  if (typeof x !== "number" || !Number.isFinite(x)) return null;
+  const m = /^(-?)(\d+)(?:\.(\d+))?(?:e([+-]?\d+))?$/.exec(String(x));
+  if (!m) return null;
+  const decimals = m[3] ?? "";
+  const exponent = Number(m[4] ?? 0) - decimals.length;
+  const digits = BigInt(m[1] + m[2] + decimals);
+  const ten = BigInt(10);
+  return exponent >= 0 ? [digits * ten ** BigInt(exponent), ONE] : rational(digits, ten ** BigInt(-exponent));
+}
+
 /** The digits of a rational whose decimal ends, without its sign: 35/4 is "8.75". */
 export function decimalDigits(r: Rational): string {
   const places = decimalPlaces(r) ?? 0;

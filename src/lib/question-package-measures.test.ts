@@ -571,3 +571,166 @@ describe("an exact result with no finite decimal (#354 review)", () => {
     expect(operationResult({ kind: "money-round", operands: [qty(0.03, "$")] })).toEqual(qty(0.05, "$"));
   });
 });
+
+describe("the same amount in another unit, compared exactly (#354 review, R354-1)", () => {
+  // 0.1 mm + 0.1 mm = 0.2 mm = 0.0002 m = 0.0000002 km (String writes the last as 2e-7). Each is the right amount.
+  const add: Operation = { kind: "quantity-add", operands: [qty(0.1, "mm"), qty(0.1, "mm")] };
+  const sound = () => packageOf(add, qty(0.2, "mm"), { kind: "quantity-add", operands: [qty(0, "mm"), qty(0, "mm")] }, qty(0, "mm"), "3.9");
+
+  it("checks the package with its answer in mm", () => {
+    expect(checkQuestionPackage(sound()).status).toBe("checked");
+  });
+
+  it.each([qty(0.0002, "m"), qty(0.0000002, "km"), qty(0.02, "cm")])("takes %j as the answer", (value) => {
+    const p = sound();
+    p.answer.value = value;
+    expect(checkQuestionPackage(p).status).toBe("checked");
+  });
+
+  it.each([qty(0.0002, "m"), qty(0.0000002, "km"), qty(0.02, "cm")])("takes %j as an accepted form", (value) => {
+    const p = sound();
+    p.answer.accepted = [value];
+    expect(checkQuestionPackage(p).status).toBe("checked");
+  });
+
+  it("refuses 0.0002 m and 2e-7 km as wrong answers: they are right", () => {
+    const p = sound();
+    p.wrongAnswers[0].value = qty(0.0002, "m");
+    expect(checkQuestionPackage(p)).toEqual(failed("the wrong answer 0.0002 m is a right answer"));
+    p.wrongAnswers[0].value = qty(0.0000002, "km");
+    expect(checkQuestionPackage(p)).toEqual(failed("the wrong answer 2e-7 km is a right answer"));
+  });
+
+  it("still fails an amount in another unit that is not the same: 0.0003 m", () => {
+    const p = sound();
+    p.answer.value = qty(0.0003, "m");
+    expect(checkQuestionPackage(p)).toEqual(failed("the question's answer is not what its operation gives"));
+    const q = sound();
+    q.answer.accepted = [qty(0.0003, "m")];
+    expect(checkQuestionPackage(q)).toEqual(failed("the accepted form 0.0003 m is not the answer's amount"));
+    const r = sound();
+    r.wrongAnswers[0].value = qty(0.0003, "m");
+    expect(checkQuestionPackage(r).status).toBe("checked");
+  });
+
+  it("takes the easier example's answer in another unit, and fails it when it is not the same amount", () => {
+    const p = packageOf({ kind: "quantity-add", operands: [qty(1.15, "mm"), qty(1.15, "mm")] }, qty(2.3, "mm"), add, qty(0.0002, "m"), "3.9");
+    expect(checkQuestionPackage(p).status).toBe("checked");
+    p.easierExample.answer = qty(0.0003, "m");
+    expect(checkQuestionPackage(p)).toEqual(failed("the easier example's answer is not what its operation gives"));
+  });
+});
+
+describe("an amount String writes with an exponent (#354 review, R354-2)", () => {
+  const base = () => packageOf({ kind: "convert", operands: [qty(2.5, "km")], unit: "m" }, qty(2500, "m"), { kind: "convert", operands: [qty(3, "km")], unit: "m" }, qty(3000, "m"), "3.9");
+  const big = "code checks amounts only up to 99999.999, with at most 3 decimal places";
+
+  it.each([1e-7, 2e-7, 1e-10, 1e21, Number.MAX_VALUE, Number.MIN_VALUE])("returns unsupported for an operand of %d m", (value) => {
+    const p = base();
+    p.operation = { kind: "convert", operands: [qty(value, "m")], unit: "mm" };
+    expect(checkQuestionPackage(p)).toEqual(unsupported(big));
+  });
+
+  it.each([1e-7, 1e21])("returns unsupported for an easier example's operand of %d m", (value) => {
+    const p = base();
+    p.easierExample.operation = { kind: "convert", operands: [qty(value, "m")], unit: "mm" };
+    expect(checkQuestionPackage(p)).toEqual(unsupported(`the easier example: ${big}`));
+  });
+
+  it.each([-1e-7, -1e21, Infinity, NaN])("still fails an operand of %d m", (value) => {
+    const p = base();
+    p.operation = { kind: "convert", operands: [qty(value, "m")], unit: "mm" };
+    expect(checkQuestionPackage(p)).toEqual(failed("the operation needs an amount from 0 in a unit"));
+  });
+
+  it("still fails an exponent amount that is not whole cents or has more than 2 places in dollars", () => {
+    const p = base();
+    p.operation = { kind: "convert", operands: [qty(1e-7, "¢")], unit: "$" };
+    expect(checkQuestionPackage(p)).toEqual(failed("an amount in ¢ is a whole number"));
+    p.operation = { kind: "convert", operands: [qty(1e-7, "$")], unit: "¢" };
+    expect(checkQuestionPackage(p)).toEqual(failed("an amount in $ has at most 2 decimal places"));
+  });
+});
+
+describe("every pair of units of one measure, generated (#354 review)", () => {
+  // An independent exact computation: an amount is its decimal digits over a power of ten, times the unit's size in the
+  // measure's smallest unit (written out here from the SI and the Canadian dollar). A sum in one unit is written in every
+  // other unit of its measure whose decimal ends; that form must be taken as the answer and as an accepted form, and
+  // refused as a wrong answer. A failed right answer or a checked right wrong answer is the defect.
+  const SIZE: Record<Unit, [string, bigint]> = {
+    mm: ["length", BigInt(1)], cm: ["length", BigInt(10)], m: ["length", BigInt(1000)], km: ["length", BigInt(1000000)],
+    mg: ["mass", BigInt(1)], g: ["mass", BigInt(1000)], kg: ["mass", BigInt(1000000)], mL: ["capacity", BigInt(1)], L: ["capacity", BigInt(1000)],
+    s: ["time", BigInt(1)], min: ["time", BigInt(60)], h: ["time", BigInt(3600)], "¢": ["money", BigInt(1)], $: ["money", BigInt(100)],
+  };
+  const PLACES: Partial<Record<Unit, number>> = { "¢": 0, $: 2 };
+  const units = Object.keys(SIZE) as Unit[];
+  const ten = BigInt(10);
+
+  /** A count of the smallest unit over 10^places, written in `to` as a decimal string, or null when it does not end. */
+  function inUnit(count: bigint, places: number, to: Unit): string | null {
+    // count / 10^places / size(to), with the denominator cleared to a power of ten when it can be.
+    const den = ten ** BigInt(places) * SIZE[to][1];
+    let num = count;
+    let digits = 0;
+    while (num % den !== BigInt(0) && digits < 40) {
+      num *= ten;
+      digits++;
+    }
+    if (num % den !== BigInt(0)) return null;
+    const scaled = (num / den).toString().padStart(digits + 1, "0");
+    return digits === 0 ? scaled : `${scaled.slice(0, -digits)}.${scaled.slice(-digits)}`;
+  }
+
+  let seed = 354;
+  const random = (n: number) => {
+    seed = (seed * 1103515245 + 12345) % 2147483648;
+    return Math.floor((seed / 2147483648) * n);
+  };
+
+  const cases: { from: Unit; to: Unit; a: number; b: number; sum: number; other: number }[] = [];
+  for (const from of units) {
+    for (const to of units) {
+      if (from === to || SIZE[from][0] !== SIZE[to][0]) continue;
+      let made = 0;
+      for (let tries = 0; made < 25 && tries < 500; tries++) {
+        const places = random((PLACES[from] ?? 3) + 1);
+        const scaled = [100 + random(4900), 100 + random(4900)];
+        const [a, b] = scaled.map((s) => Number(inUnit(BigInt(s) * SIZE[from][1], places, from)));
+        const total = BigInt(scaled[0] + scaled[1]) * SIZE[from][1];
+        const other = inUnit(total, places, to);
+        if (other === null || (PLACES[to] !== undefined && (other.split(".")[1] ?? "").length > PLACES[to]!)) continue;
+        cases.push({ from, to, a, b, sum: Number(inUnit(total, places, from)), other: Number(other) });
+        made++;
+      }
+    }
+  }
+
+  it("generates cases for every pair of units of one measure", () => {
+    expect(new Set(cases.map((c) => `${c.from}>${c.to}`)).size).toBe(28);
+    expect(cases.length).toBeGreaterThan(500);
+  });
+
+  it("takes the sum in every other unit as the answer and as an accepted form, and refuses it as a wrong answer", () => {
+    const wrongWays: string[] = [];
+    for (const c of cases) {
+      const zero = c.from === "$" ? "¢" : c.from;
+      const make = () => packageOf({ kind: "quantity-add", operands: [qty(c.a, c.from), qty(c.b, c.from)] }, qty(c.sum, c.from), { kind: "quantity-add", operands: [qty(0, zero), qty(0, zero)] }, qty(0, zero), "3.9");
+      const label = `${c.a} ${c.from} + ${c.b} ${c.from} = ${c.other} ${c.to}`;
+      const control = make();
+      if (checkQuestionPackage(control).status !== "checked") {
+        wrongWays.push(`control ${label}: ${JSON.stringify(checkQuestionPackage(control))}`);
+        continue;
+      }
+      const main = make();
+      main.answer.value = qty(c.other, c.to);
+      if (checkQuestionPackage(main).status === "failed") wrongWays.push(`answer ${label}: ${JSON.stringify(checkQuestionPackage(main))}`);
+      const accepted = make();
+      accepted.answer.accepted = [qty(c.other, c.to)];
+      if (checkQuestionPackage(accepted).status === "failed") wrongWays.push(`accepted ${label}: ${JSON.stringify(checkQuestionPackage(accepted))}`);
+      const wrong = make();
+      wrong.wrongAnswers[0].value = qty(c.other, c.to);
+      if (checkQuestionPackage(wrong).status === "checked") wrongWays.push(`wrong ${label}: checked`);
+    }
+    expect(wrongWays).toEqual([]);
+  });
+});

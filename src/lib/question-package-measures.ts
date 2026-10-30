@@ -13,6 +13,7 @@ import {
   beyond,
   decimalDigits,
   decimalPlaces,
+  decimalRational,
   fail,
   fromWritten,
   isCount,
@@ -82,10 +83,13 @@ export interface Size {
   base: Rational;
 }
 
-/** A number from 0 as an exact rational, read from its written digits; null when it has more than 3 decimal places. */
-function exact(value: number): Rational | null {
-  const w = written(value, 3);
-  return w === null ? null : [big(w.scaled), big(10) ** big(w.places)];
+/**
+ * A number from 0 as an exact rational, read from its written digits (2e-7 too), or null. Any number of decimal places:
+ * the limit on what code computes (quantityProblem) is not a limit on which amounts are the same.
+ */
+function exact(value: unknown): Rational | null {
+  const r = decimalRational(value);
+  return r !== null && r[0] >= ZERO ? r : null;
 }
 
 /** The size of an amount, or null for a value that is not an amount code can read. */
@@ -134,11 +138,11 @@ function quantityProblem(v: unknown): OperationProblem | null {
   if (!isObject(v) || v.type !== "quantity" || typeof v.value !== "number" || !Number.isFinite(v.value) || v.value < 0) return NOT_AMOUNT;
   const unit = unitProblem(v.unit, NOT_AMOUNT);
   if (unit) return unit;
-  const w = written(v.value, Infinity);
-  if (w === null) return NOT_AMOUNT;
-  if (v.unit === "¢" && w.places > 0) return fail("an amount in ¢ is a whole number");
-  if (v.unit === "$" && w.places > 2) return fail("an amount in $ has at most 2 decimal places");
-  return w.places <= 3 && Math.floor(v.value) <= MAX_AMOUNT ? null : BIG_AMOUNT;
+  // Every finite number has a decimal that ends, written with an exponent or not (1e-7 has 7 places).
+  const places = decimalPlaces(exact(v.value)!)!;
+  if (v.unit === "¢" && places > 0) return fail("an amount in ¢ is a whole number");
+  if (v.unit === "$" && places > 2) return fail("an amount in $ has at most 2 decimal places");
+  return places <= 3 && Math.floor(v.value) <= MAX_AMOUNT ? null : BIG_AMOUNT;
 }
 
 /**

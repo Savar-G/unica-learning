@@ -13,6 +13,7 @@
 // compute, or steps of a version it cannot read, are "unsupported", never a pass.
 // Pure TypeScript: no Next.js, React, network, database or clock.
 import { BC_SKILL_MAP } from "@/lib/assessment";
+import { decimalRational } from "@/lib/question-package-columns";
 import { amountOf, amountValueProblem, conversionProblem, dimensionName, sameSize, unknownUnit } from "@/lib/question-package-measures";
 import {
   computation,
@@ -442,15 +443,7 @@ function rational(v: AnswerValue): [bigint, bigint] | null {
     if (![whole, v.numerator, v.denominator].every(Number.isInteger) || v.denominator <= 0) return null;
     return [BigInt(whole) * BigInt(v.denominator) + BigInt(v.numerator), BigInt(v.denominator)];
   }
-  if (v.type !== "number" || !Number.isFinite(v.value)) return null;
-  // String() writes very small and very large numbers with an exponent (1e-7, 1e+21), so read it too.
-  const m = /^(-?)(\d+)(?:\.(\d+))?(?:e([+-]?\d+))?$/.exec(String(v.value));
-  if (!m) return null;
-  const decimals = m[3] ?? "";
-  const exponent = Number(m[4] ?? 0) - decimals.length;
-  const ten = BigInt(10);
-  const digits = BigInt(m[1] + m[2] + decimals);
-  return exponent >= 0 ? [digits * ten ** BigInt(exponent), BigInt(1)] : [digits, ten ** BigInt(-exponent)];
+  return v.type === "number" ? decimalRational(v.value) : null;
 }
 
 /**
