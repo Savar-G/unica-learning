@@ -66,6 +66,11 @@ export const coordinateGrid: ModelKind<CoordinateGridSpec> = {
       names.add(name);
       return { name, x: int(p.x, `point ${name} x`, xMin, xMax), y: int(p.y, `point ${name} y`, yMin, yMax) };
     });
+    // Each name is written in the same spot beside its point, so two points in one place would write over each other.
+    for (const [i, p] of points.entries()) {
+      const same = points.slice(0, i).find((q) => q.x === p.x && q.y === p.y);
+      if (same) invalid(`Points ${same.name} and ${p.name} are both at (${p.x}, ${p.y}).`);
+    }
     return { kind: "coordinate_grid", xMin, xMax, yMin, yMax, points };
   },
   names: (spec) => spec.points.map((p) => ({ piece: `point-${p.name}`, text: p.name })),

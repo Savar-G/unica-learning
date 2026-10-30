@@ -293,6 +293,17 @@ describe("coordinate grids", () => {
     expect(has(scene, piece("g", "origin"))).toBe(false);
   });
 
+  it("refuses two points in one place, whose names would be written over each other", () => {
+    const grid = (points: { name: string; x: number; y: number }[]) => ({ kind: "coordinate_grid", xMin: 0, xMax: 4, yMin: 0, yMax: 4, points });
+    const r = refusal(createScene(), { op: "model", id: "g", model: grid([{ name: "A", x: 1, y: 1 }, { name: "B", x: 1, y: 1 }]), place: { region: "main" } });
+    expect(r.reason).toMatch(/A and B are both at \(1, 1\)/);
+    // Neighbours one cell apart keep their names clear of each other in the board's own font.
+    const scene = ok(createScene(), model("g", grid([{ name: "A", x: 1, y: 1 }, { name: "B", x: 2, y: 1 }, { name: "C", x: 1, y: 2 }, { name: "D", x: 2, y: 2 }])));
+    const names = ["A", "B", "C", "D"].map((n) => box(glyphPaths(scene, "g", n)));
+    for (const [i, a] of names.entries())
+      for (const b of names.slice(i + 1)) expect(a.right <= b.left || b.right <= a.left || a.bottom <= b.top || b.bottom <= a.top).toBe(true);
+  });
+
   it("writes the point names when the pen has letters", () => {
     const scene = ok(createScene({ glyphs: LETTERS }), model("g", { kind: "coordinate_grid", xMin: 0, xMax: 4, yMin: 0, yMax: 4, points: [{ name: "P", x: 1, y: 1 }] }));
     const name = box(glyphPaths(scene, "g", "P"));
