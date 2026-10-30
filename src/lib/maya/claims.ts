@@ -39,12 +39,11 @@ export interface StepNumbers {
   /** The problem's own unit words ("minutes" in "27 minutes + 39 minutes"): a number with one stays bound to the step. */
   units?: readonly string[];
   /**
-   * The values a price or an amount may name ("it costs 27 dollars", "Sam has 27 left"): the numbers, answer and steps
-   * of the problem the turn is about. Absent means `known`. The other numbers in `known` are references only ("look at
-   * the 5 in 18 + 5").
+   * The problem the turn is about, for amounts of money (see stepClaims): its question text, its operands and its
+   * answers. Absent: no amount of money is supported.
    */
-  amounts?: readonly number[];
-  /** The question texts: a sentence that restates one of them is not a claim (see restated). */
+  money?: { text: string; operands: readonly number[]; results: readonly number[] };
+  /** The question texts: a sentence that is an unchanged clause of one of them is not a claim (see restated). */
   questions?: readonly string[];
 }
 
@@ -437,51 +436,68 @@ export function mathClaims(text: string, problems: readonly NamedProblem[] = [],
   return claims;
 }
 
-/** Words that give a result: a sentence with one the question does not have is no restatement. */
-const RESULT_WORDS = new Set(["answer", "answers", "total", "totals", "altogether", "all", "left", "leaves", "makes", "make", "equals", "equal", "sum", "difference", "product", "quotient", "remainder", "now"]);
+/** Words that may lead into a restatement without changing it ("So, Sam has 27 dollars."). */
+const LEAD_INS: readonly string[][] = [["so"], ["remember"], ["okay"], ["ok"], ["the", "question", "says"], ["the", "question", "says", "that"]];
+/** Words after "and" that do not start a clause: "a toy for 27 dollars and a book for 39 dollars" is one clause. */
+const NOT_A_CLAUSE = new Set(["a", "an", "the"]);
 
-/** Words a restatement may add to the question's own words. */
-const JOINERS = new Set(["and", "so", "then", "also", "first", "remember", "the", "a", "an", "he", "she", "they", "it", "his", "her", "their", "okay", "ok", "here", "we", "know"]);
+/** A run of tokens as a restatement compares them: words and signs in lowercase, numbers by value, no punctuation. */
+function canonical(text: string, toks: Spanned[]): string[] {
+  return toks.flatMap((t) => {
+    if (t.t === "soft" || t.t === "end") return [];
+    if (t.t === "num") return [`#${t.v[0]}/${t.v[1]}`];
+    return text.slice(t.from, t.to).toLowerCase().match(/[a-z']+|\S/g) ?? [];
+  });
+}
 
 /**
- * For each token, whether its sentence restates one of the questions: its numbers all come from that question, in the
- * question's order, each at most as often; its words are that question's words, beside a few joining words (JOINERS),
- * so every result word in it ("total", "left", "altogether") is the question's; every "is" or "gets" with a number
- * after it says that number after the same word in the question; and nothing code does not read ("$", "a quarter") is
- * in it. A sentence that adds or changes a number or a word is checked as usual.
+ * The clauses of a question, in order: it splits at sentence ends, at commas and colons, and before an "and" that
+ * starts a clause ("and gets 39 dollars", not "and a book"). That "and" stays at the start of its clause.
+ */
+function clausesOf(q: string): string[][] {
+  const qt = tokenize(q);
+  const clauses: string[][] = [];
+  let part: Spanned[] = [];
+  const cut = () => {
+    const c = canonical(q, part);
+    if (c.length > 0) clauses.push(c);
+    part = [];
+  };
+  qt.forEach((t, k) => {
+    if (t.t === "end" || t.t === "soft") return cut();
+    const next = qt[k + 1];
+    // A verb ("gets", "is") or another word starts a clause; a number, a sign or an article goes on the one before.
+    if (t.t === "word" && t.w === "and" && (next?.t === "eq" || (next?.t === "word" && !NOT_A_CLAUSE.has(next.w)))) cut();
+    part.push(t);
+  });
+  cut();
+  return clauses;
+}
+
+/**
+ * For each token, whether its sentence restates a question: after an optional lead-in ("So,", "Remember,", "The
+ * question says"), it is one or more clauses of that question in a row, unchanged but for case, spaces and punctuation;
+ * an "and" may join two of them or be left off the start of one. Nothing else is a restatement: a changed, added or
+ * moved word or number ("Sam has 27 dollars altogether.", "Sam has 39 dollars.") goes through the usual checks.
  */
 function restated(text: string, toks: Spanned[], questions: readonly string[]): boolean[] {
   const out: boolean[] = new Array(toks.length).fill(false);
-  const read = questions.map((q) => {
-    const qt = tokenize(q);
-    return {
-      nums: qt.flatMap((t) => (t.t === "num" ? [t.v] : [])),
-      words: new Set(q.toLowerCase().match(/[a-z]+/g) ?? []),
-      said: qt.flatMap((t, k) => (t.t === "eq" && qt[k + 1]?.t === "num" ? [{ eq: q.slice(t.from, t.to).toLowerCase(), v: (qt[k + 1] as { v: Ratio }).v }] : [])),
-    };
-  });
+  const asked = questions.map(clausesOf);
+  const eq = (a: readonly string[], b: readonly string[]) => a.length === b.length && a.every((w, n) => w === b[n]);
+  /** The words s, from `at`, are the clauses from c on, each whole, to the end of s. */
+  const rest = (s: string[], at: number, clauses: string[][], c: number, first: boolean): boolean => {
+    if (at === s.length) return !first;
+    if (c >= clauses.length) return false;
+    const clause = clauses[c];
+    const forms = clause[0] === "and" ? [clause, clause.slice(1)] : first ? [clause] : [clause, ["and", ...clause]];
+    return forms.some((f) => eq(s.slice(at, at + f.length), f) && rest(s, at + f.length, clauses, c + 1, false));
+  };
   for (let a = 0; a < toks.length; ) {
     let b = a;
     while (b < toks.length && toks[b].t !== "end") b++;
-    const sentence = toks.slice(a, b);
-    const nums = sentence.flatMap((t) => (t.t === "num" ? [t.v] : []));
-    const words = text.slice(sentence[0]?.from ?? 0, sentence[sentence.length - 1]?.to ?? 0).toLowerCase().match(/[a-z]+/g) ?? [];
-    const ok = nums.length > 0 && !sentence.some((t) => t.t === "sym" || t.t === "rel" || t.t === "amount") && read.some((q) => {
-      let at = 0;
-      for (const v of nums) {
-        while (at < q.nums.length && !same(q.nums[at], v)) at++;
-        if (at++ >= q.nums.length) return false;
-      }
-      // Its words are the question's own, beside a few that join them ("and", "so"); a result word must be the question's.
-      if (words.some((w) => !q.words.has(w) && (RESULT_WORDS.has(w) || !JOINERS.has(w)))) return false;
-      return sentence.every((t, k) => {
-        const next = sentence[k + 1];
-        if (t.t !== "eq" || next?.t !== "num") return true;
-        const eq = text.slice(t.from, t.to).toLowerCase();
-        return q.said.some((x) => x.eq === eq && same(x.v, next.v));
-      });
-    });
-    if (ok) out.fill(true, a, b);
+    let s = canonical(text, toks.slice(a, b));
+    for (let lead = LEAD_INS.find((l) => eq(s.slice(0, l.length), l)); lead; lead = LEAD_INS.find((l) => eq(s.slice(0, l.length), l))) s = s.slice(lead.length);
+    if (s.length > 0 && asked.some((clauses) => clauses.some((_, c) => rest(s, 0, clauses, c, true)))) out.fill(true, a, b);
     a = b + 1;
   }
   return out;
@@ -549,9 +565,12 @@ function quantityNoun(toks: Spanned[], k: number): string | null {
 function stepClaims(text: string, toks: Spanned[], claimed: boolean[], step: StepNumbers): MathClaim[] {
   const ratios = (list: readonly number[]) => list.map(ratioOf).filter((r): r is Ratio => r !== null);
   const [known, carry, write] = [ratios(step.known), ratios(step.carry), ratios([...step.write, ...step.carry])];
-  const amounts = ratios(step.amounts ?? step.known);
   const units = new Set((step.units ?? []).map(unitOf));
   const among = (v: Ratio, list: Ratio[]) => list.some((r) => same(v, r));
+  // Money: the amounts the question states with a money unit or sign, and its answers when every operand is one.
+  const stated = step.money ? moneyStated(step.money.text) : [];
+  const results = step.money && step.money.operands.length > 0 && step.money.operands.every((n) => among(ratioOf(n) ?? [ZERO, ZERO], stated))
+    ? ratios(step.money.results) : [];
   const word = (k: number) => (toks[k]?.t === "word" ? (toks[k] as { w: string }).w : "");
   const free = (k: number): Tok | null => (toks[k]?.t === "num" && !claimed[k] ? toks[k] : null);
 
@@ -616,9 +635,10 @@ function stepClaims(text: string, toks: Spanned[], claimed: boolean[], step: Ste
       if (!among(v, role.allowed)) claim("false");
       continue;
     }
-    // A price or an amount of money ("it costs 5 cents", "Sam has 27 dollars") names a value of the problem itself.
-    if (priced(toks, k)) {
-      if (!among(v, amounts)) claim("unsupported");
+    // An amount of money is the problem's checked money result, or an amount the question states, named as that one
+    // ("the 27 dollars"). A carry, a digit or a count is never money.
+    if (priced(text, toks, k)) {
+      if (!among(v, results) && !(among(v, stated) && referenced(text, toks, k))) claim("unsupported");
       continue;
     }
     if (counted.has(k) || text.slice(x.from, x.to).toLowerCase() === "one" || among(v, known) || isCount(text, toks, k, units)) continue;
@@ -627,12 +647,33 @@ function stepClaims(text: string, toks: Spanned[], claimed: boolean[], step: Ste
   return out;
 }
 
+/** A money sign ("$", "¢") right before the number at k. */
+const signed = (text: string, toks: Spanned[], k: number) => toks[k - 1]?.t === "sym" && /^[$¢]$/.test(text.slice(toks[k - 1].from, toks[k - 1].to));
+
+/** The amounts a question states with a money unit after them or a money sign before them ("27 dollars", "$39"). */
+function moneyStated(q: string): Ratio[] {
+  const qt = tokenize(q);
+  return qt.flatMap((t, k) => {
+    const unit = qt[k + 1];
+    return t.t === "num" && ((unit?.t === "word" && MONEY_UNITS.test(unit.w)) || signed(q, qt, k)) ? [t.v] : [];
+  });
+}
+
+/** Words that name a stated amount as that one ("the 27 dollars", "his 39 dollars"). */
+const REFERENCE = new Set(["the", "those", "these", "that", "this", "his", "her", "their", "its"]);
+
+/** The number at k is named as one the question states: a reference word right before it, or before its sign. */
+function referenced(text: string, toks: Spanned[], k: number): boolean {
+  const before = toks[signed(text, toks, k) ? k - 2 : k - 1];
+  return before?.t === "word" && REFERENCE.has(before.w);
+}
+
 /**
- * The number at k is a price or an amount: a money word comes right after it ("5 cents"), or a price word is in its
- * sentence ("it costs 5", "Sam pays 27", "Sam has 27 left" is not one, but "Sam has 27 dollars" is).
+ * The number at k is a price or an amount: a money word comes right after it ("5 cents"), a money sign before it
+ * ("$5"), or a price word is in its sentence ("it costs 5", "Sam pays 27").
  */
-function priced(toks: Spanned[], k: number): boolean {
-  if (toks[k + 1]?.t === "word" && MONEY_UNITS.test((toks[k + 1] as { w: string }).w)) return true;
+function priced(text: string, toks: Spanned[], k: number): boolean {
+  if ((toks[k + 1]?.t === "word" && MONEY_UNITS.test((toks[k + 1] as { w: string }).w)) || signed(text, toks, k)) return true;
   for (const d of [-1, 1]) {
     for (let m = k + d; toks[m] && toks[m].t !== "end"; m += d) if (toks[m].t === "word" && PRICE.test((toks[m] as { w: string }).w)) return true;
   }

@@ -2,8 +2,9 @@ import { describe, expect, it } from "vitest";
 import { createSession, mathClaims, step, type Proposal, type Session, type SessionEvent } from "@/lib/maya";
 import { checkQuestionPackage, workedSteps, type QuestionPackage } from "@/lib/question-package";
 
-// Reproductions of the fourth to sixth reviews of PR #350 (R350-4-1, R350-4-2, R350-5-1, R350-6-1, R350-6-2), each
-// through the public interface. Round 6 took money out of the talk counts: only steps, tries and time are talk.
+// Reproductions of the fourth to eighth reviews of PR #350 (R350-4-1 to R350-8-2), each through the public interface.
+// Round 6 took money out of the talk counts: only steps, tries and time are talk. Round 8 made a restatement an
+// unchanged clause of the question, and bound every amount of money to the money the question states.
 
 const num = (value: number) => ({ type: "number" as const, value });
 const PKG: QuestionPackage = {
@@ -203,7 +204,7 @@ describe("R350-6: every money amount is math, and an amount named by a word is n
 
   it("still accepts steps, tries and time, and the problem's own amounts", () => {
     const c = call(story("Sam has $27 and gets $39. How much now?"));
-    for (const say of ["Wait 2 seconds.", "We have two steps.", "Two more tries, then we stop.", "Take 3 minutes.", "Sam has 27 dollars, then 39 dollars more."]) {
+    for (const say of ["Wait 2 seconds.", "We have two steps.", "Two more tries, then we stop.", "Take 3 minutes.", "Sam has $27 and gets $39."]) {
       expect(c.refusal(show(say))).toBeNull();
     }
   });
@@ -247,14 +248,61 @@ describe("R350-7-1: a restatement of the question is no claim; an added or chang
 });
 
 describe("R350-7-2: a price names a value of the problem; other numbers are references only", () => {
-  it.each(["It costs 5 cents.", "It costs 18 dollars.", "Sam pays 5.", "It is worth 5.", "It costs two dollars."])("refuses %s for the ones step of 27 + 39", (say) => {
+  // Round 8: a problem with no money in it supports no amount of money at all.
+  it.each(["It costs 5 cents.", "It costs 18 dollars.", "Sam pays 5.", "It is worth 5.", "It costs two dollars.", "Sam has 27 dollars.", "It costs 39 dollars.", "Seven dollars and nine dollars."])("refuses %s for the ones step of 27 + 39", (say) => {
     expect(call().refusal(show(say))).toMatchObject({ code: "wrong_math" });
   });
 
-  it.each(["Look at the 5 in 18 + 5.", "18 + 5 is easier.", "Look at the 27 in the question.", "Sam has 27 dollars.", "It costs 39 dollars.", "Seven dollars and nine dollars."])(
+  it.each(["Look at the 5 in 18 + 5.", "18 + 5 is easier.", "Look at the 27 in the question."])(
     "accepts %s for the ones step of 27 + 39",
     (say) => {
       expect(call().refusal(show(say))).toBeNull();
     },
   );
+});
+
+describe("R350-8: a restatement is an unchanged clause; money is only the question's money", () => {
+  const MONEY: QuestionPackage = { ...PKG, id: "wbq-review-r8-money", text: "Sam has 27 dollars and gets 39 dollars. How many dollars altogether?" };
+
+  it.each([
+    "Sam has 27 dollars altogether.",
+    "Sam has 39 dollars.",
+    "Sam gets 27 dollars altogether.",
+    "Sam gets 39 dollars altogether.",
+    "Sam has 27 dollars and gets 39 dollars altogether.",
+    "It costs one dollar.",
+    "It costs 6 dollars.",
+    "It costs 16 dollars.",
+    "Sam has 27 dollars, so he gets 39 dollars.",
+    "He has 27 dollars.",
+    "Sam gets 39 dollars.",
+  ])("refuses %s during the ones step", (say) => {
+    expect(call(MONEY).refusal(show(say))).toMatchObject({ code: "wrong_math" });
+  });
+
+  it("refuses the answer as money before it is given", () => {
+    expect(call(MONEY).refusal(show("Sam has 66 dollars."))?.code).toMatch(/^(?:reveals_answer|wrong_math)$/);
+  });
+
+  it.each([
+    "Sam has 27 dollars and gets 39 dollars.",
+    "Sam has 27 dollars, and gets 39 dollars.",
+    "So, Sam has 27 dollars.",
+    "Remember, Sam has 27 dollars and gets 39 dollars.",
+    "The question says Sam has 27 dollars.",
+    "How many dollars altogether?",
+    "Look at the 27 dollars.",
+    "Now add the 39 dollars.",
+  ])("accepts %s during the ones step", (say) => {
+    expect(call(MONEY).refusal(show(say))).toBeNull();
+  });
+
+  it("accepts the money result once the child has solved it", () => {
+    let s: Session = createSession({ callId: "review-r8-solved", package: MONEY });
+    s = step(s, { type: "start", at: 0 }).session;
+    s = step(s, { type: "proposal", at: 0, proposal: OPEN }).session;
+    s = step(s, { type: "child_turn", at: 0, text: "66" }).session;
+    const r = step(s, { type: "proposal", at: 0, proposal: { act: "accept_answer", say: "Yes! Sam has 66 dollars.", reading: { answers: [{ value: num(66), step: "result", verdict: "right" }] } } });
+    expect(r.refusal).toBeNull();
+  });
 });

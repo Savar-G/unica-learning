@@ -487,20 +487,17 @@ function turnNumbers(s: Session, p: Proposal | null): StepNumbers | undefined {
   // The problem's own unit words: the answer's unit and every word right after a number in either question.
   const units = [pkg.answer.unit, ...[pkg.text, pkg.easierExample.text].flatMap((t) => [...t.matchAll(/\d\s*([a-z]+)/gi)].map((m) => m[1]))]
     .filter((u): u is string => typeof u === "string");
-  // A price or an amount names a value of the problem the turn is about (the child's question unless it is an example
-  // step): its numbers, its answer and its steps, never the other problem's numbers.
+  // Money is the problem the turn is about (the child's question unless it is an example step): its text, operands and
+  // answers, never the other problem's numbers.
   const about = problem ?? "target";
   const { operation, answer } = problemOf(pkg, about);
-  const aboutText = about === "target" ? pkg.text : pkg.easierExample.text;
-  const amountSteps = (own.length > 0 ? own : problemOf(pkg, about).steps).map(checkedNumbers);
-  const amounts = [...operandsOf(operation), ...[answer.value, ...answer.accepted, ...valuesIn(aboutText)].flatMap((v) => (v.type === "number" ? [v.value] : [])),
-    ...amountSteps.flatMap((f) => f.known)];
+  const results = [answer.value, ...answer.accepted].flatMap((v) => (v.type === "number" ? [v.value] : []));
   return {
     known: [...new Set(known)],
     carry: [...new Set(facts.flatMap((f) => f.carry))],
     write: [...new Set(facts.flatMap((f) => f.write))],
     units: [...new Set(units)],
-    amounts: [...new Set(amounts)],
+    money: { text: about === "target" ? pkg.text : pkg.easierExample.text, operands: operandsOf(operation), results },
     questions: [pkg.text, pkg.easierExample.text],
   };
 }
