@@ -610,7 +610,8 @@ describe("second review fixes", () => {
     });
 
     it("routes an arrow around the child's ink, or refuses it when no route is clear", () => {
-      const scene = ok(createScene(), sum());
+      // No carry: the lane above the top number is free for the arrow to go around.
+      const scene = ok(createScene(), { ...sum(), operands: [{ id: "top", value: "21" }, { id: "bottom", value: "34" }] });
       const link = { op: "arrow", id: "link", from: cell("sum1", "top", "ones"), to: cell("sum1", "top", "tens") };
       const shaft = applied(scene, link).drawn[0].pts;
       const r = applied(childStroke(scene, shaft), link);
@@ -736,5 +737,138 @@ describe("second review fixes", () => {
       scene = ok(r.scene, { op: "write", id: "n", text: "6", place: { rightOf: "sum1" } });
       expect(boardPaths(scene).filter((p) => p.objectId === "link")).toEqual(boardPaths(r.scene).filter((p) => p.objectId === "link"));
     });
+  });
+
+  describe("R3 round 2: arrows keep clear of math that comes later", () => {
+    const cross = (o: [number, number], a: [number, number], b: [number, number]) => (a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0]);
+    /** True when two polylines cross exactly, or come closer than their half widths. */
+    function collide(a: BoardPath, b: BoardPath) {
+      for (let i = 1; i < a.pts.length; i++)
+        for (let j = 1; j < b.pts.length; j++) {
+          const [p, q, r, s] = [a.pts[i - 1], a.pts[i], b.pts[j - 1], b.pts[j]];
+          if (cross(p, q, r) * cross(p, q, s) < 0 && cross(r, s, p) * cross(r, s, q) < 0) return true;
+        }
+      return touch(a, b);
+    }
+    /** The common arrow's strokes that collide with digits, carries, borrows or strikes. */
+    function arrowCollisions(scene: Scene, arrowId: string) {
+      const paths = boardPaths(scene);
+      const others = paths.filter((p) => p.objectId !== arrowId && p.kind !== "rule" && p.kind !== "highlight");
+      return paths.filter((p) => p.objectId === arrowId).flatMap((a) => others.filter((o) => collide(a, o)).map((o) => `${a.id} x ${o.id}`));
+    }
+    const sum27 = () => ok(createScene(), { op: "columns", id: "m", operation: "add", operands: [{ id: "top", value: "27" }, { id: "bottom", value: "39" }], place: { region: "main" } });
+    const link = { op: "arrow", id: "link", from: cell("m", "bottom", "ones"), to: cell("m", "bottom", "tens") };
+    const put66 = { op: "put", target: { objectId: "m", part: "row", rowId: "answer" }, value: "66" };
+
+    it("an arrow between the digits of 39 never runs through the answer 66 written later", () => {
+      const r = applyBatch(sum27(), { transactionId: `a${++tx}`, commands: [link] });
+      if (!r.ok) {
+        expect(r.refusal.code).toBe("no_room");
+        return;
+      }
+      const after = ok(r.scene, put66);
+      expect(arrowCollisions(after, "link")).toEqual([]);
+    });
+
+    it("an undo that would bring back an arrow through the answer written since is refused, or brings back a clear arrow", () => {
+      const r = applyBatch(sum27(), { transactionId: `a${++tx}`, commands: [link] });
+      if (!r.ok) return expect(r.refusal.code).toBe("no_room");
+      let scene = ok(r.scene, { op: "remove", objectId: "link" });
+      const removal = `t${tx}`;
+      scene = ok(scene, put66);
+      const back = applyBatch(scene, { transactionId: `u${++tx}`, commands: [{ op: "undo", transactionId: removal }] });
+      if (!back.ok) return expect(back.refusal.code).toBe("unsafe_undo");
+      expect(arrowCollisions(back.scene, "link")).toEqual([]);
+    });
+
+    /** Notes a and c, with the arrow between them run straight through the cell where note b was. */
+    const throughB = () => {
+      const note = (id: string, place: unknown) => ({ op: "write", id, text: "1", place });
+      let scene = ok(createScene(), note("a", { region: "main" }), note("b", { below: "a" }), note("c", { below: "b" }));
+      scene = ok(scene, { op: "remove", objectId: "b" });
+      const removal = `t${tx}`;
+      scene = ok(scene, { op: "arrow", id: "link", from: { objectId: "a", part: "whole" }, to: { objectId: "c", part: "whole" } });
+      return { scene, removal };
+    };
+
+    it("refuses an undo that would bring back an object onto an arrow drawn since, and keeps the board", () => {
+      const { scene, removal } = throughB();
+      const r = applyBatch(scene, { transactionId: `u${++tx}`, commands: [{ op: "undo", transactionId: removal }] });
+      expect(r.ok).toBe(false);
+      if (!r.ok) expect(r.refusal.code).toBe("unsafe_undo");
+      expect(boardPaths(scene).some((p) => p.objectId === "b")).toBe(false);
+    });
+
+    it("places a new object past an arrow, not on it", () => {
+      const { scene } = throughB();
+      const placed = ok(scene, { op: "write", id: "n", text: "1", place: { below: "a" } });
+      expect(boardPaths(placed).filter((p) => p.objectId === "n").length).toBeGreaterThan(0);
+      expect(arrowCollisions(placed, "link")).toEqual([]);
+    });
+
+    it("refuses a later mark whose strokes would run through an arrow, naming the arrow", () => {
+      const note = (id: string, place: unknown) => ({ op: "write", id, text: "1", place });
+      let scene = ok(createScene(), note("a", { region: "main" }), note("b", { below: "a" }), note("c", { below: "b" }));
+      scene = ok(scene, { op: "arrow", id: "link", from: { objectId: "a", part: "whole" }, to: { objectId: "c", part: "whole" } });
+      const r = applyBatch(scene, { transactionId: `m${++tx}`, commands: [{ op: "focus", target: { objectId: "a", part: "whole" } }, { op: "mark", id: "ring", target: { objectId: "b", part: "whole" }, style: "circle" }] });
+      expect(r.ok).toBe(false);
+      if (!r.ok) expect(r.refusal).toMatchObject({ index: 1, code: "not_allowed" });
+      if (!r.ok) expect(r.refusal.reason).toContain('"link"');
+      // A mark on the arrow's own end may meet it: the arrow has to reach that end.
+      const ended = ok(scene, { op: "mark", id: "end", target: { objectId: "c", part: "whole" }, style: "circle" });
+      expect(boardPaths(ended).some((p) => p.objectId === "end")).toBe(true);
+    });
+
+    const row = (rowId: string) => ({ objectId: "m", part: "row", rowId });
+    const carry = (id: string, rowId: string, from: string, to: string) => ({ op: "regroup", id, objectId: "m", rowId, kind: "carry", from, to });
+    const borrow = (id: string, from: string, to: string) => ({ op: "regroup", id, objectId: "m", rowId: "top", kind: "borrow", from, to });
+    const problems = [
+      { name: "27 + 39", operation: "add", values: ["27", "39"], rest: [carry("k", "answer", "ones", "tens"), { op: "put", target: row("answer"), value: "66" }] },
+      {
+        name: "300 - 128",
+        operation: "subtract",
+        values: ["300", "128"],
+        rest: [borrow("b1", "hundreds", "tens"), borrow("b2", "tens", "ones"), { op: "put", target: row("answer"), value: "172" }],
+      },
+      {
+        name: "23 × 14",
+        operation: "multiply",
+        values: ["23", "14"],
+        rest: [
+          carry("k0", "p0", "ones", "tens"),
+          { op: "put", target: row("p0"), value: "92" },
+          { op: "put", target: row("p1"), value: "230" },
+          carry("k1", "answer", "tens", "hundreds"),
+          { op: "put", target: row("answer"), value: "322" },
+        ],
+      },
+    ];
+    /** Every cell of the problem, written or not. */
+    const cells = (scene: Scene) => boardTargets(scene).filter((t) => t.target.part === "cell").map((t) => t.target);
+
+    for (const p of problems)
+      it(`${p.name}: an arrow between any two cells stays clear of every digit, carry and borrow written after it`, () => {
+        const start = ok(createScene(), { op: "columns", id: "m", operation: p.operation, operands: [{ id: "top", value: p.values[0] }, { id: "by", value: p.values[1] }], place: { region: "main" } });
+        let routed = 0;
+        for (const from of cells(start))
+          for (const to of cells(start)) {
+            if (sameTarget(from, to)) continue;
+            const arrow = { op: "arrow", id: "link", from, to };
+            const label = `${JSON.stringify(from)} to ${JSON.stringify(to)}`;
+            const r = applyBatch(start, { transactionId: `a${++tx}`, commands: [arrow] });
+            if (!r.ok) {
+              expect(r.refusal.code, label).toBe("no_room");
+              continue;
+            }
+            routed++;
+            // In later batches, one step at a time: every step is accepted and nothing it writes meets the arrow.
+            let later = r.scene;
+            for (const step of p.rest) later = ok(later, step);
+            expect(arrowCollisions(later, "link"), label).toEqual([]);
+            // In one batch with the arrow first: the same.
+            expect(arrowCollisions(ok(start, arrow, ...p.rest), "link"), label).toEqual([]);
+          }
+        expect(routed).toBeGreaterThan(0);
+      });
   });
 });

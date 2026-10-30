@@ -52,6 +52,12 @@ export interface Representation<S, C extends CreateCommand> {
   regroup?(state: S, req: RegroupCommand, ctx: Ctx): S | RefusalBody;
   /** Removes an annotation the object owns (a regroup); the scene knows them from `targets`. */
   removeOwned?(state: S, id: string): S | RefusalBody;
+  /**
+   * What later commands may still write (empty answer and work-row digits, carries, borrows), in grid cells from the
+   * object's top-left corner: the strokes when they are known now, else boxes. An arrow keeps clear of both, so the math
+   * written there later never meets it.
+   */
+  reserved?(state: S, objectId: string, ctx: Ctx): { strokes: LocalStroke[]; boxes: Rect[] };
   /** A reason to refuse a mark on a target (a check on an unfinished answer), or null. */
   refuseMark?(state: S, target: Target, style: MarkStyle): RefusalBody | null;
   draw(state: S, objectId: string, ctx: Ctx): LocalStroke[];

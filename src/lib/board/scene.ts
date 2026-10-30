@@ -5,7 +5,7 @@
 // with each object's page and position recorded on its first placement, so an undo never moves anything else.
 import { columns } from "@/lib/board/columns";
 import { annotationStrokes, MARK_INK, routeArrow, type ArrowObject, type ArrowObstacles, type ArrowRoute, type MarkObject } from "@/lib/board/annotations";
-import { overlaps, polylineLength, traceTouches, type Trace } from "@/lib/board/geometry";
+import { curvedArrow, overlaps, polylineHitsRect, polylineLength, traceTouches, type Trace } from "@/lib/board/geometry";
 import { PLACEHOLDER_GLYPHS, type GlyphSet } from "@/lib/board/glyphs";
 import { note } from "@/lib/board/note";
 import { parseCommand } from "@/lib/board/parse";
@@ -23,6 +23,8 @@ export const MAX_PAGES = 20;
 export const MAX_COMMANDS = 40;
 /** Cells kept free at each page edge and between objects. */
 const MARGIN = 1;
+/** Cells kept free between a new object and an arrow already on the board. */
+const ARROW_GAP = 0.1;
 
 /** Drawing speed: ms per cell of pen travel, with bounds per stroke, and the pauses between strokes and commands. */
 export const TIMING = { msPerCell: 110, minMs: 60, maxMs: 1200, highlightMinMs: 350, penLiftMs: 40, commandGapMs: 200 };
@@ -160,6 +162,9 @@ function fits(scene: Scene, s: SceneState, page: number, r: Rect): boolean {
   if (r.x < MARGIN || r.y < MARGIN || r.x + r.w > cols - MARGIN || r.y + r.h > rows - MARGIN) return false;
   const around: Rect = { x: r.x - MARGIN, y: r.y - MARGIN, w: r.w + 2 * MARGIN, h: r.h + 2 * MARGIN };
   if (reps(s).some((o) => o.page === page && overlaps(around, o.rect))) return false;
+  // An arrow's route is fixed: new work goes past it, never under it.
+  const clear: Rect = { x: r.x - ARROW_GAP, y: r.y - ARROW_GAP, w: r.w + 2 * ARROW_GAP, h: r.h + 2 * ARROW_GAP };
+  if (s.objects.some((o) => o.kind === "arrow" && o.page === page && curvedArrow(o.route.from, o.route.control, o.route.to).some((pts) => polylineHitsRect(pts, clear)))) return false;
   return !scene.child.some((c) => {
     const cr = c.page === page ? childRect(scene, c) : null;
     return cr !== null && overlaps(r, cr);
@@ -466,6 +471,14 @@ export function applyBatch(scene: Scene, batch: Batch): ApplyResult {
     if (next.log.at(-1)?.undid) return refused(0, refuse("unsafe_undo", "The child has written where this would come back: undoing would cover their work."));
     return refused(covering.seq - scene.nextSeq, refuse("protected_ink", "The child has written there: Maya never draws over their work."));
   }
+  // An arrow's route is fixed when it is drawn. Nothing this batch makes visible may run through an arrow, and no arrow
+  // it brings back may run through work on the board.
+  const crossing = arrowCrossing(next, after, (p) => !before.has(p.id));
+  if (crossing) {
+    if (next.log.at(-1)?.undid)
+      return refused(0, refuse("unsafe_undo", `Undoing would bring back work that runs through the arrow "${crossing.arrowId}": remove that arrow first.`));
+    return refused(crossing.seq - scene.nextSeq, refuse("not_allowed", `This would run through the arrow "${crossing.arrowId}": remove that arrow first, or put the work somewhere else.`));
+  }
   return { ok: true, scene: next, drawn: schedule(drawn), erased: [...before].filter((id) => !kept.has(id)), notices };
 }
 
@@ -479,6 +492,43 @@ export function addChildInk(scene: Scene, ink: { page: number; stroke: Stroke; b
   if (!Number.isFinite(ink.boardWidth) || ink.boardWidth <= 0) throw new RangeError("The board width must be a positive number of CSS pixels.");
   const id = `child-${scene.child.length + 1}`;
   return { scene: { ...scene, child: [...scene.child, { id, page: ink.page, stroke: ink.stroke, boardWidth: ink.boardWidth }] }, id };
+}
+
+/**
+ * The first arrow that touches a stroke it must keep clear of, where the arrow or the stroke is new, with the command
+ * that revealed the newer of the two. What an arrow keeps clear of is what its route kept clear of when it was drawn.
+ */
+function arrowCrossing(scene: Scene, paths: (BoardPath & { seq: number })[], isNew: (p: BoardPath) => boolean): { arrowId: string; seq: number } | null {
+  const s = scene.state;
+  for (const arrow of s.objects) {
+    if (arrow.kind !== "arrow") continue;
+    const ends = [arrow.from, arrow.to].flatMap((t) => {
+      const found = resolve(s, t);
+      return isRefusal(found) ? [] : [found.rect];
+    });
+    const onEnd = marksOnEnds(s, arrow.page, ends);
+    const own = paths.filter((p) => p.objectId === arrow.id);
+    const others = paths.filter((p) => p.page === arrow.page && p.objectId !== arrow.id && !ROUTE_ACROSS.has(p.kind) && !onEnd.has(p.objectId));
+    for (const a of own)
+      for (const o of others) {
+        if (!isNew(a) && !isNew(o)) continue;
+        if (traceTouches(a, o)) return { arrowId: arrow.id, seq: Math.max(isNew(a) ? a.seq : 0, isNew(o) ? o.seq : 0) };
+      }
+  }
+  return null;
+}
+
+/** The marks on a page on or around any of the rectangles: an arrow that ends there has to reach through them. */
+function marksOnEnds(s: SceneState, page: number, ends: readonly Rect[]): Set<string> {
+  return new Set(
+    s.objects
+      .filter((o): o is MarkObject => o.kind === "mark" && o.page === page)
+      .filter((o) => {
+        const found = resolve(s, o.target);
+        return !isRefusal(found) && ends.some((e) => overlaps(found.rect, e));
+      })
+      .map((o) => o.id),
+  );
 }
 
 /** True when a stroke of Maya's would cover a stroke of the child's on its page, counting both line widths. */
@@ -540,27 +590,28 @@ function placedStrokes(scene: Pick<Scene, "glyphs">, s: SceneState): PlacedStrok
 const ROUTE_ACROSS = new Set<PathKind>(["rule", "highlight"]);
 
 /**
- * What a new arrow on a page must keep clear of, in page cells: Maya's writing, arrows and marks, the child's ink, and the
- * boxes of the objects it does not join. A mark on or around either end is left out: the arrow has to reach that end.
+ * What a new arrow on a page must keep clear of, in page cells: Maya's writing, arrows and marks, the child's ink, the
+ * boxes of the objects it does not join, and the math later commands will write. A mark on or around either end is left out: the arrow has to reach that end.
  */
 function obstacles(scene: Scene, s: SceneState, page: number, ends: { rep: RepObject; rect: Rect }[]): ArrowObstacles {
-  const markOnEnd = new Set(
-    s.objects
-      .filter((o): o is MarkObject => o.kind === "mark" && o.page === page)
-      .filter((o) => {
-        const found = resolve(s, o.target);
-        return !isRefusal(found) && ends.some((e) => overlaps(found.rect, e.rect));
-      })
-      .map((o) => o.id),
-  );
+  const markOnEnd = marksOnEnds(s, page, ends.map((e) => e.rect));
+  const trace = ({ stroke, dx, dy }: { stroke: LocalStroke; dx: number; dy: number }): Trace => ({ pts: stroke.pts.map(([x, y]) => [x + dx, y + dy]), width: stroke.width });
   const maya = placedStrokes(scene, s)
     .filter((p) => p.page === page && !ROUTE_ACROSS.has(p.stroke.kind) && !markOnEnd.has(p.owner))
-    .map(({ stroke, dx, dy }): Trace => ({ pts: stroke.pts.map(([x, y]) => [x + dx, y + dy]), width: stroke.width }));
+    .map(trace);
   const child = scene.child.filter((c) => c.page === page).flatMap((c) => childTrace(scene, c) ?? []);
   const boxes = reps(s)
     .filter((o) => o.page === page && !ends.some((e) => e.rep.id === o.id))
     .map((o) => o.rect);
-  return { strokes: [...maya, ...child], boxes };
+  // What later math writes, in every object on the page (the joined ones too); a reserved box at an end does not count.
+  const later = reps(s)
+    .filter((o) => o.page === page)
+    .map((o) => ({ o, r: representation(o.op).reserved?.(o.state, o.id, ctxOf(scene)) ?? { strokes: [], boxes: [] } }));
+  const laterStrokes = later.flatMap(({ o, r }) => r.strokes.filter((st) => !ROUTE_ACROSS.has(st.kind)).map((stroke) => trace({ stroke, dx: o.rect.x, dy: o.rect.y })));
+  const laterBoxes = later
+    .flatMap(({ o, r }) => r.boxes.map((b) => ({ ...b, x: b.x + o.rect.x, y: b.y + o.rect.y })))
+    .filter((b) => !ends.some((e) => overlaps(b, e.rect)));
+  return { strokes: [...maya, ...laterStrokes, ...child], boxes: [...boxes, ...laterBoxes] };
 }
 
 /** The strokes with the command that revealed each one. */

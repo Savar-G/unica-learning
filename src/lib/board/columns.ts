@@ -353,6 +353,36 @@ function removeOwned(state: ColumnsState, id: string): ColumnsState | RefusalBod
   return { ...state, regroups: state.regroups.filter((g) => g.id !== id) };
 }
 
+/**
+ * What later steps may still write. Answer and work-row digits and carries are known now, so their strokes are exact: the
+ * finished problem's strokes that are not drawn yet. A borrow's new values depend on the order the borrows are made, so
+ * the lanes above the places that still borrow, and the top digits they cross out, are kept as boxes.
+ */
+function reserved(state: ColumnsState, objectId: string, ctx: Ctx): { strokes: LocalStroke[]; boxes: Rect[] } {
+  const now = new Set(draw(state, objectId, ctx).map((s) => s.key));
+  const written = Object.fromEntries(
+    state.calc.map((row) => [row.id, { ...Object.fromEntries([...row.value].map((_, c) => [c, { digit: digitAt(row.value, c), seq: state.seq, ink: "blue" as Ink }])), ...state.written[row.id] }]),
+  );
+  const carries: Regroup[] = state.calc.flatMap((row) =>
+    row.carries.flatMap((value, from) =>
+      value > 0 && !state.regroups.some((r) => r.kind === "carry" && r.rowId === row.id && r.from === from)
+        ? [{ id: `~${row.id}~${from}`, kind: "carry" as const, rowId: row.id, from, to: from + 1, value, seq: state.seq, ink: "red" as Ink }]
+        : [],
+    ),
+  );
+  const strokes = draw({ ...state, written, regroups: [...state.regroups, ...carries] }, objectId, ctx).filter((s) => !now.has(s.key));
+  const boxes: Rect[] = [];
+  const top = state.operands[0].y;
+  state.borrowPlan.forEach((planned, from) => {
+    if (state.regroups.filter((r) => r.kind === "borrow" && r.from === from).length >= planned) return;
+    for (const place of [from, from - 1]) {
+      boxes.push({ x: colX(state, place), y: 0, w: 1, h: state.laneCount });
+      boxes.push({ x: colX(state, place) + 0.1, y: top + 0.07, w: 0.8, h: 0.86 });
+    }
+  });
+  return { strokes, boxes };
+}
+
 /** A check means "this is right": only on a finished answer or work row, a written answer digit, or a finished problem. */
 function refuseMark(state: ColumnsState, target: Target, style: string): RefusalBody | null {
   if (style !== "check") return null;
@@ -429,6 +459,7 @@ export const columns: Representation<ColumnsState, ColumnsCommand> = {
   put,
   regroup,
   removeOwned,
+  reserved,
   refuseMark,
   draw,
 };
