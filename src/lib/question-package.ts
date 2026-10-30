@@ -327,8 +327,8 @@ function sameNumber(a: AnswerValue, b: AnswerValue): boolean {
   return x !== null && y !== null && x[0] * y[1] === y[0] * x[1];
 }
 
-/** The same written value, or the same number in another form. */
-const equivalent = (a: AnswerValue, b: AnswerValue) => sameValue(a, b) || sameNumber(a, b);
+/** The same written value, or the same number in another form (85, 85.0 and 170/2; 14/16 and 7/8). */
+export const equivalent = (a: AnswerValue, b: AnswerValue) => sameValue(a, b) || sameNumber(a, b);
 
 function refProblem(ref: unknown): string | null {
   if (!isObject(ref)) return "the reference is missing";
