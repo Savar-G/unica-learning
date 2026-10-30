@@ -73,7 +73,10 @@ export interface ReportJobOptions {
   profiles?: LearnerProfileStore;
   /** The AI client of the profile's AI parts (#197); by default the switch (profileAiClient), null (off) without OPENROUTER_API_KEY. */
   profileAi?: AiClient | null;
-  /** The rebuild of the child's profile (#303); by default rebuildChildProfileNow, with the secret key. */
+  /**
+   * The rebuild of the child's profile (#303). By default rebuildChildProfileNow, with the secret key, when the learner
+   * profiles are Supabase too; none when `profiles` is given (in memory) without it.
+   */
   rebuildChild?: (childId: string) => Promise<unknown>;
 }
 
@@ -101,7 +104,8 @@ export async function runReportJob(assessmentId: string, origin: string, options
   const db = database(options);
   if (!db) return;
   const { ledger: book, store } = db;
-  const { reviewer, transport, profileAi, rebuildChild = rebuildChildProfileNow } = options;
+  const { reviewer, transport, profileAi } = options;
+  const rebuildChild = options.rebuildChild ?? (options.profiles ? null : rebuildChildProfileNow);
   let profile: ProfileBuild | null = null;
   let childId: string | null = null;
   try {
@@ -143,7 +147,7 @@ export async function runReportJob(assessmentId: string, origin: string, options
   // Step 6, after the emails: the profile's AI parts, over the facts this run stored.
   if (profile) await profileStep(assessmentId, () => addProfileAi(db.profiles, profile, { ai: profileAi === undefined ? profileAiClient() : profileAi }));
   // Step 7: the child's profile, from what is stored now.
-  if (childId) await profileStep(assessmentId, () => rebuildChild(childId!));
+  if (childId && rebuildChild) await profileStep(assessmentId, () => rebuildChild(childId!));
 }
 
 /**

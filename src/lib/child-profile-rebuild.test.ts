@@ -114,4 +114,19 @@ describe("the child's profile rebuild", () => {
     expect(await rebuildChildProfile(CHILD, fenced)).toMatchObject({ built: false, reason: "refused" });
     expect(await readChildProfile(fenced.profiles, CHILD)).toBeNull();
   });
+
+  it("replaces a stored profile with an empty one when nothing is left to build from", async () => {
+    const f = family();
+    const stored = await rebuildChildProfile(CHILD, f);
+    expect(stored).toMatchObject({ built: true, revision: 1 });
+    // The other child's stored profile was built from inputs that are gone now (the test and its events deleted).
+    expect(await f.profiles.save({ childId: OTHER_CHILD, parentId: OTHER_PARENT, assessmentId: null, profile: stored.built ? stored.profile : never() }, 0)).toEqual({ revision: 1 });
+    expect(await rebuildChildProfile(OTHER_CHILD, f)).toMatchObject({ built: true, revision: 2 });
+    const read = await readChildProfile(f.profiles, OTHER_CHILD);
+    expect(read?.profile).toMatchObject({ assessment: null, standards: [], secure: [], notYetSecure: [], events: { counted: 0, inAssessmentProfile: 0, lastAt: null } });
+  });
 });
+
+function never(): never {
+  throw new Error("expected a build");
+}

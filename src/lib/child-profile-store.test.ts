@@ -69,7 +69,8 @@ function fakePostgrest(): ChildProfileStore {
     const body = JSON.parse(String(init.body));
     if (fenced.includes(body.parent_id)) return Response.json({ code: "55000", message: "family_unavailable" }, { status: 400 });
     if (init.method === "POST") {
-      if (!tables.children.some((c) => c.id === body.child_id && c.parent_id === body.parent_id)) return Response.json({ code: "23503", message: "violates foreign key constraint" }, { status: 409 });
+      if (!tables.children.some((c) => c.id === body.child_id && c.parent_id === body.parent_id)) return Response.json({ code: "23503", message: 'insert or update on table "child_profiles" violates foreign key constraint "child_profiles_child_id_parent_id_fkey"' }, { status: 409 });
+      if (body.assessment_id && !tables.assessments.some((t) => t.id === body.assessment_id && t.child_id === body.child_id)) return Response.json({ code: "23503", message: 'insert or update on table "child_profiles" violates foreign key constraint "child_profiles_assessment_id_child_id_fkey"' }, { status: 409 });
       if (rows.some((r) => r.child_id === body.child_id)) return Response.json({ code: "23505", message: "duplicate key" }, { status: 409 });
       rows.push(body);
       return answer([body]);
@@ -118,6 +119,13 @@ describe.each([["Supabase", fakePostgrest], ["in-memory", memory]] as const)("th
     expect(await store.save({ childId: FENCED_CHILD, parentId: FENCED_PARENT, assessmentId: null, profile: PROFILE }, 0)).toEqual({ refused: expect.any(String) });
     expect(await store.save({ childId: CHILD, parentId: "00000000-0000-4000-8000-0000000000a9", assessmentId: null, profile: PROFILE }, 0)).toEqual({ refused: expect.any(String) });
     expect(await store.current(FENCED_CHILD)).toBeNull();
+    expect(await store.current(CHILD)).toBeNull();
+  });
+
+  it("asks for a new build when the profile's test is gone (deleted after the inputs were read)", async () => {
+    const store = open();
+    const GONE = "00000000-0000-4000-8000-0000000000e9";
+    expect(await store.save({ childId: CHILD, parentId: PARENT, assessmentId: GONE, profile: PROFILE }, 0)).toBe("changed");
     expect(await store.current(CHILD)).toBeNull();
   });
 });

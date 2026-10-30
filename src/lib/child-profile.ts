@@ -30,6 +30,7 @@
 import {
   BC_SKILL_MAP,
   REPORTED_STRAND,
+  curriculumOrder,
   storedProfile,
   strandCertainty,
   strandStatus,
@@ -134,10 +135,6 @@ export interface ChildProfileInput {
 const STANDARDS = new Map(BC_SKILL_MAP.standards.map((s) => [s.code, s]));
 const SEVERITY: Record<StrandStatus, number> = { "needs-attention": 0, developing: 1, secure: 2 };
 
-/** Curriculum order: by grade, then by the standard's number ("4.9" before "4.10"). */
-const curriculumOrder = (a: Pick<ChildStandard, "code" | "grade">, b: Pick<ChildStandard, "code" | "grade">) =>
-  a.grade - b.grade || Number(a.code.match(/\d+$/)?.[0] ?? 0) - Number(b.code.match(/\d+$/)?.[0] ?? 0) || a.code.localeCompare(b.code);
-
 const newest = (times: readonly string[]) => times.reduce<string | null>((last, t) => (last === null || t > last ? t : last), null);
 
 /**
@@ -145,11 +142,16 @@ const newest = (times: readonly string[]) => times.reduce<string | null>((last, 
  * assessment profile this version reads and no event.
  */
 export function childProfileFacts(input: ChildProfileInput): ChildLearnerProfile | null {
+  const facts = buildFacts(input);
+  return facts.assessment || facts.events.counted > 0 ? facts : null;
+}
+
+/** The facts, also when there is nothing to build from (no standard): a rebuild stores that over an older profile. */
+function buildFacts(input: ChildProfileInput): ChildLearnerProfile {
   const base = input.assessment ? storedProfile(input.assessment.profile) : null;
   const baseId = base ? input.assessment!.assessmentId : null;
   const inProfile = (e: LearningEvent) => e.source === "assessment" && e.question.source === "assessment" && e.question.assessmentId === baseId;
   const counted = input.events.filter((e) => !inProfile(e));
-  if (!base && counted.length === 0) return null;
 
   const fromTest = new Map((base?.standards ?? []).map((s) => [s.code, s]));
   const codes = [...new Set([...fromTest.keys(), ...counted.map((e) => e.skill.standard)])].filter((code) => STANDARDS.has(code));
@@ -258,7 +260,10 @@ export interface ChildProfileSeams {
 
 export type RebuildResult =
   | { built: true; revision: number; profile: ChildLearnerProfile }
-  /** no_child: no such child. nothing_to_build: no assessment profile and no event. refused: the family write fence. busy: other builds stored first, every try. */
+  /**
+   * no_child: no such child. nothing_to_build: no assessment profile, no event and no stored profile (a stored one is
+   * replaced by an empty build). refused: the family write fence. busy: other builds stored first, every try.
+   */
   | { built: false; reason: "no_child" | "nothing_to_build" | "busy" }
   | { built: false; reason: "refused"; detail: string };
 
@@ -299,8 +304,9 @@ export async function rebuildChildProfile(childId: string, { profiles, events }:
     const expected = (await profiles.current(id))?.revision ?? 0;
     const source = await profiles.inputs(id);
     if (!source) return { built: false, reason: "no_child" };
-    const profile = childProfileFacts({ ...source, events: await learningEvents(events).read(id, ALL_TIME) });
-    if (!profile) return { built: false, reason: "nothing_to_build" };
+    const profile = buildFacts({ ...source, events: await learningEvents(events).read(id, ALL_TIME) });
+    // With nothing to build from, a stored profile is still replaced: its inputs are gone (a test or events deleted).
+    if (!profile.assessment && profile.events.counted === 0 && expected === 0) return { built: false, reason: "nothing_to_build" };
     const saved = await profiles.save({ childId: id, parentId: source.parentId, assessmentId: profile.assessment?.assessmentId ?? null, profile }, expected);
     if (saved === "changed") continue;
     if ("refused" in saved) return { built: false, reason: "refused", detail: saved.refused };

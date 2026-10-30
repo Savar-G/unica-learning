@@ -9,8 +9,10 @@ import { LEARNING_COLUMNS, fromRow } from "@/lib/learning-style";
 // only read, insert and update public.child_profiles (migration add_child_profiles); admins read it; parents read
 // nothing. The first save is an insert (a second first save fails on the primary key: 23505); each later save is an
 // update filtered on the revision it expects, so it changes the row only while the row still holds that revision. The
-// family write fence (55000) and the foreign key to the child under its parent (23503) refuse a save. The inputs read
-// the child, its finished tests and their stored learner profiles. Tests use src/lib/child-profile-memory.ts.
+// family write fence (55000) and the foreign key to the child under its parent (23503) refuse a save; the foreign key
+// to the test (23503 too) means the test was deleted after the inputs were read, so the rebuild builds again. The
+// inputs read the child, its finished tests and which have a stored learner profile, then that one profile. Tests use
+// src/lib/child-profile-memory.ts.
 
 const message = (error: { message: string }) => error.message;
 
@@ -25,17 +27,22 @@ export function childProfileStore(admin: SupabaseClient<Database>): ChildProfile
       const [child, tests, profiles] = await Promise.all([
         admin.from("children").select(`parent_id, grade, ${LEARNING_COLUMNS}`).eq("id", childId).maybeSingle(),
         admin.from("assessments").select("id, completed_at").eq("child_id", childId).eq("status", "completed"),
-        admin.from("learner_profiles").select("assessment_id, profile").eq("child_id", childId),
+        admin.from("learner_profiles").select("assessment_id").eq("child_id", childId),
       ]);
       for (const [read, r] of [["child", child], ["tests", tests], ["learner profiles", profiles]] as const) {
         if (r.error) throw new Error(`child profile ${read} load: ${message(r.error)}`);
       }
       if (!child.data) return null;
-      const stored = new Map((profiles.data ?? []).map((p) => [p.assessment_id, p.profile]));
+      const stored = new Set((profiles.data ?? []).map((p) => p.assessment_id));
       // The test that finished last among those with a stored profile.
       const latest = (tests.data ?? []).filter((t) => stored.has(t.id) && t.completed_at)
         .sort((a, b) => Date.parse(b.completed_at!) - Date.parse(a.completed_at!))[0];
-      const profile = latest ? stored.get(latest.id) : undefined;
+      let profile: unknown = undefined;
+      if (latest) {
+        const one = await admin.from("learner_profiles").select("profile").eq("assessment_id", latest.id).maybeSingle();
+        if (one.error) throw new Error(`child profile learner profile load: ${message(one.error)}`);
+        profile = one.data?.profile;
+      }
       const buildId = (profile as { buildId?: unknown } | undefined)?.buildId;
       const answers = fromRow(child.data);
       return {
@@ -55,9 +62,10 @@ export function childProfileStore(admin: SupabaseClient<Database>): ChildProfile
         ? await admin.from("child_profiles").insert({ ...row, child_id: childId }).select("revision")
         : await admin.from("child_profiles").update(row).eq("child_id", childId).eq("revision", expected).select("revision");
       if (error) {
-        // 23505: another build stored the first revision; 23503: the child is not under that parent; 55000: the
-        // family write fence (family_unavailable, family_scope).
-        if (error.code === "23505") return "changed";
+        // 23505: another build stored the first revision; 23503 on the test's key: the test was deleted since the
+        // inputs were read; 23503 on the child's key: the child is not under that parent; 55000: the family write
+        // fence (family_unavailable, family_scope).
+        if (error.code === "23505" || (error.code === "23503" && error.message.includes("child_profiles_assessment_id_child_id_fkey"))) return "changed";
         if (error.code === "23503" || error.code === "55000") return { refused: error.message };
         throw new Error(`child profile save: ${message(error)}`);
       }

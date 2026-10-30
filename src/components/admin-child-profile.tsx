@@ -23,6 +23,8 @@ export function AdminChildProfile({ email, detail }: { email: string; detail: Ch
   const profile = stored ? storedChildProfile(stored.profile) : null;
   // Each event's number in the list below, so a standard's evidence links to its rows.
   const numbers = new Map(events.map((e, i) => [e.id, i + 1]));
+  // The events the stored build counted: an event stored after it shows as not in this build.
+  const counted = new Set(profile?.standards.flatMap((s) => s.evidence.events) ?? []);
   return <AdminFrame email={email} section="children" title={`${c.first_name}'s profile`}>
     <RecordFacts facts={[
       ["Child", <Link key="child" href={childPath(c.id)}>{c.first_name}</Link>], ["Grade and curriculum", gradeAndPlace(c.grade, c.province)],
@@ -39,7 +41,7 @@ export function AdminChildProfile({ email, detail }: { email: string; detail: Ch
       : <ProfileFacts profile={profile} numbers={numbers} />}
 
     <h2>Learning events</h2>
-    <p className="adm-note">Every event of the child, oldest first. Events of the test the profile starts from are already in that test&apos;s profile, so the build does not count them again.</p>
+    <p className="adm-note">Every event of the child, oldest first. Events of the test the profile starts from are already in that test&apos;s profile, so the build does not count them again. An event stored after the last build is not in it yet.</p>
     <Table label="Learning events" head={["#", "When (Pacific)", "Source", "Question", "BC", "Result", "Hints", "Stuck step", "Mistake", "Time", "Evidence", "Counted"]} empty="No learning event is stored for this child.">
       {events.map((e, i) => {
         const inTest = e.source === "assessment" && e.assessment_id !== null && e.assessment_id === profile?.assessment?.assessmentId;
@@ -57,7 +59,7 @@ export function AdminChildProfile({ email, detail }: { email: string; detail: Ch
           <td>{e.time_ms === null ? "-" : duration(e.time_ms)}</td>
           <td>{e.evidence_kind === "answer" && e.assessment_id ? <Link href={adminTestPath(e.assessment_id)}>Answer in the test</Link>
             : e.evidence_kind ? <>{SOURCE[e.evidence_kind === "scan" ? "marking" : "call"]} <span className="adm-sub adm-mono">{e.evidence_id}</span></> : "-"}</td>
-          <td>{!profile ? "-" : inTest ? <Chip tone="muted">In the test profile</Chip> : "Yes"}</td>
+          <td>{!profile ? "-" : inTest ? <Chip tone="muted">In the test profile</Chip> : counted.has(e.id) ? "Yes" : <Chip tone="muted">Not in this build</Chip>}</td>
         </tr>;
       })}
     </Table>

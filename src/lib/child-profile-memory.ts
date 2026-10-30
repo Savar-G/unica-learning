@@ -1,8 +1,8 @@
 // The child's profile's seams (src/lib/child-profile.ts, #303) in memory, for tests: the profile store and the learning
 // events' store (src/lib/learning-events-memory.ts) over the same families. It keeps the database's rules: one profile
 // per child, stored as JSON, its schema version beside it; a save only over the revision it expects (compare and set);
-// a child under its parent (the foreign key); no write for a family whose deletion is requested (the family write
-// fence). The latest assessment profile is the stored profile of the child's test that finished last.
+// a child under its parent and a test of that child (the foreign keys; a test that is gone asks for a new build); no
+// write for a family whose deletion is requested (the family write fence). The latest assessment profile is the stored profile of the child's test that finished last.
 import type { Grade, ProfileLearning } from "@/lib/assessment";
 import type { ChildProfileStore, StoredChildProfile } from "@/lib/child-profile";
 import { memoryLearningEventStore } from "@/lib/learning-events-memory";
@@ -43,6 +43,8 @@ export function memoryChildProfiles(families: MemoryChildFamilies) {
     async save({ childId, parentId, assessmentId, profile }, expected) {
       if (families.deleting?.includes(parentId)) return { refused: "family_unavailable" };
       if (!families.children.some((c) => c.id === childId && c.parentId === parentId)) return { refused: "the child is not under that parent" };
+      // The test's foreign key: a test that is gone asks for a new build.
+      if (assessmentId !== null && !tests.some((t) => t.id === assessmentId && t.childId === childId)) return "changed";
       if ((rows.get(childId)?.revision ?? 0) !== expected) return "changed";
       const revision = expected + 1;
       rows.set(childId, { revision, builtAt: new Date().toISOString(), schemaVersion: profile.schemaVersion, profile: json(profile), parentId, assessmentId });
