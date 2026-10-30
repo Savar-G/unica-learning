@@ -21,7 +21,19 @@ function arc(cx: number, cy: number, rx: number, ry: number, from: number, to: n
 }
 const round = (n: number) => Math.round(n * 1000) / 1000;
 
-const TABLE: Record<string, Point[][]> = {
+/**
+ * The board's own paths, the same in every font (spec #297): the minus (the fonts have no U+2212, and a font hyphen is
+ * too short and too slanted for a sum; the ASCII hyphen draws the same) and the check mark (no font has one). Rules and
+ * arrowheads are the board's own lines too (columns.ts, geometry.ts).
+ */
+export const OWNED_GLYPHS: Readonly<Record<string, readonly (readonly Point[])[]>> = {
+  "-": [[[0.22, 0.5], [0.78, 0.5]]],
+  "−": [[[0.22, 0.5], [0.78, 0.5]]],
+  "✓": [[[0.18, 0.55], [0.4, 0.8], [0.84, 0.15]]],
+};
+
+const TABLE: Record<string, readonly (readonly Point[])[]> = {
+  ...OWNED_GLYPHS,
   "0": [arc(0.5, 0.5, 0.24, 0.4, -90, 270, 24)],
   "1": [[[0.34, 0.26], [0.52, 0.1], [0.52, 0.9]]],
   "2": [[[0.27, 0.28], [0.36, 0.15], [0.5, 0.1], [0.64, 0.15], [0.71, 0.29], [0.66, 0.44], [0.27, 0.9], [0.75, 0.9]]],
@@ -44,9 +56,6 @@ const TABLE: Record<string, Point[][]> = {
     [[0.2, 0.5], [0.8, 0.5]],
     [[0.5, 0.2], [0.5, 0.8]],
   ],
-  // The board's minus is its own path (U+2212 in the real font set may be missing); the ASCII hyphen draws the same.
-  "-": [[[0.22, 0.5], [0.78, 0.5]]],
-  "−": [[[0.22, 0.5], [0.78, 0.5]]],
   "×": [
     [[0.27, 0.27], [0.73, 0.73]],
     [[0.73, 0.27], [0.27, 0.73]],
@@ -64,11 +73,15 @@ const TABLE: Record<string, Point[][]> = {
   "(": [arc(0.75, 0.5, 0.3, 0.45, 240, 120, 10)],
   ")": [arc(0.25, 0.5, 0.3, 0.45, -60, 60, 10)],
   "?": [[...arc(0.5, 0.3, 0.2, 0.2, 200, 420, 10), [0.5, 0.65]], [[0.5, 0.86], [0.5, 0.88]]],
-  "✓": [[[0.18, 0.55], [0.4, 0.8], [0.84, 0.15]]],
+  // The R of a division remainder ("26 R 1"): the only letter until the real font comes.
+  R: [
+    [[0.3, 0.9], [0.3, 0.1], [0.55, 0.1], [0.68, 0.16], [0.72, 0.3], [0.68, 0.43], [0.55, 0.5], [0.3, 0.5]],
+    [[0.5, 0.5], [0.72, 0.9]],
+  ],
   " ": [],
 };
 
-/** The placeholder set: digits, + − × ÷ = . ( ) ? and the check mark. No letters until the real font comes. */
+/** The placeholder set: digits, + − × ÷ = . ( ) ? R and the check mark. No other letters until the real font comes. */
 export const PLACEHOLDER_GLYPHS: GlyphSet = {
   name: "placeholder-1",
   strokes: (char) => TABLE[char] ?? null,

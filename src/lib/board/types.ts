@@ -1,7 +1,7 @@
 // The board core's vocabulary (#315, spec #297): the commands the model may send, the named targets they point at, and
 // the stroke paths the core returns. The model never gives coordinates: it names objects and their parts, and the core
-// decides where everything goes. Later tickets add representations (division, fractions, number lines, models) as new
-// create commands and new target parts; the common commands below stay the same.
+// decides where everything goes. Each representation (columns, division; fractions, number lines and models later) is a
+// create command with its own target parts; the common commands below stay the same.
 
 /** Pen colours. The renderer maps them to the palette. */
 export const INKS = ["blue", "red", "green", "yellow", "black"] as const;
@@ -42,6 +42,15 @@ export interface ColumnsCommand {
   place: Place;
 }
 
+/** Long division with the bracket. The core works out every step; the model reveals them one by one with `put`. */
+export interface DivisionCommand {
+  op: "division";
+  id: string;
+  dividend: string;
+  divisor: string;
+  place: Place;
+}
+
 export interface WriteCommand {
   op: "write";
   id: string;
@@ -63,11 +72,12 @@ export interface RegroupCommand {
 }
 
 /** Commands that create a new math object with its own layout. Later representations join this union. */
-export type CreateCommand = ColumnsCommand | WriteCommand;
+export type CreateCommand = ColumnsCommand | DivisionCommand | WriteCommand;
 
 export type Command =
   | CreateCommand
-  | { op: "put"; target: Target; value: string; ink?: Ink }
+  /** Reveals a value. Division may leave the value out: the core writes the one it works out. Given, it is checked. */
+  | { op: "put"; target: Target; value?: string; ink?: Ink }
   | RegroupCommand
   | { op: "mark"; id: string; target: Target; style: MarkStyle; ink?: Ink }
   | { op: "arrow"; id: string; from: Target; to: Target; ink?: Ink }
@@ -158,6 +168,11 @@ export interface BoardPath {
   /** The polyline's length in board widths. */
   length: number;
   durationMs: number;
+  /**
+   * Where the stroke is painted among Maya's strokes in its layer (lower first): the command that revealed it, then its
+   * place among that command's strokes. Stable: a stroke an undo brings back keeps it.
+   */
+  order: number;
 }
 
 /** A newly drawn stroke, with when it starts, in ms from the start of the batch. */

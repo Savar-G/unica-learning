@@ -125,6 +125,8 @@ export interface WorkbookStore {
   page(workbookId: string, pageNumber: number): Promise<WorkbookPage | null>;
   /** A question by workbook, page number and question number. */
   question(ref: WorkbookQuestionRef): Promise<QuestionLookup>;
+  /** The page whose QR code holds `token` (its number), with its workbook, or null. */
+  pageByToken(token: string): Promise<{ workbook: WorkbookSummary; page: number } | null>;
 }
 
 // ---------- Checks both adapters share ----------
@@ -139,6 +141,8 @@ const FILE_NAME = /^[A-Za-z0-9._-]{1,100}$/;
 const MAX_QUESTIONS = 1000;
 
 export const isUuid = (v: unknown): v is string => typeof v === "string" && UUID.test(v);
+/** True when `v` has the shape of a page's QR token. */
+export const isQrToken = (v: unknown): v is string => typeof v === "string" && QR_TOKEN.test(v);
 const isWhole = (v: unknown, min: number, max = Number.MAX_SAFE_INTEGER): v is number => Number.isInteger(v) && (v as number) >= min && (v as number) <= max;
 const isText = (v: unknown, max: number): v is string => typeof v === "string" && v.trim() !== "" && v.length <= max;
 

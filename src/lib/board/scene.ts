@@ -4,9 +4,11 @@
 // History is a log of committed transactions. The visible state is the replay of the transactions that are not undone,
 // with each object's page and position recorded on its first placement, so an undo never moves anything else.
 import { columns } from "@/lib/board/columns";
+import { division } from "@/lib/board/division";
 import { annotationStrokes, arrowLines, MARK_INK, routeArrow, type ArrowObject, type ArrowObstacles, type ArrowRoute, type MarkObject } from "@/lib/board/annotations";
 import { contains, overlaps, polylineHitsRect, polylineLength, traceTouches, type Trace } from "@/lib/board/geometry";
-import { PLACEHOLDER_GLYPHS, type GlyphSet } from "@/lib/board/glyphs";
+import { BOARD_GLYPHS } from "@/lib/board/fonts";
+import type { GlyphSet } from "@/lib/board/glyphs";
 import { note } from "@/lib/board/note";
 import { parseCommand } from "@/lib/board/parse";
 import { isRefusal, refuse, type Ctx, type LocalStroke, type LocalTarget, type RefusalBody, type Representation } from "@/lib/board/representation";
@@ -14,7 +16,7 @@ import type { Batch, BoardPath, Command, CreateCommand, Notice, PageSize, PathKi
 import type { Stroke } from "@/lib/whiteboard";
 
 /** The representations the board can create, by their create command. Later ones are added here. */
-const REPRESENTATIONS = { columns, write: note } satisfies Record<CreateCommand["op"], unknown>;
+const REPRESENTATIONS = { columns, division, write: note } satisfies Record<CreateCommand["op"], unknown>;
 const representation = (op: CreateCommand["op"]) => REPRESENTATIONS[op] as unknown as Representation<unknown, CreateCommand>;
 const isCreate = (c: Command): c is CreateCommand => c.op in REPRESENTATIONS;
 
@@ -98,7 +100,7 @@ export type ApplyResult =
 const emptyState = (): SceneState => ({ objects: [], owners: new Map(), view: { page: 1, target: null }, lastPage: 1 });
 
 export function createScene(options: { page?: PageSize; glyphs?: GlyphSet } = {}): Scene {
-  return { page: options.page ?? DEFAULT_PAGE, glyphs: options.glyphs ?? PLACEHOLDER_GLYPHS, log: [], child: [], nextSeq: 1, state: emptyState() };
+  return { page: options.page ?? DEFAULT_PAGE, glyphs: options.glyphs ?? BOARD_GLYPHS, log: [], child: [], nextSeq: 1, state: emptyState() };
 }
 
 // ---------- targets ----------
@@ -618,13 +620,18 @@ function obstacles(scene: Scene, s: SceneState, page: number, ends: { rep: RepOb
   return { strokes: [...maya, ...laterStrokes, ...child], boxes: [...boxes, ...laterBoxes] };
 }
 
+/** Room in a stroke's paint order for the strokes of one command: far more than one command draws. */
+const ORDER_PER_COMMAND = 100_000;
+
 /** The strokes with the command that revealed each one. */
 function sequencedPaths(scene: Scene): (BoardPath & { seq: number })[] {
   const local = placedStrokes(scene, scene.state);
   local.sort((a, b) => a.stroke.seq - b.stroke.seq);
   const unit = 1 / scene.page.cols;
   const r4 = (n: number) => Math.round(n * 10_000) / 10_000;
-  return local.map(({ stroke, owner, page, dx, dy }) => {
+  let place = 0;
+  return local.map(({ stroke, owner, page, dx, dy }, i) => {
+    place = i > 0 && local[i - 1].stroke.seq === stroke.seq ? place + 1 : 0;
     const pts = stroke.pts.map(([x, y]): [number, number] => [r4((x + dx) * unit), r4((y + dy) * unit)]);
     const cells = polylineLength(stroke.pts);
     const ms = Math.round(Math.min(TIMING.maxMs, Math.max(stroke.kind === "highlight" ? TIMING.highlightMinMs : TIMING.minMs, cells * TIMING.msPerCell)));
@@ -644,6 +651,7 @@ function sequencedPaths(scene: Scene): (BoardPath & { seq: number })[] {
       pts,
       length: r4(cells * unit),
       durationMs: ms,
+      order: stroke.seq * ORDER_PER_COMMAND + place,
       seq: stroke.seq,
     };
   });

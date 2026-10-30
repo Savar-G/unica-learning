@@ -106,3 +106,12 @@
 .close .ctas .start-note { text-align: center; }
 .res-cta .start-note { margin: 8px 0 0 !important; font-size: 14px; line-height: 1.4; }
 .cmpp-end .start-note { margin: 10px 0 0; }
+
+/* Parent home (#301): a child's current workbook and "Open the desk", across the full width of the child's card. */
+.acct-desk { flex-basis: 100%; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px 20px; padding-top: 16px; border-top: 1px solid var(--line); }
+.acct-desk > span:first-child { display: grid; gap: 4px; font-size: 17px; max-width: 34em; }
+.acct-desk form { margin: 0; }
+.acct-desk .btn { min-height: 48px; gap: 8px; }
+
+/* The desk guard (#301): a parent page restored from history shows nothing while it checks for an open desk. */
+html[data-desk-hidden] body { visibility: hidden; }
