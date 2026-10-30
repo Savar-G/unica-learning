@@ -11,15 +11,21 @@ import type { KindRules, Of } from "@/lib/question-package-math";
 import {
   addColumns,
   beyond,
+  decimalDigits,
+  decimalPlaces,
   fail,
   fromWritten,
   isCount,
+  isObject,
   isOne,
   isTwo,
   multiplyRows,
+  rational,
   subtractColumns,
   written,
+  type Fields,
   type OperationProblem,
+  type Rational,
   type Written,
 } from "@/lib/question-package-columns";
 
@@ -44,10 +50,14 @@ const UNITS: Record<Unit, { dimension: Dimension; base: number }> = {
   $: { dimension: "money", base: 100 },
 };
 
-export const isUnit = (u: unknown): u is Unit => typeof u === "string" && Object.hasOwn(UNITS, u);
+const isUnit = (u: unknown): u is Unit => typeof u === "string" && Object.hasOwn(UNITS, u);
+
+/** What is wrong with a unit: one code does not know is "unsupported", anything not a unit gets `missing`. */
+const unitProblem = (u: unknown, missing: OperationProblem): OperationProblem | null =>
+  isUnit(u) ? null : typeof u === "string" ? beyond(`code cannot check the unit ${u}`) : missing;
 
 /** The decimal places an amount may have: cents are whole, dollars have cents, the others go to thousandths. */
-const placesOf = (unit: Unit) => (unit === "¢" ? 0 : unit === "$" ? 2 : 3);
+const allowedPlaces = (unit: Unit) => (unit === "¢" ? 0 : unit === "$" ? 2 : 3);
 
 const MAX_AMOUNT = 99999;
 
@@ -61,18 +71,10 @@ const BIG_AMOUNT = beyond(`code checks amounts only up to ${MAX_AMOUNT}.999, wit
 
 // ---------- Exact sizes ----------
 
-/** An exact rational [numerator, denominator], the denominator above 0. */
-type Rational = [bigint, bigint];
 const big = BigInt;
 const ZERO = big(0);
 const ONE = big(1);
-const TEN = big(10);
-
-const bigGcd = (a: bigint, b: bigint): bigint => (b === ZERO ? (a < ZERO ? -a : a) : bigGcd(b, a % b));
-const reduce = ([n, d]: Rational): Rational => {
-  const g = bigGcd(n, d) || ONE;
-  return [n / g, d / g];
-};
+const reduce = ([n, d]: Rational): Rational => rational(n, d);
 
 /** An amount's size in the smallest unit of its measure, exactly; a clock time is minutes after midnight. */
 export interface Size {
@@ -83,7 +85,7 @@ export interface Size {
 /** A number from 0 as an exact rational, read from its written digits; null when it has more than 3 decimal places. */
 function exact(value: number): Rational | null {
   const w = written(value, 3);
-  return w === null ? null : [big(w.scaled), TEN ** big(w.places)];
+  return w === null ? null : [big(w.scaled), big(10) ** big(w.places)];
 }
 
 /** The size of an amount, or null for a value that is not an amount code can read. */
@@ -119,36 +121,19 @@ const DIMENSION_NAMES: Record<Size["dimension"], string> = {
 /** "a length", "an amount of money". */
 export const dimensionName = (size: Size) => DIMENSION_NAMES[size.dimension];
 
-/** A rational as a decimal number, or null when it does not end (1/3) or needs more than `maxPlaces` places. */
+/** A rational from 0 as a decimal number, or null when it does not end (1/3) or needs more than `maxPlaces` places. */
 function decimalOf(r: Rational, maxPlaces: number): number | null {
-  const [n, d] = reduce(r);
-  for (let places = 0; places <= maxPlaces; places++) {
-    const scale = TEN ** big(places);
-    if ((n * scale) % d !== ZERO) continue;
-    const scaled = (n * scale) / d;
-    if (scaled > big(Number.MAX_SAFE_INTEGER)) return null;
-    const digits = scaled.toString().padStart(places + 1, "0");
-    return Number(places === 0 ? digits : `${digits.slice(0, -places)}.${digits.slice(-places)}`);
-  }
-  return null;
+  const places = decimalPlaces(r);
+  return places === null || places > maxPlaces ? null : Number(decimalDigits(r));
 }
 
-/** A rational whose decimal ends (3/4 is 0.75), not one that goes on (1/3). */
-const ends = ([, d]: Rational) => {
-  let rest = reduce([ONE, d])[1];
-  for (const p of [big(2), big(5)]) while (rest % p === ZERO) rest /= p;
-  return rest === ONE;
-};
-
 // ---------- Checks ----------
-
-type Fields = Record<string, unknown>;
-const isObject = (v: unknown): v is Fields => typeof v === "object" && v !== null && !Array.isArray(v);
 
 /** What is wrong with an amount in one unit: "failed" for a wrong amount, "unsupported" for one beyond code. */
 function quantityProblem(v: unknown): OperationProblem | null {
   if (!isObject(v) || v.type !== "quantity" || typeof v.value !== "number" || !Number.isFinite(v.value) || v.value < 0) return NOT_AMOUNT;
-  if (!isUnit(v.unit)) return typeof v.unit === "string" ? beyond(`code cannot check the unit ${v.unit}`) : NOT_AMOUNT;
+  const unit = unitProblem(v.unit, NOT_AMOUNT);
+  if (unit) return unit;
   const w = written(v.value, Infinity);
   if (w === null) return NOT_AMOUNT;
   if (v.unit === "¢" && w.places > 0) return fail("an amount in ¢ is a whole number");
@@ -209,7 +194,8 @@ const sentence = (s: string) => (s.endsWith(".") ? s : `${s}.`);
 
 /** A dollar amount with its cents: 1.5 is "1.50". */
 function dollars(value: number): string {
-  const w = written(value, 2) ?? { scaled: 0, places: 0 };
+  const w = written(value, 2);
+  if (w === null) return String(value);
   const cents = String(w.scaled * 10 ** (2 - w.places)).padStart(3, "0");
   return `${cents.slice(0, -2)}.${cents.slice(-2)}`;
 }
@@ -247,13 +233,19 @@ function factorOf(from: Unit, to: Unit): { by: "multiply" | "divide"; factor: nu
   return a >= b ? { by: "multiply", factor: a / b } : { by: "divide", factor: b / a };
 }
 
-/** An amount in another unit of its measure, exactly, or the reason it cannot be written there. */
+/** An amount as a number of another unit of its measure, exactly: 90 min in h is 3/2. */
+function sizeIn(q: Quantity, to: Unit): Rational {
+  const [n, d] = exact(q.value)!;
+  return rational(n * big(UNITS[q.unit].base), d * big(UNITS[to].base));
+}
+
+/** Why an amount cannot be written in another unit of its measure, or null. */
 function convertProblem(q: Quantity, to: Unit): OperationProblem | null {
   if (q.unit === to) return fail(`the amount is already in ${to}`);
   if (UNITS[q.unit].dimension !== UNITS[to].dimension) return fail(`${q.unit} and ${to} do not measure the same thing`);
-  const size = reduce([exact(q.value)![0] * big(UNITS[q.unit].base), exact(q.value)![1] * big(UNITS[to].base)]);
-  if (!ends(size)) return fail(`${amountText(q)} is not a whole number or a decimal in ${to}`);
-  const value = decimalOf(size, placesOf(to));
+  const size = sizeIn(q, to);
+  if (decimalPlaces(size) === null) return fail(`${amountText(q)} is not a whole number or a decimal in ${to}`);
+  const value = decimalOf(size, allowedPlaces(to));
   return value !== null && Math.floor(value) <= MAX_AMOUNT ? null : BIG_AMOUNT;
 }
 
@@ -261,8 +253,7 @@ function convertProblem(q: Quantity, to: Unit): OperationProblem | null {
 function convertStep(id: string, q: Quantity, to: Unit, same = false): Extract<WorkedStep, { kind: "convert-unit" }> {
   if (same && q.unit === to) return { id, kind: "convert-unit", from: cleanQuantity(q), by: "multiply", factor: 1, to: cleanQuantity(q) };
   const { by, factor } = factorOf(q.unit, to);
-  const size = reduce([exact(q.value)![0] * big(UNITS[q.unit].base), exact(q.value)![1] * big(UNITS[to].base)]);
-  return { id, kind: "convert-unit", from: cleanQuantity(q), by, factor, to: quantity(decimalOf(size, placesOf(to))!, to) };
+  return { id, kind: "convert-unit", from: cleanQuantity(q), by, factor, to: quantity(decimalOf(sizeIn(q, to), allowedPlaces(to))!, to) };
 }
 
 /**
@@ -289,11 +280,15 @@ function columnsOf(q: Quantity): Written {
   return q.unit === "$" ? { scaled: w.scaled * 10 ** (2 - w.places), places: 2 } : w;
 }
 
+/** Two written numbers lined up on the point: their digits to the same count of places, and that count. */
+function aligned(a: Written, b: Written): [number, number, number] {
+  const places = Math.max(a.places, b.places);
+  return [a.scaled * 10 ** (places - a.places), b.scaled * 10 ** (places - b.places), places];
+}
+
 /** The value of a column addition or subtraction, from the written numbers. */
 function columnValue(a: Written, b: Written, how: "add" | "subtract"): number {
-  const places = Math.max(a.places, b.places);
-  const x = a.scaled * 10 ** (places - a.places);
-  const y = b.scaled * 10 ** (places - b.places);
+  const [x, y, places] = aligned(a, b);
   return fromWritten(how === "add" ? x + y : x - y, places);
 }
 
@@ -331,7 +326,8 @@ function asked(value: Quantity, unit: Unit | undefined): { steps: WorkedStep[]; 
 /** What is wrong with the unit a question asks for, the worked value being `value`. */
 function askedProblem(value: Quantity, unit: unknown): OperationProblem | null {
   if (unit === undefined) return Math.floor(value.value) <= MAX_AMOUNT ? null : BIG_AMOUNT;
-  if (!isUnit(unit)) return typeof unit === "string" ? beyond(`code cannot check the unit ${unit}`) : fail("the unit asked for is not a unit");
+  const problem = unitProblem(unit, fail("the unit asked for is not a unit"));
+  if (problem || !isUnit(unit)) return problem;
   if (UNITS[unit].dimension !== UNITS[value.unit].dimension) return fail(`${value.unit} and ${unit} do not measure the same thing`);
   if (unit === value.unit) return Math.floor(value.value) <= MAX_AMOUNT ? null : BIG_AMOUNT;
   return convertProblem(value, unit);
@@ -352,8 +348,8 @@ function pairProblem(op: Fields): OperationProblem | null {
   }
   const pair = op as PairOperation;
   if (pair.kind === "quantity-subtract") {
-    const [x, y] = pairWork(pair).operands.map(columnsOf);
-    if (x.scaled * 10 ** (y.places - Math.min(x.places, y.places)) < y.scaled * 10 ** (x.places - Math.min(x.places, y.places))) return BELOW_ZERO;
+    const [x, y] = aligned(...(pairWork(pair).operands.map(columnsOf) as [Written, Written]));
+    if (x < y) return BELOW_ZERO;
   }
   return askedProblem(pairValue(pair), op.unit);
 }
@@ -484,7 +480,8 @@ function addLegs(start: number, minutes: number, twelveHour: boolean): WorkedSte
 }
 
 type ElapsedOperation = Of<"elapsed-time">;
-const elapsedMinutes = ({ operands: [a, b] }: ElapsedOperation) => clockMinutes(b) - clockMinutes(a);
+/** The minutes from one clock time to the next time the clock shows the other: an end before the start is the next day. */
+const elapsedMinutes = ({ operands: [a, b] }: ElapsedOperation) => (clockMinutes(b) - clockMinutes(a) + MINUTES_IN_DAY) % MINUTES_IN_DAY;
 
 /** The time from one clock time to another, in the unit the question asks for, or in hours and minutes. */
 function elapsedValue(op: ElapsedOperation): Quantity | Duration {
@@ -499,10 +496,11 @@ function elapsedProblem(op: Fields): OperationProblem | null {
   if (!isTwo(op.operands) || !op.operands.every(isTime)) return NOT_TWO_TIMES;
   const [a, b] = op.operands as [ClockTime, ClockTime];
   if ((a.period === null) !== (b.period === null)) return fail("the two times are not on the same clock");
-  const minutes = clockMinutes(b) - clockMinutes(a);
-  if (minutes <= 0) return fail("the end time is before the start time");
+  const minutes = elapsedMinutes(op as ElapsedOperation);
+  if (minutes === 0) return fail("the two times are the same");
   if (op.unit === undefined || op.unit === "min") return null;
-  if (!isUnit(op.unit)) return typeof op.unit === "string" ? beyond(`code cannot check the unit ${op.unit}`) : fail("the unit asked for is not a unit");
+  const problem = unitProblem(op.unit, fail("the unit asked for is not a unit"));
+  if (problem || !isUnit(op.unit)) return problem;
   if (UNITS[op.unit].dimension !== "time") return fail(`the time between two clock times is not in ${op.unit}`);
   return convertProblem(quantity(minutes, "min"), op.unit);
 }
@@ -531,7 +529,7 @@ const timeAddLegs = ({ operands: [t, d] }: TimeAddOperation) => addLegs(clockMin
 const otherClock = (t: ClockTime): ClockTime => clockAt(clockMinutes(t), t.period === null);
 
 /** The operation kinds on amounts. */
-export type MeasureKind = "convert" | "quantity-add" | "quantity-subtract" | "quantity-multiply" | "money-round" | "elapsed-time" | "time-add" | "clock-convert";
+type MeasureKind = "convert" | "quantity-add" | "quantity-subtract" | "quantity-multiply" | "money-round" | "elapsed-time" | "time-add" | "clock-convert";
 
 export const MEASURE_KINDS: { [K in MeasureKind]: KindRules<Of<K>> } = {
   convert: {
@@ -540,10 +538,10 @@ export const MEASURE_KINDS: { [K in MeasureKind]: KindRules<Of<K>> } = {
       if (!isOne(op.operands)) return NOT_AMOUNT;
       const problem = quantityProblem(op.operands[0]);
       if (problem) return problem;
-      if (!isUnit(op.unit)) return typeof op.unit === "string" ? beyond(`code cannot check the unit ${op.unit}`) : fail("the conversion needs the unit to change to");
-      return convertProblem(op.operands[0] as Quantity, op.unit);
+      const unit = unitProblem(op.unit, fail("the conversion needs the unit to change to"));
+      return unit ?? convertProblem(op.operands[0] as Quantity, op.unit as Unit);
     },
-    text: ({ operands: [q], unit }) => `${amountText(q)} = ${unit === "$" ? "$?" : unit === "¢" ? "?¢" : `? ${unit}`}`,
+    text: ({ operands: [q], unit }) => `${amountText(q)} = ${placeholder(unit)}`,
     statement: ({ operands: [q] }) => amountText(q),
     steps: ({ operands: [q], unit }) => [convertStep("convert", q, unit)],
     result: ({ operands: [q], unit }) => convertStep("convert", q, unit).to,
@@ -583,7 +581,8 @@ export const MEASURE_KINDS: { [K in MeasureKind]: KindRules<Of<K>> } = {
     problem: elapsedProblem,
     text: ({ operands: [a, b] }) => `From ${amountText(a)} to ${amountText(b)}`,
     steps: (op) => {
-      const legs = elapsedLegs(clockMinutes(op.operands[0]), clockMinutes(op.operands[1]), op.operands[0].period !== null);
+      const start = clockMinutes(op.operands[0]);
+      const legs = elapsedLegs(start, start + elapsedMinutes(op), op.operands[0].period !== null);
       const total: WorkedStep[] = legs.length > 1 ? [{ id: "total", kind: "add-durations", minutes: legs.map((l) => (l as { minutes: number }).minutes), total: elapsedMinutes(op) }] : [];
       return [...legs, ...total];
     },

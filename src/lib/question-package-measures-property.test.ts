@@ -245,7 +245,8 @@ interface Case {
   easier: Operation;
 }
 
-const elapsedOracle = (op: Extract<Operation, { kind: "elapsed-time" }>): Measured => amount(q(big(minutesOf(op.operands[1]) - minutesOf(op.operands[0])), big(1)), "min");
+/** An end time before the start time is the next day. */
+const elapsedOracle = (op: Extract<Operation, { kind: "elapsed-time" }>): Measured => amount(q(big((minutesOf(op.operands[1]) - minutesOf(op.operands[0]) + 1440) % 1440), big(1)), "min");
 
 const CASES: Record<string, Case> = {
   convert: {

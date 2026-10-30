@@ -153,6 +153,8 @@ describe("evaluating with given values", () => {
     ["a name of two letters", evaluate("ab + 1", { a: 1, b: 2 }), "code reads only one-letter unknowns"],
     ["a division before a product written without ×", evaluate("6 ÷ 2(1 + 2)"), "code does not read a division before a product written without ×"],
     ["too many operations", evaluate("1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1"), "code checks expressions only with up to 8 operations"],
+    ["the letter x for times (#307 review)", evaluate("3 x 4"), "code reads × for times, not the letter x"],
+    ["brackets nested too deep (#307 review)", evaluate(`${"(".repeat(5000)}1${")".repeat(5000)}`), "code checks expressions only up to 120 characters"],
     ["a number too long", evaluate("1.2345 + 1"), "code checks expressions only with numbers up to 99999.999, with at most 3 decimal places"],
   ])("returns unsupported for %s", (_name, operation, reason) => {
     const p = packageOf(evaluate("2 + 3 × 4"), 14, evaluate("2 × 3"), 6, "6.3") as unknown as { operation: unknown };
@@ -225,6 +227,8 @@ describe("one-variable equations", () => {
     ["no unknown", solve("3 + 5 = 8"), "the equation has no unknown"],
     ["a solved equation", solve("x = 5"), "the equation is already solved"],
     ["the unknown times 0", solve("0x + 1 = 5"), "the equation multiplies the unknown by 0"],
+    ["the unknown divided by 0 (#307 review)", solve("n ÷ 0 = 5"), "the equation divides by zero"],
+    ["brackets divided by 0 (#307 review)", solve("(x + 2) ÷ 0 = 4"), "the equation divides by zero"],
     ["a side written wrong", solve("3x + = 5"), "the expression 3x + is not written right"],
     ["an empty side", solve("3x + 5 = "), "the equation 3x + 5 =  is not written right"],
   ])("fails %s", (_name, operation, reason) => {
@@ -241,6 +245,7 @@ describe("one-variable equations", () => {
     ["no single number on one side", solve("3x + 5 = 2 × 10"), "code solves only equations with one number on one side"],
     ["a product next to the unknown", solve("x + 2 × 3 = 10"), "code solves only equations where each number next to the unknown is one number"],
     ["a solution that does not end", solve("3x = 10"), "code checks expressions only where each division gives a whole number or a decimal"],
+    ["an equation nested too deep (#307 review)", solve(`${"(".repeat(3000)}x${")".repeat(3000)} + 1 = 5`), "code checks expressions only up to 120 characters"],
   ])("returns unsupported for %s", (_name, operation, reason) => {
     const p = sound() as unknown as { operation: unknown };
     p.operation = operation;

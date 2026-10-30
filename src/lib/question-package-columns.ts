@@ -1,6 +1,6 @@
 // Written numbers and the column methods of the question package (#298, #306, #307): a whole or decimal number as its
-// digits and decimal places, column addition and subtraction lined up on the point, long multiplication, and the
-// shared operand checks. The operation kinds (question-package-math.ts, question-package-measures.ts) work on these.
+// digits and decimal places, column addition and subtraction lined up on the point, long multiplication, exact
+// rationals, and the shared operand checks. The operation kinds (question-package-math.ts, question-package-measures.ts) work on these.
 // Pure TypeScript: no Next.js, React, network, database or clock.
 import type { Place, WorkedStep } from "@/lib/question-package";
 
@@ -114,7 +114,41 @@ export function multiplyRows(a: number, b: number): WorkedStep[] {
   return steps;
 }
 
+// ---------- Exact rationals ----------
+
+/** An exact rational [numerator, denominator] on BigInt, in lowest terms, the denominator above 0. */
+export type Rational = [bigint, bigint];
+
+const ZERO = BigInt(0);
+const ONE = BigInt(1);
+const absolute = (a: bigint) => (a < ZERO ? -a : a);
+const bigGcd = (a: bigint, b: bigint): bigint => (b === ZERO ? absolute(a) : bigGcd(b, a % b));
+
+/** n/d in lowest terms, with its sign on the numerator. d must not be 0. */
+export function rational(n: bigint, d: bigint): Rational {
+  const g = bigGcd(n, d) || ONE;
+  return d < ZERO ? [-n / g, -d / g] : [n / g, d / g];
+}
+
+/** The decimal places of a rational whose decimal ends (3/4 is 0.75: 2), or null when it goes on (1/3). */
+export function decimalPlaces([, d]: Rational): number | null {
+  let [twos, fives, rest] = [0, 0, d];
+  while (rest % BigInt(2) === ZERO) [rest, twos] = [rest / BigInt(2), twos + 1];
+  while (rest % BigInt(5) === ZERO) [rest, fives] = [rest / BigInt(5), fives + 1];
+  return rest === ONE ? Math.max(twos, fives) : null;
+}
+
+/** The digits of a rational whose decimal ends, without its sign: 35/4 is "8.75". */
+export function decimalDigits(r: Rational): string {
+  const places = decimalPlaces(r) ?? 0;
+  const digits = ((absolute(r[0]) * BigInt(10) ** BigInt(places)) / r[1]).toString().padStart(places + 1, "0");
+  return places === 0 ? digits : `${digits.slice(0, -places)}.${digits.slice(-places)}`;
+}
+
 // ---------- Operand checks ----------
+
+export type Fields = Record<string, unknown>;
+export const isObject = (v: unknown): v is Fields => typeof v === "object" && v !== null && !Array.isArray(v);
 
 /**
  * Why code does not trust an operation: "failed" when the operation is wrong (a fraction over 0, a subtraction below

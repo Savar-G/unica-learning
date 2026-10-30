@@ -119,8 +119,8 @@ export interface FractionParts {
  *   in the smaller unit; quantity-multiply: an amount times a whole number to 999 ("$4.25 × 3"). `unit`, when given,
  *   is the unit the question asks the answer in; without it, the same amount in any unit of the measure is right.
  * - money-round: an amount of money rounded for cash to the nearest 5 cents, as in Canada since the penny ended.
- * - elapsed-time: the time from one clock time to a later one the same day, counted on to the next hour, the whole hours,
- *   then the minutes; `unit` as for the amounts. time-add: a clock time and an amount of time, the time it is after.
+ * - elapsed-time: the time from one clock time to the next time the clock shows another (an end before the start is the
+ *   next day), counted on to the next hour, the whole hours, then the minutes; `unit` as for the amounts. time-add: a clock time and an amount of time, the time it is after.
  *   clock-convert: a clock time on the other clock (3:45 p.m. is 15:45); the answer must be on that clock.
  * - evaluate: one operand, an expression as written ("3 + 4 × (2 − 1)", "3n + 2"), with a value for each one-letter
  *   unknown, worked in the order of operations (question-package-algebra.ts has what code reads).

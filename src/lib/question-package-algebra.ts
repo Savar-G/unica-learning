@@ -9,12 +9,29 @@
 // Pure TypeScript: no Next.js, React, network, database or clock.
 import type { AnswerValue, WorkedStep } from "@/lib/question-package";
 import type { KindRules, Of } from "@/lib/question-package-math";
-import { beyond, fail, isOne, written, type OperationProblem } from "@/lib/question-package-columns";
+import {
+  beyond,
+  decimalDigits,
+  decimalPlaces,
+  fail,
+  isObject,
+  isOne,
+  rational,
+  written,
+  type Fields,
+  type OperationProblem,
+  type Rational,
+} from "@/lib/question-package-columns";
 
+type OperateStep = Extract<WorkedStep, { kind: "operate" }>;
 /** An operation sign in an expression. */
-export type Sign = "+" | "−" | "×" | "÷";
+type Sign = OperateStep["op"];
+/** Why an operation is worked now: brackets first, then × and ÷, then + and −, each from left to right. */
+type OperateRule = OperateStep["rule"];
 
 const MAX_OPERATIONS = 8;
+/** Bounds the reader's depth too, so brackets nested thousands deep are refused, never a stack overflow. */
+const MAX_LENGTH = 120;
 const MAX_LITERAL = 99999;
 const MAX_PLACES = 3;
 const MAX_VALUE = 1000000000;
@@ -26,18 +43,10 @@ const BIG_VALUE = beyond(`code checks expressions only with values up to ${MAX_V
 
 // ---------- Exact numbers ----------
 
-/** An exact rational [numerator, denominator], the denominator above 0, in lowest terms. */
-type Rational = [bigint, bigint];
 const big = BigInt;
 const ZERO = big(0);
-const ONE = big(1);
 const TEN = big(10);
 const bigAbs = (a: bigint) => (a < ZERO ? -a : a);
-const bigGcd = (a: bigint, b: bigint): bigint => (b === ZERO ? bigAbs(a) : bigGcd(b, a % b));
-function rational(n: bigint, d: bigint): Rational {
-  const g = bigGcd(n, d) || ONE;
-  return d < ZERO ? [-n / g, -d / g] : [n / g, d / g];
-}
 
 /** A number from a JSON value, read from its written digits; null for more than `places` decimal places. */
 function fromNumber(value: number, places: number): Rational | null {
@@ -45,25 +54,10 @@ function fromNumber(value: number, places: number): Rational | null {
   return w && rational(big(value < 0 ? -w.scaled : w.scaled), TEN ** big(w.places));
 }
 
-/** The decimal places of a rational whose decimal ends, or null when it goes on (1/3). */
-function placesOf([, d]: Rational): number | null {
-  let [twos, fives, rest] = [0, 0, d];
-  while (rest % big(2) === ZERO) [rest, twos] = [rest / big(2), twos + 1];
-  while (rest % big(5) === ZERO) [rest, fives] = [rest / big(5), fives + 1];
-  return rest === ONE ? Math.max(twos, fives) : null;
-}
-
-/** The digits of a rational whose decimal ends, without its sign: "8.75". */
-function digitsOf(r: Rational): string {
-  const places = placesOf(r) ?? 0;
-  const digits = ((bigAbs(r[0]) * TEN ** big(places)) / r[1]).toString().padStart(places + 1, "0");
-  return places === 0 ? digits : `${digits.slice(0, -places)}.${digits.slice(-places)}`;
-}
-
 /** A rational as written: "8.75", "−13". */
-const numberText = (r: Rational) => `${r[0] < ZERO ? "−" : ""}${digitsOf(r)}`;
+const numberText = (r: Rational) => `${r[0] < ZERO ? "−" : ""}${decimalDigits(r)}`;
 /** A rational as a JSON number. It must end within the value limits (checked as it is worked). */
-const toNumber = (r: Rational) => Number(`${r[0] < ZERO ? "-" : ""}${digitsOf(r)}`);
+const toNumber = (r: Rational) => Number(`${r[0] < ZERO ? "-" : ""}${decimalDigits(r)}`);
 
 function compute(sign: Sign, [a, b]: Rational, [c, d]: Rational): Rational {
   switch (sign) {
@@ -81,7 +75,7 @@ function compute(sign: Sign, [a, b]: Rational, [c, d]: Rational): Rational {
 
 /** A worked value: its decimal ends, within the limits. */
 function checked(r: Rational): Rational {
-  const places = placesOf(r);
+  const places = decimalPlaces(r);
   if (places === null) throw new Refusal(ENDLESS);
   if (places > MAX_VALUE_PLACES || bigAbs(r[0]) > big(MAX_VALUE) * r[1]) throw new Refusal(BIG_VALUE);
   return r;
@@ -138,6 +132,7 @@ function tokenize(text: string): Token[] {
 
 /** Reads an expression; throws a Refusal for one written wrong or one code cannot read. */
 function parse(text: string): Node {
+  if (text.length > MAX_LENGTH) throw new Refusal(beyond(`code checks expressions only up to ${MAX_LENGTH} characters`));
   const tokens = tokenize(text);
   const malformed = () => new Refusal(fail(`the expression ${text} is not written right`));
   let i = 0;
@@ -169,6 +164,8 @@ function parse(text: string): Node {
         // "6 ÷ 2(1 + 2)" is read two ways; code does not choose one.
         if (divided) throw new Refusal(beyond("code does not read a division before a product written without ×"));
         node = { t: "bin", sign: "×", left: node, right: factor(false), implicit: true, pos: t.pos };
+      } else if (t?.k === "var" && t.name === "x") {
+        throw new Refusal(beyond("code reads × for times, not the letter x"));
       } else {
         return node;
       }
@@ -268,10 +265,6 @@ function print(node: Node, first = true): string {
 
 // ---------- Working an expression ----------
 
-/** Why an operation is worked now: brackets first, then × and ÷, then + and −, each from left to right. */
-export type OperateRule = "brackets" | "multiply-divide" | "add-subtract";
-type OperateStep = Extract<WorkedStep, { kind: "operate" }>;
-
 /** The operations ready to work (two numbers), with their depth inside brackets. */
 function ready(node: Node, depth = 0): { node: Extract<Node, { t: "bin" }>; depth: number }[] {
   if (node.t === "group") return ready(node.inner, depth + 1);
@@ -319,7 +312,6 @@ function attempt<T>(run: () => T): { ok: true; value: T } | { ok: false; problem
 
 // ---------- Evaluate ----------
 
-type Fields = Record<string, unknown>;
 type EvaluateOperation = Of<"evaluate">;
 
 /** The given values, in the order their unknowns are written. */
@@ -343,7 +335,7 @@ function evaluateProblem(op: Fields): OperationProblem | null {
   if (!isOne(op.operands) || typeof op.operands[0] !== "string" || op.operands[0].trim() === "") return fail("the operation needs an expression");
   const expression = op.operands[0];
   const values = op.values ?? {};
-  if (typeof values !== "object" || values === null || Array.isArray(values)) return fail("the values are not names with numbers");
+  if (!isObject(values)) return fail("the values are not names with numbers");
   for (const [name, value] of Object.entries(values)) {
     if (!/^[a-z]$/.test(name)) return fail(`the value name ${name} is not one letter`);
     if (typeof value !== "number" || !Number.isFinite(value)) return fail(`the value for ${name} is not a number`);
@@ -408,6 +400,7 @@ function solution(op: SolveOperation): { steps: WorkedStep[]; value: Rational; n
       throw new Refusal(beyond("code solves only equations where the unknown is not taken away from or divided into a number"));
     }
     if (number.value[0] === ZERO && side.sign === "×") throw new Refusal(fail("the equation multiplies the unknown by 0"));
+    if (number.value[0] === ZERO && side.sign === "÷") throw new Refusal(fail("the equation divides by zero"));
     const undo = UNDO[side.sign];
     const next = checked(compute(undo.sign, value, number.value));
     side = unwrap(unknownLeft ? side.left : side.right);
@@ -417,6 +410,9 @@ function solution(op: SolveOperation): { steps: WorkedStep[]; value: Rational; n
   if (steps.length === 0) throw new Refusal(fail("the equation is already solved"));
   const name = names[0];
   const filled = normalize(substitute(unknownSide, new Map([[name, value]])));
+  // The check is worked, not only written, so its equality is true.
+  const total = work(filled).value;
+  if (total[0] * numberSide.value[1] !== numberSide.value[0] * total[1]) throw new Refusal(fail("the solution does not give the number side"));
   steps.push({ id: "check", kind: "check", name, value: toNumber(value), expression: print(unwrap(filled)), total: toNumber(numberSide.value) });
   return { steps, value, name };
 }
@@ -430,7 +426,7 @@ function solveProblem(op: Fields): OperationProblem | null {
 const NUMBER_RULES = { answer: "result", accepted: "same-number", sameNumberWrong: "never" } as const;
 
 /** The algebra kinds. */
-export type AlgebraKind = "evaluate" | "solve";
+type AlgebraKind = "evaluate" | "solve";
 
 export const ALGEBRA_KINDS: { [K in AlgebraKind]: KindRules<Of<K>> } = {
   evaluate: {
@@ -470,7 +466,10 @@ const RULE_WORDS: Record<OperateRule, string> = {
 };
 
 /** A JSON number as written in a step: "−2" first, "(−2)" after a sign. */
-const valueText = (n: number, first: boolean) => print({ t: "num", value: fromNumber(n, MAX_VALUE_PLACES) ?? [ZERO, ONE] }, first);
+function valueText(n: number, first: boolean): string {
+  const value = fromNumber(n, MAX_VALUE_PLACES);
+  return value ? print({ t: "num", value }, first) : String(n).replace(/^-/, "−");
+}
 
 type AlgebraStep = Extract<WorkedStep, { kind: "substitute" | "operate" | "inverse" | "check" }>;
 

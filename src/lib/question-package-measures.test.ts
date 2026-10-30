@@ -393,6 +393,18 @@ describe("clock times and durations", () => {
     ]);
   });
 
+  it("counts on across midnight to an end time before the start time (#307 review)", () => {
+    expect(workedSteps(elapsed(pm(11, 30), am(12, 15)))).toEqual([
+      { id: "to-hour", kind: "count-on", from: pm(11, 30), to: am(12, 0), minutes: 30 },
+      { id: "minutes", kind: "count-on", from: am(12, 0), to: am(12, 15), minutes: 15 },
+      { id: "total", kind: "add-durations", minutes: [30, 15], total: 45 },
+      { id: "result", kind: "result", value: qty(45, "min") },
+    ]);
+    expect(words(elapsed(pm(10, 0), am(1, 0)))).toEqual(["From 10:00 p.m. to 1:00 a.m. is 3 h.", "From 10:00 p.m. to 1:00 a.m. is 3 h."]);
+    const p = packageOf(elapsed(h24(22, 0), h24(1, 30)), hm(3, 30), elapsed(h24(1, 0), h24(1, 5)), qty(5, "min"), "5.14");
+    expect(checkQuestionPackage(p)).toEqual({ ok: true, status: "checked", package: p });
+  });
+
   it("takes 90 min and 1 h 30 min when the question does not ask for a unit, and only minutes when it does", () => {
     const easier = elapsed(pm(2, 0), pm(2, 30));
     const p = packageOf(elapsed(pm(2, 15), pm(3, 45)), hm(1, 30), easier, qty(30, "min"), "5.14");
@@ -425,7 +437,7 @@ describe("clock times and durations", () => {
   });
 
   it.each([
-    ["an end before the start", elapsed(pm(3, 0), pm(2, 0)), "the end time is before the start time"],
+    ["the same time twice", elapsed(pm(3, 0), pm(3, 0)), "the two times are the same"],
     ["two clocks", elapsed(pm(3, 0), h24(16, 0)), "the two times are not on the same clock"],
     ["13 p.m.", elapsed(pm(13, 0), pm(2, 0)), "the operation needs two clock times"],
     ["minutes that are not a decimal of an hour", elapsed(pm(2, 0), pm(3, 20), "h"), "80 min is not a whole number or a decimal in h"],
