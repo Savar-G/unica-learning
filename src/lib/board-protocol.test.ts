@@ -46,7 +46,7 @@ const ids = (scene: Scene) => boardPaths(scene).map((p) => p.id);
 async function setup() {
   const receiver = createBoardReceiver({ sessionId: SESSION });
   const transport = createMemoryTransport(receiver);
-  const sender = createBoardSender({ sessionId: SESSION, transport });
+  const sender = createBoardSender({ sessionId: SESSION, senderId: "agent-1", transport });
   expect(await sender.connect()).toMatchObject({ ok: true });
   return { receiver, transport, sender };
 }
@@ -135,7 +135,7 @@ describe("order", () => {
   it("refuses a batch out of order or under a used id, and keeps the board as it was", async () => {
     const receiver = createBoardReceiver({ sessionId: SESSION });
     const base = { sessionId: SESSION, epoch: 1, baseRevision: 0 };
-    expect(receiver.handle({ type: "reset", sessionId: SESSION, epoch: 1, snapshot: { events: [] } })).toMatchObject({ ok: true });
+    expect(receiver.handle({ type: "reset", sessionId: SESSION, senderId: "agent-1", epoch: 1, snapshot: { events: [] } })).toMatchObject({ ok: true });
     expect(receiver.handle({ type: "apply", ...base, sequence: 2, ...sum("a", "1", "2"), batchId: "a" })).toMatchObject({ ok: false, code: "out_of_order" });
     expect(receiver.handle({ type: "apply", ...base, sequence: 1, batchId: "a", commands: sum("a", "1", "2").commands })).toMatchObject({ ok: true, revision: 1 });
     expect(receiver.handle({ type: "apply", ...base, baseRevision: 1, sequence: 2, batchId: "a", commands: sum("a", "1", "2").commands })).toMatchObject({ ok: false, code: "duplicate_batch" });
@@ -144,7 +144,7 @@ describe("order", () => {
 
   it("refuses a batch planned on an older revision of the board", async () => {
     const receiver = createBoardReceiver({ sessionId: SESSION });
-    receiver.handle({ type: "reset", sessionId: SESSION, epoch: 1, snapshot: { events: [] } });
+    receiver.handle({ type: "reset", sessionId: SESSION, senderId: "agent-1", epoch: 1, snapshot: { events: [] } });
     receiver.handle({ type: "apply", sessionId: SESSION, epoch: 1, sequence: 1, baseRevision: 0, batchId: "a", commands: sum("a", "1", "2").commands });
     const stale = receiver.handle({ type: "apply", sessionId: SESSION, epoch: 1, sequence: 2, baseRevision: 0, batchId: "b", commands: put("b", "a", "ones", "3").commands });
     expect(stale).toMatchObject({ ok: false, code: "stale_revision", revision: 1 });
@@ -197,7 +197,7 @@ describe("reconnect", () => {
     transport.hold();
     const late = sender.send(put("b", "a", "ones", "6"));
     await settle();
-    const restarted = createBoardSender({ sessionId: SESSION, transport: createMemoryTransport(receiver), snapshot: sender.snapshot() });
+    const restarted = createBoardSender({ sessionId: SESSION, senderId: "agent-2", transport: createMemoryTransport(receiver), snapshot: sender.snapshot() });
     expect(await restarted.connect()).toMatchObject({ ok: true });
 
     // The old batch arrives after the reconnect: refused, and the board is the restored one.
@@ -206,14 +206,59 @@ describe("reconnect", () => {
     expect(receiver.staged()).toEqual([]);
     expect(ids(receiver.scene())).toEqual(before);
     expect(await restarted.send(put("c", "a", "ones", "6"))).toMatchObject({ ok: true });
+
+    // The old process is still alive and connects again: it cannot take the board back from the new one.
+    transport.flush();
+    expect(await sender.connect()).toMatchObject({ ok: false, code: "superseded" });
+    expect(receiver.staged().map((s) => s.batchId)).toEqual(["c"]);
+    expect(await restarted.send(put("d", "a", "tens", "6"))).toMatchObject({ ok: true });
+  });
+
+  it("keeps what the child saw while the reconnect was under way", async () => {
+    const { receiver, transport, sender } = await setup();
+    await sender.send(sum("a", "27", "39"));
+    await sender.send(put("b", "a", "ones", "6"));
+    receiver.release("a");
+
+    // The connect reads the log; then the speech reaches "b" before the reset arrives.
+    transport.hold();
+    const connecting = sender.connect();
+    await settle();
+    transport.flush();
+    transport.hold();
+    await settle();
+    receiver.release("b");
+    transport.flush();
+    // Every later request goes straight through.
+    expect(await connecting).toMatchObject({ ok: true });
+    // The first reset was refused (the log had grown); the connect read on and tried again.
+    expect(transport.delivered.filter((r) => r.type === "reset")).toHaveLength(3);
+    expect(ids(receiver.scene())).toEqual(ids(direct(sum("a", "27", "39"), put("b", "a", "ones", "6"))));
+    expect(sender.snapshot().events.filter((e) => e.kind === "batch").map((e) => e.kind === "batch" && e.batchId)).toEqual(["a", "b"]);
+  });
+
+  it("survives a lost answer to the reset", async () => {
+    const { receiver, transport, sender } = await setup();
+    await sender.send(sum("a", "27", "39"));
+    receiver.release("a");
+    const epoch = sender.epoch();
+    transport.loseNextAnswer("reset");
+    // The reset acts; its answer is lost and the retry answers the same.
+    expect(await sender.connect()).toMatchObject({ ok: true });
+    expect(transport.delivered.filter((r) => r.type === "reset").map((r) => r.type === "reset" && r.epoch)).toEqual([1, 2, 2]);
+    expect(sender.epoch()).toBe(epoch + 1);
+    expect(ids(receiver.scene())).toEqual(ids(direct(sum("a", "27", "39"))));
+    expect(await sender.send(put("b", "a", "ones", "6"))).toMatchObject({ ok: true });
   });
 
   it("never goes back to an older epoch", () => {
     const receiver = createBoardReceiver({ sessionId: SESSION });
-    const reset = (epoch: number) => receiver.handle({ type: "reset", sessionId: SESSION, epoch, snapshot: { events: [] } });
+    const reset = (epoch: number, senderId = "agent-1") => receiver.handle({ type: "reset", sessionId: SESSION, senderId, epoch, snapshot: { events: [] } });
     expect(reset(2)).toMatchObject({ ok: true, epoch: 2 });
     expect(reset(1)).toMatchObject({ ok: false, code: "stale_epoch", epoch: 2 });
-    expect(reset(2)).toMatchObject({ ok: false, code: "stale_epoch", epoch: 2 });
+    expect(reset(2, "agent-2")).toMatchObject({ ok: false, code: "stale_epoch", epoch: 2 });
+    // The same sender's reset again (its answer was lost) changes nothing.
+    expect(reset(2)).toMatchObject({ ok: true, epoch: 2 });
     const old = { type: "apply", sessionId: SESSION, epoch: 1, sequence: 1, baseRevision: 0, batchId: "a", commands: sum("a", "1", "2").commands };
     expect(receiver.handle(old)).toMatchObject({ ok: false, code: "stale_epoch" });
     expect(receiver.handle({ type: "cancel", sessionId: SESSION, epoch: 1 })).toMatchObject({ ok: false, code: "stale_epoch" });
@@ -236,7 +281,7 @@ describe("reconnect", () => {
     const { receiver, sender } = await setup();
     await sender.send(sum("a", "27", "39"));
     receiver.release("a");
-    const bad = { type: "reset", sessionId: SESSION, epoch: 9, snapshot: { events: [{ kind: "batch", batchId: "x", commands: [{ op: "remove", objectId: "nothing" }] }] } };
+    const bad = { type: "reset", sessionId: SESSION, senderId: "agent-1", epoch: 9, snapshot: { events: [{ kind: "batch", batchId: "x", commands: [{ op: "remove", objectId: "nothing" }] }] } };
     expect(receiver.handle(bad)).toMatchObject({ ok: false, code: "invalid_request", epoch: 1 });
     expect(ids(receiver.scene())).toEqual(ids(direct(sum("a", "27", "39"))));
   });
@@ -304,6 +349,7 @@ describe("the pen", () => {
     expect(receiver.addInk(stroke)).toMatchObject({ ok: true });
     receiver.givePen();
     // The child wrote on the board: Maya's plan is from before, so it is refused until Maya reads the board again.
+    expect(await sender.send(put("b", "a", "ones", "6"))).toMatchObject({ ok: false, code: "stale_revision" });
     expect(await sender.send(put("b", "a", "ones", "6"))).toMatchObject({ ok: false, code: "stale_revision" });
     await sender.sync();
     expect(sender.snapshot().events.map((e) => e.kind)).toEqual(["batch", "ink"]);
@@ -385,5 +431,48 @@ describe("sync", () => {
     expect(sender.snapshot().events).toHaveLength(12);
     const statuses = transport.delivered.filter((r) => r.type === "status");
     expect(statuses.length).toBeGreaterThan(2);
+  });
+});
+
+describe("batch states", () => {
+  it("reach the sender through the paged log, however many batches the call has", async () => {
+    const { receiver, transport, sender } = await setup();
+    await sender.send(sum("a", "27", "39"));
+    receiver.release("a");
+    for (let i = 0; i < 200; i++) {
+      expect(await sender.send({ transactionId: `m${i}`, commands: [{ op: "focus", target: { objectId: "a", part: "whole" } }] })).toMatchObject({ ok: true });
+      receiver.release(`m${i}`);
+      receiver.presented(`m${i}`);
+    }
+    await sender.send(put("x", "a", "ones", "6"));
+    await sender.cancel();
+    expect(await sender.sync()).toBe(true);
+    expect([sender.batchState("a"), sender.batchState("m0"), sender.batchState("m199"), sender.batchState("x")]).toEqual(["shown", "presented", "presented", "cancelled"]);
+    expect(transport.largestAnswerBytes).toBeLessThan(15 * 1024);
+  });
+});
+
+describe("a lost acknowledgement while the child writes", () => {
+  it("does not let Maya plan past the child's ink", async () => {
+    const { receiver, transport, sender } = await setup();
+    const stroke = { page: 1, boardWidth: 800, stroke: { erase: false, w: 3, pts: [[0.85, 0.55], [0.9, 0.58]] as [number, number][] } };
+    await sender.send(sum("a", "27", "39"));
+    transport.hold();
+    const sent = sender.send(put("b", "a", "ones", "6"));
+    await settle();
+    transport.loseNextAnswer();
+    transport.flush();
+    transport.hold();
+    await settle();
+    // Before the retry arrives, "b" is shown, and the child takes the pen, writes and gives it back.
+    receiver.release("b");
+    receiver.takePen();
+    receiver.addInk(stroke);
+    receiver.givePen();
+    transport.flush();
+    expect(await sent).toMatchObject({ ok: true, state: "shown" });
+    expect(await sender.send(put("c", "a", "tens", "6"))).toMatchObject({ ok: false, code: "stale_revision" });
+    await sender.sync();
+    expect(await sender.send(put("c", "a", "tens", "6"))).toMatchObject({ ok: true });
   });
 });
