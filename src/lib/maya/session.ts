@@ -788,7 +788,7 @@ export function step(session: Session, event: SessionEvent): StepResult {
     case "maya_said":
       // No math is repaired before the opening, after a safety concern or a content hold, or twice at once.
       if (typeof event.text !== "string") return refuse(session, "invalid_event", "What Maya said needs its text.");
-      if (s.package && !["READY", "OPEN", "SAFETY", "CONTENT_HOLD", "REPAIR_MAYA"].includes(s.state) && mathClaims(event.text, namedProblems(s.package), turnNumbers(s, null)).some((c) => c.status === "false")) {
+      if (s.package && !["READY", "OPEN", "SAFETY", "CONTENT_HOLD", "REPAIR_MAYA"].includes(s.state) && mathClaims(event.text, namedProblems(s.package), turnNumbers(s, null)).some((c) => c.status === "false" || c.instruction)) {
         effects.push({ kind: "cancel_output" });
         // The repair returns to the teaching state (an interrupt's saved one), or to the closing minute (no resume). The
         // child's pending turn and a stop stay for after the repair (a stop comes first).

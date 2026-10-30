@@ -364,3 +364,61 @@ describe("R350-9-1: every operation word is the operation of the problem it is a
     expect(c.s.state).toBe("REPAIR_MAYA");
   });
 });
+
+describe("R350-10: an instruction about a number or a place uses an allowed verb and the problem's own sign", () => {
+  const SUB: QuestionPackage = {
+    ...PKG,
+    id: "wbq-review-r10-sub",
+    text: "52 - 17 = ?",
+    answer: { value: num(35), accepted: [], unit: null },
+    operation: { kind: "subtract", operands: [52, 17] },
+    steps: workedSteps({ kind: "subtract", operands: [52, 17] }),
+    wrongAnswers: [{ value: num(45), cause: "S1", description: "Subtracts the smaller digit", step: "ones" }],
+    easierExample: { text: "32 - 5 = ?", operation: { kind: "subtract", operands: [32, 5] }, answer: num(27), steps: workedSteps({ kind: "subtract", operands: [32, 5] }) },
+  };
+  const wrong = [
+    "Remove the 7.",
+    "Decrease the 9 by 7.",
+    "Double the 7.",
+    "Count back 7.",
+    "Use − on the ones.",
+    "Use × on the ones.",
+    "Use ÷ on the ones.",
+    "Halve the 6.",
+    "Split the 9.",
+  ];
+
+  it.each(wrong)("refuses %s during the ones step of 27 + 39", (say) => {
+    expect(call().refusal(show(say))).toMatchObject({ code: "wrong_math" });
+  });
+
+  it.each(wrong)("repairs %s said aloud during 27 + 39", (say) => {
+    const c = call();
+    c.send({ type: "proposal", at: 0, proposal: show("Seven plus nine is sixteen.") });
+    expect(c.s.state).not.toBe("REPAIR_MAYA");
+    c.send({ type: "maya_said", at: 0, text: say });
+    expect(c.s.state).toBe("REPAIR_MAYA");
+  });
+
+  it.each(["Look at the 7.", "Add the 7 and the 9.", "Count on 9 from 7.", "Carry the 1 to the tens.", "Write the 6 in the ones.", "Use + on the ones.", "Now, can you add the 7 and the 9?", "7 + 9 = 16"])(
+    "accepts %s during the ones step of 27 + 39",
+    (say) => {
+      expect(call().refusal(show(say))).toBeNull();
+    },
+  );
+
+  it("does not repair an allowed instruction said aloud", () => {
+    const c = call();
+    c.send({ type: "proposal", at: 0, proposal: show("Seven plus nine is sixteen.") });
+    c.send({ type: "maya_said", at: 0, text: "Add the 7 and the 9." });
+    expect(c.s.state).not.toBe("REPAIR_MAYA");
+  });
+
+  it.each(["Count back 7.", "Borrow from the tens.", "Use − on the ones."])("accepts %s during the ones step of 52 - 17", (say) => {
+    expect(call(SUB).refusal(show(say))).toBeNull();
+  });
+
+  it.each(["Add the 7.", "Use + on the ones.", "Carry the 1 to the tens."])("refuses %s during the ones step of 52 - 17", (say) => {
+    expect(call(SUB).refusal(show(say))).toMatchObject({ code: "wrong_math" });
+  });
+});

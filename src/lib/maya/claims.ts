@@ -25,6 +25,11 @@ export interface MathClaim {
   problem: number | null;
   /** The claim gives a value for its expression ("27 + 39 = 66"), not only names it ("It is 27 plus 39"). */
   result: boolean;
+  /**
+   * Only on an instruction code refuses (instructionClaims): a verb or an operation sign that is not on the problem's
+   * allow-list. Said aloud, it is repaired even when it is unsupported, not false.
+   */
+  instruction?: true;
 }
 
 /**
@@ -388,6 +393,8 @@ export function mathClaims(text: string, problems: readonly NamedProblem[] = [],
   const names = new Map<number, number>();
   // The tokens of a claim: its numbers are checked by the claim itself, not by the step.
   const claimed: boolean[] = new Array(toks.length).fill(false);
+  /** The tokens of a true claim: an operation sign in a checked equation is the equation's. */
+  const checked: boolean[] = new Array(toks.length).fill(false);
   // A number that counts something outside the math ("two steps", "2 seconds") is talk, not part of a claim; a
   // sentence that restates the question ("Sam has 27 dollars and gets 39 dollars.") is no claim at all.
   const counts = toks.map((_, k) => quantityNoun(toks, k) !== null);
@@ -415,6 +422,7 @@ export function mathClaims(text: string, problems: readonly NamedProblem[] = [],
     if (found !== null) names.set(sentenceEnd[j], found);
     const claim = (status: MathClaim["status"]) => {
       claimed.fill(true, start, j + 1);
+      if (status === "true") checked.fill(true, start, j + 1);
       claims.push({ text: text.slice(run[0].from, run[run.length - 1].to).trim(), status, problem: found, result: read.length >= 2 });
     };
 
@@ -444,11 +452,140 @@ export function mathClaims(text: string, problems: readonly NamedProblem[] = [],
     claim(holds === null ? "unsupported" : holds ? "true" : "false");
   }
   if (step) claims.push(...stepClaims(text, toks, claimed, step));
-  if (step?.operation) claims.push(...operationClaims(text, toks, restates, step.operation, (end) => {
-    const named = names.get(end);
-    return named === undefined ? undefined : problems[named]?.symbol;
-  }));
+  if (step?.operation) {
+    // The names in the story ("Sam"): a sentence that starts with one is a statement about the story, not an instruction.
+    const storyNames = new Set((step.questions ?? []).flatMap((q) => [...q.matchAll(/\b[A-Z][a-z]+\b/g)].map((m) => m[0].toLowerCase())));
+    const opOf = (end: number) => {
+      const named = names.get(end);
+      return named === undefined ? undefined : problems[named]?.symbol;
+    };
+    claims.push(...operationClaims(text, toks, restates, step.operation, opOf));
+    claims.push(...instructionClaims(text, toks, restates, checked, step.operation, opOf, storyNames));
+  }
   return claims;
+}
+
+/** "Any": a teaching verb for every operation; otherwise the operations a verb suits. */
+type VerbFor = "any" | "use" | readonly MathOp[];
+/**
+ * The teaching verbs Maya may give an instruction about a number or a place with, and the operations each suits. A
+ * verb not here is unsupported, never accepted by default. "use" is only for the problem's own operation word or sign.
+ */
+const VERBS = new Map<string, VerbFor>([
+  ...["look", "point", "circle", "check", "read", "say", "tell", "try", "start", "write", "put", "line up", "show", "think", "find"].map((v): [string, VerbFor] => [v, "any"]),
+  // Verbs about the work itself, never an operation ("We can keep going with 27 + 39, or stop.").
+  ...["keep", "continue", "stop", "go", "move", "work"].map((v): [string, VerbFor] => [v, "any"]),
+  ["use", "use"],
+  ["carry", ["+"]], ["regroup", ["+", "-"]], ["trade", ["+", "-"]], ["exchange", ["+", "-"]], ["borrow", ["-"]],
+  ...["add", "count on", "combine", "join", "plus"].map((v): [string, VerbFor] => [v, ["+"]]),
+  ...["subtract", "take away", "count back", "minus", "remove"].map((v): [string, VerbFor] => [v, ["-"]]),
+  ...["multiply", "times", "groups of", "double"].map((v): [string, VerbFor] => [v, ["×"]]),
+  ...["divide", "share", "split"].map((v): [string, VerbFor] => [v, ["÷"]]),
+]);
+/** Irregular forms of the teaching verbs. */
+const IRREGULAR = new Map<string, string>([
+  ["said", "say"], ["wrote", "write"], ["written", "write"], ["thought", "think"], ["found", "find"], ["shown", "show"], ["showed", "show"],
+  ["took away", "take away"], ["taken away", "take away"], ["read", "read"], ["put", "put"], ["split", "split"],
+]);
+/** The teaching verb a word (or a word and the one after it) is a form of: "carried" is "carry", "adding" is "add". */
+function verbOf(one: string, two: string): string | null {
+  for (const w of [two, one]) {
+    if (!w) continue;
+    const irregular = IRREGULAR.get(w);
+    if (irregular) return irregular;
+    const [head, ...tail] = w.split(" ");
+    const rest = tail.length > 0 ? ` ${tail.join(" ")}` : "";
+    const stems = [head, head.replace(/ies$|ied$/, "y"), head.replace(/(?:es|s)$/, ""), head.replace(/(?:ed|d)$/, ""), head.replace(/ing$/, ""), head.replace(/ing$/, "e"), head.replace(/(.)\1ing$/, "$1"), head.replace(/(.)\1ed$/, "$1")];
+    for (const stem of stems) if (VERBS.has(stem + rest)) return stem + rest;
+  }
+  return null;
+}
+/** Words before the main verb that do not change it ("Now, add the 7", "Can you add the 7?", "We carry the 1"). */
+const BEFORE_VERB = new Set([
+  "now", "so", "then", "next", "first", "okay", "ok", "great", "good", "nice", "yes", "right", "remember", "please", "and", "but", "also", "well", "oh", "wow",
+  "alright", "perfect", "just", "let's", "lets", "let", "us", "can", "could", "will", "would", "should", "do", "does", "did", "you", "we", "i", "to", "again",
+  "sorry", "oops", "hmm", "hi", "hello", "thanks", "thank",
+]);
+/** Subjects of a statement about the story ("He has 27 dollars."): with a story name, the sentence is no instruction. */
+const THIRD_PERSON = new Set(["he", "she", "they", "him", "them"]);
+/** First words of a sentence that is no instruction: a statement or a question about a number ("The 7 is ...", "What is ..."). */
+const NOT_INSTRUCTION = new Set([
+  "the", "a", "an", "this", "that", "these", "those", "your", "my", "our", "his", "her", "their", "its", "it", "it's", "that's", "there", "there's",
+  "here", "here's", "what", "what's", "how", "which", "where", "when", "why", "who", "is", "are", "was", "were", "not", "no", "exactly", "correct",
+  "close", "almost", "both", "all", "every", "some", "each",
+]);
+/** Words that start a phrase before the main clause ("In 18 + 5, add the ones."). */
+const PREPOSITIONS = new Set(["in", "on", "at", "for", "from", "with", "after", "before", "for", "if", "when"]);
+/** Place words: a sentence with one is about a place even with no number in it ("Borrow from the tens."). */
+const PLACE_WORDS = /^(?:ones|tens|hundreds|thousands|tenths|hundredths|thousandths|column|columns|row|rows|digit|digits|place|places)$/;
+/** Operation signs as they are written. */
+const SIGNS = new Map<string, MathOp>([["+", "+"], ["-", "-"], ["\u2212", "-"], ["\u2013", "-"], ["\u2012", "-"], ["\uFE63", "-"], ["\uFF0D", "-"], ["×", "×"], ["*", "×"], ["·", "×"], ["⋅", "×"], ["÷", "÷"], ["/", "÷"]]);
+
+/**
+ * Instructions about a number or a place, checked against an allow-list (#321 R350-10). A sentence that names a
+ * number, a digit or a place word, and starts with a verb (after words such as "now", "can you", "we"), must start with
+ * a teaching verb (VERBS) that suits the operation of the problem it is about: another operation's verb is false
+ * ("Remove the 7." for 27 + 39), a verb not on the list is unsupported ("Decrease the 9 by 7.", "Halve the 6."). An
+ * operation sign outside a true equation must be the problem's ("Use − on the ones." is false for 27 + 39).
+ */
+function instructionClaims(
+  text: string, toks: Spanned[], restates: boolean[], checked: boolean[], own: MathOp, named: (end: number) => MathOp | undefined, storyNames: ReadonlySet<string>,
+): MathClaim[] {
+  const out: MathClaim[] = [];
+  const said = (t: Spanned) => text.slice(t.from, t.to).toLowerCase();
+  const push = (from: number, to: number, status: MathClaim["status"]) => out.push({ text: text.slice(from, to).trim(), status, problem: null, result: false, instruction: true });
+  for (let a = 0; a < toks.length; ) {
+    let b = a;
+    while (b < toks.length && toks[b].t !== "end") b++;
+    const op = named(b) ?? own;
+    if (b > a && !restates[a]) {
+      // Operation signs outside a true equation; a sign that touches the number after it is the number's own ("-66").
+      for (let k = a; k < b; k++) {
+        const t = toks[k];
+        const sign = t.t === "op" ? SIGNS.get(said(t)) : undefined;
+        if (sign === undefined || checked[k]) continue;
+        const next = toks[k + 1];
+        const ownSign = sign === "-" && next?.t === "num" && t.to === next.from && !["num", "unit", "rp"].includes(toks[k - 1]?.t ?? "");
+        if (!ownSign && sign !== op) push(t.from, t.to, "false");
+      }
+      // The sentence names a number (not a count or a spoken "this one") or a place.
+      const aboutNumber = toks.slice(a, b).some((t, n) => {
+        const k = a + n;
+        if (t.t === "num") return quantityNoun(toks, k) === null && !(said(t) === "one" && PRONOUN.has(toks[k - 1]?.t === "word" ? (toks[k - 1] as { w: string }).w : ""));
+        return t.t === "unit" || (t.t === "word" && PLACE_WORDS.test(t.w));
+      });
+      if (aboutNumber) {
+        let k = a;
+        const word = (n: number) => (toks[n] && toks[n].t !== "num" && toks[n].t !== "soft" && toks[n].t !== "end" ? said(toks[n]) : null);
+        // A phrase before the main clause ends at its comma; with no comma, code cannot tell the main verb.
+        if (PREPOSITIONS.has(word(k) ?? "")) {
+          while (k < b && toks[k].t !== "soft") k++;
+          if (k >= b) { push(toks[a].from, toks[b - 1].to, "unsupported"); a = b + 1; continue; }
+        }
+        while (k < b && (toks[k].t === "soft" || BEFORE_VERB.has(word(k) ?? ""))) k++;
+        const first = word(k);
+        const words = toks.slice(k, b).map((_, n) => word(k + n) ?? "");
+        const exempt = NOT_OPERATIONS.some((p) => p.every((w, n) => words[n] === w));
+        const statement = first !== null && (NOT_INSTRUCTION.has(first) || THIRD_PERSON.has(first) || storyNames.has(first));
+        if (k < b && first !== null && /^[a-z]/.test(first) && !statement && !exempt && toks[k].t !== "unit" && !PLACE_WORDS.test(first)) {
+          const verb = verbOf(first, word(k + 1) !== null ? `${first} ${word(k + 1)}` : "");
+          const end = toks[Math.min(b - 1, k + 1)].to;
+          const suits = verb === null ? null : VERBS.get(verb)!;
+          if (suits === null) push(toks[k].from, end, "unsupported");
+          else if (suits === "use") {
+            // "Use + on the ones", "use addition": the problem's own sign or word; nothing else.
+            let n = k + 1;
+            while (toks[n]?.t === "word" && FILLER.has((toks[n] as { w: string }).w)) n++;
+            const object = toks[n] ? said(toks[n]) : "";
+            const sign = toks[n]?.t === "op" ? (SIGNS.get(object) ?? (toks[n] as { op: MathOp }).op) : OPERATION_WORDS.find(([, g]) => g.test(object) || /^(?:addition|subtraction|multiplication|division)$/.test(object) && g.test(object))?.[0];
+            if (sign !== op) push(toks[k].from, toks[n]?.to ?? end, sign === undefined ? "unsupported" : "false");
+          } else if (suits !== "any" && !suits.includes(op)) push(toks[k].from, end, "false");
+        }
+      }
+    }
+    a = b + 1;
+  }
+  return out;
 }
 
 /** The words of each operation: Maya says only those of the problem she talks about. */
