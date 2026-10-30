@@ -55,6 +55,7 @@
 .curp-end { margin-top: clamp(56px, 8vw, 96px); display: grid; justify-items: start; gap: 18px; }
 .curp-end h2 { margin: 0; max-width: 22ch; font-size: clamp(28px, 3.6vw, 44px); }
 .curp-end p { margin: 0 0 8px; max-width: 46ch; color: var(--ink-2); }
+.curp-end .start-note { margin: 10px 0 0; }
 .curp-more { font-weight: 500; color: var(--ink); text-underline-offset: 4px; }
 
 /* Eight cards: four across, then two across, so no row is left with a single card. */
