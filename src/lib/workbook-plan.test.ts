@@ -616,10 +616,36 @@ describe("the two-week curriculum plan: placement checks (CONTEXT 2)", () => {
         expect(new Set(checked)).toEqual(new Set(l.units[i].skills.map((s) => s.id)));
         expect(day.pages.slice(0, 2).every((x) => x.parts[0].hints === false && x.instructions === "icons")).toBe(true);
       }
-      // No 4-item unit check in Kindergarten: Already know it? covers every unit.
-      expect(plan(at(l, { unassessedUnits: [units[0]] })).checks.every((c) => c.kind === "already-know-it")).toBe(true);
+      // Ruling 2026-10-30: the Already know it? pages are Kindergarten's thin-evidence check, so exactly one check a
+      // unit, even with every unit named as unassessed.
+      const named = plan(at(l, { unassessedUnits: units }));
+      expect(named.checks.map((c) => c.unit)).toEqual(units);
+      expect(named.checks.every((c) => c.kind === "already-know-it")).toBe(true);
+      expect(parts(named).some((x) => x.kind === "unit-check")).toBe(false);
       // Only the first workbook checks.
       expect(plan(at(l, { workbook: { number: 2, inLevel: 1 } })).checks).toEqual([]);
+    }
+  });
+
+  it("R356-09: keeps Unit B's daily page and about 2 of A to 1 of B on Kindergarten check days", () => {
+    for (const id of ["U1", "U2", "U3"]) {
+      const l = level(id);
+      for (const over of [{}, { unassessedUnits: [l.units[0].code] }]) {
+        const p = plan(at(l, over));
+        expect(p.units.B, id).not.toBeNull();
+        for (const c of p.checks) {
+          const day = p.days[c.day - 1];
+          expect(day.pages.filter((x) => x.parts.some((y) => y.kind === "already-know-it"))).toHaveLength(2);
+          expect(day.pages.filter((x) => x.type === "parent-led" && x.unit === "B" && x.parts.some((y) => y.kind === "practice" || y.kind === "new-idea")), `${id} day ${c.day}`).toHaveLength(1);
+          expect(day.pages.length).toBeGreaterThanOrEqual(4);
+          expect(day.pages.length).toBeLessThanOrEqual(6);
+          const { A, B } = aToB(day.pages);
+          expect(A / B, `${id} day ${c.day}`).toBeGreaterThanOrEqual(A_TO_B.min);
+          expect(A / B, `${id} day ${c.day}`).toBeLessThanOrEqual(A_TO_B.max);
+        }
+        // Unit B starts its steps on the check days too.
+        expect(p.newSteps.some((s) => s.track === "B" && s.day === 1), id).toBe(true);
+      }
     }
   });
 });

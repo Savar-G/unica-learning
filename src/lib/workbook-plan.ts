@@ -510,6 +510,10 @@ export function planWorkbook(input: PlanInput): PlanResult {
   // 4-item unit check on the day's Remember these? page, one unit a day from Day 1.
   const checkDays = kinds.flatMap((k, i) => (k === "teach" || k === "remember" ? [i + 1] : []));
   const knowItUnits = firstWorkbook && parentLed ? level.units.map((u) => u.code) : [];
+  // Ruling 2026-10-30: for U1 to U3, the Already know it? pages are the thin-evidence check. The assessment does not
+  // serve Kindergarten at all, and the skeleton's Mastery & tests tab defines the Kindergarten check separately (2
+  // parent-led pages a unit); the 4-item check covers units of levels the assessment tests. Both would check every
+  // Kindergarten unit twice, so a Kindergarten first workbook has exactly one check a unit.
   const unitChecks = firstWorkbook && !parentLed
     ? [...unassessed].filter((code) => STANDARDS.get(code)!.grade <= levelGrade).sort((a, b) => curriculumOrder(STANDARDS.get(a)!, STANDARDS.get(b)!))
     : [];
@@ -526,8 +530,8 @@ export function planWorkbook(input: PlanInput): PlanResult {
       ? { type: "warm-up", role: "first", parts: [T("warm-up"), ...fixIt, T("in-your-head")] }
       : { type: pageType("remember-these"), role: "first", parts: [T("remember-these"), ...fixIt] };
   };
-  /** Unit B has a page that day: a teaching day, not a Kindergarten check day (its checks take the slot). */
-  const bDay = (day: number) => bOn && kinds[day - 1] === "teach" && !knowItOn(day);
+  /** Unit B has a page that day: a teaching day. */
+  const bDay = (day: number) => bOn && kinds[day - 1] === "teach";
   const challengeTrack = (day: number): Track => (bDay(day) ? "B" : "A");
   const reviewPage = (day: number): Shape => {
     const friday = FRIDAY_5_DAYS.includes(day);
@@ -564,11 +568,14 @@ export function planWorkbook(input: PlanInput): PlanResult {
         : reviewOnly("slot")
       : bOn ? { type: pageType("unit-b"), role: "slot", parts: [...(startsB ? newIdea("B") : []), T("practice", "B")] }
       : reviewOnly("slot");
-    // A Kindergarten check day: the unit's two Already know it? pages take page 1 and the slot.
+    // A Kindergarten check day: the unit's two Already know it? pages take the review room of page 1 and one of A's
+    // pages (A keeps its New idea and practice, or practice and stories); Unit B keeps its page and the challenge, so
+    // A to B stays 2 to 1.33 (1.5).
     const knowIt = knowItOn(day);
     if (knowIt) {
       const check = (page: number): Shape => ({ type: "parent-led", role: `check-${page}`, parts: [T("already-know-it")] });
-      return [check(1), check(2), second, practice, story, reviewPage(day)].filter((s): s is Shape => s !== null)
+      const teachA = startsA && second ? [second, practice] : [practice, story];
+      return [check(1), check(2), ...teachA, slot, reviewPage(day)]
         .map((s) => (extras.has(`${day}:${s.role}`) ? { ...s, parts: [...s.parts, T("remember-these")] } : s));
     }
     const pages: (Shape | null)[] = parentLed || sixPages
