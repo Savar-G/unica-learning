@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { adConfig, adsBlockedPath, CARD_VALUE, createAdTags, metaCleanAddress, metaCleanReferrer, type AdConfig } from "@/lib/ad-tags";
+import { adConfig, adsBlockedPath, CARD_VALUE, cleanAdAddress, createAdTags, metaCleanAddress, metaCleanReferrer, type AdConfig } from "@/lib/ad-tags";
 import type { ConsentState } from "@/lib/consent";
 
 // Meta Pixel and the Google tag: off without their IDs, loaded only after consent, never loaded or sending on a page a
@@ -143,6 +143,45 @@ describe("ad tags on a child's pages", () => {
     expect(p.google).toEqual([["consent", "update", { ad_storage: "denied", ad_user_data: "denied" }]]);
     p.go("/account");
     expect(p.meta.slice(-2)).toEqual([["consent", "grant"], ["track", "PageView"]]);
+  });
+});
+
+// R349-3: the child's desk (/tutor), its Forgot PIN screen and a page's QR code (/tutor/p/<token>) are child pages.
+describe("ad tags on the child's desk", () => {
+  const QR = "/tutor/p/nonuuid_test_qr_token_12345";
+
+  it("block every desk page", () => {
+    for (const path of ["/tutor", "/tutor/", QR, "/tutor/forgot-pin", "/Tutor", "/%74utor/p/x", "//tutor/p/x"]) expect(adsBlockedPath(path), path).toBe(true);
+    for (const path of ["/tutoring", "/our-story"]) expect(adsBlockedPath(path), path).toBe(false);
+  });
+
+  it("never load on a QR code page, even after consent, and send no page location", () => {
+    const p = page({ consent: "granted", path: QR });
+    p.tags.begin();
+    p.idle();
+    p.tags.conversion("report_open");
+    expect(p.state.installs).toBe(0);
+    expect(JSON.stringify(p.google)).not.toContain("nonuuid_test_qr_token");
+  });
+
+  it("send nothing on the desk when loaded on Parent home, and come back after it", () => {
+    const p = page({ consent: "granted", path: "/account" });
+    p.tags.begin();
+    p.idle();
+    const googleBefore = p.google.length;
+    p.go(QR);
+    p.go("/tutor");
+    p.tags.conversion("report_open");
+    expect(p.google.slice(googleBefore)).toEqual([["consent", "update", { ad_storage: "denied", ad_user_data: "denied" }]]);
+    expect(p.meta.at(-1)).toEqual(["consent", "revoke"]);
+  });
+
+  it("hide a QR token in an address sent to Google, also as the referrer of the next page", () => {
+    const origin = "https://unicalearning.com";
+    expect(cleanAdAddress(`${origin}${QR}?utm_source=x&k=1#a`, origin)).toBe(`${origin}/tutor/p/token?utm_source=x`);
+    expect(cleanAdAddress(`${origin}/Tutor/p/abc/`, origin)).toBe(`${origin}/Tutor/p/token/`);
+    expect(cleanAdAddress(`${origin}/account/report/3f2b8c1e-9d4a-4f6b-8e2c-1a2b3c4d5e6f`, origin)).toBe(`${origin}/account/report/id`);
+    expect(cleanAdAddress("https://elsewhere.example/tutor/p/abc", origin)).toBe("https://elsewhere.example/");
   });
 });
 

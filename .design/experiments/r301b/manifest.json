@@ -1,0 +1,49 @@
+{
+  "round": "301b",
+  "ticket": "#301 (spec #295, P4): the child's desk, rebuilt after Savar's design",
+  "decision": "D-184",
+  "route": "direct build (design skill, build stage); the design is decided (D-184)",
+  "picked": "built",
+  "picked_by": "Savar decided the design (D-184, 2026-10-30); the build waits for his review in PR #349",
+  "decision_question": "Does the desk look like the guidance demo video: rail, Maya's column with the question card, the Chat / Call / Call + board tabs and the shared board?",
+  "sources": {
+    "binding": "the guidance demo video (42 s), frames read every 3 s and at full size",
+    "support": "FigJam fLyAJsC68ezugsmkH3oRGh, sections 102:53 (tablet) and 103:53 (desktop); Maya's picture is node 102:122"
+  },
+  "note": "Screenshots of the real /tutor page on localhost (npm run dev) in the Aside browser, with the e2e test family (test_accounts) and its shipped sample workbook 2. Chat (#358) and calls (#337) are not built: their controls show, turned off, with the line 'Chat and calls with Maya start soon.' The board shows the picked question in columns, drawn by the board renderer of #347 in Relief SingleLine. The Next.js dev badge is removed from the screenshots.",
+  "invariants": [
+    "Only the child's shipped workbooks; a draft never shows",
+    "The question card is a crop of the printed page image from the stored question box; the whole page shows only in 'Pick from my page'",
+    "Never an answer or worked steps; the board shows a question only when the page prints it as the bare sum",
+    "Leaving needs the parent's PIN, checked on the server; desk security and logic are unchanged",
+    "No visible text says 'tutor'"
+  ],
+  "viewports": ["1440 x 900 (laptop)", "768 x 1024 (tablet in portrait)", "1024 x 768 (tablet in landscape)", "390 x 844 (phone)"],
+  "screenshots": {
+    "before": ["../r301/after-desk-picked-laptop.png"],
+    "desk_with_a_question_picked": [
+      "desk-picked-laptop-1440.png",
+      "desk-picked-tablet-768-portrait.png",
+      "desk-picked-tablet-1024-landscape.png",
+      "desk-picked-phone-390.png",
+      "desk-picked-phone-390-board.png"
+    ],
+    "pick_from_my_page": [
+      "pick-popup-laptop-1440.png",
+      "pick-popup-tablet-768-portrait.png",
+      "pick-popup-tablet-1024-landscape.png",
+      "pick-popup-phone-390.png"
+    ],
+    "leave_with_the_pin": [
+      "leave-pin-laptop-1440.png",
+      "leave-pin-tablet-768-portrait.png",
+      "leave-pin-tablet-1024-landscape.png",
+      "leave-pin-phone-390.png"
+    ],
+    "no_question_yet": ["desk-empty-laptop-1440.png"]
+  },
+  "open_questions": [
+    "The video's call pill (timer and red hang-up) shows only while a call runs, so it is not on the desk until calls exist (#337)",
+    "Maya's picture is the 150 px FigJam illustration; a larger or vector version would be sharper on big screens"
+  ]
+}

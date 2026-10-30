@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { createAnalytics, type Client } from "@/lib/analytics";
+import { createAnalytics, scrubEvent, type Client } from "@/lib/analytics";
 
 // PostHog is the system boundary: a fake client records what reaches it.
 function withConsent() {
@@ -111,5 +111,33 @@ describe("the admin area sends nothing (#77)", () => {
       $prev_pageview_max_scroll_percentage: 0.8,
     } };
     expect(beforeSend(event)).toEqual({ properties: { $current_url: "https://unicalearning.com/" } });
+  });
+});
+
+// R349-3: a page's QR code (/tutor/p/<token>) never reaches PostHog with its token, in any URL or path field.
+describe("QR tokens in analytics", () => {
+  it("are hidden in the current URL, the path, the previous page and the referrer", () => {
+    const event = scrubEvent({
+      properties: {
+        $current_url: "https://unicalearning.com/tutor/p/nonuuid_test_qr_token_12345?x=1",
+        $pathname: "/tutor/p/nonuuid_test_qr_token_12345",
+        $prev_pageview_pathname: "/Tutor/p/nonuuid_test_qr_token_12345/",
+        $referrer: "https://unicalearning.com/tutor/p/nonuuid_test_qr_token_12345",
+        $initial_current_url: "https://unicalearning.com/%74utor/p/nonuuid_test_qr_token_12345",
+      },
+      $set_once: { $initial_pathname: "/tutor/p/nonuuid_test_qr_token_12345" },
+    });
+    expect(JSON.stringify(event)).not.toContain("nonuuid_test_qr_token");
+    expect(event.properties).toMatchObject({
+      $current_url: "https://unicalearning.com/tutor/p/token",
+      $pathname: "/tutor/p/token",
+      $prev_pageview_pathname: "/Tutor/p/token/",
+      $referrer: "https://unicalearning.com/",
+    });
+  });
+
+  it("leaves other paths alone", () => {
+    const event = scrubEvent({ properties: { $pathname: "/tutor", $current_url: "https://unicalearning.com/account/report/abc" } });
+    expect(event.properties).toEqual({ $pathname: "/tutor", $current_url: "https://unicalearning.com/account/report/abc" });
   });
 });
