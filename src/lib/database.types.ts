@@ -450,6 +450,64 @@ export type Database = {
           },
         ]
       }
+      child_profiles: {
+        Row: {
+          assessment_id: string | null
+          build_token: string
+          built_at: string
+          child_id: string
+          created_at: string
+          parent_id: string
+          profile: Json
+          revision: number
+          schema_version: number
+        }
+        Insert: {
+          assessment_id?: string | null
+          build_token?: string
+          built_at?: string
+          child_id: string
+          created_at?: string
+          parent_id: string
+          profile: Json
+          revision: number
+          schema_version: number
+        }
+        Update: {
+          assessment_id?: string | null
+          build_token?: string
+          built_at?: string
+          child_id?: string
+          created_at?: string
+          parent_id?: string
+          profile?: Json
+          revision?: number
+          schema_version?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "child_profiles_assessment_id_child_id_fkey"
+            columns: ["assessment_id", "child_id"]
+            isOneToOne: false
+            referencedRelation: "assessments"
+            referencedColumns: ["id", "child_id"]
+          },
+          {
+            foreignKeyName: "child_profiles_child_id_parent_id_fkey"
+            columns: ["child_id", "parent_id"]
+            isOneToOne: false
+            referencedRelation: "children"
+            referencedColumns: ["id", "parent_id"]
+          },
+          {
+            foreignKeyName: "child_profiles_parent_id_fkey"
+            columns: ["parent_id"]
+            isOneToOne: false
+            referencedRelation: "parents"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       children: {
         Row: {
           created_at: string
