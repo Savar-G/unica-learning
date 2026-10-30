@@ -295,13 +295,13 @@ export interface ChildProfileSeams {
 }
 
 /**
- * What the AI step of a rebuild did. off: no AI client, or no event to link. failed: the request failed, took too long,
+ * What the AI step of a rebuild did. off: no AI client. no_events: no event to link, so no request. failed: the request failed, took too long,
  * its output did not match the schema, or the store failed. none: no finding passed the checks. stored: the findings
  * are stored. late: a newer build was stored while the AI wrote (or the family's deletion was requested), so the
  * findings were not stored.
  */
 export type FindingsOutcome =
-  | { outcome: "off" }
+  | { outcome: "off" | "no_events" }
   | { outcome: "failed"; problem: string }
   | { outcome: "none" | "late"; dropped: FindingDrop[] }
   | { outcome: "stored"; kept: number; dropped: FindingDrop[] };
@@ -368,7 +368,8 @@ export async function rebuildChildProfile(childId: string, { profiles, events, a
     if (saved === "changed") continue;
     if ("refused" in saved) return { built: false, reason: "refused", detail: saved.refused };
     const facts = { built: true as const, revision: saved.revision, profile };
-    if (!ai || read.length === 0) return { ...facts, findings: { outcome: "off" } };
+    if (!ai) return { ...facts, findings: { outcome: "off" } };
+    if (read.length === 0) return { ...facts, findings: { outcome: "no_events" } };
     return addFindings(profiles, { ...row, profile }, saved, read, ai, aiMs);
   }
   return { built: false, reason: "busy" };

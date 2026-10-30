@@ -87,13 +87,16 @@ describe("the child's profile AI findings", () => {
       finding(["00000000-0000-4000-8000-00000000dead"]),
       finding([]),
       finding([mine.id], { standard: "9.9" }),
+      finding([mine.id], { standard: "3.2" }),
       finding([mine.id], { hypothesis: "The child cannot regroup tens." }),
       finding([mine.id.toUpperCase()], { hypothesis: "Help with the tens step may be what the child needs most." }),
     ] }) });
 
     const result = await rebuildChildProfile(CHILD, { ...f, ai });
     expect(result).toMatchObject({ built: true, findings: { outcome: "stored", kept: 1 } });
-    expect(result.built && result.findings.outcome === "stored" && result.findings.dropped.map((d) => d.rule)).toEqual(["unknown-event", "unknown-event", "no-events", "unknown-standard", "not-a-hypothesis"]);
+    expect(result.built && result.findings.outcome === "stored" && result.findings.dropped.map((d) => d.rule)).toEqual(["unknown-event", "unknown-event", "no-events", "unknown-standard", "no-event-of-standard", "not-a-hypothesis"]);
+    // The drops name a standard only when it is one of the profile's: never text the AI made up.
+    expect(result.built && result.findings.outcome === "stored" && result.findings.dropped.find((d) => d.rule === "unknown-standard")?.standard).toBeNull();
     expect((await readChildProfile(f.profiles, CHILD))?.profile.ai?.findings).toEqual([
       { standard: "3.3", hypothesis: "Help with the tens step may be what the child needs most.", events: [mine.id] },
     ]);
@@ -180,7 +183,7 @@ describe("the child's profile AI findings", () => {
   it("asks nothing of the AI for a child with no events", async () => {
     const f = family();
     const ai = fakeAiClient({ answer: () => ({ findings: [] }) });
-    expect(await rebuildChildProfile(CHILD, { ...f, ai })).toMatchObject({ built: true, findings: { outcome: "off" } });
+    expect(await rebuildChildProfile(CHILD, { ...f, ai })).toMatchObject({ built: true, findings: { outcome: "no_events" } });
     expect(ai.requests).toEqual([]);
   });
 });

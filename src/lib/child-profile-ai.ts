@@ -3,16 +3,17 @@
 // events and writes findings. A finding is a hypothesis about one BC standard for the workbook planner and Maya, linked
 // to the ids of the events that show it. Code keeps the rules before any finding is kept:
 //   - the output must match the schema, or nothing is kept (the request fails);
-//   - a finding names a standard of the profile and links at least one event, and every event it links is one the AI
-//     read: an event of this child, read by this build. A finding with an unknown id (another child's event, an id that
-//     does not exist) is dropped whole;
+//   - a finding names a standard of the profile and links at least one event of that standard, and every event it
+//     links is one the AI read: an event of this child, read by this build. A finding with an unknown id (another
+//     child's event, an id that does not exist) is dropped whole;
 //   - its text is worded as a hypothesis ("may", "might", "seems", ...) and passes the AI text checks (checkAiText): no
 //     first person, no he or she, no markup, and every number from the facts the AI read.
 // Findings never change the facts: the secure and not yet secure standards are counted by code, and the findings sit
 // beside them (`ai`). Behind the AI client's switch: on only with OPENROUTER_API_KEY.
 // What it sends: the child's school grade, the profile's standards with their counts, and the child's newest events
-// (id, source, standard, result, stuck step, mistake, hints, time spent, when, and the workbook page and question
-// number). Never a name, a parent, a family, account or workbook id, the evidence ids, the learning card or free text.
+// (id, source, standard, result, the worked step id where the child got stuck, mistake id, hints, time spent, when, and
+// the workbook page and question number). Never a name, a parent, a family, account or workbook id, the evidence ids or
+// the learning card. The wording rule is a word check ("may", "seems"): it keeps statements out, not every overclaim.
 // No "server-only" import so that its tests can run, as src/lib/learner-profile-ai.ts. Pure apart from the client.
 import { aiClient, withTimeLimit, type AiClient } from "@/lib/ai-client";
 import { MISCONCEPTIONS, checkAiText } from "@/lib/assessment";
@@ -22,10 +23,10 @@ import type { LearningEvent } from "@/lib/learning-events";
 
 /**
  * The findings stop after this long; then the profile keeps its facts. The report job runs the child's rebuild last,
- * after its own AI step (at most 165 s), the report's emails and the test profile's AI parts (60 s): together they stay
- * under Vercel's 300 s.
+ * after its own AI step (at most 165 s), the report's two emails (at most 15 s each) and the test profile's AI parts
+ * (60 s): with this, 275 s, under Vercel's 300 s.
  */
-export const CHILD_PROFILE_AI_MS = 30_000;
+export const CHILD_PROFILE_AI_MS = 20_000;
 /** The AI reads at most this many events: the child's newest. */
 export const AI_EVENTS_MAX = 200;
 /** At most this many findings are kept, in the AI's order. */
@@ -74,11 +75,11 @@ export const CHILD_PROFILE_AI_SCHEMA = {
   additionalProperties: false,
 } as const;
 
-/** Why a finding was dropped: its place in the output, its standard, and the rule. Never the AI's text. */
+/** Why a finding was dropped: its place in the output, its standard (when it is one of the profile's), and the rule. Never the AI's text. */
 export interface FindingDrop {
   index: number;
-  standard: string;
-  rule: "unknown-standard" | "no-events" | "unknown-event" | "not-a-hypothesis" | "too-many" | `text-${string}`;
+  standard: string | null;
+  rule: "unknown-standard" | "no-events" | "unknown-event" | "no-event-of-standard" | "not-a-hypothesis" | "too-many" | `text-${string}`;
 }
 
 /** What the AI reads (childProfileAiFacts). */
@@ -127,7 +128,8 @@ function outputProblem(output: unknown): string | null {
   for (const [i, f] of output.findings.entries()) {
     if (!isObject(f)) return `output.findings[${i}] is not an object`;
     const keys = Object.keys(f).sort().join();
-    if (keys !== "event_ids,hypothesis,standard") return `output.findings[${i}] has keys ${keys}`;
+    // Not the AI's own key names: the problem is logged.
+    if (keys !== "event_ids,hypothesis,standard") return `output.findings[${i}] does not have exactly standard, hypothesis and event_ids`;
     if (typeof f.standard !== "string" || typeof f.hypothesis !== "string") return `output.findings[${i}] has a text that is not a string`;
     if (!Array.isArray(f.event_ids) || !f.event_ids.every((id) => typeof id === "string")) return `output.findings[${i}].event_ids is not a list of strings`;
   }
@@ -142,17 +144,18 @@ function checkChildProfileAi(facts: ChildProfileAiFacts, output: unknown): { fin
   const problem = outputProblem(output);
   if (problem) throw new Error(`the output does not match the schema: ${problem}`);
   const standards = new Set(facts.standards.map((s) => s.code));
-  const read = new Set(facts.events.map((e) => e.id));
+  const read = new Map(facts.events.map((e) => [e.id, e.standard]));
   // The numbers a finding may use: those of the facts, not the digits of the ids.
   const numbers = { ...facts, events: facts.events.map((e) => ({ ...e, id: null })) };
   const findings: ChildProfileFinding[] = [];
   const dropped: FindingDrop[] = [];
   for (const [index, f] of (output as { findings: { standard: string; hypothesis: string; event_ids: string[] }[] }).findings.entries()) {
-    const drop = (rule: FindingDrop["rule"]) => void dropped.push({ index, standard: f.standard.slice(0, 10), rule });
+    const drop = (rule: FindingDrop["rule"]) => void dropped.push({ index, standard: standards.has(f.standard) ? f.standard : null, rule });
     const events = [...new Set(f.event_ids.map((id) => id.trim().toLowerCase()))];
     if (!standards.has(f.standard)) drop("unknown-standard");
     else if (events.length === 0) drop("no-events");
     else if (!events.every((id) => read.has(id))) drop("unknown-event");
+    else if (!events.some((id) => read.get(id) === f.standard)) drop("no-event-of-standard");
     else if (!HEDGE.test(f.hypothesis)) drop("not-a-hypothesis");
     else {
       const text = checkAiText(f.hypothesis, numbers, FINDING_TEXT_MAX);

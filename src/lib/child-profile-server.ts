@@ -25,7 +25,7 @@ export async function rebuildChildProfileNow(childId: string, seams?: ChildProfi
     const result = await rebuildChildProfile(childId, db);
     if (!result.built && result.reason !== "nothing_to_build") console.info("[child profile] not built", childId, JSON.stringify(result));
     // What the findings' checks dropped: index, standard and rule, never the AI's text.
-    if (result.built && result.findings.outcome !== "off" && result.findings.outcome !== "stored") console.info("[child profile] findings not stored", childId, JSON.stringify(result.findings));
+    if (result.built && !["off", "no_events", "stored"].includes(result.findings.outcome)) console.info("[child profile] findings not stored", childId, JSON.stringify(result.findings));
     else if (result.built && result.findings.outcome === "stored" && result.findings.dropped.length) console.info("[child profile] findings dropped", childId, JSON.stringify(result.findings.dropped));
     return result;
   } catch (e) {
