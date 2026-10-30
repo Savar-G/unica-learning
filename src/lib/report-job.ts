@@ -38,7 +38,8 @@ import { aiReport, aiReviewer, type AiOutcome, type WorkReviewer } from "@/lib/w
 //      account report can show them later; the emails never wait for them. This stops after at most PROFILE_AI_MS (60 s), so the job
 //      stays under 300 s. A failure is logged; the facts stay stored.
 //   7. Last, the child's profile (#303, src/lib/child-profile.ts) is built again from the test's stored profile and
-//      the child's learning events. A failure is logged.
+//      the child's learning events, then, with the AI on and events to link, its AI findings (#304), which stop after at
+//      most CHILD_PROFILE_AI_MS (20 s). A failure is logged; the facts stay stored.
 // Safe to run twice: the report is stored once, and each email is sent at most once through the delivery module
 // (src/lib/email-delivery.ts, #151), which claims it on the report row (src/lib/report-row-ledger.ts) before it is
 // sent. If the parent email fails, the report is still stored and visible in the account, and the alert tells Savar.
