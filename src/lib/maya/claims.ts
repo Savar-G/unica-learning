@@ -36,10 +36,7 @@ export interface StepNumbers {
   known: readonly number[];
   carry: readonly number[];
   write: readonly number[];
-  /**
-   * The problem's own unit words ("dollars" in "27 dollars + 39 dollars", "money" when it has any money in it): a number
-   * with one, or with any of its aliases (unitOf), stays bound to the step.
-   */
+  /** The problem's own unit words ("minutes" in "27 minutes + 39 minutes"): a number with one stays bound to the step. */
   units?: readonly string[];
 }
 
@@ -58,6 +55,8 @@ type Tok =
   | { t: "rem" }
   /** A math form code does not read: "²", "%", "half", "squared". */
   | { t: "sym" }
+  /** An amount named by a word, with no number code reads: "a quarter", "a loonie", "half a dollar", "a five-dollar bill". */
+  | { t: "amount" }
   /** A relation other than "equals": "\u2192", ">", "isn't". */
   | { t: "rel" }
   | { t: "word"; w: string }
@@ -78,6 +77,13 @@ const PLACES = new Map<string, Ratio>([
   ["ones", [ONE, ONE]], ["tens", [TEN, ONE]], ["hundreds", [HUNDRED, ONE]], ["thousands", [THOUSAND, ONE]],
   ["tenth", [ONE, TEN]], ["tenths", [ONE, TEN]], ["hundredth", [ONE, HUNDRED]], ["hundredths", [ONE, HUNDRED]], ["thousandth", [ONE, THOUSAND]], ["thousandths", [ONE, THOUSAND]],
 ]);
+/**
+ * Coins and notes: a word that is an amount on its own ("a quarter", "two dimes"). A money word that is a unit ("dollar",
+ * "cent", "buck") is an amount when no number comes just before it ("a dollar", "half a dollar"); after a number ("65
+ * dollars") the number is bound to the step.
+ */
+const COINS = /^(?:quarters?|dimes?|nickels?|penny|pennies|loonies?|toonies?|bills?|notes?|coins?)$/;
+const MONEY_UNITS = /^(?:dollars?|bucks?|cents?|cad)$/;
 const UNREAD = /^(?:halfs?|halves|thirds?|quarters?|fourths?|fifths?|sixths?|sevenths?|eighths?|ninths?|squared|cubed|percent|power|root|dozens?|twice|double|triple)$/;
 const EQUALS = new Set(["is", "are", "was", "were", "equals", "equal", "makes", "make", "gives", "give", "gets", "get", "totals", "total", "leaves", "leave", "that's", "it's"]);
 const RELATIONS = new Set(["isn't", "aren't", "wasn't", "weren't", "doesn't", "don't", "didn't"]);
@@ -198,6 +204,7 @@ function tokenize(text: string): Spanned[] {
     const place = PLACES.get(w);
     const op = OPS.get(w);
     if (place) add({ t: "unit", v: place });
+    else if (COINS.test(w) || (MONEY_UNITS.test(w) && prev?.t !== "num")) add({ t: "amount" });
     else if (UNREAD.test(w)) add({ t: "sym" });
     else if (RELATIONS.has(w)) add({ t: "rel" });
     else if (op) add({ t: "op", op });
@@ -331,8 +338,8 @@ function agrees(read: Read[]): boolean | null {
 
 // ---------- Claims ----------
 
-const MATH: ReadonlySet<Tok["t"]> = new Set(["num", "unit", "op", "eq", "lp", "rp", "rem", "sym", "rel"]);
-const isNumber = (x: Tok) => x.t === "num" || x.t === "unit" || x.t === "sym";
+const MATH: ReadonlySet<Tok["t"]> = new Set(["num", "unit", "op", "eq", "lp", "rp", "rem", "sym", "rel", "amount"]);
+const isNumber = (x: Tok) => x.t === "num" || x.t === "unit" || x.t === "sym" || x.t === "amount";
 
 /**
  * Every number claim in a text, in order. A run of math with an "equals" in it ("=", "is", "makes", "comes to") must
@@ -394,12 +401,13 @@ export function mathClaims(text: string, problems: readonly NamedProblem[] = [],
     if (!run.some((x) => x.t === "eq")) {
       // "Seven plus nine comes to fifteen": an operation, then a number, in one statement.
       const operation = run.some((x, n) => x.t === "op" && n > 0 && ["num", "unit", "rp"].includes(run[n - 1].t));
-      if ((!question && operation && found === null && numberAfter[j]) || (run.some((x) => x.t === "sym") && run.some((x) => x.t === "num"))) claim("unsupported");
+      if ((!question && operation && found === null && numberAfter[j]) || run.some((x) => x.t === "amount") || (run.some((x) => x.t === "sym") && run.some((x) => x.t === "num"))) claim("unsupported");
       continue;
     }
     if (question && read.length < 2) {
       // "What is seven plus nine?" asks; "Seven plus nine is, fifteen?" offers a value code cannot place.
-      if (run.some((x) => x.t === "num") && (sides.some((s) => s.k === "fail") || (sides[sides.length - 1].k === "empty" && numberAfter[j]))) claim("unsupported");
+      if (run.some((x) => x.t === "amount")) claim("unsupported");
+      else if (run.some((x) => x.t === "num") && (sides.some((s) => s.k === "fail") || (sides[sides.length - 1].k === "empty" && numberAfter[j]))) claim("unsupported");
       continue;
     }
     const leadOk = !before || before.t !== "word" || LEAD.has(before.w);
@@ -431,30 +439,16 @@ const LOCATION = new Set(["under", "below", "beneath", "above", "beside", "next"
 const PRONOUN = new Set(["this", "that", "each", "which", "another", "next", "last", "every", "no", "any", "other", "same"]);
 
 /**
- * Words that count something outside the math: the steps or tries of the work, time, and money. A number with one
- * ("two steps", "wait 2 seconds", "it costs 2 dollars") is checked as such a count, not as a value of the step. Measures
- * ("cm", "kg") and "times" are math, and stay bound.
+ * Words that count something outside the math: the steps and tries of the work, and time. A number with one ("two
+ * steps", "wait 2 seconds") is checked as such a count, not as a value of the step. Every other noun is math and stays
+ * bound: measures ("cm"), "times", and money, which Maya has no reason to name outside the problem.
  */
-const COUNTS = new Set([
-  "step", "steps", "try", "tries", "turn", "turns", "go", "goes", "question", "questions", "page", "pages", "part", "parts", "column", "columns", "row", "rows", "number", "numbers", "digit", "digits",
-  "second", "seconds", "minute", "minutes", "hour", "hours", "day", "days",
-  "dollar", "dollars", "buck", "bucks", "cad", "cent", "cents", "penny", "pennies",
-]);
-/** Money words, each the same unit as its aliases. */
-const MONEY = new Map<string, string>([
-  ...["dollar", "dollars", "buck", "bucks", "cad", "$"].map((w): [string, string] => [w, "dollar"]),
-  ...["cent", "cents", "penny", "pennies", "¢"].map((w): [string, string] => [w, "cent"]),
-]);
-/**
- * The unit a word names, the same for every alias: "$", "bucks" and "CAD" are "dollar"; "¢" and "pennies" are "cent";
- * "steps" is "step".
- */
+const COUNTS = new Set(["step", "steps", "try", "tries", "second", "seconds", "minute", "minutes"]);
+/** The unit a word names, the same for its plural ("steps" is "step"). */
 const unitOf = (word: string): string => {
   const w = word.toLowerCase();
-  return MONEY.get(w) ?? (w.endsWith("s") && w.length > 1 ? w.slice(0, -1) : w);
+  return w.endsWith("s") && w.length > 1 ? w.slice(0, -1) : w;
 };
-/** A problem's unit words as unitOf names them; "money" stands for every money unit. */
-const unitSet = (units: readonly string[]) => new Set(units.flatMap((u) => (u === "money" ? [...new Set(MONEY.values())] : [unitOf(u)])));
 /** Words between a count and its noun ("two more tries"). */
 const COUNT_FILLER = new Set(["more", "extra", "other", "whole", "short", "small", "big", "quick"]);
 /** Words that name a result: a count in their sentence is a value of the math ("the answer is 65 dollars"). */
@@ -489,7 +483,7 @@ function quantityNoun(toks: Spanned[], k: number): string | null {
 function stepClaims(text: string, toks: Spanned[], claimed: boolean[], step: StepNumbers): MathClaim[] {
   const ratios = (list: readonly number[]) => list.map(ratioOf).filter((r): r is Ratio => r !== null);
   const [known, carry, write] = [ratios(step.known), ratios(step.carry), ratios([...step.write, ...step.carry])];
-  const units = unitSet(step.units ?? []);
+  const units = new Set((step.units ?? []).map(unitOf));
   const among = (v: Ratio, list: Ratio[]) => list.some((r) => same(v, r));
   const word = (k: number) => (toks[k]?.t === "word" ? (toks[k] as { w: string }).w : "");
   const free = (k: number): Tok | null => (toks[k]?.t === "num" && !claimed[k] ? toks[k] : null);

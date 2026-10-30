@@ -2,7 +2,8 @@ import { describe, expect, it } from "vitest";
 import { createSession, mathClaims, step, type Proposal, type Session, type SessionEvent } from "@/lib/maya";
 import { checkQuestionPackage, workedSteps, type QuestionPackage } from "@/lib/question-package";
 
-// Reproductions of the fourth review of PR #350 (R350-4-1, R350-4-2), each through the public interface.
+// Reproductions of the fourth to sixth reviews of PR #350 (R350-4-1, R350-4-2, R350-5-1, R350-6-1, R350-6-2), each
+// through the public interface. Round 6 took money out of the talk counts: only steps, tries and time are talk.
 
 const num = (value: number) => ({ type: "number" as const, value });
 const PKG: QuestionPackage = {
@@ -86,12 +87,11 @@ describe("R350-4-1: a whole carry or write instruction is bound to the checked s
   });
 });
 
-describe("R350-4-2: counts of steps, time and money are talk; the step's math stays bound", () => {
+describe("R350-4-2: counts of steps, tries and time are talk; the step's math stays bound", () => {
   it.each([
     "We have two steps.",
     "There are two steps.",
     "Wait 2 seconds.",
-    "It costs 2 dollars.",
     "Two more tries, then we stop.",
     "Take 3 minutes.",
     "First, add the ones.",
@@ -108,16 +108,17 @@ describe("R350-4-2: counts of steps, time and money are talk; the step's math st
     "Take 120 steps.",
     "Look at the 4.",
     "Carry 2 steps.",
+    "It costs 2 dollars.",
     "Carry the 1, then look at the 2 and the 3.",
   ])("refuses %s", (say) => {
     expect(call().refusal(show(say))).toMatchObject({ code: "wrong_math" });
   });
 
-  it("keeps money bound when the problem is about money", () => {
+  it("keeps money bound in every problem, and time talk in a money problem", () => {
     const money: QuestionPackage = { ...PKG, id: "wbq-review-r4-money", text: "Sam has 27 dollars and gets 39 dollars. How many dollars now?" };
     expect(call(money).refusal(show("It costs 65 dollars."))).toMatchObject({ code: "wrong_math" });
     expect(call(money).refusal(show("Wait 2 seconds."))).toBeNull();
-    expect(call().refusal(show("It costs 65 dollars."))).toBeNull();
+    expect(call().refusal(show("It costs 65 dollars."))).toMatchObject({ code: "wrong_math" });
   });
 });
 
@@ -165,9 +166,45 @@ describe("R350-5-1: money aliases are one unit, and a money problem has no money
     for (const say of ["We have two steps.", "Wait 2 seconds.", "Two more tries, then we stop."]) expect(c.refusal(show(say))).toBeNull();
   });
 
-  it("keeps money as talk in a problem with no money, but never an amount with a sign", () => {
+  it("never takes money as talk, even in a problem with no money (round 6)", () => {
     const c = call();
-    for (const say of ["It costs 2 dollars.", "That is 2 bucks.", "It costs 5 cents.", "We have two steps."]) expect(c.refusal(show(say))).toBeNull();
-    expect(c.refusal(show("It costs $65."))).toMatchObject({ code: "wrong_math" });
+    for (const say of ["It costs 2 dollars.", "That is 2 bucks.", "It costs 4 cents.", "It costs $65."]) expect(c.refusal(show(say))).toMatchObject({ code: "wrong_math" });
+    expect(c.refusal(show("We have two steps."))).toBeNull();
+  });
+});
+
+describe("R350-6: every money amount is math, and an amount named by a word is never accepted unread", () => {
+  const story = (text: string): QuestionPackage => ({ ...PKG, id: "wbq-review-r6-money", text });
+
+  it.each([
+    "Sam spends 27 and 39. How much now?",
+    "Sam saves 27 and then 39. How much now?",
+    "Sam pays 27 and 39. How much in all?",
+    "Her allowance is 27 and she gets 39 more. How much now?",
+  ])("refuses a wrong price when only a word says money: %s", (text) => {
+    for (const say of ["It costs 65 dollars.", "It costs sixty-five dollars.", "It costs 65 bucks.", "That is 65 cents."]) {
+      expect(call(story(text)).refusal(show(say))).toMatchObject({ code: "wrong_math" });
+    }
+  });
+
+  it.each([
+    "It costs a quarter.",
+    "That is a dime.",
+    "Add a nickel.",
+    "It costs a loonie.",
+    "Two toonies.",
+    "It costs half a dollar.",
+    "Pay with a five-dollar bill.",
+    "Is it a penny?",
+    "Seven plus nine is a quarter.",
+  ])("refuses the amount word in %s for $27 + $39", (say) => {
+    expect(call(story("Sam has $27 and gets $39. How much now?")).refusal(show(say))).toMatchObject({ code: "wrong_math" });
+  });
+
+  it("still accepts steps, tries and time, and the problem's own amounts", () => {
+    const c = call(story("Sam has $27 and gets $39. How much now?"));
+    for (const say of ["Wait 2 seconds.", "We have two steps.", "Two more tries, then we stop.", "Take 3 minutes.", "Sam has 27 dollars, then 39 dollars more."]) {
+      expect(c.refusal(show(say))).toBeNull();
+    }
   });
 });

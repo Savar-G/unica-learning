@@ -464,9 +464,6 @@ function checkedNumbers(step: WorkedStep): { known: number[]; carry: number[]; w
 const answersAStep = (pkg: OperationPackage, value: AnswerValue) =>
   workSteps(pkg.steps).some((st) => stepAnswers(st).some((v) => equivalent(v, value))) && !pkg.wrongAnswers.some((w) => equivalent(w.value, value));
 
-/** Money in a question: a currency sign or a money word. */
-const MONEY_TEXT = /[$¢€£]|\b(?:dollars?|bucks?|cad|cents?|penny|pennies|money|prices?|costs?|coins?|dimes?|nickels?|quarters?|loonies?|toonies?)\b/i;
-
 /** The number speech-to-text may mistake a teen or a ten for, to confirm what the child said ("fifteen or fifty?"). */
 const soundsLike = (n: number): number[] => (n >= 13 && n <= 19 ? [(n - 10) * 10] : n >= 30 && n <= 90 && n % 10 === 0 ? [n / 10 + 10] : []);
 
@@ -487,11 +484,8 @@ function turnNumbers(s: Session, p: Proposal | null): StepNumbers | undefined {
     ...[...s.turns.filter((t) => t.speaker === "child").flatMap((t) => [t.text, ...(t.alternatives ?? [])]), s.turn?.text ?? ""].flatMap((t) => valuesIn(t))];
   const said = values.flatMap((v) => (v.type === "number" ? [v.value] : []));
   const known = [...operandsOf(pkg.operation), ...operandsOf(pkg.easierExample.operation), ...said, ...said.flatMap(soundsLike), ...facts.flatMap((f) => [...f.known, ...f.carry])];
-  // The problem's own unit words: the answer's unit and every word right after a number in either question; and
-  // "money" when either question or the answer has any money in it ("$27", "39 bucks"), so no amount of money is talk.
-  const texts = [pkg.text, pkg.easierExample.text];
-  const money = [...texts, JSON.stringify(pkg.answer)].some((t) => MONEY_TEXT.test(t));
-  const units = [pkg.answer.unit, ...texts.flatMap((t) => [...t.matchAll(/\d\s*([a-z]+)/gi)].map((m) => m[1])), ...(money ? ["money"] : [])]
+  // The problem's own unit words: the answer's unit and every word right after a number in either question.
+  const units = [pkg.answer.unit, ...[pkg.text, pkg.easierExample.text].flatMap((t) => [...t.matchAll(/\d\s*([a-z]+)/gi)].map((m) => m[1]))]
     .filter((u): u is string => typeof u === "string");
   return {
     known: [...new Set(known)],
