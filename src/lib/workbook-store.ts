@@ -5,6 +5,7 @@ import {
   isUuid,
   storedQuestion,
   workbookProblem,
+  type StoredQuestion,
   type WorkbookPage,
   type WorkbookStore,
   type WorkbookSummary,
@@ -37,16 +38,27 @@ function summary(r: Pick<BookRow, "id" | "created_at" | "parent_id" | "child_id"
   };
 }
 
+type QuestionFields = Pick<QuestionRow, "question_number" | "schema_version" | "package" | "box_x" | "box_y" | "box_width" | "box_height">;
+
+const stored = (q: QuestionFields): StoredQuestion => ({
+  number: q.question_number, box: { x: q.box_x, y: q.box_y, width: q.box_width, height: q.box_height }, schemaVersion: q.schema_version, package: q.package,
+});
+
+/** write_workbook's jsonb answer, checked: a change of its shape fails here, not in a caller. */
+function writeAnswer(data: unknown): WorkbookWrite {
+  const a = data as { status?: unknown; workbookId?: unknown; reason?: unknown } | null;
+  if (a?.status === "written" && typeof a.workbookId === "string") return { status: "written", workbookId: a.workbookId };
+  if (a?.status === "refused" && typeof a.reason === "string") return { status: "refused", reason: a.reason };
+  throw new Error("workbook write: unexpected answer");
+}
+
 function page(workbookId: string, p: Pick<PageRow, "page_number" | "day_label" | "page_type" | "image_path" | "image_width" | "image_height" | "qr_token">,
-  questions: Pick<QuestionRow, "question_number" | "schema_version" | "package" | "box_x" | "box_y" | "box_width" | "box_height">[]): WorkbookPage {
+  questions: QuestionFields[]): WorkbookPage {
   return {
     number: p.page_number, dayLabel: p.day_label, type: p.page_type,
     image: p.image_path !== null && p.image_width !== null && p.image_height !== null ? { path: p.image_path, width: p.image_width, height: p.image_height } : null,
     qrToken: p.qr_token,
-    questions: questions.map((q) => storedQuestion(
-      { number: q.question_number, box: { x: q.box_x, y: q.box_y, width: q.box_width, height: q.box_height }, schemaVersion: q.schema_version, package: q.package },
-      { source: "workbook", workbookId, page: p.page_number, question: q.question_number },
-    )),
+    questions: questions.map((q) => storedQuestion(stored(q), { source: "workbook", workbookId, page: p.page_number, question: q.question_number })),
   };
 }
 
@@ -57,8 +69,7 @@ export function workbookStore(db: SupabaseClient<Database>): WorkbookStore {
       if (problem) return { status: "refused", reason: problem };
       const { data, error } = await db.rpc("write_workbook", { p_workbook: toJson(input), p_schema_version: QUESTION_PACKAGE_VERSION });
       if (error) throw new Error(`workbook write: ${error.message}`);
-      // jsonb: the answer write_workbook builds.
-      return data as unknown as WorkbookWrite;
+      return writeAnswer(data);
     },
 
     async workbook(id) {
@@ -103,7 +114,7 @@ export function workbookStore(db: SupabaseClient<Database>): WorkbookStore {
         .eq("page_id", p.id).eq("question_number", ref.question).maybeSingle();
       if (qError) throw new Error(`workbook question load: ${qError.message}`);
       if (!q) return { status: "not-found" };
-      return storedQuestion({ number: q.question_number, box: { x: q.box_x, y: q.box_y, width: q.box_width, height: q.box_height }, schemaVersion: q.schema_version, package: q.package }, ref).content;
+      return storedQuestion(stored(q), ref).content;
     },
   };
 }

@@ -54,8 +54,8 @@ function PackageCells({ p }: { p: QuestionPackage }): ReactNode {
     <td><ol className="adm-wb-steps">{p.steps.map((s) => <li key={s.id}>{stepText(s, p.operation)}</li>)}</ol></td>
     <td className="adm-nowrap">{p.skill.standard}<span className="adm-sub adm-mono">{p.skill.skills.join(", ")}</span></td>
     <td className="adm-nowrap">U{p.level} · {p.difficulty}</td>
-    <td><ul className="adm-wb-list">{p.wrongAnswers.map((w) => (
-      <li key={value(w.value)}><b>{value(w.value)}</b> {w.cause}: {w.description}{w.step && <span className="adm-sub">at the {w.step} step</span>}</li>
+    <td><ul className="adm-wb-list">{p.wrongAnswers.map((w, i) => (
+      <li key={i}><b>{value(w.value)}</b> {w.cause}: {w.description}{w.step && <span className="adm-sub">at the {w.step} step</span>}</li>
     ))}</ul></td>
     <td className="adm-nowrap">{p.easierExample.text.replace("?", value(p.easierExample.answer))}</td>
   </>;

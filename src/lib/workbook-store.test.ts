@@ -182,6 +182,8 @@ describe.each(stores)("the %s workbook store", (_name, make) => {
     ["a QR token used twice", (w: WorkbookInput) => { w.pages[2].qrToken = w.pages[1].qrToken; }, /a QR token is used twice/],
     ["a level outside U1 to U30", (w: WorkbookInput) => { w.levels = [31]; }, /levels/],
     ["no pages", (w: WorkbookInput) => { w.pages = []; }, /no pages/],
+    // One read gives a whole workbook, and PostgREST stops a read at 1000 rows without an error.
+    ["more than 1000 questions", (w: WorkbookInput) => { w.pages[1].questions = Array.from({ length: 1001 }, () => w.pages[1].questions[0]); }, /more than 1000 questions/],
     ["an image outside the workbook's folder", (w: WorkbookInput) => { w.pages[0].image!.path = `${PARENT}/${SECOND}/page-1.png`; }, /a file is not in the workbook's folder/],
   ])("refuses %s and stores nothing", async (_case, change, reason) => {
     const store = make();

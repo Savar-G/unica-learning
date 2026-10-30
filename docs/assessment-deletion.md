@@ -176,4 +176,4 @@ The page images and workbook PDFs are in the private Storage bucket `workbook-pa
 
 Checked on the live database (29 October 2026), in transactions that were rolled back: with a deletion request, a new file in `workbook-pages` failed with `family_unavailable`; deleting the test family's Auth user left 0 workbook, page and question rows; `complete_family_deletion` answered false while the family's 3 page images were still in the bucket.
 
-Until this code is on `main`, the worker on `main` does not empty `workbook-pages`: a deletion of the one test family that has the sample workbook stops before it completes and keeps its request for a later run.
+The migration went live on 29 October 2026, before the worker code of #299 merged. In that time the worker on `main` did not empty `workbook-pages`, so a deletion of the one test family with the sample workbook would stop before it completed and keep its request for a later run.

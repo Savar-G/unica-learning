@@ -135,6 +135,9 @@ const QR_TOKEN = /^[A-Za-z0-9_-]{16,64}$/;
 /** A file name in the workbook's folder: no folders below it. */
 const FILE_NAME = /^[A-Za-z0-9._-]{1,100}$/;
 
+/** The most questions a workbook may have. */
+const MAX_QUESTIONS = 1000;
+
 export const isUuid = (v: unknown): v is string => typeof v === "string" && UUID.test(v);
 const isWhole = (v: unknown, min: number, max = Number.MAX_SAFE_INTEGER): v is number => Number.isInteger(v) && (v as number) >= min && (v as number) <= max;
 const isText = (v: unknown, max: number): v is string => typeof v === "string" && v.trim() !== "" && v.length <= max;
@@ -167,6 +170,10 @@ export function workbookProblem(w: WorkbookInput): string | null {
   if (w.profileBuild !== null && !isText(w.profileBuild, 100)) return "the profile build is not text of up to 100 characters";
   if (!Array.isArray(w.pages) || w.pages.length === 0) return "the workbook has no pages";
   if (w.pages.length > 500) return "the workbook has more than 500 pages";
+  // The store reads a workbook's questions in one request, and PostgREST stops a response at 1000 rows.
+  if (w.pages.reduce((n, p) => n + (Array.isArray(p.questions) ? p.questions.length : 0), 0) > MAX_QUESTIONS) {
+    return `the workbook has more than ${MAX_QUESTIONS} questions`;
+  }
 
   const pageNumbers = new Set<number>();
   const tokens = new Set<string>();
