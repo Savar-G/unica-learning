@@ -1,3 +1,4 @@
+import { operationText } from "@/lib/question-package-math";
 import { isUuid, type PageImage, type QuestionBox, type WorkbookPage, type WorkbookStore, type WorkbookSummary } from "@/lib/workbook-content";
 
 // The child's desk (#301, spec #295). The parent opens it from Parent home for one child on their own device; it shows
@@ -94,11 +95,18 @@ export type DeskView =
     };
 
 const wholeNumber = (n: number) => Number.isSafeInteger(n) && n >= 0;
+const bare = (s: string) => s.replace(/\s+/g, "");
 
+/**
+ * The question for the board, only when the page prints it as the bare sum ("27 + 39 = ?"): a question in words leaves
+ * the method to the child, so the board never shows it first.
+ */
 function columnsOf(q: WorkbookPage["questions"][number]): ColumnsQuestion | null {
   if (q.content.status !== "found") return null;
-  const { kind, operands } = q.content.package.operation;
+  const { text, operation } = q.content.package;
+  const { kind, operands } = operation;
   if (kind !== "add" && kind !== "subtract" && kind !== "multiply") return null;
+  if (bare(text).replace(/=\?$/, "") !== bare(operationText(operation))) return null;
   const [a, b] = operands;
   return wholeNumber(a) && wholeNumber(b) ? { kind, operands: [a, b] } : null;
 }

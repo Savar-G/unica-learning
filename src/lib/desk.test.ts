@@ -128,6 +128,17 @@ describe("the picked question", () => {
       { kind: "subtract", operands: [823, 467] },
     ]);
   });
+
+  it("gives the board nothing for a question printed in words, so the board never shows the method first", async () => {
+    const store = memoryWorkbookStore({ children: [{ id: CHILD, parentId: PARENT }], now: () => new Date("2026-10-29T18:00:00Z") });
+    const book = sampleWorkbook({ workbookId: FIRST, childId: CHILD, parentId: PARENT, qrTokens: [1, 2, 3].map((p) => token(FIRST, p)) });
+    book.pages[1].questions[0].package.text = "Sam has 268 stickers. He gets 157 more. How many stickers does he have now?";
+    expect((await store.write(book)).status).toBe("written");
+    store.setStatus(FIRST, "shipped");
+    const view = await deskView(store, { parentId: PARENT, childId: CHILD, page: 2 });
+    if (view.status !== "ready") throw new Error(view.status);
+    expect(view.page.questions.map((q) => q.columns)).toEqual([null, { kind: "add", operands: [345, 286] }, { kind: "add", operands: [419, 193] }, { kind: "add", operands: [176, 248] }]);
+  });
 });
 
 describe("the question card", () => {

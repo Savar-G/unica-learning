@@ -22,6 +22,12 @@ describe("the question on the board", () => {
     expect(glyphs(board)).toEqual(["1", "2", "3", "5", "7", "8", "−"]);
   });
 
+  it("writes a multiplication with its times sign, and no product", () => {
+    const board = questionBoard({ kind: "multiply", operands: [46, 3] });
+    if (!board) throw new Error("expected a board");
+    expect(glyphs(board)).toEqual(["3", "4", "6", "×"]);
+  });
+
   it("draws nothing for a question the board cannot lay out in columns", () => {
     expect(questionBoard({ kind: "subtract", operands: [12, 345] })).toBeNull();
     expect(questionBoard(null)).toBeNull();

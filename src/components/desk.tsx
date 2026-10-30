@@ -31,7 +31,8 @@ const subscribeMotion = (change: () => void) => {
   return () => q.removeEventListener("change", change);
 };
 /** True when the device asks for less motion: the board then shows the question at once. */
-const useStill = () => useSyncExternalStore(subscribeMotion, () => window.matchMedia("(prefers-reduced-motion: reduce)").matches, () => true);
+// The server and the first render say false: the board starts to draw after hydration, never shows the end first.
+const useStill = () => useSyncExternalStore(subscribeMotion, () => window.matchMedia("(prefers-reduced-motion: reduce)").matches, () => false);
 
 // ---------- icons (24 px grid, drawn with a 1.8 px line) ----------
 
@@ -151,8 +152,8 @@ export function Desk(props: DeskProps) {
     <div className="look-root desk-root" data-look="warm">
       <AnnounceDesk />
       <header className="desk-top">
-        <p className="desk-title"><Avatar size={24} /><span>{props.name ? `${props.name}'s desk` : "Your desk"}</span><span className="desk-brand">Unica<b /></span></p>
-        <button type="button" className="desk-sound" disabled title="Sound starts with calls"><Icon name="sound" size={18} />Sound on</button>
+        <p className="desk-title"><Avatar size={24} /><span className="desk-title-name">{props.name ? `${props.name}'s desk` : "Your desk"}</span><span className="desk-brand">Unica<b /></span></p>
+        <button type="button" className="desk-sound" disabled><Icon name="sound" size={18} />Sound on</button>
       </header>
 
       <nav className="desk-rail" aria-label="Desk">
@@ -162,13 +163,14 @@ export function Desk(props: DeskProps) {
         <LeaveDesk />
       </nav>
 
+      <main id="main" className="desk-body">
       <section className="desk-maya" aria-label="Maya">
         <header className="desk-maya-head">
           <Avatar size={48} />
           <div className="desk-who"><h1>Maya</h1>{where && <p>{where}</p>}</div>
-          <dl className="desk-limits" aria-label="Help left">
-            <div><dt><Icon name="phone" size={14} />Calls</dt><dd>30 min left this week</dd></div>
-            <div><dt><Icon name="chat" size={14} />Chat</dt><dd>60 messages left today</dd></div>
+          <dl className="desk-limits" aria-label="Help from Maya">
+            <div><dt><Icon name="phone" size={14} />Calls</dt><dd>30 min a week</dd></div>
+            <div><dt><Icon name="chat" size={14} />Chat</dt><dd>60 messages a day</dd></div>
           </dl>
         </header>
 
@@ -190,14 +192,14 @@ export function Desk(props: DeskProps) {
             </button>
           )}
           <p className="desk-soon">Chat and calls with Maya start soon.</p>
-          <div className="desk-compose" aria-disabled="true">
+          <div className="desk-compose">
             <input type="text" disabled placeholder="Write to Maya" aria-label="Write to Maya" />
             <button type="button" disabled aria-label="Send"><Icon name="send" size={20} /></button>
           </div>
         </footer>
       </section>
 
-      <main id="main" className="desk-main">
+      <div className="desk-main">
         <div className="desk-modes" role="group" aria-label="How Maya helps">
           <button type="button" disabled><Icon name="chat" size={18} />Chat</button>
           <button type="button" disabled><Icon name="phone" size={18} />Call</button>
@@ -217,7 +219,7 @@ export function Desk(props: DeskProps) {
               ) : null}
               <p className="desk-caption">
                 {!card ? "Pick a question from your page. It shows here."
-                  : card.board ? `Number ${card.number}, ready for Maya.` : "Maya writes this one with you in a call."}
+                  : card.board ? `Number ${card.number}, from your page.` : `Number ${card.number} is on your card.`}
               </p>
             </div>
             <div className="desk-tools" role="group" aria-label="Board tools">
@@ -235,6 +237,7 @@ export function Desk(props: DeskProps) {
           <Avatar size={26} /><span>In a call, Maya has the pen</span>
           <button type="button" disabled>Take the pen</button>
         </div>
+      </div>
       </main>
 
       {ready && (
@@ -257,7 +260,18 @@ export function Desk(props: DeskProps) {
             <ul>
               {ready.books.map((b) => (
                 <li key={b.id}>
-                  <Link className="desk-cover" href={deskHref({ w: b.id, pick: true })} aria-current={b.id === ready.book.id ? "page" : undefined}>
+                  <Link
+                    className="desk-cover"
+                    href={deskHref({ w: b.id, pick: true })}
+                    aria-current={b.id === ready.book.id ? "page" : undefined}
+                    // The open workbook: no new page, so the desk would not start again. Go straight to its page.
+                    onClick={(e) => {
+                      if (b.id !== ready.book.id) return;
+                      e.preventDefault();
+                      books.current?.close();
+                      picker.current?.showModal();
+                    }}
+                  >
                     <b>Workbook {b.number}</b>{b.sent && <span>{b.sent}</span>}
                   </Link>
                 </li>
