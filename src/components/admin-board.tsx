@@ -31,7 +31,7 @@ export function BoardPreview({ fonts }: { fonts: FontPreview[] }) {
     <>
       <p className="adm-lead">
         Maya, the Unica Teaching Assistant, writes each step on a shared board, one pen stroke at a time. Here is the same sum
-        in the two fonts we can use for her writing. Savar picks one (decision D-181); until then the board uses simple
+        in the two fonts we can use for her writing. Savar picks one (decision D-182); until then the board uses simple
         placeholder digits.
       </p>
       <div className="adm-board-controls">
@@ -57,11 +57,11 @@ export function BoardPreview({ fonts }: { fonts: FontPreview[] }) {
             <h2 id={`font-${f.id}`}>{f.name}</h2>
             <p className="adm-note">{LOOK[f.id]}</p>
             <figure>
-              <MayaBoard key={`sum-${run}`} steps={f.sum.steps} view={f.sum.view} instant={instant} label={`27 plus 39 equals 66, worked in columns with a carried 1, in ${f.name}`} />
+              <MayaBoard key={`sum-${run}`} steps={f.sum.steps} viewBox={f.sum.viewBox} instant={instant} label={`27 plus 39 equals 66, worked in columns with a carried 1, in ${f.name}`} />
               <figcaption>27 + 39, stroke by stroke</figcaption>
             </figure>
             <figure>
-              <MayaBoard key={`specimen-${run}`} steps={f.specimen.steps} view={f.specimen.view} instant={instant} label={`The digits 0 to 9 and the signs plus, minus, times, divide, equals and a check mark, in ${f.name}`} />
+              <MayaBoard key={`specimen-${run}`} steps={f.specimen.steps} viewBox={f.specimen.viewBox} instant={instant} label={`The digits 0 to 9 and the signs plus, minus, times, divide, equals and a check mark, in ${f.name}`} />
               <figcaption>Digits and signs</figcaption>
             </figure>
             <p className="adm-board-licence">

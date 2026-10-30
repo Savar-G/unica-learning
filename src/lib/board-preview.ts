@@ -1,6 +1,6 @@
 // The admin board preview (#319): 27 + 39 as Maya would work it, and the digits, in each font Savar chooses from. Built
 // on the server through the board core, so the page sends only the strokes to the browser.
-import { applyBatch, BOARD_FONTS, createScene, type BoardFont, type GlyphSet, type PageSize } from "@/lib/board";
+import { applyBatch, BOARD_FONTS, boardView, createScene, type BoardFont, type GlyphSet, type PageSize } from "@/lib/board";
 import { fitView, type PlayStep } from "@/lib/board-svg";
 
 const cell = (rowId: string, column: string) => ({ objectId: "sum1", part: "cell", rowId, column });
@@ -26,7 +26,7 @@ const SPECIMEN: unknown[][] = [
 export interface PreviewBoard {
   steps: PlayStep[];
   /** The SVG viewBox around the finished work. */
-  view: string;
+  viewBox: string;
 }
 
 export interface FontPreview extends Omit<BoardFont, "glyphs"> {
@@ -41,9 +41,9 @@ function play(glyphs: GlyphSet, batches: unknown[][], page?: PageSize): PreviewB
     const r = applyBatch(scene, { transactionId: `preview-${i}`, commands });
     if (!r.ok) throw new Error(`The board refused preview step ${i}: ${r.refusal.reason}`);
     scene = r.scene;
-    steps.push({ drawn: r.drawn, erased: r.erased });
+    steps.push({ drawn: r.drawn, erased: r.erased, view: boardView(r.scene) });
   });
-  return { steps, view: fitView(steps.flatMap((s) => s.drawn), 0.02) };
+  return { steps, viewBox: fitView(steps.flatMap((s) => s.drawn), 0.02) };
 }
 
 export function fontPreviews(): FontPreview[] {

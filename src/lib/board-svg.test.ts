@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { applyBatch, boardPaths, createScene, type BoardPath, type Scene, type TimedPath } from "@/lib/board";
-import { finishedFrame, fitView, frameAt, pathData, reveal, timeline, type PlayStep } from "@/lib/board-svg";
+import { applyBatch, boardPaths, boardView, createScene, type BoardPath, type Scene, type TimedPath } from "@/lib/board";
+import { finishedFrame, fitView, frameAt, pageAt, pathData, reveal, timeline, type PlayStep } from "@/lib/board-svg";
 
 // The web renderer's pure part (#319): Maya's board paths as SVG path data, and the playback of drawn strokes as a pure
 // function of the time since playing started. No DOM: the React component only paints what these return.
@@ -16,6 +16,7 @@ describe("SVG path data", () => {
 });
 
 /** A stroke of Maya's, as the core returns it: only what the playback reads matters here. */
+let painted = 0;
 function stroke(id: string, startMs: number, durationMs: number, layer: BoardPath["layer"] = "math"): TimedPath {
   return {
     id,
@@ -35,6 +36,7 @@ function stroke(id: string, startMs: number, durationMs: number, layer: BoardPat
     length: 0.5,
     durationMs,
     startMs,
+    order: ++painted,
   };
 }
 
@@ -121,7 +123,7 @@ describe("27 + 39 from the board core", () => {
     const t = timeline(steps);
     const end = frameAt(t, t.durationMs);
     expect(end.every((f) => f.progress === 1)).toBe(true);
-    expect(end.map((f) => f.path.id)).toEqual(finishedFrame(boardPaths(scene)).map((f) => f.path.id));
+    expect(end.map((f) => f.path.id)).toEqual(finishedFrame(boardPaths(scene), boardView(scene).page).map((f) => f.path.id));
     // The highlight came and went: it is not on the finished board.
     expect(end.some((f) => f.path.objectId === "ones")).toBe(false);
   });
@@ -138,5 +140,86 @@ describe("27 + 39 from the board core", () => {
     const tens = firstSeen((p) => p.target?.part === "cell" && p.target.rowId === "answer" && p.target.column === "tens");
     expect(ones).toBeLessThan(carry);
     expect(carry).toBeLessThan(tens);
+  });
+});
+
+describe("paint order after an undo", () => {
+  it("paints a stroke an undo brings back where the core paints it, as a reload would", () => {
+    const ones = { objectId: "sum1", part: "column", column: "ones" };
+    const batches: [string, unknown[]][] = [
+      ["sum", [{ op: "columns", id: "sum1", operation: "add", operands: [{ id: "top", value: "27" }, { id: "bottom", value: "39" }], place: { region: "main" } }]],
+      ["red", [{ op: "mark", id: "red", target: ones, style: "circle", ink: "red" }]],
+      ["blue", [{ op: "mark", id: "blue", target: ones, style: "circle", ink: "blue" }]],
+      ["drop", [{ op: "remove", objectId: "red" }]],
+      ["back", [{ op: "undo", transactionId: "drop" }]],
+    ];
+    let scene = createScene();
+    const steps: PlayStep[] = [];
+    for (const [transactionId, commands] of batches) {
+      const r = applyBatch(scene, { transactionId, commands });
+      if (!r.ok) throw new Error(r.refusal.reason);
+      scene = r.scene;
+      steps.push(r);
+    }
+    const t = timeline(steps);
+    const end = frameAt(t, t.durationMs).map((f) => f.path.id);
+    const reload = finishedFrame(boardPaths(scene), boardView(scene).page).map((f) => f.path.id);
+    expect(end).toEqual(reload);
+    // The red circle came first, so the blue one is painted over it.
+    const circles = end.filter((id) => id.startsWith("red") || id.startsWith("blue"));
+    expect(circles.map((id) => id.split(":")[0])).toEqual(["red", "blue"]);
+  });
+});
+
+describe("board pages", () => {
+  const sum = (id: string, top: string, place: unknown) => [{ op: "columns", id, operation: "add", operands: [{ id: "top", value: top }, { id: "bottom", value: "39" }], place }];
+  // Three stacked sums fill page 1; the fourth goes to page 2. Then Maya points back at the first sum.
+  const BATCHES = [
+    sum("a", "27", { region: "main" }),
+    sum("b", "28", { below: "a" }),
+    sum("c", "29", { below: "b" }),
+    sum("d", "30", { below: "c" }),
+    [{ op: "focus", target: { objectId: "a", part: "whole" } }],
+  ];
+  function play(count: number): { scene: Scene; steps: PlayStep[] } {
+    let scene = createScene();
+    const steps: PlayStep[] = [];
+    BATCHES.slice(0, count).forEach((commands, i) => {
+      const r = applyBatch(scene, { transactionId: `p${i}`, commands });
+      if (!r.ok) throw new Error(r.refusal.reason);
+      scene = r.scene;
+      steps.push({ ...r, view: boardView(r.scene) });
+    });
+    return { scene, steps };
+  }
+  const pages = (frame: ReturnType<typeof frameAt>) => [...new Set(frame.map((f) => f.path.page))];
+
+  it("turns to page 2 when the work overflows, and shows only that page", () => {
+    const { scene, steps } = play(4);
+    expect(boardView(scene).page).toBe(2);
+    const t = timeline(steps);
+    const end = frameAt(t, t.durationMs);
+    expect(pages(end)).toEqual([2]);
+    expect(end.map((f) => f.path.id)).toEqual(finishedFrame(boardPaths(scene), 2).map((f) => f.path.id));
+    expect(end.length).toBe(boardPaths(scene).filter((p) => p.page === 2).length);
+  });
+
+  it("shows page 1 until the batch that writes on page 2 starts", () => {
+    const { steps } = play(4);
+    const t = timeline(steps);
+    const pageTwoStarts = Math.min(...t.strokes.filter((s) => s.path.page === 2).map((s) => s.startMs));
+    expect(pageAt(t, pageTwoStarts - 1)).toBe(1);
+    expect(pages(frameAt(t, pageTwoStarts - 1))).toEqual([1]);
+    expect(frameAt(t, pageTwoStarts - 1)).toHaveLength(finishedFrame(play(3).steps.flatMap((s) => s.drawn), 1).length);
+    expect(pageAt(t, pageTwoStarts)).toBe(2);
+    expect(pages(frameAt(t, pageTwoStarts + 1))).toEqual([2]);
+  });
+
+  it("goes back to page 1 when Maya points at work there, as a reload of the board would", () => {
+    const { scene, steps } = play(5);
+    expect(boardView(scene).page).toBe(1);
+    const t = timeline(steps);
+    expect(pageAt(t, Infinity)).toBe(1);
+    expect(frameAt(t, Infinity).map((f) => f.path.id)).toEqual(finishedFrame(boardPaths(scene), 1).map((f) => f.path.id));
   });
 });

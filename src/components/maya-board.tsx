@@ -17,10 +17,11 @@ const INK: Record<Ink, string> = {
 };
 
 /**
- * Plays `steps` (batches as the board core applied them) from the start when mounted; give it a new `key` to replay.
- * `instant`: show the finished board, with no drawing.
+ * Plays `steps` (batches as the board core applied them, each with the board's view after it) from the start when
+ * mounted; give it a new `key` to replay. It shows one board page at a time: the page in view at that moment, as the
+ * playback in board-svg.ts decides. `instant`: show the finished board, with no drawing.
  */
-export function MayaBoard({ steps, view, label, instant = false }: { steps: readonly PlayStep[]; view: string; label: string; instant?: boolean }) {
+export function MayaBoard({ steps, viewBox, label, instant = false }: { steps: readonly PlayStep[]; viewBox: string; label: string; instant?: boolean }) {
   const t = useMemo(() => timeline(steps), [steps]);
   // A stroke's shape never changes: its path data is made once, and each frame only moves the dash.
   const shapes = useMemo(() => new Map(steps.flatMap((s) => s.drawn.map((p) => [p.id, pathData(p.pts)] as const))), [steps]);
@@ -39,7 +40,7 @@ export function MayaBoard({ steps, view, label, instant = false }: { steps: read
 
   const strokes = frameAt(t, instant ? Infinity : elapsed);
   return (
-    <svg className="maya-board" viewBox={view} role="img" aria-label={label}>
+    <svg className="maya-board" viewBox={viewBox} role="img" aria-label={label}>
       {strokes.map(({ path, progress }) => {
         const dash = reveal(path, progress);
         return (

@@ -195,7 +195,7 @@ export const BOARD_FONTS: readonly BoardFont[] = [
 ];
 
 /**
- * The glyphs Maya writes with. Pending Savar's choice of font (D-181): set this to the chosen font's glyphs, for example
+ * The glyphs Maya writes with. Pending Savar's choice of font (D-182): set this to the chosen font's glyphs, for example
  * `BOARD_FONTS[0].glyphs` for EMS Tech. Every board made without its own glyph set follows it.
  */
 export const BOARD_GLYPHS: GlyphSet = PLACEHOLDER_GLYPHS;
