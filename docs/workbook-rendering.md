@@ -81,7 +81,8 @@ other service. Measured on a preview deploy on 2026-10-29 with `/api/workbook-re
 | 30 pages | 7.2 to 7.5 s | 559 KB | 2.3 MB |
 | 60 pages | 14.9 s | 1.07 MB | 4.65 MB |
 
-That is about 0.25 s a page once Chromium is running. The function's traced files are 75 MB (the compressed Chromium
+That is about 0.25 s a page once Chromium is running. Reading each page's QR code back from its image (added after
+review, measured on 2026-10-30) adds about 0.05 s a page: the sample in 1.3 s warm (4.1 s cold), 30 pages in 8.9 s. The function's traced files are 75 MB (the compressed Chromium
 is 67 MB of it), under Vercel's 250 MB limit. The check route allows 60 s (`maxDuration`). Files go straight to
 Storage, so Vercel's 4.5 MB response limit does not apply. A two-week workbook (about 10 to 30 pages) renders in under
 10 seconds.
