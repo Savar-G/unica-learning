@@ -169,7 +169,7 @@ export function tapAreas(page: DeskPage): TapArea[] {
 
 /**
  * The question card (D-184): the part of the page image around one question, as a crop. `box` is the crop in image
- * pixels: the question's box with `margin` pixels around it, kept inside the image. The image is shown `imageWidth`
+ * pixels: the question's box with up to `margin` pixels around it, kept inside the image and out of every other question's box. The image is shown `imageWidth`
  * percent of the crop's width, moved `left` percent of the crop's width and `top` percent of its height (3 decimals).
  */
 export interface QuestionCrop {
@@ -184,13 +184,23 @@ export function questionCrop(page: DeskPage, question: number, margin = 16): Que
   const q = page.questions.find((x) => x.number === question);
   const image = page.image;
   if (!q || !image) return null;
-  const x = Math.max(0, q.box.x - margin);
-  const y = Math.max(0, q.box.y - margin);
-  const box = {
-    x, y,
-    width: Math.min(image.width, q.box.x + q.box.width + margin) - x,
-    height: Math.min(image.height, q.box.y + q.box.height + margin) - y,
-  };
+  let left = Math.max(0, q.box.x - margin);
+  let top = Math.max(0, q.box.y - margin);
+  let right = Math.min(image.width, q.box.x + q.box.width + margin);
+  let bottom = Math.min(image.height, q.box.y + q.box.height + margin);
+  // The margin never reaches into another question (review R349-6): each side stops at a neighbour's box.
+  for (const other of page.questions) {
+    if (other === q) continue;
+    const o = other.box;
+    const oRight = o.x + o.width;
+    const oBottom = o.y + o.height;
+    if (o.x >= right || oRight <= left || o.y >= bottom || oBottom <= top) continue;
+    if (oRight <= q.box.x) left = Math.max(left, oRight);
+    else if (o.x >= q.box.x + q.box.width) right = Math.min(right, o.x);
+    else if (oBottom <= q.box.y) top = Math.max(top, oBottom);
+    else if (o.y >= q.box.y + q.box.height) bottom = Math.min(bottom, o.y);
+  }
+  const box = { x: left, y: top, width: right - left, height: bottom - top };
   return { question, box, imageWidth: percent(image.width, box.width), left: -percent(box.x, box.width), top: -percent(box.y, box.height) };
 }
 

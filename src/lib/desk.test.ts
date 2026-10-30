@@ -158,6 +158,19 @@ describe("the question card", () => {
   it("has no card for a question that is not on the page, or a page without an image", async () => {
     const view = await deskView(await family(), { parentId: PARENT, childId: CHILD });
     if (view.status !== "ready") throw new Error(view.status);
+    // Review R349-6: the margin stops at a neighbouring question, beside it or below it.
+    const near = { ...view.page, image: { ...view.page.image!, width: 400, height: 400 }, questions: [
+      { ...view.page.questions[0], number: 1, box: { x: 10, y: 10, width: 100, height: 50 } },
+      { ...view.page.questions[0], number: 2, box: { x: 115, y: 10, width: 100, height: 50 } },
+      { ...view.page.questions[0], number: 3, box: { x: 10, y: 65, width: 100, height: 50 } },
+    ] };
+    const crop = questionCrop(near, 1)!.box;
+    for (const other of near.questions.slice(1)) {
+      const o = other.box;
+      const overlaps = crop.x < o.x + o.width && o.x < crop.x + crop.width && crop.y < o.y + o.height && o.y < crop.y + crop.height;
+      expect(overlaps).toBe(false);
+    }
+    expect(crop).toEqual({ x: 0, y: 0, width: 115, height: 65 });
     expect(questionCrop(view.page, 9)).toBeNull();
     expect(questionCrop({ ...view.page, image: null }, 2)).toBeNull();
   });
