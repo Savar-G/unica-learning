@@ -20,7 +20,7 @@ export const GRID_LIMITS = { value: 10, xSpan: 16, ySpan: 10, points: 8 } as con
 
 /** Cells kept left of the grid for the y numbers, and around it for the x numbers and point names. */
 const LEFT = 2;
-const TOP = 0.5;
+const TOP = 1;
 const RIGHT = 1;
 const BOTTOM = 1.2;
 const NUM_H = 0.5;
@@ -30,6 +30,15 @@ const gx = (spec: CoordinateGridSpec, x: number) => LEFT + (x - spec.xMin);
 const gy = (spec: CoordinateGridSpec, y: number) => TOP + (spec.yMax - y);
 const at = (spec: CoordinateGridSpec, x: number, y: number): Point => [gx(spec, x), gy(spec, y)];
 const hasZero = (min: number, max: number) => min <= 0 && max >= 0;
+/** The grid's edges in cells, and which axes the range holds. */
+const frame = (spec: CoordinateGridSpec) => ({
+  left: gx(spec, spec.xMin),
+  right: gx(spec, spec.xMax),
+  top: gy(spec, spec.yMax),
+  bottom: gy(spec, spec.yMin),
+  xAxis: hasZero(spec.yMin, spec.yMax),
+  yAxis: hasZero(spec.xMin, spec.xMax),
+});
 const size = (spec: CoordinateGridSpec) => ({ w: Math.ceil(LEFT + spec.xMax - spec.xMin + RIGHT), h: Math.ceil(TOP + spec.yMax - spec.yMin + BOTTOM) });
 const numeral = (n: number) => (n < 0 ? `−${-n}` : String(n));
 
@@ -59,6 +68,7 @@ export const coordinateGrid: ModelKind<CoordinateGridSpec> = {
     });
     return { kind: "coordinate_grid", xMin, xMax, yMin, yMax, points };
   },
+  names: (spec) => spec.points.map((p) => ({ piece: `point-${p.name}`, text: p.name })),
   layout(spec, glyphs) {
     const missing = missingGlyphs(glyphs, [...numbered(spec.xMin, spec.xMax), ...numbered(spec.yMin, spec.yMax)].map(numeral).join(""));
     if (missing.length > 0) return refuse("unsupported", `The board pen cannot write ${missing.join(" ")} yet.`);
@@ -75,10 +85,10 @@ export const coordinateGrid: ModelKind<CoordinateGridSpec> = {
         rect: { x: 0, y: 0, ...size(spec) },
       },
     ];
-    const [left, right, top, bottom] = [gx(spec, spec.xMin), gx(spec, spec.xMax), gy(spec, spec.yMax), gy(spec, spec.yMin)];
-    if (hasZero(spec.yMin, spec.yMax)) out.push(t("x-axis", "x-axis", null, { x: left, y: gy(spec, 0) - 0.2, w: right - left, h: 0.4 }));
-    if (hasZero(spec.xMin, spec.xMax)) out.push(t("y-axis", "y-axis", null, { x: gx(spec, 0) - 0.2, y: top, w: 0.4, h: bottom - top }));
-    if (hasZero(spec.xMin, spec.xMax) && hasZero(spec.yMin, spec.yMax)) out.push(t("origin", "origin", "(0, 0)", around(at(spec, 0, 0), 0.5)));
+    const { left, right, top, bottom, xAxis, yAxis } = frame(spec);
+    if (xAxis) out.push(t("x-axis", "x-axis", null, { x: left, y: gy(spec, 0) - 0.2, w: right - left, h: 0.4 }));
+    if (yAxis) out.push(t("y-axis", "y-axis", null, { x: gx(spec, 0) - 0.2, y: top, w: 0.4, h: bottom - top }));
+    if (xAxis && yAxis) out.push(t("origin", "origin", "(0, 0)", around(at(spec, 0, 0), 0.5)));
     for (const p of spec.points) out.push(t(`point-${p.name}`, `point ${p.name}`, `(${p.x}, ${p.y})`, around(at(spec, p.x, p.y), 0.5)));
     return out;
   },
@@ -86,7 +96,7 @@ export const coordinateGrid: ModelKind<CoordinateGridSpec> = {
     const id = pen.objectId;
     const base = { objectId: id, ink: pen.ink, seq: pen.seq };
     const piece = (name: string) => ({ objectId: id, part: "piece" as const, piece: name });
-    const [left, right, top, bottom] = [gx(spec, spec.xMin), gx(spec, spec.xMax), gy(spec, spec.yMax), gy(spec, spec.yMin)];
+    const { left, right, top, bottom, xAxis, yAxis } = frame(spec);
     const down: [Point, Point][] = [];
     const across: [Point, Point][] = [];
     for (let x = spec.xMin; x <= spec.xMax; x++) down.push([[gx(spec, x), top], [gx(spec, x), bottom]]);
@@ -97,8 +107,8 @@ export const coordinateGrid: ModelKind<CoordinateGridSpec> = {
       { ...lines, key: "grid/across", pts: serpentine(across) },
     ];
     const axis = { ...base, kind: "rule" as const, layer: "math" as const, ink: "black" as const, width: 0.06 };
-    if (hasZero(spec.yMin, spec.yMax)) out.push({ ...axis, key: "x-axis", target: piece("x-axis"), pts: [[left, gy(spec, 0)], [right, gy(spec, 0)]] });
-    if (hasZero(spec.xMin, spec.xMax)) out.push({ ...axis, key: "y-axis", target: piece("y-axis"), pts: [[gx(spec, 0), bottom], [gx(spec, 0), top]] });
+    if (xAxis) out.push({ ...axis, key: "x-axis", target: piece("x-axis"), pts: [[left, gy(spec, 0)], [right, gy(spec, 0)]] });
+    if (yAxis) out.push({ ...axis, key: "y-axis", target: piece("y-axis"), pts: [[gx(spec, 0), bottom], [gx(spec, 0), top]] });
     const numbers = { ...base, target: { objectId: id, part: "whole" as const }, layer: "math" as const, ink: "black" as const, width: 0.04 };
     for (const x of numbered(spec.xMin, spec.xMax)) {
       const text = numeral(x);

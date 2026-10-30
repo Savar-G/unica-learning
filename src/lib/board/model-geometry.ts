@@ -3,8 +3,8 @@
 // "centre" and "radius"). A label shows a side's length or an angle's size, which the code computes; a label the code
 // cannot write as a whole number, or a right-angle mark on an angle that is not one, is refused.
 import { glyphStrokes, missingGlyphs, refuse, type LocalStroke, type LocalTarget, type RefusalBody } from "@/lib/board/representation";
-import { around, choice, ellipse, fields, grow, int, invalid, list, type ModelKind } from "@/lib/board/model-kind";
-import type { GlyphSet, Point } from "@/lib/board/glyphs";
+import { around, choice, ellipse, fields, grow, int, invalid, list, r3, type ModelKind } from "@/lib/board/model-kind";
+import type { Point } from "@/lib/board/glyphs";
 import type { Rect } from "@/lib/board/types";
 
 export const SHAPES = ["square", "rectangle", "right_triangle", "triangle", "parallelogram", "trapezoid", "circle"] as const;
@@ -31,13 +31,23 @@ export type GeometrySpec = {
 
 export const GEOMETRY_LIMITS = { side: 10, slant: 5, radius: 5, labels: 12 } as const;
 
+/** The dimensions each shape takes, in units. */
+const DIMENSIONS: Record<Shape, readonly string[]> = {
+  square: ["side"],
+  rectangle: ["width", "height"],
+  right_triangle: ["base", "height"],
+  triangle: ["base", "height", "apex"],
+  parallelogram: ["base", "height", "slant"],
+  trapezoid: ["bottom", "top", "height"],
+  circle: ["radius"],
+};
+
 /** Cells kept around the shape for names and labels. */
 const PAD = 1.5;
 const OUTLINE = 0.06;
 const TEXT_H = 0.7;
 const CHAR_W = 0.5;
 
-const r3 = (n: number) => Math.round(n * 1000) / 1000;
 const sub = (a: Point, b: Point): Point => [a[0] - b[0], a[1] - b[1]];
 const add = (a: Point, b: Point, by = 1): Point => [r3(a[0] + b[0] * by), r3(a[1] + b[1] * by)];
 const unit = (v: Point): Point => {
@@ -49,6 +59,8 @@ const whole = (n: number) => (Math.abs(n - Math.round(n)) < 1e-9 ? Math.round(n)
 
 interface Side {
   name: string;
+  /** Its part name: "side-AB", or "radius". */
+  piece: string;
   from: Point;
   to: Point;
   /** The length in units. */
@@ -100,7 +112,7 @@ function figure(spec: GeometrySpec): Figure {
     const k = scale(2 * spec.radius);
     const r = spec.radius * k;
     const centre: Point = [PAD + r, PAD + r];
-    return { vertices: [], sides: [{ name: "radius", from: centre, to: [centre[0] + r, centre[1]], length: spec.radius }], angles: [], circle: { centre, radius: r }, w: Math.ceil(2 * r + 2 * PAD), h: Math.ceil(2 * r + 2 * PAD) };
+    return { vertices: [], sides: [{ name: "radius", piece: "radius", from: centre, to: [centre[0] + r, centre[1]], length: spec.radius }], angles: [], circle: { centre, radius: r }, w: Math.ceil(2 * r + 2 * PAD), h: Math.ceil(2 * r + 2 * PAD) };
   }
   const pts = corners(spec);
   const width = Math.max(...pts.map(([x]) => x));
@@ -111,7 +123,7 @@ function figure(spec: GeometrySpec): Figure {
   const n = pts.length;
   const sides = names.map((name, i) => {
     const j = (i + 1) % n;
-    return { name: name + names[j], from: cells[i], to: cells[j], length: Math.hypot(pts[j][0] - pts[i][0], pts[j][1] - pts[i][1]) };
+    return { name: name + names[j], piece: `side-${name}${names[j]}`, from: cells[i], to: cells[j], length: Math.hypot(pts[j][0] - pts[i][0], pts[j][1] - pts[i][1]) };
   });
   const angles = names.map((name, i) => {
     const [p, q] = [pts[(i + n - 1) % n], pts[(i + 1) % n]];
@@ -123,13 +135,13 @@ function figure(spec: GeometrySpec): Figure {
   return { vertices: names.map((name, i) => ({ name, at: cells[i] })), sides, angles, w: Math.ceil(width * k + 2 * PAD), h: Math.ceil(height * k + 2 * PAD) };
 }
 
-/** Cells per unit: whole numbers, so corners land on grid lines, and at most 10 cells across. */
+/** Cells per unit: whole numbers, so corners land on grid lines; a shape up to 2 units across is drawn 4 times as big. */
 const scale = (largest: number) => (largest <= 2 ? 4 : largest <= 4 ? 2 : 1);
 
 /** The pieces a label may name: the sides and angles (a circle's radius). */
 function labelled(f: Figure): Map<string, { kind: "side"; side: Side } | { kind: "angle"; angle: Angle }> {
   const out = new Map<string, { kind: "side"; side: Side } | { kind: "angle"; angle: Angle }>();
-  for (const side of f.sides) out.set(side.name === "radius" ? "radius" : `side-${side.name}`, { kind: "side", side });
+  for (const side of f.sides) out.set(side.piece, { kind: "side", side });
   for (const angle of f.angles) out.set(`angle-${angle.name}`, { kind: "angle", angle });
   return out;
 }
@@ -190,12 +202,11 @@ function angleLabelBox(a: Angle, chars: number): Rect {
 }
 
 const sideRect = (s: Side): Rect => grow({ x: Math.min(s.from[0], s.to[0]), y: Math.min(s.from[1], s.to[1]), w: Math.abs(s.to[0] - s.from[0]), h: Math.abs(s.to[1] - s.from[1]) }, 0.15);
-const canWrite = (glyphs: GlyphSet, text: string) => missingGlyphs(glyphs, text).length === 0;
 
 export const geometry: ModelKind<GeometrySpec> = {
   parse(raw) {
     const shape = choice((raw as { shape?: unknown }).shape, SHAPES, "geometry.shape");
-    const dims = { square: ["side"], rectangle: ["width", "height"], right_triangle: ["base", "height"], triangle: ["base", "height", "apex"], parallelogram: ["base", "height", "slant"], trapezoid: ["bottom", "top", "height"], circle: ["radius"] }[shape];
+    const dims = DIMENSIONS[shape];
     const o = fields(raw, `${shape} geometry`, ["kind", "shape", ...dims], ["labels"]);
     const max = { slant: GEOMETRY_LIMITS.slant, radius: GEOMETRY_LIMITS.radius } as Record<string, number>;
     const d: Record<string, number> = {};
@@ -212,6 +223,7 @@ export const geometry: ModelKind<GeometrySpec> = {
     });
     return { kind: "geometry", shape, ...d, labels } as GeometrySpec;
   },
+  names: (spec) => figure(spec).vertices.map((v) => ({ piece: `vertex-${v.name}`, text: v.name })),
   layout(spec, glyphs) {
     const f = figure(spec);
     const texts = labelTexts(spec, f);
@@ -252,7 +264,7 @@ export const geometry: ModelKind<GeometrySpec> = {
       out.push({ ...base(null), key: "circle", kind: "rule", width: OUTLINE, pts: ellipse(centre[0], centre[1], radius, radius, 48) });
       out.push({ ...base("centre"), key: "centre", kind: "circle", width: 0.08, pts: ellipse(centre[0], centre[1], 0.06, 0.06, 8) });
     }
-    for (const s of f.sides) out.push({ ...base(s.name === "radius" ? "radius" : `side-${s.name}`), key: `side-${s.name}`, kind: "rule", width: OUTLINE, pts: [s.from, s.to] });
+    for (const s of f.sides) out.push({ ...base(s.piece), key: s.piece, kind: "rule", width: OUTLINE, pts: [s.from, s.to] });
     for (const a of f.angles) {
       const piece = `angle-${a.name}`;
       const text = texts.get(piece);
@@ -263,13 +275,12 @@ export const geometry: ModelKind<GeometrySpec> = {
       } else write(piece, text, angleLabelBox(a, text.length), `${piece}/label`);
     }
     for (const s of f.sides) {
-      const piece = s.name === "radius" ? "radius" : `side-${s.name}`;
-      const text = texts.get(piece);
-      if (text !== undefined) write(piece, text, sideLabelBox(s, f, text.length), `${piece}/label`);
+      const text = texts.get(s.piece);
+      if (text !== undefined) write(s.piece, text, sideLabelBox(s, f, text.length), `${s.piece}/label`);
     }
     // Corner names need letters: the placeholder pen has none, so they appear with the real stroke font.
     for (const v of f.vertices) {
-      if (!canWrite(glyphs, v.name)) continue;
+      if (missingGlyphs(glyphs, v.name).length > 0) continue;
       const angle = f.angles.find((a) => a.name === v.name)!;
       write(`vertex-${v.name}`, v.name, textBox(add(v.at, bisector(angle), -0.6), 1), `vertex-${v.name}/name`);
     }

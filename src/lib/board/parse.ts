@@ -5,6 +5,7 @@ import { refuse, type RefusalBody } from "@/lib/board/representation";
 import { CLEAR_SCOPES, INKS, MARK_STYLES, OPERATIONS, PLACE_NAMES, REGROUP_KINDS, type Command, type Place, type Target } from "@/lib/board/types";
 
 const ID = /^[A-Za-z][A-Za-z0-9_-]{0,63}$/;
+const PIECE = /^[A-Za-z0-9][A-Za-z0-9_-]{0,31}$/;
 const OPS = ["columns", "write", "model", "put", "regroup", "mark", "arrow", "remove", "undo", "clear", "focus"] as const;
 const LATER = ["division", "fraction", "number_line", "jump"];
 
@@ -55,7 +56,7 @@ function target(v: unknown, what = "target"): Target {
       return { objectId, part: "word", index: base.index as number };
     case "piece":
       object(v, what, ["objectId", "part", "piece"]);
-      if (typeof base.piece !== "string" || !/^[A-Za-z0-9][A-Za-z0-9_-]{0,31}$/.test(base.piece)) fail(`${what}.piece must be a part name the board gave.`);
+      if (typeof base.piece !== "string" || !PIECE.test(base.piece)) fail(`${what}.piece must be a part name the board gave.`);
       return { objectId, part: "piece", piece: base.piece as string };
     default:
       return fail(`${what}.part must be one of whole, column, row, cell, word, piece.`);

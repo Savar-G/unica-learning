@@ -35,7 +35,7 @@ interface Block {
 }
 
 /** Every block with its rectangle, and the size of the whole model. */
-function layout(spec: BaseTenSpec): { blocks: Block[]; w: number; h: number } {
+function arrange(spec: BaseTenSpec): { blocks: Block[]; w: number; h: number } {
   const used = GROUPS.filter((g) => spec[g.group] > 0).map((g) => {
     const n = spec[g.group];
     const cols = Math.min(n, g.perRow);
@@ -79,11 +79,11 @@ export const baseTen: ModelKind<BaseTenSpec> = {
     return spec;
   },
   layout(spec) {
-    const { w, h } = layout(spec);
+    const { w, h } = arrange(spec);
     return { w, h };
   },
   targets(spec, objectId) {
-    const { blocks, w, h } = layout(spec);
+    const { blocks, w, h } = arrange(spec);
     const out: LocalTarget[] = [
       {
         target: { objectId, part: "whole" },
@@ -104,7 +104,7 @@ export const baseTen: ModelKind<BaseTenSpec> = {
   },
   draw(spec, pen) {
     const out: LocalStroke[] = [];
-    for (const b of layout(spec).blocks) {
+    for (const b of arrange(spec).blocks) {
       const base = { objectId: pen.objectId, target: { objectId: pen.objectId, part: "piece" as const, piece: b.name }, kind: "rule" as const, layer: "math" as const, ink: pen.ink, seq: pen.seq };
       out.push({ ...base, key: `${b.name}/outline`, width: 0.05, pts: rectOutline(b.rect) });
       const { across, down } = innerLines(b.rect);

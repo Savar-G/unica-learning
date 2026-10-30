@@ -17,6 +17,8 @@ export interface ModelKind<S> {
   parse(raw: Fields): S;
   /** Checks what the fields alone cannot show (a label on a side that is not a whole number) and gives the size in cells. */
   layout(spec: S, glyphs: GlyphSet): { w: number; h: number } | RefusalBody;
+  /** The letters it writes beside its parts (corner and point names): a pen without letters leaves them out. */
+  names?(spec: S): { piece: string; text: string }[];
   /** Every named part, the whole first, in cells from the object's top-left corner. */
   targets(spec: S, objectId: string): LocalTarget[];
   draw(spec: S, pen: Pen, glyphs: GlyphSet): LocalStroke[];
@@ -54,7 +56,7 @@ export function list(v: unknown, what: string, max: number): unknown[] {
 
 // ---------- drawing helpers, in cells ----------
 
-const r3 = (n: number) => Math.round(n * 1000) / 1000;
+export const r3 = (n: number) => Math.round(n * 1000) / 1000;
 
 /** The closed outline of a rectangle, from its top-left corner clockwise. */
 export const rectOutline = (r: Rect): Point[] => [

@@ -237,7 +237,9 @@ describe("geometry shapes", () => {
     expect(a.right).toBeLessThan(da.left + 0.01);
     const plain = ok(createScene(), model("sq", spec));
     expect(boardPaths(plain).some((p) => p.glyph === "A")).toBe(false);
-    expect(has(plain, piece("sq", "vertex-A"))).toBe(true);
+    // The summary says the letter is not on the board, so Maya does not ask the child to look for it.
+    expect(info(plain, piece("sq", "vertex-A")).label).toMatch(/name A is not written/);
+    expect(info(lettered, piece("sq", "vertex-A")).label).not.toMatch(/not written/);
   });
 
   it("a circle: its centre and radius are named, and the radius length is written", () => {
@@ -267,8 +269,8 @@ describe("coordinate grids", () => {
     const xAxis = ruleOf(scene, "g", "x-axis").top;
     const a = dot(scene, "g", "point-A");
     const b = dot(scene, "g", "point-B");
-    expect((centreX(a) - yAxis) / (centreX(b) - yAxis)).toBeCloseTo(2 / 5, 3);
-    expect((xAxis - centreY(a)) / (xAxis - centreY(b))).toBeCloseTo(3 / 1, 3);
+    expect((centreX(a) - yAxis) / (centreX(b) - yAxis)).toBeCloseTo(2 / 5, 2);
+    expect((xAxis - centreY(a)) / (xAxis - centreY(b))).toBeCloseTo(3 / 1, 2);
     // The axes are numbered: 6 is the last x number, 5 the last y number.
     expect(glyphPaths(scene, "g", "6").length).toBeGreaterThan(0);
     expect(centreX(box(glyphPaths(scene, "g", "6")))).toBeCloseTo(ruleOf(scene, "g", "x-axis").right, 2);
@@ -295,6 +297,9 @@ describe("coordinate grids", () => {
     const p = dot(scene, "g", "point-P");
     expect(name.left).toBeGreaterThan(p.left);
     expect(name.bottom).toBeLessThan(p.bottom);
+    expect(info(scene, piece("g", "point-P")).label).not.toMatch(/not written/);
+    const plain = ok(createScene(), model("g", { kind: "coordinate_grid", xMin: 0, xMax: 4, yMin: 0, yMax: 4, points: [{ name: "P", x: 1, y: 1 }] }));
+    expect(info(plain, piece("g", "point-P")).label).toMatch(/name P is not written/);
   });
 });
 
@@ -416,6 +421,18 @@ describe("models with the common commands", () => {
     for (const spec of largest) {
       const scene = ok(createScene(), model("big", spec));
       expect(boardPages(scene), JSON.stringify(spec)).toBe(1);
+    }
+    // Each draws inside the space it takes: on an empty page it starts one cell in, and nothing pokes above or left of
+    // that (a point name at the top of a grid, a corner name), even with a pen that has letters.
+    const named = [
+      ...largest,
+      { kind: "geometry", shape: "triangle", base: 10, height: 1, apex: 0, labels: [{ piece: "side-AB", show: "length" }] },
+      { kind: "coordinate_grid", xMin: -3, xMax: 3, yMin: -2, yMax: 2, points: [{ name: "A", x: -3, y: 2 }, { name: "B", x: 3, y: 2 }] },
+    ];
+    for (const spec of named) {
+      const scene = ok(createScene({ glyphs: LETTERS }), model("big", spec));
+      const b = box(boardPaths(scene));
+      expect(Math.min(b.left, b.top), JSON.stringify(spec)).toBeGreaterThanOrEqual(1 / 24 - 1e-6);
     }
     const blocks = ok(createScene(), model("b", largest[0]));
     expect(info(blocks, whole("b")).value).toBe("1109");

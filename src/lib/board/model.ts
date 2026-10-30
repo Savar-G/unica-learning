@@ -7,7 +7,7 @@ import { fractionStrip, type FractionStripSpec } from "@/lib/board/model-fractio
 import { geometry, type GeometrySpec } from "@/lib/board/model-geometry";
 import { coordinateGrid, type CoordinateGridSpec } from "@/lib/board/model-grid";
 import { choice, ModelInvalid, type Fields, type ModelKind } from "@/lib/board/model-kind";
-import { isRefusal, type Representation } from "@/lib/board/representation";
+import { isRefusal, missingGlyphs, type Representation } from "@/lib/board/representation";
 import type { Ink, ModelCommand } from "@/lib/board/types";
 
 export { ARRAY_LIMITS, type ArraySpec } from "@/lib/board/model-array";
@@ -44,6 +44,8 @@ export interface ModelState {
   spec: ModelSpec;
   ink: Ink;
   seq: number;
+  /** The parts whose names the pen could not write, so their labels say so and Maya does not name a letter the child cannot see. */
+  unnamed: { piece: string; text: string }[];
 }
 
 export const model: Representation<ModelState, ModelCommand> = {
@@ -51,8 +53,17 @@ export const model: Representation<ModelState, ModelCommand> = {
   create(cmd, ctx) {
     const size = kindOf(cmd.model).layout(cmd.model, ctx.glyphs);
     if (isRefusal(size)) return size;
-    return { state: { spec: cmd.model, ink: cmd.ink ?? "blue", seq: ctx.seq }, size };
+    const unnamed = (kindOf(cmd.model).names?.(cmd.model) ?? []).filter((n) => missingGlyphs(ctx.glyphs, n.text).length > 0);
+    return { state: { spec: cmd.model, ink: cmd.ink ?? "blue", seq: ctx.seq, unnamed }, size };
   },
-  targets: (state, objectId) => kindOf(state.spec).targets(state.spec, objectId),
+  targets(state, objectId) {
+    return kindOf(state.spec)
+      .targets(state.spec, objectId)
+      .map((t) => {
+        const { target } = t;
+        const missing = target.part === "piece" ? state.unnamed.find((n) => n.piece === target.piece) : undefined;
+        return missing ? { ...t, label: `${t.label} (the name ${missing.text} is not written on the board)` } : t;
+      });
+  },
   draw: (state, objectId, ctx) => kindOf(state.spec).draw(state.spec, { objectId, ink: state.ink, seq: state.seq }, ctx.glyphs),
 };
