@@ -5,7 +5,9 @@ import {
   isUuid,
   storedQuestion,
   workbookProblem,
+  WORKBOOK_FILES_BUCKET,
   type StoredQuestion,
+  type WorkbookFiles,
   type WorkbookPage,
   type WorkbookStore,
   type WorkbookSummary,
@@ -115,6 +117,22 @@ export function workbookStore(db: SupabaseClient<Database>): WorkbookStore {
       if (qError) throw new Error(`workbook question load: ${qError.message}`);
       if (!q) return { status: "not-found" };
       return storedQuestion(stored(q), ref).content;
+    },
+  };
+}
+
+/** The workbook bucket in Supabase Storage. Pass a client with the secret key: parents and admins cannot write it. */
+export function workbookFiles(db: SupabaseClient<Database>): WorkbookFiles {
+  const bucket = () => db.storage.from(WORKBOOK_FILES_BUCKET);
+  return {
+    async put(file) {
+      const { error } = await bucket().upload(file.path, file.bytes, { contentType: file.contentType, upsert: false });
+      if (error) throw new Error(`workbook file upload: ${error.message}`);
+    },
+    async remove(paths) {
+      if (paths.length === 0) return;
+      const { error } = await bucket().remove(paths);
+      if (error) throw new Error(`workbook file removal: ${error.message}`);
     },
   };
 }

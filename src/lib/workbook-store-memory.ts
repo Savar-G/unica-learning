@@ -5,6 +5,8 @@ import {
   workbookProblem,
   type PageInput,
   type StoredQuestion,
+  type WorkbookFile,
+  type WorkbookFiles,
   type WorkbookInput,
   type WorkbookPage,
   type WorkbookStore,
@@ -79,6 +81,21 @@ export function memoryWorkbookStore(o: { children: readonly { id: string; parent
       const page = books.get(ref.workbookId)?.pages.find((p) => p.number === ref.page);
       const question = page?.questions.find((q) => q.number === ref.question);
       return question ? storedQuestion(structuredClone(question), ref).content : { status: "not-found" };
+    },
+  };
+}
+
+/** The workbook bucket in memory, for tests: `files` holds what is stored. */
+export function memoryWorkbookFiles(): WorkbookFiles & { files: Map<string, Omit<WorkbookFile, "path">> } {
+  const files = new Map<string, Omit<WorkbookFile, "path">>();
+  return {
+    files,
+    async put(file) {
+      if (files.has(file.path)) throw new Error("workbook file upload: The resource already exists");
+      files.set(file.path, { contentType: file.contentType, bytes: file.bytes.slice() });
+    },
+    async remove(paths) {
+      paths.forEach((p) => files.delete(p));
     },
   };
 }

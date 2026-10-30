@@ -22,6 +22,20 @@ import {
  */
 export const WORKBOOK_FILES_BUCKET = "workbook-pages";
 
+/** A file to store in the workbook bucket: a page image or the workbook PDF. */
+export interface WorkbookFile {
+  path: string;
+  contentType: "application/pdf" | "image/png";
+  bytes: Uint8Array;
+}
+
+/** The workbook bucket. Adapters: Supabase Storage (src/lib/workbook-store.ts) and in memory. */
+export interface WorkbookFiles {
+  /** Stores a new file; refuses (throws) when the path is already used. */
+  put(file: WorkbookFile): Promise<void>;
+  remove(paths: string[]): Promise<void>;
+}
+
 export type WorkbookStatus = "draft" | "approved" | "printed" | "shipped";
 
 /** A file in the workbook bucket: a rendered page (PNG) with its size in pixels. */

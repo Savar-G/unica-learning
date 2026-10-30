@@ -1,10 +1,11 @@
-// The sample workbook (#299): hand-made fixture data for a test family, so the store, the admin view and later Maya
-// (#301) have one real workbook to read before the workbook generator exists. Three pages of a grade 3 workbook at
-// level U10 ("Numbers to 1000 and bigger sums", BC standard 3.3): a cover, a day of three-digit addition and a day of
-// three-digit subtraction, the only operations the question package can check today (#298).
+// The sample workbook (#299): hand-made content for a test family, so the store, the admin view and later Maya (#301)
+// have one real workbook to read before the workbook generator exists. Three pages of a grade 3 workbook at level U10
+// ("Numbers to 1000 and bigger sums", BC standard 3.3): a cover, a day of three-digit addition and a day of three-digit
+// subtraction, the only operations the question package can check today (#298).
 //
-// The page images are drawn from the same layout as the question boxes (pageSvg), so each box is the measured place of
-// its question on the image. The loader (scripts/load-workbook-sample.ts) turns the SVG into a PNG and stores it.
+// sampleDraft is the content; the renderer (#309, src/lib/workbook-render.ts) lays it out with the fixed test template
+// and measures each question's box (scripts/load-workbook-sample.ts stores the result). sampleWorkbook is the same
+// content with fixed images and boxes, a ready workbook for tests that do not render.
 // Pure TypeScript: no Next.js, React, network, database or clock.
 import { MISCONCEPTIONS, type MisconceptionId } from "@/lib/assessment";
 import {
@@ -16,10 +17,11 @@ import {
   type QuestionPackage,
   type WrongAnswer,
 } from "@/lib/question-package";
-import type { PageInput, QuestionBox, WorkbookInput } from "@/lib/workbook-content";
+import type { QuestionBox, WorkbookInput } from "@/lib/workbook-content";
+import type { WorkbookDraft } from "@/lib/workbook-render";
 
-/** The page image size in pixels: US Letter at 100 dots per inch. */
-export const SAMPLE_PAGE_SIZE = { width: 850, height: 1100 } as const;
+/** The page image size of sampleWorkbook in pixels: US Letter at 100 dots per inch. */
+const SAMPLE_PAGE_SIZE = { width: 850, height: 1100 } as const;
 
 const LEVEL = 10;
 const STANDARD = "3.3";
@@ -55,8 +57,8 @@ const PAGES: readonly { type: string; dayLabel: string | null; questions: Sample
   },
 ];
 
-/** The box of question `n` (from 1) on a practice page: two columns, two rows. */
-export function sampleBox(n: number): QuestionBox {
+/** The box of question `n` (from 1) on a practice page of sampleWorkbook: two columns, two rows. */
+function sampleBox(n: number): QuestionBox {
   const i = n - 1;
   return { x: 60 + (i % 2) * 380, y: 230 + Math.floor(i / 2) * 400, width: 350, height: 360 };
 }
@@ -109,67 +111,36 @@ function samplePackage(workbookId: string, page: number, question: number, key: 
   };
 }
 
-/** The path of a sample page image in the workbook bucket. */
-export const samplePagePath = (parentId: string, workbookId: string, page: number) => `${parentId}/${workbookId}/page-${page}.png`;
-
-/**
- * The sample workbook for a child. `qrTokens`: one token per page, made by the caller (random for the loaded sample,
- * fixed in tests).
- */
-export function sampleWorkbook(o: { workbookId: string; childId: string; parentId: string; number?: number; qrTokens: readonly string[] }): WorkbookInput {
+/** The sample workbook's content for a child. `qrTokens`: one token per page, made by the caller (random for the
+ * loaded sample, fixed in tests). */
+export function sampleDraft(o: { workbookId: string; childId: string; number?: number; qrTokens: readonly string[] }): WorkbookDraft {
   if (o.qrTokens.length !== PAGES.length) throw new Error(`the sample needs ${PAGES.length} QR tokens`);
   let key = 0;
-  const pages: PageInput[] = PAGES.map((p, i) => ({
-    number: i + 1,
-    dayLabel: p.dayLabel,
-    type: p.type,
-    image: { path: samplePagePath(o.parentId, o.workbookId, i + 1), ...SAMPLE_PAGE_SIZE },
-    qrToken: o.qrTokens[i],
-    questions: p.questions.map((q, j) => ({ number: j + 1, box: sampleBox(j + 1), package: samplePackage(o.workbookId, i + 1, j + 1, ++key, q) })),
-  }));
-  return { id: o.workbookId, childId: o.childId, number: o.number ?? 1, levels: [LEVEL], pdfPath: null, profileBuild: null, pages };
+  return {
+    id: o.workbookId, childId: o.childId, number: o.number ?? 1, levels: [LEVEL], profileBuild: null,
+    pages: PAGES.map((p, i) => ({
+      number: i + 1,
+      dayLabel: p.dayLabel,
+      type: p.type,
+      qrToken: o.qrTokens[i],
+      questions: p.questions.map((q, j) => ({ number: j + 1, package: samplePackage(o.workbookId, i + 1, j + 1, ++key, q) })),
+    })),
+  };
 }
 
-const escape = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+/** The path of a page image of sampleWorkbook in the workbook bucket. */
+const samplePagePath = (parentId: string, workbookId: string, page: number) => `${parentId}/${workbookId}/page-${page}.png`;
 
-/** A page drawn as SVG, with each question inside its box. The loader renders it to the page image. */
-export function pageSvg(page: PageInput): string {
-  const { width, height } = SAMPLE_PAGE_SIZE;
-  const font = `font-family="Helvetica, Arial, sans-serif"`;
-  const parts = [
-    `<rect width="${width}" height="${height}" fill="#fff"/>`,
-    `<text x="60" y="80" ${font} font-size="22" fill="#555">Unica Learning · Sample workbook</text>`,
-    `<text x="790" y="80" ${font} font-size="22" fill="#555" text-anchor="end">Page ${page.number}</text>`,
-    // The QR code's place, bottom right. The real code comes with the workbook generator.
-    `<rect x="710" y="1005" width="80" height="80" fill="none" stroke="#999" stroke-width="2"/>`,
-    `<text x="750" y="1051" ${font} font-size="16" fill="#999" text-anchor="middle">QR</text>`,
-  ];
-  if (page.type === "cover") {
-    parts.push(
-      `<text x="425" y="420" ${font} font-size="56" font-weight="700" fill="#222" text-anchor="middle">My math workbook</text>`,
-      `<text x="425" y="490" ${font} font-size="28" fill="#555" text-anchor="middle">Numbers to 1000 and bigger sums</text>`,
-      `<text x="425" y="540" ${font} font-size="24" fill="#888" text-anchor="middle">Level U${LEVEL} · Sample</text>`,
-    );
-  } else {
-    const title = page.questions[0]?.package.operation.kind === "subtract" ? "Subtract. Show your work." : "Add. Show your work.";
-    parts.push(
-      `<text x="60" y="150" ${font} font-size="34" font-weight="700" fill="#222">${escape(page.dayLabel ?? "")}</text>`,
-      `<text x="60" y="195" ${font} font-size="24" fill="#444">${title}</text>`,
-    );
-    for (const q of page.questions) {
-      const { x, y, width: w, height: h } = q.box;
-      const [a, b] = q.package.operation.operands;
-      const sign = q.package.operation.kind === "add" ? "+" : "−";
-      const right = x + w - 70;
-      parts.push(
-        `<rect x="${x}" y="${y}" width="${w}" height="${h}" rx="12" fill="none" stroke="#bbb" stroke-width="2"/>`,
-        `<text x="${x + 20}" y="${y + 40}" ${font} font-size="24" font-weight="700" fill="#222">${q.number}.</text>`,
-        `<text x="${right}" y="${y + 120}" ${font} font-size="48" fill="#222" text-anchor="end" letter-spacing="8">${a}</text>`,
-        `<text x="${right - 150}" y="${y + 185}" ${font} font-size="48" fill="#222">${sign}</text>`,
-        `<text x="${right}" y="${y + 185}" ${font} font-size="48" fill="#222" text-anchor="end" letter-spacing="8">${b}</text>`,
-        `<line x1="${right - 160}" y1="${y + 210}" x2="${right + 10}" y2="${y + 210}" stroke="#222" stroke-width="3"/>`,
-      );
-    }
-  }
-  return `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">${parts.join("")}</svg>`;
+/** The sample workbook with fixed page images and question boxes, as if rendered: for tests that do not render. */
+export function sampleWorkbook(o: { workbookId: string; childId: string; parentId: string; number?: number; qrTokens: readonly string[] }): WorkbookInput {
+  const { pages, ...book } = sampleDraft(o);
+  return {
+    ...book,
+    pdfPath: null,
+    pages: pages.map((p) => ({
+      ...p,
+      image: { path: samplePagePath(o.parentId, o.workbookId, p.number), ...SAMPLE_PAGE_SIZE },
+      questions: p.questions.map((q) => ({ ...q, box: sampleBox(q.number) })),
+    })),
+  };
 }
