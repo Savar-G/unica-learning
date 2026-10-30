@@ -45,6 +45,7 @@ import {
   storedProfile,
   strandCertainty,
   strandStatus,
+  worstFirst,
   type Certainty,
   type Grade,
   type LearnerProfile,
@@ -158,7 +159,6 @@ export interface ChildProfileInput {
 }
 
 const STANDARDS = new Map(BC_SKILL_MAP.standards.map((s) => [s.code, s]));
-const SEVERITY: Record<StrandStatus, number> = { "needs-attention": 0, developing: 1, secure: 2 };
 
 const newest = (times: readonly string[]) => times.reduce<string | null>((last, t) => (last === null || t > last ? t : last), null);
 
@@ -225,7 +225,7 @@ function buildFacts(input: ChildProfileInput): ChildLearnerProfile {
     secure: standards.filter((s) => s.status === "secure").map((s) => s.code),
     notYetSecure: standards
       .filter((s) => !s.aboveGrade && s.status !== "secure")
-      .sort((a, b) => SEVERITY[a.status] - SEVERITY[b.status] || curriculumOrder(a, b))
+      .sort(worstFirst)
       .map((s) => s.code),
     // Field by field, so the free text never comes along.
     preferences: { styles: [...(learning?.styles ?? [])], interests: [...(learning?.interests ?? [])] },
