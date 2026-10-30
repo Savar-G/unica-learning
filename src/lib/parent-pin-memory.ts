@@ -52,10 +52,10 @@ export function memoryPinStore(initial: MemoryPinRow[] = []): PinStore & { rows(
       if (row.failedAttempts >= policy.maxAttempts) row.lockedUntil = now + policy.lockMs;
       return { kind: "open", hash: row.hash, attemptsLeft: Math.max(0, policy.maxAttempts - row.failedAttempts), lockedUntil: row.lockedUntil };
     },
-    async clear(parentId) {
+    async clear(parentId, hash) {
       await tick();
       const row = find(parentId);
-      if (row) Object.assign(row, { failedAttempts: 0, lockedUntil: null });
+      if (row && row.hash === hash) Object.assign(row, { failedAttempts: 0, lockedUntil: null });
     },
   };
 }

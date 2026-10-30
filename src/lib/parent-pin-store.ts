@@ -40,9 +40,10 @@ export function pinStore(admin: SupabaseClient<Database>): PinStore {
       if (row.out_status === "open") return { kind: "open", hash: row.out_hash, attemptsLeft: row.out_attempts_left, lockedUntil };
       throw new Error(`pin claim: unexpected answer ${row.out_status}`);
     },
-    async clear(parentId) {
+    async clear(parentId, hash) {
+      // Only while the stored hash is the one that was checked.
       const { error } = await admin.from("parent_pins").update({ failed_attempts: 0, locked_until: null })
-        .eq("parent_id", parentId).or("failed_attempts.gt.0,locked_until.not.is.null");
+        .eq("parent_id", parentId).eq("pin_hash", hash).or("failed_attempts.gt.0,locked_until.not.is.null");
       if (error) throw new Error(`pin clear: ${error.message}`);
     },
   };

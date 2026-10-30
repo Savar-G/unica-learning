@@ -27,7 +27,8 @@ export type PinClaim =
 /**
  * The PIN rows, one per parent. `claim` counts the attempt before the hash is checked, in one atomic step, so guesses
  * sent together cannot all pass the limit (a check then a write would let them). `clear` resets the count after a right
- * PIN. `create` stores the first hash only when the parent has none (false when a PIN exists). `replace` stores a new
+ * PIN, only while the stored hash is still the one that was checked (so a stale check never clears a newer PIN's lock).
+ * `create` stores the first hash only when the parent has none (false when a PIN exists). `replace` stores a new
  * hash and resets the count only while the stored hash is still `oldHash`, the one the caller verified (false when it
  * changed meanwhile), so two requests at the same time cannot replace a PIN without its current value.
  */
@@ -36,7 +37,7 @@ export interface PinStore {
   create(parentId: string, hash: string): Promise<boolean>;
   replace(parentId: string, oldHash: string, newHash: string): Promise<boolean>;
   claim(parentId: string, now: number, policy: PinPolicy): Promise<PinClaim>;
-  clear(parentId: string): Promise<void>;
+  clear(parentId: string, hash: string): Promise<void>;
 }
 
 export type CheckResult =
@@ -82,14 +83,15 @@ async function matches(pin: string, stored: string): Promise<boolean> {
 /** The PIN module over a store. `now` is the clock (milliseconds), passed in so tests move it. */
 export function parentPins(store: PinStore, { now = Date.now, policy = PIN_POLICY }: { now?: () => number; policy?: PinPolicy } = {}): ParentPins {
   /** A check that also gives the verified hash, so a change can replace exactly that hash. */
-  async function verify(parentId: string, pin: string): Promise<CheckResult & { hash?: string }> {
+  async function verify(parentId: string, pin: string, clearOnSuccess: boolean): Promise<CheckResult & { hash?: string }> {
     // A malformed PIN cannot be right, so it is not a guess and costs no attempt.
     if (!validPin(pin)) return { ok: false, error: "invalid" };
     const claim = await store.claim(parentId, now(), policy);
     if (claim.kind === "none") return { ok: false, error: "not_set" };
     if (claim.kind === "locked") return { ok: false, error: "locked", retryAt: claim.until };
     if (await matches(pin, claim.hash)) {
-      await store.clear(parentId);
+      // A change does not clear here: its conditional replace resets the count, and a stale one must change nothing.
+      if (clearOnSuccess) await store.clear(parentId, claim.hash);
       return { ok: true, hash: claim.hash };
     }
     if (claim.attemptsLeft <= 0 && claim.lockedUntil !== null) return { ok: false, error: "locked", retryAt: claim.lockedUntil };
@@ -99,7 +101,7 @@ export function parentPins(store: PinStore, { now = Date.now, policy = PIN_POLIC
   return {
     isSet: (parentId) => store.has(parentId),
     async check(parentId, pin) {
-      const result = await verify(parentId, pin);
+      const result = await verify(parentId, pin, true);
       return result.ok ? { ok: true } : result;
     },
     async set(parentId, pin, current) {
@@ -108,7 +110,7 @@ export function parentPins(store: PinStore, { now = Date.now, policy = PIN_POLIC
       // The first PIN: stored only if none exists. When another request set one at the same time, this becomes a change.
       if (!(await store.has(parentId)) && (await store.create(parentId, hash))) return { ok: true };
       if (current === undefined) return { ok: false, error: "current_required" };
-      const proof = await verify(parentId, current);
+      const proof = await verify(parentId, current, false);
       if (!proof.ok) {
         if (proof.error === "wrong" || proof.error === "locked") return proof;
         return { ok: false, error: "current_required" };

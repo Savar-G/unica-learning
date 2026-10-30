@@ -41,7 +41,7 @@ function fakeSupabase(database: ReturnType<typeof memoryPinStore>): PinStore {
       return Response.json(replaced ? [{ parent_id: eq("parent_id") }] : []);
     }
     if (init?.method === "PATCH") {
-      await database.clear(eq("parent_id"));
+      await database.clear(eq("parent_id"), eq("pin_hash"));
       return new Response(null, { status: 204 });
     }
     throw new Error(`unexpected ${init?.method} ${url.search}`);
@@ -90,6 +90,58 @@ describe.each(stores)("the PIN module over the %s store", (_, open) => {
       expect(results[1]).toEqual({ ok: false, error: "current_required" });
       expect(await pins.check(PARENT, "1111")).toEqual({ ok: true });
       expect(await pins.check(PARENT, "9999")).toMatchObject({ ok: false, error: "wrong" });
+    });
+  });
+
+  describe("a stale request never clears a newer PIN's lock", () => {
+    /** A store whose next call to `method` waits until `release()`; `reached` resolves when that call starts. */
+    function gate(inner: PinStore, method: "replace" | "clear") {
+      let release!: () => void;
+      let reached!: () => void;
+      const opened = new Promise<void>((r) => { release = r; });
+      const started = new Promise<void>((r) => { reached = r; });
+      let armed = true;
+      const store: PinStore = { ...inner, [method]: async (...args: unknown[]) => {
+        if (armed) { armed = false; reached(); await opened; }
+        return (inner[method] as (...a: unknown[]) => Promise<unknown>)(...args);
+      } } as PinStore;
+      return { store, started, release };
+    }
+
+    async function lockNewPin(pins: ReturnType<typeof parentPins>) {
+      expect(await pins.set(PARENT, "1111", "4821")).toEqual({ ok: true });
+      for (let i = 0; i < PIN_POLICY.maxAttempts; i += 1) await pins.check(PARENT, "0000");
+      expect(await pins.check(PARENT, "1111")).toMatchObject({ ok: false, error: "locked" });
+    }
+
+    it("keeps the lock when a change made with the old PIN arrives late", async () => {
+      const clock = Date.UTC(2026, 9, 29, 12, 0, 0);
+      const database = memoryPinStore();
+      const direct = parentPins(open(database), { now: () => clock });
+      await direct.set(PARENT, "4821");
+      const g = gate(open(database), "replace");
+      const late = parentPins(g.store, { now: () => clock });
+      const stale = late.set(PARENT, "2222", "4821");
+      await g.started;
+      await lockNewPin(direct);
+      g.release();
+      expect(await stale).toEqual({ ok: false, error: "current_required" });
+      expect(await direct.check(PARENT, "1111")).toMatchObject({ ok: false, error: "locked" });
+    });
+
+    it("keeps the lock when a check with the old PIN arrives late", async () => {
+      const clock = Date.UTC(2026, 9, 29, 12, 0, 0);
+      const database = memoryPinStore();
+      const direct = parentPins(open(database), { now: () => clock });
+      await direct.set(PARENT, "4821");
+      const g = gate(open(database), "clear");
+      const late = parentPins(g.store, { now: () => clock });
+      const stale = late.check(PARENT, "4821");
+      await g.started;
+      await lockNewPin(direct);
+      g.release();
+      expect(await stale).toEqual({ ok: true });
+      expect(await direct.check(PARENT, "1111")).toMatchObject({ ok: false, error: "locked" });
     });
   });
 
