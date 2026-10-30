@@ -30,8 +30,9 @@ export type PinClaim =
  * PIN, only while the stored hash is still the one that was checked (so a stale check never clears a newer PIN's lock).
  * `create` stores the first hash only when the parent has none (false when a PIN exists). `replace` stores a new
  * hash and resets the count only while the stored hash is still `oldHash`, the one the caller verified (false when it
- * changed meanwhile), so two requests at the same time cannot replace a PIN without its current value. `reset` stores
- * a hash whether or not one is set, with a fresh count: for a forgotten PIN, once the caller has proved the password.
+ * changed meanwhile), so two requests at the same time cannot replace a PIN without its current value.
+ * Forgot PIN (#301): `claimReset` counts one account-password try before the caller checks it, with the same rules as
+ * `claim` and a count of its own; `reset` then stores the new hash with fresh counts for both the PIN and the resets.
  */
 export interface PinStore {
   has(parentId: string): Promise<boolean>;
@@ -39,8 +40,24 @@ export interface PinStore {
   replace(parentId: string, oldHash: string, newHash: string): Promise<boolean>;
   claim(parentId: string, now: number, policy: PinPolicy): Promise<PinClaim>;
   clear(parentId: string, hash: string): Promise<void>;
+  claimReset(parentId: string, now: number, policy: PinPolicy): Promise<ResetClaim>;
   reset(parentId: string, hash: string): Promise<void>;
 }
+
+/** What a claim on a PIN reset gives: `none` (no PIN to reset), `locked` until `until`, or `open` (check this try). */
+export type ResetClaim =
+  | { kind: "none" }
+  | { kind: "locked"; until: number }
+  | { kind: "open"; attemptsLeft: number; lockedUntil: number | null };
+
+/** Whether `password` is the parent's account password; `unavailable` when it cannot be checked now. */
+export type ProvePassword = (password: string) => Promise<"ok" | "wrong" | "unavailable">;
+
+export type ForgotResult =
+  | { ok: true }
+  | { ok: false; error: "invalid" | "not_set" | "unavailable" }
+  | { ok: false; error: "wrong_password"; attemptsLeft: number }
+  | { ok: false; error: "locked"; retryAt: number };
 
 export type CheckResult =
   | { ok: true }
@@ -61,10 +78,10 @@ export interface ParentPins {
   /** Check a PIN. The desk calls this to leave desk mode. */
   check(parentId: string, pin: string): Promise<CheckResult>;
   /**
-   * Forgot PIN (#301): store a new PIN without the current one, and end any lock. Only after the caller has proved
-   * the parent's account password; this module cannot check that.
+   * Forgot PIN (#301): store a new PIN without the current one, and end any lock, when `prove` says `password` is the
+   * parent's account password. Every password try counts against its own limit (`policy`), before `prove` runs.
    */
-  reset(parentId: string, pin: string): Promise<{ ok: true } | { ok: false; error: "invalid" }>;
+  forgot(parentId: string, password: string, pin: string, prove: ProvePassword): Promise<ForgotResult>;
 }
 
 const KEY_LENGTH = 32;
@@ -126,8 +143,18 @@ export function parentPins(store: PinStore, { now = Date.now, policy = PIN_POLIC
       if (await store.replace(parentId, proof.hash!, hash)) return { ok: true };
       return { ok: false, error: "current_required" };
     },
-    async reset(parentId, pin) {
-      if (!validPin(pin)) return { ok: false, error: "invalid" };
+    async forgot(parentId, password, pin, prove) {
+      // A malformed form cannot be right, so it costs no try.
+      if (!validPin(pin) || typeof password !== "string" || password === "" || password.length > 1000) return { ok: false, error: "invalid" };
+      const claim = await store.claimReset(parentId, now(), policy);
+      if (claim.kind === "none") return { ok: false, error: "not_set" };
+      if (claim.kind === "locked") return { ok: false, error: "locked", retryAt: claim.until };
+      const proof = await prove(password);
+      if (proof === "unavailable") return { ok: false, error: "unavailable" };
+      if (proof === "wrong") {
+        if (claim.attemptsLeft <= 0 && claim.lockedUntil !== null) return { ok: false, error: "locked", retryAt: claim.lockedUntil };
+        return { ok: false, error: "wrong_password", attemptsLeft: claim.attemptsLeft };
+      }
       await store.reset(parentId, await hashPin(pin));
       return { ok: true };
     },

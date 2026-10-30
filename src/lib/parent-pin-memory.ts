@@ -3,7 +3,7 @@
 // is checked; the attempt that reaches the limit starts the lock; a lock that has ended gives a fresh count; a claim in a
 // lock changes nothing. Every operation yields first, so calls started together interleave as requests would, and the
 // read and the write after it happen together with no yield between them, as in one statement.
-import type { PinClaim, PinPolicy, PinStore } from "@/lib/parent-pin";
+import type { PinClaim, PinPolicy, PinStore, ResetClaim } from "@/lib/parent-pin";
 
 /** A row of public.parent_pins. */
 export interface MemoryPinRow {
@@ -11,6 +11,9 @@ export interface MemoryPinRow {
   hash: string;
   failedAttempts: number;
   lockedUntil: number | null;
+  /** Forgot PIN tries (#301), counted apart from the PIN's. */
+  resetFailedAttempts?: number;
+  resetLockedUntil?: number | null;
 }
 
 const tick = () => new Promise((resolve) => setTimeout(resolve, 0));
@@ -57,11 +60,25 @@ export function memoryPinStore(initial: MemoryPinRow[] = []): PinStore & { rows(
       const row = find(parentId);
       if (row && row.hash === hash) Object.assign(row, { failedAttempts: 0, lockedUntil: null });
     },
-    async reset(parentId, hash) {
+    async claimReset(parentId, now, policy: PinPolicy): Promise<ResetClaim> {
       await tick();
       const row = find(parentId);
-      if (row) Object.assign(row, { hash, failedAttempts: 0, lockedUntil: null });
-      else rows.push({ parentId, hash, failedAttempts: 0, lockedUntil: null });
+      if (!row) return { kind: "none" };
+      if (row.resetLockedUntil != null) {
+        if (row.resetLockedUntil > now) return { kind: "locked", until: row.resetLockedUntil };
+        row.resetFailedAttempts = 0;
+        row.resetLockedUntil = null;
+      }
+      row.resetFailedAttempts = (row.resetFailedAttempts ?? 0) + 1;
+      if (row.resetFailedAttempts >= policy.maxAttempts) row.resetLockedUntil = now + policy.lockMs;
+      return { kind: "open", attemptsLeft: Math.max(0, policy.maxAttempts - row.resetFailedAttempts), lockedUntil: row.resetLockedUntil ?? null };
+    },
+    async reset(parentId, hash) {
+      await tick();
+      const fresh = { hash, failedAttempts: 0, lockedUntil: null, resetFailedAttempts: 0, resetLockedUntil: null };
+      const row = find(parentId);
+      if (row) Object.assign(row, fresh);
+      else rows.push({ parentId, ...fresh });
     },
   };
 }

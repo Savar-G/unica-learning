@@ -24,7 +24,11 @@ export async function proxy(request: NextRequest) {
   // An Auth error (not a signed-out visitor) keeps an open desk closed to the account.
   const known = !error || error.name === "AuthSessionMissingError";
   const gate = deskGate(request.nextUrl.pathname, request.cookies.get(DESK_COOKIE)?.value, data?.claims.sub ?? null, known);
-  if (gate === "pass") return response;
+  if (gate === "pass") {
+    // Parent pages are never kept for the back button (#301): the desk guard checks any page the browser restores.
+    if (/^\/(?:account|admin)(?:\/|$)/.test(request.nextUrl.pathname)) response.headers.set("Cache-Control", "private, no-store, max-age=0");
+    return response;
+  }
   // Keep a refreshed session on the answer that replaces the page.
   const answer = gate === "to-desk"
     ? NextResponse.redirect(new URL(DESK_HOME, request.url))

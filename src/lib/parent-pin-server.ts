@@ -1,6 +1,6 @@
 import "server-only";
 import { adminClient } from "@/lib/supabase-auth";
-import { parentPins, validPin, type CheckResult, type ParentPins } from "@/lib/parent-pin";
+import { parentPins, type CheckResult, type ForgotResult, type ParentPins, type ProvePassword } from "@/lib/parent-pin";
 import { pinStore } from "@/lib/parent-pin-store";
 
 /** The PIN module over the database, or null when the server has no secret key. */
@@ -58,22 +58,22 @@ export async function pinIsSet(parentId: string, pins: ParentPins | null = serve
 }
 
 /** What the desk's "Forgot PIN?" form gets back, from src/app/api/desk/forgot-pin/route.ts. */
-export type ForgotPinResult =
-  | { ok: true }
-  | { ok: false; error: "invalid" | "password_needed" | "unavailable" | "signed_out" | "bad_json" };
+export type ForgotPinResult = ForgotResult | { ok: false; error: "signed_out" | "bad_json" };
 
 /**
- * Forgot PIN (#301): body `{ pin }`. `passwordProved`: the session signed in with the account password in the last few
- * minutes (passwordIsFresh in src/lib/desk.ts). Then the new PIN replaces the old one and ends any lock.
+ * Forgot PIN (#301, review R349-1): body `{ password, pin }`. The request itself carries the account password, which
+ * `prove` checks (src/lib/desk-server.ts, passwordProver), so a session that signed in earlier proves nothing. Each
+ * try counts against the reset limit before the password is checked. Then the new PIN replaces the old one.
  */
-export async function resetForgottenPin(parentId: string, body: unknown, passwordProved: boolean, pins: ParentPins | null = serverPins()): Promise<{ status: number; result: ForgotPinResult }> {
-  const { pin } = (body ?? {}) as { pin?: unknown };
-  if (!validPin(pin)) return { status: 400, result: { ok: false, error: "invalid" } };
-  if (!passwordProved) return { status: 403, result: { ok: false, error: "password_needed" } };
+export async function resetForgottenPin(parentId: string, body: unknown, prove: ProvePassword, pins: ParentPins | null = serverPins()): Promise<{ status: number; result: ForgotPinResult }> {
+  const { password, pin } = (body ?? {}) as { password?: unknown; pin?: unknown };
+  if (typeof password !== "string" || typeof pin !== "string") return { status: 400, result: { ok: false, error: "invalid" } };
   if (!pins) return { status: 503, result: { ok: false, error: "unavailable" } };
   try {
-    await pins.reset(parentId, pin);
-    return { status: 200, result: { ok: true } };
+    const result = await pins.forgot(parentId, password, pin, prove);
+    if (result.ok) return { status: 200, result };
+    const status = { invalid: 400, not_set: 400, unavailable: 503, wrong_password: 403, locked: 429 }[result.error];
+    return { status, result };
   } catch (error) {
     console.error("[pin] reset failed", error instanceof Error ? error.message : error);
     return { status: 502, result: { ok: false, error: "unavailable" } };

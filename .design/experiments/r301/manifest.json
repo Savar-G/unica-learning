@@ -12,16 +12,49 @@
     "The real page image, through a 15-minute signed link from the private bucket",
     "Tap areas from the stored question boxes; the tapped one in tangerine with a soft fill, the others with a faint dashed outline",
     "Maya's panel: 'Maya · Unica Teaching Assistant', the page and question, the question text, and 'Maya is coming soon.' No call button, no answer, no steps",
-    "Leaving needs the parent's PIN, checked on the server; 'Forgot the PIN?' needs the account password",
+    "Leaving needs the parent's PIN, checked on the server; 'Forgot the PIN?' sends the account password, checked on the server with 5 tries per parent",
     "No visible text says 'tutor'; the address is /tutor"
   ],
-  "viewports": ["1280 x 800 (laptop)", "820 x 1180 (tablet in portrait)", "1180 x 820 (tablet in landscape)", "390 x 844 with an iPhone user agent (phone)"],
+  "viewports": [
+    "1280 x 800 (laptop)",
+    "820 x 1180 (tablet in portrait)",
+    "1180 x 820 (tablet in landscape)",
+    "390 x 844 with an iPhone user agent (phone)"
+  ],
   "screenshots": {
-    "before": ["before-account-laptop.png", "before-account-tablet.png", "before-account-phone.png"],
-    "parent_home": ["after-account-nopin-laptop.png", "after-account-laptop.png", "after-account-tablet.png", "after-account-phone-2.png"],
-    "desk": ["after-desk-laptop.png", "after-desk-picked-laptop.png", "after-desk-picked-tablet.png", "after-desk-picked-tablet-landscape.png", "after-desk-phone.png", "after-desk-picked-phone.png"],
-    "leaving": ["after-leave-dialog-laptop.png", "after-leave-wrong-laptop.png", "after-leave-dialog-phone.png", "after-forgot-wrong-laptop.png"],
-    "qr": ["after-qr-confirm-laptop.png", "after-qr-refused-laptop.png"]
+    "before": [
+      "before-account-laptop.png",
+      "before-account-tablet.png",
+      "before-account-phone.png"
+    ],
+    "parent_home": [
+      "after-account-nopin-laptop.png",
+      "after-account-laptop.png",
+      "after-account-tablet.png",
+      "after-account-phone-2.png"
+    ],
+    "desk": [
+      "after-desk-laptop.png",
+      "after-desk-picked-laptop.png",
+      "after-desk-picked-tablet.png",
+      "after-desk-picked-tablet-landscape.png",
+      "after-desk-phone.png",
+      "after-desk-picked-phone.png"
+    ],
+    "leaving": [
+      "after-leave-dialog-laptop.png",
+      "after-leave-wrong-laptop.png",
+      "after-leave-dialog-phone.png",
+      "after-forgot-wrong-laptop.png"
+    ],
+    "qr": [
+      "after-qr-confirm-laptop.png",
+      "after-qr-refused-laptop.png"
+    ],
+    "guard": [
+      "guard-second-tab.png",
+      "guard-back.png"
+    ]
   },
   "open_questions": [
     "Check against the FigJam sections 102:53 and 103:53 once the Figma connector is authorized",

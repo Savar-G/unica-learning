@@ -133,23 +133,6 @@ export function tapAreas(page: DeskPage): TapArea[] {
   }));
 }
 
-/** How recent a password sign-in must be for Forgot PIN: 5 minutes. */
-export const PASSWORD_FRESH_SECONDS = 5 * 60;
-
-/**
- * Forgot PIN (#301): the browser signs in again with the account password (Supabase Auth limits those tries per
- * device), and the server then accepts only a session whose password sign-in is recent. `claims`: the session's JWT
- * claims; `amr` lists how and when (seconds) the session was proved. `now` in seconds.
- */
-export function passwordIsFresh(claims: unknown, now: number): boolean {
-  const amr = (claims as { amr?: unknown } | null)?.amr;
-  if (!Array.isArray(amr)) return false;
-  return amr.some((a: unknown) => {
-    const { method, timestamp } = (a ?? {}) as { method?: unknown; timestamp?: unknown };
-    return method === "password" && typeof timestamp === "number" && timestamp <= now + 60 && now - timestamp <= PASSWORD_FRESH_SECONDS;
-  });
-}
-
 /** What leaving the desk gets back, from src/app/api/desk/leave/route.ts. */
 export type LeaveResult =
   | { ok: true }

@@ -7,6 +7,7 @@ import { parentId, sessionClient } from "@/lib/supabase-auth";
 import { WORKBOOK_FILES_BUCKET, type WorkbookSummary } from "@/lib/workbook-content";
 import { workbookStore } from "@/lib/workbook-store";
 import { DeskBoard, LeaveDesk } from "@/components/desk";
+import { AnnounceDesk } from "@/components/desk-guard";
 
 export const metadata = pageMetadata({
   path: DESK_HOME,
@@ -58,6 +59,7 @@ export default async function Desk({ searchParams }: PageProps<"/tutor">) {
         ))}
       </nav>
       <LeaveDesk />
+      <AnnounceDesk />
     </header>
   );
 

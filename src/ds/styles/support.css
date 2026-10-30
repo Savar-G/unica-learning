@@ -112,3 +112,6 @@
 .acct-desk > span:first-child { display: grid; gap: 4px; font-size: 17px; max-width: 34em; }
 .acct-desk form { margin: 0; }
 .acct-desk .btn { min-height: 48px; gap: 8px; }
+
+/* The desk guard (#301): a parent page restored from history shows nothing while it checks for an open desk. */
+html[data-desk-hidden] body { visibility: hidden; }
