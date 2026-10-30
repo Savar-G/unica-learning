@@ -1,0 +1,56 @@
+{
+  "round": 158,
+  "note": "Round named after decision D-170 (r29 is taken by another agent's social posts round). Rough desktop mockups at 1200 px design width. build.py writes the full pages (a-month.html, b-stage.html, c-chapters.html) with relative asset paths; the chat showed trimmed storyboards of the same content. Product screens are exports from the Figma board fLyAJsC68ezugsmkH3oRGh (nodes 228:129, 228:1627, 267:132, 103:171, 94:56, 94:162, 94:254, 96:75, 95:308, 92:12); the report card is a capture of unicalearning.com/sample-report; photos are the stock set in .design/assets/stock.",
+  "decision": "Which page format tells the What's included story best: the order of a family's month, with every product shown and interactive?",
+  "primary_axis": "page structure (how the chapters are laid out and connected)",
+  "invariants": [
+    "Same chapters and copy: assessment, workbook, the stuck beat (Day 4, page 2, question 11: 300 - 128), AI Teaching Assistant, Unica app, dashboard, next workbook, month at a glance, closing cards, pricing, FAQ",
+    "Same product screens from Figma; Leah throughout; level switch Leah U10 / Mateo U19 (D-173)",
+    "Warm look tokens: white page, Geist and Geist Mono, orange square, grainy colour fields, 6 px controls",
+    "Closing recap in the Superpower card layout in every option (Savar, 2026-10-29)"
+  ],
+  "options": [
+    {
+      "id": "A",
+      "name": "A month with Leah",
+      "artifact": "a-month.html",
+      "refs": [
+        "ouraring.com/how-it-works"
+      ],
+      "bet": "Chronology by date and time: each chapter is a moment in Leah's month, a real photo with the real product screen on it, alternating sides, with a dated chapter map",
+      "benefit": "The most story-like and human; the dates make the order and the time cost obvious",
+      "cost": "Needs a good photo for each moment; product screens are smaller because they sit on photos; the longest page",
+      "risk": "Reads as lifestyle; parents may not see enough product detail without opening each part"
+    },
+    {
+      "id": "B",
+      "name": "One stage",
+      "artifact": "b-stage.html",
+      "refs": [
+        "eightsleep.com/autopilot",
+        "apple.com/airpods-pro"
+      ],
+      "bet": "One fixed stage while the page scrolls: the step list on the left advances, and the object on the right changes from report to workbook to laptop to phone to laptop to workbook",
+      "benefit": "The shortest page; the six products read as one connected system in one place",
+      "cost": "Scroll-driven stage is the most work to build and test; phones need a separate stacked layout",
+      "risk": "Scroll control can feel heavy, and each product gets less room to be explored inside the stage"
+    },
+    {
+      "id": "C",
+      "name": "Chapters to explore",
+      "artifact": "c-chapters.html",
+      "refs": [
+        "remarkable.com/products/remarkable-paper/pure",
+        "linear.app",
+        "attio.com",
+        "granola.ai"
+      ],
+      "bet": "Each product is its own chapter with a large product view on a colour field and a row of tabs to explore it; handwritten notes point at parts; one dark band; a pill menu that stays at the top",
+      "benefit": "The most product depth and one interaction pattern (tabs) for every product; easy deep links for outreach",
+      "cost": "Less emotional; the story order depends on the pill menu and the numbering",
+      "risk": "Can read as a feature catalogue and lose the one-child story"
+    }
+  ],
+  "picked": "none",
+  "outcome": "Savar, 2026-10-29: none picked. Kept: header A and the closing card recap. Rejected: the dated chapter map pills (confusing), dates and step numbers on chapters, stock photos and small product screens. Next round r159."
+}
