@@ -1,0 +1,43 @@
+{
+  "round": 159,
+  "note": "Desktop mockups at 1200 px design width, interactive. build.py writes a-open.html, b-shelf.html, c-panels.html and board.html (all three behind tabs, as shown in chat). Workbook pages: Figma board fLyAJsC68ezugsmkH3oRGh, Leah section 228:128 and Mateo section 267:131 (cover, How + Plan, Day 1 pages 1-8), with the print crop marks painted out. Test screen: .design/experiments/r251/b-question-laptop.png (the shipped D-127 design), mockup label painted out. Report band: capture of unicalearning.com/sample-report. Maya video: unicalearning.com/video/guidance-demo.mp4 (the home page video). App: Figma 94:56, 94:254, 96:75, 95:308; the camera and marking screens are recreated in HTML. Dashboard: Figma 92:12, top crop.",
+  "decision": "How should each step of the What's included page stage its real product?",
+  "primary_axis": "staging of the product visuals: layout and surface (open page, rows with a dark bookshelf, colour panels)",
+  "invariants": [
+    "Header A from r158 (Savar's pick), unchanged",
+    "Six steps in story order, no dates and no step numbers: product name as the kicker, one plain story sentence as the heading",
+    "Same words in every option; Maya description uses TA wording A (W1 still open)",
+    "Same real visuals: the test screen with the report band, the Figma workbook pages in a 3D book that opens and turns pages with left and right arrows (Leah U10 and Mateo U19), the home page Maya video in the home page layout, the recreated app scan on a phone, the Figma dashboard, the Figma next workbook screen",
+    "Closing cards 'From a free assessment to the next workbook.' with new pictures",
+    "Pricing, month at a glance and FAQ left out of this round (unchanged from the brief)"
+  ],
+  "evidence": "Savar's pick; a parent should see each product clearly at a glance and want to open the workbook.",
+  "options": [
+    {
+      "id": "A",
+      "artifact": "a-open.html",
+      "bet": "Open page: every step is centred text above one large product on white. The two workbooks lie on a paper-coloured table; click one, it comes forward and opens.",
+      "benefit": "Calm and close to the current site; the product is the only thing that changes from step to step",
+      "cost": "Longest page; every step has the same rhythm, so the page can feel slow",
+      "risk": "A parent who scrolls fast sees six similar blocks"
+    },
+    {
+      "id": "B",
+      "artifact": "b-shelf.html",
+      "bet": "Rows: text on one side, product on the other, side by side. The workbook breaks the rhythm in a full-width dark band with a pile of spines, like Stripe Press; click a spine, it opens.",
+      "benefit": "Shortest page; the workbook is the one dramatic moment, which matches its weight as the main product",
+      "cost": "Two looks on one page (light rows, dark band); the pile has only two books until more levels exist",
+      "risk": "With two spines the pile can look thin; the dark band can read as a different site"
+    },
+    {
+      "id": "C",
+      "artifact": "c-panels.html",
+      "bet": "Colour panels: each step is its own rounded colour panel with the product large inside. The workbook stands at an angle on an olive panel, with a level switch under it.",
+      "benefit": "Each product reads as a separate thing, so a skimming parent counts six; closest to reMarkable and the Stripe Press book page",
+      "cost": "Most colour on the site so far; six panel colours to keep in the palette",
+      "risk": "Panels can feel like a feature list and weaken the one-family story"
+    }
+  ],
+  "picked": "B (layout), with the workbook open on load",
+  "outcome": "Savar, 2026-10-29: B's rows are cleaner. The workbook shows open (as in A's open state), not closed. The weakest steps: 'Scan the pages' and 'The next workbook'. Next round r160."
+}

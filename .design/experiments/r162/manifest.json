@@ -1,0 +1,56 @@
+{
+  "round": 162,
+  "note": "Built on r161 (build.py imports ../r161/build.py). page.html is the full interactive page with option switches for the scan step (S-A, S-B, S-C) and the dashboard step (D-A, D-B); still-*.html freeze one option and state each. Scan base photo assets/base-overhead.jpg was made with Figma generate_image (gpt-image-2.5-flare, 2026-10-29; board node 366:74) with blank pages and a blank screen, and is used mirrored (base-overhead-m.jpg). Leah's Day 1 pages 1 and 2 (Figma 228:128 section, with her pencil answers in HTML) are warped onto the pages with CSS matrix3d and multiply; mask-paper.png keeps the hand and the phone in front. App screens: Figma 95:55 (Progress), 98:90 (This week), 98:187 (Call notes), 95:308 (Next workbook), exported at 1x. figma/ holds the images posted to the FigJam board section 373:74.",
+  "decision": "Which scan picture (S-A, S-B, S-C) and which dashboard staging (D-A, D-B), for Savar and his team?",
+  "primary_axis": "scan: realism versus legibility of the app screen; dashboard: web first versus phone first",
+  "invariants": [
+    "Everything else as r161: layout B, open workbook on a paper band, Maya video, 'built from' next workbook, closing cards",
+    "The scan picture shows the open workbook (Day 1, pages 1 and 2) with Leah's answers, and our app",
+    "The dashboard chips move the web and the phone together"
+  ],
+  "options": [
+    {
+      "id": "S-A",
+      "artifact": "page.html (scan switch S-A); still-s-a-*.html",
+      "bet": "Overhead photo: the open workbook on a kitchen table, a hand holds the phone over page 1; our pages and app put on an AI base photo",
+      "benefit": "Looks like a real photo of our product in use",
+      "cost": "The phone is small in a full-width picture, so the app screen is hard to read",
+      "risk": "The base photo is AI generated; a parent or the team may prefer our own photo"
+    },
+    {
+      "id": "S-B",
+      "artifact": "page.html (scan switch S-B); still-s-b-*.html",
+      "bet": "Built flat lay, no photo: the open workbook on a table colour, our phone floating over page 1",
+      "benefit": "No AI image; crisp; the app screen is large",
+      "cost": "Reads as a render, not a photo",
+      "risk": "Can look like a stock mockup"
+    },
+    {
+      "id": "S-C",
+      "artifact": "page.html (scan switch S-C); still-s-c-*.html",
+      "bet": "The S-A photo cropped close on the phone, beside the text",
+      "benefit": "Real and readable: the marked result is easy to read",
+      "cost": "Shows only part of the open workbook",
+      "risk": "The spread is less clear than in S-A"
+    },
+    {
+      "id": "D-A",
+      "artifact": "page.html (dashboard switch D-A); still-d-a-*.html",
+      "bet": "Web first: the clickable web dashboard, with the phone app beside it; chips move both",
+      "benefit": "Shows the full detail, and that the app has the same account",
+      "cost": "The phone covers the right edge of the web view",
+      "risk": "Parents may think they need a computer"
+    },
+    {
+      "id": "D-B",
+      "artifact": "page.html (dashboard switch D-B); still-d-b-*.html",
+      "bet": "Phone first: a large phone app screen in front, the web dashboard behind it",
+      "benefit": "Matches how most parents will check in: on the phone",
+      "cost": "The web menu is behind the phone; only the chips move it",
+      "risk": "The web detail is hard to see"
+    }
+  ],
+  "figma": "https://www.figma.com/board/fLyAJsC68ezugsmkH3oRGh/Personalized-Learning-Delivered?node-id=373-74",
+  "picked": "S-A (overhead photo) and D-A (web first, phone beside)",
+  "outcome": "Savar, 2026-10-29: likes r162. Scan: S-A. Dashboard: D-A. Build the page in the worktree and open a PR to refine from."
+}
