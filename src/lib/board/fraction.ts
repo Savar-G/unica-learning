@@ -1,0 +1,155 @@
+// A fraction or mixed number on the board (#317): the numerator and denominator centred over a bar wider than both, and
+// the whole number of a mixed number to the left, centred on the bar. Each part is a target. The stacked layout here
+// also writes the labels of a number line, at a smaller size.
+import type { Point } from "@/lib/board/glyphs";
+import { glyphStrokes, missingGlyphs, refuse, type LocalStroke, type LocalTarget, type Representation } from "@/lib/board/representation";
+import type { FractionCommand, FractionPart, Ink, Rect, Target } from "@/lib/board/types";
+
+/** A number as the board writes it: a sign, a whole part (digits, or a decimal), and a stacked fraction part. */
+export interface NumberParts {
+  sign: "" | "+" | "−";
+  whole: string | null;
+  fraction: { numerator: string; denominator: string } | null;
+}
+
+/** Where each part of a written number goes, from its top-left corner, at a size. */
+export interface NumberLayout {
+  w: number;
+  h: number;
+  sign: Rect | null;
+  whole: Rect | null;
+  numerator: Rect | null;
+  denominator: Rect | null;
+  bar: [Point, Point] | null;
+}
+
+/** Character width and height, and the gaps, at size 1 (a fraction object). Labels use a smaller size. */
+const CHAR_W = 0.8;
+const CHAR_H = 0.85;
+const GAP = 0.2;
+/** How far the bar reaches past the wider of the numerator and the denominator, each side. */
+const BAR_OVERHANG = 0.2;
+
+/** Lays out a written number at `size` (1 is a fraction object's digits). */
+export function layoutNumber(parts: NumberParts, size: number): NumberLayout {
+  const cw = CHAR_W * size;
+  const ch = CHAR_H * size;
+  const gap = GAP * size;
+  const stacked = parts.fraction !== null;
+  const h = stacked ? 2 * ch + 3 * gap : ch;
+  const mid = h / 2;
+  let x = 0;
+  const box = (chars: number, y: number): Rect => ({ x, y, w: chars * cw, h: ch });
+  const out: NumberLayout = { w: 0, h, sign: null, whole: null, numerator: null, denominator: null, bar: null };
+  if (parts.sign) {
+    out.sign = box(1, mid - ch / 2);
+    x += cw;
+  }
+  if (parts.whole !== null) {
+    out.whole = box(parts.whole.length, mid - ch / 2);
+    x += out.whole.w + (stacked ? gap : 0);
+  }
+  if (parts.fraction) {
+    const { numerator, denominator } = parts.fraction;
+    const barW = Math.max(numerator.length, denominator.length) * cw + 2 * BAR_OVERHANG * size;
+    const left = x;
+    const centred = (chars: number, y: number): Rect => ({ x: left + (barW - chars * cw) / 2, y, w: chars * cw, h: ch });
+    out.numerator = centred(numerator.length, gap / 2);
+    out.bar = [
+      [left, mid],
+      [left + barW, mid],
+    ];
+    out.denominator = centred(denominator.length, h - ch - gap / 2);
+    x += barW;
+  }
+  out.w = x;
+  return out;
+}
+
+/** The text of a written number, for summaries: "−1 2/3", "0.5". */
+export function numberText(parts: NumberParts): string {
+  const fraction = parts.fraction ? `${parts.fraction.numerator}/${parts.fraction.denominator}` : "";
+  return parts.sign + [parts.whole, fraction].filter(Boolean).join(" ");
+}
+
+/** The characters a written number needs from the pen. */
+export const numberChars = (parts: NumberParts) => parts.sign + (parts.whole ?? "") + (parts.fraction ? parts.fraction.numerator + parts.fraction.denominator : "");
+
+/** The strokes of a laid-out number placed at (dx, dy). The target of each part comes from `targetOf`. */
+export function numberStrokes(
+  ctx: { glyphs: Parameters<typeof glyphStrokes>[0] },
+  parts: NumberParts,
+  layout: NumberLayout,
+  at: { dx: number; dy: number },
+  base: Omit<LocalStroke, "key" | "kind" | "glyph" | "pts" | "target">,
+  targetOf: (part: FractionPart | "sign") => Target | null,
+  keyPrefix: string,
+): LocalStroke[] {
+  const move = (r: Rect): Rect => ({ ...r, x: r.x + at.dx, y: r.y + at.dy });
+  const out: LocalStroke[] = [];
+  const text = (t: string, r: Rect | null, p: FractionPart | "sign", key: string) => {
+    if (r) out.push(...glyphStrokes(ctx.glyphs, t, move(r), { ...base, target: targetOf(p) }, `${keyPrefix}/${key}`));
+  };
+  text(parts.sign, layout.sign, "sign", "sign");
+  if (parts.whole !== null) text(parts.whole, layout.whole, "whole_number", "whole");
+  if (parts.fraction && layout.bar) {
+    text(parts.fraction.numerator, layout.numerator, "numerator", "num");
+    const [[x0, y0], [x1, y1]] = layout.bar;
+    out.push({ ...base, key: `${keyPrefix}/bar`, kind: "rule", target: targetOf("bar"), width: base.width * 0.9, pts: [[x0 + at.dx, y0 + at.dy], [x1 + at.dx, y1 + at.dy]] });
+    text(parts.fraction.denominator, layout.denominator, "denominator", "den");
+  }
+  return out;
+}
+
+export interface FractionState {
+  parts: NumberParts & { fraction: { numerator: string; denominator: string } };
+  ink: Ink;
+  seq: number;
+}
+
+const DIGIT_WIDTH = 0.07;
+
+function layoutOf(state: FractionState) {
+  const layout = layoutNumber(state.parts, 1);
+  // Centred in whole cells, so the object's box sits on the grid.
+  const size = { w: Math.ceil(layout.w), h: Math.ceil(layout.h) };
+  return { layout, size, dx: (size.w - layout.w) / 2, dy: (size.h - layout.h) / 2 };
+}
+
+export const fraction: Representation<FractionState, FractionCommand> = {
+  op: "fraction",
+  create(cmd, ctx) {
+    const whole = cmd.whole ?? null;
+    if (cmd.denominator === "0") return refuse("not_allowed", `${cmd.numerator}/0 has 0 as its denominator: a whole cannot be cut into 0 equal parts.`);
+    if (whole !== null) {
+      if (whole === "0") return refuse("not_allowed", `A mixed number has a whole number of at least 1: write ${cmd.numerator}/${cmd.denominator} as a fraction.`);
+      if (Number(cmd.numerator) === 0 || Number(cmd.numerator) >= Number(cmd.denominator))
+        return refuse("not_allowed", `In the mixed number ${whole} ${cmd.numerator}/${cmd.denominator} the fraction part must be more than 0 and less than 1.`);
+    }
+    const parts: FractionState["parts"] = { sign: "", whole, fraction: { numerator: cmd.numerator, denominator: cmd.denominator } };
+    const missing = missingGlyphs(ctx.glyphs, numberChars(parts));
+    if (missing.length > 0) return refuse("unsupported", `The board pen cannot write ${missing.join(" ")} yet.`);
+    const state: FractionState = { parts, ink: cmd.ink ?? "blue", seq: ctx.seq };
+    return { state, size: layoutOf(state).size };
+  },
+  targets(state, objectId) {
+    const { layout, size, dx, dy } = layoutOf(state);
+    const at = (r: Rect): Rect => ({ ...r, x: r.x + dx, y: r.y + dy });
+    const { numerator, denominator } = state.parts.fraction;
+    const out: LocalTarget[] = [
+      { target: { objectId, part: "whole" }, label: objectId, writable: false, value: numberText(state.parts), rect: { x: 0, y: 0, ...size } },
+      { target: { objectId, part: "numerator" }, label: `${objectId} numerator`, writable: false, value: numerator, rect: at(layout.numerator!) },
+    ];
+    const [[x0, y], [x1]] = layout.bar!;
+    out.push({ target: { objectId, part: "bar" }, label: `${objectId} fraction bar`, writable: false, value: null, rect: at({ x: x0, y: y - 0.1, w: x1 - x0, h: 0.2 }) });
+    out.push({ target: { objectId, part: "denominator" }, label: `${objectId} denominator`, writable: false, value: denominator, rect: at(layout.denominator!) });
+    if (state.parts.whole !== null)
+      out.push({ target: { objectId, part: "whole_number" }, label: `${objectId} whole number`, writable: false, value: state.parts.whole, rect: at(layout.whole!) });
+    return out;
+  },
+  draw(state, objectId, ctx) {
+    const { layout, dx, dy } = layoutOf(state);
+    const base = { objectId, layer: "math" as const, ink: state.ink, width: DIGIT_WIDTH, seq: state.seq };
+    return numberStrokes(ctx, state.parts, layout, { dx, dy }, base, (p) => (p === "sign" ? null : { objectId, part: p }), "frac");
+  },
+};

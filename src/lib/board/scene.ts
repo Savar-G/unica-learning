@@ -5,16 +5,19 @@
 // with each object's page and position recorded on its first placement, so an undo never moves anything else.
 import { columns } from "@/lib/board/columns";
 import { annotationStrokes, arrowLines, MARK_INK, routeArrow, type ArrowObject, type ArrowObstacles, type ArrowRoute, type MarkObject } from "@/lib/board/annotations";
+import { fraction } from "@/lib/board/fraction";
 import { contains, overlaps, polylineHitsRect, polylineLength, traceTouches, type Trace } from "@/lib/board/geometry";
 import { PLACEHOLDER_GLYPHS, type GlyphSet } from "@/lib/board/glyphs";
 import { note } from "@/lib/board/note";
+import { numberLine } from "@/lib/board/number-line";
 import { parseCommand } from "@/lib/board/parse";
+import { readNumber, valueKey } from "@/lib/board/rational";
 import { isRefusal, refuse, type Ctx, type LocalStroke, type LocalTarget, type RefusalBody, type Representation } from "@/lib/board/representation";
 import type { Batch, BoardPath, Command, CreateCommand, Notice, PageSize, PathKind, Place, Rect, Refusal, Target, TargetInfo, TimedPath, View } from "@/lib/board/types";
 import type { Stroke } from "@/lib/whiteboard";
 
 /** The representations the board can create, by their create command. Later ones are added here. */
-const REPRESENTATIONS = { columns, write: note } satisfies Record<CreateCommand["op"], unknown>;
+const REPRESENTATIONS = { columns, write: note, fraction, number_line: numberLine } satisfies Record<CreateCommand["op"], unknown>;
 const representation = (op: CreateCommand["op"]) => REPRESENTATIONS[op] as unknown as Representation<unknown, CreateCommand>;
 const isCreate = (c: Command): c is CreateCommand => c.op in REPRESENTATIONS;
 
@@ -103,7 +106,12 @@ export function createScene(options: { page?: PageSize; glyphs?: GlyphSet } = {}
 
 // ---------- targets ----------
 
-const targetKey = (t: Target) => [t.objectId, t.part, "rowId" in t ? t.rowId : "", "column" in t ? t.column : "", "index" in t ? t.index : ""].join("|");
+const targetKey = (t: Target) => [t.objectId, t.part, "rowId" in t ? t.rowId : "", "column" in t ? t.column : "", "index" in t ? t.index : "", "value" in t ? valueName(t.value) : ""].join("|");
+/** A number line value's one name, so "2/6" and "1/3" are the same target. */
+function valueName(text: string): string {
+  const read = readNumber(text);
+  return "reason" in read ? text : valueKey(read.value);
+}
 export const sameTarget = (a: Target, b: Target) => targetKey(a) === targetKey(b);
 
 const reps = (s: SceneState) => s.objects.filter((o): o is RepObject => o.kind === "rep");
@@ -248,14 +256,15 @@ function exec(scene: Scene, s: SceneState, step: Step, notices: Notice[]): Refus
 
   switch (cmd.op) {
     case "put":
-    case "regroup": {
-      const objectId = cmd.op === "put" ? cmd.target.objectId : cmd.objectId;
+    case "regroup":
+    case "jump": {
+      const objectId = cmd.op === "put" ? cmd.target.objectId : cmd.op === "jump" ? cmd.lineId : cmd.objectId;
       const rep = findRep(s, objectId);
       if (!rep) {
         if (s.owners.has(objectId) || s.objects.some((o) => o.id === objectId)) return refuse("not_writable", `"${objectId}" is an annotation: ${cmd.op} works on a math object.`);
         return resolve(s, { objectId, part: "whole" }) as RefusalBody;
       }
-      if (cmd.op === "regroup") {
+      if (cmd.op !== "put") {
         const taken = fresh(cmd.id);
         if (taken) return taken;
       }
@@ -263,11 +272,13 @@ function exec(scene: Scene, s: SceneState, step: Step, notices: Notice[]): Refus
       const next =
         cmd.op === "put"
           ? (r.put?.(rep.state, cmd.target, cmd.value, cmd.ink, ctx) ?? refuse("not_writable", `Put does not write in "${rep.id}".`))
-          : (r.regroup?.(rep.state, cmd, ctx) ?? refuse("not_allowed", "Regroup works on columns."));
+          : cmd.op === "regroup"
+            ? (r.regroup?.(rep.state, cmd, ctx) ?? refuse("not_allowed", "Regroup works on columns."))
+            : (r.jump?.(rep.state, cmd, ctx) ?? refuse("not_allowed", "Jump works on a number line."));
       if (isRefusal(next)) return next.code === "unknown_target" && cmd.op === "put" ? { ...next, valid: repTargets(rep).filter((t) => t.writable).map(publicInfo) } : next;
       rep.state = next;
       write(rep.id);
-      if (cmd.op === "regroup") {
+      if (cmd.op !== "put") {
         s.owners.set(cmd.id, rep.id);
         step.creates = [cmd.id];
       }

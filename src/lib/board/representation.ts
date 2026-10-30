@@ -3,7 +3,7 @@
 // it on a page, routes the common commands to it, and turns its strokes into board paths. To add a representation,
 // add its create command to `CreateCommand`, write a module with this interface, and register it in `scene.ts`.
 import type { GlyphSet, Point } from "@/lib/board/glyphs";
-import type { CreateCommand, Ink, MarkStyle, PathKind, Rect, Refusal, RegroupCommand, Target, TargetInfo } from "@/lib/board/types";
+import type { CreateCommand, Ink, JumpCommand, MarkStyle, PathKind, Rect, Refusal, RegroupCommand, Target, TargetInfo } from "@/lib/board/types";
 
 export type RefusalBody = Omit<Refusal, "index">;
 
@@ -56,7 +56,9 @@ export interface Representation<S, C extends CreateCommand> {
   /** Reveals a value in a writable target, after checking it. */
   put?(state: S, target: Target, value: string, ink: Ink | undefined, ctx: Ctx): S | RefusalBody;
   regroup?(state: S, req: RegroupCommand, ctx: Ctx): S | RefusalBody;
-  /** Removes an annotation the object owns (a regroup); the scene knows them from `targets`. */
+  /** Adds a jump the object owns (a number line). */
+  jump?(state: S, req: JumpCommand, ctx: Ctx): S | RefusalBody;
+  /** Removes an annotation the object owns (a regroup, a jump); the scene knows them from `targets`. */
   removeOwned?(state: S, id: string): S | RefusalBody;
   /**
    * What later commands may still write (empty answer and work-row digits, carries, borrows), in grid cells from the

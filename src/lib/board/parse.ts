@@ -1,11 +1,12 @@
 // Checks one command from the model before anything changes. The model's output is untrusted: a command with an unknown
 // op, a missing or extra field, a coordinate, or a value out of bounds is refused with a reason, never repaired.
 import { refuse, type RefusalBody } from "@/lib/board/representation";
-import { CLEAR_SCOPES, INKS, MARK_STYLES, OPERATIONS, PLACE_NAMES, REGROUP_KINDS, type Command, type Place, type Target } from "@/lib/board/types";
+import { readNumber, valueKey } from "@/lib/board/rational";
+import { CLEAR_SCOPES, FRACTION_PARTS, INKS, LINE_LABELS, MARK_STYLES, NUMBER_FORMS, OPERATIONS, PLACE_NAMES, REGROUP_KINDS, type Command, type Place, type Target } from "@/lib/board/types";
 
 const ID = /^[A-Za-z][A-Za-z0-9_-]{0,63}$/;
-const OPS = ["columns", "write", "put", "regroup", "mark", "arrow", "remove", "undo", "clear", "focus"] as const;
-const LATER = ["division", "fraction", "number_line", "model", "jump"];
+const OPS = ["columns", "write", "put", "regroup", "mark", "arrow", "remove", "undo", "clear", "focus", "fraction", "number_line", "jump"] as const;
+const LATER = ["division", "model"];
 
 class Invalid extends Error {}
 const fail = (reason: string): never => {
@@ -33,7 +34,7 @@ const ink = (v: unknown) => (v === undefined ? undefined : oneOf(v, INKS, "ink")
 const place = (v: unknown) => oneOf(v, PLACE_NAMES, "column");
 
 function target(v: unknown, what = "target"): Target {
-  const base = object(v, what, ["objectId", "part"], ["rowId", "column", "index"]);
+  const base = object(v, what, ["objectId", "part"], ["rowId", "column", "index", "value"]);
   const objectId = id(base.objectId, `${what}.objectId`);
   switch (base.part) {
     case "whole":
@@ -52,8 +53,15 @@ function target(v: unknown, what = "target"): Target {
       object(v, what, ["objectId", "part", "index"]);
       if (!Number.isInteger(base.index) || (base.index as number) < 0 || (base.index as number) > 50) fail(`${what}.index must be a word number from 0.`);
       return { objectId, part: "word", index: base.index as number };
+    case "value":
+      object(v, what, ["objectId", "part", "value"]);
+      return { objectId, part: "value", value: exactValue(base.value, `${what}.value`) };
     default:
-      return fail(`${what}.part must be one of whole, column, row, cell, word.`);
+      if (FRACTION_PARTS.includes(base.part as never)) {
+        object(v, what, ["objectId", "part"]);
+        return { objectId, part: base.part as (typeof FRACTION_PARTS)[number] };
+      }
+      return fail(`${what}.part must be one of whole, column, row, cell, word, ${FRACTION_PARTS.join(", ")}, value.`);
   }
 }
 
@@ -75,8 +83,20 @@ function text(v: unknown, what: string, max: number): string {
   return v;
 }
 
+/** A whole number written as digits, without leading zeros. */
+function digits(v: unknown, what: string): string {
+  const t = text(v, what, 3);
+  if (!/^(0|[1-9]\d*)$/.test(t)) fail(`${what} must be a whole number of up to 3 digits, without leading zeros.`);
+  return t;
+}
+/** An exact number as text ("-2", "0.25", "2/6", "1 1/2"), in its lowest-terms key ("1/3" for "2/6"). */
+function exactValue(v: unknown, what: string): string {
+  const read = readNumber(text(v, what, 12));
+  return "reason" in read ? fail(`${what}: ${read.reason}`) : valueKey(read.value);
+}
+
 function parse(raw: unknown): Command {
-  const head = object(raw, "A command", ["op"], ["id", "operation", "operands", "place", "text", "ink", "target", "value", "objectId", "rowId", "kind", "from", "to", "style", "transactionId", "page", "scope"]);
+  const head = object(raw, "A command", ["op"], ["id", "operation", "operands", "place", "text", "ink", "target", "value", "objectId", "rowId", "kind", "from", "to", "style", "transactionId", "page", "scope", "numerator", "denominator", "whole", "min", "max", "tick", "labels", "form", "lineId", "fromValue", "toValue", "label"]);
   if (LATER.includes(head.op as string)) return fail(`The board cannot draw "${head.op}" yet.`);
   const op = oneOf(head.op, OPS, "op");
   switch (op) {
@@ -138,6 +158,29 @@ function parse(raw: unknown): Command {
     case "focus": {
       const c = object(raw, "focus", ["op", "target"]);
       return { op, target: target(c.target) };
+    }
+    case "fraction": {
+      const c = object(raw, "fraction", ["op", "id", "numerator", "denominator", "place"], ["whole", "ink"]);
+      const whole = c.whole === undefined ? {} : { whole: digits(c.whole, "fraction.whole") };
+      return { op, id: id(c.id, "fraction.id"), numerator: digits(c.numerator, "fraction.numerator"), denominator: digits(c.denominator, "fraction.denominator"), ...whole, place: placement(c.place), ink: ink(c.ink) };
+    }
+    case "number_line": {
+      const c = object(raw, "number_line", ["op", "id", "min", "max", "tick", "place"], ["labels", "form"]);
+      return {
+        op,
+        id: id(c.id, "number_line.id"),
+        min: text(c.min, "number_line.min", 12),
+        max: text(c.max, "number_line.max", 12),
+        tick: text(c.tick, "number_line.tick", 12),
+        ...(c.labels === undefined ? {} : { labels: oneOf(c.labels, LINE_LABELS, "number_line.labels") }),
+        ...(c.form === undefined ? {} : { form: oneOf(c.form, NUMBER_FORMS, "number_line.form") }),
+        place: placement(c.place),
+      };
+    }
+    case "jump": {
+      const c = object(raw, "jump", ["op", "id", "lineId", "fromValue", "toValue"], ["label", "ink"]);
+      const label = c.label === undefined ? {} : { label: text(c.label, "jump.label", 12) };
+      return { op, id: id(c.id, "jump.id"), lineId: id(c.lineId, "jump.lineId"), fromValue: text(c.fromValue, "jump.fromValue", 12), toValue: text(c.toValue, "jump.toValue", 12), ...label, ink: ink(c.ink) };
     }
   }
 }
