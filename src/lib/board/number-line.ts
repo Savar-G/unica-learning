@@ -124,6 +124,8 @@ function writtenParts(read: ReadNumber, text: string): NumberParts {
 const labelText = (state: NumberLineState, i: number) => numberText(labelOf(state, valueAt(state, i)));
 const tickX = (geo: Geometry, i: number) => toNumber(add(geo.x0, times(geo.spacing, i)));
 const isShown = (state: NumberLineState, i: number) => state.shown[i] || i in state.put;
+/** The height jump arcs start and end at: half way up the tick. */
+const arcY = (geo: Geometry) => geo.lineY - TICK_HALF / 2;
 
 function labelBox(state: NumberLineState, i: number): { layout: NumberLayout; rect: Rect } {
   const layout = layoutNumber(labelOf(state, valueAt(state, i)), LABEL_SIZE);
@@ -192,7 +194,7 @@ function create(cmd: NumberLineCommand, ctx: Ctx): { state: NumberLineState; siz
 function jumpShape(state: NumberLineState, j: Pick<Jump, "from" | "to" | "lane" | "label">): { lines: Point[][]; label: Rect | null; layout: NumberLayout | null } {
   const { geo } = state;
   const dir = Math.sign(j.to - j.from);
-  const y = geo.lineY - TICK_HALF / 2;
+  const y = arcY(geo);
   const from: Point = [tickX(geo, j.from) + dir * INSET, y];
   const to: Point = [tickX(geo, j.to) - dir * INSET, y];
   const apex = geo.lineY - FIRST_RISE - j.lane * geo.laneH;
@@ -214,8 +216,8 @@ const SHARED_REACH = 0.5;
  */
 function jumpsMeet(state: NumberLineState, a: Jump, b: Jump): boolean {
   const pad = (r: Rect): Rect => ({ x: r.x - INSET, y: r.y - INSET, w: r.w + 2 * INSET, h: r.h + 2 * INSET });
-  // Where the arcs leave the line at each shared tick.
-  const shared = [a.from, a.to].filter((t) => t === b.from || t === b.to).map((t): Point => [tickX(state.geo, t), state.geo.lineY - TICK_HALF / 2]);
+  // Each shared tick, at the height the arcs leave it (they start a little to its side).
+  const shared = [a.from, a.to].filter((t) => t === b.from || t === b.to).map((t): Point => [tickX(state.geo, t), arcY(state.geo)]);
   const traces = (lines: Point[][]): Trace[] => lines.map((pts) => ({ pts, width: ARC_WIDTH }));
   const beyond = (lines: Point[][], reach: number) => traces(lines.flatMap((pts) => clipOutside(pts, shared, reach)));
   const [sa, sb] = [jumpShape(state, a), jumpShape(state, b)];
@@ -224,7 +226,7 @@ function jumpsMeet(state: NumberLineState, a: Jump, b: Jump): boolean {
     const meet = (ps: Trace[], qs: Trace[]) => ps.some((p) => qs.some((q) => traceTouches(p, q, clearance)));
     return meet(beyond(sa.lines, reach), traces(sb.lines)) || meet(traces(sa.lines), beyond(sb.lines, reach));
   };
-  if (touch(SHARED_REACH, 0) || touch(2 * SHARED_REACH, INSET / 2)) return true;
+  if ((shared.length > 0 && touch(SHARED_REACH, 0)) || touch(2 * SHARED_REACH, INSET / 2)) return true;
   if (sa.label && sb.lines.some((q) => polylineHitsRect(q, pad(sa.label!)))) return true;
   if (sb.label && sa.lines.some((p) => polylineHitsRect(p, pad(sb.label!)))) return true;
   return !!sa.label && !!sb.label && overlaps(pad(sa.label), sb.label);

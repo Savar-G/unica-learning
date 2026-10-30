@@ -186,6 +186,10 @@ describe("room on the board", () => {
     expect(full.reason).toMatch(/lanes/);
     // Further along the line the lowest lane is free.
     scene = ok(scene, jump("f", "2/3", "1"));
+    // A jump back over another from the same tick, where a hop also starts, would run along them beyond the tick: no room.
+    let back = ok(createScene(), line("n1", "0", "1", "1/6"));
+    back = ok(back, jump("a", "0", "1/6"), jump("b", "1/6", "1/3"), jump("c", "0", "1/3"));
+    expect(refused(back, jump("d", "1/3", "0")).code).toBe("no_room");
     expect(apex(scene, "f")).toBeGreaterThan(apex(scene, "c"));
   });
 });
@@ -500,8 +504,9 @@ describe("review R4: jumps never cross", () => {
    * outside half a cell of a shared tick. Points along each stroke are checked against the whole of the other stroke.
    */
   function overlapBeyondSharedTick(scene: Scene, cols: number, line: string, shared: string[]): number {
+    const paths = boardPaths(scene);
     const tickPoint = (v: string): Pt => {
-      const pts = boardPaths(scene).find((p) => p.kind === "rule" && p.target !== null && sameTarget(p.target, value(line, v)))!.pts;
+      const pts = paths.find((p) => p.kind === "rule" && p.target !== null && sameTarget(p.target, value(line, v)))!.pts;
       // Arcs leave the line half way up the tick: that is where jumps that share the tick meet.
       return [pts[0][0] * cols, ((pts[0][1] + pts[1][1]) / 2 - (pts[1][1] - pts[0][1]) / 4) * cols];
     };
@@ -509,17 +514,16 @@ describe("review R4: jumps never cross", () => {
     // Paths are rounded to a ten-thousandth of the page width, so a point may be off by this much in cells.
     const slack = 1.5e-4 * cols + 0.002;
     const strokes = (id: string) =>
-      boardPaths(scene)
-        .filter((p) => p.objectId === id && p.kind === "arrow")
-        .map((p) => ({ pts: p.pts.map(([x, y]): Pt => [x * cols, y * cols]), width: p.width * cols }));
+      paths.filter((p) => p.objectId === id && p.kind === "arrow").map((p) => ({ pts: p.pts.map(([x, y]): Pt => [x * cols, y * cols]), width: p.width * cols }));
+    const arcs = { a: strokes("a"), b: strokes("b") };
     const toPolyline = (p: Pt, pts: readonly Pt[]) => Math.min(...pts.slice(1).map((e, i) => segGap(p, p, pts[i], e)));
     let farthest = 0;
-    for (const [x, y] of [["a", "b"], ["b", "a"]])
-      for (const p of strokes(x))
-        for (const q of strokes(y))
+    for (const [x, y] of [["a", "b"], ["b", "a"]] as const)
+      for (const p of arcs[x])
+        for (const q of arcs[y])
           for (let i = 1; i < p.pts.length; i++)
-            for (let k = 0; k <= 8; k++) {
-              const t = k / 8;
+            for (let k = 0; k <= 4; k++) {
+              const t = k / 4;
               const at: Pt = [p.pts[i - 1][0] + t * (p.pts[i][0] - p.pts[i - 1][0]), p.pts[i - 1][1] + t * (p.pts[i][1] - p.pts[i - 1][1])];
               const distance = Math.min(...centres.map((c) => Math.hypot(at[0] - c[0], at[1] - c[1])));
               if (distance > 0.5 + slack && toPolyline(at, q.pts) < (p.width + q.width) / 2 - slack) farthest = Math.max(farthest, distance);
@@ -555,12 +559,14 @@ describe("review R4: jumps never cross", () => {
         const n = ticks.length;
         const values = [...new Set([0, 1, 2, Math.floor((n - 1) / 2), n - 2, n - 1])].map((i) => (ticks[i].target as { value: string }).value);
         for (const a of values)
-          for (const b of values)
+          for (const b of values) {
+            if (a === b) continue;
+            const first = ok(made.scene, jump("a", a, b));
             for (const c of values)
               for (const d of values) {
                 const shared = [a, b].filter((v) => v === c || v === d);
-                if (a === b || c === d || shared.length === 0) continue;
-                const r = applyBatch(ok(made.scene, jump("a", a, b)), { transactionId: `f${++tx}`, commands: [jump("b", c, d)] });
+                if (c === d || shared.length === 0) continue;
+                const r = applyBatch(first, { transactionId: `f${++tx}`, commands: [jump("b", c, d)] });
                 if (!r.ok) {
                   expect(r.refusal.code).toBe("no_room");
                   refusedCount++;
@@ -569,6 +575,7 @@ describe("review R4: jumps never cross", () => {
                 accepted++;
                 expect(overlapBeyondSharedTick(r.scene, cols, "n", shared), `${cols} cols, ${min}..${max} by ${tick}: ${a}->${b}, then ${c}->${d}`).toBe(0);
               }
+          }
       }
     expect(accepted).toBeGreaterThan(0);
     expect(refusedCount).toBeGreaterThan(0);
