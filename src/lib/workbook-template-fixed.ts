@@ -4,6 +4,7 @@
 // bordered boxes. Every page prints its number and its QR code in the footer; each question box prints its number.
 // Its spaces are fixed in size, so content that does not fit overflows and fails the render.
 // Pure TypeScript: no Next.js, React, network, database or clock.
+import type { OperationKind } from "@/lib/question-package";
 import { mark, type DraftPage, type PageParts, type WorkbookDraft, type WorkbookTemplate } from "@/lib/workbook-render";
 
 /** Font files to embed (woff2): a sans-serif of weights 300 to 700 and a monospace of 400 to 500. Without them the page
@@ -57,10 +58,16 @@ function cover(page: DraftPage, parts: PageParts, book: WorkbookDraft): string {
     + footer(page, parts, book) + `</div>`;
 }
 
+/** A practice page's title and instruction, by the kind of its questions. */
+const HEADINGS: Record<OperationKind, { title: string; instruction: string }> = {
+  add: { title: "Adding big numbers", instruction: "Add. Show your work." },
+  subtract: { title: "Taking away big numbers", instruction: "Subtract. Show your work." },
+};
+const MIXED = { title: "Adding and taking away", instruction: "Solve. Show your work." };
+
 function practice(page: DraftPage, parts: PageParts, book: WorkbookDraft): string {
-  const kinds = new Set(page.questions.map((q) => q.package.operation.kind));
-  const title = kinds.size === 1 ? (kinds.has("add") ? "Adding big numbers" : "Taking away big numbers") : "Adding and taking away";
-  const instruction = kinds.size === 1 ? (kinds.has("add") ? "Add. Show your work." : "Subtract. Show your work.") : "Solve. Show your work.";
+  const kinds = [...new Set(page.questions.map((q) => q.package.operation.kind))];
+  const { title, instruction } = kinds.length === 1 ? HEADINGS[kinds[0]] : MIXED;
   const questions = page.questions.map((q) => {
     const [a, b] = q.package.operation.operands;
     const sign = q.package.operation.kind === "add" ? "+" : "−";

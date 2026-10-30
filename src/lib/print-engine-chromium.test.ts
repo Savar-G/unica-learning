@@ -64,6 +64,7 @@ describe.skipIf(!chromium)("renderWorkbook with Chromium", () => {
       status: "failed",
       problems: [
         { page: 2, question: null, reason: "the content does not fit the page" },
+        { page: 2, question: null, reason: "the page number is not printed" },
         { page: 2, question: null, reason: "the QR code is smaller than 0.6 inches or not inside the page" },
         { page: 2, question: 5, reason: "question 5 is not inside the page" },
         { page: 2, question: 6, reason: "question 6 is not inside the page" },

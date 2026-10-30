@@ -1,7 +1,7 @@
 // The print engine (#309): headless Chromium through puppeteer-core, used only to lay out and print workbook pages
 // (the Aside rule in AGENTS.md covers browser checks, not this). One browser per print job: it loads the document with
-// print styles, waits for its fonts, measures every [data-measure] element against its sheet, prints the PDF and takes
-// one PNG of each sheet at the job's scale.
+// print styles, waits for its fonts, measures every [data-measure] element against its sheet, prints the PDF (and
+// counts its pages) and takes one PNG of each sheet at the job's scale.
 //
 // Which Chromium: CHROMIUM_PATH when set; on Linux (a Vercel function) the serverless build @sparticuz/chromium; on a
 // Mac, the installed Google Chrome or Chromium. Server only: no Next.js.
@@ -48,6 +48,9 @@ function pngSize(png: Uint8Array): { width: number; height: number } {
   return { width: view.getUint32(16), height: view.getUint32(20) };
 }
 
+/** The page count of a PDF Chromium printed: its page objects, which Chromium writes uncompressed. */
+const pdfPageCount = (pdf: Uint8Array) => new TextDecoder("latin1").decode(pdf).match(/\/Type\s*\/Page\b/g)?.length ?? 0;
+
 export function chromiumPrintEngine(): PrintEngine {
   return {
     async print(job) {
@@ -71,7 +74,7 @@ export function chromiumPrintEngine(): PrintEngine {
           images.push({ png, ...pngSize(png) });
         }
         const pdf = await page.pdf({ preferCSSPageSize: true, printBackground: true });
-        return { pdf, images, measured };
+        return { pdf, pdfPages: pdfPageCount(pdf), images, measured };
       } finally {
         await browser.close();
       }

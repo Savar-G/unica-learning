@@ -94,15 +94,30 @@ describe("renderWorkbook", () => {
         return html;
       },
     };
-    const engine = fakePrintEngine({ rects: { "3 qr": { x: 700, y: 980, width: 40, height: 40 } } });
+    const engine = fakePrintEngine({ rects: { "3 qr": { x: 700, y: 980, width: 40, height: 40 }, "3 page-number": { x: 700, y: 1050, width: 30, height: 30 } } });
     expect(await render(engine, broken)).toEqual({
       status: "failed",
       problems: [
         { page: 1, question: null, reason: "the page number is not printed" },
         { page: 2, question: null, reason: "the QR code is not printed" },
+        { page: 3, question: null, reason: "the page number is not printed" },
         { page: 3, question: null, reason: "the QR code is smaller than 0.6 inches or not inside the page" },
       ],
     });
+  });
+
+  it("fails a page whose template marks the same part twice, so no mark goes unchecked", async () => {
+    const template = fixedTemplate();
+    const twice = { ...template, page: (...a: Parameters<typeof template.page>) => template.page(...a)!.replace(`<div class="pill">`, `<div class="pill" data-measure="slot-title">`) };
+    const result = await render(fakePrintEngine(), twice);
+    expect(result).toEqual({
+      status: "failed",
+      problems: [2, 3].map((page) => ({ page, question: null, reason: "the template marks slot-title more than once" })),
+    });
+  });
+
+  it("refuses a print whose PDF does not have one page per page", async () => {
+    await expect(render(fakePrintEngine({ pdfPages: 4 }))).rejects.toThrow("print engine: the PDF has 4 pages for 3");
   });
 
   it("fails a page whose type the template has no layout for, before printing", async () => {
@@ -174,6 +189,15 @@ describe.each(fileStores)("saveRenderedWorkbook with the %s file store", (_name,
     await saveRenderedWorkbook(first, { files: makeFiles(), store: workbooks });
     expect(await saveRenderedWorkbook(first, { files, store: workbooks })).toEqual({ status: "refused", reason: "the workbook id is already used" });
     expect(files.paths()).toEqual([]);
+  });
+
+  it("keeps the files when the write answer is lost, since the workbook may be stored", async () => {
+    const files = makeFiles();
+    const workbooks = store();
+    const lost = { ...workbooks, write: async (w: Parameters<typeof workbooks.write>[0]) => { await workbooks.write(w); throw new Error("workbook write: fetch failed"); } };
+    await expect(saveRenderedWorkbook(await rendered(), { files, store: lost })).rejects.toThrow("fetch failed");
+    expect(files.paths()).toEqual(allPaths);
+    expect((await workbooks.workbook(WORKBOOK))?.pdfPath).toBe(`${PARENT}/${WORKBOOK}/workbook.pdf`);
   });
 
   it("removes the files it stored when an upload fails, and stores no workbook", async () => {

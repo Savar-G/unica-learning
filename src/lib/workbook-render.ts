@@ -90,6 +90,8 @@ export interface MeasuredElement {
 
 export interface PrintOutput {
   pdf: Uint8Array;
+  /** The PDF's page count. */
+  pdfPages: number;
   /** One PNG per sheet, in order. */
   images: { png: Uint8Array; width: number; height: number }[];
   /** Every `[data-measure]` element; each sheet itself is measured with the name "sheet". */
@@ -101,8 +103,6 @@ export interface PrintEngine {
 }
 
 // ---------- Result ----------
-
-export type RenderedFile = WorkbookFile;
 
 /** Why a page failed: the page and, when it is one question, the question. */
 export interface RenderProblem {
@@ -117,7 +117,7 @@ export type RenderResult =
     /** The workbook to store, with the PDF, the page images and each question's measured box. */
     workbook: WorkbookInput;
     /** The PDF first, then one image per page; store them before the workbook. */
-    files: RenderedFile[];
+    files: WorkbookFile[];
     pages: { number: number; qrUrl: string }[];
   }
   | { status: "failed"; problems: RenderProblem[] };
@@ -180,22 +180,28 @@ export async function renderWorkbook(o: { draft: WorkbookDraft; parentId: string
 
   const out = await o.engine.print({ html: documentHtml(template.css, sheets), sheets: sheets.length, page: PRINT_PAGE, scale: IMAGE_SCALE });
   if (out.images.length !== draft.pages.length) throw new Error(`print engine: ${out.images.length} images for ${draft.pages.length} pages`);
+  if (out.pdfPages !== draft.pages.length) throw new Error(`print engine: the PDF has ${out.pdfPages} pages for ${draft.pages.length}`);
 
   const folder = `${o.parentId}/${draft.id}`;
   const pdfPath = `${folder}/${PDF_NAME}`;
-  const files: RenderedFile[] = [{ path: pdfPath, contentType: "application/pdf", bytes: out.pdf }];
+  const files: WorkbookFile[] = [{ path: pdfPath, contentType: "application/pdf", bytes: out.pdf }];
   const pages: PageInput[] = [];
   draft.pages.forEach((page, i) => {
     const image = out.images[i];
     const path = `${folder}/${pageImageName(page.number)}`;
     files.push({ path, contentType: "image/png", bytes: image.png });
-    const measured = new Map(out.measured.filter((m) => m.sheet === i).map((m) => [m.name, m]));
     const fail = (question: number | null, reason: string) => problems.push({ page: page.number, question, reason });
+    const measured = new Map<string, MeasuredElement>();
+    for (const m of out.measured.filter((m) => m.sheet === i)) {
+      if (measured.has(m.name)) fail(null, `the template marks ${m.name} more than once`);
+      measured.set(m.name, m);
+    }
     if (overflows(measured.get("sheet"))) fail(null, "the content does not fit the page");
     for (const m of measured.values()) {
       if (m.name.startsWith("slot-") && overflows(m)) fail(null, `the ${m.name.slice(5)} does not fit its space`);
     }
-    if (measured.get("page-number")?.text !== String(page.number)) fail(null, "the page number is not printed");
+    const number = measured.get("page-number");
+    if (number?.text !== String(page.number) || !insidePage(number)) fail(null, "the page number is not printed");
     const qr = measured.get("qr");
     if (!qr) fail(null, "the QR code is not printed");
     else if (qr.width < QR_MIN || qr.height < QR_MIN || !insidePage(qr)) fail(null, "the QR code is smaller than 0.6 inches or not inside the page");
@@ -223,7 +229,8 @@ export async function renderWorkbook(o: { draft: WorkbookDraft; parentId: string
 /**
  * Stores a rendered workbook: every file in the workbook bucket, then the workbook through the store. When an upload
  * fails or the store refuses the workbook, it removes the files it stored, so no file is left that no workbook names.
- * An unknown write answer (a lost response) throws and also removes them; render and save again in that case.
+ * When the write's answer is unknown (it throws, as on a lost response), the workbook may be stored, so the files stay:
+ * read the workbook to know. Files no workbook names stay in the family's folder and go with the family.
  */
 export async function saveRenderedWorkbook(
   rendered: Extract<RenderResult, { status: "rendered" }>, o: { files: WorkbookFiles; store: WorkbookStore },
@@ -234,11 +241,11 @@ export async function saveRenderedWorkbook(
       await o.files.put(file);
       stored.push(file.path);
     }
-    const result = await o.store.write(rendered.workbook);
-    if (result.status === "refused") await o.files.remove(stored);
-    return result;
   } catch (e) {
     await o.files.remove(stored);
     throw e;
   }
+  const result = await o.store.write(rendered.workbook);
+  if (result.status === "refused") await o.files.remove(stored);
+  return result;
 }

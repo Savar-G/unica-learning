@@ -5,11 +5,11 @@ import type { MeasuredElement, PrintEngine, PrintJob } from "@/lib/workbook-rend
 // every marked element a rect: a sheet fills its page; any other element is at (48, 48), 200 by 100 CSS pixels, unless
 // the test gives a rect. An element fits its space unless the test names it as overflowing. Elements are named
 // "<sheet from 1> <data-measure>", so "2 question-3" is question 3 on the second sheet. It records the jobs it prints.
-// The PDF and images are placeholder bytes of the right count and size.
+// The PDF and images are placeholder bytes of the right count and size; `pdfPages` gives the PDF another page count.
 
 type Rect = Pick<MeasuredElement, "x" | "y" | "width" | "height">;
 
-export function fakePrintEngine(o: { rects?: Record<string, Rect>; overflow?: string[] } = {}): PrintEngine & { jobs: PrintJob[] } {
+export function fakePrintEngine(o: { rects?: Record<string, Rect>; overflow?: string[]; pdfPages?: number } = {}): PrintEngine & { jobs: PrintJob[] } {
   const jobs: PrintJob[] = [];
   return {
     jobs,
@@ -34,6 +34,7 @@ export function fakePrintEngine(o: { rects?: Record<string, Rect>; overflow?: st
       const height = Math.round(job.page.height * job.scale);
       return {
         pdf: new TextEncoder().encode("%PDF-fake"),
+        pdfPages: o.pdfPages ?? sheets.length,
         images: sheets.map((_, i) => ({ png: new TextEncoder().encode(`png-${i + 1}`), width, height })),
         measured,
       };

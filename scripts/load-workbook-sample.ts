@@ -6,7 +6,8 @@
 //
 // --rerender <workbook id> renders a stored workbook of a test family again, keeping its id, page tokens, content and
 // status: it renders first, then deletes the old rows and files and writes the workbook again through the store (the
-// store has no update yet), then puts back its status and dates. If the write fails after the delete, run it again.
+// store has no update yet), then puts back its status and dates. It refuses a workbook with learning events, which the
+// delete would remove with it. If the write fails after the delete, the workbook is gone: load a new sample.
 //
 // Usage: node scripts/load-workbook-sample.mjs --child <child id> [--number <n>]
 //        node scripts/load-workbook-sample.mjs --rerender <workbook id>
@@ -94,6 +95,9 @@ const renderMs = Math.round(performance.now() - started);
 if (rendered.status !== "rendered") throw new Error(`render failed: ${JSON.stringify(rendered.problems)}`);
 
 if (old) {
+  const events = await db.from("learning_events").select("id", { count: "exact", head: true }).eq("workbook_id", old.id);
+  if (events.error) throw new Error(`learning events count: ${events.error.message}`);
+  if (events.count) throw new Error(`the workbook has ${events.count} learning events; a re-render would delete them`);
   const { data: row, error } = await db.from("workbooks").select("status, created_at, approved_at, printed_at, shipped_at").eq("id", old.id).single();
   if (error) throw new Error(`workbook load: ${error.message}`);
   const oldFiles = [old.pdfPath, ...old.pages.map((p) => p.image?.path ?? null)].filter((p): p is string => p !== null);

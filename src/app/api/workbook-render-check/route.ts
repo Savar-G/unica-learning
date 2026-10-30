@@ -8,7 +8,7 @@ import { fixedTemplateFonts } from "@/lib/workbook-template-fonts";
 // The print engine check (#309): renders the sample workbook (src/lib/workbook-sample.ts) with the fixed test template
 // in this function's Chromium and answers with the time and the file sizes. It stores nothing and reads no family's
 // data: the sample's ids and tokens are fixed placeholders. It shows that rendering works within the function's limits
-// (docs/workbook-rendering.md). Call it with "Authorization: Bearer <CRON_SECRET>". ?pages=<4 to 60> renders a longer
+// (docs/workbook-rendering.md). Call it with "Authorization: Bearer <CRON_SECRET>". ?pages=<3 to 60> renders a longer
 // book: the cover, then the sample's two practice pages in turn.
 
 export const maxDuration = 60;
