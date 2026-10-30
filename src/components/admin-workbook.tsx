@@ -5,7 +5,8 @@ import Link from "next/link";
 import type { ReactNode } from "react";
 import type { WorkbookDetail } from "@/lib/admin-store";
 import { when } from "@/lib/admin-view";
-import { stepText, type AnswerValue, type QuestionPackage } from "@/lib/question-package";
+import { stepText, type QuestionPackage } from "@/lib/question-package";
+import { valueText as value } from "@/lib/question-package-math";
 import type { WorkbookPage, WorkbookQuestion, WorkbookStatus } from "@/lib/workbook-content";
 import { AdminFrame, Chip, Table, type Tone } from "@/components/admin";
 import { RecordFacts, childPath } from "@/components/admin-records";
@@ -16,14 +17,6 @@ const STATUS: Record<WorkbookStatus, [string, Tone]> = {
 };
 
 export const WorkbookStatusChip = ({ status }: { status: WorkbookStatus }) => <Chip tone={STATUS[status][1]}>{STATUS[status][0]}</Chip>;
-
-function value(v: AnswerValue): string {
-  switch (v.type) {
-    case "number": return String(v.value);
-    case "fraction": return `${v.numerator}/${v.denominator}`;
-    default: return v.value;
-  }
-}
 
 const pageTitle = (p: WorkbookPage) => [`Page ${p.number}`, p.dayLabel, p.type].filter(Boolean).join(" · ");
 

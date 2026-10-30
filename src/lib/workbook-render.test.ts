@@ -120,6 +120,15 @@ describe("renderWorkbook", () => {
     await expect(render(fakePrintEngine({ pdfPages: 4 }))).rejects.toThrow("print engine: the PDF has 4 pages for 3");
   });
 
+  it("prints a question the fixed template cannot set in columns as its text", async () => {
+    const engine = fakePrintEngine();
+    const book = draft();
+    const q = book.pages[2].questions[0];
+    q.package = { ...q.package, text: "12 × 3 = ?", operation: { kind: "multiply", operands: [12, 3] } };
+    expect((await renderWorkbook({ draft: book, parentId: PARENT, template: fixedTemplate(), engine })).status).toBe("rendered");
+    expect(engine.jobs[0].html).toContain(`<p class="text">12 × 3 = ?</p>`);
+  });
+
   it("fails a page whose type the template has no layout for, before printing", async () => {
     const engine = fakePrintEngine();
     const book = draft();

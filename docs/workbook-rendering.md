@@ -28,6 +28,12 @@ files it stored.
 The template today is the fixed test template (`src/lib/workbook-template-fixed.ts`: cover and practice pages, Geist
 and Geist Mono embedded). The real templates come from the workbook DESIGN.md (#305, #310).
 
+Two stored pages of the sample (workbook 2), at full size. On the left, the red boxes are the stored question boxes
+drawn over the stored image:
+
+![Page 2 with its stored question boxes](workbook-rendering/sample-page-2-boxes.png)
+![Page 3](workbook-rendering/sample-page-3.png)
+
 ## The print engine
 
 `src/lib/print-engine-chromium.ts` drives headless Chromium with `puppeteer-core`. It is a print engine, not a browser
