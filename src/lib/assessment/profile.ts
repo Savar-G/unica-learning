@@ -247,7 +247,7 @@ const STANDARDS = new Map(BC_SKILL_MAP.standards.map((s) => [s.code, s]));
 const standardOf = (a: ProfileAnswer) => TEMPLATES.get(a.question.templateId)?.standard;
 
 /** Curriculum order: by grade, then by the standard's number ("4.9" before "4.10"). */
-const curriculumOrder = (a: Pick<ProfileStandard, "code" | "grade">, b: Pick<ProfileStandard, "code" | "grade">) =>
+export const curriculumOrder = (a: Pick<ProfileStandard, "code" | "grade">, b: Pick<ProfileStandard, "code" | "grade">) =>
   a.grade - b.grade || Number(a.code.match(/\d+$/)?.[0] ?? 0) - Number(b.code.match(/\d+$/)?.[0] ?? 0) || a.code.localeCompare(b.code);
 
 const SEVERITY: Record<StrandStatus, number> = { "needs-attention": 0, developing: 1, secure: 2 };

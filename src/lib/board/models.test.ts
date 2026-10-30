@@ -625,3 +625,36 @@ describe("every model draws inside the space it takes (#353 N2)", () => {
       expect(strokesInsideSpace(spec, LETTERS)).toBe(true);
     });
 });
+
+describe("a lesson with division, columns and models on one board", () => {
+  it("618 ÷ 3 beside 618 in blocks and 6 as 3 rows of 2: common commands work across all of them", () => {
+    const cell = (objectId: string, rowId: string, column: string): Target => ({ objectId, part: "cell", rowId, column } as Target);
+    let scene = ok(
+      createScene(),
+      { op: "division", id: "div", dividend: "618", divisor: "3", place: { region: "main" } },
+      model("blocks", { kind: "base_ten", hundreds: 6, tens: 1, ones: 8 }, { rightOf: "div" }),
+      model("arr", { kind: "array", rows: 3, columns: 2 }, { below: "div" }),
+    );
+    expect(info(scene, whole("blocks")).value).toBe("618");
+    expect(info(scene, whole("arr")).value).toBe("6");
+    scene = ok(
+      scene,
+      { op: "mark", id: "six", target: piece("blocks", "hundreds"), style: "circle" },
+      { op: "arrow", id: "share", from: piece("arr", "column-1"), to: cell("div", "quotient", "hundreds") },
+      { op: "put", target: cell("div", "quotient", "hundreds"), value: "2" },
+    );
+    const step = `m${tx}`;
+    expect(info(scene, cell("div", "quotient", "hundreds")).value).toBe("2");
+    expect(boardPaths(scene).some((p) => p.objectId === "share" && p.kind === "arrow")).toBe(true);
+    scene = ok(scene, { op: "undo", transactionId: step });
+    expect(info(scene, cell("div", "quotient", "hundreds")).value).toBeNull();
+    expect(boardPaths(scene).some((p) => p.objectId === "six" || p.objectId === "share")).toBe(false);
+    scene = ok(scene, { op: "columns", id: "sum", operation: "add", operands: [{ id: "top", value: "600" }, { id: "bottom", value: "18" }], place: { below: "blocks" } });
+    scene = ok(scene, { op: "remove", objectId: "arr" });
+    expect(has(scene, whole("arr"))).toBe(false);
+    for (const id of ["div", "blocks", "sum"]) expect(has(scene, whole(id))).toBe(true);
+    // No two objects draw over each other.
+    const boxes = ["div", "blocks", "sum"].map((id) => box(boardPaths(scene).filter((p) => p.objectId === id)));
+    boxes.forEach((a, i) => boxes.slice(i + 1).forEach((b) => expect(a.right < b.left || b.right < a.left || a.bottom < b.top || b.bottom < a.top).toBe(true)));
+  });
+});
