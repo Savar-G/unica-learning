@@ -1,14 +1,16 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { getChild, requireAdmin } from "@/lib/admin-store";
-import { adminParentPath, when } from "@/lib/admin-view";
+import { getChild, getChildWorkbooks, requireAdmin } from "@/lib/admin-store";
+import { adminParentPath, adminWorkbookPath, when } from "@/lib/admin-view";
 import { answerFacts, bookMix, fromRow, interestLabel, LEARNING_STYLES } from "@/lib/learning-style";
-import { AdminFrame, TestsTable, gradeAndPlace } from "@/components/admin";
+import { AdminFrame, Table, TestsTable, gradeAndPlace } from "@/components/admin";
 import { RecordFacts } from "@/components/admin-records";
+import { WorkbookStatusChip } from "@/components/admin-workbook";
 
 export default async function ChildPage({ params }: PageProps<"/admin/children/[id]">) {
   const admin = await requireAdmin();
-  const record = await getChild(admin, (await params).id);
+  const id = (await params).id;
+  const [record, workbooks] = await Promise.all([getChild(admin, id), getChildWorkbooks(admin, id)]);
   if (!record) notFound();
   const { child: c, family } = record;
   // #126: the parent's answers and the book mix they give. A child with no answer gets the default mix. #195 (D-107):
@@ -26,5 +28,13 @@ export default async function ChildPage({ params }: PageProps<"/admin/children/[
       ["Story problem settings", mix.settings.length ? mix.settings.map(interestLabel).join(", ") : "A mix of everyday settings"],
     ]} />
     <h2>Tests and reports</h2><TestsTable tests={family.tests} family />
+    {/* #299: each workbook as data, newest first. */}
+    <h2>Workbooks</h2>
+    <Table label="Workbooks" head={["Workbook", "Levels", "Status", "Made (Pacific)"]} empty="No workbooks yet.">
+      {workbooks.map((w) => <tr key={w.id}>
+        <td><Link href={adminWorkbookPath(w.id)}>Workbook {w.number}</Link></td><td>{w.levels.map((l) => `U${l}`).join(", ")}</td>
+        <td><WorkbookStatusChip status={w.status} /></td><td>{when(w.createdAt)}</td>
+      </tr>)}
+    </Table>
   </AdminFrame>;
 }

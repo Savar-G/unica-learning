@@ -167,3 +167,13 @@ Open defect: #138. A family with mixed-case sibling folders in Storage stops at 
 ## Parent PIN (#300)
 
 `public.parent_pins` holds one row per parent (the PIN's salted hash and the attempt count). Its `parent_id` references `public.parents` with `on delete cascade`, so the existing family deletion removes the row when it deletes the parent's Auth user. The worker needs no code change and no table list. Checked on the live database (29 October 2026): the foreign key delete rule is cascade; the table has the family write fence trigger; no role except the secret key can read or write the table or call `claim_pin_attempt`. Row-level security is on with no policy, so a signed-in parent reads no row, theirs or another family's.
+
+## Workbooks (#299)
+
+`public.workbooks`, `public.workbook_pages` and `public.workbook_questions` (migration `add_workbooks`) hold each workbook, its pages and its questions. Each row carries the family's `parent_id`. The workbook references the child and the parent with `on delete cascade`, and the pages and questions reference their workbook and page the same way, so the existing family deletion removes every row when it deletes the parent's Auth user. The three tables have the family write fence trigger.
+
+The page images and workbook PDFs are in the private Storage bucket `workbook-pages`, at `<parent id>/<workbook id>/<name>`. The worker empties the family's folder in both family buckets (`shown-work` and `workbook-pages`, `FAMILY_BUCKETS` in `src/lib/assessment/deletion.ts`) before it deletes Auth. `complete_family_deletion` refuses to finish while either folder has a file, and the Storage fence trigger refuses new files in either bucket for a family that is being deleted. The retention worker runs the same deletion, so it needs no other change.
+
+Checked on the live database (29 October 2026), in transactions that were rolled back: with a deletion request, a new file in `workbook-pages` failed with `family_unavailable`; deleting the test family's Auth user left 0 workbook, page and question rows; `complete_family_deletion` answered false while the family's 3 page images were still in the bucket.
+
+Until this code is on `main`, the worker on `main` does not empty `workbook-pages`: a deletion of the one test family that has the sample workbook stops before it completes and keeps its request for a later run.

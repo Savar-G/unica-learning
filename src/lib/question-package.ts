@@ -14,6 +14,12 @@
 // Pure TypeScript: no Next.js, React, network, database or clock.
 import { BC_SKILL_MAP } from "@/lib/assessment";
 
+/**
+ * The version of the QuestionPackage shape. The workbook store keeps it beside each stored package (#299), so a reader
+ * can tell a package of an older shape from a broken one. Raise it when the shape changes.
+ */
+export const QUESTION_PACKAGE_VERSION = 1;
+
 /** A workbook question: the page number runs through the whole workbook; the question number restarts on each page. */
 export interface WorkbookQuestionRef {
   source: "workbook";

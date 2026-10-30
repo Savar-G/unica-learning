@@ -73,6 +73,7 @@ describe("the copy without names before a deletion", () => {
     const calls: string[] = [];
     const saved: Record<string, unknown>[] = [];
     let copied = false;
+    let workbookRemoved = false;
     const db = createClient("https://database.example.invalid", "synthetic-service-key", {
       auth: { persistSession: false, autoRefreshToken: false },
       global: { fetch: async (input, init) => {
@@ -96,6 +97,14 @@ describe("the copy without names before a deletion", () => {
             return json(true);
           case "confirm_family_copies": return json(copied);
           case "POST /storage/v1/object/list/shown-work": return json([]);
+          // #299: the workbook pages and PDFs, one page image left in a workbook folder.
+          case "POST /storage/v1/object/list/workbook-pages":
+            return json(args.prefix === parent && !workbookRemoved ? [{ name: "book", id: null }]
+              : args.prefix === `${parent}/book` && !workbookRemoved ? [{ name: "page-1.png", id: "file-1" }] : []);
+          case "DELETE /storage/v1/object/workbook-pages":
+            expect(args.prefixes).toEqual([`${parent}/book/page-1.png`]);
+            workbookRemoved = true;
+            return json([{ name: `${parent}/book/page-1.png` }]);
           case `DELETE /auth/v1/admin/users/${parent}`: return json({});
           case "complete_family_deletion": return json(true);
           case "release_family_deletion": return json(null);
@@ -108,12 +117,15 @@ describe("the copy without names before a deletion", () => {
 
   it("saves each test's copy and has the database confirm it before Storage and Auth", async () => {
     const f = family(false);
-    expect(await runFamilyDeletion(f.db, parent, f.db)).toEqual({ state: "deleted", images: 0, copies: 1 });
+    expect(await runFamilyDeletion(f.db, parent, f.db)).toEqual({ state: "deleted", images: 1, copies: 1 });
     const first = (step: string) => f.calls.findIndex((c) => c.includes(step));
     expect(first("save_family_test_copy")).toBeGreaterThan(first("family_copy_sources"));
     expect(first("confirm_family_copies")).toBeGreaterThan(first("save_family_test_copy"));
     expect(first("/storage/")).toBeGreaterThan(first("confirm_family_copies"));
     expect(first("/auth/v1/admin/users/")).toBeGreaterThan(first("/storage/"));
+    // #299: the family's workbook files go too, before Auth.
+    expect(first("DELETE /storage/v1/object/workbook-pages")).toBeGreaterThan(first("list/workbook-pages"));
+    expect(first("/auth/v1/admin/users/")).toBeGreaterThan(first("DELETE /storage/v1/object/workbook-pages"));
     // The copy holds no id of the family or of the test.
     expect(JSON.stringify(f.saved)).not.toContain(parent);
     expect(JSON.stringify(f.saved)).not.toContain(test.id);

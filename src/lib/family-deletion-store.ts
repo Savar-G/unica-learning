@@ -11,7 +11,6 @@ import {
 } from "@/lib/assessment";
 import { readBookingCustomers, readCustomerPayments } from "@/lib/retention-stripe";
 import { stripe } from "@/lib/stripe";
-import { WORK_BUCKET } from "@/lib/work-store";
 
 /** Missing migration permits the existing card path, but no other failure does. Deletion itself never falls back. */
 export async function beginCardOperation(db: SupabaseClient<Database>, parent: string, token: string): Promise<boolean> {
@@ -249,15 +248,15 @@ function deletionStore(db: SupabaseClient<Database>, parent: string, token: stri
       const renewed: boolean = await rpc(db, "renew_family_deletion", args);
       if (!renewed) throw new Error("Deletion lease lost");
     },
-    async listImages(prefix, offset, limit) {
+    async listImages(prefix, offset, limit, bucket) {
       timeRemaining(deadline, execution);
-      const { data, error } = await db.storage.from(WORK_BUCKET).list(prefix, { limit, offset, sortBy: { column: "name", order: "asc" } });
+      const { data, error } = await db.storage.from(bucket).list(prefix, { limit, offset, sortBy: { column: "name", order: "asc" } });
       if (error || !data) throw new Error("Storage listing failed");
       return data.map((r) => ({ name: r.name, folder: r.id === null }));
     },
-    async removeImages(paths) {
+    async removeImages(paths, bucket) {
       timeRemaining(deadline, execution);
-      const { error } = await db.storage.from(WORK_BUCKET).remove(paths);
+      const { error } = await db.storage.from(bucket).remove(paths);
       if (error) throw new Error("Storage removal failed");
     },
     async removeAuth() {
