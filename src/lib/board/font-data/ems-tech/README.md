@@ -30,9 +30,9 @@ The original font's licence (https://github.com/google/fonts/blob/main/ofl/archi
 
 ## What we changed
 
-`scripts/board-fonts.mjs` copies the path data of 79 characters (digits, + - × ÷ = and punctuation, a-z, A-Z) without
+`scripts/board-fonts.mjs` copies the path data of 78 characters (digits, + × ÷ = and punctuation, a-z, A-Z) without
 change. `src/lib/board/fonts.ts` then scales each glyph into the board's cell, centres it, keeps it inside the cell and
-draws each stroke from its top end. The board draws its own minus sign and check mark instead of the font's.
+puts its strokes in pen order (the top stroke first, each from its top end, or its left end when it runs across). The board draws its own minus sign and check mark instead of the font's.
 
 ## Licence check (2026-10-29)
 

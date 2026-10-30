@@ -22,6 +22,8 @@ const INK: Record<Ink, string> = {
  */
 export function MayaBoard({ steps, view, label, instant = false }: { steps: readonly PlayStep[]; view: string; label: string; instant?: boolean }) {
   const t = useMemo(() => timeline(steps), [steps]);
+  // A stroke's shape never changes: its path data is made once, and each frame only moves the dash.
+  const shapes = useMemo(() => new Map(steps.flatMap((s) => s.drawn.map((p) => [p.id, pathData(p.pts)] as const))), [steps]);
   const [elapsed, setElapsed] = useState(0);
   useEffect(() => {
     if (instant) return;
@@ -43,7 +45,7 @@ export function MayaBoard({ steps, view, label, instant = false }: { steps: read
         return (
           <path
             key={path.id}
-            d={pathData(path.pts)}
+            d={shapes.get(path.id)}
             fill="none"
             stroke={INK[path.ink]}
             strokeOpacity={path.opacity}

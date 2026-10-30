@@ -10,9 +10,9 @@ if (!src || !out || !exportName || !fontName || !sourceNote) {
   process.exit(1);
 }
 
-// Digits, school math signs, letters and the punctuation a short note needs. The minus (U+2212) and the check mark are
+// Digits, school math signs, letters and the punctuation a short note needs. The minus (U+2212 and the hyphen) and the check mark are
 // the board's own paths, never the font's.
-const CHARS = [..."0123456789+-×÷=.,()?!%:'/<>", ..."abcdefghijklmnopqrstuvwxyz", ..."ABCDEFGHIJKLMNOPQRSTUVWXYZ"];
+const CHARS = [..."0123456789+×÷=.,()?!%:'/<>", ..."abcdefghijklmnopqrstuvwxyz", ..."ABCDEFGHIJKLMNOPQRSTUVWXYZ"];
 
 const entities = { amp: "&", lt: "<", gt: ">", quot: '"', apos: "'" };
 const unescape = (s) =>

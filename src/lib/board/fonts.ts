@@ -119,30 +119,45 @@ function fit(strokes: Point[][]): Point[][] {
 }
 
 /**
+ * The pen order the board writes in, whatever order the font file has: the top stroke first (then the leftmost), each
+ * stroke from its top end, or from its left end when it runs more across than down. A closed stroke (an 0) keeps its
+ * start.
+ */
+function penOrder(strokes: Point[][]): Point[][] {
+  const oriented = strokes.map((s) => {
+    const [dx, dy] = [s.at(-1)![0] - s[0][0], s.at(-1)![1] - s[0][1]];
+    const backwards = Math.abs(dx) > Math.abs(dy) ? dx < 0 : dy < 0;
+    return backwards ? [...s].reverse() : s;
+  });
+  const top = (s: Point[]) => Math.min(...s.map(([, y]) => y));
+  const left = (s: Point[]) => Math.min(...s.map(([x]) => x));
+  return oriented.sort((a, b) => top(a) - top(b) || left(a) - left(b));
+}
+
+const DIGITS = [..."0123456789"];
+
+/**
  * A glyph set from an SVG font's path data. One scale for the whole font, so digits fill the box from 0.1 to 0.9 and
- * letters keep their sizes; each glyph is centred on its ink and kept inside the box (`fit`). The board's own minus and
- * check mark replace the font's.
+ * letters keep their sizes; each glyph is centred on its ink, kept inside the box (`fit`) and put in pen order
+ * (`penOrder`). The board's own minus and check mark replace the font's. Glyphs other than digits are read on first use.
  */
 export function svgFontGlyphs(data: SvgFontData): GlyphSet {
-  const parsed = new Map(Object.entries(data.glyphs).map(([char, d]) => [char, subpaths(d)]));
-  const digitTop = Math.max(...[..."0123456789"].flatMap((c) => parsed.get(c) ?? []).flat().map(([, y]) => y));
+  const digitTop = Math.max(...DIGITS.flatMap((c) => (c in data.glyphs ? subpaths(data.glyphs[c]) : [])).flat().map(([, y]) => y));
   const scale = (BASELINE - TOP) / digitTop;
-  const cache = new Map<string, Point[][]>();
+  const cache = new Map<string, readonly (readonly Point[])[]>();
+  const build = (d: string) =>
+    Object.freeze(
+      penOrder(fit(subpaths(d).map((s) => s.map(([x, y]): Point => [x * scale, BASELINE - y * scale])))).map((s) =>
+        Object.freeze(s.map(([x, y]) => Object.freeze([r3(x), r3(y)]) as Point)),
+      ),
+    );
   return {
     name: data.name,
     strokes(char) {
-      if (char in OWNED_GLYPHS) return OWNED_GLYPHS[char];
-      const raw = parsed.get(char);
-      if (!raw) return char === " " ? [] : null;
+      if (Object.hasOwn(OWNED_GLYPHS, char)) return OWNED_GLYPHS[char];
+      if (!Object.hasOwn(data.glyphs, char)) return char === " " ? [] : null;
       let strokes = cache.get(char);
-      if (!strokes) {
-        strokes = fit(raw.map((s) => s.map(([x, y]): Point => [x * scale, BASELINE - y * scale]))).map((s) => {
-          const pts = s.map(([x, y]): Point => [r3(x), r3(y)]);
-          // Written from the top: a stroke whose start is below its end is drawn the other way.
-          return pts[0][1] > pts.at(-1)![1] ? pts.reverse() : pts;
-        });
-        cache.set(char, strokes);
-      }
+      if (!strokes) cache.set(char, (strokes = build(data.glyphs[char])));
       return strokes;
     },
   };
@@ -164,7 +179,7 @@ export const BOARD_FONTS: readonly BoardFont[] = [
   {
     id: "ems-tech",
     name: "EMS Tech",
-    glyphs: svgFontGlyphs(EMS_TECH_DATA),
+    glyphs: /*#__PURE__*/ svgFontGlyphs(EMS_TECH_DATA),
     licence: "SIL Open Font License 1.1",
     credit: "Sheldon B. Michaels and Windell H. Oskay (Evil Mad Scientist), from Architects Daughter by Kimberly Geswein",
     source: "https://gitlab.com/oskay/svg-fonts",
@@ -172,7 +187,7 @@ export const BOARD_FONTS: readonly BoardFont[] = [
   {
     id: "relief-singleline",
     name: "Relief SingleLine",
-    glyphs: svgFontGlyphs(RELIEF_SINGLELINE_DATA),
+    glyphs: /*#__PURE__*/ svgFontGlyphs(RELIEF_SINGLELINE_DATA),
     licence: "SIL Open Font License 1.1",
     credit: "The Relief SingleLine Project Authors (isdaT, Toulouse)",
     source: "https://github.com/isdat-type/Relief-SingleLine",

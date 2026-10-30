@@ -44,6 +44,20 @@ describe("a stroke font from SVG path data", () => {
     expect(stroke.length).toBeGreaterThan(8);
   });
 
+  it("draws a glyph's strokes top first, a stroke across from its left end, whatever order the font has", () => {
+    const font = svgFontGlyphs({ name: "test", glyphs: { "1": "M 0 0 L 0 800", "=": "M 400 340 L 0 300 M 0 500 L 400 520" } });
+    expect(font.strokes("=")).toEqual([
+      [
+        [0.3, 0.4],
+        [0.7, 0.38],
+      ],
+      [
+        [0.3, 0.6],
+        [0.7, 0.56],
+      ],
+    ]);
+  });
+
   it("refuses path data it cannot follow", () => {
     expect(() => svgFontGlyphs({ name: "test", glyphs: { "1": "M 0 0 A 5 5 0 0 1 10 10" } })).toThrow(/A/);
     expect(() => svgFontGlyphs({ name: "test", glyphs: { "1": "M 0 0 Z 5 5" } })).toThrow();
@@ -61,13 +75,25 @@ describe("the two fonts Savar chooses from: EMS Tech and Relief SingleLine", () 
 
   for (const font of BOARD_FONTS) {
     describe(font.name, () => {
-      it("draws every digit and school math sign inside its box, each stroke written from the top", () => {
-        for (const char of [...DIGITS, ..."+×÷=.()"]) {
+      it("draws every digit, school math sign, letter and punctuation mark inside its box", () => {
+        for (const char of [...DIGITS, ..."+×÷=.,()?!%:'/<>", ..."abcdefghijklmnopqrstuvwxyz", ..."ABCDEFGHIJKLMNOPQRSTUVWXYZ"]) {
           const strokes = font.glyphs.strokes(char);
           expect(strokes, char).not.toBeNull();
           expect(strokes!.length, char).toBeGreaterThan(0);
           expect(inUnitBox(strokes as [number, number][][]), char).toBe(true);
-          for (const s of strokes!) expect(s[0][1], char).toBeLessThanOrEqual(s.at(-1)![1]);
+        }
+      });
+
+      it("starts each stroke at its top end, or its left end when it runs across, and the top stroke first", () => {
+        for (const char of [...DIGITS, ..."+×÷="]) {
+          const strokes = font.glyphs.strokes(char)!;
+          for (const s of strokes) {
+            const [[x0, y0], [x1, y1]] = [s[0], s.at(-1)!];
+            if (Math.abs(x1 - x0) > Math.abs(y1 - y0)) expect(x0, char).toBeLessThanOrEqual(x1);
+            else expect(y0, char).toBeLessThanOrEqual(y1);
+          }
+          const tops = strokes.map((s) => Math.min(...s.map(([, y]) => y)));
+          expect(tops, char).toEqual([...tops].sort((a, b) => a - b));
         }
       });
 
