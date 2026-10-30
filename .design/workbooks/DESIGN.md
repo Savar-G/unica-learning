@@ -156,8 +156,8 @@ example sentence).
 and separated by 1 px `#D4D4DA` rules.
 
 **Challenge card**: `#F4F2F0`, 1.5 px `#2B2622`, radius 12, padding 16; the question at the top left, an answer box
-(88 by 40) at the top right, then a white work box filling the rest. Four cards in a 2 by 2 grid (each 336 by
-327, gap 16).
+(88 by 40) at the top right, then a white work box filling the rest. On the 8-page day: 1 or 2 full-width cards (688 wide, gap 16); on the
+6-page day: 2 cards side by side (336 wide). The samples' 2 by 2 grid of four is not used.
 
 **Math in the world**: an info row of cards (`#FFEDE5`, radius 8, label `#7A2E0E`: for example EDGING $4 per metre, SOIL,
 BUDGET), a "PLAN: WHAT WILL YOU FIND, AND IN WHAT ORDER?" work box, lettered parts a to d with answer boxes, a large
@@ -231,7 +231,7 @@ the Try this first card from U19. On Days 5 and 10 the Friday 5 replaces the Mix
 | 5 Word problems | "<Step> in stories"; "Read it. Work it out in the box. Write the answer." | 3 stories, each: number, story (up to 3 lines), optional picture (dots, blocks), work box, ANSWER box with unit word; one "How do you know?" or "Did you need to ...? How do you know?" with 2 writing lines. Story number in Geist Light 26; stories separated by full-width 1.5 px `#FF6A3D` rules; answer boxes 80 to 96 by 40 |
 | 6 Unit B | the Unit B topic; "Unit B: <topic>. <one-line rule>." | NEW IDEA or REMEMBER chip + "Unit B · new step" or "From yesterday"; reminder panel (figure + "What's going on"); PRACTICE chip; up to 8 items, "HARDER: TWO MORE EACH" rows last |
 | 7 Remember these + Mixed set | "Remember these?"; "Things you learned before, so they stay fresh." | 8 review items in 2 columns (answer boxes at the right of each column); MIXED SET chip + "Tick + or −, then write the answer."; 3 to 4 Mixed set items |
-| 8 Challenge | "Challenge"; "Four to stretch you." | CHALLENGE chip; 4 Challenge cards, 2 by 2 |
+| 8 Challenge | "Challenge"; "One to stretch you." or "Two to stretch you." | CHALLENGE chip; 1 or 2 Challenge cards (skeleton: 1 to 2 a day), full width and stacked, each with a large work box; spare room goes to spaced review. The samples' four cards in a 2 by 2 grid were sample-only |
 
 ### 7.2 Other page counts
 
@@ -255,8 +255,9 @@ the Try this first card from U19. On Days 5 and 10 the Friday 5 replaces the Mix
 - Bigger maths (Geist Mono 30 to 34 in facts) and fewer items: warm-up 8 facts in 2 columns plus one In your head item.
 - A "For the grown-up:" line under the New idea title ("Read the blue box aloud. Show both ways with a finger ...").
 - Pictures carry the stories: dot groups beside every word problem; ten-frames and number lines in practice.
-- The skeleton starts the Warm-up at U8 and the Mixed set at U10, but Ava's U5 sample has both; what fills page 1 at U4
-  to U7 and page 7 at U4 to U9 is open (CONTEXT.md, open question 1). Where a Mixed set is used, + and − only.
+- The skeleton starts the Warm-up at U8 and the Mixed set at U10 (the samples are for format only). Default until Savar
+  reviews the generated books: below U8, page 1 is a **Remember these?** picture review (review share; Fix it box from
+  workbook 2); below U10, page 7 is **Remember these?** plus one-step picture stories (no operation to tick).
 - U4 to U6 are parent-supported: icon instructions, the parent reads on request.
 
 ## 8. Rules the renderer and generator keep

@@ -276,20 +276,21 @@ practice 2, word problems, unit B, remember these + mixed set, challenge).
 | Cover parent line | Log (Oct 28): dropped | Skeleton: one sentence for the parent |
 | Plan page tick boxes | Samples: none | Skeleton: a tick box per day |
 | Writing line spacing | Notes and log: 34 px apart | Skeleton: at least 36 px below the prompt |
+| Challenge count | Samples: 4 cards on page 8 | Skeleton: 1 to 2 a day (Savar) |
 | Mixed set wording | Log: "Operation:" left, "Answer" right | Skeleton and samples: "1 Tick the operation", "2 Write the answer" |
 | "Mum" | Samples | "Mom" |
 
 ## 10. Open questions
 
-1. **Early days (Cedric):** the skeleton starts the warm-up at U8 and the Mixed set at U10, but Ava's U5 sample has
-   both. What fills page 1 at U4 to U7 and page 7 at U4 to U9 (more picture stories, a second Remember these)?
-2. **Challenge (Cedric):** the skeleton says 1 to 2 challenge problems a day; the samples give page 8 four Challenge
-   cards. Which one?
-3. **Parent-led days (U1 to U3, Cedric):** no sample shows one. The skeleton's rules: icon instructions plus a short
+1. **Early days (default set, Savar to review in the generated books):** the skeleton starts the warm-up at U8 and the
+   Mixed set at U10. Below U8, page 1 is a "Remember these?" picture review; below U10, page 7 is "Remember these?" plus
+   one-step picture stories.
+2. **Challenge (decided):** 1 to 2 challenge problems a day (skeleton); the samples' four cards were sample-only.
+3. **Parent-led days (U1 to U3, kept; Savar 2026-10-30):** no sample shows one. The skeleton's rules: icon instructions plus a short
    line, answers by circling, matching, colouring, drawing a line or writing one numeral, 6 to 10 items a page, large
    boxes.
-4. **Friday 5, Show what you know, the level test, the back cover and the certificate (Cedric):** no sample page yet
-   (V7 `196:104` has an older Friday 5 and back cover).
+4. **Friday 5, Show what you know, the level test, the back cover and the certificate:** no sample page; the generator
+   builds them from the skeleton's rules and DESIGN.md, and Savar reviews them in the generated books.
 5. **Markings before the app exists (Savar):** until scanning is built, how do markings reach the day-7 snapshot? A team
    member enters right or wrong per item in admin, or the first workbooks use only the assessment and Maya.
 6. **Pages vs minutes:** decide from real children's timing (skeleton open question 1).
