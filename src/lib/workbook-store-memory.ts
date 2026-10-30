@@ -1,5 +1,6 @@
 import { QUESTION_PACKAGE_VERSION } from "@/lib/question-package";
 import {
+  type WorkbookStatus,
   isUuid,
   storedQuestion,
   workbookProblem,
@@ -15,13 +16,17 @@ import {
 // anything is kept, so a refused write keeps nothing; the conflicts the database refuses (an unknown child, a file
 // outside the family's folder, a workbook number, id or QR token already used) are refused with the same reasons;
 // what is kept is a copy, as the database keeps JSON. `children`: the children the store knows, with their parent.
+// `setStatus` moves a kept workbook to a status, as the team does in the database (a test of a product that reads only
+// shipped workbooks, like the desk, ships one first); it is not part of the store's interface.
 
 interface Kept {
   summary: WorkbookSummary;
   pages: (Omit<PageInput, "questions"> & { questions: StoredQuestion[] })[];
 }
 
-export function memoryWorkbookStore(o: { children: readonly { id: string; parentId: string }[]; now: () => Date }): WorkbookStore {
+export function memoryWorkbookStore(o: { children: readonly { id: string; parentId: string }[]; now: () => Date }): WorkbookStore & {
+  setStatus(id: string, status: WorkbookStatus): void;
+} {
   const books = new Map<string, Kept>();
 
   function readPage(workbookId: string, page: Kept["pages"][number]): WorkbookPage {
@@ -30,6 +35,14 @@ export function memoryWorkbookStore(o: { children: readonly { id: string; parent
   }
 
   return {
+    setStatus(id, status) {
+      const book = books.get(id);
+      if (!book) throw new Error(`no workbook ${id}`);
+      const at = o.now().toISOString();
+      const field = ({ draft: null, approved: "approvedAt", printed: "printedAt", shipped: "shippedAt" } as const)[status];
+      book.summary = { ...book.summary, status, ...(field ? { [field]: at } : {}) };
+    },
+
     async write(input) {
       const problem = workbookProblem(input);
       if (problem) return { status: "refused", reason: problem };
@@ -79,6 +92,14 @@ export function memoryWorkbookStore(o: { children: readonly { id: string; parent
       const page = books.get(ref.workbookId)?.pages.find((p) => p.number === ref.page);
       const question = page?.questions.find((q) => q.number === ref.question);
       return question ? storedQuestion(structuredClone(question), ref).content : { status: "not-found" };
+    },
+
+    async pageByToken(token) {
+      for (const book of books.values()) {
+        const page = book.pages.find((p) => p.qrToken === token);
+        if (page) return { workbook: structuredClone(book.summary), page: page.number };
+      }
+      return null;
     },
   };
 }

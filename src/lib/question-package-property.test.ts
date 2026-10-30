@@ -7,7 +7,7 @@ import {
   type AnswerValue,
   type FractionOperand,
   type Operation,
-  type QuestionPackage,
+  type OperationPackage,
   type WorkedStep,
 } from "@/lib/question-package";
 
@@ -88,6 +88,8 @@ function oracle(op: Operation): Q {
     case "fraction-simplify":
     case "fraction-equivalent":
       return valueQ(op.operands[0]);
+    default:
+      throw new Error(`no oracle for ${op.kind}`);
   }
 }
 
@@ -244,7 +246,10 @@ interface KindCase {
 
 const f = (numerator: number, denominator: number) => ({ type: "fraction" as const, numerator, denominator });
 
-const CASES: Record<Operation["kind"], KindCase> = {
+/** The kinds of #306; the measure, money, time and algebra kinds have their own property test. */
+type NumberKind = Extract<Operation["kind"], "add" | "subtract" | "multiply" | "divide" | `decimal-${string}` | `fraction-${string}`>;
+
+const CASES: Record<NumberKind, KindCase> = {
   add: { make: (g) => ({ kind: "add", operands: [g.int(10, 9999), g.int(0, 9999)] }), easier: { kind: "add", operands: [1, 2] } },
   subtract: {
     make: (g) => {
@@ -310,7 +315,7 @@ const CASES: Record<Operation["kind"], KindCase> = {
 
 const PROBLEMS_PER_KIND = 300;
 
-function packageFor(operation: Operation, easier: Operation): QuestionPackage {
+function packageFor(operation: Operation, easier: Operation): OperationPackage {
   return {
     id: "gen-1",
     ref: { source: "workbook", workbookId: "wb-gen", page: 1, question: 1 },

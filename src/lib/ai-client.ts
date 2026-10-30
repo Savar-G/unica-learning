@@ -1,5 +1,6 @@
 // The AI client (#183): one interface for every AI feature (the work review and the report text of #68, and the learner
-// profile's AI parts of #197, src/lib/learner-profile-ai.ts). Text and images go in; JSON that matches a schema comes out. The live adapter is OpenRouter
+// profile's AI parts of #197, src/lib/learner-profile-ai.ts, and the child profile's findings of #304,
+// src/lib/child-profile-ai.ts). Text and images go in; JSON that matches a schema comes out. The live adapter is OpenRouter
 // (src/lib/ai-openrouter.ts), so any model on OpenRouter works with one setting; tests use the fake
 // (src/lib/ai-client-fake.ts).
 // Behind a switch: on only when OPENROUTER_API_KEY is set. Off, there is no client, so no AI call can happen.

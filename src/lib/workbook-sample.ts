@@ -12,10 +12,10 @@ import {
   operationText,
   workedSteps,
   type Operation,
-  type QuestionPackage,
+  type OperationPackage,
   type WrongAnswer,
 } from "@/lib/question-package";
-import type { PageInput, QuestionBox, WorkbookInput } from "@/lib/workbook-content";
+import type { PageInput, QuestionBox, QuestionInput, WorkbookInput } from "@/lib/workbook-content";
 
 /** The page image size in pixels: US Letter at 100 dots per inch. */
 export const SAMPLE_PAGE_SIZE = { width: 850, height: 1100 } as const;
@@ -89,7 +89,7 @@ function wrongAnswers({ kind, operands: [a, b] }: SampleOperation): WrongAnswer[
 }
 
 /** A question's package, with its answer, steps and the easier example's answer and steps computed from the operations. */
-function samplePackage(workbookId: string, page: number, question: number, key: number, q: SampleQuestion): QuestionPackage {
+function samplePackage(workbookId: string, page: number, question: number, key: number, q: SampleQuestion): OperationPackage {
   return {
     id: `${workbookId}:q${key}`,
     ref: { source: "workbook", workbookId, page, question },
@@ -132,6 +132,9 @@ export function sampleWorkbook(o: { workbookId: string; childId: string; parentI
   return { id: o.workbookId, childId: o.childId, number: o.number ?? 1, levels: [LEVEL], pdfPath: null, profileBuild: null, pages };
 }
 
+/** A sample question's operation: every sample package has one (samplePackage). */
+const sampleOperation = (q: QuestionInput) => q.package.operation as SampleOperation;
+
 const escape = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 
 /** A page drawn as SVG, with each question inside its box. The loader renders it to the page image. */
@@ -153,15 +156,15 @@ export function pageSvg(page: PageInput): string {
       `<text x="425" y="540" ${font} font-size="24" fill="#888" text-anchor="middle">Level U${LEVEL} · Sample</text>`,
     );
   } else {
-    const title = page.questions[0]?.package.operation.kind === "subtract" ? "Subtract. Show your work." : "Add. Show your work.";
+    const title = page.questions[0] && sampleOperation(page.questions[0]).kind === "subtract" ? "Subtract. Show your work." : "Add. Show your work.";
     parts.push(
       `<text x="60" y="150" ${font} font-size="34" font-weight="700" fill="#222">${escape(page.dayLabel ?? "")}</text>`,
       `<text x="60" y="195" ${font} font-size="24" fill="#444">${title}</text>`,
     );
     for (const q of page.questions) {
       const { x, y, width: w, height: h } = q.box;
-      const [a, b] = q.package.operation.operands;
-      const sign = q.package.operation.kind === "add" ? "+" : "−";
+      const { kind, operands: [a, b] } = sampleOperation(q);
+      const sign = kind === "add" ? "+" : "−";
       const right = x + w - 70;
       parts.push(
         `<rect x="${x}" y="${y}" width="${w}" height="${h}" rx="12" fill="none" stroke="#bbb" stroke-width="2"/>`,
