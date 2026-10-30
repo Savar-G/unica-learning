@@ -163,6 +163,17 @@ describe.each(stores)("the %s workbook store", (_name, make) => {
     expect(page?.questions.map((q) => q.content.status === "found" && q.content.package.text)).toEqual(["532 − 178 = ?", "704 − 256 = ?", "615 − 349 = ?", "823 − 467 = ?"]);
   });
 
+  it("finds a page by the token in its QR code, with its workbook", async () => {
+    const store = make();
+    await store.write(sample());
+    await store.write(sample({ workbookId: SECOND, number: 2, prefix: "second" }));
+    const found = await store.pageByToken(tokens("second")[2]);
+    expect(found?.page).toBe(3);
+    expect(found?.workbook).toMatchObject({ id: SECOND, parentId: PARENT, childId: CHILD, number: 2, status: "draft" });
+    expect(await store.pageByToken("no-such-page-token-here")).toBeNull();
+    expect(await store.pageByToken("not a token")).toBeNull();
+  });
+
   it("lists a child's workbooks, newest first", async () => {
     const store = make();
     await store.write(sample());

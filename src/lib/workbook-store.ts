@@ -2,6 +2,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { toJson, type Database, type Tables } from "@/lib/database";
 import { QUESTION_PACKAGE_VERSION } from "@/lib/question-package";
 import {
+  isQrToken,
   isUuid,
   storedQuestion,
   workbookProblem,
@@ -115,6 +116,16 @@ export function workbookStore(db: SupabaseClient<Database>): WorkbookStore {
       if (qError) throw new Error(`workbook question load: ${qError.message}`);
       if (!q) return { status: "not-found" };
       return storedQuestion(stored(q), ref).content;
+    },
+
+    async pageByToken(token) {
+      if (!isQrToken(token)) return null;
+      const { data: p, error } = await db.from("workbook_pages").select("workbook_id, page_number").eq("qr_token", token).maybeSingle();
+      if (error) throw new Error(`workbook page token load: ${error.message}`);
+      if (!p) return null;
+      const { data: book, error: bookError } = await db.from("workbooks").select(BOOK_COLUMNS).eq("id", p.workbook_id).maybeSingle();
+      if (bookError) throw new Error(`workbook page token load: ${bookError.message}`);
+      return book ? { workbook: summary(book), page: p.page_number } : null;
     },
   };
 }

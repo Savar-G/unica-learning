@@ -57,5 +57,11 @@ export function memoryPinStore(initial: MemoryPinRow[] = []): PinStore & { rows(
       const row = find(parentId);
       if (row && row.hash === hash) Object.assign(row, { failedAttempts: 0, lockedUntil: null });
     },
+    async reset(parentId, hash) {
+      await tick();
+      const row = find(parentId);
+      if (row) Object.assign(row, { hash, failedAttempts: 0, lockedUntil: null });
+      else rows.push({ parentId, hash, failedAttempts: 0, lockedUntil: null });
+    },
   };
 }

@@ -1,7 +1,7 @@
 # DESIGN.md - unica-learning-landing-page
 
 > Status: v3. Page story and look approved by Savar 2026-10-04 (no objection); hero copy decided (D-024); hero layout C chosen (D-029); option A parked as a draft (D-030). Built from Savar's FigJam board "Personalized Learning, Delivered" (2026-10-03). v3 copy and sections come from Cedric's notes on the "Landing Page V3" section of the same board, with Savar's answers (2026-10-08, D-056 to D-061).
-> Last updated: 2026-10-20 (assessment start flow: laptop-or-tablet line, short phone signup, steps and sample on /start, D-134)
+> Last updated: 2026-10-29 (Parent home and the child's desk at /tutor, D-181)
 
 ## Job
 
@@ -15,9 +15,9 @@
 
 ## Scope
 
-**In:** One landing page whose assessment links open the signup for the free online math assessment (`/start`, D-093), a mobile assessment button, the parent account pages (`/start`, `/sign-in`, `/account`), optional analytics, an "Our story" page (`/our-story`, D-060), a "How we compare" page (`/compare`, D-114), a Resources section of SEO guides for BC parents (`/resources`, linked only from the footer, D-073), supporting 404, thank-you, privacy, and terms pages (D-054), the child's assessment test screens (D-083, D-088), and the parent's assessment report in the account and by email (D-084, D-087).
+**In:** One landing page whose assessment links open the signup for the free online math assessment (`/start`, D-093), a mobile assessment button, the parent account pages (`/start`, `/sign-in`, `/account`), optional analytics, an "Our story" page (`/our-story`, D-060), a "How we compare" page (`/compare`, D-114), a Resources section of SEO guides for BC parents (`/resources`, linked only from the footer, D-073), supporting 404, thank-you, privacy, and terms pages (D-054), the child's assessment test screens (D-083, D-088), the parent's assessment report in the account and by email (D-084, D-087), and Parent home with the child's desk (`/tutor`, D-181).
 
-**Out:** The product itself, a parent dashboard beyond the assessment report, and a dated blog or news feed.
+**Out:** Maya's calls, scanning and marking (later specs), and a dated blog or news feed.
 
 ## Source constraints
 
@@ -84,6 +84,8 @@ On a tablet in portrait the panes stack: the question and the answer above, the 
 5. A mono line with the date, question count, minutes and the curriculum measured against.
 
 The email is one 600 px column: greeting, the level and verdict in the same colour band with the ruler, the FSA line (BC only) and the comparison line, the reliability note when it applies (it names no retake time: "Your account shows when it opens"), the four areas with a meter, status, certainty and count, strengths (6, then "And n more in the full report"), up to 3 struggles as grey cards with the question, the answer, the right answer and the likely cause from the known mistake ("The full report shows n more"), number facts (accuracy only in grades 1-4), no workbook 1 preview (the AI writes it after the email, D-117; the account report shows it), a line that says the child's work is in the full report (no work images in the email: the drawings stay in private storage and show only in the signed-in report, #67), how we help, one button (plan or waitlist) and a link to the full report. Every number is measured or carries its source. On tablets the rows stack (title above content) and the work shows two across.
+
+**Parent home and the child's desk (D-181, round r301).** Parent home is `/account`: under each child with a shipped workbook, a row with "Workbook n" and "Open the desk" (dark button); without a PIN, "Set your PIN" first, and the PIN page says "Set your PIN first. Then you can open the desk." The desk (`/tutor`) runs on the parent's session and device until the PIN ends it; every account page goes back to it meanwhile. Top bar: the wordmark, the child's shipped workbooks as cover tiles (number and sent date, an orange spine on the open one; newest first), "Leave". Left: page arrows, "Page n of N · Day n", and the real page image whole, at its own shape, with a tap area on each question (faint dashed outline; the tapped one tangerine with a soft fill). Right, soft grey: "Maya · Unica Teaching Assistant", then "Hi, [Name]." and "Which question are you on? Tap it on your page.", or after a tap the page and question number and the question text; then a white card "Maya is coming soon." Never an answer, worked steps or a call button that does not work. Leave: a dialog asks a grown-up for the 4-digit PIN (wrong: tries left; locked: until a time), with "Forgot the PIN?" (account password and a new PIN). A page QR code (`/tutor/p/<token>`) opens that page for the owner, asks the parent to confirm when no desk is open, and says "This page is not in your account." to anyone else. On a tablet in portrait the page keeps three fifths of the width; on a phone the panel goes under the page. Visible text never says "tutor".
 
 **Parent email identity (D-122, r19 A).** All parent email templates use the text wordmark with the orange square, a white 600 px column, and the signature "Thank you, The Unica Learning team". A thin rule separates the signature from the business address on separate lines, website, reason for the email, and the unsubscribe link when applicable. The reply instruction is part of the signature. Hosted account emails give a direct support email link. Keep the report results, message content, action URLs, and unsubscribe policy. Internal alerts keep their current format. Hosted Auth templates are versioned in `supabase/templates/`; site deployment does not install them.
 

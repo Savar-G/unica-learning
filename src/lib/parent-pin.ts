@@ -30,7 +30,8 @@ export type PinClaim =
  * PIN, only while the stored hash is still the one that was checked (so a stale check never clears a newer PIN's lock).
  * `create` stores the first hash only when the parent has none (false when a PIN exists). `replace` stores a new
  * hash and resets the count only while the stored hash is still `oldHash`, the one the caller verified (false when it
- * changed meanwhile), so two requests at the same time cannot replace a PIN without its current value.
+ * changed meanwhile), so two requests at the same time cannot replace a PIN without its current value. `reset` stores
+ * a hash whether or not one is set, with a fresh count: for a forgotten PIN, once the caller has proved the password.
  */
 export interface PinStore {
   has(parentId: string): Promise<boolean>;
@@ -38,6 +39,7 @@ export interface PinStore {
   replace(parentId: string, oldHash: string, newHash: string): Promise<boolean>;
   claim(parentId: string, now: number, policy: PinPolicy): Promise<PinClaim>;
   clear(parentId: string, hash: string): Promise<void>;
+  reset(parentId: string, hash: string): Promise<void>;
 }
 
 export type CheckResult =
@@ -58,6 +60,11 @@ export interface ParentPins {
   set(parentId: string, pin: string, current?: string): Promise<SetResult>;
   /** Check a PIN. The desk calls this to leave desk mode. */
   check(parentId: string, pin: string): Promise<CheckResult>;
+  /**
+   * Forgot PIN (#301): store a new PIN without the current one, and end any lock. Only after the caller has proved
+   * the parent's account password; this module cannot check that.
+   */
+  reset(parentId: string, pin: string): Promise<{ ok: true } | { ok: false; error: "invalid" }>;
 }
 
 const KEY_LENGTH = 32;
@@ -118,6 +125,11 @@ export function parentPins(store: PinStore, { now = Date.now, policy = PIN_POLIC
       // Replace only the hash that was verified: a PIN changed meanwhile needs its own current value.
       if (await store.replace(parentId, proof.hash!, hash)) return { ok: true };
       return { ok: false, error: "current_required" };
+    },
+    async reset(parentId, pin) {
+      if (!validPin(pin)) return { ok: false, error: "invalid" };
+      await store.reset(parentId, await hashPin(pin));
+      return { ok: true };
     },
   };
 }

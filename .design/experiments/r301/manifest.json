@@ -1,0 +1,30 @@
+{
+  "round": 301,
+  "ticket": "#301 (spec #295, P4): Parent home and the PIN-protected desk",
+  "decision": "D-181",
+  "route": "direct build (design skill, build stage)",
+  "picked": "built",
+  "picked_by": "proposed by the implementing agent, 2026-10-29; Savar to review in the PR",
+  "decision_question": "How does a parent open the child's desk from Parent home, and how does the desk show the real workbook page, the tapped question, Maya's place and the PIN exit, on a laptop, a tablet and a phone?",
+  "note": "Named after the ticket, like r190 and r251. The session was not interactive and the Figma connector was not authorized, so the FigJam board 'Personalized Learning, Delivered' (fLyAJsC68ezugsmkH3oRGh, sections 102:53 tablet and 103:53 desktop) could not be read: the layout follows the brief's description of those sections (the child's page on the left with tap areas, Maya's help panel on the right) and the test's split desk (D-088). One built option, no variants. The screenshots are of the real pages on localhost with the e2e test family and a separate shipped sample workbook (workbook 2); its draft workbook 1 stays a draft and never shows.",
+  "invariants": [
+    "Only the selected child's shipped workbooks, newest first; a draft never shows",
+    "The real page image, through a 15-minute signed link from the private bucket",
+    "Tap areas from the stored question boxes; the tapped one in tangerine with a soft fill, the others with a faint dashed outline",
+    "Maya's panel: 'Maya · Unica Teaching Assistant', the page and question, the question text, and 'Maya is coming soon.' No call button, no answer, no steps",
+    "Leaving needs the parent's PIN, checked on the server; 'Forgot the PIN?' needs the account password",
+    "No visible text says 'tutor'; the address is /tutor"
+  ],
+  "viewports": ["1280 x 800 (laptop)", "820 x 1180 (tablet in portrait)", "1180 x 820 (tablet in landscape)", "390 x 844 with an iPhone user agent (phone)"],
+  "screenshots": {
+    "before": ["before-account-laptop.png", "before-account-tablet.png", "before-account-phone.png"],
+    "parent_home": ["after-account-nopin-laptop.png", "after-account-laptop.png", "after-account-tablet.png", "after-account-phone-2.png"],
+    "desk": ["after-desk-laptop.png", "after-desk-picked-laptop.png", "after-desk-picked-tablet.png", "after-desk-picked-tablet-landscape.png", "after-desk-phone.png", "after-desk-picked-phone.png"],
+    "leaving": ["after-leave-dialog-laptop.png", "after-leave-wrong-laptop.png", "after-leave-dialog-phone.png", "after-forgot-wrong-laptop.png"],
+    "qr": ["after-qr-confirm-laptop.png", "after-qr-refused-laptop.png"]
+  },
+  "open_questions": [
+    "Check against the FigJam sections 102:53 and 103:53 once the Figma connector is authorized",
+    "Covers are text tiles (number and sent date), not page images: DESIGN.md allows no drawn covers until the real workbook exists"
+  ]
+}

@@ -1,6 +1,6 @@
 import "server-only";
 import { adminClient } from "@/lib/supabase-auth";
-import { parentPins, type CheckResult, type ParentPins } from "@/lib/parent-pin";
+import { parentPins, validPin, type CheckResult, type ParentPins } from "@/lib/parent-pin";
 import { pinStore } from "@/lib/parent-pin-store";
 
 /** The PIN module over the database, or null when the server has no secret key. */
@@ -42,6 +42,34 @@ export async function savePin(parentId: string, body: unknown, pins: ParentPins 
     return { status: result.error === "locked" ? 429 : result.error === "wrong" ? 403 : 400, result };
   } catch (error) {
     console.error("[pin] save failed", error instanceof Error ? error.message : error);
+    return { status: 502, result: { ok: false, error: "unavailable" } };
+  }
+}
+
+/** What the desk's "Forgot PIN?" form gets back, from src/app/api/desk/forgot-pin/route.ts. */
+export type ForgotPinResult =
+  | { ok: true }
+  | { ok: false; error: "invalid" | "wrong_password" | "unavailable" | "signed_out" | "bad_json" };
+
+/** Whether `password` is the signed-in parent's account password: `unavailable` when the server cannot tell. */
+export type ProvePassword = (password: string) => Promise<"ok" | "wrong" | "unavailable">;
+
+/**
+ * Forgot PIN (#301): body `{ password, pin }`. The parent proves their account password, then the new PIN replaces the
+ * old one and ends any lock. The new PIN is checked first, so a malformed form spends no password attempt.
+ */
+export async function resetForgottenPin(parentId: string, body: unknown, provePassword: ProvePassword, pins: ParentPins | null = serverPins()): Promise<{ status: number; result: ForgotPinResult }> {
+  const { password, pin } = (body ?? {}) as { password?: unknown; pin?: unknown };
+  if (typeof password !== "string" || password === "" || password.length > 200 || !validPin(pin)) return { status: 400, result: { ok: false, error: "invalid" } };
+  if (!pins) return { status: 503, result: { ok: false, error: "unavailable" } };
+  try {
+    const proof = await provePassword(password);
+    if (proof === "wrong") return { status: 403, result: { ok: false, error: "wrong_password" } };
+    if (proof === "unavailable") return { status: 503, result: { ok: false, error: "unavailable" } };
+    await pins.reset(parentId, pin);
+    return { status: 200, result: { ok: true } };
+  } catch (error) {
+    console.error("[pin] reset failed", error instanceof Error ? error.message : error);
     return { status: 502, result: { ok: false, error: "unavailable" } };
   }
 }

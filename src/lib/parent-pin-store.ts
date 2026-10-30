@@ -46,5 +46,11 @@ export function pinStore(admin: SupabaseClient<Database>): PinStore {
         .eq("parent_id", parentId).eq("pin_hash", hash).or("failed_attempts.gt.0,locked_until.not.is.null");
       if (error) throw new Error(`pin clear: ${error.message}`);
     },
+    async reset(parentId, hash) {
+      // One upsert on the primary key: a new PIN and a fresh count, whether or not a row exists.
+      const { error } = await admin.from("parent_pins")
+        .upsert({ parent_id: parentId, pin_hash: hash, failed_attempts: 0, locked_until: null, updated_at: new Date().toISOString() }, { onConflict: "parent_id" });
+      if (error) throw new Error(`pin reset: ${error.message}`);
+    },
   };
 }
