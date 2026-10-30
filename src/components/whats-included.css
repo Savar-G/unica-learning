@@ -269,14 +269,29 @@
 .wi-cards .t6 { background: linear-gradient(160deg, #f6efd6, #ecdfb2); }
 .wi-cards .mini-br { position: absolute; left: 16px; top: 22px; width: 250px; border-radius: 7px; overflow: hidden; background: #fff; box-shadow: 0 14px 28px -12px rgba(20,30,60,.45); }
 .wi-cards .mini-br.wide { width: 300px; }
-.wi-cards .mini-br.wide.l { left: -60px; }
 .wi-cards .mini-br .bar { height: 12px; background: #f4f4f5; border-bottom: 1px solid #e9e9ec; }
 .wi-cards .mini-br img { width: 100%; }
-.wi-cards .mini-bk { position: absolute; left: 50%; top: 26px; width: 104px; height: 135px; margin-left: -52px; transform-style: preserve-3d; transform: perspective(700px) rotateX(14deg) rotateY(26deg) rotateZ(-5deg); }
-.wi-cards .mini-bk img { width: 100%; height: 100%; object-fit: cover; box-shadow: 10px 18px 24px -8px rgba(0,0,0,.35); }
-.wi-cards .mini-bk .s { position: absolute; left: -6px; top: 0; width: 6px; height: 100%; background: #e9e5dc; transform-origin: 100% 50%; transform: rotateY(-90deg); }
-.wi-cards .mini-ph { position: absolute; left: 50%; top: 0; width: 150px; margin-left: -75px; }
-.wi-cards .mini-cv { position: absolute; left: 50%; top: 22px; transform: translateX(-50%) rotate(3deg); }
+/* closing tiles: one clear object each */
+.wi-cards .ct-q { position: absolute; left: 14px; right: 14px; top: 50%; transform: translateY(-50%); background: #fff; border-radius: 12px; padding: 12px 12px 13px; box-shadow: 0 14px 28px -14px rgba(120,60,20,.45); font-family: var(--ui); }
+.wi-cards .ct-q small { display: block; font: 500 9px var(--ui-mono); letter-spacing: .06em; text-transform: uppercase; color: var(--muted); margin-bottom: 6px; }
+.wi-cards .ct-q b { display: block; font-weight: 500; font-size: 13px; line-height: 1.3; margin-bottom: 9px; }
+.wi-cards .ct-q .opts { display: grid; grid-template-columns: 1fr 1fr; gap: 5px; }
+.wi-cards .ct-q .opts i { font-style: normal; font-size: 12px; text-align: center; border: 1px solid #e4e4e7; border-radius: 7px; padding: 5px 0; }
+.wi-cards .ct-q .opts i.on { border-color: #ff6a3d; background: #fff1ea; color: #c2410c; font-weight: 600; }
+.wi-cards .ct-books { position: absolute; inset: 0; }
+.wi-cards .ct-books img { position: absolute; width: 98px; aspect-ratio: 816 / 1056; box-shadow: 0 1px 2px rgba(0,0,0,.12), 0 16px 26px -10px rgba(60,50,20,.45); }
+.wi-cards .ct-books .back { left: 50%; top: 24px; margin-left: -66px; transform: rotate(-8deg); }
+.wi-cards .ct-books .front { left: 50%; top: 20px; margin-left: -30px; transform: rotate(5deg); }
+.wi-cards .ct-board { position: absolute; left: 14px; right: 14px; top: 16px; bottom: 16px; border-radius: 12px; background: #fff radial-gradient(#dfe3ee 1px, transparent 1.2px) 0 0 / 12px 12px; box-shadow: 0 14px 28px -14px rgba(40,50,120,.45); }
+.wi-cards .ct-board .ct-sum { position: absolute; left: 16px; top: 50%; transform: translateY(-50%); display: grid; justify-items: end; font: 600 22px/1.05 var(--pen); color: #2f4fd1; }
+.wi-cards .ct-board .ct-sum .ans { border-top: 2px solid #2f4fd1; padding-top: 2px; color: #1f9d55; }
+.wi-cards .ct-board .maya { position: absolute; right: 14px; top: 50%; transform: translateY(-50%); display: flex; flex-direction: column; align-items: center; gap: 5px; }
+.wi-cards .ct-board .maya img { width: 58px; height: 58px; border-radius: 50%; box-shadow: 0 0 0 2px #fff, 0 4px 10px -4px rgba(0,0,0,.3); }
+.wi-cards .ct-board .maya span { background: #0c0c0e; color: #fff; border-radius: 999px; padding: 3px 8px; font: 500 10px/1.2 var(--ui); }
+.wi-cards .ct-phone { position: absolute; left: 50%; top: 16px; width: 124px; margin-left: -62px; filter: drop-shadow(0 16px 20px rgba(20,60,40,.3)); }
+.wi-cards .ct-next { position: absolute; inset: 0; }
+.wi-cards .ct-next .prev { position: absolute; left: 50%; top: 30px; width: 88px; margin-left: -70px; transform: rotate(-8deg); opacity: .75; filter: saturate(.6); box-shadow: 0 12px 20px -10px rgba(60,50,20,.4); }
+.wi-cards .ct-next .cur { position: absolute; left: 50%; top: 16px; margin-left: -40px; transform: rotate(4deg); }
 .wi-end { display: grid; justify-items: center; gap: 10px; }
 
 @media (max-width: 1100px) {

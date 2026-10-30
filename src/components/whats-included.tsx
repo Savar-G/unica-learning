@@ -120,12 +120,45 @@ function Sources() {
 
 // ---------- closing cards ----------
 const CARDS = [
-  { tone: "t1", title: "Free assessment", text: "A short test online. A report shows the level and what to work on.", im: <div className="mini-br"><div className="bar" /><img src={`${ASSETS}/test-question-crop.jpg`} alt="" /></div> },
-  { tone: "t2", title: "Workbook", text: "Made from the report. Mailed home, two a month.", im: <div className="mini-bk"><img src={`${ASSETS}/wb/leah-01-cover.jpg`} alt="" /><i className="s" /></div> },
-  { tone: "t3", title: "AI Teaching Assistant", text: "Maya works through a stuck question on a shared whiteboard.", im: <div className="mini-br wide l"><div className="bar" /><img src={`${ASSETS}/ta-call.webp`} alt="" /></div> },
-  { tone: "t4", title: "Unica app", text: "Scan the pages. They come back marked, with the steps.", im: <img className="mini-ph" src={`${ASSETS}/scan-thumb.jpg`} alt="" /> },
+  {
+    tone: "t1", title: "Free assessment", text: "A short test online. A report shows the level and what to work on.",
+    im: (
+      <div className="ct-q">
+        <small>Question 4 of 20</small>
+        <b>Which number is 10 more than 47?</b>
+        <div className="opts">{["37", "48", "57", "147"].map((o) => <i key={o} className={o === "57" ? "on" : ""}>{o}</i>)}</div>
+      </div>
+    ),
+  },
+  {
+    tone: "t2", title: "Workbook", text: "Made from the free assessment. Mailed home, two a month.",
+    im: (
+      <div className="ct-books">
+        <img className="back" src={`${ASSETS}/wb/leah-02-plan.jpg`} alt="" />
+        <img className="front" src={`${ASSETS}/wb/leah-01-cover.jpg`} alt="" />
+      </div>
+    ),
+  },
+  {
+    tone: "t3", title: "AI Teaching Assistant", text: "Maya works through a stuck question on a shared whiteboard.",
+    im: (
+      <div className="ct-board">
+        <div className="ct-sum"><span>300</span><span>− 128</span><span className="ans">172</span></div>
+        <div className="maya"><img src={`${ASSETS}/maya.png`} alt="" /><span>Maya</span></div>
+      </div>
+    ),
+  },
+  { tone: "t4", title: "Unica app", text: "Scan the pages. They come back marked, with the steps.", im: <img className="ct-phone" src={`${ASSETS}/app-marked.png`} alt="" /> },
   { tone: "t5", title: "Parent dashboard", text: "Level, skills, past work and sessions with Maya.", im: <div className="mini-br wide"><div className="bar" /><img src={`${ASSETS}/dash.jpg`} alt="" /></div> },
-  { tone: "t6", title: "Next workbook", text: "Built on everything before it. Arrives before this one ends.", im: <div className="mini-cv"><NextCover zoom={0.42} /></div> },
+  {
+    tone: "t6", title: "Next workbook", text: "Built on everything before it. Arrives before this one ends.",
+    im: (
+      <div className="ct-next">
+        <img className="prev" src={`${ASSETS}/wb/leah-01-cover.jpg`} alt="" />
+        <div className="cur"><NextCover zoom={0.4} /></div>
+      </div>
+    ),
+  },
 ];
 
 const MAYA_LABEL = "Demo: Maya, the AI Teaching Assistant, explains 27 + 39 on a shared whiteboard and draws each step, carrying the 1 to get 66. Captions show what Maya says.";
