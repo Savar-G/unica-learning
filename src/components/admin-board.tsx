@@ -31,8 +31,7 @@ export function BoardPreview({ fonts }: { fonts: FontPreview[] }) {
     <>
       <p className="adm-lead">
         Maya, the Unica Teaching Assistant, writes each step on a shared board, one pen stroke at a time. Here are the same
-        sums in the two fonts we can use for her writing. Savar picks one (decision D-182); until then the board uses simple
-        placeholder digits.
+        sums in the two fonts we compared. Maya writes in Relief SingleLine, Savar&apos;s choice (decision D-182).
       </p>
       <div className="adm-board-controls">
         <button

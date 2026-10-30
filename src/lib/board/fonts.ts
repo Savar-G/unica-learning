@@ -3,7 +3,7 @@
 // 0 to 1, y down). Pure: no DOM.
 import { EMS_TECH_DATA } from "@/lib/board/font-data/ems-tech/glyphs";
 import { RELIEF_SINGLELINE_DATA } from "@/lib/board/font-data/relief-singleline/glyphs";
-import { OWNED_GLYPHS, PLACEHOLDER_GLYPHS, type GlyphSet, type Point } from "@/lib/board/glyphs";
+import { OWNED_GLYPHS, type GlyphSet, type Point } from "@/lib/board/glyphs";
 
 /** An SVG font's glyphs as the font has them: each character's path data (`d`), in font units with y up. */
 export interface SvgFontData {
@@ -195,7 +195,7 @@ export const BOARD_FONTS: readonly BoardFont[] = [
 ];
 
 /**
- * The glyphs Maya writes with. Pending Savar's choice of font (D-182): set this to the chosen font's glyphs, for example
- * `BOARD_FONTS[0].glyphs` for EMS Tech. Every board made without its own glyph set follows it.
+ * The glyphs Maya writes with: Relief SingleLine, Savar's choice (D-182, 2026-10-30). Every board made without its own
+ * glyph set follows it.
  */
-export const BOARD_GLYPHS: GlyphSet = PLACEHOLDER_GLYPHS;
+export const BOARD_GLYPHS: GlyphSet = BOARD_FONTS.find((f) => f.id === "relief-singleline")!.glyphs;
