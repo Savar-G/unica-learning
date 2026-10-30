@@ -21,6 +21,8 @@ function value(v: AnswerValue): string {
   switch (v.type) {
     case "number": return String(v.value);
     case "fraction": return `${v.numerator}/${v.denominator}`;
+    case "mixed": return `${v.whole} ${v.numerator}/${v.denominator}`;
+    case "remainder": return `${v.quotient} R ${v.remainder}`;
     default: return v.value;
   }
 }
