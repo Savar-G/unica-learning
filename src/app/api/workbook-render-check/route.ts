@@ -8,7 +8,8 @@ import { fixedTemplateFonts } from "@/lib/workbook-template-fonts";
 // The print engine check (#309): renders the sample workbook (src/lib/workbook-sample.ts) with the fixed test template
 // in this function's Chromium and answers with the time and the file sizes. It stores nothing and reads no family's
 // data: the sample's ids and tokens are fixed placeholders. It shows that rendering works within the function's limits
-// (docs/workbook-rendering.md). Call it with "Authorization: Bearer <CRON_SECRET>".
+// (docs/workbook-rendering.md). Call it with "Authorization: Bearer <CRON_SECRET>". ?pages=<4 to 60> renders a longer
+// book: the cover, then the sample's two practice pages in turn.
 
 export const maxDuration = 60;
 
@@ -25,8 +26,16 @@ export async function GET(request: Request) {
   if (!secret) return new Response("Not configured", { status: 503 });
   if (!authorized(request.headers.get("authorization"), secret)) return new Response("Unauthorized", { status: 401 });
 
+  const asked = Number(new URL(request.url).searchParams.get("pages") ?? 3);
+  if (!Number.isInteger(asked) || asked < 3 || asked > 60) return new Response("pages is 3 to 60", { status: 400 });
+
   const started = performance.now();
-  const draft = sampleDraft({ workbookId: PLACEHOLDER, childId: PLACEHOLDER, qrTokens: ["render-check-page-1", "render-check-page-2", "render-check-page-3"] });
+  const sample = sampleDraft({ workbookId: PLACEHOLDER, childId: PLACEHOLDER, qrTokens: [1, 2, 3].map((n) => `render-check-page-${n}`) });
+  const pages = Array.from({ length: asked }, (_, i) => {
+    const page = sample.pages[i === 0 ? 0 : 2 - (i % 2)];
+    return { ...page, number: i + 1, qrToken: `render-check-page-${i + 1}`, questions: page.questions.map((q) => ({ ...q, package: { ...q.package, ref: { ...q.package.ref, page: i + 1 } } })) };
+  });
+  const draft = { ...sample, pages };
   const result = await renderWorkbook({ draft, parentId: PLACEHOLDER, template: fixedTemplate(await fixedTemplateFonts()), engine: chromiumPrintEngine() });
   const renderMs = Math.round(performance.now() - started);
   if (result.status !== "rendered") return Response.json({ ok: false, renderMs, problems: result.problems }, { status: 500 });
