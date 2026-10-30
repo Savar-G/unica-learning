@@ -16,6 +16,7 @@ import { Fit } from "./fit";
 import { WorkbookReader } from "./whats-included-book";
 import { ScanPhone } from "./whats-included-scan";
 import { DashboardDemo } from "./whats-included-dash";
+import { SourceWires } from "./whats-included-wires";
 import { ASSETS, MarkedPage, NextCover, PageTwo, TAG_LABEL, type Change } from "./whats-included-parts";
 import "@/ds/styles/guidance.css";
 import "./whats-included.css";
@@ -95,14 +96,7 @@ const COVER_CHANGES: Change[] = [
 function Sources() {
   return (
     <div className="wi-nx">
-      <svg className="wi-wires" viewBox="0 0 1189 623" preserveAspectRatio="none" aria-hidden="true">
-        {[119, 318, 510].map((y) => <path key={y} id={`wiWire${y}`} className="wi-wire" d={`M624 ${y} C 684 ${y}, 668 283, 724 283`} />)}
-        {[119, 318, 510].map((y, i) => (
-          <circle key={y} r="5" className="wi-pulse">
-            <animateMotion dur="2.4s" begin={`${i * 0.8}s`} repeatCount="indefinite"><mpath href={`#wiWire${y}`} /></animateMotion>
-          </circle>
-        ))}
-      </svg>
+      <SourceWires />
       <ol className="wi-srcs">
         {SOURCES.map((s, i) => (
           <li className="wi-srcc" key={s.title}>
