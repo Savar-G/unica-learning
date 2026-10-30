@@ -48,22 +48,30 @@ export async function runRetentionBatch(ids: string[], store: RetentionBatchStor
 export interface ImageEntry { name: string; folder: boolean }
 
 /**
+ * The private Storage buckets that hold a family's files under `<parent id>/`: the whiteboard drawings and the
+ * workbook page images and PDFs (#299). A deletion empties the family's folder in each; complete_family_deletion checks
+ * the same buckets.
+ */
+export const FAMILY_BUCKETS = ["shown-work", "workbook-pages"] as const;
+export type FamilyBucket = (typeof FAMILY_BUCKETS)[number];
+
+/**
  * External boundary. The database must freeze writes for this family before this interface is used. The copy half
  * (#201) saves each test's copy without names under the same lease.
  */
 export interface FamilyDeletionStore extends FamilyCopyStore {
-  listImages(prefix: string, offset: number, limit: number): Promise<ImageEntry[]>;
-  removeImages(paths: string[]): Promise<void>;
+  listImages(prefix: string, offset: number, limit: number, bucket: FamilyBucket): Promise<ImageEntry[]>;
+  removeImages(paths: string[], bucket: FamilyBucket): Promise<void>;
   renew(): Promise<void>;
   removeAuth(): Promise<void>;
   complete(): Promise<void>;
 }
 
 /** Drain bounded pages from offset zero. Each removal persists progress and cannot shift an unread offset. */
-async function removeFamilyImages(store: FamilyDeletionStore, prefix: string): Promise<number> {
+async function removeFamilyImages(store: FamilyDeletionStore, prefix: string, bucket: FamilyBucket): Promise<number> {
   const read = async () => {
     await store.renew();
-    return store.listImages(prefix, 0, 100);
+    return store.listImages(prefix, 0, 100, bucket);
   };
   let page = await read();
   let removed = 0;
@@ -75,10 +83,10 @@ async function removeFamilyImages(store: FamilyDeletionStore, prefix: string): P
     const files = page.filter((entry) => !entry.folder);
     if (files.length) {
       await store.renew();
-      await store.removeImages(files.map((entry) => `${prefix}/${entry.name}`));
+      await store.removeImages(files.map((entry) => `${prefix}/${entry.name}`), bucket);
       removed += files.length;
     }
-    for (const folder of page.filter((entry) => entry.folder)) removed += await removeFamilyImages(store, `${prefix}/${folder.name}`);
+    for (const folder of page.filter((entry) => entry.folder)) removed += await removeFamilyImages(store, `${prefix}/${folder.name}`, bucket);
     const next = await read();
     if (next.some((entry) => !entry.folder && files.some((file) => file.name === entry.name))
       || (removed === before && next.some((entry) => page.some((old) => old.name === entry.name)))) throw new Error("Storage not empty");
@@ -97,7 +105,8 @@ export async function deleteFamily(store: FamilyDeletionStore, parentId: string)
   parentId = parentId.toLowerCase();
   await store.renew();
   const copies = await copyFamilyTests(store);
-  const images = await removeFamilyImages(store, parentId);
+  let images = 0;
+  for (const bucket of FAMILY_BUCKETS) images += await removeFamilyImages(store, parentId, bucket);
   await store.renew();
   await store.removeAuth();
   await store.complete();

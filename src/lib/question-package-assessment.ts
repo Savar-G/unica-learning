@@ -32,7 +32,7 @@ import {
 
 /** What code knows about a supported template. */
 interface Supported {
-  kind: Operation["kind"];
+  kind: "add" | "subtract";
   standard: string;
   level: number;
   difficulty: Difficulty;
@@ -68,7 +68,8 @@ export function assessmentQuestionPackage(ref: AssessmentQuestionRef, question: 
   const known = SUPPORTED[question.templateId];
   if (!known) return unavailable("unsupported-template", `template ${question.templateId} has no question package`);
 
-  const operation = { kind: known.kind, operands: [question.values.a, question.values.b] } as Operation;
+  const operands: [number, number] = [question.values.a, question.values.b];
+  const operation: Operation = { kind: known.kind, operands };
   const problem = operationProblem(operation);
   if (problem) return unavailable("invalid-package", `the stored numbers: ${problem}`);
   const answer = operationResult(operation);
@@ -83,8 +84,8 @@ export function assessmentQuestionPackage(ref: AssessmentQuestionRef, question: 
     wrongAnswers.push({ value: { type: "number", value: Number(w.value) }, cause: w.misconception, description: MISCONCEPTIONS[w.misconception].description, step });
   }
 
-  const pair = known.easier.find((p) => ones(p) !== ones(operation.operands)) ?? known.easier[0];
-  const easier = { kind: known.kind, operands: [...pair] } as Operation;
+  const pair = known.easier.find((p) => ones(p) !== ones(operands)) ?? known.easier[0];
+  const easier: Operation = { kind: known.kind, operands: [...pair] };
   const candidate: QuestionPackage = {
     id: `${ref.assessmentId}:${ref.questionId}`,
     ref,
