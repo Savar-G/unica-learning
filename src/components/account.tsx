@@ -1120,7 +1120,7 @@ export function PinForm({ isSet }: { isSet: boolean }) {
           <input id="p-current" type="password" inputMode="numeric" autoComplete="off" maxLength={4} value={current} onChange={(e) => setCurrent(digits(e.target.value))} />
         </Field>
       )}
-      <Field id="p-new" label={isSet ? "New PIN" : "PIN"} hint="4 digits. Your child needs it to leave their desk. Do not share it.">
+      <Field id="p-new" label={isSet ? "New PIN" : "PIN"} hint="4 digits. Do not share it with your child.">
         <input id="p-new" type="password" inputMode="numeric" autoComplete="off" maxLength={4} value={pin} onChange={(e) => setPin(digits(e.target.value))} aria-describedby="h-p-new" />
       </Field>
       <Submit busy={busy}>{isSet ? "Change PIN" : "Save PIN"} <span className="arr">→</span></Submit>
