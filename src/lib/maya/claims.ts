@@ -38,6 +38,14 @@ export interface StepNumbers {
   write: readonly number[];
   /** The problem's own unit words ("minutes" in "27 minutes + 39 minutes"): a number with one stays bound to the step. */
   units?: readonly string[];
+  /**
+   * The values a price or an amount may name ("it costs 27 dollars", "Sam has 27 left"): the numbers, answer and steps
+   * of the problem the turn is about. Absent means `known`. The other numbers in `known` are references only ("look at
+   * the 5 in 18 + 5").
+   */
+  amounts?: readonly number[];
+  /** The question texts: a sentence that restates one of them is not a claim (see restated). */
+  questions?: readonly string[];
 }
 
 /** An exact rational [numerator, denominator], denominator above 0. */
@@ -371,9 +379,12 @@ export function mathClaims(text: string, problems: readonly NamedProblem[] = [],
   const claims: MathClaim[] = [];
   // The tokens of a claim: its numbers are checked by the claim itself, not by the step.
   const claimed: boolean[] = new Array(toks.length).fill(false);
-  // A number that counts something outside the math ("two steps", "2 seconds") is talk, not part of a claim.
+  // A number that counts something outside the math ("two steps", "2 seconds") is talk, not part of a claim; a
+  // sentence that restates the question ("Sam has 27 dollars and gets 39 dollars.") is no claim at all.
   const counts = toks.map((_, k) => quantityNoun(toks, k) !== null);
-  const isMath = (k: number) => MATH.has(toks[k].t) && !counts[k];
+  const restates = restated(text, toks, step?.questions ?? []);
+  restates.forEach((r, k) => { if (r) claimed[k] = true; });
+  const isMath = (k: number) => MATH.has(toks[k].t) && !counts[k] && !restates[k];
   for (let i = 0; i < toks.length; i++) {
     if (!isMath(i)) continue;
     let j = i;
@@ -413,8 +424,10 @@ export function mathClaims(text: string, problems: readonly NamedProblem[] = [],
     const leadOk = !before || before.t !== "word" || LEAD.has(before.w);
     const trailOk = !after || after.t !== "word" || (TRAIL.has(after.w) && !(after.w === "and" && toks[j + 2]?.t === "num"));
     if (!question && sides.some((s) => s.k === "fail" || s.k === "empty")) {
-      // "It is 27 plus 39.": a statement may name a problem, never give another value without an equation.
-      claim(sides.length === 2 && sides[0].k === "empty" && found !== null && trailOk ? "true" : "unsupported");
+      // "It is 27 plus 39.", "18 + 5 is easier.": a statement may name a problem, never give another value without an
+      // equation, so no number may follow it in the sentence.
+      const names = sides.length === 2 && found !== null && ((sides[0].k === "empty" && trailOk) || (sides[1].k === "empty" && sides[0].k !== "fail" && !numberAfter[j]));
+      claim(names ? "true" : "unsupported");
       continue;
     }
     const holds = leadOk && trailOk ? agrees(read) : null;
@@ -423,6 +436,59 @@ export function mathClaims(text: string, problems: readonly NamedProblem[] = [],
   if (step) claims.push(...stepClaims(text, toks, claimed, step));
   return claims;
 }
+
+/** Words that give a result: a sentence with one the question does not have is no restatement. */
+const RESULT_WORDS = new Set(["answer", "answers", "total", "totals", "altogether", "all", "left", "leaves", "makes", "make", "equals", "equal", "sum", "difference", "product", "quotient", "remainder", "now"]);
+
+/** Words a restatement may add to the question's own words. */
+const JOINERS = new Set(["and", "so", "then", "also", "first", "remember", "the", "a", "an", "he", "she", "they", "it", "his", "her", "their", "okay", "ok", "here", "we", "know"]);
+
+/**
+ * For each token, whether its sentence restates one of the questions: its numbers all come from that question, in the
+ * question's order, each at most as often; its words are that question's words, beside a few joining words (JOINERS),
+ * so every result word in it ("total", "left", "altogether") is the question's; every "is" or "gets" with a number
+ * after it says that number after the same word in the question; and nothing code does not read ("$", "a quarter") is
+ * in it. A sentence that adds or changes a number or a word is checked as usual.
+ */
+function restated(text: string, toks: Spanned[], questions: readonly string[]): boolean[] {
+  const out: boolean[] = new Array(toks.length).fill(false);
+  const read = questions.map((q) => {
+    const qt = tokenize(q);
+    return {
+      nums: qt.flatMap((t) => (t.t === "num" ? [t.v] : [])),
+      words: new Set(q.toLowerCase().match(/[a-z]+/g) ?? []),
+      said: qt.flatMap((t, k) => (t.t === "eq" && qt[k + 1]?.t === "num" ? [{ eq: q.slice(t.from, t.to).toLowerCase(), v: (qt[k + 1] as { v: Ratio }).v }] : [])),
+    };
+  });
+  for (let a = 0; a < toks.length; ) {
+    let b = a;
+    while (b < toks.length && toks[b].t !== "end") b++;
+    const sentence = toks.slice(a, b);
+    const nums = sentence.flatMap((t) => (t.t === "num" ? [t.v] : []));
+    const words = text.slice(sentence[0]?.from ?? 0, sentence[sentence.length - 1]?.to ?? 0).toLowerCase().match(/[a-z]+/g) ?? [];
+    const ok = nums.length > 0 && !sentence.some((t) => t.t === "sym" || t.t === "rel" || t.t === "amount") && read.some((q) => {
+      let at = 0;
+      for (const v of nums) {
+        while (at < q.nums.length && !same(q.nums[at], v)) at++;
+        if (at++ >= q.nums.length) return false;
+      }
+      // Its words are the question's own, beside a few that join them ("and", "so"); a result word must be the question's.
+      if (words.some((w) => !q.words.has(w) && (RESULT_WORDS.has(w) || !JOINERS.has(w)))) return false;
+      return sentence.every((t, k) => {
+        const next = sentence[k + 1];
+        if (t.t !== "eq" || next?.t !== "num") return true;
+        const eq = text.slice(t.from, t.to).toLowerCase();
+        return q.said.some((x) => x.eq === eq && same(x.v, next.v));
+      });
+    });
+    if (ok) out.fill(true, a, b);
+    a = b + 1;
+  }
+  return out;
+}
+
+/** Words that make a number in their sentence a price or an amount of money ("it costs 5", "Sam pays 27"). */
+const PRICE = /^(?:costs?|costing|worth|pays?|paid|paying|spends?|spent|spending|price[sd]?|prices|saves?|saved|earns?|earned|change|owes?|owed|dollars?|bucks?|cents?|cad)$/;
 
 /** Words that tell the child to carry, borrow or regroup a number ("carry the 1", "carry forward the 1"). */
 const CARRY = /^(?:carry|carries|carried|carrying|borrow|borrows|borrowed|borrowing|regroup|regroups|regrouped|regrouping|trade|trades|traded|trading)$/;
@@ -483,6 +549,7 @@ function quantityNoun(toks: Spanned[], k: number): string | null {
 function stepClaims(text: string, toks: Spanned[], claimed: boolean[], step: StepNumbers): MathClaim[] {
   const ratios = (list: readonly number[]) => list.map(ratioOf).filter((r): r is Ratio => r !== null);
   const [known, carry, write] = [ratios(step.known), ratios(step.carry), ratios([...step.write, ...step.carry])];
+  const amounts = ratios(step.amounts ?? step.known);
   const units = new Set((step.units ?? []).map(unitOf));
   const among = (v: Ratio, list: Ratio[]) => list.some((r) => same(v, r));
   const word = (k: number) => (toks[k]?.t === "word" ? (toks[k] as { w: string }).w : "");
@@ -549,10 +616,27 @@ function stepClaims(text: string, toks: Spanned[], claimed: boolean[], step: Ste
       if (!among(v, role.allowed)) claim("false");
       continue;
     }
+    // A price or an amount of money ("it costs 5 cents", "Sam has 27 dollars") names a value of the problem itself.
+    if (priced(toks, k)) {
+      if (!among(v, amounts)) claim("unsupported");
+      continue;
+    }
     if (counted.has(k) || text.slice(x.from, x.to).toLowerCase() === "one" || among(v, known) || isCount(text, toks, k, units)) continue;
     claim("unsupported");
   }
   return out;
+}
+
+/**
+ * The number at k is a price or an amount: a money word comes right after it ("5 cents"), or a price word is in its
+ * sentence ("it costs 5", "Sam pays 27", "Sam has 27 left" is not one, but "Sam has 27 dollars" is).
+ */
+function priced(toks: Spanned[], k: number): boolean {
+  if (toks[k + 1]?.t === "word" && MONEY_UNITS.test((toks[k + 1] as { w: string }).w)) return true;
+  for (const d of [-1, 1]) {
+    for (let m = k + d; toks[m] && toks[m].t !== "end"; m += d) if (toks[m].t === "word" && PRICE.test((toks[m] as { w: string }).w)) return true;
+  }
+  return false;
 }
 
 /** The number at k counts steps, tries, time or money as talk (see stepClaims), away from the problem's math. */

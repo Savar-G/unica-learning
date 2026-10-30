@@ -208,3 +208,53 @@ describe("R350-6: every money amount is math, and an amount named by a word is n
     }
   });
 });
+
+describe("R350-7-1: a restatement of the question is no claim; an added or changed number still is", () => {
+  const story = (text: string, operands: [number, number] = [27, 39], kind: "add" | "subtract" = "add"): QuestionPackage => {
+    const operation = { kind, operands } as const;
+    const result = kind === "add" ? operands[0] + operands[1] : operands[0] - operands[1];
+    const example = kind === "add" ? PKG.easierExample! : { text: "32 - 5 = ?", operation: { kind: "subtract" as const, operands: [32, 5] as [number, number] }, answer: num(27), steps: workedSteps({ kind: "subtract", operands: [32, 5] }) };
+    return {
+      ...PKG, id: `wbq-review-r7-${kind}`, text, operation, steps: workedSteps(operation),
+      answer: { value: num(result), accepted: [], unit: null },
+      wrongAnswers: [{ value: num(result + 10), cause: "O3", description: "Slip", step: null }],
+      easierExample: example,
+    };
+  };
+
+  it.each<[string, QuestionPackage, string]>([
+    ["gets", story("Sam has 27 dollars and gets 39 dollars. How many dollars now?"), "Sam has 27 dollars and gets 39 dollars."],
+    ["has", story("Mia has 27 stickers. She has 39 more. How many now?"), "Mia has 27 stickers."],
+    ["buys", story("Sam buys a toy for 27 dollars and a book for 39 dollars. How much does he spend?"), "Sam buys a toy for 27 dollars and a book for 39 dollars."],
+    ["more than", story("Mia has 27 stickers. Leo has 39 more than Mia. How many does Leo have?"), "Leo has 39 more than Mia."],
+    ["gives away", story("Sam has 52 stickers and gives away 17. How many are left?", [52, 17], "subtract"), "Sam has 52 stickers and gives away 17."],
+    ["is left", story("There were 52 apples. 17 are eaten. How many are left?", [52, 17], "subtract"), "There were 52 apples, and 17 are eaten."],
+  ])("accepts a restatement with %s", (_, pkg, say) => {
+    expect(call(pkg).refusal(show(say))).toBeNull();
+  });
+
+  it.each<[QuestionPackage, string]>([
+    [story("Sam has 27 dollars and gets 39 dollars. How many dollars now?"), "Sam has 27 dollars and gets 38 dollars."],
+    [story("Sam has 27 dollars and gets 39 dollars. How many dollars now?"), "Sam has 39 dollars and gets 27 dollars."],
+    [story("Sam has 27 dollars and gets 39 dollars. How many dollars now?"), "Sam has 27 dollars and gets 39 dollars, so he has 65 dollars now."],
+    [story("Mia has 27 stickers. Leo has 39 more than Mia. How many does Leo have?"), "Leo has 38 more than Mia."],
+    [story("Sam has 52 stickers and gives away 17. How many are left?", [52, 17], "subtract"), "Sam has 52 stickers and gives away 18."],
+    [story("There were 52 apples. 17 are eaten. How many are left?", [52, 17], "subtract"), "There were 52 apples, and 18 are eaten."],
+    [story("There were 52 apples. 17 are eaten. How many are left?", [52, 17], "subtract"), "There were 52 apples, and 17 are eaten, so 34 are left."],
+  ])("refuses a changed restatement: %#", (pkg, say) => {
+    expect(call(pkg).refusal(show(say))).toMatchObject({ code: "wrong_math" });
+  });
+});
+
+describe("R350-7-2: a price names a value of the problem; other numbers are references only", () => {
+  it.each(["It costs 5 cents.", "It costs 18 dollars.", "Sam pays 5.", "It is worth 5.", "It costs two dollars."])("refuses %s for the ones step of 27 + 39", (say) => {
+    expect(call().refusal(show(say))).toMatchObject({ code: "wrong_math" });
+  });
+
+  it.each(["Look at the 5 in 18 + 5.", "18 + 5 is easier.", "Look at the 27 in the question.", "Sam has 27 dollars.", "It costs 39 dollars.", "Seven dollars and nine dollars."])(
+    "accepts %s for the ones step of 27 + 39",
+    (say) => {
+      expect(call().refusal(show(say))).toBeNull();
+    },
+  );
+});
