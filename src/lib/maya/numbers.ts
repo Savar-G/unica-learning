@@ -20,25 +20,49 @@ const kindOf = (word: string): Kind | null =>
   word in UNITS ? "unit" : word in TEENS ? "teen" : word in TENS ? "ten" : word === "hundred" ? "hundred" : word === "thousand" ? "thousand" : null;
 const valueOf = (word: string) => UNITS[word] ?? TEENS[word] ?? TENS[word];
 
-/** A token: a written number ("1,234", "0.85", "3/4"), a word, or a fraction bar between two numbers ("over"). */
-const TOKEN = /\d{1,3}(?:,\d{3})+(?:\.\d+)?|\d+(?:\.\d+)?|\/|[a-z]+/g;
+/** A token: a written number ("1,234", "0.85"), a word, a fraction bar ("3/4"), or a minus sign. */
+const TOKEN = /\d{1,3}(?:,\d{3})+(?:\.\d+)?|\d+(?:\.\d+)?|\/|-|[a-z]+/g;
+
+/** Words a child uses to take back what they just said: "sixty-six... no, sixty", "56, wait, 66". */
+const CORRECTION = /\b(?:no|wait|i mean|actually|oops)\b/i;
+
+/**
+ * The child's committed words: after a self-correction, the last part that holds a number ("sixty... no, sixty-six"
+ * commits to "sixty-six"; "sixty-six... no wait, sixty" to "sixty"). The whole text when nothing was taken back.
+ */
+export function committedText(text: string): string {
+  const parts = text.split(CORRECTION).filter((p) => valuesIn(p).length > 0);
+  return parts.length > 0 ? parts[parts.length - 1] : text;
+}
+
+/** The text offers numbers as a choice ("is it 172 or 182?"): none of them is the child's answer yet. */
+export const offersChoice = (text: string) => text.split(/\bor\b/i).filter((p) => valuesIn(p).length > 0).length > 1;
 
 /**
  * The numbers and fractions in a text, in order. Number words join into one number ("sixty six" is 66); a new number
  * starts where the words cannot continue one ("sixty... no, sixty-six" is 60 and 66; "fifteen or fifty" is 15 and 50).
  */
 export function valuesIn(text: string): AnswerValue[] {
-  const tokens = text.toLowerCase().replace(/-/g, " ").match(TOKEN) ?? [];
+  // A hyphen between words joins a number ("sixty-six"); elsewhere it is a minus sign.
+  const tokens = text.toLowerCase().replace(/([a-z])-(?=[a-z])/g, "$1 ").match(TOKEN) ?? [];
   // First the numbers, with a fraction bar where one was said; then each "number bar number" becomes a fraction.
   const items: (number | "bar")[] = [];
   let total = 0;
   let current = 0;
   let last: Kind | null = null;
   let decimals = "";
+  // A minus sign or "negative" before a number makes it negative; "minus" after a number is a subtraction.
+  let negative = false;
+  let afterNumber = false;
+  const push = (n: number) => {
+    items.push(negative ? -n : n);
+    negative = false;
+    afterNumber = true;
+  };
   const flush = () => {
     if (last === null && decimals === "") return;
     const whole = total + current;
-    items.push(decimals ? Number(`${whole}.${decimals}`) : whole);
+    push(decimals ? Number(`${whole}.${decimals}`) : whole);
     total = current = 0;
     last = null;
     decimals = "";
@@ -47,12 +71,19 @@ export function valuesIn(text: string): AnswerValue[] {
     const token = tokens[i];
     if (/^\d/.test(token)) {
       flush();
-      items.push(Number(token.replace(/,/g, "")));
+      push(Number(token.replace(/,/g, "")));
+      continue;
+    }
+    if (token === "-" || token === "minus" || token === "negative") {
+      flush();
+      negative = token === "negative" || !afterNumber;
+      afterNumber = false;
       continue;
     }
     if (token === "/" || token === "over") {
       flush();
       items.push("bar");
+      afterNumber = false;
       continue;
     }
     if (token === "point" && kindOf(tokens[i + 1] ?? "") === "unit") {
@@ -66,6 +97,8 @@ export function valuesIn(text: string): AnswerValue[] {
     const kind = kindOf(token);
     if (kind === null) {
       flush();
+      afterNumber = false;
+      negative = false;
       continue;
     }
     switch (kind) {

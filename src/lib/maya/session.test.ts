@@ -668,3 +668,83 @@ describe("valuesIn", () => {
     expect(valuesIn("fourteen over sixteen")).toEqual([{ type: "fraction", numerator: 14, denominator: 16 }]);
   });
 });
+
+describe("review follow-up", () => {
+  it("judges the number the child kept, not one they took back", () => {
+    const c = opened();
+    c.child("sixty-six... no wait, sixty");
+    expect(c.refused({ act: "accept_answer", say: "Yes, 66!", reading: { answers: [right66] } })).toMatchObject({ code: "answer_not_heard" });
+    c.maya({ act: "guide", step: "ones", level: 0, say: "Let's check the ones. What is seven plus nine?", reading: { answers: [{ value: num(60), step: "result", verdict: "wrong" }] } });
+  });
+
+  it("does not pick the key's number out of a choice the child offers", () => {
+    const c = opened();
+    c.child("Is it 66 or 56?");
+    expect(c.refused({ act: "accept_answer", say: "It's 66!", reading: { answers: [right66] } })).toMatchObject({ code: "answer_not_committed" });
+  });
+
+  it.each(["-66", "minus 66", "negative sixty-six"])("does not hear %s as 66", (text) => {
+    const c = opened();
+    c.child(text);
+    expect(c.refused({ act: "accept_answer", say: "Yes!", reading: { answers: [right66] } })).toMatchObject({ code: "answer_not_heard" });
+  });
+
+  it("forgets a no-response close once the child speaks again", () => {
+    const c = opened();
+    c.tick(15);
+    c.maya({ act: "check_in", say: "Are you still there?" });
+    c.tick(45);
+    c.child("Sorry, I'm here. I want to stop.");
+    c.maya({ act: "close", say: "Okay, bye for now!", reading: { stop: true } });
+    expect(c.session.outcome).toMatchObject({ reason: "child_stopped" });
+  });
+
+  it("repairs a wrong number in the closing minute, then returns to closing", () => {
+    const c = afterExample();
+    c.tick(541);
+    c.send({ type: "maya_claim", at: T0 + 541_000, claim: { kind: "equation", operation: { kind: "add", operands: [7, 9] }, result: 15 } });
+    c.tick(545);
+    expect(c.session.state).toBe("REPAIR_MAYA");
+    c.maya({ act: "repair", say: "Sorry, seven plus nine is sixteen." });
+    expect(c.session.state).toBe("TIME_CLOSE");
+  });
+
+  it("refuses giving the answer without asking for it on paper", () => {
+    const c = afterExample();
+    c.tick(540);
+    expect(c.refused({ act: "give_answer", say: "It's 66." })).toMatchObject({ code: "missing_answer" });
+  });
+
+  it("does not count an answer Maya gave as the child's right answer", () => {
+    const c = opened();
+    c.child("Just show me how.");
+    c.maya({ act: "guide", step: "ones", level: 3, say: "Seven plus nine is sixteen ones: write 6 and carry 1 ten. What do the tens make?", reading: { help: "show" } });
+    c.child("I really don't get it.");
+    c.maya({ act: "give_answer", say: "It is 66: six tens and six ones. Write 66 on your paper.", reading: { help: "more" } });
+    c.child("Okay.");
+    c.maya({ act: "close", say: "Bye for now!" });
+    expect(c.session.outcome).toMatchObject({ reason: "solved", assistance: "answer_given" });
+    expect(learningEvent(c.session)).toMatchObject({ result: "unfinished", highestHint: 4 });
+  });
+
+  it("refuses filling the answer row's last digit before the answer may be given, but not the ones digit", () => {
+    const c = opened();
+    c.child("I don't know.");
+    const put = (column: string) => ({ op: "put", target: { objectId: "sum", part: "cell", rowId: "answer", column }, value: "6" });
+    expect(c.refused({ act: "guide", step: "ones", level: 0, say: "Look at the tens.", board: [put("tens")] })).toMatchObject({ code: "reveals_answer" });
+    c.maya({ act: "guide", step: "ones", level: 0, say: "What do seven and nine make?", board: [put("ones")] });
+  });
+});
+
+describe("valuesIn signs", () => {
+  it.each([
+    ["-172", [-172]],
+    ["minus 172", [-172]],
+    ["negative sixty six", [-66]],
+    ["300 minus 128", [300, 128]],
+    ["300-128", [300, 128]],
+    ["three hundred minus one hundred", [300, 100]],
+  ])("reads %s", (text, numbers) => {
+    expect(valuesIn(text)).toEqual(numbers.map(num));
+  });
+});
