@@ -10,7 +10,7 @@
 // Pure TypeScript: no Next.js, React, network, database or clock.
 import {
   checkQuestionPackage,
-  QUESTION_PACKAGE_VERSION,
+  type PackageCheck,
   type QuestionLookup,
   type QuestionPackage,
   type WorkbookQuestionRef,
@@ -125,6 +125,8 @@ export interface WorkbookStore {
   page(workbookId: string, pageNumber: number): Promise<WorkbookPage | null>;
   /** A question by workbook, page number and question number. */
   question(ref: WorkbookQuestionRef): Promise<QuestionLookup>;
+  /** The page whose QR code holds `token` (its number), with its workbook, or null. */
+  pageByToken(token: string): Promise<{ workbook: WorkbookSummary; page: number } | null>;
 }
 
 // ---------- Checks both adapters share ----------
@@ -139,6 +141,8 @@ const FILE_NAME = /^[A-Za-z0-9._-]{1,100}$/;
 const MAX_QUESTIONS = 1000;
 
 export const isUuid = (v: unknown): v is string => typeof v === "string" && UUID.test(v);
+/** True when `v` has the shape of a page's QR token. */
+export const isQrToken = (v: unknown): v is string => typeof v === "string" && QR_TOKEN.test(v);
 const isWhole = (v: unknown, min: number, max = Number.MAX_SAFE_INTEGER): v is number => Number.isInteger(v) && (v as number) >= min && (v as number) <= max;
 const isText = (v: unknown, max: number): v is string => typeof v === "string" && v.trim() !== "" && v.length <= max;
 
@@ -154,6 +158,13 @@ function pathProblem(path: unknown, workbookId: string): string | null {
 
 const boxInside = (b: QuestionBox, image: PageImage) =>
   [b.x, b.y].every((n) => isWhole(n, 0)) && [b.width, b.height].every((n) => isWhole(n, 1)) && b.x + b.width <= image.width && b.y + b.height <= image.height;
+
+/**
+ * A package the store keeps and reads as found: one code checked, or a sound item code does not mark (a drawing, a
+ * written reason, a parent-checked item: "not checked by code", #362). A failed or unsupported package is refused.
+ */
+const stores = (check: PackageCheck): check is Extract<PackageCheck, { status: "checked" | "not-checked" }> =>
+  check.status === "checked" || check.status === "not-checked";
 
 /** What is wrong with a workbook to write, or null. The store checks the child, the family folder and conflicts. */
 export function workbookProblem(w: WorkbookInput): string | null {
@@ -204,7 +215,7 @@ export function workbookProblem(w: WorkbookInput): string | null {
       const where = `${at}, question ${q.number}`;
       if (!q.box || !boxInside(q.box, p.image!)) return `${where}: the box is not inside the page image`;
       const check = checkQuestionPackage(q.package);
-      if (!check.ok) return `${where}: ${check.reason}`;
+      if (!stores(check)) return `${where}: ${check.reason}`;
       const ref = check.package.ref;
       if (ref.source !== "workbook" || ref.workbookId !== w.id || ref.page !== p.number || ref.question !== q.number) {
         return `${where}: the package ${refText(ref, w.id)}`;
@@ -232,16 +243,14 @@ export interface StoredQuestion {
 }
 
 /**
- * A stored question's content: its package when it is the current version, passes the check and names the place it
- * was read from; else "content unavailable". A product never teaches or marks from an unavailable question.
+ * A stored question's content: its package when it passes the check of its stored version (or is a sound item code
+ * does not mark) and names the place it was read from; else "content unavailable". A product never teaches or marks
+ * from an unavailable question, and marks a found one only where its item is scorable.
  */
 export function storedContent(stored: StoredQuestion, at: WorkbookQuestionRef): WorkbookQuestion["content"] {
   const unavailable = (detail: string) => ({ status: "unavailable" as const, reason: "invalid-package" as const, detail });
-  if (stored.schemaVersion !== QUESTION_PACKAGE_VERSION) {
-    return unavailable(`the stored package is schema version ${stored.schemaVersion}, not ${QUESTION_PACKAGE_VERSION}`);
-  }
-  const check = checkQuestionPackage(stored.package);
-  if (!check.ok) return unavailable(check.reason);
+  const check = checkQuestionPackage(stored.package, stored.schemaVersion);
+  if (!stores(check)) return unavailable(check.reason);
   const ref = check.package.ref;
   if (ref.source !== "workbook" || ref.workbookId !== at.workbookId || ref.page !== at.page || ref.question !== at.question) {
     return unavailable(`the stored package ${refText(ref, at.workbookId)}`);

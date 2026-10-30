@@ -6,7 +6,7 @@ import {
   workedSteps,
   type AnswerValue,
   type Operation,
-  type QuestionPackage,
+  type OperationPackage,
 } from "@/lib/question-package";
 
 // The answer checker for expressions and one-variable equations (#307), through the one package check. Each problem is
@@ -15,7 +15,7 @@ import {
 
 const num = (value: number): AnswerValue => ({ type: "number", value });
 
-function packageOf(operation: Operation, answer: number, easier: Operation, easierAnswer: number, standard: string): QuestionPackage {
+function packageOf(operation: Operation, answer: number, easier: Operation, easierAnswer: number, standard: string): OperationPackage {
   return {
     id: "wbq-1",
     ref: { source: "workbook", workbookId: "wb-1", page: 9, question: 3 },

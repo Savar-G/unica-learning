@@ -11,9 +11,16 @@
 // question text: the operation is stored beside the text. Every operation kind has its computation in
 // question-package-math.ts (#306 added long multiplication and division, decimals and fractions); a kind code cannot
 // compute, or steps of a version it cannot read, are "unsupported", never a pass.
+//
+// A workbook question also has an item (#362, question-package-items.ts): its format (one box, several boxes, tick
+// one, a Mixed set, Solve it two ways, Spot the error, a written reason, a drawing ...), its answer regions (one stored
+// box each) and the checks that give code the right answer of each scored region. A package with no item (every
+// version 1 package) is one answer box that holds its operation's answer. An item with no operation (tens and ones,
+// a drawing) has no answer, steps or easier example of its own. Items code does not mark are "not-checked".
 // Pure TypeScript: no Next.js, React, network, database or clock.
 import { BC_SKILL_MAP } from "@/lib/assessment";
 import { decimalRational } from "@/lib/question-package-columns";
+import { defaultItem, itemProblem, type ItemContext, type ItemProblem } from "@/lib/question-package-items";
 import { amountOf, amountValueProblem, conversionProblem, dimensionName, sameSize, unknownUnit } from "@/lib/question-package-measures";
 import {
   computation,
@@ -31,9 +38,10 @@ export { operationProblem, operationResult, operationText, stepText, valueText, 
 
 /**
  * The version of the QuestionPackage shape. The workbook store keeps it beside each stored package (#299), so a reader
- * can tell a package of an older shape from a broken one. Raise it when the shape changes.
+ * can tell a package of an older shape from a broken one. Raise it when the shape changes, and keep reading the older
+ * versions (checkQuestionPackage). Version 2 (#362) added the item; a version 1 package has none.
  */
-export const QUESTION_PACKAGE_VERSION = 1;
+export const QUESTION_PACKAGE_VERSION = 2;
 
 /** A workbook question: the page number runs through the whole workbook; the question number restarts on each page. */
 export interface WorkbookQuestionRef {
@@ -351,8 +359,18 @@ export interface QuestionPackage {
   templateId: string | null;
   /** The question as the child reads it. */
   text: string;
-  answer: PackageAnswer;
-  operation: Operation;
+  /**
+   * How the item is answered on the page: its format, its answer regions and how code checks them (#362). Absent
+   * (every version 1 package): one answer box that holds the operation's answer (packageItem gives it).
+   */
+  item?: Item;
+  /**
+   * The answer, the operation, its worked steps, its wrong answers and its easier example: all null (and no steps and
+   * no wrong answers) for an item with no operation, such as a place-value or a drawing item; a package with no item
+   * always has an operation.
+   */
+  answer: PackageAnswer | null;
+  operation: Operation | null;
   /**
    * The shape version of the worked steps here and in the easier example; absent means 1. Code checks only the
    * versions in STEPS_VERSIONS; any other is "unsupported", never a pass.
@@ -365,7 +383,124 @@ export interface QuestionPackage {
   level: number;
   difficulty: Difficulty;
   wrongAnswers: WrongAnswer[];
-  easierExample: EasierExample;
+  easierExample: EasierExample | null;
+}
+
+/** A package with an operation: its answer, worked steps and easier example are there (every version 1 package). */
+export type OperationPackage = QuestionPackage & { answer: PackageAnswer; operation: Operation; easierExample: EasierExample };
+
+/** True when the package has an operation, so its answer, steps and easier example are there. */
+export const hasOperation = (p: QuestionPackage): p is OperationPackage => p.operation !== null;
+
+/**
+ * A checked package's item: its own, or for a package with none (every version 1 package), one answer box that holds
+ * the operation's answer. A package that has neither has not passed the check.
+ */
+export function packageItem(p: QuestionPackage): Item {
+  if (p.item) return p.item;
+  if (!p.answer) throw new Error("packageItem: a package with no item and no answer has not passed the check");
+  return defaultItem(p.answer.value);
+}
+
+/**
+ * How an item is answered on a workbook page (.design/workbooks/CONTEXT.md section 6, DESIGN.md section 4):
+ * - write-number, write-words: one answer box (a number or an amount; words).
+ * - boxes: several answer boxes for one item (tens and ones, ordering, missing numbers, two ways to make 12);
+ *   fill-table: the empty cells of a table, one box each.
+ * - tick-one: tick one of named choices; circle: circle one of named choices.
+ * - tick-and-number: a Mixed set item, "1 Tick the operation", "2 Write the answer", and a work box.
+ * - two-ways: Solve it two ways: Method 1 and Method 2 work boxes, then the answer box; only the answer is checked.
+ * - spot-the-error: a wrong worked solution (its wrong answer and the step where the mistake is), the fix in answer
+ *   boxes, and maybe "Is it right?" and "What did Sam do wrong?".
+ * - show-work: answer boxes with a work box (a story, a challenge).
+ * - written-reason: "How do you know?" writing lines only.
+ * - number-line, colour-or-shade, match, draw: the child marks a picture; number-line may add answer boxes.
+ * - hands-on: work with objects off the page, maybe writing what they found in boxes.
+ */
+export type ItemFormat =
+  | "write-number" | "write-words" | "boxes" | "fill-table" | "tick-one" | "circle" | "tick-and-number" | "two-ways"
+  | "spot-the-error" | "show-work" | "written-reason" | "number-line" | "colour-or-shade" | "match" | "draw" | "hands-on";
+
+/**
+ * An answer region: one place on the page the child writes or marks in, which the renderer measures and stores as one
+ * box (#309). A box or a choice holds an answer: one right answer (the answer key), which code checks against the
+ * item's checks. Where a check takes more than one right answer (the equations of "two ways to make 12"), the key is
+ * one of them, and marking reads the check, not only the key. A work box, writing lines and a picture are never
+ * scored by code.
+ */
+export type AnswerRegion =
+  | { id: string; kind: "box"; label: string | null; answer: AnswerValue | null }
+  | { id: string; kind: "choice"; mark: "tick" | "circle"; label: string | null; choices: string[]; answer: string | null }
+  | { id: string; kind: "work"; label: string }
+  | { id: string; kind: "lines"; label: string }
+  | { id: string; kind: "picture"; label: string | null };
+
+/** A number in an item check: a whole number or a decimal, a fraction or a mixed number. */
+export type NumberValue = Extract<AnswerValue, { type: "number" | "fraction" | "mixed" }>;
+
+/** A term of an equation: a printed number, or an answer box the child fills in. */
+export type Term = NumberValue | { region: string };
+
+/** "left op right = result", as printed with its boxes: "6 × [ ] = 54", "[ ] + [ ] = 12". */
+export interface Equation {
+  left: Term;
+  op: "+" | "−" | "×" | "÷";
+  right: Term;
+  result: Term;
+}
+
+/** A yes-or-no statement code can decide: an equation with no boxes, a factor of a number, or a wrong answer shown. */
+export type Statement =
+  | { kind: "equation"; equation: Equation }
+  | { kind: "factor"; factor: number; of: number }
+  /** The spot-the-error item's shown answer is right: never, so "Is it right?" is no. */
+  | { kind: "shown-answer" };
+
+/**
+ * How code knows the right answers of an item's scored regions. Each scored region is in one check:
+ * - operation: the box holds the question's answer, or one of the other forms the package accepts.
+ * - operation-sign: the choice is the sign of the question's operation (+, −, × or ÷).
+ * - places: each box holds the digit of `number` in its place; the largest place takes the whole number above it
+ *   (347 is 34 tens and 7 ones).
+ * - order: the boxes hold `numbers` from least to greatest ("up") or greatest to least ("down").
+ * - equations: each equation holds when its boxes are filled in; any numbers of the kind `numbers` names that make
+ *   every one hold are right, and with `different`, no two equations may have the same numbers in the same places (two
+ *   ways to make 12). `numbers`: "counting" (1, 2, 3, ...) for counts such as rows of tiles and factor pairs, "whole"
+ *   (0, 1, 2, ...) for whole-number sums and trades, "any" for any number (5.5 + 6.5).
+ * - sequence: the terms go up (or down) by `step` each time; each box holds its term (missing numbers).
+ * - compare: the choice is <, > or = between `left` and `right`.
+ * - yes-no: the choice is `yes` when the statement is true, else `no`.
+ */
+export type ItemCheck =
+  | { kind: "operation"; region: string }
+  | { kind: "operation-sign"; region: string }
+  | { kind: "places"; number: number; parts: { region: string; place: Place }[] }
+  | { kind: "order"; numbers: NumberValue[]; direction: "up" | "down"; regions: string[] }
+  | { kind: "equations"; equations: Equation[]; different: boolean; numbers: "any" | "whole" | "counting" }
+  | { kind: "sequence"; terms: Term[]; step: NumberValue }
+  | { kind: "compare"; left: NumberValue; right: NumberValue; region: string }
+  | { kind: "yes-no"; statement: Statement; region: string; yes: string; no: string };
+
+/** The wrong worked solution of a spot-the-error item: a wrong answer of the package and the step of its mistake. */
+export interface ShownError {
+  answer: AnswerValue;
+  step: string | null;
+}
+
+/**
+ * A workbook item: its format, whether the app can mark it from a scan (`scorable`), whether a parent checks it
+ * instead (only when it is not scorable), its answer regions in reading order, and the checks of its scored regions.
+ * A scorable item has a box or a choice, and every box and choice holds an answer. Hands-on, drawing, colouring,
+ * matching and written-reason items are never scorable.
+ */
+export interface Item {
+  format: ItemFormat;
+  scorable: boolean;
+  parentChecked: boolean;
+  regions: AnswerRegion[];
+  checks: ItemCheck[];
+  /** The wrong worked solution: required for a spot-the-error item with an operation, else null. */
+  error: ShownError | null;
 }
 
 /** Why a question has no trusted package. */
@@ -381,14 +516,16 @@ export type QuestionLookup =
   | { status: "unavailable"; reason: UnavailableReason; detail: string };
 
 /**
- * A package check: "checked" (code recomputed the answer, every step and the easier example), "failed" with the first
- * reason, or "unsupported": code cannot compute the operation or read its steps, so the question is not checked by
- * code. Only "checked" is ok.
+ * A package check: "checked" (code recomputed the answer, every step, the easier example and every scored region),
+ * "failed" with the first reason, "unsupported": code cannot compute the operation, read its steps or check a scored
+ * region, or "not-checked": a sound item that is not scorable or that a parent checks, with its package. Unsupported
+ * and not-checked questions are "not checked by code" for the reviewer. Only "checked" is ok.
  */
 export type PackageCheck =
   | { ok: true; status: "checked"; package: QuestionPackage }
   | { ok: false; status: "failed"; reason: string }
-  | { ok: false; status: "unsupported"; reason: string };
+  | { ok: false; status: "unsupported"; reason: string }
+  | { ok: false; status: "not-checked"; reason: string; package: QuestionPackage };
 
 /** The worked-step shape versions code can check. Version 1 is the shapes of WorkedStep. */
 export const STEPS_VERSIONS: readonly number[] = [1];
@@ -585,7 +722,7 @@ function size(operation: Operation): Size {
  */
 const smaller = (a: Size, b: Size) => a.digits < b.digits || (a.digits === b.digits && (a.steps < b.steps || (a.steps === b.steps && a.carries < b.carries)));
 
-type Problem = { status: "failed" | "unsupported"; reason: string };
+type Problem = ItemProblem;
 const failed = (reason: string | null): Problem | null => (reason ? { status: "failed", reason } : null);
 
 function packageProblem(p: unknown): Problem | null {
@@ -599,6 +736,7 @@ function packageProblem(p: unknown): Problem | null {
     if (!isWhole(p.stepsVersion, 1)) return failed("the steps version is not a whole number from 1");
     if (!STEPS_VERSIONS.includes(p.stepsVersion)) return { status: "unsupported", reason: `code cannot read worked steps of version ${p.stepsVersion}` };
   }
+  if (p.operation === null && p.item !== undefined) return noOperationProblem(p);
   const operation = operationCheck(p.operation);
   if (operation?.status === "unsupported") return operation;
   const form = unknownForm(p);
@@ -607,8 +745,17 @@ function packageProblem(p: unknown): Problem | null {
   const easier = operation === null && isObject(p.easierExample) && isObject(p.easierExample.operation)
     && p.easierExample.operation.kind === (p.operation as Operation).kind ? operationCheck(p.easierExample.operation) : null;
   if (easier?.status === "unsupported") return { status: "unsupported", reason: `the easier example: ${easier.reason}` };
-  return failed(contentProblem(p));
+  const content = failed(contentProblem(p));
+  if (content || p.item === undefined) return content;
+  const q = p as unknown as QuestionPackage & { answer: PackageAnswer; operation: Operation };
+  return itemProblem(p.item, {
+    ...VALUE_READERS,
+    computed: { operation: q.operation, answer: q.answer.value, accepted: q.answer.accepted, wrongAnswers: q.wrongAnswers },
+  });
 }
+
+/** The value readers the item check uses. */
+const VALUE_READERS: Omit<ItemContext, "computed"> = { valueProblem, sameValue, number: rational };
 
 const ANSWER_TYPES: readonly string[] = ["number", "fraction", "mixed", "remainder", "quantity", "compound", "time", "expression", "choice", "text"];
 
@@ -616,11 +763,14 @@ const ANSWER_TYPES: readonly string[] = ["number", "fraction", "mixed", "remaind
 function unknownForm(p: Record<string, unknown>): string | null {
   const answer = isObject(p.answer) ? p.answer : {};
   const easier = isObject(p.easierExample) ? p.easierExample : {};
+  const item = isObject(p.item) ? p.item : {};
   const values = [
     answer.value,
     ...(Array.isArray(answer.accepted) ? answer.accepted : []),
     ...(Array.isArray(p.wrongAnswers) ? p.wrongAnswers.map((w) => (isObject(w) ? w.value : null)) : []),
     easier.answer,
+    ...(Array.isArray(item.regions) ? item.regions.map((r) => (isObject(r) && r.kind === "box" ? r.answer : null)) : []),
+    isObject(item.error) ? item.error.answer : null,
   ];
   const unknown = values.find((v) => isObject(v) && typeof v.type === "string" && !ANSWER_TYPES.includes(v.type));
   if (unknown) return `code cannot check answers of type ${String((unknown as { type: string }).type)}`;
@@ -660,16 +810,8 @@ function contentProblem(p: Record<string, unknown>): string | null {
   }
   const rightForms = [value, ...answer.accepted] as AnswerValue[];
 
-  if (!isObject(p.skill) || !isText(p.skill.standard) || !Array.isArray(p.skill.skills)) return "the skill needs a standard and a list of skills";
-  const code = p.skill.standard;
-  const standard = BC_SKILL_MAP.standards.find((s) => s.code === code);
-  if (!standard) return `the standard ${code} is not in the BC skill map`;
-  for (const id of p.skill.skills) {
-    if (!standard.skills.some((s) => s.id === id)) return `the skill ${String(id)} is not a skill of standard ${standard.code}`;
-  }
-
-  if (!isWhole(p.level, 1, 30)) return "the level is not U1 to U30";
-  if (p.difficulty !== 1 && p.difficulty !== 2 && p.difficulty !== 3) return "the difficulty is not 1, 2 or 3";
+  const skill = skillProblem(p);
+  if (skill) return skill;
 
   if (!Array.isArray(p.wrongAnswers) || p.wrongAnswers.length === 0) return "the package has no wrong answers";
   const stepIds = (p.steps as WorkedStep[]).map((s) => s.id);
@@ -696,6 +838,31 @@ function contentProblem(p: Record<string, unknown>): string | null {
   return null;
 }
 
+/** The skill, the level and the difficulty. */
+function skillProblem(p: Record<string, unknown>): string | null {
+  if (!isObject(p.skill) || !isText(p.skill.standard) || !Array.isArray(p.skill.skills)) return "the skill needs a standard and a list of skills";
+  const code = p.skill.standard;
+  const standard = BC_SKILL_MAP.standards.find((s) => s.code === code);
+  if (!standard) return `the standard ${code} is not in the BC skill map`;
+  for (const id of p.skill.skills) {
+    if (!standard.skills.some((s) => s.id === id)) return `the skill ${String(id)} is not a skill of standard ${standard.code}`;
+  }
+  if (!isWhole(p.level, 1, 30)) return "the level is not U1 to U30";
+  if (p.difficulty !== 1 && p.difficulty !== 2 && p.difficulty !== 3) return "the difficulty is not 1, 2 or 3";
+  return null;
+}
+
+/** A package whose item has no operation: no answer, steps, wrong answers or easier example; the item holds the answers. */
+function noOperationProblem(p: Record<string, unknown>): Problem | null {
+  const form = unknownForm(p);
+  if (form) return { status: "unsupported", reason: form };
+  if (p.answer !== null || p.easierExample !== null) return failed("a package with no operation has no answer and no easier example: its item holds the answers");
+  if (!Array.isArray(p.steps) || p.steps.length > 0 || !Array.isArray(p.wrongAnswers) || p.wrongAnswers.length > 0) {
+    return failed("a package with no operation has no worked steps and no wrong answers");
+  }
+  return failed(skillProblem(p)) ?? itemProblem(p.item, { ...VALUE_READERS, computed: null });
+}
+
 /**
  * A wrong answer that is really right: the answer or an accepted form, or the answer's number in a form the rules do not
  * let stay wrong (a fraction that is not simplified may stay wrong; for "3/4 = ?/12", 3/4 is wrong). An amount is right
@@ -711,11 +878,15 @@ function isRight(wrong: AnswerValue, rightForms: AnswerValue[], exact: AnswerVal
 }
 
 /**
- * Checks a package, for example one read from the database: "checked" with the package, "failed" with the first reason,
- * or "unsupported" when code cannot compute its operation or read its steps.
+ * Checks a package of shape `version` (the current one unless given), for example one read from the database:
+ * "checked" with the package, "failed" with the first reason, "unsupported" when code cannot compute its operation,
+ * read its steps or check a scored region, or "not-checked" for a sound item code does not mark.
  */
-export function checkQuestionPackage(candidate: unknown): PackageCheck {
+export function checkQuestionPackage(candidate: unknown, version: number = QUESTION_PACKAGE_VERSION): PackageCheck {
+  if (version !== 1 && version !== QUESTION_PACKAGE_VERSION) return { ok: false, status: "unsupported", reason: `code cannot read question packages of version ${version}` };
+  if (version === 1 && isObject(candidate) && candidate.item !== undefined) return { ok: false, status: "failed", reason: "a version 1 package has no item" };
   const problem = packageProblem(candidate);
   if (!problem) return { ok: true, status: "checked", package: candidate as QuestionPackage };
+  if (problem.status === "not-checked") return { ok: false, status: "not-checked", reason: problem.reason, package: candidate as QuestionPackage };
   return { ok: false, status: problem.status, reason: problem.reason };
 }

@@ -6,6 +6,7 @@
 // check_failed), sign_in (channel "code": the email already had an account, and the code signed the parent in).
 // Sign-in (#63): google_start, google_failed, sign_in_link_sent, sign_in_link_failed, sign_in_link_page, sign_in (channel "link", on the start screen), password_reset_request, password_changed, password_change_failed.
 // Parent PIN (#300): pin_set, pin_changed (no PIN value travels with them).
+// The desk (#301): desk_left (the PIN closed the desk), pin_reset (Forgot PIN: a new PIN after the account password).
 // Sign-in code (D-134): sign_in_code_sent (status sent, no_account, wait or again), sign_in_code_failed (code send, expired,
 // too_many or check_failed), sign_in (channel "code": the code from the sign-in page signed the parent in).
 // The test (#64): test_start (status new or resumed), test_finish, test_error (code, status = the step that failed).

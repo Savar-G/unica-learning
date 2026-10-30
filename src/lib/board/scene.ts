@@ -10,6 +10,7 @@ import { fraction } from "@/lib/board/fraction";
 import { contains, overlaps, polylineHitsRect, polylineLength, traceTouches, type Trace } from "@/lib/board/geometry";
 import { BOARD_GLYPHS } from "@/lib/board/fonts";
 import type { GlyphSet } from "@/lib/board/glyphs";
+import { model } from "@/lib/board/model";
 import { note } from "@/lib/board/note";
 import { numberLine } from "@/lib/board/number-line";
 import { parseCommand } from "@/lib/board/parse";
@@ -19,7 +20,7 @@ import type { Batch, BoardPath, Command, CreateCommand, Notice, PageSize, PathKi
 import type { Stroke } from "@/lib/whiteboard";
 
 /** The representations the board can create, by their create command. Later ones are added here. */
-const REPRESENTATIONS = { columns, division, write: note, fraction, number_line: numberLine } satisfies Record<CreateCommand["op"], unknown>;
+const REPRESENTATIONS = { columns, division, write: note, model, fraction, number_line: numberLine } satisfies Record<CreateCommand["op"], unknown>;
 const representation = (op: CreateCommand["op"]) => REPRESENTATIONS[op] as unknown as Representation<unknown, CreateCommand>;
 const isCreate = (c: Command): c is CreateCommand => c.op in REPRESENTATIONS;
 
@@ -108,7 +109,7 @@ export function createScene(options: { page?: PageSize; glyphs?: GlyphSet } = {}
 
 // ---------- targets ----------
 
-const targetKey = (t: Target) => [t.objectId, t.part, "rowId" in t ? t.rowId : "", "column" in t ? t.column : "", "index" in t ? t.index : "", "value" in t ? valueKeyOf(t.value) : ""].join("|");
+const targetKey = (t: Target) => [t.objectId, t.part, "rowId" in t ? t.rowId : "", "column" in t ? t.column : "", "index" in t ? t.index : "", "value" in t ? valueKeyOf(t.value) : "", "piece" in t ? t.piece : ""].join("|");
 /** A number line value's one name, so "2/6" and "1/3" are the same target. */
 function valueKeyOf(text: string): string {
   const name = valueName(text);

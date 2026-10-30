@@ -7,7 +7,7 @@ import {
   type AnswerValue,
   type FractionOperand,
   type Operation,
-  type QuestionPackage,
+  type OperationPackage,
   type WorkedStep,
 } from "@/lib/question-package";
 
@@ -315,7 +315,7 @@ const CASES: Record<NumberKind, KindCase> = {
 
 const PROBLEMS_PER_KIND = 300;
 
-function packageFor(operation: Operation, easier: Operation): QuestionPackage {
+function packageFor(operation: Operation, easier: Operation): OperationPackage {
   return {
     id: "gen-1",
     ref: { source: "workbook", workbookId: "wb-gen", page: 1, question: 1 },

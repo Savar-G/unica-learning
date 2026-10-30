@@ -55,8 +55,9 @@ export function memoryChildProfiles(families: MemoryChildFamilies) {
       if (!families.children.some((c) => c.id === childId && c.parentId === parentId)) return { refused: "the child is not under that parent" };
       if ((rows.get(childId)?.buildToken ?? null) !== (expected?.buildToken ?? null)) return "changed";
       const revision = (expected?.revision ?? 0) + 1;
-      rows.set(childId, { revision, buildToken: crypto.randomUUID(), builtAt: new Date().toISOString(), schemaVersion: profile.schemaVersion, profile: json(profile), parentId, assessmentId });
-      return { revision };
+      const buildToken = crypto.randomUUID();
+      rows.set(childId, { revision, buildToken, builtAt: new Date().toISOString(), schemaVersion: profile.schemaVersion, profile: json(profile), parentId, assessmentId });
+      return { revision, buildToken };
     },
   };
   const stored = memoryLearningEventStore({

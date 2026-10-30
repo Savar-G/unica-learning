@@ -63,7 +63,7 @@ describe("assessmentQuestionPackage", () => {
     const result = assessmentQuestionPackage({ source: "assessment", assessmentId: TEST, questionId: "s1-3" }, question);
     if (result.status !== "found") throw new Error(`expected a package, got ${JSON.stringify(result)}`);
     const p = result.package;
-    expect(p.answer.value).toEqual({ type: "number", value: 37 });
+    expect(p.answer?.value).toEqual({ type: "number", value: 37 });
     expect(p.steps).toEqual([
       { id: "ones", kind: "subtract-column", place: "ones", top: 3, bottom: 6, lent: false, regrouped: true, write: 7 },
       { id: "tens", kind: "subtract-column", place: "tens", top: 8, bottom: 4, lent: true, regrouped: false, write: 3 },
@@ -90,7 +90,7 @@ describe("assessmentQuestionPackage", () => {
     // 36 + 17 has the ones 6 and 7, as the first example 26 + 7 does.
     const question = stored("2-add-2-digit", { a: 36, b: 17 }, "36 + 17 = ?", "53", [{ value: "43", misconception: "O3" }]);
     const result = assessmentQuestionPackage({ source: "assessment", assessmentId: TEST, questionId: "s1-3" }, question);
-    expect(result.status === "found" && result.package.easierExample.text).toBe("38 + 5 = ?");
+    expect(result.status === "found" && result.package.easierExample?.text).toBe("38 + 5 = ?");
   });
 
   it("says content unavailable for a template that is not supported", () => {
@@ -120,7 +120,7 @@ describe("assessmentQuestionPackage", () => {
         const question = fillTemplate(template, seed);
         const result = assessmentQuestionPackage({ source: "assessment", assessmentId: TEST, questionId: question.id }, question);
         if (result.status !== "found") throw new Error(`${templateId} seed ${seed}: ${JSON.stringify(result)}`);
-        expect(String((result.package.answer.value as { value: number }).value)).toBe(question.answer);
+        expect(String((result.package.answer?.value as { value: number }).value)).toBe(question.answer);
         expect(checkQuestionPackage(result.package)).toEqual({ ok: true, status: "checked", package: result.package });
       }
     }

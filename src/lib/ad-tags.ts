@@ -19,6 +19,7 @@
 // Pure apart from getAdTags and its browser helpers: createAdTags takes its browser parts, so tests use fakes.
 import { getConsent, subscribeConsent, type ConsentState } from "@/lib/consent";
 import { PLANS } from "@/lib/site";
+import { redactPathTokens } from "@/lib/url-tokens";
 
 export interface AdConfig {
   metaPixelId: string | null;
@@ -53,9 +54,9 @@ export function adConfig(
   };
 }
 
-// The pages a child uses: the start screen the parent hands over (/account/start/<child>) and the test
-// (/account/test/<child>).
-const CHILD_PAGES = /^\/account\/(?:start|test)(?:\/|$)/i;
+// The pages a child uses: the start screen the parent hands over (/account/start/<child>), the test
+// (/account/test/<child>), and the desk with its Forgot PIN screen and page QR codes (/tutor, /tutor/p/<token>, #301).
+const CHILD_PAGES = /^\/(?:account\/(?:start|test)|tutor)(?:\/|$)/i;
 // Pages whose address can hold a sign-in or unsubscribe token, and the admin area: no ad tags there either.
 const PRIVATE_PAGES = /^\/(?:admin|api|auth|sign-in|unsubscribe)(?:\/|$)/i;
 
@@ -332,22 +333,25 @@ const ID_SEGMENT = /\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{1
 
 const AD_KEYS = ["utm_source", "utm_medium", "utm_campaign", "utm_content", "gclid"];
 
-/** An address of this site with ids replaced and only its ad tags kept in the query; another site's origin only. */
-function cleanUrl(href: string): string {
+/**
+ * An address of this site with ids and QR tokens replaced and only its ad tags kept in the query; another site's
+ * origin only. `origin`: this site's.
+ */
+export function cleanAdAddress(href: string, origin: string): string {
   let url: URL;
   try { url = new URL(href); } catch { return ""; }
-  if (url.origin !== window.location.origin) return `${url.origin}/`;
+  if (url.origin !== origin) return `${url.origin}/`;
   const kept = new URLSearchParams();
   for (const k of AD_KEYS) {
     const v = url.searchParams.get(k);
     if (v) kept.set(k, v);
   }
   const query = kept.toString();
-  return url.origin + url.pathname.replace(ID_SEGMENT, "/id") + (query ? `?${query}` : "");
+  return url.origin + redactPathTokens(url.pathname).replace(ID_SEGMENT, "/id") + (query ? `?${query}` : "");
 }
 
-const cleanLocation = () => cleanUrl(window.location.href);
-const cleanReferrer = () => (document.referrer ? cleanUrl(document.referrer) : "");
+const cleanLocation = () => cleanAdAddress(window.location.href, window.location.origin);
+const cleanReferrer = () => (document.referrer ? cleanAdAddress(document.referrer, window.location.origin) : "");
 
 function whenIdle(run: () => void) {
   if ("requestIdleCallback" in window) window.requestIdleCallback(run, { timeout: 3000 });
