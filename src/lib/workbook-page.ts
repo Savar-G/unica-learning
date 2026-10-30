@@ -1,0 +1,347 @@
+// Workbook pages and their slots (#310, spec #296): what each page of a book holds, as data the template lays out.
+// The planner (#308, src/lib/workbook-plan.ts) decides each day's pages and the parts on them; pageSlots names the
+// slots each planned part fills on its page (DESIGN.md section 7), with the number of items each takes. A filler (the
+// sample content in src/lib/workbook-sample-book.ts today, the AI generator in #311 later) writes each slot's content:
+// its question packages and the words, worked lines and figures around them. assembleBook puts the book in order
+// (cover, How + Plan, the ten days, back cover, then blank pages to a multiple of 4, D-191), numbers the pages from
+// the cover and the questions from 1 on each page, gives each question its place (its package's ref) and each page its
+// printed ID (UL·<CHILD>·W<nn>·D<nn>·P<n>, D-187).
+//
+// The content never chooses a position, size, colour or font: the template (src/lib/workbook-template.ts) owns those.
+// Pure TypeScript: no Next.js, React, network, database or clock.
+import type { QuestionPackage } from "@/lib/question-package";
+import type { PartKind, PlannedPage, PlannedPart, WorkbookPlan } from "@/lib/workbook-plan";
+import type { DraftPage, WorkbookDraft } from "@/lib/workbook-render";
+
+// ---------- Slots ----------
+
+/** The named slots of a day page (DESIGN.md sections 4 and 7). */
+export const SLOTS = [
+  "warm-up", "fix-it", "in-your-head", "remember-these", "try-first", "worked-example", "now-you", "spot-the-error",
+  "watch-one", "finish-these", "on-your-own", "practice-row", "solve-it-two-ways", "word-problems", "how-do-you-know",
+  "reminder", "unit-b-practice", "mixed-set", "picture-stories", "friday-5", "challenge", "math-in-the-world",
+  "show-what-you-know", "level-test", "unit-check", "mini-test", "already-know-it",
+] as const;
+export type SlotName = (typeof SLOTS)[number];
+
+/** A picture drawn by code from data, never an image (DESIGN.md section 4, visual models). */
+export type Figure =
+  | { kind: "dots"; groups: number[] }
+  | { kind: "ten-frame"; filled: number }
+  | { kind: "number-line"; from: number; to: number; step: number; hops: [number, number][] }
+  | { kind: "blocks"; tens: number; ones: number }
+  | { kind: "array"; rows: number; columns: number };
+
+/**
+ * A worked line: plain text, with the given or worked numbers the child reads in blue between [ and ]
+ * ("1 × [36] = 36").
+ */
+export type WorkedLine = string;
+
+/** One slot's content on a page. Which fields a slot reads is in the template; the rest are left out. */
+export interface Block {
+  slot: SlotName;
+  /** The questions in the slot, by their number on the page, in reading order. */
+  items: number[];
+  /** A panel or row label: "FACTOR PAIRS OF 24", "TWO DIGITS". */
+  label?: string;
+  /** A line beside the slot's chip: "Do as many as you can.", "Tick + or −, then write the answer.". */
+  note?: string;
+  /** Worked lines: Watch one, a reminder, the wrong work of Spot the error. */
+  lines?: WorkedLine[];
+  /** A worked example solved two ways (Method 1, Method 2). */
+  methods?: { label: string; lines: WorkedLine[] }[];
+  /** The worked example's or reminder's figure, beside "What's going on". */
+  figure?: Figure;
+  /** "What's going on": one to three sentences. */
+  explain?: string;
+  /** Per item: the given start of a Finish these item, in blue, or null. */
+  hints?: (WorkedLine | null)[];
+  /** Per item: its picture (a word problem's dots, a picture story), or null. */
+  figures?: (Figure | null)[];
+  /** Math in the world's info cards ("EDGING", "$4 per metre"). */
+  info?: { label: string; value: string }[];
+  /** Spot the error: whose work it is ("Sam"). */
+  who?: string;
+}
+
+/** A day page's content: its header and its slots. */
+export interface DayContent {
+  kind: "day";
+  /** The printed page ID (D-187). */
+  id: string;
+  level: number;
+  day: number;
+  /** Its place in the day, from 1, and the day's page count. */
+  page: number;
+  pages: number;
+  /** The topic in the day label: "FACTORS AND FACTOR PAIRS". */
+  topic: string;
+  title: string;
+  subtitle: string;
+  /** "For the grown-up: ..." under the title (parent-led and early New idea pages), or null. */
+  grownUp: string | null;
+  blocks: Block[];
+}
+
+export interface CoverContent {
+  kind: "cover";
+  id: string;
+  level: number;
+  child: string;
+  workbook: number;
+  levelTitle: string;
+  /** The cover title in two lines; the second sits on the yellow highlight. */
+  title: [string, string];
+  /** "assessment" for workbook 1, "last-workbook" after. */
+  madeFrom: "assessment" | "last-workbook";
+  /** What the assessment (or the last workbook) showed: one sentence. */
+  sentence: string;
+  /** What this workbook does: four bullets. */
+  bullets: string[];
+  /** One sentence for the parent: what to ask the child to show them this fortnight. */
+  parentLine: string;
+  pagesADay: number;
+  minutes: { min: number; max: number };
+}
+
+export interface PlanRow {
+  day: number;
+  /** Unit A's topic, and Unit B's (or what the day does instead) under it. */
+  topic: string;
+  second: string;
+  /** The book pages of the day. */
+  pages: [number, number];
+}
+
+export interface HowPlanContent {
+  kind: "how-plan";
+  id: string;
+  level: number;
+  child: string;
+  workbook: number;
+  pagesADay: number;
+  minutes: { min: number; max: number };
+  rows: PlanRow[];
+}
+
+export interface BackCoverContent {
+  kind: "back-cover";
+  id: string;
+  level: number;
+}
+
+export interface BlankContent {
+  kind: "blank";
+  id: string;
+  level: number;
+}
+
+export type PageContent = DayContent | CoverContent | HowPlanContent | BackCoverContent | BlankContent;
+
+/** A slot to fill on a planned page: its name, the planned part it comes from (its index on the page) and its items. */
+export interface PlannedSlot {
+  slot: SlotName;
+  part: number;
+  items: number;
+}
+
+/**
+ * The slots one planned part fills, by its kind and where it sits. A page holds what DESIGN.md section 7 gives it, so
+ * where the plan asks for more than that page holds, the slot takes the page's share:
+ * - page 2 (New idea): the Now you card takes 2 items beside a Spot the error card, else up to 4 ("Spot the error card
+ *   or Now you card (2 to 4 items)");
+ * - the Unit B page: a new B step shows its worked example as the reminder panel, then practice (no Now you card),
+ *   up to 8 items, 2 fewer beside the worked example, 2 fewer beside a Spot the error card and 2 fewer on a 6-page day;
+ * - Practice 2: up to 12 column problems, 8 beside Solve it two ways or Spot the error, 4 fewer again beside a spare
+ *   Remember these? block;
+ * - word problems: 3 stories, 2 beside a spare Remember these? block;
+ * - the warm-up: up to 30 facts, 27 beside the In your head box;
+ * - the 6-page Practice page (Watch one, Finish these, On your own, Solve it two ways, Spot the error): 2 On your own
+ *   items, and no room for a spare Remember these? block;
+ * - a New idea page with Try this first and Spot the error has no Now you card;
+ * - the Mixed set: 2 items beside the Challenge cards on the 6-page review page.
+ * U4 to U9 have bigger type and fewer items (DESIGN.md 7.3): page 2 has no Now you card beside Spot the error, Practice
+ * 2 has one row, On your own takes 3, Unit B practice 2 fewer, stories 2, and a spare Remember these? block 2 items.
+ */
+function partSlots(part: PlannedPart, page: PlannedPage, level: number): { slot: SlotName; items: number }[] {
+  const k: PartKind = part.kind;
+  const early = level <= 9;
+  const has = (kind: PartKind) => page.parts.some((p) => p.kind === kind);
+  const reviewPage = page.parts[0]?.kind === "remember-these" || page.parts[0]?.kind === "warm-up";
+  const unitBPage = page.parts.some((p) => p.kind === "practice" && p.unit === "B");
+  switch (k) {
+    case "new-idea":
+      if (part.unit === "B" && unitBPage) return [{ slot: "worked-example", items: 0 }];
+      // Beside a Try this first card and a Spot the error card, the page has no room for a Now you card.
+      if (has("try-first") && has("spot-the-error")) return [{ slot: "worked-example", items: 0 }];
+      if (early && has("spot-the-error")) return [{ slot: "worked-example", items: 0 }];
+      return [{ slot: "worked-example", items: 0 }, { slot: "now-you", items: Math.min(part.items, has("spot-the-error") || early ? 2 : 4) }];
+    case "practice": {
+      if (page.type === "practice-2") {
+        // Rows getting harder, four to a row.
+        const room = early ? 4 : 12 - (has("solve-it-two-ways") || has("spot-the-error") ? 4 : 0) - (has("remember-these") ? 4 : 0);
+        const items = Math.min(part.items, room);
+        const rows = Math.ceil(items / 4);
+        return Array.from({ length: rows }, (_, i) => ({ slot: "practice-row" as const, items: Math.min(4, items - i * 4) }));
+      }
+      if (part.unit === "B") {
+        // Unit B: a reminder panel first when no New idea of B teaches on the page, then practice.
+        const reminder = page.parts.some((p) => p.kind === "new-idea" && p.unit === "B") ? [] : [{ slot: "reminder" as const, items: 0 }];
+        // Up to 8 items; 2 fewer beside a new step's worked example, 2 fewer beside a Spot the error card.
+        const room = 8 - (reminder.length === 0 ? 2 : 0) - (has("spot-the-error") ? 2 : 0) - (early || level >= 19 ? 2 : 0);
+        return [...reminder, { slot: "unit-b-practice", items: Math.min(part.items, room) }];
+      }
+      // Faded: one worked (Watch one), two partly done, the rest alone.
+      const watch = part.faded?.watch ?? 0;
+      const finish = part.faded?.finish ?? 0;
+      // On your own: the rest, or 2 beside Solve it two ways and Spot the error (the 6-page practice page).
+      const own = Math.max(0, part.items - watch - finish);
+      return [
+        ...(watch > 0 ? [{ slot: "watch-one" as const, items: 0 }] : []),
+        ...(finish > 0 ? [{ slot: "finish-these" as const, items: finish }] : []),
+        { slot: "on-your-own", items: has("solve-it-two-ways") && has("spot-the-error") ? Math.min(own, 2) : early ? Math.min(own, 3) : own },
+      ];
+    }
+    // The stories, then one "How do you know?" with two writing lines.
+    case "word-problems": return [{ slot: "word-problems", items: Math.min(part.items, has("remember-these") || early ? 2 : 3) }, { slot: "how-do-you-know", items: 1 }];
+    case "picture-stories": return [{ slot: "picture-stories", items: Math.min(part.items, has("remember-these") && early ? 2 : part.items) }];
+    // The plan (writing lines), the lettered parts, and the final answer with its work box.
+    case "math-in-the-world": return [{ slot: "math-in-the-world", items: 3 }];
+    // A spare Remember these? block on a page that is already full (the 6-page Practice page) gets no room.
+    case "remember-these":
+      if (page.parts.some((p) => p.kind === "practice" && p.faded) && has("solve-it-two-ways") && has("spot-the-error")) return [];
+      return [{ slot: "remember-these", items: early && !reviewPage ? Math.min(part.items, 2) : part.items }];
+    // The 6-page review page: 2 Mixed set items beside the Challenge cards (DESIGN.md 7.2).
+    case "mixed-set": return [{ slot: "mixed-set", items: Math.min(part.items, has("challenge") ? 2 : 4) }];
+    // Up to 30 facts; 27 (9 rows) beside the In your head box.
+    case "warm-up": return [{ slot: "warm-up", items: Math.min(part.items, has("in-your-head") ? 27 : 30) }];
+    case "try-first": case "spot-the-error": case "solve-it-two-ways": case "in-your-head":
+      return [{ slot: k, items: 1 }];
+    default: return [{ slot: k, items: part.items }];
+  }
+}
+
+/** Slots that are panels with no items of their own, and the room of cards each takes on a parent-led page. */
+const PANELS: Partial<Record<SlotName, number>> = { "worked-example": 4, "watch-one": 2, reminder: 3 };
+/** A parent-led page (U1 to U3) holds 6 item cards (2 columns, 3 rows); each slot after the first takes 1 more for its chip. */
+const PARENT_CARDS = 6;
+
+/**
+ * A planned page's slots in order, with the items each takes: the contract between the planner and a filler. A slot
+ * left with no items is left out (a panel stays). On a parent-led page (U1 to U3) the slots share the page's 8 cards in
+ * order (6 items with one slot; the skeleton's 6 to 10 at these sizes does not fit 10); what does not fit is left out.
+ */
+export function pageSlots(page: PlannedPage, level: number): PlannedSlot[] {
+  const slots = page.parts.flatMap((part, i) => partSlots(part, page, level).map((s) => ({ ...s, part: i })))
+    .filter((s) => s.items > 0 || s.slot in PANELS);
+  if (level > 3) return slots;
+  let room = PARENT_CARDS;
+  return slots.flatMap((s, i) => {
+    const cost = PANELS[s.slot];
+    if (cost !== undefined) {
+      if (room < cost + 1) return [];
+      room -= cost;
+      return [s];
+    }
+    const items = Math.min(s.items, room - (i > 0 ? 1 : 0));
+    room -= items + (i > 0 ? 1 : 0);
+    return items > 0 ? [{ ...s, items }] : [];
+  });
+}
+
+// ---------- The book ----------
+
+/** A filled slot: its content with its questions as packages (the book gives each its place and number). */
+export interface FilledBlock extends Omit<Block, "items"> {
+  items: QuestionPackage[];
+}
+
+/** A filled day page. */
+export interface FilledDayPage {
+  topic: string;
+  title: string;
+  subtitle: string;
+  grownUp: string | null;
+  blocks: FilledBlock[];
+}
+
+export interface BookInput {
+  workbookId: string;
+  childId: string;
+  /** The child's first name, as printed. */
+  child: string;
+  /** The workbook's place in the child's sequence, from 1. */
+  number: number;
+  levelTitle: string;
+  profileBuild: string | null;
+  plan: WorkbookPlan;
+  cover: Pick<CoverContent, "title" | "sentence" | "bullets" | "parentLine">;
+  /** Each planned day page's content. */
+  fill(day: number, page: PlannedPage): FilledDayPage;
+  /** Each day's row on the plan page: Unit A's topic and the line under it. */
+  planRow(day: number): { topic: string; second: string };
+  /** The QR token of book page `n` (from 1): unique across all workbooks (random in production, fixed in tests). */
+  qrToken(n: number): string;
+}
+
+/** The most pages a book may have (D-191: saddle stitch, at most 84). */
+export const BOOK_PAGES_MAX = 84;
+
+const two = (n: number) => String(n).padStart(2, "0");
+/** The printed page ID: `UL·LEAH·W03·D04·P1`, `UL·LEAH·W03·COVER`. */
+export const pageId = (child: string, workbook: number, rest: string) => `UL·${child.toUpperCase()}·W${two(workbook)}·${rest}`;
+
+/**
+ * The whole book as a draft to render: cover, How + Plan, the planned days, back cover, then blank pages to a multiple
+ * of 4. Throws when the book would pass 84 pages.
+ */
+export function assembleBook(o: BookInput): WorkbookDraft {
+  const { plan } = o;
+  const level = plan.level;
+  const pages: DraftPage[] = [];
+  const add = (type: string, dayLabel: string | null, content: PageContent, questions: DraftPage["questions"] = []) =>
+    pages.push({ number: pages.length + 1, dayLabel, type, qrToken: o.qrToken(pages.length + 1), questions, content });
+  const id = (rest: string) => pageId(o.child, o.number, rest);
+  const pagesADay = Math.max(...plan.days.map((d) => d.pages.length));
+
+  // Each day's book pages, known before the plan page prints them: the cover and plan come first.
+  let next = 3;
+  const ranges = plan.days.map((d) => {
+    const range: [number, number] = [next, next + d.pages.length - 1];
+    next += d.pages.length;
+    return range;
+  });
+
+  add("cover", null, {
+    kind: "cover", id: id("COVER"), level, child: o.child, workbook: o.number, levelTitle: o.levelTitle,
+    madeFrom: o.number === 1 ? "assessment" : "last-workbook", pagesADay, minutes: { ...plan.timeTarget }, ...o.cover,
+  });
+  add("how-plan", null, {
+    kind: "how-plan", id: id("HOW+PLAN"), level, child: o.child, workbook: o.number, pagesADay, minutes: { ...plan.timeTarget },
+    rows: plan.days.map((d, i) => ({ day: d.day, ...o.planRow(d.day), pages: ranges[i] })),
+  });
+  for (const d of plan.days) {
+    for (const planned of d.pages) {
+      const n = pages.length + 1;
+      const filled = o.fill(d.day, planned);
+      const questions: DraftPage["questions"] = [];
+      const blocks: Block[] = filled.blocks.map((b) => ({
+        ...b,
+        items: b.items.map((p) => {
+          const number = questions.length + 1;
+          questions.push({ number, package: { ...p, ref: { source: "workbook", workbookId: o.workbookId, page: n, question: number } } });
+          return number;
+        }),
+      }));
+      add(planned.type, `Day ${d.day}`, {
+        kind: "day", id: id(`D${two(d.day)}·P${planned.number}`), level, day: d.day, page: planned.number, pages: d.pages.length,
+        topic: filled.topic, title: filled.title, subtitle: filled.subtitle, grownUp: filled.grownUp, blocks,
+      }, questions);
+    }
+  }
+  add("back-cover", null, { kind: "back-cover", id: id("BACK"), level });
+  while (pages.length % 4 !== 0) add("blank", null, { kind: "blank", id: id("BLANK"), level });
+  if (pages.length > BOOK_PAGES_MAX) throw new Error(`the book has ${pages.length} pages; at most ${BOOK_PAGES_MAX} can be stitched`);
+  return { id: o.workbookId, childId: o.childId, number: o.number, levels: [level], profileBuild: o.profileBuild, pages };
+}
