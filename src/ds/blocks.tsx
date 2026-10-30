@@ -147,12 +147,14 @@ export interface PlanCardProps {
   offer?: { price: string; note: string; then: string };
   /** A visually secondary line directly below the regular or post-offer price. */
   priceNote?: ReactNode;
+  /** A link under the checklist, e.g. to a page that explains each item. */
+  more?: ReactNode;
   className?: string;
   style?: React.CSSProperties;
 }
 
 /** White pricing card: name, note, big light price, checklist, full-width button. */
-export function PlanCard({ name, note, price, currency = "CAD", period = "/ month", features, ctaLabel, featured = false, onSelect, cta, offer, priceNote, className = "", style }: PlanCardProps) {
+export function PlanCard({ name, note, price, currency = "CAD", period = "/ month", features, ctaLabel, featured = false, onSelect, cta, offer, priceNote, more, className = "", style }: PlanCardProps) {
   return (
     <div className={`plan${featured ? " hl" : ""} ${className}`.trim()} style={style}>
       <div className="plan-head">
@@ -184,11 +186,14 @@ export function PlanCard({ name, note, price, currency = "CAD", period = "/ mont
         )}
         {priceNote && <p className="plan-price-note">{priceNote}</p>}
       </div>
-      <ul>
-        {features.map((f) => (
-          <li key={f}>{f}</li>
-        ))}
-      </ul>
+      <div className="plan-feats">
+        <ul>
+          {features.map((f) => (
+            <li key={f}>{f}</li>
+          ))}
+        </ul>
+        {more && <p className="plan-more">{more}</p>}
+      </div>
       {cta ?? (
         <Button variant={featured ? "primary" : "ghost"} onClick={onSelect}>
           {ctaLabel}

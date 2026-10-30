@@ -15,7 +15,7 @@
 
 ## Scope
 
-**In:** One landing page whose assessment links open the signup for the free online math assessment (`/start`, D-093), a mobile assessment button, the parent account pages (`/start`, `/sign-in`, `/account`), optional analytics, an "Our story" page (`/our-story`, D-060), a "How we compare" page (`/compare`, D-114), a Resources section of SEO guides for BC parents (`/resources`, linked only from the footer, D-073), supporting 404, thank-you, privacy, and terms pages (D-054), the child's assessment test screens (D-083, D-088), and the parent's assessment report in the account and by email (D-084, D-087).
+**In:** One landing page whose assessment links open the signup for the free online math assessment (`/start`, D-093), a mobile assessment button, the parent account pages (`/start`, `/sign-in`, `/account`), optional analytics, an "Our story" page (`/our-story`, D-060), a "How we compare" page (`/compare`, D-114), a Resources section of SEO guides for BC parents (`/resources`, linked only from the footer, D-073), supporting 404, thank-you, privacy, and terms pages (D-054), the child's assessment test screens (D-083, D-088), the parent's assessment report in the account and by email (D-084, D-087), and a "What's included" page that shows every part of the product as one story (`/whats-included`, D-170; structure draft in `.design/briefs/whats-included.md`).
 
 **Out:** The product itself, a parent dashboard beyond the assessment report, and a dated blog or news feed.
 
@@ -29,7 +29,8 @@
 - No proof we do not have: no ratings, review counts, family counts, press logos, outcome percentages or testimonials. Until real customer references exist, proof = sample pages, clear price, a free online math assessment, the first month free, cancel anytime. No founder names on the home page; the founder story and names appear on `/our-story` (D-060, narrows D-040). "Two students" may appear on the home page, the hero included (D-146).
 - Comparative and performance claims: Competition Act s.74.01(1)(b) requires an adequate and proper test before a claim about a product's performance. The page makes no research claims; the paper belief is stated as "We believe paper and pencil build stronger learning." (D-039). Never a claim about our results.
 - Children's privacy: the signup collects the parent's name, email, postal code and a password (or Google sign-in), and each child's first name, grade and curriculum (D-082). The assessment keeps the child's answers, times, typed work and drawings; drawings stay in private storage (D-084). Before a family is deleted, a copy of each test without names is kept: no names, contact details, drawings, typed work or free text, and no link to the family (D-119). Card details stay on Stripe. The old booking form (D-053) collected parent contact details, the offer, the child's grade and the curriculum; its records stay.
-- Companion app (D-062): parents use a phone app to scan a problem their child is stuck on (step-by-step explanation for the parent), to check answers on a finished page, and for check-ins and progress reports. The child works on paper; the app is for the parent. Screen-time copy says this. The privacy page must say what the app does with photos of the child's work before launch.
+- Companion app (D-062, D-172): one account on the Unica phone app and on the website, with the same data. The app's main job is to scan and mark the finished pages; it also shows progress and opens the AI Teaching Assistant. The website has the parent dashboard and is the better place for the AI Teaching Assistant (laptop or tablet). The child works on paper. Screen-time copy says this. The privacy page must say what the app does with photos of the child's work before launch.
+- AI Teaching Assistant (D-150, D-172): use the name "AI Teaching Assistant"; its name "Maya" may appear. Describe it as a shared whiteboard where the child and Maya work through the question together (Maya explains and draws each step; the child answers), not as a "voice call".
 
 ## Positioning rules
 
@@ -99,7 +100,7 @@ The email is one 600 px column: greeting, the level and verdict in the same colo
 
 **Connection (Squirrel AI, Outschool):** An orange pencil line runs down the page margin and draws itself on scroll.
 
-**Imagery:** Real children with real paper workbooks at home. No drawn worksheets, covers, mailers or phone mockups until the real workbook exists (D-045). The hero is one real photo with no floating cards (D-048). Mockups: Unsplash photos (`.design/assets/stock/CREDITS.md`), and AI-generated images only where stock cannot show the product. Launch photos: D4.
+**Imagery:** Real children with real paper workbooks at home. Product screens (workbook pages, the Unica app, the AI Teaching Assistant, the parent dashboard) come from the final Figma designs and may appear in plain device frames (D-171); numbers on them carry a "Sample data" label. The hero is one real photo with no floating cards (D-048). Mockups: Unsplash photos (`.design/assets/stock/CREDITS.md`), and AI-generated images only where stock cannot show the product. Launch photos: D4.
 
 **Motion rules:** Motion explains or delights; it never blocks reading. With reduced motion on, the page shows the end states.
 
