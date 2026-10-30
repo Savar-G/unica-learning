@@ -5,6 +5,7 @@ import { SUPPORT_EMAIL } from "@/lib/contact";
 import { adminTestPath } from "@/lib/admin-view";
 import { loadComparisonInput } from "@/lib/comparison-store";
 import { sendEmail, sendEmailOnce, type MailTransport, type Sender } from "@/lib/email-delivery";
+import { rebuildChildProfileNow } from "@/lib/child-profile-server";
 import { addProfileAi, storeProfileFacts, type LearnerProfileStore, type ProfileBuild } from "@/lib/learner-profile";
 import { profileAiClient } from "@/lib/learner-profile-ai";
 import { learnerProfileStore } from "@/lib/learner-profile-store";
@@ -36,6 +37,8 @@ import { aiReport, aiReviewer, type AiOutcome, type WorkReviewer } from "@/lib/w
 //      and the profile is stored again with the parts that pass the checks, unless a later build replaced it. The
 //      account report can show them later; the emails never wait for them. This stops after at most PROFILE_AI_MS (60 s), so the job
 //      stays under 300 s. A failure is logged; the facts stay stored.
+//   7. Last, the child's profile (#303, src/lib/child-profile.ts) is built again from the test's stored profile and
+//      the child's learning events. A failure is logged.
 // Safe to run twice: the report is stored once, and each email is sent at most once through the delivery module
 // (src/lib/email-delivery.ts, #151), which claims it on the report row (src/lib/report-row-ledger.ts) before it is
 // sent. If the parent email fails, the report is still stored and visible in the account, and the alert tells Savar.
@@ -70,6 +73,11 @@ export interface ReportJobOptions {
   profiles?: LearnerProfileStore;
   /** The AI client of the profile's AI parts (#197); by default the switch (profileAiClient), null (off) without OPENROUTER_API_KEY. */
   profileAi?: AiClient | null;
+  /**
+   * The rebuild of the child's profile (#303). By default rebuildChildProfileNow, with the secret key, when the learner
+   * profiles are Supabase too; none when `profiles` is given (in memory) without it.
+   */
+  rebuildChild?: (childId: string) => Promise<unknown>;
 }
 
 /** The given database seams; the missing ones are Supabase with the secret key. Null without the key. */
@@ -97,7 +105,9 @@ export async function runReportJob(assessmentId: string, origin: string, options
   if (!db) return;
   const { ledger: book, store } = db;
   const { reviewer, transport, profileAi } = options;
+  const rebuildChild = options.rebuildChild ?? (options.profiles ? null : rebuildChildProfileNow);
   let profile: ProfileBuild | null = null;
+  let childId: string | null = null;
   try {
     const inputs = await loadReportInputs(db.reader, assessmentId, db.comparison);
     if (!inputs) {
@@ -105,6 +115,7 @@ export async function runReportJob(assessmentId: string, origin: string, options
       return;
     }
     const { assessment } = inputs;
+    childId = assessment.childId;
     const { report, ai } = await storeReport(store, inputs, reviewer === undefined ? aiReviewer() : reviewer);
     profile = await profileStep(assessmentId, () => storeProfileFacts(db.profiles, inputs));
 
@@ -135,6 +146,8 @@ export async function runReportJob(assessmentId: string, origin: string, options
   }
   // Step 6, after the emails: the profile's AI parts, over the facts this run stored.
   if (profile) await profileStep(assessmentId, () => addProfileAi(db.profiles, profile, { ai: profileAi === undefined ? profileAiClient() : profileAi }));
+  // Step 7: the child's profile, from what is stored now.
+  if (childId && rebuildChild) await profileStep(assessmentId, () => rebuildChild(childId!));
 }
 
 /**
