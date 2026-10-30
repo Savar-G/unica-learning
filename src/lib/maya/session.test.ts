@@ -192,7 +192,7 @@ describe("a wrong child answer is never accepted", () => {
     expect(c.refused({ act: "accept_answer", say: "Yes!", reading: { answers: [{ value: num(16), step: "result", verdict: "right" }] } }))
       .toMatchObject({ code: "accepts_wrong_answer" });
     c.maya({
-      act: "guide", step: "tens", level: 0, say: "Sixteen ones is right. What do the tens make?",
+      act: "guide", step: "tens", level: 0, say: "Yes, sixteen ones. What do the tens make?",
       reading: { answers: [{ value: num(16), step: "ones", verdict: "right" }, { value: num(16), step: "result", verdict: "wrong" }] },
     });
     expect(c.session.state).toBe("GUIDE_TARGET");
@@ -229,7 +229,7 @@ describe("the easier example and the child's own question", () => {
     expect(c.refused({ act: "try_target", say: "Now try yours." })).toMatchObject({ code: "act_not_allowed" });
     expect(c.refused({ act: "guide", step: "ones", level: 1, say: "In your question, look at 7 and 9." })).toMatchObject({ code: "act_not_allowed" });
     c.maya({ act: "example_step", step: "tens", say: "Write 3 and carry one ten. One ten and one ten make two tens." });
-    expect(c.refused({ act: "example_step", step: "result", say: "So 18 + 5 is 23, and yours is 66." })).toMatchObject({ code: "reveals_answer" });
+    expect(c.refused({ act: "example_step", step: "result", say: "So 18 + 5 is 23. Now write 66." })).toMatchObject({ code: "reveals_answer" });
     expect(c.refused({ act: "example_step", step: "result", say: "So 18 + 5 is 24." }))
       .toMatchObject({ code: "wrong_math" });
     c.maya({ act: "example_step", step: "result", say: "So 18 + 5 is 23." });
@@ -273,8 +273,8 @@ describe("the hint ladder", () => {
     expect(c.refused({ act: "guide", step: "tens", level: 1, say: "Look again at the ten.", reading: wrong(5, "tens") })).toMatchObject({ code: "same_hint_again" });
     c.maya({ act: "guide", step: "tens", level: 2, say: "Exchange ten ones for one ten. Add it to the tens. How many tens now?", reading: wrong(5, "tens") });
     c.child("Can you show me?");
-    expect(c.refused({ act: "give_answer", say: "The total is sixty-six.", reading: { help: "show" } })).toMatchObject({ code: "hint_too_high" });
-    c.maya({ act: "guide", step: "tens", level: 3, say: "Two tens, three tens and the extra ten make six tens. Now what is the whole answer?", reading: { help: "show" } });
+    expect(c.refused({ act: "give_answer", say: "Six tens and six ones.", reading: { help: "show" } })).toMatchObject({ code: "hint_too_high" });
+    c.maya({ act: "guide", step: "tens", level: 3, say: "Two tens plus three tens plus one ten make six tens. Now what is the whole answer?", reading: { help: "show" } });
     c.child("I'm still stuck.");
     const given = c.maya({ act: "give_answer", say: "Six tens and six ones.", reading: { help: "more" } });
     expect(said(given.effects)).toEqual(["Six tens and six ones. The answer is 66. Please write 66 on your paper."]);
@@ -292,7 +292,7 @@ describe("the hint ladder", () => {
     c.child("Just show me how.");
     c.maya({ act: "guide", step: "ones", level: 3, say: "Seven plus nine is sixteen ones: write 6 and carry 1 ten. What do the tens make?", reading: { help: "show" } });
     c.child("I really don't get it.");
-    c.maya({ act: "give_answer", say: "It is 66: six tens and six ones. Write 66 on your paper.", reading: { help: "more" } });
+    c.maya({ act: "give_answer", say: "Six tens and six ones. Write 66 on your paper.", reading: { help: "more" } });
     c.child("66!");
     c.maya({ act: "close", say: "Yes, 66. Bye for now!", reading: { answers: [right66] } });
     expect(c.session.outcome).toMatchObject({ assistance: "answer_given", understanding: "uncertain", paperStatus: "unknown" });
@@ -536,7 +536,7 @@ describe("TIME_CLOSE and the end", () => {
   it("may give the answer at the time close without climbing the ladder, and records it", () => {
     const c = afterExample();
     c.tick(540);
-    c.maya({ act: "give_answer", say: "We're almost out of time. It's 66: six tens and six ones. Write 66 on your paper." });
+    c.maya({ act: "give_answer", say: "We're almost out of time. Six tens and six ones. Write 66 on your paper." });
     c.child("Okay, I wrote it.");
     c.maya({ act: "close", say: "Bye for now!", reading: { paper: "written" } });
     expect(c.session.outcome).toMatchObject({ reason: "solved", assistance: "answer_given", paperStatus: "child_confirmed" });
@@ -615,7 +615,7 @@ describe("board commands in a proposal", () => {
   it("refuses the answer written on the board before Maya may say it", () => {
     const c = opened();
     c.child("I don't know.");
-    expect(c.refused({ act: "guide", step: "ones", level: 0, say: "Look at the ones.", board: [{ op: "write", id: "w", text: "= 66", place: { region: "main" } }] }))
+    expect(c.refused({ act: "guide", step: "ones", level: 0, say: "Look at the ones.", board: [{ op: "write", id: "w", text: "66", place: { region: "main" } }] }))
       .toMatchObject({ code: "reveals_answer" });
   });
 

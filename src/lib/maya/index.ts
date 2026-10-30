@@ -37,4 +37,5 @@ export {
   type TranscriptTurn,
   type Understanding,
 } from "./session";
-export { equationsIn, readNumbers, valuesIn, type Equation, type NumbersRead } from "./numbers";
+export { mathClaims, type MathClaim, type NamedProblem } from "./claims";
+export { readNumbers, valuesIn, type NumbersRead } from "./numbers";
