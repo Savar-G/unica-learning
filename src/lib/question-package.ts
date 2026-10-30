@@ -25,7 +25,7 @@ import {
   type SameNumberWrongRule,
 } from "@/lib/question-package-math";
 
-export { operationProblem, operationResult, operationText, stepText, workedSteps } from "@/lib/question-package-math";
+export { operationProblem, operationResult, operationText, stepText, valueText, workedSteps } from "@/lib/question-package-math";
 
 /**
  * The version of the QuestionPackage shape. The workbook store keeps it beside each stored package (#299), so a reader
