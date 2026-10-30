@@ -243,7 +243,7 @@ describe("refused commands", () => {
       code: "invalid_command",
       reason: expect.stringMatching(/unknown field "value"/),
     });
-    expect(refusal(scene, { op: "division", id: "d" })).toMatchObject({ code: "unsupported" });
+    expect(refusal(scene, { op: "fraction", id: "f" })).toMatchObject({ code: "unsupported" });
   });
 
   it("refuses an unknown target and lists the valid ones", () => {

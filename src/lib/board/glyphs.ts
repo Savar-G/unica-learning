@@ -65,10 +65,15 @@ const TABLE: Record<string, Point[][]> = {
   ")": [arc(0.25, 0.5, 0.3, 0.45, -60, 60, 10)],
   "?": [[...arc(0.5, 0.3, 0.2, 0.2, 200, 420, 10), [0.5, 0.65]], [[0.5, 0.86], [0.5, 0.88]]],
   "✓": [[[0.18, 0.55], [0.4, 0.8], [0.84, 0.15]]],
+  // The R of a division remainder ("26 R 1"): the only letter until the real font comes.
+  R: [
+    [[0.3, 0.9], [0.3, 0.1], [0.55, 0.1], [0.68, 0.16], [0.72, 0.3], [0.68, 0.43], [0.55, 0.5], [0.3, 0.5]],
+    [[0.5, 0.5], [0.72, 0.9]],
+  ],
   " ": [],
 };
 
-/** The placeholder set: digits, + − × ÷ = . ( ) ? and the check mark. No letters until the real font comes. */
+/** The placeholder set: digits, + − × ÷ = . ( ) ? R and the check mark. No other letters until the real font comes. */
 export const PLACEHOLDER_GLYPHS: GlyphSet = {
   name: "placeholder-1",
   strokes: (char) => TABLE[char] ?? null,
