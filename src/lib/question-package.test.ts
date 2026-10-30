@@ -58,6 +58,22 @@ describe("checkQuestionPackage", () => {
     expect(checkQuestionPackage(p)).toEqual({ ok: true, package: p });
   });
 
+  it.each([
+    ["a tiny number and its fraction", { type: "number", value: 1e-7 }, { type: "fraction", numerator: 1, denominator: 10000000 }],
+    ["a large number and its fraction", { type: "number", value: 1e21 }, { type: "fraction", numerator: 1e21, denominator: 1 }],
+    ["a negative decimal and its fraction", { type: "number", value: -0.5 }, { type: "fraction", numerator: -1, denominator: 2 }],
+  ] as const)("refuses the same wrong answer twice in two forms: %s", (_name, first, second) => {
+    const p = changed((p) => {
+      p.wrongAnswers = [
+        { ...p.wrongAnswers[0], value: { ...first } },
+        { ...p.wrongAnswers[0], value: { ...second } },
+      ];
+    });
+    const result = checkQuestionPackage(p);
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.reason).toMatch(/listed twice/);
+  });
+
   it("keeps a wrong answer that is close to the answer but not the same number", () => {
     const p = changed((p) => { p.wrongAnswers[0].value = { type: "number", value: 85.0000000001 }; });
     expect(checkQuestionPackage(p).ok).toBe(true);

@@ -304,10 +304,14 @@ function rational(v: AnswerValue): [bigint, bigint] | null {
     return Number.isInteger(v.numerator) && Number.isInteger(v.denominator) && v.denominator > 0 ? [BigInt(v.numerator), BigInt(v.denominator)] : null;
   }
   if (v.type !== "number" || !Number.isFinite(v.value)) return null;
-  const m = /^(-?)(\d+)(?:\.(\d+))?$/.exec(String(v.value));
+  // String() writes very small and very large numbers with an exponent (1e-7, 1e+21), so read it too.
+  const m = /^(-?)(\d+)(?:\.(\d+))?(?:e([+-]?\d+))?$/.exec(String(v.value));
   if (!m) return null;
   const decimals = m[3] ?? "";
-  return [BigInt(m[1] + m[2] + decimals), BigInt(10) ** BigInt(decimals.length)];
+  const exponent = Number(m[4] ?? 0) - decimals.length;
+  const ten = BigInt(10);
+  const digits = BigInt(m[1] + m[2] + decimals);
+  return exponent >= 0 ? [digits * ten ** BigInt(exponent), BigInt(1)] : [digits, ten ** BigInt(-exponent)];
 }
 
 /** Two values are the same number, exactly, in any number form (85, 85.0 and 170/2 are one number). */
