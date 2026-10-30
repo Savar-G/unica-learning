@@ -111,8 +111,8 @@ function parse(raw: unknown): Command {
       return { op, id: id(c.id, "write.id"), text: text(c.text, "write.text", 24), place: placement(c.place), ink: ink(c.ink) };
     }
     case "put": {
-      const c = object(raw, "put", ["op", "target", "value"], ["ink"]);
-      return { op, target: target(c.target), value: text(c.value, "put.value", 7), ink: ink(c.ink) };
+      const c = object(raw, "put", ["op", "target"], ["value", "ink"]);
+      return { op, target: target(c.target), ...(c.value === undefined ? {} : { value: text(c.value, "put.value", 7) }), ink: ink(c.ink) };
     }
     case "regroup": {
       const c = object(raw, "regroup", ["op", "id", "objectId", "rowId", "kind", "from", "to"], ["ink"]);

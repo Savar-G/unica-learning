@@ -76,7 +76,8 @@ export type CreateCommand = ColumnsCommand | DivisionCommand | WriteCommand;
 
 export type Command =
   | CreateCommand
-  | { op: "put"; target: Target; value: string; ink?: Ink }
+  /** Reveals a value. Division may leave the value out: the core writes the one it works out. Given, it is checked. */
+  | { op: "put"; target: Target; value?: string; ink?: Ink }
   | RegroupCommand
   | { op: "mark"; id: string; target: Target; style: MarkStyle; ink?: Ink }
   | { op: "arrow"; id: string; from: Target; to: Target; ink?: Ink }

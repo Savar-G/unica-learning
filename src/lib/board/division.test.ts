@@ -27,6 +27,7 @@ const box = (paths: BoardPath[]) => {
   return { left: Math.min(...pts.map(([x]) => x)), right: Math.max(...pts.map(([x]) => x)), top: Math.min(...pts.map(([, y]) => y)), bottom: Math.max(...pts.map(([, y]) => y)) };
 };
 
+const put = (target: Target, value?: string) => ({ op: "put", target, ...(value === undefined ? {} : { value }) });
 const divide = (id: string, dividend: string, divisor: string, place: unknown = { region: "main" }) => ({ op: "division", id, dividend, divisor, place });
 
 describe("618 ÷ 3 = 206: a zero inside the quotient", () => {
@@ -37,13 +38,13 @@ describe("618 ÷ 3 = 206: a zero inside the quotient", () => {
     expect(info(scene, row("div", "dividend")).value).toBe("618");
     expect(info(scene, row("div", "divisor")).value).toBe("3");
     expect(info(scene, cell("div", "dividend", "hundreds")).value).toBe("6");
-    for (const column of ["hundreds", "tens", "ones"]) expect(info(scene, cell("div", "quotient", column))).toMatchObject({ writable: true, value: null });
-    expect(info(scene, row("div", "quotient"))).toMatchObject({ writable: true, value: null });
+    for (const column of ["hundreds", "tens", "ones"]) expect(info(scene, cell("div", "quotient", column)).value).toBeNull();
+    // Writable means the next step can write there now: only the first quotient digit.
+    expect(boardTargets(scene).filter((t) => t.writable).map((t) => t.label)).toEqual(["div quotient hundreds"]);
   });
 
   it("shows each step in order: divide, multiply, subtract, bring down, with the 0 for 1 ÷ 3", () => {
     let scene = start();
-    const put = (target: Target, value: string) => ({ op: "put", target, value });
     // Step 1: 6 ÷ 3 = 2, 2 × 3 = 6, 6 − 6 = 0.
     scene = ok(scene, put(cell("div", "quotient", "hundreds"), "2"), put(row("div", "product1"), "6"), put(row("div", "difference1"), "0"));
     // Step 2 brings down the 1: 1 ÷ 3 = 0 R 1, so the quotient gets its 0, 0 × 3 = 0, 1 − 0 = 1.
@@ -70,8 +71,6 @@ function refusal(scene: Scene, ...commands: unknown[]) {
   if (r.ok) throw new Error("expected a refusal");
   return r.refusal;
 }
-const put = (target: Target, value: string) => ({ op: "put", target, value });
-
 describe("refused division commands", () => {
   it("refuses dividing by zero", () => {
     expect(refusal(createScene(), divide("d", "12", "0"))).toMatchObject({ index: 0, code: "not_allowed", reason: expect.stringMatching(/divided by 0/) });
@@ -129,6 +128,31 @@ describe("157 ÷ 6 = 26 R 1: a remainder", () => {
     expect(info(scene, row("div", "step2")).label).toBe("div step 2: 37 ÷ 6 = 6 R 1");
   });
 
+  it("lists exactly the rows of its steps, and nothing the method does not write", () => {
+    const rows = boardTargets(ok(createScene(), divide("div", "157", "6")))
+      .filter((t) => t.target.part === "row")
+      .map((t) => (t.target.part === "row" ? t.target.rowId : ""));
+    expect(rows).toEqual(["divisor", "dividend", "quotient", "product1", "difference1", "bring2", "product2", "difference2", "remainder", "step1", "step2"]);
+  });
+
+  it("works each value out itself when the model leaves it out, and checks it when the model gives it", () => {
+    let scene = ok(createScene(), divide("div", "157", "6"));
+    scene = ok(scene, put(cell("div", "quotient", "tens")), put(row("div", "product1")), put(row("div", "difference1")), put(row("div", "bring2")));
+    scene = ok(scene, put(cell("div", "quotient", "ones")), put(cell("div", "product2", "tens")), put(cell("div", "product2", "ones"), "6"), put(row("div", "difference2")));
+    scene = ok(scene, put(row("div", "remainder")));
+    expect(["quotient", "product1", "difference1", "bring2", "product2", "difference2", "remainder"].map((r) => info(scene, row("div", r)).value)).toEqual([
+      "26",
+      "12",
+      "3",
+      "7",
+      "36",
+      "1",
+      "1",
+    ]);
+    // A step out of order is still refused without a value.
+    expect(refusal(ok(createScene(), divide("div", "157", "6")), put(row("div", "product1")))).toMatchObject({ code: "not_allowed" });
+  });
+
   it("writes the remainder as R 1 right of the quotient, once the last subtraction is done", () => {
     const scene = finish();
     expect(info(scene, row("div", "quotient")).value).toBe("26");
@@ -137,7 +161,7 @@ describe("157 ÷ 6 = 26 R 1: a remainder", () => {
     expect(refusal(scene, put(row("div", "remainder"), "2")).reason).toContain("157 ÷ 6 = 26 R 1");
     const done = ok(scene, put(row("div", "remainder"), "1"));
     expect(info(done, row("div", "remainder")).value).toBe("1");
-    const r = pathsFor(done, row("div", "remainder"));
+    const r = [...pathsFor(done, row("div", "remainder")), ...pathsFor(done, cell("div", "remainder", "ones"))];
     expect(r.map((p) => p.glyph)).toEqual(["R", "R", "1"]);
     // The R and its digit sit in the quotient row, right of the last quotient digit.
     const ones = box(pathsFor(done, cell("div", "quotient", "ones")));
@@ -310,5 +334,16 @@ describe("the common commands on a division", () => {
     const scene = addChildInk(start, { page: 1, stroke: { erase: false, w: 3, pts: [[x - 0.005, y], [x + 0.005, y]] }, boardWidth: 800 }).scene;
     expect(refusal(scene, put(cell("div", "quotient", "tens"), "2"))).toMatchObject({ code: "protected_ink" });
     expect(refusal(scene, { op: "remove", objectId: "child-1" })).toMatchObject({ code: "protected_ink" });
+  });
+});
+
+describe("999 ÷ 100 = 9 R 99: a remainder of two digits", () => {
+  it("names each remainder digit by its place, and writes them by cell", () => {
+    let scene = ok(createScene(), divide("div", "999", "100"));
+    scene = ok(scene, put(cell("div", "quotient", "ones"), "9"), put(row("div", "product1"), "900"), put(row("div", "difference1"), "99"));
+    expect(info(scene, cell("div", "remainder", "tens"))).toMatchObject({ writable: true, value: null });
+    expect(refusal(scene, put(cell("div", "remainder", "ones"), "8")).reason).toContain("999 ÷ 100 = 9 R 99");
+    scene = ok(scene, put(cell("div", "remainder", "ones"), "9"), put(cell("div", "remainder", "tens"), "9"));
+    expect(info(scene, row("div", "remainder")).value).toBe("99");
   });
 });
