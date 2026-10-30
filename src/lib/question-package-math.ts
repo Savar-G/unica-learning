@@ -244,6 +244,12 @@ function fractionWork(op: FractionPairOperation): { steps: WorkedStep[]; value: 
   return { steps, value };
 }
 
+/** Multiply the top and the bottom by the factor that gives the new denominator. */
+const multiplyTo = (from: FractionParts, target: number): WorkedStep => {
+  const factor = target / from.denominator;
+  return { id: "scale", kind: "scale-fraction", from, by: "multiply", factor, to: toParts(from.numerator * factor, target) };
+};
+
 /**
  * How an equivalent fraction is found: multiply or divide the top and the bottom by one factor. When the new
  * denominator is neither a multiple nor a factor (2/6 = ?/9), simplify first (1/3), then multiply (3/9).
@@ -251,26 +257,22 @@ function fractionWork(op: FractionPairOperation): { steps: WorkedStep[]; value: 
 function scaleSteps(op: EquivalentOperation): WorkedStep[] {
   const from = improper(op.operands[0]);
   const target = op.denominator;
-  if (target % from.denominator === 0) {
-    const factor = target / from.denominator;
-    return [{ id: "scale", kind: "scale-fraction", from, by: "multiply", factor, to: toParts(from.numerator * factor, target) }];
-  }
+  if (target % from.denominator === 0) return [multiplyTo(from, target)];
   if (from.denominator % target === 0 && from.numerator % (from.denominator / target) === 0) {
     const factor = from.denominator / target;
     return [{ id: "scale", kind: "scale-fraction", from, by: "divide", factor, to: toParts(from.numerator / factor, target) }];
   }
   // The operation check admits only a target that gives a whole numerator, so the simplest denominator divides it.
-  const g = gcd(from.numerator, from.denominator);
-  const simple = toParts(from.numerator / g, from.denominator / g);
-  const factor = target / simple.denominator;
-  return [
-    { id: "simplify", kind: "simplify", from, divisor: g, to: simple },
-    { id: "scale", kind: "scale-fraction", from: simple, by: "multiply", factor, to: toParts(simple.numerator * factor, target) },
-  ];
+  const common = gcd(from.numerator, from.denominator);
+  const simple = toParts(from.numerator / common, from.denominator / common);
+  return [{ id: "simplify", kind: "simplify", from, divisor: common, to: simple }, multiplyTo(simple, target)];
 }
 
-/** The equivalent fraction with the new denominator: the last scale step's result. */
-const scaled = (op: EquivalentOperation): FractionParts => (scaleSteps(op).at(-1) as Extract<WorkedStep, { kind: "scale-fraction" }>).to;
+/** The equivalent fraction with the new denominator; its numerator is whole (the operation check). */
+function equivalentTo(op: EquivalentOperation): FractionParts {
+  const { numerator, denominator } = improper(op.operands[0]);
+  return toParts((numerator * op.denominator) / denominator, op.denominator);
+}
 
 // ---------- Operand checks ----------
 
@@ -518,7 +520,7 @@ const KINDS: { [K in OperationKind]: KindRules<Of<K>> } = {
     text: (op) => `${text(op.operands[0])} = ?/${op.denominator}`,
     statement: (op) => text(op.operands[0]),
     steps: scaleSteps,
-    result: (op) => ({ type: "fraction", ...scaled(op) }),
+    result: (op) => ({ type: "fraction", ...equivalentTo(op) }),
   },
 };
 
