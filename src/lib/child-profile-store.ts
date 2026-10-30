@@ -61,14 +61,16 @@ export function childProfileStore(admin: SupabaseClient<Database>): ChildProfile
         assessment: latest ? { assessmentId: latest.id, completedAt: new Date(latest.completed_at!).toISOString(), buildId: typeof buildId === "string" ? buildId : null, profile } : null,
       };
     },
-    async save({ childId, parentId, assessmentId, profile }, expected) {
+    async save({ childId, parentId, assessmentId, profile }, expected, signal) {
       const row = {
         parent_id: parentId, assessment_id: assessmentId, revision: (expected?.revision ?? 0) + 1, build_token: crypto.randomUUID(),
         schema_version: profile.schemaVersion, profile: toJson(profile), built_at: new Date().toISOString(),
       };
-      const { data, error } = expected === null
-        ? await admin.from("child_profiles").insert({ ...row, child_id: childId }).select("revision, build_token")
-        : await admin.from("child_profiles").update(row).eq("child_id", childId).eq("build_token", expected.buildToken).select("revision, build_token");
+      const write = expected === null
+        ? admin.from("child_profiles").insert({ ...row, child_id: childId }).select("revision, build_token")
+        : admin.from("child_profiles").update(row).eq("child_id", childId).eq("build_token", expected.buildToken).select("revision, build_token");
+      // The findings' deadline aborts the request (review R355-2).
+      const { data, error } = await (signal ? write.abortSignal(signal) : write);
       if (error) {
         // 23505: another build stored the first revision; 23503 on the test's key: the test was deleted since the
         // inputs were read; 23503 on the child's key: the child is not under that parent.

@@ -1,14 +1,18 @@
 import "server-only";
 import { rebuildChildProfile, type ChildProfileSeams, type RebuildResult } from "@/lib/child-profile";
-import { childProfileAiClient } from "@/lib/child-profile-ai";
+import { assessmentQuestionReader } from "@/lib/assessment-questions";
+import { childProfileAiClient, type QuestionReader } from "@/lib/child-profile-ai";
 import { childProfileStore } from "@/lib/child-profile-store";
 import { learningEventStore } from "@/lib/learning-events-store";
 import { adminClient } from "@/lib/supabase-auth";
+import { workbookStore } from "@/lib/workbook-store";
 
 // The child profile's rebuild (src/lib/child-profile.ts, #303) on the server, with the secret key. The report job
 // calls it last, after a finished test's profile and its AI parts are stored; the learning card's route calls it after
 // the test's profile is built again with the new answers. Later, the steps that write call and marking events call it.
-// #304: with the AI client's switch on (OPENROUTER_API_KEY), the rebuild adds the AI findings after the facts.
+// #304: with the AI client's switch on (OPENROUTER_API_KEY), the rebuild adds the AI findings after the facts. The AI
+// reads each event's question from the trusted question data (R355-1): a workbook question from the workbook store, an
+// assessment question from the stored test through the assessment adapter.
 
 /**
  * Rebuilds the child's profile. Never throws: a failure is logged, and the next rebuild carries what this one missed.
@@ -19,7 +23,10 @@ export async function rebuildChildProfileNow(childId: string, seams?: ChildProfi
   if (!db) {
     const admin = adminClient();
     if (!admin) return null;
-    db = { profiles: childProfileStore(admin), events: learningEventStore(admin), ai: childProfileAiClient() };
+    const workbooks = workbookStore(admin);
+    const tests = assessmentQuestionReader(admin);
+    const questions: QuestionReader = { question: (ref) => (ref.source === "workbook" ? workbooks.question(ref) : tests.question(ref)) };
+    db = { profiles: childProfileStore(admin), events: learningEventStore(admin), ai: childProfileAiClient(), questions };
   }
   try {
     const result = await rebuildChildProfile(childId, db);

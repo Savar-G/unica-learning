@@ -53,8 +53,8 @@ import {
   type ReportedStrand,
   type StrandStatus,
 } from "@/lib/assessment";
-import type { AiClient } from "@/lib/ai-client";
-import { writeChildProfileFindings, type FindingDrop } from "@/lib/child-profile-ai";
+import { withTimeLimit, type AiClient } from "@/lib/ai-client";
+import { CHILD_PROFILE_AI_MS, writeChildProfileFindings, type FindingDrop, type QuestionReader } from "@/lib/child-profile-ai";
 import { learningEvents, type EventSource, type LearningEvent, type LearningEventStore } from "@/lib/learning-events";
 import type { Interest, LearningGoal, LearningStyle, MathFeeling, WeeklyTime } from "@/lib/learning-style";
 
@@ -279,18 +279,21 @@ export interface ChildProfileStore {
    * Stores the profile with a new build token and the next revision, only while the stored build is `expected` (its
    * build token; null: none stored): compare and set. "changed" when another build is stored, or the profile's test no
    * longer exists (the next try builds from what is left); `refused` when the family's deletion is requested, the test
-   * is another family's, or the child is not under that parent (nothing is stored).
+   * is another family's, or the child is not under that parent (nothing is stored). `signal` aborts the write: the
+   * findings' deadline.
    */
-  save(profile: NewChildProfile, expected: ExpectedBuild): Promise<{ revision: number; buildToken: string } | "changed" | { refused: string }>;
+  save(profile: NewChildProfile, expected: ExpectedBuild, signal?: AbortSignal): Promise<{ revision: number; buildToken: string } | "changed" | { refused: string }>;
 }
 
-/** The seams of a rebuild: the profile store, the learning events' store, and the AI client of the findings. */
+/** The seams of a rebuild: the profile store, the learning events' store, and the AI client and question reader of the findings. */
 export interface ChildProfileSeams {
   profiles: ChildProfileStore;
   events: LearningEventStore;
   /** The AI client; null or left out: the AI is off, and the profile has the facts only. */
   ai?: AiClient | null;
-  /** The findings' time limit (CHILD_PROFILE_AI_MS). */
+  /** The trusted question data the AI reads about each event; null or left out: none (no question, step or mistake is sent). */
+  questions?: QuestionReader | null;
+  /** The findings step's one time limit: the question reads, the AI request and the findings save (CHILD_PROFILE_AI_MS). */
   aiMs?: number;
 }
 
@@ -350,7 +353,8 @@ export async function readChildProfile(store: ChildProfileStore, childId: string
  * (compare and set; see the header). Called after a finished test's report job and after a learning card change; later
  * after calls and marked pages. A database error throws.
  */
-export async function rebuildChildProfile(childId: string, { profiles, events, ai = null, aiMs }: ChildProfileSeams): Promise<RebuildResult> {
+export async function rebuildChildProfile(childId: string, seams: ChildProfileSeams): Promise<RebuildResult> {
+  const { profiles, events, ai = null } = seams;
   if (!UUID.test(childId)) return { built: false, reason: "no_child" };
   const id = childId.toLowerCase();
   for (let tries = 0; tries < REBUILD_TRIES; tries++) {
@@ -370,7 +374,7 @@ export async function rebuildChildProfile(childId: string, { profiles, events, a
     const facts = { built: true as const, revision: saved.revision, profile };
     if (!ai) return { ...facts, findings: { outcome: "off" } };
     if (read.length === 0) return { ...facts, findings: { outcome: "no_events" } };
-    return addFindings(profiles, { ...row, profile }, saved, read, ai, aiMs);
+    return addFindings({ ...seams, ai }, { ...row, profile }, saved, read);
   }
   return { built: false, reason: "busy" };
 }
@@ -378,32 +382,28 @@ export async function rebuildChildProfile(childId: string, { profiles, events, a
 const problemOf = (e: unknown) => (e instanceof Error ? e.message : String(e));
 
 /**
- * The AI step of a rebuild whose facts are stored as `facts`: writes the findings from the facts and the events the build
- * read, and stores the profile again with them, only while the stored build is still this one. Never throws.
+ * The AI step of a rebuild whose facts are stored as `stored`: writes the findings from the facts and the events the
+ * build read, and stores the profile again with them, only while the stored build is still this one. One time limit
+ * covers the question reads, the request and the save (review R355-2); at the limit the save is aborted and the facts
+ * stay. Never throws.
  */
 async function addFindings(
-  profiles: ChildProfileStore,
+  { profiles, ai, questions = null, aiMs = CHILD_PROFILE_AI_MS }: ChildProfileSeams & { ai: AiClient },
   built: NewChildProfile,
-  facts: { revision: number; buildToken: string },
+  stored: { revision: number; buildToken: string },
   read: readonly LearningEvent[],
-  ai: AiClient,
-  aiMs: number | undefined,
 ): Promise<RebuildResult> {
-  const factsOnly = (findings: FindingsOutcome): RebuildResult => ({ built: true, revision: facts.revision, profile: built.profile, findings });
-  let written;
+  const factsOnly = (findings: FindingsOutcome): RebuildResult => ({ built: true, revision: stored.revision, profile: built.profile, findings });
   try {
-    written = await writeChildProfileFindings(ai, built.profile, read, aiMs);
-  } catch (e) {
-    return factsOnly({ outcome: "failed", problem: problemOf(e) });
-  }
-  const { findings, dropped } = written;
-  if (findings.length === 0) return factsOnly({ outcome: "none", dropped });
-  const profile: ChildLearnerProfile = { ...built.profile, ai: { model: ai.model, findings } };
-  try {
-    const saved = await profiles.save({ ...built, profile }, facts);
-    // A newer build holds newer facts: the findings, written from these, are not stored over it.
-    if (saved === "changed" || "refused" in saved) return factsOnly({ outcome: "late", dropped });
-    return { built: true, revision: saved.revision, profile, findings: { outcome: "stored", kept: findings.length, dropped } };
+    return await withTimeLimit(aiMs, async (signal): Promise<RebuildResult> => {
+      const { findings, dropped } = await writeChildProfileFindings(ai, questions, built.profile, read, signal);
+      if (findings.length === 0) return factsOnly({ outcome: "none", dropped });
+      const profile: ChildLearnerProfile = { ...built.profile, ai: { model: ai.model, findings } };
+      const saved = await profiles.save({ ...built, profile }, stored, signal);
+      // A newer build holds newer facts: the findings, written from these, are not stored over it.
+      if (saved === "changed" || "refused" in saved) return factsOnly({ outcome: "late", dropped });
+      return { built: true, revision: saved.revision, profile, findings: { outcome: "stored", kept: findings.length, dropped } };
+    });
   } catch (e) {
     return factsOnly({ outcome: "failed", problem: problemOf(e) });
   }

@@ -15,11 +15,11 @@ function answer(request: AiJsonRequest, mode: "sure" | "unsure") {
   for (const e of facts.events) if (e.result !== "right") missed.set(e.standard, [...(missed.get(e.standard) ?? []), e]);
   const findings = [...missed].map(([standard, events]) => {
     const text = facts.standards.find((s) => s.code === standard)?.text ?? "this standard";
-    const stuck = events.find((e) => e.stuck_step)?.stuck_step;
+    const stuck = events.find((e) => e.stuck_at)?.stuck_at;
     return {
       standard,
       hypothesis: stuck
-        ? `The child may get stuck at the same step (${stuck}) on: ${text.charAt(0).toLowerCase()}${text.slice(1)}.`
+        ? `The child may get stuck at the same step on: ${text.charAt(0).toLowerCase()}${text.slice(1)}.`
         : `The child may not be sure yet of: ${text.charAt(0).toLowerCase()}${text.slice(1)}.`,
       event_ids: events.map((e) => e.id),
     };

@@ -64,6 +64,8 @@ function fakePostgrest(): ChildProfileStore {
   };
   const fenced = [FENCED_PARENT];
   const db = createClient("https://fixture.invalid", "synthetic-key", { auth: { persistSession: false }, global: { fetch: async (input, init) => {
+    // A request whose signal is aborted fails as fetch fails.
+    if (init?.signal?.aborted) throw new DOMException("The operation was aborted.", "AbortError");
     const url = new URL(String(input));
     const table = url.pathname.replace("/rest/v1/", "");
     const rows = tables[table];
@@ -154,5 +156,16 @@ describe.each([["Supabase", fakePostgrest], ["in-memory", memory]] as const)("th
     expect(await store.save({ childId: CHILD, parentId: PARENT, assessmentId: NEW, profile: PROFILE }, null)).toEqual({ revision: 1, buildToken: expect.any(String) });
     expect(await store.save({ childId: CHILD, parentId: PARENT, assessmentId: GONE, profile: PROFILE }, (await store.current(CHILD))!)).toBe("changed");
     expect((await store.current(CHILD))?.revision).toBe(1);
+  });
+});
+
+// R355-2: the findings' deadline aborts the save's request.
+describe("the Supabase child profile store's save", () => {
+  it("sends the abort signal with the request: an aborted save stores nothing", async () => {
+    const store = fakePostgrest();
+    const row = { childId: CHILD, parentId: PARENT, assessmentId: NEW, profile: PROFILE };
+    await expect(store.save(row, null, AbortSignal.abort())).rejects.toThrow(/abort/i);
+    expect(await store.current(CHILD)).toBeNull();
+    expect(await store.save(row, null, new AbortController().signal)).toEqual({ revision: 1, buildToken: expect.any(String) });
   });
 });
