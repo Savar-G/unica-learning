@@ -40,11 +40,12 @@ function StepHead({ eyebrow, title, lead, id, children }: { eyebrow: string; tit
 
 // ---------- the scan photo (S-A) ----------
 // Corners (top-left, top-right, bottom-left, bottom-right) on the 1280 x 960 base photo, measured on a grid. The base
-// photo is AI generated with blank pages and a blank screen (r162); the pages and the app screens are ours.
-const PAGE_L: Quad = [186, 146, 629, 143, 180, 744, 629, 750];
-const PAGE_R: Quad = [631, 143, 1068, 150, 630, 750, 1069, 745];
-const SCREEN: Quad = [303, 375, 479, 375, 303, 726, 477, 728];
-const CROP = { x: 60, y: 60, w: 1160, h: 830 };
+// photo is AI generated on a white table with blank pages and a blank screen (D-180); the pages and the app screens are
+// ours. Each page keeps its 541 x 700 shape, so it sits inside the paper with a top and bottom margin.
+const PAGE_L: Quad = [178, 160, 642, 165, 178, 762, 642, 763];
+const PAGE_R: Quad = [645, 165, 1100, 162, 645, 763, 1100, 760];
+const SCREEN: Quad = [298, 345, 474, 345, 298, 716, 474, 716];
+const CROP = { x: 100, y: 60, w: 1080, h: 830 };
 
 function ScanPhoto() {
   const mask = `url('${ASSETS}/mask-paper.png')`;
@@ -52,7 +53,7 @@ function ScanPhoto() {
     <Fit w={CROP.w} h={CROP.h} className="wi-ov-fit">
       <div className="wi-ov">
         <div className="wi-ov-in" style={{ transform: `translate(${-CROP.x}px, ${-CROP.y}px)` }}>
-          <img className="wi-ov-bg" src={`${ASSETS}/base-overhead-m.jpg`} alt="A parent holds a phone over an open Unica workbook. The Unica app finds page 1, marks it, and shows 28 of 30 right." />
+          <img className="wi-ov-bg" src={`${ASSETS}/scan-base.jpg`} alt="A parent holds a phone over an open Unica workbook. The Unica app finds page 1, marks it, and shows 28 of 30 right." />
           <div className="wi-ov-paper" style={{ WebkitMaskImage: mask, maskImage: mask }}>
             <div className="wi-warp" style={{ width: 541, height: 700, transform: warpTransform(541, 700, PAGE_L) }}><MarkedPage width={541} name className="flat" /></div>
             <div className="wi-warp" style={{ width: 541, height: 700, transform: warpTransform(541, 700, PAGE_R) }}><PageTwo width={541} className="flat" /></div>

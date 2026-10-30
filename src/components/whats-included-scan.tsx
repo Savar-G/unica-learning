@@ -3,7 +3,7 @@
 // The Unica app on the phone in the scan photo: camera, marking, marked, on a loop (D-177, r162 option S-A).
 // With reduced motion it shows the marked screen and stays there.
 import { useEffect, useState } from "react";
-import { ASSETS, MarkedPage } from "./whats-included-parts";
+import { MarkedPage } from "./whats-included-parts";
 
 const STEPS = ["cam", "mkg", "res"] as const;
 const DURATION = [2300, 1300, 3800];
@@ -36,7 +36,7 @@ export function ScanPhone() {
       <div className={`sc c3${on(0)}`}>
         {STATUS}
         <div className="bar2">{ICON_X}<span>Day 1 · page 1 of 8</span>{ICON_FLASH}</div>
-        <div className="vf" style={{ backgroundImage: `url('${ASSETS}/wood.jpg')` }}>
+        <div className="vf">
           <div className="pg"><MarkedPage width={206} name /></div>
           <i className="br a" /><i className="br b" /><i className="br c" /><i className="br d" />
         </div>
