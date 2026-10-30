@@ -337,12 +337,29 @@ export function createBoardReceiver(options: { sessionId: string; epoch?: number
   /**
    * Drops the staged batches numbered up to `through` (all of them by default): the child never sees them. A retry of
    * one gets "cancelled" and changes nothing. Returns where the `cancelled` event is in the log, or null.
+   *
+   * Each staged batch's result was worked out on the batches staged before it. The batches kept after a partial cancel
+   * are worked out again on the shown board, in order, so a release never shows a cancelled command. The first one the
+   * core now refuses (it built on a cancelled batch) is dropped with every batch after it, since those were planned on
+   * it: they go in the same `cancelled` event, so the sender reads them as cancelled too.
    */
   function cancelStaged(through = Infinity, cancelId?: string): number | null {
-    const cancelled = staged.filter((s) => s.sequence <= through).map((s) => s.batchId);
-    if (cancelled.length === 0) return null;
+    const dropped = staged.filter((s) => s.sequence <= through);
+    if (dropped.length === 0) return null;
+    const kept: Staged[] = [];
+    let scene = shown;
+    let rest = staged.filter((s) => s.sequence > through);
+    while (rest.length > 0) {
+      const [next, ...after] = rest;
+      const result = applyBatch(scene, { transactionId: next.batchId, commands: next.commands });
+      if (!result.ok) break;
+      kept.push({ ...next, result });
+      scene = result.scene;
+      rest = after;
+    }
+    const cancelled = [...dropped, ...rest].map((s) => s.batchId);
     for (const id of cancelled) states.set(id, "cancelled");
-    staged = staged.filter((s) => s.sequence > through);
+    staged = kept;
     log.push(cancelId === undefined ? { kind: "cancelled", batchIds: cancelled } : { kind: "cancelled", batchIds: cancelled, cancelId });
     revision++;
     return log.length - 1;

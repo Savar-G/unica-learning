@@ -552,6 +552,33 @@ describe("a cancel", () => {
     await sender.sync();
     expect([sender.batchState("b"), sender.batchState("c")]).toEqual(["cancelled", "accepted"]);
   });
+
+  it("of the earlier batches only: a batch kept after it is shown without the cancelled ones", async () => {
+    const { receiver, sender } = await setup();
+    await sender.send(sum("a", "27", "39"));
+    await sender.send(sum("b", "12", "34"));
+    expect(receiver.handle({ type: "cancel", sessionId: SESSION, epoch: sender.epoch(), cancelId: "x", through: 1 })).toMatchObject({ ok: true, at: 0 });
+    expect(receiver.staged().map((s) => s.batchId)).toEqual(["b"]);
+    expect(receiver.release("b").map((r) => r.batchId)).toEqual(["b"]);
+    // The board the child sees is the board its log restores: "a" is not on it.
+    await sender.sync();
+    expect(boardPaths(receiver.scene())).toEqual(boardPaths(restoreScene(sender.snapshot())!));
+    expect(ids(receiver.scene())).toEqual(ids(direct(sum("b", "12", "34"))));
+  });
+
+  it("of a batch a kept batch builds on: the kept batch is cancelled with it, on both sides", async () => {
+    const { receiver, sender } = await setup();
+    await sender.send(sum("a", "27", "39"));
+    await sender.send(put("w", "a", "ones", "6"));
+    await sender.send(focus("f"));
+    receiver.handle({ type: "cancel", sessionId: SESSION, epoch: sender.epoch(), cancelId: "x", through: 1 });
+    // "w" writes in "a", which the child never sees; "f" was planned on "w": both go with "a".
+    expect(receiver.staged()).toEqual([]);
+    await sender.sync();
+    expect(sender.snapshot().events).toEqual([{ kind: "cancelled", batchIds: ["a", "w", "f"], cancelId: "x" }]);
+    expect(["a", "w", "f"].map((id) => sender.batchState(id))).toEqual(["cancelled", "cancelled", "cancelled"]);
+    expect(boardPaths(receiver.scene())).toEqual([]);
+  });
 });
 
 describe("answers", () => {
@@ -904,15 +931,18 @@ describe("random interleavings", () => {
       expect(replayed && childInk(replayed)).toEqual(childInk(receiver.scene()));
       const shownIds = log.events.flatMap((e) => (e.kind === "batch" ? [e.batchId] : []));
       expect(new Set(shownIds).size).toBe(shownIds.length);
-      // A cancel drops only the batches sent before it, however late a copy of it arrives.
+      // A cancel drops the batches sent before it, however late a copy of it arrives, and after them only the batches
+      // that built on them (in order, to the end of what was staged).
       for (const e of log.events) {
         if (e.kind !== "cancelled" || e.cancelId === undefined) continue;
-        for (const batchId of e.batchIds) {
-          const owner = agents.find((a) => batchId.startsWith(`${a.name}.`))!;
+        const owner = agents.find((a) => e.batchIds[0].startsWith(`${a.name}.`))!;
+        const cancel = owner.line.delivered.find((q) => q.type === "cancel" && q.cancelId === e.cancelId);
+        const sequences = e.batchIds.map((batchId) => {
           const sent = owner.line.delivered.find((q) => q.type === "apply" && q.batchId === batchId);
-          const cancel = owner.line.delivered.find((q) => q.type === "cancel" && q.cancelId === e.cancelId);
-          expect(sent?.type === "apply" && cancel?.type === "cancel" && sent.sequence <= cancel.through, `${e.cancelId} dropped ${batchId}, sent after it`).toBe(true);
-        }
+          return sent?.type === "apply" ? sent.sequence : NaN;
+        });
+        expect(cancel?.type === "cancel" && sequences[0] <= cancel.through, `${e.cancelId} named none of ${e.batchIds}`).toBe(true);
+        expect(sequences.every((n, i) => i === 0 || n > sequences[i - 1]), `${e.cancelId} dropped ${e.batchIds} out of order`).toBe(true);
       }
       // Only the sender that holds the board's epoch has batches staged on it.
       const now = receiver.handle({ type: "status", sessionId: SESSION, since: Number.MAX_SAFE_INTEGER });
