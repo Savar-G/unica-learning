@@ -4,6 +4,7 @@
 import type { Point } from "@/lib/board/glyphs";
 import { arrowStrokes } from "@/lib/board/geometry";
 import {
+  DIGIT_WIDTH,
   glyphStrokes,
   missingGlyphs,
   refuse,
@@ -13,6 +14,8 @@ import {
   type RefusalBody,
   type Representation,
   type Reserved,
+  SMALL_WIDTH,
+  type WrittenDigit,
 } from "@/lib/board/representation";
 import { PLACE_NAMES, type ColumnsCommand, type Ink, type PlaceName, type Rect, type RegroupCommand, type Target } from "@/lib/board/types";
 
@@ -25,12 +28,6 @@ interface CalcRow {
   y: number;
   /** The lane its carries are written in. */
   laneY: number;
-}
-
-interface Written {
-  digit: number;
-  seq: number;
-  ink: Ink;
 }
 
 interface Regroup {
@@ -59,13 +56,11 @@ export interface ColumnsState {
   /** The row with the plus sign before the work rows are added, in a long multiplication. */
   plusY: number | null;
   height: number;
-  written: Record<string, Record<number, Written>>;
+  written: Record<string, Record<number, WrittenDigit>>;
   regroups: Regroup[];
 }
 
 const OPERATOR = { add: "+", subtract: "−", multiply: "×" } as const;
-const DIGIT_WIDTH = 0.07;
-const SMALL_WIDTH = 0.05;
 /** Where a carry arrow runs in its lane, in cells from the lane's top: above the lane's digits (from 0.32 down). */
 const CARRY_ARROW_Y = 0.26;
 
@@ -300,9 +295,10 @@ function calcCell(state: ColumnsState, target: Target): { row: CalcRow; place: n
   return { row, place };
 }
 
-function put(state: ColumnsState, target: Target, value: string, ink: Ink | undefined, ctx: Ctx): ColumnsState | RefusalBody {
+function put(state: ColumnsState, target: Target, value: string | undefined, ink: Ink | undefined, ctx: Ctx): ColumnsState | RefusalBody {
   const found = calcCell(state, target);
   if ("code" in found) return found;
+  if (value === undefined) return refuse("invalid_command", "Put in columns needs the value to write: the core checks it.");
   const { row, place } = found;
   const written = { ...state.written[row.id] };
   const pen = ink ?? (row.id === "answer" ? "green" : "blue");
