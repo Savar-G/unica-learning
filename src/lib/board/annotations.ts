@@ -3,7 +3,7 @@
 import { centre, circleStroke, curvedArrow, polylineHitsRect, traceTouches, type Trace } from "@/lib/board/geometry";
 import type { GlyphSet, Point } from "@/lib/board/glyphs";
 import { glyphStrokes, type LocalStroke } from "@/lib/board/representation";
-import type { Ink, MarkStyle, Rect, Target } from "@/lib/board/types";
+import type { Ink, MarkStyle, PageSize, Rect, Target } from "@/lib/board/types";
 
 export interface MarkObject {
   kind: "mark";
@@ -35,6 +35,8 @@ export interface ArrowRoute {
 }
 
 const ARROW_WIDTH = 0.05;
+/** How far outside its target an arrow starts or ends, in cells. */
+const END_GAP = 0.05;
 /** The gap an arrow keeps from other strokes, in cells, beyond their line widths. */
 const ARROW_CLEARANCE = 0.05;
 /** How far a route may bow out from the straight line between its ends, in cells. */
@@ -44,10 +46,10 @@ const BENDS = [0, 0.3, 0.6, 1, 1.5, 2, 3, 4];
 const sides = (r: Rect): Point[] => {
   const [cx, cy] = centre(r);
   return [
-    [cx, r.y - 0.05],
-    [cx, r.y + r.h + 0.05],
-    [r.x - 0.05, cy],
-    [r.x + r.w + 0.05, cy],
+    [cx, r.y - END_GAP],
+    [cx, r.y + r.h + END_GAP],
+    [r.x - END_GAP, cy],
+    [r.x + r.w + END_GAP, cy],
   ];
 };
 
@@ -62,12 +64,12 @@ export interface ArrowObstacles {
  * it is clear, else the shortest route that keeps clear of every obstacle and stays on the page. Null when no route is
  * clear.
  */
-export function routeArrow(a: Rect, b: Rect, obstacles: ArrowObstacles, page: { cols: number; rows: number }): ArrowRoute | null {
+export function routeArrow(a: Rect, b: Rect, obstacles: ArrowObstacles, page: PageSize): ArrowRoute | null {
   const candidates: { route: ArrowRoute; cost: number }[] = [];
   // The usual look first: over the top between two targets in one row, else from facing side to facing side.
   const sameRow = Math.abs(centre(a)[1] - centre(b)[1]) < 0.5;
-  const from: Point = sameRow ? [centre(a)[0], a.y - 0.05] : edgeToward(a, centre(b));
-  const to: Point = sameRow ? [centre(b)[0], b.y - 0.05] : edgeToward(b, centre(a));
+  const from: Point = sameRow ? [centre(a)[0], a.y - END_GAP] : edgeToward(a, centre(b));
+  const to: Point = sameRow ? [centre(b)[0], b.y - END_GAP] : edgeToward(b, centre(a));
   candidates.push({ route: { from, control: [(from[0] + to[0]) / 2, Math.min(from[1], to[1]) - (sameRow ? 0.7 : 0.3)], to }, cost: -1 });
   for (const p of sides(a))
     for (const q of sides(b)) {
@@ -83,10 +85,10 @@ export function routeArrow(a: Rect, b: Rect, obstacles: ArrowObstacles, page: { 
         }
     }
   candidates.sort((x, y) => x.cost - y.cost);
-  return candidates.find((c) => clear(c.route, a, b, obstacles, page))?.route ?? null;
+  return candidates.find((c) => routeIsClear(c.route, a, b, obstacles, page))?.route ?? null;
 }
 
-function clear(route: ArrowRoute, a: Rect, b: Rect, obstacles: ArrowObstacles, page: { cols: number; rows: number }): boolean {
+function routeIsClear(route: ArrowRoute, a: Rect, b: Rect, obstacles: ArrowObstacles, page: PageSize): boolean {
   const strokes = curvedArrow(route.from, route.control, route.to);
   if (strokes.some((pts) => pts.some(([x, y]) => x < 0 || y < 0 || x > page.cols || y > page.rows))) return false;
   // The shaft does not run through either target on its way.
@@ -128,6 +130,6 @@ function edgeToward(r: Rect, p: Point): Point {
   const [cx, cy] = centre(r);
   const dx = p[0] - cx;
   const dy = p[1] - cy;
-  if (Math.abs(dx) * r.h > Math.abs(dy) * r.w) return [dx > 0 ? r.x + r.w + 0.05 : r.x - 0.05, cy];
-  return [cx, dy > 0 ? r.y + r.h + 0.05 : r.y - 0.05];
+  if (Math.abs(dx) * r.h > Math.abs(dy) * r.w) return [dx > 0 ? r.x + r.w + END_GAP : r.x - END_GAP, cy];
+  return [cx, dy > 0 ? r.y + r.h + END_GAP : r.y - END_GAP];
 }

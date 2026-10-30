@@ -16,7 +16,6 @@ export {
   TIMING,
   type ApplyResult,
   type ChildInk,
-  type PageSize,
   type Scene,
 } from "./scene";
 export { PLACEHOLDER_GLYPHS, type GlyphSet, type Point } from "./glyphs";

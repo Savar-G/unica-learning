@@ -10,7 +10,7 @@ import { PLACEHOLDER_GLYPHS, type GlyphSet } from "@/lib/board/glyphs";
 import { note } from "@/lib/board/note";
 import { parseCommand } from "@/lib/board/parse";
 import { isRefusal, refuse, type Ctx, type LocalStroke, type LocalTarget, type RefusalBody, type Representation } from "@/lib/board/representation";
-import type { Batch, BoardPath, Command, CreateCommand, Notice, PathKind, Place, Rect, Refusal, Target, TargetInfo, TimedPath, View } from "@/lib/board/types";
+import type { Batch, BoardPath, Command, CreateCommand, Notice, PageSize, PathKind, Place, Rect, Refusal, Target, TargetInfo, TimedPath, View } from "@/lib/board/types";
 import type { Stroke } from "@/lib/whiteboard";
 
 /** The representations the board can create, by their create command. Later ones are added here. */
@@ -18,11 +18,6 @@ const REPRESENTATIONS = { columns, write: note } satisfies Record<CreateCommand[
 const representation = (op: CreateCommand["op"]) => REPRESENTATIONS[op] as unknown as Representation<unknown, CreateCommand>;
 const isCreate = (c: Command): c is CreateCommand => c.op in REPRESENTATIONS;
 
-/** A board page in grid cells. A digit fills one cell. */
-export interface PageSize {
-  cols: number;
-  rows: number;
-}
 export const DEFAULT_PAGE: PageSize = { cols: 24, rows: 16 };
 export const MAX_PAGES = 20;
 export const MAX_COMMANDS = 40;
@@ -295,7 +290,7 @@ function exec(scene: Scene, s: SceneState, step: Step, notices: Notice[]): Refus
       if (sameTarget(cmd.from, cmd.to)) return refuse("not_allowed", "An arrow joins two different things.");
       if (a.page !== b.page) return refuse("not_allowed", "An arrow joins two things on the same page.");
       if (!step.route) {
-        const route = routeArrow(a.rect, b.rect, obstacles(scene, s, a.page, [a.rep.id, b.rep.id]), scene.page);
+        const route = routeArrow(a.rect, b.rect, obstacles(scene, s, a.page, [a, b]), scene.page);
         if (!route) return refuse("no_room", "There is no clear way to draw this arrow without crossing other work: point it at other targets.");
         step.route = route;
       }
@@ -486,12 +481,8 @@ export function addChildInk(scene: Scene, ink: { page: number; stroke: Stroke; b
   return { scene: { ...scene, child: [...scene.child, { id, page: ink.page, stroke: ink.stroke, boardWidth: ink.boardWidth }] }, id };
 }
 
-/**
- * True when a stroke of Maya's would cover a stroke of the child's on its page, counting both line widths. Highlights
- * are exempt: they are see-through and drawn under every ink, so they never hide the child's writing.
- */
+/** True when a stroke of Maya's would cover a stroke of the child's on its page, counting both line widths. */
 function coversChild(scene: Scene, p: BoardPath): boolean {
-  if (p.layer === "behind") return false;
   return scene.child.some((c) => {
     if (c.page !== p.page || c.stroke.erase || c.stroke.pts.length === 0) return false;
     return traceTouches({ pts: p.pts, width: p.width }, { pts: c.stroke.pts, width: c.stroke.w / c.boardWidth });
@@ -542,20 +533,32 @@ function placedStrokes(scene: Pick<Scene, "glyphs">, s: SceneState): PlacedStrok
   return local;
 }
 
-/** The kinds of stroke an arrow goes around: writing, rules and other arrows. Marks sit on their targets and may be crossed. */
-const ROUTE_AROUND = new Set<PathKind>(["glyph", "rule", "arrow"]);
+/**
+ * The strokes an arrow may cross: rules (an arrow from a number to its answer crosses the line between them) and
+ * highlights, which lie under everything.
+ */
+const ROUTE_ACROSS = new Set<PathKind>(["rule", "highlight"]);
 
 /**
- * What a new arrow on a page must keep clear of, in page cells: Maya's writing, rules and arrows, the child's ink, and the
- * boxes of the objects it does not join.
+ * What a new arrow on a page must keep clear of, in page cells: Maya's writing, arrows and marks, the child's ink, and the
+ * boxes of the objects it does not join. A mark on or around either end is left out: the arrow has to reach that end.
  */
-function obstacles(scene: Scene, s: SceneState, page: number, joined: string[]): ArrowObstacles {
+function obstacles(scene: Scene, s: SceneState, page: number, ends: { rep: RepObject; rect: Rect }[]): ArrowObstacles {
+  const markOnEnd = new Set(
+    s.objects
+      .filter((o): o is MarkObject => o.kind === "mark" && o.page === page)
+      .filter((o) => {
+        const found = resolve(s, o.target);
+        return !isRefusal(found) && ends.some((e) => overlaps(found.rect, e.rect));
+      })
+      .map((o) => o.id),
+  );
   const maya = placedStrokes(scene, s)
-    .filter((p) => p.page === page && ROUTE_AROUND.has(p.stroke.kind))
+    .filter((p) => p.page === page && !ROUTE_ACROSS.has(p.stroke.kind) && !markOnEnd.has(p.owner))
     .map(({ stroke, dx, dy }): Trace => ({ pts: stroke.pts.map(([x, y]) => [x + dx, y + dy]), width: stroke.width }));
   const child = scene.child.filter((c) => c.page === page).flatMap((c) => childTrace(scene, c) ?? []);
   const boxes = reps(s)
-    .filter((o) => o.page === page && !joined.includes(o.id))
+    .filter((o) => o.page === page && !ends.some((e) => e.rep.id === o.id))
     .map((o) => o.rect);
   return { strokes: [...maya, ...child], boxes };
 }

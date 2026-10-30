@@ -116,6 +116,12 @@ export interface TargetInfo {
   crossedOut?: string[];
 }
 
+/** A board page in grid cells. A digit fills one cell. */
+export interface PageSize {
+  cols: number;
+  rows: number;
+}
+
 /** A rectangle in grid cells. */
 export interface Rect {
   x: number;
@@ -143,10 +149,7 @@ export interface BoardPath {
   /** The character this stroke is part of, for glyph strokes. */
   glyph?: string;
   page: number;
-  /**
-   * behind: under the math and the child's ink (highlights, see-through); math: digits and rules; annotation: carries,
-   * marks and arrows.
-   */
+  /** behind: under the math (highlights); math: digits and rules; annotation: carries, marks and arrows. */
   layer: "behind" | "math" | "annotation";
   ink: Ink;
   opacity: number;

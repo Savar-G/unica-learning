@@ -622,6 +622,13 @@ describe("second review fixes", () => {
       expect(refusal(covered, link).code).toBe("no_room");
     });
 
+    it("refuses a highlight over the child's ink too", () => {
+      const scene = ok(createScene(), sum());
+      const glow = { op: "mark", id: "glow", target: { objectId: "sum1", part: "column", column: "ones" }, style: "highlight" };
+      const proposed = applied(scene, glow);
+      expect(refusal(childStroke(scene, proposed.drawn[0].pts), glow).code).toBe("protected_ink");
+    });
+
     it("refuses an undo that would bring back a mark or a carry over the child's ink", () => {
       let scene = ok(createScene(), sum());
       const made = applied(scene, ring);
@@ -696,6 +703,31 @@ describe("second review fixes", () => {
       const bTop = Math.floor(top(paths.filter((p) => p.objectId === "b")) * 24) / 24;
       const inB = ([x, y]: [number, number]) => x > bCell && x < bCell + 1 / 24 && y > bTop && y < bTop + 1 / 24;
       expect(arrow.flatMap((p) => p.pts).some(inB)).toBe(false);
+    });
+
+    it("routes an arrow around an unrelated circle", () => {
+      const note = (id: string, place: unknown) => ({ op: "write", id, text: "1", place });
+      let scene = ok(createScene(), note("a", { region: "main" }), note("b", { below: "a" }), note("c", { below: "b" }));
+      scene = ok(scene, { op: "mark", id: "ring", target: { objectId: "b", part: "whole" }, style: "circle" });
+      scene = ok(scene, { op: "arrow", id: "link", from: { objectId: "a", part: "whole" }, to: { objectId: "c", part: "whole" } });
+      const paths = boardPaths(scene);
+      const circle = paths.find((p) => p.objectId === "ring")!;
+      for (const a of paths.filter((p) => p.objectId === "link")) expect(touch(a, circle)).toBe(false);
+    });
+
+    it("draws an arrow from any digit of the numbers to any digit of the answer, clear of the other digits", () => {
+      const scene = ok(createScene(), { ...sum(), operands: [{ id: "top", value: "123" }, { id: "bottom", value: "456" }] });
+      const columns = ["ones", "tens", "hundreds"];
+      for (const row of ["top", "bottom"])
+        for (const from of columns)
+          for (const to of columns) {
+            const r = applyBatch(scene, { transactionId: "arrow", commands: [{ op: "arrow", id: "link", from: cell("sum1", row, from), to: cell("sum1", "answer", to) }] });
+            expect(r.ok, `${row} ${from} to answer ${to}`).toBe(true);
+            if (!r.ok) continue;
+            const paths = boardPaths(r.scene);
+            const digits = paths.filter((p) => p.kind === "glyph" && p.target !== null && !sameTarget(p.target, cell("sum1", row, from)));
+            for (const a of paths.filter((p) => p.objectId === "link")) for (const d of digits) expect(touch(a, d), `${row} ${from} to answer ${to}`).toBe(false);
+          }
     });
 
     it("keeps the arrow's route when the board changes later", () => {
