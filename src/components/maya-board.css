@@ -1,0 +1,17 @@
+/* Maya's board (#319): white dotted paper, as the child's whiteboard on the test (whiteboard.css). Pen colours are the
+   site's colours (src/ds/styles/base.css), deep enough to read on white; the yellow highlight sits under the math. */
+.maya-board {
+  --board-blue: #3366f0;
+  --board-red: #e0322b;
+  --board-green: #16a06a;
+  --board-yellow: #ffd23f;
+  --board-black: var(--ink, #111);
+  display: block;
+  width: 100%;
+  height: auto;
+  border: 1px solid var(--line, #e4e4e7);
+  border-radius: 8px;
+  background-color: #fff;
+  background-image: radial-gradient(#d6d8de 1.2px, transparent 1.4px);
+  background-size: 22px 22px;
+}

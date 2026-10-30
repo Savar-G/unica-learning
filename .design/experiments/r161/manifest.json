@@ -1,0 +1,23 @@
+{
+  "round": 161,
+  "note": "Built on r160. build.py imports ../r160/build.py (which imports ../r159). page.html is the full interactive page; still-cam.html and still-res.html freeze the scan scene for images. The scan base photo assets/base-scan-1.jpg was made with Figma generate_image (gpt-image-2.5-flare, 2026-10-29) with a blank page and a blank screen; Leah's Figma page 228:1248 (with her answers) and the Unica app screens (HTML, after Figma 94:162 and 94:254) are warped onto it with CSS matrix3d and multiply blending. Dashboard: Figma 99:53 at 1440 x 3200, split into the sidebar (active state removed) and the main column; the menu scrolls the main column. figma/ holds the images posted to the FigJam board section 344:53.",
+  "decision": "Do the reworked scan scene, the clickable dashboard and the 'built from' next workbook section work, for Savar and his team?",
+  "primary_axis": "none: one direction, refined for team review on the FigJam board",
+  "invariants": [
+    "Layout B, workbook open on load on a paper band (D-176, D-177)",
+    "Same words for every step as r159"
+  ],
+  "options": [
+    {
+      "id": "r161",
+      "artifact": "page.html",
+      "bet": "One refined page: the scan step is a real photo with our app and page; the dashboard is clickable; the next workbook shows where each change comes from",
+      "benefit": "Shows the actual product in every step",
+      "cost": "The scan photo is AI generated; a real photo would need a shoot",
+      "risk": "A parent or the team may read the AI photo as staged; the grade and level wording differ between screens"
+    }
+  ],
+  "figma": "https://www.figma.com/board/fLyAJsC68ezugsmkH3oRGh/Personalized-Learning-Delivered?node-id=344-53",
+  "picked": "r161 kept as the base; the scan picture and the dashboard reworked in r162",
+  "outcome": "Savar, 2026-10-29: the dashboard section should show the web and the phone app (the app is more convenient, the web shows more). The scan picture is still the weakest part, and it must show the open workbook, not one page. Next round r162, also on the FigJam board."
+}

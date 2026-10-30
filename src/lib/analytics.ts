@@ -3,6 +3,7 @@
 // The banner and the footer trigger never import this file. They write the choice in consent.ts,
 // and this file reacts to the change event (this tab) and the storage event (other tabs).
 import { getConsent, subscribeConsent, type ConsentState } from "@/lib/consent";
+import { redactPathTokens } from "@/lib/url-tokens";
 
 type Props = Record<string, unknown>;
 
@@ -57,9 +58,9 @@ export function sanitizeProps(props: Props = {}): Props {
 function stripUrl(value: string): string {
   try {
     const u = new URL(value);
-    return u.origin + u.pathname;
+    return u.origin + redactPathTokens(u.pathname);
   } catch {
-    return value.split(/[?#]/)[0];
+    return redactPathTokens(value.split(/[?#]/)[0]);
   }
 }
 
@@ -86,6 +87,8 @@ function scrubBag(bag: unknown): void {
     if (typeof value !== "string") continue;
     if (key.includes("referrer")) o[key] = referrerOrigin(value);
     else if (key.includes("url")) o[key] = stripUrl(value);
+    // A page's QR code holds a token in its path (#301).
+    else if (key.includes("pathname")) o[key] = redactPathTokens(value);
   }
 }
 

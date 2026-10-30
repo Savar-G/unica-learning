@@ -53,6 +53,18 @@
       "question": "How to charge the first month when the first workbook ships; setup mode is implemented (D-053)",
       "owner": "user",
       "status": "open"
+    },
+    {
+      "id": "W1",
+      "question": "Whats-included page: AI Teaching Assistant description, option A, B or C (.design/briefs/whats-included.md)",
+      "owner": "user",
+      "status": "open"
+    },
+    {
+      "id": "W4",
+      "question": "Whats-included page: built at /whats-included from round r162 (S-A, D-A) on branch site/products-page; refine from the PR preview. Still open: AI-generated base photo or our own photo, 'Ask Maya' or 'Call Maya', 'Companion calls' label, grade versus level wording.",
+      "owner": "user",
+      "status": "open"
     }
   ],
   "blockers": [

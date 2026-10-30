@@ -5,7 +5,7 @@ import { memoryPinStore } from "@/lib/parent-pin-memory";
 
 vi.mock("server-only", () => ({}));
 const { pinStore } = await import("@/lib/parent-pin-store");
-const { checkParentPin, savePin } = await import("@/lib/parent-pin-server");
+const { checkParentPin, pinIsSet, resetForgottenPin, savePin } = await import("@/lib/parent-pin-server");
 
 // The parent PIN module (#300, spec #295), through its interface: set, change, check, the attempt limit. The desk (P4)
 // calls `check` to leave desk mode. Tests use a clock they move, and run against both stores: the in-memory one, and the
@@ -29,8 +29,20 @@ function fakeSupabase(database: ReturnType<typeof memoryPinStore>): PinStore {
         : { out_status: "open", out_hash: claim.hash, out_attempts_left: claim.attemptsLeft, out_locked_until: at(claim.lockedUntil) };
       return Response.json([row]);
     }
+    if (url.pathname === "/rest/v1/rpc/claim_pin_reset_attempt") {
+      const claim = await database.claimReset(body.p_parent, Date.parse(body.p_now), { maxAttempts: body.p_max, lockMs: body.p_lock_seconds * 1000 });
+      const at = (ms: number | null) => (ms === null ? null : new Date(ms).toISOString());
+      const row = claim.kind === "none" ? { out_status: "none" }
+        : claim.kind === "locked" ? { out_status: "locked", out_locked_until: at(claim.until) }
+        : { out_status: "open", out_attempts_left: claim.attemptsLeft, out_locked_until: at(claim.lockedUntil) };
+      return Response.json([row]);
+    }
     if (url.pathname !== "/rest/v1/parent_pins") throw new Error(`unexpected request ${url.pathname}`);
     if (init?.method === "GET") return Response.json((await database.has(eq("parent_id"))) ? { parent_id: eq("parent_id") } : null);
+    if (init?.method === "POST" && url.searchParams.get("on_conflict") === "parent_id") {
+      await database.reset(body.parent_id, body.pin_hash);
+      return new Response(null, { status: 201 });
+    }
     if (init?.method === "POST") {
       expect(url.searchParams.get("on_conflict")).toBeNull();
       if (await database.create(body.parent_id, body.pin_hash)) return new Response(null, { status: 201 });
@@ -323,6 +335,96 @@ describe.each(stores)("the PIN module over the %s store", (_, open) => {
       expect(await pins.check(PARENT, "4821")).toEqual({ ok: true });
     });
   });
+
+  // Forgot PIN (#301, review R349-1): the parent's account password, checked by the caller's `prove`, with its own
+  // attempt limit per parent.
+  describe("resetting a forgotten PIN with the account password", () => {
+    const prove = (right = "right-password") => {
+      const tried: string[] = [];
+      const fn = async (password: string) => { tried.push(password); return password === right ? "ok" as const : "wrong" as const; };
+      return Object.assign(fn, { tried });
+    };
+
+    it("replaces the PIN after the right password: the new one works and the old one does not", async () => {
+      const { pins } = setup();
+      await pins.set(PARENT, "4821");
+      expect(await pins.forgot(PARENT, "right-password", "1111", prove())).toEqual({ ok: true });
+      expect(await pins.check(PARENT, "1111")).toEqual({ ok: true });
+      expect(await pins.check(PARENT, "4821")).toMatchObject({ ok: false, error: "wrong" });
+    });
+
+    it("keeps the PIN after a wrong password, and counts down the tries left", async () => {
+      const { pins } = setup();
+      await pins.set(PARENT, "4821");
+      expect(await pins.forgot(PARENT, "guess", "1111", prove())).toEqual({ ok: false, error: "wrong_password", attemptsLeft: PIN_POLICY.maxAttempts - 1 });
+      expect(await pins.check(PARENT, "4821")).toEqual({ ok: true });
+      expect(await pins.check(PARENT, "1111")).toMatchObject({ ok: false, error: "wrong" });
+    });
+
+    it("locks resets after the last wrong password, even for the right one, and opens again after the lock", async () => {
+      const { pins, advance } = setup();
+      await pins.set(PARENT, "4821");
+      const check = prove();
+      let last;
+      for (let i = 0; i < PIN_POLICY.maxAttempts; i++) last = await pins.forgot(PARENT, `guess-${i}`, "1111", check);
+      expect(last).toMatchObject({ ok: false, error: "locked" });
+      expect(await pins.forgot(PARENT, "right-password", "1111", check)).toMatchObject({ ok: false, error: "locked" });
+      // A locked reset does not even ask for the password.
+      expect(check.tried).toHaveLength(PIN_POLICY.maxAttempts);
+      expect(await pins.check(PARENT, "4821")).toEqual({ ok: true });
+      advance(PIN_POLICY.lockMs);
+      expect(await pins.forgot(PARENT, "right-password", "1111", check)).toEqual({ ok: true });
+    });
+
+    it("gives a fresh count after a right password", async () => {
+      const { pins } = setup();
+      await pins.set(PARENT, "4821");
+      for (let i = 0; i < PIN_POLICY.maxAttempts - 1; i++) await pins.forgot(PARENT, "guess", "1111", prove());
+      expect(await pins.forgot(PARENT, "right-password", "2222", prove())).toEqual({ ok: true });
+      expect(await pins.forgot(PARENT, "guess", "3333", prove())).toMatchObject({ error: "wrong_password", attemptsLeft: PIN_POLICY.maxAttempts - 1 });
+    });
+
+    it("ends a PIN lock", async () => {
+      const { pins } = setup();
+      await pins.set(PARENT, "4821");
+      for (let i = 0; i < PIN_POLICY.maxAttempts; i++) await pins.check(PARENT, "0000");
+      expect(await pins.forgot(PARENT, "right-password", "1111", prove())).toEqual({ ok: true });
+      expect(await pins.check(PARENT, "1111")).toEqual({ ok: true });
+    });
+
+    it("has nothing to reset when no PIN is set, and asks for no password", async () => {
+      const { pins } = setup();
+      const check = prove();
+      expect(await pins.forgot(PARENT, "right-password", "1111", check)).toEqual({ ok: false, error: "not_set" });
+      expect(check.tried).toEqual([]);
+    });
+
+    it("refuses a malformed PIN or an empty password without spending a try", async () => {
+      const { pins } = setup();
+      await pins.set(PARENT, "4821");
+      const check = prove();
+      expect(await pins.forgot(PARENT, "right-password", "12a4", check)).toEqual({ ok: false, error: "invalid" });
+      expect(await pins.forgot(PARENT, "", "1111", check)).toEqual({ ok: false, error: "invalid" });
+      expect(check.tried).toEqual([]);
+      expect(await pins.forgot(PARENT, "guess", "1111", check)).toMatchObject({ attemptsLeft: PIN_POLICY.maxAttempts - 1 });
+    });
+
+    it("says unavailable when the password cannot be checked, and keeps the PIN", async () => {
+      const { pins } = setup();
+      await pins.set(PARENT, "4821");
+      expect(await pins.forgot(PARENT, "right-password", "1111", async () => "unavailable")).toEqual({ ok: false, error: "unavailable" });
+      expect(await pins.check(PARENT, "4821")).toEqual({ ok: true });
+    });
+
+    it("limits each parent apart, and changes only that parent's PIN", async () => {
+      const { pins } = setup();
+      await pins.set(PARENT, "4821");
+      await pins.set(OTHER, "4821");
+      for (let i = 0; i < PIN_POLICY.maxAttempts; i++) await pins.forgot(PARENT, "guess", "1111", prove());
+      expect(await pins.forgot(OTHER, "right-password", "1111", prove())).toEqual({ ok: true });
+      expect(await pins.check(PARENT, "4821")).toEqual({ ok: true });
+    });
+  });
 });
 
 describe("the server functions", () => {
@@ -348,6 +450,46 @@ describe("the server functions", () => {
     expect(await savePin(PARENT, { pin: "1111", current: "0000" }, pins)).toMatchObject({ status: 403, result: { ok: false, error: "wrong" } });
     expect(await savePin(PARENT, { pin: "1111", current: "4821" }, pins)).toEqual({ status: 200, result: { ok: true } });
     expect(await checkParentPin(PARENT, "1111", pins)).toEqual({ ok: true });
+  });
+
+  // R349-1: a child at the desk sends only a new PIN, right after the parent's own password sign-in. Refused: the
+  // request itself must carry the account password, and the password is never asked for.
+  it("resetForgottenPin: refuses a reset that carries no password, whatever the session", async () => {
+    const pins = withPins();
+    await savePin(PARENT, { pin: "4821" }, pins);
+    let asked = 0;
+    const prove = async () => { asked += 1; return "ok" as const; };
+    expect(await resetForgottenPin(PARENT, { pin: "1111" }, prove, pins)).toEqual({ status: 400, result: { ok: false, error: "invalid" } });
+    expect(asked).toBe(0);
+    expect(await checkParentPin(PARENT, "4821", pins)).toEqual({ ok: true });
+  });
+
+  it("resetForgottenPin: answers each outcome with its status", async () => {
+    const pins = withPins();
+    await savePin(PARENT, { pin: "4821" }, pins);
+    const prove = async (p: string) => (p === "right-password" ? "ok" as const : "wrong" as const);
+    expect(await resetForgottenPin(PARENT, { password: "guess", pin: "1111" }, prove, pins)).toEqual({ status: 403, result: { ok: false, error: "wrong_password", attemptsLeft: PIN_POLICY.maxAttempts - 1 } });
+    expect(await resetForgottenPin(PARENT, { password: "right-password", pin: "1111" }, prove, pins)).toEqual({ status: 200, result: { ok: true } });
+    expect(await checkParentPin(PARENT, "1111", pins)).toEqual({ ok: true });
+    for (let i = 0; i < PIN_POLICY.maxAttempts; i++) await resetForgottenPin(PARENT, { password: "guess", pin: "2222" }, prove, pins);
+    expect(await resetForgottenPin(PARENT, { password: "right-password", pin: "2222" }, prove, pins)).toMatchObject({ status: 429, result: { ok: false, error: "locked" } });
+    for (const body of [null, {}, { pin: "12", password: "x" }, { pin: 1111, password: "x" }, { pin: "1111", password: 1 }, "1111"]) {
+      expect((await resetForgottenPin(PARENT, body, prove, pins)).status, JSON.stringify(body)).toBe(400);
+    }
+    expect(await resetForgottenPin(OTHER, { password: "right-password", pin: "1111" }, prove, pins)).toEqual({ status: 400, result: { ok: false, error: "not_set" } });
+    expect(await resetForgottenPin(PARENT, { password: "right-password", pin: "1111" }, prove, null)).toMatchObject({ status: 503 });
+    const fresh = withPins();
+    await savePin(PARENT, { pin: "4821" }, fresh);
+    expect(await resetForgottenPin(PARENT, { password: "right-password", pin: "1111" }, async () => "unavailable", fresh)).toEqual({ status: 503, result: { ok: false, error: "unavailable" } });
+  });
+
+  it("pinIsSet: says whether a PIN is set, and null when the server cannot tell", async () => {
+    const pins = withPins();
+    expect(await pinIsSet(PARENT, pins)).toBe(false);
+    await savePin(PARENT, { pin: "4821" }, pins);
+    expect(await pinIsSet(PARENT, pins)).toBe(true);
+    expect(await pinIsSet(PARENT, null)).toBeNull();
+    expect(await pinIsSet(PARENT, parentPins({ ...memoryPinStore(), has: async () => { throw new Error("down"); } }))).toBeNull();
   });
 
   it("savePin: answers 429 once the attempts are used, and 400 for a malformed body", async () => {

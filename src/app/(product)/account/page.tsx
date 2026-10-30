@@ -11,6 +11,9 @@ import { parentId, sessionClient } from "@/lib/supabase-auth";
 import { isPhone } from "@/lib/account-server";
 import { reportPath } from "@/lib/report-view";
 import { fromRow, LEARNING_COLUMNS, learningPath } from "@/lib/learning-style";
+import { pinIsSet } from "@/lib/parent-pin-server";
+import { workbookStore } from "@/lib/workbook-store";
+import type { WorkbookSummary } from "@/lib/workbook-content";
 import { AddChild, SendLink, SignOut, StartTest, TrackOnce } from "@/components/account";
 import { SupportPage } from "@/components/support-page";
 
@@ -43,13 +46,16 @@ export default async function Account({ searchParams }: PageProps<"/account">) {
   const newestReport = new Map((reports ?? []).map((r) => [r.child_id, reportPath(r.id)]));
   const reportFor = (id: string, state: StartState) => (state.kind === "wait" ? testReport.get(`${id}@${state.completedAt}`) : newestReport.get(id));
   const phone = isPhone(await headers());
-  const { sent, password, existing, pin } = await searchParams;
+  const { sent, password, existing, pin, desk } = await searchParams;
 
   const children = kids ?? [];
+  // Parent home (#301): each child's current workbook (the newest shipped one) and the desk, which needs the PIN.
+  const [current, pinSet] = await Promise.all([currentWorkbooks(db, children.map((c) => c.id)), pinIsSet(parentUser)]);
   return (
     <SupportPage label="Your account" title={`Hi, ${parent.name.split(" ")[0]}.`}>
       {password === "1" && <p role="status" className="acct-alert acct-saved">Your password is saved.</p>}
       {pin === "1" && <p role="status" className="acct-alert acct-saved">Your PIN is saved.</p>}
+      {desk === "error" && <p role="status" className="acct-alert">We cannot open the desk right now. Try again in a moment.</p>}
       {existing === "1" && <p role="status" className="acct-alert acct-saved">This email already has an account, so the code signed you in. Nothing in your account changed. To add a child, use Add another child.</p>}
       {phone ? (
         <div className="acct-card acct-phone">
@@ -75,11 +81,46 @@ export default async function Account({ searchParams }: PageProps<"/account">) {
             {phone && stateFor(states, c.id).kind !== "wait"
               ? <SendLink childId={c.id} name={c.first_name} sent={sent === "1" && i === 0} />
               : <StartTest childId={c.id} name={c.first_name} state={stateFor(states, c.id)} report={reportFor(c.id, stateFor(states, c.id))} />}
+            {current.has(c.id) && <DeskRow childId={c.id} name={c.first_name} workbook={current.get(c.id)!} pinSet={pinSet} />}
           </li>
         ))}
       </ul>
       <AddChild province={children.at(-1)?.province ?? "BC"} />
       <p className="small acct-out">Signed in. <Link href="/account/password">Add or change your password</Link>. <Link href="/account/pin">Set or change your PIN</Link>. <SignOut /></p>
     </SupportPage>
+  );
+}
+
+/** Each child's newest shipped workbook. Read with the parent's session: row-level security gives only shipped ones. */
+async function currentWorkbooks(db: Awaited<ReturnType<typeof sessionClient>>, childIds: string[]): Promise<Map<string, WorkbookSummary>> {
+  const store = workbookStore(db);
+  try {
+    const lists = await Promise.all(childIds.map((id) => store.childWorkbooks(id)));
+    return new Map(lists.flatMap((list) => list.filter((w) => w.status === "shipped").slice(0, 1).map((w) => [w.childId, w] as const)));
+  } catch (error) {
+    console.error("[account] workbooks load failed", error instanceof Error ? error.message : error);
+    return new Map();
+  }
+}
+
+/** The child's workbook and "Open the desk" (a form POST, so it works without JavaScript). No PIN yet: set one first. */
+function DeskRow({ childId, name, workbook, pinSet }: { childId: string; name: string; workbook: WorkbookSummary; pinSet: boolean | null }) {
+  return (
+    <div className="acct-desk">
+      <span>
+        <b>Workbook {workbook.number}</b>
+        <span className="small">{pinSet === false
+          ? `${name} needs your PIN to leave the desk. Set your PIN, then open the desk.`
+          : `On the desk, ${name} sees this workbook. Leaving the desk needs your PIN.`}</span>
+      </span>
+      {pinSet === false ? (
+        <Link className="btn ghost" href="/account/pin?desk=1">Set your PIN</Link>
+      ) : (
+        <form method="post" action="/api/desk/open">
+          <input type="hidden" name="child" value={childId} />
+          <button type="submit" className="btn">Open the desk <span aria-hidden="true">→</span></button>
+        </form>
+      )}
+    </div>
   );
 }

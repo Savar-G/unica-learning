@@ -1,7 +1,8 @@
 // The board core's vocabulary (#315, spec #297): the commands the model may send, the named targets they point at, and
 // the stroke paths the core returns. The model never gives coordinates: it names objects and their parts, and the core
-// decides where everything goes. Each representation (columns, division; fractions, number lines and models later) is a
-// create command with its own target parts; the common commands below stay the same.
+// decides where everything goes. Each representation (columns, division, models; fractions and number lines later) is
+// a create command with its own target parts; the common commands below stay the same.
+import type { ModelSpec } from "@/lib/board/model";
 
 /** Pen colours. The renderer maps them to the palette. */
 export const INKS = ["blue", "red", "green", "yellow", "black"] as const;
@@ -17,7 +18,9 @@ export type Target =
   | { objectId: string; part: "column"; column: PlaceName }
   | { objectId: string; part: "row"; rowId: string }
   | { objectId: string; part: "cell"; rowId: string; column: PlaceName }
-  | { objectId: string; part: "word"; index: number };
+  | { objectId: string; part: "word"; index: number }
+  /** A named part of a math model ("ten-3", "row-2", "side-AB"): the core returns the names, the model never makes them up. */
+  | { objectId: string; part: "piece"; piece: string };
 
 /**
  * Where a new object goes: the main area, below or right of an object, or next to a named target (an anchor). Only the
@@ -71,8 +74,17 @@ export interface RegroupCommand {
   ink?: Ink;
 }
 
+/** A math model (#318): one closed kind with bounded fields. The core computes every count, position and named part. */
+export interface ModelCommand {
+  op: "model";
+  id: string;
+  model: ModelSpec;
+  place: Place;
+  ink?: Ink;
+}
+
 /** Commands that create a new math object with its own layout. Later representations join this union. */
-export type CreateCommand = ColumnsCommand | DivisionCommand | WriteCommand;
+export type CreateCommand = ColumnsCommand | DivisionCommand | WriteCommand | ModelCommand;
 
 export type Command =
   | CreateCommand
@@ -168,6 +180,11 @@ export interface BoardPath {
   /** The polyline's length in board widths. */
   length: number;
   durationMs: number;
+  /**
+   * Where the stroke is painted among Maya's strokes in its layer (lower first): the command that revealed it, then its
+   * place among that command's strokes. Stable: a stroke an undo brings back keeps it.
+   */
+  order: number;
 }
 
 /** A newly drawn stroke, with when it starts, in ms from the start of the batch. */
