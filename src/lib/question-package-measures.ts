@@ -344,6 +344,14 @@ function askedProblem(value: Quantity, unit: unknown): OperationProblem | null {
   return convertProblem(value, unit);
 }
 
+/** A unit asked for that is not a unit, or measures something else, fails before any limit of code (#354 review R354-3). */
+function askedUnitProblem(valueUnit: Unit, unit: unknown): OperationProblem | null {
+  if (unit === undefined) return null;
+  const problem = unitProblem(unit, fail("the unit asked for is not a unit"));
+  if (problem || !isUnit(unit)) return problem;
+  return UNITS[unit].dimension === UNITS[valueUnit].dimension ? null : fail(`${valueUnit} and ${unit} do not measure the same thing`);
+}
+
 function pairProblem(op: Fields): OperationProblem | null {
   if (!isTwo(op.operands)) return NOT_TWO;
   let tooBig: OperationProblem | null = null;
@@ -354,6 +362,8 @@ function pairProblem(op: Fields): OperationProblem | null {
   }
   const [a, b] = op.operands as [Quantity, Quantity];
   if (UNITS[a.unit].dimension !== UNITS[b.unit].dimension) return fail(`${a.unit} and ${b.unit} do not measure the same thing`);
+  const askedUnit = askedUnitProblem(a.unit, op.unit);
+  if (askedUnit) return askedUnit;
   if (tooBig) return tooBig;
   const unit = smallerUnit(a.unit, b.unit);
   for (const q of [a, b]) {
@@ -373,6 +383,8 @@ function multiplyProblem(op: Fields): OperationProblem | null {
   const problem = quantityProblem(op.operands[0]);
   if (problem && problem !== BIG_AMOUNT) return problem === NOT_AMOUNT ? NOT_TIMES : problem;
   if (!isWhole(op.operands[1])) return NOT_TIMES;
+  const askedUnit = askedUnitProblem((op.operands[0] as Quantity).unit, op.unit);
+  if (askedUnit) return askedUnit;
   if (problem) return problem;
   const [q, n] = op.operands as [Quantity, number];
   if (columnsOf(q).scaled > MAX_SCALED || n > MAX_MULTIPLIER) {

@@ -668,6 +668,9 @@ describe("an amount beyond code beside a wrong operation (#354 review)", () => {
     ["a mass of 1e-7 kg after a clock time", { kind: "time-add", operands: [at(2), qty(1e-7, "kg")] }, "the operation needs a clock time and an amount of time"],
     ["a duration with 1.5 h in a compound", { kind: "time-add", operands: [at(2), hoursAndMinutes(1.5)] }, "the operation needs a clock time and an amount of time"],
     ["a multiplier of 2.5", { kind: "quantity-multiply", operands: [qty(2, "m"), 2.5] }, "the operation needs an amount and a whole number"],
+    ["1e21 m + 0 m asked in kg", { kind: "quantity-add", operands: [qty(1e21, "m"), qty(0, "m")], unit: "kg" }, "m and kg do not measure the same thing"],
+    ["1e21 m − 0 m asked in kg", { kind: "quantity-subtract", operands: [qty(1e21, "m"), qty(0, "m")], unit: "kg" }, "m and kg do not measure the same thing"],
+    ["1e21 m × 2 asked in kg", { kind: "quantity-multiply", operands: [qty(1e21, "m"), 2], unit: "kg" }, "m and kg do not measure the same thing"],
   ])("fails %s, whatever the size of the amount", (_name, operation, reason) => {
     const p = base();
     p.operation = operation;
