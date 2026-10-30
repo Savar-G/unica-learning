@@ -458,13 +458,15 @@ export type Statement =
 
 /**
  * How code knows the right answers of an item's scored regions. Each scored region is in one check:
- * - operation: the box holds the question's answer (the package's answer and operation).
+ * - operation: the box holds the question's answer, or one of the other forms the package accepts.
  * - operation-sign: the choice is the sign of the question's operation (+, −, × or ÷).
  * - places: each box holds the digit of `number` in its place; the largest place takes the whole number above it
  *   (347 is 34 tens and 7 ones).
  * - order: the boxes hold `numbers` from least to greatest ("up") or greatest to least ("down").
- * - equations: each equation holds when its boxes are filled in; any numbers that make every one hold are right, and
- *   with `different`, no two equations may have the same numbers in the same places (two ways to make 12).
+ * - equations: each equation holds when its boxes are filled in; any numbers of the kind `numbers` names that make
+ *   every one hold are right, and with `different`, no two equations may have the same numbers in the same places (two
+ *   ways to make 12). `numbers`: "counting" (1, 2, 3, ...) for counts such as rows of tiles and factor pairs, "whole"
+ *   (0, 1, 2, ...) for whole-number sums and trades, "any" for any number (5.5 + 6.5).
  * - sequence: the terms go up (or down) by `step` each time; each box holds its term (missing numbers).
  * - compare: the choice is <, > or = between `left` and `right`.
  * - yes-no: the choice is `yes` when the statement is true, else `no`.
@@ -474,7 +476,7 @@ export type ItemCheck =
   | { kind: "operation-sign"; region: string }
   | { kind: "places"; number: number; parts: { region: string; place: Place }[] }
   | { kind: "order"; numbers: NumberValue[]; direction: "up" | "down"; regions: string[] }
-  | { kind: "equations"; equations: Equation[]; different: boolean }
+  | { kind: "equations"; equations: Equation[]; different: boolean; numbers: "any" | "whole" | "counting" }
   | { kind: "sequence"; terms: Term[]; step: NumberValue }
   | { kind: "compare"; left: NumberValue; right: NumberValue; region: string }
   | { kind: "yes-no"; statement: Statement; region: string; yes: string; no: string };
@@ -748,7 +750,7 @@ function packageProblem(p: unknown): Problem | null {
   const q = p as unknown as QuestionPackage & { answer: PackageAnswer; operation: Operation };
   return itemProblem(p.item, {
     ...VALUE_READERS,
-    computed: { operation: q.operation, answer: q.answer.value, wrongAnswers: q.wrongAnswers },
+    computed: { operation: q.operation, answer: q.answer.value, accepted: q.answer.accepted, wrongAnswers: q.wrongAnswers },
   });
 }
 

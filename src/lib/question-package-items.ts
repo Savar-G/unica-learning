@@ -44,8 +44,11 @@ export interface ItemContext {
   sameValue(a: AnswerValue, b: AnswerValue): boolean;
   /** A number, fraction or mixed number as an exact rational, or null for any other value. */
   number(value: AnswerValue): Rational | null;
-  /** The package's operation, its answer and its wrong answers, all checked; null when it has none. */
-  computed: { operation: Operation; answer: AnswerValue; wrongAnswers: WrongAnswer[] } | null;
+  /**
+   * The package's operation, its answer, the other forms it accepts (each one checked against the operation's answer
+   * rules: simplest form, the unit the question asks for) and its wrong answers; null when it has none.
+   */
+  computed: { operation: Operation; answer: AnswerValue; accepted: AnswerValue[]; wrongAnswers: WrongAnswer[] } | null;
 }
 
 export interface ItemProblem {
@@ -172,6 +175,16 @@ function rationalText(r: Rational): string {
 }
 
 const NUMBER_TYPES: readonly string[] = ["number", "fraction", "mixed"];
+
+/** The numbers an equations check's boxes take: counts (from 1), whole numbers (from 0), or any number. */
+const NUMBER_KINDS: Record<Extract<ItemCheck, { kind: "equations" }>["numbers"], { name: string; takes: (r: Rational) => boolean }> = {
+  any: { name: "any number", takes: () => true },
+  whole: { name: "whole numbers (0, 1, 2, ...)", takes: (r) => wholeOf(r) !== null && wholeOf(r)! >= ZERO },
+  counting: { name: "counting numbers (1, 2, 3, ...)", takes: (r) => wholeOf(r) !== null && wholeOf(r)! > ZERO },
+};
+
+/** The whole number a rational is (10/2 is 5), or null. */
+const wholeOf = ([n, d]: Rational): bigint | null => (n % d === ZERO ? n / d : null);
 const OPS: readonly string[] = ["+", "−", "×", "÷"];
 
 /** Why a value is not a number code can read exactly, or null. */
@@ -307,9 +320,11 @@ const RULES: { [K in ItemCheck["kind"]]: CheckRule<Extract<ItemCheck, { kind: K 
     verify: (c, read) => {
       const computed = read.ctx.computed;
       if (!computed) return fail("an operation check needs the package's operation");
+      // The answer or a form the package accepts: those forms passed the operation's rules, so no other is taken.
       const answer = boxAnswer(read, c.region);
-      if (read.ctx.sameValue(answer, computed.answer)) return null;
-      return fail(`the region "${c.region}" holds ${valueText(answer)}, but the question's answer is ${valueText(computed.answer)}`);
+      const right = [computed.answer, ...computed.accepted];
+      if (right.some((r) => read.ctx.sameValue(answer, r))) return null;
+      return fail(`the region "${c.region}" holds ${valueText(answer)}, but the question's answer is ${right.map(valueText).join(" or ")}`);
     },
   },
 
@@ -390,6 +405,7 @@ const RULES: { [K in ItemCheck["kind"]]: CheckRule<Extract<ItemCheck, { kind: K 
     region: "box",
     shape: (c, ctx) => {
       if (typeof c.different !== "boolean") return "the equations check does not say whether its equations must differ";
+      if (!Object.hasOwn(NUMBER_KINDS, c.numbers as string)) return "the equations check does not say which numbers its boxes take: any, whole or counting";
       if (!Array.isArray(c.equations) || c.equations.length === 0 || c.equations.length > 12) return "the equations check needs 1 to 12 equations";
       for (const e of c.equations) {
         const problem = equationProblem(e, "an equation", ctx);
@@ -402,6 +418,12 @@ const RULES: { [K in ItemCheck["kind"]]: CheckRule<Extract<ItemCheck, { kind: K 
     regions: (c) => c.equations.flatMap((e) => termRegions(equationTerms(e))),
     verify: (c, read) => {
       const seen: Rational[][] = [];
+      const kind = NUMBER_KINDS[c.numbers];
+      for (const id of termRegions(c.equations.flatMap(equationTerms))) {
+        const v = boxNumber(read, id);
+        if (isProblem(v)) return v;
+        if (!kind.takes(v)) return fail(`the region "${id}" holds ${valueText(boxAnswer(read, id))}, but the boxes take ${kind.name}`);
+      }
       for (const e of c.equations) {
         const values = filled(e, read);
         if (isProblem(values)) return values;

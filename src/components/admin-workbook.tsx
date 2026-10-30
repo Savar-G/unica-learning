@@ -1,11 +1,11 @@
 // One workbook as data in the admin area (#299): its facts, then each page with its image, the measured question
-// boxes drawn over it, and each question's package (answer, worked steps, skill, wrong answers, easier example). A
-// server component with no JavaScript.
+// boxes drawn over it, and each question's package (its item's format and answer keys, whether code checked it,
+// worked steps, skill, wrong answers, easier example). A server component with no JavaScript.
 import Link from "next/link";
 import type { ReactNode } from "react";
 import type { WorkbookDetail } from "@/lib/admin-store";
 import { when } from "@/lib/admin-view";
-import { hasOperation, stepText, valueText, type QuestionPackage } from "@/lib/question-package";
+import { checkQuestionPackage, hasOperation, packageItem, stepText, valueText, type AnswerRegion, type QuestionPackage } from "@/lib/question-package";
 import type { WorkbookPage, WorkbookQuestion, WorkbookStatus } from "@/lib/workbook-content";
 import { AdminFrame, Chip, Table, type Tone } from "@/components/admin";
 import { RecordFacts, childPath } from "@/components/admin-records";
@@ -39,10 +39,42 @@ function PageImage({ page, url }: { page: WorkbookPage; url: string | undefined 
   );
 }
 
-function PackageCells({ p }: { p: QuestionPackage }): ReactNode {
+/** What code says about a found question: checked, or not checked by code and why (#362). */
+function CheckCell({ p }: { p: QuestionPackage }): ReactNode {
+  const check = checkQuestionPackage(p);
+  if (check.ok) return <Chip tone="ok">Checked by code</Chip>;
   return <>
-    <td><span className="adm-wb-text">{p.text}</span><span className="adm-sub adm-mono">{p.id}</span></td>
-    <td className="adm-num">{p.answer ? <>{valueText(p.answer.value)}{p.answer.accepted.length > 0 && <span className="adm-sub">also {p.answer.accepted.map(valueText).join(", ")}</span>}</> : "None"}</td>
+    <Chip tone={check.status === "failed" ? "bad" : "warn"}>{check.status === "failed" ? "Failed" : "Not checked by code"}</Chip>
+    <span className="adm-sub">{check.reason}</span>
+  </>;
+}
+
+/** A region's answer key; work boxes, writing lines and pictures are never scored. */
+function regionKey(r: AnswerRegion): string {
+  if (r.kind === "box") return r.answer ? valueText(r.answer) : "no key";
+  if (r.kind === "choice") return `${r.answer ?? "no key"} (${r.mark} one of ${r.choices.join(", ")})`;
+  return "not scored";
+}
+
+/** The answer key: each region of the item, or for a package with no item, its answer and accepted forms. */
+function AnswerCell({ p }: { p: QuestionPackage }): ReactNode {
+  const accepted = p.answer && p.answer.accepted.length > 0 && <span className="adm-sub">also {p.answer.accepted.map(valueText).join(", ")}</span>;
+  if (!p.item) return <>{p.answer && valueText(p.answer.value)}{accepted}</>;
+  return <>
+    <ul className="adm-wb-list">{p.item.regions.map((r) => (
+      <li key={r.id}><span className="adm-mono">{r.label ?? r.id}</span> {regionKey(r)}</li>
+    ))}</ul>
+    {accepted}
+  </>;
+}
+
+function PackageCells({ p }: { p: QuestionPackage }): ReactNode {
+  const item = packageItem(p);
+  const marking = item.scorable ? "scorable" : item.parentChecked ? "a parent checks it" : "not scored";
+  return <>
+    <td><span className="adm-wb-text">{p.text}</span><span className="adm-sub adm-mono">{p.id}</span><span className="adm-sub">{item.format} · {marking}</span></td>
+    <td><AnswerCell p={p} /></td>
+    <td><CheckCell p={p} /></td>
     <td><ol className="adm-wb-steps">{hasOperation(p) && p.steps.map((s) => <li key={s.id}>{stepText(s, p.operation)}</li>)}</ol></td>
     <td className="adm-nowrap">{p.skill.standard}<span className="adm-sub adm-mono">{p.skill.skills.join(", ")}</span></td>
     <td className="adm-nowrap">U{p.level} · {p.difficulty}</td>
@@ -61,7 +93,7 @@ function QuestionRow({ q }: { q: WorkbookQuestion }) {
       <td className="adm-mono adm-nowrap">{box}</td>
       {q.content.status === "found"
         ? <PackageCells p={q.content.package} />
-        : <td colSpan={7}><Chip tone="warn">Content unavailable</Chip> <span className="adm-sub">{q.content.detail}</span></td>}
+        : <td colSpan={8}><Chip tone="warn">Content unavailable</Chip> <span className="adm-sub">{q.content.detail}</span></td>}
     </tr>
   );
 }
@@ -88,7 +120,7 @@ export function AdminWorkbook({ email, detail }: { email: string; detail: Workbo
           <div className="adm-wb-grid">
             <PageImage page={p} url={p.image ? images[p.image.path] : undefined} />
             <Table label={`Questions on page ${p.number}`} empty="No questions on this page."
-              head={["#", "Box (x, y · w × h)", "Question", "Answer", "Worked steps", "Skill", "Level · difficulty", "Wrong answers", "Easier example"]}>
+              head={["#", "Box (x, y · w × h)", "Question", "Answer", "Check", "Worked steps", "Skill", "Level · difficulty", "Wrong answers", "Easier example"]}>
               {p.questions.map((q) => <QuestionRow key={q.number} q={q} />)}
             </Table>
           </div>

@@ -5,6 +5,7 @@ import {
   QUESTION_PACKAGE_VERSION,
   operationResult,
   workedSteps,
+  type AnswerValue,
   type Item,
   type ItemFormat,
   type Operation,
@@ -417,7 +418,7 @@ describe("ordering: the boxes hold the numbers in order", () => {
 describe("missing numbers in equations", () => {
   /** Mateo's "8: 6 × [ ] = 54" and "9: [ ] × 7 = 56", and Ava's "8 + [ ] = 10, 10 + [ ] = [ ]" (8 + 6). */
   const MISSING = boxes([box("a", 9), box("b", 8), box("c", 2), box("d", 4), box("e", 14)], [{
-    kind: "equations", different: false, equations: [
+    kind: "equations", different: false, numbers: "whole", equations: [
       { left: n(6), op: "×", right: { region: "a" }, result: n(54) },
       { left: { region: "b" }, op: "×", right: n(7), result: n(56) },
       { left: n(8), op: "+", right: { region: "c" }, result: n(10) },
@@ -431,7 +432,7 @@ describe("missing numbers in equations", () => {
   });
 
   it("fails a division by 0, and a box that holds no number", () => {
-    const zero = boxes([box("a", 0)], [{ kind: "equations", different: false, equations: [{ left: n(5), op: "÷", right: { region: "a" }, result: n(0) }] }], "write-number");
+    const zero = boxes([box("a", 0)], [{ kind: "equations", different: false, numbers: "any", equations: [{ left: n(5), op: "÷", right: { region: "a" }, result: n(0) }] }], "write-number");
     expect(checkQuestionPackage(zero)).toEqual(failed("5 ÷ 0 = 0 divides by 0"));
     const words = changed(MISSING, (p) => {
       const r = p.item!.regions[0];
@@ -442,9 +443,9 @@ describe("missing numbers in equations", () => {
 });
 
 describe("two ways to make 12: more than one right answer set", () => {
-  /** "Show two ways to make 12: [ ] + [ ] = 12, [ ] + [ ] = 12" */
-  const make12 = (a: number, b: number, c: number, d: number) => boxes([box("a", a), box("b", b), box("c", c), box("d", d)], [{
-    kind: "equations", different: true, equations: [
+  /** "Show two ways to make 12: [ ] + [ ] = 12, [ ] + [ ] = 12", in whole numbers unless `numbers` says otherwise. */
+  const make12 = (a: number, b: number, c: number, d: number, numbers: "any" | "whole" | "counting" = "whole") => boxes([box("a", a), box("b", b), box("c", c), box("d", d)], [{
+    kind: "equations", different: true, numbers, equations: [
       { left: { region: "a" }, op: "+", right: { region: "b" }, result: n(12) },
       { left: { region: "c" }, op: "+", right: { region: "d" }, result: n(12) },
     ],
@@ -456,7 +457,25 @@ describe("two ways to make 12: more than one right answer set", () => {
     expect(sets).toHaveLength(156);
     for (const [a, b, c, d] of sets) expect(checkQuestionPackage(make12(a, b, c, d)).status, `${a} + ${b}, ${c} + ${d}`).toBe("checked");
     expect(checkQuestionPackage(make12(5, 7, 7, 5)).status).toBe("checked");
-    expect(checkQuestionPackage(make12(5.5, 6.5, 3, 9)).status).toBe("checked");
+  });
+
+  it("takes only whole numbers when the question asks for them, and any numbers when it does not (review R366-2)", () => {
+    expect(checkQuestionPackage(make12(5.5, 6.5, 3, 9))).toEqual(failed('the region "a" holds 5.5, but the boxes take whole numbers (0, 1, 2, ...)'));
+    expect(checkQuestionPackage(make12(-3, 15, 3, 9))).toEqual(failed('the region "a" holds −3, but the boxes take whole numbers (0, 1, 2, ...)'));
+    expect(checkQuestionPackage(make12(0, 12, 3, 9)).status).toBe("checked");
+    const tenHalves = changed(make12(5, 7, 3, 9), (q) => {
+      const r = q.item!.regions[0];
+      if (r.kind === "box") r.answer = { type: "fraction", numerator: 10, denominator: 2 };
+    });
+    expect(checkQuestionPackage(tenHalves).status).toBe("checked");
+    expect(checkQuestionPackage(make12(0, 12, 3, 9, "counting"))).toEqual(failed('the region "a" holds 0, but the boxes take counting numbers (1, 2, 3, ...)'));
+    expect(checkQuestionPackage(make12(5.5, 6.5, 3, 9, "any")).status).toBe("checked");
+    expect(checkQuestionPackage(make12(-3, 15, 3, 9, "any")).status).toBe("checked");
+  });
+
+  it("fails an equations check that does not say which numbers its boxes take", () => {
+    const p = changed(make12(5, 7, 3, 9), (q) => { delete (q.item!.checks[0] as { numbers?: string }).numbers; });
+    expect(checkQuestionPackage(p)).toEqual(failed("the equations check does not say which numbers its boxes take: any, whole or counting"));
   });
 
   it("fails a sum that is not 12, and the same way twice", () => {
@@ -464,15 +483,52 @@ describe("two ways to make 12: more than one right answer set", () => {
     expect(checkQuestionPackage(make12(5, 7, 5, 7))).toEqual(failed("two equations are 5 + 7 = 12: the ways must differ"));
   });
 
-  /** Mateo's Try this first: "[ ] × [ ] = 12", three rectangles. */
-  it("checks factor pairs the same way", () => {
+  /** Mateo's Try this first: 12 square tiles in a rectangle, "[ ] × [ ] = 12" three times: rows and tiles are counts. */
+  it("checks factor pairs the same way, in counting numbers (review R366-2)", () => {
     const pairs = (values: number[]) => boxes(values.map((v, i) => box(`f${i}`, v)), [{
-      kind: "equations", different: true,
+      kind: "equations", different: true, numbers: "counting",
       equations: [0, 1, 2].map((k) => ({ left: { region: `f${2 * k}` }, op: "×" as const, right: { region: `f${2 * k + 1}` }, result: n(12) })),
     }]);
     expect(checkQuestionPackage(pairs([1, 12, 2, 6, 3, 4])).status).toBe("checked");
     expect(checkQuestionPackage(pairs([12, 1, 6, 2, 4, 3])).status).toBe("checked");
     expect(checkQuestionPackage(pairs([1, 12, 2, 6, 3, 5]))).toEqual(failed("the boxes make 3 × 5 = 12, which is not true"));
+    expect(checkQuestionPackage(pairs([0.5, 24, 2, 6, 3, 4]))).toEqual(failed('the region "f0" holds 0.5, but the boxes take counting numbers (1, 2, 3, ...)'));
+    expect(checkQuestionPackage(pairs([-1, -12, 2, 6, 3, 4]))).toEqual(failed('the region "f0" holds −1, but the boxes take counting numbers (1, 2, 3, ...)'));
+    expect(checkQuestionPackage(pairs([1, 12, 2, 6, 4, 3])).status).toBe("checked");
+  });
+});
+
+describe("trades through equations, from Leah's sample (review R366)", () => {
+  // A trade changes the counts of two places, so the places check (one digit per place) does not fit: each count after
+  // the trade is its own equation from the printed counts.
+  const eq = (left: number, op: "+" | "−", right: number, region: string) => ({ left: n(left), op, right: n(right), result: { region } });
+  const trade = (regions: [string, number][], equations: ReturnType<typeof eq>[]) =>
+    boxes(regions.map(([id, v]) => box(id, v)), [{ kind: "equations", different: false, numbers: "whole", equations }], regions.length > 1 ? "boxes" : "write-number");
+
+  it("46 = 4 tens, 6 ones; after 1 trade: 3 tens, 16 ones", () => {
+    const p = (tens: number, ones: number) => trade([["tens", tens], ["ones", ones]], [eq(4, "−", 1, "tens"), eq(6, "+", 10, "ones")]);
+    expect(checkQuestionPackage(p(3, 16)).status).toBe("checked");
+    expect(checkQuestionPackage(p(4, 6))).toEqual(failed("the boxes make 4 − 1 = 4, which is not true"));
+    expect(checkQuestionPackage(p(3, 6))).toEqual(failed("the boxes make 6 + 10 = 6, which is not true"));
+  });
+
+  it("352 after 1 trade: 3 hundreds, 4 tens, 12 ones", () => {
+    const p = (hundreds: number, tens: number, ones: number) => trade([["hundreds", hundreds], ["tens", tens], ["ones", ones]],
+      [eq(3, "+", 0, "hundreds"), eq(5, "−", 1, "tens"), eq(2, "+", 10, "ones")]);
+    expect(checkQuestionPackage(p(3, 4, 12)).status).toBe("checked");
+    expect(checkQuestionPackage(p(2, 15, 2))).toEqual(failed("the boxes make 3 + 0 = 2, which is not true"));
+    expect(checkQuestionPackage(p(3, 5, 2))).toEqual(failed("the boxes make 5 − 1 = 5, which is not true"));
+  });
+
+  it("3 tens, 14 ones = 44", () => {
+    const p = (total: number) => trade([["total", total]], [{ left: n(30), op: "+", right: n(14), result: { region: "total" } }]);
+    expect(checkQuestionPackage(p(44)).status).toBe("checked");
+    expect(checkQuestionPackage(p(34))).toEqual(failed("the boxes make 30 + 14 = 34, which is not true"));
+  });
+
+  it("is not a places item: the places check takes only the digits", () => {
+    const places = boxes([box("tens", 3), box("ones", 16)], [{ kind: "places", number: 46, parts: [{ region: "tens", place: "tens" }, { region: "ones", place: "ones" }] }]);
+    expect(checkQuestionPackage(places)).toEqual(failed('the region "tens" holds 3, but 46 has 4 tens'));
   });
 });
 
@@ -581,7 +637,7 @@ describe("every format", () => {
     "fill-table": {
       // In: 2, 4, 5. Out: in × 3.
       p: boxes([box("out-2", 6), box("out-4", 12), box("out-5", 15)], [{
-        kind: "equations", different: false,
+        kind: "equations", different: false, numbers: "whole",
         equations: [2, 4, 5].map((k) => ({ left: n(k), op: "×" as const, right: n(3), result: { region: `out-${k}` } })),
       }], "fill-table"),
       status: "checked",
@@ -702,5 +758,45 @@ describe("an item with no word on its shown error", () => {
   it("fails, as every other missing field does", () => {
     const p = changed(MIXED_SET, (q) => { delete (q.item as Partial<Item>).error; });
     expect(checkQuestionPackage(p)).toEqual(failed("the item does not say whether it shows a wrong solution"));
+  });
+});
+
+describe("an answer box holds the question's answer or one of its accepted forms (review R366-1)", () => {
+  const frac = (numerator: number, denominator: number) => ({ type: "fraction" as const, numerator, denominator });
+  const qty = (value: number, unit: "m" | "cm") => ({ type: "quantity" as const, value, unit });
+  /** 1/2 + 3/4 = 1 1/4, accepting 5/4; its box holds `key`. */
+  const fractions = (key: AnswerValue) => {
+    const p = withOperation("1/2 + 3/4 = ?", { kind: "fraction-add", operands: [frac(1, 2), frac(3, 4)] },
+      { kind: "fraction-add", operands: [frac(1, 4), frac(1, 4)] }, { value: 4, step: null }, {
+        format: "write-number", scorable: true, parentChecked: false,
+        regions: [{ id: "answer", kind: "box", label: null, answer: key }], checks: [{ kind: "operation", region: "answer" }], error: null,
+      });
+    p.answer!.accepted = [frac(5, 4)];
+    p.skill = { standard: "6.5", skills: [] };
+    return p;
+  };
+  /** 1 m + 50 cm = 150 cm, accepting 1.5 m; its box holds `key`. */
+  const lengths = (key: AnswerValue) => {
+    const p = withOperation("1 m + 50 cm = ?", { kind: "quantity-add", operands: [qty(1, "m"), qty(50, "cm")] },
+      { kind: "quantity-add", operands: [qty(1, "m"), qty(5, "cm")] }, { value: 51, step: null }, {
+        format: "write-number", scorable: true, parentChecked: false,
+        regions: [{ id: "answer", kind: "box", label: null, answer: key }], checks: [{ kind: "operation", region: "answer" }], error: null,
+      });
+    p.answer!.accepted = [qty(1.5, "m")];
+    p.skill = { standard: "3.9", skills: [] };
+    return p;
+  };
+
+  it("takes an accepted form", () => {
+    expect(checkQuestionPackage(fractions(frac(5, 4)))).toMatchObject({ status: "checked" });
+    expect(checkQuestionPackage(fractions({ type: "mixed", whole: 1, numerator: 1, denominator: 4 }))).toMatchObject({ status: "checked" });
+    expect(checkQuestionPackage(lengths(qty(1.5, "m")))).toMatchObject({ status: "checked" });
+    expect(checkQuestionPackage(lengths(qty(150, "cm")))).toMatchObject({ status: "checked" });
+  });
+
+  it("does not take a form the package does not accept, even of the same number", () => {
+    expect(checkQuestionPackage(fractions(frac(10, 8)))).toEqual(failed('the region "answer" holds 10/8, but the question\'s answer is 1 1/4 or 5/4'));
+    expect(checkQuestionPackage(fractions(n(1.25)))).toEqual(failed('the region "answer" holds 1.25, but the question\'s answer is 1 1/4 or 5/4'));
+    expect(checkQuestionPackage(lengths(qty(1500, "mm" as "m")))).toEqual(failed('the region "answer" holds 1500 mm, but the question\'s answer is 150 cm or 1.5 m'));
   });
 });
