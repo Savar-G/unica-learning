@@ -31,6 +31,8 @@ vi.mock("@/lib/supabase-auth", () => ({
 }));
 vi.mock("next/server", async (original) => ({ ...(await original<typeof import("next/server")>()), after: (task: () => unknown) => void afterResponse.push(task) }));
 vi.mock("@/lib/learner-profile", () => ({ rebuildLatestProfile: async (childId: string) => void rebuilt.push(childId) }));
+// #303: the child's profile reads the test's profile, so it is built after it.
+vi.mock("@/lib/child-profile-server", () => ({ rebuildChildProfileNow: async (childId: string) => void rebuilt.push(`child profile ${childId}`) }));
 
 const { POST } = await import("@/app/api/account/learning/route");
 
@@ -52,7 +54,7 @@ describe("the learning route and the learner profile", () => {
     expect(updates.map((u) => [u.id, u.row.math_feeling, u.row.learning_goal])).toEqual([[CHILD, "avoids", "catch_up"]]);
     expect(rebuilt).toEqual([]);
     await Promise.all(afterResponse.map((task) => task()));
-    expect(rebuilt).toEqual([CHILD]);
+    expect(rebuilt).toEqual([CHILD, `child profile ${CHILD}`]);
   });
 
   it("builds nothing when nothing was saved: another family's child, or answers that are not offered", async () => {

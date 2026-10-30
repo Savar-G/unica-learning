@@ -4,6 +4,7 @@
 // History is a log of committed transactions. The visible state is the replay of the transactions that are not undone,
 // with each object's page and position recorded on its first placement, so an undo never moves anything else.
 import { columns } from "@/lib/board/columns";
+import { division } from "@/lib/board/division";
 import { annotationStrokes, arrowLines, MARK_INK, routeArrow, type ArrowObject, type ArrowObstacles, type ArrowRoute, type MarkObject } from "@/lib/board/annotations";
 import { contains, overlaps, polylineHitsRect, polylineLength, traceTouches, type Trace } from "@/lib/board/geometry";
 import { PLACEHOLDER_GLYPHS, type GlyphSet } from "@/lib/board/glyphs";
@@ -14,7 +15,7 @@ import type { Batch, BoardPath, Command, CreateCommand, Notice, PageSize, PathKi
 import type { Stroke } from "@/lib/whiteboard";
 
 /** The representations the board can create, by their create command. Later ones are added here. */
-const REPRESENTATIONS = { columns, write: note } satisfies Record<CreateCommand["op"], unknown>;
+const REPRESENTATIONS = { columns, division, write: note } satisfies Record<CreateCommand["op"], unknown>;
 const representation = (op: CreateCommand["op"]) => REPRESENTATIONS[op] as unknown as Representation<unknown, CreateCommand>;
 const isCreate = (c: Command): c is CreateCommand => c.op in REPRESENTATIONS;
 
