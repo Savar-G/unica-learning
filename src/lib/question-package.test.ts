@@ -58,6 +58,11 @@ describe("checkQuestionPackage", () => {
     expect(checkQuestionPackage(p)).toEqual({ ok: true, package: p });
   });
 
+  it("keeps a wrong answer that is close to the answer but not the same number", () => {
+    const p = changed((p) => { p.wrongAnswers[0].value = { type: "number", value: 85.0000000001 }; });
+    expect(checkQuestionPackage(p).ok).toBe(true);
+  });
+
   it.each([
     ["not a package", "the package is not an object", () => null],
     ["no id", "the package has no id", () => changed((p) => { p.id = ""; })],
@@ -86,6 +91,12 @@ describe("checkQuestionPackage", () => {
     ["a wrong answer that is an accepted form", "the wrong answer 170/2 is a right answer", () => changed((p) => {
       p.answer.accepted = [{ type: "fraction", numerator: 170, denominator: 2 }];
       p.wrongAnswers[0].value = { type: "fraction", numerator: 170, denominator: 2 };
+    })],
+    ["a wrong answer that is the answer in another form", "the wrong answer 170/2 is a right answer", () => changed((p) => {
+      p.wrongAnswers[0].value = { type: "fraction", numerator: 170, denominator: 2 };
+    })],
+    ["an accepted form that is only close to the answer", "the accepted form 85.0000000001 is not the answer's number", () => changed((p) => {
+      p.answer.accepted = [{ type: "number", value: 85.0000000001 }];
     })],
     ["a wrong answer twice", "the wrong answer 75 is listed twice", () => changed((p) => { p.wrongAnswers.push(structuredClone(p.wrongAnswers[0])); })],
     ["a wrong answer with no cause", "a wrong answer needs a cause and its description", () => changed((p) => { p.wrongAnswers[0].cause = ""; })],

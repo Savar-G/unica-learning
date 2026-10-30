@@ -295,8 +295,30 @@ function sameData(a: unknown, b: unknown): boolean {
   return a === b;
 }
 
-/** A number or fraction as a number, or null for a value that is not a number. */
-const numeric = (v: AnswerValue): number | null => (v.type === "number" ? v.value : v.type === "fraction" ? v.numerator / v.denominator : null);
+/**
+ * A number or fraction as an exact rational [numerator, denominator] (BigInt, denominator above 0), or null for a value
+ * that is not a number. A decimal is read from its written digits, so 85.0000000001 is not 85.
+ */
+function rational(v: AnswerValue): [bigint, bigint] | null {
+  if (v.type === "fraction") {
+    return Number.isInteger(v.numerator) && Number.isInteger(v.denominator) && v.denominator > 0 ? [BigInt(v.numerator), BigInt(v.denominator)] : null;
+  }
+  if (v.type !== "number" || !Number.isFinite(v.value)) return null;
+  const m = /^(-?)(\d+)(?:\.(\d+))?$/.exec(String(v.value));
+  if (!m) return null;
+  const decimals = m[3] ?? "";
+  return [BigInt(m[1] + m[2] + decimals), BigInt(10) ** BigInt(decimals.length)];
+}
+
+/** Two values are the same number, exactly, in any number form (85, 85.0 and 170/2 are one number). */
+function sameNumber(a: AnswerValue, b: AnswerValue): boolean {
+  const x = rational(a);
+  const y = rational(b);
+  return x !== null && y !== null && x[0] * y[1] === y[0] * x[1];
+}
+
+/** The same written value, or the same number in another form. */
+const equivalent = (a: AnswerValue, b: AnswerValue) => sameValue(a, b) || sameNumber(a, b);
 
 function refProblem(ref: unknown): string | null {
   if (!isObject(ref)) return "the reference is missing";
@@ -372,11 +394,9 @@ function packageProblem(p: unknown): string | null {
   for (const form of answer.accepted) {
     const problem = valueProblem(form, "an accepted form");
     if (problem) return problem;
-    const n = numeric(form as AnswerValue);
-    if (n === null) return "an accepted form is not a number or a fraction, so code cannot check it";
+    if (rational(form as AnswerValue) === null) return "an accepted form is not a number or a fraction, so code cannot check it";
     if (sameValue(form as AnswerValue, value)) return "an accepted form repeats the answer";
-    const answerNumber = numeric(value);
-    if (answerNumber === null || Math.abs(n - answerNumber) > 1e-9) return `the accepted form ${valueText(form as AnswerValue)} is not the answer's number`;
+    if (!sameNumber(form as AnswerValue, value)) return `the accepted form ${valueText(form as AnswerValue)} is not the answer's number`;
   }
   if (answer.unit !== null && !isText(answer.unit)) return "the unit is not text or null";
   const right = [value, ...answer.accepted] as AnswerValue[];
@@ -400,8 +420,8 @@ function packageProblem(p: unknown): string | null {
     const problem = valueProblem(w.value, "a wrong answer");
     if (problem) return problem;
     const wrongValue = w.value as AnswerValue;
-    if (right.some((r) => sameValue(r, wrongValue))) return `the wrong answer ${valueText(wrongValue)} is a right answer`;
-    if (seen.some((s) => sameValue(s, wrongValue))) return `the wrong answer ${valueText(wrongValue)} is listed twice`;
+    if (right.some((r) => equivalent(r, wrongValue))) return `the wrong answer ${valueText(wrongValue)} is a right answer`;
+    if (seen.some((s) => equivalent(s, wrongValue))) return `the wrong answer ${valueText(wrongValue)} is listed twice`;
     seen.push(wrongValue);
     if (!isText(w.cause) || !isText(w.description)) return "a wrong answer needs a cause and its description";
     if (w.step !== null && !stepIds.includes(w.step as string)) return `the wrong answer ${valueText(wrongValue)} names a step the question does not have`;
