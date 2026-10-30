@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   checkQuestionPackage,
+  operationProblem,
   operationResult,
   stepText,
   workedSteps,
@@ -335,6 +336,21 @@ describe("accepted forms and equivalent fractions", () => {
     expect(checkQuestionPackage(p)).toEqual(failed("the accepted form 6/4 is not in simplest form"));
   });
 
+  it("finds an equivalent fraction through its simplest form: 2/6 = ?/9 (#344 review)", () => {
+    const operation: Operation = { kind: "fraction-equivalent", operands: [frac(2, 6)], denominator: 9 };
+    expect(workedSteps(operation)).toEqual([
+      { id: "simplify", kind: "simplify", from: parts(2, 6), divisor: 2, to: parts(1, 3) },
+      { id: "scale", kind: "scale-fraction", from: parts(1, 3), by: "multiply", factor: 3, to: parts(3, 9) },
+      { id: "result", kind: "result", value: frac(3, 9) },
+    ]);
+    const p = packageOf(operation, frac(3, 9), { kind: "fraction-equivalent", operands: [frac(1, 2)], denominator: 4 }, frac(2, 4), "5.3");
+    expect(checkQuestionPackage(p)).toEqual({ ok: true, status: "checked", package: p });
+    p.answer.value = frac(1, 3);
+    expect(checkQuestionPackage(p)).toEqual(failed("the question's answer is not what its operation gives"));
+    const q = packageOf({ kind: "fraction-equivalent", operands: [frac(6, 24)], denominator: 16 }, frac(4, 16), { kind: "fraction-equivalent", operands: [frac(1, 2)], denominator: 4 }, frac(2, 4), "5.3");
+    expect(checkQuestionPackage(q).status).toBe("checked");
+  });
+
   it("takes an equivalent fraction only with its new denominator", () => {
     const p = packageOf({ kind: "fraction-equivalent", operands: [frac(12, 16)], denominator: 4 }, frac(3, 4), { kind: "fraction-equivalent", operands: [frac(2, 4)], denominator: 2 }, frac(1, 2), "5.3");
     expect(workedSteps(p.operation)[0]).toEqual({ id: "scale", kind: "scale-fraction", from: parts(12, 16), by: "divide", factor: 4, to: parts(3, 4) });
@@ -402,13 +418,51 @@ describe("operations code cannot check, or that are wrong", () => {
     ["a fraction subtraction below zero", { kind: "fraction-subtract", operands: [frac(1, 4), frac(1, 2)] }, "the subtraction goes below zero"],
     ["a fraction division by zero", { kind: "fraction-divide", operands: [frac(1, 4), frac(0, 2)] }, "the division is by zero"],
     ["a mixed number to simplify", { kind: "fraction-simplify", operands: [mixed(1, 2, 4)] }, "the operation needs one fraction"],
-    ["a new denominator that does not fit", { kind: "fraction-equivalent", operands: [frac(2, 4)], denominator: 6 }, "the new denominator must be a multiple or a factor of the denominator, and give a whole numerator"],
+    ["a new denominator that does not fit", { kind: "fraction-equivalent", operands: [frac(1, 4)], denominator: 6 }, "the new denominator must give a whole numerator"],
     ["no operation", undefined, "the operation is missing"],
     ["a kind that is not text", { kind: 5, operands: [1, 2] }, "the operation has no kind"],
   ] as const)("fails %s", (_name, operation, reason) => {
     const p = base() as unknown as { operation: unknown };
     p.operation = operation;
     expect(checkQuestionPackage(p)).toEqual(failed(reason));
+  });
+
+  it.each([
+    ["decimal-add", "the operation needs two numbers from 0"],
+    ["decimal-subtract", "the operation needs two numbers from 0"],
+    ["decimal-multiply", "the operation needs two numbers from 0"],
+  ] as const)("fails, never throws, on %s operands with a missing position (#344 review)", (kind, reason) => {
+    for (const operands of [[, 1], [1, ,], new Array(2)]) {
+      const p = base() as unknown as { operation: unknown };
+      p.operation = { kind, operands };
+      expect(checkQuestionPackage(p)).toEqual(failed(reason));
+    }
+  });
+
+  it.each(["fraction-add", "fraction-subtract", "fraction-multiply", "fraction-divide"] as const)("fails, never throws, on %s operands with a missing position (#344 review)", (kind) => {
+    for (const operands of [[, frac(1, 2)], [frac(1, 2), ,], new Array(2)]) {
+      const p = base() as unknown as { operation: unknown };
+      p.operation = { kind, operands };
+      expect(checkQuestionPackage(p)).toEqual(failed("the operation needs fractions, mixed numbers or whole numbers"));
+    }
+  });
+
+  it("fails, never throws, on one-fraction and whole-number operands with a missing position", () => {
+    for (const operation of [{ kind: "fraction-simplify", operands: new Array(1) }, { kind: "fraction-equivalent", operands: new Array(1), denominator: 4 }, { kind: "multiply", operands: [, 3] }, { kind: "divide", operands: [12, ,] }]) {
+      const p = base() as unknown as { operation: unknown };
+      p.operation = operation;
+      expect(checkQuestionPackage(p).status).toBe("failed");
+    }
+  });
+
+  it("fails, never throws, on an easier example whose operands have a missing position", () => {
+    const p = packageOf({ kind: "decimal-add", operands: [12.5, 3.75] }, num(16.25), { kind: "decimal-add", operands: [1.5, 2] }, num(3.5), "5.7");
+    expect(checkQuestionPackage(p).status).toBe("checked");
+    (p.easierExample.operation as { operands: unknown }).operands = [, 2];
+    expect(checkQuestionPackage(p)).toEqual(failed("the easier example: the operation needs two numbers from 0"));
+    const q = packageOf({ kind: "fraction-add", operands: [frac(2, 3), frac(3, 4)] }, mixed(1, 5, 12), { kind: "fraction-add", operands: [frac(1, 5), frac(2, 5)] }, frac(3, 5), "6.5");
+    (q.easierExample.operation as { operands: unknown }).operands = [frac(1, 5), ,];
+    expect(checkQuestionPackage(q)).toEqual(failed("the easier example: the operation needs fractions, mixed numbers or whole numbers"));
   });
 
   it("fails an easier example that is not easier", () => {
@@ -445,11 +499,37 @@ describe("step words", () => {
 
   it("say a long division", () => {
     expect(words({ kind: "divide", operands: [157, 6] })).toEqual([
-      "1 ÷ 6 is 0, so write nothing above the hundreds yet. 1 is left.",
-      "Bring down 5 to make 15. 15 ÷ 6 = 2, and 2 × 6 = 12. 15 − 12 = 3. Write 2.",
-      "Bring down 7 to make 37. 37 ÷ 6 = 6, and 6 × 6 = 36. 37 − 36 = 1. Write 6.",
+      "1 ÷ 6 = 0 R 1, so write nothing above the hundreds yet. 1 is left.",
+      "Bring down 5 to make 15. 15 ÷ 6 = 2 R 3, because 2 × 6 = 12 and 15 − 12 = 3. Write 2.",
+      "Bring down 7 to make 37. 37 ÷ 6 = 6 R 1, because 6 × 6 = 36 and 37 − 36 = 1. Write 6.",
       "157 ÷ 6 = 26 R 1",
     ]);
+    expect(words({ kind: "divide", operands: [605, 6] })).toEqual([
+      "6 ÷ 6 = 1, because 1 × 6 = 6 and 6 − 6 = 0. Write 1.",
+      "Bring down 0 to make 0. 0 ÷ 6 = 0, because 0 × 6 = 0 and 0 − 0 = 0. Write 0.",
+      "Bring down 5 to make 5. 5 ÷ 6 = 0 R 5, because 0 × 6 = 0 and 5 − 0 = 5. Write 0.",
+      "605 ÷ 6 = 100 R 5",
+    ]);
+  });
+
+  it("state only true equalities, for every kind (#344 review)", () => {
+    const failures: string[] = [];
+    let checked = 0;
+    for (const operation of generatedOperations()) {
+      for (const step of workedSteps(operation)) {
+        const said = stepText(step, operation);
+        // "15 ÷ 6 is 2" hides a remainder as well as "15 ÷ 6 = 2" does; every calculation is said with "=".
+        if (/[+−×÷] \d+ is /.test(said)) failures.push(said);
+        const equalities = [...said.matchAll(EQUALITY)];
+        if (step.kind === "divide-digit" && !equalities.some((m) => m[1] === `${step.current} ÷ ${operation.operands[1]}`)) failures.push(`no division said: ${said}`);
+        for (const m of equalities) {
+          checked++;
+          if (!isTrue(m[1], m[2], m[3])) failures.push(said);
+        }
+      }
+    }
+    expect(failures.slice(0, 5)).toEqual([]);
+    expect(checked).toBeGreaterThan(10000);
   });
 
   it("say a decimal subtraction and a fraction addition", () => {
@@ -485,3 +565,108 @@ describe("a broken package", () => {
     }
   });
 });
+
+// ---------- An independent check of the step words ----------
+
+/** A number as written in the words: "1 5/12", "17/12", "0.25", "157". */
+const TERM = String.raw`\d+ \d+\/\d+|\d+\/\d+|\d+(?:\.\d+)?`;
+const EXPRESSION = String.raw`(?:${TERM})(?: [+−×÷] (?:${TERM}))*`;
+/** An equality in the words: its left side, its right side, and a remainder ("15 ÷ 6 = 2 R 3"). */
+const EQUALITY = new RegExp(String.raw`(${EXPRESSION}) = (${EXPRESSION})(?: R (\d+))?`, "g");
+
+type Rational = [bigint, bigint];
+const ten = BigInt(10);
+
+/** A written number as an exact rational, read from its digits. */
+function readTerm(term: string): Rational {
+  const mixedTerm = /^(\d+) (\d+)\/(\d+)$/.exec(term);
+  if (mixedTerm) return [BigInt(mixedTerm[1]) * BigInt(mixedTerm[3]) + BigInt(mixedTerm[2]), BigInt(mixedTerm[3])];
+  const fraction = /^(\d+)\/(\d+)$/.exec(term);
+  if (fraction) return [BigInt(fraction[1]), BigInt(fraction[2])];
+  const [whole, decimals = ""] = term.split(".");
+  return [BigInt(whole + decimals), ten ** BigInt(decimals.length)];
+}
+
+/** An expression's exact value, × and ÷ before + and −; null for a division by 0. */
+function evaluate(expression: string): Rational | null {
+  const tokens = expression.split(/ ([+−×÷]) /);
+  const sums: { sign: string; value: Rational | null }[] = [];
+  let current: Rational | null = readTerm(tokens[0]);
+  let sign = "+";
+  for (let i = 1; i < tokens.length; i += 2) {
+    const [op, right] = [tokens[i], readTerm(tokens[i + 1])];
+    if (op === "×" || op === "÷") {
+      if (current === null || (op === "÷" && right[0] === BigInt(0))) current = null;
+      else current = op === "×" ? [current[0] * right[0], current[1] * right[1]] : [current[0] * right[1], current[1] * right[0]];
+    } else {
+      sums.push({ sign, value: current });
+      sign = op;
+      current = right;
+    }
+  }
+  sums.push({ sign, value: current });
+  let total: Rational = [BigInt(0), BigInt(1)];
+  for (const { sign: s, value } of sums) {
+    if (value === null) return null;
+    total = [s === "+" ? total[0] * value[1] + value[0] * total[1] : total[0] * value[1] - value[0] * total[1], total[1] * value[1]];
+  }
+  return total;
+}
+
+/** An equality is exactly true; "a ÷ b = q R r" means a = q × b + r with r below b. */
+function isTrue(left: string, right: string, remainder: string | undefined): boolean {
+  if (remainder !== undefined) {
+    const division = /^(\d+) ÷ (\d+)$/.exec(left);
+    if (!division || !/^\d+$/.test(right)) return false;
+    const [a, b, q, r] = [division[1], division[2], right, remainder].map(BigInt);
+    return r < b && q * b + r === a;
+  }
+  const x = evaluate(left);
+  const y = evaluate(right);
+  return x !== null && y !== null && x[0] * y[1] === y[0] * x[1];
+}
+
+/** Valid operations of every kind, from a fixed seed. */
+function generatedOperations(): Operation[] {
+  let seed = 306;
+  const random = (n: number) => {
+    seed = (seed * 1103515245 + 12345) % 2147483648;
+    return seed % n;
+  };
+  const decimal = () => {
+    const places = random(4);
+    return Number((random(100000) / 10 ** places).toFixed(places));
+  };
+  const fractionOperand = () => {
+    const denominator = 1 + random(12);
+    const pick = random(3);
+    if (pick === 0) return num(random(10)) as Extract<AnswerValue, { type: "number" }>;
+    if (pick === 1 && denominator > 1) return mixed(1 + random(5), 1 + random(denominator - 1), denominator);
+    return frac(random(30), denominator);
+  };
+  const makers: (() => unknown)[] = [
+    () => ({ kind: "add", operands: [random(10000), random(10000)] }),
+    () => ({ kind: "subtract", operands: [random(10000), random(10000)] }),
+    () => ({ kind: "multiply", operands: [random(10000), random(1000)] }),
+    () => ({ kind: "divide", operands: [random(10000), 1 + random(99)] }),
+    () => ({ kind: "decimal-add", operands: [decimal(), decimal()] }),
+    () => ({ kind: "decimal-subtract", operands: [decimal(), decimal()] }),
+    () => ({ kind: "decimal-multiply", operands: [Number((random(10000) / 100).toFixed(2)), Number((random(1000) / 10).toFixed(1))] }),
+    () => ({ kind: "fraction-add", operands: [fractionOperand(), fractionOperand()] }),
+    () => ({ kind: "fraction-subtract", operands: [fractionOperand(), fractionOperand()] }),
+    () => ({ kind: "fraction-multiply", operands: [fractionOperand(), fractionOperand()] }),
+    () => ({ kind: "fraction-divide", operands: [fractionOperand(), fractionOperand()] }),
+    () => ({ kind: "fraction-simplify", operands: [frac(random(100), 1 + random(30))] }),
+    () => ({ kind: "fraction-equivalent", operands: [frac(random(40), 1 + random(30))], denominator: 1 + random(60) }),
+  ];
+  const operations: Operation[] = [];
+  for (const make of makers) {
+    for (let found = 0, tries = 0; found < 300 && tries < 20000; tries++) {
+      const operation = make();
+      if (operationProblem(operation) !== null) continue;
+      operations.push(operation as Operation);
+      found++;
+    }
+  }
+  return operations;
+}

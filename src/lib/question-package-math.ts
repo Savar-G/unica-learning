@@ -244,15 +244,33 @@ function fractionWork(op: FractionPairOperation): { steps: WorkedStep[]; value: 
   return { steps, value };
 }
 
-/** How an equivalent fraction is found: multiply or divide the top and the bottom by one factor. */
-function scale(op: EquivalentOperation): Extract<WorkedStep, { kind: "scale-fraction" }> {
+/**
+ * How an equivalent fraction is found: multiply or divide the top and the bottom by one factor. When the new
+ * denominator is neither a multiple nor a factor (2/6 = ?/9), simplify first (1/3), then multiply (3/9).
+ */
+function scaleSteps(op: EquivalentOperation): WorkedStep[] {
   const from = improper(op.operands[0]);
   const target = op.denominator;
-  const by = target % from.denominator === 0 ? "multiply" : "divide";
-  const factor = by === "multiply" ? target / from.denominator : from.denominator / target;
-  const numerator = by === "multiply" ? from.numerator * factor : from.numerator / factor;
-  return { id: "scale", kind: "scale-fraction", from, by, factor, to: toParts(numerator, target) };
+  if (target % from.denominator === 0) {
+    const factor = target / from.denominator;
+    return [{ id: "scale", kind: "scale-fraction", from, by: "multiply", factor, to: toParts(from.numerator * factor, target) }];
+  }
+  if (from.denominator % target === 0 && from.numerator % (from.denominator / target) === 0) {
+    const factor = from.denominator / target;
+    return [{ id: "scale", kind: "scale-fraction", from, by: "divide", factor, to: toParts(from.numerator / factor, target) }];
+  }
+  // The operation check admits only a target that gives a whole numerator, so the simplest denominator divides it.
+  const g = gcd(from.numerator, from.denominator);
+  const simple = toParts(from.numerator / g, from.denominator / g);
+  const factor = target / simple.denominator;
+  return [
+    { id: "simplify", kind: "simplify", from, divisor: g, to: simple },
+    { id: "scale", kind: "scale-fraction", from: simple, by: "multiply", factor, to: toParts(simple.numerator * factor, target) },
+  ];
 }
+
+/** The equivalent fraction with the new denominator: the last scale step's result. */
+const scaled = (op: EquivalentOperation): FractionParts => (scaleSteps(op).at(-1) as Extract<WorkedStep, { kind: "scale-fraction" }>).to;
 
 // ---------- Operand checks ----------
 
@@ -270,8 +288,9 @@ const fail = (reason: string): OperationProblem => ({ status: "failed", reason }
 const beyond = (reason: string): OperationProblem => ({ status: "unsupported", reason });
 
 const isCount = (v: unknown): v is number => Number.isSafeInteger(v) && (v as number) >= 0;
-const isTwo = (operands: unknown): operands is [unknown, unknown] => Array.isArray(operands) && operands.length === 2;
-const isOne = (operands: unknown): operands is [unknown] => Array.isArray(operands) && operands.length === 1;
+// Every position must be present: Array.every skips a missing one ([, 1]), so the operand checks would pass it.
+const isTwo = (operands: unknown): operands is [unknown, unknown] => Array.isArray(operands) && operands.length === 2 && 0 in operands && 1 in operands;
+const isOne = (operands: unknown): operands is [unknown] => Array.isArray(operands) && operands.length === 1 && 0 in operands;
 
 const MAX_WHOLE = 9999;
 const MAX_MULTIPLIER = 999;
@@ -494,13 +513,12 @@ const KINDS: { [K in OperationKind]: KindRules<Of<K>> } = {
       const target = op.denominator;
       if (!isCount(target) || target < 1 || target === denominator) return fail("the new denominator must be a whole number from 1, not the denominator itself");
       if (target > MAX_NEW_DENOMINATOR) return beyond(`code checks new denominators only up to ${MAX_NEW_DENOMINATOR}`);
-      const fits = target % denominator === 0 || (denominator % target === 0 && numerator % (denominator / target) === 0);
-      return fits ? null : fail("the new denominator must be a multiple or a factor of the denominator, and give a whole numerator");
+      return (numerator * target) % denominator === 0 ? null : fail("the new denominator must give a whole numerator");
     },
     text: (op) => `${text(op.operands[0])} = ?/${op.denominator}`,
     statement: (op) => text(op.operands[0]),
-    steps: (op) => [scale(op)],
-    result: (op) => ({ type: "fraction", ...scale(op).to }),
+    steps: scaleSteps,
+    result: (op) => ({ type: "fraction", ...scaled(op) }),
   },
 };
 
@@ -614,8 +632,10 @@ export function stepText(step: WorkedStep, operation: Operation): string {
       const divisor = operation.operands[1] as number;
       const first = place === placeAt(digitCount(operation.operands[0] as number) - 1);
       const brought = first ? "" : `Bring down ${digit} to make ${current}. `;
-      if (write === null) return `${brought}${current} ${DIVIDE} ${divisor} is 0, so write nothing above the ${place} yet. ${current} is left.`;
-      return `${brought}${current} ${DIVIDE} ${divisor} = ${quotient}, and ${quotient} ${TIMES} ${divisor} = ${product}. ${current} ${MINUS} ${product} = ${remainder}. Write ${write}.`;
+      // Every division is said with its remainder, so each "=" is true: 15 ÷ 6 = 2 R 3, never 15 ÷ 6 = 2.
+      const divided = `${current} ${DIVIDE} ${divisor} = ${remainder > 0 ? `${quotient} R ${remainder}` : quotient}`;
+      if (write === null) return `${brought}${divided}, so write nothing above the ${place} yet. ${current} is left.`;
+      return `${brought}${divided}, because ${quotient} ${TIMES} ${divisor} = ${product} and ${current} ${MINUS} ${product} = ${remainder}. Write ${write}.`;
     }
     case "to-improper":
       return `Write the numbers as fractions: ${step.from.map((v, i) => `${valueText(v)} = ${partsText(step.to[i])}`).join(" and ")}.`;
