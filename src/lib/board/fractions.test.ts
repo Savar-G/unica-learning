@@ -142,6 +142,9 @@ describe("negative and decimal values", () => {
     expect(refused(wholes, { op: "put", target: value("n1", "3/2"), value: "5/2" }).code).toBe("wrong_value");
     const labelled = ok(wholes, { op: "put", target: value("n1", "1 1/2"), value: "3/2" });
     expect(info(labelled, value("n1", "3/2"))).toMatchObject({ value: "3/2", writable: false });
+    // With no value, the line writes the tick's own label.
+    const own = ok(wholes, { op: "put", target: value("n1", "5/2") });
+    expect(info(own, value("n1", "5/2"))).toMatchObject({ value: "5/2", writable: false });
   });
 });
 

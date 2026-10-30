@@ -243,7 +243,9 @@ describe("refused commands", () => {
       code: "invalid_command",
       reason: expect.stringMatching(/unknown field "value"/),
     });
-    expect(refusal(scene, { op: "division", id: "d" })).toMatchObject({ code: "unsupported" });
+    expect(refusal(scene, { op: "model", id: "m" })).toMatchObject({ code: "unsupported" });
+    // Columns check the value the model writes, so a put there needs one.
+    expect(refusal(scene, { op: "put", target: cell("sum1", "answer", "ones") })).toMatchObject({ code: "invalid_command" });
   });
 
   it("refuses an unknown target and lists the valid ones", () => {

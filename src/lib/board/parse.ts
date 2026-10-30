@@ -5,8 +5,8 @@ import { MAX_NUMBER_TEXT, valueName } from "@/lib/board/rational";
 import { CLEAR_SCOPES, FRACTION_PARTS, INKS, LINE_LABELS, MARK_STYLES, NUMBER_FORMS, OPERATIONS, PLACE_NAMES, REGROUP_KINDS, type Command, type Place, type Target } from "@/lib/board/types";
 
 const ID = /^[A-Za-z][A-Za-z0-9_-]{0,63}$/;
-const OPS = ["columns", "write", "put", "regroup", "mark", "arrow", "remove", "undo", "clear", "focus", "fraction", "number_line", "jump"] as const;
-const LATER = ["division", "model"];
+const OPS = ["columns", "division", "write", "put", "regroup", "mark", "arrow", "remove", "undo", "clear", "focus", "fraction", "number_line", "jump"] as const;
+const LATER = ["model"];
 
 class Invalid extends Error {}
 const fail = (reason: string): never => {
@@ -83,6 +83,13 @@ function text(v: unknown, what: string, max: number): string {
   return v;
 }
 
+function wholeNumber(v: unknown, what: string, max: number, where: string): string {
+  const value = text(v, what, max);
+  if (/^\d+\.\d+$/.test(value)) fail(`Decimals in ${where} are not supported yet.`);
+  if (!/^(0|[1-9]\d*)$/.test(value)) fail(`${what} must be a whole number without leading zeros.`);
+  return value;
+}
+
 /** A whole number written as digits, without leading zeros. */
 function digits(v: unknown, what: string): string {
   const t = text(v, what, 3);
@@ -96,7 +103,7 @@ function exactValue(v: unknown, what: string): string {
 }
 
 function parse(raw: unknown): Command {
-  const head = object(raw, "A command", ["op"], ["id", "operation", "operands", "place", "text", "ink", "target", "value", "objectId", "rowId", "kind", "from", "to", "style", "transactionId", "page", "scope", "numerator", "denominator", "whole", "min", "max", "tick", "labels", "form", "lineId", "fromValue", "toValue", "label"]);
+  const head = object(raw, "A command", ["op"], ["id", "operation", "operands", "dividend", "divisor", "place", "text", "ink", "target", "value", "objectId", "rowId", "kind", "from", "to", "style", "transactionId", "page", "scope", "numerator", "denominator", "whole", "min", "max", "tick", "labels", "form", "lineId", "fromValue", "toValue", "label"]);
   if (LATER.includes(head.op as string)) return fail(`The board cannot draw "${head.op}" yet.`);
   const op = oneOf(head.op, OPS, "op");
   switch (op) {
@@ -105,21 +112,28 @@ function parse(raw: unknown): Command {
       if (!Array.isArray(c.operands) || c.operands.length > 4) fail("columns.operands must be a list of up to 4 numbers.");
       const operands = (c.operands as unknown[]).map((o, i) => {
         const operand = object(o, `operand ${i + 1}`, ["id", "value"]);
-        const value = text(operand.value, `operand ${i + 1} value`, 7);
-        if (/^\d+\.\d+$/.test(value)) fail("Decimals in columns are not supported yet.");
-        if (!/^(0|[1-9]\d*)$/.test(value)) fail(`operand ${i + 1} value must be a whole number without leading zeros.`);
-        return { id: id(operand.id, `operand ${i + 1} id`), value };
+        return { id: id(operand.id, `operand ${i + 1} id`), value: wholeNumber(operand.value, `operand ${i + 1} value`, 7, "columns") };
       });
       return { op, id: id(c.id, "columns.id"), operation: oneOf(c.operation, OPERATIONS, "columns.operation"), operands, place: placement(c.place) };
+    }
+    case "division": {
+      const c = object(raw, "division", ["op", "id", "dividend", "divisor", "place"]);
+      return {
+        op,
+        id: id(c.id, "division.id"),
+        dividend: wholeNumber(c.dividend, "division.dividend", 6, "division"),
+        divisor: wholeNumber(c.divisor, "division.divisor", 3, "division"),
+        place: placement(c.place),
+      };
     }
     case "write": {
       const c = object(raw, "write", ["op", "id", "text", "place"], ["ink"]);
       return { op, id: id(c.id, "write.id"), text: text(c.text, "write.text", 24), place: placement(c.place), ink: ink(c.ink) };
     }
     case "put": {
-      const c = object(raw, "put", ["op", "target", "value"], ["ink"]);
+      const c = object(raw, "put", ["op", "target"], ["value", "ink"]);
       // A digit, an answer row or a number-line label: each representation checks its own form and length.
-      return { op, target: target(c.target), value: text(c.value, "put.value", MAX_NUMBER_TEXT), ink: ink(c.ink) };
+      return { op, target: target(c.target), ...(c.value === undefined ? {} : { value: text(c.value, "put.value", MAX_NUMBER_TEXT) }), ink: ink(c.ink) };
     }
     case "regroup": {
       const c = object(raw, "regroup", ["op", "id", "objectId", "rowId", "kind", "from", "to"], ["ink"]);

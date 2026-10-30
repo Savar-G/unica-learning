@@ -290,15 +290,18 @@ function targets(state: NumberLineState, objectId: string): LocalTarget[] {
   return out;
 }
 
-function put(state: NumberLineState, target: Target, value: string, ink: Ink | undefined, ctx: Ctx): NumberLineState | RefusalBody {
+/** Labels a tick in the line's own form. A value, when given, must be the tick's; with none, the line writes its own. */
+function put(state: NumberLineState, target: Target, value: string | undefined, ink: Ink | undefined, ctx: Ctx): NumberLineState | RefusalBody {
   if (target.part !== "value") return refuse("not_writable", "Put writes a label under a tick: name the tick by its value.");
   // The target's value is already a name in lowest terms (the parser and the summary give it so).
   const i = Array.from({ length: state.count }, (_, k) => valueKey(valueAt(state, k))).indexOf(target.value);
   if (i < 0) return refuse("unknown_target", `${target.value} is not on a tick of this line.`);
   if (isShown(state, i)) return refuse("already_written", `The tick at ${labelText(state, i)} is already labelled.`);
-  const v = readValue(value, "The label");
-  if (isRefusal(v)) return v;
-  if (!equal(v.value, valueAt(state, i))) return refuse("wrong_value", `That tick is ${labelText(state, i)}, not ${value}.`);
+  if (value !== undefined) {
+    const v = readValue(value, "The label");
+    if (isRefusal(v)) return v;
+    if (!equal(v.value, valueAt(state, i))) return refuse("wrong_value", `That tick is ${labelText(state, i)}, not ${value}.`);
+  }
   return { ...state, put: { ...state.put, [i]: { seq: ctx.seq, ink: ink ?? "green" } } };
 }
 
