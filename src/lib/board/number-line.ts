@@ -6,7 +6,7 @@
 // Jumps are annotations the line owns, like a carry in columns. Each goes in the lowest of a fixed set of lanes where its
 // arc and label clear the jumps already there; the lanes are reserved when the line is made, so a jump never moves
 // anything.
-import { curvedArrow, overlaps, polylineHitsRect, traceTouches } from "@/lib/board/geometry";
+import { curvedArrow, overlaps, polylineHitsRect, traceTouches, type Trace } from "@/lib/board/geometry";
 import type { Point } from "@/lib/board/glyphs";
 import { layoutNumber, numberChars, numberStrokes, numberText, refuseMissing, type NumberLayout, type NumberParts } from "@/lib/board/fraction";
 import { lcm } from "@/lib/question-package-math";
@@ -205,16 +205,24 @@ function jumpShape(state: NumberLineState, j: Pick<Jump, "from" | "to" | "lane" 
 }
 
 /**
- * True when two jumps' arcs or labels meet. Arcs from or to one tick meet there, as on paper, so arcs are compared away
- * from their ends: the middle of each shaft.
+ * True when two jumps' arcs or labels meet. Every stroke of both arcs (the shaft and the arrowhead) is compared, except
+ * at a tick both jumps start or end at: arcs from one tick rise together there, as on paper, so the shaft's first two
+ * steps from that tick, and an arrowhead that points at it, are left out.
  */
-function jumpsMeet(a: ReturnType<typeof jumpShape>, b: ReturnType<typeof jumpShape>): boolean {
+function jumpsMeet(state: NumberLineState, a: Jump, b: Jump): boolean {
   const pad = (r: Rect): Rect => ({ x: r.x - INSET, y: r.y - INSET, w: r.w + 2 * INSET, h: r.h + 2 * INSET });
-  const middle = (shape: ReturnType<typeof jumpShape>) => ({ pts: shape.lines[0].slice(2, -2), width: ARC_WIDTH });
-  if (traceTouches(middle(a), middle(b), INSET / 2)) return true;
-  if (a.label && b.lines.some((q) => polylineHitsRect(q, pad(a.label!)))) return true;
-  if (b.label && a.lines.some((p) => polylineHitsRect(p, pad(b.label!)))) return true;
-  return !!a.label && !!b.label && overlaps(pad(a.label), b.label);
+  const shared = (t: number) => [a.from, a.to].includes(t) && [b.from, b.to].includes(t);
+  const traces = (j: Jump, shape: ReturnType<typeof jumpShape>): Trace[] => {
+    const [shaft, ...head] = shape.lines;
+    const lines = [shaft.slice(shared(j.from) ? 2 : 0, shared(j.to) ? -2 : undefined), ...(shared(j.to) ? [] : head)];
+    return lines.map((pts) => ({ pts, width: ARC_WIDTH }));
+  };
+  const [sa, sb] = [jumpShape(state, a), jumpShape(state, b)];
+  const [ta, tb] = [traces(a, sa), traces(b, sb)];
+  if (ta.some((p) => tb.some((q) => traceTouches(p, q, INSET / 2)))) return true;
+  if (sa.label && sb.lines.some((q) => polylineHitsRect(q, pad(sa.label!)))) return true;
+  if (sb.label && sa.lines.some((p) => polylineHitsRect(p, pad(sb.label!)))) return true;
+  return !!sa.label && !!sb.label && overlaps(pad(sa.label), sb.label);
 }
 
 function jump(state: NumberLineState, cmd: JumpCommand, ctx: Ctx): NumberLineState | RefusalBody {
@@ -240,12 +248,12 @@ function jump(state: NumberLineState, cmd: JumpCommand, ctx: Ctx): NumberLineSta
     const cannot = refuseMissing(ctx.glyphs, numberChars(label));
     if (cannot) return cannot;
   }
-  const others = state.jumps.map((j) => jumpShape(state, j));
   for (let lane = 0; lane < LANES; lane++) {
-    const shape = jumpShape(state, { from, to, lane, label });
+    const next: Jump = { id: cmd.id, from, to, lane, label, ink: cmd.ink ?? "red", seq: ctx.seq };
+    const shape = jumpShape(state, next);
     if (shape.label && shape.label.w > state.geo.w) return refuse("no_room", "That label is wider than the line.");
-    if (others.some((o) => jumpsMeet(shape, o))) continue;
-    return { ...state, jumps: [...state.jumps, { id: cmd.id, from, to, lane, label, ink: cmd.ink ?? "red", seq: ctx.seq }] };
+    if (state.jumps.some((o) => jumpsMeet(state, next, o))) continue;
+    return { ...state, jumps: [...state.jumps, next] };
   }
   return refuse("no_room", `The ${LANES} jump lanes over this part of the line are full: remove a jump first, or draw a new line.`);
 }
@@ -272,7 +280,8 @@ function targets(state: NumberLineState, objectId: string): LocalTarget[] {
       label: `${objectId} at ${labelText(state, i)}`,
       writable: !isShown(state, i),
       value: isShown(state, i) ? labelText(state, i) : null,
-      rect: { x: tickX(geo, i) - half, y: geo.lineY - TICK_HALF - 0.05, w: 2 * half, h: rect.y + rect.h - (geo.lineY - TICK_HALF - 0.05) },
+      // A gap under the label, so an arrow that ends below the tick keeps clear of the label it will get.
+      rect: { x: tickX(geo, i) - half, y: geo.lineY - TICK_HALF - 0.05, w: 2 * half, h: rect.y + rect.h + INSET - (geo.lineY - TICK_HALF - 0.05) },
     });
   }
   for (const j of state.jumps) {
@@ -335,12 +344,15 @@ function draw(state: NumberLineState, objectId: string, ctx: Ctx): LocalStroke[]
   return out;
 }
 
-/** Later jumps go in the lanes above the line, and later labels under the ticks: an arrow keeps clear of both. */
-function reserved(state: NumberLineState): Reserved {
+/**
+ * Later jumps go in the lanes above the line, kept as a box. Later labels are known now, so they are the strokes of the
+ * labels not written yet: an arrow to a tick keeps clear of the label it will get, so that label can still be written.
+ */
+function reserved(state: NumberLineState, objectId: string, ctx: Ctx): Reserved {
   const { geo } = state;
-  const boxes: Rect[] = [{ x: 0, y: 0, w: geo.w, h: geo.lineY - TICK_HALF }];
-  for (let i = 0; i < state.count; i++) if (!isShown(state, i)) boxes.push(labelBox(state, i).rect);
-  return { strokes: [], boxes };
+  const now = new Set(draw(state, objectId, ctx).map((s) => s.key));
+  const labelled = { ...state, shown: state.shown.map(() => true) };
+  return { strokes: draw(labelled, objectId, ctx).filter((s) => !now.has(s.key)), boxes: [{ x: 0, y: 0, w: geo.w, h: geo.lineY - TICK_HALF }] };
 }
 
 export const numberLine: Representation<NumberLineState, NumberLineCommand> = {

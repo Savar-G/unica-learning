@@ -386,3 +386,108 @@ describe("review R3: exact layout", () => {
     expect(tickXs(scene)[0]).toBeCloseTo(0.009, 4);
   });
 });
+
+describe("review R4: jumps never cross", () => {
+  type Pt = readonly [number, number];
+  /** The distance between two segments, worked out here so the test does not lean on the core's geometry. */
+  function segGap(a: Pt, b: Pt, c: Pt, d: Pt): number {
+    const cross = (o: Pt, p: Pt, q: Pt) => (p[0] - o[0]) * (q[1] - o[1]) - (p[1] - o[1]) * (q[0] - o[0]);
+    const [d1, d2, d3, d4] = [cross(a, b, c), cross(a, b, d), cross(c, d, a), cross(c, d, b)];
+    if (d1 * d2 < 0 && d3 * d4 < 0) return 0;
+    const toSeg = (p: Pt, s: Pt, e: Pt) => {
+      const [dx, dy] = [e[0] - s[0], e[1] - s[1]];
+      const len = dx * dx + dy * dy;
+      const t = len === 0 ? 0 : Math.max(0, Math.min(1, ((p[0] - s[0]) * dx + (p[1] - s[1]) * dy) / len));
+      return Math.hypot(p[0] - s[0] - t * dx, p[1] - s[1] - t * dy);
+    };
+    return Math.min(toSeg(a, c, d), toSeg(b, c, d), toSeg(c, a, b), toSeg(d, a, b));
+  }
+  /** The closest the strokes (shaft and arrowhead) of two jumps come, less their half widths. */
+  function clearance(scene: Scene, a: string, b: string): number {
+    const arcs = (id: string) => boardPaths(scene).filter((p) => p.objectId === id && p.kind === "arrow");
+    let best = Infinity;
+    for (const p of arcs(a))
+      for (const q of arcs(b))
+        for (let i = 1; i < p.pts.length; i++)
+          for (let j = 1; j < q.pts.length; j++) best = Math.min(best, segGap(p.pts[i - 1], p.pts[i], q.pts[j - 1], q.pts[j]) - (p.width + q.width) / 2);
+    return best;
+  }
+  const jump = (id: string, from: string, to: string) => ({ op: "jump", id, lineId: "n", fromValue: from, toValue: to });
+
+  it("refuses a jump from 1 to 3 that would cross a jump from 0 to 2", () => {
+    const scene = ok(ok(createScene(), line("n", "0", "3", "1")), jump("a", "0", "2"));
+    expect(refused(scene, jump("b", "1", "3")).code).toBe("no_room");
+  });
+
+  it("never accepts two jumps with four different ends whose arcs meet: whole numbers, negative decimals, thirds", () => {
+    const cases: [string, string, string, string[]][] = [
+      ["0", "3", "1", ["0", "1", "2", "3"]],
+      ["-1.5", "1.5", "1", ["-1.5", "-0.5", "0.5", "1.5"]],
+      ["0", "1", "1/3", ["0", "1/3", "2/3", "1"]],
+    ];
+    let accepted = 0;
+    let refusedCount = 0;
+    for (const [min, max, tick, values] of cases) {
+      const made = ok(createScene(), line("n", min, max, tick));
+      for (const a of values)
+        for (const b of values)
+          for (const c of values)
+            for (const d of values) {
+              if (new Set([a, b, c, d]).size !== 4) continue;
+              const first = ok(made, jump("a", a, b));
+              const r = applyBatch(first, { transactionId: `f${++tx}`, commands: [jump("b", c, d)] });
+              if (!r.ok) {
+                expect(r.refusal.code).toBe("no_room");
+                refusedCount++;
+                continue;
+              }
+              accepted++;
+              expect(clearance(r.scene, "a", "b"), `${min}..${max}: ${a}->${b}, then ${c}->${d}`).toBeGreaterThan(0);
+            }
+    }
+    // Jumps side by side or one over the other still go on.
+    expect(accepted).toBeGreaterThan(0);
+    expect(refusedCount).toBeGreaterThan(0);
+  });
+
+  it("still lets jumps meet at a shared tick", () => {
+    let scene = ok(createScene(), line("n", "0", "3", "1"));
+    scene = ok(scene, jump("a", "0", "1"), jump("b", "1", "2"), jump("c", "2", "3"), jump("d", "0", "2"), jump("e", "3", "2"));
+    expect(boardTargets(scene).filter((t) => t.target.part === "whole" && t.target.objectId !== "n")).toHaveLength(5);
+  });
+});
+
+describe("review R5: an arrow keeps clear of the labels a line still writes", () => {
+  const setup = () =>
+    ok(
+      createScene({ page: { cols: 60, rows: 30 } }),
+      line("n", "-1", "2", "0.5", { labels: "none", form: "mixed" }),
+      { op: "fraction", id: "f", numerator: "1", denominator: "2", place: { rightOf: "n" } },
+    );
+  const ticks = (scene: Scene) => boardTargets(scene).filter((t) => t.target.objectId === "n" && t.target.part === "value");
+
+  it("labels 3/2 after an arrow from the fraction's numerator points at it", () => {
+    let scene = setup();
+    scene = ok(scene, { op: "arrow", id: "a", from: part("f", "numerator"), to: value("n", "3/2") });
+    scene = ok(scene, { op: "put", target: value("n", "3/2"), value: "1.5" });
+    expect(info(scene, value("n", "3/2")).value).toBe("1 1/2");
+    // In one batch too.
+    ok(setup(), { op: "arrow", id: "a", from: part("f", "numerator"), to: value("n", "3/2") }, { op: "put", target: value("n", "3/2"), value: "1.5" });
+  });
+
+  it("leaves every writable tick writable after any arrow it accepts", () => {
+    const base = setup();
+    let accepted = 0;
+    for (const from of ["numerator", "bar", "denominator", "whole"])
+      for (const t of ticks(base)) {
+        const r = applyBatch(base, { transactionId: `f${++tx}`, commands: [{ op: "arrow", id: "a", from: part("f", from), to: t.target }] });
+        if (!r.ok) {
+          expect(r.refusal.code).toBe("no_room");
+          continue;
+        }
+        accepted++;
+        for (const w of ticks(r.scene).filter((x) => x.writable)) ok(r.scene, { op: "put", target: w.target });
+      }
+    expect(accepted).toBeGreaterThan(0);
+  });
+});
