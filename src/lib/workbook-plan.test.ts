@@ -623,4 +623,3 @@ describe("the two-week curriculum plan: placement checks (CONTEXT 2)", () => {
     }
   });
 });
-
