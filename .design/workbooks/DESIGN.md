@@ -236,8 +236,9 @@ the Try this first card from U19. On Days 5 and 10 the Friday 5 replaces the Mix
 ### 7.2 Other page counts
 
 - **6-page day (U19 to U30, Ethan):** 1 Warm-up (fact grid up to 27 items, In your head box, Fix it box); 2 New idea (Try
-  this first first); 3 Practice (Watch one, Finish these, On your own, Solve it two ways, Spot the error); 4 Word problems,
-  or **Math in the world** on Days 4 and 9; 5 Unit B (reminder + practice); 6 Remember these? (6 items) + Mixed set (2
+  this first first); 3 Practice (Watch one, Finish these, On your own, Solve it two ways, Spot the error), replaced by **Math in the
+  world** on Days 4 and 9 (skeleton: it replaces one practice page; Ethan's Day 3 sample puts it on page 3); 4 Word
+  problems; 5 Unit B (reminder + practice); 6 Remember these? (6 items) + Mixed set (2
   items) + 2 Challenge cards side by side.
 - **4 to 6-page parent-led day (U1 to U3):** not in the samples yet. Skeleton rules: the parent reads every instruction
   aloud; instructions are an icon plus a short line; the child answers by circling, matching, colouring, drawing a line
