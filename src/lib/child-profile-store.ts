@@ -7,21 +7,29 @@ import { LEARNING_COLUMNS, fromRow } from "@/lib/learning-style";
 
 // The child profile's store (src/lib/child-profile.ts, #303) in Supabase, with the secret key: the service role may
 // only read, insert and update public.child_profiles (migration add_child_profiles); admins read it; parents read
-// nothing. The first save is an insert (a second first save fails on the primary key: 23505); each later save is an
-// update filtered on the revision it expects, so it changes the row only while the row still holds that revision. The
-// family write fence (55000) and the foreign key to the child under its parent (23503) refuse a save; the foreign key
-// to the test (23503 too) means the test was deleted after the inputs were read, so the rebuild builds again. The
+// nothing. Each save stores a new random build token (migration child_profile_build_token). The first save is an
+// insert (a second first save fails on the primary key: 23505); each later save is an update filtered on the build
+// token it expects, so it changes the row only while the row still holds that build, also after a deletion and a new
+// first build (review R345-2). The family write fence trigger runs before the keys: 55000 family_unavailable refuses a
+// save; 55000 family_scope refuses one on another family's test, but for a test that no longer exists it means the test
+// was deleted after the inputs were read, so the rebuild builds again (review R345-1). The foreign key to the child
+// under its parent (23503) refuses a save; the one to the test (23503 too) means the test is gone: build again. The
 // inputs read the child, its finished tests and which have a stored learner profile, then that one profile. Tests use
 // src/lib/child-profile-memory.ts.
 
 const message = (error: { message: string }) => error.message;
 
 export function childProfileStore(admin: SupabaseClient<Database>): ChildProfileStore {
+  async function testExists(id: string) {
+    const { data, error } = await admin.from("assessments").select("id").eq("id", id).maybeSingle();
+    if (error) throw new Error(`child profile test check: ${message(error)}`);
+    return data !== null;
+  }
   return {
     async current(childId) {
-      const { data, error } = await admin.from("child_profiles").select("revision, built_at, schema_version, profile").eq("child_id", childId).maybeSingle();
+      const { data, error } = await admin.from("child_profiles").select("revision, build_token, built_at, schema_version, profile").eq("child_id", childId).maybeSingle();
       if (error) throw new Error(`child profile load: ${message(error)}`);
-      return data && { revision: data.revision, builtAt: new Date(data.built_at).toISOString(), schemaVersion: data.schema_version, profile: data.profile };
+      return data && { revision: data.revision, buildToken: data.build_token, builtAt: new Date(data.built_at).toISOString(), schemaVersion: data.schema_version, profile: data.profile };
     },
     async inputs(childId) {
       const [child, tests, profiles] = await Promise.all([
@@ -55,17 +63,18 @@ export function childProfileStore(admin: SupabaseClient<Database>): ChildProfile
     },
     async save({ childId, parentId, assessmentId, profile }, expected) {
       const row = {
-        parent_id: parentId, assessment_id: assessmentId, revision: expected + 1, schema_version: profile.schemaVersion,
-        profile: toJson(profile), built_at: new Date().toISOString(),
+        parent_id: parentId, assessment_id: assessmentId, revision: (expected?.revision ?? 0) + 1, build_token: crypto.randomUUID(),
+        schema_version: profile.schemaVersion, profile: toJson(profile), built_at: new Date().toISOString(),
       };
-      const { data, error } = expected === 0
+      const { data, error } = expected === null
         ? await admin.from("child_profiles").insert({ ...row, child_id: childId }).select("revision")
-        : await admin.from("child_profiles").update(row).eq("child_id", childId).eq("revision", expected).select("revision");
+        : await admin.from("child_profiles").update(row).eq("child_id", childId).eq("build_token", expected.buildToken).select("revision");
       if (error) {
         // 23505: another build stored the first revision; 23503 on the test's key: the test was deleted since the
-        // inputs were read; 23503 on the child's key: the child is not under that parent; 55000: the family write
-        // fence (family_unavailable, family_scope).
+        // inputs were read; 23503 on the child's key: the child is not under that parent.
         if (error.code === "23505" || (error.code === "23503" && error.message.includes("child_profiles_assessment_id_child_id_fkey"))) return "changed";
+        // 55000 family_scope for a test that no longer exists: deleted since the inputs were read.
+        if (error.code === "55000" && error.message.includes("family_scope") && assessmentId && !(await testExists(assessmentId))) return "changed";
         if (error.code === "23503" || error.code === "55000") return { refused: error.message };
         throw new Error(`child profile save: ${message(error)}`);
       }

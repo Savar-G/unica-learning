@@ -453,6 +453,7 @@ export type Database = {
       child_profiles: {
         Row: {
           assessment_id: string | null
+          build_token: string
           built_at: string
           child_id: string
           created_at: string
@@ -463,6 +464,7 @@ export type Database = {
         }
         Insert: {
           assessment_id?: string | null
+          build_token?: string
           built_at?: string
           child_id: string
           created_at?: string
@@ -473,6 +475,7 @@ export type Database = {
         }
         Update: {
           assessment_id?: string | null
+          build_token?: string
           built_at?: string
           child_id?: string
           created_at?: string

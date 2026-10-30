@@ -84,6 +84,7 @@ describe("the child's profile rebuild", () => {
   it("never stores a build from older inputs over a newer one", async () => {
     const f = family();
     await rebuildChildProfile(CHILD, f);
+    const firstBuild = (await f.profiles.current(CHILD))!;
     let raced = false;
     // While this rebuild builds, another one stores a profile with a newer event.
     const racing: ChildProfileStore = {
@@ -102,8 +103,8 @@ describe("the child's profile rebuild", () => {
     expect(read?.revision).toBe(3);
     expect(read?.profile.standards.find((s) => s.code === "3.3")?.events.mistakes).toEqual(["O3"]);
 
-    // A save over a revision that is no longer stored changes nothing.
-    expect(await f.profiles.save({ childId: CHILD, parentId: PARENT, assessmentId: TEST, profile: read!.profile }, 1)).toBe("changed");
+    // A save over a build that is no longer stored changes nothing.
+    expect(await f.profiles.save({ childId: CHILD, parentId: PARENT, assessmentId: TEST, profile: read!.profile }, firstBuild)).toBe("changed");
     expect((await readChildProfile(f.profiles, CHILD))?.revision).toBe(3);
   });
 
@@ -120,10 +121,51 @@ describe("the child's profile rebuild", () => {
     const stored = await rebuildChildProfile(CHILD, f);
     expect(stored).toMatchObject({ built: true, revision: 1 });
     // The other child's stored profile was built from inputs that are gone now (the test and its events deleted).
-    expect(await f.profiles.save({ childId: OTHER_CHILD, parentId: OTHER_PARENT, assessmentId: null, profile: stored.built ? stored.profile : never() }, 0)).toEqual({ revision: 1 });
+    expect(await f.profiles.save({ childId: OTHER_CHILD, parentId: OTHER_PARENT, assessmentId: null, profile: stored.built ? stored.profile : never() }, null)).toEqual({ revision: 1 });
     expect(await rebuildChildProfile(OTHER_CHILD, f)).toMatchObject({ built: true, revision: 2 });
     const read = await readChildProfile(f.profiles, OTHER_CHILD);
     expect(read?.profile).toMatchObject({ assessment: null, standards: [], secure: [], notYetSecure: [], events: { counted: 0, inAssessmentProfile: 0, lastAt: null } });
+  });
+});
+
+// R345-2: deleting a test deletes the profile built on it and the test's events (on delete cascade), so the next build
+// starts again at revision 1. A build that read the deleted row's revision 1 must not store over the new row.
+describe("a rebuild that waits while its row is deleted and built again", () => {
+  it("builds again from what is left instead of restoring the deleted test's events", async () => {
+    const f = family();
+    // Revision 1 starts from the older test; one answer of it is stored as an event, already in that test's profile.
+    f.tests.splice(f.tests.findIndex((t) => t.id === TEST), 1);
+    const answer = await f.record.append(call({
+      key: "answer:old", source: "assessment", question: { source: "assessment", assessmentId: OLD_TEST, questionId: "q-1" },
+      result: "wrong", hints: 0, evidence: { kind: "answer", id: "answer-old" },
+    }));
+    expect(answer.ok).toBe(true);
+    expect(await rebuildChildProfile(CHILD, f)).toMatchObject({ built: true, revision: 1 });
+    expect((await readChildProfile(f.profiles, CHILD))?.profile.events).toMatchObject({ counted: 0, inAssessmentProfile: 1 });
+
+    // A newer test finishes; a rebuild reads revision 1, starts from the newer test, and counts the older test's answer.
+    f.tests.push({ id: TEST, childId: CHILD, completedAt: "2026-10-20T18:00:00.000Z", profile: { ...NOW, buildId: "build-1" } });
+    let waited = false;
+    const waiting: ChildProfileStore = {
+      ...f.profiles,
+      async save(row, expected) {
+        if (!waited) {
+          waited = true;
+          expect(row.profile.events.counted).toBe(1);
+          // While it waits, the older test is deleted (its row and its events with it), and a newer build stores
+          // revision 1 again, from the newer test with no events.
+          f.deleteTest(OLD_TEST);
+          expect(await f.profiles.current(CHILD)).toBeNull();
+          expect(await rebuildChildProfile(CHILD, f)).toMatchObject({ built: true, revision: 1 });
+        }
+        return f.profiles.save(row, expected);
+      },
+    };
+    expect(await rebuildChildProfile(CHILD, { profiles: waiting, events: f.events })).toMatchObject({ built: true, revision: 2 });
+    const read = await readChildProfile(f.profiles, CHILD);
+    expect(read?.profile.assessment?.assessmentId).toBe(TEST);
+    expect(read?.profile.events).toEqual({ counted: 0, inAssessmentProfile: 0, lastAt: null });
+    expect(read?.profile.standards.flatMap((s) => s.evidence.events)).toEqual([]);
   });
 });
 

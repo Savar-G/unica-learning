@@ -21,9 +21,11 @@
 //   counted events, oldest first.
 // The parent's answers on the learning card are read from the child, so a card change counts without a new test.
 //
-// The build is compare and set: the store gives each stored profile a revision (1, 2, ...). A rebuild reads the
-// revision first, then its inputs, and stores only while the revision is the one it read. A rebuild that lost the
-// race reads again and builds again, so a build from older inputs never replaces one from newer inputs. #304 adds AI
+// The build is compare and set: the store gives each stored build a random build token and a revision (1, 2, ...,
+// for display). A rebuild reads the stored build first, then its inputs, and stores only while the stored build token
+// is the one it read. A rebuild that lost the race reads again and builds again, so a build from older inputs never
+// replaces one from newer inputs. The token, not the revision: a test deletion deletes the profile built on it, and
+// the next build starts again at revision 1, but never with an older token (review R345-2). #304 adds AI
 // findings with the same rule. The seams: the profile store (ChildProfileStore: Supabase in
 // src/lib/child-profile-store.ts, in memory in src/lib/child-profile-memory.ts) and the events' store.
 // Pure TypeScript: no Next.js, React, network, database or clock.
@@ -211,9 +213,11 @@ function buildFacts(input: ChildProfileInput): ChildLearnerProfile {
 
 // The store seam, the read and the rebuild
 
-/** A stored child profile, as the store gives it: its revision, when it was built, and its JSON at any schema version. */
+/** A stored child profile, as the store gives it: its revision, its build token, when it was built, and its JSON at any schema version. */
 export interface StoredChildProfile {
   revision: number;
+  /** A random token for this stored build; each save stores a new one. */
+  buildToken: string;
   builtAt: string;
   schemaVersion: number;
   profile: unknown;
@@ -235,6 +239,9 @@ export interface NewChildProfile {
   profile: ChildLearnerProfile;
 }
 
+/** The stored build a save replaces, as the rebuild read it; null when none was stored. */
+export type ExpectedBuild = Pick<StoredChildProfile, "revision" | "buildToken"> | null;
+
 /** The profile's reads and writes. A database error throws; a missing row is null. */
 export interface ChildProfileStore {
   /** The child's stored profile; null when none is stored. */
@@ -245,11 +252,12 @@ export interface ChildProfileStore {
    */
   inputs(childId: string): Promise<ChildProfileSource | null>;
   /**
-   * Stores the profile as the next revision, only while the stored revision is `expected` (0: none stored): compare and
-   * set. "changed" when the stored revision is another; `refused` when the family's deletion is requested or the child
-   * is not under that parent (nothing is stored).
+   * Stores the profile with a new build token and the next revision, only while the stored build is `expected` (its
+   * build token; null: none stored): compare and set. "changed" when another build is stored, or the profile's test no
+   * longer exists (the next try builds from what is left); `refused` when the family's deletion is requested, the test
+   * is another family's, or the child is not under that parent (nothing is stored).
    */
-  save(profile: NewChildProfile, expected: number): Promise<{ revision: number } | "changed" | { refused: string }>;
+  save(profile: NewChildProfile, expected: ExpectedBuild): Promise<{ revision: number } | "changed" | { refused: string }>;
 }
 
 /** The seams of a rebuild: the profile store and the learning events' store. */
@@ -300,13 +308,14 @@ export async function rebuildChildProfile(childId: string, { profiles, events }:
   if (!UUID.test(childId)) return { built: false, reason: "no_child" };
   const id = childId.toLowerCase();
   for (let tries = 0; tries < REBUILD_TRIES; tries++) {
-    // The revision first: a build stored after this read makes the save below fail, so these inputs are never stale.
-    const expected = (await profiles.current(id))?.revision ?? 0;
+    // The stored build first: a build stored after this read makes the save below fail, so these inputs are never stale.
+    const stored = await profiles.current(id);
+    const expected: ExpectedBuild = stored && { revision: stored.revision, buildToken: stored.buildToken };
     const source = await profiles.inputs(id);
     if (!source) return { built: false, reason: "no_child" };
     const profile = buildFacts({ ...source, events: await learningEvents(events).read(id, ALL_TIME) });
     // With nothing to build from, a stored profile is still replaced: its inputs are gone (a test or events deleted).
-    if (!profile.assessment && profile.events.counted === 0 && expected === 0) return { built: false, reason: "nothing_to_build" };
+    if (!profile.assessment && profile.events.counted === 0 && !expected) return { built: false, reason: "nothing_to_build" };
     const saved = await profiles.save({ childId: id, parentId: source.parentId, assessmentId: profile.assessment?.assessmentId ?? null, profile }, expected);
     if (saved === "changed") continue;
     if ("refused" in saved) return { built: false, reason: "refused", detail: saved.refused };

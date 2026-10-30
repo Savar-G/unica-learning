@@ -10,7 +10,9 @@ import { childProfileStore } from "@/lib/child-profile-store";
 // stored assessment profile of the child's test that finished last; one profile per child; a save stores the next
 // revision only over the revision it expects (compare and set); the family write fence and the foreign key refuse a
 // save. The Supabase adapter talks to a fake PostgREST that keeps the rows, applies each request's eq filters, and
-// answers as Postgres does (23505 for a stored key, 23503 for a child of another parent, 55000 for the fence).
+// answers as Postgres does, in the live order: the family write fence trigger first (55000 family_unavailable; 55000
+// family_scope for a test of another family or a test that no longer exists), then the foreign keys (23503), then the
+// primary key (23505).
 vi.mock("server-only", () => ({}));
 
 const PARENT = "00000000-0000-4000-8000-0000000000a1";
@@ -20,6 +22,10 @@ const FENCED_CHILD = "00000000-0000-4000-8000-0000000000c2";
 const OLD = "00000000-0000-4000-8000-0000000000e0";
 const NEW = "00000000-0000-4000-8000-0000000000e1";
 const UNSCORED = "00000000-0000-4000-8000-0000000000e2";
+const OTHER_PARENT = "00000000-0000-4000-8000-0000000000a3";
+const OTHER_CHILD = "00000000-0000-4000-8000-0000000000c3";
+const OTHER_TEST = "00000000-0000-4000-8000-0000000000e3";
+const GONE = "00000000-0000-4000-8000-0000000000e9";
 
 const { asked, placement } = takeTest({ grade: 3, province: "BC" }, 7, knowsUpTo(2));
 const BASE: LearnerProfile = learnerProfile({
@@ -47,8 +53,12 @@ function fakePostgrest(): ChildProfileStore {
     children: [
       { id: CHILD, parent_id: PARENT, grade: 3, learning_styles: ["pictures"], interests: [], learning_note: "private note", math_feeling: "avoids", learning_goal: null, weekly_time: null },
       { id: FENCED_CHILD, parent_id: FENCED_PARENT, grade: 3, learning_styles: null, interests: null, learning_note: null, math_feeling: null, learning_goal: null, weekly_time: null },
+      { id: OTHER_CHILD, parent_id: OTHER_PARENT, grade: 4, learning_styles: null, interests: null, learning_note: null, math_feeling: null, learning_goal: null, weekly_time: null },
     ],
-    assessments: TESTS.map((t) => ({ id: t.id, child_id: CHILD, status: "completed", completed_at: t.completedAt })),
+    assessments: [
+      ...TESTS.map((t) => ({ id: t.id, child_id: CHILD, parent_id: PARENT, status: "completed", completed_at: t.completedAt })),
+      { id: OTHER_TEST, child_id: OTHER_CHILD, parent_id: OTHER_PARENT, status: "completed", completed_at: "2026-10-01T18:00:00.000Z" },
+    ],
     learner_profiles: TESTS.filter((t) => t.profile).map((t) => ({ assessment_id: t.id, child_id: CHILD, profile: t.profile })),
     child_profiles: [],
   };
@@ -67,7 +77,10 @@ function fakePostgrest(): ChildProfileStore {
     if (!init?.method || init.method === "GET") return answer(hit);
     if (table !== "child_profiles") throw new Error(`unexpected write ${table}`);
     const body = JSON.parse(String(init.body));
+    // The family write fence trigger runs before the keys: a test that no longer exists has no parent, so it is out
+    // of the family's scope too.
     if (fenced.includes(body.parent_id)) return Response.json({ code: "55000", message: "family_unavailable" }, { status: 400 });
+    if (body.assessment_id && tables.assessments.find((t) => t.id === body.assessment_id)?.parent_id !== body.parent_id) return Response.json({ code: "55000", message: "family_scope" }, { status: 400 });
     if (init.method === "POST") {
       if (!tables.children.some((c) => c.id === body.child_id && c.parent_id === body.parent_id)) return Response.json({ code: "23503", message: 'insert or update on table "child_profiles" violates foreign key constraint "child_profiles_child_id_parent_id_fkey"' }, { status: 409 });
       if (body.assessment_id && !tables.assessments.some((t) => t.id === body.assessment_id && t.child_id === body.child_id)) return Response.json({ code: "23503", message: 'insert or update on table "child_profiles" violates foreign key constraint "child_profiles_assessment_id_child_id_fkey"' }, { status: 409 });
@@ -86,8 +99,8 @@ function fakePostgrest(): ChildProfileStore {
 
 function memory(): ChildProfileStore {
   return memoryChildProfiles({
-    children: [{ id: CHILD, parentId: PARENT, grade: 3 }, { id: FENCED_CHILD, parentId: FENCED_PARENT, grade: 3 }],
-    tests: TESTS.map((t) => ({ ...t, childId: CHILD })),
+    children: [{ id: CHILD, parentId: PARENT, grade: 3 }, { id: FENCED_CHILD, parentId: FENCED_PARENT, grade: 3 }, { id: OTHER_CHILD, parentId: OTHER_PARENT, grade: 4 }],
+    tests: [...TESTS.map((t) => ({ ...t, childId: CHILD })), { id: OTHER_TEST, childId: OTHER_CHILD, completedAt: "2026-10-01T18:00:00.000Z", profile: null }],
     learning: { [CHILD]: LEARNING },
     deleting: [FENCED_PARENT],
   }).profiles;
@@ -102,30 +115,40 @@ describe.each([["Supabase", fakePostgrest], ["in-memory", memory]] as const)("th
     expect(await store.inputs("00000000-0000-4000-8000-0000000000ff")).toBeNull();
   });
 
-  it("stores one profile per child, each save the next revision over the one it expects", async () => {
+  it("stores one profile per child, each save over the build it expects, with a new build token and the next revision", async () => {
     const store = open();
     const row = { childId: CHILD, parentId: PARENT, assessmentId: NEW, profile: PROFILE };
     expect(await store.current(CHILD)).toBeNull();
-    expect(await store.save(row, 1)).toBe("changed");
-    expect(await store.save(row, 0)).toEqual({ revision: 1 });
-    expect(await store.save(row, 0)).toBe("changed");
-    expect(await store.save(row, 1)).toEqual({ revision: 2 });
-    expect(await store.save(row, 1)).toBe("changed");
-    expect(await store.current(CHILD)).toEqual({ revision: 2, builtAt: expect.any(String), schemaVersion: 1, profile: PROFILE });
+    expect(await store.save(row, { revision: 1, buildToken: "00000000-0000-4000-8000-000000000001" })).toBe("changed");
+    expect(await store.save(row, null)).toEqual({ revision: 1 });
+    const first = (await store.current(CHILD))!;
+    expect(first.buildToken).toMatch(/^[0-9a-f-]{36}$/);
+    expect(await store.save(row, null)).toBe("changed");
+    expect(await store.save(row, first)).toEqual({ revision: 2 });
+    const second = (await store.current(CHILD))!;
+    expect(second.buildToken).not.toBe(first.buildToken);
+    // The same revision with an older build token is another build: nothing is stored over it.
+    expect(await store.save(row, { revision: 2, buildToken: first.buildToken })).toBe("changed");
+    expect(await store.current(CHILD)).toEqual({ revision: 2, buildToken: second.buildToken, builtAt: expect.any(String), schemaVersion: 1, profile: PROFILE });
   });
 
   it("refuses a save for a family being deleted, or a child under another parent", async () => {
     const store = open();
-    expect(await store.save({ childId: FENCED_CHILD, parentId: FENCED_PARENT, assessmentId: null, profile: PROFILE }, 0)).toEqual({ refused: expect.any(String) });
-    expect(await store.save({ childId: CHILD, parentId: "00000000-0000-4000-8000-0000000000a9", assessmentId: null, profile: PROFILE }, 0)).toEqual({ refused: expect.any(String) });
+    expect(await store.save({ childId: FENCED_CHILD, parentId: FENCED_PARENT, assessmentId: null, profile: PROFILE }, null)).toEqual({ refused: expect.any(String) });
+    expect(await store.save({ childId: CHILD, parentId: "00000000-0000-4000-8000-0000000000a9", assessmentId: null, profile: PROFILE }, null)).toEqual({ refused: expect.any(String) });
+    // A test of another family is out of the family's scope (55000 family_scope): refused, not built again.
+    expect(await store.save({ childId: CHILD, parentId: PARENT, assessmentId: OTHER_TEST, profile: PROFILE }, null)).toEqual({ refused: expect.stringContaining("family_scope") });
     expect(await store.current(FENCED_CHILD)).toBeNull();
     expect(await store.current(CHILD)).toBeNull();
   });
 
+  // R345-1: the live fence trigger answers 55000 family_scope for a test that no longer exists, before the foreign key.
   it("asks for a new build when the profile's test is gone (deleted after the inputs were read)", async () => {
     const store = open();
-    const GONE = "00000000-0000-4000-8000-0000000000e9";
-    expect(await store.save({ childId: CHILD, parentId: PARENT, assessmentId: GONE, profile: PROFILE }, 0)).toBe("changed");
+    expect(await store.save({ childId: CHILD, parentId: PARENT, assessmentId: GONE, profile: PROFILE }, null)).toBe("changed");
     expect(await store.current(CHILD)).toBeNull();
+    expect(await store.save({ childId: CHILD, parentId: PARENT, assessmentId: NEW, profile: PROFILE }, null)).toEqual({ revision: 1 });
+    expect(await store.save({ childId: CHILD, parentId: PARENT, assessmentId: GONE, profile: PROFILE }, (await store.current(CHILD))!)).toBe("changed");
+    expect((await store.current(CHILD))?.revision).toBe(1);
   });
 });
