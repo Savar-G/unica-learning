@@ -91,7 +91,7 @@ export function NextCover({ changes, zoom = 1, style }: { changes?: Change[]; zo
     <div className="wi-cv" style={{ zoom, ...style }}>
       <div className="wi-cv-top"><span className="wi-cv-wm">Unica Learning<i /></span><span className="wi-cv-n">Workbook 04</span></div>
       <Mark className="wi-cv-mk" />
-      <div className="wi-cv-for">Made for Leah · Level U10 · Adding and subtracting to 1000</div>
+      <div className="wi-cv-for">Made for Leah · Grade 3 · Adding and subtracting to 1000</div>
       <div className="wi-cv-t">Borrowing across<br /><mark>zero</mark></div>
       <div className="wi-cv-box">
         <b>Made from Leah&apos;s Workbook 03</b>

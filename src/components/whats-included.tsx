@@ -74,13 +74,13 @@ const SOURCES: { title: string; sub: string; thumb: React.ReactNode; showed: str
   },
   {
     title: "From her sessions with Maya", sub: "The AI Teaching Assistant",
-    thumb: <img className="th-maya" src={`${ASSETS}/ta-call.webp`} alt="" />,
+    thumb: <div className="th-maya"><img src={`${ASSETS}/maya.png`} alt="" /><span>Let&apos;s look at 300 − 128 together.</span></div>,
     showed: "Most of her questions to Maya were about borrowing. On 300 − 128 she needed Maya's steps, then finished on her own.",
     changes: ["more"], labels: ["borrowing across zero"],
   },
   {
     title: "From her first assessment", sub: "And the monthly re-check",
-    thumb: <img className="th-rep" src={`${ASSETS}/report-level.webp`} alt="" />,
+    thumb: <div className="th-lv"><small>Working level</small><b>Grade 2</b><div className="sc">{["K", "1", "2", "3", "4", "5"].map((g) => <i key={g} className={g === "2" ? "on" : g === "3" ? "sch" : ""}>{g}</i>)}</div><em>School grade: 3</em></div>,
     showed: "Her working level, and the skills still to come at that level.",
     changes: ["new", "rev"], labels: ["multiplying by 10", "unit fractions"],
   },
@@ -95,10 +95,13 @@ const COVER_CHANGES: Change[] = [
 function Sources() {
   return (
     <div className="wi-nx">
-      <svg className="wi-wires" viewBox="0 0 1104 600" preserveAspectRatio="none" aria-hidden="true">
-        <g fill="none" stroke="#cfc8bb" strokeWidth="2" strokeDasharray="5 6">
-          {[95, 300, 505].map((y) => <path key={y} d={`M640 ${y} C 700 ${y}, 690 300, 744 300`} />)}
-        </g>
+      <svg className="wi-wires" viewBox="0 0 1189 623" preserveAspectRatio="none" aria-hidden="true">
+        {[119, 318, 510].map((y) => <path key={y} id={`wiWire${y}`} className="wi-wire" d={`M624 ${y} C 684 ${y}, 668 283, 724 283`} />)}
+        {[119, 318, 510].map((y, i) => (
+          <circle key={y} r="5" className="wi-pulse">
+            <animateMotion dur="2.4s" begin={`${i * 0.8}s`} repeatCount="indefinite"><mpath href={`#wiWire${y}`} /></animateMotion>
+          </circle>
+        ))}
       </svg>
       <ol className="wi-srcs">
         {SOURCES.map((s, i) => (
@@ -141,7 +144,7 @@ export function WhatsIncluded() {
           <Rise className="wi-hero">
             <Eyebrow>What&apos;s included</Eyebrow>
             <h1>Everything your child gets, in the order it happens.</h1>
-            <p className="lead">Follow Leah through her first month of Unica: from the free assessment to the workbook made from her own work.</p>
+            <p className="lead">From a free assessment to a workbook made for your child, and a next workbook made from everything they did.</p>
             <div className="wi-cta">
               <StartLink src="included-hero">{START_LABEL}</StartLink>
               <Link className="btn ghost" href="/sample-report">See a sample report</Link>
@@ -154,43 +157,36 @@ export function WhatsIncluded() {
             </StepHead>
             <div className="wi-as">
               <div className="wi-browser"><div className="bar"><i /><i /><i /><span>unicalearning.com</span></div><img src={`${ASSETS}/test-question.jpg`} alt="A question in the free assessment, with a whiteboard for working" /></div>
-              <div className="rep"><span>Leah&apos;s report</span><img src={`${ASSETS}/report-level.webp`} alt="Leah's report: the level she works at" /></div>
+              <div className="rep"><img src={`${ASSETS}/report-level.webp`} alt="Leah's report: the level she works at" /></div>
             </div>
           </Section>
 
           <Section className="wi-band" aria-labelledby="wiWb">
-            <StepHead id="wiWb" eyebrow="Workbook" title="Then the workbook arrives." lead="Made from the report, for your child only, and mailed home. Two workbooks a month, 15 to 30 minutes a day." />
+            <StepHead id="wiWb" eyebrow="Personalized workbook" title="Then your child's workbook arrives." lead="Made from the free assessment, for your child only, and mailed home. Two workbooks a month, 15 to 30 minutes a day." />
             <WorkbookReader />
           </Section>
 
           <Section className="wi-gd" aria-labelledby="wiTa">
-            <StepHead id="wiTa" eyebrow="AI Teaching Assistant" title="Stuck? Work it out with Maya." lead="Maya, the AI Teaching Assistant, opens your child's question on a whiteboard they both see. Maya explains each step out loud and draws it. Your child answers, asks why, or picks up the pen." />
+            <StepHead id="wiTa" eyebrow="AI Teaching Assistant" title="If they get stuck, Maya helps them work it out." lead="Maya, the Unica AI Teaching Assistant, opens the exact question from the workbook on a whiteboard they both see. Maya explains each step out loud and draws it. Your child answers, asks why, or picks up the pen." />
             <Rise className="gd-media">
               <DemoVideo className="gd-wide" src="/video/guidance-demo.mp4" poster="/video/guidance-demo-poster.jpg" label={MAYA_LABEL} />
               <DemoVideo className="gd-board" src="/video/guidance-demo-board.mp4" poster="/video/guidance-demo-board-poster.jpg" label={MAYA_LABEL} />
               <p className="gd-cap">Shown without sound. The captions show what Maya says.</p>
             </Rise>
-            <ul className="gd-points">
-              <li><b>On their exact question</b><span>Maya knows the workbook page and the question your child is on.</span></li>
-              <li><b>Every step on the board</b><span>Each step is drawn on the whiteboard while Maya explains it.</span></li>
-              <li><b>Your child does the thinking</b><span>Maya asks, your child answers, then finishes the question on paper.</span></li>
-            </ul>
           </Section>
 
           <Section className="wi-full" aria-labelledby="wiApp">
-            <StepHead id="wiApp" eyebrow="Unica app" title="Scan the pages. The app marks them." lead="When your child finishes a day, take a photo of each page in the Unica app. Each page comes back marked, with the steps for anything wrong." />
+            <StepHead id="wiApp" eyebrow="Unica app" title="When the day's pages are done, scan them. The app marks them." lead="Take a photo of each page in the Unica app. Each page comes back marked in seconds, with the steps for anything wrong." />
             <ScanPhoto />
-            <p className="wi-cap">Sample pages and app screens</p>
           </Section>
 
           <Section className="wi-full center" aria-labelledby="wiDb">
-            <StepHead id="wiDb" eyebrow="Parent dashboard" title="See the progress on your dashboard." lead="Level, skills, past work and every session with Maya, on the website or in the app. One account for both." />
+            <StepHead id="wiDb" eyebrow="Parent dashboard" title="Every scan updates your dashboard." lead="Level, skills, past work and every session with Maya, on the website or in the app. One account for both." />
             <DashboardDemo />
-            <p className="wi-cap">Pick a part, or use the menu on the web · Sample data</p>
           </Section>
 
           <Section className="wi-full" aria-labelledby="wiNx">
-            <StepHead id="wiNx" eyebrow="Next workbook" title="The next workbook builds on all of it." lead="It is made from this workbook's scans and sessions with Maya: more practice where your child slipped, less where they are strong. It arrives before this one runs out." />
+            <StepHead id="wiNx" eyebrow="Next workbook" title="Then the next workbook is made from all of it." lead="Her marked pages, her sessions with Maya and her assessment decide what comes next: more practice where she slipped, less where she is strong. It arrives before this one runs out." />
             <Sources />
           </Section>
 

@@ -8,12 +8,11 @@ import { ASSETS, Mark } from "./whats-included-parts";
 import { Fit } from "./fit";
 
 const BOOKS = {
-  leah: { name: "Leah", level: "Level U10", title: "Carrying and borrowing", pages: ["leah-01-cover", "leah-02-plan", "leah-03-d1p1", "leah-04-d1p2", "leah-05-d1p3", "leah-06-d1p4", "leah-07-d1p5", "leah-08-d1p6", "leah-09-d1p7", "leah-10-d1p8"] },
-  mateo: { name: "Mateo", level: "Level U19", title: "Factors and multiples", pages: ["mateo-01-cover", "mateo-02-plan", "mateo-03-d1p1", "mateo-04-d1p2", "mateo-05-d1p3", "mateo-06-d1p4", "mateo-07-d1p5", "mateo-08-d1p6", "mateo-09-d1p7", "mateo-10-d1p8"] },
+  leah: { name: "Leah", level: "Grade 3", title: "Carrying and borrowing", pages: ["leah-01-cover", "leah-02-plan", "leah-03-d1p1", "leah-04-d1p2", "leah-05-d1p3", "leah-06-d1p4", "leah-07-d1p5", "leah-08-d1p6", "leah-09-d1p7", "leah-10-d1p8"] },
+  mateo: { name: "Mateo", level: "Grade 6", title: "Factors and multiples", pages: ["mateo-01-cover", "mateo-02-plan", "mateo-03-d1p1", "mateo-04-d1p2", "mateo-05-d1p3", "mateo-06-d1p4", "mateo-07-d1p5", "mateo-08-d1p6", "mateo-09-d1p7", "mateo-10-d1p8"] },
 } as const;
 type BookKey = keyof typeof BOOKS;
 
-const SPREADS = ["Cover", "Plan · Day 1, page 1", "Day 1, pages 2 and 3", "Day 1, pages 4 and 5", "Day 1, pages 6 and 7", "Day 1, page 8"];
 const LEAVES = 5;
 const HALF = 220;
 
@@ -64,15 +63,15 @@ export function WorkbookReader() {
               <div className="wi-rd-re" />
               {Array.from({ length: LEAVES }, (_, i) => {
                 const fr = book.pages[2 * i], bk = book.pages[2 * i + 1];
-                const cls = ["wi-lf", i === 0 && "cover", i < f && "flipped", anim[i]].filter(Boolean).join(" ");
+                const cls = ["wi-lf", i === 0 && "is-cover", i < f && "flipped", anim[i]].filter(Boolean).join(" ");
                 return (
                   <div key={`${key}-${i}`} className={cls} style={{ "--z": `${-i}px` } as CSSProperties} onAnimationEnd={done(i)}>
                     <div className="wi-hf in">
-                      <div className="wi-fc fr" style={face(fr, 0)} />
-                      <div className="wi-fc bk" style={face(bk, -HALF)} />
+                      <div className="wi-fc front" style={face(fr, 0)} />
+                      <div className="wi-fc back" style={face(bk, -HALF)} />
                       <div className="wi-hf out">
-                        <div className="wi-fc fr" style={face(fr, -HALF)} />
-                        <div className="wi-fc bk" style={face(bk, 0)} />
+                        <div className="wi-fc front" style={face(fr, -HALF)} />
+                        <div className="wi-fc back" style={face(bk, 0)} />
                       </div>
                     </div>
                   </div>
@@ -82,7 +81,6 @@ export function WorkbookReader() {
           </div>
           <button type="button" className="wi-rd-nav p" aria-label="Previous page" disabled={f <= 1} onClick={() => turn(-1)}>{ARROW_L}</button>
           <button type="button" className="wi-rd-nav n" aria-label="Next page" disabled={f >= LEAVES} onClick={() => turn(1)}>{ARROW_R}</button>
-          <div className="wi-rd-cap" aria-live="polite">{`${book.name} · ${book.level} · ${SPREADS[f]}`}</div>
         </div>
       </Fit>
       <div className="wi-lvl" role="group" aria-label="Sample workbook">

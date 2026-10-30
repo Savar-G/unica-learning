@@ -6,7 +6,7 @@ import { useEffect, useState } from "react";
 import { ASSETS, MarkedPage } from "./whats-included-parts";
 
 const STEPS = ["cam", "mkg", "res"] as const;
-const DURATION = [3600, 2100, 5200];
+const DURATION = [2300, 1300, 3800];
 
 const ICON_X = <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2"><path d="M6 6l12 12M18 6L6 18" /></svg>;
 const ICON_FLASH = <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2" strokeLinejoin="round"><path d="M13 2L4 14h7l-1 8 9-12h-7z" /></svg>;
@@ -48,7 +48,7 @@ export function ScanPhone() {
         {STATUS}
         <div className="bar2 mid"><span>Day 1 · page 1</span></div>
         <div className="pgw"><MarkedPage width={214} /></div>
-        <div className="scan" />
+        <div className="sweep" />
         <div className="pill">Marking page 1…</div>
       </div>
       <div className={`sc r2${on(2)}`}>
