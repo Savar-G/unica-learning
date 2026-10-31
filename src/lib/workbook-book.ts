@@ -19,8 +19,14 @@ import {
   stepText,
   valueText,
   workedSteps,
+  type AnswerRegion,
   type AnswerValue,
+  type Equation,
   type Figure as ItemFigure,
+  type ItemCheck,
+  type NumberValue,
+  type Statement,
+  type Term,
   type Operation,
   type QuestionPackage,
 } from "@/lib/question-package";
@@ -212,7 +218,7 @@ const LEVEL_MAX = [
 ];
 
 export interface NumberRange {
-  /** The largest plain number (operand, answer or box answer) an item may use. */
+  /** The largest number an item may print or ask for (printedNumbers). */
   max: number;
   negatives: boolean;
 }
@@ -243,17 +249,158 @@ export function slotRanges(curriculum: Curriculum, level: number, skills: readon
   return Object.fromEntries(skills.map((s) => [s, skillRange(curriculum, level, s)]));
 }
 
-/** The plain numbers of a value: a number's value; amounts with units, times and fractions are not counted. */
-const plain = (v: unknown): number[] =>
-  typeof v === "number" ? [v] : v && typeof v === "object" && (v as { type?: unknown }).type === "number" && typeof (v as { value?: unknown }).value === "number" ? [(v as { value: number }).value] : [];
+// Every number the child sees or is asked for (R380-3-1), walked by one collector over the whole package. Each switch
+// ends in `never`, so a new value type, region, check, statement, figure or operation kind does not build until it is
+// collected here.
 
-/** The plain numbers an item shows or asks for: the operation's operands, the answer and each answer box's answer. */
-function itemNumbers(p: QuestionPackage): number[] {
-  const regions = p.item?.regions ?? [];
+const unreachable = (x: never): never => {
+  throw new Error(`printedNumbers: unknown ${JSON.stringify(x)}`);
+};
+
+/** A Canadian coin's value (5¢, 10¢, 25¢, $1, $2): taught from Kindergarten, so it fits every level's range. */
+const isCoin = (value: number, unit: string) => (unit === "¢" && [1, 5, 10, 25].includes(value)) || (unit === "$" && [1, 2].includes(value));
+
+/**
+ * The numbers written in a text: whole numbers, decimals and numbers with digit groups ("10 000", "1,000"); a minus
+ * sign right before a number makes it negative unless it takes away ("−3", "is −3"; not "9 − 3" or "3n − 2"). A coin value
+ * written with its unit ("25¢", "$2") is left out (isCoin).
+ */
+export function textNumbers(text: string): number[] {
+  const out: number[] = [];
+  const re = /(^|[^\d.])([−-])?(\$)?(\d{1,3}(?:[ ,  ]\d{3})+(?!\d)|\d+(?:\.\d+)?)(¢)?/g;
+  for (let m = re.exec(text); m; m = re.exec(text)) {
+    const before = m[1];
+    const value = Number(m[4].replace(/[ ,  ]/g, ""));
+    const unit = m[3] ? "$" : m[5] ? "¢" : "";
+    if (unit && isCoin(value, unit)) continue;
+    // A minus sign takes away after a number, a closing bracket or a one-letter unknown ("9 − 3", "3n − 2"); anywhere
+    // else ("−3", "is −3", "= −3") it makes the number negative.
+    const prior = text.slice(0, m.index + before.length).trimEnd();
+    const negative = Boolean(m[2]) && !/(\d|\)|(^|[^A-Za-z])[A-Za-z])$/.test(prior);
+    out.push(negative ? -value : value);
+  }
+  return out;
+}
+
+/** The numbers of a value. */
+function valueNumbers(v: AnswerValue | null | undefined): number[] {
+  if (!v) return [];
+  switch (v.type) {
+    case "number": return [v.value];
+    case "fraction": return [v.numerator, v.denominator];
+    case "mixed": return [v.whole, v.numerator, v.denominator];
+    case "remainder": return [v.quotient, v.remainder];
+    case "quantity": return isCoin(v.value, v.unit) ? [] : [v.value];
+    case "compound": return v.parts.flatMap((part) => (isCoin(part.value, part.unit) ? [] : [part.value]));
+    case "time": return [v.hours, v.minutes];
+    case "expression":
+    case "choice":
+    case "text": return textNumbers(v.value);
+    default: return unreachable(v);
+  }
+}
+
+/** The numbers of an operation's operands and its other numbers. */
+function operationNumbers(op: Operation | null | undefined): number[] {
+  if (!op) return [];
+  const operand = (o: number | string | AnswerValue): number[] => (typeof o === "number" ? [o] : typeof o === "string" ? textNumbers(o) : valueNumbers(o));
+  const operands = (op.operands as readonly (number | string | AnswerValue)[]).flatMap(operand);
+  switch (op.kind) {
+    case "add": case "subtract": case "multiply": case "divide":
+    case "decimal-add": case "decimal-subtract": case "decimal-multiply":
+    case "fraction-add": case "fraction-subtract": case "fraction-multiply": case "fraction-divide":
+    case "fraction-simplify": case "convert": case "quantity-add": case "quantity-subtract": case "quantity-multiply":
+    case "money-round": case "elapsed-time": case "time-add": case "clock-convert": case "solve":
+      return operands;
+    case "fraction-equivalent": return [...operands, op.denominator];
+    case "evaluate": return [...operands, ...Object.values(op.values ?? {})];
+    default: return unreachable(op);
+  }
+}
+
+const termNumbers = (t: Term): number[] => ("region" in t ? [] : valueNumbers(t));
+const equationNumbers = (e: Equation): number[] => [e.left, e.right, e.result].flatMap(termNumbers);
+
+function statementNumbers(st: Statement): number[] {
+  switch (st.kind) {
+    case "equation": return equationNumbers(st.equation);
+    case "factor": return [st.factor, st.of];
+    case "shown-answer": return [];
+    default: return unreachable(st);
+  }
+}
+
+function regionNumbers(r: AnswerRegion): number[] {
+  const label = textNumbers(r.label ?? "");
+  switch (r.kind) {
+    case "box": return [...label, ...valueNumbers(r.answer)];
+    case "choice": return [...label, ...r.choices.flatMap(textNumbers), ...textNumbers(r.answer ?? "")];
+    case "work": case "lines": case "picture": return label;
+    default: return unreachable(r);
+  }
+}
+
+function checkNumbers(c: ItemCheck): number[] {
+  switch (c.kind) {
+    case "operation": case "operation-sign": case "count": case "pattern": return [];
+    case "places": return [c.number];
+    case "order": return c.numbers.flatMap(valueNumbers);
+    case "equations": return c.equations.flatMap(equationNumbers);
+    case "sequence": {
+      // Every term printed or asked for: the given ones, and each blank as the term it holds (first given term plus
+      // the step for each place after it).
+      const step = valueNumbers(c.step)[0];
+      const at = c.terms.findIndex((t) => !("region" in t));
+      const first = at >= 0 ? valueNumbers(c.terms[at] as NumberValue)[0] : undefined;
+      const blanks = first === undefined || step === undefined || (c.terms[at] as NumberValue).type !== "number" || c.step.type !== "number" ? []
+        : c.terms.flatMap((t, i) => ("region" in t ? [first + (i - at) * step] : []));
+      return [...c.terms.flatMap(termNumbers), ...blanks, ...valueNumbers(c.step)];
+    }
+    case "compare": return [...valueNumbers(c.left), ...valueNumbers(c.right)];
+    case "yes-no": return statementNumbers(c.statement);
+    default: return unreachable(c);
+  }
+}
+
+function figureNumbers(f: ItemFigure | null | undefined, op: Operation | null): number[] {
+  if (!f) return [];
+  switch (f.kind) {
+    case "dots": return [...f.groups, f.takenAway, f.groups.reduce((a, b) => a + b, 0)];
+    case "ten-frame": return [...f.counters, f.counters.reduce((a, b) => a + b, 0)];
+    case "number-line": {
+      const drawn = pageFigure(f, op);
+      return [f.from, f.to, f.step, ...(drawn?.kind === "number-line" ? (drawn.hops ?? []).flat() : [])];
+    }
+    case "base-ten": return [f.hundreds, f.tens, f.ones, f.hundreds * 100 + f.tens * 10 + f.ones];
+    case "array": return [f.rows, f.columns, f.rows * f.columns];
+    case "pattern": return [];
+    default: return unreachable(f);
+  }
+}
+
+/**
+ * Every number a package prints or asks for: the question text; the operation's numbers and the answer (with its other
+ * accepted forms); the wrong answers; Sam's answer and every number of Sam's steps; the easier example's text,
+ * operation and answer; and the item's regions (labels, box answers, choices), checks (places, order, equations,
+ * sequence terms and blanks, compare and yes-no numbers) and figure (with a number line's hops).
+ */
+export function printedNumbers(p: QuestionPackage): number[] {
+  const item = p.item;
+  const error = item?.error ?? null;
+  const shown = error ? samWork(p.operation, error.answer, shownOf(p).cause) : null;
+  const easier = p.easierExample;
   return [
-    ...(p.operation?.operands ?? []).flatMap(plain),
-    ...plain(p.answer?.value),
-    ...regions.flatMap((r) => (r.kind === "box" ? plain(r.answer) : [])),
+    ...textNumbers(p.text),
+    ...operationNumbers(p.operation),
+    ...valueNumbers(p.answer?.value),
+    ...(p.answer?.accepted ?? []).flatMap(valueNumbers),
+    ...p.wrongAnswers.flatMap((w) => valueNumbers(w.value)),
+    ...valueNumbers(error?.answer),
+    ...(shown?.lines ?? []).flatMap(textNumbers),
+    ...(easier ? [...textNumbers(easier.text), ...operationNumbers(easier.operation), ...valueNumbers(easier.answer)] : []),
+    ...(item?.regions ?? []).flatMap(regionNumbers),
+    ...(item?.checks ?? []).flatMap(checkNumbers),
+    ...figureNumbers(item?.figure, p.operation),
   ];
 }
 
@@ -261,7 +408,7 @@ function itemNumbers(p: QuestionPackage): number[] {
 export function rangeProblem(p: QuestionPackage, curriculum: Curriculum, level: number): string | null {
   const skill = p.skill.skills[0];
   const range = skill ? skillRange(curriculum, level, skill) : levelRange(level);
-  const numbers = itemNumbers(p);
+  const numbers = printedNumbers(p);
   const big = numbers.find((n) => Math.abs(n) > range.max);
   if (big !== undefined) return `the number ${big} is too big for this question: its numbers are at most ${range.max}`;
   const negative = numbers.find((n) => n < 0);
