@@ -12,7 +12,8 @@
     "check:templates": "node scripts/check-templates.mjs",
     "db:types": "node scripts/db-types.mjs",
     "import:curriculum": "node scripts/import-curriculum.mjs",
-    "workbooks:samples": "node scripts/workbook-samples.mjs"
+    "workbooks:samples": "node scripts/workbook-samples.mjs",
+    "maya:text": "node scripts/maya-text.mjs"
   },
   "dependencies": {
     "@sparticuz/chromium": "^153.0.0",
@@ -32,6 +33,8 @@
     "stripe": "^23.0.0"
   },
   "devDependencies": {
+    "@livekit/agents": "^1.9.5",
+    "@livekit/rtc-node": "^1.2.1",
     "@types/node": "^20",
     "@types/qrcode": "^1.5.6",
     "@types/react": "^19",
