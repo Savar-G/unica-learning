@@ -196,6 +196,70 @@ describe("a stroke in progress, and every way out of holding the board", () => {
     expect(places(b, 0.4, a.session.view().kept)).toEqual({ stored: 0, kept: 0 });
   });
 
+  it("a forced takeover, then Maya takes the pen, then \"Use it here\": the kept stroke is stored exactly once (R370-5-1)", async () => {
+    const b = browser({ lease: true });
+    const a = await b.first("a", { hears: (k) => k !== "ask" });
+    a.draw(0.1);
+    a.begin(0.4);
+    const c = await b.open("c");
+    const taking = c.tab.takeOver();
+    await b.timers.advance(HAND_OVER_MS + 1000);
+    expect(await taking).toBe(true);
+    // The new holder gives the pen to Maya, and saves: A hears it and keeps its stroke.
+    c.session.giveBack();
+    await b.timers.advance(1);
+    expect(penHolder(loadDraft(b.store, KEY)!)).toBe("maya");
+    expect(places(b, 0.4, a.session.view().kept)).toEqual({ stored: 0, kept: 1 });
+    const back = a.tab.takeOver();
+    await b.timers.advance(1000);
+    expect(await back).toBe(true);
+    expect(places(b, 0.4, a.session.view().kept)).toEqual({ stored: 1, kept: 0 });
+    // Logged as recovered ink, with its first times; the pen stays with Maya.
+    const stored = loadDraft(b.store, KEY)!;
+    const recovered = stored.events.filter((e) => e.kind === "recovered");
+    expect(recovered).toHaveLength(1);
+    expect(recovered[0].kind === "recovered" && recovered[0].pts[0][2] < recovered[0].t).toBe(true);
+    expect(penHolder(stored)).toBe("maya");
+    expect(a.notes).not.toContain("not_added");
+  });
+
+  it("a kept stroke the board cannot take back stays kept, never cleared", async () => {
+    const b = browser({ lease: true });
+    const a = await b.first("a", { hears: (k) => k !== "ask" });
+    // A stroke on page 3, which the board does not have: it cannot be added back.
+    expect(a.session.penDown([0.4, 0.5], false, 800, 0)).toBe(true);
+    const c = await b.open("c");
+    const taking = c.tab.takeOver();
+    await b.timers.advance(HAND_OVER_MS + 1000);
+    await taking;
+    a.session.penUp(0);
+    expect(a.session.view().kept).toHaveLength(1);
+    const kept = a.session.view().kept[0];
+    (kept as { page: number }).page = 3;
+    const back = a.tab.takeOver();
+    await b.timers.advance(1000);
+    await back;
+    expect(a.session.view().kept).toHaveLength(1);
+    expect(a.notes).toContain("not_added");
+  });
+
+  it("only the pointer that started a stroke feeds it, lifts it or cancels it; a second finger draws nothing (R370-5-2)", async () => {
+    const b = browser();
+    const a = await b.first();
+    expect(a.session.penDown([0.4, 0.5], true, 800, 1)).toBe(true);
+    // A second finger: it starts nothing, and its moves, lift and cancel change nothing.
+    expect(a.session.penDown([0.1, 0.1], true, 800, 2)).toBe(false);
+    a.session.penMove([[0.1, 0.1], [0.12, 0.12]], 2);
+    a.session.penCancel(2);
+    a.session.penUp(2);
+    a.session.penMove([[0.404, 0.502], [0.408, 0.504]], 1);
+    expect(a.session.view().live?.pointer).toBe(1);
+    a.session.penUp(1);
+    const stored = childStrokes(loadDraft(b.store, KEY)!);
+    expect(stored).toHaveLength(1);
+    expect(stored[0].pts.map(([x]) => x)).toEqual([0.4, 0.404, 0.408]);
+  });
+
   it("a tab showing the board read-only draws nothing and says so", async () => {
     const b = browser();
     await b.first();

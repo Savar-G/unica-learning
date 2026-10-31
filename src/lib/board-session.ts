@@ -17,12 +17,15 @@ import {
   mayaFinished,
   mayaWritingEnds,
   penHasMoved,
+  keptStroke,
   penHolder,
+  restoreKept,
   takePen,
   undo,
   type BoardHistory,
   type Change,
   type InkStroke,
+  type KeptStroke,
 } from "@/lib/board-history";
 import type { BoardTab, TabRole } from "@/lib/board-tab";
 import { addPoint, capturedPoints, startCapture, type Capture } from "@/lib/child-ink-svg";
@@ -42,7 +45,7 @@ export type SessionNote =
   | "lost_line"
   /** The board is full. */
   | "full"
-  /** Ink kept from before could not be added back after "Use it here" (Maya has the pen). */
+  /** Kept ink the board could not take back after "Use it here" (it stays kept). */
   | "not_added";
 
 /** Why this tab stops holding the board. */
@@ -64,8 +67,8 @@ export type SessionTab = Pick<BoardTab, "owns" | "save" | "stored">;
 export interface SessionView {
   history: BoardHistory;
   role: TabRole | "opening";
-  /** The stroke in progress, or null. */
-  live: { erase: boolean; capture: Capture } | null;
+  /** The stroke in progress, with the pointer drawing it, or null. */
+  live: { erase: boolean; capture: Capture; pointer: number } | null;
   /** Ink this tab drew but could not save: shown, and added back by "Use it here". */
   kept: readonly InkStroke[];
 }
@@ -99,12 +102,16 @@ export interface BoardSession {
   attach(tab: SessionTab, role: TabRole, stored: BoardHistory | null): void;
   /** True when this tab may edit now. A tab that lost the board ends holding it (`lost`) and says false. */
   holds(): boolean;
-  /** The pointer went down at a board point (board widths). True when a stroke starts. */
-  penDown(point: readonly [number, number], erase: boolean, boardWidth: number): boolean;
-  penMove(points: readonly (readonly [number, number])[]): void;
-  penUp(): void;
+  /**
+   * The pointer `pointer` went down at a board point (board widths). True when a stroke starts. Moves, ups and cancels
+   * of any other pointer (a second finger) are ignored while it draws (R370-5-2).
+   */
+  penDown(point: readonly [number, number], erase: boolean, boardWidth: number, pointer?: number): boolean;
+  penMove(points: readonly (readonly [number, number])[], pointer?: number): void;
+  /** The drawing pointer lifted, or lost its capture: the stroke ends and is kept. */
+  penUp(pointer?: number): void;
   /** The pointer was cancelled: the stroke in progress is dropped (the browser took the pointer for a scroll). */
-  penCancel(): void;
+  penCancel(pointer?: number): void;
   take(): void;
   giveBack(): void;
   undo(): void;
@@ -120,7 +127,7 @@ export interface BoardSession {
 const PEN = { w: 5, eraserW: 28, minGapPx: 0.6 };
 
 /** The stroke in progress, with the board width (CSS pixels) it is drawn at. */
-type Live = { erase: boolean; capture: Capture; boardWidth: number };
+type Live = { erase: boolean; capture: Capture; boardWidth: number; pointer: number };
 const key = (s: InkStroke) => JSON.stringify(s);
 
 export function createBoardSession(o: SessionOptions): BoardSession {
@@ -129,11 +136,11 @@ export function createBoardSession(o: SessionOptions): BoardSession {
   let role: SessionView["role"] = o.noStore ? "holder" : "opening";
   let tab: SessionTab | null = null;
   let live: Live | null = null;
-  let kept: InkStroke[] = [];
+  let kept: KeptStroke[] = [];
   /** The board as this tab last saved or read it: the one it need not save again. */
   let saved = history;
   let clock: { origin: number; base: number } | null = null;
-  let view: SessionView = { history, role, live: null, kept };
+  let view: SessionView = { history, role, live: null, kept: [] };
   const listeners = new Set<() => void>();
   const notes = new Set<(note: SessionNote) => void>();
 
@@ -141,7 +148,7 @@ export function createBoardSession(o: SessionOptions): BoardSession {
   if (!o.restored) clock = { origin: o.clock(), base: o.still ? mayaWritingEnds(history) : 1 };
 
   const emit = () => {
-    view = { history, role, live: live && { erase: live.erase, capture: live.capture }, kept };
+    view = { history, role, live: live && { erase: live.erase, capture: live.capture, pointer: live.pointer }, kept: kept.map((k) => k.stroke) };
     for (const fn of listeners) fn();
   };
   const say = (note: SessionNote) => notes.forEach((fn) => fn(note));
@@ -189,6 +196,12 @@ export function createBoardSession(o: SessionOptions): BoardSession {
     pts: capturedPoints(l.capture).map(([x, y, t]): TimedPoint => [x, y, t]),
   });
 
+  /** Adds strokes to the kept ink, each once. */
+  const keep = (strokes: readonly InkStroke[]) => {
+    const have = new Set(kept.map((k) => key(k.stroke)));
+    kept = [...kept, ...strokes.filter((s) => !have.has(key(s))).map(keptStroke)];
+  };
+
   /** The strokes on screen this tab has not saved: what it keeps when the board leaves without a save. */
   const unsaved = (): InkStroke[] => {
     const stored = tab?.stored() ?? null;
@@ -225,8 +238,7 @@ export function createBoardSession(o: SessionOptions): BoardSession {
     role = "reader";
     const lines = [...unsaved(), ...(homeless ? [homeless] : [])];
     if (lines.length > 0) {
-      const have = new Set(kept.map(key));
-      kept = [...kept, ...lines.filter((s) => !have.has(key(s)))];
+      keep(lines);
       say("moved");
     } else say("elsewhere");
     emit();
@@ -250,13 +262,13 @@ export function createBoardSession(o: SessionOptions): BoardSession {
     }
   };
 
-  function penUp() {
+  function penUp(pointer = 0) {
     const l = live;
-    if (!l) return;
+    if (!l || l.pointer !== pointer) return;
     live = null;
     if (!holds()) {
       // The board went away while the pointer was down: the stroke is kept, never dropped.
-      kept = [...kept, strokeOf(l)];
+      keep([strokeOf(l)]);
       say("moved");
       emit();
       return;
@@ -284,8 +296,9 @@ export function createBoardSession(o: SessionOptions): BoardSession {
       emit();
     },
     holds,
-    penDown(point, erase, boardWidth) {
-      if (role === "opening") return false;
+    penDown(point, erase, boardWidth, pointer = 0) {
+      // One stroke at a time: a second pointer starts nothing.
+      if (live || role === "opening") return false;
       const wasHolder = role === "holder";
       if (!holds()) {
         // A tab that has just lost the board said so already (end).
@@ -296,12 +309,12 @@ export function createBoardSession(o: SessionOptions): BoardSession {
         say("pen_with_maya");
         return false;
       }
-      live = { erase, capture: startCapture([point[0], point[1], now()]), boardWidth };
+      live = { erase, capture: startCapture([point[0], point[1], now()]), boardWidth, pointer };
       emit();
       return true;
     },
-    penMove(points) {
-      if (!live) return;
+    penMove(points, pointer = 0) {
+      if (!live || live.pointer !== pointer) return;
       const gap = pen.minGapPx / live.boardWidth;
       for (const [x, y] of points) {
         const added = addPoint(live.capture, [x, y, now()], gap);
@@ -318,7 +331,8 @@ export function createBoardSession(o: SessionOptions): BoardSession {
       emit();
     },
     penUp,
-    penCancel() {
+    penCancel(pointer = 0) {
+      if (!live || live.pointer !== pointer) return;
       live = null;
       emit();
     },
@@ -328,7 +342,7 @@ export function createBoardSession(o: SessionOptions): BoardSession {
     giveBack() {
       if (!holds()) return;
       // The pen goes to Maya: a stroke in progress is ended first, as if the pointer went up.
-      if (live) penUp();
+      if (live) penUp(live.pointer);
       if (role === "holder") apply(givePen(history, now()));
     },
     undo() {
@@ -353,20 +367,16 @@ export function createBoardSession(o: SessionOptions): BoardSession {
         emit();
         return;
       }
-      // This tab took the board ("Use it here"): the stored board, then the kept ink as new strokes after it.
+      // This tab took the board ("Use it here"): the stored board, then the kept ink added back as recovered strokes,
+      // whoever holds the pen now (the child drew them holding it). A kept stroke leaves `kept` only once the history
+      // holds it (R370-5-1).
       role = "holder";
       if (stored) adopt(stored);
-      const lines = kept;
-      kept = [];
-      let missed = 0;
-      for (const line of lines) {
-        const at = now();
-        const first = line.pts[0][2];
-        const added = drawStroke(history, { ...line, pts: line.pts.map(([x, y, t]): TimedPoint => [x, y, at + t - first]) });
-        if (added.ok) history = added.history;
-        else missed++;
-      }
-      if (missed > 0) say("not_added");
+      const on = new Set(childStrokes(history).map(key));
+      const back = restoreKept(history, kept.filter((k) => !on.has(key(k.stroke))), now());
+      history = back.history;
+      kept = back.refused;
+      if (kept.length > 0) say("not_added");
       persist();
       passPen();
       emit();

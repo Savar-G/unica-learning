@@ -30,6 +30,12 @@ export interface InkStroke {
 export type HistoryEvent =
   | { kind: "maya"; t: number; batchId: string; commands: unknown[] }
   | ({ kind: "stroke" } & InkStroke)
+  /**
+   * A stroke the child drew while holding the pen in a tab that lost the board before it could save it (R370-5-1),
+   * added back at `t` by "Use it here". Its points keep their first times (earlier than `t`): replay shows it whole at
+   * `t`. It is valid because of where it came from, not because of who holds the pen at `t`.
+   */
+  | ({ kind: "recovered"; t: number } & InkStroke)
   | { kind: "undo"; t: number }
   | { kind: "clear"; t: number }
   | { kind: "pen"; t: number; to: PenHolder };
@@ -77,7 +83,7 @@ const round4 = (n: number) => Math.round(n * 10_000) / 10_000;
 const round2 = (n: number) => Math.round(n * 100) / 100;
 
 function push(h: BoardHistory, event: HistoryEvent): Change {
-  const ink = event.kind === "stroke" || event.kind === "maya";
+  const ink = event.kind === "stroke" || event.kind === "recovered" || event.kind === "maya";
   if (h.events.length >= (ink ? MAX_EVENTS : MAX_LOG)) return { ok: false, code: "full", reason: "The board is full. Clear it or start a new question." };
   return { ok: true, history: { v: 1, revision: h.revision + 1, events: [...h.events, event] } };
 }
@@ -97,7 +103,7 @@ function replayScene(events: readonly HistoryEvent[]): Scene | null {
       const r = applyBatch(scene, { transactionId: e.batchId, commands: e.commands });
       if (!r.ok) return null;
       scene = r.scene;
-    } else if (e.kind === "stroke") {
+    } else if (e.kind === "stroke" || e.kind === "recovered") {
       try {
         scene = addChildInk(scene, { page: e.page, stroke: { erase: e.erase, w: e.w, pts: e.pts.map(([x, y]) => [x, y]) }, boardWidth: e.boardWidth }).scene;
       } catch {
@@ -189,6 +195,53 @@ export function clear(h: BoardHistory, t: number): Change {
   return push(h, { kind: "clear", t: at(h, t) });
 }
 
+// ---------- ink kept by a tab that lost the board ----------
+
+/**
+ * A stroke a tab drew but could not save, because another tab took the board (R370-5-1). Only strokes the child began
+ * while holding the pen are kept: `penHeld` records it, `startedAt` is the stroke's first time on its own board.
+ */
+export interface KeptStroke {
+  stroke: InkStroke;
+  penHeld: true;
+  startedAt: number;
+}
+
+/** A stroke the child drew holding the pen, as the tab that lost the board keeps it. */
+export const keptStroke = (stroke: InkStroke): KeptStroke => ({ stroke, penHeld: true, startedAt: stroke.pts[0]?.[2] ?? 0 });
+
+/**
+ * Adds kept strokes back to the board at `t` ("Use it here"), as `recovered` events with their first times: valid
+ * because the child drew them holding the pen, whoever holds it now. Each one the board cannot take (no points, a page
+ * the board does not have, the board full) is returned in `refused`; the rest are in the history, once each.
+ */
+export function restoreKept(h: BoardHistory, kept: readonly KeptStroke[], t: number): { history: BoardHistory; refused: KeptStroke[] } {
+  let history = h;
+  const refused: KeptStroke[] = [];
+  for (const k of kept) {
+    const s = k.stroke;
+    const valid =
+      k.penHeld === true &&
+      s.w > 0 && s.w <= 100 && s.boardWidth > 0 && s.boardWidth <= 100_000 &&
+      s.pts.length > 0 && s.pts.length <= MAX_POINTS &&
+      s.pts.every(([x, y, pt], i) => finite(x) && finite(y) && Math.abs(x) <= 100 && Math.abs(y) <= 100 && Number.isInteger(pt) && pt >= 0 && (i === 0 || pt >= s.pts[i - 1][2]));
+    if (!valid || !Number.isInteger(s.page) || s.page < 1) {
+      refused.push(k);
+      continue;
+    }
+    try {
+      addChildInk(boardScene(history), { page: s.page, stroke: { erase: s.erase, w: s.w, pts: [] }, boardWidth: s.boardWidth });
+    } catch {
+      refused.push(k);
+      continue;
+    }
+    const added = push(history, { kind: "recovered", t: at(history, t), erase: s.erase, w: s.w, boardWidth: s.boardWidth, page: s.page, pts: s.pts.map(([x, y, pt]): TimedPoint => [x, y, pt]) });
+    if (added.ok) history = added.history;
+    else refused.push(k);
+  }
+  return { history, refused };
+}
+
 // ---------- replay ----------
 
 const startOf = (e: HistoryEvent) => (e.kind === "stroke" ? e.pts[0][2] : e.t);
@@ -205,6 +258,11 @@ function childAt(events: readonly HistoryEvent[], t: number): InkStroke[] {
       const { kind, ...stroke } = e;
       void kind;
       ink.push(drawn === -1 ? stroke : { ...stroke, pts: stroke.pts.slice(0, drawn) });
+    } else if (e.kind === "recovered") {
+      const { kind, t: at, ...stroke } = e;
+      void kind;
+      void at;
+      ink.push(stroke);
     }
   }
   return ink;
@@ -228,13 +286,13 @@ function mayaTimeline(events: readonly HistoryEvent[]): Timeline {
   let end = 0;
   const marks: { fromMs: number; page: number }[] = [];
   for (const e of events) {
-    if (e.kind === "stroke") {
+    if (e.kind === "stroke" || e.kind === "recovered") {
       try {
         scene = addChildInk(scene, { page: e.page, stroke: { erase: e.erase, w: e.w, pts: e.pts.map(([x, y]) => [x, y]) }, boardWidth: e.boardWidth }).scene;
       } catch {
         // A stroke the log could not keep: it was never added, so the board goes on without it.
       }
-      marks.push({ fromMs: e.pts[0][2], page: e.page });
+      marks.push({ fromMs: startOf(e), page: e.page });
       continue;
     }
     if (e.kind !== "maya") continue;
@@ -312,6 +370,7 @@ function readEvent(raw: unknown): HistoryEvent | null {
       return isTime(raw.t) && (raw.to === "maya" || raw.to === "child") ? { kind: "pen", t: raw.t, to: raw.to } : null;
     case "maya":
       return isTime(raw.t) && typeof raw.batchId === "string" && Array.isArray(raw.commands) ? { kind: "maya", t: raw.t, batchId: raw.batchId, commands: raw.commands } : null;
+    case "recovered":
     case "stroke": {
       const { erase, w, boardWidth, page, pts } = raw;
       if (typeof erase !== "boolean" || !finite(w) || !(w > 0 && w <= 100) || !finite(boardWidth) || !(boardWidth > 0 && boardWidth <= 100_000)) return null;
@@ -321,7 +380,9 @@ function readEvent(raw: unknown): HistoryEvent | null {
         if (!Array.isArray(p) || p.length !== 3 || !finite(p[0]) || !finite(p[1]) || Math.abs(p[0]) > 100 || Math.abs(p[1]) > 100 || !isTime(p[2])) return null;
         out.push([p[0], p[1], p[2]]);
       }
-      return { kind: "stroke", erase, w, boardWidth, page: page as number, pts: out };
+      const stroke = { erase, w, boardWidth, page: page as number, pts: out };
+      if (raw.kind === "stroke") return { kind: "stroke", ...stroke };
+      return isTime(raw.t) ? { kind: "recovered", t: raw.t, ...stroke } : null;
     }
     default:
       return null;
@@ -347,7 +408,7 @@ export function decodeHistory(raw: string | null): BoardHistory | null {
     const e = readEvent(raw);
     if (!e || startOf(e) < last) return null;
     last = e.kind === "stroke" ? e.pts[e.pts.length - 1][2] : e.t;
-    if (e.kind === "stroke" && e.pts.some(([, , t], i) => i > 0 && t < e.pts[i - 1][2])) return null;
+    if ((e.kind === "stroke" || e.kind === "recovered") && e.pts.some(([, , t], i) => i > 0 && t < e.pts[i - 1][2])) return null;
     events.push(e);
   }
   if (!replayScene(events)) return null;

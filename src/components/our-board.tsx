@@ -34,7 +34,7 @@ const KEPT_NOTE = "The other tab is still using this board. Close it, then try a
 /** What a tab says when another tab took the board while this one had lines it had not saved (R370-3-1). */
 const MOVED_NOTE = "This board moved to another tab. Your newest lines stay here: tap “Use it here” to add them back.";
 /** What a tab says when lines it kept could not be added back after "Use it here". */
-const NOT_ADDED_NOTE = "Some of your lines could not be added back, because Maya has the pen.";
+const NOT_ADDED_NOTE = "Some of your lines could not be added back. They stay here: tap “Use it here” again.";
 /** What the board says when it cannot keep a stroke, so a line never disappears without a word. */
 const LOST_NOTE = "That line could not be kept. Please draw it again.";
 /** What the board says to a stroke while Maya holds the pen. */
@@ -326,9 +326,12 @@ function LiveBoard({ question, label, caption, still, draftKey, store }: OurBoar
     const [next, decision] = pointerDown(guard.current, { id: e.pointerId, kind: e.pointerType, time: e.timeStamp, width: e.width, height: e.height });
     guard.current = next;
     if (decision === "ignore") return;
+    // The pen takes over from a touch stroke already in progress (a palm that landed first): that stroke is dropped.
+    const touch = session.view().live;
+    if (decision === "replace" && touch) session.penCancel(touch.pointer);
     const p = pointAt(e);
     const before = notesSaid.current;
-    if (!p || !camera || !session.penDown(p, tool === "eraser", camera.boardWidth)) {
+    if (!p || !camera || !session.penDown(p, tool === "eraser", camera.boardWidth, e.pointerId)) {
       // Nothing is drawn. The pointer is let go, so a finger can still scroll the page.
       guard.current = pointerUp(guard.current, { id: e.pointerId, kind: e.pointerType, time: e.timeStamp })[0];
       // A mouse drag would select the page's text instead.
@@ -340,6 +343,7 @@ function LiveBoard({ question, label, caption, still, draftKey, store }: OurBoar
     e.currentTarget.setPointerCapture(e.pointerId);
   };
 
+  // Only the pointer that started the stroke feeds it: a second finger is ignored (R370-5-2).
   const move = (e: ReactPointerEvent<SVGSVGElement>) => {
     if (!session.view().live) return;
     const events = e.nativeEvent.getCoalescedEvents?.() ?? [e.nativeEvent];
@@ -348,7 +352,7 @@ function LiveBoard({ question, label, caption, still, draftKey, store }: OurBoar
       const p = pointAt(ev);
       if (p) points.push(p);
     }
-    session.penMove(points);
+    session.penMove(points, e.pointerId);
   };
 
   const up = (e: ReactPointerEvent<SVGSVGElement>) => {
@@ -359,8 +363,8 @@ function LiveBoard({ question, label, caption, still, draftKey, store }: OurBoar
     const [next, ended] = pointerUp(guard.current, { id: e.pointerId, kind: e.pointerType, time: e.timeStamp });
     guard.current = next;
     if (!ended) return;
-    if (e.type === "pointercancel") session.penCancel();
-    else session.penUp();
+    if (e.type === "pointercancel") session.penCancel(e.pointerId);
+    else session.penUp(e.pointerId);
   };
 
   type Piece = { key: string; erase: boolean; width: number; d: string };
@@ -418,6 +422,8 @@ function LiveBoard({ question, label, caption, still, draftKey, store }: OurBoar
               onPointerMove={move}
               onPointerUp={up}
               onPointerCancel={up}
+              // The drawing pointer lost its capture (the window lost focus, say): the stroke ends as if it lifted.
+              onLostPointerCapture={up}
               onPointerLeave={(e) => { if (refused.current === e.pointerId) up(e); }}
             >
               <g className="child-ink-strokes">{camera ? layer(layers, 0) : null}</g>

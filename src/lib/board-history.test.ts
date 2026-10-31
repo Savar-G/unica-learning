@@ -17,6 +17,8 @@ import {
   givePen,
   historyFromRecording,
   historyLength,
+  keptStroke,
+  restoreKept,
   loadDraft,
   markClosed,
   markOpen,
@@ -313,6 +315,30 @@ describe("copies of a board", () => {
     expect(decodeHistory(JSON.stringify({ ...data, events: [{ kind: "maya", t: 0, batchId: "x", commands: [{ op: "nope" }] }] }))).toBeNull();
     expect(decodeHistory(JSON.stringify({ ...data, v: 2 }))).toBeNull();
     expect(decodeHistory(JSON.stringify({ ...data, events: [{ kind: "stroke", erase: false, w: 3, boardWidth: 800, page: 1, pts: [[0.1, 0.1, 5], [0.2, 0.2, 4]] }] }))).toBeNull();
+  });
+});
+
+describe("ink kept by a tab that lost the board (R370-5-1)", () => {
+  it("goes back on as recovered strokes, with their first times, whoever holds the pen; it reads back and replays", () => {
+    const drawn = stroke(0.4, 0.3, 2100);
+    const h = ok(givePen(withPen(), 3000));
+    expect(penHolder(h)).toBe("maya");
+    const { history, refused } = restoreKept(h, [keptStroke(drawn)], 5000);
+    expect(refused).toEqual([]);
+    expect(childStrokes(history)).toEqual([drawn]);
+    expect(history.events.at(-1)).toEqual({ kind: "recovered", t: 5000, ...drawn });
+    expect(penHolder(history)).toBe("maya");
+    expect(decodeHistory(encodeHistory(history))).toEqual(history);
+    const r = replayOf(history);
+    expect(replayFrame(r, 4999).child).toEqual([]);
+    expect(replayFrame(r, 5000).child).toEqual([drawn]);
+  });
+
+  it("refuses a kept stroke the board cannot take, and keeps it out of the history", () => {
+    const bad = keptStroke(stroke(0.4, 0.3, 2100, { page: 4 }));
+    const { history, refused } = restoreKept(withPen(), [bad], 5000);
+    expect(refused).toEqual([bad]);
+    expect(childStrokes(history)).toEqual([]);
   });
 });
 
