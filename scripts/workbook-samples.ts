@@ -35,7 +35,7 @@ import { workbookDraftStore } from "@/lib/workbook-draft-store";
 import { renderableDraft, renderFitCheck } from "@/lib/workbook-fit";
 import { generateWorkbook, type GeneratedWorkbook, type WorkbookDraftStore } from "@/lib/workbook-generator";
 import { planWorkbook } from "@/lib/workbook-plan";
-import { renderWorkbook, reviewPrint, type RenderProblem } from "@/lib/workbook-render";
+import { renderWorkbook, reviewPrint, type PrintEngine, type RenderProblem } from "@/lib/workbook-render";
 import { sampleChild, samplePlanInput, type SampleBookKind, type SampleChild } from "@/lib/workbook-sample-profiles";
 import { workbookFiles } from "@/lib/workbook-store";
 import { workbookTemplate } from "@/lib/workbook-template";
@@ -210,7 +210,21 @@ interface BookResult {
 const out = values.out!;
 await mkdir(out, { recursive: true });
 const template = workbookTemplate(await fixedTemplateFonts());
-const engine = chromiumPrintEngine();
+// Chromium can fail to start when several start at once: each print gets up to 3 tries, so one failed launch does not
+// lose a whole book.
+const chromium = chromiumPrintEngine();
+const engine: PrintEngine = {
+  async print(job) {
+    for (let attempt = 1; ; attempt++) {
+      try {
+        return await chromium.print(job);
+      } catch (e) {
+        if (attempt >= 3) throw e;
+        await new Promise((r) => setTimeout(r, 1500 * attempt));
+      }
+    }
+  },
+};
 
 async function contactSheet(images: Uint8Array[], draft: GeneratedWorkbook, problems: RenderProblem[], file: string) {
   // The first 8 pages, then failing pages (up to 4), then one of each key day page type not yet shown.
