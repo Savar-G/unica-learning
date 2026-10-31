@@ -128,7 +128,11 @@ export interface WorkbookRunStore {
   yield(runId: string, lease: string): Promise<boolean>;
   /** The step and progress, with a heartbeat. */
   progress(runId: string, lease: string, p: { step: RunStep; done?: number; total?: number }): Promise<boolean>;
-  held(runId: string, lease: string): Promise<boolean>;
+  /**
+   * Stores the run's draft (its id is the run's draft key) only while `lease` holds the run, checked and inserted in
+   * one step (R379-1): "lost" stores nothing; "used" means an earlier attempt of the holder stored it.
+   */
+  saveDraft(runId: string, lease: string, draft: GeneratedWorkbook): Promise<"saved" | "lost" | "used" | { refused: string }>;
   /** The run's finished day pages. */
   pages(runId: string): Promise<GeneratedPage[]>;
   /** Stores a finished day page (the first stored wins), with a heartbeat. */
@@ -331,7 +335,8 @@ export async function runWorkbookJob(runId: string, deps: WorkbookJobDeps, o: { 
       if (!draft) {
         const written = await write(claimed, deps, lease, progress, check, () => lost, (v) => { lost = v; }, () => left() < PAGE_MARGIN_MS);
         if (written === "paused") return await handOn();
-        draft = written;
+        // The stored draft is the truth: an earlier attempt of this holder may have stored it ("used").
+        draft = (await deps.drafts.draft(claimed.draftKey)) ?? written;
       }
       if (left() < RENDER_MS) return await handOn();
       await progress({ step: "render" });
@@ -385,15 +390,18 @@ async function write(
       return ai.json(request, signal);
     },
   };
+  // The draft is stored by the run's own lease-checked insert (R379-1): a call that lost the run stores nothing.
   const guardedDrafts: WorkbookDraftStore = {
     draft: (id) => deps.drafts.draft(id),
     async save(d) {
       await check();
-      if (!(await deps.runs.held(run.id, lease))) {
+      const saved = await deps.runs.saveDraft(run.id, lease, d);
+      if (saved === "lost") {
         setLost(true);
         return { status: "refused", reason: "the run was taken up by another call" };
       }
-      return deps.drafts.save(d);
+      if (typeof saved === "object") return { status: "refused", reason: saved.refused };
+      return { status: "saved", draftId: d.id };
     },
   };
   const pages: PageStore = {

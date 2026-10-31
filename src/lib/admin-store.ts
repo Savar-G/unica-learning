@@ -21,7 +21,7 @@ import type { ExportReader, ExportRow, PagedTable } from "@/lib/admin-export";
 import type { AnonymousTestRow } from "@/lib/anonymous-copy-export";
 import { WORKBOOK_FILES_BUCKET, type Workbook, type WorkbookSummary } from "@/lib/workbook-content";
 import { workbookStore } from "@/lib/workbook-store";
-import type { GeneratedWorkbook } from "@/lib/workbook-generator";
+import { GENERATED_DRAFT_VERSION, type GeneratedWorkbook } from "@/lib/workbook-generator";
 import type { DraftRendering, WorkbookRun } from "@/lib/workbook-job";
 import { RUN_COLUMNS, runFromRow } from "@/lib/workbook-job-store";
 import type { RenderProblem } from "@/lib/workbook-render";
@@ -562,10 +562,12 @@ export interface RunListRow {
   run: WorkbookRun;
   counts: DraftCounts | null;
   notRendered: number | null;
+  /** The draft was stored in an older shape (before the page layouts): the list shows "old draft format". */
+  oldFormat: boolean;
 }
 
-const DRAFT_COUNT_COLUMNS = "id, pages, questions, failed, not_checked, failed_pages";
-type DraftCountRow = { id: string; pages: number; questions: number; failed: number; not_checked: number; failed_pages: number };
+const DRAFT_COUNT_COLUMNS = "id, schema_version, pages, questions, failed, not_checked, failed_pages";
+type DraftCountRow = { id: string; schema_version: number; pages: number; questions: number; failed: number; not_checked: number; failed_pages: number };
 const countsOf = (d: DraftCountRow): DraftCounts => ({ pages: d.pages, questions: d.questions, failed: d.failed, notChecked: d.not_checked, failedPages: d.failed_pages });
 
 async function runRows(a: AdminSession, runs: WorkbookRun[]): Promise<RunListRow[]> {
@@ -583,7 +585,10 @@ async function runRows(a: AdminSession, runs: WorkbookRun[]): Promise<RunListRow
   return runs.map((run) => {
     const d = run.draftId ? byDraft.get(run.draftId) : undefined;
     const p = run.draftId ? problems.get(run.draftId) : undefined;
-    return { run, counts: d ? countsOf(d) : null, notRendered: p ? new Set(p.render_problems.map((x) => x.page)).size : null };
+    return {
+      run, counts: d ? countsOf(d) : null, notRendered: p ? new Set(p.render_problems.map((x) => x.page)).size : null,
+      oldFormat: !!d && d.schema_version !== GENERATED_DRAFT_VERSION,
+    };
   });
 }
 
@@ -629,6 +634,8 @@ export interface RunDetail {
   child: ChildRow | null;
   /** The draft the run stored, its revision 1's rendering and what did not render; null until the run is done. */
   draft: { workbook: GeneratedWorkbook; rendering: DraftRendering | null; problems: RenderProblem[]; revision: number } | null;
+  /** The run's draft is stored in an older shape, which this page does not show (its version). */
+  oldFormat: number | null;
   /** Short-lived URLs of the page images, by path. */
   images: Record<string, string>;
   audit: AuditEntry[];
@@ -643,7 +650,7 @@ export async function getWorkbookRun(a: AdminSession, id: string): Promise<RunDe
   const [children, draftRow, revision, audit] = await Promise.all([
     childrenById(a, [run.childId]),
     run.draftId
-      ? a.db.from("workbook_drafts").select("draft").eq("id", run.draftId).maybeSingle().then((r) => must<{ draft: GeneratedWorkbook } | null>(r, "workbook draft"))
+      ? a.db.from("workbook_drafts").select("schema_version, draft").eq("id", run.draftId).maybeSingle().then((r) => must<{ schema_version: number; draft: GeneratedWorkbook } | null>(r, "workbook draft"))
       : null,
     run.draftId
       ? a.db.from("workbook_draft_revisions").select("revision, rendering, render_problems").eq("draft_id", run.draftId).order("revision", { ascending: false }).limit(1).maybeSingle()
@@ -653,14 +660,17 @@ export async function getWorkbookRun(a: AdminSession, id: string): Promise<RunDe
       .or(run.draftId ? `run_id.eq.${run.id},draft_id.eq.${run.draftId}` : `run_id.eq.${run.id}`).order("at").order("id").range(0, 199)
       .then((r) => must<AuditEntry[]>(r, "workbook audit")),
   ]);
-  const paths = revision?.rendering?.pages.map((p) => p.image.path) ?? [];
+  // A draft of an older shape (before the page layouts) is shown as "old draft format", not read as this shape.
+  const oldFormat = draftRow && draftRow.schema_version !== GENERATED_DRAFT_VERSION ? draftRow.schema_version : null;
+  const current = oldFormat === null ? draftRow : null;
+  const paths = current ? revision?.rendering?.pages.map((p) => p.image.path) ?? [] : [];
   const signed = paths.length ? await a.db.storage.from(WORKBOOK_FILES_BUCKET).createSignedUrls(paths, WORKBOOK_URL_SECONDS) : { data: [], error: null };
   if (signed.error) console.error("[admin] draft images sign failed", signed.error.message);
   const images: Record<string, string> = {};
   for (const item of signed.data ?? []) if (item.path && item.signedUrl && !item.error) images[item.path] = item.signedUrl;
   return {
-    run, child: children[0] ?? null, images, audit,
-    draft: draftRow ? { workbook: draftRow.draft, rendering: revision?.rendering ?? null, problems: revision?.render_problems ?? [], revision: revision?.revision ?? 1 } : null,
+    run, child: children[0] ?? null, images, audit, oldFormat,
+    draft: current ? { workbook: current.draft, rendering: revision?.rendering ?? null, problems: revision?.render_problems ?? [], revision: revision?.revision ?? 1 } : null,
   };
 }
 

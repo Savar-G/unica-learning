@@ -75,6 +75,7 @@ type NullArgs = KnownArgs<{
   finish_booking_signup: "customer";
   // A draft none of whose pages rendered has no rendering.
   finish_workbook_run: "p_rendering";
+  save_workbook_run_draft: "p_profile_build";
   pending_family_payment_operations: "after_id";
   record_reminder_click: "p_assessment";
   save_family_payment_progress: "head_id" | "after_id";

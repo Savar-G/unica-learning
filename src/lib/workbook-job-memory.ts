@@ -4,7 +4,7 @@
 // finished pages, and the audit entries. `children` maps each known child to its parent; `workbooks` gives
 // each child's stored workbook numbers; `now` is the clock.
 import type { RenderProblem } from "@/lib/workbook-render";
-import type { GeneratedPage } from "@/lib/workbook-generator";
+import { draftProblem, type GeneratedPage, type WorkbookDraftStore } from "@/lib/workbook-generator";
 import type { DraftRendering, RunActor, WorkbookRun, WorkbookRunStore } from "@/lib/workbook-job";
 
 export interface MemoryAudit {
@@ -24,7 +24,7 @@ export interface MemoryRevision {
   problems: RenderProblem[];
 }
 
-export function memoryRunStore(o: { children: Record<string, string>; workbooks?: Record<string, number[]>; now: () => Date; newId: () => string }) {
+export function memoryRunStore(o: { children: Record<string, string>; workbooks?: Record<string, number[]>; now: () => Date; newId: () => string; drafts: WorkbookDraftStore }) {
   const runs = new Map<string, WorkbookRun & { lease: string | null }>();
   const pages = new Map<string, Map<number, GeneratedPage>>();
   const audit: MemoryAudit[] = [];
@@ -110,8 +110,17 @@ export function memoryRunStore(o: { children: Record<string, string>; workbooks?
       r.heartbeatAt = iso();
       return true;
     },
-    async held(id, lease) {
-      return !!holding(id, lease);
+    async saveDraft(id, lease, draft) {
+      const r = holding(id, lease);
+      if (!r) return "lost";
+      if (draft.id !== r.draftKey) throw new Error("the draft id is not the run's draft key");
+      const problem = draftProblem(draft);
+      if (problem) return { refused: problem };
+      if (await o.drafts.draft(draft.id)) return "used";
+      const saved = await o.drafts.save(draft);
+      if (saved.status === "refused") return { refused: saved.reason };
+      r.heartbeatAt = iso();
+      return "saved";
     },
     async retry(id, lease, error) {
       const r = holding(id, lease);

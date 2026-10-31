@@ -40,8 +40,9 @@ export function RunProgress({ run }: { run: WorkbookRun }) {
 }
 
 /** The check results of a draft: what code checked, what it could not, and what failed. */
-export function ChecksCell({ counts, notRendered }: { counts: DraftCounts | null; notRendered: number | null }): ReactNode {
+export function ChecksCell({ counts, notRendered, oldFormat = false }: { counts: DraftCounts | null; notRendered: number | null; oldFormat?: boolean }): ReactNode {
   if (!counts) return <span className="adm-sub">No draft yet</span>;
+  if (oldFormat) return <span className="adm-wb-checks"><Chip tone="muted">Old draft format</Chip><span className="adm-sub">Made before the page layouts. Prepare a new draft to review it.</span></span>;
   const checked = counts.questions - counts.failed - counts.notChecked;
   return <span className="adm-wb-checks">
     {counts.failed > 0 ? <Chip tone="bad">{counts.failed} failed</Chip> : <Chip tone="ok">No failed questions</Chip>}
@@ -115,7 +116,7 @@ export function AdminWorkbookList({ email, runs, more, workbooks, childNames: ch
             <td><Link href={childPath(r.childId)}>{childName(children, r.childId)}</Link></td>
             <td className="adm-nowrap"><Link href={adminWorkbookRunPath(r.row.run.id)}>Draft of workbook {r.row.run.number}</Link></td>
             <td><StateCell run={r.row.run} now={now} /></td>
-            <td><ChecksCell counts={r.row.counts} notRendered={r.row.notRendered} /></td>
+            <td><ChecksCell counts={r.row.counts} notRendered={r.row.notRendered} oldFormat={r.row.oldFormat} /></td>
             <td className="adm-nowrap">{when(r.row.run.createdAt)}</td>
             <td className="adm-sub">{r.row.run.startedBy.email ?? "Unknown"}</td>
           </tr>
@@ -141,7 +142,7 @@ export function ChildRunsTable({ runs, now }: { runs: RunListRow[]; now: Date })
     {runs.map((r) => <tr key={r.run.id}>
       <td className="adm-nowrap"><Link href={adminWorkbookRunPath(r.run.id)}>Draft of workbook {r.run.number}</Link></td>
       <td><StateCell run={r.run} now={now} /></td>
-      <td><ChecksCell counts={r.counts} notRendered={r.notRendered} /></td>
+      <td><ChecksCell counts={r.counts} notRendered={r.notRendered} oldFormat={r.oldFormat} /></td>
       <td className="adm-nowrap">{when(r.run.createdAt)}</td>
       <td className="adm-sub">{r.run.startedBy.email ?? "Unknown"}</td>
     </tr>)}
@@ -324,6 +325,9 @@ export function AdminWorkbookRun({ email, detail, now, only }: { email: string; 
       )}
       {(state === "preparing" || state === "waiting") && <p className="adm-note">This page updates every few seconds. You can leave it: the draft is made in the background.</p>}
 
+      {detail.oldFormat !== null && (
+        <p className="adm-note" role="note"><Chip tone="muted">Old draft format</Chip> This draft was stored in an older format (version {detail.oldFormat}), before the page layouts, so its pages are not shown here. Prepare a new draft to review the pages.</p>
+      )}
       {draft && counts && <>
         <h2>Check results</h2>
         <p><ChecksCell counts={{ pages: counts.pages, questions: counts.questions, failed: counts.failed, notChecked: counts.notChecked, failedPages: counts.failedPages }} notRendered={notRendered} /></p>

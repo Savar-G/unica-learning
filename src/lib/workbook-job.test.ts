@@ -7,8 +7,8 @@ import { curriculumFor } from "@/lib/workbook-curriculum";
 import { memoryDraftStore } from "@/lib/workbook-draft-memory";
 import { memoryRunStore } from "@/lib/workbook-job-memory";
 import { runState, runWorkbookJob, startWorkbookRun, STALE_SECONDS, type ChildInputs, type WorkbookJobDeps } from "@/lib/workbook-job";
-import type { FitCheck } from "@/lib/workbook-generator";
-import { placeChild } from "@/lib/workbook-placement";
+import { generateWorkbook, type FitCheck, type GeneratedWorkbook } from "@/lib/workbook-generator";
+import { placeChild, planNextWorkbook } from "@/lib/workbook-placement";
 import { memoryWorkbookFiles } from "@/lib/workbook-store-memory";
 import { workbookTemplate } from "@/lib/workbook-template";
 
@@ -53,8 +53,8 @@ function setup(o: { inputs?: ChildInputs; ai?: WorkbookJobDeps["ai"]; files?: Wo
   let clock = new Date("2026-10-31T17:00:00.000Z");
   let ids = 0;
   const newId = () => `00000000-0000-4000-8000-${String(++ids).padStart(12, "0")}`;
-  const runs = memoryRunStore({ children: { [CHILD]: PARENT }, now: () => clock, newId });
   const drafts = memoryDraftStore({ [CHILD]: PARENT });
+  const runs = memoryRunStore({ children: { [CHILD]: PARENT }, now: () => clock, newId, drafts });
   const files = memoryWorkbookFiles();
   let tokens = 0;
   const tick = (seconds: number) => { clock = new Date(clock.getTime() + seconds * 1000); };
@@ -66,6 +66,19 @@ function setup(o: { inputs?: ChildInputs; ai?: WorkbookJobDeps["ai"]; files?: Wo
     now: () => clock.getTime(), concurrency: 4, budgetMs: o.budgetMs ?? 1e9, handOff: o.handOff,
   };
   return { runs, drafts, files, deps, ai, tick, now: () => clock };
+}
+
+/** A whole draft for the run's draft key, made by the generator with a store that keeps it local. */
+async function buildDraft(s: ReturnType<typeof setup>, key: string): Promise<GeneratedWorkbook> {
+  const plan = planNextWorkbook({ curriculum: curriculumFor("bc")!, grade: 3, profile: null, workbooks: [], number: 1 });
+  if (!plan.ok) throw new Error(plan.reason);
+  let made: GeneratedWorkbook | null = null;
+  let n = 0;
+  await generateWorkbook(
+    { workbookId: key, childId: CHILD, child: "Leah", number: 1, profileBuild: null, plan: plan.plan, curriculum: curriculumFor("bc")! },
+    { ai: fakeAiClient({ answer }), fit: fits, qrToken: () => `local-token-${String(++n).padStart(8, "0")}`, store: { draft: async () => null, save: async (d) => { made = d; return { status: "saved", draftId: d.id }; } } },
+  );
+  return made!;
 }
 
 async function started(s: ReturnType<typeof setup>) {
@@ -109,7 +122,7 @@ describe("a run", () => {
 
   it("makes the next number after the child's stored workbooks", async () => {
     const s = setup();
-    const runs = memoryRunStore({ children: { [CHILD]: PARENT }, workbooks: { [CHILD]: [1, 2] }, now: s.now, newId: s.deps.newId });
+    const runs = memoryRunStore({ children: { [CHILD]: PARENT }, workbooks: { [CHILD]: [1, 2] }, now: s.now, newId: s.deps.newId, drafts: s.drafts });
     const start = await startWorkbookRun(runs, CHILD, ADMIN);
     expect(start.status).toBe("started");
     expect((await runs.run((start as { runId: string }).runId))!.number).toBe(3);
@@ -264,6 +277,60 @@ describe("stale runs", () => {
     expect(kept()).toBe(run.totalPages);
     // The late call wrote no page after the takeover: its page calls stopped.
     expect(slow.requests.length).toBeLessThanOrEqual(6 + 4);
+  });
+
+  it("stores a draft only while the caller holds the run, checked and inserted in one step (R379-1)", async () => {
+    const s = setup();
+    const id = await started(s);
+    // Call A holds the run, then goes quiet past the stale time; call B takes it up before A's draft insert lands.
+    const first = (await s.runs.claim(id, "lease-a"))!;
+    s.tick(STALE_SECONDS + 1);
+    expect(await s.runs.resume(id, "lease-b", STALE_SECONDS)).not.toBeNull();
+    // A late insert under the old lease stores nothing; the holder's insert stores the draft once.
+    const book = await buildDraft(s, first.draftKey);
+    expect(await s.runs.saveDraft(id, "lease-a", book)).toBe("lost");
+    expect(s.drafts.drafts.size).toBe(0);
+    expect(await s.runs.saveDraft(id, "lease-b", book)).toBe("saved");
+    expect(await s.runs.saveDraft(id, "lease-b", book)).toBe("used");
+    expect(s.drafts.drafts.size).toBe(1);
+  });
+
+  it("lets every page in flight settle before it tries again, writes no page twice and builds the draft from the stored pages (R379-2)", async () => {
+    let saves = 0;
+    let inFlight = 0;
+    let inFlightAtFailure = -1;
+    const slow = fakeAiClient({
+      answer: async (r) => {
+        inFlight++;
+        // Pages finish at different times, so others are in flight when one save fails.
+        await new Promise((done) => setTimeout(done, 1 + (slow.requests.length % 4) * 3));
+        inFlight--;
+        return answer(r);
+      },
+    });
+    const s = setup({ ai: slow });
+    const save = s.runs.savePage;
+    s.deps.runs = {
+      ...s.runs,
+      savePage: async (runId, lease, page) => {
+        if (++saves === 3) {
+          inFlightAtFailure = inFlight;
+          throw new Error("the database is unavailable");
+        }
+        return save(runId, lease, page);
+      },
+    };
+    const id = await started(s);
+    expect(await runWorkbookJob(id, s.deps)).toBe("done");
+    expect(inFlightAtFailure).toBeGreaterThan(0);
+    const run = (await s.runs.run(id))!;
+    expect(run).toMatchObject({ status: "done", attempts: 2 });
+    // Every day page was written by one attempt only: one page call each (the page that failed to save is written
+    // once more by the second attempt, as it was never stored).
+    expect(pageCalls(slow.requests)).toBe(run.totalPages! + 1);
+    // The draft's day pages are the stored pages.
+    const draft = (await s.drafts.draft(run.draftId!))!;
+    for (const p of s.runs.pageStore.get(id)!.values()) expect(draft.pages[p.number - 1]).toEqual(p);
   });
 
   it("reads as stopped when a running run has no progress for the stale time", () => {

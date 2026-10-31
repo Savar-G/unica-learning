@@ -3,6 +3,7 @@ import { isGrade } from "@/lib/assessment";
 import { readChildProfile } from "@/lib/child-profile";
 import { childProfileStore } from "@/lib/child-profile-store";
 import { toJson, type Database, type Tables } from "@/lib/database";
+import { draftProblem, GENERATED_DRAFT_VERSION } from "@/lib/workbook-generator";
 import type { WorkbookJobSource, WorkbookRun, WorkbookRunStore } from "@/lib/workbook-job";
 
 // The runs' store (#312) in Supabase (migration add_workbook_runs), and the job's read of the child. Pass a client with
@@ -67,8 +68,19 @@ export function workbookRunStore(admin: SupabaseClient<Database>): WorkbookRunSt
       const rows = must(await admin.from("workbook_runs").update(patch).eq("id", id).eq("lease", lease).eq("status", "running").select("id"), "progress");
       return (rows ?? []).length > 0;
     },
-    async held(id, lease) {
-      return must(await admin.rpc("workbook_run_held", { p_run: id, p_lease: lease }), "lease check") === true;
+    async saveDraft(id, lease, draft) {
+      const problem = draftProblem(draft);
+      if (problem) return { refused: problem };
+      const { data, error } = await admin.rpc("save_workbook_run_draft", {
+        p_run: id, p_lease: lease, p_draft: toJson(draft), p_number: draft.number, p_levels: draft.levels, p_model: draft.model,
+        p_profile_build: draft.profileBuild, p_schema_version: GENERATED_DRAFT_VERSION, p_pages: draft.counts.pages,
+        p_questions: draft.counts.questions, p_failed: draft.counts.failed, p_not_checked: draft.counts.notChecked,
+        p_failed_pages: draft.counts.failedPages,
+      });
+      if (error?.code === "55000") return { refused: "the family is being deleted" };
+      if (error) throw new Error(`workbook run draft save: ${error.message}`);
+      if (data === "saved" || data === "lost" || data === "used") return data;
+      throw new Error(`workbook run draft save: unknown answer ${String(data)}`);
     },
     async retry(id, lease, error) {
       return must(await admin.rpc("retry_workbook_run", { p_run: id, p_lease: lease, p_error: error }), "retry") === true;

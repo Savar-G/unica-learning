@@ -2615,6 +2615,24 @@ export type Database = {
         Returns: boolean
       }
       save_workbook_rendering: { Args: { p_rendering: Json }; Returns: Json }
+      save_workbook_run_draft: {
+        Args: {
+          p_draft: Json
+          p_failed: number
+          p_failed_pages: number
+          p_lease: string
+          p_levels: number[]
+          p_model: string
+          p_not_checked: number
+          p_number: number
+          p_pages: number
+          p_profile_build: string
+          p_questions: number
+          p_run: string
+          p_schema_version: number
+        }
+        Returns: string
+      }
       save_workbook_run_page: {
         Args: { p_lease: string; p_number: number; p_page: Json; p_run: string }
         Returns: boolean

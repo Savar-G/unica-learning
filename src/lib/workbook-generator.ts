@@ -403,13 +403,25 @@ async function writePage(input: GenerateInput, deps: GenerateDeps, w: PageWork, 
   return { ...page, fit: fit.ok ? { status: "fits" } : { status: "failed", problems: fit.problems }, attempts, questions, content: dayContent(input, w, questions) };
 }
 
-/** Runs `run` on each item, at most `limit` at a time, in item order; stops taking items once `stop` says so. */
+/**
+ * Runs `run` on each item, at most `limit` at a time, in item order; stops taking items once `stop` says so. On the
+ * first error no new item starts, and every item in flight settles before the error is thrown (R379-2), so nothing of
+ * this call is still writing when its caller tries again.
+ */
 async function pool<T>(items: T[], limit: number, run: (item: T) => Promise<void>, stop: () => boolean): Promise<void> {
   let next = 0;
+  let failure: { error: unknown } | null = null;
   const worker = async () => {
-    while (next < items.length && !stop()) await run(items[next++]);
+    while (!failure && next < items.length && !stop()) {
+      try {
+        await run(items[next++]);
+      } catch (error) {
+        failure ??= { error };
+      }
+    }
   };
   await Promise.all(Array.from({ length: Math.max(1, Math.min(limit, items.length)) }, worker));
+  if (failure) throw (failure as { error: unknown }).error;
 }
 
 /**
@@ -467,6 +479,15 @@ export async function generateWorkbook(input: GenerateInput, deps: GenerateDeps)
     deps.progress?.(done.size, work.length);
   }, () => deps.stop?.() ?? false);
   if (done.size < work.length) return { status: "paused", done: done.size, total: work.length };
+  // With a page store, the stored pages are the truth (R379-2): the draft is built from them, not from this call's own.
+  if (deps.pages) {
+    const stored = new Map((await deps.pages.load()).map((p) => [p.number, p]));
+    for (const w of work) {
+      const page = stored.get(w.number);
+      if (!page) throw new Error(`day page ${w.number} is not stored`);
+      done.set(w.number, page);
+    }
+  }
 
   const pages: GeneratedPage[] = [
     plain(1, "cover", coverContent(facts)),
