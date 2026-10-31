@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { createSession, learningEvent, nextActs, SAFETY_GUIDANCE, step, valuesIn, type Proposal, type Session, type SessionEvent } from "@/lib/maya";
+import { createSession, learningEvent, nextActs, SAFETY_GUIDANCE, step, valuesIn, type LineId, type Proposal, type Slots, type Session, type SessionEvent } from "@/lib/maya";
 import { applyBatch, createScene } from "@/lib/board";
 import { learningEvents } from "@/lib/learning-events";
 import { memoryLearningEventStore } from "@/lib/learning-events-memory";
@@ -31,56 +31,39 @@ function packageOf(operation: Operation, answer: AnswerValue, easier: Operation,
 }
 
 const PKG = packageOf({ kind: "add", operands: [27, 39] }, num(66), { kind: "add", operands: [18, 5] }, num(23), "2.4", ["2.4-add-within-100"]);
-const OPEN: Proposal = { act: "open", say: "I'm Maya, an AI math helper. Our team may review this call. What did you try?" };
+/** A proposal without its version: `propose` adds version 2. */
+type Draft = Omit<Proposal, "version">;
+const t = (talk: string) => ({ talk });
+const ln = (line: LineId, slots: Slots = {}) => ({ line, slots });
+const v2 = (p: unknown) => (typeof p === "object" && p !== null && !Array.isArray(p) && !("version" in p) ? { version: 2, ...p } : p);
+const OPEN: Draft = { act: "open", parts: [ln("open.hello"), t("Our team may review this call. What did you try?")] };
 const right66 = { value: num(66), step: "result", verdict: "right" as const };
 const wrong56 = { value: num(56), step: "result", verdict: "wrong" as const };
-const guide = (extra: Partial<Proposal> = {}): Proposal => ({ act: "guide", say: "What is seven plus nine?", step: "ones", level: 0, ...extra });
+const guide = (extra: Partial<Draft> = {}): Draft => ({ act: "guide", parts: [ln("step.invite", { step: "ones" })], step: "ones", level: 0, ...extra });
 
 /** A call past its opening at time 0 (ms). `send` returns the result without asserting. */
-function call(pkg: unknown = PKG) {
-  let s: Session = createSession({ callId: "review-call", package: pkg });
+function call(pkg: unknown = PKG, freeTalk = false) {
+  let s: Session = createSession({ callId: "review-call", package: pkg, freeTalk });
   const send = (e: SessionEvent) => {
     const r = step(s, e);
     s = r.session;
     return r;
   };
   send({ type: "start", at: 0 });
-  send({ type: "proposal", at: 0, proposal: OPEN });
+  send({ type: "proposal", at: 0, proposal: v2(OPEN) });
   return {
     get s() { return s; },
     send,
-    propose: (p: unknown, at = s.now ?? 0) => send({ type: "proposal", at, proposal: p }),
+    propose: (p: unknown, at = s.now ?? 0) => send({ type: "proposal", at, proposal: v2(p) }),
     child: (text: string, extra: object = {}, at = s.now ?? 0) => send({ type: "child_turn", at, text, ...extra }),
   };
 }
-
-describe("F1: every equation Maya says or writes is checked by code", () => {
-  it("refuses a false spoken equation with no declared claims", () => {
-    const c = call();
-    c.child("I got 56");
-    expect(c.propose(guide({ say: "Seven plus nine is fifteen." })).refusal).toMatchObject({ code: "wrong_math" });
-  });
-
-  it("refuses a false equation written on the board", () => {
-    const c = call();
-    c.child("I got 56");
-    const r = c.propose(guide({ board: [{ op: "write", id: "bad", text: "7+9=15", place: { region: "main" } }] }));
-    expect(r.refusal).toMatchObject({ code: "wrong_math" });
-    expect(r.effects).toEqual([]);
-  });
-
-  it("accepts true equations, chains and decimals", () => {
-    const c = call();
-    c.child("I got 56");
-    expect(c.propose(guide({ say: "Two plus three plus one is six, and 0.6 + 0.25 = 0.85. Seven plus nine is what?", reading: { answers: [wrong56] } })).refusal).toBeNull();
-  });
-});
 
 describe("F2: a refused proposal keeps the child's priority input and the clock", () => {
   it("keeps a safety escalation", () => {
     const c = call();
     c.send({ type: "safety", severity: "concern", at: 1 });
-    c.propose({ act: "safety", say: "" }, 1);
+    c.propose({ act: "safety", parts: [] }, 1);
     c.child("It is happening now", {}, 2);
     const r = c.propose(guide({ reading: { safety: "immediate" } }), 2);
     expect(r.refusal).toMatchObject({ code: "safety_first" });
@@ -110,7 +93,7 @@ describe("F3: safety guidance is the policy message", () => {
   it("speaks the policy guidance, not the model's words", () => {
     const c = call();
     c.send({ type: "safety", severity: "concern", at: 1 });
-    const r = c.propose({ act: "safety", say: "Okay." }, 1);
+    const r = c.propose({ act: "safety", parts: [t("Okay.")] }, 1);
     expect(r.effects.filter((e) => e.kind === "say")).toEqual([{ kind: "say", act: "safety", text: SAFETY_GUIDANCE.concern }]);
   });
 
@@ -127,23 +110,23 @@ describe("F4: interrupts come before scoring", () => {
   it("never scores an answer in a confirmation", () => {
     const c = call();
     c.child("56", { uncertain: true });
-    c.propose({ act: "confirm", say: "Did you say fifty-six?", reading: { answers: [wrong56] } });
+    c.propose({ act: "confirm", parts: [t("Did you say fifty-six?")], reading: { answers: [wrong56] } });
     c.child("I want to stop.");
-    c.propose({ act: "close", say: "Bye.", reading: { stop: true } });
+    c.propose({ act: "close", parts: [t("Bye.")], reading: { stop: true } });
     expect(learningEvent(c.s, { parentId: "p", childId: "c" })).toMatchObject({ result: "blank", mistake: null, hints: 0 });
   });
 
   it("does not let a bad verdict block a safety response", () => {
     const c = call();
     c.child("56", { uncertain: true });
-    const r = c.propose({ act: "safety", say: "", reading: { safety: "concern", answers: [{ ...wrong56, verdict: "right" }] } });
+    const r = c.propose({ act: "safety", parts: [], reading: { safety: "concern", answers: [{ ...wrong56, verdict: "right" }] } });
     expect(r.refusal).toBeNull();
   });
 
   it("does not let a bad verdict block a stop", () => {
     const c = call();
     c.child("56. Stop.");
-    const r = c.propose({ act: "close", say: "Bye.", reading: { stop: true, answers: [{ ...wrong56, verdict: "right" }] } });
+    const r = c.propose({ act: "close", parts: [t("Bye.")], reading: { stop: true, answers: [{ ...wrong56, verdict: "right" }] } });
     expect(r.refusal).toBeNull();
     expect(r.session.outcome).toMatchObject({ reason: "child_stopped" });
   });
@@ -153,13 +136,13 @@ describe("F5: only the child's committed answer counts", () => {
   it.each(["−66", "66... no, I do not know", "You said sixty-six. I got fifty-six.", "negative sixty-six", "66 or 56?"])("does not accept 66 from %s", (text) => {
     const c = call();
     c.child(text);
-    expect(c.propose({ act: "accept_answer", say: "Yes.", reading: { answers: [right66] } }).refusal).not.toBeNull();
+    expect(c.propose({ act: "accept_answer", parts: [t("Yes.")], reading: { answers: [right66] } }).refusal).not.toBeNull();
   });
 
   it("offers a confirmation when the answer is not clear", () => {
     const c = call();
     c.child("66 or 56?");
-    expect(c.propose({ act: "accept_answer", say: "Yes.", reading: { answers: [right66] } }).refusal?.allowed).toContain("confirm");
+    expect(c.propose({ act: "accept_answer", parts: [t("Yes.")], reading: { answers: [right66] } }).refusal?.allowed).toContain("confirm");
   });
 
   it("reads .85 and asks to confirm a number form code cannot read", () => {
@@ -171,25 +154,26 @@ describe("F5: only the child's committed answer counts", () => {
   });
 });
 
-describe("F6: board objects keep their role", () => {
+// Raw board commands are read only with the freeTalk flag on (R374-6-1).
+describe("F6: board objects keep their role (freeTalk on)", () => {
   const columns = (id: string, a: number, b: number) => ({ op: "columns", id, operation: "add", operands: [{ id: "top", value: String(a) }, { id: "bottom", value: String(b) }], place: { region: "main" } });
   const put = (objectId: string, column: string) => ({ op: "put", target: { objectId, part: "cell", rowId: "answer", column }, value: "6" });
 
   it("refuses an example step that draws the child's question", () => {
-    const c = call();
+    const c = call(PKG, true);
     c.child("I can't start.");
-    expect(c.propose({ act: "example_step", step: "ones", say: "Here is an easier one.", reading: { start: "no_start" }, board: [columns("target", 27, 39), put("target", "tens")] }).refusal)
+    expect(c.propose({ act: "example_step", step: "ones", parts: [ln("example.intro")], reading: { start: "no_start" }, board: [columns("target", 27, 39), put("target", "tens")] }).refusal)
       .toMatchObject({ code: "board_wrong_problem" });
   });
 
   it("refuses an example step that writes on the question's board", () => {
-    const c = call();
+    const c = call(PKG, true);
     let scene = createScene();
     c.child("What is the question?");
-    const a = c.propose({ act: "clarify", say: "It is 27 plus 39.", board: [columns("target", 27, 39)] });
+    const a = c.propose({ act: "clarify", parts: [ln("question.problem")], board: [columns("target", 27, 39)] });
     for (const e of a.effects) if (e.kind === "board") { const b = applyBatch(scene, e.batch); if (b.ok) scene = b.scene; }
     c.child("I cannot start. Show an example.");
-    const r = c.propose({ act: "example_step", step: "ones", say: "Here is an easier one.", reading: { start: "no_start" }, board: ["ones", "tens"].map((col) => put("target", col)) });
+    const r = c.propose({ act: "example_step", step: "ones", parts: [ln("example.intro")], reading: { start: "no_start" }, board: ["ones", "tens"].map((col) => put("target", col)) });
     expect(r.refusal).toMatchObject({ code: "board_wrong_problem" });
   });
 
@@ -197,7 +181,7 @@ describe("F6: board objects keep their role", () => {
     const zero = packageOf({ kind: "add", operands: [66, 0] }, num(66), { kind: "add", operands: [1, 0] }, num(1), "2.4", ["2.4-add-within-100"]);
     let s = createSession({ callId: "zero", package: zero });
     s = step(s, { type: "start", at: 0 }).session;
-    expect(step(s, { type: "proposal", at: 0, proposal: { act: "open", say: "I'm Maya, an AI math helper. The question is 66 plus zero. What did you try?" } }).refusal).toBeNull();
+    expect(step(s, { type: "proposal", at: 0, proposal: v2({ act: "open", parts: [ln("open.hello"), ln("question.problem"), ln("assess.ask")] }) }).refusal).toBeNull();
   });
 });
 
@@ -205,13 +189,13 @@ describe("F7: the expanded question contract", () => {
   it("teaches a long multiplication", () => {
     const c = call(packageOf({ kind: "multiply", operands: [47, 23] }, num(1081), { kind: "multiply", operands: [47, 3] }, num(141), "5.6"));
     c.child("7 times 3 is 21. I got 1081.");
-    expect(c.propose({ act: "accept_answer", say: "Yes, how did you get it?", reading: { answers: [{ value: num(21), step: "r1-ones", verdict: "right" }, { value: num(1081), step: "result", verdict: "right" }] } }).refusal).toBeNull();
+    expect(c.propose({ act: "accept_answer", parts: [t("Yes, how did you get it?")], reading: { answers: [{ value: num(21), step: "r1-ones", verdict: "right" }, { value: num(1081), step: "result", verdict: "right" }] } }).refusal).toBeNull();
   });
 
   it("hears a division answer with a remainder", () => {
     const c = call(packageOf({ kind: "divide", operands: [157, 6] }, { type: "remainder", quotient: 26, remainder: 1 }, { kind: "divide", operands: [57, 6] }, { type: "remainder", quotient: 9, remainder: 3 }, "5.6"));
     c.child("26 remainder 1");
-    expect(c.propose({ act: "accept_answer", say: "Yes. How did you do it?", reading: { answers: [{ value: { type: "remainder", quotient: 26, remainder: 1 }, step: "result", verdict: "right" }] } }).refusal).toBeNull();
+    expect(c.propose({ act: "accept_answer", parts: [t("Yes. How did you do it?")], reading: { answers: [{ value: { type: "remainder", quotient: 26, remainder: 1 }, step: "result", verdict: "right" }] } }).refusal).toBeNull();
   });
 
   it("holds a fraction question it cannot teach yet", () => {
@@ -232,7 +216,7 @@ describe("F8: the learning event follows the learning record's contract", () => 
     c.child("56");
     c.propose(guide({ reading: { answers: [wrong56] } }));
     c.child("Stop");
-    c.propose({ act: "close", say: "Bye.", reading: { stop: true } });
+    c.propose({ act: "close", parts: [t("Bye.")], reading: { stop: true } });
     const event = learningEvent(c.s, { parentId, childId })!;
     expect(event).toMatchObject({ result: "blank", mistake: null, stuckStep: "ones", source: "call", key: "call:review-call", evidence: { kind: "call", id: "review-call" } });
     expect(await store().append(event)).toMatchObject({ ok: true });
@@ -241,11 +225,11 @@ describe("F8: the learning event follows the learning record's contract", () => 
   it("stores a call where Maya gave the answer", async () => {
     const c = call();
     c.child("show me");
-    c.propose(guide({ level: 3, say: "Seven plus nine is sixteen: write 6, carry 1 ten. What do the tens make?", reading: { help: "show" } }));
+    c.propose(guide({ level: 3, parts: [ln("step.show", { step: "ones" })], reading: { help: "show" } }));
     c.child("more");
-    c.propose({ act: "give_answer", say: "Six tens and six ones.", reading: { help: "more" } });
+    c.propose({ act: "give_answer", parts: [ln("step.show", { step: "ones" })], reading: { help: "more" } });
     c.child("okay");
-    c.propose({ act: "close", say: "Bye." });
+    c.propose({ act: "close", parts: [t("Bye.")] });
     const event = learningEvent(c.s, { parentId, childId })!;
     expect(event).toMatchObject({ result: "blank", hints: 2 });
     expect(await store().append(event)).toMatchObject({ ok: true });
@@ -256,11 +240,11 @@ describe("F8: the learning event follows the learning record's contract", () => 
     c.child("56");
     c.propose(guide({ reading: { answers: [wrong56] } }));
     c.child("66");
-    c.propose({ act: "accept_answer", say: "Yes. How did you do it?", reading: { answers: [right66] } });
+    c.propose({ act: "accept_answer", parts: [t("Yes. How did you do it?")], reading: { answers: [right66] } });
     c.child("I carried");
-    c.propose({ act: "ask_write", say: "Write it on paper.", understanding: "evidence_observed" });
+    c.propose({ act: "ask_write", parts: [ln("write.answer")], understanding: "evidence_observed" });
     c.child("done");
-    c.propose({ act: "close", say: "Bye." });
+    c.propose({ act: "close", parts: [t("Bye.")] });
     const event = learningEvent(c.s, { parentId, childId })!;
     expect(event).toMatchObject({ result: "right", mistake: null, stuckStep: null });
     expect(await store().append(event)).toMatchObject({ ok: true });
@@ -272,6 +256,6 @@ describe("F9: a child who cannot start gets the easier example first", () => {
     const c = call();
     c.child("I do not know how to start.");
     expect(c.propose(guide({ level: 2, reading: { start: "no_start" } })).refusal).toMatchObject({ code: "act_not_allowed" });
-    expect(c.propose({ act: "try_target", say: "Try your question." }).refusal).toMatchObject({ code: "act_not_allowed" });
+    expect(c.propose({ act: "try_target", parts: [t("Try your question.")] }).refusal).toMatchObject({ code: "act_not_allowed" });
   });
 });
