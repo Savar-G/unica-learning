@@ -276,7 +276,7 @@ const CSS = `
 .pcard .head{display:flex;gap:10px;align-items:center}
 .pcard .ico{width:28px;height:28px;flex:none}
 /* cover */
-.cv{position:absolute;left:64px;top:64px;width:688px;height:866px;display:flex;flex-direction:column}
+.cv{position:absolute;left:64px;top:64px;width:688px;height:866px;display:flex;flex-direction:column;overflow:hidden}
 .cv .top{display:flex;justify-content:space-between;align-items:center}
 .cv .top .wm{margin:0;font-size:22px}
 .cv .top .wm i{width:6px;height:6px;margin-bottom:5px}
@@ -296,7 +296,7 @@ const CSS = `
 .cv .pl{margin:24px 0 0;font-size:15px;height:42px;overflow:hidden}
 .cv .nx{margin:auto 0 0;font-size:15px;color:#44444C;height:21px;overflow:hidden;white-space:nowrap}
 /* how + plan */
-.hp{position:absolute;left:64px;top:64px;width:688px;height:866px;display:flex;flex-direction:column}
+.hp{position:absolute;left:64px;top:64px;width:688px;height:866px;display:flex;flex-direction:column;overflow:hidden}
 .hp .top{display:flex;justify-content:space-between;font-family:"Unica Mono",ui-monospace,Menlo,monospace;font-weight:500;font-size:12px;letter-spacing:.04em}
 .hp table{margin-top:18px;width:100%;border-collapse:collapse;table-layout:fixed}
 .hp th{font-family:"Unica Mono",ui-monospace,Menlo,monospace;font-weight:500;font-size:11px;letter-spacing:.04em;color:#44444C;text-align:left;padding:0 0 8px;border-bottom:1px solid #0C0C0E}
@@ -312,12 +312,12 @@ const CSS = `
 .hp .hw p{margin:8px 0 0;font-size:14px}
 .hp .chip{font-size:13px}
 /* back cover */
-.bk{position:absolute;left:64px;top:64px;width:688px;height:866px;display:flex;flex-direction:column;align-items:flex-start}
-.bk h2{margin:40px 0 0;font-weight:300;font-size:44px;line-height:1.18}
+.bk{position:absolute;left:64px;top:64px;width:688px;height:866px;display:flex;flex-direction:column;align-items:flex-start;overflow:hidden}
+.bk h2{margin:32px 0 0;font-weight:300;font-size:44px;line-height:1.18}
 .bk p{margin:12px 0 0;font-size:17px;color:#44444C}
-.map{margin-top:40px;display:grid;grid-template-columns:repeat(6,1fr);gap:22px 34px}
+.map{margin-top:36px;display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:18px 40px}
 .map .lv{display:flex;flex-direction:column;align-items:center;gap:6px}
-.map .lv i{display:block;width:72px;height:72px;border:1.2px solid #0C0C0E;background:#fff}
+.map .lv i{display:block;width:56px;height:56px;border:1.2px solid #0C0C0E;background:#fff}
 .map .lv .ll{font-family:"Unica Mono",ui-monospace,Menlo,monospace;font-size:14px}
 .map .lv.now i{border-width:3px}
 .map .lv.now .ll{font-weight:500}
@@ -745,7 +745,7 @@ const UNICA_MARK = `<div class="mk"><i class="y"></i><i></i><i class="b"></i><i>
 
 function coverPage(page: DraftPage, parts: PageParts, c: Extract<PageContent, { kind: "cover" }>): string {
   const label = c.madeFrom === "assessment" ? `Made from ${c.child}'s assessment` : `Made from ${c.child}'s last workbook`;
-  return `<div class="pg mid">${scanMarks}<div class="cv"><div class="top">${wordmark}<span class="wn">Workbook ${c.workbook} · 10 days</span></div>${UNICA_MARK}`
+  return `<div class="pg mid">${scanMarks}<div class="cv" ${mark.slot("page")}><div class="top">${wordmark}<span class="wn">Workbook ${c.workbook} · 10 days</span></div>${UNICA_MARK}`
     + `<div class="for" ${mark.slot("made-for")}>Made for ${escape(c.child)} · Level U${c.level} · ${escape(c.levelTitle)}</div>`
     + `<h1 ${mark.slot("cover-title")}>${escape(c.title[0])}<br><span class="hl">${escape(c.title[1])}</span></h1>`
     + `<div class="made" ${mark.slot("made-from")}><span class="lab">${escape(label)}</span><p>${escape(c.sentence)}</p><ul>${c.bullets.map((x) => `<li><i></i><span>${escape(x)}</span></li>`).join("")}</ul></div>`
@@ -763,7 +763,7 @@ function howPlanPage(page: DraftPage, parts: PageParts, c: Extract<PageContent, 
     { chip: { label: "Stuck?", cls: "c-ni", icon: ICONS.book }, text: "Call the Teaching Assistant." },
     { chip: { label: "Fix it", cls: "c-fx", icon: ICONS.wrench }, text: "Anything your child got wrong last time comes back as new questions." },
   ];
-  return `<div class="pg mid">${scanMarks}<div class="hp"><div class="top"><span>HOW IT WORKS · ${escape(c.child.toUpperCase())}'S PLAN</span><span>WORKBOOK ${c.workbook}</span></div>`
+  return `<div class="pg mid">${scanMarks}<div class="hp" ${mark.slot("page")}><div class="top"><span>HOW IT WORKS · ${escape(c.child.toUpperCase())}'S PLAN</span><span>WORKBOOK ${c.workbook}</span></div>`
     + `<table><thead><tr><th style="width:96px">DAY</th><th>TOPIC</th><th style="width:96px">PAGES</th><th style="width:56px;text-align:right">DONE</th></tr></thead><tbody>${rows}</tbody></table>`
     + `<div class="how"><span class="lab">How it works</span><div class="hw">${how.map((h) => `<div>${chipHtml(h.chip)}<p>${escape(h.text)}</p></div>`).join("")}</div></div>`
     + `</div>${footer(page, parts, c.id)}</div>`;
@@ -771,7 +771,7 @@ function howPlanPage(page: DraftPage, parts: PageParts, c: Extract<PageContent, 
 
 function backCoverPage(page: DraftPage, parts: PageParts, c: Extract<PageContent, { kind: "back-cover" }>): string {
   const map = Array.from({ length: 30 }, (_, i) => `<div class="lv${i + 1 === c.level ? " now" : ""}"><i></i><span class="ll">U${i + 1}</span></div>`).join("");
-  return `<div class="pg mid">${scanMarks}<div class="bk">${UNICA_MARK}<h2>My levels</h2><p>Colour the square of each level you reach. You are on Level U${c.level} now.</p>`
+  return `<div class="pg mid">${scanMarks}<div class="bk" ${mark.slot("page")}>${UNICA_MARK}<h2>My levels</h2><p>Colour the square of each level you reach. You are on Level U${c.level} now.</p>`
     + `<div class="map">${map}</div><div class="key"><span><i></i>Not yet</span><span><i style="background:#FFD23F"></i>Coloured in: I reached it</span></div></div>${footer(page, parts, c.id)}</div>`;
 }
 

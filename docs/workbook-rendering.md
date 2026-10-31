@@ -65,8 +65,47 @@ Storing:
   failed attempt. A file no workbook names (for example the unused rendering after a lost answer) stays in the
   family's folder and is deleted with the family.
 
-The template today is the fixed test template (`src/lib/workbook-template-fixed.ts`: cover and practice pages, Geist
-and Geist Mono embedded). The real templates come from the workbook DESIGN.md (#305, #310).
+## The workbook templates (#310)
+
+`workbookTemplate` (`src/lib/workbook-template.ts`) lays out every page type of `.design/workbooks/DESIGN.md` section
+7: the 8-page day (U4 to U18) and the 6-page day (U19 to U30, Math in the world on Days 4 and 9), Friday 5, Show what
+you know, the level test, parent-led U1 to U3 pages, the early-level Remember these? pages, Challenge cards, the cover,
+How + Plan (a done tick box a day) and the back cover with the level map. Every page has four scan marks and the footer:
+the QR code (0.6 inches, the renderer's minimum, not the 42 px of the samples), the page ID
+(`UL·<CHILD>·W<nn>·D<nn>·P<n>`) and the book page number, and the wordmark. The fixed test template
+(`src/lib/workbook-template-fixed.ts`) stays for the stored samples.
+
+A page's content is data on the draft page (`content`, `src/lib/workbook-page.ts`): its header and its named slots
+(`SLOTS`: warm-up, fix-it, worked-example, now-you, on-your-own, mixed-set, challenge, and so on), each naming its
+questions by number. It is used to render and is not stored yet (the generator, #311, stores it).
+
+- `pageSlots(page, level)` maps a planned page (`src/lib/workbook-plan.ts`) to its slots and the items each takes.
+  Where the plan asks for more than the page holds in DESIGN.md, the slot takes the page's share (the rules are in the
+  function's comment); a parent-led page shares 6 cards among its slots.
+- `assembleBook` puts the book in order (cover, How + Plan, the days, back cover, blank pages to a multiple of 4, at
+  most 84), numbers the pages from the cover and the questions from 1 on each page, and sets each package's place.
+- `sampleBook` (`src/lib/workbook-sample-book.ts`) plans a book for any level with the real planner and fills every
+  slot with sample questions that pass the package check, so every page type renders without AI. The numbers are for
+  the look only.
+
+The type ramp is fixed per level band: U10 and up at the reference sizes, U4 to U9 at 18 px and up (facts 30 px),
+U1 to U3 at 20 px body with 56 px answer boxes. Nothing is shrunk to fit.
+
+The template's fit check (`fit`, run by the renderer after its own checks) fails a page, naming it, the slot and the
+question, when:
+
+- a question (or a slot) runs past the bottom of the 688 by 720 content area, or past its width,
+- a slot holds more items than it takes (`slotMax`),
+- an answer box is under the band's height (40, 48 or 56 px) or under 40 px wide,
+- a work box is under 44 px, or writing lines are closer than 36 px under the prompt and 34 px apart.
+
+Every element that clips its content is a measured slot, so nothing is clipped silently. `proofPages` prints the
+failing pages again with the failure on them (a red banner with each reason, the questions outlined, the content
+area's bottom edge dashed), for a reviewer.
+
+`node scripts/render-workbook-templates.mjs <folder> U2 U6 U12 U22 --test U12 --overflow` renders sample books with
+the local Chrome and writes one PNG of each page type a level, each book's PDF, and a deliberately overflowing page
+with its proof.
 
 Two stored pages of the sample (workbook 2), at full size. On the first, the red boxes are the stored question boxes
 drawn over the stored image:

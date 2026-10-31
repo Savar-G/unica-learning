@@ -16,6 +16,7 @@ import {
   workedSteps,
   type AnswerValue,
   type Item,
+  type NumberValue,
   type Operation,
   type QuestionPackage,
   type WrongAnswer,
@@ -66,7 +67,7 @@ const EASIER: Record<string, Operation[]> = {
   "decimal-subtract": [{ kind: "decimal-subtract", operands: [0.5, 0.2] }, { kind: "decimal-subtract", operands: [1.5, 0.3] }, { kind: "decimal-subtract", operands: [2.8, 1.4] }],
 };
 
-const num = (value: number): AnswerValue => ({ type: "number", value });
+const num = (value: number): NumberValue => ({ type: "number", value });
 const round = (v: number) => Math.round(v * 1000) / 1000;
 
 /** Wrong answers to try: the other operation, then near misses. */
@@ -530,7 +531,8 @@ function headerOf(page: PlannedPage, ctx: FillCtx, blocks: FilledBlock[]): Omit<
   }
   // A title is one line: a long topic keeps the plain title.
   const room = level <= 9 ? 30 : 42;
-  if (head.title.length > room) head = { ...head, title: { "practice": "Practice", "practice-2": "More practice", "word-problems": "Stories" }[type] ?? topic.split(" ").slice(0, 3).join(" ") };
+  const plain: Record<string, string> = { practice: "Practice", "practice-2": "More practice", "word-problems": "Stories" };
+  if (head.title.length > room) head = { ...head, title: plain[type] ?? topic.split(" ").slice(0, 3).join(" ") };
   const parentLed = page.type === "parent-led";
   const grownUp = parentLed
     ? "Read each line aloud. Your child circles, colours or writes one number."
