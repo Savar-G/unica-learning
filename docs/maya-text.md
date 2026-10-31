@@ -55,3 +55,5 @@ Nothing reaches the child unless the session's `step` accepts it (`src/lib/maya-
 **Child data.** The trace writes the child's profile name as `{name}`. As a second layer, the text fields (child turns, proposals, refusal reasons, technical details) also have key-like text and the configured key values written as `[secret]`. Child turns are kept word for word otherwise, so keep traces local; `traces/` is not committed.
 
 Samples: `docs/maya-traces/`. A test checks each sample with `checkTrace`.
+
+The behaviour gate (`docs/maya-gate.md`, #324) runs the research's scripted children through this adapter in `npm test` and judges each saved trace.
