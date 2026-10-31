@@ -1,8 +1,10 @@
 // Maya's teaching controller (#321, spec #297): the state machine of one call about one checked question. The model
-// writes Maya's words and proposes her next act; this module decides whether that act is allowed now and refuses it
-// with a reason when it is not. Code, not the model, owns the math check of every child answer and of every equation
-// Maya says or writes, the call clock, the hint ladder, the safety flag, the safety guidance and the outcome. Child
-// speech and workbook text are data: nothing a child says changes the answer key, the states or the safety rules.
+// proposes Maya's next act and picks her words; this module decides whether that act is allowed now and refuses it
+// with a reason when it is not. Code, not the model, owns the math check of every child answer, every sentence of math
+// Maya says or writes (#372, D-195: code-written lines filled from the checked worked step; the model picks a line and
+// may add warm talk with no math in it), the call clock, the hint ladder, the safety flag, the safety guidance and the
+// outcome. Child speech and workbook text are data: nothing a child says changes the answer key, the states or the
+// safety rules.
 //
 // One call: READY -> OPEN -> ASSESS -> (MODEL_EXAMPLE -> TRY_TARGET | TRY_TARGET | GUIDE_TARGET) -> CHECK ->
 // WRITE_CLOSE -> CLOSE, or CONTENT_HOLD when the question package does not check or is a kind Maya cannot teach yet.
@@ -15,13 +17,14 @@
 // Everything in and out is plain serializable data (the text adapter #322 and the board protocol #328 drive it): a
 // Session value, events with the time they happened (the clock is passed in), effects to carry out, and a refusal.
 // Pure TypeScript: no React, DOM, network, clock or randomness.
-import { MAX_COMMANDS, PLACE_NAMES, type Batch, type Command, type Target } from "@/lib/board";
+import { MAX_COMMANDS, PLACE_NAMES, type Batch, type Command, type Place, type Target } from "@/lib/board";
 import { MAX_HINTS, MAX_TIME_MS, type NewLearningEvent } from "@/lib/learning-events";
 import {
   checkQuestionPackage,
   equivalent,
   hasOperation,
   isRightAnswer,
+  operationText,
   sameValue,
   valueText,
   type AnswerValue,
@@ -30,8 +33,13 @@ import {
   type OperationPackage,
   type WorkedStep,
 } from "@/lib/question-package";
-import { mathClaims, type MathClaim, type MathOp, type NamedProblem, type StepNumbers } from "./claims";
+import { talkMath } from "./claims";
+import { saidAsApproved } from "./speech";
+import { findOffer, normalSlots, packageLines, LINE_IDS, type LineOffer } from "./lines";
+import { freeTalkProblem, workProblem, FALLBACK_GROUP, PHRASE_ACTS, PHRASE_GROUPS, PHRASES, type PhraseGroup } from "./phrases";
+import { chooseWording, heardInCall, nameNow, newVariety, withName, type Variety, type WordingHistory } from "./variety";
 import { committedText, offersChoice, readNumbers, takenBack, valuesIn } from "./numbers";
+import { ACTS, PART_LIMITS, PROPOSAL_VERSION, withoutNulls, type Act, type ChildAnswer, type HintLevel, type Proposal, type Reading, type Severity } from "./proposal";
 
 /** Closing starts 9 minutes into the call; the call ends at 10 minutes. */
 export const TIME_LIMITS = { closingAtMs: 9 * 60_000, endAtMs: 10 * 60_000 } as const;
@@ -67,20 +75,11 @@ const TEACHING = ["OPEN", "ASSESS", "MODEL_EXAMPLE", "TRY_TARGET", "GUIDE_TARGET
 type Teaching = (typeof TEACHING)[number];
 const isTeaching = (s: SessionState): s is Teaching => (TEACHING as readonly SessionState[]).includes(s);
 
-/** Maya's acts: one per turn. The model names one; the session allows it or refuses it. */
-export const ACTS = [
-  "open", "clarify", "example_step", "try_target", "guide", "accept_answer", "give_answer", "ask_write", "close",
-  "safety", "confirm", "offer_other_input", "wait", "check_in", "redirect", "repair",
-] as const;
-export type Act = (typeof ACTS)[number];
 /** Acts that may carry board commands. */
 const BOARD_ACTS: readonly Act[] = ["clarify", "example_step", "try_target", "guide", "accept_answer", "give_answer", "ask_write", "repair"];
 /** Acts whose proposal may score the child's answers. Safety, a stop, a confirmation or a wait never scores one. */
 const SCORING_ACTS: readonly Act[] = ["clarify", "example_step", "try_target", "guide", "accept_answer", "give_answer", "ask_write", "close"];
 
-/** H0 invite, H1 point, H2 give the operation, H3 demonstrate the step, H4 give the result with a short reason. */
-export type HintLevel = 0 | 1 | 2 | 3 | 4;
-export type Severity = "concern" | "immediate";
 export type Reason = "solved" | "child_stopped" | "time_limit" | "no_response" | "technical_issue" | "content_issue" | "safety";
 /** Least help first: the outcome keeps the most help used, never less. */
 export const ASSISTANCE = ["independent", "hint", "worked_example", "guided", "answer_given"] as const;
@@ -89,59 +88,6 @@ export type PaperStatus = "child_confirmed" | "declined" | "unknown";
 export type Understanding = "evidence_observed" | "uncertain";
 /** The child's question, or the easier example Maya works first. */
 export type Problem = "target" | "example";
-
-/**
- * An answer the model read in the child's turn: the value, the step it answers (a worked step id, or "result"), and the
- * model's verdict. Code checks that the child said it and kept it, and that the verdict is right.
- */
-export interface ChildAnswer {
-  value: AnswerValue;
-  step: string;
-  problem?: Problem;
-  verdict: "right" | "wrong";
-}
-
-/** What the model understood from the child's latest turn. */
-export interface Reading {
-  /** A possible harm or danger disclosure. Raises the safety flag even when the proposal is refused. */
-  safety?: Severity;
-  /** The child asks to stop. Kept until the call closes, even when the proposal is refused or malformed. */
-  stop?: boolean;
-  /** The words or a number are unclear: confirm before judging. Kept for this turn even when the proposal is refused or malformed. */
-  unclear?: boolean;
-  /** The child is writing or asks for more time. */
-  writing?: boolean;
-  /** A harmless off-topic request, or a request for another question. */
-  offTopic?: boolean;
-  /** An explicit request for more help, or for Maya to show the step. */
-  help?: "more" | "show";
-  /** At the opening: the child has work to show, or has not started (then the easier example comes first). */
-  start?: "has_work" | "no_start";
-  answers?: ChildAnswer[];
-  /** The child says they wrote the answer on paper, or will not. Maya never sees the paper. */
-  paper?: "written" | "declined";
-  /** The child says Maya heard them wrong ("no, I said fifteen"). */
-  correctsHearing?: boolean;
-}
-
-/**
- * A model proposal: Maya's next act, her words, and what she draws. Untrusted: every field is checked, and every
- * equation in `say` and in the board's text must hold. For `safety`, code speaks the safety guidance and `say` is not
- * used; for `give_answer`, `say` is the short reason and code adds the answer and the request to write it on paper.
- */
-export interface Proposal {
-  act: Act;
-  say: string;
-  reading?: Reading;
-  /** For guide and example_step: the step this turn is about. */
-  step?: string;
-  /** For guide: the hint level. */
-  level?: HintLevel;
-  /** For ask_write from CHECK: what the check showed. */
-  understanding?: Understanding;
-  /** Board commands (the board core's vocabulary); the board core checks each one when it applies the batch. */
-  board?: unknown[];
-}
 
 export type SessionEvent =
   | { type: "start"; at: number }
@@ -153,7 +99,10 @@ export type SessionEvent =
   | { type: "writing"; at: number; status: "started" | "done" }
   /** A safety signal from outside the model (a classifier or a person). */
   | { type: "safety"; at: number; severity: Severity }
-  /** What Maya actually said (the speech transcript): an equation in it that does not hold starts REPAIR_MAYA. */
+  /**
+   * What Maya actually said (the speech transcript): a sentence with math in it that is not a line code gave her
+   * starts REPAIR_MAYA.
+   */
   | { type: "maya_said"; at: number; text: string }
   /** The question's math turned out not to be trustworthy during the call. */
   | { type: "content_problem"; at: number; detail: string }
@@ -180,7 +129,8 @@ export interface Outcome {
 }
 
 export type Effect =
-  | { kind: "say"; act: Act; text: string }
+  /** `talkReplaced`: how many pieces of the model's own warm words failed the guards and were replaced (D-196 rule B). */
+  | { kind: "say"; act: Act; text: string; talkReplaced?: number }
   | { kind: "board"; batch: Batch }
   /** Stop speaking and drop board batches not yet shown. */
   | { kind: "cancel_output" }
@@ -208,6 +158,11 @@ export type RefusalCode =
   | "hint_too_high"
   | "same_hint_again"
   | "wrong_math"
+  | "math_in_talk"
+  | "line_not_offered"
+  | "free_talk_in_math_turn"
+  | "math_line_not_last"
+  | "board_not_code"
   | "reveals_answer"
   | "missing_disclosure"
   | "board_not_allowed"
@@ -259,8 +214,12 @@ interface Ladder {
 
 /** One call. Plain data: store it, send it, compare it. Read it through this module. */
 export interface Session {
-  version: 3;
+  version: 4;
   callId: string;
+  /** Which wording of each line and phrase to say: the call's random seed, what was heard, the child's name (variety.ts). */
+  variety: Variety;
+  /** D-196: whether the model's own warm words may be said (guarded). Off by default. */
+  freeTalk: boolean;
   state: SessionState;
   /** The teaching state an interrupt returns to. */
   resume: Teaching | null;
@@ -319,14 +278,29 @@ export interface Session {
   outcome: Outcome | null;
 }
 
-export function createSession(input: { callId: string; package: unknown }): Session {
+/**
+ * `random` seeds the choice of wordings (pass a random 32-bit number; default: one made from the call id, for tests),
+ * `history` is the child's wording history before this call (wording-history.ts), and `childName` the name code may say
+ * now and then. The model never writes the name.
+ */
+export function createSession(input: {
+  callId: string;
+  package: unknown;
+  random?: number;
+  history?: WordingHistory;
+  childName?: string | null;
+  /** D-196: read the model's own warm words (guarded). Off by default: then every word Maya says comes from code. */
+  freeTalk?: boolean;
+}): Session {
   const check = checkQuestionPackage(input.package);
   // An item with no operation (a place-value or a drawing item) has no worked steps to teach from: it is held.
   const pkg = check.ok && hasOperation(check.package) ? structuredClone(check.package) : null;
   const teachable = pkg !== null && TEACHABLE_KINDS.includes(pkg.operation.kind);
   return {
-    version: 3,
+    version: 4,
     callId: input.callId,
+    variety: newVariety({ random: input.random ?? hashOf(input.callId), history: input.history, name: input.childName }),
+    freeTalk: input.freeTalk === true,
     state: "READY",
     resume: null,
     package: teachable ? pkg : null,
@@ -431,77 +405,12 @@ function stepAnswers(step: WorkedStep): AnswerValue[] {
   }
 }
 
-/** Every number in a step's checked data ("digits", "carryIn", "to" fractions ...), not its id or place. */
-const numbersIn = (v: unknown): number[] =>
-  typeof v === "number" ? [v] : Array.isArray(v) ? v.flatMap(numbersIn) : isObject(v) ? Object.values(v).flatMap(numbersIn) : [];
-
-/**
- * A step's checked numbers: every number in its data and what it makes; what it carries, borrows or regroups (a carry
- * of 1 is also "one ten"); and the digits written in it.
- */
-function checkedNumbers(step: WorkedStep): { known: number[]; carry: number[]; write: number[] } {
-  const known = [...numbersIn(step), ...stepAnswers(step).flatMap((v) => (v.type === "number" ? [v.value] : []))];
-  switch (step.kind) {
-    case "add-column":
-    case "multiply-digit": {
-      const carries = [step.carryIn, step.carryOut];
-      // The last carry of a multiplication row is written as it is.
-      const write = [...(step.write === null ? [] : [step.write]), ...(step.kind === "multiply-digit" && step.top === null ? [step.total] : [])];
-      return { known, carry: [...carries, ...carries.map((c) => c * 10)], write };
-    }
-    case "subtract-column": {
-      const top = step.top - (step.lent ? 1 : 0) + (step.regrouped ? 10 : 0);
-      return { known: [...known, top, step.top - 1], carry: step.lent || step.regrouped ? [1, 10, top, step.top - 1] : [], write: step.write === null ? [] : [step.write] };
-    }
-    case "divide-digit":
-      return { known, carry: [], write: [step.quotient, step.product, step.remainder] };
-    default:
-      return { known, carry: [], write: known };
-  }
-}
-
 /** The value is the number a worked step of the child's question makes, and no known wrong final answer. */
 const answersAStep = (pkg: OperationPackage, value: AnswerValue) =>
   workSteps(pkg.steps).some((st) => stepAnswers(st).some((v) => equivalent(v, value))) && !pkg.wrongAnswers.some((w) => equivalent(w.value, value));
 
 /** The number speech-to-text may mistake a teen or a ten for, to confirm what the child said ("fifteen or fifty?"). */
 const soundsLike = (n: number): number[] => (n >= 13 && n <= 19 ? [(n - 10) * 10] : n >= 30 && n <= 90 && n % 10 === 0 ? [n / 10 + 10] : []);
-
-/**
- * The checked numbers a turn may say (#321): those of its own step and the steps worked before it (a guide or example
- * step that names one), else of every step of both problems; and the numbers of both questions and their answers, and
- * every number the child said or may have said. Whether the answer may be said yet is a separate check (revealsAnswer).
- */
-function turnNumbers(s: Session, p: Proposal | null): StepNumbers | undefined {
-  const pkg = s.package;
-  if (!pkg) return undefined;
-  const problem: Problem | null = p?.act === "guide" ? "target" : p?.act === "example_step" ? "example" : null;
-  const steps = problem ? problemOf(pkg, problem).steps : [];
-  const at = steps.findIndex((st) => st.id === p?.step);
-  const own = steps.slice(0, at + 1);
-  const facts = (own.length > 0 ? own : [...pkg.steps, ...pkg.easierExample.steps]).map(checkedNumbers);
-  const values = [pkg.answer.value, ...pkg.answer.accepted, pkg.easierExample.answer, ...valuesIn(pkg.text), ...valuesIn(pkg.easierExample.text),
-    ...[...s.turns.filter((t) => t.speaker === "child").flatMap((t) => [t.text, ...(t.alternatives ?? [])]), s.turn?.text ?? ""].flatMap((t) => valuesIn(t))];
-  const said = values.flatMap((v) => (v.type === "number" ? [v.value] : []));
-  const known = [...operandsOf(pkg.operation), ...operandsOf(pkg.easierExample.operation), ...said, ...said.flatMap(soundsLike), ...facts.flatMap((f) => [...f.known, ...f.carry])];
-  // The problem's own unit words: the answer's unit and every word right after a number in either question.
-  const units = [pkg.answer.unit, ...[pkg.text, pkg.easierExample.text].flatMap((t) => [...t.matchAll(/\d\s*([a-z]+)/gi)].map((m) => m[1]))]
-    .filter((u): u is string => typeof u === "string");
-  // Money is the problem the turn is about (the child's question unless it is an example step): its text, operands and
-  // answers, never the other problem's numbers.
-  const about = problem ?? "target";
-  const { operation, answer } = problemOf(pkg, about);
-  const results = [answer.value, ...answer.accepted].flatMap((v) => (v.type === "number" ? [v.value] : []));
-  return {
-    known: [...new Set(known)],
-    carry: [...new Set(facts.flatMap((f) => f.carry))],
-    write: [...new Set(facts.flatMap((f) => f.write))],
-    units: [...new Set(units)],
-    money: { text: about === "target" ? pkg.text : pkg.easierExample.text, operands: operandsOf(operation), results },
-    questions: [about === "target" ? pkg.text : pkg.easierExample.text],
-    operation: SYMBOL[operation.kind],
-  };
-}
 
 const problemOf = (pkg: OperationPackage, problem: Problem) =>
   problem === "target"
@@ -512,7 +421,7 @@ const problemOf = (pkg: OperationPackage, problem: Problem) =>
 const currentStep = (pkg: OperationPackage, done: readonly string[]) => workSteps(pkg.steps).find((s) => !done.includes(s.id))?.id ?? "result";
 
 /** The operation symbol of a kind, as equations write it. */
-const SYMBOL: Partial<Record<OperationKind, MathOp>> = {
+const SYMBOL: Partial<Record<OperationKind, string>> = {
   add: "+", subtract: "-", multiply: "×", divide: "÷", "decimal-add": "+", "decimal-subtract": "-", "decimal-multiply": "×",
 };
 /** The board's column layout for a kind, or none (division has no board layout yet). */
@@ -537,10 +446,25 @@ const SEVERITIES: Severity[] = ["concern", "immediate"];
 function proposalProblem(p: unknown): string | null {
   if (!isObject(p)) return "a proposal is an object";
   if (typeof p.act !== "string" || !(ACTS as readonly string[]).includes(p.act)) return `the act is one of ${ACTS.join(", ")}`;
-  if (typeof p.say !== "string") return "a proposal needs Maya's words in `say`";
+  if (p.version !== PROPOSAL_VERSION) return `the proposal is version ${PROPOSAL_VERSION}: Maya's words are parts, not \`say\``;
+  if (!Array.isArray(p.parts) || p.parts.length > PART_LIMITS.parts) return `the parts are a list of at most ${PART_LIMITS.parts} lines and talk`;
+  for (const part of p.parts) {
+    // Talk of any length is read: words that fail the guards are replaced, never a reason to fail the turn (D-196).
+    const talk = isObject(part) && Object.keys(part).length === 1 && typeof part.talk === "string";
+    const warm = isObject(part) && (PHRASE_GROUPS as readonly unknown[]).includes(part.warm) &&
+      Object.keys(part).every((k) => k === "warm" || k === "echo" || k === "pick") && (part.echo === undefined || typeof part.echo === "string") &&
+      (part.pick === undefined || (Number.isSafeInteger(part.pick) && (part.pick as number) >= 1 && (part.pick as number) <= PHRASES[part.warm as PhraseGroup].length));
+    const line = isObject(part) && typeof part.line === "string" && (LINE_IDS as readonly string[]).includes(part.line) &&
+      Object.keys(part).every((k) => k === "line" || k === "slots") && (part.slots === undefined || isObject(part.slots));
+    if (!talk && !warm && !line) return `each part is { line, slots } with a line id, { warm } with a phrase group, or { talk }`;
+  }
   if (p.step !== undefined && typeof p.step !== "string") return "the step is a step id";
   if (p.level !== undefined && !HINTS.includes(p.level as number)) return "the level is 0 to 4";
   if (p.understanding !== undefined && p.understanding !== "evidence_observed" && p.understanding !== "uncertain") return "understanding is evidence_observed or uncertain";
+  if (p.draw !== undefined && (!Array.isArray(p.draw) || p.draw.length === 0 || p.draw.length > 4 ||
+    !p.draw.every((d) => isObject(d) && typeof d.offer === "string" && (d.place === undefined || typeof d.place === "string") && Object.keys(d).every((k) => k === "offer" || k === "place")))) {
+    return "draw is a list of 1 to 4 board offers: { offer, place? }";
+  }
   if (p.board !== undefined && (!Array.isArray(p.board) || p.board.length === 0 || p.board.length > MAX_COMMANDS || !p.board.every((c) => isObject(c) && typeof c.op === "string"))) {
     return `the board is a list of 1 to ${MAX_COMMANDS} commands, each with an op`;
   }
@@ -576,13 +500,6 @@ function priorityOf(raw: unknown): Pick<Reading, "safety" | "stop" | "unclear" |
     start: r.start === "no_start" ? "no_start" : undefined,
   };
 }
-
-/** The problems Maya may name in a statement: the child's question (index 0) and the easier example. */
-const namedProblems = (pkg: OperationPackage): NamedProblem[] =>
-  [pkg.operation, pkg.easierExample.operation].flatMap((op) => {
-    const [symbol, [a, b, ...rest]] = [SYMBOL[op.kind], operandsOf(op)];
-    return symbol && a !== undefined && b !== undefined && rest.length === 0 ? [{ symbol, operands: [a, b] as const }] : [];
-  });
 
 // ---------- Allowed acts and priority ----------
 
@@ -699,7 +616,8 @@ export function step(session: Session, event: SessionEvent): StepResult {
   const effects: Effect[] = [];
 
   // Safety first: a safety signal is taken before the clock and before anything else in the same event.
-  const raw = event.type === "proposal" ? event.proposal : undefined;
+  // Structured output sends null for an unused field: it reads as a missing one.
+  const raw = event.type === "proposal" ? withoutNulls(event.proposal) : undefined;
   const shape = event.type === "proposal" ? proposalProblem(raw) : null;
   // The priority input is read field by field, so a malformed board or answer list cannot drop it.
   const priority = priorityOf(raw);
@@ -786,9 +704,12 @@ export function step(session: Session, event: SessionEvent): StepResult {
     case "safety":
       break;
     case "maya_said":
-      // No math is repaired before the opening, after a safety concern or a content hold, or twice at once.
+      // Nothing is repaired before the opening, after a safety concern or a content hold, or twice at once. What Maya
+      // said must be the approved text of her last turn (its lines and warm talk), after both are normalised the same
+      // way (speech.ts): any other words, with math or without ("Yes!" after a wrong answer), start a repair.
       if (typeof event.text !== "string") return refuse(session, "invalid_event", "What Maya said needs its text.");
-      if (s.package && !["READY", "OPEN", "SAFETY", "CONTENT_HOLD", "REPAIR_MAYA"].includes(s.state) && mathClaims(event.text, namedProblems(s.package), turnNumbers(s, null)).some((c) => c.status === "false" || c.instruction)) {
+      if (s.package && !["READY", "OPEN", "SAFETY", "CONTENT_HOLD", "REPAIR_MAYA"].includes(s.state) &&
+        !saidAsApproved(event.text, lastSaid(s))) {
         effects.push({ kind: "cancel_output" });
         // The repair returns to the teaching state (an interrupt's saved one), or to the closing minute (no resume). The
         // child's pending turn and a stop stay for after the repair (a stop comes first).
@@ -847,37 +768,7 @@ function propose(base: Session, p: Proposal, effects: Effect[]): StepResult {
     return no(allowed.code, allowed.reason, allowed.acts);
   }
 
-  // 3. Maya's own words and board: every number claim reads and holds, and the answer waits its turn.
-  const say = p.say.trim();
-  const problems = pkg ? namedProblems(pkg) : [];
-  // Board digits put in a cell are checked by the board core against their column; every other number is bound to
-  // the turn's checked step.
-  const bound = turnNumbers(s, p);
-  const claims = p.act === "safety" ? [] : [
-    ...[say, ...boardTexts(p.board ?? [], "text")].flatMap((t) => mathClaims(t, problems, bound)),
-    ...boardTexts(p.board ?? [], "value").flatMap((t) => mathClaims(t, problems)),
-  ];
-  const wrong = claims.find((c) => c.status !== "true");
-  const released = s.solved !== null || s.assistance.includes("answer_given") || rightResult || p.act === "give_answer";
-  const reveals = pkg !== null && !released && p.act !== "safety" && revealsAnswer(s, p, claims);
-  // The answer said too early ("Now write 66" in the example) is refused as that, before the wrong digit to write;
-  // a wrong equation or a number code cannot read is refused as wrong math.
-  if (wrong && reveals && claims.every((c) => c.status === "true" || (c.status === "false" && !c.result))) return no("reveals_answer", "Maya may not give the answer yet.", allowedNow);
-  if (wrong) {
-    return no("wrong_math", wrong.status === "false" ? `"${wrong.text}" is not true.`
-      : `Code cannot check "${wrong.text}": say each number fact as a whole equation, such as "7 + 9 = 16".`, allowedNow);
-  }
-  if (say === "" && !["wait", "safety", "give_answer"].includes(p.act)) return no("invalid_proposal", "Maya needs words for this act.", allowedNow);
-  let roles: Record<string, Problem> = {};
-  if (p.board) {
-    if (!BOARD_ACTS.includes(p.act)) return no("board_not_allowed", `Maya does not draw during ${p.act}.`, allowedNow);
-    const board = boardRoles(s, p.act === "example_step" ? "example" : "target", p.board);
-    if (typeof board === "string") return no("board_wrong_problem", board, allowedNow);
-    roles = board;
-  }
-  if (reveals) return no("reveals_answer", "Maya may not give the answer yet.", allowedNow);
-
-  // 4. The ladder after this reading: failures and requests raise what help is allowed; right steps move on.
+  // 3. The ladder after this reading: failures and requests raise what help is allowed; right steps move on.
   const scoring = !blocked;
   const ladder = { ...s.ladder };
   const done = [...s.done];
@@ -898,12 +789,51 @@ function propose(base: Session, p: Proposal, effects: Effect[]): StepResult {
     if (reading.help === "show") ladder.unlocked = Math.max(ladder.unlocked, 3);
   }
 
+  const main = isTeaching(s.state) ? s.state : s.resume;
+  // The step a guide or an example step is about comes before its words: its lines are that step's lines.
+  if (p.act === "example_step") {
+    const next = pkg!.easierExample.steps[main === "ASSESS" ? 0 : s.exampleShown];
+    if (p.step !== next.id) return no("wrong_step", `The next example step is "${next.id}".`, allowedNow);
+  }
+  if (p.act === "guide" && p.step !== ladder.step) return no("wrong_step", `Guide the first step the child has not done: "${ladder.step}".`, allowedNow);
+  if (p.act === "accept_answer" && !rightResult) return no("accepts_wrong_answer", "Only a right final answer the child said and kept can be accepted.", allowedNow);
+
+  // 4. Maya's words and board: lines code writes for this act, step and level, and warm talk with no math in it.
+  const view: View = { steps: [ladder.step], done, checked, rightResult };
+  const spoken: Spoken | { code: RefusalCode; reason: string } = p.act === "safety" ? { text: "", lines: [], boards: [], replaced: 0, segments: [], chosen: [] } : speak(s, p, view);
+  if ("code" in spoken) return no(spoken.code, spoken.reason, allowedNow);
+  const say = spoken.text;
+  if (say === "" && !["wait", "safety", "give_answer"].includes(p.act)) return no("invalid_proposal", "Maya needs words for this act.", allowedNow);
+  const role: Problem = p.act === "example_step" ? "example" : "target";
+  // The board (R374-6-1): with the freeTalk flag off, Maya picks board offers by id (`draw`) and code builds every
+  // command from the checked worked step; a command the model built is refused. With the flag on, the model's own
+  // commands are read as before (not airtight: checks on free commands can miss a relation between their numbers).
+  if (p.board && !s.freeTalk) {
+    return no("board_not_code", "Maya does not build board commands: pick code's board offers with `draw` (see drawOffers).", allowedNow);
+  }
+  const drawn = p.draw ? drawBoard(s, p, view, spoken) : [];
+  if (typeof drawn === "string") return no("board_not_code", drawn, allowedNow);
+  const commands = [...(p.board ?? []), ...drawn];
+  const pb: Proposal = { ...p, board: commands.length > 0 ? commands : undefined };
+  let roles: Record<string, Problem> = {};
+  if (pb.board) {
+    if (!BOARD_ACTS.includes(p.act)) return no("board_not_allowed", `Maya does not draw during ${p.act}.`, allowedNow);
+    const board = boardRoles(s, role, pb.board);
+    if (typeof board === "string") return no("board_wrong_problem", board, allowedNow);
+    roles = board;
+  }
+  const released = s.solved !== null || s.assistance.includes("answer_given") || rightResult || p.act === "give_answer";
+  if (pkg !== null && !released && p.act !== "safety" && revealsAnswer(s, pb, [say, ...boardTexts(pb.board ?? [])])) {
+    return no("reveals_answer", "Maya may not give the answer yet.", allowedNow);
+  }
+  const bad = pb.board ? boardProblem(s, pb.board, role, spoken, done) : null;
+  if (bad) return no(bad.code, bad.reason, allowedNow);
+
   // 5. The act.
   let text = say;
-  const main = isTeaching(s.state) ? s.state : s.resume;
   switch (p.act) {
     case "open":
-      if (!/\bAI\b/.test(say)) return no("missing_disclosure", "The opening says Maya is an AI.", allowedNow);
+      if (!p.parts.some((part) => "line" in part && part.line === "open.hello")) return no("missing_disclosure", "The opening says Maya is an AI: use the open.hello line.", allowedNow);
       s.opened = true;
       break;
     case "clarify":
@@ -950,8 +880,9 @@ function propose(base: Session, p: Proposal, effects: Effect[]): StepResult {
     case "give_answer": {
       if (s.state !== "TIME_CLOSE" && ladder.unlocked < 4) return no("hint_too_high", `The answer comes after help up to H3 and another failed attempt or request (now H${ladder.unlocked}).`, allowedNow);
       // Code says the answer and asks for it on paper, so both are true.
-      const answer = valueText(pkg!.answer.value);
-      text = [say, `The answer is ${answer}. Please write ${answer} on your paper.`].filter(Boolean).join(" ");
+      const [give] = packageLines(pkg!).answerGive();
+      // Code adds a math line, so this turn is a math turn whatever the parts are (CODE_MATH_ACTS).
+      spoken.segments.push({ kind: "math", text: give.texts[chooseWording(s.variety, give.texts.map((_, i) => `${give.key}#${i}`), s.now!)] });
       if (s.solved === null) {
         s.solved = "maya";
         s.answerGivenFirst = true;
@@ -1007,7 +938,15 @@ function propose(base: Session, p: Proposal, effects: Effect[]): StepResult {
       break;
   }
 
-  // 6. Committed: the reading counts now (its answers only when they were judged).
+  // 6. The assembled turn, with every line code added, checked in one place before anything is said (D-196,
+  // R374-3-1): a turn with math takes warm talk only from the bank, and only before its first math line.
+  if (p.act !== "safety") {
+    const order = assembledProblem(spoken.segments, CODE_MATH_ACTS.includes(p.act));
+    if (order) return no(order.code, order.reason, allowedNow);
+    text = spoken.segments.map((x) => x.text).join(" ");
+  }
+
+  // 7. Committed: the reading counts now (its answers only when they were judged).
   if (reading.correctsHearing) s.mishearing.corrections += 1;
   if (reading.paper) s.paper = reading.paper === "written" ? "child_confirmed" : "declined";
   for (const { answer: a, problem } of checked) {
@@ -1027,12 +966,12 @@ function propose(base: Session, p: Proposal, effects: Effect[]): StepResult {
   if (p.act !== "repair") s.turn = null;
 
   if (text !== "") {
-    effects.push({ kind: "say", act: p.act, text });
+    effects.push({ kind: "say", act: p.act, text, ...(spoken.replaced > 0 ? { talkReplaced: spoken.replaced } : {}) });
     s.turns.push({ at: s.now!, speaker: "maya", text, state: p.act === "close" ? "CLOSE" : s.state, act: p.act });
   }
-  if (p.board) {
+  if (pb.board) {
     s.batches += 1;
-    effects.push({ kind: "board", batch: { transactionId: `${s.callId}-b${s.batches}`, commands: p.board } });
+    effects.push({ kind: "board", batch: { transactionId: `${s.callId}-b${s.batches}`, commands: pb.board } });
   }
 
   if (p.act === "close") {
@@ -1168,17 +1107,15 @@ const boardTexts = (board: unknown[], only?: "text" | "value") =>
 
 /**
  * Maya's words or board would give the final answer: she says it (unless it is one of the question's own numbers, as
- * in 66 + 0), states the question's equation, or fills the answer row of the question's board in its highest place.
+ * in 66 + 0), or fills the answer row of the question's board in its highest place. The lines that state the answer
+ * are offered only once it may be said; this is the net under them.
  */
-function revealsAnswer(s: Session, p: Proposal, claims: MathClaim[]): boolean {
+function revealsAnswer(s: Session, p: Proposal, texts: string[]): boolean {
   const pkg = s.package!;
   const answer = pkg.answer.value;
   const operands = operandsOf(pkg.operation);
-  const texts = [p.say, ...boardTexts(p.board ?? [])];
   const ownNumber = operands.some((n) => equivalent(number(n), answer));
   if (!ownNumber && texts.some((t) => valuesIn(t).some((v) => equivalent(v, answer)))) return true;
-  // A claim that gives the question's own expression a value ("66 + 0 = 66").
-  if (claims.some((c) => c.problem === 0 && c.result)) return true;
   const highest = answer.type === "number" ? PLACE_NAMES[String(Math.trunc(Math.abs(answer.value))).length - 1] : undefined;
   return (p.board ?? []).some((raw) => {
     const c = raw as Partial<Command>;
@@ -1222,6 +1159,438 @@ function boardRoles(s: Session, role: Problem, board: unknown[]): Record<string,
     }
   }
   return created;
+}
+
+// ---------- Maya's words ----------
+
+/** What a proposal is judged against: the steps its step lines may be about, and the reading as code checked it. */
+interface View {
+  steps: string[];
+  done: string[];
+  checked: Checked[];
+  rightResult: boolean;
+}
+
+/** The words a proposal gives: the text Maya says, the lines in it, and the board texts those lines allow. */
+interface Spoken {
+  text: string;
+  lines: string[];
+  boards: string[];
+  /** Pieces of the model's own warm words replaced by a bank phrase. */
+  replaced: number;
+  /** The turn's parts in order, with what each is; code adds its own lines here before the turn is checked. */
+  segments: Segment[];
+  /** The line offers said this turn. */
+  chosen: LineOffer[];
+}
+
+/** One part of a turn as said: a math line, a line with no math (the hello), bank warm talk, or the model's own words. */
+interface Segment {
+  kind: "math" | "plain" | "warm" | "talk";
+  text: string;
+}
+
+/** Acts where code adds a math line itself (the given answer): they are math turns by definition. */
+const CODE_MATH_ACTS: readonly Act[] = ["give_answer"];
+
+/**
+ * The one check of a turn's order (D-196), on the assembled turn: when it holds math (a math line, or an act where code
+ * adds one), none of its warm talk is the model's own words, and no warm talk comes after its first math line.
+ */
+function assembledProblem(segments: readonly Segment[], codeMath: boolean): { code: RefusalCode; reason: string } | null {
+  const first = segments.findIndex((x) => x.kind === "math");
+  if (first === -1 && !codeMath) return null;
+  if (first !== -1 && segments.slice(first).some((x) => x.kind === "warm" || x.kind === "talk")) {
+    return { code: "math_line_not_last", reason: "Warm talk comes before the math line: the math line is the last thing Maya says in a turn." };
+  }
+  if (segments.some((x) => x.kind === "talk")) {
+    return { code: "free_talk_in_math_turn", reason: "A turn with math takes its warm talk from the bank: use { warm: <group> }, not { talk }." };
+  }
+  return null;
+}
+
+/** A 32-bit number from a text (FNV-1a), to seed the wordings of a call that passes no random number. */
+function hashOf(text: string): number {
+  let h = 0x811c9dc5;
+  for (let i = 0; i < text.length; i++) h = Math.imul(h ^ text.charCodeAt(i), 0x01000193) >>> 0;
+  return h;
+}
+
+/** The wordings this call has said, with their times: add them to the child's wording history (wording-history.ts). */
+export const heardWordings = (session: Session): WordingHistory => heardInCall(session.variety);
+
+/** The warm-talk purposes each act Maya may take now can use (D-196), for the text adapter beside lineOffers. */
+export function warmGroups(session: Session): Partial<Record<Act, PhraseGroup[]>> {
+  return Object.fromEntries(nextActs(session).acts.map((act) => [act, PHRASE_GROUPS.filter((g) => PHRASE_ACTS[g].includes(act))]));
+}
+
+/** "{echo}" filled with the child's words, a capital first at the start of a sentence. */
+function withEcho(text: string, echoed: string | null): string {
+  if (echoed === null) return text;
+  const capital = `${echoed[0].toUpperCase()}${echoed.slice(1)}`;
+  return text.replace(/^\{echo\}/, capital).replace(/([.?!]\s+)\{echo\}/g, `$1${capital}`).replace(/\{echo\}/g, echoed);
+}
+
+/**
+ * The child's own words for an echo frame (D-196): 1 to 3 words in a row from the child's last turn, with no
+ * punctuation between them, matched after case is set aside and copied as the child wrote them, with no math, no work word and not the child's name. Null
+ * when they fail, and code then picks a frame with no slot.
+ */
+function echoOf(s: Session, raw: string): string | null {
+  const last = s.turn?.text ?? [...s.turns].reverse().find((t) => t.speaker === "child")?.text ?? "";
+  const want = (raw.match(/[\p{L}]+(?:['’][\p{L}]+)*/gu) ?? []).map((w) => w.toLowerCase());
+  if (want.length < 1 || want.length > 3 || raw.replace(/[\p{L}'’\s]/gu, "") !== "") return null;
+  // The run of words stays inside one stretch of the child's text with no punctuation in it: an echo never crosses a
+  // sentence break or a comma ("Biscuit. Soccer" gives no "Biscuit Soccer").
+  let echoed: string | null = null;
+  for (const stretch of last.split(/[^\p{L}'’\s]+/u)) {
+    const words = stretch.match(/[\p{L}]+(?:['’][\p{L}]+)*/gu) ?? [];
+    const at = words.findIndex((_, i) => want.every((w, k) => words[i + k]?.toLowerCase() === w));
+    if (at !== -1) {
+      echoed = words.slice(at, at + want.length).join(" ");
+      break;
+    }
+  }
+  if (echoed === null) return null;
+  const name = s.variety.name?.toLowerCase();
+  if (talkMath(echoed) !== null || workProblem(echoed) !== null || (name && want.includes(name))) return null;
+  return echoed;
+}
+
+/** What the child has said in this call: free talk may start a sentence with a name the child used (D-196). */
+const childWords = (s: Session) => s.turns.filter((t) => t.speaker === "child").map((t) => t.text);
+
+/** The approved text of Maya's last turn, or "" before she has said anything. */
+const lastSaid = (s: Session) => [...s.turns].reverse().find((t) => t.speaker === "maya")?.text ?? "";
+
+/** The numbers Maya may have heard in the child's pending turn, and the pairs that sound alike or were offered as alternatives. */
+function heardIn(s: Session): [AnswerValue[], [AnswerValue, AnswerValue][]] {
+  if (!s.turn) return [[], []];
+  const last = s.turns.map((t) => t.speaker).lastIndexOf("maya");
+  const since = s.turns.slice(last + 1).flatMap((t) => (t.speaker === "child" ? t.alternatives ?? [] : []));
+  const heard = valuesIn(s.turn.text);
+  const alternatives = since.flatMap((t) => valuesIn(t));
+  const pairs: [AnswerValue, AnswerValue][] = [
+    ...heard.flatMap((v) => (v.type === "number" ? soundsLike(v.value).map((w) => [v, number(w)] as [AnswerValue, AnswerValue]) : [])),
+    ...heard.flatMap((v) => alternatives.filter((a) => !equivalent(a, v)).map((a) => [v, a] as [AnswerValue, AnswerValue])),
+  ];
+  return [[...heard, ...alternatives], pairs];
+}
+
+/**
+ * The lines an act may use now. `view.steps` are the steps of the child's question its help lines may be about: the
+ * step the ladder is on (to check a proposal), or every step not done yet (to offer, as a reading may finish steps).
+ */
+function offersFor(s: Session, act: Act, view: View): LineOffer[] {
+  const pkg = s.package;
+  if (!pkg) return [];
+  const l = packageLines(pkg);
+  const main = isTeaching(s.state) ? s.state : s.resume;
+  const solved = s.solved ?? (view.rightResult ? "child" : null);
+  const right = l.stepIds.flatMap(l.rightStep);
+  switch (act) {
+    case "open":
+      return [...l.hello(), ...l.question(), ...l.assess()];
+    case "clarify":
+      return [...l.question(), ...l.assess()];
+    case "example_step": {
+      const index = main === "ASSESS" ? 0 : s.exampleShown;
+      const next = pkg.easierExample.steps[index];
+      return [...(index === 0 ? l.exampleIntro() : []), ...(next ? l.exampleStep(next.id) : [])];
+    }
+    case "try_target":
+      return [...l.tryTarget(), ...l.question()];
+    case "guide":
+      return [...view.steps.flatMap(l.help), ...right, ...view.steps.flatMap(l.notYet), ...l.question(), ...l.thinking()];
+    case "accept_answer":
+      return [...l.thinking(), ...l.answerRight(), ...l.explain(), ...right];
+    case "give_answer":
+      return [...view.steps.flatMap(l.help), ...right];
+    case "ask_write":
+      return [...(solved ? [...l.writeAnswer(), ...l.answerRight()] : l.writeYours()), ...(main === "CHECK" ? [...l.thinking(), ...l.explain()] : [])];
+    case "close":
+      return solved ? l.closeSolved(solved) : [];
+    case "confirm":
+      return l.heard(...heardIn(s));
+    case "offer_other_input":
+      return l.otherInput();
+    case "redirect":
+      return [...l.redirect(), ...l.question()];
+    case "repair":
+      return [...l.repair(), ...l.question(), ...view.steps.flatMap(l.help).filter((o) => (o.level ?? 0) <= Math.max(0, s.ladder.hint))];
+    default:
+      return [];
+  }
+}
+
+/** A line that judges the child's answer: code checked that answer, right (the step is done) or wrong. */
+const meets = (requires: NonNullable<LineOffer["requires"]>, view: View) =>
+  requires.answer === "right"
+    ? view.done.includes(requires.step)
+    : view.checked.some((c) => c.problem === "target" && c.answer.step === requires.step && c.answer.verdict === "wrong");
+
+/** The first two words of each sentence of a text, in lower case, to keep two sentences of one turn from starting alike. */
+const openings = (text: string) =>
+  text.split(/(?<=[.?!])\s+/).map((x) => (x.toLowerCase().match(/[\p{L}']+/gu) ?? []).slice(0, 2).join(" ")).filter((x) => x.includes(" "));
+
+/**
+ * A line is math when any of its filled wordings holds what the no-math rule refuses in talk: a number, a sign, or an
+ * operation, place, carry, write, answer or judgement word (R374-2-1). Decided from the filled text, not a list of
+ * line ids, so a new line cannot be left out: only a line with no math in any wording (the hello) is not math.
+ */
+const isMathLine = (o: LineOffer) => o.texts.some((t) => talkMath(t) !== null);
+
+/**
+ * Renders a proposal's parts into the turn's segments. Each line must be offered now; the model's own warm words pass
+ * the guards or are replaced by a bank phrase of the act's purpose. Which turns may hold them is checked once, on the
+ * assembled turn (assembledProblem). Wordings are picked by variety.ts.
+ */
+function speak(s: Session, p: Proposal, view: View): Spoken | { code: RefusalCode; reason: string } {
+  const offers = offersFor(s, p.act, view);
+  const texts: string[] = [];
+  const segments: Segment[] = [];
+  const chosen: LineOffer[] = [];
+  const lines: string[] = [];
+  const turn = s.turns.filter((t) => t.speaker === "maya").length;
+  let named = false;
+  let replaced = 0;
+  /**
+   * Picks a wording none of whose sentences starts with the same two words as a sentence already said in this turn
+   * ("Let's look" twice reads as robotic); when every wording does, any of them.
+   */
+  const pickFresh = (wordings: readonly string[], id: (i: number) => string) => {
+    const used = new Set(texts.flatMap(openings));
+    const fresh = wordings.map((w, i) => i).filter((i) => !openings(wordings[i]).some((o) => used.has(o)));
+    const pool = fresh.length > 0 ? fresh : wordings.map((_, i) => i);
+    return pool[chooseWording(s.variety, pool.map(id), s.now!)];
+  };
+  const phrase = (group: PhraseGroup, echoed: string | null = null, pick?: number) => {
+    const bank = PHRASES[group];
+    // A frame with the child's words when they check, else one with no slot (D-196 echo frames).
+    const slotted = bank.flatMap((b, i) => (b.includes("{echo}") ? [i] : []));
+    const pool = echoed !== null && slotted.length > 0 ? slotted : bank.flatMap((b, i) => (b.includes("{echo}") ? [] : [i]));
+    // The model may name the phrase that fits (R374-5): code keeps it when its slot can be filled, and records it.
+    const chosen = pick !== undefined && pool.includes(pick - 1) ? pick - 1 : null;
+    let index: number;
+    if (chosen !== null) {
+      index = chosen;
+      s.variety.seq += 1;
+      s.variety.heard[`phrase:${group}.${chosen + 1}`] = [s.variety.seq, s.now!];
+    } else {
+      index = pool[pickFresh(pool.map((i) => bank[i]), (i) => `phrase:${group}.${pool[i] + 1}`)];
+    }
+    const text = withEcho(bank[index], echoed);
+    const name = text.includes("{name}") && !named && nameNow(s.variety, turn) ? s.variety.name : null;
+    if (name !== null) {
+      named = true;
+      s.variety.nameAt = turn;
+    }
+    return withName(text, name);
+  };
+  const add = (kind: Segment["kind"], text: string) => {
+    texts.push(text);
+    segments.push({ kind, text });
+  };
+  for (const part of p.parts) {
+    if ("warm" in part) {
+      if (!PHRASE_ACTS[part.warm].includes(p.act)) {
+        const groups = PHRASE_GROUPS.filter((g) => PHRASE_ACTS[g].includes(p.act));
+        return { code: "line_not_offered", reason: `Warm talk "${part.warm}" does not fit ${p.act}. It fits: ${groups.join(", ") || "none"}.` };
+      }
+      add("warm", phrase(part.warm, part.echo === undefined ? null : echoOf(s, part.echo), part.pick));
+      continue;
+    }
+    if ("talk" in part) {
+      // The model's own words pass the guards or become a bank phrase; either way they stay the model's part, so a
+      // turn with math refuses them (assembledProblem).
+      if (s.freeTalk && freeTalkProblem(part.talk, s.variety.name, childWords(s)) === null) {
+        add("talk", part.talk.trim());
+      } else {
+        replaced += 1;
+        add("talk", phrase(FALLBACK_GROUP[p.act] ?? "encourage"));
+      }
+      continue;
+    }
+    const o = findOffer(offers, { line: part.line, slots: normalSlots(part.slots ?? {}) });
+    if (!o) {
+      const ids = [...new Set(offers.map((x) => x.line))];
+      return { code: "line_not_offered", reason: `"${part.line}" with these slots is not offered for ${p.act} now. Offered: ${ids.join(", ") || "no lines"}.` };
+    }
+    if (o.requires && !meets(o.requires, view)) {
+      return { code: "line_not_offered", reason: `"${o.line}" needs an answer code checked ${o.requires.answer} for "${o.requires.step}".` };
+    }
+    if (p.act === "guide" && o.level !== undefined && o.level > (p.level ?? 0)) {
+      return { code: "hint_too_high", reason: `"${o.line}" is H${o.level} help, above this guide's level H${p.level ?? 0}.` };
+    }
+    const text = o.texts[pickFresh(o.texts, (k) => `${o.key}#${k}`)];
+    add(isMathLine(o) ? "math" : "plain", text);
+    lines.push(text);
+    chosen.push(o);
+  }
+  const level = Math.min(p.level ?? 0, 3);
+  if (p.act === "guide" && level >= 1 && !chosen.some((o) => o.level === level)) {
+    return { code: "invalid_proposal", reason: `A guide at H${p.level} says a step line of level H${level}.` };
+  }
+  return { text: texts.join(" "), lines, boards: chosen.flatMap((o) => (o.board ? [o.board] : [])), replaced, segments, chosen };
+}
+
+/** One board representation code offers: an id the model names, and the commands code writes for a place. */
+interface BoardOffer {
+  id: string;
+  /** What it draws, for the model. */
+  shows: string;
+  commands: (place: Place) => Command[];
+}
+
+/** The places Maya may put a new board object: code offers them; the model picks one by name. */
+function boardPlaces(s: Session, batch: readonly string[]): Record<string, Place> {
+  const out: Record<string, Place> = { main: { region: "main" } };
+  for (const id of ["question", "example"]) if (Object.hasOwn(s.boardRoles, id) || batch.includes(id)) out[`below:${id}`] = { below: id };
+  return out;
+}
+
+/** The columns of a problem as code lays them out, with a code-made id ("question" or "example"). */
+function columnsOf(s: Session, problem: Problem): Command | null {
+  const pkg = s.package!;
+  const { operation } = problemOf(pkg, problem);
+  const layout = BOARD_OPERATION[operation.kind];
+  if (!layout) return null;
+  const [a, b] = operandsOf(operation);
+  return { op: "columns", id: problem === "target" ? "question" : "example", operation: layout, operands: [{ id: "top", value: String(a) }, { id: "bottom", value: String(b) }], place: { region: "main" } } as unknown as Command;
+}
+
+/**
+ * The board representations code offers for an act now (R374-6-1), each from the checked package: the question's
+ * columns, the easier example's columns, a digit of the question's answer row once its step is done (or shown this
+ * turn), and the expression or equation of a line said this turn as a note. Ids and every shown word are code's.
+ */
+function boardOffersFor(s: Session, act: Act, view: View, spoken: Pick<Spoken, "chosen"> | null): BoardOffer[] {
+  const pkg = s.package;
+  if (!pkg || !BOARD_ACTS.includes(act)) return [];
+  const out: BoardOffer[] = [];
+  const at = (c: Command | null, place: Place) => (c ? [{ ...c, place } as Command] : []);
+  if (act === "example_step") {
+    const ex = columnsOf(s, "example");
+    if (ex && !Object.hasOwn(s.boardRoles, "example")) out.push({ id: "example.columns", shows: `the easier example in columns: ${operationText(pkg.easierExample.operation)}`, commands: (place) => at(ex, place) });
+  } else {
+    const q = columnsOf(s, "target");
+    if (q && !Object.hasOwn(s.boardRoles, "question")) out.push({ id: "question.columns", shows: `the question in columns: ${operationText(pkg.operation)}`, commands: (place) => at(q, place) });
+    // A written digit of a column step, once the child did the step or a line showed it this turn.
+    const shown = new Set((spoken?.chosen ?? []).filter((o) => o.line === "step.show").map((o) => o.slots.step));
+    if (q && (pkg.operation.kind === "add" || pkg.operation.kind === "subtract")) {
+      for (const st of workSteps(pkg.steps)) {
+        if ((st.kind !== "add-column" && st.kind !== "subtract-column") || st.write === null) continue;
+        if (!(PLACE_NAMES as readonly string[]).includes(st.place) || !(view.done.includes(st.id) || shown.has(st.id))) continue;
+        const write = st.write;
+        out.push({ id: `question.write.${st.id}`, shows: `write ${write} in the ${st.place} of the question's answer row`,
+          commands: () => [{ op: "put", target: { objectId: "question", part: "cell", rowId: "answer", column: st.place }, value: String(write) } as unknown as Command] });
+      }
+    }
+  }
+  // A line's expression or equation said this turn, as a note with a code-made id.
+  for (const o of spoken?.chosen ?? []) {
+    if (!o.board) continue;
+    const text = o.board;
+    out.push({ id: `line.${o.line}`, shows: `the note "${text}"`, commands: (place) => [{ op: "write", id: `note-${s.batches + 1}-${o.line}`, text, place } as unknown as Command] });
+  }
+  return out;
+}
+
+/** The commands of the board offers a proposal draws, or why one is not offered. */
+function drawBoard(s: Session, p: Proposal, view: View, spoken: Spoken): Command[] | string {
+  const offers = boardOffersFor(s, p.act, view, spoken);
+  const out: Command[] = [];
+  const ids: string[] = [];
+  for (const d of p.draw ?? []) {
+    const o = offers.find((x) => x.id === d.offer);
+    if (!o) return `"${d.offer}" is not a board offer for ${p.act} now. Offered: ${offers.map((x) => x.id).join(", ") || "none"}.`;
+    if (ids.includes(o.id)) return `"${o.id}" is drawn twice.`;
+    const places = boardPlaces(s, ids.map((id) => (id === "question.columns" ? "question" : id === "example.columns" ? "example" : id)));
+    const place = places[d.place ?? "main"];
+    if (!place) return `"${d.place}" is not a board place now. Places: ${Object.keys(places).join(", ")}.`;
+    ids.push(o.id);
+    out.push(...o.commands(place));
+  }
+  return out;
+}
+
+/**
+ * The board offers each act Maya may take now can draw (R374-6-1), for the text adapter beside lineOffers: an id and
+ * what it shows. `line.<line id>` offers appear in the turn a line with a board form is said.
+ */
+export function drawOffers(session: Session): Partial<Record<Act, { id: string; shows: string }[]>> {
+  const pkg = session.package;
+  const { acts } = nextActs(session);
+  if (!pkg) return Object.fromEntries(acts.map((a) => [a, []]));
+  const steps = workSteps(pkg.steps).map((st) => st.id).filter((id) => !session.done.includes(id));
+  const view: View = { steps, done: session.done, checked: [], rightResult: false };
+  return Object.fromEntries(acts.map((act) => [act, [
+    ...boardOffersFor(session, act, view, null).map(({ id, shows }) => ({ id, shows })),
+    ...offersFor(session, act, view).filter((o) => o.board).map((o) => ({ id: `line.${o.line}`, shows: `the note "${o.board}" (with that line)` })),
+  ]]));
+}
+
+/** The fields of a board command a child sees as words. */
+const BOARD_WORDS: ReadonlySet<string> = new Set(["text", "label"]);
+/** The fields of a board command a child sees as numbers. */
+const BOARD_NUMBERS: ReadonlySet<string> = new Set(["value", "dividend", "divisor", "numerator", "denominator", "whole", "min", "max", "tick", "fromValue", "toValue"]);
+
+/** Every word or number field a child sees on the board, in any command, at any depth, with its field name. */
+function boardVisible(v: unknown, key = ""): [string, string][] {
+  if (typeof v === "string") return BOARD_WORDS.has(key) || BOARD_NUMBERS.has(key) ? [[key, v]] : [];
+  if (Array.isArray(v)) return v.flatMap((x) => boardVisible(x, key));
+  return isObject(v) ? Object.entries(v).flatMap(([k, x]) => boardVisible(x, k)) : [];
+}
+
+/**
+ * Everything a child sees on the board, checked on every command (R374-5-1). Words are the expression, equation or
+ * text of a line said this turn; with the `freeTalk` flag off nothing else, so every word on the board comes from
+ * code (with it on, a note with no math passes the free-talk guards). Numbers are in a line said this turn, in the
+ * problem's own numbers, or a digit of a done step.
+ */
+function boardProblem(s: Session, board: unknown[], role: Problem, spoken: Spoken, done: string[]): { code: RefusalCode; reason: string } | null {
+  const pkg = s.package!;
+  const { operation, steps } = problemOf(pkg, role);
+  const finished = role === "target" ? steps.filter((st) => done.includes(st.id)) : steps.slice(0, s.exampleShown + 1);
+  const allowed = [
+    ...[...spoken.lines, ...spoken.boards].flatMap((t) => valuesIn(t)),
+    ...operandsOf(operation).flatMap((n) => [number(n), ...[...String(n)].filter((c) => /\d/.test(c)).map((c) => number(Number(c)))]),
+    ...finished.flatMap((st) => [...stepAnswers(st), ...("carryOut" in st ? [number(st.carryOut)] : [])]),
+  ];
+  const fromCode = new Set([...spoken.boards, ...spoken.lines].map((t) => t.trim()));
+  for (const [key, raw] of boardVisible(board)) {
+    const t = raw.trim();
+    if (t === "") continue;
+    if (BOARD_WORDS.has(key)) {
+      if (fromCode.has(t)) continue;
+      if (!s.freeTalk) return { code: "board_not_code", reason: `With free talk off, the board shows only a line's words said this turn, not "${t}".` };
+      if (talkMath(t) !== null) return { code: "math_in_talk", reason: `The board writes math only as a line's expression or equation said this turn, not "${t}".` };
+      // A note with no math passes the free-talk guards (D-196): nothing on the board points back or instructs the work.
+      if (freeTalkProblem(/[.?!]$/.test(t) ? t : `${t}.`, s.variety.name, childWords(s)) !== null) {
+        return { code: "math_in_talk", reason: `A board note does not instruct the work or point back to earlier words: "${t}".` };
+      }
+      continue;
+    }
+    const values = valuesIn(t);
+    if (values.length === 0 || /\p{L}/u.test(t.replace(/\bR\b/g, ""))) return { code: "wrong_math", reason: `Code cannot read "${t}" as a number to show on the board.` };
+    const off = values.find((x) => !allowed.some((a) => equivalent(a, x)));
+    if (off) return { code: "wrong_math", reason: `Maya shows ${valueText(off)} on the board only after a line says it this turn.` };
+  }
+  return null;
+}
+
+/**
+ * The lines Maya may say now, by act: what the text adapter (#322) offers the model. Help lines are offered for every
+ * step of the child's question not done yet, as the model's reading of the child's turn may finish steps; the session
+ * then accepts the ones for the step the ladder is on. Empty when it is not Maya's turn.
+ */
+export function lineOffers(session: Session): Partial<Record<Act, LineOffer[]>> {
+  const { acts } = nextActs(session);
+  const pkg = session.package;
+  if (!pkg) return Object.fromEntries(acts.map((a) => [a, []]));
+  const steps = workSteps(pkg.steps).map((st) => st.id).filter((id) => !session.done.includes(id));
+  const view: View = { steps, done: session.done, checked: [], rightResult: false };
+  return Object.fromEntries(acts.map((act) => [act, offersFor(session, act, act === "accept_answer" ? { ...view, rightResult: true } : view)]));
 }
 
 /** The child said this value: the same number (66 and 66.0), or a fraction or remainder written the same way. */
