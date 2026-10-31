@@ -25,15 +25,20 @@ import type {
   WorkbookStore,
   WorkbookWrite,
 } from "@/lib/workbook-content";
+import type { PageContent } from "@/lib/workbook-page";
 
 // ---------- Content in ----------
 
 /** A question to render: its number on the page and its package; the renderer measures its box. */
 export type DraftQuestion = Omit<QuestionInput, "box">;
 
-/** A page to render: the renderer makes its image. */
+/**
+ * A page to render: the renderer makes its image. `content` is what the page's named slots hold (titles, worked
+ * examples, which questions sit in which slot; src/lib/workbook-page.ts): the template lays it out; it is not stored.
+ */
 export interface DraftPage extends Omit<PageInput, "image" | "questions"> {
   questions: DraftQuestion[];
+  content?: PageContent;
 }
 
 /** A workbook to render: its content, with no files or boxes yet. */
@@ -68,11 +73,26 @@ export interface PageParts {
   qrUrl: string;
 }
 
+/** A page that does not fit its template: the slot and the question when it is one of them, and why. */
+export interface FitProblem {
+  question: number | null;
+  slot: string | null;
+  reason: string;
+}
+
 export interface WorkbookTemplate {
   /** The template's style sheet. The renderer sets the page size and the page frame. */
   css: string;
   /** One page's HTML, inside its frame, or null when the template has no layout for the page's type. */
   page(page: DraftPage, parts: PageParts, book: WorkbookDraft): string | null;
+  /**
+   * The template's own fit check of a laid-out page, after the renderer's: its marked elements by name (this page's
+   * only). Content that overflows a slot, a slot holding more than it takes, or a writing space smaller than the design
+   * allows is a problem; the renderer fails the render with it. Never shrink content to pass.
+   */
+  fit?(page: DraftPage, measured: ReadonlyMap<string, MeasuredElement>, book: WorkbookDraft): FitProblem[];
+  /** The smallest answer space each way in CSS pixels; half an inch when not given. */
+  answerMin?: number;
 }
 
 // ---------- The print engine seam ----------
@@ -132,10 +152,11 @@ export interface PrintEngine {
 
 // ---------- Result ----------
 
-/** Why a page failed: the page and, when it is one question, the question. */
+/** Why a page failed: the page and, when it is one question, the question; the slot when the template names one. */
 export interface RenderProblem {
   page: number;
   question: number | null;
+  slot?: string;
   reason: string;
 }
 
@@ -216,6 +237,7 @@ export async function renderWorkbook(o: {
   draft: WorkbookDraft; parentId: string; template: WorkbookTemplate; engine: PrintEngine; fileKey?: string;
 }): Promise<RenderResult> {
   const { draft, template } = o;
+  const answerMin = template.answerMin ?? ANSWER_MIN;
   const problems: RenderProblem[] = [];
   const sheets: string[] = [];
   for (const page of draft.pages) {
@@ -238,7 +260,7 @@ export async function renderWorkbook(o: {
     const image = out.images[i];
     const path = `${folder}/${pageImageName(page.number, o.fileKey)}`;
     files.push({ path, contentType: "image/png", bytes: image.png });
-    const fail = (question: number | null, reason: string) => problems.push({ page: page.number, question, reason });
+    const fail = (question: number | null, reason: string, slot?: string) => problems.push({ page: page.number, question, ...(slot ? { slot } : {}), reason });
     const measured = new Map<string, MeasuredElement>();
     for (const m of out.measured.filter((m) => m.sheet === i)) {
       if (measured.has(m.name)) fail(null, `the template marks ${m.name} more than once`);
@@ -246,7 +268,7 @@ export async function renderWorkbook(o: {
     }
     if (overflows(measured.get("sheet"))) fail(null, "the content does not fit the page");
     for (const m of measured.values()) {
-      if (m.name.startsWith("slot-") && overflows(m)) fail(null, `the ${m.name.slice(5)} does not fit its space`);
+      if (m.name.startsWith("slot-") && overflows(m)) fail(null, `the ${m.name.slice(5)} does not fit its space`, m.name.slice(5));
     }
     const number = measured.get("page-number");
     if (number?.text !== String(page.number) || !number.visible || !number.textPrinted || !insidePage(number)) fail(null, "the page number is not printed");
@@ -264,11 +286,12 @@ export async function renderWorkbook(o: {
       else if (!m.visible) fail(q.number, `question ${q.number} is hidden`);
       else if (overflows(m)) fail(q.number, `question ${q.number} does not fit its space`);
       else if (!content?.visible || !content.textPrinted || !within(content, m)) fail(q.number, `question ${q.number}'s content is not printed`);
-      else if (!answer?.visible || !within(answer, m) || answer.width < ANSWER_MIN || answer.height < ANSWER_MIN) {
+      else if (!answer?.visible || !within(answer, m) || answer.width < answerMin || answer.height < answerMin) {
         fail(q.number, `question ${q.number} has no answer space`);
       } else questions.push({ ...q, box: pixelBox(m, image) });
     }
-    pages.push({ ...page, image: { path, width: image.width, height: image.height }, questions });
+    for (const p of template.fit?.(page, measured, draft) ?? []) fail(p.question, p.reason, p.slot ?? undefined);
+    pages.push({ number: page.number, dayLabel: page.dayLabel, type: page.type, qrToken: page.qrToken, image: { path, width: image.width, height: image.height }, questions });
   });
   if (problems.length) return { status: "failed", problems };
 
@@ -279,6 +302,32 @@ export async function renderWorkbook(o: {
     files,
     pages: draft.pages.map((p) => ({ number: p.number, qrUrl: pageUrl(p.qrToken) })),
   };
+}
+
+/**
+ * The failing pages of a render, printed again with their failure shown on them: a red banner with each reason, the
+ * named questions and slots outlined, and the content area's bottom edge as a dashed line with what ran past it left
+ * visible. For a reviewer to see a failure; never stored or printed.
+ */
+export async function proofPages(o: {
+  draft: WorkbookDraft; template: WorkbookTemplate; engine: PrintEngine; problems: RenderProblem[];
+}): Promise<{ page: number; png: Uint8Array }[]> {
+  const failing = o.draft.pages.filter((p) => o.problems.some((x) => x.page === p.number));
+  if (failing.length === 0) return [];
+  const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  const sheets = failing.map((page) => {
+    const qrUrl = pageUrl(page.qrToken);
+    const mine = o.problems.filter((x) => x.page === page.number);
+    const outlined = [...new Set(mine.flatMap((x) => (x.question ? [`[data-measure="question-${x.question}"]`] : [])))];
+    const style = outlined.length ? `<style>[data-sheet="${failing.indexOf(page)}"] :is(${outlined.join(",")}){outline:3px solid #E5484D!important;outline-offset:2px}</style>` : "";
+    const banner = `<div style="position:absolute;left:0;right:0;top:0;z-index:99;background:#B42318;color:#fff;font:600 13px/1.4 Helvetica,Arial,sans-serif;padding:8px 14px">`
+      + `RENDER FAILED · page ${page.number}<br>${mine.map((x) => `${x.slot ? `[${esc(x.slot)}] ` : ""}${esc(x.reason)}`).join("<br>")}</div>`;
+    return (o.template.page(page, { qr: qrElement(qrUrl), qrUrl }, o.draft) ?? "") + style + banner;
+  });
+  const proof = `[data-measure="slot-content"]{overflow:visible!important;position:relative}`
+    + `[data-measure="slot-content"]::after{content:"";position:absolute;left:-12px;right:-12px;top:100%;border-top:3px dashed #E5484D}`;
+  const out = await o.engine.print({ html: documentHtml(o.template.css + proof, sheets), sheets: sheets.length, page: PRINT_PAGE, scale: IMAGE_SCALE });
+  return failing.map((page, i) => ({ page: page.number, png: out.images[i].png }));
 }
 
 /**
