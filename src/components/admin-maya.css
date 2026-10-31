@@ -1,0 +1,74 @@
+/* Maya's admin test calls (#323). The call: the conversation and "Our board" side by side from 960 px (laptop), stacked
+   on a tablet and a phone, with the board first on a phone so the writing stays in view. Bubbles follow the desk
+   (desk.css): Maya's grey on the left, the child's in the ink colour on the right; notes in mono. No motion beyond
+   Maya's board, which shows the finished work when the device asks for less motion. */
+.mc-pick { display: grid; gap: 14px; padding: 18px; border: 1px solid var(--line); border-radius: 8px; }
+.mc-pick-head { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 6px 16px; }
+[data-look="warm"] .adm-main .mc-pick h2 { margin: 0; }
+.mc-pick-head .adm-note { margin: 0; }
+.mc-field { display: grid; gap: 4px; max-width: 320px; font: 400 12px/1.2 var(--mono); color: var(--ink-2); }
+.mc-field select { min-height: 44px; padding: 8px 10px; border: 1px solid #d4d4d8; border-radius: 6px; background: #fff; font: 400 15px/1.2 var(--sans); color: var(--ink); }
+.mc-test .adm-crumb a { color: var(--ink-2); }
+.mc-questions { display: grid; gap: 8px; margin: 0; padding: 0; list-style: none; }
+.mc-questions li { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 16px; padding: 10px 14px; border-radius: 8px; background: var(--soft); }
+.mc-q-text { margin: 0; font: 500 17px/1.3 var(--sans); }
+.mc-questions .adm-btn, .mc-say .adm-btn, .mc-board-head .adm-btn, .mc-retry .adm-btn { min-height: 44px; }
+.mc-error { margin: 6px 0 0; font-size: 14px; color: #b8410f; }
+
+.mc-call { display: grid; gap: 18px; }
+.mc-head { display: flex; flex-wrap: wrap; align-items: end; justify-content: space-between; gap: 10px 20px; }
+[data-look="warm"] .adm-main .mc-head h1 { margin: 0; }
+.mc-head .adm-crumb a { color: var(--ink-2); }
+.mc-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+
+.mc-grid { display: grid; gap: 18px; }
+@media (min-width: 960px) {
+  .mc-grid { grid-template-columns: minmax(340px, 5fr) 7fr; align-items: start; }
+  .mc-maya { position: sticky; top: 76px; max-height: calc(100dvh - 96px); }
+}
+/* A phone: the board first, then the conversation, so Maya's writing is in view as soon as she draws. */
+@media (max-width: 599px) {
+  .mc-board { order: -1; }
+}
+
+.mc-maya { display: flex; flex-direction: column; min-width: 0; min-height: 420px; border: 1px solid var(--line); border-radius: 12px; background: #fff; overflow: hidden; }
+.mc-maya-head { display: flex; align-items: center; gap: 12px; padding: 12px 16px; border-bottom: 1px solid var(--line); }
+.mc-avatar { flex: none; display: block; border-radius: 50%; background: var(--accent-soft, var(--card)); }
+[data-look="warm"] .adm-main .mc-maya-head h2 { margin: 0; font-size: 17px; }
+.mc-maya-head p { margin: 2px 0 0; font-size: 13px; color: var(--ink-2); }
+
+.mc-talk { flex: 1; display: flex; flex-direction: column; gap: 10px; margin: 0; padding: 16px; list-style: none; overflow-y: auto; }
+.mc-line { display: grid; gap: 3px; max-width: 88%; }
+.mc-line p { margin: 0; padding: 10px 14px; border-radius: 16px; font: 400 16px/1.45 var(--sans); overflow-wrap: anywhere; }
+.mc-who { font: 400 11.5px/1.2 var(--mono); letter-spacing: 0.02em; color: var(--ink-2); }
+.mc-line.is-maya p { background: #f1f1f3; color: var(--ink); border-bottom-left-radius: 6px; }
+.mc-line.is-child { align-self: flex-end; justify-items: end; }
+.mc-line.is-child p { background: var(--ink); color: #fff; border-bottom-right-radius: 6px; }
+.mc-line.is-note { align-self: center; max-width: 100%; }
+.mc-line.is-note p { padding: 2px 8px; font: 400 12px/1.4 var(--mono); color: var(--ink-2); text-align: center; }
+.mc-line.is-typing p { display: flex; gap: 4px; padding: 14px 16px; }
+.mc-line.is-typing span { width: 7px; height: 7px; border-radius: 50%; background: #a1a1aa; }
+@media (prefers-reduced-motion: no-preference) {
+  .mc-line.is-typing span { animation: mc-dot 1.2s infinite ease-in-out; }
+  .mc-line.is-typing span:nth-child(2) { animation-delay: 0.15s; }
+  .mc-line.is-typing span:nth-child(3) { animation-delay: 0.3s; }
+}
+@keyframes mc-dot { 0%, 60%, 100% { opacity: 0.35; } 30% { opacity: 1; } }
+.mc-safety { margin: 0 16px 10px; padding: 10px 12px; border-left: 3px solid var(--tang); border-radius: 6px; background: var(--adm-bad); font-size: 14px; }
+
+.mc-say { display: grid; gap: 10px; padding: 12px 16px 14px; border-top: 1px solid var(--line); background: var(--soft); }
+.mc-say textarea { width: 100%; min-height: 52px; padding: 10px 12px; border: 1px solid #d4d4d8; border-radius: 10px; background: #fff; font: 400 16px/1.4 var(--sans); color: var(--ink); resize: vertical; }
+.mc-say-row { display: flex; flex-wrap: wrap; gap: 8px; }
+.mc-say .mc-hang { margin-left: auto; color: #b8410f; }
+.mc-say :focus-visible, .mc-board :focus-visible, .mc-pick :focus-visible, .mc-record :focus-visible { outline: 2px solid var(--sky); outline-offset: 2px; }
+
+.mc-board { min-width: 0; padding: 14px; border-radius: 12px; background: var(--card); }
+.mc-board-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; margin: 0 0 10px; }
+[data-look="warm"] .adm-main .mc-board-head h2 { margin: 0; font-size: 17px; }
+.mc-board .maya-board { max-height: 62dvh; }
+.mc-board-empty { display: grid; place-items: center; min-height: 260px; border: 1px dashed #d4d4d8; border-radius: 8px; background: #fff; font-size: 14px; color: var(--ink-2); text-align: center; padding: 16px; }
+
+.mc-record .adm-facts { margin-bottom: 8px; }
+[data-look="warm"] .adm-main .mc-record h2 { margin-top: 12px; }
+.mc-sub { margin: 18px 0 8px; }
+.mc-retry { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }

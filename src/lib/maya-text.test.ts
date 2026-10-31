@@ -471,3 +471,45 @@ describe("the OpenRouter model", () => {
     expect(valuesIn(JSON.stringify(input.question))).toEqual(expect.arrayContaining([num(66)]));
   });
 });
+
+describe("a text session saved and resumed between inputs (#323)", () => {
+  // scripts/maya-text/no-start.txt: the easier example, then the child's own question with hints.
+  const TURNS = ["I don't know how to start.", "Okay.", "Is it 56?", "Can you help me?", "16", "66", "Because the ones made a ten, so I carried it.", "I wrote it."];
+
+  async function run(resumeEachTurn: boolean) {
+    let now = T0;
+    const options = { callId: "call-r", package: PKG, model: ruleMayaModel(), clock: () => now, random: 11, childName: "Leah" };
+    let session = createTextSession(options);
+    const said: string[][] = [];
+    said.push((await session.start()).say);
+    for (const text of TURNS) {
+      if (session.ended) break;
+      now += 4000;
+      if (resumeEachTurn) {
+        // The saved state goes through JSON, as it does through the database.
+        const saved = JSON.parse(JSON.stringify(await session.saved()));
+        session = createTextSession({ ...options, resume: saved });
+      }
+      const out = await session.child(text);
+      said.push(out.say, out.board.map((b) => b.transactionId));
+    }
+    return { said, trace: await session.finish() };
+  }
+
+  it("says and records the same as a session that never stopped", async () => {
+    const straight = await run(false);
+    const resumed = await run(true);
+    expect(resumed.said).toEqual(straight.said);
+    expect(resumed.trace).toEqual(straight.trace);
+    expect(checkTrace(resumed.trace).ok).toBe(true);
+    expect(resumed.trace.board.length).toBeGreaterThan(0);
+    expect(resumed.trace.outcome?.reason).toBe("solved");
+  });
+
+  it("refuses a saved state from another call", async () => {
+    const first = createTextSession({ callId: "call-a", package: PKG, model: ruleMayaModel(), clock: () => T0 });
+    await first.start();
+    const saved = await first.saved();
+    expect(() => createTextSession({ callId: "call-b", package: PKG, model: ruleMayaModel(), clock: () => T0, resume: saved })).toThrow(/not this call's/);
+  });
+});

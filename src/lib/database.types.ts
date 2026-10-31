@@ -1133,6 +1133,185 @@ export type Database = {
           },
         ]
       }
+      maya_calls: {
+        Row: {
+          assessment_id: string | null
+          assessment_question_id: string | null
+          assistance: string | null
+          board_history: Json | null
+          call_seconds: number | null
+          child_id: string
+          child_turns: number | null
+          connected_seconds: number | null
+          counts_minutes: boolean
+          created_at: string
+          ended_at: string | null
+          fallbacks: number | null
+          highest_hint: number | null
+          id: string
+          kind: string
+          learning_event_id: string | null
+          live: Json | null
+          maya_turns: number | null
+          mishearing_confirmations: number | null
+          mishearing_corrections: number | null
+          mode: string
+          model: string
+          outcome_reason: string | null
+          package_hash: string
+          package_id: string
+          paper_status: string | null
+          parent_id: string
+          profile_rebuilt_at: string | null
+          prompt_version: string
+          question_source: string
+          question_text: string | null
+          record_version: number
+          revision: number
+          safety_flag: boolean
+          safety_severity: string | null
+          speech_to_text: string | null
+          started_at: string | null
+          started_by: string | null
+          status: string
+          trace: Json | null
+          understanding: string | null
+          updated_at: string
+          versions: Json
+          voice: string | null
+          workbook_id: string | null
+          workbook_page: number | null
+          workbook_question: number | null
+        }
+        Insert: {
+          assessment_id?: string | null
+          assessment_question_id?: string | null
+          assistance?: string | null
+          board_history?: Json | null
+          call_seconds?: number | null
+          child_id: string
+          child_turns?: number | null
+          connected_seconds?: number | null
+          counts_minutes?: boolean
+          created_at?: string
+          ended_at?: string | null
+          fallbacks?: number | null
+          highest_hint?: number | null
+          id: string
+          kind: string
+          learning_event_id?: string | null
+          live?: Json | null
+          maya_turns?: number | null
+          mishearing_confirmations?: number | null
+          mishearing_corrections?: number | null
+          mode?: string
+          model: string
+          outcome_reason?: string | null
+          package_hash: string
+          package_id: string
+          paper_status?: string | null
+          parent_id: string
+          profile_rebuilt_at?: string | null
+          prompt_version: string
+          question_source: string
+          question_text?: string | null
+          record_version?: number
+          revision?: number
+          safety_flag?: boolean
+          safety_severity?: string | null
+          speech_to_text?: string | null
+          started_at?: string | null
+          started_by?: string | null
+          status?: string
+          trace?: Json | null
+          understanding?: string | null
+          updated_at?: string
+          versions: Json
+          voice?: string | null
+          workbook_id?: string | null
+          workbook_page?: number | null
+          workbook_question?: number | null
+        }
+        Update: {
+          assessment_id?: string | null
+          assessment_question_id?: string | null
+          assistance?: string | null
+          board_history?: Json | null
+          call_seconds?: number | null
+          child_id?: string
+          child_turns?: number | null
+          connected_seconds?: number | null
+          counts_minutes?: boolean
+          created_at?: string
+          ended_at?: string | null
+          fallbacks?: number | null
+          highest_hint?: number | null
+          id?: string
+          kind?: string
+          learning_event_id?: string | null
+          live?: Json | null
+          maya_turns?: number | null
+          mishearing_confirmations?: number | null
+          mishearing_corrections?: number | null
+          mode?: string
+          model?: string
+          outcome_reason?: string | null
+          package_hash?: string
+          package_id?: string
+          paper_status?: string | null
+          parent_id?: string
+          profile_rebuilt_at?: string | null
+          prompt_version?: string
+          question_source?: string
+          question_text?: string | null
+          record_version?: number
+          revision?: number
+          safety_flag?: boolean
+          safety_severity?: string | null
+          speech_to_text?: string | null
+          started_at?: string | null
+          started_by?: string | null
+          status?: string
+          trace?: Json | null
+          understanding?: string | null
+          updated_at?: string
+          versions?: Json
+          voice?: string | null
+          workbook_id?: string | null
+          workbook_page?: number | null
+          workbook_question?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "maya_calls_assessment_fkey"
+            columns: ["assessment_id", "child_id"]
+            isOneToOne: false
+            referencedRelation: "assessments"
+            referencedColumns: ["id", "child_id"]
+          },
+          {
+            foreignKeyName: "maya_calls_child_fkey"
+            columns: ["child_id", "parent_id"]
+            isOneToOne: false
+            referencedRelation: "children"
+            referencedColumns: ["id", "parent_id"]
+          },
+          {
+            foreignKeyName: "maya_calls_learning_event_id_fkey"
+            columns: ["learning_event_id"]
+            isOneToOne: false
+            referencedRelation: "learning_events"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "maya_calls_parent_id_fkey"
+            columns: ["parent_id"]
+            isOneToOne: false
+            referencedRelation: "parents"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       parent_pins: {
         Row: {
           created_at: string
@@ -1584,6 +1763,151 @@ export type Database = {
           },
         ]
       }
+      workbook_audit: {
+        Row: {
+          action: string
+          actor_email: string | null
+          actor_id: string | null
+          at: string
+          child_id: string
+          detail: Json
+          draft_id: string | null
+          id: number
+          parent_id: string
+          run_id: string | null
+          workbook_id: string | null
+        }
+        Insert: {
+          action: string
+          actor_email?: string | null
+          actor_id?: string | null
+          at?: string
+          child_id: string
+          detail?: Json
+          draft_id?: string | null
+          id?: never
+          parent_id: string
+          run_id?: string | null
+          workbook_id?: string | null
+        }
+        Update: {
+          action?: string
+          actor_email?: string | null
+          actor_id?: string | null
+          at?: string
+          child_id?: string
+          detail?: Json
+          draft_id?: string | null
+          id?: never
+          parent_id?: string
+          run_id?: string | null
+          workbook_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "workbook_audit_child_fkey"
+            columns: ["child_id", "parent_id"]
+            isOneToOne: false
+            referencedRelation: "children"
+            referencedColumns: ["id", "parent_id"]
+          },
+          {
+            foreignKeyName: "workbook_audit_draft_id_fkey"
+            columns: ["draft_id"]
+            isOneToOne: false
+            referencedRelation: "workbook_drafts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "workbook_audit_parent_id_fkey"
+            columns: ["parent_id"]
+            isOneToOne: false
+            referencedRelation: "parents"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "workbook_audit_run_id_fkey"
+            columns: ["run_id"]
+            isOneToOne: false
+            referencedRelation: "workbook_runs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "workbook_audit_workbook_id_fkey"
+            columns: ["workbook_id"]
+            isOneToOne: false
+            referencedRelation: "workbooks"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      workbook_draft_revisions: {
+        Row: {
+          by_email: string | null
+          by_user: string | null
+          child_id: string
+          content: Json | null
+          created_at: string
+          draft_id: string
+          kind: string
+          note: string | null
+          parent_id: string
+          render_problems: Json
+          rendering: Json | null
+          revision: number
+        }
+        Insert: {
+          by_email?: string | null
+          by_user?: string | null
+          child_id: string
+          content?: Json | null
+          created_at?: string
+          draft_id: string
+          kind: string
+          note?: string | null
+          parent_id: string
+          render_problems?: Json
+          rendering?: Json | null
+          revision: number
+        }
+        Update: {
+          by_email?: string | null
+          by_user?: string | null
+          child_id?: string
+          content?: Json | null
+          created_at?: string
+          draft_id?: string
+          kind?: string
+          note?: string | null
+          parent_id?: string
+          render_problems?: Json
+          rendering?: Json | null
+          revision?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "workbook_draft_revisions_child_fkey"
+            columns: ["child_id", "parent_id"]
+            isOneToOne: false
+            referencedRelation: "children"
+            referencedColumns: ["id", "parent_id"]
+          },
+          {
+            foreignKeyName: "workbook_draft_revisions_draft_id_fkey"
+            columns: ["draft_id"]
+            isOneToOne: false
+            referencedRelation: "workbook_drafts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "workbook_draft_revisions_parent_id_fkey"
+            columns: ["parent_id"]
+            isOneToOne: false
+            referencedRelation: "parents"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       workbook_drafts: {
         Row: {
           child_id: string
@@ -1756,6 +2080,204 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "workbook_pages"
             referencedColumns: ["id", "workbook_id", "parent_id"]
+          },
+        ]
+      }
+      workbook_run_attempts: {
+        Row: {
+          attempts: number
+          child_id: string
+          page: number
+          parent_id: string
+          run_id: string
+          slot: string
+          updated_at: string
+        }
+        Insert: {
+          attempts: number
+          child_id: string
+          page: number
+          parent_id: string
+          run_id: string
+          slot: string
+          updated_at?: string
+        }
+        Update: {
+          attempts?: number
+          child_id?: string
+          page?: number
+          parent_id?: string
+          run_id?: string
+          slot?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "workbook_run_attempts_child_fkey"
+            columns: ["child_id", "parent_id"]
+            isOneToOne: false
+            referencedRelation: "children"
+            referencedColumns: ["id", "parent_id"]
+          },
+          {
+            foreignKeyName: "workbook_run_attempts_parent_id_fkey"
+            columns: ["parent_id"]
+            isOneToOne: false
+            referencedRelation: "parents"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "workbook_run_attempts_run_id_fkey"
+            columns: ["run_id"]
+            isOneToOne: false
+            referencedRelation: "workbook_runs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      workbook_run_pages: {
+        Row: {
+          child_id: string
+          created_at: string
+          number: number
+          page: Json
+          parent_id: string
+          run_id: string
+        }
+        Insert: {
+          child_id: string
+          created_at?: string
+          number: number
+          page: Json
+          parent_id: string
+          run_id: string
+        }
+        Update: {
+          child_id?: string
+          created_at?: string
+          number?: number
+          page?: Json
+          parent_id?: string
+          run_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "workbook_run_pages_child_fkey"
+            columns: ["child_id", "parent_id"]
+            isOneToOne: false
+            referencedRelation: "children"
+            referencedColumns: ["id", "parent_id"]
+          },
+          {
+            foreignKeyName: "workbook_run_pages_parent_id_fkey"
+            columns: ["parent_id"]
+            isOneToOne: false
+            referencedRelation: "parents"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "workbook_run_pages_run_id_fkey"
+            columns: ["run_id"]
+            isOneToOne: false
+            referencedRelation: "workbook_runs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      workbook_runs: {
+        Row: {
+          attempts: number
+          child_id: string
+          created_at: string
+          done_pages: number | null
+          draft_id: string | null
+          draft_key: string
+          error: string | null
+          errors: Json
+          finished_at: string | null
+          heartbeat_at: string | null
+          id: string
+          lease: string | null
+          max_attempts: number
+          number: number
+          parent_id: string
+          resumes: number
+          started_at: string | null
+          started_by: string | null
+          started_by_email: string | null
+          status: string
+          step: string | null
+          total_pages: number | null
+        }
+        Insert: {
+          attempts?: number
+          child_id: string
+          created_at?: string
+          done_pages?: number | null
+          draft_id?: string | null
+          draft_key?: string
+          error?: string | null
+          errors?: Json
+          finished_at?: string | null
+          heartbeat_at?: string | null
+          id?: string
+          lease?: string | null
+          max_attempts: number
+          number: number
+          parent_id: string
+          resumes?: number
+          started_at?: string | null
+          started_by?: string | null
+          started_by_email?: string | null
+          status?: string
+          step?: string | null
+          total_pages?: number | null
+        }
+        Update: {
+          attempts?: number
+          child_id?: string
+          created_at?: string
+          done_pages?: number | null
+          draft_id?: string | null
+          draft_key?: string
+          error?: string | null
+          errors?: Json
+          finished_at?: string | null
+          heartbeat_at?: string | null
+          id?: string
+          lease?: string | null
+          max_attempts?: number
+          number?: number
+          parent_id?: string
+          resumes?: number
+          started_at?: string | null
+          started_by?: string | null
+          started_by_email?: string | null
+          status?: string
+          step?: string | null
+          total_pages?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "workbook_runs_child_fkey"
+            columns: ["child_id", "parent_id"]
+            isOneToOne: false
+            referencedRelation: "children"
+            referencedColumns: ["id", "parent_id"]
+          },
+          {
+            foreignKeyName: "workbook_runs_draft_id_fkey"
+            columns: ["draft_id"]
+            isOneToOne: false
+            referencedRelation: "workbook_drafts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "workbook_runs_parent_id_fkey"
+            columns: ["parent_id"]
+            isOneToOne: false
+            referencedRelation: "parents"
+            referencedColumns: ["id"]
           },
         ]
       }
@@ -2155,6 +2677,10 @@ export type Database = {
           out_status: string
         }[]
       }
+      claim_workbook_run: {
+        Args: { p_lease: string; p_run: string }
+        Returns: boolean
+      }
       complete_family_deletion: {
         Args: { p: string; token: string }
         Returns: boolean
@@ -2172,6 +2698,16 @@ export type Database = {
       confirm_family_copies: {
         Args: { p: string; token: string }
         Returns: boolean
+      }
+      count_workbook_run_attempts: {
+        Args: {
+          p_lease: string
+          p_max: number
+          p_page: number
+          p_run: string
+          p_slots: string[]
+        }
+        Returns: Json
       }
       create_family: {
         Args: {
@@ -2191,6 +2727,10 @@ export type Database = {
         Returns: boolean
       }
       end_family_card_operation: { Args: { token: string }; Returns: undefined }
+      fail_workbook_run: {
+        Args: { p_error: string; p_lease: string; p_run: string }
+        Returns: boolean
+      }
       family_copy_sources: { Args: { p: string }; Returns: Json }
       family_deletion_candidates: {
         Args: { after_id: string; page_size?: number }
@@ -2224,6 +2764,16 @@ export type Database = {
           token: string
         }
         Returns: undefined
+      }
+      finish_workbook_run: {
+        Args: {
+          p_draft: string
+          p_lease: string
+          p_render_problems: Json
+          p_rendering: Json
+          p_run: string
+        }
+        Returns: boolean
       }
       is_admin: { Args: never; Returns: boolean }
       link_booking_family: {
@@ -2282,6 +2832,14 @@ export type Database = {
         Args: { confirmation: string; p: string }
         Returns: string
       }
+      resume_workbook_run: {
+        Args: { p_lease: string; p_run: string; p_stale_seconds: number }
+        Returns: boolean
+      }
+      retry_workbook_run: {
+        Args: { p_error: string; p_lease: string; p_run: string }
+        Returns: boolean
+      }
       save_family_payment_progress: {
         Args: {
           after_id: string
@@ -2298,9 +2856,58 @@ export type Database = {
         Returns: boolean
       }
       save_workbook_rendering: { Args: { p_rendering: Json }; Returns: Json }
+      save_workbook_run_draft: {
+        Args: {
+          p_draft: Json
+          p_failed: number
+          p_failed_pages: number
+          p_lease: string
+          p_levels: number[]
+          p_model: string
+          p_not_checked: number
+          p_number: number
+          p_pages: number
+          p_profile_build: string
+          p_questions: number
+          p_run: string
+          p_schema_version: number
+        }
+        Returns: string
+      }
+      save_workbook_run_page: {
+        Args: { p_lease: string; p_number: number; p_page: Json; p_run: string }
+        Returns: boolean
+      }
+      start_workbook_run: {
+        Args: {
+          p_by: string
+          p_by_email: string
+          p_child: string
+          p_max_attempts: number
+          p_stale_seconds: number
+        }
+        Returns: Json
+      }
+      use_workbook_run_attempts: {
+        Args: {
+          p_lease: string
+          p_page: number
+          p_run: string
+          p_slots: string[]
+        }
+        Returns: boolean
+      }
+      workbook_run_held: {
+        Args: { p_lease: string; p_run: string }
+        Returns: boolean
+      }
       write_workbook: {
         Args: { p_schema_version: number; p_workbook: Json }
         Returns: Json
+      }
+      yield_workbook_run: {
+        Args: { p_lease: string; p_run: string }
+        Returns: boolean
       }
     }
     Enums: {
