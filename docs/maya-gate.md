@@ -130,4 +130,4 @@ Add it to `BEHAVIOURS` with a fixture, the script and what it expects: the outco
 
 ## What the gate does not prove
 
-The gate covers the text policy for the scripted cases: what the controller allows, refuses and records. It does not test the AI child or the AI judge (#323), real audio, or whether a child learns (research, section 8).
+The gate covers the text policy for the scripted cases: what the controller allows, refuses and records. It does not test the AI child or the AI judge (the practice suite does: `docs/maya-practice.md`, #325), real audio, or whether a child learns (research, section 8).
