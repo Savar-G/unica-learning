@@ -5,6 +5,7 @@ import {
   lineOffers,
   PROPOSAL_SCHEMA,
   step,
+  speechKey,
   talkMath,
   TEMPLATES,
   valuesIn,
@@ -395,4 +396,23 @@ describe("main's items with no operation", () => {
     const s = createSession({ callId: "lines-item", package: tensAndOnes });
     expect(s).toMatchObject({ package: null, contentProblem: "Maya cannot teach items with no operation yet" });
   });
+});
+
+describe("comparing what Maya said with her approved words (R374-2)", () => {
+  it.each([
+    ["27 + 39 = 66.", "Twenty-seven plus thirty-nine equals sixty-six"],
+    ["15 ÷ 6 = 2 R 3.", "fifteen divided by six equals two remainder three"],
+    ["2.5 + 1.75 = 4.25", "two point five plus one point seven five equals four point two five"],
+    ["52 − 17", "fifty-two minus seventeen"],
+    ["Write 105.", "write one hundred and five"],
+    ["Let's look. It's 1,081!", "let us look, it is one thousand eighty-one"],
+    ["You can't stop now.", "You cannot stop now"],
+  ])("reads %s and %s as the same words", (a, b) => expect(speechKey(a)).toBe(speechKey(b)));
+
+  it.each([
+    ["Not quite.", "Yes!"],
+    ["Add the ones: 7 + 9.", "Add the ones: 7 + 8."],
+    ["Write 6.", "Write 6. Well done!"],
+    ["Hmm, not yet.", "Hmm, yet."],
+  ])("tells %s and %s apart", (a, b) => expect(speechKey(a)).not.toBe(speechKey(b)));
 });

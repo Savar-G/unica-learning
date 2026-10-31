@@ -33,6 +33,7 @@ import {
   type WorkedStep,
 } from "@/lib/question-package";
 import { talkMath } from "./claims";
+import { saidAsApproved } from "./speech";
 import { findOffer, normalSlots, packageLines, pickVariant, LINE_IDS, type LineOffer } from "./lines";
 import { committedText, offersChoice, readNumbers, takenBack, valuesIn } from "./numbers";
 import { ACTS, PART_LIMITS, PROPOSAL_VERSION, withoutNulls, type Act, type ChildAnswer, type HintLevel, type Proposal, type Reading, type Severity } from "./proposal";
@@ -264,8 +265,6 @@ export interface Session {
   /** Board objects Maya created, by id: the child's question or the easier example. */
   boardRoles: Record<string, Problem>;
   batches: number;
-  /** Every sentence of the lines Maya was given to say, for checking what she actually said (maya_said). */
-  lines: string[];
   turns: TranscriptTurn[];
   outcome: Outcome | null;
 }
@@ -315,7 +314,6 @@ export function createSession(input: { callId: string; package: unknown; seed?: 
     stuckStep: null,
     boardRoles: {},
     batches: 0,
-    lines: [],
     turns: [],
     outcome: null,
   };
@@ -679,11 +677,12 @@ export function step(session: Session, event: SessionEvent): StepResult {
     case "safety":
       break;
     case "maya_said":
-      // No math is repaired before the opening, after a safety concern or a content hold, or twice at once. Every
-      // sentence with math in it must be a sentence of a line code gave Maya: anything else is not checked math.
+      // Nothing is repaired before the opening, after a safety concern or a content hold, or twice at once. What Maya
+      // said must be the approved text of her last turn (its lines and warm talk), after both are normalised the same
+      // way (speech.ts): any other words, with math or without ("Yes!" after a wrong answer), start a repair.
       if (typeof event.text !== "string") return refuse(session, "invalid_event", "What Maya said needs its text.");
       if (s.package && !["READY", "OPEN", "SAFETY", "CONTENT_HOLD", "REPAIR_MAYA"].includes(s.state) &&
-        sentencesOf(event.text).some((t) => talkMath(t) !== null && !s.lines.includes(t))) {
+        !saidAsApproved(event.text, lastSaid(s))) {
         effects.push({ kind: "cancel_output" });
         // The repair returns to the teaching state (an interrupt's saved one), or to the closing minute (no resume). The
         // child's pending turn and a stop stay for after the repair (a stop comes first).
@@ -795,7 +794,6 @@ function propose(base: Session, p: Proposal, effects: Effect[]): StepResult {
 
   // 5. The act.
   let text = say;
-  const said = [...spoken.lines];
   switch (p.act) {
     case "open":
       if (!p.parts.some((part) => "line" in part && part.line === "open.hello")) return no("missing_disclosure", "The opening says Maya is an AI: use the open.hello line.", allowedNow);
@@ -847,7 +845,6 @@ function propose(base: Session, p: Proposal, effects: Effect[]): StepResult {
       // Code says the answer and asks for it on paper, so both are true.
       const [give] = packageLines(pkg!).answerGive();
       const answer = pickVariant(give.texts, `${s.seed}|${s.turns.length}|answer`);
-      said.push(answer);
       text = [say, answer].filter(Boolean).join(" ");
       if (s.solved === null) {
         s.solved = "maya";
@@ -924,7 +921,6 @@ function propose(base: Session, p: Proposal, effects: Effect[]): StepResult {
   if (p.act !== "repair") s.turn = null;
 
   if (text !== "") {
-    s.lines = [...new Set([...s.lines, ...said.flatMap(sentencesOf)])];
     effects.push({ kind: "say", act: p.act, text });
     s.turns.push({ at: s.now!, speaker: "maya", text, state: p.act === "close" ? "CLOSE" : s.state, act: p.act });
   }
@@ -1137,10 +1133,8 @@ interface Spoken {
   boards: string[];
 }
 
-/** A text's sentences, each trimmed with its spaces joined, as Maya's lines are kept and her speech is compared. */
-function sentencesOf(text: string): string[] {
-  return text.split(/(?<=[.?!])\s+/).map((t) => t.replace(/\s+/g, " ").trim()).filter(Boolean);
-}
+/** The approved text of Maya's last turn, or "" before she has said anything. */
+const lastSaid = (s: Session) => [...s.turns].reverse().find((t) => t.speaker === "maya")?.text ?? "";
 
 /** The numbers Maya may have heard in the child's pending turn, and the pairs that sound alike or were offered as alternatives. */
 function heardIn(s: Session): [AnswerValue[], [AnswerValue, AnswerValue][]] {

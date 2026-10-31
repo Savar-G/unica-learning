@@ -516,14 +516,60 @@ describe("REPAIR_MAYA", () => {
     expect(c.session.state).toBe("TRY_TARGET");
   });
 
-  it("ignores words that are the lines code gave Maya, and talk with no math", () => {
+  /** A call where the child said 15 for the ones and Maya answered with a code-checked "not yet" and the H2 line. */
+  function afterWrongStep() {
     const c = afterExample();
-    const lines = c.session.turns.filter((x) => x.speaker === "maya").map((x) => x.text);
-    for (const text of [...lines, "Take your time."]) c.send({ type: "maya_said", at: T0, text });
-    expect(c.session.state).toBe("TRY_TARGET");
+    c.child("Seven plus nine is 15.");
+    const { effects } = c.maya({
+      act: "guide", step: "ones", level: 0,
+      parts: [ln("check.not_yet", { step: "ones" }), t("Let's take it slowly.")],
+      reading: { answers: [{ value: num(15), step: "ones", verdict: "wrong" }] },
+    });
+    return { c, approved: said(effects)[0] };
+  }
+
+  it("does not repair the exact approved speech of Maya's turn", () => {
+    const { c, approved } = afterWrongStep();
+    c.send({ type: "maya_said", at: T0, text: approved });
+    expect(c.session.state).toBe("GUIDE_TARGET");
   });
 
-  it("repairs a true equation Maya said that was not one of her lines", () => {
+  it("repairs unchecked approval with no math in it: \"Yes!\" after a wrong answer (R374-2)", () => {
+    for (const text of ["Yes!", "You got it!", "Yes! Let's take it slowly."]) {
+      const { c } = afterWrongStep();
+      const { effects } = c.send({ type: "maya_said", at: T0, text });
+      expect(effects).toEqual([{ kind: "cancel_output" }]);
+      expect(c.session.state).toBe("REPAIR_MAYA");
+    }
+  });
+
+  it("repairs approved words with anything added, dropped or from an earlier turn", () => {
+    const { c, approved } = afterWrongStep();
+    const earlier = c.session.turns.filter((x) => x.speaker === "maya").at(-2)!.text;
+    for (const text of [`${approved} Yes!`, approved.split(" ").slice(1).join(" "), earlier]) {
+      const { c: d } = afterWrongStep();
+      d.send({ type: "maya_said", at: T0, text });
+      expect(d.session.state, text).toBe("REPAIR_MAYA");
+    }
+  });
+
+  it("does not repair the same words with numbers spoken, case, punctuation or contractions changed", () => {
+    const c = afterExample();
+    c.child("Show me.");
+    const { effects } = c.maya({ act: "guide", step: "ones", level: 3, parts: [ln("step.show", { step: "ones" }), t("Let's keep going.")], reading: { help: "show" } });
+    const approved = said(effects)[0];
+    expect(approved).toMatch(/Add the ones: 7 \+ 9 = 16\. Write 6 and carry 1 ten\. Let's keep going\.$/);
+    const spoken = approved
+      .replace("7 + 9 = 16", "seven plus nine equals sixteen").replace("Write 6", "write six").replace("carry 1 ten", "carry one ten")
+      .replace("Let's", "let us").replace(/:/g, ",");
+    c.send({ type: "maya_said", at: T0, text: spoken.toUpperCase() });
+    expect(c.session.state).toBe("GUIDE_TARGET");
+    // A different number is still a different line.
+    c.send({ type: "maya_said", at: T0, text: spoken.replace("sixteen", "fifteen") });
+    expect(c.session.state).toBe("REPAIR_MAYA");
+  });
+
+  it("repairs a true equation Maya said that was not her turn's words", () => {
     const c = afterExample();
     c.send({ type: "maya_said", at: T0, text: "So 18 + 5 is 23." });
     expect(c.session.state).toBe("REPAIR_MAYA");

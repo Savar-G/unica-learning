@@ -50,4 +50,5 @@ export {
 } from "./proposal";
 export { allLineTexts, LINE_IDS, LINES_VERSION, TEMPLATES, type LineChoice, type LineId, type LineOffer, type Slots, type TemplateKey } from "./lines";
 export { talkMath } from "./claims";
+export { speechKey } from "./speech";
 export { readNumbers, valuesIn, type NumbersRead } from "./numbers";
