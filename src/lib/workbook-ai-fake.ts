@@ -20,7 +20,7 @@ export function fakeWorkbookItems(r: AiJsonRequest) {
       if (s.place === "how-do-you-know") {
         return { slot: s.slot, skill: s.skills[0], difficulty: 1, text: "How do you know your answer to the last story is right?", format: "written-reason", operation: null, wrongAnswers: [], easier: null, shownWrong: null };
       }
-      const story = ["word-problems", "picture-stories", "challenge", "math-in-the-world"].includes(s.place);
+      const story = ["word-problems", "picture-stories", "challenge", "math-in-the-world"].includes(s.place ?? "");
       const format = story ? "show-work" : s.place === "solve-it-two-ways" ? "two-ways" : s.place === "mixed-set" ? "tick-and-number" : s.place === "spot-the-error" ? "spot-the-error" : "write-number";
       const text = story ? `A shelf has ${a} books. Mom adds ${b} more. How many books are on the shelf now?` : format === "spot-the-error" ? "Find the wrong move. Write the fix." : `${a} + ${b} = ?`;
       return {
