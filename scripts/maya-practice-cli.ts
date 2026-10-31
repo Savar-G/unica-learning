@@ -14,7 +14,8 @@
 //   --report <dir>           rebuild report.md and report.json from a saved run, and stop
 //   --maya-model <id>        Maya's model (default AI_MODEL, else the AI client's default)
 //   --sim-model <id>         the practice child's model (default MAYA_SIM_MODEL, else anthropic/claude-haiku-5.5)
-//   --validity-model <id>    the validity judge's model (default MAYA_VALIDITY_MODEL, else the child's model)
+//   --validity-model <id>    the validity judge's model (default MAYA_VALIDITY_MODEL, else openai/gpt-5.4-mini: another
+//                            family than the child, the main judge's family, so it does not share the child's blind spots)
 //   --judge-model <id>       the judge's model (default MAYA_JUDGE_MODEL, else openai/gpt-5.4)
 //
 // The key: OPENROUTER_API_KEY in the environment, or OPENROUTER_API_KEY_FILE (a file that holds only the key), or
@@ -35,6 +36,7 @@ import {
 
 export const DEFAULT_SIM_MODEL = "anthropic/claude-haiku-5.5";
 export const DEFAULT_JUDGE_MODEL = "openai/gpt-5.4";
+export const DEFAULT_VALIDITY_MODEL = "openai/gpt-5.4-mini";
 const MODELS_URL = "https://openrouter.ai/api/v1/models";
 
 interface Options {
@@ -170,7 +172,7 @@ async function main() {
     : {
         maya: o.models.maya ?? (process.env.AI_MODEL?.trim() || AI_DEFAULT_MODEL),
         simulator: o.models.simulator ?? (process.env.MAYA_SIM_MODEL?.trim() || DEFAULT_SIM_MODEL),
-        validity: o.models.validity ?? (process.env.MAYA_VALIDITY_MODEL?.trim() || o.models.simulator || process.env.MAYA_SIM_MODEL?.trim() || DEFAULT_SIM_MODEL),
+        validity: o.models.validity ?? (process.env.MAYA_VALIDITY_MODEL?.trim() || DEFAULT_VALIDITY_MODEL),
         judge: o.models.judge ?? (process.env.MAYA_JUDGE_MODEL?.trim() || DEFAULT_JUDGE_MODEL),
       };
 

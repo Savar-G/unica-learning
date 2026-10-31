@@ -1,4 +1,5 @@
-// The validity judge of the practice suite (R386-2-1): a second, cheap model call per run that reads only the child's
+// The validity judge of the practice suite (R386-2-1): a second, cheap model call per run, on another model family
+// than the practice child (by default the main judge's family, so they share no blind spots), that reads only the child's
 // turns and the case's persona card, and says whether the simulated child stayed a child in that persona and knew no
 // more than the persona knows. It is the semantic layer behind code's checks (the script stages and the persona
 // lexicon), because a word list always misses a phrasing ("I am software with no body."). Anything but a clean

@@ -22,13 +22,13 @@ npm run maya:practice -- --report traces/maya-practice/<run>          # count a 
 | `--concurrency <n>` | Runs at the same time (default 3). |
 | `--out <dir>` | Where to save the run. Default `traces/maya-practice/<time>` (not committed). |
 | `--report <dir>` | Rebuild `report.md` and `report.json` from a saved run. |
-| `--maya-model`, `--sim-model`, `--validity-model`, `--judge-model` | The models. Defaults: `AI_MODEL` (else `anthropic/claude-sonnet-5.5`), `MAYA_SIM_MODEL` (else `anthropic/claude-haiku-5.5`), `MAYA_VALIDITY_MODEL` (else the child's model), `MAYA_JUDGE_MODEL` (else `openai/gpt-5.4`). The judge is from another model family than the child and Maya (research, section 8). |
+| `--maya-model`, `--sim-model`, `--validity-model`, `--judge-model` | The models. Defaults: `AI_MODEL` (else `anthropic/claude-sonnet-5.5`), `MAYA_SIM_MODEL` (else `anthropic/claude-haiku-5.5`), `MAYA_VALIDITY_MODEL` (else `openai/gpt-5.4-mini`), `MAYA_JUDGE_MODEL` (else `openai/gpt-5.4`). Both judges are from another model family than the child and Maya (research, section 8), so the validity judge does not share the child's blind spots. |
 
 **The key.** `OPENROUTER_API_KEY` in the environment, or `OPENROUTER_API_KEY_FILE` (a file that holds only the key), or `.env.local`. It is a Vercel Secret variable, so `vercel env pull` gives an empty value. Use the Unica OpenRouter key only. The exit code is 0 only when every planned run passed.
 
 ## Cost
 
-Before a real run, the command runs the whole suite once with the fakes (no network), measures each request each model would get, and prices it with OpenRouter's public model list. It adds a 1.5 margin and counts each call's output at the assumed worst case (Maya 1,500 tokens, the child 150, the validity judge 400, the judge 4,000, thinking included). On 2026-10-31, the 13 cases × 3 runs came to about **$17** (Maya on Sonnet 5.5 about $13, the judge on GPT-5.4 about $4, the child and the validity judge on Haiku 5.5 under $0.10 together).
+Before a real run, the command runs the whole suite once with the fakes (no network), measures each request each model would get, and prices it with OpenRouter's public model list. It adds a 1.5 margin and counts each call's output at the assumed worst case (Maya 1,500 tokens, the child 150, the validity judge 400, the judge 4,000, thinking included). On 2026-10-31, the 13 cases × 3 runs came to about **$17.16** (Maya on Sonnet 5.5 $13.14, the judge on GPT-5.4 $3.85, the validity judge on GPT-5.4 mini $0.13, the child on Haiku 5.5 $0.05).
 
 While it runs, each call first reserves its worst case against the cap, and is refused when that would pass the cap. OpenRouter's answer reports what each call cost (`usage.cost`; else its tokens at the list price; else the worst case). Calls already running when the cap is met may finish, so the cap can be passed by up to one call per run in flight. A run the cap cuts is not saved: the report counts it missing, and the suite fails.
 
