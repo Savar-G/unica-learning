@@ -8,7 +8,7 @@ import { memoryCallStore } from "@/lib/maya-call-memory";
 import type { MayaModel } from "@/lib/maya-model";
 import { ruleMayaModel } from "@/lib/maya-model-fake";
 import { SAMPLE_PACKAGES } from "@/lib/maya-samples";
-import { checkTrace } from "@/lib/maya-trace";
+import { checkTrace, TRACE_VERSION } from "@/lib/maya-trace";
 import type { QuestionPackage } from "@/lib/question-package";
 
 // Maya's calls (#323) through the module's public interface, on the in-memory seams: the call store, the learning
@@ -93,7 +93,7 @@ describe("an admin test call", () => {
     expect(row.live).toBeNull();
     expect(checkTrace(row.trace).ok).toBe(true);
     expect(row.trace?.question.hash).toBe(row.packageHash);
-    expect(row.versions).toMatchObject({ trace: 1, proposal: expect.any(Number), session: expect.any(Number) });
+    expect(row.versions).toMatchObject({ trace: TRACE_VERSION, proposal: expect.any(Number), session: expect.any(Number) });
     expect(row.boardHistory?.events.filter((e) => e.kind === "maya")).toHaveLength(row.trace!.board.length);
     expect(penHolder(row.boardHistory!)).toBe("maya");
     expect(replayOf(row.boardHistory!).maya.durationMs).toBeGreaterThan(0);
@@ -137,14 +137,17 @@ describe("an admin test call", () => {
     expect(await s.calls.input(first.view.id, 2, { type: "dance" } as unknown as CallInput, null)).toEqual({ ok: false, error: "invalid_input" });
   });
 
-  it("hangs up: the call ends as a technical issue, with a blank event at the step where the child stopped", async () => {
+  it("hangs up: the call ends as child_stopped, with a blank event at the step where the child stopped", async () => {
     const s = setup();
     const r = await talk(s, ["I don't know how to start."]);
     s.advance(5);
     const end = ok(await s.calls.input(r.view.id, r.view.revision, { type: "end" }, null));
     expect(end.view.status).toBe("ended");
-    expect(end.view.outcome?.reason).toBe("technical_issue");
-    expect(end.view.transcript.at(-1)).toMatchObject({ speaker: "note", text: "The call stopped: the team member hung up." });
+    expect(end.view.outcome?.reason).toBe("child_stopped");
+    expect(end.view.transcript.at(-1)).toMatchObject({ speaker: "note", text: "The child hung up." });
+    const row = s.store.rows().find((r) => r.id === end.view.id)!;
+    expect(checkTrace(row.trace)).toMatchObject({ ok: true });
+    expect(row.trace?.turns.some((t) => t.kind === "technical")).toBe(false);
     const [event] = await s.readEvents();
     expect(event).toMatchObject({ result: "blank", stuckStep: "ones" });
     // An ended call takes no more turns.

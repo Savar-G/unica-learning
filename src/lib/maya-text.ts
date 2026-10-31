@@ -71,6 +71,13 @@ export interface SavedTextSession {
   board: TraceBoardBatch[];
 }
 
+/** How a call that has not ended yet ends when it is finished. */
+export interface FinishOptions {
+  reason?: "technical_issue" | "child_stopped";
+  detail?: string;
+  failed?: boolean;
+}
+
 /** What reached the child after one input: Maya's sentences and board batches, all accepted by the session. */
 export interface TextOutput {
   say: string[];
@@ -93,12 +100,14 @@ export interface TextSession {
   /** The connection or a service failed: the call ends. */
   technical(detail: string): Promise<TextOutput>;
   /**
-   * Ends the call as a technical issue if it has not ended (starting it first when it never started), and returns the
-   * finished trace. Call it in a `finally`: every caller gets a trace with an outcome, whatever failed. Safe to call
-   * more than once. `detail` is wording the caller writes, never an error's text; `failed` marks that a local step
-   * failed (the trace records the code "local").
+   * Ends the call if it has not ended (starting it first when it never started), and returns the finished trace. Call
+   * it in a `finally`: every caller gets a trace with an outcome, whatever failed. Safe to call more than once.
+   * `reason`: "child_stopped" when the child hung up on purpose (a `hang_up` turn; the outcome's priority still puts
+   * safety, a content issue and a solved question first); "technical_issue" (the default) for everything else, with
+   * `detail`, wording the caller writes, never an error's text, and `failed` when a local step failed (the trace
+   * records the code "local").
    */
-  finish(detail?: string, failed?: boolean): Promise<MayaTrace>;
+  finish(end?: FinishOptions): Promise<MayaTrace>;
   /** The session now (plain data). */
   readonly session: Session;
   readonly ended: boolean;
@@ -289,8 +298,8 @@ export function createTextSession(options: TextSessionOptions): TextSession {
     return Math.max(Number.isFinite(t) ? t : 0, session.now ?? 0, turns.at(-1)?.at ?? 0);
   }
 
-  /** Ends the call as a technical issue now, if it has not ended. */
-  function endNow(detail: string, error?: TraceError) {
+  /** Ends the call now, if it has not ended: a hang-up, or else a technical issue. */
+  function endNow(detail: string, error?: TraceError, reason: FinishOptions["reason"] = "technical_issue") {
     // A Maya turn cut off before its first attempt has nothing to record.
     for (let i = turns.length - 1; i >= 0; i--) {
       const t = turns[i];
@@ -300,6 +309,11 @@ export function createTextSession(options: TextSessionOptions): TextSession {
     const at = safeNow();
     const out = newOutput();
     if (session.startedAt === null && event({ type: "start", at }, out)) turns.push({ kind: "start", at });
+    if (reason === "child_stopped" && event({ type: "hang_up", at }, out)) {
+      turns.push({ kind: "hang_up", at });
+      return;
+    }
+    if (session.outcome) return;
     if (event({ type: "technical", at, detail }, out)) turns.push({ kind: "technical", at, detail, ...(error ? { error } : {}) });
   }
 
@@ -387,9 +401,9 @@ export function createTextSession(options: TextSessionOptions): TextSession {
     get ended() {
       return session.outcome !== null;
     },
-    finish: async (detail = "the session was closed before the call ended", failed = false) => {
+    finish: async ({ reason = "technical_issue", detail = "the session was closed before the call ended", failed = false } = {}) => {
       await queue;
-      endNow(redactText(detail), failed ? classifyError(null, "local") : undefined);
+      endNow(redactText(detail), failed ? classifyError(null, "local") : undefined, reason);
       return trace();
     },
     trace,

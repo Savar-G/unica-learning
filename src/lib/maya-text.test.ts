@@ -220,7 +220,45 @@ describe("the clock and the end", () => {
     expect(trace.turns.map((t) => t.kind)).toEqual(["start", "technical"]);
     expect(trace.outcome).toMatchObject({ reason: "technical_issue", seconds: 0 });
     // A second finish changes nothing.
-    expect(await session.finish("again")).toEqual(trace);
+    expect(await session.finish({ detail: "again" })).toEqual(trace);
+  });
+
+  it("ends a hang-up as child_stopped, with a hang_up turn last and no technical turn (#323)", async () => {
+    const { session, advance } = scripted([OPEN, v2({ act: "guide", step: "ones", level: 0, parts: [{ line: "step.invite", slots: { step: "ones" } }] })]);
+    await session.start();
+    advance(4);
+    await session.child("I don't know.");
+    advance(4);
+    const trace = await session.finish({ reason: "child_stopped" });
+    expect(checkTrace(JSON.parse(JSON.stringify(trace)))).toMatchObject({ ok: true });
+    expect(trace.version).toBe(TRACE_VERSION);
+    expect(trace.outcome).toMatchObject({ reason: "child_stopped", seconds: 8 });
+    expect(trace.turns.at(-1)).toEqual({ kind: "hang_up", at: T0 + 8000 });
+    expect(trace.turns.some((t) => t.kind === "technical")).toBe(false);
+    // A second finish, of either kind, changes nothing.
+    expect(await session.finish()).toEqual(trace);
+  });
+
+  it("keeps the outcome's priority on a hang-up: a call already solved stays solved", async () => {
+    const { session, advance } = scripted([
+      OPEN,
+      v2({ act: "accept_answer", parts: [{ line: "answer.right" }, { line: "check.explain", slots: { step: "tens" } }], reading: { start: "has_work", answers: [{ value: num(66), step: "result", verdict: "right" }] } }),
+    ]);
+    await session.start();
+    advance(4);
+    await session.child("66");
+    advance(4);
+    const trace = await session.finish({ reason: "child_stopped" });
+    expect(trace.outcome?.reason).toBe("solved");
+    expect(trace.turns.at(-1)?.kind).toBe("hang_up");
+    expect(checkTrace(JSON.parse(JSON.stringify(trace)))).toMatchObject({ ok: true });
+  });
+
+  it("hangs up a call that never started: started, then ended as child_stopped", async () => {
+    const { session } = scripted([]);
+    const trace = await session.finish({ reason: "child_stopped" });
+    expect(trace.turns.map((t) => t.kind)).toEqual(["start", "hang_up"]);
+    expect(trace.outcome).toMatchObject({ reason: "child_stopped", seconds: 0 });
   });
 });
 
@@ -280,6 +318,9 @@ describe("checkTrace refuses a trace that is not this version's shape", () => {
     ["an error with another field", (t) => { t.turns.find((x) => x.kind === "maya")!.attempts = [{ source: "model", proposal: null, refusal: null, error: { code: "unknown", message: ERROR_MESSAGES.unknown, raw: "sk-abc" } }, { source: "fallback", proposal: OPEN, refusal: null }]; }, /error/],
     ["an error status the code does not allow", (t) => { t.turns.find((x) => x.kind === "maya")!.attempts = [{ source: "model", proposal: null, refusal: null, error: { code: "http_401", message: ERROR_MESSAGES.http_401, status: 500 } }, { source: "fallback", proposal: OPEN, refusal: null }]; }, /error\.status/],
     ["a technical turn whose error is text", (t) => { t.turns.push({ kind: "technical", at: Number(t.turns.at(-1)!.at), detail: "x", error: "ENOENT /home/key" }); }, /error/],
+    ["a hang-up that is not the last turn", (t) => { const at = Number(t.turns.at(-1)!.at); t.turns[t.turns.length - 1] = { kind: "hang_up", at }; t.turns.push({ kind: "tick", at }); (t.outcome as Record<string, unknown>).reason = "child_stopped"; }, /hang-up only as the last turn/],
+    ["a hang-up in a version 1 trace", (t) => { t.version = 1; t.turns[t.turns.length - 1] = { kind: "hang_up", at: Number(t.turns.at(-1)!.at) }; (t.outcome as Record<string, unknown>).reason = "child_stopped"; }, /version 1/],
+    ["a hang-up that ended as a technical issue", (t) => { t.turns[t.turns.length - 1] = { kind: "hang_up", at: Number(t.turns.at(-1)!.at) }; }, /outcome\.reason/],
     ["no output after an accepted last attempt", (t) => { const m = t.turns.find((x) => x.kind === "maya" && x.output !== null && (x.output as { board: unknown[] }).board.length === 0)!; m.output = null; }, /output/],
   ];
   for (const [name, breakIt, path] of cases) {
@@ -291,6 +332,14 @@ describe("checkTrace refuses a trace that is not this version's shape", () => {
       if (!r.ok) expect(r.reason).toMatch(path);
     });
   }
+
+  it("reads a version 1 trace and a version 2 hang-up", async () => {
+    const t = await validTrace();
+    expect(checkTrace({ ...t, version: 1 })).toMatchObject({ ok: true });
+    t.turns[t.turns.length - 1] = { kind: "hang_up", at: Number(t.turns.at(-1)!.at) };
+    (t.outcome as Record<string, unknown>).reason = "child_stopped";
+    expect(checkTrace(t)).toMatchObject({ ok: true });
+  });
 
   it("takes every committed sample trace", async () => {
     const { readdirSync, readFileSync } = await import("node:fs");

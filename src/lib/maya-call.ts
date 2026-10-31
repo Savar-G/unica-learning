@@ -23,7 +23,7 @@ import { fitView, type PlayStep } from "@/lib/board-svg";
 import type { LearningEvents } from "@/lib/learning-events";
 import { learningEvent, type Outcome } from "@/lib/maya";
 import type { MayaModel } from "@/lib/maya-model";
-import { createTextSession, type SavedTextSession, type TextOutput, type TextSession } from "@/lib/maya-text";
+import { createTextSession, type FinishOptions, type SavedTextSession, type TextOutput, type TextSession } from "@/lib/maya-text";
 import { packageHash, type MayaTrace } from "@/lib/maya-trace";
 import { checkQuestionPackage, type QuestionPackage, type QuestionRef } from "@/lib/question-package";
 
@@ -93,7 +93,10 @@ export interface CallSeams {
   seed(): number;
 }
 
-/** One input to a live call. "end" hangs up (the call ends as a technical issue), or finishes an ended call's steps. */
+/**
+ * One input to a live call. "end" hangs up on purpose (the call ends as child_stopped, unless safety, content or a
+ * solved question comes first), or finishes an ended call's steps.
+ */
 export type CallInput = { type: "child"; text: string } | { type: "tick" } | { type: "writing"; status: "started" | "done" } | { type: "end" };
 
 /** The most characters of one typed child turn. */
@@ -160,6 +163,7 @@ function transcriptOf(trace: MayaTrace): TranscriptLine[] {
     else if (t.kind === "writing") lines.push({ speaker: "note", text: t.status === "started" ? "The child started writing." : "The child finished writing.", second: second(t.at) });
     else if (t.kind === "tick") lines.push({ speaker: "note", text: "The child stayed quiet.", second: second(t.at) });
     else if (t.kind === "technical") lines.push({ speaker: "note", text: `The call stopped: ${t.detail}.`, second: second(t.at) });
+    else if (t.kind === "hang_up") lines.push({ speaker: "note", text: "The child hung up.", second: second(t.at) });
   }
   return lines;
 }
@@ -286,8 +290,8 @@ export function mayaCalls(seams: CallSeams): MayaCalls {
   }
 
   /** Stores the outcome of a call that has just ended, then writes its event and rebuilds the profile. Null on a conflict. */
-  async function end(record: CallRecord, pkg: QuestionPackage, session: TextSession, detail?: string): Promise<CallRecord | null> {
-    const trace = await session.finish(detail);
+  async function end(record: CallRecord, pkg: QuestionPackage, session: TextSession, how: FinishOptions = {}): Promise<CallRecord | null> {
+    const trace = await session.finish(how);
     const change: CallChange = {
       status: "ended",
       // Kept until the learning event is written (afterEnd).
@@ -385,14 +389,14 @@ export function mayaCalls(seams: CallSeams): MayaCalls {
       if (!model) {
         // The model this call started with is gone (the key was removed): the call ends, recorded with its own model.
         const session = textSession(record, pkg, idleModel(record), childName, saved);
-        const ended = await end(record, pkg, session, "the model this call started with is no longer available");
+        const ended = await end(record, pkg, session, { detail: "the model this call started with is no longer available" });
         return ended ? result(ended, ended.trace!, null) : { ok: false, error: "conflict" };
       }
       const session = textSession(record, pkg, model, childName, saved);
       let out: TextOutput | null = null;
       let saved2: CallRecord | null = null;
       if (input.type === "end") {
-        saved2 = await end(record, pkg, session, "the team member hung up");
+        saved2 = await end(record, pkg, session, { reason: "child_stopped" });
       } else {
         try {
           out = input.type === "child" ? await session.child(input.text.trim()) : input.type === "tick" ? await session.tick() : await session.writing(input.status);
