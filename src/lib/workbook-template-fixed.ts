@@ -1,5 +1,5 @@
 // The fixed test template (#309): one plain layout for each page type of the sample workbook (cover and practice), so
-// the renderer can be built and checked before the workbook DESIGN.md (#305) defines the real templates (#310). It
+// the renderer can be built and checked; the real templates are src/lib/workbook-template.ts (#310). It
 // follows the landing page's sample sheets: a green day label, a large title, an instruction, then the questions in
 // bordered boxes. Every page prints its number and its QR code in the footer; each question box prints its number.
 // Its spaces are fixed in size, so content that does not fit overflows and fails the render.
