@@ -1,11 +1,11 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { fakeAiClient } from "@/lib/ai-client-fake";
 import { allLineTexts, PHRASES, SAFETY_GUIDANCE, type Proposal } from "@/lib/maya";
 import { aiMayaModel, PROMPT_VERSION, SYSTEM_PROMPT, type ModelInput } from "@/lib/maya-model";
 import { fakeMayaModel, ruleMayaModel } from "@/lib/maya-model-fake";
 import { SAMPLE_PACKAGES } from "@/lib/maya-samples";
 import { createTextSession, type TextOutput } from "@/lib/maya-text";
-import { checkTrace, packageHash, redactText, TRACE_VERSION } from "@/lib/maya-trace";
+import { checkTrace, configuredSecrets, packageHash, redactText, TRACE_VERSION } from "@/lib/maya-trace";
 import { valuesIn } from "@/lib/maya";
 import type { OperationPackage } from "@/lib/question-package";
 
@@ -269,6 +269,12 @@ describe("checkTrace refuses a trace that is not this version's shape", () => {
     ["an end time that is not ISO", (t) => { t.endedAt = "yesterday"; }, /endedAt/],
     ["another version", (t) => { t.version = 99; }, /version/],
     ["freeTalk missing", (t) => { delete t.freeTalk; }, /freeTalk/],
+    ["an attempt after an accepted one (the accepted opening twice)", (t) => { const a = t.turns.find((x) => x.kind === "maya")!.attempts as unknown[]; a.push(structuredClone(a[0])); }, /attempts/],
+    ["a fallback after an accepted model proposal", (t) => { const a = t.turns.find((x) => x.kind === "maya")!.attempts as unknown[]; a.push({ source: "fallback", proposal: OPEN, refusal: null }); }, /attempts\[0\]/],
+    ["a repair after a model error", (t) => { t.turns.find((x) => x.kind === "maya")!.attempts = [{ source: "model", proposal: null, refusal: null, error: "busy" }, { source: "repair", proposal: OPEN, refusal: null }]; }, /attempts\[1\]/],
+    ["a fallback first", (t) => { (t.turns.find((x) => x.kind === "maya")!.attempts as Record<string, unknown>[])[0].source = "fallback"; }, /attempts/],
+    ["two repairs", (t) => { const refused = { source: "model", proposal: OPEN, refusal: { code: "x", reason: "y", allowed: [] } }; t.turns.find((x) => x.kind === "maya")!.attempts = [refused, { ...refused, source: "repair" }, { ...refused, source: "repair" }, { source: "fallback", proposal: OPEN, refusal: null }]; }, /attempts/],
+    ["no output after an accepted last attempt", (t) => { const m = t.turns.find((x) => x.kind === "maya" && x.output !== null && (x.output as { board: unknown[] }).board.length === 0)!; m.output = null; }, /output/],
   ];
   for (const [name, breakIt, path] of cases) {
     it(`refuses ${name}`, async () => {
@@ -314,11 +320,81 @@ describe("the trace keeps the child's name and secrets out", () => {
   });
 });
 
+/**
+ * Secrets in every shape the redaction must catch. None is a real key; the prefixes are joined at run time so the
+ * file holds no key-shaped text (GitHub push protection reads it as a leaked key).
+ */
+const fake = (...parts: string[]) => parts.join("");
+const STRIPE_LIKE = fake("sk", "_live_", "1234567890abcdefghijklmnop");
+const SECRET_SAMPLES = [
+  STRIPE_LIKE,
+  fake("sk", "-or-v1-", "0123456789abcdef0123456789abcdef0123456789abcdef"),
+  fake("sk", "-ant-api03-", "AbCdEfGhIjKlMnOp"),
+  fake("rk", "_test_", "51Habcdefghijk"),
+  fake("pk", "_live_", "9876543210zyxw"),
+  fake("wh", "sec_", "c2VjcmV0c2VjcmV0"),
+  "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJtYXlhIn0.c2lnbmF0dXJlc2ln",
+  "0123456789abcdef0123456789abcdef0123",
+  "QUJDREVGR0hJSktMTU5PUFFSU1RVVldYWVo0123+/",
+];
+const SECRET_CONTEXTS = [
+  (x: string) => `bad key ${x}`,
+  (x: string) => `Authorization: Bearer ${x}`,
+  (x: string) => `authorization=${x}`,
+  (x: string) => `GET https://openrouter.ai/x?api_key=${x}&b=1`,
+  (x: string) => `GET /v1?key=${x}`,
+  (x: string) => `token: ${x}`,
+];
+const CONFIGURED = "Zq!9 p@ss~word#7";
+
 describe("redactText", () => {
   it("leaves words that only contain the name, and an empty name, alone", () => {
     expect(redactText("Ann went to Annapolis with Ann.", "Ann")).toBe("{name} went to Annapolis with {name}.");
     expect(redactText("Hi there", "")).toBe("Hi there");
-    expect(redactText("key whsec_abcdefghijklmnop and re_ABCDEFGHIJKLMNOPQRS", null)).toBe("key [secret] and [secret]");
+  });
+
+  it("removes keys of every shape, in every context, and a configured key whatever its shape", () => {
+    expect(redactText(`bad key ${STRIPE_LIKE}`, null, [])).toBe("bad key [secret]");
+    for (const x of SECRET_SAMPLES) for (const ctx of SECRET_CONTEXTS) {
+      const out = redactText(ctx(x), null, []);
+      expect(out, ctx(x)).not.toContain(x);
+      expect(out, ctx(x)).toContain("[secret]");
+    }
+    // A short opaque value after "Bearer", "key=" or an Authorization header.
+    for (const t of ["Bearer abc.def", "Authorization: Basic dXNlcjpwYXNz", "url?key=shortone", "api_key: hunter22"]) expect(redactText(t, null, [])).not.toMatch(/abc\.def|dXNlcjpwYXNz|shortone|hunter22/);
+    expect(redactText(`OpenRouter said: ${CONFIGURED} is wrong`, null, [CONFIGURED])).toBe("OpenRouter said: [secret] is wrong");
+    expect(configuredSecrets({ OPENROUTER_API_KEY: ` ${CONFIGURED} ` })).toEqual([CONFIGURED]);
+  });
+
+  it("leaves Maya's code-written sentences as they are", () => {
+    for (const x of [...allLineTexts(PKG, [num(56)]), ...Object.values(PHRASES).flat()]) expect(redactText(x, null, [])).toBe(x);
+  });
+});
+
+describe("no secret reaches a written trace", () => {
+  afterEach(() => vi.unstubAllEnvs());
+
+  it("removes every secret shape and the configured key from model errors, on the full path to the trace JSON", async () => {
+    vi.stubEnv("OPENROUTER_API_KEY", CONFIGURED);
+    const errors = [...SECRET_SAMPLES.flatMap((x) => SECRET_CONTEXTS.map((ctx) => ctx(x))), `OpenRouter answered 401: ${CONFIGURED}`, `x`.repeat(190) + SECRET_SAMPLES[0]];
+    let now = T0;
+    let n = 0;
+    const model = fakeMayaModel({
+      answer: (input) => {
+        n += 1;
+        if (input.offers.some((o) => o.act === "open")) return OPEN;
+        throw new Error(`OpenRouter failed: ${errors[(n - 2) % errors.length]}`);
+      },
+    });
+    const session = createTextSession({ callId: "secret-1", package: PKG, model, clock: () => (now += 1000), random: 4 });
+    await session.start();
+    for (let i = 0; i < errors.length && !session.ended; i++) await session.child("I don't know.");
+    const trace = await session.finish();
+    const json = JSON.stringify(trace);
+    for (const x of [...SECRET_SAMPLES, CONFIGURED, "1234567890abcdefghij"]) expect(json, x).not.toContain(x);
+    expect(trace.counts.modelErrors).toBeGreaterThan(20);
+    expect(json).toContain("[secret]");
+    expect(checkTrace(JSON.parse(json))).toMatchObject({ ok: true });
   });
 });
 

@@ -23,7 +23,7 @@ export interface TextRun {
 /** Simulated time for each line. */
 export const LINE_MS = 4_000;
 
-const short = (e: unknown) => redactText((e instanceof Error ? e.message : String(e)).slice(0, 200));
+const short = (e: unknown) => redactText(e instanceof Error ? e.message : String(e)).slice(0, 200);
 
 /** Runs the session to its end and writes the trace. Returns the trace and the first error, if any. */
 export async function runTextSession(run: TextRun): Promise<{ trace: MayaTrace; error: unknown }> {

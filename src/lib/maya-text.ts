@@ -110,7 +110,7 @@ function fallbacks(session: Session): unknown[] {
 }
 
 /** An error's message, short and with secrets removed. */
-const message = (e: unknown) => redactText((e instanceof Error ? e.message : String(e)).slice(0, 200));
+const message = (e: unknown) => redactText(e instanceof Error ? e.message : String(e)).slice(0, 200);
 const iso = (ms: number | null) => (ms === null ? null : new Date(ms).toISOString());
 
 export function createTextSession(options: TextSessionOptions): TextSession {

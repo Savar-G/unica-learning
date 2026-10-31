@@ -83,6 +83,8 @@ function model(o: Options, root: string): MayaModel {
   if (!env.OPENROUTER_API_KEY && existsSync(file)) {
     const fromFile = readEnvFile(file);
     env.OPENROUTER_API_KEY = fromFile.OPENROUTER_API_KEY;
+    // In process.env too, so the trace and the log redact this key wherever it appears (configuredSecrets).
+    if (fromFile.OPENROUTER_API_KEY) process.env.OPENROUTER_API_KEY = fromFile.OPENROUTER_API_KEY;
     env.AI_MODEL ??= fromFile.AI_MODEL;
   }
   const client = aiClient(env);

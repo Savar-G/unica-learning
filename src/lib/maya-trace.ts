@@ -179,6 +179,20 @@ function checkAttempt(a: unknown, path: string) {
   need(!(x.source === "fallback" && x.refusal !== null), `${path}`, "a fallback attempt is recorded only when it was accepted");
 }
 
+const accepted = (a: Record<string, unknown>) => a.refusal === null && a.error === undefined;
+
+/**
+ * The repair limit (src/lib/maya-text.ts): the model's proposal; one repair only after the model's proposal was
+ * refused (not after an error); a fallback only after every attempt before it failed. Only the last attempt may be
+ * accepted: nothing is asked again after an accepted proposal.
+ */
+function checkOrder(attempts: Record<string, unknown>[], path: string) {
+  const sources = attempts.map((a) => a.source).join(",");
+  need(["model", "model,repair", "model,fallback", "model,repair,fallback"].includes(sources), path, `model, then at most one repair, then at most one fallback (got ${sources})`);
+  attempts.slice(0, -1).forEach((a, i) => need(!accepted(a), `${path}[${i}]`, "refused or failed, because an attempt follows it"));
+  if (attempts[1]?.source === "repair") need(attempts[0].refusal !== null, `${path}[1]`, "a repair only after a refusal, not after a model error");
+}
+
 function checkTurn(t: unknown, path: string): Record<string, unknown> {
   need(isObject(t), path, "a turn");
   const x = t as Record<string, unknown>;
@@ -201,7 +215,9 @@ function checkTurn(t: unknown, path: string): Record<string, unknown> {
       need(oneOf(STATES, x.state), `${path}.state`, "a session state");
       need(oneOf(STATES, x.stateAfter), `${path}.stateAfter`, "a session state");
       need(Array.isArray(x.attempts) && x.attempts.length > 0 && x.attempts.length <= 3, `${path}.attempts`, "1 to 3 attempts");
-      (x.attempts as unknown[]).forEach((a, i) => checkAttempt(a, `${path}.attempts[${i}]`));
+      const attempts = x.attempts as Record<string, unknown>[];
+      attempts.forEach((a, i) => checkAttempt(a, `${path}.attempts[${i}]`));
+      checkOrder(attempts, `${path}.attempts`);
       need("output" in x, `${path}.output`, "present (null when nothing was output)");
       if (x.output !== null) {
         need(isObject(x.output), `${path}.output`, "an output or null");
@@ -209,8 +225,9 @@ function checkTurn(t: unknown, path: string): Record<string, unknown> {
         need(oneOf(ACTS, o.act), `${path}.output.act`, "an act");
         need(strings(o.say), `${path}.output.say`, "a list of sentences");
         need(strings(o.board), `${path}.output.board`, "a list of transaction ids");
-        const last = (x.attempts as Record<string, unknown>[]).at(-1)!;
-        need(last.refusal === null && last.error === undefined, `${path}.output`, "output only from an accepted last attempt");
+        need(accepted(attempts.at(-1)!), `${path}.output`, "output only from an accepted last attempt");
+      } else {
+        need(!accepted(attempts.at(-1)!), `${path}.output`, "an output, because the last attempt was accepted");
       }
       break;
     }
@@ -303,13 +320,36 @@ export function checkTrace(raw: unknown): { ok: true; trace: MayaTrace } | { ok:
 
 // ---------- Keeping the child's data out ----------
 
-/** Secrets that can turn up in an error message: API keys and bearer tokens. */
-const SECRETS = [/\bBearer\s+[A-Za-z0-9._~+/=-]{8,}/gi, /\bsk-[A-Za-z0-9_-]{12,}/g, /\bwhsec_[A-Za-z0-9+/=]{8,}/g, /\b(?:re|rk|pk)_[A-Za-z0-9]{16,}/g];
+/**
+ * Secrets that can turn up in an error message, in any shape: provider keys (sk-..., sk_..., rk_..., pk_..., whsec_...),
+ * bearer tokens and Authorization headers, key and token parameters, JWTs, and any long run of base64 or hex.
+ */
+const SECRETS: [RegExp, string][] = [
+  [/(authorization\s*[:=]\s*)(?:(?:bearer|basic|token)\s+)?[^\s,;"']+/gi, "$1[secret]"],
+  [/\bbearer\s+[^\s,;"']+/gi, "Bearer [secret]"],
+  [/\b((?:x-)?api[_-]?key|apikey|access[_-]?token|refresh[_-]?token|token|key|secret)(\s*[=:]\s*)["']?[^\s&"',;]+/gi, "$1$2[secret]"],
+  [/\b(?:sk|rk|pk)[-_][A-Za-z0-9_-]{6,}/g, "[secret]"],
+  [/\bwhsec_[A-Za-z0-9+/=_-]{6,}/g, "[secret]"],
+  [/\b[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}/g, "[secret]"],
+  [/[A-Za-z0-9+/_-]{32,}={0,2}/g, "[secret]"],
+];
 const escape = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
-/** Text with the child's name as {name} and every secret as [secret]. */
-export function redactText(text: string, childName: string | null = null): string {
-  let out = SECRETS.reduce((t, re) => t.replace(re, "[secret]"), text);
+/** Environment variables whose values are secrets: redacted wherever they appear, whatever their shape. */
+const SECRET_ENV = ["OPENROUTER_API_KEY", "SUPABASE_SECRET_KEY", "STRIPE_SECRET_KEY", "RESEND_API_KEY", "CRON_SECRET", "LIVEKIT_API_SECRET", "LIVEKIT_API_KEY"];
+
+/** The configured secret values now (from the environment), longest first. */
+export function configuredSecrets(env: Record<string, string | undefined> = process.env): string[] {
+  return SECRET_ENV.map((k) => env[k]?.trim() ?? "").filter((v) => v.length >= 6).sort((a, b) => b.length - a.length);
+}
+
+/**
+ * Text with the child's name as {name} and every secret as [secret]: the configured secret values first (whatever
+ * their shape), then the secret patterns. Redact before cutting text short, so a cut never leaves part of a key.
+ */
+export function redactText(text: string, childName: string | null = null, secrets: readonly string[] = configuredSecrets()): string {
+  let out = secrets.reduce((t, v) => t.split(v).join("[secret]"), text);
+  out = SECRETS.reduce((t, [re, to]) => t.replace(re, to), out);
   const name = childName?.trim();
   if (name) out = out.replace(new RegExp(`(?<![\\p{L}\\p{N}])${escape(name)}(?![\\p{L}\\p{N}])`, "giu"), "{name}");
   return out;
