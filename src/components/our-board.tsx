@@ -20,8 +20,8 @@ import {
   mayaFinished,
   mayaWrites,
   mayaWritingEnds,
+  penHasMoved,
   penHolder,
-  saveDraft,
   takePen,
   undo,
   type BoardHistory,
@@ -29,6 +29,7 @@ import {
   type DraftStore,
 } from "@/lib/board-history";
 import { addPoint, boardWidthOf, canvasViewBox, capturedPoints, eraserLine, inkLayers, inkOutline, parseViewBox, startCapture, toBoard, type Box, type Capture, type CapturePoint, type InkLayer, type ViewBox } from "@/lib/child-ink-svg";
+import { leaseLocks, openBoardTab, type BoardChannel, type BoardLocks, type BoardMessage, type BoardTab, type TabRole, type TabTimers } from "@/lib/board-tab";
 import type { QuestionBoard } from "@/lib/desk-board";
 import { newPalmGuard, pointerDown, pointerUp, type PalmGuard } from "@/lib/whiteboard";
 import type { TimedPoint } from "@/lib/strokes";
@@ -46,6 +47,10 @@ const MIN_GAP_PX = 0.6;
 const OPEN_EVERY_MS = 60_000;
 /** What the board says when another tab changed this board in a way that cannot be put together with this one. */
 const OTHER_TAB_NOTE = "This board changed in another tab. It shows the newest work now.";
+/** What a tab says when another tab holds the board (R370-2-1): it shows the board read-only. */
+const ELSEWHERE_NOTE = "This board is open in another tab.";
+/** What "Use it here" says when the other tab keeps the board. */
+const KEPT_NOTE = "The other tab is still using this board. Close it, then try again.";
 /** What the board says when it cannot keep a stroke, so a line never disappears without a word. */
 const LOST_NOTE = "That line could not be kept. Please draw it again.";
 /** What the board says to a stroke while Maya holds the pen. */
@@ -75,11 +80,6 @@ const localDrafts: DraftStore = {
       // Nothing to remove.
     }
   },
-  exclusive(key, fn) {
-    // Web Locks take turns across every tab of this site; without them the save goes at once and heals later.
-    const locks = typeof navigator !== "undefined" ? navigator.locks : undefined;
-    return locks ? locks.request(key, () => fn()) : Promise.resolve().then(fn);
-  },
   keys() {
     try {
       return Array.from({ length: window.localStorage.length }, (_, i) => window.localStorage.key(i)).filter((k): k is string => k !== null);
@@ -88,6 +88,58 @@ const localDrafts: DraftStore = {
     }
   },
 };
+
+const browserTimers: TabTimers = {
+  sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
+  every(ms, fn) {
+    const id = setInterval(fn, ms);
+    return () => clearInterval(id);
+  },
+};
+
+/** The browser's Web Locks: a lock is held until let go, or until its tab closes or crashes. */
+const webLocks = (locks: LockManager): BoardLocks => ({
+  tryTake: (name) =>
+    new Promise((resolve) => {
+      locks
+        .request(name, { ifAvailable: true }, (lock) => {
+          if (!lock) return resolve(null);
+          return new Promise<void>((letGo) => resolve(() => letGo()));
+        })
+        .catch(() => resolve(null));
+    }),
+});
+
+/** Tabs talk through a BroadcastChannel; where there is none, through a storage key and its storage event. */
+function browserChannel(): BoardChannel & { close(): void } {
+  const fns = new Set<(m: BoardMessage) => void>();
+  const listen = (fn: (m: BoardMessage) => void) => {
+    fns.add(fn);
+    return () => void fns.delete(fn);
+  };
+  if (typeof BroadcastChannel !== "undefined") {
+    const bc = new BroadcastChannel("unica-board");
+    bc.onmessage = (e: MessageEvent<BoardMessage>) => fns.forEach((fn) => fn(e.data));
+    return { post: (m) => bc.postMessage(m), listen, close: () => bc.close() };
+  }
+  const KEY = "unica-board-message";
+  const heard = (e: StorageEvent) => {
+    if (e.key !== KEY || !e.newValue) return;
+    try {
+      const m = JSON.parse(e.newValue) as BoardMessage;
+      fns.forEach((fn) => fn(m));
+    } catch {
+      // Not a board message.
+    }
+  };
+  window.addEventListener("storage", heard);
+  return {
+    // The time makes each message a change, so the storage event fires for a message sent twice.
+    post: (m) => localDrafts.write(KEY, JSON.stringify({ ...m, sentAt: Date.now() })),
+    listen,
+    close: () => window.removeEventListener("storage", heard),
+  };
+}
 
 const noSubscribe = () => () => {};
 /** False on the server and in the first render: the draft is read after hydration, so both render the same board. */
@@ -129,15 +181,20 @@ function LiveBoard({ question, label, caption, still, draftKey, store }: OurBoar
   const [note, setNote] = useState<string | null>(null);
   const [camera, setCamera] = useState<{ view: ViewBox; boardWidth: number } | null>(null);
   const [live, setLive] = useState<{ erase: boolean; capture: Capture } | null>(null);
+  /** This tab holds the board and writes it, or shows it read-only; "opening" until the lock answers. */
+  const [role, setRole] = useState<TabRole | "opening">(store ? "opening" : "holder");
+  const [moving, setMoving] = useState(false);
+  /** Maya's question is written (or was before a reload): the pen may pass. */
+  const [written, setWritten] = useState(restored !== null || !question);
+  const [tabId] = useState(() => (typeof crypto !== "undefined" && "randomUUID" in crypto ? crypto.randomUUID() : `${Date.now()}-${performance.now()}`));
+  const tab = useRef<BoardTab | null>(null);
   const canvas = useRef<HTMLDivElement>(null);
   const guard = useRef<PalmGuard>(newPalmGuard());
   const stroke = useRef<{ id: number; erase: boolean; capture: Capture } | null>(null);
   /** The board as it is now, also between a change and the render it causes. */
   const latest = useRef(history);
-  /** The board this tab last loaded or saved: a save writes only when the store still holds it (R370-1). */
-  const base = useRef<BoardHistory | null>(restored);
-  /** A pointer pressed while Maya holds the pen: the note stays until a while after it lifts. */
-  const refused = useRef<number | null>(null);
+  /** A pointer pressed while this tab cannot draw, with what the board said: it says it again when the pointer lifts. */
+  const refused = useRef<{ id: number; note: string } | null>(null);
   const clock = useRef<{ origin: number; base: number } | null>(null);
   const noteTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
   const saved = useRef(history);
@@ -166,45 +223,70 @@ function LiveBoard({ question, label, caption, still, draftKey, store }: OurBoar
     noteTimer.current = setTimeout(() => setNote(null), NOTE_MS);
   }, []);
 
-  /**
-   * Saves the board. Another tab may have saved this board too: its strokes are merged in, or, when that cannot be done,
-   * this tab shows the other tab's board and says so. Nothing is ever written over (R370-1).
-   */
-  const persist = useCallback(async (h: BoardHistory) => {
-    if (!store) return;
-    const result = await saveDraft(store, draftKey, h, base.current, Date.now());
-    if (result.status === "failed") return;
-    base.current = result.history;
-    // Adopt the stored board only when nothing changed meanwhile; otherwise the next save reconciles again.
-    if (result.status === "saved" || latest.current !== h) return;
-    saved.current = result.history;
-    setBoard(result.history);
-    if (result.status === "conflict") say(OTHER_TAB_NOTE);
-  }, [store, draftKey, setBoard, say]);
+  /** Shows a board read from the store, with the clock going on from where it was left; a stroke in progress is dropped. */
+  const adopt = useCallback((h: BoardHistory | null) => {
+    const board = h ?? firstBoard(question);
+    stroke.current = null;
+    setLive(null);
+    saved.current = board;
+    clock.current = null;
+    setBoard(board);
+    // question is fixed for this board: the key changes with it.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [setBoard]);
 
-  // Keep the draft after every change. The board as it started (the question alone) needs none.
+  // Open the board in this tab (R370-2-1): the first tab holds it and writes it; another shows it read-only.
   useEffect(() => {
-    if (!store || history === saved.current) return;
-    saved.current = history;
-    void persist(history);
-  }, [history, store, persist]);
+    if (!store) return;
+    let gone = false;
+    const channel = browserChannel();
+    const locks = typeof navigator !== "undefined" && navigator.locks ? webLocks(navigator.locks) : leaseLocks({ store, tabId, now: Date.now, timers: browserTimers });
+    void openBoardTab({
+      key: draftKey, tabId, store, locks, channel, timers: browserTimers,
+      onChange(r, h) {
+        if (gone) return;
+        setRole(r);
+        adopt(h);
+      },
+      // The board goes to another tab: save what is on the screen first.
+      beforeRelease: () => tab.current?.save(latest.current, Date.now()),
+    }).then((t) => {
+      if (gone) return t.close();
+      tab.current = t;
+      setRole(t.role());
+      // What this tab read at its start may be older than the draft now.
+      if (t.stored() && saved.current !== t.stored()) adopt(t.stored());
+    });
+    return () => {
+      gone = true;
+      tab.current?.close();
+      tab.current = null;
+      channel.close();
+    };
+  }, [store, draftKey, tabId, adopt]);
 
-  // While the board is open, it says so every minute (so no tab evicts its draft), and it reconciles when another tab
-  // saves this board.
+  // Keep the draft after every change, from the tab that holds the board. The board as it started needs none. On any
+  // difference from what this tab last loaded or saved, nothing is written: the tab shows the stored board.
+  useEffect(() => {
+    if (!store || role !== "holder" || history === saved.current || !tab.current) return;
+    saved.current = history;
+    const result = tab.current.save(history, Date.now());
+    if (result.status === "reload") {
+      adopt(result.history);
+      say(OTHER_TAB_NOTE);
+    }
+  }, [history, store, role, adopt, say]);
+
+  // While the board is open, it says so every minute, so no tab evicts its draft.
   useEffect(() => {
     if (!store) return;
     markOpen(store, draftKey, Date.now());
     const beat = setInterval(() => markOpen(store, draftKey, Date.now()), OPEN_EVERY_MS);
-    const changed = (e: StorageEvent) => {
-      if (e.key === draftKey) void persist(latest.current);
-    };
-    window.addEventListener("storage", changed);
     return () => {
       clearInterval(beat);
-      window.removeEventListener("storage", changed);
       markClosed(store, draftKey);
     };
-  }, [store, draftKey, persist]);
+  }, [store, draftKey]);
 
   // The child's layer sits exactly over Maya's board: measure both whenever either changes size.
   useEffect(() => {
@@ -231,16 +313,30 @@ function LiveBoard({ question, label, caption, still, draftKey, store }: OurBoar
     const ends = mayaWritingEnds(saved.current);
     // With less motion the question shows at once, as if her writing had just ended: the clock starts at its end.
     clock.current = { origin: performance.now(), base: still ? ends : 1 };
-    const done = setTimeout(() => {
-      const passed = mayaFinished(latest.current, now());
-      if (passed.ok) setBoard(passed.history);
-    }, still ? 0 : ends);
+    const done = setTimeout(() => setWritten(true), still ? 0 : ends);
     return () => clearTimeout(done);
     // Only when the board starts: a later render never passes the pen again.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // The question is written: the pen passes to the child, once, in the tab that holds the board. A board whose pen has
+  // moved already (restored, or taken over from another tab) keeps it where it is.
+  useEffect(() => {
+    if (!written || role !== "holder" || penHasMoved(latest.current)) return;
+    const passed = mayaFinished(latest.current, now());
+    if (passed.ok) setBoard(passed.history);
+  }, [written, role, history, now, setBoard]);
+
   useEffect(() => () => clearTimeout(noteTimer.current), []);
+
+  /** "Use it here": the other tab saves and lets go, then this tab takes the board and reads its draft. */
+  const moveHere = async () => {
+    if (!tab.current || moving) return;
+    setMoving(true);
+    const taken = await tab.current.takeOver();
+    setMoving(false);
+    if (!taken) say(KEPT_NOTE);
+  };
 
   const apply = (change: Change) => {
     if (change.ok) setBoard(change.history);
@@ -266,13 +362,16 @@ function LiveBoard({ question, label, caption, still, draftKey, store }: OurBoar
     const [next, decision] = pointerDown(guard.current, { id: e.pointerId, kind: e.pointerType, time: e.timeStamp, width: e.width, height: e.height });
     guard.current = next;
     if (decision === "ignore") return;
-    if (pen !== "child") {
-      // Maya holds the pen: nothing is drawn. The pointer is let go, so a finger can still scroll the page.
+    if (role !== "holder" || pen !== "child") {
+      // Another tab holds the board, or Maya holds the pen: nothing is drawn. The pointer is let go, so a finger can
+      // still scroll the page.
       guard.current = pointerUp(guard.current, { id: e.pointerId, kind: e.pointerType, time: e.timeStamp })[0];
       // A mouse drag would select the page's text instead.
       if (e.pointerType === "mouse") e.preventDefault();
-      refused.current = e.pointerId;
-      say(PEN_NOTE);
+      if (role === "opening") return;
+      const text = role === "reader" ? ELSEWHERE_NOTE : PEN_NOTE;
+      refused.current = { id: e.pointerId, note: text };
+      say(text);
       return;
     }
     const p = pointAt(e);
@@ -303,9 +402,9 @@ function LiveBoard({ question, label, caption, still, draftKey, store }: OurBoar
   };
 
   const up = (e: ReactPointerEvent<SVGSVGElement>) => {
-    if (refused.current === e.pointerId) {
+    if (refused.current?.id === e.pointerId) {
+      say(refused.current.note);
       refused.current = null;
-      say(PEN_NOTE);
     }
     const [next, ended] = pointerUp(guard.current, { id: e.pointerId, kind: e.pointerType, time: e.timeStamp });
     guard.current = next;
@@ -359,7 +458,7 @@ function LiveBoard({ question, label, caption, still, draftKey, store }: OurBoar
     pieces.push({ key: "live-tail", erase: live.erase, width, d: outline(live.capture.tail, false) });
   }
   const layers = inkLayers(pieces);
-  const childHas = pen === "child";
+  const childHas = pen === "child" && role === "holder";
 
   return (
     <>
@@ -384,7 +483,7 @@ function LiveBoard({ question, label, caption, still, draftKey, store }: OurBoar
               onPointerMove={move}
               onPointerUp={up}
               onPointerCancel={up}
-              onPointerLeave={(e) => { if (refused.current === e.pointerId) up(e); }}
+              onPointerLeave={(e) => { if (refused.current?.id === e.pointerId) up(e); }}
             >
               <g className="child-ink-strokes">{camera ? layer(layers, 0) : null}</g>
             </svg>
@@ -402,21 +501,30 @@ function LiveBoard({ question, label, caption, still, draftKey, store }: OurBoar
         </div>
       </section>
 
-      <div className={`desk-pen${note ? " nudge" : ""}`} data-pen={pen}>
-        {childHas ? (
-          <>
-            <span className="desk-pen-you" aria-hidden="true"><Icon name="pen" size={16} /></span>
-            <span>You have the pen</span>
-            <button type="button" className="give" onClick={giveBack}>Give it back</button>
-          </>
-        ) : (
-          <>
-            <Avatar size={26} />
-            <span>Maya has the pen</span>
-            <button type="button" onClick={take}>Take the pen</button>
-          </>
-        )}
-      </div>
+      {role === "reader" ? (
+        // Another tab holds this board (R370-2-1): this one shows it read-only and can take it over.
+        <div className={`desk-pen elsewhere${note ? " nudge" : ""}`} data-pen="elsewhere">
+          <span className="desk-pen-tab" aria-hidden="true"><Icon name="board" size={16} /></span>
+          <span>{ELSEWHERE_NOTE}</span>
+          <button type="button" onClick={moveHere} disabled={moving}>{moving ? "Moving it here…" : "Use it here"}</button>
+        </div>
+      ) : (
+        <div className={`desk-pen${note ? " nudge" : ""}`} data-pen={pen}>
+          {pen === "child" ? (
+            <>
+              <span className="desk-pen-you" aria-hidden="true"><Icon name="pen" size={16} /></span>
+              <span>You have the pen</span>
+              <button type="button" className="give" onClick={giveBack} disabled={role !== "holder"}>Give it back</button>
+            </>
+          ) : (
+            <>
+              <Avatar size={26} />
+              <span>Maya has the pen</span>
+              <button type="button" onClick={take} disabled={role !== "holder"}>Take the pen</button>
+            </>
+          )}
+        </div>
+      )}
     </>
   );
 }

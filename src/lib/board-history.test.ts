@@ -139,11 +139,11 @@ describe("a new question (D-184): the pen passes to the child when Maya has fini
     expect(ok(mayaFinished(taken, mayaWritingEnds(taken)))).toBe(taken);
   });
 
-  it("comes back after a reload with the child holding the pen", async () => {
+  it("comes back after a reload with the child holding the pen", () => {
     const store = createMemoryDraftStore();
     const key = boardDraftKey("book-1", 2, 3);
     const passed = ok(mayaFinished(written(), 0));
-    expect(await saveDraft(store, key, passed, null, 1_000)).toMatchObject({ status: "saved" });
+    expect(saveDraft(store, key, passed, null, 1_000)).toMatchObject({ status: "saved" });
     const restored = loadDraft(store, key)!;
     expect(penHolder(restored)).toBe("child");
     expect(restored).toEqual(passed);
@@ -195,10 +195,10 @@ describe("the child's ink", () => {
 describe("the draft: a reload restores the board", () => {
   const key = boardDraftKey("book-1", 3, 7);
 
-  it("brings back Maya's question, the child's ink and who held the pen", async () => {
+  it("brings back Maya's question, the child's ink and who held the pen", () => {
     const store = createMemoryDraftStore();
     const h = ok(drawStroke(withPen(), stroke(0.1, 0.3, 2100)));
-    expect(await saveDraft(store, key, h, null, 1_000)).toEqual({ status: "saved", history: h });
+    expect(saveDraft(store, key, h, null, 1_000)).toEqual({ status: "saved", history: h });
 
     const restored = loadDraft(store, key)!;
     expect(restored).toEqual(h);
@@ -216,69 +216,36 @@ describe("the draft: a reload restores the board", () => {
     expect(loadDraft(createMemoryDraftStore({ [key]: "no stamp" }), key)).toBeNull();
   });
 
-  it("an empty board leaves no draft; a tab behind another keeps the other tab's newer board", async () => {
+  it("an empty board leaves no draft", () => {
     const store = createMemoryDraftStore();
-    const newer = ok(drawStroke(withPen(), stroke(0.1, 0.3, 2100)));
-    await saveDraft(store, key, newer, null, 1_000);
-    // A second tab that started from nothing and holds only what the first tab had before its stroke.
-    expect(await saveDraft(store, key, withPen(), null, 2_000)).toEqual({ status: "merged", history: newer });
-    expect(loadDraft(store, key)).toEqual(newer);
-    await saveDraft(store, boardDraftKey("book-1", 3, null), createHistory(), null, 3_000);
+    saveDraft(store, boardDraftKey("book-1", 3, null), createHistory(), null, 3_000);
     expect(store.items.has(boardDraftKey("book-1", 3, null))).toBe(false);
   });
 
-  it("says when storage is full: the board is still on the screen", async () => {
+  it("says when storage is full: the board is still on the screen", () => {
     const store = createMemoryDraftStore();
     store.fill();
-    expect(await saveDraft(store, key, withPen(), null, 1_000)).toEqual({ status: "failed" });
+    expect(saveDraft(store, key, withPen(), null, 1_000)).toEqual({ status: "failed" });
   });
 });
 
-describe("two tabs on one board (R370-1)", () => {
+describe("the save's safety net: it writes only over what this tab last loaded or saved", () => {
   const key = boardDraftKey("book-1", 3, 7);
-  /** Both tabs restored the same stored board; each then drew a different stroke. */
-  const twoTabs = async (store: ReturnType<typeof createMemoryDraftStore>) => {
+
+  it("writes nothing over a board it did not load, and returns the stored board to show", () => {
+    const store = createMemoryDraftStore();
     const start = withPen();
-    await saveDraft(store, key, start, null, 1_000);
-    const loaded = loadDraft(store, key)!;
-    return { loaded, a: ok(drawStroke(loaded, stroke(0.1, 0.3, 2100))), b: ok(drawStroke(loaded, stroke(0.5, 0.3, 2150))) };
-  };
-
-  it("saving at the same time keeps both tabs' strokes: the saves take turns, and the second merges", async () => {
-    const store = createMemoryDraftStore();
-    const { loaded, a, b } = await twoTabs(store);
-    const [first, second] = await Promise.all([saveDraft(store, key, a, loaded, 2_000), saveDraft(store, key, b, loaded, 2_001)]);
-    expect(first).toEqual({ status: "saved", history: a });
-    expect(second.status).toBe("merged");
-    const stored = loadDraft(store, key)!;
-    expect(second).toEqual({ status: "merged", history: stored });
-    expect(childStrokes(stored).map((s) => s.pts[0][0])).toEqual([0.1, 0.5]);
-    expect(stored.revision).toBeGreaterThan(Math.max(a.revision, b.revision));
-    // The merged log is still in time order: it reads back.
-    expect(decodeHistory(encodeHistory(stored))).toEqual(stored);
+    saveDraft(store, key, start, null, 1_000);
+    const other = ok(drawStroke(start, stroke(0.5, 0.3, 2150)));
+    saveDraft(store, key, other, start, 1_500);
+    const mine = ok(drawStroke(start, stroke(0.1, 0.3, 2100)));
+    expect(saveDraft(store, key, mine, start, 2_000)).toEqual({ status: "reload", history: other });
+    expect(loadDraft(store, key)).toEqual(other);
   });
 
-  it("without locks, a write that lands between a tab's read and its write is healed when the other tab saves again", async () => {
-    let interleave: (() => void) | null = null;
-    const store = createMemoryDraftStore({}, { locks: false, beforeWrite: () => { const go = interleave; interleave = null; go?.(); } });
-    const { loaded, a, b } = await twoTabs(store);
-    // Tab B's write reaches the store after tab A read it and before A writes: A's write replaces it.
-    interleave = () => store.write(key, `2001@${encodeHistory(b)}`);
-    expect(await saveDraft(store, key, a, loaded, 2_000)).toEqual({ status: "saved", history: a });
-    expect(childStrokes(loadDraft(store, key)!)).toHaveLength(1);
-    // Tab B saves again (its next change, or the storage event): the store no longer holds what B wrote, so B merges.
-    const healed = await saveDraft(store, key, b, b, 2_002);
-    expect(healed.status).toBe("merged");
-    expect(childStrokes(loadDraft(store, key)!).map((s) => s.pts[0][0])).toEqual([0.1, 0.5]);
-  });
-
-  it("never writes over a change it cannot merge: the tab shows the other tab's board instead", async () => {
-    const store = createMemoryDraftStore();
-    const { loaded, a } = await twoTabs(store);
-    await saveDraft(store, key, a, loaded, 2_000);
-    const gaveBack = ok(givePen(loaded, 2200));
-    expect(await saveDraft(store, key, gaveBack, loaded, 2_100)).toEqual({ status: "conflict", history: a });
-    expect(loadDraft(store, key)).toEqual(a);
+  it("writes over a broken draft: it holds nothing to lose", () => {
+    const store = createMemoryDraftStore({ [key]: "1000@{broken" });
+    expect(saveDraft(store, key, withPen(), null, 2_000).status).toBe("saved");
   });
 });
 
@@ -287,41 +254,41 @@ describe("old drafts make room, never a board a tab has open (R370-3)", () => {
   const k = (i: number) => boardDraftKey("book-1", 1, i);
   const drafts = (store: ReturnType<typeof createMemoryDraftStore>) => [...store.items.keys()].filter((x) => x.startsWith(BOARD_DRAFT_ROOT));
 
-  it(`keeps at most ${MAX_DRAFTS} drafts not touched for a day: the oldest go first; other keys stay`, async () => {
+  it(`keeps at most ${MAX_DRAFTS} drafts not touched for a day: the oldest go first; other keys stay`, () => {
     const store = createMemoryDraftStore({ "unica-work:t1:q1": "a test draft stays" });
     const h = withPen();
-    for (let i = 0; i < MAX_DRAFTS + 5; i++) await saveDraft(store, k(i), h, null, 1_000 + i * DAY);
+    for (let i = 0; i < MAX_DRAFTS + 5; i++) saveDraft(store, k(i), h, null, 1_000 + i * DAY);
     expect(drafts(store)).toHaveLength(MAX_DRAFTS);
     expect(drafts(store)).not.toContain(k(0));
     expect(drafts(store)).toContain(k(MAX_DRAFTS + 4));
     expect(store.items.get("unica-work:t1:q1")).toBe("a test draft stays");
   });
 
-  it("keeps a board open in another tab, and recent drafts, going over the cap up to the hard ceiling", async () => {
+  it("keeps a board open in another tab, and recent drafts, going over the cap up to the hard ceiling", () => {
     const store = createMemoryDraftStore();
     const h = withPen();
     const open = boardDraftKey("book-1", 9, 1);
-    await saveDraft(store, open, h, null, 0);
+    saveDraft(store, open, h, null, 0);
     const now = 3 * DAY;
     markOpen(store, open, now);
     // Another tab saves 40 other boards within a few minutes: all recent, so none goes.
-    for (let i = 0; i < 40; i++) await saveDraft(store, k(i), h, null, now + i * 1000);
+    for (let i = 0; i < 40; i++) saveDraft(store, k(i), h, null, now + i * 1000);
     expect(drafts(store)).toHaveLength(41);
     expect(loadDraft(store, open)).toEqual(h);
     // Past the hard ceiling the oldest go, recent or not; the open board stays.
-    for (let i = 40; i < 80; i++) await saveDraft(store, k(i), h, null, now + i * 1000);
+    for (let i = 40; i < 80; i++) saveDraft(store, k(i), h, null, now + i * 1000);
     expect(drafts(store)).toHaveLength(HARD_MAX_DRAFTS);
     expect(drafts(store)).toContain(open);
     expect(drafts(store)).not.toContain(k(0));
   });
 
-  it("lets a board go once its tab has closed (or stopped saying it is open) and it is a day old", async () => {
+  it("lets a board go once its tab has closed (or stopped saying it is open) and it is a day old", () => {
     const store = createMemoryDraftStore();
     const h = withPen();
     const board = boardDraftKey("book-1", 9, 1);
-    await saveDraft(store, board, h, null, 0);
+    saveDraft(store, board, h, null, 0);
     markOpen(store, board, 0);
-    for (let i = 0; i < MAX_DRAFTS; i++) await saveDraft(store, k(i), h, null, 2 * DAY + i);
+    for (let i = 0; i < MAX_DRAFTS; i++) saveDraft(store, k(i), h, null, 2 * DAY + i);
     // Its tab last said it was open at 0: long ago, so it is closed, and its draft is two days old.
     expect(drafts(store)).not.toContain(board);
     expect(store.items.has(`${OPEN_ROOT}${board}`)).toBe(false);

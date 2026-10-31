@@ -101,6 +101,8 @@
 .desk-pen button { min-height: 40px; padding: 0 16px; border: 0; border-radius: 999px; background: var(--tang); color: #fff; font: 600 14px/1 var(--sans); cursor: pointer; transition: transform 0.15s; }
 .desk-pen button:active { transform: scale(0.97); }
 .desk-pen button.give { border: 1px solid var(--line); background: #fff; color: var(--ink); font-weight: 500; }
+.desk-pen-tab { display: grid; place-items: center; width: 26px; height: 26px; border-radius: 50%; background: var(--desk-bg); color: var(--ink-2); }
+.desk-pen button:disabled { opacity: 0.55; cursor: default; }
 .desk-pen-you { display: grid; place-items: center; width: 26px; height: 26px; border-radius: 50%; background: var(--ink); color: #fff; }
 /* A stroke while Maya holds the pen: the bar moves a little, to show where the pen is. */
 .desk-pen.nudge { animation: desk-nudge 0.4s ease-out; border-color: var(--tang); }

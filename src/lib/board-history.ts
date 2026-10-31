@@ -63,6 +63,9 @@ export function penHolder(h: BoardHistory): PenHolder {
   return last?.kind === "pen" ? last.to : "maya";
 }
 
+/** True once the pen has moved on this board (to the child or back): Maya's question no longer passes it. */
+export const penHasMoved = (h: BoardHistory): boolean => h.events.some((e) => e.kind === "pen");
+
 /** When the last thing happened, in ms since the board started: a replay runs this long. */
 export function historyLength(h: BoardHistory): number {
   let end = 0;
@@ -366,15 +369,13 @@ export function newestHistory(copies: readonly (string | null)[]): BoardHistory 
 /**
  * Where the board's draft is kept: the seam. The desk keeps it in the browser's storage; tests use the in-memory store
  * (src/lib/board-history-memory.ts). `write` returns false when the store is full or off: the board is still on screen.
- * `exclusive` runs `fn` while no other tab runs one for the same key (the browser's Web Locks); a store that cannot lock
- * runs it at once, and a tab heals a lost write when it next saves (see `saveDraft`).
+ * Only the tab that holds the board writes its draft (src/lib/board-tab.ts).
  */
 export interface DraftStore {
   read(key: string): string | null;
   write(key: string, value: string): boolean;
   remove(key: string): void;
   keys(): string[];
-  exclusive<T>(key: string, fn: () => T): Promise<T>;
 }
 
 /** Every board draft starts with this. */
@@ -434,68 +435,30 @@ function evict(store: DraftStore, key: string, now: number): void {
 }
 
 /**
- * Two copies of one board, both grown from the same start: the stored one (another tab) and this tab's. When everything
- * each added after the events they share is strokes of the child's, the result holds both: the stored strokes, then this
- * tab's, moved later in time if needed so the log stays in order. Null when they cannot be put together without
- * reordering (a pen move, an undo, a clear or Maya's writing on either side).
+ * What a save did. `saved`: the store holds this tab's board. `reload`: the store held something else than the board this
+ * tab last loaded or saved; nothing was written, and the tab shows the stored board (`history`, null when there is none
+ * that reads back). `failed`: the store is full or off.
  */
-function mergeHistories(stored: BoardHistory, ours: BoardHistory): BoardHistory | null {
-  const a = stored.events.map((e) => JSON.stringify(e));
-  const b = ours.events.map((e) => JSON.stringify(e));
-  let shared = 0;
-  while (shared < a.length && shared < b.length && a[shared] === b[shared]) shared++;
-  const theirs = stored.events.slice(shared);
-  const mine = ours.events.slice(shared);
-  if (mine.length === 0) return stored;
-  if (![...theirs, ...mine].every((e) => e.kind === "stroke")) return null;
-  const base = { v: 1 as const, revision: 0, events: stored.events };
-  const shift = Math.max(0, historyLength(base) - startOf(mine[0]));
-  const moved = mine.map((e) => (e.kind === "stroke" ? { ...e, pts: e.pts.map(([x, y, t]): TimedPoint => [x, y, t + shift]) } : e));
-  const merged: BoardHistory = { v: 1, revision: Math.max(stored.revision, ours.revision) + 1, events: [...stored.events, ...moved] };
-  return merged.events.length <= MAX_LOG && decodeHistory(encodeHistory(merged)) ? merged : null;
-}
+export type SaveResult = { status: "saved"; history: BoardHistory } | { status: "reload"; history: BoardHistory | null } | { status: "failed" };
 
 /**
- * What a save did. `saved`: the store holds this tab's board. `merged`: another tab had added strokes; the store holds
- * both tabs' strokes, and the tab shows `history`. `conflict`: another tab changed the board in a way that cannot be put
- * together; nothing was written, and the tab shows the stored board (`history`). `failed`: the store is full or off.
+ * Saves the board's draft, stamped with `now` (ms, Date.now()). Only the tab holding the board calls it
+ * (src/lib/board-tab.ts); the check here is the safety net: `base` is the board this tab last loaded or saved (null when
+ * nothing was stored), and the save writes only when the store still holds exactly that, or nothing that reads back. On
+ * any other difference it writes nothing and returns the stored board to show. After writing it reads the draft back; a different value is a reload
+ * too. Makes room by evicting old drafts (`evict`). An empty board removes its draft.
  */
-export type SaveResult = { status: "saved" | "merged" | "conflict"; history: BoardHistory } | { status: "failed" };
-
-/**
- * Saves the board's draft, stamped with `now` (ms, Date.now()). `base` is the board this tab last loaded or saved (null
- * when nothing was stored): the save writes only when the store still holds it, inside the store's lock, so two tabs
- * never write over each other's strokes. Otherwise it merges (`mergeHistories`) or gives way. After writing, it reads
- * the draft back; a store without locks that lost the write to another tab tries again. Makes room by evicting old
- * drafts (`evict`). An empty board removes its draft.
- */
-export function saveDraft(store: DraftStore, key: string, h: BoardHistory, base: BoardHistory | null, now: number): Promise<SaveResult> {
-  return store.exclusive(key, (): SaveResult => {
-    for (let attempt = 0; attempt < 3; attempt++) {
-      const held = loadDraft(store, key);
-      let target = h;
-      let status: "saved" | "merged" = "saved";
-      const same = (x: BoardHistory | null, y: BoardHistory | null) => (x && y ? encodeHistory(x) === encodeHistory(y) : x === y);
-      // This tab's board holds everything stored and more (an earlier save of its own): write it.
-      const ahead = (x: BoardHistory, y: BoardHistory) => y.events.length >= x.events.length && x.events.every((e, i) => JSON.stringify(e) === JSON.stringify(y.events[i]));
-      if (held && !same(held, base) && !same(held, h) && !ahead(held, h)) {
-        const merged = mergeHistories(held, h);
-        if (!merged) return { status: "conflict", history: held };
-        [target, status] = [merged, "merged"];
-        if (merged === held) return { status: "merged", history: held };
-      }
-      if (target.events.length === 0) {
-        store.remove(key);
-        return { status, history: target };
-      }
-      evict(store, key, now);
-      const value = `${Math.round(now)}${STAMP}${encodeHistory(target)}`;
-      if (!store.write(key, value)) return { status: "failed" };
-      if (store.read(key) === value) return { status, history: target };
-      // Another tab wrote in between: read its board and try again.
-      base = held;
-    }
-    const held = loadDraft(store, key);
-    return held ? { status: "conflict", history: held } : { status: "failed" };
-  });
+export function saveDraft(store: DraftStore, key: string, h: BoardHistory, base: BoardHistory | null, now: number): SaveResult {
+  const held = loadDraft(store, key);
+  // Nothing stored that reads back (none yet, or a broken draft) loses nothing when written over.
+  if (held && (!base || encodeHistory(held) !== encodeHistory(base))) return { status: "reload", history: held };
+  if (h.events.length === 0) {
+    store.remove(key);
+    return { status: "saved", history: h };
+  }
+  evict(store, key, now);
+  const value = `${Math.round(now)}${STAMP}${encodeHistory(h)}`;
+  if (!store.write(key, value)) return { status: "failed" };
+  if (store.read(key) !== value) return { status: "reload", history: loadDraft(store, key) };
+  return { status: "saved", history: h };
 }
