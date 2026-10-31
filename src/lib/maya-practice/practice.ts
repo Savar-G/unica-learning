@@ -16,12 +16,13 @@ import type { MayaModel } from "@/lib/maya-model";
 import { createTextSession } from "@/lib/maya-text";
 import { checkTrace, classifyError, packageHash, redactText, type MayaTrace, type TraceError } from "@/lib/maya-trace";
 import type { AnswerValue } from "@/lib/question-package";
-import { DIMENSION_IDS, DIMENSIONS, PASS_SCORE, RUNS_PER_CASE, type Dimension, type PracticeCase, type StageOpens } from "./cases";
+import { DIMENSION_IDS, DIMENSIONS, PASS_SCORE, PRACTICE_CASES, RUNS_PER_CASE, type Dimension, type PracticeCase, type StageOpens } from "./cases";
 import { judgeInput, readJudgement, type AiJudge, type DimensionResult, JUDGE_PROMPT_VERSION } from "./judge";
+import { readValidity, VALIDITY_PROMPT_VERSION, type ValidityInput, type ValidityJudge } from "./validity-judge";
 import { maxWords, readSimulatorTurn, SIMULATOR_PROMPT_VERSION, type ChildSimulator, type SimulatorInput, type SimulatorTurn } from "./simulator";
 
 /** The report format. Raise it when the files or the report change. */
-export const PRACTICE_VERSION = 2;
+export const PRACTICE_VERSION = 3;
 /** A run that reaches this many child turns without the call ending is cut off (and invalid). */
 export const MAX_CHILD_TURNS = 24;
 /** The simulated start of every run, and the time a spoken child turn takes. */
@@ -44,6 +45,7 @@ export const PLAN_FILE = "plan.json";
 export const traceFile = (run: string) => `runs/${run}.trace.json`;
 export const simFile = (run: string) => `runs/${run}.child.json`;
 export const judgeFile = (run: string) => `runs/${run}.judge.json`;
+export const validityFile = (run: string) => `runs/${run}.validity.json`;
 export const recordFile = (run: string) => `runs/${run}.record.json`;
 export const runId = (caseId: string, n: number) => `${caseId}-r${n}`;
 
@@ -51,6 +53,8 @@ export const runId = (caseId: string, n: number) => `${caseId}-r${n}`;
 export interface PracticeVersions {
   maya: { model: string; promptVersion: string };
   simulator: { model: string; promptVersion: string };
+  /** The validity judge (R386-2-1): reads the child's turns and persona card only. */
+  validity: { model: string; promptVersion: string };
   judge: { model: string; promptVersion: string };
   /** sha256 of the cases and the prompts' versions, so two reports on different suites are never compared. */
   suite: string;
@@ -77,6 +81,19 @@ export interface SimulatorLog {
   turns: ({ raw: unknown } | { error: TraceError })[];
   /** Why the run stopped early, when it did: "turn_cap", "simulator_error", "budget". */
   cut: "turn_cap" | "simulator_error" | "budget" | null;
+}
+
+/** The validity judge's file of one run. */
+export interface ValidityLog {
+  kind: "maya-practice-validity";
+  version: number;
+  run: string;
+  judge: { model: string; promptVersion: string };
+  /** The validity judge's output as it came, or null when the call failed or was skipped. */
+  raw: unknown;
+  error: TraceError | null;
+  /** Why it was not asked: code's checks already made the run invalid. */
+  skipped: string | null;
 }
 
 /** The judge's file of one run. */
@@ -109,6 +126,8 @@ export class BudgetReached extends Error {
 export interface PracticeDeps {
   maya: MayaModel;
   simulator: ChildSimulator;
+  /** The validity judge: a run it does not clear is invalid, and the main judge never sees it. */
+  validity: ValidityJudge;
   judge: AiJudge;
   store: PracticeStore;
   /** Runs at the same time (default 1). */
@@ -200,12 +219,30 @@ export async function runPractice(c: PracticeCase, n: number, seed: number, deps
   deps.store.save(traceFile(id), JSON.stringify(trace, null, 2));
   deps.store.save(simFile(id), JSON.stringify(log, null, 2));
 
-  // The judge reads only a complete, valid run whose trace has no hard failure.
-  const pre = judgeRun(c, id, deps.store, { withJudge: false });
-  const judgeLog: JudgeLog = { kind: "maya-practice-judge", version: PRACTICE_VERSION, run: id, judge: { model: deps.judge.id, promptVersion: deps.judge.promptVersion }, raw: null, error: null, skipped: null };
+  // The validity judge reads a run code found valid: the child's turns and the persona card only.
   let cut = false;
-  if (pre.status !== "pending_judge") {
-    judgeLog.skipped = `the run is ${pre.status}`;
+  const pre = judgeRun(c, id, deps.store, { stage: "code" });
+  const validityLog: ValidityLog = { kind: "maya-practice-validity", version: PRACTICE_VERSION, run: id, judge: { model: deps.validity.id, promptVersion: deps.validity.promptVersion }, raw: null, error: null, skipped: null };
+  if (pre.invalid.length > 0) validityLog.skipped = "code's checks already make the run invalid";
+  else {
+    try {
+      validityLog.raw = await deps.validity.check(validityInput(c, trace, log), new AbortController().signal);
+    } catch (e) {
+      if (e instanceof BudgetReached || deps.capped?.()) cut = true;
+      else {
+        deps.onError?.(e, `${id} validity`);
+        validityLog.error = classifyError(e, "model");
+      }
+    }
+  }
+  if (!cut) deps.store.save(validityFile(id), JSON.stringify(validityLog, null, 2));
+
+  // The main judge reads only a complete, valid run whose trace has no hard failure.
+  const ready = judgeRun(c, id, deps.store, { stage: "validity" });
+  const judgeLog: JudgeLog = { kind: "maya-practice-judge", version: PRACTICE_VERSION, run: id, judge: { model: deps.judge.id, promptVersion: deps.judge.promptVersion }, raw: null, error: null, skipped: null };
+  if (cut) judgeLog.skipped = "the spending cap was reached";
+  else if (ready.status !== "pending_judge") {
+    judgeLog.skipped = `the run is ${ready.status}`;
   } else {
     try {
       judgeLog.raw = await deps.judge.judge(judgeInput(c, pkg, trace), new AbortController().signal);
@@ -225,7 +262,7 @@ export async function runPractice(c: PracticeCase, n: number, seed: number, deps
     const saved = deps.store.load(name);
     return saved === undefined ? null : fileHash(saved);
   };
-  const record: RunRecord = { kind: "maya-practice-record", version: PRACTICE_VERSION, run: id, plan: hash(PLAN_FILE), files: { trace: hash(traceFile(id))!, child: hash(simFile(id))!, judge: hash(judgeFile(id)) } };
+  const record: RunRecord = { kind: "maya-practice-record", version: PRACTICE_VERSION, run: id, plan: hash(PLAN_FILE), files: { trace: hash(traceFile(id))!, child: hash(simFile(id))!, validity: hash(validityFile(id)), judge: hash(judgeFile(id)) } };
   deps.store.save(recordFile(id), JSON.stringify(record, null, 2));
 }
 
@@ -236,7 +273,7 @@ export function planSuite(cases: readonly PracticeCase[], versions: Omit<Practic
     kind: "maya-practice-plan",
     version: PRACTICE_VERSION,
     versions: { ...versions, suite: suiteHash(cases) },
-    runs: cases.flatMap((c) => Array.from({ length: runs }, (_, i) => ({ id: runId(c.id, i + 1), caseId: c.id, n: i + 1, seed: i + 1 }))),
+    runs: requiredRuns(cases, runs),
     maxUsd: options.maxUsd ?? null,
   };
 }
@@ -275,6 +312,8 @@ export const INVALID = {
   too_long: "The child's turn is longer than a child of that age says.",
   early_stop: "The child asked to stop although the persona does not.",
   off_script: "The child skipped what the persona must say or do.",
+  validity_flagged: "The validity judge found a turn out of persona, or knowledge the persona does not have.",
+  validity_unjudged: "The validity judge gave no usable verdict: missing, failed, skipped or not its schema.",
 } as const;
 export type InvalidCode = keyof typeof INVALID;
 
@@ -299,7 +338,7 @@ export interface RunVerdict {
   /** Applicable dimensions that scored below PASS_SCORE. */
   lowScores: Dimension[];
   outcome: MayaTrace["outcome"];
-  versions: { maya: MayaTrace["model"] | null; packageHash: string | null; simulator: SimulatorLog["simulator"] | null; judge: JudgeLog["judge"] | null };
+  versions: { maya: MayaTrace["model"] | null; packageHash: string | null; simulator: SimulatorLog["simulator"] | null; validity: ValidityLog["judge"] | null; judge: JudgeLog["judge"] | null };
   childTurns: number;
 }
 
@@ -450,7 +489,7 @@ export interface RunRecord {
   version: number;
   run: string;
   plan: string | null;
-  files: { trace: string; child: string; judge: string | null };
+  files: { trace: string; child: string; validity: string | null; judge: string | null };
 }
 
 /** Each way the run's saved files differ from its record. */
@@ -465,19 +504,43 @@ function integrity(id: string, store: PracticeStore): string[] {
   check("plan.json", store.load(PLAN_FILE), r.plan);
   check("trace", store.load(traceFile(id)), r.files.trace);
   check("child log", store.load(simFile(id)), r.files.child);
+  check("validity judgement", store.load(validityFile(id)), r.files.validity ?? null);
   check("judgement", store.load(judgeFile(id)), r.files.judge);
   return out;
 }
 
+/** What the validity judge reads: the persona card and the child's turns (their raw words), nothing of Maya's. */
+export function validityInput(c: PracticeCase, trace: MayaTrace, log: SimulatorLog): ValidityInput {
+  const count = trace.turns.filter((t) => t.kind === "child").length;
+  return { promptVersion: VALIDITY_PROMPT_VERSION, persona: c.persona, childTurns: sentTexts(log).texts.slice(0, count).map((text, i) => ({ id: i + 1, text })) };
+}
+
+/** The validity judge's verdict on a run code found valid, as invalid findings (none when it cleared the run). */
+function validityFindings(id: string, store: PracticeStore, c: PracticeCase, trace: MayaTrace, log: SimulatorLog, v: RunVerdict): RunVerdict["invalid"] {
+  const vl = parse<ValidityLog>(store.load(validityFile(id)));
+  if (!vl || vl.kind !== "maya-practice-validity" || vl.run !== id) return [{ code: "validity_unjudged", detail: "no readable validity judgement" }];
+  v.versions.validity = vl.judge;
+  if (vl.error) return [{ code: "validity_unjudged", detail: `the validity judge call failed (${vl.error.code})` }];
+  if (vl.skipped) return [{ code: "validity_unjudged", detail: `the validity judge was skipped: ${vl.skipped}` }];
+  const r = readValidity(vl.raw, validityInput(c, trace, log).childTurns.length);
+  if (!r.ok) return [{ code: "validity_unjudged", detail: r.reason }];
+  const out: RunVerdict["invalid"] = [];
+  if (!r.personaOk) out.push({ code: "validity_flagged", detail: `out of persona at turns ${r.turns.join(", ")}: ${r.reasons.join(" ")}` });
+  if (r.knowsTooMuch) out.push({ code: "validity_flagged", detail: `knows more than the persona at turns ${r.turns.join(", ")}: ${r.reasons.join(" ")}` });
+  return out;
+}
+
 /**
- * Judges one run from its saved files. `withJudge: false` stops before the judge's file and the run record (the runner
- * uses it to decide whether to ask the judge: "pending_judge" means everything else passed).
+ * Judges one run from its saved files. The runner stops early: `stage: "code"` runs code's checks only (to decide
+ * whether to ask the validity judge); `stage: "validity"` adds the validity judgement ("pending_judge" then means the
+ * main judge may be asked). The default, "full", adds the run record and the main judgement.
  */
-export function judgeRun(c: PracticeCase, id: string, store: PracticeStore, options: { withJudge?: boolean } = {}): RunVerdict {
-  const v: RunVerdict = { id, caseId: c.id, status: "missing", invalid: [], hardFailures: [], unjudgeable: null, scores: {}, lowScores: [], outcome: null, versions: { maya: null, packageHash: null, simulator: null, judge: null }, childTurns: 0 };
+export function judgeRun(c: PracticeCase, id: string, store: PracticeStore, options: { stage?: "code" | "validity" | "full" } = {}): RunVerdict {
+  const stage = options.stage ?? "full";
+  const v: RunVerdict = { id, caseId: c.id, status: "missing", invalid: [], hardFailures: [], unjudgeable: null, scores: {}, lowScores: [], outcome: null, versions: { maya: null, packageHash: null, simulator: null, validity: null, judge: null }, childTurns: 0 };
   const savedTrace = store.load(traceFile(id));
   if (savedTrace === undefined) return v;
-  const full = options.withJudge !== false;
+  const full = stage === "full";
   if (full) for (const detail of integrity(id, store)) v.hardFailures.push({ code: "artifact_changed", detail });
 
   // The scripted gate's hard failures, on the saved trace (it checks the trace with checkTrace first).
@@ -500,6 +563,7 @@ export function judgeRun(c: PracticeCase, id: string, store: PracticeStore, opti
   else {
     v.versions.simulator = log.simulator;
     if (trace) v.invalid.push(...validity(c, trace, log));
+    if (trace && v.invalid.length === 0 && stage !== "code") v.invalid.push(...validityFindings(id, store, c, trace, log, v));
   }
 
   if (v.invalid.length > 0) v.status = "invalid";
@@ -537,9 +601,14 @@ export function judgeRun(c: PracticeCase, id: string, store: PracticeStore, opti
 export interface PracticeReport {
   kind: "maya-practice-report";
   version: number;
-  /** True only when every planned run is present and passed. */
+  /**
+   * True only when the saved plan is the code's plan and every required run (from code: the cases and the runs per
+   * case) is present and passed.
+   */
   passed: boolean;
-  /** Why the suite cannot be read at all (no plan), or null. */
+  /** True when the required runs are the whole suite: every case in PRACTICE_CASES, RUNS_PER_CASE times. */
+  full: boolean;
+  /** Why the suite fails as a whole (no plan, or a plan that is not the code's), or null. */
   problem: string | null;
   versions: PracticeVersions | null;
   counts: { planned: number; saved: number; passed: number; failed: number; invalid: number; unjudgeable: number; missing: number; hardFailures: number; lowScores: number };
@@ -559,35 +628,69 @@ const median = (xs: number[]) => {
 };
 
 /** The report, counted from the saved plan and run files alone. */
-export function buildReport(cases: readonly PracticeCase[], store: PracticeStore): PracticeReport {
+/** The runs a suite requires, from code: each case, `runs` times, with its id and seed. Never read from a saved file. */
+export function requiredRuns(cases: readonly PracticeCase[], runs: number = RUNS_PER_CASE): PracticePlan["runs"] {
+  return cases.flatMap((c) => Array.from({ length: runs }, (_, i) => ({ id: runId(c.id, i + 1), caseId: c.id, n: i + 1, seed: i + 1 })));
+}
+
+/** Each way a saved plan's runs differ from the required runs: missing, extra, repeated, or changed. */
+function planProblems(saved: unknown, required: PracticePlan["runs"]): string[] {
+  if (!Array.isArray(saved)) return ["the plan has no list of runs"];
+  const out: string[] = [];
+  const ids = saved.map((r) => (r as { id?: unknown })?.id);
+  const repeated = ids.filter((x, i) => ids.indexOf(x) !== i);
+  if (repeated.length > 0) out.push(`runs repeated in the plan: ${[...new Set(repeated)].join(", ")}`);
+  const want = new Map(required.map((r) => [r.id, r]));
+  const missing = required.filter((r) => !ids.includes(r.id)).map((r) => r.id);
+  const extra = ids.filter((x) => typeof x !== "string" || !want.has(x));
+  if (missing.length > 0) out.push(`runs missing from the plan: ${missing.join(", ")}`);
+  if (extra.length > 0) out.push(`runs the code does not require: ${extra.map(String).join(", ")}`);
+  for (const r of saved as Record<string, unknown>[]) {
+    const w = typeof r?.id === "string" ? want.get(r.id) : undefined;
+    if (w && (r.caseId !== w.caseId || r.n !== w.n || r.seed !== w.seed)) out.push(`run ${w.id} in the plan is not the code's (case, number or seed)`);
+  }
+  if (out.length === 0 && JSON.stringify(saved) !== JSON.stringify(required)) out.push("the plan's runs are not in the code's order");
+  return out;
+}
+
+/**
+ * The report, counted from the saved files alone, against the runs code requires. `runs` is the runs per case
+ * (default RUNS_PER_CASE). The saved plan must hold exactly the required runs; a run missing from the plan or the
+ * store fails the suite, and so does an extra one.
+ */
+export function buildReport(cases: readonly PracticeCase[], store: PracticeStore, runsPerCase: number = RUNS_PER_CASE): PracticeReport {
   const plan = parse<PracticePlan>(store.load(PLAN_FILE));
+  const required = requiredRuns(cases, runsPerCase);
+  const full = runsPerCase === RUNS_PER_CASE && cases.length === PRACTICE_CASES.length && cases.every((c, i) => c.id === PRACTICE_CASES[i].id);
   const empty: PracticeReport = {
-    kind: "maya-practice-report", version: PRACTICE_VERSION, passed: false, problem: null, versions: null,
+    kind: "maya-practice-report", version: PRACTICE_VERSION, passed: false, full, problem: null, versions: null,
     counts: { planned: 0, saved: 0, passed: 0, failed: 0, invalid: 0, unjudgeable: 0, missing: 0, hardFailures: 0, lowScores: 0 },
     cases: [], dimensions: [], safety: { runs: 0, passed: 0, j07Below: 0 }, runs: [], hardFailureCodes: {}, invalidCodes: {},
   };
   if (!plan || plan.kind !== "maya-practice-plan" || !Array.isArray(plan.runs)) return { ...empty, problem: "no readable plan.json" };
   const byId = new Map(cases.map((c) => [c.id, c]));
-  if (plan.versions.suite !== suiteHash(cases)) return { ...empty, versions: plan.versions, problem: "the saved plan is for another version of the cases or prompts" };
+  if (plan.versions?.suite !== suiteHash(cases)) return { ...empty, versions: plan.versions ?? null, problem: "the saved plan is for another version of the cases or prompts" };
+  const problems = planProblems(plan.runs, required);
 
-  const runs = plan.runs.map((r) => {
+  // Every required run, from code: a run the plan or the store lacks is still counted, as missing.
+  const runs = required.map((r) => {
     const c = byId.get(r.caseId);
     const v = c ? judgeRun(c, r.id, store) : null;
     const status: RunStatus = !v || v.status === "pending_judge" ? "unjudgeable" : v.status;
-    const unknown: RunVerdict = { id: r.id, caseId: r.caseId, status: "unjudgeable", invalid: [], hardFailures: [], unjudgeable: "unknown case", scores: {}, lowScores: [], outcome: null, versions: { maya: null, packageHash: null, simulator: null, judge: null }, childTurns: 0 };
+    const unknown: RunVerdict = { id: r.id, caseId: r.caseId, status: "unjudgeable", invalid: [], hardFailures: [], unjudgeable: "unknown case", scores: {}, lowScores: [], outcome: null, versions: { maya: null, packageHash: null, simulator: null, validity: null, judge: null }, childTurns: 0 };
     return { ...(v ?? unknown), status };
   });
   const count = (s: RunStatus) => runs.filter((r) => r.status === s).length;
   const tally = (xs: string[]) => xs.reduce<Record<string, number>>((acc, x) => ({ ...acc, [x]: (acc[x] ?? 0) + 1 }), {});
   const scoredRuns = runs.filter((r) => r.status === "pass" || (r.status === "fail" && r.lowScores.length > 0));
-  const caseIds = [...new Set(plan.runs.map((r) => r.caseId))];
+  const caseIds = cases.map((c) => c.id);
   const safetyRuns = runs.filter((r) => byId.get(r.caseId)?.safety);
 
   const report: PracticeReport = {
     ...empty,
     versions: plan.versions,
     counts: {
-      planned: plan.runs.length,
+      planned: required.length,
       saved: runs.filter((r) => r.status !== "missing").length,
       passed: count("pass"),
       failed: count("fail"),
@@ -618,19 +721,20 @@ export function buildReport(cases: readonly PracticeCase[], store: PracticeStore
     hardFailureCodes: tally(runs.flatMap((r) => r.hardFailures.map((f) => f.code))),
     invalidCodes: tally(runs.flatMap((r) => r.invalid.map((f) => f.code))),
   };
-  report.passed = plan.runs.length > 0 && report.counts.passed === plan.runs.length;
+  report.problem = problems.length > 0 ? `the saved plan is not the code's plan: ${problems.join("; ")}` : null;
+  report.passed = problems.length === 0 && required.length > 0 && report.counts.passed === required.length;
   return report;
 }
 
 /** The report as markdown. */
 export function reportMarkdown(r: PracticeReport): string {
   const lines: string[] = [];
-  lines.push(`# Maya practice suite: ${r.passed ? "PASS" : "FAIL"}`, "");
+  lines.push(`# Maya practice suite: ${r.passed && r.full ? "PASS" : r.passed ? "PASS (part of the suite only: not a gate result)" : "FAIL"}`, "");
   if (r.problem) lines.push(`**The suite cannot be read:** ${r.problem}`, "");
   if (r.versions) {
     const v = r.versions;
     lines.push("| Part | Model | Prompt version |", "|---|---|---|");
-    lines.push(`| Maya | ${v.maya.model} | ${v.maya.promptVersion} |`, `| Practice child | ${v.simulator.model} | ${v.simulator.promptVersion} |`, `| Judge | ${v.judge.model} | ${v.judge.promptVersion} |`, "");
+    lines.push(`| Maya | ${v.maya.model} | ${v.maya.promptVersion} |`, `| Practice child | ${v.simulator.model} | ${v.simulator.promptVersion} |`, `| Validity judge | ${v.validity?.model ?? "-"} | ${v.validity?.promptVersion ?? "-"} |`, `| Judge | ${v.judge.model} | ${v.judge.promptVersion} |`, "");
     lines.push(`Suite hash: \`${v.suite}\``);
     for (const [k, x] of Object.entries(v.meta)) lines.push(`${k}: ${x}`);
     lines.push("");

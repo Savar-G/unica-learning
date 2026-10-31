@@ -6,13 +6,15 @@
 //                            no network, no cost. It checks the plumbing, not Maya.
 //   --estimate               print the cost estimate and stop
 //   --max-usd <n>            the spending cap for the run (default: twice the estimate, rounded up to a dollar)
-//   --cases <ids>            only these cases, comma-separated (default: every required case)
-//   --runs <n>               runs per case (default 3)
+//   --cases <ids>            only these cases, comma-separated (default: every required case). A part of the suite
+//                            is never a gate result: the exit code is 1.
+//   --runs <n>               runs per case (default 3; anything else is not a gate result either)
 //   --concurrency <n>        runs at the same time (default 3)
 //   --out <dir>              where to save the run (default traces/maya-practice/<time>)
 //   --report <dir>           rebuild report.md and report.json from a saved run, and stop
 //   --maya-model <id>        Maya's model (default AI_MODEL, else the AI client's default)
 //   --sim-model <id>         the practice child's model (default MAYA_SIM_MODEL, else anthropic/claude-haiku-5.5)
+//   --validity-model <id>    the validity judge's model (default MAYA_VALIDITY_MODEL, else the child's model)
 //   --judge-model <id>       the judge's model (default MAYA_JUDGE_MODEL, else openai/gpt-5.4)
 //
 // The key: OPENROUTER_API_KEY in the environment, or OPENROUTER_API_KEY_FILE (a file that holds only the key), or
@@ -26,9 +28,9 @@ import { aiMayaModel, type MayaModel } from "@/lib/maya-model";
 import { ruleMayaModel } from "@/lib/maya-model-fake";
 import { redactText } from "@/lib/maya-trace";
 import {
-  aiChildSimulator, aiJudge, buildReport, cappedClient, estimateCost, fakeJudge, meteredFetch, planSuite, PRACTICE_CASES, reportMarkdown,
+  aiChildSimulator, aiJudge, aiValidityJudge, buildReport, fakeValidityJudge, cappedClient, estimateCost, fakeJudge, meteredFetch, planSuite, PRACTICE_CASES, reportMarkdown,
   RUNS_PER_CASE, runSuite, scriptedSimulator, SIMULATOR_PROMPT_VERSION, Spending,
-  type AiJudge, type ChildSimulator, type CostEstimate, type PracticeCase, type PracticeStore, type Price, type Role,
+  type AiJudge, type ChildSimulator, type ValidityJudge, type CostEstimate, type PracticeCase, type PracticeStore, type Price, type Role,
 } from "@/lib/maya-practice";
 
 export const DEFAULT_SIM_MODEL = "anthropic/claude-haiku-5.5";
@@ -71,6 +73,7 @@ function parse(argv: string[]): Options {
     else if (a === "--report") o.report = v();
     else if (a === "--maya-model") o.models.maya = v();
     else if (a === "--sim-model") o.models.simulator = v();
+    else if (a === "--validity-model") o.models.validity = v();
     else if (a === "--judge-model") o.models.judge = v();
     else throw new Error(`unknown option ${a}`);
   }
@@ -130,14 +133,15 @@ function folderStore(dir: string): PracticeStore {
   };
 }
 
-function writeReport(cases: readonly PracticeCase[], dir: string): boolean {
-  const report = buildReport(cases, folderStore(dir));
+function writeReport(cases: readonly PracticeCase[], runs: number, dir: string): boolean {
+  const report = buildReport(cases, folderStore(dir), runs);
   writeFileSync(join(dir, "report.json"), `${JSON.stringify(report, null, 2)}\n`);
   writeFileSync(join(dir, "report.md"), `${reportMarkdown(report)}\n`);
   const c = report.counts;
-  console.log(`-- ${report.passed ? "PASS" : "FAIL"}: ${c.passed}/${c.planned} passed; failed ${c.failed}, invalid ${c.invalid}, unjudgeable ${c.unjudgeable}, missing ${c.missing}${report.problem ? ` (${report.problem})` : ""}`);
+  if (report.passed && !report.full) console.log("-- part of the suite only (--cases or --runs): not a gate result");
+  console.log(`-- ${report.passed && report.full ? "PASS" : "FAIL"}: ${c.passed}/${c.planned} passed; failed ${c.failed}, invalid ${c.invalid}, unjudgeable ${c.unjudgeable}, missing ${c.missing}${report.problem ? ` (${report.problem})` : ""}`);
   console.log(`-- report: ${join(dir, "report.md")}`);
-  return report.passed;
+  return report.passed && report.full;
 }
 
 const usd = (x: number) => `$${x.toFixed(2)}`;
@@ -159,24 +163,27 @@ async function main() {
   const root = resolve(process.env.MAYA_ROOT ?? process.cwd());
   const o = parse(process.argv.slice(2));
   const cases = o.cases ? o.cases.map((id) => PRACTICE_CASES.find((c) => c.id === id) ?? (() => { throw new Error(`no case ${id}`); })()) : PRACTICE_CASES;
-  if (o.report) process.exit(writeReport(cases, resolve(o.report)) ? 0 : 1);
+  if (o.report) process.exit(writeReport(cases, o.runs, resolve(o.report)) ? 0 : 1);
 
   const models: Record<Role, string> = o.fake
-    ? { maya: "fake", simulator: "fake-child", judge: "fake-judge" }
+    ? { maya: "fake", simulator: "fake-child", validity: "fake-validity", judge: "fake-judge" }
     : {
         maya: o.models.maya ?? (process.env.AI_MODEL?.trim() || AI_DEFAULT_MODEL),
         simulator: o.models.simulator ?? (process.env.MAYA_SIM_MODEL?.trim() || DEFAULT_SIM_MODEL),
+        validity: o.models.validity ?? (process.env.MAYA_VALIDITY_MODEL?.trim() || o.models.simulator || process.env.MAYA_SIM_MODEL?.trim() || DEFAULT_SIM_MODEL),
         judge: o.models.judge ?? (process.env.MAYA_JUDGE_MODEL?.trim() || DEFAULT_JUDGE_MODEL),
       };
 
   let maya: MayaModel;
   let simulator: ChildSimulator;
+  let validity: ValidityJudge;
   let judge: AiJudge;
   let spending = new Spending(null);
   if (o.fake) {
     maya = ruleMayaModel();
     const scripts = new Map(cases.map((c) => [c.persona.name, c.fakeScript]));
     simulator = { id: "fake-child", promptVersion: SIMULATOR_PROMPT_VERSION, next: (input, s) => scriptedSimulator(scripts.get(input.persona.name) ?? []).next(input, s) };
+    validity = fakeValidityJudge();
     judge = fakeJudge();
     if (o.estimate) {
       console.log("-- --fake costs nothing.");
@@ -195,6 +202,7 @@ async function main() {
     const client = (role: Role) => cappedClient(openRouterClient({ apiKey: key, model: models[role], fetch: meteredFetch(globalThis.fetch, spending, price[role]) }), spending, price[role]);
     maya = aiMayaModel(client("maya"));
     simulator = aiChildSimulator(client("simulator"));
+    validity = aiValidityJudge(client("validity"));
     judge = aiJudge(client("judge"));
   }
 
@@ -203,13 +211,14 @@ async function main() {
   const plan = planSuite(cases, {
     maya: { model: maya.id, promptVersion: maya.promptVersion },
     simulator: { model: simulator.id, promptVersion: simulator.promptVersion },
+    validity: { model: validity.id, promptVersion: validity.promptVersion },
     judge: { model: judge.id, promptVersion: judge.promptVersion },
     meta: { commit: git("rev-parse HEAD"), changes: git("status --porcelain") ? "uncommitted changes" : "clean", date: new Date().toISOString(), mode: o.fake ? "fake" : "openrouter" },
   }, { runs: o.runs, maxUsd: spending.maxUsd });
   console.log(`-- ${plan.runs.length} runs into ${dir}`);
   let done = 0;
   await runSuite(cases, plan, {
-    maya, simulator, judge, store, concurrency: o.concurrency,
+    maya, simulator, validity, judge, store, concurrency: o.concurrency,
     capped: () => spending.reached,
     onRun: (id) => console.log(`   ${++done}/${plan.runs.length} ${id}${o.fake ? "" : ` (spent ${usd(spending.spent)})`}`),
     // Raw errors on stderr for local debugging; the saved files keep only codes.
@@ -217,7 +226,7 @@ async function main() {
   });
   if (spending.reached) console.log(`-- the spending cap was reached at ${usd(spending.spent)}: the runs left are missing.`);
   else if (!o.fake) console.log(`-- spent about ${usd(spending.spent)}`);
-  process.exit(writeReport(cases, dir) ? 0 : 1);
+  process.exit(writeReport(cases, o.runs, dir) ? 0 : 1);
 }
 
 main().catch((e) => {

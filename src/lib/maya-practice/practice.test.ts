@@ -9,7 +9,7 @@ import { ruleMayaModel } from "@/lib/maya-model-fake";
 import {
   aiChildSimulator, aiJudge, buildReport, cappedClient, estimateCost, fakeJudge, fileHash, judgeFile, JUDGE_PROMPT_VERSION, judgeSchema,
   meteredFetch, memoryPracticeStore, PLAN_FILE, planSuite, PRACTICE_CASES, readJudgement, recordFile, reportMarkdown, runSuite, scriptedSimulator, simFile,
-  SIMULATOR_PROMPT_VERSION, Spending, traceFile, type AiJudge, type ChildSimulator, type PracticeCase, type PracticeDeps, type PracticeStore, type RunRecord,
+  SIMULATOR_PROMPT_VERSION, Spending, traceFile, fakeValidityJudge, validityFile, VALIDITY_PROMPT_VERSION, type ValidityJudge, type AiJudge, type ChildSimulator, type PracticeCase, type PracticeDeps, type PracticeStore, type RunRecord,
 } from "./index";
 
 // The practice suite (#325) through its public interface, with fake models only: no network. A real run is the same
@@ -20,25 +20,29 @@ const byId = (id: string) => PRACTICE_CASES.find((c) => c.id === id)!;
 const C07 = byId("C07");
 const C01 = byId("C01");
 
-function versions(deps: Pick<PracticeDeps, "maya" | "simulator" | "judge">) {
+function versions(deps: Pick<PracticeDeps, "maya" | "simulator" | "judge"> & { validity?: ValidityJudge }) {
+  const validity = deps.validity ?? fakeValidityJudge();
   return {
     maya: { model: deps.maya.id, promptVersion: deps.maya.promptVersion },
     simulator: { model: deps.simulator.id, promptVersion: deps.simulator.promptVersion },
+    validity: { model: validity.id, promptVersion: validity.promptVersion },
     judge: { model: deps.judge.id, promptVersion: deps.judge.promptVersion },
     meta: { commit: "test" },
   };
 }
 
-async function suite(cases: PracticeCase[], options: { simulator?: (c: PracticeCase) => ChildSimulator; judge?: AiJudge; runs?: number } = {}) {
+async function suite(cases: PracticeCase[], options: { simulator?: (c: PracticeCase) => ChildSimulator; judge?: AiJudge; validity?: ValidityJudge; runs?: number } = {}) {
   const store = memoryPracticeStore();
   const judge = options.judge ?? fakeJudge();
+  const validity = options.validity ?? fakeValidityJudge();
   const maya = ruleMayaModel();
   // One child per case, chosen by the persona it is asked to play.
   const children = new Map(cases.map((c) => [c.persona.name, options.simulator?.(c) ?? scriptedSimulator(c.fakeScript)]));
   const simulator: ChildSimulator = { id: "fake-child", promptVersion: SIMULATOR_PROMPT_VERSION, next: (input, signal) => children.get(input.persona.name)!.next(input, signal) };
-  const plan = planSuite(cases, versions({ maya, simulator, judge }), { runs: options.runs ?? 3 });
-  await runSuite(cases, plan, { maya, simulator, judge, store });
-  return { store, judge, report: buildReport(cases, store) };
+  const plan = planSuite(cases, versions({ maya, simulator, judge, validity }), { runs: options.runs ?? 3 });
+  await runSuite(cases, plan, { maya, simulator, validity, judge, store });
+  const recount = (required: PracticeCase[] = cases) => buildReport(required, store, options.runs ?? 3);
+  return { store, judge, validity, recount, report: recount() };
 }
 
 /** Rewrites a saved file and seals the run record again, so the checks behind the record are what the test reaches. */
@@ -46,7 +50,8 @@ function rewrite(store: PracticeStore, run: string, file: string, text: string) 
   store.save(file, text);
   const record = JSON.parse(store.load(recordFile(run))!) as RunRecord;
   const hash = (name: string) => (store.load(name) === undefined ? null : fileHash(store.load(name)!));
-  record.files = { trace: hash(traceFile(run))!, child: hash(simFile(run))!, judge: hash(judgeFile(run)) };
+  record.plan = hash(PLAN_FILE);
+  record.files = { trace: hash(traceFile(run))!, child: hash(simFile(run))!, validity: hash(validityFile(run)), judge: hash(judgeFile(run)) };
   store.save(recordFile(run), JSON.stringify(record));
 }
 
@@ -89,37 +94,37 @@ describe("the practice suite", () => {
   });
 
   it("counts the report from the saved files: a deleted trace is missing and fails the suite", async () => {
-    const { store } = await suite([C07]);
+    const { store, recount } = await suite([C07]);
     store.remove(traceFile("C07-r2"));
-    const report = buildReport([C07], store);
+    const report = recount();
     expect(report.counts).toMatchObject({ planned: 3, saved: 2, passed: 2, missing: 1 });
     expect(report.runs.find((r) => r.id === "C07-r2")!.status).toBe("missing");
     expect(report.passed).toBe(false);
   });
 
   it("fails a suite whose plan is missing, or whose plan was made for other cases", async () => {
-    const { store } = await suite([C07], { runs: 1 });
-    expect(buildReport([C07, C01], store)).toMatchObject({ passed: false, problem: expect.stringContaining("another version") });
+    const { store, recount } = await suite([C07], { runs: 1 });
+    expect(recount([C07, C01])).toMatchObject({ passed: false, problem: expect.stringContaining("another version") });
     store.remove(PLAN_FILE);
-    expect(buildReport([C07], store)).toMatchObject({ passed: false, problem: "no readable plan.json" });
+    expect(recount()).toMatchObject({ passed: false, problem: "no readable plan.json" });
   });
 
   it("applies the scripted gate's hard failures to the saved trace: a tampered outcome fails the run", async () => {
-    const { store } = await suite([C07], { runs: 1 });
+    const { store, recount } = await suite([C07], { runs: 1 });
     const t = JSON.parse(store.load(traceFile("C07-r1"))!);
     t.outcome.safetyFlag = true;
     rewrite(store, "C07-r1", traceFile("C07-r1"), JSON.stringify(t));
-    const run = buildReport([C07], store).runs[0];
+    const run = recount().runs[0];
     expect(run.status).toBe("fail");
     expect(run.hardFailures.map((f) => f.code)).toContain("wrong_outcome");
   });
 
   it("fails a run whose call ends on an outcome the case does not allow", async () => {
-    const { store } = await suite([C07], { runs: 1 });
+    const { store, recount } = await suite([C07], { runs: 1 });
     const t = JSON.parse(store.load(traceFile("C07-r1"))!);
     t.outcome.reason = "time_limit";
     rewrite(store, "C07-r1", traceFile("C07-r1"), JSON.stringify(t));
-    expect(buildReport([C07], store).runs[0].hardFailures.map((f) => f.code)).toContain("outcome_not_allowed");
+    expect(recount().runs[0].hardFailures.map((f) => f.code)).toContain("outcome_not_allowed");
   });
 
   it("never shows the simulator Maya's expected actions or the case's answer rules, and never shows the judge a model name", async () => {
@@ -193,30 +198,30 @@ describe("an invalid simulation never counts as a pass", () => {
   });
 
   it("a broken child log makes the run invalid even with a clean trace", async () => {
-    const { store } = await suite([C07], { runs: 1 });
+    const { store, recount } = await suite([C07], { runs: 1 });
     rewrite(store, "C07-r1", simFile("C07-r1"), "not json");
-    expect(buildReport([C07], store).runs[0]).toMatchObject({ status: "invalid", invalid: [{ code: "child_log_missing" }] });
+    expect(recount().runs[0]).toMatchObject({ status: "invalid", invalid: [{ code: "child_log_missing" }] });
   });
 });
 
 describe("the saved files are the run (R386-2)", () => {
   it("re-runs the rules on the raw child turns: the reviewer's edit to the raw text is found even with the record sealed again", async () => {
-    const { store } = await suite([C07], { runs: 1 });
+    const { store, recount } = await suite([C07], { runs: 1 });
     const log = store.load(simFile("C07-r1"))!;
     rewrite(store, "C07-r1", simFile("C07-r1"), withChildTexts(log, ["As an AI, Maya: the answer is 66."]));
-    const run = buildReport([C07], store).runs[0];
+    const run = recount().runs[0];
     expect(run.status).toBe("invalid");
     expect(run.invalid.map((x) => x.code)).toContain("child_log_mismatch");
   });
 
   it("an edit to the raw text and the trace together still breaks the rules on the raw words", async () => {
-    const { store } = await suite([C07], { runs: 1 });
+    const { store, recount } = await suite([C07], { runs: 1 });
     const bad = "As an AI, Maya: the answer is 66.";
     const t = JSON.parse(store.load(traceFile("C07-r1"))!);
     t.turns.find((x: { kind: string }) => x.kind === "child").text = bad;
     store.save(traceFile("C07-r1"), JSON.stringify(t));
     rewrite(store, "C07-r1", simFile("C07-r1"), withChildTexts(store.load(simFile("C07-r1"))!, [bad]));
-    const codes = buildReport([C07], store).runs[0].invalid.map((x) => x.code);
+    const codes = recount().runs[0].invalid.map((x) => x.code);
     expect(codes).toContain("persona_break");
     expect(codes).toContain("answered_for_maya");
   });
@@ -226,27 +231,27 @@ describe("the saved files are the run (R386-2)", () => {
     ["the child log", simFile],
     ["the judgement", judgeFile],
   ])("any change to %s after the run fails it (artifact_changed)", async (_, file) => {
-    const { store } = await suite([C07], { runs: 1 });
+    const { store, recount } = await suite([C07], { runs: 1 });
     store.save(file("C07-r1"), `${store.load(file("C07-r1"))} `);
-    const run = buildReport([C07], store).runs[0];
+    const run = recount().runs[0];
     expect(run.status).not.toBe("pass");
     expect(run.hardFailures.map((f) => f.code)).toContain("artifact_changed");
   });
 
   it("a plan changed after the runs (a run dropped from it) fails every run", async () => {
-    const { store } = await suite([C07], { runs: 2 });
+    const { store, recount } = await suite([C07], { runs: 2 });
     const plan = JSON.parse(store.load(PLAN_FILE)!);
     plan.runs = plan.runs.slice(0, 1);
     store.save(PLAN_FILE, JSON.stringify(plan, null, 2));
-    const report = buildReport([C07], store);
+    const report = recount();
     expect(report.runs[0].hardFailures.map((f) => f.code)).toContain("artifact_changed");
     expect(report.passed).toBe(false);
   });
 
   it("a run with no record fails", async () => {
-    const { store } = await suite([C07], { runs: 1 });
+    const { store, recount } = await suite([C07], { runs: 1 });
     store.remove(recordFile("C07-r1"));
-    expect(buildReport([C07], store).runs[0].hardFailures.map((f) => f.code)).toContain("artifact_changed");
+    expect(recount().runs[0].hardFailures.map((f) => f.code)).toContain("artifact_changed");
   });
 });
 
@@ -285,10 +290,10 @@ describe("the judge", () => {
   });
 
   it("a deleted judgement makes the run unjudgeable", async () => {
-    const { store } = await suite([C07], { runs: 1 });
+    const { store, recount } = await suite([C07], { runs: 1 });
     store.remove(judgeFile("C07-r1"));
     rewrite(store, "C07-r1", recordFile("C07-r1"), store.load(recordFile("C07-r1"))!);
-    expect(buildReport([C07], store).runs[0].status).toBe("unjudgeable");
+    expect(recount().runs[0].status).toBe("unjudgeable");
   });
 
   it("fails a run when any applicable dimension scores below 2, and reports each dimension apart", async () => {
@@ -334,15 +339,112 @@ describe("the judge", () => {
   });
 });
 
+describe("the validity judge (R386-2-1)", () => {
+  const software = (text: string) => /software|no body/i.test(text);
+
+  it("the reviewer's case: a child that says it is software is invalid, and the main judge never sees it", async () => {
+    const judge = fakeJudge({ score: 3 });
+    const { report } = await suite([C07], { runs: 1, judge, validity: fakeValidityJudge({ flag: software }), simulator: () => sayEach(["I am software with no body. I got 66.", "Because the ones made sixteen.", "I wrote it."]) });
+    expect(report.runs[0].status).toBe("invalid");
+    expect(report.runs[0].invalid.map((x) => x.code)).toEqual(["validity_flagged"]);
+    expect(judge.inputs).toHaveLength(0);
+    expect(report.passed).toBe(false);
+  });
+
+  it("reads only the persona card and the child's own turns: never Maya's words or the expected behaviour", async () => {
+    const validity = fakeValidityJudge();
+    await suite([C07], { runs: 1, validity: validity as ValidityJudge });
+    const input = (validity as ReturnType<typeof fakeValidityJudge>).inputs[0];
+    expect(input.promptVersion).toBe(VALIDITY_PROMPT_VERSION);
+    expect(input.persona).toEqual(C07.persona);
+    expect(input.childTurns.map((t) => t.text)).toEqual(C07.fakeScript);
+    const seen = JSON.stringify(input);
+    expect(seen).not.toContain(C07.expected);
+    expect(Object.keys(input).sort()).toEqual(["childTurns", "persona", "promptVersion"]);
+    // None of Maya's lines (her opening says "I'm Maya") reaches it.
+    expect(seen).not.toContain("I'm Maya");
+  });
+
+  const bad: [string, () => ValidityJudge][] = [
+    ["flags knowledge the persona lacks", () => fakeValidityJudge({ answer: () => ({ persona_ok: true, knows_too_much: true, reasons: ["knows the answer"], turns: [1] }) })],
+    ["fails as a call", () => fakeValidityJudge({ answer: () => { throw new Error("OpenRouter answered 500: boom"); } })],
+    ["answers something that is not its schema", () => fakeValidityJudge({ answer: () => ({ persona_ok: "yes" }) })],
+    ["adds a field", () => fakeValidityJudge({ answer: () => ({ persona_ok: true, knows_too_much: false, reasons: [], turns: [], score: 1 }) })],
+    ["flags a problem with no turn", () => fakeValidityJudge({ answer: () => ({ persona_ok: false, knows_too_much: false, reasons: ["odd"], turns: [] }) })],
+    ["cites a turn that is not in the run", () => fakeValidityJudge({ answer: () => ({ persona_ok: false, knows_too_much: false, reasons: ["odd"], turns: [99] }) })],
+    ["clears the run but lists problems", () => fakeValidityJudge({ answer: () => ({ persona_ok: true, knows_too_much: false, reasons: ["odd"], turns: [1] }) })],
+  ];
+  it.each(bad)("a validity judge that %s makes the run invalid", async (_, validity) => {
+    const judge = fakeJudge();
+    const { report } = await suite([C07], { runs: 1, judge, validity: validity() });
+    expect(report.runs[0].status).toBe("invalid");
+    expect(judge.inputs).toHaveLength(0);
+  });
+
+  it("a deleted validity judgement makes the run invalid; a changed one fails it", async () => {
+    const a = await suite([C07], { runs: 1 });
+    a.store.remove(validityFile("C07-r1"));
+    rewrite(a.store, "C07-r1", recordFile("C07-r1"), a.store.load(recordFile("C07-r1"))!);
+    expect(a.recount().runs[0].invalid.map((x) => x.code)).toContain("validity_unjudged");
+    const b = await suite([C07], { runs: 1 });
+    b.store.save(validityFile("C07-r1"), `${b.store.load(validityFile("C07-r1"))} `);
+    expect(b.recount().runs[0].hardFailures.map((f) => f.code)).toContain("artifact_changed");
+  });
+});
+
+describe("the required runs come from code, not from plan.json (R386-2-2)", () => {
+  it("the reviewer's case: a run deleted, dropped from the plan and every hash made again still fails the suite", async () => {
+    const { store, recount } = await suite([C07]);
+    store.remove(traceFile("C07-r3"));
+    store.remove(simFile("C07-r3"));
+    store.remove(validityFile("C07-r3"));
+    store.remove(judgeFile("C07-r3"));
+    store.remove(recordFile("C07-r3"));
+    const plan = JSON.parse(store.load(PLAN_FILE)!);
+    plan.runs = plan.runs.filter((r: { id: string }) => r.id !== "C07-r3");
+    store.save(PLAN_FILE, JSON.stringify(plan, null, 2));
+    for (const id of ["C07-r1", "C07-r2"]) rewrite(store, id, recordFile(id), store.load(recordFile(id))!);
+    const report = recount();
+    expect(report.passed).toBe(false);
+    expect(report.problem).toContain("runs missing from the plan: C07-r3");
+    expect(report.counts).toMatchObject({ planned: 3, passed: 2, missing: 1 });
+    expect(report.runs.find((r) => r.id === "C07-r3")!.status).toBe("missing");
+  });
+
+  it.each([
+    ["an extra run", (runs: { id: string }[]) => [...runs, { ...runs[0], id: "C07-r9", n: 9, seed: 9 }]],
+    ["a repeated run", (runs: { id: string }[]) => [...runs, runs[0]]],
+    ["a changed seed", (runs: { id: string; seed?: number }[]) => runs.map((r, i) => (i === 0 ? { ...r, seed: 7 } : r))],
+  ])("a plan with %s fails the suite", async (_, edit) => {
+    const { store, recount } = await suite([C07], { runs: 2 });
+    const plan = JSON.parse(store.load(PLAN_FILE)!);
+    plan.runs = edit(plan.runs);
+    store.save(PLAN_FILE, JSON.stringify(plan, null, 2));
+    for (const id of ["C07-r1", "C07-r2"]) rewrite(store, id, recordFile(id), store.load(recordFile(id))!);
+    const report = recount();
+    expect(report.problem).toMatch(/not the code's plan/);
+    expect(report.passed).toBe(false);
+  });
+
+  it("a report on fewer runs than the code requires fails, and part of the suite is never full", async () => {
+    const { recount, report } = await suite([C07], { runs: 2 });
+    expect(report).toMatchObject({ passed: true, full: false });
+    expect(buildReport([C07], (await suite([C07], { runs: 2 })).store)).toMatchObject({ passed: false, counts: { planned: 3, missing: 1 } });
+    expect(reportMarkdown(recount())).toContain("not a gate result");
+  });
+});
+
 describe("cost and the spending cap", () => {
   const price = { input: 2e-6, output: 10e-6 };
 
   it("estimates a full suite from a dry run with the fakes, per role", async () => {
-    const e = await estimateCost(PRACTICE_CASES, 3, { maya: "m", simulator: "s", judge: "j" }, { maya: price, simulator: price, judge: price });
+    const e = await estimateCost(PRACTICE_CASES, 3, { maya: "m", simulator: "s", validity: "v", judge: "j" }, { maya: price, simulator: price, validity: price, judge: price });
     expect(e.roles.judge.calls).toBeGreaterThanOrEqual(PRACTICE_CASES.length * 3);
+    expect(e.roles.validity.calls).toBeGreaterThanOrEqual(PRACTICE_CASES.length * 3);
+    expect(e.roles.validity.usd).toBeGreaterThan(0);
     expect(e.roles.maya.calls).toBeGreaterThan(e.roles.judge.calls);
     expect(e.usd).toBeGreaterThan(0);
-    expect(e.usd).toBeCloseTo(e.roles.maya.usd + e.roles.simulator.usd + e.roles.judge.usd);
+    expect(e.usd).toBeCloseTo(e.roles.maya.usd + e.roles.simulator.usd + e.roles.validity.usd + e.roles.judge.usd);
   });
 
   it("stops at the cap: runs it cuts are missing and the suite fails", async () => {
@@ -354,9 +456,9 @@ describe("cost and the spending cap", () => {
     const sim = scriptedSimulator(C07.fakeScript);
     const judge = fakeJudge();
     const plan = planSuite([C07], versions({ maya, simulator: sim, judge }), { runs: 3, maxUsd: 0.05 });
-    await runSuite([C07], plan, { maya, simulator: sim, judge, store, capped: () => spending.reached });
+    await runSuite([C07], plan, { maya, simulator: sim, validity: fakeValidityJudge(), judge, store, capped: () => spending.reached });
     expect(spending.reached).toBe(true);
-    const report = buildReport([C07], store);
+    const report = buildReport([C07], store, 3);
     expect(report.counts.missing).toBe(3);
     expect(report.passed).toBe(false);
   });

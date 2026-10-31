@@ -4,8 +4,9 @@ export { DIMENSION_IDS, DIMENSIONS, PASS_SCORE, PRACTICE_CASES, RUNS_PER_CASE, t
 export { aiChildSimulator, maxWords, scriptedSimulator, SIMULATOR_PROMPT_VERSION, type ChildSimulator, type SimulatorInput, type SimulatorTurn } from "./simulator";
 export { aiJudge, fakeJudge, judgeSchema, readJudgement, JUDGE_PROMPT_VERSION, type AiJudge, type DimensionResult, type JudgeInput } from "./judge";
 export {
-  buildReport, BudgetReached, fileHash, INVALID, judgeFile, PRACTICE_FAILURES, recordFile, judgeRun, MAX_CHILD_TURNS, memoryPracticeStore, PLAN_FILE, planSuite, reportMarkdown, runPractice,
+  buildReport, BudgetReached, fileHash, INVALID, requiredRuns, validityFile, validityInput, judgeFile, PRACTICE_FAILURES, recordFile, judgeRun, MAX_CHILD_TURNS, memoryPracticeStore, PLAN_FILE, planSuite, reportMarkdown, runPractice,
   runSuite, simFile, traceFile, PRACTICE_VERSION,
-  type InvalidCode, type RunRecord, type PracticeDeps, type PracticePlan, type PracticeReport, type PracticeStore, type PracticeVersions, type RunStatus, type RunVerdict,
+  type InvalidCode, type RunRecord, type ValidityLog, type PracticeDeps, type PracticePlan, type PracticeReport, type PracticeStore, type PracticeVersions, type RunStatus, type RunVerdict,
 } from "./practice";
-export { cappedClient, estimateCost, meteredFetch, MARGIN, OUTPUT_TOKENS, Spending, type CostEstimate, type Price, type Role } from "./cost";
+export { cappedClient, estimateCost, meteredFetch, MARGIN, OUTPUT_TOKENS, ROLES, Spending, type CostEstimate, type Price, type Role } from "./cost";
+export { aiValidityJudge, fakeValidityJudge, readValidity, VALIDITY_PROMPT_VERSION, type ValidityInput, type ValidityJudge } from "./validity-judge";

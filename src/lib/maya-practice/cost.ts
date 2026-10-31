@@ -11,19 +11,21 @@ import { DIMENSION_IDS, type PracticeCase } from "./cases";
 import { fakeJudge, judgeSchema, JUDGE_SYSTEM, type AiJudge } from "./judge";
 import { BudgetReached, memoryPracticeStore, planSuite, runSuite } from "./practice";
 import { scriptedSimulator, SIMULATOR_SCHEMA, SIMULATOR_SYSTEM, type ChildSimulator } from "./simulator";
+import { fakeValidityJudge, VALIDITY_SCHEMA, VALIDITY_SYSTEM, type ValidityJudge } from "./validity-judge";
 
 /** USD per token, in and out. */
 export interface Price {
   input: number;
   output: number;
 }
-export type Role = "maya" | "simulator" | "judge";
+export type Role = "maya" | "simulator" | "validity" | "judge";
+export const ROLES: readonly Role[] = ["maya", "simulator", "validity", "judge"];
 
 /** About 3.5 characters a token for JSON and English; rounded up so the estimate errs high. */
 export const tokensOf = (chars: number) => Math.ceil(chars / 3.5);
 
 /** Output tokens a call of each role is assumed to take, reasoning included. */
-export const OUTPUT_TOKENS: Record<Role, number> = { maya: 1_500, simulator: 150, judge: 4_000 };
+export const OUTPUT_TOKENS: Record<Role, number> = { maya: 1_500, simulator: 150, validity: 400, judge: 4_000 };
 /** The estimate assumes real calls are this much longer than the fake dry run (repairs, longer child turns). */
 export const MARGIN = 1.5;
 
@@ -34,12 +36,15 @@ export interface CostEstimate {
 
 /** Runs the suite with the fakes and measures every request: calls and input size per role. */
 export async function measureSuite(cases: readonly PracticeCase[], runs: number): Promise<Record<Role, { calls: number; inputChars: number }>> {
-  const m: Record<Role, { calls: number; inputChars: number }> = { maya: { calls: 0, inputChars: 0 }, simulator: { calls: 0, inputChars: 0 }, judge: { calls: 0, inputChars: 0 } };
+  const m: Record<Role, { calls: number; inputChars: number }> = { maya: { calls: 0, inputChars: 0 }, simulator: { calls: 0, inputChars: 0 }, validity: { calls: 0, inputChars: 0 }, judge: { calls: 0, inputChars: 0 } };
   const fixed = {
     maya: SYSTEM_PROMPT.length + JSON.stringify(PROPOSAL_SCHEMA).length,
     simulator: SIMULATOR_SYSTEM.length + JSON.stringify(SIMULATOR_SCHEMA).length,
+    validity: VALIDITY_SYSTEM.length + JSON.stringify(VALIDITY_SCHEMA).length,
     judge: JUDGE_SYSTEM.length + JSON.stringify(judgeSchema(DIMENSION_IDS)).length,
   };
+  const validity0 = fakeValidityJudge();
+  const validity: ValidityJudge = { id: "estimate", promptVersion: validity0.promptVersion, check: (input, s) => { m.validity.calls++; m.validity.inputChars += fixed.validity + JSON.stringify(input).length; return validity0.check(input, s); } };
   const rule = ruleMayaModel();
   const maya: MayaModel = { id: "estimate", promptVersion: rule.promptVersion, propose: (input, s) => { m.maya.calls++; m.maya.inputChars += fixed.maya + JSON.stringify(input).length; return rule.propose(input, s); } };
   const judge0 = fakeJudge();
@@ -47,16 +52,19 @@ export async function measureSuite(cases: readonly PracticeCase[], runs: number)
   for (const c of cases) {
     const sim0 = scriptedSimulator(c.fakeScript);
     const simulator: ChildSimulator = { id: "estimate", promptVersion: sim0.promptVersion, next: (input, s) => { m.simulator.calls++; m.simulator.inputChars += fixed.simulator + JSON.stringify(input).length; return sim0.next(input, s); } };
-    const plan = planSuite([c], { maya: { model: "estimate", promptVersion: "" }, simulator: { model: "estimate", promptVersion: "" }, judge: { model: "estimate", promptVersion: "" }, meta: {} }, { runs: 1 });
-    await runSuite([c], plan, { maya, simulator, judge, store: memoryPracticeStore() });
+    const plan = planSuite([c], { maya: { model: "estimate", promptVersion: "" }, simulator: { model: "estimate", promptVersion: "" }, validity: { model: "estimate", promptVersion: "" }, judge: { model: "estimate", promptVersion: "" }, meta: {} }, { runs: 1 });
+    await runSuite([c], plan, { maya, simulator, validity, judge, store: memoryPracticeStore() });
   }
-  // Every run of a case sends about what its first run sends. A judge is asked for every run in a real suite.
+  // Every run of a case sends about what its first run sends. Both judges are asked once for every run in a real
+  // suite (the fakes skip the runs code finds invalid, so count them all).
   for (const r of Object.values(m)) {
     r.calls *= runs;
     r.inputChars *= runs;
   }
-  m.judge.inputChars = Math.round((m.judge.inputChars / Math.max(1, m.judge.calls)) * cases.length * runs);
-  m.judge.calls = cases.length * runs;
+  for (const role of ["validity", "judge"] as const) {
+    m[role].inputChars = Math.round((m[role].inputChars / Math.max(1, m[role].calls)) * cases.length * runs);
+    m[role].calls = cases.length * runs;
+  }
   return m;
 }
 
@@ -65,7 +73,7 @@ export async function estimateCost(cases: readonly PracticeCase[], runs: number,
   const m = await measureSuite(cases, runs);
   const roles = {} as CostEstimate["roles"];
   let usd = 0;
-  for (const role of ["maya", "simulator", "judge"] as Role[]) {
+  for (const role of ROLES) {
     const calls = Math.ceil(m[role].calls * MARGIN);
     const inputTokens = tokensOf(m[role].inputChars * MARGIN);
     const outputTokens = calls * OUTPUT_TOKENS[role];
