@@ -107,6 +107,17 @@ describe("runTextSession", () => {
     expect(logs).toContain("Child: I don't know how to start.");
   });
 
+  it("ends the call as child_stopped on /quit, with no technical turn (#323)", async () => {
+    const { base, written } = setup();
+    const { trace, error } = await runTextSession({ ...base, lines: async function* () { yield* ["I don't know how to start.", "/quit", "66"]; } });
+    expect(error).toBeNull();
+    expect(written).toEqual([trace]);
+    expect(checkTrace(JSON.parse(JSON.stringify(trace)))).toMatchObject({ ok: true });
+    expect(trace.outcome?.reason).toBe("child_stopped");
+    expect(trace.turns.at(-1)?.kind).toBe("hang_up");
+    expect(trace.turns.filter((t) => t.kind === "child")).toHaveLength(1);
+  });
+
   it("returns the error when the trace cannot be written", async () => {
     const { base } = setup();
     const { trace, error } = await runTextSession({ ...base, writeTrace: () => { throw new Error("disk full"); } });

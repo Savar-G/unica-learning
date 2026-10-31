@@ -10,6 +10,10 @@ import type { TestDevice } from "@/lib/test-context";
 import type { StoredReview } from "@/lib/work-review";
 import type { WorkbookStatus } from "@/lib/workbook-content";
 import type { GeneratedWorkbook } from "@/lib/workbook-generator";
+import type { BoardHistory } from "@/lib/board-history";
+import type { Outcome } from "@/lib/maya";
+import type { CallKind, CallRecord, CallStatus } from "@/lib/maya-call";
+import type { MayaTrace } from "@/lib/maya-trace";
 
 export type { Json };
 
@@ -30,6 +34,13 @@ type ColumnTypes = KnownColumns<{
   children: { province: Province };
   email_log: { kind: LogKind; status: LogStatus | null };
   learning_events: { source: EventSource; question_source: QuestionRef["source"]; result: EventResult; evidence_kind: EvidenceKind | null };
+  maya_calls: {
+    kind: CallKind; mode: CallRecord["mode"]; question_source: QuestionRef["source"]; status: CallStatus; versions: CallRecord["versions"];
+    outcome_reason: Outcome["reason"] | null; assistance: Outcome["assistance"] | null; paper_status: Outcome["paperStatus"] | null;
+    understanding: Outcome["understanding"] | null; safety_severity: Outcome["safetySeverity"]; live: NonNullable<CallRecord["live"]> | null;
+    trace: MayaTrace | null; board_history: BoardHistory | null;
+  };
+  maya_demo_children: { made_by: "maya-demo-child" };
   parents: { source: Record<string, string> };
   reports: { model: ReportModel };
   work_reviews: { kind: StoredReview["kind"]; confidence: StoredReview["confidence"] };

@@ -15,8 +15,13 @@ export interface TraceRefusal {
   allowed: Act[];
 }
 
-/** The version of the trace shape. */
-export const TRACE_VERSION = 1;
+/**
+ * The version of the trace shape. Version 2 (#323) adds the `hang_up` turn: the child hung up on purpose and the call
+ * ended as child_stopped. Version 1 traces have no such turn; `checkTrace` reads both.
+ */
+export const TRACE_VERSION = 2;
+/** The trace versions `checkTrace` reads. */
+export const TRACE_VERSIONS = [1, 2] as const;
 export const TRACE_KIND = "maya-trace";
 
 /** Where a proposal came from: the model, the model asked again with the refusal (one repair), or code's fallback. */
@@ -127,7 +132,9 @@ export type TraceTurn =
       output: TraceOutput | null;
     }
   /** `detail` is wording code wrote; `error` the failure's code when an error ended the call. */
-  | { kind: "technical"; at: number; detail: string; error?: TraceError };
+  | { kind: "technical"; at: number; detail: string; error?: TraceError }
+  /** Version 2: the child hung up on purpose; the call ended as child_stopped, unless safety, content or solved came first. */
+  | { kind: "hang_up"; at: number };
 
 export interface TraceBoardBatch {
   at: number;
@@ -139,7 +146,8 @@ export interface TraceBoardBatch {
 
 export interface MayaTrace {
   kind: typeof TRACE_KIND;
-  version: typeof TRACE_VERSION;
+  /** The shape's version: this code writes TRACE_VERSION and reads every one of TRACE_VERSIONS. */
+  version: (typeof TRACE_VERSIONS)[number];
   callId: string;
   /** What ran the session: the text adapter alone, the text adapter inside LiveKit Agents (no room), or a voice call. */
   runner: "text" | "livekit-text" | "voice";
@@ -294,6 +302,8 @@ function checkTurn(t: unknown, path: string): Record<string, unknown> {
       need(isText(x.detail), `${path}.detail`, "text");
       if (x.error !== undefined) checkError(x.error, `${path}.error`);
       break;
+    case "hang_up":
+      break;
     case "maya": {
       need(oneOf(STATES, x.state), `${path}.state`, "a session state");
       need(oneOf(STATES, x.stateAfter), `${path}.stateAfter`, "a session state");
@@ -339,7 +349,7 @@ function checkOutcome(o: unknown, path: string) {
 function check(raw: unknown): MayaTrace {
   need(isObject(raw) && raw.kind === TRACE_KIND, "trace", "not a Maya trace");
   const r = raw as Record<string, unknown>;
-  need(r.version === TRACE_VERSION, "version", `${TRACE_VERSION}, not ${String(r.version)}`);
+  need((TRACE_VERSIONS as readonly unknown[]).includes(r.version), "version", `one of ${TRACE_VERSIONS.join(", ")}, not ${String(r.version)}`);
   need(isName(r.callId), "callId", "a call id");
   need(oneOf(RUNNERS, r.runner), "runner", "text, livekit-text or voice");
   need(isTime(r.startedAt), "startedAt", "an ISO time or null");
@@ -383,6 +393,14 @@ function check(raw: unknown): MayaTrace {
   checkOutcome(r.outcome, "outcome");
   need((r.outcome === null) === (r.endedAt === null), "endedAt", "set exactly when the call has an outcome");
   need(r.outcome === null || r.startedAt !== null, "startedAt", "set for a call that ended");
+  // A hang-up (version 2 only) is what ends the call: the last turn, and the call ended, never as a technical issue.
+  turns.forEach((t, i) => {
+    if (t.kind !== "hang_up") return;
+    need(r.version !== 1, `turns[${i}].kind`, "not hang_up in a version 1 trace");
+    need(i === turns.length - 1, `turns[${i}]`, "a hang-up only as the last turn");
+    const reason = (r.outcome as { reason?: unknown } | null)?.reason;
+    need(reason !== undefined && reason !== "technical_issue", "outcome.reason", "the reason a hang-up ended the call (child_stopped, or safety, content or solved first)");
+  });
 
   const c = r.counts;
   need(isObject(c) && COUNT_KEYS.every((k) => isCount(c[k])), "counts", "the trace counts");

@@ -13,6 +13,7 @@
     "db:types": "node scripts/db-types.mjs",
     "import:curriculum": "node scripts/import-curriculum.mjs",
     "maya:text": "node scripts/maya-text.mjs",
+    "maya:demo-child": "node scripts/maya-demo-child.mjs",
     "maya:practice": "node scripts/maya-practice.mjs"
   },
   "dependencies": {
