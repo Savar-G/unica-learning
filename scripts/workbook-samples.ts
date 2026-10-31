@@ -107,26 +107,50 @@ function costingFetch(): typeof fetch {
   };
 }
 
-/** A fake AI for a layout dry run: every slot gets a sum in the format its place takes. */
+/**
+ * A fake AI for a layout dry run: every slot gets a sum in the format its place takes. A Spot the error slot takes the
+ * offered mistakes in turn, with a sum that mistake fits and Sam's answer exactly what it makes.
+ */
 function fakeAi(): AiClient {
   let n = 0;
+  let m = 0;
   const num = (value: number) => ({ type: "number", value, numerator: null, denominator: null, whole: null, unit: null, hours: null, minutes: null, period: null, parts: [], text: null });
-  const add = (a: number, b: number) => ({ kind: "add", operands: [num(a), num(b)], expression: null, unit: null, denominator: null, values: [] });
+  const op = (kind: "add" | "subtract", a: number, b: number) => ({ kind, operands: [num(a), num(b)], expression: null, unit: null, denominator: null, values: [] });
+  const SAM: Record<string, { kind: "add" | "subtract"; a: number; b: number; wrong: number; step: string | null }> = {
+    "forgot-carry": { kind: "add", a: 268, b: 157, wrong: 315, step: "tens" },
+    "smaller-from-larger": { kind: "subtract", a: 503, b: 178, wrong: 475, step: "ones" },
+    "regroup-not-taken": { kind: "subtract", a: 62, b: 28, wrong: 44, step: "tens" },
+    "counted-one-extra": { kind: "add", a: 5, b: 3, wrong: 9, step: null },
+    "counted-one-short": { kind: "add", a: 5, b: 3, wrong: 7, step: null },
+    "wrong-start": { kind: "add", a: 6, b: 3, wrong: 8, step: null },
+    "wrong-operation": { kind: "add", a: 9, b: 4, wrong: 5, step: null },
+    "swapped-digits": { kind: "add", a: 7, b: 5, wrong: 21, step: null },
+  };
   return {
     model: "fake",
     async json(request) {
-      const body = JSON.parse((request.content[0] as { text: string }).text) as { slots: { slot: string; skills: string[]; formats?: string[] | null }[] };
+      const body = JSON.parse((request.content[0] as { text: string }).text) as { slots: { slot: string; skills: string[]; formats?: string[] | null; mistakes?: { name: string }[] }[] };
       return {
         items: body.slots.map((s) => {
           const format = s.formats?.[0] ?? "write-number";
+          const base = { slot: s.slot, skill: s.skills[0], difficulty: 2, format, numbers: [], places: null, direction: null, sequence: null, pattern: null, figure: null };
+          if (format === "spot-the-error" && s.mistakes?.length) {
+            const name = s.mistakes[m++ % s.mistakes.length].name;
+            const x = SAM[name];
+            const sign = x.kind === "add" ? "+" : "−";
+            return {
+              ...base, text: `${x.a} ${sign} ${x.b} = ?`, operation: op(x.kind, x.a, x.b),
+              wrongAnswers: [{ value: num(x.wrong), cause: name, description: `Sam's mistake: ${name}`, step: x.step }],
+              easier: { text: x.kind === "add" ? "2 + 1 = ?" : "5 − 2 = ?", operation: x.kind === "add" ? op("add", 2, 1) : op("subtract", 5, 2) }, shownWrong: 0,
+            };
+          }
           const a = 20 + (n++ % 50);
           const reason = format === "written-reason";
           return {
-            slot: s.slot, skill: s.skills[0], difficulty: 2, text: reason ? "How do you know your answer is right?" : format === "show-work" ? `Ava has ${a} beads. She gets 15 more. How many beads now?` : `${a} + 15 =`,
-            format, operation: reason ? null : add(a, 15),
+            ...base, text: reason ? "How do you know your answer is right?" : format === "show-work" ? `Ava has ${a} beads. She gets 15 more. How many beads now?` : `${a} + 15 =`,
+            operation: reason ? null : op("add", a, 15),
             wrongAnswers: reason ? [] : [{ value: num(a + 5), cause: "careless", description: "Adds 5 instead of 15", step: null }],
-            easier: reason ? null : { text: "3 + 4 = ?", operation: add(3, 4) }, shownWrong: format === "spot-the-error" ? 0 : null,
-            numbers: [], places: null, direction: null, sequence: null, pattern: null, figure: null,
+            easier: reason ? null : { text: "3 + 4 = ?", operation: op("add", 3, 4) }, shownWrong: null,
           };
         }),
       };

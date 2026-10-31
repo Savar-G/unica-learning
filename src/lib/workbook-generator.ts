@@ -23,7 +23,7 @@ import type { QuestionPackage } from "@/lib/question-package";
 import { isQrToken, isUuid } from "@/lib/workbook-content";
 import type { Curriculum } from "@/lib/workbook-curriculum";
 import { buildQuestion, ITEMS_SCHEMA, type BuiltQuestion, type QuestionCheck } from "@/lib/workbook-generator-items";
-import { bookPageContent, dayPageContent, layoutDayPage, samWork, SLOT_FORMATS, STRICT_SLOTS, type DayLayout } from "@/lib/workbook-book";
+import { bookPageContent, dayPageContent, layoutDayPage, mistakesFor, samProblem, SLOT_FORMATS, STRICT_SLOTS, type DayLayout } from "@/lib/workbook-book";
 import type { Omission, PageContent, SlotName } from "@/lib/workbook-page";
 import type { PageType, PlannedPage, PlannedPart, WorkbookPlan } from "@/lib/workbook-plan";
 import type { DraftPage } from "@/lib/workbook-render";
@@ -227,7 +227,7 @@ const SYSTEM = [
   "You write the questions of one page of a printed math workbook for a child in British Columbia, Canada.",
   "Fill every slot listed, one item per slot, with the slot's id. Use only the skills the slot names.",
   "A slot may name its place on the page (now-you, word-problems, mixed-set, ...) and the formats that place takes: use one of those formats.",
-  "On the spot-the-error place, Sam's shown wrong answer must come from whole-number column addition with a forgotten carry, or column subtraction that takes the smaller digit from the larger or regroups without taking 1 from the next column; its step is the column where the mistake first happens ('ones', 'tens', 'hundreds').",
+  "On the spot-the-error place, pick one mistake from the slot's mistakes: write a sum it can happen on (its 'when'), give Sam's wrong answer as exactly what that mistake makes, put the mistake's name as that wrong answer's cause, and set its step as the mistake's 'step' says. Code writes Sam's steps.",
   "You write content only: the question text, the operation's numbers, expected wrong answers with their causes, an easier example of the same operation, and an item format from the list. The page's layout, fonts, sizes and positions are fixed by the template; never describe them.",
   "Never write the answer or the worked steps: code computes them from the operation. Give the operation as data: its kind and operands (numbers, fractions, amounts with units, clock times), or for evaluate and solve the expression.",
   "Each wrong answer is a mistake a child makes, with a short cause id (a misconception id such as O3 when the input names one, else a short word such as 'operation'), a plain description, and the worked step where it happens: a column's place ('ones', 'tens', 'hundreds') or null when it is not one step.",
@@ -273,7 +273,7 @@ function pageRequest(input: GenerateInput, day: number, page: PlannedPage, slots
     day,
     pageType: page.type,
     parts,
-    slots: slots.map((s) => ({ slot: s.id, part: s.part.kind, skills: s.part.skills, ...(s.place ? { place: s.place, formats: SLOT_FORMATS[s.place] ?? null } : {}) })),
+    slots: slots.map((s) => ({ slot: s.id, part: s.part.kind, skills: s.part.skills, ...(s.place ? { place: s.place, formats: SLOT_FORMATS[s.place] ?? null } : {}), ...(s.place === "spot-the-error" ? { mistakes: mistakesFor(plan.level) } : {}) })),
     note,
   };
 }
@@ -326,13 +326,8 @@ async function writeSlots(input: GenerateInput, deps: GenerateDeps, w: PageWork,
     }
     // Spot the error shows Sam's wrong steps, built by code: the shown wrong answer must be a mistake code can show.
     if (slot.place === "spot-the-error" && b.check.status !== "failed" && b.package) {
-      const error = b.package.item?.error;
-      const work = samWork(b.package.operation, error?.answer);
-      if (!work) {
-        b.check = { status: "failed", reason: "code cannot show Sam's steps for this wrong answer: use whole-number column addition with a forgotten carry, or subtraction that takes the smaller digit from the larger or regroups without taking 1 from the next column" };
-      } else if (error?.step && error.step !== work.step) {
-        b.check = { status: "failed", reason: `Sam's mistake (${work.mistake}) happens in the ${work.step} column, not in ${error.step}` };
-      }
+      const problem = samProblem(b.package, input.plan.level);
+      if (problem) b.check = { status: "failed", reason: problem };
     }
     return b;
   });
