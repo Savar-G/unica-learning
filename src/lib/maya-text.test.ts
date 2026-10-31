@@ -254,6 +254,13 @@ describe("the clock and the end", () => {
     expect(checkTrace(JSON.parse(JSON.stringify(trace)))).toMatchObject({ ok: true });
   });
 
+  it("still takes the older finish(detail, failed): a technical issue with that detail", async () => {
+    const { session } = scripted([]);
+    const trace = await session.finish("the script ended", true);
+    expect(trace.outcome?.reason).toBe("technical_issue");
+    expect(trace.turns.at(-1)).toMatchObject({ kind: "technical", detail: "the script ended", error: { code: "local" } });
+  });
+
   it("hangs up a call that never started: started, then ended as child_stopped", async () => {
     const { session } = scripted([]);
     const trace = await session.finish({ reason: "child_stopped" });

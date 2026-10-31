@@ -105,9 +105,10 @@ export interface TextSession {
    * `reason`: "child_stopped" when the child hung up on purpose (a `hang_up` turn; the outcome's priority still puts
    * safety, a content issue and a solved question first); "technical_issue" (the default) for everything else, with
    * `detail`, wording the caller writes, never an error's text, and `failed` when a local step failed (the trace
-   * records the code "local").
+   * records the code "local"). The older form `finish(detail, failed)` still works and ends as a technical issue, so
+   * callers written against trace version 1 (the behaviour gate, #384) need no change.
    */
-  finish(end?: FinishOptions): Promise<MayaTrace>;
+  finish(end?: FinishOptions | string, failed?: boolean): Promise<MayaTrace>;
   /** The session now (plain data). */
   readonly session: Session;
   readonly ended: boolean;
@@ -401,7 +402,9 @@ export function createTextSession(options: TextSessionOptions): TextSession {
     get ended() {
       return session.outcome !== null;
     },
-    finish: async ({ reason = "technical_issue", detail = "the session was closed before the call ended", failed = false } = {}) => {
+    finish: async (end = {}, oldFailed) => {
+      const { reason = "technical_issue", detail = "the session was closed before the call ended", failed = false }: FinishOptions =
+        typeof end === "string" ? { detail: end, failed: oldFailed ?? false } : end;
       await queue;
       endNow(redactText(detail), failed ? classifyError(null, "local") : undefined, reason);
       return trace();
