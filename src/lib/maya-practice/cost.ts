@@ -7,8 +7,8 @@ import type { AiClient, AiJsonRequest } from "@/lib/ai-client";
 import { PROPOSAL_SCHEMA } from "@/lib/maya";
 import { SYSTEM_PROMPT, type MayaModel } from "@/lib/maya-model";
 import { ruleMayaModel } from "@/lib/maya-model-fake";
-import type { PracticeCase } from "./cases";
-import { fakeJudge, JUDGE_SCHEMA, JUDGE_SYSTEM, type AiJudge } from "./judge";
+import { DIMENSION_IDS, type PracticeCase } from "./cases";
+import { fakeJudge, judgeSchema, JUDGE_SYSTEM, type AiJudge } from "./judge";
 import { BudgetReached, memoryPracticeStore, planSuite, runSuite } from "./practice";
 import { scriptedSimulator, SIMULATOR_SCHEMA, SIMULATOR_SYSTEM, type ChildSimulator } from "./simulator";
 
@@ -38,7 +38,7 @@ export async function measureSuite(cases: readonly PracticeCase[], runs: number)
   const fixed = {
     maya: SYSTEM_PROMPT.length + JSON.stringify(PROPOSAL_SCHEMA).length,
     simulator: SIMULATOR_SYSTEM.length + JSON.stringify(SIMULATOR_SCHEMA).length,
-    judge: JUDGE_SYSTEM.length + JSON.stringify(JUDGE_SCHEMA).length,
+    judge: JUDGE_SYSTEM.length + JSON.stringify(judgeSchema(DIMENSION_IDS)).length,
   };
   const rule = ruleMayaModel();
   const maya: MayaModel = { id: "estimate", promptVersion: rule.promptVersion, propose: (input, s) => { m.maya.calls++; m.maya.inputChars += fixed.maya + JSON.stringify(input).length; return rule.propose(input, s); } };

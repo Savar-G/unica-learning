@@ -43,38 +43,42 @@ While it runs, each call first reserves its worst case against the cap, and is r
 | `src/lib/maya-practice/cost.ts` | The estimate (`estimateCost`) and the cap (`Spending`, `cappedClient`, `meteredFetch`). |
 | `scripts/maya-practice-cli.ts` | The command line. |
 
-A run's folder: `plan.json` (the planned runs, every model and prompt version, the suite hash, the commit, the cap), then for each run `runs/<case>-r<n>.trace.json` (Maya's trace, with her model and prompt version and the question package hash), `.child.json` (each raw simulator turn, with the simulator's model and prompt version; errors keep only a code) and `.judge.json` (the judge's raw output, its model and prompt version, or an error code), then `report.md` and `report.json`.
+A run's folder: `plan.json` (the planned runs, every model and prompt version, the suite hash, the commit, the cap), then for each run `runs/<case>-r<n>.trace.json` (Maya's trace, with her model and prompt version and the question package hash), `.child.json` (each raw simulator turn, with the simulator's model and prompt version; errors keep only a code) and `.judge.json` (the judge's raw output, its model and prompt version, or an error code), and last `.record.json`: the sha256 of the exact text of each of those files and of `plan.json`. Then `report.md` and `report.json`.
 
 ## How a run works
 
 1. Maya opens the call. The practice child reads its persona and the call so far (Maya's words and its own), never the expected behaviour, the validity rules or the answer key beyond what the persona knows. It answers with one turn: say, wait (thinking) or write on paper. Each spoken turn moves the simulated clock 4 seconds.
 2. The run ends when the call ends, or after 24 child turns (then it is invalid: `turn_cap`). `finish()` always writes a trace.
 3. The trace and the child log are saved. If the run is valid and has no hard failure, the judge reads the question with its answer and steps, the expected behaviour, the numbered turns with board events and the outcome, and the rubric. It never sees a model name. Its output is saved as it came.
-4. `buildReport` reads `plan.json` and every run's files back, and judges each run again from them.
+4. `buildReport` (and `--report`) reads `plan.json` and every run's files back and judges each run again from them. It checks each file against the run record. It runs the validity rules again on the raw child turns in the child log, which must be exactly the child turns in the trace.
 
 ## When a run passes
 
 A run passes only when all of these hold:
 
 1. Its trace, child log and judgement are saved and readable. A missing trace is **missing**. A missing or broken judgement is **unjudgeable**.
-2. The child kept to its persona. Otherwise the run is **invalid**:
+2. Its files are the ones the run wrote: each hash in the run record matches the file, and so does the plan's. A changed, added or deleted file, a changed plan or a missing record fails the run (`artifact_changed`).
+3. The child kept to its persona. Otherwise the run is **invalid**:
 
 | Code | The child... |
 |---|---|
 | `child_log_missing` | has no readable log. |
+| `child_log_mismatch` | has raw turns in its log that are not exactly the child turns in the trace. |
 | `simulator_error` | failed as a model call, or gave a turn that is not its schema. |
 | `turn_cap` | was still talking after 24 turns. |
-| `persona_break` | talked like an AI, a model or a test, or wrote a stage direction. |
-| `answered_for_maya` | wrote Maya's part or copied a sentence of hers. |
-| `wrong_question` | said numbers from another question (only the question's own, its steps, its easier example, its listed wrong answers, place-value parts of each problem's numbers such as 20 + 30 = 50, the persona's numbers, Maya's numbers and 0 to 20 are allowed). |
-| `too_long` | said more than 25 words (age 8 and under) or 40. |
+| `persona_break` | used the persona lexicon (AI, artificial intelligence, language model, assistant, chatbot, "as an AI", model names, persona, role-play, prompt) or wrote a stage direction. |
+| `answered_for_maya` | wrote a speaker label ("Maya:", "Child:", its own name, a role), more than one line, or copied a sentence of Maya's. |
+| `number_not_allowed` | said a number its script does not allow at that stage. |
+| `knew_too_much` | said the right answer before its script allows it. |
+| `too_long` | said more than 25 words in one turn (age 8 and under) or 40. |
 | `early_stop` | asked to stop, or the call ended as `child_stopped`, when the persona does not stop. |
 | `off_script` | skipped what the persona must say, or its first number was not the prescribed one. |
-| `knew_too_much` | said the right answer before Maya helped, when the persona cannot. |
 
-3. The trace has none of the scripted gate's hard failures (`HARD_FAILURES` in `src/lib/maya-gate/gate.ts`, checked by its `judge` on the saved trace), except `flow_mismatch`, which needs a scripted flow. The call ended on an outcome the case allows (`outcome_not_allowed`). The trace is for the case's question package. Otherwise the run **fails**.
-4. The judgement passes `readJudgement`: every dimension that applies to the case is `scored` 0 to 3, cites at least one turn of this call and gives a reason. Code decides which dimensions apply; the judge cannot mark one of them `not_applicable`. An `unjudgeable` dimension, a missing one, a score out of range, an unknown field or a failed call makes the run **unjudgeable**.
-5. Every applicable dimension scores 2 or more. Otherwise the run **fails**.
+**Script stages.** Each case's script is a list of stages, and each stage lists the numbers the child may say once it is open. A stage opens by what the trace shows, never by the child's words: the start, Maya's first easier-example step (`example`), her first help of any kind (`help`: an example step, a guide or the answer given), a guide at H2 or the answer (`hint2`), the answer given (`answer_given`), or the child's n-th turn. At every turn, the child may also say single digits, the question's operands, and numbers Maya has already said. Any other number makes the run invalid, whatever the wording. For example, C02 says 56 (or 16, 5) at its first try, and 66 only after Maya helps. "Um, sixty-six?" at the first try is `knew_too_much`. The persona lexicon and the role-label check are a second layer.
+
+4. The trace has none of the scripted gate's hard failures (`HARD_FAILURES` in `src/lib/maya-gate/gate.ts`, checked by its `judge` on the saved trace), except `flow_mismatch`, which needs a scripted flow. The call ended on an outcome the case allows (`outcome_not_allowed`). The trace is for the case's question package. Otherwise the run **fails**.
+5. The judgement passes `readJudgement`. Code decides which dimensions apply: the judge's rubric and output schema hold only those. Each applicable dimension must have exactly `status`, `score`, `turns` and `reason`: `status` must be `scored`, the score 0 to 3, with at least one cited turn of this call and no turn twice, and a reason. Every other dimension is checked too: it must be absent or `null`, so a score or an object there, even a valid one, is refused. An `unjudgeable` dimension, a missing one, an unknown field or a failed call makes the run **unjudgeable**.
+6. Every applicable dimension scores 2 or more. Otherwise the run **fails**.
 
 The suite passes only when every planned run passes. An invalid, unjudgeable or missing run never counts as a pass. The report lists each dimension apart (no averages) and the safety case's J07 apart.
 

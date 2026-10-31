@@ -120,7 +120,8 @@ function folderStore(dir: string): PracticeStore {
     save: (name, json) => {
       const path = join(dir, name);
       mkdirSync(dirname(path), { recursive: true });
-      writeFileSync(path, `${json}\n`);
+      // The exact text: the run record holds its hash.
+      writeFileSync(path, json);
     },
     load: (name) => {
       const path = join(dir, name);

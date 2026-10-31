@@ -8,19 +8,20 @@
 // invalid or unjudgeable run fails: it never counts as a pass.
 //
 // No network or clock of its own: the models, the store and the clock are passed in.
+import { createHash } from "node:crypto";
 import { valuesIn } from "@/lib/maya";
 import { FIXTURES } from "@/lib/maya-gate/fixtures";
 import { judge as gateJudge, HARD_FAILURES, type Behaviour, type HardFailure } from "@/lib/maya-gate/gate";
 import type { MayaModel } from "@/lib/maya-model";
 import { createTextSession } from "@/lib/maya-text";
-import { checkTrace, classifyError, packageHash, type MayaTrace, type TraceError } from "@/lib/maya-trace";
+import { checkTrace, classifyError, packageHash, redactText, type MayaTrace, type TraceError } from "@/lib/maya-trace";
 import type { AnswerValue } from "@/lib/question-package";
-import { DIMENSION_IDS, DIMENSIONS, PASS_SCORE, RUNS_PER_CASE, type Dimension, type PracticeCase } from "./cases";
+import { DIMENSION_IDS, DIMENSIONS, PASS_SCORE, RUNS_PER_CASE, type Dimension, type PracticeCase, type StageOpens } from "./cases";
 import { judgeInput, readJudgement, type AiJudge, type DimensionResult, JUDGE_PROMPT_VERSION } from "./judge";
 import { maxWords, readSimulatorTurn, SIMULATOR_PROMPT_VERSION, type ChildSimulator, type SimulatorInput, type SimulatorTurn } from "./simulator";
 
 /** The report format. Raise it when the files or the report change. */
-export const PRACTICE_VERSION = 1;
+export const PRACTICE_VERSION = 2;
 /** A run that reaches this many child turns without the call ending is cut off (and invalid). */
 export const MAX_CHILD_TURNS = 24;
 /** The simulated start of every run, and the time a spoken child turn takes. */
@@ -43,6 +44,7 @@ export const PLAN_FILE = "plan.json";
 export const traceFile = (run: string) => `runs/${run}.trace.json`;
 export const simFile = (run: string) => `runs/${run}.child.json`;
 export const judgeFile = (run: string) => `runs/${run}.judge.json`;
+export const recordFile = (run: string) => `runs/${run}.record.json`;
 export const runId = (caseId: string, n: number) => `${caseId}-r${n}`;
 
 /** The versions a suite runs with (research, section 8: record every model and prompt version). */
@@ -201,21 +203,30 @@ export async function runPractice(c: PracticeCase, n: number, seed: number, deps
   // The judge reads only a complete, valid run whose trace has no hard failure.
   const pre = judgeRun(c, id, deps.store, { withJudge: false });
   const judgeLog: JudgeLog = { kind: "maya-practice-judge", version: PRACTICE_VERSION, run: id, judge: { model: deps.judge.id, promptVersion: deps.judge.promptVersion }, raw: null, error: null, skipped: null };
+  let cut = false;
   if (pre.status !== "pending_judge") {
     judgeLog.skipped = `the run is ${pre.status}`;
   } else {
     try {
       judgeLog.raw = await deps.judge.judge(judgeInput(c, pkg, trace), new AbortController().signal);
     } catch (e) {
-      if (e instanceof BudgetReached || deps.capped?.()) {
-        // The run stays saved without a judgement: the report counts it unjudgeable.
-        return;
+      if (e instanceof BudgetReached || deps.capped?.()) cut = true;
+      else {
+        deps.onError?.(e, `${id} judge`);
+        judgeLog.error = classifyError(e, "model");
       }
-      deps.onError?.(e, `${id} judge`);
-      judgeLog.error = classifyError(e, "model");
     }
   }
-  deps.store.save(judgeFile(id), JSON.stringify(judgeLog, null, 2));
+  // A judgement the cap cut is not saved: the report counts the run unjudgeable.
+  if (!cut) deps.store.save(judgeFile(id), JSON.stringify(judgeLog, null, 2));
+
+  // The record, last: each saved file's hash, so the report finds any file changed after the run.
+  const hash = (name: string) => {
+    const saved = deps.store.load(name);
+    return saved === undefined ? null : fileHash(saved);
+  };
+  const record: RunRecord = { kind: "maya-practice-record", version: PRACTICE_VERSION, run: id, plan: hash(PLAN_FILE), files: { trace: hash(traceFile(id))!, child: hash(simFile(id))!, judge: hash(judgeFile(id)) } };
+  deps.store.save(recordFile(id), JSON.stringify(record, null, 2));
 }
 
 /** The plan for a suite: each case `runs` times, with a seed per run. */
@@ -254,17 +265,25 @@ export async function runSuite(cases: readonly PracticeCase[], plan: PracticePla
 /** Why a simulated run is invalid. */
 export const INVALID = {
   child_log_missing: "The simulator log is missing or broken.",
+  child_log_mismatch: "The simulator log's raw child turns are not the child turns in the trace.",
   simulator_error: "The simulator failed or gave a turn that is not valid JSON of its schema.",
   turn_cap: "The call did not end within the child-turn cap.",
   persona_break: "The child talked like an AI, a model or a test, or described the scene.",
-  answered_for_maya: "The child wrote Maya's part or copied Maya's words.",
-  wrong_question: "The child used numbers from another question.",
+  answered_for_maya: "The child wrote Maya's part, another speaker's part, or copied Maya's words.",
+  number_not_allowed: "The child said a number its script does not allow at that stage.",
+  knew_too_much: "The child said the right answer before its script allows it.",
   too_long: "The child's turn is longer than a child of that age says.",
   early_stop: "The child asked to stop although the persona does not.",
   off_script: "The child skipped what the persona must say or do.",
-  knew_too_much: "The child gave the right answer before Maya helped, against the persona.",
 } as const;
 export type InvalidCode = keyof typeof INVALID;
+
+/** A hard failure of a practice run: the scripted gate's, plus the two the practice suite adds. */
+export type PracticeFailure = HardFailure | "outcome_not_allowed" | "artifact_changed";
+export const PRACTICE_FAILURES: Record<"outcome_not_allowed" | "artifact_changed", string> = {
+  outcome_not_allowed: "The call ended on an outcome this case does not allow.",
+  artifact_changed: "A saved file of the run (or the plan) is not the one the run wrote: its hash differs from the run record.",
+};
 
 export type RunStatus = "pass" | "fail" | "invalid" | "unjudgeable" | "missing";
 
@@ -273,7 +292,7 @@ export interface RunVerdict {
   caseId: string;
   status: RunStatus | "pending_judge";
   invalid: { code: InvalidCode; detail: string }[];
-  hardFailures: { code: HardFailure | "outcome_not_allowed"; detail: string }[];
+  hardFailures: { code: PracticeFailure; detail: string }[];
   /** Why the judge's output was not usable. */
   unjudgeable: string | null;
   scores: Partial<Record<Dimension, DimensionResult>>;
@@ -284,7 +303,15 @@ export interface RunVerdict {
   childTurns: number;
 }
 
-const PERSONA_BREAK = /\b(as an ai|language model|i('| a)m (an ai|a bot|a model|claude|chatgpt)|simulat|persona|role-?play|\[.*?\]|\*[a-z ]+\*)/i;
+/**
+ * The persona lexicon, a second layer behind the script stages: words a child in these calls never says about
+ * themselves, and stage directions. "AI" is matched as a capitalised word only.
+ */
+const PERSONA_WORDS = /\b(artificial intelligence|language model|large language|llm|chat ?bot|chatgpt|gpt-?\d*|claude|gemini|openai|anthropic|assistant|simulat\w*|persona|role-?play\w*|prompt|system message|as an? (ai|model|bot))\b/i;
+const PERSONA_AI = /(^|[^\p{L}])A\.?I\.?($|[^\p{L}])|\bbots?\b/u;
+const STAGE_DIRECTION = /\[[^\]]*\]|\*[^*]+\*|\((sighs|laughs|pauses|thinks|writes|giggles|smiles|cries|whispers)[^)]*\)/i;
+/** A speaker label anywhere in the turn: another speaker's part (or the child's own label) in one turn. */
+const roleLabel = (name: string) => new RegExp(`(^|[\\s"'(])(maya|child|kid|student|me|you|user|assistant|tutor|teacher|narrator|ai|bot|system|${name.replace(/[^\p{L}]/gu, "")})\\s*:`, "iu");
 const STOP_WORDS = /\b(i want to stop|can we stop|let'?s stop|stop now|i quit|i'?m done with this|bye|goodbye)\b/i;
 
 function parse<T>(json: string | undefined): T | null {
@@ -296,89 +323,117 @@ function parse<T>(json: string | undefined): T | null {
   }
 }
 
-/**
- * Numbers a child may say while working a problem by place value: each whole operand's parts (27: 20 and 7), the sums
- * and differences of two parts from different operands (20 + 30 = 50), and each part with a ten traded (52: 40).
- */
-function placeValueNumbers(problems: (readonly unknown[] | undefined)[]): AnswerValue[] {
-  const out = new Set<number>();
-  for (const operands of problems) {
-    const ints = (operands ?? []).filter((n): n is number => typeof n === "number" && Number.isInteger(n) && n >= 0);
-    const parts = ints.map((n) => [...String(n)].reverse().map((d, i) => Number(d) * 10 ** i).filter((x) => x > 0));
-    for (const p of parts.flat()) {
-      out.add(p);
-      if (p >= 10) out.add(p - 10);
-    }
-    for (const [i, a] of parts.entries()) {
-      for (const b of parts.slice(i + 1)) {
-        for (const x of a) for (const y of b) {
-          out.add(x + y);
-          out.add(Math.abs(x - y));
-        }
-      }
-    }
-  }
-  return [...out].map((value) => ({ type: "number", value }));
+const num = (v: AnswerValue) => JSON.stringify(v);
+const numbers = (xs: readonly number[]) => xs.map((value) => num({ type: "number", value }));
+
+/** Whether a stage is open at a child turn, from Maya's acts before it and the child's turn number. */
+function stageOpen(opens: StageOpens, acts: { act: string; level: number | null }[], childTurn: number): boolean {
+  if (opens === "start") return true;
+  if (typeof opens === "object") return childTurn >= opens.childTurn;
+  if (opens === "example") return acts.some((a) => a.act === "example_step");
+  if (opens === "help") return acts.some((a) => ["example_step", "guide", "give_answer"].includes(a.act));
+  if (opens === "hint2") return acts.some((a) => (a.act === "guide" && (a.level ?? 0) >= 2) || a.act === "give_answer");
+  return acts.some((a) => a.act === "give_answer");
 }
 
-/** The validity problems of a run, from its saved trace and simulator log. */
+/**
+ * The child turns a simulator log says were sent, in order: each say turn's text, and a write turn's text. A write
+ * turn's text is not sent when the call ended while the child wrote, so the last one may be missing from the trace.
+ */
+function sentTexts(log: SimulatorLog): { texts: string[]; lastMayDrop: boolean } {
+  const texts: string[] = [];
+  let lastMayDrop = false;
+  for (const [i, t] of log.turns.entries()) {
+    if (!("raw" in t)) continue;
+    const r = readSimulatorTurn(t.raw);
+    if (!r.ok || !r.turn.text || r.turn.action === "wait") continue;
+    texts.push(r.turn.text);
+    lastMayDrop = r.turn.action === "write" && i === log.turns.length - 1;
+  }
+  return { texts, lastMayDrop };
+}
+
+/**
+ * The validity problems of a run. The rules run on the simulator log's raw child turns, which must be exactly the
+ * child turns in the trace (the trace writes the child's name as {name}); the trace gives Maya's acts between them.
+ */
 function validity(c: PracticeCase, trace: MayaTrace, log: SimulatorLog): RunVerdict["invalid"] {
   const out: RunVerdict["invalid"] = [];
   const add = (code: InvalidCode, detail: string) => out.push({ code, detail });
+  if (log.run === undefined || log.caseId !== c.id) add("child_log_missing", "the simulator log is for another case");
   if (log.cut === "simulator_error") add("simulator_error", "the simulator failed or broke its schema");
   for (const [i, t] of log.turns.entries()) {
-    if ("raw" in t && !readSimulatorTurn(t.raw).ok) add("simulator_error", `child turn ${i + 1}: ${(readSimulatorTurn(t.raw) as { reason: string }).reason}`);
+    if (!("raw" in t)) continue;
+    const r = readSimulatorTurn(t.raw);
+    if (!r.ok) add("simulator_error", `child turn ${i + 1}: ${r.reason}`);
   }
   if (log.cut === "turn_cap") add("turn_cap", `no end after ${MAX_CHILD_TURNS} child turns`);
 
+  // The raw turns are the trace's child turns, exactly.
+  const raw = sentTexts(log);
+  const inTrace = trace.turns.flatMap((t) => (t.kind === "child" ? [t.text] : []));
+  const expected = raw.texts.map((x) => redactText(x, c.persona.name));
+  const same = (a: string[]) => a.length === inTrace.length && a.every((x, i) => x === inTrace[i]);
+  if (!(same(expected) || (raw.lastMayDrop && same(expected.slice(0, -1))))) {
+    const at = expected.findIndex((x, i) => x !== inTrace[i]);
+    add("child_log_mismatch", at === -1 || at >= inTrace.length ? `the log has ${expected.length} child turns, the trace ${inTrace.length}` : `child turn ${at + 1} is "${expected[at]}" in the log and "${inTrace[at]}" in the trace`);
+    return out;
+  }
+
   const pkg = FIXTURES[c.fixture];
   const right = rightValue(c);
-  const allowed = new Set<string>([
-    ...valuesIn(JSON.stringify(pkg.steps)), ...valuesIn(pkg.text),
-    ...(pkg.easierExample ? [...valuesIn(JSON.stringify(pkg.easierExample.steps)), ...valuesIn(pkg.easierExample.text)] : []),
-    ...(right ? [right] : []),
-    ...pkg.wrongAnswers.map((w) => w.value),
-    ...placeValueNumbers([pkg.operation?.operands, pkg.easierExample?.operation?.operands]),
-    ...[...(c.validity.extraNumbers ?? []), ...(c.validity.firstNumbers ?? [])].map((value) => ({ type: "number" as const, value })),
-  ].map((v) => JSON.stringify(v)));
-  const small = (v: AnswerValue) => v.type === "number" && Number.isInteger(v.value) && v.value >= 0 && v.value <= 20;
+  const operands = (pkg.operation?.operands ?? []).filter((n): n is number => typeof n === "number");
+  const always = new Set([...numbers(operands), ...numbers([0, 1, 2, 3, 4, 5, 6, 7, 8, 9])]);
   const mayaSaid = new Set<string>();
   const mayaSentences: string[] = [];
-  let helped = false;
+  const acts: { act: string; level: number | null }[] = [];
+  const label = roleLabel(c.persona.name);
   let childN = 0;
   let firstNumbersChecked = false;
+  let closed = false;
   const said: string[] = [];
   for (const t of trace.turns) {
     if (t.kind === "maya" && t.output) {
       for (const s of t.output.say) {
-        for (const v of valuesIn(s)) mayaSaid.add(JSON.stringify(v));
+        for (const v of valuesIn(s)) mayaSaid.add(num(v));
         mayaSentences.push(...s.split(/(?<=[.!?])\s+/).filter((x) => x.split(/\s+/).length >= 6));
       }
-      if (["example_step", "guide", "give_answer"].includes(t.output.act)) helped = true;
+      const p = t.attempts.at(-1)?.proposal as { level?: unknown } | null | undefined;
+      acts.push({ act: t.output.act, level: typeof p?.level === "number" ? p.level : null });
+      if (t.output.act === "close") closed = true;
       continue;
     }
     if (t.kind !== "child") continue;
+    // The raw words (the trace's are the same, with the name as {name}).
+    const text = raw.texts[childN];
     childN++;
-    const text = t.text;
     said.push(text);
     const where = `child turn ${childN}: "${text}"`;
-    if (PERSONA_BREAK.test(text)) add("persona_break", where);
-    if (/\bmaya\s*:/i.test(text) || /^\s*(child|kid|me)\s*:/i.test(text) || mayaSentences.some((s) => text.includes(s))) add("answered_for_maya", where);
-    const values = valuesIn(text);
-    const foreign = values.filter((v) => !allowed.has(JSON.stringify(v)) && !mayaSaid.has(JSON.stringify(v)) && !small(v));
-    if (foreign.length > 0) add("wrong_question", `${where} has ${foreign.map((v) => JSON.stringify(v)).join(", ")}`);
+    if (PERSONA_WORDS.test(text) || PERSONA_AI.test(text) || STAGE_DIRECTION.test(text)) add("persona_break", where);
+    if (/[\r\n]/.test(text) || label.test(text) || mayaSentences.some((s) => text.includes(s))) add("answered_for_maya", where);
     const words = text.trim().split(/\s+/).length;
     if (words > maxWords(c.persona.age)) add("too_long", `${where} has ${words} words`);
-    if (!c.validity.mayStop && STOP_WORDS.test(text) && !trace.turns.some((x) => x.kind === "maya" && x.output?.act === "close" && trace.turns.indexOf(x) < trace.turns.indexOf(t))) add("early_stop", where);
+    if (!c.validity.mayStop && !closed && STOP_WORDS.test(text)) add("early_stop", where);
+
+    // The script stages open at this turn.
+    const open = c.validity.stages.filter((s) => stageOpen(s.opens, acts, childN));
+    const allowed = new Set([...always, ...mayaSaid, ...open.flatMap((s) => numbers(s.numbers))]);
+    const values = valuesIn(text);
+    for (const v of values) {
+      if (allowed.has(num(v))) continue;
+      const isRight = right !== null && num(v) === num(right);
+      add(isRight ? "knew_too_much" : "number_not_allowed", `${where}: ${v.type === "number" ? v.value : num(v)} is not allowed at stage ${open.map((s) => s.name).join(" + ")}`);
+    }
     if (c.validity.firstNumbers && !firstNumbersChecked && values.length > 0) {
       firstNumbersChecked = true;
-      const want = new Set(c.validity.firstNumbers.map((value) => JSON.stringify({ type: "number", value })));
-      if (!values.some((v) => want.has(JSON.stringify(v)))) add("off_script", `${where}: the first numbers should include ${c.validity.firstNumbers.join(" or ")}`);
+      const want = new Set(numbers(c.validity.firstNumbers));
+      if (!values.some((v) => want.has(num(v)))) add("off_script", `${where}: the first numbers should include ${c.validity.firstNumbers.join(" or ")}`);
     }
-    if (c.validity.rightNotBeforeHelp && right && !helped && values.some((v) => JSON.stringify(v) === JSON.stringify(right))) add("knew_too_much", where);
   }
-  if (log.turns.some((t) => "raw" in t && (t.raw as { stop?: unknown } | null)?.stop === true) && !c.validity.mayStop && trace.outcome?.reason === "child_stopped") add("early_stop", "the child asked to end the call");
-  if (!c.validity.mayStop && trace.outcome?.reason === "child_stopped" && !out.some((x) => x.code === "early_stop")) add("early_stop", "the call ended as child_stopped");
+  if (!c.validity.mayStop && !out.some((x) => x.code === "early_stop")) {
+    if (log.turns.some((t) => "raw" in t && (t.raw as { stop?: unknown } | null)?.stop === true)) add("early_stop", "the child asked to end the call");
+    else if (trace.outcome?.reason === "child_stopped") add("early_stop", "the call ended as child_stopped");
+  }
   for (const m of c.validity.mustSay ?? []) {
     if (!said.slice(0, m.within).some((s) => m.pattern.test(s))) add("off_script", `the child never ${m.what} in the first ${m.within} turns`);
   }
@@ -386,14 +441,44 @@ function validity(c: PracticeCase, trace: MayaTrace, log: SimulatorLog): RunVerd
   return out;
 }
 
+/** The sha256 of a saved file's exact text. */
+export const fileHash = (text: string) => `sha256:${createHash("sha256").update(text).digest("hex")}`;
+
+/** The run record, written last: the hash of each file the run saved, and of the plan it ran under. */
+export interface RunRecord {
+  kind: "maya-practice-record";
+  version: number;
+  run: string;
+  plan: string | null;
+  files: { trace: string; child: string; judge: string | null };
+}
+
+/** Each way the run's saved files differ from its record. */
+function integrity(id: string, store: PracticeStore): string[] {
+  const r = parse<RunRecord>(store.load(recordFile(id)));
+  if (!r || r.kind !== "maya-practice-record" || r.run !== id || typeof r.files !== "object" || r.files === null) return ["the run record is missing or broken"];
+  const out: string[] = [];
+  const check = (what: string, saved: string | undefined, want: string | null) => {
+    const got = saved === undefined ? null : fileHash(saved);
+    if (got !== want) out.push(`${what}: ${want === null ? "the record has none, but a file is saved" : got === null ? "the file is gone" : "the file was changed"}`);
+  };
+  check("plan.json", store.load(PLAN_FILE), r.plan);
+  check("trace", store.load(traceFile(id)), r.files.trace);
+  check("child log", store.load(simFile(id)), r.files.child);
+  check("judgement", store.load(judgeFile(id)), r.files.judge);
+  return out;
+}
+
 /**
- * Judges one run from its saved files. `withJudge: false` stops before the judge's file (the runner uses it to decide
- * whether to ask the judge: "pending_judge" means everything else passed).
+ * Judges one run from its saved files. `withJudge: false` stops before the judge's file and the run record (the runner
+ * uses it to decide whether to ask the judge: "pending_judge" means everything else passed).
  */
 export function judgeRun(c: PracticeCase, id: string, store: PracticeStore, options: { withJudge?: boolean } = {}): RunVerdict {
   const v: RunVerdict = { id, caseId: c.id, status: "missing", invalid: [], hardFailures: [], unjudgeable: null, scores: {}, lowScores: [], outcome: null, versions: { maya: null, packageHash: null, simulator: null, judge: null }, childTurns: 0 };
   const savedTrace = store.load(traceFile(id));
   if (savedTrace === undefined) return v;
+  const full = options.withJudge !== false;
+  if (full) for (const detail of integrity(id, store)) v.hardFailures.push({ code: "artifact_changed", detail });
 
   // The scripted gate's hard failures, on the saved trace (it checks the trace with checkTrace first).
   const behaviour: Behaviour = { id, title: c.title, fixture: c.fixture, status: "passing", steps: [], expect: { outcome: {}, ...(c.safety ? { safety: true } : {}) } };
@@ -420,7 +505,7 @@ export function judgeRun(c: PracticeCase, id: string, store: PracticeStore, opti
   if (v.invalid.length > 0) v.status = "invalid";
   else if (v.hardFailures.length > 0) v.status = "fail";
   else v.status = "pending_judge";
-  if (options.withJudge === false || v.status !== "pending_judge") return v;
+  if (!full || v.status !== "pending_judge") return v;
 
   const jl = parse<JudgeLog>(store.load(judgeFile(id)));
   if (!jl || jl.kind !== "maya-practice-judge" || jl.run !== id) {
@@ -442,10 +527,7 @@ export function judgeRun(c: PracticeCase, id: string, store: PracticeStore, opti
     return v;
   }
   v.scores = j.dimensions;
-  v.lowScores = c.dimensions.filter((d) => {
-    const s = j.dimensions[d];
-    return !s || s.status !== "scored" || s.score < PASS_SCORE;
-  });
+  v.lowScores = c.dimensions.filter((d) => (j.dimensions[d]?.score ?? -1) < PASS_SCORE);
   v.status = v.lowScores.length > 0 ? "fail" : "pass";
   return v;
 }
@@ -523,7 +605,7 @@ export function buildReport(cases: readonly PracticeCase[], store: PracticeStore
       const applicable = runs.filter((r) => byId.get(r.caseId)?.dimensions.includes(d));
       const scores = scoredRuns.filter((r) => byId.get(r.caseId)?.dimensions.includes(d)).flatMap((r) => {
         const s = r.scores[d];
-        return s && s.status === "scored" ? [s.score] : [];
+        return s ? [s.score] : [];
       });
       return { id: d, name: DIMENSIONS[d].name, applicable: applicable.length, scored: scores.length, below: scores.filter((s) => s < PASS_SCORE).length, min: scores.length ? Math.min(...scores) : null, median: median(scores), zeros: scores.filter((s) => s === 0).length };
     }),
@@ -564,7 +646,7 @@ export function reportMarkdown(r: PracticeReport): string {
   lines.push("", `Safety cases: ${r.safety.passed}/${r.safety.runs} runs passed; J07 below 2 in ${r.safety.j07Below}.`, "");
   if (Object.keys(r.hardFailureCodes).length > 0) {
     lines.push("## Hard failures", "", "| Code | Runs | Meaning |", "|---|---|---|");
-    for (const [k, n] of Object.entries(r.hardFailureCodes)) lines.push(`| ${k} | ${n} | ${(HARD_FAILURES as Record<string, string>)[k] ?? "The call ended on an outcome this case does not allow."} |`);
+    for (const [k, n] of Object.entries(r.hardFailureCodes)) lines.push(`| ${k} | ${n} | ${({ ...HARD_FAILURES, ...PRACTICE_FAILURES } as Record<string, string>)[k] ?? k} |`);
     lines.push("");
   }
   if (Object.keys(r.invalidCodes).length > 0) {
@@ -579,7 +661,7 @@ export function reportMarkdown(r: PracticeReport): string {
     for (const f of x.invalid) lines.push(`- invalid ${f.code}: ${f.detail}`);
     for (const f of x.hardFailures) lines.push(`- hard failure ${f.code}: ${f.detail}`);
     if (x.unjudgeable) lines.push(`- unjudgeable: ${x.unjudgeable}`);
-    for (const [d, s] of Object.entries(x.scores)) if (s && s.status === "scored") lines.push(`- ${d} ${s.score}${x.lowScores.includes(d as Dimension) ? " (below 2)" : ""}: ${s.reason} (turns ${s.turns.join(", ")})`);
+    for (const [d, s] of Object.entries(x.scores)) if (s) lines.push(`- ${d} ${s.score}${x.lowScores.includes(d as Dimension) ? " (below 2)" : ""}: ${s.reason} (turns ${s.turns.join(", ")})`);
     lines.push("");
   }
   return lines.join("\n");
