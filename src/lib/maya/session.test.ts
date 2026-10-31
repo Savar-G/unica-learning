@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { createSession, learningEvent, nextActs, SAFETY_GUIDANCE, step, valuesIn, type Effect, type LineId, type Proposal, type SessionEvent, type Slots } from "@/lib/maya";
+import { createSession, learningEvent, nextActs, SAFETY_GUIDANCE, step, TEMPLATES, valuesIn, type Effect, type LineId, type Proposal, type SessionEvent, type Slots } from "@/lib/maya";
 import { workedSteps, type QuestionPackage } from "@/lib/question-package";
 
 // Maya's teaching controller (#321): scripted child turns, model proposals and a passed-in clock, through the session's
@@ -33,7 +33,7 @@ type Draft = Omit<Proposal, "version">;
 const t = (talk: string) => ({ talk });
 const ln = (line: LineId, slots: Slots = {}) => ({ line, slots });
 const v2 = (p: unknown) => (typeof p === "object" && p !== null && !Array.isArray(p) && !("version" in p) ? { version: 2, ...p } : p);
-const OPEN: Draft = { act: "open", parts: [t("Hi Leah!"), ln("open.hello"), t("Our team may review this call. What did you try?")] };
+const OPEN: Draft = { act: "open", parts: [t("Hi Leah!"), ln("open.hello"), t("Our team may review this call. How are you today?")] };
 
 /** One scripted call: every step must be accepted unless the test asks for a refusal. */
 function call(pkg: unknown = PACKAGE) {
@@ -87,7 +87,7 @@ describe("READY, OPEN and CONTENT_HOLD", () => {
     const { effects } = c.maya(OPEN);
     const [hello] = said(effects);
     expect(said(effects)).toHaveLength(1);
-    expect(hello).toMatch(/^Hi Leah! .*\bAI\b.* Our team may review this call\. What did you try\?$/);
+    expect(hello).toMatch(/^Hi Leah! .*\bAI\b.* Our team may review this call\. How are you today\?$/);
     expect(c.next).toEqual({ expect: "child", acts: [] });
   });
 
@@ -160,7 +160,7 @@ describe("the main path", () => {
   it("judges the child's last committed number: 'sixty... no, sixty-six'", () => {
     const c = opened();
     c.child("sixty... no, sixty-six");
-    c.maya({ act: "accept_answer", parts: [t("Yes!"), ln("check.explain", { step: "tens" })], reading: { answers: [right66] } });
+    c.maya({ act: "accept_answer", parts: [{ warm: "encourage" }, ln("check.explain", { step: "tens" })], reading: { answers: [right66] } });
     expect(c.session.state).toBe("CHECK");
   });
 });
@@ -190,8 +190,8 @@ describe("a wrong child answer is never accepted", () => {
     expect(c.refused({ act: "guide", step: "ones", level: 0, parts: [t("Let's check again.")], reading: { answers: [{ ...right66, verdict: "wrong" }] } }))
       .toMatchObject({ code: "rejects_right_answer" });
     // Maya's math is only code's lines: a wrong sum cannot be said, and the line the act offers says 66.
-    expect(c.refused({ act: "accept_answer", parts: [t("Your teacher is right: 27 plus 39 is 56.")], reading: { answers: [right66] } }))
-      .toMatchObject({ code: "math_in_talk" });
+    expect(c.refused({ act: "accept_answer", parts: [t("Your teacher is right: 27 plus 39 is 56."), ln("answer.right")], reading: { answers: [right66] } }))
+      .toMatchObject({ code: "free_talk_in_math_turn" });
   });
 
   it("tells a right step apart from the whole answer: 16 is the ones, not the answer", () => {
@@ -209,8 +209,11 @@ describe("a wrong child answer is never accepted", () => {
   it("refuses an equation in Maya's own words: math comes only from code's lines", () => {
     const c = opened();
     c.child("I don't know how to start.");
-    expect(c.refused({ act: "guide", step: "ones", level: 0, parts: [t("Seven plus nine is fifteen.")] }))
-      .toMatchObject({ code: "math_in_talk", reason: 'Warm talk holds no math ("seven"): say it with a line, or leave it out.' });
+    // With a math line, the model's own words are refused; with none, they are replaced by a bank phrase (D-196).
+    expect(c.refused({ act: "guide", step: "ones", level: 0, parts: [t("Seven plus nine is fifteen."), ln("step.invite", { step: "ones" })] }))
+      .toMatchObject({ code: "free_talk_in_math_turn" });
+    const { effects } = c.maya({ act: "guide", step: "ones", level: 0, parts: [t("Seven plus nine is fifteen.")] });
+    expect(effects).toContainEqual({ kind: "say", act: "guide", text: expect.not.stringMatching(/seven|fifteen/i), talkReplaced: 1 });
   });
 });
 
@@ -237,10 +240,10 @@ describe("the easier example and the child's own question", () => {
     expect(c.refused({ act: "try_target", parts: [t("Now try yours.")] })).toMatchObject({ code: "act_not_allowed" });
     expect(c.refused({ act: "guide", step: "ones", level: 1, parts: [ln("step.point", { step: "ones" })] })).toMatchObject({ code: "act_not_allowed" });
     c.maya({ act: "example_step", step: "tens", parts: [ln("example.step", { step: "tens" })] });
-    expect(c.refused({ act: "example_step", step: "result", parts: [ln("example.step", { step: "result" }), t("Now write 66.")] })).toMatchObject({ code: "math_in_talk" });
+    expect(c.refused({ act: "example_step", step: "result", parts: [ln("example.step", { step: "result" }), t("Now write 66.")] })).toMatchObject({ code: "math_line_not_last" });
     expect(c.refused({ act: "example_step", step: "result", parts: [ln("answer.right")] })).toMatchObject({ code: "line_not_offered" });
-    expect(c.refused({ act: "example_step", step: "result", parts: [t("So 18 + 5 is 24.")] }))
-      .toMatchObject({ code: "math_in_talk" });
+    expect(c.refused({ act: "example_step", step: "result", parts: [t("So 18 + 5 is 24."), ln("example.step", { step: "result" })] }))
+      .toMatchObject({ code: "free_talk_in_math_turn" });
     c.maya({ act: "example_step", step: "result", parts: [ln("example.step", { step: "result" })] });
     expect(c.next).toEqual({ expect: "child", acts: [] });
     c.child("Okay.");
@@ -287,7 +290,8 @@ describe("the hint ladder", () => {
     c.child("I'm still stuck.");
     const given = c.maya({ act: "give_answer", parts: [ln("step.show", { step: "tens" })], reading: { help: "more" } });
     const [givenText] = said(given.effects);
-    expect(givenText).toMatch(/Add the tens: 2 \+ 3 \+ 1 = 6\. Write 6\. (The answer is 66\. Please write 66 on your paper\.|It comes to 66\. Can you write 66 on your paper\?)$/);
+    const gives = TEMPLATES["answer.give"].map((x) => x.replaceAll("{answer}", "66"));
+    expect(gives.some((g) => givenText.endsWith(`Add the tens: 2 + 3 + 1 = 6. Write 6. ${g}`))).toBe(true);
     expect(c.session.state).toBe("WRITE_CLOSE");
 
     // The child repeats it correctly: the answer was still given.
@@ -431,7 +435,7 @@ describe("CONFIRM_HEARD", () => {
     c.maya({ act: "confirm", parts: [ln("confirm.which", { heard: "15", other: "50" })] });
     expect(c.session.state).toBe("CONFIRM_HEARD");
     c.child("No, I said sixty-six.");
-    c.maya({ act: "accept_answer", parts: [ln("answer.right"), t("How did you get it?")], reading: { answers: [right66], correctsHearing: true } });
+    c.maya({ act: "accept_answer", parts: [{ warm: "thinkaloud" }, ln("answer.right")], reading: { answers: [right66], correctsHearing: true } });
     expect(c.session.state).toBe("CHECK");
     c.child("I carried the ten.");
     c.maya({ act: "ask_write", parts: [ln("write.answer")], understanding: "evidence_observed" });
@@ -473,7 +477,7 @@ describe("WAIT_WRITE", () => {
     c.tick(55);
     expect(c.next).toEqual({ expect: "child", acts: [] });
     c.child("Done! 66.");
-    c.maya({ act: "accept_answer", parts: [ln("answer.right"), t("How did you do it?")], reading: { answers: [right66] } });
+    c.maya({ act: "accept_answer", parts: [{ warm: "thinkaloud" }, ln("answer.right")], reading: { answers: [right66] } });
     expect(c.session.state).toBe("CHECK");
   });
 
@@ -510,8 +514,8 @@ describe("REPAIR_MAYA", () => {
     expect(effects).toEqual([{ kind: "cancel_output" }]);
     expect(c.session.state).toBe("REPAIR_MAYA");
     expect(c.next).toEqual({ expect: "maya", acts: ["repair"] });
-    expect(c.refused({ act: "repair", parts: [t("Sorry, seven plus nine is fifteen.")] }))
-      .toMatchObject({ code: "math_in_talk" });
+    expect(c.refused({ act: "repair", parts: [t("Sorry, seven plus nine is fifteen."), ln("repair.sorry")] }))
+      .toMatchObject({ code: "free_talk_in_math_turn" });
     c.maya({ act: "repair", parts: [ln("repair.sorry"), ln("step.invite", { step: "ones" })] });
     expect(c.session.state).toBe("TRY_TARGET");
   });
@@ -522,7 +526,7 @@ describe("REPAIR_MAYA", () => {
     c.child("Seven plus nine is 15.");
     const { effects } = c.maya({
       act: "guide", step: "ones", level: 0,
-      parts: [ln("check.not_yet", { step: "ones" }), t("Let's take it slowly.")],
+      parts: [{ warm: "pacing" }, ln("check.not_yet", { step: "ones" })],
       reading: { answers: [{ value: num(15), step: "ones", verdict: "wrong" }] },
     });
     return { c, approved: said(effects)[0] };
@@ -556,9 +560,9 @@ describe("REPAIR_MAYA", () => {
   it("does not repair the same words with numbers spoken, case, punctuation or contractions changed", () => {
     const c = afterExample();
     c.child("Show me.");
-    const { effects } = c.maya({ act: "guide", step: "ones", level: 3, parts: [ln("step.show", { step: "ones" }), t("Let's keep going.")], reading: { help: "show" } });
+    const { effects } = c.maya({ act: "guide", step: "ones", level: 3, parts: [ln("step.show", { step: "ones" })], reading: { help: "show" } });
     const approved = said(effects)[0];
-    expect(approved).toMatch(/Add the ones: 7 \+ 9 = 16\. Write 6 and carry 1 ten\. Let's keep going\.$/);
+    expect(approved).toMatch(/Add the ones: 7 \+ 9 = 16\. Write 6 and carry 1 ten\.$/);
     const spoken = approved
       .replace("7 + 9 = 16", "seven plus nine equals sixteen").replace("Write 6", "write six").replace("carry 1 ten", "carry one ten")
       .replace("Let's", "let us").replace(/:/g, ",");
@@ -778,7 +782,8 @@ describe("review follow-up", () => {
   it("says the given answer and asks for it on paper in code's words", () => {
     const c = afterExample();
     c.tick(540);
-    expect(said(c.maya({ act: "give_answer", parts: [] }).effects)).toEqual([expect.stringMatching(/^(The answer is 66\. Please write 66 on your paper\.|It comes to 66\. Can you write 66 on your paper\?)$/)]);
+    const gives = TEMPLATES["answer.give"].map((x) => x.replaceAll("{answer}", "66"));
+    expect(gives).toContain(said(c.maya({ act: "give_answer", parts: [] }).effects)[0]);
   });
 
   it("does not count an answer Maya gave as the child's right answer", () => {

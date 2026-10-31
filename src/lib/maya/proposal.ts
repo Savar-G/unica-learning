@@ -1,10 +1,12 @@
 // The model's proposal (#321, #372): Maya's next act, what she says, what she read in the child's turn and what she
 // draws. Untrusted: the session checks every field. Since #372 the model never writes math: Maya's words are parts, each
 // a line code writes (an id and its slots, from the lines the session offers now) or warm talk with no math in it.
-// Version 2 replaced the free-text `say` of version 1. The text adapter (#322) gives the model PROPOSAL_SCHEMA for
+// Version 2 replaced the free-text `say` of version 1. Warm talk follows D-196: bank phrases (`warm`) in a turn with
+// math, the model's own words (`talk`) only in a turn without. The text adapter (#322) gives the model PROPOSAL_SCHEMA for
 // structured output.
 import type { AnswerValue } from "@/lib/question-package";
 import { LINE_IDS, type LineChoice } from "./lines";
+import { PHRASE_GROUPS, type PhraseGroup } from "./phrases";
 
 /** The version of the proposal shape. Raise it when a field or its meaning changes. */
 export const PROPOSAL_VERSION = 2;
@@ -20,15 +22,25 @@ export type Act = (typeof ACTS)[number];
 export type HintLevel = 0 | 1 | 2 | 3 | 4;
 export type Severity = "concern" | "immediate";
 
-/** At most this many parts in one turn, and this many characters in one part of warm talk. */
-export const PART_LIMITS = { parts: 6, talkChars: 200 } as const;
+/** At most this many parts in one turn, and this many characters in one part of warm talk (FREE_TALK_LIMITS is lower). */
+export const PART_LIMITS = { parts: 6, talkChars: 400 } as const;
 
-/** Warm talk: no digit, number word, operation or place word, sign, or word about the work (claims.ts). */
+/**
+ * The model's own warm words (D-196 rule B): only in a turn with no math line, and checked by the guards in
+ * phrases.ts. Words that fail are replaced by a bank phrase.
+ */
 export interface Talk {
   talk: string;
 }
-/** One part of what Maya says: a code-written line or warm talk, in the order she says them. */
-export type Part = LineChoice | Talk;
+/** Warm talk from the code-written bank (D-196 rule A): the model names the purpose; code picks the phrase. */
+export interface Warm {
+  warm: PhraseGroup;
+}
+/**
+ * One part of what Maya says, in order: a code-written line, a bank phrase or the model's own warm words. In a turn
+ * with a math line, warm talk comes from the bank and before the math, so the math line is said last.
+ */
+export type Part = LineChoice | Warm | Talk;
 
 /**
  * An answer the model read in the child's turn: the value, the step it answers (a worked step id, or "result"), and the
@@ -132,6 +144,7 @@ export const PROPOSAL_SCHEMA = {
               },
             },
           },
+          { type: "object", additionalProperties: false, required: ["warm"], properties: { warm: { enum: [...PHRASE_GROUPS] } } },
           { type: "object", additionalProperties: false, required: ["talk"], properties: { talk: { type: "string", maxLength: PART_LIMITS.talkChars } } },
         ],
       },

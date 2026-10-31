@@ -34,7 +34,9 @@ import {
 } from "@/lib/question-package";
 import { talkMath } from "./claims";
 import { saidAsApproved } from "./speech";
-import { findOffer, normalSlots, packageLines, pickVariant, LINE_IDS, type LineOffer } from "./lines";
+import { findOffer, normalSlots, packageLines, LINE_IDS, type LineId, type LineOffer } from "./lines";
+import { freeTalkProblem, FALLBACK_GROUP, PHRASE_ACTS, PHRASE_GROUPS, PHRASES, type PhraseGroup } from "./phrases";
+import { chooseWording, heardInCall, nameNow, newVariety, withName, type Variety, type WordingHistory } from "./variety";
 import { committedText, offersChoice, readNumbers, takenBack, valuesIn } from "./numbers";
 import { ACTS, PART_LIMITS, PROPOSAL_VERSION, withoutNulls, type Act, type ChildAnswer, type HintLevel, type Proposal, type Reading, type Severity } from "./proposal";
 
@@ -126,7 +128,8 @@ export interface Outcome {
 }
 
 export type Effect =
-  | { kind: "say"; act: Act; text: string }
+  /** `talkReplaced`: how many pieces of the model's own warm words failed the guards and were replaced (D-196 rule B). */
+  | { kind: "say"; act: Act; text: string; talkReplaced?: number }
   | { kind: "board"; batch: Batch }
   /** Stop speaking and drop board batches not yet shown. */
   | { kind: "cancel_output" }
@@ -156,6 +159,8 @@ export type RefusalCode =
   | "wrong_math"
   | "math_in_talk"
   | "line_not_offered"
+  | "free_talk_in_math_turn"
+  | "math_line_not_last"
   | "reveals_answer"
   | "missing_disclosure"
   | "board_not_allowed"
@@ -209,8 +214,8 @@ interface Ladder {
 export interface Session {
   version: 4;
   callId: string;
-  /** Picks each line's variant, so the same seed gives the same words (no randomness in the controller). */
-  seed: string;
+  /** Which wording of each line and phrase to say: the call's random seed, what was heard, the child's name (variety.ts). */
+  variety: Variety;
   state: SessionState;
   /** The teaching state an interrupt returns to. */
   resume: Teaching | null;
@@ -269,8 +274,12 @@ export interface Session {
   outcome: Outcome | null;
 }
 
-/** `seed` picks the variant of each line (default: the call id). */
-export function createSession(input: { callId: string; package: unknown; seed?: string }): Session {
+/**
+ * `random` seeds the choice of wordings (pass a random 32-bit number; default: one made from the call id, for tests),
+ * `history` is the child's wording history before this call (wording-history.ts), and `childName` the name code may say
+ * now and then. The model never writes the name.
+ */
+export function createSession(input: { callId: string; package: unknown; random?: number; history?: WordingHistory; childName?: string | null }): Session {
   const check = checkQuestionPackage(input.package);
   // An item with no operation (a place-value or a drawing item) has no worked steps to teach from: it is held.
   const pkg = check.ok && hasOperation(check.package) ? structuredClone(check.package) : null;
@@ -278,7 +287,7 @@ export function createSession(input: { callId: string; package: unknown; seed?: 
   return {
     version: 4,
     callId: input.callId,
-    seed: input.seed ?? input.callId,
+    variety: newVariety({ random: input.random ?? hashOf(input.callId), history: input.history, name: input.childName }),
     state: "READY",
     resume: null,
     package: teachable ? pkg : null,
@@ -427,13 +436,12 @@ function proposalProblem(p: unknown): string | null {
   if (p.version !== PROPOSAL_VERSION) return `the proposal is version ${PROPOSAL_VERSION}: Maya's words are parts, not \`say\``;
   if (!Array.isArray(p.parts) || p.parts.length > PART_LIMITS.parts) return `the parts are a list of at most ${PART_LIMITS.parts} lines and talk`;
   for (const part of p.parts) {
+    // Talk of any length is read: words that fail the guards are replaced, never a reason to fail the turn (D-196).
     const talk = isObject(part) && Object.keys(part).length === 1 && typeof part.talk === "string";
+    const warm = isObject(part) && Object.keys(part).length === 1 && (PHRASE_GROUPS as readonly unknown[]).includes(part.warm);
     const line = isObject(part) && typeof part.line === "string" && (LINE_IDS as readonly string[]).includes(part.line) &&
       Object.keys(part).every((k) => k === "line" || k === "slots") && (part.slots === undefined || isObject(part.slots));
-    if (!talk && !line) return "each part is { talk } or { line, slots } with a line id the session offers";
-    if (talk && ((part.talk as string).length > PART_LIMITS.talkChars || !/[.?!]["')\]]*$/.test((part.talk as string).trim()))) {
-      return `warm talk is whole sentences (ending in ".", "?" or "!") of at most ${PART_LIMITS.talkChars} characters`;
-    }
+    if (!talk && !warm && !line) return `each part is { line, slots } with a line id, { warm } with a phrase group, or { talk }`;
   }
   if (p.step !== undefined && typeof p.step !== "string") return "the step is a step id";
   if (p.level !== undefined && !HINTS.includes(p.level as number)) return "the level is 0 to 4";
@@ -773,7 +781,7 @@ function propose(base: Session, p: Proposal, effects: Effect[]): StepResult {
 
   // 4. Maya's words and board: lines code writes for this act, step and level, and warm talk with no math in it.
   const view: View = { steps: [ladder.step], done, checked, rightResult };
-  const spoken = p.act === "safety" ? { text: "", lines: [], boards: [] } : speak(s, p, view);
+  const spoken = p.act === "safety" ? { text: "", lines: [], boards: [], replaced: 0 } : speak(s, p, view);
   if ("code" in spoken) return no(spoken.code, spoken.reason, allowedNow);
   const say = spoken.text;
   if (say === "" && !["wait", "safety", "give_answer"].includes(p.act)) return no("invalid_proposal", "Maya needs words for this act.", allowedNow);
@@ -844,7 +852,7 @@ function propose(base: Session, p: Proposal, effects: Effect[]): StepResult {
       if (s.state !== "TIME_CLOSE" && ladder.unlocked < 4) return no("hint_too_high", `The answer comes after help up to H3 and another failed attempt or request (now H${ladder.unlocked}).`, allowedNow);
       // Code says the answer and asks for it on paper, so both are true.
       const [give] = packageLines(pkg!).answerGive();
-      const answer = pickVariant(give.texts, `${s.seed}|${s.turns.length}|answer`);
+      const answer = give.texts[chooseWording(s.variety, give.texts.map((_, i) => `${give.key}#${i}`), s.now!)];
       text = [say, answer].filter(Boolean).join(" ");
       if (s.solved === null) {
         s.solved = "maya";
@@ -921,7 +929,7 @@ function propose(base: Session, p: Proposal, effects: Effect[]): StepResult {
   if (p.act !== "repair") s.turn = null;
 
   if (text !== "") {
-    effects.push({ kind: "say", act: p.act, text });
+    effects.push({ kind: "say", act: p.act, text, ...(spoken.replaced > 0 ? { talkReplaced: spoken.replaced } : {}) });
     s.turns.push({ at: s.now!, speaker: "maya", text, state: p.act === "close" ? "CLOSE" : s.state, act: p.act });
   }
   if (p.board) {
@@ -1131,6 +1139,23 @@ interface Spoken {
   text: string;
   lines: string[];
   boards: string[];
+  /** Pieces of the model's own warm words replaced by a bank phrase. */
+  replaced: number;
+}
+
+/** A 32-bit number from a text (FNV-1a), to seed the wordings of a call that passes no random number. */
+function hashOf(text: string): number {
+  let h = 0x811c9dc5;
+  for (let i = 0; i < text.length; i++) h = Math.imul(h ^ text.charCodeAt(i), 0x01000193) >>> 0;
+  return h;
+}
+
+/** The wordings this call has said, with their times: add them to the child's wording history (wording-history.ts). */
+export const heardWordings = (session: Session): WordingHistory => heardInCall(session.variety);
+
+/** The warm-talk purposes each act Maya may take now can use (D-196), for the text adapter beside lineOffers. */
+export function warmGroups(session: Session): Partial<Record<Act, PhraseGroup[]>> {
+  return Object.fromEntries(nextActs(session).acts.map((act) => [act, PHRASE_GROUPS.filter((g) => PHRASE_ACTS[g].includes(act))]));
 }
 
 /** The approved text of Maya's last turn, or "" before she has said anything. */
@@ -1202,17 +1227,52 @@ const meets = (requires: NonNullable<LineOffer["requires"]>, view: View) =>
     ? view.done.includes(requires.step)
     : view.checked.some((c) => c.problem === "target" && c.answer.step === requires.step && c.answer.verdict === "wrong");
 
-/** Renders a proposal's parts: each line must be offered now, and each piece of talk must hold no math. */
+/** Lines that frame the question, not the work: a turn with only these may hold the model's own warm words (D-196 B). */
+const FRAMING: ReadonlySet<LineId> = new Set(["open.hello", "question.problem", "question.read", "assess.ask", "redirect.back"]);
+
+/**
+ * Renders a proposal's parts. Each line must be offered now. Warm talk (D-196): in a turn with a math line it comes
+ * from the bank and before the first math line; in a turn without, the model's own words pass the guards or are
+ * replaced by a bank phrase of the act's purpose. Wordings are picked by variety.ts.
+ */
 function speak(s: Session, p: Proposal, view: View): Spoken | { code: RefusalCode; reason: string } {
   const offers = offersFor(s, p.act, view);
   const texts: string[] = [];
   const chosen: LineOffer[] = [];
   const lines: string[] = [];
-  for (const [i, part] of p.parts.entries()) {
-    if ("talk" in part) {
-      const bad = talkMath(part.talk);
-      if (bad !== null) return { code: "math_in_talk", reason: `Warm talk holds no math ("${bad}"): say it with a line, or leave it out.` };
-      texts.push(part.talk.trim());
+  const mathTurn = p.parts.some((part) => "line" in part && !FRAMING.has(part.line));
+  const turn = s.turns.filter((t) => t.speaker === "maya").length;
+  let mathSaid = false;
+  let named = false;
+  let replaced = 0;
+  const phrase = (group: PhraseGroup) => {
+    const bank = PHRASES[group];
+    const text = bank[chooseWording(s.variety, bank.map((_, i) => `phrase:${group}.${i + 1}`), s.now!)];
+    const name = text.includes("{name}") && !named && nameNow(s.variety, turn) ? s.variety.name : null;
+    if (name !== null) {
+      named = true;
+      s.variety.nameAt = turn;
+    }
+    return withName(text, name);
+  };
+  for (const part of p.parts) {
+    if (!("line" in part)) {
+      if (mathSaid) return { code: "math_line_not_last", reason: "Warm talk comes before the math line: the math line is the last thing Maya says in a turn." };
+      if ("warm" in part) {
+        if (!PHRASE_ACTS[part.warm].includes(p.act)) {
+          const groups = PHRASE_GROUPS.filter((g) => PHRASE_ACTS[g].includes(p.act));
+          return { code: "line_not_offered", reason: `Warm talk "${part.warm}" does not fit ${p.act}. It fits: ${groups.join(", ") || "none"}.` };
+        }
+        texts.push(phrase(part.warm));
+        continue;
+      }
+      if (mathTurn) return { code: "free_talk_in_math_turn", reason: "A turn with a math line takes its warm talk from the bank: use { warm: <group> }, not { talk }." };
+      if (freeTalkProblem(part.talk, s.variety.name) === null) {
+        texts.push(part.talk.trim());
+      } else {
+        replaced += 1;
+        texts.push(phrase(FALLBACK_GROUP[p.act] ?? "encourage"));
+      }
       continue;
     }
     const o = findOffer(offers, { line: part.line, slots: normalSlots(part.slots ?? {}) });
@@ -1226,7 +1286,8 @@ function speak(s: Session, p: Proposal, view: View): Spoken | { code: RefusalCod
     if (p.act === "guide" && o.level !== undefined && o.level > (p.level ?? 0)) {
       return { code: "hint_too_high", reason: `"${o.line}" is H${o.level} help, above this guide's level H${p.level ?? 0}.` };
     }
-    const text = pickVariant(o.texts, `${s.seed}|${s.turns.length}|${i}|${o.line}`);
+    const text = o.texts[chooseWording(s.variety, o.texts.map((_, k) => `${o.key}#${k}`), s.now!)];
+    if (!FRAMING.has(o.line)) mathSaid = true;
     texts.push(text);
     lines.push(text);
     chosen.push(o);
@@ -1235,7 +1296,7 @@ function speak(s: Session, p: Proposal, view: View): Spoken | { code: RefusalCod
   if (p.act === "guide" && level >= 1 && !chosen.some((o) => o.level === level)) {
     return { code: "invalid_proposal", reason: `A guide at H${p.level} says a step line of level H${level}.` };
   }
-  return { text: texts.join(" "), lines, boards: chosen.flatMap((o) => (o.board ? [o.board] : [])) };
+  return { text: texts.join(" "), lines, boards: chosen.flatMap((o) => (o.board ? [o.board] : [])), replaced };
 }
 
 /**
@@ -1247,6 +1308,10 @@ function boardProblem(s: Session, board: unknown[], role: Problem, spoken: Spoke
   for (const t of boardTexts(board, "text")) {
     if (talkMath(t) !== null && !spoken.boards.includes(t.trim())) {
       return { code: "math_in_talk", reason: `The board writes math only as a line's expression or equation said this turn, not "${t}".` };
+    }
+    // A note with no math passes the free-talk guards (D-196): nothing on the board points back or instructs the work.
+    if (talkMath(t) === null && freeTalkProblem(/[.?!]$/.test(t.trim()) ? t : `${t}.`, s.variety.name) !== null) {
+      return { code: "math_in_talk", reason: `A board note does not instruct the work or point back to earlier words: "${t}".` };
     }
   }
   const { operation, steps } = problemOf(pkg, role);

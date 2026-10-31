@@ -58,5 +58,13 @@ export function speechKey(text: string): string {
   return words.filter((w, i) => !(w === "and" && NUMBER_WORD.has(words[i - 1] ?? "") && NUMBER_WORD.has(words[i + 1] ?? ""))).join(" ");
 }
 
-/** What Maya said is the approved text of her turn, after both are normalised the same way. */
-export const saidAsApproved = (said: string, approved: string) => speechKey(said) === speechKey(approved);
+/**
+ * What Maya said is the approved text of her turn, after both are normalised the same way, or its start cut off at a
+ * sentence break (the child spoke over her). A cut inside a sentence or a word is not: "sixteen" cut short is "six".
+ */
+export function saidAsApproved(said: string, approved: string): boolean {
+  const key = speechKey(said);
+  const sentences = approved.split(/(?<=[.?!])\s+/).filter(Boolean);
+  for (let n = 0; n <= sentences.length; n++) if (key === speechKey(sentences.slice(0, n).join(" "))) return true;
+  return false;
+}

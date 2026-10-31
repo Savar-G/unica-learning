@@ -74,11 +74,13 @@ describe("N2-R3: no word reaches an inherited property of a lookup table", () =>
     expect(valuesIn(name)).toEqual([]);
   });
 
-  it("refuses an equation with an inherited name in it, as math in talk", () => {
+  it("never says an equation with an inherited name in it", () => {
     expect(talkMath("constructor + 1 = 1")).toBe("+");
     const c = call();
     c.child("56");
-    expect(c.propose(guide({ parts: [t("constructor + 1 = 1.")] })).refusal).toMatchObject({ code: "math_in_talk" });
+    const r = c.propose(guide({ parts: [t("constructor + 1 = 1.")] }));
+    expect(r.refusal).toBeNull();
+    expect(r.effects).toContainEqual(expect.objectContaining({ kind: "say", talkReplaced: 1, text: expect.not.stringContaining("constructor") }));
   });
 });
 

@@ -1,12 +1,12 @@
 // Maya's code-written lines (#372, D-195): every sentence Maya says or writes that holds a number, a digit, a place
 // word, an operation word or sign, a carry, a result or an instruction about the work. Code fills each line from the
 // checked worked step of the question package, so its math is the package's math. The model never writes such a
-// sentence: it picks a line (an id and its slots) from the lines the session offers for this act, step and hint level,
-// and may add warm talk that the strict no-math rule checks (claims.ts).
+// sentence: it picks a line (an id and its slots) from the lines the session offers for this act, step and hint level.
+// Warm talk around the lines follows D-196 (phrases.ts).
 //
-// Each line has a few child-friendly variants (ages 6 to 12). Code picks the variant from a seed, so the same call
-// says the same words. Savar reviews the wording (`/tmp/ui-review/maya-lines.md` was the review copy for #372).
-// Pure TypeScript: no clock, network or randomness.
+// Each line has 5 to 8 child-friendly wordings (ages 6 to 12) with the same meaning, numbers and order; Savar approved
+// the wording (#372). Code picks the wording the child has heard least lately (variety.ts), so calls do not sound the
+// same. Pure TypeScript: no clock, network or randomness.
 import {
   operationText,
   stepText,
@@ -78,8 +78,10 @@ export interface LineOffer {
    * that step that code checked and found right (or wrong).
    */
   requires?: { answer: "right" | "wrong"; step: string };
-  /** Every variant of the line, filled in. Code picks one. */
+  /** Every variant of the line, filled in. Code picks one (`key#index` is the wording's id, see variety.ts). */
   texts: string[];
+  /** The template the variants come from. */
+  key: TemplateKey;
   /** The text Maya may write on the board with this line: its expression or its equation. */
   board?: string;
 }
@@ -91,67 +93,195 @@ export interface LineOffer {
  * review copy shows each wording once.
  */
 export const TEMPLATES = {
-  "open.hello": ["Hi, I'm Maya, an AI helper.", "Hello! I'm Maya. I'm an AI, here to help you.", "Hi there! I'm Maya, an AI math helper."],
-  "question.problem": ["Today we're working on {expr}.", "Our question is {expr}.", "Let's work on {expr} together."],
-  "question.read": ["The question says: {sentence}", "Let's read it again: {sentence}", "Here's the question: {sentence}"],
-  "assess.ask": ["What did you try for {expr}?", "How did you start {expr}?", "Tell me what you did on {expr} so far."],
-  "example.intro": ["Let's try an easier one first: {expr}.", "Here's a smaller one to warm up: {expr}.", "Let me show you an easier one: {expr}."],
-  "example.step": ["{show}", "Watch this. {show}", "Here's how. {show}"],
-  "example.result": ["So {show}.", "And that's it: {show}."],
-  "try.target": ["Now you try yours: {expr}.", "Your turn! Try {expr}.", "Can you try {expr} the same way?"],
+  "open.hello": [
+    "Hi, I'm Maya, an AI helper.", "Hello! I'm Maya. I'm an AI, here to help you.", "Hi there! I'm Maya, an AI math helper.",
+    "Hey! I'm Maya, an AI helper for your workbook.", "Hello, I'm Maya. I'm an AI, and I'm here to help.", "Hi! My name is Maya, and I'm an AI helper.",
+  ],
+  "question.problem": [
+    "Today we're working on {expr}.", "Our question is {expr}.", "Let's work on {expr} together.", "We're doing {expr} today.",
+    "This one is {expr}.", "Here's our question: {expr}.",
+  ],
+  "question.read": [
+    "The question says: {sentence}", "Let's read it again: {sentence}", "Here's the question: {sentence}", "It says: {sentence}",
+    "Let's read it together: {sentence}", "Here's what it says: {sentence}",
+  ],
+  "assess.ask": [
+    "What did you try for {expr}?", "How did you start {expr}?", "Tell me what you did on {expr} so far.", "What have you done on {expr} so far?",
+    "How far did you get with {expr}?", "Can you show me how you began {expr}?",
+  ],
+  "example.intro": [
+    "Let's try an easier one first: {expr}.", "Here's a smaller one to warm up: {expr}.", "Let me show you an easier one: {expr}.",
+    "Let's warm up with an easier one: {expr}.", "First, a smaller one: {expr}.", "I'll show you an easier one first: {expr}.",
+  ],
+  "example.step": ["{show}", "Watch this. {show}", "Here's how. {show}", "Look. {show}", "Follow along. {show}", "Like this. {show}"],
+  "example.result": ["So {show}.", "And that's it: {show}.", "There we go: {show}.", "All done: {show}.", "So in the end, {show}."],
+  "try.target": [
+    "Now you try yours: {expr}.", "Your turn! Try {expr}.", "Can you try {expr} the same way?", "Now it's your turn with {expr}.",
+    "Let's go back to yours: {expr}. You try it.", "Over to you! Try {expr} the same way.",
+  ],
 
-  "step.invite": ["Let's look at {where}. What can you do there?", "Now {where}. What do you think comes next?", "What could you try for {where}?"],
+  "step.invite": [
+    "Let's look at {where}. What can you do there?", "Now {where}. What do you think comes next?", "What could you try for {where}?",
+    "Let's go to {where}. What do you think?", "Next up, {where}. What would you do?", "How about {where}? What can you do there?",
+  ],
 
-  "point.add": ["Look at the {place}: {list}.", "Find the {place}. They are {list}.", "Let's look at the {place} column: {list}."],
-  "point.add.carry": ["Look at the {place}: {list}, and the {carry} you carried.", "In the {place} we have {list}, plus the carried {carry}.", "Don't forget the carried {carry} in the {place}, with {list}."],
-  "point.add.single": ["Look at the {place}. There is only a {term} there.", "The {place} have just the {term}."],
-  "operation.add": ["Add the {place}: {sum}. What do you get?", "What is {sum}?", "Let's add the {place}: {sum}."],
-  "operation.add.single": ["Bring down the {term} in the {place}.", "Nothing to add in the {place}, so bring down the {term}."],
+  "point.add": [
+    "Look at the {place}: {list}.", "Find the {place}. They are {list}.", "Let's look at the {place} column: {list}.",
+    "In the {place} we have {list}.", "The {place} are {list}.", "Look at the {place} column. It has {list}.",
+  ],
+  "point.add.carry": [
+    "Look at the {place}: {list}, and the {carry} you carried.", "In the {place} we have {list}, plus the carried {carry}.",
+    "Don't forget the carried {carry} in the {place}, with {list}.", "The {place} have {list}, and the {carry} you carried.",
+    "Look at the {place} column: {list}, and the carried {carry} on top.",
+  ],
+  "point.add.single": [
+    "Look at the {place}. There is only a {term} there.", "The {place} have just the {term}.", "Only the {term} is in the {place}.",
+    "In the {place}, there's just a {term}.", "Look at the {place}: there's only the {term}.",
+  ],
+  "operation.add": [
+    "Add the {place}: {sum}. What do you get?", "What is {sum}?", "Let's add the {place}: {sum}.", "Add up the {place}: {sum}.",
+    "What do you get for {sum}?", "Can you add {sum}?",
+  ],
+  "operation.add.single": [
+    "Bring down the {term} in the {place}.", "Nothing to add in the {place}, so bring down the {term}.", "Just bring down the {term} in the {place}.",
+    "The {place} only have the {term}, so bring it down.", "Bring the {term} straight down in the {place}.",
+  ],
 
-  "point.subtract": ["Look at the {place}: {have} on top and {bottom} below.", "In the {place}, the top is {have} and the bottom is {bottom}.", "Find the {place}: {have} and {bottom}."],
-  "point.subtract.lent": ["The {place} gave 1 to the {next}, so there are {have} on top now. Below is {bottom}.", "Look at the {place}: after giving 1 to the {next}, the top is {have}. The bottom is {bottom}."],
-  "point.subtract.single": ["Look at the {place}: {have} on top, and nothing to take away.", "The {place} have {have} on top and nothing below."],
-  "regroup.subtract": ["{have} is less than {bottom}, so regroup 1 {big} as 10 {place}.", "We need more {place}: trade 1 {big} for 10 {place}.", "Regroup 1 {big} as 10 {place}, so {have} becomes {from}."],
-  "operation.subtract": ["Subtract the {place}: {from} − {bottom}. What do you get?", "What is {from} − {bottom}?", "Now take {bottom} away from {from}."],
-  "operation.subtract.single": ["Bring down the {from} in the {place}.", "Nothing to take away in the {place}, so bring down the {from}."],
-  "operation.subtract.none": ["There is nothing to write in the {place}.", "The {place} stay empty: a number does not start with 0."],
+  "point.subtract": [
+    "Look at the {place}: {have} on top and {bottom} below.", "In the {place}, the top is {have} and the bottom is {bottom}.",
+    "Find the {place}: {have} and {bottom}.", "The {place} have {have} on top and {bottom} at the bottom.",
+    "Look at the {place} column: {have} over {bottom}.",
+  ],
+  "point.subtract.lent": [
+    "The {place} gave 1 to the {next}, so there are {have} on top now. Below is {bottom}.",
+    "Look at the {place}: after giving 1 to the {next}, the top is {have}. The bottom is {bottom}.",
+    "The {place} lent 1 to the {next}, so the top is {have} now. The bottom is {bottom}.",
+    "After giving 1 to the {next}, the {place} have {have} on top and {bottom} below.",
+    "Remember, the {place} gave 1 to the {next}. Now it's {have} on top and {bottom} below.",
+  ],
+  "point.subtract.single": [
+    "Look at the {place}: {have} on top, and nothing to take away.", "The {place} have {have} on top and nothing below.",
+    "In the {place}, there's {have} on top and nothing underneath.", "Only {have} is in the {place}, with nothing below it.",
+    "Look at the {place}: just {have} on top.",
+  ],
+  "regroup.subtract": [
+    "{have} is less than {bottom}, so regroup 1 {big} as 10 {place}.", "We need more {place}: trade 1 {big} for 10 {place}.",
+    "Regroup 1 {big} as 10 {place}, so {have} becomes {from}.", "{have} is smaller than {bottom}, so trade 1 {big} for 10 {place}.",
+    "There aren't enough {place}, so regroup 1 {big} as 10 {place}.", "Take 1 {big} and make it 10 {place}, so {have} becomes {from}.",
+  ],
+  "operation.subtract": [
+    "Subtract the {place}: {from} − {bottom}. What do you get?", "What is {from} − {bottom}?", "Now take {bottom} away from {from}.",
+    "Subtract {from} − {bottom} in the {place}.", "What do you get for {from} − {bottom}?", "In the {place}, what is {from} − {bottom}?",
+  ],
+  "operation.subtract.single": [
+    "Bring down the {from} in the {place}.", "Nothing to take away in the {place}, so bring down the {from}.",
+    "Just bring down the {from} in the {place}.", "The {place} have only the {from}, so bring it down.",
+    "Bring the {from} straight down in the {place}.",
+  ],
+  "operation.subtract.none": [
+    "There is nothing to write in the {place}.", "The {place} stay empty: a number does not start with 0.",
+    "Leave the {place} empty: a number does not start with 0.", "Nothing goes in the {place}, because a number does not start with 0.",
+    "We don't write anything in the {place}.",
+  ],
 
-  "point.multiply": ["Look at the {top} in the {place} and the {by}.", "Find the {top} on top and the {by} below.", "We use the {top} and the {by} next."],
-  "point.multiply.carry": ["Look at the {carry} you carried.", "There's a carried {carry} left over."],
-  "operation.multiply": ["Multiply {top} × {by}. What do you get?", "What is {top} × {by}?", "Let's multiply {top} × {by}."],
-  "operation.multiply.carry": ["Multiply {top} × {by}, then add the carried {carry}.", "What is {top} × {by} + {carry}?", "Do {top} × {by} and add the {carry} you carried."],
-  "operation.multiply.last": ["Write the carried {carry} at the front.", "Now write the {carry} you carried."],
+  "point.multiply": [
+    "Look at the {top} in the {place} and the {by}.", "Find the {top} on top and the {by} below.", "We use the {top} and the {by} next.",
+    "Next, the {top} in the {place} and the {by}.", "Look at the {top} on top and the {by} at the bottom.",
+  ],
+  "point.multiply.carry": [
+    "Look at the {carry} you carried.", "There's a carried {carry} left over.", "We still have the carried {carry}.",
+    "Don't forget the {carry} you carried.", "The carried {carry} is still waiting.",
+  ],
+  "operation.multiply": [
+    "Multiply {top} × {by}. What do you get?", "What is {top} × {by}?", "Let's multiply {top} × {by}.", "What do you get for {top} × {by}?",
+    "Can you work out {top} × {by}?", "Now multiply {top} × {by}.",
+  ],
+  "operation.multiply.carry": [
+    "Multiply {top} × {by}, then add the carried {carry}.", "What is {top} × {by} + {carry}?", "Do {top} × {by} and add the {carry} you carried.",
+    "Work out {top} × {by}, then add the carried {carry}.", "Multiply {top} × {by}, and don't forget to add the {carry}.",
+  ],
+  "operation.multiply.last": [
+    "Write the carried {carry} at the front.", "Now write the {carry} you carried.", "Put the carried {carry} at the front.",
+    "The carried {carry} goes at the front.", "Write the {carry} you carried at the front of the row.",
+  ],
 
-  "point.row": ["Look at the whole {row} row.", "Let's read the {row} row."],
-  "point.row.zeros": ["Start the {row} row with {zeros}, because the {by} is in the {row}.", "The {by} is in the {row}, so the row starts with {zeros}."],
-  "operation.row": ["The {row} row is {top} × {by}.", "What is {top} × {by}?"],
+  "point.row": ["Look at the whole {row} row.", "Let's read the {row} row.", "Now look at all of the {row} row.", "Let's see the whole {row} row.", "Look across the {row} row."],
+  "point.row.zeros": [
+    "Start the {row} row with {zeros}, because the {by} is in the {row}.", "The {by} is in the {row}, so the row starts with {zeros}.",
+    "Because the {by} is in the {row}, begin the row with {zeros}.", "The {row} row starts with {zeros}, since the {by} is in the {row}.",
+    "Begin the {row} row with {zeros}: the {by} is in the {row}.",
+  ],
+  "operation.row": ["The {row} row is {top} × {by}.", "What is {top} × {by}?", "The {row} row works out {top} × {by}.", "This row is {top} × {by}.", "Can you work out {top} × {by}?"],
 
-  "point.point": ["Count the decimal places in both numbers.", "How many digits are after the points in both numbers?"],
-  "operation.point": ["The numbers have {places} in all.", "Count {places} from the right in {product}."],
+  "point.point": [
+    "Count the decimal places in both numbers.", "How many digits are after the points in both numbers?", "Look at the digits after the points in both numbers.",
+    "Let's count the decimal places in both numbers.", "How many decimal places do both numbers have?",
+  ],
+  "operation.point": [
+    "The numbers have {places} in all.", "Count {places} from the right in {product}.", "There are {places} in all, so count them from the right in {product}.",
+    "Both numbers together have {places}.", "In {product}, count {places} from the right.",
+  ],
 
-  "point.divide.first": ["Look at the {current}.", "Start with the {current}."],
-  "point.divide": ["Bring down the {digit} to make {current}.", "Now bring down the {digit}. That makes {current}."],
-  "operation.divide": ["How many {by}s fit in {current}?", "What is {current} ÷ {by}?", "Divide {current} by {by}."],
+  "point.divide.first": ["Look at the {current}.", "Start with the {current}.", "Let's begin with the {current}.", "First, look at the {current}.", "We start at the {current}."],
+  "point.divide": [
+    "Bring down the {digit} to make {current}.", "Now bring down the {digit}. That makes {current}.", "Bring the {digit} down, and now we have {current}.",
+    "Bring down the {digit}: now it's {current}.", "Next, bring down the {digit} to make {current}.",
+  ],
+  "operation.divide": [
+    "How many {by}s fit in {current}?", "What is {current} ÷ {by}?", "Divide {current} by {by}.", "How many times does {by} go into {current}?",
+    "What do you get for {current} ÷ {by}?", "Can you work out {current} ÷ {by}?",
+  ],
 
-  "step.show": ["{show}", "Watch me. {show}", "Here's how it goes. {show}"],
+  "step.show": ["{show}", "Watch me. {show}", "Here's how it goes. {show}", "Let me show you. {show}", "Follow along. {show}", "Like this. {show}", "I'll do this part. {show}"],
 
-  "check.right_step": ["Yes! {eq}.", "That's right: {eq}.", "You got it, {eq}."],
-  "check.right_step.plain": ["Yes! {Where} is done.", "That's right. {Where} is done."],
-  "check.not_yet": ["Not quite. Let's look at {where} again.", "Almost! Let's check {where} together.", "Hmm, not yet. Let's try {where} again."],
-  "check.explain": ["How did you get {where}?", "Can you tell me how you did {where}?", "Show me how you worked out {where}."],
+  "check.right_step": ["Yes! {eq}.", "That's right: {eq}.", "You got it, {eq}.", "Yes, {eq}.", "Exactly! {eq}.", "Nice, {eq}.", "That's it: {eq}."],
+  "check.right_step.plain": ["Yes! {Where} is done.", "That's right. {Where} is done.", "Good, {where} is done.", "Yes, that's {where} done.", "Nice! {Where} is done."],
+  "check.not_yet": [
+    "Not quite. Let's look at {where} again.", "Almost! Let's check {where} together.", "Hmm, not yet. Let's try {where} again.",
+    "Close! Let's look at {where} once more.", "Not yet. Let's go back to {where}.", "Good try. Let's check {where} again together.",
+  ],
+  "check.explain": [
+    "How did you get {where}?", "Can you tell me how you did {where}?", "Show me how you worked out {where}.", "How did you work out {where}?",
+    "Tell me what you did for {where}.", "What did you do in {where}?",
+  ],
 
-  "answer.right": ["Yes! {expr} = {answer}.", "That's right: {expr} = {answer}.", "You got it! {expr} = {answer}."],
-  "answer.give": ["The answer is {answer}. Please write {answer} on your paper.", "It comes to {answer}. Can you write {answer} on your paper?"],
-  "write.answer": ["Please write {answer} on your paper.", "Can you write {answer} on your paper?", "Now write {answer} on your page."],
-  "write.yours": ["Please write your answer on your paper.", "Can you write your answer on your page?"],
+  "answer.right": [
+    "Yes! {expr} = {answer}.", "That's right: {expr} = {answer}.", "You got it! {expr} = {answer}.", "Yes, {expr} = {answer}!",
+    "Exactly! {expr} = {answer}.", "That's it: {expr} = {answer}.", "Well done! {expr} = {answer}.",
+  ],
+  "answer.give": [
+    "The answer is {answer}. Please write {answer} on your paper.", "It comes to {answer}. Can you write {answer} on your paper?",
+    "So the answer is {answer}. Please write {answer} on your paper.", "That makes {answer}. Can you write {answer} on your page?",
+    "The answer is {answer}. Now write {answer} on your paper.",
+  ],
+  "write.answer": [
+    "Please write {answer} on your paper.", "Can you write {answer} on your paper?", "Now write {answer} on your page.",
+    "Go ahead and write {answer} on your paper.", "Let's put {answer} on your paper.", "Write {answer} on your page, please.",
+  ],
+  "write.yours": [
+    "Please write your answer on your paper.", "Can you write your answer on your page?", "Go ahead and write your answer on your paper.",
+    "Now write your answer on your page.", "Let's put your answer on your paper.",
+  ],
 
-  "confirm.heard": ["Did you say {heard}?", "I heard {heard}. Is that right?", "Just checking, was that {heard}?"],
-  "confirm.which": ["Did you say {heard} or {other}?", "Was that {heard} or {other}?"],
-  "input.other": ["You can write your answer on the board instead.", "If it's easier, write your number on the board.", "Try writing it on the board for me."],
-  "redirect.back": ["Let's get back to {expr}.", "Back to our question: {expr}.", "Let's keep going with {expr}."],
-  "close.solved": ["You worked out {expr} today!", "Great job on {expr} today!", "You solved {expr}. Well done!"],
-  "close.together": ["We worked through {expr} together.", "We finished {expr} together today."],
-  "repair.sorry": ["Oops, I said that wrong. Let me fix it.", "Sorry, I made a mistake there. Here it is again.", "Wait, I mixed that up. Let me say it again."],
+  "confirm.heard": ["Did you say {heard}?", "I heard {heard}. Is that right?", "Just checking, was that {heard}?", "Was that {heard}?", "So you said {heard}?", "I think I heard {heard}. Is that it?"],
+  "confirm.which": ["Did you say {heard} or {other}?", "Was that {heard} or {other}?", "I'm not sure. {heard} or {other}?", "Did I hear {heard}, or was it {other}?", "Was it {heard} or {other}?"],
+  "input.other": [
+    "You can write your answer on the board instead.", "If it's easier, write your number on the board.", "Try writing it on the board for me.",
+    "You can also write it on the board.", "Would you like to write it on the board instead?",
+  ],
+  "redirect.back": ["Let's get back to {expr}.", "Back to our question: {expr}.", "Let's keep going with {expr}.", "Now, back to {expr}.", "Let's return to {expr}.", "Okay, back to {expr}."],
+  "close.solved": [
+    "You worked out {expr} today!", "Great job on {expr} today!", "You solved {expr}. Well done!", "Nice work finishing {expr}!",
+    "You did it: {expr} is done!", "Well done on {expr} today!",
+  ],
+  "close.together": [
+    "We worked through {expr} together.", "We finished {expr} together today.", "We got through {expr} together.",
+    "Together, we finished {expr}.", "We worked on {expr} together today.",
+  ],
+  "repair.sorry": [
+    "Oops, I said that wrong. Let me fix it.", "Sorry, I made a mistake there. Here it is again.", "Wait, I mixed that up. Let me say it again.",
+    "Oops, my mistake. Let me try again.", "Sorry, that came out wrong. Here's the right way.",
+  ],
 } as const satisfies Record<string, readonly string[]>;
 export type TemplateKey = keyof typeof TEMPLATES;
 
@@ -160,10 +290,11 @@ export type TemplateKey = keyof typeof TEMPLATES;
 type Vars = Record<string, string | number>;
 
 const fill = (template: string, vars: Vars) => template.replace(/\{(\w+)\}/g, (_, name: string) => String(vars[name]));
-const offer = (line: LineId, key: TemplateKey, vars: Vars, extra: Omit<LineOffer, "line" | "texts"> = { slots: {} }): LineOffer => ({
+const offer = (line: LineId, key: TemplateKey, vars: Vars, extra: Omit<LineOffer, "line" | "texts" | "key"> = { slots: {} }): LineOffer => ({
   line,
   ...extra,
-  texts: TEMPLATES[key].map((t) => fill(t, vars)),
+  key,
+  texts: TEMPLATES[key].map((t) => sentence(fill(t, vars))),
 });
 
 const PLACE_ORDER: Place[] = ["thousandths", "hundredths", "tenths", "ones", "tens", "hundreds", "thousands", "ten thousands", "hundred thousands", "millions"];
@@ -356,7 +487,7 @@ export function packageLines(pkg: OperationPackage) {
       const requires = { answer: "right" as const, step: id };
       return [eq
         ? offer("check.right_step", "check.right_step", { eq }, { slots: { step: id }, requires, board: eq })
-        : offer("check.right_step", "check.right_step.plain", { Where: capital(whereOf(step)) }, { slots: { step: id }, requires })];
+        : offer("check.right_step", "check.right_step.plain", { Where: capital(whereOf(step)), where: whereOf(step) }, { slots: { step: id }, requires })];
     },
     /** "Not quite.": only after code checked the child's wrong answer for that step. */
     notYet: (id: string): LineOffer[] => {
@@ -404,16 +535,6 @@ export function normalSlots(raw: Slots | Record<string, unknown>): Slots {
   if (typeof r.heard === "string") out.heard = r.heard;
   if (typeof r.other === "string") out.other = r.other;
   return out;
-}
-
-/** A deterministic variant: FNV-1a of the key, so the same seed and turn say the same words. */
-export function pickVariant(texts: readonly string[], key: string): string {
-  let h = 0x811c9dc5;
-  for (let i = 0; i < key.length; i++) {
-    h ^= key.charCodeAt(i);
-    h = Math.imul(h, 0x01000193) >>> 0;
-  }
-  return sentence(texts[h % texts.length]);
 }
 
 /**

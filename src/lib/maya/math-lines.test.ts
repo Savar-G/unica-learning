@@ -5,6 +5,10 @@ import {
   lineOffers,
   PROPOSAL_SCHEMA,
   step,
+  freeTalkProblem,
+  PHRASE_ACTS,
+  PHRASE_GROUPS,
+  PHRASES,
   speechKey,
   talkMath,
   TEMPLATES,
@@ -126,6 +130,9 @@ const FAILING: Record<string, string[]> = {
     "Remove the 7.", "Decrease the 9 by 7.", "Double the 7.", "Count back 7.", "Use − on the ones.", "Use × on the ones.", "Use ÷ on the ones.",
     "Halve the 6.", "Split the 9.", "Add the 7.", "Use + on the ones.", "Carry the 1 to the tens.",
   ],
+  "PR #374 round 1 (R374-1: warm talk that reverses a line)": [
+    "Do the opposite.", "Never mind.", "Ignore that.", "Undo it.", "Forget what I said.", "Actually, don't.", "Swap them.", "Do it backwards.",
+  ],
   "round 11 (the gaps merged with PR #350)": [
     "Sam removes the 7.", "Move 7 away.", "Let's halve it.", "Sam removes it.", "Move it away.", "Halve it.", "Double it.",
     "Now take it away.", "Let's split it.", "Sam gives one away.",
@@ -139,8 +146,8 @@ const sentences = (text: string) => text.split(/(?<=[.?!])\s+/).map((x) => x.rep
 const lineSentences = (pkgs: OperationPackage[], heard: AnswerValue[] = []) => new Set(pkgs.flatMap((p) => allLineTexts(p, heard)).flatMap(sentences));
 
 /** A call on 27 + 39 (or `pkg`), past its opening, where the child asks to be shown: guide H0 to H3 are open on the ones. */
-function call(pkg: OperationPackage = ADD, seed = "seed-1") {
-  let s: Session = createSession({ callId: "lines-call", package: pkg, seed });
+function call(pkg: OperationPackage = ADD, random = 1, extra: { history?: Record<string, number>; childName?: string } = {}) {
+  let s: Session = createSession({ callId: "lines-call", package: pkg, random, ...extra });
   const send = (e: SessionEvent) => {
     const r = step(s, e);
     s = r.session;
@@ -160,9 +167,22 @@ const show = (parts: unknown[], extra: Record<string, unknown> = {}) => ({ act: 
 describe("every failing sentence of PR #350's review rounds is impossible", () => {
   const known = lineSentences(ALL);
 
-  it.each(EVERY)("%s: warm talk refuses %s", (_round, sentence) => {
-    expect(talkMath(sentence)).not.toBeNull();
-    expect(call().refusal(show([{ line: "step.show", slots: { step: "ones" } }, { talk: sentence }]))).toMatchObject({ code: expect.stringMatching(/^(math_in_talk|invalid_proposal)$/) });
+  it.each(EVERY)("%s: a turn with a math line refuses the model's words %s, before or after the line", (_round, sentence) => {
+    const line = { line: "step.show", slots: { step: "ones" } };
+    expect(call().refusal(show([line, { talk: sentence }]))).toMatchObject({ code: "math_line_not_last" });
+    expect(call().refusal(show([{ talk: sentence }, line]))).toMatchObject({ code: "free_talk_in_math_turn" });
+  });
+
+  it.each(EVERY)("%s: a turn with no math line never says %s: the guards replace it with a bank phrase", (_round, sentence) => {
+    expect(freeTalkProblem(sentence)).not.toBeNull();
+    const c = call();
+    const r = c.send({ type: "proposal", at: 0, proposal: { version: 2, act: "clarify", parts: [{ talk: sentence }] } });
+    expect(r.refusal).toBeNull();
+    const [say] = r.effects.filter((e) => e.kind === "say");
+    expect(say).toMatchObject({ kind: "say", talkReplaced: 1 });
+    const text = say.kind === "say" ? say.text : "";
+    expect(text).not.toContain(sentence);
+    expect(PHRASES.smalltalk.map((x) => x.replace(/,? ?\{name\}/, ""))).toContain(text);
   });
 
   it.each(EVERY)("%s: no line says %s", (_round, sentence) => {
@@ -188,7 +208,9 @@ describe("every failing sentence of PR #350's review rounds is impossible", () =
   it("refuses the round 11 gaps for every problem, not only addition", () => {
     for (const pkg of [ADD, SUB, ...MORE]) {
       for (const sentence of FAILING["round 11 (the gaps merged with PR #350)"]) {
-        expect(call(pkg).refusal({ act: "guide", step: pkg.steps[0].id, level: 0, parts: [{ talk: sentence }], reading: { help: "show" } })).toMatchObject({ code: "math_in_talk" });
+        expect(call(pkg).refusal({ act: "guide", step: pkg.steps[0].id, level: 0, parts: [{ talk: sentence }, { line: "step.invite", slots: { step: pkg.steps[0].id } }], reading: { help: "show" } }))
+          .toMatchObject({ code: "free_talk_in_math_turn" });
+        expect(freeTalkProblem(sentence)).not.toBeNull();
       }
     }
   });
@@ -198,7 +220,8 @@ describe("every failing sentence of PR #350's review rounds is impossible", () =
 describe("whatever the model picks, Maya's math is a line", () => {
   /** The proposal that uses one offer for an act, with the step and level it needs. */
   const proposalFor = (s: Session, act: Act, o: LineOffer) => {
-    const base: Record<string, unknown> = { version: 2, act, parts: [{ line: o.line, slots: o.slots }, { talk: "You are doing great." }] };
+    const warm = PHRASE_GROUPS.find((g) => PHRASE_ACTS[g].includes(act));
+    const base: Record<string, unknown> = { version: 2, act, parts: [...(warm ? [{ warm }] : []), { line: o.line, slots: o.slots }] };
     if (act === "guide") Object.assign(base, { step: o.slots.step ?? s.ladder.step, level: o.level ?? 0, reading: { help: "show" } });
     if (act === "example_step") Object.assign(base, { step: o.slots.step });
     if (act === "ask_write" && s.state === "CHECK") base.understanding = "uncertain";
@@ -222,6 +245,8 @@ describe("whatever the model picks, Maya's math is a line", () => {
           for (const e of r.effects) {
             if (e.kind !== "say") continue;
             for (const x of sentences(e.text)) expect(talkMath(x) === null || lines.has(x), `${act} ${o.line}: ${x}`).toBe(true);
+            // The math line is the last thing said: the turn ends with a line.
+            expect([...lines].some((l) => e.text.endsWith(l)), e.text).toBe(true);
           }
         }
       }
@@ -284,15 +309,15 @@ describe("the line set", () => {
     }
   });
 
-  it("picks the same variant for the same seed and turn, and varies with the seed", () => {
-    const said = (seed: string) => {
+  it("picks the same wording for the same random seed, and varies with the seed", () => {
+    const said = (seed: number) => {
       const c = call(ADD, seed);
       const r = c.send({ type: "proposal", at: 0, proposal: { version: 2, ...show([{ line: "step.point", slots: { step: "ones" } }], { level: 1 }) } });
       expect(r.refusal).toBeNull();
       return r.effects.flatMap((e) => (e.kind === "say" ? [e.text] : []))[0];
     };
-    expect(said("a")).toBe(said("a"));
-    expect(new Set(["a", "b", "c", "d", "e", "f", "g", "h"].map(said)).size).toBeGreaterThan(1);
+    expect(said(7)).toBe(said(7));
+    expect(new Set([1, 2, 3, 4, 5, 6, 7, 8].map(said)).size).toBeGreaterThan(2);
   });
 
   it("restates a story question only in its own sentences", () => {
@@ -361,12 +386,12 @@ describe("the proposal schema", () => {
     const c = call();
     const proposal = {
       version: 2, act: "guide", step: "ones", level: 1, understanding: null, board: null,
-      parts: [{ talk: "Let's look together." }, { line: "step.point", slots: { step: "ones", sentence: null, heard: null, other: null } }],
+      parts: [{ warm: "encourage" }, { line: "step.point", slots: { step: "ones", sentence: null, heard: null, other: null } }],
       reading: { safety: null, stop: null, unclear: null, writing: null, offTopic: null, help: "show", start: null, answers: null, paper: null, correctsHearing: null },
     };
     const r = c.send({ type: "proposal", at: 0, proposal });
     expect(r.refusal).toBeNull();
-    expect(r.effects[0]).toMatchObject({ kind: "say", text: expect.stringMatching(/^Let's look together\. .*7.*9/) });
+    expect(r.effects[0]).toMatchObject({ kind: "say", text: expect.stringMatching(/^[^0-9]+[.!?] .*7.*9\.$/) });
   });
 
   it("refuses version 1, with its free-text say", () => {
