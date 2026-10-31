@@ -30,6 +30,7 @@ import {
   type Operation,
   type QuestionPackage,
 } from "@/lib/question-package";
+import { isCoin, readNumbers, type ReadNumber } from "@/lib/number-words";
 import type { Curriculum } from "@/lib/workbook-curriculum";
 import {
   headerGrowth,
@@ -210,21 +211,49 @@ export function pageFigure(f: ItemFigure | null | undefined, op: Operation | nul
 /**
  * The largest number a level's items use, from each level's title and topics (numbers to 10 in Kindergarten, to 20 in
  * U4 to U6, to 100 in U7 to U9, to 1000 in U10 to U12, to 10 000 in U13 to U15, to a million in U16 to U18;
- * no practical limit from U19). Negative numbers come with integers at U22.
+ * no practical limit from U19).
  */
 const LEVEL_MAX = [
   10, 10, 10, 20, 20, 20, 100, 100, 100, 1000, 1000, 1000, 10_000, 10_000, 10_000, 1_000_000, 1_000_000, 1_000_000,
   ...Array.from({ length: 12 }, () => 1_000_000_000),
 ];
+const levelMax = (level: number) => LEVEL_MAX[Math.min(30, Math.max(1, level)) - 1];
 
 export interface NumberRange {
   /** The largest number an item may print or ask for (printedNumbers). */
   max: number;
   negatives: boolean;
+  fractions: boolean;
+  decimals: boolean;
+  /** The skill is about money: coin values always fit, and amounts of money may have cents ($4.75). */
+  money: boolean;
 }
 
-/** A level's number range. */
-export const levelRange = (level: number): NumberRange => ({ max: LEVEL_MAX[Math.min(30, Math.max(1, level)) - 1], negatives: level >= 22 });
+/**
+ * The first level of each idea, from the curriculum: the first level with a skill about fractions, about decimals, and
+ * about integers or negative numbers (BC: U12, U15 and U22). Before it, an item never shows one.
+ */
+export interface ConceptLevels { fractions: number; decimals: number; negatives: number }
+const CONCEPT_WORDS: Record<keyof ConceptLevels, RegExp> = {
+  fractions: /\bfractions?\b/i,
+  decimals: /\bdecimals?\b/i,
+  negatives: /\bintegers?\b|\bnegative\b/i,
+};
+const conceptCache = new WeakMap<Curriculum, ConceptLevels>();
+export function conceptLevels(curriculum: Curriculum): ConceptLevels {
+  const cached = conceptCache.get(curriculum);
+  if (cached) return cached;
+  const first = (re: RegExp) => curriculum.levels.find((l) => (curriculum.levelSkills(l.id) ?? []).some((s) => re.test(s.text)))?.number ?? Infinity;
+  const levels = { fractions: first(CONCEPT_WORDS.fractions), decimals: first(CONCEPT_WORDS.decimals), negatives: first(CONCEPT_WORDS.negatives) };
+  conceptCache.set(curriculum, levels);
+  return levels;
+}
+
+/** A level's number range, for an item with no skill. */
+export function levelRange(curriculum: Curriculum, level: number): NumberRange {
+  const c = conceptLevels(curriculum);
+  return { max: levelMax(level), negatives: level >= c.negatives, fractions: level >= c.fractions, decimals: level >= c.decimals, money: false };
+}
 
 /** The limit a skill's id names ("1.3-add-within-10", "3.4-recall-addition-20", "2.1-ten-more-less-100"), or null. */
 function idLimit(skill: string): number | null {
@@ -233,13 +262,18 @@ function idLimit(skill: string): number | null {
   return [5, 10, 20, 100, 1000, 10_000].includes(n) ? n : null;
 }
 
+/** A skill is about money when its unit is a financial literacy standard (BC: K11, 1.11, 2.12, 3.14, 4.18, ...). */
+const isMoneySkill = (curriculum: Curriculum, skill: string) =>
+  /^financial literacy\b/i.test(curriculum.unit(curriculum.skill(skill)?.unit ?? "")?.text ?? "");
+
 /**
  * The range of an item on a skill: the range of the skill's own level (a review of an earlier skill keeps to that
- * skill's numbers), never above the page's level, and never above the limit the skill's id names ("facts to 20").
+ * skill's numbers and ideas), never above the page's level, and never above the limit the skill's id names ("facts to
+ * 20").
  */
 export function skillRange(curriculum: Curriculum, level: number, skill: string): NumberRange {
   const own = curriculum.levelOfSkill(skill)?.number ?? level;
-  const range = levelRange(Math.min(own, level));
+  const range = { ...levelRange(curriculum, Math.min(own, level)), money: isMoneySkill(curriculum, skill) };
   const limit = idLimit(skill);
   return limit !== null && limit < range.max ? { ...range, max: limit } : range;
 }
@@ -251,109 +285,93 @@ export function slotRanges(curriculum: Curriculum, level: number, skills: readon
 
 // Every number the child sees or is asked for (R380-3-1), walked by one collector over the whole package. Each switch
 // ends in `never`, so a new value type, region, check, statement, figure or operation kind does not build until it is
-// collected here.
+// collected here. Text is read by readNumbers (src/lib/number-words.ts): digits and number words.
 
 const unreachable = (x: never): never => {
   throw new Error(`printedNumbers: unknown ${JSON.stringify(x)}`);
 };
 
-/** A Canadian coin's value (5¢, 10¢, 25¢, $1, $2): taught from Kindergarten, so it fits every level's range. */
-const isCoin = (value: number, unit: string) => (unit === "¢" && [1, 5, 10, 25].includes(value)) || (unit === "$" && [1, 2].includes(value));
-
-/**
- * The numbers written in a text: whole numbers, decimals and numbers with digit groups ("10 000", "1,000"); a minus
- * sign right before a number makes it negative unless it takes away ("−3", "is −3"; not "9 − 3" or "3n − 2"). A coin value
- * written with its unit ("25¢", "$2") is left out (isCoin).
- */
-export function textNumbers(text: string): number[] {
-  const out: number[] = [];
-  const re = /(^|[^\d.])([−-])?(\$)?(\d{1,3}(?:[ ,  ]\d{3})+(?!\d)|\d+(?:\.\d+)?)(¢)?/g;
-  for (let m = re.exec(text); m; m = re.exec(text)) {
-    const before = m[1];
-    const value = Number(m[4].replace(/[ ,  ]/g, ""));
-    const unit = m[3] ? "$" : m[5] ? "¢" : "";
-    if (unit && isCoin(value, unit)) continue;
-    // A minus sign takes away after a number, a closing bracket or a one-letter unknown ("9 − 3", "3n − 2"); anywhere
-    // else ("−3", "is −3", "= −3") it makes the number negative.
-    const prior = text.slice(0, m.index + before.length).trimEnd();
-    const negative = Boolean(m[2]) && !/(\d|\)|(^|[^A-Za-z])[A-Za-z])$/.test(prior);
-    out.push(negative ? -value : value);
-  }
-  return out;
-}
+type Read = ReadNumber;
+const num = (value: number): Read => ({ value, form: Number.isInteger(value) ? "whole" : "decimal" });
+const frac = (value: number): Read => ({ value, form: "fraction" });
+const money = (value: number, unit: string): Read =>
+  unit === "$" || unit === "¢" ? { ...num(value), money: true, ...(isCoin(value, unit) ? { coin: true as const } : {}) } : num(value);
+/** The same numbers, as the parts of a fraction (a fraction operation's whole numbers too). */
+const asFraction = (rs: Read[]): Read[] => rs.map((r) => ("unclear" in r ? r : { ...r, form: "fraction" }));
 
 /** The numbers of a value. */
-function valueNumbers(v: AnswerValue | null | undefined): number[] {
+function valueNumbers(v: AnswerValue | null | undefined): Read[] {
   if (!v) return [];
   switch (v.type) {
-    case "number": return [v.value];
-    case "fraction": return [v.numerator, v.denominator];
-    case "mixed": return [v.whole, v.numerator, v.denominator];
-    case "remainder": return [v.quotient, v.remainder];
-    case "quantity": return isCoin(v.value, v.unit) ? [] : [v.value];
-    case "compound": return v.parts.flatMap((part) => (isCoin(part.value, part.unit) ? [] : [part.value]));
-    case "time": return [v.hours, v.minutes];
+    case "number": return [num(v.value)];
+    case "fraction": return [frac(v.numerator), frac(v.denominator)];
+    case "mixed": return [frac(v.whole), frac(v.numerator), frac(v.denominator)];
+    case "remainder": return [num(v.quotient), num(v.remainder)];
+    case "quantity": return [money(v.value, v.unit)];
+    case "compound": return v.parts.map((part) => money(part.value, part.unit));
+    case "time": return [num(v.hours), num(v.minutes)];
     case "expression":
     case "choice":
-    case "text": return textNumbers(v.value);
+    case "text": return readNumbers(v.value);
     default: return unreachable(v);
   }
 }
 
-/** The numbers of an operation's operands and its other numbers. */
-function operationNumbers(op: Operation | null | undefined): number[] {
+/** The numbers of an operation's operands and its other numbers; a fraction or decimal operation is that idea. */
+function operationNumbers(op: Operation | null | undefined): Read[] {
   if (!op) return [];
-  const operand = (o: number | string | AnswerValue): number[] => (typeof o === "number" ? [o] : typeof o === "string" ? textNumbers(o) : valueNumbers(o));
+  const operand = (o: number | string | AnswerValue): Read[] => (typeof o === "number" ? [num(o)] : typeof o === "string" ? readNumbers(o) : valueNumbers(o));
   const operands = (op.operands as readonly (number | string | AnswerValue)[]).flatMap(operand);
   switch (op.kind) {
     case "add": case "subtract": case "multiply": case "divide":
-    case "decimal-add": case "decimal-subtract": case "decimal-multiply":
-    case "fraction-add": case "fraction-subtract": case "fraction-multiply": case "fraction-divide":
-    case "fraction-simplify": case "convert": case "quantity-add": case "quantity-subtract": case "quantity-multiply":
+    case "convert": case "quantity-add": case "quantity-subtract": case "quantity-multiply":
     case "money-round": case "elapsed-time": case "time-add": case "clock-convert": case "solve":
       return operands;
-    case "fraction-equivalent": return [...operands, op.denominator];
-    case "evaluate": return [...operands, ...Object.values(op.values ?? {})];
+    case "decimal-add": case "decimal-subtract": case "decimal-multiply":
+      return operands.map((r) => ("unclear" in r ? r : { ...r, form: "decimal" }));
+    case "fraction-add": case "fraction-subtract": case "fraction-multiply": case "fraction-divide": case "fraction-simplify":
+      return asFraction(operands);
+    case "fraction-equivalent": return asFraction([...operands, num(op.denominator)]);
+    case "evaluate": return [...operands, ...Object.values(op.values ?? {}).map(num)];
     default: return unreachable(op);
   }
 }
 
-const termNumbers = (t: Term): number[] => ("region" in t ? [] : valueNumbers(t));
-const equationNumbers = (e: Equation): number[] => [e.left, e.right, e.result].flatMap(termNumbers);
+const termNumbers = (t: Term): Read[] => ("region" in t ? [] : valueNumbers(t));
+const equationNumbers = (e: Equation): Read[] => [e.left, e.right, e.result].flatMap(termNumbers);
 
-function statementNumbers(st: Statement): number[] {
+function statementNumbers(st: Statement): Read[] {
   switch (st.kind) {
     case "equation": return equationNumbers(st.equation);
-    case "factor": return [st.factor, st.of];
+    case "factor": return [num(st.factor), num(st.of)];
     case "shown-answer": return [];
     default: return unreachable(st);
   }
 }
 
-function regionNumbers(r: AnswerRegion): number[] {
-  const label = textNumbers(r.label ?? "");
+function regionNumbers(r: AnswerRegion): Read[] {
+  const label = readNumbers(r.label ?? "");
   switch (r.kind) {
     case "box": return [...label, ...valueNumbers(r.answer)];
-    case "choice": return [...label, ...r.choices.flatMap(textNumbers), ...textNumbers(r.answer ?? "")];
+    case "choice": return [...label, ...r.choices.flatMap(readNumbers), ...readNumbers(r.answer ?? "")];
     case "work": case "lines": case "picture": return label;
     default: return unreachable(r);
   }
 }
 
-function checkNumbers(c: ItemCheck): number[] {
+function checkNumbers(c: ItemCheck): Read[] {
   switch (c.kind) {
     case "operation": case "operation-sign": case "count": case "pattern": return [];
-    case "places": return [c.number];
+    case "places": return [num(c.number)];
     case "order": return c.numbers.flatMap(valueNumbers);
     case "equations": return c.equations.flatMap(equationNumbers);
     case "sequence": {
       // Every term printed or asked for: the given ones, and each blank as the term it holds (first given term plus
       // the step for each place after it).
-      const step = valueNumbers(c.step)[0];
       const at = c.terms.findIndex((t) => !("region" in t));
-      const first = at >= 0 ? valueNumbers(c.terms[at] as NumberValue)[0] : undefined;
-      const blanks = first === undefined || step === undefined || (c.terms[at] as NumberValue).type !== "number" || c.step.type !== "number" ? []
-        : c.terms.flatMap((t, i) => ("region" in t ? [first + (i - at) * step] : []));
+      const given = at >= 0 ? (c.terms[at] as NumberValue) : null;
+      const blanks = given?.type !== "number" || c.step.type !== "number" ? []
+        : c.terms.flatMap((t, i) => ("region" in t ? [num(given.value + (i - at) * (c.step as { value: number }).value)] : []));
       return [...c.terms.flatMap(termNumbers), ...blanks, ...valueNumbers(c.step)];
     }
     case "compare": return [...valueNumbers(c.left), ...valueNumbers(c.right)];
@@ -362,57 +380,73 @@ function checkNumbers(c: ItemCheck): number[] {
   }
 }
 
-function figureNumbers(f: ItemFigure | null | undefined, op: Operation | null): number[] {
+function figureNumbers(f: ItemFigure | null | undefined, op: Operation | null): Read[] {
   if (!f) return [];
+  const sum = (xs: number[]) => xs.reduce((a, b) => a + b, 0);
   switch (f.kind) {
-    case "dots": return [...f.groups, f.takenAway, f.groups.reduce((a, b) => a + b, 0)];
-    case "ten-frame": return [...f.counters, f.counters.reduce((a, b) => a + b, 0)];
+    case "dots": return [...f.groups, f.takenAway, sum(f.groups)].map(num);
+    case "ten-frame": return [...f.counters, sum(f.counters)].map(num);
     case "number-line": {
       const drawn = pageFigure(f, op);
-      return [f.from, f.to, f.step, ...(drawn?.kind === "number-line" ? (drawn.hops ?? []).flat() : [])];
+      return [f.from, f.to, f.step, ...(drawn?.kind === "number-line" ? (drawn.hops ?? []).flat() : [])].map(num);
     }
-    case "base-ten": return [f.hundreds, f.tens, f.ones, f.hundreds * 100 + f.tens * 10 + f.ones];
-    case "array": return [f.rows, f.columns, f.rows * f.columns];
+    case "base-ten": return [f.hundreds, f.tens, f.ones, f.hundreds * 100 + f.tens * 10 + f.ones].map(num);
+    case "array": return [f.rows, f.columns, f.rows * f.columns].map(num);
     case "pattern": return [];
     default: return unreachable(f);
   }
 }
 
 /**
- * Every number a package prints or asks for: the question text; the operation's numbers and the answer (with its other
- * accepted forms); the wrong answers; Sam's answer and every number of Sam's steps; the easier example's text,
- * operation and answer; and the item's regions (labels, box answers, choices), checks (places, order, equations,
+ * Every number a package prints or asks for, with its form (whole, fraction or decimal; money and coins marked), and
+ * any number text that does not read with confidence: the question text; the operation's numbers and the answer (with
+ * its other accepted forms); the wrong answers; Sam's answer and every number of Sam's steps; the easier example's
+ * text, operation and answer; and the item's regions (labels, box answers, choices), checks (places, order, equations,
  * sequence terms and blanks, compare and yes-no numbers) and figure (with a number line's hops).
  */
-export function printedNumbers(p: QuestionPackage): number[] {
+export function printedValues(p: QuestionPackage): ReadNumber[] {
   const item = p.item;
   const error = item?.error ?? null;
   const shown = error ? samWork(p.operation, error.answer, shownOf(p).cause) : null;
   const easier = p.easierExample;
   return [
-    ...textNumbers(p.text),
+    ...readNumbers(p.text),
     ...operationNumbers(p.operation),
     ...valueNumbers(p.answer?.value),
     ...(p.answer?.accepted ?? []).flatMap(valueNumbers),
     ...p.wrongAnswers.flatMap((w) => valueNumbers(w.value)),
     ...valueNumbers(error?.answer),
-    ...(shown?.lines ?? []).flatMap(textNumbers),
-    ...(easier ? [...textNumbers(easier.text), ...operationNumbers(easier.operation), ...valueNumbers(easier.answer)] : []),
+    ...(shown?.lines ?? []).flatMap(readNumbers),
+    ...(easier ? [...readNumbers(easier.text), ...operationNumbers(easier.operation), ...valueNumbers(easier.answer)] : []),
     ...(item?.regions ?? []).flatMap(regionNumbers),
     ...(item?.checks ?? []).flatMap(checkNumbers),
     ...figureNumbers(item?.figure, p.operation),
   ];
 }
 
-/** Why an item's numbers do not fit its skill's range at the level, or null (see skillRange). */
+/** The values of printedValues (unclear text left out). */
+export const printedNumbers = (p: QuestionPackage): number[] => printedValues(p).flatMap((r) => ("unclear" in r ? [] : [r.value]));
+
+/**
+ * Why an item's numbers do not fit its skill's range at the level, or null (see skillRange): number text that does not
+ * read with confidence, a number past the range, a negative number, fraction or decimal before the curriculum's first
+ * level of that idea. On a money skill, coin values always fit and amounts of money may have cents.
+ */
 export function rangeProblem(p: QuestionPackage, curriculum: Curriculum, level: number): string | null {
   const skill = p.skill.skills[0];
-  const range = skill ? skillRange(curriculum, level, skill) : levelRange(level);
-  const numbers = printedNumbers(p);
-  const big = numbers.find((n) => Math.abs(n) > range.max);
-  if (big !== undefined) return `the number ${big} is too big for this question: its numbers are at most ${range.max}`;
-  const negative = numbers.find((n) => n < 0);
-  if (negative !== undefined && !range.negatives) return `the number ${negative} is negative: this question uses no negative numbers`;
+  const range = skill ? skillRange(curriculum, level, skill) : levelRange(curriculum, level);
+  const values = printedValues(p);
+  const unclear = values.find((r) => "unclear" in r);
+  if (unclear && "unclear" in unclear) return `unclear number text "${unclear.unclear}": write that number in digits`;
+  const read = values.filter((r): r is Exclude<ReadNumber, { unclear: string }> => !("unclear" in r) && !(r.coin && range.money));
+  const big = read.find((r) => Math.abs(r.value) > range.max);
+  if (big) return `the number ${big.value} is too big for this question: its numbers are at most ${range.max}`;
+  const negative = read.find((r) => r.value < 0);
+  if (negative && !range.negatives) return `the number ${negative.value} is negative: this question uses no negative numbers`;
+  const c = conceptLevels(curriculum);
+  if (!range.fractions && read.some((r) => r.form === "fraction")) return `this question uses no fractions: they start at U${c.fractions}`;
+  const decimal = read.find((r) => r.form === "decimal" && !(r.money && range.money));
+  if (decimal && !range.decimals) return `the number ${decimal.value} is a decimal: this question uses no decimals (they start at U${c.decimals})`;
   return null;
 }
 
@@ -452,7 +486,7 @@ export const SAM_MISTAKE_RULES: Record<SamMistake, { what: string; when: string;
  */
 export function levelMistakes(level: number): SamMistake[] {
   // Swapped digits needs a two-digit answer: not in the levels with numbers to 10.
-  if (level <= 6) return ["counted-one-extra", "counted-one-short", "wrong-start", "wrong-operation", ...(levelRange(level).max >= 12 ? ["swapped-digits" as const] : [])];
+  if (level <= 6) return ["counted-one-extra", "counted-one-short", "wrong-start", "wrong-operation", ...(levelMax(level) >= 12 ? ["swapped-digits" as const] : [])];
   if (level <= 9) return [...SAM_MISTAKES];
   return ["forgot-carry", "smaller-from-larger", "regroup-not-taken", "wrong-operation", "swapped-digits"];
 }
