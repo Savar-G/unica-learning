@@ -2,8 +2,9 @@ import type { MeasuredElement, PrintEngine, PrintJob } from "@/lib/workbook-rend
 
 // A print engine for tests (#309): it reads the document as Chromium would only as far as the renderer needs. It finds
 // each sheet and each element marked with data-measure, in document order, with the element's own text, and gives
-// every marked element a rect: a sheet fills its page; a question's content and answer space fill the question; any
-// other element is at (48, 48), 200 by 100 CSS pixels, unless the test gives a rect. An element fits its space and
+// every marked element a rect: a sheet fills its page; a question's content fills the top 30% of the question and its
+// answer space and other regions (region-<n>-<id>) the rest; any other element is at (48, 48), 200 by 100 CSS pixels,
+// unless the test gives a rect. An element fits its space and
 // shows unless the test names it as overflowing or hidden, and its text prints unless the test names it as blank.
 // Elements are named "<sheet from 1> <data-measure>", so "2 question-3" is question 3 on the second sheet. A page's QR
 // code reads as the link the renderer drew (the fake reads data-qr-link instead of the image), unless `qrText` gives
@@ -14,6 +15,7 @@ import type { MeasuredElement, PrintEngine, PrintJob } from "@/lib/workbook-rend
 const drawnLink = (sheet: string) => /data-measure="qr" data-qr-link="([^"]+)"><svg/.exec(sheet)?.[1] ?? null;
 
 type Rect = Pick<MeasuredElement, "x" | "y" | "width" | "height">;
+const DEFAULT: Rect = { x: 48, y: 48, width: 200, height: 100 };
 
 export function fakePrintEngine(o: {
   rects?: Record<string, Rect>; overflow?: string[]; hidden?: string[]; blank?: string[]; qrText?: Record<number, string | null>; pdfPages?: number;
@@ -30,9 +32,14 @@ export function fakePrintEngine(o: {
         const marks = [...html.matchAll(/data-measure="([^"]+)"[^>]*>([^<]*)/g)];
         return marks.map(([, name, text]): MeasuredElement => {
           const key = `${sheet + 1} ${name}`;
-          const question = /^(question-\d+)-(content|answer)$/.exec(name)?.[1];
-          const rect = o.rects?.[key] ?? (question ? o.rects?.[`${sheet + 1} ${question}`] : undefined)
-            ?? (name === "sheet" ? { x: 0, y: 0, ...job.page } : { x: 48, y: 48, width: 200, height: 100 });
+          // A question's content takes the top 30% of the question's rect; its answer space and other regions the rest,
+          // so a box does not cover its own text unless a test says so.
+          const part = /^question-(\d+)-(content|answer)$/.exec(name) ?? /^region-(\d+)-()/.exec(name);
+          const of = part ? o.rects?.[`${sheet + 1} question-${part[1]}`] ?? DEFAULT : undefined;
+          const rect = o.rects?.[key]
+            ?? (of && part![2] === "content" ? { ...of, height: of.height * 0.3 } : undefined)
+            ?? (of ? { ...of, y: of.y + of.height * 0.3, height: of.height * 0.7 } : undefined)
+            ?? (name === "sheet" ? { x: 0, y: 0, ...job.page } : DEFAULT);
           const over = o.overflow?.includes(key) ? 40 : 0;
           return {
             sheet, name, text: text.trim(), visible: !o.hidden?.includes(key), textPrinted: !o.blank?.includes(key), ...rect,
