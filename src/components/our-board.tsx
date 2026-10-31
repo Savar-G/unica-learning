@@ -15,7 +15,9 @@ import {
   givePen,
   historyLength,
   loadDraft,
+  mayaFinished,
   mayaWrites,
+  mayaWritingEnds,
   penHolder,
   saveDraft,
   takePen,
@@ -153,6 +155,25 @@ function LiveBoard({ question, label, caption, still, draftKey, store }: OurBoar
     const maya = el.querySelector("svg.maya-board");
     if (maya) observer.observe(maya);
     return () => observer.disconnect();
+  }, []);
+
+  // A new question: when Maya has finished writing it, the pen passes to the child (D-184), logged in the history. The
+  // board's clock starts with her first stroke. A restored board keeps the pen where it was.
+  useEffect(() => {
+    if (restored || !question) return;
+    const ends = mayaWritingEnds(saved.current);
+    // With less motion the question shows at once, as if her writing had just ended: the clock starts at its end.
+    clock.current = { origin: performance.now(), base: still ? ends : 1 };
+    const done = setTimeout(() => {
+      const t = now();
+      setHistory((h) => {
+        const passed = mayaFinished(h, t);
+        return passed.ok ? passed.history : h;
+      });
+    }, still ? 0 : ends);
+    return () => clearTimeout(done);
+    // Only when the board starts: a later render never passes the pen again.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => () => clearTimeout(noteTimer.current), []);

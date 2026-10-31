@@ -5,7 +5,8 @@
 // the desk, the in-memory store in tests).
 //
 // The pen rules (D-184): one holder at a time. Maya writes only while she holds the pen; the child draws, erases, undoes
-// and clears only while the child holds it. "Take the pen" moves it to the child; giving it back moves it to Maya. A
+// and clears only while the child holds it. The pen passes to the child when Maya has finished writing the question
+// (`mayaFinished`); "Take the pen" moves it to the child at any time; giving it back moves it to Maya. A
 // stroke that ends after the pen moved to Maya is refused. The child's undo and clear touch the child's ink only, and
 // nothing of Maya's ever removes or covers it (the board core's rule).
 import { addChildInk, applyBatch, createScene, type Batch, type BoardPath, type Refusal, type Scene } from "@/lib/board";
@@ -123,6 +124,16 @@ export const takePen = (h: BoardHistory, t: number): Change => movePen(h, "child
 
 /** The pen goes back to Maya. */
 export const givePen = (h: BoardHistory, t: number): Change => movePen(h, "maya", t);
+
+/** When Maya's last stroke on the board is finished, in ms since the board started (0 when she has written nothing). */
+export const mayaWritingEnds = (h: BoardHistory): number => replayOf(h).maya.durationMs;
+
+/**
+ * Maya has finished writing (D-184, Savar 2026-10-30): the pen passes to the child, as an ordinary pen move. It is logged
+ * at `t`, or at the end of her last stroke when `t` is earlier, so a stroke the child began while she was still writing
+ * stays refused. Nothing changes when the child has the pen already.
+ */
+export const mayaFinished = (h: BoardHistory, t: number): Change => movePen(h, "child", Math.max(t, mayaWritingEnds(h)));
 
 const withMaya: Refused = { ok: false, code: "pen_with_maya", reason: "Maya has the pen. Take the pen to write." };
 

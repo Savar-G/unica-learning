@@ -15,7 +15,9 @@ import {
   historyFromRecording,
   historyLength,
   loadDraft,
+  mayaFinished,
   mayaWrites,
+  mayaWritingEnds,
   newestHistory,
   penHolder,
   replayFrame,
@@ -94,6 +96,59 @@ describe("the pen", () => {
     expect(penHolder(twice)).toBe("child");
     expect(twice.revision).toBe(h.revision + 2);
     expect(ok(takePen(h, 2700))).toBe(h);
+  });
+});
+
+describe("a new question (D-184): the pen passes to the child when Maya has finished writing it", () => {
+  const written = () => ok(mayaWrites(createHistory(), QUESTION, 0));
+
+  it("logs an ordinary pen move at the end of Maya's writing, so replay and reload show it", () => {
+    const h = written();
+    const ends = mayaWritingEnds(h);
+    expect(ends).toBeGreaterThan(0);
+    const passed = ok(mayaFinished(h, ends + 40));
+    expect(penHolder(passed)).toBe("child");
+    expect(passed.events.at(-1)).toEqual({ kind: "pen", t: ends + 40, to: "child" });
+    expect(passed.revision).toBe(h.revision + 1);
+    const r = replayOf(passed);
+    expect(replayFrame(r, ends + 39).pen).toBe("maya");
+    expect(replayFrame(r, ends + 40).pen).toBe("child");
+  });
+
+  it("never logs the move before her last stroke is finished", () => {
+    const h = written();
+    expect(ok(mayaFinished(h, 5)).events.at(-1)).toEqual({ kind: "pen", t: mayaWritingEnds(h), to: "child" });
+  });
+
+  it("lets the child write without a tap, but refuses a stroke begun while Maya was still writing", () => {
+    const h = written();
+    const ends = mayaWritingEnds(h);
+    const passed = ok(mayaFinished(h, ends));
+    expect(drawStroke(h, stroke(0.1, 0.3, ends - 100))).toMatchObject({ ok: false, code: "pen_with_maya" });
+    expect(drawStroke(passed, stroke(0.1, 0.3, ends - 100))).toMatchObject({ ok: false, code: "pen_with_maya" });
+    expect(childStrokes(ok(drawStroke(passed, stroke(0.1, 0.3, ends + 10))))).toHaveLength(1);
+  });
+
+  it("changes nothing when the child already has the pen", () => {
+    const taken = ok(takePen(written(), 100));
+    expect(ok(mayaFinished(taken, mayaWritingEnds(taken)))).toBe(taken);
+  });
+
+  it("comes back after a reload with the child holding the pen", () => {
+    const store = createMemoryDraftStore();
+    const key = boardDraftKey("book-1", 2, 3);
+    const passed = ok(mayaFinished(written(), 0));
+    saveDraft(store, key, passed, 1_000);
+    const restored = loadDraft(store, key)!;
+    expect(penHolder(restored)).toBe("child");
+    expect(restored).toEqual(passed);
+  });
+
+  it("still lets Maya take the pen back to show a step, and the child give it back", () => {
+    const passed = ok(mayaFinished(written(), 0));
+    const back = ok(givePen(passed, mayaWritingEnds(passed) + 500));
+    expect(penHolder(back)).toBe("maya");
+    expect(drawStroke(back, stroke(0.1, 0.3, mayaWritingEnds(passed) + 600))).toMatchObject({ ok: false, code: "pen_with_maya" });
   });
 });
 
