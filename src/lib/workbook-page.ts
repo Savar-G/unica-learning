@@ -68,6 +68,11 @@ export interface Block {
   info?: { label: string; value: string }[];
   /** Spot the error: whose work it is ("Sam"). */
   who?: string;
+  /**
+   * Questions of the slot that failed with no package to print (#363): the template prints a red placeholder with the
+   * number and the reason in their place, so a missing question is never silent. Only a draft for review has them.
+   */
+  missing?: { number: number; reason: string }[];
 }
 
 /** A day page's content: its header and its slots. */

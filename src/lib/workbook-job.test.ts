@@ -82,7 +82,7 @@ describe("a run", () => {
     expect(run.donePages).toBe(run.totalPages);
     expect(run.totalPages).toBeGreaterThan(0);
     const draft = (await s.drafts.draft(run.draftId!))!;
-    expect(draft.counts.failed).toBe(0);
+    expect(draft.pages.flatMap((p) => p.questions.filter((q) => q.check.status === "failed").map((q) => `${q.place}: ${(q.check as { reason: string }).reason}`))).toEqual([]);
     expect(draft.counts.questions).toBeGreaterThan(0);
     // The page content the real templates read: the cover prints the child's name.
     expect(draft.pages[0].content).toMatchObject({ kind: "cover", child: "Leah", workbook: 1 });
@@ -102,6 +102,29 @@ describe("a run", () => {
 
     expect(s.runs.audit.map((a) => a.action)).toEqual(["run-started", "draft-stored"]);
     expect(s.runs.audit[0]).toMatchObject({ actor: ADMIN.email, detail: { number: 1 } });
+  });
+
+  it("marks a failed question on a page that fits: the page's image is a proof with the failure (R379-4-1)", async () => {
+    // Slot 1.1 of every page fails the check twice; the fit check passes every page.
+    const ai = fakeAiClient({
+      answer: (r) => {
+        const asked = JSON.parse((r.content[0] as { text: string }).text) as { slots: { slot: string; skills: string[] }[] };
+        const good = answer(r).items;
+        return { items: asked.slots.map((sl, k) => (sl.slot === "1.1"
+          ? { ...good[k], operation: { kind: "add", operands: [], expression: null, unit: null, denominator: null, values: [] } }
+          : good[k])) };
+      },
+    });
+    const s = setup({ ai });
+    const id = await started(s);
+    expect(await runWorkbookJob(id, s.deps)).toBe("done");
+    const draft = (await s.drafts.draft((await s.runs.run(id))!.draftId!))!;
+    const page = draft.pages.find((p) => p.fit.status === "fits" && p.questions.some((q) => q.slot === "1.1" && q.check.status === "failed"))!;
+    expect(page).toBeDefined();
+    const [revision] = s.runs.revisions;
+    const q = page.questions.find((x) => x.slot === "1.1")!;
+    expect(revision.problems.filter((p) => p.page === page.number).map((p) => p.reason)).toContain(`question ${q.number} failed: ${(q.check as { reason: string }).reason}`);
+    expect(revision.rendering!.pages.find((p) => p.number === page.number)).toMatchObject({ proof: true });
   });
 
   it("makes the next number after the child's stored workbooks", async () => {

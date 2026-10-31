@@ -107,26 +107,50 @@ function costingFetch(): typeof fetch {
   };
 }
 
-/** A fake AI for a layout dry run: every slot gets a sum in the format its place takes. */
+/**
+ * A fake AI for a layout dry run: every slot gets a sum in the format its place takes. A Spot the error slot takes the
+ * offered mistakes in turn, with a sum that mistake fits and Sam's answer exactly what it makes.
+ */
 function fakeAi(): AiClient {
   let n = 0;
+  let m = 0;
   const num = (value: number) => ({ type: "number", value, numerator: null, denominator: null, whole: null, unit: null, hours: null, minutes: null, period: null, parts: [], text: null });
-  const add = (a: number, b: number) => ({ kind: "add", operands: [num(a), num(b)], expression: null, unit: null, denominator: null, values: [] });
+  const op = (kind: "add" | "subtract", a: number, b: number) => ({ kind, operands: [num(a), num(b)], expression: null, unit: null, denominator: null, values: [] });
+  const SAM: Record<string, { kind: "add" | "subtract"; a: number; b: number; wrong: number; step: string | null }> = {
+    "forgot-carry": { kind: "add", a: 268, b: 157, wrong: 315, step: "tens" },
+    "smaller-from-larger": { kind: "subtract", a: 503, b: 178, wrong: 475, step: "ones" },
+    "regroup-not-taken": { kind: "subtract", a: 62, b: 28, wrong: 44, step: "tens" },
+    "counted-one-extra": { kind: "add", a: 5, b: 3, wrong: 9, step: null },
+    "counted-one-short": { kind: "add", a: 5, b: 3, wrong: 7, step: null },
+    "wrong-start": { kind: "add", a: 6, b: 3, wrong: 8, step: null },
+    "wrong-operation": { kind: "add", a: 9, b: 4, wrong: 5, step: null },
+    "swapped-digits": { kind: "add", a: 7, b: 5, wrong: 21, step: null },
+  };
   return {
     model: "fake",
     async json(request) {
-      const body = JSON.parse((request.content[0] as { text: string }).text) as { slots: { slot: string; skills: string[]; formats?: string[] | null }[] };
+      const body = JSON.parse((request.content[0] as { text: string }).text) as { slots: { slot: string; skills: string[]; formats?: string[] | null; mistakes?: { name: string }[] }[] };
       return {
         items: body.slots.map((s) => {
           const format = s.formats?.[0] ?? "write-number";
+          const base = { slot: s.slot, skill: s.skills[0], difficulty: 2, format, numbers: [], places: null, direction: null, sequence: null, pattern: null, figure: null };
+          if (format === "spot-the-error" && s.mistakes?.length) {
+            const name = s.mistakes[m++ % s.mistakes.length].name;
+            const x = SAM[name];
+            const sign = x.kind === "add" ? "+" : "−";
+            return {
+              ...base, text: `${x.a} ${sign} ${x.b} = ?`, operation: op(x.kind, x.a, x.b),
+              wrongAnswers: [{ value: num(x.wrong), cause: name, description: `Sam's mistake: ${name}`, step: x.step }],
+              easier: { text: x.kind === "add" ? "2 + 1 = ?" : "5 − 2 = ?", operation: x.kind === "add" ? op("add", 2, 1) : op("subtract", 5, 2) }, shownWrong: 0,
+            };
+          }
           const a = 20 + (n++ % 50);
           const reason = format === "written-reason";
           return {
-            slot: s.slot, skill: s.skills[0], difficulty: 2, text: reason ? "How do you know your answer is right?" : format === "show-work" ? `Ava has ${a} beads. She gets 15 more. How many beads now?` : `${a} + 15 =`,
-            format, operation: reason ? null : add(a, 15),
+            ...base, text: reason ? "How do you know your answer is right?" : format === "show-work" ? `Ava has ${a} beads. She gets 15 more. How many beads now?` : `${a} + 15 =`,
+            operation: reason ? null : op("add", a, 15),
             wrongAnswers: reason ? [] : [{ value: num(a + 5), cause: "careless", description: "Adds 5 instead of 15", step: null }],
-            easier: reason ? null : { text: "3 + 4 = ?", operation: add(3, 4) }, shownWrong: format === "spot-the-error" ? 0 : null,
-            numbers: [], places: null, direction: null, sequence: null, pattern: null, figure: null,
+            easier: reason ? null : { text: "3 + 4 = ?", operation: op("add", 3, 4) }, shownWrong: null,
           };
         }),
       };
@@ -156,11 +180,13 @@ async function testFamily(db: SupabaseClient<Database>): Promise<Family> {
     await must(db.from("children").update({ learning_note: NOTE("U1") }).eq("id", child), "first child note");
     parent = { id: created.data.user.id };
   }
+  // On every run: only the family this script made (its source says so) is used; any other family is refused, even
+  // one already marked as a test.
+  const { data: p, error: sourceError } = await db.from("parents").select("source").eq("id", parent.id).single();
+  if (sourceError) throw new Error(`test family source: ${sourceError.message}`);
+  if ((p?.source as { test?: string } | null)?.test !== "workbook-samples-363") throw new Error("the family with this email is not the sample family: refused");
   const { data: marked } = await db.from("test_accounts").select("parent_id").eq("parent_id", parent.id).maybeSingle();
   if (!marked) {
-    // Only a family this script made (its source says so) is marked here; any other family is refused.
-    const { data: p } = await db.from("parents").select("source").eq("id", parent.id).single();
-    if ((p?.source as { test?: string } | null)?.test !== "workbook-samples-363") throw new Error("the family with this email is not the sample family: refused");
     const { data: admin } = await db.from("admin_users" as never).select("user_id").limit(1).maybeSingle();
     const by = (admin as { user_id: string } | null)?.user_id;
     if (!by) throw new Error("no admin user to mark the test family");
@@ -278,8 +304,15 @@ async function oneBook(db: SupabaseClient<Database> | null, family: Family | nul
   const renderable = renderableDraft(draft);
   const fileKey = randomBytes(6).toString("base64url");
   const strict = await renderWorkbook({ draft: renderable, parentId, template, engine, fileKey });
-  const problems = strict.status === "failed" ? strict.problems : [];
-  const printed = strict.status === "rendered"
+  // Every failure shows on its page: the render's, each failed question's (one with no package also has a placeholder
+  // in its slot) and each page the fit check failed. The strict PDF is used only when there is none.
+  const problems: RenderProblem[] = [
+    ...(strict.status === "failed" ? strict.problems : []),
+    ...draft.pages.flatMap((p) => p.questions.flatMap((q) => (q.check.status === "failed"
+      ? [{ page: p.number, question: q.package ? q.number : null, reason: `question ${q.number} failed: ${q.check.reason}` }] : []))),
+    ...draft.pages.flatMap((p) => (p.fit.status === "failed" ? p.fit.problems.map((x) => ({ page: p.number, question: x.question, reason: `fit check: ${x.reason}` })) : [])),
+  ];
+  const printed = strict.status === "rendered" && problems.length === 0
     ? { pdf: strict.files[0].bytes, images: strict.files.slice(1).map((f) => f.bytes) }
     : await reviewPrint({ draft: renderable, template, engine, problems });
   const pdf = `${out}/${label}.pdf`;
@@ -296,7 +329,7 @@ async function oneBook(db: SupabaseClient<Database> | null, family: Family | nul
   }
   const c = costs.get(label);
   return {
-    label, level, kind, child, draftId: workbookId, stored: !!drafts, pdf, sheet, draft, renderProblems: problems,
+    label, level, kind, child, draftId: workbookId, stored: !!drafts, pdf, sheet, draft, renderProblems: strict.status === "failed" ? strict.problems : [],
     omissions: draft.pages.reduce((n, p) => n + (p.omissions?.length ?? 0), 0), usd: c?.usd ?? 0, calls: c?.calls ?? 0, minutes: (Date.now() - t0) / 60000,
   };
 }
@@ -335,7 +368,7 @@ for (const job of jobs) {
   try {
     const r = await oneBook(db, family, job.level, job.kind, ai, drafts);
     results.push(r);
-    console.log(`  ${r.label}: ${r.draft.counts.pages} pages, ${r.draft.counts.questions} questions, ${r.draft.counts.failed} failed, ${r.draft.counts.failedPages} pages do not fit, ${r.renderProblems.length} render problems, USD ${r.usd.toFixed(2)}, ${r.minutes.toFixed(1)} min`);
+    console.log(`  ${r.label}: ${r.draft.counts.pages} pages, ${r.draft.counts.questions} questions, ${r.draft.counts.failed} failed, ${r.draft.counts.failedPages} pages do not fit, ${r.renderProblems.length} render problems (strict), USD ${r.usd.toFixed(2)}, ${r.minutes.toFixed(1)} min`);
   } catch (e) {
     console.error(`  ${job.level} ${job.kind}: ERROR ${e instanceof Error ? e.message : String(e)}`);
     results.push({ label: `${job.level}-${job.kind}`, level: job.level, kind: job.kind, error: e instanceof Error ? e.message : String(e) } as BookResult);

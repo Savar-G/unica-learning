@@ -269,9 +269,23 @@ const PROOF_SIZE = { width: Math.round(PRINT_PAGE.width * IMAGE_SCALE), height: 
  * Renders the draft and stores the files: the pages that render, with their PDF, and a proof image of each page that
  * does not, with its problems. Returns the paths stored, so a refused finish removes them.
  */
+/**
+ * The failures a reviewer must see on a page besides the render's, as the sample books mark them (#380, R379-4-1):
+ * each failed question (one with no package names no question: its slot has a placeholder) and each fit check failure.
+ */
+export function draftReviewProblems(draft: GeneratedWorkbook): RenderProblem[] {
+  return [
+    ...draft.pages.flatMap((p) => p.questions.flatMap((q) => (q.check.status === "failed"
+      ? [{ page: p.number, question: q.package ? q.number : null, reason: `question ${q.number} failed: ${q.check.reason}` }] : []))),
+    ...draft.pages.flatMap((p) => (p.fit.status === "failed" ? p.fit.problems.map((x) => ({ page: p.number, question: x.question, reason: `fit check: ${x.reason}` })) : [])),
+  ];
+}
+
 async function renderDraft(draft: GeneratedWorkbook, parentId: string, deps: WorkbookJobDeps) {
-  const problems: RenderProblem[] = [];
+  // A page with a failed question or a failed fit check is shown as a proof, even when it renders (R379-4-1).
+  const problems: RenderProblem[] = draftReviewProblems(draft);
   const book = { id: draft.id, childId: draft.childId, number: draft.number, levels: draft.levels, profileBuild: draft.profileBuild };
+  const marked = new Set(problems.map((p) => p.page));
   let pages = draft.pages.map(draftPage);
   const key = deps.fileKey();
   const stored: string[] = [];
@@ -280,18 +294,24 @@ async function renderDraft(draft: GeneratedWorkbook, parentId: string, deps: Wor
     await deps.files.put(file);
   };
   const proofs: DraftRendering["pages"] = [];
+  const proof = async (failing: DraftPage[], found: RenderProblem[], tag: string) => {
+    for (const shot of await proofPages({ draft: { ...book, pages: failing }, template: deps.template, engine: deps.engine, problems: found })) {
+      const path = `${parentId}/${draft.id}/proof-${shot.page}-${key}${tag}.png`;
+      await put({ path, contentType: "image/png", bytes: shot.png });
+      proofs.push({ number: shot.page, image: { path, ...PROOF_SIZE }, questions: [], proof: true });
+    }
+  };
   try {
+    if (marked.size > 0) {
+      await proof(pages.filter((p) => marked.has(p.number)), problems, "q");
+      pages = pages.filter((p) => !marked.has(p.number));
+    }
     for (let round = 0; round < RENDER_ROUNDS && pages.length > 0; round++) {
       const result = await renderWorkbook({ draft: { ...book, pages }, parentId, template: deps.template, engine: deps.engine, fileKey: `${key}r${round}` });
       if (result.status === "failed") {
         problems.push(...result.problems);
         const bad = new Set(result.problems.map((p) => p.page));
-        const failing = pages.filter((p) => bad.has(p.number));
-        for (const proof of await proofPages({ draft: { ...book, pages: failing }, template: deps.template, engine: deps.engine, problems: result.problems })) {
-          const path = `${parentId}/${draft.id}/proof-${proof.page}-${key}r${round}.png`;
-          await put({ path, contentType: "image/png", bytes: proof.png });
-          proofs.push({ number: proof.page, image: { path, ...PROOF_SIZE }, questions: [], proof: true });
-        }
+        await proof(pages.filter((p) => bad.has(p.number)), result.problems, `r${round}`);
         pages = pages.filter((p) => !bad.has(p.number));
         continue;
       }

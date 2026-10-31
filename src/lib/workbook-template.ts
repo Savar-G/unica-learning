@@ -690,7 +690,7 @@ function blockHtml(b: Block, i: number, ctx: Ctx): string {
     case "spot-the-error": {
       // Full width at every level: Sam's work, the yes/no strip and the fix box do not fit a half-width parent card.
       const who = b.who ?? "Sam";
-      return chip() + `<div class="outl"><div class="q"><span class="lab">${escape(who)}'s work</span><span class="wk">${(b.lines ?? []).map(worked).join(" · ")}</span></div>`
+      return chip() + `<div class="outl"><div class="q" style="align-items:flex-start"><span class="lab">${escape(who)}'s work</span><span class="wk">${(b.lines ?? []).map(worked).join("<br>")}</span></div>`
         + qs.map((q) => {
           const { inline, full } = regionsSplit(q, { band, labels: true });
           return `<div class="list" ${mark.question(q.number)}><div class="q"><span class="n">${q.number}</span><span class="qb">${text(q)}</span><span class="rgs">${inline}</span></div>${full}</div>`;
@@ -817,9 +817,13 @@ function dayPage(page: DraftPage, parts: PageParts, c: DayContent): string {
     + `<p class="st" ${mark.slot("subtitle")}>${escape(c.subtitle)}</p>`
     + (c.grownUp ? `<p class="gu" ${mark.slot("grown-up")}><b>For the grown-up:</b> ${escape(c.grownUp)}</p>` : "") + `</header>`;
   // A Challenge block takes the free room of its page: its work boxes grow into it (DESIGN.md section 4).
-  const blocks = c.blocks.map((b, i) => `<section class="blk${GROW.has(b.slot) ? " grow" : ""}" data-measure="block-${i}">${blockHtml(b, i, ctx)}</section>`).join("");
+  const blocks = c.blocks.map((b, i) => `<section class="blk${GROW.has(b.slot) ? " grow" : ""}" data-measure="block-${i}">${blockHtml(b, i, ctx)}${missingHtml(b)}</section>`).join("");
   return `<div class="pg ${band.name} f-${familyOf(page, c)}">${scanMarks}<div class="frame">${header}<main class="ct" ${mark.slot("content")}>${blocks}</main></div>${footer(page, parts, c.id)}</div>`;
 }
+
+/** A failed question with nothing to print: a red placeholder with its number and why (review drafts only). */
+const missingHtml = (b: Block) => (b.missing ?? []).map((m) =>
+  `<div class="qfail" data-failed-question="${m.number}" style="border:2px dashed #B42318;background:#FDECEA;color:#B42318;border-radius:8px;padding:8px 12px;font:600 13px/1.4 Helvetica,Arial,sans-serif;margin-top:8px">Question ${m.number} failed: ${escape(m.reason)}</div>`).join("");
 
 const UNICA_MARK = `<div class="mk"><i class="y"></i><i></i><i class="b"></i><i></i><i class="o"></i><i></i><i class="g"></i><i></i><i></i></div>`;
 
