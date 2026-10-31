@@ -28,7 +28,7 @@ import {
   type WordingHistory,
 } from "@/lib/maya";
 import { modelInput, type MayaModel } from "@/lib/maya-model";
-import { packageHash, redactText, redactTrace, traceCounts, TRACE_KIND, TRACE_VERSION, type MayaTrace, type TraceAttempt, type TraceBoardBatch, type TraceTurn } from "@/lib/maya-trace";
+import { classifyError, packageHash, redactText, redactTrace, traceCounts, TRACE_KIND, TRACE_VERSION, type MayaTrace, type TraceAttempt, type TraceBoardBatch, type TraceError, type TraceTurn } from "@/lib/maya-trace";
 
 /** At most this many Maya turns in a row without the child (the easier example is up to four). */
 export const MAX_MAYA_TURNS = 8;
@@ -45,6 +45,11 @@ export interface TextSessionOptions {
   history?: WordingHistory;
   childName?: string | null;
   runner?: MayaTrace["runner"];
+  /**
+   * For local debugging only: each raw error, with where it happened. The trace keeps only an error code and its
+   * fixed wording (R382-3-1); the command line prints these to stderr. Never write them to a stored record.
+   */
+  onError?: (error: unknown, where: { turn: number; source: "model" | "repair" } | "session") => void;
 }
 
 /** What reached the child after one input: Maya's sentences and board batches, all accepted by the session. */
@@ -71,9 +76,10 @@ export interface TextSession {
   /**
    * Ends the call as a technical issue if it has not ended (starting it first when it never started), and returns the
    * finished trace. Call it in a `finally`: every caller gets a trace with an outcome, whatever failed. Safe to call
-   * more than once.
+   * more than once. `detail` is wording the caller writes, never an error's text; `failed` marks that a local step
+   * failed (the trace records the code "local").
    */
-  finish(detail?: string): Promise<MayaTrace>;
+  finish(detail?: string, failed?: boolean): Promise<MayaTrace>;
   /** The session now (plain data). */
   readonly session: Session;
   readonly ended: boolean;
@@ -109,8 +115,6 @@ function fallbacks(session: Session): unknown[] {
   });
 }
 
-/** An error's message, short and with secrets removed. */
-const message = (e: unknown) => redactText(e instanceof Error ? e.message : String(e)).slice(0, 200);
 const iso = (ms: number | null) => (ms === null ? null : new Date(ms).toISOString());
 
 export function createTextSession(options: TextSessionOptions): TextSession {
@@ -209,7 +213,8 @@ export function createTextSession(options: TextSessionOptions): TextSession {
         entry.attempts.push({ source, proposal, refusal: tried.refusal, ms: clock() - t0 });
         return { proposal, ...tried };
       } catch (e) {
-        entry.attempts.push({ source, proposal: null, refusal: null, error: message(e), ms: clock() - t0 });
+        options.onError?.(e, { turn: index, source });
+        entry.attempts.push({ source, proposal: null, refusal: null, error: classifyError(e, "model"), ms: clock() - t0 });
         return null;
       }
     };
@@ -255,7 +260,7 @@ export function createTextSession(options: TextSessionOptions): TextSession {
   }
 
   /** Ends the call as a technical issue now, if it has not ended. */
-  function endNow(detail: string) {
+  function endNow(detail: string, error?: TraceError) {
     // A Maya turn cut off before its first attempt has nothing to record.
     for (let i = turns.length - 1; i >= 0; i--) {
       const t = turns[i];
@@ -265,7 +270,7 @@ export function createTextSession(options: TextSessionOptions): TextSession {
     const at = safeNow();
     const out = newOutput();
     if (session.startedAt === null && event({ type: "start", at }, out)) turns.push({ kind: "start", at });
-    if (event({ type: "technical", at, detail }, out)) turns.push({ kind: "technical", at, detail });
+    if (event({ type: "technical", at, detail }, out)) turns.push({ kind: "technical", at, detail, ...(error ? { error } : {}) });
   }
 
   /**
@@ -277,7 +282,8 @@ export function createTextSession(options: TextSessionOptions): TextSession {
       try {
         return await run(newOutput());
       } catch (e) {
-        endNow(`the session failed: ${message(e)}`);
+        options.onError?.(e, "session");
+        endNow("the session failed", classifyError(e, "local"));
         throw e;
       }
     });
@@ -351,9 +357,9 @@ export function createTextSession(options: TextSessionOptions): TextSession {
     get ended() {
       return session.outcome !== null;
     },
-    finish: async (detail = "the session was closed before the call ended") => {
+    finish: async (detail = "the session was closed before the call ended", failed = false) => {
       await queue;
-      endNow(redactText(detail));
+      endNow(redactText(detail), failed ? classifyError(null, "local") : undefined);
       return trace();
     },
     trace,

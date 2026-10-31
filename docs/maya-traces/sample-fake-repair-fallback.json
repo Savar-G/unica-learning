@@ -1,10 +1,10 @@
 {
   "kind": "maya-trace",
   "version": 1,
-  "callId": "text-2026-10-31T10-04-26-069Z",
+  "callId": "text-2026-10-31T10-31-53-082Z",
   "runner": "livekit-text",
-  "startedAt": "2026-10-31T10:04:26.069Z",
-  "endedAt": "2026-10-31T10:04:58.069Z",
+  "startedAt": "2026-10-31T10:31:53.082Z",
+  "endedAt": "2026-10-31T10:32:25.082Z",
   "model": {
     "id": "fake",
     "promptVersion": "maya-text-1"
@@ -29,11 +29,11 @@
   "turns": [
     {
       "kind": "start",
-      "at": 1793441066069
+      "at": 1793442713082
     },
     {
       "kind": "maya",
-      "at": 1793441066069,
+      "at": 1793442713082,
       "state": "OPEN",
       "stateAfter": "OPEN",
       "attempts": [
@@ -79,12 +79,12 @@
     },
     {
       "kind": "child",
-      "at": 1793441070069,
+      "at": 1793442717082,
       "text": "I got 56"
     },
     {
       "kind": "maya",
-      "at": 1793441070069,
+      "at": 1793442717082,
       "state": "ASSESS",
       "stateAfter": "MODEL_EXAMPLE",
       "attempts": [
@@ -161,13 +161,13 @@
           "Way to keep at it! I'll show you an easier one first: 42 − 7. Like this. Regroup 1 ten as 10 ones, so 2 ones become 12. Subtract the ones: 12 − 7 = 5. Write 5."
         ],
         "board": [
-          "text-2026-10-31T10-04-26-069Z-b1"
+          "text-2026-10-31T10-31-53-082Z-b1"
         ]
       }
     },
     {
       "kind": "maya",
-      "at": 1793441070069,
+      "at": 1793442717082,
       "state": "MODEL_EXAMPLE",
       "stateAfter": "MODEL_EXAMPLE",
       "attempts": [
@@ -213,7 +213,7 @@
     },
     {
       "kind": "maya",
-      "at": 1793441070069,
+      "at": 1793442717082,
       "state": "MODEL_EXAMPLE",
       "stateAfter": "MODEL_EXAMPLE",
       "attempts": [
@@ -260,17 +260,17 @@
           "Your effort is awesome. There we go: 42 − 7 = 35."
         ],
         "board": [
-          "text-2026-10-31T10-04-26-069Z-b2"
+          "text-2026-10-31T10-31-53-082Z-b2"
         ]
       }
     },
     {
       "kind": "tick",
-      "at": 1793441094069
+      "at": 1793442741082
     },
     {
       "kind": "maya",
-      "at": 1793441094069,
+      "at": 1793442741082,
       "state": "MODEL_EXAMPLE",
       "stateAfter": "MODEL_EXAMPLE",
       "attempts": [
@@ -307,12 +307,12 @@
     },
     {
       "kind": "child",
-      "at": 1793441098069,
+      "at": 1793442745082,
       "text": "stop please"
     },
     {
       "kind": "maya",
-      "at": 1793441098069,
+      "at": 1793442745082,
       "state": "MODEL_EXAMPLE",
       "stateAfter": "CLOSE",
       "attempts": [
@@ -427,9 +427,9 @@
   ],
   "board": [
     {
-      "at": 1793441070069,
+      "at": 1793442717082,
       "turn": 3,
-      "transactionId": "text-2026-10-31T10-04-26-069Z-b1",
+      "transactionId": "text-2026-10-31T10-31-53-082Z-b1",
       "commands": [
         {
           "op": "columns",
@@ -452,9 +452,9 @@
       ]
     },
     {
-      "at": 1793441070069,
+      "at": 1793442717082,
       "turn": 5,
-      "transactionId": "text-2026-10-31T10-04-26-069Z-b2",
+      "transactionId": "text-2026-10-31T10-31-53-082Z-b2",
       "commands": [
         {
           "op": "write",

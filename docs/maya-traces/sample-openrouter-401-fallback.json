@@ -1,10 +1,10 @@
 {
   "kind": "maya-trace",
   "version": 1,
-  "callId": "text-2026-10-31T09-57-36-880Z",
+  "callId": "text-2026-10-31T10-31-50-562Z",
   "runner": "livekit-text",
-  "startedAt": "2026-10-31T09:57:36.880Z",
-  "endedAt": "2026-10-31T09:57:48.880Z",
+  "startedAt": "2026-10-31T10:31:50.562Z",
+  "endedAt": "2026-10-31T10:32:02.562Z",
   "model": {
     "id": "anthropic/claude-sonnet-5.5",
     "promptVersion": "maya-text-1"
@@ -29,11 +29,11 @@
   "turns": [
     {
       "kind": "start",
-      "at": 1793440656880
+      "at": 1793442710562
     },
     {
       "kind": "maya",
-      "at": 1793440656880,
+      "at": 1793442710562,
       "state": "OPEN",
       "stateAfter": "OPEN",
       "attempts": [
@@ -41,7 +41,11 @@
           "source": "model",
           "proposal": null,
           "refusal": null,
-          "error": "OpenRouter answered 401: Missing Authentication header",
+          "error": {
+            "code": "http_401",
+            "message": "The model service refused the key.",
+            "status": 401
+          },
           "ms": 0
         },
         {
@@ -69,12 +73,12 @@
     },
     {
       "kind": "child",
-      "at": 1793440660880,
+      "at": 1793442714562,
       "text": "I got 66. I added the ones first."
     },
     {
       "kind": "maya",
-      "at": 1793440660880,
+      "at": 1793442714562,
       "state": "ASSESS",
       "stateAfter": "GUIDE_TARGET",
       "attempts": [
@@ -82,7 +86,11 @@
           "source": "model",
           "proposal": null,
           "refusal": null,
-          "error": "OpenRouter answered 401: Missing Authentication header",
+          "error": {
+            "code": "http_401",
+            "message": "The model service refused the key.",
+            "status": 401
+          },
           "ms": 0
         },
         {
@@ -114,12 +122,12 @@
     },
     {
       "kind": "child",
-      "at": 1793440664880,
+      "at": 1793442718562,
       "text": "Seven plus nine is sixteen, so I wrote 6 and carried a ten."
     },
     {
       "kind": "maya",
-      "at": 1793440664880,
+      "at": 1793442718562,
       "state": "GUIDE_TARGET",
       "stateAfter": "GUIDE_TARGET",
       "attempts": [
@@ -127,7 +135,11 @@
           "source": "model",
           "proposal": null,
           "refusal": null,
-          "error": "OpenRouter answered 401: Missing Authentication header",
+          "error": {
+            "code": "http_401",
+            "message": "The model service refused the key.",
+            "status": 401
+          },
           "ms": 0
         },
         {
@@ -159,12 +171,12 @@
     },
     {
       "kind": "child",
-      "at": 1793440668880,
+      "at": 1793442722562,
       "text": "I wrote it on my paper."
     },
     {
       "kind": "maya",
-      "at": 1793440668880,
+      "at": 1793442722562,
       "state": "GUIDE_TARGET",
       "stateAfter": "GUIDE_TARGET",
       "attempts": [
@@ -172,7 +184,11 @@
           "source": "model",
           "proposal": null,
           "refusal": null,
-          "error": "OpenRouter answered 401: Missing Authentication header",
+          "error": {
+            "code": "http_401",
+            "message": "The model service refused the key.",
+            "status": 401
+          },
           "ms": 0
         },
         {
@@ -204,8 +220,8 @@
     },
     {
       "kind": "technical",
-      "at": 1793440668880,
-      "detail": "the command line stopped before the call ended"
+      "at": 1793442722562,
+      "detail": "the input ended before the call ended"
     }
   ],
   "board": [],

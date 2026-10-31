@@ -22,6 +22,74 @@ export const TRACE_KIND = "maya-trace";
 /** Where a proposal came from: the model, the model asked again with the refusal (one repair), or code's fallback. */
 export type AttemptSource = "model" | "repair" | "fallback";
 
+/**
+ * Why a call failed, as a code with wording code wrote. A trace never stores an error's own text: a provider's or a
+ * model's message can hold a key in any form (encoded, split, escaped), so no pattern can make it safe (R382-3-1).
+ * The raw text goes only to a local debug hook (the command line prints it to stderr).
+ */
+export const ERROR_MESSAGES = {
+  http_401: "The model service refused the key.",
+  http_403: "The model service refused access.",
+  http_408: "The model service timed out the request.",
+  http_429: "The model service is busy: too many requests.",
+  http_4xx: "The model service refused the request.",
+  http_5xx: "The model service failed.",
+  timeout: "The model did not answer in time.",
+  network: "The model service could not be reached.",
+  bad_json: "The model's answer was not JSON.",
+  schema_invalid: "The model service refused the answer format.",
+  refused_by_provider: "The model refused to answer.",
+  cut_off: "The model's answer was cut off.",
+  no_output: "The model gave no answer.",
+  local: "A local step failed (see the error output of the run).",
+  unknown: "The model call failed.",
+} as const;
+export type ErrorCode = keyof typeof ERROR_MESSAGES;
+export const ERROR_CODES = Object.keys(ERROR_MESSAGES) as ErrorCode[];
+
+/** A failure in a trace: the code, its fixed message, and the HTTP status when there was one. Nothing else. */
+export interface TraceError {
+  code: ErrorCode;
+  message: string;
+  status?: number;
+}
+
+const traceError = (code: ErrorCode, status?: number): TraceError => ({ code, message: ERROR_MESSAGES[code], ...(status !== undefined ? { status } : {}) });
+
+/**
+ * The trace error for a thrown error. `where`: "model" for a model call (the AI client's error kinds), "local" for
+ * anything else (a script, LiveKit, the session). Reads the error's text to classify it; stores none of it.
+ */
+export function classifyError(e: unknown, where: "model" | "local"): TraceError {
+  if (where === "local") return traceError("local");
+  const text = e instanceof Error ? e.message : typeof e === "string" ? e : "";
+  const http = /OpenRouter answered ([45]\d\d)\b/.exec(text) ?? /OpenRouter error ([45]\d\d)\b/.exec(text);
+  if (http) {
+    const status = Number(http[1]);
+    if (status === 401) return traceError("http_401", status);
+    if (status === 403) return traceError("http_403", status);
+    if (status === 408) return traceError("http_408", status);
+    if (status === 429) return traceError("http_429", status);
+    if (status === 400 && /schema|response_format|structured/i.test(text)) return traceError("schema_invalid", status);
+    if (status >= 400 && status < 500) return traceError("http_4xx", status);
+    if (status >= 500 && status < 600) return traceError("http_5xx", status);
+    return traceError("unknown");
+  }
+  if (/time is up|did not answer in time|timed? ?out|aborted/i.test(text)) return traceError("timeout");
+  if (/could not be reached|ECONN|ENOTFOUND|EAI_AGAIN|fetch failed|network/i.test(text)) return traceError("network");
+  if (/not valid JSON|is not JSON|not JSON/i.test(text)) return traceError("bad_json");
+  if (/model refused/i.test(text)) return traceError("refused_by_provider");
+  if (/model stopped/i.test(text)) return traceError("cut_off");
+  if (/no output|no choices/i.test(text)) return traceError("no_output");
+  return traceError("unknown");
+}
+
+/** The HTTP status a code may carry. */
+const STATUS_OF: Partial<Record<ErrorCode, (n: number) => boolean>> = {
+  http_401: (n) => n === 401, http_403: (n) => n === 403, http_408: (n) => n === 408, http_429: (n) => n === 429,
+  http_4xx: (n) => n >= 400 && n < 500 && ![401, 403, 408, 429].includes(n), http_5xx: (n) => n >= 500 && n < 600, schema_invalid: (n) => n === 400,
+};
+
 /** One proposal for one Maya turn and what code did with it. */
 export interface TraceAttempt {
   source: AttemptSource;
@@ -29,8 +97,8 @@ export interface TraceAttempt {
   proposal: unknown;
   /** Why the session (or the board core) refused it; null when it was accepted. */
   refusal: TraceRefusal | null;
-  /** The model call failed: its error message (never the output). */
-  error?: string;
+  /** The model call failed: a fixed code and its fixed wording, never the error's own text (review R382-3-1). */
+  error?: TraceError;
   /** How long the model took, by the passed-in clock. */
   ms?: number;
 }
@@ -58,7 +126,8 @@ export type TraceTurn =
       /** Null when nothing was output: every attempt failed and the call ended as a technical issue. */
       output: TraceOutput | null;
     }
-  | { kind: "technical"; at: number; detail: string };
+  /** `detail` is wording code wrote; `error` the failure's code when an error ended the call. */
+  | { kind: "technical"; at: number; detail: string; error?: TraceError };
 
 export interface TraceBoardBatch {
   at: number;
@@ -156,6 +225,19 @@ function need(ok: boolean, path: string, what: string) {
   if (!ok) throw new Bad(`${path}: ${what}`);
 }
 
+/** A trace error is a known code, that code's fixed message, and a status the code allows: no other field, no other text. */
+function checkError(e: unknown, path: string) {
+  need(isObject(e), path, "a trace error");
+  const x = e as Record<string, unknown>;
+  need(Object.keys(x).every((k) => ["code", "message", "status"].includes(k)), path, "only code, message and status");
+  need(oneOf(ERROR_CODES, x.code), `${path}.code`, "a known error code");
+  need(x.message === ERROR_MESSAGES[x.code as ErrorCode], `${path}.message`, "the code's fixed message");
+  if (x.status !== undefined) {
+    const allows = STATUS_OF[x.code as ErrorCode];
+    need(Number.isInteger(x.status) && allows !== undefined && allows(x.status as number), `${path}.status`, "an HTTP status the code allows");
+  }
+}
+
 function checkRefusal(r: unknown, path: string) {
   if (r === null) return;
   need(isObject(r), path, "a refusal or null");
@@ -172,7 +254,7 @@ function checkAttempt(a: unknown, path: string) {
   need("proposal" in x, `${path}.proposal`, "present (null when the model gave none)");
   need("refusal" in x, `${path}.refusal`, "present");
   checkRefusal(x.refusal, `${path}.refusal`);
-  need(x.error === undefined || isText(x.error), `${path}.error`, "text");
+  if (x.error !== undefined) checkError(x.error, `${path}.error`);
   need(x.ms === undefined || (isNum(x.ms) && x.ms >= 0), `${path}.ms`, "a duration");
   need(!(x.error !== undefined && x.proposal !== null), `${path}`, "an attempt with an error has no proposal");
   need(!(x.error !== undefined && x.refusal !== null), `${path}`, "an attempt with an error has no refusal");
@@ -210,6 +292,7 @@ function checkTurn(t: unknown, path: string): Record<string, unknown> {
       break;
     case "technical":
       need(isText(x.detail), `${path}.detail`, "text");
+      if (x.error !== undefined) checkError(x.error, `${path}.error`);
       break;
     case "maya": {
       need(oneOf(STATES, x.state), `${path}.state`, "a session state");
@@ -376,7 +459,7 @@ export function redactTrace(trace: MayaTrace, childName: string | null): MayaTra
             ...a,
             proposal: redactDeep(a.proposal, childName),
             refusal: a.refusal ? { ...a.refusal, reason: redactText(a.refusal.reason, childName) } : null,
-            ...(a.error !== undefined ? { error: redactText(a.error, childName) } : {}),
+            // Errors are codes and fixed wording: nothing to redact.
           })),
           output: t.output ? { ...t.output, say: t.output.say.map((x) => redactText(x, childName)) } : null,
         };

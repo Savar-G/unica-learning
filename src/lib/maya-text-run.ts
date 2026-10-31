@@ -4,7 +4,7 @@
 // its outcome.
 import type { LivekitTextSession } from "@/lib/maya-livekit-text";
 import type { TextOutput, TextSession } from "@/lib/maya-text";
-import { redactText, type MayaTrace } from "@/lib/maya-trace";
+import type { MayaTrace } from "@/lib/maya-trace";
 
 export interface TextRun {
   text: TextSession;
@@ -17,13 +17,15 @@ export interface TextRun {
   /** Prints the child's lines too (a script or piped input; typed lines are already on screen). */
   echoChild: boolean;
   log: (line: string) => void;
+  /** For local debugging only (the command line's stderr): raw error text, which the trace never stores. */
+  debug: (line: string) => void;
   writeTrace: (trace: MayaTrace) => void;
 }
 
 /** Simulated time for each line. */
 export const LINE_MS = 4_000;
 
-const short = (e: unknown) => redactText(e instanceof Error ? e.message : String(e)).slice(0, 200);
+const raw = (e: unknown) => (e instanceof Error ? (e.stack ?? e.message) : String(e));
 
 /** Runs the session to its end and writes the trace. Returns the trace and the first error, if any. */
 export async function runTextSession(run: TextRun): Promise<{ trace: MayaTrace; error: unknown }> {
@@ -39,6 +41,7 @@ export async function runTextSession(run: TextRun): Promise<{ trace: MayaTrace; 
 
   let lk: LivekitTextSession | null = null;
   let error: unknown = null;
+  let detail = "the input ended before the call ended";
   try {
     lk = run.livekit ? await run.livekit(text) : null;
     show(lk ? (await lk.open()).output : await text.start());
@@ -62,21 +65,26 @@ export async function runTextSession(run: TextRun): Promise<{ trace: MayaTrace; 
     }
   } catch (e) {
     error = e;
-    log(`-- the run failed: ${short(e)}`);
+    detail = "the run failed";
+    log("-- the run failed (details in the error output)");
+    run.debug(`the run failed: ${raw(e)}`);
   }
   try {
     await lk?.close();
   } catch (e) {
+    if (error === null) detail = "LiveKit did not close";
     error ??= e;
-    log(`-- LiveKit did not close: ${short(e)}`);
+    log("-- LiveKit did not close (details in the error output)");
+    run.debug(`LiveKit did not close: ${raw(e)}`);
   }
-  const trace = await text.finish(error ? `the run failed: ${short(error)}` : "the input ended before the call ended");
+  const trace = await text.finish(detail, error !== null);
   if (!error && trace.outcome?.reason === "technical_issue") log("-- call ended: the input ended first (technical_issue)");
   try {
     run.writeTrace(trace);
   } catch (e) {
     error ??= e;
-    log(`-- the trace was not written: ${short(e)}`);
+    log("-- the trace was not written (details in the error output)");
+    run.debug(`the trace was not written: ${raw(e)}`);
   }
   return { trace, error };
 }

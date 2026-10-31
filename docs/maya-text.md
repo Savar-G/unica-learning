@@ -50,6 +50,8 @@ Nothing reaches the child unless the session's `step` accepts it (`src/lib/maya-
 
 **Every session ends with a trace.** Call `finish()` in a `finally`. If the call has not ended, `finish()` ends it as a technical issue, and starts it first if it never started. An input that throws also ends the call before the error goes on. The command line (`src/lib/maya-text-run.ts`) writes the trace even when the script cannot be read, or when LiveKit does not start or close.
 
-**Child data.** The trace writes the child's profile name as `{name}`. It also writes API keys and bearer tokens in any text as `[secret]`. Child turns are kept word for word otherwise, so keep traces local; `traces/` is not committed.
+**Errors.** A trace never stores an error's own text. A provider's or a model's message can hold a key in any form, so the trace keeps only a code from `ERROR_MESSAGES` (`http_401`, `http_429`, `http_5xx`, `timeout`, `network`, `bad_json`, `schema_invalid`, `refused_by_provider`, `local`, `unknown`, and others), that code's fixed message, and the HTTP status. `checkTrace` refuses any other code, message or field. The raw text goes only to the `onError` hook; the command line prints it to stderr.
+
+**Child data.** The trace writes the child's profile name as `{name}`. As a second layer, the text fields (child turns, proposals, refusal reasons, technical details) also have key-like text and the configured key values written as `[secret]`. Child turns are kept word for word otherwise, so keep traces local; `traces/` is not committed.
 
 Samples: `docs/maya-traces/`. A test checks each sample with `checkTrace`.

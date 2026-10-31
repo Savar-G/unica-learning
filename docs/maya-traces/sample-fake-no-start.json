@@ -1,10 +1,10 @@
 {
   "kind": "maya-trace",
   "version": 1,
-  "callId": "text-2026-10-31T10-04-14-292Z",
+  "callId": "text-2026-10-31T10-31-51-855Z",
   "runner": "livekit-text",
-  "startedAt": "2026-10-31T10:04:14.292Z",
-  "endedAt": "2026-10-31T10:04:46.292Z",
+  "startedAt": "2026-10-31T10:31:51.855Z",
+  "endedAt": "2026-10-31T10:32:23.855Z",
   "model": {
     "id": "fake",
     "promptVersion": "maya-text-1"
@@ -29,11 +29,11 @@
   "turns": [
     {
       "kind": "start",
-      "at": 1793441054292
+      "at": 1793442711855
     },
     {
       "kind": "maya",
-      "at": 1793441054292,
+      "at": 1793442711855,
       "state": "OPEN",
       "stateAfter": "OPEN",
       "attempts": [
@@ -79,12 +79,12 @@
     },
     {
       "kind": "child",
-      "at": 1793441058292,
+      "at": 1793442715855,
       "text": "I don't know how to start."
     },
     {
       "kind": "maya",
-      "at": 1793441058292,
+      "at": 1793442715855,
       "state": "ASSESS",
       "stateAfter": "MODEL_EXAMPLE",
       "attempts": [
@@ -151,13 +151,13 @@
           "Way to keep at it! I'll show you an easier one first: 18 + 5. Like this. Add the ones: 8 + 5 = 13. Write 3 and carry 1 ten."
         ],
         "board": [
-          "text-2026-10-31T10-04-14-292Z-b1"
+          "text-2026-10-31T10-31-51-855Z-b1"
         ]
       }
     },
     {
       "kind": "maya",
-      "at": 1793441058292,
+      "at": 1793442715855,
       "state": "MODEL_EXAMPLE",
       "stateAfter": "MODEL_EXAMPLE",
       "attempts": [
@@ -204,13 +204,13 @@
           "You've got this. Look. Add the tens: 1 + 1 = 2. Write 2."
         ],
         "board": [
-          "text-2026-10-31T10-04-14-292Z-b2"
+          "text-2026-10-31T10-31-51-855Z-b2"
         ]
       }
     },
     {
       "kind": "maya",
-      "at": 1793441058292,
+      "at": 1793442715855,
       "state": "MODEL_EXAMPLE",
       "stateAfter": "MODEL_EXAMPLE",
       "attempts": [
@@ -257,18 +257,18 @@
           "Your effort is awesome. There we go: 18 + 5 = 23."
         ],
         "board": [
-          "text-2026-10-31T10-04-14-292Z-b3"
+          "text-2026-10-31T10-31-51-855Z-b3"
         ]
       }
     },
     {
       "kind": "child",
-      "at": 1793441062292,
+      "at": 1793442719855,
       "text": "Okay."
     },
     {
       "kind": "maya",
-      "at": 1793441062292,
+      "at": 1793442719855,
       "state": "MODEL_EXAMPLE",
       "stateAfter": "TRY_TARGET",
       "attempts": [
@@ -326,18 +326,18 @@
           "You keep showing up. Can you try 27 + 39 the same way?"
         ],
         "board": [
-          "text-2026-10-31T10-04-14-292Z-b4"
+          "text-2026-10-31T10-31-51-855Z-b4"
         ]
       }
     },
     {
       "kind": "child",
-      "at": 1793441066292,
+      "at": 1793442723855,
       "text": "Is it 56?"
     },
     {
       "kind": "maya",
-      "at": 1793441066292,
+      "at": 1793442723855,
       "state": "TRY_TARGET",
       "stateAfter": "GUIDE_TARGET",
       "attempts": [
@@ -404,12 +404,12 @@
     },
     {
       "kind": "child",
-      "at": 1793441070292,
+      "at": 1793442727855,
       "text": "Can you help me?"
     },
     {
       "kind": "maya",
-      "at": 1793441070292,
+      "at": 1793442727855,
       "state": "GUIDE_TARGET",
       "stateAfter": "GUIDE_TARGET",
       "attempts": [
@@ -466,12 +466,12 @@
     },
     {
       "kind": "child",
-      "at": 1793441074292,
+      "at": 1793442731855,
       "text": "16"
     },
     {
       "kind": "maya",
-      "at": 1793441074292,
+      "at": 1793442731855,
       "state": "GUIDE_TARGET",
       "stateAfter": "GUIDE_TARGET",
       "attempts": [
@@ -538,12 +538,12 @@
     },
     {
       "kind": "child",
-      "at": 1793441078292,
+      "at": 1793442735855,
       "text": "66"
     },
     {
       "kind": "maya",
-      "at": 1793441078292,
+      "at": 1793442735855,
       "state": "GUIDE_TARGET",
       "stateAfter": "CHECK",
       "attempts": [
@@ -610,12 +610,12 @@
     },
     {
       "kind": "child",
-      "at": 1793441082292,
+      "at": 1793442739855,
       "text": "Because the ones made a ten, so I carried it."
     },
     {
       "kind": "maya",
-      "at": 1793441082292,
+      "at": 1793442739855,
       "state": "CHECK",
       "stateAfter": "WRITE_CLOSE",
       "attempts": [
@@ -672,12 +672,12 @@
     },
     {
       "kind": "child",
-      "at": 1793441086292,
+      "at": 1793442743855,
       "text": "I wrote it."
     },
     {
       "kind": "maya",
-      "at": 1793441086292,
+      "at": 1793442743855,
       "state": "WRITE_CLOSE",
       "stateAfter": "CLOSE",
       "attempts": [
@@ -735,9 +735,9 @@
   ],
   "board": [
     {
-      "at": 1793441058292,
+      "at": 1793442715855,
       "turn": 3,
-      "transactionId": "text-2026-10-31T10-04-14-292Z-b1",
+      "transactionId": "text-2026-10-31T10-31-51-855Z-b1",
       "commands": [
         {
           "op": "columns",
@@ -760,9 +760,9 @@
       ]
     },
     {
-      "at": 1793441058292,
+      "at": 1793442715855,
       "turn": 4,
-      "transactionId": "text-2026-10-31T10-04-14-292Z-b2",
+      "transactionId": "text-2026-10-31T10-31-51-855Z-b2",
       "commands": [
         {
           "op": "write",
@@ -775,9 +775,9 @@
       ]
     },
     {
-      "at": 1793441058292,
+      "at": 1793442715855,
       "turn": 5,
-      "transactionId": "text-2026-10-31T10-04-14-292Z-b3",
+      "transactionId": "text-2026-10-31T10-31-51-855Z-b3",
       "commands": [
         {
           "op": "write",
@@ -790,9 +790,9 @@
       ]
     },
     {
-      "at": 1793441062292,
+      "at": 1793442719855,
       "turn": 7,
-      "transactionId": "text-2026-10-31T10-04-14-292Z-b4",
+      "transactionId": "text-2026-10-31T10-31-51-855Z-b4",
       "commands": [
         {
           "op": "columns",

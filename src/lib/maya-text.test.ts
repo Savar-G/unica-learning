@@ -5,7 +5,7 @@ import { aiMayaModel, PROMPT_VERSION, SYSTEM_PROMPT, type ModelInput } from "@/l
 import { fakeMayaModel, ruleMayaModel } from "@/lib/maya-model-fake";
 import { SAMPLE_PACKAGES } from "@/lib/maya-samples";
 import { createTextSession, type TextOutput } from "@/lib/maya-text";
-import { checkTrace, configuredSecrets, packageHash, redactText, TRACE_VERSION } from "@/lib/maya-trace";
+import { checkTrace, classifyError, configuredSecrets, ERROR_MESSAGES, packageHash, redactText, TRACE_VERSION, type ErrorCode } from "@/lib/maya-trace";
 import { valuesIn } from "@/lib/maya";
 import type { OperationPackage } from "@/lib/question-package";
 
@@ -177,7 +177,7 @@ describe("an unchecked number or board proposal never reaches the child", () => 
     const turn = session.trace().turns.filter((t) => t.kind === "maya")[1];
     if (turn.kind !== "maya") throw new Error("not a Maya turn");
     expect(turn.attempts).toEqual([
-      expect.objectContaining({ source: "model", proposal: null, error: "OpenRouter answered 503: busy" }),
+      expect.objectContaining({ source: "model", proposal: null, error: { code: "http_5xx", message: ERROR_MESSAGES.http_5xx, status: 503 } }),
       expect.objectContaining({ source: "fallback", refusal: null }),
     ]);
     expect(session.trace().counts).toMatchObject({ modelErrors: 1, fallbacks: 1 });
@@ -271,9 +271,15 @@ describe("checkTrace refuses a trace that is not this version's shape", () => {
     ["freeTalk missing", (t) => { delete t.freeTalk; }, /freeTalk/],
     ["an attempt after an accepted one (the accepted opening twice)", (t) => { const a = t.turns.find((x) => x.kind === "maya")!.attempts as unknown[]; a.push(structuredClone(a[0])); }, /attempts/],
     ["a fallback after an accepted model proposal", (t) => { const a = t.turns.find((x) => x.kind === "maya")!.attempts as unknown[]; a.push({ source: "fallback", proposal: OPEN, refusal: null }); }, /attempts\[0\]/],
-    ["a repair after a model error", (t) => { t.turns.find((x) => x.kind === "maya")!.attempts = [{ source: "model", proposal: null, refusal: null, error: "busy" }, { source: "repair", proposal: OPEN, refusal: null }]; }, /attempts\[1\]/],
+    ["a repair after a model error", (t) => { t.turns.find((x) => x.kind === "maya")!.attempts = [{ source: "model", proposal: null, refusal: null, error: { code: "unknown", message: ERROR_MESSAGES.unknown } }, { source: "repair", proposal: OPEN, refusal: null }]; }, /attempts\[1\]/],
     ["a fallback first", (t) => { (t.turns.find((x) => x.kind === "maya")!.attempts as Record<string, unknown>[])[0].source = "fallback"; }, /attempts/],
     ["two repairs", (t) => { const refused = { source: "model", proposal: OPEN, refusal: { code: "x", reason: "y", allowed: [] } }; t.turns.find((x) => x.kind === "maya")!.attempts = [refused, { ...refused, source: "repair" }, { ...refused, source: "repair" }, { source: "fallback", proposal: OPEN, refusal: null }]; }, /attempts/],
+    ["an error that is text", (t) => { t.turns.find((x) => x.kind === "maya")!.attempts = [{ source: "model", proposal: null, refusal: null, error: "OpenRouter answered 401: sk-abc" }, { source: "fallback", proposal: OPEN, refusal: null }]; }, /attempts\[0\]\.error/],
+    ["an error code not in the list", (t) => { t.turns.find((x) => x.kind === "maya")!.attempts = [{ source: "model", proposal: null, refusal: null, error: { code: "leak", message: ERROR_MESSAGES.unknown } }, { source: "fallback", proposal: OPEN, refusal: null }]; }, /error\.code/],
+    ["an error message that is not the code's", (t) => { t.turns.find((x) => x.kind === "maya")!.attempts = [{ source: "model", proposal: null, refusal: null, error: { code: "http_401", message: "bad key sk-abc" } }, { source: "fallback", proposal: OPEN, refusal: null }]; }, /error\.message/],
+    ["an error with another field", (t) => { t.turns.find((x) => x.kind === "maya")!.attempts = [{ source: "model", proposal: null, refusal: null, error: { code: "unknown", message: ERROR_MESSAGES.unknown, raw: "sk-abc" } }, { source: "fallback", proposal: OPEN, refusal: null }]; }, /error/],
+    ["an error status the code does not allow", (t) => { t.turns.find((x) => x.kind === "maya")!.attempts = [{ source: "model", proposal: null, refusal: null, error: { code: "http_401", message: ERROR_MESSAGES.http_401, status: 500 } }, { source: "fallback", proposal: OPEN, refusal: null }]; }, /error\.status/],
+    ["a technical turn whose error is text", (t) => { t.turns.push({ kind: "technical", at: Number(t.turns.at(-1)!.at), detail: "x", error: "ENOENT /home/key" }); }, /error/],
     ["no output after an accepted last attempt", (t) => { const m = t.turns.find((x) => x.kind === "maya" && x.output !== null && (x.output as { board: unknown[] }).board.length === 0)!; m.output = null; }, /output/],
   ];
   for (const [name, breakIt, path] of cases) {
@@ -313,8 +319,8 @@ describe("the trace keeps the child's name and secrets out", () => {
     const trace = await session.finish();
     const json = JSON.stringify(trace);
     expect(json).not.toMatch(/leah/i);
-    expect(json).not.toMatch(/sk-or-v1|Bearer s/);
-    expect(json).toContain("[secret]");
+    expect(json).not.toMatch(/sk-or-v1|Bearer/);
+    expect(json).toContain(JSON.stringify(ERROR_MESSAGES.http_401));
     expect(trace.turns.find((t) => t.kind === "child")).toMatchObject({ text: "I'm {name} and my dog is {name}'s friend. I don't know." });
     expect(checkTrace(trace)).toMatchObject({ ok: true });
   });
@@ -371,30 +377,78 @@ describe("redactText", () => {
   });
 });
 
-describe("no secret reaches a written trace", () => {
+describe("a trace never stores an error's own text (R382-3-1)", () => {
   afterEach(() => vi.unstubAllEnvs());
 
-  it("removes every secret shape and the configured key from model errors, on the full path to the trace JSON", async () => {
+  /** Key shapes no pattern list can be sure of: encoded, split by a newline or by a literal "\n", escaped. */
+  const shapes = (k: string) => [
+    k,
+    encodeURIComponent(k).replace(/_/g, "%5F").replace(/-/g, "%2D"),
+    `${k.slice(0, 6)}\n${k.slice(6)}`,
+    `${k.slice(0, 6)}\\n${k.slice(6)}`,
+    JSON.stringify(JSON.stringify(k)),
+    k.split("").join("​"),
+    Buffer.from(k).toString("base64"),
+    [...k].reverse().join(""),
+  ];
+
+  it("keeps only fixed codes and their wording from model errors that hold keys in every shape", async () => {
     vi.stubEnv("OPENROUTER_API_KEY", CONFIGURED);
-    const errors = [...SECRET_SAMPLES.flatMap((x) => SECRET_CONTEXTS.map((ctx) => ctx(x))), `OpenRouter answered 401: ${CONFIGURED}`, `x`.repeat(190) + SECRET_SAMPLES[0]];
+    const keys = [...SECRET_SAMPLES, CONFIGURED];
+    const payloads = keys.flatMap(shapes);
+    const statuses = ["401", "403", "429", "500", "400 schema", "418"];
+    const errors = payloads.map((p, i) => (i % 3 === 0 ? `OpenRouter answered ${statuses[(i / 3) % statuses.length]}: ${p}` : i % 3 === 1 ? `OpenRouter could not be reached: ${p}` : p));
     let now = T0;
     let n = 0;
     const model = fakeMayaModel({
       answer: (input) => {
-        n += 1;
         if (input.offers.some((o) => o.act === "open")) return OPEN;
-        throw new Error(`OpenRouter failed: ${errors[(n - 2) % errors.length]}`);
+        throw new Error(errors[n++ % errors.length]);
       },
     });
-    const session = createTextSession({ callId: "secret-1", package: PKG, model, clock: () => (now += 1000), random: 4 });
+    const raw: unknown[] = [];
+    const session = createTextSession({ callId: "secret-1", package: PKG, model, clock: () => (now += 500), random: 4, onError: (e) => raw.push(e) });
     await session.start();
     for (let i = 0; i < errors.length && !session.ended; i++) await session.child("I don't know.");
     const trace = await session.finish();
     const json = JSON.stringify(trace);
-    for (const x of [...SECRET_SAMPLES, CONFIGURED, "1234567890abcdefghij"]) expect(json, x).not.toContain(x);
-    expect(trace.counts.modelErrors).toBeGreaterThan(20);
-    expect(json).toContain("[secret]");
+
+    // Every error field is a known code with its fixed wording; the raw errors went only to the debug hook.
+    const errorFields = trace.turns.flatMap((t) => (t.kind === "maya" ? t.attempts.flatMap((a) => (a.error ? [a.error] : [])) : []));
+    expect(errorFields.length).toBeGreaterThanOrEqual(30);
+    for (const e of errorFields) expect(e).toEqual({ code: e.code, message: ERROR_MESSAGES[e.code], ...(e.status !== undefined ? { status: e.status } : {}) });
+    expect(new Set(errorFields.map((e) => e.code))).toEqual(new Set(["http_401", "http_403", "http_429", "http_5xx", "schema_invalid", "http_4xx", "network", "unknown"]));
+    expect(raw.length).toBe(errorFields.length);
+    for (const p of payloads) expect(json, p).not.toContain(p);
+    for (const k of keys) for (const piece of [k.slice(0, 10), k.slice(-10)]) expect(json, piece).not.toContain(piece);
+    expect(json).not.toMatch(/OpenRouter (answered|could not)/);
     expect(checkTrace(JSON.parse(json))).toMatchObject({ ok: true });
+  });
+
+  it("classifies the AI client's errors into fixed codes, keeping only the status", () => {
+    const cases: [string, string, number?][] = [
+      ["OpenRouter answered 401: Missing Authentication header", "http_401", 401],
+      ["OpenRouter answered 403: no", "http_403", 403],
+      ["OpenRouter answered 408: slow", "http_408", 408],
+      ["OpenRouter answered 429: rate limited", "http_429", 429],
+      ["OpenRouter answered 400: response_format json_schema is invalid", "schema_invalid", 400],
+      ["OpenRouter answered 404: no such model", "http_4xx", 404],
+      ["OpenRouter answered 502: bad gateway", "http_5xx", 502],
+      ["OpenRouter error 503: overloaded", "http_5xx", 503],
+      ["time is up", "timeout"],
+      ["OpenRouter did not answer in time (60000 ms)", "timeout"],
+      ["OpenRouter could not be reached: ECONNRESET", "network"],
+      ["the output is not valid JSON", "bad_json"],
+      ["OpenRouter answered 200 with a body that is not JSON", "bad_json"],
+      ["the model refused", "refused_by_provider"],
+      ["the model stopped: length (max_tokens)", "cut_off"],
+      ["no output", "no_output"],
+      ["OpenRouter answered with no choices", "no_output"],
+      ["something else", "unknown"],
+    ];
+    for (const [text, code, status] of cases) expect(classifyError(new Error(text), "model"), text).toEqual({ code, message: ERROR_MESSAGES[code as ErrorCode], ...(status ? { status } : {}) });
+    expect(classifyError(new Error("OpenRouter answered 401: sk-xyz"), "local")).toEqual({ code: "local", message: ERROR_MESSAGES.local });
+    expect(classifyError("not an error", "model")).toEqual({ code: "unknown", message: ERROR_MESSAGES.unknown });
   });
 });
 

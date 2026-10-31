@@ -107,7 +107,10 @@ async function main() {
   let simulated = Date.now();
   const clock = typed ? () => Date.now() : () => simulated;
   const callId = `text-${new Date().toISOString().replace(/[:.]/g, "-")}`;
-  const text = createTextSession({ callId, package: pkg, model: m, clock, random: o.seed, childName: o.name, runner: o.runner === "livekit" ? "livekit-text" : "text" });
+  const text = createTextSession({
+    callId, package: pkg, model: m, clock, random: o.seed, childName: o.name, runner: o.runner === "livekit" ? "livekit-text" : "text",
+    onError: (e, where) => console.error(`[maya-text] ${typeof where === "string" ? where : `turn ${where.turn} ${where.source}`}: ${e instanceof Error ? e.message : String(e)}`),
+  });
   console.log(`-- Maya text session ${callId}: ${typeof pkg.text === "string" ? pkg.text : o.question} (model ${m.id}, runner ${o.runner})`);
   const path = resolve(o.trace ?? join(root, "traces/maya", `${callId}.json`));
   const { trace, error } = await runTextSession({
@@ -120,6 +123,8 @@ async function main() {
     advance: (ms) => (simulated += ms),
     echoChild: !typed,
     log: (line) => console.log(line),
+    // Raw error text: on stderr for local debugging, never in the trace.
+    debug: (line) => console.error(line),
     writeTrace: (t) => {
       mkdirSync(dirname(path), { recursive: true });
       writeFileSync(path, `${JSON.stringify(t, null, 2)}\n`);
