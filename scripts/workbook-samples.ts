@@ -138,13 +138,13 @@ function fakeAi(): AiClient {
           if (format === "spot-the-error" && s.mistakes?.length) {
             const name = s.mistakes[m++ % s.mistakes.length].name;
             const x = SAM[name];
-            const sign = x.kind === "add" ? "+" : "−";
+            const sign = x.kind === "add" ? "+" : "-";
             // The slot's skill with the widest range, so Sam's sum fits it.
             const skill = [...s.skills].sort((p, q) => (s.numbers?.[q]?.max ?? 0) - (s.numbers?.[p]?.max ?? 0))[0];
             return {
               ...base, skill, text: `${x.a} ${sign} ${x.b} = ?`, operation: op(x.kind, x.a, x.b),
               wrongAnswers: [{ value: num(x.wrong), cause: name, description: `Sam's mistake: ${name}`, step: x.step }],
-              easier: { text: x.kind === "add" ? "1 + 1 = ?" : "5 − 2 = ?", operation: x.kind === "add" ? op("add", 1, 1) : op("subtract", 5, 2) }, shownWrong: 0,
+              easier: { text: x.kind === "add" ? "1 + 1 = ?" : "5 - 2 = ?", operation: x.kind === "add" ? op("add", 1, 1) : op("subtract", 5, 2) }, shownWrong: 0,
             };
           }
           // a + b stays within the range of the item's skill: to 10 at U1, so 2 + 2 to 7 + 2; numbers stay below 100

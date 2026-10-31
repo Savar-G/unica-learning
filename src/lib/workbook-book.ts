@@ -30,7 +30,7 @@ import {
   type Operation,
   type QuestionPackage,
 } from "@/lib/question-package";
-import { isCoin, numberWordProblem, readNumbers, type ReadNumber } from "@/lib/number-words";
+import { aiTextProblem, isCoin, readNumbers, type ReadNumber } from "@/lib/number-words";
 import type { Curriculum } from "@/lib/workbook-curriculum";
 import {
   headerGrowth,
@@ -226,6 +226,7 @@ export interface NumberRange {
   fractions: boolean;
   decimals: boolean;
   percents: boolean;
+  ratios: boolean;
   /** The skill is about money: coin values always fit, and amounts of money may have cents ($4.75). */
   money: boolean;
   /** The skill is about time: a clock time (3:30) fits as it is; elsewhere its numbers are checked like any other. */
@@ -234,22 +235,23 @@ export interface NumberRange {
 
 /**
  * The first level of each idea, from the curriculum: the first level with a skill about fractions, about decimals,
- * about integers or negative numbers, and about percents (BC: U12, U15, U22 and U21). Before it, an item never shows
+ * about integers or negative numbers, about percents and about ratios (BC: U12, U15, U22, U21 and U21). Before it, an item never shows
  * one. A test pins the BC levels, so a curriculum text change that breaks the detection fails loudly.
  */
-export interface ConceptLevels { fractions: number; decimals: number; negatives: number; percents: number }
+export interface ConceptLevels { fractions: number; decimals: number; negatives: number; percents: number; ratios: number }
 const CONCEPT_WORDS: Record<keyof ConceptLevels, RegExp> = {
   fractions: /\bfractions?\b/i,
   decimals: /\bdecimals?\b/i,
   negatives: /\bintegers?\b|\bnegative\b/i,
   percents: /\bpercents?\b/i,
+  ratios: /\bratios?\b/i,
 };
 const conceptCache = new WeakMap<Curriculum, ConceptLevels>();
 export function conceptLevels(curriculum: Curriculum): ConceptLevels {
   const cached = conceptCache.get(curriculum);
   if (cached) return cached;
   const first = (re: RegExp) => curriculum.levels.find((l) => (curriculum.levelSkills(l.id) ?? []).some((s) => re.test(s.text)))?.number ?? Infinity;
-  const levels = { fractions: first(CONCEPT_WORDS.fractions), decimals: first(CONCEPT_WORDS.decimals), negatives: first(CONCEPT_WORDS.negatives), percents: first(CONCEPT_WORDS.percents) };
+  const levels = { fractions: first(CONCEPT_WORDS.fractions), decimals: first(CONCEPT_WORDS.decimals), negatives: first(CONCEPT_WORDS.negatives), percents: first(CONCEPT_WORDS.percents), ratios: first(CONCEPT_WORDS.ratios) };
   conceptCache.set(curriculum, levels);
   return levels;
 }
@@ -257,7 +259,7 @@ export function conceptLevels(curriculum: Curriculum): ConceptLevels {
 /** A level's number range, for an item with no skill. */
 export function levelRange(curriculum: Curriculum, level: number): NumberRange {
   const c = conceptLevels(curriculum);
-  return { max: levelMax(level), negatives: level >= c.negatives, fractions: level >= c.fractions, decimals: level >= c.decimals, percents: level >= c.percents, money: false, time: false };
+  return { max: levelMax(level), negatives: level >= c.negatives, fractions: level >= c.fractions, decimals: level >= c.decimals, percents: level >= c.percents, ratios: level >= c.ratios, money: false, time: false };
 }
 
 /** The limit a skill's id names ("1.3-add-within-10", "3.4-recall-addition-20", "2.1-ten-more-less-100"), or null. */
@@ -440,8 +442,8 @@ export function printedValues(p: QuestionPackage): ReadNumber[] {
 export const printedNumbers = (p: QuestionPackage): number[] => printedValues(p).map((r) => r.value);
 
 /**
- * Why an item's numbers do not fit its skill's range at the level, or null (see skillRange): a number in words in the
- * text the AI writes (the question and the easier example: numbers are digits), a number past the range, or a negative
+ * Why an item's numbers do not fit its skill's range at the level, or null (see skillRange): text the AI writes (the
+ * question and the easier example) that fails the gate (aiTextProblem: characters, number forms, number words), a number past the range, or a negative
  * number, fraction, decimal or percent before the curriculum's first level of that idea. On a money skill, coin values
  * always fit and amounts of money may have cents; on a time skill, a clock time fits as it is.
  */
@@ -449,8 +451,8 @@ export function rangeProblem(p: QuestionPackage, curriculum: Curriculum, level: 
   const skill = p.skill.skills[0];
   const range = skill ? skillRange(curriculum, level, skill) : levelRange(curriculum, level);
   const context = { skill: skill ?? null, money: range.money };
-  const words = numberWordProblem(p.text, context) ?? (p.easierExample ? numberWordProblem(p.easierExample.text, context) : null);
-  if (words) return words;
+  const text = aiTextProblem(p.text, context) ?? (p.easierExample ? aiTextProblem(p.easierExample.text, context) : null);
+  if (text) return text;
   const read = printedValues(p).filter((r) => !(r.coin && range.money) && !(r.form === "time" && range.time));
   const big = read.find((r) => Math.abs(r.value) > range.max);
   if (big) return `the number ${big.value} is too big for this question: its numbers are at most ${range.max}`;
@@ -462,6 +464,7 @@ export function rangeProblem(p: QuestionPackage, curriculum: Curriculum, level: 
   if (decimal && !range.decimals) return `the number ${decimal.value} is a decimal: this question uses no decimals (they start at U${c.decimals})`;
   const percent = read.find((r) => r.form === "percent");
   if (percent && !range.percents) return `${percent.value}% is a percent: this question uses no percents (they start at U${c.percents})`;
+  if (!range.ratios && read.some((r) => r.form === "ratio")) return `this question uses no ratios: they start at U${c.ratios}`;
   return null;
 }
 

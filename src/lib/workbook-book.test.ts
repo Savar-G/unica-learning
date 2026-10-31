@@ -406,11 +406,11 @@ describe("every number the child sees fits the range (R380-3-1)", () => {
     expect(problem(ok)).toBeNull();
   });
 
-  it("reads negatives: −3 fails before U22, 9 − 3 and 3n − 2 take away", () => {
-    expect(problem(pkg({ text: "What is −3 + 5?" }))).toContain("negative");
-    expect(problem(pkg({ text: "9 − 3 = ?" }))).toBeNull();
-    expect(problem(pkg({ text: "Find 3n − 2 when n is 2." }))).toBeNull();
-    expect(problem(pkg({ text: "Count 10 000 grains." }))).toContain("10000");
+  it("reads negatives: -3 fails before U22, 9 - 3 and 3n - 2 take away", () => {
+    expect(problem(pkg({ text: "What is -3 + 5?" }))).toContain("negative");
+    expect(problem(pkg({ text: "9 - 3 = ?" }))).toBeNull();
+    expect(problem(pkg({ text: "Find 3n - 2 when n is 2." }))).toBeNull();
+    expect(problem(pkg({ text: "Count 10,000 grains." }))).toContain("10000");
   });
 
   it("lets coin values through only on a money skill", () => {
@@ -450,6 +450,26 @@ describe("every number the child sees fits the range (R380-3-1)", () => {
     expect(problem(pkg({ text: "What is one more than 4?", skill: more }))).toBeNull();
     expect(problem(pkg({ text: "What is one less than 4?", skill: more }))).toBeNull();
     expect(problem(pkg({ text: "What is one more than 4?" }))).toContain("number in words");
+  });
+
+  it.each([
+    ["Shade ½ of the shape.", "½"], ["Shade ⅓ of the shape.", "⅓"], ["What is 9 − 3?", "−"], ["Count ５ dots.", "５"],
+    ["What is 2² + 1?", "²"], ["Ava has 3 apples… then 2.", "…"], ["Zoë has 3 cats.", "ë"],
+  ])("refuses a character outside the set: %s", (text, char) => {
+    expect(problem(pkg({ text }))).toContain(`"${char}"`);
+  });
+
+  it.each(["Find 5 % of 4.", "Add 0,5 and 1.", "Find 5%% of 4.", "What is .5 + 1?", "Count 10 000 grains.", "Read pages 3-8.", "It costs $ 5.", "Pay $4.5 now."])("refuses a number in no allowed form: %s", (text) => {
+    expect(problem(pkg({ text }))).toContain("number form");
+  });
+
+  it.each(["the thirteenth bead", "the twentieth bead", "the hundredth day", "two thirteenths", "the fourth bead"])("refuses an ordinal made from the cardinals: %s", (text) => {
+    expect(problem(pkg({ text }))).toContain("number in words");
+  });
+
+  it("normalises curly quotes and the en dash, and accepts sentence punctuation after a number", () => {
+    expect(problem(pkg({ text: "Ava says \u201cI have 5.\u201d Is she right\u2019s? 3 \u2013 1 = ?" }))).toBeNull();
+    expect(problem(pkg({ text: "Count 1, 2, 3. Then say 4!" }))).toBeNull();
   });
 
   it("reads digits exactly: a sign, a decimal point, a fraction slash, a percent and a clock time", () => {
@@ -494,7 +514,7 @@ describe("fractions, decimals, percents and negatives start where the curriculum
   }, BC, level);
 
   it("pins the first level of each idea the curriculum gives (a text change that breaks the detection fails here)", () => {
-    expect(conceptLevels(BC)).toEqual({ fractions: 12, decimals: 15, negatives: 22, percents: 21 });
+    expect(conceptLevels(BC)).toEqual({ fractions: 12, decimals: 15, negatives: 22, percents: 21, ratios: 21 });
   });
 
   it("fails a fraction before U12, in words, digits or values, and passes it on a fraction skill", () => {
@@ -524,6 +544,33 @@ describe("fractions, decimals, percents and negatives start where the curriculum
 
   it("fails a negative number before U22, and passes it on an integer skill", () => {
     expect(at(21, "6.6-write-ratio", { answer: { value: n(-4), accepted: [], unit: null } })).toContain("negative");
-    expect(at(22, "7.2-add-integers", { text: "What is −3 + 5?" })).toBeNull();
+    expect(at(22, "7.2-add-integers", { text: "What is -3 + 5?" })).toBeNull();
+  });
+});
+
+describe("each allowed number form at its level (R380-6)", () => {
+  const at = (level: number, skill: string, text: string) => rangeProblem({
+    id: "q", ref: { source: "workbook", workbookId: WORKBOOK, page: 3, question: 1 }, templateId: null, text,
+    answer: null, operation: null, steps: [], skill: { standard: skill.split("-")[0], skills: [skill] }, level, difficulty: 2,
+    wrongAnswers: [], easierExample: null,
+  }, BC, level);
+
+  it.each([
+    ["whole number", 3, "K3-part-part-whole", "Ava has 7 beads and gets 2 more."],
+    ["thousands", 13, "4.4-add-within-10000", "A farm has 2,500 hens."],
+    ["decimal", 15, "4.2-tenths", "Write 0.7 as a fraction."],
+    ["fraction", 12, "3.2-name-fraction-region", "Shade 1/3 of the shape."],
+    ["percent", 21, "6.7-percent-of", "What is 50% of 8?"],
+    ["clock time", 14, "4.12-read-analog", "What time is 3:30 on a clock?"],
+    ["ratio", 21, "6.6-write-ratio", "Write the ratio 3:4 another way."],
+    ["dollars", 11, "3.14-coins-bills-100", "A book costs $4.75."],
+    ["cents", 6, "1.11-coin-values", "A quarter is 25¢."],
+    ["negative", 22, "7.2-add-integers", "What is -3 + 5?"],
+  ] as const)("accepts a %s at U%i", (_name, level, skill, text) => {
+    expect(at(level, skill, text)).toBeNull();
+  });
+
+  it("refuses a ratio before its level", () => {
+    expect(at(12, "3.2-name-fraction-region", "Write 3:4 another way.")).toContain("no ratios");
   });
 });
