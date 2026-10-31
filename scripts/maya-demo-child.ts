@@ -1,10 +1,12 @@
-// Gives a test family a child Maya can work with in admin (#323): a Grade 2 BC child named "Maya Demo" with one closed
+// Gives a test family a child Maya can work with in admin (#323): a Grade 2 BC child named "Sam" with one closed
 // Grade 2 test whose first stage includes questions of the templates Maya supports (src/lib/question-package-assessment.ts). The test
 // is stored as expired, started 40 days ago, so no reminder email is ever due for it (the late reminder stops after 7
 // days) and nothing about it counts: the family is a test family (D-099), left out of the dashboard.
 //
 // Usage: npm run maya:demo-child -- --parent <test family's parent id>
-// It refuses a family that is not in public.test_accounts. Run it again and it reuses the child and its test.
+// It refuses a family that is not in public.test_accounts. Run it again and it reuses the child and its test. The child
+// was first named "Maya Demo", which reads as Maya, the AI: a run renames that child to "Sam" (in that family only).
+// It refuses a "Sam" that is not a Grade 2 BC child, so it never adds a test to another child of the family.
 // The secret key comes from SUPABASE_SECRET_KEY, else from the Supabase Management API with the token in
 // SUPABASE_ACCESS_TOKEN or the macOS Keychain item "supabase-pagewise".
 import { execFileSync } from "node:child_process";
@@ -16,7 +18,9 @@ import type { Database } from "@/lib/database";
 import { SUPPORTED_ASSESSMENT_TEMPLATES } from "@/lib/question-package-assessment";
 
 const PROJECT = "cdjobwsyzndtltzfpyqa";
-const NAME = "Maya Demo";
+const NAME = "Sam";
+/** Names this script gave the demo child before; a run renames such a child to NAME. */
+const OLD_NAMES = ["Maya Demo"];
 const DAY = 86_400_000;
 
 async function secretKey(): Promise<string> {
@@ -39,9 +43,19 @@ const db = createClient<Database>(`https://${PROJECT}.supabase.co`, await secret
 const { data: marked } = await db.from("test_accounts").select("parent_id").eq("parent_id", parent).maybeSingle();
 if (!marked) throw new Error("the family is not a test family (public.test_accounts)");
 
-let { data: child } = await db.from("children").select("id").eq("parent_id", parent).eq("first_name", NAME).maybeSingle();
+let { data: child } = await db.from("children").select("id, grade, province").eq("parent_id", parent).eq("first_name", NAME).maybeSingle();
+if (child && (child.grade !== 2 || child.province !== "BC")) throw new Error(`the family's "${NAME}" is not a Grade 2 BC child: pick another family`);
 if (!child) {
-  const created = await db.from("children").insert({ parent_id: parent, first_name: NAME, grade: 2, province: "BC" }).select("id").single();
+  const { data: old } = await db.from("children").select("id, grade, province").eq("parent_id", parent).in("first_name", OLD_NAMES).maybeSingle();
+  if (old) {
+    const renamed = await db.from("children").update({ first_name: NAME }).eq("id", old.id).eq("parent_id", parent).select("id, grade, province").single();
+    if (renamed.error) throw new Error(`rename: ${renamed.error.message}`);
+    child = renamed.data;
+    console.log(`renamed the demo child ${child.id} to ${NAME}`);
+  }
+}
+if (!child) {
+  const created = await db.from("children").insert({ parent_id: parent, first_name: NAME, grade: 2, province: "BC" }).select("id, grade, province").single();
   if (created.error) throw new Error(`child: ${created.error.message}`);
   child = created.data;
 }
