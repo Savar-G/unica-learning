@@ -303,8 +303,20 @@ function fillSlot(s: PlannedSlot, index: number, ctx: FillCtx): FilledBlock {
 
   switch (s.slot) {
     case "warm-up": return { slot: s.slot, items: times(max, () => { const op = factOp(band, r); return opPackage(at(), op, `${operationText(op)} =`); }) };
-    case "fix-it": case "remember-these": case "unit-check": case "mini-test": case "already-know-it": case "friday-5": case "show-what-you-know":
-    case "level-test": case "on-your-own": case "practice-row": case "unit-b-practice": case "try-first": {
+    case "show-what-you-know": case "level-test": {
+      // Test and celebration items carry their own work region, so the work counts as part of the answer.
+      const items = times(max, () => {
+        const op = practiceOp(band, r, level);
+        return opPackage(at(), op, `${operationText(op)} =`, (p) => ({
+          format: "show-work", scorable: true, parentChecked: false, error: null,
+          regions: [box("answer", null, answerOf(p)), { id: "work", kind: "work", label: "Show your work" }],
+          checks: [opCheck("answer")],
+        }));
+      });
+      return { slot: s.slot, items };
+    }
+    case "fix-it": case "remember-these": case "unit-check": case "mini-test": case "already-know-it": case "friday-5":
+    case "on-your-own": case "practice-row": case "unit-b-practice": case "try-first": {
       const items = times(max, () => line());
       const labels = ["Two digits", "Harder: three digits", "Look first: some don't need a trade"];
       return {
@@ -534,6 +546,31 @@ function headerOf(page: PlannedPage, level: number): DayHeader {
   return { topic: type === "level-test" ? "Level test" : type === "show-what-you-know" ? "Show what you know" : topic, ...head, grownUp };
 }
 
+/** The most characters a line of the 66 px cover title holds. */
+const COVER_LINE = 19;
+
+/** A level title as two cover lines: the whole title when it wraps into two, else its part before " and " or a comma. */
+function coverLines(title: string): [string, string] {
+  const wrap = (text: string) => {
+    const lines: string[] = [];
+    for (const word of text.split(" ")) {
+      const last = lines.at(-1);
+      if (last !== undefined && `${last} ${word}`.length <= COVER_LINE) lines[lines.length - 1] = `${last} ${word}`;
+      else lines.push(word);
+    }
+    return lines;
+  };
+  for (const text of [title, title.split(" and ")[0], title.split(",")[0]]) {
+    const lines = wrap(text);
+    if (lines.length === 2 && lines.every((l) => l.length <= COVER_LINE)) return [lines[0], lines[1]];
+    if (lines.length === 1) {
+      const words = text.split(" ");
+      if (words.length > 1) return [words.slice(0, -1).join(" "), words.at(-1)!];
+    }
+  }
+  return [title, ""];
+}
+
 // ---------- The book ----------
 
 export interface SampleBookOptions {
@@ -588,8 +625,8 @@ export function sampleBook(o: SampleBookOptions): SampleBook {
   let key = 0;
   const band = bandOf(level.number);
   const title = BC.level(o.level)!.title;
-  const words = title.split(" ");
-  const split = words.reduce((best, _, i) => (Math.abs(words.slice(0, i).join(" ").length - words.slice(i).join(" ").length) < Math.abs(words.slice(0, best).join(" ").length - words.slice(best).join(" ").length) ? i : best), 1);
+  // The cover title is two lines of at most COVER_LINE characters (66 px type): the level's title, else its first part.
+  const coverTitle = coverLines(title);
   const dayTopic = (day: number, track: "A" | "B") => {
     const part = plan.days[day - 1].pages.flatMap((p) => p.parts).find((p) => p.unit === track && p.step);
     return part ? topicOf(part.step!.skill, part.step!.step) : null;
@@ -597,7 +634,7 @@ export function sampleBook(o: SampleBookOptions): SampleBook {
   const { draft, omissions } = assembleBook({
     workbookId: o.workbookId, childId: o.childId, child: o.child, number, levelTitle: title, profileBuild: null, plan,
     cover: {
-      title: [words.slice(0, split).join(" "), words.slice(split).join(" ")],
+      title: coverTitle,
       sentence: number === 1
         ? `${o.child}'s assessment showed what is secure and what to build next at Level U${level.number}. So this workbook:`
         : `${o.child}'s last workbook showed which steps stuck and which need another go. So this workbook:`,

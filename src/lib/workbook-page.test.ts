@@ -190,7 +190,7 @@ describe("pageSlots", () => {
 
   it("caps a slot at what the template takes, and says so", () => {
     const layout = pageSlots(page("show-what-you-know", [part("show-what-you-know", 17)]), 12);
-    expect(names(layout)).toEqual(["show-what-you-know:12"]);
-    expect(layout.omissions).toEqual([{ part: 0, kind: "show-what-you-know", requested: 17, placed: 12, reason: "the show-what-you-know slot takes at most 12 items" }]);
+    expect(names(layout)).toEqual(["show-what-you-know:10"]);
+    expect(layout.omissions).toEqual([{ part: 0, kind: "show-what-you-know", requested: 17, placed: 10, reason: "the show-what-you-know slot takes at most 10 items" }]);
   });
 });

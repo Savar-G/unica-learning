@@ -274,6 +274,8 @@ function rowHeight(x: PlannedSlot, level: number): number {
     case "mixed-set": return 110;
     case "word-problems": case "picture-stories": return big ? 130 : 150;
     case "warm-up": return big ? 60 : 50;
+    // A row of test or celebration cards: the number, the answer box and a work area of at least 44 px.
+    case "show-what-you-know": case "level-test": return big ? 126 : 118;
     default: return big ? 54 : 46;
   }
 }

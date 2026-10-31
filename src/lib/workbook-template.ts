@@ -88,8 +88,9 @@ export function slotMax(slot: SlotName, c: Pick<DayContent, "level" | "pages">):
     case "friday-5": return 5;
     case "challenge": return 2;
     case "math-in-the-world": return 3;
-    case "show-what-you-know": return 12;
-    case "level-test": return 10;
+    // Cards with a work area of at least 44 px: 5 rows of 2 from U10, 4 rows at U4 to U9.
+    case "show-what-you-know": return band.name === "mid" ? 10 : 8;
+    case "level-test": return band.name === "mid" ? 10 : 8;
     case "unit-check": return 4;
     case "mini-test": return 5;
     case "already-know-it": return 10;
@@ -260,6 +261,11 @@ const CSS = `
 .chc .top{display:flex;gap:16px;align-items:flex-start}
 .chc .top .qb{flex:1 1 0}
 .chc .wb{display:block;flex:1 1 auto;min-height:120px}
+.fill{flex:1 1 auto;display:grid;gap:12px 16px;grid-auto-rows:minmax(0,1fr)}
+.tc{border:1px solid #D4D4DA;border-radius:10px;padding:12px 14px;display:flex;flex-direction:column;gap:8px;min-height:0}
+.tc .wb{display:block;flex:1 1 auto;min-height:${WORK_MIN}px}
+.pcards.fill{grid-template-columns:repeat(2,minmax(0,1fr))}
+.pcards.fill .pcard .pb{flex:1 1 auto;align-items:center}
 .tw{display:flex;flex-direction:column;gap:10px}
 .tw .ways2{display:flex;gap:14px;align-items:flex-end}
 .tw .ways2 .wb{height:84px}
@@ -639,7 +645,8 @@ function blockHtml(b: Block, i: number, ctx: Ctx): string {
       return `<div class="lab">Finish these</div>` + items(ctx.six ? "two" : "list");
     case "on-your-own": {
       const head = prev === "finish-these" ? `<div class="lab">On your own</div>` : chipHtml(PRACTICE, b.note);
-      const columns = !parent && qs.length > 0 && qs.every((q) => ["add", "subtract", "multiply"].includes(q.package.operation?.kind ?? "") && packageItem(q.package).regions.length === 1);
+      // Column sums on the 8-page day; the 6-page practice page lists them, as in the sample (DESIGN.md 7.2).
+      const columns = !parent && !ctx.six && qs.length > 0 && qs.every((q) => ["add", "subtract", "multiply"].includes(q.package.operation?.kind ?? "") && packageItem(q.package).regions.length === 1);
       return head + (columns ? list((q) => columnItem(q, band), "cols") : items(ctx.six ? "two" : "list"));
     }
     case "practice-row": {
@@ -688,8 +695,19 @@ function blockHtml(b: Block, i: number, ctx: Ctx): string {
       }).join("");
     case "picture-stories":
       return chip() + list((q, k) => parentItem(q, band, b.figures?.[k]), "pcards");
-    case "friday-5": case "unit-check": case "mini-test": case "already-know-it": case "show-what-you-know": case "level-test":
+    case "friday-5": case "unit-check": case "mini-test": case "already-know-it":
       return chip() + items(parent ? "pcards" : qs.length > 5 ? "two" : "list");
+    case "show-what-you-know": case "level-test": {
+      // The test and the celebration fill their page: each item is a card in a grid whose rows share the room left
+      // under the chip, and its work area grows into its card (an item with no work region gets a plain one).
+      if (parent) return chip() + list((q, k) => parentItem(q, band, b.figures?.[k]), `pcards fill`);
+      const cols = qs.length <= 3 ? 1 : 2;
+      return chip() + `<div class="fill" style="grid-template-columns:repeat(${cols},minmax(0,1fr))">${qs.map((q) => {
+        const { inline, full } = regionsSplit(q, { band, work: "fill", labels: true });
+        const work = full || `<div class="wb"><span class="lab">Show your work</span></div>`;
+        return `<div class="tc" ${mark.question(q.number)}><div class="q"><span class="badge">${q.number}</span><span class="qb">${qtext(q)}</span><span class="rgs">${inline}</span></div>${work}</div>`;
+      }).join("")}</div>`;
+    }
     case "challenge": {
       const side = ctx.six && qs.length === 2;
       const work = "fill" as const;
@@ -712,6 +730,9 @@ function blockHtml(b: Block, i: number, ctx: Ctx): string {
     }
   }
 }
+
+/** Slots that take the free room of their page: their cards and work areas grow into it. */
+const GROW = new Set<SlotName>(["challenge", "show-what-you-know", "level-test"]);
 
 // ---------- Pages ----------
 
@@ -739,7 +760,7 @@ function dayPage(page: DraftPage, parts: PageParts, c: DayContent): string {
     + `<p class="st" ${mark.slot("subtitle")}>${escape(c.subtitle)}</p>`
     + (c.grownUp ? `<p class="gu" ${mark.slot("grown-up")}><b>For the grown-up:</b> ${escape(c.grownUp)}</p>` : "") + `</header>`;
   // A Challenge block takes the free room of its page: its work boxes grow into it (DESIGN.md section 4).
-  const blocks = c.blocks.map((b, i) => `<section class="blk${b.slot === "challenge" ? " grow" : ""}" data-measure="block-${i}">${blockHtml(b, i, ctx)}</section>`).join("");
+  const blocks = c.blocks.map((b, i) => `<section class="blk${GROW.has(b.slot) ? " grow" : ""}" data-measure="block-${i}">${blockHtml(b, i, ctx)}</section>`).join("");
   return `<div class="pg ${band.name} f-${familyOf(page, c)}">${scanMarks}<div class="frame">${header}<main class="ct" ${mark.slot("content")}>${blocks}</main></div>${footer(page, parts, c.id)}</div>`;
 }
 

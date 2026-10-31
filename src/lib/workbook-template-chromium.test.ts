@@ -87,6 +87,25 @@ describe.skipIf(!chromium)("the workbook templates in Chromium", () => {
     }
   }, 240_000);
 
+  it("fills the level test and Show what you know pages to the bottom of their content area", async () => {
+    for (const [level, n] of [["U2", 5], ["U12", 6], ["U24", 7]] as const) {
+      const draft = book(level, n, true);
+      for (const type of ["level-test", "show-what-you-know"]) {
+        const page = draft.pages.find((p) => p.content?.kind === "day" && p.content.blocks.some((b) => b.slot === type))!;
+        const html = `<!doctype html><html><head><style>@page{size:8.5in 11in;margin:0}html,body{margin:0}[data-sheet]{position:relative;width:816px;height:1056px;overflow:hidden}</style>`
+          + `<style>${template.css}</style></head><body><section data-sheet="0" data-measure="sheet">${template.page(page, { qr: `<div data-measure="qr"></div>`, qrUrl: "x" }, draft)}</section></body></html>`;
+        const { measured } = await engine.print({ html, sheets: 1, page: { width: 816, height: 1056 }, scale: 1 });
+        const area = measured.find((m) => m.name === "slot-content")!;
+        const content = page.content!;
+        const i = content.kind === "day" ? content.blocks.findIndex((b) => b.slot === type) : -1;
+        const block = measured.find((m) => m.name === `block-${i}`)!;
+        // The slot's cards reach the bottom of the content area (within a gap), and nothing runs past it.
+        expect(area.y + area.clientHeight - (block.y + block.height), `${level} ${type}`).toBeLessThan(16);
+        expect(area.scrollHeight).toBeLessThanOrEqual(area.clientHeight + 1);
+      }
+    }
+  }, 120_000);
+
   it("fails a cover whose title runs to a third line, naming the slot", async () => {
     const draft = book("U12", 7);
     const cover = draft.pages[0];
