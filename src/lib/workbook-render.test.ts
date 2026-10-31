@@ -77,7 +77,7 @@ describe("renderWorkbook", () => {
     expect(await render(engine)).toEqual({
       status: "failed",
       problems: [
-        { page: 1, question: null, reason: "the title does not fit its space" },
+        { page: 1, question: null, slot: "title", reason: "the title does not fit its space" },
         { page: 2, question: 3, reason: "question 3 does not fit its space" },
         { page: 3, question: null, reason: "the content does not fit the page" },
       ],
