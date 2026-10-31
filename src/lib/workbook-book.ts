@@ -30,7 +30,7 @@ import {
   type Operation,
   type QuestionPackage,
 } from "@/lib/question-package";
-import { isCoin, readNumbers, type ReadNumber } from "@/lib/number-words";
+import { isCoin, numberWordProblem, readNumbers, type ReadNumber } from "@/lib/number-words";
 import type { Curriculum } from "@/lib/workbook-curriculum";
 import {
   headerGrowth,
@@ -225,26 +225,31 @@ export interface NumberRange {
   negatives: boolean;
   fractions: boolean;
   decimals: boolean;
+  percents: boolean;
   /** The skill is about money: coin values always fit, and amounts of money may have cents ($4.75). */
   money: boolean;
+  /** The skill is about time: a clock time (3:30) fits as it is; elsewhere its numbers are checked like any other. */
+  time: boolean;
 }
 
 /**
- * The first level of each idea, from the curriculum: the first level with a skill about fractions, about decimals, and
- * about integers or negative numbers (BC: U12, U15 and U22). Before it, an item never shows one.
+ * The first level of each idea, from the curriculum: the first level with a skill about fractions, about decimals,
+ * about integers or negative numbers, and about percents (BC: U12, U15, U22 and U21). Before it, an item never shows
+ * one. A test pins the BC levels, so a curriculum text change that breaks the detection fails loudly.
  */
-export interface ConceptLevels { fractions: number; decimals: number; negatives: number }
+export interface ConceptLevels { fractions: number; decimals: number; negatives: number; percents: number }
 const CONCEPT_WORDS: Record<keyof ConceptLevels, RegExp> = {
   fractions: /\bfractions?\b/i,
   decimals: /\bdecimals?\b/i,
   negatives: /\bintegers?\b|\bnegative\b/i,
+  percents: /\bpercents?\b/i,
 };
 const conceptCache = new WeakMap<Curriculum, ConceptLevels>();
 export function conceptLevels(curriculum: Curriculum): ConceptLevels {
   const cached = conceptCache.get(curriculum);
   if (cached) return cached;
   const first = (re: RegExp) => curriculum.levels.find((l) => (curriculum.levelSkills(l.id) ?? []).some((s) => re.test(s.text)))?.number ?? Infinity;
-  const levels = { fractions: first(CONCEPT_WORDS.fractions), decimals: first(CONCEPT_WORDS.decimals), negatives: first(CONCEPT_WORDS.negatives) };
+  const levels = { fractions: first(CONCEPT_WORDS.fractions), decimals: first(CONCEPT_WORDS.decimals), negatives: first(CONCEPT_WORDS.negatives), percents: first(CONCEPT_WORDS.percents) };
   conceptCache.set(curriculum, levels);
   return levels;
 }
@@ -252,7 +257,7 @@ export function conceptLevels(curriculum: Curriculum): ConceptLevels {
 /** A level's number range, for an item with no skill. */
 export function levelRange(curriculum: Curriculum, level: number): NumberRange {
   const c = conceptLevels(curriculum);
-  return { max: levelMax(level), negatives: level >= c.negatives, fractions: level >= c.fractions, decimals: level >= c.decimals, money: false };
+  return { max: levelMax(level), negatives: level >= c.negatives, fractions: level >= c.fractions, decimals: level >= c.decimals, percents: level >= c.percents, money: false, time: false };
 }
 
 /** The limit a skill's id names ("1.3-add-within-10", "3.4-recall-addition-20", "2.1-ten-more-less-100"), or null. */
@@ -266,6 +271,12 @@ function idLimit(skill: string): number | null {
 const isMoneySkill = (curriculum: Curriculum, skill: string) =>
   /^financial literacy\b/i.test(curriculum.unit(curriculum.skill(skill)?.unit ?? "")?.text ?? "");
 
+/** A skill is about time when it or its unit names time or clocks ("Read an analog clock", "units of time"). */
+const isTimeSkill = (curriculum: Curriculum, skill: string) => {
+  const s = curriculum.skill(skill);
+  return /\b(time|clocks?)\b/i.test(`${s?.text ?? ""} ${curriculum.unit(s?.unit ?? "")?.text ?? ""}`);
+};
+
 /**
  * The range of an item on a skill: the range of the skill's own level (a review of an earlier skill keeps to that
  * skill's numbers and ideas), never above the page's level, and never above the limit the skill's id names ("facts to
@@ -273,7 +284,7 @@ const isMoneySkill = (curriculum: Curriculum, skill: string) =>
  */
 export function skillRange(curriculum: Curriculum, level: number, skill: string): NumberRange {
   const own = curriculum.levelOfSkill(skill)?.number ?? level;
-  const range = { ...levelRange(curriculum, Math.min(own, level)), money: isMoneySkill(curriculum, skill) };
+  const range = { ...levelRange(curriculum, Math.min(own, level)), money: isMoneySkill(curriculum, skill), time: isTimeSkill(curriculum, skill) };
   const limit = idLimit(skill);
   return limit !== null && limit < range.max ? { ...range, max: limit } : range;
 }
@@ -285,7 +296,8 @@ export function slotRanges(curriculum: Curriculum, level: number, skills: readon
 
 // Every number the child sees or is asked for (R380-3-1), walked by one collector over the whole package. Each switch
 // ends in `never`, so a new value type, region, check, statement, figure or operation kind does not build until it is
-// collected here. Text is read by readNumbers (src/lib/number-words.ts): digits and number words.
+// collected here. Text is read by readNumbers (src/lib/number-words.ts): numbers are digits; AI-written text with a
+// number word is refused (numberWordProblem).
 
 const unreachable = (x: never): never => {
   throw new Error(`printedNumbers: unknown ${JSON.stringify(x)}`);
@@ -297,7 +309,7 @@ const frac = (value: number): Read => ({ value, form: "fraction" });
 const money = (value: number, unit: string): Read =>
   unit === "$" || unit === "¢" ? { ...num(value), money: true, ...(isCoin(value, unit) ? { coin: true as const } : {}) } : num(value);
 /** The same numbers, as the parts of a fraction (a fraction operation's whole numbers too). */
-const asFraction = (rs: Read[]): Read[] => rs.map((r) => ("unclear" in r ? r : { ...r, form: "fraction" }));
+const asFraction = (rs: Read[]): Read[] => rs.map((r) => ({ ...r, form: "fraction" }));
 
 /** The numbers of a value. */
 function valueNumbers(v: AnswerValue | null | undefined): Read[] {
@@ -309,7 +321,7 @@ function valueNumbers(v: AnswerValue | null | undefined): Read[] {
     case "remainder": return [num(v.quotient), num(v.remainder)];
     case "quantity": return [money(v.value, v.unit)];
     case "compound": return v.parts.map((part) => money(part.value, part.unit));
-    case "time": return [num(v.hours), num(v.minutes)];
+    case "time": return [{ value: v.hours, form: "time" }, { value: v.minutes, form: "time" }];
     case "expression":
     case "choice":
     case "text": return readNumbers(v.value);
@@ -328,7 +340,7 @@ function operationNumbers(op: Operation | null | undefined): Read[] {
     case "money-round": case "elapsed-time": case "time-add": case "clock-convert": case "solve":
       return operands;
     case "decimal-add": case "decimal-subtract": case "decimal-multiply":
-      return operands.map((r) => ("unclear" in r ? r : { ...r, form: "decimal" }));
+      return operands.map((r) => ({ ...r, form: "decimal" }));
     case "fraction-add": case "fraction-subtract": case "fraction-multiply": case "fraction-divide": case "fraction-simplify":
       return asFraction(operands);
     case "fraction-equivalent": return asFraction([...operands, num(op.denominator)]);
@@ -424,21 +436,22 @@ export function printedValues(p: QuestionPackage): ReadNumber[] {
   ];
 }
 
-/** The values of printedValues (unclear text left out). */
-export const printedNumbers = (p: QuestionPackage): number[] => printedValues(p).flatMap((r) => ("unclear" in r ? [] : [r.value]));
+/** The values of printedValues. */
+export const printedNumbers = (p: QuestionPackage): number[] => printedValues(p).map((r) => r.value);
 
 /**
- * Why an item's numbers do not fit its skill's range at the level, or null (see skillRange): number text that does not
- * read with confidence, a number past the range, a negative number, fraction or decimal before the curriculum's first
- * level of that idea. On a money skill, coin values always fit and amounts of money may have cents.
+ * Why an item's numbers do not fit its skill's range at the level, or null (see skillRange): a number in words in the
+ * text the AI writes (the question and the easier example: numbers are digits), a number past the range, or a negative
+ * number, fraction, decimal or percent before the curriculum's first level of that idea. On a money skill, coin values
+ * always fit and amounts of money may have cents; on a time skill, a clock time fits as it is.
  */
 export function rangeProblem(p: QuestionPackage, curriculum: Curriculum, level: number): string | null {
   const skill = p.skill.skills[0];
   const range = skill ? skillRange(curriculum, level, skill) : levelRange(curriculum, level);
-  const values = printedValues(p);
-  const unclear = values.find((r) => "unclear" in r);
-  if (unclear && "unclear" in unclear) return `unclear number text "${unclear.unclear}": write that number in digits`;
-  const read = values.filter((r): r is Exclude<ReadNumber, { unclear: string }> => !("unclear" in r) && !(r.coin && range.money));
+  const context = { skill: skill ?? null, money: range.money };
+  const words = numberWordProblem(p.text, context) ?? (p.easierExample ? numberWordProblem(p.easierExample.text, context) : null);
+  if (words) return words;
+  const read = printedValues(p).filter((r) => !(r.coin && range.money) && !(r.form === "time" && range.time));
   const big = read.find((r) => Math.abs(r.value) > range.max);
   if (big) return `the number ${big.value} is too big for this question: its numbers are at most ${range.max}`;
   const negative = read.find((r) => r.value < 0);
@@ -447,6 +460,8 @@ export function rangeProblem(p: QuestionPackage, curriculum: Curriculum, level: 
   if (!range.fractions && read.some((r) => r.form === "fraction")) return `this question uses no fractions: they start at U${c.fractions}`;
   const decimal = read.find((r) => r.form === "decimal" && !(r.money && range.money));
   if (decimal && !range.decimals) return `the number ${decimal.value} is a decimal: this question uses no decimals (they start at U${c.decimals})`;
+  const percent = read.find((r) => r.form === "percent");
+  if (percent && !range.percents) return `${percent.value}% is a percent: this question uses no percents (they start at U${c.percents})`;
   return null;
 }
 

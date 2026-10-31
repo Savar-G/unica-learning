@@ -3,7 +3,7 @@ import type { AiJsonRequest } from "@/lib/ai-client";
 import { fakeAiClient } from "@/lib/ai-client-fake";
 import { fakePrintEngine } from "@/lib/print-engine-fake";
 import type { AnswerValue, Item, ItemFormat, Operation, QuestionPackage } from "@/lib/question-package";
-import { conceptLevels, levelMistakes, pageFigure, printedNumbers, rangeProblem, samProblem, samWork, skillRange } from "@/lib/workbook-book";
+import { conceptLevels, levelMistakes, pageFigure, printedNumbers, printedValues, rangeProblem, samProblem, samWork, skillRange } from "@/lib/workbook-book";
 import { curriculumFor } from "@/lib/workbook-curriculum";
 import { memoryDraftStore } from "@/lib/workbook-draft-memory";
 import { renderableDraft } from "@/lib/workbook-fit";
@@ -418,32 +418,47 @@ describe("every number the child sees fits the range (R380-3-1)", () => {
     expect(problem(pkg({ text: "Circle the 25¢ coin.", skill: coins }))).toBeNull();
     expect(problem(pkg({ text: "Circle the quarter.", skill: coins }))).toBeNull();
     expect(problem(pkg({ text: "Circle the 25¢ coin." }))).toContain("25");
-    expect(problem(pkg({ text: "Circle the quarter." }))).toContain("fractions");
+    expect(problem(pkg({ text: "Circle the quarter." }))).toContain("number in words");
     expect(problem(pkg({ text: "Circle the 75¢.", skill: coins }))).toContain("75");
   });
 
-  it("fails number words past the range (R380-4-1)", () => {
-    expect(problem(pkg({ text: "Circle twelve dots." }))).toContain("12");
-    expect(rangeProblem(pkg({ text: "Circle one thousand dots.", skill: { standard: "2.1", skills: ["2.1-read-write-100"] } }), BC, 7)).toContain("1000");
-    expect(problem(pkg({ text: "Circle seven dots." }))).toBeNull();
+  it.each([
+    "Circle twelve dots.", "Circle one thousand dots.", "What is zero point five?", "What is minus three?", "Start at negative 3.",
+    "Circle hundreds of dots.", "Circle dozens of dots.", "Take half of 8.", "Eat a third of the cake.", "Share it into thirds.",
+    "What is 3 times 4?", "Add 2 plus 3.", "What is 50 percent of 8?", "Count 2 dozen eggs.", "Twenty-one beads.", "the twelfth bead",
+    "One more than 3 is?",
+  ])("refuses a number in words: %s", (text) => {
+    expect(problem(pkg({ text }))).toContain("number in words");
+  });
+
+  it("refuses a number in words in the easier example's text too", () => {
+    const easy = { text: "one plus one = ?", operation: { kind: "add" as const, operands: [1, 1] as [number, number] }, answer: { type: "number" as const, value: 2 }, steps: [] };
+    expect(problem(pkg({ easierExample: easy }))).toContain("number in words");
   });
 
   it.each([
-    ["twenty-one beads", 21], ["one hundred and five beads", 105], ["a hundred beads", 100], ["a thousand beads", 1000],
-    ["a dozen eggs", 12], ["two dozen eggs", 24], ["the twelfth bead", 12], ["the twenty-first bead", 21],
-    ["eleven cats", 11], ["Ninety-nine", 99], ["3 thousand", 3000], ["twenty-five cents", 25],
-  ])("reads %s as %d", (text, value) => {
-    expect(printedNumbers(pkg({ text }))).toContain(value);
-    expect(problem(pkg({ text }))).toContain(String(value));
-  });
-
-  it.each(["the first step", "one second", "the third try", "Use the ten-frame.", "Write the tens digit.", "Tick one."])("reads no big number in %s", (text) => {
+    "Which one is bigger, 3 or 7?", "Circle each one that is even.", "Is this one right?", "Is that one 5?", "Tick the one with 4 dots.",
+    "First add, then check.", "What comes second?", "Colour the third bead.", "Write the tens digit of 8.", "What is in the ones place?",
+    "Add the ones column first.", "Show 7 on the ten-frame.", "Show 4 on the five-frame.", "2 tens and 3 ones.",
+    "Point to the 6.", "How many times did Ava jump?",
+  ])("accepts %s", (text) => {
     expect(problem(pkg({ text }))).toBeNull();
   });
 
-  it.each(["nineteen twenty", "twenty twelve", "forty fifty", "thousand thousand"])("fails closed on unclear number words: %s", (text) => {
-    expect(problem(pkg({ text: `Count ${text} beads.` }))).toContain("unclear number text");
+  it("accepts one more and one less only on a skill about them", () => {
+    const more = { standard: "K5", skills: ["K5-one-more-less"] };
+    expect(problem(pkg({ text: "What is one more than 4?", skill: more }))).toBeNull();
+    expect(problem(pkg({ text: "What is one less than 4?", skill: more }))).toBeNull();
+    expect(problem(pkg({ text: "What is one more than 4?" }))).toContain("number in words");
   });
+
+  it("reads digits exactly: a sign, a decimal point, a fraction slash, a percent and a clock time", () => {
+    expect(printedValues(pkg({ text: "Is -3 or 0.5 or 1/2 or 50% or 3:30 bigger?" }))).toEqual([
+      { value: -3, form: "whole" }, { value: 0.5, form: "decimal" }, { value: 1, form: "fraction" }, { value: 2, form: "fraction" },
+      { value: 50, form: "percent" }, { value: 3, form: "time" }, { value: 30, form: "time" },
+    ]);
+  });
+
   // One item of each format, its number where that format prints it. A new format does not build until it is added.
   const FORMAT_ITEMS: Record<ItemFormat, (x: number) => Partial<Item>> = {
     "write-number": (x) => ({ regions: [{ id: "a", kind: "box", label: null, answer: n(x) }] }),
@@ -470,7 +485,7 @@ describe("every number the child sees fits the range (R380-3-1)", () => {
   });
 });
 
-describe("fractions, decimals and negatives start where the curriculum starts them", () => {
+describe("fractions, decimals, percents and negatives start where the curriculum starts them", () => {
   const n = (value: number): Extract<AnswerValue, { type: "number" }> => ({ type: "number", value });
   const at = (level: number, skill: string, over: Partial<QuestionPackage>) => rangeProblem({
     id: "q", ref: { source: "workbook", workbookId: WORKBOOK, page: 3, question: 1 }, templateId: null, text: "Find it.",
@@ -478,16 +493,14 @@ describe("fractions, decimals and negatives start where the curriculum starts th
     wrongAnswers: [], easierExample: null, ...over,
   }, BC, level);
 
-  it("finds the first level of each idea in the curriculum", () => {
-    expect(conceptLevels(BC)).toEqual({ fractions: 12, decimals: 15, negatives: 22 });
+  it("pins the first level of each idea the curriculum gives (a text change that breaks the detection fails here)", () => {
+    expect(conceptLevels(BC)).toEqual({ fractions: 12, decimals: 15, negatives: 22, percents: 21 });
   });
 
   it("fails a fraction before U12, in words, digits or values, and passes it on a fraction skill", () => {
-    expect(at(10, "3.3-add-within-1000", { text: "Eat half of 8 grapes." })).toContain("no fractions");
     expect(at(10, "3.3-add-within-1000", { text: "Shade 1/2 of it." })).toContain("no fractions");
-    expect(at(10, "3.3-add-within-1000", { text: "Shade one third of it." })).toContain("no fractions");
     expect(at(10, "3.3-add-within-1000", { answer: { value: { type: "fraction", numerator: 1, denominator: 4 }, accepted: [], unit: null } })).toContain("no fractions");
-    expect(at(12, "3.2-name-fraction-region", { text: "Shade one third of it, then 1/2." })).toBeNull();
+    expect(at(12, "3.2-name-fraction-region", { text: "Shade 1/3 of it, then 1/2." })).toBeNull();
     // A review of a whole-number skill at U12 keeps to whole numbers.
     expect(at(12, "3.3-add-within-1000", { text: "Shade 1/2 of it." })).toContain("no fractions");
   });
@@ -496,7 +509,17 @@ describe("fractions, decimals and negatives start where the curriculum starts th
     expect(at(12, "3.2-name-fraction-region", { text: "What is 2.5 + 1?" })).toContain("decimal");
     expect(at(12, "3.2-name-fraction-region", { answer: { value: n(0.5), accepted: [], unit: null } })).toContain("decimal");
     expect(at(15, "4.2-tenths", { text: "Write 0.7 as a fraction." })).toBeNull();
-    expect(at(11, "3.14-coins-bills-100", { text: "A book costs $4.75. How much for two?" })).toBeNull();
+    expect(at(11, "3.14-coins-bills-100", { text: "A book costs $4.75. How much for 2?" })).toBeNull();
+  });
+
+  it("fails a percent before its level (U21), and passes it on a percent skill", () => {
+    expect(at(18, "5.2-thousandths", { text: "What is 50% of 8?" })).toContain("no percents");
+    expect(at(21, "6.7-percent-of", { text: "What is 50% of 8?" })).toBeNull();
+  });
+
+  it("checks a clock time's numbers off a time skill, and lets it through on one", () => {
+    expect(at(3, "K3-part-part-whole", { text: "At 3:30 Ava has 2 cats." })).toContain("30");
+    expect(at(14, "4.12-read-analog", { text: "What time is 3:45 on a clock?" })).toBeNull();
   });
 
   it("fails a negative number before U22, and passes it on an integer skill", () => {

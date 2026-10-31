@@ -110,7 +110,7 @@ function costingFetch(): typeof fetch {
 /**
  * A fake AI for a layout dry run: every slot gets a sum in the format its place takes. A Spot the error slot takes the
  * offered mistakes in turn, with a sum that mistake fits and Sam's answer exactly what it makes. Every number keeps to the
- * slot's range (its numbers.max), as the real AI is asked to.
+ * slot's range (its numbers.max) and is written in digits, never as words, as the real AI is asked to.
  */
 function fakeAi(): AiClient {
   let n = 0;
@@ -156,7 +156,7 @@ function fakeAi(): AiClient {
           return {
             ...base, text: reason ? "How do you know your answer is right?" : format === "show-work" ? `Ava has ${a} beads. She gets ${b} more. How many beads now?` : `${a} + ${b} =`,
             operation: reason ? null : op("add", a, b),
-            wrongAnswers: reason ? [] : [{ value: num(a + b + 1), cause: "careless", description: "Counts one too many", step: null }],
+            wrongAnswers: reason ? [] : [{ value: num(a + b + 1), cause: "careless", description: "Counts 1 too many", step: null }],
             easier: reason ? null : { text: "1 + 1 = ?", operation: op("add", 1, 1) }, shownWrong: null,
           };
         }),
