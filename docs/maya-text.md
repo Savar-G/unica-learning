@@ -46,4 +46,10 @@ Nothing reaches the child unless the session's `step` accepts it (`src/lib/maya-
 - `board`: every batch sent, with its turn and commands.
 - `outcome`, and `counts` (refusals, repairs, fallbacks, model errors, silent turns). The bench takes its counts again from `turns`.
 
-Samples: `docs/maya-traces/`.
+`checkTrace` checks every field and every nested record: types, enums, the 64-hex hash, the board links and the counts against the turns. It returns the path of the first bad field.
+
+**Every session ends with a trace.** Call `finish()` in a `finally`. If the call has not ended, `finish()` ends it as a technical issue, and starts it first if it never started. An input that throws also ends the call before the error goes on. The command line (`src/lib/maya-text-run.ts`) writes the trace even when the script cannot be read, or when LiveKit does not start or close.
+
+**Child data.** The trace writes the child's profile name as `{name}`. It also writes API keys and bearer tokens in any text as `[secret]`. Child turns are kept word for word otherwise, so keep traces local; `traces/` is not committed.
+
+Samples: `docs/maya-traces/`. A test checks each sample with `checkTrace`.

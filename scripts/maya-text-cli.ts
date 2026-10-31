@@ -22,8 +22,10 @@ import { aiClient } from "@/lib/ai-client";
 import { livekitTextSession } from "@/lib/maya-livekit-text";
 import { aiMayaModel, type MayaModel } from "@/lib/maya-model";
 import { ruleMayaModel } from "@/lib/maya-model-fake";
+import { redactText } from "@/lib/maya-trace";
 import { SAMPLE_PACKAGES } from "@/lib/maya-samples";
-import { createTextSession, type TextOutput } from "@/lib/maya-text";
+import { createTextSession } from "@/lib/maya-text";
+import { runTextSession } from "@/lib/maya-text-run";
 
 interface Options {
   question: string;
@@ -88,15 +90,6 @@ function model(o: Options, root: string): MayaModel {
   return aiMayaModel(client);
 }
 
-function show(out: TextOutput) {
-  for (const s of out.say) console.log(`Maya: ${s}`);
-  for (const b of out.board) console.log(`  [board ${b.transactionId}] ${b.commands.map((c) => JSON.stringify(c)).join(" ")}`);
-  if (out.ended) {
-    console.log(`-- call ended: ${JSON.stringify(out.ended)}`);
-    if (out.safetyMessage) console.log(`-- on screen: ${out.safetyMessage}`);
-  }
-}
-
 async function main() {
   const root = resolve(process.env.MAYA_ROOT ?? process.cwd());
   const o = parse(process.argv.slice(2));
@@ -113,48 +106,32 @@ async function main() {
   const clock = typed ? () => Date.now() : () => simulated;
   const callId = `text-${new Date().toISOString().replace(/[:.]/g, "-")}`;
   const text = createTextSession({ callId, package: pkg, model: m, clock, random: o.seed, childName: o.name, runner: o.runner === "livekit" ? "livekit-text" : "text" });
-  const lk = o.runner === "livekit" ? await livekitTextSession(text) : null;
   console.log(`-- Maya text session ${callId}: ${typeof pkg.text === "string" ? pkg.text : o.question} (model ${m.id}, runner ${o.runner})`);
-
-  const lines: AsyncIterable<string> = o.script
-    ? (async function* () { yield* readFileSync(o.script!, "utf8").split("\n"); })()
-    : createInterface({ input: process.stdin, output: typed ? process.stdout : undefined, prompt: "" });
-  try {
-    show(lk ? (await lk.open()).output : await text.start());
-    for await (const raw of lines) {
-      if (text.ended) break;
-      const line = raw.replace(/#.*$/, "").trim();
-      if (!line) continue;
-      if (line === "/quit") break;
-      simulated += 4_000;
-      const wait = /^\/wait\s+(\d+)$/.exec(line);
-      const write = /^\/write\s+(start|done)$/.exec(line);
-      if (wait) {
-        simulated += Number(wait[1]) * 1000;
-        show(await text.tick());
-      } else if (write) {
-        show(await text.writing(write[1] === "start" ? "started" : "done"));
-      } else {
-        if (!typed) console.log(`Child: ${line}`);
-        show(lk ? (await lk.say(line)).output : await text.child(line));
-      }
-    }
-    if (!text.ended) show(await text.technical("the command line stopped before the call ended"));
-  } finally {
-    await lk?.close();
-    const trace = text.trace();
-    const path = resolve(o.trace ?? join(root, "traces/maya", `${callId}.json`));
-    mkdirSync(dirname(path), { recursive: true });
-    writeFileSync(path, `${JSON.stringify(trace, null, 2)}\n`);
-    console.log(`-- trace: ${path}`);
-    console.log(`-- counts: ${JSON.stringify(trace.counts)}`);
-  }
+  const path = resolve(o.trace ?? join(root, "traces/maya", `${callId}.json`));
+  const { trace, error } = await runTextSession({
+    text,
+    lines: () =>
+      o.script
+        ? (async function* () { yield* readFileSync(o.script!, "utf8").split("\n"); })()
+        : createInterface({ input: process.stdin, output: typed ? process.stdout : undefined, prompt: "" }),
+    livekit: o.runner === "livekit" ? livekitTextSession : null,
+    advance: (ms) => (simulated += ms),
+    echoChild: !typed,
+    log: (line) => console.log(line),
+    writeTrace: (t) => {
+      mkdirSync(dirname(path), { recursive: true });
+      writeFileSync(path, `${JSON.stringify(t, null, 2)}\n`);
+      console.log(`-- trace: ${path}`);
+    },
+  });
+  console.log(`-- counts: ${JSON.stringify(trace.counts)}`);
+  if (error) throw error;
 }
 
 main().then(
   () => process.exit(0),
   (e) => {
-    console.error(e instanceof Error ? e.message : e);
+    console.error(redactText(e instanceof Error ? e.message : String(e)));
     process.exit(1);
   },
 );

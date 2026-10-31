@@ -6,7 +6,7 @@
 //
 // Plain JSON. Pure TypeScript except `packageHash`, which uses node:crypto (server and scripts only).
 import { createHash } from "node:crypto";
-import type { Act, Outcome, RefusalCode, SessionState } from "@/lib/maya";
+import { ACTS, ASSISTANCE, INTERRUPTS, MAIN_STATES, type Act, type Outcome, type RefusalCode, type SessionState } from "@/lib/maya";
 
 /** Why a proposal was refused: the session's refusal, or "board_refused" when the board core refused a batch the session built. */
 export interface TraceRefusal {
@@ -130,24 +130,219 @@ export function packageHash(pkg: unknown): string {
   return `sha256:${createHash("sha256").update(canonical(pkg)).digest("hex")}`;
 }
 
-const TURN_KINDS = ["start", "child", "tick", "writing", "maya", "technical"];
-const isObject = (x: unknown): x is Record<string, unknown> => typeof x === "object" && x !== null && !Array.isArray(x);
+// ---------- Reading a saved trace ----------
 
-/** Reads a saved trace: the trace, or why it is not one of this version. Checks the shape, not the session's rules. */
-export function checkTrace(raw: unknown): { ok: true; trace: MayaTrace } | { ok: false; reason: string } {
-  if (!isObject(raw) || raw.kind !== TRACE_KIND) return { ok: false, reason: "not a Maya trace" };
-  if (raw.version !== TRACE_VERSION) return { ok: false, reason: `trace version ${String(raw.version)}, expected ${TRACE_VERSION}` };
-  if (typeof raw.callId !== "string" || !raw.callId) return { ok: false, reason: "no call id" };
-  const model = raw.model;
-  if (!isObject(model) || typeof model.id !== "string" || typeof model.promptVersion !== "string") return { ok: false, reason: "no model or prompt version" };
-  const question = raw.question;
-  if (!isObject(question) || typeof question.hash !== "string" || !question.hash.startsWith("sha256:")) return { ok: false, reason: "no question package hash" };
-  if (!Array.isArray(raw.turns) || !raw.turns.every((t) => isObject(t) && TURN_KINDS.includes(String(t.kind)) && typeof t.at === "number"))
-    return { ok: false, reason: "turns are not trace turns" };
-  for (const t of raw.turns as Record<string, unknown>[]) {
-    if (t.kind === "maya" && (!Array.isArray(t.attempts) || t.attempts.length === 0)) return { ok: false, reason: "a Maya turn has no attempts" };
+const RUNNERS = ["text", "livekit-text", "voice"];
+const SOURCES = ["model", "repair", "fallback"];
+const STATES: readonly string[] = [...MAIN_STATES, ...INTERRUPTS];
+const REASONS = ["solved", "child_stopped", "time_limit", "no_response", "technical_issue", "content_issue", "safety"];
+const PAPER = ["child_confirmed", "declined", "unknown"];
+const UNDERSTANDING = ["evidence_observed", "uncertain"];
+const HASH = /^sha256:[0-9a-f]{64}$/;
+const COUNT_KEYS: (keyof TraceCounts)[] = ["mayaTurns", "refusals", "repairs", "repairedOk", "fallbacks", "modelErrors", "silent"];
+
+const isObject = (x: unknown): x is Record<string, unknown> => typeof x === "object" && x !== null && !Array.isArray(x);
+const isNum = (x: unknown): x is number => typeof x === "number" && Number.isFinite(x);
+const isCount = (x: unknown): x is number => Number.isInteger(x) && (x as number) >= 0;
+const isText = (x: unknown): x is string => typeof x === "string";
+const isName = (x: unknown): x is string => typeof x === "string" && x.length > 0;
+const isTime = (x: unknown) => x === null || (typeof x === "string" && !Number.isNaN(Date.parse(x)) && new Date(x).toISOString() === x);
+const oneOf = (list: readonly unknown[], x: unknown) => list.includes(x);
+const strings = (x: unknown): x is string[] => Array.isArray(x) && x.every(isText);
+
+/** Why one field of a record fails, with its path, or null. */
+class Bad extends Error {}
+function need(ok: boolean, path: string, what: string) {
+  if (!ok) throw new Bad(`${path}: ${what}`);
+}
+
+function checkRefusal(r: unknown, path: string) {
+  if (r === null) return;
+  need(isObject(r), path, "a refusal or null");
+  const x = r as Record<string, unknown>;
+  need(isName(x.code), `${path}.code`, "a refusal code");
+  need(isText(x.reason), `${path}.reason`, "text");
+  need(Array.isArray(x.allowed) && x.allowed.every((a) => oneOf(ACTS, a)), `${path}.allowed`, "a list of acts");
+}
+
+function checkAttempt(a: unknown, path: string) {
+  need(isObject(a), path, "an attempt");
+  const x = a as Record<string, unknown>;
+  need(oneOf(SOURCES, x.source), `${path}.source`, "model, repair or fallback");
+  need("proposal" in x, `${path}.proposal`, "present (null when the model gave none)");
+  need("refusal" in x, `${path}.refusal`, "present");
+  checkRefusal(x.refusal, `${path}.refusal`);
+  need(x.error === undefined || isText(x.error), `${path}.error`, "text");
+  need(x.ms === undefined || (isNum(x.ms) && x.ms >= 0), `${path}.ms`, "a duration");
+  need(!(x.error !== undefined && x.proposal !== null), `${path}`, "an attempt with an error has no proposal");
+  need(!(x.error !== undefined && x.refusal !== null), `${path}`, "an attempt with an error has no refusal");
+  need(!(x.source === "fallback" && x.refusal !== null), `${path}`, "a fallback attempt is recorded only when it was accepted");
+}
+
+function checkTurn(t: unknown, path: string): Record<string, unknown> {
+  need(isObject(t), path, "a turn");
+  const x = t as Record<string, unknown>;
+  need(isNum(x.at), `${path}.at`, "a time");
+  switch (x.kind) {
+    case "start":
+    case "tick":
+      break;
+    case "child":
+      need(isText(x.text), `${path}.text`, "text");
+      need(x.uncertain === undefined || typeof x.uncertain === "boolean", `${path}.uncertain`, "a boolean");
+      break;
+    case "writing":
+      need(oneOf(["started", "done"], x.status), `${path}.status`, "started or done");
+      break;
+    case "technical":
+      need(isText(x.detail), `${path}.detail`, "text");
+      break;
+    case "maya": {
+      need(oneOf(STATES, x.state), `${path}.state`, "a session state");
+      need(oneOf(STATES, x.stateAfter), `${path}.stateAfter`, "a session state");
+      need(Array.isArray(x.attempts) && x.attempts.length > 0 && x.attempts.length <= 3, `${path}.attempts`, "1 to 3 attempts");
+      (x.attempts as unknown[]).forEach((a, i) => checkAttempt(a, `${path}.attempts[${i}]`));
+      need("output" in x, `${path}.output`, "present (null when nothing was output)");
+      if (x.output !== null) {
+        need(isObject(x.output), `${path}.output`, "an output or null");
+        const o = x.output as Record<string, unknown>;
+        need(oneOf(ACTS, o.act), `${path}.output.act`, "an act");
+        need(strings(o.say), `${path}.output.say`, "a list of sentences");
+        need(strings(o.board), `${path}.output.board`, "a list of transaction ids");
+        const last = (x.attempts as Record<string, unknown>[]).at(-1)!;
+        need(last.refusal === null && last.error === undefined, `${path}.output`, "output only from an accepted last attempt");
+      }
+      break;
+    }
+    default:
+      need(false, `${path}.kind`, "a turn kind");
   }
-  if (!Array.isArray(raw.board)) return { ok: false, reason: "no board list" };
-  if (raw.outcome !== null && !isObject(raw.outcome)) return { ok: false, reason: "the outcome is not an object" };
-  return { ok: true, trace: raw as unknown as MayaTrace };
+  return x;
+}
+
+function checkOutcome(o: unknown, path: string) {
+  if (o === null) return;
+  need(isObject(o), path, "an outcome or null");
+  const x = o as Record<string, unknown>;
+  need(oneOf(REASONS, x.reason), `${path}.reason`, "a reason");
+  need(oneOf(ASSISTANCE, x.assistance), `${path}.assistance`, "an assistance level");
+  need(oneOf(PAPER, x.paperStatus), `${path}.paperStatus`, "a paper status");
+  need(oneOf(UNDERSTANDING, x.understanding), `${path}.understanding`, "an understanding");
+  need(x.highestHint === null || oneOf([0, 1, 2, 3, 4], x.highestHint), `${path}.highestHint`, "0 to 4 or null");
+  need(typeof x.safetyFlag === "boolean", `${path}.safetyFlag`, "a boolean");
+  need(oneOf([null, "concern", "immediate"], x.safetySeverity), `${path}.safetySeverity`, "concern, immediate or null");
+  const m = x.mishearing;
+  need(isObject(m) && isCount(m.confirmations) && isCount(m.corrections), `${path}.mishearing`, "two counts");
+  need(isNum(x.seconds) && x.seconds >= 0, `${path}.seconds`, "seconds");
+}
+
+function check(raw: unknown): MayaTrace {
+  need(isObject(raw) && raw.kind === TRACE_KIND, "trace", "not a Maya trace");
+  const r = raw as Record<string, unknown>;
+  need(r.version === TRACE_VERSION, "version", `${TRACE_VERSION}, not ${String(r.version)}`);
+  need(isName(r.callId), "callId", "a call id");
+  need(oneOf(RUNNERS, r.runner), "runner", "text, livekit-text or voice");
+  need(isTime(r.startedAt), "startedAt", "an ISO time or null");
+  need(isTime(r.endedAt), "endedAt", "an ISO time or null");
+  const model = r.model;
+  need(isObject(model) && isName(model.id) && isName(model.promptVersion), "model", "a model id and a prompt version");
+  const v = r.versions;
+  need(isObject(v) && isCount(v.proposal) && isCount(v.lines) && isCount(v.session), "versions", "the proposal, lines and session versions");
+  const q = r.question;
+  need(isObject(q), "question", "an object");
+  const question = q as Record<string, unknown>;
+  need(question.id === null || isName(question.id), "question.id", "an id or null");
+  need("ref" in question, "question.ref", "present");
+  need(question.text === null || isText(question.text), "question.text", "text or null");
+  need(isText(question.hash) && HASH.test(question.hash), "question.hash", "sha256: and 64 hex digits");
+  need(typeof r.freeTalk === "boolean", "freeTalk", "a boolean");
+
+  need(Array.isArray(r.turns), "turns", "a list");
+  const turns = (r.turns as unknown[]).map((t, i) => checkTurn(t, `turns[${i}]`));
+  turns.forEach((t, i) => need(i === 0 || (t.at as number) >= (turns[i - 1].at as number), `turns[${i}].at`, "not before the turn before it"));
+
+  need(Array.isArray(r.board), "board", "a list");
+  const sent = new Set<string>();
+  (r.board as unknown[]).forEach((b, i) => {
+    const path = `board[${i}]`;
+    need(isObject(b), path, "a board batch");
+    const x = b as Record<string, unknown>;
+    need(isNum(x.at), `${path}.at`, "a time");
+    need(Number.isInteger(x.turn) && turns[x.turn as number]?.kind === "maya", `${path}.turn`, "the index of a Maya turn");
+    need(isName(x.transactionId) && !sent.has(x.transactionId as string), `${path}.transactionId`, "a transaction id, once");
+    need(Array.isArray(x.commands) && x.commands.length > 0, `${path}.commands`, "a list of commands");
+    const out = turns[x.turn as number].output as { board: string[] } | null;
+    need(out !== null && out.board.includes(x.transactionId as string), `${path}.transactionId`, "sent by that turn's output");
+    sent.add(x.transactionId as string);
+  });
+  turns.forEach((t, i) => {
+    const out = t.kind === "maya" ? (t.output as { board: string[] } | null) : null;
+    out?.board.forEach((id) => need(sent.has(id), `turns[${i}].output.board`, `batch ${id} in the board list`));
+  });
+
+  checkOutcome(r.outcome, "outcome");
+  need((r.outcome === null) === (r.endedAt === null), "endedAt", "set exactly when the call has an outcome");
+  need(r.outcome === null || r.startedAt !== null, "startedAt", "set for a call that ended");
+
+  const c = r.counts;
+  need(isObject(c) && COUNT_KEYS.every((k) => isCount(c[k])), "counts", "the trace counts");
+  const want = traceCounts(turns as unknown as TraceTurn[]);
+  for (const k of COUNT_KEYS) need((c as Record<string, unknown>)[k] === want[k], `counts.${k}`, `${want[k]}, counted from the turns`);
+  return raw as unknown as MayaTrace;
+}
+
+/** Reads a saved trace: the trace, or the first field that is not this version's shape (with its path). */
+export function checkTrace(raw: unknown): { ok: true; trace: MayaTrace } | { ok: false; reason: string } {
+  try {
+    return { ok: true, trace: check(raw) };
+  } catch (e) {
+    if (e instanceof Bad) return { ok: false, reason: e.message };
+    throw e;
+  }
+}
+
+// ---------- Keeping the child's data out ----------
+
+/** Secrets that can turn up in an error message: API keys and bearer tokens. */
+const SECRETS = [/\bBearer\s+[A-Za-z0-9._~+/=-]{8,}/gi, /\bsk-[A-Za-z0-9_-]{12,}/g, /\bwhsec_[A-Za-z0-9+/=]{8,}/g, /\b(?:re|rk|pk)_[A-Za-z0-9]{16,}/g];
+const escape = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+/** Text with the child's name as {name} and every secret as [secret]. */
+export function redactText(text: string, childName: string | null = null): string {
+  let out = SECRETS.reduce((t, re) => t.replace(re, "[secret]"), text);
+  const name = childName?.trim();
+  if (name) out = out.replace(new RegExp(`(?<![\\p{L}\\p{N}])${escape(name)}(?![\\p{L}\\p{N}])`, "giu"), "{name}");
+  return out;
+}
+
+const redactDeep = (x: unknown, name: string | null): unknown =>
+  typeof x === "string" ? redactText(x, name) : Array.isArray(x) ? x.map((v) => redactDeep(v, name)) : isObject(x) ? Object.fromEntries(Object.entries(x).map(([k, v]) => [k, redactDeep(v, name)])) : x;
+
+/**
+ * The trace with the child's profile name replaced by {name} and secrets removed, in every text a person or the model
+ * wrote: child turns, Maya's sentences, proposals, errors and technical details. Codes, states and commands stay.
+ */
+export function redactTrace(trace: MayaTrace, childName: string | null): MayaTrace {
+  const turns = trace.turns.map((t): TraceTurn => {
+    switch (t.kind) {
+      case "child":
+        return { ...t, text: redactText(t.text, childName) };
+      case "technical":
+        return { ...t, detail: redactText(t.detail, childName) };
+      case "maya":
+        return {
+          ...t,
+          attempts: t.attempts.map((a) => ({
+            ...a,
+            proposal: redactDeep(a.proposal, childName),
+            refusal: a.refusal ? { ...a.refusal, reason: redactText(a.refusal.reason, childName) } : null,
+            ...(a.error !== undefined ? { error: redactText(a.error, childName) } : {}),
+          })),
+          output: t.output ? { ...t.output, say: t.output.say.map((x) => redactText(x, childName)) } : null,
+        };
+      default:
+        return t;
+    }
+  });
+  return { ...trace, turns };
 }

@@ -28,7 +28,7 @@ import {
   type WordingHistory,
 } from "@/lib/maya";
 import { modelInput, type MayaModel } from "@/lib/maya-model";
-import { packageHash, traceCounts, TRACE_KIND, TRACE_VERSION, type MayaTrace, type TraceAttempt, type TraceBoardBatch, type TraceTurn } from "@/lib/maya-trace";
+import { packageHash, redactText, redactTrace, traceCounts, TRACE_KIND, TRACE_VERSION, type MayaTrace, type TraceAttempt, type TraceBoardBatch, type TraceTurn } from "@/lib/maya-trace";
 
 /** At most this many Maya turns in a row without the child (the easier example is up to four). */
 export const MAX_MAYA_TURNS = 8;
@@ -68,10 +68,16 @@ export interface TextSession {
   writing(status: "started" | "done"): Promise<TextOutput>;
   /** The connection or a service failed: the call ends. */
   technical(detail: string): Promise<TextOutput>;
+  /**
+   * Ends the call as a technical issue if it has not ended (starting it first when it never started), and returns the
+   * finished trace. Call it in a `finally`: every caller gets a trace with an outcome, whatever failed. Safe to call
+   * more than once.
+   */
+  finish(detail?: string): Promise<MayaTrace>;
   /** The session now (plain data). */
   readonly session: Session;
   readonly ended: boolean;
-  /** The trace so far: complete once the call has ended. */
+  /** The trace so far, with the child's name as {name} and secrets removed: complete once the call has ended. */
   trace(): MayaTrace;
 }
 
@@ -103,7 +109,8 @@ function fallbacks(session: Session): unknown[] {
   });
 }
 
-const message = (e: unknown) => (e instanceof Error ? e.message : String(e)).slice(0, 200);
+/** An error's message, short and with secrets removed. */
+const message = (e: unknown) => redactText((e instanceof Error ? e.message : String(e)).slice(0, 200));
 const iso = (ms: number | null) => (ms === null ? null : new Date(ms).toISOString());
 
 export function createTextSession(options: TextSessionOptions): TextSession {
@@ -236,11 +243,71 @@ export function createTextSession(options: TextSessionOptions): TextSession {
     return out;
   }
 
-  /** Runs inputs one at a time, in order. */
+  /** The time for a record that must be written even when the clock fails: never before the last record. */
+  function safeNow(): number {
+    let t = Number.NaN;
+    try {
+      t = clock();
+    } catch {
+      // The clock failed: use the last known time.
+    }
+    return Math.max(Number.isFinite(t) ? t : 0, session.now ?? 0, turns.at(-1)?.at ?? 0);
+  }
+
+  /** Ends the call as a technical issue now, if it has not ended. */
+  function endNow(detail: string) {
+    // A Maya turn cut off before its first attempt has nothing to record.
+    for (let i = turns.length - 1; i >= 0; i--) {
+      const t = turns[i];
+      if (t.kind === "maya" && t.attempts.length === 0) turns.splice(i, 1);
+    }
+    if (session.outcome) return;
+    const at = safeNow();
+    const out = newOutput();
+    if (session.startedAt === null && event({ type: "start", at }, out)) turns.push({ kind: "start", at });
+    if (event({ type: "technical", at, detail }, out)) turns.push({ kind: "technical", at, detail });
+  }
+
+  /**
+   * Runs inputs one at a time, in order. An input that throws ends the call as a technical issue, so the trace keeps
+   * an outcome, and the error goes on to the caller.
+   */
   function serial(run: (out: TextOutput) => Promise<TextOutput>): Promise<TextOutput> {
-    const next = queue.then(() => run(newOutput()));
+    const next = queue.then(async () => {
+      try {
+        return await run(newOutput());
+      } catch (e) {
+        endNow(`the session failed: ${message(e)}`);
+        throw e;
+      }
+    });
     queue = next.catch(() => undefined);
     return next;
+  }
+
+  function trace(): MayaTrace {
+    const t: MayaTrace = {
+      kind: TRACE_KIND,
+      version: TRACE_VERSION,
+      callId: options.callId,
+      runner: options.runner ?? "text",
+      startedAt: iso(session.startedAt),
+      endedAt: iso(session.outcome ? endedAt ?? session.now : null),
+      model: { id: model.id, promptVersion: model.promptVersion },
+      versions: { proposal: PROPOSAL_VERSION, lines: LINES_VERSION, session: session.version },
+      question: {
+        id: typeof raw.id === "string" ? raw.id : null,
+        ref: raw.ref ?? null,
+        text: typeof raw.text === "string" ? raw.text : null,
+        hash,
+      },
+      freeTalk: session.freeTalk,
+      turns: structuredClone(turns),
+      board: structuredClone(board),
+      outcome: session.outcome,
+      counts: traceCounts(turns),
+    };
+    return redactTrace(t, options.childName ?? null);
   }
 
   return {
@@ -284,26 +351,11 @@ export function createTextSession(options: TextSessionOptions): TextSession {
     get ended() {
       return session.outcome !== null;
     },
-    trace: (): MayaTrace => ({
-      kind: TRACE_KIND,
-      version: TRACE_VERSION,
-      callId: options.callId,
-      runner: options.runner ?? "text",
-      startedAt: iso(session.startedAt),
-      endedAt: iso(endedAt),
-      model: { id: model.id, promptVersion: model.promptVersion },
-      versions: { proposal: PROPOSAL_VERSION, lines: LINES_VERSION, session: session.version },
-      question: {
-        id: typeof raw.id === "string" ? raw.id : null,
-        ref: raw.ref ?? null,
-        text: typeof raw.text === "string" ? raw.text : null,
-        hash,
-      },
-      freeTalk: session.freeTalk,
-      turns: structuredClone(turns),
-      board: structuredClone(board),
-      outcome: session.outcome,
-      counts: traceCounts(turns),
-    }),
+    finish: async (detail = "the session was closed before the call ended") => {
+      await queue;
+      endNow(redactText(detail));
+      return trace();
+    },
+    trace,
   };
 }

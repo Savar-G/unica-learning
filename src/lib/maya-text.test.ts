@@ -5,7 +5,7 @@ import { aiMayaModel, PROMPT_VERSION, SYSTEM_PROMPT, type ModelInput } from "@/l
 import { fakeMayaModel, ruleMayaModel } from "@/lib/maya-model-fake";
 import { SAMPLE_PACKAGES } from "@/lib/maya-samples";
 import { createTextSession, type TextOutput } from "@/lib/maya-text";
-import { checkTrace, packageHash, TRACE_VERSION } from "@/lib/maya-trace";
+import { checkTrace, packageHash, redactText, TRACE_VERSION } from "@/lib/maya-trace";
 import { valuesIn } from "@/lib/maya";
 import type { OperationPackage } from "@/lib/question-package";
 
@@ -213,12 +213,112 @@ describe("the clock and the end", () => {
     expect(session.trace().question.hash).toMatch(/^sha256:[0-9a-f]{64}$/);
   });
 
-  it("refuses a saved trace of another version or with no package hash", () => {
+  it("finishes a call that never started: it is started, then ended, and the trace checks", async () => {
     const { session } = scripted([]);
-    const trace = JSON.parse(JSON.stringify(session.trace()));
-    expect(checkTrace({ ...trace, version: 99 })).toMatchObject({ ok: false });
-    expect(checkTrace({ ...trace, question: { ...trace.question, hash: "" } })).toMatchObject({ ok: false });
-    expect(checkTrace({ ...trace, turns: [{ kind: "maya", at: 1, attempts: [] }] })).toMatchObject({ ok: false });
+    const trace = await session.finish();
+    expect(checkTrace(trace)).toMatchObject({ ok: true });
+    expect(trace.turns.map((t) => t.kind)).toEqual(["start", "technical"]);
+    expect(trace.outcome).toMatchObject({ reason: "technical_issue", seconds: 0 });
+    // A second finish changes nothing.
+    expect(await session.finish("again")).toEqual(trace);
+  });
+});
+
+/** A finished, valid trace with a board batch, to break one field at a time. */
+async function validTrace() {
+  const { session } = scripted([
+    OPEN,
+    v2({ act: "guide", step: "ones", level: 0, parts: [{ line: "step.invite", slots: { step: "ones" } }], draw: [{ offer: "question.columns" }] }),
+  ]);
+  await session.start();
+  await session.child("I don't know.");
+  const trace = JSON.parse(JSON.stringify(await session.finish())) as Record<string, unknown> & { turns: Record<string, unknown>[] };
+  expect(checkTrace(trace)).toMatchObject({ ok: true });
+  return trace;
+}
+const mayaAt = (t: { turns: Record<string, unknown>[] }) => t.turns.findIndex((x) => x.kind === "maya" && Array.isArray((x.output as { board?: unknown[] } | null)?.board) && (x.output as { board: unknown[] }).board.length > 0);
+
+describe("checkTrace refuses a trace that is not this version's shape", () => {
+  const cases: [string, (t: Awaited<ReturnType<typeof validTrace>>) => void, RegExp][] = [
+    ["a null attempt", (t) => { t.turns[mayaAt(t)].attempts = [null]; }, /attempts\[0\]/],
+    ["no attempts", (t) => { t.turns[mayaAt(t)].attempts = []; }, /attempts/],
+    ["an attempt of an unknown source", (t) => { (t.turns[mayaAt(t)].attempts as Record<string, unknown>[])[0].source = "guess"; }, /source/],
+    ["a refusal with a bad act", (t) => { (t.turns[mayaAt(t)].attempts as Record<string, unknown>[])[0].refusal = { code: "x", reason: "y", allowed: ["fly"] }; }, /allowed/],
+    ["output from a refused attempt", (t) => { (t.turns[mayaAt(t)].attempts as Record<string, unknown>[])[0].refusal = { code: "x", reason: "y", allowed: [] }; }, /output/],
+    ["no output field", (t) => { delete t.turns[mayaAt(t)].output; }, /output/],
+    ["an output act that is not an act", (t) => { (t.turns[mayaAt(t)].output as Record<string, unknown>).act = "sing"; }, /output\.act/],
+    ["no state", (t) => { delete t.turns[mayaAt(t)].state; }, /state/],
+    ["no stateAfter", (t) => { t.turns[mayaAt(t)].stateAfter = "NAP"; }, /stateAfter/],
+    ["a child turn with no text", (t) => { delete t.turns.find((x) => x.kind === "child")!.text; }, /text/],
+    ["an unknown turn kind", (t) => { t.turns[0].kind = "dance"; }, /kind/],
+    ["turns out of order", (t) => { t.turns[1].at = 0; }, /at/],
+    ["a null board batch", (t) => { (t.board as unknown[])[0] = null; }, /board\[0\]/],
+    ["a board batch of no Maya turn", (t) => { (t.board as Record<string, unknown>[])[0].turn = 0; }, /board\[0\]\.turn/],
+    ["a batch no output sent", (t) => { (t.turns[mayaAt(t)].output as { board: string[] }).board = []; }, /transactionId/],
+    ["an output batch missing from the board list", (t) => { t.board = []; }, /output\.board/],
+    ["no counts", (t) => { delete t.counts; }, /counts/],
+    ["counts that do not match the turns", (t) => { (t.counts as Record<string, number>).mayaTurns += 1; }, /counts\.mayaTurns/],
+    ["a hash with no digest", (t) => { (t.question as Record<string, unknown>).hash = "sha256:"; }, /question\.hash/],
+    ["a hash that is not hex", (t) => { (t.question as Record<string, unknown>).hash = `sha256:${"z".repeat(64)}`; }, /question\.hash/],
+    ["no model id", (t) => { (t.model as Record<string, unknown>).id = ""; }, /model/],
+    ["no versions", (t) => { delete t.versions; }, /versions/],
+    ["an unknown runner", (t) => { t.runner = "phone"; }, /runner/],
+    ["an outcome reason that is not one", (t) => { (t.outcome as Record<string, unknown>).reason = "bored"; }, /outcome\.reason/],
+    ["an outcome with no mishearing counts", (t) => { delete (t.outcome as Record<string, unknown>).mishearing; }, /mishearing/],
+    ["an end time with no outcome", (t) => { t.outcome = null; }, /endedAt/],
+    ["an end time that is not ISO", (t) => { t.endedAt = "yesterday"; }, /endedAt/],
+    ["another version", (t) => { t.version = 99; }, /version/],
+    ["freeTalk missing", (t) => { delete t.freeTalk; }, /freeTalk/],
+  ];
+  for (const [name, breakIt, path] of cases) {
+    it(`refuses ${name}`, async () => {
+      const t = await validTrace();
+      breakIt(t);
+      const r = checkTrace(t);
+      expect(r.ok).toBe(false);
+      if (!r.ok) expect(r.reason).toMatch(path);
+    });
+  }
+
+  it("takes every committed sample trace", async () => {
+    const { readdirSync, readFileSync } = await import("node:fs");
+    const dir = "docs/maya-traces";
+    const files = readdirSync(dir).filter((f) => f.endsWith(".json"));
+    expect(files.length).toBeGreaterThan(0);
+    for (const f of files) expect(checkTrace(JSON.parse(readFileSync(`${dir}/${f}`, "utf8"))), f).toMatchObject({ ok: true });
+  });
+});
+
+describe("the trace keeps the child's name and secrets out", () => {
+  it("writes the profile name as {name} in child turns, Maya's words and proposals, and removes keys from errors", async () => {
+    let now = T0;
+    let n = 0;
+    const model = fakeMayaModel({
+      answer: () => {
+        n += 1;
+        if (n === 2) throw new Error("OpenRouter answered 401 for Bearer sk-or-v1-0123456789abcdef0123456789abcdef");
+        return n === 1 ? OPEN : v2({ act: "guide", step: "ones", level: 0, parts: [{ warm: "pets", echo: "Leah" }, { line: "step.invite", slots: { step: "ones" } }] });
+      },
+    });
+    const session = createTextSession({ callId: "name-1", package: PKG, model, clock: () => (now += 1000), childName: "Leah", random: 2 });
+    await session.start();
+    await session.child("I'm Leah and my dog is LEAH's friend. I don't know.");
+    await session.child("Leah is stuck.");
+    const trace = await session.finish();
+    const json = JSON.stringify(trace);
+    expect(json).not.toMatch(/leah/i);
+    expect(json).not.toMatch(/sk-or-v1|Bearer s/);
+    expect(json).toContain("[secret]");
+    expect(trace.turns.find((t) => t.kind === "child")).toMatchObject({ text: "I'm {name} and my dog is {name}'s friend. I don't know." });
+    expect(checkTrace(trace)).toMatchObject({ ok: true });
+  });
+});
+
+describe("redactText", () => {
+  it("leaves words that only contain the name, and an empty name, alone", () => {
+    expect(redactText("Ann went to Annapolis with Ann.", "Ann")).toBe("{name} went to Annapolis with {name}.");
+    expect(redactText("Hi there", "")).toBe("Hi there");
+    expect(redactText("key whsec_abcdefghijklmnop and re_ABCDEFGHIJKLMNOPQRS", null)).toBe("key [secret] and [secret]");
   });
 });
 
