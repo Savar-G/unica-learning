@@ -182,6 +182,14 @@ describe("count", () => {
     expect(q.package!.item).toMatchObject({ format: "write-number", regions: [box("answer", answer as number)], checks: [{ kind: "count", region: "answer" }], figure: drawn });
   });
 
+  it("counts an empty ten-frame and no dots as 0", async () => {
+    for (const figure of ["ten-frame", "dots"]) {
+      const q = await first((s) => item(s, "count", { text: "How many?", figure, numbers: [num(0)] }));
+      expect(q.check).toEqual({ status: "checked" });
+      expect(regions(q)).toEqual([box("answer", 0)]);
+    }
+  });
+
   it("fails a count item with no picture, then takes the redo", async () => {
     let calls = 0;
     const d = await draft(U10, (s) => {
@@ -243,7 +251,7 @@ describe("number line and pictures beside an operation", () => {
 
   it("fails a picture code cannot draw for the operation", async () => {
     const q = await first((s) => withOp(s, "write-number", op("add", 23, 45), 69, op("add", 2, 4), { figure: "dots" }));
-    expect(q.check).toEqual({ status: "failed", reason: "a dots figure needs 1 to 3 groups of 0 to 20 dots, 1 to 30 in all" });
+    expect(q.check).toEqual({ status: "failed", reason: "a dots figure needs 1 to 3 groups of 0 to 20 dots, 0 to 30 in all" });
     const divide = await first((s) => withOp(s, "write-number", op("divide", 12, 3), 5, op("divide", 6, 3), { figure: "dots" }));
     expect(divide.check).toEqual({ status: "failed", reason: "code draws a picture only for +, − and × of whole numbers, not divide" });
   });

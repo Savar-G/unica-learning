@@ -539,12 +539,16 @@ const isCounts = (v: unknown, least: number, most: number, each: number): v is n
   Array.isArray(v) && v.length >= least && v.length <= most && v.every((n) => isWholeIn(n, 0, each));
 const sum = (ns: number[]) => ns.reduce((s, n) => s + n, 0);
 
-/** What is wrong with a figure's shape, or null. Sizes are bounded so the renderer can always draw it. */
+/**
+ * What is wrong with a figure's shape, or null. Sizes are bounded so the renderer can always draw it. A figure of things
+ * to count (dots, a ten-frame, base-ten blocks) may show none: "How many? 0" is an early-level item. An array has at
+ * least one row and one column.
+ */
 function figureProblem(f: unknown): string | null {
   if (!isObject(f)) return "the figure is not an object";
   switch (f.kind) {
     case "dots":
-      if (!isCounts(f.groups, 1, 3, 20) || sum(f.groups) === 0 || sum(f.groups) > 30) return "a dots figure needs 1 to 3 groups of 0 to 20 dots, 1 to 30 in all";
+      if (!isCounts(f.groups, 1, 3, 20) || sum(f.groups) > 30) return "a dots figure needs 1 to 3 groups of 0 to 20 dots, 0 to 30 in all";
       return isWholeIn(f.takenAway, 0, sum(f.groups)) ? null : "a dots figure crosses out 0 to all of its dots";
     case "ten-frame":
       return isCounts(f.counters, 1, 2, 20) && sum(f.counters) <= 20 ? null : "a ten-frame figure needs 1 or 2 parts of counters, 0 to 20 in all";
@@ -554,8 +558,8 @@ function figureProblem(f: unknown): string | null {
       return Number.isInteger(ticks) && ticks >= 1 && ticks <= 20 ? null : "a number line needs 1 to 20 equal steps from its start to its end";
     }
     case "base-ten":
-      return isWholeIn(f.hundreds, 0, 9) && isWholeIn(f.tens, 0, 20) && isWholeIn(f.ones, 0, 20) && f.hundreds + f.tens + f.ones > 0
-        ? null : "base-ten blocks need 0 to 9 hundreds and 0 to 20 tens and ones, not none";
+      return isWholeIn(f.hundreds, 0, 9) && isWholeIn(f.tens, 0, 20) && isWholeIn(f.ones, 0, 20)
+        ? null : "base-ten blocks need 0 to 9 hundreds and 0 to 20 tens and ones";
     case "array":
       return isWholeIn(f.rows, 1, 10) && isWholeIn(f.columns, 1, 10) ? null : "an array needs 1 to 10 rows and columns";
     case "pattern": {

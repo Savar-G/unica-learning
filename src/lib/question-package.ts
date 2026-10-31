@@ -887,6 +887,11 @@ function contentProblem(p: Record<string, unknown>): string | null {
   if (!isObject(easier.operation) || easier.operation.kind !== target.kind) return "the easier example is not the same operation";
   const easierWork = partProblem(easier.operation, easier.answer, easier.steps, "the easier example");
   if (easierWork) return easierWork;
+  // An easier example that comes to the question's answer, in any form, gives the answer away (review R378-1).
+  const easierAnswer = easier.answer as AnswerValue;
+  if (rightForms.some((r) => equivalent(r, easierAnswer)) || isRight(easierAnswer, rightForms, exact, rules.sameNumberWrong, rules.answer === "amount" ? rules.unit(target) : undefined)) {
+    return "the easier example has the question's answer";
+  }
   if (!smaller(size(easier.operation as Operation), size(target))) return "the easier example is not smaller than the question";
   return null;
 }
