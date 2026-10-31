@@ -3,7 +3,7 @@ import type { AiJsonRequest } from "@/lib/ai-client";
 import { fakeAiClient } from "@/lib/ai-client-fake";
 import { fakePrintEngine } from "@/lib/print-engine-fake";
 import type { Operation } from "@/lib/question-package";
-import { levelMistakes, pageFigure, samProblem, samWork } from "@/lib/workbook-book";
+import { levelMistakes, pageFigure, samProblem, samWork, skillRange } from "@/lib/workbook-book";
 import { curriculumFor } from "@/lib/workbook-curriculum";
 import { memoryDraftStore } from "@/lib/workbook-draft-memory";
 import { renderableDraft } from "@/lib/workbook-fit";
@@ -137,6 +137,13 @@ describe("a book laid out for the templates", () => {
 });
 
 describe("sample profiles", () => {
+  it("gives every level's child a different ordinary name, never Maya or Sam", () => {
+    const names = BC.levels.map((l) => sampleChild(BC, l.id)!.name);
+    expect(new Set(names).size).toBe(names.length);
+    expect(names).not.toContain("Maya");
+    expect(names).not.toContain("Sam");
+  });
+
   it.each(BC.levels.map((l) => l.id))("plans all three books for %s", (level) => {
     const child = sampleChild(BC, level)!;
     expect(child.mainUnit).toBeTruthy();
@@ -223,7 +230,8 @@ describe("Sam's wrong work", () => {
   });
 
   it("offers counting and answer mistakes up to U6, column mistakes from U10", () => {
-    expect(levelMistakes(2)).toEqual(["counted-one-extra", "counted-one-short", "wrong-start", "wrong-operation", "swapped-digits"]);
+    expect(levelMistakes(2)).toEqual(["counted-one-extra", "counted-one-short", "wrong-start", "wrong-operation"]);
+    expect(levelMistakes(5)).toContain("swapped-digits");
     expect(levelMistakes(8)).toHaveLength(8);
     expect(levelMistakes(12)).not.toContain("counted-one-extra");
   });
@@ -271,14 +279,14 @@ describe("Spot the error at the early levels", () => {
       const x = s as Asked & { mistakes?: { name: string }[] };
       if (x.place !== "spot-the-error") return item(s);
       asked.push((x.mistakes ?? []).map((m) => m.name));
-      return { ...item(s), text: "5 + 3 = ?", operation: addOp(5, 3), wrongAnswers: [{ value: num(9), cause: "counted-one-extra", description: "Counts one too many.", step: null }], easier: { text: "2 + 1 = ?", operation: addOp(2, 1) }, shownWrong: 0 };
+      return { ...item(s), text: "2 + 2 = ?", operation: addOp(2, 2), wrongAnswers: [{ value: num(5), cause: "counted-one-extra", description: "Counts one too many.", step: null }], easier: { text: "1 + 1 = ?", operation: addOp(1, 1) }, shownWrong: 0 };
     });
     expect(asked.length).toBeGreaterThan(0);
     expect(asked.every((names) => names.join() === levelMistakes(Number(level.slice(1))).join())).toBe(true);
     const spots = draft.pages.flatMap((p) => p.questions).filter((q) => q.place === "spot-the-error");
     expect(spots.every((q) => q.check.status !== "failed")).toBe(true);
     const block = dayPages(draft).flatMap((p) => (p.content!.kind === "day" ? p.content!.blocks : [])).find((b) => b.slot === "spot-the-error")!;
-    expect(block.lines).toEqual(["Start at 5. Count on 3.", "6, 7, 8, 9", "5 + 3 = [9]"]);
+    expect(block.lines).toEqual(["Start at 2. Count on 2.", "3, 4, 5", "2 + 2 = [5]"]);
   });
 });
 
@@ -291,5 +299,37 @@ describe("a failed question with nothing to print", () => {
     const html = workbookTemplate().page(renderableDraft(draft).pages[page.number - 1], { qr: "", qrUrl: "" }, renderableDraft(draft))!;
     expect(html).toContain(`data-failed-question="${lost.number}"`);
     expect(html).toContain(`Question ${lost.number} failed: ${(lost.check as { reason: string }).reason}`);
+  });
+});
+
+describe("numbers that fit the level", () => {
+  const sum = (a: number, b: number) => (s: Asked) => (s.place === "spot-the-error" ? { ...item(s), text: "2 + 2 = ?", operation: addOp(2, 2), wrongAnswers: [{ value: num(5), cause: "counted-one-extra", description: "Counts one too many.", step: null }], easier: { text: "1 + 1 = ?", operation: addOp(1, 1) }, shownWrong: 0 }
+    : { ...item(s), text: `${a} + ${b} = ?`, operation: addOp(a, b), easier: { text: "1 + 1 = ?", operation: addOp(1, 1) }, wrongAnswers: [{ value: num(a + b + 1), cause: "count", description: "Counts one too many.", step: null }] });
+  const placed = (d: GeneratedWorkbook) => d.pages.flatMap((p) => p.questions).filter((q) => q.place && q.place !== "spot-the-error");
+
+  it("fails an item at U3 with numbers past 10, after its two attempts", async () => {
+    const { draft } = await generate("U3", "first", sum(64, 15));
+    const qs = placed(draft).filter((q) => q.package?.operation || q.check.status === "failed");
+    expect(qs.length).toBeGreaterThan(0);
+    expect(qs.every((q) => q.check.status === "failed" && q.attempts === 2)).toBe(true);
+    expect((qs[0].check as { reason: string }).reason).toContain("at most 10");
+  });
+
+  it("passes an item at U3 with numbers to 5, and tells the AI each slot's range (to 10 at most)", async () => {
+    const asked: { place?: string; skills: string[]; numbers?: Record<string, { max: number }> }[] = [];
+    const { draft } = await generate("U3", "first", (s) => (asked.push(s as never), sum(2, 3)(s)));
+    expect(placed(draft).filter((q) => q.check.status === "failed" && /at most|negative/.test((q.check as { reason: string }).reason))).toEqual([]);
+    const told = asked.filter((s) => s.place).flatMap((s) => s.skills.map((k) => [k, s.numbers?.[k]?.max] as const));
+    expect(told.length).toBeGreaterThan(0);
+    expect(told.filter(([k, max]) => max !== skillRange(BC, 3, k).max || max > 10)).toEqual([]);
+  });
+
+  it("keeps a review of an earlier skill to that skill's numbers, and never above the page's level", () => {
+    expect(skillRange(BC, 12, "1.1-count-to-20").max).toBe(20);
+    expect(skillRange(BC, 12, "K3-ten-frame").max).toBe(10);
+    expect(skillRange(BC, 3, "3.3-add-within-1000").max).toBe(10);
+    expect(skillRange(BC, 22, "3.3-add-within-1000").negatives).toBe(false);
+    expect(skillRange(BC, 12, "3.4-recall-addition-20").max).toBe(20);
+    expect(skillRange(BC, 8, "2.3-bridge-10-subtract").max).toBe(100);
   });
 });

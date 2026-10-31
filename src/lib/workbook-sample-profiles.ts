@@ -27,9 +27,11 @@ export interface SampleChild {
   weakSkills: string[];
 }
 
+// Ordinary first names, all different. Never "Maya" (the teaching assistant), "Sam" (Sam's work on Spot the error) or
+// a real customer's name.
 const NAMES = [
-  "Ava", "Leo", "Maya", "Noah", "Zara", "Eli", "Priya", "Owen", "Lina", "Jun",
-  "Sofia", "Kai", "Amara", "Ravi", "Nora", "Theo", "Isla", "Arjun", "Mila", "Sam",
+  "Ava", "Leo", "Zoe", "Noah", "Zara", "Eli", "Priya", "Owen", "Lina", "Jun",
+  "Sofia", "Kai", "Amara", "Ravi", "Nora", "Theo", "Isla", "Arjun", "Mila", "Ben",
   "Hana", "Luca", "Aria", "Omar", "Ella", "Kian", "Ruby", "Dev", "Lucy", "Finn",
 ];
 

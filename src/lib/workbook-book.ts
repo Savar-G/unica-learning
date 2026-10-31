@@ -199,6 +199,76 @@ export function pageFigure(f: ItemFigure | null | undefined, op: Operation | nul
   }
 }
 
+// ---------- Number ranges ----------
+
+/**
+ * The largest number a level's items use, from each level's title and topics (numbers to 10 in Kindergarten, to 20 in
+ * U4 to U6, to 100 in U7 to U9, to 1000 in U10 to U12, to 10 000 in U13 to U15, to a million in U16 to U18;
+ * no practical limit from U19). Negative numbers come with integers at U22.
+ */
+const LEVEL_MAX = [
+  10, 10, 10, 20, 20, 20, 100, 100, 100, 1000, 1000, 1000, 10_000, 10_000, 10_000, 1_000_000, 1_000_000, 1_000_000,
+  ...Array.from({ length: 12 }, () => 1_000_000_000),
+];
+
+export interface NumberRange {
+  /** The largest plain number (operand, answer or box answer) an item may use. */
+  max: number;
+  negatives: boolean;
+}
+
+/** A level's number range. */
+export const levelRange = (level: number): NumberRange => ({ max: LEVEL_MAX[Math.min(30, Math.max(1, level)) - 1], negatives: level >= 22 });
+
+/** The limit a skill's id names ("1.3-add-within-10", "3.4-recall-addition-20", "2.1-ten-more-less-100"), or null. */
+function idLimit(skill: string): number | null {
+  const m = skill.match(/-(?:within-|to-)?(\d+)$/) ?? skill.match(/-(?:within|to)-(\d+)-/);
+  const n = m ? Number(m[1]) : NaN;
+  return [5, 10, 20, 100, 1000, 10_000].includes(n) ? n : null;
+}
+
+/**
+ * The range of an item on a skill: the range of the skill's own level (a review of an earlier skill keeps to that
+ * skill's numbers), never above the page's level, and never above the limit the skill's id names ("facts to 20").
+ */
+export function skillRange(curriculum: Curriculum, level: number, skill: string): NumberRange {
+  const own = curriculum.levelOfSkill(skill)?.number ?? level;
+  const range = levelRange(Math.min(own, level));
+  const limit = idLimit(skill);
+  return limit !== null && limit < range.max ? { ...range, max: limit } : range;
+}
+
+/** A slot's ranges for the AI: each skill it may use, with that skill's range. */
+export function slotRanges(curriculum: Curriculum, level: number, skills: readonly string[]): Record<string, NumberRange> {
+  return Object.fromEntries(skills.map((s) => [s, skillRange(curriculum, level, s)]));
+}
+
+/** The plain numbers of a value: a number's value; amounts with units, times and fractions are not counted. */
+const plain = (v: unknown): number[] =>
+  typeof v === "number" ? [v] : v && typeof v === "object" && (v as { type?: unknown }).type === "number" && typeof (v as { value?: unknown }).value === "number" ? [(v as { value: number }).value] : [];
+
+/** The plain numbers an item shows or asks for: the operation's operands, the answer and each answer box's answer. */
+function itemNumbers(p: QuestionPackage): number[] {
+  const regions = p.item?.regions ?? [];
+  return [
+    ...(p.operation?.operands ?? []).flatMap(plain),
+    ...plain(p.answer?.value),
+    ...regions.flatMap((r) => (r.kind === "box" ? plain(r.answer) : [])),
+  ];
+}
+
+/** Why an item's numbers do not fit its skill's range at the level, or null (see skillRange). */
+export function rangeProblem(p: QuestionPackage, curriculum: Curriculum, level: number): string | null {
+  const skill = p.skill.skills[0];
+  const range = skill ? skillRange(curriculum, level, skill) : levelRange(level);
+  const numbers = itemNumbers(p);
+  const big = numbers.find((n) => Math.abs(n) > range.max);
+  if (big !== undefined) return `the number ${big} is too big for this question: its numbers are at most ${range.max}`;
+  const negative = numbers.find((n) => n < 0);
+  if (negative !== undefined && !range.negatives) return `the number ${negative} is negative: this question uses no negative numbers`;
+  return null;
+}
+
 // ---------- Sam's wrong work (Spot the error) ----------
 
 /**
@@ -230,10 +300,12 @@ export const SAM_MISTAKE_RULES: Record<SamMistake, { what: string; when: string;
 
 /**
  * The mistakes a Spot the error item may use at a level: counting and answer mistakes up to U6 (before column
- * regrouping), all of them at U7 to U9, and from U10 the column mistakes with the wrong operation and swapped digits.
+ * regrouping; swapped digits only from U4, where numbers go past 10), all of them at U7 to U9, and from U10 the column
+ * mistakes with the wrong operation and swapped digits.
  */
 export function levelMistakes(level: number): SamMistake[] {
-  if (level <= 6) return ["counted-one-extra", "counted-one-short", "wrong-start", "wrong-operation", "swapped-digits"];
+  // Swapped digits needs a two-digit answer: not in the levels with numbers to 10.
+  if (level <= 6) return ["counted-one-extra", "counted-one-short", "wrong-start", "wrong-operation", ...(levelRange(level).max >= 12 ? ["swapped-digits" as const] : [])];
   if (level <= 9) return [...SAM_MISTAKES];
   return ["forgot-carry", "smaller-from-larger", "regroup-not-taken", "wrong-operation", "swapped-digits"];
 }
